@@ -33,6 +33,7 @@ public class LifeQuoteControllerRouteTests
             Mock.Of<IMetaSignalIntelligenceService>(),
             Mock.Of<IWebsiteLifeLeadCaptureService>(),
             Mock.Of<IPublicBookingResolver>(),
+            Mock.Of<IPublicBookingConfirmationService>(),
             new PublicBookingContextProtector(DataProtectionProvider.Create(new System.IO.DirectoryInfo(System.IO.Path.Combine(System.IO.Path.GetTempPath(), Guid.NewGuid().ToString("N"))))),
             NullLogger<LifeQuoteController>.Instance);
 

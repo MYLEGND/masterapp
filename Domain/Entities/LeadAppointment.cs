@@ -17,6 +17,15 @@ public class LeadAppointment
 
     public LeadAppointmentStatus Status { get; set; } = LeadAppointmentStatus.Requested;
     public string BookingSource { get; set; } = LeadAppointmentBookingSources.InternalManual;
+    public string RequestedBookingSource { get; set; } = LeadAppointmentBookingSources.InternalManual;
+    public string? ConfirmationSource { get; set; }
+    public string? BookingConfigurationSource { get; set; }
+    public Guid? BookingTrackingProfileId { get; set; }
+    public string? BookingAgentSlug { get; set; }
+    public string? BookingAgentUserId { get; set; }
+    public string? BookingCalendarUserId { get; set; }
+    public string? BookingCalendarEmail { get; set; }
+    public string? BookingPageIdOrMailbox { get; set; }
 
     public string? CalendarEventId { get; set; }
     public string? CalendarEventWebLink { get; set; }
@@ -72,8 +81,11 @@ public class LeadAppointment
 public static class LeadAppointmentBookingSources
 {
     public const string InternalManual = "internal_manual";
-    public const string WorkstationCalendar = "workstation_calendar";
+    public const string InternalCalendar = "internal_calendar";
+    public const string WorkstationCalendar = InternalCalendar;
     public const string WebsiteEmbed = "website_embed";
     public const string WebsiteModal = "website_modal";
     public const string ExternalRedirectFallback = "external_redirect_fallback";
+    public const string MicrosoftGraphConfirmation = "microsoft_graph_confirmation";
+    public const string ManualVerified = "manual_verified";
 }

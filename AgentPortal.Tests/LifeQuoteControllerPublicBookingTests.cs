@@ -65,14 +65,21 @@ public class LifeQuoteControllerPublicBookingTests
         var protector = BuildBookingProtector();
         var publicBookingResolver = new Mock<IPublicBookingResolver>();
         publicBookingResolver
-            .Setup(resolver => resolver.Resolve("legend"))
-            .Returns(new PublicBookingResolution(
+            .Setup(resolver => resolver.ResolveAsync(It.IsAny<PublicBookingResolveContext>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new PublicBookingResolution(
                 Enabled: true,
                 EmbedUrl: "https://outlook.office.com/bookings/embed",
                 FallbackUrl: "https://outlook.office.com/bookings/fallback",
                 PreferModalOnMobile: true,
                 IsAgentOverride: false,
-                Reason: "configured"));
+                Reason: "configured",
+                ConfigurationSource: PublicBookingConfigurationSources.GlobalFallback,
+                AgentTrackingProfileId: null,
+                AgentUserId: agentUserId,
+                AgentSlug: "legend",
+                CalendarUserId: null,
+                CalendarEmail: "legend-calendar@example.test",
+                BookingPageIdOrMailbox: "legend-mailbox"));
         var controller = BuildController(
             db,
             publicBookingResolver: publicBookingResolver.Object,
@@ -115,14 +122,21 @@ public class LifeQuoteControllerPublicBookingTests
         var protector = BuildBookingProtector();
         var publicBookingResolver = new Mock<IPublicBookingResolver>();
         publicBookingResolver
-            .Setup(resolver => resolver.Resolve(It.IsAny<string?>()))
-            .Returns(new PublicBookingResolution(
+            .Setup(resolver => resolver.ResolveAsync(It.IsAny<PublicBookingResolveContext>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new PublicBookingResolution(
                 Enabled: false,
                 EmbedUrl: null,
                 FallbackUrl: null,
                 PreferModalOnMobile: true,
                 IsAgentOverride: false,
-                Reason: "disabled"));
+                Reason: "disabled",
+                ConfigurationSource: PublicBookingConfigurationSources.None,
+                AgentTrackingProfileId: null,
+                AgentUserId: null,
+                AgentSlug: "legend",
+                CalendarUserId: null,
+                CalendarEmail: null,
+                BookingPageIdOrMailbox: null));
         var controller = BuildController(
             db,
             publicBookingResolver: publicBookingResolver.Object,
@@ -189,14 +203,21 @@ public class LifeQuoteControllerPublicBookingTests
             .ReturnsAsync((MetaSignalProcessResult?)null);
         var publicBookingResolver = new Mock<IPublicBookingResolver>();
         publicBookingResolver
-            .Setup(resolver => resolver.Resolve(It.IsAny<string?>()))
-            .Returns(new PublicBookingResolution(
+            .Setup(resolver => resolver.ResolveAsync(It.IsAny<PublicBookingResolveContext>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new PublicBookingResolution(
                 Enabled: false,
                 EmbedUrl: null,
                 FallbackUrl: null,
                 PreferModalOnMobile: true,
                 IsAgentOverride: false,
-                Reason: "disabled"));
+                Reason: "disabled",
+                ConfigurationSource: PublicBookingConfigurationSources.None,
+                AgentTrackingProfileId: null,
+                AgentUserId: null,
+                AgentSlug: null,
+                CalendarUserId: null,
+                CalendarEmail: null,
+                BookingPageIdOrMailbox: null));
 
         var controller = BuildController(
             db,
@@ -242,6 +263,52 @@ public class LifeQuoteControllerPublicBookingTests
         Assert.Equal("New", lead.Status);
     }
 
+    [Fact]
+    public async Task SubmitLifeQuote_Ajax_WhenValidationFails_ReturnsFieldErrorsAndCorrelationId()
+    {
+        using var db = ControllerTestHelpers.BuildDb();
+        var controller = BuildController(db);
+
+        var http = new DefaultHttpContext();
+        http.Request.Method = HttpMethods.Post;
+        http.Request.ContentType = "application/x-www-form-urlencoded";
+        http.Request.Headers["X-Requested-With"] = "fetch";
+        http.Request.Form = new FormCollection(new Dictionary<string, StringValues>());
+        controller.ControllerContext = new ControllerContext { HttpContext = http };
+        controller.TempData = new TempDataDictionary(http, Mock.Of<ITempDataProvider>());
+
+        var result = await controller.SubmitLifeQuote(new LifeQuoteFormModel
+        {
+            FirstName = "Casey",
+            Phone = "(555)555-1111",
+            MarketingEmailConsent = false,
+            ProtectingWho = "family",
+            CoverageGoal = "replace_income",
+            CoverageAmountOption = "250000",
+            CoverageAmount = 250000,
+            TobaccoUse = "non_smoker",
+            Age = 35,
+            AgeRange = "35-44",
+            OfferKey = "life",
+            ProductType = "life_general"
+        });
+
+        var badRequest = Assert.IsType<BadRequestObjectResult>(result);
+        var payload = JsonDocument.Parse(JsonSerializer.Serialize(badRequest.Value));
+
+        Assert.Equal(
+            "Please check the box so we can send your estimate and options.",
+            GetRequiredProperty(payload.RootElement, "error").GetString());
+        Assert.True(payload.RootElement.TryGetProperty("correlationId", out var correlationId));
+        Assert.False(string.IsNullOrWhiteSpace(correlationId.GetString()));
+
+        var fieldErrors = GetRequiredProperty(payload.RootElement, "fieldErrors");
+        Assert.True(fieldErrors.TryGetProperty(nameof(LifeQuoteFormModel.MarketingEmailConsent), out var consentErrors));
+        Assert.Contains(
+            "Please check the box so we can send your estimate and options.",
+            consentErrors.EnumerateArray().Select(value => value.GetString()));
+    }
+
     private static LifeQuoteController BuildController(
         Infrastructure.Data.MasterAppDbContext db,
         IMetaConversionsApiService? metaConversionsApi = null,
@@ -249,6 +316,7 @@ public class LifeQuoteControllerPublicBookingTests
         IMetaSignalIntelligenceService? metaSignalIntelligenceService = null,
         IWebsiteLifeLeadCaptureService? websiteLifeLeadCaptureService = null,
         IPublicBookingResolver? publicBookingResolver = null,
+        IPublicBookingConfirmationService? publicBookingConfirmationService = null,
         IPublicBookingContextProtector? publicBookingContextProtector = null)
     {
         var resolver = new AgentTrackingResolver(db, NullLogger<AgentTrackingResolver>.Instance);
@@ -262,6 +330,7 @@ public class LifeQuoteControllerPublicBookingTests
             metaSignalIntelligenceService ?? Mock.Of<IMetaSignalIntelligenceService>(),
             websiteLifeLeadCaptureService ?? Mock.Of<IWebsiteLifeLeadCaptureService>(),
             publicBookingResolver ?? Mock.Of<IPublicBookingResolver>(),
+            publicBookingConfirmationService ?? Mock.Of<IPublicBookingConfirmationService>(),
             publicBookingContextProtector ?? BuildBookingProtector(),
             NullLogger<LifeQuoteController>.Instance)
         {

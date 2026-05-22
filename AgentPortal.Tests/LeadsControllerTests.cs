@@ -203,7 +203,9 @@ public class LeadsControllerTests
                 WorkstationLeadId = "L-LIST-APPT-1",
                 OwnerAgentUserId = "agent-1",
                 Status = LeadAppointmentStatus.Booked,
-                BookingSource = LeadAppointmentBookingSources.WorkstationCalendar,
+                BookingSource = LeadAppointmentBookingSources.InternalCalendar,
+                RequestedBookingSource = LeadAppointmentBookingSources.InternalCalendar,
+                ConfirmationSource = LeadAppointmentBookingSources.InternalCalendar,
                 CalendarEventId = "evt-42",
                 CalendarEventWebLink = "https://outlook.test/events/42",
                 ScheduledStartUtc = new DateTime(2026, 5, 22, 16, 0, 0, DateTimeKind.Utc),
@@ -228,8 +230,13 @@ public class LeadsControllerTests
 
         Assert.Equal("Booked", appointment.GetProperty("status").GetString());
         Assert.Equal("Booked", appointment.GetProperty("statusLabel").GetString());
-        Assert.Equal("workstation_calendar", appointment.GetProperty("bookingSource").GetString());
-        Assert.Equal("Workstation calendar", appointment.GetProperty("bookingSourceLabel").GetString());
+        Assert.Equal("internal_calendar", appointment.GetProperty("bookingSource").GetString());
+        Assert.Equal("Internal calendar", appointment.GetProperty("bookingSourceLabel").GetString());
+        Assert.Equal("internal_calendar", appointment.GetProperty("requestedBookingSource").GetString());
+        Assert.Equal("internal_calendar", appointment.GetProperty("confirmationSource").GetString());
+        Assert.True(appointment.GetProperty("confirmationVerified").GetBoolean());
+        Assert.Equal("Booked / verified", appointment.GetProperty("confirmationStateLabel").GetString());
+        Assert.Equal("Internal calendar path", appointment.GetProperty("bookingConfigurationLabel").GetString());
         Assert.Equal("evt-42", appointment.GetProperty("calendarEventId").GetString());
         Assert.Equal("https://zoom.example.com/j/42", appointment.GetProperty("meetingUrl").GetString());
     }
@@ -417,6 +424,109 @@ public class LeadsControllerTests
         Assert.Equal("Requested", latestAppointment.GetProperty("status").GetString());
         Assert.Equal("Requested", latestAppointment.GetProperty("statusLabel").GetString());
         Assert.Equal("internal_manual", latestAppointment.GetProperty("bookingSource").GetString());
+    }
+
+    [Fact]
+    public async Task UpdateLeadAppointmentStatus_ManualBooked_PromotesConfirmationToManualVerified()
+    {
+        await using var db = ControllerTestHelpers.BuildDb();
+        db.WorkstationLeadProfiles.Add(new WorkstationLeadProfile
+        {
+            LeadId = "L-APPT-MANUAL-1",
+            AgentUserId = "agent-1",
+            Bucket = "LifeInsurance",
+            OriginalLeadType = "LifeInsurance",
+            FirstName = "Jordan",
+            LastName = "Manual",
+            Email = "jordan.manual@example.com",
+            Phone = "6025550191",
+            CreatedUtc = new DateTime(2026, 5, 21, 8, 0, 0, DateTimeKind.Utc),
+            UpdatedUtc = new DateTime(2026, 5, 21, 8, 0, 0, DateTimeKind.Utc)
+        });
+        var appointmentId = Guid.NewGuid();
+        db.LeadAppointments.Add(new LeadAppointment
+        {
+            Id = appointmentId,
+            WorkstationLeadId = "L-APPT-MANUAL-1",
+            OwnerAgentUserId = "agent-1",
+            Status = LeadAppointmentStatus.Requested,
+            BookingSource = LeadAppointmentBookingSources.WebsiteEmbed,
+            RequestedBookingSource = LeadAppointmentBookingSources.WebsiteEmbed,
+            RequestedUtc = new DateTime(2026, 5, 21, 8, 10, 0, DateTimeKind.Utc),
+            CreatedUtc = new DateTime(2026, 5, 21, 8, 10, 0, DateTimeKind.Utc),
+            UpdatedUtc = new DateTime(2026, 5, 21, 8, 10, 0, DateTimeKind.Utc)
+        });
+        await db.SaveChangesAsync();
+
+        var controller = ControllerTestHelpers.BuildLeadsController(db, Mock.Of<IExecutionEngine>(), Mock.Of<ICommitmentService>(), ControllerTestHelpers.BuildUser());
+
+        var result = await controller.UpdateLeadAppointmentStatus(
+            new LeadsController.LeadAppointmentStatusRequest("L-APPT-MANUAL-1", appointmentId, "Booked"));
+
+        var json = Assert.IsType<JsonResult>(result);
+        var payload = JsonSerializer.Serialize(json.Value);
+        using var doc = JsonDocument.Parse(payload);
+        var latestAppointment = doc.RootElement.GetProperty("payload").GetProperty("latestAppointment");
+
+        var appointment = await db.LeadAppointments.SingleAsync(x => x.Id == appointmentId);
+        Assert.Equal(LeadAppointmentStatus.Booked, appointment.Status);
+        Assert.Equal(LeadAppointmentBookingSources.ManualVerified, appointment.BookingSource);
+        Assert.Equal(LeadAppointmentBookingSources.ManualVerified, appointment.ConfirmationSource);
+        Assert.Equal(LeadAppointmentBookingSources.WebsiteEmbed, appointment.RequestedBookingSource);
+        Assert.NotNull(appointment.BookedUtc);
+
+        Assert.Equal("manual_verified", latestAppointment.GetProperty("bookingSource").GetString());
+        Assert.Equal("manual_verified", latestAppointment.GetProperty("confirmationSource").GetString());
+        Assert.True(latestAppointment.GetProperty("confirmationVerified").GetBoolean());
+        Assert.Equal("Booked / verified", latestAppointment.GetProperty("confirmationStateLabel").GetString());
+    }
+
+    [Fact]
+    public async Task UpdateLeadAppointmentStatus_DoesNotDowngradeBookedBackToRequested()
+    {
+        await using var db = ControllerTestHelpers.BuildDb();
+        db.WorkstationLeadProfiles.Add(new WorkstationLeadProfile
+        {
+            LeadId = "L-APPT-NODOWNGRADE-1",
+            AgentUserId = "agent-1",
+            Bucket = "LifeInsurance",
+            OriginalLeadType = "LifeInsurance",
+            FirstName = "Jordan",
+            LastName = "Booked",
+            Email = "jordan.booked@example.com",
+            Phone = "6025550192",
+            CreatedUtc = new DateTime(2026, 5, 21, 8, 0, 0, DateTimeKind.Utc),
+            UpdatedUtc = new DateTime(2026, 5, 21, 8, 0, 0, DateTimeKind.Utc)
+        });
+        var appointmentId = Guid.NewGuid();
+        db.LeadAppointments.Add(new LeadAppointment
+        {
+            Id = appointmentId,
+            WorkstationLeadId = "L-APPT-NODOWNGRADE-1",
+            OwnerAgentUserId = "agent-1",
+            Status = LeadAppointmentStatus.Booked,
+            BookingSource = LeadAppointmentBookingSources.InternalCalendar,
+            RequestedBookingSource = LeadAppointmentBookingSources.InternalCalendar,
+            ConfirmationSource = LeadAppointmentBookingSources.InternalCalendar,
+            RequestedUtc = new DateTime(2026, 5, 21, 8, 10, 0, DateTimeKind.Utc),
+            BookedUtc = new DateTime(2026, 5, 21, 8, 20, 0, DateTimeKind.Utc),
+            CreatedUtc = new DateTime(2026, 5, 21, 8, 10, 0, DateTimeKind.Utc),
+            UpdatedUtc = new DateTime(2026, 5, 21, 8, 20, 0, DateTimeKind.Utc)
+        });
+        await db.SaveChangesAsync();
+
+        var controller = ControllerTestHelpers.BuildLeadsController(db, Mock.Of<IExecutionEngine>(), Mock.Of<ICommitmentService>(), ControllerTestHelpers.BuildUser());
+
+        var result = await controller.UpdateLeadAppointmentStatus(
+            new LeadsController.LeadAppointmentStatusRequest("L-APPT-NODOWNGRADE-1", appointmentId, "Requested"));
+
+        var badRequest = Assert.IsType<BadRequestObjectResult>(result);
+        Assert.Equal("Booked, confirmed, or completed appointments cannot be downgraded back to Requested.", badRequest.Value);
+
+        var appointment = await db.LeadAppointments.SingleAsync(x => x.Id == appointmentId);
+        Assert.Equal(LeadAppointmentStatus.Booked, appointment.Status);
+        Assert.Equal(LeadAppointmentBookingSources.InternalCalendar, appointment.BookingSource);
+        Assert.Equal(LeadAppointmentBookingSources.InternalCalendar, appointment.ConfirmationSource);
     }
 
     [Fact]

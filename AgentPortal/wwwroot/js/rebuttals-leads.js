@@ -650,6 +650,9 @@
     const editAppointmentStatus = document.getElementById('dAppointmentStatus');
     const editAppointmentTime = document.getElementById('dAppointmentTime');
     const editAppointmentSource = document.getElementById('dAppointmentSource');
+    const editAppointmentRequestedSource = document.getElementById('dAppointmentRequestedSource');
+    const editAppointmentConfirmation = document.getElementById('dAppointmentConfirmation');
+    const editAppointmentBookingConfig = document.getElementById('dAppointmentBookingConfig');
     const editAppointmentTimeline = document.getElementById('dAppointmentTimeline');
     const editAppointmentMeetingLink = document.getElementById('dAppointmentMeetingLink');
     const editAppointmentCalendarLink = document.getElementById('dAppointmentCalendarLink');
@@ -1783,9 +1786,44 @@
     function humanizeAppointmentSource(value){
       const raw = normalizeSummaryText(value);
       if (!raw) return 'Not tracked yet';
+      switch (raw){
+        case 'internal_manual': return 'Internal manual';
+        case 'internal_calendar': return 'Internal calendar';
+        case 'website_embed': return 'Website embed';
+        case 'website_modal': return 'Website modal';
+        case 'external_redirect_fallback': return 'External redirect fallback';
+        case 'microsoft_graph_confirmation': return 'Microsoft Graph confirmation';
+        case 'manual_verified': return 'Manual verified';
+        default: break;
+      }
       return raw
         .replace(/[_-]+/g, ' ')
         .replace(/\b\w/g, char => char.toUpperCase());
+    }
+
+    function summarizeRequestedAppointmentSource(appointment){
+      if (!appointment) return 'Not tracked yet';
+      return appointment.requestedBookingSourceLabel
+        || humanizeAppointmentSource(appointment.requestedBookingSource)
+        || 'Not tracked yet';
+    }
+
+    function summarizeAppointmentConfirmation(appointment){
+      if (!appointment) return 'No appointment recorded';
+      const state = normalizeSummaryText(appointment.confirmationStateLabel);
+      const source = normalizeSummaryText(appointment.confirmationSourceLabel) || humanizeAppointmentSource(appointment.confirmationSource);
+      const parts = [state, source].filter(Boolean);
+      return parts.join(' • ') || 'No confirmation recorded';
+    }
+
+    function summarizeAppointmentBookingConfig(appointment){
+      if (!appointment) return 'No public booking config used';
+      const label = normalizeSummaryText(appointment.bookingConfigurationLabel);
+      if (label) return label;
+      if (appointment.bookingSource === 'internal_calendar'){
+        return 'Internal calendar path';
+      }
+      return 'No public booking config used';
     }
 
     function formatAppointmentDateTime(value){
@@ -1835,7 +1873,9 @@
       return [
         appointment.statusLabel || humanizeAppointmentStatus(appointment.status),
         formatAppointmentRange(appointment),
-        appointment.bookingSourceLabel || humanizeAppointmentSource(appointment.bookingSource)
+        appointment.bookingSourceLabel || humanizeAppointmentSource(appointment.bookingSource),
+        summarizeAppointmentConfirmation(appointment),
+        summarizeAppointmentBookingConfig(appointment)
       ].filter(Boolean).join('\n');
     }
 
@@ -2205,6 +2245,9 @@
         editAppointmentStatus,
         editAppointmentTime,
         editAppointmentSource,
+        editAppointmentRequestedSource,
+        editAppointmentConfirmation,
+        editAppointmentBookingConfig,
         editAppointmentTimeline,
         editAppointmentMeetingLink,
         editAppointmentCalendarLink
@@ -2223,6 +2266,9 @@
         if (editAppointmentStatus) editAppointmentStatus.textContent = 'No appointment recorded';
         if (editAppointmentTime) editAppointmentTime.textContent = 'No appointment scheduled';
         if (editAppointmentSource) editAppointmentSource.textContent = 'Not tracked yet';
+        if (editAppointmentRequestedSource) editAppointmentRequestedSource.textContent = 'Not tracked yet';
+        if (editAppointmentConfirmation) editAppointmentConfirmation.textContent = 'No confirmation recorded';
+        if (editAppointmentBookingConfig) editAppointmentBookingConfig.textContent = 'No public booking config used';
         if (editAppointmentTimeline) editAppointmentTimeline.textContent = 'No appointment status updates yet';
         if (editAppointmentMeetingLink) editAppointmentMeetingLink.textContent = '—';
         if (editAppointmentCalendarLink) editAppointmentCalendarLink.textContent = '—';
@@ -2234,6 +2280,9 @@
       if (editAppointmentStatus) editAppointmentStatus.textContent = appointment.statusLabel || humanizeAppointmentStatus(appointment.status);
       if (editAppointmentTime) editAppointmentTime.textContent = formatAppointmentRange(appointment);
       if (editAppointmentSource) editAppointmentSource.textContent = appointment.bookingSourceLabel || humanizeAppointmentSource(appointment.bookingSource);
+      if (editAppointmentRequestedSource) editAppointmentRequestedSource.textContent = summarizeRequestedAppointmentSource(appointment);
+      if (editAppointmentConfirmation) editAppointmentConfirmation.textContent = summarizeAppointmentConfirmation(appointment);
+      if (editAppointmentBookingConfig) editAppointmentBookingConfig.textContent = summarizeAppointmentBookingConfig(appointment);
       if (editAppointmentTimeline) editAppointmentTimeline.textContent = appointmentStatusTimestampText(appointment);
       renderAppointmentLink(editAppointmentMeetingLink, appointment.meetingUrl, 'Open meeting link');
       renderAppointmentLink(editAppointmentCalendarLink, appointment.calendarEventWebLink, 'Open Outlook event');

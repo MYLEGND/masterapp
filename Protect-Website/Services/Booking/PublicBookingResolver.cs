@@ -1,73 +1,282 @@
 using System;
+using System.Linq;
+using System.Threading;
+using System.Threading.Tasks;
+using Domain.Entities;
+using Infrastructure.Data;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
 
 namespace ProtectWebsite.Services.Booking;
 
 public sealed class PublicBookingResolver : IPublicBookingResolver
 {
+    private readonly MasterAppDbContext _db;
     private readonly IOptionsSnapshot<PublicBookingOptions> _options;
 
-    public PublicBookingResolver(IOptionsSnapshot<PublicBookingOptions> options)
+    public PublicBookingResolver(
+        MasterAppDbContext db,
+        IOptionsSnapshot<PublicBookingOptions> options)
     {
+        _db = db;
         _options = options;
     }
 
     public PublicBookingResolution Resolve(string? agentSlug)
     {
         var options = _options.Value ?? new PublicBookingOptions();
-        var effectiveEnabled = options.Enabled;
-        var embedUrl = NormalizeHttpUrl(options.MicrosoftBookingsEmbedUrl);
-        var fallbackUrl = NormalizeHttpUrl(options.FallbackBookingUrl);
-        var preferModalOnMobile = options.PreferModalOnMobile;
-        var isAgentOverride = false;
+        return BuildSlugOrGlobalFallback(options, NormalizeSlug(agentSlug));
+    }
 
-        var normalizedSlug = NormalizeSlug(agentSlug);
+    public async Task<PublicBookingResolution> ResolveAsync(
+        PublicBookingResolveContext context,
+        CancellationToken cancellationToken = default)
+    {
+        var options = _options.Value ?? new PublicBookingOptions();
+        var resolvedContext = await ResolveAgentContextAsync(context, cancellationToken);
+        var agentProfileResolution = BuildAgentProfileResolution(options, resolvedContext.AgentProfile, resolvedContext);
+        if (agentProfileResolution.Handled)
+        {
+            return agentProfileResolution.Value!;
+        }
+
+        var slugOrGlobalResolution = BuildSlugOrGlobalFallback(options, resolvedContext.AgentSlug);
+        if (!string.Equals(slugOrGlobalResolution.ConfigurationSource, PublicBookingConfigurationSources.GlobalFallback, StringComparison.OrdinalIgnoreCase))
+        {
+            return slugOrGlobalResolution with
+            {
+                AgentTrackingProfileId = resolvedContext.AgentTrackingProfileId,
+                AgentUserId = resolvedContext.AgentUserId,
+                AgentSlug = resolvedContext.AgentSlug
+            };
+        }
+
+        return slugOrGlobalResolution with
+        {
+            AgentTrackingProfileId = resolvedContext.AgentTrackingProfileId,
+            AgentUserId = resolvedContext.AgentUserId,
+            AgentSlug = resolvedContext.AgentSlug
+        };
+    }
+
+    private async Task<ResolvedPublicBookingAgentContext> ResolveAgentContextAsync(
+        PublicBookingResolveContext context,
+        CancellationToken cancellationToken)
+    {
+        var requestedSlug = NormalizeSlug(context.AgentSlug);
+        var effectiveAgentSlug = requestedSlug;
+        var effectiveTrackingProfileId = context.AgentTrackingProfileId;
+        var effectiveAgentUserId = NormalizeAgentUserId(context.AgentUserId);
+        WebsiteLead? websiteLead = null;
+        WebsiteLeadIntakeLink? intakeLink = null;
+        AgentTrackingProfile? trackingProfile = null;
+
+        if (context.WebsiteLeadId is Guid websiteLeadId && websiteLeadId != Guid.Empty)
+        {
+            websiteLead = await _db.WebsiteLeads
+                .AsNoTracking()
+                .FirstOrDefaultAsync(x => x.LeadId == websiteLeadId, cancellationToken);
+
+            intakeLink = await _db.WebsiteLeadIntakeLinks
+                .AsNoTracking()
+                .Where(x => x.WebsiteLeadPublicId == websiteLeadId)
+                .OrderByDescending(x => x.SubmittedUtc)
+                .ThenByDescending(x => x.CapturedUtc)
+                .FirstOrDefaultAsync(cancellationToken);
+
+            if (websiteLead?.AgentTrackingProfileId is Guid leadTrackingProfileId && leadTrackingProfileId != Guid.Empty)
+            {
+                effectiveTrackingProfileId = leadTrackingProfileId;
+            }
+
+            if (!string.IsNullOrWhiteSpace(websiteLead?.AgentSlug))
+            {
+                effectiveAgentSlug = NormalizeSlug(websiteLead.AgentSlug);
+            }
+
+            if (!string.IsNullOrWhiteSpace(intakeLink?.AgentUserId))
+            {
+                effectiveAgentUserId = NormalizeAgentUserId(intakeLink.AgentUserId);
+            }
+        }
+
+        if (effectiveTrackingProfileId is Guid trackingProfileId && trackingProfileId != Guid.Empty)
+        {
+            trackingProfile = await _db.AgentTrackingProfiles
+                .AsNoTracking()
+                .FirstOrDefaultAsync(x => x.Id == trackingProfileId, cancellationToken);
+        }
+
+        if (trackingProfile == null && !string.IsNullOrWhiteSpace(effectiveAgentSlug))
+        {
+            trackingProfile = await _db.AgentTrackingProfiles
+                .AsNoTracking()
+                .Where(x => x.Slug == effectiveAgentSlug)
+                .OrderByDescending(x => x.UpdatedUtc)
+                .FirstOrDefaultAsync(cancellationToken);
+        }
+
+        if (trackingProfile != null)
+        {
+            var trackingOwnerId = NormalizeAgentUserId(trackingProfile.AgentUserId);
+            var slugMatchesOwner = string.IsNullOrWhiteSpace(effectiveAgentUserId) ||
+                string.IsNullOrWhiteSpace(trackingOwnerId) ||
+                string.Equals(effectiveAgentUserId, trackingOwnerId, StringComparison.OrdinalIgnoreCase);
+
+            if (slugMatchesOwner)
+            {
+                effectiveTrackingProfileId = trackingProfile.Id;
+                effectiveAgentSlug = NormalizeSlug(trackingProfile.Slug);
+                effectiveAgentUserId ??= trackingOwnerId;
+            }
+            else
+            {
+                trackingProfile = null;
+                effectiveAgentSlug = null;
+            }
+        }
+
+        if (trackingProfile == null && !string.IsNullOrWhiteSpace(effectiveAgentUserId))
+        {
+            trackingProfile = await _db.AgentTrackingProfiles
+                .AsNoTracking()
+                .Where(x => x.AgentUserId == effectiveAgentUserId)
+                .OrderByDescending(x => x.UpdatedUtc)
+                .FirstOrDefaultAsync(cancellationToken);
+
+            if (trackingProfile != null)
+            {
+                effectiveTrackingProfileId = trackingProfile.Id;
+                effectiveAgentSlug = NormalizeSlug(trackingProfile.Slug);
+            }
+        }
+
+        AgentProfile? agentProfile = null;
+        var normalizedUpn = NormalizeEmail(trackingProfile?.AgentUpn);
+        if (!string.IsNullOrWhiteSpace(effectiveAgentUserId) || !string.IsNullOrWhiteSpace(normalizedUpn))
+        {
+            agentProfile = await _db.AgentProfiles
+                .AsNoTracking()
+                .Where(x =>
+                    (!string.IsNullOrWhiteSpace(effectiveAgentUserId) && x.AgentUserId == effectiveAgentUserId) ||
+                    (!string.IsNullOrWhiteSpace(normalizedUpn) &&
+                        (x.NormalizedEmail == normalizedUpn || x.AgentUpn.ToLower() == normalizedUpn)))
+                .OrderByDescending(x => !string.IsNullOrWhiteSpace(effectiveAgentUserId) && x.AgentUserId == effectiveAgentUserId)
+                .ThenByDescending(x => x.UpdatedUtc)
+                .FirstOrDefaultAsync(cancellationToken);
+        }
+
+        return new ResolvedPublicBookingAgentContext(
+            AgentTrackingProfileId: effectiveTrackingProfileId,
+            AgentUserId: effectiveAgentUserId,
+            AgentSlug: effectiveAgentSlug,
+            TrackingProfile: trackingProfile,
+            AgentProfile: agentProfile);
+    }
+
+    private static ResolutionBuildResult BuildAgentProfileResolution(
+        PublicBookingOptions options,
+        AgentProfile? agentProfile,
+        ResolvedPublicBookingAgentContext context)
+    {
+        if (agentProfile == null)
+        {
+            return ResolutionBuildResult.NotHandled;
+        }
+
+        var hasAgentConfig =
+            agentProfile.BookingEnabled.HasValue ||
+            agentProfile.PreferModalOnMobile.HasValue ||
+            !string.IsNullOrWhiteSpace(agentProfile.MicrosoftBookingsEmbedUrl) ||
+            !string.IsNullOrWhiteSpace(agentProfile.FallbackBookingUrl) ||
+            !string.IsNullOrWhiteSpace(agentProfile.CalendarUserId) ||
+            !string.IsNullOrWhiteSpace(agentProfile.CalendarEmail) ||
+            !string.IsNullOrWhiteSpace(agentProfile.BookingPageIdOrMailbox);
+
+        if (!hasAgentConfig)
+        {
+            return ResolutionBuildResult.NotHandled;
+        }
+
+        var embedUrl = NormalizeHttpUrl(agentProfile.MicrosoftBookingsEmbedUrl);
+        var fallbackUrl = NormalizeHttpUrl(agentProfile.FallbackBookingUrl);
+        var hasAnyUrl = !string.IsNullOrWhiteSpace(embedUrl) || !string.IsNullOrWhiteSpace(fallbackUrl);
+        var effectiveEnabled = agentProfile.BookingEnabled ?? hasAnyUrl;
+        var preferModalOnMobile = agentProfile.PreferModalOnMobile ?? options.PreferModalOnMobile;
+        var reason = effectiveEnabled
+            ? hasAnyUrl ? "agent_profile" : "agent_profile_missing_urls"
+            : "agent_profile_disabled";
+
+        return ResolutionBuildResult.FromValue(new PublicBookingResolution(
+            Enabled: effectiveEnabled && hasAnyUrl,
+            EmbedUrl: effectiveEnabled ? embedUrl : null,
+            FallbackUrl: effectiveEnabled ? fallbackUrl : null,
+            PreferModalOnMobile: preferModalOnMobile,
+            IsAgentOverride: false,
+            Reason: reason,
+            ConfigurationSource: PublicBookingConfigurationSources.AgentProfile,
+            AgentTrackingProfileId: context.AgentTrackingProfileId,
+            AgentUserId: context.AgentUserId,
+            AgentSlug: context.AgentSlug,
+            CalendarUserId: Clean(agentProfile.CalendarUserId),
+            CalendarEmail: NormalizeEmail(agentProfile.CalendarEmail),
+            BookingPageIdOrMailbox: Clean(agentProfile.BookingPageIdOrMailbox)));
+    }
+
+    private static PublicBookingResolution BuildSlugOrGlobalFallback(PublicBookingOptions options, string? normalizedSlug)
+    {
         if (!string.IsNullOrWhiteSpace(normalizedSlug) &&
             TryGetOverride(options, normalizedSlug, out var slugOverride) &&
             slugOverride != null)
         {
-            isAgentOverride = true;
+            var embedUrl = NormalizeHttpUrl(slugOverride.MicrosoftBookingsEmbedUrl);
+            var fallbackUrl = NormalizeHttpUrl(slugOverride.FallbackBookingUrl);
+            var hasAnyUrl = !string.IsNullOrWhiteSpace(embedUrl) || !string.IsNullOrWhiteSpace(fallbackUrl);
+            var overrideEnabled = slugOverride.Enabled ?? hasAnyUrl;
+            var reason = overrideEnabled
+                ? hasAnyUrl ? "slug_override" : "slug_override_missing_urls"
+                : "slug_override_disabled";
 
-            if (slugOverride.Enabled.HasValue)
-            {
-                effectiveEnabled = slugOverride.Enabled.Value;
-            }
-
-            var overrideEmbed = NormalizeHttpUrl(slugOverride.MicrosoftBookingsEmbedUrl);
-            if (!string.IsNullOrWhiteSpace(overrideEmbed))
-            {
-                embedUrl = overrideEmbed;
-            }
-
-            var overrideFallback = NormalizeHttpUrl(slugOverride.FallbackBookingUrl);
-            if (!string.IsNullOrWhiteSpace(overrideFallback))
-            {
-                fallbackUrl = overrideFallback;
-            }
-
-            if (slugOverride.PreferModalOnMobile.HasValue)
-            {
-                preferModalOnMobile = slugOverride.PreferModalOnMobile.Value;
-            }
+            return new PublicBookingResolution(
+                Enabled: overrideEnabled && hasAnyUrl,
+                EmbedUrl: overrideEnabled ? embedUrl : null,
+                FallbackUrl: overrideEnabled ? fallbackUrl : null,
+                PreferModalOnMobile: slugOverride.PreferModalOnMobile ?? options.PreferModalOnMobile,
+                IsAgentOverride: true,
+                Reason: reason,
+                ConfigurationSource: PublicBookingConfigurationSources.SlugOverride,
+                AgentTrackingProfileId: null,
+                AgentUserId: null,
+                AgentSlug: normalizedSlug,
+                CalendarUserId: Clean(slugOverride.CalendarUserId),
+                CalendarEmail: NormalizeEmail(slugOverride.CalendarEmail),
+                BookingPageIdOrMailbox: Clean(slugOverride.BookingPageIdOrMailbox));
         }
 
-        var reason = effectiveEnabled
-            ? string.IsNullOrWhiteSpace(embedUrl) && string.IsNullOrWhiteSpace(fallbackUrl)
-                ? "missing_urls"
-                : string.IsNullOrWhiteSpace(embedUrl)
-                    ? "fallback_only"
-                    : isAgentOverride
-                        ? "agent_override"
-                        : "configured"
+        var effectiveEnabled = options.Enabled;
+        var embedUrlGlobal = NormalizeHttpUrl(options.MicrosoftBookingsEmbedUrl);
+        var fallbackUrlGlobal = NormalizeHttpUrl(options.FallbackBookingUrl);
+        var hasAnyGlobalUrl = !string.IsNullOrWhiteSpace(embedUrlGlobal) || !string.IsNullOrWhiteSpace(fallbackUrlGlobal);
+        var globalReason = effectiveEnabled
+            ? hasAnyGlobalUrl ? "configured" : "missing_urls"
             : "disabled";
 
         return new PublicBookingResolution(
-            Enabled: effectiveEnabled,
-            EmbedUrl: effectiveEnabled ? embedUrl : null,
-            FallbackUrl: effectiveEnabled ? fallbackUrl : null,
-            PreferModalOnMobile: preferModalOnMobile,
-            IsAgentOverride: isAgentOverride,
-            Reason: reason);
+            Enabled: effectiveEnabled && hasAnyGlobalUrl,
+            EmbedUrl: effectiveEnabled ? embedUrlGlobal : null,
+            FallbackUrl: effectiveEnabled ? fallbackUrlGlobal : null,
+            PreferModalOnMobile: options.PreferModalOnMobile,
+            IsAgentOverride: false,
+            Reason: globalReason,
+            ConfigurationSource: hasAnyGlobalUrl
+                ? PublicBookingConfigurationSources.GlobalFallback
+                : PublicBookingConfigurationSources.None,
+            AgentTrackingProfileId: null,
+            AgentUserId: null,
+            AgentSlug: normalizedSlug,
+            CalendarUserId: Clean(options.CalendarUserId),
+            CalendarEmail: NormalizeEmail(options.CalendarEmail),
+            BookingPageIdOrMailbox: Clean(options.BookingPageIdOrMailbox));
     }
 
     private static bool TryGetOverride(PublicBookingOptions options, string normalizedSlug, out PublicBookingAgentOverride? slugOverride)
@@ -95,6 +304,21 @@ public sealed class PublicBookingResolver : IPublicBookingResolver
         return string.IsNullOrWhiteSpace(agentSlug) ? null : agentSlug.Trim();
     }
 
+    private static string? NormalizeAgentUserId(string? agentUserId)
+    {
+        return string.IsNullOrWhiteSpace(agentUserId) ? null : agentUserId.Trim();
+    }
+
+    private static string? NormalizeEmail(string? email)
+    {
+        return string.IsNullOrWhiteSpace(email) ? null : email.Trim().ToLowerInvariant();
+    }
+
+    private static string? Clean(string? value)
+    {
+        return string.IsNullOrWhiteSpace(value) ? null : value.Trim();
+    }
+
     private static string? NormalizeHttpUrl(string? rawUrl)
     {
         if (string.IsNullOrWhiteSpace(rawUrl))
@@ -115,5 +339,19 @@ public sealed class PublicBookingResolver : IPublicBookingResolver
         }
 
         return uri.ToString();
+    }
+
+    private sealed record ResolvedPublicBookingAgentContext(
+        Guid? AgentTrackingProfileId,
+        string? AgentUserId,
+        string? AgentSlug,
+        AgentTrackingProfile? TrackingProfile,
+        AgentProfile? AgentProfile);
+
+    private sealed record ResolutionBuildResult(bool Handled, PublicBookingResolution? Value)
+    {
+        public static ResolutionBuildResult NotHandled => new(false, null);
+
+        public static ResolutionBuildResult FromValue(PublicBookingResolution value) => new(true, value);
     }
 }

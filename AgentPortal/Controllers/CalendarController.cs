@@ -111,11 +111,74 @@ public class CalendarController : Controller
         => source switch
         {
             LeadAppointmentBookingSources.InternalManual => "Internal manual",
-            LeadAppointmentBookingSources.WorkstationCalendar => "Workstation calendar",
+            LeadAppointmentBookingSources.InternalCalendar => "Internal calendar",
             LeadAppointmentBookingSources.WebsiteEmbed => "Website embed",
             LeadAppointmentBookingSources.WebsiteModal => "Website modal",
             LeadAppointmentBookingSources.ExternalRedirectFallback => "External redirect fallback",
+            LeadAppointmentBookingSources.MicrosoftGraphConfirmation => "Microsoft Graph confirmation",
+            LeadAppointmentBookingSources.ManualVerified => "Manual verified",
             _ => string.IsNullOrWhiteSpace(source) ? "Internal manual" : source.Trim()
+        };
+
+    private static string HumanizeBookingConfigurationSource(string? source)
+        => source switch
+        {
+            "agent_profile" => "Agent profile",
+            "slug_override" => "Slug override",
+            "global_fallback" => "Global fallback",
+            _ => string.IsNullOrWhiteSpace(source) ? "Not recorded" : source.Trim()
+        };
+
+    private static bool IsTrustedAppointment(LeadAppointment appointment)
+    {
+        var trustedSource = appointment.ConfirmationSource ?? appointment.BookingSource;
+        return appointment.Status is LeadAppointmentStatus.Booked or LeadAppointmentStatus.Confirmed or LeadAppointmentStatus.Completed &&
+            (string.Equals(trustedSource, LeadAppointmentBookingSources.InternalCalendar, StringComparison.OrdinalIgnoreCase) ||
+             string.Equals(trustedSource, LeadAppointmentBookingSources.MicrosoftGraphConfirmation, StringComparison.OrdinalIgnoreCase) ||
+             string.Equals(trustedSource, LeadAppointmentBookingSources.ManualVerified, StringComparison.OrdinalIgnoreCase));
+    }
+
+    private static string BuildBookingConfigurationLabel(LeadAppointment appointment)
+    {
+        var parts = new List<string>();
+        var sourceLabel = HumanizeBookingConfigurationSource(appointment.BookingConfigurationSource);
+        if (!string.Equals(sourceLabel, "Not recorded", StringComparison.OrdinalIgnoreCase))
+            parts.Add(sourceLabel);
+        if (!string.IsNullOrWhiteSpace(appointment.BookingAgentSlug))
+            parts.Add($"slug {appointment.BookingAgentSlug.Trim()}");
+        if (!string.IsNullOrWhiteSpace(appointment.BookingCalendarEmail))
+            parts.Add(appointment.BookingCalendarEmail.Trim());
+        else if (!string.IsNullOrWhiteSpace(appointment.BookingPageIdOrMailbox))
+            parts.Add(appointment.BookingPageIdOrMailbox.Trim());
+        return parts.Count == 0
+            ? (string.Equals(appointment.BookingSource, LeadAppointmentBookingSources.InternalCalendar, StringComparison.OrdinalIgnoreCase)
+                ? "Internal calendar path"
+                : "Not recorded")
+            : string.Join(" • ", parts);
+    }
+
+    private static string BuildAppointmentConfirmationStateLabel(LeadAppointment appointment)
+    {
+        if (IsTrustedAppointment(appointment))
+            return "Booked / verified";
+        if (appointment.Status == LeadAppointmentStatus.Requested)
+            return "Requested / awaiting verification";
+        if (appointment.Status is LeadAppointmentStatus.Booked or LeadAppointmentStatus.Confirmed or LeadAppointmentStatus.Completed)
+            return $"{HumanizeAppointmentStatus(appointment.Status)} / source not verified";
+        return HumanizeAppointmentStatus(appointment.Status);
+    }
+
+    private static DateTime? ResolveAppointmentStatusTimestamp(LeadAppointment appointment)
+        => appointment.Status switch
+        {
+            LeadAppointmentStatus.Requested => appointment.RequestedUtc,
+            LeadAppointmentStatus.Booked => appointment.BookedUtc,
+            LeadAppointmentStatus.Confirmed => appointment.ConfirmedUtc,
+            LeadAppointmentStatus.Completed => appointment.CompletedUtc,
+            LeadAppointmentStatus.NoShow => appointment.NoShowUtc,
+            LeadAppointmentStatus.Cancelled => appointment.CancelledUtc,
+            LeadAppointmentStatus.Rescheduled => appointment.RescheduledUtc,
+            _ => appointment.LastStatusChangedUtc
         };
 
     private static object? BuildLeadAppointmentPayload(LeadAppointment? appointment)
@@ -133,6 +196,21 @@ public class CalendarController : Controller
             statusLabel = HumanizeAppointmentStatus(appointment.Status),
             bookingSource = appointment.BookingSource,
             bookingSourceLabel = HumanizeAppointmentSource(appointment.BookingSource),
+            requestedBookingSource = appointment.RequestedBookingSource,
+            requestedBookingSourceLabel = HumanizeAppointmentSource(appointment.RequestedBookingSource),
+            confirmationSource = appointment.ConfirmationSource,
+            confirmationSourceLabel = HumanizeAppointmentSource(appointment.ConfirmationSource),
+            confirmationVerified = IsTrustedAppointment(appointment),
+            confirmationStateLabel = BuildAppointmentConfirmationStateLabel(appointment),
+            bookingConfigurationSource = appointment.BookingConfigurationSource,
+            bookingConfigurationSourceLabel = HumanizeBookingConfigurationSource(appointment.BookingConfigurationSource),
+            bookingConfigurationLabel = BuildBookingConfigurationLabel(appointment),
+            bookingTrackingProfileId = appointment.BookingTrackingProfileId,
+            bookingAgentSlug = appointment.BookingAgentSlug,
+            bookingAgentUserId = appointment.BookingAgentUserId,
+            bookingCalendarUserId = appointment.BookingCalendarUserId,
+            bookingCalendarEmail = appointment.BookingCalendarEmail,
+            bookingPageIdOrMailbox = appointment.BookingPageIdOrMailbox,
             calendarEventId = appointment.CalendarEventId,
             calendarEventWebLink = appointment.CalendarEventWebLink,
             scheduledStartUtc = appointment.ScheduledStartUtc,
@@ -141,6 +219,7 @@ public class CalendarController : Controller
             createdUtc = appointment.CreatedUtc,
             updatedUtc = appointment.UpdatedUtc,
             lastStatusChangedUtc = appointment.LastStatusChangedUtc,
+            statusTimestampUtc = ResolveAppointmentStatusTimestamp(appointment),
             requestedUtc = appointment.RequestedUtc,
             bookedUtc = appointment.BookedUtc,
             confirmedUtc = appointment.ConfirmedUtc,
@@ -706,7 +785,10 @@ public class CalendarController : Controller
                 WorkstationLeadId = resolvedLeadProfile.LeadId,
                 OwnerAgentUserId = string.IsNullOrWhiteSpace(resolvedLeadProfile.AgentUserId) ? agentOid : resolvedLeadProfile.AgentUserId,
                 WebsiteLeadIntakeLinkId = latestIntakeLinkId,
-                BookingSource = LeadAppointmentBookingSources.WorkstationCalendar,
+                BookingSource = LeadAppointmentBookingSources.InternalCalendar,
+                RequestedBookingSource = LeadAppointmentBookingSources.InternalCalendar,
+                ConfirmationSource = LeadAppointmentBookingSources.InternalCalendar,
+                BookingAgentUserId = string.IsNullOrWhiteSpace(resolvedLeadProfile.AgentUserId) ? agentOid : resolvedLeadProfile.AgentUserId,
                 CalendarEventId = created?.Id,
                 CalendarEventWebLink = created?.WebLink,
                 ScheduledStartUtc = utcStart,

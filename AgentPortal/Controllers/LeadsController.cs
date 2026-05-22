@@ -568,6 +568,15 @@ public class LeadsController : Controller
         public Guid? WebsiteLeadIntakeLinkId { get; init; }
         public LeadAppointmentStatus Status { get; init; }
         public string BookingSource { get; init; } = LeadAppointmentBookingSources.InternalManual;
+        public string RequestedBookingSource { get; init; } = LeadAppointmentBookingSources.InternalManual;
+        public string? ConfirmationSource { get; init; }
+        public string? BookingConfigurationSource { get; init; }
+        public Guid? BookingTrackingProfileId { get; init; }
+        public string? BookingAgentSlug { get; init; }
+        public string? BookingAgentUserId { get; init; }
+        public string? BookingCalendarUserId { get; init; }
+        public string? BookingCalendarEmail { get; init; }
+        public string? BookingPageIdOrMailbox { get; init; }
         public string? CalendarEventId { get; init; }
         public string? CalendarEventWebLink { get; init; }
         public DateTime? ScheduledStartUtc { get; init; }
@@ -715,13 +724,67 @@ public class LeadsController : Controller
         return normalized switch
         {
             LeadAppointmentBookingSources.InternalManual => "Internal manual",
-            LeadAppointmentBookingSources.WorkstationCalendar => "Workstation calendar",
+            LeadAppointmentBookingSources.InternalCalendar => "Internal calendar",
             LeadAppointmentBookingSources.WebsiteEmbed => "Website embed",
             LeadAppointmentBookingSources.WebsiteModal => "Website modal",
             LeadAppointmentBookingSources.ExternalRedirectFallback => "External redirect fallback",
+            LeadAppointmentBookingSources.MicrosoftGraphConfirmation => "Microsoft Graph confirmation",
+            LeadAppointmentBookingSources.ManualVerified => "Manual verified",
             _ when string.IsNullOrWhiteSpace(source) => "Unknown source",
             _ => source!.Trim().Replace('_', ' ')
         };
+    }
+
+    private static string HumanizeBookingConfigurationSource(string? source)
+    {
+        var normalized = (source ?? string.Empty).Trim().ToLowerInvariant();
+        return normalized switch
+        {
+            "agent_profile" => "Agent profile",
+            "slug_override" => "Slug override",
+            "global_fallback" => "Global fallback",
+            _ when string.IsNullOrWhiteSpace(source) => "Not recorded",
+            _ => source!.Trim().Replace('_', ' ')
+        };
+    }
+
+    private static bool IsTrustedAppointment(LeadAppointmentListRow appointment)
+    {
+        var trustedSource = appointment.ConfirmationSource ?? appointment.BookingSource;
+        return appointment.Status is LeadAppointmentStatus.Booked or LeadAppointmentStatus.Confirmed or LeadAppointmentStatus.Completed &&
+            (string.Equals(trustedSource, LeadAppointmentBookingSources.InternalCalendar, StringComparison.OrdinalIgnoreCase) ||
+             string.Equals(trustedSource, LeadAppointmentBookingSources.MicrosoftGraphConfirmation, StringComparison.OrdinalIgnoreCase) ||
+             string.Equals(trustedSource, LeadAppointmentBookingSources.ManualVerified, StringComparison.OrdinalIgnoreCase));
+    }
+
+    private static string BuildBookingConfigurationLabel(LeadAppointmentListRow appointment)
+    {
+        var parts = new List<string>();
+        var sourceLabel = HumanizeBookingConfigurationSource(appointment.BookingConfigurationSource);
+        if (!string.Equals(sourceLabel, "Not recorded", StringComparison.OrdinalIgnoreCase))
+            parts.Add(sourceLabel);
+        if (!string.IsNullOrWhiteSpace(appointment.BookingAgentSlug))
+            parts.Add($"slug {appointment.BookingAgentSlug.Trim()}");
+        if (!string.IsNullOrWhiteSpace(appointment.BookingCalendarEmail))
+            parts.Add(appointment.BookingCalendarEmail.Trim());
+        else if (!string.IsNullOrWhiteSpace(appointment.BookingPageIdOrMailbox))
+            parts.Add(appointment.BookingPageIdOrMailbox.Trim());
+        return parts.Count == 0
+            ? (string.Equals(appointment.BookingSource, LeadAppointmentBookingSources.InternalCalendar, StringComparison.OrdinalIgnoreCase)
+                ? "Internal calendar path"
+                : "Not recorded")
+            : string.Join(" • ", parts);
+    }
+
+    private static string BuildAppointmentConfirmationStateLabel(LeadAppointmentListRow appointment)
+    {
+        if (IsTrustedAppointment(appointment))
+            return "Booked / verified";
+        if (appointment.Status == LeadAppointmentStatus.Requested)
+            return "Requested / awaiting verification";
+        if (appointment.Status is LeadAppointmentStatus.Booked or LeadAppointmentStatus.Confirmed or LeadAppointmentStatus.Completed)
+            return $"{HumanizeAppointmentStatus(appointment.Status)} / source not verified";
+        return HumanizeAppointmentStatus(appointment.Status);
     }
 
     private static DateTime? ResolveAppointmentStatusTimestamp(LeadAppointmentListRow appointment)
@@ -899,6 +962,15 @@ public class LeadsController : Controller
                     WebsiteLeadIntakeLinkId = x.WebsiteLeadIntakeLinkId,
                     Status = x.Status,
                     BookingSource = x.BookingSource,
+                    RequestedBookingSource = x.RequestedBookingSource,
+                    ConfirmationSource = x.ConfirmationSource,
+                    BookingConfigurationSource = x.BookingConfigurationSource,
+                    BookingTrackingProfileId = x.BookingTrackingProfileId,
+                    BookingAgentSlug = x.BookingAgentSlug,
+                    BookingAgentUserId = x.BookingAgentUserId,
+                    BookingCalendarUserId = x.BookingCalendarUserId,
+                    BookingCalendarEmail = x.BookingCalendarEmail,
+                    BookingPageIdOrMailbox = x.BookingPageIdOrMailbox,
                     CalendarEventId = x.CalendarEventId,
                     CalendarEventWebLink = x.CalendarEventWebLink,
                     ScheduledStartUtc = x.ScheduledStartUtc,
@@ -1675,6 +1747,15 @@ public class LeadsController : Controller
                     WebsiteLeadIntakeLinkId = x.WebsiteLeadIntakeLinkId,
                     Status = x.Status,
                     BookingSource = x.BookingSource,
+                    RequestedBookingSource = x.RequestedBookingSource,
+                    ConfirmationSource = x.ConfirmationSource,
+                    BookingConfigurationSource = x.BookingConfigurationSource,
+                    BookingTrackingProfileId = x.BookingTrackingProfileId,
+                    BookingAgentSlug = x.BookingAgentSlug,
+                    BookingAgentUserId = x.BookingAgentUserId,
+                    BookingCalendarUserId = x.BookingCalendarUserId,
+                    BookingCalendarEmail = x.BookingCalendarEmail,
+                    BookingPageIdOrMailbox = x.BookingPageIdOrMailbox,
                     CalendarEventId = x.CalendarEventId,
                     CalendarEventWebLink = x.CalendarEventWebLink,
                     ScheduledStartUtc = x.ScheduledStartUtc,
@@ -1914,6 +1995,15 @@ public class LeadsController : Controller
             WebsiteLeadIntakeLinkId = appointment.WebsiteLeadIntakeLinkId,
             Status = appointment.Status,
             BookingSource = appointment.BookingSource,
+            RequestedBookingSource = appointment.RequestedBookingSource,
+            ConfirmationSource = appointment.ConfirmationSource,
+            BookingConfigurationSource = appointment.BookingConfigurationSource,
+            BookingTrackingProfileId = appointment.BookingTrackingProfileId,
+            BookingAgentSlug = appointment.BookingAgentSlug,
+            BookingAgentUserId = appointment.BookingAgentUserId,
+            BookingCalendarUserId = appointment.BookingCalendarUserId,
+            BookingCalendarEmail = appointment.BookingCalendarEmail,
+            BookingPageIdOrMailbox = appointment.BookingPageIdOrMailbox,
             CalendarEventId = appointment.CalendarEventId,
             CalendarEventWebLink = appointment.CalendarEventWebLink,
             ScheduledStartUtc = appointment.ScheduledStartUtc,
@@ -1947,6 +2037,20 @@ public class LeadsController : Controller
             statusLabel = HumanizeAppointmentStatus(appointment.Status),
             bookingSource = appointment.BookingSource,
             bookingSourceLabel = HumanizeAppointmentSource(appointment.BookingSource),
+            requestedBookingSource = appointment.RequestedBookingSource,
+            requestedBookingSourceLabel = HumanizeAppointmentSource(appointment.RequestedBookingSource),
+            confirmationSource = appointment.ConfirmationSource,
+            confirmationSourceLabel = HumanizeAppointmentSource(appointment.ConfirmationSource),
+            confirmationVerified = IsTrustedAppointment(appointment),
+            confirmationStateLabel = BuildAppointmentConfirmationStateLabel(appointment),
+            bookingConfigurationSource = appointment.BookingConfigurationSource,
+            bookingConfigurationSourceLabel = HumanizeBookingConfigurationSource(appointment.BookingConfigurationSource),
+            bookingConfigurationLabel = BuildBookingConfigurationLabel(appointment),
+            bookingTrackingProfileId = appointment.BookingTrackingProfileId,
+            bookingAgentSlug = appointment.BookingAgentSlug,
+            bookingAgentUserId = appointment.BookingAgentUserId,
+            bookingCalendarEmail = appointment.BookingCalendarEmail,
+            bookingPageIdOrMailbox = appointment.BookingPageIdOrMailbox,
             calendarEventId = appointment.CalendarEventId,
             calendarEventWebLink = appointment.CalendarEventWebLink,
             scheduledStartUtc = appointment.ScheduledStartUtc,
@@ -2204,6 +2308,7 @@ public class LeadsController : Controller
                 OwnerAgentUserId = agentId,
                 WebsiteLeadIntakeLinkId = latestIntakeLinkId,
                 BookingSource = LeadAppointmentBookingSources.InternalManual,
+                RequestedBookingSource = LeadAppointmentBookingSources.InternalManual,
                 CreatedUtc = nowUtc,
                 UpdatedUtc = nowUtc
             };
@@ -2216,8 +2321,31 @@ public class LeadsController : Controller
                 appointment.WebsiteLeadIntakeLinkId = latestIntakeLinkId;
         }
 
+        if (nextStatus == LeadAppointmentStatus.Requested &&
+            appointment.Status is LeadAppointmentStatus.Booked or LeadAppointmentStatus.Confirmed or LeadAppointmentStatus.Completed)
+        {
+            return BadRequest("Booked, confirmed, or completed appointments cannot be downgraded back to Requested.");
+        }
+
         if (nextStatus == LeadAppointmentStatus.Booked && !appointment.RequestedUtc.HasValue)
             appointment.RequestedUtc = nowUtc;
+        if (string.IsNullOrWhiteSpace(appointment.RequestedBookingSource))
+            appointment.RequestedBookingSource = appointment.BookingSource;
+        if (nextStatus is LeadAppointmentStatus.Booked or LeadAppointmentStatus.Confirmed or LeadAppointmentStatus.Completed)
+        {
+            if (string.IsNullOrWhiteSpace(appointment.ConfirmationSource))
+            {
+                if (string.Equals(appointment.BookingSource, LeadAppointmentBookingSources.InternalCalendar, StringComparison.OrdinalIgnoreCase))
+                {
+                    appointment.ConfirmationSource = LeadAppointmentBookingSources.InternalCalendar;
+                }
+                else if (!string.Equals(appointment.BookingSource, LeadAppointmentBookingSources.MicrosoftGraphConfirmation, StringComparison.OrdinalIgnoreCase))
+                {
+                    appointment.BookingSource = LeadAppointmentBookingSources.ManualVerified;
+                    appointment.ConfirmationSource = LeadAppointmentBookingSources.ManualVerified;
+                }
+            }
+        }
         appointment.ApplyStatus(nextStatus, nowUtc);
 
         var meta = ReadLeadMeta(lead);

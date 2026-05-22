@@ -54,6 +54,8 @@ builder.Services.AddScoped<IMetaPixelResolutionService, MetaPixelResolutionServi
 builder.Services.AddScoped<IMetaSignalIntelligenceService, MetaSignalIntelligenceService>();
 builder.Services.Configure<PublicBookingOptions>(builder.Configuration.GetSection("PublicBooking"));
 builder.Services.AddScoped<IPublicBookingResolver, PublicBookingResolver>();
+builder.Services.AddScoped<IPublicBookingCalendarMatcher, MicrosoftGraphPublicBookingCalendarMatcher>();
+builder.Services.AddScoped<IPublicBookingConfirmationService, PublicBookingConfirmationService>();
 builder.Services.AddSingleton<IPublicBookingContextProtector, PublicBookingContextProtector>();
 builder.Services.AddSingleton<MetaCapiCredentialProtector>();
 builder.Services.Configure<MetaOptions>(builder.Configuration.GetSection("Meta"));

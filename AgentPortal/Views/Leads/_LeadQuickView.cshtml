@@ -70,6 +70,14 @@
                         <label>Appointment Source</label>
                         <div id="leadAppointmentSourcePreview">Not tracked yet</div>
                     </div>
+                    <div class="lead-overview-card">
+                        <label>Appointment Confirmation</label>
+                        <div id="leadAppointmentConfirmationPreview">No appointment recorded</div>
+                    </div>
+                    <div class="lead-overview-card">
+                        <label>Booking Config</label>
+                        <div id="leadAppointmentConfigPreview">No public booking config used</div>
+                    </div>
                 </div>
                 <div class="lead-overview-wide">
                     <label>Next Action</label>
@@ -266,6 +274,18 @@
                         <div id="dAppointmentSource">—</div>
                     </div>
                     <div class="f">
+                        <label>Requested Source</label>
+                        <div id="dAppointmentRequestedSource">—</div>
+                    </div>
+                    <div class="f">
+                        <label>Confirmation</label>
+                        <div id="dAppointmentConfirmation">—</div>
+                    </div>
+                    <div class="f">
+                        <label>Booking Config</label>
+                        <div id="dAppointmentBookingConfig">—</div>
+                    </div>
+                    <div class="f">
                         <label>Status Timestamp</label>
                         <div id="dAppointmentTimeline">—</div>
                     </div>
@@ -293,7 +313,7 @@
                         <button type="button" class="btn btn-ghost" id="btnSaveAppointmentStatus">Save Appointment Status</button>
                     </div>
                     <div class="tiny" style="margin-top:8px;color:rgba(255,255,255,0.72);">
-                        Internal only for now. If no appointment exists yet, start with <strong>Requested</strong>.
+                        Internal only for now. Start with <strong>Requested</strong>; marking later states manually promotes the confirmation source to <strong>manual verified</strong>, and trusted booked states will not downgrade back to Requested.
                     </div>
                 </div>
             </div>

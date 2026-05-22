@@ -11,6 +11,9 @@ namespace Infrastructure.Migrations
         /// <inheritdoc />
         protected override void Up(MigrationBuilder migrationBuilder)
         {
+            var isSqlite = migrationBuilder.ActiveProvider.Contains("Sqlite", StringComparison.OrdinalIgnoreCase);
+            var largeTextType = isSqlite ? "TEXT" : "nvarchar(max)";
+
             migrationBuilder.CreateTable(
                 name: "WebsiteLeadIntakeLinks",
                 columns: table => new
@@ -45,13 +48,13 @@ namespace Infrastructure.Migrations
                     MetaAdId = table.Column<string>(type: "nvarchar(160)", maxLength: 160, nullable: true),
                     SessionId = table.Column<string>(type: "nvarchar(120)", maxLength: 120, nullable: true),
                     VisitorId = table.Column<string>(type: "nvarchar(120)", maxLength: 120, nullable: true),
-                    DiscoverySummaryJson = table.Column<string>(type: "nvarchar(max)", nullable: true),
+                    DiscoverySummaryJson = table.Column<string>(type: largeTextType, nullable: true),
                     EstimateSummary = table.Column<string>(type: "nvarchar(600)", maxLength: 600, nullable: true),
                     RecommendationPrimaryKey = table.Column<string>(type: "nvarchar(160)", maxLength: 160, nullable: true),
                     RecommendationPrimaryTitle = table.Column<string>(type: "nvarchar(240)", maxLength: 240, nullable: true),
                     RecommendationSecondaryKey = table.Column<string>(type: "nvarchar(160)", maxLength: 160, nullable: true),
                     RecommendationSecondaryTitle = table.Column<string>(type: "nvarchar(240)", maxLength: 240, nullable: true),
-                    SnapshotJson = table.Column<string>(type: "nvarchar(max)", nullable: true)
+                    SnapshotJson = table.Column<string>(type: largeTextType, nullable: true)
                 },
                 constraints: table =>
                 {

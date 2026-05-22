@@ -192,13 +192,19 @@ namespace Protect_Website.Controllers
                     ? null
                     : agentProfile.ShortBio.Trim(),
                 ProfileImageUrl = BuildAgentAvatarUrl(resolved.Slug),
-                SchedulingLink = ResolveSchedulingLink(resolved.Slug)
+                SchedulingLink = await ResolveSchedulingLinkAsync(lead, resolved, ct)
             };
         }
 
-        private string? ResolveSchedulingLink(string? agentSlug)
+        private async Task<string?> ResolveSchedulingLinkAsync(WebsiteLead? lead, ResolvedAgentContext resolved, CancellationToken ct)
         {
-            var bookingResolution = _publicBookingResolver.Resolve(agentSlug);
+            var bookingResolution = await _publicBookingResolver.ResolveAsync(
+                new PublicBookingResolveContext(
+                    WebsiteLeadId: lead?.LeadId,
+                    AgentTrackingProfileId: resolved.Profile.Id,
+                    AgentUserId: resolved.Profile.AgentUserId,
+                    AgentSlug: resolved.Slug),
+                ct);
             if (bookingResolution.HasFallback)
             {
                 return bookingResolution.FallbackUrl;

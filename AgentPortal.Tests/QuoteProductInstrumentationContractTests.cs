@@ -67,8 +67,14 @@ public class QuoteProductInstrumentationContractTests
         var view = Read(repoRoot, "Protect-Website", "Views", "Quote", "Life.cshtml");
         var controller = Read(repoRoot, "Protect-Website", "Controllers", "LifeQuoteController.cs");
 
-        Assert.Contains("name=\"MarketingEmailConsent\" value=\"false\"", view, StringComparison.Ordinal);
-        Assert.Contains("type=\"checkbox\" id=\"MarketingEmailConsent\" name=\"MarketingEmailConsent\" value=\"true\"", view, StringComparison.Ordinal);
+        const string checkboxMarkup = "type=\"checkbox\" id=\"MarketingEmailConsent\" name=\"MarketingEmailConsent\" value=\"true\"";
+        const string hiddenMarkup = "<input type=\"hidden\" name=\"MarketingEmailConsent\" value=\"false\" />";
+
+        Assert.Contains(hiddenMarkup, view, StringComparison.Ordinal);
+        Assert.Contains(checkboxMarkup, view, StringComparison.Ordinal);
+        Assert.True(
+            view.IndexOf(checkboxMarkup, StringComparison.Ordinal) < view.IndexOf(hiddenMarkup, StringComparison.Ordinal),
+            "The consent checkbox must render before the hidden false input so checked submits bind to true.");
         Assert.Contains("Please check the box so we can send your estimate and options.", view, StringComparison.Ordinal);
         Assert.Contains("if (!model.MarketingEmailConsent)", controller, StringComparison.Ordinal);
         Assert.Contains("ModelState.AddModelError(nameof(LifeQuoteFormModel.MarketingEmailConsent)", controller, StringComparison.Ordinal);

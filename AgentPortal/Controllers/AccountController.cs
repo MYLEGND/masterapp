@@ -128,6 +128,12 @@ public class AccountController : Controller
             ShortBio = profile.ShortBio,
             Npn = profile.Npn,
             MetaPixelId = profile.MetaPixelId,
+            BookingEnabled = profile.BookingEnabled ?? false,
+            MicrosoftBookingsEmbedUrl = profile.MicrosoftBookingsEmbedUrl,
+            FallbackBookingUrl = profile.FallbackBookingUrl,
+            BookingPageIdOrMailbox = profile.BookingPageIdOrMailbox,
+            CalendarEmail = profile.CalendarEmail,
+            PreferModalOnMobile = profile.PreferModalOnMobile ?? true,
             HasSecureMetaCapiAccessToken = !string.IsNullOrWhiteSpace(profile.MetaCapiAccessToken)
         };
 
@@ -146,6 +152,10 @@ public class AccountController : Controller
             return Challenge();
 
         vm.MetaPixelId = string.IsNullOrWhiteSpace(vm.MetaPixelId) ? null : vm.MetaPixelId.Trim();
+        vm.MicrosoftBookingsEmbedUrl = string.IsNullOrWhiteSpace(vm.MicrosoftBookingsEmbedUrl) ? null : vm.MicrosoftBookingsEmbedUrl.Trim();
+        vm.FallbackBookingUrl = string.IsNullOrWhiteSpace(vm.FallbackBookingUrl) ? null : vm.FallbackBookingUrl.Trim();
+        vm.BookingPageIdOrMailbox = string.IsNullOrWhiteSpace(vm.BookingPageIdOrMailbox) ? null : vm.BookingPageIdOrMailbox.Trim();
+        vm.CalendarEmail = string.IsNullOrWhiteSpace(vm.CalendarEmail) ? null : vm.CalendarEmail.Trim();
         var existingProfile = _db.AgentProfiles.FirstOrDefault(x => x.AgentUserId == userId);
         vm.HasSecureMetaCapiAccessToken = !string.IsNullOrWhiteSpace(existingProfile?.MetaCapiAccessToken);
 
@@ -170,6 +180,17 @@ public class AccountController : Controller
         profile.Phone = vm.Phone?.Trim();
         profile.ShortBio = string.IsNullOrWhiteSpace(vm.ShortBio) ? null : vm.ShortBio.Trim();
         profile.MetaPixelId = string.IsNullOrWhiteSpace(vm.MetaPixelId) ? null : vm.MetaPixelId.Trim();
+        var hasBookingFieldValues =
+            !string.IsNullOrWhiteSpace(vm.MicrosoftBookingsEmbedUrl) ||
+            !string.IsNullOrWhiteSpace(vm.FallbackBookingUrl) ||
+            !string.IsNullOrWhiteSpace(vm.BookingPageIdOrMailbox) ||
+            !string.IsNullOrWhiteSpace(vm.CalendarEmail);
+        profile.BookingEnabled = vm.BookingEnabled ? true : hasBookingFieldValues ? false : null;
+        profile.MicrosoftBookingsEmbedUrl = vm.MicrosoftBookingsEmbedUrl;
+        profile.FallbackBookingUrl = vm.FallbackBookingUrl;
+        profile.BookingPageIdOrMailbox = vm.BookingPageIdOrMailbox;
+        profile.CalendarEmail = vm.CalendarEmail;
+        profile.PreferModalOnMobile = vm.BookingEnabled || hasBookingFieldValues ? vm.PreferModalOnMobile : null;
         // Email (UPN) remains authoritative from directory; do not allow editing here.
         profile.UpdatedUtc = DateTime.UtcNow;
 

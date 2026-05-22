@@ -2002,6 +2002,9 @@ const dAppointmentSection = $("#dAppointmentSection");
 const dAppointmentStatus = $("#dAppointmentStatus");
 const dAppointmentTime = $("#dAppointmentTime");
 const dAppointmentSource = $("#dAppointmentSource");
+const dAppointmentRequestedSource = $("#dAppointmentRequestedSource");
+const dAppointmentConfirmation = $("#dAppointmentConfirmation");
+const dAppointmentBookingConfig = $("#dAppointmentBookingConfig");
 const dAppointmentTimeline = $("#dAppointmentTimeline");
 const dAppointmentMeetingLink = $("#dAppointmentMeetingLink");
 const dAppointmentCalendarLink = $("#dAppointmentCalendarLink");
@@ -2039,6 +2042,8 @@ const leadDiscoveryPreview = $("#leadDiscoveryPreview");
 const leadAppointmentStatusPreview = $("#leadAppointmentStatusPreview");
 const leadAppointmentTimePreview = $("#leadAppointmentTimePreview");
 const leadAppointmentSourcePreview = $("#leadAppointmentSourcePreview");
+const leadAppointmentConfirmationPreview = $("#leadAppointmentConfirmationPreview");
+const leadAppointmentConfigPreview = $("#leadAppointmentConfigPreview");
 
 const cmdInput = $("#cmdInput");
 let activeTimelineFilter = "all";
@@ -2126,6 +2131,12 @@ function refreshLeadOverviewSummary(){
   }
   if (leadAppointmentSourcePreview){
     leadAppointmentSourcePreview.textContent = summarizeLeadAppointmentSource(appointment);
+  }
+  if (leadAppointmentConfirmationPreview){
+    leadAppointmentConfirmationPreview.textContent = summarizeLeadAppointmentConfirmation(appointment);
+  }
+  if (leadAppointmentConfigPreview){
+    leadAppointmentConfigPreview.textContent = summarizeLeadAppointmentConfig(appointment);
   }
 }
 
@@ -2229,6 +2240,16 @@ function humanizeAppointmentStatus(value){
 function humanizeAppointmentSource(value){
   const raw = norm(value);
   if (!raw) return "Not tracked yet";
+  switch (raw){
+    case "internal_manual": return "Internal manual";
+    case "internal_calendar": return "Internal calendar";
+    case "website_embed": return "Website embed";
+    case "website_modal": return "Website modal";
+    case "external_redirect_fallback": return "External redirect fallback";
+    case "microsoft_graph_confirmation": return "Microsoft Graph confirmation";
+    case "manual_verified": return "Manual verified";
+    default: break;
+  }
   return raw
     .replace(/[_-]+/g, " ")
     .replace(/\b\w/g, char => char.toUpperCase());
@@ -2285,6 +2306,31 @@ function summarizeLeadAppointmentSource(snapshot){
   return snapshot?.bookingSourceLabel || humanizeAppointmentSource(snapshot?.bookingSource);
 }
 
+function summarizeLeadAppointmentRequestedSource(snapshot){
+  if (!snapshot) return "Not tracked yet";
+  return snapshot.requestedBookingSourceLabel
+    || humanizeAppointmentSource(snapshot.requestedBookingSource)
+    || "Not tracked yet";
+}
+
+function summarizeLeadAppointmentConfirmation(snapshot){
+  if (!snapshot) return "No appointment recorded";
+  const state = norm(snapshot.confirmationStateLabel);
+  const source = norm(snapshot.confirmationSourceLabel) || humanizeAppointmentSource(snapshot.confirmationSource);
+  const parts = [state, source].filter(Boolean);
+  return parts.join(" • ") || "No confirmation recorded";
+}
+
+function summarizeLeadAppointmentConfig(snapshot){
+  if (!snapshot) return "No public booking config used";
+  const label = norm(snapshot.bookingConfigurationLabel);
+  if (label) return label;
+  if (snapshot.bookingSource === "internal_calendar"){
+    return "Internal calendar path";
+  }
+  return "No public booking config used";
+}
+
 function renderAppointmentLink(node, url, label){
   if (!node) return;
   const cleanUrl = norm(url);
@@ -2302,6 +2348,9 @@ function renderAppointmentSnapshot(snapshot){
     dAppointmentStatus,
     dAppointmentTime,
     dAppointmentSource,
+    dAppointmentRequestedSource,
+    dAppointmentConfirmation,
+    dAppointmentBookingConfig,
     dAppointmentTimeline,
     dAppointmentMeetingLink,
     dAppointmentCalendarLink
@@ -2320,6 +2369,9 @@ function renderAppointmentSnapshot(snapshot){
     if (dAppointmentStatus) dAppointmentStatus.textContent = "No appointment recorded";
     if (dAppointmentTime) dAppointmentTime.textContent = "No appointment scheduled";
     if (dAppointmentSource) dAppointmentSource.textContent = "Not tracked yet";
+    if (dAppointmentRequestedSource) dAppointmentRequestedSource.textContent = "Not tracked yet";
+    if (dAppointmentConfirmation) dAppointmentConfirmation.textContent = "No confirmation recorded";
+    if (dAppointmentBookingConfig) dAppointmentBookingConfig.textContent = "No public booking config used";
     if (dAppointmentTimeline) dAppointmentTimeline.textContent = "No appointment status updates yet";
     if (dAppointmentMeetingLink) dAppointmentMeetingLink.textContent = "—";
     if (dAppointmentCalendarLink) dAppointmentCalendarLink.textContent = "—";
@@ -2331,6 +2383,9 @@ function renderAppointmentSnapshot(snapshot){
   if (dAppointmentStatus) dAppointmentStatus.textContent = summarizeLeadAppointmentStatus(snapshot);
   if (dAppointmentTime) dAppointmentTime.textContent = formatAppointmentDateTimeRange(snapshot);
   if (dAppointmentSource) dAppointmentSource.textContent = summarizeLeadAppointmentSource(snapshot);
+  if (dAppointmentRequestedSource) dAppointmentRequestedSource.textContent = summarizeLeadAppointmentRequestedSource(snapshot);
+  if (dAppointmentConfirmation) dAppointmentConfirmation.textContent = summarizeLeadAppointmentConfirmation(snapshot);
+  if (dAppointmentBookingConfig) dAppointmentBookingConfig.textContent = summarizeLeadAppointmentConfig(snapshot);
   if (dAppointmentTimeline) dAppointmentTimeline.textContent = appointmentStatusTimestampText(snapshot);
   renderAppointmentLink(dAppointmentMeetingLink, snapshot.meetingUrl, "Open meeting link");
   renderAppointmentLink(dAppointmentCalendarLink, snapshot.calendarEventWebLink, "Open Outlook event");

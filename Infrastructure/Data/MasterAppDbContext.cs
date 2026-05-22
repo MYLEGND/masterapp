@@ -74,6 +74,11 @@ public class MasterAppDbContext : DbContext
             e.Property(x => x.MetaPixelId).HasMaxLength(64);
             e.Property(x => x.MetaCapiAccessToken).HasColumnName("MetaAccessToken").HasMaxLength(2048);
             e.Property(x => x.MetaTestEventCode).HasMaxLength(128);
+            e.Property(x => x.MicrosoftBookingsEmbedUrl).HasMaxLength(2048);
+            e.Property(x => x.FallbackBookingUrl).HasMaxLength(2048);
+            e.Property(x => x.BookingPageIdOrMailbox).HasMaxLength(320);
+            e.Property(x => x.CalendarUserId).HasMaxLength(450);
+            e.Property(x => x.CalendarEmail).HasMaxLength(320);
 
             if (isSqlServer)
                 e.HasIndex(x => x.NormalizedEmail).IsUnique().HasFilter("[NormalizedEmail] IS NOT NULL");
@@ -567,6 +572,14 @@ public class MasterAppDbContext : DbContext
             e.Property(x => x.OwnerAgentUserId).HasMaxLength(450).IsRequired();
             e.Property(x => x.Status).HasConversion<string>().HasMaxLength(32).IsRequired();
             e.Property(x => x.BookingSource).HasMaxLength(80).IsRequired();
+            e.Property(x => x.RequestedBookingSource).HasMaxLength(80).IsRequired();
+            e.Property(x => x.ConfirmationSource).HasMaxLength(80);
+            e.Property(x => x.BookingConfigurationSource).HasMaxLength(80);
+            e.Property(x => x.BookingAgentSlug).HasMaxLength(200);
+            e.Property(x => x.BookingAgentUserId).HasMaxLength(450);
+            e.Property(x => x.BookingCalendarUserId).HasMaxLength(450);
+            e.Property(x => x.BookingCalendarEmail).HasMaxLength(320);
+            e.Property(x => x.BookingPageIdOrMailbox).HasMaxLength(320);
             e.Property(x => x.CalendarEventId).HasMaxLength(256);
             e.Property(x => x.CalendarEventWebLink).HasMaxLength(2048);
             e.Property(x => x.MeetingUrl).HasMaxLength(2048);
@@ -739,6 +752,21 @@ public class MasterAppDbContext : DbContext
 
             e.Property(x => x.Phone)
                 .HasMaxLength(64);
+
+            e.Property(x => x.MicrosoftBookingsEmbedUrl)
+                .HasMaxLength(2048);
+
+            e.Property(x => x.FallbackBookingUrl)
+                .HasMaxLength(2048);
+
+            e.Property(x => x.BookingPageIdOrMailbox)
+                .HasMaxLength(320);
+
+            e.Property(x => x.CalendarUserId)
+                .HasMaxLength(450);
+
+            e.Property(x => x.CalendarEmail)
+                .HasMaxLength(320);
 
             e.Property(x => x.DisplayOrder);
 

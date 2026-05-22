@@ -9,7 +9,9 @@ public sealed record PublicBookingContext(
     string? AgentSlug,
     string? QuoteType,
     string? PageKey,
-    DateTime IssuedUtc);
+    DateTime IssuedUtc,
+    Guid? AgentTrackingProfileId = null,
+    string? AgentUserId = null);
 
 public interface IPublicBookingContextProtector
 {

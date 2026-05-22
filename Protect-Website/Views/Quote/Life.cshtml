@@ -5616,7 +5616,6 @@ body.life-final-step-active.page-variant-contact-first-education-v1 #lifeEducati
         <input type="hidden" name="Fbclid" id="Fbclid" />
         <input type="hidden" name="ReferrerUrl" id="ReferrerUrl" />
         <input type="hidden" name="LandingPageUrl" id="LandingPageUrl" />
-        <input type="hidden" name="MarketingEmailConsent" value="false" />
         <input type="hidden" name="RecommendationPrimaryKey" id="RecommendationPrimaryKey" value="@form.RecommendationPrimaryKey" />
         <input type="hidden" name="RecommendationPrimaryTitle" id="RecommendationPrimaryTitle" value="@form.RecommendationPrimaryTitle" />
         <input type="hidden" name="RecommendationSecondaryKey" id="RecommendationSecondaryKey" value="@form.RecommendationSecondaryKey" />
@@ -6010,6 +6009,7 @@ body.life-final-step-active.page-variant-contact-first-education-v1 #lifeEducati
                                                     <span class="consent-main">@consentPromptText <span style="color:#f87171">*</span></span>
                                                 </span>
                                             </label>
+                                            <input type="hidden" name="MarketingEmailConsent" value="false" />
                                             <div class="lq-field-err" id="err-MarketingEmailConsent">@consentErrorText</div>
                                         </div>
                                         </div>
@@ -6552,6 +6552,7 @@ body.life-final-step-active.page-variant-contact-first-education-v1 #lifeEducati
                                     <span class="consent-main">@consentPromptText <span style="color:#f87171">*</span></span>
                                 </span>
                             </label>
+                            <input type="hidden" name="MarketingEmailConsent" value="false" />
                             <div class="lq-field-err" id="err-MarketingEmailConsent">@consentErrorText</div>
                         </div>
                     </div>
@@ -6650,6 +6651,7 @@ body.life-final-step-active.page-variant-contact-first-education-v1 #lifeEducati
   const quoteType = '@normalizedOfferKey';
   const metaBrowserAckUrl = '/Quote/Life/meta-browser-ack';
   const bookingExperienceUrl = '@Url.Action("ActivatePublicBookingExperience", "LifeQuote")';
+  const bookingConfirmationUrl = '@Url.Action("ConfirmPublicBookingExperience", "LifeQuote")';
   const pageVariant = '@pageVariant';
   const pageMode = '@pageMode';
   const firstDiscoveryFieldName = '@firstDiscoveryFieldName';
@@ -6752,6 +6754,7 @@ body.life-final-step-active.page-variant-contact-first-education-v1 #lifeEducati
   let publicBookingState = null;
   let publicBookingEmbedViewed = false;
   let publicBookingBookedConfirmed = false;
+  let publicBookingConfirmationRequested = false;
   let publicBookingSlotSelectedTracked = false;
   let publicBookingFallbackClicked = false;
   let publicBookingAbandonedTracked = false;
@@ -7706,6 +7709,54 @@ body.life-final-step-active.page-variant-contact-first-education-v1 #lifeEducati
     el.classList.remove('visible');
   }
 
+  function applyServerValidationErrors(fieldErrors) {
+    if (!fieldErrors || typeof fieldErrors !== 'object') {
+      return false;
+    }
+
+    let applied = false;
+
+    Object.entries(fieldErrors).forEach(([name, messages]) => {
+      const normalizedName = asTrimmed(name);
+      const firstMessage = Array.isArray(messages) ? asTrimmed(messages[0] || '') : '';
+      if (!normalizedName || !firstMessage || normalizedName === 'Form') {
+        return;
+      }
+
+      switch (normalizedName) {
+        case 'ProtectingWho':
+          showChoiceError('err-step1-protecting-who', true);
+          applied = true;
+          return;
+        case 'CoverageGoal':
+          showChoiceError('err-step1-coverage-goal', true);
+          applied = true;
+          return;
+        case 'CoverageAmountOption':
+          showChoiceError('err-step1-coverage-amount', true);
+          applied = true;
+          return;
+        case 'TobaccoUse':
+          showChoiceError('err-step1-tobacco-use', true);
+          applied = true;
+          return;
+        case 'Age':
+        case 'AgeRange':
+        case 'AgeBracket':
+        case 'Answer4':
+          showChoiceError('err-step1-age', true);
+          applied = true;
+          return;
+        default:
+          setFieldError(normalizedName, firstMessage);
+          applied = true;
+          return;
+      }
+    });
+
+    return applied;
+  }
+
   function getContactFieldError(name) {
     if (name === 'ContactMethod') {
       const phoneValue = asTrimmed(form.querySelector('[name="Phone"]')?.value || '');
@@ -8413,9 +8464,19 @@ body.life-final-step-active.page-variant-contact-first-education-v1 #lifeEducati
       surface: asTrimmed(source.surface || resolveRequestedBookingSurface(sourceHint)),
       linkedToLead: Boolean(source.linkedToLead),
       appointmentStatus: asTrimmed(source.appointmentStatus || ''),
+      requestedBookingSource: asTrimmed(source.requestedBookingSource || ''),
+      confirmationSource: asTrimmed(source.confirmationSource || ''),
+      confirmationVerified: Boolean(source.confirmationVerified),
       pendingConfirmation: Boolean(source.pendingConfirmation),
       reason: asTrimmed(source.reason || (enabled ? 'configured' : 'disabled')) || 'disabled',
-      contextToken: asTrimmed(source.contextToken || sourceHint.contextToken || '')
+      contextToken: asTrimmed(source.contextToken || sourceHint.contextToken || ''),
+      bookingConfigSource: asTrimmed(source.bookingConfigSource || sourceHint.bookingConfigSource || ''),
+      bookingConfigAgentSlug: asTrimmed(source.bookingConfigAgentSlug || sourceHint.bookingConfigAgentSlug || ''),
+      bookingTrackingProfileId: asTrimmed(source.bookingTrackingProfileId || sourceHint.bookingTrackingProfileId || ''),
+      calendarEventId: asTrimmed(source.calendarEventId || ''),
+      calendarEventWebLink: asTrimmed(source.calendarEventWebLink || ''),
+      scheduledStartUtc: asTrimmed(source.scheduledStartUtc || ''),
+      scheduledEndUtc: asTrimmed(source.scheduledEndUtc || '')
     };
   }
 
@@ -8426,9 +8487,15 @@ body.life-final-step-active.page-variant-contact-first-education-v1 #lifeEducati
       bookingMode: shouldUseBookingModal(normalized) ? 'modal' : normalized.canEmbed ? 'inline' : 'fallback',
       hasFallback: normalized.canFallback,
       appointmentStatus: normalized.appointmentStatus || '',
+      requestedBookingSource: normalized.requestedBookingSource || '',
+      confirmationSource: normalized.confirmationSource || '',
+      confirmationVerified: normalized.confirmationVerified,
       linkedToLead: normalized.linkedToLead,
       pendingConfirmation: normalized.pendingConfirmation,
       bookingReason: normalized.reason || '',
+      bookingConfigSource: normalized.bookingConfigSource || '',
+      bookingConfigAgentSlug: normalized.bookingConfigAgentSlug || '',
+      bookingTrackingProfileId: normalized.bookingTrackingProfileId || '',
       handoffType: hasAgentTrustProfile ? 'agent' : 'generic',
       recommendationPrimaryKey: recPrimaryKeyEl?.value || '',
       recommendationSecondaryKey: recSecondaryKeyEl?.value || '',
@@ -8460,6 +8527,7 @@ body.life-final-step-active.page-variant-contact-first-education-v1 #lifeEducati
     publicBookingState = null;
     publicBookingEmbedViewed = false;
     publicBookingBookedConfirmed = false;
+    publicBookingConfirmationRequested = false;
     publicBookingSlotSelectedTracked = false;
     publicBookingFallbackClicked = false;
     publicBookingAbandonedTracked = false;
@@ -8578,6 +8646,40 @@ body.life-final-step-active.page-variant-contact-first-education-v1 #lifeEducati
     }
   }
 
+  async function confirmPublicBookingExperience(payload) {
+    const normalized = normalizePublicBookingPayload(payload, publicBookingState);
+    if (!normalized.contextToken) {
+      return normalized;
+    }
+
+    try {
+      const response = await fetch(bookingConfirmationUrl, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-Requested-With': 'fetch'
+        },
+        body: JSON.stringify({
+          contextToken: normalized.contextToken,
+          surface: normalized.surface || resolveRequestedBookingSurface(normalized)
+        })
+      });
+
+      if (!response.ok) {
+        throw new Error('booking_confirmation_failed');
+      }
+
+      const confirmationPayload = await response.json().catch(() => ({}));
+      return normalizePublicBookingPayload({
+        ...normalized,
+        ...confirmationPayload
+      }, normalized);
+    } catch (error) {
+      console.warn('[LifeQuote] public booking confirmation failed', error);
+      return normalized;
+    }
+  }
+
   function renderPostSubmitBookingState(payload) {
     if (!(postSubmitSlot instanceof HTMLElement)) {
       return;
@@ -8589,6 +8691,9 @@ body.life-final-step-active.page-variant-contact-first-education-v1 #lifeEducati
 
     if (!normalized.loading) {
       publicBookingState = normalized;
+      if (normalized.confirmationVerified) {
+        publicBookingBookedConfirmed = true;
+      }
     }
 
     const supportCopy = hasAgentTrustProfile
@@ -8772,8 +8877,24 @@ body.life-final-step-active.page-variant-contact-first-education-v1 #lifeEducati
     }
 
     if (signal === 'booked' && !publicBookingBookedConfirmed) {
-      publicBookingBookedConfirmed = true;
-      trackEvent('appointment_booked', buildAppointmentTrackingMetadata(publicBookingState));
+      if (publicBookingConfirmationRequested) {
+        return;
+      }
+
+      publicBookingConfirmationRequested = true;
+      void confirmPublicBookingExperience(publicBookingState).then((confirmedState) => {
+        publicBookingConfirmationRequested = false;
+        publicBookingState = normalizePublicBookingPayload(confirmedState, publicBookingState);
+        renderPostSubmitBookingState(publicBookingState);
+
+        if (publicBookingState.confirmationVerified && !publicBookingBookedConfirmed) {
+          publicBookingBookedConfirmed = true;
+          trackEvent('appointment_booked', buildAppointmentTrackingMetadata(publicBookingState));
+        }
+      }).catch((error) => {
+        publicBookingConfirmationRequested = false;
+        console.warn('[LifeQuote] trusted booking confirmation failed', error);
+      });
     }
   });
 
@@ -8791,6 +8912,7 @@ body.life-final-step-active.page-variant-contact-first-education-v1 #lifeEducati
     publicBookingState = null;
     publicBookingEmbedViewed = false;
     publicBookingBookedConfirmed = false;
+    publicBookingConfirmationRequested = false;
     publicBookingSlotSelectedTracked = false;
     publicBookingFallbackClicked = false;
     publicBookingAbandonedTracked = false;
@@ -9282,8 +9404,15 @@ body.life-final-step-active.page-variant-contact-first-education-v1 #lifeEducati
 
     try {
       const res = await fetch(form.action, { method: 'POST', body: new FormData(form), headers: { 'X-Requested-With': 'fetch' } });
-      if (!res.ok) throw new Error('Network');
       const responseBody = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        const submitError = new Error(
+          typeof responseBody.error === 'string' && responseBody.error.trim()
+            ? responseBody.error.trim()
+            : 'We could not send this right now. Please try again.');
+        submitError.responseBody = responseBody;
+        throw submitError;
+      }
       const leadId = typeof responseBody.leadId === 'string' ? responseBody.leadId.trim() : '';
       const metaLeadEventId = typeof responseBody.metaLeadEventId === 'string' ? responseBody.metaLeadEventId.trim() : '';
       metaSignalApi?.markSubmitted({ leadId, metaLeadEventId, requiredContactFieldsComplete: true, contactStepReached: true });
@@ -9296,13 +9425,24 @@ body.life-final-step-active.page-variant-contact-first-education-v1 #lifeEducati
       clearPersistedFunnelState();
       await showPostSubmitSuccess(responseBody, estimatePreview);
     } catch (err) {
+      const responseBody = err && typeof err === 'object' && 'responseBody' in err && err.responseBody && typeof err.responseBody === 'object'
+        ? err.responseBody
+        : null;
+      const errorMessage = responseBody && typeof responseBody.error === 'string' && responseBody.error.trim()
+        ? responseBody.error.trim()
+        : 'We could not send this right now. Please try again.';
+      applyServerValidationErrors(responseBody?.fieldErrors);
       if (lifeError) {
-        lifeError.textContent = 'We could not send this right now. Please try again.';
+        lifeError.textContent = errorMessage;
         lifeError.style.display = 'block';
+      }
+      if (responseBody?.correlationId) {
+        console.warn(`[LifeQuote] submit failed correlationId=${responseBody.correlationId}`, responseBody.fieldErrors || responseBody);
       }
       trackEvent('lead_form_submit_failure', {
         handoffType: hasAgentTrustProfile ? 'agent' : 'generic',
-        errorMessage: err instanceof Error ? err.message : 'submit_failed'
+        errorMessage: err instanceof Error ? err.message : 'submit_failed',
+        correlationId: responseBody?.correlationId || ''
       });
       trackFormSubmitOutcome('error');
     } finally {

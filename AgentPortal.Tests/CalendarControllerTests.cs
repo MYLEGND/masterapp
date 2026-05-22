@@ -109,7 +109,9 @@ public class CalendarControllerTests
         Assert.Equal("agent-1", appointment.OwnerAgentUserId);
         Assert.Equal(intakeId, appointment.WebsiteLeadIntakeLinkId);
         Assert.Equal(LeadAppointmentStatus.Booked, appointment.Status);
-        Assert.Equal(LeadAppointmentBookingSources.WorkstationCalendar, appointment.BookingSource);
+        Assert.Equal(LeadAppointmentBookingSources.InternalCalendar, appointment.BookingSource);
+        Assert.Equal(LeadAppointmentBookingSources.InternalCalendar, appointment.RequestedBookingSource);
+        Assert.Equal(LeadAppointmentBookingSources.InternalCalendar, appointment.ConfirmationSource);
         Assert.Equal("evt-123", appointment.CalendarEventId);
         Assert.Equal("https://outlook.test/events/evt-123", appointment.CalendarEventWebLink);
         Assert.Equal(expectedStartUtc, appointment.ScheduledStartUtc);
@@ -132,7 +134,11 @@ public class CalendarControllerTests
 
         Assert.Equal("Booked", latestAppointmentPayload.GetProperty("status").GetString());
         Assert.Equal("Booked", latestAppointmentPayload.GetProperty("statusLabel").GetString());
-        Assert.Equal("workstation_calendar", latestAppointmentPayload.GetProperty("bookingSource").GetString());
-        Assert.Equal("Workstation calendar", latestAppointmentPayload.GetProperty("bookingSourceLabel").GetString());
+        Assert.Equal("internal_calendar", latestAppointmentPayload.GetProperty("bookingSource").GetString());
+        Assert.Equal("Internal calendar", latestAppointmentPayload.GetProperty("bookingSourceLabel").GetString());
+        Assert.Equal("internal_calendar", latestAppointmentPayload.GetProperty("requestedBookingSource").GetString());
+        Assert.Equal("internal_calendar", latestAppointmentPayload.GetProperty("confirmationSource").GetString());
+        Assert.True(latestAppointmentPayload.GetProperty("confirmationVerified").GetBoolean());
+        Assert.Equal("Booked / verified", latestAppointmentPayload.GetProperty("confirmationStateLabel").GetString());
     }
 }
