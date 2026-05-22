@@ -504,22 +504,22 @@
         _ => "the protection, stability, and long-term fit that matter most"
     };
     var stepTwoContactKickerText = "Unlock the full review";
-    var contactMethodHelperText = "Phone is best if you want a quick personalized review. Email works too if you prefer a written copy.";
-    var contactMethodErrorText = "Add an email or phone so we can keep your estimate connected to you.";
+    var contactMethodHelperText = "Phone is best for a quick review. Email works too if you prefer a written copy.";
+    var contactMethodErrorText = "Add an email or phone so your protection review stays connected to you.";
     var consentPromptText = "I agree that Legend or my licensed agent may email, call, or text me about this estimate and the options tied to this request.";
     var consentErrorText = "Please check the box so we can send your estimate and options.";
     var stepTwoContactTitleText = "Where should we send your estimate?";
-    var stepTwoContactCopyText = "Submit to save this estimate, review the full recommendation, and continue into scheduling.";
-    var stepTwoSubmitNoteText = "Send yourself the estimate and unlock the full review.";
-    var stepTwoProgressText = "Estimate preview";
-    var finalStepHeading = "Your personalized estimate preview is ready";
-    var finalStepHelper = "Send yourself the estimate, then review your personalized options and schedule a time if you want help comparing coverage.";
+    var stepTwoContactCopyText = "Save your preview, unlock the full recommendation, and continue into scheduling.";
+    var stepTwoSubmitNoteText = "Save your preview and continue to the full review.";
+    var stepTwoProgressText = "Protection preview";
+    var finalStepHeading = "Your protection preview is ready";
+    var finalStepHelper = "Send it to yourself to unlock the full recommendation and continue into scheduling.";
     var agentTrustHeadline = isContactFirstEducationVariant
         ? $"You’ll hear directly from {agentDirectContactName}."
         : $"You’ll hear directly from {agentDirectContactName}.";
     var agentTrustBio = isContactFirstEducationVariant
-        ? "I’ll help you make sense of the estimate, the options, and the next step that fits."
-        : "I’ll help you make sense of the estimate, the options, and the next step that fits.";
+        ? "I’ll help you review the recommendation, compare the options, and confirm the next step."
+        : "I’ll help you review the recommendation, compare the options, and confirm the next step.";
     var agentTrustNpn = !string.IsNullOrWhiteSpace(agentTrustProfile?.Npn)
         ? agentTrustProfile!.Npn!.Trim()
         : null;
@@ -534,11 +534,11 @@
     };
     var finalSubmitButtonText = "Send My Estimate";
     var heroHeadline = isContactFirstEducationVariant
-        ? "See what may help protect the people who depend on you most."
-        : "See what kind of protection may realistically fit your family, budget, and goals.";
+        ? "See the protection path that best aligns with the people who depend on you most."
+        : "See the protection path that best aligns with your family, budget, and goals.";
     var heroSubheadline = isContactFirstEducationVariant
-        ? "Life insurance can feel confusing. Answer a few quick questions to see which protection path may fit before deciding whether you want a personalized review."
-        : (isLandingView ? "Answer a few quick questions to see what may fit, what the monthly range may look like, and which protection path may deserve a real review." : string.Empty);
+        ? "Life insurance can feel confusing. Walk through a short protection review and see which path points toward your next best step."
+        : (isLandingView ? "Walk through a few focused details to see your starting point, monthly range, and whether the result is worth reviewing." : string.Empty);
     var heroTrustNote = isContactFirstEducationVariant ? "Quick • Private • Estimate first" : "Quick • Private • Estimate first";
     var heroTrustPersonName = !string.IsNullOrWhiteSpace(agentTrustProfile?.DisplayName)
         ? agentTrustProfile!.DisplayName!.Trim()
@@ -546,7 +546,7 @@
     var heroTrustPersonRole = !string.IsNullOrWhiteSpace(agentTrustProfile?.Npn)
         ? "Licensed Insurance Professional"
         : "Personal insurance guidance";
-    var heroTrustPersonSupport = "Personalized guidance for your estimate, your options, and the next step that fits.";
+    var heroTrustPersonSupport = "Personalized guidance for your recommendation, options, and next step.";
     var heroTrustPersonImageUrl = !string.IsNullOrWhiteSpace(agentTrustProfile?.ProfileImageUrl)
         ? agentTrustProfile!.ProfileImageUrl!.Trim()
         : string.Empty;
@@ -577,23 +577,23 @@
     var contactFirstBannerImageUrl = "~/images/ads/life-top-banner.png";
     var contactFirstBannerAlt = "Legend Legacy Protection banner asking whether your family would struggle financially without you and inviting a quick life insurance estimate.";
     var contactFirstProofKicker = "Personal guidance";
-    var contactFirstProofText = "Answer 5 quick questions to see which protection path may fit, what the estimate range looks like, and whether a personalized review is worth taking next.";
-    IReadOnlyList<string> contactFirstProofChips = new List<string> { "Estimate preview", "Personalized review", "You stay in control" };
+    var contactFirstProofText = "Walk through a short protection review to see your starting point, monthly range, and whether the result is worth reviewing.";
+    IReadOnlyList<string> contactFirstProofChips = new List<string> { "Protection preview", "Personalized review", "Clear next step" };
     var contactFirstProcessingHeading = "Getting your estimate...";
     var contactFirstProcessingHelper = "A quick match is running now.";
     var contactFirstProcessingNote = "Sizing your likely fit...";
     var lowFrictionHeroKicker = "Explore life insurance options";
-    var lowFrictionHeroHeadline = "See which kind of protection may realistically fit your family.";
-    var lowFrictionHeroSubheadline = "Start with 5 quick questions. You’ll see a practical starting point, a monthly range, and whether a personalized review is worth taking next.";
+    var lowFrictionHeroHeadline = "See which protection path best aligns with your family.";
+    var lowFrictionHeroSubheadline = "Start with a focused protection check. You’ll see a practical starting point, monthly range, and a clear next step.";
     var lowFrictionHeroCtaText = "See My Options";
-    var lowFrictionHeroCtaNote = "Estimate preview • Personalized review • Scheduling available";
-    IReadOnlyList<string> lowFrictionHeroChips = new List<string> { "5 quick questions", "Estimate preview", "Scheduling available" };
-    IReadOnlyList<string> lowFrictionValueChips = new List<string> { "A likely starting point", "A realistic monthly range", "Clear next-step guidance" };
+    var lowFrictionHeroCtaNote = "Protection preview • Personalized review • Scheduling available";
+    IReadOnlyList<string> lowFrictionHeroChips = new List<string> { "Focused review", "Protection preview", "Scheduling available" };
+    IReadOnlyList<string> lowFrictionValueChips = new List<string> { "A guided starting point", "A realistic monthly range", "Clear next step" };
     var showGenericCoverageOverview = string.Equals(normalizedOfferKey, "life", StringComparison.OrdinalIgnoreCase);
     var showCarrierReviewBeforeContact = false;
     var showPreContactEducationSummary = false;
-    var productFocusTitle = "What this estimate is built around";
-    var productFocusCopy = "This estimate stays centered on the protection conversation you came here to have, so the next steps feel focused, relevant, and worth continuing.";
+    var productFocusTitle = "What this review is built around";
+    var productFocusCopy = "This review stays centered on the protection gap you came here to solve, so the next step feels focused and relevant.";
     IReadOnlyList<(string Title, string Copy)> productFocusCards = new List<(string Title, string Copy)>
     {
         ("Focused guidance", "See a starting point centered on the protection gap you are actually trying to solve."),
@@ -606,12 +606,12 @@
         contactFirstBannerImageUrl = "~/images/ads/whole-life-top-banner.png";
         contactFirstBannerAlt = "Legend Legacy Protection whole life insurance banner about lifelong protection that stays with you and the people you love.";
         contactFirstProofKicker = "Whole life guidance";
-        contactFirstProofText = "Answer 5 quick questions to see whether lifelong protection that stays with you may fit the stability and peace of mind you want to keep in place.";
+        contactFirstProofText = "Review a few key details to see whether lifelong protection points toward the stability you want to keep in place.";
         contactFirstProofChips = new List<string> { "Lifelong protection", "Stable long-term fit", "You stay in control" };
         contactFirstProcessingHeading = "Getting your whole life estimate...";
         contactFirstProcessingHelper = "You’ll see whether lifelong protection looks like the clearest fit first.";
         contactFirstProcessingNote = "Sizing your whole life range...";
-        finalStepHelper = "Send yourself this whole life estimate, then review whether lifelong protection fits the long-term stability you want for yourself and the people you love.";
+        finalStepHelper = "Send yourself this whole life preview, then review whether lifelong protection aligns with the long-term stability you want.";
         agentTrustBio = "I’ll help you review whether lifelong protection truly fits the stability you want to keep in place.";
         finalSubmitButtonText = "Send My Whole Life Estimate";
         productFocusTitle = "Why people explore whole life";
@@ -628,12 +628,12 @@
         contactFirstBannerImageUrl = "~/images/ads/term-life-top-banner.png";
         contactFirstBannerAlt = "Legend Legacy Protection term life insurance banner about affordable protection for the years your family needs it most.";
         contactFirstProofKicker = "Term life guidance";
-        contactFirstProofText = "Answer 5 quick questions to see whether term life may help protect the years your family depends on your income, your stability, and your presence the most.";
+        contactFirstProofText = "Review a few key details to see whether term life points toward the years your family depends on you most.";
         contactFirstProofChips = new List<string> { "Family stability", "Protect key years", "You stay in control" };
         contactFirstProcessingHeading = "Getting your term life estimate...";
         contactFirstProcessingHelper = "You’ll see whether term life looks like the clearest practical fit first.";
         contactFirstProcessingNote = "Sizing your term life range...";
-        finalStepHelper = "Send yourself this term life estimate, then review how much protection may realistically help your family maintain stability if something happened unexpectedly.";
+        finalStepHelper = "Send yourself this term life preview, then review what level of protection best aligns with your family’s stability.";
         agentTrustBio = "I’ll help you review what level of protection may realistically matter most for your family.";
         finalSubmitButtonText = "Send My Term Life Estimate";
         productFocusTitle = "Why people explore term life";
@@ -650,12 +650,12 @@
         contactFirstBannerImageUrl = "~/images/ads/final-expense-top-banner.png";
         contactFirstBannerAlt = "Legend Legacy Protection final expense insurance banner about easing the burden, honoring your wishes, and leaving peace of mind.";
         contactFirstProofKicker = "Final expense guidance";
-        contactFirstProofText = "Answer 5 quick questions to see whether final expense coverage may help your loved ones avoid funeral costs, final bills, and financial stress during an already difficult time.";
+        contactFirstProofText = "Review a few key details to see whether final expense protection points toward easing the burden on your loved ones.";
         contactFirstProofChips = new List<string> { "Ease the burden", "Protect loved ones", "You stay in control" };
         contactFirstProcessingHeading = "Getting your final expense estimate...";
         contactFirstProcessingHelper = "You’ll see whether final expense protection looks like the clearest fit first.";
         contactFirstProcessingNote = "Sizing your final expense range...";
-        finalStepHelper = "Send yourself this final expense estimate, then review what level of protection may realistically help your loved ones avoid financial stress if something happened unexpectedly.";
+        finalStepHelper = "Send yourself this final expense preview, then review what level of protection best protects your loved ones from added financial pressure.";
         agentTrustBio = "I’ll help you review what may best spare your loved ones financial pressure during a hard time.";
         finalSubmitButtonText = "Send My Final Expense Estimate";
         productFocusTitle = "Why people explore final expense";
@@ -672,12 +672,12 @@
         contactFirstBannerImageUrl = "~/images/ads/mortgage-protection-top-banner.png";
         contactFirstBannerAlt = "Legend Legacy Protection mortgage protection insurance banner about helping protect your home and the people in it, even if you’re gone.";
         contactFirstProofKicker = "Mortgage protection guidance";
-        contactFirstProofText = "Answer 5 quick questions to see whether mortgage protection may help your family stay in the home and keep monthly life from unraveling if something happened to you unexpectedly.";
+        contactFirstProofText = "Review a few key details to see whether mortgage protection points toward keeping the home and monthly stability protected.";
         contactFirstProofChips = new List<string> { "Protect the home", "Keep stability", "You stay in control" };
         contactFirstProcessingHeading = "Getting your mortgage protection estimate...";
         contactFirstProcessingHelper = "You’ll see whether mortgage protection looks like the clearest home-first fit first.";
         contactFirstProcessingNote = "Sizing your mortgage protection range...";
-        finalStepHelper = "Send yourself this mortgage protection estimate, then review what level of protection may help your family keep the home and maintain financial breathing room.";
+        finalStepHelper = "Send yourself this mortgage protection preview, then review what level of protection best supports the home and financial breathing room.";
         agentTrustBio = "I’ll help you review what may best protect the home and the financial breathing room around it.";
         finalSubmitButtonText = "Send My Mortgage Estimate";
         productFocusTitle = "Why people explore mortgage protection";
@@ -694,12 +694,12 @@
         contactFirstBannerImageUrl = "~/images/ads/iul-top-banner.png";
         contactFirstBannerAlt = "Legend Legacy Protection indexed universal life banner about flexible long-term protection, future planning, and legacy support.";
         contactFirstProofKicker = "IUL guidance";
-        contactFirstProofText = "Answer 5 quick questions to see whether indexed universal life may fit the kind of long-term protection, flexibility, and future planning you are trying to build around.";
+        contactFirstProofText = "Review a few key details to see whether indexed universal life points toward the long-term flexibility you are building around.";
         contactFirstProofChips = new List<string> { "Long-term flexibility", "Future planning", "You stay in control" };
         contactFirstProcessingHeading = "Getting your IUL estimate...";
         contactFirstProcessingHelper = "You’ll see whether indexed universal life looks like the clearest long-range fit first.";
         contactFirstProcessingNote = "Sizing your IUL range...";
-        finalStepHelper = "Send yourself this IUL estimate, then review whether a more flexible long-term protection strategy may fit your goals and future plans.";
+        finalStepHelper = "Send yourself this IUL preview, then review whether a flexible long-term protection strategy aligns with your goals.";
         agentTrustBio = "I’ll help you review whether a more flexible long-term protection strategy actually fits what you want to build.";
         finalSubmitButtonText = "Send My IUL Estimate";
         productFocusTitle = "Why people explore indexed universal life";
@@ -713,28 +713,28 @@
     }
     if (isLowFrictionOptionsVariant && string.Equals(normalizedOfferKey, "life", StringComparison.OrdinalIgnoreCase))
     {
-        stepOneContinueButtonText = "See What May Realistically Fit";
+        stepOneContinueButtonText = "See My Starting Point";
         finalSubmitButtonText = "Send My Estimate";
-        finalStepHeading = "Your personalized estimate preview is ready";
-        finalStepHelper = "Send yourself the estimate, then review your personalized options and schedule a time if you want help comparing coverage.";
+        finalStepHeading = "Your protection preview is ready";
+        finalStepHelper = "Send it to yourself to unlock the full recommendation and continue into scheduling.";
         stepTwoContactTitleText = "Where should we send your estimate?";
-        stepTwoContactCopyText = "Submit to save this estimate, review the full recommendation, and continue into scheduling.";
+        stepTwoContactCopyText = "Save your preview, unlock the full recommendation, and continue into scheduling.";
         heroHeadline = lowFrictionHeroHeadline;
         heroSubheadline = lowFrictionHeroSubheadline;
-        heroTrustNote = "Estimate preview • Personalized review • Scheduling available";
+        heroTrustNote = "Protection preview • Personalized review • Scheduling available";
         contactFirstProofKicker = "Quick options review";
-        contactFirstProofText = "You’ll see which type of protection may realistically fit your family, budget, and long-term goals before deciding whether to continue into a personalized review.";
-        contactFirstProofChips = new List<string> { "5 quick questions", "Estimate preview", "Scheduling available" };
+        contactFirstProofText = "You’ll see which protection path best aligns with your family, budget, and long-term goals before continuing into a personalized review.";
+        contactFirstProofChips = new List<string> { "Focused review", "Protection preview", "Scheduling available" };
         contactFirstProcessingHeading = "Getting your estimate...";
         contactFirstProcessingHelper = "A practical starting point is loading now.";
         contactFirstProcessingNote = "Sizing your likely fit...";
         productFocusTitle = "What your result may compare first";
-        productFocusCopy = "Most people exploring life insurance are really trying to figure out which protection path may best fit their family, budget, and long-term goals before they speak with someone.";
+        productFocusCopy = "Most people exploring life insurance are trying to identify the protection path that best aligns with their family, budget, and long-term goals before they speak with someone.";
         productFocusCards = new List<(string Title, string Copy)>
         {
-            ("A guided starting point", "See which protection path may realistically fit what matters most to you right now."),
+            ("A guided starting point", "See which protection path best matches what matters most right now."),
             ("A realistic range", "Review a practical monthly estimate without pretending it is a final underwriting offer."),
-            ("A stronger next step", "Keep the result first, then decide whether continuing into a personalized review makes sense.")
+            ("A stronger next step", "Review the result first, then continue into a personalized review if the direction is worth exploring.")
         };
     }
 
@@ -754,11 +754,11 @@
     var heroTrustAriaLabel = "Licensed professional guidance";
     var showInlineMobileTrustBlock = false;
     var step1IntroTitle = "Start here";
-    var step1IntroHelper = "Pick the closest fit. Answer 5 quick questions to see which protection path may fit and what the estimate may look like.";
+    var step1IntroHelper = "Pick the closest fit. Review a few key details to see your protection path and starting range.";
     if (isLowFrictionOptionsVariant && string.Equals(normalizedOfferKey, "life", StringComparison.OrdinalIgnoreCase))
     {
-        step1IntroTitle = "Start with 5 quick questions";
-        step1IntroHelper = "Answer 5 quick questions to see which protection path may fit and your starting estimate.";
+        step1IntroTitle = "Start with a few focused questions";
+        step1IntroHelper = "Review a few key details to see your protection path and starting range.";
     }
     IReadOnlyList<(string Label, int Value, string RangeLabel)> ageQuickSelectOptions = isFinalExpenseOffer
         ? new List<(string Label, int Value, string RangeLabel)>
@@ -5530,6 +5530,249 @@ body.life-final-step-active.page-variant-contact-first-education-v1 #lifeEducati
     }
 }
 
+
+/* ================================================================
+   Booking UX cleanup — deep navy/gold, flattened embedded calendar
+   ================================================================ */
+.lq-post-submit-card {
+    background:
+        radial-gradient(circle at 18% 0%, rgba(226, 186, 93, 0.10), transparent 34%),
+        linear-gradient(180deg, #0d182d 0%, #09111f 100%) !important;
+    border: 1px solid rgba(199, 153, 49, 0.42) !important;
+    box-shadow: 0 18px 38px rgba(0,0,0,0.30), inset 0 1px 0 rgba(255,255,255,0.04) !important;
+    color: #f8fafc !important;
+}
+
+.lq-post-submit-kicker,
+.lq-booking-status-pill {
+    color: #f3d688 !important;
+    background: rgba(199,153,49,0.10) !important;
+    border: 1px solid rgba(199,153,49,0.34) !important;
+}
+
+.lq-post-submit-title,
+.lq-booking-title {
+    color: #fff7df !important;
+}
+
+.lq-post-submit-copy,
+.lq-booking-copy,
+.lq-booking-note,
+.lq-booking-pending-note,
+.lq-booking-embed-status {
+    color: rgba(248,250,252,0.78) !important;
+}
+
+.lq-booking-shell {
+    background: transparent !important;
+    border: 0 !important;
+    box-shadow: none !important;
+    padding: 0 !important;
+}
+
+.lq-booking-head {
+    background:
+        linear-gradient(180deg, rgba(16,28,48,0.72) 0%, rgba(9,17,31,0.58) 100%) !important;
+    border: 1px solid rgba(199,153,49,0.22) !important;
+    border-radius: 16px !important;
+    padding: 16px !important;
+    box-shadow: none !important;
+}
+
+.lq-booking-actions {
+    margin-top: 14px !important;
+    align-items: center !important;
+}
+
+.lq-booking-primary {
+    background: linear-gradient(180deg, #f3d688 0%, #d8aa3d 52%, #b78319 100%) !important;
+    color: #1b1304 !important;
+    box-shadow: 0 12px 26px rgba(0,0,0,0.28), inset 0 1px 0 rgba(255,255,255,0.34) !important;
+}
+
+.lq-booking-secondary-link {
+    color: #f3d688 !important;
+    opacity: 0.86 !important;
+    font-weight: 800 !important;
+}
+
+.lq-booking-embed-shell {
+    margin-top: 18px !important;
+    padding: 0 !important;
+    background: transparent !important;
+    border: 0 !important;
+    box-shadow: none !important;
+}
+
+.lq-booking-embed-frame-wrap {
+    margin-top: 10px !important;
+    border-radius: 18px !important;
+    overflow: hidden !important;
+    background: #0b1529 !important;
+    border: 1px solid rgba(199,153,49,0.30) !important;
+    box-shadow: 0 18px 34px rgba(0,0,0,0.32) !important;
+}
+
+.lq-booking-iframe {
+    display: block !important;
+    width: 100% !important;
+    min-height: 640px !important;
+    border: 0 !important;
+    background: #ffffff !important;
+}
+
+@@media (max-width: 767.98px) {
+    .lq-post-submit-card {
+        padding: 14px !important;
+        border-radius: 16px !important;
+    }
+
+    .lq-booking-head {
+        padding: 13px !important;
+        border-radius: 14px !important;
+    }
+
+    .lq-booking-actions {
+        display: grid !important;
+        gap: 10px !important;
+    }
+
+    .lq-booking-primary {
+        width: 100% !important;
+    }
+
+    .lq-booking-embed-frame-wrap {
+        border-radius: 14px !important;
+        margin-left: -2px !important;
+        margin-right: -2px !important;
+    }
+
+    .lq-booking-iframe {
+        min-height: 560px !important;
+    }
+}
+
+
+/* ================================================================
+   Booking UX cleanup — deep navy/gold, no white-out wrapper
+   ================================================================ */
+.lq-post-submit-card {
+    background:
+        radial-gradient(circle at 18% 0%, rgba(226, 186, 93, 0.10), transparent 34%),
+        linear-gradient(180deg, #0d182d 0%, #09111f 100%) !important;
+    border: 1px solid rgba(199, 153, 49, 0.42) !important;
+    box-shadow: 0 18px 38px rgba(0,0,0,0.30), inset 0 1px 0 rgba(255,255,255,0.04) !important;
+    color: #f8fafc !important;
+}
+
+.lq-post-submit-kicker,
+.lq-booking-status-pill {
+    color: #f3d688 !important;
+    background: rgba(199,153,49,0.10) !important;
+    border: 1px solid rgba(199,153,49,0.34) !important;
+}
+
+.lq-post-submit-title,
+.lq-booking-title {
+    color: #fff7df !important;
+}
+
+.lq-post-submit-copy,
+.lq-booking-copy,
+.lq-booking-pending-note,
+.lq-booking-embed-status {
+    color: rgba(248,250,252,0.78) !important;
+}
+
+.lq-booking-shell {
+    background: transparent !important;
+    border: 0 !important;
+    box-shadow: none !important;
+    padding: 0 !important;
+}
+
+.lq-booking-head {
+    background:
+        linear-gradient(180deg, rgba(16,28,48,0.72) 0%, rgba(9,17,31,0.58) 100%) !important;
+    border: 1px solid rgba(199,153,49,0.22) !important;
+    border-radius: 16px !important;
+    padding: 16px !important;
+    box-shadow: none !important;
+}
+
+.lq-booking-actions {
+    margin-top: 14px !important;
+    align-items: center !important;
+}
+
+.lq-booking-primary {
+    background: linear-gradient(180deg, #f3d688 0%, #d8aa3d 52%, #b78319 100%) !important;
+    color: #1b1304 !important;
+    box-shadow: 0 12px 26px rgba(0,0,0,0.28), inset 0 1px 0 rgba(255,255,255,0.34) !important;
+}
+
+.lq-booking-secondary-link {
+    color: #f3d688 !important;
+    opacity: 0.86 !important;
+    font-weight: 800 !important;
+}
+
+.lq-booking-embed-shell {
+    margin-top: 18px !important;
+    padding: 0 !important;
+    background: transparent !important;
+    border: 0 !important;
+    box-shadow: none !important;
+}
+
+.lq-booking-embed-frame-wrap {
+    margin-top: 10px !important;
+    border-radius: 18px !important;
+    overflow: hidden !important;
+    background: #0b1529 !important;
+    border: 1px solid rgba(199,153,49,0.30) !important;
+    box-shadow: 0 18px 34px rgba(0,0,0,0.32) !important;
+}
+
+.lq-booking-iframe {
+    display: block !important;
+    width: 100% !important;
+    min-height: 640px !important;
+    border: 0 !important;
+    background: #ffffff !important;
+}
+
+@@media (max-width: 767.98px) {
+    .lq-post-submit-card {
+        padding: 14px !important;
+        border-radius: 16px !important;
+    }
+
+    .lq-booking-head {
+        padding: 13px !important;
+        border-radius: 14px !important;
+    }
+
+    .lq-booking-actions {
+        display: grid !important;
+        gap: 10px !important;
+    }
+
+    .lq-booking-primary {
+        width: 100% !important;
+    }
+
+    .lq-booking-embed-frame-wrap {
+        border-radius: 14px !important;
+        margin-left: -2px !important;
+        margin-right: -2px !important;
+    }
+
+    .lq-booking-iframe {
+        min-height: 560px !important;
+    }
+}
+
 </style>
 
 <svg aria-hidden="true" width="0" height="0" focusable="false" style="position:absolute; width:0; height:0; overflow:hidden;">
@@ -6820,7 +7063,7 @@ body.life-final-step-active.page-variant-contact-first-education-v1 #lifeEducati
   const publicBookingKickerText = 'Continue your personalized review';
   const publicBookingCopyText = 'Choose a time to continue your personalized review, compare what surfaced, and confirm what may realistically fit best.';
   const publicBookingCtaText = 'Schedule Your Review';
-  const publicBookingFallbackText = 'Continue in scheduling';
+  const publicBookingFallbackText = 'Continue on this page';
   const publicBookingLoadingText = 'Preparing your scheduling options...';
   const publicBookingDisabledText = 'Your estimate is saved. Scheduling is not available in this view right now, but a licensed agent can still continue your personalized review.';
   const publicBookingFallbackOnlyText = 'Continue your personalized review in scheduling. It opens in a new tab for now.';
@@ -8138,7 +8381,7 @@ body.life-final-step-active.page-variant-contact-first-education-v1 #lifeEducati
   function resolvePublicBookingCopy(preview) {
     switch (resolveDisplayedOfferKeyForStep2(preview)) {
       case 'term':
-        return 'Choose a time to continue your personalized review and see what level of term protection may help your family stay financially stable if something unexpected happened.';
+        return 'Choose a time to review your result, compare coverage, and confirm the next step that best aligns with your situation.';
       case 'wholelife':
         return 'Choose a time to continue your personalized review and see whether lifelong protection fits the long-term stability you want to keep in place.';
       case 'finalexpense':
@@ -8157,7 +8400,7 @@ body.life-final-step-active.page-variant-contact-first-education-v1 #lifeEducati
     return `
       <div class="lq-contact-estimate-wrap is-preview-locked" id="lifeStep2EstimateSummary">
         <div class="lq-contact-estimate-head">
-          <div class="lq-contact-estimate-kicker">Estimate preview</div>
+          <div class="lq-contact-estimate-kicker">Protection preview</div>
           <div class="lq-contact-estimate-title">${escapeHtml(buildPreSubmitEstimateTitle(normalized))}</div>
           <div class="lq-contact-estimate-copy">${escapeHtml(buildCompactStep2Reason(normalized))}</div>
         </div>
