@@ -76,45 +76,45 @@
         {
             "term" => new List<Protect_Website.Models.LifeWizardOption>
             {
-                new("replace_income","Replace income for my family"),
-                new("mortgage_or_bills","Cover mortgage or major bills"),
-                new("protect_term_years","Protect the years my family needs it most"),
-                new("keep_costs_affordable","Keep coverage more affordable"),
+                new("replace_income","Help my family stay financially steady"),
+                new("mortgage_or_bills","Help protect the mortgage and major bills"),
+                new("protect_term_years","Protect the years my family depends on me most"),
+                new("keep_costs_affordable","Start with meaningful protection that fits my budget"),
             },
             "wholelife" => new List<Protect_Website.Models.LifeWizardOption>
             {
-                new("lifelong_protection","Build lifelong protection"),
-                new("cash_value_growth","Build cash value over time"),
-                new("leave_legacy","Leave something behind"),
-                new("final_expenses","Cover final expenses permanently"),
+                new("lifelong_protection","Keep protection that stays with me for life"),
+                new("cash_value_growth","Keep long-term protection with flexibility"),
+                new("leave_legacy","Leave lasting support behind"),
+                new("final_expenses","Keep final wishes from becoming a burden"),
             },
             "finalexpense" => new List<Protect_Website.Models.LifeWizardOption>
             {
-                new("burial_costs","Cover burial and funeral costs"),
-                new("final_bills","Handle final medical or household bills"),
-                new("ease_family_burden","Reduce financial stress on my loved ones"),
-                new("leave_small_benefit","Leave a small benefit behind"),
+                new("burial_costs","Help cover funeral and burial costs"),
+                new("final_bills","Help cover final bills families are often left handling"),
+                new("ease_family_burden","Help my loved ones avoid added financial stress"),
+                new("leave_small_benefit","Create a cushion so my family is not scrambling"),
             },
             "mortgage" => new List<Protect_Website.Models.LifeWizardOption>
             {
-                new("mortgage_balance","The mortgage balance"),
-                new("monthly_payment","The monthly mortgage payment"),
-                new("stay_in_home","My spouse or family staying in the home"),
-                new("household_bills","The home plus key bills"),
+                new("mortgage_balance","Protect the home and the mortgage"),
+                new("monthly_payment","Help keep the monthly payment manageable"),
+                new("stay_in_home","Help my spouse or family stay in the home"),
+                new("household_bills","Protect the home and key household bills"),
             },
             "iul" => new List<Protect_Website.Models.LifeWizardOption>
             {
-                new("cash_value_growth","Build cash value with long-term flexibility"),
-                new("lifelong_protection","Keep lifelong protection in place"),
-                new("future_access","Create future access to cash value"),
-                new("leave_legacy","Leave a legacy for my family"),
+                new("cash_value_growth","Keep long-term protection with flexibility"),
+                new("lifelong_protection","Keep protection in place for the long term"),
+                new("future_access","Build future flexibility into the plan"),
+                new("leave_legacy","Leave lasting support for my family"),
             },
             _ => new List<Protect_Website.Models.LifeWizardOption>
             {
-                new("replace_income","Replace income for my family"),
-                new("final_expenses","Cover final expenses"),
-                new("mortgage_or_bills","Help with mortgage or bills"),
-                new("leave_something","Leave something behind"),
+                new("replace_income","Help my family stay financially steady"),
+                new("final_expenses","Help protect loved ones from final expenses"),
+                new("mortgage_or_bills","Help protect the mortgage and major bills"),
+                new("leave_something","Leave lasting support behind"),
             }
         };
 
@@ -279,74 +279,74 @@
             },
             "CoverageGoal" => normalizedCode switch
             {
-                "replace_income" => ("icon", "choice-icon-income", "Income", "Help replace lost earnings for the people who rely on you", "tone-goal"),
-                "final_expenses" => ("icon", "choice-icon-heart", "Final costs", "Ease burial, funeral, and end-of-life expense pressure", "tone-goal"),
-                "mortgage_or_bills" => ("icon", "choice-icon-home", "Home & bills", "Help cover the mortgage and major monthly costs", "tone-goal"),
-                "leave_something" => ("icon", "choice-icon-legacy", "Legacy", "Leave behind a benefit that supports the people you love", "tone-goal"),
-                "protect_term_years" => ("icon", "choice-icon-income", "Key years", "Focus on the years your family would feel the loss of your income most", "tone-goal"),
-                "keep_costs_affordable" => ("icon", "choice-icon-income", "Affordability", "Start with efficient protection that keeps the monthly estimate in a practical range", "tone-goal"),
-                "lifelong_protection" => ("icon", "choice-icon-legacy", "Permanent", "Keep coverage in place for the long haul instead of only a temporary term", "tone-goal"),
-                "cash_value_growth" => ("icon", "choice-icon-income", "Cash value", "Explore coverage designed to build long-range value over time", "tone-goal"),
+                "replace_income" => ("icon", "choice-icon-income", "Family stability", "Help your family stay financially steady if your income suddenly disappeared.", "tone-goal"),
+                "final_expenses" => ("icon", "choice-icon-heart", "Peace of mind", "Help loved ones avoid carrying funeral costs, final bills, and added pressure alone.", "tone-goal"),
+                "mortgage_or_bills" => ("icon", "choice-icon-home", "Monthly stability", "Help protect the mortgage and the everyday bills your family would still face.", "tone-goal"),
+                "leave_something" => ("icon", "choice-icon-legacy", "Family support", "Leave behind something meaningful that helps your family stay grounded.", "tone-goal"),
+                "protect_term_years" => ("icon", "choice-icon-income", "Critical years", "Built for the years your family depends on your income, your stability, and your presence the most.", "tone-goal"),
+                "keep_costs_affordable" => ("icon", "choice-icon-income", "Practical fit", "Start with meaningful protection that still needs to fit your real monthly budget.", "tone-goal"),
+                "lifelong_protection" => ("icon", "choice-icon-legacy", "Lifetime stability", "Create protection designed to stay in place instead of expiring later.", "tone-goal"),
+                "cash_value_growth" => ("icon", "choice-icon-income", "Long-term protection", "Explore protection designed to stay with you and support future flexibility over time.", "tone-goal"),
                 "leave_legacy" => ("icon", "choice-icon-legacy", "Legacy", "Keep the focus on what you want to leave behind for the people you love", "tone-goal"),
-                "burial_costs" => ("icon", "choice-icon-heart", "Burial costs", "Keep burial, funeral, and immediate final costs from falling on family", "tone-goal"),
-                "final_bills" => ("icon", "choice-icon-heart", "Final bills", "Help cover medical, household, or end-of-life costs that can pile up quickly", "tone-goal"),
-                "ease_family_burden" => ("icon", "choice-icon-heart", "Ease the burden", "Reduce the financial stress your loved ones may face during a hard time", "tone-goal"),
-                "leave_small_benefit" => ("icon", "choice-icon-legacy", "Small benefit", "Leave behind a modest amount that can still make things easier for loved ones", "tone-goal"),
-                "mortgage_balance" => ("icon", "choice-icon-home", "Mortgage balance", "Focus on helping cover the loan balance tied to the home", "tone-goal"),
-                "monthly_payment" => ("icon", "choice-icon-home", "Monthly payment", "Help keep the monthly home payment from becoming a crisis", "tone-goal"),
-                "stay_in_home" => ("icon", "choice-icon-home", "Stay in the home", "Keep the people you love in the home they know and count on", "tone-goal"),
-                "household_bills" => ("icon", "choice-icon-home", "Home stability", "Protect the mortgage along with the bills that keep the household running", "tone-goal"),
-                "future_access" => ("icon", "choice-icon-income", "Future access", "Explore long-term flexibility and access to cash value later on", "tone-goal"),
+                "burial_costs" => ("icon", "choice-icon-heart", "Funeral costs", "Help your loved ones avoid carrying funeral and burial costs during an already difficult time.", "tone-goal"),
+                "final_bills" => ("icon", "choice-icon-heart", "Family relief", "Help cover funeral costs, medical bills, and the unexpected expenses families are often left handling alone.", "tone-goal"),
+                "ease_family_burden" => ("icon", "choice-icon-heart", "Ease the burden", "Help your loved ones avoid financial pressure on top of emotional loss.", "tone-goal"),
+                "leave_small_benefit" => ("icon", "choice-icon-legacy", "Family relief", "Create a layer of protection designed to help your family handle final expenses without scrambling financially.", "tone-goal"),
+                "mortgage_balance" => ("icon", "choice-icon-home", "Protect the home", "Help protect the home and monthly stability your family depends on.", "tone-goal"),
+                "monthly_payment" => ("icon", "choice-icon-home", "Monthly breathing room", "Help keep the house payment from becoming a crisis for the people staying in the home.", "tone-goal"),
+                "stay_in_home" => ("icon", "choice-icon-home", "Keep the home", "Help your family stay in the home they know and love if something happened to you unexpectedly.", "tone-goal"),
+                "household_bills" => ("icon", "choice-icon-home", "Home stability", "Help protect the home and the bills that keep daily life steady.", "tone-goal"),
+                "future_access" => ("icon", "choice-icon-income", "Long-range flexibility", "Explore long-term protection designed to provide flexibility and future access over time.", "tone-goal"),
                 _ => ("icon", "choice-icon-legacy", string.Empty, string.Empty, "tone-goal")
             },
             "CoverageAmountOption" => normalizedOfferKey switch
             {
                 "finalexpense" => normalizedCode switch
                 {
-                    "25000" => ("none", string.Empty, "Starter", "A modest benefit focused on burial and immediate final costs", "tone-coverage"),
-                    "50000" => ("none", string.Empty, "Common", "A balanced final expense starting point for many households", "tone-coverage"),
-                    "75000" => ("none", string.Empty, "Stronger", "Leaves more room for final costs and added family support", "tone-coverage"),
-                    "100000" => ("none", string.Empty, "Higher range", "The top end of this final expense range for added peace of mind", "tone-coverage"),
+                    "25000" => ("none", string.Empty, "Immediate relief", "A focused layer of protection to help loved ones with funeral costs and the first wave of final expenses.", "tone-coverage"),
+                    "50000" => ("none", string.Empty, "Family buffer", "A stronger starting point for families who may need help with funeral costs, final bills, and financial breathing room.", "tone-coverage"),
+                    "75000" => ("none", string.Empty, "Added breathing room", "Creates more room for your family to handle final expenses without scrambling financially.", "tone-coverage"),
+                    "100000" => ("none", string.Empty, "Stronger family protection", "Designed for households that want a larger cushion around funeral costs, final bills, and family stress.", "tone-coverage"),
                     _ => ("none", string.Empty, string.Empty, string.Empty, "tone-coverage")
                 },
                 "wholelife" => normalizedCode switch
                 {
-                    "50000" => ("none", string.Empty, "Starter", "A smaller lifelong base for final costs and lasting support", "tone-coverage"),
-                    "100000" => ("none", string.Empty, "Common", "A balanced whole life starting point with steady cash value potential", "tone-coverage"),
-                    "250000" => ("none", string.Empty, "Stronger", "More lifelong coverage with room to build long-range value", "tone-coverage"),
-                    "500000" => ("none", string.Empty, "Higher range", "A larger permanent protection target for higher lifelong needs", "tone-coverage"),
+                    "50000" => ("none", string.Empty, "Foundation", "A starting point for people who want lifelong protection that stays with them and helps cover lasting family needs.", "tone-coverage"),
+                    "100000" => ("none", string.Empty, "Lifetime fit", "A starting point built for people who want lifelong protection that stays in place instead of expiring later.", "tone-coverage"),
+                    "250000" => ("none", string.Empty, "Lasting security", "Adds more room for long-term protection when lifelong stability matters to you and the people you love.", "tone-coverage"),
+                    "500000" => ("none", string.Empty, "Long-term anchor", "Designed for people who want a stronger layer of permanent protection that can stay in place through every stage of life.", "tone-coverage"),
                     _ => ("none", string.Empty, string.Empty, string.Empty, "tone-coverage")
                 },
                 "term" => normalizedCode switch
                 {
-                    "250000" => ("none", string.Empty, "Focused", "A leaner term target for a focused income gap or key bills", "tone-coverage"),
-                    "500000" => ("none", string.Empty, "Common", "A strong family-income starting point for many households", "tone-coverage"),
-                    "1000000" => ("none", string.Empty, "Broader", "More breathing room for income, debt, and future family needs", "tone-coverage"),
-                    "2000000" => ("none", string.Empty, "Higher range", "A larger term safety net for bigger family protection goals", "tone-coverage"),
+                    "250000" => ("none", string.Empty, "Focused support", "A practical layer of protection when the goal is covering a meaningful income gap or key monthly bills.", "tone-coverage"),
+                    "500000" => ("none", string.Empty, "Family stability", "A practical layer of protection designed to help your family stay financially stable if your income suddenly disappeared.", "tone-coverage"),
+                    "1000000" => ("none", string.Empty, "Deeper cushion", "Creates more room to protect income, major bills, and the years your family relies on you most.", "tone-coverage"),
+                    "2000000" => ("none", string.Empty, "Broad protection", "Built for households that want a larger safety net around income, debt, and long-term family stability.", "tone-coverage"),
                     _ => ("none", string.Empty, string.Empty, string.Empty, "tone-coverage")
                 },
                 "mortgage" => normalizedCode switch
                 {
-                    "150000" => ("none", string.Empty, "Starter", "Fits smaller balances or a focused cushion around the home", "tone-coverage"),
-                    "250000" => ("none", string.Empty, "Common", "A practical starting point for many mortgage balances", "tone-coverage"),
-                    "500000" => ("none", string.Empty, "Stronger", "More room to protect the home and the monthly household budget", "tone-coverage"),
-                    "750000" => ("none", string.Empty, "Higher range", "Built for higher balances and a larger monthly obligation", "tone-coverage"),
+                    "150000" => ("none", string.Empty, "Home cushion", "A focused amount when the goal is helping protect the home and preserve monthly breathing room.", "tone-coverage"),
+                    "250000" => ("none", string.Empty, "Home stability", "A practical starting point for families who want help keeping the home and the budget from unraveling.", "tone-coverage"),
+                    "500000" => ("none", string.Empty, "Stronger protection", "Adds more protection for households carrying a bigger mortgage or tighter monthly obligations.", "tone-coverage"),
+                    "750000" => ("none", string.Empty, "Larger home safeguard", "Built for families who want a larger layer of protection around the home, the payment, and overall household stability.", "tone-coverage"),
                     _ => ("none", string.Empty, string.Empty, string.Empty, "tone-coverage")
                 },
                 "iul" => normalizedCode switch
                 {
-                    "250000" => ("none", string.Empty, "Base", "A flexible starting point for lifelong coverage with growth potential", "tone-coverage"),
-                    "500000" => ("none", string.Empty, "Common", "A strong IUL target for lasting protection and cash value growth", "tone-coverage"),
-                    "1000000" => ("none", string.Empty, "Broader", "More room to pair lifetime protection with long-range strategy", "tone-coverage"),
-                    "2000000" => ("none", string.Empty, "Higher range", "A larger IUL design for high protection and legacy-focused goals", "tone-coverage"),
+                    "250000" => ("none", string.Empty, "Long-range foundation", "A starting point for people thinking long-term about protection, flexibility, and future planning.", "tone-coverage"),
+                    "500000" => ("none", string.Empty, "Flexible protection", "Built for people who want long-term protection with room for future flexibility over time.", "tone-coverage"),
+                    "1000000" => ("none", string.Empty, "Expanded planning room", "Creates more room for a protection strategy that balances long-term coverage, flexibility, and legacy goals.", "tone-coverage"),
+                    "2000000" => ("none", string.Empty, "Legacy-focused structure", "Designed for people considering a larger long-range protection plan tied to future planning and family legacy.", "tone-coverage"),
                     _ => ("none", string.Empty, string.Empty, string.Empty, "tone-coverage")
                 },
                 _ => normalizedCode switch
                 {
-                    "100000" => ("none", string.Empty, "Starter", "Good for a smaller protection need or focused final planning", "tone-coverage"),
-                    "250000" => ("none", string.Empty, "Common", "A balanced starting point for many households", "tone-coverage"),
-                    "500000" => ("none", string.Empty, "Stronger", "Often chosen for broader family and income protection", "tone-coverage"),
-                    "1000000" => ("none", string.Empty, "Higher range", "Explore a larger protection target with a bigger safety net", "tone-coverage"),
+                    "100000" => ("none", string.Empty, "Starting point", "A focused first layer of protection when you want to begin with something practical and clear.", "tone-coverage"),
+                    "250000" => ("none", string.Empty, "Family fit", "A balanced starting point for households looking for meaningful protection without overcomplicating the decision.", "tone-coverage"),
+                    "500000" => ("none", string.Empty, "Stronger support", "Often where families start when the goal is real protection around income, bills, and stability.", "tone-coverage"),
+                    "1000000" => ("none", string.Empty, "Larger safety net", "A bigger protection range for households trying to cover a wider financial gap.", "tone-coverage"),
                     _ => ("none", string.Empty, string.Empty, string.Empty, "tone-coverage")
                 }
             },
@@ -362,11 +362,11 @@
                 "25-34" => ("none", string.Empty, "Building years", "Often the stretch where family and income protection grows", "tone-age"),
                 "35-44" => ("none", string.Empty, "Peak protection", "A common window for heavier family and bill responsibility", "tone-age"),
                 "45-54" when string.Equals(normalizedOfferKey, "finalexpense", StringComparison.OrdinalIgnoreCase)
-                    => ("none", string.Empty, "Early planning", "A common starting window for exploring simpler final expense coverage", "tone-age"),
+                    => ("none", string.Empty, "Early peace of mind", "A common window for putting final expense protection in place before it feels urgent.", "tone-age"),
                 "45-54" => ("none", string.Empty, "Established years", "Often focused on income protection and long-range stability", "tone-age"),
-                "55-64" => ("none", string.Empty, "Retirement years", "Often a strong window for final expense planning and simpler permanent protection", "tone-age"),
-                "65-74" => ("none", string.Empty, "Later planning", "Often centered on final costs, simplicity, and easing the burden on loved ones", "tone-age"),
-                "75+" => ("none", string.Empty, "Senior planning", "Focused on straightforward final expense protection and peace of mind", "tone-age"),
+                "55-64" => ("none", string.Empty, "Protection planning", "Often a strong window for putting family relief and final wishes in place.", "tone-age"),
+                "65-74" => ("none", string.Empty, "Family relief focus", "Often centered on keeping loved ones from carrying funeral costs and final expenses alone.", "tone-age"),
+                "75+" => ("none", string.Empty, "Peace-of-mind planning", "Focused on helping loved ones avoid financial pressure during an already difficult time.", "tone-age"),
                 "55+" => ("none", string.Empty, "Long-range planning", "Later-career years where lasting fit matters more", "tone-age"),
                 _ => ("none", string.Empty, string.Empty, string.Empty, "tone-age")
             },
@@ -496,12 +496,12 @@
             : "Your Agent");
     var stepTwoContactFitDescriptor = normalizedOfferKey switch
     {
-        "term" => "term life needs, family, and budget",
-        "wholelife" => "whole life goals, family, and budget",
-        "finalexpense" => "final expense needs and budget",
-        "mortgage" => "mortgage, family, and budget",
-        "iul" => "long-term protection goals, flexibility, and budget",
-        _ => "coverage needs, family, and budget"
+        "term" => "the years your family depends on your income, stability, and presence",
+        "wholelife" => "lifelong protection, long-term stability, and lasting peace of mind",
+        "finalexpense" => "protecting loved ones from funeral costs, final bills, and added pressure",
+        "mortgage" => "the home, monthly stability, and the people who depend on both",
+        "iul" => "long-term protection, flexibility, and future planning",
+        _ => "the protection, stability, and long-term fit that matter most"
     };
     var stepTwoContactKickerText = "Unlock the full review";
     var contactMethodHelperText = "Phone is best if you want a quick personalized review. Email works too if you prefer a written copy.";
@@ -518,8 +518,8 @@
         ? $"You’ll hear directly from {agentDirectContactName}."
         : $"You’ll hear directly from {agentDirectContactName}.";
     var agentTrustBio = isContactFirstEducationVariant
-        ? "I’ll help you make sense of the estimate and options without pressure."
-        : "I’ll help you make sense of the estimate and options without pressure.";
+        ? "I’ll help you make sense of the estimate, the options, and the next step that fits."
+        : "I’ll help you make sense of the estimate, the options, and the next step that fits.";
     var agentTrustNpn = !string.IsNullOrWhiteSpace(agentTrustProfile?.Npn)
         ? agentTrustProfile!.Npn!.Trim()
         : null;
@@ -535,10 +535,10 @@
     var finalSubmitButtonText = "Send My Estimate";
     var heroHeadline = isContactFirstEducationVariant
         ? "See what may help protect the people who depend on you most."
-        : "See what protection options may fit your family’s needs.";
+        : "See what kind of protection may realistically fit your family, budget, and goals.";
     var heroSubheadline = isContactFirstEducationVariant
-        ? "Life insurance can feel confusing. Answer a few quick questions and see what may fit before deciding whether you want help."
-        : (isLandingView ? "Answer a few quick questions to see what may fit, what the monthly range may look like, and whether a personalized review makes sense." : string.Empty);
+        ? "Life insurance can feel confusing. Answer a few quick questions to see which protection path may fit before deciding whether you want a personalized review."
+        : (isLandingView ? "Answer a few quick questions to see what may fit, what the monthly range may look like, and which protection path may deserve a real review." : string.Empty);
     var heroTrustNote = isContactFirstEducationVariant ? "Quick • Private • Estimate first" : "Quick • Private • Estimate first";
     var heroTrustPersonName = !string.IsNullOrWhiteSpace(agentTrustProfile?.DisplayName)
         ? agentTrustProfile!.DisplayName!.Trim()
@@ -546,7 +546,7 @@
     var heroTrustPersonRole = !string.IsNullOrWhiteSpace(agentTrustProfile?.Npn)
         ? "Licensed Insurance Professional"
         : "Personal insurance guidance";
-    var heroTrustPersonSupport = "Personalized guidance for your estimate and next step.";
+    var heroTrustPersonSupport = "Personalized guidance for your estimate, your options, and the next step that fits.";
     var heroTrustPersonImageUrl = !string.IsNullOrWhiteSpace(agentTrustProfile?.ProfileImageUrl)
         ? agentTrustProfile!.ProfileImageUrl!.Trim()
         : string.Empty;
@@ -577,14 +577,14 @@
     var contactFirstBannerImageUrl = "~/images/ads/life-top-banner.png";
     var contactFirstBannerAlt = "Legend Legacy Protection banner asking whether your family would struggle financially without you and inviting a quick life insurance estimate.";
     var contactFirstProofKicker = "Personal guidance";
-    var contactFirstProofText = "Answer 5 quick questions to see what may fit. Keep the estimate and stay in control.";
+    var contactFirstProofText = "Answer 5 quick questions to see which protection path may fit, what the estimate range looks like, and whether a personalized review is worth taking next.";
     IReadOnlyList<string> contactFirstProofChips = new List<string> { "Estimate preview", "Personalized review", "You stay in control" };
     var contactFirstProcessingHeading = "Getting your estimate...";
     var contactFirstProcessingHelper = "A quick match is running now.";
     var contactFirstProcessingNote = "Sizing your likely fit...";
     var lowFrictionHeroKicker = "Explore life insurance options";
-    var lowFrictionHeroHeadline = "See what kind of life coverage may fit your family.";
-    var lowFrictionHeroSubheadline = "Start with 5 quick questions. You’ll see a practical starting point and monthly range without a sales detour.";
+    var lowFrictionHeroHeadline = "See which kind of protection may realistically fit your family.";
+    var lowFrictionHeroSubheadline = "Start with 5 quick questions. You’ll see a practical starting point, a monthly range, and whether a personalized review is worth taking next.";
     var lowFrictionHeroCtaText = "See My Options";
     var lowFrictionHeroCtaNote = "Estimate preview • Personalized review • Scheduling available";
     IReadOnlyList<string> lowFrictionHeroChips = new List<string> { "5 quick questions", "Estimate preview", "Scheduling available" };
@@ -593,34 +593,34 @@
     var showCarrierReviewBeforeContact = false;
     var showPreContactEducationSummary = false;
     var productFocusTitle = "What this estimate is built around";
-    var productFocusCopy = "This estimate stays centered on the type of coverage you came here to compare, so the next steps stay focused and relevant.";
+    var productFocusCopy = "This estimate stays centered on the protection conversation you came here to have, so the next steps feel focused, relevant, and worth continuing.";
     IReadOnlyList<(string Title, string Copy)> productFocusCards = new List<(string Title, string Copy)>
     {
-        ("Focused guidance", "See an estimate centered on the coverage conversation you actually came here for."),
-        ("Relevant tradeoffs", "Review the main tradeoffs that matter for this protection path, not every life product."),
-        ("Clear next steps", "Keep the walkthrough focused on what may fit without extra product noise.")
+        ("Focused guidance", "See a starting point centered on the protection gap you are actually trying to solve."),
+        ("Relevant tradeoffs", "Review the tradeoffs that matter for this path without getting buried in every life product."),
+        ("Clear next step", "Keep the walkthrough focused on what may realistically fit before moving into a deeper review.")
     };
 
     if (normalizedOfferKey == "wholelife")
     {
         contactFirstBannerImageUrl = "~/images/ads/whole-life-top-banner.png";
-        contactFirstBannerAlt = "Legend Legacy Protection whole life insurance banner about building lifelong protection and cash value that grows with you.";
+        contactFirstBannerAlt = "Legend Legacy Protection whole life insurance banner about lifelong protection that stays with you and the people you love.";
         contactFirstProofKicker = "Whole life guidance";
-        contactFirstProofText = "Answer 5 quick questions to explore whether whole life coverage, lifelong protection, and cash value growth may fit your goals. See your estimate first.";
-        contactFirstProofChips = new List<string> { "Lifelong coverage", "Cash value focus", "You stay in control" };
+        contactFirstProofText = "Answer 5 quick questions to see whether lifelong protection that stays with you may fit the stability and peace of mind you want to keep in place.";
+        contactFirstProofChips = new List<string> { "Lifelong protection", "Stable long-term fit", "You stay in control" };
         contactFirstProcessingHeading = "Getting your whole life estimate...";
-        contactFirstProcessingHelper = "You’ll see estimated whole life fit first.";
+        contactFirstProcessingHelper = "You’ll see whether lifelong protection looks like the clearest fit first.";
         contactFirstProcessingNote = "Sizing your whole life range...";
-        finalStepHelper = "Send yourself this whole life estimate, then review your personalized options and schedule a time if you want help comparing coverage.";
-        agentTrustBio = "I’ll help you compare whole life options without pressure.";
+        finalStepHelper = "Send yourself this whole life estimate, then review whether lifelong protection fits the long-term stability you want for yourself and the people you love.";
+        agentTrustBio = "I’ll help you review whether lifelong protection truly fits the stability you want to keep in place.";
         finalSubmitButtonText = "Send My Whole Life Estimate";
         productFocusTitle = "Why people explore whole life";
-        productFocusCopy = "Whole life is usually explored for lasting protection, steady guarantees, and long-term value growth that stays aligned with the same product path.";
+        productFocusCopy = "Whole life is usually explored by people who want protection that stays with them, does not expire later, and supports a steadier long-term plan.";
         productFocusCards = new List<(string Title, string Copy)>
         {
-            ("Lifelong coverage", "Designed for people who want coverage built to stay in place for the long run."),
-            ("Steady value growth", "Often explored when predictable long-term cash value matters alongside protection."),
-            ("Simpler permanent path", "Keeps the conversation centered on a straightforward permanent coverage design.")
+            ("Protection that stays", "Designed for people who want something built to stay in place instead of expiring later."),
+            ("Long-term stability", "Often explored when dependable lifelong protection matters more than a temporary solution."),
+            ("Permanent planning", "Keeps the conversation centered on lasting protection and the role it plays in long-term security.")
         };
     }
     else if (normalizedOfferKey == "term")
@@ -628,21 +628,21 @@
         contactFirstBannerImageUrl = "~/images/ads/term-life-top-banner.png";
         contactFirstBannerAlt = "Legend Legacy Protection term life insurance banner about affordable protection for the years your family needs it most.";
         contactFirstProofKicker = "Term life guidance";
-        contactFirstProofText = "Answer 5 quick questions to explore whether affordable term life coverage may fit the years your family needs protection most. See your estimate first.";
-        contactFirstProofChips = new List<string> { "Affordable protection", "Estimate first", "You stay in control" };
+        contactFirstProofText = "Answer 5 quick questions to see whether term life may help protect the years your family depends on your income, your stability, and your presence the most.";
+        contactFirstProofChips = new List<string> { "Family stability", "Protect key years", "You stay in control" };
         contactFirstProcessingHeading = "Getting your term life estimate...";
-        contactFirstProcessingHelper = "You’ll see estimated term life fit first.";
+        contactFirstProcessingHelper = "You’ll see whether term life looks like the clearest practical fit first.";
         contactFirstProcessingNote = "Sizing your term life range...";
-        finalStepHelper = "Send yourself this term life estimate, then review your personalized options and schedule a time if you want help comparing coverage.";
-        agentTrustBio = "I’ll help you compare term life options without pressure.";
+        finalStepHelper = "Send yourself this term life estimate, then review how much protection may realistically help your family maintain stability if something happened unexpectedly.";
+        agentTrustBio = "I’ll help you review what level of protection may realistically matter most for your family.";
         finalSubmitButtonText = "Send My Term Life Estimate";
         productFocusTitle = "Why people explore term life";
-        productFocusCopy = "Term life is usually explored for affordable protection during the years income, bills, and family responsibilities matter most.";
+        productFocusCopy = "Term life is usually explored when the goal is practical family protection during the years income, bills, and day-to-day stability matter most.";
         productFocusCards = new List<(string Title, string Copy)>
         {
-            ("Affordable protection", "Often the first place people look when they want broader coverage at a lower monthly starting point."),
-            ("Specific term years", "Built around protecting the years your family or budget would feel the loss the most."),
-            ("Straightforward comparison", "Keeps the estimate focused on simple coverage and practical monthly cost.")
+            ("Protect the key years", "Built for the years your family would feel the loss of your income, stability, and presence the most."),
+            ("Practical monthly fit", "Often the first place families look when meaningful protection still needs to stay workable in the budget."),
+            ("Straightforward review", "Keeps the conversation centered on family stability instead of unnecessary complexity.")
         };
     }
     else if (normalizedOfferKey == "finalexpense")
@@ -650,21 +650,21 @@
         contactFirstBannerImageUrl = "~/images/ads/final-expense-top-banner.png";
         contactFirstBannerAlt = "Legend Legacy Protection final expense insurance banner about easing the burden, honoring your wishes, and leaving peace of mind.";
         contactFirstProofKicker = "Final expense guidance";
-        contactFirstProofText = "Answer 5 quick questions to explore whether simple final expense coverage may help with burial costs, family protection, and peace of mind. See your estimate first.";
-        contactFirstProofChips = new List<string> { "Cover final expenses", "Simple coverage", "You stay in control" };
+        contactFirstProofText = "Answer 5 quick questions to see whether final expense coverage may help your loved ones avoid funeral costs, final bills, and financial stress during an already difficult time.";
+        contactFirstProofChips = new List<string> { "Ease the burden", "Protect loved ones", "You stay in control" };
         contactFirstProcessingHeading = "Getting your final expense estimate...";
-        contactFirstProcessingHelper = "You’ll see estimated final expense fit first.";
+        contactFirstProcessingHelper = "You’ll see whether final expense protection looks like the clearest fit first.";
         contactFirstProcessingNote = "Sizing your final expense range...";
-        finalStepHelper = "Send yourself this final expense estimate, then review your personalized options and schedule a time if you want help comparing coverage.";
-        agentTrustBio = "I’ll help you compare final expense options without pressure.";
+        finalStepHelper = "Send yourself this final expense estimate, then review what level of protection may realistically help your loved ones avoid financial stress if something happened unexpectedly.";
+        agentTrustBio = "I’ll help you review what may best spare your loved ones financial pressure during a hard time.";
         finalSubmitButtonText = "Send My Final Expense Estimate";
         productFocusTitle = "Why people explore final expense";
-        productFocusCopy = "Final expense coverage is usually explored to help with burial costs, honor personal wishes, and keep final bills from falling on loved ones.";
+        productFocusCopy = "Final expense coverage is usually explored to help loved ones avoid carrying funeral costs, final bills, and added financial pressure during an already difficult moment.";
         productFocusCards = new List<(string Title, string Copy)>
         {
-            ("Final cost focus", "Keeps the estimate centered on burial, funeral, and other end-of-life cost planning."),
-            ("Smaller permanent need", "Often reviewed when a modest permanent benefit matters more than a large face amount."),
-            ("Simple review", "Designed to keep the conversation straightforward and easy to understand.")
+            ("Burden relief", "Keeps the estimate centered on easing the financial load families are often left carrying alone."),
+            ("Dignity and peace of mind", "Often reviewed by people who want final wishes handled without turning them into a family money problem."),
+            ("Straightforward protection", "Designed to keep the conversation simple, clear, and emotionally real.")
         };
     }
     else if (normalizedOfferKey == "mortgage")
@@ -672,48 +672,48 @@
         contactFirstBannerImageUrl = "~/images/ads/mortgage-protection-top-banner.png";
         contactFirstBannerAlt = "Legend Legacy Protection mortgage protection insurance banner about helping protect your home and the people in it, even if you’re gone.";
         contactFirstProofKicker = "Mortgage protection guidance";
-        contactFirstProofText = "Answer 5 quick questions to explore whether mortgage protection coverage may help keep your family in the home and cover the mortgage balance. See your estimate first.";
-        contactFirstProofChips = new List<string> { "Protect your home", "Cover mortgage balance", "You stay in control" };
+        contactFirstProofText = "Answer 5 quick questions to see whether mortgage protection may help your family stay in the home and keep monthly life from unraveling if something happened to you unexpectedly.";
+        contactFirstProofChips = new List<string> { "Protect the home", "Keep stability", "You stay in control" };
         contactFirstProcessingHeading = "Getting your mortgage protection estimate...";
-        contactFirstProcessingHelper = "You’ll see estimated mortgage protection fit first.";
+        contactFirstProcessingHelper = "You’ll see whether mortgage protection looks like the clearest home-first fit first.";
         contactFirstProcessingNote = "Sizing your mortgage protection range...";
-        finalStepHelper = "Send yourself this mortgage protection estimate, then review your personalized options and schedule a time if you want help comparing coverage.";
-        agentTrustBio = "I’ll help you compare mortgage protection options without pressure.";
+        finalStepHelper = "Send yourself this mortgage protection estimate, then review what level of protection may help your family keep the home and maintain financial breathing room.";
+        agentTrustBio = "I’ll help you review what may best protect the home and the financial breathing room around it.";
         finalSubmitButtonText = "Send My Mortgage Estimate";
         productFocusTitle = "Why people explore mortgage protection";
-        productFocusCopy = "Mortgage protection is usually explored when keeping the home secure and protecting the people who live in it is the priority.";
+        productFocusCopy = "Mortgage protection is usually explored when keeping the home secure and protecting the people who live in it is the priority, not overexplaining policy mechanics.";
         productFocusCards = new List<(string Title, string Copy)>
         {
-            ("Home-first protection", "Keeps the estimate focused on protecting the home and housing stability."),
-            ("Mortgage balance fit", "Centers the walkthrough on coverage sized around key mortgage or household obligations."),
-            ("Family continuity", "Often reviewed when preserving breathing room at home matters most.")
+            ("Home-first protection", "Keeps the estimate focused on protecting the home and the monthly stability your family depends on."),
+            ("Real household pressure", "Centers the walkthrough on the financial pressure your family would actually feel if something changed unexpectedly."),
+            ("Family continuity", "Often reviewed when staying in the home and keeping life steady matter most.")
         };
     }
     else if (normalizedOfferKey == "iul")
     {
         contactFirstBannerImageUrl = "~/images/ads/iul-top-banner.png";
-        contactFirstBannerAlt = "Legend Legacy Protection indexed universal life banner about growing your wealth, protecting your future, and leaving a legacy.";
+        contactFirstBannerAlt = "Legend Legacy Protection indexed universal life banner about flexible long-term protection, future planning, and legacy support.";
         contactFirstProofKicker = "IUL guidance";
-        contactFirstProofText = "Answer 5 quick questions to explore whether indexed universal life may fit your long-term protection, cash value growth, and legacy goals. See your estimate first.";
-        contactFirstProofChips = new List<string> { "Growth potential", "Flexible cash value", "You stay in control" };
+        contactFirstProofText = "Answer 5 quick questions to see whether indexed universal life may fit the kind of long-term protection, flexibility, and future planning you are trying to build around.";
+        contactFirstProofChips = new List<string> { "Long-term flexibility", "Future planning", "You stay in control" };
         contactFirstProcessingHeading = "Getting your IUL estimate...";
-        contactFirstProcessingHelper = "You’ll see estimated indexed universal life fit first.";
+        contactFirstProcessingHelper = "You’ll see whether indexed universal life looks like the clearest long-range fit first.";
         contactFirstProcessingNote = "Sizing your IUL range...";
-        finalStepHelper = "Send yourself this IUL estimate, then review your personalized options and schedule a time if you want help comparing coverage.";
-        agentTrustBio = "I’ll help you compare IUL options without pressure.";
+        finalStepHelper = "Send yourself this IUL estimate, then review whether a more flexible long-term protection strategy may fit your goals and future plans.";
+        agentTrustBio = "I’ll help you review whether a more flexible long-term protection strategy actually fits what you want to build.";
         finalSubmitButtonText = "Send My IUL Estimate";
         productFocusTitle = "Why people explore indexed universal life";
-        productFocusCopy = "Indexed universal life is usually explored when someone wants long-term protection with flexible cash value growth potential and legacy planning in the same conversation.";
+        productFocusCopy = "Indexed universal life is usually explored when someone wants long-term protection with more flexibility built into future planning and legacy conversations.";
         productFocusCards = new List<(string Title, string Copy)>
         {
-            ("Growth potential", "Keeps the estimate focused on long-term cash value growth potential tied to an IUL design."),
-            ("Flexible access", "Centers the conversation on how flexibility and access to value can matter over time."),
-            ("Legacy planning", "Often reviewed when long-range protection and leaving something behind are both priorities.")
+            ("Long-term flexibility", "Keeps the estimate focused on protection designed to provide more flexibility over time."),
+            ("Future planning", "Centers the conversation on how long-range structure and future access can matter later on."),
+            ("Legacy planning", "Often reviewed when long-term protection and leaving something meaningful behind are both priorities.")
         };
     }
     if (isLowFrictionOptionsVariant && string.Equals(normalizedOfferKey, "life", StringComparison.OrdinalIgnoreCase))
     {
-        stepOneContinueButtonText = "See What May Fit";
+        stepOneContinueButtonText = "See What May Realistically Fit";
         finalSubmitButtonText = "Send My Estimate";
         finalStepHeading = "Your personalized estimate preview is ready";
         finalStepHelper = "Send yourself the estimate, then review your personalized options and schedule a time if you want help comparing coverage.";
@@ -723,18 +723,18 @@
         heroSubheadline = lowFrictionHeroSubheadline;
         heroTrustNote = "Estimate preview • Personalized review • Scheduling available";
         contactFirstProofKicker = "Quick options review";
-        contactFirstProofText = "You’ll see a practical starting point and monthly range, then decide whether to review the recommendation and schedule time to compare options.";
+        contactFirstProofText = "You’ll see which type of protection may realistically fit your family, budget, and long-term goals before deciding whether to continue into a personalized review.";
         contactFirstProofChips = new List<string> { "5 quick questions", "Estimate preview", "Scheduling available" };
         contactFirstProcessingHeading = "Getting your estimate...";
         contactFirstProcessingHelper = "A practical starting point is loading now.";
         contactFirstProcessingNote = "Sizing your likely fit...";
         productFocusTitle = "What your result may compare first";
-        productFocusCopy = "Most people exploring general life insurance are really comparing which starting point may fit best before they talk with someone.";
+        productFocusCopy = "Most people exploring life insurance are really trying to figure out which protection path may best fit their family, budget, and long-term goals before they speak with someone.";
         productFocusCards = new List<(string Title, string Copy)>
         {
-            ("A likely starting point", "See which coverage path may fit best based on what matters most to you right now."),
-            ("A realistic range", "Review a practical starting monthly estimate without pretending it is a final underwriting offer."),
-            ("Low-pressure next step", "Keep the result first, then decide later if you want help comparing options.")
+            ("A guided starting point", "See which protection path may realistically fit what matters most to you right now."),
+            ("A realistic range", "Review a practical monthly estimate without pretending it is a final underwriting offer."),
+            ("A stronger next step", "Keep the result first, then decide whether continuing into a personalized review makes sense.")
         };
     }
 
@@ -754,11 +754,11 @@
     var heroTrustAriaLabel = "Licensed professional guidance";
     var showInlineMobileTrustBlock = false;
     var step1IntroTitle = "Start here";
-    var step1IntroHelper = "Pick the closest fit. Answer 5 quick questions to see what may fit and your estimate.";
+    var step1IntroHelper = "Pick the closest fit. Answer 5 quick questions to see which protection path may fit and what the estimate may look like.";
     if (isLowFrictionOptionsVariant && string.Equals(normalizedOfferKey, "life", StringComparison.OrdinalIgnoreCase))
     {
         step1IntroTitle = "Start with 5 quick questions";
-        step1IntroHelper = "Answer 5 quick questions to see what may fit and your starting estimate.";
+        step1IntroHelper = "Answer 5 quick questions to see which protection path may fit and your starting estimate.";
     }
     IReadOnlyList<(string Label, int Value, string RangeLabel)> ageQuickSelectOptions = isFinalExpenseOffer
         ? new List<(string Label, int Value, string RangeLabel)>
@@ -6135,12 +6135,12 @@ body.life-final-step-active.page-variant-contact-first-education-v1 #lifeEducati
                     @if (showGenericCoverageOverview)
                     {
                         <section class="lq-education-panel lq-options-summary" aria-labelledby="lifeEducationOptionsTitle">
-                            <div class="lq-step-title" id="lifeEducationOptionsTitle">Common Starting Points</div>
-                            <p class="lq-options-summary-copy">If you want a little context before you talk with us, these are the three life insurance conversations most people compare first.</p>
+                            <div class="lq-step-title" id="lifeEducationOptionsTitle">Three Protection Paths Families Compare First</div>
+                            <p class="lq-options-summary-copy">Most people are not looking for a random quote. They are trying to figure out which protection path may best preserve family stability, long-term security, and peace of mind.</p>
                             <div class="lq-options-summary-list">
                                 <article class="lq-option-summary-card is-term">
                                     <div class="lq-option-summary-top">
-                                        <span class="lq-option-chip">Common first look</span>
+                                        <span class="lq-option-chip">Protect the working years</span>
                                         <div class="lq-option-visual" aria-hidden="true">
                                             <svg viewBox="0 0 96 96" fill="none">
                                                 <path d="M18 60H62" stroke="#E6C36B" stroke-width="7" stroke-linecap="round" />
@@ -6152,16 +6152,16 @@ body.life-final-step-active.page-variant-contact-first-education-v1 #lifeEducati
                                         </div>
                                     </div>
                                     <div class="lq-option-title">Term Life Insurance</div>
-                                    <p class="lq-option-copy">Often the first place people look when protecting income, mortgage years, or family responsibilities is the priority.</p>
+                                    <p class="lq-option-copy">Often the first place families start when the goal is replacing income, protecting the mortgage years, and keeping life financially steady if something changed unexpectedly.</p>
                                     <ul class="lq-option-bullets">
-                                        <li>Usually the most straightforward coverage conversation.</li>
-                                        <li>Often reviewed when affordability matters most.</li>
+                                        <li>Usually the clearest first step when practical family protection matters most.</li>
+                                        <li>Often the best first conversation when affordability and meaningful coverage both matter.</li>
                                     </ul>
                                 </article>
 
                                 <article class="lq-option-summary-card is-whole">
                                     <div class="lq-option-summary-top">
-                                        <span class="lq-option-chip">Permanent coverage</span>
+                                        <span class="lq-option-chip">Protection that stays</span>
                                         <div class="lq-option-visual" aria-hidden="true">
                                             <svg viewBox="0 0 96 96" fill="none">
                                                 <circle cx="48" cy="48" r="15" fill="#E5BD63" fill-opacity=".18" stroke="#F5D68E" stroke-width="4" />
@@ -6172,16 +6172,16 @@ body.life-final-step-active.page-variant-contact-first-education-v1 #lifeEducati
                                         </div>
                                     </div>
                                     <div class="lq-option-title">Whole Life Insurance</div>
-                                    <p class="lq-option-copy">A permanent option designed to stay in place long term and build steady value over time.</p>
+                                    <p class="lq-option-copy">A permanent path for people who want protection that does not expire later and want something designed to stay in place through every stage of life.</p>
                                     <ul class="lq-option-bullets">
-                                        <li>Often reviewed when guarantees and consistency matter.</li>
-                                        <li>A simpler permanent path for people who want long-term protection.</li>
+                                        <li>Often reviewed when lifelong stability and dependable protection matter most.</li>
+                                        <li>A stronger fit for people who want long-term security instead of temporary coverage.</li>
                                     </ul>
                                 </article>
 
                                 <article class="lq-option-summary-card is-universal">
                                     <div class="lq-option-summary-top">
-                                        <span class="lq-option-chip">Flexible / IUL options</span>
+                                        <span class="lq-option-chip">Flexible long-range planning</span>
                                         <div class="lq-option-visual" aria-hidden="true">
                                             <svg viewBox="0 0 96 96" fill="none">
                                                 <path d="M18 66C28 56 33 47 44 40C55 33 66 31 78 30" stroke="#F2CF82" stroke-width="5" stroke-linecap="round" />
@@ -6194,10 +6194,10 @@ body.life-final-step-active.page-variant-contact-first-education-v1 #lifeEducati
                                         </div>
                                     </div>
                                     <div class="lq-option-title">Universal Life Insurance</div>
-                                    <p class="lq-option-copy">A more flexible permanent path that can include indexed universal life, or IUL, in longer-range planning conversations.</p>
+                                    <p class="lq-option-copy">A more flexible long-term protection conversation that can include indexed universal life, or IUL, when future planning and legacy goals both matter.</p>
                                     <ul class="lq-option-bullets">
-                                        <li>Often reviewed when long-term flexibility matters.</li>
-                                        <li>Usually worth discussing with guidance because the tradeoffs are more nuanced.</li>
+                                        <li>Often reviewed when flexibility and long-range planning both matter.</li>
+                                        <li>Best compared with guidance because the tradeoffs are more strategic and personal.</li>
                                     </ul>
                                 </article>
                             </div>
@@ -6806,10 +6806,10 @@ body.life-final-step-active.page-variant-contact-first-education-v1 #lifeEducati
   const AGE_SELECTION_PROVIDED = '@(hasExplicitAgeSelection ? "true" : "false")' === 'true';
   const PROCESSING_BRIDGE_MS = 450;
   const postSubmitSuccessHeadingText = 'Your personalized review is ready.';
-  const postSubmitSuccessHelperText = 'Review the recommendation below, then schedule a time while this estimate is fresh if you want help comparing coverage.';
+  const postSubmitSuccessHelperText = 'Review the recommendation below, then schedule while this is fresh if you want help comparing the fit in more detail.';
   const publicBookingHeadingText = 'Schedule Your Review';
   const publicBookingKickerText = 'Continue your personalized review';
-  const publicBookingCopyText = 'Choose a time to review this estimate, compare coverage, and confirm the next step that fits you best.';
+  const publicBookingCopyText = 'Choose a time to continue your personalized review, compare what surfaced, and confirm what may realistically fit best.';
   const publicBookingCtaText = 'Schedule Your Review';
   const publicBookingFallbackText = 'Continue in scheduling';
   const publicBookingLoadingText = 'Preparing your scheduling options...';
@@ -7627,17 +7627,17 @@ body.life-final-step-active.page-variant-contact-first-education-v1 #lifeEducati
   function resolveStep2FitDescriptor(topicLabel) {
     switch (String(topicLabel || '').trim().toLowerCase()) {
       case 'term life':
-        return 'term life needs, family, and budget';
+        return 'the years your family depends on your income, stability, and presence';
       case 'whole life':
-        return 'whole life goals, family, and budget';
+        return 'lifelong protection, long-term stability, and lasting peace of mind';
       case 'final expense':
-        return 'final expense needs and budget';
+        return 'protecting loved ones from funeral costs, final bills, and added pressure';
       case 'mortgage protection':
-        return 'mortgage, family, and budget';
+        return 'the home, monthly stability, and the people who depend on both';
       case 'indexed universal life':
-        return 'long-term protection goals, flexibility, and budget';
+        return 'long-term protection, flexibility, and future planning';
       default:
-        return 'coverage needs, family, and budget';
+        return 'the protection, stability, and long-term fit that matter most';
     }
   }
 
@@ -7750,6 +7750,16 @@ body.life-final-step-active.page-variant-contact-first-education-v1 #lifeEducati
     return formatRange(ladder[ladder.length - 2], ladder[ladder.length - 1]);
   }
 
+  function resolveDisplayedOfferKeyForStep2(preview) {
+    const normalized = normalizeStep2Preview(preview);
+    return String(normalized.primary.policyKey || normalized.offerKey || '').trim().toLowerCase();
+  }
+
+  function isGeneralLifeQuoteForStep2(preview) {
+    const normalized = normalizeStep2Preview(preview);
+    return String(normalized.offerKey || '').trim().toLowerCase() === 'life';
+  }
+
   function humanizeProtectingWhoForStep2(value) {
     switch (String(value || '').trim().toLowerCase()) {
       case 'spouse_or_partner':
@@ -7768,40 +7778,40 @@ body.life-final-step-active.page-variant-contact-first-education-v1 #lifeEducati
   function humanizeCoverageGoalForStep2(value) {
     switch (String(value || '').trim().toLowerCase()) {
       case 'replace_income':
-        return 'income protection';
+        return 'family income stability';
       case 'mortgage_or_bills':
-        return 'mortgage and bills';
+        return 'keeping up with the mortgage and major bills';
       case 'final_expenses':
-        return 'final expenses';
+        return 'protecting loved ones from final expenses';
       case 'leave_something':
       case 'leave_legacy':
-        return 'legacy planning';
+        return 'leaving behind lasting support';
       case 'protect_term_years':
-        return 'key protection years';
+        return 'protecting the years your family depends on you most';
       case 'keep_costs_affordable':
-        return 'efficient monthly cost';
+        return 'keeping protection workable in the monthly budget';
       case 'lifelong_protection':
-        return 'lifelong coverage';
+        return 'lifelong protection that stays in place';
       case 'cash_value_growth':
-        return 'cash value growth';
+        return 'long-term protection with future flexibility';
       case 'burial_costs':
-        return 'burial costs';
+        return 'helping with funeral and burial costs';
       case 'final_bills':
-        return 'final bills';
+        return 'covering funeral costs and final bills';
       case 'ease_family_burden':
-        return 'easing the burden on family';
+        return 'easing the burden on loved ones';
       case 'leave_small_benefit':
-        return 'a modest benefit';
+        return 'creating a financial cushion for loved ones';
       case 'mortgage_balance':
-        return 'covering the mortgage balance';
+        return 'helping protect the home';
       case 'monthly_payment':
-        return 'covering the monthly payment';
+        return 'keeping the house payment manageable';
       case 'stay_in_home':
-        return 'keeping the family in the home';
+        return 'helping loved ones stay in the home';
       case 'household_bills':
-        return 'household stability';
+        return 'protecting home and household stability';
       case 'future_access':
-        return 'future cash value access';
+        return 'keeping future flexibility in the plan';
       default:
         return '';
     }
@@ -7816,6 +7826,30 @@ body.life-final-step-active.page-variant-contact-first-education-v1 #lifeEducati
       default:
         return '';
     }
+  }
+
+  function buildPriorityContextForStep2(preview) {
+    const normalized = normalizeStep2Preview(preview);
+    const protectingLabel = humanizeProtectingWhoForStep2(normalized.protectingWho);
+    const goalLabel = humanizeCoverageGoalForStep2(normalized.coverageGoal);
+    const segments = [];
+
+    if (protectingLabel) {
+      segments.push(`protecting ${protectingLabel.toLowerCase()}`);
+    }
+    if (goalLabel) {
+      segments.push(goalLabel);
+    }
+
+    if (!segments.length) {
+      return '';
+    }
+
+    if (segments.length === 1) {
+      return segments[0];
+    }
+
+    return `${segments[0]} and ${segments[1]}`;
   }
 
   function buildStep2SignalChips(preview, maxItems = 4) {
@@ -7833,7 +7867,7 @@ body.life-final-step-active.page-variant-contact-first-education-v1 #lifeEducati
     if (tobaccoLabel) chips.push(tobaccoLabel);
     if (protectingLabel) chips.push(`Protecting ${protectingLabel}`);
     if (goalLabel) chips.push(goalLabel.replace(/^\w/, (letter) => letter.toUpperCase()));
-    if (coverageTarget) chips.push(`${coverageTarget} target`);
+    if (coverageTarget) chips.push(`Around ${coverageTarget}`);
 
     const chipsHtml = chips
       .slice(0, Math.max(0, maxItems))
@@ -7848,8 +7882,8 @@ body.life-final-step-active.page-variant-contact-first-education-v1 #lifeEducati
   function buildStep2EstimateCardHtml(preview) {
     const normalized = normalizeStep2Preview(preview);
     const recommendationTier = normalized.displayMode === 'comparison' && normalized.secondary?.policyKey
-      ? 'Likely first option'
-      : 'Likely fit';
+      ? 'Likely first path'
+      : 'Likely starting point';
     const recommendedCoverageRange = buildRecommendedCoverageRangeForStep2(normalized)
       || formatCoverageFigureForStep2(normalized.requestedCoverageAmount || normalized.primary.coverageAmount)
       || 'To be confirmed';
@@ -7875,86 +7909,238 @@ body.life-final-step-active.page-variant-contact-first-education-v1 #lifeEducati
       </div>`;
   }
 
+  function buildPreSubmitEstimateTitle(preview) {
+    const normalized = normalizeStep2Preview(preview);
+    const policyType = normalized.primary.policyType || 'Life Insurance';
+
+    switch (resolveDisplayedOfferKeyForStep2(normalized)) {
+      case 'term':
+        return `${policyType} looks like the clearest first fit.`;
+      case 'wholelife':
+        return `${policyType} looks like the clearest lasting fit.`;
+      case 'finalexpense':
+        return `${policyType} looks like the clearest first fit.`;
+      case 'mortgage':
+        return `${policyType} looks like the clearest home-first fit.`;
+      case 'iul':
+        return `${policyType} looks like the clearest long-range fit.`;
+      default:
+        return `${policyType} looks like the clearest place to start.`;
+    }
+  }
+
+  function buildPostSubmitEstimateTitle(preview) {
+    const normalized = normalizeStep2Preview(preview);
+    const policyType = normalized.primary.policyType || 'Life Insurance';
+
+    switch (resolveDisplayedOfferKeyForStep2(normalized)) {
+      case 'term':
+        return `${policyType} is the clearest first protection path to review.`;
+      case 'wholelife':
+        return `${policyType} is the clearest long-term protection path to review.`;
+      case 'finalexpense':
+        return `${policyType} is the clearest family-relief path to review.`;
+      case 'mortgage':
+        return `${policyType} is the clearest home-protection path to review.`;
+      case 'iul':
+        return `${policyType} is the clearest long-range protection path to review.`;
+      default:
+        return `${policyType} is the clearest first option to review.`;
+    }
+  }
+
+  function buildStep2UnlockCopy(preview) {
+    switch (resolveDisplayedOfferKeyForStep2(preview)) {
+      case 'term':
+        return 'Save this estimate to unlock the full family-protection review and continue into scheduling.';
+      case 'wholelife':
+        return 'Save this estimate to unlock the full lifelong-protection review and continue into scheduling.';
+      case 'finalexpense':
+        return 'Save this estimate to unlock the full family-relief review and continue into scheduling.';
+      case 'mortgage':
+        return 'Save this estimate to unlock the full home-protection review and continue into scheduling.';
+      case 'iul':
+        return 'Save this estimate to unlock the full long-range protection review and continue into scheduling.';
+      default:
+        return 'Save this estimate to unlock the full recommendation review and continue into scheduling.';
+    }
+  }
+
   function buildCompactStep2Reason(preview) {
     const normalized = normalizeStep2Preview(preview);
-    if (normalized.primary.recommendationReason) {
-      return normalized.primary.recommendationReason;
+    const priorityContext = buildPriorityContextForStep2(normalized);
+
+    switch (resolveDisplayedOfferKeyForStep2(normalized)) {
+      case 'term':
+        return priorityContext
+          ? `Term life looks like the clearest first fit because you are focused on ${priorityContext} during the years your family depends on you the most.`
+          : 'Term life looks like the clearest first fit because it is built to help families protect the years when losing income would hit the hardest.';
+      case 'wholelife':
+        return priorityContext
+          ? `Whole life looks like the clearest lasting fit because you are leaning toward ${priorityContext} with protection that stays in place instead of expiring later.`
+          : 'Whole life looks like the clearest lasting fit because it is designed for people who want protection that stays in place instead of expiring later.';
+      case 'finalexpense':
+        return priorityContext
+          ? `Final expense looks like the clearest first fit because you are focused on ${priorityContext} without leaving loved ones to handle the pressure alone.`
+          : 'Final expense looks like the clearest first fit because it is built to help loved ones avoid funeral costs, final bills, and added financial pressure.';
+      case 'mortgage':
+        return priorityContext
+          ? `Mortgage protection looks like the clearest first fit because you are focused on ${priorityContext} and keeping life steady at home.`
+          : 'Mortgage protection looks like the clearest first fit because it is built around helping families keep the home and monthly stability in place.';
+      case 'iul':
+        return priorityContext
+          ? `Indexed universal life looks like the clearest long-range fit because you are focused on ${priorityContext} with more flexibility built into the plan.`
+          : 'Indexed universal life looks like the clearest long-range fit because it is designed for people thinking long-term about protection, flexibility, and future planning.';
+      default:
+        return priorityContext
+          ? `This looks like the clearest place to start because you are focused on ${priorityContext}.`
+          : 'This looks like the clearest place to start based on the protection, budget, and long-term priorities you shared.';
     }
-
-    const protectingLabel = humanizeProtectingWhoForStep2(normalized.protectingWho);
-    const goalLabel = humanizeCoverageGoalForStep2(normalized.coverageGoal);
-    const policyType = normalized.primary.policyType || 'this option';
-
-    if (protectingLabel && goalLabel) {
-      return `Based on what you shared about protecting ${protectingLabel.toLowerCase()} and ${goalLabel}, ${policyType} looks like the clearest first option to review.`;
-    }
-
-    if (goalLabel) {
-      return `Based on what you shared, ${policyType} looks like the clearest first option to review for ${goalLabel}.`;
-    }
-
-    return `Based on what you shared, ${policyType} looks like the clearest place to start reviewing options.`;
   }
 
   function buildExpandedStep2Reason(preview) {
     const normalized = normalizeStep2Preview(preview);
-    const policyType = normalized.primary.policyType || 'this option';
-    const coverageRange = buildRecommendedCoverageRangeForStep2(normalized)
-      || formatCoverageFigureForStep2(normalized.requestedCoverageAmount || normalized.primary.coverageAmount);
-    const protectingLabel = humanizeProtectingWhoForStep2(normalized.protectingWho);
-    const goalLabel = humanizeCoverageGoalForStep2(normalized.coverageGoal);
-    const ageLabel = normalized.age > 0
-      ? `age ${Math.round(normalized.age)}`
-      : normalized.ageBand ? `age ${normalized.ageBand}` : '';
-    const tobaccoLabel = humanizeTobaccoUseForStep2(normalized.tobaccoUse);
-    const factors = [protectingLabel ? `protecting ${protectingLabel.toLowerCase()}` : '', goalLabel ? goalLabel : '', coverageRange ? `${coverageRange} of coverage` : '', ageLabel, tobaccoLabel ? `${tobaccoLabel.toLowerCase()} pricing assumptions` : '']
-      .filter(Boolean);
+    const priorityContext = buildPriorityContextForStep2(normalized);
 
-    if (!factors.length) {
-      return `${policyType} looks like the clearest first option to review based on the answers you gave.`;
+    switch (resolveDisplayedOfferKeyForStep2(normalized)) {
+      case 'term':
+        return `Term life rose to the top because it is often the most practical way to help a family maintain financial stability if income disappears during the years it matters most.${priorityContext ? ` That lines up with what you shared about ${priorityContext}.` : ''}`;
+      case 'wholelife':
+        return `Whole life rose to the top because it fits people who want protection that stays with them instead of expiring later.${priorityContext ? ` That matches what you shared about ${priorityContext}.` : ''}`;
+      case 'finalexpense':
+        return `Final expense rose to the top because it is designed around protecting loved ones from funeral costs, final bills, and financial stress during an already difficult time.${priorityContext ? ` That lines up with what you shared about ${priorityContext}.` : ''}`;
+      case 'mortgage':
+        return `Mortgage protection rose to the top because it is built around helping a family keep the home and preserve financial breathing room if something unexpected happens.${priorityContext ? ` That matches what you shared about ${priorityContext}.` : ''}`;
+      case 'iul':
+        return `Indexed universal life rose to the top because it can fit people who want long-term protection with more flexibility built into future planning.${priorityContext ? ` That lines up with what you shared about ${priorityContext}.` : ''}`;
+      default:
+        return `This protection path rose to the top because it looks like the most realistic place to start based on the family, budget, and long-term priorities you shared.${priorityContext ? ` That includes ${priorityContext}.` : ''}`;
     }
-
-    return `${policyType} rose to the top for ${factors.join(', ')}.`;
   }
 
   function buildExpandedStep2Reasons(preview) {
     const normalized = normalizeStep2Preview(preview);
-    const reasons = normalized.primary.reasons.slice(0, 3);
-    if (reasons.length) {
-      return reasons;
-    }
-
-    const fallbacks = [];
-    const goalLabel = humanizeCoverageGoalForStep2(normalized.coverageGoal);
-    const protectingLabel = humanizeProtectingWhoForStep2(normalized.protectingWho);
     const coverageRange = buildRecommendedCoverageRangeForStep2(normalized)
       || formatCoverageFigureForStep2(normalized.requestedCoverageAmount || normalized.primary.coverageAmount);
+    const priorityContext = buildPriorityContextForStep2(normalized);
 
-    if (goalLabel) {
-      fallbacks.push(`Keeps the recommendation focused on ${goalLabel}.`);
+    switch (resolveDisplayedOfferKeyForStep2(normalized)) {
+      case 'term':
+        return [
+          priorityContext ? `Your answers point toward ${priorityContext}, which is where term life is often most useful.` : 'Built to help protect the years your family depends on you most.',
+          'Keeps the review centered on family stability and practical monthly fit.',
+          coverageRange ? `Starts the conversation around roughly ${coverageRange} of protection, then confirms whether that feels realistic.` : 'Creates a clear first conversation before comparing other options.'
+        ].filter(Boolean).slice(0, 3);
+      case 'wholelife':
+        return [
+          'Built for people who want protection that stays in place instead of expiring later.',
+          'Keeps the review centered on long-term stability and lasting protection.',
+          coverageRange ? `Starts the conversation around ${coverageRange} while confirming whether a lifelong approach feels aligned.` : 'Helps confirm whether a lifelong protection approach feels aligned.'
+        ].slice(0, 3);
+      case 'finalexpense':
+        return [
+          'Keeps the focus on funeral costs, final bills, and protecting loved ones from added pressure.',
+          'Built around easing the burden on family during an already difficult time.',
+          'Helps review what level of protection may keep final wishes from becoming a financial problem.'
+        ];
+      case 'mortgage':
+        return [
+          'Keeps the review centered on the home and the monthly stability your family depends on.',
+          'Fits a goal of helping loved ones stay in the home if something unexpected happens.',
+          coverageRange ? `Starts with roughly ${coverageRange} so the conversation stays grounded in real household pressure.` : 'Keeps the conversation grounded in real household pressure instead of generic policy talk.'
+        ].slice(0, 3);
+      case 'iul':
+        return [
+          'Keeps the conversation focused on long-term protection with more flexibility over time.',
+          'Fits people thinking beyond short-term coverage and into future planning.',
+          'Helps compare whether a more strategic protection structure makes sense for your goals.'
+        ];
+      default:
+        return [
+          'Surfaces the protection path most aligned with what you said matters right now.',
+          'Keeps the review centered on family fit, budget, and long-term direction.',
+          'Gives you a clearer place to start before comparing alternatives.'
+        ];
     }
-    if (protectingLabel) {
-      fallbacks.push(`Centers the review on protecting ${protectingLabel.toLowerCase()}.`);
-    }
-    if (coverageRange) {
-      fallbacks.push(`Starts the review around ${coverageRange} of coverage.`);
-    }
-
-    return fallbacks.slice(0, 3);
   }
 
   function buildExpandedStep2NextReviewCopy(preview) {
     const normalized = normalizeStep2Preview(preview);
-    const policyType = normalized.primary.policyType || 'this option';
-    const coverageRange = buildRecommendedCoverageRangeForStep2(normalized)
-      || formatCoverageFigureForStep2(normalized.requestedCoverageAmount || normalized.primary.coverageAmount)
-      || 'this range';
+    const secondaryType = normalized.secondary?.policyType;
 
-    if (normalized.secondary?.policyType) {
-      return `Start with ${policyType} in the ${coverageRange} range, then decide whether ${normalized.secondary.policyType} is worth comparing as an alternate fit.`;
+    if (isGeneralLifeQuoteForStep2(normalized) && secondaryType) {
+      return `Review the protection path that surfaced for you first, then decide whether ${secondaryType} is worth comparing for your situation.`;
     }
 
-    return `Start by reviewing whether ${policyType} in the ${coverageRange} range fits the protection and budget priorities you shared.`;
+    switch (resolveDisplayedOfferKeyForStep2(normalized)) {
+      case 'term':
+        return 'Review how much protection may realistically help your family maintain stability if something happened unexpectedly.';
+      case 'wholelife':
+        return 'Review whether permanent protection may fit the long-term stability you want for yourself and the people you love.';
+      case 'finalexpense':
+        return 'Review what level of protection may realistically help your loved ones avoid financial stress if something happened unexpectedly.';
+      case 'mortgage':
+        return 'Review what level of protection may help your family keep the home and maintain financial breathing room.';
+      case 'iul':
+        return 'Review whether a more flexible long-term protection strategy may fit your goals and future plans.';
+      default:
+        return 'Review the protection path that surfaced for you and compare what may realistically fit your situation best.';
+    }
+  }
+
+  function buildPostSubmitContinueCopy(preview) {
+    const leadIn = hasAgentTrustProfile
+      ? `Continue your personalized review by choosing a time with ${agentDirectContactName}`
+      : 'Continue your personalized review by choosing a time below';
+
+    switch (resolveDisplayedOfferKeyForStep2(preview)) {
+      case 'term':
+        return `${leadIn} to see what level of protection may help your family stay financially steady.`;
+      case 'wholelife':
+        return `${leadIn} to see whether lifelong protection fits the stability you want to keep in place.`;
+      case 'finalexpense':
+        return `${leadIn} to see what level of protection may spare your loved ones added financial stress.`;
+      case 'mortgage':
+        return `${leadIn} to see what may best help your family keep the home and financial breathing room.`;
+      case 'iul':
+        return `${leadIn} to see whether a more flexible long-term protection strategy fits your future plans.`;
+      default:
+        return `${leadIn} to compare the protection path that surfaced for you and confirm what may realistically fit best.`;
+    }
+  }
+
+  function resolvePostSubmitSuccessHelperText(preview) {
+    switch (resolveDisplayedOfferKeyForStep2(preview)) {
+      case 'term':
+        return 'Review the recommendation below, then schedule while this is fresh if you want help judging what level of protection may help your family stay financially steady.';
+      case 'wholelife':
+        return 'Review the recommendation below, then schedule while this is fresh if you want help deciding whether lifelong protection fits the stability you want to keep in place.';
+      case 'finalexpense':
+        return 'Review the recommendation below, then schedule while this is fresh if you want help seeing what level of protection may spare your loved ones added financial stress.';
+      case 'mortgage':
+        return 'Review the recommendation below, then schedule while this is fresh if you want help judging what may best protect the home and your family’s monthly breathing room.';
+      case 'iul':
+        return 'Review the recommendation below, then schedule while this is fresh if you want help evaluating whether a more flexible long-term protection strategy fits your plans.';
+      default:
+        return 'Review the recommendation below, then schedule while this is fresh if you want help comparing which protection path may realistically fit you best.';
+    }
+  }
+
+  function resolvePublicBookingCopy(preview) {
+    switch (resolveDisplayedOfferKeyForStep2(preview)) {
+      case 'term':
+        return 'Choose a time to continue your personalized review and see what level of term protection may help your family stay financially stable if something unexpected happened.';
+      case 'wholelife':
+        return 'Choose a time to continue your personalized review and see whether lifelong protection fits the long-term stability you want to keep in place.';
+      case 'finalexpense':
+        return 'Choose a time to continue your personalized review and see what level of protection may help your loved ones avoid funeral costs, final bills, and added pressure.';
+      case 'mortgage':
+        return 'Choose a time to continue your personalized review and see what level of protection may help your family keep the home and preserve breathing room.';
+      case 'iul':
+        return 'Choose a time to continue your personalized review and see whether a more flexible long-term protection strategy fits your goals and future plans.';
+      default:
+        return 'Choose a time to continue your personalized review, compare the protection path that surfaced for you, and confirm what may realistically fit your situation best.';
+    }
   }
 
   function buildPreSubmitEstimateSummaryHtml(preview) {
@@ -7963,13 +8149,13 @@ body.life-final-step-active.page-variant-contact-first-education-v1 #lifeEducati
       <div class="lq-contact-estimate-wrap is-preview-locked" id="lifeStep2EstimateSummary">
         <div class="lq-contact-estimate-head">
           <div class="lq-contact-estimate-kicker">Estimate preview</div>
-          <div class="lq-contact-estimate-title">${escapeHtml(normalized.primary.policyType || 'Life Insurance')} looks like the clearest place to start.</div>
+          <div class="lq-contact-estimate-title">${escapeHtml(buildPreSubmitEstimateTitle(normalized))}</div>
           <div class="lq-contact-estimate-copy">${escapeHtml(buildCompactStep2Reason(normalized))}</div>
         </div>
         ${buildStep2EstimateCardHtml(normalized)}
         <div class="lq-contact-estimate-unlock">
           <div class="lq-contact-estimate-unlock-label">Full review after submit</div>
-          <div class="lq-contact-estimate-unlock-copy">Save this estimate to unlock the full recommendation review and continue into scheduling.</div>
+          <div class="lq-contact-estimate-unlock-copy">${escapeHtml(buildStep2UnlockCopy(normalized))}</div>
         </div>
         ${buildStep2SignalChips(normalized, 4)}
         <div class="lq-estimate-disclaimer">Illustrative estimate only. Final pricing depends on underwriting and carrier review.</div>
@@ -7986,22 +8172,20 @@ body.life-final-step-active.page-variant-contact-first-education-v1 #lifeEducati
       || 'To be confirmed';
     const secondaryValue = normalized.secondary?.policyType || humanizeTobaccoUseForStep2(normalized.tobaccoUse) || 'Personalized review';
     const secondaryLabel = normalized.secondary?.policyType ? 'Also worth comparing' : 'Pricing profile';
-    const nextStepCopy = hasAgentTrustProfile
-      ? `Continue your personalized review by choosing a time with ${agentDirectContactName} while this estimate is still fresh.`
-      : 'Continue your personalized review by choosing a time below while this estimate is still fresh.';
+    const nextStepCopy = buildPostSubmitContinueCopy(normalized);
 
     return `
       <div class="lq-contact-estimate-wrap is-expanded-review" id="lifeStep2EstimateSummary">
         <div class="lq-contact-estimate-head">
           <div class="lq-contact-estimate-kicker">Personalized recommendation</div>
-          <div class="lq-contact-estimate-title">${escapeHtml(normalized.primary.policyType || 'Life Insurance')} is the clearest first option to review.</div>
+          <div class="lq-contact-estimate-title">${escapeHtml(buildPostSubmitEstimateTitle(normalized))}</div>
           <div class="lq-contact-estimate-copy">${escapeHtml(buildExpandedStep2Reason(normalized))}</div>
         </div>
         ${buildStep2EstimateCardHtml(normalized)}
         <div class="lq-contact-review-grid">
           <div class="lq-contact-estimate-personal">
             <div class="lq-contact-estimate-personal-label">Why this surfaced</div>
-            <div class="lq-contact-estimate-personal-copy">${escapeHtml(normalized.primary.recommendationReason || buildCompactStep2Reason(normalized))}</div>
+            <div class="lq-contact-estimate-personal-copy">${escapeHtml(buildCompactStep2Reason(normalized))}</div>
             ${reasonsHtml ? `<ul class="lq-contact-review-list">${reasonsHtml}</ul>` : ''}
           </div>
           <div class="lq-contact-estimate-personal">
@@ -8057,7 +8241,7 @@ body.life-final-step-active.page-variant-contact-first-education-v1 #lifeEducati
 
     if (step2Helper) {
       step2Helper.hidden = false;
-      step2Helper.textContent = expanded ? postSubmitSuccessHelperText : defaultStep2HelperText;
+      step2Helper.textContent = expanded ? resolvePostSubmitSuccessHelperText(preview) : defaultStep2HelperText;
     }
 
     if (step2ContactTitle) {
@@ -9202,9 +9386,9 @@ body.life-final-step-active.page-variant-contact-first-education-v1 #lifeEducati
       }
     }
 
-    const supportCopy = hasAgentTrustProfile
-      ? `Choose a time now to review this estimate directly with ${agentDirectContactName} while the details are still fresh.`
-      : 'Choose a time now to continue your personalized review while the details are still fresh.';
+    const estimateContextForBooking = latestEstimatePreview || { offerKey: quoteType };
+    const supportCopy = buildPostSubmitContinueCopy(estimateContextForBooking);
+    const bookingCopyText = resolvePublicBookingCopy(estimateContextForBooking) || publicBookingCopyText;
 
     const noteText = normalized.loading
       ? publicBookingLoadingText
@@ -9235,7 +9419,7 @@ body.life-final-step-active.page-variant-contact-first-education-v1 #lifeEducati
         <div class="lq-post-submit-head">
           <div class="lq-post-submit-kicker">${escapeHtml(publicBookingKickerText)}</div>
           <div class="lq-post-submit-title" id="lifePostSubmitBookingTitle">${escapeHtml(publicBookingHeadingText)}</div>
-          <div class="lq-post-submit-copy">${escapeHtml(publicBookingCopyText)}</div>
+          <div class="lq-post-submit-copy">${escapeHtml(bookingCopyText)}</div>
         </div>
         <div class="lq-booking-shell${!normalized.enabled && !normalized.loading ? ' is-disabled' : ''}">
           <div class="lq-booking-head">
