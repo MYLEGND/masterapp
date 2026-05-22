@@ -1,3 +1,20 @@
+
+<style>
+  #ageStepContinueBtn,
+  .age-quick-buttons,
+  .ageQuickButtons,
+  .age-range-buttons,
+  .ageRangeButtons,
+  .quick-age-buttons,
+  .age-quick-btn,
+  .ageQuickBtn,
+  .quick-age-btn,
+  [data-age-range],
+  button[data-age] {
+    display: none !important;
+  }
+</style>
+
 @using System.Text.Json
 @using Shared.Analytics
 @model Protect_Website.Models.LifeWizardViewModel
@@ -7283,13 +7300,7 @@ body.life-final-step-active .lq-contact-estimate-recommendation {
                                                         </div>
                                                         <div class="lq-age-pill" data-age-display aria-live="polite">@(hasExplicitAgeSelection ? ageValue : "Select age")</div>
                                                     </div>
-                                                    <div class="lq-age-quick-grid" role="list" aria-label="Quick age ranges">
-                                                        @foreach (var ageOption in ageQuickSelectOptions)
-                                                        {
-                                                            var isActive = string.Equals(selectedAgeBracket, ageOption.RangeLabel, StringComparison.OrdinalIgnoreCase);
-                                                            <button type="button" class="lq-age-quick-btn@(isActive ? " is-active" : string.Empty)" data-age-quick-select data-age-value="@ageOption.Value" data-age-range="@ageOption.RangeLabel">@ageOption.Label</button>
-                                                        }
-                                                    </div>
+                                                    
                                                     <input
                                                         type="range"
                                                         min="@minSelectableAge"
@@ -7310,7 +7321,7 @@ body.life-final-step-active .lq-contact-estimate-recommendation {
                                             </div>
                                             <div class="lq-step-actions dual">
                                                 <button type="button" class="btn-ghost" id="ageStepBackBtn">Back</button>
-                                                <button type="button" class="btn-gold flex-fill" id="ageStepContinueBtn" hidden style="display:none !important;">Continue</button>
+                                                <button type="button" class="btn-gold flex-fill" id="ageStepContinueBtn" hidden style="display:none !important;" hidden style="display:none !important;">Continue</button>
                                             </div>
                                         }
                                         else
@@ -7393,13 +7404,7 @@ body.life-final-step-active .lq-contact-estimate-recommendation {
                                                         </div>
                                                         <div class="lq-age-pill" data-age-display aria-live="polite">@(hasExplicitAgeSelection ? ageValue : "Select age")</div>
                                                     </div>
-                                                    <div class="lq-age-quick-grid" role="list" aria-label="Quick age ranges">
-                                                        @foreach (var ageOption in ageQuickSelectOptions)
-                                                        {
-                                                            var isActive = string.Equals(selectedAgeBracket, ageOption.RangeLabel, StringComparison.OrdinalIgnoreCase);
-                                                            <button type="button" class="lq-age-quick-btn@(isActive ? " is-active" : string.Empty)" data-age-quick-select data-age-value="@ageOption.Value" data-age-range="@ageOption.RangeLabel">@ageOption.Label</button>
-                                                        }
-                                                    </div>
+                                                    
                                                     <input
                                                         type="range"
                                                         min="@minSelectableAge"
@@ -7763,13 +7768,7 @@ body.life-final-step-active .lq-contact-estimate-recommendation {
                                     </div>
                                     <div class="lq-age-pill" data-age-display aria-live="polite">@(hasExplicitAgeSelection ? ageValue : "Select age")</div>
                                 </div>
-                                <div class="lq-age-quick-grid" role="list" aria-label="Quick age ranges">
-                                    @foreach (var ageOption in ageQuickSelectOptions)
-                                    {
-                                        var isActive = string.Equals(selectedAgeBracket, ageOption.RangeLabel, StringComparison.OrdinalIgnoreCase);
-                                        <button type="button" class="lq-age-quick-btn@(isActive ? " is-active" : string.Empty)" data-age-quick-select data-age-value="@ageOption.Value" data-age-range="@ageOption.RangeLabel">@ageOption.Label</button>
-                                    }
-                                </div>
+                                
                                 <input
                                     type="range"
                                     min="@minSelectableAge"
@@ -7790,7 +7789,7 @@ body.life-final-step-active .lq-contact-estimate-recommendation {
                         </div>
                         <div class="lq-step-actions dual">
                             <button type="button" class="btn-ghost" id="ageStepBackBtn">Back</button>
-                            <button type="button" class="btn-gold flex-fill" id="ageStepContinueBtn" hidden style="display:none !important;">Continue</button>
+                            <button type="button" class="btn-gold flex-fill" id="ageStepContinueBtn" hidden style="display:none !important;" hidden style="display:none !important;">Continue</button>
                         </div>
                     }
                     else
@@ -7873,13 +7872,7 @@ body.life-final-step-active .lq-contact-estimate-recommendation {
                                     </div>
                                     <div class="lq-age-pill" data-age-display aria-live="polite">@(hasExplicitAgeSelection ? ageValue : "Select age")</div>
                                 </div>
-                                <div class="lq-age-quick-grid" role="list" aria-label="Quick age ranges">
-                                    @foreach (var ageOption in ageQuickSelectOptions)
-                                    {
-                                        var isActive = string.Equals(selectedAgeBracket, ageOption.RangeLabel, StringComparison.OrdinalIgnoreCase);
-                                        <button type="button" class="lq-age-quick-btn@(isActive ? " is-active" : string.Empty)" data-age-quick-select data-age-value="@ageOption.Value" data-age-range="@ageOption.RangeLabel">@ageOption.Label</button>
-                                    }
-                                </div>
+                                
                                 <input
                                     type="range"
                                     min="@minSelectableAge"
