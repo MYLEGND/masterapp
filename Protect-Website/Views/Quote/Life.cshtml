@@ -384,6 +384,55 @@ input[name="Phone"]:focus {
     margin-top: 0 !important;
 }
 
+
+/* TRUE FINAL SUBMITTED LAYOUT FIX:
+   Actual wrapper is #lifeStep2Panel, not .lq-step-two-panel.
+   Keep the blue review card. Remove the brown wrapper/header around it. */
+#lifeStep2Panel.is-submitted,
+#lifeStep2Panel.lq-final-review-flat-mode,
+#lifeStep2Panel.is-submitted > .lq-step-panel-pad,
+#lifeStep2Panel.lq-final-review-flat-mode > .lq-step-panel-pad {
+    background: transparent !important;
+    border: 0 !important;
+    box-shadow: none !important;
+    padding: 0 !important;
+    margin: 0 !important;
+}
+
+/* Remove the duplicate brown header above the blue card */
+#lifeStep2Panel.is-submitted > .lq-step-panel-pad > #lifeStep2Progress,
+#lifeStep2Panel.is-submitted > .lq-step-panel-pad > #lifeStep2Heading,
+#lifeStep2Panel.is-submitted > .lq-step-panel-pad > #lifeStep2Helper,
+#lifeStep2Panel.lq-final-review-flat-mode > .lq-step-panel-pad > #lifeStep2Progress,
+#lifeStep2Panel.lq-final-review-flat-mode > .lq-step-panel-pad > #lifeStep2Heading,
+#lifeStep2Panel.lq-final-review-flat-mode > .lq-step-panel-pad > #lifeStep2Helper {
+    display: none !important;
+}
+
+/* Hide old pre-submit/contact zones after submit */
+#lifeStep2Panel.is-submitted #lifeContactCaptureWrap,
+#lifeStep2Panel.is-submitted #lifeStep2EstimateSlot,
+#lifeStep2Panel.lq-final-review-flat-mode #lifeContactCaptureWrap,
+#lifeStep2Panel.lq-final-review-flat-mode #lifeStep2EstimateSlot {
+    display: none !important;
+}
+
+/* Blue card becomes the second shell */
+#lifeStep2Panel.is-submitted #lifePostSubmitSlot,
+#lifeStep2Panel.lq-final-review-flat-mode #lifePostSubmitSlot {
+    display: block !important;
+    width: 100% !important;
+    margin: 0 !important;
+    padding: 0 !important;
+}
+
+#lifeStep2Panel.is-submitted .lq-final-review-unified-card,
+#lifeStep2Panel.lq-final-review-flat-mode .lq-final-review-unified-card {
+    width: 100% !important;
+    max-width: none !important;
+    margin: 0 !important;
+}
+
 </style>
 
 @using System.Text.Json
