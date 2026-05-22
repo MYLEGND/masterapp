@@ -112,7 +112,14 @@ public class MasterAppDbContext : DbContext
             else
                 e.HasIndex(x => x.NormalizedEmail).IsUnique();
 
-            e.Property(x => x.RowVersion).IsRowVersion();
+            if (isSqlServer)
+                e.Property(x => x.RowVersion).IsRowVersion();
+            else
+                e.Property(x => x.RowVersion)
+                    .IsRequired()
+                    .IsConcurrencyToken()
+                    .HasDefaultValueSql("X''")
+                    .ValueGeneratedNever();
         });
 
         modelBuilder.Entity<ClientFinancialPlan>(e =>
@@ -561,7 +568,14 @@ public class MasterAppDbContext : DbContext
             e.HasIndex(x => x.Phone);
             e.HasIndex(x => x.Email);
 
-            e.Property(x => x.RowVersion).IsRowVersion();
+            if (isSqlServer)
+                e.Property(x => x.RowVersion).IsRowVersion();
+            else
+                e.Property(x => x.RowVersion)
+                    .IsRequired()
+                    .IsConcurrencyToken()
+                    .HasDefaultValueSql("X''")
+                    .ValueGeneratedNever();
         });
 
         modelBuilder.Entity<LeadAppointment>(e =>
@@ -913,7 +927,14 @@ public class MasterAppDbContext : DbContext
             e.HasIndex(x => x.ClientUserId);
             e.HasIndex(x => x.Status);
 
-            e.Property(x => x.RowVersion).IsRowVersion();
+            if (isSqlServer)
+                e.Property(x => x.RowVersion).IsRowVersion();
+            else
+                e.Property(x => x.RowVersion)
+                    .IsRequired()
+                    .IsConcurrencyToken()
+                    .HasDefaultValueSql("X''")
+                    .ValueGeneratedNever();
         });
     }
 }

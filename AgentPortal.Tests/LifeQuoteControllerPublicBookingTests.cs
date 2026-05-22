@@ -5,6 +5,7 @@ using System.Linq;
 using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
+using AgentPortal.Services;
 using Domain.Entities;
 using Domain.Enums;
 using Infrastructure.Leads;
@@ -12,6 +13,8 @@ using Microsoft.AspNetCore.DataProtection;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.ViewFeatures;
+using Microsoft.Data.Sqlite;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Primitives;
@@ -307,6 +310,159 @@ public class LifeQuoteControllerPublicBookingTests
         Assert.Contains(
             "Please check the box so we can send your estimate and options.",
             consentErrors.EnumerateArray().Select(value => value.GetString()));
+    }
+
+    [Fact]
+    public async Task SubmitLifeQuote_Ajax_WithRealCaptureService_Creates_CrmVisible_LifeLead()
+    {
+        await using var conn = new SqliteConnection("Data Source=:memory:");
+        await conn.OpenAsync();
+
+        var options = new DbContextOptionsBuilder<Infrastructure.Data.MasterAppDbContext>()
+            .UseSqlite(conn)
+            .Options;
+
+        await using var db = new Infrastructure.Data.MasterAppDbContext(options);
+        await db.Database.EnsureCreatedAsync();
+
+        var trackingProfile = new AgentTrackingProfile
+        {
+            Id = Guid.NewGuid(),
+            AgentUserId = "agent-life-submit",
+            AgentUpn = "life-submit@example.com",
+            Slug = "life-submit-agent",
+            CreatedUtc = new DateTime(2026, 5, 21, 20, 0, 0, DateTimeKind.Utc),
+            UpdatedUtc = new DateTime(2026, 5, 21, 20, 0, 0, DateTimeKind.Utc)
+        };
+        db.AgentTrackingProfiles.Add(trackingProfile);
+        db.AgentProfiles.Add(new AgentProfile
+        {
+            AgentUserId = "agent-life-submit",
+            AgentUpn = "life-submit@example.com",
+            NormalizedEmail = "life-submit@example.com",
+            FullName = "Life Submit Agent",
+            UpdatedUtc = new DateTime(2026, 5, 21, 20, 0, 0, DateTimeKind.Utc)
+        });
+        await db.SaveChangesAsync();
+
+        var metaConversions = new Mock<IMetaConversionsApiService>();
+        metaConversions
+            .Setup(service => service.SendLeadAsync(It.IsAny<MetaLeadConversionRequest>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new MetaConversionsApiResult
+            {
+                Attempted = false,
+                Sent = false,
+                Status = "skipped_not_configured",
+                Note = "meta_config_missing"
+            });
+
+        var metaPixelResolution = new Mock<IMetaPixelResolutionService>();
+        metaPixelResolution
+            .Setup(service => service.ResolveForLeadAsync(It.IsAny<Guid?>(), It.IsAny<string?>(), It.IsAny<bool>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new ResolvedMetaPixelContext
+            {
+                PixelOwnerType = MetaPixelOwnerTypes.Agent,
+                AgentTrackingProfileId = trackingProfile.Id,
+                AgentSlug = trackingProfile.Slug
+            });
+
+        var metaSignal = new Mock<IMetaSignalIntelligenceService>();
+        metaSignal
+            .Setup(service => service.RecordConfirmedLeadAsync(It.IsAny<MetaSignalConfirmedLeadRequest>(), It.IsAny<HttpContext?>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((MetaSignalProcessResult?)null);
+
+        var publicBookingResolver = new Mock<IPublicBookingResolver>();
+        publicBookingResolver
+            .Setup(resolver => resolver.ResolveAsync(It.IsAny<PublicBookingResolveContext>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new PublicBookingResolution(
+                Enabled: false,
+                EmbedUrl: null,
+                FallbackUrl: null,
+                PreferModalOnMobile: true,
+                IsAgentOverride: false,
+                Reason: "disabled",
+                ConfigurationSource: PublicBookingConfigurationSources.None,
+                AgentTrackingProfileId: trackingProfile.Id,
+                AgentUserId: trackingProfile.AgentUserId,
+                AgentSlug: trackingProfile.Slug,
+                CalendarUserId: null,
+                CalendarEmail: null,
+                BookingPageIdOrMailbox: null));
+
+        var captureService = new WebsiteLifeLeadCaptureService(db, NullLogger<WebsiteLifeLeadCaptureService>.Instance);
+        var controller = BuildController(
+            db,
+            metaConversionsApi: metaConversions.Object,
+            metaPixelResolutionService: metaPixelResolution.Object,
+            metaSignalIntelligenceService: metaSignal.Object,
+            websiteLifeLeadCaptureService: captureService,
+            publicBookingResolver: publicBookingResolver.Object);
+
+        var http = new DefaultHttpContext();
+        http.Request.Method = HttpMethods.Post;
+        http.Request.ContentType = "application/x-www-form-urlencoded";
+        http.Request.Headers["X-Requested-With"] = "fetch";
+        http.Request.Form = new FormCollection(new Dictionary<string, StringValues>());
+        http.Items["TrackingProfile"] = trackingProfile;
+        http.Items["TrackingSlug"] = trackingProfile.Slug;
+        http.Items["IsFounderPath"] = false;
+        controller.ControllerContext = new ControllerContext { HttpContext = http };
+        controller.TempData = new TempDataDictionary(http, Mock.Of<ITempDataProvider>());
+
+        var submitResult = await controller.SubmitLifeQuote(new LifeQuoteFormModel
+        {
+            FirstName = "Morgan",
+            LastName = "Submit",
+            Email = "morgan@example.com",
+            Phone = "(602)555-0177",
+            State = "az",
+            MarketingEmailConsent = true,
+            ProtectingWho = "family",
+            CoverageGoal = "replace_income",
+            CoverageAmountOption = "250000",
+            CoverageAmount = 250000,
+            TobaccoUse = "non_smoker",
+            Age = 34,
+            AgeRange = "25-34",
+            OfferKey = "life",
+            ProductType = "life_general"
+        });
+
+        var ok = Assert.IsType<OkObjectResult>(submitResult);
+        var payload = JsonDocument.Parse(JsonSerializer.Serialize(ok.Value));
+        Assert.True(GetRequiredProperty(payload.RootElement, "success").GetBoolean());
+
+        var websiteLead = await db.WebsiteLeads.SingleAsync();
+        Assert.Equal(trackingProfile.Id, websiteLead.AgentTrackingProfileId);
+        Assert.Equal(trackingProfile.Slug, websiteLead.AgentSlug);
+
+        var workstationLead = await db.WorkstationLeadProfiles.SingleAsync();
+        Assert.Equal(websiteLead.LeadId.ToString("N"), workstationLead.LeadId);
+        Assert.Equal(WorkstationLeadBuckets.LifeInsurance, workstationLead.Bucket);
+        Assert.Equal("agent-life-submit", workstationLead.AgentUserId);
+
+        var intakeLink = await db.WebsiteLeadIntakeLinks.SingleAsync();
+        Assert.Equal(websiteLead.LeadId, intakeLink.WebsiteLeadPublicId);
+        Assert.Equal(workstationLead.LeadId, intakeLink.WorkstationLeadId);
+        Assert.False(string.IsNullOrWhiteSpace(intakeLink.SnapshotJson));
+
+        var leadsController = ControllerTestHelpers.BuildLeadsController(
+            db,
+            Mock.Of<IExecutionEngine>(),
+            Mock.Of<ICommitmentService>(),
+            ControllerTestHelpers.BuildUser("agent-life-submit"));
+
+        var leadsResult = await leadsController.Leads(null);
+        var leadsJson = Assert.IsType<JsonResult>(leadsResult);
+        var serialized = JsonSerializer.Serialize(leadsJson.Value);
+        using var leadsDoc = JsonDocument.Parse(serialized);
+        var leadRow = Assert.Single(leadsDoc.RootElement.EnumerateArray());
+
+        Assert.Equal(workstationLead.LeadId, GetRequiredProperty(leadRow, "leadId").GetString());
+        Assert.Equal("Life Insurance", GetRequiredProperty(leadRow, "quoteTypeLabel").GetString());
+        Assert.Equal("Life Insurance", GetRequiredProperty(leadRow, "productInterestLabel").GetString());
+        Assert.True(leadRow.TryGetProperty("intakeSnapshot", out var intakeSnapshot));
+        Assert.Equal("quote_life", GetRequiredProperty(intakeSnapshot, "sourcePageKey").GetString());
     }
 
     private static LifeQuoteController BuildController(

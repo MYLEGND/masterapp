@@ -441,6 +441,12 @@ namespace Protect_Website.Controllers
                     entry.State = EntityState.Detached;
                 }
 
+                foreach (var entry in _db.ChangeTracker.Entries<WebsiteLeadIntakeLink>()
+                    .Where(x => x.State == EntityState.Added || x.State == EntityState.Modified))
+                {
+                    entry.State = EntityState.Detached;
+                }
+
                 _logger.LogError(
                     captureEx,
                     "LifeQuote [{CorrelationId}]: workstation lead capture failed for WebsiteLead {LeadId}. Continuing with saved website lead.",
