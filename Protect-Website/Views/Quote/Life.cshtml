@@ -305,6 +305,85 @@ input[name="Phone"]:focus {
     padding: 0 !important;
 }
 
+
+/* FINAL FIX: remove the far outer submitted shell only */
+.lq-final-review-flat-mode,
+.lq-step-two-panel.is-submitted,
+.lq-step-two-panel.review-ready,
+.lq-step-two-panel:has(.lq-final-review-unified-card) {
+    background: transparent !important;
+    border: 0 !important;
+    box-shadow: none !important;
+    padding: 0 !important;
+    margin: 0 !important;
+}
+
+.lq-final-review-flat-mode > *,
+.lq-step-two-panel.is-submitted > *,
+.lq-step-two-panel.review-ready > * {
+    max-width: none !important;
+}
+
+.lq-final-review-unified-card {
+    width: 100% !important;
+    max-width: none !important;
+    margin: 0 !important;
+}
+
+/* remove duplicate top review header outside the real review card */
+.lq-final-review-flat-mode > .lq-step-two-header,
+.lq-final-review-flat-mode > .lq-contact-header,
+.lq-final-review-flat-mode > .lq-step-header,
+.lq-step-two-panel.is-submitted > .lq-step-two-header,
+.lq-step-two-panel.is-submitted > .lq-contact-header,
+.lq-step-two-panel.is-submitted > .lq-step-header {
+    display: none !important;
+}
+
+
+/* FINAL LAYOUT PATCH: keep blue review card, remove brown duplicate wrapper/header */
+.lq-step-two-panel.is-submitted,
+.lq-step-two-panel.review-ready,
+.lq-step-two-panel:has(.lq-final-review-unified-card),
+.lq-final-review-flat-mode {
+    background: transparent !important;
+    border: 0 !important;
+    box-shadow: none !important;
+    padding: 0 !important;
+    margin: 0 !important;
+}
+
+/* remove the duplicate brown header sitting above the blue card */
+.lq-step-two-panel.is-submitted > .lq-step-two-header,
+.lq-step-two-panel.is-submitted > .lq-contact-header,
+.lq-step-two-panel.is-submitted > .lq-step-header,
+.lq-final-review-flat-mode > .lq-step-two-header,
+.lq-final-review-flat-mode > .lq-contact-header,
+.lq-final-review-flat-mode > .lq-step-header,
+.lq-final-review-flat-mode > .lq-final-review-head,
+.lq-step-two-panel.is-submitted > .lq-final-review-head {
+    display: none !important;
+}
+
+/* make the blue card expand into the removed brown shell space */
+.lq-final-review-unified-card {
+    width: 100% !important;
+    max-width: none !important;
+    margin: 0 !important;
+    border-radius: 18px !important;
+}
+
+/* if the brown shell is actually a parent contact container, strip only its chrome */
+.lq-step-two-panel:has(.lq-final-review-unified-card) {
+    background: transparent !important;
+    border-color: transparent !important;
+}
+
+/* keep only one blue/gold inner card */
+.lq-final-review-unified-card .lq-final-review-result-slot {
+    margin-top: 0 !important;
+}
+
 </style>
 
 @using System.Text.Json
