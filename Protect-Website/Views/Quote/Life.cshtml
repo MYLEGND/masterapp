@@ -117,34 +117,7 @@
     padding: 0 !important;
 }
 
-/* Lead-capture teaser result: keep contact step focused */
-.lq-contact-estimate-wrap.is-teaser-only {
-    gap: 10px !important;
-}
 
-.lq-contact-estimate-wrap.is-teaser-only .lq-contact-estimate-copy {
-    max-width: 44ch !important;
-    margin-left: auto !important;
-    margin-right: auto !important;
-}
-
-.lq-contact-estimate-wrap.is-teaser-only .lq-contact-estimate-card-wrap {
-    margin-top: 2px !important;
-}
-
-.lq-contact-estimate-wrap.is-teaser-only .lq-contact-estimate-unlock {
-    border-color: rgba(243,214,136,.36) !important;
-    background: rgba(199,153,49,.08) !important;
-}
-
-.lq-contact-estimate-wrap.is-teaser-only .lq-contact-estimate-unlock-label {
-    color: #f3d688 !important;
-}
-
-.lq-contact-estimate-wrap.is-teaser-only .lq-estimate-disclaimer {
-    font-size: .76rem !important;
-    opacity: .72 !important;
-}
 
 /* No scheduling language should show before lead capture */
 #lifeWizardForm .lq-step-two-panel:not(.is-submitted) .lq-booking-shell,
@@ -1102,11 +1075,7 @@ input[name="Phone"] {
     font-weight: 950 !important;
 }
 
-/* back button muted */
-#lifeWizardForm .lq-back-button,
-#lifeWizardForm button[type="button"] {
-    border-color: rgba(199,153,49,.32) !important;
-}
+
 
 /* mobile */
 @@media (max-width: 720px) {
@@ -1612,38 +1581,7 @@ input[name="Phone"] {
 }
 
 
-/* FINAL CONTACT STEP — compact, clean, conversion-focused */
-#lifeEducationContactPanel {
-    background:
-        radial-gradient(circle at 50% 0%, rgba(243,214,136,.055), transparent 32%),
-        linear-gradient(180deg, #07152b 0%, #040b18 100%) !important;
-    border: 1px solid rgba(243,214,136,.34) !important;
-    border-radius: 24px !important;
-    padding: 20px 24px !important;
-    box-shadow:
-        0 30px 70px rgba(0,0,0,.42),
-        inset 0 1px 0 rgba(255,255,255,.05) !important;
-}
 
-#lifeEducationContactPanel > .lq-contact-first-proof-row,
-#lifeWizardForm .lq-contact-first-proof-row {
-    background: transparent !important;
-    border: 0 !important;
-    border-bottom: 1px solid rgba(243,214,136,.16) !important;
-    box-shadow: none !important;
-    margin: 0 0 14px 0 !important;
-    padding: 0 0 12px 0 !important;
-}
-
-#lifeStep2Panel,
-#lifeStep2Panel .lq-step-panel-pad {
-    background: transparent !important;
-    border: 0 !important;
-    box-shadow: none !important;
-    padding: 0 !important;
-    margin: 0 auto !important;
-    max-width: 88% !important;
-}
 
 /* top intro */
 #lifeStep2Progress {
@@ -1874,7 +1812,7 @@ input[name="Phone"] {
 }
 
 
-/* FINAL OVERRIDE — CONTACT STEP CLEAN CONVERSION LAYOUT */
+
 
 /* kill dirty brown everywhere in this contact panel */
 #lifeEducationContactPanel,
@@ -1886,9 +1824,7 @@ input[name="Phone"] {
 }
 
 #lifeEducationContactPanel {
-    background:
-        radial-gradient(circle at 50% 0%, rgba(243,214,136,.07), transparent 34%),
-        linear-gradient(180deg, #07172f 0%, #041023 100%) !important;
+    
     border: 1px solid rgba(243,214,136,.34) !important;
     border-radius: 24px !important;
     padding: 22px 34px !important;
@@ -2080,14 +2016,505 @@ input[name="Phone"] {
 }
 
 
+
+
+/* top contact header */
+#lifeStep2Progress {
+    margin: 0 0 6px 0 !important;
+}
+
+#lifeStep2Heading {
+    color: #fff6d8 !important;
+    text-align: left !important;
+    font-size: 1.28rem !important;
+    line-height: 1.08 !important;
+    margin: 0 0 4px 0 !important;
+}
+
+#lifeStep2Helper {
+    color: rgba(248,250,252,.78) !important;
+    text-align: left !important;
+    font-size: .88rem !important;
+    line-height: 1.28 !important;
+    margin: 0 0 12px 0 !important;
+    max-width: 54ch !important;
+}
+
+/* compact estimate teaser */
+#lifeStep2EstimateSummary.lq-contact-teaser-final,
+#lifeWizardForm .lq-contact-estimate-wrap.is-teaser-only.lq-contact-teaser-final {
+    display: grid !important;
+    grid-template-columns: minmax(0, 1.05fr) minmax(260px, .95fr) !important;
+    align-items: center !important;
+    gap: 14px !important;
+    margin: 0 0 14px 0 !important;
+    padding: 14px 16px !important;
+    border-radius: 18px !important;
+    background:
+        linear-gradient(180deg, rgba(7,24,50,.98), rgba(4,13,29,.99)) !important;
+    border: 1px solid rgba(243,214,136,.30) !important;
+    box-shadow:
+        0 16px 34px rgba(0,0,0,.28),
+        inset 0 1px 0 rgba(255,255,255,.045) !important;
+}
+
+#lifeStep2EstimateSummary .lq-contact-estimate-kicker {
+    color: #f3d688 !important;
+    font-size: .68rem !important;
+    font-weight: 950 !important;
+    letter-spacing: .08em !important;
+    text-transform: uppercase !important;
+    margin: 0 0 3px 0 !important;
+}
+
+#lifeStep2EstimateSummary .lq-contact-estimate-title {
+    color: #fff6d8 !important;
+    font-size: 1.05rem !important;
+    line-height: 1.1 !important;
+    margin: 0 !important;
+}
+
+#lifeStep2EstimateSummary .lq-contact-estimate-copy {
+    color: rgba(248,250,252,.74) !important;
+    font-size: .82rem !important;
+    line-height: 1.28 !important;
+    margin: 4px 0 0 0 !important;
+    max-width: 46ch !important;
+}
+
+#lifeStep2EstimateSummary .lq-contact-teaser-final-metrics {
+    display: grid !important;
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+    gap: 10px !important;
+}
+
+#lifeStep2EstimateSummary .lq-contact-estimate-metric {
+    min-height: 54px !important;
+    padding: 9px 12px !important;
+    border-radius: 13px !important;
+    background: rgba(2,9,22,.62) !important;
+    border: 1px solid rgba(243,214,136,.24) !important;
+    box-shadow: none !important;
+}
+
+#lifeStep2EstimateSummary .lq-contact-estimate-metric-label {
+    font-size: .62rem !important;
+    margin-bottom: 3px !important;
+}
+
+#lifeStep2EstimateSummary .lq-contact-estimate-metric-value {
+    font-size: .94rem !important;
+}
+
+/* contact form */
+#lifeContactCaptureWrap {
+    margin: 12px 0 0 0 !important;
+    padding-top: 14px !important;
+    border-top: 1px solid rgba(243,214,136,.16) !important;
+}
+
+#lifeContactCaptureWrap .lq-contact-kicker,
+#lifeContactCaptureWrap .lq-step-kicker {
+    color: #f3d688 !important;
+    text-align: left !important;
+    font-size: .68rem !important;
+    letter-spacing: .08em !important;
+    margin: 0 0 4px 0 !important;
+}
+
+#lifeContactCaptureWrap h2,
+#lifeContactCaptureWrap .lq-contact-title {
+    color: #fff6d8 !important;
+    text-align: left !important;
+    font-size: 1.34rem !important;
+    line-height: 1.08 !important;
+    margin: 0 0 14px 0 !important;
+}
+
+#lifeContactCaptureWrap .lq-contact-fields,
+#lifeContactCaptureWrap .lq-form-grid,
+#lifeContactCaptureWrap .lq-contact-grid {
+    display: grid !important;
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+    gap: 12px 14px !important;
+}
+
+#lifeContactCaptureWrap .lq-field,
+#lifeContactCaptureWrap .lq-contact-field {
+    margin: 0 !important;
+}
+
+#lifeContactCaptureWrap label {
+    font-size: .74rem !important;
+    margin-bottom: 4px !important;
+}
+
+#lifeContactCaptureWrap input,
+#lifeContactCaptureWrap select,
+#lifeContactCaptureWrap textarea {
+    height: 44px !important;
+    min-height: 44px !important;
+    border-radius: 12px !important;
+    border: 1px solid rgba(243,214,136,.48) !important;
+    background: rgba(255,255,255,.96) !important;
+    box-shadow:
+        inset 0 1px 0 rgba(255,255,255,.75),
+        0 10px 20px rgba(0,0,0,.14) !important;
+}
+
+#Phone,
+input[name="Phone"] {
+    border: 2px solid rgba(243,214,136,.78) !important;
+    box-shadow:
+        0 0 0 1px rgba(243,214,136,.18),
+        0 0 22px rgba(243,214,136,.08) !important;
+}
+
+#lifeContactCaptureWrap .lq-contact-method-helper,
+#lifeContactCaptureWrap .lq-field-helper {
+    font-size: .7rem !important;
+    margin-top: 4px !important;
+}
+
+#lifeContactCaptureWrap .lq-consent,
+#lifeContactCaptureWrap .lq-contact-consent {
+    margin-top: 9px !important;
+    padding: 9px 10px !important;
+    border-radius: 12px !important;
+    background: rgba(243,214,136,.045) !important;
+    border: 1px solid rgba(243,214,136,.20) !important;
+}
+
+#lifeContactCaptureWrap .lq-consent label,
+#lifeContactCaptureWrap .lq-contact-consent label {
+    font-size: .73rem !important;
+    line-height: 1.25 !important;
+}
+
+#lifeWizardForm .lq-form-actions,
+#lifeContactCaptureWrap .lq-form-actions {
+    margin-top: 9px !important;
+    padding-top: 6px !important;
+}
+
+#lifeContactCaptureWrap button[type="submit"],
+#lifeWizardForm button[type="submit"] {
+    min-height: 46px !important;
+    margin-top: 8px !important;
+    border-radius: 999px !important;
+    background: linear-gradient(180deg, #f7d978 0%, #d7a92f 52%, #a87a19 100%) !important;
+    color: #07111f !important;
+    border: 1px solid rgba(255,244,190,.65) !important;
+    box-shadow: 0 14px 30px rgba(216,169,47,.22) !important;
+    font-weight: 950 !important;
+}
+
+/* lock contact step: no back button */
+#step2BackBtn,
 #lifeStep2BackBtn,
 .lq-contact-back,
 .lq-step-back-btn,
-button[data-action="back"]{
-    display:none !important;
-    visibility:hidden !important;
-    pointer-events:none !important;
+button[data-action="back"] {
+    display: none !important;
+    visibility: hidden !important;
+    pointer-events: none !important;
 }
+
+/* mobile */
+@@media (max-width: 720px) {
+    #lifeEducationContactPanel {
+        padding: 18px !important;
+    }
+
+    #lifeStep2EstimateSummary.lq-contact-teaser-final,
+    #lifeWizardForm .lq-contact-estimate-wrap.is-teaser-only.lq-contact-teaser-final {
+        grid-template-columns: 1fr !important;
+    }
+
+    #lifeStep2EstimateSummary .lq-contact-teaser-final-metrics,
+    #lifeContactCaptureWrap .lq-contact-fields,
+    #lifeContactCaptureWrap .lq-form-grid,
+    #lifeContactCaptureWrap .lq-contact-grid {
+        grid-template-columns: 1fr !important;
+    }
+}
+
+
+
+
+
+/* ===== TRUE FINAL CONTACT STEP SYSTEM ===== */
+
+#lifeEducationContactPanel {
+    background:
+        linear-gradient(
+            180deg,
+            #071a35 0%,
+            #06152b 52%,
+            #040d1d 100%
+        ) !important;
+    border: 1px solid rgba(243,214,136,.34) !important;
+    border-radius: 24px !important;
+
+    padding: 20px 28px !important;
+
+    box-shadow:
+        0 30px 70px rgba(0,0,0,.40),
+        inset 0 1px 0 rgba(255,255,255,.05) !important;
+}
+
+/* REMOVE DIRTY INNER SHELLS */
+#lifeWizardForm .lq-contact-first-form-surface,
+#lifeWizardForm #lifeStep2Panel,
+#lifeWizardForm #lifeStep2Panel .lq-step-panel-pad,
+#lifeWizardForm .lq-contact-first-proof-row {
+    background: transparent !important;
+    border: 0 !important;
+    box-shadow: none !important;
+}
+
+/* cleaner trust row */
+#lifeWizardForm .lq-contact-first-proof-row {
+    margin: 0 0 14px 0 !important;
+    padding: 0 0 12px 0 !important;
+    border-bottom: 1px solid rgba(243,214,136,.12) !important;
+}
+
+/* content breathing room */
+#lifeStep2Panel,
+#lifeStep2EstimateSummary,
+#lifeContactCaptureWrap {
+    width: 100% !important;
+    max-width: 94% !important;
+    margin-left: auto !important;
+    margin-right: auto !important;
+}
+
+/* top heading */
+#lifeStep2Progress {
+    margin: 0 0 5px 0 !important;
+}
+
+#lifeStep2Heading {
+    color: #fff6d8 !important;
+    text-align: left !important;
+
+    font-size: 1.24rem !important;
+    line-height: 1.08 !important;
+
+    margin: 0 0 4px 0 !important;
+}
+
+#lifeStep2Helper {
+    color: rgba(248,250,252,.76) !important;
+
+    text-align: left !important;
+
+    font-size: .84rem !important;
+    line-height: 1.28 !important;
+
+    max-width: 50ch !important;
+
+    margin: 0 0 10px 0 !important;
+}
+
+/* estimate card */
+#lifeStep2EstimateSummary {
+    background:
+        linear-gradient(
+            180deg,
+            rgba(7,26,54,.98),
+            rgba(4,14,30,.99)
+        ) !important;
+
+    border: 1px solid rgba(243,214,136,.28) !important;
+
+    border-radius: 18px !important;
+
+    padding: 14px 16px !important;
+
+    margin: 0 0 14px 0 !important;
+
+    box-shadow:
+        0 16px 34px rgba(0,0,0,.24),
+        inset 0 1px 0 rgba(255,255,255,.04) !important;
+}
+
+#lifeStep2EstimateSummary .lq-teaser-clean-main {
+    display: block !important;
+}
+
+#lifeStep2EstimateSummary .lq-contact-estimate-head {
+    text-align: left !important;
+    margin: 0 0 10px 0 !important;
+}
+
+#lifeStep2EstimateSummary .lq-contact-estimate-title {
+    color: #fff6d8 !important;
+
+    font-size: 1rem !important;
+    line-height: 1.08 !important;
+
+    margin: 0 !important;
+}
+
+#lifeStep2EstimateSummary .lq-contact-estimate-copy {
+    color: rgba(248,250,252,.74) !important;
+
+    font-size: .79rem !important;
+    line-height: 1.24 !important;
+
+    max-width: 52ch !important;
+
+    margin-top: 4px !important;
+}
+
+#lifeStep2EstimateSummary .lq-contact-estimate-metrics {
+    display: grid !important;
+
+    grid-template-columns: repeat(2,minmax(0,1fr)) !important;
+
+    gap: 10px !important;
+}
+
+#lifeStep2EstimateSummary .lq-contact-estimate-metric {
+    background: rgba(2,10,24,.60) !important;
+
+    border: 1px solid rgba(243,214,136,.18) !important;
+
+    border-radius: 13px !important;
+
+    min-height: 50px !important;
+
+    padding: 8px 10px !important;
+}
+
+/* form section */
+#lifeContactCaptureWrap {
+    margin-top: 12px !important;
+
+    padding-top: 12px !important;
+
+    border-top: 1px solid rgba(243,214,136,.12) !important;
+}
+
+#lifeContactCaptureWrap .lq-step-kicker,
+#lifeContactCaptureWrap .lq-contact-kicker {
+    color: #f3d688 !important;
+
+    text-align: left !important;
+
+    font-size: .67rem !important;
+
+    letter-spacing: .08em !important;
+
+    margin: 0 0 4px 0 !important;
+}
+
+#lifeContactCaptureWrap h2,
+#lifeContactCaptureWrap .lq-contact-title {
+    color: #fff6d8 !important;
+
+    text-align: left !important;
+
+    font-size: 1.28rem !important;
+    line-height: 1.08 !important;
+
+    margin: 0 0 12px 0 !important;
+}
+
+/* compact form grid */
+#lifeContactCaptureWrap .lq-contact-fields,
+#lifeContactCaptureWrap .lq-form-grid,
+#lifeContactCaptureWrap .lq-contact-grid {
+    display: grid !important;
+
+    grid-template-columns: repeat(2,minmax(0,1fr)) !important;
+
+    gap: 10px 12px !important;
+}
+
+#lifeContactCaptureWrap label {
+    font-size: .72rem !important;
+    margin-bottom: 4px !important;
+}
+
+#lifeContactCaptureWrap input,
+#lifeContactCaptureWrap select {
+    height: 42px !important;
+    min-height: 42px !important;
+
+    border-radius: 11px !important;
+}
+
+/* compact consent */
+#lifeContactCaptureWrap .lq-consent,
+#lifeContactCaptureWrap .lq-contact-consent {
+    margin-top: 8px !important;
+
+    padding: 8px 10px !important;
+
+    border-radius: 12px !important;
+
+    background: rgba(243,214,136,.04) !important;
+
+    border: 1px solid rgba(243,214,136,.16) !important;
+}
+
+/* CTA */
+#lifeContactCaptureWrap button[type="submit"],
+#lifeWizardForm button[type="submit"] {
+    min-height: 44px !important;
+
+    margin-top: 8px !important;
+
+    border-radius: 999px !important;
+
+    background:
+        linear-gradient(
+            180deg,
+            #f7d978 0%,
+            #d7a92f 52%,
+            #a87a19 100%
+        ) !important;
+
+    color: #07111f !important;
+
+    border: 1px solid rgba(255,244,190,.65) !important;
+
+    font-weight: 950 !important;
+}
+
+/* kill back button permanently */
+#step2BackBtn,
+#lifeStep2BackBtn,
+.lq-contact-back,
+.lq-step-back-btn,
+button[data-action="back"] {
+    display: none !important;
+}
+
+/* mobile */
+@@media (max-width: 720px) {
+
+    #lifeEducationContactPanel {
+        padding: 16px !important;
+    }
+
+    #lifeStep2Panel,
+    #lifeStep2EstimateSummary,
+    #lifeContactCaptureWrap {
+        max-width: 100% !important;
+    }
+
+    #lifeContactCaptureWrap .lq-contact-fields,
+    #lifeContactCaptureWrap .lq-form-grid,
+    #lifeContactCaptureWrap .lq-contact-grid {
+        grid-template-columns: 1fr !important;
+    }
+}
+
+
 </style>
 
 
@@ -9425,9 +9852,7 @@ body.life-final-step-active .lq-contact-estimate-recommendation {
                                                 </div>
                                                 <div class="lq-choice-error" id="err-step1-age">Please select your age.</div>
                                             </div>
-                                            <div class="lq-step-actions dual">
-                                                <button type="button" class="btn-ghost" id="ageStepBackBtn">Back</button>
-                                                <button type="button" class="btn-gold flex-fill" id="ageStepContinueBtn" hidden style="display:none !important;" hidden style="display:none !important;">Continue</button>
+                                            <div class="lq-step-actions dual"><button type="button" class="btn-gold flex-fill" id="ageStepContinueBtn" hidden style="display:none !important;" hidden style="display:none !important;">Continue</button>
                                             </div>
                                         }
                                         else
@@ -9493,9 +9918,7 @@ body.life-final-step-active .lq-contact-estimate-recommendation {
                                                 </div>
                                                 <div class="lq-choice-error" id="err-step1-tobacco-use">Please choose your tobacco use.</div>
                                             </div>
-                                            <div class="lq-step-actions dual">
-                                                <button type="button" class="btn-ghost" id="tobaccoStepBackBtn">Back</button>
-                                                <button type="button" class="btn-gold btn-progress flex-fill" id="step1Continue" data-cta="life_see_estimate" hidden>@stepOneContinueButtonText</button>
+                                            <div class="lq-step-actions dual"><button type="button" class="btn-gold btn-progress flex-fill" id="step1Continue" data-cta="life_see_estimate" hidden>@stepOneContinueButtonText</button>
                                             </div>
                                         }
                                         else
@@ -9529,9 +9952,7 @@ body.life-final-step-active .lq-contact-estimate-recommendation {
                                                 </div>
                                                 <div class="lq-choice-error" id="err-step1-age">Please select your age.</div>
                                             </div>
-                                            <div class="lq-step-actions dual">
-                                                <button type="button" class="btn-ghost" id="ageStepBackBtn">Back</button>
-                                                <button type="button" class="btn-gold btn-progress flex-fill" id="step1Continue">@stepOneContinueButtonText</button>
+                                            <div class="lq-step-actions dual"><button type="button" class="btn-gold btn-progress flex-fill" id="step1Continue">@stepOneContinueButtonText</button>
                                             </div>
                                         }
                                     </div>
@@ -9629,8 +10050,7 @@ body.life-final-step-active .lq-contact-estimate-recommendation {
                                             </div>
                                             <div class="lq-error" id="lifeError"></div>
                                             <div class="lq-success" id="lifeSuccess">Thanks! We received your request.</div>
-                                            <button type="button" class="btn-ghost mt-2" id="step2BackBtn">Back</button>
-                                        </div>
+</div>
                                     </div>
                                     <div class="lq-post-submit-slot" id="lifePostSubmitSlot" hidden></div>
                                 </div>
@@ -9893,9 +10313,7 @@ body.life-final-step-active .lq-contact-estimate-recommendation {
                             </div>
                             <div class="lq-choice-error" id="err-step1-age">Please select your age.</div>
                         </div>
-                        <div class="lq-step-actions dual">
-                            <button type="button" class="btn-ghost" id="ageStepBackBtn">Back</button>
-                            <button type="button" class="btn-gold flex-fill" id="ageStepContinueBtn" hidden style="display:none !important;" hidden style="display:none !important;">Continue</button>
+                        <div class="lq-step-actions dual"><button type="button" class="btn-gold flex-fill" id="ageStepContinueBtn" hidden style="display:none !important;" hidden style="display:none !important;">Continue</button>
                         </div>
                     }
                     else
@@ -9961,9 +10379,7 @@ body.life-final-step-active .lq-contact-estimate-recommendation {
                             </div>
                             <div class="lq-choice-error" id="err-step1-tobacco-use">Please choose your tobacco use.</div>
                         </div>
-                        <div class="lq-step-actions dual">
-                            <button type="button" class="btn-ghost" id="tobaccoStepBackBtn">Back</button>
-                            <button type="button" class="btn-gold btn-progress flex-fill" id="step1Continue" data-cta="life_see_estimate" hidden>@stepOneContinueButtonText</button>
+                        <div class="lq-step-actions dual"><button type="button" class="btn-gold btn-progress flex-fill" id="step1Continue" data-cta="life_see_estimate" hidden>@stepOneContinueButtonText</button>
                         </div>
                     }
                     else
@@ -9997,9 +10413,7 @@ body.life-final-step-active .lq-contact-estimate-recommendation {
                             </div>
                             <div class="lq-choice-error" id="err-step1-age">Please select your age.</div>
                         </div>
-                        <div class="lq-step-actions dual">
-                            <button type="button" class="btn-ghost" id="ageStepBackBtn">Back</button>
-                            <button type="button" class="btn-gold btn-progress flex-fill" id="step1Continue">@stepOneContinueButtonText</button>
+                        <div class="lq-step-actions dual"><button type="button" class="btn-gold btn-progress flex-fill" id="step1Continue">@stepOneContinueButtonText</button>
                         </div>
                     }
                 </div>
@@ -10160,8 +10574,7 @@ body.life-final-step-active .lq-contact-estimate-recommendation {
                         </div>
                         <div class="lq-error" id="lifeError"></div>
                         <div class="lq-success" id="lifeSuccess">Thanks! We received your request.</div>
-                        <button type="button" class="btn-ghost mt-2" id="step2BackBtn">Back</button>
-                    </div>
+</div>
                 </div>
                 <div class="lq-post-submit-slot" id="lifePostSubmitSlot" hidden></div>
                 <div class="lq-reassurance" hidden></div>
@@ -11686,31 +12099,24 @@ body.life-final-step-active .lq-contact-estimate-recommendation {
     );
 
     return `
-      <div class="lq-contact-estimate-wrap is-preview-locked is-teaser-only lq-teaser-clean" id="lifeStep2EstimateSummary">
-        <div class="lq-teaser-clean-main">
-          <div class="lq-teaser-clean-copy">
-            <div class="lq-contact-estimate-kicker">Estimate preview</div>
-            <div class="lq-contact-estimate-title">Your starting range is ready.</div>
-            <div class="lq-contact-estimate-copy">Enter your info to unlock the full estimate details.</div>
-          </div>
-
-          <div class="lq-teaser-clean-metrics" aria-label="Estimate preview highlights">
-            <div class="lq-contact-estimate-metric">
-              <div class="lq-contact-estimate-metric-label">Starting range</div>
-              <div class="lq-contact-estimate-metric-value">${escapeHtml(monthlyRange)}</div>
-            </div>
-            <div class="lq-contact-estimate-metric">
-              <div class="lq-contact-estimate-metric-label">Full details</div>
-              <div class="lq-contact-estimate-metric-value">Locked</div>
-            </div>
-          </div>
+      <section class="lq-contact-estimate-wrap is-preview-locked is-teaser-only lq-contact-teaser-final" id="lifeStep2EstimateSummary" aria-label="Estimate preview">
+        <div class="lq-contact-teaser-final-copy">
+          <div class="lq-contact-estimate-kicker">Estimate preview</div>
+          <h3 class="lq-contact-estimate-title">Your starting range is ready.</h3>
+          <p class="lq-contact-estimate-copy">Enter your best number to unlock the full estimate, coverage range, and next step.</p>
         </div>
 
-        <div class="lq-teaser-clean-footer">
-          <span>Unlock full estimate</span>
-          <small>${escapeHtml(buildStep2UnlockCopy(normalized))}</small>
+        <div class="lq-contact-teaser-final-metrics">
+          <div class="lq-contact-estimate-metric">
+            <div class="lq-contact-estimate-metric-label">Starting range</div>
+            <div class="lq-contact-estimate-metric-value">${escapeHtml(monthlyRange)}</div>
+          </div>
+          <div class="lq-contact-estimate-metric">
+            <div class="lq-contact-estimate-metric-label">Full details</div>
+            <div class="lq-contact-estimate-metric-value">Locked</div>
+          </div>
         </div>
-      </div>`;
+      </section>`;
   }
 
   function buildPostSubmitEstimateSummaryHtml(preview) {
