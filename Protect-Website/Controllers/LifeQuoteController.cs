@@ -1520,7 +1520,7 @@ if (!ModelState.IsValid)
                     ? attachedAgentFirstName.Trim()
                     : "your licensed agent";
 
-            var coverageLabel   = ResolveLabel(coverageStep?.Options, model.CoverageAmountOption) ?? ResolveCoverageAmountLabel(model.CoverageAmount);
+            coverageLabel ??= ResolveCoverageAmountLabel(model.CoverageAmount);
 
             string estimatedRange =
                 recommendationTitle.Contains("Whole", StringComparison.OrdinalIgnoreCase) ? "$57-$66/mo" :
