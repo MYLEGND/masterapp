@@ -503,15 +503,17 @@
         "iul" => "long-term protection goals, flexibility, and budget",
         _ => "coverage needs, family, and budget"
     };
-    var stepTwoContactKickerText = "Keep this estimate";
-    var contactMethodHelperText = "Email is best for a written copy. Add a phone only if you want text or call help too.";
+    var stepTwoContactKickerText = "Unlock the full review";
+    var contactMethodHelperText = "Phone is best if you want a quick personalized review. Email works too if you prefer a written copy.";
     var contactMethodErrorText = "Add an email or phone so we can keep your estimate connected to you.";
     var consentPromptText = "I agree that Legend or my licensed agent may email, call, or text me about this estimate and the options tied to this request.";
     var consentErrorText = "Please check the box so we can send your estimate and options.";
     var stepTwoContactTitleText = "Where should we send your estimate?";
-    var stepTwoContactCopyText = contactMethodHelperText;
-    var finalStepHeading = "Your estimate is ready";
-    var finalStepHelper = "Add the best contact method to keep a written copy of this estimate and the clearest next options. Help stays optional.";
+    var stepTwoContactCopyText = "Submit to save this estimate, review the full recommendation, and continue into scheduling.";
+    var stepTwoSubmitNoteText = "Send yourself the estimate and unlock the full review.";
+    var stepTwoProgressText = "Estimate preview";
+    var finalStepHeading = "Your personalized estimate preview is ready";
+    var finalStepHelper = "Send yourself the estimate, then review your personalized options and schedule a time if you want help comparing coverage.";
     var agentTrustHeadline = isContactFirstEducationVariant
         ? $"You’ll hear directly from {agentDirectContactName}."
         : $"You’ll hear directly from {agentDirectContactName}.";
@@ -536,7 +538,7 @@
         : "See what protection options may fit your family’s needs.";
     var heroSubheadline = isContactFirstEducationVariant
         ? "Life insurance can feel confusing. Answer a few quick questions and see what may fit before deciding whether you want help."
-        : (isLandingView ? "Answer a few quick questions to see what may fit and what the monthly range may look like. No pressure." : string.Empty);
+        : (isLandingView ? "Answer a few quick questions to see what may fit, what the monthly range may look like, and whether a personalized review makes sense." : string.Empty);
     var heroTrustNote = isContactFirstEducationVariant ? "Quick • Private • Estimate first" : "Quick • Private • Estimate first";
     var heroTrustPersonName = !string.IsNullOrWhiteSpace(agentTrustProfile?.DisplayName)
         ? agentTrustProfile!.DisplayName!.Trim()
@@ -544,7 +546,7 @@
     var heroTrustPersonRole = !string.IsNullOrWhiteSpace(agentTrustProfile?.Npn)
         ? "Licensed Insurance Professional"
         : "Personal insurance guidance";
-    var heroTrustPersonSupport = "No pressure. Just personalized guidance.";
+    var heroTrustPersonSupport = "Personalized guidance for your estimate and next step.";
     var heroTrustPersonImageUrl = !string.IsNullOrWhiteSpace(agentTrustProfile?.ProfileImageUrl)
         ? agentTrustProfile!.ProfileImageUrl!.Trim()
         : string.Empty;
@@ -576,7 +578,7 @@
     var contactFirstBannerAlt = "Legend Legacy Protection banner asking whether your family would struggle financially without you and inviting a quick life insurance estimate.";
     var contactFirstProofKicker = "Personal guidance";
     var contactFirstProofText = "Answer 5 quick questions to see what may fit. Keep the estimate and stay in control.";
-    IReadOnlyList<string> contactFirstProofChips = new List<string> { "Estimate first", "No obligation", "You stay in control" };
+    IReadOnlyList<string> contactFirstProofChips = new List<string> { "Estimate preview", "Personalized review", "You stay in control" };
     var contactFirstProcessingHeading = "Getting your estimate...";
     var contactFirstProcessingHelper = "A quick match is running now.";
     var contactFirstProcessingNote = "Sizing your likely fit...";
@@ -584,8 +586,8 @@
     var lowFrictionHeroHeadline = "See what kind of life coverage may fit your family.";
     var lowFrictionHeroSubheadline = "Start with 5 quick questions. You’ll see a practical starting point and monthly range without a sales detour.";
     var lowFrictionHeroCtaText = "See My Options";
-    var lowFrictionHeroCtaNote = "Estimate first • No pressure • No obligation";
-    IReadOnlyList<string> lowFrictionHeroChips = new List<string> { "5 quick questions", "Estimate first", "No obligation" };
+    var lowFrictionHeroCtaNote = "Estimate preview • Personalized review • Scheduling available";
+    IReadOnlyList<string> lowFrictionHeroChips = new List<string> { "5 quick questions", "Estimate preview", "Scheduling available" };
     IReadOnlyList<string> lowFrictionValueChips = new List<string> { "A likely starting point", "A realistic monthly range", "Clear next-step guidance" };
     var showGenericCoverageOverview = string.Equals(normalizedOfferKey, "life", StringComparison.OrdinalIgnoreCase);
     var showCarrierReviewBeforeContact = false;
@@ -609,7 +611,7 @@
         contactFirstProcessingHeading = "Getting your whole life estimate...";
         contactFirstProcessingHelper = "You’ll see estimated whole life fit first.";
         contactFirstProcessingNote = "Sizing your whole life range...";
-        finalStepHelper = "Add the best contact method to keep this whole life estimate and the clearest next options. Help stays optional.";
+        finalStepHelper = "Send yourself this whole life estimate, then review your personalized options and schedule a time if you want help comparing coverage.";
         agentTrustBio = "I’ll help you compare whole life options without pressure.";
         finalSubmitButtonText = "Send My Whole Life Estimate";
         productFocusTitle = "Why people explore whole life";
@@ -631,7 +633,7 @@
         contactFirstProcessingHeading = "Getting your term life estimate...";
         contactFirstProcessingHelper = "You’ll see estimated term life fit first.";
         contactFirstProcessingNote = "Sizing your term life range...";
-        finalStepHelper = "Add the best contact method to keep this term life estimate and the clearest next options. Help stays optional.";
+        finalStepHelper = "Send yourself this term life estimate, then review your personalized options and schedule a time if you want help comparing coverage.";
         agentTrustBio = "I’ll help you compare term life options without pressure.";
         finalSubmitButtonText = "Send My Term Life Estimate";
         productFocusTitle = "Why people explore term life";
@@ -653,7 +655,7 @@
         contactFirstProcessingHeading = "Getting your final expense estimate...";
         contactFirstProcessingHelper = "You’ll see estimated final expense fit first.";
         contactFirstProcessingNote = "Sizing your final expense range...";
-        finalStepHelper = "Add the best contact method to keep this final expense estimate and the clearest next options. Help stays optional.";
+        finalStepHelper = "Send yourself this final expense estimate, then review your personalized options and schedule a time if you want help comparing coverage.";
         agentTrustBio = "I’ll help you compare final expense options without pressure.";
         finalSubmitButtonText = "Send My Final Expense Estimate";
         productFocusTitle = "Why people explore final expense";
@@ -675,7 +677,7 @@
         contactFirstProcessingHeading = "Getting your mortgage protection estimate...";
         contactFirstProcessingHelper = "You’ll see estimated mortgage protection fit first.";
         contactFirstProcessingNote = "Sizing your mortgage protection range...";
-        finalStepHelper = "Add the best contact method to keep this mortgage protection estimate and the clearest next options. Help stays optional.";
+        finalStepHelper = "Send yourself this mortgage protection estimate, then review your personalized options and schedule a time if you want help comparing coverage.";
         agentTrustBio = "I’ll help you compare mortgage protection options without pressure.";
         finalSubmitButtonText = "Send My Mortgage Estimate";
         productFocusTitle = "Why people explore mortgage protection";
@@ -697,7 +699,7 @@
         contactFirstProcessingHeading = "Getting your IUL estimate...";
         contactFirstProcessingHelper = "You’ll see estimated indexed universal life fit first.";
         contactFirstProcessingNote = "Sizing your IUL range...";
-        finalStepHelper = "Add the best contact method to keep this IUL estimate and the clearest next options. Help stays optional.";
+        finalStepHelper = "Send yourself this IUL estimate, then review your personalized options and schedule a time if you want help comparing coverage.";
         agentTrustBio = "I’ll help you compare IUL options without pressure.";
         finalSubmitButtonText = "Send My IUL Estimate";
         productFocusTitle = "Why people explore indexed universal life";
@@ -713,16 +715,16 @@
     {
         stepOneContinueButtonText = "See What May Fit";
         finalSubmitButtonText = "Send My Estimate";
-        finalStepHeading = "Your estimate is ready";
-        finalStepHelper = "Add the best contact method to keep this estimate and the clearest next options. Help stays optional.";
+        finalStepHeading = "Your personalized estimate preview is ready";
+        finalStepHelper = "Send yourself the estimate, then review your personalized options and schedule a time if you want help comparing coverage.";
         stepTwoContactTitleText = "Where should we send your estimate?";
-        stepTwoContactCopyText = contactMethodHelperText;
+        stepTwoContactCopyText = "Submit to save this estimate, review the full recommendation, and continue into scheduling.";
         heroHeadline = lowFrictionHeroHeadline;
         heroSubheadline = lowFrictionHeroSubheadline;
-        heroTrustNote = "Estimate first • No pressure • No obligation";
+        heroTrustNote = "Estimate preview • Personalized review • Scheduling available";
         contactFirstProofKicker = "Quick options review";
-        contactFirstProofText = "You’ll see a practical starting point and monthly range before deciding whether you want anything else.";
-        contactFirstProofChips = new List<string> { "5 quick questions", "Estimate first", "You stay in control" };
+        contactFirstProofText = "You’ll see a practical starting point and monthly range, then decide whether to review the recommendation and schedule time to compare options.";
+        contactFirstProofChips = new List<string> { "5 quick questions", "Estimate preview", "Scheduling available" };
         contactFirstProcessingHeading = "Getting your estimate...";
         contactFirstProcessingHelper = "A practical starting point is loading now.";
         contactFirstProcessingNote = "Sizing your likely fit...";
@@ -2941,6 +2943,68 @@ body:not(.landing-mode) .lq-step1-panel .lq-step-progress-wrap{
 .lq-contact-estimate-wrap .lq-estimate-disclaimer:empty {
     display: none;
 }
+.lq-contact-estimate-wrap.is-preview-locked {
+    gap: 10px;
+}
+.lq-contact-estimate-wrap.is-preview-locked .lq-contact-estimate-head {
+    gap: 6px;
+}
+.lq-contact-estimate-unlock {
+    display: grid;
+    gap: 5px;
+    padding: 12px 13px;
+    border-radius: 14px;
+    border: 1px solid rgba(199,153,49,0.24);
+    background: rgba(11,19,34,0.48);
+    box-shadow:
+        inset 0 1px 0 rgba(255,255,255,0.03),
+        0 9px 18px rgba(0,0,0,0.12);
+}
+.lq-contact-estimate-unlock-label {
+    color: rgba(240,198,109,0.88);
+    font-size: .7rem;
+    font-weight: 860;
+    letter-spacing: .08em;
+    text-transform: uppercase;
+}
+.lq-contact-estimate-unlock-copy {
+    color: rgba(236,240,247,0.78);
+    font-size: .84rem;
+    line-height: 1.45;
+}
+.lq-contact-review-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 10px;
+}
+.lq-contact-review-list {
+    list-style: none;
+    padding: 0;
+    margin: 8px 0 0;
+    display: grid;
+    gap: 6px;
+}
+.lq-contact-review-list li {
+    position: relative;
+    padding-left: 1rem;
+    color: rgba(236,240,247,0.84);
+    font-size: .82rem;
+    line-height: 1.4;
+}
+.lq-contact-review-list li::before {
+    content: '•';
+    position: absolute;
+    left: 0;
+    color: #f3d78f;
+    font-weight: 900;
+}
+.lq-contact-estimate-wrap.is-expanded-review .lq-contact-estimate-head {
+    text-align: left;
+}
+.lq-contact-estimate-wrap.is-expanded-review .lq-contact-estimate-copy {
+    max-width: none;
+    margin: 0;
+}
 .lq-post-submit-slot {
     margin-top: 16px;
 }
@@ -3254,6 +3318,9 @@ body.page-variant-contact-first-education-v1 .lq-contact-estimate-chip {
         padding: 12px;
         gap: 10px;
     }
+    .lq-contact-estimate-wrap.is-preview-locked {
+        gap: 8px;
+    }
     .lq-contact-capture-title {
         font-size: .94rem;
     }
@@ -3268,6 +3335,17 @@ body.page-variant-contact-first-education-v1 .lq-contact-estimate-chip {
     }
     .lq-contact-estimate-personal-copy {
         font-size: .79rem;
+    }
+    .lq-contact-review-grid {
+        grid-template-columns: 1fr;
+        gap: 8px;
+    }
+    .lq-contact-review-list {
+        margin-top: 6px;
+        gap: 5px;
+    }
+    .lq-contact-review-list li {
+        font-size: .78rem;
     }
     .lq-contact-estimate-signal {
         padding: 11px 12px;
@@ -3288,6 +3366,12 @@ body.page-variant-contact-first-education-v1 .lq-contact-estimate-chip {
     .lq-contact-estimate-chip {
         font-size: .69rem;
         padding: 5px 8px;
+    }
+    .lq-contact-estimate-unlock {
+        padding: 10px 11px;
+    }
+    .lq-contact-estimate-unlock-copy {
+        font-size: .78rem;
     }
     .lq-contact-estimate-copy,
     .lq-contact-estimate-alt {
@@ -4748,6 +4832,12 @@ body.page-variant-contact-first-education-v1.life-landing .lq-trust-note {
         max-width: none;
     }
 
+    body.life-landing .lq-contact-review-grid,
+    body.life-final-step-active .lq-contact-review-grid {
+        grid-template-columns: 1fr !important;
+        gap: 10px !important;
+    }
+
     body.life-landing .lq-contact-estimate-signal,
     body.life-landing .lq-contact-estimate-personal,
     body.life-final-step-active .lq-contact-estimate-signal,
@@ -4783,6 +4873,16 @@ body.page-variant-contact-first-education-v1.life-landing .lq-trust-note {
     body.life-landing .lq-contact-estimate-card-wrap .lq-rec-card,
     body.life-final-step-active .lq-contact-estimate-card-wrap .lq-rec-card {
         border-radius: 16px;
+    }
+
+    body.life-landing .lq-contact-estimate-unlock,
+    body.life-final-step-active .lq-contact-estimate-unlock {
+        padding: 10px 0 0 !important;
+        border: 0 !important;
+        border-top: 1px solid rgba(224,177,74,0.16) !important;
+        border-radius: 0 !important;
+        background: transparent !important;
+        box-shadow: none !important;
     }
 
     body.life-landing .lq-estimate-price-wrap,
@@ -5945,7 +6045,7 @@ body.life-final-step-active.page-variant-contact-first-education-v1 #lifeEducati
 
                             <div class="lq-step-panel lq-contact-step lq-contact-first-wizard-panel" id="lifeStep2Panel" data-funnel-step="2" @(!showContactStepByDefault ? "hidden" : "")>
                                 <div class="lq-step-panel-pad">
-                                    <div class="lq-step-progress" id="lifeStep2Progress">Estimate ready</div>
+                                    <div class="lq-step-progress" id="lifeStep2Progress">@stepTwoProgressText</div>
                                     <div class="lq-step-title" id="lifeStep2Heading" tabindex="-1">@finalStepHeading</div>
                                     <div class="lq-step-helper" id="lifeStep2Helper" @(string.IsNullOrWhiteSpace(finalStepHelper) ? "hidden" : null)>@finalStepHelper</div>
                                     <div class="lq-contact-grid">
@@ -5990,17 +6090,17 @@ body.life-final-step-active.page-variant-contact-first-education-v1 #lifeEducati
                                         </div>
                                         <div class="lq-field-row two full">
                                             <div class="lq-field">
-                                                <label for="Email">Email for your estimate</label>
+                                                <label for="Email">Email for a written copy</label>
                                                 <input type="email" id="Email" name="Email" class="form-control" placeholder="you@example.com" autocomplete="email" inputmode="email" value="@form.Email" />
                                                 <div class="lq-field-err" id="err-Email">Please enter a valid email address.</div>
                                             </div>
                                             <div class="lq-field">
-                                                <label for="Phone">Phone (optional)</label>
+                                                <label for="Phone">Phone for a quick review</label>
                                                 <input type="tel" id="Phone" name="Phone" class="form-control" placeholder="(555)555-5555" autocomplete="tel" inputmode="tel" value="@form.Phone" />
                                                 <div class="lq-field-err" id="err-Phone">Please enter a valid phone number.</div>
                                             </div>
                                         </div>
-                                        <div class="full lq-field-help">@contactMethodHelperText</div>
+                                        <div class="full lq-field-help" id="lifeContactMethodHelp">@contactMethodHelperText</div>
                                         <div class="full lq-field-err" id="err-ContactMethod">@contactMethodErrorText</div>
                                         <div class="full">
                                             <label class="lq-consent" for="MarketingEmailConsent">
@@ -6015,7 +6115,7 @@ body.life-final-step-active.page-variant-contact-first-education-v1 #lifeEducati
                                         </div>
                                         <div class="lq-step-actions">
                                             <div class="lq-submit-row">
-                                                <div class="lq-trust-note">Estimate first. Help only if you want it.</div>
+                                                <div class="lq-trust-note" id="lifeSubmitTrustNote">@stepTwoSubmitNoteText</div>
                                                 <button type="submit" class="btn-gold btn-progress w-100" id="submitLife" data-default-label="@finalSubmitButtonText">@finalSubmitButtonText</button>
                                             </div>
                                             <div class="lq-error" id="lifeError"></div>
@@ -6425,7 +6525,7 @@ body.life-final-step-active.page-variant-contact-first-education-v1 #lifeEducati
 
         <div class="lq-step-panel lq-contact-step" id="lifeStep2Panel" data-funnel-step="2" @(!showContactStepByDefault ? "hidden" : "")>
             <div class="lq-step-panel-pad">
-                <div class="lq-step-progress" id="lifeStep2Progress">Estimate ready</div>
+                <div class="lq-step-progress" id="lifeStep2Progress">@stepTwoProgressText</div>
                 <div class="lq-step-title" id="lifeStep2Heading" tabindex="-1">@finalStepHeading</div>
                 <div class="lq-step-helper" id="lifeStep2Helper" @(string.IsNullOrWhiteSpace(finalStepHelper) ? "hidden" : null)>@finalStepHelper</div>
                 <div class="lq-contact-grid">
@@ -6470,17 +6570,17 @@ body.life-final-step-active.page-variant-contact-first-education-v1 #lifeEducati
                         </div>
                         <div class="lq-field-row two full">
                             <div class="lq-field">
-                                <label for="Email">Email for your estimate</label>
+                                <label for="Email">Email for a written copy</label>
                                 <input type="email" id="Email" name="Email" class="form-control" placeholder="you@example.com" autocomplete="email" inputmode="email" value="@form.Email" />
                                 <div class="lq-field-err" id="err-Email">Please enter a valid email address.</div>
                             </div>
                             <div class="lq-field">
-                                <label for="Phone">Phone (optional)</label>
+                                <label for="Phone">Phone for a quick review</label>
                                 <input type="tel" id="Phone" name="Phone" class="form-control" placeholder="(555)555-5555" autocomplete="tel" inputmode="tel" value="@form.Phone" />
                                 <div class="lq-field-err" id="err-Phone">Please enter a valid phone number.</div>
                             </div>
                         </div>
-                        <div class="full lq-field-help">@contactMethodHelperText</div>
+                        <div class="full lq-field-help" id="lifeContactMethodHelp">@contactMethodHelperText</div>
                         <div class="full lq-field-err" id="err-ContactMethod">@contactMethodErrorText</div>
                         @if (!usesLeanContactFields)
                         {
@@ -6558,7 +6658,7 @@ body.life-final-step-active.page-variant-contact-first-education-v1 #lifeEducati
                     </div>
                     <div class="lq-step-actions">
                         <div class="lq-submit-row">
-                            <div class="lq-trust-note">Estimate first. Help only if you want it.</div>
+                            <div class="lq-trust-note" id="lifeSubmitTrustNote">@stepTwoSubmitNoteText</div>
                             <button type="submit" class="btn-gold btn-progress w-100" id="submitLife" data-default-label="@finalSubmitButtonText">@finalSubmitButtonText</button>
                         </div>
                         <div class="lq-error" id="lifeError"></div>
@@ -6615,6 +6715,7 @@ body.life-final-step-active.page-variant-contact-first-education-v1 #lifeEducati
   const step2Helper = document.getElementById('lifeStep2Helper');
   const step2ContactTitle = document.getElementById('lifeStep2ContactTitle');
   const step2ContactCopy = document.getElementById('lifeStep2ContactCopy');
+  const step2ContactMethodHelp = document.getElementById('lifeContactMethodHelp');
   const processingFill = document.getElementById('lifeProcessingFill');
   const step1Progress = document.getElementById('lifeStep1Progress');
   const step1ProgressFill = document.getElementById('lifeStep1ProgressFill');
@@ -6704,15 +6805,16 @@ body.life-final-step-active.page-variant-contact-first-education-v1 #lifeEducati
   const AGE_DEFAULT = @selectedAgeValue;
   const AGE_SELECTION_PROVIDED = '@(hasExplicitAgeSelection ? "true" : "false")' === 'true';
   const PROCESSING_BRIDGE_MS = 450;
-  const postSubmitSuccessHeadingText = 'Thanks — your estimate is ready.';
-  const postSubmitSuccessHelperText = 'Your information is saved. Keep this estimate and choose a time below if you want a guided review.';
+  const postSubmitSuccessHeadingText = 'Your personalized review is ready.';
+  const postSubmitSuccessHelperText = 'Review the recommendation below, then schedule a time while this estimate is fresh if you want help comparing coverage.';
   const publicBookingHeadingText = 'Schedule Your Review';
-  const publicBookingCopyText = 'Stay on this page and choose a time that works for you.';
-  const publicBookingCtaText = 'Schedule My Review';
-  const publicBookingFallbackText = 'Open scheduling in a new tab';
-  const publicBookingLoadingText = 'Loading your scheduling options...';
-  const publicBookingDisabledText = 'Your estimate is saved. Scheduling is not available here right now, and a licensed agent can still follow up with you.';
-  const publicBookingFallbackOnlyText = 'Scheduling for this request opens in a new tab for now.';
+  const publicBookingKickerText = 'Continue your personalized review';
+  const publicBookingCopyText = 'Choose a time to review this estimate, compare coverage, and confirm the next step that fits you best.';
+  const publicBookingCtaText = 'Schedule Your Review';
+  const publicBookingFallbackText = 'Continue in scheduling';
+  const publicBookingLoadingText = 'Preparing your scheduling options...';
+  const publicBookingDisabledText = 'Your estimate is saved. Scheduling is not available in this view right now, but a licensed agent can still continue your personalized review.';
+  const publicBookingFallbackOnlyText = 'Continue your personalized review in scheduling. It opens in a new tab for now.';
   const publicBookingPendingText = 'We only mark appointments as booked after Microsoft confirms the scheduling request.';
   const defaultProcessingHeadingText = processingHeading?.textContent?.trim() || '';
   const defaultProcessingHelperText = processingHelper?.textContent?.trim() || '';
@@ -6723,6 +6825,7 @@ body.life-final-step-active.page-variant-contact-first-education-v1 #lifeEducati
   const defaultStep2HelperHidden = step2Helper?.hidden ?? true;
   const defaultStep2ContactTitleText = step2ContactTitle?.textContent?.trim() || '';
   const defaultStep2ContactCopyText = step2ContactCopy?.textContent?.trim() || '';
+  const defaultStep2ContactMethodHelpText = step2ContactMethodHelp?.textContent?.trim() || '';
   const contactMethodErrorText = @Html.Raw(JsonSerializer.Serialize(contactMethodErrorText));
   const consentErrorText = @Html.Raw(JsonSerializer.Serialize(consentErrorText));
   const FUNNEL_STATE_SCOPE = `${window.location.pathname}:${pageKey}:${pageVariant}:${pageMode}:${quoteType}`;
@@ -7538,7 +7641,399 @@ body.life-final-step-active.page-variant-contact-first-education-v1 #lifeEducati
     }
   }
 
-  function syncStep2PanelMessaging(preview) {
+  function normalizeStep2Preview(preview) {
+    const source = preview && typeof preview === 'object' ? preview : {};
+    const primarySource = source.primary && typeof source.primary === 'object' ? source.primary : {};
+    const secondarySource = source.secondary && typeof source.secondary === 'object' ? source.secondary : null;
+    return {
+      offerKey: String(source.offerKey || quoteType || '').trim().toLowerCase(),
+      displayMode: String(source.displayMode || '').trim().toLowerCase(),
+      age: Number(source.age || 0),
+      ageBand: String(source.ageBand || '').trim(),
+      requestedCoverageAmount: Number(source.requestedCoverageAmount || primarySource.coverageAmount || 0),
+      tobaccoUse: String(source.tobaccoUse || '').trim().toLowerCase(),
+      coverageGoal: String(source.coverageGoal || '').trim().toLowerCase(),
+      protectingWho: String(source.protectingWho || '').trim().toLowerCase(),
+      primary: {
+        policyKey: String(primarySource.policyKey || '').trim().toLowerCase(),
+        policyType: String(primarySource.policyType || 'Life Insurance').trim(),
+        coverageAmount: Number(primarySource.coverageAmount || 0),
+        estimatedLowMonthly: Number(primarySource.estimatedLowMonthly || 0),
+        estimatedHighMonthly: Number(primarySource.estimatedHighMonthly || 0),
+        recommendationReason: String(primarySource.recommendationReason || '').trim(),
+        reasons: Array.isArray(primarySource.reasons)
+          ? primarySource.reasons.map((reason) => String(reason || '').trim()).filter(Boolean)
+          : []
+      },
+      secondary: secondarySource ? {
+        policyKey: String(secondarySource.policyKey || '').trim().toLowerCase(),
+        policyType: String(secondarySource.policyType || '').trim(),
+        coverageAmount: Number(secondarySource.coverageAmount || 0),
+        estimatedLowMonthly: Number(secondarySource.estimatedLowMonthly || 0),
+        estimatedHighMonthly: Number(secondarySource.estimatedHighMonthly || 0),
+        recommendationReason: String(secondarySource.recommendationReason || '').trim()
+      } : null
+    };
+  }
+
+  function formatCoverageFigureForStep2(amount) {
+    const numericAmount = Math.max(0, Math.round(Number(amount || 0)));
+    if (!numericAmount) {
+      return '';
+    }
+
+    if (numericAmount >= 2000000) {
+      return '$2,000,000+';
+    }
+
+    return `$${numericAmount.toLocaleString('en-US')}`;
+  }
+
+  function formatCurrencyRangeCompactForStep2(low, high) {
+    const lowValue = Math.max(0, Math.round(Number(low || 0)));
+    const highValue = Math.max(lowValue, Math.round(Number(high || 0)));
+    if (!lowValue && !highValue) {
+      return 'Estimate pending';
+    }
+
+    return `$${lowValue.toLocaleString('en-US')}-$${highValue.toLocaleString('en-US')}/mo`;
+  }
+
+  function resolveCoverageRangeLadderForStep2(preview) {
+    switch (String(preview?.primary?.policyKey || preview?.offerKey || '').trim().toLowerCase()) {
+      case 'term':
+        return [250000, 500000, 1000000, 2000000];
+      case 'wholelife':
+        return [50000, 100000, 250000, 500000];
+      case 'finalexpense':
+        return [25000, 50000, 75000, 100000];
+      case 'mortgage':
+        return [150000, 250000, 500000, 750000];
+      case 'iul':
+        return [250000, 500000, 1000000, 2000000];
+      default:
+        return [100000, 250000, 500000, 1000000];
+    }
+  }
+
+  function buildRecommendedCoverageRangeForStep2(preview) {
+    const targetCoverage = Number(preview?.requestedCoverageAmount || preview?.primary?.coverageAmount || 0);
+    const ladder = resolveCoverageRangeLadderForStep2(preview);
+    if (!Number.isFinite(targetCoverage) || targetCoverage <= 0 || ladder.length === 0) {
+      return '';
+    }
+
+    const formatRange = (low, high) => {
+      const lowDisplay = formatCoverageFigureForStep2(low);
+      const highDisplay = formatCoverageFigureForStep2(high);
+      if (!lowDisplay || !highDisplay) {
+        return lowDisplay || highDisplay;
+      }
+
+      return `${lowDisplay}-${highDisplay}`;
+    };
+
+    if (ladder.length === 1) {
+      return formatRange(ladder[0], ladder[0]);
+    }
+
+    if (targetCoverage <= ladder[0]) {
+      return formatRange(ladder[0], ladder[1]);
+    }
+
+    for (let index = 1; index < ladder.length; index += 1) {
+      if (targetCoverage <= ladder[index]) {
+        return formatRange(ladder[index - 1], ladder[index]);
+      }
+    }
+
+    return formatRange(ladder[ladder.length - 2], ladder[ladder.length - 1]);
+  }
+
+  function humanizeProtectingWhoForStep2(value) {
+    switch (String(value || '').trim().toLowerCase()) {
+      case 'spouse_or_partner':
+        return 'Partner';
+      case 'children':
+        return 'Children';
+      case 'family':
+        return 'Family';
+      case 'just_me':
+        return 'Myself';
+      default:
+        return '';
+    }
+  }
+
+  function humanizeCoverageGoalForStep2(value) {
+    switch (String(value || '').trim().toLowerCase()) {
+      case 'replace_income':
+        return 'income protection';
+      case 'mortgage_or_bills':
+        return 'mortgage and bills';
+      case 'final_expenses':
+        return 'final expenses';
+      case 'leave_something':
+      case 'leave_legacy':
+        return 'legacy planning';
+      case 'protect_term_years':
+        return 'key protection years';
+      case 'keep_costs_affordable':
+        return 'efficient monthly cost';
+      case 'lifelong_protection':
+        return 'lifelong coverage';
+      case 'cash_value_growth':
+        return 'cash value growth';
+      case 'burial_costs':
+        return 'burial costs';
+      case 'final_bills':
+        return 'final bills';
+      case 'ease_family_burden':
+        return 'easing the burden on family';
+      case 'leave_small_benefit':
+        return 'a modest benefit';
+      case 'mortgage_balance':
+        return 'covering the mortgage balance';
+      case 'monthly_payment':
+        return 'covering the monthly payment';
+      case 'stay_in_home':
+        return 'keeping the family in the home';
+      case 'household_bills':
+        return 'household stability';
+      case 'future_access':
+        return 'future cash value access';
+      default:
+        return '';
+    }
+  }
+
+  function humanizeTobaccoUseForStep2(value) {
+    switch (String(value || '').trim().toLowerCase()) {
+      case 'non_smoker':
+        return 'Non-smoker';
+      case 'smoker':
+        return 'Tobacco use';
+      default:
+        return '';
+    }
+  }
+
+  function buildStep2SignalChips(preview, maxItems = 4) {
+    const normalized = normalizeStep2Preview(preview);
+    const chips = [];
+    const ageLabel = normalized.age > 0
+      ? `Age ${Math.round(normalized.age)}`
+      : normalized.ageBand ? `Age ${normalized.ageBand}` : '';
+    const tobaccoLabel = humanizeTobaccoUseForStep2(normalized.tobaccoUse);
+    const protectingLabel = humanizeProtectingWhoForStep2(normalized.protectingWho);
+    const goalLabel = humanizeCoverageGoalForStep2(normalized.coverageGoal);
+    const coverageTarget = formatCoverageFigureForStep2(normalized.requestedCoverageAmount || normalized.primary.coverageAmount);
+
+    if (ageLabel) chips.push(ageLabel);
+    if (tobaccoLabel) chips.push(tobaccoLabel);
+    if (protectingLabel) chips.push(`Protecting ${protectingLabel}`);
+    if (goalLabel) chips.push(goalLabel.replace(/^\w/, (letter) => letter.toUpperCase()));
+    if (coverageTarget) chips.push(`${coverageTarget} target`);
+
+    const chipsHtml = chips
+      .slice(0, Math.max(0, maxItems))
+      .map((chip) => `<span class="lq-contact-estimate-chip">${escapeHtml(chip)}</span>`)
+      .join('');
+
+    return chipsHtml
+      ? `<div class="lq-contact-estimate-chips" aria-label="Estimate inputs">${chipsHtml}</div>`
+      : '';
+  }
+
+  function buildStep2EstimateCardHtml(preview) {
+    const normalized = normalizeStep2Preview(preview);
+    const recommendationTier = normalized.displayMode === 'comparison' && normalized.secondary?.policyKey
+      ? 'Likely first option'
+      : 'Likely fit';
+    const recommendedCoverageRange = buildRecommendedCoverageRangeForStep2(normalized)
+      || formatCoverageFigureForStep2(normalized.requestedCoverageAmount || normalized.primary.coverageAmount)
+      || 'To be confirmed';
+
+    return `
+      <div class="lq-contact-estimate-card-wrap">
+        <article class="lq-rec-card lq-estimate-card primary lq-estimate-card-compact" aria-label="Primary recommendation">
+          <div class="lq-estimate-card-top">
+            <span class="lq-rec-badge primary">${escapeHtml(recommendationTier)}</span>
+          </div>
+          <div class="lq-contact-estimate-product">${escapeHtml(normalized.primary.policyType || 'Life Insurance')}</div>
+          <div class="lq-contact-estimate-metrics" aria-label="Estimate highlights">
+            <div class="lq-contact-estimate-metric">
+              <div class="lq-contact-estimate-metric-label">Estimated monthly range</div>
+              <div class="lq-contact-estimate-metric-value">${escapeHtml(formatCurrencyRangeCompactForStep2(normalized.primary.estimatedLowMonthly, normalized.primary.estimatedHighMonthly))}</div>
+            </div>
+            <div class="lq-contact-estimate-metric">
+              <div class="lq-contact-estimate-metric-label">Recommended coverage range</div>
+              <div class="lq-contact-estimate-metric-value">${escapeHtml(recommendedCoverageRange)}</div>
+            </div>
+          </div>
+        </article>
+      </div>`;
+  }
+
+  function buildCompactStep2Reason(preview) {
+    const normalized = normalizeStep2Preview(preview);
+    if (normalized.primary.recommendationReason) {
+      return normalized.primary.recommendationReason;
+    }
+
+    const protectingLabel = humanizeProtectingWhoForStep2(normalized.protectingWho);
+    const goalLabel = humanizeCoverageGoalForStep2(normalized.coverageGoal);
+    const policyType = normalized.primary.policyType || 'this option';
+
+    if (protectingLabel && goalLabel) {
+      return `Based on what you shared about protecting ${protectingLabel.toLowerCase()} and ${goalLabel}, ${policyType} looks like the clearest first option to review.`;
+    }
+
+    if (goalLabel) {
+      return `Based on what you shared, ${policyType} looks like the clearest first option to review for ${goalLabel}.`;
+    }
+
+    return `Based on what you shared, ${policyType} looks like the clearest place to start reviewing options.`;
+  }
+
+  function buildExpandedStep2Reason(preview) {
+    const normalized = normalizeStep2Preview(preview);
+    const policyType = normalized.primary.policyType || 'this option';
+    const coverageRange = buildRecommendedCoverageRangeForStep2(normalized)
+      || formatCoverageFigureForStep2(normalized.requestedCoverageAmount || normalized.primary.coverageAmount);
+    const protectingLabel = humanizeProtectingWhoForStep2(normalized.protectingWho);
+    const goalLabel = humanizeCoverageGoalForStep2(normalized.coverageGoal);
+    const ageLabel = normalized.age > 0
+      ? `age ${Math.round(normalized.age)}`
+      : normalized.ageBand ? `age ${normalized.ageBand}` : '';
+    const tobaccoLabel = humanizeTobaccoUseForStep2(normalized.tobaccoUse);
+    const factors = [protectingLabel ? `protecting ${protectingLabel.toLowerCase()}` : '', goalLabel ? goalLabel : '', coverageRange ? `${coverageRange} of coverage` : '', ageLabel, tobaccoLabel ? `${tobaccoLabel.toLowerCase()} pricing assumptions` : '']
+      .filter(Boolean);
+
+    if (!factors.length) {
+      return `${policyType} looks like the clearest first option to review based on the answers you gave.`;
+    }
+
+    return `${policyType} rose to the top for ${factors.join(', ')}.`;
+  }
+
+  function buildExpandedStep2Reasons(preview) {
+    const normalized = normalizeStep2Preview(preview);
+    const reasons = normalized.primary.reasons.slice(0, 3);
+    if (reasons.length) {
+      return reasons;
+    }
+
+    const fallbacks = [];
+    const goalLabel = humanizeCoverageGoalForStep2(normalized.coverageGoal);
+    const protectingLabel = humanizeProtectingWhoForStep2(normalized.protectingWho);
+    const coverageRange = buildRecommendedCoverageRangeForStep2(normalized)
+      || formatCoverageFigureForStep2(normalized.requestedCoverageAmount || normalized.primary.coverageAmount);
+
+    if (goalLabel) {
+      fallbacks.push(`Keeps the recommendation focused on ${goalLabel}.`);
+    }
+    if (protectingLabel) {
+      fallbacks.push(`Centers the review on protecting ${protectingLabel.toLowerCase()}.`);
+    }
+    if (coverageRange) {
+      fallbacks.push(`Starts the review around ${coverageRange} of coverage.`);
+    }
+
+    return fallbacks.slice(0, 3);
+  }
+
+  function buildExpandedStep2NextReviewCopy(preview) {
+    const normalized = normalizeStep2Preview(preview);
+    const policyType = normalized.primary.policyType || 'this option';
+    const coverageRange = buildRecommendedCoverageRangeForStep2(normalized)
+      || formatCoverageFigureForStep2(normalized.requestedCoverageAmount || normalized.primary.coverageAmount)
+      || 'this range';
+
+    if (normalized.secondary?.policyType) {
+      return `Start with ${policyType} in the ${coverageRange} range, then decide whether ${normalized.secondary.policyType} is worth comparing as an alternate fit.`;
+    }
+
+    return `Start by reviewing whether ${policyType} in the ${coverageRange} range fits the protection and budget priorities you shared.`;
+  }
+
+  function buildPreSubmitEstimateSummaryHtml(preview) {
+    const normalized = normalizeStep2Preview(preview);
+    return `
+      <div class="lq-contact-estimate-wrap is-preview-locked" id="lifeStep2EstimateSummary">
+        <div class="lq-contact-estimate-head">
+          <div class="lq-contact-estimate-kicker">Estimate preview</div>
+          <div class="lq-contact-estimate-title">${escapeHtml(normalized.primary.policyType || 'Life Insurance')} looks like the clearest place to start.</div>
+          <div class="lq-contact-estimate-copy">${escapeHtml(buildCompactStep2Reason(normalized))}</div>
+        </div>
+        ${buildStep2EstimateCardHtml(normalized)}
+        <div class="lq-contact-estimate-unlock">
+          <div class="lq-contact-estimate-unlock-label">Full review after submit</div>
+          <div class="lq-contact-estimate-unlock-copy">Save this estimate to unlock the full recommendation review and continue into scheduling.</div>
+        </div>
+        ${buildStep2SignalChips(normalized, 4)}
+        <div class="lq-estimate-disclaimer">Illustrative estimate only. Final pricing depends on underwriting and carrier review.</div>
+      </div>`;
+  }
+
+  function buildPostSubmitEstimateSummaryHtml(preview) {
+    const normalized = normalizeStep2Preview(preview);
+    const reasonsHtml = buildExpandedStep2Reasons(normalized)
+      .map((reason) => `<li>${escapeHtml(reason)}</li>`)
+      .join('');
+    const coverageRange = buildRecommendedCoverageRangeForStep2(normalized)
+      || formatCoverageFigureForStep2(normalized.requestedCoverageAmount || normalized.primary.coverageAmount)
+      || 'To be confirmed';
+    const secondaryValue = normalized.secondary?.policyType || humanizeTobaccoUseForStep2(normalized.tobaccoUse) || 'Personalized review';
+    const secondaryLabel = normalized.secondary?.policyType ? 'Also worth comparing' : 'Pricing profile';
+    const nextStepCopy = hasAgentTrustProfile
+      ? `Continue your personalized review by choosing a time with ${agentDirectContactName} while this estimate is still fresh.`
+      : 'Continue your personalized review by choosing a time below while this estimate is still fresh.';
+
+    return `
+      <div class="lq-contact-estimate-wrap is-expanded-review" id="lifeStep2EstimateSummary">
+        <div class="lq-contact-estimate-head">
+          <div class="lq-contact-estimate-kicker">Personalized recommendation</div>
+          <div class="lq-contact-estimate-title">${escapeHtml(normalized.primary.policyType || 'Life Insurance')} is the clearest first option to review.</div>
+          <div class="lq-contact-estimate-copy">${escapeHtml(buildExpandedStep2Reason(normalized))}</div>
+        </div>
+        ${buildStep2EstimateCardHtml(normalized)}
+        <div class="lq-contact-review-grid">
+          <div class="lq-contact-estimate-personal">
+            <div class="lq-contact-estimate-personal-label">Why this surfaced</div>
+            <div class="lq-contact-estimate-personal-copy">${escapeHtml(normalized.primary.recommendationReason || buildCompactStep2Reason(normalized))}</div>
+            ${reasonsHtml ? `<ul class="lq-contact-review-list">${reasonsHtml}</ul>` : ''}
+          </div>
+          <div class="lq-contact-estimate-personal">
+            <div class="lq-contact-estimate-personal-label">What to review next</div>
+            <div class="lq-contact-estimate-personal-copy">${escapeHtml(buildExpandedStep2NextReviewCopy(normalized))}</div>
+          </div>
+        </div>
+        <div class="lq-contact-estimate-stats">
+          <div class="lq-contact-estimate-stat">
+            <div class="lq-contact-estimate-stat-label">Review first</div>
+            <div class="lq-contact-estimate-stat-value">${escapeHtml(normalized.primary.policyType || 'Life Insurance')}</div>
+          </div>
+          <div class="lq-contact-estimate-stat">
+            <div class="lq-contact-estimate-stat-label">Coverage to review</div>
+            <div class="lq-contact-estimate-stat-value">${escapeHtml(coverageRange)}</div>
+          </div>
+          <div class="lq-contact-estimate-stat">
+            <div class="lq-contact-estimate-stat-label">${escapeHtml(secondaryLabel)}</div>
+            <div class="lq-contact-estimate-stat-value">${escapeHtml(secondaryValue)}</div>
+          </div>
+        </div>
+        <div class="lq-contact-estimate-signal">
+          <div class="lq-contact-estimate-signal-badge">Next step</div>
+          <div class="lq-contact-estimate-signal-copy">${escapeHtml(nextStepCopy)}</div>
+        </div>
+        ${buildStep2SignalChips(normalized, 5)}
+        <div class="lq-estimate-disclaimer">Illustrative estimate only. Final pricing depends on underwriting and carrier review.</div>
+      </div>`;
+  }
+
+  function syncStep2PanelMessaging(preview, options = {}) {
+    const expanded = options.expanded === true;
     if (!canRenderEstimateSummary(preview)) {
       if (step2Progress) step2Progress.textContent = defaultStep2ProgressText;
       if (step2Heading) step2Heading.textContent = defaultStep2HeadingText;
@@ -7548,45 +8043,53 @@ body.life-final-step-active.page-variant-contact-first-education-v1 #lifeEducati
       }
       if (step2ContactTitle) step2ContactTitle.textContent = defaultStep2ContactTitleText;
       if (step2ContactCopy) step2ContactCopy.textContent = defaultStep2ContactCopyText;
+      if (step2ContactMethodHelp) step2ContactMethodHelp.textContent = defaultStep2ContactMethodHelpText;
       return;
     }
 
     if (step2Progress) {
-      step2Progress.textContent = 'Estimate ready';
+      step2Progress.textContent = expanded ? 'Review ready' : defaultStep2ProgressText;
     }
 
     if (step2Heading) {
-      step2Heading.textContent = 'Your estimate is ready';
+      step2Heading.textContent = expanded ? postSubmitSuccessHeadingText : defaultStep2HeadingText;
     }
 
     if (step2Helper) {
       step2Helper.hidden = false;
-      step2Helper.textContent = 'Add the best contact method to keep a written copy of this estimate and the clearest next options. Help stays optional.';
+      step2Helper.textContent = expanded ? postSubmitSuccessHelperText : defaultStep2HelperText;
     }
 
     if (step2ContactTitle) {
-      step2ContactTitle.textContent = 'Where should we send your estimate?';
+      step2ContactTitle.textContent = defaultStep2ContactTitleText;
     }
 
     if (step2ContactCopy) {
-      step2ContactCopy.textContent = 'Email is best for a written copy. Add a phone only if you want text or call help too.';
+      step2ContactCopy.textContent = defaultStep2ContactCopyText;
+    }
+
+    if (step2ContactMethodHelp) {
+      step2ContactMethodHelp.textContent = defaultStep2ContactMethodHelpText;
     }
   }
 
-  function renderStep2EstimateSummary(preview) {
+  function renderStep2EstimateSummary(preview, options = {}) {
     if (!step2EstimateSlot) {
       return;
     }
 
-    if (!canRenderEstimateSummary(preview) || !window.lifeEstimateEngine?.buildContactSummaryHtml) {
-      syncStep2PanelMessaging(null);
+    if (!canRenderEstimateSummary(preview)) {
+      syncStep2PanelMessaging(null, options);
       step2EstimateSlot.innerHTML = '';
       step2EstimateSlot.hidden = true;
       return;
     }
 
-    step2EstimateSlot.innerHTML = window.lifeEstimateEngine.buildContactSummaryHtml(preview);
-    syncStep2PanelMessaging(preview);
+    const expanded = options.expanded === true;
+    step2EstimateSlot.innerHTML = expanded
+      ? buildPostSubmitEstimateSummaryHtml(preview)
+      : buildPreSubmitEstimateSummaryHtml(preview);
+    syncStep2PanelMessaging(preview, options);
     step2EstimateSlot.hidden = false;
   }
 
@@ -8556,6 +9059,9 @@ body.life-final-step-active.page-variant-contact-first-education-v1 #lifeEducati
     if (step2ContactCopy) {
       step2ContactCopy.textContent = defaultStep2ContactCopyText;
     }
+    if (step2ContactMethodHelp) {
+      step2ContactMethodHelp.textContent = defaultStep2ContactMethodHelpText;
+    }
   }
 
   function renderBookingIframe(frameSlot, statusEl, url) {
@@ -8697,8 +9203,8 @@ body.life-final-step-active.page-variant-contact-first-education-v1 #lifeEducati
     }
 
     const supportCopy = hasAgentTrustProfile
-      ? `If you schedule now, you’ll meet directly with ${agentDirectContactName}.`
-      : 'Choose a time now if you want a guided review.';
+      ? `Choose a time now to review this estimate directly with ${agentDirectContactName} while the details are still fresh.`
+      : 'Choose a time now to continue your personalized review while the details are still fresh.';
 
     const noteText = normalized.loading
       ? publicBookingLoadingText
@@ -8711,14 +9217,14 @@ body.life-final-step-active.page-variant-contact-first-education-v1 #lifeEducati
             : publicBookingDisabledText;
 
     const statusLabel = normalized.loading
-      ? 'Preparing scheduling'
+      ? 'Preparing your review'
       : !normalized.enabled
-        ? 'Scheduling optional'
+        ? 'Review saved'
         : normalized.canEmbed
-          ? 'Stay on this page'
+          ? 'Continue on this page'
           : normalized.canFallback
-            ? 'New tab fallback'
-            : 'Scheduling optional';
+            ? 'Continue in new tab'
+            : 'Review saved';
 
     const showPrimaryCta = !normalized.loading && normalized.enabled && normalized.canEmbed;
     const showFallbackLink = !normalized.loading && normalized.canFallback && normalized.fallbackUrl;
@@ -8727,7 +9233,7 @@ body.life-final-step-active.page-variant-contact-first-education-v1 #lifeEducati
     postSubmitSlot.innerHTML = `
       <section class="lq-post-submit-card" aria-labelledby="lifePostSubmitBookingTitle">
         <div class="lq-post-submit-head">
-          <div class="lq-post-submit-kicker">Saved to your estimate</div>
+          <div class="lq-post-submit-kicker">${escapeHtml(publicBookingKickerText)}</div>
           <div class="lq-post-submit-title" id="lifePostSubmitBookingTitle">${escapeHtml(publicBookingHeadingText)}</div>
           <div class="lq-post-submit-copy">${escapeHtml(publicBookingCopyText)}</div>
         </div>
@@ -8748,7 +9254,6 @@ body.life-final-step-active.page-variant-contact-first-education-v1 #lifeEducati
               <div class="lq-booking-embed-frame-wrap" id="lifeBookingInlineFrameSlot"></div>
             </div>
           ` : ''}
-          ${(!normalized.loading && !normalized.enabled) ? `<div class="lq-booking-note">${escapeHtml(publicBookingDisabledText)}</div>` : ''}
         </div>
       </section>`;
 
@@ -8909,6 +9414,7 @@ body.life-final-step-active.page-variant-contact-first-education-v1 #lifeEducati
 
   async function showPostSubmitSuccess(responseBody = {}, estimatePreview = null) {
     postSubmitSuccessActive = true;
+    latestEstimatePreview = estimatePreview || latestEstimatePreview;
     publicBookingState = null;
     publicBookingEmbedViewed = false;
     publicBookingBookedConfirmed = false;
@@ -8921,16 +9427,7 @@ body.life-final-step-active.page-variant-contact-first-education-v1 #lifeEducati
     if (contactCaptureWrap instanceof HTMLElement) {
       contactCaptureWrap.hidden = true;
     }
-    if (step2Progress) {
-      step2Progress.textContent = 'Saved';
-    }
-    if (step2Heading) {
-      step2Heading.textContent = postSubmitSuccessHeadingText;
-    }
-    if (step2Helper) {
-      step2Helper.hidden = false;
-      step2Helper.textContent = postSubmitSuccessHelperText;
-    }
+    renderStep2EstimateSummary(latestEstimatePreview, { expanded: true });
 
     await trackThankYouViewOnce({
       inlineExperience: true,
@@ -8994,7 +9491,7 @@ body.life-final-step-active.page-variant-contact-first-education-v1 #lifeEducati
     const estimatePreview = options.estimatePreview ?? latestEstimatePreview;
     latestEstimatePreview = estimatePreview || null;
     applyEstimatePreviewToHiddenFields(latestEstimatePreview);
-    renderStep2EstimateSummary(latestEstimatePreview);
+    renderStep2EstimateSummary(latestEstimatePreview, { expanded: postSubmitSuccessActive });
     if (!postSubmitSuccessActive) {
       if (contactCaptureWrap instanceof HTMLElement) {
         contactCaptureWrap.hidden = false;
