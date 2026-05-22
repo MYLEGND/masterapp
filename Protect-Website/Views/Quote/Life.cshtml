@@ -6561,6 +6561,190 @@ body.life-final-step-active #submitLife {
     }
 }
 
+
+/* ================================================================
+   Emergency funnel layout repair — unclipped, flatter, action-led
+   ================================================================ */
+
+/* Stop horizontal clipping everywhere */
+.lq-container,
+.lq-hero-shell,
+.lq-step1-panel,
+.lq-step-panel-pad,
+.lq-contact-first-proof,
+.lq-question-shell,
+.lq-step-question,
+.lq-choice-grid,
+.lq-options-grid,
+.lq-field-row,
+.lq-contact-estimate-wrap,
+.lq-contact-estimate-stats {
+    max-width: 100% !important;
+    min-width: 0 !important;
+    box-sizing: border-box !important;
+    overflow: visible !important;
+}
+
+body,
+main.layout-content {
+    overflow-x: hidden !important;
+}
+
+/* Main shell: one premium container */
+.lq-hero-shell {
+    max-width: 720px !important;
+    width: min(720px, calc(100vw - 24px)) !important;
+    padding: 16px !important;
+    margin: 10px auto 18px !important;
+}
+
+/* Trust image/card becomes a light strip, not another card */
+.lq-contact-first-proof {
+    display: flex !important;
+    align-items: center !important;
+    gap: 10px !important;
+    padding: 8px 0 12px !important;
+    margin: 0 0 12px !important;
+    background: transparent !important;
+    border: 0 !important;
+    border-bottom: 1px solid rgba(199,153,49,.18) !important;
+    box-shadow: none !important;
+}
+
+.lq-contact-first-proof-avatar,
+.lq-human-strip-avatar {
+    width: 38px !important;
+    height: 38px !important;
+    flex: 0 0 38px !important;
+}
+
+.lq-contact-first-proof-kicker,
+.lq-contact-first-proof-chips {
+    display: none !important;
+}
+
+.lq-contact-first-proof-title {
+    font-size: .95rem !important;
+    line-height: 1.12 !important;
+    margin: 0 !important;
+}
+
+.lq-contact-first-proof-text {
+    font-size: .76rem !important;
+    line-height: 1.25 !important;
+    color: rgba(248,250,252,.70) !important;
+    margin: 2px 0 0 !important;
+}
+
+/* Question area becomes the dominant surface */
+.lq-step1-panel,
+.lq-step-panel-pad,
+.lq-question-shell {
+    background: transparent !important;
+    border: 0 !important;
+    box-shadow: none !important;
+    padding: 0 !important;
+}
+
+.lq-step-question {
+    font-size: clamp(1.35rem, 3vw, 1.85rem) !important;
+    line-height: 1.08 !important;
+    max-width: 100% !important;
+    overflow-wrap: anywhere !important;
+    text-wrap: balance !important;
+    margin-bottom: 14px !important;
+}
+
+/* Fix clipped option grid */
+.lq-choice-grid,
+.lq-options-grid {
+    display: grid !important;
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+    gap: 10px !important;
+    width: 100% !important;
+}
+
+.lq-choice-card,
+.lq-option-card,
+.lq-answer-card {
+    min-width: 0 !important;
+    width: 100% !important;
+    box-sizing: border-box !important;
+    border-radius: 14px !important;
+    padding: 14px 12px !important;
+    background: linear-gradient(180deg, rgba(17,29,50,.84), rgba(8,15,28,.88)) !important;
+    border: 1px solid rgba(199,153,49,.28) !important;
+    box-shadow: none !important;
+}
+
+.lq-choice-card span,
+.lq-option-card span,
+.lq-answer-card span,
+.lq-choice-card strong,
+.lq-option-card strong,
+.lq-answer-card strong {
+    overflow-wrap: anywhere !important;
+    text-wrap: balance !important;
+}
+
+/* CTA hierarchy */
+#step1Continue,
+#submitLife {
+    width: 100% !important;
+    min-height: 60px !important;
+    font-size: 1.05rem !important;
+    font-weight: 950 !important;
+    margin-top: 12px !important;
+}
+
+/* Contact step: fewer boxes, submit-focused */
+body.life-final-step-active .lq-contact-estimate-wrap,
+body.life-final-step-active .lq-contact-estimate-card,
+body.life-final-step-active .lq-contact-summary-card {
+    background: transparent !important;
+    border: 0 !important;
+    box-shadow: none !important;
+    padding: 0 !important;
+}
+
+body.life-final-step-active .lq-contact-estimate-main,
+body.life-final-step-active .lq-contact-estimate-result,
+body.life-final-step-active .lq-contact-estimate-recommendation {
+    background: linear-gradient(180deg, rgba(16,28,48,.75), rgba(8,15,28,.82)) !important;
+    border: 1px solid rgba(199,153,49,.34) !important;
+    border-radius: 16px !important;
+    padding: 14px !important;
+    box-shadow: none !important;
+}
+
+/* Mobile: max 2 containers, no clipping */
+@@media (max-width: 767.98px) {
+    .lq-container {
+        padding: 0 10px 18px !important;
+    }
+
+    .lq-hero-shell {
+        width: calc(100vw - 20px) !important;
+        max-width: calc(100vw - 20px) !important;
+        padding: 12px !important;
+        border-radius: 16px !important;
+    }
+
+    .lq-choice-grid,
+    .lq-options-grid {
+        grid-template-columns: 1fr !important;
+        gap: 9px !important;
+    }
+
+    .lq-step-question {
+        font-size: 1.38rem !important;
+    }
+
+    .lq-contact-first-proof {
+        padding: 6px 0 10px !important;
+    }
+}
+
 </style>
 
 <svg aria-hidden="true" width="0" height="0" focusable="false" style="position:absolute; width:0; height:0; overflow:hidden;">
