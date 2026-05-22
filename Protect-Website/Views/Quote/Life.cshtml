@@ -6823,6 +6823,102 @@ body.life-final-step-active .lq-contact-estimate-recommendation {
     margin-top: 4px !important;
 }
 
+
+/* ================================================================
+   Final booking section cleanup — one heading, navy calendar container
+   ================================================================ */
+.lq-booking-status-pill,
+.lq-booking-kicker,
+.lq-booking-note,
+.lq-booking-pending-note,
+.lq-booking-embed-status,
+.lq-booking-actions,
+.lq-booking-secondary-link {
+    display: none !important;
+}
+
+.lq-booking-shell {
+    background:
+        radial-gradient(circle at 15% 0%, rgba(226,186,93,0.10), transparent 32%),
+        linear-gradient(180deg, #0b172c 0%, #07101f 100%) !important;
+    border: 1px solid rgba(199,153,49,0.36) !important;
+    border-radius: 18px !important;
+    padding: 16px !important;
+    box-shadow: 0 18px 34px rgba(0,0,0,0.28) !important;
+}
+
+.lq-booking-head {
+    background: transparent !important;
+    border: 0 !important;
+    box-shadow: none !important;
+    padding: 0 0 10px !important;
+    margin: 0 !important;
+}
+
+.lq-booking-title {
+    color: #fff7df !important;
+    font-size: 1.35rem !important;
+    line-height: 1.1 !important;
+    margin: 0 0 5px !important;
+}
+
+.lq-booking-copy {
+    color: rgba(248,250,252,0.78) !important;
+    font-size: .94rem !important;
+    line-height: 1.4 !important;
+    max-width: 42ch !important;
+    margin: 0 !important;
+}
+
+.lq-booking-embed-shell {
+    display: block !important;
+    background: transparent !important;
+    border: 0 !important;
+    box-shadow: none !important;
+    padding: 0 !important;
+    margin: 8px 0 0 !important;
+}
+
+.lq-booking-embed-frame-wrap {
+    margin: 0 !important;
+    border-radius: 16px !important;
+    overflow: hidden !important;
+    background: #0b172c !important;
+    border: 1px solid rgba(199,153,49,0.28) !important;
+    box-shadow: none !important;
+}
+
+.lq-booking-iframe {
+    display: block !important;
+    width: 100% !important;
+    border: 0 !important;
+    background: #ffffff !important;
+    min-height: 660px !important;
+}
+
+@media (max-width: 767.98px) {
+    .lq-booking-shell {
+        padding: 12px !important;
+        border-radius: 16px !important;
+    }
+
+    .lq-booking-title {
+        font-size: 1.22rem !important;
+    }
+
+    .lq-booking-copy {
+        font-size: .88rem !important;
+    }
+
+    .lq-booking-embed-frame-wrap {
+        border-radius: 14px !important;
+    }
+
+    .lq-booking-iframe {
+        min-height: 600px !important;
+    }
+}
+
 </style>
 
 <svg aria-hidden="true" width="0" height="0" focusable="false" style="position:absolute; width:0; height:0; overflow:hidden;">
@@ -9431,11 +9527,11 @@ body.life-final-step-active .lq-contact-estimate-recommendation {
   function resolvePublicBookingCopy(preview) {
     switch (resolveDisplayedOfferKeyForStep2(preview)) {
       case 'term':
-        return 'Schedule your review with Zac to see what level of protection may help keep your family financially steady.';
+        return 'Choose a time below to review your protection path with Zac.';
       case 'wholelife':
         return 'Choose a time to continue your personalized review and see whether lifelong protection fits the long-term stability you want to keep in place.';
       case 'finalexpense':
-        return 'Schedule your review with Zac to see what level of protection may help keep your family financially steady.';
+        return 'Choose a time below to review your protection path with Zac.';
       case 'mortgage':
         return 'Choose a time to continue your personalized review and see what level of protection may help your family keep the home and preserve breathing room.';
       case 'iul':
