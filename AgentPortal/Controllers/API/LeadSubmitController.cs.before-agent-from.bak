@@ -515,22 +515,11 @@ What the review confirms:
 
             try
             {
-                var prospectFromEmail = (resolved.Found && !string.IsNullOrWhiteSpace(resolved.Profile.AgentUpn))
-                    ? resolved.Profile.AgentUpn.Trim()
-                    : "connect@mylegnd.com";
-
-                var prospectFromName = (resolved.Found && !string.IsNullOrWhiteSpace(resolved.Profile.DisplayName))
-                    ? resolved.Profile.DisplayName.Trim()
-                    : "Legend";
-
                 prospectEmailSent = await _emailSender.TrySendAsync(
                     prospectEmail,
                     prospectSubject,
                     prospectHtmlBody,
-                    prospectTextBody,
-                    prospectFromEmail,
-                    prospectFromName,
-                    prospectFromEmail);
+                    prospectTextBody);
 
                 _logger.LogInformation(
                     "LeadSubmit [{CorrelationId}]: prospect result email sent={EmailSent} for lead {LeadId} to {ProspectEmail}",

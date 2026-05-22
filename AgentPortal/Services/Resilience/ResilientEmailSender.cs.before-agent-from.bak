@@ -22,10 +22,10 @@ public sealed class ResilientEmailSender : IEmailSender
         _flags = flags.Value;
     }
 
-    public async Task<bool> TrySendAsync(string toEmail, string subject, string? htmlBody, string? textBody = null, string? fromEmail = null, string? fromDisplayName = null, string? replyToEmail = null)
+    public async Task<bool> TrySendAsync(string toEmail, string subject, string? htmlBody, string? textBody = null)
     {
         if (!_flags.ResiliencePoliciesEnabled)
-            return await _inner.TrySendAsync(toEmail, subject, htmlBody, textBody, fromEmail, fromDisplayName, replyToEmail);
+            return await _inner.TrySendAsync(toEmail, subject, htmlBody, textBody);
 
         const int maxAttempts = 3;
         for (int attempt = 1; attempt <= maxAttempts; attempt++)
@@ -33,7 +33,7 @@ public sealed class ResilientEmailSender : IEmailSender
             try
             {
                 using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(8));
-                var task = _inner.TrySendAsync(toEmail, subject, htmlBody, textBody, fromEmail, fromDisplayName, replyToEmail);
+                var task = _inner.TrySendAsync(toEmail, subject, htmlBody, textBody);
                 var completed = await Task.WhenAny(task, Task.Delay(Timeout.Infinite, cts.Token));
                 if (completed != task)
                     throw new TimeoutException("Email send timed out.");
