@@ -100,13 +100,6 @@ namespace Protect_Website.Controllers
                 ModelState.AddModelError(nameof(model.Drivers), "At least one driver is required.");
             if (model.Vehicles.Count == 0)
                 ModelState.AddModelError(nameof(model.Vehicles), "At least one vehicle is required.");
-
-            
-        if (string.IsNullOrWhiteSpace(model?.Form?.Phone))
-        {
-            ModelState.AddModelError("Form.Phone", "Please enter your phone number.");
-        }
-
         if (!ModelState.IsValid)
             {
                 EnsureIndexZero(model);

@@ -206,7 +206,13 @@ namespace Protect_Website.Controllers
                 ModelState.AddModelError(nameof(LifeQuoteFormModel.MarketingEmailConsent), "Please check the box so we can send your estimate and options.");
             }
 
-            if (!ModelState.IsValid)
+            
+            if (string.IsNullOrWhiteSpace(model.Phone))
+            {
+                ModelState.AddModelError(nameof(LifeQuoteFormModel.Phone), "Please enter your phone number.");
+            }
+
+if (!ModelState.IsValid)
             {
                 if (IsAjax())
                 {
