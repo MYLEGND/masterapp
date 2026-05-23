@@ -117,10 +117,12 @@
         }
 
         .navbar-brand img {
-            height: 78px;
+            height: auto;
+            max-height: 138px;
             width: auto;
-            max-height: 78px;
-            filter: drop-shadow(0 8px 16px rgba(64,47,11,.10));
+            max-width: 100%;
+            display: block;
+            filter: drop-shadow(0 6px 14px rgba(0,0,0,.35));
         }
 
         .navbar-brand {
@@ -645,7 +647,11 @@
                 align-items: flex-start;
             }
 
-            .navbar-brand img { height: 70px; max-height: 70px; }
+            .navbar-brand img {
+                height: auto;
+                max-height: 52px;
+                filter: drop-shadow(0 4px 10px rgba(0,0,0,.25));
+            }
 
             header .navbar .container-fluid {
                 display: flex !important;

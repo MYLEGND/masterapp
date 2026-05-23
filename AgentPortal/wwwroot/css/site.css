@@ -567,7 +567,11 @@ footer.footer {
         max-height: none !important;
         box-shadow: 0 10px 22px rgba(0,0,0,.08);
     }
-    .navbar-brand img{ height: 58px !important; max-height: 58px !important; }
+    .navbar-brand img{
+        height: auto !important;
+        max-height: 52px !important;
+        filter: drop-shadow(0 4px 10px rgba(0,0,0,.25)) !important;
+    }
     .navbar-left{ width: 100%; margin: 0 !important; }
     .navbar-left .nav-row{ gap: 10px !important; }
     .navbar-left .nav-link{
