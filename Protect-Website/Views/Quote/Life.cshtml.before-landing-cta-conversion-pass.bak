@@ -634,6 +634,8 @@
     var lowFrictionHeroKicker = "Explore life insurance options";
     var lowFrictionHeroHeadline = "See which protection path best aligns with your family.";
     var lowFrictionHeroSubheadline = "Start with a focused protection check. You’ll see a practical starting point, monthly range, and a clear next step.";
+    var lowFrictionHeroCtaText = "See What My Family Would Need Covered";
+    var lowFrictionHeroCtaNote = "25+ carrier comparison • Licensed review • No obligation";
     IReadOnlyList<string> lowFrictionHeroChips = new List<string> { "25+ carriers", "Licensed review", "No obligation" };
     IReadOnlyList<string> lowFrictionValueChips = new List<string> { "Carrier comparison", "Monthly range", "Clear next step" };
     var showGenericCoverageOverview = string.Equals(normalizedOfferKey, "life", StringComparison.OrdinalIgnoreCase);
@@ -853,25 +855,6 @@
             ("45-54", 50, "45-54"),
             ("55+", 60, "55+")
         };
-    var primaryStartCtaText = productLanguageKey switch
-    {
-        "term" => "Check My Term Fit",
-        "wholelife" => "Check My Whole Life Fit",
-        "finalexpense" => "Check My Final Expense Fit",
-        "mortgage" => "Check My Home Protection Fit",
-        "iul" => "Check My IUL Fit",
-        _ => "Check My Protection Fit"
-    };
-    var primaryStartCtaNote = productLanguageKey switch
-    {
-        "term" => "Takes about 30 seconds. See the years worth protecting first.",
-        "wholelife" => "Takes about 30 seconds. Start with lasting protection, no obligation.",
-        "finalexpense" => "Takes about 30 seconds. Help your family avoid scrambling later.",
-        "mortgage" => "Takes about 30 seconds. Start with the home and who depends on it.",
-        "iul" => "Takes about 30 seconds. Start with protection, flexibility, and legacy.",
-        _ => "Takes about 30 seconds. No obligation. You stay in control."
-    };
-
     var requiredContactFieldNames = new[] { "FirstName", "Phone" };
     var metaSignalOptions = MetaSignalOptionsAccessor.Value;
     var metaSignalConfigJson = JsonSerializer.Serialize(new
@@ -5351,6 +5334,36 @@ body.page-variant-low-friction-options-v1.life-landing .lq-header {
     flex-wrap: wrap;
     gap: 8px;
 }
+.lq-sticky-mobile-cta {
+    position: fixed;
+    left: 12px;
+    right: 12px;
+    bottom: max(12px, env(safe-area-inset-bottom));
+    z-index: 42;
+    display: none;
+    opacity: 0;
+    transform: translateY(120%);
+    pointer-events: none;
+    transition: opacity .18s ease, transform .18s ease;
+}
+.lq-sticky-mobile-cta.is-visible {
+    opacity: 1;
+    transform: translateY(0);
+    pointer-events: auto;
+}
+.lq-sticky-mobile-cta-btn {
+    width: 100%;
+    min-height: 58px;
+    box-shadow:
+        inset 0 1px 0 rgba(255,255,255,0.34),
+        0 18px 30px rgba(2,12,27,.22),
+        0 0 0 1px rgba(241,207,128,0.24) !important;
+}
+body.life-final-step-active .lq-sticky-mobile-cta {
+    opacity: 0 !important;
+    transform: translateY(120%) !important;
+    pointer-events: none !important;
+}
 
 @@media (max-width: 767.98px) {
     body.page-variant-low-friction-options-v1.life-landing .lq-hero-shell {
@@ -5389,8 +5402,17 @@ body.page-variant-low-friction-options-v1.life-landing .lq-header {
         padding: 12px 12px 10px;
         border-radius: 14px;
     }
+
+    .lq-sticky-mobile-cta {
+        display: block;
+    }
 }
 
+@@media (min-width: 768px) {
+    .lq-sticky-mobile-cta {
+        display: none !important;
+    }
+}
 
 /* Final contact isolation */
 body.life-final-step-active .lq-hero-rail {
@@ -6886,13 +6908,13 @@ body.life-final-step-active .lq-contact-estimate-recommendation {
 }
 
 
-/* ELITE ABOVE-FOLD CONVERSION PASS */
+/* ELITE CONVERSION PROOF PASS */
 .lq-above-fold-proof {
     display: flex;
     flex-wrap: wrap;
     justify-content: center;
     gap: 7px;
-    margin: -2px auto 12px;
+    margin: -4px auto 13px;
     max-width: 640px;
 }
 
@@ -6903,75 +6925,35 @@ body.life-final-step-active .lq-contact-estimate-recommendation {
     min-height: 28px;
     padding: 6px 10px;
     border-radius: 999px;
-    border: 1px solid rgba(243,214,136,0.40);
-    background: linear-gradient(180deg, rgba(12,28,52,0.82) 0%, rgba(7,17,32,0.78) 100%);
-    color: rgba(255,246,216,0.94);
+    border: 1px solid rgba(243,214,136,0.36);
+    background: rgba(8,20,39,0.72);
+    color: rgba(255,246,216,0.92);
     font-size: .74rem;
-    font-weight: 890;
-    letter-spacing: .014em;
-    box-shadow: inset 0 1px 0 rgba(255,255,255,0.05), 0 8px 16px rgba(0,0,0,0.16);
+    font-weight: 880;
+    letter-spacing: .015em;
+    box-shadow: inset 0 1px 0 rgba(255,255,255,0.04);
 }
 
-.lq-contact-first-hero-actions,
-.lq-low-friction-hero-actions {
+.lq-contact-first-hero-actions {
     display: grid;
-    gap: 9px;
-    width: min(100%, 382px);
-    margin: 0 auto 13px;
-    position: relative;
-    isolation: isolate;
+    gap: 8px;
+    width: min(100%, 360px);
+    margin: 0 auto 14px;
 }
 
-.lq-primary-start-cta {
+.lq-contact-first-hero-cta {
     width: 100%;
-    min-height: 64px;
-    font-size: clamp(1.02rem, 4.2vw, 1.16rem);
-    font-weight: 960;
-    color: #061910 !important;
-    border: 1.4px solid rgba(215,255,225,0.78) !important;
-    background: linear-gradient(180deg, #9af2b8 0%, #48d989 36%, #18a965 68%, #0b7646 100%) !important;
-    box-shadow: inset 0 1px 0 rgba(255,255,255,0.42), 0 18px 36px rgba(6,82,47,0.34), 0 0 26px rgba(72,217,137,0.22) !important;
-    animation: lqPrimaryCtaPulse 2.6s ease-in-out infinite;
+    min-height: 62px;
+    font-size: 1.04rem;
+    font-weight: 950;
 }
 
-.lq-primary-start-cta:hover,
-.lq-primary-start-cta:focus-visible {
-    color: #04140c !important;
-    filter: saturate(1.06) brightness(1.04);
-    transform: translateY(-2px) scale(1.01);
-}
-
-.lq-primary-start-note {
-    color: rgba(236,255,244,0.90) !important;
-    font-size: .86rem;
-    font-weight: 860;
-    line-height: 1.32;
+.lq-contact-first-hero-cta-note {
+    color: rgba(248,250,252,0.76);
+    font-size: .82rem;
+    font-weight: 760;
+    line-height: 1.35;
     text-align: center;
-    margin: 0 auto;
-    max-width: 32ch;
-    text-wrap: balance;
-}
-
-.lq-primary-start-note::after {
-    content: "";
-    display: block;
-    width: min(178px, 58vw);
-    height: 10px;
-    margin: 7px auto 0;
-    background: linear-gradient(90deg, transparent 0%, rgba(154,242,184,0.25) 24%, rgba(154,242,184,0.95) 48%, rgba(154,242,184,0.25) 72%, transparent 100%);
-    clip-path: polygon(0 42%, 78% 42%, 78% 12%, 100% 50%, 78% 88%, 78% 58%, 0 58%);
-    filter: drop-shadow(0 0 8px rgba(72,217,137,0.34));
-    animation: lqPrimaryCtaArrowSlide 1.55s ease-in-out infinite;
-}
-
-@@keyframes lqPrimaryCtaPulse {
-    0%, 100% { transform: translateY(0) scale(1); }
-    50% { transform: translateY(-1px) scale(1.018); }
-}
-
-@@keyframes lqPrimaryCtaArrowSlide {
-    0%, 100% { transform: translateX(-8px); opacity: .48; }
-    50% { transform: translateX(8px); opacity: 1; }
 }
 
 .lq-estimate-preserve-note {
@@ -6988,38 +6970,16 @@ body.life-final-step-active .lq-contact-estimate-recommendation {
     font-weight: 950;
 }
 
-@@media (prefers-reduced-motion: reduce) {
-    .lq-primary-start-cta,
-    .lq-primary-start-note::after {
-        animation: none !important;
-    }
-}
-
 @@media (max-width: 720px) {
     .lq-above-fold-proof {
         gap: 6px;
-        margin: -2px auto 8px;
+        margin: -3px auto 10px;
     }
 
     .lq-above-fold-proof span {
         font-size: .69rem;
         padding: 5px 8px;
         min-height: 26px;
-    }
-
-    .lq-contact-first-hero-actions,
-    .lq-low-friction-hero-actions {
-        width: 100%;
-        margin-bottom: 10px;
-    }
-
-    .lq-primary-start-cta {
-        min-height: 62px;
-        border-radius: 16px;
-    }
-
-    .lq-primary-start-note {
-        font-size: .81rem;
     }
 
     .lq-estimate-preserve-note {
@@ -7107,8 +7067,8 @@ body.life-final-step-active .lq-contact-estimate-recommendation {
                         }
                     </div>
                     <div class="lq-low-friction-hero-actions">
-                        <button type="button" class="btn-gold lq-primary-start-cta lq-low-friction-hero-cta" id="lifeHeroPrimaryCta" data-cta="life_funnel_start" data-life-funnel-start="true" data-primary-cta="hero">@primaryStartCtaText</button>
-                        <div class="lq-low-friction-cta-note lq-primary-start-note">@primaryStartCtaNote</div>
+                        <button type="button" class="btn-gold lq-low-friction-hero-cta" id="lifeHeroPrimaryCta" data-cta="life_funnel_start" data-life-funnel-start="true" data-primary-cta="hero">@lowFrictionHeroCtaText</button>
+                        <div class="lq-low-friction-cta-note">@lowFrictionHeroCtaNote</div>
                     </div>
                 </div>
             }
@@ -7118,10 +7078,9 @@ body.life-final-step-active .lq-contact-estimate-recommendation {
                     <img class="lq-hero-banner-image" src="@contactFirstBannerImageUrl" asp-append-version="true" alt="@contactFirstBannerAlt" loading="eager" />
                 </figure>
                 <div class="lq-above-fold-proof" aria-label="Review benefits">
-                    @foreach (var chip in contactFirstProofChips)
-                    {
-                        <span>@chip</span>
-                    }
+                    <span>25+ carrier comparison</span>
+                    <span>Licensed review</span>
+                    <span>No obligation</span>
                 </div>
                 @if (!string.IsNullOrWhiteSpace(heroStepIntroTitle) || !string.IsNullOrWhiteSpace(heroStepIntroHelper))
                 {
@@ -7137,10 +7096,10 @@ body.life-final-step-active .lq-contact-estimate-recommendation {
                     </div>
                 }
                 <div class="lq-contact-first-hero-actions">
-                    <button type="button" class="btn-gold lq-primary-start-cta lq-contact-first-hero-cta" id="lifeHeroPrimaryCta" data-cta="life_funnel_start" data-life-funnel-start="true" data-primary-cta="hero">
-                        @primaryStartCtaText
+                    <button type="button" class="btn-gold lq-contact-first-hero-cta" id="lifeHeroPrimaryCta" data-cta="life_funnel_start" data-life-funnel-start="true" data-primary-cta="hero">
+                        Check My Protection Fit
                     </button>
-                    <div class="lq-contact-first-hero-cta-note lq-primary-start-note">@primaryStartCtaNote</div>
+                    <div class="lq-contact-first-hero-cta-note">Takes about 30 seconds. No obligation. You stay in control.</div>
                 </div>
             }
             else if (isLandingView)
@@ -8898,6 +8857,7 @@ body.life-landing .lq-hero-shell,
   const heroEntryPanel = document.getElementById('lifeHeroEntryPanel');
   const startCtaButtons = Array.from(document.querySelectorAll('[data-life-funnel-start]'));
   const primaryCtaTargets = Array.from(document.querySelectorAll('[data-primary-cta]'));
+  const stickyPrimaryCtaWrap = document.getElementById('lifeStickyPrimaryCtaWrap');
   const step1Panel = document.getElementById('lifeStep1Panel');
   const processingPanel = document.getElementById('lifeProcessingPanel');
   const step2Panel = document.getElementById('lifeStep2Panel');
@@ -11219,6 +11179,28 @@ body.life-landing .lq-hero-shell,
     });
   }
 
+  function updateStickyPrimaryCtaVisibility() {
+    if (!(stickyPrimaryCtaWrap instanceof HTMLElement)) {
+      return;
+    }
+
+    const isMobileViewport = window.matchMedia('(max-width: 767.98px)').matches;
+    if (!isMobileViewport || document.body.classList.contains('life-final-step-active') || quoteStartTracked) {
+      stickyPrimaryCtaWrap.classList.remove('is-visible');
+      return;
+    }
+
+    const targetPanel = getVisibleFunnelPanel() || step1Panel || contactFirstPanel;
+    if (!(targetPanel instanceof HTMLElement)) {
+      stickyPrimaryCtaWrap.classList.remove('is-visible');
+      return;
+    }
+
+    const rect = targetPanel.getBoundingClientRect();
+    const panelVisible = rect.top < window.innerHeight * 0.72 && rect.bottom > window.innerHeight * 0.18;
+    stickyPrimaryCtaWrap.classList.toggle('is-visible', !panelVisible);
+  }
+
   function getPrimaryCtaCandidates() {
     return Array.from(new Set([
       ...primaryCtaTargets,
@@ -11376,6 +11358,9 @@ body.life-landing .lq-hero-shell,
     void ensureQuoteStartTracked({ startSource });
     void ensureMetaLeadFormStart({ startSource });
 
+    if (stickyPrimaryCtaWrap instanceof HTMLElement) {
+      stickyPrimaryCtaWrap.classList.remove('is-visible');
+    }
 
     window.requestAnimationFrame(() => {
       focusFunnelPanel(step1Panel || contactFirstPanel || getVisibleFunnelPanel(), {
@@ -11394,6 +11379,9 @@ body.life-landing .lq-hero-shell,
 
   installPrimaryCtaVisibilityTracking();
   installFirstQuestionVisibilityTracking();
+  updateStickyPrimaryCtaVisibility();
+  window.addEventListener('scroll', updateStickyPrimaryCtaVisibility, { passive: true });
+  window.addEventListener('resize', updateStickyPrimaryCtaVisibility);
 
   function syncStepOneAnswersFromUI() {
     const protecting = selectedRadio('ProtectingWho');
@@ -13098,6 +13086,11 @@ body.life-landing.life-quote-started .lq-hero-shell {
     }
 }
 /* LEGEND HERO STEP COPY MOVE END */
+</style>
+
+
+<style>
+
 </style>
 
 
