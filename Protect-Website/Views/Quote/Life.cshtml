@@ -7032,7 +7032,7 @@ body.life-final-step-active .lq-contact-estimate-recommendation {
 
 <div class="lq-hero-shell">
 <div class="@(isLandingView ? "lq-container" : "container lq-container")">
-    <div class="lq-hero-rail">
+    <div class="lq-hero-rail" id="lifeHeroEntryPanel" data-funnel-entry-panel="true">
         <div class="lq-header">
             @if (isLowFrictionOptionsVariant)
             {
@@ -8831,6 +8831,7 @@ body.life-landing .lq-hero-shell,
   if (!form) return;
 
   const contactFirstPanel = document.getElementById('lifeEducationContactPanel');
+  const heroEntryPanel = document.getElementById('lifeHeroEntryPanel');
   const startCtaButtons = Array.from(document.querySelectorAll('[data-life-funnel-start]'));
   const primaryCtaTargets = Array.from(document.querySelectorAll('[data-primary-cta]'));
   const stickyPrimaryCtaWrap = document.getElementById('lifeStickyPrimaryCtaWrap');
@@ -9094,6 +9095,13 @@ body.life-landing .lq-hero-shell,
     return step1Panel;
   }
 
+  function setQuoteEntryStarted(isStarted) {
+    document.body.classList.toggle('life-quote-started', !!isStarted);
+    if (heroEntryPanel instanceof HTMLElement) {
+      heroEntryPanel.setAttribute('aria-hidden', isStarted ? 'true' : 'false');
+    }
+  }
+
   function getActivePanelKey() {
     if (postSubmitSuccessActive) return 'success';
     if (step2Panel && !step2Panel.hidden) return 'contact';
@@ -9237,6 +9245,7 @@ body.life-landing .lq-hero-shell,
   }
 
   function resetFunnelToMarkupDefaults() {
+    setQuoteEntryStarted(false);
     resetPostSubmitSuccessState();
     form.reset();
     if (stateSelect?.dataset.selected) {
@@ -9357,6 +9366,7 @@ body.life-landing .lq-hero-shell,
     }
 
     isRestoringFunnelState = true;
+    setQuoteEntryStarted(true);
 
     const fields = state.fields && typeof state.fields === 'object' ? state.fields : {};
     setRadioValue('ProtectingWho', fields.ProtectingWho || '');
@@ -9545,6 +9555,15 @@ body.life-landing .lq-hero-shell,
     primaryCtaSeenTracked = true;
     trackEvent('primary_cta_seen', {
       placement: placement || 'hero'
+    });
+  }
+
+  function trackStartCtaClick(placement) {
+    const resolvedPlacement = placement || 'hero';
+    trackEvent('quote_cta_click', {
+      placement: resolvedPlacement,
+      ctaId: 'life_funnel_start',
+      ctaText: resolvedPlacement === 'sticky' ? 'Sticky Start My Quick Estimate' : 'Start My Quick Estimate'
     });
   }
 
@@ -11181,7 +11200,11 @@ body.life-landing .lq-hero-shell,
   }
 
   function handleStartCtaClick(startSource) {
-    trackPrimaryCtaSeenOnce(startSource || 'click');
+    const placement = String(startSource || 'hero_click').replace('_click', '');
+    trackPrimaryCtaSeenOnce(placement);
+    trackStartCtaClick(placement);
+    setQuoteEntryStarted(true);
+    showStep1(0, false, { trackView: true });
     void ensureQuoteStartTracked({ startSource });
     void ensureMetaLeadFormStart({ startSource });
     if (!('IntersectionObserver' in window)) {
@@ -11190,9 +11213,10 @@ body.life-landing .lq-hero-shell,
     if (stickyPrimaryCtaWrap instanceof HTMLElement) {
       stickyPrimaryCtaWrap.classList.remove('is-visible');
     }
-    const activeTarget = getVisibleFunnelPanel() || step1Panel || contactFirstPanel;
-    focusFunnelPanel(activeTarget, {
-      behavior: 'smooth'
+    window.requestAnimationFrame(() => {
+      focusFunnelPanel(step1Panel || getVisibleFunnelPanel() || contactFirstPanel, {
+        behavior: 'smooth'
+      });
     });
   }
 
@@ -12686,4 +12710,181 @@ body.page-variant-low-friction-options-v1 #lifeEducationContactPanel .lq-step-qu
         padding-bottom: 26px !important;
     }
 }
+</style>
+
+
+<style>
+/* LEGEND MOBILE CONVERSION DENSITY PASS START */
+@@media (max-width: 767.98px) {
+    body.life-landing .lq-container {
+        padding: 4px 8px 16px !important;
+    }
+
+    body.life-landing .lq-hero-shell {
+        width: calc(100vw - 16px) !important;
+        margin: 6px auto 12px !important;
+        padding: 10px 10px 12px !important;
+        border-radius: 16px !important;
+    }
+
+    body.life-landing .lq-hero-banner-wrap {
+        margin: 0 0 8px !important;
+        border-radius: 13px !important;
+    }
+
+    body.life-landing .lq-hero-banner-image {
+        display: block !important;
+        width: 100% !important;
+        border-radius: 12px !important;
+    }
+
+    body.life-landing .lq-above-fold-proof {
+        display: flex !important;
+        flex-wrap: nowrap !important;
+        gap: 6px !important;
+        justify-content: center !important;
+        margin: 6px 0 8px !important;
+        padding: 0 !important;
+    }
+
+    body.life-landing .lq-above-fold-proof span {
+        min-height: 24px !important;
+        padding: 4px 8px !important;
+        border-radius: 999px !important;
+        font-size: .66rem !important;
+        line-height: 1.05 !important;
+        white-space: nowrap !important;
+    }
+
+    body.life-landing .lq-contact-first-hero-actions {
+        width: 100% !important;
+        max-width: 100% !important;
+        margin: 4px auto 10px !important;
+        gap: 4px !important;
+    }
+
+    body.life-landing .lq-contact-first-hero-cta {
+        min-height: 50px !important;
+        padding: 11px 14px !important;
+        border-radius: 13px !important;
+        font-size: .98rem !important;
+    }
+
+    body.life-landing .lq-contact-first-hero-cta-note {
+        font-size: .72rem !important;
+        line-height: 1.2 !important;
+        margin: 0 !important;
+    }
+
+    body.life-landing .lq-contact-first-proof-row,
+    body.life-landing .lq-contact-first-proof,
+    body.life-landing .lq-contact-first-proof-chips {
+        display: none !important;
+    }
+
+    body.life-landing #lifeEducationContactPanel,
+    body.life-landing .lq-contact-first-form-panel {
+        padding: 0 !important;
+        margin: 0 !important;
+        background: transparent !important;
+        border: 0 !important;
+        box-shadow: none !important;
+    }
+
+    body.life-landing .lq-contact-first-form-surface,
+    body.life-landing .lq-contact-first-flow-surface,
+    body.life-landing .lq-step-panel-pad {
+        padding: 10px 10px 12px !important;
+        margin: 0 !important;
+        border-radius: 15px !important;
+    }
+
+    body.life-landing .lq-step-intro,
+    body.life-landing .lq-step-intro-block {
+        margin: 0 0 8px !important;
+        padding: 0 !important;
+    }
+
+    body.life-landing .lq-step-intro-title {
+        font-size: 1.02rem !important;
+        line-height: 1.12 !important;
+        margin: 0 0 4px !important;
+    }
+
+    body.life-landing .lq-step-intro-helper {
+        font-size: .82rem !important;
+        line-height: 1.28 !important;
+        margin: 0 !important;
+    }
+
+    body.life-landing .lq-step-question {
+        font-size: clamp(1.52rem, 7vw, 2rem) !important;
+        line-height: 1.04 !important;
+        margin: 8px 0 12px !important;
+        text-wrap: balance !important;
+    }
+
+    body.life-landing .lq-choice-grid,
+    body.life-landing .lq-options-grid {
+        gap: 8px !important;
+    }
+
+    body.life-landing .lq-choice-card,
+    body.life-landing .lq-option-card,
+    body.life-landing .lq-answer-card {
+        min-height: 92px !important;
+        padding: 10px 9px !important;
+        border-radius: 14px !important;
+    }
+
+    body.life-landing .lq-option-visual,
+    body.life-landing .lq-choice-visual {
+        width: 54px !important;
+        height: 48px !important;
+        margin-bottom: 6px !important;
+    }
+
+    body.life-landing .lq-option-visual svg,
+    body.life-landing .lq-choice-visual svg {
+        width: 40px !important;
+        height: 40px !important;
+    }
+}
+/* LEGEND MOBILE CONVERSION DENSITY PASS END */
+</style>
+
+
+<style>
+/* LEGEND CTA GATED FUNNEL PASS START */
+body.life-landing:not(.life-quote-started) #lifeWizardForm {
+    display: none !important;
+}
+
+body.life-landing.life-quote-started #lifeHeroEntryPanel {
+    display: none !important;
+}
+
+body.life-landing.life-quote-started .lq-hero-shell {
+    padding-top: 10px !important;
+}
+
+body.life-landing.life-quote-started .lq-container {
+    padding-top: 0 !important;
+}
+
+@@media (max-width: 767.98px) {
+    body.life-landing:not(.life-quote-started) .lq-hero-shell {
+        min-height: auto !important;
+    }
+
+    body.life-landing:not(.life-quote-started) .lq-hero-rail {
+        margin-bottom: 0 !important;
+    }
+
+    body.life-landing.life-quote-started .lq-hero-shell {
+        margin-top: 6px !important;
+        padding: 8px 8px 12px !important;
+    }
+}
+/* LEGEND CTA GATED FUNNEL PASS END */
 </style>
