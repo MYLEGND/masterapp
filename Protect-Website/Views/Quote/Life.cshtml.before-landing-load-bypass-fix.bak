@@ -8960,7 +8960,6 @@ body.life-landing .lq-hero-shell,
   const isContactFirstEducationVariant = '@(isContactFirstEducationVariant ? "true" : "false")' === 'true';
   const isLowFrictionOptionsVariant = '@(isLowFrictionOptionsVariant ? "true" : "false")' === 'true';
   const tracksContactFirstFlow = '@(tracksContactFirstFlow ? "true" : "false")' === 'true';
-  const shouldStartOnLandingHero = tracksContactFirstFlow && !showContactStepByDefault && !hasServerErrors;
   const agentDirectContactName = @Html.Raw(JsonSerializer.Serialize(agentDirectContactName));
   const agentTrackingSlug = '@agentSlug';
   const agentTrackingProfileId = '@(agentTrustProfile?.AgentTrackingProfileId.ToString() ?? string.Empty)';
@@ -9310,17 +9309,6 @@ body.life-landing .lq-hero-shell,
       || Number.isFinite(state.currentMicroStep) && Number(state.currentMicroStep) > 0;
   }
 
-  function showLandingHeroEntry() {
-    setQuoteEntryStarted(false);
-    resetPostSubmitSuccessState();
-    [step1Panel, processingPanel, step2Panel].forEach((panel) => {
-      if (panel) panel.hidden = true;
-    });
-    if (heroTrustStrip) {
-      heroTrustStrip.hidden = false;
-    }
-  }
-
   function resetFunnelToMarkupDefaults() {
     setQuoteEntryStarted(false);
     resetPostSubmitSuccessState();
@@ -9333,17 +9321,13 @@ body.life-landing .lq-hero-shell,
         input.value = formatPhoneNumber(input.value);
       }
     });
-    syncAgePickerUi(AGE_DEFAULT, AGE_SELECTION_PROVIDED);
+    syncAgePickerUi(AGE_DEFAULT, true);
 
     latestEstimatePreview = null;
     estimatePreviewPromise = null;
     currentMicroStep = 0;
     renderStep2EstimateSummary(null);
     applyEstimatePreviewToHiddenFields(null);
-
-    if (shouldStartOnLandingHero) {
-      showLandingHeroEntry();
-    }
   }
 
   function buildPersistedFunnelState() {
@@ -9385,11 +9369,6 @@ body.life-landing .lq-hero-shell,
 
     const storage = getSessionStorageSafe();
     if (!storage) {
-      return;
-    }
-
-    if (shouldStartOnLandingHero && !quoteEntryStarted) {
-      storage.removeItem(FUNNEL_STATE_STORAGE_KEY);
       return;
     }
 
@@ -9446,30 +9425,6 @@ body.life-landing .lq-hero-shell,
     }
 
     if (Number.isFinite(state.timestamp) && Date.now() - Number(state.timestamp) > FUNNEL_STATE_MAX_AGE_MS) {
-      storage.removeItem(FUNNEL_STATE_STORAGE_KEY);
-      resetFunnelToMarkupDefaults();
-      return false;
-    }
-
-    const restoredFields = state.fields && typeof state.fields === 'object' ? state.fields : {};
-    const restoredHasRealDiscoveryChoice =
-      asTrimmed(restoredFields.ProtectingWho || '') !== '' ||
-      asTrimmed(restoredFields.CoverageGoal || '') !== '' ||
-      asTrimmed(restoredFields.CoverageAmountOption || '') !== '' ||
-      asTrimmed(restoredFields.TobaccoUse || '') !== '';
-    const restoredHasRealContactInput =
-      asTrimmed(restoredFields.FirstName || '') !== '' ||
-      asTrimmed(restoredFields.LastName || '') !== '' ||
-      asTrimmed(restoredFields.Phone || '') !== '' ||
-      asTrimmed(restoredFields.Email || '') !== '' ||
-      asTrimmed(restoredFields.State || '') !== '';
-    const restoredIsPastDiscovery =
-      state.activePanel === 'contact' ||
-      state.activePanel === 'results' ||
-      state.activePanel === 'processing' ||
-      Boolean(state.latestEstimatePreview);
-
-    if (shouldStartOnLandingHero && !restoredHasRealDiscoveryChoice && !restoredHasRealContactInput && !restoredIsPastDiscovery) {
       storage.removeItem(FUNNEL_STATE_STORAGE_KEY);
       resetFunnelToMarkupDefaults();
       return false;
@@ -11096,6 +11051,7 @@ body.life-landing .lq-hero-shell,
     if (heroTrustStrip) {
       heroTrustStrip.hidden = activePanel === step2Panel;
     }
+    updateStickyPrimaryCtaVisibility();
     persistFunnelState();
   }
 
@@ -12825,21 +12781,13 @@ body.life-landing .lq-hero-shell,
   if (!restoredFunnelState) {
     syncStepOneAnswersFromUI();
     if (showContactStepByDefault) {
-      setQuoteEntryStarted(true);
       showStep2(false);
-    } else if (shouldStartOnLandingHero) {
-      showLandingHeroEntry();
     } else {
-      setQuoteEntryStarted(true);
       const initMicro = resolveInitialMicroStep();
       showStep1(initMicro, false);
     }
   }
-
-  if (!shouldStartOnLandingHero || restoredFunnelState || showContactStepByDefault) {
-    scrollInitialFunnelIntoView();
-  }
-
+  scrollInitialFunnelIntoView();
   if (showContactStepByDefault && hasServerErrors) {
     setTimeout(() => focusFirstInvalidContactField(), 30);
   }
