@@ -7017,33 +7017,27 @@ body.life-landing:not(.life-quote-started) .lq-contact-first-hero-image {
     text-wrap: balance;
 }
 
-.lq-contact-first-hero-actions::before,
-.lq-low-friction-hero-actions::before {
+.lq-primary-start-note::after {
     content: "Tap to start ↓";
-    position: absolute;
-    right: 10px;
-    top: -32px;
-    z-index: 4;
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    min-height: 25px;
-    padding: 5px 11px;
+    margin: 8px auto 0;
+    min-height: 26px;
+    padding: 5px 12px;
     border-radius: 999px;
-    border: 1px solid rgba(154,242,184,0.38);
-    background: rgba(7,40,28,0.78);
-    color: rgba(236,255,244,0.98);
-    font-size: .68rem;
+    border: 1px solid rgba(154,242,184,0.32);
+    background: rgba(10,66,42,0.34);
+    color: rgba(236,255,244,0.95);
+    font-size: .72rem;
     font-weight: 950;
-    letter-spacing: .04em;
+    letter-spacing: .035em;
     text-transform: uppercase;
-    box-shadow: 0 0 20px rgba(72,217,137,0.20);
+    box-shadow: 0 0 20px rgba(72,217,137,0.16);
     animation: lqTapCue 1.5s ease-in-out infinite;
-    pointer-events: none;
 }
 
-.life-quote-started .lq-contact-first-hero-actions::before,
-.life-quote-started .lq-low-friction-hero-actions::before {
+.life-quote-started .lq-primary-start-note::after {
     display: none;
 }
 
@@ -7147,35 +7141,24 @@ input:checked + .lq-answer-card {
 }
 
 .lq-card.is-auto-advancing {
-    position: relative;
-    overflow: hidden;
     animation: lqSelectedAdvance .42s ease-out both;
 }
 
 .lq-card.is-auto-advancing::after {
     content: "Next →";
-    position: absolute !important;
-    top: auto !important;
-    left: auto !important;
-    right: 10px !important;
-    bottom: 10px !important;
-    z-index: 30;
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    min-height: 24px;
-    padding: 4px 9px;
+    position: absolute;
+    right: 10px;
+    bottom: 9px;
+    z-index: 2;
+    padding: 3px 8px;
     border-radius: 999px;
-    background: rgba(10,66,42,0.92);
-    border: 1px solid rgba(154,242,184,0.58);
+    background: rgba(154,242,184,0.18);
+    border: 1px solid rgba(154,242,184,0.38);
     color: rgba(236,255,244,0.98);
     font-size: .66rem;
     font-weight: 950;
     letter-spacing: .04em;
-    line-height: 1;
     text-transform: uppercase;
-    box-shadow: 0 0 18px rgba(72,217,137,0.20);
-    pointer-events: none;
 }
 
 .lq-processing-bridge {
@@ -7269,8 +7252,7 @@ input:checked + .lq-answer-card {
     .lq-primary-start-cta,
     .lq-primary-start-cta::before,
     .lq-primary-start-cta::after,
-    .lq-contact-first-hero-actions::before,
-    .lq-low-friction-hero-actions::before,
+    .lq-primary-start-note::after,
     .lq-card.is-auto-advancing,
     .lq-processing-bridge::after {
         animation: none !important;
@@ -7311,17 +7293,7 @@ input:checked + .lq-answer-card {
     }
 
     .lq-card.is-auto-advancing::after {
-        right: 8px !important;
-        bottom: 8px !important;
         font-size: .61rem;
-    }
-
-    .lq-contact-first-hero-actions::before,
-    .lq-low-friction-hero-actions::before {
-        top: -29px;
-        right: 8px;
-        font-size: .63rem;
-        padding: 4px 9px;
     }
 
     .lq-estimate-preserve-note {
