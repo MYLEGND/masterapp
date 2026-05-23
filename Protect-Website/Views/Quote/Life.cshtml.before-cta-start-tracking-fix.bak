@@ -9594,17 +9594,10 @@ body.life-landing .lq-hero-shell,
 
   function trackStartCtaClick(placement) {
     const resolvedPlacement = placement || 'hero';
-
     trackEvent('quote_cta_click', {
       placement: resolvedPlacement,
       ctaId: 'life_funnel_start',
       ctaText: resolvedPlacement === 'sticky' ? 'Sticky Start My Quick Estimate' : 'Start My Quick Estimate'
-    });
-
-    void ensureQuoteStartTracked({
-      startSource: 'cta_click',
-      placement: resolvedPlacement,
-      ctaId: 'life_funnel_start'
     });
   }
 
@@ -13007,7 +13000,7 @@ body.life-landing.life-quote-started .lq-hero-shell {
         0 0 18px rgba(0,0,0,.18);
 }
 
-@@media (max-width: 767.98px) {
+@media (max-width: 767.98px) {
     .lq-hero-banner-fake-cta-mask {
         left: 4.6%;
         bottom: 4%;
