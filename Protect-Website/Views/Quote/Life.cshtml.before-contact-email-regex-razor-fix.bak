@@ -9871,10 +9871,7 @@ body.life-landing .lq-hero-shell,
   const contactFieldCompletionRules = {
     FirstName: (value) => value.trim().length >= 2,
     LastName: (value) => value.trim().length >= 2,
-    Email: (value) => {
-      const emailPattern = new RegExp('^[^\\\\s@@]+@@[^\\\\s@@]+\\\\.[^\\\\s@@]+$');
-      return value.trim().length === 0 || emailPattern.test(value.trim());
-    },
+    Email: (value) => value.trim().length === 0 || /^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$/.test(value.trim()),
     Phone: (value) => stripPhoneDigits(value).length >= 10,
     State: (value) => value.trim().length >= 2,
     ContactMethod: (value) => value.trim().length > 0,

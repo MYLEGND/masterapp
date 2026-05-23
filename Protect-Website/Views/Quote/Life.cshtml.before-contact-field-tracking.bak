@@ -9867,113 +9867,18 @@ body.life-landing .lq-hero-shell,
     input.addEventListener('blur', applyMask);
   });
 
-  const contactFieldProgress = new Map();
-  const contactFieldCompletionRules = {
-    FirstName: (value) => value.trim().length >= 2,
-    LastName: (value) => value.trim().length >= 2,
-    Email: (value) => {
-      const emailPattern = new RegExp('^[^\\\\s@@]+@@[^\\\\s@@]+\\\\.[^\\\\s@@]+$');
-      return value.trim().length === 0 || emailPattern.test(value.trim());
-    },
-    Phone: (value) => stripPhoneDigits(value).length >= 10,
-    State: (value) => value.trim().length >= 2,
-    ContactMethod: (value) => value.trim().length > 0,
-    MarketingEmailConsent: (_value, el) => el instanceof HTMLInputElement && el.checked
-  };
-
-  function getContactCompletionSnapshot() {
-    const fields = ['FirstName', 'LastName', 'Email', 'Phone', 'State', 'ContactMethod', 'MarketingEmailConsent'];
-    const completedFields = fields.filter((fieldName) => contactFieldProgress.get(fieldName)?.completed);
-    const focusedFields = fields.filter((fieldName) => contactFieldProgress.get(fieldName)?.focused);
-    const lastFocusedField = [...contactFieldProgress.entries()].filter(([, state]) => state.focusedAt).sort((a, b) => b[1].focusedAt - a[1].focusedAt)[0]?.[0] || '';
-    const lastCompletedField = [...contactFieldProgress.entries()].filter(([, state]) => state.completedAt).sort((a, b) => b[1].completedAt - a[1].completedAt)[0]?.[0] || '';
-
-    return {
-      contactStepReached: contactStepViewTracked,
-      contactFocusedFields: focusedFields,
-      contactCompletedFields: completedFields,
-      contactFocusedCount: focusedFields.length,
-      contactCompletedCount: completedFields.length,
-      lastContactFieldFocused: lastFocusedField,
-      lastContactFieldCompleted: lastCompletedField,
-      requiredContactFieldsComplete:
-        Boolean(contactFieldProgress.get('FirstName')?.completed) &&
-        Boolean(contactFieldProgress.get('Phone')?.completed) &&
-        Boolean(contactFieldProgress.get('MarketingEmailConsent')?.completed)
-    };
-  }
-
-  function trackContactFieldEvent(eventType, fieldName, el, extra = {}) {
-    const value = el instanceof HTMLInputElement || el instanceof HTMLTextAreaElement || el instanceof HTMLSelectElement
-      ? String(el.value || '')
-      : '';
-    const isCheckbox = el instanceof HTMLInputElement && el.type === 'checkbox';
-
-    return trackEvent(eventType, {
-      fieldName,
-      fieldGroup: 'contact',
-      fieldType: isCheckbox ? 'checkbox' : (el?.tagName || '').toLowerCase(),
-      valueLength: isCheckbox ? 0 : value.trim().length,
-      hasValue: isCheckbox ? Boolean(el.checked) : value.trim().length > 0,
-      ...getContactCompletionSnapshot(),
-      ...extra
-    });
-  }
-
-  function markContactFieldFocused(fieldName, el) {
-    const state = contactFieldProgress.get(fieldName) || {};
-    if (state.focused) return;
-
-    contactFieldProgress.set(fieldName, {
-      ...state,
-      focused: true,
-      focusedAt: Date.now()
-    });
-
-    void ensureQuoteStartTracked({ startSource: 'contact_field_focus', fieldName });
-    void ensureMetaLeadFormStart({ startSource: 'contact_field_focus', fieldName });
-    void trackContactFieldEvent('contact_field_focus', fieldName, el);
-    void trackContactFieldEvent('form_field_focus', fieldName, el);
-  }
-
-  function maybeMarkContactFieldCompleted(fieldName, el, trigger = 'input') {
-    const rule = contactFieldCompletionRules[fieldName];
-    if (typeof rule !== 'function') return;
-
-    const value = el instanceof HTMLInputElement || el instanceof HTMLTextAreaElement || el instanceof HTMLSelectElement
-      ? String(el.value || '')
-      : '';
-    const isComplete = Boolean(rule(value, el));
-    const state = contactFieldProgress.get(fieldName) || {};
-
-    contactFieldProgress.set(fieldName, {
-      ...state,
-      currentComplete: isComplete
-    });
-
-    if (!isComplete || state.completed) return;
-
-    contactFieldProgress.set(fieldName, {
-      ...state,
-      currentComplete: true,
-      completed: true,
-      completedAt: Date.now()
-    });
-
-    void trackContactFieldEvent('contact_field_complete', fieldName, el, { trigger });
-    void trackContactFieldEvent('form_field_complete', fieldName, el, { trigger });
-    void trackContactFieldEvent('contact_progress_snapshot', fieldName, el, { trigger });
-  }
-
   contactFieldNames.forEach((name) => {
     const el = form.querySelector(`[name="${name}"]`);
     if (!(el instanceof HTMLInputElement || el instanceof HTMLTextAreaElement || el instanceof HTMLSelectElement)) {
       return;
     }
 
-    el.addEventListener('focus', () => markContactFieldFocused(name, el), { once: true });
+    el.addEventListener('focus', () => {
+      void ensureQuoteStartTracked({ startSource: 'contact_field_focus', fieldName: name });
+      void ensureMetaLeadFormStart({ startSource: 'contact_field_focus', fieldName: name });
+    }, { once: true });
 
-    const eventName = el instanceof HTMLSelectElement || (el instanceof HTMLInputElement && el.type === 'checkbox') ? 'change' : 'input';
+    const eventName = el instanceof HTMLSelectElement ? 'change' : 'input';
     el.addEventListener(eventName, () => {
       clearFieldError(name);
       if (name === 'Phone' || name === 'Email') {
@@ -9983,24 +9888,17 @@ body.life-landing .lq-hero-shell,
       if (lifeError) {
         lifeError.style.display = 'none';
       }
-      maybeMarkContactFieldCompleted(name, el, eventName);
       persistFunnelState();
-    });
-
-    el.addEventListener('blur', () => {
-      maybeMarkContactFieldCompleted(name, el, 'blur');
     });
   });
 
   if (consentCheckbox) {
-    consentCheckbox.addEventListener('focus', () => markContactFieldFocused('MarketingEmailConsent', consentCheckbox), { once: true });
     consentCheckbox.addEventListener('change', () => {
       clearFieldError('MarketingEmailConsent');
       const lifeError = document.getElementById('lifeError');
       if (lifeError) {
         lifeError.style.display = 'none';
       }
-      maybeMarkContactFieldCompleted('MarketingEmailConsent', consentCheckbox, 'change');
       persistFunnelState();
     });
   }
@@ -13160,13 +13058,11 @@ body.life-landing .lq-hero-shell,
       recommendationSecondaryKey: estimatePreview?.secondary?.policyKey || recSecondaryKeyEl?.value || ''
     };
 
-    const contactCompletionSnapshot = getContactCompletionSnapshot();
-
     if (tracksContactFirstFlow) {
-      trackEvent('life_contact_first_submit_attempt', { variantFlow: pageVariant, ...contactCompletionSnapshot });
+      trackEvent('life_contact_first_submit_attempt', { variantFlow: pageVariant });
     }
-    trackEvent('lead_form_submit_attempt', { ...submitTrackingMetadata, ...contactCompletionSnapshot });
-    trackEvent('life_step2_submit_attempt', { ...submitTrackingMetadata, ...contactCompletionSnapshot });
+    trackEvent('lead_form_submit_attempt', submitTrackingMetadata);
+    trackEvent('life_step2_submit_attempt', submitTrackingMetadata);
     form._trackSubmitAttempt?.(true, 0);
     if (submitBtn) {
       submitBtn.disabled = true;
