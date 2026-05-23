@@ -369,9 +369,6 @@ public sealed class AnalyticsQueryService : IAnalyticsQueryService
         return IsQuoteFunnelStartSignalEvent(e) ||
                e.EventType == "form_field_focus" ||
                e.EventType == "form_field_complete" ||
-               e.EventType == "contact_field_focus" ||
-               e.EventType == "contact_field_complete" ||
-               e.EventType == "contact_progress_snapshot" ||
                e.EventType == "form_field_error" ||
                e.EventType == "form_abandon" ||
                IsQuoteSubmitAttempt(e) ||
@@ -2554,30 +2551,14 @@ public sealed class AnalyticsQueryService : IAnalyticsQueryService
         var scopedAgentIds = await ResolveScopedAgentIdsAsync(scope);
         var events = await BaseEvents(range, scope, scopedAgentIds)
             .Where(e => e.EventType == "form_start" || e.EventType == "form_submit" ||
-                        e.EventType == "form_field_focus" ||
-                        e.EventType == "form_field_complete" ||
-                        e.EventType == "contact_field_focus" ||
-                        e.EventType == "contact_field_complete" ||
-                        e.EventType == "contact_progress_snapshot" ||
+                        e.EventType == "form_field_focus" || e.EventType == "form_field_complete" ||
                         e.EventType == "form_field_error").ToListAsync();
         Func<AnalyticsEvent, string> fKey = e => e.FormKey ?? e.FormId ?? "unknown";
         var starts = events.Where(e => e.EventType == "form_start").GroupBy(fKey).ToDictionary(g => g.Key, g => g.Count());
         var submits = events.Where(e => e.EventType == "form_submit").GroupBy(fKey).ToDictionary(g => g.Key, g => g.Count());
-        var ffFocus = events.Where(e =>
-                e.EventType == "form_field_focus" ||
-                e.EventType == "contact_field_focus")
-            .GroupBy(fKey)
-            .ToDictionary(g => g.Key, g => g.Count());
-
-        var ffComplete = events.Where(e =>
-                e.EventType == "form_field_complete" ||
-                e.EventType == "contact_field_complete")
-            .GroupBy(fKey)
-            .ToDictionary(g => g.Key, g => g.Count());
-
-        var ffError = events.Where(e => e.EventType == "form_field_error")
-            .GroupBy(fKey)
-            .ToDictionary(g => g.Key, g => g.Count());
+        var ffFocus = events.Where(e => e.EventType == "form_field_focus").GroupBy(fKey).ToDictionary(g => g.Key, g => g.Count());
+        var ffComplete = events.Where(e => e.EventType == "form_field_complete").GroupBy(fKey).ToDictionary(g => g.Key, g => g.Count());
+        var ffError = events.Where(e => e.EventType == "form_field_error").GroupBy(fKey).ToDictionary(g => g.Key, g => g.Count());
         var rows = starts.Keys.Select(fk =>
         {
             var startSids = events.Where(e => e.EventType == "form_start" && fKey(e) == fk && !string.IsNullOrWhiteSpace(e.SessionId))
@@ -2596,20 +2577,6 @@ public sealed class AnalyticsQueryService : IAnalyticsQueryService
                 FieldErrors = ffError.TryGetValue(fk, out var fe) ? fe : 0
             };
         }).OrderByDescending(r => r.Starts).ToList();
-        var topCompletedFields = events.Where(e =>
-                (e.EventType == "form_field_complete" ||
-                 e.EventType == "contact_field_complete") &&
-                !string.IsNullOrWhiteSpace(e.FieldName))
-            .GroupBy(e => e.FieldName!)
-            .Select(g => new
-            {
-                Field = g.Key,
-                Count = g.Select(x => x.SessionId).Distinct().Count()
-            })
-            .OrderByDescending(x => x.Count)
-            .Take(10)
-            .ToList();
-
         var topErrorFields = events.Where(e => e.EventType == "form_field_error" && !string.IsNullOrWhiteSpace(e.FieldName))
             .GroupBy(e => e.FieldName!).OrderByDescending(g => g.Count()).Take(10)
             .Select(g => new KeyCountDto { Key = g.Key, Count = g.Count() }).ToList();
