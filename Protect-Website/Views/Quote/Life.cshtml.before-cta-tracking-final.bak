@@ -7097,9 +7097,9 @@ body.life-final-step-active .lq-contact-estimate-recommendation {
                 }
                 <div class="lq-contact-first-hero-actions">
                     <button type="button" class="btn-gold lq-contact-first-hero-cta" id="lifeHeroPrimaryCta" data-cta="life_funnel_start" data-life-funnel-start="true" data-primary-cta="hero">
-                        Check My Protection Fit
+                        See My Protection Options
                     </button>
-                    <div class="lq-contact-first-hero-cta-note">Takes about 30 seconds. No obligation. You stay in control.</div>
+                    <div class="lq-contact-first-hero-cta-note">Answer a few quick questions first. No obligation.</div>
                 </div>
             }
             else if (isLandingView)
@@ -9074,7 +9074,6 @@ body.life-landing .lq-hero-shell,
   let latestEstimatePreview = null;
   let estimatePreviewPromise = null;
   let isRestoringFunnelState = false;
-  let quoteEntryStarted = false;
   let primaryCtaSeenTracked = false;
   let firstQuestionViewTracked = false;
   let firstQuestionAnsweredTracked = false;
@@ -9120,10 +9119,9 @@ body.life-landing .lq-hero-shell,
   }
 
   function setQuoteEntryStarted(isStarted) {
-    quoteEntryStarted = !!isStarted;
-    document.body.classList.toggle('life-quote-started', quoteEntryStarted);
+    document.body.classList.toggle('life-quote-started', !!isStarted);
     if (heroEntryPanel instanceof HTMLElement) {
-      heroEntryPanel.setAttribute('aria-hidden', quoteEntryStarted ? 'true' : 'false');
+      heroEntryPanel.setAttribute('aria-hidden', isStarted ? 'true' : 'false');
     }
   }
 
@@ -9572,15 +9570,14 @@ body.life-landing .lq-hero-shell,
     }) ?? null);
   }
 
-  function trackPrimaryCtaSeenOnce(placement, metadata = {}) {
+  function trackPrimaryCtaSeenOnce(placement) {
     if (primaryCtaSeenTracked) {
       return;
     }
 
     primaryCtaSeenTracked = true;
     trackEvent('primary_cta_seen', {
-      placement: placement || 'hero',
-      ...metadata
+      placement: placement || 'hero'
     });
   }
 
@@ -9625,7 +9622,7 @@ body.life-landing .lq-hero-shell,
   }
 
   function trackFirstQuestionViewOnce() {
-    if (firstQuestionViewTracked || (!quoteEntryStarted && !quoteStartTracked)) {
+    if (firstQuestionViewTracked) {
       return;
     }
 
@@ -11201,121 +11198,31 @@ body.life-landing .lq-hero-shell,
     stickyPrimaryCtaWrap.classList.toggle('is-visible', !panelVisible);
   }
 
-  function getPrimaryCtaCandidates() {
-    return Array.from(new Set([
-      ...primaryCtaTargets,
-      ...document.querySelectorAll('#lifeHeroPrimaryCta, [data-life-funnel-start], [data-primary-cta], .lq-contact-first-hero-cta, .lq-low-friction-hero-cta')
-    ])).filter((target) => target instanceof HTMLElement);
-  }
-
-  function isPrimaryCtaActuallyVisible(target) {
-    if (!(target instanceof HTMLElement)) {
-      return false;
-    }
-
-    const style = window.getComputedStyle(target);
-    if (style.display === 'none' || style.visibility === 'hidden' || Number(style.opacity || 1) <= 0.05) {
-      return false;
-    }
-
-    const rect = target.getBoundingClientRect();
-    return rect.width > 0 &&
-      rect.height > 0 &&
-      rect.bottom >= 0 &&
-      rect.top <= window.innerHeight &&
-      rect.right >= 0 &&
-      rect.left <= window.innerWidth;
-  }
-
-  function tryTrackVisiblePrimaryCta(source = 'viewport_check') {
-    if (primaryCtaSeenTracked) {
-      return true;
-    }
-
-    const visibleTarget = getPrimaryCtaCandidates().find(isPrimaryCtaActuallyVisible);
-    if (!visibleTarget) {
-      return false;
-    }
-
-    const placement = visibleTarget.getAttribute('data-primary-cta') || visibleTarget.getAttribute('data-placement') || 'hero';
-    const rect = visibleTarget.getBoundingClientRect();
-    trackPrimaryCtaSeenOnce(placement, {
-      source,
-      ctaId: visibleTarget.getAttribute('data-cta') || 'life_funnel_start',
-      ctaText: visibleTarget.textContent?.replace(/\s+/g, ' ')?.trim() || '',
-      viewportWidth: window.innerWidth,
-      viewportHeight: window.innerHeight,
-      ctaTop: Math.round(rect.top),
-      ctaBottom: Math.round(rect.bottom)
-    });
-
-    return true;
-  }
-
   function installPrimaryCtaVisibilityTracking() {
-    const targets = getPrimaryCtaCandidates();
-    if (!targets.length) {
+    if (!primaryCtaTargets.length) {
       return;
     }
 
-    const runCheck = (source) => {
-      window.requestAnimationFrame(() => {
-        tryTrackVisiblePrimaryCta(source);
-      });
-    };
-
-    runCheck('initial');
-    window.setTimeout(() => tryTrackVisiblePrimaryCta('delayed_150ms'), 150);
-    window.setTimeout(() => tryTrackVisiblePrimaryCta('delayed_600ms'), 600);
-    window.setTimeout(() => tryTrackVisiblePrimaryCta('delayed_1200ms'), 1200);
-
     if (!('IntersectionObserver' in window)) {
-      window.setTimeout(() => tryTrackVisiblePrimaryCta('fallback_no_intersection_observer'), 250);
+      trackPrimaryCtaSeenOnce('fallback');
       return;
     }
 
     const observer = new IntersectionObserver((entries) => {
-      if (primaryCtaSeenTracked) {
+      entries.forEach((entry) => {
+        if (!entry.isIntersecting || primaryCtaSeenTracked) {
+          return;
+        }
+
+        const placement = entry.target.getAttribute('data-primary-cta') || 'hero';
+        trackPrimaryCtaSeenOnce(placement);
         observer.disconnect();
-        return;
-      }
-
-      const visibleEntry = entries.find((entry) => entry.isIntersecting && isPrimaryCtaActuallyVisible(entry.target));
-      if (!visibleEntry) {
-        return;
-      }
-
-      const placement = visibleEntry.target.getAttribute('data-primary-cta') || visibleEntry.target.getAttribute('data-placement') || 'hero';
-      trackPrimaryCtaSeenOnce(placement, {
-        source: 'intersection_observer',
-        ctaId: visibleEntry.target.getAttribute('data-cta') || 'life_funnel_start',
-        ctaText: visibleEntry.target.textContent?.replace(/\s+/g, ' ')?.trim() || '',
-        intersectionRatio: Number(visibleEntry.intersectionRatio || 0).toFixed(2),
-        viewportWidth: window.innerWidth,
-        viewportHeight: window.innerHeight
       });
-      observer.disconnect();
     }, {
-      root: null,
-      rootMargin: '160px 0px 160px 0px',
-      threshold: [0, 0.01, 0.1, 0.25]
+      threshold: 0.65
     });
 
-    targets.forEach((target) => observer.observe(target));
-
-    const passiveCheck = () => {
-      if (tryTrackVisiblePrimaryCta('scroll_or_resize')) {
-        window.removeEventListener('scroll', passiveCheck);
-        window.removeEventListener('resize', passiveCheck);
-        window.removeEventListener('pageshow', passiveCheck);
-        window.removeEventListener('load', passiveCheck);
-      }
-    };
-
-    window.addEventListener('scroll', passiveCheck, { passive: true });
-    window.addEventListener('resize', passiveCheck);
-    window.addEventListener('pageshow', passiveCheck);
-    window.addEventListener('load', passiveCheck);
+    primaryCtaTargets.forEach((target) => observer.observe(target));
   }
 
   function installFirstQuestionVisibilityTracking() {
@@ -11346,17 +11253,20 @@ body.life-landing .lq-hero-shell,
     observer.observe(firstQuestionElement);
   }
 
-  function handleStartCtaClick(startSource, triggerElement = null) {
+  function handleStartCtaClick(startSource) {
     const placement = String(startSource || 'hero_click').replace('_click', '');
-    trackPrimaryCtaSeenOnce(placement, { source: 'cta_click_before_start' });
-    trackStartCtaClick(placement, triggerElement);
+    trackPrimaryCtaSeenOnce(placement);
+    trackStartCtaClick(placement, event?.currentTarget || event?.target || null);
 
     setQuoteEntryStarted(true);
     showStep1(0, false, { trackView: true });
-    trackFirstQuestionViewOnce();
 
     void ensureQuoteStartTracked({ startSource });
     void ensureMetaLeadFormStart({ startSource });
+
+    if (!('IntersectionObserver' in window)) {
+      trackFirstQuestionViewOnce();
+    }
 
     if (stickyPrimaryCtaWrap instanceof HTMLElement) {
       stickyPrimaryCtaWrap.classList.remove('is-visible');
@@ -11371,9 +11281,9 @@ body.life-landing .lq-hero-shell,
   }
 
   startCtaButtons.forEach((button) => {
-    button.addEventListener('click', (event) => {
+    button.addEventListener('click', () => {
       const placement = button.getAttribute('data-primary-cta') || 'bridge';
-      handleStartCtaClick(`${placement}_click`, event.currentTarget);
+      handleStartCtaClick(`${placement}_click`);
     });
   });
 
