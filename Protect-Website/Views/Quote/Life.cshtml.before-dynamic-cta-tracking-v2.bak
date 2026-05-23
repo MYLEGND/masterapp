@@ -9591,43 +9591,19 @@ body.life-landing .lq-hero-shell,
     });
   }
 
-  function resolveStartCtaText(triggerElement, placement) {
-    const directText = triggerElement?.textContent?.replace(/\s+/g, ' ')?.trim();
-    if (directText) return directText;
-
+  function trackStartCtaClick(placement) {
     const resolvedPlacement = placement || 'hero';
-    const selectors = [
-      `[data-life-start-cta][data-placement="${resolvedPlacement}"]`,
-      `[data-start-cta][data-placement="${resolvedPlacement}"]`,
-      `[data-life-start-cta]`,
-      `[data-start-cta]`,
-      'a[href="#lifeEducationContactPanel"]'
-    ];
-
-    for (const selector of selectors) {
-      const el = document.querySelector(selector);
-      const text = el?.textContent?.replace(/\s+/g, ' ')?.trim();
-      if (text) return text;
-    }
-
-    return 'See My Protection Options';
-  }
-
-  function trackStartCtaClick(placement, triggerElement = null) {
-    const resolvedPlacement = placement || 'hero';
-    const ctaText = resolveStartCtaText(triggerElement, resolvedPlacement);
 
     trackEvent('quote_cta_click', {
       placement: resolvedPlacement,
       ctaId: 'life_funnel_start',
-      ctaText
+      ctaText: resolvedPlacement === 'sticky' ? 'Sticky See My Protection Options' : 'See My Protection Options'
     });
 
     void ensureQuoteStartTracked({
       startSource: 'cta_click',
       placement: resolvedPlacement,
-      ctaId: 'life_funnel_start',
-      ctaText
+      ctaId: 'life_funnel_start'
     });
   }
 
@@ -11266,7 +11242,7 @@ body.life-landing .lq-hero-shell,
   function handleStartCtaClick(startSource) {
     const placement = String(startSource || 'hero_click').replace('_click', '');
     trackPrimaryCtaSeenOnce(placement);
-    trackStartCtaClick(placement, event?.currentTarget || event?.target || null);
+    trackStartCtaClick(placement);
 
     setQuoteEntryStarted(true);
     showStep1(0, false, { trackView: true });
