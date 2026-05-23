@@ -7144,17 +7144,7 @@ body.life-final-step-active .lq-contact-estimate-recommendation {
             </div>
         }
     </div>
-    
-
-    @if (isLandingView)
-    {
-        var stickyPrimaryCtaText = isLowFrictionOptionsVariant ? lowFrictionHeroCtaText : "See My Protection Options";
-        <div class="lq-sticky-mobile-cta" id="lifeStickyPrimaryCtaWrap" aria-hidden="true">
-            <button type="button" class="btn-gold lq-sticky-mobile-cta-btn" id="lifeStickyPrimaryCta" data-cta="life_funnel_start" data-life-funnel-start="true" data-primary-cta="sticky">@stickyPrimaryCtaText</button>
-        </div>
-    }
-
-    <form asp-action="@cfg.PostAction" asp-controller="LifeQuote" method="post" id="lifeWizardForm" data-form-key="@pageKey" data-ajax-submit="true" novalidate>
+<form asp-action="@cfg.PostAction" asp-controller="LifeQuote" method="post" id="lifeWizardForm" data-form-key="@pageKey" data-ajax-submit="true" novalidate>
         @Html.AntiForgeryToken()
         @if (!string.IsNullOrWhiteSpace(agentSlug))
         {
