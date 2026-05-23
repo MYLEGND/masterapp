@@ -11203,19 +11203,25 @@ body.life-landing .lq-hero-shell,
     const placement = String(startSource || 'hero_click').replace('_click', '');
     trackPrimaryCtaSeenOnce(placement);
     trackStartCtaClick(placement);
+
     setQuoteEntryStarted(true);
     showStep1(0, false, { trackView: true });
+
     void ensureQuoteStartTracked({ startSource });
     void ensureMetaLeadFormStart({ startSource });
+
     if (!('IntersectionObserver' in window)) {
       trackFirstQuestionViewOnce();
     }
+
     if (stickyPrimaryCtaWrap instanceof HTMLElement) {
       stickyPrimaryCtaWrap.classList.remove('is-visible');
     }
+
     window.requestAnimationFrame(() => {
-      focusFunnelPanel(step1Panel || getVisibleFunnelPanel() || contactFirstPanel, {
-        behavior: 'smooth'
+      focusFunnelPanel(step1Panel || contactFirstPanel || getVisibleFunnelPanel(), {
+        behavior: 'smooth',
+        shouldFocus: true
       });
     });
   }
@@ -12855,8 +12861,8 @@ body.page-variant-low-friction-options-v1 #lifeEducationContactPanel .lq-step-qu
 
 
 <style>
-/* LEGEND CTA GATED FUNNEL PASS START */
-body.life-landing:not(.life-quote-started) #lifeWizardForm {
+/* LEGEND CTA STEP ZERO CORRECTION START */
+body.life-landing:not(.life-quote-started) #lifeEducationContactPanel {
     display: none !important;
 }
 
@@ -12864,12 +12870,17 @@ body.life-landing.life-quote-started #lifeHeroEntryPanel {
     display: none !important;
 }
 
-body.life-landing.life-quote-started .lq-hero-shell {
-    padding-top: 10px !important;
+body.life-landing.life-quote-started #lifeEducationContactPanel {
+    display: block !important;
 }
 
-body.life-landing.life-quote-started .lq-container {
-    padding-top: 0 !important;
+body.life-landing.life-quote-started .lq-contact-first-proof-row,
+body.life-landing.life-quote-started .lq-contact-first-proof-chips {
+    display: none !important;
+}
+
+body.life-landing.life-quote-started .lq-hero-shell {
+    padding-top: 10px !important;
 }
 
 @@media (max-width: 767.98px) {
@@ -12877,14 +12888,11 @@ body.life-landing.life-quote-started .lq-container {
         min-height: auto !important;
     }
 
-    body.life-landing:not(.life-quote-started) .lq-hero-rail {
-        margin-bottom: 0 !important;
-    }
-
     body.life-landing.life-quote-started .lq-hero-shell {
         margin-top: 6px !important;
         padding: 8px 8px 12px !important;
     }
 }
-/* LEGEND CTA GATED FUNNEL PASS END */
+/* LEGEND CTA STEP ZERO CORRECTION END */
 </style>
+
