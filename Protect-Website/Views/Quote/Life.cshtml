@@ -6914,6 +6914,28 @@ body.life-final-step-active .lq-contact-estimate-recommendation {
     box-shadow: inset 0 1px 0 rgba(255,255,255,0.04);
 }
 
+.lq-contact-first-hero-actions {
+    display: grid;
+    gap: 8px;
+    width: min(100%, 360px);
+    margin: 0 auto 14px;
+}
+
+.lq-contact-first-hero-cta {
+    width: 100%;
+    min-height: 62px;
+    font-size: 1.04rem;
+    font-weight: 950;
+}
+
+.lq-contact-first-hero-cta-note {
+    color: rgba(248,250,252,0.76);
+    font-size: .82rem;
+    font-weight: 760;
+    line-height: 1.35;
+    text-align: center;
+}
+
 .lq-estimate-preserve-note {
     margin-top: 12px;
     padding-top: 11px;
@@ -7040,6 +7062,12 @@ body.life-final-step-active .lq-contact-estimate-recommendation {
                     <span>Licensed review</span>
                     <span>No obligation</span>
                 </div>
+                <div class="lq-contact-first-hero-actions">
+                    <button type="button" class="btn-gold lq-contact-first-hero-cta" id="lifeHeroPrimaryCta" data-cta="life_funnel_start" data-life-funnel-start="true" data-primary-cta="hero">
+                        Start My Quick Estimate
+                    </button>
+                    <div class="lq-contact-first-hero-cta-note">Answer a few quick questions first. No obligation.</div>
+                </div>
             }
             else if (isLandingView)
             {
@@ -7085,10 +7113,11 @@ body.life-final-step-active .lq-contact-estimate-recommendation {
     </div>
     
 
-    @if (isLowFrictionOptionsVariant)
+    @if (isLandingView)
     {
+        var stickyPrimaryCtaText = isLowFrictionOptionsVariant ? lowFrictionHeroCtaText : "Start My Quick Estimate";
         <div class="lq-sticky-mobile-cta" id="lifeStickyPrimaryCtaWrap" aria-hidden="true">
-            <button type="button" class="btn-gold lq-sticky-mobile-cta-btn" id="lifeStickyPrimaryCta" data-cta="life_funnel_start" data-life-funnel-start="true" data-primary-cta="sticky">@lowFrictionHeroCtaText</button>
+            <button type="button" class="btn-gold lq-sticky-mobile-cta-btn" id="lifeStickyPrimaryCta" data-cta="life_funnel_start" data-life-funnel-start="true" data-primary-cta="sticky">@stickyPrimaryCtaText</button>
         </div>
     }
 
@@ -11075,12 +11104,12 @@ body.life-landing .lq-hero-shell,
   }
 
   function updateStickyPrimaryCtaVisibility() {
-    if (!(stickyPrimaryCtaWrap instanceof HTMLElement) || !isLowFrictionOptionsVariant) {
+    if (!(stickyPrimaryCtaWrap instanceof HTMLElement)) {
       return;
     }
 
     const isMobileViewport = window.matchMedia('(max-width: 767.98px)').matches;
-    if (!isMobileViewport || document.body.classList.contains('life-final-step-active')) {
+    if (!isMobileViewport || document.body.classList.contains('life-final-step-active') || quoteStartTracked) {
       stickyPrimaryCtaWrap.classList.remove('is-visible');
       return;
     }
@@ -11152,10 +11181,14 @@ body.life-landing .lq-hero-shell,
   }
 
   function handleStartCtaClick(startSource) {
+    trackPrimaryCtaSeenOnce(startSource || 'click');
     void ensureQuoteStartTracked({ startSource });
     void ensureMetaLeadFormStart({ startSource });
     if (!('IntersectionObserver' in window)) {
       trackFirstQuestionViewOnce();
+    }
+    if (stickyPrimaryCtaWrap instanceof HTMLElement) {
+      stickyPrimaryCtaWrap.classList.remove('is-visible');
     }
     const activeTarget = getVisibleFunnelPanel() || step1Panel || contactFirstPanel;
     focusFunnelPanel(activeTarget, {
