@@ -819,6 +819,26 @@
         step1IntroTitle = "Start with the real pressure";
         step1IntroHelper = "Pick the closest fit. This helps compare the protection paths and find the one that actually matches your family, budget, and next step.";
     }
+
+    var heroStepIntroTitle = isLandingView ? step1IntroTitle : string.Empty;
+    var heroStepIntroHelper = isLandingView
+        ? productLanguageKey switch
+        {
+            "term" => "A quick term life estimate built around the years your family would depend on your income, stability, and presence most.",
+            "wholelife" => "A quick whole life estimate built around lifelong protection, stable structure, and the people you want supported.",
+            "finalexpense" => "A quick final expense estimate built around funeral costs, final bills, and the burden you do not want left behind.",
+            "mortgage" => "A quick mortgage protection estimate built around the home, the payment, and the people who depend on both.",
+            "iul" => "A quick IUL estimate built around long-term protection, flexibility, and legacy planning.",
+            _ => "A quick protection estimate built around the pressure your family would feel first."
+        }
+        : string.Empty;
+
+    if (isLandingView)
+    {
+        step1IntroTitle = string.Empty;
+        step1IntroHelper = string.Empty;
+    }
+
     IReadOnlyList<(string Label, int Value, string RangeLabel)> ageQuickSelectOptions = isFinalExpenseOffer
         ? new List<(string Label, int Value, string RangeLabel)>
         {
@@ -7062,6 +7082,19 @@ body.life-final-step-active .lq-contact-estimate-recommendation {
                     <span>Licensed review</span>
                     <span>No obligation</span>
                 </div>
+                @if (!string.IsNullOrWhiteSpace(heroStepIntroTitle) || !string.IsNullOrWhiteSpace(heroStepIntroHelper))
+                {
+                    <div class="lq-hero-step-copy">
+                        @if (!string.IsNullOrWhiteSpace(heroStepIntroTitle))
+                        {
+                            <div class="lq-hero-step-copy-title">@heroStepIntroTitle</div>
+                        }
+                        @if (!string.IsNullOrWhiteSpace(heroStepIntroHelper))
+                        {
+                            <p class="lq-hero-step-copy-helper">@heroStepIntroHelper</p>
+                        }
+                    </div>
+                }
                 <div class="lq-contact-first-hero-actions">
                     <button type="button" class="btn-gold lq-contact-first-hero-cta" id="lifeHeroPrimaryCta" data-cta="life_funnel_start" data-life-funnel-start="true" data-primary-cta="hero">
                         Start My Quick Estimate
@@ -12894,5 +12927,53 @@ body.life-landing.life-quote-started .lq-hero-shell {
     }
 }
 /* LEGEND CTA STEP ZERO CORRECTION END */
+</style>
+
+
+<style>
+/* LEGEND HERO STEP COPY MOVE START */
+.lq-hero-step-copy {
+    width: min(100%, 620px);
+    margin: 0 auto 12px;
+    text-align: center;
+}
+
+.lq-hero-step-copy-title {
+    color: #fff7d9;
+    font-size: 1.18rem;
+    font-weight: 940;
+    line-height: 1.14;
+    letter-spacing: -.015em;
+    text-wrap: balance;
+}
+
+.lq-hero-step-copy-helper {
+    color: rgba(248,250,252,.78);
+    font-size: .88rem;
+    font-weight: 720;
+    line-height: 1.35;
+    margin: 5px auto 0;
+    max-width: 560px;
+    text-wrap: balance;
+}
+
+@@media (max-width: 767.98px) {
+    .lq-hero-step-copy {
+        margin: 2px auto 9px !important;
+        padding: 0 4px !important;
+    }
+
+    .lq-hero-step-copy-title {
+        font-size: 1rem !important;
+        line-height: 1.12 !important;
+    }
+
+    .lq-hero-step-copy-helper {
+        font-size: .76rem !important;
+        line-height: 1.28 !important;
+        margin-top: 4px !important;
+    }
+}
+/* LEGEND HERO STEP COPY MOVE END */
 </style>
 
