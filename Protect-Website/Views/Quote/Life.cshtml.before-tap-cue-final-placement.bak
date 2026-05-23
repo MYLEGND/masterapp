@@ -7020,15 +7020,14 @@ body.life-landing:not(.life-quote-started) .lq-contact-first-hero-image {
 .lq-contact-first-hero-actions::before,
 .lq-low-friction-hero-actions::before {
     content: "Tap to start ↓";
-    position: static;
-    z-index: 1;
+    position: absolute;
+    right: 10px;
+    top: -32px;
+    z-index: 4;
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    justify-self: center;
-    width: fit-content;
     min-height: 25px;
-    margin: 0 auto -1px;
     padding: 5px 11px;
     border-radius: 999px;
     border: 1px solid rgba(154,242,184,0.38);
@@ -7319,9 +7318,8 @@ input:checked + .lq-answer-card {
 
     .lq-contact-first-hero-actions::before,
     .lq-low-friction-hero-actions::before {
-        position: static;
-        justify-self: center;
-        margin: 0 auto -1px;
+        top: -29px;
+        right: 8px;
         font-size: .63rem;
         padding: 4px 9px;
     }
