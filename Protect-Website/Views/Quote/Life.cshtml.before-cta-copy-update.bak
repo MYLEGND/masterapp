@@ -7097,7 +7097,7 @@ body.life-final-step-active .lq-contact-estimate-recommendation {
                 }
                 <div class="lq-contact-first-hero-actions">
                     <button type="button" class="btn-gold lq-contact-first-hero-cta" id="lifeHeroPrimaryCta" data-cta="life_funnel_start" data-life-funnel-start="true" data-primary-cta="hero">
-                        See My Protection Options
+                        Start My Quick Estimate
                     </button>
                     <div class="lq-contact-first-hero-cta-note">Answer a few quick questions first. No obligation.</div>
                 </div>
@@ -7148,7 +7148,7 @@ body.life-final-step-active .lq-contact-estimate-recommendation {
 
     @if (isLandingView)
     {
-        var stickyPrimaryCtaText = isLowFrictionOptionsVariant ? lowFrictionHeroCtaText : "See My Protection Options";
+        var stickyPrimaryCtaText = isLowFrictionOptionsVariant ? lowFrictionHeroCtaText : "Start My Quick Estimate";
         <div class="lq-sticky-mobile-cta" id="lifeStickyPrimaryCtaWrap" aria-hidden="true">
             <button type="button" class="btn-gold lq-sticky-mobile-cta-btn" id="lifeStickyPrimaryCta" data-cta="life_funnel_start" data-life-funnel-start="true" data-primary-cta="sticky">@stickyPrimaryCtaText</button>
         </div>
@@ -9597,7 +9597,7 @@ body.life-landing .lq-hero-shell,
     trackEvent('quote_cta_click', {
       placement: resolvedPlacement,
       ctaId: 'life_funnel_start',
-      ctaText: resolvedPlacement === 'sticky' ? 'Sticky See My Protection Options' : 'See My Protection Options'
+      ctaText: resolvedPlacement === 'sticky' ? 'Sticky Start My Quick Estimate' : 'Start My Quick Estimate'
     });
 
     void ensureQuoteStartTracked({

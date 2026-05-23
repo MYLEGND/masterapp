@@ -428,16 +428,7 @@ public sealed class AnalyticsQueryService : IAnalyticsQueryService
         // visibility, later-stage progress, recommendation/contact views, submit attempts,
         // and success aliases are counted in their own stages so they cannot backfill the
         // funnel-start denominator.
-        return AnalyticsEventCatalog.MatchesDashboardMetric(e.EventType, "funnel_start") ||
-               string.Equals(e.EventType, "form_start", StringComparison.OrdinalIgnoreCase) ||
-               string.Equals(e.EventType, "lead_form_start", StringComparison.OrdinalIgnoreCase) ||
-               string.Equals(e.EventType, "life_contact_first_start", StringComparison.OrdinalIgnoreCase) ||
-               string.Equals(e.EventType, "life_general_form_start", StringComparison.OrdinalIgnoreCase) ||
-               string.Equals(e.EventType, "life_term_form_start", StringComparison.OrdinalIgnoreCase) ||
-               string.Equals(e.EventType, "life_whole_form_start", StringComparison.OrdinalIgnoreCase) ||
-               string.Equals(e.EventType, "life_finalexpense_form_start", StringComparison.OrdinalIgnoreCase) ||
-               string.Equals(e.EventType, "life_mp_form_start", StringComparison.OrdinalIgnoreCase) ||
-               string.Equals(e.EventType, "life_iul_form_start", StringComparison.OrdinalIgnoreCase);
+        return AnalyticsEventCatalog.MatchesDashboardMetric(e.EventType, "funnel_start");
     }
 
     private static bool IsQuoteExplicitStartSignalEvent(AnalyticsEvent e)
