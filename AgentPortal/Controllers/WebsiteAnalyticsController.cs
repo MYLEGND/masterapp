@@ -894,7 +894,7 @@ namespace AgentPortal.Controllers;
                     {
                         Label = string.IsNullOrWhiteSpace(l.Name) ? l.Email : l.Name,
                         Value = 1,
-                        Meta = l.LeadSource ?? (l.ResolvedSource ?? "direct")
+                        Meta = l.ResolvedSource ?? "Direct"
                     })
                     .ToList();
                 break;
