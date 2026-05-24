@@ -1,14 +1,7 @@
-@inject ProtectWebsite.Services.Booking.IPublicBookingResolver PublicBookingResolver
-
 @{
     ViewData["Title"] = "Home";
     ViewData["PageKey"] = "home";
-    var segs = (Context?.Request?.Path.Value ?? string.Empty).Split('/', StringSplitOptions.RemoveEmptyEntries);
-    var agentSlug = (segs.Length >= 2 && segs[0].Equals("a", StringComparison.OrdinalIgnoreCase)) ? segs[1] : null;
-    var bookingConfig = PublicBookingResolver.Resolve(agentSlug);
-    var bookingLink = bookingConfig.Enabled
-        ? bookingConfig.FallbackUrl ?? bookingConfig.EmbedUrl ?? "#"
-        : "#";
+    var bookingLink = "https://outlook.office.com/book/LEGEND@mylegnd.com/?ismsaljsauthenabled=true";
     ViewData["SeoTitle"] = "Life Insurance, Mortgage Protection & Family Coverage";
     ViewData["SeoDescription"] = "Protect your income, family, and future with personalized life insurance, mortgage protection, final expense, and coverage planning options.";
 }

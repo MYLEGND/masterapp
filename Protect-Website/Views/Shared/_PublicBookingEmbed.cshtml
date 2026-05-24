@@ -1,0 +1,29 @@
+@model ProtectWebsite.Services.Booking.PublicBookingResolution
+
+@if (Model?.Enabled == true && Model.HasEmbed)
+{
+    <iframe
+        src="@Model.EmbedUrl"
+        class="booking-frame"
+        loading="lazy"
+        referrerpolicy="strict-origin-when-cross-origin"
+        allowfullscreen>
+    </iframe>
+}
+else if (Model?.Enabled == true && Model.HasFallback)
+{
+    <iframe
+        src="@Model.FallbackUrl"
+        class="booking-frame"
+        loading="lazy"
+        referrerpolicy="strict-origin-when-cross-origin"
+        allowfullscreen>
+    </iframe>
+}
+else
+{
+    <div class="calendar-fallback-card">
+        <h3>Scheduling unavailable</h3>
+        <p>Please contact the assigned advisor directly.</p>
+    </div>
+}

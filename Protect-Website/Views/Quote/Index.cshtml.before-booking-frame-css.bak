@@ -480,24 +480,6 @@
     .process-step:last-child{ border-bottom:0; }
     .calendar-container{ height:520px; }
 }
-
-.booking-frame{
-    width:100%;
-    height:100%;
-    border:0;
-    display:block;
-}
-
-.calendar-fallback-card{
-    min-height:260px;
-    display:flex;
-    flex-direction:column;
-    align-items:center;
-    justify-content:center;
-    color:#f8fafc;
-    text-align:center;
-}
-
 </style>
 
 @{
