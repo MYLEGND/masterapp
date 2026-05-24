@@ -140,7 +140,7 @@
     return state.controllers[key];
   }
 
-  async function fetchOnce(key, fetcher) {
+  async function fetchCachedDeviceRequest(key, fetcher) {
     if (typeof fetcher !== 'function') {
       return fetch(key);
     }
@@ -4262,7 +4262,7 @@
     if (content) content.innerHTML = '<div class="wa-loading">Loading device intelligence...</div>';
 
     const deviceUrl = `/WebsiteAnalytics/DeviceIntelligence?${currentRangeParams().toString()}`;
-    const res = await fetchOnce(deviceUrl, () => fetch(deviceUrl, {
+    const res = await fetchCachedDeviceRequest(deviceUrl, () => fetch(deviceUrl, {
       headers: { 'Accept': 'application/json' }
     }));
 
