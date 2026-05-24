@@ -7416,7 +7416,7 @@ input:checked + .lq-answer-card {
                         }
                     </div>
                     <div class="lq-low-friction-hero-actions">
-                        <button type="button" class="btn-gold lq-primary-start-cta lq-low-friction-hero-cta" id="lifeHeroPrimaryCtaMain" data-cta="life_funnel_start" data-life-funnel-start="true" data-primary-cta="hero">@primaryStartCtaText</button>
+                        <button type="button" class="btn-gold lq-primary-start-cta lq-low-friction-hero-cta" id="lifeHeroPrimaryCta" data-cta="life_funnel_start" data-life-funnel-start="true" data-primary-cta="hero">@primaryStartCtaText</button>
                         <div class="lq-low-friction-cta-note lq-primary-start-note">@primaryStartCtaNote</div>
                     </div>
                 </div>
@@ -7446,7 +7446,7 @@ input:checked + .lq-answer-card {
                     </div>
                 }
                 <div class="lq-contact-first-hero-actions">
-                    <button type="button" class="btn-gold lq-primary-start-cta lq-contact-first-hero-cta" id="lifeHeroPrimaryCtaSecondary" data-cta="life_funnel_start" data-life-funnel-start="true" data-primary-cta="hero">
+                    <button type="button" class="btn-gold lq-primary-start-cta lq-contact-first-hero-cta" id="lifeHeroPrimaryCta" data-cta="life_funnel_start" data-life-funnel-start="true" data-primary-cta="hero">
                         @primaryStartCtaText
                     </button>
                     <div class="lq-contact-first-hero-cta-note lq-primary-start-note">@primaryStartCtaNote</div>
@@ -9205,13 +9205,8 @@ body.life-landing .lq-hero-shell,
 
   const contactFirstPanel = document.getElementById('lifeEducationContactPanel');
   const heroEntryPanel = document.getElementById('lifeHeroEntryPanel');
-  const startCtaButtons = [...new Set(
-    Array.from(document.querySelectorAll('[data-life-funnel-start]'))
-  )];
-
-  const primaryCtaTargets = [...new Set(
-    Array.from(document.querySelectorAll('[data-primary-cta]'))
-  )];
+  const startCtaButtons = Array.from(document.querySelectorAll('[data-life-funnel-start]'));
+  const primaryCtaTargets = Array.from(document.querySelectorAll('[data-primary-cta]'));
   const step1Panel = document.getElementById('lifeStep1Panel');
   const processingPanel = document.getElementById('lifeProcessingPanel');
   const step2Panel = document.getElementById('lifeStep2Panel');
@@ -10079,12 +10074,6 @@ body.life-landing .lq-hero-shell,
     }
 
     primaryCtaSeenTracked = true;
-    if (visibleTarget.dataset.ctaSeenTracked === 'true') {
-      return;
-    }
-
-    visibleTarget.dataset.ctaSeenTracked = 'true';
-
     trackEvent('primary_cta_seen', {
       placement: placement || 'hero',
       ...metadata
@@ -11688,14 +11677,7 @@ body.life-landing .lq-hero-shell,
   function getPrimaryCtaCandidates() {
     return Array.from(new Set([
       ...primaryCtaTargets,
-      ...new Set([
-        ...document.querySelectorAll('#lifeHeroPrimaryCtaMain'),
-        ...document.querySelectorAll('#lifeHeroPrimaryCtaSecondary'),
-        ...document.querySelectorAll('[data-life-funnel-start]'),
-        ...document.querySelectorAll('[data-primary-cta]'),
-        ...document.querySelectorAll('.lq-contact-first-hero-cta'),
-        ...document.querySelectorAll('.lq-low-friction-hero-cta')
-      ])
+      ...document.querySelectorAll('#lifeHeroPrimaryCta, [data-life-funnel-start], [data-primary-cta], .lq-contact-first-hero-cta, .lq-low-friction-hero-cta')
     ])).filter((target) => target instanceof HTMLElement);
   }
 
