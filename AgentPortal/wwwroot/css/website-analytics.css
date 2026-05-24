@@ -1735,7 +1735,7 @@ body { background: #f7f8fb; color: var(--legend-ink-dark); }
     border-radius: 14px;
     background: transparent !important;
     background-image: none !important;
-    box-shadow: none !important;
+    box-shadow: none;
     color: #f8fafc !important;
     -webkit-text-fill-color: #f8fafc !important;
     font-weight: 800;
@@ -3758,6 +3758,19 @@ body {
     line-height: 1.45;
 }
 
+.wa-workbench-actions {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: .6rem;
+    flex-wrap: wrap;
+}
+
+.wa-workbench-copy-btn {
+    min-height: 36px;
+    white-space: nowrap;
+}
+
 .wa-workbench-chip {
     display: inline-flex;
     align-items: center;
@@ -4661,6 +4674,11 @@ body {
         white-space: normal;
     }
 
+    .wa-workbench-actions {
+        width: 100%;
+    }
+
+    .wa-workbench-copy-btn,
     .wa-workbench-chip {
         width: 100%;
         white-space: normal;
@@ -5519,6 +5537,29 @@ body {
         inset 0 1px 0 rgba(255,255,255,.04);
 }
 
+.wa-health-diagnostics {
+    position: relative;
+    border-color: rgba(237,147,112,.22);
+    background:
+        radial-gradient(780px 220px at 10% 0%, rgba(237,147,112,.12), transparent 60%),
+        radial-gradient(520px 180px at 100% 0%, rgba(232,192,104,.10), transparent 68%),
+        linear-gradient(180deg, rgba(255,255,255,.03) 0%, rgba(255,255,255,.01) 100%),
+        rgba(8,18,41,.92);
+    box-shadow:
+        0 14px 24px rgba(0,0,0,.14),
+        inset 0 1px 0 rgba(255,255,255,.05);
+    overflow: hidden;
+}
+
+.wa-health-diagnostics::before {
+    content: "";
+    position: absolute;
+    inset: 0 0 auto;
+    height: 3px;
+    background: linear-gradient(90deg, rgba(237,147,112,.95) 0%, rgba(232,192,104,.88) 58%, rgba(232,192,104,0) 100%);
+    pointer-events: none;
+}
+
 .wa-health-panel-head {
     display: flex;
     align-items: flex-start;
@@ -5550,6 +5591,21 @@ body {
     letter-spacing: .14em;
     text-transform: uppercase;
     white-space: nowrap;
+}
+
+.wa-health-diagnostics .wa-health-panel-kicker {
+    color: rgba(255,197,160,.86);
+}
+
+.wa-health-diagnostics .wa-health-warnings-title {
+    color: #fff4da;
+}
+
+.wa-health-diagnostics .wa-health-panel-badge {
+    border-color: rgba(237,147,112,.22);
+    background: rgba(237,147,112,.08);
+    color: #ffe8c7;
+    box-shadow: inset 0 1px 0 rgba(255,255,255,.08);
 }
 
 .wa-health-warnings-title {
@@ -5648,41 +5704,59 @@ body {
 }
 
 .wa-health-diagnostics-sub {
-    margin-top: .12rem;
-    color: rgba(216,222,234,.78);
+    margin-top: .16rem;
+    color: rgba(229,235,244,.74);
     font-size: .78rem;
     font-weight: 620;
     line-height: 1.44;
-    max-width: 48rem;
+    max-width: 54rem;
 }
 
 .wa-health-diagnostics-table-wrap {
     max-height: 24rem;
     border-radius: 16px;
     overflow: auto;
-    padding: .34rem;
-    border: 1px solid rgba(199,153,49,.16);
+    padding: .4rem;
+    border: 1px solid rgba(237,147,112,.16);
     background:
-        linear-gradient(180deg, rgba(255,255,255,.025) 0%, rgba(255,255,255,.008) 100%),
-        rgba(6,12,28,.8);
-    box-shadow: inset 0 1px 0 rgba(255,255,255,.04);
+        linear-gradient(180deg, rgba(18,31,64,.96) 0%, rgba(7,14,33,.94) 100%);
+    box-shadow:
+        inset 0 1px 0 rgba(255,255,255,.05),
+        inset 0 0 0 1px rgba(237,147,112,.04);
 }
 
 .wa-health-diagnostics-table {
+    --bs-table-bg: transparent;
+    --bs-table-accent-bg: transparent;
+    --bs-table-striped-bg: transparent;
+    --bs-table-active-bg: transparent;
+    --bs-table-hover-bg: transparent;
+    --bs-table-color: #eef2f8;
+    --bs-table-border-color: transparent;
     width: 100%;
-    min-width: 1040px;
+    min-width: 1120px;
     table-layout: fixed;
     margin-bottom: 0;
     border-spacing: 0 10px;
     background: transparent;
 }
 
+.wa-health-diagnostics-table col.wa-col-time { width: 12%; }
+.wa-health-diagnostics-table col.wa-col-page { width: 17%; }
+.wa-health-diagnostics-table col.wa-col-event { width: 17%; }
+.wa-health-diagnostics-table col.wa-col-error { width: 24%; }
+.wa-health-diagnostics-table col.wa-col-status { width: 8%; }
+.wa-health-diagnostics-table col.wa-col-retry { width: 5%; }
+.wa-health-diagnostics-table col.wa-col-recovered { width: 8%; }
+.wa-health-diagnostics-table col.wa-col-action { width: 9%; }
+
 .wa-health-diagnostics-table thead th {
     position: sticky;
     top: 0;
     z-index: 2;
-    background: rgba(9,17,39,.94);
-    color: #e6bf64;
+    background:
+        linear-gradient(180deg, rgba(27,40,78,.98) 0%, rgba(16,27,56,.98) 100%);
+    color: #f3d58a;
     font-size: .68rem;
     font-weight: 900;
     letter-spacing: .16em;
@@ -5691,6 +5765,7 @@ body {
     padding: .68rem .72rem;
     line-height: 1.25;
     backdrop-filter: blur(12px);
+    box-shadow: inset 0 -1px 0 rgba(237,147,112,.14);
 }
 
 .wa-health-diagnostics-table thead th:first-child {
@@ -5707,14 +5782,15 @@ body {
     min-width: 0;
     color: #eef2f8;
     background:
-        linear-gradient(180deg, rgba(255,255,255,.028) 0%, rgba(255,255,255,.008) 100%),
-        rgba(13,24,53,.9);
-    border-top: 1px solid rgba(255,255,255,.07);
-    border-bottom: 1px solid rgba(255,255,255,.07);
-    padding: .68rem .72rem;
+        linear-gradient(180deg, rgba(255,255,255,.03) 0%, rgba(255,255,255,.01) 100%),
+        rgba(14,24,52,.92);
+    border-top: 1px solid rgba(255,255,255,.08);
+    border-bottom: 1px solid rgba(255,255,255,.08);
+    padding: .76rem .74rem;
     vertical-align: top;
     line-height: 1.34;
-    transition: background .18s ease, border-color .18s ease;
+    box-shadow: none;
+    transition: background .18s ease, border-color .18s ease, transform .18s ease;
 }
 
 .wa-health-diagnostics-table tbody td:first-child {
@@ -5731,8 +5807,10 @@ body {
 
 .wa-health-diagnostics-table tbody tr:hover td {
     background:
-        linear-gradient(180deg, rgba(255,255,255,.05) 0%, rgba(255,255,255,.014) 100%),
-        rgba(16,29,62,.98);
+        linear-gradient(180deg, rgba(255,255,255,.06) 0%, rgba(255,255,255,.02) 100%),
+        rgba(18,31,66,.98);
+    border-top-color: rgba(237,147,112,.18);
+    border-bottom-color: rgba(237,147,112,.18);
 }
 
 .wa-health-diagnostics-table tbody tr[data-severity="low"] td:first-child {
@@ -5783,9 +5861,15 @@ body {
 }
 
 .wa-health-cell-ellipsis {
-    display: block;
+    display: -webkit-box;
     width: 100%;
     max-width: 100%;
+    overflow: hidden;
+    white-space: normal;
+    overflow-wrap: anywhere;
+    text-overflow: ellipsis;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
 }
 
 .wa-health-row-actions {
@@ -5797,15 +5881,15 @@ body {
 
 .wa-health-detail-btn {
     min-height: 30px;
-    padding: .32rem .72rem;
+    padding: .32rem .68rem;
     border-radius: 999px;
     border-color: rgba(231,196,103,.42);
-    color: #fff2c7;
-    background: rgba(255,255,255,.03);
+    color: #fff0cb;
+    background: linear-gradient(180deg, rgba(35,48,86,.96) 0%, rgba(19,29,58,.96) 100%);
     font-size: .72rem;
     font-weight: 850;
     line-height: 1;
-    box-shadow: none;
+    box-shadow: inset 0 1px 0 rgba(255,255,255,.07);
 }
 
 .wa-health-detail-btn:hover,
@@ -5872,6 +5956,48 @@ body {
     border-color: rgba(239,68,68,.42);
     color: #fecaca;
     background: rgba(127,29,29,.3);
+}
+
+.wa-health-diagnostics-table thead th:nth-child(5),
+.wa-health-diagnostics-table thead th:nth-child(6),
+.wa-health-diagnostics-table thead th:nth-child(7),
+.wa-health-diagnostics-table thead th:nth-child(8),
+.wa-health-diagnostics-table tbody td:nth-child(5),
+.wa-health-diagnostics-table tbody td:nth-child(6),
+.wa-health-diagnostics-table tbody td:nth-child(7),
+.wa-health-diagnostics-table tbody td:nth-child(8) {
+    text-align: center;
+}
+
+.wa-health-diagnostics-table tbody td:nth-child(1) .wa-health-cell-primary {
+    color: rgba(248,250,252,.96);
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+}
+
+.wa-health-diagnostics-table tbody td:nth-child(2) .wa-health-cell-primary {
+    color: #ffe2a3;
+}
+
+.wa-health-diagnostics-table tbody td:nth-child(3) .wa-health-cell-primary {
+    color: #d9e6ff;
+}
+
+.wa-health-diagnostics-table tbody td:nth-child(4) .wa-health-cell-primary,
+.wa-health-diagnostics-table tbody td:nth-child(4) .wa-health-copyable {
+    color: #ffd6cb;
+}
+
+.wa-health-diagnostics-table tbody td:nth-child(6) .wa-health-cell-primary {
+    font-size: .92rem;
+}
+
+.wa-health-diagnostics-table tbody td:nth-child(8) .wa-health-row-actions {
+    justify-content: center;
+}
+
+.wa-health-diagnostics-table tbody td:nth-child(8) .wa-health-inline-flag {
+    justify-content: center;
 }
 
 .wa-health-detail-meta {
@@ -6075,7 +6201,7 @@ body {
     }
 
     .wa-health-diagnostics-table {
-        min-width: 900px;
+        min-width: 980px;
     }
 
     .wa-modal-dialog,

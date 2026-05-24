@@ -236,26 +236,10 @@ namespace AgentPortal.Services.Analytics
             {
                 if (SearchSources.Any(s => referrerHost.Contains(s, StringComparison.OrdinalIgnoreCase)))
                     return TrafficType.Organic;
-
-                if (ReferralSources.Any(s => referrerHost.Contains(s, StringComparison.OrdinalIgnoreCase)))
-                    return TrafficType.Referral;
-
-                if (referrerHost.Contains("chatgpt", StringComparison.OrdinalIgnoreCase) ||
-                    referrerHost.Contains("openai", StringComparison.OrdinalIgnoreCase) ||
-                    referrerHost.Contains("perplexity", StringComparison.OrdinalIgnoreCase) ||
-                    referrerHost.Contains("claude", StringComparison.OrdinalIgnoreCase) ||
-                    referrerHost.Contains("gemini", StringComparison.OrdinalIgnoreCase))
-                {
-                    return TrafficType.Organic;
-                }
-
                 return TrafficType.Referral;
             }
 
-            // Modern browsers and privacy protections frequently strip referrer data.
-            // If no attribution exists but the session is otherwise clean, treat as Direct
-            // instead of Unknown so reporting better reflects real human traffic.
-            return TrafficType.Direct;
+            return TrafficType.Unknown;
         }
 
         public static bool IsMetaAttributedPaid(

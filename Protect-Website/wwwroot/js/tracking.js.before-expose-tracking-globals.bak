@@ -1342,11 +1342,6 @@ function trackCustomFieldError(formKey, fieldName, errorType, offerKey) {
     wireFormStart(`form[data-form-key="${key}"]`, key);
   });
 
-
-  // Expose existing tracking helpers for legacy/on-page scripts and diagnostics.
-  window._formAbandonCallbacks = window._formAbandonCallbacks || _formAbandonCallbacks;
-  window.trackCustomFieldError = window.trackCustomFieldError || trackCustomFieldError;
-
   window.legendTrack = (payload) => sendEvent(payload);
   window.legendFormTracking = {
     trackFieldError: trackCustomFieldError,

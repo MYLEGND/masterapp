@@ -336,7 +336,10 @@
                 <h3 class="wa-workbench-title" id="wa-workbench-title">Analysis Modules</h3>
                 <p class="wa-workbench-sub">Open the right intelligence layer fast, from top-priority diagnostics to supporting drill-ins.</p>
             </div>
-            <div class="wa-workbench-chip">Open any module to launch its deep dive</div>
+            <div class="wa-workbench-actions">
+                <button type="button" class="btn btn-sm fa-export-btn wa-workbench-copy-btn" id="copy-all-analysis-modules">Copy All Modules</button>
+                <div class="wa-workbench-chip">Open any module to launch its deep dive</div>
+            </div>
         </div>
 
         <div class="wa-module-band wa-module-band-primary">
@@ -553,6 +556,16 @@
                 </div>
                 <div class="table-responsive wa-health-diagnostics-table-wrap">
                     <table class="table wa-health-diagnostics-table">
+                        <colgroup>
+                            <col class="wa-col-time" />
+                            <col class="wa-col-page" />
+                            <col class="wa-col-event" />
+                            <col class="wa-col-error" />
+                            <col class="wa-col-status" />
+                            <col class="wa-col-retry" />
+                            <col class="wa-col-recovered" />
+                            <col class="wa-col-action" />
+                        </colgroup>
                         <thead>
                             <tr>
                                 <th>Time</th>

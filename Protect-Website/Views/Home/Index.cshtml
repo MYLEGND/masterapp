@@ -21,42 +21,62 @@
     }
 }
 
+@functions {
+    private static Microsoft.AspNetCore.Html.IHtmlContent Icon(string name)
+    {
+        var svg = name switch
+        {
+            "shield" => "<svg viewBox='0 0 24 24'><path d='M12 3l7 3v5c0 5-3.2 8.5-7 10-3.8-1.5-7-5-7-10V6l7-3z'/><path d='M9 12l2 2 4-5'/></svg>",
+            "compass" => "<svg viewBox='0 0 24 24'><circle cx='12' cy='12' r='9'/><path d='M15 9l-2 5-5 2 2-5 5-2z'/></svg>",
+            "income" => "<svg viewBox='0 0 24 24'><path d='M4 7h16v10H4z'/><path d='M8 11h.01'/><path d='M16 13h.01'/><path d='M12 9v6'/><path d='M10 11h4'/></svg>",
+            "legacy" => "<svg viewBox='0 0 24 24'><path d='M4 20h16'/><path d='M6 20V9l6-5 6 5v11'/><path d='M9 20v-6h6v6'/></svg>",
+            "check" => "<svg viewBox='0 0 24 24'><path d='M20 6L9 17l-5-5'/></svg>",
+            "file" => "<svg viewBox='0 0 24 24'><path d='M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z'/><path d='M14 3v5h5'/><path d='M9 14h6'/><path d='M9 17h4'/></svg>",
+            "calendar" => "<svg viewBox='0 0 24 24'><path d='M7 3v4'/><path d='M17 3v4'/><path d='M4 8h16'/><path d='M5 5h14v15H5z'/><path d='M8 12h3'/><path d='M13 12h3'/></svg>",
+            "arrow" => "<svg viewBox='0 0 24 24'><path d='M5 12h14'/><path d='M13 6l6 6-6 6'/></svg>",
+            "question" => "<svg viewBox='0 0 24 24'><circle cx='12' cy='12' r='9'/><path d='M9.5 9a2.7 2.7 0 0 1 5 1.4c0 1.8-2.5 2.2-2.5 4'/><path d='M12 18h.01'/></svg>",
+            _ => "<svg viewBox='0 0 24 24'><path d='M20 6L9 17l-5-5'/></svg>"
+        };
+
+        return new Microsoft.AspNetCore.Html.HtmlString(svg);
+    }
+}
+
 <style>
-:root{
+.home-page{
     --surface:#0f172a;
+    --surface-2:#0b1325;
     --surface-soft:#111c32;
-    --surface-deep:#0b1325;
-    --ink-light:#f8fafc;
-    --muted:rgba(248,250,252,.78);
-    --muted-soft:rgba(248,250,252,.62);
+    --ink:#f8fafc;
+    --muted:rgba(248,250,252,.76);
+    --muted-soft:rgba(248,250,252,.60);
     --gold:#a68023;
     --gold-strong:#c79931;
     --gold-bright:#f2cd75;
-    --border:rgba(199,153,49,.86);
+    --border:rgba(199,153,49,.82);
     --border-soft:rgba(199,153,49,.24);
-    --shadow:0 22px 64px rgba(0,0,0,.18);
+    --shadow:0 24px 70px rgba(0,0,0,.18);
+    max-width:1160px;
+    margin:0 auto;
+    padding:24px 18px 72px;
+    color-scheme:dark;
 }
 
 .home-page,
 .home-page *{
     box-sizing:border-box;
-    color-scheme:dark;
 }
 
-.home-page{
-    max-width:1160px;
-    margin:0 auto;
-    padding:24px 18px 72px;
-}
-
-.home-shell{
-    background:linear-gradient(180deg,#0f172a 0%,#0b1325 100%) !important;
-    color:#f8fafc !important;
+.home-page section.home-shell{
+    background:linear-gradient(180deg,var(--surface) 0%,var(--surface-2) 100%);
+    background-color:var(--surface) !important;
     border:1.6px solid var(--border);
     border-radius:24px;
     box-shadow:var(--shadow);
+    color:var(--ink) !important;
     overflow:hidden;
     position:relative;
+    isolation:isolate;
 }
 
 .home-shell:before{
@@ -75,220 +95,56 @@
 }
 
 .home-hero{
-    padding:30px 30px 20px;
+    display:grid;
+    grid-template-columns:minmax(0,1.1fr) minmax(290px,.72fr);
+    gap:24px;
+    align-items:center;
+    padding:34px 30px 26px;
     border-bottom:1px solid var(--border-soft);
 }
 
-.home-title{
-    margin:0 0 10px;
+.kicker{
+    display:inline-flex;
+    padding:7px 12px;
+    border-radius:999px;
+    border:1px solid rgba(199,153,49,.38);
+    background:rgba(199,153,49,.16);
+    color:var(--gold-bright);
+    font-size:.76rem;
+    font-weight:950;
+    letter-spacing:.16em;
+    text-transform:uppercase;
+}
+
+.hero-title{
+    margin:14px 0 10px;
     color:#e8edf7 !important;
-    font-size:clamp(2.1rem,3.35vw,3rem);
-    line-height:1.04;
-    letter-spacing:-.04em;
+    font-size:clamp(2.15rem,3.6vw,3.2rem);
+    line-height:1.02;
+    letter-spacing:-.045em;
     font-weight:950;
 }
 
-.home-title span{
-    color:var(--gold-bright) !important;
+.hero-title span{
+    color:var(--gold-bright);
 }
 
-.home-lead{
+.hero-copy{
     max-width:760px;
     margin:0;
     color:var(--muted) !important;
-    font-size:1.05rem;
+    font-size:1.06rem;
     line-height:1.55;
 }
 
-.home-actions{
-    display:grid;
-    grid-template-columns:repeat(3,minmax(0,1fr));
-    gap:12px;
-    padding:22px 30px 24px;
-}
-
-.home-action{
-    display:grid;
-    grid-template-columns:auto 1fr auto;
-    align-items:center;
-    gap:12px;
-    min-height:86px;
-    padding:14px;
-    border-radius:18px;
-    border:1px solid rgba(199,153,49,.48);
-    background:rgba(255,255,255,.045);
-    text-decoration:none !important;
-    color:#f8fafc !important;
-    transition:.18s ease;
-}
-
-.home-action:hover{
-    transform:translateY(-3px);
-    border-color:var(--gold-bright);
-    background:rgba(199,153,49,.10);
-    color:#fff !important;
-}
-
-.home-icon{
-    width:42px;
-    height:42px;
-    border-radius:15px;
+.hero-actions{
     display:flex;
-    align-items:center;
-    justify-content:center;
-    border:1px solid rgba(199,153,49,.46);
-    background:rgba(199,153,49,.15);
-    color:var(--gold-bright);
-}
-
-.home-icon svg{
-    width:22px;
-    height:22px;
-    stroke:currentColor;
-    stroke-width:2;
-    fill:none;
-    stroke-linecap:round;
-    stroke-linejoin:round;
-}
-
-.home-action-title{
-    margin:0 0 2px;
-    color:var(--gold-bright) !important;
-    font-size:1rem;
-    font-weight:950;
-}
-
-.home-action-sub{
-    margin:0;
-    color:var(--muted-soft) !important;
-    font-size:.86rem;
-    line-height:1.32;
-}
-
-.home-arrow{
-    width:30px;
-    height:30px;
-    border-radius:999px;
-    display:flex;
-    align-items:center;
-    justify-content:center;
-    border:1px solid rgba(199,153,49,.62);
-    color:#f8fafc;
-    font-weight:950;
-}
-
-.home-proof{
-    display:grid;
-    grid-template-columns:repeat(3,minmax(0,1fr));
-    border-top:1px solid var(--border-soft);
-    background:rgba(255,255,255,.025);
-}
-
-.home-proof-item{
-    display:flex;
-    align-items:center;
-    gap:12px;
-    padding:12px 20px;
-    border-right:1px solid rgba(199,153,49,.16);
-    min-height:62px;
-}
-
-.home-proof-item:last-child{
-    border-right:0;
-}
-
-.home-proof-num{
-    width:30px;
-    height:30px;
-    display:flex;
-    align-items:center;
-    justify-content:center;
-    border-radius:999px;
-    border:1px solid rgba(199,153,49,.62);
-    color:var(--gold-bright);
-    font-weight:950;
-    flex:0 0 auto;
-}
-
-.home-proof-copy{
-    display:flex;
-    align-items:center;
-    gap:8px;
-    min-width:0;
-}
-
-.home-proof-copy strong{
-    color:var(--gold-bright);
-    font-weight:950;
-    white-space:nowrap;
-}
-
-.home-proof-copy span{
-    color:var(--muted);
-    font-size:.88rem;
-    white-space:nowrap;
-    overflow:hidden;
-    text-overflow:ellipsis;
-}
-
-.home-secondary{
-    margin-top:24px;
-    background:linear-gradient(180deg,#0f172a 0%,#0b1325 100%);
-    border:1.4px solid var(--border);
-    border-radius:22px;
-    box-shadow:0 14px 38px rgba(0,0,0,.16);
-    padding:24px 24px;
-    color:#f8fafc;
-}
-
-.home-secondary h2{
-    margin:0 0 8px;
-    color:var(--gold-strong);
-    font-weight:950;
-    text-align:center;
-}
-
-.home-secondary p{
-    max-width:740px;
-    margin:0 auto 18px;
-    text-align:center;
-    color:var(--muted);
-    line-height:1.55;
-}
-
-.home-links{
-    display:grid;
-    grid-template-columns:repeat(3,minmax(0,1fr));
-    gap:10px;
-}
-
-.home-link{
-    display:flex;
-    align-items:center;
-    justify-content:space-between;
-    gap:10px;
-    padding:13px 14px;
-    border-radius:16px;
-    border:1px solid rgba(199,153,49,.38);
-    background:rgba(255,255,255,.045);
-    color:#f8fafc !important;
-    text-decoration:none !important;
-    font-weight:850;
-}
-
-.home-link span{
-    color:var(--gold-bright);
-}
-
-.home-footer-cta{
-    margin-top:24px;
-    display:flex;
-    justify-content:center;
-    gap:12px;
     flex-wrap:wrap;
+    gap:12px;
+    margin-top:18px;
 }
 
-.home-btn{
+.btn-home{
     display:inline-flex;
     align-items:center;
     justify-content:center;
@@ -300,39 +156,662 @@
     transition:.18s ease;
 }
 
-.home-btn-primary{
+.btn-primary-home{
     background:linear-gradient(180deg,var(--gold-strong),var(--gold));
     color:#fff !important;
     border:1.5px solid var(--border);
+    box-shadow:0 14px 32px rgba(0,0,0,.20);
 }
 
-.home-btn-secondary{
-    background:#111c32;
+.btn-secondary-home{
+    background:#111c32 !important;
     color:#f8fafc !important;
     border:1.5px solid rgba(199,153,49,.78);
 }
 
-.home-btn:hover{
+.btn-home:hover{
     transform:translateY(-2px);
 }
 
+.icon{
+    width:42px;
+    height:42px;
+    border-radius:15px;
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    border:1px solid rgba(199,153,49,.46);
+    background:rgba(199,153,49,.15);
+    color:var(--gold-bright);
+    flex:0 0 auto;
+}
+
+.icon svg{
+    width:22px;
+    height:22px;
+    stroke:currentColor;
+    stroke-width:2;
+    fill:none;
+    stroke-linecap:round;
+    stroke-linejoin:round;
+}
+
+.snapshot{
+    border:1px solid var(--border-soft);
+    border-radius:20px;
+    background:rgba(255,255,255,.045) !important;
+    padding:18px;
+    color:var(--ink) !important;
+}
+
+.snapshot h3{
+    margin:0 0 12px;
+    color:var(--gold-bright) !important;
+    font-weight:950;
+}
+
+.snapshot-list{
+    display:grid;
+    gap:10px;
+    margin:0;
+    padding:0;
+    list-style:none;
+}
+
+.snapshot-list li{
+    display:flex;
+    align-items:center;
+    gap:10px;
+    color:var(--muted) !important;
+    font-weight:800;
+}
+
+.mini-check{
+    width:22px;
+    height:22px;
+    border-radius:999px;
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    color:var(--gold-bright);
+    border:1px solid rgba(199,153,49,.50);
+    background:rgba(199,153,49,.10);
+    flex:0 0 auto;
+}
+
+.mini-check svg{
+    width:13px;
+    height:13px;
+    stroke:currentColor;
+    stroke-width:2.4;
+    fill:none;
+}
+
+.home-cards{
+    display:grid;
+    grid-template-columns:repeat(3,minmax(0,1fr));
+    gap:12px;
+    padding:22px 30px 24px;
+}
+
+.home-card{
+    background:rgba(255,255,255,.045) !important;
+    border:1px solid rgba(199,153,49,.42);
+    border-radius:18px;
+    padding:16px;
+    min-height:150px;
+    transition:.18s ease;
+    color:var(--ink) !important;
+}
+
+.home-card:hover{
+    transform:translateY(-3px);
+    border-color:var(--gold-bright);
+    background:rgba(199,153,49,.085) !important;
+}
+
+.home-card h3{
+    margin:12px 0 4px;
+    color:var(--gold-bright) !important;
+    font-size:1.06rem;
+    font-weight:950;
+}
+
+.home-card p{
+    margin:0;
+    color:var(--muted-soft) !important;
+    line-height:1.45;
+    font-size:.92rem;
+}
+
+.home-story-bridge{
+    padding:18px 30px 0;
+}
+
+.home-story-divider{
+    display:flex;
+    align-items:center;
+    gap:14px;
+    color:rgba(242,205,117,.76);
+    font-size:.76rem;
+    font-weight:950;
+    letter-spacing:.16em;
+    text-transform:uppercase;
+}
+
+.home-story-divider::before,
+.home-story-divider::after{
+    content:"";
+    flex:1 1 auto;
+    height:1px;
+    background:linear-gradient(90deg, rgba(199,153,49,0), rgba(199,153,49,.34), rgba(199,153,49,0));
+}
+
+.home-journey-shell{
+    margin:18px 22px 0;
+    border:1px solid rgba(199,153,49,.26);
+    border-radius:24px;
+    background:
+        linear-gradient(180deg, rgba(255,255,255,.028) 0%, rgba(255,255,255,.01) 100%),
+        rgba(12,22,46,.9) !important;
+    box-shadow:inset 0 1px 0 rgba(255,255,255,.04);
+    overflow:hidden;
+}
+
+.home-journey-head{
+    padding:24px 24px 16px;
+    background:
+        radial-gradient(520px 180px at 0% 0%, rgba(199,153,49,.12), transparent 62%),
+        rgba(255,255,255,.015) !important;
+}
+
+.focus-panel{
+    border-top:0;
+    background:transparent !important;
+    padding:22px 30px 26px;
+}
+
+.focus-head{
+    display:flex;
+    align-items:flex-end;
+    justify-content:space-between;
+    gap:18px;
+    margin-bottom:14px;
+}
+
+.focus-head h2{
+    margin:0;
+    color:var(--gold-bright) !important;
+    font-size:1.35rem;
+    font-weight:950;
+}
+
+.focus-head p{
+    margin:4px 0 0;
+    color:var(--muted-soft) !important;
+}
+
+.focus-tabs{
+    display:grid;
+    grid-template-columns:repeat(3,minmax(0,1fr));
+    gap:10px;
+    margin-bottom:14px;
+}
+
+.focus-tab{
+    border:1px solid rgba(199,153,49,.42);
+    background:rgba(255,255,255,.045) !important;
+    color:#f8fafc !important;
+    border-radius:16px;
+    padding:13px 14px;
+    display:flex;
+    align-items:center;
+    gap:10px;
+    cursor:pointer;
+    text-align:left;
+    font-weight:950;
+}
+
+.focus-tab.active{
+    border-color:var(--gold-bright);
+    background:rgba(199,153,49,.13) !important;
+    color:var(--gold-bright) !important;
+}
+
+.focus-content{
+    display:grid;
+    grid-template-columns:minmax(0,1fr) auto;
+    gap:16px;
+    align-items:center;
+    border:1px solid rgba(199,153,49,.30);
+    background:rgba(255,255,255,.04) !important;
+    border-radius:18px;
+    padding:16px;
+    color:var(--ink) !important;
+}
+
+.focus-content h3{
+    margin:0 0 4px;
+    color:var(--gold-bright) !important;
+    font-weight:950;
+}
+
+.focus-content p{
+    margin:0;
+    color:var(--muted) !important;
+    line-height:1.45;
+}
+
+.focus-link{
+    display:inline-flex;
+    align-items:center;
+    gap:8px;
+    padding:11px 14px;
+    border-radius:14px;
+    background:linear-gradient(180deg,var(--gold-strong),var(--gold)) !important;
+    color:#fff !important;
+    font-weight:950;
+    text-decoration:none !important;
+    white-space:nowrap;
+}
+
+.home-process{
+    display:grid;
+    grid-template-columns:repeat(3,minmax(0,1fr));
+    border-top:1px solid var(--border-soft);
+    background:rgba(255,255,255,.02) !important;
+}
+
+.process-item{
+    display:flex;
+    align-items:center;
+    gap:12px;
+    padding:13px 20px;
+    border-right:1px solid rgba(199,153,49,.16);
+    min-height:62px;
+}
+
+.process-item:last-child{
+    border-right:0;
+}
+
+.num{
+    width:30px;
+    height:30px;
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    border-radius:999px;
+    border:1px solid rgba(199,153,49,.62);
+    color:var(--gold-bright);
+    font-weight:950;
+}
+
+.process-item strong{
+    color:var(--gold-bright) !important;
+    margin-right:6px;
+}
+
+.process-item span:last-child{
+    color:var(--muted) !important;
+    font-size:.88rem;
+}
+
+.home-disclosures{
+    border-top:0;
+    padding:0;
+    display:grid;
+    gap:12px;
+    background:transparent !important;
+}
+
+.home-disclosures-shell{
+    border-top:1px solid var(--border-soft);
+    padding:24px 22px 14px;
+    background:
+        linear-gradient(180deg, rgba(255,255,255,.018) 0%, rgba(255,255,255,.006) 100%),
+        rgba(255,255,255,.018) !important;
+}
+
+.home-disclosures-head{
+    padding:0 4px 14px;
+    max-width:820px;
+}
+
+.home-disclosure{
+    border:1px solid rgba(199,153,49,.26);
+    border-radius:20px;
+    background:
+        linear-gradient(180deg, rgba(255,255,255,.028) 0%, rgba(255,255,255,.012) 100%),
+        rgba(14,24,48,.9) !important;
+    box-shadow:inset 0 1px 0 rgba(255,255,255,.04);
+    overflow:hidden;
+}
+
+.home-disclosure[open]{
+    border-color:rgba(242,205,117,.5);
+    box-shadow:0 18px 34px rgba(0,0,0,.18), inset 0 1px 0 rgba(255,255,255,.05);
+}
+
+.home-disclosure > summary{
+    list-style:none;
+    cursor:pointer;
+    display:flex;
+    align-items:center;
+    justify-content:space-between;
+    gap:16px;
+    padding:18px 18px;
+}
+
+.home-disclosure > summary::-webkit-details-marker{
+    display:none;
+}
+
+.home-disclosure > summary::marker{
+    content:"";
+}
+
+.home-disclosure > summary:hover,
+.home-disclosure > summary:focus-visible{
+    background:rgba(255,255,255,.03);
+    outline:none;
+}
+
+.home-disclosure-copy{
+    min-width:0;
+}
+
+.home-disclosure-kicker{
+    margin:0 0 6px;
+    color:rgba(242,205,117,.76);
+    font-size:.74rem;
+    font-weight:950;
+    letter-spacing:.16em;
+    text-transform:uppercase;
+}
+
+.home-disclosure-title{
+    margin:0;
+    color:#fff1c8 !important;
+    font-size:1.22rem;
+    font-weight:950;
+    letter-spacing:-.02em;
+}
+
+.home-disclosure-preview{
+    margin:8px 0 0;
+    color:var(--muted) !important;
+    font-size:.94rem;
+    line-height:1.55;
+    max-width:760px;
+}
+
+.home-disclosure-toggle{
+    width:42px;
+    height:42px;
+    flex:0 0 auto;
+    border-radius:999px;
+    border:1px solid rgba(199,153,49,.44);
+    background:rgba(255,255,255,.05);
+    position:relative;
+    box-shadow:inset 0 1px 0 rgba(255,255,255,.06);
+}
+
+.home-disclosure-toggle::before,
+.home-disclosure-toggle::after{
+    content:"";
+    position:absolute;
+    left:50%;
+    top:50%;
+    width:14px;
+    height:2px;
+    border-radius:999px;
+    background:var(--gold-bright);
+    transform:translate(-50%, -50%);
+    transition:transform .18s ease, opacity .18s ease;
+}
+
+.home-disclosure-toggle::after{
+    transform:translate(-50%, -50%) rotate(90deg);
+}
+
+.home-disclosure[open] > summary .home-disclosure-toggle::after{
+    opacity:0;
+}
+
+.home-faq-item[open] > summary .home-disclosure-toggle::after{
+    opacity:0;
+}
+
+.home-disclosure-body{
+    padding:0 18px 18px;
+}
+
+.panel-kicker{
+    display:inline-flex;
+    align-items:center;
+    gap:8px;
+    margin:0 0 10px;
+    color:rgba(242,205,117,.82);
+    font-size:.76rem;
+    font-weight:950;
+    letter-spacing:.16em;
+    text-transform:uppercase;
+}
+
+.panel-title{
+    margin:0;
+    color:#f7e7b0 !important;
+    font-size:clamp(1.55rem,2.4vw,2rem);
+    line-height:1.08;
+    font-weight:950;
+    letter-spacing:-.03em;
+}
+
+.panel-sub{
+    max-width:760px;
+    margin:10px 0 0;
+    color:var(--muted) !important;
+    font-size:.98rem;
+    line-height:1.6;
+}
+
+.home-proof-grid{
+    display:grid;
+    grid-template-columns:repeat(2,minmax(0,1fr));
+    gap:12px;
+}
+
+.home-proof-card{
+    min-height:156px;
+    padding:16px;
+    border-radius:18px;
+    border:1px solid rgba(199,153,49,.34);
+    background:rgba(255,255,255,.045) !important;
+    box-shadow:inset 0 1px 0 rgba(255,255,255,.04);
+}
+
+.home-proof-card h3{
+    margin:12px 0 6px;
+    color:var(--gold-bright) !important;
+    font-size:1.04rem;
+    font-weight:950;
+}
+
+.home-proof-card p{
+    margin:0;
+    color:var(--muted-soft) !important;
+    font-size:.92rem;
+    line-height:1.5;
+}
+
+.home-coverage-links{
+    display:flex;
+    flex-wrap:wrap;
+    gap:10px;
+}
+
+.home-coverage-link{
+    display:inline-flex;
+    align-items:center;
+    justify-content:center;
+    padding:11px 14px;
+    border-radius:999px;
+    border:1px solid rgba(199,153,49,.38);
+    background:rgba(255,255,255,.045) !important;
+    color:#f3d58a !important;
+    font-weight:850;
+    text-decoration:none !important;
+    transition:.18s ease;
+}
+
+.home-coverage-link:hover{
+    transform:translateY(-2px);
+    border-color:var(--gold-bright);
+    background:rgba(199,153,49,.11) !important;
+    color:#fff2c7 !important;
+}
+
+.home-faq-grid{
+    display:grid;
+    gap:10px;
+}
+
+.home-faq-item{
+    border:1px solid rgba(199,153,49,.28);
+    border-radius:16px;
+    background:
+        linear-gradient(180deg, rgba(255,255,255,.03) 0%, rgba(255,255,255,.012) 100%),
+        rgba(17,28,50,.92) !important;
+    overflow:hidden;
+}
+
+.home-faq-item[open]{
+    border-color:rgba(242,205,117,.48);
+}
+
+.home-faq-item > summary{
+    list-style:none;
+    cursor:pointer;
+    display:flex;
+    align-items:flex-start;
+    justify-content:space-between;
+    gap:12px;
+    padding:14px 16px;
+}
+
+.home-faq-item > summary::-webkit-details-marker{
+    display:none;
+}
+
+.home-faq-item > summary::marker{
+    content:"";
+}
+
+.home-faq-item > summary:hover,
+.home-faq-item > summary:focus-visible{
+    background:rgba(255,255,255,.025);
+    outline:none;
+}
+
+.home-faq-item > summary .home-disclosure-toggle{
+    width:36px;
+    height:36px;
+}
+
+.home-faq-summary{
+    display:flex;
+    align-items:flex-start;
+    gap:12px;
+    min-width:0;
+}
+
+.home-faq-summary .icon{
+    width:38px;
+    height:38px;
+    border-radius:13px;
+}
+
+.home-faq-question{
+    margin:2px 0 0;
+    color:#fff3cf !important;
+    font-size:1rem;
+    font-weight:900;
+    line-height:1.35;
+}
+
+.home-faq-answer{
+    padding:0 16px 16px 66px;
+    margin:0;
+    color:var(--muted) !important;
+    font-size:.92rem;
+    line-height:1.6;
+}
+
+.home-cta-panel{
+    display:grid;
+    grid-template-columns:minmax(0,1fr) auto;
+    gap:18px;
+    align-items:center;
+    border:1px solid rgba(199,153,49,.32);
+    border-radius:24px;
+    padding:24px 24px;
+    background:
+        radial-gradient(640px 220px at 0% 0%, rgba(199,153,49,.16), transparent 62%),
+        linear-gradient(180deg, rgba(255,255,255,.03) 0%, rgba(255,255,255,.01) 100%),
+        rgba(14,24,48,.92) !important;
+    box-shadow:inset 0 1px 0 rgba(255,255,255,.04);
+}
+
+.home-closing-shell{
+    border-top:1px solid var(--border-soft);
+    padding:20px 22px 24px;
+    background:rgba(255,255,255,.02) !important;
+}
+
+.home-cta-panel .panel-title{
+    max-width:780px;
+}
+
+.home-cta-actions{
+    display:flex;
+    gap:12px;
+    flex-wrap:wrap;
+    justify-content:flex-end;
+}
+
+.home-cta-note{
+    margin-top:10px;
+    color:var(--muted-soft) !important;
+    font-size:.92rem;
+    font-weight:700;
+}
+
 @@media(max-width:900px){
-    .home-actions,
-    .home-links{
+    .home-hero,
+    .focus-content,
+    .home-cta-panel{
         grid-template-columns:1fr;
     }
 
-    .home-proof{
+    .home-cards,
+    .focus-tabs,
+    .home-process,
+    .home-proof-grid{
         grid-template-columns:1fr;
     }
 
-    .home-proof-item{
+    .process-item{
         border-right:0;
         border-bottom:1px solid rgba(199,153,49,.16);
     }
 
-    .home-proof-item:last-child{
+    .process-item:last-child{
         border-bottom:0;
+    }
+
+    .home-cta-actions{
+        justify-content:flex-start;
     }
 }
 
@@ -341,102 +820,341 @@
         padding:16px 12px 56px;
     }
 
-    .home-hero{
-        padding:24px 18px 18px;
+    .home-story-bridge,
+    .home-journey-head,
+    .home-hero,
+    .home-cards,
+    .home-disclosures-shell,
+    .home-closing-shell,
+    .focus-panel,
+    .home-cta-panel{
+        padding-left:18px;
+        padding-right:18px;
     }
 
-    .home-actions{
-        padding:18px;
+    .home-disclosure > summary{
+        padding:16px 16px;
     }
 
-    .home-title{
-        font-size:clamp(2rem,8vw,2.55rem);
+    .home-disclosure-body{
+        padding:0 16px 16px;
+    }
+
+    .home-faq-answer{
+        padding:0 16px 16px;
+    }
+
+    .hero-actions,
+    .home-cta-actions{
+        gap:10px;
+    }
+
+    .hero-actions > a,
+    .home-cta-actions > a{
+        width:100%;
     }
 }
 </style>
 
 <div class="home-page">
-
     <section class="home-shell">
         <div class="home-hero">
-            <h1 class="home-title">Protect what matters with <span>clarity.</span></h1>
-            <p class="home-lead">Start with the right protection path. We’ll help you move from uncertainty to a clean next step.</p>
+            <div>
+                <div class="kicker">Legend™ Legacy Protection</div>
+                <h1 class="hero-title">Bring order to your life before life demands it from you.</h1>
+                <p class="hero-copy">A cleaner way to understand your risks, protect your income, and make confident decisions with guidance rooted in clarity and stewardship.</p>
+
+                <div class="hero-actions">
+                    <a asp-controller="RiskAssessment" asp-action="Index" class="btn-home btn-primary-home" data-cta="home_start_assessment" data-lead-trigger="true" data-lead-interest="assessment">Start Assessment →</a>
+                    <a href="@Link("/Quote")" class="btn-home btn-secondary-home" data-cta="home_get_quote">Get a Quote →</a>
+                    @if (bookingLink != "#")
+                    {
+                        <a href="@bookingLink" target="_blank" rel="noopener" class="btn-home btn-secondary-home" data-cta="home_book_call">Talk First ↗</a>
+                    }
+                </div>
+            </div>
+
+            <aside class="snapshot">
+                <h3>What we help organize</h3>
+                <ul class="snapshot-list">
+                    <li><span class="mini-check">@Icon("check")</span> Income risk</li>
+                    <li><span class="mini-check">@Icon("check")</span> Family protection</li>
+                    <li><span class="mini-check">@Icon("check")</span> Mortgage and debt exposure</li>
+                    <li><span class="mini-check">@Icon("check")</span> Long-term legacy structure</li>
+                </ul>
+            </aside>
         </div>
 
-        <div class="home-actions">
-            <a href="@Link("/Quote")" class="home-action" data-cta="home_start_quote">
-                <span class="home-icon">
-                    <svg viewBox="0 0 24 24"><path d="M12 3l7 3v5c0 5-3.2 8.5-7 10-3.8-1.5-7-5-7-10V6l7-3z"/><path d="M9 12l2 2 4-5"/></svg>
-                </span>
-                <span>
-                    <p class="home-action-title">Get a Quote</p>
-                    <p class="home-action-sub">Life, income, home, auto, and more.</p>
-                </span>
-                <span class="home-arrow">→</span>
-            </a>
-
-            <a href="@Link("/RiskAssessment")" class="home-action" data-cta="home_start_assessment">
-                <span class="home-icon">
-                    <svg viewBox="0 0 24 24"><path d="M6 4h9l3 3v13H6z"/><path d="M15 4v4h4"/><path d="M9 13h6"/><path d="M9 17h4"/></svg>
-                </span>
-                <span>
-                    <p class="home-action-title">Start Assessment</p>
-                    <p class="home-action-sub">Find gaps before choosing blindly.</p>
-                </span>
-                <span class="home-arrow">→</span>
-            </a>
-
-            @if (bookingLink != "#")
-            {
-                <a href="@bookingLink" target="_blank" rel="noopener" class="home-action" data-cta="home_book_call">
-                    <span class="home-icon">
-                        <svg viewBox="0 0 24 24"><path d="M7 3v4"/><path d="M17 3v4"/><path d="M4 8h16"/><path d="M5 5h14v15H5z"/><path d="M8 12h3"/><path d="M13 12h3"/><path d="M8 16h3"/></svg>
-                    </span>
-                    <span>
-                        <p class="home-action-title">Talk First</p>
-                        <p class="home-action-sub">Book time before starting.</p>
-                    </span>
-                    <span class="home-arrow">↗</span>
-                </a>
-            }
+        <div class="home-cards">
+            <div class="home-card">
+                <span class="icon">@Icon("compass")</span>
+                <h3>Clarity first</h3>
+                <p>See what is exposed, what is covered, and what deserves attention first.</p>
+            </div>
+            <div class="home-card">
+                <span class="icon">@Icon("income")</span>
+                <h3>Protection that fits</h3>
+                <p>Build around income, family, debt, budget, and real-life priorities.</p>
+            </div>
+            <div class="home-card">
+                <span class="icon">@Icon("legacy")</span>
+                <h3>Stewardship over pressure</h3>
+                <p>Make decisions with structure, faith, and clear next steps.</p>
+            </div>
         </div>
 
-        <div class="home-proof">
-            <div class="home-proof-item">
-                <span class="home-proof-num">1</span>
-                <div class="home-proof-copy"><strong>Choose</strong><span>Pick your protection lane.</span></div>
+        <div class="home-story-bridge">
+            <div class="home-story-divider">A simple next step</div>
+        </div>
+
+        <div class="home-journey-shell">
+            <div class="home-journey-head">
+                <div class="panel-kicker">Your next step</div>
+                <h2 class="panel-title">Choose one area first, then follow a simple three-step path.</h2>
+                <p class="panel-sub">Choose the part of life that feels most urgent, review a clear next move, and decide with confidence.</p>
             </div>
-            <div class="home-proof-item">
-                <span class="home-proof-num">2</span>
-                <div class="home-proof-copy"><strong>Review</strong><span>See clear options.</span></div>
+
+            <div class="focus-panel">
+                <div class="focus-head">
+                    <div>
+                        <h2>Choose where you want clarity</h2>
+                        <p>Start with the area that feels most urgent.</p>
+                    </div>
+                </div>
+
+                <div class="focus-tabs" role="tablist" aria-label="Protection focus">
+                    <button type="button" class="focus-tab active" data-focus="income"><span class="icon">@Icon("income")</span> Income</button>
+                    <button type="button" class="focus-tab" data-focus="family"><span class="icon">@Icon("shield")</span> Family</button>
+                    <button type="button" class="focus-tab" data-focus="legacy"><span class="icon">@Icon("legacy")</span> Legacy</button>
+                </div>
+
+                <div class="focus-content" id="focusContent">
+                    <div>
+                        <h3>Protect the income that funds everything.</h3>
+                        <p>Your income supports the home, family, lifestyle, goals, and future. Start by understanding what happens if that income stops.</p>
+                    </div>
+                    <a class="focus-link" href="@Link("/RiskAssessment")">Start Assessment →</a>
+                </div>
             </div>
-            <div class="home-proof-item">
-                <span class="home-proof-num">3</span>
-                <div class="home-proof-copy"><strong>Decide</strong><span>Move with clarity.</span></div>
+
+            <div class="home-process">
+                <div class="process-item">
+                    <span class="num">1</span>
+                    <span><strong>Assess</strong><span>Find the gaps.</span></span>
+                </div>
+                <div class="process-item">
+                    <span class="num">2</span>
+                    <span><strong>Design</strong><span>Review options.</span></span>
+                </div>
+                <div class="process-item">
+                    <span class="num">3</span>
+                    <span><strong>Decide</strong><span>Move with clarity.</span></span>
+                </div>
+            </div>
+        </div>
+
+        <div class="home-disclosures-shell">
+            <div class="home-disclosures-head">
+                <div class="panel-kicker">Need more detail?</div>
+                <h2 class="panel-title">Explore more only if it helps.</h2>
+                <p class="panel-sub">If you want more context before moving forward, you can review the process, browse protection paths, and read common questions here.</p>
+            </div>
+
+            <div class="home-disclosures">
+                <details class="home-disclosure">
+                    <summary>
+                        <div class="home-disclosure-copy">
+                            <p class="home-disclosure-kicker">Trust markers</p>
+                            <h3 class="home-disclosure-title">Why clients move forward</h3>
+                            <p class="home-disclosure-preview">See how the process stays calm, documented, and free from pressure.</p>
+                        </div>
+                        <span class="home-disclosure-toggle" aria-hidden="true"></span>
+                    </summary>
+                    <div class="home-disclosure-body">
+                        <div class="home-proof-grid">
+                            <article class="home-proof-card">
+                                <span class="icon">@Icon("file")</span>
+                                <h3>Documented next steps</h3>
+                                <p>We organize the facts, the gaps, and the action plan so the decision is easy to understand later.</p>
+                            </article>
+                            <article class="home-proof-card">
+                                <span class="icon">@Icon("shield")</span>
+                                <h3>No-pressure guidance</h3>
+                                <p>You see the tradeoffs, the costs, and the options before anything moves forward.</p>
+                            </article>
+                            <article class="home-proof-card">
+                                <span class="icon">@Icon("compass")</span>
+                                <h3>Protection that fits real life</h3>
+                                <p>Income, family, mortgage, debts, and long-term goals are all considered together.</p>
+                            </article>
+                            <article class="home-proof-card">
+                                <span class="icon">@Icon("check")</span>
+                                <h3>Faithful stewardship</h3>
+                                <p>Clients get a process built on clarity, responsibility, and decisions that can actually be maintained.</p>
+                            </article>
+                        </div>
+                    </div>
+                </details>
+
+                <details class="home-disclosure">
+                    <summary>
+                        <div class="home-disclosure-copy">
+                            <p class="home-disclosure-kicker">Explore at your pace</p>
+                            <h3 class="home-disclosure-title">Protection paths for different starting points</h3>
+                            <p class="home-disclosure-preview">Browse life, mortgage protection, disability, and other coverage paths at your own pace.</p>
+                        </div>
+                        <span class="home-disclosure-toggle" aria-hidden="true"></span>
+                    </summary>
+                    <div class="home-disclosure-body">
+                        <div class="home-coverage-links" aria-label="Protection planning options">
+                            <a href="@Link("/Quote/Life")" class="home-coverage-link">Life Insurance Review</a>
+                            <a href="@Link("/Quote/Mortgage-Protection")" class="home-coverage-link">Mortgage Protection</a>
+                            <a href="@Link("/Quote/Term-Life")" class="home-coverage-link">Term Life</a>
+                            <a href="@Link("/Quote/Whole-Life")" class="home-coverage-link">Whole Life</a>
+                            <a href="@Link("/Quote/Final-Expense")" class="home-coverage-link">Final Expense</a>
+                            <a href="@Link("/Quote/Disability")" class="home-coverage-link">Disability Insurance</a>
+                        </div>
+                    </div>
+                </details>
+
+                <details class="home-disclosure" id="homeFaqs">
+                    <summary>
+                        <div class="home-disclosure-copy">
+                            <p class="home-disclosure-kicker">Common questions</p>
+                            <h3 class="home-disclosure-title">Questions people often ask before they begin</h3>
+                            <p class="home-disclosure-preview">Open the questions you want answered and skip the rest.</p>
+                        </div>
+                        <span class="home-disclosure-toggle" aria-hidden="true"></span>
+                    </summary>
+                    <div class="home-disclosure-body">
+                        <div class="home-faq-grid">
+                            <details class="home-faq-item">
+                                <summary>
+                                    <div class="home-faq-summary">
+                                        <span class="icon">@Icon("question")</span>
+                                        <h3 class="home-faq-question">What happens in the assessment?</h3>
+                                    </div>
+                                    <span class="home-disclosure-toggle" aria-hidden="true"></span>
+                                </summary>
+                                <p class="home-faq-answer">We collect your goals, income, obligations, and current coverage so you can see the protection gaps and the next step clearly.</p>
+                            </details>
+                            <details class="home-faq-item">
+                                <summary>
+                                    <div class="home-faq-summary">
+                                        <span class="icon">@Icon("question")</span>
+                                        <h3 class="home-faq-question">Is this just insurance?</h3>
+                                    </div>
+                                    <span class="home-disclosure-toggle" aria-hidden="true"></span>
+                                </summary>
+                                <p class="home-faq-answer">No. We start with organization and risk clarity, then match protection options to what your life and budget actually require.</p>
+                            </details>
+                            <details class="home-faq-item">
+                                <summary>
+                                    <div class="home-faq-summary">
+                                        <span class="icon">@Icon("question")</span>
+                                        <h3 class="home-faq-question">Is there pressure to buy?</h3>
+                                    </div>
+                                    <span class="home-disclosure-toggle" aria-hidden="true"></span>
+                                </summary>
+                                <p class="home-faq-answer">No. You review the options, the tradeoffs, and the cost structure first. You decide what makes sense and what does not.</p>
+                            </details>
+                            <details class="home-faq-item">
+                                <summary>
+                                    <div class="home-faq-summary">
+                                        <span class="icon">@Icon("question")</span>
+                                        <h3 class="home-faq-question">How fast do I see a plan?</h3>
+                                    </div>
+                                    <span class="home-disclosure-toggle" aria-hidden="true"></span>
+                                </summary>
+                                <p class="home-faq-answer">You receive a timely, well-structured recommendation without anything important being rushed or skipped.</p>
+                            </details>
+                            <details class="home-faq-item">
+                                <summary>
+                                    <div class="home-faq-summary">
+                                        <span class="icon">@Icon("question")</span>
+                                        <h3 class="home-faq-question">Can you work with my CPA or attorney?</h3>
+                                    </div>
+                                    <span class="home-disclosure-toggle" aria-hidden="true"></span>
+                                </summary>
+                                <p class="home-faq-answer">Yes. We organize the recommendation so the right professionals can review it and everything stays aligned instead of fragmented.</p>
+                            </details>
+                            <details class="home-faq-item">
+                                <summary>
+                                    <div class="home-faq-summary">
+                                        <span class="icon">@Icon("question")</span>
+                                        <h3 class="home-faq-question">Can I talk with someone before I start?</h3>
+                                    </div>
+                                    <span class="home-disclosure-toggle" aria-hidden="true"></span>
+                                </summary>
+                                <p class="home-faq-answer">Absolutely. If you prefer to ask questions first, you can book a conversation before beginning the assessment or quote flow.</p>
+                            </details>
+                        </div>
+                    </div>
+                </details>
+            </div>
+        </div>
+
+        <div class="home-closing-shell">
+            <div class="home-cta-panel">
+                <div>
+                    <div class="panel-kicker">Ready when you are</div>
+                    <h2 class="panel-title">Start with a clean assessment, review protection paths, and move forward with confidence.</h2>
+                    <p class="panel-sub">The best next step is the one that brings clarity. Start the assessment, explore coverage, or talk first if you want a human walkthrough.</p>
+                    <div class="home-cta-note">No obligation. No confusion. Just a documented path to better protection.</div>
+                </div>
+
+                <div class="home-cta-actions">
+                    <a asp-controller="RiskAssessment" asp-action="Index" class="btn-home btn-primary-home" data-cta="home_footer_assessment" data-lead-trigger="true" data-lead-interest="assessment">Start Assessment →</a>
+                    <a href="@Link("/Quote")" class="btn-home btn-secondary-home" data-cta="home_footer_quote">Explore Coverage →</a>
+                    @if (bookingLink != "#")
+                    {
+                        <a href="@bookingLink" target="_blank" rel="noopener" class="btn-home btn-secondary-home" data-cta="home_footer_book_call">Talk First ↗</a>
+                    }
+                </div>
             </div>
         </div>
     </section>
-
-    <section class="home-secondary">
-        <h2>Protection paths</h2>
-        <p>Choose where you want to start. Keep it simple. We’ll guide the rest.</p>
-
-        <div class="home-links">
-            <a class="home-link" href="@Link("/Quote/Life")">Life Insurance <span>→</span></a>
-            <a class="home-link" href="@Link("/Quote/Mortgage-Protection")">Mortgage Protection <span>→</span></a>
-            <a class="home-link" href="@Link("/Quote/Disability")">Disability Insurance <span>→</span></a>
-            <a class="home-link" href="@Link("/Quote/Term-Life")">Term Life <span>→</span></a>
-            <a class="home-link" href="@Link("/Quote/Whole-Life")">Whole Life <span>→</span></a>
-            <a class="home-link" href="@Link("/Quote/Final-Expense")">Final Expense <span>→</span></a>
-        </div>
-
-        <div class="home-footer-cta">
-            <a href="@Link("/Quote")" class="home-btn home-btn-primary" data-cta="home_footer_quote">Start Quote →</a>
-            @if (bookingLink != "#")
-            {
-                <a href="@bookingLink" target="_blank" rel="noopener" class="home-btn home-btn-secondary" data-cta="home_footer_book">Book a Call ↗</a>
-            }
-        </div>
-    </section>
-
 </div>
+
+<script>
+document.addEventListener("DOMContentLoaded", function () {
+    const tabs = Array.from(document.querySelectorAll(".focus-tab"));
+    const content = document.getElementById("focusContent");
+
+    const data = {
+        income: {
+            title: "Protect the income that funds everything.",
+            copy: "Your income supports the home, family, lifestyle, goals, and future. Start by understanding what happens if that income stops.",
+            href: "@Link("/RiskAssessment")",
+            cta: "Start Assessment →"
+        },
+        family: {
+            title: "Protect the people counting on you.",
+            copy: "Life insurance, mortgage protection, and final expense planning help keep your family stable when life changes unexpectedly.",
+            href: "@Link("/Quote")",
+            cta: "Explore Coverage →"
+        },
+        legacy: {
+            title: "Keep what you build aligned and protected.",
+            copy: "Beneficiaries, ownership, coverage, and planning decisions should work together — not sit scattered across life.",
+            href: "@Link("/RiskAssessment")",
+            cta: "Get Organized →"
+        }
+    };
+
+    tabs.forEach(tab => {
+        tab.addEventListener("click", () => {
+            tabs.forEach(t => t.classList.remove("active"));
+            tab.classList.add("active");
+            const item = data[tab.dataset.focus] || data.income;
+            content.innerHTML = `
+                <div>
+                    <h3>${item.title}</h3>
+                    <p>${item.copy}</p>
+                </div>
+                <a class="focus-link" href="${item.href}">${item.cta}</a>
+            `;
+        });
+    });
+});
+</script>

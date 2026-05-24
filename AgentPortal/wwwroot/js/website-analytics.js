@@ -418,13 +418,10 @@
   function rangeParams({ team = false, modal = null } = {}) {
     const p = { preset: state.scope.preset, timezoneOffsetMinutes: viewerTz.offsetMinutes };
     if (viewerTz.id) p.timezoneId = viewerTz.id;
-    if (state.scope.preset === 'custom' && state.scope.from && state.scope.to) {
-      // Interpret the date-picker values ("YYYY-MM-DD") as viewer-local midnight/EOD
-      // so the server receives UTC instants that correspond to the viewer's day boundaries.
-      const [fy, fm, fd] = state.scope.from.split('-').map(Number);
-      const [ty, tm, td] = state.scope.to.split('-').map(Number);
-      p.fromUtc = new Date(fy, fm - 1, fd, 0, 0, 0).toISOString();
-      p.toUtc   = new Date(ty, tm - 1, td, 23, 59, 59).toISOString();
+    const customRange = resolveCustomRangeUtc();
+    if (customRange) {
+      p.fromUtc = customRange.fromUtc;
+      p.toUtc = customRange.toUtc;
     }
     if (team) {
       p.team = true;
@@ -441,6 +438,21 @@
       else p.trafficType = 'All';
     }
     return p;
+  }
+
+  function resolveCustomRangeUtc() {
+    if (state.scope.preset !== 'custom' || !state.scope.from || !state.scope.to) {
+      return null;
+    }
+
+    // Interpret the date-picker values ("YYYY-MM-DD") as viewer-local midnight/EOD
+    // so the server receives UTC instants that correspond to the viewer's day boundaries.
+    const [fy, fm, fd] = state.scope.from.split('-').map(Number);
+    const [ty, tm, td] = state.scope.to.split('-').map(Number);
+    return {
+      fromUtc: new Date(fy, fm - 1, fd, 0, 0, 0).toISOString(),
+      toUtc: new Date(ty, tm - 1, td, 23, 59, 59).toISOString()
+    };
   }
 
   // Render helpers ---------------------------------------------------
@@ -1845,14 +1857,21 @@
   function serializeMetricCardForCopy(element) {
     if (!(element instanceof HTMLElement)) return '';
 
+    const fallbackLabel = element.matches('.wa-kpi-card')
+      ? asTrimmed(element.querySelector(':scope > span')?.textContent)
+      : '';
+    const fallbackValue = element.matches('.wa-kpi-card')
+      ? asTrimmed(element.querySelector(':scope > strong')?.textContent)
+      : '';
+
     const label = asTrimmed(
-      element.querySelector('.fa-kpi-title, .meta-signal-stat-label, .wa-modal-meta-label')?.textContent
-    );
+      element.querySelector('.fa-kpi-title, .meta-signal-stat-label, .wa-modal-meta-label, .wa-health-score-label')?.textContent
+    ) || fallbackLabel;
     const value = asTrimmed(
-      element.querySelector('.fa-kpi-value, .meta-signal-stat-value, .wa-modal-meta-value')?.textContent
-    );
+      element.querySelector('.fa-kpi-value, .meta-signal-stat-value, .wa-modal-meta-value, .wa-health-score')?.textContent
+    ) || fallbackValue;
     const extraLines = Array.from(
-      element.querySelectorAll('.fa-kpi-sub, .fa-kpi-warning, .meta-signal-stat-note')
+      element.querySelectorAll('.fa-kpi-sub, .fa-kpi-warning, .meta-signal-stat-note, .wa-health-metric-kicker, .wa-health-verdict, .wa-health-summary-note')
     )
       .map(node => asTrimmed(node.textContent))
       .filter(Boolean);
@@ -1892,7 +1911,7 @@
   function prepareMetricBlocksForCopy(root) {
     if (!(root instanceof HTMLElement)) return;
 
-    root.querySelectorAll('.kpi-card, .meta-signal-stat-card, .wa-modal-meta-item').forEach(element => {
+    root.querySelectorAll('.kpi-card, .meta-signal-stat-card, .wa-modal-meta-item, .wa-kpi-card, .wa-health-summary-card').forEach(element => {
       const text = serializeMetricCardForCopy(element);
       if (text) {
         replaceElementWithTextBlock(element, text);
@@ -1909,6 +1928,51 @@
         replaceElementWithTextBlock(element, text);
       }
     });
+  }
+
+  function replaceCopyableButtonsForCopy(root) {
+    if (!(root instanceof HTMLElement)) return;
+
+    root.querySelectorAll('.wa-health-copyable[data-copy-value]').forEach(button => {
+      const text = normalizeCopiedText(button.dataset.copyValue || button.textContent || '');
+      const replacement = document.createElement('span');
+      replacement.className = 'wa-copy-inline-text';
+      replacement.textContent = text;
+      button.replaceWith(replacement);
+    });
+  }
+
+  function extractRootCopyText(root, { removeSelectors = [] } = {}) {
+    if (!(root instanceof HTMLElement)) return '';
+
+    const clone = root.cloneNode(true);
+    removeSelectors.forEach(selector => {
+      clone.querySelectorAll(selector).forEach(node => node.remove());
+    });
+
+    replaceCopyableButtonsForCopy(clone);
+    clone.querySelectorAll('script, style, button, select, input, textarea').forEach(el => el.remove());
+    clone.querySelectorAll('[hidden], .d-none').forEach(el => el.remove());
+    prepareMetricBlocksForCopy(clone);
+
+    clone.querySelectorAll('table').forEach(table => {
+      replaceElementWithTextBlock(table, serializeTableForCopy(table));
+    });
+
+    const temp = document.createElement('div');
+    temp.setAttribute('aria-hidden', 'true');
+    temp.style.position = 'fixed';
+    temp.style.left = '-9999px';
+    temp.style.top = '0';
+    temp.style.width = '1100px';
+    temp.style.opacity = '0';
+    temp.style.pointerEvents = 'none';
+    temp.appendChild(clone);
+    document.body.appendChild(temp);
+
+    const text = normalizeCopiedText(temp.innerText || temp.textContent || '');
+    document.body.removeChild(temp);
+    return text;
   }
 
   function prepareTabPanesForCopy(root, modal) {
@@ -1939,6 +2003,7 @@
 
     clone.querySelectorAll('script, style, button, select, input, textarea').forEach(el => el.remove());
     clone.querySelectorAll('.meta-signal-filter-panel').forEach(el => el.remove());
+    clone.querySelectorAll('.wa-modal-range-chip').forEach(el => el.remove());
     clone.querySelectorAll('[hidden], .d-none').forEach(el => el.remove());
     prepareTabPanesForCopy(clone, modal);
     clone.querySelectorAll('.nav-tabs, [role="tablist"]').forEach(el => el.remove());
@@ -1967,14 +2032,24 @@
   function collectModalCopyMeta(modalId, modal) {
     const lines = [];
     const rangeValue = asTrimmed(
-      modal.querySelector('.wa-modal-range-value, .meta-signal-range-value')?.textContent
+      modal.querySelector('.wa-modal-range-value, .meta-signal-range-value, #deviceIntelligenceRangeLabel')?.textContent
     );
     if (rangeValue) {
-      lines.push(`Range: ${rangeValue}`);
+      lines.push(rangeValue.toLowerCase().startsWith('range') ? rangeValue : `Range: ${rangeValue}`);
     }
 
     if (Object.prototype.hasOwnProperty.call(state.trafficType, modalId)) {
       lines.push(`Traffic View: ${labelForTrafficType(state.trafficType[modalId])}`);
+    }
+
+    if (modalId === 'deviceIntelligenceModal') {
+      const deviceBridge = window.websiteAnalyticsDeviceIntelligence;
+      const trafficLabel = typeof deviceBridge?.getTrafficLabel === 'function'
+        ? deviceBridge.getTrafficLabel()
+        : '';
+      if (trafficLabel) {
+        lines.push(`Traffic View: ${trafficLabel}`);
+      }
     }
 
     const allTabs = Array.from(new Set(Array.from(modal.querySelectorAll('[data-bs-toggle="tab"]'))
@@ -2013,29 +2088,42 @@
     return lines;
   }
 
-  function buildModalCopyText(modalId) {
+  function getModalCopyPayload(modalId) {
     const modal = document.getElementById(modalId);
-    if (!(modal instanceof HTMLElement)) return '';
-
-    const lines = [];
-    const title = asTrimmed(modal.querySelector('.modal-title')?.textContent);
-    const subtitle = asTrimmed(
-      modal.querySelector('.wa-modal-subtitle, .meta-signal-subtitle')?.textContent
-    );
-
-    if (title) lines.push(title);
-    if (subtitle) lines.push(subtitle);
-
-    const metaLines = collectModalCopyMeta(modalId, modal);
-    if (metaLines.length) {
-      lines.push('');
-      lines.push(...metaLines);
+    if (!(modal instanceof HTMLElement)) {
+      return {
+        title: '',
+        subtitle: '',
+        metaLines: [],
+        bodyText: ''
+      };
     }
 
-    const bodyText = extractModalBodyCopyText(modal);
-    if (bodyText) {
+    return {
+      title: asTrimmed(modal.querySelector('.modal-title')?.textContent),
+      subtitle: asTrimmed(
+      modal.querySelector('.wa-modal-subtitle, .meta-signal-subtitle')?.textContent
+      ),
+      metaLines: collectModalCopyMeta(modalId, modal),
+      bodyText: extractModalBodyCopyText(modal)
+    };
+  }
+
+  function buildModalCopyText(modalId) {
+    const payload = getModalCopyPayload(modalId);
+    const lines = [];
+
+    if (payload.title) lines.push(payload.title);
+    if (payload.subtitle) lines.push(payload.subtitle);
+
+    if (payload.metaLines.length) {
       lines.push('');
-      lines.push(bodyText);
+      lines.push(...payload.metaLines);
+    }
+
+    if (payload.bodyText) {
+      lines.push('');
+      lines.push(payload.bodyText);
     }
 
     return normalizeCopiedText(lines.join('\n'));
@@ -2067,6 +2155,253 @@
           setModalCopyButtonState(button, button.dataset.defaultLabel || 'Copy Form');
         }, 1400);
       });
+    });
+  }
+
+  function resolveAnalysisModuleDescriptor(sectionKey) {
+    switch (sectionKey) {
+      case 'metaSignal':
+        return 'High-intent tiers, abandon points, and optimization readiness';
+      case 'behavior':
+        return 'Dwell time, exits, journey & source attribution';
+      case 'quote':
+        return 'Starts → form starts → submits';
+      case 'conv':
+        return 'Lead submits & successes';
+      case 'device':
+        return 'Device, browser, OS, viewport, timezone, language, and conversion behavior.';
+      case 'traffic':
+        return state.cache.summary?.topSource
+          ? `Top source: ${state.cache.summary.topSource}`
+          : 'Views, sessions, visitors · click to drill in';
+      case 'leads':
+        return 'Recent captured leads';
+      case 'page':
+        return state.cache.summary?.topPage
+          ? `Top page: ${state.cache.summary.topPage}`
+          : 'Top pages and conversions';
+      case 'cta':
+        return state.cache.summary?.topCta
+          ? `Top CTA: ${state.cache.summary.topCta}`
+          : 'Clicks by CTA';
+      case 'agentperf':
+        return isFounder && isGlobalScope()
+          ? 'Top performers · founder only'
+          : 'Global scope only · switch back to compare agents';
+      default:
+        return '';
+    }
+  }
+
+  function buildAnalysisModuleCopySection(section) {
+    const lines = [];
+    if (section.title) lines.push(section.title);
+    if (section.summary) lines.push(section.summary);
+
+    if (section.rootSelector) {
+      const root = document.querySelector(section.rootSelector);
+      const bodyText = extractRootCopyText(root, { removeSelectors: section.removeSelectors || [] });
+      if (bodyText) {
+        lines.push('');
+        lines.push(bodyText);
+      } else if (section.body) {
+        lines.push('');
+        lines.push(section.body);
+      }
+      return normalizeCopiedText(lines.join('\n'));
+    }
+
+    if (!section.modalId) {
+      if (section.body) {
+        lines.push('');
+        lines.push(section.body);
+      }
+      return normalizeCopiedText(lines.join('\n'));
+    }
+
+    const payload = getModalCopyPayload(section.modalId);
+    if (payload.metaLines.length) {
+      lines.push('');
+      lines.push(...payload.metaLines);
+    }
+
+    if (payload.bodyText) {
+      lines.push('');
+      lines.push(payload.bodyText);
+    } else if (section.body) {
+      lines.push('');
+      lines.push(section.body);
+    }
+
+    return normalizeCopiedText(lines.join('\n'));
+  }
+
+  function buildAnalysisModuleCopyPlan() {
+    const supportLabel = asTrimmed(document.querySelector('.wa-module-band-secondary .wa-module-band-label')?.textContent)
+      || 'Supporting Drill-Ins';
+    const supportCopy = asTrimmed(document.querySelector('.wa-module-band-secondary .wa-module-band-copy')?.textContent)
+      || 'Traffic, leads, destinations, and CTA reviews';
+
+    return [
+      {
+        key: 'coreTraffic',
+        title: 'Traffic Pulse',
+        summary: 'High-signal top-line readouts',
+        rootSelector: '.wa-kpi-band-primary',
+        removeSelectors: ['.wa-kpi-band-head']
+      },
+      {
+        key: 'coreConversion',
+        title: 'Conversion + Context',
+        summary: 'Supporting reads for quality and intent',
+        rootSelector: '.wa-kpi-band-secondary',
+        removeSelectors: ['.wa-kpi-band-head']
+      },
+      {
+        key: 'metaSignal',
+        title: 'Meta Signal Intelligence',
+        summary: resolveAnalysisModuleDescriptor('metaSignal'),
+        modalId: 'metaSignalModal',
+        loader: async () => { await loadMetaSignal(); }
+      },
+      {
+        key: 'behavior',
+        title: 'Behavior Intelligence',
+        summary: resolveAnalysisModuleDescriptor('behavior'),
+        modalId: 'behaviorModal',
+        loader: async () => { await loadBehavior(); }
+      },
+      {
+        key: 'quote',
+        title: 'Quote Funnel',
+        summary: resolveAnalysisModuleDescriptor('quote'),
+        modalId: 'quoteModal',
+        loader: async () => { await loadQuote(); }
+      },
+      {
+        key: 'conv',
+        title: 'Conversion Center',
+        summary: resolveAnalysisModuleDescriptor('conv'),
+        modalId: 'convModal',
+        loader: async () => { await loadConv(); }
+      },
+      {
+        key: 'supporting',
+        title: supportLabel,
+        summary: supportCopy
+      },
+      {
+        key: 'device',
+        title: 'Device Intelligence',
+        summary: resolveAnalysisModuleDescriptor('device'),
+        modalId: 'deviceIntelligenceModal',
+        loader: async () => {
+          const deviceBridge = window.websiteAnalyticsDeviceIntelligence;
+          if (typeof deviceBridge?.loadCurrentView === 'function') {
+            await deviceBridge.loadCurrentView();
+          } else {
+            const content = document.getElementById('deviceIntelligenceContent');
+            if (content) content.innerHTML = '<div class="fa-empty">Device Intelligence is unavailable right now.</div>';
+          }
+        }
+      },
+      {
+        key: 'traffic',
+        title: 'Traffic Overview',
+        summary: resolveAnalysisModuleDescriptor('traffic'),
+        modalId: 'trafficModal',
+        loader: async () => { await loadTraffic(); }
+      },
+      {
+        key: 'leads',
+        title: 'Leads Snapshot',
+        summary: resolveAnalysisModuleDescriptor('leads'),
+        modalId: 'leadsModal',
+        loader: async () => { await loadLeads(); }
+      },
+      {
+        key: 'page',
+        title: 'Page Performance',
+        summary: resolveAnalysisModuleDescriptor('page'),
+        modalId: 'pagePerfModal',
+        loader: async () => { await loadPagePerf(); }
+      },
+      {
+        key: 'cta',
+        title: 'CTA Performance',
+        summary: resolveAnalysisModuleDescriptor('cta'),
+        modalId: 'ctaPerfModal',
+        loader: async () => { await loadCtaPerf(); }
+      },
+      {
+        key: 'agentperf',
+        title: 'Agent Performance',
+        summary: resolveAnalysisModuleDescriptor('agentperf'),
+        modalId: isFounder ? 'agentPerfModal' : '',
+        body: 'Agent Performance is available in Global scope only. Switch back to Global to compare agents.',
+        loader: isFounder ? async () => { await loadAgentPerf(); } : null
+      },
+      {
+        key: 'marketingHealth',
+        title: 'Marketing Health Center',
+        summary: 'Tracking integrity, attribution clarity, and lead-pipeline reliability',
+        rootSelector: '.wa-health-surface',
+        removeSelectors: ['.wa-health-kicker-row', '.wa-health-heading', '.wa-health-subcopy'],
+        loader: async () => { await loadMarketingHealth(); }
+      }
+    ];
+  }
+
+  async function buildAllAnalysisModulesCopyText() {
+    await loadSummary();
+
+    const plan = buildAnalysisModuleCopyPlan();
+    const loadSteps = plan
+      .filter(section => typeof section.loader === 'function')
+      .map(section => section.loader());
+
+    await Promise.allSettled(loadSteps);
+
+    return normalizeCopiedText(
+      plan
+        .map(section => buildAnalysisModuleCopySection(section))
+        .filter(Boolean)
+        .join('\n\n')
+    );
+  }
+
+  function setCopyAllModulesButtonState(button, text, disabled) {
+    if (!(button instanceof HTMLButtonElement)) return;
+    button.textContent = text;
+    button.disabled = !!disabled;
+  }
+
+  function initCopyAllModulesButton() {
+    const button = document.getElementById('copy-all-analysis-modules');
+    if (!(button instanceof HTMLButtonElement) || button.dataset.wired === 'true') return;
+    button.dataset.wired = 'true';
+    button.dataset.defaultLabel = button.textContent || 'Copy All Modules';
+
+    button.addEventListener('click', async () => {
+      const defaultLabel = button.dataset.defaultLabel || 'Copy All Modules';
+      setCopyAllModulesButtonState(button, 'Copying All...', true);
+
+      try {
+        const payload = await buildAllAnalysisModulesCopyText();
+        if (!payload) {
+          setCopyAllModulesButtonState(button, 'Nothing To Copy', true);
+          window.setTimeout(() => setCopyAllModulesButtonState(button, defaultLabel, false), 1400);
+          return;
+        }
+
+        const copied = await copyTextWithFallback(payload);
+        setCopyAllModulesButtonState(button, copied ? 'Copied All' : 'Copy Failed', true);
+      } catch (err) {
+        console.error(err);
+        setCopyAllModulesButtonState(button, 'Copy Failed', true);
+      }
+
+      window.setTimeout(() => setCopyAllModulesButtonState(button, defaultLabel, false), 1400);
     });
   }
 
@@ -3167,6 +3502,30 @@
     URL.revokeObjectURL(url);
   }
 
+  function syncWebsiteAnalyticsBridge() {
+    window.websiteAnalyticsBridge = {
+      getState() {
+        const customRange = resolveCustomRangeUtc();
+        return {
+          preset: state.scope.preset || state.preset || 'today',
+          scope: {
+            preset: state.scope.preset || state.preset || 'today',
+            from: state.scope.from || null,
+            to: state.scope.to || null,
+            fromUtc: customRange?.fromUtc || null,
+            toUtc: customRange?.toUtc || null,
+            agentProfileId: state.scope.agentProfileId || null,
+            scopeLabel: state.scope.scopeLabel || 'Global'
+          },
+          trafficType: { ...state.trafficType }
+        };
+      },
+      getRangeParams(options) {
+        return rangeParams(options || {});
+      }
+    };
+  }
+
   async function init() {
     const tzTextEl = document.getElementById('wa-tz-text');
     if (tzTextEl) {
@@ -3193,6 +3552,7 @@
     initMetaSignalFilterControls();
     initLeadDeleteControls();
     initModalCopyButtons();
+    initCopyAllModulesButton();
     initMarketingHealthInspector();
     initMarketingHealthCopyable();
     attachModal('trafficModal', () => { updateTrafficTypeHeader('trafficModal'); loadTraffic(); });
@@ -3398,6 +3758,7 @@
       get scopeLabel()     { return state.scope.scopeLabel || 'Global'; },
       rangeParams(options) { return rangeParams(options || {}); }
     };
+    syncWebsiteAnalyticsBridge();
   }
 
   function renderAgentPerf(data) {
@@ -3415,6 +3776,7 @@
     ]);
   }
 
+  syncWebsiteAnalyticsBridge();
   document.addEventListener('DOMContentLoaded', init);
 
   // ── Product-specific links (discovered paid landing routes) ───────────────
@@ -3767,19 +4129,27 @@
     return 'All';
   }
 
+  function deviceTrafficLabel(value = localTraffic) {
+    if (value === 'paid') return 'Ads Only';
+    if (value === 'non_paid') return 'Non-Ads Only';
+    return 'All Traffic';
+  }
+
   function currentRangeParams() {
     const bridge = window.websiteAnalyticsBridge || {};
-    const state = typeof bridge.getState === 'function' ? bridge.getState() : {};
     const params = new URLSearchParams();
+    const baseParams = typeof bridge.getRangeParams === 'function'
+      ? bridge.getRangeParams()
+      : {};
 
-    params.set('preset', state?.scope?.preset || state?.preset || 'today');
+    Object.entries(baseParams || {}).forEach(([key, value]) => {
+      if (value == null || value === '') return;
+      params.set(key, String(value));
+    });
 
-    if (state?.scope?.fromUtc) params.set('fromUtc', state.scope.fromUtc);
-    if (state?.scope?.toUtc) params.set('toUtc', state.scope.toUtc);
-
-    const tz = Intl.DateTimeFormat().resolvedOptions().timeZone || '';
-    if (tz) params.set('timezoneId', tz);
-    params.set('timezoneOffsetMinutes', String(new Date().getTimezoneOffset()));
+    if (!params.has('preset')) {
+      params.set('preset', 'today');
+    }
 
     params.set('trafficType', mapTraffic(localTraffic));
     return params;
@@ -3787,6 +4157,13 @@
 
   function esc(v) {
     return String(v ?? '').replace(/[&<>"']/g, s => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[s]));
+  }
+
+  function renderDeviceLoadError(err) {
+    const content = document.getElementById('deviceIntelligenceContent');
+    if (content) {
+      content.innerHTML = `<div class="alert alert-warning">${esc(err?.message || 'Unable to load Device Intelligence.')}</div>`;
+    }
   }
 
   function table(title, rows) {
@@ -3863,12 +4240,24 @@
     }
   }
 
+  window.websiteAnalyticsDeviceIntelligence = {
+    async loadCurrentView() {
+      try {
+        await loadDeviceIntelligence();
+        return true;
+      } catch (err) {
+        renderDeviceLoadError(err);
+        return false;
+      }
+    },
+    getTrafficLabel() {
+      return deviceTrafficLabel();
+    }
+  };
+
   moduleBtn.addEventListener('click', () => {
     bootstrap.Modal.getOrCreateInstance(modalEl).show();
-    loadDeviceIntelligence().catch(err => {
-      const content = document.getElementById('deviceIntelligenceContent');
-      if (content) content.innerHTML = `<div class="alert alert-warning">${esc(err.message || 'Unable to load Device Intelligence.')}</div>`;
-    });
+    window.websiteAnalyticsDeviceIntelligence.loadCurrentView();
   });
 
   moduleBtn.addEventListener('keydown', e => {
@@ -3882,8 +4271,7 @@
     btn.addEventListener('click', () => {
       localTraffic = btn.dataset.deviceTraffic || 'all';
       document.querySelectorAll('[data-device-traffic]').forEach(x => x.classList.toggle('is-active', x === btn));
-      loadDeviceIntelligence().catch(() => {});
+      window.websiteAnalyticsDeviceIntelligence.loadCurrentView();
     });
   });
 })();
-
