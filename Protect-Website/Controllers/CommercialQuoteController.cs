@@ -10,6 +10,7 @@ using System;
 using System.Collections.Generic;
 using System.Text.Json;
 using Microsoft.AspNetCore.Mvc.ModelBinding;
+using Microsoft.EntityFrameworkCore;
 using Infrastructure.Leads;
 using ProtectWebsite.Services.Meta;
 using ProtectWebsite.Services;
