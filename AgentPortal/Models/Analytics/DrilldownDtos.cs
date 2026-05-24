@@ -28,6 +28,12 @@ public sealed class ActivityItemDto
     public string EventType { get; set; } = "";
     public string? PageKey { get; set; }
     public string? ElementKey { get; set; }
+
+    public DateTime? EndUtc { get; set; }
+    public int DurationSeconds { get; set; }
+    public int EventCount { get; set; }
+    public string? ActivitySummary { get; set; }
+    public string? OutcomeSummary { get; set; }
 }
 
 public sealed class PagePerformanceRow

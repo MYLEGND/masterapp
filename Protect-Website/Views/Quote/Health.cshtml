@@ -1078,8 +1078,8 @@ body.health-final-step-active .dq-form-panel {
 <svg aria-hidden="true" focusable="false" style="position:absolute;width:0;height:0;overflow:hidden">
     <defs>
         <symbol id="dq-icon-shield" viewBox="0 0 48 48">
-            <path d="M24 6 38 11.4v10.2c0 9.1-5.7 16.3-14 20.4-8.3-4.1-14-11.3-14-20.4V11.4Z" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linejoin="round"/>
-            <path d="m17.5 24.5 4.4 4.4 8.6-9.4" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+            <circle cx="24" cy="24" r="16" fill="none" stroke="currentColor" stroke-width="2.4"/>
+            <path d="M11 24h5l3-6 5 12 4-8h9" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/>
         </symbol>
         <symbol id="dq-icon-calendar" viewBox="0 0 48 48">
             <rect x="8" y="11" width="32" height="28" rx="5" fill="none" stroke="currentColor" stroke-width="2.4"/>
@@ -1089,14 +1089,16 @@ body.health-final-step-active .dq-form-panel {
             <circle cx="30" cy="24" r="2.2" fill="currentColor"/>
         </symbol>
         <symbol id="dq-icon-briefcase" viewBox="0 0 48 48">
-            <rect x="8" y="15" width="32" height="22" rx="4" fill="none" stroke="currentColor" stroke-width="2.4"/>
-            <path d="M18 15v-3.5a2.5 2.5 0 0 1 2.5-2.5h7a2.5 2.5 0 0 1 2.5 2.5V15M8 23h32" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"/>
+            <circle cx="16" cy="19.5" r="4" fill="none" stroke="currentColor" stroke-width="2.3"/>
+            <circle cx="32" cy="19.5" r="4" fill="none" stroke="currentColor" stroke-width="2.3"/>
+            <circle cx="24" cy="15.5" r="4.5" fill="none" stroke="currentColor" stroke-width="2.3"/>
+            <path d="M8.5 36c1.2-5 4.1-7.6 8.3-7.6c3.8 0 6.4 1.7 7.7 5.1" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round"/>
+            <path d="M39.5 36c-1.2-5-4.1-7.6-8.3-7.6c-3.8 0-6.4 1.7-7.7 5.1" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round"/>
+            <path d="M15.5 37c1.5-5.2 4.4-7.8 8.5-7.8s7 2.6 8.5 7.8" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round"/>
         </symbol>
         <symbol id="dq-icon-income" viewBox="0 0 48 48">
-            <path d="M12 35h24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"/>
-            <path d="M16 35V22M24 35V15M32 35V26" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"/>
-            <circle cx="14" cy="15" r="4.5" fill="none" stroke="currentColor" stroke-width="2.2"/>
-            <path d="M14 12.5v5M11.5 15h5" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/>
+            <rect x="8" y="12" width="32" height="24" rx="5" fill="none" stroke="currentColor" stroke-width="2.4"/>
+            <path d="M16 20h8M16 27h6M29 18v10M24 23h10" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"/>
         </symbol>
         <symbol id="dq-icon-coverage" viewBox="0 0 48 48">
             <path d="M14 11h20l4 4v18a4 4 0 0 1-4 4H14a4 4 0 0 1-4-4V15a4 4 0 0 1 4-4Z" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linejoin="round"/>
@@ -1119,7 +1121,7 @@ body.health-final-step-active .dq-form-panel {
         <div class="dq-surface">
             <div class="dq-hero-entry" id="healthHeroEntryPanel" @((showContactStepByDefault ? "hidden" : null))>
                 <figure class="dq-hero-banner-wrap">
-                    <img class="dq-hero-banner-image" src="~/images/ads/health-top-banner.png" asp-append-version="true" alt="Legend health insurance review creative asking what happens if your paycheck stops." loading="eager" />
+                    <img class="dq-hero-banner-image" src="~/images/ads/health-top-banner.png" asp-append-version="true" alt="Legend health insurance review creative inviting a quick health coverage review." loading="eager" />
                 </figure>
 
                 <div class="lq-above-fold-proof" aria-label="Review benefits">
@@ -1179,15 +1181,15 @@ body.health-final-step-active .dq-form-panel {
                                 <svg viewBox="0 0 48 48" fill="none"><use href="#dq-icon-shield"></use></svg>
                             </div>
                             <div class="dq-proof-copy">
-                                <div class="dq-proof-kicker">Income protection review</div>
-                                <div class="dq-proof-title">Protect your paycheck before a setback turns into a financial scramble.</div>
-                                <p class="dq-proof-text">This short funnel helps frame age, work type, income pressure, and existing coverage so the health conversation starts in the right place.</p>
+                                <div class="dq-proof-kicker">Health coverage review</div>
+                                <div class="dq-proof-title">Protect your household from surprise medical costs and coverage gaps.</div>
+                                <p class="dq-proof-text">Answer a few quick questions so the conversation starts around your household needs, current coverage, and the kind of plan guidance you want first.</p>
                             </div>
                         </div>
 
                         <div class="dq-proof-chips" aria-hidden="true">
-                            <span class="dq-proof-chip">Income replacement focus</span>
-                            <span class="dq-proof-chip">Work-based coverage gap review</span>
+                            <span class="dq-proof-chip">Affordable plan focus</span>
+                            <span class="dq-proof-chip">Family coverage guidance</span>
                             <span class="dq-proof-chip">Private and no-pressure</span>
                         </div>
 
@@ -1216,7 +1218,7 @@ body.health-final-step-active .dq-form-panel {
                                     <div class="lq-micro-step" data-micro-step="0">
                                         <div class="lq-step-intro">
                                             <h2 class="lq-step-title">Let's tailor the health review.</h2>
-                                            <p class="lq-step-helper">Answer a few quick questions first so the final review reflects your work situation, income pressure, and current coverage.</p>
+                                            <p class="lq-step-helper">Answer a few quick questions first so your review reflects your household, current coverage, and the tradeoffs that matter most.</p>
                                         </div>
                                         <div class="lq-choice-group" role="radiogroup" aria-labelledby="dqAgeRangeLabel">
                                             <div class="lq-choice-label" id="dqAgeRangeLabel">What is your age range?</div>
@@ -1227,7 +1229,7 @@ body.health-final-step-active .dq-form-panel {
                                                     <span class="lq-card-copy">
                                                         <span class="lq-card-kicker">Age band</span>
                                                         <span class="lq-card-title">18-24</span>
-                                                        <span class="lq-card-helper">Early income years with room to lock in protection habits.</span>
+                                                        <span class="lq-card-helper">A strong time to lock in affordable basics before care gets more expensive.</span>
                                                     </span>
                                                 </label>
                                                 <label class="lq-card lq-card-rich @SelectedClassIf(selectedAgeRange == "25-34")">
@@ -1236,7 +1238,7 @@ body.health-final-step-active .dq-form-panel {
                                                     <span class="lq-card-copy">
                                                         <span class="lq-card-kicker">Age band</span>
                                                         <span class="lq-card-title">25-34</span>
-                                                        <span class="lq-card-helper">Often where income growth starts tying into bigger fixed bills.</span>
+                                                        <span class="lq-card-helper">Monthly cost, preventive care, and reliable access often matter more here.</span>
                                                     </span>
                                                 </label>
                                                 <label class="lq-card lq-card-rich @SelectedClassIf(selectedAgeRange == "35-44")">
@@ -1245,7 +1247,7 @@ body.health-final-step-active .dq-form-panel {
                                                     <span class="lq-card-copy">
                                                         <span class="lq-card-kicker">Age band</span>
                                                         <span class="lq-card-title">35-44</span>
-                                                        <span class="lq-card-helper">Family costs and income responsibility often peak here.</span>
+                                                        <span class="lq-card-helper">Family needs, prescriptions, and network fit often shape plan choices here.</span>
                                                     </span>
                                                 </label>
                                                 <label class="lq-card lq-card-rich @SelectedClassIf(selectedAgeRange == "45-54")">
@@ -1254,7 +1256,7 @@ body.health-final-step-active .dq-form-panel {
                                                     <span class="lq-card-copy">
                                                         <span class="lq-card-kicker">Age band</span>
                                                         <span class="lq-card-title">45-54</span>
-                                                        <span class="lq-card-helper">This is often a key review window for income continuity.</span>
+                                                        <span class="lq-card-helper">Doctor access, deductible exposure, and preventive care usually matter more here.</span>
                                                     </span>
                                                 </label>
                                                 <label class="lq-card lq-card-rich @SelectedClassIf(selectedAgeRange == "55-64")">
@@ -1263,7 +1265,7 @@ body.health-final-step-active .dq-form-panel {
                                                     <span class="lq-card-copy">
                                                         <span class="lq-card-kicker">Age band</span>
                                                         <span class="lq-card-title">55-64</span>
-                                                        <span class="lq-card-helper">Protection fit matters more when replacing income gets harder.</span>
+                                                        <span class="lq-card-helper">Coverage gaps can get more expensive here, so fit matters more.</span>
                                                     </span>
                                                 </label>
                                                 <label class="lq-card lq-card-rich @SelectedClassIf(selectedAgeRange == "65+")">
@@ -1272,7 +1274,7 @@ body.health-final-step-active .dq-form-panel {
                                                     <span class="lq-card-copy">
                                                         <span class="lq-card-kicker">Age band</span>
                                                         <span class="lq-card-title">65+</span>
-                                                        <span class="lq-card-helper">We can still frame what review path makes the most sense.</span>
+                                                        <span class="lq-card-helper">We can still point you toward the coverage options that make the most sense.</span>
                                                     </span>
                                                 </label>
                                             </div>
@@ -1281,47 +1283,56 @@ body.health-final-step-active .dq-form-panel {
                                     </div>
 
                                     <div class="lq-micro-step" data-micro-step="1" hidden>
-                                        <div class="lq-choice-group" role="radiogroup" aria-labelledby="dqEmploymentTypeLabel">
-                                            <div class="lq-choice-label" id="dqEmploymentTypeLabel">What best describes your work situation?</div>
+                                        <div class="lq-choice-group" role="radiogroup" aria-labelledby="dqHouseholdSizeLabel">
+                                            <div class="lq-choice-label" id="dqHouseholdSizeLabel">Who needs this health coverage review?</div>
                                             <div class="lq-choice-grid">
-                                                <label class="lq-card lq-card-rich @SelectedClassIf(form.EmploymentType == "W-2 Employee")">
-                                                    <input type="radio" name="EmploymentType" value="W-2 Employee" @CheckedIf(form.EmploymentType == "W-2 Employee") />
+                                                <label class="lq-card lq-card-rich @SelectedClassIf(form.HouseholdSize == "Just me")">
+                                                    <input type="radio" name="HouseholdSize" value="Just me" @CheckedIf(form.HouseholdSize == "Just me") />
                                                     <span class="lq-card-visual" aria-hidden="true"><svg class="lq-card-icon" viewBox="0 0 48 48" fill="none"><use href="#dq-icon-briefcase"></use></svg></span>
                                                     <span class="lq-card-copy">
-                                                        <span class="lq-card-kicker">Work type</span>
-                                                        <span class="lq-card-title">W-2 Employee</span>
-                                                        <span class="lq-card-helper">We will compare any workplace benefit against what you actually rely on.</span>
+                                                        <span class="lq-card-kicker">Household</span>
+                                                        <span class="lq-card-title">Just me</span>
+                                                        <span class="lq-card-helper">A solo review can focus tightly on your own doctors, prescriptions, and budget.</span>
                                                     </span>
                                                 </label>
-                                                <label class="lq-card lq-card-rich @SelectedClassIf(form.EmploymentType == "1099 / Contractor")">
-                                                    <input type="radio" name="EmploymentType" value="1099 / Contractor" @CheckedIf(form.EmploymentType == "1099 / Contractor") />
+                                                <label class="lq-card lq-card-rich @SelectedClassIf(form.HouseholdSize == "Me + spouse / partner")">
+                                                    <input type="radio" name="HouseholdSize" value="Me + spouse / partner" @CheckedIf(form.HouseholdSize == "Me + spouse / partner") />
                                                     <span class="lq-card-visual" aria-hidden="true"><svg class="lq-card-icon" viewBox="0 0 48 48" fill="none"><use href="#dq-icon-briefcase"></use></svg></span>
                                                     <span class="lq-card-copy">
-                                                        <span class="lq-card-kicker">Work type</span>
-                                                        <span class="lq-card-title">1099 / Contractor</span>
-                                                        <span class="lq-card-helper">Independent income streams usually need a tighter fallback plan.</span>
+                                                        <span class="lq-card-kicker">Household</span>
+                                                        <span class="lq-card-title">Me + spouse / partner</span>
+                                                        <span class="lq-card-helper">This review can focus on balancing cost, network fit, and shared care needs.</span>
                                                     </span>
                                                 </label>
-                                                <label class="lq-card lq-card-rich @SelectedClassIf(form.EmploymentType == "Business Owner")">
-                                                    <input type="radio" name="EmploymentType" value="Business Owner" @CheckedIf(form.EmploymentType == "Business Owner") />
+                                                <label class="lq-card lq-card-rich @SelectedClassIf(form.HouseholdSize == "Me + child / children")">
+                                                    <input type="radio" name="HouseholdSize" value="Me + child / children" @CheckedIf(form.HouseholdSize == "Me + child / children") />
                                                     <span class="lq-card-visual" aria-hidden="true"><svg class="lq-card-icon" viewBox="0 0 48 48" fill="none"><use href="#dq-icon-briefcase"></use></svg></span>
                                                     <span class="lq-card-copy">
-                                                        <span class="lq-card-kicker">Work type</span>
-                                                        <span class="lq-card-title">Business Owner</span>
-                                                        <span class="lq-card-helper">The review should account for both household income and business strain.</span>
+                                                        <span class="lq-card-kicker">Household</span>
+                                                        <span class="lq-card-title">Me + child / children</span>
+                                                        <span class="lq-card-helper">Family care needs and pediatric access usually become a bigger part of the decision.</span>
                                                     </span>
                                                 </label>
-                                                <label class="lq-card lq-card-rich @SelectedClassIf(form.EmploymentType == "Self-Employed")">
-                                                    <input type="radio" name="EmploymentType" value="Self-Employed" @CheckedIf(form.EmploymentType == "Self-Employed") />
+                                                <label class="lq-card lq-card-rich @SelectedClassIf(form.HouseholdSize == "Family of 4+")">
+                                                    <input type="radio" name="HouseholdSize" value="Family of 4+" @CheckedIf(form.HouseholdSize == "Family of 4+") />
                                                     <span class="lq-card-visual" aria-hidden="true"><svg class="lq-card-icon" viewBox="0 0 48 48" fill="none"><use href="#dq-icon-briefcase"></use></svg></span>
                                                     <span class="lq-card-copy">
-                                                        <span class="lq-card-kicker">Work type</span>
-                                                        <span class="lq-card-title">Self-Employed</span>
-                                                        <span class="lq-card-helper">Income protection usually needs to be more intentional here.</span>
+                                                        <span class="lq-card-kicker">Household</span>
+                                                        <span class="lq-card-title">Family of 4+</span>
+                                                        <span class="lq-card-helper">A larger household often needs a closer look at premium, deductible, and provider tradeoffs.</span>
+                                                    </span>
+                                                </label>
+                                                <label class="lq-card lq-card-rich @SelectedClassIf(form.HouseholdSize == "Not sure yet")">
+                                                    <input type="radio" name="HouseholdSize" value="Not sure yet" @CheckedIf(form.HouseholdSize == "Not sure yet") />
+                                                    <span class="lq-card-visual" aria-hidden="true"><svg class="lq-card-icon" viewBox="0 0 48 48" fill="none"><use href="#dq-icon-briefcase"></use></svg></span>
+                                                    <span class="lq-card-copy">
+                                                        <span class="lq-card-kicker">Household</span>
+                                                        <span class="lq-card-title">Not sure yet</span>
+                                                        <span class="lq-card-helper">That is fine. We can still focus on the coverage options most likely to fit.</span>
                                                     </span>
                                                 </label>
                                             </div>
-                                            <div class="lq-choice-error" id="err-EmploymentType">Please select your work type.</div>
+                                            <div class="lq-choice-error" id="err-HouseholdSize">Please choose who needs this review.</div>
                                         </div>
                                         <div class="lq-step-actions">
                                             <button type="button" class="btn-ghost" data-step-back="0">Back</button>
@@ -1329,56 +1340,8 @@ body.health-final-step-active .dq-form-panel {
                                     </div>
 
                                     <div class="lq-micro-step" data-micro-step="2" hidden>
-                                        <div class="lq-choice-group" role="radiogroup" aria-labelledby="dqIncomeRangeLabel">
-                                            <div class="lq-choice-label" id="dqIncomeRangeLabel">What monthly income would be hardest to replace?</div>
-                                            <div class="lq-choice-grid">
-                                                <label class="lq-card lq-card-rich @SelectedClassIf(form.IncomeRange == "Under $3,000")">
-                                                    <input type="radio" name="IncomeRange" value="Under $3,000" @CheckedIf(form.IncomeRange == "Under $3,000") />
-                                                    <span class="lq-card-visual" aria-hidden="true"><svg class="lq-card-icon" viewBox="0 0 48 48" fill="none"><use href="#dq-icon-income"></use></svg></span>
-                                                    <span class="lq-card-copy">
-                                                        <span class="lq-card-kicker">Income target</span>
-                                                        <span class="lq-card-title">Under $3,000</span>
-                                                        <span class="lq-card-helper">We will frame a leaner replacement target first.</span>
-                                                    </span>
-                                                </label>
-                                                <label class="lq-card lq-card-rich @SelectedClassIf(form.IncomeRange == "$3,000-$5,000")">
-                                                    <input type="radio" name="IncomeRange" value="$3,000-$5,000" @CheckedIf(form.IncomeRange == "$3,000-$5,000") />
-                                                    <span class="lq-card-visual" aria-hidden="true"><svg class="lq-card-icon" viewBox="0 0 48 48" fill="none"><use href="#dq-icon-income"></use></svg></span>
-                                                    <span class="lq-card-copy">
-                                                        <span class="lq-card-kicker">Income target</span>
-                                                        <span class="lq-card-title">$3,000-$5,000</span>
-                                                        <span class="lq-card-helper">Common range where replacing a paycheck changes daily stability fast.</span>
-                                                    </span>
-                                                </label>
-                                                <label class="lq-card lq-card-rich @SelectedClassIf(form.IncomeRange == "$5,000-$8,000")">
-                                                    <input type="radio" name="IncomeRange" value="$5,000-$8,000" @CheckedIf(form.IncomeRange == "$5,000-$8,000") />
-                                                    <span class="lq-card-visual" aria-hidden="true"><svg class="lq-card-icon" viewBox="0 0 48 48" fill="none"><use href="#dq-icon-income"></use></svg></span>
-                                                    <span class="lq-card-copy">
-                                                        <span class="lq-card-kicker">Income target</span>
-                                                        <span class="lq-card-title">$5,000-$8,000</span>
-                                                        <span class="lq-card-helper">This usually needs a more deliberate benefit fit discussion.</span>
-                                                    </span>
-                                                </label>
-                                                <label class="lq-card lq-card-rich @SelectedClassIf(form.IncomeRange == "$8,000+")">
-                                                    <input type="radio" name="IncomeRange" value="$8,000+" @CheckedIf(form.IncomeRange == "$8,000+") />
-                                                    <span class="lq-card-visual" aria-hidden="true"><svg class="lq-card-icon" viewBox="0 0 48 48" fill="none"><use href="#dq-icon-income"></use></svg></span>
-                                                    <span class="lq-card-copy">
-                                                        <span class="lq-card-kicker">Income target</span>
-                                                        <span class="lq-card-title">$8,000+</span>
-                                                        <span class="lq-card-helper">Higher incomes often need a more customized replacement strategy.</span>
-                                                    </span>
-                                                </label>
-                                            </div>
-                                            <div class="lq-choice-error" id="err-IncomeRange">Please choose the income range to review.</div>
-                                        </div>
-                                        <div class="lq-step-actions">
-                                            <button type="button" class="btn-ghost" data-step-back="1">Back</button>
-                                        </div>
-                                    </div>
-
-                                    <div class="lq-micro-step" data-micro-step="3" hidden>
                                         <div class="lq-choice-group" role="radiogroup" aria-labelledby="dqCurrentCoverageLabel">
-                                            <div class="lq-choice-label" id="dqCurrentCoverageLabel">Do you have health coverage today?</div>
+                                            <div class="lq-choice-label" id="dqCurrentCoverageLabel">What best describes your current health coverage?</div>
                                             <div class="lq-choice-grid">
                                                 <label class="lq-card lq-card-rich @SelectedClassIf(form.CurrentCoverage == "No current coverage")">
                                                     <input type="radio" name="CurrentCoverage" value="No current coverage" @CheckedIf(form.CurrentCoverage == "No current coverage") />
@@ -1386,25 +1349,34 @@ body.health-final-step-active .dq-form-panel {
                                                     <span class="lq-card-copy">
                                                         <span class="lq-card-kicker">Current status</span>
                                                         <span class="lq-card-title">No current coverage</span>
-                                                        <span class="lq-card-helper">The review starts from your full exposure to income loss.</span>
+                                                        <span class="lq-card-helper">The review should start with affordable options and how quickly you want coverage in place.</span>
                                                     </span>
                                                 </label>
-                                                <label class="lq-card lq-card-rich @SelectedClassIf(form.CurrentCoverage == "Coverage through work")">
-                                                    <input type="radio" name="CurrentCoverage" value="Coverage through work" @CheckedIf(form.CurrentCoverage == "Coverage through work") />
+                                                <label class="lq-card lq-card-rich @SelectedClassIf(form.CurrentCoverage == "Employer plan")">
+                                                    <input type="radio" name="CurrentCoverage" value="Employer plan" @CheckedIf(form.CurrentCoverage == "Employer plan") />
                                                     <span class="lq-card-visual" aria-hidden="true"><svg class="lq-card-icon" viewBox="0 0 48 48" fill="none"><use href="#dq-icon-coverage"></use></svg></span>
                                                     <span class="lq-card-copy">
                                                         <span class="lq-card-kicker">Current status</span>
-                                                        <span class="lq-card-title">Coverage through work</span>
-                                                        <span class="lq-card-helper">We will look at whether the employer benefit really closes the gap.</span>
+                                                        <span class="lq-card-title">Employer plan</span>
+                                                        <span class="lq-card-helper">We can review whether the employer option truly fits your household, doctors, and out-of-pocket needs.</span>
                                                     </span>
                                                 </label>
-                                                <label class="lq-card lq-card-rich @SelectedClassIf(form.CurrentCoverage == "Individual policy")">
-                                                    <input type="radio" name="CurrentCoverage" value="Individual policy" @CheckedIf(form.CurrentCoverage == "Individual policy") />
+                                                <label class="lq-card lq-card-rich @SelectedClassIf(form.CurrentCoverage == "Marketplace / ACA plan")">
+                                                    <input type="radio" name="CurrentCoverage" value="Marketplace / ACA plan" @CheckedIf(form.CurrentCoverage == "Marketplace / ACA plan") />
                                                     <span class="lq-card-visual" aria-hidden="true"><svg class="lq-card-icon" viewBox="0 0 48 48" fill="none"><use href="#dq-icon-coverage"></use></svg></span>
                                                     <span class="lq-card-copy">
                                                         <span class="lq-card-kicker">Current status</span>
-                                                        <span class="lq-card-title">Individual policy</span>
-                                                        <span class="lq-card-helper">The review can focus on supplementing or stress-testing what you have.</span>
+                                                        <span class="lq-card-title">Marketplace / ACA plan</span>
+                                                        <span class="lq-card-helper">We can compare plan fit, subsidy awareness, and whether a better option might exist.</span>
+                                                    </span>
+                                                </label>
+                                                <label class="lq-card lq-card-rich @SelectedClassIf(form.CurrentCoverage == "Spouse / family plan")">
+                                                    <input type="radio" name="CurrentCoverage" value="Spouse / family plan" @CheckedIf(form.CurrentCoverage == "Spouse / family plan") />
+                                                    <span class="lq-card-visual" aria-hidden="true"><svg class="lq-card-icon" viewBox="0 0 48 48" fill="none"><use href="#dq-icon-coverage"></use></svg></span>
+                                                    <span class="lq-card-copy">
+                                                        <span class="lq-card-kicker">Current status</span>
+                                                        <span class="lq-card-title">Spouse / family plan</span>
+                                                        <span class="lq-card-helper">That gives the review a starting point for cost, dependents, and whether the current fit still makes sense.</span>
                                                     </span>
                                                 </label>
                                                 <label class="lq-card lq-card-rich @SelectedClassIf(form.CurrentCoverage == "Not sure")">
@@ -1413,11 +1385,68 @@ body.health-final-step-active .dq-form-panel {
                                                     <span class="lq-card-copy">
                                                         <span class="lq-card-kicker">Current status</span>
                                                         <span class="lq-card-title">Not sure</span>
-                                                        <span class="lq-card-helper">That is common. We can still frame the next best review step.</span>
+                                                        <span class="lq-card-helper">That is common. We can still focus on the options that fit best.</span>
                                                     </span>
                                                 </label>
                                             </div>
                                             <div class="lq-choice-error" id="err-CurrentCoverage">Please choose your current coverage status.</div>
+                                        </div>
+                                        <div class="lq-step-actions">
+                                            <button type="button" class="btn-ghost" data-step-back="1">Back</button>
+                                        </div>
+                                    </div>
+
+                                    <div class="lq-micro-step" data-micro-step="3" hidden>
+                                        <div class="lq-choice-group" role="radiogroup" aria-labelledby="dqCoverageTypeLabel">
+                                            <div class="lq-choice-label" id="dqCoverageTypeLabel">What kind of health coverage review are you looking for?</div>
+                                            <div class="lq-choice-grid">
+                                                <label class="lq-card lq-card-rich @SelectedClassIf(form.CoverageType == "Individual coverage")">
+                                                    <input type="radio" name="CoverageType" value="Individual coverage" @CheckedIf(form.CoverageType == "Individual coverage") />
+                                                    <span class="lq-card-visual" aria-hidden="true"><svg class="lq-card-icon" viewBox="0 0 48 48" fill="none"><use href="#dq-icon-income"></use></svg></span>
+                                                    <span class="lq-card-copy">
+                                                        <span class="lq-card-kicker">Coverage goal</span>
+                                                        <span class="lq-card-title">Individual coverage</span>
+                                                        <span class="lq-card-helper">Focus the review on your own doctors, prescriptions, and monthly budget.</span>
+                                                    </span>
+                                                </label>
+                                                <label class="lq-card lq-card-rich @SelectedClassIf(form.CoverageType == "Family coverage")">
+                                                    <input type="radio" name="CoverageType" value="Family coverage" @CheckedIf(form.CoverageType == "Family coverage") />
+                                                    <span class="lq-card-visual" aria-hidden="true"><svg class="lq-card-icon" viewBox="0 0 48 48" fill="none"><use href="#dq-icon-income"></use></svg></span>
+                                                    <span class="lq-card-copy">
+                                                        <span class="lq-card-kicker">Coverage goal</span>
+                                                        <span class="lq-card-title">Family coverage</span>
+                                                        <span class="lq-card-helper">Keep the review centered on dependents, shared care needs, and family plan fit.</span>
+                                                    </span>
+                                                </label>
+                                                <label class="lq-card lq-card-rich @SelectedClassIf(form.CoverageType == "Marketplace / ACA guidance")">
+                                                    <input type="radio" name="CoverageType" value="Marketplace / ACA guidance" @CheckedIf(form.CoverageType == "Marketplace / ACA guidance") />
+                                                    <span class="lq-card-visual" aria-hidden="true"><svg class="lq-card-icon" viewBox="0 0 48 48" fill="none"><use href="#dq-icon-income"></use></svg></span>
+                                                    <span class="lq-card-copy">
+                                                        <span class="lq-card-kicker">Coverage goal</span>
+                                                        <span class="lq-card-title">Marketplace / ACA guidance</span>
+                                                        <span class="lq-card-helper">Useful when you want help comparing exchange plans and affordability options.</span>
+                                                    </span>
+                                                </label>
+                                                <label class="lq-card lq-card-rich @SelectedClassIf(form.CoverageType == "Dental / vision options")">
+                                                    <input type="radio" name="CoverageType" value="Dental / vision options" @CheckedIf(form.CoverageType == "Dental / vision options") />
+                                                    <span class="lq-card-visual" aria-hidden="true"><svg class="lq-card-icon" viewBox="0 0 48 48" fill="none"><use href="#dq-icon-income"></use></svg></span>
+                                                    <span class="lq-card-copy">
+                                                        <span class="lq-card-kicker">Coverage goal</span>
+                                                        <span class="lq-card-title">Dental / vision options</span>
+                                                        <span class="lq-card-helper">Best when you want to look more closely at add-on benefits or supplemental support.</span>
+                                                    </span>
+                                                </label>
+                                                <label class="lq-card lq-card-rich @SelectedClassIf(form.CoverageType == "Not sure / need guidance")">
+                                                    <input type="radio" name="CoverageType" value="Not sure / need guidance" @CheckedIf(form.CoverageType == "Not sure / need guidance") />
+                                                    <span class="lq-card-visual" aria-hidden="true"><svg class="lq-card-icon" viewBox="0 0 48 48" fill="none"><use href="#dq-icon-income"></use></svg></span>
+                                                    <span class="lq-card-copy">
+                                                        <span class="lq-card-kicker">Coverage goal</span>
+                                                        <span class="lq-card-title">Not sure / need guidance</span>
+                                                        <span class="lq-card-helper">A good place to start when you want help narrowing your options before comparing plans.</span>
+                                                    </span>
+                                                </label>
+                                            </div>
+                                            <div class="lq-choice-error" id="err-CoverageType">Please choose the type of review you want.</div>
                                         </div>
                                         <div class="lq-step-actions">
                                             <button type="button" class="btn-ghost" data-step-back="2">Back</button>
@@ -1425,47 +1454,56 @@ body.health-final-step-active .dq-form-panel {
                                     </div>
 
                                     <div class="lq-micro-step" data-micro-step="4" hidden>
-                                        <div class="lq-choice-group" role="radiogroup" aria-labelledby="dqPriorityLabel">
-                                            <div class="lq-choice-label" id="dqPriorityLabel">If your paycheck stopped, how urgent would a backup plan be?</div>
+                                        <div class="lq-choice-group" role="radiogroup" aria-labelledby="dqPrimaryConcernLabel">
+                                            <div class="lq-choice-label" id="dqPrimaryConcernLabel">What matters most in your health coverage review?</div>
                                             <div class="lq-choice-grid">
-                                                <label class="lq-card lq-card-rich @SelectedClassIf(form.IncomeProtectionImportance == "Critical")">
-                                                    <input type="radio" name="IncomeProtectionImportance" value="Critical" @CheckedIf(form.IncomeProtectionImportance == "Critical") />
+                                                <label class="lq-card lq-card-rich @SelectedClassIf(form.PrimaryConcern == "Lower Monthly Premium")">
+                                                    <input type="radio" name="PrimaryConcern" value="Lower Monthly Premium" @CheckedIf(form.PrimaryConcern == "Lower Monthly Premium") />
                                                     <span class="lq-card-visual" aria-hidden="true"><svg class="lq-card-icon" viewBox="0 0 48 48" fill="none"><use href="#dq-icon-priority"></use></svg></span>
                                                     <span class="lq-card-copy">
                                                         <span class="lq-card-kicker">Priority</span>
-                                                        <span class="lq-card-title">Critical</span>
-                                                        <span class="lq-card-helper">Income loss would hit immediately and hard.</span>
+                                                        <span class="lq-card-title">Lower Monthly Premium</span>
+                                                        <span class="lq-card-helper">Keep the review centered on affordability and predictable monthly cost.</span>
                                                     </span>
                                                 </label>
-                                                <label class="lq-card lq-card-rich @SelectedClassIf(form.IncomeProtectionImportance == "Important")">
-                                                    <input type="radio" name="IncomeProtectionImportance" value="Important" @CheckedIf(form.IncomeProtectionImportance == "Important") />
+                                                <label class="lq-card lq-card-rich @SelectedClassIf(form.PrimaryConcern == "Lower Deductible")">
+                                                    <input type="radio" name="PrimaryConcern" value="Lower Deductible" @CheckedIf(form.PrimaryConcern == "Lower Deductible") />
                                                     <span class="lq-card-visual" aria-hidden="true"><svg class="lq-card-icon" viewBox="0 0 48 48" fill="none"><use href="#dq-icon-priority"></use></svg></span>
                                                     <span class="lq-card-copy">
                                                         <span class="lq-card-kicker">Priority</span>
-                                                        <span class="lq-card-title">Important</span>
-                                                        <span class="lq-card-helper">You would want a meaningful replacement plan in place soon.</span>
+                                                        <span class="lq-card-title">Lower Deductible</span>
+                                                        <span class="lq-card-helper">Best when out-of-pocket surprises matter more than the lowest monthly payment.</span>
                                                     </span>
                                                 </label>
-                                                <label class="lq-card lq-card-rich @SelectedClassIf(form.IncomeProtectionImportance == "Somewhat Important")">
-                                                    <input type="radio" name="IncomeProtectionImportance" value="Somewhat Important" @CheckedIf(form.IncomeProtectionImportance == "Somewhat Important") />
+                                                <label class="lq-card lq-card-rich @SelectedClassIf(form.PrimaryConcern == "Better Doctor Network")">
+                                                    <input type="radio" name="PrimaryConcern" value="Better Doctor Network" @CheckedIf(form.PrimaryConcern == "Better Doctor Network") />
                                                     <span class="lq-card-visual" aria-hidden="true"><svg class="lq-card-icon" viewBox="0 0 48 48" fill="none"><use href="#dq-icon-priority"></use></svg></span>
                                                     <span class="lq-card-copy">
                                                         <span class="lq-card-kicker">Priority</span>
-                                                        <span class="lq-card-title">Somewhat Important</span>
-                                                        <span class="lq-card-helper">Worth reviewing now so the gap stays visible.</span>
+                                                        <span class="lq-card-title">Better Doctor Network</span>
+                                                        <span class="lq-card-helper">The review should stay focused on keeping the doctors, specialists, and facilities you trust.</span>
                                                     </span>
                                                 </label>
-                                                <label class="lq-card lq-card-rich @SelectedClassIf(form.IncomeProtectionImportance == "Not a Priority")">
-                                                    <input type="radio" name="IncomeProtectionImportance" value="Not a Priority" @CheckedIf(form.IncomeProtectionImportance == "Not a Priority") />
+                                                <label class="lq-card lq-card-rich @SelectedClassIf(form.PrimaryConcern == "Prescription Coverage")">
+                                                    <input type="radio" name="PrimaryConcern" value="Prescription Coverage" @CheckedIf(form.PrimaryConcern == "Prescription Coverage") />
                                                     <span class="lq-card-visual" aria-hidden="true"><svg class="lq-card-icon" viewBox="0 0 48 48" fill="none"><use href="#dq-icon-priority"></use></svg></span>
                                                     <span class="lq-card-copy">
                                                         <span class="lq-card-kicker">Priority</span>
-                                                        <span class="lq-card-title">Not a Priority</span>
-                                                        <span class="lq-card-helper">We can still send a low-pressure review so you know what is there.</span>
+                                                        <span class="lq-card-title">Prescription Coverage</span>
+                                                        <span class="lq-card-helper">Medication access and predictable pharmacy costs should stay front and center.</span>
+                                                    </span>
+                                                </label>
+                                                <label class="lq-card lq-card-rich @SelectedClassIf(form.PrimaryConcern == "Not Sure / Need Guidance")">
+                                                    <input type="radio" name="PrimaryConcern" value="Not Sure / Need Guidance" @CheckedIf(form.PrimaryConcern == "Not Sure / Need Guidance") />
+                                                    <span class="lq-card-visual" aria-hidden="true"><svg class="lq-card-icon" viewBox="0 0 48 48" fill="none"><use href="#dq-icon-priority"></use></svg></span>
+                                                    <span class="lq-card-copy">
+                                                        <span class="lq-card-kicker">Priority</span>
+                                                        <span class="lq-card-title">Not Sure / Need Guidance</span>
+                                                        <span class="lq-card-helper">That is okay. We can start broad and narrow the tradeoffs together.</span>
                                                     </span>
                                                 </label>
                                             </div>
-                                            <div class="lq-choice-error" id="err-IncomeProtectionImportance">Please choose your current priority.</div>
+                                            <div class="lq-choice-error" id="err-PrimaryConcern">Please choose what matters most in this review.</div>
                                         </div>
                                         <div class="lq-step-actions">
                                             <button type="button" class="btn-ghost" data-step-back="3">Back</button>
@@ -1481,12 +1519,12 @@ body.health-final-step-active .dq-form-panel {
                                         <svg viewBox="0 0 48 48" fill="none"><use href="#dq-icon-check"></use></svg>
                                     </div>
                                     <div class="lq-step-progress">One moment</div>
-                                    <h2 class="lq-step-title" id="dqProcessingHeading">Building your health review path.</h2>
-                                    <p class="lq-step-helper">We are lining up the same contact-first funnel handoff the Life quote uses, but focused on income replacement, benefit fit, and existing coverage gaps.</p>
+                                    <h2 class="lq-step-title" id="dqProcessingHeading">Pulling together your health review.</h2>
+                                    <p class="lq-step-helper">We are narrowing the conversation around household needs, current coverage, doctor access, and affordability.</p>
                                     <div class="dq-processing-track" aria-hidden="true">
                                         <span class="dq-processing-fill" id="dqProcessingFill"></span>
                                     </div>
-                                    <div class="dq-processing-note">Building your personalized review summary before the final contact step.</div>
+                                    <div class="dq-processing-note">Getting your coverage snapshot ready.</div>
                                 </div>
                             </div>
 
@@ -1496,14 +1534,14 @@ body.health-final-step-active .dq-form-panel {
                                     <div class="dq-contact-head">
                                         <div class="dq-contact-kicker">Send the review</div>
                                         <div class="dq-contact-title">Where should we send your health review?</div>
-                                        <div class="dq-contact-copy">We will use your answers to focus the conversation on monthly income replacement, whether current benefits fall short, and what type of coverage discussion makes the most sense first.</div>
+                                        <div class="dq-contact-copy">We will use your answers to focus the conversation on affordability, network fit, current coverage gaps, and the type of plan guidance that fits your household best.</div>
                                     </div>
 
                                     <div class="dq-review-summary" id="healthReviewSummary" aria-live="polite"></div>
 
-                                    <div class="dq-contact-hint">Required fields stay strict here so the health lead reaches the right person with enough context to follow up.</div>
+                                    <div class="dq-contact-hint">Share the best contact details so the right licensed advisor can reach you with a clear review.</div>
 
-                                    <div class="lq-field-row lq-field-row-3">
+                                    <div class="lq-field-row">
                                         <div class="lq-field">
                                             <label for="FirstName">First Name <span class="lq-required-star">*</span></label>
                                             <input type="text" id="FirstName" name="FirstName" class="form-control" value="@form.FirstName" autocomplete="given-name" />
@@ -1513,11 +1551,6 @@ body.health-final-step-active .dq-form-panel {
                                             <label for="LastName">Last Name <span class="lq-required-star">*</span></label>
                                             <input type="text" id="LastName" name="LastName" class="form-control" value="@form.LastName" autocomplete="family-name" />
                                             <div class="lq-field-err" id="err-LastName">Please enter your last name.</div>
-                                        </div>
-                                        <div class="lq-field">
-                                            <label for="Occupation">Occupation <span class="lq-required-star">*</span></label>
-                                            <input type="text" id="Occupation" name="Occupation" class="form-control" value="@form.Occupation" placeholder="Your role or profession" autocomplete="organization-title" />
-                                            <div class="lq-field-err" id="err-Occupation">Please enter your occupation.</div>
                                         </div>
                                     </div>
 
@@ -1601,7 +1634,7 @@ body.health-final-step-active .dq-form-panel {
 
                                     <label class="lq-consent" for="AcknowledgedDisclaimer">
                                         <input type="checkbox" id="AcknowledgedDisclaimer" name="AcknowledgedDisclaimer" value="true" @(form.AcknowledgedDisclaimer ? "checked" : null) />
-                                        <span class="lq-consent-copy">I authorize contact about my health insurance inquiry and understand this review is designed to help compare possible income protection options, not to pressure me into a purchase. <span class="lq-required-star">*</span></span>
+                                        <span class="lq-consent-copy">I authorize contact about my health insurance inquiry and understand this review is meant to help compare possible coverage options for my needs and budget. <span class="lq-required-star">*</span></span>
                                     </label>
                                     <input type="hidden" name="AcknowledgedDisclaimer" value="false" />
                                     <div class="lq-field-err" id="err-AcknowledgedDisclaimer">You must agree before we can submit your review.</div>
@@ -1666,10 +1699,10 @@ body.health-final-step-active .dq-form-panel {
         });
         var microStepConfigs = [
             { field: 'AgeRange', errorId: 'err-AgeRange', viewEvent: 'health_quote_age_view' },
-            { field: 'EmploymentType', errorId: 'err-EmploymentType', viewEvent: 'health_quote_employment_view' },
-            { field: 'IncomeRange', errorId: 'err-IncomeRange', viewEvent: 'health_quote_income_view' },
-            { field: 'CurrentCoverage', errorId: 'err-CurrentCoverage', viewEvent: 'health_quote_coverage_view' },
-            { field: 'IncomeProtectionImportance', errorId: 'err-IncomeProtectionImportance', viewEvent: 'health_quote_priority_view' }
+            { field: 'HouseholdSize', errorId: 'err-HouseholdSize', viewEvent: 'health_quote_household_view' },
+            { field: 'CurrentCoverage', errorId: 'err-CurrentCoverage', viewEvent: 'health_quote_current_coverage_view' },
+            { field: 'CoverageType', errorId: 'err-CoverageType', viewEvent: 'health_quote_coverage_type_view' },
+            { field: 'PrimaryConcern', errorId: 'err-PrimaryConcern', viewEvent: 'health_quote_priority_view' }
         ];
         var completedSteps = {};
         var viewedMicroSteps = {};
@@ -1850,28 +1883,30 @@ body.health-final-step-active .dq-form-panel {
 
         function buildReviewSummaryHtml() {
             var ageRange = readSelectedValue('AgeRange') || 'Age range';
-            var employmentType = readSelectedValue('EmploymentType') || 'Work type';
-            var incomeRange = readSelectedValue('IncomeRange') || 'Income target';
+            var householdSize = readSelectedValue('HouseholdSize') || 'Household';
             var currentCoverage = readSelectedValue('CurrentCoverage') || 'Current coverage';
-            var priority = readSelectedValue('IncomeProtectionImportance') || 'Priority';
+            var coverageType = readSelectedValue('CoverageType') || 'Coverage goal';
+            var primaryConcern = readSelectedValue('PrimaryConcern') || 'Priority';
 
-            var signal = 'Your review will focus on the income gap first, then whether any current workplace or personal coverage meaningfully closes it.';
+            var signal = 'Your review will focus on plan fit first, then narrow the tradeoffs between monthly cost, deductible exposure, and care access.';
             if (currentCoverage === 'No current coverage') {
-                signal = 'No existing coverage means the review should start with what monthly income needs the fastest protection if work stops unexpectedly.';
-            } else if (currentCoverage === 'Coverage through work') {
-                signal = 'Workplace coverage often leaves a gap. The review should compare what is offered at work against what your household actually depends on.';
-            } else if (priority === 'Critical') {
-                signal = 'Because this feels urgent, the follow-up should stay centered on how quickly lost income would pressure bills, family, and business obligations.';
+                signal = 'No current coverage means the review should start with affordable options and how quickly you want coverage in place.';
+            } else if (currentCoverage === 'Employer plan') {
+                signal = 'Employer coverage can still leave gaps in deductibles, network fit, or family needs, so the conversation should start there.';
+            } else if (primaryConcern === 'Lower Monthly Premium') {
+                signal = 'Because monthly affordability matters most, the conversation should stay centered on balancing premium, deductible, and day-to-day budget pressure.';
+            } else if (primaryConcern === 'Better Doctor Network') {
+                signal = 'Because provider access matters most, the review should stay focused on keeping the doctors, facilities, and specialists you trust in network.';
             }
 
             return ''
                 + '<div class="dq-review-kicker">Review snapshot</div>'
                 + '<div class="dq-review-title">We will pick up the conversation from these answers.</div>'
-                + '<div class="dq-review-copy">Your answers shape the final follow-up so the review starts with the income risks and coverage gaps that matter most.</div>'
+                + '<div class="dq-review-copy">Your answers shape the conversation so it starts with the coverage tradeoffs and care priorities that matter most.</div>'
                 + '<div class="dq-review-stats">'
                 +   '<div class="dq-review-stat"><div class="dq-review-stat-label">Age range</div><div class="dq-review-stat-value">' + escapeHtml(ageRange) + '</div></div>'
-                +   '<div class="dq-review-stat"><div class="dq-review-stat-label">Work type</div><div class="dq-review-stat-value">' + escapeHtml(employmentType) + '</div></div>'
-                +   '<div class="dq-review-stat"><div class="dq-review-stat-label">Income focus</div><div class="dq-review-stat-value">' + escapeHtml(incomeRange) + '</div></div>'
+                +   '<div class="dq-review-stat"><div class="dq-review-stat-label">Household</div><div class="dq-review-stat-value">' + escapeHtml(householdSize) + '</div></div>'
+                +   '<div class="dq-review-stat"><div class="dq-review-stat-label">Coverage goal</div><div class="dq-review-stat-value">' + escapeHtml(coverageType) + '</div></div>'
                 + '</div>'
                 + '<div class="dq-review-signal"><strong>Next step:</strong> ' + escapeHtml(signal) + ' Coverage status noted: ' + escapeHtml(currentCoverage) + '.</div>';
         }
@@ -1934,7 +1969,7 @@ body.health-final-step-active .dq-form-panel {
         function startFunnel(trackStartClick) {
             setStartedState(true);
             if (trackStartClick) {
-                var label = startButton ? asTrimmed(startButton.textContent) : 'Start My Health Review';
+                var label = startButton ? asTrimmed(startButton.textContent) : 'Check My Coverage Fit';
                 trackCta('health_funnel_start', label);
                 track({
                     EventType: 'health_quote_started',
@@ -2010,7 +2045,7 @@ body.health-final-step-active .dq-form-panel {
             });
         }
 
-        ['FirstName', 'LastName', 'Occupation'].forEach(function (fieldId) {
+        ['FirstName', 'LastName'].forEach(function (fieldId) {
             var input = document.getElementById(fieldId);
             if (!input) return;
             input.addEventListener('input', function () {
@@ -2068,14 +2103,12 @@ body.health-final-step-active .dq-form-panel {
             var valid = true;
             var firstName = document.getElementById('FirstName');
             var lastName = document.getElementById('LastName');
-            var occupation = document.getElementById('Occupation');
             var contactMethod = document.getElementById('ContactMethod');
             var bestTime = document.getElementById('BestTimeToContact');
 
             var textFields = [
                 { id: 'FirstName', value: firstName ? firstName.value : '' },
-                { id: 'LastName', value: lastName ? lastName.value : '' },
-                { id: 'Occupation', value: occupation ? occupation.value : '' }
+                { id: 'LastName', value: lastName ? lastName.value : '' }
             ];
 
             textFields.forEach(function (entry) {

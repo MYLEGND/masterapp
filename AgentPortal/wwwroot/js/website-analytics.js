@@ -1004,10 +1004,11 @@
       { key: 'count', align: 'text-end' }
     ]);
     renderTable('traffic-activity-body', data.recentActivity || [], [
-      { render: r => formatDisplayDate(r.eventUtc) },
-      { key: 'eventType' },
+      { render: r => formatActivityTimeRange(r) },
       { key: 'pageKey' },
-      { key: 'elementKey' }
+      { render: r => r.activitySummary || r.eventType || 'activity recorded' },
+      { render: r => r.outcomeSummary || r.elementKey || 'Viewed' },
+      { render: r => formatNumber(r.eventCount || 0), align: 'text-end' }
     ]);
     setText('traffic-range-label', breakdown
       ? `${data.rangeLabel || ''} · ${breakdown.replace('Attribution split: ', '')}`
@@ -2459,6 +2460,32 @@
     }
   }
 
+  function formatActivityTimeRange(row) {
+    const start = formatDisplayDate(row?.eventUtc);
+    const end = formatDisplayDate(row?.endUtc);
+
+    if (!start && !end) return '—';
+    if (!end || start === end) return start;
+
+    const duration = Number(row?.durationSeconds || 0);
+    const durationLabel = duration > 0 ? ` · ${formatDurationSeconds(duration)}` : '';
+
+    return `${start} - ${end}${durationLabel}`;
+  }
+
+  function formatDurationSeconds(seconds) {
+    const total = Number(seconds || 0);
+    if (!Number.isFinite(total) || total <= 0) return '0s';
+
+    const minutes = Math.floor(total / 60);
+    const remainingSeconds = total % 60;
+
+    if (minutes <= 0) return `${remainingSeconds}s`;
+    if (remainingSeconds <= 0) return `${minutes}m`;
+
+    return `${minutes}m ${remainingSeconds}s`;
+  }
+
   function formatDisplayDate(utcString) {
     if (!utcString) return '';
 
@@ -2530,7 +2557,7 @@
       setTableMessage('traffic-entry-pages-body', 2, message, 'text-danger');
       setTableMessage('traffic-top-sources-body', 2, message, 'text-danger');
       setTableMessage('traffic-top-campaigns-body', 2, message, 'text-danger');
-      setTableMessage('traffic-activity-body', 4, message, 'text-danger');
+      setTableMessage('traffic-activity-body', 5, message, 'text-danger');
       console.error(err);
     }
   }

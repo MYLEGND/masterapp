@@ -1576,7 +1576,72 @@ public sealed class AnalyticsQueryService : IAnalyticsQueryService
             .ToList();
         traffic.EntryPages = firstPerSession;
 
-        traffic.RecentActivity = events
+        static int EngagementSeconds(string? eventType)
+        {
+            if (string.IsNullOrWhiteSpace(eventType)) return 0;
+            if (!eventType.StartsWith("page_engaged_", StringComparison.OrdinalIgnoreCase)) return 0;
+
+            var raw = eventType
+                .Replace("page_engaged_", "", StringComparison.OrdinalIgnoreCase)
+                .Replace("s", "", StringComparison.OrdinalIgnoreCase);
+
+            return int.TryParse(raw, out var seconds) ? seconds : 0;
+        }
+
+        static string BuildActivitySummary(List<AnalyticsEvent> sessionEvents)
+        {
+            var eventTypes = sessionEvents
+                .Select(e => e.EventType ?? "")
+                .Where(e => !string.IsNullOrWhiteSpace(e))
+                .ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+            var parts = new List<string>();
+
+            if (eventTypes.Contains("page_view")) parts.Add("viewed");
+            if (eventTypes.Contains("quote_landing_view")) parts.Add("landing viewed");
+            if (eventTypes.Contains("primary_cta_seen")) parts.Add("CTA seen");
+            if (eventTypes.Contains("quote_click") || eventTypes.Contains("cta_click")) parts.Add("CTA clicked");
+            if (eventTypes.Contains("form_start")) parts.Add("funnel started");
+            if (eventTypes.Contains("form_submit_attempt")) parts.Add("submit attempted");
+            if (eventTypes.Contains("form_submit_success") || eventTypes.Contains("lead_form_submit_success")) parts.Add("submitted");
+
+            var maxEngagement = sessionEvents
+                .Select(e => EngagementSeconds(e.EventType))
+                .DefaultIfEmpty(0)
+                .Max();
+
+            if (maxEngagement > 0) parts.Add($"engaged {maxEngagement}s");
+            if (eventTypes.Contains("form_abandon")) parts.Add("abandoned");
+            if (eventTypes.Contains("page_exit")) parts.Add("exited");
+
+            return parts.Count > 0 ? string.Join(" · ", parts) : "activity recorded";
+        }
+
+        static string BuildOutcomeSummary(List<AnalyticsEvent> sessionEvents)
+        {
+            var eventTypes = sessionEvents
+                .Select(e => e.EventType ?? "")
+                .Where(e => !string.IsNullOrWhiteSpace(e))
+                .ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+            if (eventTypes.Contains("lead_form_submit_success")) return "Lead confirmed";
+            if (eventTypes.Contains("form_submit_success")) return "Form submitted";
+            if (eventTypes.Contains("form_submit_attempt")) return "Submit attempted";
+            if (eventTypes.Contains("form_abandon")) return "Funnel abandoned";
+            if (eventTypes.Contains("form_start")) return "Funnel started";
+            if (eventTypes.Contains("quote_click") || eventTypes.Contains("cta_click")) return "Clicked CTA, no start";
+            if (eventTypes.Contains("primary_cta_seen")) return "CTA seen, no start";
+            if (eventTypes.Contains("page_exit")) return "Exited before start";
+
+            var maxEngagement = sessionEvents
+                .Select(e => EngagementSeconds(e.EventType))
+                .DefaultIfEmpty(0)
+                .Max();
+
+            return maxEngagement > 0 ? $"Engaged {maxEngagement}s" : "Viewed";
+        }
+
+        var activityEvents = events
             .Where(e =>
                 e.EventType != "page_visibility_hidden" &&
                 e.EventType != "page_visibility_return" &&
@@ -1585,15 +1650,38 @@ public sealed class AnalyticsQueryService : IAnalyticsQueryService
                 e.EventType != "scroll_depth_75" &&
                 e.EventType != "scroll_depth_90" &&
                 e.EventType != "scroll_depth_100")
-            .OrderByDescending(e => e.EventUtc)
-            .Take(25)
-            .Select(e => new ActivityItemDto
+            .ToList();
+
+        traffic.RecentActivity = activityEvents
+            .GroupBy(e => new
             {
-                EventUtc = e.EventUtc,
-                EventType = e.EventType,
-                PageKey = e.PageKey,
-                ElementKey = e.ElementKey
-            }).ToList();
+                SessionKey = !string.IsNullOrWhiteSpace(e.SessionId)
+                    ? e.SessionId!
+                    : $"event:{e.EventUtc.Ticks}:{e.EventType}:{e.PageKey}:{e.ElementKey}",
+                PageKey = e.PageKey ?? "unknown"
+            })
+            .Select(g =>
+            {
+                var sessionEvents = g.OrderBy(e => e.EventUtc).ToList();
+                var first = sessionEvents.First();
+                var last = sessionEvents.Last();
+                var durationSeconds = Math.Max(0, (int)Math.Round((last.EventUtc - first.EventUtc).TotalSeconds));
+
+                return new ActivityItemDto
+                {
+                    EventUtc = first.EventUtc,
+                    EndUtc = last.EventUtc,
+                    DurationSeconds = durationSeconds,
+                    EventCount = sessionEvents.Count,
+                    EventType = BuildActivitySummary(sessionEvents),
+                    ActivitySummary = BuildActivitySummary(sessionEvents),
+                    PageKey = g.Key.PageKey,
+                    ElementKey = BuildOutcomeSummary(sessionEvents),
+                    OutcomeSummary = BuildOutcomeSummary(sessionEvents)
+                };
+            })
+            .OrderByDescending(a => a.EndUtc ?? a.EventUtc)
+            .ToList();
 
         return traffic;
     }
