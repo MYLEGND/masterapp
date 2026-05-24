@@ -1338,11 +1338,50 @@
                 </table>
             </div>
         </div>
-        <h6 class="text-warning mt-3">Session Activity</h6>
-        <table class="table table-sm">
+        <div class="d-flex align-items-center justify-content-between gap-2 mt-3">
+            <h6 class="text-warning mb-0">Session Activity</h6>
+            <button type="button"
+                    class="btn btn-sm btn-outline-warning"
+                    data-bs-toggle="modal"
+                    data-bs-target="#trafficExitedBeforeStartModal">
+                Exited Before Start <span id="traffic-exited-before-start-count" class="badge wa-modal-mode-badge ms-1">0</span>
+            </button>
+        </div>
+        <table class="table table-sm mt-2">
             <thead><tr><th>Session Time</th><th>Page Journey</th><th>Engagement</th><th>Outcome</th><th class="text-end">Events</th></tr></thead>
             <tbody id="traffic-activity-body"></tbody>
         </table>
+        </section>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="modal fade fa-modal" id="trafficExitedBeforeStartModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-xl modal-dialog-centered modal-dialog-scrollable wa-modal-dialog">
+    <div class="modal-content wa-modal-shell">
+      <div class="modal-header wa-modal-header">
+        <div class="wa-modal-header-main">
+          <div class="wa-modal-header-copy">
+            <div class="wa-modal-kicker">Traffic Friction</div>
+            <h5 class="modal-title mb-0">Exited Before Start</h5>
+            <div class="wa-modal-subtitle">Sessions where visitors viewed a page, engaged, and left before starting the quote funnel.</div>
+          </div>
+          <div class="wa-modal-header-actions">
+            <div class="wa-modal-range-chip">
+              <span class="wa-modal-range-label">Count</span>
+              <span class="wa-modal-range-value" id="traffic-exited-before-start-modal-count">0</span>
+            </div>
+          </div>
+        </div>
+        <button type="button" class="btn-close btn-close-white wa-modal-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body wa-modal-body">
+        <section class="wa-modal-section">
+          <table class="table table-sm">
+            <thead><tr><th>Visit Time</th><th>Page</th><th>Engagement</th><th class="text-end">Events</th></tr></thead>
+            <tbody id="traffic-exited-before-start-body"><tr><td colspan="4" class="fa-empty">Open Traffic Overview to load sessions.</td></tr></tbody>
+          </table>
         </section>
       </div>
     </div>

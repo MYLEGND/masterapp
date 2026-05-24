@@ -988,6 +988,324 @@ body.disability-landing.page-mode-paid-landing header .navbar-brand img {
     margin: 0 0 8px;
 }
 
+.lq-error,
+.lq-success {
+    font-weight: 800;
+    margin-top: 10px;
+    display: none;
+}
+
+.lq-error {
+    color: #fca5a5;
+}
+
+.lq-success {
+    color: #bbf7d0;
+}
+
+.lq-post-submit-slot {
+    width: 100%;
+    margin: 0;
+    padding: 0;
+    background: transparent;
+}
+
+.lq-post-submit-slot .dq-final-review-unified-card {
+    display: grid;
+    gap: 16px;
+    width: 100%;
+    padding: 26px;
+    border-radius: 28px;
+    border: 1px solid rgba(243, 214, 136, 0.34);
+    background:
+        radial-gradient(circle at 50% 0%, rgba(34, 99, 196, 0.13), transparent 42%),
+        linear-gradient(180deg, #08254d 0%, #061d3d 52%, #071a36 100%);
+    box-shadow:
+        0 32px 72px rgba(2, 12, 27, 0.3),
+        inset 0 1px 0 rgba(255, 255, 255, 0.05);
+}
+
+.lq-post-submit-slot .dq-final-review-head,
+.lq-post-submit-slot .dq-final-review-next-step,
+.lq-post-submit-slot .dq-final-review-booking-card {
+    display: grid;
+    gap: 10px;
+}
+
+.lq-post-submit-slot .dq-final-review-kicker,
+.lq-post-submit-slot .dq-final-review-impact-label,
+.lq-post-submit-slot .dq-final-review-next-kicker,
+.lq-post-submit-slot .dq-final-review-booking-kicker {
+    color: #f3d688;
+    font-size: 0.78rem;
+    font-weight: 950;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+}
+
+.lq-post-submit-slot .dq-final-review-title,
+.lq-post-submit-slot .dq-final-review-next-title,
+.lq-post-submit-slot .dq-final-review-booking-title {
+    color: #fff8e7;
+    font-size: clamp(1.45rem, 2.8vw, 2.15rem);
+    line-height: 1.08;
+    font-weight: 900;
+}
+
+.lq-post-submit-slot .dq-final-review-copy,
+.lq-post-submit-slot .dq-final-review-next-copy,
+.lq-post-submit-slot .dq-final-review-booking-copy,
+.lq-post-submit-slot .dq-final-review-impact-text {
+    color: rgba(248, 250, 252, 0.84);
+    font-size: 0.98rem;
+    line-height: 1.5;
+}
+
+.lq-post-submit-slot .dq-final-review-proof-row,
+.lq-post-submit-slot .dq-final-review-checklist {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+}
+
+.lq-post-submit-slot .dq-final-review-proof-row span,
+.lq-post-submit-slot .dq-final-review-checklist span {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 30px;
+    padding: 7px 12px;
+    border-radius: 999px;
+    border: 1px solid rgba(243, 214, 136, 0.26);
+    background: rgba(7, 25, 50, 0.88);
+    color: #fff7de;
+    font-size: 0.78rem;
+    font-weight: 850;
+}
+
+.lq-post-submit-slot .dq-final-review-impact-grid,
+.lq-post-submit-slot .dq-final-review-stats {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 12px;
+}
+
+.lq-post-submit-slot .dq-final-review-impact-card,
+.lq-post-submit-slot .dq-final-review-stat {
+    padding: 16px;
+    border-radius: 18px;
+    border: 1px solid rgba(243, 214, 136, 0.2);
+    background: linear-gradient(180deg, rgba(6, 26, 54, 0.94), rgba(7, 20, 39, 0.96));
+}
+
+.lq-post-submit-slot .dq-final-review-impact-card.is-urgent {
+    border-color: rgba(243, 214, 136, 0.34);
+    box-shadow: 0 0 0 1px rgba(243, 214, 136, 0.08);
+}
+
+.lq-post-submit-slot .dq-final-review-stat-label {
+    color: rgba(248, 250, 252, 0.55);
+    font-size: 0.7rem;
+    font-weight: 900;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    margin-bottom: 8px;
+}
+
+.lq-post-submit-slot .dq-final-review-stat-value {
+    color: #fff8e7;
+    font-size: 1.05rem;
+    font-weight: 900;
+    line-height: 1.3;
+}
+
+#disabilityEducationContactPanel,
+#disabilityEducationContactPanel *,
+#disabilityPostSubmitSlot,
+#disabilityPostSubmitSlot * {
+    box-sizing: border-box !important;
+}
+
+#disabilityEducationContactPanel {
+    width: 100% !important;
+    padding: 20px 26px 18px !important;
+    border-radius: 26px !important;
+    border: 1px solid rgba(243, 214, 136, 0.34) !important;
+    background:
+        radial-gradient(circle at 50% 0%, rgba(34, 99, 196, 0.12), transparent 40%),
+        linear-gradient(180deg, #08254d 0%, #061d3d 52%, #071a36 100%) !important;
+    box-shadow:
+        0 32px 70px rgba(2, 12, 27, 0.32),
+        inset 0 1px 0 rgba(255, 255, 255, 0.055) !important;
+}
+
+#disabilityEducationContactPanel .dq-wizard-surface,
+#disabilityEducationContactPanel #dqStep1Panel,
+#disabilityEducationContactPanel #dqContactPanel,
+#disabilityEducationContactPanel #dqProcessingPanel,
+#disabilityEducationContactPanel .lq-step-panel-pad {
+    background: transparent !important;
+    border: 0 !important;
+    box-shadow: none !important;
+    margin: 0 !important;
+}
+
+#disabilityEducationContactPanel #dqStep1Panel,
+#disabilityEducationContactPanel #dqContactPanel,
+#disabilityEducationContactPanel #dqProcessingPanel,
+#disabilityEducationContactPanel .lq-step-panel-pad {
+    padding: 0 !important;
+}
+
+#disabilityEducationContactPanel .dq-proof-card {
+    background: transparent !important;
+    border: 0 !important;
+    border-bottom: 1px solid rgba(59, 130, 246, 0.09) !important;
+    padding: 0 0 13px !important;
+    margin: 0 0 16px !important;
+    box-shadow: none !important;
+}
+
+#disabilityEducationContactPanel .dq-proof-chips {
+    margin: 0 0 16px !important;
+}
+
+#disabilityEducationContactPanel .dq-contact-capture-wrap {
+    width: 100% !important;
+    max-width: 100% !important;
+    margin: 0 !important;
+    padding: 18px 8px 0 !important;
+    border-top: 1px solid rgba(59, 130, 246, 0.12) !important;
+    background: transparent !important;
+}
+
+#disabilityEducationContactPanel .dq-contact-head {
+    text-align: center !important;
+}
+
+#disabilityEducationContactPanel .dq-contact-kicker {
+    color: #f3d688 !important;
+    font-size: .8rem !important;
+    font-weight: 950 !important;
+    letter-spacing: .09em !important;
+    text-transform: uppercase !important;
+    margin: 0 0 8px !important;
+}
+
+#disabilityEducationContactPanel .dq-contact-title {
+    color: #fff8e7 !important;
+    font-size: 1.55rem !important;
+    line-height: 1.08 !important;
+    margin: 0 0 20px !important;
+}
+
+#disabilityEducationContactPanel .dq-contact-copy {
+    display: none !important;
+}
+
+#disabilityEducationContactPanel .dq-contact-capture-wrap .lq-field label {
+    color: rgba(248,250,252,.92) !important;
+    opacity: 1 !important;
+    font-size: .82rem !important;
+    font-weight: 900 !important;
+    margin: 0 0 6px !important;
+    display: inline-block !important;
+}
+
+#disabilityEducationContactPanel .dq-contact-capture-wrap .lq-required-star {
+    color: #ff2d2d !important;
+    opacity: 1 !important;
+    font-weight: 950 !important;
+}
+
+#disabilityEducationContactPanel .dq-contact-capture-wrap input:not([type="checkbox"]):not([type="radio"]),
+#disabilityEducationContactPanel .dq-contact-capture-wrap select {
+    height: 50px !important;
+    min-height: 50px !important;
+    border-radius: 12px !important;
+    border: 1px solid rgba(243,214,136,.62) !important;
+    background: rgba(255,255,255,.98) !important;
+    color: #0f172a !important;
+}
+
+#disabilityEducationContactPanel .dq-contact-capture-wrap .lq-consent {
+    margin-top: 16px !important;
+    padding: 12px 14px !important;
+    border-radius: 12px !important;
+    background: rgba(4,16,32,.78) !important;
+    border: 1px solid rgba(59,130,246,.14) !important;
+}
+
+#disabilityEducationContactPanel.qf-final-panel-no-chrome,
+#disabilityEducationContactPanel.qf-final-review-flat-mode,
+#disabilityEducationContactPanel.is-submitted {
+    background: transparent !important;
+    border: 0 !important;
+    box-shadow: none !important;
+    padding: 0 !important;
+}
+
+#disabilityEducationContactPanel.qf-final-panel-no-chrome .dq-proof-card,
+#disabilityEducationContactPanel.qf-final-panel-no-chrome .dq-proof-chips,
+#disabilityEducationContactPanel.qf-final-panel-no-chrome #disabilityContactCaptureWrap {
+    display: none !important;
+}
+
+#disabilityEducationContactPanel.is-submit-loading #dqStep1Panel,
+#disabilityEducationContactPanel.is-submit-loading #dqContactPanel,
+#disabilityEducationContactPanel.is-submit-loading #disabilityContactCaptureWrap,
+#disabilityEducationContactPanel.is-submit-loading #disabilityPostSubmitSlot {
+    display: none !important;
+}
+
+#disabilityEducationContactPanel.is-submit-loading #dqProcessingPanel {
+    display: block !important;
+}
+
+#disabilityPostSubmitSlot .dq-final-review-agent-row .dq-proof-card {
+    margin: 0 0 8px !important;
+}
+
+#disabilityPostSubmitSlot .dq-final-review-cta {
+    display: inline-flex !important;
+    justify-content: center !important;
+    align-items: center !important;
+    width: 100% !important;
+    min-height: 58px !important;
+    border-radius: 12px !important;
+    background: linear-gradient(180deg, #79e0a7 0%, #37c785 45%, #148557 100%) !important;
+    color: #071a11 !important;
+    border: 1px solid rgba(255,244,190,.58) !important;
+    font-size: 1rem !important;
+    font-weight: 950 !important;
+    text-decoration: none !important;
+    box-shadow: 0 18px 34px rgba(8, 94, 55, 0.22) !important;
+}
+
+#disabilityPostSubmitSlot .dq-final-review-alt-note {
+    color: rgba(248,250,252,.8) !important;
+    font-size: .9rem !important;
+    line-height: 1.45 !important;
+}
+
+@@media (max-width: 720px) {
+    .lq-post-submit-slot .dq-final-review-unified-card {
+        padding: 20px;
+        border-radius: 24px;
+    }
+
+    .lq-post-submit-slot .dq-final-review-impact-grid,
+    .lq-post-submit-slot .dq-final-review-stats,
+    .dq-contact-capture-wrap .lq-field-row {
+        grid-template-columns: 1fr !important;
+    }
+
+    .dq-contact-capture-wrap {
+        padding-left: 0;
+        padding-right: 0;
+    }
+}
+
 body.disability-final-step-active .dq-proof-chips {
     display: none;
 }
@@ -1493,126 +1811,133 @@ body.disability-final-step-active .dq-form-panel {
                             <div class="lq-step-panel" id="dqContactPanel" @((showContactStepByDefault ? null : "hidden"))>
                                 <div class="lq-step-panel-pad">
                                     <div class="lq-step-progress">Final step</div>
-                                    <div class="dq-contact-head">
-                                        <div class="dq-contact-kicker">Send the review</div>
-                                        <div class="dq-contact-title">Where should we send your disability review?</div>
-                                        <div class="dq-contact-copy">We will use your answers to focus the conversation on monthly income replacement, whether current benefits fall short, and what type of coverage discussion makes the most sense first.</div>
+                                    <div class="dq-contact-capture-wrap" id="disabilityContactCaptureWrap">
+                                        <div class="dq-contact-head">
+                                            <div class="dq-contact-kicker">Send the review</div>
+                                            <div class="dq-contact-title">Where should we send your disability review?</div>
+                                            <div class="dq-contact-copy">We will use your answers to focus the conversation on monthly income replacement, whether current benefits fall short, and what type of coverage discussion makes the most sense first.</div>
+                                        </div>
+
+                                        <div class="dq-review-summary" id="disabilityReviewSummary" aria-live="polite"></div>
+
+                                        <div class="dq-contact-hint">Required fields stay strict here so the disability lead reaches the right person with enough context to follow up.</div>
+
+                                        <div class="lq-field-row lq-field-row-3">
+                                            <div class="lq-field">
+                                                <label for="FirstName">First Name <span class="lq-required-star">*</span></label>
+                                                <input type="text" id="FirstName" name="FirstName" class="form-control" value="@form.FirstName" autocomplete="given-name" />
+                                                <div class="lq-field-err" id="err-FirstName">Please enter your first name.</div>
+                                            </div>
+                                            <div class="lq-field">
+                                                <label for="LastName">Last Name <span class="lq-required-star">*</span></label>
+                                                <input type="text" id="LastName" name="LastName" class="form-control" value="@form.LastName" autocomplete="family-name" />
+                                                <div class="lq-field-err" id="err-LastName">Please enter your last name.</div>
+                                            </div>
+                                            <div class="lq-field">
+                                                <label for="Occupation">Occupation <span class="lq-required-star">*</span></label>
+                                                <input type="text" id="Occupation" name="Occupation" class="form-control" value="@form.Occupation" placeholder="Your role or profession" autocomplete="organization-title" />
+                                                <div class="lq-field-err" id="err-Occupation">Please enter your occupation.</div>
+                                            </div>
+                                        </div>
+
+                                        <div class="lq-field-row">
+                                            <div class="lq-field">
+                                                <label for="Email">Email <span class="lq-required-star">*</span></label>
+                                                <input type="email" id="Email" name="Email" class="form-control" value="@form.Email" placeholder="you@example.com" autocomplete="email" inputmode="email" />
+                                                <div class="lq-field-err" id="err-Email">Please enter a valid email address.</div>
+                                            </div>
+                                            <div class="lq-field">
+                                                <label for="Phone">Phone <span class="lq-required-star">*</span></label>
+                                                <input type="tel" id="Phone" name="Phone" class="form-control" value="@form.Phone" placeholder="(555) 555-5555" autocomplete="tel" inputmode="tel" />
+                                                <div class="lq-field-err" id="err-Phone">Please enter a valid phone number.</div>
+                                            </div>
+                                        </div>
+
+                                        <div class="lq-field-row">
+                                            <div class="lq-field">
+                                                <label for="ContactMethod">Preferred Contact Method <span class="lq-required-star">*</span></label>
+                                                <select id="ContactMethod" name="ContactMethod" class="form-select">
+                                                    <option value="">Select one</option>
+                                                    @if (form.ContactMethod == "Phone")
+                                                    {
+                                                        <option value="Phone" selected="selected">Phone</option>
+                                                    }
+                                                    else
+                                                    {
+                                                        <option value="Phone">Phone</option>
+                                                    }
+                                                    @if (form.ContactMethod == "Email")
+                                                    {
+                                                        <option value="Email" selected="selected">Email</option>
+                                                    }
+                                                    else
+                                                    {
+                                                        <option value="Email">Email</option>
+                                                    }
+                                                    @if (form.ContactMethod == "Text")
+                                                    {
+                                                        <option value="Text" selected="selected">Text</option>
+                                                    }
+                                                    else
+                                                    {
+                                                        <option value="Text">Text</option>
+                                                    }
+                                                </select>
+                                                <div class="lq-field-err" id="err-ContactMethod">Please choose how you want to be contacted.</div>
+                                            </div>
+                                            <div class="lq-field">
+                                                <label for="BestTimeToContact">Best Time To Contact <span class="lq-required-star">*</span></label>
+                                                <select id="BestTimeToContact" name="BestTimeToContact" class="form-select">
+                                                    <option value="">Select one</option>
+                                                    @if (form.BestTimeToContact == "Morning")
+                                                    {
+                                                        <option value="Morning" selected="selected">Morning</option>
+                                                    }
+                                                    else
+                                                    {
+                                                        <option value="Morning">Morning</option>
+                                                    }
+                                                    @if (form.BestTimeToContact == "Afternoon")
+                                                    {
+                                                        <option value="Afternoon" selected="selected">Afternoon</option>
+                                                    }
+                                                    else
+                                                    {
+                                                        <option value="Afternoon">Afternoon</option>
+                                                    }
+                                                    @if (form.BestTimeToContact == "Evening")
+                                                    {
+                                                        <option value="Evening" selected="selected">Evening</option>
+                                                    }
+                                                    else
+                                                    {
+                                                        <option value="Evening">Evening</option>
+                                                    }
+                                                </select>
+                                                <div class="lq-field-err" id="err-BestTimeToContact">Please choose the best time to reach you.</div>
+                                            </div>
+                                        </div>
+
+                                        <label class="lq-consent" for="AcknowledgedDisclaimer">
+                                            <input type="checkbox" id="AcknowledgedDisclaimer" name="AcknowledgedDisclaimer" value="true" @(form.AcknowledgedDisclaimer ? "checked" : null) />
+                                            <span class="lq-consent-copy">I authorize contact about my disability insurance inquiry and understand this review is designed to help compare possible income protection options, not to pressure me into a purchase. <span class="lq-required-star">*</span></span>
+                                        </label>
+                                        <input type="hidden" name="AcknowledgedDisclaimer" value="false" />
+                                        <div class="lq-field-err" id="err-AcknowledgedDisclaimer">You must agree before we can submit your review.</div>
+
+                                        <div class="lq-step-actions">
+                                            <button type="button" class="btn-ghost" id="dqBackToQuestionsBtn">Back to answers</button>
+                                            <div class="btn-block">
+                                                <p class="dq-submit-note">Private review. No obligation. You stay in control.</p>
+                                                <button type="submit" class="btn-gold btn-progress btn-block" id="dqSubmitBtn" data-cta="disability_submit_review">Get My Disability Review</button>
+                                            </div>
+                                        </div>
+
+                                        <div class="lq-error" id="disabilityError"></div>
+                                        <div class="lq-success" id="disabilitySuccess">Thanks! We received your request.</div>
                                     </div>
 
-                                    <div class="dq-review-summary" id="disabilityReviewSummary" aria-live="polite"></div>
-
-                                    <div class="dq-contact-hint">Required fields stay strict here so the disability lead reaches the right person with enough context to follow up.</div>
-
-                                    <div class="lq-field-row lq-field-row-3">
-                                        <div class="lq-field">
-                                            <label for="FirstName">First Name <span class="lq-required-star">*</span></label>
-                                            <input type="text" id="FirstName" name="FirstName" class="form-control" value="@form.FirstName" autocomplete="given-name" />
-                                            <div class="lq-field-err" id="err-FirstName">Please enter your first name.</div>
-                                        </div>
-                                        <div class="lq-field">
-                                            <label for="LastName">Last Name <span class="lq-required-star">*</span></label>
-                                            <input type="text" id="LastName" name="LastName" class="form-control" value="@form.LastName" autocomplete="family-name" />
-                                            <div class="lq-field-err" id="err-LastName">Please enter your last name.</div>
-                                        </div>
-                                        <div class="lq-field">
-                                            <label for="Occupation">Occupation <span class="lq-required-star">*</span></label>
-                                            <input type="text" id="Occupation" name="Occupation" class="form-control" value="@form.Occupation" placeholder="Your role or profession" autocomplete="organization-title" />
-                                            <div class="lq-field-err" id="err-Occupation">Please enter your occupation.</div>
-                                        </div>
-                                    </div>
-
-                                    <div class="lq-field-row">
-                                        <div class="lq-field">
-                                            <label for="Email">Email <span class="lq-required-star">*</span></label>
-                                            <input type="email" id="Email" name="Email" class="form-control" value="@form.Email" placeholder="you@example.com" autocomplete="email" inputmode="email" />
-                                            <div class="lq-field-err" id="err-Email">Please enter a valid email address.</div>
-                                        </div>
-                                        <div class="lq-field">
-                                            <label for="Phone">Phone <span class="lq-required-star">*</span></label>
-                                            <input type="tel" id="Phone" name="Phone" class="form-control" value="@form.Phone" placeholder="(555) 555-5555" autocomplete="tel" inputmode="tel" />
-                                            <div class="lq-field-err" id="err-Phone">Please enter a valid phone number.</div>
-                                        </div>
-                                    </div>
-
-                                    <div class="lq-field-row">
-                                        <div class="lq-field">
-                                            <label for="ContactMethod">Preferred Contact Method <span class="lq-required-star">*</span></label>
-                                            <select id="ContactMethod" name="ContactMethod" class="form-select">
-                                                <option value="">Select one</option>
-                                                @if (form.ContactMethod == "Phone")
-                                                {
-                                                    <option value="Phone" selected="selected">Phone</option>
-                                                }
-                                                else
-                                                {
-                                                    <option value="Phone">Phone</option>
-                                                }
-                                                @if (form.ContactMethod == "Email")
-                                                {
-                                                    <option value="Email" selected="selected">Email</option>
-                                                }
-                                                else
-                                                {
-                                                    <option value="Email">Email</option>
-                                                }
-                                                @if (form.ContactMethod == "Text")
-                                                {
-                                                    <option value="Text" selected="selected">Text</option>
-                                                }
-                                                else
-                                                {
-                                                    <option value="Text">Text</option>
-                                                }
-                                            </select>
-                                            <div class="lq-field-err" id="err-ContactMethod">Please choose how you want to be contacted.</div>
-                                        </div>
-                                        <div class="lq-field">
-                                            <label for="BestTimeToContact">Best Time To Contact <span class="lq-required-star">*</span></label>
-                                            <select id="BestTimeToContact" name="BestTimeToContact" class="form-select">
-                                                <option value="">Select one</option>
-                                                @if (form.BestTimeToContact == "Morning")
-                                                {
-                                                    <option value="Morning" selected="selected">Morning</option>
-                                                }
-                                                else
-                                                {
-                                                    <option value="Morning">Morning</option>
-                                                }
-                                                @if (form.BestTimeToContact == "Afternoon")
-                                                {
-                                                    <option value="Afternoon" selected="selected">Afternoon</option>
-                                                }
-                                                else
-                                                {
-                                                    <option value="Afternoon">Afternoon</option>
-                                                }
-                                                @if (form.BestTimeToContact == "Evening")
-                                                {
-                                                    <option value="Evening" selected="selected">Evening</option>
-                                                }
-                                                else
-                                                {
-                                                    <option value="Evening">Evening</option>
-                                                }
-                                            </select>
-                                            <div class="lq-field-err" id="err-BestTimeToContact">Please choose the best time to reach you.</div>
-                                        </div>
-                                    </div>
-
-                                    <label class="lq-consent" for="AcknowledgedDisclaimer">
-                                        <input type="checkbox" id="AcknowledgedDisclaimer" name="AcknowledgedDisclaimer" value="true" @(form.AcknowledgedDisclaimer ? "checked" : null) />
-                                        <span class="lq-consent-copy">I authorize contact about my disability insurance inquiry and understand this review is designed to help compare possible income protection options, not to pressure me into a purchase. <span class="lq-required-star">*</span></span>
-                                    </label>
-                                    <input type="hidden" name="AcknowledgedDisclaimer" value="false" />
-                                    <div class="lq-field-err" id="err-AcknowledgedDisclaimer">You must agree before we can submit your review.</div>
-
-                                    <div class="lq-step-actions">
-                                        <button type="button" class="btn-ghost" id="dqBackToQuestionsBtn">Back to answers</button>
-                                        <div class="btn-block">
-                                            <p class="dq-submit-note">Private review. No obligation. You stay in control.</p>
-                                            <button type="submit" class="btn-gold btn-progress btn-block" id="dqSubmitBtn" data-cta="disability_submit_review">Get My Disability Review</button>
-                                        </div>
-                                    </div>
+                                    <div class="lq-post-submit-slot" id="disabilityPostSubmitSlot" hidden></div>
                                 </div>
                             </div>
                         </div>
@@ -1645,14 +1970,21 @@ body.disability-final-step-active .dq-form-panel {
         var step1Panel = document.getElementById('dqStep1Panel');
         var processingPanel = document.getElementById('dqProcessingPanel');
         var contactPanel = document.getElementById('dqContactPanel');
+        var contactFirstPanel = document.getElementById('disabilityEducationContactPanel');
+        var contactCaptureWrap = document.getElementById('disabilityContactCaptureWrap');
+        var postSubmitSlot = document.getElementById('disabilityPostSubmitSlot');
         var progressLabel = document.getElementById('dqStep1Progress');
         var progressFill = document.getElementById('dqStep1ProgressFill');
         var processingFill = document.getElementById('dqProcessingFill');
         var continueButton = document.getElementById('dqContinueToContactBtn');
         var backToQuestionsButton = document.getElementById('dqBackToQuestionsBtn');
         var submitButton = document.getElementById('dqSubmitBtn');
+        var proofCard = contactFirstPanel ? contactFirstPanel.querySelector('.dq-proof-card') : null;
+        var errorBanner = document.getElementById('disabilityError');
+        var successBanner = document.getElementById('disabilitySuccess');
         var reviewSummary = document.getElementById('disabilityReviewSummary');
         var ageHidden = document.getElementById('Age');
+        var submitDefaultLabel = submitButton ? asTrimmed(submitButton.textContent) : 'Get My Disability Review';
         var microSteps = Array.prototype.slice.call(step1Panel ? step1Panel.querySelectorAll('[data-micro-step]') : []);
         var hasServerErrors = '@(hasServerErrors ? "true" : "false")' === 'true';
         var showContactStepByDefault = '@(showContactStepByDefault ? "true" : "false")' === 'true';
@@ -1677,6 +2009,7 @@ body.disability-final-step-active .dq-form-panel {
         var autoAdvanceTimer = null;
         var processingTimer = null;
         var contactStepTracked = false;
+        var thankYouTracked = false;
 
         function asTrimmed(value) {
             return typeof value === 'string' ? value.trim() : '';
@@ -1689,6 +2022,36 @@ body.disability-final-step-active .dq-form-panel {
                 .replace(/>/g, '&gt;')
                 .replace(/"/g, '&quot;')
                 .replace(/'/g, '&#39;');
+        }
+
+        function setBannerMessage(element, message) {
+            if (!element) return;
+            element.textContent = message || '';
+            element.style.display = message ? 'block' : 'none';
+        }
+
+        function clearServerFeedback() {
+            setBannerMessage(errorBanner, '');
+            setBannerMessage(successBanner, '');
+        }
+
+        function resetPostSubmitShell() {
+            if (contactFirstPanel) {
+                contactFirstPanel.classList.remove('qf-final-panel-no-chrome', 'qf-final-review-flat-mode', 'is-submitted', 'is-submit-loading');
+            }
+
+            if (contactCaptureWrap) {
+                contactCaptureWrap.hidden = false;
+            }
+
+            if (postSubmitSlot) {
+                postSubmitSlot.hidden = true;
+                postSubmitSlot.innerHTML = '';
+            }
+
+            if (processingFill) {
+                processingFill.style.width = '0%';
+            }
         }
 
         function populateAttributionFields() {
@@ -1834,6 +2197,7 @@ body.disability-final-step-active .dq-form-panel {
 
         function showMicroStep(index) {
             if (index < 0 || index >= microSteps.length) return;
+            resetPostSubmitShell();
             currentMicroStep = index;
             if (step1Panel) step1Panel.hidden = false;
             if (processingPanel) processingPanel.hidden = true;
@@ -1881,7 +2245,69 @@ body.disability-final-step-active .dq-form-panel {
             reviewSummary.innerHTML = buildReviewSummaryHtml();
         }
 
+        function buildPostSubmitHtml(responseBody) {
+            var agentName = asTrimmed(responseBody && responseBody.agentFirstName) || 'our licensed team';
+            var bookingUrl = asTrimmed(responseBody && responseBody.bookingUrl);
+            var proofHtml = proofCard ? '<div class="dq-final-review-agent-row">' + proofCard.outerHTML + '</div>' : '';
+            var ageRange = readSelectedValue('AgeRange') || 'Age range';
+            var employmentType = readSelectedValue('EmploymentType') || 'Work type';
+            var incomeRange = readSelectedValue('IncomeRange') || 'Income focus';
+            var currentCoverage = readSelectedValue('CurrentCoverage') || 'Current coverage';
+            var priority = readSelectedValue('IncomeProtectionImportance') || 'Priority';
+            var bookingHtml = bookingUrl
+                ? '<a href="' + escapeHtml(bookingUrl) + '" target="_blank" rel="noopener noreferrer" class="dq-final-review-cta">Schedule My Disability Review</a>'
+                : '<div class="dq-final-review-alt-note">A licensed advisor will follow up using the contact preference you selected.</div>';
+
+            return ''
+                + '<section class="dq-final-review-unified-card" aria-labelledby="disabilityPostSubmitTitle">'
+                + proofHtml
+                +   '<div class="dq-final-review-head">'
+                +     '<div class="dq-final-review-kicker">Review saved</div>'
+                +     '<div class="dq-final-review-title" id="disabilityPostSubmitTitle">Your disability review is ready for the next step.</div>'
+                +     '<div class="dq-final-review-copy">We saved your answers so the conversation can start with your income risk, current benefits, and paycheck protection gaps instead of starting cold.</div>'
+                +   '</div>'
+                +   '<div class="dq-final-review-proof-row" aria-label="Review value">'
+                +     '<span>Review saved</span>'
+                +     '<span>Income protection</span>'
+                +     '<span>No obligation</span>'
+                +   '</div>'
+                +   '<div class="dq-final-review-impact-grid" aria-label="Why this review matters">'
+                +     '<div class="dq-final-review-impact-card">'
+                +       '<div class="dq-final-review-impact-label">What surfaced</div>'
+                +       '<div class="dq-final-review-impact-text">Your answers suggest this review should focus on ' + escapeHtml(priority.toLowerCase()) + ', how much income needs protecting, and whether your current coverage really closes the gap.</div>'
+                +     '</div>'
+                +     '<div class="dq-final-review-impact-card is-urgent">'
+                +       '<div class="dq-final-review-impact-label">Why timing matters</div>'
+                +       '<div class="dq-final-review-impact-text">Income protection usually feels far more urgent once sickness, injury, or a missed paycheck puts real pressure on monthly obligations.</div>'
+                +     '</div>'
+                +   '</div>'
+                +   '<div class="dq-final-review-stats" aria-label="Saved review snapshot">'
+                +     '<div class="dq-final-review-stat"><div class="dq-final-review-stat-label">Age range</div><div class="dq-final-review-stat-value">' + escapeHtml(ageRange) + '</div></div>'
+                +     '<div class="dq-final-review-stat"><div class="dq-final-review-stat-label">Work type</div><div class="dq-final-review-stat-value">' + escapeHtml(employmentType) + '</div></div>'
+                +     '<div class="dq-final-review-stat"><div class="dq-final-review-stat-label">Income focus</div><div class="dq-final-review-stat-value">' + escapeHtml(incomeRange) + '</div></div>'
+                +     '<div class="dq-final-review-stat"><div class="dq-final-review-stat-label">Current protection</div><div class="dq-final-review-stat-value">' + escapeHtml(currentCoverage) + '</div></div>'
+                +   '</div>'
+                +   '<div class="dq-final-review-next-step" aria-label="What happens during the review">'
+                +     '<div class="dq-final-review-next-kicker">What happens next</div>'
+                +     '<div class="dq-final-review-next-title">' + escapeHtml(agentName) + ' helps turn this into a real income protection decision.</div>'
+                +     '<div class="dq-final-review-next-copy">The review can now confirm the gap, benefit fit, elimination period expectations, and whether workplace or personal coverage is enough before any recommendation moves forward.</div>'
+                +     '<div class="dq-final-review-checklist" aria-label="Review checklist">'
+                +       '<span>Benefit fit</span>'
+                +       '<span>Gap review</span>'
+                +       '<span>Coverage direction</span>'
+                +     '</div>'
+                +   '</div>'
+                +   '<div class="dq-final-review-booking-card">'
+                +     '<div class="dq-final-review-booking-kicker">Finish the review</div>'
+                +     '<div class="dq-final-review-booking-title">Choose a time to keep the review moving.</div>'
+                +     '<div class="dq-final-review-booking-copy">You can schedule a quick follow-up now or wait for the advisor handoff based on the contact details you provided.</div>'
+                +   '</div>'
+                +   bookingHtml
+                + '</section>';
+        }
+
         function showContactStep(trackView) {
+            resetPostSubmitShell();
             if (step1Panel) step1Panel.hidden = true;
             if (processingPanel) processingPanel.hidden = true;
             if (contactPanel) contactPanel.hidden = false;
@@ -1913,6 +2339,7 @@ body.disability-final-step-active .dq-form-panel {
         }
 
         function showProcessingThenContact() {
+            resetPostSubmitShell();
             if (step1Panel) step1Panel.hidden = true;
             if (contactPanel) contactPanel.hidden = true;
             if (processingPanel) processingPanel.hidden = false;
@@ -1949,7 +2376,139 @@ body.disability-final-step-active .dq-form-panel {
             var field = document.getElementById(fieldId);
             var error = document.getElementById('err-' + fieldId);
             if (field) field.classList.toggle('is-invalid', !!isVisible);
-            if (error) error.classList.toggle('visible', !!isVisible);
+            if (error) {
+                if (!error.dataset.defaultText) error.dataset.defaultText = error.textContent || '';
+                if (!isVisible && error.dataset.defaultText) error.textContent = error.dataset.defaultText;
+                error.classList.toggle('visible', !!isVisible);
+            }
+        }
+
+        function showDisclaimerError(message) {
+            var error = document.getElementById('err-AcknowledgedDisclaimer');
+            if (!error) return;
+            if (!error.dataset.defaultText) error.dataset.defaultText = error.textContent || '';
+            error.textContent = message || error.dataset.defaultText;
+            error.classList.add('visible');
+        }
+
+        function applyServerValidationErrors(fieldErrors) {
+            if (!fieldErrors || typeof fieldErrors !== 'object') return false;
+
+            var applied = false;
+
+            Object.keys(fieldErrors).forEach(function (name) {
+                var messages = fieldErrors[name];
+                var firstMessage = Array.isArray(messages) ? asTrimmed(messages[0]) : '';
+                if (!firstMessage) return;
+
+                switch (name) {
+                    case 'AgeRange':
+                        showGroupError('AgeRange', 'err-AgeRange');
+                        applied = true;
+                        return;
+                    case 'EmploymentType':
+                        showGroupError('EmploymentType', 'err-EmploymentType');
+                        applied = true;
+                        return;
+                    case 'IncomeRange':
+                        showGroupError('IncomeRange', 'err-IncomeRange');
+                        applied = true;
+                        return;
+                    case 'CurrentCoverage':
+                        showGroupError('CurrentCoverage', 'err-CurrentCoverage');
+                        applied = true;
+                        return;
+                    case 'IncomeProtectionImportance':
+                        showGroupError('IncomeProtectionImportance', 'err-IncomeProtectionImportance');
+                        applied = true;
+                        return;
+                    case 'AcknowledgedDisclaimer':
+                        showDisclaimerError(firstMessage);
+                        applied = true;
+                        return;
+                    default:
+                        showFieldError(name, true);
+                        var error = document.getElementById('err-' + name);
+                        if (error) {
+                            if (!error.dataset.defaultText) error.dataset.defaultText = error.textContent || '';
+                            error.textContent = firstMessage;
+                        }
+                        applied = true;
+                        return;
+                }
+            });
+
+            return applied;
+        }
+
+        function trackThankYouViewOnce() {
+            if (thankYouTracked) return;
+            thankYouTracked = true;
+            track({ EventType: 'disability_quote_thank_you_view', PageKey: pageKey, FormKey: formKey });
+            track({ EventType: 'quote_thank_you_view', PageKey: pageKey, FormKey: formKey });
+        }
+
+        function showPostSubmitSuccess(responseBody) {
+            if (contactCaptureWrap) {
+                contactCaptureWrap.hidden = true;
+            }
+
+            if (processingPanel) {
+                processingPanel.hidden = true;
+            }
+
+            if (contactPanel) {
+                contactPanel.hidden = false;
+            }
+
+            if (contactFirstPanel) {
+                contactFirstPanel.classList.add('qf-final-panel-no-chrome', 'qf-final-review-flat-mode', 'is-submitted');
+                contactFirstPanel.classList.remove('is-submit-loading');
+            }
+
+            if (postSubmitSlot) {
+                postSubmitSlot.innerHTML = buildPostSubmitHtml(responseBody || {});
+                postSubmitSlot.hidden = false;
+            }
+
+            clearServerFeedback();
+            track({
+                EventType: 'disability_quote_submit_success',
+                PageKey: pageKey,
+                FormKey: formKey,
+                MetadataJson: JSON.stringify({ leadId: asTrimmed(responseBody && responseBody.leadId) })
+            });
+            track({
+                EventType: 'lead_form_submit_success',
+                PageKey: pageKey,
+                FormKey: formKey,
+                MetadataJson: JSON.stringify({ leadId: asTrimmed(responseBody && responseBody.leadId) })
+            });
+            trackThankYouViewOnce();
+
+            if (postSubmitSlot) {
+                postSubmitSlot.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            }
+        }
+
+        function enterSubmitLoading() {
+            clearServerFeedback();
+            if (contactFirstPanel) contactFirstPanel.classList.add('is-submit-loading');
+            if (processingPanel) processingPanel.hidden = false;
+            if (processingFill) {
+                processingFill.style.width = '18%';
+                requestAnimationFrame(function () {
+                    processingFill.style.width = '76%';
+                });
+            }
+        }
+
+        function exitSubmitLoadingToContact() {
+            if (contactFirstPanel) contactFirstPanel.classList.remove('is-submit-loading');
+            if (processingPanel) processingPanel.hidden = true;
+            if (contactPanel) contactPanel.hidden = false;
+            if (contactCaptureWrap) contactCaptureWrap.hidden = false;
+            if (processingFill) processingFill.style.width = '0%';
         }
 
         function validateEmail(value) {
@@ -2053,13 +2612,14 @@ body.disability-final-step-active .dq-form-panel {
             });
         }
 
-        form.addEventListener('submit', function (event) {
+        form.addEventListener('submit', async function (event) {
+            event.preventDefault();
             populateAttributionFields();
             syncAgeHidden();
+            clearServerFeedback();
 
             for (var i = 0; i < microStepConfigs.length; i += 1) {
                 if (!requireSelection(microStepConfigs[i].field, microStepConfigs[i].errorId)) {
-                    event.preventDefault();
                     showMicroStep(i);
                     return false;
                 }
@@ -2106,7 +2666,6 @@ body.disability-final-step-active .dq-form-panel {
             if (isDisclaimerInvalid) valid = false;
 
             if (!valid) {
-                event.preventDefault();
                 showContactStep(false);
                 return false;
             }
@@ -2118,9 +2677,59 @@ body.disability-final-step-active .dq-form-panel {
                 FormKey: formKey
             });
 
+            enterSubmitLoading();
+
             if (submitButton) {
                 submitButton.disabled = true;
-                submitButton.textContent = 'Submitting your review...';
+                submitButton.textContent = 'Sending...';
+            }
+
+            try {
+                var response = await fetch(form.action, {
+                    method: 'POST',
+                    body: new FormData(form),
+                    headers: { 'X-Requested-With': 'fetch' }
+                });
+
+                var responseBody = await response.json().catch(function () { return {}; });
+                if (!response.ok) {
+                    var submitError = new Error(
+                        typeof responseBody.error === 'string' && responseBody.error.trim()
+                            ? responseBody.error.trim()
+                            : 'We could not send this right now. Please try again.');
+                    submitError.responseBody = responseBody;
+                    throw submitError;
+                }
+
+                if (processingFill) processingFill.style.width = '100%';
+                showPostSubmitSuccess(responseBody);
+            } catch (error) {
+                exitSubmitLoadingToContact();
+                var responseBody = error && typeof error === 'object' && 'responseBody' in error && error.responseBody && typeof error.responseBody === 'object'
+                    ? error.responseBody
+                    : null;
+                var errorMessage = responseBody && typeof responseBody.error === 'string' && responseBody.error.trim()
+                    ? responseBody.error.trim()
+                    : 'We could not send this right now. Please try again.';
+
+                applyServerValidationErrors(responseBody && responseBody.fieldErrors);
+                setBannerMessage(errorBanner, errorMessage);
+
+                if (responseBody && responseBody.correlationId) {
+                    console.warn('[DisabilityQuote] submit failed correlationId=' + responseBody.correlationId, responseBody.fieldErrors || responseBody);
+                }
+
+                track({
+                    EventType: 'disability_quote_submit_failure',
+                    PageKey: pageKey,
+                    FormKey: formKey,
+                    MetadataJson: JSON.stringify({ correlationId: responseBody && responseBody.correlationId ? responseBody.correlationId : '' })
+                });
+            } finally {
+                if (submitButton) {
+                    submitButton.disabled = false;
+                    submitButton.textContent = submitDefaultLabel;
+                }
             }
         });
 

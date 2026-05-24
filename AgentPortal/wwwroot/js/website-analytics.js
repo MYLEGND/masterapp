@@ -1010,6 +1010,7 @@
       { render: r => r.outcomeSummary || r.elementKey || 'Viewed' },
       { render: r => Number(r.eventCount || 0).toLocaleString('en-US'), align: 'text-end' }
     ]);
+    renderExitedBeforeStartTraffic(data);
     setText('traffic-range-label', breakdown
       ? `${data.rangeLabel || ''} · ${breakdown.replace('Attribution split: ', '')}`
       : (data.rangeLabel || ''));
@@ -1024,6 +1025,23 @@
     renderTable('traffic-top-campaigns-body', data.topCampaigns || [], [
       { key: 'key' },
       { key: 'count', align: 'text-end' }
+    ]);
+  }
+
+  function renderExitedBeforeStartTraffic(data) {
+    const rows = (data?.recentActivity || []).filter(r => {
+      const outcome = String(r?.outcomeSummary || r?.elementKey || '').toLowerCase();
+      return outcome === 'exited before start';
+    });
+
+    setText('traffic-exited-before-start-count', rows.length.toLocaleString('en-US'));
+    setText('traffic-exited-before-start-modal-count', rows.length.toLocaleString('en-US'));
+
+    renderTable('traffic-exited-before-start-body', rows, [
+      { render: r => formatActivityTimeRange(r) },
+      { key: 'pageKey' },
+      { render: r => r.activitySummary || r.eventType || 'activity recorded' },
+      { render: r => Number(r.eventCount || 0).toLocaleString('en-US'), align: 'text-end' }
     ]);
   }
 
@@ -2577,6 +2595,9 @@
       setTableMessage('traffic-top-sources-body', 2, message, 'text-danger');
       setTableMessage('traffic-top-campaigns-body', 2, message, 'text-danger');
       setTableMessage('traffic-activity-body', 5, message, 'text-danger');
+      setTableMessage('traffic-exited-before-start-body', 4, message, 'text-danger');
+      setText('traffic-exited-before-start-count', '0');
+      setText('traffic-exited-before-start-modal-count', '0');
       console.error(err);
     }
   }

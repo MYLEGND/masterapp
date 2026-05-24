@@ -1652,34 +1652,74 @@ public sealed class AnalyticsQueryService : IAnalyticsQueryService
                 e.EventType != "scroll_depth_100")
             .ToList();
 
-        traffic.RecentActivity = activityEvents
+        var sessionActivityRows = new List<ActivityItemDto>();
+        var visitInactivityGap = TimeSpan.FromMinutes(15);
+
+        foreach (var group in activityEvents
             .GroupBy(e => new
             {
                 SessionKey = !string.IsNullOrWhiteSpace(e.SessionId)
                     ? e.SessionId!
                     : $"event:{e.EventUtc.Ticks}:{e.EventType}:{e.PageKey}:{e.ElementKey}",
                 PageKey = e.PageKey ?? "unknown"
-            })
-            .Select(g =>
+            }))
+        {
+            var orderedEvents = group.OrderBy(e => e.EventUtc).ToList();
+            var visitEvents = new List<AnalyticsEvent>();
+            DateTime? previousEventUtc = null;
+
+            foreach (var currentEvent in orderedEvents)
             {
-                var sessionEvents = g.OrderBy(e => e.EventUtc).ToList();
-                var first = sessionEvents.First();
-                var last = sessionEvents.Last();
+                if (previousEventUtc.HasValue &&
+                    currentEvent.EventUtc - previousEventUtc.Value > visitInactivityGap &&
+                    visitEvents.Count > 0)
+                {
+                    var first = visitEvents.First();
+                    var last = visitEvents.Last();
+                    var durationSeconds = Math.Max(0, (int)Math.Round((last.EventUtc - first.EventUtc).TotalSeconds));
+
+                    sessionActivityRows.Add(new ActivityItemDto
+                    {
+                        EventUtc = first.EventUtc,
+                        EndUtc = last.EventUtc,
+                        DurationSeconds = durationSeconds,
+                        EventCount = visitEvents.Count,
+                        EventType = BuildActivitySummary(visitEvents),
+                        ActivitySummary = BuildActivitySummary(visitEvents),
+                        PageKey = group.Key.PageKey,
+                        ElementKey = BuildOutcomeSummary(visitEvents),
+                        OutcomeSummary = BuildOutcomeSummary(visitEvents)
+                    });
+
+                    visitEvents = new List<AnalyticsEvent>();
+                }
+
+                visitEvents.Add(currentEvent);
+                previousEventUtc = currentEvent.EventUtc;
+            }
+
+            if (visitEvents.Count > 0)
+            {
+                var first = visitEvents.First();
+                var last = visitEvents.Last();
                 var durationSeconds = Math.Max(0, (int)Math.Round((last.EventUtc - first.EventUtc).TotalSeconds));
 
-                return new ActivityItemDto
+                sessionActivityRows.Add(new ActivityItemDto
                 {
                     EventUtc = first.EventUtc,
                     EndUtc = last.EventUtc,
                     DurationSeconds = durationSeconds,
-                    EventCount = sessionEvents.Count,
-                    EventType = BuildActivitySummary(sessionEvents),
-                    ActivitySummary = BuildActivitySummary(sessionEvents),
-                    PageKey = g.Key.PageKey,
-                    ElementKey = BuildOutcomeSummary(sessionEvents),
-                    OutcomeSummary = BuildOutcomeSummary(sessionEvents)
-                };
-            })
+                    EventCount = visitEvents.Count,
+                    EventType = BuildActivitySummary(visitEvents),
+                    ActivitySummary = BuildActivitySummary(visitEvents),
+                    PageKey = group.Key.PageKey,
+                    ElementKey = BuildOutcomeSummary(visitEvents),
+                    OutcomeSummary = BuildOutcomeSummary(visitEvents)
+                });
+            }
+        }
+
+        traffic.RecentActivity = sessionActivityRows
             .OrderByDescending(a => a.EndUtc ?? a.EventUtc)
             .ToList();
 
