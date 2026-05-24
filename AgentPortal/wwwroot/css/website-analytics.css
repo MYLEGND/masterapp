@@ -3712,36 +3712,14 @@ body {
 }
 
 .wa-health-surface {
-    position: relative;
-    display: grid;
     gap: .9rem;
     padding: 1.05rem 1.1rem 1.05rem;
-    border-radius: 22px;
-    border: 1.5px solid rgba(166,128,35,.88);
-    background:
-        radial-gradient(920px 300px at -4% 0%, rgba(199,153,49,.1), transparent 54%),
-        radial-gradient(760px 260px at 104% 0%, rgba(55,91,154,.15), transparent 56%),
-        linear-gradient(158deg, #0b1530 0%, #0f1d3c 52%, #0b1530 100%);
-    box-shadow:
-        0 24px 50px rgba(0,0,0,.22),
-        inset 0 1px 0 rgba(255,255,255,.05),
-        inset 0 0 0 1px rgba(199,153,49,.08);
-    overflow: hidden;
 }
 
 .wa-health-surface::before {
-    content: "";
-    position: absolute;
-    inset: 0;
     background:
-        linear-gradient(180deg, rgba(255,255,255,.03) 0%, rgba(255,255,255,0) 24%),
-        radial-gradient(520px 190px at 88% 100%, rgba(199,153,49,.06), transparent 64%);
-    pointer-events: none;
-}
-
-.wa-health-surface > * {
-    position: relative;
-    z-index: 1;
+        linear-gradient(180deg, rgba(255,255,255,.035) 0%, rgba(255,255,255,0) 26%),
+        radial-gradient(540px 200px at 84% 100%, rgba(199,153,49,.08), transparent 65%);
 }
 
 .wa-workbench-intro {
@@ -5106,10 +5084,6 @@ body {
     overflow: hidden;
     display: grid;
     gap: .82rem;
-    padding: 0;
-    border: 0;
-    background: transparent;
-    box-shadow: none;
 }
 
 .wa-kpi-band-health::before,

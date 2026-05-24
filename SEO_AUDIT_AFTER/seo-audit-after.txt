@@ -1,6 +1,3 @@
-==================== TITLES ====================
-Protect-Website/Views/Shared/_Layout.cshtml:74:    <title>@seoTitle</title>
-
 ==================== SEO VIEWDATA ====================
 Protect-Website/Views/Home/Privacy.cshtml:5:    ViewData["SeoTitle"] = "Privacy & Data Use";
 Protect-Website/Views/Home/Privacy.cshtml:6:    ViewData["SeoDescription"] = "Review how Legend handles privacy, data use, submitted information, and website interactions.";
@@ -29,40 +26,46 @@ Protect-Website/Views/Shared/_Layout.cshtml:80:    <meta property="og:descriptio
 Protect-Website/Views/Shared/_Layout.cshtml:86:    <meta name="twitter:title" content="@seoTitle" />
 Protect-Website/Views/Shared/_Layout.cshtml:87:    <meta name="twitter:description" content="@seoDescription" />
 
-==================== META DESCRIPTIONS ====================
+==================== GLOBAL SEO TAGS ====================
 Protect-Website/Views/Shared/_Layout.cshtml:75:    <meta name="description" content="@seoDescription" />
-
-==================== CANONICAL TAGS ====================
-Protect-Website/Views/Shared/_Layout.cshtml:77:    <link rel="canonical" href="@seoCanonicalUrl" />
-
-==================== ROBOTS META / NOINDEX ====================
 Protect-Website/Views/Shared/_Layout.cshtml:76:    <meta name="robots" content="@seoRobots" />
-
-==================== OPEN GRAPH ====================
+Protect-Website/Views/Shared/_Layout.cshtml:77:    <link rel="canonical" href="@seoCanonicalUrl" />
 Protect-Website/Views/Shared/_Layout.cshtml:79:    <meta property="og:title" content="@seoTitle" />
 Protect-Website/Views/Shared/_Layout.cshtml:80:    <meta property="og:description" content="@seoDescription" />
 Protect-Website/Views/Shared/_Layout.cshtml:81:    <meta property="og:type" content="@seoType" />
 Protect-Website/Views/Shared/_Layout.cshtml:82:    <meta property="og:url" content="@seoCanonicalUrl" />
 Protect-Website/Views/Shared/_Layout.cshtml:83:    <meta property="og:image" content="@seoOgImage" />
-
-==================== TWITTER TAGS ====================
 Protect-Website/Views/Shared/_Layout.cshtml:85:    <meta name="twitter:card" content="summary_large_image" />
 Protect-Website/Views/Shared/_Layout.cshtml:86:    <meta name="twitter:title" content="@seoTitle" />
 Protect-Website/Views/Shared/_Layout.cshtml:87:    <meta name="twitter:description" content="@seoDescription" />
 Protect-Website/Views/Shared/_Layout.cshtml:88:    <meta name="twitter:image" content="@seoOgImage" />
 
 ==================== STRUCTURED DATA ====================
-Protect-Website/Views/Shared/_Layout.cshtml:659:    <script type="application/ld+json">
+658:    <script type="application/ld+json">
+660:      "@@context": "https://schema.org",
+661:      "@@type": "FinancialService",
+665:      "areaServed": [
+666:        { "@@type": "State", "name": "Arizona" },
+667:        { "@@type": "State", "name": "California" },
+668:        { "@@type": "State", "name": "Iowa" },
+669:        { "@@type": "State", "name": "Kansas" },
+670:        { "@@type": "State", "name": "Louisiana" },
+671:        { "@@type": "State", "name": "Maryland" },
+672:        { "@@type": "State", "name": "Mississippi" },
+673:        { "@@type": "State", "name": "Ohio" },
+674:        { "@@type": "State", "name": "South Carolina" },
+675:        { "@@type": "State", "name": "South Dakota" },
+676:        { "@@type": "State", "name": "Texas" },
+677:        { "@@type": "State", "name": "Washington" }
+680:        "@@type": "Person",
 
 ==================== ROBOTS.TXT ====================
-Protect-Website/wwwroot/robots.txt
 User-agent: *
 Allow: /
 
 Sitemap: https://protect.mylegnd.com/sitemap.xml
 
-==================== SITEMAPS ====================
-Protect-Website/wwwroot/sitemap.xml
+==================== SITEMAP ====================
 <?xml version="1.0" encoding="UTF-8"?>
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
   <url>
@@ -115,4 +118,16 @@ Protect-Website/wwwroot/sitemap.xml
   </url>
 </urlset>
 
-==================== BUILD CHECK SHOULD ALREADY HAVE PASSED ====================
+==================== BUILD ====================
+  Determining projects to restore...
+  All projects are up-to-date for restore.
+  Shared -> /tmp/masterapp/bin/Shared/Debug/net10.0/Shared.dll
+  Domain -> /tmp/masterapp/bin/Domain/Debug/net10.0/Domain.dll
+  Infrastructure -> /tmp/masterapp/bin/Infrastructure/Debug/net10.0/Infrastructure.dll
+  ProtectWebsite -> /tmp/masterapp/bin/ProtectWebsite/Debug/net10.0/ProtectWebsite.dll
+
+Build succeeded.
+    0 Warning(s)
+    0 Error(s)
+
+Time Elapsed 00:00:00.96
