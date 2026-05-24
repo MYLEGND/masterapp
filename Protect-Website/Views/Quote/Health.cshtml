@@ -1393,6 +1393,24 @@ body.health-landing.page-mode-paid-landing header .navbar-brand img {
     font-weight: 760 !important;
 }
 
+#healthPostSubmitSlot .lq-booking-frame-only {
+    margin: 10px 0 0 !important;
+    padding: 0 !important;
+    background: transparent !important;
+    border: 0 !important;
+    box-shadow: none !important;
+}
+
+#healthPostSubmitSlot .lq-booking-iframe {
+    display: block !important;
+    width: 100% !important;
+    min-height: 650px !important;
+    border-radius: 18px !important;
+    border: 1px solid rgba(199,153,49,.28) !important;
+    background: #ffffff !important;
+    box-shadow: 0 16px 34px rgba(2,12,27,.22) !important;
+}
+
 #healthEducationContactPanel,
 #healthEducationContactPanel * {
     box-sizing: border-box !important;
@@ -1586,6 +1604,11 @@ body.health-landing.page-mode-paid-landing header .navbar-brand img {
     #healthPostSubmitSlot .lq-final-review-booking-card {
         padding: 14px !important;
         border-radius: 16px !important;
+    }
+
+    #healthPostSubmitSlot .lq-booking-iframe {
+        min-height: 620px !important;
+        border-radius: 14px !important;
     }
 
     .dq-contact-capture-wrap {
@@ -2306,6 +2329,8 @@ body.health-final-step-active .dq-form-panel {
         var reviewSummary = document.getElementById('healthReviewSummary');
         var ageHidden = document.getElementById('Age');
         var submitDefaultLabel = submitButton ? asTrimmed(submitButton.textContent) : 'Get My Health Review';
+        var bookingExperienceUrl = '@Url.Action("ActivatePublicBookingExperience", "HealthQuote")';
+        var bookingConfirmationUrl = '@Url.Action("ConfirmPublicBookingExperience", "HealthQuote")';
         var microSteps = Array.prototype.slice.call(step1Panel ? step1Panel.querySelectorAll('[data-micro-step]') : []);
         var hasServerErrors = '@(hasServerErrors ? "true" : "false")' === 'true';
         var showContactStepByDefault = '@(showContactStepByDefault ? "true" : "false")' === 'true';
@@ -2331,6 +2356,15 @@ body.health-final-step-active .dq-form-panel {
         var processingTimer = null;
         var contactStepTracked = false;
         var thankYouTracked = false;
+        var latestSubmitResponse = null;
+        var publicBookingState = null;
+        var publicBookingEmbedViewed = false;
+        var publicBookingBookedConfirmed = false;
+        var publicBookingConfirmationRequested = false;
+        var publicBookingSlotSelectedTracked = false;
+        var publicBookingFallbackClicked = false;
+        var publicBookingLoadingText = 'Preparing your scheduling options...';
+        var publicBookingDisabledText = 'Your health coverage review is saved. Scheduling is not available in this view right now, but a licensed agent can still continue the review with you.';
 
         function asTrimmed(value) {
             return typeof value === 'string' ? value.trim() : '';
@@ -2357,6 +2391,14 @@ body.health-final-step-active .dq-form-panel {
         }
 
         function resetPostSubmitShell() {
+            latestSubmitResponse = null;
+            publicBookingState = null;
+            publicBookingEmbedViewed = false;
+            publicBookingBookedConfirmed = false;
+            publicBookingConfirmationRequested = false;
+            publicBookingSlotSelectedTracked = false;
+            publicBookingFallbackClicked = false;
+
             if (contactFirstPanel) {
                 contactFirstPanel.classList.remove('qf-final-panel-no-chrome', 'qf-final-review-flat-mode', 'is-submitted', 'is-submit-loading');
             }
@@ -2568,9 +2610,223 @@ body.health-final-step-active .dq-form-panel {
             reviewSummary.innerHTML = buildReviewSummaryHtml();
         }
 
-        function buildPostSubmitHtml(responseBody) {
-            var agentName = asTrimmed(responseBody && responseBody.agentFirstName) || 'our licensed team';
-            var bookingUrl = asTrimmed(responseBody && responseBody.bookingUrl);
+        function trackBookingEvent(eventType, metadata) {
+            track({
+                EventType: eventType,
+                PageKey: pageKey,
+                FormKey: formKey,
+                MetadataJson: JSON.stringify(metadata || {})
+            });
+        }
+
+        function resolveRequestedBookingSurface(payload) {
+            return Boolean(payload && (payload.canEmbed || payload.eligible))
+                ? 'website_embed'
+                : 'external_redirect_fallback';
+        }
+
+        function buildDisabledBookingState(reason) {
+            return {
+                enabled: false,
+                canEmbed: false,
+                canFallback: false,
+                preferModalOnMobile: false,
+                embedUrl: '',
+                fallbackUrl: '',
+                surface: 'external_redirect_fallback',
+                linkedToLead: false,
+                appointmentStatus: '',
+                pendingConfirmation: false,
+                reason: asTrimmed(reason) || 'disabled',
+                contextToken: ''
+            };
+        }
+
+        function normalizePublicBookingPayload(payload, hint) {
+            var source = payload && typeof payload === 'object' ? payload : {};
+            var sourceHint = hint && typeof hint === 'object' ? hint : {};
+            var canEmbed = Boolean(source.canEmbed != null ? source.canEmbed : sourceHint.canEmbed);
+            var canFallback = Boolean(source.canFallback != null ? source.canFallback : sourceHint.canFallback);
+            var enabled = Boolean(source.enabled != null ? source.enabled : sourceHint.eligible) && (canEmbed || canFallback);
+
+            return {
+                enabled: enabled,
+                canEmbed: canEmbed,
+                canFallback: canFallback,
+                preferModalOnMobile: Boolean(source.preferModalOnMobile != null ? source.preferModalOnMobile : sourceHint.preferModalOnMobile),
+                embedUrl: asTrimmed(source.embedUrl || sourceHint.embedUrl || ''),
+                fallbackUrl: asTrimmed(source.fallbackUrl || sourceHint.fallbackUrl || ''),
+                surface: asTrimmed(source.surface || resolveRequestedBookingSurface(sourceHint)),
+                linkedToLead: Boolean(source.linkedToLead),
+                appointmentStatus: asTrimmed(source.appointmentStatus || ''),
+                requestedBookingSource: asTrimmed(source.requestedBookingSource || ''),
+                confirmationSource: asTrimmed(source.confirmationSource || ''),
+                confirmationVerified: Boolean(source.confirmationVerified),
+                pendingConfirmation: Boolean(source.pendingConfirmation),
+                reason: asTrimmed(source.reason || (enabled ? 'configured' : 'disabled')) || 'disabled',
+                contextToken: asTrimmed(source.contextToken || sourceHint.contextToken || ''),
+                bookingConfigSource: asTrimmed(source.bookingConfigSource || sourceHint.bookingConfigSource || ''),
+                bookingConfigAgentSlug: asTrimmed(source.bookingConfigAgentSlug || sourceHint.bookingConfigAgentSlug || ''),
+                bookingTrackingProfileId: asTrimmed(source.bookingTrackingProfileId || sourceHint.bookingTrackingProfileId || ''),
+                calendarEventId: asTrimmed(source.calendarEventId || ''),
+                calendarEventWebLink: asTrimmed(source.calendarEventWebLink || ''),
+                scheduledStartUtc: asTrimmed(source.scheduledStartUtc || ''),
+                scheduledEndUtc: asTrimmed(source.scheduledEndUtc || '')
+            };
+        }
+
+        function buildAppointmentTrackingMetadata(payload, extra) {
+            var normalized = normalizePublicBookingPayload(payload, publicBookingState);
+            return Object.assign({
+                bookingSurface: normalized.surface || resolveRequestedBookingSurface(normalized),
+                bookingMode: normalized.canEmbed ? 'inline' : 'fallback',
+                hasFallback: normalized.canFallback,
+                appointmentStatus: normalized.appointmentStatus || '',
+                requestedBookingSource: normalized.requestedBookingSource || '',
+                confirmationSource: normalized.confirmationSource || '',
+                confirmationVerified: normalized.confirmationVerified,
+                linkedToLead: normalized.linkedToLead,
+                pendingConfirmation: normalized.pendingConfirmation,
+                bookingReason: normalized.reason || '',
+                bookingConfigSource: normalized.bookingConfigSource || '',
+                bookingConfigAgentSlug: normalized.bookingConfigAgentSlug || '',
+                bookingTrackingProfileId: normalized.bookingTrackingProfileId || ''
+            }, extra || {});
+        }
+
+        function renderBookingIframe(frameSlot, statusEl, url) {
+            if (!frameSlot || !statusEl || !url) {
+                return;
+            }
+
+            frameSlot.innerHTML = '';
+            statusEl.hidden = false;
+            statusEl.textContent = publicBookingLoadingText;
+
+            var iframe = document.createElement('iframe');
+            iframe.className = 'lq-booking-iframe';
+            iframe.src = url;
+            iframe.loading = 'lazy';
+            iframe.referrerPolicy = 'strict-origin-when-cross-origin';
+            iframe.title = 'Continue your health coverage review';
+
+            var frameLoaded = false;
+            var loadTimeout = window.setTimeout(function () {
+                if (frameLoaded) {
+                    return;
+                }
+
+                statusEl.hidden = false;
+                statusEl.textContent = 'Scheduling is taking longer than expected. You can still open it in a new tab if needed.';
+            }, 8000);
+
+            iframe.addEventListener('load', function () {
+                frameLoaded = true;
+                window.clearTimeout(loadTimeout);
+                statusEl.hidden = true;
+            }, { once: true });
+
+            frameSlot.appendChild(iframe);
+        }
+
+        function markAppointmentEmbedViewed(payload) {
+            if (publicBookingEmbedViewed) {
+                return;
+            }
+
+            publicBookingEmbedViewed = true;
+            trackBookingEvent('appointment_embed_viewed', buildAppointmentTrackingMetadata(payload));
+        }
+
+        async function activatePublicBookingExperience(hint) {
+            if (!hint || typeof hint !== 'object' || !asTrimmed(hint.contextToken)) {
+                return buildDisabledBookingState('missing_context');
+            }
+
+            var requestSurface = resolveRequestedBookingSurface(hint);
+
+            try {
+                var response = await fetch(bookingExperienceUrl, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-Requested-With': 'fetch'
+                    },
+                    body: JSON.stringify({
+                        contextToken: hint.contextToken,
+                        surface: requestSurface
+                    })
+                });
+
+                if (!response.ok) {
+                    throw new Error('booking_activation_failed');
+                }
+
+                var payload = await response.json().catch(function () { return {}; });
+                return normalizePublicBookingPayload(payload, hint);
+            } catch (error) {
+                console.warn('[HealthQuote] public booking activation failed', error);
+                return normalizePublicBookingPayload({
+                    enabled: Boolean(hint.eligible),
+                    canEmbed: Boolean(hint.canEmbed),
+                    canFallback: Boolean(hint.canFallback),
+                    preferModalOnMobile: Boolean(hint.preferModalOnMobile),
+                    embedUrl: hint.embedUrl || '',
+                    fallbackUrl: hint.fallbackUrl || '',
+                    surface: requestSurface,
+                    reason: 'activation_failed',
+                    contextToken: hint.contextToken || ''
+                }, hint);
+            }
+        }
+
+        async function confirmPublicBookingExperience(payload) {
+            var normalized = normalizePublicBookingPayload(payload, publicBookingState);
+            if (!normalized.contextToken) {
+                return normalized;
+            }
+
+            try {
+                var response = await fetch(bookingConfirmationUrl, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-Requested-With': 'fetch'
+                    },
+                    body: JSON.stringify({
+                        contextToken: normalized.contextToken,
+                        surface: normalized.surface || resolveRequestedBookingSurface(normalized)
+                    })
+                });
+
+                if (!response.ok) {
+                    throw new Error('booking_confirmation_failed');
+                }
+
+                var confirmationPayload = await response.json().catch(function () { return {}; });
+                return normalizePublicBookingPayload(Object.assign({}, normalized, confirmationPayload), normalized);
+            } catch (error) {
+                console.warn('[HealthQuote] public booking confirmation failed', error);
+                return normalized;
+            }
+        }
+
+        function renderPostSubmitBookingState(payload) {
+            if (!postSubmitSlot) return;
+
+            var normalized = payload && payload.loading
+                ? { loading: true }
+                : normalizePublicBookingPayload(payload, publicBookingState);
+
+            if (!normalized.loading) {
+                publicBookingState = normalized;
+                if (normalized.confirmationVerified) {
+                    publicBookingBookedConfirmed = true;
+                }
+            }
+
+            var responseBody = latestSubmitResponse || {};
+            var agentName = asTrimmed(responseBody.agentFirstName) || 'our licensed team';
             var proofHtml = proofCard ? '<div class="lq-final-review-agent-row">' + proofCard.outerHTML + '</div>' : '';
             var ageRange = readSelectedValue('AgeRange') || 'Age range';
             var householdSize = readSelectedValue('HouseholdSize') || 'Household';
@@ -2584,11 +2840,15 @@ body.health-final-step-active .dq-form-panel {
                 +   '<div class="dq-final-review-stat"><div class="dq-final-review-stat-label">Current coverage</div><div class="dq-final-review-stat-value">' + escapeHtml(currentCoverage) + '</div></div>'
                 +   '<div class="dq-final-review-stat"><div class="dq-final-review-stat-label">Review focus</div><div class="dq-final-review-stat-value">' + escapeHtml(coverageType) + '</div></div>'
                 + '</div>';
-            var bookingHtml = bookingUrl
-                ? '<a href="' + escapeHtml(bookingUrl) + '" target="_blank" rel="noopener noreferrer" class="lq-booking-secondary-link" id="healthBookingFallbackLink">Open scheduling</a>'
-                : '<div class="lq-final-review-unavailable">A licensed advisor will follow up using the contact preference you selected.</div>';
+            var showInlineShell = !normalized.loading && normalized.enabled && normalized.canEmbed && normalized.embedUrl;
+            var showFallbackLink = !normalized.loading && normalized.canFallback && normalized.fallbackUrl;
+            var bookingUnavailableCopy = !normalized.loading && !showInlineShell && !showFallbackLink
+                ? (normalized.enabled
+                    ? 'Your review is saved. Scheduling is not available in this view right now, but a licensed agent can still continue the conversation with you.'
+                    : publicBookingDisabledText)
+                : '';
 
-            return ''
+            postSubmitSlot.innerHTML = ''
                 + '<section class="lq-final-review-unified-card" aria-labelledby="healthPostSubmitTitle">'
                 + proofHtml
                 +   '<div class="lq-final-review-head">'
@@ -2627,10 +2887,41 @@ body.health-final-step-active .dq-form-panel {
                 +   '<div class="lq-final-review-booking-card">'
                 +     '<div class="lq-final-review-booking-kicker">Finish the review</div>'
                 +     '<div class="lq-final-review-booking-title">Choose a time to keep the review moving.</div>'
-                +     '<div class="lq-final-review-booking-copy">You can schedule a quick follow-up now or wait for the advisor handoff based on the contact details you provided.</div>'
+                +     '<div class="lq-final-review-booking-copy">Schedule while this is fresh so ' + escapeHtml(agentName) + ' can confirm affordability, provider access, deductible comfort, and what path fits best.</div>'
                 +   '</div>'
-                +   bookingHtml
+                +   (normalized.loading
+                    ? '<div class="lq-final-review-loading">' + escapeHtml(publicBookingLoadingText) + '</div>'
+                    : '')
+                +   (showInlineShell
+                    ? '<div class="lq-booking-frame-only" id="healthBookingInlineFrameSlot"></div>'
+                    + '<div class="lq-booking-embed-status" id="healthBookingInlineStatus" hidden>' + escapeHtml(publicBookingLoadingText) + '</div>'
+                    : '')
+                +   (bookingUnavailableCopy
+                    ? '<div class="lq-final-review-unavailable">' + escapeHtml(bookingUnavailableCopy) + '</div>'
+                    : '')
+                +   (showFallbackLink
+                    ? '<a href="' + escapeHtml(normalized.fallbackUrl) + '" target="_blank" rel="noopener noreferrer" class="lq-booking-secondary-link" id="healthBookingFallbackLink">Open scheduling</a>'
+                    : '')
                 + '</section>';
+
+            postSubmitSlot.hidden = false;
+
+            var inlineFrameSlot = document.getElementById('healthBookingInlineFrameSlot');
+            var inlineStatus = document.getElementById('healthBookingInlineStatus');
+            if (showInlineShell) {
+                renderBookingIframe(inlineFrameSlot, inlineStatus, normalizePublicBookingPayload(publicBookingState, payload).embedUrl);
+                markAppointmentEmbedViewed(normalizePublicBookingPayload(publicBookingState, payload));
+            }
+
+            var fallbackLink = document.getElementById('healthBookingFallbackLink');
+            if (fallbackLink instanceof HTMLAnchorElement) {
+                fallbackLink.addEventListener('click', function () {
+                    publicBookingFallbackClicked = true;
+                    trackBookingEvent('appointment_booking_fallback_clicked', buildAppointmentTrackingMetadata(publicBookingState, {
+                        bookingSurface: 'external_redirect_fallback'
+                    }));
+                });
+            }
         }
 
         function showContactStep(trackView) {
@@ -2775,7 +3066,89 @@ body.health-final-step-active .dq-form-panel {
             track({ EventType: 'quote_thank_you_view', PageKey: pageKey, FormKey: formKey });
         }
 
-        function showPostSubmitSuccess(responseBody) {
+        function resolveBookingMessageSignal(event) {
+            if (!event || typeof event !== 'object' || !event.origin) {
+                return '';
+            }
+
+            var hostname = '';
+            try {
+                hostname = new URL(event.origin).hostname.toLowerCase();
+            } catch (error) {
+                return '';
+            }
+
+            if (!hostname.endsWith('office.com') &&
+                !hostname.endsWith('outlook.com') &&
+                !hostname.endsWith('microsoft.com')) {
+                return '';
+            }
+
+            var data = event.data;
+            var signalType = typeof data === 'string'
+                ? data.trim().toLowerCase()
+                : typeof (data && data.type) === 'string'
+                    ? data.type.trim().toLowerCase()
+                    : '';
+
+            if (signalType === 'appointment_slot_selected' || signalType === 'ms_bookings_slot_selected') {
+                return 'slot_selected';
+            }
+
+            if (signalType === 'appointment_booked' || signalType === 'ms_bookings_booked' || signalType === 'ms_bookings_confirmed') {
+                return 'booked';
+            }
+
+            if (typeof data === 'object' && data && data.bookingConfirmed === true) {
+                return 'booked';
+            }
+
+            return '';
+        }
+
+        window.addEventListener('message', function (event) {
+            var signal = resolveBookingMessageSignal(event);
+            if (!signal) {
+                return;
+            }
+
+            if (signal === 'slot_selected' && !publicBookingSlotSelectedTracked) {
+                publicBookingSlotSelectedTracked = true;
+                trackBookingEvent('appointment_slot_selected', buildAppointmentTrackingMetadata(publicBookingState));
+                return;
+            }
+
+            if (signal === 'booked' && !publicBookingBookedConfirmed) {
+                if (publicBookingConfirmationRequested) {
+                    return;
+                }
+
+                publicBookingConfirmationRequested = true;
+                void confirmPublicBookingExperience(publicBookingState).then(function (confirmedState) {
+                    publicBookingConfirmationRequested = false;
+                    publicBookingState = normalizePublicBookingPayload(confirmedState, publicBookingState);
+                    renderPostSubmitBookingState(publicBookingState);
+
+                    if (publicBookingState.confirmationVerified && !publicBookingBookedConfirmed) {
+                        publicBookingBookedConfirmed = true;
+                        trackBookingEvent('appointment_booked', buildAppointmentTrackingMetadata(publicBookingState));
+                    }
+                }).catch(function (error) {
+                    publicBookingConfirmationRequested = false;
+                    console.warn('[HealthQuote] trusted booking confirmation failed', error);
+                });
+            }
+        });
+
+        async function showPostSubmitSuccess(responseBody) {
+            latestSubmitResponse = responseBody || {};
+            publicBookingState = null;
+            publicBookingEmbedViewed = false;
+            publicBookingBookedConfirmed = false;
+            publicBookingConfirmationRequested = false;
+            publicBookingSlotSelectedTracked = false;
+            publicBookingFallbackClicked = false;
+
             if (contactCaptureWrap) {
                 contactCaptureWrap.hidden = true;
             }
@@ -2793,11 +3166,6 @@ body.health-final-step-active .dq-form-panel {
                 contactFirstPanel.classList.remove('is-submit-loading');
             }
 
-            if (postSubmitSlot) {
-                postSubmitSlot.innerHTML = buildPostSubmitHtml(responseBody || {});
-                postSubmitSlot.hidden = false;
-            }
-
             clearServerFeedback();
             track({
                 EventType: 'health_quote_submit_success',
@@ -2812,6 +3180,19 @@ body.health-final-step-active .dq-form-panel {
                 MetadataJson: JSON.stringify({ leadId: asTrimmed(responseBody && responseBody.leadId) })
             });
             trackThankYouViewOnce();
+
+            renderPostSubmitBookingState({ loading: true });
+
+            var bookingHint = responseBody && typeof responseBody.booking === 'object'
+                ? responseBody.booking
+                : null;
+
+            if (!bookingHint || !bookingHint.eligible) {
+                renderPostSubmitBookingState(buildDisabledBookingState(asTrimmed(bookingHint && bookingHint.reason) || 'disabled'));
+            } else {
+                var bookingPayload = await activatePublicBookingExperience(bookingHint);
+                renderPostSubmitBookingState(bookingPayload);
+            }
 
             if (postSubmitSlot) {
                 postSubmitSlot.scrollIntoView({ behavior: 'smooth', block: 'center' });
@@ -3027,7 +3408,7 @@ body.health-final-step-active .dq-form-panel {
                 }
 
                 if (processingFill) processingFill.style.width = '100%';
-                showPostSubmitSuccess(responseBody);
+                await showPostSubmitSuccess(responseBody);
             } catch (error) {
                 exitSubmitLoadingToContact();
                 var responseBody = error && typeof error === 'object' && 'responseBody' in error && error.responseBody && typeof error.responseBody === 'object'

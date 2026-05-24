@@ -14,6 +14,8 @@ using Infrastructure.Leads;
 using ProtectWebsite.Services.Meta;
 using ProtectWebsite.Services;
 using ProtectWebsite.Services.Tracking;
+using Microsoft.AspNetCore.WebUtilities;
+using ProtectWebsite.Services.Booking;
 
 namespace Protect_Website.Controllers
 {
@@ -39,10 +41,13 @@ namespace Protect_Website.Controllers
         private readonly IMetaConversionsApiService _metaConversionsApi;
         private readonly IMetaPixelResolutionService _metaPixelResolution;
         private readonly IWebsiteLifeLeadCaptureService _websiteLeadCapture;
+        private readonly IPublicBookingResolver _publicBookingResolver;
+        private readonly IPublicBookingConfirmationService _publicBookingConfirmationService;
+        private readonly IPublicBookingContextProtector _publicBookingContextProtector;
         private readonly ILogger<DisabilityQuoteController> _logger;
 
         public DisabilityQuoteController(IConfiguration configuration, AgentTrackingResolver resolver,
-            MasterAppDbContext db, IMetaConversionsApiService metaConversionsApi, IMetaPixelResolutionService metaPixelResolution, IWebsiteLifeLeadCaptureService websiteLeadCapture, ILogger<DisabilityQuoteController> logger)
+            MasterAppDbContext db, IMetaConversionsApiService metaConversionsApi, IMetaPixelResolutionService metaPixelResolution, IWebsiteLifeLeadCaptureService websiteLeadCapture, IPublicBookingResolver publicBookingResolver, IPublicBookingConfirmationService publicBookingConfirmationService, IPublicBookingContextProtector publicBookingContextProtector, ILogger<DisabilityQuoteController> logger)
         {
             tenantId = configuration["AzureAd:TenantId"]!;
             clientId = configuration["AzureAd:ClientId"]!;
@@ -55,6 +60,9 @@ namespace Protect_Website.Controllers
             _metaConversionsApi = metaConversionsApi;
             _metaPixelResolution = metaPixelResolution;
             _websiteLeadCapture = websiteLeadCapture;
+            _publicBookingResolver = publicBookingResolver;
+            _publicBookingConfirmationService = publicBookingConfirmationService;
+            _publicBookingContextProtector = publicBookingContextProtector;
             _logger = logger;
         }
 
@@ -564,6 +572,14 @@ namespace Protect_Website.Controllers
                 },
                 lead.CreatedUtc);
 
+            var publicBookingHint = await BuildPublicBookingAjaxHintAsync(
+                lead.LeadId,
+                lead.AgentTrackingProfileId,
+                agentSlug,
+                QuotePageKey,
+                QuoteOfferKey,
+                HttpContext?.RequestAborted ?? CancellationToken.None);
+
             if (IsAjax())
             {
                 return Ok(new
@@ -573,7 +589,8 @@ namespace Protect_Website.Controllers
                     metaLeadEventId,
                     metaCapiStatus = metaCapiResult.Status,
                     agentFirstName = attachedAgentContact?.FirstName,
-                    bookingUrl = attachedAgentContact?.BookingUrl
+                    bookingUrl = attachedAgentContact?.BookingUrl,
+                    booking = publicBookingHint
                 });
             }
 
@@ -581,6 +598,112 @@ namespace Protect_Website.Controllers
             TempData["MetaLeadEventId"] = metaLeadEventId;
             TempData["MetaLeadLeadId"] = lead.LeadId.ToString("D");
             return RedirectToAction("Index", "ThankYou");
+        }
+
+        [HttpPost("Disability/booking-experience")]
+        public async Task<IActionResult> ActivatePublicBookingExperience([FromBody] PublicBookingExperienceRequest? request)
+        {
+            if (request == null || string.IsNullOrWhiteSpace(request.ContextToken))
+            {
+                return BadRequest(new { error = "Invalid booking context." });
+            }
+
+            if (!_publicBookingContextProtector.TryUnprotect(request.ContextToken, out var bookingContext) || bookingContext == null)
+            {
+                return BadRequest(new { error = "Booking context has expired." });
+            }
+
+            var resolution = await _publicBookingResolver.ResolveAsync(
+                new PublicBookingResolveContext(
+                    WebsiteLeadId: bookingContext.WebsiteLeadId,
+                    AgentTrackingProfileId: bookingContext.AgentTrackingProfileId,
+                    AgentUserId: bookingContext.AgentUserId,
+                    AgentSlug: bookingContext.AgentSlug),
+                HttpContext?.RequestAborted ?? CancellationToken.None);
+            var requestedSource = NormalizePublicBookingSurface(request.Surface, resolution.HasEmbed);
+            var enabled = resolution.Enabled && resolution.HasAnyExperience;
+            var embedUrl = enabled && resolution.HasEmbed
+                ? AppendBookingContextToken(resolution.EmbedUrl, request.ContextToken)
+                : null;
+            var fallbackUrl = enabled && resolution.HasFallback
+                ? AppendBookingContextToken(resolution.FallbackUrl, request.ContextToken)
+                : null;
+
+            LeadAppointment? appointment = null;
+            if (enabled)
+            {
+                try
+                {
+                    appointment = await UpsertRequestedPublicAppointmentAsync(
+                        bookingContext,
+                        resolution,
+                        requestedSource,
+                        HttpContext?.RequestAborted ?? CancellationToken.None);
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogWarning(
+                        ex,
+                        "DisabilityQuote public booking activation failed for WebsiteLead {LeadId}. Returning booking UI without appointment linkage.",
+                        bookingContext.WebsiteLeadId);
+                }
+            }
+
+            return Ok(new
+            {
+                enabled,
+                canEmbed = enabled && resolution.HasEmbed,
+                canFallback = enabled && resolution.HasFallback,
+                preferModalOnMobile = resolution.PreferModalOnMobile,
+                embedUrl,
+                fallbackUrl,
+                surface = requestedSource,
+                linkedToLead = appointment != null,
+                appointmentId = appointment?.Id,
+                appointmentStatus = appointment?.Status.ToString(),
+                requestedBookingSource = appointment?.RequestedBookingSource,
+                confirmationSource = appointment?.ConfirmationSource,
+                confirmationVerified = IsTrustedBookedAppointment(appointment),
+                pendingConfirmation = appointment != null && appointment.Status == Domain.Enums.LeadAppointmentStatus.Requested,
+                reason = resolution.Reason,
+                bookingConfigSource = resolution.ConfigurationSource,
+                bookingConfigAgentSlug = resolution.AgentSlug,
+                bookingTrackingProfileId = resolution.AgentTrackingProfileId
+            });
+        }
+
+        [HttpPost("Disability/booking-confirmation")]
+        public async Task<IActionResult> ConfirmPublicBookingExperience([FromBody] PublicBookingExperienceRequest? request)
+        {
+            if (request == null || string.IsNullOrWhiteSpace(request.ContextToken))
+            {
+                return BadRequest(new { error = "Invalid booking context." });
+            }
+
+            if (!_publicBookingContextProtector.TryUnprotect(request.ContextToken, out var bookingContext) || bookingContext == null)
+            {
+                return BadRequest(new { error = "Booking context has expired." });
+            }
+
+            var result = await _publicBookingConfirmationService.TryConfirmAsync(
+                bookingContext,
+                HttpContext?.RequestAborted ?? CancellationToken.None);
+
+            return Ok(new
+            {
+                linkedToLead = result.LinkedToLead,
+                appointmentId = result.AppointmentId,
+                appointmentStatus = result.AppointmentStatus,
+                bookingSource = result.BookingSource,
+                confirmationSource = result.ConfirmationSource,
+                confirmationVerified = result.Verified,
+                pendingConfirmation = result.PendingConfirmation,
+                reason = result.Reason,
+                calendarEventId = result.CalendarEventId,
+                calendarEventWebLink = result.CalendarEventWebLink,
+                scheduledStartUtc = result.ScheduledStartUtc,
+                scheduledEndUtc = result.ScheduledEndUtc
+            });
         }
 
         private Dictionary<string, string[]> CollectModelStateErrors()
@@ -1099,6 +1222,179 @@ Review summary only. Final eligibility, pricing, benefit structure, and carrier 
                     hdr.Contains("xmlhttprequest", StringComparison.OrdinalIgnoreCase));
         }
 
+        private async Task<LeadAppointment?> UpsertRequestedPublicAppointmentAsync(
+            PublicBookingContext bookingContext,
+            PublicBookingResolution resolution,
+            string bookingSource,
+            CancellationToken ct)
+        {
+            var intakeLink = await _db.WebsiteLeadIntakeLinks
+                .FirstOrDefaultAsync(
+                    x => x.WebsiteLeadPublicId == bookingContext.WebsiteLeadId,
+                    ct);
+
+            if (intakeLink == null ||
+                string.IsNullOrWhiteSpace(intakeLink.WorkstationLeadId) ||
+                string.IsNullOrWhiteSpace(intakeLink.AgentUserId))
+            {
+                return null;
+            }
+
+            var appointment = await _db.LeadAppointments
+                .Where(x =>
+                    x.WorkstationLeadId == intakeLink.WorkstationLeadId &&
+                    (x.WebsiteLeadIntakeLinkId == intakeLink.Id ||
+                     x.BookingSource == LeadAppointmentBookingSources.WebsiteEmbed ||
+                     x.BookingSource == LeadAppointmentBookingSources.WebsiteModal ||
+                     x.BookingSource == LeadAppointmentBookingSources.ExternalRedirectFallback))
+                .OrderByDescending(x => x.UpdatedUtc)
+                .ThenByDescending(x => x.CreatedUtc)
+                .FirstOrDefaultAsync(ct);
+
+            if (appointment != null &&
+                (appointment.Status == Domain.Enums.LeadAppointmentStatus.Booked ||
+                 appointment.Status == Domain.Enums.LeadAppointmentStatus.Confirmed ||
+                 appointment.Status == Domain.Enums.LeadAppointmentStatus.Completed))
+            {
+                return appointment;
+            }
+
+            var nowUtc = DateTime.UtcNow;
+            if (appointment == null)
+            {
+                appointment = new LeadAppointment
+                {
+                    Id = Guid.NewGuid(),
+                    WorkstationLeadId = intakeLink.WorkstationLeadId,
+                    OwnerAgentUserId = intakeLink.AgentUserId,
+                    WebsiteLeadIntakeLinkId = intakeLink.Id,
+                    BookingSource = bookingSource,
+                    RequestedBookingSource = bookingSource,
+                    CreatedUtc = nowUtc,
+                    UpdatedUtc = nowUtc
+                };
+                ApplyResolvedBookingConfig(appointment, resolution);
+                appointment.ApplyStatus(Domain.Enums.LeadAppointmentStatus.Requested, nowUtc);
+                _db.LeadAppointments.Add(appointment);
+            }
+            else
+            {
+                appointment.WorkstationLeadId = intakeLink.WorkstationLeadId;
+                appointment.OwnerAgentUserId = intakeLink.AgentUserId;
+                appointment.WebsiteLeadIntakeLinkId = intakeLink.Id;
+                appointment.BookingSource = bookingSource;
+                appointment.RequestedBookingSource = bookingSource;
+                appointment.ConfirmationSource = null;
+                ApplyResolvedBookingConfig(appointment, resolution);
+                appointment.ApplyStatus(Domain.Enums.LeadAppointmentStatus.Requested, nowUtc);
+            }
+
+            await _db.SaveChangesAsync(ct);
+            return appointment;
+        }
+
+        private async Task<PublicBookingAjaxHint> BuildPublicBookingAjaxHintAsync(
+            Guid websiteLeadId,
+            Guid? agentTrackingProfileId,
+            string? agentSlug,
+            string pageKey,
+            string quoteType,
+            CancellationToken ct)
+        {
+            var resolution = await _publicBookingResolver.ResolveAsync(
+                new PublicBookingResolveContext(
+                    WebsiteLeadId: websiteLeadId,
+                    AgentTrackingProfileId: agentTrackingProfileId,
+                    AgentSlug: agentSlug),
+                ct);
+            var eligible = resolution.Enabled && resolution.HasAnyExperience;
+            var contextToken = eligible
+                ? _publicBookingContextProtector.Protect(new PublicBookingContext(
+                    WebsiteLeadId: websiteLeadId,
+                    AgentSlug: resolution.AgentSlug ?? agentSlug,
+                    QuoteType: quoteType,
+                    PageKey: pageKey,
+                    IssuedUtc: DateTime.UtcNow,
+                    AgentTrackingProfileId: resolution.AgentTrackingProfileId,
+                    AgentUserId: resolution.AgentUserId))
+                : null;
+            var embedUrl = eligible && resolution.HasEmbed
+                ? AppendBookingContextToken(resolution.EmbedUrl, contextToken)
+                : null;
+            var fallbackUrl = eligible && resolution.HasFallback
+                ? AppendBookingContextToken(resolution.FallbackUrl, contextToken)
+                : null;
+
+            return new PublicBookingAjaxHint(
+                Eligible: eligible,
+                CanEmbed: eligible && resolution.HasEmbed,
+                CanFallback: eligible && resolution.HasFallback,
+                PreferModalOnMobile: resolution.PreferModalOnMobile,
+                ContextToken: contextToken,
+                EmbedUrl: embedUrl,
+                FallbackUrl: fallbackUrl,
+                BookingConfigSource: resolution.ConfigurationSource,
+                BookingConfigAgentSlug: resolution.AgentSlug,
+                BookingTrackingProfileId: resolution.AgentTrackingProfileId);
+        }
+
+        private static string NormalizePublicBookingSurface(string? surface, bool hasEmbed)
+        {
+            var normalized = surface?.Trim();
+            if (string.Equals(normalized, LeadAppointmentBookingSources.WebsiteModal, StringComparison.OrdinalIgnoreCase))
+                return LeadAppointmentBookingSources.WebsiteModal;
+            if (string.Equals(normalized, LeadAppointmentBookingSources.ExternalRedirectFallback, StringComparison.OrdinalIgnoreCase))
+                return LeadAppointmentBookingSources.ExternalRedirectFallback;
+            if (string.Equals(normalized, LeadAppointmentBookingSources.WebsiteEmbed, StringComparison.OrdinalIgnoreCase))
+                return LeadAppointmentBookingSources.WebsiteEmbed;
+
+            return hasEmbed
+                ? LeadAppointmentBookingSources.WebsiteEmbed
+                : LeadAppointmentBookingSources.ExternalRedirectFallback;
+        }
+
+        private static void ApplyResolvedBookingConfig(LeadAppointment appointment, PublicBookingResolution resolution)
+        {
+            appointment.BookingConfigurationSource = resolution.ConfigurationSource;
+            appointment.BookingTrackingProfileId = resolution.AgentTrackingProfileId;
+            appointment.BookingAgentSlug = resolution.AgentSlug;
+            appointment.BookingAgentUserId = resolution.AgentUserId;
+            appointment.BookingCalendarUserId = resolution.CalendarUserId;
+            appointment.BookingCalendarEmail = resolution.CalendarEmail;
+            appointment.BookingPageIdOrMailbox = resolution.BookingPageIdOrMailbox;
+        }
+
+        private static bool IsTrustedBookedAppointment(LeadAppointment? appointment)
+        {
+            if (appointment == null)
+            {
+                return false;
+            }
+
+            var trustedSource = appointment.ConfirmationSource ?? appointment.BookingSource;
+            return appointment.Status is Domain.Enums.LeadAppointmentStatus.Booked or Domain.Enums.LeadAppointmentStatus.Confirmed or Domain.Enums.LeadAppointmentStatus.Completed &&
+                   (string.Equals(trustedSource, LeadAppointmentBookingSources.InternalCalendar, StringComparison.OrdinalIgnoreCase) ||
+                    string.Equals(trustedSource, LeadAppointmentBookingSources.MicrosoftGraphConfirmation, StringComparison.OrdinalIgnoreCase) ||
+                    string.Equals(trustedSource, LeadAppointmentBookingSources.ManualVerified, StringComparison.OrdinalIgnoreCase));
+        }
+
+        private static string? AppendBookingContextToken(string? url, string? contextToken)
+        {
+            if (string.IsNullOrWhiteSpace(url) || string.IsNullOrWhiteSpace(contextToken))
+            {
+                return url;
+            }
+
+            try
+            {
+                return QueryHelpers.AddQueryString(url.Trim(), "booking_ctx", contextToken.Trim());
+            }
+            catch
+            {
+                return url;
+            }
+        }
+
         private IActionResult RenderDisabilityQuote(bool isLandingPage, DisabilityQuoteFormModel? model = null)
         {
             var viewModel = model ?? new DisabilityQuoteFormModel();
@@ -1133,5 +1429,23 @@ Review summary only. Final eligibility, pricing, benefit structure, and carrier 
             return !string.IsNullOrWhiteSpace(referer) &&
                    referer.Contains("/Quote/Disability/landing", StringComparison.OrdinalIgnoreCase);
         }
+
+        public sealed class PublicBookingExperienceRequest
+        {
+            public string? ContextToken { get; set; }
+            public string? Surface { get; set; }
+        }
+
+        private sealed record PublicBookingAjaxHint(
+            bool Eligible,
+            bool CanEmbed,
+            bool CanFallback,
+            bool PreferModalOnMobile,
+            string? ContextToken,
+            string? EmbedUrl,
+            string? FallbackUrl,
+            string? BookingConfigSource,
+            string? BookingConfigAgentSlug,
+            Guid? BookingTrackingProfileId);
     }
 }
