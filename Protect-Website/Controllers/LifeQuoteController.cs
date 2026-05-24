@@ -2375,9 +2375,10 @@ Illustrative estimate only. Final eligibility, pricing, underwriting approval, a
             string eventType,
             object metadata)
         {
+            AnalyticsEvent? analyticsEvent = null;
             try
             {
-                _db.AnalyticsEvents.Add(new AnalyticsEvent
+                analyticsEvent = new AnalyticsEvent
                 {
                     EventId = Guid.NewGuid(),
                     EventType = eventType,
@@ -2401,12 +2402,21 @@ Illustrative estimate only. Final eligibility, pricing, underwriting approval, a
                     EventUtc = DateTime.UtcNow,
                     ReceivedUtc = DateTime.UtcNow,
                     MetadataJson = JsonSerializer.Serialize(metadata)
-                });
+                };
+
+                _db.AnalyticsEvents.Add(analyticsEvent);
 
                 await _db.SaveChangesAsync(HttpContext?.RequestAborted ?? CancellationToken.None);
             }
             catch (Exception analyticsEx)
             {
+                if (analyticsEvent != null)
+                {
+                    var entry = _db.Entry(analyticsEvent);
+                    if (entry.State != EntityState.Detached)
+                        entry.State = EntityState.Detached;
+                }
+
                 _logger.LogWarning(
                     analyticsEx,
                     "LifeQuote [{CorrelationId}]: failed to write lead pipeline event {EventType} for lead {LeadId}",

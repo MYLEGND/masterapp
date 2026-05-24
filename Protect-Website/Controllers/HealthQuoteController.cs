@@ -141,19 +141,28 @@ public async Task<IActionResult> SubmitHealthQuote(HealthQuoteFormModel model)
 
     async Task TryWriteLeadEventAsync(string eventType, object metadata, DateTime? eventUtc = null)
     {
+        AnalyticsEvent? analyticsEvent = null;
         try
         {
-            _db.AnalyticsEvents.Add(WebsiteLeadAnalyticsWriter.CreateEvent(
+            analyticsEvent = WebsiteLeadAnalyticsWriter.CreateEvent(
                 lead,
                 eventType,
                 "quote_health",
                 "health_insurance",
                 metadata,
-                eventUtc));
+                eventUtc);
+            _db.AnalyticsEvents.Add(analyticsEvent);
             await _db.SaveChangesAsync(HttpContext?.RequestAborted ?? CancellationToken.None);
         }
         catch (Exception analyticsEx)
         {
+            if (analyticsEvent != null)
+            {
+                var entry = _db.Entry(analyticsEvent);
+                if (entry.State != EntityState.Detached)
+                    entry.State = EntityState.Detached;
+            }
+
             _logger.LogWarning(
                 analyticsEx,
                 "HealthQuote [{CorrelationId}]: analytics event write failed for {EventType} lead {LeadId}",

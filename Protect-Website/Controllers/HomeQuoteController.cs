@@ -156,19 +156,28 @@ namespace Protect_Website.Controllers
 
             async Task TryWriteLeadEventAsync(string eventType, object metadata, DateTime? eventUtc = null)
             {
+                AnalyticsEvent? analyticsEvent = null;
                 try
                 {
-                    _db.AnalyticsEvents.Add(WebsiteLeadAnalyticsWriter.CreateEvent(
+                    analyticsEvent = WebsiteLeadAnalyticsWriter.CreateEvent(
                         lead,
                         eventType,
                         "quote_home",
                         "home_insurance",
                         metadata,
-                        eventUtc));
+                        eventUtc);
+                    _db.AnalyticsEvents.Add(analyticsEvent);
                     await _db.SaveChangesAsync(HttpContext?.RequestAborted ?? CancellationToken.None);
                 }
                 catch (Exception analyticsEx)
                 {
+                    if (analyticsEvent != null)
+                    {
+                        var entry = _db.Entry(analyticsEvent);
+                        if (entry.State != EntityState.Detached)
+                            entry.State = EntityState.Detached;
+                    }
+
                     _logger.LogWarning(
                         analyticsEx,
                         "HomeQuote [{CorrelationId}]: analytics event write failed for {EventType} lead {LeadId}",
