@@ -2460,9 +2460,23 @@
   }
 
   function formatDisplayDate(utcString) {
-    const d = new Date(utcString);
-    if (isNaN(d)) return '';
+    if (!utcString) return '';
+
+    let value = String(utcString).trim();
+
+    // Backend UTC DateTime values may arrive without a timezone suffix.
+    // Force UTC parsing first, then display in the viewer's browser timezone.
+    if (/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d+)?$/.test(value)) {
+      value += 'Z';
+    }
+
+    const d = new Date(value);
+    if (isNaN(d.getTime())) return '';
+
+    const browserTimeZone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+
     return d.toLocaleString('en-US', {
+      timeZone: browserTimeZone,
       month: '2-digit',
       day: '2-digit',
       year: 'numeric',

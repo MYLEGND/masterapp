@@ -21,6 +21,8 @@ namespace Protect_Website.Models
         [Range(0, 120, ErrorMessage = "Age must be between 0 and 120")]
         public int? Age { get; set; }
 
+        public string AgeRange { get; set; } = "";
+
         // ===================== COVERAGE CONTEXT =====================
         public string CoverageType { get; set; } = "";
 
@@ -45,6 +47,9 @@ namespace Protect_Website.Models
                 [Display(Name = "Acknowledged Disclaimer")]
         [Required(ErrorMessage = "You must acknowledge the disclaimer.")]
         public bool AcknowledgedDisclaimer { get; set; } = false;
+
+        public string? PageVariant { get; set; }
+        public string? PageMode { get; set; }
 
         // ── Attribution (populated by JS before submit, persisted server-side) ──
         public string? SessionId { get; set; }
