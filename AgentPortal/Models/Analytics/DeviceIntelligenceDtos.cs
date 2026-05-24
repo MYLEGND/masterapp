@@ -1,3 +1,5 @@
+using AgentPortal.Services.Analytics;
+
 namespace AgentPortal.Models.Analytics;
 
 public sealed class DeviceIntelligenceDto

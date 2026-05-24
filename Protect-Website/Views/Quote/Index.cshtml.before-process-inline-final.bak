@@ -262,7 +262,18 @@
     stroke-linejoin:round;
 }
 
-
+.process-svg{
+    width:46px;
+    height:46px;
+    border-radius:16px;
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    margin:2px 0 10px;
+    border:1px solid rgba(199,153,49,.42);
+    background:rgba(199,153,49,.11);
+    color:var(--gold-bright);
+}
 
 .hero-list li{
     display:flex;
@@ -333,7 +344,6 @@
     font-weight:950;
 }
 
-
 .process-strip{
     display:grid;
     grid-template-columns:repeat(3,minmax(0,1fr));
@@ -342,13 +352,8 @@
 }
 
 .process-step{
-    display:grid;
-    grid-template-columns:auto 1fr;
-    align-items:center;
-    column-gap:12px;
-    padding:12px 20px;
+    padding:16px 22px;
     border-right:1px solid rgba(199,153,49,.16);
-    min-height:62px;
 }
 
 .process-step:last-child{
@@ -356,8 +361,8 @@
 }
 
 .process-num{
-    width:30px;
-    height:30px;
+    width:28px;
+    height:28px;
     display:inline-flex;
     align-items:center;
     justify-content:center;
@@ -365,35 +370,21 @@
     border:1px solid rgba(199,153,49,.62);
     color:var(--gold-bright) !important;
     font-weight:950;
-    flex:0 0 auto;
+    margin-bottom:8px;
 }
 
-.process-copy{
-    display:flex;
-    align-items:center;
-    gap:8px;
-    min-width:0;
-}
-
-.process-copy h5{
-    margin:0;
+.process-step h5{
+    margin:0 0 4px;
     color:var(--gold-bright) !important;
     font-weight:950;
-    font-size:1rem;
-    line-height:1;
-    white-space:nowrap;
 }
 
-.process-copy p{
+.process-step p{
     margin:0;
     color:var(--muted) !important;
-    line-height:1.2;
-    font-size:.88rem;
-    white-space:nowrap;
-    overflow:hidden;
-    text-overflow:ellipsis;
+    line-height:1.45;
+    font-size:.92rem;
 }
-
 
 .calendar-section{
     margin-top:24px;
@@ -670,24 +661,21 @@
         <div class="process-strip" aria-label="What happens next">
             <div class="process-step">
                 <span class="process-num">1</span>
-                <div class="process-copy">
-                    <h5>Start</h5>
-                    <p>Choose your lane.</p>
-                </div>
+                <span class="process-svg"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 4h9l3 3v13H6z"/><path d="M15 4v4h4"/><path d="M9 13h6"/><path d="M9 17h4"/></svg></span>
+                <h5>Start</h5>
+                <p>Choose your lane.</p>
             </div>
             <div class="process-step">
                 <span class="process-num">2</span>
-                <div class="process-copy">
-                    <h5>Review</h5>
-                    <p>Review clear options.</p>
-                </div>
+                <span class="process-svg"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 6h13"/><path d="M8 12h13"/><path d="M8 18h13"/><circle cx="4" cy="6" r="1.5"/><circle cx="4" cy="12" r="1.5"/><circle cx="4" cy="18" r="1.5"/></svg></span>
+                <h5>Review</h5>
+                <p>Review clear options.</p>
             </div>
             <div class="process-step">
                 <span class="process-num">3</span>
-                <div class="process-copy">
-                    <h5>Decide</h5>
-                    <p>Move with clarity.</p>
-                </div>
+                <span class="process-svg"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3l7 3v5c0 5-3.2 8.5-7 10-3.8-1.5-7-5-7-10V6l7-3z"/><path d="M9 12l2 2 4-5"/></svg></span>
+                <h5>Decide</h5>
+                <p>Move with clarity.</p>
             </div>
         </div>
     </section>
