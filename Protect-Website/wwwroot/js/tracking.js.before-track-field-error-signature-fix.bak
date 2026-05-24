@@ -865,34 +865,23 @@
 
 let _formAbandonCallbacks = [];
 
-function trackCustomFieldError(formKey, fieldName, errorType, offerKey) {
-  const normalizedFormKey = (formKey || '').trim();
+function trackCustomFieldError(fieldName, errorMessage, metadata = {}) {
   const normalizedField = (fieldName || '').trim();
-  const normalizedErrorType = (errorType || '').trim();
-
-  if (!normalizedFormKey || !normalizedField) return;
-
-  const state = ensureFormTrackState(normalizedFormKey);
-  const errorKey = `${normalizedField}:${normalizedErrorType || 'unknown'}`;
-
-  if (state && state.errorsSeen.has(errorKey)) return;
-  if (state) state.errorsSeen.add(errorKey);
+  const normalizedMessage = (errorMessage || '').trim();
 
   sendEvent({
     EventType: 'form_field_error',
-    FormKey: normalizedFormKey,
-    FieldName: normalizedField,
+    FieldName: normalizedField || null,
     MetadataJson: JSON.stringify({
-      errorType: normalizedErrorType || null,
-      offerKey: offerKey || null
+      errorMessage: normalizedMessage || null,
+      ...(metadata || {})
     })
   });
 
   debug('form_field_error tracked', {
-    formKey: normalizedFormKey,
     fieldName: normalizedField,
-    errorType: normalizedErrorType,
-    offerKey
+    errorMessage: normalizedMessage,
+    metadata
   });
 }
 

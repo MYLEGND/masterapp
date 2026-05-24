@@ -862,40 +862,6 @@
   let _activeMs = 0;
   let _activeStart = document.visibilityState === 'visible' ? Date.now() : null;
   let _exitFired = false;
-
-let _formAbandonCallbacks = [];
-
-function trackCustomFieldError(formKey, fieldName, errorType, offerKey) {
-  const normalizedFormKey = (formKey || '').trim();
-  const normalizedField = (fieldName || '').trim();
-  const normalizedErrorType = (errorType || '').trim();
-
-  if (!normalizedFormKey || !normalizedField) return;
-
-  const state = ensureFormTrackState(normalizedFormKey);
-  const errorKey = `${normalizedField}:${normalizedErrorType || 'unknown'}`;
-
-  if (state && state.errorsSeen.has(errorKey)) return;
-  if (state) state.errorsSeen.add(errorKey);
-
-  sendEvent({
-    EventType: 'form_field_error',
-    FormKey: normalizedFormKey,
-    FieldName: normalizedField,
-    MetadataJson: JSON.stringify({
-      errorType: normalizedErrorType || null,
-      offerKey: offerKey || null
-    })
-  });
-
-  debug('form_field_error tracked', {
-    formKey: normalizedFormKey,
-    fieldName: normalizedField,
-    errorType: normalizedErrorType,
-    offerKey
-  });
-}
-
   let _scrollTicking = false;
   const _scrollThresholds = [25, 50, 75, 90, 100];
   const _scrollFired = new Set();
