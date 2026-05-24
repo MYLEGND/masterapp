@@ -1008,7 +1008,7 @@
       { key: 'pageKey' },
       { render: r => r.activitySummary || r.eventType || 'activity recorded' },
       { render: r => r.outcomeSummary || r.elementKey || 'Viewed' },
-      { render: r => formatNumber(r.eventCount || 0), align: 'text-end' }
+      { render: r => Number(r.eventCount || 0).toLocaleString('en-US'), align: 'text-end' }
     ]);
     setText('traffic-range-label', breakdown
       ? `${data.rangeLabel || ''} · ${breakdown.replace('Attribution split: ', '')}`

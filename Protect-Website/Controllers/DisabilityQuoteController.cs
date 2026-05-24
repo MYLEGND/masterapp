@@ -6,6 +6,8 @@ using Microsoft.Graph;
 using Microsoft.Graph.Models;
 using Microsoft.Graph.Users.Item.SendMail;
 using Azure.Identity;
+using System.Globalization;
+using System.Net;
 using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
 using Infrastructure.Leads;
@@ -61,11 +63,28 @@ namespace Protect_Website.Controllers
         [HttpPost("Disability")]
         public async Task<IActionResult> SubmitDisabilityQuote(DisabilityQuoteFormModel model)
         {
-            if (!ModelState.IsValid)
-                return IsAjax() ? BadRequest(new { error = "Invalid form data" })
-                                : RenderDisabilityQuote(ShouldUseLandingMode(model), model);
-
             var correlationId = Guid.NewGuid();
+
+            if (!ModelState.IsValid)
+            {
+                if (IsAjax())
+                {
+                    var fieldErrors = CollectModelStateErrors();
+                    _logger.LogWarning(
+                        "DisabilityQuote [{CorrelationId}]: invalid ajax submission errors={ValidationErrors}",
+                        correlationId,
+                        JsonSerializer.Serialize(fieldErrors));
+                    return BadRequest(new
+                    {
+                        error = ResolveAjaxValidationMessage(fieldErrors),
+                        fieldErrors,
+                        correlationId = correlationId.ToString("D")
+                    });
+                }
+
+                return RenderDisabilityQuote(ShouldUseLandingMode(model), model);
+            }
+
             _logger.LogInformation(
                 "DisabilityQuote [{CorrelationId}]: request received Email={Email}",
                 correlationId, model.Email);
@@ -150,7 +169,7 @@ namespace Protect_Website.Controllers
                     "DisabilityQuote [{CorrelationId}]: lead persistence failed for {Email}",
                     correlationId, model.Email);
                 return IsAjax()
-                    ? StatusCode(500, new { error = "Failed to save lead", detail = persistEx.Message })
+                    ? StatusCode(500, new { error = "Failed to save lead", detail = persistEx.Message, correlationId = correlationId.ToString("D") })
                     : View("~/Views/Quote/Disability.cshtml", model);
             }
 
@@ -365,27 +384,7 @@ namespace Protect_Website.Controllers
                 var credential = new ClientSecretCredential(tenantId, clientId, clientSecret);
                 var graphClient = new GraphServiceClient(credential);
 
-                var emailBody = LeadEmailTemplate.Wrap(
-                    $"New Lead — Disability Insurance",
-                    new LeadEmailTemplate.RowBuilder()
-                        .Row("Name",  $"{model.FirstName} {model.LastName}".Trim())
-                        .Row("Age",   model.Age?.ToString())
-                        .Row("Age Range", model.AgeRange)
-                        .Row("Email", model.Email)
-                        .Row("Phone", model.Phone)
-                        .Section("Employment")
-                        .Row("Employment Type", model.EmploymentType)
-                        .Row("Occupation",      model.Occupation)
-                        .Section("Coverage")
-                        .Row("Income Range", model.IncomeRange)
-                        .Row("Current Coverage", model.CurrentCoverage)
-                        .Row("Income Protection Priority", model.IncomeProtectionImportance)
-                        .Section("Contact Preferences")
-                        .Row("Preferred Method", model.ContactMethod)
-                        .Row("Best Time",        model.BestTimeToContact)
-                        .Section("Authorization")
-                        .Row("Disclaimer Acknowledged", LeadEmailTemplate.Bool(model.AcknowledgedDisclaimer))
-                        .ToString());
+                var emailBody = BuildLeadNotificationEmailBody(model);
 
                 var message = new Message
                 {
@@ -459,7 +458,167 @@ namespace Protect_Website.Controllers
             TempData["MetaLeadEventId"] = metaLeadEventId;
             TempData["MetaLeadLeadId"] = lead.LeadId.ToString("D");
             return RedirectToAction("Index", "ThankYou");
-}
+        }
+
+        private Dictionary<string, string[]> CollectModelStateErrors()
+        {
+            return ModelState
+                .Where(entry => entry.Value?.Errors.Count > 0)
+                .ToDictionary(
+                    entry => entry.Key,
+                    entry => entry.Value!.Errors
+                        .Select(error => string.IsNullOrWhiteSpace(error.ErrorMessage) ? "Invalid value." : error.ErrorMessage.Trim())
+                        .Distinct(StringComparer.OrdinalIgnoreCase)
+                        .ToArray(),
+                    StringComparer.OrdinalIgnoreCase);
+        }
+
+        private static string ResolveAjaxValidationMessage(IReadOnlyDictionary<string, string[]> fieldErrors)
+        {
+            if (fieldErrors.Count == 1)
+            {
+                var onlyError = fieldErrors.FirstOrDefault().Value?.FirstOrDefault();
+                if (!string.IsNullOrWhiteSpace(onlyError))
+                    return onlyError.Trim();
+            }
+
+            return "Please complete the highlighted fields and try again.";
+        }
+
+        private static string BuildLeadNotificationEmailBody(DisabilityQuoteFormModel model)
+        {
+            static string H(string? value) => WebUtility.HtmlEncode(value ?? string.Empty);
+
+            var fullName = $"{model.FirstName} {model.LastName}".Trim();
+            if (string.IsNullOrWhiteSpace(fullName))
+                fullName = "New prospect";
+
+            var ageLabel = !string.IsNullOrWhiteSpace(model.AgeRange)
+                ? model.AgeRange.Trim()
+                : model.Age?.ToString(CultureInfo.InvariantCulture) ?? "Not provided";
+
+            var employmentLabel = string.IsNullOrWhiteSpace(model.EmploymentType) ? "Not provided" : model.EmploymentType.Trim();
+            var occupationLabel = string.IsNullOrWhiteSpace(model.Occupation) ? "Not provided" : model.Occupation.Trim();
+            var incomeRangeLabel = string.IsNullOrWhiteSpace(model.IncomeRange) ? "Not provided" : model.IncomeRange.Trim();
+            var currentCoverageLabel = string.IsNullOrWhiteSpace(model.CurrentCoverage) ? "Not provided" : model.CurrentCoverage.Trim();
+            var priorityLabel = string.IsNullOrWhiteSpace(model.IncomeProtectionImportance) ? "Not provided" : model.IncomeProtectionImportance.Trim();
+            var contactMethodLabel = string.IsNullOrWhiteSpace(model.ContactMethod) ? "Not provided" : model.ContactMethod.Trim();
+            var bestTimeLabel = string.IsNullOrWhiteSpace(model.BestTimeToContact) ? "Not provided" : model.BestTimeToContact.Trim();
+
+            var surfacedCopy = priorityLabel switch
+            {
+                "Critical" => "This prospect may have immediate income pressure if a sickness or injury interrupts work, which makes paycheck protection highly time-sensitive.",
+                "Important" => "This prospect appears to understand the income gap risk and may already be motivated to confirm how much coverage would actually hold up.",
+                "Somewhat Important" => "This prospect may not feel fully exposed yet, but the answers still point toward a disability coverage gap worth reviewing.",
+                _ => "This prospect's answers point toward an income protection conversation that still needs clarity around work risk, current benefits, and replacement fit."
+            };
+
+            var timingCopy = currentCoverageLabel switch
+            {
+                "Employer coverage only" => "Employer disability benefits often leave a meaningful income gap, so waiting can delay a review of how much protection is truly missing.",
+                "Individual disability coverage" => "Existing individual coverage still deserves a fit check because benefit levels, waiting periods, and monthly obligations may have changed.",
+                "Both employer and individual coverage" => "Layered coverage can still leave coordination gaps, so it is worth confirming what income would actually be protected.",
+                "No current coverage" => "No current disability protection means the income gap stays fully exposed until a review confirms a workable backup plan.",
+                _ => "Income protection decisions usually feel more urgent after health, work, or monthly obligations shift."
+            };
+
+            return $@"
+<!DOCTYPE html>
+<html>
+<body style=""margin:0;padding:0;background:#f3f4f6;font-family:Arial,Helvetica,sans-serif;"">
+<div style=""width:100%;padding:18px 10px;background:#f3f4f6;"">
+<div style=""max-width:680px;margin:0 auto;background:#071d3d;border:1px solid rgba(212,175,55,.55);border-radius:18px;overflow:hidden;box-shadow:0 18px 42px rgba(0,0,0,.24);"">
+
+<div style=""padding:18px;background:#061832;border-bottom:1px solid rgba(243,214,136,.24);"">
+<div style=""color:#f3d688;font-size:12px;font-weight:900;letter-spacing:.12em;text-transform:uppercase;margin-bottom:8px;"">New lead ready for review</div>
+<div style=""color:#fff8e7;font-size:24px;line-height:1.12;font-weight:900;"">{H(fullName)} submitted a disability insurance review.</div>
+<div style=""color:rgba(248,250,252,.82);font-size:14px;line-height:1.45;font-weight:650;margin-top:10px;"">
+The prospect completed the same guided review experience used on the Life funnel. Use the answers below to continue the conversation around income protection without restarting cold.
+</div>
+</div>
+
+<div style=""padding:16px 18px 18px;"">
+
+<div style=""background:#092955;border:1px solid rgba(243,214,136,.36);border-radius:16px;padding:15px;margin-bottom:14px;"">
+<div style=""color:#f3d688;font-size:11px;font-weight:900;letter-spacing:.10em;text-transform:uppercase;margin-bottom:8px;"">Prospect contact</div>
+<div style=""color:#fff8e7;font-size:20px;line-height:1.2;font-weight:900;margin-bottom:10px;"">{H(fullName)}</div>
+<div style=""color:#f8fafc;font-size:14px;line-height:1.55;font-weight:750;"">
+<strong style=""color:#f3d688;"">Phone:</strong> {H(model.Phone)}<br/>
+<strong style=""color:#f3d688;"">Email:</strong> {H(model.Email)}<br/>
+<strong style=""color:#f3d688;"">Occupation:</strong> {H(occupationLabel)}<br/>
+<strong style=""color:#f3d688;"">Preferred contact:</strong> {H(contactMethodLabel)}
+</div>
+</div>
+
+<div style=""margin-bottom:14px;"">
+<span style=""display:inline-block;padding:7px 10px;border-radius:999px;border:1px solid rgba(243,214,136,.35);background:#071932;color:#fff7de;font-size:12px;font-weight:900;margin:0 5px 7px 0;"">Lead submitted</span>
+<span style=""display:inline-block;padding:7px 10px;border-radius:999px;border:1px solid rgba(243,214,136,.35);background:#071932;color:#fff7de;font-size:12px;font-weight:900;margin:0 5px 7px 0;"">Income review</span>
+<span style=""display:inline-block;padding:7px 10px;border-radius:999px;border:1px solid rgba(243,214,136,.35);background:#071932;color:#fff7de;font-size:12px;font-weight:900;margin:0 5px 7px 0;"">Follow-up needed</span>
+</div>
+
+<table width=""100%"" cellpadding=""0"" cellspacing=""0"" role=""presentation"" style=""border-collapse:collapse;margin-bottom:12px;"">
+<tr>
+<td style=""display:block;width:100%;padding:0 0 8px 0;vertical-align:top;"">
+<div style=""background:#08254d;border:1px solid rgba(243,214,136,.24);border-radius:16px;padding:15px;"">
+<div style=""color:#f3d688;font-size:11px;font-weight:900;letter-spacing:.08em;text-transform:uppercase;margin-bottom:7px;"">What surfaced</div>
+<div style=""color:rgba(248,250,252,.84);font-size:14px;line-height:1.42;font-weight:700;"">{H(surfacedCopy)}</div>
+</div>
+</td>
+<td style=""display:block;width:100%;padding:0 0 8px 0;vertical-align:top;"">
+<div style=""background:#08254d;border:1px solid rgba(243,214,136,.24);border-radius:16px;padding:15px;"">
+<div style=""color:#f3d688;font-size:11px;font-weight:900;letter-spacing:.08em;text-transform:uppercase;margin-bottom:7px;"">Why timing matters</div>
+<div style=""color:rgba(248,250,252,.84);font-size:14px;line-height:1.42;font-weight:700;"">{H(timingCopy)}</div>
+</div>
+</td>
+</tr>
+</table>
+
+<table width=""100%"" cellpadding=""0"" cellspacing=""0"" role=""presentation"" style=""border-collapse:collapse;margin-bottom:12px;"">
+<tr>
+<td style=""display:block;width:100%;padding:0 0 8px 0;vertical-align:top;"">
+<div style=""background:#061a36;border:1px solid rgba(243,214,136,.18);border-radius:15px;padding:13px;text-align:center;"">
+<div style=""color:rgba(248,250,252,.55);font-size:10px;font-weight:900;letter-spacing:.12em;text-transform:uppercase;margin-bottom:7px;"">Age range</div>
+<div style=""color:#fff8e7;font-size:23px;font-weight:900;"">{H(ageLabel)}</div>
+</div>
+</td>
+<td style=""display:block;width:100%;padding:0 0 8px 0;vertical-align:top;"">
+<div style=""background:#061a36;border:1px solid rgba(243,214,136,.18);border-radius:15px;padding:13px;text-align:center;"">
+<div style=""color:rgba(248,250,252,.55);font-size:10px;font-weight:900;letter-spacing:.12em;text-transform:uppercase;margin-bottom:7px;"">Income target</div>
+<div style=""color:#fff8e7;font-size:21px;font-weight:900;"">{H(incomeRangeLabel)}</div>
+</div>
+</td>
+</tr>
+</table>
+
+<div style=""background:#061a36;border:1px solid rgba(243,214,136,.18);border-radius:16px;padding:15px;margin-bottom:12px;"">
+<div style=""color:#f3d688;font-size:11px;font-weight:900;letter-spacing:.08em;text-transform:uppercase;margin-bottom:8px;"">Review answers</div>
+<div style=""color:#f8fafc;font-size:14px;line-height:1.55;font-weight:700;"">
+<strong style=""color:#f3d688;"">Employment type:</strong> {H(employmentLabel)}<br/>
+<strong style=""color:#f3d688;"">Current coverage:</strong> {H(currentCoverageLabel)}<br/>
+<strong style=""color:#f3d688;"">Income protection priority:</strong> {H(priorityLabel)}<br/>
+<strong style=""color:#f3d688;"">Best time to reach:</strong> {H(bestTimeLabel)}<br/>
+<strong style=""color:#f3d688;"">Disclaimer acknowledged:</strong> {(model.AcknowledgedDisclaimer ? "Yes" : "No")}
+</div>
+</div>
+
+<div style=""background:#092955;border:1px solid rgba(243,214,136,.34);border-radius:16px;padding:16px;"">
+<div style=""color:#f3d688;font-size:11px;font-weight:900;letter-spacing:.10em;text-transform:uppercase;margin-bottom:8px;"">Agent next step</div>
+<div style=""color:#fff8e7;font-size:22px;line-height:1.13;font-weight:900;margin-bottom:9px;"">Follow up from the review they already started.</div>
+<div style=""color:rgba(248,250,252,.84);font-size:14px;line-height:1.45;font-weight:650;"">
+Start by confirming current benefit gaps, income replacement pressure, elimination period expectations, and whether workplace coverage leaves the prospect exposed.
+</div>
+</div>
+
+<div style=""margin-top:14px;color:rgba(248,250,252,.55);font-size:12px;line-height:1.5;text-align:center;"">
+Internal agent notification. This message mirrors the branded Life review lead format for consistency across products.
+</div>
+
+</div>
+</div>
+</div>
+</body>
+</html>";
+        }
 
         private async Task<(string RecipientEmail, Guid? AgentProfileId, string? AgentSlug, bool IsFounderPath)> ResolveLeadContextAsync()
         {
