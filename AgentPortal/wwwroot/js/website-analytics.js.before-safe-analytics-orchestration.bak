@@ -2546,12 +2546,10 @@
   }
   async function loadQuote() {
     try {
-      const results = await Promise.allSettled([
+      const [data, abandon] = await Promise.all([
         fetchJson('quote', endpoints.quote, rangeParams({ modal: 'quoteModal' })),
         fetchJson('quote-abandon', endpoints.quoteFunnelAbandonment, rangeParams({ modal: 'quoteModal' }))
       ]);
-      const data = results[0].status === 'fulfilled' ? results[0].value : null;
-      const abandon = results[1].status === 'fulfilled' ? results[1].value : null;
       if (data) renderQuote(data);
       if (abandon) renderAbandonment(abandon);
     } catch (err) {
@@ -2571,19 +2569,14 @@
     try {
       setText('bhvr-range-label', 'Loading…');
       const params = rangeParams({ modal: 'behaviorModal' });
-      const results = await Promise.allSettled([
+      const [summary, time, exit, journey, sources] = await Promise.all([
         fetchJson('bhvr-summary', endpoints.behaviorSummary, params),
         fetchJson('bhvr-time',    endpoints.behaviorTime,    params),
         fetchJson('bhvr-exit',    endpoints.behaviorExit,    params),
         fetchJson('bhvr-journey', endpoints.behaviorJourney, params),
         fetchJson('bhvr-source',  endpoints.behaviorSources, params)
       ]);
-      const summary = results[0].status === 'fulfilled' ? results[0].value : {};
-      const time = results[1].status === 'fulfilled' ? results[1].value : {};
-      const exit = results[2].status === 'fulfilled' ? results[2].value : {};
-      const journey = results[3].status === 'fulfilled' ? results[3].value : {};
-      const sources = results[4].status === 'fulfilled' ? results[4].value : {};
-      renderBehavior(summary, time, exit, journey, sources);
+      renderBehavior(summary || {}, time || {}, exit || {}, journey || {}, sources || {});
     } catch (err) {
       const message = (err && err.message) ? err.message : 'Unable to load Behavior Intelligence.';
       setText('bhvr-range-label', 'Unavailable');
@@ -2618,12 +2611,10 @@
         convData = await fetchJson('conv', endpoints.conversions, params);
         summaryData = state.cache.summary;
       } else {
-        const results = await Promise.allSettled([
+        [convData, summaryData] = await Promise.all([
           fetchJson('conv', endpoints.conversions, params),
           fetchJson('conv-summary', endpoints.summary, params)
         ]);
-        convData = results[0].status === 'fulfilled' ? results[0].value : null;
-        summaryData = results[1].status === 'fulfilled' ? results[1].value : null;
       }
       if (!convData) return;
       renderConversions(convData, summaryData);
@@ -3282,75 +3273,61 @@
   }
 
   async function loadTeamRollup() {
-    try {
-      const params = rangeParams({ team: true });
+    const params = rangeParams({ team: true });
+    const [summary, traffic, quote, conv, agentPerf] = await Promise.all([
+      fetchJson('team-summary', endpoints.summary, params),
+      fetchJson('team-traffic', endpoints.traffic, params),
+      fetchJson('team-quote', endpoints.quote, params),
+      fetchJson('team-conv', endpoints.conversions, params),
+      fetchJson('team-agentperf', endpoints.agentPerf, params)
+    ]);
+    if (!summary) return;
 
-      const results = await Promise.allSettled([
-        fetchJson('team-summary', endpoints.summary, params),
-        fetchJson('team-traffic', endpoints.traffic, params),
-        fetchJson('team-quote', endpoints.quote, params),
-        fetchJson('team-conv', endpoints.conversions, params),
-        fetchJson('team-agentperf', endpoints.agentPerf, params)
+    // Top KPI row
+    setText('team-kpi-pageviews', summary.pageViews);
+    setText('team-kpi-visitors', summary.uniqueVisitors);
+    setText('team-kpi-sessions', summary.sessions);
+    setText('team-kpi-leads', summary.verifiedLeads);
+    setText('team-kpi-session', `${summary.sessionConversionRate}%`);
+    setText('team-kpi-intent', summary.intentAvailable ? `${summary.intentConversionRate}%` : '—');
+    setText('team-range-label', summary.rangeLabel || '');
+
+    // Secondary row
+    setText('team-top-page', summary.topPage || '—');
+    setText('team-top-cta', summary.topCta || '—');
+    if (quote) {
+      setText('team-quote-starts', quote.quoteStarts ?? 0);
+      setText('team-quote-form-starts', quote.quoteFormStarts ?? 0);
+      setText('team-quote-submits', quote.quoteFormSubmits ?? 0);
+    } else {
+      setText('team-quote-starts', 0);
+      setText('team-quote-form-starts', 0);
+      setText('team-quote-submits', 0);
+    }
+    setText('team-total-conv', conv?.totalConversions ?? 0);
+
+    // Lists
+    if (traffic) {
+      renderList('team-top-pages-list', (traffic.topPages || []).slice(0, 6), p => `<li class="d-flex justify-content-between"><span>${p.key}</span><span class="text-silver">${p.count}</span></li>`);
+      renderList('team-top-ctas-list', (traffic.topCtas || []).slice(0, 6), p => `<li class="d-flex justify-content-between"><span>${p.key}</span><span class="text-silver">${p.count}</span></li>`);
+      renderList('team-top-sources-list', (traffic.topSources || []).slice(0, 6), p => `<li class="d-flex justify-content-between"><span>${p.key}</span><span class="text-silver">${p.count}</span></li>`);
+      renderList('team-top-campaigns-list', (traffic.topCampaigns || []).slice(0, 6), p => `<li class="d-flex justify-content-between"><span>${p.key}</span><span class="text-silver">${p.count}</span></li>`);
+      renderList('team-recent-activity', (traffic.recentActivity || []).slice(0, 10), a => `<li class="mb-1"><span class="text-silver">${formatDisplayDate(a.eventUtc)}</span> · <strong>${a.eventType}</strong> · ${a.pageKey || ''}${a.elementKey ? ' / ' + a.elementKey : ''}</li>`);
+    }
+
+    // Agent leaderboard
+    if (agentPerf && agentPerf.rows) {
+      renderTable('team-agent-rows', agentPerf.rows, [
+        { key: 'agentName' },
+        { key: 'slug' },
+        { key: 'leads', align: 'text-end' },
+        { key: 'conversions', align: 'text-end' },
+        { key: 'sessions', align: 'text-end' },
+        { render: r => `${r.intentConversionRate}%`, align: 'text-end' },
+        { key: 'topSource' }
       ]);
-
-      const summary = results[0].status === 'fulfilled' ? results[0].value : null;
-      const traffic = results[1].status === 'fulfilled' ? results[1].value : null;
-      const quote = results[2].status === 'fulfilled' ? results[2].value : null;
-      const conv = results[3].status === 'fulfilled' ? results[3].value : null;
-      const agentPerf = results[4].status === 'fulfilled' ? results[4].value : null;
-
-      if (!summary) return;
-
-      // Top KPI row
-      setText('team-kpi-pageviews', summary.pageViews);
-      setText('team-kpi-visitors', summary.uniqueVisitors);
-      setText('team-kpi-sessions', summary.sessions);
-      setText('team-kpi-leads', summary.verifiedLeads);
-      setText('team-kpi-session', `${summary.sessionConversionRate}%`);
-      setText('team-kpi-intent', summary.intentAvailable ? `${summary.intentConversionRate}%` : '—');
-      setText('team-range-label', summary.rangeLabel || '');
-
-      // Secondary row
-      setText('team-top-page', summary.topPage || '—');
-      setText('team-top-cta', summary.topCta || '—');
-
-      if (quote) {
-        setText('team-quote-starts', quote.quoteStarts ?? 0);
-        setText('team-quote-form-starts', quote.quoteFormStarts ?? 0);
-        setText('team-quote-submits', quote.quoteFormSubmits ?? 0);
-      } else {
-        setText('team-quote-starts', 0);
-        setText('team-quote-form-starts', 0);
-        setText('team-quote-submits', 0);
-      }
-
-      setText('team-total-conv', conv?.totalConversions ?? 0);
-
-      // Lists
-      if (traffic) {
-        renderList('team-top-pages-list', (traffic.topPages || []).slice(0, 6), p => `<li class="d-flex justify-content-between"><span>${p.key}</span><span class="text-silver">${p.count}</span></li>`);
-        renderList('team-top-ctas-list', (traffic.topCtas || []).slice(0, 6), p => `<li class="d-flex justify-content-between"><span>${p.key}</span><span class="text-silver">${p.count}</span></li>`);
-        renderList('team-top-sources-list', (traffic.topSources || []).slice(0, 6), p => `<li class="d-flex justify-content-between"><span>${p.key}</span><span class="text-silver">${p.count}</span></li>`);
-        renderList('team-top-campaigns-list', (traffic.topCampaigns || []).slice(0, 6), p => `<li class="d-flex justify-content-between"><span>${p.key}</span><span class="text-silver">${p.count}</span></li>`);
-        renderList('team-recent-activity', (traffic.recentActivity || []).slice(0, 10), a => `<li class="mb-1"><span class="text-silver">${formatDisplayDate(a.eventUtc)}</span> · <strong>${a.eventType}</strong> · ${a.pageKey || ''}${a.elementKey ? ' / ' + a.elementKey : ''}</li>`);
-      }
-
-      // Agent leaderboard
-      if (agentPerf && agentPerf.rows) {
-        renderTable('team-agent-rows', agentPerf.rows, [
-          { key: 'agentName' },
-          { key: 'slug' },
-          { key: 'leads', align: 'text-end' },
-          { key: 'conversions', align: 'text-end' },
-          { key: 'sessions', align: 'text-end' },
-          { render: r => `${r.intentConversionRate}%`, align: 'text-end' },
-          { key: 'topSource' }
-        ]);
-      } else {
-        renderTable('team-agent-rows', [], [{ key: 'agentName' }]);
-      }
-    } catch (err) {
-      console.error('Team rollup failed', err);
+    } else {
+      renderTable('team-agent-rows', [], [{ key: 'agentName' }]);
     }
   }
 // Modal wiring -----------------------------------------------------
@@ -3549,7 +3526,9 @@
     try {
       await window.websiteAnalyticsDeviceIntelligence.loadCurrentView();
     } finally {
-      deviceIntelligenceLoading = false;
+      setTimeout(() => {
+        deviceIntelligenceLoading = false;
+      }, 2000);
     }
   }
 
