@@ -1066,12 +1066,19 @@ if (!ModelState.IsValid)
             }
 
             var isFounderPath = HttpContext?.Items["IsFounderPath"] as bool? == true;
-            if (!isFounderPath &&
-                HttpContext?.Items.TryGetValue("TrackingProfile", out var trackingProfileObj) == true &&
-                trackingProfileObj is AgentTrackingProfile trackingProfile &&
-                !string.IsNullOrWhiteSpace(trackingProfile.AgentUpn))
+            if (HttpContext?.Items.TryGetValue("TrackingProfile", out var trackingProfileObj) == true &&
+                trackingProfileObj is AgentTrackingProfile trackingProfile)
             {
-                return (trackingProfile.AgentUpn.Trim(), trackingProfile.Id, trackingProfile.Slug, false);
+                var trackingSlug = HttpContext?.Items["TrackingSlug"] as string;
+                var trackingRecipient = !string.IsNullOrWhiteSpace(trackingProfile.AgentUpn)
+                    ? trackingProfile.AgentUpn.Trim()
+                    : recipientEmail;
+
+                return (
+                    isFounderPath ? recipientEmail : trackingRecipient,
+                    trackingProfile.Id,
+                    string.IsNullOrWhiteSpace(trackingSlug) ? trackingProfile.Slug : trackingSlug,
+                    isFounderPath);
             }
 
             return (recipientEmail, null, null, isFounderPath);
