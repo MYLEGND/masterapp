@@ -3038,7 +3038,8 @@ public sealed class AnalyticsQueryService : IAnalyticsQueryService
 
     public async Task<DeviceIntelligenceDto> GetDeviceIntelligenceAsync(TimeRangeRequest range, ScopeContext scope, TrafficType trafficType = TrafficType.All)
     {
-        var allEvents = await QueryEvents(range, scope).ToListAsync();
+        var scopedAgentIds = await ResolveScopedAgentIdsAsync(scope);
+        var allEvents = await BaseEvents(range, scope, scopedAgentIds).ToListAsync();
         var rows = FilterAttributedRowsByTraffic(BuildAttributedEventRows(allEvents), trafficType)
             .Select(r => r.Event)
             .ToList();
