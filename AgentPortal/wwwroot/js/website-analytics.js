@@ -4320,7 +4320,22 @@
     }
   }
 
-  function table(title, rows, icon = 'bi-grid') {
+  function deviceIcon(name) {
+    const icons = {
+      display: '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="4" width="18" height="12" rx="2"></rect><path d="M8 20h8M12 16v4"></path></svg>',
+      browser: '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"></circle><path d="M3.6 9h16.8M3.6 15h16.8M12 3c2.4 2.5 3.6 5.5 3.6 9S14.4 18.5 12 21M12 3C9.6 5.5 8.4 8.5 8.4 12S9.6 18.5 12 21"></path></svg>',
+      os: '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="5" width="16" height="11" rx="2"></rect><path d="M9 20h6M12 16v4"></path></svg>',
+      viewport: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 3H3v5M16 3h5v5M8 21H3v-5M16 21h5v-5"></path><path d="M9 9h6v6H9z"></path></svg>',
+      screen: '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="5" width="18" height="14" rx="2"></rect><path d="M7 9h10"></path></svg>',
+      timezone: '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"></circle><path d="M12 7v5l3 2"></path></svg>',
+      language: '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"></circle><path d="M3.6 9h16.8M3.6 15h16.8M12 3c2.4 2.5 3.6 5.5 3.6 9S14.4 18.5 12 21M12 3C9.6 5.5 8.4 8.5 8.4 12S9.6 18.5 12 21"></path></svg>',
+      grid: '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="4" width="6" height="6" rx="1"></rect><rect x="14" y="4" width="6" height="6" rx="1"></rect><rect x="4" y="14" width="6" height="6" rx="1"></rect><rect x="14" y="14" width="6" height="6" rx="1"></rect></svg>'
+    };
+
+    return icons[name] || icons.grid;
+  }
+
+  function table(title, rows, icon = 'grid') {
     rows = Array.isArray(rows) ? rows : [];
     const firstCol = title.replace('Prospect ', '');
 
@@ -4328,7 +4343,7 @@
       return `
         <section class="wa-device-panel">
           <div class="wa-device-panel-title">
-            <i class="bi ${esc(icon)}" aria-hidden="true"></i>
+            <span class="wa-device-panel-icon">${deviceIcon(icon)}</span>
             <span>${esc(title)}</span>
           </div>
           <div class="wa-device-empty">No data in this slice yet.</div>
@@ -4338,7 +4353,7 @@
     return `
       <section class="wa-device-panel">
         <div class="wa-device-panel-title">
-          <i class="bi ${esc(icon)}" aria-hidden="true"></i>
+          <span class="wa-device-panel-icon">${deviceIcon(icon)}</span>
           <span>${esc(title)}</span>
         </div>
         <div class="wa-device-table-wrap">
@@ -4394,13 +4409,13 @@
 
     if (content) {
       content.innerHTML = [
-        table('Device Type', data.devices, 'bi-display'),
-        table('Browser', data.browsers, 'bi-globe2'),
-        table('Operating System', data.operatingSystems, 'bi-pc-display'),
-        table('Viewport Size', data.viewports, 'bi-arrows-angle-expand'),
-        table('Screen Size', data.screens, 'bi-aspect-ratio'),
-        table('Prospect Timezone', data.timeZones, 'bi-clock'),
-        table('Language', data.languages, 'bi-translate')
+        table('Device Type', data.devices, 'display'),
+        table('Browser', data.browsers, 'browser'),
+        table('Operating System', data.operatingSystems, 'os'),
+        table('Viewport Size', data.viewports, 'viewport'),
+        table('Screen Size', data.screens, 'screen'),
+        table('Prospect Timezone', data.timeZones, 'timezone'),
+        table('Language', data.languages, 'language')
       ].join('');
     }
   }
