@@ -1329,7 +1329,7 @@ public sealed class AnalyticsQueryService : IAnalyticsQueryService
             RequestRoute = FirstNonBlank(metadata.Route, errorEvent.Path),
             RequestTrigger = metadata.Trigger,
             RawFetchUrl = metadata.FetchUrl,
-            Source = errorEvent.UtmSource,
+            Source = SourceBucketLabel(SnapshotFromEvent(errorEvent), Classify(SnapshotFromEvent(errorEvent))),
             Campaign = FirstNonBlank(errorEvent.UtmCampaign, errorEvent.MetaCampaignName, errorEvent.MetaCampaignId),
             Severity = severity,
             SuggestedAction = ResolveTrackingErrorSuggestedAction(metadata.StatusCode, metadata.ErrorMessage),
