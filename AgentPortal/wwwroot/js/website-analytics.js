@@ -4363,7 +4363,7 @@
     const content = document.getElementById('deviceIntelligenceContent');
     if (content) content.innerHTML = '<div class="wa-loading">Loading device intelligence...</div>';
 
-    const deviceUrl = `/website-analytics/DeviceIntelligence?${currentRangeParams().toString()}`;
+    const deviceUrl = `/WebsiteAnalytics/DeviceIntelligence?${currentRangeParams().toString()}`;
     const res = await fetchCachedDeviceRequest(deviceUrl, () => fetch(deviceUrl, {
       headers: { 'Accept': 'application/json' }
     }));
@@ -4412,7 +4412,7 @@
 
   moduleBtn.addEventListener('click', () => {
     bootstrap.Modal.getOrCreateInstance(modalEl).show();
-    safeLoadDeviceIntelligence();
+    window.websiteAnalyticsDeviceIntelligence.loadCurrentView();
   });
 
   moduleBtn.addEventListener('keydown', e => {
@@ -4426,7 +4426,7 @@
     btn.addEventListener('click', () => {
       localTraffic = btn.dataset.deviceTraffic || 'all';
       document.querySelectorAll('[data-device-traffic]').forEach(x => x.classList.toggle('is-active', x === btn));
-      safeLoadDeviceIntelligence();
+      window.websiteAnalyticsDeviceIntelligence.loadCurrentView();
     });
   });
 })();
