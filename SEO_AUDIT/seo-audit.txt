@@ -1,0 +1,157 @@
+==================== TITLES ====================
+Protect-Website/Views/Shared/_Layout.cshtml:49:    <title>@ViewData["Title"] - Legend™</title>
+
+==================== META DESCRIPTIONS ====================
+
+==================== CANONICAL TAGS ====================
+
+==================== ROBOTS META / NOINDEX ====================
+
+==================== OPEN GRAPH ====================
+
+==================== TWITTER TAGS ====================
+
+==================== STRUCTURED DATA ====================
+
+==================== H1 TAGS ====================
+Protect-Website/Views/Home/Privacy.cshtml:10:        <h1 class="legal-title">Privacy &amp; Data Use</h1>
+Protect-Website/Views/Home/Terms.cshtml:10:        <h1 class="legal-title">Terms of Use</h1>
+Protect-Website/Views/Home/Index.cshtml:620:                <h1>Protect your income, family, and momentum with a <span class="hero-emphasis">clean plan.</span></h1>
+Protect-Website/Views/Contact/Index.cshtml:12:        <h1 class="title">Contact Us</h1>
+Protect-Website/Views/Quote/Disability.cshtml:304:        <h1>Get Your Personalized Disability Insurance Review</h1>
+Protect-Website/Views/Quote/ThankYou.cshtml:468:            <h1 class="ty-headline">@headlineText</h1>
+Protect-Website/Views/Quote/Commercial.cshtml:253:        <h1 style="
+Protect-Website/Views/Quote/Home.cshtml:15:        <h1 style="
+Protect-Website/Views/Quote/Auto.cshtml:24:        <h1 style="
+Protect-Website/Views/Quote/Health.cshtml:14:        <h1 style="
+Protect-Website/Views/Quote/Life.cshtml:7405:                    <h1 class="hero-title">@lowFrictionHeroHeadline</h1>
+Protect-Website/Views/Quote/Life.cshtml:7454:                        <h1 class="hero-title">@heroHeadline</h1>
+Protect-Website/Views/Quote/Life.cshtml:7463:                <h1 class="hero-title">@heroHeadline</h1>
+Protect-Website/Views/Quote/Index.cshtml:564:        <h1 class="hero-title">Get Covered. Stay Ready. Build Legacy.</h1>
+Protect-Website/Views/RiskAssessment/Index.cshtml:261:        <h1 style="
+Protect-Website/Views/TrainingPackages/Index.cshtml:22:        <h1 class="display-4 fw-bold">Training Packages</h1>
+
+==================== H2 TAGS ====================
+Protect-Website/Views/Home/Index.cshtml:641:        <h2>The Legend Client Experience</h2>
+Protect-Website/Views/Home/Index.cshtml:665:            <h2 class="section-title">Explore At Your Pace</h2>
+Protect-Website/Views/Quote/Index.cshtml:581:            <h2 class="section-title">Choose Your Quote Type</h2>
+Protect-Website/Views/Quote/Index.cshtml:684:            <h2 class="section-title">What Happens Next</h2>
+Protect-Website/Views/Quote/Index.cshtml:712:        <h2>Want to talk first?</h2>
+Protect-Website/Views/TrainingPackages/Index.cshtml:245:        <h2 class="booking-title">Want to talk first?</h2>
+
+==================== ROBOTS.TXT ====================
+
+==================== SITEMAPS ====================
+
+==================== QUOTE / LANDING ROUTES ====================
+Protect-Website/Controllers/TrackingProxyController.cs:40:    [Route("api/tracking/ingest")]
+Protect-Website/Controllers/TrackingProxyController.cs:41:    [Route("api/analytics/ingest")] // Compat alias for older tracking.js builds.
+Protect-Website/Controllers/TrackingProxyController.cs:71:    [Route("api/lead/submit")]
+Protect-Website/Controllers/AutoQuoteController.cs:24:    [Route("Quote")]
+Protect-Website/Controllers/AutoQuoteController.cs:65:            return View("~/Views/Quote/Auto.cshtml", model);
+Protect-Website/Controllers/AutoQuoteController.cs:107:                return View("~/Views/Quote/Auto.cshtml", model);
+Protect-Website/Controllers/AutoQuoteController.cs:175:                return View("~/Views/Quote/Auto.cshtml", model);
+Protect-Website/Controllers/HomeQuoteController.cs:17:    [Route("Quote")]
+Protect-Website/Controllers/HomeQuoteController.cs:51:        // GET: /Quote/Home
+Protect-Website/Controllers/HomeQuoteController.cs:55:            return View("~/Views/Quote/Home.cshtml");
+Protect-Website/Controllers/HomeQuoteController.cs:58:        // POST: /Quote/Home
+Protect-Website/Controllers/HomeQuoteController.cs:75:                return View("~/Views/Quote/Home.cshtml", model);
+Protect-Website/Controllers/HomeQuoteController.cs:154:                return View("~/Views/Quote/Home.cshtml", model);
+Protect-Website/Controllers/ThankYouController.cs:87:            // Loads Views/Quote/ThankYou.cshtml
+Protect-Website/Controllers/ThankYouController.cs:88:            return View("~/Views/Quote/ThankYou.cshtml", model);
+Protect-Website/Controllers/AnalyticsController.cs:6:[Route("analytics")]
+Protect-Website/Controllers/LifeQuoteController.cs:29:    [Route("Quote")]
+Protect-Website/Controllers/LifeQuoteController.cs:90:        [HttpGet("Life/landing")]
+Protect-Website/Controllers/LifeQuoteController.cs:94:        [HttpGet("Term-Life/landing")]
+Protect-Website/Controllers/LifeQuoteController.cs:98:        [HttpGet("Whole-Life/landing")]
+Protect-Website/Controllers/LifeQuoteController.cs:102:        [HttpGet("Final-Expense/landing")]
+Protect-Website/Controllers/LifeQuoteController.cs:106:        [HttpGet("Mortgage-Protection/landing")]
+Protect-Website/Controllers/LifeQuoteController.cs:110:        [HttpGet("IUL/landing")]
+Protect-Website/Controllers/LifeQuoteController.cs:153:            return View("~/Views/Quote/Life.cshtml", vm);
+Protect-Website/Controllers/LifeQuoteController.cs:236:                return View("~/Views/Quote/Life.cshtml", vmInvalid);
+Protect-Website/Controllers/LifeQuoteController.cs:345:                return View("~/Views/Quote/Life.cshtml", vmPersistErr);
+Protect-Website/Controllers/LifeQuoteController.cs:915:                    Route = "/Quote/Life/meta-browser-ack"
+Protect-Website/Controllers/LifeQuoteController.cs:2339:                LifeOfferKeys.Life => "/Quote/Life/landing",
+Protect-Website/Controllers/LifeQuoteController.cs:2340:                LifeOfferKeys.Mortgage => "/Quote/Mortgage-Protection/landing",
+Protect-Website/Controllers/LifeQuoteController.cs:2341:                LifeOfferKeys.FinalExpense => "/Quote/Final-Expense/landing",
+Protect-Website/Controllers/LifeQuoteController.cs:2342:                LifeOfferKeys.Term => "/Quote/Term-Life/landing",
+Protect-Website/Controllers/LifeQuoteController.cs:2343:                LifeOfferKeys.WholeLife => "/Quote/Whole-Life/landing",
+Protect-Website/Controllers/LifeQuoteController.cs:2344:                LifeOfferKeys.Iul => "/Quote/IUL/landing",
+Protect-Website/Controllers/LifeQuoteController.cs:2345:                _ => "/Quote/Life/landing"
+Protect-Website/Controllers/LifeQuoteController.cs:2354:                LifeOfferKeys.Mortgage => "/Quote/Mortgage-Protection",
+Protect-Website/Controllers/LifeQuoteController.cs:2355:                LifeOfferKeys.FinalExpense => "/Quote/Final-Expense",
+Protect-Website/Controllers/LifeQuoteController.cs:2356:                LifeOfferKeys.Term => "/Quote/Term-Life",
+Protect-Website/Controllers/LifeQuoteController.cs:2357:                LifeOfferKeys.WholeLife => "/Quote/Whole-Life",
+Protect-Website/Controllers/LifeQuoteController.cs:2358:                LifeOfferKeys.Iul => "/Quote/IUL",
+Protect-Website/Controllers/LifeQuoteController.cs:2359:                _ => "/Quote/Life"
+Protect-Website/Controllers/RiskAssessmentController.cs:15:    [Route("RiskAssessment")]
+Protect-Website/Controllers/HealthQuoteController.cs:17:    [Route("Quote")]
+Protect-Website/Controllers/HealthQuoteController.cs:54:            return View("~/Views/Quote/Health.cshtml");
+Protect-Website/Controllers/HealthQuoteController.cs:60:        return View("~/Views/Quote/Health.cshtml", model);
+Protect-Website/Controllers/HealthQuoteController.cs:139:        return View("~/Views/Quote/Health.cshtml", model);
+Protect-Website/Controllers/DisabilityQuoteController.cs:17:    [Route("Quote")]
+Protect-Website/Controllers/DisabilityQuoteController.cs:48:        // GET: /Quote/Disability
+Protect-Website/Controllers/DisabilityQuoteController.cs:52:            return View("~/Views/Quote/Disability.cshtml", new DisabilityQuoteFormModel());
+Protect-Website/Controllers/DisabilityQuoteController.cs:55:        // POST: /Quote/Disability
+Protect-Website/Controllers/DisabilityQuoteController.cs:61:                                : View("~/Views/Quote/Disability.cshtml", model);
+Protect-Website/Controllers/DisabilityQuoteController.cs:141:                    : View("~/Views/Quote/Disability.cshtml", model);
+Protect-Website/Controllers/CommercialQuoteController.cs:20:    [Route("Quote")]
+Protect-Website/Controllers/CommercialQuoteController.cs:57:            return View("~/Views/Quote/Commercial.cshtml", model);
+Protect-Website/Controllers/CommercialQuoteController.cs:80:                return View("~/Views/Quote/Commercial.cshtml", model);
+Protect-Website/Controllers/CommercialQuoteController.cs:157:                return View("~/Views/Quote/Commercial.cshtml", model);
+Protect-Website/Views/Quote/Commercial.cshtml:277:<form action="/Quote/Commercial"
+Protect-Website/Views/Quote/Auto.cshtml:205:<form action="/Quote/Auto" method="post" class="container" id="autoQuoteForm" novalidate data-form-key="quote_auto_form">
+Protect-Website/Views/Quote/Life.cshtml:16:    var isLandingRoutePath = requestPath.Contains("/landing", StringComparison.OrdinalIgnoreCase);
+Protect-Website/Views/Quote/Life.cshtml:9251:  const metaBrowserAckUrl = '/Quote/Life/meta-browser-ack';
+Protect-Website/Views/Quote/Index.cshtml:588:            <a href="@Link("/Quote/Auto")" class="quote-tile reveal" aria-label="Start Auto Insurance Quote" data-cta="quote_index_auto_start">
+Protect-Website/Views/Quote/Index.cshtml:603:            <a href="@Link("/Quote/Home")" class="quote-tile reveal" aria-label="Start Home Insurance Quote" data-cta="quote_index_home_start">
+Protect-Website/Views/Quote/Index.cshtml:618:            <a href="@Link("/Quote/Commercial")" class="quote-tile reveal" aria-label="Start Commercial Insurance Quote" data-cta="quote_index_commercial_start">
+Protect-Website/Views/Quote/Index.cshtml:648:            <a href="@Link("/Quote/Disability")" class="quote-tile reveal" aria-label="Start Disability Insurance Quote" data-cta="quote_index_disability_start">
+Protect-Website/Views/Quote/Index.cshtml:663:            <a href="@Link("/Quote/Health")" class="quote-tile reveal" aria-label="Start Health Insurance Quote" data-cta="quote_index_health_start">
+Protect-Website/Views/Shared/_Layout.cshtml:13:        requestPath.Contains("/quote/", StringComparison.OrdinalIgnoreCase) &&
+Protect-Website/Views/Shared/_Layout.cshtml:14:        requestPath.Contains("/landing", StringComparison.OrdinalIgnoreCase);
+Protect-Website/Views/Shared/_Layout.cshtml:16:    var isStandaloneQuoteLanding = isLandingPage && requestPath.Contains("/quote/", StringComparison.OrdinalIgnoreCase);
+Protect-Website/Views/Shared/_LifeModal.cshtml:8:            <a href="@Model/Quote/Life" class="life-option">General Life</a>
+Protect-Website/Views/Shared/_LifeModal.cshtml:9:            <a href="@Model/Quote/Term-Life" class="life-option">Term Life</a>
+Protect-Website/Views/Shared/_LifeModal.cshtml:10:            <a href="@Model/Quote/Whole-Life" class="life-option">Whole Life</a>
+Protect-Website/Views/Shared/_LifeModal.cshtml:11:            <a href="@Model/Quote/Final-Expense" class="life-option">Final Expense</a>
+Protect-Website/Views/Shared/_LifeModal.cshtml:12:            <a href="@Model/Quote/Mortgage-Protection" class="life-option">Mortgage Protection</a>
+Protect-Website/Views/Shared/_LifeModal.cshtml:13:            <a href="@Model/Quote/IUL" class="life-option">Indexed Universal Life (IUL)</a>
+Protect-Website/Program.cs:132:app.MapControllerRoute(
+
+==================== IMAGE LAZY LOADING ====================
+Protect-Website/Views/Quote/ThankYou.cshtml:481:                                <img src="@agentTrustProfile.ProfileImageUrl" alt="@agentDisplayName" loading="lazy" onerror="this.style.display='none'; this.nextElementSibling.hidden=false;" />
+Protect-Website/Views/Quote/Life.cshtml:7480:                        <img src="@heroTrustPersonImageUrl" alt="" loading="lazy" onerror="this.style.display='none'; this.nextElementSibling.hidden=false;" />
+Protect-Website/Views/Quote/Life.cshtml:7539:                                    <img src="@contactFirstTrustImageUrl" alt="" loading="lazy" onerror="this.style.display='none'; this.nextElementSibling.hidden=false;" />
+Protect-Website/Views/Quote/Life.cshtml:8066:                                        <img src="@heroTrustPersonImageUrl" alt="" loading="lazy" onerror="this.style.display='none'; this.nextElementSibling.hidden=false;" />
+Protect-Website/Views/Shared/_TrustedCarrierStrip.cshtml:65:                                         loading="lazy"
+
+==================== LARGE JS FILES ====================
+Protect-Website/publish-macos/wwwroot/lib/bootstrap/dist/js/bootstrap.bundle.js
+Protect-Website/publish-macos/wwwroot/lib/jquery/dist/jquery.slim.js
+Protect-Website/publish-macos/wwwroot/lib/jquery/dist/jquery.js
+Protect-Website/wwwroot/lib/bootstrap/dist/js/bootstrap.bundle.js
+Protect-Website/wwwroot/lib/jquery/dist/jquery.slim.js
+Protect-Website/wwwroot/lib/jquery/dist/jquery.js
+Protect-Website/wwwroot_backup/lib/bootstrap/dist/js/bootstrap.bundle.js
+Protect-Website/wwwroot_backup/lib/jquery/dist/jquery.slim.js
+Protect-Website/wwwroot_backup/lib/jquery/dist/jquery.js
+
+==================== LARGE CSS FILES ====================
+Protect-Website/publish-macos/wwwroot/lib/bootstrap/dist/css/bootstrap.min.css
+Protect-Website/publish-macos/wwwroot/lib/bootstrap/dist/css/bootstrap.css
+Protect-Website/publish-macos/wwwroot/lib/bootstrap/dist/css/bootstrap.rtl.min.css
+Protect-Website/publish-macos/wwwroot/lib/bootstrap/dist/css/bootstrap.rtl.css
+Protect-Website/wwwroot/lib/bootstrap/dist/css/bootstrap.min.css
+Protect-Website/wwwroot/lib/bootstrap/dist/css/bootstrap.css
+Protect-Website/wwwroot/lib/bootstrap/dist/css/bootstrap.rtl.min.css
+Protect-Website/wwwroot/lib/bootstrap/dist/css/bootstrap.rtl.css
+Protect-Website/wwwroot_backup/lib/bootstrap/dist/css/bootstrap.min.css
+Protect-Website/wwwroot_backup/lib/bootstrap/dist/css/bootstrap.css
+Protect-Website/wwwroot_backup/lib/bootstrap/dist/css/bootstrap.rtl.min.css
+Protect-Website/wwwroot_backup/lib/bootstrap/dist/css/bootstrap.rtl.css
+
+==================== INTERNAL LINKS ====================
+Protect-Website/Views/Quote/ThankYou.cshtml:541:            <a href="/" class="btn-ghost-gold">
+
+==================== DONE ====================
