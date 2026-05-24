@@ -587,7 +587,18 @@ body.disability-final-step-active #dq-step4 .lq-step-helper {
             }, 160);
         }
 
-        function showStep(step) {
+        
+        function setProgress(step) {
+            var progressFill = document.querySelector('.lq-progress-fill');
+            if (!progressFill) return;
+
+            var totalSteps = steps.length || 4;
+            var pct = Math.max(0, Math.min(100, (step / totalSteps) * 100));
+
+            progressFill.style.width = pct + '%';
+        }
+
+function showStep(step) {
             if (step < 1 || step > steps.length) return;
             steps.forEach(function (s, idx) {
                 var panel = document.getElementById(s.id);

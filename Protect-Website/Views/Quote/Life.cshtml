@@ -9877,7 +9877,12 @@ body.life-landing .lq-hero-shell,
     input.addEventListener('blur', applyMask);
   });
 
-  const contactFieldProgress = new Map();
+  
+function stripPhoneDigits(value) {
+  return String(value || '').replace(/\D/g, '');
+}
+
+const contactFieldProgress = new Map();
   const contactFieldCompletionRules = {
     FirstName: (value) => value.trim().length >= 2,
     LastName: (value) => value.trim().length >= 2,
@@ -10073,7 +10078,7 @@ body.life-landing .lq-hero-shell,
     }) ?? null);
   }
 
-  function trackPrimaryCtaSeenOnce(placement, metadata = {}) {
+  function trackPrimaryCtaSeenOnce(visibleTarget, placement, metadata = {}) {
     if (primaryCtaSeenTracked) {
       return;
     }
@@ -11730,7 +11735,7 @@ body.life-landing .lq-hero-shell,
 
     const placement = visibleTarget.getAttribute('data-primary-cta') || visibleTarget.getAttribute('data-placement') || 'hero';
     const rect = visibleTarget.getBoundingClientRect();
-    trackPrimaryCtaSeenOnce(placement, {
+    trackPrimaryCtaSeenOnce(visibleTarget, placement, {
       source,
       ctaId: visibleTarget.getAttribute('data-cta') || 'life_funnel_start',
       ctaText: visibleTarget.textContent?.replace(/\s+/g, ' ')?.trim() || '',
