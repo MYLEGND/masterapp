@@ -625,8 +625,8 @@
     if (warningsEl) {
       const warnings = Array.isArray(data.warnings) ? data.warnings : [];
       warningsEl.innerHTML = warnings.length
-        ? warnings.map(w => `<li>${escapeHtml(w)}</li>`).join('')
-        : '<li>No active health warnings in the selected range.</li>';
+        ? warnings.map(w => `<li>${renderMarketingHealthCopyableText(w, 'wa-health-warning-text')}</li>`).join('')
+        : '<li><span class="wa-health-warning-text is-static">No active health warnings in the selected range.</span></li>';
     }
 
     renderMarketingHealthTrackingErrors(data.recentTrackingErrors || []);
@@ -648,10 +648,13 @@
     return '<span class="wa-health-recovered is-unknown">Unknown</span>';
   }
 
-  function truncateText(value, maxLength = 72) {
-    const text = String(value || '').trim();
-    if (!text || text.length <= maxLength) return text;
-    return `${text.slice(0, Math.max(0, maxLength - 3))}...`;
+  function renderMarketingHealthCopyableText(value, className = '') {
+    const text = asTrimmed(value);
+    if (!text) return '';
+    const safeText = escapeHtml(text);
+    const classes = ['wa-health-copyable'];
+    if (className) classes.push(className);
+    return `<button type="button" class="${classes.join(' ')}" data-copy-value="${safeText}" title="${safeText}">${safeText}</button>`;
   }
 
   function renderMarketingHealthTrackingErrors(rows) {
@@ -668,13 +671,16 @@
       const recoveredTone = row?.recovered === true ? 'yes' : row?.recovered === false ? 'no' : 'unknown';
       const timeLabel = escapeHtml(row?.localDisplayTime || formatDisplayDate(row?.eventUtc) || '—');
       const pageLabel = escapeHtml(row?.pageKey || row?.pagePath || row?.quoteType || '—');
-      const pagePath = escapeHtml(truncateText(row?.pagePath || row?.pageUrl || '', 54));
+      const pagePathValue = asTrimmed(row?.pagePath || row?.pageUrl || '');
       const quoteLabel = asTrimmed(row?.quoteType) ? escapeHtml(prettifyQuoteType(row.quoteType)) : '';
       const eventLabel = escapeHtml(row?.attemptedEventName || '—');
       const sessionLabel = row?.sessionIdShort ? `Session ${escapeHtml(row.sessionIdShort)}` : '';
       const visitorLabel = row?.visitorIdShort ? `Visitor ${escapeHtml(row.visitorIdShort)}` : '';
       const eventMeta = [sessionLabel, visitorLabel].filter(Boolean).join(' · ');
-      const errorLabel = escapeHtml(truncateText(row?.errorMessage || '—', 72));
+      const errorValue = asTrimmed(row?.errorMessage || '');
+      const errorLabel = errorValue
+        ? renderMarketingHealthCopyableText(errorValue, 'wa-health-cell-ellipsis')
+        : '—';
       const statusLabel = row?.statusCode != null ? `HTTP ${escapeHtml(String(row.statusCode))}` : '—';
       const retryLabel = escapeHtml(String(row?.retryCount ?? 0));
       const hasMatchedLead = !!row?.matchedLead;
@@ -686,7 +692,7 @@
           </td>
           <td>
             <div class="wa-health-cell-primary">${pageLabel}</div>
-            ${pagePath ? `<div class="wa-health-cell-sub">${pagePath}</div>` : ''}
+            ${pagePathValue ? `<div class="wa-health-cell-sub">${renderMarketingHealthCopyableText(pagePathValue, 'wa-health-cell-ellipsis')}</div>` : ''}
             ${quoteLabel ? `<div class="wa-health-cell-sub">${quoteLabel}</div>` : ''}
           </td>
           <td>
@@ -854,6 +860,28 @@
       const index = Number.parseInt(button.dataset.mhErrorIndex || '', 10);
       if (!Number.isFinite(index)) return;
       openMarketingHealthErrorDetail(index);
+    });
+  }
+
+  function initMarketingHealthCopyable() {
+    document.addEventListener('click', async (event) => {
+      const copyable = event.target.closest('.wa-health-copyable[data-copy-value]');
+      if (!copyable) return;
+      const value = copyable.dataset.copyValue || '';
+      if (!value) return;
+
+      const copied = await copyTextWithFallback(value);
+      if (!copied) return;
+
+      const originalTitle = copyable.dataset.copyOriginalTitle || copyable.getAttribute('title') || value;
+      copyable.dataset.copyOriginalTitle = originalTitle;
+      copyable.classList.add('is-copied');
+      copyable.setAttribute('title', 'Copied full value');
+
+      window.setTimeout(() => {
+        copyable.classList.remove('is-copied');
+        copyable.setAttribute('title', originalTitle);
+      }, 1200);
     });
   }
 
@@ -3166,6 +3194,7 @@
     initLeadDeleteControls();
     initModalCopyButtons();
     initMarketingHealthInspector();
+    initMarketingHealthCopyable();
     attachModal('trafficModal', () => { updateTrafficTypeHeader('trafficModal'); loadTraffic(); });
     attachModal('pagePerfModal', () => { updateTrafficTypeHeader('pagePerfModal'); loadPagePerf(); });
     attachModal('ctaPerfModal', () => { updateTrafficTypeHeader('ctaPerfModal'); loadCtaPerf(); });

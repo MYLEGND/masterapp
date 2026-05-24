@@ -5494,6 +5494,8 @@ body {
 
 .wa-health-warning-list li {
     position: relative;
+    min-width: 0;
+    overflow: hidden;
     padding: .72rem .8rem .72rem 2rem;
     border-radius: 14px;
     border: 1px solid rgba(199,153,49,.14);
@@ -5505,6 +5507,52 @@ body {
     font-weight: 650;
     line-height: 1.42;
     box-shadow: inset 0 1px 0 rgba(255,255,255,.04);
+}
+
+.wa-health-copyable {
+    display: block;
+    width: 100%;
+    max-width: 100%;
+    min-width: 0;
+    overflow: hidden;
+    padding: 0;
+    border: 0;
+    background: none;
+    color: inherit;
+    font: inherit;
+    line-height: inherit;
+    text-align: left;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    cursor: copy;
+    transition: color .16s ease, opacity .16s ease;
+}
+
+.wa-health-copyable:hover,
+.wa-health-copyable:focus-visible {
+    color: #fff3cf;
+    opacity: 1;
+}
+
+.wa-health-copyable:focus-visible {
+    outline: 2px solid rgba(232,192,104,.42);
+    outline-offset: 2px;
+    border-radius: 6px;
+}
+
+.wa-health-copyable.is-copied {
+    color: #f3d78f;
+}
+
+.wa-health-warning-text {
+    display: block;
+}
+
+.wa-health-warning-text.is-static {
+    overflow: visible;
+    white-space: normal;
+    text-overflow: clip;
+    cursor: default;
 }
 
 .wa-health-warning-list li::before {
@@ -5541,7 +5589,9 @@ body {
 }
 
 .wa-health-diagnostics-table {
+    width: 100%;
     min-width: 1040px;
+    table-layout: fixed;
     margin-bottom: 0;
     border-spacing: 0 10px;
     background: transparent;
@@ -5574,6 +5624,7 @@ body {
 }
 
 .wa-health-diagnostics-table tbody td {
+    min-width: 0;
     color: #eef2f8;
     background:
         linear-gradient(180deg, rgba(255,255,255,.028) 0%, rgba(255,255,255,.008) 100%),
@@ -5637,16 +5688,24 @@ body {
 }
 
 .wa-health-cell-primary {
+    min-width: 0;
     color: #f8fafc;
     font-size: .82rem;
     font-weight: 780;
 }
 
 .wa-health-cell-sub {
+    min-width: 0;
     margin-top: .18rem;
     color: rgba(216,222,234,.7);
     font-size: .7rem;
     line-height: 1.36;
+}
+
+.wa-health-cell-ellipsis {
+    display: block;
+    width: 100%;
+    max-width: 100%;
 }
 
 .wa-health-row-actions {
