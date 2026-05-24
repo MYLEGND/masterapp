@@ -4155,6 +4155,10 @@
   const analyticsRequestCache = window.__websiteAnalyticsRequestCache || new Map();
   window.__websiteAnalyticsRequestCache = analyticsRequestCache;
 
+  async function fetchOnce(key, fetcher) {
+    if (analyticsRequestCache.has(key)) {
+      return analyticsRequestCache.get(key);
+    }
 
     const promise = fetcher().finally(() => {
       setTimeout(() => analyticsRequestCache.delete(key), 3000);
