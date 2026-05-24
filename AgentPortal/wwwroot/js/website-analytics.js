@@ -140,6 +140,13 @@
     return state.controllers[key];
   }
 
+  async function fetchOnce(key, fetcher) {
+    if (typeof fetcher !== 'function') {
+      return fetch(key);
+    }
+    return fetcher();
+  }
+
   async function fetchJson(key, url, params = {}) {
     const ctrl = abort(key);
     const qs = new URLSearchParams(params).toString();
@@ -4148,10 +4155,6 @@
   const analyticsRequestCache = window.__websiteAnalyticsRequestCache || new Map();
   window.__websiteAnalyticsRequestCache = analyticsRequestCache;
 
-  async function fetchOnce(key, fetcher) {
-    if (analyticsRequestCache.has(key)) {
-      return analyticsRequestCache.get(key);
-    }
 
     const promise = fetcher().finally(() => {
       setTimeout(() => analyticsRequestCache.delete(key), 3000);
