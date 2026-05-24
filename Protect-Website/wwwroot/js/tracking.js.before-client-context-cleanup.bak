@@ -430,42 +430,6 @@
     return hasMetadata ? JSON.stringify(metadata) : null;
   }
 
-
-  function getClientContext() {
-    const ua = navigator.userAgent || "";
-    const width = window.innerWidth || document.documentElement.clientWidth || 0;
-    const height = window.innerHeight || document.documentElement.clientHeight || 0;
-
-    let deviceType = "desktop";
-    if (/Mobi|Android|iPhone|iPod/i.test(ua)) deviceType = "mobile";
-    else if (/iPad|Tablet/i.test(ua)) deviceType = "tablet";
-
-    let browser = "unknown";
-    if (/Edg\//i.test(ua)) browser = "edge";
-    else if (/Chrome\//i.test(ua) && !/Edg\//i.test(ua)) browser = "chrome";
-    else if (/Safari\//i.test(ua) && !/Chrome\//i.test(ua)) browser = "safari";
-    else if (/Firefox\//i.test(ua)) browser = "firefox";
-
-    let operatingSystem = "unknown";
-    if (/Windows/i.test(ua)) operatingSystem = "windows";
-    else if (/Mac OS X/i.test(ua)) operatingSystem = "macos";
-    else if (/Android/i.test(ua)) operatingSystem = "android";
-    else if (/iPhone|iPad|iPod/i.test(ua)) operatingSystem = "ios";
-    else if (/Linux/i.test(ua)) operatingSystem = "linux";
-
-    return {
-      DeviceType: deviceType,
-      Browser: browser,
-      OperatingSystem: operatingSystem,
-      ViewportWidth: width || null,
-      ViewportHeight: height || null,
-      ScreenWidth: window.screen?.width || null,
-      ScreenHeight: window.screen?.height || null,
-      Language: navigator.language || null,
-      TimeZone: Intl.DateTimeFormat().resolvedOptions().timeZone || null
-    };
-  }
-
   function buildBody(payload) {
     const sessionId = getSessionId();
     const attribution = resolveCurrentSessionAttribution(payload, sessionId);
@@ -483,7 +447,6 @@
       Referrer: document.referrer || null,
       SessionId: sessionId,
       VisitorId: getVisitorId(),
-      ...getClientContext(),
       UtmSource: attribution.utmSource || null,
       UtmMedium: attribution.utmMedium || null,
       UtmCampaign: attribution.utmCampaign || null,

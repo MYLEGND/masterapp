@@ -63,9 +63,9 @@
 .quote-hero{
     display:grid;
     grid-template-columns:minmax(0,1.12fr) minmax(280px,.68fr);
-    gap:20px;
+    gap:24px;
     align-items:center;
-    padding:30px 30px 20px;
+    padding:34px 30px 24px;
 }
 
 .hero-kicker{
@@ -84,7 +84,7 @@
 }
 
 .hero-title{
-    margin:12px 0 8px;
+    margin:14px 0 10px;
     color:#e8edf7 !important;
     font-size:clamp(2.1rem,3.35vw,3rem);
     line-height:1.04;
@@ -108,7 +108,7 @@
     display:flex;
     gap:12px;
     flex-wrap:wrap;
-    margin-top:16px;
+    margin-top:18px;
 }
 
 .btn-gold,
@@ -180,13 +180,13 @@
 }
 
 .quote-picker{
-    padding:0 30px 24px;
+    padding:0 30px 28px;
 }
 
 .picker-head{
     border-top:1px solid var(--border-soft);
-    padding-top:18px;
-    margin-bottom:14px;
+    padding-top:22px;
+    margin-bottom:16px;
     display:flex;
     justify-content:space-between;
     align-items:flex-end;
@@ -225,8 +225,8 @@
     grid-template-columns:auto 1fr auto;
     align-items:center;
     gap:12px;
-    min-height:78px;
-    padding:12px 13px;
+    min-height:86px;
+    padding:14px;
     border-radius:18px;
     border:1px solid rgba(199,153,49,.48);
     background:rgba(255,255,255,.045) !important;
@@ -260,62 +260,6 @@
 .life-tile{
     border-color:rgba(242,205,117,.85);
     background:rgba(199,153,49,.085) !important;
-}
-
-
-.tile-icon svg,
-.process-svg svg,
-.hero-check svg {
-    width:22px;
-    height:22px;
-    stroke:currentColor;
-    stroke-width:2;
-    fill:none;
-    stroke-linecap:round;
-    stroke-linejoin:round;
-}
-
-.process-svg{
-    width:46px;
-    height:46px;
-    border-radius:16px;
-    display:flex;
-    align-items:center;
-    justify-content:center;
-    margin:2px 0 10px;
-    border:1px solid rgba(199,153,49,.42);
-    background:rgba(199,153,49,.11);
-    color:var(--gold-bright);
-}
-
-.hero-list li{
-    display:flex;
-    align-items:flex-start;
-    gap:8px;
-}
-
-.hero-list li:before{
-    display:none;
-}
-
-.hero-check{
-    width:20px;
-    height:20px;
-    border-radius:999px;
-    display:inline-flex;
-    align-items:center;
-    justify-content:center;
-    flex:0 0 auto;
-    color:var(--gold-bright);
-    border:1px solid rgba(199,153,49,.48);
-    background:rgba(199,153,49,.10);
-    margin-top:1px;
-}
-
-.hero-check svg{
-    width:13px;
-    height:13px;
-    stroke-width:2.4;
 }
 
 .tile-icon{
@@ -365,7 +309,7 @@
 }
 
 .process-step{
-    padding:16px 22px;
+    padding:18px 22px;
     border-right:1px solid rgba(199,153,49,.16);
 }
 
@@ -400,7 +344,7 @@
 }
 
 .calendar-section{
-    margin-top:24px;
+    margin-top:28px;
     padding:24px 20px;
     background:linear-gradient(180deg,#0f172a 0%, #0b1325 100%) !important;
     border:1.4px solid var(--border);
@@ -449,7 +393,7 @@
     box-shadow:var(--shadow-soft);
     padding:24px 20px;
     text-align:center;
-    margin-top:24px;
+    margin-top:28px;
     color:#f8fafc !important;
 }
 
@@ -599,9 +543,9 @@
             <aside class="hero-card">
                 <p class="hero-card-title">What happens next</p>
                 <ul class="hero-list">
-                    <li><span class="hero-check"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 6L9 17l-5-5"/></svg></span><span>Choose the coverage type</span></li>
-                    <li><span class="hero-check"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 6L9 17l-5-5"/></svg></span><span>Answer only what matters</span></li>
-                    <li><span class="hero-check"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 6L9 17l-5-5"/></svg></span><span>Get a clear next move</span></li>
+                    <li>Choose the coverage type</li>
+                    <li>Answer only what matters</li>
+                    <li>Get a clear next move</li>
                 </ul>
             </aside>
         </div>
@@ -617,7 +561,7 @@
 
             <div class="quote-grid">
                 <a href="@Link("/Quote/Auto")" class="quote-tile" aria-label="Start Auto Insurance Quote" data-cta="quote_index_auto_start">
-                    <span class="tile-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 16h14"/><path d="M7 16l1-5h8l1 5"/><path d="M7 16v2"/><path d="M17 16v2"/><circle cx="8" cy="18" r="1.3"/><circle cx="16" cy="18" r="1.3"/></svg></span>
+                    <span class="tile-icon">🚗</span>
                     <span>
                         <p class="tile-title">Auto Insurance</p>
                         <p class="tile-sub">Vehicle, passengers, liability.</p>
@@ -626,7 +570,7 @@
                 </a>
 
                 <a href="@Link("/Quote/Home")" class="quote-tile" aria-label="Start Home Insurance Quote" data-cta="quote_index_home_start">
-                    <span class="tile-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 11l8-7 8 7"/><path d="M6 10v10h12V10"/><path d="M10 20v-6h4v6"/></svg></span>
+                    <span class="tile-icon">🏠</span>
                     <span>
                         <p class="tile-title">Home Insurance</p>
                         <p class="tile-sub">Property, valuables, protection.</p>
@@ -635,7 +579,7 @@
                 </a>
 
                 <a href="@Link("/Quote/Commercial")" class="quote-tile" aria-label="Start Commercial Insurance Quote" data-cta="quote_index_commercial_start">
-                    <span class="tile-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 21V7h7v14"/><path d="M11 21V3h9v18"/><path d="M7 11h1"/><path d="M7 15h1"/><path d="M15 7h1"/><path d="M15 11h1"/><path d="M15 15h1"/></svg></span>
+                    <span class="tile-icon">🏢</span>
                     <span>
                         <p class="tile-title">Commercial Insurance</p>
                         <p class="tile-sub">Business, team, income stream.</p>
@@ -644,7 +588,7 @@
                 </a>
 
                 <div class="quote-tile life-tile" tabindex="0" role="button" aria-haspopup="dialog" aria-expanded="false" data-cta="quote_index_life_start">
-                    <span class="tile-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3l7 3v5c0 5-3.2 8.5-7 10-3.8-1.5-7-5-7-10V6l7-3z"/><path d="M12 8v7"/><path d="M9.5 11.5h5"/></svg></span>
+                    <span class="tile-icon">🛡</span>
                     <span>
                         <p class="tile-title">Life Insurance</p>
                         <p class="tile-sub">Family, mortgage, legacy.</p>
@@ -653,7 +597,7 @@
                 </div>
 
                 <a href="@Link("/Quote/Disability")" class="quote-tile" aria-label="Start Disability Insurance Quote" data-cta="quote_index_disability_start">
-                    <span class="tile-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 7a3 3 0 1 0 6 0 3 3 0 0 0-6 0z"/><path d="M5 21a7 7 0 0 1 14 0"/><path d="M12 10v5"/></svg></span>
+                    <span class="tile-icon">💼</span>
                     <span>
                         <p class="tile-title">Disability Insurance</p>
                         <p class="tile-sub">Protect your paycheck.</p>
@@ -662,7 +606,7 @@
                 </a>
 
                 <a href="@Link("/Quote/Health")" class="quote-tile" aria-label="Start Health Insurance Quote" data-cta="quote_index_health_start">
-                    <span class="tile-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 8c0 6-8 11-8 11S4 14 4 8a4 4 0 0 1 7-2.6A4 4 0 0 1 20 8z"/><path d="M8 12h3l1.2-2.5L14 14l1-2h2"/></svg></span>
+                    <span class="tile-icon">✚</span>
                     <span>
                         <p class="tile-title">Health Insurance</p>
                         <p class="tile-sub">Needs, budget, season.</p>
@@ -675,19 +619,16 @@
         <div class="process-strip" aria-label="What happens next">
             <div class="process-step">
                 <span class="process-num">1</span>
-                <span class="process-svg"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 4h9l3 3v13H6z"/><path d="M15 4v4h4"/><path d="M9 13h6"/><path d="M9 17h4"/></svg></span>
                 <h5>Start</h5>
                 <p>Choose the lane and complete the quick intake.</p>
             </div>
             <div class="process-step">
                 <span class="process-num">2</span>
-                <span class="process-svg"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 6h13"/><path d="M8 12h13"/><path d="M8 18h13"/><circle cx="4" cy="6" r="1.5"/><circle cx="4" cy="12" r="1.5"/><circle cx="4" cy="18" r="1.5"/></svg></span>
                 <h5>Review</h5>
                 <p>We organize options around your real situation.</p>
             </div>
             <div class="process-step">
                 <span class="process-num">3</span>
-                <span class="process-svg"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3l7 3v5c0 5-3.2 8.5-7 10-3.8-1.5-7-5-7-10V6l7-3z"/><path d="M9 12l2 2 4-5"/></svg></span>
                 <h5>Decide</h5>
                 <p>You get clear direction before anything moves forward.</p>
             </div>
