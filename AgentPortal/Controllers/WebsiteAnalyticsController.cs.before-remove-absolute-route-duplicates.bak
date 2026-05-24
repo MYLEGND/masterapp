@@ -182,6 +182,7 @@ namespace AgentPortal.Controllers;
     }
 
     [HttpGet("DeviceIntelligence")]
+    [HttpGet("/website-analytics/DeviceIntelligence")]
     public async Task<IActionResult> DeviceIntelligence([FromQuery] string? preset, [FromQuery] DateTime? fromUtc, [FromQuery] DateTime? toUtc, [FromQuery] Guid? agentProfileId = null, [FromQuery] bool team = false, [FromQuery] TrafficType trafficType = TrafficType.All)
     {
         var range = TimeRangeRequest.FromPreset(preset, fromUtc, toUtc, GetViewerTimeZone());
@@ -191,6 +192,7 @@ namespace AgentPortal.Controllers;
     }
 
     [HttpGet("traffic")]
+    [HttpGet("/website-analytics/traffic")]
     public async Task<IActionResult> Traffic([FromQuery] string? preset, [FromQuery] DateTime? fromUtc, [FromQuery] DateTime? toUtc, [FromQuery] Guid? agentProfileId = null, [FromQuery] bool team = false, [FromQuery] TrafficType trafficType = TrafficType.All)
     {
         var range = TimeRangeRequest.FromPreset(preset, fromUtc, toUtc, GetViewerTimeZone());
