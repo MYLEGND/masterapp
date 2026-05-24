@@ -21,6 +21,8 @@ namespace Protect_Website.Models
         [Range(0, 120, ErrorMessage = "Age must be between 0 and 120")]
         public int? Age { get; set; } // nullable int, no default
 
+        public string AgeRange { get; set; } = "";
+
         // ===================== INCOME & WORK =====================
         [Required(ErrorMessage = "Employment Type is required")]
         public string EmploymentType { get; set; } = "";

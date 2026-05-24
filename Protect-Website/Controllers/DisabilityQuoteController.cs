@@ -112,8 +112,14 @@ namespace Protect_Website.Controllers
                     AgentSlug     = agentSlug,
                     MetadataJson  = JsonSerializer.Serialize(new
                     {
+                        AgeRange       = model.AgeRange,
                         EmploymentType = model.EmploymentType,
+                        IncomeRange    = model.IncomeRange,
+                        CurrentCoverage = model.CurrentCoverage,
+                        IncomePriority = model.IncomeProtectionImportance,
                         Occupation     = model.Occupation,
+                        ContactMethod  = model.ContactMethod,
+                        BestTimeToContact = model.BestTimeToContact,
                         UtmId          = model.UtmId,
                         Fbclid         = model.Fbclid,
                         UtmTerm        = model.UtmTerm,
@@ -351,12 +357,15 @@ namespace Protect_Website.Controllers
                     new LeadEmailTemplate.RowBuilder()
                         .Row("Name",  $"{model.FirstName} {model.LastName}".Trim())
                         .Row("Age",   model.Age?.ToString())
+                        .Row("Age Range", model.AgeRange)
                         .Row("Email", model.Email)
                         .Row("Phone", model.Phone)
                         .Section("Employment")
                         .Row("Employment Type", model.EmploymentType)
                         .Row("Occupation",      model.Occupation)
                         .Section("Coverage")
+                        .Row("Income Range", model.IncomeRange)
+                        .Row("Current Coverage", model.CurrentCoverage)
                         .Row("Income Protection Priority", model.IncomeProtectionImportance)
                         .Section("Contact Preferences")
                         .Row("Preferred Method", model.ContactMethod)
