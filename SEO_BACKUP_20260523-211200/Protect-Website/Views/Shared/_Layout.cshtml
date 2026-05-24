@@ -46,47 +46,7 @@
 <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    
-@{
-    var seoRawTitle = (ViewData["SeoTitle"] as string) ?? (ViewData["Title"] as string) ?? "Life Insurance & Protection Planning";
-    var seoTitle = seoRawTitle.Contains("Legend", StringComparison.OrdinalIgnoreCase)
-        ? seoRawTitle
-        : seoRawTitle + " | Legend™";
-
-    var seoDescription = (ViewData["SeoDescription"] as string)
-        ?? "Get a personalized protection review for life insurance, mortgage protection, final expense, and family coverage options.";
-
-    var seoRequestPath = Context.Request.Path.Value ?? "/";
-    var seoCanonicalPath = seoRequestPath.EndsWith("/landing", StringComparison.OrdinalIgnoreCase)
-        ? seoRequestPath[..^"/landing".Length]
-        : seoRequestPath;
-
-    if (string.IsNullOrWhiteSpace(seoCanonicalPath))
-    {
-        seoCanonicalPath = "/";
-    }
-
-    var seoCanonicalUrl = $"{Context.Request.Scheme}://{Context.Request.Host}{seoCanonicalPath}";
-    var seoOgImage = (ViewData["SeoImage"] as string) ?? $"{Context.Request.Scheme}://{Context.Request.Host}/images/legend-social-preview.png";
-    var seoRobots = (ViewData["SeoRobots"] as string) ?? "index,follow";
-    var seoType = (ViewData["SeoType"] as string) ?? "website";
-}
-    <title>@seoTitle</title>
-    <meta name="description" content="@seoDescription" />
-    <meta name="robots" content="@seoRobots" />
-    <link rel="canonical" href="@seoCanonicalUrl" />
-
-    <meta property="og:title" content="@seoTitle" />
-    <meta property="og:description" content="@seoDescription" />
-    <meta property="og:type" content="@seoType" />
-    <meta property="og:url" content="@seoCanonicalUrl" />
-    <meta property="og:image" content="@seoOgImage" />
-
-    <meta name="twitter:card" content="summary_large_image" />
-    <meta name="twitter:title" content="@seoTitle" />
-    <meta name="twitter:description" content="@seoDescription" />
-    <meta name="twitter:image" content="@seoOgImage" />
-
+    <title>@ViewData["Title"] - Legend™</title>
 
     <!-- Bootstrap CSS -->
     <link rel="stylesheet" href="~/lib/bootstrap/dist/css/bootstrap.min.css" />
@@ -654,34 +614,6 @@ footer.footer {
         </noscript>
     }
     <!-- ================= END META PIXEL ================= -->
-
-
-    <script type="application/ld+json">
-    {
-      "@context": "https://schema.org",
-      "@type": "FinancialService",
-      "name": "Legend",
-      "url": "https://protect.mylegnd.com",
-      "description": "Personalized protection planning for life insurance, mortgage protection, final expense, disability coverage, and family financial stability.",
-      "areaServed": [
-        {
-          "@type": "State",
-          "name": "Arizona"
-        },
-        {
-          "@type": "State",
-          "name": "Washington"
-        }
-      ],
-      "founder": {
-        "@type": "Person",
-        "name": "Zac Owen"
-      },
-      "sameAs": [
-        "https://protect.mylegnd.com"
-      ]
-    }
-    </script>
 
 </head>
 
