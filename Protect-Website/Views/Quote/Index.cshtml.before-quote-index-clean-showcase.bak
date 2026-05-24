@@ -489,8 +489,6 @@
     .calendar-container{
         height:520px;
     }
-}
-
 /* ------------------- PRAYER SECTION ------------------- */
 .prayer-card{
     position:relative;

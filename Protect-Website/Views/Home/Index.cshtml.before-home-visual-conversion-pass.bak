@@ -6,31 +6,6 @@
     ViewData["SeoDescription"] = "Protect your income, family, and future with personalized life insurance, mortgage protection, final expense, and coverage planning options.";
 }
 
-
-@functions {
-    private static Microsoft.AspNetCore.Html.IHtmlContent Icon(string name)
-    {
-        var svg = name switch
-        {
-            "shield" => "<svg viewBox='0 0 24 24'><path d='M12 3l7 3v5c0 5-3.2 8.5-7 10-3.8-1.5-7-5-7-10V6l7-3z'/><path d='M9 12l2 2 4-5'/></svg>",
-            "family" => "<svg viewBox='0 0 24 24'><path d='M16 11a4 4 0 1 0-8 0'/><path d='M4 21a8 8 0 0 1 16 0'/><path d='M18 8a3 3 0 0 1 3 3'/><path d='M3 11a3 3 0 0 1 3-3'/></svg>",
-            "income" => "<svg viewBox='0 0 24 24'><path d='M4 7h16v10H4z'/><path d='M8 11h.01'/><path d='M16 13h.01'/><path d='M12 9v6'/><path d='M10 11h4'/></svg>",
-            "file" => "<svg viewBox='0 0 24 24'><path d='M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z'/><path d='M14 3v5h5'/><path d='M9 14l2 2 4-4'/></svg>",
-            "target" => "<svg viewBox='0 0 24 24'><circle cx='12' cy='12' r='8'/><circle cx='12' cy='12' r='4'/><path d='M12 2v3'/><path d='M12 19v3'/><path d='M2 12h3'/><path d='M19 12h3'/></svg>",
-            "compass" => "<svg viewBox='0 0 24 24'><circle cx='12' cy='12' r='9'/><path d='M15 9l-2 5-5 2 2-5 5-2z'/></svg>",
-            "legacy" => "<svg viewBox='0 0 24 24'><path d='M4 20h16'/><path d='M6 20V9l6-5 6 5v11'/><path d='M9 20v-6h6v6'/></svg>",
-            "clock" => "<svg viewBox='0 0 24 24'><circle cx='12' cy='12' r='9'/><path d='M12 7v5l3 2'/></svg>",
-            "check" => "<svg viewBox='0 0 24 24'><path d='M20 6L9 17l-5-5'/></svg>",
-            "arrow" => "<svg viewBox='0 0 24 24'><path d='M5 12h14'/><path d='M13 6l6 6-6 6'/></svg>",
-            "question" => "<svg viewBox='0 0 24 24'><circle cx='12' cy='12' r='9'/><path d='M9.5 9a2.7 2.7 0 0 1 5 1.4c0 1.8-2.5 2.2-2.5 4'/><path d='M12 18h.01'/></svg>",
-            _ => "<svg viewBox='0 0 24 24'><path d='M20 6L9 17l-5-5'/></svg>"
-        };
-
-        return new Microsoft.AspNetCore.Html.HtmlString(svg);
-    }
-}
-
-
 <style>
 :root {
     --bg: #ffffff;
@@ -657,179 +632,6 @@ a.btn:focus-visible { outline: 2px solid var(--gold); outline-offset: 2px; }
     color: #f3d58a;
 }
 
-
-
-/* --- Conversion visual upgrade pass --- */
-.visual-icon {
-    width: 42px;
-    height: 42px;
-    border-radius: 14px;
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    background: rgba(199,153,49,0.14);
-    border: 1px solid rgba(199,153,49,0.55);
-    color: #f2cd75;
-    box-shadow: inset 0 1px 0 rgba(255,255,255,0.08), 0 12px 26px rgba(0,0,0,0.18);
-    flex: 0 0 auto;
-}
-.visual-icon svg {
-    width: 22px;
-    height: 22px;
-    stroke: currentColor;
-    stroke-width: 2.1;
-    fill: none;
-    stroke-linecap: round;
-    stroke-linejoin: round;
-}
-.hero-grid {
-    grid-template-columns: minmax(0, 1.05fr) minmax(320px, .75fr);
-    align-items: center;
-}
-.hero-visual-card {
-    background: linear-gradient(180deg, rgba(17,28,50,0.98), rgba(10,18,34,0.98));
-    border: 1.5px solid rgba(199,153,49,0.72);
-    border-radius: 22px;
-    padding: 18px;
-    box-shadow: 0 22px 44px rgba(0,0,0,0.24);
-}
-.snapshot-head {
-    display: flex;
-    align-items: center;
-    gap: 12px;
-    margin-bottom: 14px;
-}
-.snapshot-head h3 {
-    margin: 0;
-    color: #f8fafc;
-    font-size: 1.1rem;
-    font-weight: 900;
-}
-.snapshot-head p {
-    margin: 2px 0 0;
-    color: rgba(232,237,247,0.72);
-    font-size: .9rem;
-}
-.snapshot-list {
-    display: grid;
-    gap: 10px;
-    margin: 0;
-    padding: 0;
-    list-style: none;
-}
-.snapshot-list li {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    padding: 11px 12px;
-    border-radius: 14px;
-    background: rgba(255,255,255,0.055);
-    border: 1px solid rgba(255,255,255,0.08);
-    color: rgba(248,250,252,0.88);
-    font-weight: 800;
-}
-.snapshot-check {
-    width: 24px;
-    height: 24px;
-    border-radius: 999px;
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    background: rgba(199,153,49,0.20);
-    color: #f2cd75;
-    flex: 0 0 auto;
-}
-.snapshot-check svg {
-    width: 15px;
-    height: 15px;
-    stroke: currentColor;
-    stroke-width: 2.6;
-    fill: none;
-    stroke-linecap: round;
-    stroke-linejoin: round;
-}
-.snapshot-foot {
-    margin-top: 14px;
-    padding: 12px;
-    border-radius: 16px;
-    background: rgba(199,153,49,0.11);
-    border: 1px solid rgba(199,153,49,0.30);
-    color: rgba(248,250,252,0.82);
-    font-weight: 800;
-    font-size: .92rem;
-    line-height: 1.45;
-}
-.icon-title-row {
-    display: flex;
-    align-items: flex-start;
-    gap: 12px;
-}
-.icon-title-row h3,
-.icon-title-row h4 {
-    margin-top: 0;
-}
-.card .visual-icon,
-.experience-card .visual-icon,
-.process-card .visual-icon,
-.stat .visual-icon {
-    margin-bottom: 10px;
-}
-.collapsible-summary-title {
-    display: flex;
-    align-items: center;
-    gap: 12px;
-}
-.collapsible-summary-title .visual-icon {
-    width: 38px;
-    height: 38px;
-    border-radius: 13px;
-}
-.collapsible-summary-title .visual-icon svg {
-    width: 20px;
-    height: 20px;
-}
-.card, .stat, .proof-card, .process-card, .experience-card {
-    transition: transform .18s ease, box-shadow .18s ease, border-color .18s ease;
-}
-.card:hover, .stat:hover, .proof-card:hover, .process-card:hover, .experience-card:hover {
-    transform: translateY(-3px);
-    border-color: #f2cd75;
-    box-shadow: 0 18px 38px rgba(0,0,0,0.22);
-}
-.hero-benefits li {
-    background: rgba(255,255,255,0.045);
-    border: 1px solid rgba(255,255,255,0.08);
-    border-radius: 14px;
-    padding: 10px 11px;
-}
-.hero-benefits .dot {
-    width: 22px;
-    height: 22px;
-    margin-top: 0;
-    background: rgba(199,153,49,0.18);
-    border: 1px solid rgba(199,153,49,0.48);
-    position: relative;
-    flex: 0 0 auto;
-}
-.hero-benefits .dot::after {
-    content: "✓";
-    position: absolute;
-    inset: 0;
-    display: grid;
-    place-items: center;
-    color: #f2cd75;
-    font-size: 13px;
-    font-weight: 900;
-}
-@@media (max-width: 992px) {
-    .hero-grid {
-        grid-template-columns: 1fr;
-    }
-    .hero-visual-card {
-        margin-top: 6px;
-    }
-}
-
 </style>
 
 <div class="page-wrap">
@@ -842,44 +644,22 @@ a.btn:focus-visible { outline: 2px solid var(--gold); outline-offset: 2px; }
     <section class="section shell-dark hero" style="padding: 34px 24px;">
         <div class="hero-grid">
             <div>
-                <div class="badge-bar" style="margin-bottom:14px;">
-                    <span class="snapshot-check">@Icon("shield")</span>
-                    Protection planning made simple
-                </div>
                 <h1>Protect your income, family, and momentum with a <span class="hero-emphasis">clean plan.</span></h1>
-                <p class="lead">See what is exposed, what is already protected, and what needs to be fixed first—without pressure or confusion.</p>
+                <p class="lead">We organize your financial life, close coverage gaps, and build a protection plan you can actually keep—without noise or pressure.</p>
 
                 <ul class="hero-benefits">
-                    <li><span class="dot"></span>Know what you have, what’s missing, and what deserves attention first.</li>
-                    <li><span class="dot"></span>Protect income, mortgage, family stability, and long-term goals.</li>
-                    <li><span class="dot"></span>Compare options with licensed professionals and documented next steps.</li>
-                    <li><span class="dot"></span>Keep your plan organized as life, income, debts, and goals change.</li>
+                    <li><span class="dot"></span>Clarity on what you have, what’s missing, and what to fix first.</li>
+                    <li><span class="dot"></span>Coverage that defends income, family stability, and your long-term goals.</li>
+                    <li><span class="dot"></span>Simple next steps with licensed professionals.</li>
+                    <li><span class="dot"></span>One plan that stays documented, updated, and easy to maintain.</li>
                 </ul>
 
                 <div class="cta-row">
                     <a asp-controller="RiskAssessment" asp-action="Index" class="btn btn-primary" data-cta="hero_start_assessment" data-lead-trigger="true" data-lead-interest="assessment">Start Assessment</a>
                     <a href="@bookingLink" target="_blank" rel="noopener" class="btn btn-secondary" data-cta="hero_book_call">Book a Call</a>
                 </div>
-                <div class="micro-note">No obligation. Start with clarity, then decide what makes sense.</div>
+                <div class="micro-note">No obligation. We start with understanding your risks and goals.</div>
             </div>
-
-            <aside class="hero-visual-card" aria-label="Protection snapshot">
-                <div class="snapshot-head">
-                    <span class="visual-icon">@Icon("file")</span>
-                    <div>
-                        <h3>Protection Snapshot</h3>
-                        <p>A simple view of what needs attention.</p>
-                    </div>
-                </div>
-                <ul class="snapshot-list">
-                    <li><span class="snapshot-check">@Icon("check")</span> Income protection reviewed</li>
-                    <li><span class="snapshot-check">@Icon("check")</span> Mortgage and debt exposure checked</li>
-                    <li><span class="snapshot-check">@Icon("check")</span> Family coverage gaps identified</li>
-                    <li><span class="snapshot-check">@Icon("check")</span> Beneficiaries and ownership organized</li>
-                    <li><span class="snapshot-check">@Icon("check")</span> Next steps documented clearly</li>
-                </ul>
-                <div class="snapshot-foot">Built for people who want protection handled with clarity, structure, and stewardship.</div>
-            </aside>
         </div>
     </section>
 
@@ -889,24 +669,20 @@ a.btn:focus-visible { outline: 2px solid var(--gold); outline-offset: 2px; }
         <p class="lead">Built to be calm, documented, and decisive. We don’t just quote policies—we run a protection playbook that feels nothing like the industry norm.</p>
         <div class="experience-grid">
             <div class="experience-card">
-                <span class="visual-icon">@Icon("file")</span>
                 <h4>Documented decisions</h4>
-                <p>Clear options, real numbers, and full transparency—so every decision is easy to understand later.</p>
+                <p>Clear options, real numbers, and full transparency, so you understand exactly what you’re choosing.</p>
             </div>
             <div class="experience-card">
-                <span class="visual-icon">@Icon("clock")</span>
                 <h4>Compliance-first pace</h4>
-                <p>Your details are organized and easy to review without pressure, surprises, or rushed decisions.</p>
+                <p>Your coverage and key details are organized and easy to review whenever you need—no pressure, no surprises.</p>
             </div>
             <div class="experience-card">
-                <span class="visual-icon">@Icon("target")</span>
                 <h4>Carrier-agnostic curation</h4>
-                <p>We evaluate the right carriers for your situation, then align options to your cash flow and runway.</p>
+                <p>We evaluate the right carriers for your situation—no single-company bias—then align to your cash flow and runway.</p>
             </div>
             <div class="experience-card">
-                <span class="visual-icon">@Icon("legacy")</span>
                 <h4>Ongoing stewardship</h4>
-                <p>Your plan stays updated as income, debts, family, and goals shift.</p>
+                <p>Your plan stays updated as income, debts, and goals shift. You always know what’s protected and what’s next.</p>
             </div>
         </div>
     </section>
@@ -930,7 +706,7 @@ a.btn:focus-visible { outline: 2px solid var(--gold); outline-offset: 2px; }
                 <summary>
                     <div class="collapsible-copy">
                         <p class="collapsible-kicker">Trust Markers</p>
-                        <div class="collapsible-summary-title"><span class="visual-icon">@Icon("shield")</span><h3 class="collapsible-title">Why clients trust the process</h3></div>
+                        <h3 class="collapsible-title">Why clients trust the process</h3>
                         <p class="collapsible-preview">Faith-based guidance, timely pacing, broader-picture alignment, and a structured process.</p>
                     </div>
                     <span class="collapsible-toggle" aria-hidden="true"></span>
@@ -961,7 +737,7 @@ a.btn:focus-visible { outline: 2px solid var(--gold); outline-offset: 2px; }
                 <summary>
                     <div class="collapsible-copy">
                         <p class="collapsible-kicker">Outcomes</p>
-                        <div class="collapsible-summary-title"><span class="visual-icon">@Icon("compass")</span><h3 class="collapsible-title">What you gain</h3></div>
+                        <h3 class="collapsible-title">What you gain</h3>
                         <p class="collapsible-preview">Clarity, protection, and legacy planning delivered without jargon or pressure.</p>
                     </div>
                     <span class="collapsible-toggle" aria-hidden="true"></span>
@@ -969,19 +745,16 @@ a.btn:focus-visible { outline: 2px solid var(--gold); outline-offset: 2px; }
                 <div class="collapsible-body">
                     <div class="grid-3">
                         <div class="card">
-                            <span class="visual-icon">@Icon("compass")</span>
                             <p class="pill-title">Clarity</p>
                             <h3>Know exactly where you stand.</h3>
                             <p>We map accounts, obligations, and coverage so you see gaps and priorities on one page.</p>
                         </div>
                         <div class="card">
-                            <span class="visual-icon">@Icon("shield")</span>
                             <p class="pill-title">Protection</p>
                             <h3>Protect income and family stability.</h3>
                             <p>Right-size life, disability, and health strategies around your real cash flow and risks.</p>
                         </div>
                         <div class="card">
-                            <span class="visual-icon">@Icon("legacy")</span>
                             <p class="pill-title">Legacy</p>
                             <h3>Keep what you build intact.</h3>
                             <p>Beneficiaries, ownership, and transfer structure that survive surprises, not just good intentions.</p>
@@ -994,7 +767,7 @@ a.btn:focus-visible { outline: 2px solid var(--gold); outline-offset: 2px; }
                 <summary>
                     <div class="collapsible-copy">
                         <p class="collapsible-kicker">Delivery</p>
-                        <div class="collapsible-summary-title"><span class="visual-icon">@Icon("file")</span><h3 class="collapsible-title">How we deliver</h3></div>
+                        <h3 class="collapsible-title">How we deliver</h3>
                         <p class="collapsible-preview">Planning, protection, and long-term structure built around real life and real cash flow.</p>
                     </div>
                     <span class="collapsible-toggle" aria-hidden="true"></span>
@@ -1024,7 +797,7 @@ a.btn:focus-visible { outline: 2px solid var(--gold); outline-offset: 2px; }
                 <summary>
                     <div class="collapsible-copy">
                         <p class="collapsible-kicker">Process</p>
-                        <div class="collapsible-summary-title"><span class="visual-icon">@Icon("arrow")</span><h3 class="collapsible-title">Simple, fast process</h3></div>
+                        <h3 class="collapsible-title">Simple, fast process</h3>
                         <p class="collapsible-preview">Three clean steps: assess, design, and implement without noise or confusion.</p>
                     </div>
                     <span class="collapsible-toggle" aria-hidden="true"></span>
@@ -1058,7 +831,7 @@ a.btn:focus-visible { outline: 2px solid var(--gold); outline-offset: 2px; }
                 <summary>
                     <div class="collapsible-copy">
                         <p class="collapsible-kicker">Questions</p>
-                        <div class="collapsible-summary-title"><span class="visual-icon">@Icon("question")</span><h3 class="collapsible-title">Frequently asked questions</h3></div>
+                        <h3 class="collapsible-title">Frequently asked questions</h3>
                         <p class="collapsible-preview">Open the common questions clients usually want answered before they move forward.</p>
                     </div>
                     <span class="collapsible-toggle" aria-hidden="true"></span>
@@ -1093,7 +866,7 @@ a.btn:focus-visible { outline: 2px solid var(--gold); outline-offset: 2px; }
                 <summary>
                     <div class="collapsible-copy">
                         <p class="collapsible-kicker">Next Step</p>
-                        <div class="collapsible-summary-title"><span class="visual-icon">@Icon("check")</span><h3 class="collapsible-title">Ready when you are</h3></div>
+                        <h3 class="collapsible-title">Ready when you are</h3>
                         <p class="collapsible-preview">Start with a clean assessment or book time with a licensed professional when you want to move forward.</p>
                     </div>
                     <span class="collapsible-toggle" aria-hidden="true"></span>
