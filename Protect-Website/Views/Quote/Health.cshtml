@@ -435,15 +435,34 @@ body.health-landing.page-mode-paid-landing header .navbar-brand img {
 }
 
 .dq-form-panel {
-    border-radius: 30px;
-    border: 1px solid rgba(231, 181, 58, 0.34);
+    position: relative;
+    overflow: hidden;
+    display: grid;
+    gap: 12px;
+    width: 100%;
+    border-radius: 26px;
+    border: 1px solid rgba(243, 214, 136, 0.34);
     background:
-        radial-gradient(circle at top, rgba(46, 104, 181, 0.14), transparent 40%),
-        linear-gradient(180deg, rgba(7, 29, 61, 0.96), rgba(5, 19, 39, 0.98));
+        radial-gradient(circle at 50% 0%, rgba(34, 99, 196, 0.12), transparent 40%),
+        linear-gradient(180deg, #08254d 0%, #061d3d 52%, #071a36 100%);
     box-shadow:
-        0 30px 64px rgba(2, 12, 27, 0.3),
-        inset 0 1px 0 rgba(255, 255, 255, 0.05);
-    padding: 18px;
+        0 32px 70px rgba(2, 12, 27, 0.32),
+        inset 0 1px 0 rgba(255, 255, 255, 0.055);
+    padding: 20px 26px 18px;
+}
+
+.dq-form-panel::before {
+    content: "";
+    position: absolute;
+    inset: 18% 9% 12%;
+    border-radius: 24px;
+    background: radial-gradient(circle at 50% 38%, rgba(224, 177, 74, 0.12) 0%, rgba(224, 177, 74, 0.04) 38%, transparent 72%);
+    pointer-events: none;
+}
+
+.dq-form-panel > * {
+    position: relative;
+    z-index: 1;
 }
 
 .dq-proof-card {
@@ -986,6 +1005,287 @@ body.health-landing.page-mode-paid-landing header .navbar-brand img {
     color: rgba(226, 232, 240, 0.72);
     font-size: 0.83rem;
     margin: 0 0 8px;
+}
+
+.lq-error,
+.lq-success {
+    font-weight: 800;
+    margin-top: 10px;
+    display: none;
+}
+
+.lq-error {
+    color: #fca5a5;
+}
+
+.lq-success {
+    color: #bbf7d0;
+}
+
+.lq-post-submit-slot {
+    width: 100%;
+    margin: 0;
+    padding: 0;
+    background: transparent;
+}
+
+.dq-form-panel .dq-wizard-surface,
+.dq-form-panel #dqStep1Panel,
+.dq-form-panel #dqContactPanel,
+.dq-form-panel #dqProcessingPanel,
+.dq-form-panel .lq-step-panel-pad {
+    background: transparent !important;
+    border: 0 !important;
+    box-shadow: none !important;
+    margin: 0 !important;
+}
+
+.dq-form-panel #dqStep1Panel,
+.dq-form-panel #dqContactPanel,
+.dq-form-panel #dqProcessingPanel,
+.dq-form-panel .lq-step-panel-pad {
+    padding: 0 !important;
+}
+
+.dq-form-panel .dq-proof-card {
+    background: transparent !important;
+    border: 0 !important;
+    border-bottom: 1px solid rgba(59, 130, 246, 0.09) !important;
+    padding: 0 0 13px !important;
+    margin: 0 0 16px !important;
+    box-shadow: none !important;
+}
+
+.dq-form-panel .dq-proof-chips {
+    margin: 0 0 16px !important;
+}
+
+.dq-contact-capture-wrap {
+    width: 100%;
+    max-width: 100%;
+    margin: 0;
+    padding: 18px 8px 0;
+    border-top: 1px solid rgba(59, 130, 246, 0.12);
+    background: transparent;
+}
+
+.dq-contact-head {
+    text-align: center;
+}
+
+.dq-contact-kicker {
+    color: #f3d688;
+    font-size: 0.8rem;
+    font-weight: 950;
+    letter-spacing: 0.09em;
+    text-transform: uppercase;
+    margin: 0 0 8px;
+}
+
+.dq-contact-title {
+    color: #fff8e7;
+    font-size: 1.55rem;
+    line-height: 1.08;
+    margin: 0 0 14px;
+}
+
+.dq-contact-copy {
+    display: none;
+}
+
+.dq-contact-capture-wrap .lq-field label {
+    color: rgba(248, 250, 252, 0.92);
+    opacity: 1;
+    font-size: 0.82rem;
+    font-weight: 900;
+    margin: 0 0 6px;
+    display: inline-block;
+}
+
+.dq-contact-capture-wrap .lq-required-star {
+    color: #ff2d2d;
+    opacity: 1;
+    font-weight: 950;
+}
+
+.dq-contact-capture-wrap input:not([type="checkbox"]):not([type="radio"]),
+.dq-contact-capture-wrap select {
+    height: 50px;
+    min-height: 50px;
+    border-radius: 12px;
+    border: 1px solid rgba(243, 214, 136, 0.62);
+    background: rgba(255, 255, 255, 0.98);
+    color: #0f172a;
+}
+
+.dq-contact-capture-wrap .lq-consent {
+    margin-top: 16px;
+    padding: 12px 14px;
+    border-radius: 12px;
+    background: rgba(4, 16, 32, 0.78);
+    border: 1px solid rgba(59, 130, 246, 0.14);
+}
+
+.dq-contact-capture-wrap .lq-step-actions,
+.dq-contact-capture-wrap .lq-submit-row {
+    margin-top: 14px;
+}
+
+.dq-form-panel.qf-final-panel-no-chrome,
+.dq-form-panel.qf-final-review-flat-mode,
+.dq-form-panel.is-submitted {
+    background: transparent !important;
+    border: 0 !important;
+    box-shadow: none !important;
+    padding: 0 !important;
+}
+
+.dq-form-panel.qf-final-panel-no-chrome .dq-proof-card,
+.dq-form-panel.qf-final-panel-no-chrome .dq-proof-chips,
+.dq-form-panel.qf-final-panel-no-chrome .dq-contact-capture-wrap {
+    display: none !important;
+}
+
+.dq-form-panel.is-submit-loading #dqStep1Panel,
+.dq-form-panel.is-submit-loading #dqContactPanel,
+.dq-form-panel.is-submit-loading .dq-contact-capture-wrap,
+.dq-form-panel.is-submit-loading .lq-post-submit-slot {
+    display: none !important;
+}
+
+.dq-form-panel.is-submit-loading #dqProcessingPanel {
+    display: block !important;
+}
+
+.lq-post-submit-slot .dq-final-review-unified-card {
+    display: grid;
+    gap: 16px;
+    width: 100%;
+    padding: 26px;
+    border-radius: 28px;
+    border: 1px solid rgba(243, 214, 136, 0.34);
+    background:
+        radial-gradient(circle at 50% 0%, rgba(34, 99, 196, 0.13), transparent 42%),
+        linear-gradient(180deg, #08254d 0%, #061d3d 52%, #071a36 100%);
+    box-shadow:
+        0 32px 72px rgba(2, 12, 27, 0.3),
+        inset 0 1px 0 rgba(255, 255, 255, 0.05);
+}
+
+.lq-post-submit-slot .dq-final-review-head,
+.lq-post-submit-slot .dq-final-review-next-step,
+.lq-post-submit-slot .dq-final-review-booking-card {
+    display: grid;
+    gap: 10px;
+}
+
+.lq-post-submit-slot .dq-final-review-kicker,
+.lq-post-submit-slot .dq-final-review-impact-label,
+.lq-post-submit-slot .dq-final-review-next-kicker,
+.lq-post-submit-slot .dq-final-review-booking-kicker {
+    color: #f3d688;
+    font-size: 0.78rem;
+    font-weight: 950;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+}
+
+.lq-post-submit-slot .dq-final-review-title,
+.lq-post-submit-slot .dq-final-review-next-title,
+.lq-post-submit-slot .dq-final-review-booking-title {
+    color: #fff8e7;
+    font-size: clamp(1.45rem, 2.8vw, 2.15rem);
+    line-height: 1.08;
+    font-weight: 900;
+}
+
+.lq-post-submit-slot .dq-final-review-copy,
+.lq-post-submit-slot .dq-final-review-next-copy,
+.lq-post-submit-slot .dq-final-review-booking-copy,
+.lq-post-submit-slot .dq-final-review-impact-text {
+    color: rgba(248, 250, 252, 0.84);
+    font-size: 0.98rem;
+    line-height: 1.5;
+}
+
+.lq-post-submit-slot .dq-final-review-proof-row,
+.lq-post-submit-slot .dq-final-review-checklist {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+}
+
+.lq-post-submit-slot .dq-final-review-proof-row span,
+.lq-post-submit-slot .dq-final-review-checklist span {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 30px;
+    padding: 7px 12px;
+    border-radius: 999px;
+    border: 1px solid rgba(243, 214, 136, 0.26);
+    background: rgba(7, 25, 50, 0.88);
+    color: #fff7de;
+    font-size: 0.78rem;
+    font-weight: 850;
+}
+
+.lq-post-submit-slot .dq-final-review-impact-grid,
+.lq-post-submit-slot .dq-final-review-stats {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 12px;
+}
+
+.lq-post-submit-slot .dq-final-review-impact-card,
+.lq-post-submit-slot .dq-final-review-stat {
+    padding: 16px;
+    border-radius: 18px;
+    border: 1px solid rgba(243, 214, 136, 0.2);
+    background: linear-gradient(180deg, rgba(6, 26, 54, 0.94), rgba(7, 20, 39, 0.96));
+}
+
+.lq-post-submit-slot .dq-final-review-impact-card.is-urgent {
+    border-color: rgba(243, 214, 136, 0.34);
+    box-shadow: 0 0 0 1px rgba(243, 214, 136, 0.08);
+}
+
+.lq-post-submit-slot .dq-final-review-stat-label {
+    color: rgba(248, 250, 252, 0.55);
+    font-size: 0.7rem;
+    font-weight: 900;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    margin-bottom: 8px;
+}
+
+.lq-post-submit-slot .dq-final-review-stat-value {
+    color: #fff8e7;
+    font-size: 1.05rem;
+    font-weight: 900;
+    line-height: 1.3;
+}
+
+@@media (max-width: 720px) {
+    .dq-form-panel {
+        padding: 16px !important;
+    }
+
+    .lq-post-submit-slot .dq-final-review-unified-card {
+        padding: 20px;
+        border-radius: 24px;
+    }
+
+    .lq-post-submit-slot .dq-final-review-impact-grid,
+    .lq-post-submit-slot .dq-final-review-stats,
+    .dq-contact-capture-wrap .lq-field-row {
+        grid-template-columns: 1fr !important;
+    }
+
+    .dq-contact-capture-wrap {
+        padding-left: 0;
+        padding-right: 0;
+    }
 }
 
 body.health-final-step-active .dq-proof-chips {

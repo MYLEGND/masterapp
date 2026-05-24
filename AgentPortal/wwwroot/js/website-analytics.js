@@ -2461,16 +2461,35 @@
   }
 
   function formatActivityTimeRange(row) {
+    const startDate = row?.eventUtc ? new Date(row.eventUtc) : null;
+    const endDate = row?.endUtc ? new Date(row.endUtc) : null;
+
     const start = formatDisplayDate(row?.eventUtc);
     const end = formatDisplayDate(row?.endUtc);
 
     if (!start && !end) return '—';
-    if (!end || start === end) return start;
+    if (!end || start === end || !startDate || !endDate) return start;
+
+    const sameDay =
+      startDate.getFullYear() === endDate.getFullYear() &&
+      startDate.getMonth() === endDate.getMonth() &&
+      startDate.getDate() === endDate.getDate();
+
+    let endLabel = end;
+
+    if (sameDay) {
+      endLabel = endDate.toLocaleString('en-US', {
+        timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+        hour: 'numeric',
+        minute: '2-digit',
+        hour12: true
+      });
+    }
 
     const duration = Number(row?.durationSeconds || 0);
     const durationLabel = duration > 0 ? ` · ${formatDurationSeconds(duration)}` : '';
 
-    return `${start} - ${end}${durationLabel}`;
+    return `${start} - ${endLabel}${durationLabel}`;
   }
 
   function formatDurationSeconds(seconds) {

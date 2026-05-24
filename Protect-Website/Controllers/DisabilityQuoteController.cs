@@ -378,6 +378,11 @@ namespace Protect_Website.Controllers
                     PixelOwnerType = metaCapiResult.PixelOwnerType ?? resolvedMetaPixel.PixelOwnerType
                 });
 
+            var attachedAgentContact = await ResolveAttachedAgentContactAsync(
+                agentProfileId,
+                agentSlug,
+                HttpContext?.RequestAborted ?? CancellationToken.None);
+
             // ── 2. Send email ─────────────────────────────────────────────────────
             try
             {
@@ -431,6 +436,45 @@ namespace Protect_Website.Controllers
                     correlationId, lead.LeadId);
             }
 
+            if (!string.IsNullOrWhiteSpace(model.Email?.Trim()))
+            {
+                try
+                {
+                    var userCredential = new ClientSecretCredential(tenantId, clientId, clientSecret);
+                    var userGraphClient = new GraphServiceClient(userCredential);
+
+                    var userMessage = new Message
+                    {
+                        Subject = "Your disability coverage review is ready - Legend Legacy Protection",
+                        Body = new ItemBody
+                        {
+                            ContentType = BodyType.Html,
+                            Content = BuildUserSummaryEmailBody(model, attachedAgentContact?.FirstName, attachedAgentContact?.BookingUrl)
+                        },
+                        ToRecipients = new List<Recipient>
+                        {
+                            new Recipient
+                            {
+                                EmailAddress = new EmailAddress { Address = model.Email.Trim() }
+                            }
+                        }
+                    };
+
+                    await userGraphClient.Users[senderEmail].SendMail.PostAsync(
+                        new SendMailPostRequestBody { Message = userMessage, SaveToSentItems = false });
+
+                    _logger.LogInformation(
+                        "DisabilityQuote [{CorrelationId}]: user summary email sent to {Email} for lead {LeadId}",
+                        correlationId, model.Email.Trim(), lead.LeadId);
+                }
+                catch (Exception userEmailEx)
+                {
+                    _logger.LogError(userEmailEx,
+                        "DisabilityQuote [{CorrelationId}]: user summary email failed for lead {LeadId} — lead is saved, continuing",
+                        correlationId, lead.LeadId);
+                }
+            }
+
             // ── 3. Write analytics event ─────────────────────────────────────────
             await TryWriteLeadEventAsync(
                 "website_lead_submitted",
@@ -450,7 +494,9 @@ namespace Protect_Website.Controllers
                     success = true,
                     leadId = lead.LeadId.ToString("D"),
                     metaLeadEventId,
-                    metaCapiStatus = metaCapiResult.Status
+                    metaCapiStatus = metaCapiResult.Status,
+                    agentFirstName = attachedAgentContact?.FirstName,
+                    bookingUrl = attachedAgentContact?.BookingUrl
                 });
             }
 
@@ -531,10 +577,10 @@ namespace Protect_Website.Controllers
 
 <div style=""padding:18px;background:#061832;border-bottom:1px solid rgba(243,214,136,.24);"">
 <div style=""color:#f3d688;font-size:12px;font-weight:900;letter-spacing:.12em;text-transform:uppercase;margin-bottom:8px;"">New lead ready for review</div>
-<div style=""color:#fff8e7;font-size:24px;line-height:1.12;font-weight:900;"">{H(fullName)} submitted a disability insurance review.</div>
-<div style=""color:rgba(248,250,252,.82);font-size:14px;line-height:1.45;font-weight:650;margin-top:10px;"">
-The prospect completed the same guided review experience used on the Life funnel. Use the answers below to continue the conversation around income protection without restarting cold.
-</div>
+                <div style=""color:#fff8e7;font-size:24px;line-height:1.12;font-weight:900;"">{H(fullName)} submitted a disability insurance review.</div>
+                <div style=""color:rgba(248,250,252,.82);font-size:14px;line-height:1.45;font-weight:650;margin-top:10px;"">
+                A guided disability coverage review is ready for follow-up. Use the answers below to keep the conversation focused on income replacement, current benefit gaps, and how exposed the household would be if work stopped.
+                </div>
 </div>
 
 <div style=""padding:16px 18px 18px;"">
@@ -610,7 +656,193 @@ Start by confirming current benefit gaps, income replacement pressure, eliminati
 </div>
 
 <div style=""margin-top:14px;color:rgba(248,250,252,.55);font-size:12px;line-height:1.5;text-align:center;"">
-Internal agent notification. This message mirrors the branded Life review lead format for consistency across products.
+                Internal lead notification for Legend Legacy Protection.
+                </div>
+
+</div>
+</div>
+</div>
+</body>
+        </html>";
+        }
+
+        private static string BuildUserSummaryEmailBody(DisabilityQuoteFormModel model, string? attachedAgentFirstName, string? attachedAgentBookingUrl)
+        {
+            static string H(string? value) => WebUtility.HtmlEncode(value ?? string.Empty);
+
+            var ageLabel = !string.IsNullOrWhiteSpace(model.AgeRange)
+                ? model.AgeRange.Trim()
+                : model.Age?.ToString(CultureInfo.InvariantCulture) ?? "Not provided";
+
+            var employmentLabel = string.IsNullOrWhiteSpace(model.EmploymentType) ? "Not provided" : model.EmploymentType.Trim();
+            var incomeRangeLabel = string.IsNullOrWhiteSpace(model.IncomeRange) ? "Not provided" : model.IncomeRange.Trim();
+            var currentCoverageLabel = string.IsNullOrWhiteSpace(model.CurrentCoverage) ? "Not provided" : model.CurrentCoverage.Trim();
+            var priorityLabel = string.IsNullOrWhiteSpace(model.IncomeProtectionImportance) ? "Not provided" : model.IncomeProtectionImportance.Trim();
+
+            var surfacedCopy = priorityLabel switch
+            {
+                "Critical" => "Your answers suggest lost income would create immediate pressure if sickness or injury kept you from working.",
+                "Important" => "You appear to understand the paycheck risk and may already be trying to confirm how much protection would actually hold up.",
+                "Somewhat Important" => "You may not feel fully exposed yet, but there is still enough risk here to make a real income protection review worthwhile.",
+                _ => "Your answers point toward an income protection decision that still needs a clearer look at how much of your paycheck is actually protected."
+            };
+
+            var timingCopy = currentCoverageLabel switch
+            {
+                "Employer coverage only" => "Employer disability benefits often leave a real income gap, so it helps to confirm what would actually be protected before a claim is ever needed.",
+                "Individual disability coverage" => "Existing personal coverage still deserves a fit check because benefit levels, waiting periods, and monthly obligations can change over time.",
+                "Both employer and individual coverage" => "Layered coverage can still leave coordination gaps, so it is worth confirming how the pieces would actually work together.",
+                "No current coverage" => "Without current disability protection, the income gap stays fully exposed until a review confirms a workable backup plan.",
+                _ => "Income protection usually feels more urgent once health, work, or monthly obligations shift."
+            };
+
+            var nextStepName = !string.IsNullOrWhiteSpace(attachedAgentFirstName)
+                ? attachedAgentFirstName.Trim()
+                : "our licensed team";
+
+            var bookingUrl = !string.IsNullOrWhiteSpace(attachedAgentBookingUrl)
+                ? attachedAgentBookingUrl.Trim()
+                : string.Empty;
+
+            var bookingButtonHtml = !string.IsNullOrWhiteSpace(bookingUrl)
+                ? $@"<a href=""{WebUtility.HtmlEncode(bookingUrl)}"" style=""display:block;text-align:center;background:#79e0a7;color:#071a11;text-decoration:none;font-size:16px;font-weight:900;padding:14px 16px;border-radius:14px;border:1px solid rgba(255,244,190,.58);"">Finish My Disability Review</a>"
+                : @"<div style=""text-align:center;background:#071932;color:#fff8e7;font-size:15px;font-weight:800;padding:14px 16px;border-radius:14px;border:1px solid rgba(243,214,136,.35);"">Your review is saved. A licensed advisor can help confirm the next best step.</div>";
+
+            return $@"
+<!DOCTYPE html>
+<html>
+<body style=""margin:0;padding:0;background:#f3f4f6;font-family:Arial,Helvetica,sans-serif;"">
+<div style=""width:100%;padding:24px 12px;"">
+<div style=""max-width:680px;margin:0 auto;background:#071d3d;border:1px solid rgba(212,175,55,.55);border-radius:16px;overflow:hidden;box-shadow:0 20px 48px rgba(0,0,0,.25);"">
+
+<div style=""padding:18px 18px 16px;background:linear-gradient(180deg,#10284f 0%,#071d3d 100%);border-bottom:1px solid rgba(212,175,55,.22);"">
+<div style=""color:#f3d688;font-size:12px;font-weight:900;letter-spacing:.12em;text-transform:uppercase;margin-bottom:10px;"">
+Review Ready
+</div>
+
+<div style=""color:#fff8e7;font-size:24px;line-height:1.14;font-weight:900;max-width:560px;"">
+Your disability coverage review is ready.
+</div>
+
+<div style=""margin-top:16px;color:rgba(248,250,252,.84);font-size:14px;line-height:1.45;font-weight:650;max-width:580px;"">
+Your answers have been saved so the next conversation can start with your income risk, current coverage, and paycheck protection gaps instead of starting from zero.
+</div>
+
+<div style=""margin-top:18px;padding-top:16px;border-top:1px solid rgba(255,255,255,.10);"">
+<span style=""display:inline-block;padding:9px 12px;border-radius:999px;border:1px solid rgba(243,214,136,.35);background:#071932;color:#fff7de;font-size:12px;font-weight:900;margin:0 6px 8px 0;"">Review saved</span>
+<span style=""display:inline-block;padding:9px 12px;border-radius:999px;border:1px solid rgba(243,214,136,.35);background:#071932;color:#fff7de;font-size:12px;font-weight:900;margin:0 6px 8px 0;"">Income protection</span>
+<span style=""display:inline-block;padding:9px 12px;border-radius:999px;border:1px solid rgba(243,214,136,.35);background:#071932;color:#fff7de;font-size:12px;font-weight:900;margin:0 6px 8px 0;"">No obligation</span>
+</div>
+</div>
+
+<div style=""padding:16px 18px 18px;"">
+
+<table width=""100%"" cellpadding=""0"" cellspacing=""0"" role=""presentation"" style=""border-collapse:collapse;margin-bottom:16px;"">
+<tr>
+<td style=""display:block;width:100%;padding:0 0 10px 0;vertical-align:top;"">
+<div style=""background:#08254d;border:1px solid rgba(243,214,136,.24);border-radius:18px;padding:16px;"">
+<div style=""color:#f3d688;font-size:11px;font-weight:900;letter-spacing:.08em;text-transform:uppercase;margin-bottom:8px;"">
+What surfaced
+</div>
+<div style=""color:#f8fafc;font-size:14px;line-height:1.38;font-weight:800;"">
+{H(surfacedCopy)}
+</div>
+</div>
+</td>
+
+<td style=""display:block;width:100%;padding:0 0 10px 0;vertical-align:top;"">
+<div style=""background:#08254d;border:1px solid rgba(243,214,136,.24);border-radius:18px;padding:16px;"">
+<div style=""color:#f3d688;font-size:11px;font-weight:900;letter-spacing:.08em;text-transform:uppercase;margin-bottom:8px;"">
+Why timing matters
+</div>
+<div style=""color:#f8fafc;font-size:14px;line-height:1.38;font-weight:800;"">
+{H(timingCopy)}
+</div>
+</div>
+</td>
+</tr>
+</table>
+
+<table width=""100%"" cellpadding=""0"" cellspacing=""0"" role=""presentation"" style=""border-collapse:collapse;margin-bottom:16px;"">
+<tr>
+<td style=""display:block;width:100%;padding:0 0 10px 0;vertical-align:top;"">
+<div style=""background:#061a36;border:1px solid rgba(243,214,136,.18);border-radius:16px;padding:15px;text-align:center;"">
+<div style=""color:rgba(248,250,252,.55);font-size:11px;font-weight:900;letter-spacing:.12em;text-transform:uppercase;margin-bottom:8px;"">
+Age Range
+</div>
+<div style=""color:#fff8e7;font-size:24px;font-weight:900;"">
+{H(ageLabel)}
+</div>
+</div>
+</td>
+
+<td style=""display:block;width:100%;padding:0 0 10px 0;vertical-align:top;"">
+<div style=""background:#061a36;border:1px solid rgba(243,214,136,.18);border-radius:16px;padding:15px;text-align:center;"">
+<div style=""color:rgba(248,250,252,.55);font-size:11px;font-weight:900;letter-spacing:.12em;text-transform:uppercase;margin-bottom:8px;"">
+Income Focus
+</div>
+<div style=""color:#fff8e7;font-size:23px;font-weight:900;"">
+{H(incomeRangeLabel)}
+</div>
+</div>
+</td>
+</tr>
+</table>
+
+<div style=""background:#08254d;border:1px solid rgba(243,214,136,.20);border-radius:18px;padding:18px;margin-bottom:18px;"">
+<div style=""color:#fff8e7;font-size:14px;line-height:1.42;font-weight:700;"">
+This review is meant to narrow the disability coverage options worth discussing first, based on how much income needs protecting and whether current benefits would actually be enough.
+</div>
+
+<div style=""margin-top:10px;color:rgba(248,250,252,.84);font-size:15px;line-height:1.55;font-weight:600;"">
+The next step is confirming the real gap, how quickly income pressure would build, and what type of disability coverage solution best fits your situation.
+</div>
+</div>
+
+<table width=""100%"" cellpadding=""0"" cellspacing=""0"" role=""presentation"" style=""border-collapse:collapse;margin-bottom:18px;"">
+<tr>
+<td style=""display:block;width:100%;padding:0 0 10px 0;vertical-align:top;"">
+<div style=""background:#061a36;border:1px solid rgba(243,214,136,.18);border-radius:16px;padding:15px;text-align:center;"">
+<div style=""color:rgba(248,250,252,.55);font-size:11px;font-weight:900;letter-spacing:.12em;text-transform:uppercase;margin-bottom:8px;"">
+Work Type
+</div>
+<div style=""color:#fff8e7;font-size:15px;font-weight:900;line-height:1.25;"">
+{H(employmentLabel)}
+</div>
+</div>
+</td>
+
+<td style=""display:block;width:100%;padding:0 0 10px 0;vertical-align:top;"">
+<div style=""background:#061a36;border:1px solid rgba(243,214,136,.18);border-radius:16px;padding:15px;text-align:center;"">
+<div style=""color:rgba(248,250,252,.55);font-size:11px;font-weight:900;letter-spacing:.12em;text-transform:uppercase;margin-bottom:8px;"">
+Current Protection
+</div>
+<div style=""color:#fff8e7;font-size:15px;font-weight:900;line-height:1.25;"">
+{H(currentCoverageLabel)}<br/>{H(priorityLabel)}
+</div>
+</div>
+</td>
+</tr>
+</table>
+
+<div style=""background:#092955;border:1px solid rgba(243,214,136,.32);border-radius:16px;padding:20px;"">
+<div style=""color:#f3d688;font-size:11px;font-weight:900;letter-spacing:.10em;text-transform:uppercase;margin-bottom:8px;"">
+Finish The Review
+</div>
+
+<div style=""color:#fff8e7;font-size:24px;line-height:1.14;font-weight:900;margin-bottom:12px;"">
+Choose a time to confirm the best fit.
+</div>
+
+<div style=""color:rgba(248,250,252,.84);font-size:15px;line-height:1.55;font-weight:650;margin-bottom:18px;"">
+{H(nextStepName)} can help confirm income replacement needs, waiting periods, benefit gaps, and which disability coverage path makes the most sense next.
+</div>
+
+{bookingButtonHtml}
+</div>
+
+<div style=""margin-top:18px;color:rgba(248,250,252,.55);font-size:12px;line-height:1.5;text-align:center;"">
+Review summary only. Final eligibility, pricing, benefit structure, and carrier availability vary by occupation, health, state, and underwriting rules.
 </div>
 
 </div>
@@ -618,6 +850,101 @@ Internal agent notification. This message mirrors the branded Life review lead f
 </div>
 </body>
 </html>";
+        }
+
+        private sealed record AttachedAgentContactInfo(string? FirstName, string? BookingUrl);
+
+        private async Task<AttachedAgentContactInfo?> ResolveAttachedAgentContactAsync(Guid? agentProfileId, string? agentSlug, CancellationToken cancellationToken)
+        {
+            AgentTrackingProfile? trackingProfile = HttpContext?.Items["TrackingProfile"] as AgentTrackingProfile;
+
+            if (trackingProfile == null && agentProfileId.HasValue)
+            {
+                trackingProfile = await _db.AgentTrackingProfiles.AsNoTracking()
+                    .FirstOrDefaultAsync(x => x.Id == agentProfileId.Value, cancellationToken);
+            }
+
+            if (trackingProfile == null && !string.IsNullOrWhiteSpace(agentSlug))
+            {
+                var resolved = await _resolver.ResolveBySlugAsync(agentSlug.Trim(), cancellationToken);
+                if (resolved.Found)
+                {
+                    trackingProfile = resolved.Profile;
+                }
+            }
+
+            var defaultFirstName = ResolveAgentFirstName(trackingProfile?.DisplayName ?? trackingProfile?.Slug);
+            if (trackingProfile == null)
+            {
+                return new AttachedAgentContactInfo(defaultFirstName, null);
+            }
+
+            var agentProfile = await ResolveAgentProfileAsync(trackingProfile, cancellationToken);
+            var firstName = ResolveAgentFirstName(agentProfile?.FullName ?? trackingProfile.DisplayName ?? trackingProfile.Slug);
+            var bookingUrl = ResolveAgentBookingUrl(agentProfile);
+
+            return new AttachedAgentContactInfo(firstName, bookingUrl);
+        }
+
+        private async Task<AgentProfile?> ResolveAgentProfileAsync(AgentTrackingProfile trackingProfile, CancellationToken cancellationToken)
+        {
+            var hasAgentUserId = !string.IsNullOrWhiteSpace(trackingProfile.AgentUserId);
+            var hasAgentUpn = !string.IsNullOrWhiteSpace(trackingProfile.AgentUpn);
+            var normalizedUpn = hasAgentUpn ? trackingProfile.AgentUpn.Trim().ToUpperInvariant() : string.Empty;
+
+            if (!hasAgentUserId && !hasAgentUpn)
+            {
+                return null;
+            }
+
+            var candidates = await _db.AgentProfiles.AsNoTracking()
+                .Where(x =>
+                    (hasAgentUserId && x.AgentUserId == trackingProfile.AgentUserId) ||
+                    (hasAgentUpn && (x.NormalizedEmail == normalizedUpn || x.AgentUpn == trackingProfile.AgentUpn)))
+                .ToListAsync(cancellationToken);
+
+            return candidates
+                .OrderByDescending(x => !string.IsNullOrWhiteSpace(x.FullName))
+                .ThenByDescending(x => !string.IsNullOrWhiteSpace(x.FallbackBookingUrl))
+                .ThenByDescending(x => !string.IsNullOrWhiteSpace(x.MicrosoftBookingsEmbedUrl))
+                .ThenByDescending(x => x.UpdatedUtc)
+                .FirstOrDefault();
+        }
+
+        private static string? ResolveAgentBookingUrl(AgentProfile? agentProfile)
+        {
+            if (agentProfile == null)
+            {
+                return null;
+            }
+
+            var candidates = new[]
+            {
+                agentProfile.FallbackBookingUrl,
+                agentProfile.MicrosoftBookingsEmbedUrl
+            };
+
+            return candidates
+                .Select(value => value?.Trim())
+                .FirstOrDefault(value =>
+                    !string.IsNullOrWhiteSpace(value) &&
+                    (value.StartsWith("http://", StringComparison.OrdinalIgnoreCase) ||
+                     value.StartsWith("https://", StringComparison.OrdinalIgnoreCase)));
+        }
+
+        private static string ResolveAgentFirstName(string? displayName)
+        {
+            if (string.IsNullOrWhiteSpace(displayName))
+            {
+                return "our licensed team";
+            }
+
+            var first = displayName
+                .Split(' ', StringSplitOptions.RemoveEmptyEntries)
+                .FirstOrDefault()
+                ?.Trim();
+
+            return string.IsNullOrWhiteSpace(first) ? "our licensed team" : first;
         }
 
         private async Task<(string RecipientEmail, Guid? AgentProfileId, string? AgentSlug, bool IsFounderPath)> ResolveLeadContextAsync()

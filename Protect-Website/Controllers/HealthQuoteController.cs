@@ -377,6 +377,11 @@ namespace Protect_Website.Controllers
                     PixelOwnerType = metaCapiResult.PixelOwnerType ?? resolvedMetaPixel.PixelOwnerType
                 });
 
+            var attachedAgentContact = await ResolveAttachedAgentContactAsync(
+                agentProfileId,
+                agentSlug,
+                HttpContext?.RequestAborted ?? CancellationToken.None);
+
             // ── 2. Send email ─────────────────────────────────────────────────────
             try
             {
@@ -430,6 +435,45 @@ namespace Protect_Website.Controllers
                     correlationId, lead.LeadId);
             }
 
+            if (!string.IsNullOrWhiteSpace(model.Email?.Trim()))
+            {
+                try
+                {
+                    var userCredential = new ClientSecretCredential(tenantId, clientId, clientSecret);
+                    var userGraphClient = new GraphServiceClient(userCredential);
+
+                    var userMessage = new Message
+                    {
+                        Subject = "Your health coverage review is ready - Legend Legacy Protection",
+                        Body = new ItemBody
+                        {
+                            ContentType = BodyType.Html,
+                            Content = BuildUserSummaryEmailBody(model, attachedAgentContact?.FirstName, attachedAgentContact?.BookingUrl)
+                        },
+                        ToRecipients = new List<Recipient>
+                        {
+                            new Recipient
+                            {
+                                EmailAddress = new EmailAddress { Address = model.Email.Trim() }
+                            }
+                        }
+                    };
+
+                    await userGraphClient.Users[senderEmail].SendMail.PostAsync(
+                        new SendMailPostRequestBody { Message = userMessage, SaveToSentItems = false });
+
+                    _logger.LogInformation(
+                        "HealthQuote [{CorrelationId}]: user summary email sent to {Email} for lead {LeadId}",
+                        correlationId, model.Email.Trim(), lead.LeadId);
+                }
+                catch (Exception userEmailEx)
+                {
+                    _logger.LogError(userEmailEx,
+                        "HealthQuote [{CorrelationId}]: user summary email failed for lead {LeadId} — lead is saved, continuing",
+                        correlationId, lead.LeadId);
+                }
+            }
+
             // ── 3. Write analytics event ─────────────────────────────────────────
             await TryWriteLeadEventAsync(
                 "website_lead_submitted",
@@ -449,7 +493,9 @@ namespace Protect_Website.Controllers
                     success = true,
                     leadId = lead.LeadId.ToString("D"),
                     metaLeadEventId,
-                    metaCapiStatus = metaCapiResult.Status
+                    metaCapiStatus = metaCapiResult.Status,
+                    agentFirstName = attachedAgentContact?.FirstName,
+                    bookingUrl = attachedAgentContact?.BookingUrl
                 });
             }
 
@@ -530,10 +576,10 @@ namespace Protect_Website.Controllers
 
 <div style=""padding:18px;background:#061832;border-bottom:1px solid rgba(243,214,136,.24);"">
 <div style=""color:#f3d688;font-size:12px;font-weight:900;letter-spacing:.12em;text-transform:uppercase;margin-bottom:8px;"">New lead ready for review</div>
-<div style=""color:#fff8e7;font-size:24px;line-height:1.12;font-weight:900;"">{H(fullName)} submitted a health coverage review.</div>
-<div style=""color:rgba(248,250,252,.82);font-size:14px;line-height:1.45;font-weight:650;margin-top:10px;"">
-The prospect completed the same guided review experience used on the Life funnel. Use the answers below to continue the conversation with continuity instead of restarting from scratch.
-</div>
+                <div style=""color:#fff8e7;font-size:24px;line-height:1.12;font-weight:900;"">{H(fullName)} submitted a health coverage review.</div>
+                <div style=""color:rgba(248,250,252,.82);font-size:14px;line-height:1.45;font-weight:650;margin-top:10px;"">
+                A guided health coverage review is ready for follow-up. Use the answers below to keep the conversation focused on affordability, provider access, and the plan fit this household needs most.
+                </div>
 </div>
 
 <div style=""padding:16px 18px 18px;"">
@@ -609,7 +655,194 @@ Start by confirming household fit, provider access, deductible comfort, and whet
 </div>
 
 <div style=""margin-top:14px;color:rgba(248,250,252,.55);font-size:12px;line-height:1.5;text-align:center;"">
-Internal agent notification. This message mirrors the branded Life review lead format for consistency across products.
+                Internal lead notification for Legend Legacy Protection.
+                </div>
+
+</div>
+</div>
+</div>
+</body>
+        </html>";
+        }
+
+        private static string BuildUserSummaryEmailBody(HealthQuoteFormModel model, string? attachedAgentFirstName, string? attachedAgentBookingUrl)
+        {
+            static string H(string? value) => WebUtility.HtmlEncode(value ?? string.Empty);
+
+            var ageLabel = !string.IsNullOrWhiteSpace(model.AgeRange)
+                ? model.AgeRange.Trim()
+                : model.Age?.ToString(CultureInfo.InvariantCulture) ?? "Not provided";
+
+            var householdLabel = string.IsNullOrWhiteSpace(model.HouseholdSize) ? "Not provided" : model.HouseholdSize.Trim();
+            var currentCoverageLabel = string.IsNullOrWhiteSpace(model.CurrentCoverage) ? "Not provided" : model.CurrentCoverage.Trim();
+            var coverageTypeLabel = string.IsNullOrWhiteSpace(model.CoverageType) ? "Not provided" : model.CoverageType.Trim();
+            var primaryConcernLabel = string.IsNullOrWhiteSpace(model.PrimaryConcern) ? "Not provided" : model.PrimaryConcern.Trim();
+
+            var surfacedCopy = currentCoverageLabel switch
+            {
+                "No current coverage" => "You may be trying to close a coverage gap before medical needs or unexpected costs put pressure on the household.",
+                "Employer plan" => "You may already have an employer option, but still need help checking affordability, doctor access, and uncovered gaps.",
+                "Marketplace / ACA plan" => "You may need a closer marketplace review around subsidy fit, deductibles, and whether a stronger option is available.",
+                "Spouse / family plan" => "You may be reviewing whether the current family setup still fits dependents, providers, and out-of-pocket exposure.",
+                _ => "Your answers point toward a health coverage decision that still needs a clearer side-by-side review."
+            };
+
+            var timingCopy = primaryConcernLabel switch
+            {
+                "Lower Monthly Premium" => "Monthly affordability matters now, so reviewing sooner can help you avoid carrying the same premium pressure without better clarity.",
+                "Lower Deductible" => "If out-of-pocket exposure matters most, it helps to confirm the deductible tradeoff before a care need makes that decision feel urgent.",
+                "Better Doctor Network" => "Provider access becomes more important once appointments and care are already in motion, so network fit is worth confirming now.",
+                "Prescription Coverage" => "Prescription costs rarely get easier by waiting, so it helps to review medication access and pharmacy fit before needs increase.",
+                _ => "Health coverage decisions usually feel more urgent once care needs, provider access, or monthly cost pressure start to build."
+            };
+
+            var nextStepName = !string.IsNullOrWhiteSpace(attachedAgentFirstName)
+                ? attachedAgentFirstName.Trim()
+                : "our licensed team";
+
+            var bookingUrl = !string.IsNullOrWhiteSpace(attachedAgentBookingUrl)
+                ? attachedAgentBookingUrl.Trim()
+                : string.Empty;
+
+            var bookingButtonHtml = !string.IsNullOrWhiteSpace(bookingUrl)
+                ? $@"<a href=""{WebUtility.HtmlEncode(bookingUrl)}"" style=""display:block;text-align:center;background:#79e0a7;color:#071a11;text-decoration:none;font-size:16px;font-weight:900;padding:14px 16px;border-radius:14px;border:1px solid rgba(255,244,190,.58);"">Finish My Health Review</a>"
+                : @"<div style=""text-align:center;background:#071932;color:#fff8e7;font-size:15px;font-weight:800;padding:14px 16px;border-radius:14px;border:1px solid rgba(243,214,136,.35);"">Your review is saved. A licensed advisor can help confirm the next best step.</div>";
+
+            return $@"
+<!DOCTYPE html>
+<html>
+<body style=""margin:0;padding:0;background:#f3f4f6;font-family:Arial,Helvetica,sans-serif;"">
+<div style=""width:100%;padding:24px 12px;"">
+<div style=""max-width:680px;margin:0 auto;background:#071d3d;border:1px solid rgba(212,175,55,.55);border-radius:16px;overflow:hidden;box-shadow:0 20px 48px rgba(0,0,0,.25);"">
+
+<div style=""padding:18px 18px 16px;background:linear-gradient(180deg,#10284f 0%,#071d3d 100%);border-bottom:1px solid rgba(212,175,55,.22);"">
+<div style=""color:#f3d688;font-size:12px;font-weight:900;letter-spacing:.12em;text-transform:uppercase;margin-bottom:10px;"">
+Review Ready
+</div>
+
+<div style=""color:#fff8e7;font-size:24px;line-height:1.14;font-weight:900;max-width:560px;"">
+Your health coverage review is ready.
+</div>
+
+<div style=""margin-top:16px;color:rgba(248,250,252,.84);font-size:14px;line-height:1.45;font-weight:650;max-width:580px;"">
+Your answers have been saved so the next conversation can start with your household needs, your current coverage, and the tradeoffs that matter most instead of starting from scratch.
+</div>
+
+<div style=""margin-top:18px;padding-top:16px;border-top:1px solid rgba(255,255,255,.10);"">
+<span style=""display:inline-block;padding:9px 12px;border-radius:999px;border:1px solid rgba(243,214,136,.35);background:#071932;color:#fff7de;font-size:12px;font-weight:900;margin:0 6px 8px 0;"">Review saved</span>
+<span style=""display:inline-block;padding:9px 12px;border-radius:999px;border:1px solid rgba(243,214,136,.35);background:#071932;color:#fff7de;font-size:12px;font-weight:900;margin:0 6px 8px 0;"">Licensed guidance</span>
+<span style=""display:inline-block;padding:9px 12px;border-radius:999px;border:1px solid rgba(243,214,136,.35);background:#071932;color:#fff7de;font-size:12px;font-weight:900;margin:0 6px 8px 0;"">No obligation</span>
+</div>
+</div>
+
+<div style=""padding:16px 18px 18px;"">
+
+<table width=""100%"" cellpadding=""0"" cellspacing=""0"" role=""presentation"" style=""border-collapse:collapse;margin-bottom:16px;"">
+<tr>
+<td style=""display:block;width:100%;padding:0 0 10px 0;vertical-align:top;"">
+<div style=""background:#08254d;border:1px solid rgba(243,214,136,.24);border-radius:18px;padding:16px;"">
+<div style=""color:#f3d688;font-size:11px;font-weight:900;letter-spacing:.08em;text-transform:uppercase;margin-bottom:8px;"">
+What surfaced
+</div>
+<div style=""color:#f8fafc;font-size:14px;line-height:1.38;font-weight:800;"">
+{H(surfacedCopy)}
+</div>
+</div>
+</td>
+
+<td style=""display:block;width:100%;padding:0 0 10px 0;vertical-align:top;"">
+<div style=""background:#08254d;border:1px solid rgba(243,214,136,.24);border-radius:18px;padding:16px;"">
+<div style=""color:#f3d688;font-size:11px;font-weight:900;letter-spacing:.08em;text-transform:uppercase;margin-bottom:8px;"">
+Why timing matters
+</div>
+<div style=""color:#f8fafc;font-size:14px;line-height:1.38;font-weight:800;"">
+{H(timingCopy)}
+</div>
+</div>
+</td>
+</tr>
+</table>
+
+<table width=""100%"" cellpadding=""0"" cellspacing=""0"" role=""presentation"" style=""border-collapse:collapse;margin-bottom:16px;"">
+<tr>
+<td style=""display:block;width:100%;padding:0 0 10px 0;vertical-align:top;"">
+<div style=""background:#061a36;border:1px solid rgba(243,214,136,.18);border-radius:16px;padding:15px;text-align:center;"">
+<div style=""color:rgba(248,250,252,.55);font-size:11px;font-weight:900;letter-spacing:.12em;text-transform:uppercase;margin-bottom:8px;"">
+Age Range
+</div>
+<div style=""color:#fff8e7;font-size:24px;font-weight:900;"">
+{H(ageLabel)}
+</div>
+</div>
+</td>
+
+<td style=""display:block;width:100%;padding:0 0 10px 0;vertical-align:top;"">
+<div style=""background:#061a36;border:1px solid rgba(243,214,136,.18);border-radius:16px;padding:15px;text-align:center;"">
+<div style=""color:rgba(248,250,252,.55);font-size:11px;font-weight:900;letter-spacing:.12em;text-transform:uppercase;margin-bottom:8px;"">
+Household
+</div>
+<div style=""color:#fff8e7;font-size:23px;font-weight:900;"">
+{H(householdLabel)}
+</div>
+</div>
+</td>
+</tr>
+</table>
+
+<div style=""background:#08254d;border:1px solid rgba(243,214,136,.20);border-radius:18px;padding:18px;margin-bottom:18px;"">
+<div style=""color:#fff8e7;font-size:14px;line-height:1.42;font-weight:700;"">
+This review is meant to narrow the plans worth discussing first, based on your doctors, prescriptions, household setup, and budget pressure.
+</div>
+
+<div style=""margin-top:10px;color:rgba(248,250,252,.84);font-size:15px;line-height:1.55;font-weight:600;"">
+The next step is confirming whether the current path still fits, where the biggest tradeoffs are, and what coverage options deserve a closer look.
+</div>
+</div>
+
+<table width=""100%"" cellpadding=""0"" cellspacing=""0"" role=""presentation"" style=""border-collapse:collapse;margin-bottom:18px;"">
+<tr>
+<td style=""display:block;width:100%;padding:0 0 10px 0;vertical-align:top;"">
+<div style=""background:#061a36;border:1px solid rgba(243,214,136,.18);border-radius:16px;padding:15px;text-align:center;"">
+<div style=""color:rgba(248,250,252,.55);font-size:11px;font-weight:900;letter-spacing:.12em;text-transform:uppercase;margin-bottom:8px;"">
+Current Coverage
+</div>
+<div style=""color:#fff8e7;font-size:15px;font-weight:900;line-height:1.25;"">
+{H(currentCoverageLabel)}
+</div>
+</div>
+</td>
+
+<td style=""display:block;width:100%;padding:0 0 10px 0;vertical-align:top;"">
+<div style=""background:#061a36;border:1px solid rgba(243,214,136,.18);border-radius:16px;padding:15px;text-align:center;"">
+<div style=""color:rgba(248,250,252,.55);font-size:11px;font-weight:900;letter-spacing:.12em;text-transform:uppercase;margin-bottom:8px;"">
+Review Focus
+</div>
+<div style=""color:#fff8e7;font-size:15px;font-weight:900;line-height:1.25;"">
+{H(coverageTypeLabel)}<br/>{H(primaryConcernLabel)}
+</div>
+</div>
+</td>
+</tr>
+</table>
+
+<div style=""background:#092955;border:1px solid rgba(243,214,136,.32);border-radius:16px;padding:20px;"">
+<div style=""color:#f3d688;font-size:11px;font-weight:900;letter-spacing:.10em;text-transform:uppercase;margin-bottom:8px;"">
+Finish The Review
+</div>
+
+<div style=""color:#fff8e7;font-size:24px;line-height:1.14;font-weight:900;margin-bottom:12px;"">
+Choose a time to confirm the best fit.
+</div>
+
+<div style=""color:rgba(248,250,252,.84);font-size:15px;line-height:1.55;font-weight:650;margin-bottom:18px;"">
+{H(nextStepName)} can help confirm affordability, deductible comfort, provider access, and which health coverage path makes the most sense next.
+</div>
+
+{bookingButtonHtml}
+</div>
+
+<div style=""margin-top:18px;color:rgba(248,250,252,.55);font-size:12px;line-height:1.5;text-align:center;"">
+Review summary only. Final plan availability, pricing, provider networks, and eligibility vary by location, carrier, and underwriting rules.
 </div>
 
 </div>
@@ -617,6 +850,101 @@ Internal agent notification. This message mirrors the branded Life review lead f
 </div>
 </body>
 </html>";
+        }
+
+        private sealed record AttachedAgentContactInfo(string? FirstName, string? BookingUrl);
+
+        private async Task<AttachedAgentContactInfo?> ResolveAttachedAgentContactAsync(Guid? agentProfileId, string? agentSlug, CancellationToken cancellationToken)
+        {
+            AgentTrackingProfile? trackingProfile = HttpContext?.Items["TrackingProfile"] as AgentTrackingProfile;
+
+            if (trackingProfile == null && agentProfileId.HasValue)
+            {
+                trackingProfile = await _db.AgentTrackingProfiles.AsNoTracking()
+                    .FirstOrDefaultAsync(x => x.Id == agentProfileId.Value, cancellationToken);
+            }
+
+            if (trackingProfile == null && !string.IsNullOrWhiteSpace(agentSlug))
+            {
+                var resolved = await _resolver.ResolveBySlugAsync(agentSlug.Trim(), cancellationToken);
+                if (resolved.Found)
+                {
+                    trackingProfile = resolved.Profile;
+                }
+            }
+
+            var defaultFirstName = ResolveAgentFirstName(trackingProfile?.DisplayName ?? trackingProfile?.Slug);
+            if (trackingProfile == null)
+            {
+                return new AttachedAgentContactInfo(defaultFirstName, null);
+            }
+
+            var agentProfile = await ResolveAgentProfileAsync(trackingProfile, cancellationToken);
+            var firstName = ResolveAgentFirstName(agentProfile?.FullName ?? trackingProfile.DisplayName ?? trackingProfile.Slug);
+            var bookingUrl = ResolveAgentBookingUrl(agentProfile);
+
+            return new AttachedAgentContactInfo(firstName, bookingUrl);
+        }
+
+        private async Task<AgentProfile?> ResolveAgentProfileAsync(AgentTrackingProfile trackingProfile, CancellationToken cancellationToken)
+        {
+            var hasAgentUserId = !string.IsNullOrWhiteSpace(trackingProfile.AgentUserId);
+            var hasAgentUpn = !string.IsNullOrWhiteSpace(trackingProfile.AgentUpn);
+            var normalizedUpn = hasAgentUpn ? trackingProfile.AgentUpn.Trim().ToUpperInvariant() : string.Empty;
+
+            if (!hasAgentUserId && !hasAgentUpn)
+            {
+                return null;
+            }
+
+            var candidates = await _db.AgentProfiles.AsNoTracking()
+                .Where(x =>
+                    (hasAgentUserId && x.AgentUserId == trackingProfile.AgentUserId) ||
+                    (hasAgentUpn && (x.NormalizedEmail == normalizedUpn || x.AgentUpn == trackingProfile.AgentUpn)))
+                .ToListAsync(cancellationToken);
+
+            return candidates
+                .OrderByDescending(x => !string.IsNullOrWhiteSpace(x.FullName))
+                .ThenByDescending(x => !string.IsNullOrWhiteSpace(x.FallbackBookingUrl))
+                .ThenByDescending(x => !string.IsNullOrWhiteSpace(x.MicrosoftBookingsEmbedUrl))
+                .ThenByDescending(x => x.UpdatedUtc)
+                .FirstOrDefault();
+        }
+
+        private static string? ResolveAgentBookingUrl(AgentProfile? agentProfile)
+        {
+            if (agentProfile == null)
+            {
+                return null;
+            }
+
+            var candidates = new[]
+            {
+                agentProfile.FallbackBookingUrl,
+                agentProfile.MicrosoftBookingsEmbedUrl
+            };
+
+            return candidates
+                .Select(value => value?.Trim())
+                .FirstOrDefault(value =>
+                    !string.IsNullOrWhiteSpace(value) &&
+                    (value.StartsWith("http://", StringComparison.OrdinalIgnoreCase) ||
+                     value.StartsWith("https://", StringComparison.OrdinalIgnoreCase)));
+        }
+
+        private static string ResolveAgentFirstName(string? displayName)
+        {
+            if (string.IsNullOrWhiteSpace(displayName))
+            {
+                return "our licensed team";
+            }
+
+            var first = displayName
+                .Split(' ', StringSplitOptions.RemoveEmptyEntries)
+                .FirstOrDefault()
+                ?.Trim();
+
+            return string.IsNullOrWhiteSpace(first) ? "our licensed team" : first;
         }
 
         private async Task<(string RecipientEmail, Guid? AgentProfileId, string? AgentSlug, bool IsFounderPath)> ResolveLeadContextAsync()
