@@ -1213,6 +1213,77 @@ public sealed class AnalyticsQueryService : IAnalyticsQueryService
         return $"{count} tracking errors detected. Most recent: {eventName} failed on {page} with {status}.";
     }
 
+    private static string DescribeElapsedFromError(DateTime errorUtc, DateTime leadUtc)
+    {
+        var delta = leadUtc - errorUtc;
+        if (delta <= TimeSpan.Zero)
+            return "same moment";
+        if (delta.TotalSeconds < 60)
+            return $"{Math.Max(1, (int)Math.Round(delta.TotalSeconds))}s later";
+        if (delta.TotalMinutes < 60)
+            return $"{Math.Max(1, (int)Math.Round(delta.TotalMinutes))}m later";
+        if (delta.TotalHours < 24)
+            return $"{Math.Max(1, (int)Math.Round(delta.TotalHours))}h later";
+        return $"{Math.Max(1, (int)Math.Round(delta.TotalDays))}d later";
+    }
+
+    private static MarketingHealthMatchedLeadDto? ResolveTrackingErrorMatchedLead(
+        AnalyticsEvent errorEvent,
+        IReadOnlyCollection<WebsiteLead> candidateLeads,
+        string? sessionId,
+        string? visitorId,
+        TimeZoneInfo viewerTimeZone)
+    {
+        WebsiteLead? matchedLead = null;
+        string matchType = "session";
+
+        if (!string.IsNullOrWhiteSpace(sessionId))
+        {
+            matchedLead = candidateLeads
+                .Where(lead =>
+                    string.Equals(lead.SessionId, sessionId, StringComparison.OrdinalIgnoreCase) &&
+                    lead.CreatedUtc >= errorEvent.EventUtc)
+                .OrderBy(lead => lead.CreatedUtc)
+                .FirstOrDefault();
+        }
+
+        if (matchedLead == null && !string.IsNullOrWhiteSpace(visitorId))
+        {
+            var visitorWindowEndUtc = errorEvent.EventUtc.AddHours(24);
+            matchedLead = candidateLeads
+                .Where(lead =>
+                    string.Equals(lead.VisitorId, visitorId, StringComparison.OrdinalIgnoreCase) &&
+                    lead.CreatedUtc >= errorEvent.EventUtc &&
+                    lead.CreatedUtc <= visitorWindowEndUtc)
+                .OrderBy(lead => lead.CreatedUtc)
+                .FirstOrDefault();
+            matchType = "visitor";
+        }
+
+        if (matchedLead == null)
+            return null;
+
+        var displayNameParts = new List<string>();
+        if (!string.IsNullOrWhiteSpace(matchedLead.FirstName))
+            displayNameParts.Add(matchedLead.FirstName.Trim());
+        if (!string.IsNullOrWhiteSpace(matchedLead.LastName))
+            displayNameParts.Add(matchedLead.LastName.Trim());
+        var displayName = string.Join(" ", displayNameParts);
+
+        return new MarketingHealthMatchedLeadDto
+        {
+            LeadId = matchedLead.LeadId,
+            LocalDisplayTime = ViewerLocal(matchedLead.CreatedUtc, viewerTimeZone).ToString("MM/dd/yyyy h:mm tt", CultureInfo.InvariantCulture),
+            Name = string.IsNullOrWhiteSpace(displayName) ? "Submitted lead" : displayName,
+            Email = matchedLead.Email,
+            Phone = matchedLead.Phone,
+            Interest = matchedLead.InterestType,
+            SourcePageKey = matchedLead.SourcePageKey,
+            MatchType = matchType,
+            DelayFromErrorLabel = DescribeElapsedFromError(errorEvent.EventUtc, matchedLead.CreatedUtc)
+        };
+    }
+
     private static string BuildTrackingErrorActionWarning(MarketingHealthTrackingErrorDto detail)
     {
         var page = FirstNonBlank(detail.PageKey, detail.PagePath, detail.QuoteType) ?? "this page";
@@ -1222,6 +1293,7 @@ public sealed class AnalyticsQueryService : IAnalyticsQueryService
     private static MarketingHealthTrackingErrorDto BuildTrackingErrorDetail(
         AnalyticsEvent errorEvent,
         IReadOnlyCollection<AnalyticsEvent> allEvents,
+        IReadOnlyCollection<WebsiteLead> candidateLeads,
         TimeZoneInfo viewerTimeZone)
     {
         var metadata = ReadTrackingErrorMetadata(errorEvent.MetadataJson);
@@ -1230,6 +1302,7 @@ public sealed class AnalyticsQueryService : IAnalyticsQueryService
         var attemptedEventName = metadata.AttemptedEventName;
         var recovered = ResolveTrackingErrorRecoveredState(attemptedEventName, errorEvent, allEvents, sessionId, visitorId);
         var severity = ResolveTrackingErrorSeverity(attemptedEventName, metadata.StatusCode, recovered);
+        var matchedLead = ResolveTrackingErrorMatchedLead(errorEvent, candidateLeads, sessionId, visitorId, viewerTimeZone);
 
         return new MarketingHealthTrackingErrorDto
         {
@@ -1245,12 +1318,22 @@ public sealed class AnalyticsQueryService : IAnalyticsQueryService
             AttemptedEndpoint = ResolveTrackingAttemptedEndpoint(metadata),
             RetryCount = Math.Max(metadata.RetryCount, 0),
             Recovered = recovered,
+            SessionId = sessionId,
             SessionIdShort = ShortTrackingId(sessionId),
+            VisitorId = visitorId,
             VisitorIdShort = ShortTrackingId(visitorId),
+            Browser = errorEvent.Browser,
+            DeviceType = errorEvent.DeviceType,
+            OperatingSystem = errorEvent.OperatingSystem,
+            RequestMethod = FirstNonBlank(metadata.Method, "POST"),
+            RequestRoute = FirstNonBlank(metadata.Route, errorEvent.Path),
+            RequestTrigger = metadata.Trigger,
+            RawFetchUrl = metadata.FetchUrl,
             Source = errorEvent.UtmSource,
             Campaign = FirstNonBlank(errorEvent.UtmCampaign, errorEvent.MetaCampaignName, errorEvent.MetaCampaignId),
             Severity = severity,
-            SuggestedAction = ResolveTrackingErrorSuggestedAction(metadata.StatusCode, metadata.ErrorMessage)
+            SuggestedAction = ResolveTrackingErrorSuggestedAction(metadata.StatusCode, metadata.ErrorMessage),
+            MatchedLead = matchedLead
         };
     }
 
@@ -1710,10 +1793,49 @@ public sealed class AnalyticsQueryService : IAnalyticsQueryService
         var clientTrackingErrorEvents = events
             .Where(e => string.Equals(e.EventType, "client_tracking_error", StringComparison.OrdinalIgnoreCase))
             .ToList();
-        var recentTrackingErrors = clientTrackingErrorEvents
+        var recentTrackingErrorEvents = clientTrackingErrorEvents
             .OrderByDescending(e => e.EventUtc)
             .Take(MarketingHealthRecentTrackingErrorLimit)
-            .Select(e => BuildTrackingErrorDetail(e, events, range.ViewerTimeZone))
+            .ToList();
+
+        var recentTrackingSessionIds = recentTrackingErrorEvents
+            .Select(e =>
+            {
+                var metadata = ReadTrackingErrorMetadata(e.MetadataJson);
+                return FirstNonBlank(e.SessionId, metadata.SessionId);
+            })
+            .Where(value => !string.IsNullOrWhiteSpace(value))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+
+        var recentTrackingVisitorIds = recentTrackingErrorEvents
+            .Select(e =>
+            {
+                var metadata = ReadTrackingErrorMetadata(e.MetadataJson);
+                return FirstNonBlank(e.VisitorId, metadata.VisitorId);
+            })
+            .Where(value => !string.IsNullOrWhiteSpace(value))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+
+        List<WebsiteLead> recentTrackingLinkedLeads = new();
+        if (recentTrackingSessionIds.Length > 0 || recentTrackingVisitorIds.Length > 0)
+        {
+            recentTrackingLinkedLeads = await _db.WebsiteLeads.AsNoTracking()
+                .Where(l => !l.IsInternal)
+                .Where(l => !l.IsDeleted)
+                .Where(EnvPredicateLeads())
+                .Where(HostPredicateLeads())
+                .Where(ScopePredicateLeads(scope, scopedAgentIds))
+                .Where(l =>
+                    (!string.IsNullOrWhiteSpace(l.SessionId) && recentTrackingSessionIds.Contains(l.SessionId!)) ||
+                    (!string.IsNullOrWhiteSpace(l.VisitorId) && recentTrackingVisitorIds.Contains(l.VisitorId!)))
+                .OrderBy(l => l.CreatedUtc)
+                .ToListAsync();
+        }
+
+        var recentTrackingErrors = recentTrackingErrorEvents
+            .Select(e => BuildTrackingErrorDetail(e, events, recentTrackingLinkedLeads, range.ViewerTimeZone))
             .ToList();
 
         var startUnits = events

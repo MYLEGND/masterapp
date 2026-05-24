@@ -103,12 +103,35 @@ public sealed class MarketingHealthTrackingErrorDto
     public string? AttemptedEndpoint { get; set; }
     public int RetryCount { get; set; }
     public bool? Recovered { get; set; }
+    public string? SessionId { get; set; }
     public string? SessionIdShort { get; set; }
+    public string? VisitorId { get; set; }
     public string? VisitorIdShort { get; set; }
+    public string? Browser { get; set; }
+    public string? DeviceType { get; set; }
+    public string? OperatingSystem { get; set; }
+    public string? RequestMethod { get; set; }
+    public string? RequestRoute { get; set; }
+    public string? RequestTrigger { get; set; }
+    public string? RawFetchUrl { get; set; }
     public string? Source { get; set; }
     public string? Campaign { get; set; }
     public string Severity { get; set; } = "Medium";
     public string SuggestedAction { get; set; } = "";
+    public MarketingHealthMatchedLeadDto? MatchedLead { get; set; }
+}
+
+public sealed class MarketingHealthMatchedLeadDto
+{
+    public Guid LeadId { get; set; }
+    public string LocalDisplayTime { get; set; } = "";
+    public string Name { get; set; } = "";
+    public string? Email { get; set; }
+    public string? Phone { get; set; }
+    public string? Interest { get; set; }
+    public string? SourcePageKey { get; set; }
+    public string MatchType { get; set; } = "session";
+    public string DelayFromErrorLabel { get; set; } = "";
 }
 
 public sealed class MarketingHealthDto

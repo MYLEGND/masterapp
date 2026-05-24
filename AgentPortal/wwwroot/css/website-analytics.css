@@ -5649,6 +5649,47 @@ body {
     line-height: 1.36;
 }
 
+.wa-health-row-actions {
+    display: flex;
+    align-items: center;
+    gap: .45rem;
+    flex-wrap: wrap;
+}
+
+.wa-health-detail-btn {
+    min-height: 30px;
+    padding: .32rem .72rem;
+    border-radius: 999px;
+    border-color: rgba(231,196,103,.42);
+    color: #fff2c7;
+    background: rgba(255,255,255,.03);
+    font-size: .72rem;
+    font-weight: 850;
+    line-height: 1;
+    box-shadow: none;
+}
+
+.wa-health-detail-btn:hover,
+.wa-health-detail-btn:focus-visible {
+    color: #0b1530;
+    background: linear-gradient(180deg, #f3d688 0%, #d9ae4b 100%);
+    border-color: rgba(231,196,103,.92);
+}
+
+.wa-health-inline-flag {
+    display: inline-flex;
+    align-items: center;
+    min-height: 28px;
+    padding: .26rem .56rem;
+    border-radius: 999px;
+    border: 1px solid rgba(123,198,150,.28);
+    background: rgba(123,198,150,.12);
+    color: #d7f7df;
+    font-size: .68rem;
+    font-weight: 820;
+    line-height: 1;
+}
+
 .wa-health-severity,
 .wa-health-recovered {
     display: inline-flex;
@@ -5694,6 +5735,124 @@ body {
     background: rgba(127,29,29,.3);
 }
 
+.wa-health-detail-meta {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: .55rem;
+    width: min(100%, 360px);
+}
+
+.wa-health-detail-summary {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: .85rem;
+}
+
+.wa-health-detail-summary-block {
+    padding: .95rem 1rem;
+    border-radius: 16px;
+    border: 1px solid rgba(199,153,49,.18);
+    background:
+        linear-gradient(180deg, rgba(255,255,255,.03) 0%, rgba(255,255,255,0) 100%),
+        rgba(8,15,34,.34);
+    box-shadow:
+        inset 0 1px 0 rgba(255,255,255,.03),
+        0 14px 28px rgba(0,0,0,.14);
+}
+
+.wa-health-detail-summary-kicker {
+    color: rgba(245,221,176,.62);
+    font-size: .64rem;
+    font-weight: 900;
+    letter-spacing: .16em;
+    text-transform: uppercase;
+    margin-bottom: .35rem;
+}
+
+.wa-health-detail-summary-value {
+    color: #f8fafc;
+    font-size: 1rem;
+    font-weight: 850;
+    line-height: 1.25;
+}
+
+.wa-health-detail-summary-copy {
+    margin-top: .35rem;
+    color: rgba(216,222,234,.72);
+    font-size: .78rem;
+    line-height: 1.45;
+}
+
+.wa-health-detail-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: .85rem;
+}
+
+.wa-health-detail-card {
+    padding: .95rem 1rem;
+    border-radius: 16px;
+    border: 1px solid rgba(199,153,49,.18);
+    background:
+        linear-gradient(180deg, rgba(255,255,255,.028) 0%, rgba(255,255,255,0) 100%),
+        rgba(8,15,34,.3);
+    box-shadow:
+        inset 0 1px 0 rgba(255,255,255,.03),
+        0 14px 24px rgba(0,0,0,.12);
+}
+
+.wa-health-detail-card.is-success {
+    border-color: rgba(123,198,150,.24);
+    background:
+        linear-gradient(180deg, rgba(123,198,150,.05) 0%, rgba(255,255,255,0) 100%),
+        rgba(8,15,34,.3);
+}
+
+.wa-health-detail-card.is-muted {
+    border-color: rgba(255,255,255,.08);
+}
+
+.wa-health-detail-card-title {
+    color: #fff1c8;
+    font-size: .82rem;
+    font-weight: 900;
+    letter-spacing: .12em;
+    text-transform: uppercase;
+    margin-bottom: .72rem;
+}
+
+.wa-health-detail-fields {
+    display: grid;
+    gap: .62rem;
+}
+
+.wa-health-detail-field {
+    display: grid;
+    gap: .18rem;
+}
+
+.wa-health-detail-label {
+    color: rgba(245,221,176,.54);
+    font-size: .62rem;
+    font-weight: 900;
+    letter-spacing: .14em;
+    text-transform: uppercase;
+}
+
+.wa-health-detail-value {
+    color: #eef2f8;
+    font-size: .85rem;
+    font-weight: 700;
+    line-height: 1.45;
+    word-break: break-word;
+}
+
+.wa-health-detail-value.is-monospace {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+    font-size: .78rem;
+    color: #fff1c8;
+}
+
 @media (max-width: 991.98px) {
     .wa-health-surface {
         padding: .95rem 1rem;
@@ -5706,6 +5865,15 @@ body {
 
     .wa-health-grid {
         grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
+    .wa-health-detail-summary,
+    .wa-health-detail-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .wa-health-detail-meta {
+        width: 100%;
     }
 
     .wa-health-summary-card {
@@ -5728,6 +5896,10 @@ body {
 
 @media (max-width: 767.98px) {
     .wa-health-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .wa-health-detail-meta {
         grid-template-columns: 1fr;
     }
 

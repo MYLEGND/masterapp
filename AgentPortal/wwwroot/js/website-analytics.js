@@ -648,6 +648,12 @@
     return '<span class="wa-health-recovered is-unknown">Unknown</span>';
   }
 
+  function truncateText(value, maxLength = 72) {
+    const text = String(value || '').trim();
+    if (!text || text.length <= maxLength) return text;
+    return `${text.slice(0, Math.max(0, maxLength - 3))}...`;
+  }
+
   function renderMarketingHealthTrackingErrors(rows) {
     const body = document.getElementById('mh-errors-body');
     if (!body) return;
@@ -657,25 +663,21 @@
       return;
     }
 
-    body.innerHTML = rows.map((row) => {
+    body.innerHTML = rows.map((row, index) => {
       const severityTone = asTrimmed(row?.severity).toLowerCase() || 'unknown';
       const recoveredTone = row?.recovered === true ? 'yes' : row?.recovered === false ? 'no' : 'unknown';
       const timeLabel = escapeHtml(row?.localDisplayTime || formatDisplayDate(row?.eventUtc) || '—');
       const pageLabel = escapeHtml(row?.pageKey || row?.pagePath || row?.quoteType || '—');
-      const pagePath = escapeHtml(row?.pagePath || row?.pageUrl || '');
+      const pagePath = escapeHtml(truncateText(row?.pagePath || row?.pageUrl || '', 54));
       const quoteLabel = asTrimmed(row?.quoteType) ? escapeHtml(prettifyQuoteType(row.quoteType)) : '';
       const eventLabel = escapeHtml(row?.attemptedEventName || '—');
       const sessionLabel = row?.sessionIdShort ? `Session ${escapeHtml(row.sessionIdShort)}` : '';
       const visitorLabel = row?.visitorIdShort ? `Visitor ${escapeHtml(row.visitorIdShort)}` : '';
       const eventMeta = [sessionLabel, visitorLabel].filter(Boolean).join(' · ');
-      const errorLabel = escapeHtml(row?.errorMessage || '—');
-      const endpointLabel = escapeHtml(row?.attemptedEndpoint || '');
+      const errorLabel = escapeHtml(truncateText(row?.errorMessage || '—', 72));
       const statusLabel = row?.statusCode != null ? `HTTP ${escapeHtml(String(row.statusCode))}` : '—';
       const retryLabel = escapeHtml(String(row?.retryCount ?? 0));
-      const sourceLabel = asTrimmed(row?.source) ? `Source ${escapeHtml(row.source)}` : '';
-      const campaignLabel = asTrimmed(row?.campaign) ? `Campaign ${escapeHtml(row.campaign)}` : '';
-      const actionMeta = [sourceLabel, campaignLabel].filter(Boolean).join(' · ');
-      const actionLabel = escapeHtml(row?.suggestedAction || 'Inspect browser console and server ingest logs');
+      const hasMatchedLead = !!row?.matchedLead;
 
       return `
         <tr data-severity="${escapeHtml(severityTone)}" data-recovered="${escapeHtml(recoveredTone)}">
@@ -693,7 +695,6 @@
           </td>
           <td>
             <div class="wa-health-cell-primary">${errorLabel}</div>
-            ${endpointLabel ? `<div class="wa-health-cell-sub">Endpoint ${endpointLabel}</div>` : ''}
           </td>
           <td>
             <div class="wa-health-cell-primary">${trackingErrorSeverityBadge(row?.severity)}</div>
@@ -706,12 +707,154 @@
             <div class="wa-health-cell-primary">${trackingErrorRecoveredBadge(row?.recovered)}</div>
           </td>
           <td>
-            <div class="wa-health-cell-primary">${actionLabel}</div>
-            ${actionMeta ? `<div class="wa-health-cell-sub">${actionMeta}</div>` : ''}
+            <div class="wa-health-row-actions">
+              <button type="button" class="btn btn-outline-light wa-health-detail-btn" data-mh-error-index="${index}">Inspect</button>
+              ${hasMatchedLead ? '<span class="wa-health-inline-flag">Lead linked</span>' : ''}
+            </div>
           </td>
         </tr>
       `;
     }).join('');
+  }
+
+  function renderHealthDetailMetaItem(label, value, extraClass = '') {
+    const itemClass = ['wa-modal-meta-item', extraClass].filter(Boolean).join(' ');
+    return `
+      <div class="${itemClass}">
+        <span class="wa-modal-meta-label">${escapeHtml(label)}</span>
+        <span class="wa-modal-meta-value">${escapeHtml(value || '—')}</span>
+      </div>
+    `;
+  }
+
+  function renderHealthDetailField(label, value, { monospace = false } = {}) {
+    const text = asTrimmed(value) || '—';
+    return `
+      <div class="wa-health-detail-field">
+        <div class="wa-health-detail-label">${escapeHtml(label)}</div>
+        <div class="wa-health-detail-value${monospace ? ' is-monospace' : ''}">${escapeHtml(text)}</div>
+      </div>
+    `;
+  }
+
+  function renderHealthDetailCard(title, fieldsHtml, extraClass = '') {
+    return `
+      <article class="wa-health-detail-card ${extraClass}">
+        <div class="wa-health-detail-card-title">${escapeHtml(title)}</div>
+        <div class="wa-health-detail-fields">${fieldsHtml}</div>
+      </article>
+    `;
+  }
+
+  function openMarketingHealthErrorDetail(index) {
+    const rows = state.cache.marketingHealth?.recentTrackingErrors;
+    const row = Array.isArray(rows) ? rows[index] : null;
+    const modalEl = document.getElementById('mhErrorDetailModal');
+    if (!row || !modalEl || typeof bootstrap === 'undefined' || !bootstrap?.Modal) return;
+
+    const pageLabel = row?.pageKey || row?.pagePath || row?.quoteType || 'Unknown page';
+    const titleEl = document.getElementById('mh-error-detail-title');
+    const subtitleEl = document.getElementById('mh-error-detail-subtitle');
+    const metaEl = document.getElementById('mh-error-detail-meta');
+    const summaryEl = document.getElementById('mh-error-detail-summary');
+    const gridEl = document.getElementById('mh-error-detail-grid');
+
+    if (titleEl) {
+      titleEl.textContent = row?.attemptedEventName || 'Tracking event';
+    }
+
+    if (subtitleEl) {
+      const recoveredCopy = row?.recovered === true
+        ? 'Recovered after retry.'
+        : row?.recovered === false
+          ? 'Did not recover.'
+          : 'Recovery state is unknown.';
+      subtitleEl.textContent = `${pageLabel} • ${recoveredCopy}`;
+    }
+
+    if (metaEl) {
+      metaEl.innerHTML = [
+        renderHealthDetailMetaItem('Time', row?.localDisplayTime || formatDisplayDate(row?.eventUtc) || '—'),
+        renderHealthDetailMetaItem('Severity', row?.severity || 'Unknown'),
+        renderHealthDetailMetaItem('Status', row?.statusCode != null ? `HTTP ${row.statusCode}` : 'No status'),
+        renderHealthDetailMetaItem('Retry', String(row?.retryCount ?? 0))
+      ].join('');
+    }
+
+    if (summaryEl) {
+      const endpoint = asTrimmed(row?.attemptedEndpoint) || asTrimmed(row?.rawFetchUrl) || '/api/analytics/ingest';
+      const failureMessage = asTrimmed(row?.errorMessage) || 'tracking_error';
+      summaryEl.innerHTML = `
+        <div class="wa-health-detail-summary">
+          <div class="wa-health-detail-summary-block">
+            <div class="wa-health-detail-summary-kicker">Raw Failure</div>
+            <div class="wa-health-detail-summary-value">${escapeHtml(failureMessage)}</div>
+            <div class="wa-health-detail-summary-copy">Endpoint ${escapeHtml(endpoint)}</div>
+          </div>
+          <div class="wa-health-detail-summary-block">
+            <div class="wa-health-detail-summary-kicker">Next Check</div>
+            <div class="wa-health-detail-summary-value">${escapeHtml(row?.suggestedAction || 'Inspect browser console and server ingest logs')}</div>
+            <div class="wa-health-detail-summary-copy">Trigger ${escapeHtml(row?.requestTrigger || 'Browser send')}</div>
+          </div>
+        </div>
+      `;
+    }
+
+    if (gridEl) {
+      const matchedLead = row?.matchedLead;
+      const leadFields = matchedLead
+        ? [
+            renderHealthDetailField('Match Type', matchedLead.matchType || 'session'),
+            renderHealthDetailField('Submitted', matchedLead.localDisplayTime || '—'),
+            renderHealthDetailField('Delay From Error', matchedLead.delayFromErrorLabel || '—'),
+            renderHealthDetailField('Name', matchedLead.name || 'Submitted lead'),
+            renderHealthDetailField('Email', matchedLead.email || '—'),
+            renderHealthDetailField('Phone', matchedLead.phone || '—'),
+            renderHealthDetailField('Interest', matchedLead.interest || '—'),
+            renderHealthDetailField('Source Page', matchedLead.sourcePageKey || '—')
+          ].join('')
+        : [
+            renderHealthDetailField('Lead Match', 'No later lead matched this session/visitor in scope.'),
+            renderHealthDetailField('Checked Against', 'Later submissions tied to the same session or visitor.')
+          ].join('');
+
+      gridEl.innerHTML = [
+        renderHealthDetailCard('Tracking Identity', [
+          renderHealthDetailField('Full Session ID', row?.sessionId || '—', { monospace: true }),
+          renderHealthDetailField('Full Visitor ID', row?.visitorId || '—', { monospace: true })
+        ].join('')),
+        renderHealthDetailCard('Browser Context', [
+          renderHealthDetailField('Browser', row?.browser || '—'),
+          renderHealthDetailField('Device', row?.deviceType || '—'),
+          renderHealthDetailField('Operating System', row?.operatingSystem || '—')
+        ].join('')),
+        renderHealthDetailCard('Page Context', [
+          renderHealthDetailField('Page Key', row?.pageKey || '—'),
+          renderHealthDetailField('Exact Path', row?.pagePath || '—', { monospace: true }),
+          renderHealthDetailField('URL', row?.pageUrl || '—', { monospace: true })
+        ].join('')),
+        renderHealthDetailCard('Request Trace', [
+          renderHealthDetailField('Method', row?.requestMethod || 'POST'),
+          renderHealthDetailField('Attempted Endpoint', row?.attemptedEndpoint || '—', { monospace: true }),
+          renderHealthDetailField('Route', row?.requestRoute || '—', { monospace: true }),
+          renderHealthDetailField('Raw Fetch URL', row?.rawFetchUrl || '—', { monospace: true }),
+          renderHealthDetailField('Trigger', row?.requestTrigger || 'Browser send')
+        ].join('')),
+        renderHealthDetailCard('Lead Correlation', leadFields, matchedLead ? 'is-success' : 'is-muted')
+      ].join('');
+    }
+
+    bootstrap.Modal.getOrCreateInstance(modalEl).show();
+  }
+
+  function initMarketingHealthInspector() {
+    document.addEventListener('click', (event) => {
+      const button = event.target.closest('[data-mh-error-index]');
+      if (!button) return;
+      const index = Number.parseInt(button.dataset.mhErrorIndex || '', 10);
+      if (!Number.isFinite(index)) return;
+      openMarketingHealthErrorDetail(index);
+    });
   }
 
   function renderTable(bodyId, rows, cols) {
@@ -3022,6 +3165,7 @@
     initMetaSignalFilterControls();
     initLeadDeleteControls();
     initModalCopyButtons();
+    initMarketingHealthInspector();
     attachModal('trafficModal', () => { updateTrafficTypeHeader('trafficModal'); loadTraffic(); });
     attachModal('pagePerfModal', () => { updateTrafficTypeHeader('pagePerfModal'); loadPagePerf(); });
     attachModal('ctaPerfModal', () => { updateTrafficTypeHeader('ctaPerfModal'); loadCtaPerf(); });

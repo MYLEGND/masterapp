@@ -537,7 +537,7 @@
                     <div>
                         <div class="wa-health-panel-kicker">Tracking Diagnostics</div>
                         <div class="wa-health-warnings-title">Recent Tracking Errors</div>
-                        <div class="wa-health-diagnostics-sub">Latest browser-side tracking failures with severity, recovery status, and the next thing to check.</div>
+                        <div class="wa-health-diagnostics-sub">Latest browser-side tracking failures with severity, recovery status, and a compact inspect view for full session, device, request, and lead context.</div>
                     </div>
                     <div class="wa-health-panel-badge">Latest Events</div>
                 </div>
@@ -565,6 +565,34 @@
             </div>
         </div>
     </section>
+
+    <div class="modal fade fa-modal" id="mhErrorDetailModal" tabindex="-1" aria-hidden="true">
+      <div class="modal-dialog modal-lg modal-dialog-centered modal-dialog-scrollable wa-modal-dialog">
+        <div class="modal-content wa-modal-shell">
+          <div class="modal-header wa-modal-header">
+            <div class="wa-modal-header-main">
+              <div class="wa-modal-header-copy">
+                <div class="wa-modal-kicker">Tracking Error Inspector</div>
+                <h5 class="modal-title mb-1" id="mh-error-detail-title">Tracking event</h5>
+                <div class="wa-modal-subtitle" id="mh-error-detail-subtitle">Review the exact browser identity, request target, raw failure, and any later lead tied to the same session.</div>
+              </div>
+              <div class="wa-modal-header-actions">
+                <div class="wa-modal-meta-strip wa-health-detail-meta" id="mh-error-detail-meta"></div>
+              </div>
+            </div>
+            <button type="button" class="btn-close btn-close-white wa-modal-close" data-bs-dismiss="modal" aria-label="Close"></button>
+          </div>
+          <div class="modal-body wa-modal-body">
+            <section class="wa-modal-section">
+              <div id="mh-error-detail-summary"></div>
+            </section>
+            <section class="wa-modal-section">
+              <div class="wa-health-detail-grid" id="mh-error-detail-grid"></div>
+            </section>
+          </div>
+        </div>
+      </div>
+    </div>
 </div>
 
 @if (canViewFounderTeamUi)
