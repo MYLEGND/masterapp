@@ -22,12 +22,18 @@ namespace Protect_Website.Controllers
     {
         private const string WebsitePageVariant = "website";
         private const string ContactFirstEducationVariant = "contact_first_education_v1";
+        private const string QuotePageKey = "quote_disability";
+        private const string QuoteOfferKey = "disability";
+        private const string QuoteProductType = "disability";
+        private const string QuoteInterestType = "disability_insurance";
+        private const string QuoteDisplayName = "Disability Insurance Review";
 
         private readonly string tenantId;
         private readonly string clientId;
         private readonly string clientSecret;
         private readonly string senderEmail;
         private readonly string recipientEmail;
+        private readonly string websiteName;
         private readonly AgentTrackingResolver _resolver;
         private readonly MasterAppDbContext _db;
         private readonly IMetaConversionsApiService _metaConversionsApi;
@@ -43,6 +49,7 @@ namespace Protect_Website.Controllers
             clientSecret = configuration["AzureAd:ClientSecret"]!;
             senderEmail = configuration["Contact:SenderEmail"] ?? "connect@mylegnd.com";
             recipientEmail = configuration["Contact:RecipientEmail"]!;
+            websiteName = configuration["Contact:WebsiteName"] ?? "Legend Legacy Protection";
             _resolver = resolver;
             _db = db;
             _metaConversionsApi = metaConversionsApi;
@@ -112,8 +119,8 @@ namespace Protect_Website.Controllers
                     LastName      = string.IsNullOrWhiteSpace(model.LastName) ? null : model.LastName.Trim(),
                     Email         = model.Email?.Trim() ?? "",
                     Phone         = string.IsNullOrWhiteSpace(model.Phone) ? null : model.Phone.Trim(),
-                    InterestType  = "disability_insurance",
-                    SourcePageKey = "quote_disability",
+                    InterestType  = QuoteInterestType,
+                    SourcePageKey = QuotePageKey,
                     UtmSource     = string.IsNullOrWhiteSpace(model.UtmSource)   ? null : model.UtmSource.Trim(),
                     UtmMedium     = string.IsNullOrWhiteSpace(model.UtmMedium)   ? null : model.UtmMedium.Trim(),
                     UtmCampaign   = string.IsNullOrWhiteSpace(model.UtmCampaign) ? null : model.UtmCampaign.Trim(),
@@ -135,8 +142,13 @@ namespace Protect_Website.Controllers
                     AgentSlug     = agentSlug,
                     MetadataJson  = JsonSerializer.Serialize(new
                     {
+                        OfferKey       = QuoteOfferKey,
+                        ProductType    = QuoteProductType,
+                        PageKey        = QuotePageKey,
                         PageVariant    = model.PageVariant,
                         PageMode       = model.PageMode,
+                        PagePath       = Request?.Path.Value,
+                        Age            = model.Age,
                         AgeRange       = model.AgeRange,
                         EmploymentType = model.EmploymentType,
                         IncomeRange    = model.IncomeRange,
@@ -181,8 +193,8 @@ namespace Protect_Website.Controllers
                     analyticsEvent = WebsiteLeadAnalyticsWriter.CreateEvent(
                         lead,
                         eventType,
-                        "quote_disability",
-                        "disability_insurance",
+                        QuotePageKey,
+                        QuoteInterestType,
                         metadata,
                         eventUtc);
                     _db.AnalyticsEvents.Add(analyticsEvent);
@@ -207,35 +219,48 @@ namespace Protect_Website.Controllers
             }
 
             await TryWriteLeadEventAsync(
-                "lead_persisted",
-                new
-                {
-                    LeadId = lead.LeadId,
-                    CorrelationId = correlationId,
-                    QuoteType = "disability_insurance",
-                    PageVariant = model.PageVariant,
-                    PageMode = model.PageMode
-                },
-                lead.CreatedUtc);
+                    "lead_persisted",
+                    new
+                    {
+                        LeadId = lead.LeadId,
+                        CorrelationId = correlationId,
+                        QuoteType = QuoteInterestType,
+                        OfferKey = QuoteOfferKey,
+                        ProductType = QuoteProductType,
+                        PageVariant = model.PageVariant,
+                        PageMode = model.PageMode,
+                        PagePath = Request?.Path.Value
+                    },
+                    lead.CreatedUtc);
 
             try
             {
                 await TryWriteLeadEventAsync(
                     "workstation_capture_attempt",
-                    new { LeadId = lead.LeadId, CorrelationId = correlationId, ProductType = "disability", OfferKey = "disability" });
+                    new
+                    {
+                        LeadId = lead.LeadId,
+                        CorrelationId = correlationId,
+                        ProductType = QuoteProductType,
+                        OfferKey = QuoteOfferKey,
+                        PageVariant = model.PageVariant,
+                        PageMode = model.PageMode,
+                        PagePath = Request?.Path.Value
+                    });
 
                 var captureResult = await _websiteLeadCapture.UpsertAsync(
                     new WebsiteLifeLeadCaptureRequest
                     {
                         WebsiteLeadId = lead.LeadId,
                         SubmittedUtc = lead.CreatedUtc,
-                        ProductType = "disability",
-                        OfferKey = "disability",
+                        ProductType = QuoteProductType,
+                        OfferKey = QuoteOfferKey,
                         FirstName = lead.FirstName,
                         LastName = lead.LastName,
                         Email = lead.Email,
                         Phone = lead.Phone,
                         Age = model.Age,
+                        AgeRange = model.AgeRange,
                         AgentTrackingProfileId = agentProfileId,
                         AgentSlug = agentSlug,
                         RecipientEmail = leadRecipientEmail
@@ -245,12 +270,23 @@ namespace Protect_Website.Controllers
                 if (captureResult.Captured)
                 {
                     await _db.SaveChangesAsync(HttpContext?.RequestAborted ?? CancellationToken.None);
+                    _logger.LogInformation(
+                        "DisabilityQuote [{CorrelationId}]: workstation lead {WorkstationLeadId} {CaptureMode} bucket={Bucket} owner={AgentUserId}",
+                        correlationId,
+                        captureResult.WorkstationLeadId,
+                        captureResult.Created ? "created" : "updated",
+                        captureResult.Bucket,
+                        captureResult.AgentUserId);
                     await TryWriteLeadEventAsync(
                         "workstation_capture_success",
                         new
                         {
                             LeadId = lead.LeadId,
                             CorrelationId = correlationId,
+                            ProductType = QuoteProductType,
+                            OfferKey = QuoteOfferKey,
+                            PageVariant = model.PageVariant,
+                            PageMode = model.PageMode,
                             WorkstationLeadId = captureResult.WorkstationLeadId,
                             Bucket = captureResult.Bucket,
                             AgentUserId = captureResult.AgentUserId,
@@ -265,14 +301,48 @@ namespace Protect_Website.Controllers
                         {
                             LeadId = lead.LeadId,
                             CorrelationId = correlationId,
+                            ProductType = QuoteProductType,
+                            OfferKey = QuoteOfferKey,
+                            PageVariant = model.PageVariant,
+                            PageMode = model.PageMode,
                             Reason = captureResult.Reason ?? "unknown",
                             Bucket = captureResult.Bucket,
                             AgentUserId = captureResult.AgentUserId
                         });
+
+                    _logger.LogWarning(
+                        "DisabilityQuote [{CorrelationId}]: workstation lead capture skipped for WebsiteLead {LeadId}. reason={Reason}",
+                        correlationId,
+                        lead.LeadId,
+                        captureResult.Reason ?? "unknown");
+
+                    if (IsAjax())
+                    {
+                        return StatusCode(500, new
+                        {
+                            error = "Workstation capture skipped",
+                            reason = captureResult.Reason ?? "unknown",
+                            bucket = captureResult.Bucket,
+                            agentUserId = captureResult.AgentUserId,
+                            correlationId = correlationId.ToString("D")
+                        });
+                    }
                 }
             }
             catch (Exception captureEx)
             {
+                foreach (var entry in _db.ChangeTracker.Entries<WorkstationLeadProfile>()
+                    .Where(x => x.State == EntityState.Added || x.State == EntityState.Modified))
+                {
+                    entry.State = EntityState.Detached;
+                }
+
+                foreach (var entry in _db.ChangeTracker.Entries<WebsiteLeadIntakeLink>()
+                    .Where(x => x.State == EntityState.Added || x.State == EntityState.Modified))
+                {
+                    entry.State = EntityState.Detached;
+                }
+
                 _logger.LogError(
                     captureEx,
                     "DisabilityQuote [{CorrelationId}]: workstation capture failed for lead {LeadId}",
@@ -285,6 +355,10 @@ namespace Protect_Website.Controllers
                     {
                         LeadId = lead.LeadId,
                         CorrelationId = correlationId,
+                        ProductType = QuoteProductType,
+                        OfferKey = QuoteOfferKey,
+                        PageVariant = model.PageVariant,
+                        PageMode = model.PageMode,
                         Reason = "capture_exception",
                         ErrorMessage = captureEx.Message
                     });
@@ -329,8 +403,8 @@ namespace Protect_Website.Controllers
                     CorrelationId = correlationId,
                     EventId = metaLeadEventId,
                     QuoteType = "Disability",
-                    PageKey = "quote_disability",
-                    OfferKey = "disability",
+                    PageKey = QuotePageKey,
+                    OfferKey = QuoteOfferKey,
                     EventSourceUrl = MetaLeadTrackingWorkflow.ResolveEventSourceUrl(model.LandingPageUrl, Request),
                     ClientIpAddress = MetaLeadTrackingWorkflow.ResolveClientIpAddress(Request),
                     ClientUserAgent = Request?.Headers["User-Agent"].ToString(),
@@ -393,7 +467,7 @@ namespace Protect_Website.Controllers
 
                 var message = new Message
                 {
-                    Subject = $"[DISABILITY QUOTE] New Lead | {model.FirstName} {model.LastName}",
+                    Subject = $"[DISABILITY QUOTE - {QuoteDisplayName.ToUpperInvariant()}] New Lead | {model.FirstName}",
                     Body = new ItemBody { ContentType = BodyType.Html, Content = emailBody },
                     ToRecipients = new List<Recipient>()
                 };
@@ -409,25 +483,25 @@ namespace Protect_Website.Controllers
                 else if (!string.IsNullOrWhiteSpace(senderEmail))
                     primary = senderEmail.Trim();
 
-                if (string.IsNullOrWhiteSpace(primary))
-                    throw new InvalidOperationException("No recipient email resolved.");
-
-                message.ToRecipients.Add(new Recipient
+                if (!string.IsNullOrWhiteSpace(primary))
                 {
-                    EmailAddress = new EmailAddress { Address = primary }
-                });
+                    message.ToRecipients.Add(new Recipient
+                    {
+                        EmailAddress = new EmailAddress { Address = primary }
+                    });
 
-        // ===================== SEND EMAIL =====================
-        var requestBody = new SendMailPostRequestBody
-        {
-            Message = message,
-            SaveToSentItems = true
-        };
-
-        await graphClient.Users[senderEmail].SendMail.PostAsync(requestBody);
-        _logger.LogInformation(
-            "DisabilityQuote [{CorrelationId}]: email sent to {Recipient} for lead {LeadId}",
-            correlationId, leadRecipientEmail, lead.LeadId);
+                    await graphClient.Users[senderEmail].SendMail.PostAsync(
+                        new SendMailPostRequestBody { Message = message, SaveToSentItems = true });
+                    _logger.LogInformation(
+                        "DisabilityQuote [{CorrelationId}]: email sent to {Recipient} for lead {LeadId}",
+                        correlationId, primary, lead.LeadId);
+                }
+                else
+                {
+                    _logger.LogWarning(
+                        "DisabilityQuote [{CorrelationId}]: no recipient resolved for lead {LeadId} - email skipped",
+                        correlationId, lead.LeadId);
+                }
             }
             catch (Exception emailEx)
             {
@@ -445,7 +519,7 @@ namespace Protect_Website.Controllers
 
                     var userMessage = new Message
                     {
-                        Subject = "Your disability coverage review is ready - Legend Legacy Protection",
+                        Subject = $"Your disability coverage review is ready - {websiteName}",
                         Body = new ItemBody
                         {
                             ContentType = BodyType.Html,
@@ -482,8 +556,11 @@ namespace Protect_Website.Controllers
                 {
                     LeadId = lead.LeadId,
                     CorrelationId = correlationId,
+                    OfferKey = QuoteOfferKey,
+                    ProductType = QuoteProductType,
                     PageVariant = model.PageVariant,
-                    PageMode = model.PageMode
+                    PageMode = model.PageMode,
+                    PagePath = Request?.Path.Value
                 },
                 lead.CreatedUtc);
 
@@ -579,7 +656,7 @@ namespace Protect_Website.Controllers
 <div style=""color:#f3d688;font-size:12px;font-weight:900;letter-spacing:.12em;text-transform:uppercase;margin-bottom:8px;"">New lead ready for review</div>
                 <div style=""color:#fff8e7;font-size:24px;line-height:1.12;font-weight:900;"">{H(fullName)} submitted a disability insurance review.</div>
                 <div style=""color:rgba(248,250,252,.82);font-size:14px;line-height:1.45;font-weight:650;margin-top:10px;"">
-                A guided disability coverage review is ready for follow-up. Use the answers below to keep the conversation focused on income replacement, current benefit gaps, and how exposed the household would be if work stopped.
+                The prospect received the review-style follow-up email. Use the answers below to keep the conversation focused on income replacement, current benefit gaps, and how exposed the household would be if work stopped instead of restarting cold.
                 </div>
 </div>
 
@@ -598,7 +675,7 @@ namespace Protect_Website.Controllers
 
 <div style=""margin-bottom:14px;"">
 <span style=""display:inline-block;padding:7px 10px;border-radius:999px;border:1px solid rgba(243,214,136,.35);background:#071932;color:#fff7de;font-size:12px;font-weight:900;margin:0 5px 7px 0;"">Lead submitted</span>
-<span style=""display:inline-block;padding:7px 10px;border-radius:999px;border:1px solid rgba(243,214,136,.35);background:#071932;color:#fff7de;font-size:12px;font-weight:900;margin:0 5px 7px 0;"">Income review</span>
+<span style=""display:inline-block;padding:7px 10px;border-radius:999px;border:1px solid rgba(243,214,136,.35);background:#071932;color:#fff7de;font-size:12px;font-weight:900;margin:0 5px 7px 0;"">Prospect email sent</span>
 <span style=""display:inline-block;padding:7px 10px;border-radius:999px;border:1px solid rgba(243,214,136,.35);background:#071932;color:#fff7de;font-size:12px;font-weight:900;margin:0 5px 7px 0;"">Follow-up needed</span>
 </div>
 
@@ -656,7 +733,7 @@ Start by confirming current benefit gaps, income replacement pressure, eliminati
 </div>
 
 <div style=""margin-top:14px;color:rgba(248,250,252,.55);font-size:12px;line-height:1.5;text-align:center;"">
-                Internal lead notification for Legend Legacy Protection.
+                Internal agent notification. Prospect-facing email was generated separately from this submission.
                 </div>
 
 </div>
@@ -698,15 +775,15 @@ Start by confirming current benefit gaps, income replacement pressure, eliminati
 
             var nextStepName = !string.IsNullOrWhiteSpace(attachedAgentFirstName)
                 ? attachedAgentFirstName.Trim()
-                : "our licensed team";
+                : "your licensed agent";
 
             var bookingUrl = !string.IsNullOrWhiteSpace(attachedAgentBookingUrl)
                 ? attachedAgentBookingUrl.Trim()
                 : string.Empty;
 
             var bookingButtonHtml = !string.IsNullOrWhiteSpace(bookingUrl)
-                ? $@"<a href=""{WebUtility.HtmlEncode(bookingUrl)}"" style=""display:block;text-align:center;background:#79e0a7;color:#071a11;text-decoration:none;font-size:16px;font-weight:900;padding:14px 16px;border-radius:14px;border:1px solid rgba(255,244,190,.58);"">Finish My Disability Review</a>"
-                : @"<div style=""text-align:center;background:#071932;color:#fff8e7;font-size:15px;font-weight:800;padding:14px 16px;border-radius:14px;border:1px solid rgba(243,214,136,.35);"">Your review is saved. A licensed advisor can help confirm the next best step.</div>";
+                ? $@"<a href=""{WebUtility.HtmlEncode(bookingUrl)}"" style=""display:block;text-align:center;background:#f3d688;color:#111827;text-decoration:none;font-size:16px;font-weight:900;padding:14px 16px;border-radius:14px;border:1px solid #f7dc96;"">Complete My Disability Review</a>"
+                : @"<div style=""text-align:center;background:#071932;color:#fff8e7;font-size:15px;font-weight:800;padding:14px 16px;border-radius:14px;border:1px solid rgba(243,214,136,.35);"">Your review is saved. Your licensed agent can help confirm the next step.</div>";
 
             return $@"
 <!DOCTYPE html>

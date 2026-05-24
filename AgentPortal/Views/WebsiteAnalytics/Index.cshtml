@@ -1941,32 +1941,48 @@
 
 @* Drawer panel *@
 
-<div class="modal fade" id="deviceIntelligenceModal" tabindex="-1" aria-labelledby="deviceIntelligenceModalLabel" aria-hidden="true">
-    <div class="modal-dialog modal-xl modal-dialog-scrollable">
-        <div class="modal-content wa-modal-content">
-            <div class="modal-header wa-modal-header">
-                <div>
-                    <div class="wa-modal-kicker">Prospect Environment Learning</div>
-                    <h5 class="modal-title mb-0" id="deviceIntelligenceModalLabel">Device Intelligence</h5>
-                    <p class="wa-modal-subtitle mb-0">See how device, browser, operating system, viewport, timezone, and language impact funnel behavior.</p>
+<div class="modal fade fa-modal" id="deviceIntelligenceModal" tabindex="-1" aria-labelledby="deviceIntelligenceModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-xl modal-dialog-centered modal-dialog-scrollable wa-modal-dialog wa-device-modal-dialog">
+        <div class="modal-content wa-modal-shell wa-device-modal-shell">
+            <div class="modal-header wa-modal-header wa-device-modal-header">
+                <div class="wa-modal-header-main">
+                    <div class="wa-modal-header-copy">
+                        <div class="wa-modal-kicker">Prospect Environment Learning</div>
+                        <h5 class="modal-title mb-0" id="deviceIntelligenceModalLabel">Device Intelligence</h5>
+                        <div class="wa-modal-subtitle">See how device, browser, operating system, viewport, timezone, and language impact funnel behavior.</div>
+                    </div>
+                    <div class="wa-modal-header-actions">
+                        <div class="wa-modal-range-chip" id="deviceIntelligenceRangeLabel">Range: —</div>
+                    </div>
                 </div>
-                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+                <button type="button" class="btn-close btn-close-white wa-modal-close" data-bs-dismiss="modal" aria-label="Close"></button>
             </div>
-            <div class="modal-body wa-modal-body">
-                <div class="wa-modal-toolbar">
+            <div class="modal-body wa-modal-body wa-device-modal-body">
+                <div class="wa-device-toolbar">
                     <div class="wa-pill-group" role="group" aria-label="Device traffic filter">
                         <button type="button" class="wa-pill is-active" data-device-traffic="all">All Traffic</button>
                         <button type="button" class="wa-pill" data-device-traffic="paid">Paid Ads</button>
                         <button type="button" class="wa-pill" data-device-traffic="non_paid">Non-Ads</button>
                     </div>
-                    <div class="wa-modal-range-chip" id="deviceIntelligenceRangeLabel">Range: —</div>
                 </div>
 
-                <div class="wa-kpi-grid wa-kpi-grid-compact mb-4">
-                    <div class="wa-kpi-card"><span>Sessions</span><strong id="deviceSessions">—</strong></div>
-                    <div class="wa-kpi-card"><span>Events</span><strong id="deviceEvents">—</strong></div>
-                    <div class="wa-kpi-card"><span>Form Starts</span><strong id="deviceFormStarts">—</strong></div>
-                    <div class="wa-kpi-card"><span>Confirmed Leads</span><strong id="deviceConfirmedLeads">—</strong></div>
+                <div class="wa-device-kpi-grid mb-4">
+                    <div class="wa-device-kpi-card">
+                        <div class="wa-device-kpi-icon" aria-hidden="true"><i class="bi bi-people"></i></div>
+                        <div><span>Sessions</span><strong id="deviceSessions">—</strong></div>
+                    </div>
+                    <div class="wa-device-kpi-card">
+                        <div class="wa-device-kpi-icon" aria-hidden="true"><i class="bi bi-graph-up-arrow"></i></div>
+                        <div><span>Events</span><strong id="deviceEvents">—</strong></div>
+                    </div>
+                    <div class="wa-device-kpi-card">
+                        <div class="wa-device-kpi-icon" aria-hidden="true"><i class="bi bi-file-earmark-text"></i></div>
+                        <div><span>Form Starts</span><strong id="deviceFormStarts">—</strong></div>
+                    </div>
+                    <div class="wa-device-kpi-card">
+                        <div class="wa-device-kpi-icon" aria-hidden="true"><i class="bi bi-check-circle"></i></div>
+                        <div><span>Confirmed Leads</span><strong id="deviceConfirmedLeads">—</strong></div>
+                    </div>
                 </div>
 
                 <div id="deviceIntelligenceContent" class="wa-device-grid"></div>

@@ -4320,36 +4320,46 @@
     }
   }
 
-  function table(title, rows) {
+  function table(title, rows, icon = 'bi-grid') {
     rows = Array.isArray(rows) ? rows : [];
+    const firstCol = title.replace('Prospect ', '');
+
     if (!rows.length) {
-      return `<section class="wa-panel"><h6>${esc(title)}</h6><div class="text-muted small">No data in this slice yet.</div></section>`;
+      return `
+        <section class="wa-device-panel">
+          <div class="wa-device-panel-title">
+            <i class="bi ${esc(icon)}" aria-hidden="true"></i>
+            <span>${esc(title)}</span>
+          </div>
+          <div class="wa-device-empty">No data in this slice yet.</div>
+        </section>`;
     }
 
     return `
-      <section class="wa-panel">
-        <h6>${esc(title)}</h6>
-        <div class="table-responsive">
-          <table class="table table-sm wa-table align-middle">
+      <section class="wa-device-panel">
+        <div class="wa-device-panel-title">
+          <i class="bi ${esc(icon)}" aria-hidden="true"></i>
+          <span>${esc(title)}</span>
+        </div>
+        <div class="wa-device-table-wrap">
+          <table class="wa-device-table">
             <thead>
               <tr>
-                <th>Segment</th>
+                <th>${esc(firstCol)}</th>
                 <th>Sessions</th>
-                <th>CTA</th>
+                <th>Events</th>
                 <th>Starts</th>
-                <th>Leads</th>
-                <th>Start %</th>
-                <th>Lead %</th>
+                <th>Conv.</th>
+                <th>Lead</th>
               </tr>
             </thead>
             <tbody>
               ${rows.map(r => `
                 <tr>
                   <td>${esc(r.label)}</td>
-                  <td>${r.sessions ?? 0}</td>
-                  <td>${r.ctaClicks ?? 0}</td>
-                  <td>${r.formStarts ?? 0}</td>
-                  <td>${r.confirmedLeads ?? 0}</td>
+                  <td>${Number(r.sessions ?? 0).toLocaleString('en-US')}</td>
+                  <td>${Number(r.events ?? r.ctaClicks ?? 0).toLocaleString('en-US')}</td>
+                  <td>${Number(r.formStarts ?? 0).toLocaleString('en-US')}</td>
                   <td>${r.startRate ?? 0}%</td>
                   <td>${r.leadRate ?? 0}%</td>
                 </tr>`).join('')}
@@ -4384,13 +4394,13 @@
 
     if (content) {
       content.innerHTML = [
-        table('Device Type', data.devices),
-        table('Browser', data.browsers),
-        table('Operating System', data.operatingSystems),
-        table('Viewport Size', data.viewports),
-        table('Screen Size', data.screens),
-        table('Prospect Timezone', data.timeZones),
-        table('Language', data.languages)
+        table('Device Type', data.devices, 'bi-display'),
+        table('Browser', data.browsers, 'bi-globe2'),
+        table('Operating System', data.operatingSystems, 'bi-pc-display'),
+        table('Viewport Size', data.viewports, 'bi-arrows-angle-expand'),
+        table('Screen Size', data.screens, 'bi-aspect-ratio'),
+        table('Prospect Timezone', data.timeZones, 'bi-clock'),
+        table('Language', data.languages, 'bi-translate')
       ].join('');
     }
   }

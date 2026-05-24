@@ -3172,7 +3172,42 @@ public sealed class AnalyticsQueryService : IAnalyticsQueryService
             .Select(r => r.Event)
             .ToList();
 
-        static string Clean(string? value) => string.IsNullOrWhiteSpace(value) ? "Unknown" : value.Trim();
+        static string Clean(string? value)
+        {
+            if (string.IsNullOrWhiteSpace(value)) return "Unknown";
+
+            var normalized = value.Trim();
+            if (normalized.Equals("unknown", StringComparison.OrdinalIgnoreCase)) return "Unknown";
+
+            var lower = normalized.ToLowerInvariant();
+            return lower switch
+            {
+                "ios" => "iOS",
+                "macos" => "macOS",
+                "chrome" => "Chrome",
+                "firefox" => "Firefox",
+                "safari" => "Safari",
+                "edge" => "Edge",
+                "android" => "Android",
+                "windows" => "Windows",
+                "desktop" => "Desktop",
+                "mobile" => "Mobile",
+                "tablet" => "Tablet",
+                _ => char.ToUpperInvariant(normalized[0]) + normalized[1..]
+            };
+        }
+
+        static string ResolveDeviceType(AnalyticsEvent e)
+        {
+            var existing = Clean(e.DeviceType);
+            if (!existing.Equals("Unknown", StringComparison.OrdinalIgnoreCase)) return existing;
+
+            var width = e.ViewportWidth ?? e.ScreenWidth ?? 0;
+            if (width <= 0) return "Unknown";
+            if (width < 768) return "Mobile";
+            if (width < 1024) return "Tablet";
+            return "Desktop";
+        }
 
         static string BucketWidth(int? width)
         {
@@ -3228,7 +3263,7 @@ public sealed class AnalyticsQueryService : IAnalyticsQueryService
             Events = rows.Count,
             FormStarts = rows.Count(e => e.EventType == "form_start"),
             ConfirmedLeads = rows.Count(e => e.EventType == "form_submit" && (e.SubmitOutcome ?? "").ToLower() == "success"),
-            Devices = BuildRows(e => Clean(e.DeviceType)),
+            Devices = BuildRows(ResolveDeviceType),
             Browsers = BuildRows(e => Clean(e.Browser)),
             OperatingSystems = BuildRows(e => Clean(e.OperatingSystem)),
             Viewports = BuildRows(e => BucketWidth(e.ViewportWidth)),

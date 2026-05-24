@@ -1157,119 +1157,244 @@ body.health-landing.page-mode-paid-landing header .navbar-brand img {
     display: block !important;
 }
 
-.lq-post-submit-slot .dq-final-review-unified-card {
-    display: grid;
-    gap: 16px;
-    width: 100%;
-    padding: 26px;
-    border-radius: 28px;
-    border: 1px solid rgba(243, 214, 136, 0.34);
+#healthPostSubmitSlot,
+#healthPostSubmitSlot * {
+    opacity: 1 !important;
+    box-sizing: border-box !important;
+}
+
+#healthPostSubmitSlot {
+    width: 100% !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    background: transparent !important;
+    border: 0 !important;
+    box-shadow: none !important;
+}
+
+#healthPostSubmitSlot .lq-final-review-unified-card {
+    width: 100% !important;
+    max-width: 100% !important;
+    margin: 0 !important;
+    padding: 22px 24px 20px !important;
+    border-radius: 24px !important;
+    border: 1px solid rgba(199,153,49,.38) !important;
     background:
-        radial-gradient(circle at 50% 0%, rgba(34, 99, 196, 0.13), transparent 42%),
-        linear-gradient(180deg, #08254d 0%, #061d3d 52%, #071a36 100%);
+        radial-gradient(circle at 18% 0%, rgba(243,214,136,.12), transparent 36%),
+        linear-gradient(180deg, #09244a 0%, #071d3d 52%, #061832 100%) !important;
+    color: #f8fafc !important;
     box-shadow:
-        0 32px 72px rgba(2, 12, 27, 0.3),
-        inset 0 1px 0 rgba(255, 255, 255, 0.05);
+        0 22px 46px rgba(2,12,27,.26),
+        inset 0 1px 0 rgba(255,255,255,.055) !important;
+    overflow: hidden !important;
 }
 
-.lq-post-submit-slot .dq-final-review-head,
-.lq-post-submit-slot .dq-final-review-next-step,
-.lq-post-submit-slot .dq-final-review-booking-card {
-    display: grid;
-    gap: 10px;
+#healthPostSubmitSlot .lq-final-review-head {
+    position: relative !important;
+    padding: 0 0 13px !important;
+    margin: 0 0 12px !important;
+    border-bottom: 1px solid rgba(243,214,136,.14) !important;
 }
 
-.lq-post-submit-slot .dq-final-review-kicker,
-.lq-post-submit-slot .dq-final-review-impact-label,
-.lq-post-submit-slot .dq-final-review-next-kicker,
-.lq-post-submit-slot .dq-final-review-booking-kicker {
-    color: #f3d688;
-    font-size: 0.78rem;
-    font-weight: 950;
-    letter-spacing: 0.1em;
-    text-transform: uppercase;
+#healthPostSubmitSlot .lq-final-review-kicker {
+    display: inline-flex !important;
+    align-items: center !important;
+    gap: 8px !important;
+    color: #f3d688 !important;
+    font-size: .72rem !important;
+    font-weight: 950 !important;
+    letter-spacing: .11em !important;
+    text-transform: uppercase !important;
+    margin: 0 0 8px !important;
 }
 
-.lq-post-submit-slot .dq-final-review-title,
-.lq-post-submit-slot .dq-final-review-next-title,
-.lq-post-submit-slot .dq-final-review-booking-title {
-    color: #fff8e7;
-    font-size: clamp(1.45rem, 2.8vw, 2.15rem);
-    line-height: 1.08;
-    font-weight: 900;
+#healthPostSubmitSlot .lq-final-review-kicker::after {
+    content: "" !important;
+    width: 42px !important;
+    height: 1px !important;
+    background: linear-gradient(90deg, rgba(243,214,136,.9), rgba(243,214,136,0)) !important;
+    display: block !important;
 }
 
-.lq-post-submit-slot .dq-final-review-copy,
-.lq-post-submit-slot .dq-final-review-next-copy,
-.lq-post-submit-slot .dq-final-review-booking-copy,
-.lq-post-submit-slot .dq-final-review-impact-text {
-    color: rgba(248, 250, 252, 0.84);
-    font-size: 0.98rem;
-    line-height: 1.5;
+#healthPostSubmitSlot .lq-final-review-title {
+    color: #fff8e7 !important;
+    font-size: clamp(1.72rem, 4vw, 2.28rem) !important;
+    line-height: 1.02 !important;
+    letter-spacing: -.04em !important;
+    font-weight: 960 !important;
+    margin: 0 0 9px !important;
+    text-wrap: balance !important;
 }
 
-.lq-post-submit-slot .dq-final-review-proof-row,
-.lq-post-submit-slot .dq-final-review-checklist {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 8px;
+#healthPostSubmitSlot .lq-final-review-copy {
+    color: rgba(248,250,252,.84) !important;
+    font-size: .96rem !important;
+    line-height: 1.42 !important;
+    font-weight: 720 !important;
+    max-width: 64ch !important;
+    margin: 0 !important;
 }
 
-.lq-post-submit-slot .dq-final-review-proof-row span,
-.lq-post-submit-slot .dq-final-review-checklist span {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    min-height: 30px;
-    padding: 7px 12px;
-    border-radius: 999px;
-    border: 1px solid rgba(243, 214, 136, 0.26);
-    background: rgba(7, 25, 50, 0.88);
-    color: #fff7de;
-    font-size: 0.78rem;
-    font-weight: 850;
+#healthPostSubmitSlot .lq-final-review-proof-row {
+    display: flex !important;
+    flex-wrap: wrap !important;
+    gap: 7px !important;
+    margin: 0 0 13px !important;
 }
 
-.lq-post-submit-slot .dq-final-review-impact-grid,
-.lq-post-submit-slot .dq-final-review-stats {
-    display: grid;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-    gap: 12px;
+#healthPostSubmitSlot .lq-final-review-proof-row span {
+    display: inline-flex !important;
+    align-items: center !important;
+    min-height: 28px !important;
+    padding: 6px 10px !important;
+    border-radius: 999px !important;
+    border: 1px solid rgba(243,214,136,.30) !important;
+    background: rgba(4,16,32,.42) !important;
+    color: rgba(255,246,216,.92) !important;
+    font-size: .72rem !important;
+    font-weight: 900 !important;
 }
 
-.lq-post-submit-slot .dq-final-review-impact-card,
-.lq-post-submit-slot .dq-final-review-stat {
-    padding: 16px;
-    border-radius: 18px;
-    border: 1px solid rgba(243, 214, 136, 0.2);
-    background: linear-gradient(180deg, rgba(6, 26, 54, 0.94), rgba(7, 20, 39, 0.96));
+#healthPostSubmitSlot .lq-final-review-impact-grid,
+#healthPostSubmitSlot .dq-final-review-stats {
+    display: grid !important;
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+    gap: 10px !important;
 }
 
-.lq-post-submit-slot .dq-final-review-impact-card.is-urgent {
-    border-color: rgba(243, 214, 136, 0.34);
-    box-shadow: 0 0 0 1px rgba(243, 214, 136, 0.08);
+#healthPostSubmitSlot .lq-final-review-impact-grid {
+    margin: 0 0 14px !important;
 }
 
-.lq-post-submit-slot .dq-final-review-stat-label {
-    color: rgba(248, 250, 252, 0.55);
-    font-size: 0.7rem;
-    font-weight: 900;
-    letter-spacing: 0.1em;
-    text-transform: uppercase;
-    margin-bottom: 8px;
+#healthPostSubmitSlot .lq-final-review-impact-card,
+#healthPostSubmitSlot .dq-final-review-stat {
+    padding: 13px 14px !important;
+    border-radius: 16px !important;
+    border: 1px solid rgba(199,153,49,.22) !important;
+    background:
+        radial-gradient(circle at 15% 0%, rgba(243,214,136,.08), transparent 36%),
+        linear-gradient(180deg, rgba(6,29,61,.78) 0%, rgba(7,26,54,.92) 100%) !important;
 }
 
-.lq-post-submit-slot .dq-final-review-stat-value {
-    color: #fff8e7;
-    font-size: 1.05rem;
-    font-weight: 900;
-    line-height: 1.3;
+#healthPostSubmitSlot .lq-final-review-impact-card.is-urgent {
+    border-color: rgba(243,214,136,.38) !important;
+    background:
+        radial-gradient(circle at 15% 0%, rgba(243,214,136,.14), transparent 38%),
+        linear-gradient(180deg, rgba(8,37,77,.90) 0%, rgba(7,26,54,.96) 100%) !important;
+}
+
+#healthPostSubmitSlot .lq-final-review-impact-label,
+#healthPostSubmitSlot .lq-final-review-next-kicker,
+#healthPostSubmitSlot .lq-final-review-booking-kicker,
+#healthPostSubmitSlot .dq-final-review-stat-label {
+    color: #f3d688 !important;
+    font-size: .70rem !important;
+    font-weight: 940 !important;
+    letter-spacing: .08em !important;
+    text-transform: uppercase !important;
+    margin: 0 0 5px !important;
+}
+
+#healthPostSubmitSlot .lq-final-review-impact-text,
+#healthPostSubmitSlot .lq-final-review-next-copy,
+#healthPostSubmitSlot .lq-final-review-booking-copy {
+    color: rgba(248,250,252,.88) !important;
+    font-size: .87rem !important;
+    font-weight: 760 !important;
+    line-height: 1.34 !important;
+}
+
+#healthPostSubmitSlot .lq-final-review-result-slot {
+    background: transparent !important;
+    border: 0 !important;
+    box-shadow: none !important;
+    padding: 0 !important;
+    margin: 0 0 14px !important;
+}
+
+#healthPostSubmitSlot .dq-final-review-stats {
+    margin: 0 !important;
+}
+
+#healthPostSubmitSlot .dq-final-review-stat-value {
+    color: #fff8e7 !important;
+    font-size: 1.05rem !important;
+    font-weight: 900 !important;
+    line-height: 1.3 !important;
+}
+
+#healthPostSubmitSlot .lq-final-review-next-step {
+    margin: 2px 0 14px !important;
+    padding: 15px 16px !important;
+    border-radius: 18px !important;
+    border: 1px solid rgba(243,214,136,.34) !important;
+    background:
+        radial-gradient(circle at 12% 0%, rgba(243,214,136,.13), transparent 34%),
+        linear-gradient(180deg, rgba(8,37,77,.92) 0%, rgba(5,22,48,.96) 100%) !important;
+    box-shadow:
+        inset 0 1px 0 rgba(255,255,255,.05),
+        0 14px 28px rgba(2,12,27,.14) !important;
+}
+
+#healthPostSubmitSlot .lq-final-review-next-title {
+    color: #fff7df !important;
+    font-size: 1.02rem !important;
+    font-weight: 930 !important;
+    line-height: 1.22 !important;
+    margin: 0 0 6px !important;
+}
+
+#healthPostSubmitSlot .lq-final-review-checklist {
+    display: grid !important;
+    grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
+    gap: 7px !important;
+}
+
+#healthPostSubmitSlot .lq-final-review-checklist span {
+    padding: 8px 9px !important;
+    border-radius: 12px !important;
+    border: 1px solid rgba(243,214,136,.20) !important;
+    background: rgba(4,16,32,.35) !important;
+    color: rgba(248,250,252,.88) !important;
+    font-size: .76rem !important;
+    font-weight: 850 !important;
+    text-align: center !important;
+}
+
+#healthPostSubmitSlot .lq-final-review-booking-card {
+    margin: 12px 0 10px !important;
+    padding: 15px 16px !important;
+    border-radius: 18px !important;
+    border: 1px solid rgba(243,214,136,.38) !important;
+    background:
+        radial-gradient(circle at 18% 0%, rgba(243,214,136,.15), transparent 36%),
+        linear-gradient(180deg, rgba(9,41,85,.96) 0%, rgba(6,26,55,.98) 100%) !important;
+}
+
+#healthPostSubmitSlot .lq-final-review-booking-title {
+    color: #fff8e7 !important;
+    font-size: 1.16rem !important;
+    font-weight: 950 !important;
+    line-height: 1.13 !important;
+    margin: 0 0 5px !important;
+    text-wrap: balance !important;
+}
+
+#healthPostSubmitSlot .lq-final-review-loading,
+#healthPostSubmitSlot .lq-final-review-unavailable,
+#healthPostSubmitSlot .lq-booking-embed-status {
+    margin: 10px 0 !important;
+    padding: 10px 12px !important;
+    border-radius: 14px !important;
+    border: 1px solid rgba(243,214,136,.22) !important;
+    background: rgba(4,16,32,.38) !important;
+    color: rgba(248,250,252,.82) !important;
+    font-size: .86rem !important;
+    font-weight: 760 !important;
 }
 
 #healthEducationContactPanel,
-#healthEducationContactPanel *,
-#healthPostSubmitSlot,
-#healthPostSubmitSlot * {
+#healthEducationContactPanel * {
     box-sizing: border-box !important;
 }
 
@@ -1394,7 +1519,8 @@ body.health-landing.page-mode-paid-landing header .navbar-brand img {
 
 #healthEducationContactPanel.qf-final-panel-no-chrome .dq-proof-card,
 #healthEducationContactPanel.qf-final-panel-no-chrome .dq-proof-chips,
-#healthEducationContactPanel.qf-final-panel-no-chrome #healthContactCaptureWrap {
+#healthEducationContactPanel.qf-final-panel-no-chrome #healthContactCaptureWrap,
+#healthEducationContactPanel.qf-final-panel-no-chrome #dqContactPanel > .lq-step-panel-pad > .lq-step-progress {
     display: none !important;
 }
 
@@ -1409,30 +1535,24 @@ body.health-landing.page-mode-paid-landing header .navbar-brand img {
     display: block !important;
 }
 
-#healthPostSubmitSlot .dq-final-review-agent-row .dq-proof-card {
+#healthPostSubmitSlot .lq-final-review-agent-row .dq-proof-card {
     margin: 0 0 8px !important;
 }
 
-#healthPostSubmitSlot .dq-final-review-cta {
+#healthPostSubmitSlot .lq-booking-secondary-link {
     display: inline-flex !important;
     justify-content: center !important;
     align-items: center !important;
     width: 100% !important;
-    min-height: 58px !important;
-    border-radius: 12px !important;
-    background: linear-gradient(180deg, #79e0a7 0%, #37c785 45%, #148557 100%) !important;
-    color: #071a11 !important;
-    border: 1px solid rgba(255,244,190,.58) !important;
-    font-size: 1rem !important;
-    font-weight: 950 !important;
+    min-height: 46px !important;
+    margin-top: 10px !important;
+    border-radius: 14px !important;
+    border: 1px solid rgba(243,214,136,.34) !important;
+    color: #f3d688 !important;
+    background: rgba(4,16,32,.38) !important;
+    font-size: .86rem !important;
+    font-weight: 900 !important;
     text-decoration: none !important;
-    box-shadow: 0 18px 34px rgba(8, 94, 55, 0.22) !important;
-}
-
-#healthPostSubmitSlot .dq-final-review-alt-note {
-    color: rgba(248,250,252,.8) !important;
-    font-size: .9rem !important;
-    line-height: 1.45 !important;
 }
 
 @@media (max-width: 720px) {
@@ -1440,15 +1560,32 @@ body.health-landing.page-mode-paid-landing header .navbar-brand img {
         padding: 16px !important;
     }
 
-    .lq-post-submit-slot .dq-final-review-unified-card {
-        padding: 20px;
-        border-radius: 24px;
+    #healthPostSubmitSlot .lq-final-review-unified-card {
+        padding: 17px !important;
+        border-radius: 22px !important;
     }
 
-    .lq-post-submit-slot .dq-final-review-impact-grid,
-    .lq-post-submit-slot .dq-final-review-stats,
+    #healthPostSubmitSlot .lq-final-review-title {
+        font-size: 1.52rem !important;
+        line-height: 1.04 !important;
+    }
+
+    #healthPostSubmitSlot .lq-final-review-copy {
+        font-size: .91rem !important;
+        line-height: 1.4 !important;
+    }
+
+    #healthPostSubmitSlot .lq-final-review-impact-grid,
+    #healthPostSubmitSlot .dq-final-review-stats,
+    #healthPostSubmitSlot .lq-final-review-checklist,
     .dq-contact-capture-wrap .lq-field-row {
         grid-template-columns: 1fr !important;
+    }
+
+    #healthPostSubmitSlot .lq-final-review-next-step,
+    #healthPostSubmitSlot .lq-final-review-booking-card {
+        padding: 14px !important;
+        border-radius: 16px !important;
     }
 
     .dq-contact-capture-wrap {
@@ -2434,59 +2571,63 @@ body.health-final-step-active .dq-form-panel {
         function buildPostSubmitHtml(responseBody) {
             var agentName = asTrimmed(responseBody && responseBody.agentFirstName) || 'our licensed team';
             var bookingUrl = asTrimmed(responseBody && responseBody.bookingUrl);
-            var proofHtml = proofCard ? '<div class="dq-final-review-agent-row">' + proofCard.outerHTML + '</div>' : '';
+            var proofHtml = proofCard ? '<div class="lq-final-review-agent-row">' + proofCard.outerHTML + '</div>' : '';
             var ageRange = readSelectedValue('AgeRange') || 'Age range';
             var householdSize = readSelectedValue('HouseholdSize') || 'Household';
             var currentCoverage = readSelectedValue('CurrentCoverage') || 'Current coverage';
             var coverageType = readSelectedValue('CoverageType') || 'Coverage goal';
             var primaryConcern = readSelectedValue('PrimaryConcern') || 'Priority';
+            var resultHtml = ''
+                + '<div class="dq-final-review-stats" aria-label="Saved review snapshot">'
+                +   '<div class="dq-final-review-stat"><div class="dq-final-review-stat-label">Age range</div><div class="dq-final-review-stat-value">' + escapeHtml(ageRange) + '</div></div>'
+                +   '<div class="dq-final-review-stat"><div class="dq-final-review-stat-label">Household</div><div class="dq-final-review-stat-value">' + escapeHtml(householdSize) + '</div></div>'
+                +   '<div class="dq-final-review-stat"><div class="dq-final-review-stat-label">Current coverage</div><div class="dq-final-review-stat-value">' + escapeHtml(currentCoverage) + '</div></div>'
+                +   '<div class="dq-final-review-stat"><div class="dq-final-review-stat-label">Review focus</div><div class="dq-final-review-stat-value">' + escapeHtml(coverageType) + '</div></div>'
+                + '</div>';
             var bookingHtml = bookingUrl
-                ? '<a href="' + escapeHtml(bookingUrl) + '" target="_blank" rel="noopener noreferrer" class="dq-final-review-cta">Schedule My Health Review</a>'
-                : '<div class="dq-final-review-alt-note">A licensed advisor will follow up using the contact preference you selected.</div>';
+                ? '<a href="' + escapeHtml(bookingUrl) + '" target="_blank" rel="noopener noreferrer" class="lq-booking-secondary-link" id="healthBookingFallbackLink">Open scheduling</a>'
+                : '<div class="lq-final-review-unavailable">A licensed advisor will follow up using the contact preference you selected.</div>';
 
             return ''
-                + '<section class="dq-final-review-unified-card" aria-labelledby="healthPostSubmitTitle">'
+                + '<section class="lq-final-review-unified-card" aria-labelledby="healthPostSubmitTitle">'
                 + proofHtml
-                +   '<div class="dq-final-review-head">'
-                +     '<div class="dq-final-review-kicker">Review saved</div>'
-                +     '<div class="dq-final-review-title" id="healthPostSubmitTitle">Your health review is ready for the next step.</div>'
-                +     '<div class="dq-final-review-copy">We saved your answers so the conversation can start with your household needs, current coverage, and the health plan tradeoffs that matter most.</div>'
+                +   '<div class="lq-final-review-head">'
+                +     '<div class="lq-final-review-kicker">Review saved</div>'
+                +     '<div class="lq-final-review-title" id="healthPostSubmitTitle">Your health review is ready for the next step.</div>'
+                +     '<div class="lq-final-review-copy">We saved your answers so the conversation can start with your household needs, current coverage, and the plan tradeoffs that matter most.</div>'
                 +   '</div>'
-                +   '<div class="dq-final-review-proof-row" aria-label="Review value">'
+                +   '<div class="lq-final-review-proof-row" aria-label="Review value">'
                 +     '<span>Review saved</span>'
                 +     '<span>Licensed guidance</span>'
                 +     '<span>No obligation</span>'
                 +   '</div>'
-                +   '<div class="dq-final-review-impact-grid" aria-label="Why this review matters">'
-                +     '<div class="dq-final-review-impact-card">'
-                +       '<div class="dq-final-review-impact-label">What surfaced</div>'
-                +       '<div class="dq-final-review-impact-text">Your answers suggest this review should focus on ' + escapeHtml(primaryConcern.toLowerCase()) + ', current coverage fit, and what your household actually needs from the next plan conversation.</div>'
+                +   '<div class="lq-final-review-impact-grid" aria-label="Why this review matters">'
+                +     '<div class="lq-final-review-impact-card">'
+                +       '<div class="lq-final-review-impact-label">What surfaced</div>'
+                +       '<div class="lq-final-review-impact-text">Your answers suggest this review should focus on ' + escapeHtml(primaryConcern.toLowerCase()) + ', current coverage fit, and what your household actually needs from the next plan conversation.</div>'
                 +     '</div>'
-                +     '<div class="dq-final-review-impact-card is-urgent">'
-                +       '<div class="dq-final-review-impact-label">Why timing matters</div>'
-                +       '<div class="dq-final-review-impact-text">Monthly cost, deductibles, network fit, and care access usually feel more urgent once appointments or prescriptions are already in motion.</div>'
+                +     '<div class="lq-final-review-impact-card is-urgent">'
+                +       '<div class="lq-final-review-impact-label">Why timing matters</div>'
+                +       '<div class="lq-final-review-impact-text">Monthly cost, deductibles, network fit, and care access usually feel more urgent once appointments or prescriptions are already in motion.</div>'
                 +     '</div>'
                 +   '</div>'
-                +   '<div class="dq-final-review-stats" aria-label="Saved review snapshot">'
-                +     '<div class="dq-final-review-stat"><div class="dq-final-review-stat-label">Age range</div><div class="dq-final-review-stat-value">' + escapeHtml(ageRange) + '</div></div>'
-                +     '<div class="dq-final-review-stat"><div class="dq-final-review-stat-label">Household</div><div class="dq-final-review-stat-value">' + escapeHtml(householdSize) + '</div></div>'
-                +     '<div class="dq-final-review-stat"><div class="dq-final-review-stat-label">Current coverage</div><div class="dq-final-review-stat-value">' + escapeHtml(currentCoverage) + '</div></div>'
-                +     '<div class="dq-final-review-stat"><div class="dq-final-review-stat-label">Review focus</div><div class="dq-final-review-stat-value">' + escapeHtml(coverageType) + '</div></div>'
+                +   '<div class="lq-final-review-result-slot">'
+                +     resultHtml
                 +   '</div>'
-                +   '<div class="dq-final-review-next-step" aria-label="What happens during the review">'
-                +     '<div class="dq-final-review-next-kicker">What happens next</div>'
-                +     '<div class="dq-final-review-next-title">' + escapeHtml(agentName) + ' helps turn this into a real coverage decision.</div>'
-                +     '<div class="dq-final-review-next-copy">The review can now confirm affordability, deductible comfort, provider access, and whether your current path still makes sense before any plan recommendation moves forward.</div>'
-                +     '<div class="dq-final-review-checklist" aria-label="Review checklist">'
+                +   '<div class="lq-final-review-next-step" aria-label="What happens during the review">'
+                +     '<div class="lq-final-review-next-kicker">What the review confirms</div>'
+                +     '<div class="lq-final-review-next-title">' + escapeHtml(agentName) + ' helps turn this review into a clear coverage decision.</div>'
+                +     '<div class="lq-final-review-next-copy">The review can now confirm affordability, deductible comfort, provider access, and whether your current path still makes sense before any recommendation moves forward.</div>'
+                +     '<div class="lq-final-review-checklist" aria-label="Review checklist">'
                 +       '<span>Premium fit</span>'
                 +       '<span>Doctor access</span>'
                 +       '<span>Plan direction</span>'
                 +     '</div>'
                 +   '</div>'
-                +   '<div class="dq-final-review-booking-card">'
-                +     '<div class="dq-final-review-booking-kicker">Finish the review</div>'
-                +     '<div class="dq-final-review-booking-title">Choose a time to keep the review moving.</div>'
-                +     '<div class="dq-final-review-booking-copy">You can schedule a quick follow-up now or wait for the advisor handoff based on the contact details you provided.</div>'
+                +   '<div class="lq-final-review-booking-card">'
+                +     '<div class="lq-final-review-booking-kicker">Finish the review</div>'
+                +     '<div class="lq-final-review-booking-title">Choose a time to keep the review moving.</div>'
+                +     '<div class="lq-final-review-booking-copy">You can schedule a quick follow-up now or wait for the advisor handoff based on the contact details you provided.</div>'
                 +   '</div>'
                 +   bookingHtml
                 + '</section>';
