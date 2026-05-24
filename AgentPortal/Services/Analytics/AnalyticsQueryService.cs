@@ -1982,17 +1982,26 @@ public sealed class AnalyticsQueryService : IAnalyticsQueryService
             : ResolveAndFilterLeads(allLeads, allEvents, trafficType);
         var safeRecentTake = recentTake > 0 ? recentTake : 100;
 
+        var sessionMap = BuildSessionAttributionMap(allEvents);
+        var visitorMap = BuildVisitorAttributionMap(allEvents);
+
         var recentEvents = leads
             .OrderByDescending(l => l.CreatedUtc)
             .Take(safeRecentTake)
-            .Select(l => new ConversionRow
+            .Select(l =>
             {
-                EventType = "Server-confirmed lead",
-                PageKey = l.SourcePageKey,
-                SourceCta = l.SourceCtaKey,
-                EventUtc = l.CreatedUtc,
-                QuoteType = NormalizeQuoteTypeToken(l.InterestType),
-                SourceLabel = string.IsNullOrWhiteSpace(l.UtmSource) ? "Unattributed" : l.UtmSource
+                var resolved = ResolveLeadAttribution(l, sessionMap, visitorMap);
+                var classified = Classify(resolved.Attribution);
+
+                return new ConversionRow
+                {
+                    EventType = "Server-confirmed lead",
+                    PageKey = l.SourcePageKey,
+                    SourceCta = l.SourceCtaKey,
+                    EventUtc = l.CreatedUtc,
+                    QuoteType = NormalizeQuoteTypeToken(l.InterestType),
+                    SourceLabel = SourceBucketLabel(resolved.Attribution, classified)
+                };
             })
             .ToList();
 
@@ -2664,7 +2673,7 @@ public sealed class AnalyticsQueryService : IAnalyticsQueryService
                 {
                     PageKey = g.Key, Sessions = sessions, EngagedSessions = engaged, AvgDwellMs = Math.Round(avgDwell, 0),
                     VerifiedLeads = lCount, ConversionRate = sessions > 0 ? Math.Round((decimal)lCount / sessions * 100, 2) : 0,
-                    TopSource = g.Where(r => !string.IsNullOrWhiteSpace(r.Attribution.UtmSource)).GroupBy(r => r.Attribution.UtmSource!).OrderByDescending(sg => sg.Count()).Select(sg => sg.Key).FirstOrDefault(),
+                    TopSource = g.GroupBy(SourceBucketLabel, StringComparer.OrdinalIgnoreCase).OrderByDescending(sg => sg.Count()).Select(sg => sg.Key).FirstOrDefault(),
                     TopCampaign = g.Where(r => !string.IsNullOrWhiteSpace(r.Attribution.UtmCampaign)).GroupBy(r => r.Attribution.UtmCampaign!).OrderByDescending(sg => sg.Count()).Select(sg => sg.Key).FirstOrDefault()
                 };
             }).OrderByDescending(r => r.Sessions).ToList();
