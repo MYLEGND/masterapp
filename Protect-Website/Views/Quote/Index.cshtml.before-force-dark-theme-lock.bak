@@ -513,46 +513,6 @@
 .reveal{ opacity:0; transform:translateY(14px); transition:.55s ease; }
 .reveal.show{ opacity:1; transform:translateY(0); }
 
-
-/* HARD THEME LOCK: prevent global/light styles from washing out Quote page */
-.quote-page,
-.quote-page * {
-    color-scheme: dark;
-}
-
-.quote-page .quote-hero,
-.quote-page .quote-tile,
-.quote-page .next-card,
-.quote-page .calendar-section,
-.quote-page .prayer-card {
-    background-color: #0f172a !important;
-    color: #f8fafc !important;
-}
-
-.quote-page .hero-title,
-.quote-page .hero-lead,
-.quote-page .tile-sub,
-.quote-page .next-card p,
-.quote-page .calendar-section p,
-.quote-page .prayer-text {
-    color: #f8fafc !important;
-}
-
-.quote-page .section-sub {
-    color: #0f172a !important;
-}
-
-.quote-page .tile-title,
-.quote-page .section-title,
-.quote-page .next-card h5,
-.quote-page .calendar-section h2 {
-    color: #c79931 !important;
-}
-
-.quote-page a {
-    text-decoration: none !important;
-}
-
 </style>
 
 <!-- HTML BELOW REMAINS EXACTLY THE SAME -->
