@@ -1230,14 +1230,7 @@ function trackCustomFieldError(formKey, fieldName, errorType, offerKey) {
 
   // ── Standard tracking ─────────────────────────────────────────────────────
 
-
-  function isAnalyticsRouteBlocked() {
-    const path = (window.location && window.location.pathname ? window.location.pathname : '').toLowerCase();
-    return path.startsWith('/websiteanalytics') || path.startsWith('/api/analytics');
-  }
-
   function trackPageView() {
-    if (isAnalyticsRouteBlocked()) return;
     sendEvent({
       EventType: 'page_view',
       MetadataJson: buildPageContextMetadata()

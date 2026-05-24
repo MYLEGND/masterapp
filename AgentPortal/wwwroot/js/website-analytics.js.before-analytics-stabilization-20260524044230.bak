@@ -144,7 +144,7 @@
     const ctrl = abort(key);
     const qs = new URLSearchParams(params).toString();
     try {
-      const res = await fetchOnce(String(`${url}?${qs}`), () => fetch(`${url}?${qs}`, { signal: ctrl.signal }));
+      const res = await fetch(`${url}?${qs}`, { signal: ctrl.signal });
       if (!res.ok) {
         let detail = '';
         try {
@@ -3502,29 +3502,6 @@
     URL.revokeObjectURL(url);
   }
 
-
-  let deviceIntelligenceLoading = false;
-
-  async function safeLoadDeviceIntelligence() {
-    if (!window.websiteAnalyticsDeviceIntelligence || typeof window.websiteAnalyticsDeviceIntelligence.loadCurrentView !== 'function') {
-      return;
-    }
-
-    if (deviceIntelligenceLoading) {
-      return;
-    }
-
-    deviceIntelligenceLoading = true;
-
-    try {
-      await window.websiteAnalyticsDeviceIntelligence.loadCurrentView();
-    } finally {
-      setTimeout(() => {
-        deviceIntelligenceLoading = false;
-      }, 2000);
-    }
-  }
-
   function syncWebsiteAnalyticsBridge() {
     window.websiteAnalyticsBridge = {
       getState() {
@@ -4139,28 +4116,6 @@
 
 
 (function () {
-  if (window.__websiteAnalyticsInitialized) {
-    console.warn('WebsiteAnalytics already initialized; duplicate init blocked.');
-    return;
-  }
-  window.__websiteAnalyticsInitialized = true;
-
-  const analyticsRequestCache = window.__websiteAnalyticsRequestCache || new Map();
-  window.__websiteAnalyticsRequestCache = analyticsRequestCache;
-
-  async function fetchOnce(key, fetcher) {
-    if (analyticsRequestCache.has(key)) {
-      return analyticsRequestCache.get(key);
-    }
-
-    const promise = fetcher().finally(() => {
-      setTimeout(() => analyticsRequestCache.delete(key), 3000);
-    });
-
-    analyticsRequestCache.set(key, promise);
-    return promise;
-  }
-
   const modalId = 'deviceIntelligenceModal';
   const moduleBtn = document.getElementById('mod-device-intelligence');
   const modalEl = document.getElementById(modalId);
@@ -4254,10 +4209,9 @@
     const content = document.getElementById('deviceIntelligenceContent');
     if (content) content.innerHTML = '<div class="wa-loading">Loading device intelligence...</div>';
 
-    const deviceUrl = `/WebsiteAnalytics/DeviceIntelligence?${currentRangeParams().toString()}`;
-    const res = await fetchOnce(deviceUrl, () => fetch(deviceUrl, {
+    const res = await fetch(`/WebsiteAnalytics/DeviceIntelligence?${currentRangeParams().toString()}`, {
       headers: { 'Accept': 'application/json' }
-    }));
+    });
 
     if (!res.ok) throw new Error('Unable to load Device Intelligence.');
     const data = await res.json();
@@ -4303,7 +4257,7 @@
 
   moduleBtn.addEventListener('click', () => {
     bootstrap.Modal.getOrCreateInstance(modalEl).show();
-    safeLoadDeviceIntelligence();
+    window.websiteAnalyticsDeviceIntelligence.loadCurrentView();
   });
 
   moduleBtn.addEventListener('keydown', e => {
@@ -4317,7 +4271,7 @@
     btn.addEventListener('click', () => {
       localTraffic = btn.dataset.deviceTraffic || 'all';
       document.querySelectorAll('[data-device-traffic]').forEach(x => x.classList.toggle('is-active', x === btn));
-      safeLoadDeviceIntelligence();
+      window.websiteAnalyticsDeviceIntelligence.loadCurrentView();
     });
   });
 })();
