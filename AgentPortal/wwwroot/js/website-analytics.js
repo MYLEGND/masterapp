@@ -140,7 +140,7 @@
     return state.controllers[key];
   }
 
-  async function fetchCachedDeviceRequest(key, fetcher) {
+  async function fetchOnce(key, fetcher) {
     if (typeof fetcher !== 'function') {
       return fetch(key);
     }
@@ -4155,7 +4155,7 @@
   const analyticsRequestCache = window.__websiteAnalyticsRequestCache || new Map();
   window.__websiteAnalyticsRequestCache = analyticsRequestCache;
 
-  async function fetchOnce(key, fetcher) {
+  async function fetchCachedDeviceRequest(key, fetcher) {
     if (analyticsRequestCache.has(key)) {
       return analyticsRequestCache.get(key);
     }
