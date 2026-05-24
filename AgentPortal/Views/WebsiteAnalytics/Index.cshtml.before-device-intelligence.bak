@@ -395,17 +395,7 @@
             </div>
 
             <div class="fa-modules fa-modules-support">
-                
-                <div class="fa-module fa-module-support" id="mod-device-intelligence" role="button" tabindex="0" aria-label="Open Device Intelligence">
-                    <div class="fa-module-icon">
-                        <i class="bi bi-phone"></i>
-                    </div>
-                    <div>
-                        <h5>Device Intelligence</h5>
-                        <p>Device, browser, OS, viewport, timezone, language, and conversion behavior by prospect environment.</p>
-                    </div>
-                </div>
-<div class="fa-module fa-module-support" id="mod-traffic" role="button" tabindex="0" aria-label="Open Traffic Overview">
+                <div class="fa-module fa-module-support" id="mod-traffic" role="button" tabindex="0" aria-label="Open Traffic Overview">
                     <div class="fa-module-head">
                         <div>
                             <h5>Traffic Overview</h5>
@@ -1888,41 +1878,6 @@
 <div id="aiInsightsBackdrop" class="ai-drawer-backdrop" aria-hidden="true"></div>
 
 @* Drawer panel *@
-
-<div class="modal fade" id="deviceIntelligenceModal" tabindex="-1" aria-labelledby="deviceIntelligenceModalLabel" aria-hidden="true">
-    <div class="modal-dialog modal-xl modal-dialog-scrollable">
-        <div class="modal-content wa-modal-content">
-            <div class="modal-header wa-modal-header">
-                <div>
-                    <div class="wa-modal-kicker">Prospect Environment Learning</div>
-                    <h5 class="modal-title mb-0" id="deviceIntelligenceModalLabel">Device Intelligence</h5>
-                    <p class="wa-modal-subtitle mb-0">See how device, browser, operating system, viewport, timezone, and language impact funnel behavior.</p>
-                </div>
-                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
-            </div>
-            <div class="modal-body wa-modal-body">
-                <div class="wa-modal-toolbar">
-                    <div class="wa-pill-group" role="group" aria-label="Device traffic filter">
-                        <button type="button" class="wa-pill is-active" data-device-traffic="all">All Traffic</button>
-                        <button type="button" class="wa-pill" data-device-traffic="paid">Paid Ads</button>
-                        <button type="button" class="wa-pill" data-device-traffic="non_paid">Non-Ads</button>
-                    </div>
-                    <div class="wa-modal-range-chip" id="deviceIntelligenceRangeLabel">Range: —</div>
-                </div>
-
-                <div class="wa-kpi-grid wa-kpi-grid-compact mb-4">
-                    <div class="wa-kpi-card"><span>Sessions</span><strong id="deviceSessions">—</strong></div>
-                    <div class="wa-kpi-card"><span>Events</span><strong id="deviceEvents">—</strong></div>
-                    <div class="wa-kpi-card"><span>Form Starts</span><strong id="deviceFormStarts">—</strong></div>
-                    <div class="wa-kpi-card"><span>Confirmed Leads</span><strong id="deviceConfirmedLeads">—</strong></div>
-                </div>
-
-                <div id="deviceIntelligenceContent" class="wa-device-grid"></div>
-            </div>
-        </div>
-    </div>
-</div>
-
 <div id="aiInsightsDrawer" class="ai-drawer" role="dialog" aria-modal="true" aria-label="AI Review · Website Analytics">
     <div class="ai-drawer-header">
         <div>

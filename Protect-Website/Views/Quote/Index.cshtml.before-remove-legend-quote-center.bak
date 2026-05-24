@@ -68,10 +68,23 @@
     padding:30px 30px 20px;
 }
 
-
+.hero-kicker{
+    display:inline-flex;
+    align-items:center;
+    gap:8px;
+    padding:7px 12px;
+    border-radius:999px;
+    border:1px solid rgba(199,153,49,.38);
+    background:rgba(199,153,49,.17);
+    color:var(--gold-bright) !important;
+    font-size:.76rem;
+    font-weight:950;
+    letter-spacing:.16em;
+    text-transform:uppercase;
+}
 
 .hero-title{
-    margin:0 0 10px;
+    margin:12px 0 8px;
     color:#e8edf7 !important;
     font-size:clamp(2.1rem,3.35vw,3rem);
     line-height:1.04;
@@ -571,7 +584,8 @@
     <section class="quote-shell reveal">
         <div class="quote-hero">
             <div>
-<h1 class="hero-title">Get covered with <span>clarity.</span></h1>
+                <div class="hero-kicker">Legend™ Quote Center</div>
+                <h1 class="hero-title">Get covered with <span>clarity.</span></h1>
                 <p class="hero-lead">
                     Pick your lane. We’ll guide the next step.
                 </p>

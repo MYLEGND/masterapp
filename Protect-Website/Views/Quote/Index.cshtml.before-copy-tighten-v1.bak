@@ -68,10 +68,23 @@
     padding:30px 30px 20px;
 }
 
-
+.hero-kicker{
+    display:inline-flex;
+    align-items:center;
+    gap:8px;
+    padding:7px 12px;
+    border-radius:999px;
+    border:1px solid rgba(199,153,49,.38);
+    background:rgba(199,153,49,.17);
+    color:var(--gold-bright) !important;
+    font-size:.76rem;
+    font-weight:950;
+    letter-spacing:.16em;
+    text-transform:uppercase;
+}
 
 .hero-title{
-    margin:0 0 10px;
+    margin:12px 0 8px;
     color:#e8edf7 !important;
     font-size:clamp(2.1rem,3.35vw,3rem);
     line-height:1.04;
@@ -571,9 +584,10 @@
     <section class="quote-shell reveal">
         <div class="quote-hero">
             <div>
-<h1 class="hero-title">Get covered with <span>clarity.</span></h1>
+                <div class="hero-kicker">Legend™ Quote Center</div>
+                <h1 class="hero-title">Get covered with <span>clarity.</span></h1>
                 <p class="hero-lead">
-                    Pick your lane. We’ll guide the next step.
+                    Pick the protection lane that fits your situation. We’ll guide the intake, organize the options, and help you move forward without confusion or pressure.
                 </p>
 
                 <div class="hero-actions">
@@ -596,9 +610,9 @@
             <div class="picker-head">
                 <div>
                     <h2>Choose your quote type</h2>
-                    <p>Choose a path. We’ll handle the next step.</p>
+                    <p>One click starts the right path. Life opens the protection options.</p>
                 </div>
-                <div class="picker-note">Fast · Clear · No pressure</div>
+                <div class="picker-note">Fast intake · Clear options · No pressure</div>
             </div>
 
             <div class="quote-grid">
@@ -606,7 +620,7 @@
                     <span class="tile-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 16h14"/><path d="M7 16l1-5h8l1 5"/><path d="M7 16v2"/><path d="M17 16v2"/><circle cx="8" cy="18" r="1.3"/><circle cx="16" cy="18" r="1.3"/></svg></span>
                     <span>
                         <p class="tile-title">Auto Insurance</p>
-                        <p class="tile-sub">Vehicle + liability.</p>
+                        <p class="tile-sub">Vehicle, passengers, liability.</p>
                     </span>
                     <span class="tile-arrow">→</span>
                 </a>
@@ -615,7 +629,7 @@
                     <span class="tile-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 11l8-7 8 7"/><path d="M6 10v10h12V10"/><path d="M10 20v-6h4v6"/></svg></span>
                     <span>
                         <p class="tile-title">Home Insurance</p>
-                        <p class="tile-sub">Home + property.</p>
+                        <p class="tile-sub">Property, valuables, protection.</p>
                     </span>
                     <span class="tile-arrow">→</span>
                 </a>
@@ -624,7 +638,7 @@
                     <span class="tile-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 21V7h7v14"/><path d="M11 21V3h9v18"/><path d="M7 11h1"/><path d="M7 15h1"/><path d="M15 7h1"/><path d="M15 11h1"/><path d="M15 15h1"/></svg></span>
                     <span>
                         <p class="tile-title">Commercial Insurance</p>
-                        <p class="tile-sub">Business + income.</p>
+                        <p class="tile-sub">Business, team, income stream.</p>
                     </span>
                     <span class="tile-arrow">→</span>
                 </a>
@@ -633,7 +647,7 @@
                     <span class="tile-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3l7 3v5c0 5-3.2 8.5-7 10-3.8-1.5-7-5-7-10V6l7-3z"/><path d="M12 8v7"/><path d="M9.5 11.5h5"/></svg></span>
                     <span>
                         <p class="tile-title">Life Insurance</p>
-                        <p class="tile-sub">Family + legacy.</p>
+                        <p class="tile-sub">Family, mortgage, legacy.</p>
                     </span>
                     <span class="tile-arrow">▾</span>
                 </div>
@@ -642,7 +656,7 @@
                     <span class="tile-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 7a3 3 0 1 0 6 0 3 3 0 0 0-6 0z"/><path d="M5 21a7 7 0 0 1 14 0"/><path d="M12 10v5"/></svg></span>
                     <span>
                         <p class="tile-title">Disability Insurance</p>
-                        <p class="tile-sub">Income protection.</p>
+                        <p class="tile-sub">Protect your paycheck.</p>
                     </span>
                     <span class="tile-arrow">→</span>
                 </a>
@@ -651,7 +665,7 @@
                     <span class="tile-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 8c0 6-8 11-8 11S4 14 4 8a4 4 0 0 1 7-2.6A4 4 0 0 1 20 8z"/><path d="M8 12h3l1.2-2.5L14 14l1-2h2"/></svg></span>
                     <span>
                         <p class="tile-title">Health Insurance</p>
-                        <p class="tile-sub">Health coverage.</p>
+                        <p class="tile-sub">Needs, budget, season.</p>
                     </span>
                     <span class="tile-arrow">→</span>
                 </a>
@@ -663,26 +677,26 @@
                 <span class="process-num">1</span>
                 <span class="process-svg"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 4h9l3 3v13H6z"/><path d="M15 4v4h4"/><path d="M9 13h6"/><path d="M9 17h4"/></svg></span>
                 <h5>Start</h5>
-                <p>Choose your lane.</p>
+                <p>Choose the lane and complete the quick intake.</p>
             </div>
             <div class="process-step">
                 <span class="process-num">2</span>
                 <span class="process-svg"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 6h13"/><path d="M8 12h13"/><path d="M8 18h13"/><circle cx="4" cy="6" r="1.5"/><circle cx="4" cy="12" r="1.5"/><circle cx="4" cy="18" r="1.5"/></svg></span>
                 <h5>Review</h5>
-                <p>Review clear options.</p>
+                <p>We organize options around your real situation.</p>
             </div>
             <div class="process-step">
                 <span class="process-num">3</span>
                 <span class="process-svg"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3l7 3v5c0 5-3.2 8.5-7 10-3.8-1.5-7-5-7-10V6l7-3z"/><path d="M9 12l2 2 4-5"/></svg></span>
                 <h5>Decide</h5>
-                <p>Move with clarity.</p>
+                <p>You get clear direction before anything moves forward.</p>
             </div>
         </div>
     </section>
 
     <div class="calendar-section reveal" id="calendar">
         <h2>Want to talk first?</h2>
-        <p>Book a time and we’ll point you to the right path.</p>
+        <p>Book a time below and we’ll point you toward the right protection path before you start.</p>
 
         <div class="calendar-container">
             <iframe src="https://outlook.office.com/book/LEGEND@mylegnd.com/?ismsaljsauthenabled=true"></iframe>
