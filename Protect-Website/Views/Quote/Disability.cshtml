@@ -2,23 +2,43 @@
 @model Protect_Website.Models.DisabilityQuoteFormModel
 
 @{
+    var form = Model ?? new Protect_Website.Models.DisabilityQuoteFormModel();
+    var requestPath = Context?.Request?.Path.Value ?? string.Empty;
+    var isLandingRoutePath = requestPath.Contains("/landing", StringComparison.OrdinalIgnoreCase);
+    const string websitePageVariant = "website";
+    const string contactFirstEducationVariant = "contact_first_education_v1";
+    var pageVariant = string.IsNullOrWhiteSpace(form.PageVariant)
+        ? (isLandingRoutePath ? contactFirstEducationVariant : websitePageVariant)
+        : form.PageVariant.Trim();
+    var pageMode = string.IsNullOrWhiteSpace(form.PageMode)
+        ? (isLandingRoutePath ? "paid_landing" : "site_mode")
+        : form.PageMode.Trim();
+    var isPaidLandingExperience = string.Equals(pageMode, "paid_landing", StringComparison.OrdinalIgnoreCase);
+    var isStandaloneLandingExperience = isLandingRoutePath || isPaidLandingExperience;
+    var requestScheme = Context?.Request?.Scheme ?? "https";
+    var requestHost = Context?.Request?.Host.Value ?? string.Empty;
+    var seoImageUrl = string.IsNullOrWhiteSpace(requestHost)
+        ? "/images/ads/disability-top-banner.png"
+        : $"{requestScheme}://{requestHost}/images/ads/disability-top-banner.png";
+
     ViewData["SeoTitle"] = "Disability Insurance Review";
     ViewData["SeoDescription"] = "Review disability insurance options designed to help protect your income if sickness or injury keeps you from working.";
-    ViewData["SeoImage"] = $"{Context.Request.Scheme}://{Context.Request.Host}/images/ads/disability-top-banner.png";
+    ViewData["SeoImage"] = seoImageUrl;
     ViewData["Title"] = "Get Your Personalized Disability Insurance Review";
     ViewData["PageKey"] = "quote_disability";
     ViewData["PageCategory"] = "quote";
-    ViewData["PageVariant"] = "contact-first-education-v1";
-    ViewData["PageMode"] = "paid_landing";
+    ViewData["PageVariant"] = pageVariant;
+    ViewData["PageMode"] = pageMode;
     ViewData["QuoteTypeForTracking"] = "disability";
-    ViewData["IsLandingPage"] = true;
-    ViewData["BodyClass"] = "disability-landing";
+    ViewData["IsLandingPage"] = isStandaloneLandingExperience;
+    ViewData["BodyClass"] = isStandaloneLandingExperience ? "disability-landing" : "disability-quote";
 
-    var form = Model ?? new Protect_Website.Models.DisabilityQuoteFormModel();
     var isFounderPath = ViewData["IsFounderPath"] as bool? == true;
     var trackedSlug = ((string?)ViewData["TrackingSlug"] ?? string.Empty).Trim();
     var agentSlug = !isFounderPath ? trackedSlug : string.Empty;
-    var postedAgeRange = Context.Request.HasFormContentType ? Context.Request.Form["AgeRange"].ToString() : string.Empty;
+    var postedAgeRange = Context?.Request?.HasFormContentType == true
+        ? Context.Request.Form["AgeRange"].ToString()
+        : string.Empty;
 
     string ResolveAgeRange(int? age)
     {
@@ -63,9 +83,22 @@
         !string.IsNullOrWhiteSpace(form.LastName) ||
         !string.IsNullOrWhiteSpace(form.Email) ||
         !string.IsNullOrWhiteSpace(form.Phone);
+    IReadOnlyList<string> heroProofChips = new[] { "25+ carriers", "Licensed review", "No obligation" };
+    var heroStepIntroTitle = "Start with the paycheck pressure";
+    var heroStepIntroHelper = "A quick income protection estimate built around how fast sickness or injury would affect your income first.";
+    var primaryStartCtaText = "Check My Income Protection Fit";
+    var primaryStartCtaNote = "Takes about 30 seconds. No obligation. You stay in control.";
+
+    form.PageVariant = pageVariant;
+    form.PageMode = pageMode;
 }
 
 <style>
+body.disability-quote main.layout-content {
+    padding-top: 1.3rem;
+    padding-bottom: 2rem;
+}
+
 body.disability-landing {
     background:
         radial-gradient(circle at top, rgba(25, 75, 140, 0.26), transparent 36%),
@@ -135,61 +168,6 @@ body.disability-landing.page-mode-paid-landing header .navbar-brand img {
     gap: 16px;
 }
 
-.dq-brand-row {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 14px;
-}
-
-.dq-brand-lockup {
-    display: flex;
-    align-items: center;
-    gap: 12px;
-}
-
-.dq-logo-wrap {
-    width: 62px;
-    height: 62px;
-    border-radius: 18px;
-    border: 1px solid rgba(231, 181, 58, 0.42);
-    background: linear-gradient(180deg, rgba(10, 34, 67, 0.94), rgba(7, 20, 40, 0.94));
-    display: grid;
-    place-items: center;
-    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.05);
-}
-
-.dq-logo-wrap img {
-    width: 48px;
-    height: auto;
-    display: block;
-}
-
-.dq-brand-copy {
-    display: grid;
-    gap: 4px;
-}
-
-.dq-eyebrow {
-    font-size: 0.76rem;
-    letter-spacing: 0.18em;
-    text-transform: uppercase;
-    color: rgba(243, 214, 136, 0.96);
-    font-weight: 800;
-}
-
-.dq-brand-title {
-    font-size: 1rem;
-    font-weight: 800;
-    color: #fff7df;
-    line-height: 1.1;
-}
-
-.dq-brand-subtitle {
-    color: rgba(226, 232, 240, 0.72);
-    font-size: 0.88rem;
-}
-
 .dq-hero-banner-wrap {
     margin: 0;
     overflow: hidden;
@@ -204,109 +182,248 @@ body.disability-landing.page-mode-paid-landing header .navbar-brand img {
     height: auto;
 }
 
-.dq-above-fold-proof {
+.dq-hero-actions,
+.lq-contact-first-hero-actions {
+    display: grid;
+    gap: 9px;
+    width: min(100%, 392px);
+    margin: 0 auto;
+    justify-items: stretch;
+}
+
+.lq-above-fold-proof {
     display: flex;
     flex-wrap: wrap;
-    gap: 10px;
+    justify-content: center;
+    gap: 7px;
+    margin: -2px auto 12px;
+    max-width: 640px;
 }
 
-.dq-above-fold-proof span {
+.lq-above-fold-proof span {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 28px;
+    padding: 6px 10px;
     border-radius: 999px;
-    border: 1px solid rgba(231, 181, 58, 0.34);
-    background: rgba(8, 24, 47, 0.74);
-    color: #f8fafc;
-    padding: 8px 12px;
-    font-size: 0.84rem;
-    font-weight: 700;
+    border: 1px solid rgba(243,214,136,0.4);
+    background: linear-gradient(180deg, rgba(12,28,52,0.86) 0%, rgba(7,17,32,0.82) 100%);
+    color: rgba(255,246,216,0.94);
+    font-size: 0.74rem;
+    font-weight: 890;
+    letter-spacing: 0.014em;
+    box-shadow:
+        inset 0 1px 0 rgba(255,255,255,0.05),
+        0 8px 16px rgba(0,0,0,0.16);
 }
 
-.dq-hero-copy {
-    display: grid;
-    gap: 10px;
+.lq-contact-first-hero-actions {
+    margin: 0 auto 13px;
+    position: relative;
+    isolation: isolate;
 }
 
-.hero-title {
-    margin: 0;
-    color: #fff8e7;
-    font-size: clamp(2rem, 4vw, 3.3rem);
-    line-height: 0.98;
-    font-weight: 900;
-    letter-spacing: -0.03em;
+.lq-contact-first-hero-actions::before {
+    content: "Tap to start ↓";
+    position: static;
+    z-index: 1;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    justify-self: center;
+    width: fit-content;
+    min-height: 25px;
+    margin: 0 auto -1px;
+    padding: 5px 11px;
+    border-radius: 999px;
+    border: 1px solid rgba(154,242,184,0.38);
+    background: rgba(7,40,28,0.78);
+    color: rgba(236,255,244,0.98);
+    font-size: 0.68rem;
+    font-weight: 950;
+    letter-spacing: 0.04em;
     text-transform: uppercase;
+    box-shadow: 0 0 20px rgba(72,217,137,0.2);
+    animation: dqTapCue 1.5s ease-in-out infinite;
+    pointer-events: none;
 }
 
-.dq-highlight {
-    color: #f3c84b;
+.disability-quote-started .lq-contact-first-hero-actions::before {
+    display: none;
 }
 
-.lq-subtext {
-    margin: 0;
-    color: rgba(226, 232, 240, 0.88);
-    font-size: 1.02rem;
-    line-height: 1.55;
-}
-
-.dq-hero-step-copy {
-    display: grid;
-    gap: 6px;
-    padding: 16px 18px;
-    border-radius: 22px;
-    border: 1px solid rgba(59, 130, 246, 0.22);
-    background: linear-gradient(180deg, rgba(7, 29, 61, 0.9), rgba(5, 19, 39, 0.94));
-}
-
-.dq-hero-step-copy-title {
-    color: #fff1c7;
-    font-size: 1.02rem;
-    font-weight: 800;
-}
-
-.dq-hero-step-copy-helper {
-    margin: 0;
-    color: rgba(226, 232, 240, 0.82);
-}
-
-.dq-hero-actions {
-    display: grid;
-    gap: 8px;
-    justify-items: start;
-}
-
-.btn-emerald {
-    appearance: none;
-    border: 1px solid rgba(89, 182, 114, 0.86);
-    border-radius: 18px;
-    background: linear-gradient(180deg, #37c86e 0%, #1f9c53 100%);
-    color: #f8fafc;
+.btn-gold {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    background: linear-gradient(180deg, #f3d688 0%, #e2ba5d 38%, #c69025 100%);
+    color: #211503;
+    font-weight: 920;
+    padding: 14px 22px;
+    border-radius: 14px;
     font-size: 1rem;
-    font-weight: 900;
-    line-height: 1.1;
-    min-height: 58px;
-    padding: 0 24px;
+    line-height: 1.14;
+    border: 1px solid #f1cf80;
     box-shadow:
-        0 18px 34px rgba(10, 60, 31, 0.34),
-        inset 0 1px 0 rgba(255, 255, 255, 0.18);
-    transition: transform 0.14s ease, box-shadow 0.14s ease, filter 0.14s ease;
+        inset 0 1px 0 rgba(255,255,255,0.34),
+        0 14px 28px rgba(0,0,0,0.28),
+        0 0 0 1px rgba(241,207,128,0.20);
+    transition: transform .18s cubic-bezier(0.22, 1, 0.36, 1), box-shadow .18s ease, filter .18s ease, background .18s ease;
+    text-transform: none;
+    letter-spacing: .01em;
+    cursor: pointer;
+    min-height: 56px;
+    text-shadow: 0 1px 0 rgba(255,255,255,0.24);
+    text-align: center;
+    text-wrap: balance;
+    white-space: normal;
+    overflow-wrap: anywhere;
 }
 
-.btn-emerald:hover,
-.btn-emerald:focus-visible {
-    color: #f8fafc;
-    transform: translateY(-1px);
-    filter: saturate(1.04);
+.btn-gold:hover {
+    color: #211503;
+    transform: translateY(-2px) scale(1.006);
     box-shadow:
-        0 20px 36px rgba(10, 60, 31, 0.38),
-        inset 0 1px 0 rgba(255, 255, 255, 0.22);
+        inset 0 1px 0 rgba(255,255,255,0.40),
+        0 14px 26px rgba(0,0,0,.26),
+        0 0 0 1px rgba(241,207,128,0.28),
+        0 0 22px rgba(226,186,93,0.18);
+    filter: saturate(1.03) brightness(1.01);
 }
 
-.btn-emerald:disabled {
-    opacity: 0.72;
-    cursor: wait;
+.btn-gold:active {
+    color: #211503;
+    transform: translateY(0) scale(0.992);
+    box-shadow:
+        inset 0 1px 0 rgba(255,255,255,0.28),
+        0 8px 18px rgba(2,12,27,.20),
+        0 0 0 1px rgba(241,207,128,0.22);
 }
 
-.dq-hero-cta-note {
-    color: rgba(226, 232, 240, 0.72);
-    font-size: 0.84rem;
+.btn-gold:focus-visible {
+    outline: 3px solid rgba(248,227,170,0.95);
+    outline-offset: 2px;
+}
+
+.btn-progress {
+    background:
+        radial-gradient(circle at 18% 0%, rgba(255,255,255,0.38), transparent 30%),
+        linear-gradient(180deg, #a9ffc4 0%, #51e892 35%, #17b86b 68%, #087646 100%) !important;
+    color: #092216 !important;
+    border-color: rgba(224,255,231,0.86) !important;
+    box-shadow:
+        inset 0 1px 0 rgba(255,255,255,0.50),
+        inset 0 -12px 24px rgba(0,59,34,0.16),
+        0 20px 38px rgba(5,91,52,0.34),
+        0 0 0 1px rgba(154,242,184,0.22),
+        0 0 24px rgba(72,217,137,0.22) !important;
+}
+
+.lq-primary-start-cta {
+    position: relative;
+    width: 100%;
+    min-height: 66px;
+    padding-inline: 22px 46px;
+    font-size: clamp(1.04rem, 4.2vw, 1.17rem);
+    font-weight: 970;
+    color: #06170e !important;
+    border: 1.5px solid rgba(224,255,231,0.86) !important;
+    background:
+        radial-gradient(circle at 18% 0%, rgba(255,255,255,0.42), transparent 30%),
+        linear-gradient(180deg, #a9ffc4 0%, #51e892 35%, #17b86b 68%, #087646 100%) !important;
+    box-shadow:
+        inset 0 1px 0 rgba(255,255,255,0.50),
+        inset 0 -12px 24px rgba(0,59,34,0.16),
+        0 20px 38px rgba(5,91,52,0.40),
+        0 0 0 1px rgba(154,242,184,0.22),
+        0 0 34px rgba(72,217,137,0.28) !important;
+    overflow: hidden;
+}
+
+.lq-primary-start-cta::before {
+    content: "";
+    position: absolute;
+    top: -30%;
+    bottom: -30%;
+    left: -42%;
+    width: 34%;
+    background: linear-gradient(90deg, transparent, rgba(255,255,255,0.48), transparent);
+    transform: rotate(18deg);
+    animation: dqCtaShine 3.2s ease-in-out infinite;
+}
+
+.lq-primary-start-cta::after {
+    content: "→";
+    position: absolute;
+    right: 19px;
+    top: 50%;
+    transform: translateY(-50%);
+    font-size: 1.38rem;
+    font-weight: 1000;
+    line-height: 1;
+    opacity: .92;
+    animation: dqCtaArrowNudge 1.05s ease-in-out infinite;
+}
+
+.lq-primary-start-cta:hover,
+.lq-primary-start-cta:focus-visible {
+    color: #04140c !important;
+    filter: saturate(1.07) brightness(1.05);
+    transform: translateY(-2px) scale(1.012);
+}
+
+@@keyframes dqCtaShine {
+    0%, 100% { left: -42%; opacity: 0; }
+    14% { opacity: 0; }
+    32% { left: 112%; opacity: .92; }
+    46% { opacity: 0; }
+}
+
+@@keyframes dqCtaArrowNudge {
+    0%, 100% { transform: translateY(-50%) translateX(0); }
+    50% { transform: translateY(-50%) translateX(3px); }
+}
+
+@@keyframes dqTapCue {
+    0%, 100% { transform: translateY(0); }
+    50% { transform: translateY(3px); }
+}
+
+.lq-primary-start-note {
+    color: rgba(236,255,244,0.92) !important;
+    font-size: 0.86rem;
+    font-weight: 860;
+    line-height: 1.32;
+    text-align: center;
+    margin: 0 auto;
+    max-width: 34ch;
+    text-wrap: balance;
+}
+
+.lq-hero-step-copy {
+    width: min(100%, 620px);
+    margin: 0 auto 12px;
+    text-align: center;
+}
+
+.lq-hero-step-copy-title {
+    color: #fff7d9;
+    font-size: 1.18rem;
+    font-weight: 940;
+    line-height: 1.14;
+    letter-spacing: -0.015em;
+    text-wrap: balance;
+}
+
+.lq-hero-step-copy-helper {
+    color: rgba(248,250,252,0.78);
+    font-size: 0.88rem;
+    font-weight: 720;
+    line-height: 1.35;
+    margin: 5px auto 0;
+    max-width: 560px;
+    text-wrap: balance;
 }
 
 #disabilityEducationPanel[hidden] {
@@ -904,12 +1021,55 @@ body.disability-final-step-active .dq-form-panel {
         min-height: 0;
     }
 
+    .lq-above-fold-proof {
+        gap: 6px;
+        margin: 6px 0 8px;
+    }
+
+    .lq-above-fold-proof span {
+        min-height: 24px;
+        padding: 4px 8px;
+        border-radius: 999px;
+        font-size: 0.66rem;
+        line-height: 1.05;
+        white-space: nowrap;
+    }
+
+    .lq-hero-step-copy {
+        margin: 2px auto 9px;
+        padding: 0 4px;
+    }
+
+    .lq-hero-step-copy-title {
+        font-size: 1rem;
+        line-height: 1.12;
+    }
+
+    .lq-hero-step-copy-helper {
+        font-size: 0.76rem;
+        line-height: 1.28;
+        margin-top: 4px;
+    }
+
+    .lq-contact-first-hero-actions {
+        width: 100%;
+        max-width: 100%;
+        margin: 4px auto 10px;
+        gap: 4px;
+    }
+
+    .lq-primary-start-note {
+        font-size: 0.72rem;
+        line-height: 1.2;
+    }
+
     .lq-step-actions {
         flex-direction: column;
     }
 
     .btn-ghost,
-    .btn-emerald {
+    .btn-gold,
+    .lq-primary-start-cta {
         width: 100%;
     }
 }
@@ -958,42 +1118,25 @@ body.disability-final-step-active .dq-form-panel {
     <div class="lq-hero-shell">
         <div class="dq-surface">
             <div class="dq-hero-entry" id="disabilityHeroEntryPanel" @((showContactStepByDefault ? "hidden" : null))>
-                <div class="dq-brand-row">
-                    <div class="dq-brand-lockup">
-                        <div class="dq-logo-wrap">
-                            <img src="~/images/company-icons/legend-protect-transparent-v13.png" asp-append-version="true" alt="Legend Legacy Protection" />
-                        </div>
-                        <div class="dq-brand-copy">
-                            <div class="dq-eyebrow">Legend Legacy Protection</div>
-                            <div class="dq-brand-title">Disability Insurance Review</div>
-                            <div class="dq-brand-subtitle">Same guided quote shell as Life, tuned for income protection.</div>
-                        </div>
-                    </div>
-                </div>
-
                 <figure class="dq-hero-banner-wrap">
                     <img class="dq-hero-banner-image" src="~/images/ads/disability-top-banner.png" asp-append-version="true" alt="Legend disability insurance review creative asking what happens if your paycheck stops." loading="eager" />
                 </figure>
 
-                <div class="dq-above-fold-proof" aria-hidden="true">
-                    <span>100% private</span>
-                    <span>Personalized coverage options</span>
-                    <span>No pressure</span>
-                    <span>60-second guided review</span>
+                <div class="lq-above-fold-proof" aria-label="Review benefits">
+                    @foreach (var chip in heroProofChips)
+                    {
+                        <span>@chip</span>
+                    }
                 </div>
 
-                <div class="dq-hero-copy">
-                    <h1 class="hero-title">What Happens If Your Paycheck <span class="dq-highlight">Stops?</span></h1>
-                    <p class="lq-subtext">Disability insurance helps protect your income if an illness or injury keeps you from working. This page now follows the same landing shell, step flow, and analytics-friendly structure as the Life quote experience.</p>
-                    <div class="dq-hero-step-copy">
-                        <div class="dq-hero-step-copy-title">Tailored for disability, not duplicated from life.</div>
-                        <p class="dq-hero-step-copy-helper">We still use the same hero entry, guided questions, processing bridge, and contact capture pattern so the quote funnel behaves consistently across the site.</p>
-                    </div>
+                <div class="lq-hero-step-copy">
+                    <div class="lq-hero-step-copy-title">@heroStepIntroTitle</div>
+                    <p class="lq-hero-step-copy-helper">@heroStepIntroHelper</p>
                 </div>
 
-                <div class="dq-hero-actions">
-                    <button type="button" class="btn-emerald" id="disabilityHeroStartCta" data-cta="disability_funnel_start">Start My Disability Review</button>
-                    <div class="dq-hero-cta-note">No obligation. Secure review. Built to track the same way the Life funnel does.</div>
+                <div class="lq-contact-first-hero-actions">
+                    <button type="button" class="btn-gold lq-primary-start-cta lq-contact-first-hero-cta" id="disabilityHeroStartCta" data-cta="disability_funnel_start">@primaryStartCtaText</button>
+                    <div class="lq-contact-first-hero-cta-note lq-primary-start-note">@primaryStartCtaNote</div>
                 </div>
             </div>
 
@@ -1005,8 +1148,8 @@ body.disability-final-step-active .dq-form-panel {
                 }
 
                 <input type="hidden" name="PageKey" value="quote_disability" />
-                <input type="hidden" name="PageVariant" value="contact-first-education-v1" />
-                <input type="hidden" name="PageMode" value="paid_landing" />
+                <input type="hidden" name="PageVariant" value="@pageVariant" />
+                <input type="hidden" name="PageMode" value="@pageMode" />
                 <input type="hidden" name="Age" id="Age" value="@initialAgeValue" />
                 <input type="hidden" name="SessionId" id="SessionId" />
                 <input type="hidden" name="VisitorId" id="VisitorId" />
@@ -1073,7 +1216,7 @@ body.disability-final-step-active .dq-form-panel {
                                     <div class="lq-micro-step" data-micro-step="0">
                                         <div class="lq-step-intro">
                                             <h2 class="lq-step-title">Let's tailor the disability review.</h2>
-                                            <p class="lq-step-helper">Answer a few quick questions first. The contact step will then stay aligned with the same Life funnel structure used elsewhere on the site.</p>
+                                            <p class="lq-step-helper">Answer a few quick questions first so the final review reflects your work situation, income pressure, and current coverage.</p>
                                         </div>
                                         <div class="lq-choice-group" role="radiogroup" aria-labelledby="dqAgeRangeLabel">
                                             <div class="lq-choice-label" id="dqAgeRangeLabel">What is your age range?</div>
@@ -1326,7 +1469,7 @@ body.disability-final-step-active .dq-form-panel {
                                         </div>
                                         <div class="lq-step-actions">
                                             <button type="button" class="btn-ghost" data-step-back="3">Back</button>
-                                            <button type="button" class="btn-emerald btn-block" id="dqContinueToContactBtn" data-cta="disability_see_review">Continue My Disability Review</button>
+                                            <button type="button" class="btn-gold btn-progress btn-block" id="dqContinueToContactBtn" data-cta="disability_see_review">Continue My Disability Review</button>
                                         </div>
                                     </div>
                                 </div>
@@ -1343,7 +1486,7 @@ body.disability-final-step-active .dq-form-panel {
                                     <div class="dq-processing-track" aria-hidden="true">
                                         <span class="dq-processing-fill" id="dqProcessingFill"></span>
                                     </div>
-                                    <div class="dq-processing-note">This short pause keeps the transition consistent for analytics and for the final contact step.</div>
+                                    <div class="dq-processing-note">Building your personalized review summary before the final contact step.</div>
                                 </div>
                             </div>
 
@@ -1466,8 +1609,8 @@ body.disability-final-step-active .dq-form-panel {
                                     <div class="lq-step-actions">
                                         <button type="button" class="btn-ghost" id="dqBackToQuestionsBtn">Back to answers</button>
                                         <div class="btn-block">
-                                            <p class="dq-submit-note">Private review. No obligation. Routed with the same funnel structure as the Life quote pages.</p>
-                                            <button type="submit" class="btn-emerald btn-block" id="dqSubmitBtn" data-cta="disability_submit_review">Get My Disability Review</button>
+                                            <p class="dq-submit-note">Private review. No obligation. You stay in control.</p>
+                                            <button type="submit" class="btn-gold btn-progress btn-block" id="dqSubmitBtn" data-cta="disability_submit_review">Get My Disability Review</button>
                                         </div>
                                     </div>
                                 </div>
@@ -1724,7 +1867,7 @@ body.disability-final-step-active .dq-form-panel {
             return ''
                 + '<div class="dq-review-kicker">Review snapshot</div>'
                 + '<div class="dq-review-title">We will pick up the conversation from these answers.</div>'
-                + '<div class="dq-review-copy">This mirrors the Life funnel handoff: short guided answers first, then a contact capture step that reflects what surfaced before submission.</div>'
+                + '<div class="dq-review-copy">Your answers shape the final follow-up so the review starts with the income risks and coverage gaps that matter most.</div>'
                 + '<div class="dq-review-stats">'
                 +   '<div class="dq-review-stat"><div class="dq-review-stat-label">Age range</div><div class="dq-review-stat-value">' + escapeHtml(ageRange) + '</div></div>'
                 +   '<div class="dq-review-stat"><div class="dq-review-stat-label">Work type</div><div class="dq-review-stat-value">' + escapeHtml(employmentType) + '</div></div>'

@@ -51,6 +51,9 @@ namespace Protect_Website.Models
         [Required(ErrorMessage = "You must acknowledge the disclaimer.")]
         public bool AcknowledgedDisclaimer { get; set; } = false;
 
+        public string? PageVariant { get; set; }
+        public string? PageMode { get; set; }
+
         // ── Attribution (populated by JS before submit, persisted server-side) ──
         public string? SessionId { get; set; }
         public string? VisitorId { get; set; }

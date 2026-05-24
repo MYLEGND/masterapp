@@ -18,6 +18,9 @@ namespace Protect_Website.Controllers
     [Route("Quote")]
     public class DisabilityQuoteController : Controller
     {
+        private const string WebsitePageVariant = "website";
+        private const string ContactFirstEducationVariant = "contact_first_education_v1";
+
         private readonly string tenantId;
         private readonly string clientId;
         private readonly string clientSecret;
@@ -48,10 +51,11 @@ namespace Protect_Website.Controllers
 
         // GET: /Quote/Disability
         [HttpGet("Disability")]
-        public IActionResult DisabilityQuote()
-        {
-            return View("~/Views/Quote/Disability.cshtml", new DisabilityQuoteFormModel());
-        }
+        public IActionResult DisabilityQuote() => RenderDisabilityQuote(isLandingPage: false);
+
+        // GET: /Quote/Disability/landing
+        [HttpGet("Disability/landing")]
+        public IActionResult DisabilityLandingQuote() => RenderDisabilityQuote(isLandingPage: true);
 
         // POST: /Quote/Disability
         [HttpPost("Disability")]
@@ -59,7 +63,7 @@ namespace Protect_Website.Controllers
         {
             if (!ModelState.IsValid)
                 return IsAjax() ? BadRequest(new { error = "Invalid form data" })
-                                : View("~/Views/Quote/Disability.cshtml", model);
+                                : RenderDisabilityQuote(ShouldUseLandingMode(model), model);
 
             var correlationId = Guid.NewGuid();
             _logger.LogInformation(
@@ -112,6 +116,8 @@ namespace Protect_Website.Controllers
                     AgentSlug     = agentSlug,
                     MetadataJson  = JsonSerializer.Serialize(new
                     {
+                        PageVariant    = model.PageVariant,
+                        PageMode       = model.PageMode,
                         AgeRange       = model.AgeRange,
                         EmploymentType = model.EmploymentType,
                         IncomeRange    = model.IncomeRange,
@@ -183,7 +189,14 @@ namespace Protect_Website.Controllers
 
             await TryWriteLeadEventAsync(
                 "lead_persisted",
-                new { LeadId = lead.LeadId, CorrelationId = correlationId, QuoteType = "disability_insurance" },
+                new
+                {
+                    LeadId = lead.LeadId,
+                    CorrelationId = correlationId,
+                    QuoteType = "disability_insurance",
+                    PageVariant = model.PageVariant,
+                    PageMode = model.PageMode
+                },
                 lead.CreatedUtc);
 
             try
@@ -422,7 +435,13 @@ namespace Protect_Website.Controllers
             // ── 3. Write analytics event ─────────────────────────────────────────
             await TryWriteLeadEventAsync(
                 "website_lead_submitted",
-                new { LeadId = lead.LeadId, CorrelationId = correlationId },
+                new
+                {
+                    LeadId = lead.LeadId,
+                    CorrelationId = correlationId,
+                    PageVariant = model.PageVariant,
+                    PageMode = model.PageMode
+                },
                 lead.CreatedUtc);
 
             if (IsAjax())
@@ -515,6 +534,41 @@ namespace Protect_Website.Controllers
             return !string.IsNullOrWhiteSpace(hdr) &&
                    (hdr.Contains("fetch", StringComparison.OrdinalIgnoreCase) ||
                     hdr.Contains("xmlhttprequest", StringComparison.OrdinalIgnoreCase));
+        }
+
+        private IActionResult RenderDisabilityQuote(bool isLandingPage, DisabilityQuoteFormModel? model = null)
+        {
+            var viewModel = model ?? new DisabilityQuoteFormModel();
+            ApplyPageMode(viewModel, isLandingPage);
+            return View("~/Views/Quote/Disability.cshtml", viewModel);
+        }
+
+        private static void ApplyPageMode(DisabilityQuoteFormModel model, bool isLandingPage)
+        {
+            model.PageVariant = string.IsNullOrWhiteSpace(model.PageVariant)
+                ? (isLandingPage ? ContactFirstEducationVariant : WebsitePageVariant)
+                : model.PageVariant.Trim();
+
+            model.PageMode = string.IsNullOrWhiteSpace(model.PageMode)
+                ? (isLandingPage ? "paid_landing" : "site_mode")
+                : model.PageMode.Trim();
+        }
+
+        private bool ShouldUseLandingMode(DisabilityQuoteFormModel? model)
+        {
+            if (string.Equals(model?.PageMode, "paid_landing", StringComparison.OrdinalIgnoreCase))
+                return true;
+
+            var requestPath = Request?.Path.Value;
+            if (!string.IsNullOrWhiteSpace(requestPath) &&
+                requestPath.Contains("/landing", StringComparison.OrdinalIgnoreCase))
+            {
+                return true;
+            }
+
+            var referer = Request?.Headers["Referer"].ToString();
+            return !string.IsNullOrWhiteSpace(referer) &&
+                   referer.Contains("/Quote/Disability/landing", StringComparison.OrdinalIgnoreCase);
         }
     }
 }
