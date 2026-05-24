@@ -862,69 +862,26 @@
   let _activeMs = 0;
   let _activeStart = document.visibilityState === 'visible' ? Date.now() : null;
   let _exitFired = false;
-  let _scrollTicking = false;
-  const _scrollThresholds = [25, 50, 75, 90, 100];
-  const _scrollFired = new Set();
 
   function getScrollPct() {
     const d = document.documentElement;
-    const body = document.body;
-    const scrollTop = window.scrollY || d.scrollTop || body?.scrollTop || 0;
-    const scrollHeight = Math.max(
-      d.scrollHeight || 0,
-      body?.scrollHeight || 0,
-      d.offsetHeight || 0,
-      body?.offsetHeight || 0
-    );
-    const viewport = window.innerHeight || d.clientHeight || 0;
-    const scrollable = scrollHeight - viewport;
-
+    const scrollable = d.scrollHeight - d.clientHeight;
     if (scrollable <= 0) return 100;
-    return Math.max(0, Math.min(100, Math.round((scrollTop / scrollable) * 100)));
+    return Math.round((d.scrollTop / scrollable) * 100);
   }
 
-  function trackScrollDepth() {
-    const pct = Math.max(_maxScroll, getScrollPct());
-    _maxScroll = Math.max(_maxScroll, pct);
-
-    _scrollThresholds.forEach(function (milestone) {
-      if (_scrollFired.has(milestone) || pct < milestone) {
-        return;
-      }
-
-      _scrollFired.add(milestone);
-
-      sendEvent({
-        EventType: 'scroll_depth_' + milestone,
-        ScrollPercent: milestone,
-        DwellMilliseconds: Date.now() - _pageStart,
-        EngagedMilliseconds: _activeMs + (_activeStart ? Date.now() - _activeStart : 0)
-      });
-
-      debug('scroll_depth tracked', {
-        pageKey: PAGE_KEY,
-        milestone,
-        pct
-      });
-    });
-  }
-
+  // Scroll milestones
+  const _scrollFired = new Set();
   window.addEventListener('scroll', function () {
-    if (_scrollTicking) return;
-
-    _scrollTicking = true;
-    requestAnimationFrame(function () {
-      trackScrollDepth();
-      _scrollTicking = false;
+    const pct = getScrollPct();
+    if (pct > _maxScroll) _maxScroll = pct;
+    [25, 50, 75, 90, 100].forEach(function (milestone) {
+      if (!_scrollFired.has(milestone) && pct >= milestone) {
+        _scrollFired.add(milestone);
+        sendEvent({ EventType: 'scroll_depth_' + milestone, ScrollPercent: milestone });
+      }
     });
   }, { passive: true });
-
-  window.addEventListener('resize', function () {
-    trackScrollDepth();
-  }, { passive: true });
-
-  // Capture initial non-scrollable / already-short pages without waiting for manual scroll.
-  setTimeout(trackScrollDepth, 750);
 
   // Engagement checkpoints
   [5000, 10000, 15000, 30000, 60000].forEach(function (ms) {
@@ -932,52 +889,342 @@
       if (document.visibilityState === 'visible') {
         sendEvent({
           EventType: 'page_engaged_' + (ms / 1000) + 's',
-          EngagedMilliseconds: _activeMs + (Date.now() - (_activeStart || Date.now())),
-          DwellMilliseconds: Date.now() - _pageStart,
-          ScrollPercent: Math.max(_maxScroll, getScrollPct())
+          EngagedMilliseconds: _activeMs + (Date.now() - (_activeStart || Date.now()))
         });
       }
     }, ms);
   });
 
-  function firePageExit(reason, event) {
-    if (_exitFired) return false;
+  function firePageExit() {
+    if (_exitFired) return;
     _exitFired = true;
-
     if (_activeStart !== null) {
       _activeMs += Date.now() - _activeStart;
       _activeStart = null;
     }
-
-    trackScrollDepth();
-
     const dwell = Date.now() - _pageStart;
     const scrollPct = Math.max(_maxScroll, getScrollPct());
-
-    sendEvent({
+    beaconSend(buildBody({
       EventType: 'page_exit',
-      IsExitPage: true,
-      IsBounceCandidate: dwell < 10000,
       DwellMilliseconds: dwell,
       EngagedMilliseconds: _activeMs,
       ScrollPercent: scrollPct,
-      MetadataJson: JSON.stringify({
-        reason: reason || 'unknown',
-        persisted: !!event?.persisted
-      })
-    });
-
-    debug('page_exit tracked', {
+      IsBounceCandidate: dwell < 10000,
+      IsExitPage: true
+    }));
+    debug('page_exit fired', {
       pageKey: PAGE_KEY,
-      reason,
       dwell,
-      activeMs: _activeMs,
+      engagedMs: _activeMs,
       scrollPct
     });
-
-    return true;
   }
 
+  // ── Form Abandonment Intelligence ─────────────────────────────────────────
+  //
+  // Auto-instruments every form[data-form-key] on the page.
+  // Fires field_focus, field_complete, field_error mid-session via async fetch.
+  // Fires form_abandon via sendBeacon during terminal page lifecycle events.
+  // Never sends raw field values. All payloads use MetadataJson for extra context.
+
+  // Canonical field name normalization
+  const FIELD_NORM = {
+    firstname: 'first_name',         last_name: 'last_name',
+    lastname: 'last_name',
+    email: 'email',                  emailaddress: 'email',    businessemail: 'email',
+    phone: 'phone',                  phonenumber: 'phone',     businessphone: 'phone',
+    state: 'state',                  addressstate: 'state',
+    marketingemailconsent: 'consent_contact',
+    acknowledgeddisclaimer: 'consent_contact',
+    householdsize: 'household_size',
+    primaryconcern: 'primary_concern',
+    contactmethod: 'contact_method',
+    besttimetocontact: 'best_time_to_contact',
+    coveragetype: 'coverage_type',
+    drivercount: 'driver_count',     vehiclecount: 'vehicle_count',
+    priorcarrier: 'prior_carrier',
+    policyformtype: 'policy_type',   dwellingtype: 'dwelling_type',
+    businessname: 'business_name',
+    insuredfirstname: 'first_name',  insuredlastname: 'last_name',
+    employmenttype: 'employment_type', occupation: 'occupation',
+    age: 'age',
+  };
+
+  function normField(name) {
+    if (!name) return 'unknown';
+    // Life wizard step choices: "step-0-option" → "step_1_choice"
+    const stepMatch = name.match(/^step-?(\d+)-?option$/i);
+    if (stepMatch) return 'step_' + (parseInt(stepMatch[1], 10) + 1) + '_choice';
+    const k = name.toLowerCase().replace(/[^a-z0-9]/g, '');
+    return FIELD_NORM[k] || name.toLowerCase().replace(/\s+/g,'_').replace(/[^a-z0-9_]/g,'').replace(/^_+|_+$/g,'') || 'unknown';
+  }
+
+  function formQuoteType(formKey) {
+    if (!formKey) return null;
+    const k = formKey.toLowerCase();
+    // Keep quote-type names aligned with the page-level tracking value (offer key).
+    if (k.includes('mortgage_protection') || k.includes('mortgageprotection')) return 'mortgage_protection';
+    if (k.includes('final_expense')       || k.includes('finalexpense'))       return 'final_expense';
+    if (k.includes('whole_life')          || k.includes('wholelife'))          return 'whole_life';
+    if (k.includes('term_life')           || k.includes('termlife'))           return 'term_life';
+    if (k.includes('iul'))                                                      return 'iul';
+    if (k.includes('quote_life'))                                               return 'life';
+    if (k.includes('life'))                                                     return 'life';
+    if (k.includes('auto'))        return 'auto';
+    if (k.includes('home'))        return 'home';
+    if (k.includes('commercial'))  return 'commercial';
+    if (k.includes('health'))      return 'health';
+    if (k.includes('disability'))  return 'disability';
+    return k;
+  }
+
+  // Hidden / attribution fields we must never track
+  const SKIP_NAMES = new Set([
+    'sessionid','visitorid','utmsource','utmmedium','utmcampaign','utmterm',
+    'utmid','utmcontent','fbclid','metacampaignid','metaadsetid','metaadid',
+    'referrerurl','landingpageurl','offerkey','producttype',
+    'pagekeyvalue','protectfocus','answer1','answer2','answer3','answer4',
+    'agerange','agentslug','requestverificationtoken','pagekeyfield',
+  ]);
+
+  function isTrackable(el) {
+    if (!el) return false;
+    if (el.type === 'hidden') return false;
+    if (el.type === 'submit' || el.type === 'button' || el.type === 'reset') return false;
+    const n = (el.name || el.id || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+    return !SKIP_NAMES.has(n);
+  }
+
+  // Registry of active form abandon callbacks — fired during terminal page lifecycle.
+  const _formAbandonCallbacks = new Map();
+
+  function wireFormTracking(formEl) {
+    if (formEl.dataset.legendTrackingBound === 'true') {
+      return;
+    }
+
+    const formKey = formEl.dataset.formKey || '';
+    const quoteType = formQuoteType(formKey);
+    if (!formKey) return;
+
+    formEl.dataset.legendTrackingBound = 'true';
+    const state = createFormTrackState(formKey, quoteType);
+    _formTrackStateByKey.set(formKey, state);
+    formEl.dataset.legendTrackingInstanceId = state.instanceId;
+
+    function markStarted() {
+      transitionFormState(state, 'started', 'field_interaction');
+    }
+
+    function onFocus(fieldName, fieldType, required) {
+      markStarted();
+      state.lastFocusedField = fieldName;
+      if (state.focusedFields.has(fieldName)) return; // once per page load
+      state.focusedFields.add(fieldName);
+      sendEvent({
+        EventType: 'form_field_focus',
+        FormKey: formKey,
+        QuoteType: quoteType,
+        FieldName: fieldName,
+        MetadataJson: JSON.stringify({ fieldType, required: !!required }),
+      });
+    }
+
+    function onComplete(fieldName, fieldType, required, extra) {
+      markStarted();
+      state.lastCompletedField = fieldName;
+      state.completedFields.add(fieldName);
+      const meta = Object.assign({ fieldType, required: !!required }, extra || {});
+      sendEvent({
+        EventType: 'form_field_complete',
+        FormKey: formKey,
+        QuoteType: quoteType,
+        FieldName: fieldName,
+        MetadataJson: JSON.stringify(meta),
+      });
+    }
+
+    function onError(fieldName, errorType) {
+      const key = fieldName + ':' + errorType;
+      if (state.errorsSeen.has(key)) return; // dedupe per field/error combo
+      state.errorsSeen.add(key);
+      sendEvent({
+        EventType: 'form_field_error',
+        FormKey: formKey,
+        QuoteType: quoteType,
+        FieldName: fieldName,
+        MetadataJson: JSON.stringify({ errorType }),
+      });
+    }
+
+    function onBlur(el, fieldName, fieldType, required) {
+      const val = (el.value || '').trim();
+      if (val !== '' && !state.completedFields.has(fieldName)) {
+        onComplete(fieldName, fieldType, required);
+      }
+      if (state.focusedFields.has(fieldName)) {
+        if (required && val === '') onError(fieldName, 'required_missing');
+        if (fieldType === 'email' && val !== '' && !val.includes('@')) onError(fieldName, 'invalid_email');
+        if (fieldType === 'tel'   && val !== '' && val.replace(/\D/g,'').length < 7) onError(fieldName, 'invalid_phone');
+      }
+    }
+
+    // Wire all visible user-facing fields
+    formEl.querySelectorAll('input, select, textarea').forEach(el => {
+      if (!isTrackable(el)) return;
+      const rawName = el.name || el.id || '';
+      const fieldName = normField(rawName);
+      const fieldType = el.type || el.tagName.toLowerCase();
+      const required = el.required || el.getAttribute('required') !== null;
+
+      if (el.type === 'checkbox') {
+        el.addEventListener('change', () => {
+          markStarted();
+          state.lastFocusedField = fieldName;
+          const isConsent = /consent|disclaimer/i.test(rawName);
+          if (isConsent) state.consentInteracted = true;
+          onComplete(fieldName, 'checkbox', required, { checked: el.checked });
+        });
+      } else if (el.type === 'radio') {
+        el.addEventListener('change', () => {
+          markStarted();
+          state.lastFocusedField = fieldName;
+          onComplete(fieldName, 'radio', required);
+        });
+      } else if (el.tagName === 'SELECT') {
+        el.addEventListener('focus', () => onFocus(fieldName, 'select', required));
+        el.addEventListener('change', () => {
+          if (el.value && el.value !== '') onComplete(fieldName, 'select', required);
+        });
+      } else {
+        el.addEventListener('focus', () => onFocus(fieldName, fieldType, required));
+        el.addEventListener('blur', () => onBlur(el, fieldName, fieldType, required));
+      }
+    });
+
+    // Expose for the form's own submit handler to call
+    formEl._trackSubmitAttempt = function (validationPassed, invalidCount) {
+      markStarted();
+      state.submitAttempted = true;
+      state.submitAttemptedAt = state.submitAttemptedAt || Date.now();
+      debug('submit attempt', {
+        formKey,
+        instanceId: state.instanceId,
+        validationPassed: !!validationPassed,
+        invalidCount: invalidCount || 0
+      });
+      sendEvent({
+        EventType: 'form_submit_attempt',
+        FormKey: formKey,
+        QuoteType: quoteType,
+        MetadataJson: JSON.stringify({
+          validationPassed: !!validationPassed,
+          invalidFieldCount: invalidCount || 0,
+        }),
+      });
+    };
+
+    formEl._trackSubmitSuccess = function () {
+      state.submitted = true;
+      state.submitAttempted = true;
+      state.submitAttemptedAt = state.submitAttemptedAt || Date.now();
+      transitionFormState(state, 'submitted', 'ajax_submit_success');
+    };
+
+    const isAjaxManagedSubmit = formEl.dataset.ajaxSubmit === 'true';
+
+    // Native submits (non-AJAX forms) should never be counted as abandon.
+    // AJAX-managed forms must wait for explicit success so failed custom validation
+    // does not look like a completed submit.
+    formEl.addEventListener('submit', () => {
+      if (isAjaxManagedSubmit) return;
+      if (typeof formEl.checkValidity === 'function' && !formEl.checkValidity()) return;
+      state.submitAttempted = true;
+      state.submitted = true;
+      state.submitAttemptedAt = state.submitAttemptedAt || Date.now();
+      transitionFormState(state, 'submitted', 'native_submit_dispatch');
+    }, true);
+
+    // Register abandon callback — fired during terminal page lifecycle events.
+    _formAbandonCallbacks.set(state.instanceId, function (lifecycleSource) {
+      if (!state.started || state.submitted || state.abandonFired) return;
+
+      const abandonStage = state.currentStage || 'started';
+      const abandonAt = Date.now();
+      state.abandonFired = true;
+      state.lastLifecycleSignalAt = abandonAt;
+      state.lastLifecycleSignalSource = lifecycleSource || 'pagehide';
+      transitionFormState(state, 'abandoned', `terminal:${lifecycleSource || 'pagehide'}`, {
+        abandonStage
+      });
+
+      beaconSend(buildBody({
+        EventType: 'form_abandon',
+        FormKey: formKey,
+        QuoteType: quoteType,
+        MetadataJson: JSON.stringify({
+          lastFocusedField: state.lastFocusedField,
+          lastCompletedField: state.lastCompletedField,
+          submitAttempted: state.submitAttempted,
+          completedFieldCount: state.completedFields.size,
+          errorCount: state.errorsSeen.size,
+          consentInteracted: state.consentInteracted,
+          timeOnFormMs: state.firstInteractionAt ? Date.now() - state.firstInteractionAt : 0,
+          quoteType,
+          formInstanceId: state.instanceId,
+          abandonStage,
+          lifecycleSource: lifecycleSource || 'pagehide',
+          startedAt: state.startedAt ? new Date(state.startedAt).toISOString() : null,
+          progressedAt: state.progressedAt ? new Date(state.progressedAt).toISOString() : null,
+          contactViewedAt: state.contactViewedAt ? new Date(state.contactViewedAt).toISOString() : null,
+          submitAttemptedAt: state.submitAttemptedAt ? new Date(state.submitAttemptedAt).toISOString() : null,
+          abandonedAt: new Date(abandonAt).toISOString(),
+          stateTransition: state.currentStage,
+        }),
+      }));
+    });
+  }
+
+  // Instrument all quote forms on the page
+  document.querySelectorAll('form[data-form-key]').forEach(wireFormTracking);
+
+  function ensureFormTrackState(formKey) {
+    if (!formKey) return null;
+    let state = _formTrackStateByKey.get(formKey);
+    if (state) return state;
+
+    state = createFormTrackState(formKey, formQuoteType(formKey));
+    _formTrackStateByKey.set(formKey, state);
+    return state;
+  }
+
+  function trackCustomFieldError(formKey, fieldName, errorType, quoteTypeOverride) {
+    const normalizedField = (fieldName || '').trim();
+    const normalizedErrorType = (errorType || 'validation_error').trim();
+    if (!formKey || !normalizedField) return;
+
+    const state = ensureFormTrackState(formKey);
+    if (state) {
+      if (!state.started) {
+        state.started = true;
+        state.firstInteractionAt = state.firstInteractionAt || Date.now();
+      }
+      const key = `${normalizedField}:${normalizedErrorType}`;
+      if (state.errorsSeen.has(key)) return;
+      state.errorsSeen.add(key);
+    }
+
+    sendEvent({
+      EventType: 'form_field_error',
+      FormKey: formKey,
+      QuoteType: quoteTypeOverride || formQuoteType(formKey),
+      FieldName: normalizedField,
+      MetadataJson: JSON.stringify({
+        errorType: normalizedErrorType,
+        source: 'custom_validation',
+      }),
+    });
+  }
 
   function clearTrackedFieldError(formKey, fieldName) {
     const normalizedField = (fieldName || '').trim();
@@ -1003,9 +1250,7 @@
     }
 
     debug('fireExitSignals', { lifecycleSource });
-
-    firePageExit(lifecycleSource || 'pagehide', event);
-
+    firePageExit();
     _formAbandonCallbacks.forEach(function (cb) {
       try {
         cb(lifecycleSource || 'pagehide');
@@ -1014,7 +1259,6 @@
       }
     });
   }
-
 
   function shouldSkipFetchDiagnostics(url) {
     if (!url) return true;
@@ -1110,52 +1354,37 @@
         _activeMs += Date.now() - _activeStart;
         _activeStart = null;
       }
-
-      trackScrollDepth();
-
       sendEvent({
         EventType: 'page_visibility_hidden',
         DwellMilliseconds: Date.now() - _pageStart,
         EngagedMilliseconds: _activeMs,
         ScrollPercent: Math.max(_maxScroll, getScrollPct())
       });
-
       debug('visibilitychange:hidden', {
         pageKey: PAGE_KEY,
         activeMs: _activeMs
       });
-
-      void flushQueuedEvents('visibility_hidden', { useBeacon: true, maxItems: 10 });
+      void flushQueuedEvents('visibility_hidden');
     } else {
       if (_activeStart === null) {
         _activeStart = Date.now();
       }
-
       sendEvent({
         EventType: 'page_visibility_return',
         DwellMilliseconds: Date.now() - _pageStart,
         EngagedMilliseconds: _activeMs
       });
-
       debug('visibilitychange:visible', {
         pageKey: PAGE_KEY,
         activeMs: _activeMs
       });
-
       void flushQueuedEvents('visibility_visible');
     }
   });
-
-  window.addEventListener('pagehide', function (event) {
+  window.addEventListener('pagehide', (event) => {
     fireExitSignals('pagehide', event);
-    void flushQueuedEvents('pagehide', { useBeacon: true, maxItems: 15 });
+    void flushQueuedEvents('pagehide', { useBeacon: true, maxItems: 5 });
   });
-
-  window.addEventListener('beforeunload', function (event) {
-    fireExitSignals('beforeunload', event);
-    void flushQueuedEvents('beforeunload', { useBeacon: true, maxItems: 15 });
-  });
-
 
   // ── Standard tracking ─────────────────────────────────────────────────────
 
