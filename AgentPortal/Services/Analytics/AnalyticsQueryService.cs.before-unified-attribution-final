@@ -889,9 +889,9 @@ public sealed class AnalyticsQueryService : IAnalyticsQueryService
             TrafficType.Direct => "Direct",
             TrafficType.Organic => "Organic",
             TrafficType.Referral => "Referral",
-            TrafficType.Internal => "Internal",
-            TrafficType.Test => "Test",
-            TrafficType.BotSuspicious => "Bot/Suspicious",
+            TrafficType.Internal => "Unknown",
+            TrafficType.Test => "Unknown",
+            TrafficType.BotSuspicious => "Unknown",
             TrafficType.PaidAds => "Paid (Unattributed)",
             _ => "Unknown"
         };
