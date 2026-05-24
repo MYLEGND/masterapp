@@ -621,6 +621,24 @@ builder.Services.AddAuthorization();
 
 var app = builder.Build();
 
+if (builder.Configuration.GetValue<bool>("Database:RunMigrationsOnStartup"))
+{
+    using var scope = app.Services.CreateScope();
+    var db = scope.ServiceProvider.GetRequiredService<MasterAppDbContext>();
+
+    try
+    {
+        db.Database.Migrate();
+        Console.WriteLine("SUCCESS: Production migrations applied.");
+    }
+    catch (Exception ex)
+    {
+        Console.WriteLine($"FAILED applying migrations: {ex}");
+        throw;
+    }
+}
+
+
 // Hard-stop on unapplied migrations in strict environments to prevent schema drift reaching prod.
 if (strictMigrations && !builder.Environment.IsDevelopment())
 {
