@@ -50,39 +50,39 @@
         {
             "finalexpense" => new List<Protect_Website.Models.LifeWizardOption>
             {
-                new("spouse_or_partner","Spouse / partner"),
-                new("children","Children / grandkids"),
-                new("family","Loved ones"),
-                new("other","Someone else"),
+                new("spouse_or_partner","My spouse or partner"),
+                new("children","My children or grandchildren"),
+                new("family","My loved ones"),
+                new("other","Other"),
             },
             "mortgage" => new List<Protect_Website.Models.LifeWizardOption>
             {
-                new("spouse_or_partner","Spouse / partner"),
-                new("children","Children"),
-                new("family","Household"),
+                new("spouse_or_partner","My spouse or partner"),
+                new("children","My children"),
+                new("family","My household"),
                 new("just_me","Just me"),
-                new("other","Someone else"),
+                new("other","Other"),
             },
             "wholelife" => new List<Protect_Website.Models.LifeWizardOption>
             {
-                new("spouse_or_partner","Spouse / partner"),
-                new("children","Children"),
-                new("family","Family / legacy"),
-                new("other","Someone else"),
+                new("spouse_or_partner","My spouse or partner"),
+                new("children","My children"),
+                new("family","My family or legacy"),
+                new("other","Other"),
             },
             "iul" => new List<Protect_Website.Models.LifeWizardOption>
             {
-                new("spouse_or_partner","Spouse / partner"),
-                new("children","Children"),
-                new("family","Family / legacy"),
-                new("other","Someone else"),
+                new("spouse_or_partner","My spouse or partner"),
+                new("children","My children"),
+                new("family","My family or legacy"),
+                new("other","Other"),
             },
             _ => new List<Protect_Website.Models.LifeWizardOption>
             {
-                new("spouse_or_partner","Spouse / partner"),
-                new("children","Children"),
-                new("family","Family"),
-                new("other","Someone else"),
+                new("spouse_or_partner","My spouse or partner"),
+                new("children","My children"),
+                new("family","My family"),
+                new("other","Other"),
             }
         };
 
@@ -90,44 +90,44 @@
         {
             "term" => new List<Protect_Website.Models.LifeWizardOption>
             {
-                new("replace_income","Replace income"),
-                new("mortgage_or_bills","Mortgage / bills"),
-                new("protect_term_years","Protect key years"),
-                new("keep_costs_affordable","Keep it affordable"),
+                new("replace_income","Help my family stay financially steady"),
+                new("mortgage_or_bills","Help protect the mortgage and major bills"),
+                new("protect_term_years","Protect the years my family depends on me most"),
+                new("keep_costs_affordable","Start with meaningful protection that fits my budget"),
             },
             "wholelife" => new List<Protect_Website.Models.LifeWizardOption>
             {
-                new("lifelong_protection","Lifetime protection"),
-                new("cash_value_growth","Long-term flexibility"),
-                new("leave_legacy","Leave support behind"),
-                new("final_expenses","Final expenses"),
+                new("lifelong_protection","Keep protection that stays with me for life"),
+                new("cash_value_growth","Keep long-term protection with flexibility"),
+                new("leave_legacy","Leave lasting support behind"),
+                new("final_expenses","Keep final wishes from becoming a burden"),
             },
             "finalexpense" => new List<Protect_Website.Models.LifeWizardOption>
             {
-                new("burial_costs","Funeral costs"),
-                new("final_bills","Final bills"),
-                new("ease_family_burden","Ease the burden"),
-                new("leave_small_benefit","Leave a cushion"),
+                new("burial_costs","Help cover funeral and burial costs"),
+                new("final_bills","Help cover final bills families are often left handling"),
+                new("ease_family_burden","Help my loved ones avoid added financial stress"),
+                new("leave_small_benefit","Create a cushion so my family is not scrambling"),
             },
             "mortgage" => new List<Protect_Website.Models.LifeWizardOption>
             {
-                new("mortgage_balance","Mortgage balance"),
-                new("monthly_payment","Monthly payment"),
-                new("stay_in_home","Keep the home"),
-                new("household_bills","Household bills"),
+                new("mortgage_balance","Protect the home and the mortgage"),
+                new("monthly_payment","Help keep the monthly payment manageable"),
+                new("stay_in_home","Help my spouse or family stay in the home"),
+                new("household_bills","Protect the home and key household bills"),
             },
             "iul" => new List<Protect_Website.Models.LifeWizardOption>
             {
-                new("cash_value_growth","Long-term flexibility"),
+                new("cash_value_growth","Keep long-term protection with flexibility"),
                 new("lifelong_protection","Keep protection in place for the long term"),
-                new("future_access","Future flexibility"),
+                new("future_access","Build future flexibility into the plan"),
                 new("leave_legacy","Leave lasting support for my family"),
             },
             _ => new List<Protect_Website.Models.LifeWizardOption>
             {
-                new("replace_income","Replace income"),
+                new("replace_income","Help my family stay financially steady"),
                 new("final_expenses","Help protect loved ones from final expenses"),
-                new("mortgage_or_bills","Mortgage / bills"),
+                new("mortgage_or_bills","Help protect the mortgage and major bills"),
                 new("leave_something","Leave lasting support behind"),
             }
         };
@@ -221,7 +221,7 @@
         };
     }
     var isMortgageOffer = string.Equals(normalizedOfferKey, "mortgage", StringComparison.OrdinalIgnoreCase);
-    var usesGoalFirstDiscovery = false;
+    var usesGoalFirstDiscovery = true;
     var usesAgeBeforeTobaccoFlow = true;
     Protect_Website.Models.LifeWizardStep ResolveStep(string fieldAlias, int fallbackIndex)
     {
@@ -233,33 +233,32 @@
     var goalStep = ResolveStep("CoverageGoal", 0);
     var coverageAmountStep = ResolveStep("CoverageAmountOption", 2);
     var tobaccoStep = ResolveStep("TobaccoUse", 4);
-    tobaccoStep = new Protect_Website.Models.LifeWizardStep("Any tobacco use?", tobaccoStep.Options, tobaccoStep.FieldAlias);
 
     var optimizedGoalQuestion = normalizedOfferKey switch
     {
-        "term" => "What pressure would matter most?",
-        "wholelife" => "What should stay protected for life?",
-        "finalexpense" => "What cost should your family not carry?",
-        "mortgage" => "What would need to stay protected?",
-        "iul" => "What long-term purpose matters most?",
-        _ => "What would need to stay steady first?"
+        "term" => "If your income stopped, what would need to stay steady first?",
+        "wholelife" => "What lasting protection do you want in place for the people you love?",
+        "finalexpense" => "Which burden do you most want lifted from your family?",
+        "mortgage" => "If you were gone, what part of the home situation needs to stay steady?",
+        "iul" => "What long-term outcome are you trying to build this around?",
+        _ => "If something happened to you, what would need to stay steady first?"
     };
 
     var optimizedProtectQuestion = normalizedOfferKey switch
     {
-        "finalexpense" => "Who would be left handling it?",
-        "mortgage" => "Who depends on the home?",
-        _ => "Who would feel it first?"
+        "finalexpense" => "Who would be left handling those costs?",
+        "mortgage" => "Who would need the home to stay protected?",
+        _ => "Who would feel the financial impact first?"
     };
 
     var optimizedCoverageQuestion = normalizedOfferKey switch
     {
-        "term" => "What range would give real breathing room?",
-        "wholelife" => "What lifelong range feels worth reviewing?",
-        "finalexpense" => "What amount would prevent scrambling?",
-        "mortgage" => "What mortgage balance should be protected?",
-        "iul" => "What range should this start around?",
-        _ => "What range feels worth reviewing?"
+        "term" => "What coverage range would give your family real breathing room?",
+        "wholelife" => "What lifelong coverage range feels worth reviewing?",
+        "finalexpense" => "What amount would help your family avoid scrambling?",
+        "mortgage" => "What mortgage balance should this protection be built around?",
+        "iul" => "What coverage range should this long-term plan start around?",
+        _ => "What coverage range feels worth reviewing first?"
     };
 
     goalStep = new Protect_Website.Models.LifeWizardStep(optimizedGoalQuestion, goalStep.Options, goalStep.FieldAlias);
@@ -293,7 +292,7 @@
             ("55+", "55+", 60, true),
         };
     var ageRangeToNumericJson = JsonSerializer.Serialize(ageStepOptions.ToDictionary(option => option.Value, option => option.ApproxAge));
-    var ageStepQuestionText = "How old are you?";
+    var ageStepQuestionText = "Your age";
     (string VisualMode, string VisualValue, string Kicker, string Helper, string ToneClass) GetChoiceCardMeta(string fieldName, string optionCode)
     {
         var normalizedField = (fieldName ?? string.Empty).Trim();
@@ -428,7 +427,13 @@
             _ => ("icon", "choice-icon-family", string.Empty, string.Empty, string.Empty)
         };
 
-        var compactKicker = string.Empty;
+        var compactKicker = baseChoiceMeta.Kicker;
+        if (string.Equals(normalizedField, "CoverageGoal", StringComparison.OrdinalIgnoreCase) ||
+            string.Equals(normalizedField, "CoverageAmountOption", StringComparison.OrdinalIgnoreCase) ||
+            string.Equals(normalizedField, "AgeBracket", StringComparison.OrdinalIgnoreCase))
+        {
+            compactKicker = string.Empty;
+        }
 
         return (baseChoiceMeta.VisualMode, baseChoiceMeta.VisualValue, compactKicker, string.Empty, baseChoiceMeta.ToneClass);
     }
@@ -552,17 +557,17 @@
         "iul" => "long-term protection, flexibility, and future planning",
         _ => "the protection, stability, and long-term fit that matter most"
     };
-    var stepTwoContactKickerText = "Full review locked";
-    var contactMethodHelperText = "Use the best number for a quick review of your full results."; 
-    var contactMethodErrorText = "Please enter your phone number to unlock the full review."; 
-    var consentPromptText = "I agree to receive a quick call or text to review my personalized protection results."; 
-    var consentErrorText = "Please check the box to unlock your full review."; 
-    var stepTwoContactTitleText = "Where should we send the full details?";
-    var stepTwoContactCopyText = "Your starting range is ready. Add your name and best number to unlock the full breakdown, carrier fit, and next best step."; 
-    var stepTwoSubmitNoteText = "Unlock the full review. No obligation."; 
-    var stepTwoProgressText = "Results locked";
-    var finalStepHeading = "Your starting range is ready";
-    var finalStepHelper = "Submit to unlock the full details your answers created."; 
+    var stepTwoContactKickerText = "Estimate ready";
+    var contactMethodHelperText = "Best number to save and review your estimate details.";
+    var contactMethodErrorText = "Please enter your phone number so we can save your estimate.";
+    var consentPromptText = "I agree to receive a call or text to review my estimate and next steps.";
+    var consentErrorText = "Please check the box so we can send your full estimate.";
+    var stepTwoContactTitleText = "Where should we save your estimate?";
+    var stepTwoContactCopyText = "Your answers created a starting point worth saving. Add your best number so the estimate, carrier review, and next step do not get lost.";
+    var stepTwoSubmitNoteText = "Save your estimate, compare options, and review the next best step.";
+    var stepTwoProgressText = "Protection preview";
+    var finalStepHeading = "Your estimate is ready";
+    var finalStepHelper = "Save the estimate your answers created, then review the carrier fit, coverage range, and next step.";
     var agentTrustHeadline = isContactFirstEducationVariant
         ? $"You’ll hear directly from {agentDirectContactName}."
         : $"You’ll hear directly from {agentDirectContactName}.";
@@ -581,14 +586,14 @@
         "iul" => "Continue My IUL Review",
         _ => "Continue My Protection Review"
     };
-    var finalSubmitButtonText = "Unlock My Full Review";
+    var finalSubmitButtonText = "Save My Estimate & Review Options";
     var heroHeadline = isContactFirstEducationVariant
-        ? "Would your family be financially okay without you?"
-        : "Would your family be financially okay without you?";
+        ? "See the protection path that best aligns with the people who depend on you most."
+        : "See the protection path that best aligns with your family, budget, and goals.";
     var heroSubheadline = isContactFirstEducationVariant
-        ? "Answer a few quick questions to see the starting protection range your family may need."
-        : (isLandingView ? "Answer a few quick questions to see the starting protection range your family may need." : string.Empty);
-    var heroTrustNote = "25+ carriers • 30 seconds • No obligation";
+        ? "Life insurance can feel confusing. Walk through a short protection review and see which path points toward your next best step."
+        : (isLandingView ? "Walk through a few focused details to see your starting point, monthly range, and whether the result is worth reviewing." : string.Empty);
+    var heroTrustNote = isContactFirstEducationVariant ? "25+ carrier comparison • Licensed review • No obligation" : "25+ carrier comparison • Licensed review • No obligation";
     var heroTrustPersonName = !string.IsNullOrWhiteSpace(agentTrustProfile?.DisplayName)
         ? agentTrustProfile!.DisplayName!.Trim()
         : "Zac Owen";
@@ -625,9 +630,9 @@
     }
     var contactFirstBannerImageUrl = "~/images/ads/life-top-banner.png";
     var contactFirstBannerAlt = "Legend Legacy Protection banner asking whether your family would struggle financially without you and inviting a quick life insurance estimate.";
-    var contactFirstProofKicker = "Private protection check";
-    var contactFirstProofText = "Start with who would feel the impact first. Your full review stays locked until your estimate is saved — no pressure, no obligation.";
-    IReadOnlyList<string> contactFirstProofChips = new List<string> { "25+ carriers", "30 seconds", "No obligation" };
+    var contactFirstProofKicker = "25+ carrier comparison";
+    var contactFirstProofText = "Start with what your family would actually need protected. Then we’ll shape the estimate around fit, carrier options, and the next best step — no obligation.";
+    IReadOnlyList<string> contactFirstProofChips = new List<string> { "25+ carriers", "Licensed review", "No obligation" };
     var contactFirstProcessingHeading = "Getting your estimate...";
     var contactFirstProcessingHelper = "A quick match is running now.";
     var contactFirstProcessingNote = "Sizing your likely fit...";
@@ -855,12 +860,20 @@
         };
     var primaryStartCtaText = productLanguageKey switch
     {
-        "mortgage" => "See What My Home May Need",
-        _ => "See What My Family May Need"
+        "term" => "Check My Term Fit",
+        "wholelife" => "Check My Whole Life Fit",
+        "finalexpense" => "Check My Final Expense Fit",
+        "mortgage" => "Check My Home Protection Fit",
+        "iul" => "Check My IUL Fit",
+        _ => "Check My Protection Fit"
     };
     var primaryStartCtaNote = productLanguageKey switch
     {
+        "term" => "Takes about 30 seconds. See the years worth protecting first.",
+        "wholelife" => "Takes about 30 seconds. Start with lasting protection, no obligation.",
+        "finalexpense" => "Takes about 30 seconds. Help your family avoid scrambling later.",
         "mortgage" => "Takes about 30 seconds. Start with the home and who depends on it.",
+        "iul" => "Takes about 30 seconds. Start with protection, flexibility, and legacy.",
         _ => "Takes about 30 seconds. No obligation. You stay in control."
     };
 
@@ -7876,7 +7889,7 @@ input:checked + .lq-answer-card {
                                             </div>
                                             <div class="lq-field">
                                                 <label for="Phone">Phone Number <span class="lq-required-star">*</span></label>
-                                                <input type="tel" id="Phone" name="Phone" class="form-control" placeholder="(555) 555-5555" autocomplete="tel" inputmode="tel" value="@form.Phone" required />
+                                                <input type="tel" id="Phone" name="Phone" class="form-control" placeholder="(555)555-5555" autocomplete="tel" inputmode="tel" value="@form.Phone" / required inputmode="tel" autocomplete="tel">
                                                 <div class="lq-field-err" id="err-Phone">Please enter a valid phone number.</div>
                                             </div>
                                         </div>
@@ -10967,33 +10980,21 @@ const contactFieldProgress = new Map();
       normalized.primary.estimatedHighMonthly
     );
 
-    const coverageRange = buildRecommendedCoverageRangeForStep2(normalized)
-      || formatCoverageFigureForStep2(normalized.requestedCoverageAmount || normalized.primary.coverageAmount)
-      || 'Calculated';
-
     return `
-      <section class="lq-contact-estimate-wrap is-preview-locked is-teaser-only lq-contact-teaser-final" id="lifeStep2EstimateSummary" aria-label="Locked estimate preview">
+      <section class="lq-contact-estimate-wrap is-preview-locked is-teaser-only lq-contact-teaser-final" id="lifeStep2EstimateSummary" aria-label="Estimate preview">
         <div class="lq-contact-teaser-final-copy">
-          <div class="lq-contact-estimate-kicker">Your starting point is ready</div>
-          <h3 class="lq-contact-estimate-title">You’re one step from the full breakdown.</h3>
-          <p class="lq-contact-estimate-copy">Your answers created a personalized starting range. Unlock the full carrier fit, coverage direction, and next best step before leaving.</p>
+          <div class="lq-contact-estimate-kicker">Estimate preview</div>
+          <h3 class="lq-contact-estimate-title">Your starting range is ready.</h3>
+          <p class="lq-contact-estimate-copy">Save this estimate so you can review the full range, carrier fit, and next step without starting over.</p>
         </div>
 
         <div class="lq-contact-teaser-final-metrics">
           <div class="lq-contact-estimate-metric">
-            <div class="lq-contact-estimate-metric-label">Monthly starting range</div>
+            <div class="lq-contact-estimate-metric-label">Starting range</div>
             <div class="lq-contact-estimate-metric-value">${escapeHtml(monthlyRange)}</div>
           </div>
           <div class="lq-contact-estimate-metric">
-            <div class="lq-contact-estimate-metric-label">Coverage range</div>
-            <div class="lq-contact-estimate-metric-value">${escapeHtml(coverageRange)}</div>
-          </div>
-          <div class="lq-contact-estimate-metric is-locked-detail">
-            <div class="lq-contact-estimate-metric-label">Carrier fit</div>
-            <div class="lq-contact-estimate-metric-value">Locked</div>
-          </div>
-          <div class="lq-contact-estimate-metric is-locked-detail">
-            <div class="lq-contact-estimate-metric-label">Next best step</div>
+            <div class="lq-contact-estimate-metric-label">Full details</div>
             <div class="lq-contact-estimate-metric-value">Locked</div>
           </div>
         </div>
@@ -11160,12 +11161,12 @@ const contactFieldProgress = new Map();
     }
 
     if (step2Heading) {
-      step2Heading.textContent = expanded ? postSubmitSuccessHeadingText : 'Your starting range is ready';
+      step2Heading.textContent = expanded ? postSubmitSuccessHeadingText : 'Your estimate preview is ready';
     }
 
     if (step2Helper) {
       step2Helper.hidden = false;
-      step2Helper.textContent = expanded ? resolvePostSubmitSuccessHelperText(preview) : 'Unlock the full carrier fit, coverage direction, and next best step.';
+      step2Helper.textContent = expanded ? resolvePostSubmitSuccessHelperText(preview) : 'Save the estimate your answers created, then review the carrier fit, coverage range, and next step.';
     }
 
     if (step2ContactTitle) {
