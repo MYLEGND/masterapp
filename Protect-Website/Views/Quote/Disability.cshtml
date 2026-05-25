@@ -2983,19 +2983,30 @@ body.disability-final-step-active .dq-form-panel {
         }
 
         function wireChoiceGroup(config, stepIndex) {
+            function handleSelection() {
+                syncChoiceCards(config.field);
+                clearGroupError(config.field, config.errorId);
+                if (config.field === 'AgeRange') syncAgeHidden();
+                if (stepIndex < microSteps.length - 1 && currentMicroStep === stepIndex) {
+                    trackStepComplete(stepIndex + 1, stepIndex + 2, 'auto_advance');
+                    window.clearTimeout(autoAdvanceTimer);
+                    autoAdvanceTimer = window.setTimeout(function () {
+                        showMicroStep(stepIndex + 1);
+                    }, 180);
+                }
+            }
+
             Array.prototype.forEach.call(form.querySelectorAll('input[name="' + config.field + '"]'), function (radio) {
-                radio.addEventListener('change', function () {
-                    syncChoiceCards(config.field);
-                    clearGroupError(config.field, config.errorId);
-                    if (config.field === 'AgeRange') syncAgeHidden();
-                    if (stepIndex < microSteps.length - 1) {
-                        trackStepComplete(stepIndex + 1, stepIndex + 2, 'auto_advance');
-                        window.clearTimeout(autoAdvanceTimer);
-                        autoAdvanceTimer = window.setTimeout(function () {
-                            showMicroStep(stepIndex + 1);
-                        }, 180);
-                    }
-                });
+                radio.addEventListener('change', handleSelection);
+                var card = radio.closest('label');
+                if (card) {
+                    card.addEventListener('click', function () {
+                        window.setTimeout(function () {
+                            if (!radio.checked) return;
+                            handleSelection();
+                        }, 0);
+                    });
+                }
             });
         }
 

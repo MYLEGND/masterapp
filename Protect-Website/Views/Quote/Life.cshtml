@@ -9357,13 +9357,21 @@ body.life-landing .lq-hero-shell,
   const FUNNEL_STATE_MAX_AGE_MS = 1000 * 60 * 60 * 12;
   const isAgeBeforeTobaccoFlow = '@(usesAgeBeforeTobaccoFlow ? "true" : "false")' === 'true';
   const discoveryStepSequence = Object.freeze(@Html.Raw(JsonSerializer.Serialize(
-    new[] { "CoverageGoal", "ProtectingWho", "CoverageAmountOption", "Age", "TobaccoUse" })));
+    new[] { firstDiscoveryFieldName, secondDiscoveryFieldName, "CoverageAmountOption", "Age", "TobaccoUse" })));
   const discoveryStepIndexes = Object.freeze(discoveryStepSequence.reduce((accumulator, fieldName, index) => {
     accumulator[fieldName] = index;
     return accumulator;
   }, {}));
-  const microStepViewEvents = Object.freeze(@Html.Raw(JsonSerializer.Serialize(
-    new[] { "life_step1_goal_view", "life_step1_protecting_view", "life_step1_coverage_view", "life_step1_age_view", "life_step1_tobacco_view" })));
+  const microStepViewEventsByField = Object.freeze({
+    CoverageGoal: 'life_step1_goal_view',
+    ProtectingWho: 'life_step1_protecting_view',
+    CoverageAmountOption: 'life_step1_coverage_view',
+    Age: 'life_step1_age_view',
+    TobaccoUse: 'life_step1_tobacco_view'
+  });
+  const microStepViewEvents = Object.freeze(discoveryStepSequence.map((fieldName) => {
+    return microStepViewEventsByField[fieldName] || 'life_step1_intro_view';
+  }));
   const finalDiscoveryContinueEvent = isAgeBeforeTobaccoFlow ? 'life_step1_tobacco_continue' : 'life_step1_age_continue';
   let currentMicroStep = 0;
   let autoAdvanceTimer = null;
@@ -12916,26 +12924,7 @@ const contactFieldProgress = new Map();
   const tobaccoStepIndex = discoveryStepIndexes.TobaccoUse ?? Math.max(0, microSteps.length - 2);
 
   wireAutoAdvanceGroup('ProtectingWho', 'err-step1-protecting-who', 'life_step1_protecting_select', protectingStepIndex, protectingStepIndex + 1);
-  form.querySelectorAll('input[name="CoverageGoal"]').forEach((radio) => {
-    radio.addEventListener('change', () => {
-      showChoiceError('err-step1-coverage-goal', false);
-      clearQuoteFieldError('CoverageGoal');
-      clearEstimatePreviewCache();
-      syncStepOneAnswersFromUI();
-      persistFunnelState();
-      trackEvent('life_step1_goal_select', { choice: radio.dataset.label || radio.value, code: radio.value });
-      if (firstDiscoveryFieldName === 'CoverageGoal') {
-        trackFirstQuestionAnsweredOnce(radio.value, radio.dataset.label || radio.value);
-      }
-      trackQuoteStepComplete('life_step1_goal_select', { choice: radio.dataset.label || radio.value, code: radio.value });
-      void ensureQuoteStartTracked({ startSource: 'CoverageGoal_change', fieldName: 'CoverageGoal', choiceCode: radio.value });
-      void ensureMetaLeadFormStart();
-      if (!step1Panel.hidden && currentMicroStep === goalStepIndex) {
-        clearAutoAdvanceTimer();
-        autoAdvanceTimer = window.setTimeout(() => showMicroStep(goalStepIndex + 1, true), 160);
-      }
-    });
-  });
+  wireAutoAdvanceGroup('CoverageGoal', 'err-step1-coverage-goal', 'life_step1_goal_select', goalStepIndex, goalStepIndex + 1);
   document.getElementById('ageStepBackBtn')?.addEventListener('click', () => {
     metaSignalApi?.trackBacktrack({ fromStep: 'age', toStep: discoveryStepSequence[Math.max(0, ageStepIndex - 1)] || 'previous' });
     showStep1(Math.max(0, ageStepIndex - 1), true);
