@@ -79,6 +79,7 @@ namespace Protect_Website.Controllers
         public async Task<IActionResult> SubmitHealthQuote(HealthQuoteFormModel model)
         {
             var correlationId = Guid.NewGuid();
+            NormalizeContactFields(model);
 
             if (!ModelState.IsValid)
             {
@@ -158,6 +159,7 @@ namespace Protect_Website.Controllers
                         PagePath       = Request?.Path.Value,
                         Age            = model.Age,
                         AgeRange       = model.AgeRange,
+                        State          = model.State,
                         HouseholdSize  = model.HouseholdSize,
                         CurrentCoverage = model.CurrentCoverage,
                         CoverageType   = model.CoverageType,
@@ -748,6 +750,7 @@ namespace Protect_Website.Controllers
             var primaryConcernLabel = string.IsNullOrWhiteSpace(model.PrimaryConcern) ? "Not provided" : model.PrimaryConcern.Trim();
             var contactMethodLabel = string.IsNullOrWhiteSpace(model.ContactMethod) ? "Not provided" : model.ContactMethod.Trim();
             var bestTimeLabel = string.IsNullOrWhiteSpace(model.BestTimeToContact) ? "Not provided" : model.BestTimeToContact.Trim();
+            var stateLabel = string.IsNullOrWhiteSpace(model.State) ? "Not provided" : model.State.Trim();
 
             var surfacedCopy = currentCoverageLabel switch
             {
@@ -790,6 +793,7 @@ namespace Protect_Website.Controllers
 <div style=""color:#f8fafc;font-size:14px;line-height:1.55;font-weight:750;"">
 <strong style=""color:#f3d688;"">Phone:</strong> {H(model.Phone)}<br/>
 <strong style=""color:#f3d688;"">Email:</strong> {H(model.Email)}<br/>
+<strong style=""color:#f3d688;"">State:</strong> {H(stateLabel)}<br/>
 <strong style=""color:#f3d688;"">Product:</strong> Health Insurance Review<br/>
 <strong style=""color:#f3d688;"">Preferred contact:</strong> {H(contactMethodLabel)}
 </div>
@@ -1220,6 +1224,39 @@ Review summary only. Final plan availability, pricing, provider networks, and el
             return !string.IsNullOrWhiteSpace(hdr) &&
                    (hdr.Contains("fetch", StringComparison.OrdinalIgnoreCase) ||
                     hdr.Contains("xmlhttprequest", StringComparison.OrdinalIgnoreCase));
+        }
+
+        private static void NormalizeContactFields(HealthQuoteFormModel model)
+        {
+            model.FirstName = model.FirstName?.Trim() ?? string.Empty;
+            model.LastName = string.IsNullOrWhiteSpace(model.LastName) ? null : model.LastName.Trim();
+            model.Email = string.IsNullOrWhiteSpace(model.Email) ? null : model.Email.Trim();
+            model.Phone = model.Phone?.Trim() ?? string.Empty;
+            model.State = string.IsNullOrWhiteSpace(model.State) ? null : model.State.Trim();
+            model.ContactMethod = ResolveDerivedContactMethod(model.Phone, model.Email, model.ContactMethod);
+            model.BestTimeToContact = string.IsNullOrWhiteSpace(model.BestTimeToContact)
+                ? "Not specified"
+                : model.BestTimeToContact.Trim();
+        }
+
+        private static string ResolveDerivedContactMethod(string? phone, string? email, string? existingValue)
+        {
+            if (!string.IsNullOrWhiteSpace(existingValue))
+            {
+                return existingValue.Trim();
+            }
+
+            if (!string.IsNullOrWhiteSpace(phone))
+            {
+                return "Phone";
+            }
+
+            if (!string.IsNullOrWhiteSpace(email))
+            {
+                return "Email";
+            }
+
+            return "Phone";
         }
 
         private async Task<LeadAppointment?> UpsertRequestedPublicAppointmentAsync(

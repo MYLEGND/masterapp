@@ -324,109 +324,6 @@
         });
     }
 
-
-    function openVisitorConcentrationModal(rows) {
-        let modal = document.getElementById('visitorConcentrationModal');
-
-        if (!modal) {
-            modal = document.createElement('div');
-            modal.id = 'visitorConcentrationModal';
-            modal.className = 'vc-modal-backdrop';
-            modal.innerHTML = `
-                <div class="vc-modal-panel" role="dialog" aria-modal="true" aria-labelledby="visitorConcentrationModalTitle">
-                    <div class="vc-modal-header">
-                        <div>
-                            <div class="vc-modal-kicker">Unique Visitor Trust Check</div>
-                            <h3 id="visitorConcentrationModalTitle">Visitor Concentration Breakdown</h3>
-                            <p>Ranked by recurring visits first, then event volume. Use this to see whether traffic is spread across real visitors or inflated by a few repeat users.</p>
-                        </div>
-                        <button type="button" class="vc-modal-close" aria-label="Close visitor concentration modal">&times;</button>
-                    </div>
-                    <div class="vc-modal-body" id="visitorConcentrationModalBody"></div>
-                </div>
-            `;
-            document.body.appendChild(modal);
-
-            modal.querySelector('.vc-modal-close')?.addEventListener('click', () => {
-                modal.classList.remove('is-open');
-                document.body.style.overflow = '';
-            });
-
-            modal.addEventListener('click', e => {
-                if (e.target === modal) {
-                    modal.classList.remove('is-open');
-                    document.body.style.overflow = '';
-                }
-            });
-        }
-
-        const body = modal.querySelector('#visitorConcentrationModalBody');
-        const recurring = rows.filter(x => Number(x.sessions || 0) >= 2);
-        const top = [...rows].sort((a, b) =>
-            Number(b.sessions || 0) - Number(a.sessions || 0) ||
-            Number(b.events || 0) - Number(a.events || 0)
-        );
-
-        const recurringCount = recurring.length;
-        const totalEvents = rows.reduce((sum, r) => sum + Number(r.events || 0), 0);
-        const topVisitorEvents = top[0] ? Number(top[0].events || 0) : 0;
-        const topShare = totalEvents > 0 ? ((topVisitorEvents / totalEvents) * 100).toFixed(1) : '0.0';
-
-        body.innerHTML = `
-            <div class="vc-modal-stats">
-                <div><span>Total Visitors Shown</span><strong>${formatInt(rows.length)}</strong></div>
-                <div><span>Recurring Visitors ≥ 2 Visits</span><strong>${formatInt(recurringCount)}</strong></div>
-                <div><span>Top Visitor Events</span><strong>${formatInt(topVisitorEvents)}</strong></div>
-                <div><span>Top Visitor Share</span><strong>${topShare}%</strong></div>
-            </div>
-
-            <div class="vc-modal-section-title">Recurring Visitors First</div>
-
-            <div class="vc-modal-table-wrap">
-                <table class="vc-modal-table">
-                    <thead>
-                        <tr>
-                            <th>Visitor ID</th>
-                            <th>Sessions</th>
-                            <th>Events</th>
-                            <th>First Seen</th>
-                            <th>Last Seen</th>
-                            <th>Device</th>
-                            <th>Source</th>
-                            <th>Flag</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        ${top.length ? top.map(v => {
-                            const sessions = Number(v.sessions || 0);
-                            const badge = v.likelyInternal
-                                ? '<span class="vc-badge vc-badge-warn">Review</span>'
-                                : sessions >= 2
-                                    ? '<span class="vc-badge vc-badge-recurring">Recurring</span>'
-                                    : '<span class="vc-badge vc-badge-good">Normal</span>';
-
-                            return `
-                                <tr class="${sessions >= 2 ? 'is-recurring' : ''}">
-                                    <td><code>${escHtml(v.visitorShortId || v.visitorId || 'unknown')}</code></td>
-                                    <td>${formatInt(sessions)}</td>
-                                    <td><strong>${formatInt(v.events || 0)}</strong></td>
-                                    <td>${escHtml(v.firstSeenLocal || '—')}</td>
-                                    <td>${escHtml(v.lastSeenLocal || '—')}</td>
-                                    <td>${escHtml(v.device || 'Unknown')}</td>
-                                    <td>${escHtml(v.source || 'Direct')}</td>
-                                    <td>${badge}</td>
-                                </tr>`;
-                        }).join('') : '<tr><td colspan="8" class="vc-empty">No visitor rows in this range yet.</td></tr>'}
-                    </tbody>
-                </table>
-            </div>
-        `;
-
-        modal.classList.add('is-open');
-        document.body.style.overflow = 'hidden';
-    }
-
-
     function renderBreakdown(breakdown, metric) {
         if (!elBreakdown) return;
 
@@ -481,51 +378,52 @@
 
                 {
                     const visitorRows = breakdown.visitorConcentration || [];
-                    const recurringCount = visitorRows.filter(v => Number(v.sessions || 0) >= 2).length;
-                    const sortedRows = [...visitorRows].sort((a, b) =>
-                        Number(b.sessions || 0) - Number(a.sessions || 0) ||
-                        Number(b.events || 0) - Number(a.events || 0)
-                    );
-                    const topVisitor = sortedRows[0] || null;
+                    const rows = visitorRows.length ? visitorRows.map(v => {
+                        const badge = v.likelyInternal
+                            ? '<span class="vc-badge vc-badge-warn">Review</span>'
+                            : '<span class="vc-badge vc-badge-good">Normal</span>';
+
+                        return `
+                            <div class="vc-row">
+                                <div class="vc-main">
+                                    <div class="vc-top">
+                                        <code>${escHtml(v.visitorShortId || 'unknown')}</code>
+                                        ${badge}
+                                    </div>
+
+                                    <div class="vc-meta">
+                                        ${formatInt(v.sessions)} sessions ·
+                                        ${formatInt(v.events)} events ·
+                                        ${escHtml(v.device || 'Unknown')} ·
+                                        ${escHtml(v.source || 'Direct')}
+                                    </div>
+
+                                    <div class="vc-sub">
+                                        ${escHtml(v.firstSeenLocal || '—')} → ${escHtml(v.lastSeenLocal || '—')}
+                                    </div>
+                                </div>
+
+                                <div class="vc-side">
+                                    <div class="vc-side-value">${formatInt(v.events)}</div>
+                                    <div class="vc-side-label">Events</div>
+                                </div>
+                            </div>
+                        `;
+                    }).join('') : '<div class="visitor-concentration-intro">No visitor concentration rows in this range yet.</div>';
 
                     sections.push(`
                         <div class="kpi-breakdown-section visitor-concentration-section">
                             <div class="kpi-breakdown-title">Visitor Concentration</div>
 
                             <div class="visitor-concentration-intro">
-                                Verify whether unique visitors are real distributed traffic or inflated by repeat users.
+                                Verify whether traffic is distributed across real visitors or inflated by a few heavy sessions.
                             </div>
 
-                            <div class="vc-summary-grid">
-                                <div class="vc-summary-card">
-                                    <span>Recurring Visitors ≥ 2 Visits</span>
-                                    <strong>${formatInt(recurringCount)}</strong>
-                                </div>
-                                <div class="vc-summary-card">
-                                    <span>Top Visitor Sessions</span>
-                                    <strong>${formatInt(topVisitor?.sessions || 0)}</strong>
-                                </div>
-                                <div class="vc-summary-card">
-                                    <span>Top Visitor Events</span>
-                                    <strong>${formatInt(topVisitor?.events || 0)}</strong>
-                                </div>
+                            <div class="visitor-concentration-list">
+                                ${rows}
                             </div>
-
-                            <button type="button" class="btn btn-gold vc-open-modal-btn" id="openVisitorConcentrationModal">
-                                Open Visitor Concentration Breakdown
-                            </button>
-
-                            ${visitorRows.length ? '' : '<div class="visitor-concentration-empty">No visitor concentration rows in this range yet.</div>'}
                         </div>
                     `);
-
-                    setTimeout(() => {
-                        const btn = document.getElementById('openVisitorConcentrationModal');
-                        if (btn && !btn.dataset.bound) {
-                            btn.dataset.bound = 'true';
-                            btn.addEventListener('click', () => openVisitorConcentrationModal(sortedRows));
-                        }
-                    }, 0);
                 }
 
                 break;

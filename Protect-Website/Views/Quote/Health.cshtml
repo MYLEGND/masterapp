@@ -88,6 +88,10 @@
     var heroStepIntroHelper = "A quick health coverage review built around your household, current plan status, and what matters most before unexpected medical costs catch you off guard.";
     var primaryStartCtaText = "Check My Coverage Fit";
     var primaryStartCtaNote = "Takes about 30 seconds. No obligation. You stay in control.";
+    var contactMethodHelperText = "Best number to save and review your health coverage details.";
+    var contactMethodErrorText = "Please enter your phone number so we can save your review.";
+    var consentPromptText = "I agree to receive a call or text to review my health coverage options and next steps.";
+    var consentErrorText = "Please check the box so we can save your review.";
 
     form.PageVariant = pageVariant;
     form.PageMode = pageMode;
@@ -944,6 +948,12 @@ body.health-landing.page-mode-paid-landing header .navbar-brand img {
     color: #fda4af;
 }
 
+.lq-optional-tag {
+    color: rgba(226, 232, 240, 0.58);
+    font-size: 0.78rem;
+    font-weight: 700;
+}
+
 .form-control,
 .form-select {
     width: 100%;
@@ -999,6 +1009,19 @@ body.health-landing.page-mode-paid-landing header .navbar-brand img {
     color: rgba(226, 232, 240, 0.85);
     font-size: 0.9rem;
     line-height: 1.55;
+}
+
+.consent-text {
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+}
+
+.consent-main {
+    color: #f8fafc;
+    font-size: 0.96rem;
+    font-weight: 800;
+    line-height: 1.45;
 }
 
 .dq-submit-note {
@@ -2169,105 +2192,108 @@ body.health-final-step-active .dq-form-panel {
 
                                         <div class="dq-review-summary" id="healthReviewSummary" aria-live="polite"></div>
 
-                                        <div class="dq-contact-hint">Share the best contact details so the right licensed advisor can reach you with a clear review.</div>
+                                        <div class="dq-contact-hint">Share the same key contact details we need to save your review and continue the conversation clearly.</div>
 
-                                        <div class="lq-field-row">
+                                        <div class="lq-field-row two full">
                                             <div class="lq-field">
                                                 <label for="FirstName">First Name <span class="lq-required-star">*</span></label>
                                                 <input type="text" id="FirstName" name="FirstName" class="form-control" value="@form.FirstName" autocomplete="given-name" />
                                                 <div class="lq-field-err" id="err-FirstName">Please enter your first name.</div>
                                             </div>
                                             <div class="lq-field">
-                                                <label for="LastName">Last Name <span class="lq-required-star">*</span></label>
+                                                <label for="LastName">Last Name <span class="lq-optional-tag">(optional)</span></label>
                                                 <input type="text" id="LastName" name="LastName" class="form-control" value="@form.LastName" autocomplete="family-name" />
-                                                <div class="lq-field-err" id="err-LastName">Please enter your last name.</div>
+                                                <div class="lq-field-err" id="err-LastName"></div>
                                             </div>
                                         </div>
 
-                                        <div class="lq-field-row">
+                                        <div class="lq-field-row two full">
                                             <div class="lq-field">
-                                                <label for="Email">Email <span class="lq-required-star">*</span></label>
+                                                <label for="Email">Email for a written copy <span class="lq-optional-tag">(optional)</span></label>
                                                 <input type="email" id="Email" name="Email" class="form-control" value="@form.Email" placeholder="you@example.com" autocomplete="email" inputmode="email" />
                                                 <div class="lq-field-err" id="err-Email">Please enter a valid email address.</div>
                                             </div>
                                             <div class="lq-field">
-                                                <label for="Phone">Phone <span class="lq-required-star">*</span></label>
+                                                <label for="Phone">Phone Number <span class="lq-required-star">*</span></label>
                                                 <input type="tel" id="Phone" name="Phone" class="form-control" value="@form.Phone" placeholder="(555) 555-5555" autocomplete="tel" inputmode="tel" />
                                                 <div class="lq-field-err" id="err-Phone">Please enter a valid phone number.</div>
                                             </div>
                                         </div>
 
-                                        <div class="lq-field-row">
+                                        <div class="full lq-field-help" id="lifeContactMethodHelp">@contactMethodHelperText</div>
+                                        <div class="full lq-field-err" id="err-ContactMethod">@contactMethodErrorText</div>
+
+                                        <div class="lq-field-row full">
                                             <div class="lq-field">
-                                                <label for="ContactMethod">Preferred Contact Method <span class="lq-required-star">*</span></label>
-                                                <select id="ContactMethod" name="ContactMethod" class="form-select">
-                                                    <option value="">Select one</option>
-                                                    @if (form.ContactMethod == "Phone")
-                                                    {
-                                                        <option value="Phone" selected="selected">Phone</option>
-                                                    }
-                                                    else
-                                                    {
-                                                        <option value="Phone">Phone</option>
-                                                    }
-                                                    @if (form.ContactMethod == "Email")
-                                                    {
-                                                        <option value="Email" selected="selected">Email</option>
-                                                    }
-                                                    else
-                                                    {
-                                                        <option value="Email">Email</option>
-                                                    }
-                                                    @if (form.ContactMethod == "Text")
-                                                    {
-                                                        <option value="Text" selected="selected">Text</option>
-                                                    }
-                                                    else
-                                                    {
-                                                        <option value="Text">Text</option>
-                                                    }
+                                                <label for="State">What state do you live in? <span class="lq-optional-tag">(optional)</span></label>
+                                                <select id="State" name="State" class="form-select" autocomplete="address-level1">
+                                                    <option value="">Select your state</option>
+                                                    <option value="AL" selected="@(form.State == "AL" ? "selected" : null)">Alabama</option>
+                                                    <option value="AK" selected="@(form.State == "AK" ? "selected" : null)">Alaska</option>
+                                                    <option value="AZ" selected="@(form.State == "AZ" ? "selected" : null)">Arizona</option>
+                                                    <option value="AR" selected="@(form.State == "AR" ? "selected" : null)">Arkansas</option>
+                                                    <option value="CA" selected="@(form.State == "CA" ? "selected" : null)">California</option>
+                                                    <option value="CO" selected="@(form.State == "CO" ? "selected" : null)">Colorado</option>
+                                                    <option value="CT" selected="@(form.State == "CT" ? "selected" : null)">Connecticut</option>
+                                                    <option value="DE" selected="@(form.State == "DE" ? "selected" : null)">Delaware</option>
+                                                    <option value="DC" selected="@(form.State == "DC" ? "selected" : null)">District of Columbia</option>
+                                                    <option value="FL" selected="@(form.State == "FL" ? "selected" : null)">Florida</option>
+                                                    <option value="GA" selected="@(form.State == "GA" ? "selected" : null)">Georgia</option>
+                                                    <option value="HI" selected="@(form.State == "HI" ? "selected" : null)">Hawaii</option>
+                                                    <option value="ID" selected="@(form.State == "ID" ? "selected" : null)">Idaho</option>
+                                                    <option value="IL" selected="@(form.State == "IL" ? "selected" : null)">Illinois</option>
+                                                    <option value="IN" selected="@(form.State == "IN" ? "selected" : null)">Indiana</option>
+                                                    <option value="IA" selected="@(form.State == "IA" ? "selected" : null)">Iowa</option>
+                                                    <option value="KS" selected="@(form.State == "KS" ? "selected" : null)">Kansas</option>
+                                                    <option value="KY" selected="@(form.State == "KY" ? "selected" : null)">Kentucky</option>
+                                                    <option value="LA" selected="@(form.State == "LA" ? "selected" : null)">Louisiana</option>
+                                                    <option value="ME" selected="@(form.State == "ME" ? "selected" : null)">Maine</option>
+                                                    <option value="MD" selected="@(form.State == "MD" ? "selected" : null)">Maryland</option>
+                                                    <option value="MA" selected="@(form.State == "MA" ? "selected" : null)">Massachusetts</option>
+                                                    <option value="MI" selected="@(form.State == "MI" ? "selected" : null)">Michigan</option>
+                                                    <option value="MN" selected="@(form.State == "MN" ? "selected" : null)">Minnesota</option>
+                                                    <option value="MS" selected="@(form.State == "MS" ? "selected" : null)">Mississippi</option>
+                                                    <option value="MO" selected="@(form.State == "MO" ? "selected" : null)">Missouri</option>
+                                                    <option value="MT" selected="@(form.State == "MT" ? "selected" : null)">Montana</option>
+                                                    <option value="NE" selected="@(form.State == "NE" ? "selected" : null)">Nebraska</option>
+                                                    <option value="NV" selected="@(form.State == "NV" ? "selected" : null)">Nevada</option>
+                                                    <option value="NH" selected="@(form.State == "NH" ? "selected" : null)">New Hampshire</option>
+                                                    <option value="NJ" selected="@(form.State == "NJ" ? "selected" : null)">New Jersey</option>
+                                                    <option value="NM" selected="@(form.State == "NM" ? "selected" : null)">New Mexico</option>
+                                                    <option value="NY" selected="@(form.State == "NY" ? "selected" : null)">New York</option>
+                                                    <option value="NC" selected="@(form.State == "NC" ? "selected" : null)">North Carolina</option>
+                                                    <option value="ND" selected="@(form.State == "ND" ? "selected" : null)">North Dakota</option>
+                                                    <option value="OH" selected="@(form.State == "OH" ? "selected" : null)">Ohio</option>
+                                                    <option value="OK" selected="@(form.State == "OK" ? "selected" : null)">Oklahoma</option>
+                                                    <option value="OR" selected="@(form.State == "OR" ? "selected" : null)">Oregon</option>
+                                                    <option value="PA" selected="@(form.State == "PA" ? "selected" : null)">Pennsylvania</option>
+                                                    <option value="RI" selected="@(form.State == "RI" ? "selected" : null)">Rhode Island</option>
+                                                    <option value="SC" selected="@(form.State == "SC" ? "selected" : null)">South Carolina</option>
+                                                    <option value="SD" selected="@(form.State == "SD" ? "selected" : null)">South Dakota</option>
+                                                    <option value="TN" selected="@(form.State == "TN" ? "selected" : null)">Tennessee</option>
+                                                    <option value="TX" selected="@(form.State == "TX" ? "selected" : null)">Texas</option>
+                                                    <option value="UT" selected="@(form.State == "UT" ? "selected" : null)">Utah</option>
+                                                    <option value="VT" selected="@(form.State == "VT" ? "selected" : null)">Vermont</option>
+                                                    <option value="VA" selected="@(form.State == "VA" ? "selected" : null)">Virginia</option>
+                                                    <option value="WA" selected="@(form.State == "WA" ? "selected" : null)">Washington</option>
+                                                    <option value="WV" selected="@(form.State == "WV" ? "selected" : null)">West Virginia</option>
+                                                    <option value="WI" selected="@(form.State == "WI" ? "selected" : null)">Wisconsin</option>
+                                                    <option value="WY" selected="@(form.State == "WY" ? "selected" : null)">Wyoming</option>
                                                 </select>
-                                                <div class="lq-field-err" id="err-ContactMethod">Please choose how you want to be contacted.</div>
-                                            </div>
-                                            <div class="lq-field">
-                                                <label for="BestTimeToContact">Best Time To Contact <span class="lq-required-star">*</span></label>
-                                                <select id="BestTimeToContact" name="BestTimeToContact" class="form-select">
-                                                    <option value="">Select one</option>
-                                                    @if (form.BestTimeToContact == "Morning")
-                                                    {
-                                                        <option value="Morning" selected="selected">Morning</option>
-                                                    }
-                                                    else
-                                                    {
-                                                        <option value="Morning">Morning</option>
-                                                    }
-                                                    @if (form.BestTimeToContact == "Afternoon")
-                                                    {
-                                                        <option value="Afternoon" selected="selected">Afternoon</option>
-                                                    }
-                                                    else
-                                                    {
-                                                        <option value="Afternoon">Afternoon</option>
-                                                    }
-                                                    @if (form.BestTimeToContact == "Evening")
-                                                    {
-                                                        <option value="Evening" selected="selected">Evening</option>
-                                                    }
-                                                    else
-                                                    {
-                                                        <option value="Evening">Evening</option>
-                                                    }
-                                                </select>
-                                                <div class="lq-field-err" id="err-BestTimeToContact">Please choose the best time to reach you.</div>
+                                                <div class="lq-field-err" id="err-State"></div>
                                             </div>
                                         </div>
 
                                         <label class="lq-consent" for="AcknowledgedDisclaimer">
                                             <input type="checkbox" id="AcknowledgedDisclaimer" name="AcknowledgedDisclaimer" value="true" @(form.AcknowledgedDisclaimer ? "checked" : null) />
-                                            <span class="lq-consent-copy">I authorize contact about my health insurance inquiry and understand this review is meant to help compare possible coverage options for my needs and budget. <span class="lq-required-star">*</span></span>
+                                            <span class="consent-text">
+                                                <span class="consent-main">@consentPromptText <span class="lq-required-star">*</span></span>
+                                            </span>
                                         </label>
                                         <input type="hidden" name="AcknowledgedDisclaimer" value="false" />
-                                        <div class="lq-field-err" id="err-AcknowledgedDisclaimer">You must agree before we can submit your review.</div>
+                                        <input type="hidden" id="ContactMethod" name="ContactMethod" value="@(string.IsNullOrWhiteSpace(form.ContactMethod) ? "Phone" : form.ContactMethod)" />
+                                        <input type="hidden" id="BestTimeToContact" name="BestTimeToContact" value="@(string.IsNullOrWhiteSpace(form.BestTimeToContact) ? "Not specified" : form.BestTimeToContact)" />
+                                        <div class="lq-field-err" id="err-AcknowledgedDisclaimer">@consentErrorText</div>
 
                                         <div class="lq-step-actions">
                                             <button type="button" class="btn-ghost" id="dqBackToQuestionsBtn">Back to answers</button>
@@ -2328,6 +2354,9 @@ body.health-final-step-active .dq-form-panel {
         var successBanner = document.getElementById('healthSuccess');
         var reviewSummary = document.getElementById('healthReviewSummary');
         var ageHidden = document.getElementById('Age');
+        var stateSelect = document.getElementById('State');
+        var contactMethodInput = document.getElementById('ContactMethod');
+        var bestTimeInput = document.getElementById('BestTimeToContact');
         var submitDefaultLabel = submitButton ? asTrimmed(submitButton.textContent) : 'Get My Health Review';
         var bookingExperienceUrl = '@Url.Action("ActivatePublicBookingExperience", "HealthQuote")';
         var bookingConfirmationUrl = '@Url.Action("ConfirmPublicBookingExperience", "HealthQuote")';
@@ -2515,6 +2544,19 @@ body.health-final-step-active .dq-form-panel {
             var selectedAgeRange = form.querySelector('input[name="AgeRange"]:checked');
             if (!ageHidden) return;
             ageHidden.value = selectedAgeRange ? (ageRangeToAge[selectedAgeRange.value] || ageHidden.value || '30') : (ageHidden.value || '30');
+        }
+
+        function syncDerivedContactFields() {
+            var phoneValue = asTrimmed(document.getElementById('Phone') ? document.getElementById('Phone').value : '');
+            var emailValue = asTrimmed(document.getElementById('Email') ? document.getElementById('Email').value : '');
+
+            if (contactMethodInput) {
+                contactMethodInput.value = phoneValue ? 'Phone' : (emailValue ? 'Email' : 'Phone');
+            }
+
+            if (bestTimeInput && !asTrimmed(bestTimeInput.value)) {
+                bestTimeInput.value = 'Not specified';
+            }
         }
 
         function readSelectedValue(name) {
@@ -3288,7 +3330,8 @@ body.health-final-step-active .dq-form-panel {
         var emailInput = document.getElementById('Email');
         if (emailInput) {
             emailInput.addEventListener('input', function () {
-                if (asTrimmed(emailInput.value) && validateEmail(emailInput.value)) showFieldError('Email', false);
+                syncDerivedContactFields();
+                if (!asTrimmed(emailInput.value) || validateEmail(emailInput.value)) showFieldError('Email', false);
             });
         }
 
@@ -3300,17 +3343,10 @@ body.health-final-step-active .dq-form-panel {
                 if (digits.length < 4) phoneInput.value = '(' + digits;
                 else if (digits.length < 7) phoneInput.value = '(' + digits.slice(0, 3) + ') ' + digits.slice(3);
                 else phoneInput.value = '(' + digits.slice(0, 3) + ') ' + digits.slice(3, 6) + '-' + digits.slice(6);
+                syncDerivedContactFields();
                 if (validatePhone(phoneInput.value)) showFieldError('Phone', false);
             });
         }
-
-        ['ContactMethod', 'BestTimeToContact'].forEach(function (fieldId) {
-            var select = document.getElementById(fieldId);
-            if (!select) return;
-            select.addEventListener('change', function () {
-                showFieldError(fieldId, !asTrimmed(select.value));
-            });
-        });
 
         var disclaimerCheckbox = document.getElementById('AcknowledgedDisclaimer');
         if (disclaimerCheckbox) {
@@ -3324,6 +3360,7 @@ body.health-final-step-active .dq-form-panel {
             event.preventDefault();
             populateAttributionFields();
             syncAgeHidden();
+            syncDerivedContactFields();
             clearServerFeedback();
 
             for (var i = 0; i < microStepConfigs.length; i += 1) {
@@ -3336,12 +3373,9 @@ body.health-final-step-active .dq-form-panel {
             var valid = true;
             var firstName = document.getElementById('FirstName');
             var lastName = document.getElementById('LastName');
-            var contactMethod = document.getElementById('ContactMethod');
-            var bestTime = document.getElementById('BestTimeToContact');
 
             var textFields = [
-                { id: 'FirstName', value: firstName ? firstName.value : '' },
-                { id: 'LastName', value: lastName ? lastName.value : '' }
+                { id: 'FirstName', value: firstName ? firstName.value : '' }
             ];
 
             textFields.forEach(function (entry) {
@@ -3350,21 +3384,13 @@ body.health-final-step-active .dq-form-panel {
                 if (isInvalid) valid = false;
             });
 
-            var isEmailInvalid = !emailInput || !validateEmail(emailInput.value);
+            var isEmailInvalid = !!(emailInput && asTrimmed(emailInput.value) && !validateEmail(emailInput.value));
             showFieldError('Email', isEmailInvalid);
             if (isEmailInvalid) valid = false;
 
             var isPhoneInvalid = !phoneInput || !validatePhone(phoneInput.value);
             showFieldError('Phone', isPhoneInvalid);
             if (isPhoneInvalid) valid = false;
-
-            var isContactMethodInvalid = !contactMethod || !asTrimmed(contactMethod.value);
-            showFieldError('ContactMethod', isContactMethodInvalid);
-            if (isContactMethodInvalid) valid = false;
-
-            var isBestTimeInvalid = !bestTime || !asTrimmed(bestTime.value);
-            showFieldError('BestTimeToContact', isBestTimeInvalid);
-            if (isBestTimeInvalid) valid = false;
 
             var disclaimerError = document.getElementById('err-AcknowledgedDisclaimer');
             var isDisclaimerInvalid = !disclaimerCheckbox || !disclaimerCheckbox.checked;
@@ -3441,6 +3467,7 @@ body.health-final-step-active .dq-form-panel {
 
         populateAttributionFields();
         syncAgeHidden();
+        syncDerivedContactFields();
         microStepConfigs.forEach(function (config) { syncChoiceCards(config.field); });
 
         if (showContactStepByDefault) {
