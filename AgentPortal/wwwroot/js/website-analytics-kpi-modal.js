@@ -325,7 +325,148 @@
     }
 
 
-    function openVisitorConcentrationModal(rows) {
+    
+
+async function openVisitorTimelineModal(visitorId, sessionId) {
+    if (!visitorId && !sessionId) return;
+
+    const params = new URLSearchParams();
+
+    if (visitorId)
+        params.set('visitorId', visitorId);
+
+    if (sessionId)
+        params.set('sessionId', sessionId);
+
+    params.set('preset', window.currentPreset || 'today');
+
+    const response = await fetch(
+        `/WebsiteAnalytics/visitor-timeline?${params.toString()}`
+    );
+
+    if (!response.ok)
+        throw new Error('Failed loading visitor timeline');
+
+    const data = await response.json();
+
+    let modal = document.getElementById('visitorTimelineModal');
+
+    if (!modal) {
+        modal = document.createElement('div');
+        modal.id = 'visitorTimelineModal';
+        modal.className = 'vc-modal-backdrop';
+
+        modal.innerHTML = `
+            <div class="vc-modal-panel">
+                <div class="vc-modal-header">
+                    <div>
+                        <div class="vc-modal-kicker">
+                            Visitor Intelligence
+                        </div>
+                        <h3>Visitor Timeline</h3>
+                    </div>
+
+                    <button class="vc-modal-close">
+                        &times;
+                    </button>
+                </div>
+
+                <div class="vc-modal-body"></div>
+            </div>
+        `;
+
+        document.body.appendChild(modal);
+
+        modal.querySelector('.vc-modal-close')
+            ?.addEventListener('click', () => {
+                modal.classList.remove('is-open');
+            });
+    }
+
+    const body = modal.querySelector('.vc-modal-body');
+
+    body.innerHTML = `
+        <div class="vc-modal-stats">
+            <div>
+                <strong>${data.trustScore}</strong>
+                <span>Trust Score</span>
+            </div>
+
+            <div>
+                <strong>${data.trustTier}</strong>
+                <span>Trust Tier</span>
+            </div>
+
+            <div>
+                <strong>${data.totalEvents}</strong>
+                <span>Events</span>
+            </div>
+
+            <div>
+                <strong>${data.sessions}</strong>
+                <span>Sessions</span>
+            </div>
+        </div>
+
+        <div class="vc-modal-section-title">
+            Triggered Signals
+        </div>
+
+        <div class="vc-modal-note">
+            ${(data.signals || []).join(' · ') || 'None'}
+        </div>
+
+        <div class="vc-modal-section-title">
+            Timeline
+        </div>
+
+        <div class="vc-modal-table-wrap">
+            <table class="vc-modal-table">
+                <thead>
+                    <tr>
+                        <th>When</th>
+                        <th>Event</th>
+                        <th>Page</th>
+                        <th>Element</th>
+                        <th>Scroll</th>
+                    </tr>
+                </thead>
+
+                <tbody>
+                    ${(data.events || []).map(e => `
+                        <tr>
+                            <td>${e.eventUtc || ''}</td>
+                            <td>${e.eventType || ''}</td>
+                            <td>${e.pageKey || e.path || ''}</td>
+                            <td>${e.elementText || e.elementId || ''}</td>
+                            <td>${e.scrollPercent || 0}%</td>
+                        </tr>
+                    `)join('')}
+
+        setTimeout(() => {
+            document.querySelectorAll('[data-visitor-id]')
+                .forEach(row => {
+                    row.style.cursor = 'pointer';
+
+                    row.addEventListener('click', () => {
+                        openVisitorTimelineModal(
+                            row.dataset.visitorId,
+                            row.dataset.sessionId
+                        );
+                    });
+                });
+        }, 0);
+}
+                </tbody>
+            </table>
+        </div>
+    `;
+
+    modal.classList.add('is-open');
+}
+
+
+function openVisitorConcentrationModal(rows) {
         let modal = document.getElementById('visitorConcentrationModal');
 
         if (!modal) {

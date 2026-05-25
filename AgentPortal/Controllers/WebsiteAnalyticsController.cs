@@ -768,6 +768,158 @@ namespace AgentPortal.Controllers;
     }
 
     // ── KPI Detail Modal Endpoint ─────────────────────────────────────────────
+
+
+    [HttpGet("visitor-timeline")]
+    public async Task<IActionResult> VisitorTimeline(
+        string visitorId,
+        string? sessionId = null,
+        string preset = "today")
+    {
+        visitorId = (visitorId ?? "").Trim();
+        sessionId = (sessionId ?? "").Trim();
+
+        if (string.IsNullOrWhiteSpace(visitorId) &&
+            string.IsNullOrWhiteSpace(sessionId))
+        {
+            return BadRequest(new
+            {
+                error = "visitorId or sessionId required"
+            });
+        }
+
+        var nowUtc = DateTime.UtcNow;
+        var key = (preset ?? "today").Trim().ToLowerInvariant();
+
+        var fromUtc = key switch
+        {
+            "7d" or "last7" or "last_7_days" => nowUtc.AddDays(-7),
+            "30d" or "last30" or "last_30_days" => nowUtc.AddDays(-30),
+            "90d" or "last90" or "last_90_days" => nowUtc.AddDays(-90),
+            "yesterday" => nowUtc.Date.AddDays(-1),
+            _ => nowUtc.Date
+        };
+
+        var toUtc = key == "yesterday"
+            ? nowUtc.Date
+            : nowUtc;
+
+        var query = _db.AnalyticsEvents
+            .AsNoTracking()
+            .Where(x => x.EventUtc >= fromUtc &&
+                        x.EventUtc <= toUtc);
+
+        if (!string.IsNullOrWhiteSpace(visitorId))
+            query = query.Where(x => x.VisitorId == visitorId);
+
+        if (!string.IsNullOrWhiteSpace(sessionId))
+            query = query.Where(x => x.SessionId == sessionId);
+
+        var events = await query
+            .OrderBy(x => x.EventUtc)
+            .Take(500)
+            .Select(x => new
+            {
+                x.EventUtc,
+                x.EventType,
+                x.PageKey,
+                x.Path,
+                x.FormKey,
+                x.ElementId,
+                x.ScrollPercent,
+                x.DwellMilliseconds,
+                x.EngagedMilliseconds,
+                x.DeviceType,
+                x.Browser,
+                x.OperatingSystem,
+                x.UtmSource,
+                x.UtmMedium,
+                x.UtmCampaign,
+                x.ReferrerHost,
+                x.IsInternal,
+                x.SessionId,
+                x.VisitorId
+            })
+            .ToListAsync();
+
+        var totalEvents = events.Count;
+        var sessions = events
+            .Select(x => x.SessionId)
+            .Where(x => !string.IsNullOrWhiteSpace(x))
+            .Distinct()
+            .Count();
+
+        var maxScroll = events
+            .Where(x => x.ScrollPercent.HasValue)
+            .Select(x => x.ScrollPercent!.Value)
+            .DefaultIfEmpty(0)
+            .Max();
+
+        var formStarts = events.Count(x =>
+            x.EventType == "form_start");
+
+        var ctaClicks = events.Count(x =>
+            x.EventType == "cta_click" ||
+            x.EventType == "quote_click");
+
+        var trustScore = 100;
+        var signals = new List<string>();
+
+        if (totalEvents >= 120)
+        {
+            trustScore -= 20;
+            signals.Add("High event volume");
+        }
+
+        if (formStarts >= 4)
+        {
+            trustScore -= 15;
+            signals.Add("Repeated form starts");
+        }
+
+        if (ctaClicks >= 12)
+        {
+            trustScore -= 15;
+            signals.Add("Repeated CTA clicks");
+        }
+
+        if (maxScroll < 10 && totalEvents >= 10)
+        {
+            trustScore -= 10;
+            signals.Add("Low/no scroll behavior");
+        }
+
+        if (events.Any(x => x.IsInternal))
+        {
+            trustScore -= 25;
+            signals.Add("Internal/test traffic");
+        }
+
+        trustScore = Math.Max(0, Math.Min(100, trustScore));
+
+        var trustTier =
+            trustScore >= 85 ? "Trusted" :
+            trustScore >= 65 ? "Review" :
+            trustScore >= 40 ? "Suspicious" :
+            "Likely Bot";
+
+        return Ok(new
+        {
+            visitorId,
+            sessionId,
+            trustScore,
+            trustTier,
+            signals,
+            totalEvents,
+            sessions,
+            maxScroll,
+            formStarts,
+            ctaClicks,
+            events
+        });
+    }
+
+
     [HttpGet("kpi-detail")]
     public async Task<IActionResult> KpiDetail(
         [FromQuery] string metric,

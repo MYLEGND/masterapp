@@ -750,7 +750,9 @@ namespace Protect_Website.Controllers
             var primaryConcernLabel = string.IsNullOrWhiteSpace(model.PrimaryConcern) ? "Not provided" : model.PrimaryConcern.Trim();
             var contactMethodLabel = string.IsNullOrWhiteSpace(model.ContactMethod) ? "Not provided" : model.ContactMethod.Trim();
             var bestTimeLabel = string.IsNullOrWhiteSpace(model.BestTimeToContact) ? "Not provided" : model.BestTimeToContact.Trim();
-            var stateLabel = string.IsNullOrWhiteSpace(model.State) ? "Not provided" : model.State.Trim();
+            var stateLine = string.IsNullOrWhiteSpace(model.State)
+                ? string.Empty
+                : $@"<strong style=""color:#f3d688;"">State:</strong> {H(model.State.Trim())}<br/>";
 
             var surfacedCopy = currentCoverageLabel switch
             {
@@ -793,7 +795,7 @@ namespace Protect_Website.Controllers
 <div style=""color:#f8fafc;font-size:14px;line-height:1.55;font-weight:750;"">
 <strong style=""color:#f3d688;"">Phone:</strong> {H(model.Phone)}<br/>
 <strong style=""color:#f3d688;"">Email:</strong> {H(model.Email)}<br/>
-<strong style=""color:#f3d688;"">State:</strong> {H(stateLabel)}<br/>
+{stateLine}
 <strong style=""color:#f3d688;"">Product:</strong> Health Insurance Review<br/>
 <strong style=""color:#f3d688;"">Preferred contact:</strong> {H(contactMethodLabel)}
 </div>

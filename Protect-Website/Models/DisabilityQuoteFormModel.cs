@@ -28,8 +28,7 @@ namespace Protect_Website.Models
         [Required(ErrorMessage = "Employment Type is required")]
         public string EmploymentType { get; set; } = "";
 
-        [Required(ErrorMessage = "Occupation is required")]
-        public string Occupation { get; set; } = "";
+        public string? Occupation { get; set; }
 
         public string IncomeRange { get; set; } = "";
 

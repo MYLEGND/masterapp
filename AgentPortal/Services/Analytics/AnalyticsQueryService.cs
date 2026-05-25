@@ -876,10 +876,58 @@ public sealed class AnalyticsQueryService : IAnalyticsQueryService
         return (direct, "unknown");
     }
 
+
+    private static string NormalizeAnalyticsSource(string? source)
+    {
+        if (string.IsNullOrWhiteSpace(source))
+            return "Unknown";
+
+        var s = source.Trim().ToLowerInvariant();
+
+        return s switch
+        {
+            "ig" => "Instagram",
+            "instagram" => "Instagram",
+            "instagram.com" => "Instagram",
+
+            "fb" => "Facebook / Meta",
+            "facebook" => "Facebook / Meta",
+            "facebook.com" => "Facebook / Meta",
+            "meta" => "Facebook / Meta",
+
+            "messenger" => "Messenger",
+            "m.me" => "Messenger",
+
+            "google" => "Google",
+            "googleads" => "Google Ads",
+            "google_ads" => "Google Ads",
+            "adwords" => "Google Ads",
+
+            "bing" => "Microsoft Ads",
+            "microsoft" => "Microsoft Ads",
+
+            "chatgpt" => "ChatGPT / OpenAI",
+            "openai" => "ChatGPT / OpenAI",
+
+            "claude" => "Claude / Anthropic",
+            "anthropic" => "Claude / Anthropic",
+
+            "perplexity" => "Perplexity",
+
+            "(direct)" => "Direct",
+            "direct" => "Direct",
+            "(none)" => "Direct",
+            "none" => "Direct",
+
+            _ => char.ToUpperInvariant(s[0]) + s[1..]
+        };
+    }
+
+
     private static string SourceBucketLabel(EventAttributionSnapshot attribution, TrafficType trafficType)
     {
         if (!string.IsNullOrWhiteSpace(attribution.UtmSource))
-            return attribution.UtmSource!.Trim();
+            return NormalizeAnalyticsSource(attribution.UtmSource);
 
         if (IsMetaAttributedPaid(attribution))
             return "Meta Ads";

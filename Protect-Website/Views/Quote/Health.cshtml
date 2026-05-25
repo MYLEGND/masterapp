@@ -2223,67 +2223,6 @@ body.health-final-step-active .dq-form-panel {
                                         <div class="full lq-field-help" id="lifeContactMethodHelp">@contactMethodHelperText</div>
                                         <div class="full lq-field-err" id="err-ContactMethod">@contactMethodErrorText</div>
 
-                                        <div class="lq-field-row full">
-                                            <div class="lq-field">
-                                                <label for="State">What state do you live in? <span class="lq-optional-tag">(optional)</span></label>
-                                                <select id="State" name="State" class="form-select" autocomplete="address-level1">
-                                                    <option value="">Select your state</option>
-                                                    <option value="AL" selected="@(form.State == "AL" ? "selected" : null)">Alabama</option>
-                                                    <option value="AK" selected="@(form.State == "AK" ? "selected" : null)">Alaska</option>
-                                                    <option value="AZ" selected="@(form.State == "AZ" ? "selected" : null)">Arizona</option>
-                                                    <option value="AR" selected="@(form.State == "AR" ? "selected" : null)">Arkansas</option>
-                                                    <option value="CA" selected="@(form.State == "CA" ? "selected" : null)">California</option>
-                                                    <option value="CO" selected="@(form.State == "CO" ? "selected" : null)">Colorado</option>
-                                                    <option value="CT" selected="@(form.State == "CT" ? "selected" : null)">Connecticut</option>
-                                                    <option value="DE" selected="@(form.State == "DE" ? "selected" : null)">Delaware</option>
-                                                    <option value="DC" selected="@(form.State == "DC" ? "selected" : null)">District of Columbia</option>
-                                                    <option value="FL" selected="@(form.State == "FL" ? "selected" : null)">Florida</option>
-                                                    <option value="GA" selected="@(form.State == "GA" ? "selected" : null)">Georgia</option>
-                                                    <option value="HI" selected="@(form.State == "HI" ? "selected" : null)">Hawaii</option>
-                                                    <option value="ID" selected="@(form.State == "ID" ? "selected" : null)">Idaho</option>
-                                                    <option value="IL" selected="@(form.State == "IL" ? "selected" : null)">Illinois</option>
-                                                    <option value="IN" selected="@(form.State == "IN" ? "selected" : null)">Indiana</option>
-                                                    <option value="IA" selected="@(form.State == "IA" ? "selected" : null)">Iowa</option>
-                                                    <option value="KS" selected="@(form.State == "KS" ? "selected" : null)">Kansas</option>
-                                                    <option value="KY" selected="@(form.State == "KY" ? "selected" : null)">Kentucky</option>
-                                                    <option value="LA" selected="@(form.State == "LA" ? "selected" : null)">Louisiana</option>
-                                                    <option value="ME" selected="@(form.State == "ME" ? "selected" : null)">Maine</option>
-                                                    <option value="MD" selected="@(form.State == "MD" ? "selected" : null)">Maryland</option>
-                                                    <option value="MA" selected="@(form.State == "MA" ? "selected" : null)">Massachusetts</option>
-                                                    <option value="MI" selected="@(form.State == "MI" ? "selected" : null)">Michigan</option>
-                                                    <option value="MN" selected="@(form.State == "MN" ? "selected" : null)">Minnesota</option>
-                                                    <option value="MS" selected="@(form.State == "MS" ? "selected" : null)">Mississippi</option>
-                                                    <option value="MO" selected="@(form.State == "MO" ? "selected" : null)">Missouri</option>
-                                                    <option value="MT" selected="@(form.State == "MT" ? "selected" : null)">Montana</option>
-                                                    <option value="NE" selected="@(form.State == "NE" ? "selected" : null)">Nebraska</option>
-                                                    <option value="NV" selected="@(form.State == "NV" ? "selected" : null)">Nevada</option>
-                                                    <option value="NH" selected="@(form.State == "NH" ? "selected" : null)">New Hampshire</option>
-                                                    <option value="NJ" selected="@(form.State == "NJ" ? "selected" : null)">New Jersey</option>
-                                                    <option value="NM" selected="@(form.State == "NM" ? "selected" : null)">New Mexico</option>
-                                                    <option value="NY" selected="@(form.State == "NY" ? "selected" : null)">New York</option>
-                                                    <option value="NC" selected="@(form.State == "NC" ? "selected" : null)">North Carolina</option>
-                                                    <option value="ND" selected="@(form.State == "ND" ? "selected" : null)">North Dakota</option>
-                                                    <option value="OH" selected="@(form.State == "OH" ? "selected" : null)">Ohio</option>
-                                                    <option value="OK" selected="@(form.State == "OK" ? "selected" : null)">Oklahoma</option>
-                                                    <option value="OR" selected="@(form.State == "OR" ? "selected" : null)">Oregon</option>
-                                                    <option value="PA" selected="@(form.State == "PA" ? "selected" : null)">Pennsylvania</option>
-                                                    <option value="RI" selected="@(form.State == "RI" ? "selected" : null)">Rhode Island</option>
-                                                    <option value="SC" selected="@(form.State == "SC" ? "selected" : null)">South Carolina</option>
-                                                    <option value="SD" selected="@(form.State == "SD" ? "selected" : null)">South Dakota</option>
-                                                    <option value="TN" selected="@(form.State == "TN" ? "selected" : null)">Tennessee</option>
-                                                    <option value="TX" selected="@(form.State == "TX" ? "selected" : null)">Texas</option>
-                                                    <option value="UT" selected="@(form.State == "UT" ? "selected" : null)">Utah</option>
-                                                    <option value="VT" selected="@(form.State == "VT" ? "selected" : null)">Vermont</option>
-                                                    <option value="VA" selected="@(form.State == "VA" ? "selected" : null)">Virginia</option>
-                                                    <option value="WA" selected="@(form.State == "WA" ? "selected" : null)">Washington</option>
-                                                    <option value="WV" selected="@(form.State == "WV" ? "selected" : null)">West Virginia</option>
-                                                    <option value="WI" selected="@(form.State == "WI" ? "selected" : null)">Wisconsin</option>
-                                                    <option value="WY" selected="@(form.State == "WY" ? "selected" : null)">Wyoming</option>
-                                                </select>
-                                                <div class="lq-field-err" id="err-State"></div>
-                                            </div>
-                                        </div>
-
                                         <label class="lq-consent" for="AcknowledgedDisclaimer">
                                             <input type="checkbox" id="AcknowledgedDisclaimer" name="AcknowledgedDisclaimer" value="true" @(form.AcknowledgedDisclaimer ? "checked" : null) />
                                             <span class="consent-text">
@@ -2354,7 +2293,6 @@ body.health-final-step-active .dq-form-panel {
         var successBanner = document.getElementById('healthSuccess');
         var reviewSummary = document.getElementById('healthReviewSummary');
         var ageHidden = document.getElementById('Age');
-        var stateSelect = document.getElementById('State');
         var contactMethodInput = document.getElementById('ContactMethod');
         var bestTimeInput = document.getElementById('BestTimeToContact');
         var submitDefaultLabel = submitButton ? asTrimmed(submitButton.textContent) : 'Get My Health Review';

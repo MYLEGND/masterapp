@@ -746,13 +746,17 @@ namespace Protect_Website.Controllers
                 : model.Age?.ToString(CultureInfo.InvariantCulture) ?? "Not provided";
 
             var employmentLabel = string.IsNullOrWhiteSpace(model.EmploymentType) ? "Not provided" : model.EmploymentType.Trim();
-            var occupationLabel = string.IsNullOrWhiteSpace(model.Occupation) ? "Not provided" : model.Occupation.Trim();
             var incomeRangeLabel = string.IsNullOrWhiteSpace(model.IncomeRange) ? "Not provided" : model.IncomeRange.Trim();
             var currentCoverageLabel = string.IsNullOrWhiteSpace(model.CurrentCoverage) ? "Not provided" : model.CurrentCoverage.Trim();
             var priorityLabel = string.IsNullOrWhiteSpace(model.IncomeProtectionImportance) ? "Not provided" : model.IncomeProtectionImportance.Trim();
             var contactMethodLabel = string.IsNullOrWhiteSpace(model.ContactMethod) ? "Not provided" : model.ContactMethod.Trim();
             var bestTimeLabel = string.IsNullOrWhiteSpace(model.BestTimeToContact) ? "Not provided" : model.BestTimeToContact.Trim();
-            var stateLabel = string.IsNullOrWhiteSpace(model.State) ? "Not provided" : model.State.Trim();
+            var stateLine = string.IsNullOrWhiteSpace(model.State)
+                ? string.Empty
+                : $@"<strong style=""color:#f3d688;"">State:</strong> {H(model.State.Trim())}<br/>";
+            var occupationLine = string.IsNullOrWhiteSpace(model.Occupation)
+                ? string.Empty
+                : $@"<strong style=""color:#f3d688;"">Occupation:</strong> {H(model.Occupation.Trim())}<br/>";
 
             var surfacedCopy = priorityLabel switch
             {
@@ -794,8 +798,8 @@ namespace Protect_Website.Controllers
 <div style=""color:#f8fafc;font-size:14px;line-height:1.55;font-weight:750;"">
 <strong style=""color:#f3d688;"">Phone:</strong> {H(model.Phone)}<br/>
 <strong style=""color:#f3d688;"">Email:</strong> {H(model.Email)}<br/>
-<strong style=""color:#f3d688;"">State:</strong> {H(stateLabel)}<br/>
-<strong style=""color:#f3d688;"">Occupation:</strong> {H(occupationLabel)}<br/>
+{stateLine}
+{occupationLine}
 <strong style=""color:#f3d688;"">Preferred contact:</strong> {H(contactMethodLabel)}
 </div>
 </div>
