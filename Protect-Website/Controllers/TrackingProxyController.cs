@@ -5,6 +5,7 @@ using System.Text;
 using System.Text.Json;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.Extensions.Primitives;
 
 namespace ProtectWebsite.Controllers;
 
@@ -49,6 +50,7 @@ public sealed class TrackingProxyController : ControllerBase
         if (string.IsNullOrWhiteSpace(req.EventType))
             return BadRequest(new { error = "event_type_required" });
 
+        EnsureClientContextFallback(req);
         await EnsureAgentAttributionAsync(req, ct);
 
         var response = await ForwardAsync("/api/analytics/ingest", req, ct);
@@ -101,6 +103,96 @@ public sealed class TrackingProxyController : ControllerBase
         }
 
         return await BuildPassThroughResultAsync(response, ct);
+    }
+
+    private void EnsureClientContextFallback(AnalyticsEventRequest req)
+    {
+        var userAgent = Request.Headers.UserAgent.ToString();
+        var acceptLanguage = Request.Headers.AcceptLanguage.ToString();
+
+        var parsed = ParseUserAgent(userAgent);
+
+        req.DeviceType = FirstNonBlank(req.DeviceType, parsed.DeviceType);
+        req.Browser = FirstNonBlank(req.Browser, parsed.Browser);
+        req.OperatingSystem = FirstNonBlank(req.OperatingSystem, parsed.OperatingSystem);
+        req.Language = FirstNonBlank(req.Language, NormalizeAcceptLanguage(acceptLanguage));
+        req.Host = FirstNonBlank(req.Host, Request.Host.Value);
+
+        if (!req.EventUtc.HasValue)
+        {
+            req.EventUtc = DateTime.UtcNow;
+        }
+
+        if (string.IsNullOrWhiteSpace(req.Environment))
+        {
+            req.Environment = _config["ASPNETCORE_ENVIRONMENT"]
+                ?? Environment.GetEnvironmentVariable("ASPNETCORE_ENVIRONMENT")
+                ?? "Production";
+        }
+    }
+
+    private static string? FirstNonBlank(params string?[] values)
+    {
+        foreach (var value in values)
+        {
+            if (!string.IsNullOrWhiteSpace(value))
+            {
+                return value.Trim();
+            }
+        }
+
+        return null;
+    }
+
+    private static string? NormalizeAcceptLanguage(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value)) return null;
+
+        var first = value.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            .FirstOrDefault();
+
+        if (string.IsNullOrWhiteSpace(first)) return null;
+
+        var semi = first.IndexOf(';');
+        return semi >= 0 ? first[..semi].Trim() : first.Trim();
+    }
+
+    private static (string DeviceType, string Browser, string OperatingSystem) ParseUserAgent(string? userAgent)
+    {
+        var ua = userAgent ?? string.Empty;
+
+        var deviceType = "desktop";
+        if (ContainsAny(ua, "Mobi", "Android", "iPhone", "iPod")) deviceType = "mobile";
+        else if (ContainsAny(ua, "iPad", "Tablet")) deviceType = "tablet";
+
+        var browser = "unknown";
+        if (ContainsAny(ua, "Edg/", "EdgiOS", "EdgA")) browser = "edge";
+        else if (ContainsAny(ua, "CriOS", "Chrome/", "Chromium/")) browser = "chrome";
+        else if (ContainsAny(ua, "FxiOS", "Firefox/")) browser = "firefox";
+        else if (ContainsAny(ua, "FBAN", "FBAV", "Instagram")) browser = "in_app";
+        else if (ua.Contains("Safari/", StringComparison.OrdinalIgnoreCase)) browser = "safari";
+
+        var os = "unknown";
+        if (ua.Contains("Windows", StringComparison.OrdinalIgnoreCase)) os = "windows";
+        else if (ContainsAny(ua, "Android")) os = "android";
+        else if (ContainsAny(ua, "iPhone", "iPad", "iPod")) os = "ios";
+        else if (ContainsAny(ua, "Mac OS X", "Macintosh")) os = "macos";
+        else if (ua.Contains("Linux", StringComparison.OrdinalIgnoreCase)) os = "linux";
+
+        return (deviceType, browser, os);
+    }
+
+    private static bool ContainsAny(string value, params string[] needles)
+    {
+        foreach (var needle in needles)
+        {
+            if (value.Contains(needle, StringComparison.OrdinalIgnoreCase))
+            {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     private async Task<HttpResponseMessage?> ForwardAsync(string path, object payload, CancellationToken ct, Guid? callerCorrelationId = null)

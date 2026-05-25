@@ -1,0 +1,746 @@
+@{
+    ViewData["Title"] = "Get a Quote";
+    Layout = "_Layout";
+    ViewData["PageKey"] = "quote_index";
+    ViewData["SeoTitle"] = "Get a Personalized Insurance Quote";
+    ViewData["SeoDescription"] = "Start a personalized insurance review for life, mortgage protection, disability, health, auto, home, or commercial coverage.";
+}
+
+<style>
+:root{
+    --surface:#0f172a;
+    --surface-soft:#111c32;
+    --ink:#0f172a;
+    --ink-light:#f8fafc;
+    --gold:#a68023;
+    --gold-strong:#c79931;
+    --border:rgba(199,153,49,.95);
+    --subtle:rgba(199,153,49,.16);
+    --card:var(--surface);
+    --shadow:0 20px 60px rgba(0,0,0,.18);
+    --shadow-soft:0 14px 34px rgba(0,0,0,.14);
+    --radius:20px;
+}
+
+/* ------------------- PAGE WRAP ------------------- */
+.quote-page{
+    max-width: 1200px;
+    margin: 0 auto;
+    padding: 22px 18px 72px;
+}
+
+/* ------------------- HERO ------------------- */
+.quote-hero{
+    position:relative;
+    background:var(--card);
+    border:1.6px solid var(--border);
+    border-radius:22px;
+    box-shadow:var(--shadow);
+    padding:28px 28px;
+    overflow:hidden;
+}
+
+/* subtle gold corner glow */
+.quote-hero:before{
+    content:"";
+    position:absolute;
+    inset:0;
+    border-radius:22px;
+    pointer-events:none;
+    background:
+        radial-gradient(800px 280px at 14% 0%, rgba(199,153,49,.16), transparent 60%);
+}
+
+.hero-kicker{
+    letter-spacing:.18em;
+    text-transform:uppercase;
+    font-size:.78rem;
+    color:var(--ink-light);
+    font-weight:900;
+    background:rgba(199,153,49,.20);
+    border:1px solid rgba(199,153,49,.35);
+    padding:6px 12px;
+    border-radius:999px;
+    display:inline-block;
+}
+
+.hero-title{
+    font-size:clamp(1.9rem,2.8vw,2.45rem);
+    line-height:1.1;
+    font-weight:950;
+    margin:12px 0 6px;
+    color:#dfe6f0;
+}
+
+.hero-lead{
+    font-size:1.08rem;
+    line-height:1.55;
+    color:rgba(248,250,252,0.86);
+    max-width:820px;
+    margin:0 0 14px;
+}
+
+.hero-lead .hl{ color:var(--gold); font-weight:900; }
+
+.hero-bar{
+    height:2px;
+    width:110px;
+    background:var(--gold-strong);
+    border-radius:999px;
+    margin:14px 0 18px;
+}
+
+.hero-actions{
+    display:flex;
+    gap:12px;
+    flex-wrap:wrap;
+}
+
+.btn-gold{
+    background:linear-gradient(180deg, var(--gold-strong), var(--gold));
+    color:#fff;
+    font-weight:900;
+    padding:12px 20px;
+    border-radius:14px;
+    text-decoration:none;
+    border:1.6px solid var(--border);
+    box-shadow:0 14px 32px rgba(0,0,0,.18);
+    transition:.18s ease;
+    display:inline-flex;
+    align-items:center;
+    gap:8px;
+}
+.btn-gold:hover{
+    transform:translateY(-2px);
+    box-shadow:0 16px 36px rgba(0,0,0,.14);
+    color:#fff;
+    background:linear-gradient(180deg, var(--gold-strong), var(--gold));
+}
+
+.btn-outline{
+    background:var(--surface-soft);
+    border:2px solid var(--border);
+    color:#f8fafc;
+    font-weight:900;
+    padding:12px 20px;
+    border-radius:14px;
+    text-decoration:none;
+    transition:.18s ease;
+}
+.btn-outline:hover{
+    transform:translateY(-2px);
+    border-color:var(--gold-strong);
+}
+
+/* ------------------- SECTION HEADERS ------------------- */
+.section{
+    margin-top:30px;
+}
+
+.section-head{
+    text-align:center;
+    margin:18px 0 12px;
+}
+
+.section-title{
+    font-weight:950;
+    color:var(--gold-strong);
+    font-size:1.85rem;
+    margin:0 0 8px;
+}
+
+.section-sub{
+    color:var(--ink);
+    font-size:1.05rem;
+    line-height:1.75;
+    max-width:820px;
+    margin:0 auto;
+}
+
+.center-divider{
+    width:90px;
+    height:2px;
+    background:var(--gold-strong);
+    border-radius:999px;
+    margin:14px auto 0;
+}
+
+/* ------------------- QUOTE GRID ------------------- */
+.quote-grid{
+    display:grid;
+    grid-template-columns:repeat(3,minmax(0,1fr));
+    gap:12px;
+    margin:20px auto 0;
+    max-width:1040px;
+}
+
+@@media (max-width:992px){
+    .quote-grid{ grid-template-columns:repeat(2,minmax(0,1fr)); }
+}
+@@media (max-width:640px){
+    .quote-grid{ grid-template-columns:1fr; }
+}
+
+/* PREMIUM COMPACT TILE */
+.quote-tile{
+    position:relative;
+    background:linear-gradient(180deg,#101a2f 0%, #0b1325 100%);
+    border:1.35px solid rgba(199,153,49,.76);
+    border-radius:17px;
+    padding:14px;
+    box-shadow:0 12px 30px rgba(0,0,0,.13);
+    text-decoration:none;
+    color:#f8fafc;
+    transition:.18s ease;
+    display:grid;
+    grid-template-columns:auto 1fr auto;
+    gap:12px;
+    align-items:center;
+    min-height:88px;
+    overflow:hidden;
+}
+
+.quote-tile:before{
+    content:"";
+    position:absolute;
+    inset:0;
+    border-radius:17px;
+    pointer-events:none;
+    background:radial-gradient(420px 160px at 6% 0%, rgba(199,153,49,.10), transparent 68%);
+}
+
+.quote-tile > *{
+    position:relative;
+    z-index:1;
+}
+
+.quote-tile:hover{
+    transform:translateY(-3px);
+    border-color:var(--gold-strong);
+    box-shadow:0 18px 38px rgba(0,0,0,.18);
+    color:#f8fafc;
+    text-decoration:none;
+}
+
+.tile-mark{
+    width:42px;
+    height:42px;
+    border-radius:14px;
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    background:rgba(199,153,49,.13);
+    border:1px solid rgba(199,153,49,.48);
+    color:#f2cd75;
+    font-weight:950;
+    font-size:.76rem;
+    letter-spacing:.035em;
+}
+
+.tile-title{
+    font-weight:950;
+    font-size:1rem;
+    margin:0 0 2px;
+    color:var(--gold-strong);
+}
+
+.tile-sub{
+    margin:0;
+    color:rgba(248,250,252,.76);
+    font-size:.88rem;
+    line-height:1.32;
+}
+
+.tile-arrow{
+    width:30px;
+    height:30px;
+    border-radius:999px;
+    border:1px solid rgba(199,153,49,.72);
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    transition:.18s ease;
+    color:#f8fafc;
+    font-weight:900;
+    font-size:.95rem;
+}
+
+.quote-tile:hover .tile-arrow{
+    border-color:var(--gold-strong);
+    color:var(--gold-strong);
+    background:rgba(199,153,49,.10);
+}
+
+.life-tile{
+    cursor:pointer;
+    border-color:rgba(242,205,117,.92);
+}
+
+.life-tile .tile-mark{
+    background:rgba(199,153,49,.22);
+}
+
+.life-tile:focus-visible{
+    outline:2px solid var(--gold-strong);
+    outline-offset:4px;
+}
+
+.life-modal{
+    position:fixed;
+    inset:0;
+    background:rgba(8,12,24,0.72);
+    backdrop-filter:blur(8px);
+    display:none;
+    align-items:center;
+    justify-content:center;
+    z-index:10000;
+    padding:16px;
+}
+.life-modal.open{ display:flex; }
+.life-modal-card{
+    width:min(480px, 94vw);
+    background:linear-gradient(180deg,#0f172a 0%, #0c1427 100%);
+    border:1.6px solid rgba(199,153,49,.8);
+    border-radius:16px;
+    box-shadow:0 24px 60px rgba(0,0,0,.35);
+    color:#f4f6fb;
+    padding:18px;
+    position:relative;
+}
+.life-modal-card h3{
+    margin:0 0 12px;
+    font-weight:900;
+    font-size:1.2rem;
+    text-align:center;
+    color:#dfb75a;
+}
+.life-modal-close{
+    position:absolute;
+    top:10px;
+    right:10px;
+    background:transparent;
+    border:1px solid rgba(244,246,251,.35);
+    color:#f4f6fb;
+    border-radius:10px;
+    width:32px;
+    height:32px;
+    font-size:1.1rem;
+    cursor:pointer;
+}
+.life-modal-grid{
+    display:grid;
+    grid-template-columns:1fr;
+    gap:10px;
+}
+@@media (min-width: 520px){
+    .life-modal-grid{ grid-template-columns:repeat(2,1fr); }
+}
+.life-option{
+    display:block;
+    padding:12px 14px;
+    border:1px solid rgba(199,153,49,.65);
+    border-radius:10px;
+    text-decoration:none;
+    color:#f8fafc;
+    font-weight:850;
+    text-align:center;
+    background:rgba(199,153,49,0.08);
+}
+.life-option:hover{
+    border-color:#c79931;
+    background:rgba(199,153,49,0.15);
+    color:#dfb75a;
+}
+
+/* ------------------- WHAT HAPPENS NEXT ------------------- */
+.next-grid{
+    display:grid;
+    grid-template-columns:repeat(3,minmax(0,1fr));
+    gap:14px;
+    margin-top:18px;
+}
+@@media (max-width:992px){
+    .next-grid{ grid-template-columns:1fr; }
+}
+
+.next-card{
+    position:relative;
+    background:var(--card);
+    border:1.4px solid var(--border);
+    border-radius:var(--radius);
+    padding:18px;
+    box-shadow:0 12px 28px rgba(0,0,0,.13);
+}
+
+.next-card:before{
+    content:"";
+    position:absolute;
+    inset:0;
+    border-radius:var(--radius);
+    pointer-events:none;
+    background:
+        radial-gradient(600px 240px at 12% 0%, rgba(166,128,35,.08), transparent 65%);
+}
+
+.next-badge{
+    width:38px;
+    height:38px;
+    border-radius:13px;
+    border:2px solid var(--border);
+    color:var(--gold-strong);
+    font-weight:950;
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    margin-bottom:14px;
+}
+
+.next-card h5{
+    font-weight:900;
+    margin:0 0 8px;
+    color:var(--gold-strong);
+}
+
+.next-card p{
+    margin:0;
+    color:#f8fafc;
+    line-height:1.7;
+}
+
+/* ------------------- CALENDAR ------------------- */
+.calendar-section{
+    margin-top:30px;
+    padding:24px 20px;
+    background:var(--card);
+    border-radius:var(--radius);
+    box-shadow:var(--shadow-soft);
+    border:1.4px solid var(--border);
+    text-align:center;
+    position:relative;
+    color:#f8fafc;
+}
+
+.calendar-section:before{
+    content:"";
+    position:absolute;
+    inset:0;
+    border-radius:var(--radius);
+    pointer-events:none;
+    background:
+        radial-gradient(700px 260px at 12% 0%, rgba(199,153,49,.12), transparent 65%);
+}
+
+.calendar-section h2{
+    font-weight:950;
+    margin-bottom:10px;
+    color:var(--gold-strong);
+}
+
+.calendar-section p{
+    color:#f8fafc;
+    max-width:780px;
+    margin:0 auto 18px;
+    line-height:1.75;
+}
+
+/* 🔥 THIS WAS MISSING */
+.calendar-container{
+    width:100%;
+    height:620px;               /* required so iframe 100% works */
+    border-radius:16px;
+    overflow:hidden;
+    border:1px solid var(--border);
+    box-shadow:0 14px 34px rgba(0,0,0,.08);
+    position:relative;
+}
+
+.calendar-container iframe{
+    position:absolute;          /* ensures true fill */
+    inset:0;
+    width:100% !important;
+    height:100% !important;
+    border:0;
+    display:block;
+}
+
+@@media (max-width:576px){
+    .calendar-container{
+        height:520px;
+    }
+}
+
+/* ------------------- PRAYER SECTION ------------------- */
+.prayer-card{
+    position:relative;
+    background:var(--card);
+    border:1px solid var(--border);
+    border-radius:var(--radius);
+    box-shadow:var(--shadow-soft);
+    padding:28px 20px;
+    text-align:center;
+    margin-top:36px;
+}
+
+.prayer-card:before{
+    content:"";
+    position:absolute;
+    inset:0;
+    border-radius:var(--radius);
+    pointer-events:none;
+    background:
+        radial-gradient(700px 260px at 12% 0%, rgba(166,128,35,.08), transparent 65%);
+}
+
+.prayer-kicker{
+    letter-spacing:.18em;
+    text-transform:uppercase;
+    font-size:.78rem;
+    color:#5a3b00;
+    font-weight:950;
+}
+
+.prayer-text{
+    margin:14px auto;
+    max-width:820px;
+    font-size:1.05rem;
+    line-height:1.9;
+    color:var(--muted);
+    font-weight:650;
+}
+
+.prayer-divider{
+    height:2px;
+    width:110px;
+    background:var(--gold);
+    border-radius:999px;
+    margin:14px auto;
+}
+
+/* reveal */
+.reveal{ opacity:0; transform:translateY(14px); transition:.55s ease; }
+.reveal.show{ opacity:1; transform:translateY(0); }
+
+</style>
+
+<!-- HTML BELOW REMAINS EXACTLY THE SAME -->
+
+
+@{
+    var path = Context?.Request?.Path.Value ?? string.Empty;
+    var segs = path.Split('/', StringSplitOptions.RemoveEmptyEntries);
+    var slugPrefix = (segs.Length >= 2 && segs[0].Equals("a", StringComparison.OrdinalIgnoreCase))
+        ? $"/a/{segs[1]}"
+        : string.Empty;
+    string Link(string relative)
+    {
+        var basePath = Context?.Request?.PathBase.Value ?? string.Empty;
+        return $"{basePath}{slugPrefix}{relative}";
+    }
+}
+
+<div class="quote-page">
+
+    <!-- ===================== HERO ===================== -->
+    <div class="quote-hero reveal">
+        <div class="hero-kicker">Legend™ Quote Center</div>
+        <h1 class="hero-title">Get Covered. Stay Ready. Build Legacy.</h1>
+        <div class="hero-bar"></div>
+
+        <p class="hero-lead">
+            Choose the coverage you need — we’ll guide you to the best fit.
+            Fast intake. Clear options. <span class="hl">No confusion.</span>
+        </p>
+
+        <div class="hero-actions">
+            <a href="#quoteTypes" class="btn-gold" data-cta="hero_start_quote" data-lead-trigger="true" data-lead-interest="quote_general">Start a Quote →</a>
+            <a href="#calendar" class="btn-outline" data-cta="hero_book_call">Talk to a Pro ↗</a>
+        </div>
+    </div>
+
+    <!-- ===================== QUOTE TYPES ===================== -->
+    <div class="section" id="quoteTypes">
+        <div class="section-head reveal">
+            <h2 class="section-title">Choose Your Quote Type</h2>
+            <p class="section-sub">Choose the protection lane. We’ll simplify the next step.</p>
+            <div class="center-divider"></div>
+        </div>
+
+        <div class="quote-grid">
+
+            <a href="@Link("/Quote/Auto")" class="quote-tile reveal" aria-label="Start Auto Insurance Quote" data-cta="quote_index_auto_start">
+                <span class="tile-mark">AUTO</span>
+                <span>
+                    <p class="tile-title">Auto Insurance</p>
+                    <p class="tile-sub">Vehicle, passengers, and liability.</p>
+                </span>
+                <span class="tile-arrow">→</span>
+            </a>
+
+            <a href="@Link("/Quote/Home")" class="quote-tile reveal" aria-label="Start Home Insurance Quote" data-cta="quote_index_home_start">
+                <span class="tile-mark">HOME</span>
+                <span>
+                    <p class="tile-title">Home Insurance</p>
+                    <p class="tile-sub">Home, valuables, and property protection.</p>
+                </span>
+                <span class="tile-arrow">→</span>
+            </a>
+
+            <a href="@Link("/Quote/Commercial")" class="quote-tile reveal" aria-label="Start Commercial Insurance Quote" data-cta="quote_index_commercial_start">
+                <span class="tile-mark">BIZ</span>
+                <span>
+                    <p class="tile-title">Commercial Insurance</p>
+                    <p class="tile-sub">Business, team, and income stream.</p>
+                </span>
+                <span class="tile-arrow">→</span>
+            </a>
+
+            <div class="quote-tile reveal life-tile" tabindex="0" role="button" aria-haspopup="dialog" aria-expanded="false" data-cta="quote_index_life_start">
+                <span class="tile-mark">LIFE</span>
+                <span>
+                    <p class="tile-title">Life Insurance</p>
+                    <p class="tile-sub">Family, mortgage, and legacy protection.</p>
+                </span>
+                <span class="tile-arrow">▾</span>
+            </div>
+
+            <a href="@Link("/Quote/Disability")" class="quote-tile reveal" aria-label="Start Disability Insurance Quote" data-cta="quote_index_disability_start">
+                <span class="tile-mark">DI</span>
+                <span>
+                    <p class="tile-title">Disability Insurance</p>
+                    <p class="tile-sub">Protect the income that funds everything.</p>
+                </span>
+                <span class="tile-arrow">→</span>
+            </a>
+
+            <a href="@Link("/Quote/Health")" class="quote-tile reveal" aria-label="Start Health Insurance Quote" data-cta="quote_index_health_start">
+                <span class="tile-mark">HLTH</span>
+                <span>
+                    <p class="tile-title">Health Insurance</p>
+                    <p class="tile-sub">Coverage for your needs and season.</p>
+                </span>
+                <span class="tile-arrow">→</span>
+            </a>
+
+        </div>
+    </div>
+
+    <!-- ===================== WHAT HAPPENS NEXT ===================== -->
+    <div class="section" id="next">
+        <div class="section-head reveal">
+            <h2 class="section-title">What Happens Next</h2>
+            <p class="section-sub">Three steps. No confusion. Clear next move.</p>
+            <div class="center-divider"></div>
+        </div>
+
+        <div class="next-grid">
+            <div class="next-card reveal">
+                <div class="next-badge">1</div>
+                <h5>Submit Your Request</h5>
+                <p>Choose a quote type and we’ll guide you through the next steps.</p>
+            </div>
+
+            <div class="next-card reveal">
+                <div class="next-badge">2</div>
+                <h5>We Build Options</h5>
+                <p>We compare carriers, structure coverage properly, and flag cost-saving opportunities.</p>
+            </div>
+
+            <div class="next-card reveal">
+                <div class="next-badge">3</div>
+                <h5>You Choose Confidently</h5>
+                <p>We explain it clearly, finalize the best fit, and help you protect what matters most.</p>
+            </div>
+        </div>
+    </div>
+
+    <!-- ===================== CALENDAR ===================== -->
+    <div class="calendar-section reveal" id="calendar">
+        <h2>Want to talk first?</h2>
+        <p>
+            If you’d rather speak before starting, book a time below.
+            We’ll review your situation and point you in the right direction.
+        </p>
+
+        <div class="calendar-container">
+            <iframe src="https://outlook.office.com/book/LEGEND@mylegnd.com/?ismsaljsauthenabled=true"></iframe>
+        </div>
+    </div>
+
+    <!-- ===================== PRAYER SECTION ===================== -->
+    <section class="prayer-section">
+        <div class="prayer-card reveal">
+            <div class="prayer-kicker">A Blessing Over You</div>
+            <div class="prayer-divider"></div>
+
+            <p class="prayer-text">
+                May God strengthen your spirit, guide your steps, and bless your work and well-being.
+                May He surround you with safety, peace, healing, and His everlasting love.
+            </p>
+
+            <div class="prayer-divider"></div>
+        </div>
+    </section>
+
+</div>
+
+@{
+    var linkBase = Context?.Request?.PathBase.Value + (slugPrefix ?? string.Empty);
+    await Html.RenderPartialAsync("_LifeModal", linkBase);
+}
+
+<script>
+document.addEventListener("DOMContentLoaded", function () {
+    // Reveal animations (safe fallback)
+    const els = document.querySelectorAll(".reveal");
+    if ("IntersectionObserver" in window) {
+        const io = new IntersectionObserver((entries) => {
+            entries.forEach(e => {
+                if (e.isIntersecting) e.target.classList.add("show");
+            });
+        }, { threshold: 0.12 });
+        els.forEach(el => io.observe(el));
+    } else {
+        els.forEach(el => el.classList.add("show"));
+    }
+
+    // Life product modal
+    const lifeTile = document.querySelector(".life-tile");
+    const lifeModal = document.getElementById("lifeModal");
+    const lifeClose = lifeModal ? lifeModal.querySelector(".life-modal-close") : null;
+
+    function closeLife() {
+        if (!lifeTile || !lifeModal) return;
+        lifeModal.classList.remove("open");
+        lifeTile.classList.remove("open");
+        lifeTile.setAttribute("aria-expanded", "false");
+    }
+    function openLife() {
+        if (!lifeTile || !lifeModal) return;
+        lifeModal.classList.add("open");
+        lifeTile.classList.add("open");
+        lifeTile.setAttribute("aria-expanded", "true");
+        lifeModal.focus();
+    }
+    if (lifeTile && lifeModal) {
+        lifeTile.addEventListener("click", (e) => {
+            e.preventDefault();
+            lifeTile.classList.contains("open") ? closeLife() : openLife();
+        });
+        lifeTile.addEventListener("keydown", (e) => {
+            if (e.key === "Enter" || e.key === " ") {
+                e.preventDefault();
+                lifeTile.classList.contains("open") ? closeLife() : openLife();
+            } else if (e.key === "Escape") {
+                closeLife();
+            }
+        });
+        document.addEventListener("click", (e) => {
+            if (!lifeTile || !lifeModal) return;
+            if (!(e.target instanceof Element)) return;
+            if (!lifeTile.contains(e.target) && !lifeModal.contains(e.target)) closeLife();
+        });
+        window.addEventListener("scroll", closeLife, { passive: true });
+        lifeClose?.addEventListener("click", closeLife);
+    }
+});
+</script>
