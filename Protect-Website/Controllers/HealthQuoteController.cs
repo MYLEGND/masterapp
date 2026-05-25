@@ -1430,13 +1430,27 @@ Review summary only. Final plan availability, pricing, provider networks, and el
                 return url;
             }
 
+            var trimmedUrl = url.Trim();
+
+            // Do not append internal tracking/context parameters to external booking providers.
+            // Microsoft Bookings/Outlook iframe URLs can fail or refuse to render when unknown query params are added.
+            if (Uri.TryCreate(trimmedUrl, UriKind.Absolute, out var parsedUri))
+            {
+                var host = parsedUri.Host.ToLowerInvariant();
+                if (host.EndsWith("outlook.office.com", StringComparison.OrdinalIgnoreCase) ||
+                    host.EndsWith("book.ms", StringComparison.OrdinalIgnoreCase))
+                {
+                    return trimmedUrl;
+                }
+            }
+
             try
             {
-                return QueryHelpers.AddQueryString(url.Trim(), "booking_ctx", contextToken.Trim());
+                return QueryHelpers.AddQueryString(trimmedUrl, "booking_ctx", contextToken.Trim());
             }
             catch
             {
-                return url;
+                return trimmedUrl;
             }
         }
 

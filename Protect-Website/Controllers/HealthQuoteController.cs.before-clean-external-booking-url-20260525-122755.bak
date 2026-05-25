@@ -20,16 +20,16 @@ using ProtectWebsite.Services.Booking;
 namespace Protect_Website.Controllers
 {
     [Route("Quote")]
-    public class DisabilityQuoteController : Controller
+    public class HealthQuoteController : Controller
     {
         private const string WebsitePageVariant = "website";
         private const string LandingPageVariant = "landing";
         private const string ContactFirstEducationVariant = "contact_first_education_v1";
-        private const string QuotePageKey = "quote_disability";
-        private const string QuoteOfferKey = "disability";
-        private const string QuoteProductType = "disability";
-        private const string QuoteInterestType = "disability_insurance";
-        private const string QuoteDisplayName = "Disability Insurance Review";
+        private const string QuotePageKey = "quote_health";
+        private const string QuoteOfferKey = "health";
+        private const string QuoteProductType = "health";
+        private const string QuoteInterestType = "health_insurance";
+        private const string QuoteDisplayName = "Health Insurance Review";
 
         private readonly string tenantId;
         private readonly string clientId;
@@ -45,10 +45,10 @@ namespace Protect_Website.Controllers
         private readonly IPublicBookingResolver _publicBookingResolver;
         private readonly IPublicBookingConfirmationService _publicBookingConfirmationService;
         private readonly IPublicBookingContextProtector _publicBookingContextProtector;
-        private readonly ILogger<DisabilityQuoteController> _logger;
+        private readonly ILogger<HealthQuoteController> _logger;
 
-        public DisabilityQuoteController(IConfiguration configuration, AgentTrackingResolver resolver,
-            MasterAppDbContext db, IMetaConversionsApiService metaConversionsApi, IMetaPixelResolutionService metaPixelResolution, IWebsiteLifeLeadCaptureService websiteLeadCapture, IPublicBookingResolver publicBookingResolver, IPublicBookingConfirmationService publicBookingConfirmationService, IPublicBookingContextProtector publicBookingContextProtector, ILogger<DisabilityQuoteController> logger)
+        public HealthQuoteController(IConfiguration configuration, AgentTrackingResolver resolver,
+            MasterAppDbContext db, IMetaConversionsApiService metaConversionsApi, IMetaPixelResolutionService metaPixelResolution, IWebsiteLifeLeadCaptureService websiteLeadCapture, IPublicBookingResolver publicBookingResolver, IPublicBookingConfirmationService publicBookingConfirmationService, IPublicBookingContextProtector publicBookingContextProtector, ILogger<HealthQuoteController> logger)
         {
             tenantId = configuration["AzureAd:TenantId"]!;
             clientId = configuration["AzureAd:ClientId"]!;
@@ -67,17 +67,17 @@ namespace Protect_Website.Controllers
             _logger = logger;
         }
 
-        // GET: /Quote/Disability
-        [HttpGet("Disability")]
-        public IActionResult DisabilityQuote() => RenderDisabilityQuote(isLandingPage: false);
+        // GET: /Quote/Health
+        [HttpGet("Health")]
+        public IActionResult HealthQuote() => RenderHealthQuote(isLandingPage: false);
 
-        // GET: /Quote/Disability/landing
-        [HttpGet("Disability/landing")]
-        public IActionResult DisabilityLandingQuote() => RenderDisabilityQuote(isLandingPage: true);
+        // GET: /Quote/Health/landing
+        [HttpGet("Health/landing")]
+        public IActionResult HealthLandingQuote() => RenderHealthQuote(isLandingPage: true);
 
-        // POST: /Quote/Disability
-        [HttpPost("Disability")]
-        public async Task<IActionResult> SubmitDisabilityQuote(DisabilityQuoteFormModel model)
+        // POST: /Quote/Health
+        [HttpPost("Health")]
+        public async Task<IActionResult> SubmitHealthQuote(HealthQuoteFormModel model)
         {
             var correlationId = Guid.NewGuid();
             NormalizeContactFields(model);
@@ -92,7 +92,7 @@ namespace Protect_Website.Controllers
                 {
                     var fieldErrors = CollectModelStateErrors();
                     _logger.LogWarning(
-                        "DisabilityQuote [{CorrelationId}]: invalid ajax submission errors={ValidationErrors}",
+                        "HealthQuote [{CorrelationId}]: invalid ajax submission errors={ValidationErrors}",
                         correlationId,
                         JsonSerializer.Serialize(fieldErrors));
                     return BadRequest(new
@@ -103,17 +103,17 @@ namespace Protect_Website.Controllers
                     });
                 }
 
-                return RenderDisabilityQuote(isLandingMode, model);
+                return RenderHealthQuote(isLandingMode, model);
             }
 
             _logger.LogInformation(
-                "DisabilityQuote [{CorrelationId}]: request received Email={Email}",
+                "HealthQuote [{CorrelationId}]: request received Email={Email}",
                 correlationId, model.Email);
 
             var (leadRecipientEmail, agentProfileId, agentSlug, isFounderPath) = await ResolveLeadContextAsync();
             var isAgentContext = IsAgentContext();
             _logger.LogInformation(
-                "DisabilityQuote [{CorrelationId}]: attribution resolved AgentSlug={Slug} ProfileId={ProfileId} Recipient={Recipient}",
+                "HealthQuote [{CorrelationId}]: attribution resolved AgentSlug={Slug} ProfileId={ProfileId} Recipient={Recipient}",
                 correlationId, agentSlug, agentProfileId, leadRecipientEmail);
             var resolvedMetaPixel = await _metaPixelResolution.ResolveForLeadAsync(
                 agentProfileId,
@@ -165,11 +165,10 @@ namespace Protect_Website.Controllers
                         Age            = model.Age,
                         AgeRange       = model.AgeRange,
                         State          = model.State,
-                        EmploymentType = model.EmploymentType,
-                        IncomeRange    = model.IncomeRange,
+                        HouseholdSize  = model.HouseholdSize,
                         CurrentCoverage = model.CurrentCoverage,
-                        IncomePriority = model.IncomeProtectionImportance,
-                        Occupation     = model.Occupation,
+                        CoverageType   = model.CoverageType,
+                        PrimaryConcern = model.PrimaryConcern,
                         ContactMethod  = model.ContactMethod,
                         BestTimeToContact = model.BestTimeToContact,
                         UtmId          = model.UtmId,
@@ -187,17 +186,17 @@ namespace Protect_Website.Controllers
                 _db.WebsiteLeads.Add(lead);
                 await _db.SaveChangesAsync();
                 _logger.LogInformation(
-                    "DisabilityQuote [{CorrelationId}]: WebsiteLead {LeadId} saved",
+                    "HealthQuote [{CorrelationId}]: WebsiteLead {LeadId} saved",
                     correlationId, lead.LeadId);
             }
             catch (Exception persistEx)
             {
                 _logger.LogError(persistEx,
-                    "DisabilityQuote [{CorrelationId}]: lead persistence failed for {Email}",
+                    "HealthQuote [{CorrelationId}]: lead persistence failed for {Email}",
                     correlationId, model.Email);
                 return IsAjax()
                     ? StatusCode(500, new { error = "Failed to save lead", detail = persistEx.Message, correlationId = correlationId.ToString("D") })
-                    : RenderDisabilityQuote(isLandingMode, model);
+                    : RenderHealthQuote(isLandingMode, model);
             }
 
             async Task TryWriteLeadEventAsync(string eventType, object metadata, DateTime? eventUtc = null)
@@ -226,7 +225,7 @@ namespace Protect_Website.Controllers
 
                     _logger.LogWarning(
                         analyticsEx,
-                        "DisabilityQuote [{CorrelationId}]: analytics event write failed for {EventType} lead {LeadId}",
+                        "HealthQuote [{CorrelationId}]: analytics event write failed for {EventType} lead {LeadId}",
                         correlationId,
                         eventType,
                         lead.LeadId);
@@ -286,7 +285,7 @@ namespace Protect_Website.Controllers
                 {
                     await _db.SaveChangesAsync(HttpContext?.RequestAborted ?? CancellationToken.None);
                     _logger.LogInformation(
-                        "DisabilityQuote [{CorrelationId}]: workstation lead {WorkstationLeadId} {CaptureMode} bucket={Bucket} owner={AgentUserId}",
+                        "HealthQuote [{CorrelationId}]: workstation lead {WorkstationLeadId} {CaptureMode} bucket={Bucket} owner={AgentUserId}",
                         correlationId,
                         captureResult.WorkstationLeadId,
                         captureResult.Created ? "created" : "updated",
@@ -326,7 +325,7 @@ namespace Protect_Website.Controllers
                         });
 
                     _logger.LogWarning(
-                        "DisabilityQuote [{CorrelationId}]: workstation lead capture skipped for WebsiteLead {LeadId}. reason={Reason}",
+                        "HealthQuote [{CorrelationId}]: workstation lead capture skipped for WebsiteLead {LeadId}. reason={Reason}",
                         correlationId,
                         lead.LeadId,
                         captureResult.Reason ?? "unknown");
@@ -360,7 +359,7 @@ namespace Protect_Website.Controllers
 
                 _logger.LogError(
                     captureEx,
-                    "DisabilityQuote [{CorrelationId}]: workstation capture failed for lead {LeadId}",
+                    "HealthQuote [{CorrelationId}]: workstation capture failed for lead {LeadId}",
                     correlationId,
                     lead.LeadId);
 
@@ -417,7 +416,7 @@ namespace Protect_Website.Controllers
                     LeadId = lead.LeadId,
                     CorrelationId = correlationId,
                     EventId = metaLeadEventId,
-                    QuoteType = "Disability",
+                    QuoteType = "Health",
                     PageKey = effectivePageKey,
                     OfferKey = QuoteOfferKey,
                     EventSourceUrl = MetaLeadTrackingWorkflow.ResolveEventSourceUrl(model.LandingPageUrl, Request),
@@ -482,7 +481,7 @@ namespace Protect_Website.Controllers
 
                 var message = new Message
                 {
-                    Subject = $"[DISABILITY QUOTE - {QuoteDisplayName.ToUpperInvariant()}] New Lead | {model.FirstName}",
+                    Subject = $"[HEALTH QUOTE - {QuoteDisplayName.ToUpperInvariant()}] New Lead | {model.FirstName}",
                     Body = new ItemBody { ContentType = BodyType.Html, Content = emailBody },
                     ToRecipients = new List<Recipient>()
                 };
@@ -508,20 +507,20 @@ namespace Protect_Website.Controllers
                     await graphClient.Users[senderEmail].SendMail.PostAsync(
                         new SendMailPostRequestBody { Message = message, SaveToSentItems = true });
                     _logger.LogInformation(
-                        "DisabilityQuote [{CorrelationId}]: email sent to {Recipient} for lead {LeadId}",
+                        "HealthQuote [{CorrelationId}]: email sent to {Recipient} for lead {LeadId}",
                         correlationId, primary, lead.LeadId);
                 }
                 else
                 {
                     _logger.LogWarning(
-                        "DisabilityQuote [{CorrelationId}]: no recipient resolved for lead {LeadId} - email skipped",
+                        "HealthQuote [{CorrelationId}]: no recipient resolved for lead {LeadId} - email skipped",
                         correlationId, lead.LeadId);
                 }
             }
             catch (Exception emailEx)
             {
                 _logger.LogError(emailEx,
-                    "DisabilityQuote [{CorrelationId}]: email send failed for lead {LeadId} — lead is saved, continuing",
+                    "HealthQuote [{CorrelationId}]: email send failed for lead {LeadId} — lead is saved, continuing",
                     correlationId, lead.LeadId);
             }
 
@@ -534,7 +533,7 @@ namespace Protect_Website.Controllers
 
                     var userMessage = new Message
                     {
-                        Subject = $"Your disability coverage review is ready - {websiteName}",
+                        Subject = $"Your health coverage review is ready - {websiteName}",
                         Body = new ItemBody
                         {
                             ContentType = BodyType.Html,
@@ -553,13 +552,13 @@ namespace Protect_Website.Controllers
                         new SendMailPostRequestBody { Message = userMessage, SaveToSentItems = false });
 
                     _logger.LogInformation(
-                        "DisabilityQuote [{CorrelationId}]: user summary email sent to {Email} for lead {LeadId}",
+                        "HealthQuote [{CorrelationId}]: user summary email sent to {Email} for lead {LeadId}",
                         correlationId, model.Email.Trim(), lead.LeadId);
                 }
                 catch (Exception userEmailEx)
                 {
                     _logger.LogError(userEmailEx,
-                        "DisabilityQuote [{CorrelationId}]: user summary email failed for lead {LeadId} — lead is saved, continuing",
+                        "HealthQuote [{CorrelationId}]: user summary email failed for lead {LeadId} — lead is saved, continuing",
                         correlationId, lead.LeadId);
                 }
             }
@@ -602,13 +601,13 @@ namespace Protect_Website.Controllers
                 });
             }
 
-            TempData["QuoteType"] = "Disability";
+            TempData["QuoteType"] = "Health";
             TempData["MetaLeadEventId"] = metaLeadEventId;
             TempData["MetaLeadLeadId"] = lead.LeadId.ToString("D");
             return RedirectToAction("Index", "ThankYou");
         }
 
-        [HttpPost("Disability/booking-experience")]
+        [HttpPost("Health/booking-experience")]
         public async Task<IActionResult> ActivatePublicBookingExperience([FromBody] PublicBookingExperienceRequest? request)
         {
             if (request == null || string.IsNullOrWhiteSpace(request.ContextToken))
@@ -652,7 +651,7 @@ namespace Protect_Website.Controllers
                 {
                     _logger.LogWarning(
                         ex,
-                        "DisabilityQuote public booking activation failed for WebsiteLead {LeadId}. Returning booking UI without appointment linkage.",
+                        "HealthQuote public booking activation failed for WebsiteLead {LeadId}. Returning booking UI without appointment linkage.",
                         bookingContext.WebsiteLeadId);
                 }
             }
@@ -680,7 +679,7 @@ namespace Protect_Website.Controllers
             });
         }
 
-        [HttpPost("Disability/booking-confirmation")]
+        [HttpPost("Health/booking-confirmation")]
         public async Task<IActionResult> ConfirmPublicBookingExperience([FromBody] PublicBookingExperienceRequest? request)
         {
             if (request == null || string.IsNullOrWhiteSpace(request.ContextToken))
@@ -739,7 +738,7 @@ namespace Protect_Website.Controllers
             return "Please complete the highlighted fields and try again.";
         }
 
-        private static string BuildLeadNotificationEmailBody(DisabilityQuoteFormModel model)
+        private static string BuildLeadNotificationEmailBody(HealthQuoteFormModel model)
         {
             static string H(string? value) => WebUtility.HtmlEncode(value ?? string.Empty);
 
@@ -751,34 +750,32 @@ namespace Protect_Website.Controllers
                 ? model.AgeRange.Trim()
                 : model.Age?.ToString(CultureInfo.InvariantCulture) ?? "Not provided";
 
-            var employmentLabel = string.IsNullOrWhiteSpace(model.EmploymentType) ? "Not provided" : model.EmploymentType.Trim();
-            var incomeRangeLabel = string.IsNullOrWhiteSpace(model.IncomeRange) ? "Not provided" : model.IncomeRange.Trim();
+            var householdLabel = string.IsNullOrWhiteSpace(model.HouseholdSize) ? "Not provided" : model.HouseholdSize.Trim();
             var currentCoverageLabel = string.IsNullOrWhiteSpace(model.CurrentCoverage) ? "Not provided" : model.CurrentCoverage.Trim();
-            var priorityLabel = string.IsNullOrWhiteSpace(model.IncomeProtectionImportance) ? "Not provided" : model.IncomeProtectionImportance.Trim();
+            var coverageTypeLabel = string.IsNullOrWhiteSpace(model.CoverageType) ? "Not provided" : model.CoverageType.Trim();
+            var primaryConcernLabel = string.IsNullOrWhiteSpace(model.PrimaryConcern) ? "Not provided" : model.PrimaryConcern.Trim();
             var contactMethodLabel = string.IsNullOrWhiteSpace(model.ContactMethod) ? "Not provided" : model.ContactMethod.Trim();
             var bestTimeLabel = string.IsNullOrWhiteSpace(model.BestTimeToContact) ? "Not provided" : model.BestTimeToContact.Trim();
             var stateLine = string.IsNullOrWhiteSpace(model.State)
                 ? string.Empty
                 : $@"<strong style=""color:#f3d688;"">State:</strong> {H(model.State.Trim())}<br/>";
-            var occupationLine = string.IsNullOrWhiteSpace(model.Occupation)
-                ? string.Empty
-                : $@"<strong style=""color:#f3d688;"">Occupation:</strong> {H(model.Occupation.Trim())}<br/>";
 
-            var surfacedCopy = priorityLabel switch
+            var surfacedCopy = currentCoverageLabel switch
             {
-                "Critical" => "This prospect may have immediate income pressure if a sickness or injury interrupts work, which makes paycheck protection highly time-sensitive.",
-                "Important" => "This prospect appears to understand the income gap risk and may already be motivated to confirm how much coverage would actually hold up.",
-                "Somewhat Important" => "This prospect may not feel fully exposed yet, but the answers still point toward a disability coverage gap worth reviewing.",
-                _ => "This prospect's answers point toward an income protection conversation that still needs clarity around work risk, current benefits, and replacement fit."
+                "No current coverage" => "This prospect may be trying to close a health coverage gap before medical costs or unexpected care needs hit the household.",
+                "Employer plan" => "This prospect may already have an employer option, but still needs help reviewing affordability, provider fit, and uncovered gaps.",
+                "Marketplace / ACA plan" => "This prospect may need a closer marketplace review around subsidy fit, plan design, and whether a stronger option is available.",
+                "Spouse / family plan" => "This prospect may be reviewing whether the current family arrangement still fits dependents, network access, and cost exposure.",
+                _ => "This prospect's answers point toward a health coverage decision that still needs guidance around cost, access, and plan fit."
             };
 
-            var timingCopy = currentCoverageLabel switch
+            var timingCopy = primaryConcernLabel switch
             {
-                "Employer coverage only" => "Employer disability benefits often leave a meaningful income gap, so waiting can delay a review of how much protection is truly missing.",
-                "Individual disability coverage" => "Existing individual coverage still deserves a fit check because benefit levels, waiting periods, and monthly obligations may have changed.",
-                "Both employer and individual coverage" => "Layered coverage can still leave coordination gaps, so it is worth confirming what income would actually be protected.",
-                "No current coverage" => "No current disability protection means the income gap stays fully exposed until a review confirms a workable backup plan.",
-                _ => "Income protection decisions usually feel more urgent after health, work, or monthly obligations shift."
+                "Lower Monthly Premium" => "Monthly affordability is already front of mind, so waiting can keep the household exposed to the same premium and deductible pressure without more clarity.",
+                "Lower Deductible" => "Out-of-pocket exposure matters here, and a delayed review can leave the household carrying the same deductible risk longer than necessary.",
+                "Better Doctor Network" => "Doctor and specialist access usually becomes more important once care is needed, so network fit is worth confirming before that pressure increases.",
+                "Prescription Coverage" => "Prescription costs rarely get easier by waiting, so medication access and pharmacy fit are worth reviewing now.",
+                _ => "Health coverage decisions usually become more urgent once medical needs, provider access, or monthly affordability pressure increase."
             };
 
             return $@"
@@ -790,9 +787,9 @@ namespace Protect_Website.Controllers
 
 <div style=""padding:18px;background:#061832;border-bottom:1px solid rgba(243,214,136,.24);"">
 <div style=""color:#f3d688;font-size:12px;font-weight:900;letter-spacing:.12em;text-transform:uppercase;margin-bottom:8px;"">New lead ready for review</div>
-                <div style=""color:#fff8e7;font-size:24px;line-height:1.12;font-weight:900;"">{H(fullName)} submitted a disability insurance review.</div>
+                <div style=""color:#fff8e7;font-size:24px;line-height:1.12;font-weight:900;"">{H(fullName)} submitted a health coverage review.</div>
                 <div style=""color:rgba(248,250,252,.82);font-size:14px;line-height:1.45;font-weight:650;margin-top:10px;"">
-                The prospect received the review-style follow-up email. Use the answers below to keep the conversation focused on income replacement, current benefit gaps, and how exposed the household would be if work stopped instead of restarting cold.
+                The prospect received the review-style follow-up email. Use the answers below to keep the conversation focused on affordability, provider access, and the plan fit this household needs most instead of restarting cold.
                 </div>
 </div>
 
@@ -805,7 +802,7 @@ namespace Protect_Website.Controllers
 <strong style=""color:#f3d688;"">Phone:</strong> {H(model.Phone)}<br/>
 <strong style=""color:#f3d688;"">Email:</strong> {H(model.Email)}<br/>
 {stateLine}
-{occupationLine}
+<strong style=""color:#f3d688;"">Product:</strong> Health Insurance Review<br/>
 <strong style=""color:#f3d688;"">Preferred contact:</strong> {H(contactMethodLabel)}
 </div>
 </div>
@@ -843,8 +840,8 @@ namespace Protect_Website.Controllers
 </td>
 <td style=""display:block;width:100%;padding:0 0 8px 0;vertical-align:top;"">
 <div style=""background:#061a36;border:1px solid rgba(243,214,136,.18);border-radius:15px;padding:13px;text-align:center;"">
-<div style=""color:rgba(248,250,252,.55);font-size:10px;font-weight:900;letter-spacing:.12em;text-transform:uppercase;margin-bottom:7px;"">Income target</div>
-<div style=""color:#fff8e7;font-size:21px;font-weight:900;"">{H(incomeRangeLabel)}</div>
+<div style=""color:rgba(248,250,252,.55);font-size:10px;font-weight:900;letter-spacing:.12em;text-transform:uppercase;margin-bottom:7px;"">Household</div>
+<div style=""color:#fff8e7;font-size:21px;font-weight:900;"">{H(householdLabel)}</div>
 </div>
 </td>
 </tr>
@@ -853,9 +850,9 @@ namespace Protect_Website.Controllers
 <div style=""background:#061a36;border:1px solid rgba(243,214,136,.18);border-radius:16px;padding:15px;margin-bottom:12px;"">
 <div style=""color:#f3d688;font-size:11px;font-weight:900;letter-spacing:.08em;text-transform:uppercase;margin-bottom:8px;"">Review answers</div>
 <div style=""color:#f8fafc;font-size:14px;line-height:1.55;font-weight:700;"">
-<strong style=""color:#f3d688;"">Employment type:</strong> {H(employmentLabel)}<br/>
 <strong style=""color:#f3d688;"">Current coverage:</strong> {H(currentCoverageLabel)}<br/>
-<strong style=""color:#f3d688;"">Income protection priority:</strong> {H(priorityLabel)}<br/>
+<strong style=""color:#f3d688;"">Coverage goal:</strong> {H(coverageTypeLabel)}<br/>
+<strong style=""color:#f3d688;"">Primary concern:</strong> {H(primaryConcernLabel)}<br/>
 <strong style=""color:#f3d688;"">Best time to reach:</strong> {H(bestTimeLabel)}<br/>
 <strong style=""color:#f3d688;"">Disclaimer acknowledged:</strong> {(model.AcknowledgedDisclaimer ? "Yes" : "No")}
 </div>
@@ -865,7 +862,7 @@ namespace Protect_Website.Controllers
 <div style=""color:#f3d688;font-size:11px;font-weight:900;letter-spacing:.10em;text-transform:uppercase;margin-bottom:8px;"">Agent next step</div>
 <div style=""color:#fff8e7;font-size:22px;line-height:1.13;font-weight:900;margin-bottom:9px;"">Follow up from the review they already started.</div>
 <div style=""color:rgba(248,250,252,.84);font-size:14px;line-height:1.45;font-weight:650;"">
-Start by confirming current benefit gaps, income replacement pressure, elimination period expectations, and whether workplace coverage leaves the prospect exposed.
+Start by confirming household fit, provider access, deductible comfort, and whether the current coverage path still makes sense before discussing plan options.
 </div>
 </div>
 
@@ -880,7 +877,7 @@ Start by confirming current benefit gaps, income replacement pressure, eliminati
         </html>";
         }
 
-        private static string BuildUserSummaryEmailBody(DisabilityQuoteFormModel model, string? attachedAgentFirstName, string? attachedAgentBookingUrl)
+        private static string BuildUserSummaryEmailBody(HealthQuoteFormModel model, string? attachedAgentFirstName, string? attachedAgentBookingUrl)
         {
             static string H(string? value) => WebUtility.HtmlEncode(value ?? string.Empty);
 
@@ -888,26 +885,27 @@ Start by confirming current benefit gaps, income replacement pressure, eliminati
                 ? model.AgeRange.Trim()
                 : model.Age?.ToString(CultureInfo.InvariantCulture) ?? "Not provided";
 
-            var employmentLabel = string.IsNullOrWhiteSpace(model.EmploymentType) ? "Not provided" : model.EmploymentType.Trim();
-            var incomeRangeLabel = string.IsNullOrWhiteSpace(model.IncomeRange) ? "Not provided" : model.IncomeRange.Trim();
+            var householdLabel = string.IsNullOrWhiteSpace(model.HouseholdSize) ? "Not provided" : model.HouseholdSize.Trim();
             var currentCoverageLabel = string.IsNullOrWhiteSpace(model.CurrentCoverage) ? "Not provided" : model.CurrentCoverage.Trim();
-            var priorityLabel = string.IsNullOrWhiteSpace(model.IncomeProtectionImportance) ? "Not provided" : model.IncomeProtectionImportance.Trim();
+            var coverageTypeLabel = string.IsNullOrWhiteSpace(model.CoverageType) ? "Not provided" : model.CoverageType.Trim();
+            var primaryConcernLabel = string.IsNullOrWhiteSpace(model.PrimaryConcern) ? "Not provided" : model.PrimaryConcern.Trim();
 
-            var surfacedCopy = priorityLabel switch
+            var surfacedCopy = currentCoverageLabel switch
             {
-                "Critical" => "Your answers suggest lost income would create immediate pressure if sickness or injury kept you from working.",
-                "Important" => "You appear to understand the paycheck risk and may already be trying to confirm how much protection would actually hold up.",
-                "Somewhat Important" => "You may not feel fully exposed yet, but there is still enough risk here to make a real income protection review worthwhile.",
-                _ => "Your answers point toward an income protection decision that still needs a clearer look at how much of your paycheck is actually protected."
+                "No current coverage" => "You may be trying to close a coverage gap before medical needs or unexpected costs put pressure on the household.",
+                "Employer plan" => "You may already have an employer option, but still need help checking affordability, doctor access, and uncovered gaps.",
+                "Marketplace / ACA plan" => "You may need a closer marketplace review around subsidy fit, deductibles, and whether a stronger option is available.",
+                "Spouse / family plan" => "You may be reviewing whether the current family setup still fits dependents, providers, and out-of-pocket exposure.",
+                _ => "Your answers point toward a health coverage decision that still needs a clearer side-by-side review."
             };
 
-            var timingCopy = currentCoverageLabel switch
+            var timingCopy = primaryConcernLabel switch
             {
-                "Employer coverage only" => "Employer disability benefits often leave a real income gap, so it helps to confirm what would actually be protected before a claim is ever needed.",
-                "Individual disability coverage" => "Existing personal coverage still deserves a fit check because benefit levels, waiting periods, and monthly obligations can change over time.",
-                "Both employer and individual coverage" => "Layered coverage can still leave coordination gaps, so it is worth confirming how the pieces would actually work together.",
-                "No current coverage" => "Without current disability protection, the income gap stays fully exposed until a review confirms a workable backup plan.",
-                _ => "Income protection usually feels more urgent once health, work, or monthly obligations shift."
+                "Lower Monthly Premium" => "Monthly affordability matters now, so reviewing sooner can help you avoid carrying the same premium pressure without better clarity.",
+                "Lower Deductible" => "If out-of-pocket exposure matters most, it helps to confirm the deductible tradeoff before a care need makes that decision feel urgent.",
+                "Better Doctor Network" => "Provider access becomes more important once appointments and care are already in motion, so network fit is worth confirming now.",
+                "Prescription Coverage" => "Prescription costs rarely get easier by waiting, so it helps to review medication access and pharmacy fit before needs increase.",
+                _ => "Health coverage decisions usually feel more urgent once care needs, provider access, or monthly cost pressure start to build."
             };
 
             var nextStepName = !string.IsNullOrWhiteSpace(attachedAgentFirstName)
@@ -919,7 +917,7 @@ Start by confirming current benefit gaps, income replacement pressure, eliminati
                 : string.Empty;
 
             var bookingButtonHtml = !string.IsNullOrWhiteSpace(bookingUrl)
-                ? $@"<a href=""{WebUtility.HtmlEncode(bookingUrl)}"" style=""display:block;text-align:center;background:#f3d688;color:#111827;text-decoration:none;font-size:16px;font-weight:900;padding:14px 16px;border-radius:14px;border:1px solid #f7dc96;"">Complete My Disability Review</a>"
+                ? $@"<a href=""{WebUtility.HtmlEncode(bookingUrl)}"" style=""display:block;text-align:center;background:#f3d688;color:#111827;text-decoration:none;font-size:16px;font-weight:900;padding:14px 16px;border-radius:14px;border:1px solid #f7dc96;"">Complete My Health Review</a>"
                 : @"<div style=""text-align:center;background:#071932;color:#fff8e7;font-size:15px;font-weight:800;padding:14px 16px;border-radius:14px;border:1px solid rgba(243,214,136,.35);"">Your review is saved. Your licensed agent can help confirm the next step.</div>";
 
             return $@"
@@ -935,16 +933,16 @@ Review Ready
 </div>
 
 <div style=""color:#fff8e7;font-size:24px;line-height:1.14;font-weight:900;max-width:560px;"">
-Your disability coverage review is ready.
+Your health coverage review is ready.
 </div>
 
 <div style=""margin-top:16px;color:rgba(248,250,252,.84);font-size:14px;line-height:1.45;font-weight:650;max-width:580px;"">
-Your answers have been saved so the next conversation can start with your income risk, current coverage, and paycheck protection gaps instead of starting from zero.
+Your answers have been saved so the next conversation can start with your household needs, your current coverage, and the tradeoffs that matter most instead of starting from scratch.
 </div>
 
 <div style=""margin-top:18px;padding-top:16px;border-top:1px solid rgba(255,255,255,.10);"">
 <span style=""display:inline-block;padding:9px 12px;border-radius:999px;border:1px solid rgba(243,214,136,.35);background:#071932;color:#fff7de;font-size:12px;font-weight:900;margin:0 6px 8px 0;"">Review saved</span>
-<span style=""display:inline-block;padding:9px 12px;border-radius:999px;border:1px solid rgba(243,214,136,.35);background:#071932;color:#fff7de;font-size:12px;font-weight:900;margin:0 6px 8px 0;"">Income protection</span>
+<span style=""display:inline-block;padding:9px 12px;border-radius:999px;border:1px solid rgba(243,214,136,.35);background:#071932;color:#fff7de;font-size:12px;font-weight:900;margin:0 6px 8px 0;"">Licensed guidance</span>
 <span style=""display:inline-block;padding:9px 12px;border-radius:999px;border:1px solid rgba(243,214,136,.35);background:#071932;color:#fff7de;font-size:12px;font-weight:900;margin:0 6px 8px 0;"">No obligation</span>
 </div>
 </div>
@@ -993,10 +991,10 @@ Age Range
 <td style=""display:block;width:100%;padding:0 0 10px 0;vertical-align:top;"">
 <div style=""background:#061a36;border:1px solid rgba(243,214,136,.18);border-radius:16px;padding:15px;text-align:center;"">
 <div style=""color:rgba(248,250,252,.55);font-size:11px;font-weight:900;letter-spacing:.12em;text-transform:uppercase;margin-bottom:8px;"">
-Income Focus
+Household
 </div>
 <div style=""color:#fff8e7;font-size:23px;font-weight:900;"">
-{H(incomeRangeLabel)}
+{H(householdLabel)}
 </div>
 </div>
 </td>
@@ -1005,11 +1003,11 @@ Income Focus
 
 <div style=""background:#08254d;border:1px solid rgba(243,214,136,.20);border-radius:18px;padding:18px;margin-bottom:18px;"">
 <div style=""color:#fff8e7;font-size:14px;line-height:1.42;font-weight:700;"">
-This review is meant to narrow the disability coverage options worth discussing first, based on how much income needs protecting and whether current benefits would actually be enough.
+This review is meant to narrow the plans worth discussing first, based on your doctors, prescriptions, household setup, and budget pressure.
 </div>
 
 <div style=""margin-top:10px;color:rgba(248,250,252,.84);font-size:15px;line-height:1.55;font-weight:600;"">
-The next step is confirming the real gap, how quickly income pressure would build, and what type of disability coverage solution best fits your situation.
+The next step is confirming whether the current path still fits, where the biggest tradeoffs are, and what coverage options deserve a closer look.
 </div>
 </div>
 
@@ -1018,10 +1016,10 @@ The next step is confirming the real gap, how quickly income pressure would buil
 <td style=""display:block;width:100%;padding:0 0 10px 0;vertical-align:top;"">
 <div style=""background:#061a36;border:1px solid rgba(243,214,136,.18);border-radius:16px;padding:15px;text-align:center;"">
 <div style=""color:rgba(248,250,252,.55);font-size:11px;font-weight:900;letter-spacing:.12em;text-transform:uppercase;margin-bottom:8px;"">
-Work Type
+Current Coverage
 </div>
 <div style=""color:#fff8e7;font-size:15px;font-weight:900;line-height:1.25;"">
-{H(employmentLabel)}
+{H(currentCoverageLabel)}
 </div>
 </div>
 </td>
@@ -1029,10 +1027,10 @@ Work Type
 <td style=""display:block;width:100%;padding:0 0 10px 0;vertical-align:top;"">
 <div style=""background:#061a36;border:1px solid rgba(243,214,136,.18);border-radius:16px;padding:15px;text-align:center;"">
 <div style=""color:rgba(248,250,252,.55);font-size:11px;font-weight:900;letter-spacing:.12em;text-transform:uppercase;margin-bottom:8px;"">
-Current Protection
+Review Focus
 </div>
 <div style=""color:#fff8e7;font-size:15px;font-weight:900;line-height:1.25;"">
-{H(currentCoverageLabel)}<br/>{H(priorityLabel)}
+{H(coverageTypeLabel)}<br/>{H(primaryConcernLabel)}
 </div>
 </div>
 </td>
@@ -1049,14 +1047,14 @@ Choose a time to confirm the best fit.
 </div>
 
 <div style=""color:rgba(248,250,252,.84);font-size:15px;line-height:1.55;font-weight:650;margin-bottom:18px;"">
-{H(nextStepName)} can help confirm income replacement needs, waiting periods, benefit gaps, and which disability coverage path makes the most sense next.
+{H(nextStepName)} can help confirm affordability, deductible comfort, provider access, and which health coverage path makes the most sense next.
 </div>
 
 {bookingButtonHtml}
 </div>
 
 <div style=""margin-top:18px;color:rgba(248,250,252,.55);font-size:12px;line-height:1.5;text-align:center;"">
-Review summary only. Final eligibility, pricing, benefit structure, and carrier availability vary by occupation, health, state, and underwriting rules.
+Review summary only. Final plan availability, pricing, provider networks, and eligibility vary by location, carrier, and underwriting rules.
 </div>
 
 </div>
@@ -1236,7 +1234,7 @@ Review summary only. Final eligibility, pricing, benefit structure, and carrier 
                     hdr.Contains("xmlhttprequest", StringComparison.OrdinalIgnoreCase));
         }
 
-        private static void NormalizeContactFields(DisabilityQuoteFormModel model)
+        private static void NormalizeContactFields(HealthQuoteFormModel model)
         {
             model.FirstName = model.FirstName?.Trim() ?? string.Empty;
             model.LastName = string.IsNullOrWhiteSpace(model.LastName) ? null : model.LastName.Trim();
@@ -1432,39 +1430,25 @@ Review summary only. Final eligibility, pricing, benefit structure, and carrier 
                 return url;
             }
 
-            var trimmedUrl = url.Trim();
-
-            // Do not append internal tracking/context parameters to external booking providers.
-            // Microsoft Bookings/Outlook iframe URLs can fail or refuse to render when unknown query params are added.
-            if (Uri.TryCreate(trimmedUrl, UriKind.Absolute, out var parsedUri))
-            {
-                var host = parsedUri.Host.ToLowerInvariant();
-                if (host.EndsWith("outlook.office.com", StringComparison.OrdinalIgnoreCase) ||
-                    host.EndsWith("book.ms", StringComparison.OrdinalIgnoreCase))
-                {
-                    return trimmedUrl;
-                }
-            }
-
             try
             {
-                return QueryHelpers.AddQueryString(trimmedUrl, "booking_ctx", contextToken.Trim());
+                return QueryHelpers.AddQueryString(url.Trim(), "booking_ctx", contextToken.Trim());
             }
             catch
             {
-                return trimmedUrl;
+                return url;
             }
         }
 
-        private IActionResult RenderDisabilityQuote(bool isLandingPage, DisabilityQuoteFormModel? model = null)
+        private IActionResult RenderHealthQuote(bool isLandingPage, HealthQuoteFormModel? model = null)
         {
-            var viewModel = model ?? new DisabilityQuoteFormModel();
+            var viewModel = model ?? new HealthQuoteFormModel();
             ApplyPageMode(viewModel, isLandingPage);
             viewModel.PageKey = ResolveEffectivePageKey(viewModel, isLandingPage);
-            return View("~/Views/Quote/Disability.cshtml", viewModel);
+            return View("~/Views/Quote/Health.cshtml", viewModel);
         }
 
-        private static string ResolveEffectivePageKey(DisabilityQuoteFormModel model, bool isLandingPage) =>
+        private static string ResolveEffectivePageKey(HealthQuoteFormModel model, bool isLandingPage) =>
             BuildVariantPageKey(QuotePageKey, isLandingPage, model.PageVariant);
 
         private static string BuildVariantPageKey(string basePageKey, bool isLandingPage, string? pageVariant = null)
@@ -1485,7 +1469,7 @@ Review summary only. Final eligibility, pricing, benefit structure, and carrier 
                 : $"{basePageKey}_landing_{normalizedVariant}";
         }
 
-        private static void ApplyPageMode(DisabilityQuoteFormModel model, bool isLandingPage)
+        private static void ApplyPageMode(HealthQuoteFormModel model, bool isLandingPage)
         {
             model.PageVariant = string.IsNullOrWhiteSpace(model.PageVariant)
                 ? (isLandingPage ? ContactFirstEducationVariant : WebsitePageVariant)
@@ -1496,7 +1480,7 @@ Review summary only. Final eligibility, pricing, benefit structure, and carrier 
                 : model.PageMode.Trim();
         }
 
-        private bool ShouldUseLandingMode(DisabilityQuoteFormModel? model)
+        private bool ShouldUseLandingMode(HealthQuoteFormModel? model)
         {
             if (string.Equals(model?.PageMode, "paid_landing", StringComparison.OrdinalIgnoreCase))
                 return true;
@@ -1516,7 +1500,7 @@ Review summary only. Final eligibility, pricing, benefit structure, and carrier 
 
             var referer = Request?.Headers["Referer"].ToString();
             return !string.IsNullOrWhiteSpace(referer) &&
-                   referer.Contains("/Quote/Disability/landing", StringComparison.OrdinalIgnoreCase);
+                   referer.Contains("/Quote/Health/landing", StringComparison.OrdinalIgnoreCase);
         }
 
         public sealed class PublicBookingExperienceRequest
