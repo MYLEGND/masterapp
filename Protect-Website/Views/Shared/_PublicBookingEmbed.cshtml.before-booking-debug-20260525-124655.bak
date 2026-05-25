@@ -1,15 +1,3 @@
-
-<div style="display:none" id="booking-debug">
-enabled=@(Model?.Enabled)
-hasEmbed=@(Model?.HasEmbed)
-hasFallback=@(Model?.HasFallback)
-embedUrl=@(Model?.EmbedUrl)
-fallbackUrl=@(Model?.FallbackUrl)
-reason=@(Model?.Reason)
-source=@(Model?.ConfigurationSource)
-agentSlug=@(Model?.AgentSlug)
-</div>
-
 @model ProtectWebsite.Services.Booking.PublicBookingResolution
 
 @if (Model?.Enabled == true && Model.HasEmbed)
