@@ -2114,11 +2114,11 @@ body.disability-final-step-active .dq-form-panel {
             '65+': '70'
         });
         var microStepConfigs = [
-            { field: 'AgeRange', errorId: 'err-AgeRange', viewEvent: 'disability_quote_age_view' },
-            { field: 'EmploymentType', errorId: 'err-EmploymentType', viewEvent: 'disability_quote_employment_view' },
-            { field: 'IncomeRange', errorId: 'err-IncomeRange', viewEvent: 'disability_quote_income_view' },
-            { field: 'CurrentCoverage', errorId: 'err-CurrentCoverage', viewEvent: 'disability_quote_coverage_view' },
-            { field: 'IncomeProtectionImportance', errorId: 'err-IncomeProtectionImportance', viewEvent: 'disability_quote_priority_view' }
+            { field: 'AgeRange', errorId: 'err-AgeRange', viewEvent: 'first_question_view' },
+            { field: 'EmploymentType', errorId: 'err-EmploymentType', viewEvent: 'quote_step_view' },
+            { field: 'IncomeRange', errorId: 'err-IncomeRange', viewEvent: 'quote_step_view' },
+            { field: 'CurrentCoverage', errorId: 'err-CurrentCoverage', viewEvent: 'quote_step_view' },
+            { field: 'IncomeProtectionImportance', errorId: 'err-IncomeProtectionImportance', viewEvent: 'quote_step_view' }
         ];
         var completedSteps = {};
         var viewedMicroSteps = {};
@@ -2717,7 +2717,7 @@ body.disability-final-step-active .dq-form-panel {
 
             if (trackView !== false && !contactStepTracked) {
                 contactStepTracked = true;
-                track({ EventType: 'disability_quote_contact_step_view', PageKey: pageKey, FormKey: formKey });
+                track({ EventType: 'contact_step_view', PageKey: pageKey, FormKey: formKey });
                 track({
                     EventType: 'quote_contact_step_view',
                     FormKey: formKey,

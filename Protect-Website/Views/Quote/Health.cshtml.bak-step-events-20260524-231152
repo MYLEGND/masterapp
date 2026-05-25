@@ -2310,11 +2310,11 @@ body.health-final-step-active .dq-form-panel {
             '65+': '70'
         });
         var microStepConfigs = [
-            { field: 'AgeRange', errorId: 'err-AgeRange', viewEvent: 'first_question_view' },
-            { field: 'HouseholdSize', errorId: 'err-HouseholdSize', viewEvent: 'quote_step_view' },
-            { field: 'CurrentCoverage', errorId: 'err-CurrentCoverage', viewEvent: 'quote_step_view' },
-            { field: 'CoverageType', errorId: 'err-CoverageType', viewEvent: 'quote_step_view' },
-            { field: 'PrimaryConcern', errorId: 'err-PrimaryConcern', viewEvent: 'quote_step_view' }
+            { field: 'AgeRange', errorId: 'err-AgeRange', viewEvent: 'health_quote_age_view' },
+            { field: 'HouseholdSize', errorId: 'err-HouseholdSize', viewEvent: 'health_quote_household_view' },
+            { field: 'CurrentCoverage', errorId: 'err-CurrentCoverage', viewEvent: 'health_quote_current_coverage_view' },
+            { field: 'CoverageType', errorId: 'err-CoverageType', viewEvent: 'health_quote_coverage_type_view' },
+            { field: 'PrimaryConcern', errorId: 'err-PrimaryConcern', viewEvent: 'health_quote_priority_view' }
         ];
         var completedSteps = {};
         var viewedMicroSteps = {};
@@ -2915,7 +2915,7 @@ body.health-final-step-active .dq-form-panel {
 
             if (trackView !== false && !contactStepTracked) {
                 contactStepTracked = true;
-                track({ EventType: 'contact_step_view', PageKey: pageKey, FormKey: formKey });
+                track({ EventType: 'health_quote_contact_step_view', PageKey: pageKey, FormKey: formKey });
                 track({
                     EventType: 'quote_contact_step_view',
                     FormKey: formKey,
