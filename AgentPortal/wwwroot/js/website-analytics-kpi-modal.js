@@ -489,7 +489,10 @@
                             <h3 id="visitorConcentrationModalTitle">Visitor Concentration Breakdown</h3>
                             <p>Ranked by recurring visits first, then event volume. Use this to see whether traffic is spread across real visitors or inflated by a few repeat users.</p>
                         </div>
-                        <button type="button" class="vc-modal-close" aria-label="Close visitor concentration modal">&times;</button>
+                        <div class="vc-modal-header-actions">
+                            <button type="button" class="vc-modal-copy" data-default-label="Copy All">Copy All</button>
+                            <button type="button" class="vc-modal-close" aria-label="Close visitor concentration modal">&times;</button>
+                        </div>
                     </div>
                     <div class="vc-modal-body" id="visitorConcentrationModalBody"></div>
                 </div>
@@ -507,6 +510,34 @@
                     document.body.style.overflow = '';
                 }
             });
+
+            modal.querySelector('.vc-modal-copy')?.addEventListener('click', async event => {
+                const button = event.currentTarget;
+                const payload = buildVisitorConcentrationCopyText(
+                    modal.__visitorRows || [],
+                    modal.__rangeLabel || ''
+                );
+
+                if (!payload) {
+                    setVisitorConcentrationCopyButtonState(button, 'Nothing To Copy', 'is-error');
+                    window.setTimeout(() => {
+                        setVisitorConcentrationCopyButtonState(button, button.dataset.defaultLabel || 'Copy All');
+                    }, 1400);
+                    return;
+                }
+
+                setVisitorConcentrationCopyButtonState(button, 'Copying...');
+                const copied = await copyTextWithFallback(payload);
+                setVisitorConcentrationCopyButtonState(
+                    button,
+                    copied ? 'Copied All' : 'Copy Failed',
+                    copied ? 'is-success' : 'is-error'
+                );
+
+                window.setTimeout(() => {
+                    setVisitorConcentrationCopyButtonState(button, button.dataset.defaultLabel || 'Copy All');
+                }, 1400);
+            });
         }
 
         const body = modal.querySelector('#visitorConcentrationModalBody');
@@ -520,6 +551,8 @@
         const totalEvents = rows.reduce((sum, r) => sum + Number(r.events || 0), 0);
         const topVisitorEvents = top[0] ? Number(top[0].events || 0) : 0;
         const topShare = totalEvents > 0 ? ((topVisitorEvents / totalEvents) * 100).toFixed(1) : '0.0';
+        modal.__visitorRows = top;
+        modal.__rangeLabel = (elRange?.textContent || '').trim();
 
         body.innerHTML = `
             <div class="vc-modal-stats">
@@ -549,11 +582,8 @@
                     <tbody>
                         ${top.length ? top.map(v => {
                             const sessions = Number(v.sessions || 0);
-                            const badge = v.likelyInternal
-                                ? '<span class="vc-badge vc-badge-warn">Review</span>'
-                                : sessions >= 2
-                                    ? '<span class="vc-badge vc-badge-recurring">Recurring</span>'
-                                    : '<span class="vc-badge vc-badge-good">Normal</span>';
+                            const flag = getVisitorConcentrationFlag(v, sessions);
+                            const badge = `<span class="vc-badge ${flag.badgeClass}">${flag.label}</span>`;
 
                             return `
                                 <tr class="${sessions >= 2 ? 'is-recurring' : ''} vc-clickable-row" data-visitor-id="${escHtml(v.visitorId || '')}" data-session-id="${escHtml(v.sessionId || '')}" title="Click to open visitor timeline">
@@ -574,6 +604,118 @@
 
         modal.classList.add('is-open');
         document.body.style.overflow = 'hidden';
+    }
+
+    async function copyTextWithFallback(text) {
+        if (!text) return false;
+
+        if (navigator.clipboard?.writeText) {
+            try {
+                await navigator.clipboard.writeText(text);
+                return true;
+            } catch {
+                // Fall back to the textarea copy path below.
+            }
+        }
+
+        try {
+            const temp = document.createElement('textarea');
+            temp.value = text;
+            temp.setAttribute('readonly', 'readonly');
+            temp.style.position = 'absolute';
+            temp.style.left = '-9999px';
+            document.body.appendChild(temp);
+            temp.select();
+            const copied = document.execCommand('copy');
+            document.body.removeChild(temp);
+            return !!copied;
+        } catch {
+            return false;
+        }
+    }
+
+    function normalizeCopiedText(text) {
+        return String(text || '')
+            .replace(/\r\n/g, '\n')
+            .replace(/[ \t]+\n/g, '\n')
+            .replace(/\n{3,}/g, '\n\n')
+            .trim();
+    }
+
+    function setVisitorConcentrationCopyButtonState(button, text, stateClass = '') {
+        if (!button) return;
+        button.textContent = text;
+        button.classList.remove('is-success', 'is-error');
+        if (stateClass) {
+            button.classList.add(stateClass);
+        }
+    }
+
+    function sanitizeCopyValue(value, fallback = '—') {
+        const normalized = String(value ?? '')
+            .replace(/\s+/g, ' ')
+            .trim();
+        return normalized || fallback;
+    }
+
+    function getVisitorConcentrationFlag(visitor, sessionCount = Number(visitor?.sessions || 0)) {
+        if (visitor?.likelyInternal) {
+            return { label: 'Review', badgeClass: 'vc-badge-warn' };
+        }
+
+        if (sessionCount >= 2) {
+            return { label: 'Recurring', badgeClass: 'vc-badge-recurring' };
+        }
+
+        return { label: 'Normal', badgeClass: 'vc-badge-good' };
+    }
+
+    function buildVisitorConcentrationCopyText(rows, rangeLabel) {
+        const normalizedRows = Array.isArray(rows) ? rows : [];
+        const recurringCount = normalizedRows.filter(visitor => Number(visitor.sessions || 0) >= 2).length;
+        const totalEvents = normalizedRows.reduce((sum, visitor) => sum + Number(visitor.events || 0), 0);
+        const topVisitorEvents = normalizedRows[0] ? Number(normalizedRows[0].events || 0) : 0;
+        const topShare = totalEvents > 0 ? ((topVisitorEvents / totalEvents) * 100).toFixed(1) : '0.0';
+        const lines = [
+            'Unique Visitor Trust Check',
+            'Visitor Concentration Breakdown'
+        ];
+
+        if (rangeLabel) {
+            lines.push(`Range: ${sanitizeCopyValue(rangeLabel, 'Selected Period')}`);
+        }
+
+        lines.push('');
+        lines.push('Summary');
+        lines.push(`Total Visitors Shown: ${formatInt(normalizedRows.length)}`);
+        lines.push(`Recurring Visitors ≥ 2 Visits: ${formatInt(recurringCount)}`);
+        lines.push(`Top Visitor Events: ${formatInt(topVisitorEvents)}`);
+        lines.push(`Top Visitor Share: ${topShare}%`);
+        lines.push('');
+        lines.push('Recurring Visitors First');
+        lines.push('Click any visitor row to open the full Visitor Timeline + Trust Score.');
+        lines.push('Visitor ID\tSessions\tEvents\tFirst Seen\tLast Seen\tDevice\tSource\tFlag');
+
+        if (!normalizedRows.length) {
+            lines.push('No visitor rows in this range yet.');
+        } else {
+            normalizedRows.forEach(visitor => {
+                const sessions = Number(visitor.sessions || 0);
+                const flag = getVisitorConcentrationFlag(visitor, sessions);
+                lines.push([
+                    sanitizeCopyValue(visitor.visitorShortId || visitor.visitorId || 'unknown', 'unknown'),
+                    formatInt(sessions),
+                    formatInt(visitor.events || 0),
+                    sanitizeCopyValue(visitor.firstSeenLocal || '—'),
+                    sanitizeCopyValue(visitor.lastSeenLocal || '—'),
+                    sanitizeCopyValue(visitor.device || 'Unknown', 'Unknown'),
+                    sanitizeCopyValue(visitor.source || 'Direct', 'Direct'),
+                    flag.label
+                ].join('\t'));
+            });
+        }
+
+        return normalizeCopiedText(lines.join('\n'));
     }
 
 
