@@ -1292,6 +1292,187 @@ function trackCustomFieldError(formKey, fieldName, errorType, offerKey) {
     }
   }
 
+  function normalizePrimaryCtaPlacement(value) {
+    const normalized = typeof value === 'string' ? value.trim().toLowerCase() : '';
+    return normalized || 'hero';
+  }
+
+  function resolvePrimaryCtaElementKey(target, explicitElementKey) {
+    const directKey = typeof explicitElementKey === 'string' ? explicitElementKey.trim() : '';
+    if (directKey) return directKey;
+
+    if (!(target instanceof HTMLElement)) return 'primary_cta';
+
+    return target.getAttribute('data-cta') ||
+      target.getAttribute('data-element-key') ||
+      target.id ||
+      'primary_cta';
+  }
+
+  function resolvePrimaryCtaLabel(target, explicitLabel) {
+    const directLabel = typeof explicitLabel === 'string' ? explicitLabel.trim() : '';
+    if (directLabel) return directLabel;
+
+    if (!(target instanceof HTMLElement)) return null;
+
+    const text = target.textContent?.replace(/\s+/g, ' ')?.trim();
+    return text || null;
+  }
+
+  function isPrimaryCtaActuallyVisible(target) {
+    if (!(target instanceof HTMLElement)) {
+      return false;
+    }
+
+    if (!target.isConnected) {
+      return false;
+    }
+
+    const style = window.getComputedStyle(target);
+    if (style.display === 'none' || style.visibility === 'hidden' || Number(style.opacity || 1) <= 0.05) {
+      return false;
+    }
+
+    const rect = target.getBoundingClientRect();
+    return rect.width > 0 &&
+      rect.height > 0 &&
+      rect.bottom >= 0 &&
+      rect.top <= window.innerHeight &&
+      rect.right >= 0 &&
+      rect.left <= window.innerWidth;
+  }
+
+  function markPrimaryCtaSeen(target) {
+    if (target instanceof HTMLElement) {
+      target.dataset.legendPrimaryCtaSeen = 'true';
+    }
+  }
+
+  function wasPrimaryCtaSeen(target) {
+    return target instanceof HTMLElement && target.dataset.legendPrimaryCtaSeen === 'true';
+  }
+
+  function trackPrimaryCtaSeen(target, options = {}) {
+    const elementKey = resolvePrimaryCtaElementKey(target, options.elementKey);
+    const pageKey = options.pageKey || PAGE_KEY || '';
+    const sessionId = getSessionId();
+    const sessionFlag = `primary_cta_seen_${sessionId}_${pageKey}_${elementKey}`;
+
+    if (wasPrimaryCtaSeen(target) || safeStorageGet(window.sessionStorage, sessionFlag) === sessionId) {
+      markPrimaryCtaSeen(target);
+      return false;
+    }
+
+    safeStorageSet(window.sessionStorage, sessionFlag, sessionId);
+    markPrimaryCtaSeen(target);
+
+    const placement = normalizePrimaryCtaPlacement(
+      options.placement ||
+      (target instanceof HTMLElement ? target.getAttribute('data-primary-cta') || target.getAttribute('data-placement') : null)
+    );
+    const label = resolvePrimaryCtaLabel(target, options.label);
+    const rect = target instanceof HTMLElement ? target.getBoundingClientRect() : null;
+    const metadata = {
+      placement,
+      ctaId: elementKey,
+      ctaText: label || '',
+      source: options.source || 'shared_tracker',
+      viewportWidth: window.innerWidth,
+      viewportHeight: window.innerHeight,
+      ...(rect ? {
+        ctaTop: Math.round(rect.top),
+        ctaBottom: Math.round(rect.bottom)
+      } : {}),
+      ...(options.metadata && typeof options.metadata === 'object' ? options.metadata : {})
+    };
+
+    sendEvent({
+      EventType: 'primary_cta_seen',
+      ElementKey: elementKey,
+      ButtonLabel: label,
+      MetadataJson: JSON.stringify(metadata)
+    });
+
+    return true;
+  }
+
+  function installQuotePrimaryCtaTracking() {
+    if (isAnalyticsRouteBlocked() || PAGE_CATEGORY !== 'quote') {
+      return;
+    }
+
+    const targets = Array.from(document.querySelectorAll('[data-primary-cta]'));
+    if (!targets.length) {
+      return;
+    }
+
+    const trackIfVisible = (target, source) => {
+      if (!isPrimaryCtaActuallyVisible(target)) {
+        return false;
+      }
+
+      return trackPrimaryCtaSeen(target, { source });
+    };
+
+    const runCheck = (source) => {
+      window.requestAnimationFrame(() => {
+        targets.some(target => trackIfVisible(target, source));
+      });
+    };
+
+    runCheck('initial');
+    window.setTimeout(() => runCheck('delayed_150ms'), 150);
+    window.setTimeout(() => runCheck('delayed_600ms'), 600);
+    window.setTimeout(() => runCheck('delayed_1200ms'), 1200);
+
+    targets.forEach((target) => {
+      target.addEventListener('click', () => {
+        trackPrimaryCtaSeen(target, { source: 'cta_click_before_start' });
+      });
+    });
+
+    if (!('IntersectionObserver' in window)) {
+      window.setTimeout(() => runCheck('fallback_no_intersection_observer'), 250);
+      return;
+    }
+
+    const observer = new IntersectionObserver((entries) => {
+      const visibleEntry = entries.find((entry) => entry.isIntersecting && isPrimaryCtaActuallyVisible(entry.target));
+      if (!visibleEntry) {
+        return;
+      }
+
+      if (trackPrimaryCtaSeen(visibleEntry.target, {
+        source: 'intersection_observer',
+        metadata: {
+          intersectionRatio: Number(visibleEntry.intersectionRatio || 0).toFixed(2)
+        }
+      })) {
+        observer.disconnect();
+      }
+    }, {
+      root: null,
+      rootMargin: '160px 0px 160px 0px',
+      threshold: [0, 0.01, 0.1, 0.25]
+    });
+
+    targets.forEach((target) => observer.observe(target));
+
+    const passiveCheck = () => {
+      if (targets.some(target => trackIfVisible(target, 'passive_visibility_check'))) {
+        window.removeEventListener('scroll', passiveCheck);
+        window.removeEventListener('resize', passiveCheck);
+        window.removeEventListener('pageshow', passiveCheck);
+        window.removeEventListener('load', passiveCheck);
+      }
+    };
+
+    window.addEventListener('scroll', passiveCheck, { passive: true });
+    window.addEventListener('resize', passiveCheck);
+    window.addEventListener('pageshow', passiveCheck);
+    window.addEventListener('load', passiveCheck);
+  }
+
   function wireClick(selector, elementKey, eventType) {
     document.querySelectorAll(selector).forEach(el => {
       el.addEventListener('click', () => {
@@ -1357,6 +1538,7 @@ function trackCustomFieldError(formKey, fieldName, errorType, offerKey) {
   installGlobalDiagnostics();
   void flushQueuedEvents('page_load');
   trackPageView();
+  installQuotePrimaryCtaTracking();
 
   wireClick('[data-cta="hero_start_assessment"]',    'hero_start_assessment',    'cta_click');
   wireClick('[data-cta="hero_book_call"]',           'hero_book_call',           'cta_click');
@@ -1392,6 +1574,10 @@ function trackCustomFieldError(formKey, fieldName, errorType, offerKey) {
     trackFieldError: trackCustomFieldError,
     clearFieldError: clearTrackedFieldError,
     trackStart: fireTrackedFormStartOnce,
+  };
+  window.legendQuoteTracking = {
+    ...(window.legendQuoteTracking || {}),
+    trackPrimaryCtaSeen,
   };
   function getAttribution() {
     const attribution = resolveCurrentSessionAttribution({}, getSessionId());

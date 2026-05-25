@@ -23,6 +23,7 @@ namespace Protect_Website.Controllers
     public class HealthQuoteController : Controller
     {
         private const string WebsitePageVariant = "website";
+        private const string LandingPageVariant = "landing";
         private const string ContactFirstEducationVariant = "contact_first_education_v1";
         private const string QuotePageKey = "quote_health";
         private const string QuoteOfferKey = "health";
@@ -80,6 +81,10 @@ namespace Protect_Website.Controllers
         {
             var correlationId = Guid.NewGuid();
             NormalizeContactFields(model);
+            var isLandingMode = ShouldUseLandingMode(model);
+            ApplyPageMode(model, isLandingMode);
+            var effectivePageKey = ResolveEffectivePageKey(model, isLandingMode);
+            model.PageKey = effectivePageKey;
 
             if (!ModelState.IsValid)
             {
@@ -98,7 +103,7 @@ namespace Protect_Website.Controllers
                     });
                 }
 
-                return RenderHealthQuote(ShouldUseLandingMode(model), model);
+                return RenderHealthQuote(isLandingMode, model);
             }
 
             _logger.LogInformation(
@@ -129,7 +134,7 @@ namespace Protect_Website.Controllers
                     Email         = model.Email?.Trim() ?? "",
                     Phone         = string.IsNullOrWhiteSpace(model.Phone) ? null : model.Phone.Trim(),
                     InterestType  = QuoteInterestType,
-                    SourcePageKey = QuotePageKey,
+                    SourcePageKey = effectivePageKey,
                     UtmSource     = string.IsNullOrWhiteSpace(model.UtmSource)   ? null : model.UtmSource.Trim(),
                     UtmMedium     = string.IsNullOrWhiteSpace(model.UtmMedium)   ? null : model.UtmMedium.Trim(),
                     UtmCampaign   = string.IsNullOrWhiteSpace(model.UtmCampaign) ? null : model.UtmCampaign.Trim(),
@@ -153,7 +158,7 @@ namespace Protect_Website.Controllers
                     {
                         OfferKey       = QuoteOfferKey,
                         ProductType    = QuoteProductType,
-                        PageKey        = QuotePageKey,
+                        PageKey        = effectivePageKey,
                         PageVariant    = model.PageVariant,
                         PageMode       = model.PageMode,
                         PagePath       = Request?.Path.Value,
@@ -191,7 +196,7 @@ namespace Protect_Website.Controllers
                     correlationId, model.Email);
                 return IsAjax()
                     ? StatusCode(500, new { error = "Failed to save lead", detail = persistEx.Message, correlationId = correlationId.ToString("D") })
-                    : RenderHealthQuote(ShouldUseLandingMode(model), model);
+                    : RenderHealthQuote(isLandingMode, model);
             }
 
             async Task TryWriteLeadEventAsync(string eventType, object metadata, DateTime? eventUtc = null)
@@ -202,7 +207,7 @@ namespace Protect_Website.Controllers
                     analyticsEvent = WebsiteLeadAnalyticsWriter.CreateEvent(
                         lead,
                         eventType,
-                        QuotePageKey,
+                        effectivePageKey,
                         QuoteInterestType,
                         metadata,
                         eventUtc);
@@ -412,7 +417,7 @@ namespace Protect_Website.Controllers
                     CorrelationId = correlationId,
                     EventId = metaLeadEventId,
                     QuoteType = "Health",
-                    PageKey = QuotePageKey,
+                    PageKey = effectivePageKey,
                     OfferKey = QuoteOfferKey,
                     EventSourceUrl = MetaLeadTrackingWorkflow.ResolveEventSourceUrl(model.LandingPageUrl, Request),
                     ClientIpAddress = MetaLeadTrackingWorkflow.ResolveClientIpAddress(Request),
@@ -567,6 +572,7 @@ namespace Protect_Website.Controllers
                     CorrelationId = correlationId,
                     OfferKey = QuoteOfferKey,
                     ProductType = QuoteProductType,
+                    PageKey = effectivePageKey,
                     PageVariant = model.PageVariant,
                     PageMode = model.PageMode,
                     PagePath = Request?.Path.Value
@@ -577,7 +583,7 @@ namespace Protect_Website.Controllers
                 lead.LeadId,
                 lead.AgentTrackingProfileId,
                 agentSlug,
-                QuotePageKey,
+                effectivePageKey,
                 QuoteOfferKey,
                 HttpContext?.RequestAborted ?? CancellationToken.None);
 
@@ -1438,7 +1444,29 @@ Review summary only. Final plan availability, pricing, provider networks, and el
         {
             var viewModel = model ?? new HealthQuoteFormModel();
             ApplyPageMode(viewModel, isLandingPage);
+            viewModel.PageKey = ResolveEffectivePageKey(viewModel, isLandingPage);
             return View("~/Views/Quote/Health.cshtml", viewModel);
+        }
+
+        private static string ResolveEffectivePageKey(HealthQuoteFormModel model, bool isLandingPage) =>
+            BuildVariantPageKey(QuotePageKey, isLandingPage, model.PageVariant);
+
+        private static string BuildVariantPageKey(string basePageKey, bool isLandingPage, string? pageVariant = null)
+        {
+            if (!isLandingPage)
+                return basePageKey;
+
+            var normalizedVariant = string.IsNullOrWhiteSpace(pageVariant)
+                ? null
+                : pageVariant.Trim().ToLowerInvariant();
+            var isControlLanding =
+                string.IsNullOrWhiteSpace(normalizedVariant) ||
+                string.Equals(normalizedVariant, LandingPageVariant, StringComparison.OrdinalIgnoreCase) ||
+                string.Equals(normalizedVariant, ContactFirstEducationVariant, StringComparison.OrdinalIgnoreCase);
+
+            return isControlLanding
+                ? $"{basePageKey}_landing"
+                : $"{basePageKey}_landing_{normalizedVariant}";
         }
 
         private static void ApplyPageMode(HealthQuoteFormModel model, bool isLandingPage)
@@ -1456,6 +1484,12 @@ Review summary only. Final plan availability, pricing, provider networks, and el
         {
             if (string.Equals(model?.PageMode, "paid_landing", StringComparison.OrdinalIgnoreCase))
                 return true;
+
+            if (!string.IsNullOrWhiteSpace(model?.PageKey) &&
+                model.PageKey.Contains($"{QuotePageKey}_landing", StringComparison.OrdinalIgnoreCase))
+            {
+                return true;
+            }
 
             var requestPath = Request?.Path.Value;
             if (!string.IsNullOrWhiteSpace(requestPath) &&

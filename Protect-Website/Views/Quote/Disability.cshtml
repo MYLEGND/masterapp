@@ -15,6 +15,10 @@
         : form.PageMode.Trim();
     var isPaidLandingExperience = string.Equals(pageMode, "paid_landing", StringComparison.OrdinalIgnoreCase);
     var isStandaloneLandingExperience = isLandingRoutePath || isPaidLandingExperience;
+    var pageKey = string.IsNullOrWhiteSpace(form.PageKey)
+        ? (isStandaloneLandingExperience ? "quote_disability_landing" : "quote_disability")
+        : form.PageKey.Trim();
+    var formKey = $"{pageKey}_form";
     var requestScheme = Context?.Request?.Scheme ?? "https";
     var requestHost = Context?.Request?.Host.Value ?? string.Empty;
     var seoImageUrl = string.IsNullOrWhiteSpace(requestHost)
@@ -25,7 +29,7 @@
     ViewData["SeoDescription"] = "Review disability insurance options designed to help protect your income if sickness or injury keeps you from working.";
     ViewData["SeoImage"] = seoImageUrl;
     ViewData["Title"] = "Get Your Personalized Disability Insurance Review";
-    ViewData["PageKey"] = "quote_disability";
+    ViewData["PageKey"] = pageKey;
     ViewData["PageCategory"] = "quote";
     ViewData["PageVariant"] = pageVariant;
     ViewData["PageMode"] = pageMode;
@@ -1628,19 +1632,19 @@ body.disability-final-step-active .dq-form-panel {
                 </div>
 
                 <div class="lq-contact-first-hero-actions">
-                    <button type="button" class="btn-gold lq-primary-start-cta lq-contact-first-hero-cta" id="disabilityHeroStartCta" data-cta="disability_funnel_start">@primaryStartCtaText</button>
+                    <button type="button" class="btn-gold lq-primary-start-cta lq-contact-first-hero-cta" id="disabilityHeroStartCta" data-cta="disability_funnel_start" data-primary-cta="hero">@primaryStartCtaText</button>
                     <div class="lq-contact-first-hero-cta-note lq-primary-start-note">@primaryStartCtaNote</div>
                 </div>
             </div>
 
-            <form asp-action="SubmitDisabilityQuote" asp-controller="DisabilityQuote" method="post" id="disabilityQuoteForm" data-form-key="quote_disability_form" novalidate>
+            <form asp-action="SubmitDisabilityQuote" asp-controller="DisabilityQuote" method="post" id="disabilityQuoteForm" data-form-key="@formKey" novalidate>
                 @Html.AntiForgeryToken()
                 @if (!string.IsNullOrWhiteSpace(agentSlug))
                 {
                     <input type="hidden" name="AgentSlug" value="@agentSlug" />
                 }
 
-                <input type="hidden" name="PageKey" value="quote_disability" />
+                <input type="hidden" name="PageKey" value="@pageKey" />
                 <input type="hidden" name="PageVariant" value="@pageVariant" />
                 <input type="hidden" name="PageMode" value="@pageMode" />
                 <input type="hidden" name="Age" id="Age" value="@initialAgeValue" />
@@ -2074,8 +2078,8 @@ body.disability-final-step-active .dq-form-panel {
         if (!form) return;
 
         var body = document.body;
-        var pageKey = 'quote_disability';
-        var formKey = form.getAttribute('data-form-key') || 'quote_disability_form';
+        var pageKey = '@pageKey';
+        var formKey = form.getAttribute('data-form-key') || '@formKey';
         var heroEntryPanel = document.getElementById('disabilityHeroEntryPanel');
         var educationPanel = document.getElementById('disabilityEducationPanel');
         var startButton = document.getElementById('disabilityHeroStartCta');
@@ -2333,11 +2337,20 @@ body.disability-final-step-active .dq-form-panel {
         function trackStepComplete(stepNumber, nextStep, source) {
             if (completedSteps[stepNumber]) return;
             completedSteps[stepNumber] = true;
+            var metadataJson = JSON.stringify({ stepNumber: stepNumber, nextStep: nextStep, source: source });
+            if (stepNumber === 1) {
+                track({
+                    EventType: 'first_question_answered',
+                    FormKey: formKey,
+                    PageKey: pageKey,
+                    MetadataJson: metadataJson
+                });
+            }
             track({
                 EventType: 'quote_step_complete',
                 FormKey: formKey,
                 PageKey: pageKey,
-                MetadataJson: JSON.stringify({ stepNumber: stepNumber, nextStep: nextStep, source: source })
+                MetadataJson: metadataJson
             });
         }
 

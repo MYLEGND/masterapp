@@ -388,9 +388,21 @@ public sealed class AnalyticsQueryService : IAnalyticsQueryService
                e.EventType == "lead_modal_close";
     }
 
+    private static bool IsQuoteFirstQuestionAnsweredEvent(AnalyticsEvent e)
+    {
+        if (!IsQuoteScopeEvent(e))
+            return false;
+
+        if (AnalyticsEventCatalog.MatchesDashboardMetric(e.EventType, "first_question_answered"))
+            return true;
+
+        return string.Equals(e.EventType, "quote_step_complete", StringComparison.OrdinalIgnoreCase) &&
+               ReadMetadataIntValue(e.MetadataJson, "stepNumber") == 1;
+    }
+
     private static bool IsQuoteEarlyDiscoveryInteractionEvent(AnalyticsEvent e)
     {
-        return AnalyticsEventCatalog.MatchesDashboardMetric(e.EventType, "first_question_answered") ||
+        return IsQuoteFirstQuestionAnsweredEvent(e) ||
                (AnalyticsEventCatalog.MatchesDashboardMetric(e.EventType, "quote_step_complete") &&
                 (e.EventType == "life_step1_protecting_select" ||
                  e.EventType == "protecting_who_completed" ||
@@ -1099,6 +1111,24 @@ public sealed class AnalyticsQueryService : IAnalyticsQueryService
         return null;
     }
 
+    private static int? ReadMetadataIntValue(string? metadataJson, string propertyName)
+    {
+        if (string.IsNullOrWhiteSpace(metadataJson) || string.IsNullOrWhiteSpace(propertyName))
+            return null;
+
+        try
+        {
+            using var doc = System.Text.Json.JsonDocument.Parse(metadataJson);
+            return ReadJsonInt(doc.RootElement, propertyName);
+        }
+        catch
+        {
+            // ignored: malformed metadata should not block analytics health checks
+        }
+
+        return null;
+    }
+
     private static string? ReadJsonString(System.Text.Json.JsonElement root, string propertyName)
     {
         if (!root.TryGetProperty(propertyName, out var value))
@@ -1670,7 +1700,7 @@ public sealed class AnalyticsQueryService : IAnalyticsQueryService
             var parts = new List<string>();
 
             if (eventTypes.Contains("page_view")) parts.Add("viewed");
-            if (eventTypes.Contains("quote_landing_view")) parts.Add("landing viewed");
+            if (eventTypes.Contains("quote_landing_view")) parts.Add("quote viewed");
             if (eventTypes.Contains("primary_cta_seen")) parts.Add("CTA seen");
             if (eventTypes.Contains("quote_click") || eventTypes.Contains("cta_click")) parts.Add("CTA clicked");
             if (eventTypes.Contains("form_start")) parts.Add("funnel started");
@@ -1939,12 +1969,13 @@ public sealed class AnalyticsQueryService : IAnalyticsQueryService
 
         var stageMetrics = new List<QuoteStageMetricRow>
         {
-            new() { StageKey = "landing_views", Label = "Landing Views", Count = CountDistinctUnits(events, e => (e.EventType == "page_view" || e.EventType == "quote_landing_view") && IsQuoteScopeEvent(e)) },
+            new() { StageKey = "quote_entry_views", Label = "Quote Entry Views", Count = CountDistinctUnits(events, e => (e.EventType == "page_view" || e.EventType == "quote_landing_view") && IsQuoteScopeEvent(e)) },
             new() { StageKey = "primary_cta_seen", Label = "Primary CTA Seen", Count = CountDistinctUnits(events, e => AnalyticsEventCatalog.MatchesDashboardMetric(e.EventType, "primary_cta_seen") && IsQuoteScopeEvent(e)) },
             new() { StageKey = "cta_clicked", Label = "CTA Clicked", Count = CountDistinctUnits(events, IsQuoteCtaIntentEvent) },
             new() { StageKey = "funnel_started", Label = "Funnel Started", Count = CountDistinctUnits(events, IsQuoteFunnelStartSignalEvent) },
             new() { StageKey = "first_question_viewed", Label = "First Question Viewed", Count = CountDistinctUnits(events, e => AnalyticsEventCatalog.MatchesDashboardMetric(e.EventType, "first_question_view") && IsQuoteScopeEvent(e)) },
-            new() { StageKey = "first_question_answered", Label = "First Question Answered", Count = CountDistinctUnits(events, e => AnalyticsEventCatalog.MatchesDashboardMetric(e.EventType, "first_question_answered") && IsQuoteScopeEvent(e)) },
+            new() { StageKey = "first_question_answered", Label = "First Question Answered", Count = CountDistinctUnits(events, IsQuoteFirstQuestionAnsweredEvent) },
+            new() { StageKey = "discoveryStepCount", Label = "Discovery Steps Completed", Count = CountDistinctUnits(events, e => AnalyticsEventCatalog.MatchesDashboardMetric(e.EventType, "quote_step_complete") && IsQuoteScopeEvent(e)) },
             new() { StageKey = "protecting_who_completed", Label = "Protecting-Who Completed", Count = CountDistinctUnits(events, e => e.EventType == "life_step1_protecting_select" || e.EventType == "protecting_who_completed") },
             new() { StageKey = "goal_completed", Label = "Goal Completed", Count = CountDistinctUnits(events, e => e.EventType == "life_step1_goal_select" || e.EventType == "goal_completed") },
             new() { StageKey = "age_completed", Label = "Age Completed", Count = CountDistinctUnits(events, e => e.EventType == "step1_age_entered" || e.EventType == "life_step1_age_continue" || e.EventType == "age_completed") },

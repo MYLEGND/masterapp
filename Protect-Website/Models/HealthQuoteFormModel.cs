@@ -47,6 +47,7 @@ namespace Protect_Website.Models
         [Required(ErrorMessage = "You must acknowledge the disclaimer.")]
         public bool AcknowledgedDisclaimer { get; set; } = false;
 
+        public string? PageKey { get; set; }
         public string? PageVariant { get; set; }
         public string? PageMode { get; set; }
 

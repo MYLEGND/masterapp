@@ -10041,17 +10041,39 @@ const contactFieldProgress = new Map();
       return;
     }
 
-    primaryCtaSeenTracked = true;
-    if (visibleTarget.dataset.ctaSeenTracked === 'true') {
+    // The shared tracker emits the canonical primary_cta_seen event for all quote pages.
+    const target = visibleTarget instanceof HTMLElement
+      ? visibleTarget
+      : getPrimaryCtaCandidates().find((candidate) => isPrimaryCtaActuallyVisible(candidate)) || null;
+    const resolvedPlacement = typeof placement === 'string' && placement.trim().length > 0
+      ? placement.trim()
+      : (target?.getAttribute('data-primary-cta') || target?.getAttribute('data-placement') || 'hero');
+
+    if (target?.dataset.ctaSeenTracked === 'true' || target?.dataset.legendPrimaryCtaSeen === 'true') {
+      primaryCtaSeenTracked = true;
       return;
     }
 
-    visibleTarget.dataset.ctaSeenTracked = 'true';
-
-    trackEvent('primary_cta_seen', {
-      placement: placement || 'hero',
-      ...metadata
+    const tracked = window.legendQuoteTracking?.trackPrimaryCtaSeen?.(target, {
+      placement: resolvedPlacement,
+      elementKey: target?.getAttribute('data-cta') || 'life_funnel_start',
+      label: target?.textContent?.replace(/\s+/g, ' ')?.trim() || '',
+      source: metadata?.source || 'life_local_tracker',
+      metadata
     });
+
+    if (tracked === false) {
+      if (target) {
+        target.dataset.ctaSeenTracked = 'true';
+      }
+      primaryCtaSeenTracked = true;
+      return;
+    }
+
+    if (target) {
+      target.dataset.ctaSeenTracked = 'true';
+    }
+    primaryCtaSeenTracked = true;
   }
 
   function resolveStartCtaText(triggerElement, placement) {
@@ -11752,7 +11774,7 @@ const contactFieldProgress = new Map();
       }
 
       const placement = visibleEntry.target.getAttribute('data-primary-cta') || visibleEntry.target.getAttribute('data-placement') || 'hero';
-      trackPrimaryCtaSeenOnce(placement, {
+      trackPrimaryCtaSeenOnce(visibleEntry.target, placement, {
         source: 'intersection_observer',
         ctaId: visibleEntry.target.getAttribute('data-cta') || 'life_funnel_start',
         ctaText: visibleEntry.target.textContent?.replace(/\s+/g, ' ')?.trim() || '',
@@ -11770,7 +11792,7 @@ const contactFieldProgress = new Map();
     targets.forEach((target) => observer.observe(target));
 
     const passiveCheck = () => {
-      if (tryTrackVisiblePrimaryCta('scroll_or_resize')) {
+      if (tryTrackVisiblePrimaryCta('passive_visibility_check')) {
         window.removeEventListener('scroll', passiveCheck);
         window.removeEventListener('resize', passiveCheck);
         window.removeEventListener('pageshow', passiveCheck);
@@ -11814,7 +11836,7 @@ const contactFieldProgress = new Map();
 
   function handleStartCtaClick(startSource, triggerElement = null) {
     const placement = String(startSource || 'hero_click').replace('_click', '');
-    trackPrimaryCtaSeenOnce(placement, { source: 'cta_click_before_start' });
+    trackPrimaryCtaSeenOnce(triggerElement, placement, { source: 'cta_click_before_start' });
     trackStartCtaClick(placement, triggerElement);
 
     setQuoteEntryStarted(true);

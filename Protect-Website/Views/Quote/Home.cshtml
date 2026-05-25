@@ -4,6 +4,11 @@
 @{
     ViewData["Title"] = "Home Insurance Quote";
     ViewData["PageKey"] = "quote_home";
+    ViewData["PageCategory"] = "quote";
+    ViewData["QuoteTypeForTracking"] = "home";
+    ViewData["PageVariant"] = "website";
+    ViewData["PageMode"] = "site_mode";
+    ViewData["IsLandingPage"] = false;
     var isFounderPath = ViewData["IsFounderPath"] as bool? == true;
     var trackedSlug = ((string?)ViewData["TrackingSlug"] ?? string.Empty).Trim();
     var agentSlug = !isFounderPath ? trackedSlug : string.Empty;

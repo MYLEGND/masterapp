@@ -94,6 +94,7 @@ public static class AnalyticsEventCatalog
         Define("life_iul_submit", "quote", ["iul"], "submit", submitAttempt: true, critical: true, allowBrowser: true, dashboardMetrics: ["submit_attempt"]),
         Define("life_step1_intro_view", "quote", LifeQuotes, "discovery", meta: true, critical: true, allowBrowser: true, dashboardMetrics: ["form_shell_view", "first_question_view"]),
         Define("first_question_view", "quote", AllQuotes, "discovery", critical: true, allowBrowser: true, dashboardMetrics: ["first_question_view"]),
+        Define("quote_step_view", "quote", AllQuotes, "discovery", allowBrowser: true, dashboardMetrics: ["step_view"]),
         Define("life_step1_goal_view", "quote", LifeQuotes, "discovery", meta: true, allowBrowser: true, dashboardMetrics: ["first_question_view", "step_view"]),
         Define("first_question_answered", "quote", AllQuotes, "discovery", funnelStart: true, critical: true, allowBrowser: true, dashboardMetrics: ["first_question_answered", "quote_step_complete"]),
         Define("life_step1_goal_select", "quote", LifeQuotes, "discovery", funnelStart: true, meta: true, critical: true, allowBrowser: true, dashboardMetrics: ["first_question_answered", "quote_step_complete"]),
