@@ -582,16 +582,12 @@
         _ => "Continue My Protection Review"
     };
     var finalSubmitButtonText = "Unlock My Full Review";
-    var heroHeadline = normalizedOfferKey switch
-    {
-        "term" => "See what could help protect the years your family depends on most.",
-        "wholelife" => "See what could help protect your family for life.",
-        "finalexpense" => "See what could help keep final expenses off your family’s shoulders.",
-        "mortgage" => "See what could help keep your home protected if life changed unexpectedly.",
-        "iul" => "See what long-term protection your family may need.",
-        _ => "See what your family may need."
-    };
-    var heroSubheadline = "Your answers shape the result.";
+    var heroHeadline = isContactFirstEducationVariant
+        ? "Would your family be financially okay without you?"
+        : "Would your family be financially okay without you?";
+    var heroSubheadline = isContactFirstEducationVariant
+        ? "Answer a few quick questions to see the starting protection range your family may need."
+        : (isLandingView ? "Answer a few quick questions to see the starting protection range your family may need." : string.Empty);
     var heroTrustNote = "25+ carriers • 30 seconds • No obligation";
     var heroTrustPersonName = !string.IsNullOrWhiteSpace(agentTrustProfile?.DisplayName)
         ? agentTrustProfile!.DisplayName!.Trim()
@@ -599,11 +595,7 @@
     var heroTrustPersonRole = !string.IsNullOrWhiteSpace(agentTrustProfile?.Npn)
         ? "Licensed Insurance Professional"
         : "Personal insurance guidance";
-    var heroTrustPersonSupport = normalizedOfferKey switch
-    {
-        "mortgage" => "Personalized guidance to compare options and see what could help protect your home.",
-        _ => "Personalized guidance to compare options and see what could help protect your family."
-    };
+    var heroTrustPersonSupport = "Personalized guidance to compare options, protect fit, and review the next best step.";
     var heroTrustPersonImageUrl = !string.IsNullOrWhiteSpace(agentTrustProfile?.ProfileImageUrl)
         ? agentTrustProfile!.ProfileImageUrl!.Trim()
         : string.Empty;
@@ -634,31 +626,15 @@
     var contactFirstBannerImageUrl = "~/images/ads/life-top-banner.png";
     var contactFirstBannerAlt = "Legend Legacy Protection banner asking whether your family would struggle financially without you and inviting a quick life insurance estimate.";
     var contactFirstProofKicker = "Private protection check";
-    var contactFirstProofText = "Your answers shape the result.";
-    IReadOnlyList<string> contactFirstProofChips = normalizedOfferKey switch
-    {
-        "term" => new List<string> { "25+ carriers", "Income protection", "No obligation" },
-        "wholelife" => new List<string> { "25+ carriers", "Lifetime protection", "No obligation" },
-        "finalexpense" => new List<string> { "25+ carriers", "Family relief", "No obligation" },
-        "mortgage" => new List<string> { "25+ carriers", "Home protection", "No obligation" },
-        "iul" => new List<string> { "25+ carriers", "Long-term protection", "No obligation" },
-        _ => new List<string> { "25+ carriers", "30 seconds", "No obligation" }
-    };
+    var contactFirstProofText = "Start with who would feel the impact first. Your full review stays locked until your estimate is saved — no pressure, no obligation.";
+    IReadOnlyList<string> contactFirstProofChips = new List<string> { "25+ carriers", "30 seconds", "No obligation" };
     var contactFirstProcessingHeading = "Getting your estimate...";
     var contactFirstProcessingHelper = "A quick match is running now.";
     var contactFirstProcessingNote = "Sizing your likely fit...";
     var lowFrictionHeroKicker = "Explore life insurance options";
-    var lowFrictionHeroHeadline = heroHeadline;
-    var lowFrictionHeroSubheadline = heroSubheadline;
-    IReadOnlyList<string> lowFrictionHeroChips = normalizedOfferKey switch
-    {
-        "term" => new List<string> { "25+ carriers", "Income protection", "No obligation" },
-        "wholelife" => new List<string> { "25+ carriers", "Lifetime protection", "No obligation" },
-        "finalexpense" => new List<string> { "25+ carriers", "Family relief", "No obligation" },
-        "mortgage" => new List<string> { "25+ carriers", "Home protection", "No obligation" },
-        "iul" => new List<string> { "25+ carriers", "Long-term protection", "No obligation" },
-        _ => new List<string> { "25+ carriers", "30 seconds", "No obligation" }
-    };
+    var lowFrictionHeroHeadline = "See which protection path best aligns with your family.";
+    var lowFrictionHeroSubheadline = "Start with a focused protection check. You’ll see a practical starting point, monthly range, and a clear next step.";
+    IReadOnlyList<string> lowFrictionHeroChips = new List<string> { "25+ carriers", "Licensed review", "No obligation" };
     IReadOnlyList<string> lowFrictionValueChips = new List<string> { "Carrier comparison", "Monthly range", "Clear next step" };
     var showGenericCoverageOverview = string.Equals(normalizedOfferKey, "life", StringComparison.OrdinalIgnoreCase);
     var showCarrierReviewBeforeContact = false;
@@ -677,6 +653,8 @@
         contactFirstBannerImageUrl = "~/images/ads/whole-life-top-banner.png";
         contactFirstBannerAlt = "Legend Legacy Protection whole life insurance banner about lifelong protection that stays with you and the people you love.";
         contactFirstProofKicker = "Lifelong protection starts here";
+        contactFirstProofText = "Start with who this needs to protect for life, then we’ll shape the whole life estimate around lasting stability instead of temporary coverage.";
+        contactFirstProofChips = new List<string> { "25+ carriers", "Lifelong fit", "No obligation" };
         contactFirstProcessingHeading = "Getting your whole life estimate...";
         contactFirstProcessingHelper = "Your whole life estimate is being prepared around your age, goal, coverage amount, and tobacco status.";
         contactFirstProcessingNote = "Sizing your whole life range...";
@@ -697,6 +675,8 @@
         contactFirstBannerImageUrl = "~/images/ads/term-life-top-banner.png";
         contactFirstBannerAlt = "Legend Legacy Protection term life insurance banner about affordable protection for the years your family needs it most.";
         contactFirstProofKicker = "Protect the years that matter";
+        contactFirstProofText = "Start with the income, mortgage, children, or bills that would feel the impact first, then we’ll size a term range around those key years.";
+        contactFirstProofChips = new List<string> { "25+ carriers", "Protect key years", "No obligation" };
         contactFirstProcessingHeading = "Getting your term life estimate...";
         contactFirstProcessingHelper = "Your term life estimate is being prepared around your age, goal, coverage amount, and tobacco status.";
         contactFirstProcessingNote = "Sizing your term life range...";
@@ -717,6 +697,8 @@
         contactFirstBannerImageUrl = "~/images/ads/final-expense-top-banner.png";
         contactFirstBannerAlt = "Legend Legacy Protection final expense insurance banner about easing the burden, honoring your wishes, and leaving peace of mind.";
         contactFirstProofKicker = "Ease the burden before it lands";
+        contactFirstProofText = "Start with the costs you do not want your loved ones carrying alone, then we’ll size a final expense range around family relief.";
+        contactFirstProofChips = new List<string> { "25+ carriers", "Family relief", "No obligation" };
         contactFirstProcessingHeading = "Getting your final expense estimate...";
         contactFirstProcessingHelper = "Your final expense estimate is being prepared around your age, goal, coverage amount, and tobacco status.";
         contactFirstProcessingNote = "Sizing your final expense range...";
@@ -737,6 +719,8 @@
         contactFirstBannerImageUrl = "~/images/ads/mortgage-protection-top-banner.png";
         contactFirstBannerAlt = "Legend Legacy Protection mortgage protection insurance banner about helping protect your home and the people in it, even if you’re gone.";
         contactFirstProofKicker = "Protect the home first";
+        contactFirstProofText = "Start with the home, the payment, and the people who depend on both, then we’ll size a mortgage protection range around that pressure.";
+        contactFirstProofChips = new List<string> { "25+ carriers", "Home-first review", "No obligation" };
         contactFirstProcessingHeading = "Getting your mortgage protection estimate...";
         contactFirstProcessingHelper = "Your mortgage protection estimate is being prepared around your mortgage balance, household goal, age, and tobacco status.";
         contactFirstProcessingNote = "Sizing your mortgage protection range...";
@@ -757,6 +741,8 @@
         contactFirstBannerImageUrl = "~/images/ads/iul-top-banner.png";
         contactFirstBannerAlt = "Legend Legacy Protection indexed universal life banner about flexible long-term protection, future planning, and legacy support.";
         contactFirstProofKicker = "Build for protection and flexibility";
+        contactFirstProofText = "Start with the long-term protection, flexibility, and legacy goal you want this built around, then we’ll shape the IUL range from there.";
+        contactFirstProofChips = new List<string> { "25+ carriers", "Long-term fit", "No obligation" };
         contactFirstProcessingHeading = "Getting your IUL estimate...";
         contactFirstProcessingHelper = "Your IUL estimate is being prepared around your age, goal, coverage amount, and tobacco status.";
         contactFirstProcessingNote = "Sizing your IUL range...";
@@ -782,10 +768,10 @@
         stepTwoContactCopyText = "Save your estimate so you can review the details, compare options, and avoid starting over later.";
         heroHeadline = lowFrictionHeroHeadline;
         heroSubheadline = lowFrictionHeroSubheadline;
-        heroTrustNote = "25+ carriers • 30 seconds • No obligation";
+        heroTrustNote = "Protection preview • Personalized review • Scheduling available";
         contactFirstProofKicker = "25+ carrier comparison";
-        contactFirstProofText = "Your answers shape the result.";
-        contactFirstProofChips = new List<string> { "25+ carriers", "30 seconds", "No obligation" };
+        contactFirstProofText = "Start with the pressure your family would feel first. Then we’ll compare the protection path, carrier fit, and next step without forcing one product.";
+        contactFirstProofChips = new List<string> { "Focused review", "Protection preview", "Scheduling available" };
         contactFirstProcessingHeading = "Getting your estimate...";
         contactFirstProcessingHelper = "A practical starting point is loading now.";
         contactFirstProcessingNote = "Sizing your likely fit...";
@@ -815,19 +801,35 @@
         "finalexpense" => "Start with what your family should not have to carry",
         "mortgage" => "Start with the home and who depends on it",
         "iul" => "Start with the long-term purpose",
-        _ => "Start with what matters most"
+        _ => "Start with the real pressure"
     };
-    var step1IntroHelper = "Your answers shape the result.";
-    var landingHeroTitle = heroHeadline;
-    var landingHeroHelper = "Your answers shape the result.";
+    var step1IntroHelper = productLanguageKey switch
+    {
+        "term" => "Pick the closest fit. This helps size a term life range around the years your family would depend on your income, stability, and presence most.",
+        "wholelife" => "Pick the closest fit. This helps shape a whole life estimate around lifelong protection, stable structure, and the people you want supported.",
+        "finalexpense" => "Pick the closest fit. This helps estimate final expense coverage around funeral costs, final bills, and the burden you do not want left behind.",
+        "mortgage" => "Pick the closest fit. This helps estimate mortgage protection around the home, the payment, and the household that would need stability.",
+        "iul" => "Pick the closest fit. This helps shape an IUL estimate around long-term protection, flexibility, and legacy planning.",
+        _ => "Pick the closest fit. This helps point you toward the protection path that matches the situation instead of guessing."
+    };
     if (isLowFrictionOptionsVariant && string.Equals(normalizedOfferKey, "life", StringComparison.OrdinalIgnoreCase))
     {
-        step1IntroTitle = "Start with what matters most";
-        step1IntroHelper = "Your answers shape the result.";
+        step1IntroTitle = "Start with the real pressure";
+        step1IntroHelper = "Pick the closest fit. This helps compare the protection paths and find the one that actually matches your family, budget, and next step.";
     }
 
-    var heroStepIntroTitle = isLandingView ? landingHeroTitle : string.Empty;
-    var heroStepIntroHelper = isLandingView ? landingHeroHelper : string.Empty;
+    var heroStepIntroTitle = isLandingView ? step1IntroTitle : string.Empty;
+    var heroStepIntroHelper = isLandingView
+        ? productLanguageKey switch
+        {
+            "term" => "A quick term life estimate built around the years your family would depend on your income, stability, and presence most.",
+            "wholelife" => "A quick whole life estimate built around lifelong protection, stable structure, and the people you want supported.",
+            "finalexpense" => "A quick final expense estimate built around funeral costs, final bills, and the burden you do not want left behind.",
+            "mortgage" => "A quick mortgage protection estimate built around the home, the payment, and the people who depend on both.",
+            "iul" => "A quick IUL estimate built around long-term protection, flexibility, and legacy planning.",
+            _ => "A quick protection estimate built around the pressure your family would feel first."
+        }
+        : string.Empty;
 
     if (isLandingView)
     {
@@ -858,8 +860,8 @@
     };
     var primaryStartCtaNote = productLanguageKey switch
     {
-        "mortgage" => "Built around the home.",
-        _ => "Private. Fast. Personalized."
+        "mortgage" => "Takes about 30 seconds. Start with the home and who depends on it.",
+        _ => "Takes about 30 seconds. No obligation. You stay in control."
     };
 
     var requiredContactFieldNames = new[] { "FirstName", "Phone" };
@@ -7007,6 +7009,37 @@ body.life-landing:not(.life-quote-started) .lq-contact-first-hero-image {
     text-wrap: balance;
 }
 
+.lq-contact-first-hero-actions::before,
+.lq-low-friction-hero-actions::before {
+    content: "Tap to start ↓";
+    position: static;
+    z-index: 1;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    justify-self: center;
+    width: fit-content;
+    min-height: 25px;
+    margin: 0 auto -1px;
+    padding: 5px 11px;
+    border-radius: 999px;
+    border: 1px solid rgba(154,242,184,0.38);
+    background: rgba(7,40,28,0.78);
+    color: rgba(236,255,244,0.98);
+    font-size: .68rem;
+    font-weight: 950;
+    letter-spacing: .04em;
+    text-transform: uppercase;
+    box-shadow: 0 0 20px rgba(72,217,137,0.20);
+    animation: lqTapCue 1.5s ease-in-out infinite;
+    pointer-events: none;
+}
+
+.life-quote-started .lq-contact-first-hero-actions::before,
+.life-quote-started .lq-low-friction-hero-actions::before {
+    display: none;
+}
+
 .lq-step-panel,
 .lq-contact-shell,
 .lq-estimate-shell,
@@ -7229,6 +7262,8 @@ input:checked + .lq-answer-card {
     .lq-primary-start-cta,
     .lq-primary-start-cta::before,
     .lq-primary-start-cta::after,
+    .lq-contact-first-hero-actions::before,
+    .lq-low-friction-hero-actions::before,
     .lq-card.is-auto-advancing,
     .lq-processing-bridge::after {
         animation: none !important;
@@ -7272,6 +7307,15 @@ input:checked + .lq-answer-card {
         right: 8px !important;
         bottom: 8px !important;
         font-size: .61rem;
+    }
+
+    .lq-contact-first-hero-actions::before,
+    .lq-low-friction-hero-actions::before {
+        position: static;
+        justify-self: center;
+        margin: 0 auto -1px;
+        font-size: .63rem;
+        padding: 4px 9px;
     }
 
     .lq-estimate-preserve-note {
@@ -7369,7 +7413,7 @@ input:checked + .lq-answer-card {
                 <figure class="lq-hero-banner-wrap">
                     <img class="lq-hero-banner-image" src="@contactFirstBannerImageUrl" asp-append-version="true" alt="@contactFirstBannerAlt" loading="eager" />
                 </figure>
-                <div class="lq-above-fold-proof" aria-label="Why people start here">
+                <div class="lq-above-fold-proof" aria-label="Review benefits">
                     @foreach (var chip in contactFirstProofChips)
                     {
                         <span>@chip</span>
@@ -13589,3 +13633,4 @@ body.life-landing.life-quote-started .lq-hero-shell {
 <style>
 
 </style>
+
