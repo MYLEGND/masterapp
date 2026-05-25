@@ -7113,32 +7113,6 @@ input:checked + .lq-answer-card {
     animation: lqSelectedAdvance .42s ease-out both;
 }
 
-.lq-card.is-auto-advancing::after {
-    content: "Next →";
-    position: absolute !important;
-    top: auto !important;
-    left: auto !important;
-    right: 10px !important;
-    bottom: 10px !important;
-    z-index: 30;
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    min-height: 24px;
-    padding: 4px 9px;
-    border-radius: 999px;
-    background: rgba(10,66,42,0.92);
-    border: 1px solid rgba(154,242,184,0.58);
-    color: rgba(236,255,244,0.98);
-    font-size: .66rem;
-    font-weight: 950;
-    letter-spacing: .04em;
-    line-height: 1;
-    text-transform: uppercase;
-    box-shadow: 0 0 18px rgba(72,217,137,0.20);
-    pointer-events: none;
-}
-
 .lq-processing-bridge {
     position: relative;
     overflow: hidden;
@@ -7268,12 +7242,6 @@ input:checked + .lq-answer-card {
     .lq-card:has(input:checked)::before {
         font-size: .58rem;
         padding: 2px 6px;
-    }
-
-    .lq-card.is-auto-advancing::after {
-        right: 8px !important;
-        bottom: 8px !important;
-        font-size: .61rem;
     }
 
     .lq-estimate-preserve-note {
