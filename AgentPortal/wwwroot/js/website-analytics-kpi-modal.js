@@ -489,11 +489,24 @@
                     const topVisitor = sortedRows[0] || null;
 
                     sections.push(`
-                        <div class="kpi-breakdown-section visitor-concentration-section">
-                            <div class="kpi-breakdown-title">Visitor Concentration</div>
-
-                            <div class="visitor-concentration-intro">
-                                Verify whether unique visitors are real distributed traffic or inflated by repeat users.
+                        <button
+                            type="button"
+                            class="kpi-breakdown-section visitor-concentration-section visitor-concentration-trigger"
+                            id="openVisitorConcentrationModal"
+                            aria-controls="visitorConcentrationModal"
+                            aria-haspopup="dialog"
+                            title="Open Visitor Concentration Breakdown">
+                            <div class="visitor-concentration-heading">
+                                <div class="visitor-concentration-copy">
+                                    <div class="kpi-breakdown-title visitor-concentration-kicker">Visitor Concentration</div>
+                                    <div class="visitor-concentration-intro">
+                                        Verify whether unique visitors are real distributed traffic or inflated by repeat users.
+                                    </div>
+                                </div>
+                                <div class="visitor-concentration-cta" aria-hidden="true">
+                                    <span>Open Breakdown</span>
+                                    <span class="visitor-concentration-cta-arrow">↗</span>
+                                </div>
                             </div>
 
                             <div class="vc-summary-grid">
@@ -511,19 +524,22 @@
                                 </div>
                             </div>
 
-                            <button type="button" class="btn btn-gold vc-open-modal-btn" id="openVisitorConcentrationModal">
-                                Open Visitor Concentration Breakdown
-                            </button>
+                            <div class="visitor-concentration-footer">
+                                <span class="visitor-concentration-footer-text">Inspect the full visitor list to spot session clustering, repeat-user inflation, and internal traffic patterns.</span>
+                                <span class="visitor-concentration-footer-link">Review Visitor Detail</span>
+                            </div>
 
-                            ${visitorRows.length ? '' : '<div class="visitor-concentration-empty">No visitor concentration rows in this range yet.</div>'}
-                        </div>
+                            ${visitorRows.length
+                                ? ''
+                                : '<div class="visitor-concentration-empty">No visitor concentration rows are in this range yet. Open the breakdown to confirm the current spread.</div>'}
+                        </button>
                     `);
 
                     setTimeout(() => {
-                        const btn = document.getElementById('openVisitorConcentrationModal');
-                        if (btn && !btn.dataset.bound) {
-                            btn.dataset.bound = 'true';
-                            btn.addEventListener('click', () => openVisitorConcentrationModal(sortedRows));
+                        const trigger = document.getElementById('openVisitorConcentrationModal');
+                        if (trigger && !trigger.dataset.bound) {
+                            trigger.dataset.bound = 'true';
+                            trigger.addEventListener('click', () => openVisitorConcentrationModal(sortedRows));
                         }
                     }, 0);
                 }
