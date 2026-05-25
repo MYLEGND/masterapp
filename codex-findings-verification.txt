@@ -1,0 +1,55 @@
+=== 1) Catalog-approved event filtering ===
+51:  const allowedEvents = new Set(Array.isArray(ANALYTICS_CONFIG.allowedBrowserEvents)
+300:    if (!attribution) return false;
+421:  // ── Shared body builder (used by both sendEvent and beaconSend) ───────────
+593:    if (!allowedEvents.has(CLIENT_TRACKING_ERROR_EVENT) || !nativeFetch) {
+594:      return false;
+622:  async function sendEvent(payload) {
+625:      if (!allowedEvents.has(body.EventType)) {
+626:        debug('blocked uncataloged event', {
+630:        return false;
+650:      debug('sendEvent', {
+680:        debug('sendEvent failed', {
+712:      return false;
+724:      return false;
+747:      return false;
+754:      return false;
+803:    if (now - last < DEBOUNCE_MS) return false;
+918:  sendEvent({
+968:      sendEvent({
+1004:        sendEvent({
+1015:    if (_exitFired) return false;
+1028:    sendEvent({
+1187:      sendEvent({
+1205:      sendEvent({
+1241:    sendEvent({
+1247:      sendEvent({
+1254:      sendEvent({
+1267:        sendEvent({
+1273:        if (PAGE_CATEGORY === 'quote' && allowedEvents.has('quote_cta_click')) {
+1274:          sendEvent({
+1297:    if (!formKey) return false;
+1302:      return false;
+1307:      return false;
+1316:    sendEvent({ EventType: 'form_start', FormKey: formKey });
+1317:    if (PAGE_CATEGORY === 'quote' && allowedEvents.has('lead_form_start')) {
+1318:      sendEvent({ EventType: 'lead_form_start', FormKey: formKey });
+1357:  window.legendTrack = (payload) => sendEvent(payload);
+
+=== 2) Health uncataloged events ===
+1797:            <form asp-action="SubmitHealthQuote" asp-controller="HealthQuote" method="post" id="healthQuoteForm" data-form-key="quote_health_form" novalidate>
+2275:        var formKey = form.getAttribute('data-form-key') || 'quote_health_form';
+2948:                EventType: 'health_quote_processing_view',
+2965:                    EventType: 'health_quote_started',
+3045:            track({ EventType: 'health_quote_thank_you_view', PageKey: pageKey, FormKey: formKey });
+3046:            track({ EventType: 'quote_thank_you_view', PageKey: pageKey, FormKey: formKey });
+
+=== 3) Disability uncataloged events ===
+1637:            <form asp-action="SubmitDisabilityQuote" asp-controller="DisabilityQuote" method="post" id="disabilityQuoteForm" data-form-key="quote_disability_form" novalidate>
+2079:        var formKey = form.getAttribute('data-form-key') || 'quote_disability_form';
+2750:                EventType: 'disability_quote_processing_view',
+2767:                    EventType: 'disability_quote_started',
+2847:            track({ EventType: 'disability_quote_thank_you_view', PageKey: pageKey, FormKey: formKey });
+2848:            track({ EventType: 'quote_thank_you_view', PageKey: pageKey, FormKey: formKey });
+
+=== 4) Shared tracking catalog names ===
