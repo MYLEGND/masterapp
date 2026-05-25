@@ -461,9 +461,15 @@ public sealed class AnalyticsQueryService : IAnalyticsQueryService
             return false;
 
         return AnalyticsEventCatalog.MatchesDashboardMetric(e.EventType, "funnel_start") ||
-               AnalyticsEventCatalog.MatchesDashboardMetric(e.EventType, "form_start") ||
+               string.Equals(e.EventType, "form_start", StringComparison.OrdinalIgnoreCase) ||
                string.Equals(e.EventType, "lead_form_start", StringComparison.OrdinalIgnoreCase) ||
-               string.Equals(e.EventType, "life_contact_first_start", StringComparison.OrdinalIgnoreCase);
+               string.Equals(e.EventType, "life_contact_first_start", StringComparison.OrdinalIgnoreCase) ||
+               string.Equals(e.EventType, "life_general_form_start", StringComparison.OrdinalIgnoreCase) ||
+               string.Equals(e.EventType, "life_term_form_start", StringComparison.OrdinalIgnoreCase) ||
+               string.Equals(e.EventType, "life_whole_form_start", StringComparison.OrdinalIgnoreCase) ||
+               string.Equals(e.EventType, "life_finalexpense_form_start", StringComparison.OrdinalIgnoreCase) ||
+               string.Equals(e.EventType, "life_mp_form_start", StringComparison.OrdinalIgnoreCase) ||
+               string.Equals(e.EventType, "life_iul_form_start", StringComparison.OrdinalIgnoreCase);
     }
 
     private static bool IsQuoteEntryEngagedSignalEvent(AnalyticsEvent e)
