@@ -366,7 +366,7 @@
                             <h3>Visitor Timeline</h3>
                         </div>
 
-                        <button class="vc-modal-close">
+                        <button type="button" class="vc-modal-close" aria-label="Close visitor timeline modal">
                             &times;
                         </button>
                     </div>
@@ -380,11 +380,13 @@
             modal.querySelector('.vc-modal-close')
                 ?.addEventListener('click', () => {
                     modal.classList.remove('is-open');
+                    document.body.style.overflow = '';
                 });
 
             modal.addEventListener('click', e => {
                 if (e.target === modal) {
                     modal.classList.remove('is-open');
+                    document.body.style.overflow = '';
                 }
             });
         }
@@ -454,10 +456,11 @@
         `;
 
         modal.classList.add('is-open');
+        document.body.style.overflow = 'hidden';
     }
 
 
-function openVisitorConcentrationModal(rows) {
+    function openVisitorConcentrationModal(rows) {
         let modal = document.getElementById('visitorConcentrationModal');
 
         if (!modal) {
