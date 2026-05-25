@@ -1,8 +1,8 @@
 @using System.Text.Json
-@model Protect_Website.Models.DisabilityQuoteFormModel
+@model Protect_Website.Models.HealthQuoteFormModel
 
 @{
-    var form = Model ?? new Protect_Website.Models.DisabilityQuoteFormModel();
+    var form = Model ?? new Protect_Website.Models.HealthQuoteFormModel();
     var requestPath = Context?.Request?.Path.Value ?? string.Empty;
     var isLandingRoutePath = requestPath.Contains("/landing", StringComparison.OrdinalIgnoreCase);
     const string websitePageVariant = "website";
@@ -18,20 +18,20 @@
     var requestScheme = Context?.Request?.Scheme ?? "https";
     var requestHost = Context?.Request?.Host.Value ?? string.Empty;
     var seoImageUrl = string.IsNullOrWhiteSpace(requestHost)
-        ? "/images/ads/disability-top-banner.png"
-        : $"{requestScheme}://{requestHost}/images/ads/disability-top-banner.png";
+        ? "/images/ads/health-top-banner.png"
+        : $"{requestScheme}://{requestHost}/images/ads/health-top-banner.png";
 
-    ViewData["SeoTitle"] = "Disability Insurance Review";
-    ViewData["SeoDescription"] = "Review disability insurance options designed to help protect your income if sickness or injury keeps you from working.";
+    ViewData["SeoTitle"] = "Health Insurance Review";
+    ViewData["SeoDescription"] = "Review health insurance options around household needs, current coverage, doctor access, and affordability.";
     ViewData["SeoImage"] = seoImageUrl;
-    ViewData["Title"] = "Get Your Personalized Disability Insurance Review";
-    ViewData["PageKey"] = "quote_disability";
+    ViewData["Title"] = "Get Your Personalized Health Coverage Review";
+    ViewData["PageKey"] = "quote_health";
     ViewData["PageCategory"] = "quote";
     ViewData["PageVariant"] = pageVariant;
     ViewData["PageMode"] = pageMode;
-    ViewData["QuoteTypeForTracking"] = "disability";
+    ViewData["QuoteTypeForTracking"] = "health";
     ViewData["IsLandingPage"] = isStandaloneLandingExperience;
-    ViewData["BodyClass"] = isStandaloneLandingExperience ? "disability-landing" : "disability-quote";
+    ViewData["BodyClass"] = isStandaloneLandingExperience ? "health-landing" : "health-quote";
 
     var isFounderPath = ViewData["IsFounderPath"] as bool? == true;
     var trackedSlug = ((string?)ViewData["TrackingSlug"] ?? string.Empty).Trim();
@@ -83,14 +83,14 @@
         !string.IsNullOrWhiteSpace(form.LastName) ||
         !string.IsNullOrWhiteSpace(form.Email) ||
         !string.IsNullOrWhiteSpace(form.Phone);
-    IReadOnlyList<string> heroProofChips = new[] { "25+ carriers", "Licensed review", "No obligation" };
-    var heroStepIntroTitle = "Start with the paycheck pressure";
-    var heroStepIntroHelper = "A quick income protection estimate built around how fast sickness or injury would affect your income first.";
-    var primaryStartCtaText = "Check My Income Protection Fit";
+    IReadOnlyList<string> heroProofChips = new[] { "Affordable options", "Licensed review", "No obligation" };
+    var heroStepIntroTitle = "Start with the coverage pressure";
+    var heroStepIntroHelper = "A quick health coverage review built around your household, current plan status, and what matters most before unexpected medical costs catch you off guard.";
+    var primaryStartCtaText = "Check My Coverage Fit";
     var primaryStartCtaNote = "Takes about 30 seconds. No obligation. You stay in control.";
-    var contactMethodHelperText = "Best number to save and review your disability coverage details.";
+    var contactMethodHelperText = "Best number to save and review your health coverage details.";
     var contactMethodErrorText = "Please enter your phone number so we can save your review.";
-    var consentPromptText = "I agree to receive a call or text to review my disability coverage options and next steps.";
+    var consentPromptText = "I agree to receive a call or text to review my health coverage options and next steps.";
     var consentErrorText = "Please check the box so we can save your review.";
 
     form.PageVariant = pageVariant;
@@ -98,31 +98,31 @@
 }
 
 <style>
-body.disability-quote main.layout-content {
+body.health-quote main.layout-content {
     padding-top: 1.3rem;
     padding-bottom: 2rem;
 }
 
-body.disability-landing {
+body.health-landing {
     background:
         radial-gradient(circle at top, rgba(25, 75, 140, 0.26), transparent 36%),
         linear-gradient(180deg, #041325 0%, #061a34 42%, #071a2f 100%);
     color: #f8fafc;
 }
 
-body.disability-landing main.layout-content {
+body.health-landing main.layout-content {
     padding-top: 0.45rem;
     padding-bottom: 2rem;
 }
 
-body.disability-landing.page-mode-paid-landing header .nav-links,
-body.disability-landing.page-mode-paid-landing header .nav-toggle,
-body.disability-landing.page-mode-paid-landing header .header-bottom,
-body.disability-landing.page-mode-paid-landing header .header-psalms {
+body.health-landing.page-mode-paid-landing header .nav-links,
+body.health-landing.page-mode-paid-landing header .nav-toggle,
+body.health-landing.page-mode-paid-landing header .header-bottom,
+body.health-landing.page-mode-paid-landing header .header-psalms {
     display: none !important;
 }
 
-body.disability-landing.page-mode-paid-landing header .navbar {
+body.health-landing.page-mode-paid-landing header .navbar {
     height: auto;
     min-height: 84px;
     padding: 0.8rem 1rem;
@@ -130,11 +130,11 @@ body.disability-landing.page-mode-paid-landing header .navbar {
     box-shadow: 0 20px 34px rgba(2, 12, 27, 0.32);
 }
 
-body.disability-landing.page-mode-paid-landing header .navbar-top {
+body.health-landing.page-mode-paid-landing header .navbar-top {
     min-height: 0;
 }
 
-body.disability-landing.page-mode-paid-landing header .navbar-brand img {
+body.health-landing.page-mode-paid-landing header .navbar-brand img {
     max-height: 52px;
 }
 
@@ -253,7 +253,7 @@ body.disability-landing.page-mode-paid-landing header .navbar-brand img {
     pointer-events: none;
 }
 
-.disability-quote-started .lq-contact-first-hero-actions::before {
+.health-quote-started .lq-contact-first-hero-actions::before {
     display: none;
 }
 
@@ -430,7 +430,7 @@ body.disability-landing.page-mode-paid-landing header .navbar-brand img {
     text-wrap: balance;
 }
 
-#disabilityEducationPanel[hidden] {
+#healthEducationPanel[hidden] {
     display: none !important;
 }
 
@@ -439,15 +439,34 @@ body.disability-landing.page-mode-paid-landing header .navbar-brand img {
 }
 
 .dq-form-panel {
-    border-radius: 30px;
-    border: 1px solid rgba(231, 181, 58, 0.34);
+    position: relative;
+    overflow: hidden;
+    display: grid;
+    gap: 12px;
+    width: 100%;
+    border-radius: 26px;
+    border: 1px solid rgba(243, 214, 136, 0.34);
     background:
-        radial-gradient(circle at top, rgba(46, 104, 181, 0.14), transparent 40%),
-        linear-gradient(180deg, rgba(7, 29, 61, 0.96), rgba(5, 19, 39, 0.98));
+        radial-gradient(circle at 50% 0%, rgba(34, 99, 196, 0.12), transparent 40%),
+        linear-gradient(180deg, #08254d 0%, #061d3d 52%, #071a36 100%);
     box-shadow:
-        0 30px 64px rgba(2, 12, 27, 0.3),
-        inset 0 1px 0 rgba(255, 255, 255, 0.05);
-    padding: 18px;
+        0 32px 70px rgba(2, 12, 27, 0.32),
+        inset 0 1px 0 rgba(255, 255, 255, 0.055);
+    padding: 20px 26px 18px;
+}
+
+.dq-form-panel::before {
+    content: "";
+    position: absolute;
+    inset: 18% 9% 12%;
+    border-radius: 24px;
+    background: radial-gradient(circle at 50% 38%, rgba(224, 177, 74, 0.12) 0%, rgba(224, 177, 74, 0.04) 38%, transparent 72%);
+    pointer-events: none;
+}
+
+.dq-form-panel > * {
+    position: relative;
+    z-index: 1;
 }
 
 .dq-proof-card {
@@ -1026,13 +1045,148 @@ body.disability-landing.page-mode-paid-landing header .navbar-brand img {
     color: #bbf7d0;
 }
 
-#disabilityPostSubmitSlot,
-#disabilityPostSubmitSlot * {
+.lq-post-submit-slot {
+    width: 100%;
+    margin: 0;
+    padding: 0;
+    background: transparent;
+}
+
+.dq-form-panel .dq-wizard-surface,
+.dq-form-panel #dqStep1Panel,
+.dq-form-panel #dqContactPanel,
+.dq-form-panel #dqProcessingPanel,
+.dq-form-panel .lq-step-panel-pad {
+    background: transparent !important;
+    border: 0 !important;
+    box-shadow: none !important;
+    margin: 0 !important;
+}
+
+.dq-form-panel #dqStep1Panel,
+.dq-form-panel #dqContactPanel,
+.dq-form-panel #dqProcessingPanel,
+.dq-form-panel .lq-step-panel-pad {
+    padding: 0 !important;
+}
+
+.dq-form-panel .dq-proof-card {
+    background: transparent !important;
+    border: 0 !important;
+    border-bottom: 1px solid rgba(59, 130, 246, 0.09) !important;
+    padding: 0 0 13px !important;
+    margin: 0 0 16px !important;
+    box-shadow: none !important;
+}
+
+.dq-form-panel .dq-proof-chips {
+    margin: 0 0 16px !important;
+}
+
+.dq-contact-capture-wrap {
+    width: 100%;
+    max-width: 100%;
+    margin: 0;
+    padding: 18px 8px 0;
+    border-top: 1px solid rgba(59, 130, 246, 0.12);
+    background: transparent;
+}
+
+.dq-contact-head {
+    text-align: center;
+}
+
+.dq-contact-kicker {
+    color: #f3d688;
+    font-size: 0.8rem;
+    font-weight: 950;
+    letter-spacing: 0.09em;
+    text-transform: uppercase;
+    margin: 0 0 8px;
+}
+
+.dq-contact-title {
+    color: #fff8e7;
+    font-size: 1.55rem;
+    line-height: 1.08;
+    margin: 0 0 14px;
+}
+
+.dq-contact-copy {
+    display: none;
+}
+
+.dq-contact-capture-wrap .lq-field label {
+    color: rgba(248, 250, 252, 0.92);
+    opacity: 1;
+    font-size: 0.82rem;
+    font-weight: 900;
+    margin: 0 0 6px;
+    display: inline-block;
+}
+
+.dq-contact-capture-wrap .lq-required-star {
+    color: #ff2d2d;
+    opacity: 1;
+    font-weight: 950;
+}
+
+.dq-contact-capture-wrap input:not([type="checkbox"]):not([type="radio"]),
+.dq-contact-capture-wrap select {
+    height: 50px;
+    min-height: 50px;
+    border-radius: 12px;
+    border: 1px solid rgba(243, 214, 136, 0.62);
+    background: rgba(255, 255, 255, 0.98);
+    color: #0f172a;
+}
+
+.dq-contact-capture-wrap .lq-consent {
+    margin-top: 16px;
+    padding: 12px 14px;
+    border-radius: 12px;
+    background: rgba(4, 16, 32, 0.78);
+    border: 1px solid rgba(59, 130, 246, 0.14);
+}
+
+.dq-contact-capture-wrap .lq-step-actions,
+.dq-contact-capture-wrap .lq-submit-row {
+    margin-top: 14px;
+}
+
+.dq-form-panel.qf-final-panel-no-chrome,
+.dq-form-panel.qf-final-review-flat-mode,
+.dq-form-panel.is-submitted {
+    background: transparent !important;
+    border: 0 !important;
+    box-shadow: none !important;
+    padding: 0 !important;
+}
+
+.dq-form-panel.qf-final-panel-no-chrome .dq-proof-card,
+.dq-form-panel.qf-final-panel-no-chrome .dq-proof-chips,
+.dq-form-panel.qf-final-panel-no-chrome .dq-contact-capture-wrap {
+    display: none !important;
+}
+
+.dq-form-panel.is-submit-loading #dqStep1Panel,
+.dq-form-panel.is-submit-loading #dqContactPanel,
+.dq-form-panel.is-submit-loading .dq-contact-capture-wrap,
+.dq-form-panel.is-submit-loading .lq-post-submit-slot {
+    display: none !important;
+}
+
+.dq-form-panel.is-submit-loading #dqProcessingPanel {
+    display: block !important;
+}
+
+#healthPostSubmitSlot,
+#healthPostSubmitSlot * {
     opacity: 1 !important;
     box-sizing: border-box !important;
 }
 
-#disabilityPostSubmitSlot {
+#healthPostSubmitSlot {
     width: 100% !important;
     margin: 0 !important;
     padding: 0 !important;
@@ -1041,7 +1195,7 @@ body.disability-landing.page-mode-paid-landing header .navbar-brand img {
     box-shadow: none !important;
 }
 
-#disabilityPostSubmitSlot .lq-final-review-unified-card {
+#healthPostSubmitSlot .lq-final-review-unified-card {
     width: 100% !important;
     max-width: 100% !important;
     margin: 0 !important;
@@ -1058,14 +1212,14 @@ body.disability-landing.page-mode-paid-landing header .navbar-brand img {
     overflow: hidden !important;
 }
 
-#disabilityPostSubmitSlot .lq-final-review-head {
+#healthPostSubmitSlot .lq-final-review-head {
     position: relative !important;
     padding: 0 0 13px !important;
     margin: 0 0 12px !important;
     border-bottom: 1px solid rgba(243,214,136,.14) !important;
 }
 
-#disabilityPostSubmitSlot .lq-final-review-kicker {
+#healthPostSubmitSlot .lq-final-review-kicker {
     display: inline-flex !important;
     align-items: center !important;
     gap: 8px !important;
@@ -1077,7 +1231,7 @@ body.disability-landing.page-mode-paid-landing header .navbar-brand img {
     margin: 0 0 8px !important;
 }
 
-#disabilityPostSubmitSlot .lq-final-review-kicker::after {
+#healthPostSubmitSlot .lq-final-review-kicker::after {
     content: "" !important;
     width: 42px !important;
     height: 1px !important;
@@ -1085,7 +1239,7 @@ body.disability-landing.page-mode-paid-landing header .navbar-brand img {
     display: block !important;
 }
 
-#disabilityPostSubmitSlot .lq-final-review-title {
+#healthPostSubmitSlot .lq-final-review-title {
     color: #fff8e7 !important;
     font-size: clamp(1.72rem, 4vw, 2.28rem) !important;
     line-height: 1.02 !important;
@@ -1095,7 +1249,7 @@ body.disability-landing.page-mode-paid-landing header .navbar-brand img {
     text-wrap: balance !important;
 }
 
-#disabilityPostSubmitSlot .lq-final-review-copy {
+#healthPostSubmitSlot .lq-final-review-copy {
     color: rgba(248,250,252,.84) !important;
     font-size: .96rem !important;
     line-height: 1.42 !important;
@@ -1104,14 +1258,14 @@ body.disability-landing.page-mode-paid-landing header .navbar-brand img {
     margin: 0 !important;
 }
 
-#disabilityPostSubmitSlot .lq-final-review-proof-row {
+#healthPostSubmitSlot .lq-final-review-proof-row {
     display: flex !important;
     flex-wrap: wrap !important;
     gap: 7px !important;
     margin: 0 0 13px !important;
 }
 
-#disabilityPostSubmitSlot .lq-final-review-proof-row span {
+#healthPostSubmitSlot .lq-final-review-proof-row span {
     display: inline-flex !important;
     align-items: center !important;
     min-height: 28px !important;
@@ -1124,19 +1278,19 @@ body.disability-landing.page-mode-paid-landing header .navbar-brand img {
     font-weight: 900 !important;
 }
 
-#disabilityPostSubmitSlot .lq-final-review-impact-grid,
-#disabilityPostSubmitSlot .dq-final-review-stats {
+#healthPostSubmitSlot .lq-final-review-impact-grid,
+#healthPostSubmitSlot .dq-final-review-stats {
     display: grid !important;
     grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
     gap: 10px !important;
 }
 
-#disabilityPostSubmitSlot .lq-final-review-impact-grid {
+#healthPostSubmitSlot .lq-final-review-impact-grid {
     margin: 0 0 14px !important;
 }
 
-#disabilityPostSubmitSlot .lq-final-review-impact-card,
-#disabilityPostSubmitSlot .dq-final-review-stat {
+#healthPostSubmitSlot .lq-final-review-impact-card,
+#healthPostSubmitSlot .dq-final-review-stat {
     padding: 13px 14px !important;
     border-radius: 16px !important;
     border: 1px solid rgba(199,153,49,.22) !important;
@@ -1145,17 +1299,17 @@ body.disability-landing.page-mode-paid-landing header .navbar-brand img {
         linear-gradient(180deg, rgba(6,29,61,.78) 0%, rgba(7,26,54,.92) 100%) !important;
 }
 
-#disabilityPostSubmitSlot .lq-final-review-impact-card.is-urgent {
+#healthPostSubmitSlot .lq-final-review-impact-card.is-urgent {
     border-color: rgba(243,214,136,.38) !important;
     background:
         radial-gradient(circle at 15% 0%, rgba(243,214,136,.14), transparent 38%),
         linear-gradient(180deg, rgba(8,37,77,.90) 0%, rgba(7,26,54,.96) 100%) !important;
 }
 
-#disabilityPostSubmitSlot .lq-final-review-impact-label,
-#disabilityPostSubmitSlot .lq-final-review-next-kicker,
-#disabilityPostSubmitSlot .lq-final-review-booking-kicker,
-#disabilityPostSubmitSlot .dq-final-review-stat-label {
+#healthPostSubmitSlot .lq-final-review-impact-label,
+#healthPostSubmitSlot .lq-final-review-next-kicker,
+#healthPostSubmitSlot .lq-final-review-booking-kicker,
+#healthPostSubmitSlot .dq-final-review-stat-label {
     color: #f3d688 !important;
     font-size: .70rem !important;
     font-weight: 940 !important;
@@ -1164,16 +1318,16 @@ body.disability-landing.page-mode-paid-landing header .navbar-brand img {
     margin: 0 0 5px !important;
 }
 
-#disabilityPostSubmitSlot .lq-final-review-impact-text,
-#disabilityPostSubmitSlot .lq-final-review-next-copy,
-#disabilityPostSubmitSlot .lq-final-review-booking-copy {
+#healthPostSubmitSlot .lq-final-review-impact-text,
+#healthPostSubmitSlot .lq-final-review-next-copy,
+#healthPostSubmitSlot .lq-final-review-booking-copy {
     color: rgba(248,250,252,.88) !important;
     font-size: .87rem !important;
     font-weight: 760 !important;
     line-height: 1.34 !important;
 }
 
-#disabilityPostSubmitSlot .lq-final-review-result-slot {
+#healthPostSubmitSlot .lq-final-review-result-slot {
     background: transparent !important;
     border: 0 !important;
     box-shadow: none !important;
@@ -1181,18 +1335,18 @@ body.disability-landing.page-mode-paid-landing header .navbar-brand img {
     margin: 0 0 14px !important;
 }
 
-#disabilityPostSubmitSlot .dq-final-review-stats {
+#healthPostSubmitSlot .dq-final-review-stats {
     margin: 0 !important;
 }
 
-#disabilityPostSubmitSlot .dq-final-review-stat-value {
+#healthPostSubmitSlot .dq-final-review-stat-value {
     color: #fff8e7 !important;
     font-size: 1.05rem !important;
     font-weight: 900 !important;
     line-height: 1.3 !important;
 }
 
-#disabilityPostSubmitSlot .lq-final-review-next-step {
+#healthPostSubmitSlot .lq-final-review-next-step {
     margin: 2px 0 14px !important;
     padding: 15px 16px !important;
     border-radius: 18px !important;
@@ -1205,7 +1359,7 @@ body.disability-landing.page-mode-paid-landing header .navbar-brand img {
         0 14px 28px rgba(2,12,27,.14) !important;
 }
 
-#disabilityPostSubmitSlot .lq-final-review-next-title {
+#healthPostSubmitSlot .lq-final-review-next-title {
     color: #fff7df !important;
     font-size: 1.02rem !important;
     font-weight: 930 !important;
@@ -1213,13 +1367,13 @@ body.disability-landing.page-mode-paid-landing header .navbar-brand img {
     margin: 0 0 6px !important;
 }
 
-#disabilityPostSubmitSlot .lq-final-review-checklist {
+#healthPostSubmitSlot .lq-final-review-checklist {
     display: grid !important;
     grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
     gap: 7px !important;
 }
 
-#disabilityPostSubmitSlot .lq-final-review-checklist span {
+#healthPostSubmitSlot .lq-final-review-checklist span {
     padding: 8px 9px !important;
     border-radius: 12px !important;
     border: 1px solid rgba(243,214,136,.20) !important;
@@ -1230,7 +1384,7 @@ body.disability-landing.page-mode-paid-landing header .navbar-brand img {
     text-align: center !important;
 }
 
-#disabilityPostSubmitSlot .lq-final-review-booking-card {
+#healthPostSubmitSlot .lq-final-review-booking-card {
     margin: 12px 0 10px !important;
     padding: 15px 16px !important;
     border-radius: 18px !important;
@@ -1240,7 +1394,7 @@ body.disability-landing.page-mode-paid-landing header .navbar-brand img {
         linear-gradient(180deg, rgba(9,41,85,.96) 0%, rgba(6,26,55,.98) 100%) !important;
 }
 
-#disabilityPostSubmitSlot .lq-final-review-booking-title {
+#healthPostSubmitSlot .lq-final-review-booking-title {
     color: #fff8e7 !important;
     font-size: 1.16rem !important;
     font-weight: 950 !important;
@@ -1249,9 +1403,9 @@ body.disability-landing.page-mode-paid-landing header .navbar-brand img {
     text-wrap: balance !important;
 }
 
-#disabilityPostSubmitSlot .lq-final-review-loading,
-#disabilityPostSubmitSlot .lq-final-review-unavailable,
-#disabilityPostSubmitSlot .lq-booking-embed-status {
+#healthPostSubmitSlot .lq-final-review-loading,
+#healthPostSubmitSlot .lq-final-review-unavailable,
+#healthPostSubmitSlot .lq-booking-embed-status {
     margin: 10px 0 !important;
     padding: 10px 12px !important;
     border-radius: 14px !important;
@@ -1262,7 +1416,7 @@ body.disability-landing.page-mode-paid-landing header .navbar-brand img {
     font-weight: 760 !important;
 }
 
-#disabilityPostSubmitSlot .lq-booking-frame-only {
+#healthPostSubmitSlot .lq-booking-frame-only {
     margin: 10px 0 0 !important;
     padding: 0 !important;
     background: transparent !important;
@@ -1270,7 +1424,7 @@ body.disability-landing.page-mode-paid-landing header .navbar-brand img {
     box-shadow: none !important;
 }
 
-#disabilityPostSubmitSlot .lq-booking-iframe {
+#healthPostSubmitSlot .lq-booking-iframe {
     display: block !important;
     width: 100% !important;
     min-height: 650px !important;
@@ -1280,12 +1434,12 @@ body.disability-landing.page-mode-paid-landing header .navbar-brand img {
     box-shadow: 0 16px 34px rgba(2,12,27,.22) !important;
 }
 
-#disabilityEducationContactPanel,
-#disabilityEducationContactPanel * {
+#healthEducationContactPanel,
+#healthEducationContactPanel * {
     box-sizing: border-box !important;
 }
 
-#disabilityEducationContactPanel {
+#healthEducationContactPanel {
     width: 100% !important;
     padding: 20px 26px 18px !important;
     border-radius: 26px !important;
@@ -1298,25 +1452,25 @@ body.disability-landing.page-mode-paid-landing header .navbar-brand img {
         inset 0 1px 0 rgba(255, 255, 255, 0.055) !important;
 }
 
-#disabilityEducationContactPanel .dq-wizard-surface,
-#disabilityEducationContactPanel #dqStep1Panel,
-#disabilityEducationContactPanel #dqContactPanel,
-#disabilityEducationContactPanel #dqProcessingPanel,
-#disabilityEducationContactPanel .lq-step-panel-pad {
+#healthEducationContactPanel .dq-wizard-surface,
+#healthEducationContactPanel #dqStep1Panel,
+#healthEducationContactPanel #dqContactPanel,
+#healthEducationContactPanel #dqProcessingPanel,
+#healthEducationContactPanel .lq-step-panel-pad {
     background: transparent !important;
     border: 0 !important;
     box-shadow: none !important;
     margin: 0 !important;
 }
 
-#disabilityEducationContactPanel #dqStep1Panel,
-#disabilityEducationContactPanel #dqContactPanel,
-#disabilityEducationContactPanel #dqProcessingPanel,
-#disabilityEducationContactPanel .lq-step-panel-pad {
+#healthEducationContactPanel #dqStep1Panel,
+#healthEducationContactPanel #dqContactPanel,
+#healthEducationContactPanel #dqProcessingPanel,
+#healthEducationContactPanel .lq-step-panel-pad {
     padding: 0 !important;
 }
 
-#disabilityEducationContactPanel .dq-proof-card {
+#healthEducationContactPanel .dq-proof-card {
     background: transparent !important;
     border: 0 !important;
     border-bottom: 1px solid rgba(59, 130, 246, 0.09) !important;
@@ -1325,11 +1479,11 @@ body.disability-landing.page-mode-paid-landing header .navbar-brand img {
     box-shadow: none !important;
 }
 
-#disabilityEducationContactPanel .dq-proof-chips {
+#healthEducationContactPanel .dq-proof-chips {
     margin: 0 0 16px !important;
 }
 
-#disabilityEducationContactPanel .dq-contact-capture-wrap {
+#healthEducationContactPanel .dq-contact-capture-wrap {
     width: 100% !important;
     max-width: 100% !important;
     margin: 0 !important;
@@ -1338,11 +1492,11 @@ body.disability-landing.page-mode-paid-landing header .navbar-brand img {
     background: transparent !important;
 }
 
-#disabilityEducationContactPanel .dq-contact-head {
+#healthEducationContactPanel .dq-contact-head {
     text-align: center !important;
 }
 
-#disabilityEducationContactPanel .dq-contact-kicker {
+#healthEducationContactPanel .dq-contact-kicker {
     color: #f3d688 !important;
     font-size: .8rem !important;
     font-weight: 950 !important;
@@ -1351,18 +1505,18 @@ body.disability-landing.page-mode-paid-landing header .navbar-brand img {
     margin: 0 0 8px !important;
 }
 
-#disabilityEducationContactPanel .dq-contact-title {
+#healthEducationContactPanel .dq-contact-title {
     color: #fff8e7 !important;
     font-size: 1.55rem !important;
     line-height: 1.08 !important;
     margin: 0 0 20px !important;
 }
 
-#disabilityEducationContactPanel .dq-contact-copy {
+#healthEducationContactPanel .dq-contact-copy {
     display: none !important;
 }
 
-#disabilityEducationContactPanel .dq-contact-capture-wrap .lq-field label {
+#healthEducationContactPanel .dq-contact-capture-wrap .lq-field label {
     color: rgba(248,250,252,.92) !important;
     opacity: 1 !important;
     font-size: .82rem !important;
@@ -1371,14 +1525,14 @@ body.disability-landing.page-mode-paid-landing header .navbar-brand img {
     display: inline-block !important;
 }
 
-#disabilityEducationContactPanel .dq-contact-capture-wrap .lq-required-star {
+#healthEducationContactPanel .dq-contact-capture-wrap .lq-required-star {
     color: #ff2d2d !important;
     opacity: 1 !important;
     font-weight: 950 !important;
 }
 
-#disabilityEducationContactPanel .dq-contact-capture-wrap input:not([type="checkbox"]):not([type="radio"]),
-#disabilityEducationContactPanel .dq-contact-capture-wrap select {
+#healthEducationContactPanel .dq-contact-capture-wrap input:not([type="checkbox"]):not([type="radio"]),
+#healthEducationContactPanel .dq-contact-capture-wrap select {
     height: 50px !important;
     min-height: 50px !important;
     border-radius: 12px !important;
@@ -1387,7 +1541,7 @@ body.disability-landing.page-mode-paid-landing header .navbar-brand img {
     color: #0f172a !important;
 }
 
-#disabilityEducationContactPanel .dq-contact-capture-wrap .lq-consent {
+#healthEducationContactPanel .dq-contact-capture-wrap .lq-consent {
     margin-top: 16px !important;
     padding: 12px 14px !important;
     border-radius: 12px !important;
@@ -1395,38 +1549,38 @@ body.disability-landing.page-mode-paid-landing header .navbar-brand img {
     border: 1px solid rgba(59,130,246,.14) !important;
 }
 
-#disabilityEducationContactPanel.qf-final-panel-no-chrome,
-#disabilityEducationContactPanel.qf-final-review-flat-mode,
-#disabilityEducationContactPanel.is-submitted {
+#healthEducationContactPanel.qf-final-panel-no-chrome,
+#healthEducationContactPanel.qf-final-review-flat-mode,
+#healthEducationContactPanel.is-submitted {
     background: transparent !important;
     border: 0 !important;
     box-shadow: none !important;
     padding: 0 !important;
 }
 
-#disabilityEducationContactPanel.qf-final-panel-no-chrome .dq-proof-card,
-#disabilityEducationContactPanel.qf-final-panel-no-chrome .dq-proof-chips,
-#disabilityEducationContactPanel.qf-final-panel-no-chrome #disabilityContactCaptureWrap,
-#disabilityEducationContactPanel.qf-final-panel-no-chrome #dqContactPanel > .lq-step-panel-pad > .lq-step-progress {
+#healthEducationContactPanel.qf-final-panel-no-chrome .dq-proof-card,
+#healthEducationContactPanel.qf-final-panel-no-chrome .dq-proof-chips,
+#healthEducationContactPanel.qf-final-panel-no-chrome #healthContactCaptureWrap,
+#healthEducationContactPanel.qf-final-panel-no-chrome #dqContactPanel > .lq-step-panel-pad > .lq-step-progress {
     display: none !important;
 }
 
-#disabilityEducationContactPanel.is-submit-loading #dqStep1Panel,
-#disabilityEducationContactPanel.is-submit-loading #dqContactPanel,
-#disabilityEducationContactPanel.is-submit-loading #disabilityContactCaptureWrap,
-#disabilityEducationContactPanel.is-submit-loading #disabilityPostSubmitSlot {
+#healthEducationContactPanel.is-submit-loading #dqStep1Panel,
+#healthEducationContactPanel.is-submit-loading #dqContactPanel,
+#healthEducationContactPanel.is-submit-loading #healthContactCaptureWrap,
+#healthEducationContactPanel.is-submit-loading #healthPostSubmitSlot {
     display: none !important;
 }
 
-#disabilityEducationContactPanel.is-submit-loading #dqProcessingPanel {
+#healthEducationContactPanel.is-submit-loading #dqProcessingPanel {
     display: block !important;
 }
 
-#disabilityPostSubmitSlot .lq-final-review-agent-row .dq-proof-card {
+#healthPostSubmitSlot .lq-final-review-agent-row .dq-proof-card {
     margin: 0 0 8px !important;
 }
 
-#disabilityPostSubmitSlot .lq-booking-secondary-link {
+#healthPostSubmitSlot .lq-booking-secondary-link {
     display: inline-flex !important;
     justify-content: center !important;
     align-items: center !important;
@@ -1443,35 +1597,39 @@ body.disability-landing.page-mode-paid-landing header .navbar-brand img {
 }
 
 @@media (max-width: 720px) {
-    #disabilityPostSubmitSlot .lq-final-review-unified-card {
+    .dq-form-panel {
+        padding: 16px !important;
+    }
+
+    #healthPostSubmitSlot .lq-final-review-unified-card {
         padding: 17px !important;
         border-radius: 22px !important;
     }
 
-    #disabilityPostSubmitSlot .lq-final-review-title {
+    #healthPostSubmitSlot .lq-final-review-title {
         font-size: 1.52rem !important;
         line-height: 1.04 !important;
     }
 
-    #disabilityPostSubmitSlot .lq-final-review-copy {
+    #healthPostSubmitSlot .lq-final-review-copy {
         font-size: .91rem !important;
         line-height: 1.4 !important;
     }
 
-    #disabilityPostSubmitSlot .lq-final-review-impact-grid,
-    #disabilityPostSubmitSlot .dq-final-review-stats,
-    #disabilityPostSubmitSlot .lq-final-review-checklist,
+    #healthPostSubmitSlot .lq-final-review-impact-grid,
+    #healthPostSubmitSlot .dq-final-review-stats,
+    #healthPostSubmitSlot .lq-final-review-checklist,
     .dq-contact-capture-wrap .lq-field-row {
         grid-template-columns: 1fr !important;
     }
 
-    #disabilityPostSubmitSlot .lq-final-review-next-step,
-    #disabilityPostSubmitSlot .lq-final-review-booking-card {
+    #healthPostSubmitSlot .lq-final-review-next-step,
+    #healthPostSubmitSlot .lq-final-review-booking-card {
         padding: 14px !important;
         border-radius: 16px !important;
     }
 
-    #disabilityPostSubmitSlot .lq-booking-iframe {
+    #healthPostSubmitSlot .lq-booking-iframe {
         min-height: 620px !important;
         border-radius: 14px !important;
     }
@@ -1482,11 +1640,11 @@ body.disability-landing.page-mode-paid-landing header .navbar-brand img {
     }
 }
 
-body.disability-final-step-active .dq-proof-chips {
+body.health-final-step-active .dq-proof-chips {
     display: none;
 }
 
-body.disability-final-step-active .dq-form-panel {
+body.health-final-step-active .dq-form-panel {
     padding-top: 16px;
 }
 
@@ -1572,8 +1730,8 @@ body.disability-final-step-active .dq-form-panel {
 <svg aria-hidden="true" focusable="false" style="position:absolute;width:0;height:0;overflow:hidden">
     <defs>
         <symbol id="dq-icon-shield" viewBox="0 0 48 48">
-            <path d="M24 6 38 11.4v10.2c0 9.1-5.7 16.3-14 20.4-8.3-4.1-14-11.3-14-20.4V11.4Z" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linejoin="round"/>
-            <path d="m17.5 24.5 4.4 4.4 8.6-9.4" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+            <circle cx="24" cy="24" r="16" fill="none" stroke="currentColor" stroke-width="2.4"/>
+            <path d="M11 24h5l3-6 5 12 4-8h9" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/>
         </symbol>
         <symbol id="dq-icon-calendar" viewBox="0 0 48 48">
             <rect x="8" y="11" width="32" height="28" rx="5" fill="none" stroke="currentColor" stroke-width="2.4"/>
@@ -1583,14 +1741,16 @@ body.disability-final-step-active .dq-form-panel {
             <circle cx="30" cy="24" r="2.2" fill="currentColor"/>
         </symbol>
         <symbol id="dq-icon-briefcase" viewBox="0 0 48 48">
-            <rect x="8" y="15" width="32" height="22" rx="4" fill="none" stroke="currentColor" stroke-width="2.4"/>
-            <path d="M18 15v-3.5a2.5 2.5 0 0 1 2.5-2.5h7a2.5 2.5 0 0 1 2.5 2.5V15M8 23h32" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"/>
+            <circle cx="16" cy="19.5" r="4" fill="none" stroke="currentColor" stroke-width="2.3"/>
+            <circle cx="32" cy="19.5" r="4" fill="none" stroke="currentColor" stroke-width="2.3"/>
+            <circle cx="24" cy="15.5" r="4.5" fill="none" stroke="currentColor" stroke-width="2.3"/>
+            <path d="M8.5 36c1.2-5 4.1-7.6 8.3-7.6c3.8 0 6.4 1.7 7.7 5.1" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round"/>
+            <path d="M39.5 36c-1.2-5-4.1-7.6-8.3-7.6c-3.8 0-6.4 1.7-7.7 5.1" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round"/>
+            <path d="M15.5 37c1.5-5.2 4.4-7.8 8.5-7.8s7 2.6 8.5 7.8" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round"/>
         </symbol>
         <symbol id="dq-icon-income" viewBox="0 0 48 48">
-            <path d="M12 35h24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"/>
-            <path d="M16 35V22M24 35V15M32 35V26" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"/>
-            <circle cx="14" cy="15" r="4.5" fill="none" stroke="currentColor" stroke-width="2.2"/>
-            <path d="M14 12.5v5M11.5 15h5" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/>
+            <rect x="8" y="12" width="32" height="24" rx="5" fill="none" stroke="currentColor" stroke-width="2.4"/>
+            <path d="M16 20h8M16 27h6M29 18v10M24 23h10" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"/>
         </symbol>
         <symbol id="dq-icon-coverage" viewBox="0 0 48 48">
             <path d="M14 11h20l4 4v18a4 4 0 0 1-4 4H14a4 4 0 0 1-4-4V15a4 4 0 0 1 4-4Z" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linejoin="round"/>
@@ -1611,9 +1771,9 @@ body.disability-final-step-active .dq-form-panel {
 <div class="dq-shell">
     <div class="lq-hero-shell">
         <div class="dq-surface">
-            <div class="dq-hero-entry" id="disabilityHeroEntryPanel" @((showContactStepByDefault ? "hidden" : null))>
+            <div class="dq-hero-entry" id="healthHeroEntryPanel" @((showContactStepByDefault ? "hidden" : null))>
                 <figure class="dq-hero-banner-wrap">
-                    <img class="dq-hero-banner-image" src="~/images/ads/disability-top-banner.png" asp-append-version="true" alt="Legend disability insurance review creative asking what happens if your paycheck stops." loading="eager" />
+                    <img class="dq-hero-banner-image" src="~/images/ads/health-top-banner.png" asp-append-version="true" alt="Legend health insurance review creative inviting a quick health coverage review." loading="eager" />
                 </figure>
 
                 <div class="lq-above-fold-proof" aria-label="Review benefits">
@@ -1629,19 +1789,19 @@ body.disability-final-step-active .dq-form-panel {
                 </div>
 
                 <div class="lq-contact-first-hero-actions">
-                    <button type="button" class="btn-gold lq-primary-start-cta lq-contact-first-hero-cta" id="disabilityHeroStartCta" data-cta="disability_funnel_start">@primaryStartCtaText</button>
+                    <button type="button" class="btn-gold lq-primary-start-cta lq-contact-first-hero-cta" id="healthHeroStartCta" data-cta="health_funnel_start">@primaryStartCtaText</button>
                     <div class="lq-contact-first-hero-cta-note lq-primary-start-note">@primaryStartCtaNote</div>
                 </div>
             </div>
 
-            <form asp-action="SubmitDisabilityQuote" asp-controller="DisabilityQuote" method="post" id="disabilityQuoteForm" data-form-key="quote_disability_form" novalidate>
+            <form asp-action="SubmitHealthQuote" asp-controller="HealthQuote" method="post" id="healthQuoteForm" data-form-key="quote_health_form" novalidate>
                 @Html.AntiForgeryToken()
                 @if (!string.IsNullOrWhiteSpace(agentSlug))
                 {
                     <input type="hidden" name="AgentSlug" value="@agentSlug" />
                 }
 
-                <input type="hidden" name="PageKey" value="quote_disability" />
+                <input type="hidden" name="PageKey" value="quote_health" />
                 <input type="hidden" name="PageVariant" value="@pageVariant" />
                 <input type="hidden" name="PageMode" value="@pageMode" />
                 <input type="hidden" name="Age" id="Age" value="@initialAgeValue" />
@@ -1662,26 +1822,26 @@ body.disability-final-step-active .dq-form-panel {
 
                 <noscript>
                     <style>
-                        #disabilityEducationPanel[hidden] { display: block !important; }
+                        #healthEducationPanel[hidden] { display: block !important; }
                     </style>
                 </noscript>
 
-                <div class="dq-primary-grid" id="disabilityEducationPanel" @((showContactStepByDefault ? null : "hidden"))>
-                    <section class="dq-form-panel" id="disabilityEducationContactPanel">
-                        <div class="dq-proof-card" aria-label="How this disability review helps">
+                <div class="dq-primary-grid" id="healthEducationPanel" @((showContactStepByDefault ? null : "hidden"))>
+                    <section class="dq-form-panel" id="healthEducationContactPanel">
+                        <div class="dq-proof-card" aria-label="How this health review helps">
                             <div class="dq-proof-icon" aria-hidden="true">
                                 <svg viewBox="0 0 48 48" fill="none"><use href="#dq-icon-shield"></use></svg>
                             </div>
                             <div class="dq-proof-copy">
-                                <div class="dq-proof-kicker">Income protection review</div>
-                                <div class="dq-proof-title">Protect your paycheck before a setback turns into a financial scramble.</div>
-                                <p class="dq-proof-text">This short funnel helps frame age, work type, income pressure, and existing coverage so the disability conversation starts in the right place.</p>
+                                <div class="dq-proof-kicker">Health coverage review</div>
+                                <div class="dq-proof-title">Protect your household from surprise medical costs and coverage gaps.</div>
+                                <p class="dq-proof-text">Answer a few quick questions so the conversation starts around your household needs, current coverage, and the kind of plan guidance you want first.</p>
                             </div>
                         </div>
 
                         <div class="dq-proof-chips" aria-hidden="true">
-                            <span class="dq-proof-chip">Income replacement focus</span>
-                            <span class="dq-proof-chip">Work-based coverage gap review</span>
+                            <span class="dq-proof-chip">Affordable plan focus</span>
+                            <span class="dq-proof-chip">Family coverage guidance</span>
                             <span class="dq-proof-chip">Private and no-pressure</span>
                         </div>
 
@@ -1709,8 +1869,8 @@ body.disability-final-step-active .dq-form-panel {
 
                                     <div class="lq-micro-step" data-micro-step="0">
                                         <div class="lq-step-intro">
-                                            <h2 class="lq-step-title">Let's tailor the disability review.</h2>
-                                            <p class="lq-step-helper">Answer a few quick questions first so the final review reflects your work situation, income pressure, and current coverage.</p>
+                                            <h2 class="lq-step-title">Let's tailor the health review.</h2>
+                                            <p class="lq-step-helper">Answer a few quick questions first so your review reflects your household, current coverage, and the tradeoffs that matter most.</p>
                                         </div>
                                         <div class="lq-choice-group" role="radiogroup" aria-labelledby="dqAgeRangeLabel">
                                             <div class="lq-choice-label" id="dqAgeRangeLabel">What is your age range?</div>
@@ -1721,7 +1881,7 @@ body.disability-final-step-active .dq-form-panel {
                                                     <span class="lq-card-copy">
                                                         <span class="lq-card-kicker">Age band</span>
                                                         <span class="lq-card-title">18-24</span>
-                                                        <span class="lq-card-helper">Early income years with room to lock in protection habits.</span>
+                                                        <span class="lq-card-helper">A strong time to lock in affordable basics before care gets more expensive.</span>
                                                     </span>
                                                 </label>
                                                 <label class="lq-card lq-card-rich @SelectedClassIf(selectedAgeRange == "25-34")">
@@ -1730,7 +1890,7 @@ body.disability-final-step-active .dq-form-panel {
                                                     <span class="lq-card-copy">
                                                         <span class="lq-card-kicker">Age band</span>
                                                         <span class="lq-card-title">25-34</span>
-                                                        <span class="lq-card-helper">Often where income growth starts tying into bigger fixed bills.</span>
+                                                        <span class="lq-card-helper">Monthly cost, preventive care, and reliable access often matter more here.</span>
                                                     </span>
                                                 </label>
                                                 <label class="lq-card lq-card-rich @SelectedClassIf(selectedAgeRange == "35-44")">
@@ -1739,7 +1899,7 @@ body.disability-final-step-active .dq-form-panel {
                                                     <span class="lq-card-copy">
                                                         <span class="lq-card-kicker">Age band</span>
                                                         <span class="lq-card-title">35-44</span>
-                                                        <span class="lq-card-helper">Family costs and income responsibility often peak here.</span>
+                                                        <span class="lq-card-helper">Family needs, prescriptions, and network fit often shape plan choices here.</span>
                                                     </span>
                                                 </label>
                                                 <label class="lq-card lq-card-rich @SelectedClassIf(selectedAgeRange == "45-54")">
@@ -1748,7 +1908,7 @@ body.disability-final-step-active .dq-form-panel {
                                                     <span class="lq-card-copy">
                                                         <span class="lq-card-kicker">Age band</span>
                                                         <span class="lq-card-title">45-54</span>
-                                                        <span class="lq-card-helper">This is often a key review window for income continuity.</span>
+                                                        <span class="lq-card-helper">Doctor access, deductible exposure, and preventive care usually matter more here.</span>
                                                     </span>
                                                 </label>
                                                 <label class="lq-card lq-card-rich @SelectedClassIf(selectedAgeRange == "55-64")">
@@ -1757,7 +1917,7 @@ body.disability-final-step-active .dq-form-panel {
                                                     <span class="lq-card-copy">
                                                         <span class="lq-card-kicker">Age band</span>
                                                         <span class="lq-card-title">55-64</span>
-                                                        <span class="lq-card-helper">Protection fit matters more when replacing income gets harder.</span>
+                                                        <span class="lq-card-helper">Coverage gaps can get more expensive here, so fit matters more.</span>
                                                     </span>
                                                 </label>
                                                 <label class="lq-card lq-card-rich @SelectedClassIf(selectedAgeRange == "65+")">
@@ -1766,7 +1926,7 @@ body.disability-final-step-active .dq-form-panel {
                                                     <span class="lq-card-copy">
                                                         <span class="lq-card-kicker">Age band</span>
                                                         <span class="lq-card-title">65+</span>
-                                                        <span class="lq-card-helper">We can still frame what review path makes the most sense.</span>
+                                                        <span class="lq-card-helper">We can still point you toward the coverage options that make the most sense.</span>
                                                     </span>
                                                 </label>
                                             </div>
@@ -1775,47 +1935,56 @@ body.disability-final-step-active .dq-form-panel {
                                     </div>
 
                                     <div class="lq-micro-step" data-micro-step="1" hidden>
-                                        <div class="lq-choice-group" role="radiogroup" aria-labelledby="dqEmploymentTypeLabel">
-                                            <div class="lq-choice-label" id="dqEmploymentTypeLabel">What best describes your work situation?</div>
+                                        <div class="lq-choice-group" role="radiogroup" aria-labelledby="dqHouseholdSizeLabel">
+                                            <div class="lq-choice-label" id="dqHouseholdSizeLabel">Who needs this health coverage review?</div>
                                             <div class="lq-choice-grid">
-                                                <label class="lq-card lq-card-rich @SelectedClassIf(form.EmploymentType == "W-2 Employee")">
-                                                    <input type="radio" name="EmploymentType" value="W-2 Employee" @CheckedIf(form.EmploymentType == "W-2 Employee") />
+                                                <label class="lq-card lq-card-rich @SelectedClassIf(form.HouseholdSize == "Just me")">
+                                                    <input type="radio" name="HouseholdSize" value="Just me" @CheckedIf(form.HouseholdSize == "Just me") />
                                                     <span class="lq-card-visual" aria-hidden="true"><svg class="lq-card-icon" viewBox="0 0 48 48" fill="none"><use href="#dq-icon-briefcase"></use></svg></span>
                                                     <span class="lq-card-copy">
-                                                        <span class="lq-card-kicker">Work type</span>
-                                                        <span class="lq-card-title">W-2 Employee</span>
-                                                        <span class="lq-card-helper">We will compare any workplace benefit against what you actually rely on.</span>
+                                                        <span class="lq-card-kicker">Household</span>
+                                                        <span class="lq-card-title">Just me</span>
+                                                        <span class="lq-card-helper">A solo review can focus tightly on your own doctors, prescriptions, and budget.</span>
                                                     </span>
                                                 </label>
-                                                <label class="lq-card lq-card-rich @SelectedClassIf(form.EmploymentType == "1099 / Contractor")">
-                                                    <input type="radio" name="EmploymentType" value="1099 / Contractor" @CheckedIf(form.EmploymentType == "1099 / Contractor") />
+                                                <label class="lq-card lq-card-rich @SelectedClassIf(form.HouseholdSize == "Me + spouse / partner")">
+                                                    <input type="radio" name="HouseholdSize" value="Me + spouse / partner" @CheckedIf(form.HouseholdSize == "Me + spouse / partner") />
                                                     <span class="lq-card-visual" aria-hidden="true"><svg class="lq-card-icon" viewBox="0 0 48 48" fill="none"><use href="#dq-icon-briefcase"></use></svg></span>
                                                     <span class="lq-card-copy">
-                                                        <span class="lq-card-kicker">Work type</span>
-                                                        <span class="lq-card-title">1099 / Contractor</span>
-                                                        <span class="lq-card-helper">Independent income streams usually need a tighter fallback plan.</span>
+                                                        <span class="lq-card-kicker">Household</span>
+                                                        <span class="lq-card-title">Me + spouse / partner</span>
+                                                        <span class="lq-card-helper">This review can focus on balancing cost, network fit, and shared care needs.</span>
                                                     </span>
                                                 </label>
-                                                <label class="lq-card lq-card-rich @SelectedClassIf(form.EmploymentType == "Business Owner")">
-                                                    <input type="radio" name="EmploymentType" value="Business Owner" @CheckedIf(form.EmploymentType == "Business Owner") />
+                                                <label class="lq-card lq-card-rich @SelectedClassIf(form.HouseholdSize == "Me + child / children")">
+                                                    <input type="radio" name="HouseholdSize" value="Me + child / children" @CheckedIf(form.HouseholdSize == "Me + child / children") />
                                                     <span class="lq-card-visual" aria-hidden="true"><svg class="lq-card-icon" viewBox="0 0 48 48" fill="none"><use href="#dq-icon-briefcase"></use></svg></span>
                                                     <span class="lq-card-copy">
-                                                        <span class="lq-card-kicker">Work type</span>
-                                                        <span class="lq-card-title">Business Owner</span>
-                                                        <span class="lq-card-helper">The review should account for both household income and business strain.</span>
+                                                        <span class="lq-card-kicker">Household</span>
+                                                        <span class="lq-card-title">Me + child / children</span>
+                                                        <span class="lq-card-helper">Family care needs and pediatric access usually become a bigger part of the decision.</span>
                                                     </span>
                                                 </label>
-                                                <label class="lq-card lq-card-rich @SelectedClassIf(form.EmploymentType == "Self-Employed")">
-                                                    <input type="radio" name="EmploymentType" value="Self-Employed" @CheckedIf(form.EmploymentType == "Self-Employed") />
+                                                <label class="lq-card lq-card-rich @SelectedClassIf(form.HouseholdSize == "Family of 4+")">
+                                                    <input type="radio" name="HouseholdSize" value="Family of 4+" @CheckedIf(form.HouseholdSize == "Family of 4+") />
                                                     <span class="lq-card-visual" aria-hidden="true"><svg class="lq-card-icon" viewBox="0 0 48 48" fill="none"><use href="#dq-icon-briefcase"></use></svg></span>
                                                     <span class="lq-card-copy">
-                                                        <span class="lq-card-kicker">Work type</span>
-                                                        <span class="lq-card-title">Self-Employed</span>
-                                                        <span class="lq-card-helper">Income protection usually needs to be more intentional here.</span>
+                                                        <span class="lq-card-kicker">Household</span>
+                                                        <span class="lq-card-title">Family of 4+</span>
+                                                        <span class="lq-card-helper">A larger household often needs a closer look at premium, deductible, and provider tradeoffs.</span>
+                                                    </span>
+                                                </label>
+                                                <label class="lq-card lq-card-rich @SelectedClassIf(form.HouseholdSize == "Not sure yet")">
+                                                    <input type="radio" name="HouseholdSize" value="Not sure yet" @CheckedIf(form.HouseholdSize == "Not sure yet") />
+                                                    <span class="lq-card-visual" aria-hidden="true"><svg class="lq-card-icon" viewBox="0 0 48 48" fill="none"><use href="#dq-icon-briefcase"></use></svg></span>
+                                                    <span class="lq-card-copy">
+                                                        <span class="lq-card-kicker">Household</span>
+                                                        <span class="lq-card-title">Not sure yet</span>
+                                                        <span class="lq-card-helper">That is fine. We can still focus on the coverage options most likely to fit.</span>
                                                     </span>
                                                 </label>
                                             </div>
-                                            <div class="lq-choice-error" id="err-EmploymentType">Please select your work type.</div>
+                                            <div class="lq-choice-error" id="err-HouseholdSize">Please choose who needs this review.</div>
                                         </div>
                                         <div class="lq-step-actions">
                                             <button type="button" class="btn-ghost" data-step-back="0">Back</button>
@@ -1823,56 +1992,8 @@ body.disability-final-step-active .dq-form-panel {
                                     </div>
 
                                     <div class="lq-micro-step" data-micro-step="2" hidden>
-                                        <div class="lq-choice-group" role="radiogroup" aria-labelledby="dqIncomeRangeLabel">
-                                            <div class="lq-choice-label" id="dqIncomeRangeLabel">What monthly income would be hardest to replace?</div>
-                                            <div class="lq-choice-grid">
-                                                <label class="lq-card lq-card-rich @SelectedClassIf(form.IncomeRange == "Under $3,000")">
-                                                    <input type="radio" name="IncomeRange" value="Under $3,000" @CheckedIf(form.IncomeRange == "Under $3,000") />
-                                                    <span class="lq-card-visual" aria-hidden="true"><svg class="lq-card-icon" viewBox="0 0 48 48" fill="none"><use href="#dq-icon-income"></use></svg></span>
-                                                    <span class="lq-card-copy">
-                                                        <span class="lq-card-kicker">Income target</span>
-                                                        <span class="lq-card-title">Under $3,000</span>
-                                                        <span class="lq-card-helper">We will frame a leaner replacement target first.</span>
-                                                    </span>
-                                                </label>
-                                                <label class="lq-card lq-card-rich @SelectedClassIf(form.IncomeRange == "$3,000-$5,000")">
-                                                    <input type="radio" name="IncomeRange" value="$3,000-$5,000" @CheckedIf(form.IncomeRange == "$3,000-$5,000") />
-                                                    <span class="lq-card-visual" aria-hidden="true"><svg class="lq-card-icon" viewBox="0 0 48 48" fill="none"><use href="#dq-icon-income"></use></svg></span>
-                                                    <span class="lq-card-copy">
-                                                        <span class="lq-card-kicker">Income target</span>
-                                                        <span class="lq-card-title">$3,000-$5,000</span>
-                                                        <span class="lq-card-helper">Common range where replacing a paycheck changes daily stability fast.</span>
-                                                    </span>
-                                                </label>
-                                                <label class="lq-card lq-card-rich @SelectedClassIf(form.IncomeRange == "$5,000-$8,000")">
-                                                    <input type="radio" name="IncomeRange" value="$5,000-$8,000" @CheckedIf(form.IncomeRange == "$5,000-$8,000") />
-                                                    <span class="lq-card-visual" aria-hidden="true"><svg class="lq-card-icon" viewBox="0 0 48 48" fill="none"><use href="#dq-icon-income"></use></svg></span>
-                                                    <span class="lq-card-copy">
-                                                        <span class="lq-card-kicker">Income target</span>
-                                                        <span class="lq-card-title">$5,000-$8,000</span>
-                                                        <span class="lq-card-helper">This usually needs a more deliberate benefit fit discussion.</span>
-                                                    </span>
-                                                </label>
-                                                <label class="lq-card lq-card-rich @SelectedClassIf(form.IncomeRange == "$8,000+")">
-                                                    <input type="radio" name="IncomeRange" value="$8,000+" @CheckedIf(form.IncomeRange == "$8,000+") />
-                                                    <span class="lq-card-visual" aria-hidden="true"><svg class="lq-card-icon" viewBox="0 0 48 48" fill="none"><use href="#dq-icon-income"></use></svg></span>
-                                                    <span class="lq-card-copy">
-                                                        <span class="lq-card-kicker">Income target</span>
-                                                        <span class="lq-card-title">$8,000+</span>
-                                                        <span class="lq-card-helper">Higher incomes often need a more customized replacement strategy.</span>
-                                                    </span>
-                                                </label>
-                                            </div>
-                                            <div class="lq-choice-error" id="err-IncomeRange">Please choose the income range to review.</div>
-                                        </div>
-                                        <div class="lq-step-actions">
-                                            <button type="button" class="btn-ghost" data-step-back="1">Back</button>
-                                        </div>
-                                    </div>
-
-                                    <div class="lq-micro-step" data-micro-step="3" hidden>
                                         <div class="lq-choice-group" role="radiogroup" aria-labelledby="dqCurrentCoverageLabel">
-                                            <div class="lq-choice-label" id="dqCurrentCoverageLabel">Do you have disability coverage today?</div>
+                                            <div class="lq-choice-label" id="dqCurrentCoverageLabel">What best describes your current health coverage?</div>
                                             <div class="lq-choice-grid">
                                                 <label class="lq-card lq-card-rich @SelectedClassIf(form.CurrentCoverage == "No current coverage")">
                                                     <input type="radio" name="CurrentCoverage" value="No current coverage" @CheckedIf(form.CurrentCoverage == "No current coverage") />
@@ -1880,25 +2001,34 @@ body.disability-final-step-active .dq-form-panel {
                                                     <span class="lq-card-copy">
                                                         <span class="lq-card-kicker">Current status</span>
                                                         <span class="lq-card-title">No current coverage</span>
-                                                        <span class="lq-card-helper">The review starts from your full exposure to income loss.</span>
+                                                        <span class="lq-card-helper">The review should start with affordable options and how quickly you want coverage in place.</span>
                                                     </span>
                                                 </label>
-                                                <label class="lq-card lq-card-rich @SelectedClassIf(form.CurrentCoverage == "Coverage through work")">
-                                                    <input type="radio" name="CurrentCoverage" value="Coverage through work" @CheckedIf(form.CurrentCoverage == "Coverage through work") />
+                                                <label class="lq-card lq-card-rich @SelectedClassIf(form.CurrentCoverage == "Employer plan")">
+                                                    <input type="radio" name="CurrentCoverage" value="Employer plan" @CheckedIf(form.CurrentCoverage == "Employer plan") />
                                                     <span class="lq-card-visual" aria-hidden="true"><svg class="lq-card-icon" viewBox="0 0 48 48" fill="none"><use href="#dq-icon-coverage"></use></svg></span>
                                                     <span class="lq-card-copy">
                                                         <span class="lq-card-kicker">Current status</span>
-                                                        <span class="lq-card-title">Coverage through work</span>
-                                                        <span class="lq-card-helper">We will look at whether the employer benefit really closes the gap.</span>
+                                                        <span class="lq-card-title">Employer plan</span>
+                                                        <span class="lq-card-helper">We can review whether the employer option truly fits your household, doctors, and out-of-pocket needs.</span>
                                                     </span>
                                                 </label>
-                                                <label class="lq-card lq-card-rich @SelectedClassIf(form.CurrentCoverage == "Individual policy")">
-                                                    <input type="radio" name="CurrentCoverage" value="Individual policy" @CheckedIf(form.CurrentCoverage == "Individual policy") />
+                                                <label class="lq-card lq-card-rich @SelectedClassIf(form.CurrentCoverage == "Marketplace / ACA plan")">
+                                                    <input type="radio" name="CurrentCoverage" value="Marketplace / ACA plan" @CheckedIf(form.CurrentCoverage == "Marketplace / ACA plan") />
                                                     <span class="lq-card-visual" aria-hidden="true"><svg class="lq-card-icon" viewBox="0 0 48 48" fill="none"><use href="#dq-icon-coverage"></use></svg></span>
                                                     <span class="lq-card-copy">
                                                         <span class="lq-card-kicker">Current status</span>
-                                                        <span class="lq-card-title">Individual policy</span>
-                                                        <span class="lq-card-helper">The review can focus on supplementing or stress-testing what you have.</span>
+                                                        <span class="lq-card-title">Marketplace / ACA plan</span>
+                                                        <span class="lq-card-helper">We can compare plan fit, subsidy awareness, and whether a better option might exist.</span>
+                                                    </span>
+                                                </label>
+                                                <label class="lq-card lq-card-rich @SelectedClassIf(form.CurrentCoverage == "Spouse / family plan")">
+                                                    <input type="radio" name="CurrentCoverage" value="Spouse / family plan" @CheckedIf(form.CurrentCoverage == "Spouse / family plan") />
+                                                    <span class="lq-card-visual" aria-hidden="true"><svg class="lq-card-icon" viewBox="0 0 48 48" fill="none"><use href="#dq-icon-coverage"></use></svg></span>
+                                                    <span class="lq-card-copy">
+                                                        <span class="lq-card-kicker">Current status</span>
+                                                        <span class="lq-card-title">Spouse / family plan</span>
+                                                        <span class="lq-card-helper">That gives the review a starting point for cost, dependents, and whether the current fit still makes sense.</span>
                                                     </span>
                                                 </label>
                                                 <label class="lq-card lq-card-rich @SelectedClassIf(form.CurrentCoverage == "Not sure")">
@@ -1907,11 +2037,68 @@ body.disability-final-step-active .dq-form-panel {
                                                     <span class="lq-card-copy">
                                                         <span class="lq-card-kicker">Current status</span>
                                                         <span class="lq-card-title">Not sure</span>
-                                                        <span class="lq-card-helper">That is common. We can still frame the next best review step.</span>
+                                                        <span class="lq-card-helper">That is common. We can still focus on the options that fit best.</span>
                                                     </span>
                                                 </label>
                                             </div>
                                             <div class="lq-choice-error" id="err-CurrentCoverage">Please choose your current coverage status.</div>
+                                        </div>
+                                        <div class="lq-step-actions">
+                                            <button type="button" class="btn-ghost" data-step-back="1">Back</button>
+                                        </div>
+                                    </div>
+
+                                    <div class="lq-micro-step" data-micro-step="3" hidden>
+                                        <div class="lq-choice-group" role="radiogroup" aria-labelledby="dqCoverageTypeLabel">
+                                            <div class="lq-choice-label" id="dqCoverageTypeLabel">What kind of health coverage review are you looking for?</div>
+                                            <div class="lq-choice-grid">
+                                                <label class="lq-card lq-card-rich @SelectedClassIf(form.CoverageType == "Individual coverage")">
+                                                    <input type="radio" name="CoverageType" value="Individual coverage" @CheckedIf(form.CoverageType == "Individual coverage") />
+                                                    <span class="lq-card-visual" aria-hidden="true"><svg class="lq-card-icon" viewBox="0 0 48 48" fill="none"><use href="#dq-icon-income"></use></svg></span>
+                                                    <span class="lq-card-copy">
+                                                        <span class="lq-card-kicker">Coverage goal</span>
+                                                        <span class="lq-card-title">Individual coverage</span>
+                                                        <span class="lq-card-helper">Focus the review on your own doctors, prescriptions, and monthly budget.</span>
+                                                    </span>
+                                                </label>
+                                                <label class="lq-card lq-card-rich @SelectedClassIf(form.CoverageType == "Family coverage")">
+                                                    <input type="radio" name="CoverageType" value="Family coverage" @CheckedIf(form.CoverageType == "Family coverage") />
+                                                    <span class="lq-card-visual" aria-hidden="true"><svg class="lq-card-icon" viewBox="0 0 48 48" fill="none"><use href="#dq-icon-income"></use></svg></span>
+                                                    <span class="lq-card-copy">
+                                                        <span class="lq-card-kicker">Coverage goal</span>
+                                                        <span class="lq-card-title">Family coverage</span>
+                                                        <span class="lq-card-helper">Keep the review centered on dependents, shared care needs, and family plan fit.</span>
+                                                    </span>
+                                                </label>
+                                                <label class="lq-card lq-card-rich @SelectedClassIf(form.CoverageType == "Marketplace / ACA guidance")">
+                                                    <input type="radio" name="CoverageType" value="Marketplace / ACA guidance" @CheckedIf(form.CoverageType == "Marketplace / ACA guidance") />
+                                                    <span class="lq-card-visual" aria-hidden="true"><svg class="lq-card-icon" viewBox="0 0 48 48" fill="none"><use href="#dq-icon-income"></use></svg></span>
+                                                    <span class="lq-card-copy">
+                                                        <span class="lq-card-kicker">Coverage goal</span>
+                                                        <span class="lq-card-title">Marketplace / ACA guidance</span>
+                                                        <span class="lq-card-helper">Useful when you want help comparing exchange plans and affordability options.</span>
+                                                    </span>
+                                                </label>
+                                                <label class="lq-card lq-card-rich @SelectedClassIf(form.CoverageType == "Dental / vision options")">
+                                                    <input type="radio" name="CoverageType" value="Dental / vision options" @CheckedIf(form.CoverageType == "Dental / vision options") />
+                                                    <span class="lq-card-visual" aria-hidden="true"><svg class="lq-card-icon" viewBox="0 0 48 48" fill="none"><use href="#dq-icon-income"></use></svg></span>
+                                                    <span class="lq-card-copy">
+                                                        <span class="lq-card-kicker">Coverage goal</span>
+                                                        <span class="lq-card-title">Dental / vision options</span>
+                                                        <span class="lq-card-helper">Best when you want to look more closely at add-on benefits or supplemental support.</span>
+                                                    </span>
+                                                </label>
+                                                <label class="lq-card lq-card-rich @SelectedClassIf(form.CoverageType == "Not sure / need guidance")">
+                                                    <input type="radio" name="CoverageType" value="Not sure / need guidance" @CheckedIf(form.CoverageType == "Not sure / need guidance") />
+                                                    <span class="lq-card-visual" aria-hidden="true"><svg class="lq-card-icon" viewBox="0 0 48 48" fill="none"><use href="#dq-icon-income"></use></svg></span>
+                                                    <span class="lq-card-copy">
+                                                        <span class="lq-card-kicker">Coverage goal</span>
+                                                        <span class="lq-card-title">Not sure / need guidance</span>
+                                                        <span class="lq-card-helper">A good place to start when you want help narrowing your options before comparing plans.</span>
+                                                    </span>
+                                                </label>
+                                            </div>
+                                            <div class="lq-choice-error" id="err-CoverageType">Please choose the type of review you want.</div>
                                         </div>
                                         <div class="lq-step-actions">
                                             <button type="button" class="btn-ghost" data-step-back="2">Back</button>
@@ -1919,51 +2106,60 @@ body.disability-final-step-active .dq-form-panel {
                                     </div>
 
                                     <div class="lq-micro-step" data-micro-step="4" hidden>
-                                        <div class="lq-choice-group" role="radiogroup" aria-labelledby="dqPriorityLabel">
-                                            <div class="lq-choice-label" id="dqPriorityLabel">If your paycheck stopped, how urgent would a backup plan be?</div>
+                                        <div class="lq-choice-group" role="radiogroup" aria-labelledby="dqPrimaryConcernLabel">
+                                            <div class="lq-choice-label" id="dqPrimaryConcernLabel">What matters most in your health coverage review?</div>
                                             <div class="lq-choice-grid">
-                                                <label class="lq-card lq-card-rich @SelectedClassIf(form.IncomeProtectionImportance == "Critical")">
-                                                    <input type="radio" name="IncomeProtectionImportance" value="Critical" @CheckedIf(form.IncomeProtectionImportance == "Critical") />
+                                                <label class="lq-card lq-card-rich @SelectedClassIf(form.PrimaryConcern == "Lower Monthly Premium")">
+                                                    <input type="radio" name="PrimaryConcern" value="Lower Monthly Premium" @CheckedIf(form.PrimaryConcern == "Lower Monthly Premium") />
                                                     <span class="lq-card-visual" aria-hidden="true"><svg class="lq-card-icon" viewBox="0 0 48 48" fill="none"><use href="#dq-icon-priority"></use></svg></span>
                                                     <span class="lq-card-copy">
                                                         <span class="lq-card-kicker">Priority</span>
-                                                        <span class="lq-card-title">Critical</span>
-                                                        <span class="lq-card-helper">Income loss would hit immediately and hard.</span>
+                                                        <span class="lq-card-title">Lower Monthly Premium</span>
+                                                        <span class="lq-card-helper">Keep the review centered on affordability and predictable monthly cost.</span>
                                                     </span>
                                                 </label>
-                                                <label class="lq-card lq-card-rich @SelectedClassIf(form.IncomeProtectionImportance == "Important")">
-                                                    <input type="radio" name="IncomeProtectionImportance" value="Important" @CheckedIf(form.IncomeProtectionImportance == "Important") />
+                                                <label class="lq-card lq-card-rich @SelectedClassIf(form.PrimaryConcern == "Lower Deductible")">
+                                                    <input type="radio" name="PrimaryConcern" value="Lower Deductible" @CheckedIf(form.PrimaryConcern == "Lower Deductible") />
                                                     <span class="lq-card-visual" aria-hidden="true"><svg class="lq-card-icon" viewBox="0 0 48 48" fill="none"><use href="#dq-icon-priority"></use></svg></span>
                                                     <span class="lq-card-copy">
                                                         <span class="lq-card-kicker">Priority</span>
-                                                        <span class="lq-card-title">Important</span>
-                                                        <span class="lq-card-helper">You would want a meaningful replacement plan in place soon.</span>
+                                                        <span class="lq-card-title">Lower Deductible</span>
+                                                        <span class="lq-card-helper">Best when out-of-pocket surprises matter more than the lowest monthly payment.</span>
                                                     </span>
                                                 </label>
-                                                <label class="lq-card lq-card-rich @SelectedClassIf(form.IncomeProtectionImportance == "Somewhat Important")">
-                                                    <input type="radio" name="IncomeProtectionImportance" value="Somewhat Important" @CheckedIf(form.IncomeProtectionImportance == "Somewhat Important") />
+                                                <label class="lq-card lq-card-rich @SelectedClassIf(form.PrimaryConcern == "Better Doctor Network")">
+                                                    <input type="radio" name="PrimaryConcern" value="Better Doctor Network" @CheckedIf(form.PrimaryConcern == "Better Doctor Network") />
                                                     <span class="lq-card-visual" aria-hidden="true"><svg class="lq-card-icon" viewBox="0 0 48 48" fill="none"><use href="#dq-icon-priority"></use></svg></span>
                                                     <span class="lq-card-copy">
                                                         <span class="lq-card-kicker">Priority</span>
-                                                        <span class="lq-card-title">Somewhat Important</span>
-                                                        <span class="lq-card-helper">Worth reviewing now so the gap stays visible.</span>
+                                                        <span class="lq-card-title">Better Doctor Network</span>
+                                                        <span class="lq-card-helper">The review should stay focused on keeping the doctors, specialists, and facilities you trust.</span>
                                                     </span>
                                                 </label>
-                                                <label class="lq-card lq-card-rich @SelectedClassIf(form.IncomeProtectionImportance == "Not a Priority")">
-                                                    <input type="radio" name="IncomeProtectionImportance" value="Not a Priority" @CheckedIf(form.IncomeProtectionImportance == "Not a Priority") />
+                                                <label class="lq-card lq-card-rich @SelectedClassIf(form.PrimaryConcern == "Prescription Coverage")">
+                                                    <input type="radio" name="PrimaryConcern" value="Prescription Coverage" @CheckedIf(form.PrimaryConcern == "Prescription Coverage") />
                                                     <span class="lq-card-visual" aria-hidden="true"><svg class="lq-card-icon" viewBox="0 0 48 48" fill="none"><use href="#dq-icon-priority"></use></svg></span>
                                                     <span class="lq-card-copy">
                                                         <span class="lq-card-kicker">Priority</span>
-                                                        <span class="lq-card-title">Not a Priority</span>
-                                                        <span class="lq-card-helper">We can still send a low-pressure review so you know what is there.</span>
+                                                        <span class="lq-card-title">Prescription Coverage</span>
+                                                        <span class="lq-card-helper">Medication access and predictable pharmacy costs should stay front and center.</span>
+                                                    </span>
+                                                </label>
+                                                <label class="lq-card lq-card-rich @SelectedClassIf(form.PrimaryConcern == "Not Sure / Need Guidance")">
+                                                    <input type="radio" name="PrimaryConcern" value="Not Sure / Need Guidance" @CheckedIf(form.PrimaryConcern == "Not Sure / Need Guidance") />
+                                                    <span class="lq-card-visual" aria-hidden="true"><svg class="lq-card-icon" viewBox="0 0 48 48" fill="none"><use href="#dq-icon-priority"></use></svg></span>
+                                                    <span class="lq-card-copy">
+                                                        <span class="lq-card-kicker">Priority</span>
+                                                        <span class="lq-card-title">Not Sure / Need Guidance</span>
+                                                        <span class="lq-card-helper">That is okay. We can start broad and narrow the tradeoffs together.</span>
                                                     </span>
                                                 </label>
                                             </div>
-                                            <div class="lq-choice-error" id="err-IncomeProtectionImportance">Please choose your current priority.</div>
+                                            <div class="lq-choice-error" id="err-PrimaryConcern">Please choose what matters most in this review.</div>
                                         </div>
                                         <div class="lq-step-actions">
                                             <button type="button" class="btn-ghost" data-step-back="3">Back</button>
-                                            <button type="button" class="btn-gold btn-progress btn-block" id="dqContinueToContactBtn" data-cta="disability_see_review">Continue My Disability Review</button>
+                                            <button type="button" class="btn-gold btn-progress btn-block" id="dqContinueToContactBtn" data-cta="health_see_review">Continue My Health Review</button>
                                         </div>
                                     </div>
                                 </div>
@@ -1975,26 +2171,26 @@ body.disability-final-step-active .dq-form-panel {
                                         <svg viewBox="0 0 48 48" fill="none"><use href="#dq-icon-check"></use></svg>
                                     </div>
                                     <div class="lq-step-progress">One moment</div>
-                                    <h2 class="lq-step-title" id="dqProcessingHeading">Building your disability review path.</h2>
-                                    <p class="lq-step-helper">We are lining up the same contact-first funnel handoff the Life quote uses, but focused on income replacement, benefit fit, and existing coverage gaps.</p>
+                                    <h2 class="lq-step-title" id="dqProcessingHeading">Pulling together your health review.</h2>
+                                    <p class="lq-step-helper">We are narrowing the conversation around household needs, current coverage, doctor access, and affordability.</p>
                                     <div class="dq-processing-track" aria-hidden="true">
                                         <span class="dq-processing-fill" id="dqProcessingFill"></span>
                                     </div>
-                                    <div class="dq-processing-note">Building your personalized review summary before the final contact step.</div>
+                                    <div class="dq-processing-note">Getting your coverage snapshot ready.</div>
                                 </div>
                             </div>
 
                             <div class="lq-step-panel" id="dqContactPanel" @((showContactStepByDefault ? null : "hidden"))>
                                 <div class="lq-step-panel-pad">
                                     <div class="lq-step-progress">Final step</div>
-                                    <div class="dq-contact-capture-wrap" id="disabilityContactCaptureWrap">
+                                    <div class="dq-contact-capture-wrap" id="healthContactCaptureWrap">
                                         <div class="dq-contact-head">
                                             <div class="dq-contact-kicker">Send the review</div>
-                                            <div class="dq-contact-title">Where should we send your disability review?</div>
-                                            <div class="dq-contact-copy">We will use your answers to focus the conversation on monthly income replacement, whether current benefits fall short, and what type of coverage discussion makes the most sense first.</div>
+                                            <div class="dq-contact-title">Where should we send your health review?</div>
+                                            <div class="dq-contact-copy">We will use your answers to focus the conversation on affordability, network fit, current coverage gaps, and the type of plan guidance that fits your household best.</div>
                                         </div>
 
-                                        <div class="dq-review-summary" id="disabilityReviewSummary" aria-live="polite"></div>
+                                        <div class="dq-review-summary" id="healthReviewSummary" aria-live="polite"></div>
 
                                         <div class="dq-contact-hint">Share the same key contact details we need to save your review and continue the conversation clearly.</div>
 
@@ -2042,15 +2238,15 @@ body.disability-final-step-active .dq-form-panel {
                                             <button type="button" class="btn-ghost" id="dqBackToQuestionsBtn">Back to answers</button>
                                             <div class="btn-block">
                                                 <p class="dq-submit-note">Private review. No obligation. You stay in control.</p>
-                                                <button type="submit" class="btn-gold btn-progress btn-block" id="dqSubmitBtn" data-cta="disability_submit_review">Get My Disability Review</button>
+                                                <button type="submit" class="btn-gold btn-progress btn-block" id="dqSubmitBtn" data-cta="health_submit_review">Get My Health Review</button>
                                             </div>
                                         </div>
 
-                                        <div class="lq-error" id="disabilityError"></div>
-                                        <div class="lq-success" id="disabilitySuccess">Thanks! We received your request.</div>
+                                        <div class="lq-error" id="healthError"></div>
+                                        <div class="lq-success" id="healthSuccess">Thanks! We received your request.</div>
                                     </div>
 
-                                    <div class="lq-post-submit-slot" id="disabilityPostSubmitSlot" hidden></div>
+                                    <div class="lq-post-submit-slot" id="healthPostSubmitSlot" hidden></div>
                                 </div>
                             </div>
                         </div>
@@ -2071,21 +2267,21 @@ body.disability-final-step-active .dq-form-panel {
             ? window.legendTrack
             : function () {};
 
-        var form = document.getElementById('disabilityQuoteForm');
+        var form = document.getElementById('healthQuoteForm');
         if (!form) return;
 
         var body = document.body;
-        var pageKey = 'quote_disability';
-        var formKey = form.getAttribute('data-form-key') || 'quote_disability_form';
-        var heroEntryPanel = document.getElementById('disabilityHeroEntryPanel');
-        var educationPanel = document.getElementById('disabilityEducationPanel');
-        var startButton = document.getElementById('disabilityHeroStartCta');
+        var pageKey = 'quote_health';
+        var formKey = form.getAttribute('data-form-key') || 'quote_health_form';
+        var heroEntryPanel = document.getElementById('healthHeroEntryPanel');
+        var educationPanel = document.getElementById('healthEducationPanel');
+        var startButton = document.getElementById('healthHeroStartCta');
         var step1Panel = document.getElementById('dqStep1Panel');
         var processingPanel = document.getElementById('dqProcessingPanel');
         var contactPanel = document.getElementById('dqContactPanel');
-        var contactFirstPanel = document.getElementById('disabilityEducationContactPanel');
-        var contactCaptureWrap = document.getElementById('disabilityContactCaptureWrap');
-        var postSubmitSlot = document.getElementById('disabilityPostSubmitSlot');
+        var contactFirstPanel = document.getElementById('healthEducationContactPanel');
+        var contactCaptureWrap = document.getElementById('healthContactCaptureWrap');
+        var postSubmitSlot = document.getElementById('healthPostSubmitSlot');
         var progressLabel = document.getElementById('dqStep1Progress');
         var progressFill = document.getElementById('dqStep1ProgressFill');
         var processingFill = document.getElementById('dqProcessingFill');
@@ -2093,15 +2289,15 @@ body.disability-final-step-active .dq-form-panel {
         var backToQuestionsButton = document.getElementById('dqBackToQuestionsBtn');
         var submitButton = document.getElementById('dqSubmitBtn');
         var proofCard = contactFirstPanel ? contactFirstPanel.querySelector('.dq-proof-card') : null;
-        var errorBanner = document.getElementById('disabilityError');
-        var successBanner = document.getElementById('disabilitySuccess');
-        var reviewSummary = document.getElementById('disabilityReviewSummary');
+        var errorBanner = document.getElementById('healthError');
+        var successBanner = document.getElementById('healthSuccess');
+        var reviewSummary = document.getElementById('healthReviewSummary');
         var ageHidden = document.getElementById('Age');
         var contactMethodInput = document.getElementById('ContactMethod');
         var bestTimeInput = document.getElementById('BestTimeToContact');
-        var submitDefaultLabel = submitButton ? asTrimmed(submitButton.textContent) : 'Get My Disability Review';
-        var bookingExperienceUrl = '@Url.Action("ActivatePublicBookingExperience", "DisabilityQuote")';
-        var bookingConfirmationUrl = '@Url.Action("ConfirmPublicBookingExperience", "DisabilityQuote")';
+        var submitDefaultLabel = submitButton ? asTrimmed(submitButton.textContent) : 'Get My Health Review';
+        var bookingExperienceUrl = '@Url.Action("ActivatePublicBookingExperience", "HealthQuote")';
+        var bookingConfirmationUrl = '@Url.Action("ConfirmPublicBookingExperience", "HealthQuote")';
         var microSteps = Array.prototype.slice.call(step1Panel ? step1Panel.querySelectorAll('[data-micro-step]') : []);
         var hasServerErrors = '@(hasServerErrors ? "true" : "false")' === 'true';
         var showContactStepByDefault = '@(showContactStepByDefault ? "true" : "false")' === 'true';
@@ -2114,11 +2310,11 @@ body.disability-final-step-active .dq-form-panel {
             '65+': '70'
         });
         var microStepConfigs = [
-            { field: 'AgeRange', errorId: 'err-AgeRange', viewEvent: 'disability_quote_age_view' },
-            { field: 'EmploymentType', errorId: 'err-EmploymentType', viewEvent: 'disability_quote_employment_view' },
-            { field: 'IncomeRange', errorId: 'err-IncomeRange', viewEvent: 'disability_quote_income_view' },
-            { field: 'CurrentCoverage', errorId: 'err-CurrentCoverage', viewEvent: 'disability_quote_coverage_view' },
-            { field: 'IncomeProtectionImportance', errorId: 'err-IncomeProtectionImportance', viewEvent: 'disability_quote_priority_view' }
+            { field: 'AgeRange', errorId: 'err-AgeRange', viewEvent: 'health_quote_age_view' },
+            { field: 'HouseholdSize', errorId: 'err-HouseholdSize', viewEvent: 'health_quote_household_view' },
+            { field: 'CurrentCoverage', errorId: 'err-CurrentCoverage', viewEvent: 'health_quote_current_coverage_view' },
+            { field: 'CoverageType', errorId: 'err-CoverageType', viewEvent: 'health_quote_coverage_type_view' },
+            { field: 'PrimaryConcern', errorId: 'err-PrimaryConcern', viewEvent: 'health_quote_priority_view' }
         ];
         var completedSteps = {};
         var viewedMicroSteps = {};
@@ -2135,7 +2331,7 @@ body.disability-final-step-active .dq-form-panel {
         var publicBookingSlotSelectedTracked = false;
         var publicBookingFallbackClicked = false;
         var publicBookingLoadingText = 'Preparing your scheduling options...';
-        var publicBookingDisabledText = 'Your disability coverage review is saved. Scheduling is not available in this view right now, but a licensed agent can still continue the review with you.';
+        var publicBookingDisabledText = 'Your health coverage review is saved. Scheduling is not available in this view right now, but a licensed agent can still continue the review with you.';
 
         function asTrimmed(value) {
             return typeof value === 'string' ? value.trim() : '';
@@ -2230,13 +2426,13 @@ body.disability-final-step-active .dq-form-panel {
         }
 
         function setStartedState(started) {
-            body.classList.toggle('disability-quote-started', !!started);
+            body.classList.toggle('health-quote-started', !!started);
             if (heroEntryPanel) heroEntryPanel.hidden = !!started;
             if (educationPanel) educationPanel.hidden = !started;
         }
 
         function setFinalStepState(active) {
-            body.classList.toggle('disability-final-step-active', !!active);
+            body.classList.toggle('health-final-step-active', !!active);
         }
 
         function updateProgress(stepIndex) {
@@ -2361,28 +2557,30 @@ body.disability-final-step-active .dq-form-panel {
 
         function buildReviewSummaryHtml() {
             var ageRange = readSelectedValue('AgeRange') || 'Age range';
-            var employmentType = readSelectedValue('EmploymentType') || 'Work type';
-            var incomeRange = readSelectedValue('IncomeRange') || 'Income target';
+            var householdSize = readSelectedValue('HouseholdSize') || 'Household';
             var currentCoverage = readSelectedValue('CurrentCoverage') || 'Current coverage';
-            var priority = readSelectedValue('IncomeProtectionImportance') || 'Priority';
+            var coverageType = readSelectedValue('CoverageType') || 'Coverage goal';
+            var primaryConcern = readSelectedValue('PrimaryConcern') || 'Priority';
 
-            var signal = 'Your review will focus on the income gap first, then whether any current workplace or personal coverage meaningfully closes it.';
+            var signal = 'Your review will focus on plan fit first, then narrow the tradeoffs between monthly cost, deductible exposure, and care access.';
             if (currentCoverage === 'No current coverage') {
-                signal = 'No existing coverage means the review should start with what monthly income needs the fastest protection if work stops unexpectedly.';
-            } else if (currentCoverage === 'Coverage through work') {
-                signal = 'Workplace coverage often leaves a gap. The review should compare what is offered at work against what your household actually depends on.';
-            } else if (priority === 'Critical') {
-                signal = 'Because this feels urgent, the follow-up should stay centered on how quickly lost income would pressure bills, family, and business obligations.';
+                signal = 'No current coverage means the review should start with affordable options and how quickly you want coverage in place.';
+            } else if (currentCoverage === 'Employer plan') {
+                signal = 'Employer coverage can still leave gaps in deductibles, network fit, or family needs, so the conversation should start there.';
+            } else if (primaryConcern === 'Lower Monthly Premium') {
+                signal = 'Because monthly affordability matters most, the conversation should stay centered on balancing premium, deductible, and day-to-day budget pressure.';
+            } else if (primaryConcern === 'Better Doctor Network') {
+                signal = 'Because provider access matters most, the review should stay focused on keeping the doctors, facilities, and specialists you trust in network.';
             }
 
             return ''
                 + '<div class="dq-review-kicker">Review snapshot</div>'
                 + '<div class="dq-review-title">We will pick up the conversation from these answers.</div>'
-                + '<div class="dq-review-copy">Your answers shape the final follow-up so the review starts with the income risks and coverage gaps that matter most.</div>'
+                + '<div class="dq-review-copy">Your answers shape the conversation so it starts with the coverage tradeoffs and care priorities that matter most.</div>'
                 + '<div class="dq-review-stats">'
                 +   '<div class="dq-review-stat"><div class="dq-review-stat-label">Age range</div><div class="dq-review-stat-value">' + escapeHtml(ageRange) + '</div></div>'
-                +   '<div class="dq-review-stat"><div class="dq-review-stat-label">Work type</div><div class="dq-review-stat-value">' + escapeHtml(employmentType) + '</div></div>'
-                +   '<div class="dq-review-stat"><div class="dq-review-stat-label">Income focus</div><div class="dq-review-stat-value">' + escapeHtml(incomeRange) + '</div></div>'
+                +   '<div class="dq-review-stat"><div class="dq-review-stat-label">Household</div><div class="dq-review-stat-value">' + escapeHtml(householdSize) + '</div></div>'
+                +   '<div class="dq-review-stat"><div class="dq-review-stat-label">Coverage goal</div><div class="dq-review-stat-value">' + escapeHtml(coverageType) + '</div></div>'
                 + '</div>'
                 + '<div class="dq-review-signal"><strong>Next step:</strong> ' + escapeHtml(signal) + ' Coverage status noted: ' + escapeHtml(currentCoverage) + '.</div>';
         }
@@ -2490,7 +2688,7 @@ body.disability-final-step-active .dq-form-panel {
             iframe.src = url;
             iframe.loading = 'lazy';
             iframe.referrerPolicy = 'strict-origin-when-cross-origin';
-            iframe.title = 'Continue your disability coverage review';
+            iframe.title = 'Continue your health coverage review';
 
             var frameLoaded = false;
             var loadTimeout = window.setTimeout(function () {
@@ -2547,7 +2745,7 @@ body.disability-final-step-active .dq-form-panel {
                 var payload = await response.json().catch(function () { return {}; });
                 return normalizePublicBookingPayload(payload, hint);
             } catch (error) {
-                console.warn('[DisabilityQuote] public booking activation failed', error);
+                console.warn('[HealthQuote] public booking activation failed', error);
                 return normalizePublicBookingPayload({
                     enabled: Boolean(hint.eligible),
                     canEmbed: Boolean(hint.canEmbed),
@@ -2588,7 +2786,7 @@ body.disability-final-step-active .dq-form-panel {
                 var confirmationPayload = await response.json().catch(function () { return {}; });
                 return normalizePublicBookingPayload(Object.assign({}, normalized, confirmationPayload), normalized);
             } catch (error) {
-                console.warn('[DisabilityQuote] public booking confirmation failed', error);
+                console.warn('[HealthQuote] public booking confirmation failed', error);
                 return normalized;
             }
         }
@@ -2611,16 +2809,16 @@ body.disability-final-step-active .dq-form-panel {
             var agentName = asTrimmed(responseBody.agentFirstName) || 'our licensed team';
             var proofHtml = proofCard ? '<div class="lq-final-review-agent-row">' + proofCard.outerHTML + '</div>' : '';
             var ageRange = readSelectedValue('AgeRange') || 'Age range';
-            var employmentType = readSelectedValue('EmploymentType') || 'Work type';
-            var incomeRange = readSelectedValue('IncomeRange') || 'Income focus';
+            var householdSize = readSelectedValue('HouseholdSize') || 'Household';
             var currentCoverage = readSelectedValue('CurrentCoverage') || 'Current coverage';
-            var priority = readSelectedValue('IncomeProtectionImportance') || 'Priority';
+            var coverageType = readSelectedValue('CoverageType') || 'Coverage goal';
+            var primaryConcern = readSelectedValue('PrimaryConcern') || 'Priority';
             var resultHtml = ''
                 + '<div class="dq-final-review-stats" aria-label="Saved review snapshot">'
                 +   '<div class="dq-final-review-stat"><div class="dq-final-review-stat-label">Age range</div><div class="dq-final-review-stat-value">' + escapeHtml(ageRange) + '</div></div>'
-                +   '<div class="dq-final-review-stat"><div class="dq-final-review-stat-label">Work type</div><div class="dq-final-review-stat-value">' + escapeHtml(employmentType) + '</div></div>'
-                +   '<div class="dq-final-review-stat"><div class="dq-final-review-stat-label">Income focus</div><div class="dq-final-review-stat-value">' + escapeHtml(incomeRange) + '</div></div>'
-                +   '<div class="dq-final-review-stat"><div class="dq-final-review-stat-label">Current protection</div><div class="dq-final-review-stat-value">' + escapeHtml(currentCoverage) + '</div></div>'
+                +   '<div class="dq-final-review-stat"><div class="dq-final-review-stat-label">Household</div><div class="dq-final-review-stat-value">' + escapeHtml(householdSize) + '</div></div>'
+                +   '<div class="dq-final-review-stat"><div class="dq-final-review-stat-label">Current coverage</div><div class="dq-final-review-stat-value">' + escapeHtml(currentCoverage) + '</div></div>'
+                +   '<div class="dq-final-review-stat"><div class="dq-final-review-stat-label">Review focus</div><div class="dq-final-review-stat-value">' + escapeHtml(coverageType) + '</div></div>'
                 + '</div>';
             var showInlineShell = !normalized.loading && normalized.enabled && normalized.canEmbed && normalized.embedUrl;
             var showFallbackLink = !normalized.loading && normalized.canFallback && normalized.fallbackUrl;
@@ -2631,26 +2829,26 @@ body.disability-final-step-active .dq-form-panel {
                 : '';
 
             postSubmitSlot.innerHTML = ''
-                + '<section class="lq-final-review-unified-card" aria-labelledby="disabilityPostSubmitTitle">'
+                + '<section class="lq-final-review-unified-card" aria-labelledby="healthPostSubmitTitle">'
                 + proofHtml
                 +   '<div class="lq-final-review-head">'
                 +     '<div class="lq-final-review-kicker">Review saved</div>'
-                +     '<div class="lq-final-review-title" id="disabilityPostSubmitTitle">Your disability review is ready for the next step.</div>'
-                +     '<div class="lq-final-review-copy">We saved your answers so the conversation can start with your income risk, current benefits, and paycheck protection gaps instead of starting cold.</div>'
+                +     '<div class="lq-final-review-title" id="healthPostSubmitTitle">Your health review is ready for the next step.</div>'
+                +     '<div class="lq-final-review-copy">We saved your answers so the conversation can start with your household needs, current coverage, and the plan tradeoffs that matter most.</div>'
                 +   '</div>'
                 +   '<div class="lq-final-review-proof-row" aria-label="Review value">'
                 +     '<span>Review saved</span>'
-                +     '<span>Income protection</span>'
+                +     '<span>Licensed guidance</span>'
                 +     '<span>No obligation</span>'
                 +   '</div>'
                 +   '<div class="lq-final-review-impact-grid" aria-label="Why this review matters">'
                 +     '<div class="lq-final-review-impact-card">'
                 +       '<div class="lq-final-review-impact-label">What surfaced</div>'
-                +       '<div class="lq-final-review-impact-text">Your answers suggest this review should focus on ' + escapeHtml(priority.toLowerCase()) + ', how much income needs protecting, and whether your current coverage really closes the gap.</div>'
+                +       '<div class="lq-final-review-impact-text">Your answers suggest this review should focus on ' + escapeHtml(primaryConcern.toLowerCase()) + ', current coverage fit, and what your household actually needs from the next plan conversation.</div>'
                 +     '</div>'
                 +     '<div class="lq-final-review-impact-card is-urgent">'
                 +       '<div class="lq-final-review-impact-label">Why timing matters</div>'
-                +       '<div class="lq-final-review-impact-text">Income protection usually feels far more urgent once sickness, injury, or a missed paycheck puts real pressure on monthly obligations.</div>'
+                +       '<div class="lq-final-review-impact-text">Monthly cost, deductibles, network fit, and care access usually feel more urgent once appointments or prescriptions are already in motion.</div>'
                 +     '</div>'
                 +   '</div>'
                 +   '<div class="lq-final-review-result-slot">'
@@ -2658,44 +2856,44 @@ body.disability-final-step-active .dq-form-panel {
                 +   '</div>'
                 +   '<div class="lq-final-review-next-step" aria-label="What happens during the review">'
                 +     '<div class="lq-final-review-next-kicker">What the review confirms</div>'
-                +     '<div class="lq-final-review-next-title">' + escapeHtml(agentName) + ' helps turn this review into a clear income protection decision.</div>'
-                +     '<div class="lq-final-review-next-copy">The review can now confirm the gap, benefit fit, elimination period expectations, and whether workplace or personal coverage is enough before any recommendation moves forward.</div>'
+                +     '<div class="lq-final-review-next-title">' + escapeHtml(agentName) + ' helps turn this review into a clear coverage decision.</div>'
+                +     '<div class="lq-final-review-next-copy">The review can now confirm affordability, deductible comfort, provider access, and whether your current path still makes sense before any recommendation moves forward.</div>'
                 +     '<div class="lq-final-review-checklist" aria-label="Review checklist">'
-                +       '<span>Benefit fit</span>'
-                +       '<span>Gap review</span>'
-                +       '<span>Coverage direction</span>'
+                +       '<span>Premium fit</span>'
+                +       '<span>Doctor access</span>'
+                +       '<span>Plan direction</span>'
                 +     '</div>'
                 +   '</div>'
                 +   '<div class="lq-final-review-booking-card">'
                 +     '<div class="lq-final-review-booking-kicker">Finish the review</div>'
                 +     '<div class="lq-final-review-booking-title">Choose a time to keep the review moving.</div>'
-                +     '<div class="lq-final-review-booking-copy">Schedule while this is fresh so ' + escapeHtml(agentName) + ' can confirm your income gap, benefit fit, waiting period expectations, and what path fits best.</div>'
+                +     '<div class="lq-final-review-booking-copy">Schedule while this is fresh so ' + escapeHtml(agentName) + ' can confirm affordability, provider access, deductible comfort, and what path fits best.</div>'
                 +   '</div>'
                 +   (normalized.loading
                     ? '<div class="lq-final-review-loading">' + escapeHtml(publicBookingLoadingText) + '</div>'
                     : '')
                 +   (showInlineShell
-                    ? '<div class="lq-booking-frame-only" id="disabilityBookingInlineFrameSlot"></div>'
-                    + '<div class="lq-booking-embed-status" id="disabilityBookingInlineStatus" hidden>' + escapeHtml(publicBookingLoadingText) + '</div>'
+                    ? '<div class="lq-booking-frame-only" id="healthBookingInlineFrameSlot"></div>'
+                    + '<div class="lq-booking-embed-status" id="healthBookingInlineStatus" hidden>' + escapeHtml(publicBookingLoadingText) + '</div>'
                     : '')
                 +   (bookingUnavailableCopy
                     ? '<div class="lq-final-review-unavailable">' + escapeHtml(bookingUnavailableCopy) + '</div>'
                     : '')
                 +   (showFallbackLink
-                    ? '<a href="' + escapeHtml(normalized.fallbackUrl) + '" target="_blank" rel="noopener noreferrer" class="lq-booking-secondary-link" id="disabilityBookingFallbackLink">Open scheduling</a>'
+                    ? '<a href="' + escapeHtml(normalized.fallbackUrl) + '" target="_blank" rel="noopener noreferrer" class="lq-booking-secondary-link" id="healthBookingFallbackLink">Open scheduling</a>'
                     : '')
                 + '</section>';
 
             postSubmitSlot.hidden = false;
 
-            var inlineFrameSlot = document.getElementById('disabilityBookingInlineFrameSlot');
-            var inlineStatus = document.getElementById('disabilityBookingInlineStatus');
+            var inlineFrameSlot = document.getElementById('healthBookingInlineFrameSlot');
+            var inlineStatus = document.getElementById('healthBookingInlineStatus');
             if (showInlineShell) {
                 renderBookingIframe(inlineFrameSlot, inlineStatus, normalizePublicBookingPayload(publicBookingState, payload).embedUrl);
                 markAppointmentEmbedViewed(normalizePublicBookingPayload(publicBookingState, payload));
             }
 
-            var fallbackLink = document.getElementById('disabilityBookingFallbackLink');
+            var fallbackLink = document.getElementById('healthBookingFallbackLink');
             if (fallbackLink instanceof HTMLAnchorElement) {
                 fallbackLink.addEventListener('click', function () {
                     publicBookingFallbackClicked = true;
@@ -2717,7 +2915,7 @@ body.disability-final-step-active .dq-form-panel {
 
             if (trackView !== false && !contactStepTracked) {
                 contactStepTracked = true;
-                track({ EventType: 'disability_quote_contact_step_view', PageKey: pageKey, FormKey: formKey });
+                track({ EventType: 'health_quote_contact_step_view', PageKey: pageKey, FormKey: formKey });
                 track({
                     EventType: 'quote_contact_step_view',
                     FormKey: formKey,
@@ -2761,8 +2959,8 @@ body.disability-final-step-active .dq-form-panel {
         function startFunnel(trackStartClick) {
             setStartedState(true);
             if (trackStartClick) {
-                var label = startButton ? asTrimmed(startButton.textContent) : 'Start My Disability Review';
-                trackCta('disability_funnel_start', label);
+                var label = startButton ? asTrimmed(startButton.textContent) : 'Check My Coverage Fit';
+                trackCta('health_funnel_start', label);
                 track({
                     EventType: 'form_start',
                     PageKey: pageKey,
@@ -2806,20 +3004,20 @@ body.disability-final-step-active .dq-form-panel {
                         showGroupError('AgeRange', 'err-AgeRange');
                         applied = true;
                         return;
-                    case 'EmploymentType':
-                        showGroupError('EmploymentType', 'err-EmploymentType');
-                        applied = true;
-                        return;
-                    case 'IncomeRange':
-                        showGroupError('IncomeRange', 'err-IncomeRange');
+                    case 'HouseholdSize':
+                        showGroupError('HouseholdSize', 'err-HouseholdSize');
                         applied = true;
                         return;
                     case 'CurrentCoverage':
                         showGroupError('CurrentCoverage', 'err-CurrentCoverage');
                         applied = true;
                         return;
-                    case 'IncomeProtectionImportance':
-                        showGroupError('IncomeProtectionImportance', 'err-IncomeProtectionImportance');
+                    case 'CoverageType':
+                        showGroupError('CoverageType', 'err-CoverageType');
+                        applied = true;
+                        return;
+                    case 'PrimaryConcern':
+                        showGroupError('PrimaryConcern', 'err-PrimaryConcern');
                         applied = true;
                         return;
                     case 'AcknowledgedDisclaimer':
@@ -2845,6 +3043,7 @@ body.disability-final-step-active .dq-form-panel {
             if (thankYouTracked) return;
             thankYouTracked = true;
             track({ EventType: 'thank_you_view', PageKey: pageKey, FormKey: formKey });
+            track({ EventType: 'lead_form_submit_success', PageKey: pageKey, FormKey: formKey });
         }
 
         function resolveBookingMessageSignal(event) {
@@ -2916,7 +3115,7 @@ body.disability-final-step-active .dq-form-panel {
                     }
                 }).catch(function (error) {
                     publicBookingConfirmationRequested = false;
-                    console.warn('[DisabilityQuote] trusted booking confirmation failed', error);
+                    console.warn('[HealthQuote] trusted booking confirmation failed', error);
                 });
             }
         });
@@ -2949,13 +3148,10 @@ body.disability-final-step-active .dq-form-panel {
 
             clearServerFeedback();
             track({
-                EventType: 'form_submit',
-                SubmitOutcome: 'success',
+                EventType: 'health_quote_submit_success',
                 PageKey: pageKey,
                 FormKey: formKey,
-                MetadataJson: JSON.stringify({
-                    leadId: asTrimmed(responseBody && responseBody.leadId)
-                })
+                MetadataJson: JSON.stringify({ leadId: asTrimmed(responseBody && responseBody.leadId) })
             });
             track({
                 EventType: 'lead_form_submit_success',
@@ -3044,7 +3240,7 @@ body.disability-final-step-active .dq-form-panel {
                 var config = microStepConfigs[microSteps.length - 1];
                 if (!requireSelection(config.field, config.errorId)) return;
                 trackStepComplete(microSteps.length, microSteps.length + 1, 'continue_to_contact');
-                trackCta('disability_see_review', asTrimmed(continueButton.textContent));
+                trackCta('health_see_review', asTrimmed(continueButton.textContent));
                 showProcessingThenContact();
             });
         }
@@ -3115,6 +3311,7 @@ body.disability-final-step-active .dq-form-panel {
             var valid = true;
             var firstName = document.getElementById('FirstName');
             var lastName = document.getElementById('LastName');
+
             var textFields = [
                 { id: 'FirstName', value: firstName ? firstName.value : '' }
             ];
@@ -3143,10 +3340,9 @@ body.disability-final-step-active .dq-form-panel {
                 return false;
             }
 
-            trackCta('disability_submit_review', submitButton ? asTrimmed(submitButton.textContent) : 'Get My Disability Review');
+            trackCta('health_submit_review', submitButton ? asTrimmed(submitButton.textContent) : 'Get My Health Review');
             track({
-                EventType: 'form_submit',
-                SubmitOutcome: 'attempt',
+                EventType: 'health_quote_submit_attempt',
                 PageKey: pageKey,
                 FormKey: formKey
             });
@@ -3190,17 +3386,14 @@ body.disability-final-step-active .dq-form-panel {
                 setBannerMessage(errorBanner, errorMessage);
 
                 if (responseBody && responseBody.correlationId) {
-                    console.warn('[DisabilityQuote] submit failed correlationId=' + responseBody.correlationId, responseBody.fieldErrors || responseBody);
+                    console.warn('[HealthQuote] submit failed correlationId=' + responseBody.correlationId, responseBody.fieldErrors || responseBody);
                 }
 
                 track({
-                    EventType: 'form_submit',
-                    SubmitOutcome: 'failure',
+                    EventType: 'health_quote_submit_failure',
                     PageKey: pageKey,
                     FormKey: formKey,
-                    MetadataJson: JSON.stringify({
-                        correlationId: responseBody && responseBody.correlationId ? responseBody.correlationId : ''
-                    })
+                    MetadataJson: JSON.stringify({ correlationId: responseBody && responseBody.correlationId ? responseBody.correlationId : '' })
                 });
             } finally {
                 if (submitButton) {

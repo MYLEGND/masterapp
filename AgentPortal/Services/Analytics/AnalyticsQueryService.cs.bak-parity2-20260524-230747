@@ -3315,18 +3315,10 @@ public sealed class AnalyticsQueryService : IAnalyticsQueryService
                     var events = g.OrderBy(e => e.EventUtc).ToList();
                     var ctas = events.Count(e => e.EventType == "cta_click" || e.EventType == "quote_click");
                     var starts = events.Any(IsQuoteFunnelStartSignalEvent) ? 1 : 0;
-                    var submits = events.Count(e =>
+                    var submits = events.Count(e => e.EventType == "form_submit");
+                    var leads = events.Any(e =>
                         e.EventType == "form_submit" &&
-                        (e.SubmitOutcome ?? "").ToLower() == "attempt");
-
-                    var leads =
-                        events.Any(e =>
-                            e.EventType == "form_submit" &&
-                            (e.SubmitOutcome ?? "").ToLower() == "success")
-                        ||
-                        events.Any(e => e.EventType == "lead_form_submit_success")
-                            ? 1
-                            : 0;
+                        (e.SubmitOutcome ?? "").ToLower() == "success") ? 1 : 0;
 
                     return new
                     {
@@ -3376,9 +3368,7 @@ public sealed class AnalyticsQueryService : IAnalyticsQueryService
             Sessions = rows.Select(e => e.SessionId).Where(x => !string.IsNullOrWhiteSpace(x)).Distinct().Count(),
             Events = rows.Count,
             FormStarts = rows.Where(IsQuoteFunnelStartSignalEvent).Select(e => !string.IsNullOrWhiteSpace(e.SessionId) ? e.SessionId : $"event:{e.EventId:D}").Distinct(StringComparer.OrdinalIgnoreCase).Count(),
-            ConfirmedLeads = rows.Count(e =>
-                (e.EventType == "form_submit" && (e.SubmitOutcome ?? "").ToLower() == "success")
-                || e.EventType == "lead_form_submit_success"),
+            ConfirmedLeads = rows.Count(e => e.EventType == "form_submit" && (e.SubmitOutcome ?? "").ToLower() == "success"),
             Devices = BuildRows(ResolveDeviceType),
             Browsers = BuildRows(e => Clean(e.Browser)),
             OperatingSystems = BuildRows(e => Clean(e.OperatingSystem)),

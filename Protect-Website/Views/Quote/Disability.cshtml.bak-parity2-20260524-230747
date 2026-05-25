@@ -2845,6 +2845,7 @@ body.disability-final-step-active .dq-form-panel {
             if (thankYouTracked) return;
             thankYouTracked = true;
             track({ EventType: 'thank_you_view', PageKey: pageKey, FormKey: formKey });
+            track({ EventType: 'lead_form_submit_success', PageKey: pageKey, FormKey: formKey });
         }
 
         function resolveBookingMessageSignal(event) {
@@ -2949,13 +2950,10 @@ body.disability-final-step-active .dq-form-panel {
 
             clearServerFeedback();
             track({
-                EventType: 'form_submit',
-                SubmitOutcome: 'success',
+                EventType: 'disability_quote_submit_success',
                 PageKey: pageKey,
                 FormKey: formKey,
-                MetadataJson: JSON.stringify({
-                    leadId: asTrimmed(responseBody && responseBody.leadId)
-                })
+                MetadataJson: JSON.stringify({ leadId: asTrimmed(responseBody && responseBody.leadId) })
             });
             track({
                 EventType: 'lead_form_submit_success',
@@ -3145,8 +3143,7 @@ body.disability-final-step-active .dq-form-panel {
 
             trackCta('disability_submit_review', submitButton ? asTrimmed(submitButton.textContent) : 'Get My Disability Review');
             track({
-                EventType: 'form_submit',
-                SubmitOutcome: 'attempt',
+                EventType: 'disability_quote_submit_attempt',
                 PageKey: pageKey,
                 FormKey: formKey
             });
@@ -3194,13 +3191,10 @@ body.disability-final-step-active .dq-form-panel {
                 }
 
                 track({
-                    EventType: 'form_submit',
-                    SubmitOutcome: 'failure',
+                    EventType: 'disability_quote_submit_failure',
                     PageKey: pageKey,
                     FormKey: formKey,
-                    MetadataJson: JSON.stringify({
-                        correlationId: responseBody && responseBody.correlationId ? responseBody.correlationId : ''
-                    })
+                    MetadataJson: JSON.stringify({ correlationId: responseBody && responseBody.correlationId ? responseBody.correlationId : '' })
                 });
             } finally {
                 if (submitButton) {
