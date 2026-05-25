@@ -2695,7 +2695,7 @@
       if (data) renderQuote(data);
       if (abandon) {
         renderAbandonment(abandon);
-        renderFunnelContactFriction(abandon, data);
+        renderFunnelContactFriction(abandon, quote);
       }
     } catch (err) {
       const message = (err && err.message) ? err.message : 'Unable to load quote funnel.';
