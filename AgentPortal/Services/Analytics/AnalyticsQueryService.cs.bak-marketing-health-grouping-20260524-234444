@@ -2035,56 +2035,7 @@ public sealed class AnalyticsQueryService : IAnalyticsQueryService
         }
 
         var recentTrackingErrors = recentTrackingErrorEvents
-            .GroupBy(e =>
-            {
-                var metadata = ReadTrackingErrorMetadata(e.MetadataJson);
-
-                var sessionKey = FirstNonBlank(e.SessionId, metadata.SessionId, "unknown-session");
-                var visitorKey = FirstNonBlank(e.VisitorId, metadata.VisitorId, "unknown-visitor");
-                var pageKey = FirstNonBlank(e.PageKey, e.Path, "unknown-page");
-
-                var normalizedError =
-                    FirstNonBlank(
-                        metadata.ErrorMessage,
-                        metadata.AttemptedEventName,
-                        "tracking_error"
-                    )!
-                    .Trim()
-                    .ToLowerInvariant();
-
-                if (normalizedError.Contains("failed to fetch"))
-                    normalizedError = "failed_to_fetch";
-
-                if (normalizedError.Contains("network"))
-                    normalizedError = "network_error";
-
-                if (normalizedError.Contains("load failed"))
-                    normalizedError = "resource_load_failure";
-
-                return $"{sessionKey}|{visitorKey}|{pageKey}|{normalizedError}";
-            })
-            .Select(g =>
-            {
-                var newest = g
-                    .OrderByDescending(x => x.EventUtc)
-                    .First();
-
-                var dto = BuildTrackingErrorDetail(
-                    newest,
-                    events,
-                    recentTrackingLinkedLeads,
-                    range.ViewerTimeZone
-                );
-
-                if (g.Count() > 1)
-                {
-                    dto.ErrorMessage =
-                        $"{dto.ErrorMessage} ({g.Count()} related events)";
-                }
-
-                return dto;
-            })
-            .OrderByDescending(x => x.EventUtc)
+            .Select(e => BuildTrackingErrorDetail(e, events, recentTrackingLinkedLeads, range.ViewerTimeZone))
             .ToList();
 
         var startUnits = events

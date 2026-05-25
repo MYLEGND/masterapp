@@ -2076,6 +2076,14 @@ public sealed class AnalyticsQueryService : IAnalyticsQueryService
                     range.ViewerTimeZone
                 );
 
+                dto.ErrorCount = g.Count();
+
+                dto.LocalDisplayTime =
+                    g.Min(x => x.EventUtc).ToLocalTime().ToString("MM/dd/yyyy h:mm tt") +
+                    (g.Count() > 1
+                        ? " - " + g.Max(x => x.EventUtc).ToLocalTime().ToString("h:mm tt")
+                        : "");
+
                 if (g.Count() > 1)
                 {
                     dto.ErrorMessage =
