@@ -155,15 +155,15 @@ public sealed class PublicBookingResolver : IPublicBookingResolver
         var normalizedUpn = NormalizeEmail(trackingProfile?.AgentUpn);
         if (!string.IsNullOrWhiteSpace(effectiveAgentUserId) || !string.IsNullOrWhiteSpace(normalizedUpn))
         {
-            var trackingProfileDisplayName = trackingProfile?.DisplayName?.Trim();
+            var trackingProfileIdForLookup = trackingProfile?.Id;
 
             var candidateProfiles = await _db.AgentProfiles
                 .AsNoTracking()
                 .Where(x =>
+                    (trackingProfileIdForLookup.HasValue && x.AgentTrackingProfileId == trackingProfileIdForLookup.Value) ||
                     (!string.IsNullOrWhiteSpace(effectiveAgentUserId) && x.AgentUserId == effectiveAgentUserId) ||
                     (!string.IsNullOrWhiteSpace(normalizedUpn) &&
-                        (x.NormalizedEmail == normalizedUpn || x.AgentUpn.ToLower() == normalizedUpn)) ||
-                    (!string.IsNullOrWhiteSpace(trackingProfileDisplayName) && x.FullName == trackingProfileDisplayName))
+                        (x.NormalizedEmail == normalizedUpn || x.AgentUpn.ToLower() == normalizedUpn)))
                 .ToListAsync(cancellationToken);
 
             agentProfile = candidateProfiles

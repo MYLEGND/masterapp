@@ -155,6 +155,7 @@ public sealed class PublicBookingResolver : IPublicBookingResolver
         var normalizedUpn = NormalizeEmail(trackingProfile?.AgentUpn);
         if (!string.IsNullOrWhiteSpace(effectiveAgentUserId) || !string.IsNullOrWhiteSpace(normalizedUpn))
         {
+            var trackingProfileSlug = NormalizeSlug(trackingProfile?.Slug);
             var trackingProfileDisplayName = trackingProfile?.DisplayName?.Trim();
 
             var candidateProfiles = await _db.AgentProfiles
@@ -163,6 +164,7 @@ public sealed class PublicBookingResolver : IPublicBookingResolver
                     (!string.IsNullOrWhiteSpace(effectiveAgentUserId) && x.AgentUserId == effectiveAgentUserId) ||
                     (!string.IsNullOrWhiteSpace(normalizedUpn) &&
                         (x.NormalizedEmail == normalizedUpn || x.AgentUpn.ToLower() == normalizedUpn)) ||
+                    (!string.IsNullOrWhiteSpace(trackingProfileSlug) && x.Slug == trackingProfileSlug) ||
                     (!string.IsNullOrWhiteSpace(trackingProfileDisplayName) && x.FullName == trackingProfileDisplayName))
                 .ToListAsync(cancellationToken);
 
