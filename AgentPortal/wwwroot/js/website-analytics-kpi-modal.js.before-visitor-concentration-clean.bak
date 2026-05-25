@@ -375,56 +375,6 @@
             case 'visitors':
                 addSection('Top Landing Pages', breakdown.topLandingPages);
                 addSection('Top Sources', breakdown.topSources);
-
-                if (breakdown.visitorConcentration && breakdown.visitorConcentration.length) {
-                    const rows = breakdown.visitorConcentration.map(v => {
-                        const badge = v.likelyInternal
-                            ? '<span class="vc-badge vc-badge-warn">Review</span>'
-                            : '<span class="vc-badge vc-badge-good">Normal</span>';
-
-                        return `
-                            <div class="vc-row">
-                                <div class="vc-main">
-                                    <div class="vc-top">
-                                        <code>${escHtml(v.visitorShortId || 'unknown')}</code>
-                                        ${badge}
-                                    </div>
-
-                                    <div class="vc-meta">
-                                        ${formatInt(v.sessions)} sessions ·
-                                        ${formatInt(v.events)} events ·
-                                        ${escHtml(v.device || 'Unknown')} ·
-                                        ${escHtml(v.source || 'Direct')}
-                                    </div>
-
-                                    <div class="vc-sub">
-                                        ${escHtml(v.firstSeenLocal || '—')} → ${escHtml(v.lastSeenLocal || '—')}
-                                    </div>
-                                </div>
-
-                                <div class="vc-side">
-                                    <div class="vc-side-value">${formatInt(v.events)}</div>
-                                    <div class="vc-side-label">Events</div>
-                                </div>
-                            </div>
-                        `;
-                    }).join('');
-
-                    sections.push(`
-                        <div class="kpi-breakdown-section visitor-concentration-section">
-                            <div class="kpi-breakdown-title">Visitor Concentration</div>
-
-                            <div class="visitor-concentration-intro">
-                                Verify whether traffic is distributed across real visitors or inflated by a few heavy sessions.
-                            </div>
-
-                            <div class="visitor-concentration-list">
-                                ${rows}
-                            </div>
-                        </div>
-                    `);
-                }
-
                 break;
             case 'sessions':
                 addSection('Top Entry Pages', breakdown.topLandingPages);

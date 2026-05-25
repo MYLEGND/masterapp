@@ -8,14 +8,15 @@ namespace Protect_Website.Models
         [Required(ErrorMessage = "First Name is required")]
         public string FirstName { get; set; } = "";
 
-        [Required(ErrorMessage = "Last Name is required")]
-        public string LastName { get; set; } = "";
+        public string? LastName { get; set; }
 
-        [Required(ErrorMessage = "Email is required"), EmailAddress]
-        public string Email { get; set; } = "";
+        [EmailAddress]
+        public string? Email { get; set; }
 
         [Required(ErrorMessage = "Phone is required"), Phone]
         public string Phone { get; set; } = "";
+
+        public string? State { get; set; }
 
         [Required(ErrorMessage = "Age is required")]
         [Range(0, 120, ErrorMessage = "Age must be between 0 and 120")]
@@ -37,11 +38,9 @@ namespace Protect_Website.Models
         public string Timeline { get; set; } = "";
 
         // ===================== CONTACT =====================
-        [Required(ErrorMessage = "Contact Method is required")]
-        public string ContactMethod { get; set; } = "";
+        public string? ContactMethod { get; set; }
 
-        [Required(ErrorMessage = "Best Time to Contact is required")]
-        public string BestTimeToContact { get; set; } = "";
+        public string? BestTimeToContact { get; set; }
 
         // ===================== DISCLAIMER =====================
                 [Display(Name = "Acknowledged Disclaimer")]

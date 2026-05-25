@@ -6526,3 +6526,102 @@ body {
     stroke-linecap: round;
     stroke-linejoin: round;
 }
+
+/* Visitor Concentration */
+.visitor-concentration-section {
+  margin-top: 1.25rem;
+}
+
+.visitor-concentration-intro {
+  color: rgba(255,255,255,.68);
+  font-size: .84rem;
+  margin-bottom: 1rem;
+  line-height: 1.5;
+}
+
+.visitor-concentration-list {
+  display: flex;
+  flex-direction: column;
+  gap: .85rem;
+}
+
+.vc-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: .9rem 1rem;
+  border-radius: 18px;
+  border: 1px solid rgba(199,153,49,.14);
+  background:
+    radial-gradient(circle at top left, rgba(199,153,49,.08), transparent 38%),
+    rgba(8,15,30,.76);
+}
+
+.vc-main {
+  min-width: 0;
+  flex: 1;
+}
+
+.vc-top {
+  display: flex;
+  align-items: center;
+  gap: .55rem;
+  margin-bottom: .35rem;
+}
+
+.vc-top code {
+  color: #f3d27a;
+  background: rgba(199,153,49,.10);
+  border: 1px solid rgba(199,153,49,.16);
+  border-radius: 999px;
+  padding: .18rem .5rem;
+  font-size: .78rem;
+}
+
+.vc-meta {
+  color: rgba(255,255,255,.82);
+  font-size: .84rem;
+}
+
+.vc-sub {
+  color: rgba(255,255,255,.50);
+  font-size: .76rem;
+  margin-top: .28rem;
+}
+
+.vc-side {
+  text-align: right;
+}
+
+.vc-side-value {
+  color: #fff;
+  font-size: 1.05rem;
+  font-weight: 700;
+}
+
+.vc-side-label {
+  color: rgba(255,255,255,.52);
+  font-size: .7rem;
+}
+
+.vc-badge {
+  display: inline-flex;
+  align-items: center;
+  border-radius: 999px;
+  padding: .16rem .48rem;
+  font-size: .68rem;
+  font-weight: 700;
+}
+
+.vc-badge-good {
+  color: #9ff0c2;
+  background: rgba(37,181,103,.12);
+  border: 1px solid rgba(37,181,103,.20);
+}
+
+.vc-badge-warn {
+  color: #f3d27a;
+  background: rgba(199,153,49,.12);
+  border: 1px solid rgba(199,153,49,.24);
+}

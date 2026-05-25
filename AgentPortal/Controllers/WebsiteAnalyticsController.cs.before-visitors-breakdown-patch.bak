@@ -861,77 +861,8 @@ namespace AgentPortal.Controllers;
             case "visitors":
                 breakdown.TopLandingPages = traffic.EntryPages.Take(10)
                     .Select(x => new Models.Analytics.KpiDetailBreakdownItemDto { Label = x.Key, Value = x.Count }).ToList();
-
                 breakdown.TopSources = traffic.TopSources.Take(10)
                     .Select(x => new Models.Analytics.KpiDetailBreakdownItemDto { Label = x.Key, Value = x.Count }).ToList();
-
-                var visitorEvents = await _db.AnalyticsEvents
-                    .AsNoTracking()
-                    .Where(e =>
-                        e.EventUtc >= range.FromUtc &&
-                        e.EventUtc < range.ToUtc &&
-                        e.Environment != null &&
-                        (e.Environment.ToLower() == "production" || e.Environment.ToLower() == "prod"))
-                    .Select(e => new
-                    {
-                        e.VisitorId,
-                        e.SessionId,
-                        e.EventUtc,
-                        e.DeviceType,
-                        e.UtmSource,
-                        e.IsInternal
-                    })
-                    .ToListAsync();
-
-                breakdown.VisitorConcentration = visitorEvents
-                    .Where(x => !string.IsNullOrWhiteSpace(x.VisitorId))
-                    .GroupBy(x => x.VisitorId!)
-                    .Select(g =>
-                    {
-                        var sessions = g
-                            .Select(x => x.SessionId)
-                            .Where(x => !string.IsNullOrWhiteSpace(x))
-                            .Distinct()
-                            .Count();
-
-                        var events = g.Count();
-
-                        var device = g
-                            .Select(x => x.DeviceType)
-                            .FirstOrDefault(x => !string.IsNullOrWhiteSpace(x))
-                            ?? "Unknown";
-
-                        var source = g
-                            .Select(x => x.UtmSource)
-                            .FirstOrDefault(x => !string.IsNullOrWhiteSpace(x))
-                            ?? "Direct";
-
-                        var firstSeen = g.Min(x => x.EventUtc);
-                        var lastSeen = g.Max(x => x.EventUtc);
-
-                        var likelyInternal =
-                            g.Any(x => x.IsInternal) ||
-                            sessions >= 5 ||
-                            events >= 100;
-
-                        return new Models.Analytics.VisitorConcentrationDto
-                        {
-                            VisitorId = g.Key,
-                            VisitorShortId = g.Key.Length > 8 ? g.Key.Substring(0, 8) + "…" : g.Key,
-                            Sessions = sessions,
-                            Events = events,
-                            Device = device,
-                            Source = source,
-                            FirstSeenLocal = firstSeen.ToLocalTime().ToString("M/d h:mm tt"),
-                            LastSeenLocal = lastSeen.ToLocalTime().ToString("M/d h:mm tt"),
-                            LikelyInternal = likelyInternal
-                        };
-                    })
-                    .OrderByDescending(x => x.Events)
-                    .ThenByDescending(x => x.Sessions)
-                    .Take(15)
-                    .ToList();
-
                 break;
 
             case "sessions":
