@@ -516,13 +516,8 @@
 @inject ProtectWebsite.Services.Booking.IPublicBookingResolver PublicBookingResolver
 
 @{
-    var bookingConfig = await PublicBookingResolver.ResolveAsync(
-        new ProtectWebsite.Services.Booking.PublicBookingResolveContext(
-            WebsiteLeadId: null,
-            AgentTrackingProfileId: null,
-            AgentUserId: null,
-            AgentSlug: slugPrefix?.Replace("/a/", "")
-        )
+    var bookingConfig = PublicBookingResolver.Resolve(
+        slugPrefix?.Replace("/a/", "")
     );
 }
 
