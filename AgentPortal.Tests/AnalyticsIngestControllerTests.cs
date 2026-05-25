@@ -152,6 +152,7 @@ public class AnalyticsIngestControllerTests
     [Theory]
     [InlineData("first_question_view")]
     [InlineData("primary_cta_seen")]
+    [InlineData("quote_entry_engaged")]
     [InlineData("cta_clicked")]
     [InlineData("funnel_started")]
     [InlineData("first_question_answered")]

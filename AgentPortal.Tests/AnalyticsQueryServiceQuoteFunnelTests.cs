@@ -135,9 +135,8 @@ public class AnalyticsQueryServiceQuoteFunnelTests
         Assert.Equal(0, dto.CtaStartCount);
         Assert.Equal(1, dto.DirectFormStartCount);
         Assert.Contains(dto.StageMetrics, metric => metric.StageKey == "primary_cta_seen" && metric.Count == 1);
-        Assert.Contains(dto.StageMetrics, metric => metric.StageKey == "first_question_viewed" && metric.Count == 1);
-        Assert.Contains(dto.StageMetrics, metric => metric.StageKey == "first_question_answered" && metric.Count == 1);
-        Assert.Contains(dto.StageMetrics, metric => metric.StageKey == "recommendation_viewed" && metric.Count == 1);
+        Assert.Contains(dto.StageMetrics, metric => metric.StageKey == "quote_entry_engaged" && metric.Count == 1);
+        Assert.Contains(dto.StageMetrics, metric => metric.StageKey == "form_started" && metric.Count == 1);
         Assert.Contains(dto.StageMetrics, metric => metric.StageKey == "contact_step_viewed" && metric.Count == 1);
     }
 
@@ -202,8 +201,8 @@ public class AnalyticsQueryServiceQuoteFunnelTests
         Assert.Equal(0, dto.QuoteFormStarts);
         Assert.Equal(0, dto.CtaStartCount);
         Assert.Equal(0, dto.DirectFormStartCount);
-        Assert.DoesNotContain(dto.StageMetrics, metric => metric.StageKey == "funnel_started");
-        Assert.Contains(dto.StageMetrics, metric => metric.StageKey == "first_question_viewed" && metric.Count == 1);
+        Assert.DoesNotContain(dto.StageMetrics, metric => metric.StageKey == "quote_entry_engaged");
+        Assert.DoesNotContain(dto.StageMetrics, metric => metric.StageKey == "form_started");
     }
 
     [Fact]
@@ -221,14 +220,14 @@ public class AnalyticsQueryServiceQuoteFunnelTests
         var service = BuildService(db);
         var dto = await service.GetQuoteFunnelAsync(BuildRange(now), ScopeContext.Global);
 
-        Assert.Equal(0, dto.QuoteStarts);
-        Assert.Equal(0, dto.QuoteFormStarts);
+        Assert.Equal(1, dto.QuoteStarts);
+        Assert.Equal(1, dto.QuoteFormStarts);
         Assert.Equal(0, dto.CtaStartCount);
-        Assert.Equal(0, dto.DirectFormStartCount);
-        Assert.DoesNotContain(dto.StageMetrics, metric => metric.StageKey == "funnel_started");
-        Assert.Contains(dto.StageMetrics, metric => metric.StageKey == "recommendation_viewed" && metric.Count == 1);
+        Assert.Equal(1, dto.DirectFormStartCount);
+        Assert.Contains(dto.StageMetrics, metric => metric.StageKey == "quote_entry_engaged" && metric.Count == 1);
+        Assert.Contains(dto.StageMetrics, metric => metric.StageKey == "form_started" && metric.Count == 1);
         Assert.Contains(dto.StageMetrics, metric => metric.StageKey == "contact_step_viewed" && metric.Count == 1);
-        Assert.Contains(dto.StageMetrics, metric => metric.StageKey == "server_confirmed_leads" && metric.Count == 1);
+        Assert.Contains(dto.StageMetrics, metric => metric.StageKey == "lead_confirmed" && metric.Count == 1);
     }
 
     [Fact]
@@ -248,8 +247,8 @@ public class AnalyticsQueryServiceQuoteFunnelTests
         Assert.Equal(0, dto.QuoteFormStarts);
         Assert.Equal(1, dto.CtaStartCount);
         Assert.Equal(0, dto.DirectFormStartCount);
-        Assert.Contains(dto.StageMetrics, metric => metric.StageKey == "cta_clicked" && metric.Count == 1);
-        Assert.DoesNotContain(dto.StageMetrics, metric => metric.StageKey == "funnel_started");
+        Assert.Contains(dto.StageMetrics, metric => metric.StageKey == "quote_entry_engaged" && metric.Count == 1);
+        Assert.DoesNotContain(dto.StageMetrics, metric => metric.StageKey == "form_started");
     }
 
     [Fact]
@@ -269,7 +268,32 @@ public class AnalyticsQueryServiceQuoteFunnelTests
         Assert.Equal(1, dto.QuoteFormStarts);
         Assert.Equal(0, dto.CtaStartCount);
         Assert.Equal(1, dto.DirectFormStartCount);
-        Assert.Contains(dto.StageMetrics, metric => metric.StageKey == "funnel_started" && metric.Count == 1);
+        Assert.Contains(dto.StageMetrics, metric => metric.StageKey == "quote_entry_engaged" && metric.Count == 1);
+        Assert.Contains(dto.StageMetrics, metric => metric.StageKey == "form_started" && metric.Count == 1);
+    }
+
+    [Fact]
+    public async Task GetQuoteFunnelAsync_SameSessionDifferentQuoteScopes_CountSeparately()
+    {
+        using var db = ControllerTestHelpers.BuildDb();
+        var now = DateTime.UtcNow;
+
+        db.AnalyticsEvents.AddRange(
+            E("form_start", now.AddMinutes(-12), "multi-scope", formKey: "quote_auto_form", quoteType: "auto"),
+            E("form_start", now.AddMinutes(-11), "multi-scope", formKey: "quote_home_form", quoteType: "home"),
+            E("form_submit", now.AddMinutes(-10), "multi-scope", formKey: "quote_home_form", quoteType: "home", submitOutcome: "success"));
+        await db.SaveChangesAsync();
+
+        var service = BuildService(db);
+        var dto = await service.GetQuoteFunnelAsync(BuildRange(now), ScopeContext.Global);
+
+        Assert.Equal(2, dto.QuoteStarts);
+        Assert.Equal(2, dto.QuoteFormStarts);
+        Assert.Equal(1, dto.QuoteFormSubmits);
+        Assert.Equal(0, dto.CtaStartCount);
+        Assert.Equal(2, dto.DirectFormStartCount);
+        Assert.Contains(dto.ByQuoteType, row => row.Key == "auto" && row.Count == 1);
+        Assert.Contains(dto.ByQuoteType, row => row.Key == "home" && row.Count == 1);
     }
 
     [Fact]
@@ -296,15 +320,11 @@ public class AnalyticsQueryServiceQuoteFunnelTests
         var dto = await service.GetQuoteFunnelAsync(BuildRange(now), ScopeContext.Global);
 
         Assert.Equal((1, 1, 1), (dto.QuoteStarts, dto.QuoteFormStarts, dto.QuoteFormSubmits));
-        Assert.Contains(dto.StageMetrics, metric => metric.StageKey == "cta_clicked" && metric.Count == 1);
-        Assert.Contains(dto.StageMetrics, metric => metric.StageKey == "funnel_started" && metric.Count == 1);
-        Assert.Contains(dto.StageMetrics, metric => metric.StageKey == "protecting_who_completed" && metric.Count == 1);
-        Assert.Contains(dto.StageMetrics, metric => metric.StageKey == "goal_completed" && metric.Count == 1);
-        Assert.Contains(dto.StageMetrics, metric => metric.StageKey == "age_completed" && metric.Count == 1);
-        Assert.Contains(dto.StageMetrics, metric => metric.StageKey == "processing_viewed" && metric.Count == 1);
-        Assert.Contains(dto.StageMetrics, metric => metric.StageKey == "recommendation_viewed" && metric.Count == 1);
+        Assert.Contains(dto.StageMetrics, metric => metric.StageKey == "quote_entry_engaged" && metric.Count == 1);
+        Assert.Contains(dto.StageMetrics, metric => metric.StageKey == "form_started" && metric.Count == 1);
+        Assert.Contains(dto.StageMetrics, metric => metric.StageKey == "discovery_steps_completed" && metric.Count == 1);
         Assert.Contains(dto.StageMetrics, metric => metric.StageKey == "contact_step_viewed" && metric.Count == 1);
-        Assert.Contains(dto.StageMetrics, metric => metric.StageKey == "server_confirmed_leads" && metric.Count == 1);
+        Assert.Contains(dto.StageMetrics, metric => metric.StageKey == "lead_confirmed" && metric.Count == 1);
     }
 
     [Fact]

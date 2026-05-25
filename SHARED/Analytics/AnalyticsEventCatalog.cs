@@ -31,6 +31,7 @@ public static class AnalyticsEventCatalog
         Define("quote_cta_click", "quote", AllQuotes, "landing", cta: true, critical: true, allowBrowser: true, dashboardMetrics: ["cta_click", "quote_cta_click", "primary_cta_click"]),
         Define("cta_clicked", "quote", AllQuotes, "landing", cta: true, critical: true, allowBrowser: true, dashboardMetrics: ["cta_click", "quote_cta_click", "primary_cta_click"]),
         Define("primary_cta_seen", "cta", AllQuotes, "landing", allowBrowser: true, dashboardMetrics: ["primary_cta_seen"]),
+        Define("quote_entry_engaged", "quote", AllQuotes, "discovery", funnelStart: true, critical: true, allowBrowser: true, dashboardMetrics: ["quote_entry_engaged", "funnel_start"]),
         Define("quote_click", "cta", AllQuotes, "landing", cta: true, critical: true, allowBrowser: true, dashboardMetrics: ["quote_click", "cta_click"]),
         Define("quote_step_complete", "quote", AllQuotes, "discovery", funnelStart: true, critical: true, allowBrowser: true, dashboardMetrics: ["quote_step_complete"]),
         Define("quote_contact_step_view", "quote", AllQuotes, "contact", contactStep: true, critical: true, allowBrowser: true, dashboardMetrics: ["contact_step_view", "quote_contact_step_view"]),

@@ -2,7 +2,13 @@
 @model Protect_Website.Models.AutoQuoteFormModel
 @{
     ViewData["Title"] = "Auto Insurance Quote";
-    ViewData["PageKey"] = "quote_auto";
+    var pageKey = ((string?)ViewData["PageKey"] ?? "quote_auto").Trim();
+    if (string.IsNullOrWhiteSpace(pageKey))
+    {
+        pageKey = "quote_auto";
+    }
+    var formKey = $"{pageKey}_form";
+    ViewData["PageKey"] = pageKey;
     ViewData["PageCategory"] = "quote";
     ViewData["QuoteTypeForTracking"] = "auto";
     ViewData["PageVariant"] = "website";
@@ -207,12 +213,13 @@
     <div class="wizard-pill" data-pill="5">Section 5 — Coverage</div>
 </div>
 
-<form action="/Quote/Auto" method="post" class="container" id="autoQuoteForm" novalidate data-form-key="quote_auto_form">
+<form action="/Quote/Auto" method="post" class="container" id="autoQuoteForm" novalidate data-form-key="@formKey">
     @Html.AntiForgeryToken()
     @if (!string.IsNullOrWhiteSpace(agentSlug))
     {
         <input type="hidden" name="AgentSlug" value="@agentSlug" />
     }
+    <input type="hidden" name="PageKey" value="@pageKey" />
 
     <!-- ===================== SECTION 1 ===================== -->
     <div class="section-card wizard-step active" data-step="1">
@@ -1546,6 +1553,8 @@
 
     <script>
     let currentStep = 1;
+    const pageKey = '@pageKey';
+    const formKey = '@formKey';
     const trackAutoQuote = (window.legendTrack && typeof window.legendTrack === 'function')
         ? window.legendTrack
         : null;
@@ -1557,8 +1566,8 @@
         autoCompletedSteps.add(stepNumber);
         trackAutoQuote({
             EventType: 'quote_step_complete',
-            FormKey: 'quote_auto_form',
-            PageKey: 'quote_auto',
+            FormKey: formKey,
+            PageKey: pageKey,
             MetadataJson: JSON.stringify({ stepNumber, nextStep })
         });
     }
@@ -1568,8 +1577,8 @@
         autoViewedContactSteps.add(stepNumber);
         trackAutoQuote({
             EventType: 'quote_contact_step_view',
-            FormKey: 'quote_auto_form',
-            PageKey: 'quote_auto',
+            FormKey: formKey,
+            PageKey: pageKey,
             MetadataJson: JSON.stringify({ stepNumber, source: 'wizard_step_view' })
         });
     }

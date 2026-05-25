@@ -2,7 +2,13 @@
 
 @{
     ViewData["Title"] = "Commercial Insurance Quote";
-    ViewData["PageKey"] = "quote_commercial";
+    var pageKey = ((string?)ViewData["PageKey"] ?? "quote_commercial").Trim();
+    if (string.IsNullOrWhiteSpace(pageKey))
+    {
+        pageKey = "quote_commercial";
+    }
+    var formKey = $"{pageKey}_form";
+    ViewData["PageKey"] = pageKey;
     ViewData["PageCategory"] = "quote";
     ViewData["QuoteTypeForTracking"] = "commercial";
     ViewData["PageVariant"] = "website";
@@ -282,7 +288,7 @@
 <form action="/Quote/Commercial"
       method="post"
       id="commercialQuoteForm"
-      data-form-key="quote_commercial_form">
+      data-form-key="@formKey">
 
 
         @Html.AntiForgeryToken()
@@ -290,6 +296,7 @@
         {
             <input type="hidden" name="AgentSlug" value="@agentSlug" />
         }
+        <input type="hidden" name="PageKey" value="@pageKey" />
 
         <input asp-for="CurrentStep" type="hidden" id="CurrentStep" />
 
@@ -1515,6 +1522,8 @@
     <script>
         (function () {
             const totalSteps = @totalSteps;
+            const pageKey = '@pageKey';
+            const formKey = '@formKey';
             const form = document.getElementById('commercialQuoteForm');
             const stepLabel = document.getElementById('stepLabel');
             const progressFill = document.getElementById('progressFill');
@@ -1549,8 +1558,8 @@
                     commercialViewedContactSteps.add(step);
                     trackCommercialQuote({
                         EventType: 'quote_contact_step_view',
-                        FormKey: 'quote_commercial_form',
-                        PageKey: 'quote_commercial',
+                        FormKey: formKey,
+                        PageKey: pageKey,
                         MetadataJson: JSON.stringify({ stepNumber: step, source: 'wizard_step_view' })
                     });
                 }
@@ -1770,8 +1779,8 @@ function enforceRequiredByLabels() {
                         commercialCompletedSteps.add(step);
                         trackCommercialQuote({
                             EventType: 'quote_step_complete',
-                            FormKey: 'quote_commercial_form',
-                            PageKey: 'quote_commercial',
+                            FormKey: formKey,
+                            PageKey: pageKey,
                             MetadataJson: JSON.stringify({ stepNumber: step, nextStep: step + 1 })
                         });
                     }

@@ -17,9 +17,14 @@ public class AnalyticsEventCatalogTests
         "life_funnel_start",
         "life_see_estimate",
         "contact_viewed",
+        "discovery_steps_completed",
         "funnel_start",
+        "form_first_focus",
+        "form_started",
+        "lead_confirmed",
         "page_load",
         "processing_viewed",
+        "primary_cta_click",
         "meta_tracking_initialized",
         "meta_capi_result",
         "successful_event",
@@ -48,6 +53,7 @@ public class AnalyticsEventCatalogTests
         var requiredEvents = new[]
         {
             "primary_cta_seen",
+            "quote_entry_engaged",
             "first_question_view",
             "first_question_answered",
             "contact_step_view",
@@ -76,6 +82,20 @@ public class AnalyticsEventCatalogTests
             Assert.True(AnalyticsEventCatalog.TryGet(eventName, out var definition), $"Catalog missing required event '{eventName}'.");
             Assert.True(definition.AllowBrowser, $"Required event '{eventName}' must be browser-allowed.");
         }
+    }
+
+    [Fact]
+    public void AnalyticsEventCatalog_QuoteEntryEngaged_UsesUniversalQuoteContract()
+    {
+        Assert.True(AnalyticsEventCatalog.TryGet("quote_entry_engaged", out var definition));
+        Assert.Equal("quote", definition.Category);
+        Assert.Equal("discovery", definition.FunnelStage);
+        Assert.True(definition.CountsAsFunnelStart);
+        Assert.True(definition.IsCritical);
+        Assert.True(definition.AllowBrowser);
+        Assert.Contains("all", definition.QuoteTypeApplicability, StringComparer.OrdinalIgnoreCase);
+        Assert.Contains("quote_entry_engaged", definition.DashboardMetrics, StringComparer.OrdinalIgnoreCase);
+        Assert.Contains("funnel_start", definition.DashboardMetrics, StringComparer.OrdinalIgnoreCase);
     }
 
     [Fact]

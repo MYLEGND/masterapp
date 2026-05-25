@@ -400,6 +400,21 @@ public sealed class AnalyticsQueryService : IAnalyticsQueryService
                ReadMetadataIntValue(e.MetadataJson, "stepNumber") == 1;
     }
 
+    private static bool IsQuoteEntryViewEvent(AnalyticsEvent e)
+    {
+        if (!IsQuoteScopeEvent(e))
+            return false;
+
+        return string.Equals(e.EventType, "page_view", StringComparison.OrdinalIgnoreCase) ||
+               string.Equals(e.EventType, "quote_landing_view", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static bool IsQuotePrimaryCtaExposureEvent(AnalyticsEvent e)
+    {
+        return IsQuoteScopeEvent(e) &&
+               AnalyticsEventCatalog.MatchesDashboardMetric(e.EventType, "primary_cta_seen");
+    }
+
     private static bool IsQuoteEarlyDiscoveryInteractionEvent(AnalyticsEvent e)
     {
         return IsQuoteFirstQuestionAnsweredEvent(e) ||
@@ -428,21 +443,23 @@ public sealed class AnalyticsQueryService : IAnalyticsQueryService
         return AnalyticsEventCatalog.MatchesDashboardMetric(e.EventType, "recommendation_viewed");
     }
 
+    private static bool IsQuoteDiscoveryStepCompleteEvent(AnalyticsEvent e)
+    {
+        return IsQuoteScopeEvent(e) &&
+               AnalyticsEventCatalog.MatchesDashboardMetric(e.EventType, "quote_step_complete");
+    }
+
     private static bool IsQuoteContactStepReachedEvent(AnalyticsEvent e)
     {
         return AnalyticsEventCatalog.MatchesDashboardMetric(e.EventType, "contact_step_view") ||
                AnalyticsEventCatalog.MatchesDashboardMetric(e.EventType, "quote_contact_step_view");
     }
 
-    private static bool IsQuoteFunnelStartSignalEvent(AnalyticsEvent e)
+    private static bool IsQuoteExplicitFormStartEvent(AnalyticsEvent e)
     {
         if (!IsQuoteScopeEvent(e))
             return false;
 
-        // Funnel starts must come from intentional entry signals only. Passive intro/question
-        // visibility, later-stage progress, recommendation/contact views, submit attempts,
-        // and success aliases are counted in their own stages so they cannot backfill the
-        // funnel-start denominator.
         return AnalyticsEventCatalog.MatchesDashboardMetric(e.EventType, "funnel_start") ||
                string.Equals(e.EventType, "form_start", StringComparison.OrdinalIgnoreCase) ||
                string.Equals(e.EventType, "lead_form_start", StringComparison.OrdinalIgnoreCase) ||
@@ -455,9 +472,26 @@ public sealed class AnalyticsQueryService : IAnalyticsQueryService
                string.Equals(e.EventType, "life_iul_form_start", StringComparison.OrdinalIgnoreCase);
     }
 
+    private static bool IsQuoteEntryEngagedSignalEvent(AnalyticsEvent e)
+    {
+        if (!IsQuoteScopeEvent(e))
+            return false;
+
+        return string.Equals(e.EventType, "quote_entry_engaged", StringComparison.OrdinalIgnoreCase) ||
+               IsQuoteCtaIntentEvent(e) ||
+               IsQuoteExplicitFormStartEvent(e) ||
+               IsQuoteDiscoveryStepCompleteEvent(e) ||
+               IsQuoteContactStepReachedEvent(e);
+    }
+
+    private static bool IsQuoteFunnelStartSignalEvent(AnalyticsEvent e)
+    {
+        return IsQuoteExplicitFormStartEvent(e);
+    }
+
     private static bool IsQuoteExplicitStartSignalEvent(AnalyticsEvent e)
     {
-        return IsQuoteFunnelStartSignalEvent(e);
+        return IsQuoteEntryEngagedSignalEvent(e);
     }
 
     private static string BuildInteractionUnitKey(AnalyticsEvent e)
@@ -471,20 +505,30 @@ public sealed class AnalyticsQueryService : IAnalyticsQueryService
         return $"eid:{e.EventId:D}";
     }
 
-    private static int CountDistinctUnits(IEnumerable<AnalyticsEvent> events, Func<AnalyticsEvent, bool> predicate)
+    private static int CountDistinctUnits(
+        IEnumerable<AnalyticsEvent> events,
+        Func<AnalyticsEvent, bool> predicate,
+        Func<AnalyticsEvent, string>? unitKeySelector = null)
     {
+        var selector = unitKeySelector ?? BuildInteractionUnitKey;
+
         return events
             .Where(predicate)
-            .Select(BuildInteractionUnitKey)
+            .Select(selector)
             .Distinct(StringComparer.OrdinalIgnoreCase)
             .Count();
     }
 
-    private static HashSet<string> BuildDistinctUnitKeySet(IEnumerable<AnalyticsEvent> events, Func<AnalyticsEvent, bool> predicate)
+    private static HashSet<string> BuildDistinctUnitKeySet(
+        IEnumerable<AnalyticsEvent> events,
+        Func<AnalyticsEvent, bool> predicate,
+        Func<AnalyticsEvent, string>? unitKeySelector = null)
     {
+        var selector = unitKeySelector ?? BuildInteractionUnitKey;
+
         return events
             .Where(predicate)
-            .Select(BuildInteractionUnitKey)
+            .Select(selector)
             .ToHashSet(StringComparer.OrdinalIgnoreCase);
     }
 
@@ -532,10 +576,34 @@ public sealed class AnalyticsQueryService : IAnalyticsQueryService
         InferQuoteTypeFromKey(pageKey) ??
         NormalizeQuoteTypeToken(quoteType);
 
+    private static string? BuildQuoteScopeKey(string? formKey, string? pageKey, string? quoteType)
+    {
+        var normalizedScopeKey = NormalizeSuccessScopeKey(formKey) ?? NormalizeSuccessScopeKey(pageKey);
+        if (!string.IsNullOrWhiteSpace(normalizedScopeKey))
+            return normalizedScopeKey;
+
+        return ResolveQuoteTypeForReporting(quoteType, formKey, pageKey) switch
+        {
+            "life" => "quote_life",
+            "term_life" => "quote_term_life",
+            "whole_life" => "quote_whole_life",
+            "final_expense" => "quote_final_expense",
+            "mortgage_protection" => "quote_mortgage_protection",
+            "iul" => "quote_iul",
+            "auto" => "quote_auto",
+            "home" => "quote_home",
+            "commercial" => "quote_commercial",
+            "disability" => "quote_disability",
+            "health" => "quote_health",
+            var normalizedQuoteType when !string.IsNullOrWhiteSpace(normalizedQuoteType) => $"quote_{normalizedQuoteType}",
+            _ => null,
+        };
+    }
+
     private static string? BuildSessionFormKey(string? sessionId, string? formKey, string? quoteType, string? pageKey = null)
     {
         if (string.IsNullOrWhiteSpace(sessionId)) return null;
-        var normalizedScopeKey = NormalizeSuccessScopeKey(formKey) ?? NormalizeSuccessScopeKey(pageKey);
+        var normalizedScopeKey = BuildQuoteScopeKey(formKey, pageKey, quoteType);
         if (!string.IsNullOrWhiteSpace(normalizedScopeKey)) return $"{sessionId}::{normalizedScopeKey}";
         var normalizedQuoteType = ResolveQuoteTypeForReporting(quoteType, formKey, pageKey);
         if (!string.IsNullOrWhiteSpace(normalizedQuoteType)) return $"{sessionId}::qt:{normalizedQuoteType}";
@@ -554,9 +622,7 @@ public sealed class AnalyticsQueryService : IAnalyticsQueryService
     private static string BuildSuccessUnitKey(AnalyticsEvent e)
     {
         var scopeKey =
-            NormalizeSuccessScopeKey(e.FormKey) ??
-            NormalizeSuccessScopeKey(e.FormId) ??
-            NormalizeSuccessScopeKey(e.PageKey) ??
+            BuildQuoteScopeKey(e.FormKey ?? e.FormId, e.PageKey, e.QuoteType) ??
             ResolveQuoteTypeForReporting(e.QuoteType, e.FormKey ?? e.FormId, e.PageKey) ??
             e.EventType.ToLowerInvariant();
 
@@ -568,6 +634,8 @@ public sealed class AnalyticsQueryService : IAnalyticsQueryService
             return $"cid:{e.ClientEventId.Value:D}::{scopeKey}";
         return $"eid:{e.EventId:D}::{scopeKey}";
     }
+
+    private static string BuildQuoteStageUnitKey(AnalyticsEvent e) => BuildSuccessUnitKey(e);
 
     private static int SuccessEventPriority(AnalyticsEvent e) => e.EventType switch
     {
@@ -593,8 +661,52 @@ public sealed class AnalyticsQueryService : IAnalyticsQueryService
     private static int CountQuoteIntentStarts(IEnumerable<AnalyticsEvent> events)
     {
         return CountDistinctUnits(events, e =>
-            IsQuoteCtaIntentEvent(e) ||
-            IsQuoteFunnelStartSignalEvent(e));
+            IsQuoteEntryEngagedSignalEvent(e) ||
+            IsQuoteSubmitAttempt(e),
+            BuildQuoteStageUnitKey);
+    }
+
+    private static HashSet<string> UnionUnitKeySets(params IReadOnlyCollection<string>[] sets)
+    {
+        var keys = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var set in sets)
+        {
+            keys.UnionWith(set);
+        }
+
+        return keys;
+    }
+
+    private static HashSet<string> BuildQuoteSubmitAttemptUnitKeys(IEnumerable<AnalyticsEvent> events) =>
+        BuildDistinctUnitKeySet(events, IsQuoteSubmitAttempt, BuildQuoteStageUnitKey);
+
+    private static HashSet<string> BuildQuoteDiscoveryStepUnitKeys(IEnumerable<AnalyticsEvent> events) =>
+        BuildDistinctUnitKeySet(events, IsQuoteDiscoveryStepCompleteEvent, BuildQuoteStageUnitKey);
+
+    private static HashSet<string> BuildQuoteContactStageUnitKeys(IEnumerable<AnalyticsEvent> events)
+    {
+        return UnionUnitKeySets(
+            BuildDistinctUnitKeySet(events, IsQuoteContactStepReachedEvent, BuildQuoteStageUnitKey),
+            BuildQuoteSubmitAttemptUnitKeys(events));
+    }
+
+    private static HashSet<string> BuildQuoteFormStartedUnitKeys(IEnumerable<AnalyticsEvent> events)
+    {
+        return UnionUnitKeySets(
+            BuildDistinctUnitKeySet(events, IsQuoteExplicitFormStartEvent, BuildQuoteStageUnitKey),
+            BuildQuoteDiscoveryStepUnitKeys(events),
+            BuildQuoteContactStageUnitKeys(events));
+    }
+
+    private static HashSet<string> BuildQuoteEntryEngagedUnitKeys(IEnumerable<AnalyticsEvent> events)
+    {
+        return UnionUnitKeySets(
+            BuildDistinctUnitKeySet(
+                events,
+                e => IsQuoteScopeEvent(e) && string.Equals(e.EventType, "quote_entry_engaged", StringComparison.OrdinalIgnoreCase),
+                BuildQuoteStageUnitKey),
+            BuildDistinctUnitKeySet(events, IsQuoteCtaIntentEvent, BuildQuoteStageUnitKey),
+            BuildQuoteFormStartedUnitKeys(events));
     }
 
     private sealed record EventAttributionSnapshot(
@@ -626,11 +738,14 @@ public sealed class AnalyticsQueryService : IAnalyticsQueryService
 
     private static IReadOnlyDictionary<TrafficType, int> CountDistinctUnitsByReportingBucket(
         IEnumerable<AttributedEventRow> rows,
-        Func<AnalyticsEvent, bool> predicate)
+        Func<AnalyticsEvent, bool> predicate,
+        Func<AnalyticsEvent, string>? unitKeySelector = null)
     {
+        var selector = unitKeySelector ?? BuildInteractionUnitKey;
+
         return rows
             .Where(r => predicate(r.Event))
-            .GroupBy(r => BuildInteractionUnitKey(r.Event), StringComparer.OrdinalIgnoreCase)
+            .GroupBy(r => selector(r.Event), StringComparer.OrdinalIgnoreCase)
             .Select(g => g.OrderBy(r => r.Event.EventUtc).First())
             .GroupBy(r => TrafficAttribution.ToReportingBucket(r.TrafficType))
             .ToDictionary(g => g.Key, g => g.Count());
@@ -1537,9 +1652,9 @@ public sealed class AnalyticsQueryService : IAnalyticsQueryService
         int sessions = events.Where(e => !string.IsNullOrWhiteSpace(e.SessionId)).Select(e => e.SessionId!).Distinct().Count();
         int visitors = events.Where(e => !string.IsNullOrWhiteSpace(e.VisitorId)).Select(e => e.VisitorId!).Distinct().Count();
         int verifiedLeads = leads.Count;
-        int quoteFormStarts = CountDistinctUnits(events, IsQuoteFunnelStartSignalEvent);
+        int quoteFormStarts = BuildQuoteFormStartedUnitKeys(events).Count;
         int quoteFormSubmits = SelectCanonicalSuccessEvents(events).Count;
-        int quoteStarts = CountQuoteIntentStarts(events);
+        int quoteStarts = BuildQuoteEntryEngagedUnitKeys(events).Count;
         int convertedSessions = CountConvertedSessions(leads);
 
         int prevPageViews = prevEvents.Count(e => e.EventType == "page_view");
@@ -1696,16 +1811,23 @@ public sealed class AnalyticsQueryService : IAnalyticsQueryService
                 .Select(e => e.EventType ?? "")
                 .Where(e => !string.IsNullOrWhiteSpace(e))
                 .ToHashSet(StringComparer.OrdinalIgnoreCase);
+            var hasPrimaryCtaSeen = sessionEvents.Any(IsQuotePrimaryCtaExposureEvent);
+            var hasQuoteEntryEngaged = BuildQuoteEntryEngagedUnitKeys(sessionEvents).Count > 0;
+            var hasFormStarted = BuildQuoteFormStartedUnitKeys(sessionEvents).Count > 0;
+            var hasContactStep = BuildQuoteContactStageUnitKeys(sessionEvents).Count > 0;
+            var hasSubmitAttempt = sessionEvents.Any(IsQuoteSubmitAttempt);
+            var hasLeadConfirmed = SelectCanonicalSuccessEvents(sessionEvents).Count > 0;
 
             var parts = new List<string>();
 
             if (eventTypes.Contains("page_view")) parts.Add("viewed");
             if (eventTypes.Contains("quote_landing_view")) parts.Add("quote viewed");
-            if (eventTypes.Contains("primary_cta_seen")) parts.Add("CTA seen");
-            if (eventTypes.Contains("quote_click") || eventTypes.Contains("cta_click")) parts.Add("CTA clicked");
-            if (eventTypes.Contains("form_start")) parts.Add("funnel started");
-            if (eventTypes.Contains("form_submit_attempt")) parts.Add("submit attempted");
-            if (eventTypes.Contains("form_submit_success") || eventTypes.Contains("lead_form_submit_success")) parts.Add("submitted");
+            if (hasPrimaryCtaSeen) parts.Add("CTA seen");
+            if (hasQuoteEntryEngaged) parts.Add("quote engaged");
+            if (hasFormStarted) parts.Add("form started");
+            if (hasContactStep) parts.Add("contact viewed");
+            if (hasSubmitAttempt) parts.Add("submit attempted");
+            if (hasLeadConfirmed) parts.Add("submitted");
 
             var maxEngagement = sessionEvents
                 .Select(e => EngagementSeconds(e.EventType))
@@ -1725,15 +1847,21 @@ public sealed class AnalyticsQueryService : IAnalyticsQueryService
                 .Select(e => e.EventType ?? "")
                 .Where(e => !string.IsNullOrWhiteSpace(e))
                 .ToHashSet(StringComparer.OrdinalIgnoreCase);
+            var hasPrimaryCtaSeen = sessionEvents.Any(IsQuotePrimaryCtaExposureEvent);
+            var hasQuoteEntryEngaged = BuildQuoteEntryEngagedUnitKeys(sessionEvents).Count > 0;
+            var hasFormStarted = BuildQuoteFormStartedUnitKeys(sessionEvents).Count > 0;
+            var hasContactStep = BuildQuoteContactStageUnitKeys(sessionEvents).Count > 0;
+            var hasSubmitAttempt = sessionEvents.Any(IsQuoteSubmitAttempt);
+            var hasLeadConfirmed = SelectCanonicalSuccessEvents(sessionEvents).Count > 0;
 
-            if (eventTypes.Contains("lead_form_submit_success")) return "Lead confirmed";
-            if (eventTypes.Contains("form_submit_success")) return "Form submitted";
-            if (eventTypes.Contains("form_submit_attempt")) return "Submit attempted";
+            if (hasLeadConfirmed) return "Lead confirmed";
+            if (hasSubmitAttempt) return "Submit attempted";
+            if (hasContactStep) return "Contact step reached";
+            if (hasFormStarted) return "Form started";
+            if (hasQuoteEntryEngaged) return "Quote engaged";
             if (eventTypes.Contains("form_abandon")) return "Funnel abandoned";
-            if (eventTypes.Contains("form_start")) return "Funnel started";
-            if (eventTypes.Contains("quote_click") || eventTypes.Contains("cta_click")) return "Clicked CTA, no start";
-            if (eventTypes.Contains("primary_cta_seen")) return "CTA seen, no start";
-            if (eventTypes.Contains("page_exit")) return "Exited before start";
+            if (hasPrimaryCtaSeen) return "CTA seen, no engagement";
+            if (eventTypes.Contains("page_exit")) return "Exited before engagement";
 
             var maxEngagement = sessionEvents
                 .Select(e => EngagementSeconds(e.EventType))
@@ -1936,28 +2064,56 @@ public sealed class AnalyticsQueryService : IAnalyticsQueryService
         var leads = trafficType == TrafficType.All
             ? allLeads
             : ResolveAndFilterLeads(allLeads, allEvents, trafficType);
+
+        var quoteEntryViewKeys = BuildDistinctUnitKeySet(events, IsQuoteEntryViewEvent, BuildQuoteStageUnitKey);
+        var primaryCtaSeenKeys = BuildDistinctUnitKeySet(events, IsQuotePrimaryCtaExposureEvent, BuildQuoteStageUnitKey);
+        var ctaStartKeys = BuildDistinctUnitKeySet(events, IsQuoteCtaIntentEvent, BuildQuoteStageUnitKey);
+        var explicitEntryEngagedKeys = BuildDistinctUnitKeySet(
+            events,
+            e => IsQuoteScopeEvent(e) && string.Equals(e.EventType, "quote_entry_engaged", StringComparison.OrdinalIgnoreCase),
+            BuildQuoteStageUnitKey);
+        var explicitFormStartKeys = BuildDistinctUnitKeySet(events, IsQuoteExplicitFormStartEvent, BuildQuoteStageUnitKey);
+        var discoveryStepKeys = BuildDistinctUnitKeySet(events, IsQuoteDiscoveryStepCompleteEvent, BuildQuoteStageUnitKey);
+        var explicitContactStepKeys = BuildDistinctUnitKeySet(events, IsQuoteContactStepReachedEvent, BuildQuoteStageUnitKey);
+        var submitAttemptKeys = BuildDistinctUnitKeySet(events, IsQuoteSubmitAttempt, BuildQuoteStageUnitKey);
+        var leadConfirmedKeys = SelectCanonicalSuccessEvents(events)
+            .Select(BuildQuoteStageUnitKey)
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+        var quoteEntryEngagedKeys = UnionUnitKeySets(
+            explicitEntryEngagedKeys,
+            ctaStartKeys,
+            explicitFormStartKeys,
+            discoveryStepKeys,
+            explicitContactStepKeys,
+            submitAttemptKeys);
+        var formStartedKeys = UnionUnitKeySets(
+            explicitFormStartKeys,
+            discoveryStepKeys,
+            explicitContactStepKeys,
+            submitAttemptKeys);
+        var contactStepKeys = UnionUnitKeySets(
+            explicitContactStepKeys,
+            submitAttemptKeys);
+
         var startBucketCounts = CountDistinctUnitsByReportingBucket(
             allAttributedRows,
-            e => IsQuoteCtaIntentEvent(e) || IsQuoteFunnelStartSignalEvent(e));
-        var ctaStartKeys = BuildDistinctUnitKeySet(events, IsQuoteCtaIntentEvent);
-        var formStartKeys = BuildDistinctUnitKeySet(events, IsQuoteFunnelStartSignalEvent);
-        var directFormStartCount = formStartKeys.Count - formStartKeys.Intersect(ctaStartKeys, StringComparer.OrdinalIgnoreCase).Count();
+            e => IsQuoteEntryEngagedSignalEvent(e) || IsQuoteSubmitAttempt(e),
+            BuildQuoteStageUnitKey);
+        var directFormStartCount = formStartedKeys.Count - formStartedKeys.Intersect(ctaStartKeys, StringComparer.OrdinalIgnoreCase).Count();
 
-        int starts = CountQuoteIntentStarts(events);
-        int formStarts = CountDistinctUnits(events, IsQuoteFunnelStartSignalEvent);
-        int submitAttempts = CountDistinctUnits(events, IsQuoteSubmitAttempt);
-        int formSubmits = SelectCanonicalSuccessEvents(events).Count;
+        int starts = quoteEntryEngagedKeys.Count;
+        int formStarts = formStartedKeys.Count;
+        int submitAttempts = submitAttemptKeys.Count;
+        int formSubmits = leadConfirmedKeys.Count;
 
         var byType = events
-            .Where(e =>
-                IsQuoteCtaIntentEvent(e) ||
-                IsQuoteFunnelStartSignalEvent(e))
             .Select(e => new
             {
                 QuoteType = ResolveQuoteTypeForReporting(e.QuoteType, e.FormKey ?? e.FormId, e.PageKey),
-                UnitKey = BuildInteractionUnitKey(e)
+                UnitKey = BuildQuoteStageUnitKey(e)
             })
-            .Where(x => !string.IsNullOrWhiteSpace(x.QuoteType))
+            .Where(x => quoteEntryEngagedKeys.Contains(x.UnitKey) && !string.IsNullOrWhiteSpace(x.QuoteType))
             .GroupBy(x => x.QuoteType!, StringComparer.OrdinalIgnoreCase)
             .Select(g => new KeyCountDto
             {
@@ -1969,21 +2125,14 @@ public sealed class AnalyticsQueryService : IAnalyticsQueryService
 
         var stageMetrics = new List<QuoteStageMetricRow>
         {
-            new() { StageKey = "quote_entry_views", Label = "Quote Entry Views", Count = CountDistinctUnits(events, e => (e.EventType == "page_view" || e.EventType == "quote_landing_view") && IsQuoteScopeEvent(e)) },
-            new() { StageKey = "primary_cta_seen", Label = "Primary CTA Seen", Count = CountDistinctUnits(events, e => AnalyticsEventCatalog.MatchesDashboardMetric(e.EventType, "primary_cta_seen") && IsQuoteScopeEvent(e)) },
-            new() { StageKey = "cta_clicked", Label = "CTA Clicked", Count = CountDistinctUnits(events, IsQuoteCtaIntentEvent) },
-            new() { StageKey = "funnel_started", Label = "Funnel Started", Count = CountDistinctUnits(events, IsQuoteFunnelStartSignalEvent) },
-            new() { StageKey = "first_question_viewed", Label = "First Question Viewed", Count = CountDistinctUnits(events, e => AnalyticsEventCatalog.MatchesDashboardMetric(e.EventType, "first_question_view") && IsQuoteScopeEvent(e)) },
-            new() { StageKey = "first_question_answered", Label = "First Question Answered", Count = CountDistinctUnits(events, IsQuoteFirstQuestionAnsweredEvent) },
-            new() { StageKey = "discoveryStepCount", Label = "Discovery Steps Completed", Count = CountDistinctUnits(events, e => AnalyticsEventCatalog.MatchesDashboardMetric(e.EventType, "quote_step_complete") && IsQuoteScopeEvent(e)) },
-            new() { StageKey = "protecting_who_completed", Label = "Protecting-Who Completed", Count = CountDistinctUnits(events, e => e.EventType == "life_step1_protecting_select" || e.EventType == "protecting_who_completed") },
-            new() { StageKey = "goal_completed", Label = "Goal Completed", Count = CountDistinctUnits(events, e => e.EventType == "life_step1_goal_select" || e.EventType == "goal_completed") },
-            new() { StageKey = "age_completed", Label = "Age Completed", Count = CountDistinctUnits(events, e => e.EventType == "step1_age_entered" || e.EventType == "life_step1_age_continue" || e.EventType == "age_completed") },
-            new() { StageKey = "processing_viewed", Label = "Processing Bridge Viewed", Count = CountDistinctUnits(events, e => e.EventType == "life_processing_bridge_view" || e.EventType == "processing_bridge_viewed") },
-            new() { StageKey = "recommendation_viewed", Label = "Recommendation Generated / Viewed", Count = CountDistinctUnits(events, IsQuoteRecommendationViewedEvent) },
-            new() { StageKey = "contact_step_viewed", Label = "Contact Step Viewed", Count = CountDistinctUnits(events, IsQuoteContactStepReachedEvent) },
+            new() { StageKey = "quote_entry_views", Label = "Quote Entry Views", Count = quoteEntryViewKeys.Count },
+            new() { StageKey = "primary_cta_seen", Label = "Primary CTA Seen", Count = primaryCtaSeenKeys.Count },
+            new() { StageKey = "quote_entry_engaged", Label = "Quote Entry Engaged", Count = starts },
+            new() { StageKey = "form_started", Label = "Form Started", Count = formStarts },
+            new() { StageKey = "discovery_steps_completed", Label = "Discovery Steps Completed", Count = discoveryStepKeys.Count },
+            new() { StageKey = "contact_step_viewed", Label = "Contact Step Viewed", Count = contactStepKeys.Count },
             new() { StageKey = "submit_attempted", Label = "Submit Attempted", Count = submitAttempts },
-            new() { StageKey = "server_confirmed_leads", Label = "Server-confirmed Leads", Count = formSubmits }
+            new() { StageKey = "lead_confirmed", Label = "Lead Confirmed", Count = formSubmits }
         }.Where(x => x.Count > 0).ToList();
 
         return new QuoteFunnelDto
@@ -2473,9 +2622,7 @@ public sealed class AnalyticsQueryService : IAnalyticsQueryService
             .GroupBy(x => x.GroupKey!, StringComparer.OrdinalIgnoreCase)
             .ToDictionary(
                 g => g.Key,
-                g => CountDistinctUnits(g.Select(x => x.Event), e =>
-                    IsQuoteCtaIntentEvent(e) ||
-                    IsQuoteFunnelStartSignalEvent(e)),
+                g => BuildQuoteEntryEngagedUnitKeys(g.Select(x => x.Event)).Count,
                 StringComparer.OrdinalIgnoreCase);
 
         var leadsByAgent = leads
@@ -3414,7 +3561,7 @@ public sealed class AnalyticsQueryService : IAnalyticsQueryService
                 {
                     var events = g.OrderBy(e => e.EventUtc).ToList();
                     var ctas = events.Count(e => e.EventType == "cta_click" || e.EventType == "quote_click");
-                    var starts = events.Any(IsQuoteFunnelStartSignalEvent) ? 1 : 0;
+                    var starts = BuildQuoteFormStartedUnitKeys(events).Count > 0 ? 1 : 0;
                     var submits = events.Count(e =>
                         e.EventType == "form_submit" &&
                         (e.SubmitOutcome ?? "").ToLower() == "attempt");
@@ -3475,7 +3622,7 @@ public sealed class AnalyticsQueryService : IAnalyticsQueryService
             TrafficType = trafficType,
             Sessions = rows.Select(e => e.SessionId).Where(x => !string.IsNullOrWhiteSpace(x)).Distinct().Count(),
             Events = rows.Count,
-            FormStarts = rows.Where(IsQuoteFunnelStartSignalEvent).Select(e => !string.IsNullOrWhiteSpace(e.SessionId) ? e.SessionId : $"event:{e.EventId:D}").Distinct(StringComparer.OrdinalIgnoreCase).Count(),
+            FormStarts = BuildQuoteFormStartedUnitKeys(rows).Count,
             ConfirmedLeads = rows.Count(e =>
                 (e.EventType == "form_submit" && (e.SubmitOutcome ?? "").ToLower() == "success")
                 || e.EventType == "lead_form_submit_success"),

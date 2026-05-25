@@ -3,7 +3,13 @@
 
 @{
     ViewData["Title"] = "Home Insurance Quote";
-    ViewData["PageKey"] = "quote_home";
+    var pageKey = ((string?)ViewData["PageKey"] ?? "quote_home").Trim();
+    if (string.IsNullOrWhiteSpace(pageKey))
+    {
+        pageKey = "quote_home";
+    }
+    var formKey = $"{pageKey}_form";
+    ViewData["PageKey"] = pageKey;
     ViewData["PageCategory"] = "quote";
     ViewData["QuoteTypeForTracking"] = "home";
     ViewData["PageVariant"] = "website";
@@ -188,12 +194,13 @@
     <div class="wizard-pill" data-pill="6">Section 6 — Endorsements</div>
 </div>
 
-<form asp-action="SubmitHomeQuote" asp-controller="HomeQuote" method="post" class="container" id="homeQuoteForm" novalidate data-form-key="quote_home_form">
+<form asp-action="SubmitHomeQuote" asp-controller="HomeQuote" method="post" class="container" id="homeQuoteForm" novalidate data-form-key="@formKey">
     @Html.AntiForgeryToken()
     @if (!string.IsNullOrWhiteSpace(agentSlug))
     {
         <input type="hidden" name="AgentSlug" value="@agentSlug" />
     }
+    <input type="hidden" name="PageKey" value="@pageKey" />
 
     <!-- ===================== SECTION 1: APPLICANT INFO ===================== -->
     <div class="section-card wizard-step active" data-step="1">
@@ -1548,6 +1555,8 @@
 
     <script>
         let currentStep = 1;
+        const pageKey = '@pageKey';
+        const formKey = '@formKey';
         const trackHomeQuote = (window.legendTrack && typeof window.legendTrack === 'function')
             ? window.legendTrack
             : null;
@@ -1559,8 +1568,8 @@
             homeCompletedSteps.add(stepNumber);
             trackHomeQuote({
                 EventType: 'quote_step_complete',
-                FormKey: 'quote_home_form',
-                PageKey: 'quote_home',
+                FormKey: formKey,
+                PageKey: pageKey,
                 MetadataJson: JSON.stringify({ stepNumber, nextStep })
             });
         }
@@ -1570,8 +1579,8 @@
             homeViewedContactSteps.add(stepNumber);
             trackHomeQuote({
                 EventType: 'quote_contact_step_view',
-                FormKey: 'quote_home_form',
-                PageKey: 'quote_home',
+                FormKey: formKey,
+                PageKey: pageKey,
                 MetadataJson: JSON.stringify({ stepNumber, source: 'wizard_step_view' })
             });
         }

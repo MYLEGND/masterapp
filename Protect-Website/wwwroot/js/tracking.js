@@ -877,6 +877,7 @@
       case 'mini_results_view':
       case 'recommendation_generated':
       case 'estimate_results_viewed':
+      case 'quote_step_complete':
         transitionFormState(state, 'progressed', eventType);
         break;
       case 'life_step2_view':
@@ -1396,6 +1397,94 @@ function trackCustomFieldError(formKey, fieldName, errorType, offerKey) {
     return true;
   }
 
+  const _trackedQuoteEntryEngagedFlags = new Set();
+
+  function buildQuoteEntryEngagedSessionFlag(pageKey) {
+    const currentSessionId = getSessionId();
+    const normalizedPageKey = asTrimmed(pageKey || PAGE_KEY || 'quote');
+    return {
+      sessionId: currentSessionId,
+      pageKey: normalizedPageKey,
+      storageKey: `quote_entry_engaged_${currentSessionId}_${normalizedPageKey || 'quote'}`
+    };
+  }
+
+  function trackQuoteEntryEngagedOnce(options = {}) {
+    if (isAnalyticsRouteBlocked() || PAGE_CATEGORY !== 'quote' || !allowedEvents.has('quote_entry_engaged')) {
+      return false;
+    }
+
+    const formKey = asTrimmed(options.formKey || resolveTrackedFormKey({ FormKey: options.formKey, PageKey: options.pageKey || PAGE_KEY }) || '');
+    const { sessionId, pageKey, storageKey } = buildQuoteEntryEngagedSessionFlag(options.pageKey || PAGE_KEY || formKey);
+
+    if (_trackedQuoteEntryEngagedFlags.has(storageKey) || safeStorageGet(window.sessionStorage, storageKey) === sessionId) {
+      _trackedQuoteEntryEngagedFlags.add(storageKey);
+      return false;
+    }
+
+    _trackedQuoteEntryEngagedFlags.add(storageKey);
+    safeStorageSet(window.sessionStorage, storageKey, sessionId);
+
+    const metadata = {
+      source: asTrimmed(options.source || 'shared_tracker'),
+      pageCategory: PAGE_CATEGORY || '',
+      pageKey: pageKey || '',
+      quoteType: asTrimmed(options.quoteType || PAGE_QUOTE_TYPE || ''),
+      formKey,
+      elementKey: asTrimmed(options.elementKey || ''),
+      fieldName: asTrimmed(options.fieldName || ''),
+      triggerEventType: asTrimmed(options.triggerEventType || '')
+    };
+
+    if (options.metadata && typeof options.metadata === 'object') {
+      Object.assign(metadata, options.metadata);
+    }
+
+    sendEvent({
+      EventType: 'quote_entry_engaged',
+      PageKey: pageKey || PAGE_KEY || null,
+      FormKey: formKey || null,
+      ElementKey: metadata.elementKey || null,
+      MetadataJson: JSON.stringify(metadata)
+    });
+
+    return true;
+  }
+
+  function maybeTrackQuoteEntryEngagedFromPayload(payload) {
+    if (!payload || PAGE_CATEGORY !== 'quote') {
+      return false;
+    }
+
+    const eventType = asTrimmed(payload.EventType);
+    if (!eventType || eventType === 'quote_entry_engaged') {
+      return false;
+    }
+
+    switch (eventType) {
+      case 'form_start':
+      case 'lead_form_start':
+      case 'quote_step_complete':
+      case 'contact_step_view':
+      case 'contact_step_viewed':
+      case 'quote_contact_step_view':
+        break;
+      default:
+        return false;
+    }
+
+    return trackQuoteEntryEngagedOnce({
+      source: eventType,
+      triggerEventType: eventType,
+      pageKey: payload.PageKey || PAGE_KEY,
+      formKey: payload.FormKey || resolveTrackedFormKey(payload) || '',
+      elementKey: payload.ElementKey || '',
+      metadata: {
+        metadataJsonPresent: typeof payload.MetadataJson === 'string' && payload.MetadataJson.length > 0
+      }
+    });
+  }
+
   function installQuotePrimaryCtaTracking() {
     if (isAnalyticsRouteBlocked() || PAGE_CATEGORY !== 'quote') {
       return;
@@ -1478,6 +1567,19 @@ function trackCustomFieldError(formKey, fieldName, errorType, offerKey) {
       el.addEventListener('click', () => {
         const key = `${eventType}:${elementKey}`;
         if (!shouldFire(key)) return;
+
+        if (PAGE_CATEGORY === 'quote' &&
+            el instanceof HTMLElement &&
+            el.hasAttribute('data-primary-cta')) {
+          trackQuoteEntryEngagedOnce({
+            source: 'primary_cta_click',
+            triggerEventType: eventType,
+            pageKey: PAGE_KEY,
+            formKey: resolveTrackedFormKey({ FormKey: null, PageKey: PAGE_KEY }) || '',
+            elementKey
+          });
+        }
+
         sendEvent({
           EventType: eventType,
           ElementKey: elementKey,
@@ -1523,6 +1625,12 @@ function trackCustomFieldError(formKey, fieldName, errorType, offerKey) {
 
     _trackedFormStartFlags.add(sessionFlag);
     safeStorageSet(window.sessionStorage, sessionFlag, currentSessionId);
+    trackQuoteEntryEngagedOnce({
+      source: 'form_first_focus',
+      triggerEventType: 'form_start',
+      pageKey: PAGE_KEY || formKey,
+      formKey
+    });
     debug('form_start fired', {
       formKey,
       pageKey: PAGE_KEY
@@ -1569,7 +1677,10 @@ function trackCustomFieldError(formKey, fieldName, errorType, offerKey) {
   window._formAbandonCallbacks = window._formAbandonCallbacks || _formAbandonCallbacks;
   window.trackCustomFieldError = window.trackCustomFieldError || trackCustomFieldError;
 
-  window.legendTrack = (payload) => sendEvent(payload);
+  window.legendTrack = (payload) => {
+    maybeTrackQuoteEntryEngagedFromPayload(payload);
+    return sendEvent(payload);
+  };
   window.legendFormTracking = {
     trackFieldError: trackCustomFieldError,
     clearFieldError: clearTrackedFieldError,
@@ -1578,6 +1689,7 @@ function trackCustomFieldError(formKey, fieldName, errorType, offerKey) {
   window.legendQuoteTracking = {
     ...(window.legendQuoteTracking || {}),
     trackPrimaryCtaSeen,
+    trackQuoteEntryEngagedOnce,
   };
   function getAttribution() {
     const attribution = resolveCurrentSessionAttribution({}, getSessionId());
