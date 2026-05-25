@@ -591,7 +591,7 @@
         "iul" => "See what long-term protection your family may need.",
         _ => "See what protection could fit your family best."
     };
-    var heroSubheadline = "Your answers shape the result.";
+    var heroSubheadline = "Your answers shape your coverage options.";
     var heroTrustNote = "25+ carriers • 30 seconds • No obligation";
     var heroTrustPersonName = !string.IsNullOrWhiteSpace(agentTrustProfile?.DisplayName)
         ? agentTrustProfile!.DisplayName!.Trim()
@@ -634,7 +634,7 @@
     var contactFirstBannerImageUrl = "~/images/ads/life-top-banner.png";
     var contactFirstBannerAlt = "Legend Legacy Protection banner asking whether your family would struggle financially without you and inviting a quick life insurance estimate.";
     var contactFirstProofKicker = "Private protection check";
-    var contactFirstProofText = "Your answers shape the result.";
+    var contactFirstProofText = "Your answers shape your coverage options.";
     IReadOnlyList<string> contactFirstProofChips = normalizedOfferKey switch
     {
         "term" => new List<string> { "25+ carriers", "Income protection", "No obligation" },
@@ -784,7 +784,7 @@
         heroSubheadline = lowFrictionHeroSubheadline;
         heroTrustNote = "25+ carriers • 30 seconds • No obligation";
         contactFirstProofKicker = "25+ carrier comparison";
-        contactFirstProofText = "Your answers shape the result.";
+        contactFirstProofText = "Your answers shape your coverage options.";
         contactFirstProofChips = new List<string> { "25+ carriers", "30 seconds", "No obligation" };
         contactFirstProcessingHeading = "Getting your estimate...";
         contactFirstProcessingHelper = "A practical starting point is loading now.";
@@ -826,13 +826,13 @@
         "iul" => "Start with the long-term purpose",
         _ => "Start with what matters most"
     };
-    var step1IntroHelper = "Your answers shape the result.";
+    var step1IntroHelper = "Your answers shape your coverage options.";
     var landingHeroTitle = heroHeadline;
-    var landingHeroHelper = "Your answers shape the result.";
+    var landingHeroHelper = "Your answers shape your coverage options.";
     if (isLowFrictionOptionsVariant && string.Equals(normalizedOfferKey, "life", StringComparison.OrdinalIgnoreCase))
     {
         step1IntroTitle = "Start with what matters most";
-        step1IntroHelper = "Your answers shape the result.";
+        step1IntroHelper = "Your answers shape your coverage options.";
     }
 
     var heroStepIntroTitle = isLandingView ? landingHeroTitle : string.Empty;
@@ -862,8 +862,10 @@
         };
     var primaryStartCtaText = productLanguageKey switch
     {
-        "mortgage" => "Start With 1 Quick Question",
-        _ => "Start With 1 Quick Question"
+        "mortgage" => "See My Home Protection Options",
+        "finalexpense" => "See My Final Expense Options",
+        "disability" => "See My Disability Coverage Options",
+        _ => "See My Coverage Options"
     };
 
     var requiredContactFieldNames = new[] { "FirstName", "Phone" };
