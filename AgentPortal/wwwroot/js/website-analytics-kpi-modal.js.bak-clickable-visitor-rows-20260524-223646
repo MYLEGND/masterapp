@@ -516,7 +516,6 @@
             </div>
 
             <div class="vc-modal-section-title">Recurring Visitors First</div>
-            <div class="vc-modal-note">Click any visitor row to open the full Visitor Timeline + Trust Score.</div>
 
             <div class="vc-modal-table-wrap">
                 <table class="vc-modal-table">
@@ -542,7 +541,7 @@
                                     : '<span class="vc-badge vc-badge-good">Normal</span>';
 
                             return `
-                                <tr class="${sessions >= 2 ? 'is-recurring' : ''} vc-clickable-row" data-visitor-id="${escHtml(v.visitorId || '')}" data-session-id="${escHtml(v.sessionId || '')}" title="Click to open visitor timeline">
+                                <tr class="${sessions >= 2 ? 'is-recurring' : ''}">
                                     <td><code>${escHtml(v.visitorShortId || v.visitorId || 'unknown')}</code></td>
                                     <td>${formatInt(sessions)}</td>
                                     <td><strong>${formatInt(v.events || 0)}</strong></td>
