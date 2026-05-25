@@ -237,29 +237,29 @@
 
     var optimizedGoalQuestion = normalizedOfferKey switch
     {
-        "term" => "What pressure would matter most?",
+        "term" => "What should this help protect?",
         "wholelife" => "What should stay protected for life?",
-        "finalexpense" => "What cost should your family not carry?",
-        "mortgage" => "What would need to stay protected?",
+        "finalexpense" => "What should this help cover?",
+        "mortgage" => "What should this help protect?",
         "iul" => "What long-term purpose matters most?",
-        _ => "What would need to stay steady first?"
+        _ => "What should this help protect?"
     };
 
     var optimizedProtectQuestion = normalizedOfferKey switch
     {
-        "finalexpense" => "Who would be left handling it?",
+        "finalexpense" => "Who would you want to protect from those costs?",
         "mortgage" => "Who depends on the home?",
-        _ => "Who would feel it first?"
+        _ => "Who are you protecting?"
     };
 
     var optimizedCoverageQuestion = normalizedOfferKey switch
     {
-        "term" => "What range would give real breathing room?",
-        "wholelife" => "What lifelong range feels worth reviewing?",
-        "finalexpense" => "What amount would prevent scrambling?",
-        "mortgage" => "What mortgage balance should be protected?",
-        "iul" => "What range should this start around?",
-        _ => "What range feels worth reviewing?"
+        "term" => "What coverage range should we check?",
+        "wholelife" => "What coverage range should we check?",
+        "finalexpense" => "What amount should we check?",
+        "mortgage" => "What mortgage balance should we check?",
+        "iul" => "What coverage range should we check?",
+        _ => "What coverage range should we check?"
     };
 
     goalStep = new Protect_Website.Models.LifeWizardStep(optimizedGoalQuestion, goalStep.Options, goalStep.FieldAlias);
@@ -552,17 +552,17 @@
         "iul" => "long-term protection, flexibility, and future planning",
         _ => "the protection, stability, and long-term fit that matter most"
     };
-    var stepTwoContactKickerText = "Full review locked";
-    var contactMethodHelperText = "Use the best number for a quick review of your full results."; 
-    var contactMethodErrorText = "Please enter your phone number to unlock the full review."; 
-    var consentPromptText = "I agree to receive a quick call or text to review my personalized protection results."; 
-    var consentErrorText = "Please check the box to unlock your full review."; 
-    var stepTwoContactTitleText = "Where should we send the full details?";
-    var stepTwoContactCopyText = "Your starting range is ready. Add your name and best number to unlock the full breakdown, carrier fit, and next best step."; 
-    var stepTwoSubmitNoteText = "Unlock the full review. No obligation."; 
-    var stepTwoProgressText = "Results locked";
-    var finalStepHeading = "Your starting range is ready";
-    var finalStepHelper = "Submit to unlock the full details your answers created."; 
+    var stepTwoContactKickerText = "Final step";
+    var contactMethodHelperText = "Use the best number if you want help reviewing the options your answers created.";
+    var contactMethodErrorText = "Please enter your phone number so we can send and review your options.";
+    var consentPromptText = "I’m okay with a quick call or text to review my options. No obligation.";
+    var consentErrorText = "Please check the box so we can follow up about your review.";
+    var stepTwoContactTitleText = "Where should we send your review?";
+    var stepTwoContactCopyText = "Your starting point is ready. Add your first name and best number so we can send the review and help you compare the next step.";
+    var stepTwoSubmitNoteText = "No pressure. You decide what happens next.";
+    var stepTwoProgressText = "Almost done";
+    var finalStepHeading = "Your starting point is ready";
+    var finalStepHelper = "Save your review so you can compare the options your answers created.";
     var agentTrustHeadline = isContactFirstEducationVariant
         ? $"You’ll hear directly from {agentDirectContactName}."
         : $"You’ll hear directly from {agentDirectContactName}.";
@@ -581,7 +581,7 @@
         "iul" => "Continue My IUL Review",
         _ => "Continue My Protection Review"
     };
-    var finalSubmitButtonText = "Unlock My Full Review";
+    var finalSubmitButtonText = "Send My Review";
     var heroHeadline = normalizedOfferKey switch
     {
         "term" => "See what could help protect the years your family depends on most.",
@@ -798,8 +798,6 @@
             ("A stronger next step", "Review the result first, then continue into a personalized review if the direction is worth exploring.")
         };
     }
-    var heroTrustAriaLabel = "Licensed professional guidance";
-    var showInlineMobileTrustBlock = false;
     var productLanguageKey =
         normalizedOfferKey.Contains("term", StringComparison.OrdinalIgnoreCase) || requestPath.Contains("term", StringComparison.OrdinalIgnoreCase) || pageKey.Contains("term", StringComparison.OrdinalIgnoreCase) ? "term" :
         normalizedOfferKey.Contains("whole", StringComparison.OrdinalIgnoreCase) || requestPath.Contains("whole", StringComparison.OrdinalIgnoreCase) || pageKey.Contains("whole", StringComparison.OrdinalIgnoreCase) ? "wholelife" :
@@ -807,6 +805,17 @@
         normalizedOfferKey.Contains("mortgage", StringComparison.OrdinalIgnoreCase) || requestPath.Contains("mortgage", StringComparison.OrdinalIgnoreCase) || pageKey.Contains("mortgage", StringComparison.OrdinalIgnoreCase) ? "mortgage" :
         normalizedOfferKey.Contains("iul", StringComparison.OrdinalIgnoreCase) || requestPath.Contains("iul", StringComparison.OrdinalIgnoreCase) || pageKey.Contains("iul", StringComparison.OrdinalIgnoreCase) ? "iul" :
         "life";
+    finalSubmitButtonText = productLanguageKey switch
+    {
+        "mortgage" => "Send My Home Protection Review",
+        "term" => "Send My Term Review",
+        "wholelife" => "Send My Whole Life Review",
+        "finalexpense" => "Send My Final Expense Review",
+        "iul" => "Send My IUL Review",
+        _ => "Send My Review"
+    };
+    var heroTrustAriaLabel = "Licensed professional guidance";
+    var showInlineMobileTrustBlock = false;
 
     var step1IntroTitle = productLanguageKey switch
     {
@@ -853,14 +862,10 @@
         };
     var primaryStartCtaText = productLanguageKey switch
     {
-        "mortgage" => "See What My Home May Need",
-        _ => "See What My Family May Need"
+        "mortgage" => "See My Home Protection Options",
+        _ => "See My Protection Options"
     };
-    var primaryStartCtaNote = productLanguageKey switch
-    {
-        "mortgage" => "Built around the home.",
-        _ => "Private. Fast. Personalized."
-    };
+    var primaryStartCtaNote = "Private. Fast. No obligation.";
 
     var requiredContactFieldNames = new[] { "FirstName", "Phone" };
     var metaSignalOptions = MetaSignalOptionsAccessor.Value;
@@ -1038,33 +1043,32 @@ body.life-landing.page-mode-paid-landing header .navbar .nav-link:focus {
     text-wrap: balance;
 }
 .btn-progress {
-    background:
-        linear-gradient(180deg, #7be0a6 0%, #39c785 40%, #148557 100%) !important;
-    color: #092216 !important;
-    border-color: rgba(235,214,159,0.72) !important;
-    text-shadow: 0 1px 0 rgba(255,255,255,0.22);
+    background: linear-gradient(180deg, #fff0b8 0%, #f1cf80 34%, #d9a93e 68%, #a97716 100%) !important;
+    color: #1f1403 !important;
+    border-color: rgba(255,232,166,0.88) !important;
+    text-shadow: 0 1px 0 rgba(255,255,255,0.26);
     box-shadow:
-        inset 0 1px 0 rgba(255,255,255,0.34),
-        0 18px 32px rgba(9,78,49,0.26),
-        0 0 0 1px rgba(123,224,166,0.18),
-        0 0 26px rgba(57,199,133,0.20) !important;
+        inset 0 1px 0 rgba(255,255,255,0.46),
+        0 18px 34px rgba(169,119,22,0.30),
+        0 0 0 1px rgba(255,232,166,0.22),
+        0 0 28px rgba(217,169,62,0.26) !important;
     letter-spacing: .012em;
 }
 .btn-progress:hover {
-    color: #071a11 !important;
+    color: #1a1002 !important;
     box-shadow:
-        inset 0 1px 0 rgba(255,255,255,0.40),
-        0 20px 34px rgba(9,78,49,0.30),
-        0 0 0 1px rgba(182,228,191,0.32),
-        0 0 30px rgba(57,199,133,0.24) !important;
+        inset 0 1px 0 rgba(255,255,255,0.52),
+        0 20px 36px rgba(169,119,22,0.34),
+        0 0 0 1px rgba(255,232,166,0.34),
+        0 0 32px rgba(217,169,62,0.32) !important;
     filter: saturate(1.04) brightness(1.03);
 }
 .btn-progress:active {
-    color: #071a11 !important;
+    color: #1a1002 !important;
     box-shadow:
-        inset 0 1px 0 rgba(255,255,255,0.26),
-        0 10px 20px rgba(9,78,49,0.26),
-        0 0 0 1px rgba(123,224,166,0.18) !important;
+        inset 0 1px 0 rgba(255,255,255,0.28),
+        0 10px 20px rgba(169,119,22,0.24),
+        0 0 0 1px rgba(255,232,166,0.22) !important;
 }
 #step1Continue.btn-progress,
 #submitLife.btn-progress {
@@ -7826,21 +7830,21 @@ input:checked + .lq-answer-card {
                                                 <div class="lq-field-err" id="err-FirstName">Please enter your first name.</div>
                                             </div>
                                             <div class="lq-field">
-                                                <label for="LastName">Last Name <span class="lq-optional-tag">(optional)</span></label>
-                                                <input type="text" id="LastName" name="LastName" class="form-control" autocomplete="family-name" value="@form.LastName" />
-                                                <div class="lq-field-err" id="err-LastName">@(isContactFirstEducationVariant ? "Please enter your last name." : string.Empty)</div>
+                                                <label for="Phone">Phone Number <span class="lq-required-star">*</span></label>
+                                                <input type="tel" id="Phone" name="Phone" class="form-control" placeholder="(555) 555-5555" autocomplete="tel" inputmode="tel" value="@form.Phone" required />
+                                                <div class="lq-field-err" id="err-Phone">Please enter a valid phone number.</div>
                                             </div>
                                         </div>
                                         <div class="lq-field-row two full">
                                             <div class="lq-field">
+                                                <label for="LastName">Last Name <span class="lq-optional-tag">(optional)</span></label>
+                                                <input type="text" id="LastName" name="LastName" class="form-control" autocomplete="family-name" value="@form.LastName" />
+                                                <div class="lq-field-err" id="err-LastName">@(isContactFirstEducationVariant ? "Please enter your last name." : string.Empty)</div>
+                                            </div>
+                                            <div class="lq-field">
                                                 <label for="Email">Email <span class="lq-optional-tag">(optional)</span></label>
                                                 <input type="email" id="Email" name="Email" class="form-control" placeholder="you@example.com" autocomplete="email" inputmode="email" value="@form.Email" />
                                                 <div class="lq-field-err" id="err-Email">Please enter a valid email address.</div>
-                                            </div>
-                                            <div class="lq-field">
-                                                <label for="Phone">Phone Number <span class="lq-required-star">*</span></label>
-                                                <input type="tel" id="Phone" name="Phone" class="form-control" placeholder="(555) 555-5555" autocomplete="tel" inputmode="tel" value="@form.Phone" required />
-                                                <div class="lq-field-err" id="err-Phone">Please enter a valid phone number.</div>
                                             </div>
                                         </div>
                                         <div class="full lq-field-help" id="lifeContactMethodHelp">@contactMethodHelperText</div>
@@ -8282,26 +8286,26 @@ input:checked + .lq-answer-card {
                         }
                         <div class="lq-field-row two full">
                             <div class="lq-field">
-                                <label for="FirstName">First Name <span style="color:#f87171">*</span></label>
+                                <label for="FirstName">First Name <span class="lq-required-star">*</span></label>
                                 <input type="text" id="FirstName" name="FirstName" class="form-control" autocomplete="given-name" value="@form.FirstName" required />
                                 <div class="lq-field-err" id="err-FirstName">Please enter your first name.</div>
                             </div>
                             <div class="lq-field">
-                                <label for="LastName">Last Name (optional)</label>
-                                <input type="text" id="LastName" name="LastName" class="form-control" autocomplete="family-name" value="@form.LastName" />
-                                <div class="lq-field-err" id="err-LastName"></div>
+                                <label for="Phone">Phone Number <span class="lq-required-star">*</span></label>
+                                <input type="tel" id="Phone" name="Phone" class="form-control" placeholder="(555) 555-5555" autocomplete="tel" inputmode="tel" value="@form.Phone" required />
+                                <div class="lq-field-err" id="err-Phone">Please enter a valid phone number.</div>
                             </div>
                         </div>
                         <div class="lq-field-row two full">
                             <div class="lq-field">
-                                <label for="Email">Email for a written copy</label>
-                                <input type="email" id="Email" name="Email" class="form-control" placeholder="you@example.com" autocomplete="email" inputmode="email" value="@form.Email" />
-                                <div class="lq-field-err" id="err-Email">Please enter a valid email address.</div>
+                                <label for="LastName">Last Name <span class="lq-optional-tag">(optional)</span></label>
+                                <input type="text" id="LastName" name="LastName" class="form-control" autocomplete="family-name" value="@form.LastName" />
+                                <div class="lq-field-err" id="err-LastName">@(isContactFirstEducationVariant ? "Please enter your last name." : string.Empty)</div>
                             </div>
                             <div class="lq-field">
-                                <label for="Phone">Phone</label>
-                                <input type="tel" id="Phone" name="Phone" class="form-control" placeholder="(555)555-5555" autocomplete="tel" inputmode="tel" value="@form.Phone" />
-                                <div class="lq-field-err" id="err-Phone">Please enter a valid phone number.</div>
+                                <label for="Email">Email <span class="lq-optional-tag">(optional)</span></label>
+                                <input type="email" id="Email" name="Email" class="form-control" placeholder="you@example.com" autocomplete="email" inputmode="email" value="@form.Email" />
+                                <div class="lq-field-err" id="err-Email">Please enter a valid email address.</div>
                             </div>
                         </div>
                         <div class="full lq-field-help" id="lifeContactMethodHelp">@contactMethodHelperText</div>
