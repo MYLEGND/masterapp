@@ -460,20 +460,6 @@
     }
 
 
-
-    document.addEventListener('click', function (event) {
-        const row = event.target.closest('#visitorConcentrationModal [data-visitor-id]');
-        if (!row) return;
-
-        event.preventDefault();
-        event.stopPropagation();
-
-        openVisitorTimelineModal(
-            row.dataset.visitorId || '',
-            row.dataset.sessionId || ''
-        );
-    });
-
     function openVisitorConcentrationModal(rows) {
         let modal = document.getElementById('visitorConcentrationModal');
 
