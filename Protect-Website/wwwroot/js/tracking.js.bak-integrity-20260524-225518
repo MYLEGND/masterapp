@@ -466,24 +466,6 @@
     };
   }
 
-
-  function detectInternalTrafficFlag() {
-    try {
-      const host = (window.location.hostname || '').toLowerCase();
-      const path = (window.location.pathname || '').toLowerCase();
-      const search = (window.location.search || '').toLowerCase();
-
-      if (host === 'localhost' || host === '127.0.0.1' || host === '::1') return true;
-      if (host.includes('azurewebsites.net') && (host.includes('staging') || host.includes('dev') || host.includes('test'))) return true;
-      if (search.includes('internal=1') || search.includes('qa=1') || search.includes('test=1') || search.includes('debug=1')) return true;
-      if (path.includes('/admin') || path.includes('/workstation') || path.includes('/websiteanalytics')) return true;
-
-      return false;
-    } catch (_) {
-      return false;
-    }
-  }
-
   function buildBody(payload) {
     const sessionId = getSessionId();
     const attribution = resolveCurrentSessionAttribution(payload, sessionId);
@@ -519,7 +501,7 @@
       Environment: payload.Environment || null,
       Host: payload.Host || null,
       EventUtc: new Date().toISOString(),
-      IsInternal: detectInternalTrafficFlag(),
+      IsInternal: false,
       FieldName: payload.FieldName || null,
       DwellMilliseconds: payload.DwellMilliseconds != null ? payload.DwellMilliseconds : null,
       EngagedMilliseconds: payload.EngagedMilliseconds != null ? payload.EngagedMilliseconds : null,
@@ -1107,16 +1089,7 @@ function trackCustomFieldError(formKey, fieldName, errorType, offerKey) {
 
   function shouldSkipFetchDiagnostics(url) {
     if (!url) return true;
-    if (url.includes(INGEST_URL) || url.includes('/ThankYou/meta-browser-ack')) return true;
-
-    try {
-      const parsed = new URL(url, window.location.origin);
-      if (parsed.origin !== window.location.origin) return true;
-    } catch (_) {
-      return true;
-    }
-
-    return false;
+    return url.includes(INGEST_URL) || url.includes('/ThankYou/meta-browser-ack');
   }
 
   function installGlobalDiagnostics() {
@@ -1128,12 +1101,6 @@ function trackCustomFieldError(formKey, fieldName, errorType, offerKey) {
           : target && typeof target.href === 'string' && target.href
             ? target.href
             : '';
-
-      // Resource load failures like avatar/image/CDN misses are not analytics-pipeline failures.
-      if (sourceUrl && target && target !== window) {
-        debug('skipped resource-load diagnostic', { sourceUrl });
-        return;
-      }
 
       void reportClientTrackingError({
         attemptedEventName: 'window_error',

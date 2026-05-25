@@ -2747,7 +2747,7 @@ body.disability-final-step-active .dq-form-panel {
             setFinalStepState(false);
             if (processingFill) processingFill.style.width = '100%';
             track({
-                EventType: 'disability_quote_processing_view',
+                EventType: 'form_start',
                 PageKey: pageKey,
                 FormKey: formKey
             });
@@ -2764,7 +2764,7 @@ body.disability-final-step-active .dq-form-panel {
                 var label = startButton ? asTrimmed(startButton.textContent) : 'Start My Disability Review';
                 trackCta('disability_funnel_start', label);
                 track({
-                    EventType: 'disability_quote_started',
+                    EventType: 'form_start',
                     PageKey: pageKey,
                     FormKey: formKey
                 });
@@ -2844,8 +2844,8 @@ body.disability-final-step-active .dq-form-panel {
         function trackThankYouViewOnce() {
             if (thankYouTracked) return;
             thankYouTracked = true;
-            track({ EventType: 'disability_quote_thank_you_view', PageKey: pageKey, FormKey: formKey });
-            track({ EventType: 'quote_thank_you_view', PageKey: pageKey, FormKey: formKey });
+            track({ EventType: 'thank_you_view', PageKey: pageKey, FormKey: formKey });
+            track({ EventType: 'lead_form_submit_success', PageKey: pageKey, FormKey: formKey });
         }
 
         function resolveBookingMessageSignal(event) {

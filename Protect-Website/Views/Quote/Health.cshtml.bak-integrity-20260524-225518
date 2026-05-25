@@ -2945,7 +2945,7 @@ body.health-final-step-active .dq-form-panel {
             setFinalStepState(false);
             if (processingFill) processingFill.style.width = '100%';
             track({
-                EventType: 'form_start',
+                EventType: 'health_quote_processing_view',
                 PageKey: pageKey,
                 FormKey: formKey
             });
@@ -2962,7 +2962,7 @@ body.health-final-step-active .dq-form-panel {
                 var label = startButton ? asTrimmed(startButton.textContent) : 'Check My Coverage Fit';
                 trackCta('health_funnel_start', label);
                 track({
-                    EventType: 'form_start',
+                    EventType: 'health_quote_started',
                     PageKey: pageKey,
                     FormKey: formKey
                 });
@@ -3042,8 +3042,8 @@ body.health-final-step-active .dq-form-panel {
         function trackThankYouViewOnce() {
             if (thankYouTracked) return;
             thankYouTracked = true;
-            track({ EventType: 'thank_you_view', PageKey: pageKey, FormKey: formKey });
-            track({ EventType: 'lead_form_submit_success', PageKey: pageKey, FormKey: formKey });
+            track({ EventType: 'health_quote_thank_you_view', PageKey: pageKey, FormKey: formKey });
+            track({ EventType: 'quote_thank_you_view', PageKey: pageKey, FormKey: formKey });
         }
 
         function resolveBookingMessageSignal(event) {

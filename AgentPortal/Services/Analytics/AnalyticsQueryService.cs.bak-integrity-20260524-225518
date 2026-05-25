@@ -690,46 +690,6 @@ public sealed class AnalyticsQueryService : IAnalyticsQueryService
             host: snapshot.Host,
             referrerHost: snapshot.ReferrerHost);
 
-
-    private static int AttributionStrength(EventAttributionSnapshot snapshot)
-    {
-        if (!HasAttributionSignal(snapshot))
-            return -1;
-
-        if (IsMetaAttributedPaid(snapshot))
-            return 500;
-
-        if (!string.IsNullOrWhiteSpace(snapshot.Fbclid) ||
-            !string.IsNullOrWhiteSpace(snapshot.MetaCampaignId) ||
-            !string.IsNullOrWhiteSpace(snapshot.MetaAdSetId) ||
-            !string.IsNullOrWhiteSpace(snapshot.MetaAdId))
-            return 450;
-
-        if (!string.IsNullOrWhiteSpace(snapshot.UtmSource) &&
-            !string.IsNullOrWhiteSpace(snapshot.UtmCampaign))
-            return 400;
-
-        if (!string.IsNullOrWhiteSpace(snapshot.UtmSource))
-            return 300;
-
-        if (!string.IsNullOrWhiteSpace(snapshot.ReferrerHost))
-            return 200;
-
-        return 100;
-    }
-
-    private static EventAttributionSnapshot? SelectStrongestAttribution(IEnumerable<AnalyticsEvent> events)
-    {
-        return events
-            .Select(e => new { e.EventUtc, Snapshot = SnapshotFromEvent(e) })
-            .Where(x => HasAttributionSignal(x.Snapshot))
-            .OrderByDescending(x => AttributionStrength(x.Snapshot))
-            .ThenBy(x => x.EventUtc)
-            .Select(x => x.Snapshot)
-            .FirstOrDefault();
-    }
-
-
     private static Dictionary<string, EventAttributionSnapshot> BuildSessionAttributionMap(List<AnalyticsEvent> events)
     {
         var map = new Dictionary<string, EventAttributionSnapshot>(StringComparer.OrdinalIgnoreCase);
@@ -739,7 +699,15 @@ public sealed class AnalyticsQueryService : IAnalyticsQueryService
 
         foreach (var group in groups)
         {
-            var selected = SelectStrongestAttribution(group);
+            var selected =
+                group.Where(e => e.EventType == "page_view")
+                    .OrderBy(e => e.EventUtc)
+                    .Select(SnapshotFromEvent)
+                    .FirstOrDefault(HasAttributionSignal)
+                ?? group.OrderBy(e => e.EventUtc)
+                    .Select(SnapshotFromEvent)
+                    .FirstOrDefault(HasAttributionSignal);
+
             if (selected != null && HasAttributionSignal(selected))
                 map[group.Key] = selected;
         }
@@ -756,7 +724,15 @@ public sealed class AnalyticsQueryService : IAnalyticsQueryService
 
         foreach (var group in groups)
         {
-            var selected = SelectStrongestAttribution(group);
+            var selected =
+                group.Where(e => e.EventType == "page_view")
+                    .OrderBy(e => e.EventUtc)
+                    .Select(SnapshotFromEvent)
+                    .FirstOrDefault(HasAttributionSignal)
+                ?? group.OrderBy(e => e.EventUtc)
+                    .Select(SnapshotFromEvent)
+                    .FirstOrDefault(HasAttributionSignal);
+
             if (selected != null && HasAttributionSignal(selected))
                 map[group.Key] = selected;
         }
@@ -3293,63 +3269,29 @@ public sealed class AnalyticsQueryService : IAnalyticsQueryService
             return "Wide desktop (1440+)";
         }
 
-        string ResolveSessionLabel(IEnumerable<AnalyticsEvent> sessionEvents, Func<AnalyticsEvent, string> selector)
-        {
-            var labels = sessionEvents
-                .OrderBy(e => e.EventUtc)
-                .Select(selector)
-                .Where(x => !string.IsNullOrWhiteSpace(x))
-                .ToList();
-
-            var best = labels.LastOrDefault(x => !x.Equals("Unknown", StringComparison.OrdinalIgnoreCase));
-            return string.IsNullOrWhiteSpace(best) ? "Unknown" : best;
-        }
-
         List<DeviceIntelligenceRowDto> BuildRows(Func<AnalyticsEvent, string> selector)
         {
-            var sessionProfiles = rows
-                .Where(e => !string.IsNullOrWhiteSpace(e.SessionId))
-                .GroupBy(e => e.SessionId!, StringComparer.OrdinalIgnoreCase)
+            return rows
+                .GroupBy(selector)
                 .Select(g =>
                 {
-                    var events = g.OrderBy(e => e.EventUtc).ToList();
+                    var events = g.ToList();
+                    var sessions = events.Select(e => e.SessionId).Where(x => !string.IsNullOrWhiteSpace(x)).Distinct().Count();
                     var ctas = events.Count(e => e.EventType == "cta_click" || e.EventType == "quote_click");
-                    var starts = events.Any(IsQuoteFunnelStartSignalEvent) ? 1 : 0;
+                    var starts = events.Count(e => e.EventType == "form_start");
                     var submits = events.Count(e => e.EventType == "form_submit");
-                    var leads = events.Any(e =>
+                    var leads = events.Count(e =>
                         e.EventType == "form_submit" &&
-                        (e.SubmitOutcome ?? "").ToLower() == "success") ? 1 : 0;
-
-                    return new
-                    {
-                        SessionId = g.Key,
-                        Label = ResolveSessionLabel(events, selector),
-                        Events = events.Count,
-                        CtaClicks = ctas,
-                        FormStarts = starts,
-                        SubmitAttempts = submits,
-                        ConfirmedLeads = leads
-                    };
-                })
-                .ToList();
-
-            return sessionProfiles
-                .GroupBy(x => x.Label, StringComparer.OrdinalIgnoreCase)
-                .Select(g =>
-                {
-                    var sessions = g.Count();
-                    var events = g.Sum(x => x.Events);
-                    var starts = g.Sum(x => x.FormStarts);
-                    var leads = g.Sum(x => x.ConfirmedLeads);
+                        (e.SubmitOutcome ?? "").ToLower() == "success");
 
                     return new DeviceIntelligenceRowDto
                     {
                         Label = string.IsNullOrWhiteSpace(g.Key) ? "Unknown" : g.Key,
                         Sessions = sessions,
-                        Events = events,
-                        CtaClicks = g.Sum(x => x.CtaClicks),
+                        Events = events.Count,
+                        CtaClicks = ctas,
                         FormStarts = starts,
-                        SubmitAttempts = g.Sum(x => x.SubmitAttempts),
+                        SubmitAttempts = submits,
                         ConfirmedLeads = leads,
                         StartRate = sessions <= 0 ? 0 : Math.Round((decimal)starts / sessions * 100, 1),
                         LeadRate = sessions <= 0 ? 0 : Math.Round((decimal)leads / sessions * 100, 1)
@@ -3367,7 +3309,7 @@ public sealed class AnalyticsQueryService : IAnalyticsQueryService
             TrafficType = trafficType,
             Sessions = rows.Select(e => e.SessionId).Where(x => !string.IsNullOrWhiteSpace(x)).Distinct().Count(),
             Events = rows.Count,
-            FormStarts = rows.Where(IsQuoteFunnelStartSignalEvent).Select(e => !string.IsNullOrWhiteSpace(e.SessionId) ? e.SessionId : $"event:{e.EventId:D}").Distinct(StringComparer.OrdinalIgnoreCase).Count(),
+            FormStarts = rows.Count(e => e.EventType == "form_start"),
             ConfirmedLeads = rows.Count(e => e.EventType == "form_submit" && (e.SubmitOutcome ?? "").ToLower() == "success"),
             Devices = BuildRows(ResolveDeviceType),
             Browsers = BuildRows(e => Clean(e.Browser)),

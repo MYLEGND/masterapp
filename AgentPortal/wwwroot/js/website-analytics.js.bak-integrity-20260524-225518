@@ -2478,24 +2478,9 @@
     }
   }
 
-
-  function parseAnalyticsDate(value) {
-    if (!value) return null;
-
-    let raw = String(value).trim();
-
-    if (/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d+)?$/.test(raw)) {
-      raw += 'Z';
-    }
-
-    const d = new Date(raw);
-    return isNaN(d.getTime()) ? null : d;
-  }
-
-
   function formatActivityTimeRange(row) {
-    const startDate = parseAnalyticsDate(row?.eventUtc);
-    const endDate = parseAnalyticsDate(row?.endUtc);
+    const startDate = row?.eventUtc ? new Date(row.eventUtc) : null;
+    const endDate = row?.endUtc ? new Date(row.endUtc) : null;
 
     const start = formatDisplayDate(row?.eventUtc);
     const end = formatDisplayDate(row?.endUtc);
