@@ -1152,50 +1152,6 @@
     setText('quote-range-label', data.rangeLabel || '');
   }
 
-  function renderFunnelContactFriction(abandon, funnel) {
-    if (!abandon) return;
-
-    const stageMetrics = Array.isArray(funnel?.stageMetrics) ? funnel.stageMetrics : [];
-    const findStageCount = key => Number(stageMetrics.find(x => x.stageKey === key)?.count || 0);
-
-    const contactAbandons = Number(abandon.contactStepAbandonCount || 0);
-    const submitAttempts = findStageCount('submit_attempted');
-    const contactViewed = findStageCount('contact_step_viewed');
-    const denominator = contactViewed > 0 ? contactViewed : contactAbandons + submitAttempts;
-    const rate = denominator > 0 ? (contactAbandons / denominator) * 100 : null;
-
-    setText('quote-contact-abandon-count', contactAbandons);
-    setText('quote-contact-submit-attempts', submitAttempts);
-    setText('quote-contact-friction-rate',
-      rate == null
-        ? 'Contact-step abandon rate unavailable'
-        : `Contact-step abandon rate: ${formatPct(rate)}`);
-
-    const topFields = (abandon.topAbandonedFields || []).slice(0, 5);
-    const topCompleted = (abandon.topLastCompletedFields || []).slice(0, 5);
-
-    setText('quote-contact-top-field', topFields[0]?.fieldName || '—');
-
-    renderTable('quote-contact-drop-fields-body', topFields, [
-      { key: 'fieldName' },
-      { key: 'quoteType' },
-      { key: 'abandonCount', align: 'text-end' }
-    ]);
-
-    renderTable('quote-contact-last-completed-body', topCompleted, [
-      { key: 'fieldName' },
-      { key: 'quoteType' },
-      { key: 'count', align: 'text-end' }
-    ]);
-
-    const note = document.getElementById('quote-contact-friction-note');
-    if (note) {
-      note.textContent = contactAbandons === 0 && topFields.length === 0
-        ? 'No contact-step field drop-off recorded in this range yet.'
-        : 'Contact-step drop-off is derived from contact-step progress and explicit form_abandon signals before confirmed lead submission.';
-    }
-  }
-
   function renderAbandonment(data) {
     if (!data) return;
     setText('abandon-bounce-count', data.bounceBeforeFunnelStartCount ?? 0);
@@ -2693,10 +2649,7 @@
       const data = results[0].status === 'fulfilled' ? results[0].value : null;
       const abandon = results[1].status === 'fulfilled' ? results[1].value : null;
       if (data) renderQuote(data);
-      if (abandon) {
-        renderAbandonment(abandon);
-        renderFunnelContactFriction(abandon, quote);
-      }
+      if (abandon) renderAbandonment(abandon);
     } catch (err) {
       const message = (err && err.message) ? err.message : 'Unable to load quote funnel.';
       setText('quote-range-label', 'Unavailable');

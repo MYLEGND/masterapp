@@ -1566,46 +1566,6 @@
                 <thead><tr><th>Stage</th><th class="text-end">Session-Deduped Count</th></tr></thead>
                 <tbody id="quote-stage-body"></tbody>
             </table>
-
-            <div class="mt-3 p-3 rounded-3 border border-warning-subtle" id="quote-contact-friction-summary">
-              <div class="d-flex justify-content-between align-items-center gap-2 flex-wrap">
-                <h6 class="text-warning mb-0">Contact-Step Friction</h6>
-                <span class="small text-muted" id="quote-contact-friction-rate">—</span>
-              </div>
-              <div class="row g-3 mt-1">
-                <div class="col-6 col-lg-4">
-                  <div class="fa-kpi-title">Contact-Step Abandoned</div>
-                  <div class="fa-kpi-value" id="quote-contact-abandon-count">0</div>
-                </div>
-                <div class="col-6 col-lg-4">
-                  <div class="fa-kpi-title">Submit Attempts</div>
-                  <div class="fa-kpi-value" id="quote-contact-submit-attempts">0</div>
-                </div>
-                <div class="col-12 col-lg-4">
-                  <div class="fa-kpi-title">Most Common Drop Field</div>
-                  <div class="fa-kpi-value fs-6" id="quote-contact-top-field">—</div>
-                </div>
-              </div>
-
-              <div class="row g-3 mt-2">
-                <div class="col-lg-6">
-                  <h6 class="text-warning small mb-2">Top Contact Drop Fields</h6>
-                  <table class="table table-sm mb-0">
-                    <thead><tr><th>Field</th><th>Type</th><th class="text-end">Drops</th></tr></thead>
-                    <tbody id="quote-contact-drop-fields-body"></tbody>
-                  </table>
-                </div>
-                <div class="col-lg-6">
-                  <h6 class="text-warning small mb-2">Furthest Progress Before Drop</h6>
-                  <table class="table table-sm mb-0">
-                    <thead><tr><th>Last Completed</th><th>Type</th><th class="text-end">Count</th></tr></thead>
-                    <tbody id="quote-contact-last-completed-body"></tbody>
-                  </table>
-                </div>
-              </div>
-              <div class="small text-muted mt-2" id="quote-contact-friction-note"></div>
-            </div>
-
             <h6 class="text-warning mt-3">By Quote Type</h6>
             <table class="table table-sm">
                 <thead><tr><th>Type</th><th class="text-end">Count</th></tr></thead>
