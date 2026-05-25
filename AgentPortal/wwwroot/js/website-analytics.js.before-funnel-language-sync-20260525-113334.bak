@@ -1127,14 +1127,14 @@
         data?.unknownStartCount,
         'start');
       const definition = startMix
-        ? `Entry Engaged = CTA click, first form interaction, completed discovery step, or contact-step progress. ${startMix}.`
-        : 'Entry Engaged = CTA click, first form interaction, completed discovery step, or contact-step progress.';
+        ? `Starts = explicit CTA clicks or form-entry starts. ${startMix}.`
+        : 'Starts = explicit CTA clicks or form-entry starts.';
       if (data.dropOffStartsToFormStarts != null && breakdown) {
-        meta2.textContent = `Entry Engaged → Form Started drop-off: ${data.dropOffStartsToFormStarts}% · ${definition} ${breakdown}`;
+        meta2.textContent = `Starts → Form starts drop-off: ${data.dropOffStartsToFormStarts}% · ${definition} ${breakdown}`;
       } else if (data.dropOffStartsToFormStarts != null && startMix) {
-        meta2.textContent = `Entry Engaged → Form Started drop-off: ${data.dropOffStartsToFormStarts}% · ${definition}`;
+        meta2.textContent = `Starts → Form starts drop-off: ${data.dropOffStartsToFormStarts}% · ${definition}`;
       } else if (data.dropOffStartsToFormStarts != null) {
-        meta2.textContent = `Entry Engaged → Form Started drop-off: ${data.dropOffStartsToFormStarts}% · ${definition}`;
+        meta2.textContent = `Starts → Form starts drop-off: ${data.dropOffStartsToFormStarts}% · ${definition}`;
       } else if (breakdown) {
         meta2.textContent = `${definition} ${breakdown}`;
       } else {

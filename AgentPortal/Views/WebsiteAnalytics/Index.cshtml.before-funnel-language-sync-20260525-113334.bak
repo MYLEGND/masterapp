@@ -1561,7 +1561,7 @@
                 </div>
             </div>
             <div class="small text-muted mt-2" id="quote-dropoff-starts"></div>
-            <h6 class="text-warning mt-3">Quote Journey Progression</h6>
+            <h6 class="text-warning mt-3">Life Stage Progression</h6>
             <table class="table table-sm">
                 <thead><tr><th>Stage</th><th class="text-end">Session-Deduped Count</th></tr></thead>
                 <tbody id="quote-stage-body"></tbody>
