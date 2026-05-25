@@ -2039,14 +2039,9 @@ public sealed class AnalyticsQueryService : IAnalyticsQueryService
             {
                 var metadata = ReadTrackingErrorMetadata(e.MetadataJson);
 
-                var visitorKey = FirstNonBlank(e.VisitorId, metadata.VisitorId);
-                var sessionKey = FirstNonBlank(e.SessionId, metadata.SessionId);
-
-                var identityKey = !string.IsNullOrWhiteSpace(visitorKey)
-                    ? $"vid:{visitorKey}"
-                    : !string.IsNullOrWhiteSpace(sessionKey)
-                        ? $"sid:{sessionKey}"
-                        : $"eid:{e.EventId:D}";
+                var sessionKey = FirstNonBlank(e.SessionId, metadata.SessionId, "unknown-session");
+                var visitorKey = FirstNonBlank(e.VisitorId, metadata.VisitorId, "unknown-visitor");
+                var pageKey = FirstNonBlank(e.PageKey, e.Path, "unknown-page");
 
                 var normalizedError =
                     FirstNonBlank(
@@ -2066,7 +2061,7 @@ public sealed class AnalyticsQueryService : IAnalyticsQueryService
                 if (normalizedError.Contains("load failed"))
                     normalizedError = "resource_load_failure";
 
-                return $"{identityKey}|{normalizedError}";
+                return $"{sessionKey}|{visitorKey}|{pageKey}|{normalizedError}";
             })
             .Select(g =>
             {
@@ -2083,23 +2078,8 @@ public sealed class AnalyticsQueryService : IAnalyticsQueryService
 
                 if (g.Count() > 1)
                 {
-                    var pageCount = g
-                        .Select(x => FirstNonBlank(x.PageKey, x.Path, "unknown-page"))
-                        .Distinct(StringComparer.OrdinalIgnoreCase)
-                        .Count();
-
-                    var sessionCount = g
-                        .Select(x =>
-                        {
-                            var metadata = ReadTrackingErrorMetadata(x.MetadataJson);
-                            return FirstNonBlank(x.SessionId, metadata.SessionId);
-                        })
-                        .Where(x => !string.IsNullOrWhiteSpace(x))
-                        .Distinct(StringComparer.OrdinalIgnoreCase)
-                        .Count();
-
                     dto.ErrorMessage =
-                        $"{dto.ErrorMessage} ({g.Count()} related events · {sessionCount} sessions · {pageCount} pages)";
+                        $"{dto.ErrorMessage} ({g.Count()} related events)";
                 }
 
                 return dto;
