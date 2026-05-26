@@ -91,7 +91,7 @@
     var heroStepIntroTitle = "Start with the paycheck pressure";
     var heroStepIntroHelper = "A quick income protection estimate built around how fast sickness or injury would affect your income first.";
     var primaryStartCtaText = "Check My Income Protection Fit";
-    var primaryStartCtaNote = "Takes about 30 seconds. No obligation. You stay in control.";
+    var primaryStartCtaNote = "A quick review now can help protect your paycheck from a major interruption later.";
     var contactMethodHelperText = "Best number to save and review your disability coverage details.";
     var contactMethodErrorText = "Please enter your phone number so we can save your review.";
     var consentPromptText = "I agree to receive a call or text to review my disability coverage options and next steps.";
@@ -1562,6 +1562,335 @@ body.disability-final-step-active .dq-form-panel {
 
     .lq-step-actions {
         flex-direction: column;
+    }
+
+    .btn-ghost,
+    .btn-gold,
+    .lq-primary-start-cta {
+        width: 100%;
+    }
+}
+</style>
+
+<style>
+/* NEW FORM STANDARD ALIGNMENT */
+.lq-hero-shell {
+    border-radius: 20px;
+    border: 1.5px solid rgba(226,186,93,.48);
+    background:
+        radial-gradient(ellipse 92% 42% at 50% 0%, rgba(226,186,93,0.105) 0%, transparent 70%),
+        radial-gradient(ellipse 72% 34% at 50% 100%, rgba(44,76,125,0.16) 0%, transparent 72%),
+        linear-gradient(180deg, #0d1830 0%, #102242 48%, #0c1a33 100%);
+    box-shadow:
+        0 24px 46px rgba(0,0,0,0.30),
+        0 0 0 1px rgba(255,255,255,0.035),
+        inset 0 1px 0 rgba(255,255,255,0.055),
+        inset 0 0 34px rgba(226,186,93,0.035);
+}
+
+.dq-hero-banner-wrap {
+    border-radius: 22px;
+    box-shadow:
+        0 20px 36px rgba(3,8,18,0.26),
+        0 0 0 1px rgba(255,255,255,0.04);
+}
+
+.dq-hero-actions::before,
+.lq-contact-first-hero-actions::before {
+    background: radial-gradient(ellipse at 50% 100%, rgba(224,177,74,0.16) 0%, rgba(224,177,74,0.05) 46%, transparent 78%);
+}
+
+.lq-above-fold-proof {
+    gap: 10px;
+    margin: 2px auto 14px;
+    max-width: 760px;
+}
+
+.lq-above-fold-proof span,
+.dq-proof-chip {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    min-height: 34px;
+    padding: 7px 12px;
+    border-radius: 999px;
+    border: 1.4px solid rgba(218,155,39,0.34);
+    background:
+        radial-gradient(circle at 50% 0%, rgba(255,221,135,0.07), transparent 62%),
+        linear-gradient(180deg, rgba(18,29,45,0.98) 0%, rgba(7,16,31,0.98) 100%);
+    color: rgba(255,250,235,0.9);
+    font-size: .76rem;
+    font-weight: 860;
+    letter-spacing: .01em;
+    box-shadow:
+        inset 0 1px 0 rgba(255,255,255,0.08),
+        0 10px 18px rgba(0,0,0,0.22);
+}
+
+.lq-above-fold-proof span::before,
+.dq-proof-chip::before {
+    content: "";
+    width: 8px;
+    height: 8px;
+    border-radius: 999px;
+    background: linear-gradient(180deg, #ffe49d 0%, #d59a2c 100%);
+    box-shadow: 0 0 0 3px rgba(213,154,44,0.12);
+    flex: 0 0 auto;
+}
+
+.btn-gold {
+    box-shadow:
+        inset 0 1px 0 rgba(255,255,255,0.34),
+        0 16px 30px rgba(0,0,0,0.26),
+        0 0 0 1px rgba(241,207,128,0.24),
+        0 0 28px rgba(226,186,93,0.12);
+}
+
+.btn-progress {
+    background: linear-gradient(180deg, #fff0b8 0%, #f1cf80 34%, #d9a93e 68%, #a97716 100%) !important;
+    color: #1f1403 !important;
+    border-color: rgba(255,232,166,0.88) !important;
+    text-shadow: 0 1px 0 rgba(255,255,255,0.26);
+    box-shadow:
+        inset 0 1px 0 rgba(255,255,255,0.46),
+        0 18px 34px rgba(169,119,22,0.30),
+        0 0 0 1px rgba(255,232,166,0.22),
+        0 0 28px rgba(217,169,62,0.26) !important;
+}
+
+.lq-primary-start-cta {
+    min-height: 78px;
+    padding-inline: 26px 54px;
+    color: #080500 !important;
+    border: 2px solid rgba(255,238,184,0.98) !important;
+    background:
+        linear-gradient(180deg, #ffeaa1 0%, #efbd4a 24%, #c8891d 63%, #8e5c0d 100%) !important;
+    box-shadow:
+        inset 0 2px 0 rgba(255,255,255,0.68),
+        inset 0 -4px 0 rgba(72,44,3,0.18),
+        0 18px 34px rgba(0,0,0,0.34),
+        0 0 0 1px rgba(255,232,166,0.34),
+        0 0 18px rgba(212,162,58,0.16) !important;
+}
+
+.lq-primary-start-cta:hover,
+.lq-primary-start-cta:focus-visible {
+    color: #070400 !important;
+    filter: saturate(1.04) brightness(1.03);
+}
+
+.lq-primary-start-note {
+    color: rgba(248,250,252,0.82) !important;
+    font-size: .84rem;
+    font-weight: 780;
+    line-height: 1.42;
+    text-align: center;
+    margin: 2px auto 0;
+    max-width: 34ch;
+}
+
+.dq-form-panel {
+    border-radius: 26px;
+    border: 1px solid rgba(234,198,113,0.42);
+    background:
+        radial-gradient(circle at top right, rgba(224,177,74,0.12), transparent 34%),
+        linear-gradient(180deg, #08254d 0%, #061d3d 54%, #071a36 100%);
+    box-shadow:
+        0 32px 70px rgba(2,12,27,0.32),
+        inset 0 1px 0 rgba(255,255,255,0.06),
+        0 0 28px rgba(224,177,74,0.06);
+}
+
+.dq-proof-card {
+    border-bottom-color: rgba(231,181,58,0.16);
+}
+
+.dq-proof-icon {
+    background:
+        radial-gradient(circle at 50% 0%, rgba(243,214,136,0.16), transparent 66%),
+        linear-gradient(180deg, rgba(243,214,136,0.14), rgba(243,214,136,0.06));
+    border-color: rgba(231,181,58,0.28);
+    box-shadow:
+        inset 0 1px 0 rgba(255,255,255,0.05),
+        0 12px 22px rgba(0,0,0,0.18);
+}
+
+.lq-step-progress-fill,
+.dq-processing-fill {
+    background: linear-gradient(90deg, #be8c25 0%, #efc86f 100%);
+}
+
+.dq-processing-ring {
+    border-color: rgba(243,200,75,0.26);
+    background: radial-gradient(circle, rgba(243,200,75,0.16), rgba(243,200,75,0.06));
+    color: #f3c84b;
+}
+
+.dq-review-signal {
+    border-color: rgba(231,181,58,0.24);
+    background: rgba(72, 49, 9, 0.14);
+    color: rgba(255,243,214,0.86);
+}
+
+.form-control:focus,
+.form-select:focus {
+    border-color: rgba(224,177,74,0.86);
+    box-shadow: 0 0 0 0.2rem rgba(224,177,74,0.18);
+}
+
+.lq-consent input[type="checkbox"] {
+    accent-color: #d4a23a;
+}
+
+@@media (max-width: 767.98px) {
+    .dq-surface {
+        padding: 12px;
+    }
+
+    .lq-hero-shell {
+        border-radius: 18px;
+    }
+
+    .lq-above-fold-proof {
+        justify-content: flex-start;
+        gap: 7px;
+        margin: 6px 0 4px;
+        max-width: none;
+    }
+
+    .lq-above-fold-proof span,
+    .dq-proof-chip {
+        min-height: 30px;
+        padding: 6px 10px;
+        border-radius: 12px;
+        font-size: .7rem;
+        white-space: normal;
+    }
+
+    .lq-hero-step-copy {
+        margin: 4px 0 10px;
+        padding: 0;
+        text-align: left;
+    }
+
+    .lq-hero-step-copy-title {
+        font-size: 1.08rem;
+        line-height: 1.08;
+    }
+
+    .lq-hero-step-copy-helper {
+        max-width: 30ch;
+        margin: 4px 0 0;
+        font-size: .82rem;
+        line-height: 1.34;
+    }
+
+    .lq-contact-first-hero-actions {
+        margin: 10px auto 12px;
+        gap: 10px;
+    }
+
+    .lq-primary-start-cta {
+        min-height: 70px;
+        padding-inline: 18px 46px;
+        border-radius: 18px;
+        font-size: .98rem;
+    }
+
+    .lq-primary-start-note {
+        margin: 0;
+        font-size: .79rem;
+        line-height: 1.36;
+        text-align: left;
+        max-width: 34ch;
+    }
+
+    .dq-form-panel {
+        padding: 14px;
+        border-radius: 22px;
+    }
+
+    .dq-proof-card {
+        gap: 12px;
+        margin-bottom: 12px;
+        padding-bottom: 12px;
+    }
+
+    .dq-proof-icon {
+        width: 46px;
+        height: 46px;
+        border-radius: 14px;
+    }
+
+    .dq-proof-title {
+        font-size: 1rem;
+        line-height: 1.16;
+    }
+
+    .dq-proof-text {
+        font-size: .84rem;
+        line-height: 1.42;
+    }
+
+    .lq-step-progress {
+        font-size: .68rem;
+        padding: 4px 8px;
+    }
+
+    .lq-step-title {
+        font-size: 1rem;
+    }
+
+    .lq-step-helper {
+        font-size: .86rem;
+        line-height: 1.42;
+    }
+
+    .lq-choice-label {
+        font-size: 1.12rem;
+        line-height: 1.14;
+        letter-spacing: -0.02em;
+    }
+
+    .lq-choice-grid {
+        gap: 10px;
+    }
+
+    .lq-card.lq-card-rich {
+        min-height: 116px;
+        grid-template-columns: 44px minmax(0, 1fr);
+        gap: 10px;
+        padding: 14px 12px;
+        align-items: start;
+        text-align: left;
+        border-radius: 16px;
+    }
+
+    .lq-card-visual {
+        width: 42px;
+        height: 42px;
+        border-radius: 13px;
+    }
+
+    .lq-card-copy {
+        gap: 4px;
+    }
+
+    .lq-card-title {
+        font-size: .95rem;
+    }
+
+    .lq-card-helper {
+        font-size: .78rem;
+        line-height: 1.35;
+    }
+
+    .lq-field-row,
+    .lq-field-row.lq-field-row-3,
+    .dq-review-stats,
+    .lq-choice-grid {
+        grid-template-columns: 1fr;
     }
 
     .btn-ghost,
