@@ -457,6 +457,7 @@
       DeviceType: deviceType,
       Browser: browser,
       OperatingSystem: operatingSystem,
+      UserAgent: ua || null,
       ViewportWidth: width || null,
       ViewportHeight: height || null,
       ScreenWidth: window.screen?.width || null,

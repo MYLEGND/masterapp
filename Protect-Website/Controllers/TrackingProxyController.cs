@@ -107,7 +107,7 @@ public sealed class TrackingProxyController : ControllerBase
 
     private void EnsureClientContextFallback(AnalyticsEventRequest req)
     {
-        var userAgent = Request.Headers.UserAgent.ToString();
+        var userAgent = FirstMeaningful(req.UserAgent, Request.Headers.UserAgent.ToString());
         var acceptLanguage = Request.Headers.AcceptLanguage.ToString();
 
         var parsed = ParseUserAgent(userAgent);
@@ -463,6 +463,7 @@ public sealed class TrackingProxyController : ControllerBase
         public string? DeviceType { get; set; }
         public string? Browser { get; set; }
         public string? OperatingSystem { get; set; }
+        public string? UserAgent { get; set; }
         public string? TimeZone { get; set; }
         public string? Language { get; set; }
         public int? ScreenWidth { get; set; }
