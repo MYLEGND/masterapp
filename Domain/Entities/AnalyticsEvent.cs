@@ -116,4 +116,22 @@ public class AnalyticsEvent
 
     /// <summary>Facebook click ID (fbclid) from the landing URL query string.</summary>
     public string? Fbclid { get; set; }
+
+    /// <summary>Raw browser user-agent string.</summary>
+    public string? UserAgent { get; set; }
+
+    /// <summary>Resolved client IP address.</summary>
+    public string? IpAddress { get; set; }
+
+    /// <summary>True when browser automation/webdriver detected.</summary>
+    public bool? WebDriver { get; set; }
+
+    /// <summary>True when likely headless automation detected.</summary>
+    public bool? IsHeadless { get; set; }
+
+    /// <summary>Total mousemove count during page lifecycle.</summary>
+    public int? MouseMoveCount { get; set; }
+
+    /// <summary>Total visibility-state changes during session.</summary>
+    public int? VisibilityChangeCount { get; set; }
 }

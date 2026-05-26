@@ -431,6 +431,20 @@
   }
 
 
+  const forensicState = {
+    mouseMoveCount: 0,
+    visibilityChangeCount: 0
+  };
+
+  document.addEventListener('mousemove', () => {
+    forensicState.mouseMoveCount = Math.min(forensicState.mouseMoveCount + 1, 10000);
+  }, { passive: true });
+
+  document.addEventListener('visibilitychange', () => {
+    forensicState.visibilityChangeCount = Math.min(forensicState.visibilityChangeCount + 1, 1000);
+  }, { passive: true });
+
+
   function getClientContext() {
     const ua = navigator.userAgent || "";
     const width = window.innerWidth || document.documentElement.clientWidth || 0;
@@ -462,6 +476,10 @@
       ViewportHeight: height || null,
       ScreenWidth: window.screen?.width || null,
       ScreenHeight: window.screen?.height || null,
+      WebDriver: !!navigator.webdriver,
+      IsHeadless: !!navigator.webdriver || /HeadlessChrome|PhantomJS|SlimerJS/i.test(ua) || !!window.callPhantom || !!window._phantom,
+      MouseMoveCount: forensicState.mouseMoveCount,
+      VisibilityChangeCount: forensicState.visibilityChangeCount,
       Language: navigator.language || null,
       TimeZone: Intl.DateTimeFormat().resolvedOptions().timeZone || null
     };

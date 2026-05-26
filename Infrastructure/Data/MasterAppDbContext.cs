@@ -294,6 +294,9 @@ public class MasterAppDbContext : DbContext
             e.Property(x => x.OperatingSystem).HasMaxLength(100);
             e.Property(x => x.TimeZone).HasMaxLength(100);
             e.Property(x => x.Language).HasMaxLength(40);
+
+            e.Property(x => x.UserAgent).HasMaxLength(2048);
+            e.Property(x => x.IpAddress).HasMaxLength(100);
             e.Property(x => x.ScreenWidth);
             e.Property(x => x.ScreenHeight);
             e.Property(x => x.ViewportWidth);

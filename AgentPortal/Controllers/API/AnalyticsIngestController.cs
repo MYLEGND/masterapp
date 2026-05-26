@@ -69,8 +69,14 @@ public class AnalyticsIngestController : ControllerBase
         public string? Browser { get; set; }
         public string? OperatingSystem { get; set; }
         public string? UserAgent { get; set; }
+        public string? IpAddress { get; set; }
         public string? TimeZone { get; set; }
         public string? Language { get; set; }
+
+        public bool? WebDriver { get; set; }
+        public bool? IsHeadless { get; set; }
+        public int? MouseMoveCount { get; set; }
+        public int? VisibilityChangeCount { get; set; }
         public int? ScreenWidth { get; set; }
         public int? ScreenHeight { get; set; }
         public int? ViewportWidth { get; set; }
@@ -183,6 +189,12 @@ public class AnalyticsIngestController : ControllerBase
             DeviceType = TrimOrNull(req.DeviceType),
             Browser = TrimOrNull(req.Browser),
             OperatingSystem = TrimOrNull(req.OperatingSystem),
+            UserAgent = TrimOrNull(req.UserAgent) ?? TrimOrNull(Request.Headers.UserAgent.ToString()),
+            IpAddress = TrimOrNull(req.IpAddress) ?? ResolveClientIp(),
+            WebDriver = req.WebDriver,
+            IsHeadless = req.IsHeadless,
+            MouseMoveCount = req.MouseMoveCount.HasValue && req.MouseMoveCount.Value >= 0 ? req.MouseMoveCount : null,
+            VisibilityChangeCount = req.VisibilityChangeCount.HasValue && req.VisibilityChangeCount.Value >= 0 ? req.VisibilityChangeCount : null,
             TimeZone = TrimOrNull(req.TimeZone),
             Language = TrimOrNull(req.Language),
             ScreenWidth = req.ScreenWidth,
@@ -278,6 +290,29 @@ public class AnalyticsIngestController : ControllerBase
                 msg.Contains("2627", StringComparison.OrdinalIgnoreCase) ||
                 msg.Contains("2067", StringComparison.OrdinalIgnoreCase)
             );
+    }
+
+    private string? ResolveClientIp()
+    {
+        var forwardedFor = Request.Headers["X-Forwarded-For"].FirstOrDefault();
+        if (!string.IsNullOrWhiteSpace(forwardedFor))
+        {
+            var first = forwardedFor.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+                .FirstOrDefault();
+
+            if (!string.IsNullOrWhiteSpace(first))
+            {
+                return first;
+            }
+        }
+
+        var azureClientIp = Request.Headers["X-Azure-ClientIP"].FirstOrDefault();
+        if (!string.IsNullOrWhiteSpace(azureClientIp))
+        {
+            return azureClientIp.Trim();
+        }
+
+        return Request.HttpContext.Connection.RemoteIpAddress?.ToString();
     }
 
     private static string? ParseReferrerHost(string? referrer)

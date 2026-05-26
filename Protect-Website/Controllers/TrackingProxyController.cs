@@ -112,6 +112,8 @@ public sealed class TrackingProxyController : ControllerBase
 
         var parsed = ParseUserAgent(userAgent);
 
+        req.UserAgent = FirstMeaningful(req.UserAgent, userAgent);
+        req.IpAddress = FirstMeaningful(req.IpAddress, ResolveClientIp());
         req.DeviceType = FirstMeaningful(req.DeviceType, parsed.DeviceType);
         req.Browser = FirstMeaningful(req.Browser, parsed.Browser);
         req.OperatingSystem = FirstMeaningful(req.OperatingSystem, parsed.OperatingSystem);
@@ -129,6 +131,29 @@ public sealed class TrackingProxyController : ControllerBase
                 ?? Environment.GetEnvironmentVariable("ASPNETCORE_ENVIRONMENT")
                 ?? "Production";
         }
+    }
+
+    private string? ResolveClientIp()
+    {
+        var forwardedFor = Request.Headers["X-Forwarded-For"].FirstOrDefault();
+        if (!string.IsNullOrWhiteSpace(forwardedFor))
+        {
+            var first = forwardedFor.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+                .FirstOrDefault();
+
+            if (!string.IsNullOrWhiteSpace(first))
+            {
+                return first;
+            }
+        }
+
+        var azureClientIp = Request.Headers["X-Azure-ClientIP"].FirstOrDefault();
+        if (!string.IsNullOrWhiteSpace(azureClientIp))
+        {
+            return azureClientIp.Trim();
+        }
+
+        return Request.HttpContext.Connection.RemoteIpAddress?.ToString();
     }
 
     private static string? FirstNonBlank(params string?[] values)
@@ -464,8 +489,14 @@ public sealed class TrackingProxyController : ControllerBase
         public string? Browser { get; set; }
         public string? OperatingSystem { get; set; }
         public string? UserAgent { get; set; }
+        public string? IpAddress { get; set; }
         public string? TimeZone { get; set; }
         public string? Language { get; set; }
+
+        public bool? WebDriver { get; set; }
+        public bool? IsHeadless { get; set; }
+        public int? MouseMoveCount { get; set; }
+        public int? VisibilityChangeCount { get; set; }
         public int? ScreenWidth { get; set; }
         public int? ScreenHeight { get; set; }
         public int? ViewportWidth { get; set; }
