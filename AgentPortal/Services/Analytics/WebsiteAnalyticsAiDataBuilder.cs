@@ -1,6 +1,8 @@
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 using System.Linq;
+using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 using AgentPortal.Models.Analytics;
@@ -264,6 +266,361 @@ public sealed class WebsiteAnalyticsAiDataBuilder
             // TopPages, TopSources, TopCampaigns, EntryPages, CtaPerformance,
             // TotalConversions, TopDwellPages, IntentConversionRate, PageViews
         };
+    }
+
+    public string BuildAiReviewSnapshotText(
+        MetaCampaignsDto? metaCampaigns,
+        MetaSignalDashboardDto? metaSignal,
+        SummaryKpiDto summary,
+        TrafficOverviewDto traffic,
+        QuoteFunnelDto quote,
+        ConversionCenterDto conversions,
+        LeadSnapshotDto leads,
+        PagePerformanceDto pagePerf,
+        CtaPerformanceDto ctaPerf,
+        TimeOnPageDto timeOnPage,
+        ExitAnalysisDto exit,
+        SourcePerformanceDto source,
+        FormAbandonmentDto abandonment,
+        string generatedAtLocal,
+        string scopeLabel,
+        string rangeLabel,
+        string trafficScopeLabel,
+        IReadOnlyCollection<string> warnings)
+    {
+        var sb = new StringBuilder();
+
+        void Line(string value = "") => sb.AppendLine(value);
+
+        static string Safe(string? value, string fallback = "—") =>
+            string.IsNullOrWhiteSpace(value) ? fallback : value.Trim();
+
+        static string Pct(decimal? value) =>
+            value.HasValue ? $"{value.Value:0.##}%" : "—";
+
+        static string Money(decimal value) => $"${value.ToString("0.00", CultureInfo.InvariantCulture)}";
+
+        static string Whole(long value) => value.ToString("N0", CultureInfo.InvariantCulture);
+
+        static string Duration(double ms)
+        {
+            if (ms <= 0) return "—";
+            var span = TimeSpan.FromMilliseconds(ms);
+            if (span.TotalMinutes < 1) return $"{Math.Round(span.TotalSeconds)}s";
+            return $"{(int)span.TotalMinutes}m {span.Seconds:00}s";
+        }
+
+        static List<KeyCountDto> TopKeyCounts(IEnumerable<KeyCountDto>? items, int take = 5)
+        {
+            return (items ?? Enumerable.Empty<KeyCountDto>())
+                .OrderByDescending(x => x.Count)
+                .Take(take)
+                .ToList();
+        }
+
+        void AddKeyCountBlock(string title, IEnumerable<KeyCountDto>? rows, int take = 5)
+        {
+            Line(title);
+            var top = TopKeyCounts(rows, take);
+            if (!top.Any())
+            {
+                Line("No data in range.");
+                return;
+            }
+
+            foreach (var row in top)
+                Line($"- {Safe(row.Key)} ({row.Count})");
+        }
+
+        Line("SECTION A — HEADER");
+        Line("WEBSITE ANALYTICS AI REVIEW SNAPSHOT");
+        Line($"Generated: {generatedAtLocal}");
+        Line($"Range: {rangeLabel}");
+        Line($"Scope: {scopeLabel}");
+        Line($"Traffic Filter: {trafficScopeLabel}");
+        Line();
+
+        var activeCampaigns = (metaCampaigns?.Rows ?? new List<MetaCampaignRow>())
+            .Where(r => string.Equals(r.Status, "ACTIVE", StringComparison.OrdinalIgnoreCase))
+            .OrderByDescending(r => r.Spend)
+            .ThenByDescending(r => r.Impressions)
+            .ThenBy(r => r.CampaignName)
+            .ToList();
+
+        Line("SECTION B — ACTIVE CAMPAIGN PERFORMANCE");
+        Line($"Total active campaigns in range: {activeCampaigns.Count}");
+        Line($"Total active campaign spend in range: {Money(activeCampaigns.Sum(x => x.Spend))}");
+        if (activeCampaigns.Count == 0)
+        {
+            Line("- No active campaigns in range.");
+        }
+        else
+        {
+            foreach (var c in activeCampaigns)
+            {
+                Line($"- {Safe(c.CampaignName)} | {Safe(c.Status)} | {Safe(c.Objective)} | spend {Money(c.Spend)} | impr {Whole(c.Impressions)} | reach {Whole(c.Reach)} | clicks {Whole(c.Clicks)} | CTR {c.Ctr:0.##}% | CPC {Money(c.Cpc)} | CPM {Money(c.Cpm)} | leads {Whole(c.Leads)}");
+            }
+
+            var bestCtr = activeCampaigns
+                .OrderByDescending(x => x.Ctr)
+                .ThenByDescending(x => x.Impressions)
+                .FirstOrDefault();
+            if (bestCtr != null)
+                Line($"Best CTR campaign: {Safe(bestCtr.CampaignName)} ({bestCtr.Ctr:0.##}%)");
+
+            var lowestCpc = activeCampaigns
+                .Where(x => x.Cpc > 0)
+                .OrderBy(x => x.Cpc)
+                .ThenByDescending(x => x.Clicks)
+                .FirstOrDefault();
+            if (lowestCpc != null)
+                Line($"Lowest CPC campaign: {Safe(lowestCpc.CampaignName)} ({Money(lowestCpc.Cpc)})");
+        }
+        Line();
+
+        Line("SECTION C — META SIGNAL INTELLIGENCE");
+        if (metaSignal == null)
+        {
+            Line("Meta Signal Intelligence unavailable in this snapshot.");
+        }
+        else
+        {
+            if (!string.IsNullOrWhiteSpace(metaSignal.LearningScopeNote))
+                Line(metaSignal.LearningScopeNote);
+            Line($"Total signal events: {metaSignal.TotalSignalEvents}");
+            Line($"Total visitors with signal: {metaSignal.TotalVisitors}");
+            Line($"High-intent visitors: {metaSignal.HighIntentVisitors}");
+            Line($"Lead-ready visitors: {metaSignal.LeadReadyVisitors}");
+            Line($"Submitted leads: {metaSignal.SubmittedLeads}");
+            Line($"Submit attempts without confirmed lead: {metaSignal.SubmitAttemptsWithoutLead}");
+            Line($"High-intent abandons: {metaSignal.HighIntentAbandons}");
+            Line($"Contact-step abandons: {metaSignal.ContactStepAbandons}");
+            Line($"Excluded signal events: {metaSignal.ExcludedSignalEvents}");
+            Line($"Excluded signal visitors: {metaSignal.ExcludedSignalVisitors}");
+            Line($"Signal-to-lead conversion: {metaSignal.SignalToLeadConversionRate:0.##}%");
+            Line($"Recommended optimization event right now: {Safe(metaSignal.RecommendedOptimizationEvent)}");
+            Line($"Best-performing landing version: {Safe(metaSignal.BestPerformingLandingPageVersion)}");
+            Line($"Worst friction step: {Safe(metaSignal.WorstFrictionStep)}");
+            Line("Visitors by score tier:");
+            var visitorsByTier = metaSignal.VisitorsByScoreTier ?? new List<MetaSignalTierRowDto>();
+            if (visitorsByTier.Count == 0)
+            {
+                Line("No data in range.");
+            }
+            else
+            {
+                foreach (var tier in visitorsByTier)
+                    Line($"- {Safe(tier.ScoreTier)}: {tier.Visitors}");
+            }
+            Line("Event ladder:");
+            var signalLadder = metaSignal.EventLadder ?? new List<MetaSignalLadderRowDto>();
+            if (signalLadder.Count == 0)
+            {
+                Line("No paid Meta-attributed funnel progression in range.");
+            }
+            else
+            {
+                foreach (var stage in signalLadder)
+                {
+                    var rateText = stage.ProgressionRate.HasValue ? $"{stage.ProgressionRate.Value:0.##}%" : "—";
+                    Line($"- {Safe(stage.StepLabel)} | visitors {stage.Visitors} | progression {rateText}");
+                }
+            }
+        }
+        Line();
+
+        Line("SECTION D — TRAFFIC HEALTH");
+        Line($"Page Views: {summary.PageViews}");
+        Line($"Unique Visitors: {summary.UniqueVisitors}");
+        Line($"Sessions: {summary.Sessions}");
+        AddKeyCountBlock("Top Pages (Top 5):", traffic.TopPages, 5);
+        AddKeyCountBlock("Entry Pages (Top 5):", traffic.EntryPages, 5);
+        AddKeyCountBlock("Top Sources (Top 5):", traffic.TopSources, 5);
+        AddKeyCountBlock("Top Campaigns (Top 5):", traffic.TopCampaigns, 5);
+        Line();
+
+        Line("SECTION E — FUNNEL HEALTH");
+        Line($"Quote Starts: {quote.QuoteStarts}");
+        Line($"Quote Form Starts: {quote.QuoteFormStarts}");
+        Line($"Successful Quote Submits: {quote.QuoteFormSubmits}");
+        Line($"Leads: {leads.Total}");
+        Line($"Intent Conversion: {(summary.IntentAvailable ? Pct(summary.IntentConversionRate) : "—")}");
+        Line($"Session Conversion: {Pct(summary.SessionConversionRate)}");
+        Line($"Total Conversions: {conversions.TotalConversions}");
+        Line();
+
+        var leadPages = (pagePerf.Rows ?? new List<PagePerformanceRow>())
+            .Where(r => r.Leads > 0)
+            .OrderByDescending(r => r.Leads)
+            .Take(5)
+            .ToList();
+
+        Line("SECTION F — LEAD PICTURE");
+        Line($"Total Leads in Range: {leads.Total}");
+        Line("Lead volume by source page (Top 5):");
+        if (leadPages.Count == 0)
+        {
+            Line("No data in range.");
+        }
+        else
+        {
+            foreach (var row in leadPages)
+                Line($"- {Safe(row.PageKey)} ({row.Leads})");
+        }
+        Line(leads.Total > 0
+            ? $"Recent lead activity summary: {leads.Total} leads captured in this range."
+            : "Recent lead activity summary: No leads in range.");
+        Line($"Top lead source page: {(leadPages.Count > 0 ? $"{Safe(leadPages[0].PageKey)} ({leadPages[0].Leads})" : "No data in range.")}");
+        Line();
+
+        Line("SECTION G — PAGE + CTA PERFORMANCE");
+        Line($"Top Page: {Safe(summary.TopPage)}");
+        Line($"Top CTA: {Safe(summary.TopCta)}");
+        Line("Top 5 page performance rows:");
+        var topPagesPerf = (pagePerf.Rows ?? new List<PagePerformanceRow>()).Take(5).ToList();
+        if (topPagesPerf.Count == 0)
+        {
+            Line("No data in range.");
+        }
+        else
+        {
+            foreach (var row in topPagesPerf)
+                Line($"- {Safe(row.PageKey)} | views {row.Views} | cta clicks {row.CtaClicks} | leads {row.Leads} | conv {row.ConversionRate:0.##}%");
+        }
+        Line("Top 5 CTA performance rows:");
+        var topCtasPerf = (ctaPerf.Rows ?? new List<CtaPerformanceRow>()).Take(5).ToList();
+        if (topCtasPerf.Count == 0)
+        {
+            Line("No data in range.");
+        }
+        else
+        {
+            foreach (var row in topCtasPerf)
+                Line($"- {Safe(row.PageKey)} / {Safe(row.ElementKey)} | clicks {row.Clicks}");
+        }
+        Line();
+
+        var topSources = TopKeyCounts(traffic.TopSources, 5);
+        var topCampaigns = TopKeyCounts(traffic.TopCampaigns, 5);
+        var topSourceTotal = topSources.Sum(x => x.Count);
+        var topCampaignTotal = topCampaigns.Sum(x => x.Count);
+        var topSourceLeadCount = topSources.Any() ? topSources[0].Count : 0;
+        var topCampaignLeadCount = topCampaigns.Any() ? topCampaigns[0].Count : 0;
+        var topSourceShare = topSourceTotal > 0 ? Math.Round((decimal)topSourceLeadCount / topSourceTotal * 100, 2) : 0;
+        var topCampaignShare = topCampaignTotal > 0 ? Math.Round((decimal)topCampaignLeadCount / topCampaignTotal * 100, 2) : 0;
+
+        Line("SECTION H — CAMPAIGN / SOURCE READ");
+        if (topSources.Any())
+        {
+            Line($"Top source by events: {Safe(topSources[0].Key)} ({topSources[0].Count})");
+            Line($"Top source concentration (within top source set): {topSourceShare:0.##}%");
+        }
+        else
+        {
+            Line("Top source by events: No data in range.");
+        }
+        if (topCampaigns.Any())
+        {
+            Line($"Top campaign by events: {Safe(topCampaigns[0].Key)} ({topCampaigns[0].Count})");
+            Line($"Top campaign concentration (within top campaign set): {topCampaignShare:0.##}%");
+        }
+        else
+        {
+            Line("Top campaign by events: No data in range.");
+        }
+
+        var sourceRows = (source.Rows ?? new List<SourcePerformanceRow>()).Take(3).ToList();
+        Line("Best performing source rows (Top 3 by sessions):");
+        if (sourceRows.Count == 0)
+        {
+            Line("No data in range.");
+        }
+        else
+        {
+            foreach (var row in sourceRows)
+                Line($"- {Safe(row.Source)} | sessions {row.Sessions} | leads {row.VerifiedLeads} | session conv {row.SessionConversionRate:0.##}%");
+        }
+        Line();
+
+        Line("SECTION I — BEHAVIOR SIGNALS (DIRECTIONAL)");
+        Line("Avg Time on Top Pages (Top 5):");
+        var dwellRows = (timeOnPage.LongestAvgDwell ?? new List<DwellPageRow>()).Take(5).ToList();
+        if (dwellRows.Count == 0)
+        {
+            Line("No data in range.");
+        }
+        else
+        {
+            foreach (var row in dwellRows)
+                Line($"- {Safe(row.PageKey)} | avg dwell {Duration(row.AvgDwellMs)}");
+        }
+        Line("Exit Analysis (Top 3 exit pages):");
+        var exitRows = (exit.TopExitPages ?? new List<ExitPageRow>()).Take(3).ToList();
+        if (exitRows.Count == 0)
+        {
+            Line("No data in range.");
+        }
+        else
+        {
+            foreach (var row in exitRows)
+                Line($"- {Safe(row.PageKey)} | exits {row.Exits} | exit rate {row.ExitRate:0.##}%");
+        }
+        Line("Form Abandonment Summary:");
+        var abandonSummary = (abandonment.Summary ?? new List<FormAbandonSummaryRow>()).Take(3).ToList();
+        if (abandonSummary.Count == 0)
+        {
+            Line("No data in range.");
+        }
+        else
+        {
+            foreach (var row in abandonSummary)
+            {
+                var abandonRate = row.AbandonRate.HasValue ? $"{row.AbandonRate.Value:0.##}%" : "—";
+                Line($"- {Safe(row.QuoteType)} | abandons {row.Abandons} | abandon rate {abandonRate}");
+            }
+        }
+        Line("Top Abandoned Fields:");
+        var topFields = (abandonment.TopAbandonedFields ?? new List<TopAbandonedFieldRow>()).Take(5).ToList();
+        if (topFields.Count == 0)
+        {
+            Line("No data in range.");
+        }
+        else
+        {
+            foreach (var field in topFields)
+                Line($"- {Safe(field.FieldName)} ({field.AbandonCount})");
+        }
+        Line();
+
+        Line("SECTION J — DATA QUALITY / CONTEXT NOTES");
+        Line("- Metrics reflect the currently selected range and current scope.");
+        Line("- Behavior signals are directional and should be interpreted with context.");
+        Line("- Snapshot excludes sensitive lead details.");
+        Line($"- Production/local filtering follows current analytics configuration: {summary.EnvironmentLabel}.");
+        Line("- Use this summary together with campaign context and recent page changes.");
+        if (warnings.Any())
+        {
+            Line("- Current warnings:");
+            foreach (var warning in warnings)
+                Line($"  - {warning}");
+        }
+        Line();
+
+        Line("SECTION K — CHATGPT COPY PROMPT FOOTER");
+        Line("CHATGPT ANALYSIS REQUEST");
+        Line("Analyze this website and ad performance snapshot.");
+        Line("Identify:");
+        Line("1. what is working");
+        Line("2. what is underperforming");
+        Line("3. likely causes");
+        Line("4. the top 3 priorities");
+        Line("5. what should be changed now");
+        Line("6. what should be monitored longer before changing");
+        Line("7. whether the data suggests a website issue, ad issue, funnel issue, traffic quality issue, or tracking issue");
+        Line();
+        Line("Provide a blunt, practical breakdown with priority order.");
+
+        return sb.ToString().TrimEnd();
     }
 
     private async Task<T> SafeLoadAsync<T>(string taskName, Func<Task<T>> loader, Func<T> fallback, ICollection<string> warnings)

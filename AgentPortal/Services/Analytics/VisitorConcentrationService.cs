@@ -1,0 +1,237 @@
+using System.Globalization;
+using AgentPortal.Models.Analytics;
+using Microsoft.EntityFrameworkCore;
+
+namespace AgentPortal.Services.Analytics;
+
+public sealed class VisitorConcentrationService : IVisitorConcentrationService
+{
+    private readonly Infrastructure.Data.MasterAppDbContext _db;
+
+    public VisitorConcentrationService(Infrastructure.Data.MasterAppDbContext db)
+    {
+        _db = db;
+    }
+
+    public async Task<List<VisitorConcentrationDto>> GetVisitorConcentrationAsync(
+        TimeRangeRequest range,
+        CancellationToken ct = default)
+    {
+        var payload = await GetVisitorConcentrationPayloadAsync(
+            range.FromUtc,
+            range.ToUtc,
+            range.ViewerTimeZone,
+            agentProfileId: null,
+            trafficType: TrafficType.All,
+            ct);
+
+        return payload.Rows
+            .Take(15)
+            .Select(x => new VisitorConcentrationDto
+            {
+                VisitorId = x.VisitorId,
+                VisitorShortId = x.VisitorShortId,
+                Sessions = x.Sessions,
+                Events = x.Events,
+                Device = x.Device,
+                Source = x.Source,
+                FirstSeenLocal = x.FirstSeenLocal,
+                LastSeenLocal = x.LastSeenLocal,
+                LikelyInternal = x.LikelyInternal
+            })
+            .ToList();
+    }
+
+    public async Task<VisitorConcentrationPayload> GetVisitorConcentrationPayloadAsync(
+        DateTime fromUtc,
+        DateTime toUtc,
+        TimeZoneInfo viewerTimeZone,
+        Guid? agentProfileId,
+        TrafficType trafficType,
+        CancellationToken ct = default)
+    {
+        var eventsQuery = _db.AnalyticsEvents
+            .AsNoTracking()
+            .Where(e =>
+                e.EventUtc >= fromUtc &&
+                e.EventUtc < toUtc &&
+                e.Environment != null &&
+                (e.Environment.ToLower() == "production" ||
+                 e.Environment.ToLower() == "prod"));
+
+        if (agentProfileId.HasValue)
+            eventsQuery = eventsQuery.Where(e => e.AgentTrackingProfileId == agentProfileId.Value);
+
+        var events = await eventsQuery
+            .Select(e => new VisitorEventSeed
+            {
+                VisitorId = e.VisitorId,
+                SessionId = e.SessionId,
+                EventUtc = e.EventUtc,
+                PageKey = e.PageKey,
+                DeviceType = e.DeviceType,
+                Browser = e.Browser,
+                OperatingSystem = e.OperatingSystem,
+                TimeZone = e.TimeZone,
+                Language = e.Language,
+                UtmSource = e.UtmSource,
+                UtmMedium = e.UtmMedium,
+                UtmCampaign = e.UtmCampaign,
+                ReferrerHost = e.ReferrerHost,
+                Fbclid = e.Fbclid,
+                MetaCampaignId = e.MetaCampaignId,
+                IsInternal = e.IsInternal,
+                EventType = e.EventType
+            })
+            .ToListAsync(ct);
+
+        events = trafficType switch
+        {
+            TrafficType.PaidAds => events
+                .Where(e => Classify(e) == TrafficType.PaidAds)
+                .ToList(),
+
+            TrafficType.NonPaid => events
+                .Where(e => Classify(e) != TrafficType.PaidAds)
+                .ToList(),
+
+            _ => events
+        };
+
+        var visitorGroups = events
+            .Where(e => !string.IsNullOrWhiteSpace(e.VisitorId))
+            .GroupBy(e => e.VisitorId!)
+            .Select(g =>
+            {
+                var first = g.Min(x => x.EventUtc);
+                var last = g.Max(x => x.EventUtc);
+                var sessions = g.Select(x => x.SessionId)
+                    .Where(x => !string.IsNullOrWhiteSpace(x))
+                    .Distinct()
+                    .Count();
+
+                var totalEvents = g.Count();
+                var internalEvents = g.Count(x => x.IsInternal);
+
+                var topPage = g.Where(x => !string.IsNullOrWhiteSpace(x.PageKey))
+                    .GroupBy(x => x.PageKey!)
+                    .OrderByDescending(x => x.Count())
+                    .ThenBy(x => x.Key)
+                    .Select(x => x.Key)
+                    .FirstOrDefault() ?? "Unknown";
+
+                var source = ResolveTop(g.Select(x => x.UtmSource), "Direct");
+                var medium = ResolveTop(g.Select(x => x.UtmMedium), "");
+                var campaign = ResolveTop(g.Select(x => x.UtmCampaign), "");
+                var device = ResolveTop(g.Select(x => x.DeviceType), "Unknown");
+                var browser = ResolveTop(g.Select(x => x.Browser), "Unknown");
+                var os = ResolveTop(g.Select(x => x.OperatingSystem), "Unknown");
+                var tz = ResolveTop(g.Select(x => x.TimeZone), "Unknown");
+                var lang = ResolveTop(g.Select(x => x.Language), "Unknown");
+
+                var likelyInternal =
+                    internalEvents > 0 ||
+                    sessions >= 5 ||
+                    totalEvents >= 100 ||
+                    (source.Equals("Direct", StringComparison.OrdinalIgnoreCase) && totalEvents >= 75);
+
+                return new VisitorConcentrationRow(
+                    VisitorId: g.Key,
+                    VisitorShortId: ShortId(g.Key),
+                    Sessions: sessions,
+                    Events: totalEvents,
+                    FirstSeenLocal: ToLocalDisplay(first, viewerTimeZone),
+                    LastSeenLocal: ToLocalDisplay(last, viewerTimeZone),
+                    TopPage: topPage,
+                    Source: source,
+                    Medium: medium,
+                    Campaign: campaign,
+                    Device: device,
+                    Browser: browser,
+                    OperatingSystem: os,
+                    TimeZone: tz,
+                    Language: lang,
+                    InternalEvents: internalEvents,
+                    LikelyInternal: likelyInternal
+                );
+            })
+            .OrderByDescending(x => x.Events)
+            .ThenByDescending(x => x.Sessions)
+            .Take(50)
+            .ToList();
+
+        var totalEventCount = visitorGroups.Sum(x => x.Events);
+        var topVisitorEvents = visitorGroups.FirstOrDefault()?.Events ?? 0;
+
+        return new VisitorConcentrationPayload(
+            TotalVisitors: visitorGroups.Count,
+            TotalEvents: totalEventCount,
+            VisitorsOneSession: visitorGroups.Count(x => x.Sessions == 1),
+            VisitorsTwoPlusSessions: visitorGroups.Count(x => x.Sessions >= 2),
+            VisitorsFivePlusSessions: visitorGroups.Count(x => x.Sessions >= 5),
+            LikelyInternalVisitors: visitorGroups.Count(x => x.LikelyInternal),
+            InternalEventShare: totalEventCount == 0
+                ? 0
+                : Math.Round(visitorGroups.Where(x => x.LikelyInternal).Sum(x => x.Events) * 100m / totalEventCount, 1),
+            TopVisitorEvents: topVisitorEvents,
+            TopVisitorShare: totalEventCount == 0
+                ? 0
+                : Math.Round(topVisitorEvents * 100m / totalEventCount, 1),
+            Rows: visitorGroups
+        );
+    }
+
+    private static TrafficType Classify(VisitorEventSeed e) =>
+        TrafficAttribution.Classify(
+            e.UtmSource,
+            e.UtmMedium,
+            e.UtmCampaign,
+            referrerHost: e.ReferrerHost,
+            fbclid: e.Fbclid,
+            metaCampaignId: e.MetaCampaignId);
+
+    private static string ResolveTop(IEnumerable<string?> values, string fallback)
+    {
+        return values
+            .Select(v => string.IsNullOrWhiteSpace(v) ? null : v.Trim())
+            .Where(v => !string.IsNullOrWhiteSpace(v))
+            .GroupBy(v => v!, StringComparer.OrdinalIgnoreCase)
+            .OrderByDescending(g => g.Count())
+            .ThenBy(g => g.Key)
+            .Select(g => g.Key)
+            .FirstOrDefault() ?? fallback;
+    }
+
+    private static string ShortId(string value)
+    {
+        var clean = value.Trim();
+        return clean.Length <= 10 ? clean : clean[..8] + "…";
+    }
+
+    private static string ToLocalDisplay(DateTime utc, TimeZoneInfo tz)
+    {
+        var safeUtc = utc.Kind == DateTimeKind.Utc ? utc : DateTime.SpecifyKind(utc, DateTimeKind.Utc);
+        return TimeZoneInfo.ConvertTimeFromUtc(safeUtc, tz).ToString("M/d h:mm tt", CultureInfo.InvariantCulture);
+    }
+
+    private sealed class VisitorEventSeed
+    {
+        public string? VisitorId { get; init; }
+        public string? SessionId { get; init; }
+        public DateTime EventUtc { get; init; }
+        public string? PageKey { get; init; }
+        public string? DeviceType { get; init; }
+        public string? Browser { get; init; }
+        public string? OperatingSystem { get; init; }
+        public string? TimeZone { get; init; }
+        public string? Language { get; init; }
+        public string? UtmSource { get; init; }
+        public string? UtmMedium { get; init; }
+        public string? UtmCampaign { get; init; }
+        public string? ReferrerHost { get; init; }
+        public string? Fbclid { get; init; }
+        public string? MetaCampaignId { get; init; }
+        public bool IsInternal { get; init; }
+        public string? EventType { get; init; }
+    }
+}
