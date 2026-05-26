@@ -112,9 +112,9 @@ public sealed class TrackingProxyController : ControllerBase
 
         var parsed = ParseUserAgent(userAgent);
 
-        req.DeviceType = FirstNonBlank(req.DeviceType, parsed.DeviceType);
-        req.Browser = FirstNonBlank(req.Browser, parsed.Browser);
-        req.OperatingSystem = FirstNonBlank(req.OperatingSystem, parsed.OperatingSystem);
+        req.DeviceType = FirstMeaningful(req.DeviceType, parsed.DeviceType);
+        req.Browser = FirstMeaningful(req.Browser, parsed.Browser);
+        req.OperatingSystem = FirstMeaningful(req.OperatingSystem, parsed.OperatingSystem);
         req.Language = FirstNonBlank(req.Language, NormalizeAcceptLanguage(acceptLanguage));
         req.Host = FirstNonBlank(req.Host, Request.Host.Value);
 
@@ -142,6 +142,21 @@ public sealed class TrackingProxyController : ControllerBase
         }
 
         return null;
+    }
+
+    private static string? FirstMeaningful(params string?[] values)
+    {
+        foreach (var value in values)
+        {
+            var trimmed = value?.Trim();
+            if (!string.IsNullOrWhiteSpace(trimmed) &&
+                !string.Equals(trimmed, "unknown", StringComparison.OrdinalIgnoreCase))
+            {
+                return trimmed;
+            }
+        }
+
+        return FirstNonBlank(values);
     }
 
     private static string? NormalizeAcceptLanguage(string? value)
