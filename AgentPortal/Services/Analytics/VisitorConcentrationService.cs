@@ -44,7 +44,12 @@ public sealed class VisitorConcentrationService : IVisitorConcentrationService
                 Source = x.Source,
                 FirstSeenLocal = x.FirstSeenLocal,
                 LastSeenLocal = x.LastSeenLocal,
-                LikelyInternal = x.LikelyInternal
+                LikelyInternal = x.LikelyInternal,
+
+                TrustScore = x.TrustScore,
+                TrustTier = x.TrustTier,
+                HumanConfidence = x.HumanConfidence,
+                TrustSignals = x.TrustSignals
             })
             .ToList();
     }

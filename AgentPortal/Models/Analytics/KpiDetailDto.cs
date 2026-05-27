@@ -30,6 +30,11 @@ public sealed class VisitorConcentrationDto
     public string FirstSeenLocal { get; set; } = "";
     public string LastSeenLocal { get; set; } = "";
     public bool LikelyInternal { get; set; }
+
+    public int TrustScore { get; set; }
+    public string TrustTier { get; set; } = "Review";
+    public decimal HumanConfidence { get; set; }
+    public List<string> TrustSignals { get; set; } = new();
 }
 
 public sealed class KpiDetailBreakdownDto
