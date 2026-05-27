@@ -304,6 +304,7 @@ public class MasterAppDbContext : DbContext
             e.Property(x => x.ViewportWidth);
             e.Property(x => x.ViewportHeight);
             e.Property(x => x.ScrollPercent);
+            e.Property(x => x.HumanInteractionCount);
             e.Property(x => x.DwellMilliseconds);
             e.Property(x => x.EngagedMilliseconds);
             e.Property(x => x.IsBounceCandidate);

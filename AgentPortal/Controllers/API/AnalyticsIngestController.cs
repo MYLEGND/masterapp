@@ -79,6 +79,7 @@ public class AnalyticsIngestController : ControllerBase
         public bool? WebDriver { get; set; }
         public bool? IsHeadless { get; set; }
         public int? MouseMoveCount { get; set; }
+        public int? HumanInteractionCount { get; set; }
         public int? VisibilityChangeCount { get; set; }
         public int? ScreenWidth { get; set; }
         public int? ScreenHeight { get; set; }
@@ -199,6 +200,7 @@ public class AnalyticsIngestController : ControllerBase
             WebDriver = req.WebDriver,
             IsHeadless = req.IsHeadless,
             MouseMoveCount = req.MouseMoveCount.HasValue && req.MouseMoveCount.Value >= 0 ? req.MouseMoveCount : null,
+            HumanInteractionCount = req.HumanInteractionCount.HasValue && req.HumanInteractionCount.Value >= 0 ? req.HumanInteractionCount : null,
             VisibilityChangeCount = req.VisibilityChangeCount.HasValue && req.VisibilityChangeCount.Value >= 0 ? req.VisibilityChangeCount : null,
             TimeZone = TrimOrNull(req.TimeZone),
             Language = TrimOrNull(req.Language),

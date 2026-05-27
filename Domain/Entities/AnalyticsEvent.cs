@@ -137,6 +137,7 @@ public class AnalyticsEvent
 
     /// <summary>Total mousemove count during page lifecycle.</summary>
     public int? MouseMoveCount { get; set; }
+    public int? HumanInteractionCount { get; set; }
 
     /// <summary>Total visibility-state changes during session.</summary>
     public int? VisibilityChangeCount { get; set; }

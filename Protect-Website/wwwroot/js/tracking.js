@@ -474,11 +474,36 @@
 
   const forensicState = {
     mouseMoveCount: 0,
+    humanInteractionCount: 0,
     visibilityChangeCount: 0
   };
 
+  function recordHumanInteraction(isMouseMove = false) {
+    forensicState.humanInteractionCount =
+      Math.min(forensicState.humanInteractionCount + 1, 10000);
+
+    if (isMouseMove) {
+      forensicState.mouseMoveCount =
+        Math.min(forensicState.mouseMoveCount + 1, 10000);
+    }
+  }
+
   document.addEventListener('mousemove', () => {
-    forensicState.mouseMoveCount = Math.min(forensicState.mouseMoveCount + 1, 10000);
+    recordHumanInteraction(true);
+  }, { passive: true });
+
+  document.addEventListener('pointerdown', () => {
+    recordHumanInteraction(false);
+  }, { passive: true });
+
+  document.addEventListener('touchstart', () => {
+    recordHumanInteraction(false);
+  }, { passive: true });
+
+  document.addEventListener('click', (e) => {
+    if (e.isTrusted) {
+      recordHumanInteraction(false);
+    }
   }, { passive: true });
 
   function recordVisibilityForensics() {
@@ -520,6 +545,7 @@
       WebDriver: !!navigator.webdriver,
       IsHeadless: !!navigator.webdriver || /HeadlessChrome|PhantomJS|SlimerJS/i.test(ua) || !!window.callPhantom || !!window._phantom,
       MouseMoveCount: forensicState.mouseMoveCount,
+      HumanInteractionCount: forensicState.humanInteractionCount,
       VisibilityChangeCount: forensicState.visibilityChangeCount,
       Language: navigator.language || null,
       TimeZone: Intl.DateTimeFormat().resolvedOptions().timeZone || null

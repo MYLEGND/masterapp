@@ -65,6 +65,7 @@ public sealed class VisitorTrustScoringService : IVisitorTrustScoringService
         var hasResolvedDevice = ordered.Any(x => !IsUnknown(x.DeviceType));
         var hasUserAgent = ordered.Any(x => !string.IsNullOrWhiteSpace(x.UserAgent));
         var hasMouseMovement = ordered.Any(x => (x.MouseMoveCount ?? 0) > 0);
+        var hasHumanInteraction = ordered.Any(x => (x.HumanInteractionCount ?? 0) > 0);
         var maxMouseMoves = ordered.Select(x => x.MouseMoveCount ?? 0).DefaultIfEmpty(0).Max();
         var webdriverDetected = ordered.Any(x => x.WebDriver == true);
         var headlessDetected = ordered.Any(x => x.IsHeadless == true);
@@ -123,16 +124,16 @@ public sealed class VisitorTrustScoringService : IVisitorTrustScoringService
             signals.Add("Unknown device type");
         }
 
-        if (!hasMouseMovement && totalEvents >= 8 && formStarts == 0 && ctaClicks == 0)
+        if (!hasHumanInteraction && !hasMouseMovement && totalEvents >= 8 && formStarts == 0 && ctaClicks == 0)
         {
             trustScore -= 18;
-            signals.Add("No mouse movement captured");
+            signals.Add("No human interaction captured");
         }
 
-        if (maxMouseMoves >= 5)
+        if (hasHumanInteraction || maxMouseMoves >= 5)
         {
             trustScore += 8;
-            signals.Add("Human pointer movement detected");
+            signals.Add(hasHumanInteraction ? "Human interaction detected" : "Human pointer movement detected");
         }
 
         if (totalEvents >= 120)
