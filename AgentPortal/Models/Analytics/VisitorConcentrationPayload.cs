@@ -29,4 +29,8 @@ public sealed record VisitorConcentrationRow(
     string TimeZone,
     string Language,
     int InternalEvents,
-    bool LikelyInternal);
+    bool LikelyInternal,
+    int TrustScore,
+    string TrustTier,
+    decimal HumanConfidence,
+    List<string> TrustSignals);

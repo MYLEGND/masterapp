@@ -576,22 +576,14 @@
                             <th>Last Seen</th>
                             <th>Device</th>
                             <th>Source</th>
-                            <th>Trust</th>
-                            <th>Signals</th>
+                            <th>Flag</th>
                         </tr>
                     </thead>
                     <tbody>
                         ${top.length ? top.map(v => {
                             const sessions = Number(v.sessions || 0);
-                            const trustTier = v.trustTier || (v.likelyInternal ? 'Suspicious' : (sessions >= 2 ? 'Review' : 'Trusted'));
-                            const trustScore = Number(v.trustScore ?? v.humanConfidence ?? 0);
-                            const trustClass = trustTier === 'Trusted'
-                                ? 'is-good'
-                                : (trustTier === 'Review' ? 'is-review' : 'is-risk');
-                            const badge = `<span class="vc-badge ${trustClass}">${escHtml(trustTier)}${trustScore ? ` · ${formatInt(trustScore)}` : ''}</span>`;
-                            const signals = Array.isArray(v.trustSignals) && v.trustSignals.length
-                                ? v.trustSignals.slice(0, 2).join(' · ')
-                                : '—';
+                            const flag = getVisitorConcentrationFlag(v, sessions);
+                            const badge = `<span class="vc-badge ${flag.badgeClass}">${flag.label}</span>`;
 
                             return `
                                 <tr class="${sessions >= 2 ? 'is-recurring' : ''} vc-clickable-row" data-visitor-id="${escHtml(v.visitorId || '')}" data-session-id="${escHtml(v.sessionId || '')}" title="Click to open visitor timeline">
@@ -603,9 +595,8 @@
                                     <td>${escHtml(v.device || 'Unknown')}</td>
                                     <td>${escHtml(v.source || 'Direct')}</td>
                                     <td>${badge}</td>
-                                    <td>${escHtml(signals)}</td>
                                 </tr>`;
-                        }).join('') : '<tr><td colspan="9" class="vc-empty">No visitor rows in this range yet.</td></tr>'}
+                        }).join('') : '<tr><td colspan="8" class="vc-empty">No visitor rows in this range yet.</td></tr>'}
                     </tbody>
                 </table>
             </div>
@@ -703,19 +694,14 @@
         lines.push('');
         lines.push('Recurring Visitors First');
         lines.push('Click any visitor row to open the full Visitor Timeline + Trust Score.');
-        lines.push('Visitor ID\tSessions\tEvents\tFirst Seen\tLast Seen\tDevice\tSource\tTrust\tSignals');
+        lines.push('Visitor ID\tSessions\tEvents\tFirst Seen\tLast Seen\tDevice\tSource\tFlag');
 
         if (!normalizedRows.length) {
             lines.push('No visitor rows in this range yet.');
         } else {
             normalizedRows.forEach(visitor => {
                 const sessions = Number(visitor.sessions || 0);
-                const trustTier = visitor.trustTier || (visitor.likelyInternal ? 'Suspicious' : (sessions >= 2 ? 'Review' : 'Trusted'));
-                const trustScore = Number(visitor.trustScore ?? visitor.humanConfidence ?? 0);
-                const trustLabel = `${trustTier}${trustScore ? ` (${formatInt(trustScore)})` : ''}`;
-                const signals = Array.isArray(visitor.trustSignals) && visitor.trustSignals.length
-                    ? visitor.trustSignals.slice(0, 2).join(' · ')
-                    : '—';
+                const flag = getVisitorConcentrationFlag(visitor, sessions);
                 lines.push([
                     sanitizeCopyValue(visitor.visitorShortId || visitor.visitorId || 'unknown', 'unknown'),
                     formatInt(sessions),
@@ -724,8 +710,7 @@
                     sanitizeCopyValue(visitor.lastSeenLocal || '—'),
                     sanitizeCopyValue(visitor.device || 'Unknown', 'Unknown'),
                     sanitizeCopyValue(visitor.source || 'Direct', 'Direct'),
-                    trustLabel,
-                    signals
+                    flag.label
                 ].join('\t'));
             });
         }

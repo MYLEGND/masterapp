@@ -1,5 +1,6 @@
 using System.Globalization;
 using AgentPortal.Models.Analytics;
+using Domain.Entities;
 using Microsoft.EntityFrameworkCore;
 
 namespace AgentPortal.Services.Analytics;
@@ -7,10 +8,14 @@ namespace AgentPortal.Services.Analytics;
 public sealed class VisitorConcentrationService : IVisitorConcentrationService
 {
     private readonly Infrastructure.Data.MasterAppDbContext _db;
+    private readonly IVisitorTrustScoringService _trustScoring;
 
-    public VisitorConcentrationService(Infrastructure.Data.MasterAppDbContext db)
+    public VisitorConcentrationService(
+        Infrastructure.Data.MasterAppDbContext db,
+        IVisitorTrustScoringService trustScoring)
     {
         _db = db;
+        _trustScoring = trustScoring;
     }
 
     public async Task<List<VisitorConcentrationDto>> GetVisitorConcentrationAsync(
@@ -63,26 +68,7 @@ public sealed class VisitorConcentrationService : IVisitorConcentrationService
             eventsQuery = eventsQuery.Where(e => e.AgentTrackingProfileId == agentProfileId.Value);
 
         var events = await eventsQuery
-            .Select(e => new VisitorEventSeed
-            {
-                VisitorId = e.VisitorId,
-                SessionId = e.SessionId,
-                EventUtc = e.EventUtc,
-                PageKey = e.PageKey,
-                DeviceType = e.DeviceType,
-                Browser = e.Browser,
-                OperatingSystem = e.OperatingSystem,
-                TimeZone = e.TimeZone,
-                Language = e.Language,
-                UtmSource = e.UtmSource,
-                UtmMedium = e.UtmMedium,
-                UtmCampaign = e.UtmCampaign,
-                ReferrerHost = e.ReferrerHost,
-                Fbclid = e.Fbclid,
-                MetaCampaignId = e.MetaCampaignId,
-                IsInternal = e.IsInternal,
-                EventType = e.EventType
-            })
+            .OrderBy(e => e.EventUtc)
             .ToListAsync(ct);
 
         events = trafficType switch
@@ -98,36 +84,69 @@ public sealed class VisitorConcentrationService : IVisitorConcentrationService
             _ => events
         };
 
+        var visitorIds = events
+            .Select(e => e.VisitorId)
+            .Where(x => !string.IsNullOrWhiteSpace(x))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
+        var sessionIds = events
+            .Select(e => e.SessionId)
+            .Where(x => !string.IsNullOrWhiteSpace(x))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
+        var metaSignals = await _db.MetaSignalEvents
+            .AsNoTracking()
+            .Where(x => x.CreatedUtc >= fromUtc && x.CreatedUtc < toUtc)
+            .Where(x =>
+                (!string.IsNullOrWhiteSpace(x.VisitorId) && visitorIds.Contains(x.VisitorId!)) ||
+                (!string.IsNullOrWhiteSpace(x.SessionId) && sessionIds.Contains(x.SessionId!)))
+            .ToListAsync(ct);
+
         var visitorGroups = events
             .Where(e => !string.IsNullOrWhiteSpace(e.VisitorId))
             .GroupBy(e => e.VisitorId!)
             .Select(g =>
             {
-                var first = g.Min(x => x.EventUtc);
-                var last = g.Max(x => x.EventUtc);
-                var sessions = g.Select(x => x.SessionId)
+                var groupEvents = g.OrderBy(x => x.EventUtc).ToList();
+
+                var groupSessionIds = groupEvents
+                    .Select(x => x.SessionId)
                     .Where(x => !string.IsNullOrWhiteSpace(x))
-                    .Distinct()
-                    .Count();
+                    .Distinct(StringComparer.OrdinalIgnoreCase)
+                    .ToHashSet(StringComparer.OrdinalIgnoreCase);
 
-                var totalEvents = g.Count();
-                var internalEvents = g.Count(x => x.IsInternal);
+                var groupSignals = metaSignals
+                    .Where(x =>
+                        string.Equals(x.VisitorId, g.Key, StringComparison.OrdinalIgnoreCase) ||
+                        (!string.IsNullOrWhiteSpace(x.SessionId) && groupSessionIds.Contains(x.SessionId!)))
+                    .ToList();
 
-                var topPage = g.Where(x => !string.IsNullOrWhiteSpace(x.PageKey))
+                var trust = _trustScoring.Calculate(groupEvents, groupSignals);
+
+                var first = groupEvents.Min(x => x.EventUtc);
+                var last = groupEvents.Max(x => x.EventUtc);
+                var sessions = groupSessionIds.Count;
+                var totalEvents = groupEvents.Count;
+                var internalEvents = groupEvents.Count(x => x.IsInternal);
+
+                var topPage = groupEvents
+                    .Where(x => !string.IsNullOrWhiteSpace(x.PageKey))
                     .GroupBy(x => x.PageKey!)
                     .OrderByDescending(x => x.Count())
                     .ThenBy(x => x.Key)
                     .Select(x => x.Key)
                     .FirstOrDefault() ?? "Unknown";
 
-                var source = ResolveTop(g.Select(x => x.UtmSource), "Direct");
-                var medium = ResolveTop(g.Select(x => x.UtmMedium), "");
-                var campaign = ResolveTop(g.Select(x => x.UtmCampaign), "");
-                var device = ResolveTop(g.Select(x => x.DeviceType), "Unknown");
-                var browser = ResolveTop(g.Select(x => x.Browser), "Unknown");
-                var os = ResolveTop(g.Select(x => x.OperatingSystem), "Unknown");
-                var tz = ResolveTop(g.Select(x => x.TimeZone), "Unknown");
-                var lang = ResolveTop(g.Select(x => x.Language), "Unknown");
+                var source = ResolveTop(groupEvents.Select(x => x.UtmSource), "Direct");
+                var medium = ResolveTop(groupEvents.Select(x => x.UtmMedium), "");
+                var campaign = ResolveTop(groupEvents.Select(x => x.UtmCampaign), "");
+                var device = ResolveTop(groupEvents.Select(x => x.DeviceType), "Unknown");
+                var browser = ResolveTop(groupEvents.Select(x => x.Browser), "Unknown");
+                var os = ResolveTop(groupEvents.Select(x => x.OperatingSystem), "Unknown");
+                var tz = ResolveTop(groupEvents.Select(x => x.TimeZone), "Unknown");
+                var lang = ResolveTop(groupEvents.Select(x => x.Language), "Unknown");
 
                 var likelyInternal =
                     internalEvents > 0 ||
@@ -152,11 +171,15 @@ public sealed class VisitorConcentrationService : IVisitorConcentrationService
                     TimeZone: tz,
                     Language: lang,
                     InternalEvents: internalEvents,
-                    LikelyInternal: likelyInternal
+                    LikelyInternal: likelyInternal,
+                    TrustScore: trust.TrustScore,
+                    TrustTier: trust.TrustTier,
+                    HumanConfidence: trust.HumanConfidence,
+                    TrustSignals: trust.Signals.Take(3).ToList()
                 );
             })
-            .OrderByDescending(x => x.Events)
-            .ThenByDescending(x => x.Sessions)
+            .OrderByDescending(x => x.Sessions)
+            .ThenByDescending(x => x.Events)
             .Take(50)
             .ToList();
 
@@ -181,14 +204,19 @@ public sealed class VisitorConcentrationService : IVisitorConcentrationService
         );
     }
 
-    private static TrafficType Classify(VisitorEventSeed e) =>
+    private static TrafficType Classify(AnalyticsEvent e) =>
         TrafficAttribution.Classify(
             e.UtmSource,
             e.UtmMedium,
             e.UtmCampaign,
+            e.Fbclid,
             referrerHost: e.ReferrerHost,
-            fbclid: e.Fbclid,
-            metaCampaignId: e.MetaCampaignId);
+            metaCampaignId: e.MetaCampaignId,
+            metaAdSetId: e.MetaAdSetId,
+            metaAdId: e.MetaAdId,
+            isInternal: e.IsInternal,
+            environment: e.Environment,
+            host: e.Host);
 
     private static string ResolveTop(IEnumerable<string?> values, string fallback)
     {
@@ -212,26 +240,5 @@ public sealed class VisitorConcentrationService : IVisitorConcentrationService
     {
         var safeUtc = utc.Kind == DateTimeKind.Utc ? utc : DateTime.SpecifyKind(utc, DateTimeKind.Utc);
         return TimeZoneInfo.ConvertTimeFromUtc(safeUtc, tz).ToString("M/d h:mm tt", CultureInfo.InvariantCulture);
-    }
-
-    private sealed class VisitorEventSeed
-    {
-        public string? VisitorId { get; init; }
-        public string? SessionId { get; init; }
-        public DateTime EventUtc { get; init; }
-        public string? PageKey { get; init; }
-        public string? DeviceType { get; init; }
-        public string? Browser { get; init; }
-        public string? OperatingSystem { get; init; }
-        public string? TimeZone { get; init; }
-        public string? Language { get; init; }
-        public string? UtmSource { get; init; }
-        public string? UtmMedium { get; init; }
-        public string? UtmCampaign { get; init; }
-        public string? ReferrerHost { get; init; }
-        public string? Fbclid { get; init; }
-        public string? MetaCampaignId { get; init; }
-        public bool IsInternal { get; init; }
-        public string? EventType { get; init; }
     }
 }
