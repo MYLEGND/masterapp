@@ -9,10 +9,8 @@ public interface IVisitorConcentrationService
         CancellationToken ct = default);
 
     Task<VisitorConcentrationPayload> GetVisitorConcentrationPayloadAsync(
-        DateTime fromUtc,
-        DateTime toUtc,
-        TimeZoneInfo viewerTimeZone,
-        Guid? agentProfileId,
+        TimeRangeRequest range,
+        ScopeContext scope,
         TrafficType trafficType,
         CancellationToken ct = default);
 }

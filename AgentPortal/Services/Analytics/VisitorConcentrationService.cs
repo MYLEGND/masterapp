@@ -9,13 +9,16 @@ public sealed class VisitorConcentrationService : IVisitorConcentrationService
 {
     private readonly Infrastructure.Data.MasterAppDbContext _db;
     private readonly IVisitorTrustScoringService _trustScoring;
+    private readonly IAnalyticsQueryService _analytics;
 
     public VisitorConcentrationService(
         Infrastructure.Data.MasterAppDbContext db,
-        IVisitorTrustScoringService trustScoring)
+        IVisitorTrustScoringService trustScoring,
+        IAnalyticsQueryService analytics)
     {
         _db = db;
         _trustScoring = trustScoring;
+        _analytics = analytics;
     }
 
     public async Task<List<VisitorConcentrationDto>> GetVisitorConcentrationAsync(
@@ -48,24 +51,12 @@ public sealed class VisitorConcentrationService : IVisitorConcentrationService
     }
 
     public async Task<VisitorConcentrationPayload> GetVisitorConcentrationPayloadAsync(
-        DateTime fromUtc,
-        DateTime toUtc,
-        TimeZoneInfo viewerTimeZone,
-        Guid? agentProfileId,
+        TimeRangeRequest range,
+        ScopeContext scope,
         TrafficType trafficType,
         CancellationToken ct = default)
     {
-        var eventsQuery = _db.AnalyticsEvents
-            .AsNoTracking()
-            .Where(e =>
-                e.EventUtc >= fromUtc &&
-                e.EventUtc < toUtc &&
-                e.Environment != null &&
-                (e.Environment.ToLower() == "production" ||
-                 e.Environment.ToLower() == "prod"));
-
-        if (agentProfileId.HasValue)
-            eventsQuery = eventsQuery.Where(e => e.AgentTrackingProfileId == agentProfileId.Value);
+        var eventsQuery = _analytics.ScopedEvents(range, scope);
 
         var events = await eventsQuery
             .OrderBy(e => e.EventUtc)
@@ -98,7 +89,7 @@ public sealed class VisitorConcentrationService : IVisitorConcentrationService
 
         var metaSignals = await _db.MetaSignalEvents
             .AsNoTracking()
-            .Where(x => x.CreatedUtc >= fromUtc && x.CreatedUtc < toUtc)
+            .Where(x => x.CreatedUtc >= range.FromUtc && x.CreatedUtc < range.ToUtc)
             .Where(x =>
                 (!string.IsNullOrWhiteSpace(x.VisitorId) && visitorIds.Contains(x.VisitorId!)) ||
                 (!string.IsNullOrWhiteSpace(x.SessionId) && sessionIds.Contains(x.SessionId!)))
@@ -159,8 +150,8 @@ public sealed class VisitorConcentrationService : IVisitorConcentrationService
                     VisitorShortId: ShortId(g.Key),
                     Sessions: sessions,
                     Events: totalEvents,
-                    FirstSeenLocal: ToLocalDisplay(first, viewerTimeZone),
-                    LastSeenLocal: ToLocalDisplay(last, viewerTimeZone),
+                    FirstSeenLocal: ToLocalDisplay(first, range.ViewerTimeZone),
+                    LastSeenLocal: ToLocalDisplay(last, range.ViewerTimeZone),
                     TopPage: topPage,
                     Source: source,
                     Medium: medium,

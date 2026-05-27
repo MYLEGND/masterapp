@@ -27,4 +27,10 @@ public interface IAnalyticsQueryService
     Task<FormAbandonmentDto> GetFormAbandonmentAsync(TimeRangeRequest range, ScopeContext scope, TrafficType trafficType = TrafficType.All);
 
     Task<DeviceIntelligenceDto> GetDeviceIntelligenceAsync(TimeRangeRequest range, ScopeContext scope, TrafficType trafficType = TrafficType.All);
+
+    IQueryable<AnalyticsEvent> ScopedEvents(
+        TimeRangeRequest range,
+        ScopeContext scope,
+        Guid[]? scopedAgentIds = null);
+
 }

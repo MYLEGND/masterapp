@@ -51,6 +51,13 @@ public sealed class AnalyticsQueryService : IAnalyticsQueryService
             .Where(HostPredicateEvents())
             .Where(ScopePredicateEvents(scope, scopedAgentIds));
 
+
+    public IQueryable<AnalyticsEvent> ScopedEvents(
+        TimeRangeRequest range,
+        ScopeContext scope,
+        Guid[]? scopedAgentIds = null)
+        => BaseEvents(range, scope, scopedAgentIds);
+
     private IQueryable<WebsiteLead> BaseLeads(TimeRangeRequest range, ScopeContext scope, Guid[]? scopedAgentIds = null) =>
         _db.WebsiteLeads.AsNoTracking()
             .Where(l => !l.IsInternal)
