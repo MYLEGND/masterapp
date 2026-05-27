@@ -13,6 +13,7 @@ public sealed class AiReviewRequestDto
     public DateTime? FromUtc { get; set; }
     public DateTime? ToUtc { get; set; }
     public string? TrafficType { get; set; }
+    public string? QualityMode { get; set; }
     public Guid? AgentProfileId { get; set; }
     public bool Team { get; set; }
     public string? TimezoneId { get; set; }
@@ -26,6 +27,7 @@ public sealed class AiFollowUpRequestDto
     public DateTime? FromUtc { get; set; }
     public DateTime? ToUtc { get; set; }
     public string? TrafficType { get; set; }
+    public string? QualityMode { get; set; }
     public Guid? AgentProfileId { get; set; }
     public bool Team { get; set; }
     public string? TimezoneId { get; set; }

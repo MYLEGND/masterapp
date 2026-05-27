@@ -321,6 +321,16 @@ public sealed class WebsiteAnalyticsAiController : Controller
         return ScopeContext.ForAgent(Guid.Empty);
     }
 
+
+    private static TrafficQualityMode ParseQualityMode(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value)) return TrafficQualityMode.RealHuman;
+
+        return Enum.TryParse<TrafficQualityMode>(value, ignoreCase: true, out var result)
+            ? result
+            : TrafficQualityMode.RealHuman;
+    }
+
     private static TrafficType ParseTrafficType(string? value)
     {
         if (string.IsNullOrWhiteSpace(value)) return TrafficType.All;
