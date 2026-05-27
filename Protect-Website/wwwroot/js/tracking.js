@@ -4,6 +4,17 @@
   }
   window.__legendTrackingInitialized = true;
 
+  // ============================================================
+  // MODULE: CORE CONFIG + SHARED UTILITIES
+  // Ownership:
+  // - constants
+  // - safe storage helpers
+  // - JSON parsing
+  // - debounce primitives
+  // - generic helpers
+  // Extraction target: tracking-core.js
+  // ============================================================
+
   const INGEST_URL = '/api/tracking/ingest';
   const PAGE_KEY = document.body.dataset.pageKey || '';
   const PAGE_VARIANT = document.body.dataset.pageVariant || '';
@@ -123,6 +134,15 @@
   function uuid() {
     return crypto.randomUUID ? crypto.randomUUID() : ([1e7]+-1e3+-4e3+-8e3+-1e11).replace(/[018]/g,c=>(c ^ crypto.getRandomValues(new Uint8Array(1))[0] & 15 >> c / 4).toString(16));
   }
+
+  // ============================================================
+  // MODULE: FORM STATE MACHINE
+  // Ownership:
+  // - per-form lifecycle state
+  // - form stage transitions
+  // - submit/abandon state tracking
+  // Extraction target: tracking-funnel.js
+  // ============================================================
 
   const FORM_STAGE_RANK = Object.freeze({
     idle: 0,
@@ -247,6 +267,16 @@
       details
     });
   }
+
+  // ============================================================
+  // MODULE: SESSION + ATTRIBUTION
+  // Ownership:
+  // - visitor id
+  // - session id
+  // - first-touch attribution
+  // - session attribution inheritance
+  // Extraction target: tracking-session.js / tracking-attribution.js
+  // ============================================================
 
   function getVisitorId() {
     let v = safeStorageGet(window.localStorage, STORAGE_VISITOR);
@@ -419,6 +449,15 @@
   }
 
   // ── Shared body builder (used by both sendEvent and beaconSend) ───────────
+  // ============================================================
+  // MODULE: CLIENT CONTEXT + DEVICE INTELLIGENCE
+  // Ownership:
+  // - page context metadata
+  // - client/browser/device context
+  // - traffic quality hints
+  // Extraction target: tracking-device.js
+  // ============================================================
+
   function buildPageContextMetadata() {
     const metadata = {
       pageVariant: PAGE_VARIANT || null,
@@ -547,6 +586,17 @@
       IsExitPage: payload.IsExitPage || null
     };
   }
+
+  // ============================================================
+  // MODULE: TRANSPORT + QUEUE
+  // Ownership:
+  // - request body building
+  // - ingest POST
+  // - retry queue
+  // - beacon flush
+  // - client tracking error reporting
+  // Extraction target: tracking-transport.js
+  // ============================================================
 
   async function readResponseError(response) {
     try {
@@ -832,6 +882,16 @@
     return keep.length !== queue.length;
   }
 
+  // ============================================================
+  // MODULE: FUNNEL + FORM TELEMETRY
+  // Ownership:
+  // - field errors
+  // - form starts
+  // - funnel state updates
+  // - form abandon callbacks
+  // Extraction target: tracking-funnel.js
+  // ============================================================
+
   const debounceMap = new Map();
   function shouldFire(key) {
     const now = Date.now();
@@ -962,6 +1022,15 @@ function trackCustomFieldError(formKey, fieldName, errorType, offerKey) {
     offerKey
   });
 }
+
+  // ============================================================
+  // MODULE: ENGAGEMENT + SCROLL TELEMETRY
+  // Ownership:
+  // - scroll depth
+  // - active engagement timing
+  // - engagement events
+  // Extraction target: tracking-engagement.js
+  // ============================================================
 
   let _scrollTicking = false;
   const _scrollThresholds = [25, 50, 75, 90, 100];
@@ -1131,6 +1200,16 @@ function trackCustomFieldError(formKey, fieldName, errorType, offerKey) {
     return false;
   }
 
+  // ============================================================
+  // MODULE: DIAGNOSTICS + LIFECYCLE
+  // Ownership:
+  // - global JS errors
+  // - fetch diagnostics
+  // - visibility/pagehide/beforeunload lifecycle
+  // - diagnostic health events
+  // Extraction target: tracking-diagnostics.js
+  // ============================================================
+
   function installGlobalDiagnostics() {
     window.addEventListener('error', function (event) {
       const target = event && event.target;
@@ -1282,6 +1361,17 @@ function trackCustomFieldError(formKey, fieldName, errorType, offerKey) {
     const path = (window.location && window.location.pathname ? window.location.pathname : '').toLowerCase();
     return path.startsWith('/websiteanalytics') || path.startsWith('/api/analytics');
   }
+
+  // ============================================================
+  // MODULE: PAGE + CTA + QUOTE ENGAGEMENT
+  // Ownership:
+  // - page view
+  // - thank-you view
+  // - primary CTA exposure
+  // - quote entry engagement
+  // - CTA wiring
+  // Extraction target: tracking-engagement.js / tracking-funnel.js
+  // ============================================================
 
   function trackPageView() {
     if (isAnalyticsRouteBlocked()) return;
@@ -1656,6 +1746,16 @@ function trackCustomFieldError(formKey, fieldName, errorType, offerKey) {
     return true;
   }
 
+  // ============================================================
+  // MODULE: BOOTSTRAP
+  // Ownership:
+  // - initialization order
+  // - global listener installation
+  // - page view boot
+  // - CTA/form wiring
+  // Extraction target: tracking-bootstrap.js
+  // ============================================================
+
   installGlobalDiagnostics();
   void flushQueuedEvents('page_load');
   trackPageView();
@@ -1685,6 +1785,15 @@ function trackCustomFieldError(formKey, fieldName, errorType, offerKey) {
     wireFormStart(`form[data-form-key="${key}"]`, key);
   });
 
+
+  // ============================================================
+  // MODULE: PUBLIC API
+  // Ownership:
+  // - public analytics boundary
+  // - backwards-compatible helper exposure
+  // - IDs/attribution API
+  // Extraction target: tracking-api.js
+  // ============================================================
 
   // Expose existing tracking helpers for legacy/on-page scripts and diagnostics.
   window._formAbandonCallbacks = window._formAbandonCallbacks || _formAbandonCallbacks;
