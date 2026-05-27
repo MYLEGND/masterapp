@@ -756,7 +756,7 @@ namespace AgentPortal.Controllers;
             }
             catch
             {
-                fallbackRange = TimeRangeRequest.FromPreset("today");
+                fallbackRange = TimeRangeRequest.FromPreset("today", viewerTz: GetViewerTimeZone(), qualityMode: qualityMode);
             }
             var fallbackUtc = DateTime.UtcNow;
             var fallbackGenerated = fallbackUtc.ToString("MM/dd/yyyy h:mm tt") + " UTC";

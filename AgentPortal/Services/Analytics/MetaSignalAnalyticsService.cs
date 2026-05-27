@@ -34,10 +34,14 @@ public sealed class MetaSignalAnalyticsService : IMetaSignalAnalyticsService
 {
     private const string LearningScopeNoteText = "Meta Paid Signal Intelligence only evaluates paid Meta-attributed traffic. Non-paid/manual tests may appear in Quote Funnel and Conversion Center but are excluded from Meta learning readiness.";
     private readonly MasterAppDbContext _db;
+    private readonly IAnalyticsQueryService _analytics;
 
-    public MetaSignalAnalyticsService(MasterAppDbContext db)
+    public MetaSignalAnalyticsService(
+        MasterAppDbContext db,
+        IAnalyticsQueryService analytics)
     {
         _db = db;
+        _analytics = analytics;
     }
 
     public async Task<MetaSignalDashboardDto> GetDashboardAsync(
@@ -60,6 +64,7 @@ public sealed class MetaSignalAnalyticsService : IMetaSignalAnalyticsService
         }
 
         baseQuery = ApplyTrafficFilter(baseQuery, trafficType);
+        baseQuery = await ApplyQualityFilterAsync(baseQuery, range, scope, ct);
 
         var baseRows = await baseQuery
             .OrderBy(x => x.CreatedUtc)
@@ -431,6 +436,41 @@ public sealed class MetaSignalAnalyticsService : IMetaSignalAnalyticsService
             return worstStage.StepLabel;
 
         return frictionHotspots.FirstOrDefault()?.Label ?? "—";
+    }
+
+
+    private async Task<IQueryable<MetaSignalEvent>> ApplyQualityFilterAsync(
+        IQueryable<MetaSignalEvent> query,
+        TimeRangeRequest range,
+        ScopeContext scope,
+        CancellationToken ct)
+    {
+        if (range.QualityMode == TrafficQualityMode.All)
+            return query;
+
+        var qualityEvents = await _analytics
+            .ScopedEvents(range, scope)
+            .Select(e => new { e.VisitorId, e.SessionId })
+            .ToListAsync(ct);
+
+        var visitorIds = qualityEvents
+            .Select(x => x.VisitorId)
+            .Where(x => !string.IsNullOrWhiteSpace(x))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
+        var sessionIds = qualityEvents
+            .Select(x => x.SessionId)
+            .Where(x => !string.IsNullOrWhiteSpace(x))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
+        if (visitorIds.Count == 0 && sessionIds.Count == 0)
+            return query.Where(x => false);
+
+        return query.Where(x =>
+            (!string.IsNullOrWhiteSpace(x.VisitorId) && visitorIds.Contains(x.VisitorId!)) ||
+            (!string.IsNullOrWhiteSpace(x.SessionId) && sessionIds.Contains(x.SessionId!)));
     }
 
     private static IQueryable<MetaSignalEvent> ApplyTrafficFilter(IQueryable<MetaSignalEvent> query, TrafficType trafficType)

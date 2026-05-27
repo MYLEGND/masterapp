@@ -100,9 +100,11 @@ public sealed class WebsiteAnalyticsAiController : Controller
     {
         var ct = HttpContext.RequestAborted;
 
+        var qualityMode = ParseQualityMode(request?.QualityMode);
+
         TimeRangeRequest range;
-        try { range = TimeRangeRequest.FromPreset(request?.Preset, request?.FromUtc, request?.ToUtc, ResolveViewerTimeZone(request?.TimezoneId, request?.TimezoneOffsetMinutes)); }
-        catch { range = TimeRangeRequest.FromPreset("today"); }
+        try { range = TimeRangeRequest.FromPreset(request?.Preset, request?.FromUtc, request?.ToUtc, ResolveViewerTimeZone(request?.TimezoneId, request?.TimezoneOffsetMinutes), qualityMode); }
+        catch { range = TimeRangeRequest.FromPreset("today", qualityMode: qualityMode); }
 
         var scope = await ResolveScopeAsync(request?.AgentProfileId, request?.Team ?? false);
         var scopeLabel = await ResolveScopeLabelAsync(scope, request?.Team ?? false);
@@ -174,9 +176,11 @@ public sealed class WebsiteAnalyticsAiController : Controller
         if (PhoneInQuestionPattern.IsMatch(question))
             return Json(ErrorDto("Follow-up question may not contain phone numbers."));
 
+        var qualityMode = ParseQualityMode(request.QualityMode);
+
         TimeRangeRequest range;
-        try { range = TimeRangeRequest.FromPreset(request.Preset, request.FromUtc, request.ToUtc, ResolveViewerTimeZone(request.TimezoneId, request.TimezoneOffsetMinutes)); }
-        catch { range = TimeRangeRequest.FromPreset("today"); }
+        try { range = TimeRangeRequest.FromPreset(request.Preset, request.FromUtc, request.ToUtc, ResolveViewerTimeZone(request.TimezoneId, request.TimezoneOffsetMinutes), qualityMode); }
+        catch { range = TimeRangeRequest.FromPreset("today", qualityMode: qualityMode); }
 
         var scope = await ResolveScopeAsync(request.AgentProfileId, request.Team);
         var scopeLabel = await ResolveScopeLabelAsync(scope, request.Team);
