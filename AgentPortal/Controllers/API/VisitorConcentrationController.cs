@@ -36,6 +36,7 @@ public sealed class VisitorConcentrationController : ControllerBase
         [FromQuery] int? timezoneOffsetMinutes = null,
         [FromQuery] Guid? agentProfileId = null,
         [FromQuery] TrafficType trafficType = TrafficType.All,
+        [FromQuery] TrafficQualityMode qualityMode = TrafficQualityMode.RealHuman,
         CancellationToken ct = default)
     {
         var range = ResolveRange(
@@ -53,7 +54,8 @@ public sealed class VisitorConcentrationController : ControllerBase
                 {
                     FromUtc = range.FromUtc,
                     ToUtc = range.ToUtc,
-                    ViewerTimeZone = range.ViewerTimeZone
+                    ViewerTimeZone = range.ViewerTimeZone,
+                    QualityMode = qualityMode
                 },
                 scope,
                 trafficType,

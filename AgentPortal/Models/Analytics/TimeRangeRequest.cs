@@ -18,8 +18,9 @@ public sealed class TimeRangeRequest
     public string Label { get; init; } = "Last 30 Days";
     public string Preset { get; init; } = "30d";
     public TimeZoneInfo ViewerTimeZone { get; init; } = TimeZoneInfo.Utc;
+    public TrafficQualityMode QualityMode { get; init; } = TrafficQualityMode.RealHuman;
 
-    public static TimeRangeRequest FromPreset(string? preset, DateTime? fromUtc = null, DateTime? toUtc = null, TimeZoneInfo? viewerTz = null)
+    public static TimeRangeRequest FromPreset(string? preset, DateTime? fromUtc = null, DateTime? toUtc = null, TimeZoneInfo? viewerTz = null, TrafficQualityMode qualityMode = TrafficQualityMode.RealHuman)
     {
         var tz = viewerTz ?? TimeZoneInfo.Utc;
         var now = DateTime.UtcNow;
@@ -108,7 +109,8 @@ public sealed class TimeRangeRequest
             Grouping = grouping,
             Label = label,
             Preset = preset,
-            ViewerTimeZone = tz
+            ViewerTimeZone = tz,
+            QualityMode = qualityMode
         };
     }
 }

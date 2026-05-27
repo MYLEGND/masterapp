@@ -32,6 +32,7 @@
     from: initialFrom,
     to: initialTo,
     pollMs: 45000,
+    qualityMode: 'real_human',
     controllers: {},
     openModal: null,
     cache: {
@@ -422,8 +423,18 @@
     }));
   }
 
+  function mapQualityMode(value) {
+    if (value === 'all') return 'All';
+    if (value === 'likely_human') return 'LikelyHuman';
+    if (value === 'review') return 'Review';
+    if (value === 'suspicious') return 'Suspicious';
+    if (value === 'likely_bot') return 'LikelyBot';
+    if (value === 'internal') return 'Internal';
+    return 'RealHuman';
+  }
+
   function rangeParams({ team = false, modal = null } = {}) {
-    const p = { preset: state.scope.preset, timezoneOffsetMinutes: viewerTz.offsetMinutes };
+    const p = { preset: state.scope.preset, timezoneOffsetMinutes: viewerTz.offsetMinutes, qualityMode: mapQualityMode(state.qualityMode) };
     if (viewerTz.id) p.timezoneId = viewerTz.id;
     const customRange = resolveCustomRangeUtc();
     if (customRange) {
@@ -1518,6 +1529,32 @@
     document.querySelectorAll(`#${modalId} .traffic-type-btn`).forEach(btn => {
       btn.classList.toggle('active', btn.dataset.type === t);
     });
+  }
+
+  function initTrafficQualityModeControl() {
+    const select = document.getElementById('traffic-quality-mode');
+    const label = document.getElementById('traffic-quality-active-label');
+    if (!select) return;
+
+    const update = () => {
+      state.qualityMode = select.value || 'real_human';
+      if (label) {
+        const option = select.options[select.selectedIndex];
+        label.textContent = option ? option.textContent : 'Real Human Traffic';
+      }
+      loadSummary();
+      refreshOpenModal();
+      window.dispatchEvent(new CustomEvent('wa:quality-mode-changed', {
+        detail: { qualityMode: state.qualityMode }
+      }));
+    };
+
+    select.value = state.qualityMode || 'real_human';
+    select.addEventListener('change', update);
+    if (label) {
+      const option = select.options[select.selectedIndex];
+      label.textContent = option ? option.textContent : 'Real Human Traffic';
+    }
   }
 
   function initTrafficTypeControls() {
@@ -3742,6 +3779,7 @@
     }
     initRangeControls();
     initModules();
+    initTrafficQualityModeControl();
     initTrafficTypeControls();
     initMetaSignalFilterControls();
     initLeadDeleteControls();

@@ -37,6 +37,7 @@
                 fromUtc:       bridge.from   || null,
                 toUtc:         bridge.to     || null,
                 trafficType:   bridge.trafficType || 'all',
+                qualityMode:   bridge.qualityMode || 'real_human',
                 agentProfileId: bridge.agentProfileId || null,
                 isFounder:     bridge.isFounder || false,
                 rangeParams:   typeof bridge.rangeParams === 'function' ? bridge.rangeParams.bind(bridge) : null
@@ -50,6 +51,7 @@
             fromUtc:       null,
             toUtc:         null,
             trafficType:   'all',
+            qualityMode:   'real_human',
             agentProfileId: (window.CALLER_PROFILE_ID && window.CALLER_PROFILE_ID !== '') ? window.CALLER_PROFILE_ID : null,
             isFounder:     (window.AGENT_OPTIONS && window.AGENT_OPTIONS.length > 0) || false
         };
@@ -78,6 +80,15 @@
         if (tt === 'paid')     p.set('trafficType', 'PaidAds');
         else if (tt === 'non_paid') p.set('trafficType', 'NonPaid');
         else                   p.set('trafficType', 'All');
+
+        const qm = s.qualityMode || 'real_human';
+        if (qm === 'all') p.set('qualityMode', 'All');
+        else if (qm === 'likely_human') p.set('qualityMode', 'LikelyHuman');
+        else if (qm === 'review') p.set('qualityMode', 'Review');
+        else if (qm === 'suspicious') p.set('qualityMode', 'Suspicious');
+        else if (qm === 'likely_bot') p.set('qualityMode', 'LikelyBot');
+        else if (qm === 'internal') p.set('qualityMode', 'Internal');
+        else p.set('qualityMode', 'RealHuman');
 
         // Agent scoping — include the selected agent scope for founders and agents.
         if (s.agentProfileId) {

@@ -45,11 +45,11 @@ public sealed class AnalyticsQueryService : IAnalyticsQueryService
 
     private IQueryable<AnalyticsEvent> BaseEvents(TimeRangeRequest range, ScopeContext scope, Guid[]? scopedAgentIds = null) =>
         _db.AnalyticsEvents.AsNoTracking()
-            .Where(e => !e.IsInternal)
             .Where(e => e.EventUtc >= range.FromUtc && e.EventUtc <= range.ToUtc)
             .Where(EnvPredicateEvents())
             .Where(HostPredicateEvents())
-            .Where(ScopePredicateEvents(scope, scopedAgentIds));
+            .Where(ScopePredicateEvents(scope, scopedAgentIds))
+            .Where(QualityPredicateEvents(range.QualityMode));
 
 
     public IQueryable<AnalyticsEvent> ScopedEvents(
@@ -60,29 +60,138 @@ public sealed class AnalyticsQueryService : IAnalyticsQueryService
 
     private IQueryable<WebsiteLead> BaseLeads(TimeRangeRequest range, ScopeContext scope, Guid[]? scopedAgentIds = null) =>
         _db.WebsiteLeads.AsNoTracking()
-            .Where(l => !l.IsInternal)
             .Where(l => !l.IsDeleted)
             .Where(l => l.CreatedUtc >= range.FromUtc && l.CreatedUtc <= range.ToUtc)
             .Where(EnvPredicateLeads())
             .Where(HostPredicateLeads())
-            .Where(ScopePredicateLeads(scope, scopedAgentIds));
+            .Where(ScopePredicateLeads(scope, scopedAgentIds))
+            .Where(QualityPredicateLeads(range.QualityMode));
 
-    private IQueryable<AnalyticsEvent> EventsInRange(DateTime from, DateTime to, ScopeContext scope, Guid[]? scopedAgentIds = null) =>
+    private IQueryable<AnalyticsEvent> EventsInRange(DateTime from, DateTime to, ScopeContext scope, Guid[]? scopedAgentIds = null, TrafficQualityMode qualityMode = TrafficQualityMode.RealHuman) =>
         _db.AnalyticsEvents.AsNoTracking()
-            .Where(e => !e.IsInternal)
             .Where(e => e.EventUtc >= from && e.EventUtc <= to)
             .Where(EnvPredicateEvents())
             .Where(HostPredicateEvents())
-            .Where(ScopePredicateEvents(scope, scopedAgentIds));
+            .Where(ScopePredicateEvents(scope, scopedAgentIds))
+            .Where(QualityPredicateEvents(qualityMode));
 
-    private IQueryable<WebsiteLead> LeadsInRange(DateTime from, DateTime to, ScopeContext scope, Guid[]? scopedAgentIds = null) =>
+    private IQueryable<WebsiteLead> LeadsInRange(DateTime from, DateTime to, ScopeContext scope, Guid[]? scopedAgentIds = null, TrafficQualityMode qualityMode = TrafficQualityMode.RealHuman) =>
         _db.WebsiteLeads.AsNoTracking()
-            .Where(l => !l.IsInternal)
             .Where(l => !l.IsDeleted)
             .Where(l => l.CreatedUtc >= from && l.CreatedUtc <= to)
             .Where(EnvPredicateLeads())
             .Where(HostPredicateLeads())
-            .Where(ScopePredicateLeads(scope, scopedAgentIds));
+            .Where(ScopePredicateLeads(scope, scopedAgentIds))
+            .Where(QualityPredicateLeads(qualityMode));
+
+
+    private static Expression<Func<AnalyticsEvent, bool>> QualityPredicateEvents(TrafficQualityMode mode)
+    {
+        return mode switch
+        {
+            TrafficQualityMode.All => e => true,
+
+            TrafficQualityMode.Internal => e => e.IsInternal,
+
+            TrafficQualityMode.LikelyBot => e =>
+                !e.IsInternal &&
+                (
+                    e.WebDriver == true ||
+                    e.IsHeadless == true ||
+                    ((e.UserAgent ?? "").ToLower().Contains("bot")) ||
+                    ((e.UserAgent ?? "").ToLower().Contains("crawler")) ||
+                    ((e.UserAgent ?? "").ToLower().Contains("spider")) ||
+                    ((e.UserAgent ?? "").ToLower().Contains("headless")) ||
+                    ((e.UserAgent ?? "").ToLower().Contains("selenium")) ||
+                    ((e.UserAgent ?? "").ToLower().Contains("puppeteer")) ||
+                    ((e.UserAgent ?? "").ToLower().Contains("playwright")) ||
+                    ((e.UserAgent ?? "").ToLower().Contains("curl")) ||
+                    ((e.UserAgent ?? "").ToLower().Contains("wget")) ||
+                    ((e.UserAgent ?? "").ToLower().Contains("python-requests")) ||
+                    ((e.UserAgent ?? "").ToLower().Contains("httpclient"))
+                ),
+
+            TrafficQualityMode.Suspicious => e =>
+                !e.IsInternal &&
+                e.WebDriver != true &&
+                e.IsHeadless != true &&
+                (
+                    ((e.MouseMoveCount ?? 0) == 0 && (e.ScrollPercent ?? 0) < 25) ||
+                    string.IsNullOrWhiteSpace(e.Browser) ||
+                    e.Browser == "unknown" ||
+                    string.IsNullOrWhiteSpace(e.OperatingSystem) ||
+                    e.OperatingSystem == "unknown"
+                ) &&
+                !(
+                    ((e.UserAgent ?? "").ToLower().Contains("bot")) ||
+                    ((e.UserAgent ?? "").ToLower().Contains("crawler")) ||
+                    ((e.UserAgent ?? "").ToLower().Contains("spider")) ||
+                    ((e.UserAgent ?? "").ToLower().Contains("headless")) ||
+                    ((e.UserAgent ?? "").ToLower().Contains("selenium")) ||
+                    ((e.UserAgent ?? "").ToLower().Contains("puppeteer")) ||
+                    ((e.UserAgent ?? "").ToLower().Contains("playwright")) ||
+                    ((e.UserAgent ?? "").ToLower().Contains("curl")) ||
+                    ((e.UserAgent ?? "").ToLower().Contains("wget")) ||
+                    ((e.UserAgent ?? "").ToLower().Contains("python-requests")) ||
+                    ((e.UserAgent ?? "").ToLower().Contains("httpclient"))
+                ),
+
+            TrafficQualityMode.Review => e =>
+                !e.IsInternal &&
+                e.WebDriver != true &&
+                e.IsHeadless != true &&
+                (
+                    ((e.MouseMoveCount ?? 0) > 0 && (e.ScrollPercent ?? 0) < 25) ||
+                    ((e.MouseMoveCount ?? 0) == 0 && (e.ScrollPercent ?? 0) >= 25)
+                ),
+
+            TrafficQualityMode.LikelyHuman => e =>
+                !e.IsInternal &&
+                e.WebDriver != true &&
+                e.IsHeadless != true &&
+                ((e.MouseMoveCount ?? 0) > 0 || (e.ScrollPercent ?? 0) >= 25) &&
+                !string.IsNullOrWhiteSpace(e.Browser) &&
+                e.Browser != "unknown" &&
+                !string.IsNullOrWhiteSpace(e.OperatingSystem) &&
+                e.OperatingSystem != "unknown",
+
+            _ => e =>
+                !e.IsInternal &&
+                e.WebDriver != true &&
+                e.IsHeadless != true &&
+                ((e.MouseMoveCount ?? 0) > 0 || (e.ScrollPercent ?? 0) >= 25) &&
+                !string.IsNullOrWhiteSpace(e.Browser) &&
+                e.Browser != "unknown" &&
+                !string.IsNullOrWhiteSpace(e.OperatingSystem) &&
+                e.OperatingSystem != "unknown" &&
+                !(
+                    ((e.UserAgent ?? "").ToLower().Contains("bot")) ||
+                    ((e.UserAgent ?? "").ToLower().Contains("crawler")) ||
+                    ((e.UserAgent ?? "").ToLower().Contains("spider")) ||
+                    ((e.UserAgent ?? "").ToLower().Contains("headless")) ||
+                    ((e.UserAgent ?? "").ToLower().Contains("selenium")) ||
+                    ((e.UserAgent ?? "").ToLower().Contains("puppeteer")) ||
+                    ((e.UserAgent ?? "").ToLower().Contains("playwright")) ||
+                    ((e.UserAgent ?? "").ToLower().Contains("curl")) ||
+                    ((e.UserAgent ?? "").ToLower().Contains("wget")) ||
+                    ((e.UserAgent ?? "").ToLower().Contains("python-requests")) ||
+                    ((e.UserAgent ?? "").ToLower().Contains("httpclient"))
+                )
+        };
+    }
+
+    private static Expression<Func<WebsiteLead, bool>> QualityPredicateLeads(TrafficQualityMode mode)
+    {
+        return mode switch
+        {
+            TrafficQualityMode.All => l => true,
+            TrafficQualityMode.Internal => l => l.IsInternal,
+            TrafficQualityMode.LikelyBot => l => false,
+            TrafficQualityMode.Suspicious => l => false,
+            TrafficQualityMode.Review => l => false,
+            _ => l => !l.IsInternal
+        };
+    }
 
     private bool EnvIncluded(string? env)
     {
@@ -1628,8 +1737,8 @@ public sealed class AnalyticsQueryService : IAnalyticsQueryService
         var span = range.ToUtc - range.FromUtc;
         var prevFrom = range.FromUtc - span;
         var prevTo   = range.ToUtc - span;
-        var prevAllEvents = await EventsInRange(prevFrom, prevTo, scope, scopedAgentIds).ToListAsync();
-        var prevAllLeads  = await LeadsInRange(prevFrom, prevTo, scope, scopedAgentIds).ToListAsync();
+        var prevAllEvents = await EventsInRange(prevFrom, prevTo, scope, scopedAgentIds, range.QualityMode).ToListAsync();
+        var prevAllLeads  = await LeadsInRange(prevFrom, prevTo, scope, scopedAgentIds, range.QualityMode).ToListAsync();
 
         List<AnalyticsEvent> prevEvents;
         List<WebsiteLead>    prevLeads;
