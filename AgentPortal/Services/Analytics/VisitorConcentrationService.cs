@@ -26,11 +26,9 @@ public sealed class VisitorConcentrationService : IVisitorConcentrationService
         CancellationToken ct = default)
     {
         var payload = await GetVisitorConcentrationPayloadAsync(
-            range.FromUtc,
-            range.ToUtc,
-            range.ViewerTimeZone,
-            agentProfileId: null,
-            trafficType: TrafficType.All,
+            range,
+            new ScopeContext(),
+            TrafficType.All,
             ct);
 
         return payload.Rows

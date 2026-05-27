@@ -1,5 +1,6 @@
 using AgentPortal.Models.Analytics;
 using AgentPortal.Services.Analytics;
+using AgentPortal.Services;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 
@@ -11,11 +12,14 @@ namespace AgentPortal.Controllers.API;
 public sealed class VisitorConcentrationController : ControllerBase
 {
     private readonly IVisitorConcentrationService _visitorConcentrationService;
+    private readonly EffectiveAgentContext _effectiveContext;
 
     public VisitorConcentrationController(
-        IVisitorConcentrationService visitorConcentrationService)
+        IVisitorConcentrationService visitorConcentrationService,
+        EffectiveAgentContext effectiveContext)
     {
         _visitorConcentrationService = visitorConcentrationService;
+        _effectiveContext = effectiveContext;
     }
 
     [HttpGet("VisitorConcentration")]
@@ -36,12 +40,17 @@ public sealed class VisitorConcentrationController : ControllerBase
             timezoneId,
             timezoneOffsetMinutes);
 
+        var scope = await _effectiveContext.ResolveScopeAsync(agentProfileId);
+
         var payload =
             await _visitorConcentrationService.GetVisitorConcentrationPayloadAsync(
-                range.FromUtc,
-                range.ToUtc,
-                range.ViewerTimeZone,
-                agentProfileId,
+                new TimeRangeRequest
+                {
+                    FromUtc = range.FromUtc,
+                    ToUtc = range.ToUtc,
+                    ViewerTimeZone = range.ViewerTimeZone
+                },
+                scope,
                 trafficType,
                 ct);
 
