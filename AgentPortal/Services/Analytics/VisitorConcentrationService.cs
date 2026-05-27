@@ -180,7 +180,6 @@ public sealed class VisitorConcentrationService : IVisitorConcentrationService
             })
             .OrderByDescending(x => x.Sessions)
             .ThenByDescending(x => x.Events)
-            .Take(50)
             .ToList();
 
         var totalEventCount = visitorGroups.Sum(x => x.Events);
