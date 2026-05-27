@@ -667,16 +667,6 @@
         return normalized || fallback;
     }
 
-    function getVisitorConcentrationFlag(visitor, sessionCount = Number(visitor?.sessions || 0)) {
-        if (visitor?.likelyInternal) {
-            return { label: 'Review', badgeClass: 'vc-badge-warn' };
-        }
-
-        if (sessionCount >= 2) {
-            return { label: 'Recurring', badgeClass: 'vc-badge-recurring' };
-        }
-
-        return { label: 'Normal', badgeClass: 'vc-badge-good' };
     }
 
     function buildVisitorConcentrationCopyText(rows, rangeLabel) {
