@@ -31,7 +31,7 @@ public sealed class VisitorConcentrationService : IVisitorConcentrationService
             ct);
 
         return payload.Rows
-            .Take(15)
+            
             .Select(x => new VisitorConcentrationDto
             {
                 VisitorId = x.VisitorId,
