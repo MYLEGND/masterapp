@@ -1,10 +1,12 @@
 using System;
+using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Migrations;
 
 #nullable disable
 
 namespace Infrastructure.Migrations
 {
+    [Migration("20260321020000_AddAgentAssistants")]
     public partial class AddAgentAssistants : Migration
     {
         protected override void Up(MigrationBuilder migrationBuilder)

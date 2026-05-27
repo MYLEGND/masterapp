@@ -23,11 +23,21 @@ public sealed class MasterAppDbContextFactory : IDesignTimeDbContextFactory<Mast
         cs = NormalizeSqliteConnectionString(cs, basePath);
 
         var opts = new DbContextOptionsBuilder<MasterAppDbContext>();
-        if (IsSqliteConnectionString(cs))
+
+        var forceSqlServer =
+            string.Equals(
+                Environment.GetEnvironmentVariable("EF_FORCE_SQLSERVER"),
+                "true",
+                StringComparison.OrdinalIgnoreCase);
+
+        if (forceSqlServer)
         {
-            // Local dev uses SQLite while the authoritative snapshot is generated
-            // against SQL Server, so provider-specific index/filter differences
-            // can otherwise block applying already-authored migrations.
+            opts.UseSqlServer(cs);
+        }
+        else if (IsSqliteConnectionString(cs))
+        {
+            // SQLite remains supported for lightweight local runtime only.
+            // EF migration authority and production lineage are SQL Server-first.
             opts.ConfigureWarnings(w => w.Ignore(RelationalEventId.PendingModelChangesWarning));
             opts.UseSqlite(cs);
         }

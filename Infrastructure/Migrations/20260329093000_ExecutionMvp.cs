@@ -1,10 +1,12 @@
 using System;
+using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Migrations;
 
 #nullable disable
 
 namespace Infrastructure.Migrations
 {
+    [Migration("20260329093000_ExecutionMvp")]
     public partial class ExecutionMvp : Migration
     {
         protected override void Up(MigrationBuilder migrationBuilder)
