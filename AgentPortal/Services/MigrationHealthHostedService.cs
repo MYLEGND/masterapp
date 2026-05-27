@@ -99,22 +99,45 @@ public sealed class MigrationHealthHostedService : IHostedService
     {
         try
         {
+            if (string.IsNullOrWhiteSpace(table))
+            {
+                return false;
+            }
+
             var conn = db.Database.GetDbConnection();
 
             if (conn.State != System.Data.ConnectionState.Open)
+            {
                 await conn.OpenAsync(ct);
+            }
 
             await using var cmd = conn.CreateCommand();
 
-            cmd.CommandText = @"
-SELECT COUNT(*)
+            if (db.Database.IsSqlite())
+            {
+                cmd.CommandText = @"
+SELECT COUNT(1)
+FROM sqlite_master
+WHERE type = 'table'
+AND name = $table";
+
+                var param = cmd.CreateParameter();
+                param.ParameterName = "$table";
+                param.Value = table;
+                cmd.Parameters.Add(param);
+            }
+            else
+            {
+                cmd.CommandText = @"
+SELECT COUNT(1)
 FROM INFORMATION_SCHEMA.TABLES
 WHERE TABLE_NAME = @table";
 
-            var param = cmd.CreateParameter();
-            param.ParameterName = "@table";
-            param.Value = table;
-            cmd.Parameters.Add(param);
+                var param = cmd.CreateParameter();
+                param.ParameterName = "@table";
+                param.Value = table;
+                cmd.Parameters.Add(param);
+            }
 
             var result = await cmd.ExecuteScalarAsync(ct);
 
@@ -126,5 +149,4 @@ WHERE TABLE_NAME = @table";
             return false;
         }
     }
-
 }
