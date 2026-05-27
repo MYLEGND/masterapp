@@ -440,9 +440,9 @@
     forensicState.mouseMoveCount = Math.min(forensicState.mouseMoveCount + 1, 10000);
   }, { passive: true });
 
-  document.addEventListener('visibilitychange', () => {
+  function recordVisibilityForensics() {
     forensicState.visibilityChangeCount = Math.min(forensicState.visibilityChangeCount + 1, 1000);
-  }, { passive: true });
+  }
 
 
   function getClientContext() {
@@ -671,13 +671,13 @@
       if (!isDiagnosticEvent) {
         updateTrackedFormStateFromEvent(body);
       }
-      if (body.EventType === 'form_start' || body.EventType === 'form_submit') {
+      if (body.EventType === 'form_start' ||
+          body.EventType === 'form_submit_attempt' ||
+          body.EventType === 'lead_form_submit_success' ||
+          body.EventType === 'lead_form_submit_failed') {
         body.FormKey = body.FormKey || payload.FormKey;
       }
-      if (body.EventType === 'form_submit' &&
-          typeof body.SubmitOutcome === 'string' &&
-          body.SubmitOutcome.toLowerCase() === 'success' &&
-          body.FormKey) {
+      if (body.EventType === 'lead_form_submit_success' && body.FormKey) {
         const state = _formTrackStateByKey.get(body.FormKey);
         if (state) {
           state.submitted = true;
@@ -704,8 +704,7 @@
             body.EventType === 'thank_you_view' ||
             body.EventType === 'life_step2_submit_success' ||
             body.EventType === 'life_contact_first_submit_success' ||
-            body.EventType === 'lead_form_submit_success' ||
-            (body.EventType === 'form_submit' && String(body.SubmitOutcome || '').toLowerCase() === 'success')
+            body.EventType === 'lead_form_submit_success'
           ) {
             void flushQueuedEvents('successful_event');
           }
@@ -906,16 +905,9 @@
         transitionFormState(state, 'contact_viewed', eventType);
         break;
       case 'form_submit_attempt':
-      case 'lead_form_submit_attempt':
       case 'life_step2_submit_attempt':
         state.submitAttempted = true;
         state.submitAttemptedAt = state.submitAttemptedAt || Date.now();
-        break;
-      case 'form_submit':
-        if (typeof payload.SubmitOutcome === 'string' &&
-            payload.SubmitOutcome.toLowerCase() === 'success') {
-          transitionFormState(state, 'submitted', 'form_submit_success');
-        }
         break;
       case 'lead_form_submit_success':
         transitionFormState(state, 'submitted', 'lead_form_submit_success');
@@ -1229,6 +1221,8 @@ function trackCustomFieldError(formKey, fieldName, errorType, offerKey) {
 
   // ── Visibility/page lifecycle ──────────────────────────────────────────────
   document.addEventListener('visibilitychange', function () {
+    recordVisibilityForensics();
+
     if (document.visibilityState === 'hidden') {
       if (_activeStart !== null) {
         _activeMs += Date.now() - _activeStart;

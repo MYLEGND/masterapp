@@ -89,3 +89,16 @@ AgentPortal/publish-azure-agentportal/
 *.snapshot-keep
 *.gz
 *.br
+
+# Archive / backup folders
+*_backup/
+_archive/
+backups/
+*.backup
+*.backup.txt
+*.old
+*.orig
+*.tmp
+
+# Local DB backups
+*.db.backup*

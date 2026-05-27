@@ -305,13 +305,11 @@ public sealed class AnalyticsQueryService : IAnalyticsQueryService
                (IsQuoteFormKey(e.FormKey) || IsQuoteFormKey(e.PageKey));
     }
 
+    // Legacy compatibility only.
+    // Do NOT use form_submit as a canonical success signal moving forward.
     private static bool IsQuoteFallbackSubmitSuccessEvent(AnalyticsEvent e)
     {
-        if (!string.Equals(e.EventType, "form_submit", StringComparison.OrdinalIgnoreCase))
-            return false;
-
-        return string.Equals(e.SubmitOutcome, "success", StringComparison.OrdinalIgnoreCase) &&
-               (IsQuoteFormKey(e.FormKey) || IsQuoteFormKey(e.PageKey));
+        return false;
     }
 
     private static bool IsQuoteSuccessEvent(AnalyticsEvent e) =>
@@ -635,8 +633,6 @@ public sealed class AnalyticsQueryService : IAnalyticsQueryService
     {
         "website_lead_submitted" => 3,
         "lead_form_submit_success" => 2,
-        "form_submit_success" => 2,
-        "form_submit" => 1,
         _ => 0
     };
 
@@ -3125,7 +3121,10 @@ public sealed class AnalyticsQueryService : IAnalyticsQueryService
     {
         var scopedAgentIds = await ResolveScopedAgentIdsAsync(scope);
         var events = await BaseEvents(range, scope, scopedAgentIds)
-            .Where(e => e.EventType == "form_start" || e.EventType == "form_submit" ||
+            .Where(e => e.EventType == "form_start" ||
+                        e.EventType == "form_submit_attempt" ||
+                        e.EventType == "lead_form_submit_success" ||
+                        e.EventType == "form_submit" || // legacy read-only compatibility
                         e.EventType == "form_field_focus" ||
                         e.EventType == "form_field_complete" ||
                         e.EventType == "contact_field_focus" ||
@@ -3134,7 +3133,10 @@ public sealed class AnalyticsQueryService : IAnalyticsQueryService
                         e.EventType == "form_field_error").ToListAsync();
         Func<AnalyticsEvent, string> fKey = e => e.FormKey ?? e.FormId ?? "unknown";
         var starts = events.Where(e => e.EventType == "form_start").GroupBy(fKey).ToDictionary(g => g.Key, g => g.Count());
-        var submits = events.Where(e => e.EventType == "form_submit").GroupBy(fKey).ToDictionary(g => g.Key, g => g.Count());
+        var submits = events
+            .Where(e => e.EventType == "lead_form_submit_success")
+            .GroupBy(fKey)
+            .ToDictionary(g => g.Key, g => g.Count());
         var ffFocus = events.Where(e =>
                 e.EventType == "form_field_focus" ||
                 e.EventType == "contact_field_focus")
@@ -3154,7 +3156,8 @@ public sealed class AnalyticsQueryService : IAnalyticsQueryService
         {
             var startSids = events.Where(e => e.EventType == "form_start" && fKey(e) == fk && !string.IsNullOrWhiteSpace(e.SessionId))
                 .Select(e => e.SessionId!).Distinct().ToHashSet();
-            var submitSids = events.Where(e => e.EventType == "form_submit" && fKey(e) == fk && !string.IsNullOrWhiteSpace(e.SessionId))
+            var submitSids = events
+                .Where(e => e.EventType == "lead_form_submit_success" && fKey(e) == fk && !string.IsNullOrWhiteSpace(e.SessionId))
                 .Select(e => e.SessionId!).Distinct().ToHashSet();
             var s = starts.TryGetValue(fk, out var sc) ? sc : 0;
             var sub = submits.TryGetValue(fk, out var sbc) ? sbc : 0;
@@ -3557,14 +3560,13 @@ public sealed class AnalyticsQueryService : IAnalyticsQueryService
                     var ctas = events.Count(e => e.EventType == "cta_click" || e.EventType == "quote_click");
                     var starts = BuildQuoteFormStartedUnitKeys(events).Count > 0 ? 1 : 0;
                     var submits = events.Count(e =>
-                        e.EventType == "form_submit" &&
-                        (e.SubmitOutcome ?? "").ToLower() == "attempt");
+                        e.EventType == "form_submit_attempt" ||
+                        (
+                            e.EventType == "form_submit" &&
+                            (e.SubmitOutcome ?? "").ToLower() == "attempt"
+                        ));
 
                     var leads =
-                        events.Any(e =>
-                            e.EventType == "form_submit" &&
-                            (e.SubmitOutcome ?? "").ToLower() == "success")
-                        ||
                         events.Any(e => e.EventType == "lead_form_submit_success")
                             ? 1
                             : 0;
@@ -3618,8 +3620,7 @@ public sealed class AnalyticsQueryService : IAnalyticsQueryService
             Events = rows.Count,
             FormStarts = BuildQuoteFormStartedUnitKeys(rows).Count,
             ConfirmedLeads = rows.Count(e =>
-                (e.EventType == "form_submit" && (e.SubmitOutcome ?? "").ToLower() == "success")
-                || e.EventType == "lead_form_submit_success"),
+                e.EventType == "lead_form_submit_success"),
             Devices = BuildRows(ResolveDeviceType),
             Browsers = BuildRows(e => Clean(e.Browser)),
             OperatingSystems = BuildRows(e => Clean(e.OperatingSystem)),
