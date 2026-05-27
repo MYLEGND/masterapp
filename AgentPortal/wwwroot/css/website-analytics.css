@@ -3633,10 +3633,9 @@ body {
     min-width: 0;
     max-width: 100%;
     flex: 1 1 auto;
-    display: flex;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
     align-items: center;
-    justify-content: space-between;
-    flex-wrap: nowrap;
     gap: .45rem .6rem;
     padding: .4rem .55rem;
     border: 1px solid rgba(199,153,49,.24);
@@ -3646,20 +3645,19 @@ body {
 }
 
 .wa-kpi-meta-copy {
-    flex: 1 1 auto;
     min-width: 0;
-    display: flex;
-    align-items: center;
-    gap: .35rem;
+    display: block;
 }
 
 .wa-kpi-meta-kicker {
+    display: block;
     color: rgba(243,222,163,.76);
     font-size: .56rem;
     font-weight: 900;
     letter-spacing: .16em;
     text-transform: uppercase;
     white-space: nowrap;
+    margin-bottom: .06rem;
 }
 
 .wa-kpi-meta-status {
@@ -3668,17 +3666,17 @@ body {
     font-size: .72rem;
     font-weight: 700;
     line-height: 1.2;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
+    white-space: normal;
+    overflow: visible;
+    text-overflow: clip;
 }
 
 .wa-kpi-meta-actions {
     display: flex;
     align-items: center;
-    flex: 0 1 auto;
+    flex: 0 0 auto;
     flex-wrap: nowrap;
-    min-width: 0;
+    min-width: max-content;
     gap: .35rem;
     justify-content: flex-end;
 }
@@ -4648,6 +4646,7 @@ body {
     }
 
     .wa-kpi-meta-dock {
+        display: flex;
         width: 100%;
     }
 }
@@ -4689,6 +4688,7 @@ body {
     }
 
     .wa-kpi-meta-dock {
+        display: flex;
         align-items: flex-start;
         flex-direction: column;
         gap: .65rem .75rem;
