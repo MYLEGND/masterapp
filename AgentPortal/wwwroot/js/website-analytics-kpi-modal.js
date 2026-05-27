@@ -14,6 +14,7 @@
     let activeMetric = null;
     let isOpen = false;
     let closing = false;
+    let initialized = false;
 
     // ── DOM refs (resolved once on init) ──────────────────────────────────────
     let backdrop, modalRoot, panel, btnClose;
@@ -946,6 +947,9 @@
 
     // ── Init ──────────────────────────────────────────────────────────────────
     function init() {
+        if (initialized) return;
+        initialized = true;
+
         backdrop    = document.getElementById('kpiDetailBackdrop');
         modalRoot   = document.getElementById('kpiDetailModal');
         btnClose    = document.getElementById('kpiDetailClose');
@@ -960,7 +964,10 @@
         elChartCanvas = document.getElementById('kpiDetailChart');
         elBreakdown   = document.getElementById('kpiDetailBreakdown');
 
-        if (!modalRoot) return; // guard: markup not present
+        if (!modalRoot) {
+            initialized = false;
+            return;
+        } // guard: markup not present
 
         // Build the panel wrapper inside modalRoot (replaces the raw children layout)
         // The modal HTML in the view has header + body as direct children of #kpiDetailModal.
@@ -980,19 +987,27 @@
         }
 
         // KPI card click handlers
-        document.querySelectorAll('[data-kpi-card]').forEach(card => {
+        document.addEventListener('click', event => {
+            const card = event.target.closest('[data-kpi-card]');
+            if (!card) return;
+
             const metric = card.dataset.metric;
             if (!metric) return;
 
-            card.addEventListener('click', () => openModal(metric));
+            event.preventDefault();
+            openModal(metric);
+        });
 
-            // Keyboard: Enter / Space
-            card.addEventListener('keydown', e => {
-                if (e.key === 'Enter' || e.key === ' ') {
-                    e.preventDefault();
-                    openModal(metric);
-                }
-            });
+        document.addEventListener('keydown', event => {
+            const card = event.target.closest('[data-kpi-card]');
+            if (!card) return;
+            if (event.key !== 'Enter' && event.key !== ' ') return;
+
+            const metric = card.dataset.metric;
+            if (!metric) return;
+
+            event.preventDefault();
+            openModal(metric);
         });
 
         // Close button
@@ -1048,6 +1063,16 @@
             if (!isOpen || !activeMetric) return;
             openModal(activeMetric);
         });
+
+        window.websiteAnalyticsKpiModal = {
+            open: openModal,
+            close: hideModal,
+            isOpen: () => isOpen,
+            activeMetric: () => activeMetric,
+            initialized: () => initialized
+        };
+
+        window.dispatchEvent(new CustomEvent('websiteAnalytics:kpiModalReady'));
     }
 
     if (document.readyState === 'loading') {
