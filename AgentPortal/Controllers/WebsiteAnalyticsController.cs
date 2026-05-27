@@ -39,8 +39,9 @@ namespace AgentPortal.Controllers;
         private readonly WebsiteAnalyticsAiDataBuilder _aiDataBuilder;
         private readonly IVisitorConcentrationService _visitorConcentrationService;
         private readonly IKpiDetailBreakdownService _kpiDetailBreakdownService;
+        private readonly IVisitorTrustScoringService _visitorTrustScoringService;
 
-        public WebsiteAnalyticsController(IAnalyticsQueryService analytics, IMetaAdsService metaAds, IMetaAdsOAuthService metaAdsOAuth, IMetaAdsConnectionStore metaAdsConnectionStore, Services.Tracking.IAgentTrackingService tracking, IMetaSignalAnalyticsService metaSignalAnalytics, ILandingRouteDiscoveryService landingRouteDiscovery, WebsiteAnalyticsAiDataBuilder aiDataBuilder, IVisitorConcentrationService visitorConcentrationService, IKpiDetailBreakdownService kpiDetailBreakdownService, ILogger<WebsiteAnalyticsController> logger, Infrastructure.Data.MasterAppDbContext db, IConfiguration config, EffectiveAgentContext effectiveContext)
+        public WebsiteAnalyticsController(IAnalyticsQueryService analytics, IMetaAdsService metaAds, IMetaAdsOAuthService metaAdsOAuth, IMetaAdsConnectionStore metaAdsConnectionStore, Services.Tracking.IAgentTrackingService tracking, IMetaSignalAnalyticsService metaSignalAnalytics, ILandingRouteDiscoveryService landingRouteDiscovery, WebsiteAnalyticsAiDataBuilder aiDataBuilder, IVisitorConcentrationService visitorConcentrationService, IKpiDetailBreakdownService kpiDetailBreakdownService, IVisitorTrustScoringService visitorTrustScoringService, ILogger<WebsiteAnalyticsController> logger, Infrastructure.Data.MasterAppDbContext db, IConfiguration config, EffectiveAgentContext effectiveContext)
         {
             _analytics = analytics;
             _metaAds = metaAds;
@@ -52,6 +53,7 @@ namespace AgentPortal.Controllers;
             _aiDataBuilder = aiDataBuilder;
             _visitorConcentrationService = visitorConcentrationService;
             _kpiDetailBreakdownService = kpiDetailBreakdownService;
+            _visitorTrustScoringService = visitorTrustScoringService;
             _logger = logger;
             _db = db;
             _founderUpn = config["Founder:Upn"] ?? throw new InvalidOperationException("Founder:Upn configuration is required");
@@ -824,103 +826,50 @@ namespace AgentPortal.Controllers;
         var events = await query
             .OrderBy(x => x.EventUtc)
             .Take(500)
-            .Select(x => new
-            {
-                x.EventUtc,
-                x.EventType,
-                x.PageKey,
-                x.Path,
-                x.FormKey,
-                x.ElementId,
-                x.ScrollPercent,
-                x.DwellMilliseconds,
-                x.EngagedMilliseconds,
-                x.DeviceType,
-                x.Browser,
-                x.OperatingSystem,
-                x.UtmSource,
-                x.UtmMedium,
-                x.UtmCampaign,
-                x.ReferrerHost,
-                x.IsInternal,
-                x.SessionId,
-                x.VisitorId
-            })
             .ToListAsync();
 
-        var totalEvents = events.Count;
-        var sessions = events
+        var eventVisitorIds = events
+            .Select(x => x.VisitorId)
+            .Where(x => !string.IsNullOrWhiteSpace(x))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
+        var eventSessionIds = events
             .Select(x => x.SessionId)
             .Where(x => !string.IsNullOrWhiteSpace(x))
-            .Distinct()
-            .Count();
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
 
-        var maxScroll = events
-            .Where(x => x.ScrollPercent.HasValue)
-            .Select(x => x.ScrollPercent!.Value)
-            .DefaultIfEmpty(0)
-            .Max();
+        var metaSignals = await _db.MetaSignalEvents
+            .AsNoTracking()
+            .Where(x => x.CreatedUtc >= fromUtc && x.CreatedUtc <= toUtc)
+            .Where(x =>
+                (!string.IsNullOrWhiteSpace(x.VisitorId) && eventVisitorIds.Contains(x.VisitorId!)) ||
+                (!string.IsNullOrWhiteSpace(x.SessionId) && eventSessionIds.Contains(x.SessionId!)))
+            .ToListAsync();
 
-        var formStarts = events.Count(x =>
-            x.EventType == "form_start");
-
-        var ctaClicks = events.Count(x =>
-            x.EventType == "cta_click" ||
-            x.EventType == "quote_click");
-
-        var trustScore = 100;
-        var signals = new List<string>();
-
-        if (totalEvents >= 120)
-        {
-            trustScore -= 20;
-            signals.Add("High event volume");
-        }
-
-        if (formStarts >= 4)
-        {
-            trustScore -= 15;
-            signals.Add("Repeated form starts");
-        }
-
-        if (ctaClicks >= 12)
-        {
-            trustScore -= 15;
-            signals.Add("Repeated CTA clicks");
-        }
-
-        if (maxScroll < 10 && totalEvents >= 10)
-        {
-            trustScore -= 10;
-            signals.Add("Low/no scroll behavior");
-        }
-
-        if (events.Any(x => x.IsInternal))
-        {
-            trustScore -= 25;
-            signals.Add("Internal/test traffic");
-        }
-
-        trustScore = Math.Max(0, Math.Min(100, trustScore));
-
-        var trustTier =
-            trustScore >= 85 ? "Trusted" :
-            trustScore >= 65 ? "Review" :
-            trustScore >= 40 ? "Suspicious" :
-            "Likely Bot";
+        var trust = _visitorTrustScoringService.Calculate(events, metaSignals);
 
         return Ok(new
         {
             visitorId,
             sessionId,
-            trustScore,
-            trustTier,
-            signals,
-            totalEvents,
-            sessions,
-            maxScroll,
-            formStarts,
-            ctaClicks,
+            trustScore = trust.TrustScore,
+            trustTier = trust.TrustTier,
+            signals = trust.Signals,
+            totalEvents = trust.TotalEvents,
+            sessions = trust.Sessions,
+            maxScroll = trust.MaxScroll,
+            formStarts = trust.FormStarts,
+            ctaClicks = trust.CtaClicks,
+            averageSecondsBetweenEvents = trust.AverageSecondsBetweenEvents,
+            burstEventCount = trust.BurstEventCount,
+            humanConfidence = trust.HumanConfidence,
+            behaviorScore = trust.BehaviorScore,
+            intentScore = trust.IntentScore,
+            engagementScore = trust.EngagementScore,
+            frictionScore = trust.FrictionScore,
+            leadReadinessScore = trust.LeadReadinessScore,
             events
         });
     }
