@@ -667,8 +667,6 @@
         return normalized || fallback;
     }
 
-    }
-
     function buildVisitorConcentrationCopyText(rows, rangeLabel) {
         const normalizedRows = Array.isArray(rows) ? rows : [];
         const recurringCount = normalizedRows.filter(visitor => Number(visitor.sessions || 0) >= 2).length;
