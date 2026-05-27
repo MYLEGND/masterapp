@@ -5,6 +5,22 @@ namespace AgentPortal.Services.Analytics;
 
 public sealed class VisitorTrustScoringService : IVisitorTrustScoringService
 {
+    private static readonly HashSet<string> AutomationUserAgentTokens = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "bot",
+        "crawler",
+        "spider",
+        "headless",
+        "phantom",
+        "selenium",
+        "puppeteer",
+        "playwright",
+        "curl",
+        "wget",
+        "python-requests",
+        "httpclient"
+    };
+
     public VisitorTrustScoreDto Calculate(
         IReadOnlyCollection<AnalyticsEvent> events,
         IReadOnlyCollection<MetaSignalEvent> metaSignals)
@@ -24,12 +40,13 @@ public sealed class VisitorTrustScoringService : IVisitorTrustScoringService
             .DefaultIfEmpty(0)
             .Max();
 
-        var formStarts = ordered.Count(x =>
-            string.Equals(x.EventType, "form_start", StringComparison.OrdinalIgnoreCase));
-
-        var ctaClicks = ordered.Count(x =>
-            string.Equals(x.EventType, "cta_click", StringComparison.OrdinalIgnoreCase) ||
-            string.Equals(x.EventType, "quote_click", StringComparison.OrdinalIgnoreCase));
+        var formStarts = CountEvents(ordered, "form_start", "lead_form_start");
+        var ctaClicks = CountEvents(ordered, "cta_click", "quote_click");
+        var pageViews = CountEvents(ordered, "page_view");
+        var exits = CountEvents(ordered, "page_exit");
+        var visibilityEvents = ordered.Count(x =>
+            IsEvent(x, "page_visibility_hidden") ||
+            IsEvent(x, "page_visibility_return"));
 
         var avgSecondsBetweenEvents = AverageSecondsBetweenEvents(ordered);
         var burstEventCount = MaxEventsInsideWindow(ordered, TimeSpan.FromSeconds(10));
@@ -40,8 +57,83 @@ public sealed class VisitorTrustScoringService : IVisitorTrustScoringService
         var qualificationScore = metaSignals.Select(x => x.QualificationScore).DefaultIfEmpty(0).Max();
         var frictionScore = metaSignals.Select(x => x.FrictionScore).DefaultIfEmpty(0).Max();
 
-        var trustScore = 100;
+        var trustScore = 72;
         var signals = new List<string>();
+
+        var hasResolvedBrowser = ordered.Any(x => !IsUnknown(x.Browser));
+        var hasResolvedOs = ordered.Any(x => !IsUnknown(x.OperatingSystem));
+        var hasResolvedDevice = ordered.Any(x => !IsUnknown(x.DeviceType));
+        var hasUserAgent = ordered.Any(x => !string.IsNullOrWhiteSpace(x.UserAgent));
+        var hasMouseMovement = ordered.Any(x => (x.MouseMoveCount ?? 0) > 0);
+        var maxMouseMoves = ordered.Select(x => x.MouseMoveCount ?? 0).DefaultIfEmpty(0).Max();
+        var webdriverDetected = ordered.Any(x => x.WebDriver == true);
+        var headlessDetected = ordered.Any(x => x.IsHeadless == true);
+        var automationUaDetected = ordered.Any(x => ContainsAutomationUserAgentToken(x.UserAgent));
+        var directOnly = ordered
+            .Where(x => !string.IsNullOrWhiteSpace(x.UtmSource))
+            .Select(x => x.UtmSource!.Trim())
+            .DefaultIfEmpty("Direct")
+            .All(x => string.Equals(x, "Direct", StringComparison.OrdinalIgnoreCase));
+
+        if (ordered.Any(x => x.IsInternal))
+        {
+            trustScore -= 30;
+            signals.Add("Internal/test traffic");
+        }
+
+        if (webdriverDetected)
+        {
+            trustScore -= 45;
+            signals.Add("Browser automation detected");
+        }
+
+        if (headlessDetected)
+        {
+            trustScore -= 45;
+            signals.Add("Headless browser detected");
+        }
+
+        if (automationUaDetected)
+        {
+            trustScore -= 35;
+            signals.Add("Automation user-agent pattern");
+        }
+
+        if (!hasUserAgent)
+        {
+            trustScore -= 18;
+            signals.Add("Missing user agent");
+        }
+
+        if (!hasResolvedBrowser)
+        {
+            trustScore -= 14;
+            signals.Add("Unknown browser");
+        }
+
+        if (!hasResolvedOs)
+        {
+            trustScore -= 14;
+            signals.Add("Unknown operating system");
+        }
+
+        if (!hasResolvedDevice)
+        {
+            trustScore -= 8;
+            signals.Add("Unknown device type");
+        }
+
+        if (!hasMouseMovement && totalEvents >= 8 && formStarts == 0 && ctaClicks == 0)
+        {
+            trustScore -= 18;
+            signals.Add("No mouse movement captured");
+        }
+
+        if (maxMouseMoves >= 5)
+        {
+            trustScore += 8;
+            signals.Add("Human pointer movement detected");
+        }
 
         if (totalEvents >= 120)
         {
@@ -63,14 +155,14 @@ public sealed class VisitorTrustScoringService : IVisitorTrustScoringService
 
         if (maxScroll < 10 && totalEvents >= 10)
         {
-            trustScore -= 10;
+            trustScore -= 12;
             signals.Add("Low/no scroll behavior");
         }
 
-        if (ordered.Any(x => x.IsInternal))
+        if (maxScroll >= 25)
         {
-            trustScore -= 25;
-            signals.Add("Internal/test traffic");
+            trustScore += 7;
+            signals.Add("Scroll behavior detected");
         }
 
         if (burstEventCount >= 25)
@@ -85,6 +177,24 @@ public sealed class VisitorTrustScoringService : IVisitorTrustScoringService
             signals.Add("Unnatural event cadence");
         }
 
+        if (directOnly && totalEvents >= 10 && formStarts == 0 && ctaClicks == 0 && maxScroll < 50)
+        {
+            trustScore -= 10;
+            signals.Add("Low-intent direct session");
+        }
+
+        if (pageViews <= 1 && exits == 0 && totalEvents >= 10 && formStarts == 0)
+        {
+            trustScore -= 8;
+            signals.Add("No clean exit signal");
+        }
+
+        if (visibilityEvents >= 2)
+        {
+            trustScore += 4;
+            signals.Add("Natural visibility changes");
+        }
+
         if (bestMetaScore >= 60)
         {
             trustScore += 8;
@@ -97,9 +207,9 @@ public sealed class VisitorTrustScoringService : IVisitorTrustScoringService
             signals.Add("Meaningful engagement detected");
         }
 
-        if (qualificationScore >= 20)
+        if (qualificationScore >= 20 || formStarts > 0)
         {
-            trustScore += 8;
+            trustScore += 10;
             signals.Add("Lead-readiness behavior detected");
         }
 
@@ -112,9 +222,11 @@ public sealed class VisitorTrustScoringService : IVisitorTrustScoringService
         trustScore = Math.Max(0, Math.Min(100, trustScore));
 
         var trustTier =
-            trustScore >= 85 ? "Trusted" :
-            trustScore >= 65 ? "Review" :
-            trustScore >= 40 ? "Suspicious" :
+            webdriverDetected || headlessDetected || automationUaDetected ? "Likely Bot" :
+            trustScore >= 88 ? "Trusted" :
+            trustScore >= 70 ? "Likely Human" :
+            trustScore >= 50 ? "Review" :
+            trustScore >= 30 ? "Suspicious" :
             "Likely Bot";
 
         return new VisitorTrustScoreDto
@@ -136,6 +248,23 @@ public sealed class VisitorTrustScoringService : IVisitorTrustScoringService
             FrictionScore = frictionScore,
             LeadReadinessScore = qualificationScore
         };
+    }
+
+    private static int CountEvents(IReadOnlyCollection<AnalyticsEvent> events, params string[] names) =>
+        events.Count(x => names.Any(name => IsEvent(x, name)));
+
+    private static bool IsEvent(AnalyticsEvent e, string eventType) =>
+        string.Equals(e.EventType, eventType, StringComparison.OrdinalIgnoreCase);
+
+    private static bool IsUnknown(string? value) =>
+        string.IsNullOrWhiteSpace(value) ||
+        string.Equals(value.Trim(), "unknown", StringComparison.OrdinalIgnoreCase);
+
+    private static bool ContainsAutomationUserAgentToken(string? userAgent)
+    {
+        if (string.IsNullOrWhiteSpace(userAgent)) return false;
+        return AutomationUserAgentTokens.Any(token =>
+            userAgent.Contains(token, StringComparison.OrdinalIgnoreCase));
     }
 
     private static decimal AverageSecondsBetweenEvents(IReadOnlyList<AnalyticsEvent> events)
