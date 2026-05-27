@@ -37,6 +37,9 @@ public class AnalyticsIngestController : ControllerBase
 
     public sealed class AnalyticsEventRequest
     {
+        public int? SchemaVersion { get; set; }
+        public string? TrackingVersion { get; set; }
+
         [Required] public Guid ClientEventId { get; set; }
         [Required] public string EventType { get; set; } = null!;
         public string? PageKey { get; set; }
@@ -158,6 +161,8 @@ public class AnalyticsIngestController : ControllerBase
         {
             EventId = Guid.NewGuid(),
             ClientEventId = req.ClientEventId,
+            SchemaVersion = req.SchemaVersion ?? 1,
+            TrackingVersion = TrimOrNull(req.TrackingVersion),
             EventType = req.EventType.Trim(),
             PageKey = TrimOrNull(req.PageKey),
             SectionKey = TrimOrNull(req.SectionKey),

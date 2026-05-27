@@ -455,6 +455,9 @@ public sealed class TrackingProxyController : ControllerBase
 
     public sealed class AnalyticsEventRequest
     {
+        public int? SchemaVersion { get; set; }
+        public string? TrackingVersion { get; set; }
+
         [Required] public Guid ClientEventId { get; set; }
         [Required] public string EventType { get; set; } = string.Empty;
         public string? PageKey { get; set; }

@@ -33,6 +33,12 @@ public class AnalyticsEvent
     public string? SubmitOutcome { get; set; }
     public string? MetadataJson { get; set; }
 
+    /// <summary>Analytics schema version for safe event evolution.</summary>
+    public int SchemaVersion { get; set; } = 1;
+
+    /// <summary>Tracking runtime/build version identifier.</summary>
+    public string? TrackingVersion { get; set; }
+
     // ── Behavior Intelligence Engine (additive, all nullable for backward compat) ──
 
     /// <summary>Parsed hostname from Referrer (e.g. "facebook.com").</summary>

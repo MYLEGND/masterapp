@@ -155,6 +155,8 @@
 
   function createFormTrackState(formKey, quoteType = null) {
     return {
+      SchemaVersion: TRACKING_SCHEMA_VERSION,
+      TrackingVersion: TRACKING_RUNTIME_VERSION,
       instanceId: uuid(),
       formKey,
       quoteType,
@@ -542,10 +544,15 @@
     }
   }
 
+  const TRACKING_SCHEMA_VERSION = 1;
+  const TRACKING_RUNTIME_VERSION = '2026.05.stabilized';
+
   function buildBody(payload) {
     const sessionId = getSessionId();
     const attribution = resolveCurrentSessionAttribution(payload, sessionId);
     return {
+      SchemaVersion: payload.SchemaVersion || payload.schemaVersion || TRACKING_SCHEMA_VERSION,
+      TrackingVersion: payload.TrackingVersion || payload.trackingVersion || TRACKING_RUNTIME_VERSION,
       ClientEventId: uuid(),
       EventType: payload.EventType,
       PageKey: payload.PageKey || PAGE_KEY,

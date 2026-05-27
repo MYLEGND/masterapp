@@ -261,6 +261,8 @@ public class MasterAppDbContext : DbContext
             e.Property(x => x.Host).HasMaxLength(160);
             e.Property(x => x.SubmitOutcome).HasMaxLength(40);
             e.Property(x => x.MetadataJson).HasColumnType(isSqlServer ? "nvarchar(max)" : "TEXT");
+            e.Property(x => x.SchemaVersion).HasDefaultValue(1);
+            e.Property(x => x.TrackingVersion).HasMaxLength(80);
             e.Property(x => x.EventUtc).IsRequired();
             e.Property(x => x.ReceivedUtc).IsRequired();
             e.Property(x => x.AgentSlug).HasMaxLength(200);
