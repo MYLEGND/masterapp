@@ -3513,7 +3513,7 @@ body {
 
 .wa-kpi-stage-intro {
     display: grid;
-    grid-template-columns: minmax(260px, 1fr) minmax(520px, 44rem);
+    grid-template-columns: minmax(240px, 1fr) minmax(0, 1fr);
     align-items: start;
     gap: 1rem;
     padding-bottom: .95rem;
@@ -3569,41 +3569,51 @@ body {
     min-width: 0;
     display: flex;
     flex-direction: row;
-    align-items: stretch;
+    align-items: center;
     justify-content: flex-end;
-    gap: .7rem;
+    gap: .5rem;
+    flex-wrap: nowrap;
 }
 
 .wa-quality-filter {
-    width: min(100%, 18rem);
+    width: auto;
+    min-width: 210px;
+    max-width: 270px;
     margin-left: 0;
-    flex: 0 0 18rem;
-    padding: .72rem .78rem;
-    border: 1px solid rgba(231,196,103,.48);
-    border-radius: 16px;
-    background: linear-gradient(180deg, rgba(255,255,255,.035) 0%, rgba(255,255,255,.012) 100%), rgba(8,15,34,.32);
-    box-shadow: inset 0 1px 0 rgba(255,255,255,.04), 0 14px 24px rgba(0,0,0,.14);
+    flex: 0 1 270px;
+    display: flex;
+    align-items: center;
+    gap: .45rem;
+    padding: .38rem .55rem;
+    border: 1px solid rgba(231,196,103,.38);
+    border-radius: 999px;
+    background: rgba(8,15,34,.26);
+    box-shadow: inset 0 1px 0 rgba(255,255,255,.04);
 }
 
 .wa-quality-label {
-    display: block;
-    margin: 0 0 .38rem;
+    display: inline-flex;
+    margin: 0;
     color: #7a5a14;
-    font-size: .72rem;
+    font-size: .62rem;
     font-weight: 900;
     letter-spacing: .08em;
     text-transform: uppercase;
+    white-space: nowrap;
+    line-height: 1;
 }
 
 .wa-quality-select {
-    width: 100%;
-    min-height: 40px;
-    padding: 0 .8rem;
+    width: auto;
+    min-width: 0;
+    flex: 1 1 auto;
+    min-height: 28px;
+    padding: 0 .55rem;
     border: 1px solid rgba(231,196,103,.55);
-    border-radius: 12px;
+    border-radius: 999px;
     background: #ffffff;
     color: #7a5a14 !important;
-    font-size: .84rem;
+    font-size: .76rem;
     font-weight: 900;
     outline: none;
     -webkit-text-fill-color: #7a5a14;
@@ -3620,48 +3630,56 @@ body {
 }
 
 .wa-kpi-meta-dock {
-    width: 100%;
-    min-width: 280px;
-    flex: 1 1 auto;
+    width: auto;
+    min-width: 0;
+    max-width: 100%;
+    flex: 1 1 320px;
     display: flex;
     align-items: center;
     justify-content: space-between;
-    gap: .55rem .85rem;
-    padding: .65rem .8rem;
+    flex-wrap: nowrap;
+    gap: .45rem .6rem;
+    padding: .4rem .55rem;
     border: 1px solid rgba(199,153,49,.24);
-    border-radius: 16px;
-    background: linear-gradient(180deg, rgba(255,255,255,.03) 0%, rgba(255,255,255,.012) 100%), rgba(8,15,34,.28);
-    box-shadow: inset 0 1px 0 rgba(255,255,255,.04), 0 14px 24px rgba(0,0,0,.14);
+    border-radius: 999px;
+    background: rgba(8,15,34,.26);
+    box-shadow: inset 0 1px 0 rgba(255,255,255,.04);
 }
 
 .wa-kpi-meta-copy {
     flex: 1 1 auto;
     min-width: 0;
-    display: grid;
-    gap: .18rem;
+    display: flex;
+    align-items: center;
+    gap: .35rem;
 }
 
 .wa-kpi-meta-kicker {
     color: rgba(243,222,163,.76);
-    font-size: .62rem;
+    font-size: .56rem;
     font-weight: 900;
     letter-spacing: .16em;
     text-transform: uppercase;
+    white-space: nowrap;
 }
 
 .wa-kpi-meta-status {
     margin: 0;
     color: rgba(216,222,234,.84);
-    font-size: .8rem;
+    font-size: .72rem;
     font-weight: 700;
-    line-height: 1.35;
+    line-height: 1.2;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
 }
 
 .wa-kpi-meta-actions {
     display: flex;
     align-items: center;
-    flex: 0 0 auto;
+    flex: 0 1 auto;
     flex-wrap: nowrap;
+    min-width: 0;
     gap: .35rem;
     justify-content: flex-end;
 }
