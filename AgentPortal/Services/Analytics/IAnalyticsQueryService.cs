@@ -1,5 +1,6 @@
 using System.Threading.Tasks;
 using AgentPortal.Models.Analytics;
+using Domain.Entities;
 
 namespace AgentPortal.Services.Analytics;
 
