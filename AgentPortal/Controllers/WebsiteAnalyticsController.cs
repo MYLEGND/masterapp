@@ -279,6 +279,7 @@ namespace AgentPortal.Controllers;
         [FromQuery] Guid? agentProfileId = null,
         [FromQuery] bool team = false,
         [FromQuery] TrafficType trafficType = TrafficType.All,
+        [FromQuery] TrafficQualityMode qualityMode = TrafficQualityMode.RealHuman,
         [FromQuery] string? quoteType = null,
         [FromQuery] string? campaign = null,
         [FromQuery] string? pageMode = null,
@@ -518,7 +519,7 @@ namespace AgentPortal.Controllers;
 
     [HttpGet("agent-performance")]
     [HttpGet("/website-analytics/agent-performance")]
-    public async Task<IActionResult> AgentPerformance([FromQuery] string? preset, [FromQuery] DateTime? fromUtc, [FromQuery] DateTime? toUtc, [FromQuery] string? orderBy = null, [FromQuery] bool desc = true, [FromQuery] int? take = null, [FromQuery] int? skip = null)
+    public async Task<IActionResult> AgentPerformance([FromQuery] string? preset, [FromQuery] DateTime? fromUtc, [FromQuery] DateTime? toUtc, [FromQuery] TrafficQualityMode qualityMode = TrafficQualityMode.RealHuman, [FromQuery] string? orderBy = null, [FromQuery] bool desc = true, [FromQuery] int? take = null, [FromQuery] int? skip = null)
     {
         if (!FounderGuard.IsFounder(User)) return Forbid();
         var range = TimeRangeRequest.FromPreset(preset, fromUtc, toUtc, GetViewerTimeZone(), qualityMode);
@@ -1049,7 +1050,7 @@ namespace AgentPortal.Controllers;
 
     [HttpGet("meta-campaigns")]
     [HttpGet("/website-analytics/meta-campaigns")]
-    public async Task<IActionResult> MetaCampaigns([FromQuery] string? preset, [FromQuery] DateTime? fromUtc, [FromQuery] DateTime? toUtc, [FromQuery] Guid? agentProfileId = null)
+    public async Task<IActionResult> MetaCampaigns([FromQuery] string? preset, [FromQuery] DateTime? fromUtc, [FromQuery] DateTime? toUtc, [FromQuery] Guid? agentProfileId = null, [FromQuery] TrafficQualityMode qualityMode = TrafficQualityMode.RealHuman)
     {
         try
         {
@@ -1437,7 +1438,8 @@ namespace AgentPortal.Controllers;
         [FromQuery] DateTime? fromUtc,
         [FromQuery] DateTime? toUtc,
         [FromQuery] Guid? agentProfileId = null,
-        [FromQuery] bool team = false)
+        [FromQuery] bool team = false,
+        [FromQuery] TrafficQualityMode qualityMode = TrafficQualityMode.RealHuman)
     {
         if (!FounderGuard.IsFounder(User))
             return Forbid();
