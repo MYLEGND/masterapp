@@ -787,7 +787,6 @@
                         <button
                             type="button"
                             class="kpi-breakdown-section visitor-concentration-section visitor-concentration-trigger"
-                            id="openVisitorConcentrationModal"
                             aria-controls="visitorConcentrationModal"
                             aria-haspopup="dialog"
                             title="Open Visitor Concentration Breakdown">
@@ -831,7 +830,7 @@
                     `);
 
                     setTimeout(() => {
-                        const trigger = document.getElementById('openVisitorConcentrationModal');
+                        const trigger = elBreakdown && elBreakdown.querySelector('.visitor-concentration-trigger');
                         if (trigger && !trigger.dataset.bound) {
                             trigger.dataset.bound = 'true';
                             trigger.addEventListener('click', () => openVisitorConcentrationModal(sortedRows));
