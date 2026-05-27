@@ -976,7 +976,7 @@ namespace AgentPortal.Controllers;
                     .Select(x => new Models.Analytics.KpiDetailBreakdownItemDto { Label = x.Key, Value = x.Count }).ToList();
 
                 breakdown.VisitorConcentration =
-                    await _visitorConcentrationService.GetVisitorConcentrationAsync(range, HttpContext.RequestAborted);
+                    await _visitorConcentrationService.GetVisitorConcentrationAsync(range, scope, HttpContext.RequestAborted);
 
                 break;
 

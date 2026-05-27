@@ -23,11 +23,12 @@ public sealed class VisitorConcentrationService : IVisitorConcentrationService
 
     public async Task<List<VisitorConcentrationDto>> GetVisitorConcentrationAsync(
         TimeRangeRequest range,
+        ScopeContext scope,
         CancellationToken ct = default)
     {
         var payload = await GetVisitorConcentrationPayloadAsync(
             range,
-            new ScopeContext(),
+            scope,
             TrafficType.All,
             ct);
 

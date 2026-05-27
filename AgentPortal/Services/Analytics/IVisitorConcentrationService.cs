@@ -6,6 +6,7 @@ public interface IVisitorConcentrationService
 {
     Task<List<VisitorConcentrationDto>> GetVisitorConcentrationAsync(
         TimeRangeRequest range,
+        ScopeContext scope,
         CancellationToken ct = default);
 
     Task<VisitorConcentrationPayload> GetVisitorConcentrationPayloadAsync(
