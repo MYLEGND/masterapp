@@ -398,9 +398,10 @@ static string ResolveDevSqlite(string contentRootPath)
 var configuredDb = ResolveMasterDb(builder.Configuration);
 var useSqlServer = IsSqlServerConn(configuredDb) && !IsSqliteConn(configuredDb);
 var isAzureAppService = !string.IsNullOrEmpty(Environment.GetEnvironmentVariable("WEBSITE_SITE_NAME"));
-var useSqlServerInDevelopment = string.Equals(
+var useSqlServerInDevelopment =
+    !string.Equals(
         builder.Configuration["Database:UseSqlServerInDevelopment"],
-        "true",
+        "false",
         StringComparison.OrdinalIgnoreCase)
     || string.Equals(
         Environment.GetEnvironmentVariable("MASTERAPP_DEV_USE_SQLSERVER"),
@@ -414,8 +415,8 @@ if (builder.Environment.IsDevelopment() &&
 {
     Console.WriteLine(
         "[INFO] Development environment detected with a SQL Server connection string available. " +
-        "Falling back to local SQLite by default so local startup is not blocked by remote SQL access. " +
-        "Set MASTERAPP_DEV_USE_SQLSERVER=true to opt back into SQL Server locally.");
+        "Using SQL Server as the default local provider. " +
+        "Set Database:UseSqlServerInDevelopment=false only if you intentionally want SQLite locally.");
     useSqlServer = false;
 }
 
