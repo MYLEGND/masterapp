@@ -686,12 +686,20 @@ if (strictMigrations && !builder.Environment.IsDevelopment())
         var db = scope.ServiceProvider.GetRequiredService<MasterAppDbContext>();
         try
         {
-            db.Database.Migrate();
-            startupLogger.LogInformation("SQLite startup migration applied successfully.");
+            if (builder.Environment.IsDevelopment())
+            {
+                db.Database.EnsureCreated();
+                startupLogger.LogInformation("SQLite local development database ensured from current model without destructive reset.");
+            }
+            else
+            {
+                db.Database.Migrate();
+                startupLogger.LogInformation("SQLite startup migration applied successfully.");
+            }
         }
         catch (Exception ex)
         {
-            startupLogger.LogError(ex, "SQLite startup migration failed — schema may be stale.");
+            startupLogger.LogError(ex, "SQLite startup database initialization failed.");
         }
     }
 }
