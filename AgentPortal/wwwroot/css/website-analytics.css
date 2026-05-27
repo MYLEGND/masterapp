@@ -3588,7 +3588,7 @@ body {
 .wa-quality-label {
     display: block;
     margin: 0 0 .38rem;
-    color: var(--legend-gold);
+    color: #7a5a14;
     font-size: .72rem;
     font-weight: 900;
     letter-spacing: .08em;
@@ -3602,10 +3602,11 @@ body {
     border: 1px solid rgba(231,196,103,.55);
     border-radius: 12px;
     background: #ffffff;
-    color: #7a5a14;
+    color: #7a5a14 !important;
     font-size: .84rem;
     font-weight: 900;
     outline: none;
+    -webkit-text-fill-color: #7a5a14;
 }
 
 .wa-quality-select option {
