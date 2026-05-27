@@ -24,6 +24,14 @@
 <link rel="stylesheet" href="~/css/website-analytics.css" asp-append-version="true" />
 
 <div class="container mt-4 mb-5 fa-shell" data-initial-preset="@initialPreset" data-initial-label="@initialLabel" data-initial-from="@initialRangeFrom" data-initial-to="@initialRangeTo" data-initial-summary='@initialSummaryJson' data-initial-scope-label="@initialScopeLabel" data-initial-scope-profile-id="@initialScopeProfileId" data-caller-profile-id="@callerProfileId" data-agent-options='@agentOptionsJson' data-personal-link="@personalLink" data-can-delete-leads="@(canDeleteAnalyticsLeads ? "true" : "false")" data-landing-routes='@landingRoutesJson' data-landing-routes-base-url="@landingRoutesBaseUrl">
+<div id="wa-methodology-note" class="wa-methodology-note visually-hidden" aria-hidden="true">
+    Metrics are session-aware and filtered by selected range, scope, timezone, and traffic type where supported.
+</div>
+<button type="button" id="fa-copy-link" class="visually-hidden" aria-hidden="true" tabindex="-1">
+    Copy Analytics Link
+</button>
+
+
     <div class="wa-command-surface mb-3">
         <div class="hero-link p-4 p-md-5">
             <div class="hero-link-top">
@@ -1925,6 +1933,44 @@
 
 <!-- KPI Detail Modal -->
 <div id="kpiDetailBackdrop" class="kpi-detail-backdrop" aria-hidden="true" hidden></div>
+
+<button type="button" id="openVisitorConcentrationModal" class="visually-hidden" aria-hidden="true" tabindex="-1">
+    Open Visitor Concentration
+</button>
+
+<div id="visitorConcentrationModal" class="vc-modal" role="dialog" aria-modal="true" aria-labelledby="visitorConcentrationModalTitle" hidden>
+    <div class="vc-modal-backdrop"></div>
+    <div class="vc-modal-panel">
+        <div class="vc-modal-header">
+            <div>
+                <h5 id="visitorConcentrationModalTitle" class="mb-1">Visitor Concentration Breakdown</h5>
+                <p class="mb-0 text-muted">Recurring visitor patterns, high-volume sessions, and concentration risk.</p>
+            </div>
+            <button type="button" class="vc-modal-close" aria-label="Close Visitor Concentration">&times;</button>
+        </div>
+        <div class="vc-modal-actions">
+            <button type="button" class="btn btn-sm btn-outline-light vc-modal-copy">Copy All</button>
+        </div>
+        <div id="visitorConcentrationModalBody" class="vc-modal-body">
+            <div class="text-muted">No visitor concentration data loaded yet.</div>
+        </div>
+    </div>
+</div>
+
+<div id="visitorTimelineModal" class="vc-modal" role="dialog" aria-modal="true" aria-labelledby="visitorTimelineModalTitle" hidden>
+    <div class="vc-modal-backdrop"></div>
+    <div class="vc-modal-panel">
+        <div class="vc-modal-header">
+            <div>
+                <h5 id="visitorTimelineModalTitle" class="mb-1">Visitor Timeline</h5>
+                <p class="mb-0 text-muted">Session-level journey, trust score, and event detail.</p>
+            </div>
+            <button type="button" class="vc-modal-close" aria-label="Close Visitor Timeline">&times;</button>
+        </div>
+        <div class="vc-modal-body"></div>
+    </div>
+</div>
+
 <div id="kpiDetailModal" class="kpi-detail-modal" role="dialog" aria-modal="true" aria-labelledby="kpiDetailTitle" hidden>
   <div class="kpi-detail-header">
     <div>
