@@ -1,6 +1,8 @@
 using AgentPortal.Models.Analytics;
 using AgentPortal.Services.Analytics;
 using AgentPortal.Services;
+using Domain.Entities;
+using AgentPortal.Security;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 
@@ -13,13 +15,16 @@ public sealed class VisitorConcentrationController : ControllerBase
 {
     private readonly IVisitorConcentrationService _visitorConcentrationService;
     private readonly EffectiveAgentContext _effectiveContext;
+    private readonly ILogger<VisitorConcentrationController> _logger;
 
     public VisitorConcentrationController(
         IVisitorConcentrationService visitorConcentrationService,
-        EffectiveAgentContext effectiveContext)
+        EffectiveAgentContext effectiveContext,
+        ILogger<VisitorConcentrationController> logger)
     {
         _visitorConcentrationService = visitorConcentrationService;
         _effectiveContext = effectiveContext;
+        _logger = logger;
     }
 
     [HttpGet("VisitorConcentration")]
@@ -40,7 +45,7 @@ public sealed class VisitorConcentrationController : ControllerBase
             timezoneId,
             timezoneOffsetMinutes);
 
-        var scope = await _effectiveContext.ResolveScopeAsync(agentProfileId);
+        var scope = await ResolveScopeAsync(agentProfileId);
 
         var payload =
             await _visitorConcentrationService.GetVisitorConcentrationPayloadAsync(
@@ -145,4 +150,32 @@ public sealed class VisitorConcentrationController : ControllerBase
         DateTime FromUtc,
         DateTime ToUtc,
         TimeZoneInfo ViewerTimeZone);
+
+
+    private async Task<ScopeContext> ResolveScopeAsync(Guid? requestedAgentId)
+    {
+        var isFounder = FounderGuard.IsFounder(User);
+
+        var effectiveProfile = await _effectiveContext.GetEffectiveTrackingProfileAsync();
+        var effectiveProfileId = effectiveProfile?.Id;
+
+        if (isFounder)
+        {
+            if (requestedAgentId.HasValue)
+                return ScopeContext.ForAgent(requestedAgentId.Value);
+
+            if (_effectiveContext.IsViewingAsAgent && effectiveProfileId.HasValue)
+                return ScopeContext.ForAgent(effectiveProfileId.Value);
+
+            return ScopeContext.Global;
+        }
+
+        if (effectiveProfileId.HasValue)
+            return ScopeContext.ForAgent(effectiveProfileId.Value);
+
+        _logger.LogWarning("VisitorConcentrationController: no scoped agent profile resolved.");
+
+        return ScopeContext.ForAgent(Guid.Empty);
+    }
+
 }
