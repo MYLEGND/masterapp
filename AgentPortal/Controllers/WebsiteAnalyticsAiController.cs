@@ -83,7 +83,10 @@ public sealed class WebsiteAnalyticsAiController : Controller
                     "Viewer Local",
                     "Viewer Local");
             }
-            catch { }
+            catch
+            {
+                // Safe fallback: invalid browser offsets should not break analytics AI review.
+            }
         }
 
         return TimeZoneInfo.Utc;

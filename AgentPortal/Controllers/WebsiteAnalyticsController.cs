@@ -171,7 +171,10 @@ namespace AgentPortal.Controllers;
                     "Viewer Local",
                     "Viewer Local");
             }
-            catch { }
+            catch (Exception ex)
+            {
+                _logger.LogDebug(ex, "Unable to create viewer offset timezone. Falling back to UTC.");
+            }
         }
 
         // 3. Safe fallback: UTC.
