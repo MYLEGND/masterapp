@@ -4307,9 +4307,8 @@
   }
 })();
 
+;(() => {
 
-
-(function () {
   if (window.__websiteAnalyticsInitialized) {
     console.warn('WebsiteAnalytics already initialized; duplicate init blocked.');
     return;
