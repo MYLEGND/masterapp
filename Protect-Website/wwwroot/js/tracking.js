@@ -1694,6 +1694,28 @@ function trackCustomFieldError(formKey, fieldName, errorType, offerKey) {
     maybeTrackQuoteEntryEngagedFromPayload(payload);
     return sendEvent(payload);
   };
+
+  // Official public analytics API.
+  // Page scripts should use this boundary instead of calling internal tracking helpers directly.
+  window.LegendAnalytics = {
+    ...(window.LegendAnalytics || {}),
+    track(payload) {
+      return window.legendTrack(payload);
+    },
+    trackEvent(eventType, metadata = {}, context = {}) {
+      return window.legendTrack({
+        EventType: eventType,
+        ...context,
+        MetadataJson: JSON.stringify(metadata || {})
+      });
+    },
+    ids: {
+      getVisitorId,
+      getSessionId,
+      getAttribution,
+      getFirstTouchAttribution
+    }
+  };
   window.legendFormTracking = {
     trackFieldError: trackCustomFieldError,
     clearFieldError: clearTrackedFieldError,

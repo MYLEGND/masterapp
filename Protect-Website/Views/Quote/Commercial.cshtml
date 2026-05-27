@@ -1528,9 +1528,11 @@
             const stepLabel = document.getElementById('stepLabel');
             const progressFill = document.getElementById('progressFill');
             const currentStepInput = document.getElementById('CurrentStep');
-            const trackCommercialQuote = (window.legendTrack && typeof window.legendTrack === 'function')
-                ? window.legendTrack
-                : null;
+            const trackCommercialQuote = (window.LegendAnalytics?.track && typeof window.LegendAnalytics.track === 'function')
+                ? window.LegendAnalytics.track
+                : (window.legendTrack && typeof window.legendTrack === 'function')
+                    ? window.legendTrack
+                    : null;
             const commercialCompletedSteps = new Set();
             const commercialViewedContactSteps = new Set();
 

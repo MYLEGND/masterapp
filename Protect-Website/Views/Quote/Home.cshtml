@@ -1557,9 +1557,11 @@
         let currentStep = 1;
         const pageKey = '@pageKey';
         const formKey = '@formKey';
-        const trackHomeQuote = (window.legendTrack && typeof window.legendTrack === 'function')
-            ? window.legendTrack
-            : null;
+        const trackHomeQuote = (window.LegendAnalytics?.track && typeof window.LegendAnalytics.track === 'function')
+            ? window.LegendAnalytics.track
+            : (window.legendTrack && typeof window.legendTrack === 'function')
+                ? window.legendTrack
+                : null;
         const homeCompletedSteps = new Set();
         const homeViewedContactSteps = new Set();
 

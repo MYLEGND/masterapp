@@ -1,7 +1,0 @@
-<step title="Incoming Request" date="2026-05-21T18:34:40.255" instance="24025b" url="/api/deployments/00050479b3f34e25ae2092b37f032208/log" method="GET" type="request" pid="6136,2,36" Accept="*/*" Accept-Encoding="gzip, deflate" Authorization="Bas..." Host="masterapp-portal.scm.azurewebsites.net" User-Agent="AZURECLI/2.81.0 (HOMEBREW)" x-ms-client-request-id="b096bf72-5543-11f1-a668-fecb4548bd7d" X-ARR-LOG-ID="b096bf72-5543-11f1-a668-fecb4548bd7d" CLIENT-IP="98.171.64.170:55328" X-SITE-DEPLOYMENT-ID="masterapp-portal" WAS-DEFAULT-HOSTNAME="masterapp-portal.scm.azurewebsites.net" X-Forwarded-Proto="https" X-AppService-Proto="https" X-Forwarded-TlsVersion="1.3" X-WAWS-Unencoded-URL="/api/deployments/00050479b3f34e25ae2092b37f032208/log" >
-  <step title="Cleanup Xml Logs" date="2026-05-21T18:34:40.267" /><!-- duration: 36ms -->
-  <step title="DeploymentService.GetLogEntry" date="2026-05-21T18:34:40.532" >
-    <step title="DeploymentManager.GetLogEntries(id:00050479b3f34e25ae2092b37f032208)" date="2026-05-21T18:34:40.579" /><!-- duration: 581ms -->
-  </step><!-- duration: 646ms -->
-  <step title="Outgoing response" date="2026-05-21T18:34:41.236" type="response" statusCode="200" statusText="OK" Server="Microsoft-IIS/10.0" x-ms-request-id="b096bf72-5543-11f1-a668-fecb4548bd7d" Cache-Control="private" X-AspNet-Version="4.0.30319" Content-Type="application/json; charset=utf-8" /><!-- duration: 18ms -->
-</step><!-- duration: 1046ms -->

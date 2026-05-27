@@ -31,7 +31,7 @@
   let modalInstanceId = null;
   let modalCloseTracked = false;
 
-  const tracking = window.legendTrack || (() => {});
+  const tracking = window.LegendAnalytics?.track || window.legendTrack || (() => {});
   const ids = window.legendTrackingIds || {};
 
   function debug(message, details) {

@@ -1555,9 +1555,11 @@
     let currentStep = 1;
     const pageKey = '@pageKey';
     const formKey = '@formKey';
-    const trackAutoQuote = (window.legendTrack && typeof window.legendTrack === 'function')
-        ? window.legendTrack
-        : null;
+    const trackAutoQuote = (window.LegendAnalytics?.track && typeof window.LegendAnalytics.track === 'function')
+        ? window.LegendAnalytics.track
+        : (window.legendTrack && typeof window.legendTrack === 'function')
+            ? window.legendTrack
+            : null;
     const autoCompletedSteps = new Set();
     const autoViewedContactSteps = new Set();
 

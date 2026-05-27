@@ -10041,12 +10041,9 @@ const contactFieldProgress = new Map();
   let quoteStartTracked = false;
 
   function trackQuoteStart(metadata = {}) {
-    return safeTrackingCall(`track:${startEvent}`, () => window.legendTrack?.({
-      EventType: startEvent,
-      FormKey: pageKey,
-      PageKey: pageKey,
-      Offer: '@cfg.OfferKey',
-      MetadataJson: JSON.stringify({
+    return safeTrackingCall(`track:${startEvent}`, () => window.LegendAnalytics?.trackEvent?.(
+      startEvent,
+      {
         pageVariant,
         pageMode,
         pagePath: window.location.pathname,
@@ -10054,8 +10051,13 @@ const contactFieldProgress = new Map();
         ...(agentTrackingSlug ? { agentSlug: agentTrackingSlug } : {}),
         ...(agentTrackingProfileId ? { agentProfileId: agentTrackingProfileId } : {}),
         ...metadata
-      })
-    }) ?? null);
+      },
+      {
+        FormKey: pageKey,
+        PageKey: pageKey,
+        Offer: '@cfg.OfferKey'
+      }
+    ) ?? null);
   }
 
   function ensureQuoteStartTracked(metadata = {}) {
@@ -10080,11 +10082,9 @@ const contactFieldProgress = new Map();
   }
 
   function trackEvent(eventType, metadata = {}) {
-    return safeTrackingCall(`track:${eventType}`, () => window.legendTrack?.({
-      EventType: eventType,
-      PageKey: pageKey,
-      Offer: '@cfg.OfferKey',
-      MetadataJson: JSON.stringify({
+    return safeTrackingCall(`track:${eventType}`, () => window.LegendAnalytics?.trackEvent?.(
+      eventType,
+      {
         pageVariant,
         pageMode,
         pagePath: window.location.pathname,
@@ -10092,8 +10092,12 @@ const contactFieldProgress = new Map();
         ...(agentTrackingSlug ? { agentSlug: agentTrackingSlug } : {}),
         ...(agentTrackingProfileId ? { agentProfileId: agentTrackingProfileId } : {}),
         ...metadata
-      })
-    }) ?? null);
+      },
+      {
+        PageKey: pageKey,
+        Offer: '@cfg.OfferKey'
+      }
+    ) ?? null);
   }
 
   function trackPrimaryCtaSeenOnce(visibleTarget, placement, metadata = {}) {
@@ -10212,12 +10216,9 @@ const contactFieldProgress = new Map();
   }
 
   function trackFormSubmitOutcome(submitOutcome, metadata = {}) {
-    return safeTrackingCall(`track:form_submit:${submitOutcome}`, () => window.legendTrack?.({
-      EventType: 'form_submit',
-      FormKey: pageKey,
-      PageKey: pageKey,
-      SubmitOutcome: submitOutcome,
-      MetadataJson: JSON.stringify({
+    return safeTrackingCall(`track:form_submit:${submitOutcome}`, () => window.LegendAnalytics?.trackEvent?.(
+      'form_submit',
+      {
         offer: '@cfg.OfferKey',
         pageVariant,
         pageMode,
@@ -10226,8 +10227,13 @@ const contactFieldProgress = new Map();
         ...(agentTrackingSlug ? { agentSlug: agentTrackingSlug } : {}),
         ...(agentTrackingProfileId ? { agentProfileId: agentTrackingProfileId } : {}),
         ...metadata
-      })
-    }) ?? null);
+      },
+      {
+        FormKey: pageKey,
+        PageKey: pageKey,
+        SubmitOutcome: submitOutcome
+      }
+    ) ?? null);
   }
 
   function trackQuoteStepComplete(stepName, metadata = {}) {
@@ -11323,8 +11329,8 @@ const contactFieldProgress = new Map();
       void safeTrackingCall(`field_error:${trackedFieldName}`, () => window.legendFormTracking.trackFieldError(formTrackingKey, trackedFieldName, errorType, '@cfg.OfferKey'));
     }
 
-    if (!window.legendFormTracking && typeof window.legendTrack === 'function') {
-      void safeTrackingCall(`field_error:${trackedFieldName}`, () => window.legendTrack({
+    if (!window.legendFormTracking && typeof window.LegendAnalytics?.track === 'function') {
+      void safeTrackingCall(`field_error:${trackedFieldName}`, () => window.LegendAnalytics.track({
         EventType: 'form_field_error',
         FormKey: formTrackingKey,
         FieldName: trackedFieldName,

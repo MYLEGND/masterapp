@@ -1,3 +1,0 @@
-<step title="Begin HttpPost https://masterapp-portal.scm.azurewebsites.net/api/app/restart, x-ms-request-id: fac5f0f4-5589-11f1-a4d4-fecb4548bd7d" date="2026-05-22T02:59:27.224" instance="24025b" >
-  <step title="Cleanup Xml Logs" date="2026-05-22T02:59:27.243" /><!-- duration: 28ms -->
-</step><!-- duration: 67ms -->

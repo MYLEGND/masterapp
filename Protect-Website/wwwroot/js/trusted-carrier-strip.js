@@ -62,13 +62,13 @@
 
     markSeen(element);
 
-    if (typeof window.legendTrack !== 'function') {
+    if (typeof window.LegendAnalytics?.track !== 'function') {
       return;
     }
 
     const attribution = readAttribution();
 
-    window.legendTrack({
+    window.LegendAnalytics.track({
       EventType: 'carrier_trust_strip_view',
       PageKey: asTrimmed(element.dataset.pageKey),
       Offer: asTrimmed(element.dataset.quoteType),

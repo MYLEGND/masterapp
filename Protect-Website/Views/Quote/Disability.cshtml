@@ -2399,9 +2399,11 @@ body.disability-final-step-active .dq-form-panel {
     (function () {
         'use strict';
 
-        var track = (window.legendTrack && typeof window.legendTrack === 'function')
-            ? window.legendTrack
-            : function () {};
+        var track = (window.LegendAnalytics?.track && typeof window.LegendAnalytics.track === 'function')
+            ? window.LegendAnalytics.track
+            : (window.legendTrack && typeof window.legendTrack === 'function')
+                ? window.legendTrack
+                : function () {};
 
         var form = document.getElementById('disabilityQuoteForm');
         if (!form) return;

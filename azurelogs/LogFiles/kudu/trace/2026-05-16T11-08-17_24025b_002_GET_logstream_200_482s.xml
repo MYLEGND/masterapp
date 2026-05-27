@@ -1,9 +1,0 @@
-<step title="Incoming Request" date="2026-05-16T11:08:17.338" instance="24025b" url="/logstream" method="GET" type="request" pid="8340,2,22" Accept-Encoding="identity" Authorization="Bas..." Host="masterapp-portal.scm.azurewebsites.net" User-Agent="AZURECLI/2.81.0 (HOMEBREW)" x-ms-client-request-id="86e540a2-5117-11f1-929e-fecb4548bd7d" X-ARR-LOG-ID="86e540a2-5117-11f1-929e-fecb4548bd7d" CLIENT-IP="98.171.64.170:61799" X-SITE-DEPLOYMENT-ID="masterapp-portal" WAS-DEFAULT-HOSTNAME="masterapp-portal.scm.azurewebsites.net" X-Forwarded-Proto="https" X-AppService-Proto="https" X-Forwarded-TlsVersion="1.3" X-WAWS-Unencoded-URL="/logstream" >
-  <step title="Cleanup Xml Logs" date="2026-05-16T11:08:17.358" /><!-- duration: 10ms -->
-  <step title="LogStreamHandler.BeginProcessRequest" date="2026-05-16T11:08:17.762" >
-    <step title="LockFile &apos;C:\home\site\locks\hooks.lock&apos; acquired" date="2026-05-16T11:08:19.884" /><!-- duration: 16ms -->
-    <step title="LockFile &apos;C:\home\site\locks\hooks.lock&apos; released" date="2026-05-16T11:08:21.261" /><!-- duration: 14ms -->
-  </step><!-- duration: 3549ms -->
-  <step title="LogStreamHandler.EndProcessRequest" date="2026-05-16T11:16:19.625" /><!-- duration: 31ms -->
-  <step title="Outgoing response" date="2026-05-16T11:16:19.672" type="response" statusCode="200" statusText="OK" Server="Microsoft-IIS/10.0" Cache-Control="private" X-AspNet-Version="4.0.30319" Content-Type="text/plain; charset=utf-8" /><!-- duration: 16ms -->
-</step><!-- duration: 482349ms -->
