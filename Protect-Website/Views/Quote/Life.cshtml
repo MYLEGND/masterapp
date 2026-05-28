@@ -10305,9 +10305,16 @@ const contactFieldProgress = new Map();
 
   async function flushSuccessTracking(leadId, metaLeadEventId) {
     const trackingTasks = [
-      trackEvent('lead_form_submit_success'),
-      trackEvent('life_step2_submit_success'),
-      trackEvent(submitEvent, { submitOutcome: 'success' }),
+      trackEvent('lead_form_submit_success', {
+        ctaId: activeStartCta || 'life_funnel_start'
+      }),
+      trackEvent('life_step2_submit_success', {
+        ctaId: activeStartCta || 'life_funnel_start'
+      }),
+      trackEvent(submitEvent, {
+        submitOutcome: 'success',
+        ctaId: activeStartCta || 'life_funnel_start'
+      }),
       trackEvent('results_contact_submit', {
         primaryRec: recPrimaryKeyEl?.value || '',
         secondaryRec: recSecondaryKeyEl?.value || '',
@@ -10324,9 +10331,17 @@ const contactFieldProgress = new Map();
 
   async function flushContactFirstSuccessTracking(leadId, metaLeadEventId) {
     const trackingTasks = [
-      trackEvent('lead_form_submit_success', { variantFlow: pageVariant }),
-      trackEvent('life_contact_first_submit_success'),
-      trackEvent('life_contact_first_complete', { variantFlow: pageVariant }),
+      trackEvent('lead_form_submit_success', {
+        variantFlow: pageVariant,
+        ctaId: activeStartCta || 'life_funnel_start'
+      }),
+      trackEvent('life_contact_first_submit_success', {
+        ctaId: activeStartCta || 'life_funnel_start'
+      }),
+      trackEvent('life_contact_first_complete', {
+        variantFlow: pageVariant,
+        ctaId: activeStartCta || 'life_funnel_start'
+      }),
       trackEvent('life_step2_submit_success', { variantFlow: pageVariant }),
       trackEvent(submitEvent, { submitOutcome: 'success', variantFlow: pageVariant }),
       trackFormSubmitOutcome('success', { variantFlow: pageVariant }),

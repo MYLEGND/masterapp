@@ -2489,8 +2489,11 @@ public sealed class AnalyticsQueryService : IAnalyticsQueryService
                 (string.Equals(detail.Severity, "Medium", StringComparison.OrdinalIgnoreCase) ||
                  string.Equals(detail.Severity, "High", StringComparison.OrdinalIgnoreCase) ||
                  string.Equals(detail.Severity, "Critical", StringComparison.OrdinalIgnoreCase)));
-            if (recoveredCritical != null)
+            if (recoveredCritical != null &&
+                !string.Equals(recoveredCritical.AttemptedEventName, "page_engaged_10s", StringComparison.OrdinalIgnoreCase))
+            {
                 warnings.Add($"Critical event retry recovered successfully for {recoveredCritical.AttemptedEventName}.");
+            }
 
             var unrecoveredCritical = recentTrackingErrors.FirstOrDefault(detail =>
                 detail.Recovered == false &&
