@@ -1713,6 +1713,17 @@ function trackCustomFieldError(formKey, fieldName, errorType, offerKey) {
   function wireClick(selector, elementKey, eventType) {
     document.querySelectorAll(selector).forEach(el => {
       el.addEventListener('click', () => {
+        if (el instanceof HTMLElement) {
+          const existingLock = Number(el.dataset.analyticsClickLockedUntil || '0');
+          const now = Date.now();
+
+          if (existingLock > now) {
+            return;
+          }
+
+          el.dataset.analyticsClickLockedUntil = String(now + 800);
+        }
+
         const key = `${eventType}:${elementKey}`;
         if (!shouldFire(key)) return;
 
