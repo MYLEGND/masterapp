@@ -1182,6 +1182,20 @@ function trackCustomFieldError(formKey, fieldName, errorType, offerKey) {
   }
 
 
+  function ensureFormTrackState(formKey) {
+    if (!formKey) return null;
+
+    window.__legendFormTrackState = window.__legendFormTrackState || {};
+
+    if (!window.__legendFormTrackState[formKey]) {
+      window.__legendFormTrackState[formKey] = {
+        errorsSeen: new Set()
+      };
+    }
+
+    return window.__legendFormTrackState[formKey];
+  }
+
   function clearTrackedFieldError(formKey, fieldName) {
     const normalizedField = (fieldName || '').trim();
     if (!formKey || !normalizedField) return;
