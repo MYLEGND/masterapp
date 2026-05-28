@@ -1006,7 +1006,6 @@
         transitionFormState(state, 'submitted', 'lead_form_submit_success');
         break;
       case 'lead_form_submit_failure':
-      case 'submit_failure':
         state.submitAttempted = true;
         state.submitAttemptedAt = state.submitAttemptedAt || Date.now();
         break;
