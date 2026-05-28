@@ -2425,7 +2425,18 @@ public sealed class AnalyticsQueryService : IAnalyticsQueryService
             .ToList();
 
         var leadPersistedEvents = events
-            .Where(e => string.Equals(e.EventType, "lead_persisted", StringComparison.OrdinalIgnoreCase))
+            .Where(e =>
+                string.Equals(e.EventType, "lead_persisted", StringComparison.OrdinalIgnoreCase) ||
+                string.Equals(e.EventType, "website_lead_submitted", StringComparison.OrdinalIgnoreCase) ||
+                string.Equals(e.EventType, "lead_form_submit_success", StringComparison.OrdinalIgnoreCase))
+            .GroupBy(e => !string.IsNullOrWhiteSpace(e.SessionId)
+                ? $"sid:{e.SessionId}"
+                : $"vid:{e.VisitorId}|{e.EventUtc:O}", StringComparer.OrdinalIgnoreCase)
+            .Select(g => g
+                .OrderByDescending(e => string.Equals(e.EventType, "lead_persisted", StringComparison.OrdinalIgnoreCase) ? 3 :
+                    string.Equals(e.EventType, "website_lead_submitted", StringComparison.OrdinalIgnoreCase) ? 2 : 1)
+                .ThenByDescending(e => e.EventUtc)
+                .First())
             .ToList();
         var workstationAttemptEvents = events
             .Where(e => string.Equals(e.EventType, "workstation_capture_attempt", StringComparison.OrdinalIgnoreCase))
