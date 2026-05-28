@@ -446,8 +446,15 @@ public sealed class AnalyticsQueryService : IAnalyticsQueryService
         if (!IsQuoteScopeEvent(e))
             return false;
 
-        return IsCtaMetricEvent(e) ||
-               string.Equals(e.EventType, "quote_click", StringComparison.OrdinalIgnoreCase);
+        if (!IsCtaMetricEvent(e) &&
+            !string.Equals(e.EventType, "quote_click", StringComparison.OrdinalIgnoreCase))
+        {
+            return false;
+        }
+
+        var elementKey = (e.ElementKey ?? string.Empty).Trim();
+
+        return !string.Equals(elementKey, "nav_quote", StringComparison.OrdinalIgnoreCase);
     }
 
     private static bool IsQuoteSubmitAttempt(AnalyticsEvent e)
