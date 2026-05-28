@@ -23,6 +23,7 @@ using Shared.Meta;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.WebUtilities;
 using ProtectWebsite.Services.Booking;
+using ProtectWebsite.Services.Communication;
 
 namespace Protect_Website.Controllers
 {
@@ -52,9 +53,10 @@ namespace Protect_Website.Controllers
         private readonly IPublicBookingConfirmationService _publicBookingConfirmationService;
         private readonly IPublicBookingContextProtector _publicBookingContextProtector;
         private readonly ILogger<LifeQuoteController> _logger;
+        private readonly IProtectEmailSender _emailSender;
 
         public LifeQuoteController(IConfiguration configuration, AgentTrackingResolver resolver,
-            MasterAppDbContext db, IMetaConversionsApiService metaConversionsApi, IMetaPixelResolutionService metaPixelResolution, IMetaSignalIntelligenceService metaSignalIntelligence, IWebsiteLifeLeadCaptureService websiteLifeLeadCapture, IPublicBookingResolver publicBookingResolver, IPublicBookingConfirmationService publicBookingConfirmationService, IPublicBookingContextProtector publicBookingContextProtector, ILogger<LifeQuoteController> logger)
+            MasterAppDbContext db, IMetaConversionsApiService metaConversionsApi, IMetaPixelResolutionService metaPixelResolution, IMetaSignalIntelligenceService metaSignalIntelligence, IWebsiteLifeLeadCaptureService websiteLifeLeadCapture, IPublicBookingResolver publicBookingResolver, IPublicBookingConfirmationService publicBookingConfirmationService, IPublicBookingContextProtector publicBookingContextProtector, IProtectEmailSender emailSender, ILogger<LifeQuoteController> logger)
         {
             tenantId = configuration["AzureAd:TenantId"]!;
             clientId = configuration["AzureAd:ClientId"]!;
@@ -72,6 +74,7 @@ namespace Protect_Website.Controllers
             _publicBookingResolver = publicBookingResolver;
             _publicBookingConfirmationService = publicBookingConfirmationService;
             _publicBookingContextProtector = publicBookingContextProtector;
+            _emailSender = emailSender;
             _logger = logger;
         }
 
@@ -537,93 +540,70 @@ if (!ModelState.IsValid)
                     state.ServerCapiNote = metaCapiResult.Note;
                 });
 
-            // ── 2. Send email ─────────────────────────────────────────────────────
-            try
+            // ── 2. Send agent/founder notification email ───────────────────────────
+            string? primary = null;
+            if (isAgentContext && !string.IsNullOrWhiteSpace(leadRecipientEmail))
+                primary = leadRecipientEmail.Trim();
+            else if (!isAgentContext && !string.IsNullOrWhiteSpace(recipientEmail))
+                primary = recipientEmail.Trim();
+            else if (!string.IsNullOrWhiteSpace(recipientEmail))
+                primary = recipientEmail.Trim();
+            else if (!string.IsNullOrWhiteSpace(senderEmail))
+                primary = senderEmail.Trim();
+
+            if (!string.IsNullOrWhiteSpace(primary))
             {
-                var credential = new ClientSecretCredential(tenantId, clientId, clientSecret);
-                var graphClient = new GraphServiceClient(credential);
+                var agentEmailSent = await _emailSender.TrySendAsync(
+                    primary,
+                    $"[LIFE QUOTE — {offerContent.DisplayName.ToUpperInvariant()}] New Lead | {model.FirstName}",
+                    BuildEmailBody(model, cfg),
+                    replyToEmail: model.Email,
+                    saveToSentItems: true,
+                    cancellationToken: HttpContext?.RequestAborted ?? CancellationToken.None);
 
-                var message = new Message
+                if (agentEmailSent)
                 {
-                    Subject = $"[LIFE QUOTE — {offerContent.DisplayName.ToUpperInvariant()}] New Lead | {model.FirstName}",
-                    Body = new ItemBody
-                    {
-                        ContentType = BodyType.Html,
-                        Content = BuildEmailBody(model, cfg)
-                    },
-                    ToRecipients = new List<Recipient>()
-                };
-
-                // Recipient routing: agent slug -> agent; default URL -> founder; if slug missing email, fall back to founder
-                string? primary = null;
-                if (isAgentContext && !string.IsNullOrWhiteSpace(leadRecipientEmail))
-                    primary = leadRecipientEmail.Trim();
-                else if (!isAgentContext && !string.IsNullOrWhiteSpace(recipientEmail))
-                    primary = recipientEmail.Trim();
-                else if (!string.IsNullOrWhiteSpace(recipientEmail))
-                    primary = recipientEmail.Trim();
-                else if (!string.IsNullOrWhiteSpace(senderEmail))
-                    primary = senderEmail.Trim();
-
-                if (!string.IsNullOrWhiteSpace(primary))
-                {
-                    message.ToRecipients.Add(new Recipient { EmailAddress = new EmailAddress { Address = primary } });
-                    await graphClient.Users[senderEmail].SendMail.PostAsync(
-                        new SendMailPostRequestBody { Message = message, SaveToSentItems = true });
                     _logger.LogInformation(
-                        "LifeQuote [{CorrelationId}]: email sent to {Recipient} for lead {LeadId} offer={Offer}",
+                        "LifeQuote [{CorrelationId}]: agent notification email sent to {Recipient} for lead {LeadId} offer={Offer}",
                         correlationId, primary, lead.LeadId, model.OfferKey);
                 }
                 else
                 {
-                    _logger.LogWarning(
-                        "LifeQuote [{CorrelationId}]: no recipient resolved for lead {LeadId} offer={Offer} — email skipped",
-                        correlationId, lead.LeadId, model.OfferKey);
+                    _logger.LogError(
+                        "LifeQuote [{CorrelationId}]: agent notification email failed to {Recipient} for lead {LeadId} offer={Offer} — lead is saved, continuing",
+                        correlationId, primary, lead.LeadId, model.OfferKey);
                 }
             }
-            catch (Exception emailEx)
+            else
             {
-                _logger.LogError(emailEx,
-                    "LifeQuote [{CorrelationId}]: email send failed for lead {LeadId} offer={Offer} — lead is saved, continuing",
+                _logger.LogWarning(
+                    "LifeQuote [{CorrelationId}]: no recipient resolved for lead {LeadId} offer={Offer} — email skipped",
                     correlationId, lead.LeadId, model.OfferKey);
             }
 
             // ── 2b. Send recommendation summary to user (only when email provided) ──
             if (!string.IsNullOrWhiteSpace(model.Email?.Trim()))
             {
-                try
+                var attachedAgentProfile = await BuildAgentTrustProfileAsync(HttpContext?.RequestAborted ?? CancellationToken.None);
+                var attachedAgentFirstName = attachedAgentProfile?.FirstName;
+                var attachedAgentBookingUrl = ResolveAgentBookingUrl(attachedAgentProfile);
+
+                var userEmailSent = await _emailSender.TrySendAsync(
+                    model.Email.Trim(),
+                    $"Your protection review is ready — {websiteName}",
+                    BuildUserSummaryEmailBody(model, cfg, attachedAgentFirstName, attachedAgentBookingUrl),
+                    saveToSentItems: false,
+                    cancellationToken: HttpContext?.RequestAborted ?? CancellationToken.None);
+
+                if (userEmailSent)
                 {
-                    var userCredential  = new ClientSecretCredential(tenantId, clientId, clientSecret);
-                    var userGraphClient = new GraphServiceClient(userCredential);
-
-                    var attachedAgentProfile = await BuildAgentTrustProfileAsync(HttpContext?.RequestAborted ?? CancellationToken.None);
-                    var attachedAgentFirstName = attachedAgentProfile?.FirstName;
-                    var attachedAgentBookingUrl = ResolveAgentBookingUrl(attachedAgentProfile);
-
-                    var userMessage = new Message
-                    {
-                        Subject = $"Your protection review is ready — {websiteName}",
-                        Body = new ItemBody
-                        {
-                            ContentType = BodyType.Html,
-                            Content = BuildUserSummaryEmailBody(model, cfg, attachedAgentFirstName, attachedAgentBookingUrl)
-                        },
-                        ToRecipients = new List<Recipient>
-                        {
-                            new Recipient { EmailAddress = new EmailAddress { Address = model.Email.Trim() } }
-                        }
-                    };
-
-                    await userGraphClient.Users[senderEmail].SendMail.PostAsync(
-                        new SendMailPostRequestBody { Message = userMessage, SaveToSentItems = false });
-
                     _logger.LogInformation(
                         "LifeQuote [{CorrelationId}]: user summary email sent to {Email} for lead {LeadId} offer={Offer}",
                         correlationId, model.Email.Trim(), lead.LeadId, model.OfferKey);
                 }
-                catch (Exception userEmailEx)
+                else
                 {
-                    _logger.LogError(userEmailEx,
+                    _logger.LogError(
                         "LifeQuote [{CorrelationId}]: user summary email failed for lead {LeadId} offer={Offer} — lead is saved, continuing",
                         correlationId, lead.LeadId, model.OfferKey);
                 }

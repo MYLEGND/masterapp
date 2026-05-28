@@ -1,3 +1,4 @@
+using ProtectWebsite.Services.Communication;
 using Azure.Identity;
 using Infrastructure.Leads;
 using Microsoft.EntityFrameworkCore;
@@ -46,6 +47,8 @@ else
     builder.Services.AddDbContext<Infrastructure.Data.MasterAppDbContext>(opts =>
         opts.UseSqlite(connString));
 }
+
+builder.Services.AddScoped<IProtectEmailSender, GraphProtectEmailSender>();
 
 builder.Services.AddScoped<ProtectWebsite.Services.Tracking.AgentTrackingResolver>();
 builder.Services.AddScoped<ProtectWebsite.Services.Tracking.SlugRoutingMiddleware>();
