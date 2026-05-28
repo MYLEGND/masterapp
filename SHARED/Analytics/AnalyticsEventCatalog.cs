@@ -44,7 +44,7 @@ public static class AnalyticsEventCatalog
 
         Define("form_start", "form", AllQuotes, "form", funnelStart: true, formStart: true, critical: true, allowBrowser: true, dashboardMetrics: ["form_start", "funnel_start"]),
         Define("lead_form_start", "form", AllQuotes, "form", funnelStart: true, formStart: true, meta: true, critical: true, allowBrowser: true, dashboardMetrics: ["lead_form_start", "form_start", "funnel_start"]),
-        Define("funnel_started", "quote", AllQuotes, "discovery", funnelStart: true, formStart: true, critical: true, allowBrowser: true, dashboardMetrics: ["funnel_start", "form_start"]),
+        Define("funnel_started", "quote", AllQuotes, "discovery", funnelStart: true, critical: true, allowBrowser: true, dashboardMetrics: ["funnel_start"]),
         Define("lead_modal_open", "form", AllQuotes, "form", allowBrowser: true, dashboardMetrics: ["lead_modal_open"]),
         Define("lead_modal_close", "form", AllQuotes, "form", allowBrowser: true, dashboardMetrics: ["lead_modal_close"]),
         Define("form_field_focus", "field", AllQuotes, "form", allowBrowser: true, dashboardMetrics: ["field_focus"]),

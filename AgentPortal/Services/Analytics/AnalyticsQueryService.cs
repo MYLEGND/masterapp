@@ -159,7 +159,10 @@ public sealed class AnalyticsQueryService : IAnalyticsQueryService
                 !e.IsInternal &&
                 e.WebDriver != true &&
                 e.IsHeadless != true &&
-                ((e.MouseMoveCount ?? 0) > 0 || (e.ScrollPercent ?? 0) >= 25) &&
+                (
+                    e.EventType == "page_view" ||
+                    ((e.MouseMoveCount ?? 0) > 0 || (e.ScrollPercent ?? 0) >= 25)
+                ) &&
                 !string.IsNullOrWhiteSpace(e.Browser) &&
                 e.Browser != "unknown" &&
                 !string.IsNullOrWhiteSpace(e.OperatingSystem) &&
@@ -574,8 +577,7 @@ public sealed class AnalyticsQueryService : IAnalyticsQueryService
         if (!IsQuoteScopeEvent(e))
             return false;
 
-        return AnalyticsEventCatalog.MatchesDashboardMetric(e.EventType, "funnel_start") ||
-               AnalyticsEventCatalog.MatchesDashboardMetric(e.EventType, "form_start") ||
+        return AnalyticsEventCatalog.MatchesDashboardMetric(e.EventType, "form_start") ||
                string.Equals(e.EventType, "lead_form_start", StringComparison.OrdinalIgnoreCase) ||
                string.Equals(e.EventType, "life_contact_first_start", StringComparison.OrdinalIgnoreCase);
     }
