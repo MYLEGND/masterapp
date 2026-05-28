@@ -2,10 +2,6 @@ using Microsoft.AspNetCore.Mvc;
 using Domain.Entities;
 using Infrastructure.Data;
 using Protect_Website.Models;
-using Microsoft.Graph;
-using Microsoft.Graph.Models;
-using Microsoft.Graph.Users.Item.SendMail;
-using Azure.Identity;
 using System.Globalization;
 using System.Net;
 using System.Text.Json;
@@ -16,6 +12,7 @@ using ProtectWebsite.Services;
 using ProtectWebsite.Services.Tracking;
 using Microsoft.AspNetCore.WebUtilities;
 using ProtectWebsite.Services.Booking;
+using ProtectWebsite.Services.Communication;
 
 namespace Protect_Website.Controllers
 {
@@ -46,9 +43,10 @@ namespace Protect_Website.Controllers
         private readonly IPublicBookingConfirmationService _publicBookingConfirmationService;
         private readonly IPublicBookingContextProtector _publicBookingContextProtector;
         private readonly ILogger<DisabilityQuoteController> _logger;
+        private readonly IProtectEmailSender _emailSender;
 
         public DisabilityQuoteController(IConfiguration configuration, AgentTrackingResolver resolver,
-            MasterAppDbContext db, IMetaConversionsApiService metaConversionsApi, IMetaPixelResolutionService metaPixelResolution, IWebsiteLifeLeadCaptureService websiteLeadCapture, IPublicBookingResolver publicBookingResolver, IPublicBookingConfirmationService publicBookingConfirmationService, IPublicBookingContextProtector publicBookingContextProtector, ILogger<DisabilityQuoteController> logger)
+            MasterAppDbContext db, IMetaConversionsApiService metaConversionsApi, IMetaPixelResolutionService metaPixelResolution, IWebsiteLifeLeadCaptureService websiteLeadCapture, IPublicBookingResolver publicBookingResolver, IPublicBookingConfirmationService publicBookingConfirmationService, IPublicBookingContextProtector publicBookingContextProtector, IProtectEmailSender emailSender, ILogger<DisabilityQuoteController> logger)
         {
             tenantId = configuration["AzureAd:TenantId"]!;
             clientId = configuration["AzureAd:ClientId"]!;
@@ -64,6 +62,7 @@ namespace Protect_Website.Controllers
             _publicBookingResolver = publicBookingResolver;
             _publicBookingConfirmationService = publicBookingConfirmationService;
             _publicBookingContextProtector = publicBookingContextProtector;
+            _emailSender = emailSender;
             _logger = logger;
         }
 
@@ -472,94 +471,66 @@ namespace Protect_Website.Controllers
                 agentSlug,
                 HttpContext?.RequestAborted ?? CancellationToken.None);
 
-            // ── 2. Send email ─────────────────────────────────────────────────────
-            try
+            // ── 2. Send agent/prospect emails through unified sender ───────────────
+            string? primary = null;
+            if (isAgentContext && !string.IsNullOrWhiteSpace(leadRecipientEmail))
+                primary = leadRecipientEmail.Trim();
+            else if (!isAgentContext && !string.IsNullOrWhiteSpace(recipientEmail))
+                primary = recipientEmail.Trim();
+            else if (!string.IsNullOrWhiteSpace(recipientEmail))
+                primary = recipientEmail.Trim();
+            else if (!string.IsNullOrWhiteSpace(senderEmail))
+                primary = senderEmail.Trim();
+
+            if (!string.IsNullOrWhiteSpace(primary))
             {
-                var credential = new ClientSecretCredential(tenantId, clientId, clientSecret);
-                var graphClient = new GraphServiceClient(credential);
+                var agentEmailSent = await _emailSender.TrySendAsync(
+                    primary,
+                    $"[DISABILITY QUOTE - {QuoteDisplayName.ToUpperInvariant()}] New Lead | {model.FirstName}",
+                    BuildLeadNotificationEmailBody(model),
+                    replyToEmail: model.Email,
+                    saveToSentItems: true,
+                    cancellationToken: HttpContext?.RequestAborted ?? CancellationToken.None);
 
-                var emailBody = BuildLeadNotificationEmailBody(model);
-
-                var message = new Message
+                if (agentEmailSent)
                 {
-                    Subject = $"[DISABILITY QUOTE - {QuoteDisplayName.ToUpperInvariant()}] New Lead | {model.FirstName}",
-                    Body = new ItemBody { ContentType = BodyType.Html, Content = emailBody },
-                    ToRecipients = new List<Recipient>()
-                };
-
-                // Send to agent plus founder/owner as fallback
-                string? primary = null;
-                if (isAgentContext && !string.IsNullOrWhiteSpace(leadRecipientEmail))
-                    primary = leadRecipientEmail.Trim();
-                else if (!isAgentContext && !string.IsNullOrWhiteSpace(recipientEmail))
-                    primary = recipientEmail.Trim();
-                else if (!string.IsNullOrWhiteSpace(recipientEmail))
-                    primary = recipientEmail.Trim();
-                else if (!string.IsNullOrWhiteSpace(senderEmail))
-                    primary = senderEmail.Trim();
-
-                if (!string.IsNullOrWhiteSpace(primary))
-                {
-                    message.ToRecipients.Add(new Recipient
-                    {
-                        EmailAddress = new EmailAddress { Address = primary }
-                    });
-
-                    await graphClient.Users[senderEmail].SendMail.PostAsync(
-                        new SendMailPostRequestBody { Message = message, SaveToSentItems = true });
                     _logger.LogInformation(
-                        "DisabilityQuote [{CorrelationId}]: email sent to {Recipient} for lead {LeadId}",
+                        "DisabilityQuote [{CorrelationId}]: agent notification email sent to {Recipient} for lead {LeadId}",
                         correlationId, primary, lead.LeadId);
                 }
                 else
                 {
-                    _logger.LogWarning(
-                        "DisabilityQuote [{CorrelationId}]: no recipient resolved for lead {LeadId} - email skipped",
-                        correlationId, lead.LeadId);
+                    _logger.LogError(
+                        "DisabilityQuote [{CorrelationId}]: agent notification email failed to {Recipient} for lead {LeadId} - lead is saved, continuing",
+                        correlationId, primary, lead.LeadId);
                 }
             }
-            catch (Exception emailEx)
+            else
             {
-                _logger.LogError(emailEx,
-                    "DisabilityQuote [{CorrelationId}]: email send failed for lead {LeadId} — lead is saved, continuing",
+                _logger.LogWarning(
+                    "DisabilityQuote [{CorrelationId}]: no recipient resolved for lead {LeadId} - email skipped",
                     correlationId, lead.LeadId);
             }
 
             if (!string.IsNullOrWhiteSpace(model.Email?.Trim()))
             {
-                try
+                var userEmailSent = await _emailSender.TrySendAsync(
+                    model.Email.Trim(),
+                    $"Your disability coverage review is ready - {websiteName}",
+                    BuildUserSummaryEmailBody(model, attachedAgentContact?.FirstName, attachedAgentContact?.BookingUrl),
+                    saveToSentItems: false,
+                    cancellationToken: HttpContext?.RequestAborted ?? CancellationToken.None);
+
+                if (userEmailSent)
                 {
-                    var userCredential = new ClientSecretCredential(tenantId, clientId, clientSecret);
-                    var userGraphClient = new GraphServiceClient(userCredential);
-
-                    var userMessage = new Message
-                    {
-                        Subject = $"Your disability coverage review is ready - {websiteName}",
-                        Body = new ItemBody
-                        {
-                            ContentType = BodyType.Html,
-                            Content = BuildUserSummaryEmailBody(model, attachedAgentContact?.FirstName, attachedAgentContact?.BookingUrl)
-                        },
-                        ToRecipients = new List<Recipient>
-                        {
-                            new Recipient
-                            {
-                                EmailAddress = new EmailAddress { Address = model.Email.Trim() }
-                            }
-                        }
-                    };
-
-                    await userGraphClient.Users[senderEmail].SendMail.PostAsync(
-                        new SendMailPostRequestBody { Message = userMessage, SaveToSentItems = false });
-
                     _logger.LogInformation(
                         "DisabilityQuote [{CorrelationId}]: user summary email sent to {Email} for lead {LeadId}",
                         correlationId, model.Email.Trim(), lead.LeadId);
                 }
-                catch (Exception userEmailEx)
+                else
                 {
-                    _logger.LogError(userEmailEx,
-                        "DisabilityQuote [{CorrelationId}]: user summary email failed for lead {LeadId} — lead is saved, continuing",
+                    _logger.LogError(
+                        "DisabilityQuote [{CorrelationId}]: user summary email failed for lead {LeadId} - lead is saved, continuing",
                         correlationId, lead.LeadId);
                 }
             }
