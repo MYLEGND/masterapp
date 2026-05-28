@@ -355,7 +355,14 @@ namespace Protect_Website.Controllers
                     PixelOwnerType = metaCapiResult.PixelOwnerType ?? resolvedMetaPixel.PixelOwnerType
                 });
 
-            // ── 2. Send email through unified sender ───────────────────────────────
+            
+            var subjectName = $"{model.InsuredFirstName} {model.InsuredLastName}".Trim();
+            if (string.IsNullOrWhiteSpace(subjectName))
+                subjectName = "Unknown";
+
+            var emailBody = LeadEmailTemplate.Wrap("New Quote — Commercial Insurance", rows.ToString());
+
+// ── 2. Send email through unified sender ───────────────────────────────
             var emailSent = await _emailSender.TrySendAsync(
                 leadRecipientEmail,
                 $"[COMMERCIAL] Quote Request | {LeadEmailTemplate.E(subjectName)} | {LeadEmailTemplate.E(model.BusinessName)}",

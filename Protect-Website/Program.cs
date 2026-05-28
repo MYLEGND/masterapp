@@ -10,6 +10,12 @@ using System.IO;
 
 var builder = WebApplication.CreateBuilder(args);
 
+// 🔹 Azure Key Vault — pulls secrets (e.g. AzureAd:ClientSecret) at startup
+//    Works locally (via az login / VS Code Azure account) and in production (via Managed Identity).
+var keyVaultUri = builder.Configuration["KeyVault:Uri"]
+    ?? "https://masterapp-kv-1221.vault.azure.net/";
+builder.Configuration.AddAzureKeyVault(new Uri(keyVaultUri), new DefaultAzureCredential());
+
 // 🔹 MVC
 var mvcBuilder = builder.Services.AddControllersWithViews(options =>
 {

@@ -352,7 +352,10 @@ namespace Protect_Website.Controllers
                     PixelOwnerType = metaCapiResult.PixelOwnerType ?? resolvedMetaPixel.PixelOwnerType
                 });
 
-            // ── 2. Send email through unified sender ───────────────────────────────
+            
+            var rows = new LeadEmailTemplate.RowBuilder();
+
+// ── 2. Send email through unified sender ───────────────────────────────
             var emailSent = await _emailSender.TrySendAsync(
                 leadRecipientEmail,
                 $"[HOME QUOTE] New Lead | {model.FirstName} {model.LastName}",
