@@ -757,7 +757,7 @@
       if (body.EventType === 'form_start' ||
           body.EventType === 'form_submit_attempt' ||
           body.EventType === 'lead_form_submit_success' ||
-          body.EventType === 'lead_form_submit_failed') {
+          body.EventType === 'lead_form_submit_failure') {
         body.FormKey = body.FormKey || payload.FormKey;
       }
       if (body.EventType === 'lead_form_submit_success' && body.FormKey) {
@@ -1005,7 +1005,6 @@
       case 'lead_form_submit_success':
         transitionFormState(state, 'submitted', 'lead_form_submit_success');
         break;
-      case 'lead_form_submit_failed':
       case 'lead_form_submit_failure':
       case 'submit_failure':
         state.submitAttempted = true;

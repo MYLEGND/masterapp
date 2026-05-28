@@ -10217,7 +10217,7 @@ const contactFieldProgress = new Map();
 
   function trackFormSubmitOutcome(submitOutcome, metadata = {}) {
     return safeTrackingCall(`track:form_submit:${submitOutcome}`, () => window.LegendAnalytics?.trackEvent?.(
-      'form_submit',
+      'form_submit_attempt',
       {
         offer: '@cfg.OfferKey',
         pageVariant,
@@ -13247,7 +13247,7 @@ const contactFieldProgress = new Map();
     if (tracksContactFirstFlow) {
       trackEvent('life_contact_first_submit_attempt', { variantFlow: pageVariant, ...contactCompletionSnapshot });
     }
-    trackEvent('lead_form_submit_attempt', { ...submitTrackingMetadata, ...contactCompletionSnapshot });
+    trackEvent('form_submit_attempt', { ...submitTrackingMetadata, ...contactCompletionSnapshot });
     trackEvent('life_step2_submit_attempt', { ...submitTrackingMetadata, ...contactCompletionSnapshot });
     form._trackSubmitAttempt?.(true, 0);
     if (submitBtn) {

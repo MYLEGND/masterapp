@@ -3490,7 +3490,7 @@ body.health-final-step-active .dq-form-panel {
 
             clearServerFeedback();
             track({
-                EventType: 'form_submit',
+                EventType: 'form_submit_attempt',
                 SubmitOutcome: 'success',
                 PageKey: pageKey,
                 FormKey: formKey,
@@ -3698,7 +3698,7 @@ body.health-final-step-active .dq-form-panel {
 
             trackCta('health_submit_review', submitButton ? asTrimmed(submitButton.textContent) : 'Get My Health Review');
             track({
-                EventType: 'form_submit',
+                EventType: 'form_submit_attempt',
                 SubmitOutcome: 'attempt',
                 PageKey: pageKey,
                 FormKey: formKey
@@ -3747,7 +3747,7 @@ body.health-final-step-active .dq-form-panel {
                 }
 
                 track({
-                    EventType: 'form_submit',
+                    EventType: 'form_submit_attempt',
                     SubmitOutcome: 'failure',
                     PageKey: pageKey,
                     FormKey: formKey,

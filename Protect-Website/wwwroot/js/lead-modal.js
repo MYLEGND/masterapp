@@ -202,7 +202,7 @@
         errorEl.textContent = 'Please fill required fields.';
         errorEl.classList.add('show');
         tracking({
-          EventType: 'lead_form_submit_failed',
+          EventType: 'lead_form_submit_failure',
           PageKey: pageKey,
           ElementKey: pendingCta || resolveElementKey(null),
           FormKey: 'lead_modal_form'
@@ -214,7 +214,7 @@
       errorEl.textContent = 'Please accept the terms.';
       errorEl.classList.add('show');
       tracking({
-        EventType: 'lead_form_submit_failed',
+        EventType: 'lead_form_submit_failure',
         PageKey: pageKey,
         ElementKey: pendingCta || resolveElementKey(null),
         FormKey: 'lead_modal_form'
@@ -287,7 +287,7 @@
       errorEl.textContent = 'We could not send this right now. Please try again.';
       errorEl.classList.add('show');
       tracking({
-        EventType: 'lead_form_submit_failed',
+        EventType: 'lead_form_submit_failure',
         PageKey: pageKey,
         ElementKey: pendingCta || resolveElementKey(null),
         FormKey: 'lead_modal_form',
