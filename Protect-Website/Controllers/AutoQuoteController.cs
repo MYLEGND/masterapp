@@ -374,9 +374,180 @@ namespace Protect_Website.Controllers
                 });
 
             
-            var subjectName = $"{model.FirstName} {model.LastName}".Trim();
-            if (string.IsNullOrWhiteSpace(subjectName))
-                subjectName = "Unknown";
+            var primary = model.Drivers.FirstOrDefault();
+            var subjectName = primary == null ? "Unknown" : $"{primary.FirstName} {primary.LastName}".Trim();
+
+                string Nv(string? s) => string.IsNullOrWhiteSpace(s) ? "N/A" : s.Trim();
+                string Nd(DateTime? d) => d.HasValue ? d.Value.ToString("MM/dd/yyyy") : "N/A";
+
+                string DriverNameByIndex(int? idx)
+                {
+                    if (!idx.HasValue || idx.Value < 0 || idx.Value >= model.Drivers.Count) return "N/A";
+                    var dr = model.Drivers[idx.Value];
+                    return $"{dr.FirstName} {dr.LastName}".Trim();
+                }
+
+                string VehicleLabelByIndex(int? idx)
+                {
+                    if (!idx.HasValue || idx.Value < 0 || idx.Value >= model.Vehicles.Count) return "N/A";
+                    var v = model.Vehicles[idx.Value];
+                    return $"{v.Year} {v.Make} {v.Model} (VIN: {v.VIN})".Trim();
+                }
+
+            var rows = new LeadEmailTemplate.RowBuilder()
+                .Section("Applicant Info")
+                .Row("Name",              $"{model.FirstName} {model.LastName}".Trim())
+                .Row("Address State",     Nv(model.AddressState))
+                .Row("Postal Code",       Nv(model.PostalCode))
+                .Row("Nickname",          model.Nickname)
+                .Row("Gender",            model.Gender)
+                .Row("Date of Birth",     Nd(model.DOB))
+                .Row("Marital Status",    model.MaritalStatus)
+                .Row("Driver's License",  model.DriversLicenseNumber)
+                .Row("DL Status",         model.DLStatus)
+                .Row("DL State",          model.DLState)
+                .Row("Education",         model.Education)
+                .Row("Industry",          model.Industry)
+                .Section("Primary Address")
+                .Row("Address",       model.PrimaryAddress)
+                .Row("Unit",          model.PrimaryUnit)
+                .Row("City",          model.PrimaryCity)
+                .Row("State",         model.PrimaryState)
+                .Row("Country",       model.PrimaryCountry)
+                .Row("Postal Code",   model.PrimaryPostalCode)
+                .Row("Years at Address", model.PrimaryYearsAtAddress);
+
+            bool hasPrev = !string.IsNullOrWhiteSpace(model.PreviousAddress) ||
+                           !string.IsNullOrWhiteSpace(model.PreviousCity) ||
+                           !string.IsNullOrWhiteSpace(model.PreviousState);
+            if (hasPrev)
+            {
+                rows.Section("Previous Address")
+                    .Row("Address",       model.PreviousAddress)
+                    .Row("Unit",          model.PreviousUnit)
+                    .Row("City",          model.PreviousCity)
+                    .Row("State",         model.PreviousState)
+                    .Row("Country",       model.PreviousCountry)
+                    .Row("Postal Code",   model.PreviousPostalCode)
+                    .Row("Years at Address", model.PreviousYearsAtAddress);
+            }
+
+            rows.Section("Contact Info")
+                .Row("Phone Type",               model.PhoneType)
+                .Row("Phone Number",             model.PhoneNumber)
+                .Row("Email",                    model.EmailAddress)
+                .Row("Preferred Contact Method", model.PreferredContactMethod)
+                .Row("Best Time to Contact",     model.BestTimeToContact)
+                .Section("Policy Info")
+                .Row("Prior Carrier",             model.PriorCarrier)
+                .Row("Prior Policy Expiration",   Nd(model.PriorPolicyExpirationDate))
+                .Row("Prior Liability Limits",    model.PriorLiabilityLimits)
+                .Row("Prior Policy Term",         model.PriorPolicyTerm)
+                .Row("Prior Policy Premium",      model.PriorPolicyPremium)
+                .Row("Years / Months with Carrier", $"{Nv(model.YearsWithPriorCarrier)} yrs / {Nv(model.MonthsWithPriorCarrier)} mo")
+                .Row("Continuous Coverage",       $"{Nv(model.YearsContinuousCoverage)} yrs / {Nv(model.MonthsContinuousCoverage)} mo")
+                .Row("Credit Reports Authorized", model.CreditCheckAuthorized)
+                .Row("New Policy Term",           model.NewPolicyTerm)
+                .Row("Package Policy",            model.PackagePolicy)
+                .Row("New Policy Effective Date", Nd(model.NewPolicyEffectiveDate))
+                .Row("Additional Notes",          model.AdditionalCarrierQuestions)
+                .Row("Paperless",                 model.Paperless)
+                .Row("Multi-Policy Discount",     model.MultiPolicyDiscount);
+
+            rows.Section("Drivers");
+            for (int i = 0; i < model.Drivers.Count; i++)
+            {
+                var d = model.Drivers[i];
+                rows.Section(i == 0 ? "Driver 1 — Primary Insured" : $"Driver {i + 1}")
+                    .Row("Name",             $"{d.FirstName} {d.LastName}".Trim())
+                    .Row("Date of Birth",    Nd(d.DOB))
+                    .Row("Gender",           d.Gender)
+                    .Row("Marital Status",   d.MaritalStatus)
+                    .Row("Occupation",       $"{d.OccupationIndustry} / {d.OccupationTitle}".Trim(' ', '/'))
+                    .Row("DL Status",        d.DLStatus)
+                    .Row("Age Licensed",     d.AgeLicensed)
+                    .Row("DL # / State",     $"{d.DLNumber} / {d.DLState}".Trim(' ', '/'))
+                    .Row("Defensive Driver Course", Nd(d.DefensiveDriverCourseDate))
+                    .Row("License Suspended (5yr)", d.LicenseSuspendedLast5Years)
+                    .Row("Driver Education", d.DriverEducation)
+                    .Row("Mature Driver",    d.MatureDriver)
+                    .Row("Good Driver",      d.GoodDriver)
+                    .Row("Telematics Discount", d.TelematicsDiscount)
+                    .Row("Military Service", d.MilitaryService);
+            }
+
+            rows.Section("Vehicles");
+            for (int i = 0; i < model.Vehicles.Count; i++)
+            {
+                var v = model.Vehicles[i];
+                rows.Section(i == 0 ? "Vehicle 1 — Primary" : $"Vehicle {i + 1}")
+                    .Row("Year / Make / Model", $"{v.Year} {v.Make} {v.Model}".Trim())
+                    .Row("VIN",                 v.VIN)
+                    .Row("Purchase Date",       Nd(v.PurchaseDate))
+                    .Row("Vehicle Use",         v.Use)
+                    .Row("Annual Miles",        v.AnnualMiles)
+                    .Row("Passive Restraints",  v.PassiveRestraints)
+                    .Row("Anti-Theft",          v.AntiTheft)
+                    .Row("Anti-Lock Brakes",    v.AntiLockBrakes)
+                    .Row("Daytime Running Lights", v.DaytimeRunningLights)
+                    .Row("Cost New Value",      v.CostNewValue)
+                    .Row("Modification Value",  v.ModificationValue)
+                    .Row("Was New",             v.WasNew)
+                    .Row("Carpool",             v.Carpool)
+                    .Row("Telematics",          v.Telematics)
+                    .Row("TNC",                 v.TNC)
+                    .Row("Performance",         v.Performance)
+                    .Row("Ownership Type",      v.OwnershipType)
+                    .Row("Assigned Driver",     DriverNameByIndex(v.AssignedDriverIndex))
+                    .Row("Comprehensive",       v.Comprehensive)
+                    .Row("Collision",           v.Collision)
+                    .Row("Towing & Labor",      v.Towing)
+                    .Row("Rental Expense",      v.Rental)
+                    .Row("Loan/Lease Coverage", v.LoanLease)
+                    .Row("Liability",           v.Liability)
+                    .Row("Special Equipment",   v.SpecialEquipment)
+                    .Row("Branded Title",       v.BrandedTitle)
+                    .Row("Custom Equipment",    v.CustomEquipment);
+            }
+
+            if (model.Accidents.Any())
+            {
+                rows.Section("Accidents");
+                foreach (var a in model.Accidents)
+                {
+                    string veh = a.VehicleIndex.HasValue ? VehicleLabelByIndex(a.VehicleIndex) : (a.VehicleInvolvedText ?? "");
+                    rows.Row("Date / Driver", $"{Nd(a.Date)} / {DriverNameByIndex(a.DriverIndex)}")
+                        .Row("Description",   a.Description)
+                        .Row("Property Damage / Bodily Injury", $"{Nv(a.PropertyDamageAmount)} / {Nv(a.BodilyInjuryAmount)}")
+                        .Row("Collision / Medical", $"{Nv(a.CollisionAmount)} / {Nv(a.MedicalPaymentAmount)}")
+                        .Row("Vehicle Involved", veh);
+                }
+            }
+
+            if (model.Violations.Any())
+            {
+                rows.Section("Violations");
+                foreach (var v in model.Violations)
+                    rows.Row("Date / Driver", $"{Nd(v.Date)} / {DriverNameByIndex(v.DriverIndex)}")
+                        .Row("Description", v.Description);
+            }
+
+            if (model.CompLosses.Any())
+            {
+                rows.Section("Comp Losses");
+                foreach (var c in model.CompLosses)
+                    rows.Row("Date / Driver", $"{Nd(c.Date)} / {DriverNameByIndex(c.DriverIndex)}")
+                        .Row("Description", c.LossDescription);
+            }
+
+            rows.Section("General Coverage")
+                .Row("Bodily Injury",          model.BodilyInjury)
+                .Row("Uninsured Motorist",     model.UninsuredMotorist)
+                .Row("Underinsured Motorist",  model.UnderinsuredMotorist)
+                .Row("Medical Payments",       model.MedicalPayments)
+                .Row("Residence Type",         model.ResidenceType)
+                .Section("Authorization")
+                .Row("Disclaimer Acknowledged", LeadEmailTemplate.Bool(model.AcknowledgedDisclaimer));
 
             var emailBody = LeadEmailTemplate.Wrap("New Quote — Auto Insurance", rows.ToString());
 
