@@ -2,10 +2,7 @@ using Microsoft.AspNetCore.Mvc;
 using Protect_Website.Models;
 using Protect_Website.Services;
 using ProtectWebsite.Services;
-using Azure.Identity;
-using Microsoft.Graph;
-using Microsoft.Graph.Models;
-using Microsoft.Graph.Users.Item.SendMail;
+using ProtectWebsite.Services.Communication;
 using Microsoft.AspNetCore.Mvc.ModelBinding;
 using System.Text;
 using System.Net;
@@ -21,8 +18,9 @@ namespace Protect_Website.Controllers
         private readonly string senderEmail;
         private readonly string recipientEmail;
         private readonly string websiteName;
+        private readonly IProtectEmailSender _emailSender;
 
-        public RiskAssessmentController(IConfiguration configuration)
+        public RiskAssessmentController(IConfiguration configuration, IProtectEmailSender emailSender)
         {
             tenantId = configuration["AzureAd:TenantId"]!;
             clientId = configuration["AzureAd:ClientId"]!;
@@ -30,6 +28,7 @@ namespace Protect_Website.Controllers
             senderEmail = configuration["Contact:SenderEmail"] ?? "connect@mylegnd.com";
             recipientEmail = configuration["Contact:RecipientEmail"]!;
             websiteName = configuration["Contact:WebsiteName"] ?? "Legend Legacy Protection";
+            _emailSender = emailSender;
         }
 
         // GET: /RiskAssessment
@@ -140,33 +139,18 @@ namespace Protect_Website.Controllers
                 var finalHtml = LeadEmailTemplate.Wrap("Risk Assessment — New Submission", rows.ToString());
 
                 // ------------------ SEND EMAIL ------------------
-                var credential = new ClientSecretCredential(tenantId, clientId, clientSecret);
-                var graphClient = new GraphServiceClient(credential);
+                var emailSent = await _emailSender.TrySendAsync(
+                    recipientEmail,
+                    $"[RISK ASSESSMENT] {model.FirstName} {model.LastName}",
+                    finalHtml,
+                    replyToEmail: model.Email,
+                    saveToSentItems: true,
+                    cancellationToken: HttpContext?.RequestAborted ?? CancellationToken.None);
 
-                var message = new Message
+                if (!emailSent)
                 {
-                    Subject = $"[RISK ASSESSMENT] {model.FirstName} {model.LastName}",
-                    Body = new ItemBody
-                    {
-                        ContentType = BodyType.Html,
-                        Content = finalHtml
-                    },
-                    ToRecipients =
-                    [
-                        new Recipient
-                        {
-                            EmailAddress = new EmailAddress { Address = recipientEmail }
-                        }
-                    ]
-                };
-
-                var requestBody = new SendMailPostRequestBody
-                {
-                    Message = message,
-                    SaveToSentItems = true
-                };
-
-                await graphClient.Users[senderEmail].SendMail.PostAsync(requestBody);
+                    throw new InvalidOperationException("Risk assessment email failed to send through unified sender.");
+                }
 
                 // ✅ Thank you routing
                 TempData["QuoteType"] = "RiskAssessment";
