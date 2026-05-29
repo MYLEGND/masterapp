@@ -169,17 +169,19 @@
             background: linear-gradient(160deg, #080d1a, #0a1020);
             border: 2px solid var(--border);
             border-radius: 18px;
-            height: 110px;
+            min-height: 110px;
+            max-height: none;
             display: flex;
             flex-direction: column;
             justify-content: flex-start;
-            padding: 0 1.5rem;
+            padding: 0.5rem 1.5rem 2rem;
             box-sizing: border-box;
             position: relative;
             width: 100%;
             box-shadow:
                 0 22px 42px rgba(0,0,0,.32),
                 inset 0 0 0 1px rgba(255,255,255,.05);
+            overflow: visible;
         }
 
         .navbar-top {
@@ -239,6 +241,15 @@
             filter: drop-shadow(0 6px 14px rgba(0,0,0,.35));
         }
 
+        .navbar-brand {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            align-self: center;
+            flex: 0 0 auto;
+            margin: 0;
+        }
+
         body.landing-mode .navbar {
             height: auto;
             min-height: 68px;
@@ -290,7 +301,9 @@
         .header-bottom {
             position: absolute;
             bottom: 0.45rem;
-            width: 100%;
+            left: 0;
+            right: 0;
+            width: auto;
             text-align: center;
             font-weight: 800;
             color: var(--gold-strong);
@@ -435,7 +448,7 @@
             }
 
             .navbar-brand img {
-                max-height: 38px;
+                max-height: 100px;
                 filter: drop-shadow(0 4px 10px rgba(0,0,0,.25));
             }
 
@@ -444,7 +457,7 @@
                 padding: 8px 12px;
             }
             body.landing-mode .navbar-brand img {
-                max-height: 42px;
+                max-height: 68px;
             }
 
             .nav-toggle { display: inline-flex; width: 36px; height: 36px; }
