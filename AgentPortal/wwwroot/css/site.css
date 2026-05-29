@@ -1,6 +1,8 @@
 /* ============================== GLOBAL / BASE STYLES ============================== */
 
 :root{
+    --legend-navy:#0e1b3d;
+    --legend-navy-deep:#0b1530;
     --legend-gold:#d9b35a;
     --legend-gold-deep:#b4891f;
     --legend-ink:#0f172a;
@@ -55,7 +57,7 @@ footer.footer {
 
 /* ------------------------------ Navbar -------------------------------- */
 .navbar { 
-    background: linear-gradient(135deg,#0f172a,#111827);
+    background: linear-gradient(160deg,var(--legend-navy),var(--legend-navy-deep));
     border: 2px solid var(--legend-gold); 
     z-index: 1050; 
     align-items: center; /* vertical centering for logo + tabs */

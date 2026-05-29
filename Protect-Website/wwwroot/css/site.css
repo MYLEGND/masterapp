@@ -201,6 +201,40 @@ header {
 }
 
 /* ---------- NAV LINKS (NO GREY FILL ON HOVER) ---------- */
+header .nav-links .nav-link {
+    font-weight: 800;
+    padding: .5rem 1.1rem;
+    border-radius: 50px;
+    color: #ffffff !important;
+    text-decoration: none;
+    transition: all .25s ease;
+    white-space: nowrap;
+    border: 1.4px solid rgba(166,128,35,.42);
+    box-shadow: inset 0 1px 0 rgba(255,255,255,.08);
+}
+
+header .nav-links .nav-link:hover,
+header .nav-links .nav-link.active {
+    color: var(--gold-strong) !important;
+    background-color: rgba(166,128,35,0.16);
+    border-color: var(--border);
+    transform: translateY(-2px);
+    box-shadow:
+        0 14px 24px rgba(0,0,0,.28),
+        inset 0 1px 0 rgba(255,255,255,.12);
+}
+
+header .nav-links .nav-link:focus,
+header .nav-links .nav-link:focus-visible {
+    outline: none;
+    background-color: rgba(166,128,35,0.16);
+    border-color: var(--border);
+    box-shadow:
+        0 14px 24px rgba(0,0,0,.28),
+        inset 0 1px 0 rgba(255,255,255,.12),
+        0 0 0 4px rgba(199,153,49,0.18);
+}
+
 .navbar-left .nav-link,
 .navbar-right .nav-link {
     font-weight: 700;
