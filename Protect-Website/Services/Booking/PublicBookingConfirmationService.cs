@@ -345,8 +345,8 @@ public sealed class MicrosoftGraphPublicBookingCalendarMatcher : IPublicBookingC
     {
         var calendarIdentity = FirstNotEmpty(
             request.CalendarUserId,
-            request.CalendarEmail,
-            request.BookingPageIdOrMailbox);
+            request.BookingPageIdOrMailbox,
+            request.CalendarEmail);
         if (string.IsNullOrWhiteSpace(calendarIdentity))
         {
             return null;
