@@ -425,6 +425,7 @@ public sealed class MicrosoftGraphPublicBookingCalendarMatcher : IPublicBookingC
                     foreach (var item in payload?.Value ?? new List<GraphCalendarEvent>())
                     {
                         var score = ScoreEvent(item, request);
+                        _logger.LogInformation("Graph candidate score={Score} eventId={EventId} subject={Subject} leadEmail={LeadEmail}", score, item.Id, item.Subject, request.LeadEmail);
                         if (score > bestScore)
                         {
                             bestScore = score;
