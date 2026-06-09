@@ -343,11 +343,18 @@ public sealed class MicrosoftGraphPublicBookingCalendarMatcher : IPublicBookingC
         PublicBookingCalendarMatchRequest request,
         CancellationToken cancellationToken = default)
     {
-        var calendarIdentity = FirstNotEmpty(
+        var calendarIdentities = new[]
+        {
             request.CalendarUserId,
-            request.BookingPageIdOrMailbox,
-            request.CalendarEmail);
-        if (string.IsNullOrWhiteSpace(calendarIdentity))
+            request.CalendarEmail,
+            request.BookingPageIdOrMailbox
+        }
+            .Where(value => !string.IsNullOrWhiteSpace(value))
+            .Select(value => value!.Trim())
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
+        if (calendarIdentities.Count == 0)
         {
             return null;
         }
@@ -360,64 +367,96 @@ public sealed class MicrosoftGraphPublicBookingCalendarMatcher : IPublicBookingC
 
         if (!string.IsNullOrWhiteSpace(request.ExistingCalendarEventId))
         {
-            var directEvent = await TryGetEventByIdAsync(
-                calendarIdentity,
-                request.ExistingCalendarEventId!,
-                accessToken,
-                cancellationToken);
-            if (directEvent != null)
+            foreach (var calendarIdentity in calendarIdentities)
             {
-                return MapEvent(directEvent, "calendar_event_id");
+                var directEvent = await TryGetEventByIdAsync(
+                    calendarIdentity,
+                    request.ExistingCalendarEventId!,
+                    accessToken,
+                    cancellationToken);
+                if (directEvent != null)
+                {
+                    return MapEvent(directEvent, "calendar_event_id");
+                }
             }
         }
 
-        var fromUtc = DateTime.UtcNow.AddHours(-12);
-        var toUtc = DateTime.UtcNow.AddDays(60);
-        var url = QueryHelpers.AddQueryString(
-            $"https://graph.microsoft.com/v1.0/users/{Uri.EscapeDataString(calendarIdentity)}/calendar/calendarView",
-            new Dictionary<string, string?>
-            {
-                ["startDateTime"] = fromUtc.ToString("o"),
-                ["endDateTime"] = toUtc.ToString("o"),
-                ["$top"] = "50",
-                ["$select"] = "id,webLink,subject,bodyPreview,start,end,attendees,onlineMeeting"
-            });
+        var bestScore = 0;
+        GraphCalendarEvent? bestEvent = null;
+        string? bestCalendarIdentity = null;
 
-        try
+        foreach (var calendarIdentity in calendarIdentities)
         {
-            using var client = new HttpClient();
-            using var httpRequest = new HttpRequestMessage(HttpMethod.Get, url);
-            httpRequest.Headers.Authorization = new AuthenticationHeaderValue("Bearer", accessToken);
+            var fromUtc = DateTime.UtcNow.AddHours(-24);
+            var toUtc = DateTime.UtcNow.AddDays(90);
+            var url = QueryHelpers.AddQueryString(
+                $"https://graph.microsoft.com/v1.0/users/{Uri.EscapeDataString(calendarIdentity)}/calendar/calendarView",
+                new Dictionary<string, string?>
+                {
+                    ["startDateTime"] = fromUtc.ToString("o"),
+                    ["endDateTime"] = toUtc.ToString("o"),
+                    ["$top"] = "100",
+                    ["$select"] = "id,webLink,subject,bodyPreview,start,end,attendees,onlineMeeting"
+                });
 
-            using var response = await client.SendAsync(httpRequest, cancellationToken);
-            if (!response.IsSuccessStatusCode)
+            try
+            {
+                using var client = new HttpClient();
+
+                while (!string.IsNullOrWhiteSpace(url))
+                {
+                    using var httpRequest = new HttpRequestMessage(HttpMethod.Get, url);
+                    httpRequest.Headers.Authorization = new AuthenticationHeaderValue("Bearer", accessToken);
+
+                    using var response = await client.SendAsync(httpRequest, cancellationToken);
+                    if (!response.IsSuccessStatusCode)
+                    {
+                        _logger.LogWarning(
+                            "Public booking Graph lookup failed for calendar {CalendarIdentity}. status={StatusCode}",
+                            calendarIdentity,
+                            (int)response.StatusCode);
+                        break;
+                    }
+
+                    await using var stream = await response.Content.ReadAsStreamAsync(cancellationToken);
+                    var payload = await JsonSerializer.DeserializeAsync<GraphCalendarViewResponse>(stream, JsonOptions, cancellationToken);
+
+                    foreach (var item in payload?.Value ?? new List<GraphCalendarEvent>())
+                    {
+                        var score = ScoreEvent(item, request);
+                        if (score > bestScore)
+                        {
+                            bestScore = score;
+                            bestEvent = item;
+                            bestCalendarIdentity = calendarIdentity;
+                        }
+                    }
+
+                    url = payload?.NextLink;
+                }
+            }
+            catch (Exception ex)
             {
                 _logger.LogWarning(
-                    "Public booking Graph lookup failed for calendar {CalendarIdentity}. status={StatusCode}",
-                    calendarIdentity,
-                    (int)response.StatusCode);
-                return null;
+                    ex,
+                    "Public booking Graph lookup threw while searching calendar {CalendarIdentity}.",
+                    calendarIdentity);
             }
-
-            await using var stream = await response.Content.ReadAsStreamAsync(cancellationToken);
-            var payload = await JsonSerializer.DeserializeAsync<GraphCalendarViewResponse>(stream, JsonOptions, cancellationToken);
-            var match = payload?.Value?
-                .Select(item => new { Event = item, Score = ScoreEvent(item, request) })
-                .OrderByDescending(item => item.Score)
-                .FirstOrDefault(item => item.Score >= 90);
-
-            return match == null
-                ? null
-                : MapEvent(match.Event, $"match_score_{match.Score}");
         }
-        catch (Exception ex)
+
+        if (bestEvent == null || bestScore < 70)
         {
             _logger.LogWarning(
-                ex,
-                "Public booking Graph lookup threw while searching calendar {CalendarIdentity}.",
-                calendarIdentity);
+                "Public booking Graph lookup found no confident match. calendars={CalendarIdentities} lead={LeadFirstName} {LeadLastName} email={LeadEmail} bestScore={BestScore}",
+                string.Join(",", calendarIdentities),
+                request.LeadFirstName,
+                request.LeadLastName,
+                request.LeadEmail,
+                bestScore);
             return null;
         }
+
+        return MapEvent(bestEvent, $"match_score_{bestScore}_calendar_{bestCalendarIdentity}");
     }
 
     private async Task<string?> TryGetAccessTokenAsync(CancellationToken cancellationToken)
@@ -506,7 +545,7 @@ public sealed class MicrosoftGraphPublicBookingCalendarMatcher : IPublicBookingC
         if (!string.IsNullOrWhiteSpace(fullName) &&
             searchable.Contains(fullName, StringComparison.OrdinalIgnoreCase))
         {
-            score += 85;
+            score += 100;
         }
 
         if (!string.IsNullOrWhiteSpace(firstName) &&
@@ -597,6 +636,8 @@ public sealed class MicrosoftGraphPublicBookingCalendarMatcher : IPublicBookingC
     private sealed class GraphCalendarViewResponse
     {
         public List<GraphCalendarEvent>? Value { get; set; }
+
+        public string? NextLink { get; set; }
     }
 
     private sealed class GraphCalendarEvent
