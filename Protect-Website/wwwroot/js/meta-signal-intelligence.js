@@ -366,7 +366,7 @@
       }
     };
 
-    if (!config.enabled || config.pageMode.toLowerCase() !== 'paid_landing') {
+    if (!config.enabled) {
       return noop;
     }
 

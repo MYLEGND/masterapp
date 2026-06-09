@@ -219,7 +219,7 @@ public sealed class MetaSignalIntelligenceService : IMetaSignalIntelligenceServi
     public async Task<MetaSignalProcessResult?> RecordConfirmedLeadAsync(MetaSignalConfirmedLeadRequest request, HttpContext? httpContext, CancellationToken cancellationToken = default)
     {
         var pageMode = Normalize(request.PageMode);
-        if (!_options.Enabled || !string.Equals(pageMode, "paid_landing", StringComparison.OrdinalIgnoreCase))
+        if (!_options.Enabled)
             return null;
 
         var quoteType = NormalizeQuoteType(request.QuoteType);
