@@ -14,22 +14,22 @@ namespace Infrastructure.Migrations
             migrationBuilder.AddColumn<DateTime>(
                 name: "DeactivatedUtc",
                 table: "AgentProfiles",
-                type: "TEXT",
+                type: "datetime2",
                 nullable: true);
 
             migrationBuilder.AddColumn<string>(
                 name: "DeactivationReason",
                 table: "AgentProfiles",
-                type: "TEXT",
+                type: "nvarchar(512)",
                 maxLength: 512,
                 nullable: true);
 
             migrationBuilder.AddColumn<bool>(
                 name: "IsActive",
                 table: "AgentProfiles",
-                type: "INTEGER",
+                type: "bit",
                 nullable: false,
-                defaultValue: false);
+                defaultValue: true);
         }
 
         /// <inheritdoc />
