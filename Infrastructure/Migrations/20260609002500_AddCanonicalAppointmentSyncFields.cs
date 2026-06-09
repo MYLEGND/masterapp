@@ -1,10 +1,14 @@
 using System;
+using Infrastructure.Data;
+using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Migrations;
 
 #nullable disable
 
 namespace Infrastructure.Migrations
 {
+    [DbContext(typeof(MasterAppDbContext))]
+    [Migration("20260609002500_AddCanonicalAppointmentSyncFields")]
     public partial class AddCanonicalAppointmentSyncFields : Migration
     {
         protected override void Up(MigrationBuilder migrationBuilder)
