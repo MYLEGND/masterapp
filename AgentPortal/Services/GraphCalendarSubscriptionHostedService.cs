@@ -51,7 +51,9 @@ public sealed class GraphCalendarSubscriptionHostedService : BackgroundService
             using var scope = _services.CreateScope();
             var db = scope.ServiceProvider.GetRequiredService<MasterAppDbContext>();
 
-            var publicBaseUrl = _configuration["GraphWebhooks:PublicBaseUrl"]?.Trim().TrimEnd('/');
+            var publicBaseUrl = FirstNotEmpty(
+                _configuration["GraphWebhooks__PublicBaseUrl"],
+                _configuration["GraphWebhooks:PublicBaseUrl"])?.Trim().TrimEnd('/');
             if (string.IsNullOrWhiteSpace(publicBaseUrl))
             {
                 _logger.LogInformation("Graph calendar subscription sync skipped because GraphWebhooks:PublicBaseUrl is not configured.");
