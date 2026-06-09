@@ -445,7 +445,8 @@ public sealed class MicrosoftGraphPublicBookingCalendarMatcher : IPublicBookingC
             }
         }
 
-        if (bestEvent == null || bestScore < 70)
+_logger.LogInformation("TryMatchAsync bestScore={BestScore} bestEventId={BestEventId} leadEmail={LeadEmail}", bestScore, bestEvent?.Id, request.LeadEmail);
+        if (bestEvent == null || bestScore < 50)
         {
             _logger.LogWarning(
                 "Public booking Graph lookup found no confident match. calendars={CalendarIdentities} lead={LeadFirstName} {LeadLastName} email={LeadEmail} bestScore={BestScore}",
