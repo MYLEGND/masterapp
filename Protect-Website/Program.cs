@@ -10,6 +10,10 @@ using System.IO;
 
 var builder = WebApplication.CreateBuilder(args);
 
+// Enable app-level logs in Azure log stream so Meta CAPI send/skip/fail results are visible.
+builder.Logging.AddConsole();
+builder.Logging.SetMinimumLevel(LogLevel.Information);
+
 // 🔹 Azure Key Vault — pulls secrets (e.g. AzureAd:ClientSecret) at startup
 //    Works locally (via az login / VS Code Azure account) and in production (via Managed Identity).
 var keyVaultUri = builder.Configuration["KeyVault:Uri"]
