@@ -768,28 +768,7 @@ app.UseForwardedHeaders();
 // by allowing HTTP on localhost. HTTPS redirection remains enforced outside Development.
 if (!app.Environment.IsDevelopment())
 {
-app.Use(async (context, next) => {
-    if (context.Request.Path.StartsWithSegments("/api/graph/calendar-webhook")) {
-        await next(); return;
-    }
-    await next();
-});
-    
-app.Use(async (context, next) =>
-{
-    if (context.Request.Path.StartsWithSegments("/api/graph/calendar-webhook") &&
-        context.Request.Method.Equals("POST", StringComparison.OrdinalIgnoreCase) &&
-        context.Request.Query.TryGetValue("validationToken", out var validationToken) &&
-        !string.IsNullOrWhiteSpace(validationToken.ToString()))
-    {
-        context.Response.StatusCode = StatusCodes.Status200OK;
-        context.Response.ContentType = "text/plain";
-        await context.Response.WriteAsync(validationToken.ToString());
-        return;
-    }
-    await next();
-});
-app.UseHttpsRedirection();
+    app.UseHttpsRedirection();
 }
 app.UseStaticFiles();
 
