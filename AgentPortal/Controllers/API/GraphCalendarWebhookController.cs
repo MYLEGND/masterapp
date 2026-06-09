@@ -5,6 +5,7 @@ using Azure.Identity;
 using Domain.Entities;
 using Domain.Enums;
 using Infrastructure.Data;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.WebUtilities;
 using Microsoft.EntityFrameworkCore;
@@ -12,6 +13,7 @@ using Microsoft.EntityFrameworkCore;
 namespace AgentPortal.Controllers.API;
 
 [ApiController]
+[AllowAnonymous]
 [Route("api/graph/calendar-webhook")]
 public sealed class GraphCalendarWebhookController : ControllerBase
 {
