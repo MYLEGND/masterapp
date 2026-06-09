@@ -14,6 +14,7 @@ namespace AgentPortal.Controllers.API;
 
 [ApiController]
 [AllowAnonymous]
+[IgnoreAntiforgeryToken]
 [Route("api/graph/calendar-webhook")]
 public sealed class GraphCalendarWebhookController : ControllerBase
 {
