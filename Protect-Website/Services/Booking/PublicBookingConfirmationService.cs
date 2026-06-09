@@ -578,6 +578,7 @@ _logger.LogInformation("TryMatchAsync bestScore={BestScore} bestEventId={BestEve
             }
         }
 
+_logger.LogInformation("Score breakdown: leadEmail={LeadEmail} fullName={FullName} evtSubject={Subject} evtBody={Body} score={Score}", request.LeadEmail, fullName, evt.Subject, evt.BodyPreview, score);
         return score;
     }
 
