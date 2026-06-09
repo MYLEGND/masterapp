@@ -1,22 +1,36 @@
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Threading;
+using System.Threading.Tasks;
 using AgentPortal.Models;
 using AgentPortal.Helpers;
 using AgentPortal.Services;
 using Domain.Entities;
 using Domain.Enums;
 using Infrastructure.Data;
+using Infrastructure.Identity;
 using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.ModelBinding;
+using System.IO;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.Logging;
+using Microsoft.Graph;
 using Microsoft.Graph.Models.ODataErrors;
+using Azure.Identity;
 using Microsoft.VisualBasic.FileIO;
 using Shared.Auth;
 using System.Security.Cryptography;
 using System.Security.Claims;
 using System.Text.Json;
+using System.Text.Json.Nodes;
 using System.Text.Json.Serialization;
 using System.Text.RegularExpressions;
 using System.Text;
+using DateTimeOffset = System.DateTimeOffset;
 
 namespace AgentPortal.Controllers;
 
@@ -29,6 +43,7 @@ namespace AgentPortal.Controllers;
         private readonly IConfiguration _config;
         private readonly ILogger<ClientsController> _logger;
         private readonly IAgentTimeZoneResolver _agentTimeZoneResolver;
+        private readonly IAzureClientEmailSyncService _azureClientEmailSync;
         private readonly ProductionService _production;
         private readonly EffectiveAgentContext _agentContext;
         private readonly IExecutionEngine _execution;
@@ -45,6 +60,7 @@ namespace AgentPortal.Controllers;
             IConfiguration config,
             ILogger<ClientsController> logger,
             IAgentTimeZoneResolver agentTimeZoneResolver,
+            IAzureClientEmailSyncService azureClientEmailSync,
             ProductionService production,
             EffectiveAgentContext agentContext,
             IExecutionEngine execution,
@@ -55,6 +71,7 @@ namespace AgentPortal.Controllers;
             _config = config;
             _logger = logger;
             _agentTimeZoneResolver = agentTimeZoneResolver;
+            _azureClientEmailSync = azureClientEmailSync;
             _production = production;
             _agentContext = agentContext;
             _execution = execution;
@@ -63,6 +80,265 @@ namespace AgentPortal.Controllers;
 
         private static string NormLower(string? v) => (v ?? "").Trim().ToLowerInvariant();
         private static string Norm(string? v) => (v ?? "").Trim();
+        private const string AgentTenantDomain = "@mylegnd.com";
+
+        private static bool HasChildData(HouseholdChildViewModel? child)
+        {
+            if (child == null) return false;
+
+            return !string.IsNullOrWhiteSpace(child.FirstName)
+                || !string.IsNullOrWhiteSpace(child.LastName)
+                || child.DOB.HasValue
+                || !string.IsNullOrWhiteSpace(child.Email)
+                || !string.IsNullOrWhiteSpace(child.Phone);
+        }
+
+        private async Task<List<HouseholdChildViewModel>> LoadChildrenAsync(string? clientUserId)
+        {
+            var clientUserIdNorm = NormLower(clientUserId);
+            if (string.IsNullOrWhiteSpace(clientUserIdNorm))
+                return new List<HouseholdChildViewModel>();
+
+            return await _db.HouseholdMembers
+                .AsNoTracking()
+                .Where(x => x.ClientUserId == clientUserIdNorm && x.RelationshipType == "Child")
+                .OrderBy(x => x.CreatedUtc)
+                .ThenBy(x => x.FirstName)
+                .ThenBy(x => x.LastName)
+                .Select(x => new HouseholdChildViewModel
+                {
+                    Id = x.Id,
+                    FirstName = x.FirstName,
+                    LastName = x.LastName,
+                    DOB = x.DOB,
+                    Email = x.Email,
+                    Phone = x.Phone
+                })
+                .ToListAsync();
+        }
+
+        private async Task SaveChildrenAsync(string clientUserId, IEnumerable<HouseholdChildViewModel>? children)
+        {
+            var clientUserIdNorm = NormLower(clientUserId);
+            var existing = await _db.HouseholdMembers
+                .Where(x => x.ClientUserId == clientUserIdNorm && x.RelationshipType == "Child")
+                .ToListAsync();
+
+            if (existing.Count > 0)
+                _db.HouseholdMembers.RemoveRange(existing);
+
+            var now = DateTime.UtcNow;
+            var newChildren = (children ?? Enumerable.Empty<HouseholdChildViewModel>())
+                .Where(HasChildData)
+                .Select(child => new HouseholdMember
+                {
+                    ClientUserId = clientUserIdNorm,
+                    RelationshipType = "Child",
+                    FirstName = (child.FirstName ?? "").Trim(),
+                    LastName = (child.LastName ?? "").Trim(),
+                    DOB = child.DOB?.Date,
+                    Email = (child.Email ?? "").Trim(),
+                    Phone = (child.Phone ?? "").Trim(),
+                    CreatedUtc = now,
+                    UpdatedUtc = now
+                })
+                .ToList();
+
+            if (newChildren.Count > 0)
+                _db.HouseholdMembers.AddRange(newChildren);
+        }
+
+        private static bool IsAgentTenantEmail(string? email)
+            => !string.IsNullOrWhiteSpace(email)
+               && email.Trim().EndsWith(AgentTenantDomain, StringComparison.OrdinalIgnoreCase);
+
+        private static string DigitsOnly(string? input)
+            => new string((input ?? string.Empty).Where(char.IsDigit).ToArray());
+
+        private static string EscapeODataLiteral(string value)
+            => (value ?? string.Empty).Replace("'", "''");
+
+        private GraphServiceClient? BuildGraphClientForLookup()
+        {
+            var tenantId = (_config["GraphProvisioning:TenantId"]
+                            ?? _config["AzureAd:TenantId"]
+                            ?? _config["GraphProvisioning__TenantId"]
+                            ?? _config["AzureAd__TenantId"])?.Trim();
+            var clientId = (_config["GraphProvisioning:ClientId"]
+                            ?? _config["AzureAd:ClientId"]
+                            ?? _config["GraphProvisioning__ClientId"]
+                            ?? _config["AzureAd__ClientId"])?.Trim();
+            var clientSecret = (_config["GraphProvisioning:ClientSecret"]
+                                ?? _config["AzureAd:ClientSecret"]
+                                ?? _config["GraphProvisioning__ClientSecret"]
+                                ?? _config["AzureAd__ClientSecret"])?.Trim();
+
+            if (string.IsNullOrWhiteSpace(tenantId) || string.IsNullOrWhiteSpace(clientId) || string.IsNullOrWhiteSpace(clientSecret))
+                return null;
+
+            var credential = new ClientSecretCredential(tenantId, clientId, clientSecret);
+            return new GraphServiceClient(credential, new[] { "https://graph.microsoft.com/.default" });
+        }
+
+        private sealed class TeamAgentLookupResult
+        {
+            public string AgentUserId { get; set; } = "";
+            public string AgentUpn { get; set; } = "";
+            public string FullName { get; set; } = "";
+            public string Phone { get; set; } = "";
+        }
+
+        private async Task<List<TeamAgentLookupResult>> SearchTenantAgentsAsync(string search, CancellationToken ct = default)
+        {
+            var query = NormLower(search);
+            if (string.IsNullOrWhiteSpace(query) || query.Length < 2)
+                return new List<TeamAgentLookupResult>();
+
+            var queryDigits = DigitsOnly(query);
+            var merged = new Dictionary<string, TeamAgentLookupResult>(StringComparer.OrdinalIgnoreCase);
+
+            void Upsert(TeamAgentLookupResult item)
+            {
+                if (item == null) return;
+                if (string.IsNullOrWhiteSpace(item.AgentUserId) || !IsAgentTenantEmail(item.AgentUpn)) return;
+
+                var key = NormLower(item.AgentUserId);
+                if (!merged.TryGetValue(key, out var existing))
+                {
+                    merged[key] = item;
+                    return;
+                }
+
+                if (string.IsNullOrWhiteSpace(existing.FullName) && !string.IsNullOrWhiteSpace(item.FullName))
+                    existing.FullName = item.FullName;
+                if (string.IsNullOrWhiteSpace(existing.Phone) && !string.IsNullOrWhiteSpace(item.Phone))
+                    existing.Phone = item.Phone;
+                if (string.IsNullOrWhiteSpace(existing.AgentUpn) && !string.IsNullOrWhiteSpace(item.AgentUpn))
+                    existing.AgentUpn = item.AgentUpn;
+            }
+
+            var localProfiles = await _db.AgentProfiles
+                .AsNoTracking()
+                .Where(x => (x.AgentUpn ?? "").ToLower().EndsWith(AgentTenantDomain))
+                .ToListAsync(ct);
+
+            foreach (var profile in localProfiles)
+            {
+                var upn = Norm(profile.AgentUpn);
+                if (!IsAgentTenantEmail(upn)) continue;
+
+                var fullName = Norm(profile.FullName);
+                var phone = Norm(profile.Phone);
+                var haystack = string.Join(" ",
+                    fullName,
+                    upn,
+                    Norm(profile.NormalizedEmail),
+                    phone).ToLowerInvariant();
+
+                var phoneDigits = DigitsOnly(phone);
+                if (!haystack.Contains(query) && (string.IsNullOrWhiteSpace(queryDigits) || !phoneDigits.Contains(queryDigits)))
+                    continue;
+
+                Upsert(new TeamAgentLookupResult
+                {
+                    AgentUserId = Norm(profile.AgentUserId),
+                    AgentUpn = upn,
+                    FullName = fullName,
+                    Phone = phone
+                });
+            }
+
+            try
+            {
+                var graph = BuildGraphClientForLookup();
+                if (graph != null)
+                {
+                    var escaped = EscapeODataLiteral(query);
+                    var response = await graph.Users.GetAsync(req =>
+                    {
+                        req.QueryParameters.Top = 25;
+                        req.QueryParameters.Select = new[] { "id", "displayName", "userPrincipalName", "mail", "mobilePhone", "businessPhones" };
+                        req.QueryParameters.Filter = $"accountEnabled eq true and (startswith(displayName,'{escaped}') or startswith(userPrincipalName,'{escaped}') or startswith(mail,'{escaped}'))";
+                    }, ct);
+
+                    foreach (var user in response?.Value ?? Enumerable.Empty<Microsoft.Graph.Models.User>())
+                    {
+                        var upn = Norm(user.UserPrincipalName);
+                        if (!IsAgentTenantEmail(upn)) continue;
+
+                        var phone = Norm(user.MobilePhone);
+                        if (string.IsNullOrWhiteSpace(phone) && user.BusinessPhones != null && user.BusinessPhones.Count > 0)
+                            phone = Norm(user.BusinessPhones.FirstOrDefault());
+
+                        Upsert(new TeamAgentLookupResult
+                        {
+                            AgentUserId = Norm(user.Id),
+                            AgentUpn = upn,
+                            FullName = Norm(user.DisplayName),
+                            Phone = phone
+                        });
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Tenant agent lookup via Graph failed. Falling back to local agent profiles only.");
+            }
+
+            return merged.Values
+                .OrderBy(x => string.IsNullOrWhiteSpace(x.FullName) ? 1 : 0)
+                .ThenBy(x => x.FullName)
+                .ThenBy(x => x.AgentUpn)
+                .Take(25)
+                .ToList();
+        }
+
+        private async Task<List<object>> BuildClientSharedAccessListAsync(string clientUserIdNorm, CancellationToken ct = default)
+        {
+            var links = await _db.AgentClients
+                .AsNoTracking()
+                .Where(x => (x.ClientUserId ?? "").ToLower() == clientUserIdNorm)
+                .OrderBy(x => x.CreatedUtc)
+                .ToListAsync(ct);
+
+            if (links.Count == 0)
+                return new List<object>();
+
+            var agentIds = links
+                .Select(x => NormLower(x.AgentUserId))
+                .Where(x => !string.IsNullOrWhiteSpace(x))
+                .Distinct()
+                .ToArray();
+
+            var profiles = await _db.AgentProfiles
+                .AsNoTracking()
+                .Where(x => agentIds.Contains((x.AgentUserId ?? "").ToLower()))
+                .ToListAsync(ct);
+
+            var profileByAgent = profiles
+                .GroupBy(x => NormLower(x.AgentUserId))
+                .ToDictionary(g => g.Key, g => g.OrderByDescending(x => x.UpdatedUtc).First(), StringComparer.OrdinalIgnoreCase);
+
+            var ownerAgentId = NormLower(links.First().AgentUserId);
+
+            return links.Select(link =>
+            {
+                var key = NormLower(link.AgentUserId);
+                profileByAgent.TryGetValue(key, out var profile);
+                var upn = string.IsNullOrWhiteSpace(profile?.AgentUpn) ? link.AgentUpn : profile!.AgentUpn;
+                var fullName = string.IsNullOrWhiteSpace(profile?.FullName) ? upn : profile!.FullName;
+
+                return (object)new
+                {
+                    agentUserId = link.AgentUserId,
+                    agentUpn = upn,
+                    fullName,
+                    phone = profile?.Phone ?? "",
+                    linkedUtc = link.CreatedUtc,
+                    isOwner = string.Equals(ownerAgentId, key, StringComparison.OrdinalIgnoreCase)
+                };
+            }).ToList();
+        }
         private static string? NormalizeEmail(string? email)
         {
             var v = (email ?? "").Trim().ToLowerInvariant();
@@ -93,6 +369,9 @@ namespace AgentPortal.Controllers;
         public DateTime? DueDateUtc { get; set; }
         public ActionPriority Priority { get; set; } = ActionPriority.P2;
         public bool ShowInCommandCenter { get; set; }
+        // Backward compatibility for stale cached clients posting older field names.
+        public bool ShowInDashboard { get; set; }
+        public bool IncludeInDashboard { get; set; }
     }
 
     public record CreateClientCommitmentRequest
@@ -224,6 +503,192 @@ namespace AgentPortal.Controllers;
         var bytes = Encoding.UTF8.GetBytes(json ?? string.Empty);
         var hash = sha.ComputeHash(bytes);
         return BitConverter.ToString(hash).Replace("-", "").ToLowerInvariant();
+    }
+
+    // Financial plan sanitation + merge ----------------------------------------------------------
+    private static readonly HashSet<string> DeprecatedRootPlanKeys = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "retirementBase", "retirement_base", "retireBase",
+        "investmentStartingBalance", "investmentsStartingBalance", "invStartingBalance",
+        "lifeStartingBalance", "annuityStartingBalance",
+        "strategy", "scenario", "gapSource", "priorities", "priorityOrder"
+    };
+
+    private static readonly HashSet<string> DerivedDistributionInputs = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "wfd_base", "wfd_incomeGap", "wfd_yrsInDist",
+        "wfd_invAmt", "wfd_liAmt", "wfd_annAmt"
+    };
+
+    private static readonly HashSet<string> DeprecatedDistributionSelects = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "wfd_strategy", "wfd_pri1", "wfd_pri2", "wfd_pri3", "wfd_pri4",
+        "wfd_gapSource", "wfd_scenarioMode"
+    };
+
+    private static JsonObject ParsePlanNode(string? json)
+    {
+        if (string.IsNullOrWhiteSpace(json)) return new JsonObject();
+        try
+        {
+            var node = JsonNode.Parse(json) as JsonObject;
+            return node ?? new JsonObject();
+        }
+        catch
+        {
+            return new JsonObject();
+        }
+    }
+
+    private static JsonObject GetOrCreateObj(JsonObject parent, string key)
+    {
+        if (parent[key] is JsonObject obj) return obj;
+        var created = new JsonObject();
+        parent[key] = created;
+        return created;
+    }
+
+    private static JsonObject SanitizeFinancialPlanNode(JsonObject plan)
+    {
+        // work on a clone so we never mutate callers
+        var root = (JsonObject?)plan?.DeepClone() ?? new JsonObject();
+
+        // remove deprecated/derived root members
+        foreach (var key in DeprecatedRootPlanKeys)
+            root.Remove(key);
+
+        // Back-compat: migrate alternative distribution keys to canonical "distribution"
+        if (!root.ContainsKey("distribution"))
+        {
+            foreach (var altKey in new[] { "distributionPlanner", "distributionPlan", "wealthDistribution", "wfd" })
+            {
+                if (root[altKey] is JsonObject altObj)
+                {
+                    root["distribution"] = altObj;
+                    break;
+                }
+            }
+        }
+
+        var wf = GetOrCreateObj(root, "wealthForecast");
+        var wfInputs = GetOrCreateObj(wf, "inputs");
+        // Wealth Forecast outputs should not be persisted as truth
+        wf.Remove("results");
+        wf.Remove("outputs");
+
+        var dist = GetOrCreateObj(root, "distribution");
+        var distInputs = GetOrCreateObj(dist, "inputs");
+        var distChecks = GetOrCreateObj(dist, "checks");
+        var distSelects = GetOrCreateObj(dist, "selects");
+        var distMeta = GetOrCreateObj(dist, "meta");
+        var source = distMeta["source"]?.GetValue<string>();
+        var hasFinanceSignals =
+            distSelects.ContainsKey("wfd_strategy") ||
+            distSelects.ContainsKey("wfd_pri1") ||
+            distSelects.ContainsKey("wfd_pri2") ||
+            distSelects.ContainsKey("wfd_pri3") ||
+            distSelects.ContainsKey("wfd_pri4");
+        var fromFinance = string.Equals(source, "finance", StringComparison.OrdinalIgnoreCase) || hasFinanceSignals;
+        bool manualOverride = false;
+        if (distChecks.TryGetPropertyValue("wfd_manualOverride", out var moNode))
+        {
+            if (moNode is JsonValue jv && jv.TryGetValue<bool>(out var mv)) manualOverride = mv;
+            else if (bool.TryParse(moNode?.ToString(), out var parsed)) manualOverride = parsed;
+        }
+
+        // strip derived distribution inputs; allow manual override base from finance-only payloads
+        foreach (var key in DerivedDistributionInputs)
+        {
+            if (key.Equals("wfd_base", StringComparison.OrdinalIgnoreCase) && fromFinance && manualOverride)
+                continue;
+            distInputs.Remove(key);
+        }
+
+        // if CRM/unknown payload, do not accept legacy strategy/priorities
+        if (!fromFinance)
+        {
+            foreach (var key in DeprecatedDistributionSelects)
+                distSelects.Remove(key);
+        }
+
+        return root;
+    }
+
+    private static void MergeObject(JsonObject target, JsonObject incoming)
+    {
+        foreach (var kvp in incoming)
+        {
+            target[kvp.Key] = kvp.Value?.DeepClone();
+        }
+    }
+
+    private static string SanitizeFinancialPlanJson(string json, string? existingJson = null)
+    {
+        var incoming = SanitizeFinancialPlanNode(ParsePlanNode(json));
+        var baseline = string.IsNullOrWhiteSpace(existingJson)
+            ? new JsonObject()
+            : SanitizeFinancialPlanNode(ParsePlanNode(existingJson));
+
+        // merge section-by-section so CRM saves cannot wipe finance-only fields (and vice versa)
+        var result = (JsonObject?)baseline.DeepClone() ?? new JsonObject();
+
+        // Wealth Forecast inputs (authoritative from latest payload)
+        var incomingWf = GetOrCreateObj(incoming, "wealthForecast");
+        var incomingWfInputs = GetOrCreateObj(incomingWf, "inputs");
+        if (incomingWfInputs.Count > 0)
+        {
+            var resWf = GetOrCreateObj(result, "wealthForecast");
+            var resWfInputs = GetOrCreateObj(resWf, "inputs");
+            MergeObject(resWfInputs, incomingWfInputs);
+        }
+
+        // Distribution: merge dictionaries so missing keys keep prior values
+        var incomingDist = GetOrCreateObj(incoming, "distribution");
+        var resDist = GetOrCreateObj(result, "distribution");
+
+        var incomingInputs = GetOrCreateObj(incomingDist, "inputs");
+        if (incomingInputs.Count > 0)
+        {
+            var resInputs = GetOrCreateObj(resDist, "inputs");
+            MergeObject(resInputs, incomingInputs);
+        }
+
+        var incomingChecks = GetOrCreateObj(incomingDist, "checks");
+        if (incomingChecks.Count > 0)
+        {
+            var resChecks = GetOrCreateObj(resDist, "checks");
+            MergeObject(resChecks, incomingChecks);
+        }
+
+        var incomingSelects = GetOrCreateObj(incomingDist, "selects");
+        if (incomingSelects.Count > 0)
+        {
+            var resSelects = GetOrCreateObj(resDist, "selects");
+            MergeObject(resSelects, incomingSelects);
+        }
+
+        // Distribution canonical input (CRM quick-view payload)
+        var incomingCanonical = incomingDist["canonicalInput"] as JsonObject;
+        if (incomingCanonical != null && incomingCanonical.Count > 0)
+        {
+            var resCanonical = resDist["canonicalInput"] as JsonObject;
+            if (resCanonical == null)
+            {
+                resCanonical = new JsonObject();
+                resDist["canonicalInput"] = resCanonical;
+            }
+            MergeObject(resCanonical, incomingCanonical);
+        }
+
+        var incomingMeta = incomingDist["meta"] as JsonObject;
+        if (incomingMeta != null && incomingMeta.Count > 0)
+        {
+            var resMeta = GetOrCreateObj(resDist, "meta");
+            MergeObject(resMeta, incomingMeta);
+        }
+
+        // Return compact JSON
+        return result.ToJsonString(new JsonSerializerOptions(JsonSerializerDefaults.Web));
     }
 
     private static IReadOnlyList<string> GetAdvancedMarketsInvalidFields(ModelStateDictionary modelState)
@@ -422,6 +887,21 @@ namespace AgentPortal.Controllers;
              ?? "").Trim();
     }
 
+    private string[] GetAgentIdCandidates(string agentOid)
+    {
+        var set = IdentityKey.NormalizeSet(User.GetUserIdCandidates());
+        var effectiveKey = IdentityKey.Normalize(agentOid);
+        if (!string.IsNullOrWhiteSpace(effectiveKey))
+        {
+            set.Add(effectiveKey);
+        }
+
+        return set.ToArray();
+    }
+
+    private Task<bool> AgentOwnsClientAsync(string agentOid, string clientUserId, CancellationToken ct = default)
+        => _db.AgentOwnsClientAsync(agentOid, clientUserId, GetAgentUpnForAudit(), GetAgentIdCandidates(agentOid), ct);
+
     private string GetAgentDisplayName()
     {
         var name = (User.FindFirst("name")?.Value ?? User.FindFirst(ClaimTypes.Name)?.Value ?? "").Trim();
@@ -452,6 +932,30 @@ namespace AgentPortal.Controllers;
 
     private static bool HasPortalAccess(string? clientUserId)
         => Guid.TryParse(Norm(clientUserId), out _);
+
+    private async Task<string?> SyncPortalEmailAsync(ClientProfile profile, CancellationToken cancellationToken = default)
+    {
+        if (!HasPortalAccess(profile.ClientUserId))
+            return null;
+
+        var emailNorm = NormalizeEmail(profile.Email);
+        if (string.IsNullOrWhiteSpace(emailNorm))
+            return "Portal-enabled clients must have a real email address.";
+
+        var result = await _azureClientEmailSync.UpdateEmailAsync(profile.ClientUserId, emailNorm, cancellationToken);
+        if (result.Success)
+            return null;
+
+        _logger.LogError(
+            "Azure client email sync failed. ClientUserId={ClientUserId} Email={Email} Message={Message}",
+            profile.ClientUserId,
+            emailNorm,
+            result.Message);
+
+        return string.IsNullOrWhiteSpace(result.Message)
+            ? "We couldn't update the client's Microsoft sign-in email."
+            : result.Message;
+    }
 
     private static bool IsPortalRecordType(string? recordType)
     {
@@ -513,6 +1017,14 @@ namespace AgentPortal.Controllers;
             _ => "Lead"
         };
 
+    private IActionResult RedirectToReturnUrlOrIndex(string? returnUrl)
+    {
+        if (!string.IsNullOrWhiteSpace(returnUrl) && Url.IsLocalUrl(returnUrl))
+            return Redirect(returnUrl);
+
+        return RedirectToAction(nameof(Index));
+    }
+
     private static string GenerateOneTimePassword(int length = 14)
     {
         const string lowers = "abcdefghijklmnopqrstuvwxyz";
@@ -538,6 +1050,166 @@ namespace AgentPortal.Controllers;
         }
 
         return new string(required.ToArray());
+    }
+
+    private sealed record PortalAccessEnableResult(
+        string OldClientUserId,
+        string NewClientUserId,
+        string RecordType,
+        string LoginUpn,
+        string OneTimePassword,
+        string PipelineStage,
+        string ClientPortalUrl,
+        bool EmailSent,
+        string? Warning);
+
+    private async Task<PortalAccessEnableResult> EnablePortalAccessInternalAsync(
+        ClientProfile profile,
+        string recordType,
+        string emailNorm)
+    {
+        var oldClientUserId = NormLower(profile.ClientUserId);
+        var firstName = Norm(profile.FirstName);
+        var lastName = Norm(profile.LastName);
+        var oneTimePassword = GenerateOneTimePassword();
+        string? newClientObjectId = null;
+        string? loginUpn = null;
+        var createdGraphUser = false;
+        var committed = false;
+
+        try
+        {
+            (newClientObjectId, loginUpn) = await _provisioning.CreateTenantUserAsync(
+                firstName,
+                lastName,
+                emailNorm,
+                oneTimePassword
+            );
+
+            newClientObjectId = NormLower(newClientObjectId);
+            loginUpn = Norm(loginUpn);
+
+            if (string.IsNullOrWhiteSpace(newClientObjectId))
+                throw new Exception("Provisioning returned an empty client user id.");
+
+            if (string.IsNullOrWhiteSpace(loginUpn))
+                throw new Exception("Provisioning returned an empty login UPN.");
+
+            createdGraphUser = true;
+
+            await using var tx = await _db.Database.BeginTransactionAsync();
+
+            var meta = EnsureMeta(ClientCrmMetaSerializer.Deserialize(profile.CrmNotes));
+            meta.RecordType = recordType;
+            meta.PipelineStage = DefaultPipelineStageForRecordType(recordType);
+            meta.StageEnteredUtc = DateTime.UtcNow;
+            var agentLinks = await _db.AgentClients.Where(x => x.ClientUserId == oldClientUserId).ToListAsync();
+            var householdMembers = await _db.HouseholdMembers.Where(x => x.ClientUserId == oldClientUserId).ToListAsync();
+
+            var recreatedLinks = agentLinks.Select(link => new AgentClient
+            {
+                AgentUserId = link.AgentUserId,
+                ClientUserId = newClientObjectId,
+                AgentUpn = link.AgentUpn,
+                CreatedUtc = link.CreatedUtc
+            }).ToList();
+
+            var recreatedHousehold = householdMembers.Select(member => new HouseholdMember
+            {
+                ClientUserId = newClientObjectId,
+                RelationshipType = member.RelationshipType,
+                FirstName = member.FirstName,
+                LastName = member.LastName,
+                DOB = member.DOB,
+                Email = member.Email,
+                Phone = member.Phone,
+                CreatedUtc = member.CreatedUtc,
+                UpdatedUtc = DateTime.UtcNow
+            }).ToList();
+
+            if (agentLinks.Count > 0)
+                _db.AgentClients.RemoveRange(agentLinks);
+
+            if (householdMembers.Count > 0)
+                _db.HouseholdMembers.RemoveRange(householdMembers);
+
+            await _db.SaveChangesAsync();
+
+            var updatedUtc = DateTime.UtcNow;
+            var serializedMeta = ClientCrmMetaSerializer.Serialize(meta);
+            var profileId = profile.Id;
+
+            _db.Entry(profile).State = EntityState.Detached;
+
+            var updatedRows = await _db.Database.ExecuteSqlInterpolatedAsync($@"
+                UPDATE ClientProfiles
+                SET ClientUserId = {newClientObjectId},
+                    CrmNotes = {serializedMeta},
+                    CrmStatus = {"Active"},
+                    UpdatedUtc = {updatedUtc}
+                WHERE Id = {profileId}");
+
+            if (updatedRows != 1)
+                throw new Exception("Portal conversion failed while updating the client profile record.");
+
+            if (recreatedLinks.Count > 0)
+                _db.AgentClients.AddRange(recreatedLinks);
+
+            if (recreatedHousehold.Count > 0)
+                _db.HouseholdMembers.AddRange(recreatedHousehold);
+
+            await _db.SaveChangesAsync();
+            await tx.CommitAsync();
+            committed = true;
+
+            var pipelineStage = DefaultPipelineStageForRecordType(recordType);
+            var clientPortalBaseUrl = GetClientPortalBaseUrl();
+            string? emailWarning = null;
+
+            try
+            {
+                await _provisioning.SendClientWelcomeEmailAsync(
+                    emailNorm,
+                    firstName,
+                    loginUpn,
+                    oneTimePassword,
+                    clientPortalBaseUrl,
+                    newClientObjectId,
+                    forceIdLink: true
+                );
+            }
+            catch (Exception mailEx)
+            {
+                _logger.LogError(
+                    mailEx,
+                    "Portal access email failed after successful conversion. Email={Email} ClientUserId={ClientUserId}",
+                    emailNorm,
+                    newClientObjectId
+                );
+
+                emailWarning = $"Portal access was enabled, but the welcome email failed to send: {mailEx.Message}";
+            }
+
+            return new PortalAccessEnableResult(
+                OldClientUserId: oldClientUserId,
+                NewClientUserId: newClientObjectId,
+                RecordType: recordType,
+                LoginUpn: loginUpn,
+                OneTimePassword: oneTimePassword,
+                PipelineStage: pipelineStage,
+                ClientPortalUrl: $"{clientPortalBaseUrl}/support/view-as-client/{profile.Id}",
+                EmailSent: string.IsNullOrWhiteSpace(emailWarning),
+                Warning: emailWarning);
+        }
+        catch
+        {
+            if (!committed && createdGraphUser && !string.IsNullOrWhiteSpace(newClientObjectId))
+            {
+                try { await _provisioning.DeleteTenantUserAsync(newClientObjectId); } catch { }
+            }
+
+            throw;
+        }
     }
 
     private static string NormalizeWaitingOn(string? value)
@@ -628,7 +1300,81 @@ namespace AgentPortal.Controllers;
         return meta;
     }
 
-    private static object BuildQuickViewPayload(ClientProfile profile, ClientCrmMeta meta, TimeZoneInfo dialTimeZone, DateTime nowUtc)
+    private async Task<LeadAppointment?> LoadClientLatestAppointmentAsync(ClientProfile profile)
+    {
+        var clientUserId = Norm(profile.ClientUserId);
+        var profileId = profile.Id.ToString();
+
+        if (string.IsNullOrWhiteSpace(clientUserId) && string.IsNullOrWhiteSpace(profileId))
+            return null;
+
+        return await _db.LeadAppointments
+            .AsNoTracking()
+            .Where(x => x.ClientProfileId == profileId || x.WorkstationLeadId == clientUserId)
+            .OrderByDescending(x => x.ScheduledStartUtc ?? x.UpdatedUtc)
+            .ThenByDescending(x => x.UpdatedUtc)
+            .FirstOrDefaultAsync();
+    }
+
+    private static object? BuildClientAppointmentPayload(LeadAppointment? appointment)
+    {
+        if (appointment == null)
+            return null;
+
+        return new
+        {
+            id = appointment.Id,
+            workstationLeadId = appointment.WorkstationLeadId,
+            clientProfileId = appointment.ClientProfileId,
+            status = appointment.Status.ToString(),
+            statusLabel = HumanizeClientAppointmentStatus(appointment.Status),
+            confirmationStateLabel = BuildClientAppointmentConfirmationStateLabel(appointment),
+            bookingProvider = appointment.BookingProvider,
+            bookingSource = appointment.BookingSource,
+            confirmationSource = appointment.ConfirmationSource,
+            calendarEventId = appointment.CalendarEventId,
+            calendarEventWebLink = appointment.CalendarEventWebLink,
+            scheduledStartUtc = appointment.ScheduledStartUtc,
+            scheduledEndUtc = appointment.ScheduledEndUtc,
+            meetingUrl = appointment.MeetingUrl,
+            lastSyncedUtc = appointment.LastSyncedUtc,
+            lastSyncStatus = appointment.LastSyncStatus,
+            lastSyncError = appointment.LastSyncError
+        };
+    }
+
+    private static string HumanizeClientAppointmentStatus(LeadAppointmentStatus status)
+        => status switch
+        {
+            LeadAppointmentStatus.NoShow => "No Show",
+            LeadAppointmentStatus.SchedulingOffered => "Scheduling Offered",
+            LeadAppointmentStatus.FailedConfirmation => "Failed Confirmation",
+            _ => status.ToString()
+        };
+
+    private static bool IsTrustedClientAppointment(LeadAppointment appointment)
+    {
+        var trustedSource = appointment.ConfirmationSource ?? appointment.BookingSource;
+        return appointment.Status is LeadAppointmentStatus.Booked or LeadAppointmentStatus.Confirmed or LeadAppointmentStatus.Completed or LeadAppointmentStatus.Rescheduled &&
+            (string.Equals(trustedSource, LeadAppointmentBookingSources.InternalCalendar, StringComparison.OrdinalIgnoreCase) ||
+             string.Equals(trustedSource, LeadAppointmentBookingSources.MicrosoftGraphConfirmation, StringComparison.OrdinalIgnoreCase) ||
+             string.Equals(trustedSource, LeadAppointmentBookingSources.MicrosoftGraphWebhook, StringComparison.OrdinalIgnoreCase) ||
+             string.Equals(trustedSource, LeadAppointmentBookingSources.MicrosoftGraphFallbackMatch, StringComparison.OrdinalIgnoreCase) ||
+             string.Equals(trustedSource, LeadAppointmentBookingSources.ManualVerified, StringComparison.OrdinalIgnoreCase));
+    }
+
+    private static string BuildClientAppointmentConfirmationStateLabel(LeadAppointment appointment)
+    {
+        if (IsTrustedClientAppointment(appointment))
+            return "Booked / verified";
+        if (appointment.Status == LeadAppointmentStatus.Requested)
+            return "Requested / awaiting verification";
+        if (appointment.Status is LeadAppointmentStatus.Booked or LeadAppointmentStatus.Confirmed or LeadAppointmentStatus.Completed or LeadAppointmentStatus.Rescheduled)
+            return $"{HumanizeClientAppointmentStatus(appointment.Status)} / source not verified";
+        return HumanizeClientAppointmentStatus(appointment.Status);
+    }
+
+    private static object BuildQuickViewPayload(ClientProfile profile, ClientCrmMeta meta, TimeZoneInfo dialTimeZone, DateTime nowUtc, LeadAppointment? latestAppointment = null)
     {
         var safeActivities = (meta.Activities ?? new List<ClientCrmActivity>()).Where(a => a != null).ToList();
         meta.Activities = safeActivities;
@@ -676,8 +1422,9 @@ namespace AgentPortal.Controllers;
             usePersonalZoomLink = meta.UsePersonalZoomLink,
             meetingTime = meta.MeetingTime ?? "09:00",
             meetingDurationMinutes = meta.MeetingDurationMinutes,
-            lastCalendarEventId = meta.LastCalendarEventId ?? "",
-            lastCalendarEventWebLink = meta.LastCalendarEventWebLink ?? "",
+            lastCalendarEventId = latestAppointment?.CalendarEventId ?? meta.LastCalendarEventId ?? "",
+            lastCalendarEventWebLink = latestAppointment?.CalendarEventWebLink ?? meta.LastCalendarEventWebLink ?? "",
+            latestAppointment = BuildClientAppointmentPayload(latestAppointment),
             lastContactChannel = meta.LastContactChannel ?? "",
             attemptsToday = attemptCounts.Today,
             attemptsThisWeek = attemptCounts.Week,
@@ -855,19 +1602,19 @@ namespace AgentPortal.Controllers;
         return linked ? profile : null;
     }
 
-    private static bool IsToday(DateTime? value)
-        => value.HasValue && value.Value.Date == DateTime.UtcNow.Date;
+    private static bool IsToday(long? ticks)
+        => ticks.HasValue && new System.DateTime(ticks.Value).Date == System.DateTime.UtcNow.Date;
 
-    private static bool IsOverdue(DateTime? value)
-        => value.HasValue && value.Value.Date < DateTime.UtcNow.Date;
+    private static bool IsOverdue(long? ticks)
+        => ticks.HasValue && new System.DateTime(ticks.Value).Date < System.DateTime.UtcNow.Date;
 
     private static bool MatchesQueue(ClientListItemViewModel item, string queueKey)
         => queueKey switch
         {
             "callsnow" => (item.CrmPriority == "High" || item.CrmPriority == "Urgent")
-                && (IsToday(item.CrmNextDate) || IsOverdue(item.CrmNextDate)),
-            "today" => IsToday(item.CrmNextDate),
-            "overdue" => IsOverdue(item.CrmNextDate),
+                && (IsToday(item.CrmNextDate?.Ticks) || IsOverdue(item.CrmNextDate?.Ticks)),
+            "today" => IsToday(item.CrmNextDate?.Ticks),
+            "overdue" => IsOverdue(item.CrmNextDate?.Ticks),
             "meetings" => string.Equals(item.PipelineStage, "MeetingScheduled", StringComparison.OrdinalIgnoreCase),
             "waitingclient" => string.Equals(item.WaitingOn, "WaitingOnClient", StringComparison.OrdinalIgnoreCase),
             "waitingcarrier" => string.Equals(item.WaitingOn, "WaitingOnCarrier", StringComparison.OrdinalIgnoreCase),
@@ -967,6 +1714,10 @@ namespace AgentPortal.Controllers;
             .Select(g => new
             {
                 ClientUserId = g.Key,
+                Submitted = g.Where(p => p.Status == ProductionStatus.Submitted)
+                             .Select(p => (decimal?)p.Amount).Sum() ?? 0,
+                Issued = g.Where(p => p.Status == ProductionStatus.Issued)
+                          .Select(p => (decimal?)p.Amount).Sum() ?? 0,
                 Paid = g.Where(p => p.Status == ProductionStatus.Paid)
                         .Select(p => (decimal?)p.Amount).Sum() ?? 0,
                 Personal = g.Select(p => (decimal?)p.PersonalAmount).Sum() ?? 0,
@@ -986,6 +1737,8 @@ namespace AgentPortal.Controllers;
                 var meta = EnsureMeta(ClientCrmMetaSerializer.Deserialize(x.CrmNotes));
                 var recordType = ResolveRecordType(x.ClientUserId, meta);
                 productionDict.TryGetValue(x.ClientUserId, out var prod);
+                var submitted = prod?.Submitted ?? 0;
+                var issued = prod?.Issued ?? 0;
                 var paid = prod?.Paid ?? 0;
                 var personal = prod?.Personal ?? 0;
                 var allByEmail = clients.Count(cp =>
@@ -1053,6 +1806,9 @@ namespace AgentPortal.Controllers;
                     WatchersCsv = string.Join(", ", meta.Collaboration.Watchers),
                     ProductionStatus = prod?.LatestStatus.ToString() ?? "",
                     ProductionAmount = prod?.LatestAmount ?? 0,
+                    ProductionSubmittedAmount = submitted,
+                    ProductionIssuedAmount = issued,
+                    ProductionPaidAmount = paid,
                     PaidAmount = paid,
                     PersonalAmount = personal
                 });
@@ -1138,7 +1894,7 @@ namespace AgentPortal.Controllers;
         var meta = QueueMeta(queueKey);
         var items = (await GetOwnedClientListItemsAsync(agentOid))
             .Where(x => MatchesQueue(x, queueKey))
-            .OrderBy(x => x.CrmNextDate ?? DateTime.MaxValue)
+            .OrderBy(x => x.CrmNextDate?.Ticks ?? long.MaxValue)
             .ThenBy(x => x.LastName)
             .ThenBy(x => x.FirstName)
             .ToList();
@@ -1243,7 +1999,14 @@ namespace AgentPortal.Controllers;
     public async Task<IActionResult> Actions(string id)
     {
         if (string.IsNullOrWhiteSpace(id)) return BadRequest("Client id required");
-        var actions = await _execution.GetByRelatedAsync(RelatedEntityType.Client, id);
+        string agentId;
+        try { agentId = NormLower(GetAgentOidOrThrow()); }
+        catch { return Challenge(); }
+
+        if (!await AgentOwnsClientAsync(agentId, id))
+            return Forbid();
+
+        var actions = await _execution.GetByRelatedAsync(RelatedEntityType.Client, id, agentId);
         ViewBag.ClientId = id;
         return PartialView("~/Views/Clients/_ClientActionsTab.cshtml", actions);
     }
@@ -1252,12 +2015,16 @@ namespace AgentPortal.Controllers;
     public async Task<IActionResult> Commitments(string id)
     {
         if (string.IsNullOrWhiteSpace(id)) return BadRequest("Client id required");
-        var agentId = User.GetStableUserId();
-        if (string.IsNullOrWhiteSpace(agentId)) return Challenge();
+        string agentId;
+        try { agentId = NormLower(GetAgentOidOrThrow()); }
+        catch { return Challenge(); }
+
+        if (!await AgentOwnsClientAsync(agentId, id))
+            return Forbid();
 
         try
         {
-            var commitments = await _commitments.GetByEntityAsync(RelatedEntityType.Client, id);
+            var commitments = await _commitments.GetByEntityForActorAsync(RelatedEntityType.Client, id, agentId);
             ViewBag.ClientId = id;
             ViewBag.AgentId = agentId;
             return PartialView("~/Views/Clients/_ClientCommitmentsTab.cshtml", commitments);
@@ -1273,14 +2040,17 @@ namespace AgentPortal.Controllers;
     }
 
     [HttpPost]
-    [IgnoreAntiforgeryToken] // quick-view action form should survive token churn
     public async Task<IActionResult> CreateAction([FromForm] CreateClientActionRequest req)
     {
         if (string.IsNullOrWhiteSpace(req.ClientId) || string.IsNullOrWhiteSpace(req.Title))
             return BadRequest("ClientId and Title required");
 
-        var ownerId = User.GetStableUserId();
-        if (string.IsNullOrWhiteSpace(ownerId)) return Challenge();
+        string ownerId;
+        try { ownerId = NormLower(GetAgentOidOrThrow()); }
+        catch { return Challenge(); }
+
+        if (!await AgentOwnsClientAsync(ownerId, req.ClientId))
+            return Forbid();
 
         var action = BuildClientAction(req, ownerId);
 
@@ -1289,15 +2059,18 @@ namespace AgentPortal.Controllers;
     }
 
     [HttpPost]
-    [IgnoreAntiforgeryToken] // quick-view commitment form should survive token churn
     public async Task<IActionResult> CreateCommitment([FromForm] CreateClientCommitmentRequest req)
     {
         if (string.IsNullOrWhiteSpace(req.ClientId) || string.IsNullOrWhiteSpace(req.PromiseText))
             return BadRequest("ClientId and Promise are required");
         if (req.DueDateUtc == null) return BadRequest("Due date is required");
 
-        var agentId = User.GetStableUserId();
-        if (string.IsNullOrWhiteSpace(agentId)) return Challenge();
+        string agentId;
+        try { agentId = NormLower(GetAgentOidOrThrow()); }
+        catch { return Challenge(); }
+
+        if (!await AgentOwnsClientAsync(agentId, req.ClientId))
+            return Forbid();
 
         var createRequest = new CommitmentCreateRequest(
             RelatedEntityType.Client,
@@ -1339,7 +2112,9 @@ namespace AgentPortal.Controllers;
             DueDateUtc = req.DueDateUtc,
             Status = ActionStatus.Planned,
             Priority = req.Priority,
-            ActionSurface = req.ShowInCommandCenter ? ActionSurface.CommandCenter : ActionSurface.CrmOnly,
+            ActionSurface = (req.ShowInCommandCenter || req.ShowInDashboard || req.IncludeInDashboard)
+                ? ActionSurface.CommandCenter
+                : ActionSurface.CrmOnly,
             Source = "client-manual",
             SourceRef = $"{req.ClientId}-manual",
             CreatedBy = ownerId,
@@ -1347,22 +2122,24 @@ namespace AgentPortal.Controllers;
         };
 
     [HttpPost]
-    [IgnoreAntiforgeryToken] // quick-view commitment controls should survive token churn
     public async Task<IActionResult> FulfillCommitment(Guid id)
     {
         if (id == Guid.Empty) return BadRequest("Commitment id required");
 
-        var agentId = User.GetStableUserId();
-        if (string.IsNullOrWhiteSpace(agentId)) return Challenge();
+        string agentId;
+        try { agentId = NormLower(GetAgentOidOrThrow()); }
+        catch { return Challenge(); }
 
         try
         {
-            var commit = await _db.Commitments.AsNoTracking().FirstOrDefaultAsync(c => c.Id == id);
+            var commit = await _commitments.GetByIdForActorAsync(id, agentId);
             if (commit == null) return NotFound();
             if (commit.RelatedEntityType != RelatedEntityType.Client) return BadRequest("Only client commitments are supported here.");
 
-            await _commitments.FulfillCommitmentAsync(id, agentId);
-            var refreshed = await _commitments.GetByEntityAsync(RelatedEntityType.Client, commit.RelatedEntityId);
+            var updated = await _commitments.FulfillCommitmentAsync(id, agentId);
+            if (updated == null) return NotFound();
+
+            var refreshed = await _commitments.GetByEntityForActorAsync(RelatedEntityType.Client, commit.RelatedEntityId, agentId);
             ViewBag.ClientId = commit.RelatedEntityId;
             ViewBag.AgentId = agentId;
             return PartialView("~/Views/Clients/_ClientCommitmentsTab.cshtml", refreshed);
@@ -1378,22 +2155,24 @@ namespace AgentPortal.Controllers;
     }
 
     [HttpPost]
-    [IgnoreAntiforgeryToken] // quick-view commitment controls should survive token churn
     public async Task<IActionResult> BreakCommitment(Guid id)
     {
         if (id == Guid.Empty) return BadRequest("Commitment id required");
 
-        var agentId = User.GetStableUserId();
-        if (string.IsNullOrWhiteSpace(agentId)) return Challenge();
+        string agentId;
+        try { agentId = NormLower(GetAgentOidOrThrow()); }
+        catch { return Challenge(); }
 
         try
         {
-            var commit = await _db.Commitments.AsNoTracking().FirstOrDefaultAsync(c => c.Id == id);
+            var commit = await _commitments.GetByIdForActorAsync(id, agentId);
             if (commit == null) return NotFound();
             if (commit.RelatedEntityType != RelatedEntityType.Client) return BadRequest("Only client commitments are supported here.");
 
-            await _commitments.BreakCommitmentAsync(id, agentId);
-            var refreshed = await _commitments.GetByEntityAsync(RelatedEntityType.Client, commit.RelatedEntityId);
+            var updated = await _commitments.BreakCommitmentAsync(id, agentId);
+            if (updated == null) return NotFound();
+
+            var refreshed = await _commitments.GetByEntityForActorAsync(RelatedEntityType.Client, commit.RelatedEntityId, agentId);
             ViewBag.ClientId = commit.RelatedEntityId;
             ViewBag.AgentId = agentId;
             return PartialView("~/Views/Clients/_ClientCommitmentsTab.cshtml", refreshed);
@@ -1739,7 +2518,7 @@ namespace AgentPortal.Controllers;
     // GET: /Clients/Create
     // =====================================================================
     [HttpGet]
-    public IActionResult Create()
+    public IActionResult Create(string? returnUrl = null)
     {
         string agentOid;
         try { agentOid = GetAgentOidOrThrow(); }
@@ -1756,6 +2535,10 @@ namespace AgentPortal.Controllers;
         if (agentProfile != null && !string.IsNullOrWhiteSpace(agentProfile.Phone))
             model.AgentPhone = agentProfile.Phone;
 
+        ViewBag.ReturnUrl = !string.IsNullOrWhiteSpace(returnUrl) && Url.IsLocalUrl(returnUrl)
+            ? returnUrl
+            : (Url.Action(nameof(Index), "Clients") ?? "/Clients");
+
         return View(model);
     }
 
@@ -1764,8 +2547,16 @@ namespace AgentPortal.Controllers;
     // =====================================================================
     [HttpPost]
     [ValidateAntiForgeryToken]
-    public async Task<IActionResult> Create(CreateClientViewModel model)
+    public async Task<IActionResult> Create(CreateClientViewModel model, string? returnUrl = null)
     {
+        returnUrl = string.IsNullOrWhiteSpace(returnUrl)
+            ? Request.Form["returnUrl"].ToString()
+            : returnUrl;
+
+        ViewBag.ReturnUrl = !string.IsNullOrWhiteSpace(returnUrl) && Url.IsLocalUrl(returnUrl)
+            ? returnUrl
+            : (Url.Action(nameof(Index), "Clients") ?? "/Clients");
+
         if (!ModelState.IsValid)
             return View(model);
 
@@ -1781,18 +2572,45 @@ namespace AgentPortal.Controllers;
         var lastName = (model.LastName ?? "").Trim();
         var emailNorm = NormalizeEmail(model.Email);
         var phone = (model.Phone ?? "").Trim();
+        var agentUpnNorm = NormalizeEmail(agentUpn);
         var agentProfile = _db.AgentProfiles.FirstOrDefault(x => x.AgentUserId == agentOid);
+        if (agentProfile == null && !string.IsNullOrWhiteSpace(agentUpnNorm))
+        {
+            agentProfile = _db.AgentProfiles.FirstOrDefault(x =>
+                x.NormalizedEmail == agentUpnNorm ||
+                (x.NormalizedEmail == null && x.AgentUpn != null && x.AgentUpn.ToLower() == agentUpnNorm));
+        }
         if (agentProfile == null)
         {
             agentProfile = new Domain.Entities.AgentProfile
             {
                 AgentUserId = agentOid,
                 AgentUpn = agentUpn,
+                NormalizedEmail = agentUpnNorm,
                 CreatedUtc = DateTime.UtcNow,
                 UpdatedUtc = DateTime.UtcNow
             };
             _db.AgentProfiles.Add(agentProfile);
             await _db.SaveChangesAsync();
+        }
+        else
+        {
+            var profileChanged = false;
+            if (!string.IsNullOrWhiteSpace(agentUpn) && !string.Equals(agentProfile.AgentUpn, agentUpn, StringComparison.OrdinalIgnoreCase))
+            {
+                agentProfile.AgentUpn = agentUpn;
+                profileChanged = true;
+            }
+            if (agentUpnNorm != null && !string.Equals(agentProfile.NormalizedEmail, agentUpnNorm, StringComparison.Ordinal))
+            {
+                agentProfile.NormalizedEmail = agentUpnNorm;
+                profileChanged = true;
+            }
+            if (profileChanged)
+            {
+                agentProfile.UpdatedUtc = DateTime.UtcNow;
+                await _db.SaveChangesAsync();
+            }
         }
         var agentPhone = (agentProfile.Phone ?? "").Trim();
         var oneTimePassword = (model.OneTimePassword ?? "").Trim();
@@ -1803,12 +2621,6 @@ namespace AgentPortal.Controllers;
         var agentNpn = !string.IsNullOrWhiteSpace(agentProfile.Npn)
             ? agentProfile.Npn.Trim()
             : (model.AgentNpn ?? "").Trim();
-
-        if (isPortalClient && string.IsNullOrWhiteSpace(agentNpn))
-        {
-            ModelState.AddModelError(nameof(CreateClientViewModel.AgentNpn), "Add your NPN in Manage Profile before creating portal clients.");
-            return View(model);
-        }
 
         if (isPortalClient && string.IsNullOrWhiteSpace(firstName))
         {
@@ -2101,13 +2913,13 @@ await _provisioning.SendClientWelcomeEmailAsync(
 
                 TempData["Created"] =
                     $"{RecordTypeLabel(recordType)} created. Login username: {loginUpn}. ⚠ Email failed to send: {mailEx.Message}";
-                return RedirectToAction(nameof(Index));
+                return RedirectToReturnUrlOrIndex(returnUrl);
             }
 
             TempData["Created"] = isPortalClient
                 ? $"{RecordTypeLabel(recordType)} created. Login username: {loginUpn}"
                 : $"Lead added to pipeline in {StageLabel(pipelineStage)}.";
-            return RedirectToAction(nameof(Index));
+            return RedirectToReturnUrlOrIndex(returnUrl);
         }
         catch (ODataError ex)
         {
@@ -2216,9 +3028,12 @@ await _provisioning.SendClientWelcomeEmailAsync(
             return NotFound();
 
         var so = await _db.HouseholdMembers.AsNoTracking()
-            .FirstOrDefaultAsync(x =>
+            .Where(x =>
                 x.ClientUserId == clientUserIdNorm &&
-                x.RelationshipType == "SignificantOther");
+                (x.RelationshipType == "SignificantOther" || x.RelationshipType == "Spouse"))
+            .OrderByDescending(x => x.UpdatedUtc)
+            .ThenByDescending(x => x.CreatedUtc)
+            .FirstOrDefaultAsync();
 var meta = EnsureMeta(ClientCrmMetaSerializer.Deserialize(profile.CrmNotes));
 meta.DocChecklist ??= new ClientCrmDocChecklist();
 meta.OpportunityPlanning ??= new ClientCrmOpportunityPlanningChecklist();
@@ -2253,7 +3068,8 @@ meta.Activities ??= new List<ClientCrmActivity>();
             SignificantOtherLastName = so?.LastName,
             SignificantOtherDOB = so?.DOB,
             SignificantOtherEmail = so?.Email,
-            SignificantOtherPhone = so?.Phone
+            SignificantOtherPhone = so?.Phone,
+            Children = await LoadChildrenAsync(clientUserIdNorm)
         };
 
         var agentProfile = await _db.AgentProfiles
@@ -2292,78 +3108,93 @@ meta.Activities ??= new List<ClientCrmActivity>();
         if (!linked)
             return Forbid();
 
-        var emailNorm = NormalizeEmail(model.Email);
-        if (string.IsNullOrWhiteSpace(emailNorm))
-        {
-            ModelState.AddModelError(nameof(EditClientViewModel.Email), "Email is required.");
-            model.IsDobLocked = ProfileHasDob(clientUserIdNorm);
-            model.HasPortalAccess = HasPortalAccess(clientUserIdNorm);
-            PrepareEditView(model, returnUrl);
-            return View(model);
-        }
-
-        // Prevent changing email to one that already exists for SOME OTHER client
-        var emailCollision = await _db.ClientProfiles.AsNoTracking()
-            .AnyAsync(x => x.NormalizedEmail == emailNorm && x.ClientUserId != clientUserIdNorm);
-
-        if (emailCollision)
-        {
-            ModelState.AddModelError(nameof(EditClientViewModel.Email),
-                "BLOCKED (409): That email is already used by another client. Choose a different email.");
-            Response.StatusCode = StatusCodes.Status409Conflict;
-            model.IsDobLocked = ProfileHasDob(clientUserIdNorm);
-            model.HasPortalAccess = HasPortalAccess(clientUserIdNorm);
-            PrepareEditView(model, returnUrl);
-            return View(model);
-        }
-
         var profile = await _db.ClientProfiles
             .FirstOrDefaultAsync(x => x.ClientUserId == clientUserIdNorm);
 
         if (profile == null)
             return NotFound();
 
+        var emailNorm = NormalizeEmail(model.Email);
         var meta = EnsureMeta(ClientCrmMetaSerializer.Deserialize(profile.CrmNotes));
         var existingRecordType = ResolveRecordType(profile.ClientUserId, meta);
         var hasPortalAccess = HasPortalAccess(profile.ClientUserId);
         var requestedRecordType = NormalizeRecordType(model.RecordType);
+        var wantsPortalRecord = IsPortalRecordType(requestedRecordType);
+        var requiresPortalEnable = !hasPortalAccess && wantsPortalRecord;
         model.RecordType = requestedRecordType;
         model.HasPortalAccess = hasPortalAccess;
 
+        if ((hasPortalAccess || wantsPortalRecord) && string.IsNullOrWhiteSpace((model.FirstName ?? string.Empty).Trim()))
+            ModelState.AddModelError(nameof(EditClientViewModel.FirstName), "First name is required for portal-enabled records.");
+
+        if ((hasPortalAccess || wantsPortalRecord) && string.IsNullOrWhiteSpace((model.LastName ?? string.Empty).Trim()))
+            ModelState.AddModelError(nameof(EditClientViewModel.LastName), "Last name is required for portal-enabled records.");
+
+        if ((hasPortalAccess || wantsPortalRecord) && string.IsNullOrWhiteSpace(emailNorm))
+            ModelState.AddModelError(nameof(EditClientViewModel.Email), "Email is required for portal-enabled records.");
+
+        if (!string.IsNullOrWhiteSpace(emailNorm))
+        {
+            var emailCollision = await _db.ClientProfiles.AsNoTracking()
+                .AnyAsync(x => x.NormalizedEmail == emailNorm && x.ClientUserId != clientUserIdNorm);
+
+            if (emailCollision)
+            {
+                ModelState.AddModelError(nameof(EditClientViewModel.Email),
+                    "BLOCKED (409): That email is already used by another client. Choose a different email.");
+                Response.StatusCode = StatusCodes.Status409Conflict;
+            }
+        }
+
+        var agentUpnForProfile = GetAgentUpnForAudit();
+        var agentUpnNorm = NormalizeEmail(agentUpnForProfile);
         var agentProfile = _db.AgentProfiles.FirstOrDefault(x => x.AgentUserId == agentOid);
+        if (agentProfile == null && !string.IsNullOrWhiteSpace(agentUpnNorm))
+        {
+            agentProfile = _db.AgentProfiles.FirstOrDefault(x =>
+                x.NormalizedEmail == agentUpnNorm ||
+                (x.NormalizedEmail == null && x.AgentUpn != null && x.AgentUpn.ToLower() == agentUpnNorm));
+        }
         if (agentProfile == null)
         {
             agentProfile = new Domain.Entities.AgentProfile
             {
                 AgentUserId = agentOid,
-                AgentUpn = GetAgentUpnForAudit(),
+                AgentUpn = agentUpnForProfile,
+                NormalizedEmail = agentUpnNorm,
                 CreatedUtc = DateTime.UtcNow,
                 UpdatedUtc = DateTime.UtcNow
             };
             _db.AgentProfiles.Add(agentProfile);
             await _db.SaveChangesAsync();
         }
+        else
+        {
+            var profileChanged = false;
+            if (!string.IsNullOrWhiteSpace(agentUpnForProfile) && !string.Equals(agentProfile.AgentUpn, agentUpnForProfile, StringComparison.OrdinalIgnoreCase))
+            {
+                agentProfile.AgentUpn = agentUpnForProfile;
+                profileChanged = true;
+            }
+            if (agentUpnNorm != null && !string.Equals(agentProfile.NormalizedEmail, agentUpnNorm, StringComparison.Ordinal))
+            {
+                agentProfile.NormalizedEmail = agentUpnNorm;
+                profileChanged = true;
+            }
+            if (profileChanged)
+            {
+                agentProfile.UpdatedUtc = DateTime.UtcNow;
+                await _db.SaveChangesAsync();
+            }
+        }
 
         var agentNpn = agentProfile.Npn?.Trim();
         model.AgentNpn = agentNpn;
 
-        var isPortalClient = hasPortalAccess || IsPortalRecordType(requestedRecordType);
-        if (isPortalClient && string.IsNullOrWhiteSpace(agentNpn))
+        if (requiresPortalEnable && string.IsNullOrWhiteSpace(agentNpn))
         {
             ModelState.AddModelError(nameof(EditClientViewModel.AgentNpn),
-                "Add your NPN in Manage Profile before editing portal clients.");
-        }
-
-        if (!hasPortalAccess && !string.Equals(requestedRecordType, "Lead", StringComparison.OrdinalIgnoreCase))
-        {
-            ModelState.AddModelError(nameof(EditClientViewModel.RecordType),
-                "Use Quick View conversion to turn a lead into a client or business client.");
-        }
-
-        if (hasPortalAccess && string.Equals(requestedRecordType, "Lead", StringComparison.OrdinalIgnoreCase))
-        {
-            ModelState.AddModelError(nameof(EditClientViewModel.RecordType),
-                "Portal-enabled records cannot be changed back to Lead.");
+                "Add your NPN in Manage Profile before enabling portal access for this record.");
         }
 
         if (!ModelState.IsValid)
@@ -2386,7 +3217,8 @@ meta.Activities ??= new List<ClientCrmActivity>();
             profile.DOB = model.DOB.Value.Date;
         model.IsDobLocked = profile.DOB.HasValue;
 
-        meta.RecordType = hasPortalAccess ? requestedRecordType : "Lead";
+        if (!requiresPortalEnable)
+            meta.RecordType = requestedRecordType;
 
         // =========================
         // CRM fields (DB-backed)
@@ -2414,7 +3246,12 @@ meta.Activities ??= new List<ClientCrmActivity>();
                 .Distinct(StringComparer.OrdinalIgnoreCase)
         );
 
-        profile.CrmStatus = crmStatus;
+        profile.CrmStatus = requestedRecordType switch
+        {
+            "Client" or "BusinessClient" => "Active",
+            "Lead" => "Lead",
+            _ => crmStatus
+        };
         profile.CrmPriority = crmPriority;
         profile.CrmLastTouch = model.CrmLastTouch;
         profile.CrmNextDate = model.CrmNextDate;
@@ -2452,17 +3289,13 @@ meta.Activities ??= new List<ClientCrmActivity>();
         if (changed)
             agentProfile.UpdatedUtc = DateTime.UtcNow;
 
-        if (!string.Equals(existingRecordType, meta.RecordType, StringComparison.OrdinalIgnoreCase))
+        if (!requiresPortalEnable && !string.Equals(existingRecordType, meta.RecordType, StringComparison.OrdinalIgnoreCase))
         {
-            var currentStage = NormalizePipelineStage(meta.PipelineStage);
-            if (currentStage is "Client" or "BusinessClient")
-            {
-                meta.PipelineStage = DefaultPipelineStageForRecordType(meta.RecordType);
-                meta.StageEnteredUtc = DateTime.UtcNow;
-            }
+            meta.PipelineStage = DefaultPipelineStageForRecordType(meta.RecordType);
+            meta.StageEnteredUtc = DateTime.UtcNow;
         }
 
-        if (hasPortalAccess && (string.IsNullOrWhiteSpace(profile.CrmStatus) ||
+        if (wantsPortalRecord && hasPortalAccess && (string.IsNullOrWhiteSpace(profile.CrmStatus) ||
             profile.CrmStatus.Equals("Lead", StringComparison.OrdinalIgnoreCase) ||
             profile.CrmStatus.Equals("Prospect", StringComparison.OrdinalIgnoreCase)))
         {
@@ -2494,10 +3327,15 @@ meta.Activities ??= new List<ClientCrmActivity>();
                 return View(model);
             }
 
-            var so = await _db.HouseholdMembers
-                .FirstOrDefaultAsync(x =>
+            var spouseRows = await _db.HouseholdMembers
+                .Where(x =>
                     x.ClientUserId == clientUserIdNorm &&
-                    x.RelationshipType == "SignificantOther");
+                    (x.RelationshipType == "SignificantOther" || x.RelationshipType == "Spouse"))
+                .OrderByDescending(x => x.UpdatedUtc)
+                .ThenByDescending(x => x.CreatedUtc)
+                .ToListAsync();
+
+            var so = spouseRows.FirstOrDefault();
 
             if (so == null)
             {
@@ -2509,7 +3347,12 @@ meta.Activities ??= new List<ClientCrmActivity>();
                 };
                 _db.HouseholdMembers.Add(so);
             }
+            else if (spouseRows.Count > 1)
+            {
+                _db.HouseholdMembers.RemoveRange(spouseRows.Skip(1));
+            }
 
+            so.RelationshipType = "SignificantOther";
             so.FirstName = (model.SignificantOtherFirstName ?? "").Trim();
             so.LastName = (model.SignificantOtherLastName ?? "").Trim();
             so.DOB = model.SignificantOtherDOB;
@@ -2532,18 +3375,71 @@ meta.Activities ??= new List<ClientCrmActivity>();
             profile.SignificantOtherEmail = null;
             profile.SignificantOtherPhone = null;
 
-            var so = await _db.HouseholdMembers
-                .FirstOrDefaultAsync(x =>
+            var spouseRows = await _db.HouseholdMembers
+                .Where(x =>
                     x.ClientUserId == clientUserIdNorm &&
-                    x.RelationshipType == "SignificantOther");
+                    (x.RelationshipType == "SignificantOther" || x.RelationshipType == "Spouse"))
+                .ToListAsync();
 
-            if (so != null)
-                _db.HouseholdMembers.Remove(so);
+            if (spouseRows.Count > 0)
+                _db.HouseholdMembers.RemoveRange(spouseRows);
         }
+
+        await SaveChildrenAsync(clientUserIdNorm, model.Children);
 
         profile.CrmNotes = ClientCrmMetaSerializer.Serialize(meta);
 
-        await _db.SaveChangesAsync();
+        if (requiresPortalEnable)
+        {
+            await _db.SaveChangesAsync();
+
+            try
+            {
+                var conversion = await EnablePortalAccessInternalAsync(profile, requestedRecordType, emailNorm ?? string.Empty);
+                TempData["Created"] = conversion.EmailSent
+                    ? $"{RecordTypeLabel(conversion.RecordType)} profile updated. Login username: {conversion.LoginUpn}"
+                    : $"{RecordTypeLabel(conversion.RecordType)} profile updated. Login username: {conversion.LoginUpn}. ⚠ {conversion.Warning}";
+
+                if (!string.IsNullOrWhiteSpace(returnUrl) && Url.IsLocalUrl(returnUrl))
+                {
+                    var conversionReturnUrl = returnUrl
+                        .Replace(conversion.OldClientUserId, conversion.NewClientUserId, StringComparison.OrdinalIgnoreCase)
+                        .Replace(Uri.EscapeDataString(conversion.OldClientUserId), Uri.EscapeDataString(conversion.NewClientUserId), StringComparison.OrdinalIgnoreCase);
+                    return Redirect(conversionReturnUrl);
+                }
+
+                return RedirectToAction(nameof(Index));
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex,
+                    "Failed to enable portal access during edit. AgentOid={AgentOid} ClientUserId={ClientUserId} RequestedRecordType={RequestedRecordType}",
+                    agentOid,
+                    clientUserIdNorm,
+                    requestedRecordType);
+
+                ModelState.AddModelError(nameof(EditClientViewModel.RecordType),
+                    $"Failed to convert this lead into a portal {RecordTypeLabel(requestedRecordType).ToLowerInvariant()}: {ex.Message}");
+                PrepareEditView(model, returnUrl);
+                return View(model);
+            }
+        }
+
+        await using (var tx = await _db.Database.BeginTransactionAsync())
+        {
+            await _db.SaveChangesAsync();
+
+            var syncError = await SyncPortalEmailAsync(profile, HttpContext.RequestAborted);
+            if (!string.IsNullOrWhiteSpace(syncError))
+            {
+                await tx.RollbackAsync();
+                ModelState.AddModelError(nameof(EditClientViewModel.Email), syncError);
+                PrepareEditView(model, returnUrl);
+                return View(model);
+            }
+
+            await tx.CommitAsync();
+        }
 
         TempData["Created"] = $"{RecordTypeLabel(meta.RecordType)} profile updated.";
         if (!string.IsNullOrWhiteSpace(returnUrl) && Url.IsLocalUrl(returnUrl))
@@ -2611,9 +3507,9 @@ meta.Activities ??= new List<ClientCrmActivity>();
         public double? PipelineOrder { get; set; }
         public string? MeetingLocation { get; set; }
         public string? ZoomJoinUrl { get; set; }
-        public bool UsePersonalZoomLink { get; set; }
+        public bool? UsePersonalZoomLink { get; set; }
         public string? MeetingTime { get; set; }
-        public int MeetingDurationMinutes { get; set; } = 30;
+        public int? MeetingDurationMinutes { get; set; }
         public string? WaitingOn { get; set; }
         public string? PinnedBrief { get; set; }
         public bool DocIdReceived { get; set; }
@@ -2627,11 +3523,102 @@ meta.Activities ??= new List<ClientCrmActivity>();
         public string? MentionNote { get; set; }
     }
 
+    public sealed class GrantClientAccessRequest
+    {
+        public string ClientUserId { get; set; } = "";
+        public string AgentUserId { get; set; } = "";
+        public string? AgentUpn { get; set; }
+        public string? AgentName { get; set; }
+        public string? AgentPhone { get; set; }
+    }
+
+    public sealed class RevokeClientAccessRequest
+    {
+        public string ClientUserId { get; set; } = "";
+        public string AgentUserId { get; set; } = "";
+    }
+
+    public sealed class ResendClientInviteRequest
+    {
+        public string ClientUserId { get; set; } = "";
+        public string? NewEmail { get; set; }  // optional: update email before resending
+    }
+
     public sealed class SaveAdvancedMarketsInputsRequest
     {
         public Guid? ClientProfileId { get; set; }
         public string ClientUserId { get; set; } = "";
         public AdvancedMarketsPageViewModel? Inputs { get; set; }
+    }
+
+    public sealed class SaveFinancialPlanRequest
+    {
+        public Guid? ClientProfileId { get; set; }
+        public string ClientUserId { get; set; } = "";
+        public string JsonData { get; set; } = "{}";
+        public int? Version { get; set; }
+    }
+
+    public sealed class DistributionPlanCanonicalInput
+    {
+        public string SchemaVersion { get; set; } = "1.0";
+        public int PlanVersion { get; set; } = 1;
+        public double RetireAge { get; set; }
+        public double EndAge { get; set; }
+        public double InflationPct { get; set; }
+        public double RetirementBase { get; set; }
+        public double DesiredIncome { get; set; }
+        public double GuaranteedIncome { get; set; }
+        public double EmergencyReserve { get; set; }
+        public bool ManualBaseOverride { get; set; }
+        public double InvAllocPct { get; set; }
+        public double InvReturnPct { get; set; }
+        public double InvTaxPct { get; set; }
+        public double LiAllocPct { get; set; }
+        public double LiReturnPct { get; set; }
+        public double LiTaxPct { get; set; }
+        public string LiAccessMode { get; set; } = "withdrawal";
+        public string LiPolicyType { get; set; } = "whole";
+        public double AnnAllocPct { get; set; }
+        public double AnnReturnPct { get; set; }
+        public double AnnTaxPct { get; set; }
+        public string AnnDesign { get; set; } = "fixed";
+        public List<string> WithdrawalOrder { get; set; } = new List<string> { "inv", "li", "ann", "reserve" };
+    }
+
+    private static string? ValidateDistributionCanonical(JsonObject canonical)
+    {
+        double GetD(string name, double def = 0)
+        {
+            if (canonical[name] is JsonValue v && v.TryGetValue<double>(out var d)) return d;
+            return def;
+        }
+        bool InRange(double v, double min, double max) => v >= min && v <= max;
+        var retireAge = GetD("retireAge");
+        var endAge = GetD("endAge");
+        if (retireAge <= 0) return "retireAge must be > 0";
+        if (endAge <= retireAge) return "endAge must be greater than retireAge";
+        var retirementBase = GetD("retirementBase");
+        if (retirementBase < 0) return "retirementBase must be >= 0";
+        if (GetD("desiredIncome") < 0) return "desiredIncome must be >= 0";
+        if (GetD("guaranteedIncome") < 0) return "guaranteedIncome must be >= 0";
+        if (GetD("emergencyReserve") < 0) return "emergencyReserve must be >= 0";
+
+        double inv = GetD("invAllocPct"), li = GetD("liAllocPct"), ann = GetD("annAllocPct");
+        if (!InRange(inv,0,100) || !InRange(li,0,100) || !InRange(ann,0,100))
+            return "Allocation percents must be between 0 and 100";
+        if (Math.Abs(inv + li + ann - 100) > 0.001)
+            return "Allocation percents must total 100%";
+
+        double rtnMin=-50, rtnMax=20;
+        if (!InRange(GetD("invReturnPct"), rtnMin, rtnMax)) return "invReturnPct out of range";
+        if (!InRange(GetD("liReturnPct"), rtnMin, rtnMax)) return "liReturnPct out of range";
+        if (!InRange(GetD("annReturnPct"), rtnMin, rtnMax)) return "annReturnPct out of range";
+        double taxMin=0, taxMax=100;
+        if (!InRange(GetD("invTaxPct"), taxMin, taxMax)) return "invTaxPct out of range";
+        if (!InRange(GetD("liTaxPct"), taxMin, taxMax)) return "liTaxPct out of range";
+        if (!InRange(GetD("annTaxPct"), taxMin, taxMax)) return "annTaxPct out of range";
+        return null;
     }
 
     public sealed class OutcomeRequest
@@ -2784,7 +3771,7 @@ meta.Activities ??= new List<ClientCrmActivity>();
 
             var nowUtc = DateTime.UtcNow;
             var dialTimeZone = _agentTimeZoneResolver.Resolve(HttpContext);
-            return Json(BuildQuickViewPayload(profile, meta, dialTimeZone, nowUtc));
+            return Json(BuildQuickViewPayload(profile, meta, dialTimeZone, nowUtc, await LoadClientLatestAppointmentAsync(profile)));
         }
         catch (Exception ex)
         {
@@ -2865,6 +3852,518 @@ meta.Activities ??= new List<ClientCrmActivity>();
     }
 
     [HttpGet]
+    public async Task<IActionResult> FinancialPlanClients(string? q)
+    {
+        string agentOid;
+        try { agentOid = GetAgentOidOrThrow(); }
+        catch { return Challenge(); }
+
+        try
+        {
+            var search = NormLower(q);
+
+            // Pull owned profiles first (no projection logic inside EF to avoid translation surprises)
+            var ownedProfiles = await (
+                from link in _db.AgentClients.AsNoTracking()
+                join profile in _db.ClientProfiles.AsNoTracking() on link.ClientUserId equals profile.ClientUserId
+                where link.AgentUserId == agentOid
+                select new {
+                    profile.Id,
+                    profile.ClientUserId,
+                    profile.FirstName,
+                    profile.LastName,
+                    profile.Email,
+                    profile.Phone,
+                    profile.UpdatedUtc
+                }
+            ).ToListAsync();
+
+            var profileIds = ownedProfiles.Select(x => x.Id).ToList();
+            var savedPlanIds = profileIds.Count == 0
+                ? new HashSet<Guid>()
+                : (await _db.ClientFinancialPlans
+                    .AsNoTracking()
+                    .Where(x => profileIds.Contains(x.ClientId) && !x.IsDeleted)
+                    .Select(x => x.ClientId)
+                    .ToListAsync()).ToHashSet();
+
+            // Build display + haystack after materialization (null-safe)
+            var results = ownedProfiles
+                .Select(p =>
+                {
+                    var first = Norm(p.FirstName);
+                    var last = Norm(p.LastName);
+                    var displayName = $"{first} {last}".Trim();
+                    if (string.IsNullOrWhiteSpace(displayName)) displayName = "Client";
+                    var haystack = string.Join(" ", displayName, p.Email ?? "", p.Phone ?? "").ToLowerInvariant();
+                    return new
+                    {
+                        p.ClientUserId,
+                        p.Id,
+                        displayName,
+                        email = p.Email ?? "",
+                        phone = p.Phone ?? "",
+                        haystack
+                    };
+                })
+                .Where(x => string.IsNullOrWhiteSpace(search) || x.haystack.Contains(search))
+                .OrderByDescending(x => x.Id == Guid.Empty ? DateTime.MinValue : DateTime.MaxValue) // deterministic even if UpdatedUtc null
+                .ThenBy(x => x.displayName)
+                .Take(string.IsNullOrWhiteSpace(search) ? 12 : 24)
+                .Select(x => new
+                {
+                    clientUserId = x.ClientUserId,
+                    clientProfileId = x.Id,
+                    displayName = x.displayName,
+                    email = x.email,
+                    phone = x.phone,
+                    hasSavedPlan = savedPlanIds.Contains(x.Id)
+                })
+                .ToList();
+
+            return Json(results);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "FinancialPlanClients error agent={Agent} q={Search}", agentOid, q);
+            // Fail-soft for search: return empty array so UI does not break
+            return Json(Array.Empty<object>());
+        }
+    }
+
+    [HttpGet]
+    public async Task<IActionResult> PortalQuickAccessClients(string? q)
+    {
+        string agentOid;
+        try { agentOid = GetAgentOidOrThrow(); }
+        catch { return Challenge(); }
+
+        var search = NormLower(q);
+
+        try
+        {
+            var ownedProfiles = await (
+                from link in _db.AgentClients.AsNoTracking()
+                join profile in _db.ClientProfiles.AsNoTracking() on link.ClientUserId equals profile.ClientUserId
+                where link.AgentUserId == agentOid
+                select new
+                {
+                    profile.Id,
+                    profile.ClientUserId,
+                    profile.FirstName,
+                    profile.LastName,
+                    profile.Email,
+                    profile.Phone,
+                    profile.CrmNotes,
+                    profile.UpdatedUtc
+                }
+            ).ToListAsync();
+
+            var results = ownedProfiles
+                .Select(profile =>
+                {
+                    var meta = EnsureMeta(ClientCrmMetaSerializer.Deserialize(profile.CrmNotes));
+                    var portalEnabled = HasPortalAccess(profile.ClientUserId);
+                    if (!portalEnabled)
+                        return null;
+
+                    var recordType = RecordTypeLabel(ResolveRecordType(profile.ClientUserId, meta));
+                    var displayName = $"{Norm(profile.FirstName)} {Norm(profile.LastName)}".Trim();
+                    if (string.IsNullOrWhiteSpace(displayName))
+                        displayName = recordType;
+
+                    var haystack = string.Join(" ",
+                        displayName,
+                        profile.Email ?? "",
+                        profile.Phone ?? "",
+                        recordType).ToLowerInvariant();
+
+                    return new
+                    {
+                        profile.ClientUserId,
+                        displayName,
+                        email = profile.Email ?? "",
+                        phone = profile.Phone ?? "",
+                        recordType,
+                        updatedUtc = profile.UpdatedUtc,
+                        haystack,
+                        profileUrl = Url.Action("Profile", "ClientWorkspace", new { clientUserId = profile.ClientUserId })
+                    };
+                })
+                .Where(x => x != null)
+                .Where(x => string.IsNullOrWhiteSpace(search) || x!.haystack.Contains(search))
+                .OrderByDescending(x => x!.updatedUtc)
+                .ThenBy(x => x!.displayName)
+                .Take(string.IsNullOrWhiteSpace(search) ? 8 : 16)
+                .Select(x => new
+                {
+                    clientUserId = x!.ClientUserId,
+                    displayName = x.displayName,
+                    email = x.email,
+                    phone = x.phone,
+                    recordType = x.recordType,
+                    updatedUtc = x.updatedUtc.ToString("o"),
+                    profileUrl = x.profileUrl ?? $"/ClientWorkspace/Profile?clientUserId={Uri.EscapeDataString(x.ClientUserId)}"
+                })
+                .ToList();
+
+            return Json(results);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "PortalQuickAccessClients error agent={Agent} q={Search}", agentOid, q);
+            return Json(Array.Empty<object>());
+        }
+    }
+
+    [HttpGet]
+    public async Task<IActionResult> WorkstationLookupClients(string? q)
+    {
+        string agentOid;
+        try { agentOid = GetAgentOidOrThrow(); }
+        catch { return Challenge(); }
+
+        var search = NormLower(q);
+
+        try
+        {
+            var ownedProfiles = await (
+                from link in _db.AgentClients.AsNoTracking()
+                join profile in _db.ClientProfiles.AsNoTracking() on link.ClientUserId equals profile.ClientUserId
+                where link.AgentUserId == agentOid
+                select new
+                {
+                    profile.ClientUserId,
+                    profile.FirstName,
+                    profile.LastName,
+                    profile.Email,
+                    profile.Phone,
+                    profile.CrmNotes,
+                    profile.UpdatedUtc
+                }
+            ).ToListAsync();
+
+            var results = ownedProfiles
+                .Select(profile =>
+                {
+                    var meta = EnsureMeta(ClientCrmMetaSerializer.Deserialize(profile.CrmNotes));
+                    var recordType = RecordTypeLabel(ResolveRecordType(profile.ClientUserId, meta));
+                    var displayName = $"{Norm(profile.FirstName)} {Norm(profile.LastName)}".Trim();
+                    if (string.IsNullOrWhiteSpace(displayName))
+                        displayName = recordType;
+
+                    var haystack = string.Join(" ",
+                        displayName,
+                        profile.Email ?? "",
+                        profile.Phone ?? "",
+                        recordType).ToLowerInvariant();
+
+                    return new
+                    {
+                        profile.ClientUserId,
+                        displayName,
+                        email = profile.Email ?? "",
+                        phone = profile.Phone ?? "",
+                        recordType,
+                        updatedUtc = profile.UpdatedUtc,
+                        haystack
+                    };
+                })
+                .Where(x => !string.IsNullOrWhiteSpace(x.ClientUserId))
+                .Where(x => string.IsNullOrWhiteSpace(search) || x.haystack.Contains(search))
+                .OrderByDescending(x => x.updatedUtc)
+                .ThenBy(x => x.displayName)
+                .Take(string.IsNullOrWhiteSpace(search) ? 12 : 24)
+                .Select(x => new
+                {
+                    clientUserId = x.ClientUserId,
+                    displayName = x.displayName,
+                    email = x.email,
+                    phone = x.phone,
+                    recordType = x.recordType,
+                    updatedUtc = x.updatedUtc.ToString("o")
+                })
+                .ToList();
+
+            return Json(results);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "WorkstationLookupClients error agent={Agent} q={Search}", agentOid, q);
+            return Json(Array.Empty<object>());
+        }
+    }
+
+    [HttpGet]
+    public async Task<IActionResult> CollaboratorLookup(string clientUserId, string? q)
+    {
+        string agentOid;
+        try { agentOid = GetAgentOidOrThrow(); }
+        catch { return Challenge(); }
+
+        var clientUserIdNorm = NormLower(clientUserId);
+        if (string.IsNullOrWhiteSpace(clientUserIdNorm))
+            return BadRequest("clientUserId is required.");
+
+        if (!await AgentOwnsClientAsync(agentOid, clientUserIdNorm))
+            return Forbid();
+
+        var search = NormLower(q);
+        if (string.IsNullOrWhiteSpace(search) || search.Length < 2)
+            return Json(Array.Empty<object>());
+
+        var sharedAgentIds = await _db.AgentClients
+            .AsNoTracking()
+            .Where(x => (x.ClientUserId ?? "").ToLower() == clientUserIdNorm)
+            .Select(x => (x.AgentUserId ?? "").ToLower())
+            .Distinct()
+            .ToListAsync(HttpContext.RequestAborted);
+
+        var sharedSet = new HashSet<string>(sharedAgentIds, StringComparer.OrdinalIgnoreCase);
+        var results = await SearchTenantAgentsAsync(search, HttpContext.RequestAborted);
+
+        return Json(results.Select(x => new
+        {
+            agentUserId = x.AgentUserId,
+            agentUpn = x.AgentUpn,
+            fullName = x.FullName,
+            phone = x.Phone,
+            isShared = sharedSet.Contains(NormLower(x.AgentUserId))
+        }));
+    }
+
+    [HttpGet]
+    public async Task<IActionResult> ClientAccessCollaborators(string clientUserId)
+    {
+        string agentOid;
+        try { agentOid = GetAgentOidOrThrow(); }
+        catch { return Challenge(); }
+
+        var clientUserIdNorm = NormLower(clientUserId);
+        if (string.IsNullOrWhiteSpace(clientUserIdNorm))
+            return BadRequest("clientUserId is required.");
+
+        if (!await AgentOwnsClientAsync(agentOid, clientUserIdNorm))
+            return Forbid();
+
+        var shared = await BuildClientSharedAccessListAsync(clientUserIdNorm, HttpContext.RequestAborted);
+        return Json(shared);
+    }
+
+    [HttpPost]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> GrantClientAccess([FromBody] GrantClientAccessRequest request)
+    {
+        string agentOid;
+        try { agentOid = GetAgentOidOrThrow(); }
+        catch { return Challenge(); }
+
+        var clientUserIdNorm = NormLower(request.ClientUserId);
+        var targetAgentId = NormLower(request.AgentUserId);
+        if (string.IsNullOrWhiteSpace(clientUserIdNorm) || string.IsNullOrWhiteSpace(targetAgentId))
+            return BadRequest("clientUserId and agentUserId are required.");
+
+        if (!await AgentOwnsClientAsync(agentOid, clientUserIdNorm))
+            return Forbid();
+
+        var targetUpn = NormLower(request.AgentUpn);
+        if (string.IsNullOrWhiteSpace(targetUpn))
+        {
+            targetUpn = await _db.AgentProfiles
+                .AsNoTracking()
+                .Where(x => (x.AgentUserId ?? "").ToLower() == targetAgentId)
+                .Select(x => (x.AgentUpn ?? "").ToLower())
+                .FirstOrDefaultAsync() ?? "";
+        }
+
+        if (!IsAgentTenantEmail(targetUpn))
+            return BadRequest("Only @mylegnd.com tenant agents can be granted shared access.");
+
+        var exists = await _db.AgentClients.AnyAsync(x =>
+            (x.ClientUserId ?? "").ToLower() == clientUserIdNorm &&
+            (x.AgentUserId ?? "").ToLower() == targetAgentId);
+
+        if (!exists)
+        {
+            _db.AgentClients.Add(new AgentClient
+            {
+                AgentUserId = targetAgentId,
+                ClientUserId = clientUserIdNorm,
+                AgentUpn = targetUpn,
+                CreatedUtc = DateTime.UtcNow
+            });
+        }
+
+        var profile = await _db.AgentProfiles.FirstOrDefaultAsync(x => (x.AgentUserId ?? "").ToLower() == targetAgentId);
+        if (profile == null)
+        {
+            _db.AgentProfiles.Add(new AgentProfile
+            {
+                AgentUserId = targetAgentId,
+                AgentUpn = targetUpn,
+                NormalizedEmail = NormalizeEmail(targetUpn),
+                FullName = Norm(request.AgentName),
+                Phone = Norm(request.AgentPhone),
+                CreatedUtc = DateTime.UtcNow,
+                UpdatedUtc = DateTime.UtcNow
+            });
+        }
+        else
+        {
+            if (string.IsNullOrWhiteSpace(profile.AgentUpn)) profile.AgentUpn = targetUpn;
+            if (string.IsNullOrWhiteSpace(profile.NormalizedEmail)) profile.NormalizedEmail = NormalizeEmail(targetUpn);
+            if (string.IsNullOrWhiteSpace(profile.FullName) && !string.IsNullOrWhiteSpace(request.AgentName)) profile.FullName = Norm(request.AgentName);
+            if (string.IsNullOrWhiteSpace(profile.Phone) && !string.IsNullOrWhiteSpace(request.AgentPhone)) profile.Phone = Norm(request.AgentPhone);
+            profile.UpdatedUtc = DateTime.UtcNow;
+        }
+
+        try
+        {
+            await _db.SaveChangesAsync();
+        }
+        catch (DbUpdateException ex)
+        {
+            _logger.LogError(ex, "GrantClientAccess failed for client={ClientUserId} targetAgent={TargetAgent}", clientUserIdNorm, targetAgentId);
+            return Conflict("Client sharing could not be saved. If this environment still enforces single-owner links, apply the latest Infrastructure migration.");
+        }
+
+        var shared = await BuildClientSharedAccessListAsync(clientUserIdNorm, HttpContext.RequestAborted);
+        return Json(new { ok = true, sharedAgents = shared });
+    }
+
+    [HttpPost]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> ResendClientInvite([FromBody] ResendClientInviteRequest request)
+    {
+        string agentOid;
+        try { agentOid = GetAgentOidOrThrow(); }
+        catch { return Challenge(); }
+
+        var clientUserIdNorm = NormLower(request.ClientUserId);
+        if (string.IsNullOrWhiteSpace(clientUserIdNorm))
+            return BadRequest("clientUserId is required.");
+
+        if (!await AgentOwnsClientAsync(agentOid, clientUserIdNorm))
+            return Forbid();
+
+        var profile = await _db.ClientProfiles
+            .FirstOrDefaultAsync(x => (x.ClientUserId ?? "").ToLower() == clientUserIdNorm,
+                HttpContext.RequestAborted);
+
+        if (profile == null)
+            return NotFound("Client profile not found.");
+
+        // Optionally update email if a new one was provided
+        if (!string.IsNullOrWhiteSpace(request.NewEmail))
+        {
+            var newEmailNorm = NormalizeEmail(request.NewEmail);
+            if (string.IsNullOrWhiteSpace(newEmailNorm))
+                return BadRequest("A real email address is required.");
+
+            var collision = await _db.ClientProfiles
+                .AsNoTracking()
+                .AnyAsync(x => x.NormalizedEmail == newEmailNorm && x.ClientUserId != clientUserIdNorm,
+                    HttpContext.RequestAborted);
+
+            if (collision)
+                return Conflict("That email is already tied to another client record.");
+
+            await using var tx = await _db.Database.BeginTransactionAsync(HttpContext.RequestAborted);
+            profile.Email = newEmailNorm;
+            profile.NormalizedEmail = newEmailNorm;
+            profile.UpdatedUtc = DateTime.UtcNow;
+
+            await _db.SaveChangesAsync(HttpContext.RequestAborted);
+
+            var syncError = await SyncPortalEmailAsync(profile, HttpContext.RequestAborted);
+            if (!string.IsNullOrWhiteSpace(syncError))
+            {
+                await tx.RollbackAsync(HttpContext.RequestAborted);
+                return StatusCode(StatusCodes.Status500InternalServerError, syncError);
+            }
+
+            await tx.CommitAsync(HttpContext.RequestAborted);
+        }
+
+        var emailTo = (profile.Email ?? "").Trim();
+        if (string.IsNullOrWhiteSpace(emailTo))
+            return BadRequest("Client has no email address on file. Add an email first.");
+
+        var firstName = (profile.FirstName ?? "").Trim();
+        var loginUpn = emailTo;  // guest accounts use email as UPN
+        var clientPortalUrl = GetClientPortalBaseUrl();
+
+        try
+        {
+            await _provisioning.SendClientWelcomeEmailAsync(
+                emailTo,
+                firstName,
+                loginUpn,
+                "",   // no temp password on resend
+                clientPortalUrl,
+                clientUserIdNorm,
+                forceIdLink: true
+            );
+
+            _logger.LogInformation(
+                "ResendClientInvite OK agent={AgentOid} clientUserId={ClientUserId} email={Email}",
+                agentOid, clientUserIdNorm, emailTo);
+
+            return Json(new { ok = true, sentTo = emailTo });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex,
+                "ResendClientInvite FAILED agent={AgentOid} clientUserId={ClientUserId} email={Email}",
+                agentOid, clientUserIdNorm, emailTo);
+            return StatusCode(500, $"Email failed to send: {ex.Message}");
+        }
+    }
+
+    [HttpPost]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> RevokeClientAccess([FromBody] RevokeClientAccessRequest request)
+    {
+        string agentOid;
+        try { agentOid = GetAgentOidOrThrow(); }
+        catch { return Challenge(); }
+
+        var clientUserIdNorm = NormLower(request.ClientUserId);
+        var targetAgentId = NormLower(request.AgentUserId);
+        if (string.IsNullOrWhiteSpace(clientUserIdNorm) || string.IsNullOrWhiteSpace(targetAgentId))
+            return BadRequest("clientUserId and agentUserId are required.");
+
+        if (!await AgentOwnsClientAsync(agentOid, clientUserIdNorm))
+            return Forbid();
+
+        var allLinks = await _db.AgentClients
+            .Where(x => (x.ClientUserId ?? "").ToLower() == clientUserIdNorm)
+            .ToListAsync();
+
+        var targetLinks = allLinks
+            .Where(x => (x.AgentUserId ?? "").ToLower() == targetAgentId)
+            .ToList();
+
+        if (!targetLinks.Any())
+        {
+            var existing = await BuildClientSharedAccessListAsync(clientUserIdNorm, HttpContext.RequestAborted);
+            return Json(new { ok = true, sharedAgents = existing });
+        }
+
+        if (allLinks.Count <= targetLinks.Count)
+            return BadRequest("At least one permitted agent must remain on the client.");
+
+        if (string.Equals(targetAgentId, NormLower(agentOid), StringComparison.OrdinalIgnoreCase))
+            return BadRequest("You cannot revoke your own access from this panel.");
+
+        _db.AgentClients.RemoveRange(targetLinks);
+        await _db.SaveChangesAsync();
+
+        var shared = await BuildClientSharedAccessListAsync(clientUserIdNorm, HttpContext.RequestAborted);
+        return Json(new { ok = true, sharedAgents = shared });
+    }
+
+    [HttpGet]
     public async Task<IActionResult> AdvancedMarketsInputs(string? clientUserId, Guid? clientProfileId = null)
     {
         string agentOid;
@@ -2915,8 +4414,73 @@ meta.Activities ??= new List<ClientCrmActivity>();
         });
     }
 
+    [HttpGet("/clients/{id}/financial-plan")]
+    public async Task<IActionResult> FinancialPlan(Guid id, string? clientUserId = null)
+    {
+        string agentOid;
+        try { agentOid = GetAgentOidOrThrow(); }
+        catch { return Challenge(); }
+
+        var clientUserIdNorm = NormLower(clientUserId);
+        _logger.LogInformation("FinancialPlan GET start agent={Agent} routeId={RouteId} clientUserId={ClientUserId}", agentOid, id, clientUserIdNorm);
+
+        try
+        {
+            ClientProfile? profile = await GetOwnedClientProfileAsync(agentOid, id);
+            if (profile == null && !string.IsNullOrWhiteSpace(clientUserIdNorm))
+                profile = await GetOwnedClientProfileAsync(agentOid, clientUserIdNorm);
+
+            if (profile == null) return Forbid();
+
+            var row = await _db.ClientFinancialPlans.AsNoTracking()
+                .FirstOrDefaultAsync(x => x.ClientId == profile.Id && !x.IsDeleted);
+
+            var json = row?.JsonData;
+            if (string.IsNullOrWhiteSpace(json)) json = "{}";
+            json = SanitizeFinancialPlanJson(json); // defensive: strip derived/deprecated fields before serving
+
+            string fingerprint = "(empty)";
+            try { fingerprint = FingerprintPayload(json); } catch { fingerprint = "(error)"; }
+
+            var displayName = $"{Norm(profile.FirstName)} {Norm(profile.LastName)}".Trim();
+            if (string.IsNullOrWhiteSpace(displayName)) displayName = "Client";
+
+            _logger.LogInformation("FinancialPlan GET ok agent={Agent} clientUserId={ClientUserId} profileId={ProfileId} hasRow={HasRow} rowId={RowId} len={Len}",
+                agentOid, profile.ClientUserId, profile.Id, row != null, row?.Id, json.Length);
+
+            return Json(new
+            {
+                clientUserId = profile.ClientUserId,
+                clientProfileId = profile.Id,
+                clientName = displayName,
+                hasPlan = row != null,
+                jsonData = json,
+                version = row?.Version ?? 1,
+                updatedUtc = row?.LastUpdatedUtc,
+                updatedBy = row?.UpdatedBy,
+                fingerprint
+            });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "FinancialPlan GET error agent={Agent} routeId={RouteId} clientUserId={ClientUserId}", agentOid, id, clientUserId);
+            // Fail-soft for hydration: return an empty plan so UI can continue
+            return Json(new
+            {
+                clientUserId = clientUserIdNorm,
+                clientProfileId = (Guid?)null,
+                clientName = "Client",
+                hasPlan = false,
+                jsonData = "{}",
+                version = 1,
+                updatedUtc = (DateTime?)null,
+                updatedBy = "",
+                fingerprint = "(error)"
+            });
+        }
+    }
+
     [HttpPost]
-    [IgnoreAntiforgeryToken] // allow persistent saves from Quick View without token churn after app restarts
     public async Task<IActionResult> SaveAdvancedMarketsInputs([FromBody] SaveAdvancedMarketsInputsRequest? request)
     {
         string agentOid;
@@ -3028,6 +4592,118 @@ meta.Activities ??= new List<ClientCrmActivity>();
         });
     }
 
+    [HttpPost("/clients/{id}/financial-plan")]
+    public async Task<IActionResult> SaveFinancialPlan(Guid id, [FromBody] SaveFinancialPlanRequest? request)
+    {
+        string agentOid;
+        try { agentOid = GetAgentOidOrThrow(); }
+        catch { return Challenge(); }
+
+        _logger.LogInformation("FinancialPlan SAVE start agent={Agent} routeId={RouteId} clientUserId={ClientUserId}", agentOid, id, request?.ClientUserId);
+
+        if (request == null)
+        {
+            _logger.LogWarning("FinancialPlan SAVE null request profileId={ProfileId}", id);
+            return BadRequest("Invalid financial plan payload.");
+        }
+
+        if (string.IsNullOrWhiteSpace(request.JsonData))
+        {
+            _logger.LogWarning("FinancialPlan SAVE empty json profileId={ProfileId}", id);
+            return BadRequest("JsonData is required.");
+        }
+
+        try
+        {
+            ClientProfile? profile = await GetOwnedClientProfileAsync(agentOid, id);
+            if (profile == null && request.ClientProfileId.HasValue && request.ClientProfileId.Value != Guid.Empty)
+                profile = await GetOwnedClientProfileAsync(agentOid, request.ClientProfileId.Value);
+            if (profile == null && !string.IsNullOrWhiteSpace(request.ClientUserId))
+                profile = await GetOwnedClientProfileAsync(agentOid, request.ClientUserId);
+
+            if (profile == null) return Forbid();
+
+            var nowUtc = DateTime.UtcNow;
+            var incomingJson = string.IsNullOrWhiteSpace(request.JsonData) ? "{}" : request.JsonData;
+            // Include deleted rows so we can revive instead of violating unique index
+            var row = await _db.ClientFinancialPlans.FirstOrDefaultAsync(x => x.ClientId == profile.Id);
+            // Validate canonical distribution planner payload if present
+            try
+            {
+                var root = JsonNode.Parse(incomingJson) as JsonObject ?? new JsonObject();
+                var dist = root["distribution"] as JsonObject;
+                var canonical = dist?["canonicalInput"] as JsonObject;
+                if (canonical != null)
+                {
+                    var err = ValidateDistributionCanonical(canonical);
+                    if (!string.IsNullOrWhiteSpace(err))
+                    {
+                        _logger.LogWarning("FinancialPlan SAVE validation failed profileId={ProfileId} error={Error}", id, err);
+                        return BadRequest(err);
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "FinancialPlan SAVE validation parse error profileId={ProfileId}", id);
+                return BadRequest("Invalid financial plan payload.");
+            }
+
+            var sanitized = SanitizeFinancialPlanJson(incomingJson, row?.JsonData);
+            if (row == null)
+            {
+                row = new ClientFinancialPlan
+                {
+                    ClientId = profile.Id,
+                    JsonData = sanitized,
+                    LastUpdatedUtc = nowUtc,
+                    UpdatedBy = GetAgentUpnForAudit(),
+                    Version = request.Version ?? 1,
+                    IsDeleted = false
+                };
+                _db.ClientFinancialPlans.Add(row);
+                _logger.LogInformation("FinancialPlan SAVE create clientUserId={ClientUserId} profileId={ProfileId} rowId={RowId} len={Len}",
+                    profile.ClientUserId, profile.Id, row.Id, sanitized.Length);
+            }
+            else
+            {
+                if (row.IsDeleted) row.IsDeleted = false;
+                row.JsonData = sanitized;
+                row.LastUpdatedUtc = nowUtc;
+                row.UpdatedBy = GetAgentUpnForAudit();
+                row.Version = (request.Version ?? row.Version) + 1;
+                _logger.LogInformation("FinancialPlan SAVE update clientUserId={ClientUserId} profileId={ProfileId} rowId={RowId} len={Len} version={Version}",
+                    profile.ClientUserId, profile.Id, row.Id, sanitized.Length, row.Version);
+            }
+
+            await _db.SaveChangesAsync();
+
+            var verify = await _db.ClientFinancialPlans.AsNoTracking()
+                .FirstOrDefaultAsync(x => x.ClientId == profile.Id && !x.IsDeleted);
+            if (verify == null || string.IsNullOrWhiteSpace(verify.JsonData))
+            {
+                _logger.LogError("FinancialPlan SAVE verification failed clientUserId={ClientUserId} profileId={ProfileId}", profile.ClientUserId, profile.Id);
+                return StatusCode(500, "Financial plan save verification failed.");
+            }
+
+            return Json(new
+            {
+                ok = true,
+                clientUserId = profile.ClientUserId,
+                clientProfileId = profile.Id,
+                updatedUtc = verify.LastUpdatedUtc,
+                version = verify.Version,
+                jsonData = verify.JsonData,
+                fingerprint = FingerprintPayload(verify.JsonData)
+            });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "FinancialPlan SAVE error agent={Agent} routeId={RouteId} clientUserId={ClientUserId}", agentOid, id, request.ClientUserId);
+            return StatusCode(500, "Financial plan save failed.");
+        }
+    }
+
     [HttpPost]
     [ValidateAntiForgeryToken]
     public async Task<IActionResult> EnablePortalAccess([FromBody] EnablePortalAccessRequest request)
@@ -3061,158 +4737,24 @@ meta.Activities ??= new List<ClientCrmActivity>();
         if (emailCollision)
             return Conflict("That email is already tied to another client record.");
 
-        var firstName = Norm(profile.FirstName);
-        var lastName = Norm(profile.LastName);
-        var oneTimePassword = GenerateOneTimePassword();
-        string? newClientObjectId = null;
-        string? loginUpn = null;
-        var createdGraphUser = false;
-        var committed = false;
-
         try
         {
-            var personalEmail = emailNorm
-                ?? throw new InvalidOperationException("Portal client email is required before enabling portal access.");
-
-            (newClientObjectId, loginUpn) = await _provisioning.CreateTenantUserAsync(
-                firstName,
-                lastName,
-                personalEmail,
-                oneTimePassword
-            );
-
-            newClientObjectId = NormLower(newClientObjectId);
-            loginUpn = Norm(loginUpn);
-
-            if (string.IsNullOrWhiteSpace(newClientObjectId))
-                throw new Exception("Provisioning returned an empty client user id.");
-
-            if (string.IsNullOrWhiteSpace(loginUpn))
-                throw new Exception("Provisioning returned an empty login UPN.");
-
-            createdGraphUser = true;
-
-            await using var tx = await _db.Database.BeginTransactionAsync();
-
-            var meta = EnsureMeta(ClientCrmMetaSerializer.Deserialize(profile.CrmNotes));
-            meta.RecordType = recordType;
-            meta.PipelineStage = DefaultPipelineStageForRecordType(recordType);
-            meta.StageEnteredUtc = DateTime.UtcNow;
-            var agentLinks = await _db.AgentClients.Where(x => x.ClientUserId == oldClientUserId).ToListAsync();
-            var householdMembers = await _db.HouseholdMembers.Where(x => x.ClientUserId == oldClientUserId).ToListAsync();
-            var bookkeepingEntries = await _db.BookkeepingEntries
-                .Where(x => x.Scope == BookkeepingScope.ClientShared && x.OwnerUserId == oldClientUserId)
-                .ToListAsync();
-            var recurringExpenses = await _db.RecurringExpenses
-                .Where(x => x.Scope == BookkeepingScope.ClientShared && x.OwnerUserId == oldClientUserId)
-                .ToListAsync();
-
-            var recreatedLinks = agentLinks.Select(link => new AgentClient
-            {
-                AgentUserId = link.AgentUserId,
-                ClientUserId = newClientObjectId,
-                AgentUpn = link.AgentUpn,
-                CreatedUtc = link.CreatedUtc
-            }).ToList();
-
-            var recreatedHousehold = householdMembers.Select(member => new HouseholdMember
-            {
-                ClientUserId = newClientObjectId,
-                RelationshipType = member.RelationshipType,
-                FirstName = member.FirstName,
-                LastName = member.LastName,
-                DOB = member.DOB,
-                Email = member.Email,
-                Phone = member.Phone,
-                CreatedUtc = member.CreatedUtc,
-                UpdatedUtc = DateTime.UtcNow
-            }).ToList();
-
-            if (agentLinks.Count > 0)
-                _db.AgentClients.RemoveRange(agentLinks);
-
-            if (householdMembers.Count > 0)
-                _db.HouseholdMembers.RemoveRange(householdMembers);
-
-            await _db.SaveChangesAsync();
-
-            foreach (var entry in bookkeepingEntries)
-                entry.OwnerUserId = newClientObjectId;
-
-            foreach (var expense in recurringExpenses)
-                expense.OwnerUserId = newClientObjectId;
-
-            await _db.SaveChangesAsync();
-
-            var updatedUtc = DateTime.UtcNow;
-            var serializedMeta = ClientCrmMetaSerializer.Serialize(meta);
-            var profileId = profile.Id;
-
-            _db.Entry(profile).State = EntityState.Detached;
-
-            var updatedRows = await _db.Database.ExecuteSqlInterpolatedAsync($@"
-                UPDATE ClientProfiles
-                SET ClientUserId = {newClientObjectId},
-                    CrmNotes = {serializedMeta},
-                    CrmStatus = {"Active"},
-                    UpdatedUtc = {updatedUtc}
-                WHERE Id = {profileId}");
-
-            if (updatedRows != 1)
-                throw new Exception("Portal conversion failed while updating the client profile record.");
-
-            if (recreatedLinks.Count > 0)
-                _db.AgentClients.AddRange(recreatedLinks);
-
-            if (recreatedHousehold.Count > 0)
-                _db.HouseholdMembers.AddRange(recreatedHousehold);
-
-            await _db.SaveChangesAsync();
-            await tx.CommitAsync();
-            committed = true;
-
-            var clientPortalUrl = GetClientPortalBaseUrl();
-            string? emailWarning = null;
-
-            try
-            {
-                await _provisioning.SendClientWelcomeEmailAsync(
-                    emailNorm,
-                    firstName,
-                    loginUpn,
-                    oneTimePassword,
-                    clientPortalUrl,
-                    newClientObjectId,
-                    forceIdLink: true
-                );
-            }
-            catch (Exception mailEx)
-            {
-                _logger.LogError(
-                    mailEx,
-                    "Portal access email failed after successful conversion. AgentOid={AgentOid} Email={Email} ClientUserId={ClientUserId}",
-                    agentOid,
-                    emailNorm,
-                    newClientObjectId
-                );
-
-                emailWarning = $"Portal access was enabled, but the welcome email failed to send: {mailEx.Message}";
-            }
+            var result = await EnablePortalAccessInternalAsync(profile, recordType, emailNorm);
 
             return Json(new
             {
-                oldClientUserId,
-                newClientUserId = newClientObjectId,
-                recordType,
-                recordTypeLabel = RecordTypeLabel(recordType),
-                loginUpn,
-                oneTimePassword,
+                oldClientUserId = result.OldClientUserId,
+                newClientUserId = result.NewClientUserId,
+                recordType = result.RecordType,
+                recordTypeLabel = RecordTypeLabel(result.RecordType),
+                loginUpn = result.LoginUpn,
+                oneTimePassword = result.OneTimePassword,
                 portalAccessEnabled = true,
-                pipelineStage = DefaultPipelineStageForRecordType(recordType),
-                pipelineStageLabel = StageLabel(DefaultPipelineStageForRecordType(recordType)),
-                clientPortalUrl = $"{clientPortalUrl}/support/view-as-client/{profile.Id}",
-                emailSent = string.IsNullOrWhiteSpace(emailWarning),
-                warning = emailWarning
+                pipelineStage = result.PipelineStage,
+                pipelineStageLabel = StageLabel(result.PipelineStage),
+                clientPortalUrl = result.ClientPortalUrl,
+                emailSent = result.EmailSent,
+                warning = result.Warning
             });
         }
         catch (Exception ex)
@@ -3224,11 +4766,6 @@ meta.Activities ??= new List<ClientCrmActivity>();
                 emailNorm,
                 oldClientUserId
             );
-
-            if (!committed && createdGraphUser && !string.IsNullOrWhiteSpace(newClientObjectId))
-            {
-                try { await _provisioning.DeleteTenantUserAsync(newClientObjectId); } catch { }
-            }
 
             return StatusCode(StatusCodes.Status500InternalServerError,
                 $"Failed to convert this lead into a portal {RecordTypeLabel(recordType).ToLowerInvariant()}: {ex.Message}");
@@ -3246,12 +4783,12 @@ meta.Activities ??= new List<ClientCrmActivity>();
         var profile = await GetOwnedClientProfileAsync(agentOid, request.ClientUserId);
         if (profile == null) return Forbid();
 
-        var emailNorm = NormLower(request.Email);
+        var emailNorm = NormalizeEmail(request.Email);
         if (!string.IsNullOrWhiteSpace(emailNorm))
         {
             var exists = await _db.ClientProfiles
                 .AsNoTracking()
-                .AnyAsync(x => x.Email == emailNorm && x.ClientUserId != profile.ClientUserId);
+                .AnyAsync(x => x.NormalizedEmail == emailNorm && x.ClientUserId != profile.ClientUserId);
             if (exists)
                 return BadRequest("Email already exists on another client.");
         }
@@ -3295,12 +4832,8 @@ meta.Activities ??= new List<ClientCrmActivity>();
             if (!IsPortalRecordType(normalizedRecordType))
                 normalizedRecordType = currentRecordType;
 
-            var currentStage = NormalizePipelineStage(meta.PipelineStage);
-            if (!string.Equals(currentRecordType, normalizedRecordType, StringComparison.OrdinalIgnoreCase) &&
-                (currentStage is "Client" or "BusinessClient" || normalizedStage is "Client" or "BusinessClient"))
-            {
+            if (!string.Equals(currentRecordType, normalizedRecordType, StringComparison.OrdinalIgnoreCase))
                 normalizedStage = DefaultPipelineStageForRecordType(normalizedRecordType);
-            }
         }
 
         if (!string.Equals(meta.PipelineStage, normalizedStage, StringComparison.Ordinal))
@@ -3310,11 +4843,16 @@ meta.Activities ??= new List<ClientCrmActivity>();
         meta.PipelineOrder = request.PipelineOrder ?? meta.PipelineOrder;
         meta.WaitingOn = NormalizeWaitingOn(request.WaitingOn);
         meta.PinnedBrief = string.IsNullOrWhiteSpace(request.PinnedBrief) ? null : request.PinnedBrief.Trim();
-        meta.MeetingLocation = string.IsNullOrWhiteSpace(request.MeetingLocation) ? null : request.MeetingLocation.Trim();
-        meta.ZoomJoinUrl = string.IsNullOrWhiteSpace(request.ZoomJoinUrl) ? null : request.ZoomJoinUrl.Trim();
-        meta.UsePersonalZoomLink = request.UsePersonalZoomLink;
-        meta.MeetingTime = string.IsNullOrWhiteSpace(request.MeetingTime) ? "09:00" : request.MeetingTime.Trim();
-        meta.MeetingDurationMinutes = request.MeetingDurationMinutes <= 0 ? 30 : request.MeetingDurationMinutes;
+        if (request.MeetingLocation != null)
+            meta.MeetingLocation = string.IsNullOrWhiteSpace(request.MeetingLocation) ? null : request.MeetingLocation.Trim();
+        if (request.ZoomJoinUrl != null)
+            meta.ZoomJoinUrl = string.IsNullOrWhiteSpace(request.ZoomJoinUrl) ? null : request.ZoomJoinUrl.Trim();
+        if (request.UsePersonalZoomLink.HasValue)
+            meta.UsePersonalZoomLink = request.UsePersonalZoomLink.Value;
+        if (request.MeetingTime != null)
+            meta.MeetingTime = string.IsNullOrWhiteSpace(request.MeetingTime) ? "09:00" : request.MeetingTime.Trim();
+        if (request.MeetingDurationMinutes.HasValue)
+            meta.MeetingDurationMinutes = request.MeetingDurationMinutes.Value <= 0 ? 30 : request.MeetingDurationMinutes.Value;
         meta.DocChecklist.IdReceived = request.DocIdReceived;
         meta.DocChecklist.AppSent = request.DocAppSent;
         meta.DocChecklist.AppSigned = request.DocAppSigned;
@@ -3374,7 +4912,10 @@ meta.Activities ??= new List<ClientCrmActivity>();
         profile.Phone = (request.Phone ?? profile.Phone ?? "").Trim();
         profile.Email = string.IsNullOrWhiteSpace(emailNorm) ? (profile.Email ?? "") : emailNorm;
         profile.NormalizedEmail = NormalizeEmail(profile.Email);
-        if (string.IsNullOrWhiteSpace(profile.Email))
+        if (HasPortalAccess(profile.ClientUserId) && string.IsNullOrWhiteSpace(profile.NormalizedEmail))
+            return BadRequest("Portal-enabled clients require a real email address.");
+
+        if (!HasPortalAccess(profile.ClientUserId) && string.IsNullOrWhiteSpace(profile.Email))
         {
             profile.Email = $"{profile.ClientUserId}@leads.local";
             profile.NormalizedEmail = profile.Email.ToLowerInvariant();
@@ -3404,7 +4945,19 @@ meta.Activities ??= new List<ClientCrmActivity>();
         profile.CrmNotes = ClientCrmMetaSerializer.Serialize(meta);
         profile.UpdatedUtc = DateTime.UtcNow;
 
-        await _db.SaveChangesAsync();
+        await using (var tx = await _db.Database.BeginTransactionAsync())
+        {
+            await _db.SaveChangesAsync();
+
+            var syncError = await SyncPortalEmailAsync(profile, HttpContext.RequestAborted);
+            if (!string.IsNullOrWhiteSpace(syncError))
+            {
+                await tx.RollbackAsync();
+                return StatusCode(StatusCodes.Status500InternalServerError, syncError);
+            }
+
+            await tx.CommitAsync();
+        }
 
         var nowUtc = DateTime.UtcNow;
         var dialTimeZone = _agentTimeZoneResolver.Resolve(HttpContext);
@@ -3412,7 +4965,7 @@ meta.Activities ??= new List<ClientCrmActivity>();
         return Json(new
         {
             ok = true,
-            payload = BuildQuickViewPayload(profile, meta, dialTimeZone, nowUtc)
+            payload = BuildQuickViewPayload(profile, meta, dialTimeZone, nowUtc, await LoadClientLatestAppointmentAsync(profile))
         });
     }
 
@@ -3586,7 +5139,7 @@ meta.Activities ??= new List<ClientCrmActivity>();
                 meetingTime = meta.MeetingTime ?? "09:00",
                 meetingDurationMinutes = meta.MeetingDurationMinutes
             },
-            payload = BuildQuickViewPayload(profile, meta, dialTimeZone, nowUtc)
+            payload = BuildQuickViewPayload(profile, meta, dialTimeZone, nowUtc, await LoadClientLatestAppointmentAsync(profile))
         });
     }
 
@@ -3681,13 +5234,21 @@ meta.Activities ??= new List<ClientCrmActivity>();
     [ValidateAntiForgeryToken]
     public async Task<IActionResult> Delete(string clientUserId)
     {
+        var isFetchRequest = string.Equals(Request.Headers["X-Requested-With"], "fetch", StringComparison.OrdinalIgnoreCase)
+            || string.Equals(Request.Headers["X-Requested-With"], "XMLHttpRequest", StringComparison.OrdinalIgnoreCase);
+
         string agentOid;
         try { agentOid = GetAgentOidOrThrow(); }
         catch { return Challenge(); }
 
         var clientUserIdNorm = NormLower(clientUserId);
         if (string.IsNullOrWhiteSpace(clientUserIdNorm))
+        {
+            if (isFetchRequest)
+                return BadRequest(new { ok = false, error = "Client id is required." });
+
             return RedirectToAction(nameof(Index));
+        }
 
         // Ownership check
         var linked = await _db.AgentClients.AnyAsync(x =>
@@ -3701,29 +5262,42 @@ meta.Activities ??= new List<ClientCrmActivity>();
 
         try
         {
-            // Safety: ensure only one owner link exists before deleting Entra
-            var linkCount = await _db.AgentClients.CountAsync(x => x.ClientUserId == clientUserIdNorm);
-            if (linkCount != 1)
-                throw new Exception("Safety stop: client is linked to multiple agents. Refusing to delete Entra user.");
-
-            // ✅ Delete ClientShared finance data (shared workspace) for that client
-            var bk = await _db.BookkeepingEntries
-                .Where(x => x.OwnerUserId == clientUserIdNorm && x.Scope == BookkeepingScope.ClientShared)
-                .ToListAsync();
-            if (bk.Count > 0) _db.BookkeepingEntries.RemoveRange(bk);
-
-            var rec = await _db.RecurringExpenses
-                .Where(x => x.OwnerUserId == clientUserIdNorm && x.Scope == BookkeepingScope.ClientShared)
-                .ToListAsync();
-            if (rec.Count > 0) _db.RecurringExpenses.RemoveRange(rec);
-
-            // Delete Entra user
-            await _provisioning.DeleteTenantUserAsync(clientUserIdNorm);
-
-            // DB cleanup
             var allLinks = await _db.AgentClients
                 .Where(x => x.ClientUserId == clientUserIdNorm)
                 .ToListAsync();
+
+            var currentAgentLinks = allLinks
+                .Where(x => x.AgentUserId == agentOid)
+                .ToList();
+
+            // If another agent also has this client, remove only this agent's relationship.
+            // Deleting the shared profile/account would break the other agent and the client app.
+            if (allLinks.Count > currentAgentLinks.Count)
+            {
+                if (currentAgentLinks.Count > 0)
+                    _db.AgentClients.RemoveRange(currentAgentLinks);
+
+                await _db.SaveChangesAsync();
+                await tx.CommitAsync();
+
+                const string unlinkedMessage = "Client removed from your Agent Portal. The shared client profile remains active for the other assigned agent(s).";
+                TempData["Created"] = unlinkedMessage;
+
+                if (isFetchRequest)
+                    return Json(new { ok = true, removedOnly = true, message = unlinkedMessage, redirectUrl = Url.Action(nameof(Index)) ?? "/Clients" });
+
+                return RedirectToAction(nameof(Index));
+            }
+
+            var profile = await _db.ClientProfiles
+                .FirstOrDefaultAsync(x => x.ClientUserId == clientUserIdNorm);
+
+            // Delete Entra only for real portal users. Lead-only records use synthetic ids.
+            var hadPortalAccess = HasPortalAccess(clientUserIdNorm);
+            if (hadPortalAccess)
+                await _provisioning.DeleteTenantUserAsync(clientUserIdNorm);
+
+            // DB cleanup
             if (allLinks.Count > 0)
                 _db.AgentClients.RemoveRange(allLinks);
 
@@ -3733,15 +5307,34 @@ meta.Activities ??= new List<ClientCrmActivity>();
             if (household.Count > 0)
                 _db.HouseholdMembers.RemoveRange(household);
 
-            var profile = await _db.ClientProfiles
-                .FirstOrDefaultAsync(x => x.ClientUserId == clientUserIdNorm);
             if (profile != null)
+            {
+                var financeToolStates = await _db.FinanceToolStates
+                    .Where(x => x.ClientProfileId == profile.Id)
+                    .ToListAsync();
+                if (financeToolStates.Count > 0)
+                    _db.FinanceToolStates.RemoveRange(financeToolStates);
+
+                var financialPlans = await _db.ClientFinancialPlans
+                    .Where(x => x.ClientId == profile.Id)
+                    .ToListAsync();
+                if (financialPlans.Count > 0)
+                    _db.ClientFinancialPlans.RemoveRange(financialPlans);
+
                 _db.ClientProfiles.Remove(profile);
+            }
 
             await _db.SaveChangesAsync();
             await tx.CommitAsync();
 
-            TempData["Created"] = "Client deleted (profile + household + client shared finance + Entra account removed).";
+            var deletedMessage = hadPortalAccess
+                ? "Client deleted (profile + household + client shared finance + Entra account removed)."
+                : "Client deleted (profile + household + client shared finance removed).";
+            TempData["Created"] = deletedMessage;
+
+            if (isFetchRequest)
+                return Json(new { ok = true, message = deletedMessage, redirectUrl = Url.Action(nameof(Index)) ?? "/Clients" });
+
             return RedirectToAction(nameof(Index));
         }
         catch (Exception ex)
@@ -3750,6 +5343,10 @@ meta.Activities ??= new List<ClientCrmActivity>();
 
             await tx.RollbackAsync();
             TempData["Created"] = $"Delete failed: {ex.Message}";
+
+            if (isFetchRequest)
+                return StatusCode(StatusCodes.Status500InternalServerError, new { ok = false, error = ex.Message });
+
             return RedirectToAction(nameof(Index));
         }
     }

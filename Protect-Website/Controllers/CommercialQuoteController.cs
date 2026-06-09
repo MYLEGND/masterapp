@@ -1,14 +1,17 @@
 using Microsoft.AspNetCore.Mvc;
+using Domain.Entities;
+using Infrastructure.Data;
 using Protect_Website.Models;
-using Azure.Identity;
-using Microsoft.Graph;
-using Microsoft.Graph.Models;
-using Microsoft.Graph.Users.Item.SendMail;
 using System;
 using System.Collections.Generic;
-using System.Net;
-using System.Text;
+using System.Text.Json;
 using Microsoft.AspNetCore.Mvc.ModelBinding;
+using Microsoft.EntityFrameworkCore;
+using Infrastructure.Leads;
+using ProtectWebsite.Services.Meta;
+using ProtectWebsite.Services;
+using ProtectWebsite.Services.Tracking;
+using ProtectWebsite.Services.Communication;
 
 namespace Protect_Website.Controllers
 {
@@ -21,8 +24,16 @@ namespace Protect_Website.Controllers
 
         private readonly string senderEmail;
         private readonly string recipientEmail;
+        private readonly AgentTrackingResolver _resolver;
+        private readonly MasterAppDbContext _db;
+        private readonly IMetaConversionsApiService _metaConversionsApi;
+        private readonly IMetaPixelResolutionService _metaPixelResolution;
+        private readonly IWebsiteLifeLeadCaptureService _websiteLeadCapture;
+        private readonly ILogger<CommercialQuoteController> _logger;
+        private readonly IProtectEmailSender _emailSender;
 
-        public CommercialQuoteController(IConfiguration configuration)
+        public CommercialQuoteController(IConfiguration configuration, AgentTrackingResolver resolver,
+            MasterAppDbContext db, IMetaConversionsApiService metaConversionsApi, IMetaPixelResolutionService metaPixelResolution, IWebsiteLifeLeadCaptureService websiteLeadCapture, IProtectEmailSender emailSender, ILogger<CommercialQuoteController> logger)
         {
             tenantId = configuration["AzureAd:TenantId"] ?? throw new ArgumentNullException("AzureAd:TenantId");
             clientId = configuration["AzureAd:ClientId"] ?? throw new ArgumentNullException("AzureAd:ClientId");
@@ -30,6 +41,13 @@ namespace Protect_Website.Controllers
 
             senderEmail = configuration["Contact:SenderEmail"] ?? throw new ArgumentNullException("Contact:SenderEmail");
             recipientEmail = configuration["Contact:RecipientEmail"] ?? throw new ArgumentNullException("Contact:RecipientEmail");
+            _resolver = resolver;
+            _db = db;
+            _metaConversionsApi = metaConversionsApi;
+            _metaPixelResolution = metaPixelResolution;
+            _websiteLeadCapture = websiteLeadCapture;
+            _emailSender = emailSender;
+            _logger = logger;
         }
 
         [HttpGet("Commercial")]
@@ -43,6 +61,18 @@ namespace Protect_Website.Controllers
         [ValidateAntiForgeryToken]
         public async Task<IActionResult> Commercial(CommercialQuoteFormModel model)
         {
+            // Normalize disclaimer — wizard steps toggle disabled; read raw value directly
+            var ackRaw = Request?.Form?["AcknowledgedDisclaimer"].FirstOrDefault();
+            bool ack = !string.IsNullOrWhiteSpace(ackRaw) &&
+                       (ackRaw.Equals("true", StringComparison.OrdinalIgnoreCase) ||
+                        ackRaw.Equals("on", StringComparison.OrdinalIgnoreCase) ||
+                        ackRaw.Equals("1"));
+            model.AcknowledgedDisclaimer = ack;
+            ModelState.Remove(nameof(model.AcknowledgedDisclaimer));
+            if (!ack)
+                ModelState.AddModelError(nameof(model.AcknowledgedDisclaimer),
+                    "Please check the authorization box so we can contact you about this quote.");
+
             // Keep user on same step if server-side validation fails
             if (!ModelState.IsValid)
             {
@@ -50,304 +80,500 @@ namespace Protect_Website.Controllers
                 return View("~/Views/Quote/Commercial.cshtml", model);
             }
 
+            var correlationId = Guid.NewGuid();
+
+            var (leadRecipientEmail, agentProfileId, agentSlug, isFounderPath) = await ResolveLeadContextAsync();
+            _logger.LogInformation(
+                "CommercialQuote [{CorrelationId}]: attribution resolved AgentSlug={Slug} ProfileId={ProfileId} Recipient={Recipient}",
+                correlationId, agentSlug, agentProfileId, leadRecipientEmail);
+            var resolvedMetaPixel = await _metaPixelResolution.ResolveForLeadAsync(
+                agentProfileId,
+                agentSlug,
+                isFounderPath,
+                HttpContext?.RequestAborted ?? CancellationToken.None);
+
+            // ── 1. Persist lead FIRST ─────────────────────────────────────────────
+            WebsiteLead lead;
             try
             {
-                var credential = new ClientSecretCredential(tenantId, clientId, clientSecret);
-                var graphClient = new GraphServiceClient(credential);
-
-                static string E(string? s) => string.IsNullOrWhiteSpace(s) ? "N/A" : WebUtility.HtmlEncode(s.Trim());
-                static string D(DateTime? d) => d.HasValue ? WebUtility.HtmlEncode(d.Value.ToString("MM/dd/yyyy")) : "N/A";
-                static string Money(decimal? v) => v.HasValue ? WebUtility.HtmlEncode(v.Value.ToString("N0")) : "N/A";
-                static string Percent(decimal? v) => v.HasValue ? WebUtility.HtmlEncode($"{v.Value:N0}%") : "N/A";
-                static string Bool(bool? b) => b.HasValue ? (b.Value ? "Yes" : "No") : "N/A";
-
-                string BuildAccountDetails()
+                var now = DateTime.UtcNow;
+                lead = new WebsiteLead
                 {
-                    var sb = new StringBuilder();
-                    sb.AppendLine("<h3>Step 1 — Account Details</h3>");
-                    sb.AppendLine($"<p><strong>Risk State:</strong> {E(model.State)}</p>");
-                    sb.AppendLine("<hr/>");
-                    return sb.ToString();
-                }
-
-                string BuildBusinessOperations()
-                {
-                    var sb = new StringBuilder();
-                    sb.AppendLine("<h3>Step 2 — Business Operations</h3>");
-                    sb.AppendLine($"<p><strong>Business Description:</strong> {E(model.BusinessDescription)}</p>");
-                    sb.AppendLine($"<p><strong>Business Name:</strong> {E(model.BusinessName)}</p>");
-                    sb.AppendLine($"<p><strong>Years in Business:</strong> {E(model.YearsInBusiness)}</p>");
-                    sb.AppendLine($"<p><strong>Years of Experience:</strong> {E(model.YearsOfExperience)}</p>");
-                    sb.AppendLine($"<p><strong>Gross Sales:</strong> {Money(model.GrossSales)}</p>");
-                    sb.AppendLine($"<p><strong>Total Payroll:</strong> {Money(model.TotalPayroll)}</p>");
-                    sb.AppendLine($"<p><strong># of Employees:</strong> {E(model.NumberOfEmployees)}</p>");
-                    sb.AppendLine("<hr/>");
-                    return sb.ToString();
-                }
-
-                string BuildContact()
-                {
-                    var sb = new StringBuilder();
-                    sb.AppendLine("<h3>Step 3 — Insured &amp; Business Contact</h3>");
-                    sb.AppendLine($"<p><strong>Insured Name:</strong> {E(model.InsuredFirstName)} {E(model.InsuredLastName)}</p>");
-                    sb.AppendLine($"<p><strong>Business Phone:</strong> {E(model.BusinessPhone)}</p>");
-                    sb.AppendLine($"<p><strong>Business Email:</strong> {E(model.BusinessEmail)}</p>");
-                    sb.AppendLine($"<p><strong>Website / Facebook:</strong> {E(model.BusinessWebsiteOrFacebook)}</p>");
-                    sb.AppendLine("<hr/>");
-                    return sb.ToString();
-                }
-
-                string BuildAddress()
-                {
-                    var sb = new StringBuilder();
-                    sb.AppendLine("<h3>Step 4 — Physical Address</h3>");
-                    sb.AppendLine($"<p><strong>Street Address:</strong> {E(model.StreetAddress)}</p>");
-                    sb.AppendLine($"<p><strong>Address Line 2:</strong> {E(model.AddressLine2)}</p>");
-                    sb.AppendLine($"<p><strong>City:</strong> {E(model.City)}</p>");
-                    sb.AppendLine($"<p><strong>State:</strong> {E(model.State)}</p>");
-                    sb.AppendLine($"<p><strong>ZIP Code:</strong> {E(model.ZipCode)}</p>");
-                    sb.AppendLine("<hr/>");
-                    return sb.ToString();
-                }
-
-                string BuildCoverageTiming()
-                {
-                    var sb = new StringBuilder();
-                    sb.AppendLine("<h3>Step 5 — Coverage &amp; Timing</h3>");
-                    sb.AppendLine($"<p><strong>Effective Date:</strong> {D(model.EffectiveDate)}</p>");
-
-                    var interested = (model.InterestedIn != null && model.InterestedIn.Count > 0)
-                        ? string.Join(", ", model.InterestedIn)
-                        : "N/A";
-
-                    sb.AppendLine($"<p><strong>Interested In:</strong> {WebUtility.HtmlEncode(interested)}</p>");
-                    sb.AppendLine($"<p><strong>Additional Comments:</strong> {E(model.Comments)}</p>");
-                    sb.AppendLine("<hr/>");
-                    return sb.ToString();
-                }
-
-                string BuildContactPreferences()
-                {
-                    var sb = new StringBuilder();
-                    sb.AppendLine("<h3>Step 6 — Contact Preferences</h3>");
-                    sb.AppendLine($"<p><strong>Preferred Contact Method:</strong> {E(model.PreferredContactMethod)}</p>");
-                    sb.AppendLine($"<p><strong>Best Time To Contact:</strong> {E(model.BestTimeToContact)}</p>");
-                    sb.AppendLine("<hr/>");
-                    return sb.ToString();
-                }
-
-                string BuildEntityGeneral()
-                {
-                    var sb = new StringBuilder();
-                    sb.AppendLine("<h3>Step 7 — Entity &amp; General Info</h3>");
-                    sb.AppendLine($"<p><strong>Entity Type:</strong> {E(model.EntityType)}</p>");
-                    sb.AppendLine($"<p><strong>Federal Tax ID:</strong> {E(model.FederalTaxId)}</p>");
-                    sb.AppendLine($"<p><strong>Has Active Property Liability Policy:</strong> {Bool(model.HasActivePropertyLiabilityPolicy)}</p>");
-                    sb.AppendLine($"<p><strong>Prior Coverage End Date:</strong> {D(model.PriorCoverageEndDate)}</p>");
-                    sb.AppendLine($"<p><strong>Officers / Members / Partners:</strong> {E(model.OfficersMembersPartners)}</p>");
-                    sb.AppendLine($"<p><strong>Current Renewal Date:</strong> {D(model.CurrentRenewalDate)}</p>");
-                    sb.AppendLine($"<p><strong>Owns Other Businesses:</strong> {Bool(model.OwnsOtherBusinesses)}</p>");
-                    sb.AppendLine($"<p><strong>Other Business Types:</strong> {E(model.OtherBusinessTypes)}</p>");
-                    sb.AppendLine($"<p><strong>Has High Public Profile:</strong> {Bool(model.HasHighPublicProfile)}</p>");
-                    sb.AppendLine($"<p><strong>Is Social Media Influencer:</strong> {Bool(model.IsSocialMediaInfluencer)}</p>");
-                    sb.AppendLine("<hr/>");
-                    return sb.ToString();
-                }
-
-                string BuildLiabilityPayrollAuto()
-                {
-                    var sb = new StringBuilder();
-                    sb.AppendLine("<h3>Step 8 — Liability, Payroll &amp; Auto</h3>");
-                    sb.AppendLine($"<p><strong>Liability Occurrence Limit:</strong> {Money(model.LiabilityOccurrenceLimit)}</p>");
-                    sb.AppendLine($"<p><strong>Medical Expense Limit:</strong> {Money(model.MedicalExpenseLimit)}</p>");
-                    sb.AppendLine($"<p><strong>Property Damage Deductible:</strong> {Money(model.PropertyDamageDeductible)}</p>");
-                    sb.AppendLine($"<p><strong>Property Damage Deductible Type:</strong> {E(model.PropertyDamageDeductibleType)}</p>");
-                    sb.AppendLine($"<p><strong>Bodily Injury Deductible:</strong> {Money(model.BodilyInjuryDeductible)}</p>");
-                    sb.AppendLine($"<p><strong>Full Time Employees:</strong> {E(model.FullTimeEmployees?.ToString())}</p>");
-                    sb.AppendLine($"<p><strong>Part Time Employees:</strong> {E(model.PartTimeEmployees?.ToString())}</p>");
-                    sb.AppendLine($"<p><strong>Hired / Non-Owned Auto Requested:</strong> {Bool(model.HiredNonOwnedAutoRequested)}</p>");
-                    sb.AppendLine($"<p><strong>Delivery Percentage:</strong> {Percent(model.DeliveryPercentage)}</p>");
-                    sb.AppendLine($"<p><strong>Has Driver Monitoring Program:</strong> {Bool(model.HasDriverMonitoringProgram)}</p>");
-                    sb.AppendLine($"<p><strong>Drivers Have 3+ Years Experience:</strong> {Bool(model.DriversHaveThreeYearsExperience)}</p>");
-                    sb.AppendLine("<hr/>");
-                    return sb.ToString();
-                }
-
-                string BuildOptionalProfessional()
-                {
-                    var sb = new StringBuilder();
-                    sb.AppendLine("<h3>Step 9 — Optional &amp; Professional Coverages</h3>");
-                    sb.AppendLine($"<p><strong>Damage to Premises Limit:</strong> {Money(model.DamageToPremisesLimit)}</p>");
-                    sb.AppendLine($"<p><strong>Data Compromise Requested:</strong> {Bool(model.DataCompromiseRequested)}</p>");
-                    sb.AppendLine($"<p><strong>Data Compromise Limit:</strong> {Money(model.DataCompromiseLimit)}</p>");
-                    sb.AppendLine($"<p><strong>Had Data Breach Last 12 Months:</strong> {Bool(model.HadDataBreachLast12Months)}</p>");
-                    sb.AppendLine($"<p><strong>Electronic Data Limit:</strong> {Money(model.ElectronicDataLimit)}</p>");
-                    sb.AppendLine($"<p><strong>Employee Dishonesty Limit:</strong> {Money(model.EmployeeDishonestyLimit)}</p>");
-                    sb.AppendLine($"<p><strong>Forgery / Alteration Limit:</strong> {Money(model.ForgeryAlterationLimit)}</p>");
-                    sb.AppendLine($"<p><strong>Computer Interruption Limit:</strong> {Money(model.ComputerInterruptionLimit)}</p>");
-                    sb.AppendLine($"<p><strong>Off Premises Personal Property Limit:</strong> {Money(model.OffPremisesPersonalPropertyLimit)}</p>");
-                    sb.AppendLine($"<p><strong>Terrorism Coverage Requested:</strong> {Bool(model.TerrorismCoverageRequested)}</p>");
-                    sb.AppendLine($"<p><strong>Misc Professional Liability Requested:</strong> {Bool(model.MiscProfessionalLiabilityRequested)}</p>");
-                    sb.AppendLine($"<p><strong>Misc Professional Liability Limit:</strong> {Money(model.MiscProfessionalLiabilityLimit)}</p>");
-                    sb.AppendLine($"<p><strong>Misc Professional Retro Date:</strong> {D(model.MiscProfessionalRetroDate)}</p>");
-                    sb.AppendLine($"<p><strong>Misc Professional Claims Last 5 Years:</strong> {Bool(model.MiscProfessionalClaimsLast5Years)}</p>");
-                    sb.AppendLine($"<p><strong>Cyber Suite Requested:</strong> {Bool(model.CyberSuiteRequested)}</p>");
-                    sb.AppendLine($"<p><strong>Cyber Suite Limit:</strong> {Money(model.CyberSuiteLimit)}</p>");
-                    sb.AppendLine("<hr/>");
-                    return sb.ToString();
-                }
-
-                string BuildHrEpli()
-                {
-                    var sb = new StringBuilder();
-                    sb.AppendLine("<h3>Step 10 — HR, Legal &amp; EPLI</h3>");
-                    sb.AppendLine($"<p><strong>Background Checks Performed:</strong> {Bool(model.BackgroundChecksPerformed)}</p>");
-                    sb.AppendLine($"<p><strong>Document Retention Policy:</strong> {Bool(model.DocumentRetentionPolicy)}</p>");
-                    sb.AppendLine($"<p><strong>Cyber Security Measures In Place:</strong> {Bool(model.CyberSecurityMeasuresInPlace)}</p>");
-                    sb.AppendLine($"<p><strong>Records Stored Securely:</strong> {Bool(model.RecordsStoredSecurely)}</p>");
-                    sb.AppendLine($"<p><strong>Blanket Additional Insured Requested:</strong> {Bool(model.BlanketAdditionalInsuredRequested)}</p>");
-                    sb.AppendLine($"<p><strong>Waiver of Subrogation Requested:</strong> {Bool(model.WaiverOfSubrogationRequested)}</p>");
-                    sb.AppendLine($"<p><strong>Employee Benefits Liability Requested:</strong> {Bool(model.EmployeeBenefitsLiabilityRequested)}</p>");
-                    sb.AppendLine($"<p><strong>Employee Benefits Limit:</strong> {Money(model.EmployeeBenefitsLimit)}</p>");
-                    sb.AppendLine($"<p><strong>Employee Benefits Retro Date:</strong> {D(model.EmployeeBenefitsRetroDate)}</p>");
-                    sb.AppendLine($"<p><strong>EPLI Requested:</strong> {Bool(model.EPLIRequested)}</p>");
-                    sb.AppendLine($"<p><strong>EPLI Limit:</strong> {Money(model.EPLILimit)}</p>");
-                    sb.AppendLine($"<p><strong>EPLI Deductible:</strong> {Money(model.EPLIDeductible)}</p>");
-                    sb.AppendLine($"<p><strong>EPLI Retro Date:</strong> {D(model.EPLIRetroDate)}</p>");
-                    sb.AppendLine("<hr/>");
-                    return sb.ToString();
-                }
-
-                string BuildLossHistory()
-                {
-                    var sb = new StringBuilder();
-                    sb.AppendLine("<h3>Step 11 — Loss History</h3>");
-                    sb.AppendLine($"<p><strong>Policy Cancelled Last 3 Years:</strong> {Bool(model.PolicyCancelledLast3Years)}</p>");
-                    sb.AppendLine($"<p><strong>Losses Last 4 Years:</strong> {Bool(model.LossesLast4Years)}</p>");
-                    sb.AppendLine($"<p><strong>Loss History Details:</strong> {E(model.LossHistoryDetails)}</p>");
-                    sb.AppendLine($"<p><strong>Past Fraud Convictions:</strong> {Bool(model.PastFraudConvictions)}</p>");
-                    sb.AppendLine($"<p><strong>Past Financial Issues:</strong> {Bool(model.PastFinancialIssues)}</p>");
-                    sb.AppendLine($"<p><strong>Past Abuse Claims:</strong> {Bool(model.PastAbuseClaims)}</p>");
-                    sb.AppendLine("<hr/>");
-                    return sb.ToString();
-                }
-
-                string BuildBuildingInfo()
-                {
-                    var sb = new StringBuilder();
-                    sb.AppendLine("<h3>Step 12 — Building Information</h3>");
-                    sb.AppendLine($"<p><strong>Building Near Fire Station:</strong> {Bool(model.BuildingNearFireStation)}</p>");
-                    sb.AppendLine($"<p><strong>Building Near Fire Hydrant:</strong> {Bool(model.BuildingNearFireHydrant)}</p>");
-                    sb.AppendLine($"<p><strong>Years in Business at Location:</strong> {E(model.YearsInBusinessAtLocation?.ToString())}</p>");
-                    sb.AppendLine($"<p><strong>Occupancy:</strong> {E(model.Occupancy)}</p>");
-                    sb.AppendLine($"<p><strong>Building Type:</strong> {E(model.BuildingType)}</p>");
-                    sb.AppendLine($"<p><strong>Sole Occupant:</strong> {Bool(model.SoleOccupant)}</p>");
-                    sb.AppendLine($"<p><strong>Building Industry:</strong> {E(model.BuildingIndustry)}</p>");
-                    sb.AppendLine($"<p><strong>Restaurant Occupied Part:</strong> {Bool(model.RestaurantOccupiedPart)}</p>");
-                    sb.AppendLine($"<p><strong>Construction Type:</strong> {E(model.ConstructionType)}</p>");
-                    sb.AppendLine($"<p><strong>Year Built:</strong> {E(model.YearBuilt?.ToString())}</p>");
-                    sb.AppendLine($"<p><strong>Total Building SF:</strong> {E(model.TotalBuildingSF?.ToString())}</p>");
-                    sb.AppendLine($"<p><strong>Occupied SF:</strong> {E(model.OccupiedSF?.ToString())}</p>");
-                    sb.AppendLine($"<p><strong>Automatic Sprinkler System:</strong> {Bool(model.AutomaticSprinklerSystem)}</p>");
-                    sb.AppendLine($"<p><strong>Burglar Alarm:</strong> {E(model.BurglarAlarm)}</p>");
-                    sb.AppendLine($"<p><strong>Fire Alarm:</strong> {E(model.FireAlarm)}</p>");
-                    sb.AppendLine("<hr/>");
-                    return sb.ToString();
-                }
-
-                string BuildClassSpecific()
-                {
-                    var sb = new StringBuilder();
-                    sb.AppendLine("<h3>Step 13 — Class Specific Questions</h3>");
-                    sb.AppendLine($"<p><strong>Building Coverage Needed:</strong> {Bool(model.BuildingCoverageNeeded)}</p>");
-                    sb.AppendLine($"<p><strong>Building Occupancy Percent:</strong> {E(model.BuildingOccupancyPercent?.ToString())}</p>");
-                    sb.AppendLine($"<p><strong>Structural Renovations:</strong> {Bool(model.StructuralRenovations)}</p>");
-                    sb.AppendLine("<hr/>");
-                    return sb.ToString();
-                }
-
-                string BuildBuildingCoverages()
-                {
-                    var sb = new StringBuilder();
-                    sb.AppendLine("<h3>Step 14 — Building &amp; Personal Property Coverages</h3>");
-                    sb.AppendLine($"<p><strong>Building Coverage Limit:</strong> {Money(model.BuildingCoverageLimit)}</p>");
-                    sb.AppendLine($"<p><strong>Valuation Type:</strong> {E(model.ValuationType)}</p>");
-                    sb.AppendLine($"<p><strong>Inflation Guard Percent:</strong> {E(model.InflationGuardPercent?.ToString())}</p>");
-                    sb.AppendLine("<hr/>");
-                    return sb.ToString();
-                }
-
-                var subjectName = $"{model.InsuredFirstName} {model.InsuredLastName}".Trim();
-                if (string.IsNullOrWhiteSpace(subjectName)) subjectName = "Unknown";
-
-                var emailBody = $@"
-<h2>COMMERCIAL INSURANCE — New Quote Request</h2>
-{BuildAccountDetails()}
-{BuildBusinessOperations()}
-{BuildContact()}
-{BuildAddress()}
-{BuildCoverageTiming()}
-{BuildContactPreferences()}
-{BuildEntityGeneral()}
-{BuildLiabilityPayrollAuto()}
-{BuildOptionalProfessional()}
-{BuildHrEpli()}
-{BuildLossHistory()}
-{BuildBuildingInfo()}
-{BuildClassSpecific()}
-{BuildBuildingCoverages()}
-<h3>Authorization</h3>
-<p><strong>Acknowledged:</strong> {(model.AcknowledgedDisclaimer ? "Yes" : "No")}</p>
-";
-
-                // ===================== APPLY HEADING STYLING (same as Auto) =====================
-                string headingColor = "#cca134f1";
-                string headingFontSize = "1.2em";
-                string headingPadding = "4px 6px";
-
-                string ApplyHeadingHighlighting(string html)
-                {
-                    if (string.IsNullOrWhiteSpace(html)) return html;
-
-                    return System.Text.RegularExpressions.Regex.Replace(
-                        html,
-                        @"<\s*(h[34])\s*>(.*?)<\s*/\s*\1\s*>",
-                        m =>
-                        {
-                            var tag = m.Groups[1].Value;
-                            var content = m.Groups[2].Value.Trim();
-                            return $"<{tag} style=\"background-color:{headingColor}; font-size:{headingFontSize}; padding:{headingPadding};\">{content}</{tag}>";
-                        },
-                        System.Text.RegularExpressions.RegexOptions.Singleline |
-                        System.Text.RegularExpressions.RegexOptions.IgnoreCase
-                    );
-                }
-
-                emailBody = ApplyHeadingHighlighting(emailBody);
-
-                var message = new Message
-                {
-                    Subject = $"[COMMERCIAL] Quote Request | {E(subjectName)} | {E(model.BusinessName)}",
-                    Body = new ItemBody { ContentType = BodyType.Html, Content = emailBody },
-                    ToRecipients = new List<Recipient>
+                    LeadId        = Guid.NewGuid(),
+                    FirstName     = model.InsuredFirstName?.Trim() ?? "",
+                    LastName      = string.IsNullOrWhiteSpace(model.InsuredLastName) ? null : model.InsuredLastName.Trim(),
+                    Email         = model.BusinessEmail?.Trim() ?? "",
+                    Phone         = string.IsNullOrWhiteSpace(model.BusinessPhone) ? null : model.BusinessPhone?.Trim(),
+                    InterestType  = "commercial_insurance",
+                    SourcePageKey = "quote_commercial",
+                    UtmSource     = string.IsNullOrWhiteSpace(model.UtmSource)   ? null : model.UtmSource.Trim(),
+                    UtmMedium     = string.IsNullOrWhiteSpace(model.UtmMedium)   ? null : model.UtmMedium.Trim(),
+                    UtmCampaign   = string.IsNullOrWhiteSpace(model.UtmCampaign) ? null : model.UtmCampaign.Trim(),
+                    UtmId         = string.IsNullOrWhiteSpace(model.UtmId) ? null : model.UtmId.Trim(),
+                    MetaCampaignId = string.IsNullOrWhiteSpace(model.MetaCampaignId) ? null : model.MetaCampaignId.Trim(),
+                    MetaAdSetId   = string.IsNullOrWhiteSpace(model.MetaAdSetId) ? null : model.MetaAdSetId.Trim(),
+                    MetaAdId      = string.IsNullOrWhiteSpace(model.MetaAdId) ? null : model.MetaAdId.Trim(),
+                    Fbclid        = string.IsNullOrWhiteSpace(model.Fbclid)      ? null : model.Fbclid.Trim(),
+                    SessionId     = string.IsNullOrWhiteSpace(model.SessionId)   ? null : model.SessionId.Trim(),
+                    VisitorId     = string.IsNullOrWhiteSpace(model.VisitorId)   ? null : model.VisitorId.Trim(),
+                    MarketingEmailConsent = model.AcknowledgedDisclaimer,
+                    CallTextConsent = model.AcknowledgedDisclaimer && !string.IsNullOrWhiteSpace(model.BusinessPhone),
+                    TermsAccepted = true,
+                    IsInternal    = WebsiteLeadCaptureSafety.ShouldMarkAsInternalTest(Request?.Host.Host),
+                    Host          = Request?.Host.ToString(),
+                    Environment   = EnvironmentLabelResolver.Resolve(),
+                    CreatedUtc    = now,
+                    Status        = "New",
+                    AgentTrackingProfileId = agentProfileId,
+                    AgentSlug     = agentSlug,
+                    MetadataJson  = JsonSerializer.Serialize(new
                     {
-                        new Recipient { EmailAddress = new EmailAddress { Address = recipientEmail } }
-                    }
+                        BusinessName  = model.BusinessName,
+                        State         = model.State,
+                        UtmId         = model.UtmId,
+                        Fbclid        = model.Fbclid,
+                        UtmTerm       = model.UtmTerm,
+                        UtmContent    = model.UtmContent,
+                        MetaCampaignId = model.MetaCampaignId,
+                        MetaAdSetId   = model.MetaAdSetId,
+                        MetaAdId      = model.MetaAdId,
+                        ReferrerUrl   = model.ReferrerUrl,
+                        LandingPageUrl = model.LandingPageUrl,
+                        CorrelationId = correlationId,
+                    })
                 };
-
-                await graphClient.Users[senderEmail].SendMail.PostAsync(
-                    new SendMailPostRequestBody { Message = message, SaveToSentItems = true }
-                );
-
-                TempData["QuoteType"] = "Commercial";
-                return RedirectToAction("Index", "ThankYou");
+                _db.WebsiteLeads.Add(lead);
+                await _db.SaveChangesAsync();
+                _logger.LogInformation(
+                    "CommercialQuote [{CorrelationId}]: WebsiteLead {LeadId} saved",
+                    correlationId, lead.LeadId);
             }
-            catch (Exception ex)
+            catch (Exception persistEx)
             {
-                ModelState.AddModelError("", $"Failed to send lead: {ex.Message}");
+                _logger.LogError(persistEx,
+                    "CommercialQuote [{CorrelationId}]: lead persistence failed for {Email}",
+                    correlationId, model.BusinessEmail);
+                ModelState.AddModelError("", $"Failed to save lead: {persistEx.Message}");
                 ViewData["StartStep"] = model.CurrentStep <= 0 ? 1 : model.CurrentStep;
                 return View("~/Views/Quote/Commercial.cshtml", model);
             }
+
+            async Task TryWriteLeadEventAsync(string eventType, object metadata, DateTime? eventUtc = null)
+            {
+                AnalyticsEvent? analyticsEvent = null;
+                try
+                {
+                    analyticsEvent = WebsiteLeadAnalyticsWriter.CreateEvent(
+                        lead,
+                        eventType,
+                        "quote_commercial",
+                        "commercial_insurance",
+                        metadata,
+                        eventUtc);
+                    _db.AnalyticsEvents.Add(analyticsEvent);
+                    await _db.SaveChangesAsync(HttpContext?.RequestAborted ?? CancellationToken.None);
+                }
+                catch (Exception analyticsEx)
+                {
+                    if (analyticsEvent != null)
+                    {
+                        var entry = _db.Entry(analyticsEvent);
+                        if (entry.State != EntityState.Detached)
+                            entry.State = EntityState.Detached;
+                    }
+
+                    _logger.LogWarning(
+                        analyticsEx,
+                        "CommercialQuote [{CorrelationId}]: analytics event write failed for {EventType} lead {LeadId}",
+                        correlationId,
+                        eventType,
+                        lead.LeadId);
+                }
+            }
+
+            await TryWriteLeadEventAsync(
+                "lead_persisted",
+                new { LeadId = lead.LeadId, CorrelationId = correlationId, QuoteType = "commercial_insurance" },
+                lead.CreatedUtc);
+
+            try
+            {
+                await TryWriteLeadEventAsync(
+                    "workstation_capture_attempt",
+                    new { LeadId = lead.LeadId, CorrelationId = correlationId, ProductType = "commercial", OfferKey = "commercial" });
+
+                var captureResult = await _websiteLeadCapture.UpsertAsync(
+                    new WebsiteLifeLeadCaptureRequest
+                    {
+                        WebsiteLeadId = lead.LeadId,
+                        SubmittedUtc = lead.CreatedUtc,
+                        ProductType = "commercial",
+                        OfferKey = "commercial",
+                        FirstName = lead.FirstName,
+                        LastName = lead.LastName,
+                        Email = lead.Email,
+                        Phone = lead.Phone,
+                        State = model.State,
+                        AgentTrackingProfileId = agentProfileId,
+                        AgentSlug = agentSlug,
+                        RecipientEmail = leadRecipientEmail
+                    },
+                    HttpContext?.RequestAborted ?? CancellationToken.None);
+
+                if (captureResult.Captured)
+                {
+                    await _db.SaveChangesAsync(HttpContext?.RequestAborted ?? CancellationToken.None);
+                    await TryWriteLeadEventAsync(
+                        "workstation_capture_success",
+                        new
+                        {
+                            LeadId = lead.LeadId,
+                            CorrelationId = correlationId,
+                            WorkstationLeadId = captureResult.WorkstationLeadId,
+                            Bucket = captureResult.Bucket,
+                            AgentUserId = captureResult.AgentUserId,
+                            CaptureMode = captureResult.Created ? "created" : "updated"
+                        });
+                }
+                else
+                {
+                    await TryWriteLeadEventAsync(
+                        "workstation_capture_failure",
+                        new
+                        {
+                            LeadId = lead.LeadId,
+                            CorrelationId = correlationId,
+                            Reason = captureResult.Reason ?? "unknown",
+                            Bucket = captureResult.Bucket,
+                            AgentUserId = captureResult.AgentUserId
+                        });
+                }
+            }
+            catch (Exception captureEx)
+            {
+                _logger.LogError(
+                    captureEx,
+                    "CommercialQuote [{CorrelationId}]: workstation capture failed for lead {LeadId}",
+                    correlationId,
+                    lead.LeadId);
+
+                await TryWriteLeadEventAsync(
+                    "workstation_capture_failure",
+                    new
+                    {
+                        LeadId = lead.LeadId,
+                        CorrelationId = correlationId,
+                        Reason = "capture_exception",
+                        ErrorMessage = captureEx.Message
+                    });
+            }
+
+            var metaLeadEventId = Guid.NewGuid().ToString("N");
+            await MetaLeadTrackingWorkflow.TryPersistAsync(
+                lead,
+                _db,
+                correlationId,
+                "meta_tracking_initialized",
+                _logger,
+                HttpContext?.RequestAborted ?? CancellationToken.None,
+                state =>
+                {
+                    state.EventId = metaLeadEventId;
+                    state.ResolvedMetaPixelId = resolvedMetaPixel.PixelId;
+                    state.PixelOwnerType = resolvedMetaPixel.PixelOwnerType;
+                    state.BrowserPixelStatus = "pending";
+                    state.BrowserPixelUpdatedUtc = DateTime.UtcNow;
+                    state.BrowserPixelNote = null;
+                    state.ServerCapiStatus = "pending";
+                    state.ServerCapiUpdatedUtc = DateTime.UtcNow;
+                    state.ServerCapiNote = null;
+                });
+
+            await TryWriteLeadEventAsync(
+                "capi_event_attempt",
+                new
+                {
+                    LeadId = lead.LeadId,
+                    CorrelationId = correlationId,
+                    EventId = metaLeadEventId,
+                    PixelId = resolvedMetaPixel.PixelId,
+                    PixelOwnerType = resolvedMetaPixel.PixelOwnerType
+                });
+
+            var metaCapiResult = await _metaConversionsApi.SendLeadAsync(
+                new MetaLeadConversionRequest
+                {
+                    LeadId = lead.LeadId,
+                    CorrelationId = correlationId,
+                    EventId = metaLeadEventId,
+                    QuoteType = "Commercial",
+                    PageKey = "quote_commercial",
+                    OfferKey = "commercial",
+                    EventSourceUrl = MetaLeadTrackingWorkflow.ResolveEventSourceUrl(model.LandingPageUrl, Request),
+                    ClientIpAddress = MetaLeadTrackingWorkflow.ResolveClientIpAddress(Request),
+                    ClientUserAgent = Request?.Headers["User-Agent"].ToString(),
+                    Fbp = MetaLeadTrackingWorkflow.ResolveCookieValue(Request, "_fbp"),
+                    Fbc = MetaLeadTrackingWorkflow.ResolveCookieValue(Request, "_fbc"),
+                    Fbclid = lead.Fbclid,
+                    Email = lead.Email,
+                    Phone = lead.Phone,
+                    AllowHashedContactData = lead.TermsAccepted && lead.MarketingEmailConsent,
+                    EventUtc = lead.CreatedUtc,
+                    PixelId = resolvedMetaPixel.PixelId,
+                    AccessToken = resolvedMetaPixel.AccessToken,
+                    TestEventCode = resolvedMetaPixel.TestEventCode,
+                    PixelOwnerType = resolvedMetaPixel.PixelOwnerType
+                },
+                HttpContext?.RequestAborted ?? CancellationToken.None);
+
+            await MetaLeadTrackingWorkflow.TryPersistAsync(
+                lead,
+                _db,
+                correlationId,
+                "meta_capi_result",
+                _logger,
+                HttpContext?.RequestAborted ?? CancellationToken.None,
+                state =>
+                {
+                    state.EventId ??= metaLeadEventId;
+                    state.ResolvedMetaPixelId ??= resolvedMetaPixel.PixelId;
+                    state.PixelOwnerType = resolvedMetaPixel.PixelOwnerType;
+                    state.ServerCapiStatus = metaCapiResult.Status;
+                    state.ServerCapiUpdatedUtc = DateTime.UtcNow;
+                    state.ServerCapiNote = metaCapiResult.Note;
+                });
+
+            await TryWriteLeadEventAsync(
+                metaCapiResult.Sent ? "capi_event_success" : "capi_event_failure",
+                new
+                {
+                    LeadId = lead.LeadId,
+                    CorrelationId = correlationId,
+                    EventId = metaLeadEventId,
+                    Status = metaCapiResult.Status,
+                    Note = metaCapiResult.Note,
+                    PixelId = metaCapiResult.PixelId ?? resolvedMetaPixel.PixelId,
+                    PixelOwnerType = metaCapiResult.PixelOwnerType ?? resolvedMetaPixel.PixelOwnerType
+                });
+
+            
+            var subjectName = $"{model.InsuredFirstName} {model.InsuredLastName}".Trim();
+            if (string.IsNullOrWhiteSpace(subjectName))
+                subjectName = "Unknown";
+
+                var interested = (model.InterestedIn != null && model.InterestedIn.Count > 0)
+                    ? string.Join(", ", model.InterestedIn)
+                    : null;
+
+                var rows = new LeadEmailTemplate.RowBuilder()
+                    .Section("Account Details")
+                    .Row("Risk State", model.State)
+                    .Section("Business Operations")
+                    .Row("Business Name",       model.BusinessName)
+                    .Row("Business Description",model.BusinessDescription)
+                    .Row("Years in Business",   model.YearsInBusiness)
+                    .Row("Years of Experience", model.YearsOfExperience)
+                    .Row("Gross Sales",         LeadEmailTemplate.Money(model.GrossSales))
+                    .Row("Total Payroll",       LeadEmailTemplate.Money(model.TotalPayroll))
+                    .Row("# of Employees",      model.NumberOfEmployees)
+                    .Section("Insured & Business Contact")
+                    .Row("Insured Name",        $"{model.InsuredFirstName} {model.InsuredLastName}".Trim())
+                    .Row("Business Phone",      model.BusinessPhone)
+                    .Row("Business Email",      model.BusinessEmail)
+                    .Row("Website / Facebook",  model.BusinessWebsiteOrFacebook)
+                    .Section("Physical Address")
+                    .Row("Street Address",      model.StreetAddress)
+                    .Row("Address Line 2",      model.AddressLine2)
+                    .Row("City",                model.City)
+                    .Row("State",               model.State)
+                    .Row("ZIP Code",            model.ZipCode)
+                    .Section("Coverage & Timing")
+                    .Row("Effective Date",      LeadEmailTemplate.Date(model.EffectiveDate))
+                    .Row("Interested In",       interested)
+                    .Row("Additional Comments", model.Comments)
+                    .Section("Contact Preferences")
+                    .Row("Preferred Contact Method", model.PreferredContactMethod)
+                    .Row("Best Time To Contact",     model.BestTimeToContact)
+                    .Section("Entity & General Info")
+                    .Row("Entity Type",                     model.EntityType)
+                    .Row("Federal Tax ID",                  model.FederalTaxId)
+                    .Row("Active Property Liability Policy", LeadEmailTemplate.Bool(model.HasActivePropertyLiabilityPolicy ?? false))
+                    .Row("Prior Coverage End Date",         LeadEmailTemplate.Date(model.PriorCoverageEndDate))
+                    .Row("Officers / Members / Partners",   model.OfficersMembersPartners)
+                    .Row("Current Renewal Date",            LeadEmailTemplate.Date(model.CurrentRenewalDate))
+                    .Row("Owns Other Businesses",           model.OwnsOtherBusinesses.HasValue ? LeadEmailTemplate.Bool(model.OwnsOtherBusinesses.Value) : null)
+                    .Row("Other Business Types",            model.OtherBusinessTypes)
+                    .Row("Has High Public Profile",         model.HasHighPublicProfile.HasValue ? LeadEmailTemplate.Bool(model.HasHighPublicProfile.Value) : null)
+                    .Row("Is Social Media Influencer",      model.IsSocialMediaInfluencer.HasValue ? LeadEmailTemplate.Bool(model.IsSocialMediaInfluencer.Value) : null)
+                    .Section("Liability, Payroll & Auto")
+                    .Row("Liability Occurrence Limit",      LeadEmailTemplate.Money(model.LiabilityOccurrenceLimit))
+                    .Row("Medical Expense Limit",           LeadEmailTemplate.Money(model.MedicalExpenseLimit))
+                    .Row("Property Damage Deductible",      LeadEmailTemplate.Money(model.PropertyDamageDeductible))
+                    .Row("Property Damage Deductible Type", model.PropertyDamageDeductibleType)
+                    .Row("Bodily Injury Deductible",        LeadEmailTemplate.Money(model.BodilyInjuryDeductible))
+                    .Row("Full Time Employees",             model.FullTimeEmployees?.ToString())
+                    .Row("Part Time Employees",             model.PartTimeEmployees?.ToString())
+                    .Row("Hired / Non-Owned Auto",          model.HiredNonOwnedAutoRequested.HasValue ? LeadEmailTemplate.Bool(model.HiredNonOwnedAutoRequested.Value) : null)
+                    .Row("Delivery Percentage",             model.DeliveryPercentage.HasValue ? $"{model.DeliveryPercentage.Value:N0}%" : null)
+                    .Row("Driver Monitoring Program",       model.HasDriverMonitoringProgram.HasValue ? LeadEmailTemplate.Bool(model.HasDriverMonitoringProgram.Value) : null)
+                    .Row("Drivers 3+ Years Experience",     model.DriversHaveThreeYearsExperience.HasValue ? LeadEmailTemplate.Bool(model.DriversHaveThreeYearsExperience.Value) : null)
+                    .Section("Optional & Professional Coverages")
+                    .Row("Damage to Premises Limit",        LeadEmailTemplate.Money(model.DamageToPremisesLimit))
+                    .Row("Data Compromise Requested",       model.DataCompromiseRequested.HasValue ? LeadEmailTemplate.Bool(model.DataCompromiseRequested.Value) : null)
+                    .Row("Data Compromise Limit",           LeadEmailTemplate.Money(model.DataCompromiseLimit))
+                    .Row("Data Breach Last 12 Months",      model.HadDataBreachLast12Months.HasValue ? LeadEmailTemplate.Bool(model.HadDataBreachLast12Months.Value) : null)
+                    .Row("Electronic Data Limit",           LeadEmailTemplate.Money(model.ElectronicDataLimit))
+                    .Row("Employee Dishonesty Limit",       LeadEmailTemplate.Money(model.EmployeeDishonestyLimit))
+                    .Row("Forgery / Alteration Limit",      LeadEmailTemplate.Money(model.ForgeryAlterationLimit))
+                    .Row("Computer Interruption Limit",     LeadEmailTemplate.Money(model.ComputerInterruptionLimit))
+                    .Row("Off-Premises Property Limit",     LeadEmailTemplate.Money(model.OffPremisesPersonalPropertyLimit))
+                    .Row("Terrorism Coverage",              model.TerrorismCoverageRequested.HasValue ? LeadEmailTemplate.Bool(model.TerrorismCoverageRequested.Value) : null)
+                    .Row("Misc Prof. Liability Requested",  model.MiscProfessionalLiabilityRequested.HasValue ? LeadEmailTemplate.Bool(model.MiscProfessionalLiabilityRequested.Value) : null)
+                    .Row("Misc Prof. Liability Limit",      LeadEmailTemplate.Money(model.MiscProfessionalLiabilityLimit))
+                    .Row("Misc Prof. Retro Date",           LeadEmailTemplate.Date(model.MiscProfessionalRetroDate))
+                    .Row("Misc Prof. Claims Last 5 Years",  model.MiscProfessionalClaimsLast5Years.HasValue ? LeadEmailTemplate.Bool(model.MiscProfessionalClaimsLast5Years.Value) : null)
+                    .Row("Cyber Suite Requested",           model.CyberSuiteRequested.HasValue ? LeadEmailTemplate.Bool(model.CyberSuiteRequested.Value) : null)
+                    .Row("Cyber Suite Limit",               LeadEmailTemplate.Money(model.CyberSuiteLimit))
+                    .Section("HR, Legal & EPLI")
+                    .Row("Background Checks Performed",     model.BackgroundChecksPerformed.HasValue ? LeadEmailTemplate.Bool(model.BackgroundChecksPerformed.Value) : null)
+                    .Row("Document Retention Policy",       model.DocumentRetentionPolicy.HasValue ? LeadEmailTemplate.Bool(model.DocumentRetentionPolicy.Value) : null)
+                    .Row("Cyber Security Measures",         model.CyberSecurityMeasuresInPlace.HasValue ? LeadEmailTemplate.Bool(model.CyberSecurityMeasuresInPlace.Value) : null)
+                    .Row("Records Stored Securely",         model.RecordsStoredSecurely.HasValue ? LeadEmailTemplate.Bool(model.RecordsStoredSecurely.Value) : null)
+                    .Row("Blanket Additional Insured",      model.BlanketAdditionalInsuredRequested.HasValue ? LeadEmailTemplate.Bool(model.BlanketAdditionalInsuredRequested.Value) : null)
+                    .Row("Waiver of Subrogation",           model.WaiverOfSubrogationRequested.HasValue ? LeadEmailTemplate.Bool(model.WaiverOfSubrogationRequested.Value) : null)
+                    .Row("Employee Benefits Liability",     model.EmployeeBenefitsLiabilityRequested.HasValue ? LeadEmailTemplate.Bool(model.EmployeeBenefitsLiabilityRequested.Value) : null)
+                    .Row("Employee Benefits Limit",         LeadEmailTemplate.Money(model.EmployeeBenefitsLimit))
+                    .Row("Employee Benefits Retro Date",    LeadEmailTemplate.Date(model.EmployeeBenefitsRetroDate))
+                    .Row("EPLI Requested",                  model.EPLIRequested.HasValue ? LeadEmailTemplate.Bool(model.EPLIRequested.Value) : null)
+                    .Row("EPLI Limit",                      LeadEmailTemplate.Money(model.EPLILimit))
+                    .Row("EPLI Deductible",                 LeadEmailTemplate.Money(model.EPLIDeductible))
+                    .Row("EPLI Retro Date",                 LeadEmailTemplate.Date(model.EPLIRetroDate))
+                    .Section("Loss History")
+                    .Row("Policy Cancelled Last 3 Years",   model.PolicyCancelledLast3Years.HasValue ? LeadEmailTemplate.Bool(model.PolicyCancelledLast3Years.Value) : null)
+                    .Row("Losses Last 4 Years",             model.LossesLast4Years.HasValue ? LeadEmailTemplate.Bool(model.LossesLast4Years.Value) : null)
+                    .Row("Loss History Details",            model.LossHistoryDetails)
+                    .Row("Past Fraud Convictions",          model.PastFraudConvictions.HasValue ? LeadEmailTemplate.Bool(model.PastFraudConvictions.Value) : null)
+                    .Row("Past Financial Issues",           model.PastFinancialIssues.HasValue ? LeadEmailTemplate.Bool(model.PastFinancialIssues.Value) : null)
+                    .Row("Past Abuse Claims",               model.PastAbuseClaims.HasValue ? LeadEmailTemplate.Bool(model.PastAbuseClaims.Value) : null)
+                    .Section("Building Information")
+                    .Row("Near Fire Station",               model.BuildingNearFireStation.HasValue ? LeadEmailTemplate.Bool(model.BuildingNearFireStation.Value) : null)
+                    .Row("Near Fire Hydrant",               model.BuildingNearFireHydrant.HasValue ? LeadEmailTemplate.Bool(model.BuildingNearFireHydrant.Value) : null)
+                    .Row("Years at Location",               model.YearsInBusinessAtLocation?.ToString())
+                    .Row("Occupancy",                       model.Occupancy)
+                    .Row("Building Type",                   model.BuildingType)
+                    .Row("Sole Occupant",                   model.SoleOccupant.HasValue ? LeadEmailTemplate.Bool(model.SoleOccupant.Value) : null)
+                    .Row("Building Industry",               model.BuildingIndustry)
+                    .Row("Restaurant Occupied Part",        model.RestaurantOccupiedPart.HasValue ? LeadEmailTemplate.Bool(model.RestaurantOccupiedPart.Value) : null)
+                    .Row("Construction Type",               model.ConstructionType)
+                    .Row("Year Built",                      model.YearBuilt?.ToString())
+                    .Row("Total Building SF",               model.TotalBuildingSF?.ToString())
+                    .Row("Occupied SF",                     model.OccupiedSF?.ToString())
+                    .Row("Automatic Sprinkler System",      model.AutomaticSprinklerSystem.HasValue ? LeadEmailTemplate.Bool(model.AutomaticSprinklerSystem.Value) : null)
+                    .Row("Burglar Alarm",                   model.BurglarAlarm)
+                    .Row("Fire Alarm",                      model.FireAlarm)
+                    .Section("Class Specific Questions")
+                    .Row("Building Coverage Needed",        model.BuildingCoverageNeeded.HasValue ? LeadEmailTemplate.Bool(model.BuildingCoverageNeeded.Value) : null)
+                    .Row("Building Occupancy Percent",      model.BuildingOccupancyPercent?.ToString())
+                    .Row("Structural Renovations",          model.StructuralRenovations.HasValue ? LeadEmailTemplate.Bool(model.StructuralRenovations.Value) : null)
+                    .Section("Building & Personal Property Coverages")
+                    .Row("Building Coverage Limit",         LeadEmailTemplate.Money(model.BuildingCoverageLimit))
+                    .Row("Valuation Type",                  model.ValuationType)
+                    .Row("Inflation Guard Percent",         model.InflationGuardPercent?.ToString())
+                    .Section("Authorization")
+                    .Row("Disclaimer Acknowledged",         LeadEmailTemplate.Bool(model.AcknowledgedDisclaimer));
+
+            var emailBody = LeadEmailTemplate.Wrap("New Quote — Commercial Insurance", rows.ToString());
+
+// ── 2. Send email through unified sender ───────────────────────────────
+            var emailSent = await _emailSender.TrySendAsync(
+                leadRecipientEmail,
+                $"[COMMERCIAL] Quote Request | {LeadEmailTemplate.E(subjectName)} | {LeadEmailTemplate.E(model.BusinessName)}",
+                emailBody,
+                saveToSentItems: true,
+                cancellationToken: HttpContext?.RequestAborted ?? CancellationToken.None);
+
+            if (emailSent)
+            {
+                _logger.LogInformation(
+                    "CommercialQuote [{CorrelationId}]: email sent to {Recipient} for lead {LeadId}",
+                    correlationId, leadRecipientEmail, lead.LeadId);
+            }
+            else
+            {
+                _logger.LogError(
+                    "CommercialQuote [{CorrelationId}]: email failed to {Recipient} for lead {LeadId} - lead is saved, continuing",
+                    correlationId, leadRecipientEmail, lead.LeadId);
+            }
+
+            // ── 3. Write analytics event ─────────────────────────────────────────
+            await TryWriteLeadEventAsync(
+                "website_lead_submitted",
+                new { LeadId = lead.LeadId, CorrelationId = correlationId },
+                lead.CreatedUtc);
+
+            TempData["QuoteType"] = "Commercial";
+            TempData["MetaLeadEventId"] = metaLeadEventId;
+            TempData["MetaLeadLeadId"] = lead.LeadId.ToString("D");
+            return RedirectToAction("Index", "ThankYou");
+        }
+
+        private async Task<(string RecipientEmail, Guid? AgentProfileId, string? AgentSlug, bool IsFounderPath)> ResolveLeadContextAsync()
+        {
+            var slug = ResolveExplicitAgentSlugFromRequest();
+
+            if (!string.IsNullOrWhiteSpace(slug))
+            {
+                var bySlug = await _resolver.ResolveBySlugAsync(slug, HttpContext?.RequestAborted ?? CancellationToken.None);
+                if (bySlug.Found && bySlug.Profile != null && !string.IsNullOrWhiteSpace(bySlug.Profile.AgentUpn))
+                    return (bySlug.Profile.AgentUpn.Trim(), bySlug.Profile.Id, bySlug.CanonicalSlug, false);
+            }
+
+            var isFounderPath = HttpContext?.Items["IsFounderPath"] as bool? == true;
+            if (HttpContext?.Items.TryGetValue("TrackingProfile", out var trackingProfileObj) == true &&
+                trackingProfileObj is AgentTrackingProfile trackingProfile)
+            {
+                var trackingSlug = HttpContext?.Items["TrackingSlug"] as string;
+                var trackingRecipient = !string.IsNullOrWhiteSpace(trackingProfile.AgentUpn)
+                    ? trackingProfile.AgentUpn.Trim()
+                    : recipientEmail;
+
+                return (
+                    isFounderPath ? recipientEmail : trackingRecipient,
+                    trackingProfile.Id,
+                    string.IsNullOrWhiteSpace(trackingSlug) ? trackingProfile.Slug : trackingSlug,
+                    isFounderPath);
+            }
+
+            return (recipientEmail, null, null, isFounderPath);
+        }
+
+        private static string? ExtractSlugFromPath(string? pathOrUrl)
+        {
+            if (string.IsNullOrWhiteSpace(pathOrUrl)) return null;
+
+            var value = pathOrUrl.Trim();
+            if (Uri.TryCreate(value, UriKind.Absolute, out var uri))
+            {
+                value = uri.AbsolutePath;
+            }
+
+            var segments = value.Split('/', StringSplitOptions.RemoveEmptyEntries);
+            if (segments.Length >= 2 && string.Equals(segments[0], "a", StringComparison.OrdinalIgnoreCase))
+            {
+                return segments[1];
+            }
+
+            return null;
+        }
+
+        private string? ResolveExplicitAgentSlugFromRequest()
+        {
+            var formSlug = Request?.Form["AgentSlug"].ToString();
+            if (!string.IsNullOrWhiteSpace(formSlug))
+                return formSlug.Trim();
+
+            return ExtractSlugFromPath(Request?.Path.Value)
+                ?? ExtractSlugFromPath(Request?.Headers["Referer"].ToString());
         }
     }
 }

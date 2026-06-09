@@ -1,0 +1,22 @@
+<div class="ws-client-picker-overlay" id="workstationClientPicker" data-lookup-url="/Clients/WorkstationLookupClients" hidden>
+    <div class="ws-client-picker-dialog" role="dialog" aria-modal="true" aria-labelledby="workstationClientPickerTitle">
+        <div class="ws-client-picker-head">
+            <div>
+                <div class="ws-client-picker-kicker">Client CRM</div>
+                <h3 class="ws-client-picker-title" id="workstationClientPickerTitle">Load a client manually</h3>
+                <p class="ws-client-picker-sub" id="workstationClientPickerSub">Search your Clients CRM records and launch a proposal or underwriting form without touching lead dialing.</p>
+            </div>
+            <button type="button" class="ws-client-picker-close" data-wcp-close aria-label="Close client picker">×</button>
+        </div>
+
+        <div class="ws-client-picker-toolbar">
+            <label class="ws-client-picker-search">
+                <span class="visually-hidden">Search clients</span>
+                <input id="workstationClientPickerSearch" type="search" autocomplete="off" placeholder="Search name, email, phone, or record type" />
+            </label>
+        </div>
+
+        <div class="ws-client-picker-status" id="workstationClientPickerStatus" aria-live="polite">Start typing to search your client records.</div>
+        <div class="ws-client-picker-results" id="workstationClientPickerResults"></div>
+    </div>
+</div>

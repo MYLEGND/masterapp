@@ -1,0 +1,431 @@
+@model AgentPortal.Models.AgentDocuments.AgentDocumentsViewModel
+@{
+    ViewData["Title"] = "Agent Documents";
+}
+
+<div class="agent-docs-page">
+    <header class="agent-docs-hero">
+        <div>
+            <div class="agent-docs-kicker">Pages / Compliance Vault</div>
+            <h1>Agent Documents</h1>
+            <p>Upload by click or drag-and-drop. Keep every compliance file, tax form, banking document, and personal policy in one clean timeline.</p>
+        </div>
+        <div class="agent-docs-hero-pill">Organized by upload year</div>
+    </header>
+
+    @if (TempData["AgentDocsError"] is string error && !string.IsNullOrWhiteSpace(error))
+    {
+        <div class="agent-docs-alert agent-docs-alert-error">@error</div>
+    }
+    @if (TempData["AgentDocsSuccess"] is string ok && !string.IsNullOrWhiteSpace(ok))
+    {
+        <div class="agent-docs-alert agent-docs-alert-success">@ok</div>
+    }
+
+    <section class="agent-docs-shell">
+        <div class="agent-docs-upload-card">
+            <h2>Upload Center</h2>
+
+            <div class="agent-docs-lanes" aria-label="Dedicated document lanes">
+                @foreach (var lane in Model.Categories)
+                {
+                    <button type="button" class="agent-docs-lane" data-pick-category="@lane">@lane</button>
+                }
+            </div>
+
+            <form asp-action="Upload" method="post" enctype="multipart/form-data" class="agent-docs-form" id="agentDocsForm">
+                @Html.AntiForgeryToken()
+                <div class="agent-docs-grid">
+                    <label>
+                        <span>Document year</span>
+                        <input type="number" name="documentYear" min="2000" max="2100" value="@Model.DefaultYear" required />
+                    </label>
+                    <label>
+                        <span>Document type</span>
+                        <select name="category" id="agentDocCategory" required>
+                            @foreach (var category in Model.Categories)
+                            {
+                                <option value="@category">@category</option>
+                            }
+                        </select>
+                    </label>
+                    <label class="agent-docs-title-field">
+                        <span>Display name</span>
+                        <input type="text" id="agentDocTitle" name="title" maxlength="140" value="@(Model.Categories.FirstOrDefault() ?? "Document")" placeholder="Example: 2026 AML CE Certificate" required />
+                    </label>
+                </div>
+
+                <div class="agent-docs-drop" id="agentDocsDropZone">
+                    <input type="file" name="file" id="agentDocsFile" accept="application/pdf,.pdf" required />
+                    <div class="agent-docs-drop-title">Drop PDF here or click to choose</div>
+                    <div class="agent-docs-drop-sub" id="agentDocsFileName">Only PDF files, up to 20 MB</div>
+                </div>
+
+                <div class="agent-docs-actions">
+                    <button type="submit" class="agent-docs-btn agent-docs-btn-primary">Upload Document</button>
+                </div>
+            </form>
+        </div>
+
+        <div class="agent-docs-list-card">
+            <div class="agent-docs-list-head">
+                <h2>Yearly Vault</h2>
+                <span>@Model.YearGroups.Sum(g => g.Documents.Count) document(s)</span>
+            </div>
+
+            @if (!Model.YearGroups.Any())
+            {
+                <div class="agent-docs-empty">No uploads yet. Add your first PDF above.</div>
+            }
+            else
+            {
+                foreach (var yearGroup in Model.YearGroups)
+                {
+                    <details class="agent-docs-year" open="@(yearGroup.Year == Model.YearGroups.First().Year)">
+                        <summary>
+                            <span>@yearGroup.Year</span>
+                            <small>@yearGroup.Documents.Count file(s)</small>
+                        </summary>
+                        <div class="agent-docs-year-list">
+                            @foreach (var doc in yearGroup.Documents)
+                            {
+                                <article class="agent-docs-item" data-doc-category="@doc.Category">
+                                    <div class="agent-docs-item-main">
+                                        <div class="agent-docs-item-title">@doc.Title</div>
+                                        <div class="agent-docs-item-meta">@doc.Category · @doc.OriginalFileName · @doc.UploadedUtc.ToLocalTime().ToString("MMM d, yyyy h:mm tt")</div>
+                                    </div>
+                                    <div class="agent-docs-item-actions">
+                                        <a asp-action="Download" asp-route-id="@doc.Id" class="agent-docs-btn agent-docs-btn-ghost" target="_blank" rel="noopener">Open PDF</a>
+                                        <form asp-action="Delete" method="post" onsubmit="return confirm('Delete this document?');">
+                                            @Html.AntiForgeryToken()
+                                            <input type="hidden" name="id" value="@doc.Id" />
+                                            <button type="submit" class="agent-docs-btn agent-docs-btn-danger">Delete</button>
+                                        </form>
+                                    </div>
+                                </article>
+                            }
+                        </div>
+                    </details>
+                }
+                <div id="agentDocsNoMatch" class="agent-docs-empty" hidden>No documents found for this category.</div>
+            }
+        </div>
+    </section>
+</div>
+
+<style>
+.agent-docs-page{
+    max-width:1280px;
+    margin:18px auto 30px;
+    color:#e8efff;
+}
+.agent-docs-hero{
+    display:flex;
+    justify-content:space-between;
+    align-items:flex-start;
+    gap:14px;
+    padding:18px 20px;
+    border-radius:16px;
+    border:1px solid rgba(166,128,35,.44);
+    background:linear-gradient(135deg,#0d1a31,#162748 66%,#101f39);
+    box-shadow:0 20px 40px rgba(3,10,24,.36), inset 0 1px 0 rgba(255,255,255,.12);
+}
+.agent-docs-kicker{font-size:.72rem;text-transform:uppercase;letter-spacing:.16em;color:#e6c15b;font-weight:900;margin-bottom:8px;}
+.agent-docs-hero h1{margin:0;font-weight:950;letter-spacing:.02em;color:#f6da8f;text-shadow:0 1px 0 rgba(34,23,5,.75);}
+.agent-docs-hero p{margin:8px 0 0;color:#c8d6f0;max-width:760px;}
+.agent-docs-hero-pill{
+    border:1px solid rgba(166,128,35,.62);
+    border-radius:999px;
+    padding:8px 12px;
+    font-weight:900;
+    font-size:.72rem;
+    letter-spacing:.08em;
+    color:#f5d57f;
+    background:rgba(8,21,41,.45);
+    text-transform:uppercase;
+}
+.agent-docs-alert{margin-top:12px;padding:10px 12px;border-radius:10px;font-weight:800;}
+.agent-docs-alert-error{background:#3a0f18;border:1px solid #7f1d1d;color:#fecaca;}
+.agent-docs-alert-success{background:#082d1a;border:1px solid #166534;color:#bbf7d0;}
+.agent-docs-shell{margin-top:16px;display:grid;grid-template-columns:minmax(340px,460px) 1fr;gap:16px;align-items:start;}
+.agent-docs-upload-card,
+.agent-docs-list-card{
+    border:1px solid rgba(166,128,35,.42);
+    border-radius:14px;
+    background:linear-gradient(180deg,#0f1f3a,#12233f);
+    box-shadow:0 18px 34px rgba(2,8,20,.35), inset 0 1px 0 rgba(255,255,255,.08);
+    padding:14px;
+}
+.agent-docs-upload-card h2,
+.agent-docs-list-card h2{margin:0;font-size:1.08rem;font-weight:950;color:#f3cf74;text-shadow:0 1px 0 rgba(24,14,4,.8);}
+.agent-docs-sub{margin:8px 0 12px;color:#c4d2ed;}
+.agent-docs-lanes{display:grid;grid-template-columns:1fr;gap:8px;max-height:280px;overflow:auto;padding-right:2px;margin-bottom:12px;}
+.agent-docs-lane{
+    text-align:left;
+    border:1px solid rgba(166,128,35,.46);
+    background:linear-gradient(180deg,rgba(13,30,56,.95),rgba(10,24,45,.95));
+    color:#e6edf9;
+    border-radius:10px;
+    padding:8px 10px;
+    font-weight:800;
+    font-size:.82rem;
+}
+.agent-docs-lane:hover{border-color:#c69b39;color:#f6dc98;}
+.agent-docs-lane.active{border-color:#dfb457;color:#fbe4a8;background:linear-gradient(180deg,rgba(22,43,76,.96),rgba(14,31,55,.96));box-shadow:0 10px 20px rgba(0,0,0,.28), inset 0 1px 0 rgba(255,255,255,.14);}
+.agent-docs-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px;}
+.agent-docs-title-field{grid-column:1/-1;}
+.agent-docs-form label{display:flex;flex-direction:column;gap:6px;}
+.agent-docs-form label span{font-size:.72rem;text-transform:uppercase;letter-spacing:.1em;color:#e4c878;font-weight:900;}
+.agent-docs-form input,
+.agent-docs-form select{
+    border:1px solid rgba(166,128,35,.52);
+    border-radius:10px;
+    background:#f8fbff;
+    color:#0f1d38;
+    padding:9px 10px;
+    font-weight:700;
+}
+.agent-docs-drop{
+    margin-top:12px;
+    border:2px dashed rgba(166,128,35,.72);
+    border-radius:12px;
+    padding:18px;
+    text-align:center;
+    background:linear-gradient(180deg,rgba(255,255,255,.06),rgba(255,255,255,.02));
+    position:relative;
+}
+.agent-docs-drop.dragover{border-color:#e6c15b;background:rgba(230,193,91,.12);}
+.agent-docs-drop input[type=file]{
+    position:absolute;
+    inset:0;
+    width:100%;
+    height:100%;
+    opacity:0;
+    cursor:pointer;
+}
+.agent-docs-drop-title{font-size:1rem;font-weight:900;color:#f5f8ff;}
+.agent-docs-drop-sub{margin-top:6px;color:#c7d4eb;font-size:.85rem;}
+.agent-docs-actions{margin-top:12px;display:flex;justify-content:flex-end;}
+.agent-docs-btn{
+    border-radius:10px;
+    border:1px solid rgba(166,128,35,.52);
+    padding:8px 12px;
+    text-decoration:none;
+    font-weight:900;
+    font-size:.8rem;
+    cursor:pointer;
+}
+.agent-docs-btn-primary{background:linear-gradient(135deg,#f5de95,#d3a43b);color:#201305;}
+.agent-docs-btn-ghost{background:linear-gradient(180deg,#162942,#102238);color:#eef4ff;}
+.agent-docs-btn-danger{background:linear-gradient(180deg,#5a1a1a,#3c1111);color:#fee2e2;border-color:#8b2020;}
+.agent-docs-list-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;}
+.agent-docs-list-head span{font-size:.8rem;color:#d5e2f7;}
+.agent-docs-empty{padding:14px;border:1px dashed rgba(166,128,35,.4);border-radius:10px;color:#d6e2f6;}
+.agent-docs-year{border:1px solid rgba(166,128,35,.36);border-radius:10px;background:rgba(7,18,35,.46);margin-bottom:10px;overflow:hidden;}
+.agent-docs-year > summary{list-style:none;display:flex;align-items:center;justify-content:space-between;padding:10px 12px;cursor:pointer;font-weight:900;color:#f8fbff;}
+.agent-docs-year > summary::-webkit-details-marker{display:none;}
+.agent-docs-year > summary small{color:#f0cf78;font-size:.75rem;}
+.agent-docs-year > summary span{color:#f4d486;}
+.agent-docs-year-list{padding:0 10px 10px;display:grid;gap:8px;}
+.agent-docs-item{display:flex;justify-content:space-between;gap:10px;padding:10px;border:1px solid rgba(166,128,35,.34);border-radius:10px;background:linear-gradient(180deg,rgba(18,37,67,.9),rgba(14,30,55,.9));}
+.agent-docs-item-title{font-weight:900;color:#f7d785;}
+.agent-docs-item-meta{margin-top:4px;color:#cad8f1;font-size:.78rem;}
+.agent-docs-item-actions{display:flex;align-items:center;gap:8px;}
+.agent-docs-item-actions form{margin:0;}
+
+/* Hard lock against global site.css white-card overrides */
+.agent-docs-page,
+.agent-docs-page .agent-docs-hero,
+.agent-docs-page .agent-docs-upload-card,
+.agent-docs-page .agent-docs-list-card,
+.agent-docs-page .agent-docs-year,
+.agent-docs-page .agent-docs-item,
+.agent-docs-page .agent-docs-empty{
+    color:#e9f0ff !important;
+}
+
+.agent-docs-page .agent-docs-hero,
+.agent-docs-page .agent-docs-upload-card,
+.agent-docs-page .agent-docs-list-card,
+.agent-docs-page .agent-docs-year,
+.agent-docs-page .agent-docs-item,
+.agent-docs-page .agent-docs-empty{
+    border-color:rgba(201,155,54,.44) !important;
+    box-shadow:0 24px 58px rgba(3,8,18,.45) !important;
+}
+
+.agent-docs-page .agent-docs-kicker,
+.agent-docs-page .agent-docs-hero h1,
+.agent-docs-page .agent-docs-hero-pill,
+.agent-docs-page .agent-docs-upload-card h2,
+.agent-docs-page .agent-docs-list-card h2,
+.agent-docs-page .agent-docs-form label span,
+.agent-docs-page .agent-docs-year > summary small,
+.agent-docs-page .agent-docs-year > summary span,
+.agent-docs-page .agent-docs-item-title{
+    color:#b4891f !important;
+}
+
+.agent-docs-page .agent-docs-hero p,
+.agent-docs-page .agent-docs-list-head span,
+.agent-docs-page .agent-docs-item-meta,
+.agent-docs-page .agent-docs-drop-sub,
+.agent-docs-page .agent-docs-empty{
+    color:#d7e2f7 !important;
+}
+
+.agent-docs-page .agent-docs-form input,
+.agent-docs-page .agent-docs-form select{
+    background:#f8fbff !important;
+    color:#0f1d38 !important;
+    border:1px solid rgba(201,155,54,.58) !important;
+}
+
+.agent-docs-page .agent-docs-form select option{
+    background:#ffffff;
+    color:#0f1d38;
+}
+
+.agent-docs-page .agent-docs-drop{
+    border-color:rgba(201,155,54,.72) !important;
+    background:linear-gradient(180deg,rgba(255,255,255,.06),rgba(255,255,255,.02)) !important;
+}
+
+.agent-docs-page .agent-docs-drop-title{
+    color:#f5f8ff !important;
+}
+
+.agent-docs-page .agent-docs-lane{
+    border-color:rgba(201,155,54,.46) !important;
+    background:linear-gradient(180deg,rgba(13,30,56,.95),rgba(10,24,45,.95)) !important;
+    color:#e6edf9 !important;
+}
+
+.agent-docs-page .agent-docs-lane:hover{
+    border-color:#c69b39 !important;
+    color:#f6dc98 !important;
+}
+
+.agent-docs-page .agent-docs-lane.active{
+    border-color:#dfb457 !important;
+    color:#fbe4a8 !important;
+    background:linear-gradient(180deg,rgba(22,43,76,.96),rgba(14,31,55,.96)) !important;
+}
+
+.agent-docs-page .agent-docs-btn-primary{
+    background:linear-gradient(180deg,#f8e2a8,#c89a35) !important;
+    color:#1e1305 !important;
+    border-color:rgba(201,155,54,.58) !important;
+}
+
+.agent-docs-page .agent-docs-btn-ghost{
+    background:linear-gradient(180deg,#162942,#102238) !important;
+    color:#eef4ff !important;
+    border-color:rgba(201,155,54,.46) !important;
+}
+
+.agent-docs-page .agent-docs-btn-danger{
+    background:linear-gradient(180deg,#5a1a1a,#3c1111) !important;
+    color:#fee2e2 !important;
+    border-color:#8b2020 !important;
+}
+@@media (max-width: 992px){
+    .agent-docs-shell{grid-template-columns:1fr;}
+}
+</style>
+
+<script>
+(function(){
+    const zone = document.getElementById('agentDocsDropZone');
+    const input = document.getElementById('agentDocsFile');
+    const name = document.getElementById('agentDocsFileName');
+    const cat = document.getElementById('agentDocCategory');
+    const title = document.getElementById('agentDocTitle');
+    const lanes = Array.from(document.querySelectorAll('[data-pick-category]'));
+    const noMatch = document.getElementById('agentDocsNoMatch');
+    const years = Array.from(document.querySelectorAll('.agent-docs-year'));
+    let autoTitleSeed = cat ? (cat.value || '') : '';
+
+    const applyCategoryFilter = (category) => {
+        let visibleCount = 0;
+        years.forEach(year => {
+            const cards = Array.from(year.querySelectorAll('.agent-docs-item'));
+            let yearVisible = 0;
+            cards.forEach(card => {
+                const matches = !category || card.getAttribute('data-doc-category') === category;
+                card.hidden = !matches;
+                if (matches) yearVisible++;
+            });
+
+            const count = year.querySelector('summary small');
+            if (count) count.textContent = `${yearVisible} file(s)`;
+            year.hidden = yearVisible === 0;
+            visibleCount += yearVisible;
+        });
+
+        if (noMatch) noMatch.hidden = visibleCount > 0;
+    };
+
+    const setActiveLane = (category) => {
+        lanes.forEach(l => l.classList.toggle('active', l.getAttribute('data-pick-category') === category));
+    };
+
+    const applyDefaultTitleFromCategory = () => {
+        if (!cat || !title) return;
+        const current = (title.value || '').trim();
+        const next = (cat.value || '').trim();
+        if (!current || current === autoTitleSeed){
+            title.value = next;
+        }
+        autoTitleSeed = next;
+    };
+
+    lanes.forEach(btn => {
+        btn.addEventListener('click', () => {
+            const selected = btn.getAttribute('data-pick-category') || '';
+            if (cat) {
+                cat.value = selected;
+                applyDefaultTitleFromCategory();
+            }
+            setActiveLane(selected);
+            applyCategoryFilter(selected);
+        });
+    });
+
+    cat?.addEventListener('change', applyDefaultTitleFromCategory);
+
+    // Initial state
+    if (cat && !cat.value){
+        cat.value = cat.options.length ? cat.options[0].value : '';
+    }
+    applyDefaultTitleFromCategory();
+    setActiveLane(cat ? cat.value : '');
+    applyCategoryFilter(cat ? cat.value : '');
+
+    if (!zone || !input || !name) return;
+
+    const setName = () => {
+        const file = input.files && input.files.length ? input.files[0] : null;
+        name.textContent = file ? `Selected: ${file.name}` : 'Only PDF files, up to 20 MB';
+    };
+
+    input.addEventListener('change', setName);
+
+    ['dragenter','dragover'].forEach(evt => zone.addEventListener(evt, e => {
+        e.preventDefault();
+        zone.classList.add('dragover');
+    }));
+
+    ['dragleave','drop'].forEach(evt => zone.addEventListener(evt, e => {
+        e.preventDefault();
+        zone.classList.remove('dragover');
+    }));
+
+    zone.addEventListener('drop', e => {
+        const files = e.dataTransfer && e.dataTransfer.files ? e.dataTransfer.files : null;
+        if (!files || !files.length) return;
+        input.files = files;
+        setName();
+    });
+})();
+</script>

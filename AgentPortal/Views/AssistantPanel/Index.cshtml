@@ -53,9 +53,205 @@
     .assist-table td.actions {
         white-space: normal;
     }
+
+    .assistant-panel-page {
+        background:
+            radial-gradient(140% 140% at 0% 0%, rgba(180,137,31,.22) 0%, rgba(180,137,31,0) 38%),
+            linear-gradient(180deg, #081120 0%, #0d1930 100%) !important;
+        border: 1px solid rgba(180,137,31,.34) !important;
+        border-radius: 30px !important;
+        box-shadow: 0 28px 64px rgba(0,0,0,.34) !important;
+        padding: clamp(1.2rem, 2vw, 2rem) !important;
+    }
+
+    .assistant-panel-page .legend-hero,
+    .assistant-panel-page .legend-card,
+    .assistant-panel-page .assist-metric {
+        background: linear-gradient(180deg, rgba(9,18,36,.96), rgba(12,25,48,.94)) !important;
+        border: 1px solid rgba(180,137,31,.26) !important;
+        border-radius: 24px !important;
+        box-shadow: 0 22px 46px rgba(0,0,0,.28) !important;
+    }
+
+    .assistant-panel-page .legend-hero {
+        position: relative;
+        overflow: hidden;
+    }
+
+    .assistant-panel-page .legend-hero::before,
+    .assistant-panel-page .legend-card::before,
+    .assistant-panel-page .assist-metric::before {
+        content: "";
+        position: absolute;
+        left: 0;
+        right: 0;
+        top: 0;
+        height: 3px;
+        background: linear-gradient(90deg, rgba(180,137,31,.78), #b4891f, rgba(180,137,31,.78));
+    }
+
+    .assistant-panel-page .legend-card,
+    .assistant-panel-page .assist-metric {
+        position: relative;
+        overflow: hidden;
+    }
+
+    .assistant-panel-page .legend-kicker,
+    .assistant-panel-page .legend-title,
+    .assistant-panel-page .legend-card .card-header h5,
+    .assistant-panel-page .assist-metric .value,
+    .assistant-panel-page .table thead th,
+    .assistant-panel-page .table tbody td:first-child,
+    .assistant-panel-page .table tbody td:first-child a,
+    .assistant-panel-page .empty-title {
+        color: #b4891f !important;
+    }
+
+    .assistant-panel-page .legend-sub,
+    .assistant-panel-page .legend-note,
+    .assistant-panel-page .assist-metric .label,
+    .assistant-panel-page .table tbody td,
+    .assistant-panel-page .empty-copy,
+    .assistant-panel-page .text-muted {
+        color: #d7e2f7 !important;
+    }
+
+    .assistant-panel-page .legend-note {
+        background: rgba(11, 23, 44, .72) !important;
+        border: 1px solid rgba(180,137,31,.22) !important;
+        border-radius: 18px !important;
+        padding: 1rem 1.1rem !important;
+        box-shadow: inset 0 1px 0 rgba(255,255,255,.04) !important;
+    }
+
+    .assistant-panel-page .assist-status {
+        border: 1px solid transparent;
+        box-shadow: inset 0 1px 0 rgba(255,255,255,.05);
+    }
+
+    .assistant-panel-page .assist-status.active {
+        background: rgba(34,197,94,.16) !important;
+        color: #8df0ad !important;
+        border-color: rgba(34,197,94,.28) !important;
+    }
+
+    .assistant-panel-page .assist-status.invited {
+        background: rgba(180,137,31,.18) !important;
+        color: #f2d48c !important;
+        border-color: rgba(180,137,31,.28) !important;
+    }
+
+    .assistant-panel-page .assist-status.disabled {
+        background: rgba(148,163,184,.16) !important;
+        color: #dbe7fb !important;
+        border-color: rgba(148,163,184,.22) !important;
+    }
+
+    .assistant-panel-page .table {
+        background: transparent !important;
+        border: 1px solid rgba(180,137,31,.2) !important;
+        box-shadow: none !important;
+        margin-bottom: 0 !important;
+    }
+
+    .assistant-panel-page .table thead th {
+        background: rgba(180,137,31,.12) !important;
+        border-bottom: 1px solid rgba(180,137,31,.2) !important;
+        font-weight: 900 !important;
+    }
+
+    .assistant-panel-page .table > :not(caption) > * > * {
+        border-color: rgba(180,137,31,.12) !important;
+        background: transparent !important;
+    }
+
+    .assistant-panel-page .table tbody tr:hover {
+        background: rgba(180,137,31,.08) !important;
+    }
+
+    .assistant-panel-page .btn,
+    .assistant-panel-page button,
+    .assistant-panel-page .legend-btn-primary {
+        border-radius: 14px !important;
+        font-weight: 800 !important;
+    }
+
+    .assistant-panel-page .legend-btn-primary {
+        background: linear-gradient(180deg, #f3d58e 0%, #b4891f 100%) !important;
+        color: #1d1608 !important;
+        border: 1px solid #b4891f !important;
+        box-shadow: 0 16px 30px rgba(180,137,31,.24) !important;
+    }
+
+    .assistant-panel-page .legend-btn-primary:hover {
+        background: linear-gradient(180deg, #f7dfaa 0%, #c6972b 100%) !important;
+        color: #141007 !important;
+    }
+
+    .assistant-panel-page .btn-outline-primary,
+    .assistant-panel-page .btn-outline-secondary,
+    .assistant-panel-page .btn-outline-warning,
+    .assistant-panel-page .btn-outline-danger {
+        background: rgba(8,16,32,.7) !important;
+        color: #d7e2f7 !important;
+        border-color: rgba(180,137,31,.3) !important;
+        box-shadow: none !important;
+    }
+
+    .assistant-panel-page .btn-outline-primary:hover,
+    .assistant-panel-page .btn-outline-secondary:hover,
+    .assistant-panel-page .btn-outline-warning:hover,
+    .assistant-panel-page .btn-outline-danger:hover {
+        background: rgba(180,137,31,.14) !important;
+        color: #b4891f !important;
+        border-color: rgba(180,137,31,.5) !important;
+    }
+
+    .assistant-panel-page .alert {
+        border-radius: 18px !important;
+        border-width: 1px !important;
+        box-shadow: 0 18px 36px rgba(0,0,0,.2) !important;
+    }
+
+    .assistant-panel-page .alert-success {
+        background: rgba(34,197,94,.14) !important;
+        border-color: rgba(34,197,94,.28) !important;
+        color: #d7ffe4 !important;
+    }
+
+    .assistant-panel-page .alert-warning {
+        background: rgba(180,137,31,.14) !important;
+        border-color: rgba(180,137,31,.28) !important;
+        color: #f6e2b1 !important;
+    }
+
+    .assistant-panel-page .assistant-empty-state {
+        padding: 1.5rem 1rem !important;
+    }
+
+    .assistant-panel-page .assistant-empty-card {
+        background: linear-gradient(180deg, rgba(9,18,36,.98), rgba(12,25,48,.96)) !important;
+        border: 1px solid rgba(180,137,31,.26) !important;
+        border-radius: 24px !important;
+        box-shadow: 0 22px 46px rgba(0,0,0,.28) !important;
+        overflow: hidden;
+    }
+
+    .assistant-panel-page .assistant-empty-card .card-body {
+        background:
+            radial-gradient(120% 120% at 50% 0%, rgba(180,137,31,.14) 0%, rgba(180,137,31,0) 42%),
+            linear-gradient(180deg, rgba(9,18,36,.98), rgba(12,25,48,.96)) !important;
+        border-radius: 24px !important;
+    }
+
+    .assistant-panel-page .assistant-empty-icon {
+        font-size: 2.35rem;
+        line-height: 1;
+        filter: drop-shadow(0 8px 18px rgba(0,0,0,.24));
+    }
 </style>
 
-<div class="legend-shell legend-form">
+<div class="legend-shell legend-form assistant-panel-page">
     <div class="legend-hero">
         <div class="legend-hero-bar"></div>
         <div class="legend-hero-body d-flex flex-wrap align-items-start justify-content-between gap-3">
@@ -99,7 +295,7 @@
 
     <div class="legend-card mt-3">
         <div class="card-body">
-            <div class="legend-note"><strong>Permission boundary:</strong> Assistants are limited to Leads + Workstation. They cannot access admin, bookkeeping, finance, or settings pages.</div>
+            <div class="legend-note"><strong>Permission boundary:</strong> Assistants are limited to Leads + Workstation. They cannot access admin, finance, or settings pages.</div>
         </div>
     </div>
 
@@ -114,11 +310,11 @@
 
     @if (!Model.Assistants.Any())
     {
-        <div class="legend-card mt-3">
-            <div class="card-body text-center">
-                <div style="font-size:2rem;">👥</div>
-                <h3 class="fw-bold" style="color:var(--legend-navy);">No assistants yet</h3>
-                <p class="text-muted mb-3">Invite your first assistant to start delegating lead workflow and workstation tasks.</p>
+        <div class="legend-card mt-3 assistant-empty-card">
+            <div class="card-body text-center assistant-empty-state">
+                <div class="assistant-empty-icon">👥</div>
+                <h3 class="fw-bold empty-title">No assistants yet</h3>
+                <p class="mb-3 empty-copy">Invite your first assistant to start delegating lead workflow and workstation tasks.</p>
                 <a asp-action="Create" class="legend-btn-primary" style="text-decoration:none;">+ Add Assistant</a>
             </div>
         </div>

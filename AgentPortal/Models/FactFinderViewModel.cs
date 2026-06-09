@@ -555,7 +555,7 @@ public bool AcknowledgedDisclaimer { get; set; }
         public SeniorLifeInsurance LifeInsurance { get; set; } = new SeniorLifeInsurance();
         public SeniorRetirement Retirement { get; set; } = new SeniorRetirement();
 
-        [Required(ErrorMessage = "Disclaimer acknowledgment is required.")]
+        [Range(typeof(bool), "true", "true", ErrorMessage = "You must acknowledge the disclaimer to proceed.")]
         public bool AcknowledgedDisclaimer { get; set; }
     }
 

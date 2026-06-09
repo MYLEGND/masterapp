@@ -3,12 +3,14 @@
 @{
     ViewData["Title"] = "Resources";
     Layout = "~/Views/Shared/_Layout.cshtml";
+    var policyTypeCounts = Model.PolicyDocuments
+        .GroupBy(document => document.PolicyType ?? string.Empty, StringComparer.OrdinalIgnoreCase)
+        .ToDictionary(group => group.Key, group => group.Count(), StringComparer.OrdinalIgnoreCase);
 }
 
 <div class="resources-page container py-4">
 
     <div class="resources-hero mb-4">
-        <div class="hero-kicker">Legend™ Education</div>
         <h1 class="hero-title m-0">@ViewData["Title"]</h1>
         <p class="hero-sub m-0 mt-2">
             Keep your policy documents close, review educational material quickly, and access important support information in one place.
@@ -28,20 +30,68 @@
     <section class="priority-card mb-4">
         <div class="priority-head">
             <div>
-                <div class="info-kicker">Top Priority</div>
-                <h2 class="info-title mb-1">Your E-policy library</h2>
-                <p class="info-copy mb-0">Upload, preview, download, and remove your insurance documents whenever you need to.</p>
+                <div class="info-kicker">Policy Vault</div>
+                <h2 class="info-title mb-1">Your policy document library</h2>
+                <p class="info-copy mb-0">Upload by policy type, keep files grouped by year, and filter the vault instantly by selected policy type.</p>
             </div>
         </div>
 
         <div class="policy-layout">
             <div class="policy-upload-panel">
+                <div class="policy-family-list">
+                    @foreach (var family in Model.PolicyTypeFamilies)
+                    {
+                        <details class="policy-family" open>
+                            <summary>@family.Family</summary>
+                            <div class="policy-type-lanes">
+                                @foreach (var policyType in family.Types)
+                                {
+                                    var uploadedCount = policyTypeCounts.TryGetValue(policyType, out var count) ? count : 0;
+                                    <button type="button" class="policy-type-lane" data-pick-policy-type="@policyType">
+                                        <span class="policy-type-lane__label">@policyType</span>
+                                        <span class="policy-type-lane__count" aria-label="@uploadedCount uploaded for @policyType">@uploadedCount</span>
+                                    </button>
+                                }
+                            </div>
+                        </details>
+                    }
+                </div>
+
                 <form asp-controller="Resources" asp-action="UploadPolicyDocuments" method="post" enctype="multipart/form-data" id="policyUploadForm">
                     @Html.AntiForgeryToken()
-                    <input id="policyFileInput" name="files" type="file" accept=".pdf,.png,.jpg,.jpeg" multiple hidden />
 
-                    <div id="policyDropzone" class="policy-dropzone" tabindex="0" role="button" aria-label="Upload E-policy documents">
-                        <div class="policy-dropzone-title">Drop E-policy files here</div>
+                    <div class="policy-form-grid">
+                        <label>
+                            <span class="control-label">Policy year</span>
+                            <input type="number" class="form-control premium-field" name="policyYear" min="2000" max="2100" value="@DateTime.UtcNow.Year" required />
+                        </label>
+                        <label>
+                            <span class="control-label">Policy type</span>
+                            <div class="policy-select-wrap">
+                                <select id="policyTypeSelect" class="form-select premium-field" name="policyType" required>
+                                    @foreach (var family in Model.PolicyTypeFamilies)
+                                    {
+                                        <optgroup label="@family.Family">
+                                            @foreach (var policyType in family.Types)
+                                            {
+                                                <option value="@policyType">@policyType</option>
+                                            }
+                                        </optgroup>
+                                    }
+                                </select>
+                                <span class="policy-select-arrow" aria-hidden="true">▾</span>
+                            </div>
+                        </label>
+                        <label class="policy-display-name-wrap">
+                            <span class="control-label">Display name</span>
+                            <input id="policyDisplayName" class="form-control premium-field" type="text" name="displayName" maxlength="140" required value="@(Model.PolicyTypeFamilies.SelectMany(f => f.Types).FirstOrDefault() ?? "Policy Document")" />
+                        </label>
+                    </div>
+
+                    <input id="policyFileInput" name="file" type="file" accept=".pdf,.png,.jpg,.jpeg" hidden required />
+
+                    <div id="policyDropzone" class="policy-dropzone" tabindex="0" role="button" aria-label="Upload policy documents">
+                        <div class="policy-dropzone-title">Drop policy file here</div>
                         <div class="policy-dropzone-copy">or click to browse your device</div>
                         <div id="policyUploadState" class="policy-dropzone-state">Accepted file types: PDF, PNG, JPG, JPEG</div>
                     </div>
@@ -49,50 +99,77 @@
                     <div id="policySelectedFiles" class="selected-files" hidden></div>
 
                     <div class="upload-actions">
-                        <button type="submit" id="policyUploadButton" class="preview-open upload-submit">Upload documents</button>
+                        <button type="submit" id="policyUploadButton" class="preview-open upload-submit">Upload policy</button>
                     </div>
                 </form>
             </div>
 
             <div class="policy-library-panel">
                 <div class="policy-library-head">
-                    <h3 class="policy-library-title m-0">Uploaded documents</h3>
+                    <h3 class="policy-library-title m-0">Yearly vault</h3>
                     <span class="policy-library-count">@Model.PolicyDocuments.Count file@(Model.PolicyDocuments.Count == 1 ? string.Empty : "s")</span>
                 </div>
 
                 @if (Model.PolicyDocuments.Count == 0)
                 {
-                    <div class="policy-empty-state">No E-policy documents have been uploaded yet.</div>
+                    <div class="policy-empty-state">No policy documents have been uploaded yet.</div>
                 }
                 else
                 {
-                    <div class="policy-list">
-                        @foreach (var document in Model.PolicyDocuments)
-                        {
-                            <div class="policy-item">
-                                <button type="button"
-                                        class="policy-preview-trigger"
-                                        data-name="@document.DisplayName"
-                                        data-extension="@document.Extension"
-                                        data-preview-url="@document.PreviewUrl"
-                                        data-download-url="@document.DownloadUrl"
-                                        data-meta="@document.Extension.TrimStart('.').ToUpperInvariant() • @(Math.Max(1, document.SizeBytes / 1024)) KB • Uploaded @document.UploadedUtc.ToLocalTime().ToString("MMM d, yyyy h:mm tt")">
-                                    <span class="policy-name">@document.DisplayName</span>
-                                    <span class="policy-meta">@document.Extension.TrimStart('.').ToUpperInvariant() • @(Math.Max(1, document.SizeBytes / 1024)) KB • Uploaded @document.UploadedUtc.ToLocalTime().ToString("MMM d, yyyy h:mm tt")</span>
-                                </button>
+                    var yearGroups = Model.PolicyDocuments
+                        .OrderByDescending(x => x.PolicyYear)
+                        .ThenByDescending(x => x.UploadedUtc)
+                        .GroupBy(x => x.PolicyYear)
+                        .ToList();
 
-                                <div class="policy-actions">
-                                    <a class="policy-action-link" href="@document.PreviewUrl" target="_blank" rel="noopener">View</a>
-                                    <a class="policy-action-link" href="@document.DownloadUrl">Download</a>
-                                    <form asp-controller="Resources" asp-action="DeletePolicyDocument" method="post" class="policy-delete-form">
-                                        @Html.AntiForgeryToken()
-                                        <input type="hidden" name="fileName" value="@document.FileName" />
-                                        <button type="submit" class="policy-delete-button">Delete</button>
-                                    </form>
+                    <div class="policy-vault-year-groups">
+                        @foreach (var group in yearGroups)
+                        {
+                            <details class="policy-year-group" open="@(group.Key == yearGroups.First().Key)">
+                                <summary>
+                                    <span>@group.Key</span>
+                                    <small>@group.Count() file@(group.Count() == 1 ? string.Empty : "s")</small>
+                                </summary>
+
+                                <div class="policy-list">
+                                    @foreach (var document in group)
+                                    {
+                                        var documentMeta = $"{document.PolicyFamily} • {document.PolicyType} • {document.Extension.TrimStart('.').ToUpperInvariant()} • {Math.Max(1, document.SizeBytes / 1024)} KB • Uploaded {document.UploadedUtc.ToLocalTime():MMM d, yyyy h:mm tt}";
+                                        <div class="policy-item" data-policy-type="@document.PolicyType">
+                                            <button type="button"
+                                                    class="policy-preview-trigger"
+                                                    data-name="@document.DisplayName"
+                                                    data-extension="@document.Extension"
+                                                    data-preview-url="@document.PreviewUrl"
+                                                    data-download-url="@document.DownloadUrl"
+                                                    data-meta="@documentMeta">
+                                                <span class="policy-name">@document.DisplayName</span>
+                                                <span class="policy-meta">@documentMeta</span>
+                                            </button>
+
+                                            <div class="policy-actions">
+                                                <a class="policy-action-link policy-inline-view"
+                                                   href="@document.PreviewUrl"
+                                                   data-name="@document.DisplayName"
+                                                   data-extension="@document.Extension"
+                                                   data-preview-url="@document.PreviewUrl"
+                                                   data-download-url="@document.DownloadUrl"
+                                                   data-meta="@documentMeta">View</a>
+                                                <a class="policy-action-link" href="@document.DownloadUrl">Download</a>
+                                                <form asp-controller="Resources" asp-action="DeletePolicyDocument" method="post" class="policy-delete-form">
+                                                    @Html.AntiForgeryToken()
+                                                    <input type="hidden" name="fileName" value="@document.FileName" />
+                                                    <button type="submit" class="policy-delete-button">Delete</button>
+                                                </form>
+                                            </div>
+                                        </div>
+                                    }
                                 </div>
-                            </div>
+                            </details>
                         }
                     </div>
+
+                    <div id="policyNoMatch" class="policy-empty-state" hidden>No policy documents found for this policy type.</div>
                 }
             </div>
         </div>
@@ -153,7 +230,7 @@
     <div id="emptyState" class="empty-state mb-4">
         <div class="empty-chip">Preview</div>
         <div class="empty-title">Select a policy document or resource to view it here</div>
-        <div class="empty-text">Use the E-policy list above or the educational resource tools below. Supported documents will open directly in this preview area.</div>
+        <div class="empty-text">Use the policy vault above or the educational resource tools below. Supported documents will open directly in this preview area.</div>
     </div>
 
     <div class="resource-grid">
@@ -184,22 +261,29 @@
 
 <style>
 :root{
-    --gold:#5c3f08;
-    --gold2:#8c6514;
-    --gold3:#c89b2c;
-    --goldSoft:rgba(92,63,8,.12);
-    --ink:#101010;
-    --muted:rgba(16,16,16,.62);
-    --line:#d5bf85;
-    --bg:#ffffff;
-    --soft:#fbf8f1;
-    --shadow: 0 22px 56px rgba(41,29,5,.12);
-    --shadowSoft: 0 14px 34px rgba(41,29,5,.09);
+    --gold:#c99b36;
+    --gold2:#b68525;
+    --gold3:#f0cf78;
+    --goldSoft:rgba(201,155,54,.16);
+    --ink:#e9f0ff;
+    --muted:rgba(226,236,255,.78);
+    --line:rgba(201,155,54,.42);
+    --bg:#091427;
+    --panel:#0f1f3b;
+    --panel-2:#0b1a33;
+    --shadow:0 24px 58px rgba(3,8,18,.45);
+    --shadowSoft:0 14px 34px rgba(3,8,18,.34);
     --r18:18px;
 }
 
 .resources-page{
-    background: var(--bg);
+    background:
+        radial-gradient(1200px 420px at 0% 0%, rgba(201,155,54,.12), transparent 58%),
+        radial-gradient(900px 320px at 100% 0%, rgba(102,124,168,.12), transparent 56%),
+        var(--bg);
+    color:var(--ink);
+    border-radius:18px;
+    padding:12px;
 }
 
 .resources-hero,
@@ -207,12 +291,12 @@
 .controls-card,
 .info-card,
 .preview-shell{
-    border: 1px solid rgba(92,63,8,.24);
-    border-radius: var(--r18);
-    background: #fff;
-    box-shadow: var(--shadowSoft);
-    position: relative;
-    overflow: hidden;
+    border:1px solid var(--line);
+    border-radius:var(--r18);
+    background:linear-gradient(180deg,#10213f,#0b1a33);
+    box-shadow:var(--shadow);
+    position:relative;
+    overflow:hidden;
 }
 
 .resources-hero::before,
@@ -222,40 +306,46 @@
 .preview-shell::before{
     content:"";
     position:absolute;
-    left:0;
-    right:0;
-    top:0;
+    left:0; right:0; top:0;
     height:4px;
-    background: linear-gradient(90deg, var(--gold), var(--gold3), var(--gold2), var(--gold));
+    background:linear-gradient(90deg,var(--gold2),var(--gold3),var(--gold2));
 }
 
 .resources-hero{
-    padding: 22px 20px 20px;
+    padding:22px 20px 20px;
     background:
-        radial-gradient(1200px 420px at 12% 0%, rgba(200,155,44,.18), transparent 58%),
-        radial-gradient(1000px 320px at 100% 0%, rgba(92,63,8,.12), transparent 56%),
-        linear-gradient(180deg, rgba(255,255,255,.99), rgba(248,242,227,.90));
+        radial-gradient(1200px 420px at 12% 0%, rgba(240,207,120,.18), transparent 58%),
+        radial-gradient(1000px 320px at 100% 0%, rgba(84,115,176,.14), transparent 56%),
+        linear-gradient(180deg,#132747,#0d1f3c);
 }
 
 .hero-kicker,
 .info-kicker,
 .empty-chip{
     display:inline-block;
-    font-weight: 900;
-    letter-spacing: .12em;
-    text-transform: uppercase;
-    font-size: .74rem;
-    color: rgba(16,16,16,.66);
+    font-weight:900;
+    letter-spacing:.12em;
+    text-transform:uppercase;
+    font-size:.74rem;
+    color:#f3d995;
+}
+
+.hero-title,
+.info-title,
+.preview-title,
+.policy-library-title,
+.policy-name,
+.control-label,
+.policy-year-group > summary span{
+    color:var(--gold3);
+    font-weight:900;
 }
 
 .hero-title{
-    margin-top: 10px !important;
-    font-weight: 950;
-    letter-spacing: -0.02em;
-    color: var(--gold);
-    text-shadow: 0 1px 0 rgba(255,255,255,.65);
-    font-size: clamp(1.9rem, 3vw, 2.45rem);
-    line-height: 1.08;
+    margin-top:10px !important;
+    font-size:clamp(1.9rem,3vw,2.45rem);
+    line-height:1.08;
+    text-shadow:0 1px 0 rgba(34,23,5,.8);
 }
 
 .hero-sub,
@@ -267,390 +357,572 @@
 .policy-dropzone-state,
 .policy-meta,
 .policy-library-count,
-.policy-empty-state {
-    color: var(--muted);
-    line-height: 1.7;
-}
-
-.hero-sub-strong,
-.info-title,
-.preview-title,
-.empty-title,
-.policy-library-title,
-.policy-name,
-.support-item,
-.control-label {
-    color: rgba(16,16,16,.88);
-    font-weight: 900;
+.policy-empty-state,
+.support-item span{
+    color:var(--muted);
+    line-height:1.7;
 }
 
 .priority-card,
 .controls-card,
-.info-card {
-    padding: 20px 18px 18px;
-}
+.info-card{ padding:20px 18px 18px; }
 
 .priority-head,
-.controls-head {
-    margin-bottom: 16px;
-}
+.controls-head{ margin-bottom:16px; }
 
 .policy-layout,
-.resource-grid {
+.resource-grid{
     display:grid;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-    gap: 18px;
+    grid-template-columns:repeat(2,minmax(0,1fr));
+    gap:18px;
 }
 
+.policy-family-list{
+    display:grid;
+    gap:10px;
+    margin-bottom:14px;
+    max-height:300px;
+    overflow:auto;
+    padding-right:2px;
+}
+
+.policy-family{
+    border:1px solid var(--line);
+    border-radius:12px;
+    background:linear-gradient(180deg,rgba(15,31,57,.92),rgba(10,22,43,.92));
+}
+
+.policy-family > summary{
+    list-style:none;
+    cursor:pointer;
+    padding:9px 10px;
+    color:var(--gold3);
+    font-weight:900;
+}
+
+.policy-family > summary::-webkit-details-marker{ display:none; }
+
+.policy-type-lanes{ padding:0 8px 8px; display:grid; gap:7px; }
+
+.policy-type-lane{
+    display:flex;
+    align-items:center;
+    justify-content:space-between;
+    gap:10px;
+    text-align:left;
+    border:1px solid rgba(201,155,54,.36);
+    border-radius:10px;
+    background:linear-gradient(180deg,#182f55,#102544);
+    color:#eef4ff;
+    font-weight:850;
+    font-size:.82rem;
+    padding:8px 10px;
+}
+
+.policy-type-lane__label{
+    flex:1 1 auto;
+}
+
+.policy-type-lane__count{
+    flex:0 0 auto;
+    min-width:28px;
+    padding:2px 8px;
+    border-radius:999px;
+    border:1px solid rgba(240,207,120,.36);
+    background:rgba(12,28,52,.82);
+    color:#f8df9a;
+    font-size:.74rem;
+    font-weight:950;
+    line-height:1.35;
+    text-align:center;
+}
+
+.policy-type-lane:hover,
+.policy-type-lane.active{
+    border-color:rgba(240,207,120,.72);
+    background:linear-gradient(180deg,#204171,#16335a);
+    color:#f8df9a;
+}
+
+.policy-type-lane:hover .policy-type-lane__count,
+.policy-type-lane.active .policy-type-lane__count{
+    border-color:rgba(240,207,120,.72);
+    background:rgba(17,38,66,.95);
+}
+
+.policy-form-grid{ display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-bottom:12px; }
+.policy-display-name-wrap{ grid-column:1/-1; }
+
 .policy-dropzone{
-    border: 1.5px dashed rgba(92,63,8,.58);
-    border-radius: 16px;
-    padding: 28px 18px;
+    border:1.5px dashed rgba(201,155,54,.62);
+    border-radius:16px;
+    padding:28px 18px;
     background:
-        radial-gradient(700px 180px at 50% 0%, rgba(200,155,44,.16), transparent 60%),
-        linear-gradient(180deg, rgba(92,63,8,.05), rgba(92,63,8,.10));
+        radial-gradient(700px 180px at 50% 0%, rgba(240,207,120,.16), transparent 60%),
+        linear-gradient(180deg, rgba(36,67,112,.24), rgba(15,30,55,.32));
     text-align:center;
     cursor:pointer;
-    transition: border-color .15s ease, background .15s ease, transform .12s ease;
+    transition:border-color .15s ease, background .15s ease, transform .12s ease;
 }
 
 .policy-dropzone:hover,
 .policy-dropzone:focus{
-    border-color: rgba(111,79,15,.88);
-    background: rgba(111,79,15,.12);
-    transform: translateY(-1px);
-    outline: none;
+    border-color:rgba(240,207,120,.86);
+    background:rgba(201,155,54,.14);
+    transform:translateY(-1px);
+    outline:none;
 }
 
-.policy-dropzone.is-dragover{
-    border-color: rgba(111,79,15,.95);
-    background: rgba(111,79,15,.14);
-}
+.policy-dropzone.is-dragover{ border-color:rgba(240,207,120,.92); }
+.policy-dropzone.is-uploading{ opacity:.72; pointer-events:none; }
+.policy-dropzone-title{ font-weight:950; color:var(--gold3); font-size:1.08rem; }
 
-.policy-dropzone.is-uploading{
-    opacity: .72;
-    pointer-events:none;
-}
-
-.policy-dropzone-title{
-    font-weight: 950;
-    color: var(--gold);
-    font-size: 1.08rem;
-}
-
-.selected-files{
-    margin-top: 14px;
-    display:grid;
-    gap: 8px;
-}
+.selected-files{ margin-top:14px; display:grid; gap:8px; }
 
 .selected-file{
-    padding: 10px 12px;
-    border-radius: 12px;
-    background: rgba(251,250,247,.92);
-    border: 1px solid rgba(111,79,15,.15);
-    color: rgba(16,16,16,.78);
-    font-weight: 800;
+    padding:10px 12px;
+    border-radius:12px;
+    background:rgba(255,255,255,.10);
+    border:1px solid var(--line);
+    color:#e9f1ff;
+    font-weight:800;
 }
 
-.upload-actions{
-    margin-top: 14px;
-    display:flex;
-    justify-content:flex-end;
+.upload-actions{ margin-top:14px; display:flex; justify-content:flex-end; }
+
+.policy-library-head{ display:flex; align-items:center; justify-content:space-between; margin-bottom:10px; }
+
+.policy-vault-year-groups{ display:grid; gap:10px; }
+
+.policy-year-group{
+    border:1px solid rgba(201,155,54,.32);
+    border-radius:12px;
+    background:rgba(8,20,39,.62);
+    overflow:hidden;
 }
+
+.policy-year-group > summary{
+    list-style:none;
+    display:flex;
+    align-items:center;
+    justify-content:space-between;
+    padding:10px 12px;
+    cursor:pointer;
+    font-weight:950;
+}
+
+.policy-year-group > summary::-webkit-details-marker{ display:none; }
+.policy-year-group > summary small{ color:#d7bd7a; font-size:.76rem; font-weight:800; }
+
+.policy-list{ padding:0 10px 10px; display:grid; gap:9px; }
+
+.policy-item{
+    display:flex;
+    align-items:flex-start;
+    justify-content:space-between;
+    gap:14px;
+    padding:14px;
+    border:1px solid rgba(201,155,54,.34);
+    border-radius:16px;
+    background:linear-gradient(180deg, rgba(20,39,70,.95), rgba(13,29,54,.95));
+    box-shadow:inset 0 1px 0 rgba(255,255,255,.08);
+}
+
+.policy-preview-trigger{ flex:1; background:transparent; border:0; padding:0; text-align:left; }
+.policy-preview-trigger:hover .policy-name,
+.policy-preview-trigger:focus .policy-name{ color:#ffe4a0; }
+
+.policy-actions{ display:flex; flex-wrap:wrap; gap:8px; justify-content:flex-end; }
+.policy-delete-form{ margin:0; }
 
 .preview-open,
 .policy-action-link,
-.policy-delete-button {
+.policy-delete-button{
     text-decoration:none;
-    font-weight: 900;
-    color: var(--gold);
-    padding: 10px 12px;
-    border-radius: 999px;
-    border: 1px solid rgba(92,63,8,.28);
-    background: linear-gradient(180deg, #fffef9, #f6ecd1);
-    box-shadow: 0 8px 18px rgba(92,63,8,.10);
-    transition: transform .12s ease, background .15s ease, border-color .15s ease, box-shadow .15s ease;
+    font-weight:900;
+    padding:10px 12px;
+    border-radius:999px;
+    transition:transform .12s ease, filter .15s ease;
+}
+
+.preview-open,
+.policy-action-link{
+    color:#1e1305;
+    border:1px solid rgba(201,155,54,.52);
+    background:linear-gradient(180deg,#f8e2a8,#c89a35);
+}
+
+.upload-submit,
+.preview-download{
+    color:#0e0a03;
+    border:1px solid rgba(240,207,120,.88);
+    background:linear-gradient(180deg,#f3d78f,#c8962f);
+}
+
+.policy-delete-button{
+    color:#fee2e2;
+    border:1px solid #8b2020;
+    background:linear-gradient(180deg,#5a1a1a,#3c1111);
 }
 
 .preview-open:hover,
 .policy-action-link:hover,
-.policy-delete-button:hover{
-    transform: translateY(-1px);
-    background: linear-gradient(180deg, #fff7df, #f2dfad);
-    border-color: rgba(92,63,8,.48);
-    box-shadow: 0 12px 24px rgba(92,63,8,.16);
-}
+.policy-delete-button:hover{ transform:translateY(-1px); filter:brightness(1.05); }
 
-.upload-submit,
-.preview-download {
-    color:#fff;
-    border-color: rgba(92,63,8,.92);
-    background: linear-gradient(180deg, var(--gold2), var(--gold));
-}
-
-.upload-submit:hover,
-.preview-download:hover {
-    color:#fff;
-    background: linear-gradient(180deg, #a97a1d, #6d4a08);
-}
-
-.policy-delete-button {
-    color:#fff;
-    border-color: rgba(153, 27, 27, .95);
-    background: linear-gradient(180deg, #d64545, #a92121);
-    box-shadow: 0 8px 18px rgba(169,33,33,.18);
-}
-
-.policy-delete-button:hover {
-    color:#fff;
-    background: linear-gradient(180deg, #e25a5a, #8e1717);
-    border-color: rgba(127, 17, 17, .98);
-    box-shadow: 0 12px 24px rgba(127,17,17,.24);
-}
-
-.policy-item {
-    display:flex;
-    align-items:flex-start;
-    justify-content:space-between;
-    gap: 14px;
-    padding: 14px;
-    border: 1px solid rgba(92,63,8,.18);
-    border-radius: 16px;
-    background: linear-gradient(180deg, rgba(255,255,255,.98), rgba(249,244,231,.95));
-    box-shadow: inset 0 1px 0 rgba(255,255,255,.75);
-}
-
-.policy-preview-trigger {
-    flex: 1;
-    background: transparent;
-    border: 0;
-    padding: 0;
-    text-align: left;
-}
-
-.policy-preview-trigger:hover .policy-name,
-.policy-preview-trigger:focus .policy-name {
-    color: var(--gold);
-}
-
-.policy-actions {
-    display:flex;
-    flex-wrap:wrap;
-    gap: 8px;
-    justify-content:flex-end;
-}
-
-.policy-delete-form {
-    margin: 0;
-}
-
-.search-wrap{
-    position: relative;
-}
-
-.search-icon{
-    position:absolute;
-    left: 12px;
-    top: 50%;
-    transform: translateY(-50%);
-    opacity: .55;
-    font-weight: 900;
-}
+.search-wrap{ position:relative; }
+.search-icon{ position:absolute; left:12px; top:50%; transform:translateY(-50%); opacity:.55; font-weight:900; }
 
 .premium-field{
-    border: 1px solid var(--line) !important;
-    border-radius: 14px !important;
-    padding: .75rem .9rem !important;
-    background: #fff !important;
+    border:1px solid rgba(201,155,54,.52) !important;
+    border-radius:14px !important;
+    padding:.75rem .9rem !important;
+    background:#f8fbff !important;
 }
 
 .premium-field:focus{
-    border-color: rgba(111,79,15,.92) !important;
-    box-shadow: 0 0 0 .22rem rgba(111,79,15,.16) !important;
+    border-color:rgba(240,207,120,.92) !important;
+    box-shadow:0 0 0 .22rem rgba(201,155,54,.22) !important;
 }
 
-.premium-input{
-    padding-left: 36px !important;
+/* Make policy type dropdown unmistakably a dropdown */
+.policy-select-wrap{
+    position:relative;
 }
+
+.policy-select-arrow{
+    position:absolute;
+    right:12px;
+    top:50%;
+    transform:translateY(-50%);
+    color:#7a5a16;
+    font-weight:900;
+    font-size:1rem;
+    pointer-events:none;
+    text-shadow:0 1px 0 rgba(255,255,255,.7);
+}
+
+#policyTypeSelect{
+    appearance:none;
+    -webkit-appearance:none;
+    -moz-appearance:none;
+    padding-right:3rem !important;
+    cursor:pointer;
+    border:1px solid rgba(201,155,54,.72) !important;
+    box-shadow:inset -36px 0 0 rgba(201,155,54,.18), inset 0 1px 0 rgba(255,255,255,.85) !important;
+    background-image:
+        linear-gradient(45deg, transparent 50%, #8a6518 50%),
+        linear-gradient(135deg, #8a6518 50%, transparent 50%);
+    background-position:calc(100% - 18px) calc(50% - 2px), calc(100% - 12px) calc(50% - 2px);
+    background-size:6px 6px, 6px 6px;
+    background-repeat:no-repeat;
+}
+
+#policyTypeSelect:focus{
+    border-color:rgba(240,207,120,.92) !important;
+    box-shadow:0 0 0 .22rem rgba(201,155,54,.22), inset -36px 0 0 rgba(201,155,54,.24) !important;
+}
+
+#policyTypeSelect:focus + .policy-select-arrow,
+#policyTypeSelect:hover + .policy-select-arrow{
+    color:#5f4310;
+}
+
+.premium-input{ padding-left:36px !important; }
 
 .search-results{
-    margin: 10px 0 0;
-    padding: 6px;
-    list-style: none;
-    border-radius: 16px;
-    border: 1px solid rgba(92,63,8,.18);
-    background: rgba(255,251,242,.98);
-    max-height: 280px;
-    overflow-y: auto;
-    box-shadow: var(--shadowSoft);
+    margin:10px 0 0;
+    padding:6px;
+    list-style:none;
+    border-radius:16px;
+    border:1px solid var(--line);
+    background:rgba(9,21,39,.96);
+    max-height:280px;
+    overflow-y:auto;
+    box-shadow:var(--shadowSoft);
 }
 
 .search-results li{
     display:flex;
     align-items:center;
-    justify-content: space-between;
-    gap: 12px;
-    padding: 10px;
-    border-radius: 12px;
-    cursor: pointer;
+    justify-content:space-between;
+    gap:12px;
+    padding:10px;
+    border-radius:12px;
+    cursor:pointer;
+    color:#edf3ff;
 }
 
-.search-results li:hover{
-    background: rgba(111,79,15,.08);
-}
+.search-results li:hover{ background:rgba(201,155,54,.16); }
 
 .result-tag,
-.topic-chip {
-    border: 1px solid rgba(111,79,15,.20);
-    color: var(--gold);
-    background: rgba(255,255,255,.90);
+.topic-chip{
+    border:1px solid rgba(201,155,54,.35);
+    color:#f0cf78;
+    background:rgba(15,31,57,.90);
 }
 
-.result-tag{
-    font-size: .76rem;
-    font-weight: 950;
-    padding: 4px 8px;
-    border-radius: 999px;
-}
+.result-tag{ font-size:.76rem; font-weight:950; padding:4px 8px; border-radius:999px; }
 
-.preview-shell{
-    overflow:hidden;
-}
+.preview-shell{ overflow:hidden; }
+.preview-shell{ scroll-margin-top: 18px; }
 
 .preview-head{
-    padding: 16px 18px;
-    border-bottom: 1px solid rgba(92,63,8,.16);
+    padding:16px 18px;
+    border-bottom:1px solid var(--line);
     display:flex;
     align-items:flex-start;
     justify-content:space-between;
-    gap: 12px;
-    background: linear-gradient(180deg, rgba(200,155,44,.16), rgba(92,63,8,.04) 62%, transparent 100%);
+    gap:12px;
+    background:linear-gradient(180deg, rgba(201,155,54,.18), rgba(18,40,73,.16) 62%, transparent 100%);
 }
 
-.preview-actions{
-    display:flex;
-    flex-wrap:wrap;
-    gap: 8px;
-    justify-content:flex-end;
-}
-
-.preview-frame{
-    padding: 18px;
-}
+.preview-actions{ display:flex; flex-wrap:wrap; gap:8px; justify-content:flex-end; }
+.preview-frame{ padding:18px; }
 
 .preview-content{
-    border-radius: 16px;
-    border: 1px solid rgba(92,63,8,.16);
-    background: #fff;
-    overflow: hidden;
+    border-radius:16px;
+    border:1px solid var(--line);
+    background:#fff;
+    overflow:hidden;
 }
 
 .preview-content img,
 .preview-content video,
-.preview-content iframe{
-    width: 100%;
-    display:block;
-    border: 0;
-}
+.preview-content iframe{ width:100%; display:block; border:0; }
 
-.preview-content iframe{
-    height: min(82vh, 980px);
-}
+.preview-content iframe{ height:min(82vh,980px); }
 
 .empty-state{
-    padding: 22px 18px;
-    border: 1px dashed rgba(111,79,15,.34);
-    border-radius: var(--r18);
-    background: rgba(111,79,15,.05);
+    padding:22px 18px;
+    border:1px dashed rgba(201,155,54,.48);
+    border-radius:var(--r18);
+    background:rgba(17,36,65,.68);
 }
 
-.support-list{
-    display:grid;
-    gap: 12px;
-}
+.support-list{ display:grid; gap:12px; }
 
 .support-item{
     display:flex;
     flex-direction:column;
-    gap: 4px;
-    padding: 12px 14px;
-    border: 1px solid rgba(92,63,8,.16);
-    border-radius: 14px;
+    gap:4px;
+    padding:12px 14px;
+    border:1px solid var(--line);
+    border-radius:14px;
     text-decoration:none;
-    background: linear-gradient(180deg, rgba(255,255,255,.98), rgba(248,242,227,.90));
+    background:linear-gradient(180deg, rgba(17,35,64,.94), rgba(11,25,46,.94));
+    color:#f0cf78;
 }
 
-.support-item span {
-    color: var(--muted);
-    font-weight: 700;
-}
+.topic-grid{ display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:10px; margin:8px 0 14px; }
+.topic-chip{ padding:10px 12px; border-radius:999px; font-weight:900; text-align:center; }
 
-.topic-grid{
-    display:grid;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-    gap: 10px;
-    margin: 8px 0 14px;
-}
-
-.topic-chip{
-    padding: 10px 12px;
-    border-radius: 999px;
-    font-weight: 900;
-    text-align:center;
-}
-
-.resource-alert{
-    padding: 12px 14px;
-    border-radius: 14px;
-    font-weight: 800;
-    border: 1px solid transparent;
-}
+.resource-alert{ padding:12px 14px; border-radius:14px; font-weight:800; border:1px solid transparent; }
 
 .resource-alert-success{
-    background: rgba(30, 132, 73, .08);
-    border-color: rgba(30, 132, 73, .22);
-    color: #1d6f43;
+    background:rgba(10,87,44,.36);
+    border-color:rgba(52,211,153,.42);
+    color:#bbf7d0;
 }
 
 .resource-alert-error{
-    background: rgba(192, 57, 43, .08);
-    border-color: rgba(192, 57, 43, .22);
-    color: #9a2c1f;
+    background:rgba(127,29,29,.36);
+    border-color:rgba(248,113,113,.42);
+    color:#fecaca;
+}
+
+/* Hard overrides for Education Library + Preview sections */
+.resources-page .controls-card,
+.resources-page .preview-shell,
+.resources-page #emptyState{
+    background:linear-gradient(180deg,#122747,#0d1f3b) !important;
+    border:1px solid rgba(201,155,54,.46) !important;
+    box-shadow:0 20px 44px rgba(2,8,20,.42) !important;
+}
+
+.resources-page .controls-card .info-kicker,
+.resources-page .controls-card .info-title,
+.resources-page .controls-card .control-label,
+.resources-page .preview-shell .preview-title,
+.resources-page #emptyState .empty-chip,
+.resources-page #emptyState .empty-title{
+    color:#f4d88f !important;
+}
+
+.resources-page .controls-card .info-copy,
+.resources-page .controls-card .control-help,
+.resources-page .preview-shell .preview-meta,
+.resources-page #emptyState .empty-text{
+    color:#d7e2f7 !important;
+}
+
+.resources-page .controls-card .form-select,
+.resources-page .controls-card .form-control,
+.resources-page .controls-card .premium-field,
+.resources-page .controls-card .premium-input{
+    background:#f8fbff !important;
+    color:#0f1d38 !important;
+    border:1px solid rgba(201,155,54,.62) !important;
+}
+
+.resources-page .controls-card .form-select option{
+    color:#0f1d38;
+    background:#ffffff;
+}
+
+.resources-page .controls-card .search-results{
+    background:rgba(12,25,46,.98) !important;
+    border:1px solid rgba(201,155,54,.46) !important;
+}
+
+.resources-page .controls-card .search-results li{
+    color:#edf3ff !important;
+}
+
+.resources-page .controls-card .search-results li:hover{
+    background:rgba(201,155,54,.18) !important;
+}
+
+.resources-page .controls-card .result-tag{
+    color:#f4d88f !important;
+    border-color:rgba(201,155,54,.52) !important;
+    background:rgba(18,37,67,.95) !important;
+}
+
+.resources-page .preview-shell .preview-head{
+    background:linear-gradient(180deg, rgba(201,155,54,.20), rgba(18,40,73,.18) 62%, transparent 100%) !important;
+    border-bottom:1px solid rgba(201,155,54,.46) !important;
+}
+
+.resources-page .preview-shell .preview-open,
+.resources-page .preview-shell .preview-download{
+    color:#1b1104 !important;
+    border:1px solid rgba(201,155,54,.58) !important;
+    background:linear-gradient(180deg,#f8e2a8,#c89a35) !important;
+}
+
+/* Requested gold text tone update */
+.resources-page{
+    --gold3:#b4891f;
+}
+
+.resources-page .hero-kicker,
+.resources-page .hero-title,
+.resources-page .info-kicker,
+.resources-page .info-title,
+.resources-page .control-label,
+.resources-page .preview-title,
+.resources-page .policy-library-title,
+.resources-page .policy-name,
+.resources-page .empty-chip,
+.resources-page .empty-title,
+.resources-page .policy-year-group > summary span {
+    color:#b4891f !important;
+}
+
+.resources-page .policy-dropzone-title,
+.resources-page .policy-year-group > summary small,
+.resources-page .result-tag,
+.resources-page .topic-chip,
+.resources-page .support-item,
+.resources-page .policy-preview-trigger:hover .policy-name,
+.resources-page .policy-preview-trigger:focus .policy-name {
+    color:#b4891f !important;
+}
+
+/* Hard overrides for top page header + Preview chip */
+.resources-page .resources-hero{
+    background:
+        radial-gradient(1200px 420px at 12% 0%, rgba(240,207,120,.22), transparent 58%),
+        radial-gradient(1000px 320px at 100% 0%, rgba(84,115,176,.18), transparent 56%),
+        linear-gradient(180deg,#163055,#102544) !important;
+    border:1px solid rgba(201,155,54,.54) !important;
+    box-shadow:0 24px 56px rgba(4,10,24,.48) !important;
+}
+
+.resources-page .resources-hero .hero-kicker{
+    color:#f6dda0 !important;
+    text-shadow:0 1px 0 rgba(21,14,4,.7);
+}
+
+.resources-page .resources-hero .hero-title{
+    color:#f0cf78 !important;
+    text-shadow:0 1px 0 rgba(24,16,4,.75);
+}
+
+.resources-page .resources-hero .hero-sub{
+    color:#dce8ff !important;
+}
+
+.resources-page #emptyState .empty-chip{
+    display:inline-flex !important;
+    align-items:center;
+    justify-content:center;
+    padding:6px 12px;
+    border-radius:999px;
+    border:1px solid rgba(201,155,54,.55);
+    background:linear-gradient(180deg, rgba(201,155,54,.22), rgba(201,155,54,.10));
+    box-shadow:inset 0 1px 0 rgba(255,255,255,.1);
+    font-weight:900;
+}
+
+/* Ensure Browse educational resources panel fully matches premium navy/gold */
+.controls-card .info-title,
+.controls-card .control-label,
+.controls-card .result-name,
+.controls-card .result-tag{
+    color:#f0cf78 !important;
+}
+
+.controls-card .info-copy,
+.controls-card .control-help{
+    color:rgba(226,236,255,.82) !important;
+}
+
+.controls-card .premium-field,
+.controls-card .premium-input,
+.controls-card .form-select,
+.controls-card .form-control{
+    border-color:rgba(201,155,54,.58) !important;
+    background:#f8fbff !important;
+    color:#0f1d38 !important;
+}
+
+.controls-card .search-results{
+    border-color:rgba(201,155,54,.42) !important;
+    background:rgba(9,21,39,.96) !important;
+}
+
+/* Final explicit lock for requested labels */
+.resources-page .resources-hero .hero-kicker,
+.resources-page .resources-hero .hero-title,
+.resources-page .controls-card .info-kicker,
+.resources-page .controls-card .info-title,
+.resources-page .controls-card .control-label,
+.resources-page #emptyState .empty-chip,
+.resources-page #emptyState .empty-title {
+    color:#b4891f !important;
 }
 
 @@media (max-width: 991.98px){
     .policy-layout,
-    .resource-grid {
-        grid-template-columns: 1fr;
-    }
+    .resource-grid{ grid-template-columns:1fr; }
 
-    .topic-grid{
-        grid-template-columns: 1fr;
-    }
+    .policy-form-grid{ grid-template-columns:1fr; }
+    .topic-grid{ grid-template-columns:1fr; }
 }
 
 @@media (max-width: 767.98px){
     .policy-item,
-    .preview-head{
-        flex-direction:column;
-    }
+    .preview-head{ flex-direction:column; }
 
     .policy-actions,
     .preview-actions,
-    .upload-actions{
-        width:100%;
-        justify-content:stretch;
-    }
+    .upload-actions{ width:100%; justify-content:stretch; }
 
     .policy-action-link,
     .policy-delete-button,
     .upload-submit,
-    .preview-open{
-        width:100%;
-        text-align:center;
-        display:block;
-    }
+    .preview-open{ width:100%; text-align:center; display:block; }
 }
 </style>
 
@@ -667,6 +939,12 @@ document.addEventListener("DOMContentLoaded", function () {
     const uploadState = document.getElementById("policyUploadState");
     const uploadForm = document.getElementById("policyUploadForm");
     const uploadButton = document.getElementById("policyUploadButton");
+    const policyTypeSelect = document.getElementById("policyTypeSelect");
+    const policyDisplayName = document.getElementById("policyDisplayName");
+    const policyTypeLanes = Array.from(document.querySelectorAll("[data-pick-policy-type]"));
+    const policyItems = Array.from(document.querySelectorAll(".policy-item"));
+    const policyYearGroups = Array.from(document.querySelectorAll(".policy-year-group"));
+    const policyNoMatch = document.getElementById("policyNoMatch");
     const container = document.getElementById("resourceContainer");
     const emptyState = document.getElementById("emptyState");
     const title = document.getElementById("resourceTitle");
@@ -675,7 +953,59 @@ document.addEventListener("DOMContentLoaded", function () {
     const downloadLink = document.getElementById("resourceDownload");
     const content = document.getElementById("resourceContent");
     const policyTriggers = document.querySelectorAll(".policy-preview-trigger");
+    const policyInlineViews = document.querySelectorAll(".policy-inline-view");
     const allowedTypes = [".pdf", ".png", ".jpg", ".jpeg"];
+    let autoNameSeed = policyTypeSelect ? (policyTypeSelect.value || "") : "";
+
+    function scrollPreviewIntoView() {
+        if (!container || container.style.display === "none") return;
+        window.requestAnimationFrame(() => {
+            container.scrollIntoView({ behavior: "smooth", block: "start" });
+        });
+    }
+
+    function setActivePolicyLane(type) {
+        policyTypeLanes.forEach(lane => lane.classList.toggle("active", lane.getAttribute("data-pick-policy-type") === type));
+    }
+
+    function applyPolicyTypeFilter(type) {
+        if (!policyItems.length) return;
+
+        let visibleItems = 0;
+        policyYearGroups.forEach(group => {
+            const items = Array.from(group.querySelectorAll(".policy-item"));
+            let yearVisible = 0;
+
+            items.forEach(item => {
+                const match = !type || item.getAttribute("data-policy-type") === type;
+                item.hidden = !match;
+                if (match) {
+                    yearVisible++;
+                    visibleItems++;
+                }
+            });
+
+            const countEl = group.querySelector("summary small");
+            if (countEl) {
+                countEl.textContent = `${yearVisible} file${yearVisible === 1 ? "" : "s"}`;
+            }
+            group.hidden = yearVisible === 0;
+        });
+
+        if (policyNoMatch) {
+            policyNoMatch.hidden = visibleItems > 0;
+        }
+    }
+
+    function applyDefaultDisplayNameFromPolicyType() {
+        if (!policyTypeSelect || !policyDisplayName) return;
+        const current = (policyDisplayName.value || "").trim();
+        const next = (policyTypeSelect.value || "").trim();
+        if (!current || current === autoNameSeed) {
+            policyDisplayName.value = next;
+        }
+        autoNameSeed = next;
+    }
 
     function extTag(ext) {
         if (!ext) return "FILE";
@@ -712,6 +1042,7 @@ document.addEventListener("DOMContentLoaded", function () {
         }
 
         content.innerHTML = body;
+        scrollPreviewIntoView();
     }
 
     function renderResource(resource) {
@@ -823,6 +1154,42 @@ document.addEventListener("DOMContentLoaded", function () {
         });
     });
 
+    policyInlineViews.forEach(link => {
+        link.addEventListener("click", function (event) {
+            event.preventDefault();
+            renderEmbeddedDocument(
+                this.dataset.name,
+                this.dataset.extension,
+                this.dataset.previewUrl,
+                this.dataset.meta,
+                this.dataset.downloadUrl);
+        });
+    });
+
+    policyTypeLanes.forEach(btn => {
+        btn.addEventListener("click", () => {
+            const type = btn.getAttribute("data-pick-policy-type") || "";
+            if (policyTypeSelect) {
+                policyTypeSelect.value = type;
+                applyDefaultDisplayNameFromPolicyType();
+            }
+            setActivePolicyLane(type);
+            applyPolicyTypeFilter(type);
+        });
+    });
+
+    if (policyTypeSelect) {
+        policyTypeSelect.addEventListener("change", () => {
+            applyDefaultDisplayNameFromPolicyType();
+            setActivePolicyLane(policyTypeSelect.value);
+            applyPolicyTypeFilter(policyTypeSelect.value);
+        });
+
+        applyDefaultDisplayNameFromPolicyType();
+        setActivePolicyLane(policyTypeSelect.value);
+        applyPolicyTypeFilter(policyTypeSelect.value);
+    }
+
     if (dropzone && fileInput) {
         dropzone.addEventListener("click", () => fileInput.click());
         dropzone.addEventListener("keydown", (e) => {
@@ -848,7 +1215,10 @@ document.addEventListener("DOMContentLoaded", function () {
 
         dropzone.addEventListener("drop", (e) => {
             if (!e.dataTransfer || !e.dataTransfer.files) return;
-            fileInput.files = e.dataTransfer.files;
+            const dt = new DataTransfer();
+            const first = e.dataTransfer.files[0];
+            if (first) dt.items.add(first);
+            fileInput.files = dt.files;
             renderSelectedFiles(fileInput.files);
         });
 
@@ -859,7 +1229,7 @@ document.addEventListener("DOMContentLoaded", function () {
         uploadForm.addEventListener("submit", (e) => {
             if (!fileInput || !fileInput.files || fileInput.files.length === 0) {
                 e.preventDefault();
-                uploadState.textContent = "Choose at least one file before uploading.";
+                uploadState.textContent = "Choose one file before uploading.";
                 dropzone.classList.add("is-error");
                 return;
             }

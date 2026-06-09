@@ -1,13 +1,20 @@
-using System.Security.Claims;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.SignalR;
+using Shared.Auth;
 
 namespace AgentPortal.Hubs;
 
 [Authorize]
 public class LiveSyncHub : Hub
 {
-    private string? UserId => Context.User?.FindFirstValue(ClaimTypes.NameIdentifier);
+    private string? UserId
+    {
+        get
+        {
+            var oid = Context.User?.GetStableUserId();
+            return string.IsNullOrWhiteSpace(oid) ? null : oid.Trim().ToLowerInvariant();
+        }
+    }
 
     public override async Task OnConnectedAsync()
     {

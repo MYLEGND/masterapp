@@ -58,19 +58,11 @@ namespace AgentPortal.Controllers;
 
     private async Task<bool> AgentOwnsClientAsync(string agentOid, string clientUserId)
     {
-        var clientUserIdNorm = Norm(clientUserId);
-        if (string.IsNullOrWhiteSpace(clientUserIdNorm)) return false;
-
-        var upn = GetAgentUpn();
-        var agentIds = GetAgentIdCandidates();
-
-        return await _db.AgentClients.AnyAsync(link =>
-            (link.ClientUserId ?? "").ToLower() == clientUserIdNorm &&
-            (
-                (link.AgentUserId ?? "").ToLower() == agentOid ||
-                agentIds.Contains((link.AgentUserId ?? "").ToLower()) ||
-                (!string.IsNullOrWhiteSpace(upn) && (link.AgentUpn ?? "").ToLower() == upn)
-            ));
+        return await _db.AgentOwnsClientAsync(
+            agentOid,
+            clientUserId,
+            GetAgentUpn(),
+            GetAgentIdCandidates());
     }
 
     private async Task<Domain.Entities.ClientProfile?> GetClientAsync(string clientUserId)
@@ -85,7 +77,17 @@ namespace AgentPortal.Controllers;
         private static string ResolveRecordType(Domain.Entities.ClientProfile client)
         {
             var meta = ClientCrmMetaSerializer.Deserialize(client.CrmNotes);
-            return ClientCrmMetaSerializer.NormalizeRecordType(meta.RecordType);
+            var explicitRecordType = ClientCrmMetaSerializer.NormalizeRecordType(meta.RecordType, defaultToLead: false);
+            if (!string.IsNullOrWhiteSpace(explicitRecordType))
+                return explicitRecordType;
+
+            var stage = ClientCrmMetaSerializer.NormalizePipelineStage(meta.PipelineStage);
+            if (string.Equals(stage, "BusinessClient", StringComparison.OrdinalIgnoreCase))
+                return "BusinessClient";
+
+            return Guid.TryParse((client.ClientUserId ?? string.Empty).Trim(), out _)
+                ? "Client"
+                : "Lead";
         }
 
         private string GetClientPortalBaseUrl()
@@ -152,52 +154,6 @@ namespace AgentPortal.Controllers;
         return await RedirectToClientPortalAsync(client, "/finance");
         }
 
-        [HttpGet]
-        public async Task<IActionResult> BookKeeping(string clientUserId, string? monthKey = null)
-        {
-            string agentOid;
-            try { agentOid = GetAgentOidOrThrow(); }
-            catch { return Challenge(); }
-
-        clientUserId = Norm(clientUserId);
-        if (string.IsNullOrWhiteSpace(clientUserId))
-            return RedirectToAction("Index", "Clients");
-
-        if (!await AgentOwnsClientAsync(agentOid, clientUserId))
-            return Forbid();
-
-        var client = await GetClientAsync(clientUserId);
-        if (client == null || !string.Equals(ResolveRecordType(client), "BusinessClient", StringComparison.OrdinalIgnoreCase))
-            return Forbid();
-
-        var path = "/BookKeeping";
-        if (!string.IsNullOrWhiteSpace(monthKey))
-            path += $"?monthKey={Uri.EscapeDataString(monthKey)}";
-
-        return await RedirectToClientPortalAsync(client, path);
-        }
-
-        [HttpGet]
-        public async Task<IActionResult> BookKeepingReports(string clientUserId)
-        {
-        string agentOid;
-        try { agentOid = GetAgentOidOrThrow(); }
-        catch { return Challenge(); }
-
-        clientUserId = Norm(clientUserId);
-        if (string.IsNullOrWhiteSpace(clientUserId))
-            return RedirectToAction("Index", "Clients");
-
-        if (!await AgentOwnsClientAsync(agentOid, clientUserId))
-            return Forbid();
-
-        var client = await GetClientAsync(clientUserId);
-        if (client == null || !string.Equals(ResolveRecordType(client), "BusinessClient", StringComparison.OrdinalIgnoreCase))
-            return Forbid();
-
-        return await RedirectToClientPortalAsync(client, "/BookKeeping/Reports");
-        }
-
     [HttpGet]
         public async Task<IActionResult> Profile(string clientUserId)
         {
@@ -233,7 +189,11 @@ namespace AgentPortal.Controllers;
         if (!await AgentOwnsClientAsync(agentOid, clientUserId))
             return Forbid();
 
-        return RedirectToAction("Index", "Resources", new { clientUserId });
+        var client = await GetClientAsync(clientUserId);
+        if (client == null)
+            return NotFound();
+
+        return await RedirectToClientPortalAsync(client, "/resources");
     }
 
     [HttpGet]

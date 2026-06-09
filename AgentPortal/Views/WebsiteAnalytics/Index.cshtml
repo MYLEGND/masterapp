@@ -1,196 +1,646 @@
 @{
     ViewData["Title"] = "Website Analytics";
-    var initialPreset = ViewData["InitialRangePreset"] as string ?? "30d";
-    var initialLabel = ViewData["InitialRangeLabel"] as string ?? "Last 30 Days";
+    var initialPreset = ViewData["InitialRangePreset"] as string ?? "today";
+    var initialLabel = ViewData["InitialRangeLabel"] as string ?? "Today";
+    var initialRangeFrom = ViewData["InitialRangeFrom"] as string ?? string.Empty;
+    var initialRangeTo = ViewData["InitialRangeTo"] as string ?? string.Empty;
     var initialSummaryJson = ViewData["InitialSummaryJson"] as string ?? "{}";
+    var initialScopeLabelRaw = ViewData["InitialScopeLabel"] as string ?? "Global";
+    var initialScopeLabel = initialScopeLabelRaw.StartsWith("Agent:", StringComparison.OrdinalIgnoreCase)
+        ? initialScopeLabelRaw.Substring("Agent:".Length).Trim()
+        : initialScopeLabelRaw;
     var personalLink = ViewData["PersonalLink"] as string;
     var personalLinkAlt = ViewData["PersonalLinkAlt"] as string;
     var callerProfileId = ViewData["CallerProfileId"] as Guid?;
     var agentOptionsJson = ViewData["AgentOptionsJson"] as string ?? "[]";
+    var canViewFounderTeamUi = (ViewData["CanViewFounderTeamUi"] as bool?) ?? false;
+    var canDeleteAnalyticsLeads = (ViewData["CanDeleteAnalyticsLeads"] as bool?) ?? false;
+    var initialScopeProfileId = ViewData["InitialScopeProfileId"] as Guid?;
     var isFounder = agentOptionsJson != "[]";
-    if (isFounder)
-    {
-        callerProfileId = null;
-    }
+    var landingRoutesJson = ViewData["LandingRoutesJson"] as string ?? "[]";
+    var landingRoutesBaseUrl = ViewData["LandingRoutesBaseUrl"] as string ?? string.Empty;
 }
 
 <link rel="stylesheet" href="~/css/website-analytics.css" asp-append-version="true" />
 
-<div class="container mt-4 mb-5 fa-shell" data-initial-preset="@initialPreset" data-initial-label="@initialLabel" data-initial-summary='@initialSummaryJson' data-caller-profile-id="@callerProfileId" data-agent-options='@agentOptionsJson' data-personal-link="@personalLink">
-    <div class="hero-link mb-4 p-4 p-md-5">
-        <div class="d-flex flex-column flex-md-row align-items-start align-items-md-center justify-content-between gap-3">
-            <div>
-                <h4 class="mb-1 fw-bold text-gold">Your Website Link</h4>
-                <div class="text-silver">This is your personal link. Share it to track your traffic and leads.</div>
+<div class="container mt-4 mb-5 fa-shell" data-initial-preset="@initialPreset" data-initial-label="@initialLabel" data-initial-from="@initialRangeFrom" data-initial-to="@initialRangeTo" data-initial-summary='@initialSummaryJson' data-initial-scope-label="@initialScopeLabel" data-initial-scope-profile-id="@initialScopeProfileId" data-caller-profile-id="@callerProfileId" data-agent-options='@agentOptionsJson' data-personal-link="@personalLink" data-can-delete-leads="@(canDeleteAnalyticsLeads ? "true" : "false")" data-landing-routes='@landingRoutesJson' data-landing-routes-base-url="@landingRoutesBaseUrl">
+<div id="wa-methodology-note" class="wa-methodology-note visually-hidden" aria-hidden="true">
+    Metrics are session-aware and filtered by selected range, scope, timezone, and traffic type where supported.
+</div>
+<button type="button" id="fa-copy-link" class="visually-hidden" aria-hidden="true" tabindex="-1">
+    Copy Analytics Link
+</button>
+
+
+    <div class="wa-command-surface mb-3">
+        <div class="hero-link p-4 p-md-5">
+            <div class="hero-link-top">
+                <div class="hero-link-intro">
+                    <div class="hero-link-kicker">Shared Command Area</div>
+                    <h3 class="hero-link-title">Marketing Links</h3>
+                    <div class="hero-link-subtitle text-silver">Open the website and jump into behavior review fast. Meta Ads controls now live inside Core Metrics for quicker access.</div>
+                </div>
             </div>
-            <div class="d-flex flex-column flex-md-row align-items-start align-items-md-center gap-2">
-                <div class="hero-link-url fw-semibold" id="growth-base-link">@personalLink</div>
-                <div class="btn-group btn-group-sm" role="group">
-                    <button class="btn btn-outline-light" id="growth-copy-base" data-link="@personalLink">Copy</button>
-                    <a class="btn btn-gold" id="growth-open-base" href="@personalLink" target="_blank" rel="noopener">Open</a>
+
+            <div class="hero-link-grid">
+                <div class="hero-link-panel hero-link-panel-website">
+                    <div class="hero-link-panel-head">
+                        <div>
+                            <div class="hero-link-label">Website Link</div>
+                            <div class="hero-link-panel-title">Primary site link</div>
+                        </div>
+                        <div class="hero-link-badge">Live Link</div>
+                    </div>
+                    <div class="hero-link-url fw-semibold" id="growth-base-link">@personalLink</div>
+                    <div class="hero-link-note">Open or copy the live site, then launch the paid landing registry to review control pages and active test variants in a wider workspace.</div>
+                    <div class="hero-link-meta-actions hero-link-actions-inline" role="group" aria-label="Website link actions">
+                        <a class="btn btn-gold" id="growth-open-base" href="@personalLink" target="_blank" rel="noopener">Open Website</a>
+                        <button class="btn btn-outline-light" id="growth-copy-base" data-link="@personalLink">Copy Link</button>
+                        <button type="button" class="btn btn-outline-light hero-link-meta-btn product-links-toggle" id="product-links-toggle" data-bs-toggle="modal" data-bs-target="#landingRoutesModal" aria-controls="landingRoutesModal">
+                            Explore Paid Landing Routes
+                        </button>
+                    </div>
+                </div>
+
+                <div class="hero-link-panel hero-link-panel-intel">
+                    <div class="hero-link-panel-head">
+                        <div>
+                            <div class="hero-link-label">Behavior Intelligence</div>
+                            <div class="hero-link-panel-title">Behavior + AI review</div>
+                        </div>
+                        <div class="hero-link-badge">AI Review</div>
+                    </div>
+                    <div class="text-silver hero-link-help">Launch behavior analysis fast or copy an AI review snapshot.</div>
+                    <div class="hero-link-meta-actions">
+                        <button type="button"
+                                class="btn btn-gold hero-link-meta-btn"
+                                data-bs-toggle="modal"
+                                data-bs-target="#behaviorModal">
+                            Open Behavior Intelligence
+                        </button>
+                        <button type="button"
+                                class="btn btn-outline-light hero-link-meta-btn"
+                                data-ai-drawer-trigger>
+                            Open AI Review
+                        </button>
+                        <button type="button"
+                                class="btn btn-outline-light hero-link-meta-btn"
+                                id="ai-review-snapshot-btn"
+                                data-bs-toggle="modal"
+                                data-bs-target="#aiReviewSnapshotModal">
+                            Copy Review Snapshot
+                        </button>
+                    </div>
+                </div>
+
+            </div>
+        </div>
+
+        <div class="wa-command-dashboard">
+            <div class="wa-page-header">
+                <div class="wa-header-copy">
+                    <div class="wa-header-kicker">Legend&#8482; &middot; Performance Intelligence</div>
+                    <h2 class="wa-header-title">Website Analytics</h2>
+                    <p class="wa-header-sub">Your performance overview &middot; <strong><span id="fa-range-label">@initialLabel</span></strong></p>
+                </div>
+                <div class="wa-header-right">
+                    <div class="wa-header-rail-main">
+                        <div class="wa-header-stack">
+                            <span class="wa-header-stack-label">Viewing</span>
+                            <div class="wa-tz-chip wa-scope-chip wa-scope-chip-static">
+                                <span class="wa-scope-chip-value" id="wa-scope-label">@initialScopeLabel</span>
+                            </div>
+                        </div>
+                        @if (canViewFounderTeamUi)
+                        {
+                        <div class="wa-scope-picker wa-header-stack" aria-label="Analytics scope selector">
+                            <div class="wa-scope-picker-head">
+                                <label class="wa-scope-picker-label" for="wa-scope-select">Scope</label>
+                            </div>
+                            <div class="wa-scope-select-shell">
+                                <select id="wa-scope-select" class="form-select form-select-sm scope-select">
+                                    <option value="">Global</option>
+                                    @if (callerProfileId.HasValue)
+                                    {
+                                    <option value="@callerProfileId.Value">Founder Personal</option>
+                                    }
+                                </select>
+                            </div>
+                        </div>
+                        }
+                    </div>
+                    <div class="wa-header-rail-meta">
+                        <div class="wa-tz-chip" id="wa-tz-label"><span class="wa-tz-chip-icon">🕐</span><span id="wa-tz-text"></span></div>
+                        <div class="fa-env-badge" id="fa-env-label"></div>
+                        @if(canViewFounderTeamUi)
+                        {
+                        <button class="btn btn-sm wa-team-btn" id="team-rollup-btn" type="button" data-bs-toggle="modal" data-bs-target="#teamRollupModal">
+                            Team Performance
+                        </button>
+                        }
+                    </div>
+                </div>
+            </div>
+
+            <div class="control-bar">
+                <div class="control-bar-group control-bar-presets">
+                    <div class="control-bar-label">Quick Range</div>
+                    <div class="btn-group btn-group-sm flex-shrink-0" role="group" aria-label="Quick range presets">
+                        <button class="btn btn-range @(initialPreset=="today"?"active":"")" data-range="today">Today</button>
+                        <button class="btn btn-range @(initialPreset=="7d"?"active":"")" data-range="7d">7 Days</button>
+                        <button class="btn btn-range @(initialPreset=="30d"?"active":"")" data-range="30d">30 Days</button>
+                        <button class="btn btn-range @(initialPreset=="month"?"active":"")" data-range="month">Month</button>
+                        <button class="btn btn-range @(initialPreset=="year"?"active":"")" data-range="year">Year</button>
+                    </div>
+                </div>
+                <div class="control-bar-group control-bar-custom">
+                    <div class="control-bar-label">Custom Window</div>
+                    <div class="date-group d-flex align-items-center gap-2 flex-fill">
+                        <input type="date" id="range-from" class="form-control form-control-sm flex-fill" value="@initialRangeFrom" />
+                        <input type="date" id="range-to" class="form-control form-control-sm flex-fill" value="@initialRangeTo" />
+                        <button class="btn btn-sm btn-range flex-shrink-0" id="apply-custom-range">Apply Range</button>
+                    </div>
+                </div>
+                <div class="control-bar-group control-bar-status">
+                    <div class="control-bar-label">Status</div>
+                    <div id="fa-range-error" class="control-bar-status-text"></div>
                 </div>
             </div>
         </div>
     </div>
 
-    <div class="mb-3">
-            <div class="d-flex flex-wrap align-items-center justify-content-between gap-2">
+    <form id="meta-disconnect-form" method="post" class="d-none">
+      @Html.AntiForgeryToken()
+    </form>
+
+    <div class="modal fade fa-modal" id="landingRoutesModal" tabindex="-1" aria-hidden="true">
+      <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable wa-modal-dialog landing-routes-dialog">
+        <div class="modal-content wa-modal-shell landing-routes-shell">
+          <div class="modal-header wa-modal-header">
+            <div class="wa-modal-header-main">
+              <div class="wa-modal-header-copy">
+                <div class="wa-modal-kicker">Launch Registry</div>
+                <h5 class="modal-title mb-0">Paid Landing Routes + Test Variants</h5>
+                <div class="wa-modal-subtitle">View every discovered control page and active test variant in one wide workspace. Horizontal and vertical scrolling remain available whenever the registry grows.</div>
+              </div>
+              <div class="wa-modal-header-actions">
+                <div class="wa-modal-range-chip">
+                  <span class="wa-modal-range-label">Registry Base URL</span>
+                  <span class="wa-modal-range-value" id="landing-routes-base-url">@landingRoutesBaseUrl</span>
+                </div>
+                <div class="wa-modal-note-chip">Suggested Meta destination URLs included</div>
+              </div>
+            </div>
+            <button type="button" class="btn-close btn-close-white wa-modal-close" data-bs-dismiss="modal" aria-label="Close"></button>
+          </div>
+          <div class="modal-body wa-modal-body landing-routes-body">
+            <div class="wa-modal-note">Compare the listed effective page keys in Page Performance using Ads Only traffic.</div>
+            <section class="wa-modal-section landing-routes-section">
+              <div class="product-links-header">Discovered Paid Landing Routes + Test Variants</div>
+              <div class="product-links-subtitle">Landing URLs below are discovered automatically from the landing registry and use the active website scope link, including agent-specific <code>/a/[agent]</code> paths when applicable.</div>
+              <div id="product-links-list"></div>
+            </section>
+          </div>
+          <div class="modal-footer wa-modal-footer landing-routes-footer">
+            <div class="landing-routes-selected">
+              <label class="landing-routes-selected-label" for="product-link-display">Selected landing URL</label>
+              <input type="text" readonly id="product-link-display" class="product-link-display form-control form-control-sm" placeholder="Selected landing URL" aria-label="Selected landing link" />
+            </div>
+            <button type="button" class="btn btn-outline-light" data-bs-dismiss="modal">Close</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <section class="wa-command-surface wa-kpi-command-surface mb-3" aria-labelledby="wa-kpi-title">
+        <div class="wa-kpi-stage-intro">
             <div>
-                <h2 class="mb-0 fw-bold" style="color: var(--legend-gold);">Website Analytics</h2>
-                <div class="section-subtext">Your performance overview · <span id="fa-range-label">@initialLabel</span></div>
-            </div>
-            <div class="fa-env-badge" id="fa-env-label"></div>
-            @if(isFounder)
-            {
-            <div class="ms-auto">
-                <button class="btn btn-sm" id="team-rollup-btn" type="button" data-bs-toggle="modal" data-bs-target="#teamRollupModal"
-                        style="background: linear-gradient(180deg, #c79931, #a68023); color:#0b0b0b; border:1px solid #c0c7d1; font-weight:800; box-shadow:0 10px 24px rgba(0,0,0,.25);">
-                    Team Performance
-                </button>
-            </div>
-            }
-        </div>
-    </div>
+                <div class="wa-kpi-stage-kicker">Performance Command Deck</div>
+                <h3 class="wa-kpi-stage-title" id="wa-kpi-title">Core Metrics</h3>
 
-    <div class="control-bar d-flex flex-nowrap align-items-center gap-3 mb-3">
-        <div class="btn-group btn-group-sm flex-shrink-0" role="group">
-            <button class="btn btn-range @(initialPreset=="today"?"active":"")" data-range="today">Today</button>
-            <button class="btn btn-range @(initialPreset=="7d"?"active":"")" data-range="7d">7 Days</button>
-            <button class="btn btn-range @(initialPreset=="30d"?"active":"")" data-range="30d">30 Days</button>
-            <button class="btn btn-range @(initialPreset=="month"?"active":"")" data-range="month">Month</button>
-            <button class="btn btn-range @(initialPreset=="year"?"active":"")" data-range="year">Year</button>
-        </div>
-        <div class="date-group d-flex align-items-center gap-2 flex-fill">
-            <input type="date" id="range-from" class="form-control form-control-sm flex-fill" />
-            <input type="date" id="range-to" class="form-control form-control-sm flex-fill" />
-            <button class="btn btn-sm btn-range flex-shrink-0" id="apply-custom-range">Custom</button>
-        </div>
-        <div id="fa-range-error" class="text-danger small"></div>
-    </div>
+                <p class="wa-kpi-stage-sub">Your fastest read on traffic, conversion, and what deserves a closer look next.</p>
+            </div>
+            <div class="wa-kpi-stage-meta" aria-label="Meta Ads command access">
+            <div class="wa-quality-filter">
+              <label for="traffic-quality-mode" class="wa-quality-label">Traffic Quality</label>
+              <select id="traffic-quality-mode" class="wa-quality-select">
+                <option value="real_human" selected>Real Human Traffic</option>
+                <option value="likely_human">Likely Human</option>
+                <option value="review">Review Needed</option>
+                <option value="suspicious">Suspicious Activity</option>
+                <option value="likely_bot">Likely Bots / Automation</option>
+                <option value="internal">Internal / QA</option>
+                <option value="all">All Traffic</option>
+              </select>
+            </div>
 
-    <div class="row row-cols-1 row-cols-md-4 row-cols-lg-8 g-3 fa-kpi-grid">
-        <div class="col">
-            <div class="kpi-card">
-                <div class="fa-kpi-title">Page Views</div>
-                <div class="fa-kpi-value" id="kpi-pageviews">0</div>
-                <div class="fa-kpi-delta" id="kpi-pv-delta"></div>
-                <div class="fa-spark" id="kpi-pv-spark"></div>
+                <div class="wa-kpi-meta-dock">
+                    <div class="wa-kpi-meta-copy">
+                        <div class="wa-kpi-meta-kicker">Meta Ads</div>
+                        <div class="wa-kpi-meta-status" id="meta-connection-status">Checking connection…</div>
+                    </div>
+                    <div class="wa-kpi-meta-actions hero-link-meta-actions">
+                        <a class="btn btn-gold hero-link-meta-btn wa-kpi-meta-btn"
+                           href="https://adsmanager.facebook.com/adsmanager/manage/campaigns" id="openMetaAdsManagerLink"
+                           target="_blank"
+                           rel="noopener">
+                            Ads Manager
+                        </a>
+                        <button type="button"
+                                class="btn btn-outline-light hero-link-meta-btn wa-kpi-meta-btn"
+                                id="meta-campaigns-open"
+                                data-bs-toggle="modal"
+                                data-bs-target="#metaCampaignsModal">
+                            Campaigns
+                        </button>
+                        <a class="btn btn-outline-light hero-link-meta-btn wa-kpi-meta-btn"
+                           id="meta-connect-btn"
+                           href="/WebsiteAnalytics/meta-connect?returnUrl=/WebsiteAnalytics/Index">
+                            Connect Meta Ads
+                        </a>
+                        <button type="button"
+                                class="btn btn-outline-light hero-link-meta-btn wa-kpi-meta-btn"
+                                id="meta-disconnect-btn"
+                                style="display:none;">
+                            Disconnect
+                        </button>
+                    </div>
+                </div>
             </div>
         </div>
-        <div class="col">
-            <div class="kpi-card">
-                <div class="fa-kpi-title">Unique Visitors</div>
-                <div class="fa-kpi-value" id="kpi-visitors">0</div>
-                <div class="fa-kpi-delta" id="kpi-vis-delta"></div>
-                <div class="fa-spark" id="kpi-vis-spark"></div>
-            </div>
-        </div>
-        <div class="col">
-            <div class="kpi-card">
-                <div class="fa-kpi-title">Sessions</div>
-                <div class="fa-kpi-value" id="kpi-sessions">0</div>
-                <div class="fa-kpi-delta" id="kpi-ses-delta"></div>
-                <div class="fa-spark" id="kpi-ses-spark"></div>
-            </div>
-        </div>
-        <div class="col">
-            <div class="kpi-card">
-                <div class="fa-kpi-title">Verified Leads</div>
-                <div class="fa-kpi-value" id="kpi-leads">0</div>
-                <div class="fa-kpi-delta" id="kpi-leads-delta"></div>
-                <div class="fa-spark" id="kpi-leads-spark"></div>
-            </div>
-        </div>
-        <div class="col">
-            <div class="kpi-card">
-                <div class="fa-kpi-title">Intent Conversion</div>
-                <div class="fa-kpi-value" id="kpi-intent">—</div>
-                <div class="fa-kpi-sub" id="kpi-intent-sub">Verified Leads / Quote Starts</div>
-                <div class="fa-kpi-warning" id="kpi-intent-warning"></div>
-            </div>
-        </div>
-        <div class="col">
-            <div class="kpi-card">
-                <div class="fa-kpi-title">Session Conversion Rate</div>
-                <div class="fa-kpi-value" id="kpi-session">0%</div>
-                <div class="fa-kpi-sub">Verified Leads / Sessions</div>
-                <div class="fa-kpi-warning" id="kpi-session-warning"></div>
-            </div>
-        </div>
-        <div class="col">
-            <div class="kpi-card">
-                <div class="fa-kpi-title">Top Page</div>
-                <div class="fa-kpi-value" style="font-size:1.1rem;" id="kpi-top-page">—</div>
-                <div class="fa-kpi-sub">Most viewed</div>
-            </div>
-        </div>
-        <div class="col">
-            <div class="kpi-card">
-                <div class="fa-kpi-title">Top CTA</div>
-                <div class="fa-kpi-value" style="font-size:1.1rem;" id="kpi-top-cta">—</div>
-                <div class="fa-kpi-sub">Most clicked</div>
-            </div>
-        </div>
-    </div>
 
-    <!-- Modules -->
-    <div class="fa-modules row row-cols-1 row-cols-md-2 row-cols-lg-3 g-3">
-        <div class="col">
-            <div class="fa-module" id="mod-traffic">
-                <h5>Traffic Overview</h5>
-                <div class="fa-module-meta" id="mod-traffic-meta">Views, sessions, visitors · click to drill in</div>
-                <div class="fa-trend-bar"></div>
+        <div class="wa-kpi-band wa-kpi-band-primary">
+            <div class="wa-kpi-band-head">
+                <div class="wa-kpi-band-label">Traffic Pulse</div>
+                <div class="wa-kpi-band-copy">High-signal top-line readouts</div>
+            </div>
+            <div class="fa-kpi-grid fa-kpi-grid-primary">
+                <div>
+                    <div class="kpi-card kpi-card-primary kpi-card-clickable" data-kpi-card data-metric="pageviews" role="button" tabindex="0" aria-label="Page Views — click to view detail" title="Click to view Page Views detail">
+                        <div class="fa-kpi-title">Page Views <span class="kpi-card-drill-hint">↗</span></div>
+                        <div class="fa-kpi-value" id="kpi-pageviews">0</div>
+                        <div class="fa-kpi-delta" id="kpi-pv-delta"></div>
+                        <div class="fa-spark" id="kpi-pv-spark"></div>
+                    </div>
+                </div>
+                <div>
+                    <div class="kpi-card kpi-card-primary kpi-card-clickable" data-kpi-card data-metric="visitors" role="button" tabindex="0" aria-label="Unique Visitors — click to view detail" title="Click to view Unique Visitors detail">
+                        <div class="fa-kpi-title">Unique Visitors <span class="kpi-card-drill-hint">↗</span></div>
+                        <div class="fa-kpi-value" id="kpi-visitors">0</div>
+                        <div class="fa-kpi-delta" id="kpi-vis-delta"></div>
+                        <div class="fa-spark" id="kpi-vis-spark"></div>
+                    </div>
+                </div>
+                <div>
+                    <div class="kpi-card kpi-card-primary kpi-card-clickable" data-kpi-card data-metric="sessions" role="button" tabindex="0" aria-label="Sessions — click to view detail" title="Click to view Sessions detail">
+                        <div class="fa-kpi-title">Sessions <span class="kpi-card-drill-hint">↗</span></div>
+                        <div class="fa-kpi-value" id="kpi-sessions">0</div>
+                        <div class="fa-kpi-delta" id="kpi-ses-delta"></div>
+                        <div class="fa-spark" id="kpi-ses-spark"></div>
+                    </div>
+                </div>
+                <div>
+                    <div class="kpi-card kpi-card-primary kpi-card-clickable" data-kpi-card data-metric="leads" role="button" tabindex="0" aria-label="Leads — click to view detail" title="Click to view Leads detail">
+                        <div class="fa-kpi-title">Leads <span class="kpi-card-drill-hint">↗</span></div>
+                        <div class="fa-kpi-value" id="kpi-leads">0</div>
+                        <div class="fa-kpi-delta" id="kpi-leads-delta"></div>
+                        <div class="fa-spark" id="kpi-leads-spark"></div>
+                    </div>
+                </div>
             </div>
         </div>
-        <div class="col">
-            <div class="fa-module" id="mod-page">
-                <h5>Page Performance</h5>
-                <div class="fa-module-meta" id="mod-page-meta">Top pages and conversions</div>
-                <div class="fa-trend-bar"></div>
+
+        <div class="wa-kpi-band wa-kpi-band-secondary">
+            <div class="wa-kpi-band-head">
+                <div class="wa-kpi-band-label">Conversion + Context</div>
+                <div class="wa-kpi-band-copy">Supporting reads for quality and intent</div>
+            </div>
+            <div class="fa-kpi-grid fa-kpi-grid-secondary">
+                <div>
+                    <div class="kpi-card kpi-card-secondary kpi-card-conversion">
+                        <div class="fa-kpi-title">Intent Conversion</div>
+                        <div class="fa-kpi-value" id="kpi-intent">—</div>
+                        <div class="fa-kpi-sub" id="kpi-intent-sub">Quote Submits / Quote Starts</div>
+                        <div class="fa-kpi-warning" id="kpi-intent-warning"></div>
+                    </div>
+                </div>
+                <div>
+                    <div class="kpi-card kpi-card-secondary kpi-card-conversion">
+                        <div class="fa-kpi-title">Session Conversion Rate</div>
+                        <div class="fa-kpi-value" id="kpi-session">0%</div>
+                        <div class="fa-kpi-sub">Converted Sessions / Sessions</div>
+                        <div class="fa-kpi-warning" id="kpi-session-warning"></div>
+                    </div>
+                </div>
+                <div>
+                    <div class="kpi-card kpi-card-secondary kpi-card-context">
+                        <div class="fa-kpi-title">Top Page</div>
+                        <div class="fa-kpi-value" style="font-size:1.1rem;" id="kpi-top-page">—</div>
+                        <div class="fa-kpi-sub">Most viewed</div>
+                    </div>
+                </div>
+                <div>
+                    <div class="kpi-card kpi-card-secondary kpi-card-context">
+                        <div class="fa-kpi-title">Top CTA</div>
+                        <div class="fa-kpi-value" style="font-size:1.1rem;" id="kpi-top-cta">—</div>
+                        <div class="fa-kpi-sub">Most clicked</div>
+                    </div>
+                </div>
             </div>
         </div>
-        <div class="col">
-            <div class="fa-module" id="mod-cta">
-                <h5>CTA Performance</h5>
-                <div class="fa-module-meta" id="mod-cta-meta">Clicks by CTA</div>
-                <div class="fa-trend-bar"></div>
+
+    </section>
+
+    <section class="wa-command-surface wa-workbench-surface mb-4" aria-labelledby="wa-workbench-title">
+        <div class="wa-workbench-intro">
+            <div>
+                <div class="wa-workbench-kicker">Action Workbench</div>
+                <h3 class="wa-workbench-title" id="wa-workbench-title">Analysis Modules</h3>
+                <p class="wa-workbench-sub">Open the right intelligence layer fast, from top-priority diagnostics to supporting drill-ins.</p>
+            </div>
+            <div class="wa-workbench-actions">
+                <button type="button" class="btn btn-sm fa-export-btn wa-workbench-copy-btn" id="copy-all-analysis-modules">Copy All Modules</button>
+                <div class="wa-workbench-chip">Open any module to launch its deep dive</div>
             </div>
         </div>
-        <div class="col">
-            <div class="fa-module" id="mod-quote">
-                <h5>Quote Funnel</h5>
-                <div class="fa-module-meta" id="mod-quote-meta">Starts → form starts → submits</div>
-                <div class="fa-trend-bar"></div>
+
+        <div class="wa-module-band wa-module-band-primary">
+            <div class="wa-module-band-head">
+                <div class="wa-module-band-label">Priority Modules</div>
+                <div class="wa-module-band-copy">Core diagnosis and conversion reads</div>
+            </div>
+
+            <div class="fa-modules fa-modules-priority">
+                <div class="fa-module fa-module-feature fa-module-signal" id="mod-meta-signal" role="button" tabindex="0" aria-label="Open Meta Signal Intelligence">
+                    <div class="fa-module-head">
+                        <div>
+                            <h5>Meta Signal Intelligence</h5>
+                        </div>
+                    </div>
+                    <div class="fa-module-meta" id="mod-meta-signal-meta">High-intent tiers, abandon points, and optimization readiness</div>
+                    <div class="fa-trend-bar"></div>
+                </div>
+
+                <div class="fa-module fa-module-feature fa-module-behavior" id="mod-behavior" role="button" tabindex="0" aria-label="Open Behavior Intelligence">
+                    <div class="fa-module-head">
+                        <div>
+                            <h5>Behavior Intelligence</h5>
+                        </div>
+                    </div>
+                    <div class="fa-module-meta" id="mod-behavior-meta">Dwell time, exits, journey &amp; source attribution</div>
+                    <div class="fa-trend-bar"></div>
+                </div>
+
+                <div class="fa-module fa-module-feature fa-module-quote" id="mod-quote" role="button" tabindex="0" aria-label="Open Quote Funnel">
+                    <div class="fa-module-head">
+                        <div>
+                            <h5>Quote Funnel</h5>
+                        </div>
+                    </div>
+                    <div class="fa-module-meta" id="mod-quote-meta">Starts → form starts → submits</div>
+                    <div class="fa-trend-bar"></div>
+                </div>
+
+                <div class="fa-module fa-module-feature" id="mod-device-intelligence" role="button" tabindex="0" aria-label="Open Device Intelligence">
+                    <div class="fa-module-head">
+                        <div>
+                            <h5>Device Intelligence</h5>
+                        </div>
+                    </div>
+                    <div class="fa-module-meta" id="mod-device-intelligence-meta">Device, browser, OS, viewport, timezone, language, and conversion behavior.</div>
+                    <div class="fa-trend-bar"></div>
+                </div>
+
+                <div class="fa-module fa-module-feature fa-module-conv" id="mod-conv" role="button" tabindex="0" aria-label="Open Conversion Center">
+                    <div class="fa-module-head">
+                        <div>
+                            <h5>Conversion Center</h5>
+                        </div>
+                    </div>
+                    <div class="fa-module-meta" id="mod-conv-meta">Lead submits & successes</div>
+                    <div class="fa-trend-bar"></div>
+                </div>
             </div>
         </div>
-        <div class="col">
-            <div class="fa-module" id="mod-conv">
-                <h5>Conversion Center</h5>
-                <div class="fa-module-meta" id="mod-conv-meta">Lead submits & successes</div>
-                <div class="fa-trend-bar"></div>
+
+        <div class="wa-module-band wa-module-band-secondary">
+            <div class="wa-module-band-head">
+                <div class="wa-module-band-label">Supporting Drill-Ins</div>
+                <div class="wa-module-band-copy">Traffic, leads, destinations, and CTA reviews</div>
+            </div>
+
+            <div class="fa-modules fa-modules-support @(isFounder ? "fa-modules-support-founder" : string.Empty)">
+                <div class="fa-module fa-module-support" id="mod-traffic" role="button" tabindex="0" aria-label="Open Traffic Overview">
+                    <div class="fa-module-head">
+                        <div>
+                            <h5>Traffic Overview</h5>
+                        </div>
+                    </div>
+                    <div class="fa-module-meta" id="mod-traffic-meta">Views, sessions, visitors · click to drill in</div>
+                    <div class="fa-trend-bar"></div>
+                </div>
+
+                <div class="fa-module fa-module-support" id="mod-leads" role="button" tabindex="0" aria-label="Open Leads Snapshot">
+                    <div class="fa-module-head">
+                        <div>
+                            <h5>Leads Snapshot</h5>
+                        </div>
+                    </div>
+                    <div class="fa-module-meta" id="mod-leads-meta">Recent captured leads</div>
+                    <div class="fa-trend-bar"></div>
+                </div>
+
+                <div class="fa-module fa-module-support" id="mod-page" role="button" tabindex="0" aria-label="Open Page Performance">
+                    <div class="fa-module-head">
+                        <div>
+                            <h5>Page Performance</h5>
+                        </div>
+                    </div>
+                    <div class="fa-module-meta" id="mod-page-meta">Top pages and conversions</div>
+                    <div class="fa-trend-bar"></div>
+                </div>
+
+                <div class="fa-module fa-module-support" id="mod-cta" role="button" tabindex="0" aria-label="Open CTA Performance">
+                    <div class="fa-module-head">
+                        <div>
+                            <h5>CTA Performance</h5>
+                        </div>
+                    </div>
+                    <div class="fa-module-meta" id="mod-cta-meta">Clicks by CTA</div>
+                    <div class="fa-trend-bar"></div>
+                </div>
+
+                @if(isFounder)
+                {
+                <div class="fa-module fa-module-support fa-module-muted" id="mod-agentperf" role="button" tabindex="0" aria-label="Open Agent Performance">
+                    <div class="fa-module-head">
+                        <div>
+                            <h5>Agent Performance</h5>
+                        </div>
+                    </div>
+                    <div class="fa-module-meta" id="mod-agentperf-meta">Top performers · founder only</div>
+                    <div class="fa-trend-bar"></div>
+                </div>
+                }
             </div>
         </div>
-        <div class="col">
-            <div class="fa-module" id="mod-leads">
-                <h5>Leads Snapshot</h5>
-                <div class="fa-module-meta" id="mod-leads-meta">Recent captured leads</div>
-                <div class="fa-trend-bar"></div>
+    </section>
+
+    <section class="wa-command-surface wa-health-surface wa-kpi-band-health mb-4" aria-labelledby="marketing-health-title">
+        <div class="wa-health-hero">
+            <div class="wa-health-copy">
+                <div class="wa-health-kicker-row">
+                    <div class="wa-kpi-band-label" id="marketing-health-title">Marketing Health Center</div>
+                    <div class="wa-health-live-pill">Operator Diagnostic Surface</div>
+                </div>
+                <div class="wa-health-heading">Tracking integrity, attribution clarity, and lead-pipeline reliability</div>
+                <div class="wa-health-subcopy">A live production readout for browser telemetry, funnel continuity, lead capture handoff, and source confidence.</div>
+                <div class="wa-health-meta">
+                    <span class="wa-health-pill">Range <strong id="mh-range-label">—</strong></span>
+                    <span class="wa-health-pill">No Owner Failures <strong id="mh-no-owner">0</strong></span>
+                </div>
+                <div class="wa-health-focus-strip">
+                    <span class="wa-health-focus-pill">Browser Tracking</span>
+                    <span class="wa-health-focus-pill">Lead Handoff</span>
+                    <span class="wa-health-focus-pill">Attribution Confidence</span>
+                </div>
+            </div>
+            <div class="wa-health-summary">
+                <div class="wa-health-summary-card">
+                    <div class="wa-health-score-wrap">
+                        <div class="wa-health-score-label">Health Score</div>
+                        <div class="wa-health-score" id="mh-score">—</div>
+                    </div>
+                    <div class="wa-health-verdict" id="mh-verdict">Loading</div>
+                </div>
+                <div class="wa-health-summary-note">Any tracking or capture failures keep the system out of Healthy mode until they recover or are explained.</div>
             </div>
         </div>
-        @if(isFounder)
-        {
-        <div class="col">
-            <div class="fa-module" id="mod-agentperf">
-                <h5>Agent Performance</h5>
-                <div class="fa-module-meta" id="mod-agentperf-meta">Top performers · founder only</div>
-                <div class="fa-trend-bar"></div>
+        <div class="wa-health-grid">
+            <div class="kpi-card kpi-card-secondary wa-health-metric is-risk">
+                <div class="wa-health-metric-kicker">Tracking Integrity</div>
+                <div class="fa-kpi-title">Client Tracking Errors</div>
+                <div class="fa-kpi-value" id="mh-client-errors">0</div>
+                <div class="fa-kpi-sub">Browser diagnostic events in range</div>
+            </div>
+            <div class="kpi-card kpi-card-secondary wa-health-metric is-funnel">
+                <div class="wa-health-metric-kicker">Funnel Continuity</div>
+                <div class="fa-kpi-title">Inferred Starts</div>
+                <div class="fa-kpi-value" id="mh-inferred-starts">0</div>
+                <div class="fa-kpi-sub">Later funnel progress without explicit start</div>
+            </div>
+            <div class="kpi-card kpi-card-secondary wa-health-metric is-confirmed">
+                <div class="wa-health-metric-kicker">Server Confirmation</div>
+                <div class="fa-kpi-title">Lead Persisted</div>
+                <div class="fa-kpi-value" id="mh-lead-persisted">0</div>
+                <div class="fa-kpi-sub">Confirmed server-side lead persistence</div>
+            </div>
+            <div class="kpi-card kpi-card-secondary wa-health-metric is-success">
+                <div class="wa-health-metric-kicker">Handoff Success</div>
+                <div class="fa-kpi-title">Workstation Captured</div>
+                <div class="fa-kpi-value" id="mh-workstation-success">0</div>
+                <div class="fa-kpi-sub">Successful workstation lead handoff</div>
+            </div>
+            <div class="kpi-card kpi-card-secondary wa-health-metric is-alert">
+                <div class="wa-health-metric-kicker">Handoff Risk</div>
+                <div class="fa-kpi-title">Capture Failures</div>
+                <div class="fa-kpi-value" id="mh-workstation-failures">0</div>
+                <div class="fa-kpi-sub">Handoff failures that need attention</div>
+            </div>
+            <div class="kpi-card kpi-card-secondary wa-health-metric is-attribution">
+                <div class="wa-health-metric-kicker">Source Clarity</div>
+                <div class="fa-kpi-title">Unknown Attribution</div>
+                <div class="fa-kpi-value" id="mh-unknown-attribution">0</div>
+                <div class="fa-kpi-sub">Leads still missing a trustworthy source</div>
             </div>
         </div>
-        }
+        <div class="wa-health-lower">
+            <div class="wa-health-warnings">
+                <div class="wa-health-panel-head">
+                    <div>
+                        <div class="wa-health-panel-kicker">Operator Alerts</div>
+                        <div class="wa-health-warnings-title">Active Warnings</div>
+                    </div>
+                    <div class="wa-health-panel-badge">Live</div>
+                </div>
+                <ul id="mh-warning-list" class="wa-health-warning-list">
+                    <li>Loading current health checks…</li>
+                </ul>
+            </div>
+            <div class="wa-health-diagnostics">
+                <div class="wa-health-panel-head">
+                    <div>
+                        <div class="wa-health-panel-kicker">Tracking Diagnostics</div>
+                        <div class="wa-health-warnings-title">Recent Tracking Errors</div>
+                        <div class="wa-health-diagnostics-sub">Latest browser-side tracking failures with severity, recovery status, and a compact inspect view for full session, device, request, and lead context.</div>
+                    </div>
+                    <div class="wa-health-panel-badge">Latest Events</div>
+                </div>
+                <div class="table-responsive wa-health-diagnostics-table-wrap">
+                    <table class="table wa-health-diagnostics-table">
+                        <colgroup>
+                            <col class="wa-col-time" />
+                            <col class="wa-col-page" />
+                            <col class="wa-col-event" />
+                            <col class="wa-col-error" />
+                            <col class="wa-col-status" />
+                            <col class="wa-col-retry" />
+                            <col class="wa-col-recovered" />
+                            <col class="wa-col-action" />
+                        </colgroup>
+                        <thead>
+                            <tr>
+                                <th>Time</th>
+                                <th>Page</th>
+                                <th>Event</th>
+                                <th>Error</th>
+                                <th>Status</th>
+                                <th>Retry</th>
+                                <th>Recovered</th>
+                                <th>Action</th>
+                            </tr>
+                        </thead>
+                        <tbody id="mh-errors-body">
+                            <tr>
+                                <td colspan="8" class="fa-empty">Loading current tracking diagnostics…</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <div class="modal fade fa-modal" id="mhErrorDetailModal" tabindex="-1" aria-hidden="true">
+      <div class="modal-dialog modal-lg modal-dialog-centered modal-dialog-scrollable wa-modal-dialog">
+        <div class="modal-content wa-modal-shell">
+          <div class="modal-header wa-modal-header">
+            <div class="wa-modal-header-main">
+              <div class="wa-modal-header-copy">
+                <div class="wa-modal-kicker">Tracking Error Inspector</div>
+                <h5 class="modal-title mb-1" id="mh-error-detail-title">Tracking event</h5>
+                <div class="wa-modal-subtitle" id="mh-error-detail-subtitle">Review the exact browser identity, request target, raw failure, and any later lead tied to the same session.</div>
+              </div>
+              <div class="wa-modal-header-actions">
+                <div class="wa-modal-meta-strip wa-health-detail-meta" id="mh-error-detail-meta"></div>
+              </div>
+            </div>
+            <button type="button" class="btn-close btn-close-white wa-modal-close" data-bs-dismiss="modal" aria-label="Close"></button>
+          </div>
+          <div class="modal-body wa-modal-body">
+            <section class="wa-modal-section">
+              <div id="mh-error-detail-summary"></div>
+            </section>
+            <section class="wa-modal-section">
+              <div class="wa-health-detail-grid" id="mh-error-detail-grid"></div>
+            </section>
+          </div>
+        </div>
+      </div>
     </div>
 </div>
 
-@if (isFounder)
+@if (canViewFounderTeamUi)
 {
 <div class="modal fade" id="teamRollupModal" tabindex="-1" aria-hidden="true">
   <div class="modal-dialog modal-xl modal-dialog-centered modal-dialog-scrollable" style="max-width:1200px;">
@@ -207,7 +657,7 @@
           <div class="col-6 col-xl-2"><div class="kpi-card team-kpi"><div class="fa-kpi-title">Page Views</div><div class="fa-kpi-value" id="team-kpi-pageviews">0</div></div></div>
           <div class="col-6 col-xl-2"><div class="kpi-card team-kpi"><div class="fa-kpi-title">Unique Visitors</div><div class="fa-kpi-value" id="team-kpi-visitors">0</div></div></div>
           <div class="col-6 col-xl-2"><div class="kpi-card team-kpi"><div class="fa-kpi-title">Sessions</div><div class="fa-kpi-value" id="team-kpi-sessions">0</div></div></div>
-          <div class="col-6 col-xl-2"><div class="kpi-card team-kpi"><div class="fa-kpi-title">Verified Leads</div><div class="fa-kpi-value" id="team-kpi-leads">0</div></div></div>
+          <div class="col-6 col-xl-2"><div class="kpi-card team-kpi"><div class="fa-kpi-title">Leads</div><div class="fa-kpi-value" id="team-kpi-leads">0</div></div></div>
           <div class="col-6 col-xl-2"><div class="kpi-card team-kpi"><div class="fa-kpi-title">Session Conv</div><div class="fa-kpi-value" id="team-kpi-session">0%</div></div></div>
           <div class="col-6 col-xl-2"><div class="kpi-card team-kpi"><div class="fa-kpi-title">Intent Conv</div><div class="fa-kpi-value" id="team-kpi-intent">—</div></div></div>
           <div class="col-12 d-flex justify-content-end">
@@ -291,14 +741,593 @@
 </div>
 }
 <!-- Modals -->
-<div class="modal fade fa-modal" id="trafficModal" tabindex="-1" aria-hidden="true">
-  <div class="modal-dialog modal-xl modal-dialog-centered">
-    <div class="modal-content">
-      <div class="modal-header">
-        <h5 class="modal-title">Traffic Overview · <span id="traffic-range-label"></span></h5>
-        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+<div class="modal fade fa-modal" id="metaSignalModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable meta-signal-dialog">
+    <div class="modal-content meta-signal-shell">
+      <div class="modal-header meta-signal-header">
+        <div class="meta-signal-header-copy">
+          <div class="meta-signal-kicker">Intelligence Overview</div>
+          <h5 class="modal-title mb-0">Meta Signal Intelligence</h5>
+          <div class="meta-signal-subtitle">Paid Meta learning readiness, high-intent drop-off, campaign signal strength, and exclusion diagnostics.</div>
+        </div>
+        <div class="meta-signal-header-actions">
+          <div class="meta-signal-range-chip">
+            <span class="meta-signal-range-label">Range</span>
+            <span class="meta-signal-range-value" id="metasignal-range-label"></span>
+          </div>
+          <div class="meta-signal-traffic-controls">
+            <div class="btn-group btn-group-sm meta-signal-toggle-group" role="group" aria-label="Traffic Type">
+              <button type="button" class="btn btn-outline-light traffic-type-btn" data-type="all">All Traffic</button>
+              <button type="button" class="btn btn-outline-light traffic-type-btn active" data-type="paid">Ads Only</button>
+              <button type="button" class="btn btn-outline-light traffic-type-btn" data-type="non_paid">Non-Ads Only</button>
+            </div>
+            <span class="badge meta-signal-mode-badge" id="metasignal-active-mode">Viewing: Ads Only</span>
+            <button type="button" class="btn btn-sm fa-export-btn wa-modal-copy-btn meta-signal-copy-btn" data-copy-modal-view="metaSignalModal">Copy Form</button>
+          </div>
+        </div>
+        <button type="button" class="btn-close btn-close-white meta-signal-close" data-bs-dismiss="modal" aria-label="Close"></button>
       </div>
-      <div class="modal-body">
+      <div class="modal-body meta-signal-body">
+        <section class="meta-signal-section">
+          <div class="alert alert-warning small py-2 px-3 mb-0" id="metasignal-scope-note">
+            Meta Paid Signal Intelligence only evaluates paid Meta-attributed traffic. Non-paid/manual tests may appear in Quote Funnel and Conversion Center but are excluded from Meta learning readiness.
+          </div>
+        </section>
+
+        <section class="meta-signal-section meta-signal-filter-panel">
+          <div class="meta-signal-section-head">
+            <div>
+              <h6 class="mb-1">Refine View</h6>
+              <p class="mb-0">Filter the signal set before comparing intent quality, campaign strength, and drop-off behavior.</p>
+            </div>
+          </div>
+          <div class="meta-signal-filter-grid">
+            <div class="meta-signal-filter-field">
+              <label class="form-label" for="metasignal-quote-filter">Quote Type</label>
+              <div class="meta-signal-select-shell">
+                <select class="form-select form-select-sm meta-signal-filter-select" id="metasignal-quote-filter">
+                  <option value="">All Quote Types</option>
+                </select>
+              </div>
+            </div>
+            <div class="meta-signal-filter-field">
+              <label class="form-label" for="metasignal-campaign-filter">Campaign</label>
+              <div class="meta-signal-select-shell">
+                <select class="form-select form-select-sm meta-signal-filter-select" id="metasignal-campaign-filter">
+                  <option value="">All Campaigns</option>
+                </select>
+              </div>
+            </div>
+            <div class="meta-signal-filter-field">
+              <label class="form-label" for="metasignal-page-mode-filter">Page Mode</label>
+              <div class="meta-signal-select-shell">
+                <select class="form-select form-select-sm meta-signal-filter-select" id="metasignal-page-mode-filter">
+                  <option value="">All Page Modes</option>
+                </select>
+              </div>
+            </div>
+            <div class="meta-signal-filter-field">
+              <label class="form-label" for="metasignal-score-tier-filter">Score Tier</label>
+              <div class="meta-signal-select-shell">
+                <select class="form-select form-select-sm meta-signal-filter-select" id="metasignal-score-tier-filter">
+                  <option value="">All Score Tiers</option>
+                </select>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <section class="meta-signal-section meta-signal-metrics">
+          <div class="meta-signal-section-head">
+            <div>
+              <h6 class="mb-1">Signal Health</h6>
+              <p class="mb-0">A clean read on the funnel: volume first, then intent quality, then handoff and loss points.</p>
+            </div>
+          </div>
+          <div class="meta-signal-primary-grid">
+            <div class="meta-signal-stat-card is-primary">
+              <div class="meta-signal-stat-label">Signal Events</div>
+              <div class="meta-signal-stat-value" id="metasignal-total-events">0</div>
+              <div class="meta-signal-stat-note">All qualifying signal events in the current slice.</div>
+            </div>
+            <div class="meta-signal-stat-card is-primary">
+              <div class="meta-signal-stat-label">Signal Visitors</div>
+              <div class="meta-signal-stat-value" id="metasignal-total-visitors">0</div>
+              <div class="meta-signal-stat-note">Unique visitors producing signal activity.</div>
+            </div>
+            <div class="meta-signal-stat-card is-primary">
+              <div class="meta-signal-stat-label">High Intent</div>
+              <div class="meta-signal-stat-value" id="metasignal-high-intent">0</div>
+              <div class="meta-signal-stat-note">Visitors who reached recommendations or deeper.</div>
+            </div>
+            <div class="meta-signal-stat-card is-primary">
+              <div class="meta-signal-stat-label">Lead Ready</div>
+              <div class="meta-signal-stat-value" id="metasignal-lead-ready">0</div>
+              <div class="meta-signal-stat-note">Visitors who completed contact details or attempted submit.</div>
+            </div>
+          </div>
+          <div class="meta-signal-secondary-grid">
+            <div class="meta-signal-stat-card">
+              <div class="meta-signal-stat-label">Submitted Leads</div>
+              <div class="meta-signal-stat-value" id="metasignal-submitted">0</div>
+            </div>
+            <div class="meta-signal-stat-card">
+              <div class="meta-signal-stat-label">Submit Attempts w/o Lead</div>
+              <div class="meta-signal-stat-value" id="metasignal-submit-attempts-no-lead">0</div>
+            </div>
+            <div class="meta-signal-stat-card">
+              <div class="meta-signal-stat-label">Signal → Lead</div>
+              <div class="meta-signal-stat-value" id="metasignal-signal-conv">0%</div>
+            </div>
+            <div class="meta-signal-stat-card is-danger">
+              <div class="meta-signal-stat-label">High-Intent Abandons</div>
+              <div class="meta-signal-stat-value" id="metasignal-high-intent-abandons">0</div>
+            </div>
+            <div class="meta-signal-stat-card is-danger">
+              <div class="meta-signal-stat-label">Contact-Step Abandons</div>
+              <div class="meta-signal-stat-value" id="metasignal-contact-abandons">0</div>
+            </div>
+            <div class="meta-signal-stat-card">
+              <div class="meta-signal-stat-label">Excluded Signal Events</div>
+              <div class="meta-signal-stat-value" id="metasignal-excluded-events">0</div>
+            </div>
+            <div class="meta-signal-stat-card">
+              <div class="meta-signal-stat-label">Excluded Signal Visitors</div>
+              <div class="meta-signal-stat-value" id="metasignal-excluded-visitors">0</div>
+            </div>
+          </div>
+        </section>
+
+        <section class="meta-signal-section">
+          <div class="meta-signal-section-head">
+            <div>
+              <h6 class="mb-1">What To Act On</h6>
+              <p class="mb-0">Keep the summary recommendations visible so you can decide what to tune without digging through every table first.</p>
+            </div>
+          </div>
+          <div class="meta-signal-insight-grid">
+            <div class="meta-signal-insight-card">
+              <div class="meta-signal-insight-label">Optimize For</div>
+              <div class="meta-signal-insight-value" id="metasignal-optimize">—</div>
+            </div>
+            <div class="meta-signal-insight-card">
+              <div class="meta-signal-insight-label">Best Landing Version</div>
+              <div class="meta-signal-insight-value" id="metasignal-best-variant">—</div>
+            </div>
+            <div class="meta-signal-insight-card">
+              <div class="meta-signal-insight-label">Worst Friction Step</div>
+              <div class="meta-signal-insight-value" id="metasignal-worst-friction">—</div>
+            </div>
+          </div>
+        </section>
+
+        <section class="meta-signal-section">
+          <div class="meta-signal-section-head">
+            <div>
+              <h6 class="mb-1">Distribution</h6>
+              <p class="mb-0">Where the signal volume is coming from across quote types and campaigns.</p>
+            </div>
+          </div>
+          <div class="meta-signal-panel-grid meta-signal-panel-grid-two">
+            <article class="meta-signal-panel">
+              <div class="meta-signal-panel-head">
+                <div>
+                  <h6 class="mb-1">Signal Events by Quote Type</h6>
+                  <p class="mb-0">Compare event concentration by quote intent.</p>
+                </div>
+              </div>
+              <div class="table-responsive meta-signal-table-wrap">
+                <table class="table table-sm">
+                  <thead><tr><th>Quote Type</th><th class="text-end">Events</th></tr></thead>
+                  <tbody id="metasignal-quote-body"><tr><td colspan="2" class="fa-empty">Loading…</td></tr></tbody>
+                </table>
+              </div>
+            </article>
+            <article class="meta-signal-panel">
+              <div class="meta-signal-panel-head">
+                <div>
+                  <h6 class="mb-1">Signal Events by Campaign</h6>
+                  <p class="mb-0">Spot which campaigns are generating meaningful signal.</p>
+                </div>
+              </div>
+              <div class="table-responsive meta-signal-table-wrap">
+                <table class="table table-sm">
+                  <thead><tr><th>Campaign</th><th class="text-end">Events</th></tr></thead>
+                  <tbody id="metasignal-campaign-body"><tr><td colspan="2" class="fa-empty">Loading…</td></tr></tbody>
+                </table>
+              </div>
+            </article>
+          </div>
+        </section>
+
+        <section class="meta-signal-section">
+          <div class="meta-signal-section-head">
+            <div>
+              <h6 class="mb-1">Score Quality</h6>
+              <p class="mb-0">Read the quality mix first, then compare score averages across campaigns and landing variants.</p>
+            </div>
+          </div>
+          <div class="meta-signal-panel-grid meta-signal-panel-grid-three">
+            <article class="meta-signal-panel">
+              <div class="meta-signal-panel-head">
+                <div>
+                  <h6 class="mb-1">Visitors by Score Tier</h6>
+                  <p class="mb-0">The current quality distribution of signal visitors.</p>
+                </div>
+              </div>
+              <div class="table-responsive meta-signal-table-wrap">
+                <table class="table table-sm">
+                  <thead><tr><th>Tier</th><th class="text-end">Visitors</th></tr></thead>
+                  <tbody id="metasignal-tier-body"><tr><td colspan="2" class="fa-empty">Loading…</td></tr></tbody>
+                </table>
+              </div>
+            </article>
+            <article class="meta-signal-panel">
+              <div class="meta-signal-panel-head">
+                <div>
+                  <h6 class="mb-1">Average Score by Campaign</h6>
+                  <p class="mb-0">Signal strength by campaign.</p>
+                </div>
+              </div>
+              <div class="table-responsive meta-signal-table-wrap">
+                <table class="table table-sm">
+                  <thead><tr><th>Campaign</th><th class="text-end">Avg Score</th></tr></thead>
+                  <tbody id="metasignal-campaign-score-body"><tr><td colspan="2" class="fa-empty">Loading…</td></tr></tbody>
+                </table>
+              </div>
+            </article>
+            <article class="meta-signal-panel">
+              <div class="meta-signal-panel-head">
+                <div>
+                  <h6 class="mb-1">Average Score by Page Variant</h6>
+                  <p class="mb-0">Signal quality by landing page version.</p>
+                </div>
+              </div>
+              <div class="table-responsive meta-signal-table-wrap">
+                <table class="table table-sm">
+                  <thead><tr><th>Variant</th><th class="text-end">Avg Score</th></tr></thead>
+                  <tbody id="metasignal-pagevariant-score-body"><tr><td colspan="2" class="fa-empty">Loading…</td></tr></tbody>
+                </table>
+              </div>
+            </article>
+          </div>
+        </section>
+
+        <section class="meta-signal-section">
+          <div class="meta-signal-section-head">
+            <div>
+              <h6 class="mb-1">Friction &amp; Progression</h6>
+              <p class="mb-0">Use the ladder to find where users stall, then confirm the most repeated friction hotspots beside it.</p>
+            </div>
+          </div>
+          <div class="meta-signal-panel-grid meta-signal-panel-grid-focus">
+            <article class="meta-signal-panel meta-signal-panel-wide">
+              <div class="meta-signal-panel-head">
+                <div>
+                  <h6 class="mb-1">Event Ladder Drop-Off</h6>
+                  <p class="mb-0">Step-by-step progression through the signal journey.</p>
+                </div>
+              </div>
+              <div class="table-responsive meta-signal-table-wrap">
+                <table class="table table-sm">
+                  <thead><tr><th>Step</th><th class="text-end">Visitors</th><th class="text-end">Progression</th></tr></thead>
+                  <tbody id="metasignal-ladder-body"><tr><td colspan="3" class="fa-empty">Loading…</td></tr></tbody>
+                </table>
+              </div>
+            </article>
+            <article class="meta-signal-panel">
+              <div class="meta-signal-panel-head">
+                <div>
+                  <h6 class="mb-1">Friction Hotspots</h6>
+                  <p class="mb-0">The most repeated issues stopping forward motion.</p>
+                </div>
+              </div>
+              <div class="table-responsive meta-signal-table-wrap">
+                <table class="table table-sm">
+                  <thead><tr><th>Hotspot</th><th class="text-end">Count</th></tr></thead>
+                  <tbody id="metasignal-friction-body"><tr><td colspan="2" class="fa-empty">Loading…</td></tr></tbody>
+                </table>
+              </div>
+            </article>
+          </div>
+        </section>
+
+        <section class="meta-signal-section">
+          <div class="meta-signal-section-head">
+            <div>
+              <h6 class="mb-1">Recent Diagnostics</h6>
+              <p class="mb-0">Audit whether recent signal rows were paid Meta-attributed, excluded, and successfully mirrored to browser/server tracking.</p>
+            </div>
+          </div>
+          <div class="table-responsive meta-signal-table-wrap">
+            <table class="table table-sm">
+              <thead>
+                <tr>
+                  <th>When (Local)</th>
+                  <th>Event</th>
+                  <th>Traffic / Campaign</th>
+                  <th>Learning</th>
+                  <th>Reason</th>
+                  <th class="text-center">Browser Pixel</th>
+                  <th class="text-center">Server CAPI</th>
+                  <th class="text-center">Dedup ID</th>
+                </tr>
+              </thead>
+              <tbody id="metasignal-diagnostics-body"><tr><td colspan="8" class="fa-empty">Loading…</td></tr></tbody>
+            </table>
+          </div>
+        </section>
+      </div>
+      <div class="modal-footer meta-signal-footer">
+        <button type="button" class="btn btn-outline-light" data-bs-dismiss="modal">Close</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="modal fade fa-modal" id="behaviorModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-xl modal-dialog-centered modal-dialog-scrollable wa-modal-dialog">
+    <div class="modal-content wa-modal-shell">
+      <div class="modal-header wa-modal-header">
+        <div class="wa-modal-header-main">
+          <div class="wa-modal-header-copy">
+            <div class="wa-modal-kicker">Journey Read</div>
+            <h5 class="modal-title mb-0">Behavior Intelligence</h5>
+            <div class="wa-modal-subtitle">Read dwell time, exits, session depth, and source quality in one place before deciding where friction is actually happening.</div>
+          </div>
+          <div class="wa-modal-header-actions">
+            <div class="wa-modal-range-chip">
+              <span class="wa-modal-range-label">Range</span>
+              <span class="wa-modal-range-value" id="bhvr-range-label"></span>
+            </div>
+            <div class="wa-modal-note-chip">Methodology updated April 2026</div>
+            <button type="button" class="btn btn-sm fa-export-btn wa-modal-copy-btn" data-copy-modal-view="behaviorModal">Copy Form</button>
+          </div>
+        </div>
+        <button type="button" class="btn-close btn-close-white wa-modal-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body wa-modal-body">
+        <div class="wa-modal-note">Timing and exit metrics changed in April 2026, so older snapshots may not compare one-for-one with the current view.</div>
+        <section class="wa-modal-section wa-modal-tabs-section">
+
+        <!-- Tab Nav -->
+        <ul class="nav nav-tabs bhvr-tabs d-flex mb-0" id="bhvr-nav" role="tablist">
+          <li class="nav-item" role="presentation">
+            <button class="nav-link active" id="bhvr-tab-overview-btn" data-bs-toggle="tab" data-bs-target="#bhvr-tab-overview" type="button" role="tab">Overview</button>
+          </li>
+          <li class="nav-item" role="presentation">
+            <button class="nav-link" id="bhvr-tab-time-btn" data-bs-toggle="tab" data-bs-target="#bhvr-tab-time" type="button" role="tab">Time on Page</button>
+          </li>
+          <li class="nav-item" role="presentation">
+            <button class="nav-link" id="bhvr-tab-exit-btn" data-bs-toggle="tab" data-bs-target="#bhvr-tab-exit" type="button" role="tab">Exit Analysis</button>
+          </li>
+          <li class="nav-item" role="presentation">
+            <button class="nav-link" id="bhvr-tab-journey-btn" data-bs-toggle="tab" data-bs-target="#bhvr-tab-journey" type="button" role="tab">Journey</button>
+          </li>
+          <li class="nav-item" role="presentation">
+            <button class="nav-link" id="bhvr-tab-sources-btn" data-bs-toggle="tab" data-bs-target="#bhvr-tab-sources" type="button" role="tab">Sources</button>
+          </li>
+        </ul>
+
+        <div class="tab-content bhvr-tab-content">
+
+          <!-- ── OVERVIEW ─────────────────────────────────────────── -->
+          <div class="tab-pane fade show active" id="bhvr-tab-overview" role="tabpanel">
+            <div class="row row-cols-2 row-cols-md-3 row-cols-lg-6 g-2 mb-3">
+              <div class="col">
+                <div class="kpi-card">
+                  <div class="fa-kpi-title">Total Sessions</div>
+                  <div class="fa-kpi-value" id="bhvr-total-sessions">—</div>
+                </div>
+              </div>
+              <div class="col">
+                <div class="kpi-card">
+                  <div class="fa-kpi-title">Avg Session</div>
+                  <div class="fa-kpi-value" id="bhvr-avg-session">—</div>
+                </div>
+              </div>
+              <div class="col">
+                <div class="kpi-card">
+                  <div class="fa-kpi-title">Median Session</div>
+                  <div class="fa-kpi-value" id="bhvr-med-session">—</div>
+                </div>
+              </div>
+              <div class="col">
+                <div class="kpi-card">
+                  <div class="fa-kpi-title">Avg Time on Page</div>
+                  <div class="fa-kpi-value" id="bhvr-avg-page">—</div>
+                </div>
+              </div>
+              <div class="col">
+                <div class="kpi-card">
+                  <div class="fa-kpi-title">Quick Exit % (Final Page)</div>
+                  <div class="fa-kpi-value" id="bhvr-quick-exit">—</div>
+                </div>
+              </div>
+              <div class="col">
+                <div class="kpi-card">
+                  <div class="fa-kpi-title">Engaged Sessions (≥30s)</div>
+                  <div class="fa-kpi-value" id="bhvr-engaged-rate">—</div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Highlights -->
+            <div class="bhvr-highlights mb-3" id="bhvr-highlights" style="display:none;">
+              <span id="bhvr-highlight-exit"></span>
+              <span id="bhvr-highlight-dwell"></span>
+              <span id="bhvr-highlight-scroll"></span>
+            </div>
+            <div class="fa-muted small mb-3" id="bhvr-time-sample-note">Timing metrics use `page_exit` timing samples and may differ from raw page view totals.</div>
+
+            <div class="row g-3">
+              <div class="col-lg-6">
+                <div class="bhvr-section-label">Short-Visit Problem Pages</div>
+                <div class="table-responsive">
+                  <table class="table table-sm bhvr-table">
+                    <thead><tr><th>Page</th><th class="text-end">Views</th><th class="text-end">Timing Samples</th><th class="text-end">Avg Time</th><th class="text-end">Median</th></tr></thead>
+                    <tbody id="bhvr-short-body"><tr><td colspan="5" class="fa-empty">Loading…</td></tr></tbody>
+                  </table>
+                </div>
+              </div>
+              <div class="col-lg-6">
+                <div class="bhvr-section-label">Top Exit Pages</div>
+                <div class="table-responsive">
+                  <table class="table table-sm bhvr-table">
+                    <thead><tr><th>Page</th><th class="text-end">Views</th><th class="text-end">Exits</th><th class="text-end">Exit %</th></tr></thead>
+                    <tbody id="bhvr-exit-body-overview"><tr><td colspan="4" class="fa-empty">Loading…</td></tr></tbody>
+                  </table>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- ── TIME ON PAGE ───────────────────────────────────────── -->
+          <div class="tab-pane fade" id="bhvr-tab-time" role="tabpanel">
+            <div class="row g-3">
+              <div class="col-lg-6">
+                <div class="bhvr-section-label">Longest Avg Dwell</div>
+                <div class="table-responsive">
+                  <table class="table table-sm bhvr-table">
+                    <thead><tr><th>Page</th><th class="text-end">Views</th><th class="text-end">Timing Samples</th><th class="text-end">Avg Time</th><th class="text-end">Median</th></tr></thead>
+                    <tbody id="bhvr-long-avg-body"><tr><td colspan="5" class="fa-empty">Loading…</td></tr></tbody>
+                  </table>
+                </div>
+              </div>
+              <div class="col-lg-6">
+                <div class="bhvr-section-label">Short-Visit Problem Pages</div>
+                <div class="table-responsive">
+                  <table class="table table-sm bhvr-table">
+                    <thead><tr><th>Page</th><th class="text-end">Views</th><th class="text-end">Timing Samples</th><th class="text-end">Avg Time</th><th class="text-end">Median</th></tr></thead>
+                    <tbody id="bhvr-short-body-time"><tr><td colspan="5" class="fa-empty">Loading…</td></tr></tbody>
+                  </table>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- ── EXIT ANALYSIS ─────────────────────────────────────── -->
+          <div class="tab-pane fade" id="bhvr-tab-exit" role="tabpanel">
+            <div class="row g-3">
+              <div class="col-lg-6">
+                <div class="bhvr-section-label">Top Exit Pages</div>
+                <div class="table-responsive">
+                  <table class="table table-sm bhvr-table">
+                    <thead><tr><th>Page</th><th class="text-end">Views</th><th class="text-end">Exits</th><th class="text-end">Exit %</th></tr></thead>
+                    <tbody id="bhvr-exit-body"><tr><td colspan="4" class="fa-empty">Loading…</td></tr></tbody>
+                  </table>
+                </div>
+              </div>
+              <div class="col-lg-6">
+                <div class="bhvr-section-label">Quick Exit Pages</div>
+                <div class="table-responsive">
+                  <table class="table table-sm bhvr-table">
+                    <thead><tr><th>Page</th><th class="text-end">Quick Exits</th></tr></thead>
+                    <tbody id="bhvr-quick-exit-body"><tr><td colspan="2" class="fa-empty">Loading…</td></tr></tbody>
+                  </table>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- ── JOURNEY ────────────────────────────────────────────── -->
+          <div class="tab-pane fade" id="bhvr-tab-journey" role="tabpanel">
+            <div class="row g-3">
+              <div class="col-lg-4">
+                <div class="bhvr-section-label">Top Landing Pages</div>
+                <div class="table-responsive">
+                  <table class="table table-sm bhvr-table">
+                    <thead><tr><th>Page</th><th class="text-end">Sessions</th></tr></thead>
+                    <tbody id="bhvr-landing-body"><tr><td colspan="2" class="fa-empty">Loading…</td></tr></tbody>
+                  </table>
+                </div>
+              </div>
+              <div class="col-lg-4">
+                <div class="bhvr-section-label">Lead Conversion Pages</div>
+                <div class="table-responsive">
+                  <table class="table table-sm bhvr-table">
+                    <thead><tr><th>Page</th><th class="text-end">Leads</th></tr></thead>
+                    <tbody id="bhvr-prelead-body"><tr><td colspan="2" class="fa-empty">Loading…</td></tr></tbody>
+                  </table>
+                </div>
+              </div>
+              <div class="col-lg-4">
+                <div class="bhvr-section-label">Common Drop-Off Pages</div>
+                <div class="table-responsive">
+                  <table class="table table-sm bhvr-table">
+                    <thead><tr><th>Page</th><th class="text-end">Count</th></tr></thead>
+                    <tbody id="bhvr-dropoff-body"><tr><td colspan="2" class="fa-empty">Loading…</td></tr></tbody>
+                  </table>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- ── SOURCES ────────────────────────────────────────────── -->
+          <div class="tab-pane fade" id="bhvr-tab-sources" role="tabpanel">
+            <div class="bhvr-section-label">Source &amp; Attribution Performance</div>
+            <div class="table-responsive">
+              <table class="table table-sm bhvr-table">
+                <thead>
+                  <tr>
+                    <th>Source</th>
+                    <th>Medium</th>
+                    <th>Campaign</th>
+                    <th>Landing Page</th>
+                    <th class="text-end">Sessions</th>
+                    <th class="text-end">Engaged</th>
+                    <th class="text-end">Leads</th>
+                    <th class="text-end">Sess Conv</th>
+                    <th class="text-end">Avg Dwell</th>
+                    <th class="text-end">Dwell Samples</th>
+                  </tr>
+                </thead>
+                <tbody id="bhvr-source-body"><tr><td colspan="10" class="fa-empty">Loading…</td></tr></tbody>
+              </table>
+            </div>
+          </div>
+
+        </div><!-- /tab-content -->
+        </section>
+      </div>
+      <div class="modal-footer wa-modal-footer border-0 justify-content-between">
+        <button class="btn btn-sm fa-export-btn" id="export-behavior">Export Sources CSV</button>
+        <button type="button" class="btn btn-outline-light" data-bs-dismiss="modal">Close</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="modal fade fa-modal" id="trafficModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-xl modal-dialog-centered modal-dialog-scrollable wa-modal-dialog">
+    <div class="modal-content wa-modal-shell">
+      <div class="modal-header wa-modal-header">
+        <div class="wa-modal-header-main">
+          <div class="wa-modal-header-copy">
+            <div class="wa-modal-kicker">Reach</div>
+            <h5 class="modal-title mb-0">Traffic Overview</h5>
+            <div class="wa-modal-subtitle">See where sessions are entering, which sources are feeding them, and what recent activity is defining the current traffic mix.</div>
+          </div>
+          <div class="wa-modal-header-actions">
+            <div class="wa-modal-range-chip">
+              <span class="wa-modal-range-label">Range</span>
+              <span class="wa-modal-range-value" id="traffic-range-label"></span>
+            </div>
+            <div class="wa-modal-toolbar">
+              <div class="btn-group btn-group-sm wa-modal-toggle-group" role="group" aria-label="Traffic Type">
+                <button type="button" class="btn btn-outline-light traffic-type-btn active" data-type="all">All Traffic</button>
+                <button type="button" class="btn btn-outline-light traffic-type-btn" data-type="paid">Ads Only</button>
+                <button type="button" class="btn btn-outline-light traffic-type-btn" data-type="non_paid">Non-Ads Only</button>
+              </div>
+              <span class="badge wa-modal-mode-badge" id="traffic-active-mode">Viewing: All Traffic</span>
+              <button type="button" class="btn btn-sm fa-export-btn wa-modal-copy-btn" data-copy-modal-view="trafficModal">Copy Form</button>
+            </div>
+          </div>
+        </div>
+        <button type="button" class="btn-close btn-close-white wa-modal-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body wa-modal-body">
+        <section class="wa-modal-section">
         <div class="row g-3">
             <div class="col-lg-6">
                 <h6 class="text-warning">Top Pages</h6>
@@ -319,24 +1348,64 @@
             <div class="col-lg-6">
                 <h6 class="text-warning">Top Sources</h6>
                 <table class="table table-sm">
-                    <thead><tr><th>Source</th><th class="text-end">Events</th></tr></thead>
+                    <thead><tr><th>Source</th><th class="text-end">Sessions</th></tr></thead>
                     <tbody id="traffic-top-sources-body"></tbody>
                 </table>
             </div>
             <div class="col-lg-6">
                 <h6 class="text-warning">Top Campaigns</h6>
                 <table class="table table-sm">
-                    <thead><tr><th>Campaign</th><th class="text-end">Events</th></tr></thead>
+                    <thead><tr><th>Campaign</th><th class="text-end">Sessions</th></tr></thead>
                     <tbody id="traffic-top-campaigns-body"></tbody>
                 </table>
             </div>
         </div>
-        <h6 class="text-warning mt-3">Recent Activity</h6>
-        <table class="table table-sm">
-            <thead><tr><th>When (UTC)</th><th>Event</th><th>Page</th><th>Element</th></tr></thead>
+        <div class="d-flex align-items-center justify-content-between gap-2 mt-3">
+            <h6 class="text-warning mb-0">Session Activity</h6>
+            <button type="button"
+                    class="btn btn-sm btn-outline-warning"
+                    data-bs-toggle="modal"
+                    data-bs-target="#trafficExitedBeforeStartModal">
+                Exited Before Start <span id="traffic-exited-before-start-count" class="badge wa-modal-mode-badge ms-1">0</span>
+            </button>
+        </div>
+        <table class="table table-sm mt-2">
+            <thead><tr><th>Session Time</th><th>Page Journey</th><th>Engagement</th><th>Outcome</th><th class="text-end">Events</th></tr></thead>
             <tbody id="traffic-activity-body"></tbody>
         </table>
+        </section>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="modal fade fa-modal" id="trafficExitedBeforeStartModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-xl modal-dialog-centered modal-dialog-scrollable wa-modal-dialog">
+    <div class="modal-content wa-modal-shell">
+      <div class="modal-header wa-modal-header">
+        <div class="wa-modal-header-main">
+          <div class="wa-modal-header-copy">
+            <div class="wa-modal-kicker">Traffic Friction</div>
+            <h5 class="modal-title mb-0">Exited Before Start</h5>
+            <div class="wa-modal-subtitle">Sessions where visitors viewed a page, engaged, and left before starting the quote funnel.</div>
+          </div>
+          <div class="wa-modal-header-actions">
+            <div class="wa-modal-range-chip">
+              <span class="wa-modal-range-label">Count</span>
+              <span class="wa-modal-range-value" id="traffic-exited-before-start-modal-count">0</span>
+            </div>
+          </div>
         </div>
+        <button type="button" class="btn-close btn-close-white wa-modal-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body wa-modal-body">
+        <section class="wa-modal-section">
+          <table class="table table-sm">
+            <thead><tr><th>Visit Time</th><th>Page</th><th>Engagement</th><th class="text-end">Events</th></tr></thead>
+            <tbody id="traffic-exited-before-start-body"><tr><td colspan="4" class="fa-empty">Open Traffic Overview to load sessions.</td></tr></tbody>
+          </table>
+        </section>
+      </div>
     </div>
   </div>
 </div>
@@ -344,18 +1413,34 @@
 @if(isFounder)
 {
 <div class="modal fade fa-modal" id="agentPerfModal" tabindex="-1" aria-hidden="true">
-  <div class="modal-dialog modal-xl modal-dialog-centered">
-    <div class="modal-content">
-      <div class="modal-header">
-        <h5 class="modal-title">Agent Performance · <span id="agentperf-range-label"></span></h5>
-        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+  <div class="modal-dialog modal-xl modal-dialog-centered modal-dialog-scrollable wa-modal-dialog">
+    <div class="modal-content wa-modal-shell">
+      <div class="modal-header wa-modal-header">
+        <div class="wa-modal-header-main">
+          <div class="wa-modal-header-copy">
+            <div class="wa-modal-kicker">Founder View</div>
+            <h5 class="modal-title mb-0">Agent Performance</h5>
+            <div class="wa-modal-subtitle">Compare lead volume, conversion quality, and source strength across agents without leaving the analytics workbench.</div>
+          </div>
+          <div class="wa-modal-header-actions">
+            <div class="wa-modal-range-chip">
+              <span class="wa-modal-range-label">Range</span>
+              <span class="wa-modal-range-value" id="agentperf-range-label"></span>
+            </div>
+            <div class="wa-modal-note-chip">Founder-only comparison</div>
+            <button type="button" class="btn btn-sm fa-export-btn wa-modal-copy-btn" data-copy-modal-view="agentPerfModal">Copy Form</button>
+          </div>
+        </div>
+        <button type="button" class="btn-close btn-close-white wa-modal-close" data-bs-dismiss="modal" aria-label="Close"></button>
       </div>
-      <div class="modal-body">
+      <div class="modal-body wa-modal-body">
+        <section class="wa-modal-section">
         <div class="fa-muted mb-2">Founder-only cross-agent comparison. Low-sample rows are flagged.</div>
         <table class="table table-sm align-middle">
             <thead><tr><th>Agent</th><th>Slug</th><th class="text-end">Leads</th><th class="text-end">Conversions</th><th class="text-end">Session Conv</th><th class="text-end">Intent Conv</th><th>Top Source</th><th>Notes</th></tr></thead>
             <tbody id="agentperf-body"></tbody>
         </table>
+        </section>
       </div>
     </div>
   </div>
@@ -363,117 +1448,343 @@
 }
 
 <div class="modal fade fa-modal" id="pagePerfModal" tabindex="-1" aria-hidden="true">
-  <div class="modal-dialog modal-xl modal-dialog-centered">
-    <div class="modal-content">
-      <div class="modal-header">
-        <h5 class="modal-title">Page Performance · <span id="pageperf-range-label"></span></h5>
-        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+  <div class="modal-dialog modal-xl modal-dialog-centered modal-dialog-scrollable wa-modal-dialog">
+    <div class="modal-content wa-modal-shell">
+      <div class="modal-header wa-modal-header">
+        <div class="wa-modal-header-main">
+          <div class="wa-modal-header-copy">
+            <div class="wa-modal-kicker">Destinations</div>
+            <h5 class="modal-title mb-0">Page Performance</h5>
+            <div class="wa-modal-subtitle">Compare view volume, CTA engagement, and lead yield page by page to see which destinations are doing real work.</div>
+          </div>
+          <div class="wa-modal-header-actions">
+            <div class="wa-modal-range-chip">
+              <span class="wa-modal-range-label">Range</span>
+              <span class="wa-modal-range-value" id="pageperf-range-label"></span>
+            </div>
+            <div class="wa-modal-toolbar">
+              <div class="btn-group btn-group-sm wa-modal-toggle-group" role="group" aria-label="Traffic Type">
+                <button type="button" class="btn btn-outline-light traffic-type-btn active" data-type="all">All Traffic</button>
+                <button type="button" class="btn btn-outline-light traffic-type-btn" data-type="paid">Ads Only</button>
+                <button type="button" class="btn btn-outline-light traffic-type-btn" data-type="non_paid">Non-Ads Only</button>
+              </div>
+              <span class="badge wa-modal-mode-badge" id="pageperf-active-mode">Viewing: All Traffic</span>
+              <button type="button" class="btn btn-sm fa-export-btn wa-modal-copy-btn" data-copy-modal-view="pagePerfModal">Copy Form</button>
+            </div>
+          </div>
+        </div>
+        <button type="button" class="btn-close btn-close-white wa-modal-close" data-bs-dismiss="modal" aria-label="Close"></button>
       </div>
-      <div class="modal-body">
+      <div class="modal-body wa-modal-body">
+        <section class="wa-modal-section">
         <table class="table table-sm">
-            <thead><tr><th>Page</th><th class="text-end">Views</th><th class="text-end">CTA Clicks</th><th class="text-end">Leads</th><th class="text-end">Conv %</th></tr></thead>
+            <thead><tr><th>Page</th><th class="text-end">Views</th><th class="text-end">CTA Clicks</th><th class="text-end">Leads</th><th class="text-end">Lead / View %</th></tr></thead>
             <tbody id="pageperf-body"></tbody>
         </table>
+        </section>
       </div>
     </div>
   </div>
 </div>
 
 <div class="modal fade fa-modal" id="ctaPerfModal" tabindex="-1" aria-hidden="true">
-  <div class="modal-dialog modal-xl modal-dialog-centered">
-    <div class="modal-content">
-      <div class="modal-header">
-        <h5 class="modal-title">CTA Performance · <span id="ctaperf-range-label"></span></h5>
-        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+  <div class="modal-dialog modal-xl modal-dialog-centered modal-dialog-scrollable wa-modal-dialog">
+    <div class="modal-content wa-modal-shell">
+      <div class="modal-header wa-modal-header">
+        <div class="wa-modal-header-main">
+          <div class="wa-modal-header-copy">
+            <div class="wa-modal-kicker">Actions</div>
+            <h5 class="modal-title mb-0">CTA Performance</h5>
+            <div class="wa-modal-subtitle">Review which calls to action are earning clicks, unique sessions, and real downstream lead outcomes.</div>
+          </div>
+          <div class="wa-modal-header-actions">
+            <div class="wa-modal-range-chip">
+              <span class="wa-modal-range-label">Range</span>
+              <span class="wa-modal-range-value" id="ctaperf-range-label"></span>
+            </div>
+            <div class="wa-modal-toolbar">
+              <div class="btn-group btn-group-sm wa-modal-toggle-group" role="group" aria-label="Traffic Type">
+                <button type="button" class="btn btn-outline-light traffic-type-btn active" data-type="all">All Traffic</button>
+                <button type="button" class="btn btn-outline-light traffic-type-btn" data-type="paid">Ads Only</button>
+                <button type="button" class="btn btn-outline-light traffic-type-btn" data-type="non_paid">Non-Ads Only</button>
+              </div>
+              <span class="badge wa-modal-mode-badge" id="ctaperf-active-mode">Viewing: All Traffic</span>
+              <button type="button" class="btn btn-sm fa-export-btn wa-modal-copy-btn" data-copy-modal-view="ctaPerfModal">Copy Form</button>
+            </div>
+          </div>
+        </div>
+        <button type="button" class="btn-close btn-close-white wa-modal-close" data-bs-dismiss="modal" aria-label="Close"></button>
       </div>
-      <div class="modal-body">
+      <div class="modal-body wa-modal-body">
+        <section class="wa-modal-section">
         <table class="table table-sm">
-            <thead><tr><th>Page</th><th>CTA</th><th class="text-end">Clicks</th></tr></thead>
+            <thead><tr><th>Page</th><th>CTA</th><th class="text-end">Raw Clicks</th><th class="text-end">Unique Click Sessions</th><th class="text-end">Leads</th><th class="text-end">Click→Lead %</th></tr></thead>
             <tbody id="ctaperf-body"></tbody>
         </table>
+        </section>
       </div>
     </div>
   </div>
 </div>
 
 <div class="modal fade fa-modal" id="quoteModal" tabindex="-1" aria-hidden="true">
-  <div class="modal-dialog modal-lg modal-dialog-centered">
-    <div class="modal-content">
-      <div class="modal-header">
-        <h5 class="modal-title">Quote Funnel · <span id="quote-range-label"></span></h5>
-        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
-      </div>
-      <div class="modal-body">
-        <div class="row g-3">
-            <div class="col-4">
-                <div class="fa-kpi-title">Starts</div>
-                <div class="fa-kpi-value" id="quote-starts">0</div>
+  <div class="modal-dialog modal-xl modal-dialog-centered modal-dialog-scrollable wa-modal-dialog">
+    <div class="modal-content wa-modal-shell">
+      <div class="modal-header wa-modal-header">
+        <div class="wa-modal-header-main">
+          <div class="wa-modal-header-copy">
+            <div class="wa-modal-kicker">Funnel Read</div>
+            <h5 class="modal-title mb-0">Quote Funnel</h5>
+            <div class="wa-modal-subtitle">Move from top-line starts to stage progression and abandonment signals without losing the session-level story.</div>
+          </div>
+          <div class="wa-modal-header-actions">
+            <div class="wa-modal-range-chip">
+              <span class="wa-modal-range-label">Range</span>
+              <span class="wa-modal-range-value" id="quote-range-label"></span>
             </div>
-            <div class="col-4">
-                <div class="fa-kpi-title">Form Starts</div>
-                <div class="fa-kpi-value" id="quote-form-starts">0</div>
+            <div class="wa-modal-toolbar">
+              <div class="btn-group btn-group-sm wa-modal-toggle-group" role="group" aria-label="Traffic Type">
+                <button type="button" class="btn btn-outline-light traffic-type-btn active" data-type="all">All Traffic</button>
+                <button type="button" class="btn btn-outline-light traffic-type-btn" data-type="paid">Ads Only</button>
+                <button type="button" class="btn btn-outline-light traffic-type-btn" data-type="non_paid">Non-Ads Only</button>
+              </div>
+              <span class="badge wa-modal-mode-badge" id="quote-active-mode">Viewing: All Traffic</span>
+              <button type="button" class="btn btn-sm fa-export-btn wa-modal-copy-btn" data-copy-modal-view="quoteModal">Copy Form</button>
             </div>
-            <div class="col-4">
-                <div class="fa-kpi-title">Submits</div>
-                <div class="fa-kpi-value" id="quote-form-submits">0</div>
-            </div>
+          </div>
         </div>
-        <div class="small text-muted mt-2" id="quote-dropoff-starts"></div>
-        <h6 class="text-warning mt-3">By Quote Type</h6>
-        <table class="table table-sm">
-            <thead><tr><th>Type</th><th class="text-end">Count</th></tr></thead>
-            <tbody id="quote-type-body"></tbody>
-        </table>
+        <button type="button" class="btn-close btn-close-white wa-modal-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body wa-modal-body">
+        <section class="wa-modal-section wa-modal-tabs-section">
+        <ul class="nav nav-tabs mb-3" id="quoteTabs" role="tablist">
+          <li class="nav-item" role="presentation">
+            <button class="nav-link active" id="quote-funnel-tab" data-bs-toggle="tab" data-bs-target="#quote-funnel-panel" type="button" role="tab">Funnel</button>
+          </li>
+          <li class="nav-item" role="presentation">
+            <button class="nav-link" id="quote-abandon-tab" data-bs-toggle="tab" data-bs-target="#quote-abandon-panel" type="button" role="tab">Abandonment</button>
+          </li>
+        </ul>
+        <div class="tab-content">
+          <!-- Funnel Tab -->
+          <div class="tab-pane fade show active" id="quote-funnel-panel" role="tabpanel">
+            <div class="row g-3">
+                <div class="col-4">
+                    <div class="fa-kpi-title">Starts</div>
+                    <div class="fa-kpi-value" id="quote-starts">0</div>
+                </div>
+                <div class="col-4">
+                    <div class="fa-kpi-title">Form Starts</div>
+                    <div class="fa-kpi-value" id="quote-form-starts">0</div>
+                </div>
+                <div class="col-4">
+                    <div class="fa-kpi-title">Confirmed Leads</div>
+                    <div class="fa-kpi-value" id="quote-form-submits">0</div>
+                </div>
+            </div>
+            <div class="small text-muted mt-2" id="quote-dropoff-starts"></div>
+            <h6 class="text-warning mt-3">Quote Journey Progression</h6>
+            <table class="table table-sm">
+                <thead><tr><th>Stage</th><th class="text-end">Session-Deduped Count</th></tr></thead>
+                <tbody id="quote-stage-body"></tbody>
+            </table>
+
+            <div class="mt-3 p-3 rounded-3 border border-warning-subtle" id="quote-contact-friction-summary">
+              <div class="d-flex justify-content-between align-items-center gap-2 flex-wrap">
+                <h6 class="text-warning mb-0">Contact-Step Friction</h6>
+                <span class="small text-muted" id="quote-contact-friction-rate">—</span>
+              </div>
+              <div class="row g-3 mt-1">
+                <div class="col-6 col-lg-4">
+                  <div class="fa-kpi-title">Contact-Step Abandoned</div>
+                  <div class="fa-kpi-value" id="quote-contact-abandon-count">0</div>
+                </div>
+                <div class="col-6 col-lg-4">
+                  <div class="fa-kpi-title">Submit Attempts</div>
+                  <div class="fa-kpi-value" id="quote-contact-submit-attempts">0</div>
+                </div>
+                <div class="col-12 col-lg-4">
+                  <div class="fa-kpi-title">Most Common Drop Field</div>
+                  <div class="fa-kpi-value fs-6" id="quote-contact-top-field">—</div>
+                </div>
+              </div>
+
+              <div class="row g-3 mt-2">
+                <div class="col-lg-6">
+                  <h6 class="text-warning small mb-2">Top Contact Drop Fields</h6>
+                  <table class="table table-sm mb-0">
+                    <thead><tr><th>Field</th><th>Type</th><th class="text-end">Drops</th></tr></thead>
+                    <tbody id="quote-contact-drop-fields-body"></tbody>
+                  </table>
+                </div>
+                <div class="col-lg-6">
+                  <h6 class="text-warning small mb-2">Furthest Progress Before Drop</h6>
+                  <table class="table table-sm mb-0">
+                    <thead><tr><th>Last Completed</th><th>Type</th><th class="text-end">Count</th></tr></thead>
+                    <tbody id="quote-contact-last-completed-body"></tbody>
+                  </table>
+                </div>
+              </div>
+              <div class="small text-muted mt-2" id="quote-contact-friction-note"></div>
+            </div>
+
+            <h6 class="text-warning mt-3">By Quote Type</h6>
+            <table class="table table-sm">
+                <thead><tr><th>Type</th><th class="text-end">Count</th></tr></thead>
+                <tbody id="quote-type-body"></tbody>
+            </table>
+          </div>
+          <!-- Abandonment Tab -->
+          <div class="tab-pane fade" id="quote-abandon-panel" role="tabpanel">
+            <div id="abandon-loading" class="text-muted small py-3 text-center" style="display:none">Loading…</div>
+            <div class="row g-3 mb-3">
+              <div class="col-6 col-lg-3">
+                <div class="fa-kpi-title">Bounce Before Start</div>
+                <div class="fa-kpi-value" id="abandon-bounce-count">0</div>
+              </div>
+              <div class="col-6 col-lg-3">
+                <div class="fa-kpi-title">Funnel Abandons</div>
+                <div class="fa-kpi-value" id="abandon-funnel-count">0</div>
+              </div>
+              <div class="col-6 col-lg-3">
+                <div class="fa-kpi-title">Contact-Step Abandons</div>
+                <div class="fa-kpi-value" id="abandon-contact-count">0</div>
+              </div>
+              <div class="col-6 col-lg-3">
+                <div class="fa-kpi-title">Validation Friction Abandons</div>
+                <div class="fa-kpi-value" id="abandon-validation-count">0</div>
+              </div>
+            </div>
+            <div class="small text-muted mb-3" id="abandon-qualification-note"></div>
+            <h6 class="text-warning">Bounce Before Funnel Start</h6>
+            <table class="table table-sm mb-3">
+                <thead><tr><th>Type</th><th class="text-end">Exits</th><th class="text-end">Engaged 5s+</th><th class="text-end">Engaged 15s+</th><th class="text-end">Avg Dwell</th></tr></thead>
+                <tbody id="abandon-bounce-body"></tbody>
+            </table>
+            <!-- Summary by quote type -->
+            <h6 class="text-warning">Abandonment by Quote Type</h6>
+            <table class="table table-sm mb-3">
+                <thead><tr><th>Type</th><th class="text-end">Abandons</th><th class="text-end">Starts</th><th class="text-end">Rate</th><th class="text-end">Avg Fields</th><th class="text-end">Attempted Submit Before Leaving</th></tr></thead>
+                <tbody id="abandon-summary-body"></tbody>
+            </table>
+            <!-- Top abandoned fields -->
+            <h6 class="text-warning">Where Users Drop Off (Last Focused Field)</h6>
+            <table class="table table-sm mb-3">
+                <thead><tr><th>Field</th><th>Type</th><th class="text-end">Count</th></tr></thead>
+                <tbody id="abandon-fields-body"></tbody>
+            </table>
+            <!-- Last completed field -->
+            <h6 class="text-warning">Furthest Progress Before Abandon</h6>
+            <table class="table table-sm mb-3">
+                <thead><tr><th>Last Completed Field</th><th>Type</th><th class="text-end">Count</th></tr></thead>
+                <tbody id="abandon-last-completed-body"></tbody>
+            </table>
+            <!-- Validation friction -->
+            <h6 class="text-warning">Validation Friction (Field Errors)</h6>
+            <table class="table table-sm mb-3">
+                <thead><tr><th>Field</th><th>Type</th><th class="text-end">Errors</th></tr></thead>
+                <tbody id="abandon-validation-body"></tbody>
+            </table>
+            <!-- Consent friction -->
+            <div class="small text-muted" id="abandon-consent-note"></div>
+          </div>
+        </div>
+        </section>
       </div>
     </div>
   </div>
 </div>
 
 <div class="modal fade fa-modal" id="convModal" tabindex="-1" aria-hidden="true">
-  <div class="modal-dialog modal-xl modal-dialog-centered">
-    <div class="modal-content">
-      <div class="modal-header">
-        <h5 class="modal-title">Conversion Center · <span id="conv-range-label"></span></h5>
-        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+  <div class="modal-dialog modal-xl modal-dialog-centered modal-dialog-scrollable wa-modal-dialog">
+    <div class="modal-content wa-modal-shell">
+      <div class="modal-header wa-modal-header">
+        <div class="wa-modal-header-main">
+          <div class="wa-modal-header-copy">
+            <div class="wa-modal-kicker">Lead Audit</div>
+            <h5 class="modal-title mb-0">Conversion Center</h5>
+            <div class="wa-modal-subtitle">Confirm whether traffic is turning into intent, sessions are turning into leads, and server-confirmed outcomes are keeping pace.</div>
+          </div>
+          <div class="wa-modal-header-actions">
+            <div class="wa-modal-range-chip">
+              <span class="wa-modal-range-label">Range</span>
+              <span class="wa-modal-range-value" id="conv-range-label"></span>
+            </div>
+            <div class="wa-modal-toolbar">
+              <div class="btn-group btn-group-sm wa-modal-toggle-group" role="group" aria-label="Traffic Type">
+                <button type="button" class="btn btn-outline-light traffic-type-btn active" data-type="all">All Traffic</button>
+                <button type="button" class="btn btn-outline-light traffic-type-btn" data-type="paid">Ads Only</button>
+                <button type="button" class="btn btn-outline-light traffic-type-btn" data-type="non_paid">Non-Ads Only</button>
+              </div>
+              <span class="badge wa-modal-mode-badge" id="conv-active-mode">Viewing: All Traffic</span>
+              <button type="button" class="btn btn-sm fa-export-btn wa-modal-copy-btn" data-copy-modal-view="convModal">Copy Form</button>
+            </div>
+          </div>
+        </div>
+        <button type="button" class="btn-close btn-close-white wa-modal-close" data-bs-dismiss="modal" aria-label="Close"></button>
       </div>
-      <div class="modal-body">
+      <div class="modal-body wa-modal-body">
+        <section class="wa-modal-section">
         <div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-3">
             <div>
                 <div class="fa-kpi-title">Intent Conversion</div>
                 <div class="fa-kpi-value" id="conv-intent">—</div>
-                <div class="fa-kpi-sub" id="conv-intent-sub">Verified Leads / Quote Starts</div>
+                <div class="fa-kpi-sub" id="conv-intent-sub">Quote Submits / Quote Starts</div>
                 <div class="fa-kpi-warning" id="conv-intent-warning"></div>
             </div>
             <div>
                 <div class="fa-kpi-title">Session Conversion Rate</div>
                 <div class="fa-kpi-value" id="conv-session">—</div>
-                <div class="fa-kpi-sub">Verified Leads / Sessions</div>
+                <div class="fa-kpi-sub">Converted Sessions / Sessions</div>
                 <div class="fa-kpi-warning" id="conv-session-warning"></div>
             </div>
             <div>
-                <div class="fa-kpi-title">Total Conversions</div>
+                <div class="fa-kpi-title">Server-confirmed Leads</div>
                 <div class="fa-kpi-value" id="conv-total">0</div>
             </div>
             <button class="btn btn-sm fa-export-btn" id="export-conv">Export CSV</button>
         </div>
         <h6 class="text-warning mt-3">Recent</h6>
         <table class="table table-sm">
-            <thead><tr><th>When (UTC)</th><th>Event</th><th>Page</th><th>CTA</th></tr></thead>
+            <thead><tr><th>When (Local)</th><th>Event</th><th>Page</th><th>CTA</th></tr></thead>
             <tbody id="conv-body"></tbody>
         </table>
+        </section>
       </div>
     </div>
   </div>
 </div>
 
 <div class="modal fade fa-modal" id="leadsModal" tabindex="-1" aria-hidden="true">
-  <div class="modal-dialog modal-xl modal-dialog-centered">
-    <div class="modal-content">
-      <div class="modal-header">
-        <h5 class="modal-title">Leads Snapshot · <span id="leads-range-label"></span></h5>
-        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+  <div class="modal-dialog modal-xl modal-dialog-centered modal-dialog-scrollable wa-modal-dialog">
+    <div class="modal-content wa-modal-shell">
+      <div class="modal-header wa-modal-header">
+        <div class="wa-modal-header-main">
+          <div class="wa-modal-header-copy">
+            <div class="wa-modal-kicker">Operations</div>
+            <h5 class="modal-title mb-0">Leads Snapshot</h5>
+            <div class="wa-modal-subtitle">Review the latest captured leads with attribution context, source resolution, and Meta tracking details in one operational view.</div>
+          </div>
+          <div class="wa-modal-header-actions">
+            <div class="wa-modal-range-chip">
+              <span class="wa-modal-range-label">Range</span>
+              <span class="wa-modal-range-value" id="leads-range-label"></span>
+            </div>
+            <div class="wa-modal-toolbar">
+              <div class="btn-group btn-group-sm wa-modal-toggle-group" role="group" aria-label="Traffic Type">
+                <button type="button" class="btn btn-outline-light traffic-type-btn active" data-type="all">All Traffic</button>
+                <button type="button" class="btn btn-outline-light traffic-type-btn" data-type="paid">Ads Only</button>
+                <button type="button" class="btn btn-outline-light traffic-type-btn" data-type="non_paid">Non-Ads Only</button>
+              </div>
+              <span class="badge wa-modal-mode-badge" id="leads-active-mode">Viewing: All Traffic</span>
+              <button type="button" class="btn btn-sm fa-export-btn wa-modal-copy-btn" data-copy-modal-view="leadsModal">Copy Form</button>
+            </div>
+          </div>
+        </div>
+        <button type="button" class="btn-close btn-close-white wa-modal-close" data-bs-dismiss="modal" aria-label="Close"></button>
       </div>
-      <div class="modal-body">
+      <div class="modal-body wa-modal-body">
+        <section class="wa-modal-section">
         <div class="d-flex justify-content-between align-items-center mb-2">
             <div class="fa-kpi-title">Total Leads</div>
             <div class="d-flex align-items-center gap-3">
@@ -481,17 +1792,364 @@
                 <button class="btn btn-sm fa-export-btn" id="export-leads">Export CSV</button>
             </div>
         </div>
+        <div class="small text-muted mb-2" id="leads-cap-note">Showing latest 200 leads.</div>
+        @if (canDeleteAnalyticsLeads)
+        {
+        <div class="wa-leads-admin-note mb-2" id="leads-delete-note">Right-click a test lead to delete. Deleted leads are excluded from analytics.</div>
+        }
+        <div class="wa-inline-feedback d-none mb-2" id="leads-delete-feedback" role="status" aria-live="polite"></div>
         <table class="table table-sm">
-            <thead><tr><th>When (UTC)</th><th>Name</th><th>Email</th><th>Phone</th><th>Interest</th><th>Source</th></tr></thead>
-            <tbody id="leads-body"></tbody>
+          <thead><tr><th>When (Local)</th><th>Name</th><th>Email</th><th>Phone</th><th>Interest</th><th>Lead Source</th><th>Resolved Source</th><th>Attribution</th><th>Meta Tracking</th></tr></thead>
+          <tbody id="leads-body"></tbody>
         </table>
+        </section>
       </div>
     </div>
   </div>
 </div>
 
+@if (canDeleteAnalyticsLeads)
+{
+<div class="wa-context-menu" id="leads-row-context-menu" hidden>
+  <button type="button" class="wa-context-menu-item" id="leads-context-delete">Delete lead</button>
+</div>
+
+<div class="modal fade fa-modal" id="deleteLeadConfirmModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered wa-modal-dialog wa-modal-dialog-compact">
+    <div class="modal-content wa-modal-shell">
+      <div class="modal-header wa-modal-header">
+        <div class="wa-modal-header-main">
+          <div class="wa-modal-header-copy">
+            <div class="wa-modal-kicker">Admin Action</div>
+            <h5 class="modal-title mb-1">Delete lead?</h5>
+            <div class="wa-modal-subtitle">Only use this for test leads. This action is permanent and the removed lead will be excluded from analytics.</div>
+          </div>
+        </div>
+        <button type="button" class="btn-close btn-close-white wa-modal-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body wa-modal-body">
+        <section class="wa-modal-section">
+        <div class="wa-delete-lead-target d-none" id="delete-lead-target"></div>
+        <label class="form-label small text-uppercase fw-bold text-warning" for="delete-lead-reason">Delete Reason</label>
+        <input type="text" class="form-control" id="delete-lead-reason" maxlength="500" placeholder="Test lead cleanup" />
+        <div class="fa-muted small mt-2">Optional. Leave blank to use “Test lead cleanup.”</div>
+        </section>
+      </div>
+      <div class="modal-footer wa-modal-footer border-0">
+        <button type="button" class="btn btn-outline-light" data-bs-dismiss="modal">Cancel</button>
+        <button type="button" class="btn btn-gold" id="confirm-delete-lead-btn">Yes, delete lead</button>
+      </div>
+    </div>
+  </div>
+</div>
+}
+
+<div class="modal fade fa-modal" id="aiReviewSnapshotModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-xl modal-dialog-centered modal-dialog-scrollable wa-modal-dialog">
+    <div class="modal-content wa-modal-shell">
+      <div class="modal-header wa-modal-header">
+        <div class="wa-modal-header-main">
+          <div class="wa-modal-header-copy">
+            <div class="wa-modal-kicker">Operator Brief</div>
+            <h5 class="modal-title mb-1">AI Review Snapshot</h5>
+            <div class="wa-modal-subtitle">A clean, copy-ready performance summary for the current range and scope. Nothing is sent anywhere until you choose to paste it externally.</div>
+          </div>
+        </div>
+        <button type="button" class="btn-close btn-close-white wa-modal-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body wa-modal-body">
+        <section class="wa-modal-section">
+          <div class="wa-modal-meta-strip mb-2 small">
+            <div class="wa-modal-meta-item"><span class="wa-modal-meta-label">Generated</span><span class="wa-modal-meta-value" id="ai-snapshot-generated">—</span></div>
+            <div class="wa-modal-meta-item"><span class="wa-modal-meta-label">Range</span><span class="wa-modal-meta-value" id="ai-snapshot-range">—</span></div>
+            <div class="wa-modal-meta-item"><span class="wa-modal-meta-label">Scope</span><span class="wa-modal-meta-value" id="ai-snapshot-scope">—</span></div>
+            <div class="wa-modal-meta-item"><span class="wa-modal-meta-label">Traffic</span><span class="wa-modal-meta-value" id="ai-snapshot-traffic">—</span></div>
+          </div>
+          <div class="fa-muted small mb-2" id="ai-snapshot-status">Open or refresh to generate snapshot.</div>
+          <div id="ai-snapshot-render" aria-live="polite"></div>
+          <textarea id="ai-snapshot-text" class="d-none" rows="22" readonly spellcheck="false"></textarea>
+        </section>
+      </div>
+      <div class="modal-footer wa-modal-footer border-0 justify-content-between">
+        <button type="button" class="btn btn-sm fa-export-btn" id="ai-snapshot-copy">Copy</button>
+        <div class="d-flex gap-2">
+          <button type="button" class="btn btn-outline-light" id="ai-snapshot-refresh">Refresh</button>
+          <button type="button" class="btn btn-outline-light" data-bs-dismiss="modal">Close</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="modal fade fa-modal" id="metaCampaignsModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-xl modal-dialog-centered modal-dialog-scrollable meta-campaigns-dialog wa-modal-dialog">
+    <div class="modal-content wa-modal-shell">
+      <div class="modal-header wa-modal-header">
+        <div class="wa-modal-header-main">
+          <div class="wa-modal-header-copy">
+            <div class="wa-modal-kicker">Paid Media</div>
+            <div class="d-flex align-items-center gap-2 flex-wrap">
+                <h5 class="modal-title mb-0">Meta Ads Campaigns</h5>
+                <span class="fa-chip d-none" id="meta-campaigns-account-chip">Not connected</span>
+            </div>
+            <div class="wa-modal-subtitle">Compare Meta-reported campaign performance against server-confirmed website leads and look for attribution gaps worth investigating.</div>
+          </div>
+          <div class="wa-modal-header-actions">
+            <div class="wa-modal-range-chip">
+              <span class="wa-modal-range-label">Range</span>
+              <span class="wa-modal-range-value" id="meta-campaigns-range-label"></span>
+            </div>
+          </div>
+        </div>
+        <button type="button" class="btn-close btn-close-white wa-modal-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body wa-modal-body">
+        <section class="wa-modal-section">
+        <div class="wa-modal-meta-strip mb-3">
+            <div class="wa-modal-meta-item"><span class="wa-modal-meta-label">Account</span><span class="wa-modal-meta-value fa-meta-strong" id="meta-campaigns-account">—</span></div>
+            <div class="wa-modal-meta-item"><span class="wa-modal-meta-label">Last Sync</span><span class="wa-modal-meta-value" id="meta-campaigns-synced">—</span></div>
+        </div>
+        <div class="alert alert-warning small py-2 px-3 mb-3" id="meta-campaigns-note">
+            Meta Leads = reported by Meta Ads API. Website Leads = server-confirmed leads captured on your site. These may differ due to attribution windows, browser restrictions, CAPI config, or reporting delay. Campaign date ranges are aligned to the Meta account timezone when available.
+        </div>
+        <div class="fa-muted small mb-3" id="meta-campaigns-utm-note">
+            Recommended Meta URL parameters: <code>utm_id={{campaign.id}}</code> <code>utm_campaign={{campaign.name}}</code> <code>utm_content={{ad.name}}</code> <code>utm_term={{adset.id}}</code> <code>meta_campaign_id={{campaign.id}}</code> <code>meta_adset_id={{adset.id}}</code> <code>meta_ad_id={{ad.id}}</code>
+        </div>
+        <div class="table-responsive">
+          <table class="table table-sm align-middle meta-campaigns-table">
+                <thead>
+                    <tr>
+                        <th>Campaign</th>
+                        <th>Status</th>
+                        <th>Objective</th>
+                        <th class="text-end">Spend</th>
+                        <th class="text-end">Impr.</th>
+                        <th class="text-end">Reach</th>
+                        <th class="text-end">Link Clicks / LPVs</th>
+                        <th class="text-end">CTR</th>
+                        <th class="text-end">CPC</th>
+                        <th class="text-end">CPM</th>
+                        <th class="text-end">Meta Leads</th>
+                        <th class="text-end">Website Leads</th>
+                        <th class="text-end">Website Lead Gap</th>
+                    </tr>
+                </thead>
+                <tbody id="meta-campaigns-body">
+                    <tr><td colspan="13" class="fa-loading">Loading campaigns…</td></tr>
+                </tbody>
+            </table>
+        </div>
+        </section>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- KPI Detail Modal -->
+<div id="kpiDetailBackdrop" class="kpi-detail-backdrop" aria-hidden="true" hidden></div>
+
+<button type="button" id="openVisitorConcentrationModal" class="visually-hidden" aria-hidden="true" tabindex="-1">
+    Open Visitor Concentration
+</button>
+
+<div id="visitorConcentrationModal" class="vc-modal" role="dialog" aria-modal="true" aria-labelledby="visitorConcentrationModalTitle" hidden>
+    <div class="vc-modal-backdrop"></div>
+    <div class="vc-modal-panel">
+        <div class="vc-modal-header">
+            <div>
+                <h5 id="visitorConcentrationModalTitle" class="mb-1">Visitor Concentration Breakdown</h5>
+                <p class="mb-0 text-muted">Recurring visitor patterns, high-volume sessions, and concentration risk.</p>
+            </div>
+            <button type="button" class="vc-modal-close" aria-label="Close Visitor Concentration">&times;</button>
+        </div>
+        <div class="vc-modal-actions">
+            <button type="button" class="btn btn-sm btn-outline-light vc-modal-copy">Copy All</button>
+        </div>
+        <div id="visitorConcentrationModalBody" class="vc-modal-body">
+            <div class="text-muted">No visitor concentration data loaded yet.</div>
+        </div>
+    </div>
+</div>
+
+<div id="visitorTimelineModal" class="vc-modal" role="dialog" aria-modal="true" aria-labelledby="visitorTimelineModalTitle" hidden>
+    <div class="vc-modal-backdrop"></div>
+    <div class="vc-modal-panel">
+        <div class="vc-modal-header">
+            <div>
+                <h5 id="visitorTimelineModalTitle" class="mb-1">Visitor Timeline</h5>
+                <p class="mb-0 text-muted">Session-level journey, trust score, and event detail.</p>
+            </div>
+            <button type="button" class="vc-modal-close" aria-label="Close Visitor Timeline">&times;</button>
+        </div>
+        <div class="vc-modal-body"></div>
+    </div>
+</div>
+
+<div id="kpiDetailModal" class="kpi-detail-modal" role="dialog" aria-modal="true" aria-labelledby="kpiDetailTitle" hidden>
+  <div class="kpi-detail-header">
+    <div>
+      <div class="kpi-detail-title" id="kpiDetailTitle">Detail</div>
+      <div class="kpi-detail-range" id="kpiDetailRange"></div>
+    </div>
+    <button type="button" class="kpi-detail-close" id="kpiDetailClose" aria-label="Close detail modal">&times;</button>
+  </div>
+  <div class="kpi-detail-body">
+    <!-- Loading skeleton -->
+    <div id="kpiDetailLoading" class="kpi-detail-loading" hidden>
+      <div class="kpi-skel kpi-skel-stat-row">
+        <div class="kpi-skel-tile"></div>
+        <div class="kpi-skel-tile"></div>
+        <div class="kpi-skel-tile"></div>
+        <div class="kpi-skel-tile"></div>
+        <div class="kpi-skel-tile"></div>
+      </div>
+      <div class="kpi-skel kpi-skel-chart"></div>
+      <div class="kpi-skel kpi-skel-list"></div>
+    </div>
+    <!-- Error state -->
+    <div id="kpiDetailError" class="kpi-detail-state-msg kpi-detail-error" hidden>
+      <div class="kpi-state-icon">&#9888;</div>
+      <div id="kpiDetailErrorMsg">Unable to load data.</div>
+    </div>
+    <!-- Empty state -->
+    <div id="kpiDetailEmpty" class="kpi-detail-state-msg" hidden>
+      <div class="kpi-state-icon">&#9680;</div>
+      <div>No data for this period.</div>
+    </div>
+    <!-- Content -->
+    <div id="kpiDetailContent" hidden>
+      <!-- Summary stat tiles -->
+      <div class="kpi-detail-stat-tiles" id="kpiDetailStatTiles"></div>
+      <!-- Chart -->
+      <div class="kpi-detail-chart-container">
+        <canvas id="kpiDetailChart" aria-label="KPI detail trend chart" role="img"></canvas>
+      </div>
+      <!-- Breakdown -->
+      <div class="kpi-detail-breakdown" id="kpiDetailBreakdown"></div>
+    </div>
+  </div>
+</div>
+
+@* ── AI Insights Drawer ───────────────────────────────────────────────────── *@
+@* Hidden antiforgery form used exclusively by the AI drawer JS *@
+<form id="ai-antiforgery" class="d-none" method="post">
+    @Html.AntiForgeryToken()
+</form>
+
+@* Backdrop overlay *@
+<div id="aiInsightsBackdrop" class="ai-drawer-backdrop" aria-hidden="true"></div>
+
+@* Drawer panel *@
+
+<div class="modal fade fa-modal" id="deviceIntelligenceModal" tabindex="-1" aria-labelledby="deviceIntelligenceModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-xl modal-dialog-centered modal-dialog-scrollable wa-modal-dialog wa-device-modal-dialog">
+        <div class="modal-content wa-modal-shell wa-device-modal-shell">
+            <div class="modal-header wa-modal-header wa-device-modal-header">
+                <div class="wa-modal-header-main">
+                    <div class="wa-modal-header-copy">
+                        <div class="wa-modal-kicker">Prospect Environment Learning</div>
+                        <h5 class="modal-title mb-0" id="deviceIntelligenceModalLabel">Device Intelligence</h5>
+                        <div class="wa-modal-subtitle">See how device, browser, operating system, viewport, timezone, and language impact funnel behavior.</div>
+                    </div>
+                    <div class="wa-modal-header-actions">
+                        <div class="wa-modal-range-chip" id="deviceIntelligenceRangeLabel">Range: —</div>
+                    </div>
+                </div>
+                <button type="button" class="btn-close btn-close-white wa-modal-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body wa-modal-body wa-device-modal-body">
+                <div class="wa-device-toolbar">
+                    <div class="wa-pill-group" role="group" aria-label="Device traffic filter">
+                        <button type="button" class="wa-pill is-active" data-device-traffic="all">All Traffic</button>
+                        <button type="button" class="wa-pill" data-device-traffic="paid">Paid Ads</button>
+                        <button type="button" class="wa-pill" data-device-traffic="non_paid">Non-Ads</button>
+                    </div>
+                </div>
+
+                <div class="wa-device-kpi-grid mb-4">
+                    <div class="wa-device-kpi-card">
+                        <div class="wa-device-kpi-icon" aria-hidden="true"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8Z"></path><path d="M2 21a6 6 0 0 1 12 0"></path><path d="M17 11a3 3 0 1 0 0-6"></path><path d="M16 15a5 5 0 0 1 6 5"></path></svg></div>
+                        <div><span>Sessions</span><strong id="deviceSessions">—</strong></div>
+                    </div>
+                    <div class="wa-device-kpi-card">
+                        <div class="wa-device-kpi-icon" aria-hidden="true"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 19h16"></path><path d="M5 15l4-4 4 3 6-8"></path><path d="M15 6h4v4"></path></svg></div>
+                        <div><span>Events</span><strong id="deviceEvents">—</strong></div>
+                    </div>
+                    <div class="wa-device-kpi-card">
+                        <div class="wa-device-kpi-icon" aria-hidden="true"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 3h7l5 5v13H7z"></path><path d="M14 3v5h5"></path><path d="M10 13h6"></path><path d="M10 17h6"></path></svg></div>
+                        <div><span>Form Starts</span><strong id="deviceFormStarts">—</strong></div>
+                    </div>
+                    <div class="wa-device-kpi-card">
+                        <div class="wa-device-kpi-icon" aria-hidden="true"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"></circle><path d="M8 12.5l2.5 2.5L16 9"></path></svg></div>
+                        <div><span>Confirmed Leads</span><strong id="deviceConfirmedLeads">—</strong></div>
+                    </div>
+                </div>
+
+                <div id="deviceIntelligenceContent" class="wa-device-grid"></div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div id="aiInsightsDrawer" class="ai-drawer" role="dialog" aria-modal="true" aria-label="AI Review · Website Analytics">
+    <div class="ai-drawer-header">
+        <div>
+            <div class="ai-drawer-title">AI Review</div>
+            <div class="ai-drawer-subtitle">Website Analytics · Aggregate insights only</div>
+            <div class="small text-muted" id="ai-drawer-scope-label">AI reviewing: All Traffic · Last 30 Days · Global</div>
+        </div>
+        <button type="button" class="ai-drawer-close" aria-label="Close AI Review panel">&times;</button>
+    </div>
+
+    <div class="ai-drawer-body">
+        @* Loading state *@
+        <div class="ai-drawer-loading" aria-live="polite">
+            <div class="ai-skel-line medium" style="margin-top:4px;"></div>
+            <div class="ai-skel-line short"></div>
+            <div class="ai-skel-block" style="margin-top:14px;"></div>
+            <div class="ai-skel-line medium" style="margin-top:16px;"></div>
+            <div class="ai-skel-line short"></div>
+            <div class="ai-skel-block"></div>
+            <div class="ai-skel-line medium" style="margin-top:16px;"></div>
+            <div class="ai-skel-block"></div>
+            <div class="ai-skel-line short"></div>
+        </div>
+
+        @* Error state *@
+        <div class="ai-drawer-error" hidden aria-live="assertive">
+            <div class="ai-error-icon">&#9888;</div>
+            <div class="ai-error-message">Unable to load AI review.</div>
+            <button type="button" class="btn btn-sm ai-retry-btn"
+                    style="background:rgba(199,153,49,0.15);color:#c79931;border:1px solid #a68023;font-weight:700;">
+                Try Again
+            </button>
+        </div>
+
+        @* Result sections — rendered by JS *@
+        <div class="ai-drawer-result" hidden></div>
+    </div>
+
+    <div class="ai-drawer-footer">
+        @* Follow-up question area — shown after first successful result *@
+        <div class="ai-drawer-followup-section" hidden>
+            <div class="ai-followup-label">Ask a follow-up</div>
+            <form id="ai-followup-form" autocomplete="off">
+                <textarea id="ai-followup-input"
+                          class="ai-followup-textarea"
+                          name="question"
+                          maxlength="500"
+                          rows="3"
+                          placeholder="Ask about a specific metric, page, or campaign..."></textarea>
+                <button type="submit" class="ai-followup-btn">Submit Follow-Up</button>
+            </form>
+        </div>
+    </div>
+</div>
+
 <script src="~/lib/bootstrap/dist/js/bootstrap.bundle.min.js"></script>
 <script src="~/js/website-analytics.js" asp-append-version="true"></script>
+<script src="~/js/website-analytics-kpi-modal.js" asp-append-version="true"></script>
+<script src="~/js/website-analytics-ai.js" asp-append-version="true"></script>
 <script>
     window.AGENT_OPTIONS = @Html.Raw(agentOptionsJson);
     window.CALLER_PROFILE_ID = "@callerProfileId";

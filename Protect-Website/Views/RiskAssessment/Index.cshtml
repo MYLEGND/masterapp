@@ -2,210 +2,84 @@
 @{
     ViewData["Title"] = "Risk Assessment";
     ViewData["PageKey"] = "risk_assessment";
+    var startStep = Model?.CurrentStep > 0 ? Model.CurrentStep : 1;
+    var hasServerErrors = !ViewData.ModelState.IsValid;
+    var showAssessmentStartedByDefault = hasServerErrors || startStep > 1;
+    IReadOnlyList<string> heroProofChips = new[] { "Clear insights", "Identify gaps", "Explore options" };
+    var heroStepIntroTitle = "Start with your protection snapshot";
+    var heroStepIntroHelper = "Answer a few questions about income, assets, estate planning, and current coverage so you can see where protection is strong, where gaps may exist, and where a review could help.";
+    var primaryStartCtaText = "Build My Protection Snapshot";
+    var primaryStartCtaNote = "Takes about 2 minutes. No obligation. See where your protection may be strong, thin, or missing.";
+    var formHeadingTitle = "Build your protection review";
+    var formHeadingCopy = "Share your household, income, estate, and coverage details so we can help you spot strengths, pressure points, and next-step opportunities.";
 }
 
+<partial name="_PropertyCasualtyQuoteStyles" />
+
 <style>
-    /* ============================================================
-       RISK ASSESSMENT — match Finance theme (white premium, soft gold)
-       SURGICAL: style-only upgrades, no markup/JS behavior changes
-       ============================================================ */
-
-    /* theme tokens aligned to home page (navy + gold) */
-    :root{
-        --surface:#0f172a;
-        --surface-soft:#111c32;
-        --ink:#0f172a;
-        --ink-light:#f8fafc;
-        --gold:#a68023;
-        --gold-strong:#c79931;
-        --goldSoft: rgba(199,153,49,.18);
-        --border: rgba(199,153,49,.95);
-        --card:#0f172a;
-        --shadow: 0 18px 55px rgba(0,0,0,.18);
-        --shadowSoft: 0 12px 28px rgba(0,0,0,.14);
-        --radius: 18px;
+    .ra-shell .stepper {
+        display: flex;
+        gap: 10px;
+        flex-wrap: wrap;
+        justify-content: center;
+        margin: 0 0 18px;
     }
 
-    /* header + container feel */
-    .required-note{
-        font-size: .95rem;
-        margin-bottom: 18px;
-        color: #0f172a;
-        font-weight: 800;
-    }
-
-    /* Title matches your premium headers */
-    .page-title{
+    .ra-shell .step-pill {
+        border: 1.35px solid var(--pcq-border-strong);
+        border-radius: 999px;
+        padding: 10px 14px;
         font-weight: 900;
-        letter-spacing: .2px;
-        color: var(--gold-strong);
-        margin: 0 0 10px;
-    }
-
-    /* section cards match Finance side cards */
-    .section-card{
-        position: relative;
-        background: var(--card);
-        border: 1.6px solid var(--border) !important;
-        padding: 22px 20px;
-        border-radius: 20px;
-        margin-bottom: 18px;
+        font-size: 0.92rem;
+        color: rgba(247, 236, 208, 0.76);
+        background: var(--pcq-pill-bg);
+        cursor: pointer;
+        transition: transform 0.15s ease, box-shadow 0.15s ease, border-color 0.15s ease, color 0.15s ease, background 0.15s ease;
+        user-select: none;
         box-shadow:
-            0 20px 60px rgba(0,0,0,0.18),
-            inset 0 1px 0 rgba(255,255,255,0.05);
-        overflow: hidden;
-        color: var(--ink-light);
+            0 10px 24px rgba(0, 0, 0, 0.14),
+            inset 0 1px 0 rgba(255, 255, 255, 0.04);
     }
 
-    /* subtle gold corner glow */
-    .section-card:before{
-        content:"";
-        position:absolute;
-        inset:0;
-        border-radius: 20px;
-        pointer-events:none;
-        background:
-            radial-gradient(700px 260px at 12% 0%, rgba(199,153,49,0.16), transparent 60%);
+    .ra-shell .step-pill:hover {
+        transform: translateY(-1px);
+        border-color: rgba(255, 244, 211, 0.75);
+        box-shadow:
+            0 14px 30px rgba(0, 0, 0, 0.18),
+            inset 0 1px 0 rgba(255, 255, 255, 0.05);
     }
 
-    /* subtle inner highlight border */
-    .section-card:after{
-        content:"";
-        position:absolute;
-        inset:0;
-        border-radius: 20px;
-        pointer-events:none;
-        border: 1px solid rgba(255,255,255,0.08);
+    .ra-shell .step-pill.active {
+        border-color: rgba(255, 244, 211, 0.85);
+        color: var(--pcq-ink-contrast);
+        background: linear-gradient(180deg, #f7da7a 0%, #deb04a 100%);
+        box-shadow:
+            0 14px 30px rgba(0, 0, 0, 0.22),
+            inset 0 1px 0 rgba(255, 255, 255, 0.34);
     }
 
-    .section-title{
-        font-size: 1.12rem;
-        font-weight: 900;
-        color: var(--gold-strong);
-        margin-bottom: 16px;
-        display:flex;
-        align-items:center;
+    .ra-shell .step-pill.done {
+        opacity: 0.9;
+    }
+
+    .ra-shell .section-title {
+        display: flex;
+        align-items: center;
         justify-content: space-between;
         gap: 12px;
         position: relative;
         z-index: 1;
     }
 
-    /* Stepper styling to match Finance pills */
-    .stepper{
-        display:flex;
-        gap: 10px;
-        flex-wrap: wrap;
-        margin: 0 0 18px;
-    }
-
-    .step-pill{
-        border: 2px solid rgba(199,153,49,.55);
-        border-radius: 999px;
-        padding: 8px 12px;
+    .ra-shell .ra-step-count {
+        font-size: 0.95rem;
+        color: var(--pcq-text-strong) !important;
         font-weight: 900;
-        font-size: .9rem;
-        color: var(--ink-light);
-        background: var(--surface-soft);
-        cursor: pointer;
-        transition: transform .15s ease, box-shadow .15s ease, border-color .15s ease, color .15s ease;
-        user-select:none;
-        box-shadow: 0 10px 28px rgba(0,0,0,0.14);
+        letter-spacing: 0.01em;
     }
 
-    .step-pill:hover{
-        transform: translateY(-1px);
-        border-color: rgba(199,153,49,0.75);
-        box-shadow: 0 14px 34px rgba(0,0,0,0.16);
-    }
-
-    .step-pill.active{
-        border-color: var(--gold-strong);
-        color: #f8fafc;
-        background: rgba(199,153,49,0.14);
-    }
-
-    .step-pill.done{
-        border-color: rgba(199,153,49,0.55);
-        color: var(--ink-light);
-        opacity: .9;
-    }
-
-    /* Inputs/selects match Finance */
-    .form-control,
-    .form-select{
-        border-radius: 12px !important;
-        border: 1.6px solid rgba(199,153,49,0.85) !important;
-        padding: 10px 12px !important;
-        font-weight: 700;
-        background: #ffffff;
-        color: #0f172a;
-        margin-bottom: 15px;
-        transition: transform .15s ease, box-shadow .15s ease, border-color .15s ease, background .15s ease;
-    }
-
-    .form-control::placeholder{
-        color: rgba(15,23,42,0.55);
-    }
-
-    .form-control:focus,
-    .form-select:focus{
-        outline: none !important;
-        border-color: rgba(199,153,49,1) !important;
-        box-shadow: 0 0 0 .2rem rgba(199,153,49,0.24) !important;
-        background: #ffffff;
-        color: #0f172a;
-    }
-
-    /* Labels */
-    label{
-        font-weight: 800;
-        color: #f8fafc;
-        margin-bottom: 6px;
-    }
-
-    /* Buttons match Finance */
-    .btn-gold{
-        background: linear-gradient(180deg, var(--gold-strong), var(--gold));
-        color: #fff;
-        font-weight: 900;
-        padding: 10px 26px;
-        border-radius: 12px;
-        font-size: 1.05rem;
-        border: 1.6px solid var(--border);
-        transition: transform .18s ease, box-shadow .18s ease, filter .18s ease, background-color .18s ease;
-        box-shadow: 0 12px 30px rgba(0,0,0,0.18);
-    }
-
-    .btn-gold:hover{
-        background-color: #8f6f1e;
-        color: #fff;
-        transform: translateY(-1px);
-        box-shadow: 0 12px 26px rgba(0,0,0,0.10);
-        filter: brightness(0.99);
-    }
-
-    .btn-outline-gold{
-        background:#0b1529;
-        border: 2px solid var(--border);
-        color:#f8fafc;
-        font-weight: 900;
-        padding: 10px 26px;
-        border-radius: 12px;
-        font-size: 1.05rem;
-        transition: transform .18s ease, box-shadow .18s ease, border-color .18s ease, color .18s ease;
-        box-shadow: 0 12px 30px rgba(0,0,0,0.14);
-    }
-
-    .btn-outline-gold:hover{
-        border-color: var(--gold-strong);
-        color:#f8fafc;
-        transform: translateY(-1px);
-        box-shadow: 0 12px 26px rgba(0,0,0,0.10);
-    }
-
-    .nav-row{
-        display:flex;
+    .ra-shell .nav-row {
+        display: flex;
         justify-content: space-between;
         gap: 12px;
         margin-top: 10px;
@@ -213,68 +87,151 @@
         z-index: 1;
     }
 
-    .nav-row .spacer{ flex: 1 1 auto; }
+    .ra-shell .nav-row .spacer {
+        flex: 1 1 auto;
+    }
 
-    .step-wrap{ display:none; }
-    .step-wrap.active{ display:block; }
+    .ra-shell .step-wrap {
+        display: none;
+    }
 
-    /* currency input */
-    .input-group{ position: relative; }
-    .currency-input{ padding-right: 36px; }
-    .currency-symbol{
+    .ra-shell .step-wrap.active {
+        display: block;
+    }
+
+    .ra-shell .input-group {
+        position: relative;
+    }
+
+    .ra-shell .currency-input {
+        padding-right: 36px !important;
+    }
+
+    .ra-shell .currency-symbol {
         position: absolute;
         right: 12px;
         top: 50%;
         transform: translateY(-50%);
-        color: #5a3b00;
+        color: #6d4a05;
         font-weight: 900;
         pointer-events: none;
-        opacity: .9;
+        opacity: 0.9;
     }
 
-    .mini-hint{
-        font-size: .9rem;
-        color: rgba(248,250,252,0.78);
+    .ra-shell .mini-hint {
+        font-size: 0.9rem;
+        color: var(--pcq-text-muted);
         margin-top: -6px;
         margin-bottom: 12px;
         font-weight: 650;
     }
 
-    /* checkbox */
-    .form-check-input{
-        accent-color: #b28f35;
-        width: 20px;
-        height: 20px;
-        cursor: pointer;
+    .ra-shell .ra-subsection-card {
+        margin-bottom: 18px;
     }
 
-    /* Responsive polish */
-    @@media (max-width: 575.98px){
-        .section-card{ padding: 18px 16px; border-radius: 18px; }
-        .step-pill{ font-size: .86rem; }
+    .ra-shell .ra-subsection-card:last-child {
+        margin-bottom: 0;
+    }
+
+    .ra-shell .form-check {
+        margin-bottom: 0;
+    }
+
+    .ra-shell .form-check-label {
+        margin-bottom: 0;
+    }
+
+    .ra-shell hr {
+        margin: 1.4rem 0;
+    }
+
+    @@media (max-width: 575.98px) {
+        .ra-shell .step-pill {
+            font-size: 0.86rem;
+        }
+
+        .ra-shell .nav-row {
+            flex-direction: column;
+        }
+
+        .ra-shell .nav-row .btn {
+            width: 100%;
+        }
     }
 </style>
 
 <div class="container-narrow">
+    <div class="pcq-shell">
+        <div class="pcq-surface ra-shell">
+            <div class="pcq-hero-entry" id="riskHeroEntryPanel" @((showAssessmentStartedByDefault ? "hidden" : null))>
+                <figure class="pcq-hero-banner-wrap">
+                    <img class="pcq-hero-banner-image" src="~/images/ads/risk-assessment-top-banner.png" asp-append-version="true" alt="Legend risk assessment banner encouraging clients to understand where their protection stands and plan for where they are going." loading="eager" />
+                </figure>
 
-    <div class="text-center" style="margin-top:18px; margin-bottom:6px;">
-        <h1 style="
-            font-weight: 900;
-            font-size: 2.4rem;
-            color: #a68023;
-            letter-spacing: .5px;
-            margin-bottom: 6px;">
-            Risk Assessment Questionnaire / Legacy Review
-        </h1>
-    </div>
+                <div class="pcq-proof-row" aria-label="Risk assessment benefits">
+                    <span class="pcq-proof-pill">
+                        <svg class="pcq-proof-icon" viewBox="0 0 24 24" aria-hidden="true">
+                            <path d="M6 18.5h12"></path>
+                            <path d="M7.5 15V9.5"></path>
+                            <path d="M12 15V6"></path>
+                            <path d="M16.5 15v-3"></path>
+                            <circle cx="18.4" cy="18.2" r="2.2"></circle>
+                            <path d="m20 19.8 2 2"></path>
+                        </svg>
+                        @heroProofChips[0]
+                    </span>
+                    <span class="pcq-proof-pill">
+                        <svg class="pcq-proof-icon" viewBox="0 0 24 24" aria-hidden="true">
+                            <circle cx="12" cy="12" r="8.2"></circle>
+                            <circle cx="12" cy="12" r="3.2"></circle>
+                            <path d="m14.4 9.6 5-5"></path>
+                            <path d="m18.1 4.6 1.3 1.3"></path>
+                        </svg>
+                        @heroProofChips[1]
+                    </span>
+                    <span class="pcq-proof-pill">
+                        <svg class="pcq-proof-icon" viewBox="0 0 24 24" aria-hidden="true">
+                            <path d="M7 17.4c1.45-1.85 3.15-2.95 5.05-3.3 1.45-.25 2.95-.05 4.45.55"></path>
+                            <path d="m13.85 10.25 2.35 4.65 4.45-1.9"></path>
+                            <circle cx="7.2" cy="17.4" r="1.8"></circle>
+                            <circle cx="18.7" cy="13.2" r="1.8"></circle>
+                        </svg>
+                        @heroProofChips[2]
+                    </span>
+                </div>
 
-    <p class="required-note text-center">
-        <strong>
-            <span class="text-danger">*</span> Fields marked with a red asterisk are required.
-        </strong>
-    </p>
+                <div class="pcq-step-copy">
+                    <div class="pcq-step-copy-title">@heroStepIntroTitle</div>
+                    <p class="pcq-step-copy-helper">@heroStepIntroHelper</p>
+                </div>
 
-<form asp-controller="RiskAssessment" asp-action="SubmitRiskAssessment" method="post" class="container" data-form-key="risk_assessment_form">
+                <div class="pcq-hero-actions">
+                    <button type="button" class="btn btn-gold pcq-primary-start-cta" id="riskHeroStartCta" data-cta="risk_assessment_start" data-primary-cta="hero">@primaryStartCtaText</button>
+                    <div class="pcq-start-note"><span>@primaryStartCtaNote</span></div>
+                </div>
+            </div>
+
+            <div class="pcq-form-shell" id="riskAssessmentFlowShell" @((showAssessmentStartedByDefault ? null : "hidden"))>
+                <div class="pcq-form-heading">
+                    <h1 class="pcq-form-heading-title">@formHeadingTitle</h1>
+                    <p class="pcq-form-heading-copy">@formHeadingCopy</p>
+                </div>
+
+                <p class="required-note text-center">
+                    <strong>
+                        <span class="text-danger">*</span> Fields marked with a red asterisk are required.
+                    </strong>
+                </p>
+
+                @if (!ViewData.ModelState.IsValid)
+                {
+                    <div class="alert alert-danger fw-bold">
+                        @Html.ValidationSummary(excludePropertyErrors: false)
+                    </div>
+                }
+
+<form asp-controller="RiskAssessment" asp-action="SubmitRiskAssessment" method="post" class="pcq-form-frame" id="riskAssessmentForm" data-form-key="risk_assessment_form">
     @Html.AntiForgeryToken()
 
     <!-- keep step on postback -->
@@ -294,7 +251,7 @@
         <div class="section-card">
             <div class="section-title">
                 <span>Personal Information</span>
-                <span style="font-size:.95rem; color:#111; font-weight:900;">Step 1 of 6</span>
+                <span class="ra-step-count">Step 1 of 6</span>
             </div>
 
             <div class="row">
@@ -379,7 +336,7 @@
         <div class="section-card">
             <div class="section-title">
                 <span>Income & Work</span>
-                <span style="font-size:.95rem; color:#111; font-weight:900;">Step 2 of 6</span>
+                <span class="ra-step-count">Step 2 of 6</span>
             </div>
 
             <div class="row">
@@ -429,7 +386,7 @@
         <div class="section-card">
             <div class="section-title">
                 <span>Cash Flow</span>
-                <span style="font-size:.95rem; color:#111; font-weight:900;">Step 3 of 6</span>
+                <span class="ra-step-count">Step 3 of 6</span>
             </div>
 
             <div class="row">
@@ -641,7 +598,7 @@
         <div class="section-card">
             <div class="section-title">
                 <span>Estate Planning</span>
-                <span style="font-size:.95rem; color:#111; font-weight:900;">Step 4 of 6</span>
+                <span class="ra-step-count">Step 4 of 6</span>
             </div>
 
             <div class="row">
@@ -691,12 +648,12 @@
         <div class="section-card">
             <div class="section-title">
                 <span>Coverage</span>
-                <span style="font-size:.95rem; color:#111; font-weight:900;">Step 5 of 6</span>
+                <span class="ra-step-count">Step 5 of 6</span>
             </div>
 
             <!-- LIFE -->
-            <div class="section-card" style="margin-bottom:18px;">
-                <div class="section-title">Life Insurance</div>
+            <div class="mini-card ra-subsection-card">
+                <h5>Life Insurance</h5>
 
                 <div class="row">
                     <div class="col-md-4">
@@ -741,8 +698,8 @@
             </div>
 
             <!-- DISABILITY -->
-            <div class="section-card" style="margin-bottom:18px;">
-                <div class="section-title">Disability Insurance</div>
+            <div class="mini-card ra-subsection-card">
+                <h5>Disability Insurance</h5>
 
                 <div class="row">
                     <div class="col-md-4">
@@ -779,8 +736,8 @@
             </div>
 
             <!-- HEALTH -->
-            <div class="section-card" style="margin-bottom:18px;">
-                <div class="section-title">Health Coverage</div>
+            <div class="mini-card ra-subsection-card">
+                <h5>Health Coverage</h5>
                 <div class="row">
                     <div class="col-md-4">
                         <label>Coverage Type</label>
@@ -798,8 +755,8 @@
             </div>
 
             <!-- PROPERTY & LIABILITY -->
-            <div class="section-card">
-                <div class="section-title">Property & Liability</div>
+            <div class="mini-card ra-subsection-card">
+                <h5>Property & Liability</h5>
 
                 <div class="row">
                     <div class="col-md-4">
@@ -887,10 +844,10 @@
         <div class="section-card">
             <div class="section-title">
                 <span>Review & Submit</span>
-                <span style="font-size:.95rem; color:#111; font-weight:900;">Step 6 of 6</span>
+                <span class="ra-step-count">Step 6 of 6</span>
             </div>
 
-        <div class="section-card mt-3">
+        <div class="mini-card ra-subsection-card mt-3">
             <div class="form-check">
                 <input asp-for="AcknowledgedDisclaimer" class="form-check-input" type="checkbox" required data-original-required="1" />
                 <label class="form-check-label" for="AcknowledgedDisclaimer">
@@ -905,8 +862,13 @@
             </div>
         </div>
     </div>
+    </div>
 
 </form>
+            </div>
+        </div>
+    </div>
+</div>
 
 @section Scripts {
     <partial name="_ValidationScriptsPartial" />
@@ -916,12 +878,53 @@
         const stepWraps = Array.from(document.querySelectorAll(".step-wrap"));
         const stepPills = Array.from(document.querySelectorAll(".step-pill"));
         const currentStepInput = document.getElementById("CurrentStep");
+        const riskAssessmentForm = document.getElementById("riskAssessmentForm");
+        const riskHeroEntryPanel = document.getElementById("riskHeroEntryPanel");
+        const riskAssessmentFlowShell = document.getElementById("riskAssessmentFlowShell");
+        const riskHeroStartCta = document.getElementById("riskHeroStartCta");
 
         function clampStep(n){
             n = parseInt(n || 1);
             if (isNaN(n) || n < 1) n = 1;
             if (n > 6) n = 6;
             return n;
+        }
+
+        function updateRequiredFieldState(field) {
+            if (!field) return;
+
+            if (field.disabled || !field.hasAttribute("required")) {
+                field.classList.remove("input-required-missing");
+                return;
+            }
+
+            const isCheckbox = field.type === "checkbox" || field.type === "radio";
+            const isEmpty = isCheckbox ? !field.checked : !String(field.value ?? "").trim();
+            field.classList.toggle("input-required-missing", isEmpty);
+        }
+
+        function syncStepRequiredStates(step) {
+            const wrap = stepWraps.find(w => w.getAttribute("data-step") == step);
+            if (!wrap) return;
+
+            wrap.querySelectorAll("input, select, textarea").forEach(updateRequiredFieldState);
+        }
+
+        function showRiskAssessmentForm() {
+            if (riskHeroEntryPanel) {
+                riskHeroEntryPanel.hidden = true;
+            }
+
+            if (riskAssessmentFlowShell) {
+                riskAssessmentFlowShell.hidden = false;
+            }
+
+            const step = clampStep(currentStepInput?.value || @startStep);
+            setStep(step);
+
+            requestAnimationFrame(() => {
+                riskAssessmentFlowShell?.scrollIntoView({ behavior: "smooth", block: "start" });
+            });
         }
 
         function setStep(step){
@@ -935,6 +938,7 @@
                 p.classList.toggle("done", s < step);
             });
 
+            syncStepRequiredStates(step);
             window.scrollTo({ top: 0, behavior: "smooth" });
         }
 
@@ -944,16 +948,24 @@
 
             // validate only visible step required inputs/selects/textarea that are NOT disabled
             const fields = wrap.querySelectorAll("input, select, textarea");
+            let invalidField = null;
             for (const f of fields){
                 if (f.disabled) continue;
                 if (!f.hasAttribute("required")) continue;
 
+                updateRequiredFieldState(f);
+
                 // HTML5 constraint validation
-                if (!f.checkValidity()){
-                    f.reportValidity();
-                    return false;
+                if (!f.checkValidity() && !invalidField){
+                    invalidField = f;
                 }
             }
+
+            if (invalidField){
+                invalidField.reportValidity();
+                return false;
+            }
+
             return true;
         }
 
@@ -989,6 +1001,10 @@
         document.getElementById("back-5").addEventListener("click", () => back(5));
         document.getElementById("back-6").addEventListener("click", () => back(6));
 
+        if (riskHeroStartCta) {
+            riskHeroStartCta.addEventListener("click", showRiskAssessmentForm);
+        }
+
         // ---------- COVERAGE FIELD TOGGLES ----------
         document.querySelectorAll(".insurance-toggle").forEach(select => {
             const fields = document.querySelectorAll(`[data-parent='${select.name}']`);
@@ -999,6 +1015,7 @@
                         f.value = 0;
                         f.disabled = true;
                         f.removeAttribute("required");
+                        updateRequiredFieldState(f);
                     });
                 } else if (select.value === "Yes") {
                     fields.forEach(f => {
@@ -1006,11 +1023,13 @@
                         // keep optional unless you explicitly want required when Yes
                         // f.setAttribute("required", "required");
                         if (f.value == 0) f.value = "";
+                        updateRequiredFieldState(f);
                     });
                 } else {
                     fields.forEach(f => {
                         f.disabled = true;
                         f.value = "";
+                        updateRequiredFieldState(f);
                     });
                 }
             }
@@ -1034,8 +1053,18 @@
         if (ageInput) ageInput.addEventListener("input", updateWorkingYears);
         if (retirementInput) retirementInput.addEventListener("input", updateWorkingYears);
 
+        riskAssessmentForm?.querySelectorAll("input, select, textarea").forEach(field => {
+            const events = field.type === "checkbox" || field.type === "radio" || field.tagName === "SELECT"
+                ? ["change", "blur"]
+                : ["input", "change", "blur"];
+
+            events.forEach(eventName => {
+                field.addEventListener(eventName, () => updateRequiredFieldState(field));
+            });
+        });
+
         // ---------- init step from server ----------
-        setStep(@Model.CurrentStep);
+        setStep(@startStep);
         updateWorkingYears();
     </script>
 }

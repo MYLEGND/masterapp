@@ -23,7 +23,7 @@ public class ActionsController : Controller
     {
         var ownerId = CurrentUserId();
         if (string.IsNullOrWhiteSpace(ownerId)) return Challenge();
-        var action = await _execution.GetByIdAsync(id);
+        var action = await _execution.GetByIdAsync(id, ownerId);
         if (action == null) return NotFound();
         return View("~/Views/Actions/Edit.cshtml", action);
     }
@@ -46,7 +46,7 @@ public class ActionsController : Controller
         if (id == Guid.Empty || id != req.Id || string.IsNullOrWhiteSpace(req.Title))
             return BadRequest("Invalid action data");
 
-        var updated = await _execution.UpdateActionAsync(req.Id, req.Title, req.Description, req.DueDateUtc, req.Priority);
+        var updated = await _execution.UpdateActionAsync(req.Id, ownerId, req.Title, req.Description, req.DueDateUtc, req.Priority);
         if (updated == null) return NotFound();
 
         var redirect = updated.RelatedEntityType == RelatedEntityType.Lead ? "/Leads" : "/Dashboard";
@@ -61,7 +61,7 @@ public class ActionsController : Controller
         if (string.IsNullOrWhiteSpace(ownerId)) return Challenge();
         if (id == Guid.Empty) return BadRequest();
 
-        var ok = await _execution.DeleteActionAsync(id);
+        var ok = await _execution.DeleteActionAsync(id, ownerId);
         if (!ok) return NotFound();
 
         // Best-effort return path: go back to Leads if this was a lead action, otherwise dashboard.

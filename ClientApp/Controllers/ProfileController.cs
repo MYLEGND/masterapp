@@ -53,6 +53,19 @@ public class ProfileController : Controller
         return so;
     }
 
+    private async Task<List<HouseholdMember>> LoadChildrenAsync(string clientId)
+    {
+        var clientIdNorm = Norm(clientId);
+
+        return await _db.HouseholdMembers
+            .AsNoTracking()
+            .Where(x => x.ClientUserId == clientIdNorm && x.RelationshipType == "Child")
+            .OrderBy(x => x.CreatedUtc)
+            .ThenBy(x => x.FirstName)
+            .ThenBy(x => x.LastName)
+            .ToListAsync();
+    }
+
     // CLIENT: /profile
     [HttpGet("/profile")]
     public async Task<IActionResult> MyProfile()
@@ -62,6 +75,7 @@ public class ProfileController : Controller
             return NotFound("No client profile found for this user.");
 
         ViewBag.SignificantOther = await LoadSignificantOtherAsync(context.ClientUserId);
+        ViewBag.Children = await LoadChildrenAsync(context.ClientUserId);
         ViewBag.ViewMode = context.IsAgentView ? "agent" : "client";
         ViewBag.ViewingClientName = $"{context.Profile.FirstName} {context.Profile.LastName}".Trim();
 
@@ -121,6 +135,7 @@ public class ProfileController : Controller
             return NotFound("Client profile not found.");
 
         ViewBag.SignificantOther = await LoadSignificantOtherAsync(clientId);
+        ViewBag.Children = await LoadChildrenAsync(clientId);
 
         ViewBag.ViewMode = "agent";
         ViewBag.ViewingClientName = $"{profile.FirstName} {profile.LastName}";

@@ -21,13 +21,29 @@ document.addEventListener("DOMContentLoaded", function() {
 
     const alertsList = document.getElementById('alertsList');
 
+    const normalizeActions = (value) => {
+        const rawActions = Array.isArray(value)
+            ? value
+            : Array.isArray(value?.goals)
+                ? value.goals
+                : Array.isArray(value?.items)
+                    ? value.items
+                    : [];
+
+        return rawActions.map(action => ({
+            name: typeof action?.name === 'string' ? action.name : '',
+            done: Boolean(action?.done)
+        }));
+    };
+
     // Function to generate alerts
     const generateAlerts = async () => {
         alertsList.innerHTML = '';
 
-        const actions = persistence
+        const persistedActions = persistence
             ? await persistence.loadState('ActionTracker')
             : JSON.parse(localStorage.getItem(actionTrackerKey) || '[]');
+        const actions = normalizeActions(persistedActions);
 
         const alerts = [];
 

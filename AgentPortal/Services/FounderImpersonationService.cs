@@ -132,8 +132,9 @@ public class FounderImpersonationService
             return null;
         }
 
+        var normalizedAgentUserId = agentUserId.ToLowerInvariant();
         var profile = await _db.AgentProfiles.AsNoTracking()
-            .FirstOrDefaultAsync(a => a.AgentUserId == agentUserId, ct);
+            .FirstOrDefaultAsync(a => a.AgentUserId == agentUserId || (a.AgentUserId != null && a.AgentUserId.ToLower() == normalizedAgentUserId), ct);
 
         var email = profile?.AgentUpn;
         var name = profile?.FullName ?? profile?.AgentUpn ?? agentUserId;

@@ -3,144 +3,118 @@
 
 @{
     ViewData["Title"] = "Home Insurance Quote";
-    ViewData["PageKey"] = "quote_home";
-}
-
-<div class="container-narrow">
-
-    <div class="text-center" style="margin-top:18px; margin-bottom:6px;">
-        <h1 style="
-            font-weight: 900;
-            font-size: 2.4rem;
-            color: #a68023;
-            letter-spacing: .5px;
-            margin-bottom: 6px;">
-            Home Insurance Quote
-        </h1>
-    </div>
-
-    <p class="required-note text-center">
-        <strong>
-            <span class="text-danger">*</span> Fields marked with a red asterisk are required.
-        </strong>
-    </p>
-
-    @if (!ViewData.ModelState.IsValid)
+    var pageKey = ((string?)ViewData["PageKey"] ?? "quote_home").Trim();
+    if (string.IsNullOrWhiteSpace(pageKey))
     {
-        <div class="alert alert-danger fw-bold">
-            @Html.ValidationSummary(excludePropertyErrors: false)
-        </div>
+        pageKey = "quote_home";
     }
-
-<style>
-    body { background-color: #ffffff; }
-
-    form.container { max-width: 1200px; padding-bottom: 40px; }
-
-    .section-card {
-        background-color: #ffffff;
-        border: 2px solid #a68023;
-        padding: 26px;
-        border-radius: 12px;
-        margin: 18px auto 26px;
-        box-shadow: 0 12px 26px rgba(0,0,0,0.06);
-    }
-
-    .section-title {
-        font-size: 1.45rem;
-        font-weight: 900;
-        color: #a68023;
-        margin-bottom: 18px;
-        letter-spacing: 0.2px;
-    }
-
-    .section-card h5 { font-weight: 900; margin-top: 10px; margin-bottom: 10px; }
-
-    label { font-weight: 800; }
-
-    .form-control, .form-select, textarea {
-        border: 1px solid #a68023;
-        margin-bottom: 12px;
-        border-radius: 10px;
-        padding: 10px 12px;
-    }
-
-    .form-control:focus, .form-select:focus, textarea:focus {
-        outline: none;
-        box-shadow: 0 0 0 0.2rem rgba(166,128,35,0.20);
-        border-color: #a68023;
-    }
-
-    .btn-gold {
-        background-color: #a68023;
-        color: #fff;
-        font-weight: 900;
-        padding: 12px 26px;
-        border-radius: 10px;
-        font-size: 1.05rem;
-        border: none;
-        letter-spacing: 0.2px;
-    }
-
-    .btn-gold:hover { background-color: #8f6f1e; color: #fff; }
-
-    .mini-card {
-        border: 1px solid rgba(0,0,0,0.10);
-        padding: 18px;
-        border-radius: 12px;
-        margin-bottom: 16px;
-        background: #fff;
-        box-shadow: 0 8px 18px rgba(0,0,0,0.05);
-    }
-
-    .mini-card h5 { color: #222; margin-bottom: 12px; font-weight: 900; }
-
-    .wizard-steps {
-        display: flex;
-        gap: 10px;
-        flex-wrap: wrap;
-        margin: 10px auto 18px;
-        justify-content: center;
-        max-width: 1200px;
-        padding: 0 12px;
-    }
-
-    .wizard-pill {
-        border: 1px solid #a68023;
-        padding: 8px 12px;
-        border-radius: 999px;
-        font-weight: 900;
-        font-size: 0.95rem;
-        color: #222;
-        opacity: 0.45;
-        background: #fff;
-        user-select: none;
-    }
-
-    .wizard-pill.active { opacity: 1; background: #a68023; color: #fff; }
-
-    .wizard-step { display: none; }
-    .wizard-step.active { display: block; }
-
-    .muted-help { color: rgba(0,0,0,.62); font-weight: 700; font-size: 0.92rem; }
-
-    @@media (max-width: 768px) {
-        .section-card { padding: 18px; }
-        .btn-gold { width: 100%; }
-    }
-</style>
-
-<div class="wizard-steps">
-    <div class="wizard-pill" data-pill="1">Section 1 — Applicant</div>
-    <div class="wizard-pill" data-pill="2">Section 2 — Address & Contact</div>
-    <div class="wizard-pill" data-pill="3">Section 3 — Policy</div>
-    <div class="wizard-pill" data-pill="4">Section 4 — Dwelling</div>
-    <div class="wizard-pill" data-pill="5">Section 5 — Coverages</div>
-    <div class="wizard-pill" data-pill="6">Section 6 — Endorsements</div>
-</div>
-
-<form asp-action="SubmitHomeQuote" asp-controller="HomeQuote" method="post" class="container" id="homeQuoteForm" novalidate data-form-key="quote_home_form">
-    @Html.AntiForgeryToken()
+    var formKey = $"{pageKey}_form";
+    ViewData["PageKey"] = pageKey;
+    ViewData["PageCategory"] = "quote";
+    ViewData["QuoteTypeForTracking"] = "home";
+    ViewData["PageVariant"] = "website";
+    ViewData["PageMode"] = "site_mode";
+	    ViewData["IsLandingPage"] = false;
+	    var isFounderPath = ViewData["IsFounderPath"] as bool? == true;
+	    var trackedSlug = ((string?)ViewData["TrackingSlug"] ?? string.Empty).Trim();
+	    var agentSlug = !isFounderPath ? trackedSlug : string.Empty;
+	    var startStep = ((int?)ViewData["StartStep"] ?? 1);
+	    var hasServerErrors = !ViewData.ModelState.IsValid;
+	    var showQuoteStartedByDefault = hasServerErrors || startStep > 1;
+	    IReadOnlyList<string> heroProofChips = new[] { "25+ carriers", "Property-first review", "No obligation" };
+	    var heroStepIntroTitle = "Start with the protection gaps";
+	    var heroStepIntroHelper = "A quick home coverage review built around your household, property details, current policy timing, and the coverage decisions that matter before loss exposure finds the weak spots.";
+	    var primaryStartCtaText = "Check My Home Protection Fit";
+	    var primaryStartCtaNote = "Takes about 2 minutes. No obligation. Get your property details lined up before you shop.";
+	    var formHeadingTitle = "Build your home protection plan";
+	    var formHeadingCopy = "Share a few home and household details so we can review protection options that fit your property, timing, and coverage needs.";
+	}
+	
+	<partial name="_PropertyCasualtyQuoteStyles" />
+	
+	<div class="container-narrow">
+	    <div class="pcq-shell">
+	        <div class="pcq-surface">
+	            <div class="pcq-hero-entry" id="homeHeroEntryPanel" @((showQuoteStartedByDefault ? "hidden" : null))>
+	                <figure class="pcq-hero-banner-wrap">
+	                    <img class="pcq-hero-banner-image" src="~/images/ads/home-top-banner.png" asp-append-version="true" alt="Legend home insurance review creative asking what happens if your home is not protected." loading="eager" />
+	                </figure>
+	
+	                <div class="pcq-proof-row" aria-label="Home quote benefits">
+	                    <span class="pcq-proof-pill">
+	                        <svg class="pcq-proof-icon" viewBox="0 0 24 24" aria-hidden="true">
+	                            <circle cx="12" cy="8" r="3.1"></circle>
+	                            <circle cx="5.6" cy="10" r="2.35"></circle>
+	                            <circle cx="18.4" cy="10" r="2.35"></circle>
+	                            <path d="M6.8 19.2c.65-3.15 2.55-5 5.2-5s4.55 1.85 5.2 5"></path>
+	                            <path d="M1.9 18.6c.45-2.25 1.8-3.55 3.7-3.55 1.05 0 1.95.38 2.65 1.1"></path>
+	                            <path d="M15.75 16.15c.7-.72 1.6-1.1 2.65-1.1 1.9 0 3.25 1.3 3.7 3.55"></path>
+	                        </svg>
+	                        @heroProofChips[0]
+	                    </span>
+	                    <span class="pcq-proof-pill">
+	                        <svg class="pcq-proof-icon" viewBox="0 0 24 24" aria-hidden="true">
+	                            <circle cx="12" cy="12" r="8.2"></circle>
+	                            <path d="M12 7.2v5.15l3.35 2.05"></path>
+	                        </svg>
+	                        @heroProofChips[1]
+	                    </span>
+	                    <span class="pcq-proof-pill">
+	                        <svg class="pcq-proof-icon" viewBox="0 0 24 24" aria-hidden="true">
+	                            <path d="M12 2.8 19.2 5.6v5.55c0 4.55-2.85 8.25-7.2 10.05-4.35-1.8-7.2-5.5-7.2-10.05V5.6L12 2.8Z"></path>
+	                            <path d="m8.7 12.1 2.15 2.15 4.55-4.8"></path>
+	                        </svg>
+	                        @heroProofChips[2]
+	                    </span>
+	                </div>
+	
+	                <div class="pcq-step-copy">
+	                    <div class="pcq-step-copy-title">@heroStepIntroTitle</div>
+	                    <p class="pcq-step-copy-helper">@heroStepIntroHelper</p>
+	                </div>
+	
+	                <div class="pcq-hero-actions">
+	                    <button type="button" class="btn btn-gold pcq-primary-start-cta" id="homeHeroStartCta" data-cta="home_funnel_start" data-primary-cta="hero">@primaryStartCtaText</button>
+	                    <div class="pcq-start-note"><span>@primaryStartCtaNote</span></div>
+	                </div>
+	            </div>
+	
+	            <div class="pcq-form-shell" id="homeQuoteFlowShell" @((showQuoteStartedByDefault ? null : "hidden"))>
+	                <div class="pcq-form-heading">
+	                    <h1 class="pcq-form-heading-title">@formHeadingTitle</h1>
+	                    <p class="pcq-form-heading-copy">@formHeadingCopy</p>
+	                </div>
+	
+	                <p class="required-note text-center">
+	                    <strong>
+	                        <span class="text-danger">*</span> Fields marked with a red asterisk are required.
+	                    </strong>
+	                </p>
+	
+	                @if (!ViewData.ModelState.IsValid)
+	                {
+	                    <div class="alert alert-danger fw-bold">
+	                        @Html.ValidationSummary(excludePropertyErrors: false)
+	                    </div>
+	                }
+	
+	                <div class="wizard-steps">
+	                    <div class="wizard-pill" data-pill="1">Section 1 - Applicant</div>
+	                    <div class="wizard-pill" data-pill="2">Section 2 - Address and Contact</div>
+	                    <div class="wizard-pill" data-pill="3">Section 3 - Policy</div>
+	                    <div class="wizard-pill" data-pill="4">Section 4 - Dwelling</div>
+	                    <div class="wizard-pill" data-pill="5">Section 5 - Coverages</div>
+	                    <div class="wizard-pill" data-pill="6">Section 6 - Endorsements</div>
+	                </div>
+	
+	                <form asp-action="SubmitHomeQuote" asp-controller="HomeQuote" method="post" class="pcq-form-frame" id="homeQuoteForm" novalidate data-form-key="@formKey">
+	    @Html.AntiForgeryToken()
+	    @if (!string.IsNullOrWhiteSpace(agentSlug))
+	    {
+	        <input type="hidden" name="AgentSlug" value="@agentSlug" />
+	    }
+	    <input type="hidden" name="PageKey" value="@pageKey" />
+	    <input type="hidden" name="CurrentStep" id="CurrentStep" value="@startStep" />
 
     <!-- ===================== SECTION 1: APPLICANT INFO ===================== -->
     <div class="section-card wizard-step active" data-step="1">
@@ -680,7 +654,7 @@
         </div>
 
         <div class="mini-card">
-            <h5>Additional Carrier Questions</h5>
+            <h5>Coverage & Household Questions</h5>
 
             <div class="row">
                 <div class="col-md-4">
@@ -717,12 +691,6 @@
             </div>
 
             <div class="row">
-                <div class="col-md-8">
-                    <label>Additional Carrier Questions</label>
-                    <textarea asp-for="AdditionalCarrierQuestions" class="form-control" rows="3"></textarea>
-                    <span asp-validation-for="AdditionalCarrierQuestions" class="text-danger"></span>
-                </div>
-
                 <div class="col-md-4">
                     <label>Auto years with prior carrier or years with current agent<span class="text-danger">*</span></label>
                     <select asp-for="AutoYearsWithPriorCarrierOrAgent" class="form-select" required data-original-required="1">
@@ -1412,60 +1380,139 @@
             </div>
         </div>
 
-        <div class="mini-card">
-            <h5>Authorization</h5>
-
-            <style>
-                .disclaimer-check{
-                    display:flex;
-                    align-items:flex-start;
-                    gap:10px;
-                    padding:10px 0;
-                }
-                .disclaimer-check .form-check-input{
-                    width:18px;
-                    height:18px;
-                    margin-top:2px;
-                    margin-left:0;
-                    margin-right:0;
-                    position:static;
-                    flex-shrink:0;
-                }
-                .disclaimer-check .form-check-label{
-                    line-height:1.5;
-                    white-space:normal;
-                    color:#0f172a;
-                    font-weight:600;
-                }
-            </style>
-            <div class="form-check disclaimer-check">
-                <input asp-for="AcknowledgedDisclaimer" class="form-check-input" type="checkbox" required data-original-required="1" id="AcknowledgedDisclaimer" />
-                <label class="form-check-label" for="AcknowledgedDisclaimer">
-                    I acknowledge that by submitting this form, I authorize the company to contact me regarding my home insurance quote request.<span class="text-danger">*</span>
+	        <div class="mini-card">
+	            <h5>Authorization</h5>
+	            <div class="form-check disclaimer-check">
+	                <input asp-for="AcknowledgedDisclaimer" class="form-check-input" type="checkbox" required data-original-required="1" id="AcknowledgedDisclaimer" />
+	                <label class="form-check-label" for="AcknowledgedDisclaimer">
+	                    I acknowledge that by submitting this form, I authorize the company to contact me regarding my home insurance quote request.<span class="text-danger">*</span>
                 </label>
             </div>
             <span asp-validation-for="AcknowledgedDisclaimer" class="text-danger"></span>
 
             <div class="d-flex justify-content-between mt-3">
                 <button type="button" class="btn btn-secondary fw-bold" onclick="goBack()">Back</button>
-                <button type="submit" class="btn btn-gold">Submit Home Quote Request</button>
+	                <button type="submit" class="btn btn-gold">Submit Home Quote Request</button>
             </div>
         </div>
     </div>
-</form>
+    <input type="hidden" name="SessionId" />
+    <input type="hidden" name="VisitorId" />
+    <input type="hidden" name="UtmSource" />
+    <input type="hidden" name="UtmMedium" />
+    <input type="hidden" name="UtmCampaign" />
+    <input type="hidden" name="UtmId" />
+    <input type="hidden" name="UtmTerm" />
+    <input type="hidden" name="UtmContent" />
+    <input type="hidden" name="MetaCampaignId" />
+    <input type="hidden" name="MetaAdSetId" />
+	    <input type="hidden" name="MetaAdId" />
+	    <input type="hidden" name="Fbclid" />
+	    <input type="hidden" name="ReferrerUrl" />
+	    <input type="hidden" name="LandingPageUrl" />
+	</form>
+	            </div>
+	        </div>
+	    </div>
+	</div>
+	<script>
+(function () {
+    var ids = window.legendTrackingIds;
+    var p = new URLSearchParams(window.location.search);
+    var attr = ids && ids.getAttribution ? (ids.getAttribution() || {}) : {};
+    function sh(n, v) { var e = document.querySelector('input[name="' + n + '"]'); if (e && v) e.value = v; }
+    sh('SessionId',    ids && ids.getSessionId ? ids.getSessionId() : '');
+    sh('VisitorId',    ids && ids.getVisitorId ? ids.getVisitorId() : '');
+    sh('UtmSource',    attr.utmSource || p.get('utm_source') || '');
+    sh('UtmMedium',    attr.utmMedium || p.get('utm_medium') || '');
+    sh('UtmCampaign',  attr.utmCampaign || p.get('utm_campaign') || '');
+    sh('UtmId',        attr.utmId || p.get('utm_id') || '');
+    sh('UtmTerm',      attr.utmTerm || p.get('utm_term') || '');
+    sh('UtmContent',   attr.utmContent || p.get('utm_content') || '');
+    sh('MetaCampaignId', attr.metaCampaignId || p.get('meta_campaign_id') || '');
+    sh('MetaAdSetId',  attr.metaAdSetId || p.get('meta_adset_id') || '');
+    sh('MetaAdId',     attr.metaAdId || p.get('meta_ad_id') || '');
+    sh('Fbclid',       attr.fbclid || p.get('fbclid') || '');
+    sh('ReferrerUrl',  document.referrer || '');
+    sh('LandingPageUrl', window.location.href || '');
+})();
+</script>
 
 @section Scripts {
     <partial name="_ValidationScriptsPartial" />
 
-    <script>
-        let currentStep = 1;
+	    <script>
+	        let currentStep = 1;
+	        const pageKey = '@pageKey';
+	        const formKey = '@formKey';
+	        const initialStartStep = parseInt("@(ViewData["StartStep"] ?? 1)") || 1;
+	        let quoteStarted = '@(showQuoteStartedByDefault ? "true" : "false")' === 'true';
+	        const trackHomeQuote = (window.LegendAnalytics?.track && typeof window.LegendAnalytics.track === 'function')
+	            ? window.LegendAnalytics.track
+	            : (window.legendTrack && typeof window.legendTrack === 'function')
+	                ? window.legendTrack
+	                : null;
+	        const homeCompletedSteps = new Set();
+	        const homeViewedContactSteps = new Set();
+	        const heroEntryPanel = document.getElementById("homeHeroEntryPanel");
+	        const quoteFlowShell = document.getElementById("homeQuoteFlowShell");
+	        const startButton = document.getElementById("homeHeroStartCta");
+	        const currentStepField = document.getElementById("CurrentStep");
 
-        function setStep(step) {
-            currentStep = step;
+	        function setQuoteStartedState(started) {
+	            quoteStarted = !!started;
+	            document.body.classList.toggle("pcq-quote-started", quoteStarted);
+	            if (heroEntryPanel) heroEntryPanel.hidden = quoteStarted;
+	            if (quoteFlowShell) quoteFlowShell.hidden = !quoteStarted;
+	        }
 
-            document.querySelectorAll(".wizard-step").forEach(s => {
-                const isActive = parseInt(s.getAttribute("data-step")) === step;
-                s.classList.toggle("active", isActive);
+	        function trackHomeCta(elementKey, buttonLabel) {
+	            if (!trackHomeQuote) return;
+	            trackHomeQuote({
+	                EventType: 'quote_cta_click',
+	                ElementKey: elementKey,
+	                ButtonLabel: buttonLabel,
+	                FormKey: formKey,
+	                PageKey: pageKey
+	            });
+	            trackHomeQuote({
+	                EventType: 'cta_click',
+	                ElementKey: elementKey,
+	                ButtonLabel: buttonLabel,
+	                FormKey: formKey,
+	                PageKey: pageKey
+	            });
+	        }
+
+        function emitHomeStepComplete(stepNumber, nextStep) {
+            if (!trackHomeQuote || homeCompletedSteps.has(stepNumber)) return;
+            homeCompletedSteps.add(stepNumber);
+            trackHomeQuote({
+                EventType: 'quote_step_complete',
+                FormKey: formKey,
+                PageKey: pageKey,
+                MetadataJson: JSON.stringify({ stepNumber, nextStep })
+            });
+        }
+
+        function emitHomeContactStepView(stepNumber) {
+            if (!trackHomeQuote || homeViewedContactSteps.has(stepNumber)) return;
+            homeViewedContactSteps.add(stepNumber);
+            trackHomeQuote({
+                EventType: 'quote_contact_step_view',
+                FormKey: formKey,
+                PageKey: pageKey,
+                MetadataJson: JSON.stringify({ stepNumber, source: 'wizard_step_view' })
+            });
+        }
+
+	        function setStep(step) {
+	            currentStep = step;
+	            if (currentStepField) currentStepField.value = step.toString();
+	
+	            document.querySelectorAll(".wizard-step").forEach(s => {
+	                const isActive = parseInt(s.getAttribute("data-step")) === step;
+	                s.classList.toggle("active", isActive);
 
                 // disable inputs outside active step so browser doesn't validate them
                 s.querySelectorAll("input, select, textarea").forEach(el => {
@@ -1477,10 +1524,33 @@
                 p.classList.toggle("active", parseInt(p.getAttribute("data-pill")) === step);
             });
 
-            // keep conditional logic correct when moving steps
-            if (step === 2) togglePreviousAddress();
-            toggleHouseUpdateYearFields();
-        }
+	            // keep conditional logic correct when moving steps
+	            if (step === 2) togglePreviousAddress();
+	            toggleHouseUpdateYearFields();
+	            if (step === 2 && quoteStarted) emitHomeContactStepView(step);
+	            refreshFieldStates();
+	        }
+
+	        function updateFieldState(el) {
+	            if (!el) return;
+	            el.classList.remove("input-answered", "input-required-missing");
+	            if (el.disabled || el.type === "hidden") return;
+
+	            const isRequired = el.hasAttribute("required") || el.dataset.originalRequired === "1";
+	            const hasValue = el.type === "checkbox"
+	                ? !!el.checked
+	                : (el.value ?? "").trim() !== "";
+
+	            if (hasValue) {
+	                el.classList.add("input-answered");
+	            } else if (isRequired) {
+	                el.classList.add("input-required-missing");
+	            }
+	        }
+
+	        function refreshFieldStates() {
+	            document.querySelectorAll("input, select, textarea").forEach(updateFieldState);
+	        }
 
         function validateCurrentStep() {
             const stepEl = document.querySelector(`.wizard-step[data-step="${currentStep}"]`);
@@ -1503,7 +1573,10 @@
 
         function goNext() {
             if (!validateCurrentStep()) return;
-            if (currentStep < 6) setStep(currentStep + 1);
+            if (currentStep < 6) {
+                emitHomeStepComplete(currentStep, currentStep + 1);
+                setStep(currentStep + 1);
+            }
         }
 
         function goBack() {
@@ -1572,10 +1645,10 @@
             document.querySelectorAll("input, select, textarea").forEach(el => el.disabled = false);
         }
 
-        document.addEventListener("DOMContentLoaded", function () {
-            const startStep = parseInt("@(ViewData["StartStep"] ?? 1)") || 1;
-
-            setStep(startStep);
+	        document.addEventListener("DOMContentLoaded", function () {
+	            setQuoteStartedState(quoteStarted);
+	
+	            setStep(initialStartStep);
 
             // Default Primary/Previous Country to United States if empty
             const pc = document.getElementById("PrimaryCountry");
@@ -1598,15 +1671,91 @@
             });
             toggleHouseUpdateYearFields();
 
-            const form = document.getElementById("homeQuoteForm");
-            if (form) {
-                form.addEventListener("submit", function () {
-                    // Ensure conditional fields are correct, then allow submit
-                    togglePreviousAddress(true);
+        const form = document.getElementById("homeQuoteForm");
+        if (form) {
+            form.addEventListener("submit", function () {
+                form._trackSubmitAttempt?.(true, 0);
+                // Ensure conditional fields are correct, then allow submit
+                togglePreviousAddress(true);
                     toggleHouseUpdateYearFields();
                     enableAllInputsForSubmit();
+                    const disclaimer = document.getElementById("AcknowledgedDisclaimer");
+                    if (disclaimer) {
+                        disclaimer.disabled = false;
+                        disclaimer.value = disclaimer.checked ? 'true' : 'false';
+                        // hidden override to guarantee post even if main box was disabled earlier
+                        let hidden = document.getElementById("AcknowledgedDisclaimerHidden");
+                        if (!hidden) {
+                            hidden = document.createElement("input");
+                            hidden.type = "hidden";
+                            hidden.id = "AcknowledgedDisclaimerHidden";
+                            hidden.name = "AcknowledgedDisclaimer";
+                            form.appendChild(hidden);
+                        }
+                        hidden.value = disclaimer.checked ? 'true' : 'false';
+                    }
                 });
             }
         });
-    </script>
-}
+
+        // Dev-only sticky form state (localhost only)
+	            (function () {
+	            const form = document.getElementById("homeQuoteForm");
+	            const storageKey = "homeQuoteForm-dev";
+	            const isLocalHost = ["localhost", "127.0.0.1"].includes(location.hostname);
+	            if (!isLocalHost || !form) return;
+
+            function saveState() {
+                const data = { step: currentStep, values: {} };
+                form.querySelectorAll("input, select, textarea").forEach(el => {
+                    if (!el.name) return;
+                    data.values[el.name] = el.type === "checkbox" ? el.checked : el.value;
+                });
+                try { localStorage.setItem(storageKey, JSON.stringify(data)); } catch { /* ignore */ }
+            }
+
+            function restoreState() {
+                try {
+                    const raw = localStorage.getItem(storageKey);
+                    if (!raw) return;
+                    const data = JSON.parse(raw);
+                    const vals = data?.values ?? {};
+                    Object.keys(vals).forEach(name => {
+                        const el = form.querySelector(`[name=\"${name}\"]`);
+                        if (!el) return;
+                        if (el.type === "checkbox") el.checked = !!vals[name];
+                        else el.value = vals[name];
+                    });
+                    if (data?.step) setStep(parseInt(data.step) || 1);
+                } catch { /* ignore */ }
+            }
+
+	            restoreState();
+	            if (currentStep > 1) {
+	                setQuoteStartedState(true);
+	            }
+	            form.addEventListener("input", saveState);
+	            form.addEventListener("change", saveState);
+	        })();
+
+	        if (startButton) {
+	            startButton.addEventListener("click", function () {
+	                const label = (startButton.textContent || "").trim();
+	                if (!quoteStarted) {
+	                    trackHomeCta('home_quote_start', label || 'Check My Home Protection Fit');
+	                }
+	                setQuoteStartedState(true);
+	                setStep(currentStep || initialStartStep || 1);
+	                if (quoteFlowShell) {
+	                    quoteFlowShell.scrollIntoView({ behavior: "smooth", block: "start" });
+	                }
+	            });
+	        }
+	
+	        document.querySelectorAll("input, select, textarea").forEach(el => {
+	            el.addEventListener("input", () => updateFieldState(el));
+	            el.addEventListener("change", () => updateFieldState(el));
+	        });
+	        refreshFieldStates();
+	    </script>
+	}

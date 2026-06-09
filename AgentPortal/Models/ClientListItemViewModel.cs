@@ -29,6 +29,7 @@ public sealed class ClientListItemViewModel
     public string? MortgageLender { get; set; }
     public string? LoanAmount { get; set; }
     public string? OriginalLeadType { get; set; }
+    public string? ContactStatus { get; set; }
     public string PipelineStage { get; set; } = ClientCrmMeta.DefaultPipelineStage;
     public double PipelineOrder { get; set; }
     public string? MeetingLocation { get; set; }
@@ -54,6 +55,21 @@ public sealed class ClientListItemViewModel
     public bool HasDuplicateHousehold { get; set; }
     public string? AssignedOwner { get; set; }
     public string? WatchersCsv { get; set; }
+    public DateTime? LatestSubmissionUtc { get; set; }
+    public int IntakeHistoryCount { get; set; }
+    public string? LeadOriginLabel { get; set; }
+    public string? LeadOriginTone { get; set; }
+    public string? ProductInterestLabel { get; set; }
+    public string? QuoteTypeLabel { get; set; }
+    public string? AttributionSource { get; set; }
+    public string? AttributionMedium { get; set; }
+    public string? AttributionCampaign { get; set; }
+    public string? LatestRecommendationSummary { get; set; }
+    public string? IntakePageVariant { get; set; }
+    public string? IntakePageMode { get; set; }
     public string? ProductionStatus { get; set; }
     public decimal ProductionAmount { get; set; }
+    public decimal ProductionSubmittedAmount { get; set; }
+    public decimal ProductionIssuedAmount { get; set; }
+    public decimal ProductionPaidAmount { get; set; }
 }

@@ -50,6 +50,12 @@
   const requiredForClient = Array.from(document.querySelectorAll("[data-client-required]"));
   const clientChips = Array.from(document.querySelectorAll("[data-client-chip]"));
 
+  // Ensure a default selection (Lead) so required radios don't block submit silently
+  if (!recordTypeRadios.some(r => r.checked)) {
+    const leadRadio = recordTypeRadios.find(r => r.value === "Lead");
+    if (leadRadio) leadRadio.checked = true;
+  }
+
   function isPortalRecordType(value) {
     return value === "Client" || value === "BusinessClient";
   }

@@ -2019,20 +2019,8 @@
                         checkbox.focus();
                         return;
                     }
-
-                    if (!form.checkValidity()) {
-                        event.preventDefault();
-                        const firstInvalid = form.querySelector(":invalid");
-                        if (firstInvalid) {
-                            const stepEl = firstInvalid.closest('.wizard-step');
-                            if (stepEl) {
-                                const idx = steps.indexOf(stepEl);
-                                if (idx >= 0) showStep(idx);
-                            }
-                            firstInvalid.scrollIntoView({ behavior: "smooth", block: "center" });
-                            firstInvalid.focus();
-                        }
-                    }
+                    // Per-step validation already ensured required fields are filled.
+                    // Server handles final validation before generating the PDF.
                 });
 
                 // init
@@ -2043,6 +2031,6 @@
 
 </div>
 
-@section Scripts{
+@section Scripts {
     <partial name="_ValidationScriptsPartial" />
 }

@@ -1,6 +1,8 @@
 /* ============================== GLOBAL / BASE STYLES ============================== */
 
 :root{
+    --legend-navy:#0e1b3d;
+    --legend-navy-deep:#0b1530;
     --legend-gold:#d9b35a;
     --legend-gold-deep:#b4891f;
     --legend-ink:#0f172a;
@@ -10,11 +12,22 @@
     --legend-shadow: 0 16px 36px rgba(0,0,0,.32);
     --legend-shadow-soft: 0 10px 22px rgba(0,0,0,.18);
     --legend-line:#d9b35a;
+
+    /* Finance tool dark theme tokens (used on all tool pages) */
+    --gold:#d1a034;
+    --goldSoft: rgba(209,160,52,.16);
+    --lineDark:#8f6c1b;
+    --ink:#f8fafc;
+    --muted:#9fb0cd;
+    --borderSoft: rgba(159,176,205,.22);
+    --navyPanel:#111827;
+    --navyField:#121a2b;
+    --shadowA: 0 18px 55px rgba(0,0,0,0.45);
+    --shadowB: 0 22px 70px rgba(0,0,0,0.52);
 }
 
 /* ------------------------------ Base font sizing -------------------------------- */
 html { font-size: 14px; }
-@media (min-width: 768px) { html { font-size: 16px; } }
 
 /* ------------------------------ Bootstrap focus styles -------------------------------- */
 .btn:focus, .btn:active:focus, .btn-link.nav-link:focus, 
@@ -37,19 +50,19 @@ footer.footer {
     width: 100%;
     text-align: center;
     padding: 1rem 0;
-    background: linear-gradient(180deg,#0f172a,#0b111f);
+    background: linear-gradient(180deg, #0e1b3d, #0b1530);
     color: var(--legend-gold);
     border-top: 1.5px solid var(--legend-gold);
 }
 
 /* ------------------------------ Navbar -------------------------------- */
 .navbar { 
-    background: linear-gradient(135deg,#0f172a,#111827);
+    background: linear-gradient(160deg,var(--legend-navy),var(--legend-navy-deep));
     border: 2px solid var(--legend-gold); 
     z-index: 1050; 
     align-items: center; /* vertical centering for logo + tabs */
-    max-height: 180px;       
-    padding: 2rem 2rem;
+    max-height: 140px;       
+    padding: 0.85rem 1.5rem;
     border-radius: 16px;
     box-shadow: 0 18px 36px rgba(0,0,0,.32);
 }
@@ -556,7 +569,11 @@ footer.footer {
         max-height: none !important;
         box-shadow: 0 10px 22px rgba(0,0,0,.08);
     }
-    .navbar-brand img{ height: 58px !important; max-height: 58px !important; }
+    .navbar-brand img{
+        height: auto !important;
+        max-height: 52px !important;
+        filter: drop-shadow(0 4px 10px rgba(0,0,0,.25)) !important;
+    }
     .navbar-left{ width: 100%; margin: 0 !important; }
     .navbar-left .nav-row{ gap: 10px !important; }
     .navbar-left .nav-link{
@@ -572,8 +589,17 @@ footer.footer {
         flex-wrap: wrap;
     }
     /* Trim header noise but keep logout + greeting */
-    .header-psalms,
     .navbar-mini-tools{ display: none !important; }
+    .header-psalms{
+        display: flex !important;
+        justify-content: center;
+        align-items: center;
+        position: static !important;
+        transform: none !important;
+        width: 100%;
+        text-align: center;
+        margin: 0.35rem 0 0 0;
+    }
     .navbar-right .nav-link[href*=\"store\"]{ display:none !important; }
 
     /* Hero / heavy intro blocks */
@@ -675,65 +701,93 @@ footer.footer {
 }
 input[type="number"] { -moz-appearance: textfield; -webkit-appearance: none; appearance: none; margin: 0; }
 
-/* ------------------------------ Finance Tools Container ------------------------------ */
-.finance-tools-container input.form-control {
-    border: .5px solid #a68023; 
-    border-radius: 0.5rem;
-    padding: 0.65rem 0.75rem;
-    font-weight: 700;           
-    font-size: 0.95rem;
-    transition: all 0.25s ease;
-    color: #222;                
-    background-color: #fff;
-    box-shadow: 0 2px 8px rgba(230, 230, 230, 0);
+/* ------------------------------ Finance Tools Theme — all tools ------------------------------ */
+#budget-embed input,
+#budget-embed select,
+#budget-embed textarea,
+#budget-embed input.form-control,
+#budget-embed select.form-control,
+#budget-embed .form-control,
+#budget-embed .form-select,
+.networth-tool input,
+.networth-tool select,
+.networth-tool textarea,
+.networth-tool input.form-control,
+.networth-tool select.form-control,
+.networth-tool .form-control,
+.networth-tool .form-select {
+    border: 1.5px solid rgba(166,128,35,.38) !important;
+    border-radius: 10px !important;
+    background: rgba(255,255,255,.92) !important;
+    box-shadow: inset 0 1px 0 rgba(255,255,255,.05) !important;
+    transition: border-color .15s ease, box-shadow .15s ease;
 }
-.finance-tools-container input.form-control::placeholder {
-    color: #000;                
-    font-weight: 600;           
+#budget-embed input::placeholder,
+#budget-embed textarea::placeholder,
+.networth-tool input::placeholder,
+.networth-tool textarea::placeholder {
+    color: #64748b !important;
+    font-weight: 600;
 }
-.finance-tools-container input.form-control:focus {
-    outline: none;
-    border-color: #a68023;
-    box-shadow: 0 2px 8px rgba(230, 230, 230, 0);
+#budget-embed input:focus,
+#budget-embed select:focus,
+#budget-embed textarea:focus,
+#budget-embed .form-control:focus,
+#budget-embed .form-select:focus,
+.networth-tool input:focus,
+.networth-tool select:focus,
+.networth-tool textarea:focus,
+.networth-tool .form-control:focus,
+.networth-tool .form-select:focus {
+    outline: none !important;
+    border-color: #ddb457 !important;
+    box-shadow: 0 0 0 3px rgba(221,180,87,.16) !important;
 }
-.finance-tools-container input.positive {
-    border-color: #a68023; 
-    box-shadow: 0 2px 8px rgba(230, 230, 230, 0);
-    color: #1b3b1b;         
+#budget-embed input.positive,
+.networth-tool input.positive {
+    border-color: rgba(166,128,35,.34) !important;
+    box-shadow: inset 0 1px 0 rgba(255,255,255,.05) !important;
+    color: #1b3b1b;
     font-weight: 700;
 }
-.finance-tools-container input.negative {
-    border-color: #a68023; 
-    box-shadow: 0 2px 8px rgba(230, 230, 230, 0);
-    color: #000;         
+#budget-embed input.negative,
+.networth-tool input.negative {
+    border-color: rgba(166,128,35,.34) !important;
+    box-shadow: inset 0 1px 0 rgba(255,255,255,.05) !important;
+    color: #000;
     font-weight: 700;
 }
 
 /* ------------------------------ Gold Themed Buttons ------------------------------ */
 .btn-outline-gold {
     color: #a68023;
-    border-color: #a68023;
-    transition: all 0.2s ease;
+    background: linear-gradient(155deg, #0d1f42 0%, #0a1630 100%);
+    border: 1.5px solid rgba(199,153,49,.55);
+    border-radius: 10px;
+    box-shadow: 0 4px 12px rgba(0,0,0,.22);
+    transition: background .13s, border-color .13s, transform .12s;
 }
 .btn-outline-gold:hover {
-    background-color: #a68023;
-    color: #fff;
-    border-color: #a68023;
+    background: linear-gradient(155deg, #152848 0%, #0e1e3c 100%);
+    border-color: rgba(199,153,49,.95);
+    color: #a68023;
+    transform: translateY(-1px);
+    box-shadow: 0 8px 20px rgba(0,0,0,.30);
 }
 
 /* ------------------------------ Budget Dropdown ------------------------------ */
 #budgetDropdown {
-    transition: all 0.2s ease;
-    border: 1.5px solid #a68023; 
-    border-radius: 6px;
+    transition: border-color .15s ease, box-shadow .15s ease;
+    border: 1.5px solid rgba(166,128,35,.44);
+    border-radius: 10px;
     padding: 0.35rem 0.75rem;
     font-weight: 600;
-    background-color: #fff;
+    background: linear-gradient(180deg, rgba(11,21,41,.99), rgba(9,18,36,.96));
     color: #333;
     cursor: pointer;
 }
-#budgetDropdown:hover { border-color: #ffff; box-shadow: 0 2px 6px rgba(166,128,35,0.25); }
-#budgetDropdown option { border-bottom: 1px solid #fff; padding: 6px 10px; }
+#budgetDropdown:hover { border-color: #ddb457; box-shadow: 0 0 0 3px rgba(221,180,87,.14); }
+#budgetDropdown option { background: #0f1d38; color: #f8fafc; padding: 6px 10px; }
 #budgetDropdown option:last-child { border-bottom: none; }
 #budgetDropdown option:hover { background-color: #fdf6e3; color: #000; }
 
@@ -1118,6 +1172,18 @@ body .table tbody tr:hover {
     background: rgba(166,128,35,.06);
 }
 
+/* ── Dark production tables – cancel global white-table overrides ── */
+body .top-prod-table { background: transparent !important; border: none !important; box-shadow: none !important; }
+body .top-prod-table > :not(caption) > * > * { background: transparent; border-color: rgba(221,180,87,.1); }
+body .top-prod-table thead th { background: rgba(13,20,37,.96) !important; color: #cbd5e1 !important; border-bottom: 1px solid rgba(221,180,87,.25) !important; font-weight: 800 !important; }
+body .top-prod-table tbody td { background: rgba(13,24,43,.92) !important; color: #e5e7eb !important; border-color: rgba(221,180,87,.08) !important; font-weight: 700 !important; }
+body .top-prod-table tbody tr:nth-child(even) td { background: rgba(16,29,51,.96) !important; }
+body .top-prod-table tbody tr:hover td { background: rgba(29,45,73,.98) !important; }
+body .top-prod-table tbody td.text-warning { color: #f4cd67 !important; text-shadow: 0 0 14px rgba(244,205,103,.22) !important; }
+body .top-prod-table tbody td.text-info    { color: #7dc4ff !important; text-shadow: 0 0 14px rgba(125,196,255,.22) !important; }
+body .top-prod-table tbody td.text-success { color: #57d89c !important; text-shadow: 0 0 14px rgba(87,216,156,.22) !important; }
+body .top-prod-table tbody td.text-muted   { color: #94a3b8 !important; }
+
 body .alert {
     border-radius: 16px;
     border-width: 1.5px;
@@ -1253,3 +1319,70 @@ main #training-frame {
 .prod-pill .pill { border-radius:12px; padding:2px 8px; font-size:12px; font-weight:700; letter-spacing:.01em; background:#0b1324; }
 .pill-paid { border:1px solid #22c55e; color:#22c55e; }
 .pill-personal { border:1px solid #f59e0b; color:#f59e0b; }
+
+/* ============================== LOADING & EMPTY STATE TOKENS ============================== */
+
+/* --- Loading skeleton shimmer --- */
+@keyframes legend-shimmer {
+    0%   { background-position: -600px 0; }
+    100% { background-position:  600px 0; }
+}
+
+.legend-loading-skeleton {
+    background: linear-gradient(90deg, #111827 25%, #1e293b 50%, #111827 75%);
+    background-size: 1200px 100%;
+    animation: legend-shimmer 1.6s infinite linear;
+    border-radius: 6px;
+}
+
+.legend-skeleton-row {
+    display: flex;
+    gap: 12px;
+    align-items: center;
+    padding: 12px 16px;
+    border-bottom: 1px solid rgba(217,179,90,.08);
+}
+
+.legend-skeleton-cell {
+    height: 14px;
+    border-radius: 4px;
+}
+.legend-skeleton-cell.w-20 { width: 20%; }
+.legend-skeleton-cell.w-15 { width: 15%; }
+.legend-skeleton-cell.w-10 { width: 10%; }
+.legend-skeleton-cell.w-30 { width: 30%; }
+
+/* --- Empty state card --- */
+.legend-empty-state {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 16px;
+    padding: 64px 24px;
+    text-align: center;
+    border: 1.5px dashed rgba(217,179,90,.3);
+    border-radius: 16px;
+    background: rgba(15,23,42,.55);
+    margin: 24px 0;
+}
+
+.legend-empty-state .legend-empty-icon {
+    font-size: 2.5rem;
+    opacity: .55;
+    line-height: 1;
+}
+
+.legend-empty-state .legend-empty-title {
+    font-size: 1.1rem;
+    font-weight: 700;
+    color: var(--legend-gold);
+    margin: 0;
+}
+
+.legend-empty-state .legend-empty-sub {
+    font-size: .875rem;
+    color: rgba(229,231,235,.55);
+    margin: 0;
+    max-width: 340px;
+}

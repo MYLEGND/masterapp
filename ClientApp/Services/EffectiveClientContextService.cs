@@ -44,6 +44,44 @@ public sealed class EffectiveClientContextService
         );
     }
 
+    private static int ProfileCompletenessScore(AgentProfile profile)
+    {
+        var score = 0;
+        if (!string.IsNullOrWhiteSpace(profile.Phone)) score += 4;
+        if (!string.IsNullOrWhiteSpace(profile.Npn)) score += 4;
+        if (!string.IsNullOrWhiteSpace(profile.FullName)) score += 2;
+        if (!string.IsNullOrWhiteSpace(profile.AgentUpn)) score += 1;
+        return score;
+    }
+
+    private async Task<AgentProfile?> ResolveBestAgentProfileAsync(params string?[] identifiers)
+    {
+        var candidates = identifiers
+            .Select(Norm)
+            .Where(x => !string.IsNullOrWhiteSpace(x))
+            .Distinct()
+            .ToArray();
+
+        if (candidates.Length == 0)
+            return null;
+
+        var profiles = await _db.AgentProfiles
+            .AsNoTracking()
+            .Where(x =>
+                candidates.Contains((x.AgentUserId ?? "").ToLower()) ||
+                candidates.Contains((x.AgentUpn ?? "").ToLower()) ||
+                candidates.Contains((x.NormalizedEmail ?? "").ToLower()))
+            .ToListAsync();
+
+        if (profiles.Count == 0)
+            return null;
+
+        return profiles
+            .OrderByDescending(ProfileCompletenessScore)
+            .ThenByDescending(x => x.UpdatedUtc)
+            .FirstOrDefault();
+    }
+
     private static EffectiveClientContext ToContext(
         ClientProfile profile,
         bool isAgentView,
@@ -163,6 +201,19 @@ public sealed class EffectiveClientContextService
                         candidates.Contains((x.AgentUserId ?? "").ToLower()) ||
                         candidates.Contains((x.AgentUpn ?? "").ToLower()));
                 }
+            }
+
+            if (agentProfile == null || string.IsNullOrWhiteSpace(agentProfile.Phone) || string.IsNullOrWhiteSpace(agentProfile.Npn))
+            {
+                var bestProfile = await ResolveBestAgentProfileAsync(
+                    agentLink.AgentUserId,
+                    agentLink.AgentUpn,
+                    upn,
+                    user.FindFirst("oid")?.Value,
+                    user.FindFirst(ClaimTypes.NameIdentifier)?.Value);
+
+                if (bestProfile != null)
+                    agentProfile = bestProfile;
             }
         }
 
@@ -352,6 +403,19 @@ public sealed class EffectiveClientContextService
                             candidates.Contains((x.AgentUserId ?? "").ToLower()) ||
                             candidates.Contains((x.AgentUpn ?? "").ToLower()));
                 }
+            }
+
+            if (agentProfile == null || string.IsNullOrWhiteSpace(agentProfile.Phone) || string.IsNullOrWhiteSpace(agentProfile.Npn))
+            {
+                var bestProfile = await ResolveBestAgentProfileAsync(
+                    agentLink.AgentUserId,
+                    agentLink.AgentUpn,
+                    upn,
+                    user.FindFirst("oid")?.Value,
+                    user.FindFirst(ClaimTypes.NameIdentifier)?.Value);
+
+                if (bestProfile != null)
+                    agentProfile = bestProfile;
             }
         }
 

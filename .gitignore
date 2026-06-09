@@ -79,3 +79,26 @@ msal_token_cache.json
 
 # Local dev launch settings (may contain secrets)
 **/Properties/launchSettings.json
+
+# Generated deployment outputs
+AgentPortal/publish/
+Protect-Website/publish/
+ClientApp/publish/
+AgentPortal/publish-azure-agentportal/
+*.zip
+*.snapshot-keep
+*.gz
+*.br
+
+# Archive / backup folders
+*_backup/
+_archive/
+backups/
+*.backup
+*.backup.txt
+*.old
+*.orig
+*.tmp
+
+# Local DB backups
+*.db.backup*

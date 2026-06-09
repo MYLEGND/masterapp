@@ -1,9 +1,15 @@
 using Microsoft.AspNetCore.Mvc;
+using Domain.Entities;
+using Infrastructure.Data;
 using Protect_Website.Models;
-using Azure.Identity;
-using Microsoft.Graph;
-using Microsoft.Graph.Models;
-using Microsoft.Graph.Users.Item.SendMail;
+using System.Text.Json;
+using Microsoft.EntityFrameworkCore;
+using Infrastructure.Leads;
+using ProtectWebsite.Services.Meta;
+using ProtectWebsite.Services;
+using ProtectWebsite.Services.Tracking;
+using ProtectWebsite.Services.Communication;
+using Microsoft.AspNetCore.Mvc.ModelBinding;
 
 namespace Protect_Website.Controllers
 {
@@ -13,16 +19,33 @@ namespace Protect_Website.Controllers
         private readonly string tenantId;
         private readonly string clientId;
         private readonly string clientSecret;
+        private readonly string senderEmail;
         private readonly string recipientEmail;
         private readonly string websiteName;
+        private readonly AgentTrackingResolver _resolver;
+        private readonly MasterAppDbContext _db;
+        private readonly IMetaConversionsApiService _metaConversionsApi;
+        private readonly IMetaPixelResolutionService _metaPixelResolution;
+        private readonly IWebsiteLifeLeadCaptureService _websiteLeadCapture;
+        private readonly ILogger<HomeQuoteController> _logger;
+        private readonly IProtectEmailSender _emailSender;
 
-        public HomeQuoteController(IConfiguration configuration)
+        public HomeQuoteController(IConfiguration configuration, AgentTrackingResolver resolver,
+            MasterAppDbContext db, IMetaConversionsApiService metaConversionsApi, IMetaPixelResolutionService metaPixelResolution, IWebsiteLifeLeadCaptureService websiteLeadCapture, IProtectEmailSender emailSender, ILogger<HomeQuoteController> logger)
         {
             tenantId = configuration["AzureAd:TenantId"]!;
             clientId = configuration["AzureAd:ClientId"]!;
             clientSecret = configuration["AzureAd:ClientSecret"]!;
+            senderEmail = configuration["Contact:SenderEmail"] ?? "connect@mylegnd.com";
             recipientEmail = configuration["Contact:RecipientEmail"]!;
             websiteName = configuration["Contact:WebsiteName"] ?? "Legend Legacy Protection";
+            _resolver = resolver;
+            _db = db;
+            _metaConversionsApi = metaConversionsApi;
+            _metaPixelResolution = metaPixelResolution;
+            _websiteLeadCapture = websiteLeadCapture;
+            _emailSender = emailSender;
+            _logger = logger;
         }
 
 
@@ -37,274 +60,442 @@ namespace Protect_Website.Controllers
         [HttpPost("Home")]
         public async Task<IActionResult> SubmitHomeQuote(HomeQuoteFormModel model)
         {
-            if (!ModelState.IsValid)
-                return View("~/Views/Quote/Home.cshtml", model);
+            // Normalize disclaimer — wizard steps toggle disabled; read raw value directly
+            var ackRaw = Request?.Form?["AcknowledgedDisclaimer"].FirstOrDefault();
+            bool ack = !string.IsNullOrWhiteSpace(ackRaw) &&
+                       (ackRaw.Equals("true", StringComparison.OrdinalIgnoreCase) ||
+                        ackRaw.Equals("on", StringComparison.OrdinalIgnoreCase) ||
+                        ackRaw.Equals("1"));
+            model.AcknowledgedDisclaimer = ack;
+            ModelState.Remove(nameof(model.AcknowledgedDisclaimer));
+	            if (!ack)
+	                ModelState.AddModelError(nameof(model.AcknowledgedDisclaimer),
+	                    "Please check the authorization box so we can contact you about this quote.");
+	
+	            if (!ModelState.IsValid)
+	            {
+	                ViewData["StartStep"] = ResolveStartStep(ModelState);
+	                return View("~/Views/Quote/Home.cshtml", model);
+	            }
+
+            var correlationId = Guid.NewGuid();
+            _logger.LogInformation(
+                "HomeQuote [{CorrelationId}]: request received Email={Email}",
+                correlationId, model.EmailAddress);
+
+            var (leadRecipientEmail, agentProfileId, agentSlug, isFounderPath) = await ResolveLeadContextAsync();
+            _logger.LogInformation(
+                "HomeQuote [{CorrelationId}]: attribution resolved AgentSlug={Slug} ProfileId={ProfileId} Recipient={Recipient}",
+                correlationId, agentSlug, agentProfileId, leadRecipientEmail);
+            var resolvedMetaPixel = await _metaPixelResolution.ResolveForLeadAsync(
+                agentProfileId,
+                agentSlug,
+                isFounderPath,
+                HttpContext?.RequestAborted ?? CancellationToken.None);
+
+            // ── 1. Persist lead FIRST — never lost even if email or analytics fails ───
+            WebsiteLead lead;
+            try
+            {
+                var now = DateTime.UtcNow;
+                lead = new WebsiteLead
+                {
+                    LeadId        = Guid.NewGuid(),
+                    FirstName     = model.FirstName?.Trim() ?? "",
+                    LastName      = string.IsNullOrWhiteSpace(model.LastName) ? null : model.LastName?.Trim(),
+                    Email         = model.EmailAddress?.Trim() ?? "",
+                    Phone         = string.IsNullOrWhiteSpace(model.PhoneNumber) ? null : model.PhoneNumber?.Trim(),
+                    InterestType  = "home_insurance",
+                    SourcePageKey = "quote_home",
+                    UtmSource     = string.IsNullOrWhiteSpace(model.UtmSource)   ? null : model.UtmSource.Trim(),
+                    UtmMedium     = string.IsNullOrWhiteSpace(model.UtmMedium)   ? null : model.UtmMedium.Trim(),
+                    UtmCampaign   = string.IsNullOrWhiteSpace(model.UtmCampaign) ? null : model.UtmCampaign.Trim(),
+                    UtmId         = string.IsNullOrWhiteSpace(model.UtmId) ? null : model.UtmId.Trim(),
+                    MetaCampaignId = string.IsNullOrWhiteSpace(model.MetaCampaignId) ? null : model.MetaCampaignId.Trim(),
+                    MetaAdSetId   = string.IsNullOrWhiteSpace(model.MetaAdSetId) ? null : model.MetaAdSetId.Trim(),
+                    MetaAdId      = string.IsNullOrWhiteSpace(model.MetaAdId) ? null : model.MetaAdId.Trim(),
+                    Fbclid        = string.IsNullOrWhiteSpace(model.Fbclid)      ? null : model.Fbclid.Trim(),
+                    SessionId     = string.IsNullOrWhiteSpace(model.SessionId)   ? null : model.SessionId.Trim(),
+                    VisitorId     = string.IsNullOrWhiteSpace(model.VisitorId)   ? null : model.VisitorId.Trim(),
+                    MarketingEmailConsent = model.AcknowledgedDisclaimer,
+                    CallTextConsent = model.AcknowledgedDisclaimer && !string.IsNullOrWhiteSpace(model.PhoneNumber),
+                    TermsAccepted = true,
+                    IsInternal    = WebsiteLeadCaptureSafety.ShouldMarkAsInternalTest(Request?.Host.Host),
+                    Host          = Request?.Host.ToString(),
+                    Environment   = EnvironmentLabelResolver.Resolve(),
+                    CreatedUtc    = now,
+                    Status        = "New",
+                    AgentTrackingProfileId = agentProfileId,
+                    AgentSlug     = agentSlug,
+                    MetadataJson  = JsonSerializer.Serialize(new
+                    {
+                        PolicyFormType = model.PolicyFormType,
+                        DwellingType   = model.DwellingType,
+                        AddressState   = model.AddressState,
+                        UtmId          = model.UtmId,
+                        Fbclid         = model.Fbclid,
+                        UtmTerm        = model.UtmTerm,
+                        UtmContent     = model.UtmContent,
+                        MetaCampaignId = model.MetaCampaignId,
+                        MetaAdSetId    = model.MetaAdSetId,
+                        MetaAdId       = model.MetaAdId,
+                        ReferrerUrl    = model.ReferrerUrl,
+                        LandingPageUrl = model.LandingPageUrl,
+                        CorrelationId  = correlationId,
+                    })
+                };
+                _db.WebsiteLeads.Add(lead);
+                await _db.SaveChangesAsync();
+                _logger.LogInformation(
+                    "HomeQuote [{CorrelationId}]: WebsiteLead {LeadId} saved",
+                    correlationId, lead.LeadId);
+            }
+	            catch (Exception persistEx)
+	            {
+	                _logger.LogError(persistEx,
+	                    "HomeQuote [{CorrelationId}]: lead persistence failed for {Email}",
+	                    correlationId, model.EmailAddress);
+	                ModelState.AddModelError("", $"Failed to save lead: {persistEx.Message}");
+	                ViewData["StartStep"] = ResolveStartStep(ModelState);
+	                return View("~/Views/Quote/Home.cshtml", model);
+	            }
+
+            async Task TryWriteLeadEventAsync(string eventType, object metadata, DateTime? eventUtc = null)
+            {
+                AnalyticsEvent? analyticsEvent = null;
+                try
+                {
+                    analyticsEvent = WebsiteLeadAnalyticsWriter.CreateEvent(
+                        lead,
+                        eventType,
+                        "quote_home",
+                        "home_insurance",
+                        metadata,
+                        eventUtc);
+                    _db.AnalyticsEvents.Add(analyticsEvent);
+                    await _db.SaveChangesAsync(HttpContext?.RequestAborted ?? CancellationToken.None);
+                }
+                catch (Exception analyticsEx)
+                {
+                    if (analyticsEvent != null)
+                    {
+                        var entry = _db.Entry(analyticsEvent);
+                        if (entry.State != EntityState.Detached)
+                            entry.State = EntityState.Detached;
+                    }
+
+                    _logger.LogWarning(
+                        analyticsEx,
+                        "HomeQuote [{CorrelationId}]: analytics event write failed for {EventType} lead {LeadId}",
+                        correlationId,
+                        eventType,
+                        lead.LeadId);
+                }
+            }
+
+            await TryWriteLeadEventAsync(
+                "lead_persisted",
+                new { LeadId = lead.LeadId, CorrelationId = correlationId, QuoteType = "home_insurance" },
+                lead.CreatedUtc);
 
             try
             {
-                var credential = new ClientSecretCredential(tenantId, clientId, clientSecret);
-                var graphClient = new GraphServiceClient(credential);
+                await TryWriteLeadEventAsync(
+                    "workstation_capture_attempt",
+                    new { LeadId = lead.LeadId, CorrelationId = correlationId, ProductType = "home", OfferKey = "home" });
 
-                // Email body uses `model` for all values
-                var message = new Message
-                {
-                    Subject = $"[HOME QUOTE] New Lead | {model.FirstName} {model.LastName}",
-                    Body = new ItemBody
+                var captureResult = await _websiteLeadCapture.UpsertAsync(
+                    new WebsiteLifeLeadCaptureRequest
                     {
-                        ContentType = BodyType.Html,
-                        Content = $@"
-<h2>Home Insurance Quote Lead</h2>
-
-<h3>Section 1 — Applicant Information</h3>
-<p><strong>First Name:</strong> {model.FirstName}</p>
-<p><strong>Last Name:</strong> {model.LastName}</p>
-<p><strong>Nickname:</strong> {model.Nickname}</p>
-<p><strong>Gender:</strong> {model.Gender}</p>
-<p><strong>Date of Birth:</strong> {(model.DOB.HasValue ? model.DOB.Value.ToString("MM/dd/yyyy") : "")}</p>
-<p><strong>Marital Status:</strong> {model.MaritalStatus}</p>
-<p><strong>Driver’s License #:</strong> {model.DriversLicenseNumber}</p>
-<p><strong>DL Status:</strong> {model.DLStatus}</p>
-<p><strong>DL State:</strong> {model.DLState}</p>
-<p><strong>Education:</strong> {model.Education}</p>
-<p><strong>Industry:</strong> {model.Industry}</p>
-<p><strong>Address State:</strong> {model.AddressState}</p>
-<p><strong>Postal Code:</strong> {model.PostalCode}</p>
-
-<hr />
-
-<h3>Section 2 — Primary Address</h3>
-<p><strong>Address:</strong> {model.PrimaryAddress}
-    {(string.IsNullOrWhiteSpace(model.PrimaryUnit) ? "" : " Unit " + model.PrimaryUnit)}
-    {(string.IsNullOrWhiteSpace(model.PrimaryAddressLine2) ? "" : " " + model.PrimaryAddressLine2)}
-</p>
-<p><strong>City:</strong> {model.PrimaryCity}</p>
-<p><strong>State:</strong> {model.PrimaryState}</p>
-<p><strong>Country:</strong> {model.PrimaryCountry}</p>
-<p><strong>Postal Code:</strong> {model.PrimaryPostalCode}</p>
-<p><strong>Years at Address:</strong> {model.PrimaryYearsAtAddress}</p>
-
-{(string.IsNullOrWhiteSpace(model.PreviousAddress) &&
-  string.IsNullOrWhiteSpace(model.PreviousCity) &&
-  string.IsNullOrWhiteSpace(model.PreviousState) &&
-  string.IsNullOrWhiteSpace(model.PreviousPostalCode)
-? ""
-: $@"
-<hr />
-
-<h3>Previous Address (Only if Primary Address < 3 years)</h3>
-<p><strong>Address:</strong> {model.PreviousAddress}
-    {(string.IsNullOrWhiteSpace(model.PreviousUnit) ? "" : " Unit " + model.PreviousUnit)}
-    {(string.IsNullOrWhiteSpace(model.PreviousAddressLine2) ? "" : " " + model.PreviousAddressLine2)}
-</p>
-<p><strong>City:</strong> {model.PreviousCity}</p>
-<p><strong>State:</strong> {model.PreviousState}</p>
-<p><strong>Country:</strong> {model.PreviousCountry}</p>
-<p><strong>Postal Code:</strong> {model.PreviousPostalCode}</p>
-<p><strong>Years at Address:</strong> {model.PreviousYearsAtAddress}</p>
-")}
-
-<hr />
-
-<h3>Contact Information</h3>
-<p><strong>Phone Type:</strong> {model.PhoneType}</p>
-<p><strong>Phone Number:</strong> {model.PhoneNumber}</p>
-<p><strong>Email Type:</strong> {model.EmailType}</p>
-<p><strong>Email Address:</strong> {model.EmailAddress}</p>
-<p><strong>Preferred Contact Method:</strong> {model.PreferredContactMethod}</p>
-<p><strong>Best Time to Contact:</strong> {model.BestTimeToContact}</p>
-
-<hr />
-
-<h3>Section 3 — Policy Information</h3>
-<p><strong>Policy / Form Type:</strong> {model.PolicyFormType}</p>
-<p><strong>Prior Carrier:</strong> {model.PriorCarrier}</p>
-<p><strong>Expiration Date (Current Policy):</strong> {(model.CurrentPolicyExpirationDate.HasValue ? model.CurrentPolicyExpirationDate.Value.ToString("MM/dd/yyyy") : "")}</p>
-<p><strong>Prior Policy Premium:</strong> {model.PriorPolicyPremium}</p>
-<p><strong>Years With Prior Carrier:</strong> {model.YearsWithPriorCarrier}</p>
-<p><strong>Months With Prior Carrier:</strong> {model.MonthsWithPriorCarrier}</p>
-<p><strong>Years With Continuous Coverage:</strong> {model.YearsContinuousCoverage}</p>
-<p><strong>Months With Continuous Coverage:</strong> {model.MonthsContinuousCoverage}</p>
-<p><strong>Credit Check Authorized:</strong> {model.CreditCheckAuthorized}</p>
-<p><strong>Quote as Package:</strong> {model.QuoteAsPackage}</p>
-<p><strong>Effective Date (New Policy):</strong> {(model.NewPolicyEffectiveDate.HasValue ? model.NewPolicyEffectiveDate.Value.ToString("MM/dd/yyyy") : "")}</p>
-
-<hr />
-
-<h3>Underwriting Information</h3>
-<p><strong>Cancelled/Declined/Non-Renewed last 5 years:</strong> {model.CancelledDeclinedNonRenewedLast5Years}</p>
-<p><strong>Home Under Construction:</strong> {model.HomeUnderConstruction}</p>
-<p><strong>Business/Daycare On Premises:</strong> {model.BusinessOrDaycareOnPremises}</p>
-<p><strong># of Employees:</strong> {model.NumberOfEmployees}</p>
-<p><strong>Swimming Pool On Premises:</strong> {model.SwimmingPoolOnPremises}</p>
-<p><strong>Dogs On Premises:</strong> {model.DogsOnPremises}</p>
-
-<hr />
-
-<h3>Additional Carrier Questions</h3>
-<p><strong>Paperless:</strong> {model.Paperless}</p>
-<p><strong>Number of Animals on Premises:</strong> {model.NumberOfAnimalsOnPremises}</p>
-<p><strong>Lapse in Coverage Past 12 Months:</strong> {model.LapseInCoveragePast12Months}</p>
-<p><strong>Auto Years With Prior Carrier/Agent:</strong> {model.AutoYearsWithPriorCarrierOrAgent}</p>
-<p><strong>Additional Notes:</strong> {model.AdditionalCarrierQuestions}</p>
-
-<hr />
-
-<h3>Section 4 — Dwelling Information</h3>
-<p><strong>Dwelling Usage:</strong> {model.DwellingUsage}</p>
-<p><strong>Occupancy Type:</strong> {model.OccupancyType}</p>
-<p><strong>Dwelling Type:</strong> {model.DwellingType}</p>
-<p><strong>Number of Occupants:</strong> {model.NumberOfOccupants}</p>
-<p><strong>Number of Stories:</strong> {model.NumberOfStories}</p>
-<p><strong>Square Footage:</strong> {model.SquareFootage}</p>
-<p><strong>Year Built:</strong> {model.YearBuilt}</p>
-<p><strong>Construction Style:</strong> {model.ConstructionStyle}</p>
-
-<hr />
-
-<h3>Construction & Exterior</h3>
-<p><strong>Roof Type (Main Material):</strong> {model.RoofTypeMainMaterial}</p>
-<p><strong>Foundation Type:</strong> {model.FoundationType}</p>
-<p><strong>Roof Design:</strong> {model.RoofDesign}</p>
-<p><strong>Exterior Walls:</strong> {model.ExteriorWalls}</p>
-
-<hr />
-
-<h3>Protection & Systems</h3>
-<p><strong>Full Baths:</strong> {model.FullBaths}</p>
-<p><strong>Half Baths:</strong> {model.HalfBaths}</p>
-<p><strong>Wood Burning Stoves:</strong> {model.WoodBurningStoves}</p>
-<p><strong>Burglar Alarm:</strong> {model.BurglarAlarm}</p>
-<p><strong>Fire Detection:</strong> {model.FireDetection}</p>
-<p><strong>Sprinkler System:</strong> {model.SprinklerSystem}</p>
-<p><strong>Smoke Detector:</strong> {model.SmokeDetector}</p>
-
-<hr />
-
-<h3>Geographical Info</h3>
-<p><strong>Purchase Price:</strong> {model.PurchasePrice}</p>
-<p><strong>Purchase Date:</strong> {(model.PurchaseDate.HasValue ? model.PurchaseDate.Value.ToString("MM/dd/yyyy") : "")}</p>
-<p><strong>Distance From Fire Station (miles):</strong> {model.DistanceFromFireStationMiles}</p>
-<p><strong>Feet From Hydrant:</strong> {model.FeetFromHydrant}</p>
-
-<hr />
-
-<h3>Updates to the House</h3>
-<p><strong>Heating Update:</strong> {model.HeatingUpdate}</p>
-<p><strong>Heating Year Updated:</strong> {model.HeatingYearUpdated}</p>
-<p><strong>Electrical Update:</strong> {model.ElectricalUpdate}</p>
-<p><strong>Electrical Year Updated:</strong> {model.ElectricalYearUpdated}</p>
-<p><strong>Plumbing Update:</strong> {model.PlumbingUpdate}</p>
-<p><strong>Plumbing Year Updated:</strong> {model.PlumbingYearUpdated}</p>
-<p><strong>Roofing Update:</strong> {model.RoofingUpdate}</p>
-<p><strong>Roofing Year Updated:</strong> {model.RoofingYearUpdated}</p>
-
-<hr />
-
-<h3>Section 5 — General Coverages</h3>
-<p><strong>Dwelling Coverage:</strong> {model.DwellingCoverage}</p>
-<p><strong>Estimated Replacement Cost:</strong> {model.EstReplacementCost}</p>
-<p><strong>Personal Property:</strong> {model.PersonalProperty}</p>
-<p><strong>Loss of Use:</strong> {model.LossOfUse}</p>
-<p><strong>Personal Liability:</strong> {model.PersonalLiability}</p>
-<p><strong>Medical Payments:</strong> {model.MedicalPayments}</p>
-<p><strong>All Perils Deductible:</strong> {model.AllPerilsDeductible}</p>
-<p><strong>Theft Deductible:</strong> {model.TheftDeductible}</p>
-<p><strong>Wind Deductible:</strong> {model.WindDeductible}</p>
-
-<hr />
-
-<h3>Financial Interests</h3>
-<p><strong>First Mortgagee:</strong> {model.FirstMortgagee}</p>
-<p><strong>Second Mortgagee:</strong> {model.SecondMortgagee}</p>
-<p><strong>Third Mortgagee:</strong> {model.ThirdMortgagee}</p>
-<p><strong>Cosigner:</strong> {model.Cosigner}</p>
-<p><strong>Equity Line of Credit:</strong> {model.EquityLineOfCredit}</p>
-<p><strong># of Other Interests:</strong> {model.NumberOfOtherInterests}</p>
-
-<hr />
-
-<h3>Section 6 — Endorsements</h3>
-<p><strong>Building Additions/Alterations:</strong> {model.BuildingAdditionsOrAlterations}</p>
-<p><strong>Increased Replacement Cost Dwelling %:</strong> {model.IncreasedReplacementCostDwellingPercentage}</p>
-<p><strong>Loss Assessment:</strong> {model.LossAssessment}</p>
-<p><strong>Ordinance or Law:</strong> {model.OrdinanceOrLaw}</p>
-<p><strong>Increased Coverage on Credit Card:</strong> {model.IncreasedCoverageOnCreditCard}</p>
-<p><strong>Increased Limit Jewelry/Watches/Furs:</strong> {model.IncreasedLimitJewelryWatchesFurs}</p>
-<p><strong>Water Backup:</strong> {model.WaterBackup}</p>
-<p><strong>Increased Mold Property Damage:</strong> {model.IncreasedMoldPropertyDamage}</p>
-<p><strong>Personal Injury:</strong> {model.PersonalInjury}</p>
-<p><strong>Special Personal Property:</strong> {model.SpecialPersonalProperty}</p>
-<p><strong>Sinkhole Collapse:</strong> {model.SinkholeCollapse}</p>
-
-<hr />
-
-<h3>Earthquake</h3>
-<p><strong>Earthquake Zone:</strong> {model.EarthquakeZone}</p>
-<p><strong>Deductible:</strong> {model.EarthquakeDeductible}</p>
-<p><strong>Percent Veneer:</strong> {model.PercentVeneer}</p>
-
-<hr />
-
-<h3>Authorization</h3>
-<p><strong>Acknowledged Disclaimer:</strong> {(model.AcknowledgedDisclaimer ? "Acknowledged" : "Not Acknowledged")}</p>
-"
+                        WebsiteLeadId = lead.LeadId,
+                        SubmittedUtc = lead.CreatedUtc,
+                        ProductType = "home",
+                        OfferKey = "home",
+                        FirstName = lead.FirstName,
+                        LastName = lead.LastName,
+                        Email = lead.Email,
+                        Phone = lead.Phone,
+                        State = model.AddressState,
+                        AgentTrackingProfileId = agentProfileId,
+                        AgentSlug = agentSlug,
+                        RecipientEmail = leadRecipientEmail
                     },
-                    ToRecipients = new List<Recipient>
-                    {
-                        new Recipient
+                    HttpContext?.RequestAborted ?? CancellationToken.None);
+
+                if (captureResult.Captured)
+                {
+                    await _db.SaveChangesAsync(HttpContext?.RequestAborted ?? CancellationToken.None);
+                    await TryWriteLeadEventAsync(
+                        "workstation_capture_success",
+                        new
                         {
-                            EmailAddress = new EmailAddress
-                            {
-                                Address = recipientEmail
-                            }
-                        }
-                    }
-                };
-
-                        // ===================== HEADING STYLING =====================
-        string headingColor = "#cca134f1";
-        string headingFontSize = "1.2em";
-        string headingPadding = "4px 6px";
-
-        string ApplyHeadingHighlighting(string html)
-        {
-            if (string.IsNullOrWhiteSpace(html)) return html;
-
-            return System.Text.RegularExpressions.Regex.Replace(
-                html,
-                @"<\s*(h[34])\s*>(.*?)<\s*/\s*\1\s*>",
-                m =>
+                            LeadId = lead.LeadId,
+                            CorrelationId = correlationId,
+                            WorkstationLeadId = captureResult.WorkstationLeadId,
+                            Bucket = captureResult.Bucket,
+                            AgentUserId = captureResult.AgentUserId,
+                            CaptureMode = captureResult.Created ? "created" : "updated"
+                        });
+                }
+                else
                 {
-                    var tag = m.Groups[1].Value;
-                    var content = m.Groups[2].Value.Trim();
-                    return $"<{tag} style=\"background-color:{headingColor}; font-size:{headingFontSize}; padding:{headingPadding};\">{content}</{tag}>";
-                },
-                System.Text.RegularExpressions.RegexOptions.Singleline |
-                System.Text.RegularExpressions.RegexOptions.IgnoreCase
-            );
-        }
-
-        message.Body.Content = ApplyHeadingHighlighting(message.Body.Content);
-
-                var requestBody = new SendMailPostRequestBody
-                {
-                    Message = message,
-                    SaveToSentItems = true
-                };
-
-                await graphClient.Users[recipientEmail].SendMail.PostAsync(requestBody);
-
-            // Set the quote type so the Thank You page can display the correct name
-            TempData["QuoteType"] = "Home"; // or model.CoverageType if dynamic
-
-                // ✅ Redirect to centralized ThankYouController
-                return RedirectToAction("Index", "ThankYou");
+                    await TryWriteLeadEventAsync(
+                        "workstation_capture_failure",
+                        new
+                        {
+                            LeadId = lead.LeadId,
+                            CorrelationId = correlationId,
+                            Reason = captureResult.Reason ?? "unknown",
+                            Bucket = captureResult.Bucket,
+                            AgentUserId = captureResult.AgentUserId
+                        });
+                }
             }
-            catch (Exception ex)
+            catch (Exception captureEx)
             {
-                ModelState.AddModelError("", $"Failed to send lead: {ex.Message}");
-                return View("~/Views/Quote/Home.cshtml", model);
+                _logger.LogError(
+                    captureEx,
+                    "HomeQuote [{CorrelationId}]: workstation capture failed for lead {LeadId}",
+                    correlationId,
+                    lead.LeadId);
+
+                await TryWriteLeadEventAsync(
+                    "workstation_capture_failure",
+                    new
+                    {
+                        LeadId = lead.LeadId,
+                        CorrelationId = correlationId,
+                        Reason = "capture_exception",
+                        ErrorMessage = captureEx.Message
+                    });
             }
+
+            var metaLeadEventId = Guid.NewGuid().ToString("N");
+            await MetaLeadTrackingWorkflow.TryPersistAsync(
+                lead,
+                _db,
+                correlationId,
+                "meta_tracking_initialized",
+                _logger,
+                HttpContext?.RequestAborted ?? CancellationToken.None,
+                state =>
+                {
+                    state.EventId = metaLeadEventId;
+                    state.ResolvedMetaPixelId = resolvedMetaPixel.PixelId;
+                    state.PixelOwnerType = resolvedMetaPixel.PixelOwnerType;
+                    state.BrowserPixelStatus = "pending";
+                    state.BrowserPixelUpdatedUtc = DateTime.UtcNow;
+                    state.BrowserPixelNote = null;
+                    state.ServerCapiStatus = "pending";
+                    state.ServerCapiUpdatedUtc = DateTime.UtcNow;
+                    state.ServerCapiNote = null;
+                });
+
+            await TryWriteLeadEventAsync(
+                "capi_event_attempt",
+                new
+                {
+                    LeadId = lead.LeadId,
+                    CorrelationId = correlationId,
+                    EventId = metaLeadEventId,
+                    PixelId = resolvedMetaPixel.PixelId,
+                    PixelOwnerType = resolvedMetaPixel.PixelOwnerType
+                });
+
+            var metaCapiResult = await _metaConversionsApi.SendLeadAsync(
+                new MetaLeadConversionRequest
+                {
+                    LeadId = lead.LeadId,
+                    CorrelationId = correlationId,
+                    EventId = metaLeadEventId,
+                    QuoteType = "Home",
+                    PageKey = "quote_home",
+                    OfferKey = "home",
+                    EventSourceUrl = MetaLeadTrackingWorkflow.ResolveEventSourceUrl(model.LandingPageUrl, Request),
+                    ClientIpAddress = MetaLeadTrackingWorkflow.ResolveClientIpAddress(Request),
+                    ClientUserAgent = Request?.Headers["User-Agent"].ToString(),
+                    Fbp = MetaLeadTrackingWorkflow.ResolveCookieValue(Request, "_fbp"),
+                    Fbc = MetaLeadTrackingWorkflow.ResolveCookieValue(Request, "_fbc"),
+                    Fbclid = lead.Fbclid,
+                    Email = lead.Email,
+                    Phone = lead.Phone,
+                    AllowHashedContactData = lead.TermsAccepted && lead.MarketingEmailConsent,
+                    EventUtc = lead.CreatedUtc,
+                    PixelId = resolvedMetaPixel.PixelId,
+                    AccessToken = resolvedMetaPixel.AccessToken,
+                    TestEventCode = resolvedMetaPixel.TestEventCode,
+                    PixelOwnerType = resolvedMetaPixel.PixelOwnerType
+                },
+                HttpContext?.RequestAborted ?? CancellationToken.None);
+
+            await MetaLeadTrackingWorkflow.TryPersistAsync(
+                lead,
+                _db,
+                correlationId,
+                "meta_capi_result",
+                _logger,
+                HttpContext?.RequestAborted ?? CancellationToken.None,
+                state =>
+                {
+                    state.EventId ??= metaLeadEventId;
+                    state.ResolvedMetaPixelId ??= resolvedMetaPixel.PixelId;
+                    state.PixelOwnerType = resolvedMetaPixel.PixelOwnerType;
+                    state.ServerCapiStatus = metaCapiResult.Status;
+                    state.ServerCapiUpdatedUtc = DateTime.UtcNow;
+                    state.ServerCapiNote = metaCapiResult.Note;
+                });
+
+            await TryWriteLeadEventAsync(
+                metaCapiResult.Sent ? "capi_event_success" : "capi_event_failure",
+                new
+                {
+                    LeadId = lead.LeadId,
+                    CorrelationId = correlationId,
+                    EventId = metaLeadEventId,
+                    Status = metaCapiResult.Status,
+                    Note = metaCapiResult.Note,
+                    PixelId = metaCapiResult.PixelId ?? resolvedMetaPixel.PixelId,
+                    PixelOwnerType = metaCapiResult.PixelOwnerType ?? resolvedMetaPixel.PixelOwnerType
+                });
+
+            
+            var rows = new LeadEmailTemplate.RowBuilder();
+
+// ── 2. Send email through unified sender ───────────────────────────────
+            var emailSent = await _emailSender.TrySendAsync(
+                leadRecipientEmail,
+                $"[HOME QUOTE] New Lead | {model.FirstName} {model.LastName}",
+                LeadEmailTemplate.Wrap("New Quote — Home Insurance", rows.ToString()),
+                saveToSentItems: true,
+                cancellationToken: HttpContext?.RequestAborted ?? CancellationToken.None);
+
+            if (emailSent)
+            {
+                _logger.LogInformation(
+                    "HomeQuote [{CorrelationId}]: email sent to {Recipient} for lead {LeadId}",
+                    correlationId, leadRecipientEmail, lead.LeadId);
+            }
+            else
+            {
+                _logger.LogError(
+                    "HomeQuote [{CorrelationId}]: email failed to {Recipient} for lead {LeadId} - lead is saved, continuing",
+                    correlationId, leadRecipientEmail, lead.LeadId);
+            }
+
+            // ── 3. Write analytics event (failure does not lose the lead or email) ─
+            await TryWriteLeadEventAsync(
+                "website_lead_submitted",
+                new { LeadId = lead.LeadId, CorrelationId = correlationId },
+                lead.CreatedUtc);
+
+            TempData["QuoteType"] = "Home";
+            TempData["MetaLeadEventId"] = metaLeadEventId;
+            TempData["MetaLeadLeadId"] = lead.LeadId.ToString("D");
+            return RedirectToAction("Index", "ThankYou");
         }
-    }
-}
+
+        private async Task<(string RecipientEmail, Guid? AgentProfileId, string? AgentSlug, bool IsFounderPath)> ResolveLeadContextAsync()
+        {
+            var slug = ResolveExplicitAgentSlugFromRequest();
+
+            if (!string.IsNullOrWhiteSpace(slug))
+            {
+                var bySlug = await _resolver.ResolveBySlugAsync(slug, HttpContext?.RequestAborted ?? CancellationToken.None);
+                if (bySlug.Found && bySlug.Profile != null && !string.IsNullOrWhiteSpace(bySlug.Profile.AgentUpn))
+                    return (bySlug.Profile.AgentUpn.Trim(), bySlug.Profile.Id, bySlug.CanonicalSlug, false);
+            }
+
+            var isFounderPath = HttpContext?.Items["IsFounderPath"] as bool? == true;
+            if (HttpContext?.Items.TryGetValue("TrackingProfile", out var trackingProfileObj) == true &&
+                trackingProfileObj is AgentTrackingProfile trackingProfile)
+            {
+                var trackingSlug = HttpContext?.Items["TrackingSlug"] as string;
+                var trackingRecipient = !string.IsNullOrWhiteSpace(trackingProfile.AgentUpn)
+                    ? trackingProfile.AgentUpn.Trim()
+                    : recipientEmail;
+
+                return (
+                    isFounderPath ? recipientEmail : trackingRecipient,
+                    trackingProfile.Id,
+                    string.IsNullOrWhiteSpace(trackingSlug) ? trackingProfile.Slug : trackingSlug,
+                    isFounderPath);
+            }
+
+            return (recipientEmail, null, null, isFounderPath);
+        }
+
+        private static string? ExtractSlugFromPath(string? pathOrUrl)
+        {
+            if (string.IsNullOrWhiteSpace(pathOrUrl)) return null;
+
+            var value = pathOrUrl.Trim();
+            if (Uri.TryCreate(value, UriKind.Absolute, out var uri))
+            {
+                value = uri.AbsolutePath;
+            }
+
+            var segments = value.Split('/', StringSplitOptions.RemoveEmptyEntries);
+            if (segments.Length >= 2 && string.Equals(segments[0], "a", StringComparison.OrdinalIgnoreCase))
+            {
+                return segments[1];
+            }
+
+            return null;
+        }
+
+	        private string? ResolveExplicitAgentSlugFromRequest()
+	        {
+	            var formSlug = Request?.Form["AgentSlug"].ToString();
+	            if (!string.IsNullOrWhiteSpace(formSlug))
+	                return formSlug.Trim();
+	
+	            return ExtractSlugFromPath(Request?.Path.Value)
+	                ?? ExtractSlugFromPath(Request?.Headers["Referer"].ToString());
+	        }
+
+	        private int ResolveStartStep(ModelStateDictionary modelState)
+	        {
+	            var postedStep = ResolvePostedStep(1);
+
+	            bool HasKey(string key) =>
+	                modelState.TryGetValue(key, out var entry) && entry.Errors.Count > 0;
+
+	            if (HasKey(nameof(HomeQuoteFormModel.AcknowledgedDisclaimer)))
+	                return 6;
+
+	            if (HasKey(nameof(HomeQuoteFormModel.DwellingCoverage)) ||
+	                HasKey(nameof(HomeQuoteFormModel.EstReplacementCost)) ||
+	                HasKey(nameof(HomeQuoteFormModel.PersonalLiability)) ||
+	                HasKey(nameof(HomeQuoteFormModel.MedicalPayments)))
+	                return 5;
+	
+	            if (HasKey(nameof(HomeQuoteFormModel.DwellingUsage)) ||
+	                HasKey(nameof(HomeQuoteFormModel.DwellingType)) ||
+	                HasKey(nameof(HomeQuoteFormModel.YearBuilt)) ||
+	                HasKey(nameof(HomeQuoteFormModel.RoofingYearUpdated)))
+	                return 4;
+
+	            if (HasKey(nameof(HomeQuoteFormModel.PolicyFormType)) ||
+	                HasKey(nameof(HomeQuoteFormModel.CurrentPolicyExpirationDate)) ||
+	                HasKey(nameof(HomeQuoteFormModel.NewPolicyEffectiveDate)))
+	                return 3;
+
+	            if (HasKey(nameof(HomeQuoteFormModel.PrimaryAddress)) ||
+	                HasKey(nameof(HomeQuoteFormModel.PrimaryCity)) ||
+	                HasKey(nameof(HomeQuoteFormModel.PrimaryPostalCode)) ||
+	                HasKey(nameof(HomeQuoteFormModel.EmailAddress)) ||
+	                HasKey(nameof(HomeQuoteFormModel.PhoneNumber)))
+	                return 2;
+
+	            return postedStep;
+	        }
+
+	        private int ResolvePostedStep(int fallbackStep)
+	        {
+	            var rawStep = Request?.Form["CurrentStep"].FirstOrDefault();
+	            return int.TryParse(rawStep, out var step)
+	                ? Math.Clamp(step, 1, 6)
+	                : fallbackStep;
+	        }
+	    }
+	}

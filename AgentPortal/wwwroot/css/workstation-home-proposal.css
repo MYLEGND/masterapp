@@ -1,0 +1,1053 @@
+/* Home-equivalent proposal UI for Workstation (isolated hp-* classes only) */
+:root{
+    --legend-modal-safe-margin: 24px;
+    --legend-modal-clearance-top: 0px;
+    --legend-modal-area-start: 24px;
+    --legend-modal-safe-height: calc(100dvh - var(--legend-modal-area-start) - var(--legend-modal-safe-margin));
+    --legend-modal-safe-center: 50vh;
+}
+
+.hp-proposal-group{
+    position: relative;
+}
+
+#rbShell .hp-proposal-trigger{
+    padding: 11px 18px;
+    font-weight: 900;
+    letter-spacing: .12px;
+    border: 1.6px solid #ddb457;
+    background: linear-gradient(180deg,#f4dc98,#ddb457);
+    color: #0b1529 !important;
+    box-shadow: 0 10px 24px rgba(0,0,0,.22), inset 0 1px 0 rgba(255,255,255,.55);
+    border-radius: 14px;
+    white-space: nowrap;
+}
+#rbShell .hp-proposal-menu,
+#proposalMenu.hp-proposal-menu{
+    position:absolute;
+    top:110%;
+    right:0;
+    min-width:320px;
+    border:1.5px solid rgba(166,128,35,.44);
+    border-radius:14px;
+    background:linear-gradient(180deg,rgba(11,21,41,.99),rgba(15,29,56,.99));
+    box-shadow:0 18px 46px rgba(0,0,0,.34);
+    padding:14px;
+    z-index:999;
+}
+#rbShell .hp-proposal-menu-head,
+#proposalMenu .hp-proposal-menu-head{display:flex;align-items:center;justify-content:space-between;font-weight:800;margin-bottom:10px;color:#f4d890;}
+#rbShell .hp-proposal-menu-list,
+#proposalMenu .hp-proposal-menu-list{display:flex;flex-direction:column;gap:4px;max-height:280px;overflow:visible;}
+#rbShell .hp-proposal-item,
+#proposalMenu .hp-proposal-item{display:flex;align-items:center;justify-content:space-between;gap:4px;padding:9px 11px;border:1.5px solid rgba(166,128,35,.34);border-radius:12px;background:linear-gradient(180deg,rgba(255,255,255,.06),rgba(255,255,255,.03));position:relative;overflow:visible;}
+#rbShell .hp-proposal-item:hover,
+#proposalMenu .hp-proposal-item:hover{border-color:#ddb457;background:rgba(221,180,87,.10);box-shadow:0 10px 22px rgba(0,0,0,.24);}
+#rbShell .hp-proposal-name-wrap,
+#proposalMenu .hp-proposal-name-wrap{display:flex;flex-direction:column;gap:2px;min-width:0;flex:1 1 auto;cursor:pointer;}
+#rbShell .hp-proposal-name,
+#proposalMenu .hp-proposal-name{font-weight:800;color:#f8fafc;max-width:70%;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+#rbShell .hp-proposal-meta-line,
+#proposalMenu .hp-proposal-meta-line{font-size:12px;color:#b9c5d8;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+#rbShell .hp-proposal-actions,
+#proposalMenu .hp-proposal-actions{display:flex;gap:4px;}
+#rbShell .hp-ellipsis-wrap,
+#proposalMenu .hp-ellipsis-wrap{position:relative;}
+#rbShell .hp-ellipsis-btn,
+#proposalMenu .hp-ellipsis-btn{background:rgba(255,255,255,.07);color:#f8fafc;border:1px solid rgba(166,128,35,.34);border-radius:8px;font-weight:800;}
+#rbShell .hp-ellipsis-menu,
+#proposalMenu .hp-ellipsis-menu{position:absolute;top:110%;right:0;background:linear-gradient(180deg,rgba(11,21,41,.99),rgba(15,29,56,.99));border:1px solid rgba(166,128,35,.44);border-radius:10px;box-shadow:0 12px 26px rgba(0,0,0,.34);padding:6px;display:flex;flex-direction:column;gap:4px;min-width:140px;z-index:5000;}
+#rbShell .hp-proposal-empty,
+#proposalMenu .hp-proposal-empty{font-weight:800;color:#b9c5d8;padding:8px 4px;}
+
+#proposalOverlay.hp-overlay{position:fixed;inset:0;z-index:3000;background:rgba(7,14,28,.72);backdrop-filter:blur(8px);display:flex;align-items:center;justify-content:center;padding:1.5rem 1rem;}
+#proposalOverlay.hp-overlay[hidden]{display:none !important;}
+#proposalDialog.hp-dialog{width:min(1380px,97vw);max-height:92vh;overflow:auto;scrollbar-gutter:stable;border-radius:22px;border:1.8px solid rgba(166,128,35,.48);background:radial-gradient(900px 320px at 0% 0%, rgba(166,128,35,.14), transparent 55%),linear-gradient(180deg,rgba(11,21,41,.99),rgba(15,29,56,.99));color:#f8fafc;box-shadow:0 40px 100px rgba(0,0,0,.52);padding:1rem 1.1rem;}
+#proposalDialog .hp-dialog-head{display:flex;align-items:flex-start;justify-content:space-between;gap:1rem;padding-bottom:.7rem;border-bottom:1px solid rgba(166,128,35,.22);margin-bottom:.8rem;}
+#proposalDialog .hp-dialog-brand{display:flex;align-items:center;gap:.9rem;}
+#proposalDialog .hp-dialog-icon{font-size:1.8rem;line-height:1;flex-shrink:0;}
+#proposalDialog .hp-dialog-title{font-weight:950;font-size:1.55rem;color:#f4d890;line-height:1.15;}
+#proposalDialog .hp-dialog-sub{color:#b9c5d8;font-weight:600;margin-top:.25rem;}
+#proposalDialog .hp-dialog-close{display:inline-flex;align-items:center;justify-content:center;width:44px;height:44px;border-radius:12px;border:2px solid rgba(221,180,87,.78);background:linear-gradient(180deg,rgba(15,26,50,.98),rgba(11,21,41,.98));color:#f8fafc;font-size:1.7rem;line-height:1;flex-shrink:0;cursor:pointer;box-shadow:0 10px 24px rgba(0,0,0,.35);}
+#proposalDialog .hp-dialog-close:hover{border-color:#f2cf7f;background:linear-gradient(180deg,rgba(20,35,66,.98),rgba(15,29,56,.98));}
+#proposalDialog .hp-form{display:flex;flex-direction:column;gap:.55rem;}
+#proposalDialog .hp-form-meta{display:flex;flex-wrap:wrap;gap:.6rem;align-items:flex-end;padding:.65rem .75rem;border-radius:14px;background:rgba(255,255,255,.04);border:1px solid rgba(166,128,35,.2);}
+#proposalDialog .hp-form-actions{display:flex;gap:.6rem;flex-wrap:wrap;align-self:flex-end;}
+#proposalDialog .hp-field{display:flex;flex-direction:column;gap:.26rem;flex:1 1 220px;}
+#proposalDialog .hp-field span{font-size:.72rem;font-weight:900;letter-spacing:.06em;text-transform:uppercase;color:#f4d890;}
+#proposalDialog .hp-field input,#proposalDialog .hp-field select{min-height:40px;border-radius:10px;border:1.5px solid rgba(166,128,35,.38);background:rgba(255,255,255,.07);color:#f8fafc;padding:0 .75rem;font-size:.9rem;font-weight:600;box-shadow:inset 0 1px 0 rgba(255,255,255,.05);} 
+#proposalDialog .hp-field input::placeholder{color:#64748b;}
+#proposalDialog .hp-field input:focus,#proposalDialog .hp-field select:focus{outline:none;border-color:#ddb457;box-shadow:0 0 0 3px rgba(221,180,87,.16);} 
+#proposalDialog .hp-field select option{background:#0f1d38;color:#f8fafc;}
+#proposalDialog .hp-btn{display:inline-flex;align-items:center;justify-content:center;min-height:40px;padding:0 1.1rem;border-radius:14px;font-weight:900;font-size:.9rem;letter-spacing:.01em;}
+#proposalDialog .hp-btn-gold{background:linear-gradient(180deg,#f4dc98,#ddb457);color:#0b1529;border:1.6px solid #ddb457;box-shadow:0 10px 24px rgba(0,0,0,.22),inset 0 1px 0 rgba(255,255,255,.55);} 
+#proposalDialog .hp-btn-ghost{background:linear-gradient(180deg,rgba(255,255,255,.08),rgba(255,255,255,.03));color:#f8fafc;border:1.5px solid rgba(166,128,35,.44);box-shadow:0 8px 18px rgba(0,0,0,.16);} 
+#proposalDialog .hp-buckets{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:.65rem;}
+#proposalDialog .hp-bucket{border:1.5px solid rgba(166,128,35,.28);border-radius:16px;padding:.75rem;background:linear-gradient(180deg,rgba(255,255,255,.06),rgba(255,255,255,.03));box-shadow:0 10px 24px rgba(0,0,0,.16);display:flex;flex-direction:column;gap:.3rem;}
+#proposalDialog .hp-bucket>.hp-field{flex:0 0 auto;}
+#proposalDialog .hp-bucket-head{font-weight:900;font-size:.9rem;color:#f4d890;letter-spacing:.04em;text-transform:uppercase;border-bottom:1px solid rgba(166,128,35,.22);padding-bottom:.3rem;margin-bottom:.1rem;}
+#proposalDialog .hp-row{display:grid;grid-template-columns:3fr 2fr;gap:.4rem;align-items:end;}
+#proposalDialog .hp-row>.hp-field{min-width:0;flex:unset;}
+#proposalDialog .hp-currency-wrap{display:flex;align-items:center;gap:.4rem;min-height:40px;padding:0 .65rem;border-radius:12px;border:1.5px solid rgba(166,128,35,.5);background:linear-gradient(180deg,rgba(212,180,90,.22),rgba(166,128,35,.18));box-shadow:inset 0 2px 4px rgba(255,255,255,.08),inset 0 -2px 4px rgba(0,0,0,.18),0 8px 16px rgba(0,0,0,.14);width:100%;min-width:0;box-sizing:border-box;overflow:hidden;}
+#proposalDialog .hp-currency-sym,#proposalDialog .hp-currency-sfx{font-weight:900;color:#f4d890;flex-shrink:0;}
+#proposalDialog .hp-currency-input{flex:1 1 auto;background:transparent !important;border:none !important;box-shadow:none !important;color:#f8fafc !important;font-weight:700;font-size:.9rem;min-width:0;padding:0;}
+#proposalDialog .hp-currency-input:focus{outline:none;}
+
+@media (max-width: 900px){
+    #proposalOverlay.hp-overlay{
+        align-items:center;
+        justify-content:center;
+        padding:var(--legend-modal-area-start, max(10px, env(safe-area-inset-top))) 10px var(--legend-modal-safe-margin, max(10px, env(safe-area-inset-bottom))) 10px;
+    }
+    #proposalDialog.hp-dialog{
+        width:min(1380px,98vw);
+        max-height:min(calc(100dvh - 20px), var(--legend-modal-safe-height, calc(100dvh - 20px)));
+        border-radius:16px;
+        padding:.8rem .8rem 1rem;
+    }
+    #proposalDialog .hp-dialog-head{
+        position:sticky;
+        top:0;
+        z-index:5;
+        margin:-0.8rem -0.8rem .7rem;
+        padding:.8rem .8rem .7rem;
+        border-radius:16px 16px 0 0;
+        background:linear-gradient(180deg,rgba(11,21,41,.98),rgba(15,29,56,.96));
+        backdrop-filter:blur(4px);
+    }
+    #proposalDialog .hp-dialog-close{
+        width:48px;
+        height:48px;
+        font-size:2rem;
+    }
+}
+
+/* ── Proposal & Underwriting quick-list: centered fixed popout ─── */
+#rbShell .hp-proposal-menu:not([hidden]),
+#proposalMenu.hp-proposal-menu:not([hidden]),
+#rbShell .proposal-menu:not([hidden]),
+#uwMenu.proposal-menu:not([hidden]) {
+    position: fixed !important;
+    top: var(--legend-modal-safe-center, 50%) !important;
+    left: 50% !important;
+    transform: translate(-50%, -50%) !important;
+    width: min(680px, 96vw) !important;
+    min-width: unset !important;
+    height: min(860px, var(--legend-modal-safe-height, 82vh)) !important;
+    max-height: var(--legend-modal-safe-height, 82vh) !important;
+    overflow-y: hidden !important;
+    display: flex !important;
+    flex-direction: column !important;
+    z-index: 5100 !important;
+    border-radius: 20px !important;
+    border: 1.5px solid rgba(221,180,87,.72) !important;
+    background: linear-gradient(160deg, #0e1e3c 0%, #09121f 100%) !important;
+    box-shadow:
+        0 0 0 1px rgba(255,255,255,.07) inset,
+        0 0 0 4px rgba(199,153,49,.10),
+        0 0 40px rgba(199,153,49,.12),
+        0 36px 80px rgba(0,0,0,.78) !important;
+    padding: 24px !important;
+}
+
+/* Menu head ─────────────────────────────────────────────────────── */
+#rbShell .hp-proposal-menu-head,
+#proposalMenu .hp-proposal-menu-head,
+#rbShell .proposal-menu-head,
+#uwMenu .proposal-menu-head {
+    display: flex !important;
+    align-items: center !important;
+    justify-content: space-between !important;
+    font-weight: 900 !important;
+    font-size: 1rem !important;
+    color: #f4d890 !important;
+    letter-spacing: .02em !important;
+    margin-bottom: 14px !important;
+    padding-bottom: 12px !important;
+    border-bottom: 1px solid rgba(221,180,87,.28) !important;
+}
+
+#rbShell .hp-menu-head-actions,
+#proposalMenu .hp-menu-head-actions,
+#rbShell .proposal-menu-head .hp-menu-head-actions,
+#uwMenu .hp-menu-head-actions {
+    display: flex !important;
+    flex-wrap: wrap !important;
+    gap: 6px !important;
+    justify-content: flex-end !important;
+}
+
+#rbShell .hp-menu-head-actions .btn-mini,
+#proposalMenu .hp-menu-head-actions .btn-mini,
+#rbShell .proposal-menu-head .hp-menu-head-actions .btn-mini,
+#uwMenu .hp-menu-head-actions .btn-mini {
+    min-width: 74px !important;
+    background: linear-gradient(155deg, #0f2246 0%, #0b1731 100%) !important;
+    color: #f8fafc !important;
+    border: 1.25px solid rgba(146,182,255,.34) !important;
+    box-shadow: 0 8px 18px rgba(0,0,0,.22) !important;
+}
+
+#rbShell .hp-menu-head-actions .btn-mini:hover,
+#proposalMenu .hp-menu-head-actions .btn-mini:hover,
+#rbShell .proposal-menu-head .hp-menu-head-actions .btn-mini:hover,
+#uwMenu .hp-menu-head-actions .btn-mini:hover {
+    border-color: rgba(244,220,152,.82) !important;
+    background: linear-gradient(155deg, #162c59 0%, #0f1f42 100%) !important;
+}
+
+/* List scroll area ──────────────────────────────────────────────── */
+#rbShell .hp-proposal-menu-list,
+#proposalMenu .hp-proposal-menu-list,
+#rbShell .proposal-menu-list,
+#uwMenu .proposal-menu-list {
+    display: flex !important;
+    flex-direction: column !important;
+    gap: 8px !important;
+    flex: 1 1 0 !important;
+    min-height: 0 !important;
+    overflow-y: auto !important;
+}
+
+/* Item cards ────────────────────────────────────────────────────── */
+#rbShell .hp-proposal-item,
+#proposalMenu .hp-proposal-item,
+#rbShell .proposal-item,
+#uwMenu .proposal-item {
+    display: flex !important;
+    align-items: center !important;
+    justify-content: space-between !important;
+    gap: 10px !important;
+    padding: 12px 14px !important;
+    border: 1.5px solid rgba(199,153,49,.36) !important;
+    border-radius: 13px !important;
+    background: linear-gradient(160deg, rgba(255,255,255,.055) 0%, rgba(255,255,255,.02) 100%) !important;
+    position: relative !important;
+    overflow: visible !important;
+    transition: border-color .15s, background .15s, box-shadow .15s !important;
+}
+#rbShell .hp-proposal-item:hover,
+#proposalMenu .hp-proposal-item:hover,
+#rbShell .proposal-item:hover,
+#uwMenu .proposal-item:hover {
+    border-color: rgba(221,180,87,.85) !important;
+    background: rgba(221,180,87,.08) !important;
+    box-shadow: 0 0 0 1px rgba(221,180,87,.18), 0 10px 28px rgba(0,0,0,.32) !important;
+}
+#rbShell .hp-proposal-item.is-current,
+#proposalMenu .hp-proposal-item.is-current,
+#rbShell .proposal-item.is-current,
+#uwMenu .proposal-item.is-current {
+    border-color: rgba(221,180,87,.7) !important;
+    background: rgba(221,180,87,.07) !important;
+}
+
+/* Name + meta ───────────────────────────────────────────────────── */
+#rbShell .hp-proposal-name-wrap,
+#proposalMenu .hp-proposal-name-wrap,
+#rbShell .proposal-name-wrap,
+#uwMenu .proposal-name-wrap {
+    display: flex !important;
+    flex-direction: column !important;
+    gap: 3px !important;
+    min-width: 0 !important;
+    flex: 1 1 auto !important;
+    cursor: pointer !important;
+}
+#rbShell .hp-proposal-name,
+#proposalMenu .hp-proposal-name,
+#rbShell .proposal-name,
+#uwMenu .proposal-name {
+    font-weight: 800 !important;
+    font-size: .95rem !important;
+    color: #f4e8c0 !important;
+    white-space: nowrap !important;
+    overflow: hidden !important;
+    text-overflow: ellipsis !important;
+}
+#rbShell .hp-proposal-meta-line,
+#proposalMenu .hp-proposal-meta-line,
+#rbShell .proposal-meta-line,
+#uwMenu .proposal-meta-line {
+    font-size: .78rem !important;
+    color: #94a3b8 !important;
+    font-weight: 600 !important;
+    white-space: nowrap !important;
+    overflow: hidden !important;
+    text-overflow: ellipsis !important;
+}
+
+/* Empty state ───────────────────────────────────────────────────── */
+#rbShell .hp-proposal-empty,
+#proposalMenu .hp-proposal-empty,
+#rbShell .proposal-empty,
+#uwMenu .proposal-empty {
+    font-weight: 700 !important;
+    color: #64748b !important;
+    padding: 16px 4px !important;
+    text-align: center !important;
+    font-size: .9rem !important;
+}
+
+.hp-builder-context {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    margin: 0 0 12px;
+    padding: 12px 14px;
+    border-radius: 14px;
+    border: 1px solid rgba(129,163,234,.24);
+    background: linear-gradient(160deg, rgba(25,48,96,.96) 0%, rgba(11,24,47,.96) 100%);
+    box-shadow: inset 0 1px 0 rgba(255,255,255,.05);
+}
+
+.hp-builder-context-copy,
+.uw-context-copy {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+
+.hp-builder-context-label,
+.uw-context-label {
+    font-size: .72rem;
+    font-weight: 900;
+    letter-spacing: .08em;
+    text-transform: uppercase;
+    color: #f4d890;
+}
+
+.hp-builder-context-value,
+.uw-context-value {
+    font-size: .93rem;
+    font-weight: 800;
+    color: #eff6ff;
+}
+
+.hp-builder-context-actions,
+.uw-context-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    justify-content: flex-end;
+}
+
+.hp-btn-mini {
+    min-height: 38px;
+    padding: 0 14px;
+    font-size: .82rem;
+}
+
+.uw-context-bar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    margin: 0 0 16px;
+    padding: 13px 15px;
+    border-radius: 14px;
+    border: 1px solid rgba(129,163,234,.22);
+    background: linear-gradient(160deg, rgba(22,40,80,.96) 0%, rgba(10,21,42,.96) 100%);
+    box-shadow: inset 0 1px 0 rgba(255,255,255,.05);
+}
+
+.ws-client-picker-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 12120;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 28px;
+    background: rgba(3, 9, 20, .62);
+    backdrop-filter: blur(12px);
+}
+
+.ws-client-picker-dialog {
+    width: min(920px, 100%);
+    max-height: min(82vh, 920px);
+    overflow: auto;
+    border-radius: 28px;
+    border: 1px solid rgba(137, 174, 255, .24);
+    background:
+        radial-gradient(circle at top right, rgba(88, 126, 221, .18), transparent 30%),
+        linear-gradient(165deg, #203566 0%, #13244a 48%, #0a1732 100%);
+    box-shadow:
+        0 0 0 1px rgba(255,255,255,.05) inset,
+        0 30px 90px rgba(0,0,0,.44);
+    color: #eff6ff;
+}
+
+.ws-client-picker-head {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 18px;
+    padding: 24px 26px 18px;
+    border-bottom: 1px solid rgba(148, 163, 184, .16);
+}
+
+.ws-client-picker-kicker {
+    margin-bottom: 6px;
+    font-size: .74rem;
+    font-weight: 900;
+    letter-spacing: .12em;
+    text-transform: uppercase;
+    color: #f4d890;
+}
+
+.ws-client-picker-title {
+    margin: 0;
+    font-size: 1.55rem;
+    line-height: 1.1;
+    font-weight: 900;
+    color: #f8fbff;
+}
+
+.ws-client-picker-sub {
+    margin: 8px 0 0;
+    font-size: .96rem;
+    line-height: 1.5;
+    color: #c7d5f1;
+    max-width: 680px;
+}
+
+.ws-client-picker-close {
+    flex: 0 0 auto;
+    width: 46px;
+    height: 46px;
+    border-radius: 14px;
+    border: 1px solid rgba(244,216,144,.42);
+    background: rgba(255,255,255,.05);
+    color: #f4d890;
+    font-size: 1.65rem;
+    line-height: 1;
+    font-weight: 700;
+    cursor: pointer;
+    transition: transform .14s ease, border-color .14s ease, background .14s ease;
+}
+
+.ws-client-picker-close:hover {
+    transform: translateY(-1px);
+    border-color: rgba(244,216,144,.8);
+    background: rgba(255,255,255,.08);
+}
+
+.ws-client-picker-toolbar {
+    padding: 18px 26px 0;
+}
+
+.ws-client-picker-search {
+    display: block;
+}
+
+.ws-client-picker-search input {
+    width: 100%;
+    min-height: 54px;
+    padding: 0 18px;
+    border-radius: 16px;
+    border: 1px solid rgba(132, 163, 233, .22);
+    background: rgba(8, 16, 33, .64);
+    color: #f8fbff;
+    font-size: .97rem;
+    font-weight: 600;
+    box-shadow: inset 0 1px 0 rgba(255,255,255,.05);
+}
+
+.ws-client-picker-search input::placeholder {
+    color: #94a3b8;
+}
+
+.ws-client-picker-search input:focus {
+    outline: none;
+    border-color: rgba(244,216,144,.72);
+    box-shadow:
+        0 0 0 3px rgba(244,216,144,.12),
+        inset 0 1px 0 rgba(255,255,255,.06);
+}
+
+.ws-client-picker-status {
+    padding: 14px 26px 0;
+    font-size: .88rem;
+    font-weight: 700;
+    color: #9fb1d3;
+}
+
+.ws-client-picker-results {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+    gap: 14px;
+    padding: 18px 26px 26px;
+}
+
+.ws-client-picker-card {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    min-height: 118px;
+    padding: 16px 18px;
+    border-radius: 18px;
+    border: 1px solid rgba(129,163,234,.22);
+    background: linear-gradient(160deg, rgba(21,37,72,.96) 0%, rgba(10,21,44,.96) 100%);
+    box-shadow:
+        0 0 0 1px rgba(255,255,255,.04) inset,
+        0 16px 34px rgba(0,0,0,.22);
+    color: #eff6ff;
+    text-align: left;
+    cursor: pointer;
+    transition: transform .14s ease, border-color .14s ease, box-shadow .14s ease, background .14s ease;
+}
+
+.ws-client-picker-card:hover {
+    transform: translateY(-2px);
+    border-color: rgba(244,216,144,.62);
+    background: linear-gradient(160deg, rgba(28,49,93,.98) 0%, rgba(12,26,53,.98) 100%);
+    box-shadow:
+        0 0 0 1px rgba(255,255,255,.05) inset,
+        0 22px 40px rgba(0,0,0,.28);
+}
+
+.ws-client-picker-card-top,
+.ws-client-picker-meta {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+}
+
+.ws-client-picker-name {
+    font-size: 1rem;
+    font-weight: 900;
+    color: #f8fbff;
+}
+
+.ws-client-picker-type {
+    flex: 0 0 auto;
+    padding: 4px 10px;
+    border-radius: 999px;
+    border: 1px solid rgba(129,163,234,.28);
+    background: rgba(255,255,255,.05);
+    color: #dbe7ff;
+    font-size: .74rem;
+    font-weight: 800;
+    letter-spacing: .04em;
+    text-transform: uppercase;
+}
+
+.ws-client-picker-meta {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 4px;
+    color: #bfd0ee;
+    font-size: .88rem;
+    font-weight: 600;
+}
+
+.ws-client-picker-empty {
+    grid-column: 1 / -1;
+    padding: 38px 24px;
+    border-radius: 20px;
+    border: 1px dashed rgba(129,163,234,.24);
+    background: rgba(8,16,33,.36);
+    text-align: center;
+}
+
+.ws-client-picker-empty-title {
+    margin-bottom: 6px;
+    font-size: 1rem;
+    font-weight: 900;
+    color: #f8fbff;
+}
+
+.ws-client-picker-empty-sub {
+    color: #9fb1d3;
+    font-size: .92rem;
+    font-weight: 600;
+}
+
+/* Ellipsis / action buttons ─────────────────────────────────────── */
+#rbShell .hp-proposal-actions,
+#proposalMenu .hp-proposal-actions,
+#rbShell .proposal-actions,
+#uwMenu .proposal-actions {
+    display: flex !important;
+    gap: 4px !important;
+}
+#rbShell .hp-ellipsis-wrap,
+#proposalMenu .hp-ellipsis-wrap,
+#rbShell .ellipsis-wrap,
+#uwMenu .ellipsis-wrap {
+    position: relative !important;
+}
+#rbShell .hp-ellipsis-btn,
+#proposalMenu .hp-ellipsis-btn,
+#rbShell .ellipsis-btn,
+#uwMenu .ellipsis-btn {
+    background: rgba(255,255,255,.07) !important;
+    color: #f4d890 !important;
+    border: 1px solid rgba(199,153,49,.40) !important;
+    border-radius: 8px !important;
+    font-weight: 800 !important;
+    transition: background .12s, border-color .12s !important;
+}
+#rbShell .hp-ellipsis-btn:hover,
+#proposalMenu .hp-ellipsis-btn:hover,
+#rbShell .ellipsis-btn:hover,
+#uwMenu .ellipsis-btn:hover {
+    background: rgba(199,153,49,.15) !important;
+    border-color: rgba(199,153,49,.75) !important;
+}
+#rbShell .hp-ellipsis-menu[hidden],
+#proposalMenu .hp-ellipsis-menu[hidden],
+#rbShell .ellipsis-menu[hidden],
+#uwMenu .ellipsis-menu[hidden] {
+    display: none !important;
+}
+#rbShell .hp-ellipsis-menu:not([hidden]),
+#proposalMenu .hp-ellipsis-menu:not([hidden]),
+#rbShell .ellipsis-menu:not([hidden]),
+#uwMenu .ellipsis-menu:not([hidden]) {
+    position: absolute !important;
+    top: 110% !important;
+    right: 0 !important;
+    background: linear-gradient(180deg, #0f1d38 0%, #090f1e 100%) !important;
+    border: 1px solid rgba(199,153,49,.52) !important;
+    border-radius: 10px !important;
+    box-shadow: 0 14px 32px rgba(0,0,0,.46) !important;
+    padding: 6px !important;
+    display: flex !important;
+    flex-direction: column !important;
+    gap: 4px !important;
+    min-width: 140px !important;
+    z-index: 5200 !important;
+}
+
+
+/* ── Nav buttons: dark navy + gold border + white text ─────────── */
+#rbShell .hero-actions .hp-proposal-trigger,
+#rbShell .hero-actions .hero-underwrite,
+#rbShell .hero-actions .btn.gold {
+    background: linear-gradient(155deg, #0d1f42 0%, #0a1630 100%) !important;
+    border: 1.5px solid rgba(199,153,49,.62) !important;
+    color: #ffffff !important;
+    border-radius: 10px !important;
+    font-size: 13px !important;
+    font-weight: 800 !important;
+    letter-spacing: .15px !important;
+    box-shadow: 0 0 0 1px rgba(255,255,255,.07) inset, 0 6px 18px rgba(0,0,0,.30) !important;
+    transition: background .14s, border-color .14s, box-shadow .14s, transform .12s !important;
+}
+#rbShell .hero-actions .hp-proposal-trigger:hover,
+#rbShell .hero-actions .hero-underwrite:hover,
+#rbShell .hero-actions .btn.gold:hover {
+    background: linear-gradient(155deg, #152848 0%, #0e1e3c 100%) !important;
+    border-color: rgba(199,153,49,.95) !important;
+    color: #ffffff !important;
+    transform: translateY(-1px) !important;
+    box-shadow: 0 0 0 1px rgba(255,255,255,.09) inset, 0 0 0 3px rgba(199,153,49,.15), 0 12px 26px rgba(0,0,0,.36) !important;
+}
+
+@media (max-width: 900px) {
+    .hp-builder-context,
+    .uw-context-bar {
+        flex-direction: column;
+        align-items: flex-start;
+    }
+
+    .hp-builder-context-actions,
+    .uw-context-actions {
+        width: 100%;
+        justify-content: flex-start;
+    }
+
+    .ws-client-picker-overlay {
+        padding: 16px;
+    }
+
+    .ws-client-picker-dialog {
+        max-height: min(88vh, 960px);
+        border-radius: 22px;
+    }
+
+    .ws-client-picker-head,
+    .ws-client-picker-toolbar,
+    .ws-client-picker-status,
+    .ws-client-picker-results {
+        padding-left: 18px;
+        padding-right: 18px;
+    }
+
+    .ws-client-picker-results {
+        grid-template-columns: 1fr;
+        padding-bottom: 18px;
+    }
+}
+
+/* ── rb-link-bar (Quility / Integrity / EZLynx) ─────────────────── */
+#rbShell .rb-link-bar {
+    background: rgba(10,18,38,.45) !important;
+    border: 1px solid rgba(199,153,49,.18) !important;
+    border-radius: 12px !important;
+    padding: 8px 12px !important;
+    gap: 7px !important;
+    backdrop-filter: blur(6px) !important;
+}
+#rbShell .rb-link-bar .btn,
+#rbShell .rb-link-bar .btn.gold,
+#rbShell .rb-link-bar .rb-link {
+    background: linear-gradient(155deg, #0d1f42 0%, #0a1630 100%) !important;
+    border: 1.5px solid rgba(199,153,49,.55) !important;
+    color: #ffffff !important;
+    border-radius: 9px !important;
+    font-size: 12px !important;
+    font-weight: 800 !important;
+    padding: 7px 14px !important;
+    box-shadow: 0 4px 12px rgba(0,0,0,.22) !important;
+    text-decoration: none !important;
+    transition: background .13s, border-color .13s, transform .12s, color .12s !important;
+}
+#rbShell .rb-link-bar .btn:hover,
+#rbShell .rb-link-bar .btn.gold:hover,
+#rbShell .rb-link-bar .rb-link:hover {
+    background: linear-gradient(155deg, #152848 0%, #0e1e3c 100%) !important;
+    border-color: rgba(199,153,49,.95) !important;
+    color: #ffffff !important;
+    transform: translateY(-1px) !important;
+    box-shadow: 0 8px 20px rgba(0,0,0,.30) !important;
+}
+
+/* ══════════════════════════════════════════════════════════════════
+   UNDERWRITING FORM — Dark navy/gold theme matching Proposal Builder
+   ══════════════════════════════════════════════════════════════════ */
+
+/* Overlay */
+#uwOverlay {
+    background: rgba(5,10,22,.78) !important;
+    backdrop-filter: blur(8px) !important;
+    padding: 1.5rem 1rem !important;
+}
+
+/* Dialog shell */
+#uwDialog {
+    background:
+        radial-gradient(900px 320px at 0% 0%, rgba(166,128,35,.12), transparent 55%),
+        linear-gradient(180deg, rgba(11,21,41,.99), rgba(7,14,30,.99)) !important;
+    border: 1.8px solid rgba(166,128,35,.52) !important;
+    border-radius: 22px !important;
+    color: #f8fafc !important;
+    box-shadow: 0 40px 100px rgba(0,0,0,.58) !important;
+    scrollbar-gutter: stable;
+}
+
+/* Sticky header */
+#uwDialog .uw-head {
+    background: linear-gradient(180deg, rgba(11,21,41,.98), rgba(9,18,36,.96)) !important;
+    border-bottom: 1px solid rgba(166,128,35,.26) !important;
+    backdrop-filter: blur(4px) !important;
+}
+
+/* Logo */
+#uwDialog .uw-logo {
+    border: 1px solid rgba(199,153,49,.38) !important;
+    background: rgba(255,255,255,.06) !important;
+    box-shadow: 0 6px 16px rgba(0,0,0,.28) !important;
+}
+
+/* Title & subtitle */
+#uwDialog .uw-name {
+    color: #f4d890 !important;
+    font-weight: 950 !important;
+    font-size: 1.45rem !important;
+    letter-spacing: .02em !important;
+}
+#uwDialog .uw-sub {
+    color: #b9c5d8 !important;
+    font-weight: 600 !important;
+}
+
+/* Close button — matches proposal */
+#uwDialog .uw-close {
+    border: 2px solid rgba(221,180,87,.78) !important;
+    background: linear-gradient(180deg, rgba(15,26,50,.98), rgba(11,21,41,.98)) !important;
+    color: #f8fafc !important;
+    box-shadow: 0 10px 24px rgba(0,0,0,.35) !important;
+    border-radius: 12px !important;
+    width: 44px !important;
+    height: 44px !important;
+}
+#uwDialog .uw-close:hover {
+    border-color: #f2cf7f !important;
+    background: linear-gradient(180deg, rgba(20,35,66,.98), rgba(15,29,56,.98)) !important;
+}
+
+/* Keep workstation popouts centered in the visible workspace below the portal header. */
+#proposalOverlay.hp-overlay,
+.uw-overlay,
+.proposal-overlay,
+.note-self-overlay{
+    padding: var(--legend-modal-area-start, 24px) 1rem var(--legend-modal-safe-margin, 24px) !important;
+}
+
+#proposalDialog.hp-dialog,
+#uwDialog.uw-dialog,
+.proposal-dialog,
+.uw-dialog,
+.note-self-modal,
+#drawer.drawer[data-workstation-drawer="1"]{
+    max-height: min(92vh, var(--legend-modal-safe-height, calc(100dvh - 48px))) !important;
+}
+
+#captureDecisionModal.legend-popout-modal.show{
+    display: flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    padding: var(--legend-modal-area-start, 24px) var(--legend-modal-safe-margin, 24px) var(--legend-modal-safe-margin, 24px) !important;
+    overflow-y: auto !important;
+}
+
+#captureDecisionModal.legend-popout-modal .modal-dialog{
+    margin: 0 auto !important;
+    max-width: min(calc(100vw - var(--legend-modal-safe-margin, 24px) - var(--legend-modal-safe-margin, 24px)), 760px) !important;
+}
+
+#captureDecisionModal.legend-popout-modal .modal-content{
+    max-height: min(760px, var(--legend-modal-safe-height, 86vh)) !important;
+}
+
+#drawer.drawer[data-workstation-drawer="1"]{
+    top: var(--legend-modal-safe-center, 50%) !important;
+}
+
+@media (max-width: 700px){
+    #drawer.drawer[data-workstation-drawer="1"]{
+        top: 50% !important;
+        max-height: 100dvh !important;
+    }
+}
+
+/* Section cards */
+#uwDialog .uw-section {
+    background: linear-gradient(180deg, rgba(255,255,255,.055), rgba(255,255,255,.02)) !important;
+    border: 1.5px solid rgba(166,128,35,.24) !important;
+    border-radius: 16px !important;
+    box-shadow: none !important;
+}
+#uwDialog .uw-section + .uw-section {
+    margin-top: 8px !important;
+}
+#uwDialog .uw-section-title {
+    color: #f4d890 !important;
+    font-weight: 900 !important;
+    font-size: .78rem !important;
+    letter-spacing: .06em !important;
+    text-transform: uppercase !important;
+    border-bottom: 1px solid rgba(166,128,35,.2) !important;
+    padding-bottom: .3rem !important;
+    margin-bottom: .5rem !important;
+}
+
+/* Field wrappers */
+#uwDialog .uw-field {
+    background: rgba(255,255,255,.05) !important;
+    border: 1.5px solid rgba(166,128,35,.30) !important;
+    border-radius: 10px !important;
+    color: #f8fafc !important;
+    box-shadow: inset 0 1px 0 rgba(255,255,255,.05) !important;
+}
+#uwDialog .uw-field label,
+#uwDialog .uw-field > span:first-child {
+    font-size: .72rem !important;
+    font-weight: 900 !important;
+    letter-spacing: .06em !important;
+    text-transform: uppercase !important;
+    color: #f4d890 !important;
+}
+
+/* Inputs, selects, textareas */
+#uwDialog .uw-field input,
+#uwDialog .uw-field select,
+#uwDialog .uw-field textarea {
+    background: rgba(255,255,255,.07) !important;
+    border: 1.5px solid rgba(166,128,35,.34) !important;
+    border-radius: 8px !important;
+    color: #f8fafc !important;
+    caret-color: #f4d890 !important;
+}
+#uwDialog .uw-field input::placeholder,
+#uwDialog .uw-field textarea::placeholder {
+    color: #64748b !important;
+}
+#uwDialog .uw-field select option {
+    background: #0f1d38 !important;
+    color: #f8fafc !important;
+}
+#uwDialog .uw-field input:focus,
+#uwDialog .uw-field select:focus,
+#uwDialog .uw-field textarea:focus {
+    border-color: #ddb457 !important;
+    box-shadow: 0 0 0 3px rgba(221,180,87,.16) !important;
+    outline: none !important;
+}
+
+/* Multi-select buttons */
+#uwDialog .uw-multi-btn {
+    border: 1.5px solid rgba(199,153,49,.48) !important;
+    background: rgba(255,255,255,.06) !important;
+    color: #f4e8c0 !important;
+    box-shadow: none !important;
+}
+#uwDialog .uw-multi-btn:hover {
+    border-color: rgba(221,180,87,.85) !important;
+    background: rgba(199,153,49,.12) !important;
+    box-shadow: 0 6px 16px rgba(0,0,0,.22) !important;
+}
+#uwDialog .uw-multi-btn.is-selected {
+    background: linear-gradient(180deg, #184f1d 0%, #0f3b14 100%) !important;
+    color: #e9ffe7 !important;
+    border-color: #4ade80 !important;
+    box-shadow: inset 0 2px 4px rgba(0,0,0,.25), 0 6px 16px rgba(0,0,0,.22) !important;
+}
+
+/* Action bar */
+#uwDialog .uw-actions {
+    border-top: 1px solid rgba(166,128,35,.22) !important;
+    padding-top: 14px !important;
+    margin-top: 4px !important;
+}
+#uwDialog .uw-actions .btn,
+#uwDialog .proposal-actions-inline .btn {
+    background: linear-gradient(155deg, #0d1f42 0%, #0a1630 100%) !important;
+    border: 1.5px solid rgba(199,153,49,.55) !important;
+    color: #ffffff !important;
+    border-radius: 10px !important;
+    font-weight: 800 !important;
+    box-shadow: 0 4px 12px rgba(0,0,0,.22) !important;
+    transition: background .13s, border-color .13s, transform .12s !important;
+}
+#uwDialog .uw-actions .btn:hover,
+#uwDialog .proposal-actions-inline .btn:hover {
+    background: linear-gradient(155deg, #152848 0%, #0e1e3c 100%) !important;
+    border-color: rgba(199,153,49,.95) !important;
+    transform: translateY(-1px) !important;
+}
+#uwDialog .uw-actions .btn.gold,
+#uwDialog #uwSave {
+    background: linear-gradient(180deg, #f4dc98, #ddb457) !important;
+    border: 1.6px solid #ddb457 !important;
+    color: #0b1529 !important;
+    box-shadow: 0 10px 24px rgba(0,0,0,.28), inset 0 1px 0 rgba(255,255,255,.55) !important;
+}
+#uwDialog .uw-actions .btn.gold:hover,
+#uwDialog #uwSave:hover {
+    filter: saturate(1.08) brightness(1.04) !important;
+    transform: translateY(-1px) !important;
+}
+
+/* ── Grid: 4 columns, collapse unnecessary span-2 ───────────────── */
+#uwDialog .uw-grid {
+    grid-template-columns: repeat(4, minmax(0, 1fr)) !important;
+    gap: 7px 10px !important;
+}
+/* Collapse all span-2 to single-width in the 4-col grid */
+#uwDialog .uw-span-2 {
+    grid-column: span 1 !important;
+}
+/* Textareas are long-response — keep them at 2 columns */
+#uwDialog .uw-span-2:has(textarea) {
+    grid-column: span 2 !important;
+}
+/* Full-width fields (housing status, medical conditions, etc.) stay full */
+#uwDialog .uw-full {
+    grid-column: 1 / -1 !important;
+}
+
+/* ── Field text color-coding by section ─────────────────────────── */
+
+/* Personal / Basics — sky blue */
+#uwDialog #uwDate,
+#uwDialog #uwClientName,
+#uwDialog #uwOccupation,
+#uwDialog #uwDob,
+#uwDialog #uwAge,
+#uwDialog #uwGender,
+#uwDialog #uwNicotine,
+#uwDialog #uwHeight,
+#uwDialog #uwWeight,
+#uwDialog #uwPhone,
+#uwDialog #uwPhone2,
+#uwDialog #uwEmail { color: #7dd3fc !important; }
+
+/* Address / Location — warm amber */
+#uwDialog #uwAddress,
+#uwDialog #uwCity,
+#uwDialog #uwState,
+#uwDialog #uwZip,
+#uwDialog #uwCounty { color: #fbbf24 !important; }
+
+/* Liabilities / Expenses — red (money going out) */
+#uwDialog #uwLoan,
+#uwDialog #uwPayment { color: #ef4444 !important; }
+
+/* Assets / Income — green (money coming in / owned) */
+#uwDialog #uwEquity,
+#uwDialog #uwHomeValue,
+#uwDialog #uwIncome,
+#uwDialog #uwAddlIncome,
+#uwDialog #uwSavings { color: #4ade80 !important; }
+
+/* Coverage / Plan targets — teal (goal-oriented) */
+#uwDialog #uwHousingStatus,
+#uwDialog #uwLender,
+#uwDialog #uwTerm,
+#uwDialog #uwCoverage,
+#uwDialog #uwBeneficiary,
+#uwDialog #uwBeneficiary2,
+#uwDialog #uwBeneficiary3,
+#uwDialog #uwBeneficiary4 { color: #34d399 !important; }
+
+/* Health / Risk — coral red */
+#uwDialog #uwSurgeries,
+#uwDialog #uwMeds,
+#uwDialog #uwBankruptcies,
+#uwDialog #uwDui,
+#uwDialog #uwHealthConditions,
+#uwDialog #uwHealth { color: #f87171 !important; }
+
+/* Insurance / Plan — soft lavender */
+#uwDialog #uwLifeCoverage,
+#uwDialog #uwFamilyPlan,
+#uwDialog #uwAfford,
+#uwDialog #uwPlanTerm,
+#uwDialog #uwEmergencyAssets,
+#uwDialog #uwBank,
+#uwDialog #uwRouting,
+#uwDialog #uwAccount { color: #c084fc !important; }
+
+/* IDs & Docs — caution yellow */
+#uwDialog #uwDln,
+#uwDialog #uwSsn,
+#uwDialog #uwSavings2 { color: #fde047 !important; }
+
+/* Notes — soft slate */
+#uwDialog #uwNotes,
+#uwDialog #uwFamilyPlan2 { color: #94a3b8 !important; }
+
+/* Select option text inherits the field color */
+#uwDialog select option { color: inherit !important; }
+
+/* Mobile */
+@media (max-width: 900px) {
+    #uwDialog {
+        border-radius: 16px !important;
+        padding: .8rem .8rem 1rem !important;
+    }
+    #uwDialog .uw-head {
+        position: sticky !important;
+        top: 0 !important;
+        z-index: 5 !important;
+        margin: -.8rem -.8rem .7rem !important;
+        padding: .8rem .8rem .7rem !important;
+        border-radius: 16px 16px 0 0 !important;
+    }
+}

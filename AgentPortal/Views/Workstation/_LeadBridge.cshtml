@@ -1,22 +1,171 @@
 @model string
 @{
     var bucket = Model ?? "";
+    var requestedProduct = (Model ?? string.Empty).Trim();
+
+    var productContexts = new Dictionary<string, Dictionary<string, string>>(StringComparer.OrdinalIgnoreCase)
+    {
+        ["LifeInsurance"] = new(StringComparer.OrdinalIgnoreCase)
+        {
+            ["ProductName"] = "life insurance coverage",
+            ["ProductPurpose"] = "helps protect your family, replace income, and leave behind money if something happens",
+            ["AssignedRole"] = "field underwriter"
+        },
+        ["TermLife"] = new(StringComparer.OrdinalIgnoreCase)
+        {
+            ["ProductName"] = "term life insurance coverage",
+            ["ProductPurpose"] = "helps protect income, major bills, and temporary family responsibilities during the heavy financial years",
+            ["AssignedRole"] = "field underwriter"
+        },
+        ["WholeLife"] = new(StringComparer.OrdinalIgnoreCase)
+        {
+            ["ProductName"] = "whole life insurance coverage",
+            ["ProductPurpose"] = "helps keep permanent protection in place for life while building long-term value over time",
+            ["AssignedRole"] = "field underwriter"
+        },
+        ["IUL"] = new(StringComparer.OrdinalIgnoreCase)
+        {
+            ["ProductName"] = "IUL coverage",
+            ["ProductPurpose"] = "helps protect your family while reviewing permanent protection with cash-value strategy potential",
+            ["AssignedRole"] = "field underwriter"
+        },
+        ["FinalExpense"] = new(StringComparer.OrdinalIgnoreCase)
+        {
+            ["ProductName"] = "final expense coverage",
+            ["ProductPurpose"] = "helps your family handle funeral costs, unpaid bills, and final expenses",
+            ["AssignedRole"] = "field underwriter"
+        },
+        ["MortgageProtection"] = new(StringComparer.OrdinalIgnoreCase)
+        {
+            ["ProductName"] = "mortgage protection coverage",
+            ["ProductPurpose"] = "helps protect the home and gives your family money for the mortgage and bills if something happens",
+            ["AssignedRole"] = "field underwriter"
+        },
+        ["DisabilityInsurance"] = new(StringComparer.OrdinalIgnoreCase)
+        {
+            ["ProductName"] = "disability income protection",
+            ["ProductPurpose"] = "helps protect your income if an injury or illness kept you from working",
+            ["AssignedRole"] = "field underwriter"
+        },
+        ["AutoInsurance"] = new(StringComparer.OrdinalIgnoreCase)
+        {
+            ["ProductName"] = "auto insurance coverage",
+            ["ProductPurpose"] = "helps protect you from accidents, vehicle damage, liability claims, and road risks",
+            ["AssignedRole"] = "licensed coverage specialist"
+        },
+        ["HomeInsurance"] = new(StringComparer.OrdinalIgnoreCase)
+        {
+            ["ProductName"] = "home insurance coverage",
+            ["ProductPurpose"] = "helps protect your home, property, and belongings from storms, fire, theft, and damage",
+            ["AssignedRole"] = "licensed coverage specialist"
+        },
+        ["HealthInsurance"] = new(StringComparer.OrdinalIgnoreCase)
+        {
+            ["ProductName"] = "health insurance coverage",
+            ["ProductPurpose"] = "helps protect you from major medical costs and keeps coverage options in place for your care",
+            ["AssignedRole"] = "licensed coverage specialist"
+        },
+        ["CommercialInsurance"] = new(StringComparer.OrdinalIgnoreCase)
+        {
+            ["ProductName"] = "commercial insurance coverage",
+            ["ProductPurpose"] = "helps protect your business from liability, property damage, and costly interruptions",
+            ["AssignedRole"] = "licensed coverage specialist"
+        }
+    };
+
+    var productKey = productContexts.ContainsKey(requestedProduct) ? requestedProduct : "LifeInsurance";
+    var productContext = productContexts[productKey];
+
+    string ResolveTextTemplate(string template)
+    {
+        var runtimeTokens = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+        {
+            ["Greeting"] = "&lt;GREETING&gt;",
+            ["ClientFirstName"] = "&lt;CLIENT FIRST NAME&gt;",
+            ["ClientName"] = "&lt;CLIENT FIRST NAME&gt;",
+            ["AgentName"] = "&lt;YOUR NAME&gt;",
+            ["OfficeNumber"] = "&lt;OFFICE NUMBER&gt;",
+            ["AppointmentTime"] = "&lt;APPOINTMENT TIME&gt;"
+        };
+
+        foreach (var pair in productContext)
+        {
+            runtimeTokens[pair.Key] = pair.Value;
+        }
+
+        var rendered = template ?? string.Empty;
+        foreach (var pair in runtimeTokens)
+        {
+            rendered = rendered.Replace($"{{{{{pair.Key}}}}}", pair.Value, StringComparison.OrdinalIgnoreCase);
+        }
+
+        return rendered.Trim();
+    }
+
+    var textScriptCatalog = new[]
+    {
+        new
+        {
+            Key = "txtPreCall",
+            Title = "Pre Call Text",
+            Template = ResolveTextTemplate("{{Greeting}} {{ClientFirstName}}, this is {{AgentName}} regarding the {{ProductName}} request you filled out. I'm reaching out to help you review the information and get the next step taken care of. Give me a call back when you get this. The office number is {{OfficeNumber}}. Thanks.")
+        },
+        new
+        {
+            Key = "txtNoAnswer",
+            Title = "No Answer After First Call",
+            Template = ResolveTextTemplate("{{Greeting}} {{ClientFirstName}}, it's {{AgentName}}. I just tried reaching you regarding the {{ProductName}} request you filled out. This is the coverage that {{ProductPurpose}}. What time today works?")
+        },
+        new
+        {
+            Key = "txtQuestionResponse",
+            Title = "Question Response Rule",
+            Template = ResolveTextTemplate("{{Greeting}} {{ClientFirstName}}, absolutely, I can walk you through that. It'll be easier to explain clearly over the phone. What time today works?")
+        },
+        new
+        {
+            Key = "txtConfirm",
+            Title = "Appointment Confirmation",
+            Template = ResolveTextTemplate("{{Greeting}} {{ClientFirstName}}, {{AgentName}} here, {{AssignedRole}}. Confirming our appointment at {{AppointmentTime}}. If there is any reason you can't make that meeting, please let myself or my staff know so we can reschedule and help another family in your place. I look forward to serving you and your family!\n\nReply \"Yes\" or send a thumbs up to let me know you received this message.")
+        },
+        new
+        {
+            Key = "txtMissedAppointment",
+            Title = "Missed Appointment Text",
+            Template = ResolveTextTemplate("{{Greeting}} {{ClientFirstName}}, just gave you a call for our appointment. Do you need a few minutes?")
+        },
+        new
+        {
+            Key = "txtReschedule",
+            Title = "Reschedule Text",
+            Template = ResolveTextTemplate("{{Greeting}} {{ClientFirstName}}, just need to get this rescheduled so we can help you review your {{ProductName}} request. Would later today or tomorrow work better?")
+        },
+        new
+        {
+            Key = "txtHailMary",
+            Title = "Hail Mary / Final Attempt",
+            Template = ResolveTextTemplate("{{Greeting}} {{ClientFirstName}}, I've tried to reach out a few times regarding your {{ProductName}} request and haven't heard back. I don't want to keep bothering you if this is no longer important.\n\nWhere should we go from here?")
+        }
+    };
+
+    var textScriptCatalogJson = System.Text.Json.JsonSerializer.Serialize(textScriptCatalog);
 }
 
 <section class="lead-bridge" data-lead-bridge data-bucket="@bucket">
     @Html.AntiForgeryToken()
+    <script type="application/json" data-lb-text-templates>@Html.Raw(textScriptCatalogJson)</script>
     <div class="lb-filterbar">
-        <div class="lb-filter">
+        <div class="lb-filter" data-lb-slot="state">
             <select id="lbStateFilter" data-lb-state-filter>
                 <option value="" selected>State</option>
             </select>
         </div>
-        <div class="lb-filter">
+        <div class="lb-filter" data-lb-slot="stage">
             <select id="lbStageFilter" data-lb-stage-filter>
                 <option value="" selected>Stage</option>
             </select>
         </div>
-        <div class="lb-filter">
+        <div class="lb-filter" data-lb-slot="calls">
             <select id="lbCalledFilter" data-lb-called-filter>
                 <option value="" selected>Calls</option>
                 <option value="0">0</option>
@@ -32,22 +181,28 @@
                 <option value="10">10+</option>
             </select>
         </div>
-        <div class="lb-filter">
+        <div class="lb-filter" data-lb-slot="age">
             <select id="lbAgeFilter" data-lb-age-filter>
                 <option value="" selected>Age</option>
             </select>
         </div>
-        <div class="lb-filter lb-search">
-            <input id="lbSearch" type="search" data-lb-search placeholder="Search name, phone, email" autocomplete="off" />
+        <div class="lb-filter" data-lb-slot="crm">
+            <a class="btn lb-btn ghost" data-lb-open-crm target="_blank" rel="noopener">Open in CRM</a>
         </div>
-        <div class="lb-filter">
+        <div class="lb-filter" data-lb-slot="clear">
             <button type="button" class="btn lb-btn ghost" data-lb-clear>Clear</button>
         </div>
-        <div class="lb-filter">
+        <div class="lb-filter" data-lb-slot="edit">
+            <button type="button" class="btn lb-btn ghost" data-lb-edit-client disabled>Edit Lead</button>
+        </div>
+        <div class="lb-filter" data-lb-slot="zoom">
+            <button type="button" class="btn lb-btn ghost" data-lb-zoom data-zoom-popup>Zoom Links</button>
+        </div>
+        <div class="lb-filter" data-lb-slot="note">
             <button type="button" class="btn lb-btn note-self-cta" data-note-self-open>📝 Note to Self</button>
         </div>
-        <div class="lb-filter">
-            <a class="btn lb-btn ghost" data-lb-open-crm target="_blank" rel="noopener">Open in CRM</a>
+        <div class="lb-filter lb-search" data-lb-slot="search">
+            <input id="lbSearch" type="search" data-lb-search placeholder="Search name, phone, email" autocomplete="off" />
         </div>
     </div>
 
@@ -94,92 +249,62 @@
         </div>
     </div>
 
+    @await Html.PartialAsync("~/Views/Leads/_LeadQuickView.cshtml")
+
     <div class="lb-row lb-row-fields">
         <div class="lead-field mobile-allowed" data-lf="name">
             <span class="lf-label">Name</span>
             <span class="lf-value" data-lf-value="name">—</span>
             <span class="lf-sub" data-lf-value="calls">Calls: —</span>
         </div>
-        <div class="lead-field mobile-hidden" data-lf="address">
-            <span class="lf-label">Address</span>
-            <span class="lf-value" data-lf-value="address">—</span>
-        </div>
-        <div class="lead-field mobile-allowed" data-lf="city">
-            <span class="lf-label">City</span>
-            <span class="lf-value" data-lf-value="city">—</span>
-        </div>
-        <div class="lead-field mobile-allowed" data-lf="state">
-            <span class="lf-label">State</span>
-            <span class="lf-value" data-lf-value="state">—</span>
-        </div>
-        <div class="lead-field mobile-hidden" data-lf="county">
-            <span class="lf-label">County</span>
-            <span class="lf-value" data-lf-value="county">—</span>
-        </div>
-        <div class="lead-field mobile-hidden" data-lf="dob">
-            <span class="lf-label">DOB</span>
-            <span class="lf-value" data-lf-value="dob">—</span>
-        </div>
-        <div class="lead-field mobile-hidden" data-lf="gender">
-            <span class="lf-label">M/F</span>
-            <span class="lf-value" data-lf-value="gender">—</span>
-        </div>
-        <div class="lead-field mobile-allowed" data-lf="lender">
-            <span class="lf-label" data-lf-label="lender">Lender</span>
-            <span class="lf-value" data-lf-value="lender">—</span>
-        </div>
-        <div class="lead-field mobile-hidden" data-lf="loan">
-            <span class="lf-label" data-lf-label="loan">Loan Amount</span>
-            <span class="lf-value" data-lf-value="loan">—</span>
-        </div>
-        <div class="lead-field mobile-hidden" data-lf="phone">
+        <div class="lead-field mobile-allowed" data-lf="phone">
             <span class="lf-label">Phone #</span>
             <span class="lf-value" data-lf-value="phone">—</span>
         </div>
-        <div class="lead-field mobile-hidden" data-lf="phone2">
-            <span class="lf-label">Phone #2</span>
-            <span class="lf-value" data-lf-value="phone2">—</span>
+        <div class="lead-field mobile-hidden" data-lf="email">
+            <span class="lf-label">Email</span>
+            <span class="lf-value" data-lf-value="email">—</span>
         </div>
-        <div class="lead-field mobile-hidden" data-lf="age">
-            <span class="lf-label">Age</span>
-            <span class="lf-value" data-lf-value="age">—</span>
-        </div>
-        <div class="lead-field mobile-hidden" data-lf="btc">
-            <span class="lf-label">BTC</span>
-            <span class="lf-value" data-lf-value="btc">—</span>
+        <div class="lead-field mobile-allowed" data-lf="location">
+            <span class="lf-label">Location</span>
+            <span class="lf-value" data-lf-value="location">—</span>
         </div>
         <span class="visually-hidden" data-lf-value="leadId"></span>
     </div>
+
+    @await Html.PartialAsync("_LeadScriptHandoff")
 
     <div class="lb-row lb-row-actions">
         <div class="lb-actions">
             <button type="button" class="btn lb-btn ghost mobile-allowed" data-lb-call>Call</button>
             <button type="button" class="btn lb-btn ghost mobile-allowed" data-lb-text>Text ▾</button>
-            <button type="button" class="btn lb-btn ghost lb-dials" data-lb-dials-day disabled>
+            <button type="button" class="btn lb-btn ghost lb-dials mobile-allowed" data-lb-dials-day disabled>
                 <span class="lb-dials-label">Today’s Dials:</span>
                 <span class="lb-dials-count lb-dials-day">—</span>
             </button>
-            <button type="button" class="btn lb-btn ghost lb-dials" data-lb-dials-week disabled>
+            <button type="button" class="btn lb-btn ghost lb-dials mobile-allowed" data-lb-dials-week disabled>
                 <span class="lb-dials-label">Week’s Dials:</span>
                 <span class="lb-dials-count lb-dials-week">—</span>
             </button>
             <button type="button" class="btn lb-btn next mobile-allowed" data-lb-next>Next ➜</button>
-            <button type="button" class="btn lb-btn mobile-allowed" data-outcome="NoAnswer">No Answer</button>
-            <button type="button" class="btn lb-btn mobile-allowed" data-outcome="Contacted">Mark Contacted</button>
-            <button type="button" class="btn lb-btn mobile-allowed" data-outcome="FollowUp">Follow Up</button>
-            <button type="button" class="btn lb-btn mobile-allowed" data-outcome="Booked">Booked Meeting</button>
-            <button type="button" class="btn lb-btn mobile-allowed" data-outcome="NeedsDocs">Needs Docs</button>
-            <button type="button" class="btn lb-btn mobile-allowed" data-outcome="PolicyPlaced">Policy Placed</button>
-            <button type="button" class="btn lb-btn mobile-allowed" data-outcome="AIReception">AI Reception</button>
-            <button type="button" class="btn lb-btn mobile-allowed" data-outcome="Nurture">Nurture</button>
-            <button type="button" class="btn lb-btn mobile-allowed" data-outcome="NotInterested">Not Interested</button>
-            <button type="button" class="btn lb-btn mobile-allowed" data-outcome="Lost">Lost</button>
+            <button type="button" class="btn lb-btn" data-outcome="NoAnswer">No Answer</button>
+            <button type="button" class="btn lb-btn" data-outcome="Contacted">Mark Contacted</button>
+            <button type="button" class="btn lb-btn" data-outcome="CallBack">Call Back</button>
+            <button type="button" class="btn lb-btn" data-outcome="FollowUp">Follow Up</button>
+            <button type="button" class="btn lb-btn" data-outcome="Booked">Booked Meeting</button>
+            <button type="button" class="btn lb-btn" data-outcome="NeedsDocs">Needs Docs</button>
+            <button type="button" class="btn lb-btn" data-outcome="PolicyPlaced">Policy Placed</button>
+            <button type="button" class="btn lb-btn" data-outcome="AIReception">AI Reception</button>
+            <button type="button" class="btn lb-btn" data-outcome="Nurture">Nurture</button>
+            <button type="button" class="btn lb-btn" data-outcome="Voicemail">Voicemail Left</button>
+            <button type="button" class="btn lb-btn" data-outcome="NotInterested">Not Interested</button>
+            <button type="button" class="btn lb-btn" data-outcome="Lost">Lost</button>
+            <button type="button" class="btn lb-btn" data-outcome="DoNotCallList">Do Not Call List</button>
             <button type="button" class="btn lb-btn danger mobile-hidden" data-lb-delete style="background:#dc2626;color:#fff;border-color:#b91c1c;">Delete Lead</button>
         </div>
         <div class="lb-meta mobile-allowed">
             <span class="lb-pos" data-lb-pos>Lead 0 of 0</span>
             <span class="lb-origin mobile-hidden" data-lb-origin>Origin: —</span>
-            <span class="lb-status" data-lb-status>Loading…</span>
         </div>
     </div>
 

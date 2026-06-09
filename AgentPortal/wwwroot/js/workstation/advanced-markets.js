@@ -685,6 +685,14 @@
     });
   }
 
+  function getRequestVerificationToken() {
+    return (
+      $('input[name="__RequestVerificationToken"]', form)?.value ||
+      document.querySelector('input[name="__RequestVerificationToken"]')?.value ||
+      ""
+    ).trim();
+  }
+
   function serializeFormToVm(formEl) {
     const data = {};
     const fd = new FormData(formEl);
@@ -727,13 +735,16 @@
         inputs
       };
       try {
-        const token = $('input[name="__RequestVerificationToken"]', form)?.value || "";
+        const token = getRequestVerificationToken();
+        const headers = {
+          "Content-Type": "application/json"
+        };
+        if (token) {
+          headers.RequestVerificationToken = token;
+        }
         await fetch("/Clients/SaveAdvancedMarketsInputs", {
           method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            "RequestVerificationToken": token
-          },
+          headers,
           credentials: "include",
           body: JSON.stringify(payload)
         });
@@ -1275,12 +1286,17 @@
     try {
       stripMoneySeparators();
       const formData = new FormData(form);
-      const token = $('input[name="__RequestVerificationToken"]', form)?.value || "";
+      const token = getRequestVerificationToken();
+      const headers = {};
+      if (token) {
+        headers.RequestVerificationToken = token;
+        if (!formData.has("__RequestVerificationToken")) {
+          formData.append("__RequestVerificationToken", token);
+        }
+      }
       const response = await fetch(calcUrl, {
         method: "POST",
-        headers: {
-          RequestVerificationToken: token
-        },
+        headers,
         credentials: "include",
         body: formData
       });

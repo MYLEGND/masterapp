@@ -7,9 +7,10 @@
     var clientUserId = Model?.ClientUserId ?? "";
     var recordTypeLabel = Model?.RecordType == "BusinessClient" ? "Business Client" : (Model?.RecordType == "Client" ? "Client" : "Lead");
     var recordTypeHelp = Model?.HasPortalAccess == true
-        ? "Portal-enabled records can switch between Client and Business Client here."
-        : "Leads stay as leads here. Use Quick View conversion to enable Client or Business Client access.";
+        ? "Switch between Lead, Client, and Business Client here. Existing portal access stays active after save."
+        : "You can save this record as Lead, Client, or Business Client here. Choosing Client or Business Client will enable portal access on save.";
     var hasPortalAccess = Model?.HasPortalAccess == true;
+    var childCount = Model?.Children?.Count ?? 0;
 
     ViewBag.ClientUserId = Model?.ClientUserId;
     ViewBag.ClientDisplayName = $"{Model?.FirstName} {Model?.LastName}".Trim();
@@ -24,32 +25,34 @@
 
 <style>
     :root{
+        --navy-950:#050b16;
+        --navy-900:#081224;
+        --navy-850:#0b1529;
+        --navy-820:#0f1b30;
         --gold:#a68023;
         --gold-deep:#8f6b14;
         --gold-bright:#ddb85d;
-        --goldSoft: rgba(166,128,35,.20);
+        --goldSoft: rgba(166,128,35,.18);
         --ink:#f8fafc;
-        --muted: rgba(226,232,240,.78);
-        --border: rgba(166,128,35,.65);
-        --card:#0b1529;
-        --shadow: 0 24px 52px rgba(0,0,0,.32);
-        --radius: 20px;
+        --muted: rgba(212,221,233,.82);
+        --border: rgba(166,128,35,.56);
+        --card:rgba(11,21,41,.96);
+        --card-soft:rgba(15,27,48,.94);
+        --shadow: 0 28px 62px rgba(0,0,0,.34);
+        --radius: 28px;
     }
 
-    body { background:#050b16; color:var(--ink); font-family:'Inter', sans-serif; }
+    body { color:var(--ink); font-family:'Inter', sans-serif; }
 
     .page-wrap{
-        max-width: 980px;
+        max-width: 1040px;
         margin: 0 auto;
-        padding: 26px 18px 42px;
-        background:
-            linear-gradient(180deg, rgba(166,128,35,.14), rgba(5,11,22,0) 220px),
-            #050b16;
+        padding: 28px 18px 42px;
     }
 
     .card{
-        background: var(--card);
-        border: 2px solid var(--border);
+        background: #0b1529;
+        border: 1.5px solid var(--border);
         border-radius: var(--radius);
         box-shadow: var(--shadow);
         overflow: hidden;
@@ -68,41 +71,60 @@
     }
 
     .card-header{
-        padding: 18px 18px 14px;
-        border-bottom: 1px solid rgba(143,107,20,.24);
+        padding: 24px;
+        border-bottom: 1px solid rgba(255,255,255,.10);
         display:flex;
         align-items:flex-end;
         justify-content:space-between;
-        gap: 14px;
+        gap: 18px;
         flex-wrap: wrap;
-        background: linear-gradient(180deg, rgba(166,128,35,.18), rgba(11,21,41,.96));
+        background: linear-gradient(135deg,#0f172a,#1e293b);
+        box-shadow: inset 0 -1px 0 rgba(255,255,255,.05);
+    }
+
+    .eyebrow{
+        display:inline-flex;
+        align-items:center;
+        gap:.45rem;
+        margin-bottom:.8rem;
+        padding:.38rem .72rem;
+        border-radius:999px;
+        border:1px solid rgba(255,255,255,.26);
+        background: rgba(255,255,255,.12);
+        color:#e2e8f0;
+        font-size:.76rem;
+        font-weight:900;
+        letter-spacing:.12em;
+        text-transform:uppercase;
     }
 
     .title{
         margin:0;
-        font-size: 1.85rem;
+        font-size: 2rem;
         font-weight: 900;
         letter-spacing: .2px;
         line-height: 1.1;
-        color:var(--gold-bright);
+        color:#ffffff;
     }
 
     .subtitle{
-        margin-top: 6px;
+        margin-top: .65rem;
         margin-bottom: 0;
-        color: var(--muted);
+        color: #cbd5e1;
         font-weight: 650;
-        font-size: .98rem;
+        font-size: 1rem;
+        max-width: 720px;
+        line-height: 1.6;
     }
 
     .card-body{
-        padding: 18px;
+        padding: 24px;
     }
 
     .gold-rule{
         height: 1px;
-        background: rgba(143,107,20,.22);
-        margin: 16px 0;
+        background: rgba(166,128,35,.22);
+        margin: 20px 0;
         border-radius: 999px;
     }
 
@@ -115,12 +137,12 @@
 
     .input{
         border: 1.5px solid var(--border);
-        border-radius: 14px;
-        padding: .78rem .9rem;
+        border-radius: 16px;
+        padding: .82rem .95rem;
         font-weight: 750;
         transition: box-shadow .14s ease, border-color .14s ease;
         width:100%;
-        background:#0f1b30;
+        background: #0f1b30;
         color:#f8fafc;
         outline:none;
         box-shadow: inset 0 1px 4px rgba(0,0,0,.35);
@@ -136,12 +158,13 @@
     }
 
     .summary{
-        border: 1px solid rgba(220,53,69,.35);
-        background: rgba(220,53,69,.06);
-        border-radius: 14px;
-        padding: .85rem .95rem;
+        border: 1px solid rgba(220,53,69,.28);
+        background: rgba(220,53,69,.08);
+        border-radius: 16px;
+        padding: .9rem 1rem;
         margin-bottom: 14px;
         font-weight: 750;
+        color:#ffd5d0;
     }
 
     .btn{
@@ -149,53 +172,52 @@
         align-items:center;
         justify-content:center;
         gap: 10px;
-        padding: 10px 14px;
-        border-radius: 14px;
-        border: 1px solid #c59a37;
-        background:#fff;
-        color: var(--gold-deep);
+        min-height: 46px;
+        padding: 10px 16px;
+        border-radius: 16px;
+        border: 1.5px solid rgba(166,128,35,.52);
+        background:rgba(255,255,255,.04);
+        color: #f6e6b4;
         font-weight: 900;
         text-decoration:none;
         cursor:pointer;
-        box-shadow: inset 0 1px 0 rgba(255,255,255,.96);
         transition: transform .14s ease, box-shadow .14s ease, border-color .14s ease;
         white-space: nowrap;
     }
 
     .btn:hover{
         transform: translateY(-1px);
-        border-color: var(--gold-deep);
-        box-shadow: 0 12px 24px rgba(92,67,10,.12);
+        border-color: rgba(221,180,87,.9);
+        box-shadow: 0 14px 28px rgba(0,0,0,.24);
     }
 
     .btn-gold{
-        border-color: var(--gold-deep);
-        background: linear-gradient(180deg, #fff4d2, #fffdf8);
+        background: rgba(255,255,255,.04);
+        color:#f6e6b4;
     }
 
     .btn-solid{
-        border: 2px solid var(--gold-deep);
+        border: 1.5px solid var(--gold-deep);
         background: linear-gradient(180deg, #f2d891, #ddb457);
-        color:#fff;
+        color:#081224;
         text-shadow: 0 1px 0 rgba(92,67,10,.22);
-        box-shadow: 0 14px 30px rgba(143,107,20,.18);
+        box-shadow: 0 18px 34px rgba(143,107,20,.28);
     }
 
     .btn-solid:hover{
         background: linear-gradient(180deg, #efcf81, #d6ab48);
-        border-color: var(--gold-deep);
-        box-shadow: 0 16px 34px rgba(143,107,20,.22);
+        border-color: #efcf81;
+        box-shadow: 0 22px 38px rgba(143,107,20,.34);
     }
 
     .btn-outline{
-        border: 2px solid var(--gold-deep);
-        background:#fff;
-        color: var(--gold-deep);
+        background: rgba(255,255,255,.03);
+        color: #f6e6b4;
     }
 
     .btn-outline:hover{
-        background: #fff4d2;
-        color: var(--gold-deep);
+        background: rgba(255,255,255,.06);
+        color: #fff0c9;
     }
 
     .grid{
@@ -212,10 +234,28 @@
     }
 
     .subcard{
-        border: 1px solid rgba(143,107,20,.24);
-        background: linear-gradient(180deg, #fffaf0, #ffffff);
-        border-radius: 18px;
-        padding: 14px;
+        border: 1px solid rgba(166,128,35,.28);
+        background: linear-gradient(180deg, rgba(15,27,48,.95), rgba(11,21,41,.94));
+        border-radius: 22px;
+        padding: 18px;
+        box-shadow: inset 0 0 0 1px rgba(255,255,255,.03);
+    }
+
+    .subcard.family-compact{
+        border-color: rgba(166,128,35,.42);
+        border-radius: 14px;
+        padding: 12px;
+        background: linear-gradient(180deg, rgba(15,27,48,.9), rgba(8,18,36,.86));
+        box-shadow: inset 0 1px 0 rgba(255,255,255,.05);
+    }
+
+    .input::placeholder{
+        color:#9eb0ca;
+    }
+
+    .input option{
+        background:#0f1b30;
+        color:#f8fafc;
     }
 
     .subcard-top{
@@ -227,21 +267,53 @@
         margin-bottom: 10px;
     }
 
+    .family-compact .subcard-top{
+        align-items:flex-start;
+        gap: 8px;
+        margin-bottom: 8px;
+    }
+
     .section-title{
         font-weight: 950;
         letter-spacing: .25px;
-        color: var(--gold-deep);
+        color: #f2d891;
         margin: 0;
         font-size: 1.05rem;
+    }
+
+    .family-compact .section-title{
+        font-size: 1rem;
+        line-height: 1.2;
+    }
+
+    .family-compact .note{
+        font-size: .82rem;
+        line-height: 1.35;
+        margin-top: 3px;
+        color: rgba(212,221,233,.78);
+    }
+
+    .family-compact .grid{
+        gap: 10px;
+    }
+
+    .family-compact .label{
+        margin-bottom: 4px;
+        font-size: .9rem;
+    }
+
+    .family-compact .input{
+        border-radius: 11px;
+        padding: .68rem .8rem;
     }
 
     .pill{
         border-radius: 999px;
         padding: 6px 12px;
         font-weight: 950;
-        border: 1px solid rgba(143,107,20,.28);
-        background: #fff4d2;
-        color: var(--gold-deep);
+        border: 1px solid rgba(166,128,35,.4);
+        background: rgba(166,128,35,.14);
+        color: #f6e6b4;
         white-space: nowrap;
     }
 
@@ -255,20 +327,21 @@
         display:flex;
         align-items:center;
         gap: 10px;
-        min-height: 48px;
+        min-height: 54px;
         padding: 0 14px;
-        border: 1px solid #c59a37;
-        border-radius: 14px;
-        background: linear-gradient(180deg, #fffdf8, #ffffff);
+        border: 1px solid rgba(166,128,35,.38);
+        border-radius: 16px;
+        background: linear-gradient(180deg, rgba(255,255,255,.05), rgba(255,255,255,.025));
+        color:#f8fafc;
         font-weight: 800;
         cursor: pointer;
         transition: border-color .14s ease, box-shadow .14s ease, background .14s ease;
     }
 
     .record-option:has(input:checked){
-        border-color: var(--gold-deep);
+        border-color: var(--gold-bright);
         box-shadow: 0 0 0 2px rgba(166,128,35,.14);
-        background: linear-gradient(180deg, #fff3cf, #fffaf0);
+        background: linear-gradient(180deg, rgba(221,180,87,.20), rgba(255,255,255,.05));
     }
 
     .record-option.is-disabled{
@@ -283,6 +356,9 @@
     @@media (max-width: 720px){
         .grid,
         .record-types{ grid-template-columns: 1fr; }
+
+        .card-header,
+        .card-body{ padding:20px; }
     }
 
     .full{ grid-column: 1 / -1; }
@@ -293,14 +369,50 @@
         flex-wrap: wrap;
         margin-top: 16px;
     }
+
+    .child-list{
+        display:grid;
+        gap: 8px;
+    }
+
+    .child-card{
+        border: 1px solid rgba(166,128,35,.34);
+        background: rgba(8,18,36,.64);
+        border-radius: 12px;
+        padding: 10px;
+        display:grid;
+        gap: 8px;
+    }
+
+    .child-card-top{
+        display:flex;
+        align-items:center;
+        justify-content:space-between;
+        gap: 10px;
+        flex-wrap: wrap;
+    }
+
+    .child-title{
+        font-weight: 950;
+        color: #f8fafc;
+        font-size: .92rem;
+    }
+
+    .btn-small{
+        min-height: 34px;
+        border-radius: 999px;
+        padding: 7px 10px;
+        font-size: .82rem;
+    }
 </style>
 
 <div class="page-wrap">
     <div class="card">
         <div class="card-header">
             <div>
+                <div class="eyebrow">Private client editing</div>
                 <h2 class="title">Edit @recordTypeLabel</h2>
-                <p class="subtitle">Update contact info and workspace type. DOB is read-only after the first save.</p>
+                <p class="subtitle">Update this record from the same client-ready experience used on the home hub, then return without opening the full CRM board.</p>
             </div>
             <a href="@returnUrl" class="btn btn-gold">← Back</a>
         </div>
@@ -324,18 +436,28 @@
                         <span class="pill">@recordTypeLabel</span>
                     </div>
                     <div class="record-types">
-                        <label class="record-option @(hasPortalAccess ? "is-disabled" : "")">
-                            <input asp-for="RecordType" type="radio" value="Lead" disabled="@hasPortalAccess" />
+                        <label class="record-option">
+                            <input asp-for="RecordType" type="radio" value="Lead" />
                             <span>Lead</span>
                         </label>
-                        <label class="record-option @(!hasPortalAccess ? "is-disabled" : "")">
-                            <input asp-for="RecordType" type="radio" value="Client" disabled="@(!hasPortalAccess)" />
+                        <label class="record-option">
+                            <input asp-for="RecordType" type="radio" value="Client" />
                             <span>Client</span>
                         </label>
-                        <label class="record-option @(!hasPortalAccess ? "is-disabled" : "")">
-                            <input asp-for="RecordType" type="radio" value="BusinessClient" disabled="@(!hasPortalAccess)" />
+                        <label class="record-option">
+                            <input asp-for="RecordType" type="radio" value="BusinessClient" />
                             <span>Business Client</span>
                         </label>
+                    </div>
+                    <div class="note" style="margin-top:8px;">
+                        @if (hasPortalAccess)
+                        {
+                            <text>Saving as Lead reclassifies the CRM bucket without deleting the existing portal login.</text>
+                        }
+                        else
+                        {
+                            <text>Saving as Client or Business Client will run the portal welcome flow after the record is updated.</text>
+                        }
                     </div>
                     <span asp-validation-for="RecordType" class="text-danger validation"></span>
                 </div>
@@ -394,11 +516,11 @@
                 </div>
 
                 <!-- Significant Other (conditional) -->
-                <div id="soCard" class="subcard" style="display:none; margin-top:16px;">
+                <div id="soCard" class="subcard family-compact" style="display:none; margin-top:12px;">
                     <div class="subcard-top">
                         <div>
                             <div class="section-title">Significant Other</div>
-                            <div class="note">Required for Married / Domestic Partnership. Stored under this client household.</div>
+                            <div class="note">Required for Married / Domestic Partnership.</div>
                         </div>
                         <span class="pill">Required for this status</span>
                     </div>
@@ -436,6 +558,56 @@
                     </div>
                 </div>
 
+                <div class="subcard family-compact" style="margin-top:12px;">
+                    <div class="subcard-top">
+                        <div>
+                            <div class="section-title">Children</div>
+                            <div class="note">Shared household record.</div>
+                        </div>
+                        <button type="button" class="btn btn-outline btn-small" id="addChildBtn">Add Child</button>
+                    </div>
+
+                    <div class="child-list" id="childrenList" data-next-index="@childCount">
+                        @for (var i = 0; i < childCount; i++)
+                        {
+                            <div class="child-card" data-child-row>
+                                <div class="child-card-top">
+                                    <div class="child-title">Child</div>
+                                    <button type="button" class="btn btn-outline btn-small" data-remove-child>Remove</button>
+                                </div>
+                                <input asp-for="Children[i].Id" type="hidden" data-field="Id" />
+                                <div class="grid">
+                                    <div>
+                                        <label asp-for="Children[i].FirstName" class="label">First Name</label>
+                                        <input asp-for="Children[i].FirstName" class="input" autocomplete="off" data-field="FirstName" />
+                                        <span asp-validation-for="Children[i].FirstName" class="text-danger validation" data-valmsg-field="FirstName"></span>
+                                    </div>
+                                    <div>
+                                        <label asp-for="Children[i].LastName" class="label">Last Name</label>
+                                        <input asp-for="Children[i].LastName" class="input" autocomplete="off" data-field="LastName" />
+                                        <span asp-validation-for="Children[i].LastName" class="text-danger validation" data-valmsg-field="LastName"></span>
+                                    </div>
+                                    <div>
+                                        <label asp-for="Children[i].DOB" class="label">Date of Birth</label>
+                                        <input asp-for="Children[i].DOB" type="date" class="input" data-field="DOB" />
+                                        <span asp-validation-for="Children[i].DOB" class="text-danger validation" data-valmsg-field="DOB"></span>
+                                    </div>
+                                    <div>
+                                        <label asp-for="Children[i].Phone" class="label">Phone</label>
+                                        <input asp-for="Children[i].Phone" class="input" autocomplete="tel" inputmode="tel" data-field="Phone" />
+                                        <span asp-validation-for="Children[i].Phone" class="text-danger validation" data-valmsg-field="Phone"></span>
+                                    </div>
+                                    <div class="full">
+                                        <label asp-for="Children[i].Email" class="label">Email</label>
+                                        <input asp-for="Children[i].Email" class="input" autocomplete="email" inputmode="email" data-field="Email" />
+                                        <span asp-validation-for="Children[i].Email" class="text-danger validation" data-valmsg-field="Email"></span>
+                                    </div>
+                                </div>
+                            </div>
+                        }
+                    </div>
+                </div>
+
                 <div class="gold-rule"></div>
 
                 <div class="actions">
@@ -458,6 +630,9 @@
             const soFirst = document.getElementById('SignificantOtherFirstName');
             const soLast  = document.getElementById('SignificantOtherLastName');
             const soDob   = document.getElementById('SignificantOtherDOB');
+            const childrenList = document.getElementById('childrenList');
+            const addChildBtn = document.getElementById('addChildBtn');
+            const form = childrenList?.closest('form');
 
             function needsSO(v) {
                 if (!v) return false;
@@ -474,18 +649,87 @@
                 if (soFirst) soFirst.required = required;
                 if (soLast)  soLast.required  = required;
                 if (soDob)   soDob.required   = required;
-
-                if (!required) {
-                    if (soFirst) soFirst.value = '';
-                    if (soLast)  soLast.value  = '';
-                    if (soDob)   soDob.value   = '';
-                }
             }
+
+            function childTemplate(index) {
+                return `
+                    <div class="child-card" data-child-row>
+                        <div class="child-card-top">
+                            <div class="child-title">Child</div>
+                            <button type="button" class="btn btn-outline btn-small" data-remove-child>Remove</button>
+                        </div>
+                        <input type="hidden" name="Children[${index}].Id" id="Children_${index}__Id" data-field="Id" />
+                        <div class="grid">
+                            <div>
+                                <label class="label" for="Children_${index}__FirstName">First Name</label>
+                                <input class="input" type="text" name="Children[${index}].FirstName" id="Children_${index}__FirstName" autocomplete="off" data-field="FirstName" />
+                                <span class="text-danger validation" data-valmsg-for="Children[${index}].FirstName" data-valmsg-replace="true" data-valmsg-field="FirstName"></span>
+                            </div>
+                            <div>
+                                <label class="label" for="Children_${index}__LastName">Last Name</label>
+                                <input class="input" type="text" name="Children[${index}].LastName" id="Children_${index}__LastName" autocomplete="off" data-field="LastName" />
+                                <span class="text-danger validation" data-valmsg-for="Children[${index}].LastName" data-valmsg-replace="true" data-valmsg-field="LastName"></span>
+                            </div>
+                            <div>
+                                <label class="label" for="Children_${index}__DOB">Date of Birth</label>
+                                <input class="input" type="date" name="Children[${index}].DOB" id="Children_${index}__DOB" data-field="DOB" />
+                                <span class="text-danger validation" data-valmsg-for="Children[${index}].DOB" data-valmsg-replace="true" data-valmsg-field="DOB"></span>
+                            </div>
+                            <div>
+                                <label class="label" for="Children_${index}__Phone">Phone</label>
+                                <input class="input" type="tel" name="Children[${index}].Phone" id="Children_${index}__Phone" autocomplete="tel" inputmode="tel" data-field="Phone" />
+                                <span class="text-danger validation" data-valmsg-for="Children[${index}].Phone" data-valmsg-replace="true" data-valmsg-field="Phone"></span>
+                            </div>
+                            <div class="full">
+                                <label class="label" for="Children_${index}__Email">Email</label>
+                                <input class="input" type="email" name="Children[${index}].Email" id="Children_${index}__Email" autocomplete="email" inputmode="email" data-field="Email" />
+                                <span class="text-danger validation" data-valmsg-for="Children[${index}].Email" data-valmsg-replace="true" data-valmsg-field="Email"></span>
+                            </div>
+                        </div>
+                    </div>`;
+            }
+
+            function reindexChildren() {
+                if (!childrenList) return;
+                childrenList.querySelectorAll('[data-child-row]').forEach((row, index) => {
+                    row.querySelectorAll('[data-field]').forEach((input) => {
+                        const field = input.getAttribute('data-field');
+                        input.name = `Children[${index}].${field}`;
+                        input.id = `Children_${index}__${field}`;
+                    });
+                    row.querySelectorAll('[data-valmsg-field]').forEach((span) => {
+                        const field = span.getAttribute('data-valmsg-field');
+                        span.setAttribute('data-valmsg-for', `Children[${index}].${field}`);
+                    });
+                    row.querySelectorAll('label[for]').forEach((label) => {
+                        const field = label.getAttribute('for')?.split('__').pop() || '';
+                        const target = row.querySelector(`[data-field="${field}"]`);
+                        if (target) label.setAttribute('for', target.id);
+                    });
+                });
+                childrenList.dataset.nextIndex = String(childrenList.querySelectorAll('[data-child-row]').length);
+            }
+
+            addChildBtn?.addEventListener('click', () => {
+                if (!childrenList) return;
+                const index = Number.parseInt(childrenList.dataset.nextIndex || '0', 10);
+                childrenList.insertAdjacentHTML('beforeend', childTemplate(Number.isFinite(index) ? index : 0));
+                reindexChildren();
+            });
+
+            childrenList?.addEventListener('click', (event) => {
+                const remove = event.target.closest('[data-remove-child]');
+                if (!remove) return;
+                remove.closest('[data-child-row]')?.remove();
+                reindexChildren();
+            });
 
             if (status) {
                 status.addEventListener('change', applySO);
                 applySO();
             }
+            form?.addEventListener('submit', reindexChildren);
+            reindexChildren();
         })();
     </script>
 }

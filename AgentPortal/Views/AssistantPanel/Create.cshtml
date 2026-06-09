@@ -5,7 +5,99 @@
 
 <link rel="stylesheet" href="~/css/legend-forms.css" asp-append-version="true" />
 
-<div class="legend-shell legend-form">
+<style>
+    .assistant-create-page {
+        background:
+            radial-gradient(140% 140% at 0% 0%, rgba(180,137,31,.22) 0%, rgba(180,137,31,0) 38%),
+            linear-gradient(180deg, #081120 0%, #0d1930 100%) !important;
+        border: 1px solid rgba(180,137,31,.34) !important;
+        border-radius: 30px !important;
+        box-shadow: 0 28px 64px rgba(0,0,0,.34) !important;
+        padding: clamp(1.2rem, 2vw, 2rem) !important;
+    }
+
+    .assistant-create-page .legend-hero,
+    .assistant-create-page .legend-card {
+        position: relative;
+        overflow: hidden;
+        background: linear-gradient(180deg, rgba(9,18,36,.96), rgba(12,25,48,.94)) !important;
+        border: 1px solid rgba(180,137,31,.26) !important;
+        border-radius: 24px !important;
+        box-shadow: 0 22px 46px rgba(0,0,0,.28) !important;
+    }
+
+    .assistant-create-page .legend-hero::before,
+    .assistant-create-page .legend-card::before {
+        content: "";
+        position: absolute;
+        left: 0;
+        right: 0;
+        top: 0;
+        height: 3px;
+        background: linear-gradient(90deg, rgba(180,137,31,.78), #b4891f, rgba(180,137,31,.78));
+    }
+
+    .assistant-create-page .legend-kicker,
+    .assistant-create-page .legend-title,
+    .assistant-create-page .card-header h5,
+    .assistant-create-page .form-label {
+        color: #b4891f !important;
+    }
+
+    .assistant-create-page .legend-sub,
+    .assistant-create-page .card-body,
+    .assistant-create-page .card-body ul,
+    .assistant-create-page .card-body li,
+    .assistant-create-page .text-danger {
+        color: #d7e2f7 !important;
+    }
+
+    .assistant-create-page .form-control {
+        background: #ffffff !important;
+        color: #0f172a !important;
+        border: 1.5px solid rgba(180,137,31,.48) !important;
+        border-radius: 14px !important;
+        box-shadow: 0 12px 24px rgba(0,0,0,.12) !important;
+    }
+
+    .assistant-create-page .form-control:focus {
+        border-color: #b4891f !important;
+        box-shadow: 0 0 0 0.18rem rgba(180,137,31,.18), 0 16px 30px rgba(0,0,0,.14) !important;
+    }
+
+    .assistant-create-page .legend-btn-primary,
+    .assistant-create-page .btn-outline-secondary {
+        border-radius: 14px !important;
+        font-weight: 800 !important;
+    }
+
+    .assistant-create-page .legend-btn-primary {
+        background: linear-gradient(180deg, #f3d58e 0%, #b4891f 100%) !important;
+        color: #1d1608 !important;
+        border: 1px solid #b4891f !important;
+        box-shadow: 0 16px 30px rgba(180,137,31,.24) !important;
+    }
+
+    .assistant-create-page .legend-btn-primary:hover {
+        background: linear-gradient(180deg, #f7dfaa 0%, #c6972b 100%) !important;
+        color: #141007 !important;
+    }
+
+    .assistant-create-page .btn-outline-secondary {
+        background: rgba(8,16,32,.7) !important;
+        color: #d7e2f7 !important;
+        border-color: rgba(180,137,31,.3) !important;
+        box-shadow: none !important;
+    }
+
+    .assistant-create-page .btn-outline-secondary:hover {
+        background: rgba(180,137,31,.14) !important;
+        color: #b4891f !important;
+        border-color: rgba(180,137,31,.5) !important;
+    }
+</style>
+
+<div class="legend-shell legend-form assistant-create-page">
     <div class="legend-hero">
         <div class="legend-hero-bar"></div>
         <div class="legend-hero-body">
@@ -22,7 +114,7 @@
                     <h5 class="m-0">How it works</h5>
                 </div>
                 <div class="card-body">
-                    <ul class="mb-0" style="color:#0f172a; line-height:1.6;">
+                    <ul class="mb-0" style="line-height:1.6;">
                         <li>Invitation is sent by email.</li>
                         <li>Assistant logs in with their own credentials.</li>
                         <li>Only Leads + Workstation are visible.</li>

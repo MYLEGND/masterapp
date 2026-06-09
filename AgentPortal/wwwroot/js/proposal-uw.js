@@ -4,17 +4,19 @@
   const MIGRATION_FLAG = "legend_proposals_v4_server_migrated";
 
   const openBtn = document.getElementById("btnProposal");
-  const newBtn = document.getElementById("btnProposalNew");
-  const menu = document.getElementById("proposalMenu");
+  const leadButtons = Array.from(document.querySelectorAll("#btnProposalNew, [data-proposal-source='lead']"));
+  const clientButtons = Array.from(document.querySelectorAll("#btnProposalClient, [data-proposal-source='client']"));
+  const scratchButtons = Array.from(document.querySelectorAll("#btnProposalScratch, [data-proposal-source='scratch']"));
+  const menu = window.LegendModal?.ensureInBody("proposalMenu") || document.getElementById("proposalMenu");
   const menuList = document.getElementById("proposalMenuList");
-  const overlay = document.getElementById("proposalOverlay");
-  const dialog = document.getElementById("proposalDialog");
+  const overlay = window.LegendModal?.ensureInBody("proposalOverlay") || document.getElementById("proposalOverlay");
+  const dialog = overlay?.querySelector("#proposalDialog") || document.getElementById("proposalDialog");
   const form = document.getElementById("proposalForm");
   const saveBtn = document.getElementById("btnSaveProposal");
   const closeEls = Array.from(document.querySelectorAll("[data-proposal-close]"));
   const nameInput = document.getElementById("propName");
   const captureDecisionBtn = document.getElementById("btnCaptureDecision");
-  const decisionModalEl = document.getElementById("captureDecisionModal");
+  const decisionModalEl = window.LegendModal?.ensureInBody("captureDecisionModal") || document.getElementById("captureDecisionModal");
   const decisionForm = document.getElementById("decisionForm");
   const decisionProposalId = document.getElementById("decisionProposalId");
   let decisionModalInstance = null;
@@ -24,6 +26,8 @@
   const decisionSummaryType = document.querySelector("[data-decision-type]");
   const decisionSummaryRationale = document.querySelector("[data-decision-rationale]");
   const decisionSummaryTime = document.querySelector("[data-decision-time]");
+  const contextLabelEl = document.querySelector("[data-proposal-context-label]");
+  const refreshViewportOffsets = () => window.LegendModal?.refreshViewportOffsets?.();
 
   if (!openBtn || !overlay || !form) return;
 
@@ -34,6 +38,8 @@
   let draftId = null;
   let editingLeadId = "";
   let editingLeadName = "";
+  let manualContext = null;
+  let manualScopeKey = "";
   let migrationPromise = null;
   let isSaving = false;
 
@@ -67,12 +73,8 @@
     if (!el) return "";
     return (el.textContent || "").replace(/\s+/g, " ").trim();
   };
-
-  const LegendModalApi = window.LegendModal || {};
-  const ensureModalInBody = LegendModalApi.ensureInBody?.bind(LegendModalApi) || (() => null);
-
   function getDecisionModalEl() {
-    const moved = ensureModalInBody("captureDecisionModal");
+    const moved = window.LegendModal?.ensureInBody("captureDecisionModal");
     if (moved) activeDecisionModalEl = moved;
     return activeDecisionModalEl;
   }
@@ -104,6 +106,91 @@
     };
   }
 
+  function ensureScratchScopeKey() {
+    if (!manualScopeKey) manualScopeKey = `scratch:${crypto.randomUUID()}`;
+    return manualScopeKey;
+  }
+
+  function getActiveMeta() {
+    if (!manualContext) return getLeadMeta();
+
+    if (manualContext.kind === "client") {
+      const clientKey = normalizeKeyPart(manualContext.clientUserId);
+      return {
+        leadId: "",
+        leadName: (manualContext.displayName || "").trim(),
+        queueKey: "manual-client",
+        pageTitle: `Client CRM • ${(manualContext.displayName || "Client").trim()}`,
+        scopeKey: `client:${clientKey}`,
+        leadKey: `client:${clientKey}`
+      };
+    }
+
+    const scratchKey = ensureScratchScopeKey();
+    return {
+      leadId: "",
+      leadName: (manualContext.displayName || "").trim(),
+      queueKey: "manual-scratch",
+      pageTitle: "Scratch Proposal",
+      scopeKey: scratchKey,
+      leadKey: scratchKey
+    };
+  }
+
+  function setManualContext(context = null) {
+    manualContext = context ? { ...context } : null;
+    if (!manualContext) {
+      manualScopeKey = "";
+    } else if (manualContext.kind === "scratch") {
+      manualScopeKey = (manualContext.scopeKey || "").trim() || ensureScratchScopeKey();
+    } else {
+      manualScopeKey = "";
+    }
+    syncContextLabel();
+  }
+
+  function syncContextLabel() {
+    if (!contextLabelEl) return;
+    if (!manualContext) {
+      const meta = getLeadMeta();
+      contextLabelEl.textContent = meta.leadName ? `Current lead: ${meta.leadName}` : "Current lead";
+      return;
+    }
+
+    if (manualContext.kind === "client") {
+      contextLabelEl.textContent = `Client CRM: ${manualContext.displayName || "Manual client"}`;
+      return;
+    }
+
+    contextLabelEl.textContent = manualContext.displayName
+      ? `Scratch: ${manualContext.displayName}`
+      : "Scratch build";
+  }
+
+  function restoreContextFromRecord(record) {
+    const recordLeadId = (record?.leadId || "").trim();
+    if (recordLeadId) {
+      setManualContext(null);
+      return;
+    }
+
+    const scopeKey = (record?.scopeKey || "").trim();
+    if (scopeKey.toLowerCase().startsWith("client:")) {
+      setManualContext({
+        kind: "client",
+        clientUserId: scopeKey.slice("client:".length),
+        displayName: (record?.leadName || record?.name || "Client").trim()
+      });
+      return;
+    }
+
+    setManualContext({
+      kind: "scratch",
+      displayName: (record?.leadName || "").trim(),
+      scopeKey
+    });
+  }
+
   function buildLeadKey(meta = getLeadMeta()) {
     const leadIdKey = normalizeKeyPart(meta?.leadId);
     if (leadIdKey) return `lead:${leadIdKey}`;
@@ -114,25 +201,26 @@
     return "";
   }
 
-  function sameScope(record, meta = getLeadMeta()) {
+  function sameScope(record, meta = getActiveMeta()) {
     const recKey = normalizeKeyPart(record?.leadKey || buildLeadKey(record));
     const curKey = normalizeKeyPart(buildLeadKey(meta));
     return !!recKey && !!curKey && recKey === curKey;
   }
 
   function getBucketEl(bucketNumber) {
-    return pickInForm(`.proposal-bucket[data-bucket="${bucketNumber}"]`);
+    return pickInForm(`.hp-bucket[data-bucket="${bucketNumber}"]`) || pickInForm(`.proposal-bucket[data-bucket="${bucketNumber}"]`);
   }
 
   function getBucketInput(bucketNumber, rowNumber, kind) {
     const bucketEl = getBucketEl(bucketNumber);
     if (!bucketEl) return null;
     if (!rowNumber) {
+      if (kind === "term") return bucketEl.querySelector(".prop-term");
       if (kind === "type") return bucketEl.querySelector(".prop-type");
       if (kind === "carrier") return bucketEl.querySelector(".prop-carrier");
       return null;
     }
-    const rowEl = bucketEl.querySelectorAll(".pb-row")?.[rowNumber - 1];
+    const rowEl = bucketEl.querySelectorAll(".hp-row, .pb-row")?.[rowNumber - 1];
     if (!rowEl) return null;
     if (kind === "benefit") return rowEl.querySelector(".prop-benefit");
     if (kind === "premium") return rowEl.querySelector(".prop-premium");
@@ -143,6 +231,7 @@
     return (sourceBuckets || []).map((bucket) => ({
       type: bucket?.type || "",
       carrier: bucket?.carrier || "",
+      term: bucket?.term || "",
       rows: (bucket?.rows || []).map((row) => ({
         benefit: row?.benefit || "",
         premium: row?.premium || ""
@@ -156,6 +245,7 @@
       buckets: Array.from({ length: bucketCount }, () => ({
         type: "",
         carrier: "",
+        term: "",
         rows: Array.from({ length: rowCount }, () => ({ benefit: "", premium: "" }))
       }))
     };
@@ -168,11 +258,13 @@
     const proposal = state || buildBlankState();
     nameInput.value = proposal.name || "";
     for (let b = 1; b <= bucketCount; b++) {
-      const bucket = proposal.buckets?.[b - 1] || { type: "", carrier: "", rows: [] };
+      const bucket = proposal.buckets?.[b - 1] || { type: "", carrier: "", term: "", rows: [] };
       const typeEl = getBucketInput(b, null, "type");
       if (typeEl) typeEl.value = bucket.type || "";
       const carrierEl = getBucketInput(b, null, "carrier");
       if (carrierEl) carrierEl.value = bucket.carrier || "";
+      const termEl = getBucketInput(b, null, "term");
+      if (termEl) termEl.value = bucket.term || "";
       for (let r = 1; r <= rowCount; r++) {
         const row = bucket.rows?.[r - 1] || { benefit: "", premium: "" };
         const benefitEl = getBucketInput(b, r, "benefit");
@@ -188,6 +280,7 @@
     for (let b = 1; b <= bucketCount; b++) {
       const type = getBucketInput(b, null, "type")?.value?.trim() || "";
       const carrier = getBucketInput(b, null, "carrier")?.value?.trim() || "";
+      const term = getBucketInput(b, null, "term")?.value?.trim() || "";
       const rows = [];
       for (let r = 1; r <= rowCount; r++) {
         rows.push({
@@ -195,13 +288,13 @@
           premium: getBucketInput(b, r, "premium")?.value?.trim() || ""
         });
       }
-      buckets.push({ type, carrier, rows });
+      buckets.push({ type, carrier, term, rows });
     }
     return buckets;
   }
 
   function sortStore(list) {
-    const meta = getLeadMeta();
+    const meta = getActiveMeta();
     const curKey = normalizeKeyPart(buildLeadKey(meta));
     return (Array.isArray(list) ? list.slice() : []).sort((a, b) => {
       const aKey = normalizeKeyPart(a?.leadKey || buildLeadKey(a));
@@ -483,24 +576,25 @@
 
   function renderMenu() {
     if (!menuList) return;
-    const meta = getLeadMeta();
-    const currentLeadId = meta.leadId;
+    const meta = getActiveMeta();
     const store = sortStore(cache.filter((record) => !record.isDraft));
 
     if (!store.length) {
-      menuList.innerHTML = `<div class="proposal-empty">No proposals saved</div>`;
+      menuList.innerHTML = `<div class="hp-proposal-empty">No proposals saved</div>`;
       return;
     }
 
     menuList.innerHTML = store.map((record) => `
-      <div class="proposal-item${currentLeadId && record.leadId === currentLeadId ? " is-current" : ""}" data-id="${escapeHtml(record.id)}">
-        <div class="proposal-name-wrap" data-prop-open>
-          <div class="proposal-name">${escapeHtml(record.name || "Proposal")}</div>
-          <div class="proposal-meta-line">${escapeHtml(record.leadName || record.leadId || "Unassigned lead")}</div>
+      <div class="hp-proposal-item${sameScope(record, meta) ? " is-current" : ""}" data-id="${escapeHtml(record.id)}">
+        <div class="hp-proposal-name-wrap" data-prop-open>
+          <div class="hp-proposal-name">${escapeHtml(record.name || "Proposal")}</div>
+          ${(record.leadName || record.leadId) && (record.leadName || "").trim().toLowerCase() !== (record.name || "").trim().toLowerCase()
+            ? `<div class="hp-proposal-meta-line">${escapeHtml(record.leadName || record.leadId || "Unassigned lead")}</div>`
+            : ""}
         </div>
-        <div class="proposal-actions ellipsis-wrap">
-          <button type="button" class="btn-mini ellipsis-btn" aria-label="Actions" data-ellipsis="prop">⋮</button>
-          <div class="ellipsis-menu" hidden>
+        <div class="hp-proposal-actions hp-ellipsis-wrap">
+          <button type="button" class="btn-mini hp-ellipsis-btn" aria-label="Actions" data-ellipsis="prop">⋮</button>
+          <div class="hp-ellipsis-menu" hidden>
             <button type="button" class="btn-mini" data-prop-edit>Edit</button>
             <button type="button" class="btn-mini danger" data-prop-delete>Delete</button>
           </div>
@@ -508,11 +602,13 @@
       </div>
     `).join("");
 
-    document.querySelectorAll(".ellipsis-menu").forEach((dropdown) => { dropdown.hidden = true; });
+    document.querySelectorAll(".hp-ellipsis-menu, .ellipsis-menu").forEach((dropdown) => { dropdown.hidden = true; });
   }
 
   function openModal(record = null) {
-    const meta = getLeadMeta();
+    refreshViewportOffsets();
+    if (record) restoreContextFromRecord(record);
+    const meta = getActiveMeta();
     const currentDraft = !record ? cache.find((item) => item.isDraft && sameScope(item, meta)) : null;
     const source = record || currentDraft || null;
     const defaultName = meta.leadName ? `${meta.leadName}` : "";
@@ -526,8 +622,11 @@
     else resetForm({ ...source, buckets: deepCloneBuckets(source.buckets || []) }, true);
 
     overlay.hidden = false;
+    overlay.scrollTop = 0;
+    if (dialog) dialog.scrollTop = 0;
     document.body.classList.add("uw-open");
     dialog?.focus();
+    syncContextLabel();
     if (editingId || source?.id) {
       loadLatestDecision(editingId || source?.id);
     } else {
@@ -553,12 +652,11 @@
   }
 
   async function saveRecord(isDraft) {
-    const meta = getLeadMeta();
+    const meta = getActiveMeta();
     const effectiveLeadId = (editingLeadId || meta.leadId || "").trim();
-    if (!effectiveLeadId) return null;
-    const effectiveLeadName = (editingLeadName || meta.leadName || "").trim();
-
     const payload = collectFormPayload();
+    const effectiveLeadName = (editingLeadName || meta.leadName || payload.name || "").trim();
+    if (!effectiveLeadId && !manualContext) return null;
     const recordPayload = {
       id: editingId || draftId || crypto.randomUUID(),
       leadId: effectiveLeadId,
@@ -608,9 +706,9 @@
 
   form.addEventListener("submit", async (event) => {
     event.preventDefault();
-    const meta = getLeadMeta();
-    if (!(editingLeadId || meta.leadId || "").trim()) {
-      alert("No lead is selected. Select a lead first.");
+    const meta = getActiveMeta();
+    if (!(editingLeadId || meta.leadId || "").trim() && !manualContext) {
+      alert("Choose the current lead, load a client, or start from scratch first.");
       return;
     }
     if (isSaving) return;
@@ -652,7 +750,11 @@
       if (window.LegendModal?.closeLegacyExecutionOverlays) {
         window.LegendModal.closeLegacyExecutionOverlays();
       }
+      refreshViewportOffsets();
       const modalEl = getDecisionModalEl();
+      if (modalEl && window.LegendModal?.bind) {
+        window.LegendModal.bind("captureDecisionModal", { modalZ: 12050, backdropZ: 12040 });
+      }
       if (modalEl && window.bootstrap) {
         decisionModalInstance = bootstrap.Modal.getOrCreateInstance(modalEl);
         decisionModalInstance.show();
@@ -696,17 +798,17 @@
   });
 
   menuList?.addEventListener("click", async (event) => {
-    const item = event.target.closest(".proposal-item");
+    const item = event.target.closest(".hp-proposal-item, .proposal-item");
     if (!item) return;
     const id = item.getAttribute("data-id");
     const record = cache.find((entry) => entry.id === id);
 
-    if (event.target.matches(".ellipsis-btn")) {
+    if (event.target.matches(".hp-ellipsis-btn, .ellipsis-btn")) {
       event.stopPropagation();
-      const wrap = event.target.closest(".ellipsis-wrap");
-      const dropdown = wrap?.querySelector(".ellipsis-menu");
+      const wrap = event.target.closest(".hp-ellipsis-wrap, .ellipsis-wrap");
+      const dropdown = wrap?.querySelector(".hp-ellipsis-menu, .ellipsis-menu");
       if (dropdown) dropdown.hidden = !dropdown.hidden;
-      document.querySelectorAll(".ellipsis-menu").forEach((menuEl) => { if (menuEl !== dropdown) menuEl.hidden = true; });
+      document.querySelectorAll(".hp-ellipsis-menu, .ellipsis-menu").forEach((menuEl) => { if (menuEl !== dropdown) menuEl.hidden = true; });
       return;
     }
 
@@ -716,16 +818,15 @@
       return;
     }
 
-    if (event.target.matches("[data-prop-edit]") || event.target.closest("[data-prop-open]")) {
-      if (!record) return;
-      await focusRecordLead(record);
-      document.querySelectorAll(".ellipsis-menu").forEach((menuEl) => { menuEl.hidden = true; });
-      closeMenu();
-      openModal(record);
-    }
+    if (!record) return;
+    await focusRecordLead(record);
+    document.querySelectorAll(".hp-ellipsis-menu, .ellipsis-menu").forEach((menuEl) => { menuEl.hidden = true; });
+    closeMenu();
+    openModal(record);
   });
 
   function toggleMenu() {
+    refreshViewportOffsets();
     renderMenu();
     if (menu) menu.hidden = !menu.hidden;
   }
@@ -742,11 +843,18 @@
     } catch (error) {
       console.error("Proposal list refresh failed", error);
     }
+    const isMobile = !!window.matchMedia?.("(max-width: 900px)")?.matches;
+    if (isMobile) {
+      closeMenu();
+      setManualContext(null);
+      openModal(null);
+      return;
+    }
     toggleMenu();
   });
 
-  newBtn?.addEventListener("click", async (event) => {
-    event.stopPropagation();
+  async function openCurrentLeadProposal() {
+    setManualContext(null);
     closeMenu();
     try {
       await ensureServerData();
@@ -756,21 +864,84 @@
     editingId = null;
     draftId = null;
     openModal(null);
-  });
+  }
+
+  async function openScratchProposal() {
+    setManualContext({ kind: "scratch", displayName: "", scopeKey: `scratch:${crypto.randomUUID()}` });
+    closeMenu();
+    try {
+      await ensureServerData();
+    } catch (error) {
+      console.error("Proposal refresh failed", error);
+    }
+    editingId = null;
+    draftId = null;
+    openModal(null);
+  }
+
+  async function openClientProposal() {
+    try {
+      const picked = await window.WorkstationClientPicker?.open?.({
+        title: "Load client into proposal builder",
+        subtitle: "Search your Clients CRM records and build a proposal without touching lead dialing."
+      });
+      if (!picked) return;
+      setManualContext({
+        kind: "client",
+        clientUserId: picked.clientUserId || "",
+        displayName: picked.displayName || "",
+        email: picked.email || "",
+        phone: picked.phone || "",
+        recordType: picked.recordType || ""
+      });
+      closeMenu();
+      await ensureServerData();
+      editingId = null;
+      draftId = null;
+      openModal(null);
+    } catch (error) {
+      console.error("Proposal client load failed", error);
+    }
+  }
+
+  leadButtons.forEach((button) => button.addEventListener("click", (event) => {
+    event.preventDefault();
+    event.stopPropagation();
+    openCurrentLeadProposal();
+  }));
+
+  scratchButtons.forEach((button) => button.addEventListener("click", (event) => {
+    event.preventDefault();
+    event.stopPropagation();
+    openScratchProposal();
+  }));
+
+  clientButtons.forEach((button) => button.addEventListener("click", async (event) => {
+    event.preventDefault();
+    event.stopPropagation();
+    await openClientProposal();
+  }));
 
   document.addEventListener("click", (event) => {
     if (menu && (menu.contains(event.target) || event.target === openBtn)) return;
     closeMenu();
-    document.querySelectorAll(".ellipsis-menu").forEach((menuEl) => { menuEl.hidden = true; });
+    document.querySelectorAll(".hp-ellipsis-menu, .ellipsis-menu").forEach((menuEl) => { menuEl.hidden = true; });
   });
 
-  overlay.addEventListener("click", () => { /* no-op */ });
+  overlay.addEventListener("click", (event) => {
+    if (event.target !== overlay) return;
+    closeModal();
+  });
   closeEls.forEach((el) => el.addEventListener("click", () => closeModal()));
   document.addEventListener("keydown", (event) => {
-    if (event.key === "Escape") {
-      closeMenu();
-      document.querySelectorAll(".ellipsis-menu").forEach((menuEl) => { menuEl.hidden = true; });
+    if (event.key !== "Escape") return;
+    const decisionModalOpen = !!document.querySelector("#captureDecisionModal.show");
+    if (!decisionModalOpen && !overlay.hidden) {
+      closeModal();
+      return;
     }
+    closeMenu();
+    document.querySelectorAll(".hp-ellipsis-menu, .ellipsis-menu").forEach((menuEl) => { menuEl.hidden = true; });
   });
 
   ["leadId", "name"].forEach((key) => {
@@ -780,7 +951,11 @@
     observer.observe(el, { childList: true, characterData: true, subtree: true });
   });
 
-  window.addEventListener("leadbridge:currentLead", () => renderMenu());
+  window.addEventListener("leadbridge:currentLead", () => {
+    renderMenu();
+    if (!manualContext) syncContextLabel();
+  });
+  syncContextLabel();
 
   ensureServerData().catch((error) => {
     console.error("Proposal initialization failed", error);

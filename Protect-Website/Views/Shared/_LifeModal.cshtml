@@ -1,0 +1,16 @@
+@model string
+
+<div id="lifeModal" class="life-modal" aria-hidden="true">
+    <div class="life-modal-card" role="dialog" aria-modal="true" aria-labelledby="lifeModalTitle" tabindex="-1">
+        <button type="button" class="life-modal-close" aria-label="Close life options">&times;</button>
+        <h3 id="lifeModalTitle">Choose a Life Quote</h3>
+        <div class="life-modal-grid">
+            <a href="@Model/Quote/Life" class="life-option">General Life</a>
+            <a href="@Model/Quote/Term-Life" class="life-option">Term Life</a>
+            <a href="@Model/Quote/Whole-Life" class="life-option">Whole Life</a>
+            <a href="@Model/Quote/Final-Expense" class="life-option">Final Expense</a>
+            <a href="@Model/Quote/Mortgage-Protection" class="life-option">Mortgage Protection</a>
+            <a href="@Model/Quote/IUL" class="life-option">Indexed Universal Life (IUL)</a>
+        </div>
+    </div>
+</div>

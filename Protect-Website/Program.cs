@@ -1,13 +1,32 @@
+using ProtectWebsite.Services.Communication;
+using Azure.Identity;
+using Infrastructure.Leads;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.AspNetCore.DataProtection;
+using ProtectWebsite.Services.Meta;
+using ProtectWebsite.Services.MetaSignal;
+using ProtectWebsite.Services.Booking;
+using System.IO;
 
 var builder = WebApplication.CreateBuilder(args);
 
+// 🔹 Azure Key Vault — pulls secrets (e.g. AzureAd:ClientSecret) at startup
+//    Works locally (via az login / VS Code Azure account) and in production (via Managed Identity).
+var keyVaultUri = builder.Configuration["KeyVault:Uri"]
+    ?? "https://masterapp-kv-1221.vault.azure.net/";
+builder.Configuration.AddAzureKeyVault(new Uri(keyVaultUri), new DefaultAzureCredential());
+
 // 🔹 MVC
-builder.Services.AddControllersWithViews(options =>
+var mvcBuilder = builder.Services.AddControllersWithViews(options =>
 {
     options.Filters.Add<ProtectWebsite.Services.Tracking.TrackingViewDataFilter>();
 });
+if (builder.Environment.IsDevelopment())
+{
+    mvcBuilder.AddRazorRuntimeCompilation();
+}
 builder.Services.AddHttpContextAccessor();
+builder.Services.AddHttpClient();
 
 // DbContext for tracking resolution
 static bool IsSqlServerConn(string? cs) =>
@@ -31,12 +50,51 @@ if (IsSqlServerConn(connString))
 }
 else
 {
-builder.Services.AddDbContext<Infrastructure.Data.MasterAppDbContext>(opts =>
-    opts.UseSqlite(connString));
+    builder.Services.AddDbContext<Infrastructure.Data.MasterAppDbContext>(opts =>
+        opts.UseSqlite(connString));
 }
+
+builder.Services.AddScoped<IProtectEmailSender, GraphProtectEmailSender>();
 
 builder.Services.AddScoped<ProtectWebsite.Services.Tracking.AgentTrackingResolver>();
 builder.Services.AddScoped<ProtectWebsite.Services.Tracking.SlugRoutingMiddleware>();
+builder.Services.AddScoped<IWebsiteLifeLeadCaptureService, WebsiteLifeLeadCaptureService>();
+builder.Services.AddScoped<IMetaPixelResolutionService, MetaPixelResolutionService>();
+builder.Services.AddScoped<IMetaSignalIntelligenceService, MetaSignalIntelligenceService>();
+builder.Services.Configure<PublicBookingOptions>(builder.Configuration.GetSection("PublicBooking"));
+builder.Services.AddScoped<IPublicBookingResolver, PublicBookingResolver>();
+builder.Services.AddScoped<IPublicBookingCalendarMatcher, MicrosoftGraphPublicBookingCalendarMatcher>();
+builder.Services.AddScoped<IPublicBookingConfirmationService, PublicBookingConfirmationService>();
+builder.Services.AddSingleton<IPublicBookingContextProtector, PublicBookingContextProtector>();
+builder.Services.AddSingleton<MetaCapiCredentialProtector>();
+builder.Services.Configure<MetaOptions>(builder.Configuration.GetSection("Meta"));
+builder.Services.Configure<MetaSignalIntelligenceOptions>(builder.Configuration.GetSection("MetaSignalIntelligence"));
+builder.Services.AddHttpClient<IMetaConversionsApiService, MetaConversionsApiService>(client =>
+{
+    client.Timeout = TimeSpan.FromSeconds(10);
+});
+
+var dpBlobUri = builder.Configuration["DataProtection:BlobUri"];
+var dpKeyVaultId = builder.Configuration["DataProtection:KeyVaultKeyId"];
+
+var dataProtectionBuilder = builder.Services.AddDataProtection()
+    // Shares the same key ring/app isolation as AgentPortal so protected
+    // agent-scoped Meta CAPI credentials can be decrypted safely here.
+    .SetApplicationName("AgentPortal");
+
+if (!string.IsNullOrWhiteSpace(dpBlobUri) && !string.IsNullOrWhiteSpace(dpKeyVaultId))
+{
+    var azureCred = new DefaultAzureCredential();
+    dataProtectionBuilder
+        .PersistKeysToAzureBlobStorage(new Uri(dpBlobUri), azureCred)
+        .ProtectKeysWithAzureKeyVault(new Uri(dpKeyVaultId), azureCred);
+}
+else
+{
+    var sharedKeysDir = Path.GetFullPath(Path.Combine(builder.Environment.ContentRootPath, "..", "AgentPortal", "App_Data", "keys"));
+    Directory.CreateDirectory(sharedKeysDir);
+    dataProtectionBuilder.PersistKeysToFileSystem(new DirectoryInfo(sharedKeysDir));
+}
 
 // 🔹 🔹 SESSION SUPPORT for TempData
 builder.Services.AddDistributedMemoryCache();
@@ -83,6 +141,7 @@ app.Use(async (context, next) =>
 app.MapControllerRoute(
     name: "default",
     pattern: "{controller=Home}/{action=Index}/{id?}");
+app.MapControllers();
 
 // 🔹 SAFELY set Azure port (does NOT break your email logic)
 var port = Environment.GetEnvironmentVariable("PORT");

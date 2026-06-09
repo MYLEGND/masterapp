@@ -67,11 +67,13 @@
 
     <style>
         :root{
+            --legend-navy:#0e1b3d;
+            --legend-navy-deep:#0b1530;
             --legend-gold:#a68023;
             --legend-gold-deep:#a68023;
-            --legend-gold-bright:#ddb457;
+            --legend-gold-bright:#c79931;
             --legend-line:rgba(166,128,35,.36);
-            --legend-line-strong:rgba(166,128,35,.88);
+            --legend-line-strong:rgba(199,153,49,.95);
             --legend-shadow:0 18px 38px rgba(64,47,11,.10);
             --legend-shadow-strong:0 24px 56px rgba(64,47,11,.16);
         }
@@ -83,31 +85,20 @@
         }
 
         .navbar {
-            background: #0b1529 !important;
-            border: 1.5px solid var(--legend-gold-deep) !important;
-            padding: 2rem 2rem;
+            background: linear-gradient(160deg, var(--legend-navy), var(--legend-navy-deep)) !important;
+            border: 2px solid var(--legend-line-strong) !important;
+            padding: 0.5rem 1.5rem 2rem;
             display: flex;
             flex-wrap: wrap;
             align-items: flex-start;
+            min-height: 110px;
             max-height: none;
             position: relative;
             box-shadow:
-                0 18px 38px rgba(0,0,0,.28),
-                inset 0 0 0 1px rgba(255,255,255,.06);
+                0 22px 42px rgba(0,0,0,.32),
+                inset 0 0 0 1px rgba(255,255,255,.05);
             border-radius: 18px;
             overflow: visible;
-        }
-
-        .navbar::before{
-            content:"";
-            position:absolute;
-            left:0;
-            right:0;
-            top:0;
-            height:4px;
-            background: linear-gradient(90deg, #a68023, #c79931 24%, #ddb457 52%, #c79931 80%, #a68023);
-            border-top-left-radius: 16px;
-            border-top-right-radius: 16px;
         }
 
         .navbar-brand.disabled-logo {
@@ -116,18 +107,77 @@
         }
 
         .navbar-brand img {
-            height: 100px;
-            width: auto;
+            height: auto;
             max-height: 100px;
-            filter: drop-shadow(0 8px 16px rgba(64,47,11,.10));
+            width: auto;
+            max-width: 100%;
+            display: block;
+            filter: drop-shadow(0 6px 14px rgba(0,0,0,.35));
         }
+
+        .navbar-brand {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            align-self: center;
+            flex: 0 0 auto;
+            margin: 0;
+        }
+
+        header .navbar .container-fluid {
+            display: grid !important;
+            grid-template-columns: auto minmax(0, 1fr) auto;
+            align-items: center !important;
+            column-gap: 1rem;
+            row-gap: 0.7rem;
+        }
+
+        .nav-toggle {
+            display: none;
+            align-items: center;
+            justify-content: center;
+            width: 44px;
+            height: 44px;
+            border-radius: 12px;
+            border: 1.4px solid rgba(199,153,49,0.55);
+            background: linear-gradient(160deg, #0c1427, #0a1020);
+            box-shadow: 0 10px 18px rgba(0,0,0,.26), inset 0 1px 0 rgba(255,255,255,.06);
+            cursor: pointer;
+            padding: 0;
+            transition: transform .12s ease, box-shadow .16s ease, background .16s ease;
+        }
+        .nav-toggle:focus-visible { outline: 2px solid var(--legend-gold-bright); outline-offset: 3px; }
+        .nav-toggle:hover { transform: translateY(-1px); box-shadow: 0 12px 22px rgba(0,0,0,.28); }
+        .nav-toggle-bars,
+        .nav-toggle-bars::before,
+        .nav-toggle-bars::after {
+            display: block;
+            width: 20px;
+            height: 2px;
+            background: #f8fafc;
+            border-radius: 4px;
+            position: relative;
+            transition: transform .18s ease, opacity .18s ease;
+        }
+        .nav-toggle-bars::before,
+        .nav-toggle-bars::after {
+            content: "";
+            position: absolute;
+            left: 0;
+        }
+        .nav-toggle-bars::before { top: -6px; }
+        .nav-toggle-bars::after { top: 6px; }
+        .navbar.mobile-open .nav-toggle-bars { transform: rotate(45deg); }
+        .navbar.mobile-open .nav-toggle-bars::before { transform: rotate(-90deg) translateX(-6px); }
+        .navbar.mobile-open .nav-toggle-bars::after { opacity: 0; }
 
         .navbar-left {
             display: flex;
             flex-direction: column;
             justify-content: center;
-            margin-left: 1.5rem;
-            height: 100%;
+            align-self: center;
+            min-width: 0;
+            margin-left: 0;
         }
 
         .navbar-left .nav-rows-grid {
@@ -137,7 +187,7 @@
 
         .navbar-left .nav-row {
             display: flex;
-            gap: 2rem;
+            gap: 0.6rem;
             align-items: center;
             flex-wrap: wrap;
         }
@@ -145,26 +195,27 @@
         .navbar-left li { list-style: none; }
 
         .navbar-left .nav-link {
-            font-weight: 900;
+            font-weight: 800;
             color: #f8fafc !important;
             white-space: nowrap;
-            padding: 0.7rem 1.35rem;
+            padding: 0.5rem 1.1rem;
             border-radius: 50px;
             transition: all 0.25s ease;
-            letter-spacing: 0.55px;
-            border: 1.5px solid transparent;
+            letter-spacing: 0.35px;
+            border: 1.4px solid rgba(166,128,35,.42);
             background: transparent;
+            box-shadow: inset 0 1px 0 rgba(255,255,255,.08);
         }
 
         .navbar-left .nav-link:hover,
         .navbar-left .nav-link.active {
             color: var(--legend-gold-bright) !important;
-            background: rgba(166,128,35,0.12);
-            border-color: rgba(166,128,35,.54);
+            background: rgba(166,128,35,0.16);
+            border-color: var(--legend-line-strong);
             transform: translateY(-2px);
             box-shadow:
-                0 14px 24px rgba(0,0,0,.22),
-                inset 0 1px 0 rgba(255,255,255,.10);
+                0 14px 24px rgba(0,0,0,.28),
+                inset 0 1px 0 rgba(255,255,255,.12);
         }
 
         /* =========================
@@ -174,10 +225,11 @@
         .navbar-right {
             display: flex;
             width: auto;
-            min-width: 360px;
+            min-width: 0;
             justify-content: flex-end;
-            gap: 6px;
+            gap: 0.65rem;
             align-items: center;
+            align-self: center;
             margin-left: auto;
             position: relative;
             flex-wrap: nowrap;
@@ -187,24 +239,24 @@
         .navbar-right .nav-link,
         .navbar-right .btn-link {
             color: #f8fafc !important;
-            font-weight: 900;
+            font-weight: 800;
             transition: all 0.25s ease;
             white-space: nowrap;
-            padding: .65rem 1.1rem;
-            border-radius: 30px;
-            border: 1.5px solid rgba(166,128,35,.52);
+            padding: .5rem 1.1rem;
+            border-radius: 50px;
+            border: 1.4px solid rgba(166,128,35,.42);
             background: transparent;
-            box-shadow: inset 0 1px 0 rgba(255,255,255,.10);
+            box-shadow: inset 0 1px 0 rgba(255,255,255,.08);
         }
 
         .navbar-right .nav-link:hover,
         .navbar-right .btn-link:hover {
             color: var(--legend-gold-bright) !important;
-            background: rgba(166,128,35,0.12);
-            border-color: rgba(166,128,35,.74);
+            background: rgba(166,128,35,0.16);
+            border-color: var(--legend-line-strong);
             transform: translateY(-2px);
             box-shadow:
-                0 14px 24px rgba(0,0,0,.22),
+                0 14px 24px rgba(0,0,0,.28),
                 inset 0 1px 0 rgba(255,255,255,.12);
         }
 
@@ -212,11 +264,13 @@
             display: inline-flex;
             align-items: center;
             gap: 10px;
-            padding: 0.4rem 0.75rem;
+            padding: 0.4rem 0.85rem;
             border-radius: 999px;
-            border: 1.5px solid rgba(166,128,35,.72);
+            border: 1.5px solid rgba(166,128,35,.65);
             background: #0f172a;
-            box-shadow: inset 0 1px 0 rgba(255,255,255,.08), 0 10px 20px rgba(0,0,0,.32);
+            box-shadow:
+                0 10px 22px rgba(0,0,0,.28),
+                inset 0 1px 0 rgba(255,255,255,.08);
             text-decoration: none;
             color: #f8fafc;
             font-weight: 900;
@@ -259,11 +313,11 @@
             border-radius: 999px;
             background: #0f172a;
             color: #f8fafc;
-            border: 1.6px solid var(--legend-gold-deep);
+            border: 1.5px solid rgba(166,128,35,.55);
             font-weight: 800;
             letter-spacing: .02em;
             font-size: 0.78rem;
-            box-shadow: inset 0 1px 0 rgba(255,255,255,.08), 0 8px 16px rgba(0,0,0,.12);
+            box-shadow: inset 0 1px 0 rgba(255,255,255,.08), 0 8px 16px rgba(0,0,0,.18);
         }
         .profile-contact-menu a {
             font-weight: 800;
@@ -276,7 +330,7 @@
         .profile-contact-menu {
             z-index: 9999;
             background: #0b1529;
-            border: 1.6px solid var(--legend-gold-deep);
+            border: 1.6px solid rgba(199,153,49,.75);
             border-radius: 12px;
             box-shadow: 0 16px 40px rgba(0,0,0,0.35);
         }
@@ -295,7 +349,7 @@
         /* Ensure all header dropdowns (including bootstrap default) keep the navy / gold theme */
         header .navbar .dropdown-menu {
             background: #0b1529;
-            border: 1.6px solid var(--legend-gold-deep);
+            border: 1.6px solid rgba(199,153,49,.75);
             color: #f8fafc;
             box-shadow: 0 16px 40px rgba(0,0,0,0.35);
             border-radius: 12px;
@@ -314,18 +368,23 @@
 
         .header-psalms {
             position: absolute;
-            top: 112px;
+            bottom: 0.45rem;
             left: 50%;
             transform: translateX(-50%);
-            font-size: 1.4rem;
+            font-size: 1.18rem;
             font-weight: 900;
             color: var(--legend-gold-bright);
-            letter-spacing: 1.8px;
+            letter-spacing: 1.1px;
             text-align: center;
             font-family: 'Inter', sans-serif;
-            padding: .55rem 1.2rem;
+            max-width: calc(100% - 3rem);
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            line-height: 1.05;
+            padding: 0.55rem 1.25rem;
             border-radius: 999px;
-            border: 1.5px solid rgba(166,128,35,.60);
+            border: 1.5px solid rgba(166,128,35,.65);
             background: #0f172a;
             box-shadow:
                 0 10px 22px rgba(0,0,0,.28),
@@ -537,60 +596,72 @@
         }
         .explore-overlay.open{ display:block; }
 
-        /* 3-line trigger OUTSIDE navbar */
+        /* Explore trigger anchored inline with main nav */
         .explore-trigger{
-            position: fixed;
-            left: 18px;
-            top: 185px;
-            z-index: 1100;
-            width: 54px;
-            height: 54px;
-            border-radius: 16px;
+            position: static;
+            left: auto;
+            top: auto;
+            z-index: auto;
+            width: 42px;
+            height: 42px;
+            border-radius: 13px;
             border: 1.6px solid var(--legend-gold-deep);
             background: #0b1529;
             box-shadow:
-                0 16px 34px rgba(0,0,0,.26),
+                0 10px 20px rgba(0,0,0,.22),
                 inset 0 0 0 1px rgba(255,255,255,.10);
             display: flex;
             align-items: center;
             justify-content: center;
             cursor: pointer;
             transition: all .2s ease;
+            padding: 0;
         }
 
         .explore-trigger:hover{
-            transform: translateY(-2px) scale(1.01);
+            transform: translateY(-1px) scale(1.01);
             border-color: rgba(166,128,35,.94);
             box-shadow:
-                0 20px 42px rgba(0,0,0,.32),
+                0 14px 24px rgba(0,0,0,.26),
                 inset 0 0 0 1px rgba(255,255,255,.14);
         }
 
         .explore-bars{
-            width: 18px;
+            width: 16px;
             height: 14px;
-            display: grid;
-            gap: 3px;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            gap: 2px;
+            line-height: 0;
         }
 
         .explore-bars span{
             display:block;
-            height: 2.5px;
+            width: 100%;
+            height: 2px;
             border-radius: 999px;
             background: linear-gradient(90deg, #f8fafc, #ddb457);
             transition: all .2s ease;
             opacity: 1;
+            flex: 0 0 auto;
         }
 
         .explore-trigger:hover .explore-bars span{
             background: linear-gradient(90deg, #f8fafc, #efc866);
         }
 
+        .navbar-left .nav-item-explore{
+            display: flex;
+            align-items: center;
+            flex: 0 0 auto;
+        }
+
         /* Drawer shell */
         .explore-drawer{
             position: fixed;
-            left: 78px; /* sits beside trigger */
-            top: 185px;
+            left: 18px;
+            top: 156px;
             z-index: 1099;
             width: 320px;
             max-width: calc(100vw - 36px);
@@ -692,6 +763,16 @@
             padding: 8px 12px 16px 12px;
         }
 
+        .explore-group-label{
+            margin: 10px 8px 6px;
+            font-size: .68rem;
+            font-weight: 900;
+            letter-spacing: .16em;
+            text-transform: uppercase;
+            color: #f1d58a;
+            opacity: .9;
+        }
+
         .explore-item{
             display: flex;
             align-items: center;
@@ -789,7 +870,17 @@
         @@media (max-width: 576px){
             .navbar{
                 max-height: none;
-                padding: 1.25rem 1.25rem;
+                padding: 14px 14px 12px;
+                border-radius: 16px;
+                flex-direction: column;
+                align-items: stretch;
+            }
+
+            header .navbar .container-fluid{
+                display:flex !important;
+                flex-wrap:wrap;
+                align-items:center !important;
+                gap:.5rem;
             }
 
             .header-psalms{
@@ -801,68 +892,90 @@
                 font-size: 1.1rem;
             }
 
-            .navbar-left{
-                margin-left: 0;
+            .nav-toggle { display: inline-flex; }
+
+            .navbar-left .nav-item-explore .explore-trigger{
+                width: 40px;
+                height: 40px;
+            }
+
+            .navbar-left,
+            .navbar-right{
                 width: 100%;
-                margin-top: .75rem;
+                margin-top: .65rem;
+                display: none;
+                background: linear-gradient(175deg, #0b1224, #0c142a);
+                border: 1.4px solid rgba(199,153,49,0.55);
+                border-radius: 14px;
+                padding: 8px 10px;
+                box-shadow: inset 0 1px 0 rgba(255,255,255,.06);
+            }
+            .navbar.mobile-open .navbar-left,
+            .navbar.mobile-open .navbar-right{
+                display: block;
             }
 
             .navbar-left .nav-row{
-                flex-direction: row !important;
+                flex-direction: column !important;
                 flex-wrap: nowrap;
-                gap: .5rem;
-                overflow-x: auto;
-                -webkit-overflow-scrolling: touch;
+                gap: .35rem;
                 padding-bottom: 4px;
                 justify-content: flex-start;
+                width: 100%;
             }
 
             .navbar-left .nav-link{
-                padding: 0.45rem 0.9rem;
-                font-size: 0.95rem;
-                flex: 0 0 auto;
+                padding: 0.55rem 0.95rem;
+                font-size: 0.97rem;
+                width: 100%;
+                border-radius: 12px;
+                background: transparent;
+                border: 1.2px solid rgba(166,128,35,.42);
+                text-align: center;
             }
 
             .navbar-nav.nav-row .nav-item{
                 flex: 0 0 auto;
             }
 
-            /* Keep compact nav row tidy */
             .navbar-left .nav-rows-grid{
                 row-gap: 0.35rem;
             }
 
             .navbar-right{
-                width: 100%;
-                justify-content: center;
-                margin-top: .75rem;
+                justify-content: stretch;
                 flex-wrap: wrap;
+                gap: 8px;
                 min-width: 0;
             }
 
-            .mini-tools{
-                width: 100%;
-                max-width: 420px;
-                margin: 0 auto;
-            }
+            .navbar-right .nav-link,
+        .navbar-right .btn-link{
+            width: 100%;
+            text-align: left;
+            justify-content: flex-start;
+        }
 
-            /* keep trigger clean on mobile */
-            .explore-trigger{
-                top: 215px;
-                left: 12px;
-            }
+        .mini-tools{
+            width: 100%;
+            max-width: none;
+            margin: 0;
+        }
+
+        /* Desktop force layout (ensure hamburger stays hidden and nav is flex) */
+        @@media (min-width: 577px){
+            .nav-toggle{ display: none !important; }
+            .navbar-left{ display: flex !important; }
+            .navbar-right{ display: flex !important; }
+        }
 
             .explore-drawer{
-                top: 215px;
-                left: 70px;
-                transform: translateX(-140%);
+                top: 154px;
+                left: 12px;
             }
         }
 
         footer.footer {
-            background: #ffffff !important;
-            color: #1a1a1a !important;
-            border-top: 1.5px solid rgba(166,128,35,.30) !important;
             font-weight: 700;
             font-size: 0.95rem;
         }
@@ -876,6 +989,24 @@
         /* Lighten heavy shadows on public onboarding to keep scroll smooth */
         .onboarding-public-only .navbar{
             box-shadow: 0 10px 22px rgba(0,0,0,.22);
+        }
+
+        @@media (min-width: 577px) and (max-width: 992px) {
+            header .navbar .container-fluid{
+                display:flex !important;
+                flex-wrap:wrap;
+                align-items:center !important;
+                gap:.75rem;
+            }
+
+            header .navbar .navbar-left{
+                margin-left:0;
+                flex:1 1 520px;
+            }
+
+            header .navbar .navbar-left .nav-row{
+                flex-wrap:wrap;
+            }
         }
 
         .layout-content {
@@ -927,21 +1058,25 @@
             @if (isOnboardingPublic)
             {
                 <span class="navbar-brand disabled-logo">
-                    <img src="~/images/company-icons/legend.png" asp-append-version="true" alt="Legend™" />
+                    <img src="~/images/company-icons/legend-protect-transparent.png" asp-append-version="true" alt="Legend™" />
                 </span>
             }
             else if (isAssistant)
             {
                 <a class="navbar-brand" asp-controller="Assistant" asp-action="Index">
-                    <img src="~/images/company-icons/legend.png" asp-append-version="true" alt="Legend™" />
+                    <img src="~/images/company-icons/legend-protect-transparent.png" asp-append-version="true" alt="Legend™" />
                 </a>
             }
             else
             {
                 <a class="navbar-brand" asp-controller="Home" asp-action="Index">
-                    <img src="~/images/company-icons/legend.png" asp-append-version="true" alt="Legend™" />
+                    <img src="~/images/company-icons/legend-protect-transparent.png" asp-append-version="true" alt="Legend™" />
                 </a>
             }
+
+            <button class="nav-toggle" id="apNavToggle" aria-label="Toggle navigation" aria-expanded="false">
+                <span class="nav-toggle-bars"></span>
+            </button>
 
             @if (!isOnboardingPublic)
             {
@@ -950,27 +1085,34 @@
                         <ul class="navbar-nav nav-row">
                             @if (!isAssistant)
                             {
+                                <li class="nav-item nav-item-explore">
+                                    <button id="exploreTrigger"
+                                            type="button"
+                                            class="explore-trigger"
+                                            aria-label="Open Explore"
+                                            aria-controls="exploreDrawer"
+                                            aria-expanded="false">
+                                        <div class="explore-bars" aria-hidden="true">
+                                            <span></span>
+                                            <span></span>
+                                            <span></span>
+                                        </div>
+                                    </button>
+                                </li>
                                 <li class="nav-item"><a class="nav-link @Active("Home")" asp-controller="Home" asp-action="Index">Home</a></li>
-                                <li class="nav-item"><a class="nav-link @Active("Dashboard")" asp-controller="Dashboard" asp-action="Index">Dashboard</a></li>
-                                <li class="nav-item"><a class="nav-link @Active("Framework")" asp-controller="Framework" asp-action="Index">Framework</a></li>
+                                <li class="nav-item"><a class="nav-link @Active("Dashboard")" asp-controller="Dashboard" asp-action="Index" target="_blank" rel="noopener" data-refresh-current-link="1">Dashboard</a></li>
+                                <li class="nav-item"><a class="nav-link @Active("Framework")" asp-controller="Framework" asp-action="Index" target="_blank" rel="noopener" data-refresh-current-link="1">Framework</a></li>
                                 <li class="nav-item">
                                     <a class="nav-link @Active("Finance")"
                                        asp-controller="Finance"
                                        asp-action="Index"
-                                       asp-route-clientUserId="@(string.IsNullOrWhiteSpace(layoutClientUserId) ? null : layoutClientUserId)">
+                                       asp-route-clientUserId="@(string.IsNullOrWhiteSpace(layoutClientUserId) ? null : layoutClientUserId)"
+                                       target="_blank"
+                                       rel="noopener"
+                                       data-refresh-current-link="1">
                                         Finance
                                     </a>
                                 </li>
-                                @if (isFounder)
-                                {
-                                    <li class="nav-item">
-                                        <a class="nav-link @Active("AgencyCommand")"
-                                           asp-controller="AgencyCommand"
-                                           asp-action="Index">
-                                            Agency Command
-                                        </a>
-                                    </li>
-                                }
                             }
 
                             @* EXPLORE REMOVED FROM TOP NAV — MOVED TO LEFT VERTICAL DRAWER *@
@@ -1167,22 +1309,6 @@
 
 @if (!isAssistant && !isOnboardingPublic)
 {
-<button id="exploreTrigger"
-        type="button"
-        class="explore-trigger"
-        aria-label="Open Explore"
-        aria-controls="exploreDrawer"
-        aria-expanded="false">
-    <div class="explore-bars" aria-hidden="true">
-        <span></span>
-        <span></span>
-        <span></span>
-    </div>
-</button>
-}
-
-@if (!isAssistant && !isOnboardingPublic)
-{
 <aside id="exploreDrawer" class="explore-drawer" aria-label="Explore Panel">
     <div class="explore-card">
         <div class="explore-header">
@@ -1199,65 +1325,77 @@
         </div>
 
         <div id="exploreList" class="explore-list">
-            <a class="explore-item" data-tone="crm" asp-controller="Clients" asp-action="Index">
+            <div class="explore-group-label">Pages</div>
+            <a class="explore-item" data-tone="forms" asp-controller="AgentDocuments" asp-action="Index" target="_blank" rel="noopener" data-refresh-current-link="1">
+                <span>Agent Documents</span>
+                <small>Vault</small>
+            </a>
+
+            <div class="explore-group-label">CRM</div>
+            <a class="explore-item" data-tone="crm" asp-controller="Clients" asp-action="Index" target="_blank" rel="noopener" data-refresh-current-link="1">
                 <span>CLIENTS</span>
                 <small>CRM</small>
             </a>
-            <a class="explore-item" data-tone="crm" asp-controller="Leads" asp-action="Index">
+            <a class="explore-item" data-tone="crm" asp-controller="Leads" asp-action="Index" target="_blank" rel="noopener" data-refresh-current-link="1">
                 <span>LEADS</span>
                 <small>Lead CRM</small>
             </a>
 
-            <a class="explore-item" data-tone="prospect" asp-controller="Workstation" asp-action="Index">
+            <div class="explore-group-label">Workstation</div>
+            <a class="explore-item" data-tone="prospect" asp-controller="Workstation" asp-action="Index" target="_blank" rel="noopener" data-refresh-current-link="1">
                 <span>Workstation</span>
                 <small>Hustle</small>
             </a>
 
-            <a class="explore-item" data-tone="utility" asp-controller="AssistantPanel" asp-action="Index">
+            <a class="explore-item" data-tone="utility" asp-controller="AssistantPanel" asp-action="Index" target="_blank" rel="noopener" data-refresh-current-link="1">
                 <span>Assistant Panel</span>
                 <small>Team</small>
             </a>
 
-            <a class="explore-item" data-tone="prospect" asp-controller="Workstation" asp-action="AdvancedMarkets">
+            <a class="explore-item" data-tone="prospect" asp-controller="Workstation" asp-action="AdvancedMarkets" target="_blank" rel="noopener" data-refresh-current-link="1">
                 <span>Advanced Markets</span>
                 <small>Tax strategies</small>
             </a>
 
-
-            <a class="explore-item" data-tone="ops" asp-controller="BookKeeping" asp-action="Index">
-                <span>Book Keeping</span>
-                <small>Ops</small>
-            </a>
-
-         <a class="explore-item" data-tone="ops" asp-controller="WebsiteAnalytics" asp-action="Index">
+            <div class="explore-group-label">Operations</div>
+         <a class="explore-item" data-tone="ops" asp-controller="WebsiteAnalytics" asp-action="Index" target="_blank" rel="noopener" data-refresh-current-link="1">
                 <span>Website Analytics</span>
                 <small>Ops</small>
             </a>
 
+            @if (isFounder)
+            {
+                <a class="explore-item" data-tone="ops" asp-controller="AgencyCommand" asp-action="Index" target="_blank" rel="noopener" data-refresh-current-link="1">
+                    <span>Agency Command</span>
+                    <small>Ops</small>
+                </a>
+            }
+
             @if (OnboardingGuard.IsOwner(User))
             {
-                <a class="explore-item" data-tone="ops" asp-controller="Onboarding" asp-action="Index">
+                <a class="explore-item" data-tone="ops" asp-controller="Onboarding" asp-action="Index" target="_blank" rel="noopener" data-refresh-current-link="1">
                     <span>Onboarding</span>
                     <small>Owner</small>
                 </a>
             }
 
-            <a class="explore-item" data-tone="network" asp-controller="Partners" asp-action="Index">
+            <a class="explore-item" data-tone="network" asp-controller="Partners" asp-action="Index" target="_blank" rel="noopener" data-refresh-current-link="1">
                 <span>Partners</span>
                 <small>Network</small>
             </a>
 
-            <a class="explore-item" data-tone="library" asp-controller="Resources" asp-action="Index">
+            <div class="explore-group-label">Learning & Tools</div>
+            <a class="explore-item" data-tone="library" asp-controller="Resources" asp-action="Index" target="_blank" rel="noopener" data-refresh-current-link="1">
                 <span>Resources</span>
                 <small>Library</small>
             </a>
 
-            <a class="explore-item" data-tone="growth" asp-controller="Training" asp-action="Index">
+            <a class="explore-item" data-tone="growth" asp-controller="Training" asp-action="Index" target="_blank" rel="noopener" data-refresh-current-link="1">
                 <span>Trainings</span>
                 <small>Growth</small>
             </a>
 
-            <a class="explore-item" data-tone="utility" asp-controller="Tools" asp-action="Index">
+            <a class="explore-item" data-tone="utility" asp-controller="Tools" asp-action="Index" target="_blank" rel="noopener" data-refresh-current-link="1">
                 <span>Tools</span>
                 <small>Utility</small>
             </a>
@@ -1290,6 +1428,813 @@
 
 }
 
+@{
+    var legendProfileUser = HttpContextAccessor.HttpContext?.User;
+
+    string? CleanAgentFirstName(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value)) return null;
+        var trimmed = value.Trim();
+        if (trimmed.Contains("@")) return null;
+
+        var firstToken = trimmed.Split(' ', StringSplitOptions.RemoveEmptyEntries).FirstOrDefault();
+        if (string.IsNullOrWhiteSpace(firstToken)) return null;
+        if (firstToken.Contains(".")) return null;
+        if (firstToken.Length < 2) return null;
+
+        return firstToken;
+    }
+
+    var legendProfileUserId =
+        !string.IsNullOrWhiteSpace(impersonatedAgentId)
+            ? impersonatedAgentId
+            : legendProfileUser?.FindFirst("oid")?.Value
+                ?? legendProfileUser?.FindFirst(ClaimTypes.NameIdentifier)?.Value
+                ?? legendProfileUser?.Identity?.Name;
+
+    var legendStoredAgentProfile =
+        !string.IsNullOrWhiteSpace(legendProfileUserId)
+            ? _db.AgentProfiles.AsNoTracking().FirstOrDefault(x => x.AgentUserId == legendProfileUserId)
+            : null;
+
+    var legendProfileFullName =
+        !string.IsNullOrWhiteSpace(legendStoredAgentProfile?.FullName)
+            ? legendStoredAgentProfile.FullName.Trim()
+            : !string.IsNullOrWhiteSpace(impersonatedDisplay)
+                ? impersonatedDisplay.Trim()
+                : legendProfileUser?.FindFirst("name")?.Value?.Trim()
+                    ?? legendProfileUser?.FindFirst(ClaimTypes.Name)?.Value?.Trim();
+
+    var legendProfileFirstName =
+        CleanAgentFirstName(legendProfileFullName)
+        ?? CleanAgentFirstName(legendProfileUser?.FindFirst(ClaimTypes.GivenName)?.Value)
+        ?? CleanAgentFirstName(legendProfileUser?.FindFirst("given_name")?.Value)
+        ?? CleanAgentFirstName(legendProfileUser?.FindFirst("first_name")?.Value)
+        ?? "Agent";
+
+    var legendAgentProfileJson = System.Text.Json.JsonSerializer.Serialize(new
+    {
+        firstName = legendProfileFirstName,
+        fullName = string.IsNullOrWhiteSpace(legendProfileFullName) ? legendProfileFirstName : legendProfileFullName,
+        phone = legendStoredAgentProfile?.Phone?.Trim() ?? ""
+    });
+}
+
+<script>
+    (function () {
+        const profile = @Html.Raw(legendAgentProfileJson);
+        const textTemplateCache = new WeakMap();
+        const scriptTemplateCache = new WeakMap();
+        let lastAppointmentTime = '';
+
+        function readString(value) {
+            return typeof value === 'string' ? value.trim() : '';
+        }
+
+        function firstToken(value) {
+            const clean = readString(value);
+            if (!clean) return '';
+            return clean.split(/\s+/).filter(Boolean)[0] || '';
+        }
+
+        const US_STATE_NAME_BY_CODE = Object.freeze({
+            AL: 'Alabama',
+            AK: 'Alaska',
+            AZ: 'Arizona',
+            AR: 'Arkansas',
+            CA: 'California',
+            CO: 'Colorado',
+            CT: 'Connecticut',
+            DE: 'Delaware',
+            DC: 'District of Columbia',
+            FL: 'Florida',
+            GA: 'Georgia',
+            HI: 'Hawaii',
+            ID: 'Idaho',
+            IL: 'Illinois',
+            IN: 'Indiana',
+            IA: 'Iowa',
+            KS: 'Kansas',
+            KY: 'Kentucky',
+            LA: 'Louisiana',
+            ME: 'Maine',
+            MD: 'Maryland',
+            MA: 'Massachusetts',
+            MI: 'Michigan',
+            MN: 'Minnesota',
+            MS: 'Mississippi',
+            MO: 'Missouri',
+            MT: 'Montana',
+            NE: 'Nebraska',
+            NV: 'Nevada',
+            NH: 'New Hampshire',
+            NJ: 'New Jersey',
+            NM: 'New Mexico',
+            NY: 'New York',
+            NC: 'North Carolina',
+            ND: 'North Dakota',
+            OH: 'Ohio',
+            OK: 'Oklahoma',
+            OR: 'Oregon',
+            PA: 'Pennsylvania',
+            RI: 'Rhode Island',
+            SC: 'South Carolina',
+            SD: 'South Dakota',
+            TN: 'Tennessee',
+            TX: 'Texas',
+            UT: 'Utah',
+            VT: 'Vermont',
+            VA: 'Virginia',
+            WA: 'Washington',
+            WV: 'West Virginia',
+            WI: 'Wisconsin',
+            WY: 'Wyoming',
+            PR: 'Puerto Rico',
+            GU: 'Guam',
+            VI: 'U.S. Virgin Islands',
+            AS: 'American Samoa',
+            MP: 'Northern Mariana Islands'
+        });
+
+        const US_STATE_CANONICAL_BY_KEY = Object.freeze(
+            Object.values(US_STATE_NAME_BY_CODE).reduce((acc, name) => {
+                acc[name.toUpperCase().replace(/[^A-Z]/g, '')] = name;
+                return acc;
+            }, {})
+        );
+
+        const US_STATE_CODE_BY_KEY = Object.freeze(
+            Object.entries(US_STATE_NAME_BY_CODE).reduce((acc, [code, name]) => {
+                acc[code] = code;
+                acc[name.toUpperCase().replace(/[^A-Z]/g, '')] = code;
+                return acc;
+            }, {})
+        );
+
+        const DEFAULT_TIME_ZONE_BY_STATE = Object.freeze({
+            AL: 'America/Chicago',
+            AK: 'America/Anchorage',
+            AZ: 'America/Phoenix',
+            AR: 'America/Chicago',
+            CA: 'America/Los_Angeles',
+            CO: 'America/Denver',
+            CT: 'America/New_York',
+            DE: 'America/New_York',
+            DC: 'America/New_York',
+            FL: 'America/New_York',
+            GA: 'America/New_York',
+            HI: 'Pacific/Honolulu',
+            IA: 'America/Chicago',
+            ID: 'America/Denver',
+            IL: 'America/Chicago',
+            IN: 'America/New_York',
+            KS: 'America/Chicago',
+            KY: 'America/New_York',
+            LA: 'America/Chicago',
+            MA: 'America/New_York',
+            MD: 'America/New_York',
+            ME: 'America/New_York',
+            MI: 'America/New_York',
+            MN: 'America/Chicago',
+            MO: 'America/Chicago',
+            MS: 'America/Chicago',
+            MT: 'America/Denver',
+            NC: 'America/New_York',
+            ND: 'America/Chicago',
+            NE: 'America/Chicago',
+            NH: 'America/New_York',
+            NJ: 'America/New_York',
+            NM: 'America/Denver',
+            NV: 'America/Los_Angeles',
+            NY: 'America/New_York',
+            OH: 'America/New_York',
+            OK: 'America/Chicago',
+            OR: 'America/Los_Angeles',
+            PA: 'America/New_York',
+            RI: 'America/New_York',
+            SC: 'America/New_York',
+            SD: 'America/Chicago',
+            TN: 'America/Chicago',
+            TX: 'America/Chicago',
+            UT: 'America/Denver',
+            VA: 'America/New_York',
+            VT: 'America/New_York',
+            WA: 'America/Los_Angeles',
+            WI: 'America/Chicago',
+            WV: 'America/New_York',
+            WY: 'America/Denver',
+            PR: 'America/Puerto_Rico',
+            GU: 'Pacific/Guam',
+            VI: 'America/St_Thomas',
+            AS: 'Pacific/Pago_Pago',
+            MP: 'Pacific/Saipan'
+        });
+
+        function normalizeLocationKey(value) {
+            return readString(value).toUpperCase().replace(/[^A-Z]/g, '');
+        }
+
+        function normalizeStateCode(value) {
+            const raw = readString(value);
+            if (!raw) return '';
+
+            const key = raw.toUpperCase().replace(/[^A-Z]/g, '');
+            return US_STATE_CODE_BY_KEY[key] || '';
+        }
+
+        function normalizeStateName(value) {
+            const raw = readString(value);
+            if (!raw) return '';
+
+            const codeKey = raw.toUpperCase().replace(/[^A-Z]/g, '');
+            if (US_STATE_NAME_BY_CODE[codeKey]) {
+                return US_STATE_NAME_BY_CODE[codeKey];
+            }
+
+            return US_STATE_CANONICAL_BY_KEY[codeKey] || raw;
+        }
+
+        function getFirstName() {
+            const firstName = readString(profile?.firstName);
+            if (firstName) return firstName;
+
+            const fullName = readString(profile?.fullName);
+            if (fullName) {
+                const parts = fullName.split(/\s+/).filter(Boolean);
+                if (parts.length) return parts[0];
+            }
+
+            return 'Agent';
+        }
+
+        function formatPhoneDisplay(value) {
+            const raw = readString(value);
+            if (!raw) return '';
+
+            const digits = raw.replace(/\D/g, '');
+            if (digits.length === 10) {
+                return `(${digits.slice(0, 3)}) ${digits.slice(3, 6)}-${digits.slice(6)}`;
+            }
+
+            if (digits.length === 11 && digits.startsWith('1')) {
+                return `1 (${digits.slice(1, 4)}) ${digits.slice(4, 7)}-${digits.slice(7)}`;
+            }
+
+            return raw;
+        }
+
+        function getLead() {
+            const bridgeLead = window.LeadBridge?.getCurrentLead?.();
+            if (bridgeLead && typeof bridgeLead === 'object') return bridgeLead;
+
+            const currentLead = window.__currentLead;
+            return currentLead && typeof currentLead === 'object' ? currentLead : null;
+        }
+
+        function getLeadFirstName() {
+            const lead = getLead();
+            const leadFirstName = readString(lead?.firstName);
+            if (leadFirstName) return leadFirstName;
+
+            const leadName = firstToken(lead?.name || `${lead?.firstName || ''} ${lead?.lastName || ''}`);
+            return leadName || 'Client';
+        }
+
+        function getLeadFullName() {
+            const lead = getLead();
+            const leadName = readString(lead?.name);
+            if (leadName) return leadName;
+
+            const firstName = readString(lead?.firstName);
+            const lastName = readString(lead?.lastName);
+            const fullName = `${firstName} ${lastName}`.trim();
+            if (fullName) return fullName;
+
+            return firstName || 'Client';
+        }
+
+        function getLeadState() {
+            const lead = getLead();
+            return normalizeStateName(lead?.state) || 'State';
+        }
+
+        function resolveLeadTimeZone() {
+            const lead = getLead();
+            const stateCode = normalizeStateCode(lead?.state);
+            const cityKey = normalizeLocationKey(lead?.city);
+            const countyKey = normalizeLocationKey(lead?.county);
+
+            if (!stateCode) return '';
+
+            const matchesAny = (value, options) => options.includes(value);
+
+            switch (stateCode) {
+                case 'FL':
+                    if (matchesAny(countyKey, ['BAY', 'CALHOUN', 'ESCAMBIA', 'GULF', 'HOLMES', 'JACKSON', 'OKALOOSA', 'SANTAROSA', 'WALTON', 'WASHINGTON'])
+                        || matchesAny(cityKey, ['PENSACOLA', 'CRESTVIEW', 'DESTIN', 'FORTWALTONBEACH', 'MARIANNA', 'NAVARRE', 'NICEVILLE', 'PANAMACITY'])) {
+                        return 'America/Chicago';
+                    }
+                    break;
+                case 'ID':
+                    if (matchesAny(countyKey, ['BENEWAH', 'BONNER', 'BOUNDARY', 'CLEARWATER', 'IDAHO', 'LATAH', 'LEWIS', 'NEZPERCE', 'SHOSHONE'])
+                        || matchesAny(cityKey, ['COEURDALENE', 'HAYDEN', 'LEWISTON', 'MOSCOW', 'POSTFALLS', 'RATHDRUM', 'SANDPOINT'])) {
+                        return 'America/Los_Angeles';
+                    }
+                    break;
+                case 'IN':
+                    if (matchesAny(countyKey, ['DUBOIS', 'GIBSON', 'JASPER', 'KNOX', 'LAKE', 'LAPORTE', 'NEWTON', 'PERRY', 'PIKE', 'PORTER', 'POSEY', 'PULASKI', 'SPENCER', 'STARKE', 'VANDERBURGH', 'WARRICK'])
+                        || matchesAny(cityKey, ['EVANSVILLE', 'GARY', 'HAMMOND', 'JASPER', 'MERRILLVILLE', 'PORTAGE', 'TELLCITY', 'VALPARAISO', 'VINCENNES'])) {
+                        return 'America/Chicago';
+                    }
+                    break;
+                case 'KY':
+                    if (matchesAny(countyKey, ['ADAIR', 'ALLEN', 'BALLARD', 'BARREN', 'BRECKINRIDGE', 'BUTLER', 'CALDWELL', 'CALLOWAY', 'CARLISLE', 'CHRISTIAN', 'CLINTON', 'CRITTENDEN', 'CUMBERLAND', 'DAVIESS', 'EDMONSON', 'FULTON', 'GRAVES', 'GRAYSON', 'HANCOCK', 'HENDERSON', 'HICKMAN', 'HOPKINS', 'LIVINGSTON', 'LOGAN', 'LYON', 'MARSHALL', 'MCCRAKEN', 'MCLEAN', 'METCALFE', 'MONROE', 'MUHLENBERG', 'OHIO', 'SIMPSON', 'TODD', 'TRIGG', 'UNION', 'WARREN', 'WEBSTER'])
+                        || matchesAny(cityKey, ['BOWLINGGREEN', 'HENDERSON', 'HOPKINSVILLE', 'MADISONVILLE', 'MAYFIELD', 'MURRAY', 'OWENSBORO', 'PADUCAH'])) {
+                        return 'America/Chicago';
+                    }
+                    break;
+                case 'MI':
+                    if (matchesAny(countyKey, ['DICKINSON', 'GOGEBIC', 'IRON', 'MENOMINEE'])
+                        || matchesAny(cityKey, ['IRONMOUNTAIN', 'IRONWOOD', 'MENOMINEE'])) {
+                        return 'America/Chicago';
+                    }
+                    break;
+                case 'ND':
+                    if (matchesAny(countyKey, ['ADAMS', 'BILLINGS', 'BOWMAN', 'DUNN', 'GOLDENVALLEY', 'HETTINGER', 'MCKENZIE', 'SLOPE', 'STARK'])
+                        || matchesAny(cityKey, ['BEACH', 'BOWMAN', 'DICKINSON', 'HETTINGER', 'KILLDEER', 'MEDORA', 'WATFORDCITY', 'WILLISTON'])) {
+                        return 'America/Denver';
+                    }
+                    break;
+                case 'NE':
+                    if (matchesAny(countyKey, ['BANNER', 'BOXBUTTE', 'CHEYENNE', 'DAWES', 'DEUEL', 'GARDEN', 'KIMBALL', 'MORRILL', 'SCOTTSBLUFF', 'SHERIDAN', 'SIOUX'])
+                        || matchesAny(cityKey, ['ALLIANCE', 'CHADRON', 'GERING', 'KIMBALL', 'OGALLALA', 'SCOTTSBLUFF', 'SIDNEY'])) {
+                        return 'America/Denver';
+                    }
+                    break;
+                case 'OR':
+                    if (countyKey === 'MALHEUR' || matchesAny(cityKey, ['NYSSA', 'ONTARIO', 'VALE'])) {
+                        return 'America/Denver';
+                    }
+                    break;
+                case 'SD':
+                    if (matchesAny(countyKey, ['BUTTE', 'CUSTER', 'FALLRIVER', 'HARDING', 'LAWRENCE', 'MEADE', 'PENNINGTON', 'PERKINS'])
+                        || matchesAny(cityKey, ['DEADWOOD', 'HOTSPRINGS', 'RAPIDCITY', 'SPEARFISH', 'STURGIS'])) {
+                        return 'America/Denver';
+                    }
+                    break;
+                case 'TN':
+                    if (matchesAny(countyKey, ['ANDERSON', 'BLEDSOE', 'BLOUNT', 'BRADLEY', 'CAMPBELL', 'CARTER', 'CLAIBORNE', 'COCKE', 'GRAINGER', 'GREENE', 'HAMBLEN', 'HAMILTON', 'HANCOCK', 'HAWKINS', 'JEFFERSON', 'JOHNSON', 'KNOX', 'LOUDON', 'MCMINN', 'MEIGS', 'MONROE', 'MORGAN', 'POLK', 'RHEA', 'ROANE', 'SCOTT', 'SEQUATCHIE', 'SEVIER', 'SULLIVAN', 'UNICOI', 'UNION', 'WASHINGTON'])
+                        || matchesAny(cityKey, ['ATHENS', 'BRISTOL', 'CHATTANOOGA', 'CLEVELAND', 'GREENEVILLE', 'JOHNSONCITY', 'KINGSPORT', 'KNOXVILLE', 'MARYVILLE', 'MORRISTOWN', 'OAKRIDGE'])) {
+                        return 'America/New_York';
+                    }
+                    break;
+                case 'TX':
+                    if (matchesAny(countyKey, ['ELPASO', 'HUDSPETH']) || matchesAny(cityKey, ['ANTHONY', 'ELPASO', 'HORIZONCITY'])) {
+                        return 'America/Denver';
+                    }
+                    break;
+            }
+
+            return DEFAULT_TIME_ZONE_BY_STATE[stateCode] || '';
+        }
+
+        function getLeadGreeting() {
+            const timeZone = resolveLeadTimeZone();
+            if (!timeZone) return 'Hello';
+
+            try {
+                const hour = Number(
+                    new Intl.DateTimeFormat('en-US', {
+                        hour: 'numeric',
+                        hour12: false,
+                        timeZone
+                    }).format(new Date())
+                );
+
+                if (Number.isFinite(hour)) {
+                    if (hour < 12) return 'Good morning';
+                    if (hour < 17) return 'Good afternoon';
+                    return 'Good evening';
+                }
+            } catch {}
+
+            return 'Hello';
+        }
+
+        function normalizeScriptMessage(value) {
+            return String(value ?? '')
+                .replace(/\u00a0/g, ' ')
+                .replace(/\r/g, '')
+                .split('\n')
+                .map(line => line.trimEnd())
+                .join('\n')
+                .replace(/\n{3,}/g, '\n\n')
+                .trim();
+        }
+
+        function resolveScriptRuntimeTokens(message) {
+            let resolved = normalizeScriptMessage(message);
+            if (!resolved) return '';
+
+            const hasAppointmentTimeToken =
+                /<\s*(?:appointment time|time)\s*>/i.test(resolved)
+                || /{{\s*appointmenttime\s*}}/i.test(resolved);
+
+            if (!hasAppointmentTimeToken) {
+                return resolved;
+            }
+
+            const entered = window.prompt('Enter the appointment time for this message:', lastAppointmentTime || '');
+            const appointmentTime = normalizeScriptMessage(entered);
+            if (!appointmentTime) return '';
+
+            lastAppointmentTime = appointmentTime;
+            return normalizeScriptMessage(
+                resolved
+                    .replace(/<\s*appointment time\s*>/gi, appointmentTime)
+                    .replace(/<\s*time\s*>/gi, appointmentTime)
+                    .replace(/{{\s*appointmenttime\s*}}/gi, appointmentTime)
+            );
+        }
+
+        function getLeadPhoneDigits() {
+            const lead = getLead();
+            const raw = readString(lead?.phone) || readString(lead?.phone2);
+            return raw.replace(/\D/g, '');
+        }
+
+        function buildSmsLaunchHref(rawDigits, message) {
+            const digits = readString(rawDigits).replace(/\D/g, '');
+            const recipient = digits.length === 10 ? `+1${digits}` : digits;
+            if (!recipient) return '';
+            return `sms:${recipient}&body=${encodeURIComponent(normalizeScriptMessage(message))}`;
+        }
+
+        function getAgentPhone() {
+            return formatPhoneDisplay(profile?.phone);
+        }
+
+        function extractScriptText(source) {
+            if (!source) return '';
+            return normalizeScriptMessage(source.innerText || source.textContent || '');
+        }
+
+        async function copyScriptTextMessage(message) {
+            const resolved = resolveScriptRuntimeTokens(api.fillTextMessagePlaceholders(message));
+            if (!resolved) return false;
+
+            try {
+                await navigator.clipboard.writeText(resolved);
+                return true;
+            } catch {
+                return false;
+            }
+        }
+
+        async function openTextComposer(message) {
+            const normalized = normalizeScriptMessage(message);
+            if (!normalized) return false;
+
+            const digits = getLeadPhoneDigits();
+            if (!digits) {
+                window.alert('No phone number is available on the current contact card.');
+                return false;
+            }
+
+            try {
+                await navigator.clipboard.writeText(normalized);
+            } catch {}
+
+            const smsHref = buildSmsLaunchHref(digits, normalized);
+            if (!smsHref) return false;
+            window.location.href = smsHref;
+            return true;
+        }
+
+        async function sendScriptTextMessage(message) {
+            const normalized = resolveScriptRuntimeTokens(api.fillTextMessagePlaceholders(message));
+            if (!normalized) return false;
+
+            if (window.LeadBridge?.sendTextMessage) {
+                const sent = await window.LeadBridge.sendTextMessage({ message: normalized });
+                if (sent) return true;
+            }
+
+            return openTextComposer(normalized);
+        }
+
+        function replacePlaceholderVariants(source, token, value) {
+            const escapedToken = token.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+            return source
+                .replace(new RegExp(`<\\s*${escapedToken}\\s*>`, 'gi'), value)
+                .replace(new RegExp(`&lt;\\s*${escapedToken}\\s*&gt;`, 'gi'), value);
+        }
+
+        function hasSupportedPlaceholder(value) {
+            return /(?:<|&lt;)\s*(?:greeting|your full name|your name|agent first name|agent name|your phone number|office number|office phone number|phone number|client first name|client full name|client name|client|name|state)\s*(?:>|&gt;)/i.test(String(value ?? ''));
+        }
+
+        function fillLeadPlaceholders(text, options = {}) {
+            const leadGreeting = getLeadGreeting();
+            const agentFirstName = getFirstName();
+            const agentPhone = getAgentPhone();
+            const leadFirstName = getLeadFirstName();
+            const leadFullName = getLeadFullName();
+            const leadState = getLeadState();
+            const preferFirstNameOnly = options.firstNameOnly === true;
+            const preferredLeadName = preferFirstNameOnly ? leadFirstName : leadFullName;
+            let rendered = String(text ?? '');
+
+            rendered = replacePlaceholderVariants(rendered, 'greeting', leadGreeting);
+            rendered = replacePlaceholderVariants(rendered, 'your full name', agentFirstName);
+            rendered = replacePlaceholderVariants(rendered, 'your name', agentFirstName);
+            rendered = replacePlaceholderVariants(rendered, 'agent first name', agentFirstName);
+            rendered = replacePlaceholderVariants(rendered, 'agent name', agentFirstName);
+            rendered = replacePlaceholderVariants(rendered, 'client first name', leadFirstName);
+            rendered = replacePlaceholderVariants(rendered, 'client full name', preferFirstNameOnly ? leadFirstName : leadFullName);
+            rendered = replacePlaceholderVariants(rendered, 'client name', preferredLeadName);
+            rendered = replacePlaceholderVariants(rendered, 'client', preferredLeadName);
+            rendered = replacePlaceholderVariants(rendered, 'name', preferredLeadName);
+            rendered = replacePlaceholderVariants(rendered, 'state', leadState);
+            if (agentPhone) {
+                rendered = replacePlaceholderVariants(rendered, 'your phone number', agentPhone);
+                rendered = replacePlaceholderVariants(rendered, 'office number', agentPhone);
+                rendered = replacePlaceholderVariants(rendered, 'office phone number', agentPhone);
+                rendered = replacePlaceholderVariants(rendered, 'phone number', agentPhone);
+            }
+
+            return rendered;
+        }
+
+        const api = {
+            get() {
+                return profile;
+            },
+            getFirstName,
+            getLead,
+            getLeadFirstName,
+            getLeadFullName,
+            getLeadState,
+            getLeadTimeZone: resolveLeadTimeZone,
+            getLeadGreeting,
+            getPhone() {
+                return getAgentPhone();
+            },
+            extractScriptText,
+            copyTextMessage(message) {
+                return copyScriptTextMessage(message);
+            },
+            sendTextMessage(message) {
+                return sendScriptTextMessage(message);
+            },
+            fillScriptPlaceholders(text) {
+                return fillLeadPlaceholders(text, { firstNameOnly: false });
+            },
+            fillTextMessagePlaceholders(text) {
+                return fillLeadPlaceholders(text, { firstNameOnly: true });
+            },
+            applyScriptTemplates(root) {
+                if (!root) return;
+
+                const blocks = [];
+                if (root.nodeType === Node.ELEMENT_NODE && root.classList?.contains('script')) {
+                    blocks.push(root);
+                }
+                if (root.nodeType === Node.ELEMENT_NODE || root.nodeType === Node.DOCUMENT_FRAGMENT_NODE || root.nodeType === Node.DOCUMENT_NODE) {
+                    root.querySelectorAll?.('.script').forEach(block => blocks.push(block));
+                }
+
+                blocks.forEach((block) => {
+                    const template = scriptTemplateCache.get(block) ?? block.innerHTML;
+                    if (!scriptTemplateCache.has(block) && hasSupportedPlaceholder(template)) {
+                        scriptTemplateCache.set(block, template);
+                    }
+
+                    const source = scriptTemplateCache.get(block);
+                    if (!source) return;
+
+                    const rendered = api.fillScriptPlaceholders(source);
+                    if (block.dataset.raw !== undefined) {
+                        block.dataset.raw = rendered;
+                    }
+                    if (block.innerHTML !== rendered) {
+                        block.innerHTML = rendered;
+                    }
+                });
+            },
+            applyPlaceholders(root) {
+                if (!root) return;
+
+                api.applyScriptTemplates(root);
+
+                const applyToTextNode = (node) => {
+                    if (!node || typeof node.nodeValue !== 'string') return;
+                    const template = textTemplateCache.get(node) ?? node.nodeValue;
+                    if (!textTemplateCache.has(node)) {
+                        textTemplateCache.set(node, template);
+                    }
+
+                    const nextValue = api.fillScriptPlaceholders(template);
+                    if (nextValue !== node.nodeValue) {
+                        node.nodeValue = nextValue;
+                    }
+                };
+
+                if (root.nodeType === Node.TEXT_NODE) {
+                    applyToTextNode(root);
+                    return;
+                }
+
+                const isSupportedRoot =
+                    root.nodeType === Node.ELEMENT_NODE
+                    || root.nodeType === Node.DOCUMENT_FRAGMENT_NODE
+                    || root.nodeType === Node.DOCUMENT_NODE;
+
+                if (!isSupportedRoot) return;
+
+                const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT, {
+                    acceptNode(node) {
+                        const parentTag = node.parentElement?.tagName;
+                        const template = textTemplateCache.get(node) ?? node.nodeValue;
+                        if (!template || !hasSupportedPlaceholder(template)) {
+                            return NodeFilter.FILTER_REJECT;
+                        }
+
+                        if (parentTag === 'SCRIPT' || parentTag === 'STYLE' || parentTag === 'TEXTAREA' || parentTag === 'OPTION') {
+                            return NodeFilter.FILTER_REJECT;
+                        }
+
+                        if (node.parentElement?.closest('.script')) {
+                            return NodeFilter.FILTER_REJECT;
+                        }
+
+                        return api.fillScriptPlaceholders(template) === node.nodeValue
+                            ? NodeFilter.FILTER_REJECT
+                            : NodeFilter.FILTER_ACCEPT;
+                    }
+                });
+
+                const nodesToUpdate = [];
+                while (walker.nextNode()) {
+                    nodesToUpdate.push(walker.currentNode);
+                }
+
+                nodesToUpdate.forEach(applyToTextNode);
+            }
+        };
+
+        window.LegendAgentProfile = Object.freeze({ ...profile, firstName: getFirstName() });
+        window.LegendAgentProfileApi = api;
+
+        const workstationRoots = () => Array.from(document.querySelectorAll('#mpShell, #rbShell'));
+
+        const syncWorkstationPlaceholders = () => {
+            workstationRoots().forEach(root => api.applyPlaceholders(root));
+        };
+
+        const mountWorkstationPlaceholderObserver = () => {
+            const roots = workstationRoots();
+            if (!roots.length || window.__legendWorkstationPlaceholderObserver) return;
+
+            let syncing = false;
+            const observer = new MutationObserver((mutations) => {
+                if (syncing) return;
+                syncing = true;
+
+                try {
+                    mutations.forEach((mutation) => {
+                        if (mutation.type === 'characterData') {
+                            api.applyPlaceholders(mutation.target);
+                            return;
+                        }
+
+                        mutation.addedNodes.forEach((node) => {
+                            api.applyPlaceholders(node);
+                        });
+                    });
+                } finally {
+                    syncing = false;
+                }
+            });
+
+            roots.forEach((root) => {
+                observer.observe(root, {
+                    childList: true,
+                    subtree: true,
+                    characterData: true
+                });
+            });
+
+            window.__legendWorkstationPlaceholderObserver = observer;
+        };
+
+        const mountWorkstationTimeRefresh = () => {
+            if (window.__legendWorkstationTimeRefreshTimer) return;
+
+            window.__legendWorkstationTimeRefreshTimer = window.setInterval(() => {
+                syncWorkstationPlaceholders();
+            }, 60000);
+        };
+
+        function findScriptSource(trigger, selector) {
+            if (!trigger || !selector) return null;
+
+            const scopes = [
+                trigger.closest('.body'),
+                trigger.closest('.prosper-body'),
+                trigger.closest('.section'),
+                trigger.closest('.prosper-stage'),
+                trigger.closest('.content-body'),
+                document
+            ].filter(Boolean);
+
+            for (const scope of scopes) {
+                const found = scope.querySelector?.(selector);
+                if (found) return found;
+            }
+
+            return document.querySelector(selector);
+        }
+
+        function flashScriptActionButton(button, nextLabel) {
+            if (!button || !nextLabel) return;
+
+            const original = button.dataset.originalLabel || button.textContent || '';
+            if (!button.dataset.originalLabel) {
+                button.dataset.originalLabel = original;
+            }
+
+            if (button.__legendResetLabelTimer) {
+                window.clearTimeout(button.__legendResetLabelTimer);
+            }
+
+            button.textContent = nextLabel;
+            button.__legendResetLabelTimer = window.setTimeout(() => {
+                button.textContent = button.dataset.originalLabel || original;
+            }, 1100);
+        }
+
+        const bindWorkstationScriptButtons = () => {
+            if (window.__legendWorkstationScriptButtonsBound) return;
+
+            document.addEventListener('click', async (event) => {
+                const copyButton = event.target.closest('[data-copy-script-selector]');
+                if (copyButton) {
+                    event.preventDefault();
+
+                    const selector = readString(copyButton.getAttribute('data-copy-script-selector'));
+                    if (!selector) return;
+
+                    const source = findScriptSource(copyButton, selector);
+                    if (!source) return;
+
+                    const message = extractScriptText(source);
+                    if (!message) return;
+
+                    const copied = await copyScriptTextMessage(message);
+                    if (copied) {
+                        flashScriptActionButton(copyButton, 'Copied');
+                    }
+                    return;
+                }
+
+                const textButton = event.target.closest('[data-send-script-selector]');
+                if (!textButton) return;
+
+                event.preventDefault();
+
+                const selector = readString(textButton.getAttribute('data-send-script-selector'));
+                if (!selector) return;
+
+                const source = findScriptSource(textButton, selector);
+                if (!source) return;
+
+                const message = extractScriptText(source);
+                if (!message) return;
+
+                await sendScriptTextMessage(message);
+            });
+
+            window.__legendWorkstationScriptButtonsBound = true;
+        };
+
+        const bootWorkstationPlaceholderSync = () => {
+            syncWorkstationPlaceholders();
+            mountWorkstationPlaceholderObserver();
+            mountWorkstationTimeRefresh();
+            bindWorkstationScriptButtons();
+        };
+
+        window.addEventListener('leadbridge:currentLead', syncWorkstationPlaceholders);
+
+        if (document.readyState === 'loading') {
+            document.addEventListener('DOMContentLoaded', bootWorkstationPlaceholderSync, { once: true });
+        } else {
+            bootWorkstationPlaceholderSync();
+        }
+    })();
+</script>
+
 <div class="container layout-content flex-grow-1">
     <main role="main">
         @RenderBody()
@@ -1302,6 +2247,13 @@
     </div>
 </footer>
 
+<script src="~/lib/jquery/dist/jquery.min.js"></script>
+<script>
+    // Safety net: if local jQuery fails to load, fall back to CDN so dependent plugins (validation) don't crash.
+    if (typeof window.jQuery === "undefined") {
+        document.write('<script src="https://code.jquery.com/jquery-3.7.1.min.js" crossorigin="anonymous"><\\/script>');
+    }
+</script>
 <script src="~/js/number-format.js" asp-append-version="true"></script>
 <script src="~/lib/bootstrap/dist/js/bootstrap.bundle.min.js"></script>
 <script>
@@ -1336,6 +2288,44 @@
     }
 </script>
 <script src="~/js/live-sync.js" asp-append-version="true"></script>
+
+<script>
+    (function () {
+        const nav = document.querySelector('.navbar');
+        const toggle = document.getElementById('apNavToggle');
+        const navLeft = document.querySelector('.navbar-left');
+        const navRight = document.querySelector('.navbar-right');
+
+        if (!nav || !toggle) return;
+
+        function closeNav() {
+            nav.classList.remove('mobile-open');
+            toggle.setAttribute('aria-expanded', 'false');
+        }
+
+        toggle.addEventListener('click', function () {
+            const isOpen = nav.classList.toggle('mobile-open');
+            toggle.setAttribute('aria-expanded', isOpen ? 'true' : 'false');
+        });
+
+        [navLeft, navRight].forEach(group => {
+            if (!group) return;
+            group.querySelectorAll('a, button').forEach(el => {
+                el.addEventListener('click', () => closeNav());
+            });
+        });
+
+        document.addEventListener('click', function (e) {
+            if (!nav.classList.contains('mobile-open')) return;
+            if (nav.contains(e.target) || e.target === toggle) return;
+            closeNav();
+        });
+
+        window.addEventListener('resize', function () {
+            if (window.innerWidth > 840) closeNav();
+        });
+    }());
+</script>
 
 <script>
     (function () {
@@ -1541,6 +2531,40 @@
         });
         document.addEventListener('keydown', function (e) {
             if (e.key === 'Escape' && modal.classList.contains('open')) closeModal();
+        });
+    })();
+
+    (function () {
+        function normalizeHref(value) {
+            try {
+                const url = new URL(value, window.location.href);
+                const params = Array.from(url.searchParams.entries())
+                    .sort((a, b) => {
+                        if (a[0] === b[0]) return a[1].localeCompare(b[1]);
+                        return a[0].localeCompare(b[0]);
+                    })
+                    .map(([key, val]) => `${encodeURIComponent(key)}=${encodeURIComponent(val)}`)
+                    .join('&');
+                const path = url.pathname.replace(/\/+$/, '') || '/';
+                return `${url.origin}${path}${params ? `?${params}` : ''}`;
+            } catch {
+                return '';
+            }
+        }
+
+        document.addEventListener('click', function (event) {
+            if (event.defaultPrevented || event.button !== 0) return;
+            if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+
+            const link = event.target.closest('a[data-refresh-current-link="1"]');
+            if (!link) return;
+
+            const targetHref = normalizeHref(link.href);
+            const currentHref = normalizeHref(window.location.href);
+            if (!targetHref || !currentHref || targetHref !== currentHref) return;
+
+            event.preventDefault();
+            window.location.reload();
         });
     })();
 </script>

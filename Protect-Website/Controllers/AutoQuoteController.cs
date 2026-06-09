@@ -1,16 +1,21 @@
 using Microsoft.AspNetCore.Mvc;
+using Domain.Entities;
+using Infrastructure.Data;
 using Protect_Website.Models;
-using Azure.Identity;
-using Microsoft.Graph;
-using Microsoft.Graph.Models;
-using Microsoft.Graph.Users.Item.SendMail;
 using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
 using System.Net;
+using System.Text.Json;
 using System.Threading.Tasks;
 using Microsoft.AspNetCore.Mvc.ModelBinding;
+using Microsoft.EntityFrameworkCore;
+using Infrastructure.Leads;
+using ProtectWebsite.Services.Meta;
+using ProtectWebsite.Services;
+using ProtectWebsite.Services.Tracking;
+using ProtectWebsite.Services.Communication;
 
 namespace Protect_Website.Controllers
 {
@@ -23,8 +28,16 @@ namespace Protect_Website.Controllers
 
         private readonly string senderEmail;
         private readonly string recipientEmail;
+        private readonly AgentTrackingResolver _resolver;
+        private readonly MasterAppDbContext _db;
+        private readonly IMetaConversionsApiService _metaConversionsApi;
+        private readonly IMetaPixelResolutionService _metaPixelResolution;
+        private readonly IWebsiteLifeLeadCaptureService _websiteLeadCapture;
+        private readonly ILogger<AutoQuoteController> _logger;
+        private readonly IProtectEmailSender _emailSender;
 
-        public AutoQuoteController(IConfiguration configuration)
+        public AutoQuoteController(IConfiguration configuration, AgentTrackingResolver resolver,
+            MasterAppDbContext db, IMetaConversionsApiService metaConversionsApi, IMetaPixelResolutionService metaPixelResolution, IWebsiteLifeLeadCaptureService websiteLeadCapture, IProtectEmailSender emailSender, ILogger<AutoQuoteController> logger)
         {
             tenantId = configuration["AzureAd:TenantId"] ?? throw new ArgumentNullException("AzureAd:TenantId");
             clientId = configuration["AzureAd:ClientId"] ?? throw new ArgumentNullException("AzureAd:ClientId");
@@ -32,6 +45,13 @@ namespace Protect_Website.Controllers
 
             senderEmail = configuration["Contact:SenderEmail"] ?? throw new ArgumentNullException("Contact:SenderEmail");
             recipientEmail = configuration["Contact:RecipientEmail"] ?? throw new ArgumentNullException("Contact:RecipientEmail");
+            _resolver = resolver;
+            _db = db;
+            _metaConversionsApi = metaConversionsApi;
+            _metaPixelResolution = metaPixelResolution;
+            _websiteLeadCapture = websiteLeadCapture;
+            _emailSender = emailSender;
+            _logger = logger;
         }
 
         [HttpGet("Auto")]
@@ -51,357 +71,576 @@ namespace Protect_Website.Controllers
         {
             NormalizeLists(model);
 
+            // Normalize disclaimer — wizard steps toggle disabled; read raw value directly
+            var ackRaw = Request?.Form?["AcknowledgedDisclaimer"].FirstOrDefault();
+            bool ack = !string.IsNullOrWhiteSpace(ackRaw) &&
+                       (ackRaw.Equals("true", StringComparison.OrdinalIgnoreCase) ||
+                        ackRaw.Equals("on", StringComparison.OrdinalIgnoreCase) ||
+                        ackRaw.Equals("1"));
+            model.AcknowledgedDisclaimer = ack;
+            ModelState.Remove(nameof(model.AcknowledgedDisclaimer));
+            if (!ack)
+                ModelState.AddModelError(nameof(model.AcknowledgedDisclaimer),
+                    "Please check the authorization box so we can contact you about this quote.");
+
+            var correlationId = Guid.NewGuid();
+
+            var (leadRecipientEmail, agentProfileId, agentSlug, isFounderPath) = await ResolveLeadContextAsync();
+            _logger.LogInformation(
+                "AutoQuote [{CorrelationId}]: attribution resolved AgentSlug={Slug} ProfileId={ProfileId} Recipient={Recipient}",
+                correlationId, agentSlug, agentProfileId, leadRecipientEmail);
+            var resolvedMetaPixel = await _metaPixelResolution.ResolveForLeadAsync(
+                agentProfileId,
+                agentSlug,
+                isFounderPath,
+                HttpContext?.RequestAborted ?? CancellationToken.None);
+
             // business rule
             if (model.Drivers.Count == 0)
                 ModelState.AddModelError(nameof(model.Drivers), "At least one driver is required.");
             if (model.Vehicles.Count == 0)
                 ModelState.AddModelError(nameof(model.Vehicles), "At least one vehicle is required.");
-
-            if (!ModelState.IsValid)
+        if (!ModelState.IsValid)
             {
                 EnsureIndexZero(model);
                 ViewData["StartStep"] = GetFirstErrorStep(ModelState);
                 return View("~/Views/Quote/Auto.cshtml", model);
             }
 
+            // ── 1. Persist lead FIRST ─────────────────────────────────────────────
+            WebsiteLead lead;
             try
             {
-                var credential = new ClientSecretCredential(tenantId, clientId, clientSecret);
-                var graphClient = new GraphServiceClient(credential);
+                var now = DateTime.UtcNow;
+                lead = new WebsiteLead
+                {
+                    LeadId        = Guid.NewGuid(),
+                    FirstName     = model.FirstName?.Trim() ?? "",
+                    LastName      = string.IsNullOrWhiteSpace(model.LastName) ? null : model.LastName.Trim(),
+                    Email         = model.EmailAddress?.Trim() ?? "",
+                    Phone         = string.IsNullOrWhiteSpace(model.PhoneNumber) ? null : model.PhoneNumber?.Trim(),
+                    InterestType  = "auto_insurance",
+                    SourcePageKey = "quote_auto",
+                    UtmSource     = string.IsNullOrWhiteSpace(model.UtmSource)   ? null : model.UtmSource.Trim(),
+                    UtmMedium     = string.IsNullOrWhiteSpace(model.UtmMedium)   ? null : model.UtmMedium.Trim(),
+                    UtmCampaign   = string.IsNullOrWhiteSpace(model.UtmCampaign) ? null : model.UtmCampaign.Trim(),
+                    UtmId         = string.IsNullOrWhiteSpace(model.UtmId) ? null : model.UtmId.Trim(),
+                    MetaCampaignId = string.IsNullOrWhiteSpace(model.MetaCampaignId) ? null : model.MetaCampaignId.Trim(),
+                    MetaAdSetId   = string.IsNullOrWhiteSpace(model.MetaAdSetId) ? null : model.MetaAdSetId.Trim(),
+                    MetaAdId      = string.IsNullOrWhiteSpace(model.MetaAdId) ? null : model.MetaAdId.Trim(),
+                    Fbclid        = string.IsNullOrWhiteSpace(model.Fbclid)      ? null : model.Fbclid.Trim(),
+                    SessionId     = string.IsNullOrWhiteSpace(model.SessionId)   ? null : model.SessionId.Trim(),
+                    VisitorId     = string.IsNullOrWhiteSpace(model.VisitorId)   ? null : model.VisitorId.Trim(),
+                    MarketingEmailConsent = model.AcknowledgedDisclaimer,
+                    CallTextConsent = model.AcknowledgedDisclaimer && !string.IsNullOrWhiteSpace(model.PhoneNumber),
+                    TermsAccepted = true,
+                    IsInternal    = WebsiteLeadCaptureSafety.ShouldMarkAsInternalTest(Request?.Host.Host),
+                    Host          = Request?.Host.ToString(),
+                    Environment   = EnvironmentLabelResolver.Resolve(),
+                    CreatedUtc    = now,
+                    Status        = "New",
+                    AgentTrackingProfileId = agentProfileId,
+                    AgentSlug     = agentSlug,
+                    MetadataJson  = JsonSerializer.Serialize(new
+                    {
+                        AddressState   = model.AddressState,
+                        DriverCount    = model.Drivers.Count,
+                        VehicleCount   = model.Vehicles.Count,
+                        PriorCarrier   = model.PriorCarrier,
+                        UtmId          = model.UtmId,
+                        Fbclid         = model.Fbclid,
+                        UtmTerm        = model.UtmTerm,
+                        UtmContent     = model.UtmContent,
+                        MetaCampaignId = model.MetaCampaignId,
+                        MetaAdSetId    = model.MetaAdSetId,
+                        MetaAdId       = model.MetaAdId,
+                        ReferrerUrl    = model.ReferrerUrl,
+                        LandingPageUrl = model.LandingPageUrl,
+                        CorrelationId  = correlationId,
+                    })
+                };
+                _db.WebsiteLeads.Add(lead);
+                await _db.SaveChangesAsync();
+                _logger.LogInformation(
+                    "AutoQuote [{CorrelationId}]: WebsiteLead {LeadId} saved",
+                    correlationId, lead.LeadId);
+            }
+            catch (Exception persistEx)
+            {
+                _logger.LogError(persistEx,
+                    "AutoQuote [{CorrelationId}]: lead persistence failed for {Email}",
+                    correlationId, model.EmailAddress);
+                ModelState.AddModelError("", $"Failed to save lead: {persistEx.Message}");
+                EnsureIndexZero(model);
+                ViewData["StartStep"] = 5;
+                return View("~/Views/Quote/Auto.cshtml", model);
+            }
 
-                static string E(string? s) => string.IsNullOrWhiteSpace(s) ? "N/A" : WebUtility.HtmlEncode(s.Trim());
-                static string D(DateTime? d) => d.HasValue ? WebUtility.HtmlEncode(d.Value.ToString("MM/dd/yyyy")) : "N/A";
+            async Task TryWriteLeadEventAsync(string eventType, object metadata, DateTime? eventUtc = null)
+            {
+                AnalyticsEvent? analyticsEvent = null;
+                try
+                {
+                    analyticsEvent = WebsiteLeadAnalyticsWriter.CreateEvent(
+                        lead,
+                        eventType,
+                        "quote_auto",
+                        "auto_insurance",
+                        metadata,
+                        eventUtc);
+                    _db.AnalyticsEvents.Add(analyticsEvent);
+                    await _db.SaveChangesAsync(HttpContext?.RequestAborted ?? CancellationToken.None);
+                }
+                catch (Exception analyticsEx)
+                {
+                    if (analyticsEvent != null)
+                    {
+                        var entry = _db.Entry(analyticsEvent);
+                        if (entry.State != EntityState.Detached)
+                            entry.State = EntityState.Detached;
+                    }
+
+                    _logger.LogWarning(
+                        analyticsEx,
+                        "AutoQuote [{CorrelationId}]: analytics event write failed for {EventType} lead {LeadId}",
+                        correlationId,
+                        eventType,
+                        lead.LeadId);
+                }
+            }
+
+            await TryWriteLeadEventAsync(
+                "lead_persisted",
+                new { LeadId = lead.LeadId, CorrelationId = correlationId, QuoteType = "auto_insurance" },
+                lead.CreatedUtc);
+
+            try
+            {
+                await TryWriteLeadEventAsync(
+                    "workstation_capture_attempt",
+                    new { LeadId = lead.LeadId, CorrelationId = correlationId, ProductType = "auto", OfferKey = "auto" });
+
+                var captureResult = await _websiteLeadCapture.UpsertAsync(
+                    new WebsiteLifeLeadCaptureRequest
+                    {
+                        WebsiteLeadId = lead.LeadId,
+                        SubmittedUtc = lead.CreatedUtc,
+                        ProductType = "auto",
+                        OfferKey = "auto",
+                        FirstName = lead.FirstName,
+                        LastName = lead.LastName,
+                        Email = lead.Email,
+                        Phone = lead.Phone,
+                        State = model.AddressState,
+                        AgentTrackingProfileId = agentProfileId,
+                        AgentSlug = agentSlug,
+                        RecipientEmail = leadRecipientEmail
+                    },
+                    HttpContext?.RequestAborted ?? CancellationToken.None);
+
+                if (captureResult.Captured)
+                {
+                    await _db.SaveChangesAsync(HttpContext?.RequestAborted ?? CancellationToken.None);
+                    await TryWriteLeadEventAsync(
+                        "workstation_capture_success",
+                        new
+                        {
+                            LeadId = lead.LeadId,
+                            CorrelationId = correlationId,
+                            WorkstationLeadId = captureResult.WorkstationLeadId,
+                            Bucket = captureResult.Bucket,
+                            AgentUserId = captureResult.AgentUserId,
+                            CaptureMode = captureResult.Created ? "created" : "updated"
+                        });
+                }
+                else
+                {
+                    await TryWriteLeadEventAsync(
+                        "workstation_capture_failure",
+                        new
+                        {
+                            LeadId = lead.LeadId,
+                            CorrelationId = correlationId,
+                            Reason = captureResult.Reason ?? "unknown",
+                            Bucket = captureResult.Bucket,
+                            AgentUserId = captureResult.AgentUserId
+                        });
+                }
+            }
+            catch (Exception captureEx)
+            {
+                _logger.LogError(
+                    captureEx,
+                    "AutoQuote [{CorrelationId}]: workstation capture failed for lead {LeadId}",
+                    correlationId,
+                    lead.LeadId);
+
+                await TryWriteLeadEventAsync(
+                    "workstation_capture_failure",
+                    new
+                    {
+                        LeadId = lead.LeadId,
+                        CorrelationId = correlationId,
+                        Reason = "capture_exception",
+                        ErrorMessage = captureEx.Message
+                    });
+            }
+
+            var metaLeadEventId = Guid.NewGuid().ToString("N");
+            await MetaLeadTrackingWorkflow.TryPersistAsync(
+                lead,
+                _db,
+                correlationId,
+                "meta_tracking_initialized",
+                _logger,
+                HttpContext?.RequestAborted ?? CancellationToken.None,
+                state =>
+                {
+                    state.EventId = metaLeadEventId;
+                    state.ResolvedMetaPixelId = resolvedMetaPixel.PixelId;
+                    state.PixelOwnerType = resolvedMetaPixel.PixelOwnerType;
+                    state.BrowserPixelStatus = "pending";
+                    state.BrowserPixelUpdatedUtc = DateTime.UtcNow;
+                    state.BrowserPixelNote = null;
+                    state.ServerCapiStatus = "pending";
+                    state.ServerCapiUpdatedUtc = DateTime.UtcNow;
+                    state.ServerCapiNote = null;
+                });
+
+            await TryWriteLeadEventAsync(
+                "capi_event_attempt",
+                new
+                {
+                    LeadId = lead.LeadId,
+                    CorrelationId = correlationId,
+                    EventId = metaLeadEventId,
+                    PixelId = resolvedMetaPixel.PixelId,
+                    PixelOwnerType = resolvedMetaPixel.PixelOwnerType
+                });
+
+            var metaCapiResult = await _metaConversionsApi.SendLeadAsync(
+                new MetaLeadConversionRequest
+                {
+                    LeadId = lead.LeadId,
+                    CorrelationId = correlationId,
+                    EventId = metaLeadEventId,
+                    QuoteType = "Auto",
+                    PageKey = "quote_auto",
+                    OfferKey = "auto",
+                    EventSourceUrl = MetaLeadTrackingWorkflow.ResolveEventSourceUrl(model.LandingPageUrl, Request),
+                    ClientIpAddress = MetaLeadTrackingWorkflow.ResolveClientIpAddress(Request),
+                    ClientUserAgent = Request?.Headers["User-Agent"].ToString(),
+                    Fbp = MetaLeadTrackingWorkflow.ResolveCookieValue(Request, "_fbp"),
+                    Fbc = MetaLeadTrackingWorkflow.ResolveCookieValue(Request, "_fbc"),
+                    Fbclid = lead.Fbclid,
+                    Email = lead.Email,
+                    Phone = lead.Phone,
+                    AllowHashedContactData = lead.TermsAccepted && lead.MarketingEmailConsent,
+                    EventUtc = lead.CreatedUtc,
+                    PixelId = resolvedMetaPixel.PixelId,
+                    AccessToken = resolvedMetaPixel.AccessToken,
+                    TestEventCode = resolvedMetaPixel.TestEventCode,
+                    PixelOwnerType = resolvedMetaPixel.PixelOwnerType
+                },
+                HttpContext?.RequestAborted ?? CancellationToken.None);
+
+            await MetaLeadTrackingWorkflow.TryPersistAsync(
+                lead,
+                _db,
+                correlationId,
+                "meta_capi_result",
+                _logger,
+                HttpContext?.RequestAborted ?? CancellationToken.None,
+                state =>
+                {
+                    state.EventId ??= metaLeadEventId;
+                    state.ResolvedMetaPixelId ??= resolvedMetaPixel.PixelId;
+                    state.PixelOwnerType = resolvedMetaPixel.PixelOwnerType;
+                    state.ServerCapiStatus = metaCapiResult.Status;
+                    state.ServerCapiUpdatedUtc = DateTime.UtcNow;
+                    state.ServerCapiNote = metaCapiResult.Note;
+                });
+
+            await TryWriteLeadEventAsync(
+                metaCapiResult.Sent ? "capi_event_success" : "capi_event_failure",
+                new
+                {
+                    LeadId = lead.LeadId,
+                    CorrelationId = correlationId,
+                    EventId = metaLeadEventId,
+                    Status = metaCapiResult.Status,
+                    Note = metaCapiResult.Note,
+                    PixelId = metaCapiResult.PixelId ?? resolvedMetaPixel.PixelId,
+                    PixelOwnerType = metaCapiResult.PixelOwnerType ?? resolvedMetaPixel.PixelOwnerType
+                });
+
+            
+            var primary = model.Drivers.FirstOrDefault();
+            var subjectName = primary == null ? "Unknown" : $"{primary.FirstName} {primary.LastName}".Trim();
+
+                string Nv(string? s) => string.IsNullOrWhiteSpace(s) ? "N/A" : s.Trim();
+                string Nd(DateTime? d) => d.HasValue ? d.Value.ToString("MM/dd/yyyy") : "N/A";
 
                 string DriverNameByIndex(int? idx)
                 {
-                    if (!idx.HasValue) return "N/A";
-                    if (idx.Value < 0 || idx.Value >= model.Drivers.Count) return "N/A";
+                    if (!idx.HasValue || idx.Value < 0 || idx.Value >= model.Drivers.Count) return "N/A";
                     var dr = model.Drivers[idx.Value];
                     return $"{dr.FirstName} {dr.LastName}".Trim();
                 }
 
                 string VehicleLabelByIndex(int? idx)
                 {
-                    if (!idx.HasValue) return "N/A";
-                    if (idx.Value < 0 || idx.Value >= model.Vehicles.Count) return "N/A";
+                    if (!idx.HasValue || idx.Value < 0 || idx.Value >= model.Vehicles.Count) return "N/A";
                     var v = model.Vehicles[idx.Value];
-                    var ymm = $"{v.Year} {v.Make} {v.Model}".Trim();
-                    return $"{ymm} (VIN: {v.VIN})".Trim();
+                    return $"{v.Year} {v.Make} {v.Model} (VIN: {v.VIN})".Trim();
                 }
 
-                string BuildApplicantInfo()
-                {
-                    var sb = new StringBuilder();
-                    sb.AppendLine("<h3>Section 1 — Applicant Info</h3>");
+            var rows = new LeadEmailTemplate.RowBuilder()
+                .Section("Applicant Info")
+                .Row("Name",              $"{model.FirstName} {model.LastName}".Trim())
+                .Row("Address State",     Nv(model.AddressState))
+                .Row("Postal Code",       Nv(model.PostalCode))
+                .Row("Nickname",          model.Nickname)
+                .Row("Gender",            model.Gender)
+                .Row("Date of Birth",     Nd(model.DOB))
+                .Row("Marital Status",    model.MaritalStatus)
+                .Row("Driver's License",  model.DriversLicenseNumber)
+                .Row("DL Status",         model.DLStatus)
+                .Row("DL State",          model.DLState)
+                .Row("Education",         model.Education)
+                .Row("Industry",          model.Industry)
+                .Section("Primary Address")
+                .Row("Address",       model.PrimaryAddress)
+                .Row("Unit",          model.PrimaryUnit)
+                .Row("City",          model.PrimaryCity)
+                .Row("State",         model.PrimaryState)
+                .Row("Country",       model.PrimaryCountry)
+                .Row("Postal Code",   model.PrimaryPostalCode)
+                .Row("Years at Address", model.PrimaryYearsAtAddress);
 
-                    sb.AppendLine($"<p><strong>First Name:</strong> {E(model.FirstName)}</p>");
-                    sb.AppendLine($"<p><strong>Last Name:</strong> {E(model.LastName)}</p>");
-                    sb.AppendLine($"<p><strong>Address State:</strong> {E(model.AddressState)}</p>");
-                    sb.AppendLine($"<p><strong>Postal Code:</strong> {E(model.PostalCode)}</p>");
-                    sb.AppendLine($"<p><strong>Nickname:</strong> {E(model.Nickname)}</p>");
-                    sb.AppendLine($"<p><strong>Gender:</strong> {E(model.Gender)}</p>");
-                    sb.AppendLine($"<p><strong>DOB:</strong> {D(model.DOB)}</p>");
-                    sb.AppendLine($"<p><strong>Marital Status:</strong> {E(model.MaritalStatus)}</p>");
-                    sb.AppendLine($"<p><strong>Driver's License #:</strong> {E(model.DriversLicenseNumber)}</p>");
-                    sb.AppendLine($"<p><strong>DL Status:</strong> {E(model.DLStatus)}</p>");
-                    sb.AppendLine($"<p><strong>DL State:</strong> {E(model.DLState)}</p>");
-                    sb.AppendLine($"<p><strong>Education:</strong> {E(model.Education)}</p>");
-                    sb.AppendLine($"<p><strong>Industry:</strong> {E(model.Industry)}</p>");
-
-                    sb.AppendLine("<hr/>");
-                    return sb.ToString();
-                }
-
-                // ===================== ADDRESS + CONTACT INFO =====================
-                string BuildAddress()
-                {
-                    var sb = new StringBuilder();
-                    sb.AppendLine("<h3>Section 1B — Address</h3>");
-
-                    sb.AppendLine("<h4>Primary Address</h4>");
-                    sb.AppendLine($"<p><strong>Address:</strong> {E(model.PrimaryAddress)}</p>");
-                    sb.AppendLine($"<p><strong>Unit:</strong> {E(model.PrimaryUnit)}</p>");
-                    sb.AppendLine($"<p><strong>Address Line 2:</strong> {E(model.PrimaryAddressLine2)}</p>");
-                    sb.AppendLine($"<p><strong>City:</strong> {E(model.PrimaryCity)}</p>");
-                    sb.AppendLine($"<p><strong>State:</strong> {E(model.PrimaryState)}</p>");
-                    sb.AppendLine($"<p><strong>Country:</strong> {E(model.PrimaryCountry)}</p>");
-                    sb.AppendLine($"<p><strong>Postal Code:</strong> {E(model.PrimaryPostalCode)}</p>");
-                    sb.AppendLine($"<p><strong>Years At Address:</strong> {E(model.PrimaryYearsAtAddress)}</p>");
-
-                    bool hasPrev =
-                        !string.IsNullOrWhiteSpace(model.PreviousAddress) ||
-                        !string.IsNullOrWhiteSpace(model.PreviousCity) ||
-                        !string.IsNullOrWhiteSpace(model.PreviousState) ||
-                        !string.IsNullOrWhiteSpace(model.PreviousCountry) ||
-                        !string.IsNullOrWhiteSpace(model.PreviousPostalCode) ||
-                        !string.IsNullOrWhiteSpace(model.PreviousYearsAtAddress) ||
-                        !string.IsNullOrWhiteSpace(model.PreviousUnit) ||
-                        !string.IsNullOrWhiteSpace(model.PreviousAddressLine2);
-
-                    if (hasPrev)
-                    {
-                        sb.AppendLine("<h4>Previous Address</h4>");
-                        sb.AppendLine($"<p><strong>Address:</strong> {E(model.PreviousAddress)}</p>");
-                        sb.AppendLine($"<p><strong>Unit:</strong> {E(model.PreviousUnit)}</p>");
-                        sb.AppendLine($"<p><strong>Address Line 2:</strong> {E(model.PreviousAddressLine2)}</p>");
-                        sb.AppendLine($"<p><strong>City:</strong> {E(model.PreviousCity)}</p>");
-                        sb.AppendLine($"<p><strong>State:</strong> {E(model.PreviousState)}</p>");
-                        sb.AppendLine($"<p><strong>Country:</strong> {E(model.PreviousCountry)}</p>");
-                        sb.AppendLine($"<p><strong>Postal Code:</strong> {E(model.PreviousPostalCode)}</p>");
-                        sb.AppendLine($"<p><strong>Years At Address:</strong> {E(model.PreviousYearsAtAddress)}</p>");
-                    }
-
-                    sb.AppendLine("<hr/>");
-                    return sb.ToString();
-                }
-
-                string BuildContactInfo()
-                {
-                    var sb = new StringBuilder();
-                    sb.AppendLine("<h3>Section 1C — Contact Info</h3>");
-
-                    sb.AppendLine($"<p><strong>Phone Type:</strong> {E(model.PhoneType)}</p>");
-                    sb.AppendLine($"<p><strong>Phone Number:</strong> {E(model.PhoneNumber)}</p>");
-                    sb.AppendLine($"<p><strong>Email Type:</strong> {E(model.EmailType)}</p>");
-                    sb.AppendLine($"<p><strong>Email Address:</strong> {E(model.EmailAddress)}</p>");
-                    sb.AppendLine($"<p><strong>Preferred Contact Method:</strong> {E(model.PreferredContactMethod)}</p>");
-                    sb.AppendLine($"<p><strong>Best Time To Contact:</strong> {E(model.BestTimeToContact)}</p>");
-
-                    sb.AppendLine("<hr/>");
-                    return sb.ToString();
-                }
-                // ================================================================
-
-                string BuildPolicy()
-                {
-                    var sb = new StringBuilder();
-                    sb.AppendLine("<h3>Section 1 — Policy Information (Auto)</h3>");
-                    sb.AppendLine($"<p><strong>Prior Carrier:</strong> {E(model.PriorCarrier)}</p>");
-                    sb.AppendLine($"<p><strong>Prior Policy Expiration Date:</strong> {D(model.PriorPolicyExpirationDate)}</p>");
-                    sb.AppendLine($"<p><strong>Prior Liability Limits:</strong> {E(model.PriorLiabilityLimits)}</p>");
-                    sb.AppendLine($"<p><strong>Prior Policy Term:</strong> {E(model.PriorPolicyTerm)}</p>");
-                    sb.AppendLine($"<p><strong>Prior Policy Premium:</strong> {E(model.PriorPolicyPremium)}</p>");
-                    sb.AppendLine($"<p><strong>Years with Prior Carrier:</strong> {E(model.YearsWithPriorCarrier)} &nbsp;&nbsp; <strong>Months:</strong> {E(model.MonthsWithPriorCarrier)}</p>");
-                    sb.AppendLine($"<p><strong>Years Continuous Coverage:</strong> {E(model.YearsContinuousCoverage)} &nbsp;&nbsp; <strong>Months:</strong> {E(model.MonthsContinuousCoverage)}</p>");
-                    sb.AppendLine($"<p><strong>Credit/Underwriting Reports Authorized:</strong> {E(model.CreditCheckAuthorized)}</p>");
-                    sb.AppendLine($"<p><strong>New Policy Term:</strong> {E(model.NewPolicyTerm)}</p>");
-                    sb.AppendLine($"<p><strong>Package:</strong> {E(model.PackagePolicy)}</p>");
-                    sb.AppendLine($"<p><strong>Effective Date (New Policy):</strong> {D(model.NewPolicyEffectiveDate)}</p>");
-                    sb.AppendLine($"<p><strong>Additional Carrier Questions:</strong> {E(model.AdditionalCarrierQuestions)}</p>");
-                    sb.AppendLine($"<p><strong>Paperless:</strong> {E(model.Paperless)}</p>");
-                    sb.AppendLine($"<p><strong>Multi-Policy Discount:</strong> {E(model.MultiPolicyDiscount)}</p>");
-                    sb.AppendLine("<hr/>");
-                    return sb.ToString();
-                }
-
-                string BuildDrivers()
-                {
-                    var sb = new StringBuilder();
-                    sb.AppendLine("<h3>Section 2 — Drivers</h3>");
-
-                    for (int i = 0; i < model.Drivers.Count; i++)
-                    {
-                        var d = model.Drivers[i];
-                        sb.AppendLine($"<h4>{(i == 0 ? "Primary Insured" : $"Additional Driver {i}")}</h4>");
-                        sb.AppendLine($"<p><strong>Name:</strong> {E(d.FirstName)} {E(d.LastName)}</p>");
-                        sb.AppendLine($"<p><strong>DOB:</strong> {D(d.DOB)}</p>");
-                        sb.AppendLine($"<p><strong>Gender:</strong> {E(d.Gender)} &nbsp;&nbsp; <strong>Marital Status:</strong> {E(d.MaritalStatus)}</p>");
-                        sb.AppendLine($"<p><strong>Occupation Industry:</strong> {E(d.OccupationIndustry)} &nbsp;&nbsp; <strong>Occupation Title:</strong> {E(d.OccupationTitle)}</p>");
-                        sb.AppendLine($"<p><strong>DL Status:</strong> {E(d.DLStatus)} &nbsp;&nbsp; <strong>Age Licensed:</strong> {E(d.AgeLicensed)}</p>");
-                        sb.AppendLine($"<p><strong>DL #:</strong> {E(d.DLNumber)} &nbsp;&nbsp; <strong>DL State:</strong> {E(d.DLState)}</p>");
-                        sb.AppendLine($"<p><strong>Defensive Driver Course Date:</strong> {D(d.DefensiveDriverCourseDate)}</p>");
-                        sb.AppendLine($"<p><strong>License Suspended/Revoked (Last 5 years):</strong> {E(d.LicenseSuspendedLast5Years)}</p>");
-                        sb.AppendLine($"<p><strong>Driver Education:</strong> {E(d.DriverEducation)} &nbsp;&nbsp; <strong>Mature Driver:</strong> {E(d.MatureDriver)} &nbsp;&nbsp; <strong>Good Driver:</strong> {E(d.GoodDriver)}</p>");
-                        sb.AppendLine("<p><strong>Carrier Questions</strong></p>");
-                        sb.AppendLine($"<p><strong>Telematics Discount:</strong> {E(d.TelematicsDiscount)} &nbsp;&nbsp; <strong>Military Service:</strong> {E(d.MilitaryService)}</p>");
-                        sb.AppendLine("<hr/>");
-                    }
-
-                    return sb.ToString();
-                }
-
-                string BuildVehicles()
-                {
-                    var sb = new StringBuilder();
-                    sb.AppendLine("<h3>Section 3 — Vehicles</h3>");
-
-                    for (int i = 0; i < model.Vehicles.Count; i++)
-                    {
-                        var v = model.Vehicles[i];
-                        sb.AppendLine($"<h4>{(i == 0 ? "Primary Vehicle" : $"Additional Vehicle {i}")}</h4>");
-                        sb.AppendLine($"<p><strong>VIN:</strong> {E(v.VIN)}</p>");
-                        sb.AppendLine($"<p><strong>Year/Make/Model:</strong> {E(v.Year)} {E(v.Make)} {E(v.Model)}</p>");
-                        sb.AppendLine($"<p><strong>Purchase Date:</strong> {D(v.PurchaseDate)}</p>");
-
-                        sb.AppendLine($"<p><strong>Passive Restraints:</strong> {E(v.PassiveRestraints)}</p>");
-                        sb.AppendLine($"<p><strong>Anti-Theft:</strong> {E(v.AntiTheft)}</p>");
-
-                        // ✅ MISSING FIELDS (NOW INCLUDED)
-                        sb.AppendLine($"<p><strong>Anti-Lock Brakes:</strong> {E(v.AntiLockBrakes)}</p>");
-                        sb.AppendLine($"<p><strong>Daytime Running Lights:</strong> {E(v.DaytimeRunningLights)}</p>");
-                        sb.AppendLine($"<p><strong>Cost New Value:</strong> {E(v.CostNewValue)}</p>");
-                        sb.AppendLine($"<p><strong>Modification Value:</strong> {E(v.ModificationValue)}</p>");
-                        sb.AppendLine($"<p><strong>Was New:</strong> {E(v.WasNew)}</p>");
-                        sb.AppendLine($"<p><strong>Carpool:</strong> {E(v.Carpool)}</p>");
-                        sb.AppendLine($"<p><strong>Telematics:</strong> {E(v.Telematics)}</p>");
-                        sb.AppendLine($"<p><strong>TNC:</strong> {E(v.TNC)}</p>");
-
-                        sb.AppendLine($"<p><strong>Vehicle Use:</strong> {E(v.Use)} &nbsp;&nbsp; <strong>Annual Miles:</strong> {E(v.AnnualMiles)}</p>");
-                        sb.AppendLine($"<p><strong>Performance:</strong> {E(v.Performance)}</p>");
-                        sb.AppendLine($"<p><strong>Ownership Type:</strong> {E(v.OwnershipType)}</p>");
-                        sb.AppendLine($"<p><strong>Assigned Driver (100%):</strong> {E(DriverNameByIndex(v.AssignedDriverIndex))}</p>");
-                        sb.AppendLine("<hr/>");
-                    }
-
-                    return sb.ToString();
-                }
-
-                string BuildIncidents()
-                {
-                    var sb = new StringBuilder();
-                    sb.AppendLine("<h3>Section 4 — Incidents</h3>");
-
-                    if (model.Accidents.Any())
-                    {
-                        sb.AppendLine("<h4>Accidents</h4>");
-                        foreach (var a in model.Accidents)
-                        {
-                            sb.AppendLine($"<p><strong>Date:</strong> {D(a.Date)} &nbsp;&nbsp; <strong>Driver:</strong> {E(DriverNameByIndex(a.DriverIndex))}</p>");
-                            sb.AppendLine($"<p><strong>Description:</strong> {E(a.Description)}</p>");
-                            sb.AppendLine($"<p><strong>Property Damage:</strong> {E(a.PropertyDamageAmount)} &nbsp;&nbsp; <strong>Bodily Injury:</strong> {E(a.BodilyInjuryAmount)}</p>");
-                            sb.AppendLine($"<p><strong>Collision:</strong> {E(a.CollisionAmount)} &nbsp;&nbsp; <strong>Medical Payment:</strong> {E(a.MedicalPaymentAmount)}</p>");
-
-                            // ✅ FIX: Build the vehicle text, then encode ONCE
-                            string vehicleText = a.VehicleIndex.HasValue
-                                ? VehicleLabelByIndex(a.VehicleIndex)
-                                : (a.VehicleInvolvedText ?? "");
-
-                            sb.AppendLine($"<p><strong>Vehicle Involved:</strong> {E(vehicleText)}</p><hr/>");
-                        }
-                    }
-
-                    if (model.Violations.Any())
-                    {
-                        sb.AppendLine("<h4>Violations</h4>");
-                        foreach (var v in model.Violations)
-                        {
-                            sb.AppendLine($"<p><strong>Date:</strong> {D(v.Date)} &nbsp;&nbsp; <strong>Driver:</strong> {E(DriverNameByIndex(v.DriverIndex))}</p>");
-                            sb.AppendLine($"<p><strong>Description:</strong> {E(v.Description)}</p><hr/>");
-                        }
-                    }
-
-                    if (model.CompLosses.Any())
-                    {
-                        sb.AppendLine("<h4>Comp Losses</h4>");
-                        foreach (var c in model.CompLosses)
-                        {
-                            sb.AppendLine($"<p><strong>Date:</strong> {D(c.Date)} &nbsp;&nbsp; <strong>Driver:</strong> {E(DriverNameByIndex(c.DriverIndex))}</p>");
-                            sb.AppendLine($"<p><strong>Loss Description:</strong> {E(c.LossDescription)}</p><hr/>");
-                        }
-                    }
-
-                    return sb.ToString();
-                }
-
-                string BuildCoverage()
-                {
-                    var sb = new StringBuilder();
-                    sb.AppendLine("<h3>Section 5 — General Coverage</h3>");
-                    sb.AppendLine($"<p><strong>Bodily Injury:</strong> {E(model.BodilyInjury)}</p>");
-                    sb.AppendLine($"<p><strong>Uninsured Motorist:</strong> {E(model.UninsuredMotorist)}</p>");
-                    sb.AppendLine($"<p><strong>Underinsured Motorist:</strong> {E(model.UnderinsuredMotorist)}</p>");
-                    sb.AppendLine($"<p><strong>Medical Payments:</strong> {E(model.MedicalPayments)}</p>");
-                    sb.AppendLine($"<p><strong>Residence is:</strong> {E(model.ResidenceType)}</p>");
-                    sb.AppendLine("<hr/>");
-
-                    sb.AppendLine("<h3>Vehicle Coverages</h3>");
-                    for (int i = 0; i < model.Vehicles.Count; i++)
-                    {
-                        var v = model.Vehicles[i];
-                        sb.AppendLine($"<h4>Vehicle {i + 1} — {E(v.Year)} {E(v.Make)} {E(v.Model)} (VIN: {E(v.VIN)})</h4>");
-                        sb.AppendLine($"<p><strong>Comprehensive:</strong> {E(v.Comprehensive)}</p>");
-                        sb.AppendLine($"<p><strong>Collision:</strong> {E(v.Collision)}</p>");
-                        sb.AppendLine($"<p><strong>Towing & Labor:</strong> {E(v.Towing)}</p>");
-                        sb.AppendLine($"<p><strong>Rental Expense:</strong> {E(v.Rental)}</p>");
-                        sb.AppendLine($"<p><strong>Loan/Lease Coverage:</strong> {E(v.LoanLease)}</p>");
-                        sb.AppendLine($"<p><strong>Liability (Yes/No):</strong> {E(v.Liability)}</p>");
-
-                        sb.AppendLine("<p><strong>Carrier Questions</strong></p>");
-                        sb.AppendLine($"<p><strong>Special Equipment:</strong> {E(v.SpecialEquipment)}</p>");
-                        sb.AppendLine($"<p><strong>Branded Title:</strong> {E(v.BrandedTitle)}</p>");
-                        sb.AppendLine($"<p><strong>Custom/Additional Equipment:</strong> {E(v.CustomEquipment)}</p>");
-                        sb.AppendLine("<hr/>");
-                    }
-
-                    return sb.ToString();
-                }
-
-                var primary = model.Drivers.FirstOrDefault();
-                var subjectName = primary == null ? "Unknown" : $"{primary.FirstName} {primary.LastName}".Trim();
-
-                var emailBody = $@"
-<h2>AUTO INSURANCE — New Quote Request</h2>
-{BuildApplicantInfo()}
-{BuildAddress()}
-{BuildContactInfo()}
-{BuildPolicy()}
-{BuildDrivers()}
-{BuildVehicles()}
-{BuildIncidents()}
-{BuildCoverage()}
-<h3>Authorization</h3>
-<p><strong>Acknowledged:</strong> {(model.AcknowledgedDisclaimer ? "Yes" : "No")}</p>
-";
-
-                // ===================== APPLY HEADING STYLING =====================
-                string headingColor = "#cca134f1";
-                string headingFontSize = "1.2em";
-                string headingPadding = "4px 6px";
-
-                string ApplyHeadingHighlighting(string html)
-                {
-                    if (string.IsNullOrWhiteSpace(html)) return html;
-
-                    return System.Text.RegularExpressions.Regex.Replace(
-                        html,
-                        @"<\s*(h[34])\s*>(.*?)<\s*/\s*\1\s*>",
-                        m =>
-                        {
-                            var tag = m.Groups[1].Value;
-                            var content = m.Groups[2].Value.Trim();
-                            return $"<{tag} style=\"background-color:{headingColor}; font-size:{headingFontSize}; padding:{headingPadding};\">{content}</{tag}>";
-                        },
-                        System.Text.RegularExpressions.RegexOptions.Singleline |
-                        System.Text.RegularExpressions.RegexOptions.IgnoreCase
-                    );
-                }
-
-                emailBody = ApplyHeadingHighlighting(emailBody);
-
-                var message = new Message
-                {
-                    Subject = $"[AUTO] Quote Request | {subjectName}",
-                    Body = new ItemBody { ContentType = BodyType.Html, Content = emailBody },
-                    ToRecipients = new List<Recipient>
-                    {
-                        new Recipient { EmailAddress = new EmailAddress { Address = recipientEmail } }
-                    }
-                };
-
-                await graphClient.Users[senderEmail].SendMail.PostAsync(
-                    new SendMailPostRequestBody { Message = message, SaveToSentItems = true }
-                );
-
-                TempData["QuoteType"] = "Auto";
-                return RedirectToAction("Index", "ThankYou");
-            }
-            catch (Exception ex)
+            bool hasPrev = !string.IsNullOrWhiteSpace(model.PreviousAddress) ||
+                           !string.IsNullOrWhiteSpace(model.PreviousCity) ||
+                           !string.IsNullOrWhiteSpace(model.PreviousState);
+            if (hasPrev)
             {
-                ModelState.AddModelError("", $"Failed to send lead: {ex.Message}");
-                EnsureIndexZero(model);
-                ViewData["StartStep"] = 5;
-                return View("~/Views/Quote/Auto.cshtml", model);
+                rows.Section("Previous Address")
+                    .Row("Address",       model.PreviousAddress)
+                    .Row("Unit",          model.PreviousUnit)
+                    .Row("City",          model.PreviousCity)
+                    .Row("State",         model.PreviousState)
+                    .Row("Country",       model.PreviousCountry)
+                    .Row("Postal Code",   model.PreviousPostalCode)
+                    .Row("Years at Address", model.PreviousYearsAtAddress);
             }
+
+            rows.Section("Contact Info")
+                .Row("Phone Type",               model.PhoneType)
+                .Row("Phone Number",             model.PhoneNumber)
+                .Row("Email",                    model.EmailAddress)
+                .Row("Preferred Contact Method", model.PreferredContactMethod)
+                .Row("Best Time to Contact",     model.BestTimeToContact)
+                .Section("Policy Info")
+                .Row("Prior Carrier",             model.PriorCarrier)
+                .Row("Prior Policy Expiration",   Nd(model.PriorPolicyExpirationDate))
+                .Row("Prior Liability Limits",    model.PriorLiabilityLimits)
+                .Row("Prior Policy Term",         model.PriorPolicyTerm)
+                .Row("Prior Policy Premium",      model.PriorPolicyPremium)
+                .Row("Years / Months with Carrier", $"{Nv(model.YearsWithPriorCarrier)} yrs / {Nv(model.MonthsWithPriorCarrier)} mo")
+                .Row("Continuous Coverage",       $"{Nv(model.YearsContinuousCoverage)} yrs / {Nv(model.MonthsContinuousCoverage)} mo")
+                .Row("Credit Reports Authorized", model.CreditCheckAuthorized)
+                .Row("New Policy Term",           model.NewPolicyTerm)
+                .Row("Package Policy",            model.PackagePolicy)
+                .Row("New Policy Effective Date", Nd(model.NewPolicyEffectiveDate))
+                .Row("Paperless",                 model.Paperless)
+                .Row("Multi-Policy Discount",     model.MultiPolicyDiscount);
+
+            rows.Section("Drivers");
+            for (int i = 0; i < model.Drivers.Count; i++)
+            {
+                var d = model.Drivers[i];
+                rows.Section(i == 0 ? "Driver 1 — Primary Insured" : $"Driver {i + 1}")
+                    .Row("Name",             $"{d.FirstName} {d.LastName}".Trim())
+                    .Row("Date of Birth",    Nd(d.DOB))
+                    .Row("Gender",           d.Gender)
+                    .Row("Marital Status",   d.MaritalStatus)
+                    .Row("Occupation",       $"{d.OccupationIndustry} / {d.OccupationTitle}".Trim(' ', '/'))
+                    .Row("DL Status",        d.DLStatus)
+                    .Row("Age Licensed",     d.AgeLicensed)
+                    .Row("DL # / State",     $"{d.DLNumber} / {d.DLState}".Trim(' ', '/'))
+                    .Row("Defensive Driver Course", Nd(d.DefensiveDriverCourseDate))
+                    .Row("License Suspended (5yr)", d.LicenseSuspendedLast5Years)
+                    .Row("Driver Education", d.DriverEducation)
+                    .Row("Mature Driver",    d.MatureDriver)
+                    .Row("Good Driver",      d.GoodDriver)
+                    .Row("Telematics Discount", d.TelematicsDiscount)
+                    .Row("Military Service", d.MilitaryService);
+            }
+
+            rows.Section("Vehicles");
+            for (int i = 0; i < model.Vehicles.Count; i++)
+            {
+                var v = model.Vehicles[i];
+                rows.Section(i == 0 ? "Vehicle 1 — Primary" : $"Vehicle {i + 1}")
+                    .Row("Year / Make / Model", $"{v.Year} {v.Make} {v.Model}".Trim())
+                    .Row("VIN",                 v.VIN)
+                    .Row("Purchase Date",       Nd(v.PurchaseDate))
+                    .Row("Vehicle Use",         v.Use)
+                    .Row("Annual Miles",        v.AnnualMiles)
+                    .Row("Passive Restraints",  v.PassiveRestraints)
+                    .Row("Anti-Theft",          v.AntiTheft)
+                    .Row("Anti-Lock Brakes",    v.AntiLockBrakes)
+                    .Row("Daytime Running Lights", v.DaytimeRunningLights)
+                    .Row("Cost New Value",      v.CostNewValue)
+                    .Row("Modification Value",  v.ModificationValue)
+                    .Row("Was New",             v.WasNew)
+                    .Row("Carpool",             v.Carpool)
+                    .Row("Telematics",          v.Telematics)
+                    .Row("TNC",                 v.TNC)
+                    .Row("Performance",         v.Performance)
+                    .Row("Ownership Type",      v.OwnershipType)
+                    .Row("Assigned Driver",     DriverNameByIndex(v.AssignedDriverIndex))
+                    .Row("Comprehensive",       v.Comprehensive)
+                    .Row("Collision",           v.Collision)
+                    .Row("Towing & Labor",      v.Towing)
+                    .Row("Rental Expense",      v.Rental)
+                    .Row("Loan/Lease Coverage", v.LoanLease)
+                    .Row("Liability",           v.Liability)
+                    .Row("Special Equipment",   v.SpecialEquipment)
+                    .Row("Branded Title",       v.BrandedTitle)
+                    .Row("Custom Equipment",    v.CustomEquipment);
+            }
+
+            if (model.Accidents.Any())
+            {
+                rows.Section("Accidents");
+                foreach (var a in model.Accidents)
+                {
+                    string veh = a.VehicleIndex.HasValue ? VehicleLabelByIndex(a.VehicleIndex) : (a.VehicleInvolvedText ?? "");
+                    rows.Row("Date / Driver", $"{Nd(a.Date)} / {DriverNameByIndex(a.DriverIndex)}")
+                        .Row("Description",   a.Description)
+                        .Row("Property Damage / Bodily Injury", $"{Nv(a.PropertyDamageAmount)} / {Nv(a.BodilyInjuryAmount)}")
+                        .Row("Collision / Medical", $"{Nv(a.CollisionAmount)} / {Nv(a.MedicalPaymentAmount)}")
+                        .Row("Vehicle Involved", veh);
+                }
+            }
+
+            if (model.Violations.Any())
+            {
+                rows.Section("Violations");
+                foreach (var v in model.Violations)
+                    rows.Row("Date / Driver", $"{Nd(v.Date)} / {DriverNameByIndex(v.DriverIndex)}")
+                        .Row("Description", v.Description);
+            }
+
+            if (model.CompLosses.Any())
+            {
+                rows.Section("Comp Losses");
+                foreach (var c in model.CompLosses)
+                    rows.Row("Date / Driver", $"{Nd(c.Date)} / {DriverNameByIndex(c.DriverIndex)}")
+                        .Row("Description", c.LossDescription);
+            }
+
+            rows.Section("General Coverage")
+                .Row("Bodily Injury",          model.BodilyInjury)
+                .Row("Uninsured Motorist",     model.UninsuredMotorist)
+                .Row("Underinsured Motorist",  model.UnderinsuredMotorist)
+                .Row("Medical Payments",       model.MedicalPayments)
+                .Row("Residence Type",         model.ResidenceType)
+                .Section("Authorization")
+                .Row("Disclaimer Acknowledged", LeadEmailTemplate.Bool(model.AcknowledgedDisclaimer));
+
+            var emailBody = LeadEmailTemplate.Wrap("New Quote — Auto Insurance", rows.ToString());
+
+// ── 2. Send email through unified sender ───────────────────────────────
+            var emailSent = await _emailSender.TrySendAsync(
+                leadRecipientEmail,
+                $"[AUTO] Quote Request | {subjectName}",
+                emailBody,
+                saveToSentItems: true,
+                cancellationToken: HttpContext?.RequestAborted ?? CancellationToken.None);
+
+            if (emailSent)
+            {
+                _logger.LogInformation(
+                    "AutoQuote [{CorrelationId}]: email sent to {Recipient} for lead {LeadId}",
+                    correlationId, leadRecipientEmail, lead.LeadId);
+            }
+            else
+            {
+                _logger.LogError(
+                    "AutoQuote [{CorrelationId}]: email failed to {Recipient} for lead {LeadId} - lead is saved, continuing",
+                    correlationId, leadRecipientEmail, lead.LeadId);
+            }
+
+            // ── 3. Write analytics event ─────────────────────────────────────────
+            await TryWriteLeadEventAsync(
+                "website_lead_submitted",
+                new { LeadId = lead.LeadId, CorrelationId = correlationId },
+                lead.CreatedUtc);
+
+            TempData["QuoteType"] = "Auto";
+            TempData["MetaLeadEventId"] = metaLeadEventId;
+            TempData["MetaLeadLeadId"] = lead.LeadId.ToString("D");
+            return RedirectToAction("Index", "ThankYou");
+        }
+
+        private async Task<(string RecipientEmail, Guid? AgentProfileId, string? AgentSlug, bool IsFounderPath)> ResolveLeadContextAsync()
+        {
+            var slug = ResolveExplicitAgentSlugFromRequest();
+
+            if (!string.IsNullOrWhiteSpace(slug))
+            {
+                var bySlug = await _resolver.ResolveBySlugAsync(slug, HttpContext?.RequestAborted ?? CancellationToken.None);
+                if (bySlug.Found && bySlug.Profile != null && !string.IsNullOrWhiteSpace(bySlug.Profile.AgentUpn))
+                    return (bySlug.Profile.AgentUpn.Trim(), bySlug.Profile.Id, bySlug.CanonicalSlug, false);
+            }
+
+            var isFounderPath = HttpContext?.Items["IsFounderPath"] as bool? == true;
+            if (HttpContext?.Items.TryGetValue("TrackingProfile", out var trackingProfileObj) == true &&
+                trackingProfileObj is AgentTrackingProfile trackingProfile)
+            {
+                var trackingSlug = HttpContext?.Items["TrackingSlug"] as string;
+                var trackingRecipient = !string.IsNullOrWhiteSpace(trackingProfile.AgentUpn)
+                    ? trackingProfile.AgentUpn.Trim()
+                    : recipientEmail;
+
+                return (
+                    isFounderPath ? recipientEmail : trackingRecipient,
+                    trackingProfile.Id,
+                    string.IsNullOrWhiteSpace(trackingSlug) ? trackingProfile.Slug : trackingSlug,
+                    isFounderPath);
+            }
+
+            return (recipientEmail, null, null, isFounderPath);
+        }
+
+        private static string? ExtractSlugFromPath(string? pathOrUrl)
+        {
+            if (string.IsNullOrWhiteSpace(pathOrUrl)) return null;
+
+            var value = pathOrUrl.Trim();
+            if (Uri.TryCreate(value, UriKind.Absolute, out var uri))
+            {
+                value = uri.AbsolutePath;
+            }
+
+            var segments = value.Split('/', StringSplitOptions.RemoveEmptyEntries);
+            if (segments.Length >= 2 && string.Equals(segments[0], "a", StringComparison.OrdinalIgnoreCase))
+            {
+                return segments[1];
+            }
+
+            return null;
+        }
+
+        private string? ResolveExplicitAgentSlugFromRequest()
+        {
+            var formSlug = Request?.Form["AgentSlug"].ToString();
+            if (!string.IsNullOrWhiteSpace(formSlug))
+                return formSlug.Trim();
+
+            return ExtractSlugFromPath(Request?.Path.Value)
+                ?? ExtractSlugFromPath(Request?.Headers["Referer"].ToString());
         }
 
         private static void NormalizeLists(AutoQuoteFormModel model)

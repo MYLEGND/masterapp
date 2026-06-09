@@ -9,7 +9,9 @@ namespace AgentPortal.Services;
 
 /// <summary>
 /// Ensures every authenticated agent has an AgentProfile record.
-/// Upserts on OID (AgentUserId) as the canonical key and keeps email/name in sync.
+/// Prefers OID (AgentUserId) lookups, but falls back to normalized email so the
+/// same person does not silently fork into duplicate profiles when identity keys
+/// drift across environments.
 /// </summary>
 public class AgentRegistryService
 {
@@ -22,6 +24,12 @@ public class AgentRegistryService
         _db = db;
         _logger = logger;
         _tracking = tracking;
+    }
+
+    private static string? NormalizeEmail(string? email)
+    {
+        var value = email?.Trim().ToLowerInvariant();
+        return string.IsNullOrWhiteSpace(value) ? null : value;
     }
 
     private static string? GetOid(ClaimsPrincipal user)
@@ -89,12 +97,36 @@ public class AgentRegistryService
         }
 
         var email = GetEmail(user) ?? string.Empty;
-        var emailNorm = !string.IsNullOrWhiteSpace(email) ? email.Trim().ToLowerInvariant() : null;
+        var emailNorm = NormalizeEmail(email);
         var displayName = BuildDisplayName(user);
+        var oidLower = oid.ToLowerInvariant();
 
         try
         {
-            var existing = await _db.AgentProfiles.FirstOrDefaultAsync(a => a.AgentUserId == oid, ct);
+            var existing = await _db.AgentProfiles.FirstOrDefaultAsync(
+                a => a.AgentUserId == oid || (a.AgentUserId != null && a.AgentUserId.ToLower() == oidLower),
+                ct);
+
+            List<Domain.Entities.AgentProfile> emailMatches = new();
+            if (emailNorm != null)
+            {
+                emailMatches = await _db.AgentProfiles
+                    .Where(a => a.NormalizedEmail == emailNorm || (a.NormalizedEmail == null && a.AgentUpn != null && a.AgentUpn.ToLower() == emailNorm))
+                    .OrderBy(a => a.CreatedUtc)
+                    .ThenBy(a => a.Id)
+                    .ToListAsync(ct);
+            }
+
+            if (existing == null && emailMatches.Count > 0)
+            {
+                existing = PickPreferredProfile(emailMatches);
+                _logger.LogWarning(
+                    "AgentRegistry: reusing AgentProfile {ProfileId} for oid {Oid} via normalized email {EmailNorm} to avoid creating a duplicate profile.",
+                    existing.Id,
+                    oid,
+                    emailNorm);
+            }
+
             if (existing == null)
             {
                 _db.AgentProfiles.Add(new Domain.Entities.AgentProfile
@@ -108,11 +140,48 @@ public class AgentRegistryService
             }
             else
             {
+                var changed = false;
+
+                if (emailMatches.Count > 1)
+                {
+                    _logger.LogWarning(
+                        "AgentRegistry: found {MatchCount} AgentProfiles for normalized email {EmailNorm}; backfilling missing data into profile {ProfileId}.",
+                        emailMatches.Count,
+                        emailNorm,
+                        existing.Id);
+
+                    foreach (var sibling in emailMatches
+                        .Where(profile => profile.Id != existing.Id)
+                        .OrderByDescending(GetProfileCompletenessScore)
+                        .ThenBy(profile => profile.CreatedUtc)
+                        .ThenBy(profile => profile.Id))
+                    {
+                        changed |= CopyMissingProfileData(existing, sibling);
+                    }
+                }
+
                 // Keep email/name fresh but do not overwrite with empty values.
-                if (!string.IsNullOrWhiteSpace(email)) existing.AgentUpn = email;
-                if (emailNorm != null) existing.NormalizedEmail = emailNorm;
-                if (!string.IsNullOrWhiteSpace(displayName)) existing.FullName = displayName;
+                if (!string.IsNullOrWhiteSpace(email) && !string.Equals(existing.AgentUpn, email, StringComparison.OrdinalIgnoreCase))
+                {
+                    existing.AgentUpn = email;
+                    changed = true;
+                }
+                if (emailNorm != null && !string.Equals(existing.NormalizedEmail, emailNorm, StringComparison.Ordinal))
+                {
+                    existing.NormalizedEmail = emailNorm;
+                    changed = true;
+                }
+                var hasSpecificDisplayName = !string.IsNullOrWhiteSpace(displayName) && !string.Equals(displayName, "Agent", StringComparison.Ordinal);
+                if (hasSpecificDisplayName && !string.Equals(existing.FullName, displayName, StringComparison.Ordinal))
+                {
+                    existing.FullName = displayName;
+                    changed = true;
+                }
                 existing.UpdatedUtc = DateTime.UtcNow;
+                if (!changed && existing.CreatedUtc == default)
+                {
+                    existing.CreatedUtc = DateTime.UtcNow;
+                }
             }
 
             await _db.SaveChangesAsync(ct);
@@ -131,5 +200,135 @@ public class AgentRegistryService
             _logger.LogError(ex, "AgentRegistry: failed to upsert AgentProfile for oid {Oid}", oid);
             throw;
         }
+    }
+
+    private static Domain.Entities.AgentProfile PickPreferredProfile(IEnumerable<Domain.Entities.AgentProfile> matches)
+    {
+        return matches
+            .OrderByDescending(GetProfileCompletenessScore)
+            .ThenBy(profile => profile.CreatedUtc)
+            .ThenBy(profile => profile.Id)
+            .First();
+    }
+
+    private static int GetProfileCompletenessScore(Domain.Entities.AgentProfile profile)
+    {
+        var score = 0;
+        if (!string.IsNullOrWhiteSpace(profile.NormalizedEmail)) score += 2;
+        if (!string.IsNullOrWhiteSpace(profile.FullName)) score += 1;
+        if (!string.IsNullOrWhiteSpace(profile.Title)) score += 1;
+        if (!string.IsNullOrWhiteSpace(profile.Phone)) score += 1;
+        if (!string.IsNullOrWhiteSpace(profile.ShortBio)) score += 1;
+        if (!string.IsNullOrWhiteSpace(profile.Npn)) score += 1;
+        if (!string.IsNullOrWhiteSpace(profile.MetaPixelId)) score += 1;
+        if (!string.IsNullOrWhiteSpace(profile.MetaCapiAccessToken)) score += 1;
+        if (!string.IsNullOrWhiteSpace(profile.MetaTestEventCode)) score += 1;
+        if (profile.BookingEnabled.HasValue) score += 1;
+        if (!string.IsNullOrWhiteSpace(profile.MicrosoftBookingsEmbedUrl)) score += 2;
+        if (!string.IsNullOrWhiteSpace(profile.FallbackBookingUrl)) score += 1;
+        if (!string.IsNullOrWhiteSpace(profile.BookingPageIdOrMailbox)) score += 1;
+        if (!string.IsNullOrWhiteSpace(profile.CalendarUserId)) score += 1;
+        if (!string.IsNullOrWhiteSpace(profile.CalendarEmail)) score += 1;
+        if (profile.PreferModalOnMobile.HasValue) score += 1;
+        if (profile.DisplayOrder.HasValue) score += 1;
+        return score;
+    }
+
+    private static bool CopyMissingProfileData(Domain.Entities.AgentProfile target, Domain.Entities.AgentProfile source)
+    {
+        var changed = false;
+
+        if (string.IsNullOrWhiteSpace(target.AgentUpn) && !string.IsNullOrWhiteSpace(source.AgentUpn))
+        {
+            target.AgentUpn = source.AgentUpn;
+            changed = true;
+        }
+        if (string.IsNullOrWhiteSpace(target.NormalizedEmail) && !string.IsNullOrWhiteSpace(source.NormalizedEmail))
+        {
+            target.NormalizedEmail = source.NormalizedEmail;
+            changed = true;
+        }
+        if (string.IsNullOrWhiteSpace(target.FullName) && !string.IsNullOrWhiteSpace(source.FullName))
+        {
+            target.FullName = source.FullName;
+            changed = true;
+        }
+        if (string.IsNullOrWhiteSpace(target.Title) && !string.IsNullOrWhiteSpace(source.Title))
+        {
+            target.Title = source.Title;
+            changed = true;
+        }
+        if (string.IsNullOrWhiteSpace(target.Npn) && !string.IsNullOrWhiteSpace(source.Npn))
+        {
+            target.Npn = source.Npn;
+            changed = true;
+        }
+        if (string.IsNullOrWhiteSpace(target.Phone) && !string.IsNullOrWhiteSpace(source.Phone))
+        {
+            target.Phone = source.Phone;
+            changed = true;
+        }
+        if (string.IsNullOrWhiteSpace(target.ShortBio) && !string.IsNullOrWhiteSpace(source.ShortBio))
+        {
+            target.ShortBio = source.ShortBio;
+            changed = true;
+        }
+        if (string.IsNullOrWhiteSpace(target.MetaPixelId) && !string.IsNullOrWhiteSpace(source.MetaPixelId))
+        {
+            target.MetaPixelId = source.MetaPixelId;
+            changed = true;
+        }
+        if (string.IsNullOrWhiteSpace(target.MetaCapiAccessToken) && !string.IsNullOrWhiteSpace(source.MetaCapiAccessToken))
+        {
+            target.MetaCapiAccessToken = source.MetaCapiAccessToken;
+            changed = true;
+        }
+        if (string.IsNullOrWhiteSpace(target.MetaTestEventCode) && !string.IsNullOrWhiteSpace(source.MetaTestEventCode))
+        {
+            target.MetaTestEventCode = source.MetaTestEventCode;
+            changed = true;
+        }
+        if (!target.BookingEnabled.HasValue && source.BookingEnabled.HasValue)
+        {
+            target.BookingEnabled = source.BookingEnabled;
+            changed = true;
+        }
+        if (string.IsNullOrWhiteSpace(target.MicrosoftBookingsEmbedUrl) && !string.IsNullOrWhiteSpace(source.MicrosoftBookingsEmbedUrl))
+        {
+            target.MicrosoftBookingsEmbedUrl = source.MicrosoftBookingsEmbedUrl;
+            changed = true;
+        }
+        if (string.IsNullOrWhiteSpace(target.FallbackBookingUrl) && !string.IsNullOrWhiteSpace(source.FallbackBookingUrl))
+        {
+            target.FallbackBookingUrl = source.FallbackBookingUrl;
+            changed = true;
+        }
+        if (string.IsNullOrWhiteSpace(target.BookingPageIdOrMailbox) && !string.IsNullOrWhiteSpace(source.BookingPageIdOrMailbox))
+        {
+            target.BookingPageIdOrMailbox = source.BookingPageIdOrMailbox;
+            changed = true;
+        }
+        if (string.IsNullOrWhiteSpace(target.CalendarUserId) && !string.IsNullOrWhiteSpace(source.CalendarUserId))
+        {
+            target.CalendarUserId = source.CalendarUserId;
+            changed = true;
+        }
+        if (string.IsNullOrWhiteSpace(target.CalendarEmail) && !string.IsNullOrWhiteSpace(source.CalendarEmail))
+        {
+            target.CalendarEmail = source.CalendarEmail;
+            changed = true;
+        }
+        if (!target.PreferModalOnMobile.HasValue && source.PreferModalOnMobile.HasValue)
+        {
+            target.PreferModalOnMobile = source.PreferModalOnMobile;
+            changed = true;
+        }
+        if (!target.DisplayOrder.HasValue && source.DisplayOrder.HasValue)
+        {
+            target.DisplayOrder = source.DisplayOrder;
+            changed = true;
+        }
+
+        return changed;
     }
 }

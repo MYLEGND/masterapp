@@ -4,6 +4,8 @@
     Layout = "~/Views/Shared/_Layout.cshtml";
 }
 
+<link rel="stylesheet" href="~/css/dashboard-carrier-settings.css" asp-append-version="true" />
+
 <div class="home-container">
 
     <!-- HERO -->
@@ -17,9 +19,23 @@
 
     <!-- SEARCH BAR -->
     <div class="text-center mb-5 search-container">
-        <input type="text" id="toolSearch" class="search-input" placeholder="Search all tools..." />
-        <button id="clearSearch" class="btn-clear-search">Clear Search</button>
-        <div id="autocompleteList" class="autocomplete-list"></div>
+        <div class="dashboard-search-shell">
+            <div class="search-input-wrap">
+                <input type="text" id="toolSearch" class="search-input" placeholder="Search all tools..." />
+                <div id="autocompleteList" class="autocomplete-list"></div>
+            </div>
+            <div class="search-actions">
+                <button id="clearSearch" class="btn-clear-search" type="button">Clear Search</button>
+                <button
+                    id="openCarrierSettings"
+                    class="btn-carrier-settings"
+                    type="button"
+                    data-bs-toggle="modal"
+                    data-bs-target="#carrierSettingsModal">
+                    Carrier Numbers &amp; Commissions
+                </button>
+            </div>
+        </div>
     </div>
 
     <!-- EXECUTION SNAPSHOT (Command Center) -->
@@ -170,10 +186,78 @@
       </div>
     </div>
 
+    <!-- Carrier Settings Modal -->
+    <div
+        class="modal fade legend-modal carrier-settings-modal"
+        id="carrierSettingsModal"
+        tabindex="-1"
+        aria-hidden="true"
+        data-load-url="@Url.Action("CarrierSettings", "Dashboard")"
+        data-save-url="@Url.Action("SaveCarrierSettings", "Dashboard")"
+        data-storage-scope="@((ViewData["CarrierSettingsStorageScope"] as string) ?? "dashboard")">
+      <div class="modal-dialog modal-xl modal-dialog-centered modal-dialog-scrollable">
+        <div class="modal-content">
+          <div class="modal-header">
+            <div>
+                <h5 class="modal-title mb-1">Agent / Entity Numbers &amp; Commission Settings</h5>
+                <div class="carrier-settings-statusbar">
+                    <span class="carrier-settings-count" id="carrierSettingsCount">Pulling live rows…</span>
+                    <span class="carrier-settings-status" id="carrierSettingsStatus">Ready</span>
+                </div>
+            </div>
+            <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+          </div>
+          <div class="modal-body" id="carrierSettingsBody">
+            <div class="carrier-settings-loading">
+                Pulling your current dashboard sections and saved carrier data…
+            </div>
+          </div>
+          <div class="modal-footer">
+            <div class="carrier-settings-footer-note me-auto">
+                Changes save automatically to the server for the current agent profile.
+            </div>
+            <button type="button" class="btn btn-outline-light" data-bs-dismiss="modal">Close</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
 <div id="dashboardAf" style="display:none;">
     @Html.AntiForgeryToken()
 </div>
 <div id="dashboardToast" class="toast" aria-live="polite">Done</div>
+
+@if (Model?.DerivedAnalytics != null)
+{
+    <div class="card mb-4" style="border:1px solid rgba(139,111,31,.35); background:#0f172a; color:#f8fafc;">
+        <div class="card-body">
+            <div class="d-flex justify-content-between align-items-center flex-wrap" style="gap:8px;">
+                <div>
+                    <div class="text-uppercase small" style="letter-spacing:.08em;color:#d5b24d;">Insights (read-only)</div>
+                    <div class="fw-bold">Conversion & Promise Fulfillment</div>
+                </div>
+                <div class="d-flex flex-wrap" style="gap:14px;">
+                    <div class="text-center">
+                        <div class="h4 mb-0">@($"{Model.DerivedAnalytics.LeadConversionRate:P1}")</div>
+                        <div class="text-muted small">Lead Conversion</div>
+                    </div>
+                    <div class="text-center">
+                        <div class="h4 mb-0">@($"{Model.DerivedAnalytics.CommitmentFulfillmentRate:P1}")</div>
+                        <div class="text-muted small">Commitments On-Time (30d)</div>
+                    </div>
+                    <div class="text-center">
+                        <div class="h5 mb-0">@Model.DerivedAnalytics.CommitmentsOpen30d</div>
+                        <div class="text-muted small">Open Commitments (30d)</div>
+                    </div>
+                    <div class="text-center">
+                        <div class="h5 mb-0">@Model.DerivedAnalytics.LeadCount</div>
+                        <div class="text-muted small">Total Leads</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+}
 
 <script src="~/js/legend-modal.js" asp-append-version="true"></script>
 <script>
@@ -274,10 +358,12 @@
             var lifeHealthTools = new[]
             {
                 new { Name = "Integrity Marketing", Url = "https://connect.integrity.com/agent/dashboard", Icon = "integrity.png", Desc = "LIFE INSURANCE QUOTE TOOL, CRM, LIFE LEADS MARKETPLACE" },
-                new { Name = "Guardian", Url = "https://login.glic.com/", Icon = "guardian.png", Desc = "Top 3 rated companies, Life Insurance, Disability Income" },
+                new { Name = "TransAmerica", Url = "https://secure.transamerica.com/login/sign-in/login.html", Icon = "transamerica.png", Desc = "Top 3 rated companies, Life Insurance, Disability Income" },
                 new { Name = "United of Omaha", Url = "https://producer.mutualofomaha.com/enterprise/myportal/home", Icon = "united.png", Desc = "Life, Disability, Final Expense" },
-                new { Name = "Americo", Url = "https://account.americoagent.com/Identity/Account/Login/?returnUrl=https%3a%2f%2fportal.americoagent.com%2f", Icon = "americo.png", Desc = "Life, Final Expense" },
+                new { Name = "Guardian", Url = "https://login.glic.com/", Icon = "guardian.png", Desc = "Top 3 rated companies, Life Insurance, Disability Income" },
                 new { Name = "Banner Life", Url = "https://partner.bannerlife.com/dashboard", Icon = "bannerlife.png", Desc = "Term Life, Univeral Life" },
+                new { Name = "Americo", Url = "https://account.americoagent.com/Identity/Account/Login/?returnUrl=https%3a%2f%2fportal.americoagent.com%2f", Icon = "americo.png", Desc = "Life, Final Expense" },
+                new { Name = "MassMutual", Url = "https://compass.massmutual.com/", Icon = "massmutual.png", Desc = "Top 3 rated companies, Life Insurance, Disability Income" },
                 new { Name = "Aetna", Url = "https://www.aetnaseniorproducts.com/ssibrokerwebaz/agent/home?channel=broker", Icon = "aetna.png", Desc = "Life, Final Expense, AD&D, Disability Income," },
                 new { Name = "Lincoln Financial", Url = "https://www.lincolnfinancial.com/secure/producer/newbusinesssubmissiontools", Icon = "lincoln.png", Desc = "Life, Disability, Fast Underwriting, Good Product Flexibility" },
             };
@@ -303,7 +389,6 @@
             var pinnacleLifeHealthTools = new[]
             {
                 new { Name = "Pinacle Life CRM", Url = "https://www.score.insure/login", Icon = "score.png", Desc = "LIFE INSURANCE QUOTE TOOL, CRM, LIFE LEADS MARKETPLACE" },
-                new { Name = "TransAmerica", Url = "https://secure.transamerica.com/login/sign-in/login.html", Icon = "transamerica.png", Desc = "Top 3 rated companies, Life Insurance, Disability Income" },
                 new { Name = "Mutual of Omaha", Url = "https://accounts.mutualofomaha.com/samlAuthnRequest", Icon = "mutualofomaha.png", Desc = "Life, Disability, Final Expense" },
                 new { Name = "Royal Neighbors Of America", Url = "https://royalneighborsims.b2clogin.com/royalneighborsims.onmicrosoft.com/b2c_1_rna.agentportal.unifiedlogin2/oauth2/v2.0/authorize?client_id=6c623a2c-9e5b-4fc5-9cbf-725453a605a4&scope=openid%20profile%20offline_access&redirect_uri=https%3A%2F%2Fagent.royalneighbors.org%2Fsecure&client-request-id=019cbc1e-ef05-7fe1-ae20-32683ff48f18&response_mode=fragment&client_info=1&nonce=019cbc1e-ef07-77e6-8482-f6221dff75cf&state=eyJpZCI6IjAxOWNiYzFlLWVmMDYtNzI3ZC05MGI4LTZhMjUxZGE5MjZmOSIsIm1ldGEiOnsiaW50ZXJhY3Rpb25UeXBlIjoicmVkaXJlY3QifX0%3D&x-client-SKU=msal.js.browser&x-client-VER=4.20.0&response_type=code&code_challenge=KsutDkEHbFdf410_KzREgsCPNPJg6rKLL0DcfvQ5JJY&code_challenge_method=S256", Icon = "royal.png", Desc = "Life, Final Expense" },
                 new { Name = "Liberty Bankers Life Ins Co", Url = "https://myportal.lbig.com/login.php", Icon = "liberty.png", Desc = "Term Life, Univeral Life" },
@@ -335,6 +420,7 @@
         @{
             var disabilityTools = new[]
             {
+                new { Name = "MassMutual", Url = "https://compass.massmutual.com/", Icon = "massmutual.png", Desc = "Top 3 rated companies, Life Insurance, Disability Income" },
                 new { Name = "Guardian", Url = "https://login.glic.com/", Icon = "guardian.png", Desc = "Top 3 rated companies, Life Insurance, Disability Income" },
                 new { Name = "Aetna", Url = "https://www.aetnaseniorproducts.com/ssibrokerwebaz/agent/home?channel=broker", Icon = "aetna.png", Desc = "Life, Final Expense, AD&D, Disability Income," },
             };
@@ -786,3 +872,4 @@ document.addEventListener('DOMContentLoaded', function () {
 });
 </script>
 <script src="~/js/dashboard-execution.js" asp-append-version="true"></script>
+<script src="~/js/dashboard-carrier-settings.js" asp-append-version="true"></script>

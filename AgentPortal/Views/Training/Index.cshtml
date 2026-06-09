@@ -3,76 +3,286 @@
     Layout = "~/Views/Shared/_Layout.cshtml";
 }
 
-<div class="training-page container mt-4 training-container">
-    <h1 class="mb-3">@ViewData["Title"]</h1>
-    <p class="lead mb-4">
-        Access training modules and learning materials on financial stewardship.
-    </p>
-
-    <div class="row">
-        <!-- LEFT: Dropdown browse -->
-        <div class="col-md-6 d-flex flex-column align-items-center mb-3">
-            <label for="training-dropdown" class="mb-2"><strong>Browse Trainings</strong></label>
-            <select id="training-dropdown" class="form-select" style="width:80%;">
-                <option value="">-- Select a training --</option>
-                @if (ViewBag.Trainings != null)
-                {
-                    foreach (var tr in ViewBag.Trainings)
-                    {
-                        <option value="@tr.File">@tr.Name</option>
-                    }
-                }
-            </select>
-        </div>
-
-        <!-- RIGHT: Search input -->
-        <div class="col-md-6 d-flex flex-column align-items-center mb-3">
-            <label for="training-search" class="mb-2"><strong>Search Trainings</strong></label>
-            <input type="text" id="training-search" class="form-control" placeholder="Search training..." style="width:80%;">
-            <ul id="training-search-results" class="list-group mt-2" style="width:80%; display:none;"></ul>
-        </div>
+<div class="training-page container py-4 training-container">
+    <div class="training-hero mb-4">
+        <div class="hero-kicker">Legend™ Education</div>
+        <h1 class="hero-title m-0">@ViewData["Title"]</h1>
+        <p class="hero-sub m-0 mt-2">Access training modules and learning materials on financial stewardship.</p>
     </div>
 
-    <!-- Embed container -->
-    <div id="training-embed" style="margin-top:2rem; display:none;">
-        <hr />
-        <h3 id="training-title"></h3>
-        <iframe id="training-frame" 
-                src="" 
-                width="100%" 
-                height="850px" 
-                style="border:1px solid #ccc;"
-                oncontextmenu="return false;">
-        </iframe>
+    <section class="controls-card mb-4">
+        <div class="controls-head">
+            <div>
+                <div class="info-kicker">Training Library</div>
+                <h2 class="info-title mb-1">Browse and preview trainings</h2>
+                <p class="info-copy mb-0">Select or search a training and preview it instantly below.</p>
+            </div>
+        </div>
+
+        <div class="row g-3 align-items-start">
+            <div class="col-12 col-lg-6">
+                <label for="training-dropdown" class="control-label">Browse Trainings</label>
+                <select id="training-dropdown" class="form-select premium-field">
+                    <option value="">Select a training…</option>
+                    @if (ViewBag.Trainings != null)
+                    {
+                        foreach (var tr in ViewBag.Trainings)
+                        {
+                            <option value="@tr.File">@tr.Name</option>
+                        }
+                    }
+                </select>
+                <div class="control-help">Choose a training to preview below.</div>
+            </div>
+
+            <div class="col-12 col-lg-6">
+                <label for="training-search" class="control-label">Search Trainings</label>
+                <div class="search-wrap">
+                    <span class="search-icon">⌕</span>
+                    <input type="text" id="training-search" class="form-control premium-field premium-input" placeholder="Search training...">
+                </div>
+                <ul id="training-search-results" class="search-results" style="display:none;"></ul>
+                <div class="control-help">Type to filter trainings instantly.</div>
+            </div>
+        </div>
+    </section>
+
+    <div id="training-empty" class="empty-state mb-4">
+        <div class="empty-chip">Preview</div>
+        <div class="empty-title">Select a training to preview it here</div>
+        <div class="empty-text">Use browse or search above. Supported files open directly in this view.</div>
+    </div>
+
+    <div id="training-embed" class="preview-shell mb-4" style="display:none;">
+        <div class="preview-head">
+            <h3 id="training-title" class="preview-title m-0"></h3>
+        </div>
+        <div class="preview-frame">
+            <iframe id="training-frame"
+                    src=""
+                    width="100%"
+                    height="850"
+                    class="training-frame"
+                    oncontextmenu="return false;">
+            </iframe>
+        </div>
     </div>
 </div>
 
 <style>
-    .training-container {
-        padding-top: 2rem;
-        padding-bottom: 3rem;
+    :root{
+        --gold:#b4891f;
+        --gold2:#b4891f;
+        --gold3:#b4891f;
+        --line:rgba(201,155,54,.44);
+        --ink:#e9f0ff;
+        --muted:rgba(226,236,255,.82);
+        --bg:#091427;
+        --shadow:0 24px 58px rgba(3,8,18,.45);
+        --r18:18px;
     }
-    .training-page h1 {
-        font-weight: 700;
-        border-bottom: 2px solid #a68023;
-        padding-bottom: 0.5rem;
-        color: #a68023;
+
+    .training-page{
+        background:
+            radial-gradient(1200px 420px at 0% 0%, rgba(201,155,54,.12), transparent 58%),
+            radial-gradient(900px 320px at 100% 0%, rgba(102,124,168,.12), transparent 56%),
+            var(--bg);
+        color:var(--ink);
+        border-radius:var(--r18);
+        padding:12px;
     }
-    .form-select, .form-control {
-        border: 1px solid #a68023;
-        border-radius: 6px;
-        padding: 0.5rem;
-        font-weight: 500;
-        color: #a68023;
+
+    .training-hero,
+    .controls-card,
+    .preview-shell,
+    .empty-state{
+        border:1px solid var(--line);
+        border-radius:var(--r18);
+        background:linear-gradient(180deg,#132747,#0d1f3c);
+        box-shadow:var(--shadow);
+        position:relative;
+        overflow:hidden;
     }
-    .form-select:focus, .form-control:focus {
-        border-color: #a68023;
-        box-shadow: 0 0 0 0.2rem rgba(166,128,35,0.25);
-        outline: none;
+
+    .training-hero::before,
+    .controls-card::before,
+    .preview-shell::before,
+    .empty-state::before{
+        content:"";
+        position:absolute;
+        left:0; right:0; top:0;
+        height:4px;
+        background:linear-gradient(90deg,var(--gold2),#f0cf78,var(--gold2));
     }
-    @@media (max-width: 576px) {
-        .training-page h1 { font-size: 1.5rem; }
-        .form-select, .form-control { font-size: 0.95rem; }
+
+    .training-hero{ padding:22px 20px 20px; }
+    .controls-card{ padding:20px 18px 18px; }
+    .controls-head{ margin-bottom:16px; }
+
+    .hero-kicker,
+    .info-kicker,
+    .empty-chip{
+        display:inline-block;
+        font-weight:900;
+        letter-spacing:.12em;
+        text-transform:uppercase;
+        font-size:.74rem;
+        color:#b4891f;
+    }
+
+    .hero-title,
+    .info-title,
+    .preview-title,
+    .control-label,
+    .empty-title{ color:#b4891f; font-weight:900; }
+
+    .hero-sub,
+    .info-copy,
+    .control-help,
+    .empty-text{ color:var(--muted); line-height:1.7; }
+
+    .control-label{ display:block; margin-bottom:8px; }
+    .control-help{ margin-top:8px; font-size:.92rem; }
+
+    .premium-field{
+        border:1px solid rgba(201,155,54,.58) !important;
+        border-radius:14px !important;
+        padding:.75rem .9rem !important;
+        background:#f8fbff !important;
+        color:#0f1d38 !important;
+    }
+
+    .premium-field:focus{
+        border-color:rgba(240,207,120,.92) !important;
+        box-shadow:0 0 0 .22rem rgba(201,155,54,.22) !important;
+    }
+
+    .search-wrap{ position:relative; }
+    .search-icon{ position:absolute; left:12px; top:50%; transform:translateY(-50%); opacity:.55; font-weight:900; }
+    .premium-input{ padding-left:36px !important; }
+
+    .search-results{
+        margin:10px 0 0;
+        padding:6px;
+        list-style:none;
+        border-radius:16px;
+        border:1px solid var(--line);
+        background:rgba(9,21,39,.96);
+        max-height:280px;
+        overflow-y:auto;
+        box-shadow:0 14px 34px rgba(3,8,18,.34);
+    }
+
+    .search-results li{
+        padding:10px;
+        border-radius:12px;
+        cursor:pointer;
+        color:#edf3ff;
+    }
+
+    .search-results li:hover{ background:rgba(201,155,54,.16); }
+
+    .preview-head{
+        padding:16px 18px;
+        border-bottom:1px solid var(--line);
+        background:linear-gradient(180deg, rgba(201,155,54,.18), rgba(18,40,73,.16) 62%, transparent 100%);
+    }
+
+    .preview-frame{ padding:18px; background:rgba(8,19,37,.45); }
+
+    .training-frame{
+        border-radius:14px;
+        border:1px solid rgba(201,155,54,.50);
+        background:#fff;
+    }
+
+    .empty-state{ padding:22px 18px; }
+
+    .empty-chip{
+        display:inline-flex;
+        align-items:center;
+        justify-content:center;
+        padding:6px 12px;
+        border-radius:999px;
+        border:1px solid rgba(201,155,54,.55);
+        background:linear-gradient(180deg, rgba(201,155,54,.22), rgba(201,155,54,.10));
+        font-weight:900;
+    }
+
+    /* Hard lock against global site.css white-card overrides */
+    .training-page.training-container,
+    .training-page .training-hero,
+    .training-page .controls-card,
+    .training-page .preview-shell,
+    .training-page .empty-state {
+        background: linear-gradient(180deg,#132747,#0d1f3c) !important;
+        border: 1px solid rgba(201,155,54,.44) !important;
+        box-shadow: 0 24px 58px rgba(3,8,18,.45) !important;
+    }
+
+    .training-page.training-container {
+        color: #e9f0ff !important;
+    }
+
+    .training-page .hero-kicker,
+    .training-page .hero-title,
+    .training-page .info-kicker,
+    .training-page .info-title,
+    .training-page .control-label,
+    .training-page .preview-title,
+    .training-page .empty-chip,
+    .training-page .empty-title {
+        color: #b4891f !important;
+    }
+
+    .training-page .hero-sub,
+    .training-page .info-copy,
+    .training-page .control-help,
+    .training-page .empty-text,
+    .training-page .search-results li {
+        color: #d7e2f7 !important;
+    }
+
+    .training-page .form-select,
+    .training-page .form-control,
+    .training-page .premium-field,
+    .training-page .premium-input {
+        background: #f8fbff !important;
+        color: #0f1d38 !important;
+        border: 1px solid rgba(201,155,54,.58) !important;
+    }
+
+    .training-page .form-select option {
+        background: #ffffff;
+        color: #0f1d38;
+    }
+
+    .training-page .search-results {
+        background: rgba(9,21,39,.96) !important;
+        border: 1px solid rgba(201,155,54,.44) !important;
+        box-shadow: 0 14px 34px rgba(3,8,18,.34) !important;
+    }
+
+    .training-page .search-results li:hover {
+        background: rgba(201,155,54,.16) !important;
+    }
+
+    .training-page .preview-head {
+        background: linear-gradient(180deg, rgba(201,155,54,.18), rgba(18,40,73,.16) 62%, transparent 100%) !important;
+        border-bottom: 1px solid rgba(201,155,54,.44) !important;
+    }
+
+    .training-page .preview-frame {
+        background: rgba(8,19,37,.45) !important;
+    }
+
+    .training-page .training-frame {
+        border: 1px solid rgba(201,155,54,.50) !important;
+        background: #ffffff !important;
+    }
+
+    @@media (max-width: 767.98px) {
+        .hero-title { font-size: 1.5rem; }
     }
 </style>
 
@@ -83,16 +293,19 @@ document.addEventListener("DOMContentLoaded", function() {
     const embedContainer = document.getElementById('training-embed');
     const iframe = document.getElementById('training-frame');
     const title = document.getElementById('training-title');
+    const emptyState = document.getElementById('training-empty');
 
     dropdown.addEventListener('change', function() {
         const file = this.value;
         if (!file) {
             embedContainer.style.display = 'none';
+            if (emptyState) emptyState.style.display = 'block';
             iframe.src = '';
             title.textContent = '';
             return;
         }
         embedContainer.style.display = 'block';
+        if (emptyState) emptyState.style.display = 'none';
         title.textContent = this.options[this.selectedIndex].text;
         iframe.src = `/training/${file}`;
     });
@@ -132,6 +345,7 @@ document.addEventListener("DOMContentLoaded", function() {
             li.textContent = t.name;
             li.addEventListener('click', function() {
                 embedContainer.style.display = 'block';
+                if (emptyState) emptyState.style.display = 'none';
                 title.textContent = t.name;
                 iframe.src = `/training/${t.file}`;
             });

@@ -6,10 +6,19 @@
 
     var viewMode = (string)(ViewBag.ViewMode ?? "client");
     viewMode = (viewMode ?? "client").Trim().ToLowerInvariant();
+    var viewingClientName = ((string?)(ViewBag.ViewingClientName) ?? $"{Model.FirstName} {Model.LastName}").Trim();
 
     var badge = viewMode == "agent" ? "Agent View" : "My Profile";
 
     var so = ViewBag.SignificantOther as HouseholdMember;
+    var children = (ViewBag.Children as IEnumerable<HouseholdMember>)?
+        .Where(x =>
+            !string.IsNullOrWhiteSpace(x.FirstName) ||
+            !string.IsNullOrWhiteSpace(x.LastName) ||
+            x.DOB.HasValue ||
+            !string.IsNullOrWhiteSpace(x.Email) ||
+            !string.IsNullOrWhiteSpace(x.Phone))
+        .ToList() ?? new List<HouseholdMember>();
 
     // Fallback: if SO wasn’t loaded from HouseholdMembers,
     // but ClientProfile has SignificantOther fields populated, build a display object
@@ -147,10 +156,11 @@
     .legend-badge.legend-profile-mini-badge{
         background: rgba(166,128,35,.18);
         border:1px solid rgba(166,128,35,.52);
-        color:#0b1529;
+        color:#f6e6b4;
         font-weight:850;
-        padding:0.35rem 0.8rem;
+        padding:0.28rem 0.7rem;
         border-radius:999px;
+        font-size:.82rem;
     }
     .legend-warn.legend-profile-warn{
         background: rgba(220,53,69,.14);
@@ -159,6 +169,28 @@
         border-radius:12px;
         padding:0.85rem 1rem;
         font-weight:750;
+    }
+    .legend-profile-member-list{
+        display:grid;
+        gap:8px;
+        margin-top:8px;
+    }
+    .legend-profile-member-card{
+        border:1px solid rgba(166,128,35,.34);
+        border-radius:10px;
+        padding:10px;
+        background:rgba(8,18,36,.62);
+    }
+    .legend-profile-member-name{
+        color:#f8fafc;
+        font-weight:950;
+        margin-bottom:8px;
+        font-size:.95rem;
+        line-height:1.25;
+    }
+    .legend-profile-member-card .legend-profile-grid{
+        gap:10px;
+        grid-template-columns:repeat(auto-fit, minmax(180px,1fr));
     }
     .legend-actions .legend-btn.legend-btn-outline{
         border:1.6px solid var(--gold);
@@ -181,6 +213,50 @@
         gap:10px;
         flex-wrap:wrap;
     }
+
+    .legend-impersonation-banner{
+        display:flex;
+        align-items:center;
+        justify-content:space-between;
+        gap:12px;
+        flex-wrap:wrap;
+        padding:.85rem 1rem;
+        border-radius:12px;
+        border:1px solid rgba(166,128,35,.45);
+        background:#0f1d38;
+        box-shadow: inset 0 1px 0 rgba(255,255,255,.08);
+    }
+
+    .legend-impersonation-text{
+        font-weight:800;
+        color:#f8fafc;
+        letter-spacing:.02em;
+    }
+
+    .legend-impersonation-text .muted{
+        color:#cbd5e1;
+        font-weight:700;
+    }
+
+    .legend-impersonation-stop{
+        display:inline-flex;
+        align-items:center;
+        justify-content:center;
+        min-height:38px;
+        padding:0 .9rem;
+        border-radius:999px;
+        border:1px solid rgba(166,128,35,.66);
+        background:rgba(166,128,35,.14);
+        color:#f2d891;
+        font-weight:900;
+        text-decoration:none;
+    }
+
+    .legend-impersonation-stop:hover{
+        color:#f8fafc;
+        background:rgba(166,128,35,.24);
+        border-color:rgba(166,128,35,.88);
+    }
 </style>
 
 <div class="legend-wrap legend-profile-page">
@@ -199,6 +275,17 @@
         </div>
 
         <div class="legend-body legend-profile-body">
+            @if (viewMode == "agent")
+            {
+                <div class="legend-impersonation-banner" role="status" aria-live="polite">
+                    <div class="legend-impersonation-text">
+                        Agent impersonation is active.
+                        <span class="muted">You are viewing the live client experience for @viewingClientName.</span>
+                    </div>
+                    <a class="legend-impersonation-stop" href="/support/stop-view-as-client">End impersonation</a>
+                </div>
+            }
+
             <div class="legend-row legend-profile-grid legend-summary-grid">
                 <div class="legend-field legend-profile-field">
                     <div class="legend-label">Name</div>
@@ -266,6 +353,41 @@
                 <div class="legend-divider"></div>
                 <div class="legend-warn legend-profile-warn">
                     Significant Other is required for this marital status, but no household member is on file for this client.
+                </div>
+            }
+
+            @if (children.Count > 0)
+            {
+                <div class="legend-divider"></div>
+
+                <div class="legend-subcard legend-profile-section-card">
+                    <div class="legend-profile-section-head">
+                        <div class="legend-section-title mb-0">Children</div>
+                        <span class="legend-badge legend-profile-mini-badge">@children.Count on file</span>
+                    </div>
+
+                    <div class="legend-profile-member-list">
+                        @foreach (var child in children)
+                        {
+                            <div class="legend-profile-member-card">
+                                <div class="legend-profile-member-name">@DashIfBlank($"{child.FirstName} {child.LastName}".Trim())</div>
+                                <div class="legend-row legend-profile-grid">
+                                    <div class="legend-field legend-profile-field">
+                                        <div class="legend-label">Date of Birth</div>
+                                        <div class="legend-val">@((child.DOB.HasValue) ? child.DOB.Value.ToString("MM/dd/yyyy") : "—")</div>
+                                    </div>
+                                    <div class="legend-field legend-profile-field">
+                                        <div class="legend-label">Email</div>
+                                        <div class="legend-val">@DashIfBlank(child.Email)</div>
+                                    </div>
+                                    <div class="legend-field legend-profile-field">
+                                        <div class="legend-label">Phone</div>
+                                        <div class="legend-val">@DashIfBlank(child.Phone)</div>
+                                    </div>
+                                </div>
+                            </div>
+                        }
+                    </div>
                 </div>
             }
 

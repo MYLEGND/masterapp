@@ -1,0 +1,80 @@
+@using Microsoft.Extensions.Configuration
+@model Protect_Website.Models.TrustedCarrierStripViewModel
+@inject IConfiguration Configuration
+
+@{
+    var carriers = new[]
+    {
+        new { Name = "Guardian Life Insurance Company", Domain = "guardianlife.com", Badge = "Guardian Life" },
+        new { Name = "MassMutual", Domain = "massmutual.com", Badge = "MassMutual" },
+        new { Name = "Transamerica", Domain = "transamerica.com", Badge = "Transamerica" },
+        new { Name = "Mutual of Omaha", Domain = "mutualofomaha.com", Badge = "Mutual of Omaha" },
+        new { Name = "Banner Life", Domain = "lgamerica.com", Badge = "Banner Life" },
+        new { Name = "Aetna", Domain = "aetna.com", Badge = "Aetna" },
+        new { Name = "Americo", Domain = "americo.com", Badge = "Americo" },
+        new { Name = "Lincoln Financial", Domain = "lincolnfinancial.com", Badge = "Lincoln Financial" },
+        new { Name = "Royal Neighbors of America", Domain = "royalneighbors.org", Badge = "Royal Neighbors" },
+        new { Name = "Foresters Financial / Independent Order of Foresters", Domain = "foresters.com", Badge = "Foresters" },
+        new { Name = "American Home Life", Domain = "americanhomelife.com", Badge = "American Home Life" },
+        new { Name = "American General Life Insurance Company", Domain = "aig.com", Badge = "American General Life" }
+    };
+
+    var providerUrlTemplate = (Configuration["CarrierLogos:ProviderUrlTemplate"] ?? string.Empty).Trim();
+    var clientId = (Configuration["CarrierLogos:ClientId"] ?? string.Empty).Trim();
+    var hasDomainToken = providerUrlTemplate.Contains("{domain}", StringComparison.OrdinalIgnoreCase);
+    var needsClientId = providerUrlTemplate.Contains("{clientId}", StringComparison.OrdinalIgnoreCase);
+    var renderProviderLogos = !string.IsNullOrWhiteSpace(providerUrlTemplate)
+        && hasDomainToken
+        && (!needsClientId || !string.IsNullOrWhiteSpace(clientId));
+
+    string BuildLogoUrl(string domain)
+    {
+        return providerUrlTemplate
+            .Replace("{domain}", Uri.EscapeDataString(domain), StringComparison.OrdinalIgnoreCase)
+            .Replace("{clientId}", Uri.EscapeDataString(clientId), StringComparison.OrdinalIgnoreCase);
+    }
+}
+
+<div class="lq-carrier-strip lq-carrier-strip-@Model.Mode @(renderProviderLogos ? "has-logos" : "is-text-only")"
+     role="region"
+     data-carrier-trust-strip
+     data-strip-key="@Model.EffectiveInstanceKey"
+     data-placement="@Model.Placement"
+     data-mode="@Model.Mode"
+     data-page-key="@Model.PageKey"
+     data-quote-type="@Model.QuoteType"
+     data-variant="@Model.Variant"
+     data-traffic-type="@Model.TrafficType"
+     aria-label="@Model.AriaLabel">
+    <div class="lq-carrier-strip-copy">@Model.EffectiveHeadingText</div>
+    <div class="lq-carrier-strip-viewport">
+        <div class="lq-carrier-strip-track">
+            @for (var groupIndex = 0; groupIndex < 2; groupIndex++)
+            {
+                <div class="lq-carrier-strip-group" aria-hidden="@(groupIndex == 1 ? "true" : "false")">
+                    @foreach (var carrier in carriers)
+                    {
+                        <div class="lq-carrier-strip-item @(renderProviderLogos ? string.Empty : "is-fallback")"
+                             data-carrier-item
+                             title="@carrier.Name">
+                            <span class="lq-carrier-strip-logo-frame">
+                                @if (renderProviderLogos)
+                                {
+                                    <img src="@BuildLogoUrl(carrier.Domain)"
+                                         alt="@($"{carrier.Name} logo")"
+                                         loading="lazy"
+                                         decoding="async"
+                                         width="160"
+                                         height="40"
+                                         onerror="this.hidden=true; this.closest('[data-carrier-item]')?.classList.add('is-fallback');" />
+                                }
+                                <span class="lq-carrier-strip-text-badge">@carrier.Badge</span>
+                            </span>
+                        </div>
+                    }
+                </div>
+            }
+        </div>
+    </div>
+    <div class="lq-carrier-strip-disclaimer">@Model.EffectiveDisclaimerText</div>
+</div>

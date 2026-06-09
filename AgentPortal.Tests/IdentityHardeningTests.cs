@@ -8,11 +8,13 @@ using AgentPortal.Services;
 using AgentPortal.Services.Tracking;
 using Domain.Entities;
 using Infrastructure.Data;
+using Microsoft.AspNetCore.DataProtection;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.ViewFeatures;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging.Abstractions;
 using Moq;
 using Xunit;
@@ -36,6 +38,18 @@ public class IdentityHardeningTests
     {
         var tracking = Mock.Of<IAgentTrackingService>();
         return new AgentRegistryService(db, NullLogger<AgentRegistryService>.Instance, tracking);
+    }
+
+    private static AgentTrackingService BuildTrackingService(MasterAppDbContext db)
+    {
+        var config = new ConfigurationBuilder()
+            .AddInMemoryCollection(new[]
+            {
+                new KeyValuePair<string, string?>("Protect:PublicBaseUrl", "https://protect.mylegnd.com"),
+                new KeyValuePair<string, string?>("Founder:Upn", "zac.owen@mylegnd.com")
+            })
+            .Build();
+        return new AgentTrackingService(db, NullLogger<AgentTrackingService>.Instance, config);
     }
 
     private static ClientProvisioningService BuildProvisioning(MasterAppDbContext db)
@@ -114,6 +128,130 @@ public class IdentityHardeningTests
 
         var count = await db.AgentProfiles.CountAsync(x => x.AgentUserId == "oid-agent-2");
         Assert.Equal(1, count);
+    }
+
+    // -----------------------------------------------------------------------
+    // 2b. AgentRegistryService_ReusesExistingEmailMatchedProfile
+    // -----------------------------------------------------------------------
+    [Fact]
+    public async Task AgentRegistryService_ReusesExistingEmailMatchedProfile()
+    {
+        using var db = BuildDb();
+        db.AgentProfiles.Add(new AgentProfile
+        {
+            AgentUserId = "legacy-oid",
+            AgentUpn = "zac.owen@mylegnd.com",
+            NormalizedEmail = "zac.owen@mylegnd.com",
+            FullName = "Zac Owen",
+            CreatedUtc = DateTime.UtcNow.AddDays(-3),
+            UpdatedUtc = DateTime.UtcNow.AddDays(-3)
+        });
+        await db.SaveChangesAsync();
+
+        var registry = BuildRegistry(db);
+        var user = BuildUserWithEmail("current-oid", "  Zac.Owen@MyLegnd.com  ");
+
+        await registry.UpsertAgentProfileAsync(user);
+
+        var profiles = await db.AgentProfiles
+            .Where(x => x.NormalizedEmail == "zac.owen@mylegnd.com")
+            .ToListAsync();
+
+        Assert.Single(profiles);
+        Assert.Equal("legacy-oid", profiles[0].AgentUserId);
+        Assert.Equal("Zac Owen", profiles[0].FullName);
+    }
+
+    // -----------------------------------------------------------------------
+    // 2c. AgentRegistryService_BackfillsMissingDataFromDuplicateSibling
+    // -----------------------------------------------------------------------
+    [Fact]
+    public async Task AgentRegistryService_BackfillsMissingDataFromDuplicateSibling()
+    {
+        using var db = BuildDb();
+        db.AgentProfiles.Add(new AgentProfile
+        {
+            AgentUserId = "current-oid",
+            AgentUpn = "zac.owen@mylegnd.com",
+            NormalizedEmail = "zac.owen@mylegnd.com",
+            FullName = "Zac Owen",
+            CreatedUtc = DateTime.UtcNow.AddDays(-1),
+            UpdatedUtc = DateTime.UtcNow.AddDays(-1)
+        });
+        db.AgentProfiles.Add(new AgentProfile
+        {
+            AgentUserId = "legacy-oid",
+            AgentUpn = "zac.owen@mylegnd.com",
+            FullName = "Zac Owen",
+            BookingEnabled = true,
+            MicrosoftBookingsEmbedUrl = "https://outlook.office.com/book/LEGEND@mylegnd.com/",
+            FallbackBookingUrl = "https://outlook.office.com/book/LEGEND@mylegnd.com/",
+            CalendarEmail = "zac.owen@mylegnd.com",
+            CreatedUtc = DateTime.UtcNow.AddDays(-4),
+            UpdatedUtc = DateTime.UtcNow.AddDays(-4)
+        });
+        await db.SaveChangesAsync();
+
+        var registry = BuildRegistry(db);
+        var user = BuildUserWithEmail("current-oid", "zac.owen@mylegnd.com");
+
+        await registry.UpsertAgentProfileAsync(user);
+
+        var current = await db.AgentProfiles.SingleAsync(x => x.AgentUserId == "current-oid");
+        Assert.True(current.BookingEnabled);
+        Assert.Equal("https://outlook.office.com/book/LEGEND@mylegnd.com/", current.MicrosoftBookingsEmbedUrl);
+        Assert.Equal("zac.owen@mylegnd.com", current.CalendarEmail);
+    }
+
+    // -----------------------------------------------------------------------
+    // 2d. AgentTrackingService_ReusesExistingUpnMatchedProfile
+    // -----------------------------------------------------------------------
+    [Fact]
+    public async Task AgentTrackingService_ReusesExistingUpnMatchedProfile()
+    {
+        using var db = BuildDb();
+        db.AgentTrackingProfiles.Add(new AgentTrackingProfile
+        {
+            AgentUserId = "legacy-oid",
+            AgentUpn = "zac.owen@mylegnd.com",
+            Slug = "zac-owen",
+            DisplayName = "Zac Owen",
+            CreatedUtc = DateTime.UtcNow.AddDays(-4),
+            UpdatedUtc = DateTime.UtcNow.AddDays(-4)
+        });
+        await db.SaveChangesAsync();
+
+        var tracking = BuildTrackingService(db);
+        var profile = await tracking.EnsureProfileAsync("current-oid", "Zac.Owen@MyLegnd.com", "Zac Owen");
+
+        Assert.Equal("zac-owen", profile.Slug);
+        Assert.Equal("legacy-oid", profile.AgentUserId);
+        Assert.Equal(1, await db.AgentTrackingProfiles.CountAsync());
+    }
+
+    // -----------------------------------------------------------------------
+    // 2e. AccountController_ManageProfileCreatesNormalizedEmail
+    // -----------------------------------------------------------------------
+    [Fact]
+    public void AccountController_ManageProfileCreatesNormalizedEmail()
+    {
+        using var db = BuildDb();
+        var controller = new AccountController(db)
+        {
+            ControllerContext = new ControllerContext
+            {
+                HttpContext = new DefaultHttpContext
+                {
+                    User = BuildUserWithEmail("oid-agent-3", "  Zac.Owen@MyLegnd.com  ")
+                }
+            }
+        };
+
+        var result = controller.ManageProfile();
+
+        Assert.IsType<ViewResult>(result);
+        var profile = db.AgentProfiles.Single(x => x.AgentUserId == "oid-agent-3");
+        Assert.Equal("zac.owen@mylegnd.com", profile.NormalizedEmail);
     }
 
     // -----------------------------------------------------------------------
@@ -248,15 +386,24 @@ public class IdentityHardeningTests
             s.TrySendAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string?>()) ==
             Task.FromResult(true));
 
-        var config = new ConfigurationBuilder().Build();
+        var config = new ConfigurationBuilder()
+            .AddInMemoryCollection(new[]
+            {
+                new KeyValuePair<string, string?>("Onboarding:PublicBaseUrl", "https://portal.mylegnd.com")
+            })
+            .Build();
         var provisioning = BuildProvisioning(db);
         var http = new DefaultHttpContext();
         var tempData = new TempDataDictionary(http, Mock.Of<ITempDataProvider>());
 
+        var piiProtector = new PiiProtector(new ServiceCollection()
+            .AddDataProtection().Services
+            .BuildServiceProvider()
+            .GetRequiredService<IDataProtectionProvider>());
         var controller = new OnboardingController(
             db, config, provisioning,
             NullLogger<OnboardingController>.Instance,
-            emailSender)
+            emailSender, piiProtector)
         {
             ControllerContext = new ControllerContext { HttpContext = http },
             TempData = tempData
@@ -308,17 +455,26 @@ public class IdentityHardeningTests
             s.TrySendAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string?>()) ==
             Task.FromResult(true));
 
-        var config = new ConfigurationBuilder().Build();
+        var config = new ConfigurationBuilder()
+            .AddInMemoryCollection(new[]
+            {
+                new KeyValuePair<string, string?>("Onboarding:PublicBaseUrl", "https://portal.mylegnd.com")
+            })
+            .Build();
         var provisioning = BuildProvisioning(db);
         var http = new DefaultHttpContext();
         http.Request.Scheme = "https";
         http.Request.Host = new HostString("portal.mylegnd.com");
         var tempData = new TempDataDictionary(http, Mock.Of<ITempDataProvider>());
 
+        var piiProtector = new PiiProtector(new ServiceCollection()
+            .AddDataProtection().Services
+            .BuildServiceProvider()
+            .GetRequiredService<IDataProtectionProvider>());
         var controller = new OnboardingController(
             db, config, provisioning,
             NullLogger<OnboardingController>.Instance,
-            emailSender)
+            emailSender, piiProtector)
         {
             ControllerContext = new ControllerContext { HttpContext = http },
             TempData = tempData

@@ -1,18 +1,20 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Text.Json;
 using System.Threading.Tasks;
 using AgentPortal.Controllers;
+using AgentPortal.Models;
 using AgentPortal.Services;
 using Domain.Entities;
 using Domain.Enums;
 using Infrastructure.Data;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging.Abstractions;
 using Moq;
 using Xunit;
-using AgentPortal.Services;
 using AgentPortal.Services.Tracking;
 using AgentPortal.Hubs;
 
@@ -83,6 +85,351 @@ public class LeadsControllerTests
     }
 
     [Fact]
+    public async Task Leads_List_Returns_Latest_Intake_Snapshot_For_Workstation_Context()
+    {
+        await using var db = ControllerTestHelpers.BuildDb();
+        db.WorkstationLeadProfiles.Add(new WorkstationLeadProfile
+        {
+            LeadId = "L-LIST-INTAKE-1",
+            AgentUserId = "agent-1",
+            Bucket = "TermLife",
+            OriginalLeadType = "TermLife",
+            FirstName = "Parker",
+            LastName = "Context",
+            Email = "parker@example.com",
+            Phone = "6025550199",
+            CreatedUtc = new DateTime(2026, 5, 20, 9, 0, 0, DateTimeKind.Utc),
+            UpdatedUtc = new DateTime(2026, 5, 21, 9, 0, 0, DateTimeKind.Utc)
+        });
+        db.WebsiteLeadIntakeLinks.AddRange(
+            new WebsiteLeadIntakeLink
+            {
+                Id = Guid.NewGuid(),
+                WebsiteLeadRowId = 201,
+                WebsiteLeadPublicId = Guid.NewGuid(),
+                WorkstationLeadId = "L-LIST-INTAKE-1",
+                AgentUserId = "agent-1",
+                Bucket = "TermLife",
+                SubmittedUtc = new DateTime(2026, 5, 20, 10, 0, 0, DateTimeKind.Utc),
+                CapturedUtc = new DateTime(2026, 5, 20, 10, 1, 0, DateTimeKind.Utc),
+                SourcePageKey = "quote_term_life"
+            },
+            new WebsiteLeadIntakeLink
+            {
+                Id = Guid.NewGuid(),
+                WebsiteLeadRowId = 202,
+                WebsiteLeadPublicId = Guid.NewGuid(),
+                WorkstationLeadId = "L-LIST-INTAKE-1",
+                AgentUserId = "agent-1",
+                Bucket = "TermLife",
+                SubmittedUtc = new DateTime(2026, 5, 21, 11, 0, 0, DateTimeKind.Utc),
+                CapturedUtc = new DateTime(2026, 5, 21, 11, 1, 0, DateTimeKind.Utc),
+                SourcePageKey = "quote_term_life_landing",
+                PageVariant = "low_friction_options",
+                PageMode = "paid_landing",
+                InterestType = "life_term",
+                OfferKey = "term",
+                ProductType = "life_term",
+                UtmSource = "facebook",
+                UtmMedium = "paid_social",
+                UtmCampaign = "term_retarget",
+                EstimateSummary = "Best fit: Term Life · Coverage target: $250,000",
+                RecommendationPrimaryTitle = "Term Life",
+                RecommendationSecondaryTitle = "Whole Life",
+                DiscoverySummaryJson = JsonSerializer.Serialize(new[]
+                {
+                    new { Label = "Protecting", Value = "Family" },
+                    new { Label = "Goal", Value = "Replace Income" }
+                })
+            });
+        await db.SaveChangesAsync();
+
+        var controller = ControllerTestHelpers.BuildLeadsController(db, Mock.Of<IExecutionEngine>(), Mock.Of<ICommitmentService>(), ControllerTestHelpers.BuildUser());
+
+        var result = await controller.Leads(null);
+        var json = Assert.IsType<JsonResult>(result);
+        var serialized = JsonSerializer.Serialize(json.Value);
+        using var doc = JsonDocument.Parse(serialized);
+        var row = Assert.Single(doc.RootElement.EnumerateArray());
+        var intake = row.GetProperty("intakeSnapshot");
+
+        Assert.Equal(2, intake.GetProperty("historyCount").GetInt32());
+        Assert.Equal("quote_term_life_landing", intake.GetProperty("sourcePageKey").GetString());
+        Assert.Equal("low_friction_options", intake.GetProperty("pageVariant").GetString());
+        Assert.Equal("paid_landing", intake.GetProperty("pageMode").GetString());
+        Assert.Equal("facebook", intake.GetProperty("utmSource").GetString());
+        Assert.Equal("paid_social", intake.GetProperty("utmMedium").GetString());
+        Assert.Equal("term_retarget", intake.GetProperty("utmCampaign").GetString());
+        Assert.Equal("Term Life", intake.GetProperty("interestLabel").GetString());
+        Assert.Equal("Term Life", intake.GetProperty("quoteTypeLabel").GetString());
+        Assert.Equal("Best fit: Term Life · Coverage target: $250,000", intake.GetProperty("estimateSummary").GetString());
+        Assert.Equal("Term Life", intake.GetProperty("recommendationPrimaryTitle").GetString());
+        Assert.Equal("Whole Life", intake.GetProperty("recommendationSecondaryTitle").GetString());
+        Assert.Equal("Family", intake.GetProperty("discoveryItems")[0].GetProperty("value").GetString());
+    }
+
+    [Fact]
+    public async Task Leads_List_Returns_Latest_Appointment_Snapshot_For_Workstation_Context()
+    {
+        await using var db = ControllerTestHelpers.BuildDb();
+        db.WorkstationLeadProfiles.Add(new WorkstationLeadProfile
+        {
+            LeadId = "L-LIST-APPT-1",
+            AgentUserId = "agent-1",
+            Bucket = "MortgageProtection",
+            OriginalLeadType = "MortgageProtection",
+            FirstName = "Avery",
+            LastName = "Booked",
+            Email = "avery@example.com",
+            Phone = "6025550110",
+            CreatedUtc = new DateTime(2026, 5, 20, 8, 0, 0, DateTimeKind.Utc),
+            UpdatedUtc = new DateTime(2026, 5, 21, 8, 0, 0, DateTimeKind.Utc)
+        });
+        db.LeadAppointments.AddRange(
+            new LeadAppointment
+            {
+                Id = Guid.NewGuid(),
+                WorkstationLeadId = "L-LIST-APPT-1",
+                OwnerAgentUserId = "agent-1",
+                Status = LeadAppointmentStatus.Requested,
+                BookingSource = LeadAppointmentBookingSources.InternalManual,
+                RequestedUtc = new DateTime(2026, 5, 20, 9, 0, 0, DateTimeKind.Utc),
+                CreatedUtc = new DateTime(2026, 5, 20, 9, 0, 0, DateTimeKind.Utc),
+                UpdatedUtc = new DateTime(2026, 5, 20, 9, 0, 0, DateTimeKind.Utc)
+            },
+            new LeadAppointment
+            {
+                Id = Guid.NewGuid(),
+                WorkstationLeadId = "L-LIST-APPT-1",
+                OwnerAgentUserId = "agent-1",
+                Status = LeadAppointmentStatus.Booked,
+                BookingSource = LeadAppointmentBookingSources.InternalCalendar,
+                RequestedBookingSource = LeadAppointmentBookingSources.InternalCalendar,
+                ConfirmationSource = LeadAppointmentBookingSources.InternalCalendar,
+                CalendarEventId = "evt-42",
+                CalendarEventWebLink = "https://outlook.test/events/42",
+                ScheduledStartUtc = new DateTime(2026, 5, 22, 16, 0, 0, DateTimeKind.Utc),
+                ScheduledEndUtc = new DateTime(2026, 5, 22, 16, 30, 0, DateTimeKind.Utc),
+                MeetingUrl = "https://zoom.example.com/j/42",
+                RequestedUtc = new DateTime(2026, 5, 21, 11, 0, 0, DateTimeKind.Utc),
+                BookedUtc = new DateTime(2026, 5, 21, 11, 15, 0, DateTimeKind.Utc),
+                CreatedUtc = new DateTime(2026, 5, 21, 11, 0, 0, DateTimeKind.Utc),
+                UpdatedUtc = new DateTime(2026, 5, 21, 11, 15, 0, DateTimeKind.Utc),
+                LastStatusChangedUtc = new DateTime(2026, 5, 21, 11, 15, 0, DateTimeKind.Utc)
+            });
+        await db.SaveChangesAsync();
+
+        var controller = ControllerTestHelpers.BuildLeadsController(db, Mock.Of<IExecutionEngine>(), Mock.Of<ICommitmentService>(), ControllerTestHelpers.BuildUser());
+
+        var result = await controller.Leads(null);
+        var json = Assert.IsType<JsonResult>(result);
+        var serialized = JsonSerializer.Serialize(json.Value);
+        using var doc = JsonDocument.Parse(serialized);
+        var row = Assert.Single(doc.RootElement.EnumerateArray());
+        var appointment = row.GetProperty("latestAppointment");
+
+        Assert.Equal("Booked", appointment.GetProperty("status").GetString());
+        Assert.Equal("Booked", appointment.GetProperty("statusLabel").GetString());
+        Assert.Equal("internal_calendar", appointment.GetProperty("bookingSource").GetString());
+        Assert.Equal("Internal calendar", appointment.GetProperty("bookingSourceLabel").GetString());
+        Assert.Equal("internal_calendar", appointment.GetProperty("requestedBookingSource").GetString());
+        Assert.Equal("internal_calendar", appointment.GetProperty("confirmationSource").GetString());
+        Assert.True(appointment.GetProperty("confirmationVerified").GetBoolean());
+        Assert.Equal("Booked / verified", appointment.GetProperty("confirmationStateLabel").GetString());
+        Assert.Equal("Internal calendar path", appointment.GetProperty("bookingConfigurationLabel").GetString());
+        Assert.Equal("evt-42", appointment.GetProperty("calendarEventId").GetString());
+        Assert.Equal("https://zoom.example.com/j/42", appointment.GetProperty("meetingUrl").GetString());
+    }
+
+    [Fact]
+    public async Task Delete_Removes_Appointment_And_IntakeLink_Dependents()
+    {
+        await using var conn = new SqliteConnection("Data Source=:memory:");
+        await conn.OpenAsync();
+
+        var options = new DbContextOptionsBuilder<MasterAppDbContext>()
+            .UseSqlite(conn)
+            .Options;
+
+        await using var db = new MasterAppDbContext(options);
+        await db.Database.EnsureCreatedAsync();
+
+        var websiteLeadPublicId = Guid.NewGuid();
+        db.WorkstationLeadProfiles.Add(new WorkstationLeadProfile
+        {
+            LeadId = "L-DELETE-1",
+            AgentUserId = "agent-1",
+            Bucket = "LifeInsurance",
+            OriginalLeadType = "LifeInsurance",
+            FirstName = "Jordan",
+            LastName = "Delete",
+            Email = "jordan@example.com",
+            Phone = "6025550160",
+            CreatedUtc = new DateTime(2026, 5, 30, 8, 0, 0, DateTimeKind.Utc),
+            UpdatedUtc = new DateTime(2026, 5, 30, 8, 0, 0, DateTimeKind.Utc)
+        });
+        db.WebsiteLeads.Add(new WebsiteLead
+        {
+            Id = 1001,
+            LeadId = websiteLeadPublicId,
+            FirstName = "Jordan",
+            LastName = "Delete",
+            Email = "jordan@example.com",
+            Phone = "6025550160",
+            InterestType = "life",
+            CreatedUtc = new DateTime(2026, 5, 30, 8, 1, 0, DateTimeKind.Utc),
+            Status = "New"
+        });
+
+        var intakeLinkId = Guid.NewGuid();
+        db.WebsiteLeadIntakeLinks.Add(new WebsiteLeadIntakeLink
+        {
+            Id = intakeLinkId,
+            WebsiteLeadRowId = 1001,
+            WebsiteLeadPublicId = websiteLeadPublicId,
+            WorkstationLeadId = "L-DELETE-1",
+            AgentUserId = "agent-1",
+            Bucket = "LifeInsurance",
+            SubmittedUtc = new DateTime(2026, 5, 30, 8, 2, 0, DateTimeKind.Utc),
+            CapturedUtc = new DateTime(2026, 5, 30, 8, 2, 30, DateTimeKind.Utc)
+        });
+        db.LeadAppointments.Add(new LeadAppointment
+        {
+            Id = Guid.NewGuid(),
+            WorkstationLeadId = "L-DELETE-1",
+            OwnerAgentUserId = "agent-1",
+            WebsiteLeadIntakeLinkId = intakeLinkId,
+            Status = LeadAppointmentStatus.Requested,
+            BookingSource = LeadAppointmentBookingSources.InternalManual,
+            RequestedBookingSource = LeadAppointmentBookingSources.InternalManual,
+            CreatedUtc = new DateTime(2026, 5, 30, 8, 3, 0, DateTimeKind.Utc),
+            UpdatedUtc = new DateTime(2026, 5, 30, 8, 3, 0, DateTimeKind.Utc),
+            RequestedUtc = new DateTime(2026, 5, 30, 8, 3, 0, DateTimeKind.Utc)
+        });
+        await db.SaveChangesAsync();
+
+        var controller = ControllerTestHelpers.BuildLeadsController(
+            db,
+            Mock.Of<IExecutionEngine>(),
+            Mock.Of<ICommitmentService>(),
+            ControllerTestHelpers.BuildUser());
+
+        var result = await controller.Delete("L-DELETE-1");
+
+        Assert.IsType<RedirectToActionResult>(result);
+        Assert.False(await db.WorkstationLeadProfiles.AnyAsync(x => x.LeadId == "L-DELETE-1"));
+        Assert.False(await db.LeadAppointments.AnyAsync(x => x.WorkstationLeadId == "L-DELETE-1"));
+        Assert.False(await db.WebsiteLeadIntakeLinks.AnyAsync(x => x.WorkstationLeadId == "L-DELETE-1"));
+        Assert.True(await db.WebsiteLeads.AnyAsync(x => x.Id == 1001));
+    }
+
+    [Fact]
+    public async Task DeleteBulk_Removes_Appointment_Dependents_For_All_Deleted_Leads()
+    {
+        await using var conn = new SqliteConnection("Data Source=:memory:");
+        await conn.OpenAsync();
+
+        var options = new DbContextOptionsBuilder<MasterAppDbContext>()
+            .UseSqlite(conn)
+            .Options;
+
+        await using var db = new MasterAppDbContext(options);
+        await db.Database.EnsureCreatedAsync();
+
+        db.WorkstationLeadProfiles.AddRange(
+            new WorkstationLeadProfile
+            {
+                LeadId = "L-BULK-1",
+                AgentUserId = "agent-1",
+                Bucket = "MortgageProtection",
+                OriginalLeadType = "MortgageProtection",
+                FirstName = "Ari",
+                LastName = "Bulk",
+                CreatedUtc = new DateTime(2026, 5, 30, 9, 0, 0, DateTimeKind.Utc),
+                UpdatedUtc = new DateTime(2026, 5, 30, 9, 0, 0, DateTimeKind.Utc)
+            },
+            new WorkstationLeadProfile
+            {
+                LeadId = "L-BULK-2",
+                AgentUserId = "agent-1",
+                Bucket = "MortgageProtection",
+                OriginalLeadType = "MortgageProtection",
+                FirstName = "Blair",
+                LastName = "Bulk",
+                CreatedUtc = new DateTime(2026, 5, 30, 9, 5, 0, DateTimeKind.Utc),
+                UpdatedUtc = new DateTime(2026, 5, 30, 9, 5, 0, DateTimeKind.Utc)
+            },
+            new WorkstationLeadProfile
+            {
+                LeadId = "L-BULK-OTHER",
+                AgentUserId = "agent-2",
+                Bucket = "MortgageProtection",
+                OriginalLeadType = "MortgageProtection",
+                FirstName = "Casey",
+                LastName = "Other",
+                CreatedUtc = new DateTime(2026, 5, 30, 9, 10, 0, DateTimeKind.Utc),
+                UpdatedUtc = new DateTime(2026, 5, 30, 9, 10, 0, DateTimeKind.Utc)
+            });
+        db.LeadAppointments.AddRange(
+            new LeadAppointment
+            {
+                Id = Guid.NewGuid(),
+                WorkstationLeadId = "L-BULK-1",
+                OwnerAgentUserId = "agent-1",
+                Status = LeadAppointmentStatus.Requested,
+                BookingSource = LeadAppointmentBookingSources.InternalManual,
+                RequestedBookingSource = LeadAppointmentBookingSources.InternalManual,
+                CreatedUtc = new DateTime(2026, 5, 30, 9, 1, 0, DateTimeKind.Utc),
+                UpdatedUtc = new DateTime(2026, 5, 30, 9, 1, 0, DateTimeKind.Utc),
+                RequestedUtc = new DateTime(2026, 5, 30, 9, 1, 0, DateTimeKind.Utc)
+            },
+            new LeadAppointment
+            {
+                Id = Guid.NewGuid(),
+                WorkstationLeadId = "L-BULK-2",
+                OwnerAgentUserId = "agent-1",
+                Status = LeadAppointmentStatus.Requested,
+                BookingSource = LeadAppointmentBookingSources.InternalManual,
+                RequestedBookingSource = LeadAppointmentBookingSources.InternalManual,
+                CreatedUtc = new DateTime(2026, 5, 30, 9, 6, 0, DateTimeKind.Utc),
+                UpdatedUtc = new DateTime(2026, 5, 30, 9, 6, 0, DateTimeKind.Utc),
+                RequestedUtc = new DateTime(2026, 5, 30, 9, 6, 0, DateTimeKind.Utc)
+            },
+            new LeadAppointment
+            {
+                Id = Guid.NewGuid(),
+                WorkstationLeadId = "L-BULK-OTHER",
+                OwnerAgentUserId = "agent-2",
+                Status = LeadAppointmentStatus.Requested,
+                BookingSource = LeadAppointmentBookingSources.InternalManual,
+                RequestedBookingSource = LeadAppointmentBookingSources.InternalManual,
+                CreatedUtc = new DateTime(2026, 5, 30, 9, 11, 0, DateTimeKind.Utc),
+                UpdatedUtc = new DateTime(2026, 5, 30, 9, 11, 0, DateTimeKind.Utc),
+                RequestedUtc = new DateTime(2026, 5, 30, 9, 11, 0, DateTimeKind.Utc)
+            });
+        await db.SaveChangesAsync();
+
+        var controller = ControllerTestHelpers.BuildLeadsController(
+            db,
+            Mock.Of<IExecutionEngine>(),
+            Mock.Of<ICommitmentService>(),
+            ControllerTestHelpers.BuildUser());
+
+        var result = await controller.DeleteBulk(new[] { "L-BULK-1", "L-BULK-2", "L-BULK-OTHER" });
+
+        var json = Assert.IsType<JsonResult>(result);
+        var payload = JsonSerializer.Serialize(json.Value);
+        using var doc = JsonDocument.Parse(payload);
+        Assert.Equal(2, doc.RootElement.GetProperty("deleted").GetInt32());
+        Assert.False(await db.WorkstationLeadProfiles.AnyAsync(x => x.LeadId == "L-BULK-1"));
+        Assert.False(await db.WorkstationLeadProfiles.AnyAsync(x => x.LeadId == "L-BULK-2"));
+        Assert.True(await db.WorkstationLeadProfiles.AnyAsync(x => x.LeadId == "L-BULK-OTHER"));
+        Assert.False(await db.LeadAppointments.AnyAsync(x => x.WorkstationLeadId == "L-BULK-1"));
+        Assert.False(await db.LeadAppointments.AnyAsync(x => x.WorkstationLeadId == "L-BULK-2"));
+        Assert.True(await db.LeadAppointments.AnyAsync(x => x.WorkstationLeadId == "L-BULK-OTHER"));
+    }
+
+    [Fact]
     public async Task IncrementCall_Targets_Canonical_Row()
     {
         var db = ControllerTestHelpers.BuildDb();
@@ -120,6 +467,482 @@ public class LeadsControllerTests
         Assert.Equal(3, canonical.CallCount); // incremented
         var older = rows.OrderBy(r => r.UpdatedUtc).First();
         Assert.Equal(0, older.CallCount); // untouched
+    }
+
+    [Fact]
+    public async Task Lead_Returns_Latest_Intake_Snapshot_For_Shared_Quick_View()
+    {
+        await using var db = ControllerTestHelpers.BuildDb();
+        db.WebsiteLeads.AddRange(
+            new WebsiteLead
+            {
+                Id = 101,
+                LeadId = Guid.NewGuid(),
+                FirstName = "Skyler",
+                Email = "skyler@example.com",
+                CreatedUtc = new DateTime(2026, 5, 20, 10, 0, 0, DateTimeKind.Utc)
+            },
+            new WebsiteLead
+            {
+                Id = 102,
+                LeadId = Guid.NewGuid(),
+                FirstName = "Skyler",
+                Email = "skyler@example.com",
+                CreatedUtc = new DateTime(2026, 5, 21, 11, 0, 0, DateTimeKind.Utc)
+            });
+        db.WorkstationLeadProfiles.Add(new WorkstationLeadProfile
+        {
+            LeadId = "L-INTAKE-1",
+            AgentUserId = "agent-1",
+            Bucket = "TermLife",
+            OriginalLeadType = "TermLife",
+            FirstName = "Skyler",
+            LastName = "Intake",
+            Email = "skyler@example.com",
+            Phone = "6025550123",
+            CreatedUtc = new DateTime(2026, 5, 20, 9, 0, 0, DateTimeKind.Utc),
+            UpdatedUtc = new DateTime(2026, 5, 21, 9, 0, 0, DateTimeKind.Utc)
+        });
+        db.WebsiteLeadIntakeLinks.AddRange(
+            new WebsiteLeadIntakeLink
+            {
+                Id = Guid.NewGuid(),
+                WebsiteLeadRowId = 101,
+                WebsiteLeadPublicId = Guid.NewGuid(),
+                WorkstationLeadId = "L-INTAKE-1",
+                AgentUserId = "agent-1",
+                Bucket = "TermLife",
+                SubmittedUtc = new DateTime(2026, 5, 20, 10, 0, 0, DateTimeKind.Utc),
+                CapturedUtc = new DateTime(2026, 5, 20, 10, 1, 0, DateTimeKind.Utc),
+                SourcePageKey = "quote_term_life"
+            },
+            new WebsiteLeadIntakeLink
+            {
+                Id = Guid.NewGuid(),
+                WebsiteLeadRowId = 102,
+                WebsiteLeadPublicId = Guid.NewGuid(),
+                WorkstationLeadId = "L-INTAKE-1",
+                AgentUserId = "agent-1",
+                Bucket = "TermLife",
+                SubmittedUtc = new DateTime(2026, 5, 21, 11, 0, 0, DateTimeKind.Utc),
+                CapturedUtc = new DateTime(2026, 5, 21, 11, 1, 0, DateTimeKind.Utc),
+                SourcePageKey = "quote_term_life_landing",
+                PageVariant = "low_friction_options",
+                PageMode = "paid_landing",
+                InterestType = "life_term",
+                OfferKey = "term",
+                ProductType = "life_term",
+                UtmSource = "facebook",
+                UtmMedium = "paid_social",
+                UtmCampaign = "term_retarget",
+                UtmId = "utm-222",
+                Fbclid = "fbclid-222",
+                EstimateSummary = "Best fit: Term Life · Coverage target: $250,000",
+                RecommendationPrimaryTitle = "Term Life",
+                RecommendationSecondaryTitle = "Whole Life",
+                DiscoverySummaryJson = JsonSerializer.Serialize(new[]
+                {
+                    new { Label = "Protecting", Value = "Family" },
+                    new { Label = "Goal", Value = "Replace Income" }
+                }),
+                SnapshotJson = "{\"OfferKey\":\"term\"}"
+            });
+        await db.SaveChangesAsync();
+
+        var controller = ControllerTestHelpers.BuildLeadsController(db, Mock.Of<IExecutionEngine>(), Mock.Of<ICommitmentService>(), ControllerTestHelpers.BuildUser());
+
+        var result = await controller.Lead("L-INTAKE-1");
+        var json = Assert.IsType<JsonResult>(result);
+        var serialized = JsonSerializer.Serialize(json.Value);
+        using var doc = JsonDocument.Parse(serialized);
+        var root = doc.RootElement;
+        var intake = root.GetProperty("intakeSnapshot");
+
+        Assert.Equal(2, intake.GetProperty("historyCount").GetInt32());
+        Assert.Equal("Paid Landing", intake.GetProperty("originLabel").GetString());
+        Assert.Equal("quote_term_life_landing", intake.GetProperty("sourcePageKey").GetString());
+        Assert.Equal("low_friction_options", intake.GetProperty("pageVariant").GetString());
+        Assert.Equal("facebook", intake.GetProperty("utmSource").GetString());
+        Assert.Equal("term_retarget", intake.GetProperty("utmCampaign").GetString());
+        Assert.Equal("Term Life", intake.GetProperty("interestLabel").GetString());
+        Assert.Equal("Term Life", intake.GetProperty("quoteTypeLabel").GetString());
+        Assert.Equal("Best fit: Term Life · Coverage target: $250,000", intake.GetProperty("estimateSummary").GetString());
+        Assert.Equal(
+            "Best fit: Term Life · Coverage target: $250,000 • Primary: Term Life • Secondary: Whole Life",
+            intake.GetProperty("recommendationSummary").GetString());
+        Assert.Contains("\"OfferKey\": \"term\"", intake.GetProperty("rawMetadataJson").GetString());
+        Assert.Equal("Family", intake.GetProperty("discoveryItems")[0].GetProperty("value").GetString());
+    }
+
+    [Fact]
+    public async Task UpdateLeadAppointmentStatus_Creates_Requested_Appointment_When_None_Exists()
+    {
+        await using var db = ControllerTestHelpers.BuildDb();
+        db.WorkstationLeadProfiles.Add(new WorkstationLeadProfile
+        {
+            LeadId = "L-APPT-CREATE-1",
+            AgentUserId = "agent-1",
+            Bucket = "LifeInsurance",
+            OriginalLeadType = "LifeInsurance",
+            FirstName = "Jordan",
+            LastName = "Requested",
+            Email = "jordan@example.com",
+            Phone = "6025550135",
+            CreatedUtc = new DateTime(2026, 5, 21, 8, 0, 0, DateTimeKind.Utc),
+            UpdatedUtc = new DateTime(2026, 5, 21, 8, 0, 0, DateTimeKind.Utc)
+        });
+        await db.SaveChangesAsync();
+
+        var controller = ControllerTestHelpers.BuildLeadsController(db, Mock.Of<IExecutionEngine>(), Mock.Of<ICommitmentService>(), ControllerTestHelpers.BuildUser());
+
+        var result = await controller.UpdateLeadAppointmentStatus(
+            new LeadsController.LeadAppointmentStatusRequest("L-APPT-CREATE-1", null, "Requested"));
+
+        var json = Assert.IsType<JsonResult>(result);
+        var payload = JsonSerializer.Serialize(json.Value);
+        using var doc = JsonDocument.Parse(payload);
+        var latestAppointment = doc.RootElement.GetProperty("payload").GetProperty("latestAppointment");
+
+        var appointment = Assert.Single(db.LeadAppointments);
+        Assert.Equal("L-APPT-CREATE-1", appointment.WorkstationLeadId);
+        Assert.Equal("agent-1", appointment.OwnerAgentUserId);
+        Assert.Equal(LeadAppointmentStatus.Requested, appointment.Status);
+        Assert.Equal(LeadAppointmentBookingSources.InternalManual, appointment.BookingSource);
+        Assert.NotNull(appointment.RequestedUtc);
+        Assert.Equal("Requested", latestAppointment.GetProperty("status").GetString());
+        Assert.Equal("Requested", latestAppointment.GetProperty("statusLabel").GetString());
+        Assert.Equal("internal_manual", latestAppointment.GetProperty("bookingSource").GetString());
+    }
+
+    [Fact]
+    public async Task UpdateLeadAppointmentStatus_ManualBooked_PromotesConfirmationToManualVerified()
+    {
+        await using var db = ControllerTestHelpers.BuildDb();
+        db.WorkstationLeadProfiles.Add(new WorkstationLeadProfile
+        {
+            LeadId = "L-APPT-MANUAL-1",
+            AgentUserId = "agent-1",
+            Bucket = "LifeInsurance",
+            OriginalLeadType = "LifeInsurance",
+            FirstName = "Jordan",
+            LastName = "Manual",
+            Email = "jordan.manual@example.com",
+            Phone = "6025550191",
+            CreatedUtc = new DateTime(2026, 5, 21, 8, 0, 0, DateTimeKind.Utc),
+            UpdatedUtc = new DateTime(2026, 5, 21, 8, 0, 0, DateTimeKind.Utc)
+        });
+        var appointmentId = Guid.NewGuid();
+        db.LeadAppointments.Add(new LeadAppointment
+        {
+            Id = appointmentId,
+            WorkstationLeadId = "L-APPT-MANUAL-1",
+            OwnerAgentUserId = "agent-1",
+            Status = LeadAppointmentStatus.Requested,
+            BookingSource = LeadAppointmentBookingSources.WebsiteEmbed,
+            RequestedBookingSource = LeadAppointmentBookingSources.WebsiteEmbed,
+            RequestedUtc = new DateTime(2026, 5, 21, 8, 10, 0, DateTimeKind.Utc),
+            CreatedUtc = new DateTime(2026, 5, 21, 8, 10, 0, DateTimeKind.Utc),
+            UpdatedUtc = new DateTime(2026, 5, 21, 8, 10, 0, DateTimeKind.Utc)
+        });
+        await db.SaveChangesAsync();
+
+        var controller = ControllerTestHelpers.BuildLeadsController(db, Mock.Of<IExecutionEngine>(), Mock.Of<ICommitmentService>(), ControllerTestHelpers.BuildUser());
+
+        var result = await controller.UpdateLeadAppointmentStatus(
+            new LeadsController.LeadAppointmentStatusRequest("L-APPT-MANUAL-1", appointmentId, "Booked"));
+
+        var json = Assert.IsType<JsonResult>(result);
+        var payload = JsonSerializer.Serialize(json.Value);
+        using var doc = JsonDocument.Parse(payload);
+        var latestAppointment = doc.RootElement.GetProperty("payload").GetProperty("latestAppointment");
+
+        var appointment = await db.LeadAppointments.SingleAsync(x => x.Id == appointmentId);
+        Assert.Equal(LeadAppointmentStatus.Booked, appointment.Status);
+        Assert.Equal(LeadAppointmentBookingSources.ManualVerified, appointment.BookingSource);
+        Assert.Equal(LeadAppointmentBookingSources.ManualVerified, appointment.ConfirmationSource);
+        Assert.Equal(LeadAppointmentBookingSources.WebsiteEmbed, appointment.RequestedBookingSource);
+        Assert.NotNull(appointment.BookedUtc);
+
+        Assert.Equal("manual_verified", latestAppointment.GetProperty("bookingSource").GetString());
+        Assert.Equal("manual_verified", latestAppointment.GetProperty("confirmationSource").GetString());
+        Assert.True(latestAppointment.GetProperty("confirmationVerified").GetBoolean());
+        Assert.Equal("Booked / verified", latestAppointment.GetProperty("confirmationStateLabel").GetString());
+    }
+
+    [Fact]
+    public async Task UpdateLeadAppointmentStatus_DoesNotDowngradeBookedBackToRequested()
+    {
+        await using var db = ControllerTestHelpers.BuildDb();
+        db.WorkstationLeadProfiles.Add(new WorkstationLeadProfile
+        {
+            LeadId = "L-APPT-NODOWNGRADE-1",
+            AgentUserId = "agent-1",
+            Bucket = "LifeInsurance",
+            OriginalLeadType = "LifeInsurance",
+            FirstName = "Jordan",
+            LastName = "Booked",
+            Email = "jordan.booked@example.com",
+            Phone = "6025550192",
+            CreatedUtc = new DateTime(2026, 5, 21, 8, 0, 0, DateTimeKind.Utc),
+            UpdatedUtc = new DateTime(2026, 5, 21, 8, 0, 0, DateTimeKind.Utc)
+        });
+        var appointmentId = Guid.NewGuid();
+        db.LeadAppointments.Add(new LeadAppointment
+        {
+            Id = appointmentId,
+            WorkstationLeadId = "L-APPT-NODOWNGRADE-1",
+            OwnerAgentUserId = "agent-1",
+            Status = LeadAppointmentStatus.Booked,
+            BookingSource = LeadAppointmentBookingSources.InternalCalendar,
+            RequestedBookingSource = LeadAppointmentBookingSources.InternalCalendar,
+            ConfirmationSource = LeadAppointmentBookingSources.InternalCalendar,
+            RequestedUtc = new DateTime(2026, 5, 21, 8, 10, 0, DateTimeKind.Utc),
+            BookedUtc = new DateTime(2026, 5, 21, 8, 20, 0, DateTimeKind.Utc),
+            CreatedUtc = new DateTime(2026, 5, 21, 8, 10, 0, DateTimeKind.Utc),
+            UpdatedUtc = new DateTime(2026, 5, 21, 8, 20, 0, DateTimeKind.Utc)
+        });
+        await db.SaveChangesAsync();
+
+        var controller = ControllerTestHelpers.BuildLeadsController(db, Mock.Of<IExecutionEngine>(), Mock.Of<ICommitmentService>(), ControllerTestHelpers.BuildUser());
+
+        var result = await controller.UpdateLeadAppointmentStatus(
+            new LeadsController.LeadAppointmentStatusRequest("L-APPT-NODOWNGRADE-1", appointmentId, "Requested"));
+
+        var badRequest = Assert.IsType<BadRequestObjectResult>(result);
+        Assert.Equal("Booked, confirmed, or completed appointments cannot be downgraded back to Requested.", badRequest.Value);
+
+        var appointment = await db.LeadAppointments.SingleAsync(x => x.Id == appointmentId);
+        Assert.Equal(LeadAppointmentStatus.Booked, appointment.Status);
+        Assert.Equal(LeadAppointmentBookingSources.InternalCalendar, appointment.BookingSource);
+        Assert.Equal(LeadAppointmentBookingSources.InternalCalendar, appointment.ConfirmationSource);
+    }
+
+    [Fact]
+    public async Task Index_Fails_Open_When_Intake_Table_Is_Unavailable()
+    {
+        await using var conn = new SqliteConnection("Data Source=:memory:");
+        await conn.OpenAsync();
+
+        var options = new DbContextOptionsBuilder<MasterAppDbContext>()
+            .UseSqlite(conn)
+            .Options;
+
+        await using var db = new MasterAppDbContext(options);
+        await db.Database.EnsureCreatedAsync();
+
+        await db.Database.ExecuteSqlInterpolatedAsync($"""
+            INSERT INTO "WorkstationLeadProfiles" (
+                "LeadId",
+                "AgentUserId",
+                "Bucket",
+                "OriginalLeadType",
+                "FirstName",
+                "LastName",
+                "Email",
+                "Phone",
+                "CrmStatus",
+                "CrmStage",
+                "CrmOrder",
+                "CallCount",
+                "CallsToday",
+                "CallsWeek",
+                "CallsMonth",
+                "CallsYear",
+                "CreatedUtc",
+                "UpdatedUtc",
+                "RowVersion"
+            )
+            VALUES (
+                {"L-SAFE-INDEX-1"},
+                {"agent-1"},
+                {"MortgageProtection"},
+                {"MortgageProtection"},
+                {"Jamie"},
+                {"Safe"},
+                {"jamie@example.com"},
+                {"6025550144"},
+                {"Lead"},
+                {"New"},
+                {0L},
+                {0},
+                {0},
+                {0},
+                {0},
+                {0},
+                {new DateTime(2026, 5, 21, 8, 0, 0, DateTimeKind.Utc)},
+                {new DateTime(2026, 5, 21, 9, 0, 0, DateTimeKind.Utc)},
+                {new byte[] { 1 }}
+            );
+            """);
+
+        await db.Database.ExecuteSqlRawAsync("""DROP TABLE "WebsiteLeadIntakeLinks";""");
+
+        var controller = ControllerTestHelpers.BuildLeadsController(
+            db,
+            Mock.Of<IExecutionEngine>(),
+            Mock.Of<ICommitmentService>(),
+            ControllerTestHelpers.BuildUser());
+
+        var result = await controller.Index();
+        var view = Assert.IsType<ViewResult>(result);
+        var model = Assert.IsAssignableFrom<IEnumerable<ClientListItemViewModel>>(view.Model);
+        var lead = Assert.Single(model);
+
+        Assert.Equal(0, lead.IntakeHistoryCount);
+        Assert.Equal("Manual Lead", lead.LeadOriginLabel);
+        Assert.Equal("Mortgage Protection", lead.ProductInterestLabel);
+        Assert.Equal("Mortgage Protection", lead.QuoteTypeLabel);
+        Assert.Null(lead.LatestSubmissionUtc);
+    }
+
+    [Fact]
+    public async Task Lead_Fails_Open_When_Intake_Table_Is_Unavailable()
+    {
+        await using var conn = new SqliteConnection("Data Source=:memory:");
+        await conn.OpenAsync();
+
+        var options = new DbContextOptionsBuilder<MasterAppDbContext>()
+            .UseSqlite(conn)
+            .Options;
+
+        await using var db = new MasterAppDbContext(options);
+        await db.Database.EnsureCreatedAsync();
+
+        await db.Database.ExecuteSqlInterpolatedAsync($"""
+            INSERT INTO "WorkstationLeadProfiles" (
+                "LeadId",
+                "AgentUserId",
+                "Bucket",
+                "OriginalLeadType",
+                "FirstName",
+                "LastName",
+                "Email",
+                "Phone",
+                "CrmStatus",
+                "CrmStage",
+                "CrmOrder",
+                "CallCount",
+                "CallsToday",
+                "CallsWeek",
+                "CallsMonth",
+                "CallsYear",
+                "CreatedUtc",
+                "UpdatedUtc",
+                "RowVersion"
+            )
+            VALUES (
+                {"L-SAFE-LEAD-1"},
+                {"agent-1"},
+                {"TermLife"},
+                {"TermLife"},
+                {"Casey"},
+                {"Fallback"},
+                {"casey@example.com"},
+                {"6025550155"},
+                {"Lead"},
+                {"New"},
+                {0L},
+                {0},
+                {0},
+                {0},
+                {0},
+                {0},
+                {new DateTime(2026, 5, 21, 7, 0, 0, DateTimeKind.Utc)},
+                {new DateTime(2026, 5, 21, 7, 30, 0, DateTimeKind.Utc)},
+                {new byte[] { 1 }}
+            );
+            """);
+
+        await db.Database.ExecuteSqlRawAsync("""DROP TABLE "WebsiteLeadIntakeLinks";""");
+
+        var controller = ControllerTestHelpers.BuildLeadsController(
+            db,
+            Mock.Of<IExecutionEngine>(),
+            Mock.Of<ICommitmentService>(),
+            ControllerTestHelpers.BuildUser());
+
+        var result = await controller.Lead("L-SAFE-LEAD-1");
+        var json = Assert.IsType<JsonResult>(result);
+        var serialized = JsonSerializer.Serialize(json.Value);
+        using var doc = JsonDocument.Parse(serialized);
+
+        Assert.True(doc.RootElement.TryGetProperty("intakeSnapshot", out var intakeSnapshot));
+        Assert.Equal(JsonValueKind.Null, intakeSnapshot.ValueKind);
+    }
+
+    [Fact]
+    public async Task SaveQuickView_Persists_ContactStatus()
+    {
+        await using var db = ControllerTestHelpers.BuildDb();
+        db.WorkstationLeadProfiles.Add(new WorkstationLeadProfile
+        {
+            LeadId = "L-CONTACT-1",
+            AgentUserId = "agent-1",
+            Bucket = "MortgageProtection",
+            OriginalLeadType = "MortgageProtection",
+            FirstName = "Taylor",
+            LastName = "Lead",
+            Email = "taylor@example.com",
+            Phone = "6025550134",
+            CreatedUtc = new DateTime(2026, 5, 21, 8, 0, 0, DateTimeKind.Utc),
+            UpdatedUtc = new DateTime(2026, 5, 21, 8, 0, 0, DateTimeKind.Utc)
+        });
+        await db.SaveChangesAsync();
+
+        var controller = ControllerTestHelpers.BuildLeadsController(
+            db,
+            Mock.Of<IExecutionEngine>(),
+            Mock.Of<ICommitmentService>(),
+            ControllerTestHelpers.BuildUser());
+
+        var result = await controller.SaveQuickView(new LeadsController.LeadQuickViewRequest(
+            clientUserId: "L-CONTACT-1",
+            firstName: "Taylor",
+            lastName: "Lead",
+            email: "taylor@example.com",
+            phone: "6025550134",
+            phone2: null,
+            dob: null,
+            gender: null,
+            addressLine: null,
+            city: null,
+            state: null,
+            county: null,
+            zipCode: null,
+            age: null,
+            mortgageLender: null,
+            loanAmount: null,
+            crmStatus: "Lead",
+            crmPriority: "Normal",
+            contactStatus: "AttemptingContact",
+            crmLastTouch: null,
+            crmNextDate: null,
+            crmNextText: null,
+            crmTags: null,
+            agentNotes: null,
+            pipelineStage: "MortgageProtection",
+            meetingLocation: null,
+            zoomJoinUrl: null,
+            usePersonalZoomLink: false,
+            meetingTime: null,
+            meetingDurationMinutes: 30,
+            waitingOn: null,
+            pinnedBrief: null,
+            docIdReceived: false,
+            docAppSent: false,
+            docAppSigned: false,
+            docPolicyDelivered: false,
+            docReviewBooked: false,
+            watchers: null,
+            mentionNote: null,
+            btc: null));
+
+        Assert.IsType<JsonResult>(result);
+
+        var lead = await db.WorkstationLeadProfiles.SingleAsync(x => x.LeadId == "L-CONTACT-1");
+        var meta = ClientCrmMetaSerializer.Deserialize(lead.CrmNotes);
+
+        Assert.Equal("AttemptingContact", meta.ContactStatus);
     }
 
     [Fact]
@@ -196,6 +1019,100 @@ public class LeadsControllerTests
     }
 
     [Fact]
+    public async Task LeadBridge_LifeInsurance_Queue_Includes_Term_Whole_And_Iul_Leads()
+    {
+        var db = ControllerTestHelpers.BuildDb();
+        var now = DateTime.UtcNow;
+        db.WorkstationLeadProfiles.AddRange(
+            new WorkstationLeadProfile
+            {
+                LeadId = "LT-1",
+                AgentUserId = "agent-1",
+                Bucket = "Contacted",
+                OriginalLeadType = "TermLife",
+                UpdatedUtc = now,
+                CreatedUtc = now.AddHours(-3)
+            },
+            new WorkstationLeadProfile
+            {
+                LeadId = "LW-1",
+                AgentUserId = "agent-1",
+                Bucket = "FollowUp",
+                OriginalLeadType = "WholeLife",
+                UpdatedUtc = now.AddMinutes(-2),
+                CreatedUtc = now.AddHours(-2)
+            },
+            new WorkstationLeadProfile
+            {
+                LeadId = "LI-1",
+                AgentUserId = "agent-1",
+                Bucket = "Booked",
+                OriginalLeadType = "IUL",
+                UpdatedUtc = now.AddMinutes(-1),
+                CreatedUtc = now.AddHours(-1)
+            },
+            new WorkstationLeadProfile
+            {
+                LeadId = "LF-1",
+                AgentUserId = "agent-1",
+                Bucket = "Contacted",
+                OriginalLeadType = "FinalExpense",
+                UpdatedUtc = now.AddMinutes(-4),
+                CreatedUtc = now.AddHours(-4)
+            });
+        await db.SaveChangesAsync();
+
+        var stateService = new LeadBridgeStateService();
+        var controller = ControllerTestHelpers.BuildLeadBridgeController(db, stateService, ControllerTestHelpers.BuildUser());
+
+        var result = await controller.Active("LifeInsurance");
+        var ok = Assert.IsType<OkObjectResult>(result);
+        dynamic payload = ok.Value!;
+        Assert.Equal(3, (int)payload.Total);
+        Assert.Contains((string)payload.ActiveLeadId, new[] { "LT-1", "LW-1", "LI-1" });
+    }
+
+    [Fact]
+    public async Task LeadBridge_Queue_Falls_Back_To_Timestamps_When_CrmOrder_Is_Invalid()
+    {
+        var db = ControllerTestHelpers.BuildDb();
+        var now = DateTime.UtcNow;
+        db.WorkstationLeadProfiles.AddRange(
+            new WorkstationLeadProfile
+            {
+                LeadId = "NEW-BAD-ORDER",
+                AgentUserId = "agent-1",
+                Bucket = "MortgageProtection",
+                OriginalLeadType = "MortgageProtection",
+                CallCount = 0,
+                CrmOrder = -1,
+                UpdatedUtc = now,
+                CreatedUtc = now.AddMinutes(-30)
+            },
+            new WorkstationLeadProfile
+            {
+                LeadId = "OLD-GOOD-ORDER",
+                AgentUserId = "agent-1",
+                Bucket = "MortgageProtection",
+                OriginalLeadType = "MortgageProtection",
+                CallCount = 0,
+                CrmOrder = now.AddHours(-2).Ticks,
+                UpdatedUtc = now.AddHours(-2),
+                CreatedUtc = now.AddHours(-3)
+            });
+        await db.SaveChangesAsync();
+
+        var stateService = new LeadBridgeStateService();
+        var controller = ControllerTestHelpers.BuildLeadBridgeController(db, stateService, ControllerTestHelpers.BuildUser());
+
+        var result = await controller.Active("MortgageProtection");
+        var ok = Assert.IsType<OkObjectResult>(result);
+        dynamic payload = ok.Value!;
+        Assert.Equal("NEW-BAD-ORDER", (string)payload.ActiveLeadId);
+        Assert.Equal(2, (int)payload.Total);
+    }
+
+    [Fact]
     public async Task ApplyOutcome_Uses_Canonical_Row()
     {
         var db = ControllerTestHelpers.BuildDb();
@@ -269,7 +1186,7 @@ public class LeadsControllerTests
             "L-5",            // clientUserId
             "Updated",        // firstName
             null, null, null, null, null, null, null, null, null, null, null, null, null, null, // lastName..loanAmount
-            null, null, null, null, null, null, null, // crmStatus..agentNotes
+            null, null, null, null, null, null, null, null, // crmStatus..agentNotes
             "MortgageProtection", // pipelineStage
             null, null, null, null, null, null, null, // meetingLocation..pinnedBrief
             null, null, null, null, null,             // doc flags
@@ -285,6 +1202,98 @@ public class LeadsControllerTests
         Assert.Equal("Updated", canonical.FirstName);
         var stale = rows.OrderBy(r => r.UpdatedUtc).First();
         Assert.Equal("Old", stale.FirstName); // untouched
+    }
+
+    [Fact]
+    public async Task SaveQuickView_PersistsLeadCrmMetadataInCrmNotesJson()
+    {
+        var db = ControllerTestHelpers.BuildDb();
+        var now = DateTime.UtcNow;
+        db.WorkstationLeadProfiles.Add(new WorkstationLeadProfile
+        {
+            LeadId = "L-meta",
+            AgentUserId = "agent-1",
+            Bucket = "MortgageProtection",
+            CrmStage = "New",
+            FirstName = "Meta",
+            LastName = "Lead",
+            Email = "meta@example.com",
+            Phone = "6025550101",
+            UpdatedUtc = now,
+            CreatedUtc = now.AddHours(-1),
+            CrmNotes = "legacy note"
+        });
+        await db.SaveChangesAsync();
+
+        var controller = ControllerTestHelpers.BuildLeadsController(db, Mock.Of<IExecutionEngine>(), Mock.Of<ICommitmentService>(), ControllerTestHelpers.BuildUser());
+        var req = new LeadsController.LeadQuickViewRequest(
+            "L-meta",
+            "Meta",
+            "Lead",
+            "meta@example.com",
+            "6025550101",
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            null,
+            "Lead",
+            "High",
+            "AttemptingContact",
+            now.ToString("yyyy-MM-dd"),
+            now.AddDays(1).ToString("yyyy-MM-dd"),
+            "Follow up on docs",
+            "Mortgage, Priority",
+            "Agent note",
+            "Booked",
+            "Zoom Call",
+            "https://zoom.us/j/meta",
+            true,
+            "10:30",
+            45,
+            "WaitingOnClient",
+            "Pinned summary",
+            true,
+            true,
+            false,
+            false,
+            false,
+            "teammate@contoso.com",
+            "Please jump in",
+            null
+        );
+
+        var result = await controller.SaveQuickView(req);
+        var json = Assert.IsType<JsonResult>(result);
+        dynamic payload = ((dynamic)json.Value!).payload;
+        Assert.Equal("High", (string)payload.crmPriority);
+        Assert.Equal("Follow up on docs", (string)payload.crmNextText);
+        Assert.Equal("Agent note", (string)payload.agentNotes);
+        Assert.Equal("Zoom Call", (string)payload.meetingLocation);
+
+        var persisted = await db.WorkstationLeadProfiles.SingleAsync(x => x.LeadId == "L-meta");
+        var meta = ClientCrmMetaSerializer.Deserialize(persisted.CrmNotes);
+        Assert.Equal("High", meta.CrmPriority);
+        Assert.Equal("Follow up on docs", meta.CrmNextText);
+        Assert.Equal("Agent note", meta.AgentNotes);
+        Assert.Equal("Mortgage, Priority", meta.CrmTags);
+        Assert.Equal("Zoom Call", meta.MeetingLocation);
+        Assert.Equal("https://zoom.us/j/meta", meta.ZoomJoinUrl);
+        Assert.True(meta.UsePersonalZoomLink);
+        Assert.Equal("10:30", meta.MeetingTime);
+        Assert.Equal(45, meta.MeetingDurationMinutes);
+        Assert.Equal("WaitingOnClient", meta.WaitingOn);
+        Assert.Equal("Pinned summary", meta.PinnedBrief);
+        Assert.True(meta.DocChecklist.IdReceived);
+        Assert.True(meta.DocChecklist.AppSent);
+        Assert.Single(meta.Collaboration.Watchers);
+        Assert.Single(meta.Collaboration.MentionNotes);
     }
 
     [Fact]

@@ -1,0 +1,2278 @@
+.llbs-tool {
+    --llbs-obsidian: #060b16;
+    --llbs-navy: #0b1529;
+    --llbs-navy-2: #0f1d38;
+    --llbs-navy-3: #14294d;
+    --llbs-field: #111b2e;
+    --llbs-gold: #c79931;
+    --llbs-gold-2: #ddb457;
+    --llbs-gold-3: #f3d88b;
+    --llbs-gold-deep: #7c5812;
+    --llbs-ruby: #b4232a;
+    --llbs-ruby-2: #e15a64;
+    --llbs-emerald: #146c43;
+    --llbs-emerald-2: #35b779;
+    --llbs-text: #f8fafc;
+    --llbs-soft-text: rgba(248, 250, 252, .74);
+    --llbs-muted: rgba(248, 250, 252, .56);
+    --llbs-line: rgba(199, 153, 49, .28);
+    --llbs-line-strong: rgba(243, 216, 139, .48);
+    width: min(1200px, 100%);
+    margin: 0 auto 28px;
+    color: var(--llbs-text);
+    font-family: Inter, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+}
+
+.llbs-tool *,
+.llbs-tool *::before,
+.llbs-tool *::after {
+    box-sizing: border-box;
+}
+
+.llbs-tool button,
+.llbs-tool input,
+.llbs-tool select {
+    font: inherit;
+}
+
+.llbs-shell {
+    position: relative;
+    overflow: hidden;
+    border: 1.5px solid var(--llbs-line-strong);
+    border-radius: 16px;
+    background:
+        radial-gradient(820px 280px at 12% -8%, rgba(221, 180, 87, .24), transparent 60%),
+        radial-gradient(640px 240px at 92% 6%, rgba(20, 108, 67, .18), transparent 62%),
+        linear-gradient(180deg, #0a1224 0%, var(--llbs-navy) 45%, #07101f 100%);
+    box-shadow:
+        0 28px 70px rgba(0, 0, 0, .38),
+        inset 0 1px 0 rgba(243, 216, 139, .18);
+}
+
+.llbs-shell::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    background:
+        linear-gradient(90deg, transparent, rgba(243, 216, 139, .12), transparent) top / 100% 1px no-repeat,
+        linear-gradient(180deg, rgba(255, 255, 255, .035), transparent 30%);
+}
+
+.llbs-hero {
+    position: relative;
+    z-index: 1;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: center;
+    gap: 16px;
+    padding: 14px 18px;
+    color: var(--llbs-text);
+    border-bottom: 1px solid var(--llbs-line);
+    background:
+        radial-gradient(620px 170px at 16% 0%, rgba(243, 216, 139, .18), transparent 66%),
+        linear-gradient(135deg, rgba(6, 11, 22, .76), rgba(15, 29, 56, .92));
+}
+
+.llbs-kicker {
+    display: inline-flex;
+    width: max-content;
+    border: 1px solid rgba(243, 216, 139, .42);
+    border-radius: 999px;
+    padding: 3px 9px;
+    color: var(--llbs-gold-3);
+    background: rgba(199, 153, 49, .12);
+    font-size: .62rem;
+    font-weight: 950;
+    letter-spacing: .14em;
+    text-transform: uppercase;
+}
+
+.llbs-title {
+    margin: 5px 0 2px;
+    color: #fff7dd;
+    font-size: clamp(1.2rem, 1.8vw, 1.68rem);
+    line-height: 1.03;
+    font-weight: 950;
+    text-shadow: 0 2px 16px rgba(0, 0, 0, .36);
+}
+
+.llbs-subtitle {
+    margin: 0;
+    max-width: 760px;
+    color: var(--llbs-soft-text);
+    font-size: .84rem;
+    font-weight: 700;
+    line-height: 1.35;
+}
+
+.llbs-status {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 8px;
+    min-width: max-content;
+}
+
+.llbs-save-state {
+    display: inline-flex;
+    align-items: center;
+    min-height: 29px;
+    border: 1px solid rgba(243, 216, 139, .42);
+    border-radius: 999px;
+    padding: 4px 10px;
+    color: #fff7dd;
+    background: rgba(255, 255, 255, .07);
+    font-size: .72rem;
+    font-weight: 900;
+}
+
+.llbs-clear,
+.llbs-tax-toggle {
+    min-height: 32px;
+    border: 1px solid rgba(243, 216, 139, .38);
+    border-radius: 8px;
+    padding: 6px 11px;
+    color: #fff7dd;
+    background: linear-gradient(180deg, rgba(199, 153, 49, .2), rgba(124, 88, 18, .12));
+    font-size: .76rem;
+    font-weight: 950;
+    cursor: pointer;
+}
+
+.llbs-clear:hover,
+.llbs-clear:focus-visible,
+.llbs-tax-toggle:hover,
+.llbs-tax-toggle:focus-visible {
+    outline: none;
+    border-color: var(--llbs-gold-3);
+    box-shadow:
+        0 0 0 3px rgba(199, 153, 49, .18),
+        0 10px 22px rgba(0, 0, 0, .22);
+}
+
+.llbs-body {
+    position: relative;
+    z-index: 1;
+    display: grid;
+    gap: 7px;
+    padding: 9px;
+}
+
+.llbs-section,
+.llbs-tax-panel,
+.llbs-action-strip,
+.llbs-advisor-panel,
+.llbs-net-worth {
+    overflow: hidden;
+    border: 1px solid var(--llbs-line);
+    border-radius: 11px;
+    background:
+        linear-gradient(180deg, rgba(20, 41, 77, .9), rgba(10, 18, 36, .96));
+    box-shadow:
+        0 14px 32px rgba(0, 0, 0, .26),
+        inset 0 1px 0 rgba(255, 255, 255, .06);
+}
+
+.llbs-section-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    min-height: 30px;
+    padding: 5px 11px;
+    border-bottom: 1px solid rgba(199, 153, 49, .22);
+}
+
+.llbs-section-title {
+    margin: 0;
+    color: #fff7dd;
+    font-size: .72rem;
+    font-weight: 950;
+    letter-spacing: .13em;
+    text-transform: uppercase;
+}
+
+.llbs-section-note {
+    color: var(--llbs-gold-3);
+    font-size: .72rem;
+    font-weight: 900;
+    white-space: nowrap;
+}
+
+.llbs-protection .llbs-section-head {
+    background:
+        linear-gradient(90deg, rgba(199, 153, 49, .35), rgba(199, 153, 49, .08)),
+        linear-gradient(180deg, rgba(20, 41, 77, .96), rgba(10, 18, 36, .96));
+}
+
+.llbs-protection-grid {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 1px;
+    background: rgba(243, 216, 139, .2);
+}
+
+.llbs-protection-card {
+    display: grid;
+    gap: 4px;
+    padding: 5px 6px;
+    background:
+        radial-gradient(180px 90px at 10% 0%, rgba(243, 216, 139, .13), transparent 72%),
+        linear-gradient(180deg, #111f3a, #0b1529);
+}
+
+.llbs-protection-card-title {
+    color: #fff7dd;
+    font-size: .76rem;
+    font-weight: 950;
+    line-height: 1.15;
+}
+
+.llbs-status-select,
+.llbs-tax-select {
+    width: 100%;
+    min-height: 24px;
+    border: 1px solid rgba(243, 216, 139, .28);
+    border-radius: 7px;
+    background: #0b1324;
+    color: var(--llbs-text);
+    padding: 1px 6px;
+    font-size: .72rem;
+    font-weight: 900;
+}
+
+.llbs-status-select[data-status="Protected"] {
+    border-color: rgba(53, 183, 121, .62);
+    background: rgba(20, 108, 67, .18);
+    color: #d9ffe9;
+}
+
+.llbs-status-select[data-status="Partial"] {
+    border-color: rgba(243, 216, 139, .68);
+    background: rgba(199, 153, 49, .16);
+    color: #fff3c7;
+}
+
+.llbs-status-select[data-status="Exposed"] {
+    border-color: rgba(225, 90, 100, .62);
+    background: rgba(180, 35, 42, .18);
+    color: #ffe1e4;
+}
+
+.llbs-estate-card {
+    grid-template-rows: auto auto 1fr;
+}
+
+.llbs-estate-subtext {
+    display: block;
+    margin-top: 1px;
+    color: rgba(255, 248, 220, .7);
+    font-size: .58rem;
+    font-weight: 800;
+    line-height: 1.15;
+}
+
+.llbs-estate-status-select[data-status="FullEstatePlan"] {
+    border-color: rgba(53, 183, 121, .72);
+    background: rgba(20, 108, 67, .22);
+    color: #d9ffe9;
+}
+
+.llbs-estate-status-select[data-status="BasicWill"] {
+    border-color: rgba(243, 216, 139, .78);
+    background: rgba(107, 73, 0, .2);
+    color: #fff3c7;
+}
+
+.llbs-estate-status-select[data-status="NotSetUp"] {
+    border-color: rgba(225, 90, 100, .68);
+    background: rgba(180, 35, 42, .22);
+    color: #ffe1e4;
+}
+
+.llbs-estate-risk-row {
+    display: grid;
+    align-items: end;
+    min-height: 28px;
+}
+
+.llbs-risk-pill {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 100%;
+    min-height: 24px;
+    border: 1px solid rgba(255, 248, 220, .38);
+    border-radius: 8px;
+    padding: 2px 6px;
+    font-size: .72rem;
+    font-weight: 950;
+    line-height: 1;
+    text-transform: uppercase;
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, .12);
+}
+
+.llbs-risk-pill[data-risk="High"] {
+    border-color: rgba(255, 159, 168, .75);
+    background: rgba(141, 18, 28, .7);
+    color: #ffe1e4;
+}
+
+.llbs-risk-pill[data-risk="Moderate"] {
+    border-color: rgba(255, 233, 166, .82);
+    background: rgba(104, 70, 0, .72);
+    color: #fff3c7;
+}
+
+.llbs-risk-pill[data-risk="Low"] {
+    border-color: rgba(129, 227, 175, .72);
+    background: rgba(16, 91, 58, .7);
+    color: #d9ffe9;
+}
+
+.llbs-two-up {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 6px;
+}
+
+.llbs-main-grid {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    gap: 7px;
+    align-items: start;
+}
+
+.llbs-main-stack {
+    display: grid;
+    gap: 7px;
+    align-content: start;
+}
+
+.llbs-card-section[data-tone="assets"] .llbs-section-head {
+    background:
+        linear-gradient(90deg, rgba(73, 126, 221, .28), rgba(73, 126, 221, .06)),
+        linear-gradient(180deg, #12284e, #0c1930);
+}
+
+.llbs-card-section[data-tone="liabilities"] .llbs-section-head {
+    background:
+        linear-gradient(90deg, rgba(225, 90, 100, .32), rgba(180, 35, 42, .08)),
+        linear-gradient(180deg, #40151d, #1c111d);
+}
+
+.llbs-card-section[data-tone="cash"] .llbs-section-head {
+    background:
+        linear-gradient(90deg, rgba(53, 183, 121, .34), rgba(20, 108, 67, .08)),
+        linear-gradient(180deg, #0e3d2a, #0b1d22);
+}
+
+.llbs-rows,
+.llbs-gap-grid,
+.llbs-cash-grid,
+.llbs-advisor-grid {
+    display: grid;
+    gap: 1px;
+    background: rgba(243, 216, 139, .16);
+}
+
+.llbs-row {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: center;
+    gap: 8px;
+    min-height: 34px;
+    padding: 4px 10px;
+    background: rgba(9, 18, 35, .9);
+}
+
+.llbs-row:nth-child(even) {
+    background: rgba(14, 28, 53, .9);
+}
+
+.llbs-label {
+    display: grid;
+    gap: 1px;
+    min-width: 0;
+}
+
+.llbs-label strong {
+    color: var(--llbs-text);
+    font-size: .82rem;
+    font-weight: 900;
+    line-height: 1.2;
+}
+
+.llbs-label small,
+.llbs-edit-wrap + small {
+    color: var(--llbs-muted);
+    font-size: .68rem;
+    font-weight: 750;
+    line-height: 1.2;
+}
+
+.llbs-total-row {
+    min-height: 36px;
+    background:
+        linear-gradient(90deg, rgba(199, 153, 49, .18), rgba(199, 153, 49, .06)),
+        rgba(9, 18, 35, .96) !important;
+}
+
+.llbs-total-row .llbs-label strong {
+    color: var(--llbs-gold-3);
+    font-size: .76rem;
+    letter-spacing: .09em;
+    text-transform: uppercase;
+}
+
+.llbs-edit-wrap {
+    display: inline-grid;
+    min-width: 108px;
+}
+
+.llbs-protection-card .llbs-edit-wrap,
+.llbs-tax-field .llbs-edit-wrap,
+.llbs-cash-card .llbs-edit-wrap {
+    width: 100%;
+    min-width: 0;
+}
+
+.llbs-protection-card .llbs-edit-value,
+.llbs-protection-card .llbs-readonly-value {
+    min-height: 24px;
+    font-size: .78rem;
+}
+
+.llbs-protection-card .llbs-label small {
+    font-size: .58rem;
+}
+
+/* Person toggle — You / Spouse */
+.llbs-person-toggle {
+    display: flex;
+    gap: 0;
+    padding: 1.5px;
+    width: fit-content;
+    background: rgba(6, 11, 22, .55);
+    border: 1px solid rgba(243, 216, 139, .18);
+    border-radius: 5px;
+}
+
+.llbs-person-btn {
+    padding: 0 5px;
+    border: none;
+    border-radius: 3px;
+    background: transparent;
+    color: rgba(248, 250, 252, .42);
+    font-size: .64rem;
+    font-weight: 700;
+    letter-spacing: .02em;
+    line-height: 1.3;
+    cursor: pointer;
+    transition: background .12s, color .12s;
+    white-space: nowrap;
+}
+
+.llbs-person-btn.is-active {
+    background: rgba(199, 153, 49, .28);
+    color: #f3d88b;
+}
+
+.llbs-person-btn:hover:not(.is-active) {
+    color: rgba(248, 250, 252, .72);
+}
+
+/* Hide inactive person's fields — CSS-driven, no layout shift */
+[data-active-person="primary"] [data-llbs-person-fields="spouse"],
+[data-active-person="spouse"] [data-llbs-person-fields="primary"] {
+    display: none;
+}
+
+.llbs-el-source {
+    opacity: .55;
+    font-size: .68rem;
+    font-style: italic;
+    color: #f3d88b;
+}
+
+.llbs-edit-value,
+.llbs-readonly-value {
+    display: inline-flex;
+    align-items: center;
+    justify-content: flex-end;
+    width: 100%;
+    min-height: 28px;
+    border: 1px solid rgba(243, 216, 139, .3);
+    border-radius: 7px;
+    padding: 3px 8px;
+    background:
+        linear-gradient(180deg, rgba(255, 255, 255, .04), rgba(0, 0, 0, .08)),
+        #0b1324;
+    color: #fff7dd;
+    text-align: right;
+    font-size: .83rem;
+    font-variant-numeric: tabular-nums;
+    font-weight: 950;
+    line-height: 1;
+}
+
+.llbs-readonly-value {
+    color: var(--llbs-gold-3);
+}
+
+.llbs-edit-value {
+    cursor: pointer;
+}
+
+.llbs-edit-value:hover,
+.llbs-edit-value:focus-visible {
+    outline: none;
+    border-color: var(--llbs-gold-3);
+    box-shadow:
+        0 0 0 3px rgba(199, 153, 49, .18),
+        inset 0 1px 0 rgba(255, 255, 255, .06);
+}
+
+.llbs-edit-input {
+    width: 100%;
+    min-height: 32px;
+    border: 1.5px solid var(--llbs-gold-2);
+    border-radius: 8px;
+    padding: 5px 8px;
+    background: #fff9ea;
+    color: #111827;
+    text-align: right;
+    font-size: .83rem;
+    font-variant-numeric: tabular-nums;
+    font-weight: 950;
+    box-shadow: 0 0 0 3px rgba(199, 153, 49, .2);
+}
+
+.llbs-tool .legend-money-input.llbs-money-input-group {
+    display: flex;
+    align-items: center;
+    width: 100%;
+    min-width: 180px;
+    min-height: 42px;
+    background: #f4f4f2;
+    border: 1px solid rgba(198, 151, 45, 0.75);
+    border-radius: 10px;
+    overflow: hidden;
+}
+
+.llbs-tool .llbs-compound-field .legend-money-input.llbs-money-input-group {
+    border-radius: 10px;
+}
+
+.llbs-tool .legend-money-input.llbs-money-input-group[hidden] {
+    display: none !important;
+}
+
+.llbs-tool .legend-money-input.llbs-money-input-group:focus-within {
+    border-color: #d4af37;
+    box-shadow: 0 0 0 3px rgba(212, 175, 55, 0.18);
+}
+
+.llbs-tool .legend-money-input.llbs-money-input-group .legend-money-prefix {
+    flex: 0 0 auto;
+    padding-left: 12px;
+    padding-right: 8px;
+    color: #0b2a66;
+    font-weight: 800;
+    line-height: 1;
+    pointer-events: none;
+    user-select: none;
+}
+
+.llbs-tool .legend-money-input.llbs-money-input-group .legend-money-field {
+    flex: 1 1 auto;
+    min-width: 0;
+    width: 100%;
+    height: 100%;
+    border: 0 !important;
+    outline: 0 !important;
+    background: transparent !important;
+    box-shadow: none !important;
+    border-radius: 0 !important;
+    padding: 0 12px 0 0 !important;
+    color: #0b2a66 !important;
+    text-align: left;
+    font-size: .83rem;
+    font-variant-numeric: tabular-nums;
+    font-weight: 800 !important;
+}
+
+.llbs-tool .legend-money-input.llbs-money-input-group .legend-money-field:focus {
+    border: 0 !important;
+    outline: 0 !important;
+    box-shadow: none !important;
+}
+
+.llbs-edit-input[hidden],
+.llbs-edit-value[hidden],
+.llbs-tax-body[hidden],
+.llbs-advisor-panel[hidden],
+.llbs-save-error[hidden] {
+    display: none !important;
+}
+
+.llbs-net-worth {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 4px;
+    border-color: rgba(243, 216, 139, .42);
+    padding: 12px 14px;
+    background:
+        radial-gradient(500px 140px at 50% 0%, rgba(243, 216, 139, .18), transparent 68%),
+        linear-gradient(180deg, #111f3a, #070d18);
+}
+
+.llbs-net-kicker {
+    color: var(--llbs-gold-2);
+    font-size: .88rem;
+    font-weight: 950;
+    letter-spacing: .16em;
+    text-transform: uppercase;
+    text-align: center;
+}
+
+.llbs-net-value {
+    color: #ffffff;
+    font-size: clamp(1.6rem, 3vw, 2.6rem);
+    line-height: 1;
+    font-weight: 950;
+    text-align: center;
+    letter-spacing: -.02em;
+    font-variant-numeric: tabular-nums;
+    text-shadow: 0 3px 22px rgba(199, 153, 49, .16);
+}
+
+.llbs-net-value.is-negative {
+    color: #ff4d5e;
+}
+
+.llbs-net-value.is-positive {
+    color: #6ff3a4;
+}
+
+.llbs-edit-value.is-negative,
+.llbs-readonly-value.is-negative {
+    color: #ff9aa2;
+}
+
+.llbs-net-interpretation {
+    display: grid;
+    grid-column: 2;
+    grid-row: 1 / 3;
+    align-content: center;
+    justify-items: start;
+    gap: 3px;
+    text-align: left;
+}
+
+.llbs-net-interpretation p {
+    margin: 0;
+    color: var(--llbs-text);
+    font-size: .82rem;
+    font-weight: 850;
+    line-height: 1.25;
+}
+
+.llbs-net-interpretation small {
+    color: var(--llbs-soft-text);
+    font-size: .69rem;
+    font-weight: 700;
+    line-height: 1.25;
+}
+
+.llbs-net-meta {
+    display: flex;
+    flex-direction: column;
+    grid-column: 3;
+    grid-row: 1 / 3;
+    align-self: center;
+    align-items: flex-end;
+    gap: 3px;
+    color: var(--llbs-muted);
+    font-size: .7rem;
+    font-weight: 760;
+    text-align: right;
+    white-space: nowrap;
+}
+
+.llbs-net-meta strong {
+    color: var(--llbs-gold-3);
+    font-variant-numeric: tabular-nums;
+}
+
+.llbs-position-pill {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 24px;
+    border-radius: 999px;
+    padding: 4px 10px;
+    color: #fff;
+    background: linear-gradient(180deg, var(--llbs-ruby-2), var(--llbs-ruby));
+    font-size: .66rem;
+    font-weight: 950;
+    letter-spacing: .08em;
+    text-transform: uppercase;
+}
+
+.llbs-position-pill[data-status="Stable"] {
+    color: #241700;
+    background: linear-gradient(180deg, var(--llbs-gold-3), var(--llbs-gold));
+}
+
+.llbs-position-pill[data-status="Strong"] {
+    background: linear-gradient(180deg, var(--llbs-emerald-2), var(--llbs-emerald));
+}
+
+.llbs-gaps-panel .llbs-section-head {
+    background:
+        linear-gradient(90deg, rgba(243, 216, 139, .24), rgba(243, 216, 139, .05)),
+        linear-gradient(135deg, #141b2e, #070d18);
+}
+
+.llbs-gap-grid {
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+}
+
+.llbs-gap-card {
+    display: grid;
+    align-content: center;
+    gap: 4px;
+    padding: 7px 10px;
+    background:
+        linear-gradient(180deg, rgba(20, 41, 77, .86), rgba(9, 18, 35, .96));
+}
+
+.llbs-gap-card span {
+    color: var(--llbs-gold-2);
+    font-size: .66rem;
+    font-weight: 950;
+    letter-spacing: .08em;
+    text-transform: uppercase;
+}
+
+.llbs-gap-card small {
+    color: var(--llbs-muted);
+    font-size: .66rem;
+    font-weight: 700;
+}
+
+.llbs-gap-card .llbs-readonly-value {
+    min-height: 29px;
+    background: #0b1324;
+    font-size: .93rem;
+}
+
+.llbs-gap-card-negative .llbs-readonly-value {
+    border-color: rgba(225, 90, 100, .48);
+    background:
+        linear-gradient(180deg, rgba(180, 35, 42, .22), rgba(11, 19, 36, .08)),
+        #0b1324;
+    color: #ffb7bf;
+}
+
+.llbs-gap-card [data-llbs-output="summary.debtPressureRatio"][data-pressure-band="safe"] {
+    border-color: rgba(53, 183, 121, .52);
+    background:
+        linear-gradient(180deg, rgba(18, 112, 71, .26), rgba(11, 19, 36, .08)),
+        #0b1324;
+    color: #8ff0bf;
+}
+
+.llbs-gap-card [data-llbs-output="summary.debtPressureRatio"][data-pressure-band="healthy"] {
+    border-color: rgba(129, 227, 175, .5);
+    background:
+        linear-gradient(180deg, rgba(34, 122, 73, .22), rgba(11, 19, 36, .08)),
+        #0b1324;
+    color: #c8ffd8;
+}
+
+.llbs-gap-card [data-llbs-output="summary.debtPressureRatio"][data-pressure-band="watch"] {
+    border-color: rgba(243, 216, 139, .5);
+    background:
+        linear-gradient(180deg, rgba(153, 107, 13, .24), rgba(11, 19, 36, .08)),
+        #0b1324;
+    color: #ffe59f;
+}
+
+.llbs-gap-card [data-llbs-output="summary.debtPressureRatio"][data-pressure-band="high"] {
+    border-color: rgba(242, 159, 103, .54);
+    background:
+        linear-gradient(180deg, rgba(168, 87, 30, .24), rgba(11, 19, 36, .08)),
+        #0b1324;
+    color: #ffbf8b;
+}
+
+.llbs-gap-card [data-llbs-output="summary.debtPressureRatio"][data-pressure-band="critical"] {
+    border-color: rgba(225, 90, 100, .52);
+    background:
+        linear-gradient(180deg, rgba(180, 35, 42, .24), rgba(11, 19, 36, .08)),
+        #0b1324;
+    color: #ffb7bf;
+}
+
+.llbs-cash-grid {
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+}
+
+.llbs-cash-card {
+    display: grid;
+    align-content: start;
+    gap: 4px;
+    padding: 7px;
+    background: rgba(9, 18, 35, .93);
+}
+
+.llbs-cash-card.is-result {
+    background:
+        radial-gradient(180px 70px at 8% 0%, rgba(53, 183, 121, .16), transparent 70%),
+        rgba(9, 18, 35, .94);
+}
+
+.llbs-cash-card.is-cost {
+    background:
+        radial-gradient(180px 70px at 8% 0%, rgba(225, 90, 100, .16), transparent 70%),
+        rgba(9, 18, 35, .94);
+}
+
+.llbs-tax-panel {
+    box-shadow: none;
+}
+
+.llbs-tax-summary {
+    display: grid;
+    grid-template-columns: minmax(220px, 1fr) minmax(0, 1.5fr) auto;
+    align-items: center;
+    gap: 10px;
+    padding: 10px 11px;
+    background:
+        radial-gradient(280px 110px at 0% 0%, rgba(243, 216, 139, .14), transparent 72%),
+        rgba(9, 18, 35, .72);
+}
+
+.llbs-tax-copy {
+    display: grid;
+    gap: 3px;
+}
+
+.llbs-tax-copy span {
+    color: var(--llbs-soft-text);
+    font-size: .77rem;
+    font-weight: 800;
+    line-height: 1.3;
+}
+
+.llbs-tax-summary-metrics {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 1px;
+    overflow: hidden;
+    border: 1px solid rgba(243, 216, 139, .2);
+    border-radius: 8px;
+    background: rgba(243, 216, 139, .16);
+}
+
+.llbs-tax-summary-metrics span {
+    display: grid;
+    gap: 2px;
+    min-width: 0;
+    padding: 6px 8px;
+    background: #0b1324;
+}
+
+.llbs-tax-summary-metrics small {
+    color: var(--llbs-gold-2);
+    font-size: .62rem;
+    font-weight: 950;
+    letter-spacing: .08em;
+    text-transform: uppercase;
+}
+
+.llbs-tax-summary-metrics strong {
+    overflow: hidden;
+    color: #fff7dd;
+    font-size: .78rem;
+    font-weight: 950;
+    font-variant-numeric: tabular-nums;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.llbs-tax-body {
+    border-top: 1px solid rgba(243, 216, 139, .18);
+    padding: 10px;
+    background: rgba(6, 11, 22, .46);
+}
+
+.llbs-tax-grid {
+    display: grid;
+    grid-template-columns: 1.4fr repeat(3, minmax(92px, 1fr)) 1.1fr minmax(112px, 1.1fr) repeat(2, minmax(104px, 1fr));
+    gap: 8px;
+    align-items: end;
+}
+
+.llbs-tax-field {
+    display: grid;
+    gap: 4px;
+}
+
+.llbs-tax-field label,
+.llbs-toggle span {
+    color: var(--llbs-gold-2);
+    font-size: .64rem;
+    font-weight: 950;
+    letter-spacing: .07em;
+    text-transform: uppercase;
+}
+
+.llbs-toggle {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    min-height: 32px;
+    border: 1px solid rgba(243, 216, 139, .24);
+    border-radius: 8px;
+    padding: 5px 8px;
+    background: #0b1324;
+}
+
+.llbs-toggle input {
+    width: 15px;
+    height: 15px;
+    accent-color: var(--llbs-gold-2);
+}
+
+.llbs-tax-manual.is-disabled {
+    opacity: .45;
+}
+
+.llbs-tax-manual.is-disabled .llbs-edit-value {
+    cursor: not-allowed;
+}
+
+.llbs-action-strip {
+    display: grid;
+    grid-template-columns: minmax(190px, .72fr) minmax(0, 2fr);
+    align-items: center;
+    gap: 8px;
+    padding: 8px 11px;
+    background:
+        radial-gradient(420px 120px at 0% 0%, rgba(53, 183, 121, .13), transparent 65%),
+        linear-gradient(180deg, rgba(20, 41, 77, .92), rgba(9, 18, 35, .96));
+}
+
+.llbs-action-copy p {
+    margin: 3px 0 0;
+    color: var(--llbs-soft-text);
+    font-size: .76rem;
+    font-weight: 720;
+    line-height: 1.25;
+}
+
+.llbs-action-buttons {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 7px;
+}
+
+.llbs-action-btn {
+    display: grid;
+    gap: 2px;
+    align-content: center;
+    min-height: 38px;
+    border: 1px solid rgba(243, 216, 139, .26);
+    border-radius: 8px;
+    padding: 5px 9px;
+    color: var(--llbs-text);
+    background:
+        linear-gradient(180deg, rgba(255, 255, 255, .04), rgba(0, 0, 0, .08)),
+        #0b1324;
+    text-align: left;
+    cursor: pointer;
+}
+
+.llbs-action-btn:hover,
+.llbs-action-btn:focus-visible {
+    outline: none;
+    border-color: var(--llbs-gold-3);
+    box-shadow:
+        0 0 0 3px rgba(199, 153, 49, .18),
+        0 12px 24px rgba(0, 0, 0, .25);
+}
+
+.llbs-action-btn span {
+    color: #fff7dd;
+    font-size: .8rem;
+    font-weight: 950;
+    line-height: 1.15;
+}
+
+.llbs-action-btn small {
+    color: var(--llbs-muted);
+    font-size: .66rem;
+    font-weight: 750;
+    line-height: 1.15;
+}
+
+.llbs-advisor-toggle {
+    display: flex;
+    justify-content: flex-end;
+    gap: 6px;
+    padding: 8px 13px 0;
+    background: transparent;
+}
+
+.llbs-advisor-toggle button {
+    min-height: 32px;
+    border: 1px solid rgba(243, 216, 139, .28);
+    border-radius: 999px;
+    padding: 5px 12px;
+    color: var(--llbs-soft-text);
+    background: #0b1324;
+    font-size: .76rem;
+    font-weight: 900;
+}
+
+.llbs-advisor-toggle button.is-active {
+    color: #241700;
+    border-color: var(--llbs-gold-3);
+    background: linear-gradient(180deg, var(--llbs-gold-3), var(--llbs-gold));
+}
+
+.llbs-advisor-panel {
+    margin: 8px 13px 0;
+}
+
+.llbs-advisor-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.llbs-advisor-grid article {
+    display: grid;
+    gap: 4px;
+    min-height: 64px;
+    padding: 7px 10px;
+    background: rgba(9, 18, 35, .94);
+}
+
+.llbs-advisor-grid span,
+.llbs-live-script strong {
+    color: var(--llbs-gold-2);
+    font-size: .66rem;
+    font-weight: 950;
+    letter-spacing: .08em;
+    text-transform: uppercase;
+}
+
+.llbs-advisor-grid p {
+    margin: 0;
+    color: var(--llbs-text);
+    font-size: .78rem;
+    font-weight: 700;
+    line-height: 1.35;
+}
+
+.llbs-live-script {
+    display: grid;
+    gap: 4px;
+    padding: 9px 10px;
+    color: var(--llbs-soft-text);
+    background: rgba(199, 153, 49, .1);
+    font-size: .76rem;
+    font-weight: 750;
+}
+
+.llbs-save-error {
+    color: #ffb4ba;
+    font-size: .78rem;
+    font-weight: 850;
+}
+
+.llbs-focus-pulse {
+    animation: llbsFocusPulse 1.2s ease;
+}
+
+@keyframes llbsFocusPulse {
+    0% { box-shadow: 0 0 0 0 rgba(243, 216, 139, .52), 0 14px 32px rgba(0, 0, 0, .26); }
+    100% { box-shadow: 0 0 0 13px rgba(243, 216, 139, 0), 0 14px 32px rgba(0, 0, 0, .26); }
+}
+
+/* Original Financial Health Snapshot color architecture, elevated for Legend. */
+.llbs-protection {
+    border-color: rgba(255, 211, 94, .88);
+    background:
+        linear-gradient(180deg, rgba(255, 251, 226, .28), rgba(255, 251, 226, 0) 24%),
+        radial-gradient(560px 220px at 12% 0%, rgba(255, 225, 128, .42), transparent 70%),
+        linear-gradient(180deg, #533504 0%, #9c6a08 46%, #f0b938 100%);
+    box-shadow:
+        0 20px 42px rgba(0, 0, 0, .28),
+        0 0 0 1px rgba(255, 223, 130, .22),
+        0 0 34px rgba(255, 196, 54, .28),
+        0 0 72px rgba(255, 196, 54, .14),
+        inset 0 1px 0 rgba(255, 246, 192, .34),
+        inset 0 -18px 36px rgba(76, 43, 0, .18);
+}
+
+.llbs-protection .llbs-section-head {
+    color: #fff8dc;
+    background:
+        linear-gradient(180deg, rgba(255, 246, 194, .34), rgba(92, 65, 0, .10)),
+        linear-gradient(90deg, #6a4300, #b77d09 52%, #6a4300);
+    border-bottom-color: rgba(255, 223, 130, .34);
+}
+
+.llbs-protection .llbs-section-title,
+.llbs-protection .llbs-section-note {
+    color: #fff8dc;
+    text-shadow: 0 1px 8px rgba(70, 45, 0, .42);
+}
+
+.llbs-protection-grid {
+    background: rgba(255, 211, 94, .22);
+}
+
+.llbs-protection-card {
+    background:
+    radial-gradient(260px 110px at 12% 0%, rgba(255, 248, 220, .24), transparent 72%),
+    linear-gradient(180deg, #b27b13 0%, #885d0a 46%, #5a3c06 100%);
+    box-shadow:
+        inset 0 1px 0 rgba(255, 248, 220, .2),
+        inset 0 -12px 22px rgba(40, 24, 0, .14),
+        0 0 18px rgba(255, 196, 54, .12);
+}
+
+.llbs-protection-card-title,
+.llbs-protection .llbs-label small,
+.llbs-protection .llbs-edit-wrap + small {
+    color: #fff8dc;
+}
+
+.llbs-protection-card .llbs-edit-value,
+.llbs-protection-card .llbs-readonly-value {
+    border-color: rgba(255, 248, 220, .45);
+    background: rgba(32, 20, 0, .26);
+    color: #fff8dc;
+}
+
+.llbs-protection-card .llbs-person-toggle {
+    background: rgba(8, 12, 24, .22);
+    border-color: rgba(255, 248, 220, .16);
+    border-radius: 4px;
+    padding: 1px;
+}
+
+.llbs-protection-card .llbs-person-btn {
+    border-radius: 3px;
+    color: rgba(255, 248, 220, .45);
+    font-size: .6rem;
+    padding: 0 4px;
+    line-height: 1.25;
+}
+
+.llbs-protection-card .llbs-person-btn.is-active {
+    background: rgba(255, 248, 220, .12);
+    color: #fff8dc;
+}
+
+.llbs-protection-card .llbs-person-btn:hover:not(.is-active) {
+    color: rgba(255, 248, 220, .75);
+}
+
+.llbs-card-section[data-tone="assets"] {
+    border-color: rgba(117, 168, 255, .82);
+    background:
+        radial-gradient(420px 180px at 12% 0%, rgba(122, 182, 255, .22), transparent 72%),
+        linear-gradient(180deg, #1d318c, #10226d);
+    box-shadow:
+        0 16px 36px rgba(0, 0, 0, .22),
+        0 0 26px rgba(92, 120, 229, .22),
+        0 0 58px rgba(74, 144, 255, .12),
+        inset 0 1px 0 rgba(220, 232, 255, .16),
+        inset 0 -14px 28px rgba(7, 27, 99, .18);
+}
+
+.llbs-card-section[data-tone="assets"] .llbs-section-head {
+    background:
+        linear-gradient(180deg, rgba(255, 255, 255, .12), rgba(0, 0, 0, .16)),
+        linear-gradient(90deg, #03144f, #1740ba 52%, #03144f);
+    border-bottom-color: rgba(182, 214, 255, .26);
+}
+
+.llbs-card-section[data-tone="assets"] .llbs-rows {
+
+    background: rgba(255, 255, 255, .16);
+}
+
+.llbs-card-section[data-tone="assets"] .llbs-row {
+    background:
+        linear-gradient(90deg, rgba(255, 255, 255, .075), transparent),
+        #2441ae;
+}
+
+.llbs-card-section[data-tone="assets"] .llbs-row:nth-child(even) {
+    background:
+        linear-gradient(90deg, rgba(255, 255, 255, .06), transparent),
+        #1e3698;
+}
+
+.llbs-card-section[data-tone="assets"] .llbs-label strong,
+.llbs-card-section[data-tone="assets"] .llbs-label small,
+.llbs-card-section[data-tone="assets"] .llbs-edit-wrap + small {
+    color: #f8fbff;
+}
+
+.llbs-card-section[data-tone="assets"] .llbs-total-row {
+    background:
+        linear-gradient(90deg, rgba(255, 255, 255, .12), rgba(255, 255, 255, .04)),
+        #1e2b77 !important;
+}
+
+.llbs-card-section[data-tone="assets"] .llbs-total-row .llbs-label strong {
+    color: #fff8dc;
+}
+
+.llbs-card-section[data-tone="assets"] .llbs-edit-value,
+.llbs-card-section[data-tone="assets"] .llbs-readonly-value {
+    border-color: rgba(232, 239, 255, .34);
+    background: rgba(5, 17, 70, .34);
+    color: #ffffff;
+}
+
+.llbs-card-section[data-tone="liabilities"] {
+    border-color: rgba(255, 118, 133, .82);
+    background:
+        linear-gradient(180deg, rgba(255, 230, 232, .16), rgba(255, 230, 232, 0) 22%),
+        radial-gradient(420px 180px at 12% 0%, rgba(255, 130, 146, .18), transparent 72%),
+        linear-gradient(180deg, #7f111d, #520812);
+    box-shadow:
+        0 16px 34px rgba(0, 0, 0, .22),
+        0 0 24px rgba(255, 93, 116, .18),
+        0 0 54px rgba(255, 93, 116, .10),
+        inset 0 1px 0 rgba(255, 235, 237, .14),
+        inset 0 -14px 28px rgba(51, 8, 12, .18);
+}
+
+.llbs-card-section[data-tone="liabilities"] .llbs-section-head {
+    background:
+        linear-gradient(180deg, rgba(255, 255, 255, .12), rgba(0, 0, 0, .18)),
+        linear-gradient(90deg, #4d0610, #981b29 52%, #4d0610);
+    border-bottom-color: rgba(255, 210, 216, .20);
+}
+
+.llbs-card-section[data-tone="liabilities"] .llbs-rows {
+    background: rgba(255, 255, 255, .12);
+}
+
+.llbs-card-section[data-tone="liabilities"] .llbs-row {
+    background:
+        linear-gradient(90deg, rgba(255, 255, 255, .07), transparent),
+        #951827;
+}
+
+.llbs-card-section[data-tone="liabilities"] .llbs-row:nth-child(even) {
+    background:
+        linear-gradient(90deg, rgba(255, 255, 255, .06), transparent),
+        #82111e;
+}
+
+.llbs-card-section[data-tone="liabilities"] .llbs-label strong,
+.llbs-card-section[data-tone="liabilities"] .llbs-label small,
+.llbs-card-section[data-tone="liabilities"] .llbs-edit-wrap + small {
+    color: #fff8f8;
+}
+
+.llbs-card-section[data-tone="liabilities"] .llbs-total-row {
+    background:
+    linear-gradient(90deg, rgba(255, 255, 255, .1), rgba(255, 255, 255, .03)),
+    #56141a !important;
+}
+
+.llbs-card-section[data-tone="liabilities"] .llbs-total-row .llbs-label strong {
+    color: #fff8dc;
+}
+
+.llbs-card-section[data-tone="liabilities"] .llbs-edit-value,
+.llbs-card-section[data-tone="liabilities"] .llbs-readonly-value {
+    border-color: rgba(255, 232, 234, .28);
+    background: rgba(45, 8, 11, .34);
+    color: #ffffff;
+}
+
+.llbs-net-worth {
+    position: relative;
+    overflow: hidden;
+    border-color: rgba(231, 187, 74, .88);
+    background:
+        linear-gradient(180deg, rgba(255, 255, 255, .82), rgba(255, 255, 255, 0) 18%),
+        linear-gradient(180deg, #fbfcfd 0%, #f1f4f7 52%, #e5eaef 100%);
+    box-shadow:
+        0 20px 42px rgba(15, 23, 42, .16),
+        0 0 0 1px rgba(231, 187, 74, .26),
+        inset 0 1px 0 rgba(255, 255, 255, .94);
+}
+
+.llbs-net-kicker {
+    color: #86610d;
+    font-size: .8rem;
+    line-height: 1.2;
+    letter-spacing: .14em;
+}
+
+.llbs-net-value,
+.llbs-net-interpretation p,
+.llbs-net-meta strong {
+    color: #111827;
+    text-shadow: none;
+}
+
+.llbs-net-value {
+    max-width: 100%;
+    font-size: clamp(1.72rem, 3.05vw, 2.72rem);
+    line-height: .98;
+    font-weight: 995;
+    letter-spacing: -.04em;
+    overflow-wrap: anywhere;
+    word-break: break-word;
+    text-shadow: 0 8px 22px rgba(17, 24, 39, .10);
+}
+
+.llbs-net-interpretation small,
+.llbs-net-meta {
+    color: #5b6475;
+}
+
+.llbs-net-value.is-negative {
+    color: #b3152c;
+    text-shadow: 0 8px 22px rgba(179, 21, 44, .18);
+}
+
+.llbs-net-value.is-positive {
+    color: #0f8a52;
+    text-shadow: 0 8px 22px rgba(15, 138, 82, .16);
+}
+
+.llbs-card-section[data-tone="cash"] {
+    border-color: rgba(76, 214, 132, .78);
+    background:
+        radial-gradient(420px 180px at 12% 0%, rgba(101, 255, 169, .18), transparent 72%),
+        linear-gradient(180deg, #126640, #0b4d31);
+    box-shadow:
+        0 16px 34px rgba(0, 0, 0, .22),
+        0 0 24px rgba(67, 171, 115, .22),
+        0 0 56px rgba(67, 171, 115, .10),
+        inset 0 1px 0 rgba(232, 255, 242, .16),
+        inset 0 -14px 28px rgba(7, 54, 34, .18);
+}
+
+.llbs-card-section[data-tone="cash"] .llbs-section-head {
+    background:
+        linear-gradient(180deg, rgba(255, 255, 255, .12), rgba(0, 0, 0, .16)),
+        linear-gradient(90deg, #0a472c, #1d9c67 52%, #0a472c);
+    border-bottom-color: rgba(218, 255, 232, .20);
+}
+
+.llbs-cash-grid {
+    background: rgba(255, 255, 255, .18);
+}
+
+.llbs-cash-card,
+.llbs-cash-card.is-result,
+.llbs-cash-card.is-cost {
+    background:
+        radial-gradient(220px 90px at 8% 0%, rgba(255, 255, 255, .14), transparent 70%),
+        linear-gradient(180deg, #20a86d, #13784d);
+}
+
+.llbs-cash-card:nth-child(even) {
+    background:
+        radial-gradient(220px 90px at 8% 0%, rgba(255, 255, 255, .13), transparent 70%),
+        linear-gradient(180deg, #1a9761, #106a43);
+}
+
+.llbs-cash-card-header strong,
+.llbs-cash-card .llbs-edit-wrap + small {
+    color: #f4fff7;
+}
+
+.llbs-cash-card .llbs-edit-value,
+.llbs-cash-card .llbs-readonly-value {
+    border-color: rgba(226, 255, 235, .3);
+    background: rgba(6, 58, 34, .28);
+    color: #ffffff;
+    font-size: 1rem;
+}
+
+.llbs-cash-card .llbs-edit-value.is-cash-outflow,
+.llbs-cash-card .llbs-readonly-value.is-cash-outflow,
+.llbs-cash-card .llbs-edit-value.is-negative,
+.llbs-cash-card .llbs-readonly-value.is-negative {
+    border-color: rgba(255, 159, 168, .74);
+    background: rgba(112, 9, 21, .44);
+    color: #ffe1e4;
+    box-shadow:
+        inset 0 1px 0 rgba(255, 255, 255, .14),
+        0 0 0 1px rgba(255, 159, 168, .16);
+}
+
+/* ── Cash card header & sub-row layout ─────────────────────────────────────── */
+.llbs-cash-card-header {
+    display: flex;
+    align-items: baseline;
+    gap: 5px;
+    flex-wrap: wrap;
+    margin-bottom: 2px;
+}
+
+.llbs-cash-card-header strong {
+    color: #eefdf5;
+    font-size: .78rem;
+    font-weight: 900;
+    line-height: 1.2;
+}
+
+
+/* ── Health Score card ──────────────────────────────────────────────────────── */
+.llbs-health-score-card {
+    background:
+        radial-gradient(180px 90px at 50% 0%, rgba(199, 153, 49, .18), transparent 70%),
+        linear-gradient(180deg, rgba(20, 41, 77, .86), rgba(9, 18, 35, .96));
+}
+
+.llbs-score-value {
+    color: #f3d88b;
+    font-size: 1.5rem;
+    font-weight: 950;
+    font-variant-numeric: tabular-nums;
+    line-height: 1;
+}
+
+.llbs-score-value[data-grade="strong"] { color: #35b779; }
+.llbs-score-value[data-grade="stable"] { color: #f3d88b; }
+.llbs-score-value[data-grade="exposed"] { color: #e15a64; }
+
+/* ── Section completion dot ─────────────────────────────────────────────────── */
+.llbs-section-head.is-complete .llbs-section-title::after,
+#llbsTaxProfile .llbs-tax-summary.is-complete .llbs-section-title::after {
+    content: "";
+    display: inline-block;
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    background: #35b779;
+    margin-left: 7px;
+    vertical-align: middle;
+    box-shadow: 0 0 6px rgba(53, 183, 121, .6);
+}
+
+/* ── Lifestyle note ──────────────────────────────────────────────────────────── */
+.llbs-lifestyle-note {
+    display: block;
+    font-size: .68rem;
+    font-weight: 800;
+    line-height: 1.2;
+    min-height: .68rem;
+}
+
+.llbs-lifestyle-note[data-tone="good"] { color: #a7f3c0; }
+.llbs-lifestyle-note[data-tone="bad"] { color: #ffb4ba; }
+
+/* ── Coverage % bar ──────────────────────────────────────────────────────────── */
+.llbs-coverage-bar-wrap {
+    height: 5px;
+    border-radius: 999px;
+    background: rgba(0, 0, 0, .28);
+    overflow: hidden;
+    margin-top: 2px;
+}
+
+.llbs-coverage-bar {
+    height: 100%;
+    border-radius: 999px;
+    background: rgba(53, 183, 121, .7);
+    transition: width .25s ease;
+}
+
+.llbs-coverage-bar[data-status="Protected"] { background: #35b779; }
+.llbs-coverage-bar[data-status="Partial"] { background: #c79931; }
+.llbs-coverage-bar[data-status="Exposed"] { background: #e15a64; }
+
+/* ── Net worth session delta ─────────────────────────────────────────────────── */
+.llbs-net-delta {
+    font-size: .7rem;
+    font-weight: 850;
+    margin-top: 2px;
+}
+
+.llbs-net-delta[data-tone="up"] { color: #146c43; }
+.llbs-net-delta[data-tone="down"] { color: #c0222e; }
+
+/* ── Print button ────────────────────────────────────────────────────────────── */
+/* ── Compound Lab trigger / print buttons ─────────────────────────────────── */
+.llbs-compound-btn,
+.llbs-print-btn {
+    min-height: 32px;
+    border: 2px solid #b88b18;
+    border-radius: 8px;
+    padding: 6px 13px;
+    color: #0f172a;
+    background: linear-gradient(180deg, #ffe9b5, #e6b23a);
+    font-size: .76rem;
+    font-weight: 950;
+    cursor: pointer;
+    box-shadow: 0 4px 12px rgba(166, 128, 35, .2);
+    transition: transform .15s ease, box-shadow .15s ease;
+}
+
+.llbs-compound-btn {
+    border-color: #1f8b53;
+    color: #fff;
+    background: linear-gradient(180deg, #22c55e, #15803d);
+    box-shadow: 0 4px 12px rgba(21, 128, 61, .22);
+}
+
+.llbs-compound-btn:hover,
+.llbs-compound-btn:focus-visible,
+.llbs-print-btn:hover,
+.llbs-print-btn:focus-visible {
+    outline: none;
+    transform: translateY(-1px);
+    box-shadow: 0 8px 20px rgba(166, 128, 35, .28);
+}
+
+body.llbs-modal-open {
+    overflow: hidden;
+}
+
+/* ── Overlay / backdrop ───────────────────────────────────────────────────── */
+.llbs-compound-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 1200;
+    display: grid;
+    place-items: center;
+    padding: 16px;
+}
+
+.llbs-compound-backdrop {
+    position: absolute;
+    inset: 0;
+    background: rgba(3, 8, 17, .72);
+    backdrop-filter: blur(8px);
+}
+
+/* ── Modal shell ──────────────────────────────────────────────────────────── */
+.llbs-compound-modal {
+    position: relative;
+    width: min(1460px, calc(100vw - 24px));
+    height: calc(100vh - 24px);
+    max-height: calc(100vh - 24px);
+    overflow: hidden;
+    border: 2.5px solid #d8a825;
+    border-radius: 22px;
+    background:
+        radial-gradient(900px 260px at 8% -4%, rgba(255, 212, 92, .16), transparent 58%),
+        radial-gradient(820px 260px at 100% 0%, rgba(16, 90, 61, .12), transparent 60%),
+        linear-gradient(180deg, #eef3f8 0%, #e5edf5 100%);
+    box-shadow:
+        0 38px 96px rgba(15, 23, 42, .34),
+        inset 0 1px 0 rgba(255, 255, 255, .95),
+        inset 0 0 0 1px rgba(255, 218, 122, .42);
+}
+
+.llbs-compound-stage {
+    width: 100%;
+    margin: 0 auto;
+    transform-origin: top center;
+    will-change: transform;
+}
+
+/* ── Header bar ───────────────────────────────────────────────────────────── */
+.llbs-compound-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    padding: 14px 18px 12px;
+    background:
+        linear-gradient(180deg, rgba(255, 255, 255, .98), rgba(247, 250, 252, .96));
+    border-bottom: 2.5px solid #d8a825;
+    box-shadow: inset 0 -1px 0 rgba(255, 224, 138, .26);
+}
+
+.llbs-compound-title {
+    margin: 0;
+    color: #0b1f33;
+    font-size: 1.18rem;
+    font-weight: 950;
+    letter-spacing: -.01em;
+}
+
+.llbs-compound-subtitle {
+    margin: 3px 0 0;
+    color: #516174;
+    font-size: .78rem;
+    font-weight: 700;
+    line-height: 1.4;
+}
+
+.llbs-compound-a11y-title {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+    border: 0;
+}
+
+.llbs-compound-head-actions {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    flex-wrap: wrap;
+    gap: 8px;
+    flex-shrink: 0;
+}
+
+.llbs-compound-close {
+    min-height: 32px;
+    border: 1.5px solid #cdb067;
+    border-radius: 8px;
+    padding: 6px 13px;
+    color: #0b1f33;
+    background: linear-gradient(180deg, #fffdf7, #f6edd1);
+    font-size: .76rem;
+    font-weight: 900;
+    cursor: pointer;
+    transition: border-color .15s ease, box-shadow .15s ease;
+}
+
+.llbs-compound-close:hover,
+.llbs-compound-close:focus-visible {
+    outline: none;
+    border-color: #b88300;
+    box-shadow: 0 0 0 3px rgba(216, 168, 37, .18);
+}
+
+button[data-llbs-compound-reset].llbs-clear {
+    border: 1.5px solid #d27b85;
+    color: #7f1021;
+    background: linear-gradient(180deg, #fff6f7, #f7d9dd);
+    box-shadow:
+        inset 0 1px 0 rgba(255, 255, 255, .92),
+        0 2px 10px rgba(127, 16, 33, .08);
+}
+
+button[data-llbs-compound-reset].llbs-clear:hover,
+button[data-llbs-compound-reset].llbs-clear:focus-visible {
+    outline: none;
+    border-color: #b4233a;
+    box-shadow:
+        inset 0 1px 0 rgba(255, 255, 255, .94),
+        0 0 0 3px rgba(180, 35, 58, .14);
+}
+
+/* ── Two-column grid ──────────────────────────────────────────────────────── */
+.llbs-compound-grid {
+    display: grid;
+    grid-template-columns: minmax(380px, 440px) minmax(0, 1fr);
+    gap: 12px;
+    padding: 12px 16px 16px;
+    background:
+        linear-gradient(180deg, rgba(255, 255, 255, .46), rgba(255, 255, 255, 0)),
+        linear-gradient(180deg, #eaf0f6 0%, #dfe8f1 100%);
+    height: calc(100% - 64px);
+    overflow-y: auto;
+    box-sizing: border-box;
+}
+
+/* ── Input / results panels ───────────────────────────────────────────────── */
+.llbs-compound-panel {
+    border: 1.5px solid #d7b35e;
+    border-radius: 18px;
+    background:
+        linear-gradient(180deg, rgba(255, 255, 255, .98), rgba(249, 251, 253, .98));
+    box-shadow:
+        0 10px 28px rgba(15, 23, 42, .09),
+        inset 0 0 0 1px rgba(233, 199, 103, .18);
+}
+
+.llbs-compound-panel-inputs {
+    align-self: start;
+    padding: 16px;
+}
+
+.llbs-compound-panel-results {
+    display: grid;
+    gap: 12px;
+    padding: 16px;
+}
+
+/* ── Section header blocks inside panels ─────────────────────────────────── */
+.llbs-compound-panel-top,
+.llbs-compound-results-hero {
+    display: grid;
+    gap: 6px;
+    padding: 12px 14px;
+    border: 1.5px solid #d9c186;
+    border-radius: 14px;
+    background: #f8fafc;
+    box-shadow: inset 0 0 0 1px rgba(233, 199, 103, .1);
+}
+
+.llbs-compound-results-hero {
+    border-color: #9ddfba;
+    background: #f0fdf4;
+    box-shadow: inset 0 0 0 1px rgba(157, 223, 186, .22);
+}
+
+.llbs-compound-section-kicker {
+    color: #a68023;
+    font-size: .66rem;
+    font-weight: 950;
+    letter-spacing: .12em;
+    text-transform: uppercase;
+}
+
+.llbs-compound-section-title {
+    margin: 0;
+    color: #0f172a;
+    font-size: 1rem;
+    font-weight: 950;
+    letter-spacing: .01em;
+}
+
+.llbs-compound-section-text {
+    margin: 0;
+    color: #64748b;
+    font-size: .75rem;
+    font-weight: 700;
+    line-height: 1.35;
+}
+
+.llbs-compound-cluster {
+    display: grid;
+    gap: 10px;
+    margin-top: 10px;
+    padding: 12px;
+    border: 1.5px solid #d7b35e;
+    border-radius: 14px;
+    background:
+        linear-gradient(180deg, #fbfdff, #f3f7fb);
+    box-shadow:
+        inset 0 0 0 1px rgba(233, 199, 103, .12),
+        0 4px 12px rgba(15, 23, 42, .04);
+}
+
+.llbs-compound-cluster-title {
+    color: #7a5600;
+    font-size: .68rem;
+    font-weight: 950;
+    letter-spacing: .1em;
+    text-transform: uppercase;
+}
+
+/* ── Field grid (inputs panel) ────────────────────────────────────────────── */
+.llbs-compound-field-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 10px;
+}
+
+.llbs-compound-field {
+    display: grid;
+    gap: 5px;
+}
+
+.llbs-compound-field-wide {
+    grid-column: 1 / -1;
+}
+
+.llbs-compound-field span {
+    color: #32475f;
+    font-size: .66rem;
+    font-weight: 950;
+    letter-spacing: .08em;
+    text-transform: uppercase;
+}
+
+.llbs-compound-field-note {
+    color: #5a6e83;
+    font-size: .68rem;
+    font-weight: 700;
+    line-height: 1.25;
+}
+
+/* ── Inputs and selects ───────────────────────────────────────────────────── */
+.llbs-compound-input,
+.llbs-compound-select {
+    width: 100%;
+    min-height: 40px;
+    border: 1.5px solid #cfa44a;
+    border-radius: 10px;
+    padding: 8px 11px;
+    background: linear-gradient(180deg, #ffffff, #f7f9fc);
+    color: #0b1f33;
+    font-size: .9rem;
+    font-weight: 800;
+    box-shadow:
+        inset 0 1px 0 rgba(255, 255, 255, .92),
+        inset 0 0 0 1px rgba(233, 199, 103, .14);
+    transition: border-color .18s ease, box-shadow .18s ease;
+}
+
+.llbs-compound-input:focus,
+.llbs-compound-select:focus {
+    outline: none;
+    border-color: #b88300;
+    background: #ffffff;
+    box-shadow:
+        inset 0 1px 0 rgba(255, 255, 255, .95),
+        inset 0 0 0 1px rgba(233, 199, 103, .18),
+        0 0 0 3px rgba(216, 168, 37, .18);
+}
+
+.llbs-compound-select {
+    appearance: none;
+    padding-right: 34px;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 20 20' fill='none'%3E%3Cpath d='M5 7.5 10 12.5 15 7.5' stroke='%23b88300' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right 10px center;
+    background-size: 16px 16px;
+    cursor: pointer;
+}
+
+/* ── Explainer note ───────────────────────────────────────────────────────── */
+.llbs-compound-explainer {
+    margin-top: 10px;
+    display: grid;
+    gap: 6px;
+    padding: 12px 13px;
+    border: 1.5px solid #54c58b;
+    border-radius: 13px;
+    background:
+        linear-gradient(180deg, #f4fff8, #e7fbef);
+    box-shadow:
+        inset 0 0 0 1px rgba(84, 197, 139, .18),
+        0 6px 16px rgba(15, 118, 74, .06);
+}
+
+.llbs-compound-explainer strong {
+    color: #0b7a43;
+    font-size: .68rem;
+    font-weight: 950;
+    letter-spacing: .08em;
+    text-transform: uppercase;
+}
+
+.llbs-compound-explainer span {
+    color: #374151;
+    font-size: .73rem;
+    font-weight: 700;
+    line-height: 1.35;
+}
+
+/* ── Result cards ─────────────────────────────────────────────────────────── */
+.llbs-compound-summary-grid {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 10px;
+}
+
+.llbs-compound-compare-wrap {
+    display: grid;
+    gap: 10px;
+    padding: 12px 13px;
+    border: 1.5px solid #d7b35e;
+    border-radius: 14px;
+    background: linear-gradient(180deg, #fbfdff, #f4f8fc);
+    box-shadow: inset 0 0 0 1px rgba(233, 199, 103, .1);
+}
+
+.llbs-compound-compare-grid {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 10px;
+}
+
+.llbs-compound-card,
+.llbs-compound-compare-card {
+    display: grid;
+    gap: 4px;
+    padding: 12px 13px;
+    border: 1.5px solid #d4ac55;
+    border-radius: 14px;
+    background:
+        linear-gradient(180deg, #ffffff, #f8fbff);
+    box-shadow:
+        0 4px 14px rgba(15, 23, 42, .07),
+        inset 0 0 0 1px rgba(233, 199, 103, .12);
+}
+
+.llbs-compound-card-primary {
+    border-color: #c28a00;
+    background:
+        radial-gradient(220px 90px at 0 0, rgba(255, 211, 94, .18), transparent 74%),
+        linear-gradient(180deg, #fffdf3, #fff3c6);
+    box-shadow:
+        0 8px 24px rgba(194, 138, 0, .18),
+        inset 0 0 0 1px rgba(233, 199, 103, .28);
+}
+
+.llbs-compound-card span,
+.llbs-compound-compare-card span {
+    color: #a68023;
+    font-size: .66rem;
+    font-weight: 950;
+    letter-spacing: .1em;
+    text-transform: uppercase;
+}
+
+.llbs-compound-card strong,
+.llbs-compound-compare-card strong {
+    color: #0f172a;
+    font-size: 1.14rem;
+    font-weight: 950;
+    line-height: 1.05;
+    font-variant-numeric: tabular-nums;
+}
+
+.llbs-compound-card-primary strong {
+    color: #7c5a00;
+    font-size: 1.62rem;
+}
+
+.llbs-compound-card small,
+.llbs-compound-compare-card small,
+.llbs-compound-compare-card em {
+    color: #64748b;
+    font-size: .69rem;
+    font-weight: 700;
+    line-height: 1.22;
+    font-style: normal;
+}
+
+.llbs-compound-compare-card em {
+    color: #15803d;
+    font-weight: 800;
+}
+
+/* ── Insight strip (Power Per Habit / Total Deposited / Runway) ───────────── */
+.llbs-compound-insight-strip {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 8px;
+}
+
+.llbs-compound-insight-strip article {
+    display: grid;
+    gap: 3px;
+    padding: 11px 12px;
+    border: 1.5px solid #d9c186;
+    border-radius: 13px;
+    background: #ffffff;
+    box-shadow:
+        0 2px 8px rgba(15, 23, 42, .04),
+        inset 0 0 0 1px rgba(233, 199, 103, .07);
+}
+
+.llbs-compound-insight-strip span {
+    color: #94a3b8;
+    font-size: .62rem;
+    font-weight: 900;
+    letter-spacing: .09em;
+    text-transform: uppercase;
+}
+
+.llbs-compound-insight-strip strong {
+    color: #0f172a;
+    font-size: .9rem;
+    font-weight: 950;
+    font-variant-numeric: tabular-nums;
+}
+
+/* ── Growth checkpoints table ─────────────────────────────────────────────── */
+.llbs-compound-table-wrap {
+    overflow: hidden;
+    border: 1.5px solid #d4b04b;
+    border-radius: 14px;
+    background: #ffffff;
+    box-shadow: inset 0 0 0 1px rgba(233, 199, 103, .14);
+}
+
+.llbs-compound-table-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    padding: 11px 14px 10px;
+    background: #f8fafc;
+    border-bottom: 1.5px solid #d4b04b;
+}
+
+.llbs-compound-table-head-compact {
+    padding: 0;
+    border-bottom: none;
+}
+
+.llbs-compound-table-head h4 {
+    margin: 0;
+    color: #0f172a;
+    font-size: .8rem;
+    font-weight: 950;
+    letter-spacing: .04em;
+    text-transform: uppercase;
+}
+
+.llbs-compound-table-head p {
+    margin: 3px 0 0;
+    color: #64748b;
+    font-size: .68rem;
+    font-weight: 700;
+}
+
+.llbs-compound-table {
+    width: 100%;
+    border-collapse: collapse;
+    table-layout: fixed;
+}
+
+.llbs-compound-table th,
+.llbs-compound-table td {
+    padding: 8px 12px;
+    text-align: left;
+    border-bottom: 1px solid rgba(184, 139, 24, .34);
+}
+
+.llbs-compound-table th {
+    color: #9c7717;
+    font-size: .62rem;
+    font-weight: 950;
+    letter-spacing: .1em;
+    text-transform: uppercase;
+    background: #fff9ea;
+}
+
+.llbs-compound-table td {
+    color: #1e293b;
+    font-size: .74rem;
+    font-weight: 800;
+}
+
+.llbs-compound-table td.is-horizon {
+    color: #475569;
+    font-weight: 700;
+}
+
+.llbs-compound-table td.is-projected {
+    color: #0f172a;
+    font-weight: 950;
+}
+
+.llbs-compound-table td.is-saved {
+    color: #a68023;
+    font-weight: 900;
+}
+
+.llbs-compound-table td.is-interest {
+    color: #15803d;
+    font-weight: 900;
+}
+
+.llbs-compound-table tbody tr:last-child td {
+    border-bottom: none;
+}
+
+.llbs-compound-table tbody tr:hover td {
+    background: #fafaf7;
+}
+
+/* ── Print styles (applied in the dedicated print window opened by JS) ────────── */
+@media print {
+    .llbs-tool {
+        -webkit-print-color-adjust: exact;
+        print-color-adjust: exact;
+        width: 100%;
+        margin: 0;
+    }
+
+    .llbs-compound-btn,
+    .llbs-print-btn,
+    .llbs-clear,
+    .llbs-save-state,
+    .llbs-advisor-toggle,
+    .llbs-advisor-panel,
+    .llbs-save-error,
+    .llbs-compound-overlay,
+    [data-llbs-tax-toggle],
+    .llbs-tax-body { display: none !important; }
+
+    .llbs-section,
+    .llbs-net-worth,
+    .llbs-tax-panel,
+    .llbs-gaps-panel { page-break-inside: avoid; }
+}
+
+@media (max-width: 1080px) {
+    .llbs-main-grid,
+    .llbs-action-strip,
+    .llbs-tax-summary {
+        grid-template-columns: 1fr;
+    }
+
+    .llbs-compound-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .llbs-compound-panel-inputs {
+        align-self: stretch;
+    }
+
+    .llbs-compound-summary-grid {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
+    .llbs-compound-compare-grid {
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+    }
+
+    .llbs-tax-grid {
+        grid-template-columns: repeat(4, minmax(0, 1fr));
+    }
+}
+
+@media (max-width: 900px) {
+    .llbs-hero {
+        grid-template-columns: 1fr;
+    }
+
+    .llbs-status {
+        justify-content: flex-start;
+    }
+
+    .llbs-protection-grid,
+    .llbs-gap-grid,
+    .llbs-cash-grid,
+    .llbs-action-buttons,
+    .llbs-advisor-grid {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
+    .llbs-tax-summary-metrics {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
+    .llbs-compound-summary-grid,
+    .llbs-compound-compare-grid,
+    .llbs-compound-insight-strip {
+        grid-template-columns: 1fr;
+    }
+
+    .llbs-compound-field-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .llbs-compound-head {
+        flex-direction: column;
+        position: static;
+        align-items: flex-start;
+    }
+
+    .llbs-compound-head-actions {
+        justify-content: flex-start;
+    }
+}
+
+@media (max-width: 620px) {
+    .llbs-tool {
+        margin-bottom: 18px;
+    }
+
+    .llbs-shell {
+        border-radius: 13px;
+    }
+
+    .llbs-compound-overlay {
+        padding: 10px;
+    }
+
+    .llbs-compound-modal {
+        width: min(100vw - 20px, 1120px);
+        height: calc(100vh - 20px);
+        max-height: calc(100vh - 20px);
+    }
+
+    .llbs-compound-grid,
+    .llbs-compound-panel-inputs,
+    .llbs-compound-panel-results {
+        padding: 12px;
+    }
+
+    .llbs-compound-cluster,
+    .llbs-compound-panel-top,
+    .llbs-compound-results-hero,
+    .llbs-compound-compare-wrap {
+        padding: 12px;
+    }
+
+    .llbs-hero,
+    .llbs-body {
+        padding: 10px;
+    }
+
+    .llbs-status,
+    .llbs-advisor-toggle {
+        align-items: stretch;
+        justify-content: stretch;
+    }
+
+    .llbs-status {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+    }
+
+    .llbs-protection-grid,
+    .llbs-gap-grid,
+    .llbs-cash-grid,
+    .llbs-action-buttons,
+    .llbs-advisor-grid,
+    .llbs-tax-grid,
+    .llbs-tax-summary-metrics {
+        grid-template-columns: 1fr;
+    }
+
+    .llbs-advisor-toggle {
+        padding: 8px 10px 0;
+    }
+
+    .llbs-advisor-toggle button {
+        flex: 1 1 0;
+    }
+
+    .llbs-advisor-panel {
+        margin: 8px 10px 0;
+    }
+
+    .llbs-row {
+        grid-template-columns: 1fr;
+        gap: 5px;
+        padding: 8px 10px;
+    }
+
+    .llbs-edit-wrap,
+    .llbs-edit-value,
+    .llbs-readonly-value,
+    .llbs-edit-input {
+        width: 100%;
+    }
+}

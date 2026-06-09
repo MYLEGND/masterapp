@@ -16,6 +16,7 @@ public sealed class SummaryKpiDto
     public bool IntentAvailable { get; set; }
     public bool IntentLowSample { get; set; }
     public string EnvironmentLabel { get; set; } = "";
+    public string ScopeLabel { get; set; } = "";
     public int PrevPageViews { get; set; }
     public int PrevUniqueVisitors { get; set; }
     public int PrevSessions { get; set; }
@@ -54,6 +55,7 @@ public sealed class AgentPerformanceRow
     public string? Slug { get; set; }
     public int Leads { get; set; }
     public int Conversions { get; set; }
+    public int Sessions { get; set; }
     public decimal SessionConversionRate { get; set; }
     public decimal IntentConversionRate { get; set; }
     public string? TopSource { get; set; }

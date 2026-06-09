@@ -1,6 +1,8 @@
 @model ClientApp.Models.EditClientViewModel
 @{
     ViewData["Title"] = "Edit Profile";
+    var childCount = Model?.Children?.Count ?? 0;
+    var dobText = Model?.DOB.HasValue == true ? Model.DOB.Value.ToString("MM/dd/yyyy") : "—";
 }
 
 <style>
@@ -23,27 +25,52 @@
         box-shadow:0 20px 42px rgba(0,0,0,.28), inset 0 0 0 1px rgba(255,255,255,.08);
         overflow:hidden;
     }
-    .profile-card .card-header{
-        background: var(--navy-2);
-        border-bottom:1px solid rgba(166,128,35,.38);
-        padding:1.1rem 1.5rem;
+    .profile-card-header{
+        position:relative;
+        background:
+            linear-gradient(180deg, rgba(15,29,56,.96), rgba(8,18,36,.98));
+        border-bottom:1px solid rgba(166,128,35,.42);
+        padding:1rem 1.5rem;
         display:flex;
         justify-content:space-between;
         align-items:center;
-        gap:1rem;
+        gap:.95rem;
+        flex-wrap:wrap;
+        box-shadow:inset 0 1px 0 rgba(255,255,255,.07);
+    }
+    .profile-card-header::before{
+        content:"";
+        position:absolute;
+        top:0;
+        left:0;
+        right:0;
+        height:3px;
+        background:linear-gradient(90deg, #8f6b14, #c79931, #f2d891, #c79931);
+    }
+    .profile-header-copy{
+        display:grid;
+        gap:.22rem;
+        min-width:0;
     }
     .profile-card h2{
         margin:0;
-        font-weight:900;
-        letter-spacing:.4px;
-    }
-    .badge{
-        background: rgba(166,128,35,.16);
-        border:1px solid rgba(166,128,35,.52);
-        border-radius:999px;
-        padding:0.35rem 0.9rem;
-        font-weight:800;
+        font-size:1.28rem;
+        line-height:1.1;
+        font-weight:950;
+        letter-spacing:.2px;
         color:#f8fafc;
+    }
+    .profile-badge{
+        width:max-content;
+        background:rgba(166,128,35,.12);
+        border:1px solid rgba(242,216,145,.40);
+        border-radius:999px;
+        padding:.18rem .64rem;
+        font-weight:900;
+        color:#f2d891;
+        font-size:.72rem;
+        letter-spacing:.08em;
+        text-transform:uppercase;
     }
     .profile-card .card-body{
         padding:1.5rem;
@@ -85,6 +112,13 @@
         font-size:0.9rem;
         margin:0.35rem 0 0;
     }
+    .profile-header-copy .legend-help{
+        color:rgba(203,213,225,.84);
+        font-size:.83rem;
+        line-height:1.35;
+        margin:0;
+        font-weight:650;
+    }
     .legend-btn{
         background: var(--gold);
         color:#0b1529;
@@ -94,6 +128,9 @@
         padding:0.9rem 1.4rem;
         box-shadow:0 14px 28px rgba(0,0,0,.28), inset 0 1px 0 rgba(255,255,255,.16);
         text-decoration:none;
+        display:inline-flex;
+        align-items:center;
+        justify-content:center;
     }
     .legend-btn:hover{
         background:#ddb457;
@@ -105,6 +142,12 @@
         background: var(--navy-2);
         color:#f8fafc;
         border-color: rgba(166,128,35,.62);
+    }
+    .profile-card-header .legend-btn.secondary{
+        min-height:40px;
+        padding:.58rem .95rem;
+        border-radius:9px;
+        box-shadow:inset 0 1px 0 rgba(255,255,255,.08);
     }
     .note-pill{
         background: rgba(15,29,56,.9);
@@ -172,15 +215,106 @@
         flex-wrap:wrap;
         margin-top:0.5rem;
     }
+    .family-section{
+        border:1px solid rgba(166,128,35,.42);
+        border-radius:12px;
+        padding:.75rem;
+        background:linear-gradient(180deg, rgba(15,29,56,.82), rgba(11,21,41,.78));
+        display:grid;
+        gap:.7rem;
+        box-shadow: inset 0 1px 0 rgba(255,255,255,.05);
+    }
+    .family-section[hidden]{
+        display:none;
+    }
+    .family-top{
+        display:flex;
+        justify-content:space-between;
+        align-items:flex-start;
+        gap:.7rem;
+        flex-wrap:wrap;
+    }
+    .section-title{
+        color:#f2d891;
+        font-weight:900;
+        margin:0;
+        font-size:1rem;
+        line-height:1.2;
+    }
+    .family-section .legend-help{
+        font-size:.82rem;
+        line-height:1.35;
+        margin-top:.18rem;
+        color:rgba(226,232,240,.78);
+    }
+    .family-section .two-col{
+        gap:.65rem;
+        grid-template-columns:repeat(auto-fit, minmax(190px,1fr));
+    }
+    .family-section .label{
+        margin-bottom:.22rem;
+        font-size:.9rem;
+    }
+    .family-section .input{
+        border-radius:9px;
+        padding:.68rem .8rem;
+    }
+    .child-list{
+        display:grid;
+        gap:.55rem;
+    }
+    .child-card{
+        border:1px solid rgba(166,128,35,.34);
+        border-radius:10px;
+        padding:.65rem;
+        background:rgba(8,18,36,.64);
+        display:grid;
+        gap:.6rem;
+    }
+    .child-card-top{
+        display:flex;
+        justify-content:space-between;
+        align-items:center;
+        gap:.5rem;
+        flex-wrap:wrap;
+    }
+    .child-title{
+        font-weight:900;
+        color:#f8fafc;
+        font-size:.92rem;
+    }
+    .small-action{
+        border:1px solid rgba(166,128,35,.62);
+        border-radius:999px;
+        min-height:32px;
+        padding:0 .72rem;
+        background:rgba(166,128,35,.14);
+        color:#f2d891;
+        font-weight:900;
+        font-size:.82rem;
+        cursor:pointer;
+    }
+    .small-action:hover{
+        background:rgba(166,128,35,.24);
+        color:#fff;
+    }
+    @@media (max-width:640px){
+        .profile-card-header{
+            align-items:stretch;
+        }
+        .profile-card-header .legend-btn.secondary{
+            width:100%;
+        }
+    }
 </style>
 
 <div class="profile-shell">
     <div class="profile-card">
-        <div class="card-header">
-            <div>
-                <div class="badge">My Profile</div>
-                <h2>Edit my profile</h2>
-                <p class="legend-help mb-0">Update your info (DOB is read-only). Changes reflect what your agent sees.</p>
+        <div class="profile-card-header">
+            <div class="profile-header-copy">
+                <div class="profile-badge">Client Profile</div>
+                <h2>Edit profile</h2>
+                <p class="legend-help mb-0">Update contact and household details shared with your agent.</p>
             </div>
             <a class="legend-btn secondary" href="/profile">Back to profile</a>
         </div>
@@ -249,8 +383,94 @@
                     </div>
                     <div>
                         <label class="label">Date of birth</label>
-                        <input class="input" value="@((Model.DOB.HasValue ? Model.DOB.Value.ToString("MM/dd/yyyy") : "—"))" readonly />
+                        <input class="input" value="@dobText" readonly />
                         <p class="legend-help mb-0">Contact support to correct your DOB.</p>
+                    </div>
+                </div>
+
+                <div class="family-section" id="significantOtherSection" hidden>
+                    <div class="family-top">
+                        <div>
+                            <h3 class="section-title">Spouse / Significant Other</h3>
+                            <p class="legend-help mb-0">Required for Married / Domestic Partnership.</p>
+                        </div>
+                    </div>
+                    <div class="two-col">
+                        <div>
+                            <label asp-for="SignificantOtherFirstName" class="label">First name</label>
+                            <input asp-for="SignificantOtherFirstName" class="input" autocomplete="given-name" />
+                            <span asp-validation-for="SignificantOtherFirstName" class="text-danger"></span>
+                        </div>
+                        <div>
+                            <label asp-for="SignificantOtherLastName" class="label">Last name</label>
+                            <input asp-for="SignificantOtherLastName" class="input" autocomplete="family-name" />
+                            <span asp-validation-for="SignificantOtherLastName" class="text-danger"></span>
+                        </div>
+                        <div>
+                            <label asp-for="SignificantOtherDOB" class="label">Date of birth</label>
+                            <input asp-for="SignificantOtherDOB" type="date" class="input" />
+                            <span asp-validation-for="SignificantOtherDOB" class="text-danger"></span>
+                        </div>
+                        <div>
+                            <label asp-for="SignificantOtherPhone" class="label">Phone</label>
+                            <input asp-for="SignificantOtherPhone" class="input" autocomplete="tel" inputmode="tel" />
+                            <span asp-validation-for="SignificantOtherPhone" class="text-danger"></span>
+                        </div>
+                        <div>
+                            <label asp-for="SignificantOtherEmail" class="label">Email</label>
+                            <input asp-for="SignificantOtherEmail" class="input" autocomplete="email" inputmode="email" />
+                            <span asp-validation-for="SignificantOtherEmail" class="text-danger"></span>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="family-section">
+                    <div class="family-top">
+                        <div>
+                            <h3 class="section-title">Children</h3>
+                            <p class="legend-help mb-0">Shared with your agent.</p>
+                        </div>
+                        <button type="button" class="small-action" id="addChildBtn">Add Child</button>
+                    </div>
+
+                    <div class="child-list" id="childrenList" data-next-index="@childCount">
+                        @for (var i = 0; i < childCount; i++)
+                        {
+                            <div class="child-card" data-child-row>
+                                <div class="child-card-top">
+                                    <div class="child-title">Child</div>
+                                    <button type="button" class="small-action" data-remove-child>Remove</button>
+                                </div>
+                                <input asp-for="Children[i].Id" type="hidden" data-field="Id" />
+                                <div class="two-col">
+                                    <div>
+                                        <label asp-for="Children[i].FirstName" class="label">First name</label>
+                                        <input asp-for="Children[i].FirstName" class="input" autocomplete="off" data-field="FirstName" />
+                                        <span asp-validation-for="Children[i].FirstName" class="text-danger" data-valmsg-field="FirstName"></span>
+                                    </div>
+                                    <div>
+                                        <label asp-for="Children[i].LastName" class="label">Last name</label>
+                                        <input asp-for="Children[i].LastName" class="input" autocomplete="off" data-field="LastName" />
+                                        <span asp-validation-for="Children[i].LastName" class="text-danger" data-valmsg-field="LastName"></span>
+                                    </div>
+                                    <div>
+                                        <label asp-for="Children[i].DOB" class="label">Date of birth</label>
+                                        <input asp-for="Children[i].DOB" type="date" class="input" data-field="DOB" />
+                                        <span asp-validation-for="Children[i].DOB" class="text-danger" data-valmsg-field="DOB"></span>
+                                    </div>
+                                    <div>
+                                        <label asp-for="Children[i].Phone" class="label">Phone</label>
+                                        <input asp-for="Children[i].Phone" class="input" autocomplete="tel" inputmode="tel" data-field="Phone" />
+                                        <span asp-validation-for="Children[i].Phone" class="text-danger" data-valmsg-field="Phone"></span>
+                                    </div>
+                                    <div>
+                                        <label asp-for="Children[i].Email" class="label">Email</label>
+                                        <input asp-for="Children[i].Email" class="input" autocomplete="email" inputmode="email" data-field="Email" />
+                                        <span asp-validation-for="Children[i].Email" class="text-danger" data-valmsg-field="Email"></span>
+                                    </div>
+                                </div>
+                            </div>
+                        }
                     </div>
                 </div>
 
@@ -265,4 +485,106 @@
 
 @section Scripts{
     @{await Html.RenderPartialAsync("_ValidationScriptsPartial");}
+    <script>
+        (() => {
+            const maritalStatus = document.getElementById('MaritalStatus');
+            const soSection = document.getElementById('significantOtherSection');
+            const soFirst = document.getElementById('SignificantOtherFirstName');
+            const soLast = document.getElementById('SignificantOtherLastName');
+            const soDob = document.getElementById('SignificantOtherDOB');
+            const childrenList = document.getElementById('childrenList');
+            const addChildBtn = document.getElementById('addChildBtn');
+            const form = childrenList?.closest('form');
+
+            function needsSignificantOther(value) {
+                const normalized = (value || '').trim().toLowerCase();
+                return normalized === 'married' || normalized === 'domestic partnership';
+            }
+
+            function applySignificantOtherState() {
+                const required = needsSignificantOther(maritalStatus?.value);
+                if (soSection) soSection.hidden = !required;
+                if (soFirst) soFirst.required = required;
+                if (soLast) soLast.required = required;
+                if (soDob) soDob.required = required;
+            }
+
+            function childTemplate(index) {
+                return `
+                    <div class="child-card" data-child-row>
+                        <div class="child-card-top">
+                            <div class="child-title">Child</div>
+                            <button type="button" class="small-action" data-remove-child>Remove</button>
+                        </div>
+                        <input type="hidden" name="Children[${index}].Id" id="Children_${index}__Id" data-field="Id" />
+                        <div class="two-col">
+                            <div>
+                                <label class="label" for="Children_${index}__FirstName">First name</label>
+                                <input class="input" type="text" name="Children[${index}].FirstName" id="Children_${index}__FirstName" autocomplete="off" data-field="FirstName" />
+                                <span class="text-danger" data-valmsg-for="Children[${index}].FirstName" data-valmsg-replace="true" data-valmsg-field="FirstName"></span>
+                            </div>
+                            <div>
+                                <label class="label" for="Children_${index}__LastName">Last name</label>
+                                <input class="input" type="text" name="Children[${index}].LastName" id="Children_${index}__LastName" autocomplete="off" data-field="LastName" />
+                                <span class="text-danger" data-valmsg-for="Children[${index}].LastName" data-valmsg-replace="true" data-valmsg-field="LastName"></span>
+                            </div>
+                            <div>
+                                <label class="label" for="Children_${index}__DOB">Date of birth</label>
+                                <input class="input" type="date" name="Children[${index}].DOB" id="Children_${index}__DOB" data-field="DOB" />
+                                <span class="text-danger" data-valmsg-for="Children[${index}].DOB" data-valmsg-replace="true" data-valmsg-field="DOB"></span>
+                            </div>
+                            <div>
+                                <label class="label" for="Children_${index}__Phone">Phone</label>
+                                <input class="input" type="tel" name="Children[${index}].Phone" id="Children_${index}__Phone" autocomplete="tel" inputmode="tel" data-field="Phone" />
+                                <span class="text-danger" data-valmsg-for="Children[${index}].Phone" data-valmsg-replace="true" data-valmsg-field="Phone"></span>
+                            </div>
+                            <div>
+                                <label class="label" for="Children_${index}__Email">Email</label>
+                                <input class="input" type="email" name="Children[${index}].Email" id="Children_${index}__Email" autocomplete="email" inputmode="email" data-field="Email" />
+                                <span class="text-danger" data-valmsg-for="Children[${index}].Email" data-valmsg-replace="true" data-valmsg-field="Email"></span>
+                            </div>
+                        </div>
+                    </div>`;
+            }
+
+            function reindexChildren() {
+                if (!childrenList) return;
+                childrenList.querySelectorAll('[data-child-row]').forEach((row, index) => {
+                    row.querySelectorAll('[data-field]').forEach((input) => {
+                        const field = input.getAttribute('data-field');
+                        input.name = `Children[${index}].${field}`;
+                        input.id = `Children_${index}__${field}`;
+                    });
+                    row.querySelectorAll('[data-valmsg-field]').forEach((span) => {
+                        const field = span.getAttribute('data-valmsg-field');
+                        span.setAttribute('data-valmsg-for', `Children[${index}].${field}`);
+                    });
+                    row.querySelectorAll('label[for]').forEach((label) => {
+                        const target = row.querySelector(`[data-field="${label.getAttribute('for')?.split('__').pop() || ''}"]`);
+                        if (target) label.setAttribute('for', target.id);
+                    });
+                });
+                childrenList.dataset.nextIndex = String(childrenList.querySelectorAll('[data-child-row]').length);
+            }
+
+            addChildBtn?.addEventListener('click', () => {
+                if (!childrenList) return;
+                const index = Number.parseInt(childrenList.dataset.nextIndex || '0', 10);
+                childrenList.insertAdjacentHTML('beforeend', childTemplate(Number.isFinite(index) ? index : 0));
+                reindexChildren();
+            });
+
+            childrenList?.addEventListener('click', (event) => {
+                const remove = event.target.closest('[data-remove-child]');
+                if (!remove) return;
+                remove.closest('[data-child-row]')?.remove();
+                reindexChildren();
+            });
+
+            maritalStatus?.addEventListener('change', applySignificantOtherState);
+            form?.addEventListener('submit', reindexChildren);
+            applySignificantOtherState();
+            reindexChildren();
+        })();
+    </script>
 }

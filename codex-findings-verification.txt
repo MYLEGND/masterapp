@@ -1,0 +1,490 @@
+=== 1) Catalog-approved event filtering ===
+51:  const allowedEvents = new Set(Array.isArray(ANALYTICS_CONFIG.allowedBrowserEvents)
+300:    if (!attribution) return false;
+421:  // ── Shared body builder (used by both sendEvent and beaconSend) ───────────
+593:    if (!allowedEvents.has(CLIENT_TRACKING_ERROR_EVENT) || !nativeFetch) {
+594:      return false;
+622:  async function sendEvent(payload) {
+625:      if (!allowedEvents.has(body.EventType)) {
+626:        debug('blocked uncataloged event', {
+630:        return false;
+650:      debug('sendEvent', {
+680:        debug('sendEvent failed', {
+712:      return false;
+724:      return false;
+747:      return false;
+754:      return false;
+803:    if (now - last < DEBOUNCE_MS) return false;
+918:  sendEvent({
+968:      sendEvent({
+1004:        sendEvent({
+1015:    if (_exitFired) return false;
+1028:    sendEvent({
+1187:      sendEvent({
+1205:      sendEvent({
+1241:    sendEvent({
+1247:      sendEvent({
+1254:      sendEvent({
+1267:        sendEvent({
+1273:        if (PAGE_CATEGORY === 'quote' && allowedEvents.has('quote_cta_click')) {
+1274:          sendEvent({
+1297:    if (!formKey) return false;
+1302:      return false;
+1307:      return false;
+1316:    sendEvent({ EventType: 'form_start', FormKey: formKey });
+1317:    if (PAGE_CATEGORY === 'quote' && allowedEvents.has('lead_form_start')) {
+1318:      sendEvent({ EventType: 'lead_form_start', FormKey: formKey });
+1357:  window.legendTrack = (payload) => sendEvent(payload);
+
+=== 2) Health uncataloged events ===
+1797:            <form asp-action="SubmitHealthQuote" asp-controller="HealthQuote" method="post" id="healthQuoteForm" data-form-key="quote_health_form" novalidate>
+2275:        var formKey = form.getAttribute('data-form-key') || 'quote_health_form';
+2948:                EventType: 'health_quote_processing_view',
+2965:                    EventType: 'health_quote_started',
+3045:            track({ EventType: 'health_quote_thank_you_view', PageKey: pageKey, FormKey: formKey });
+3046:            track({ EventType: 'quote_thank_you_view', PageKey: pageKey, FormKey: formKey });
+
+=== 3) Disability uncataloged events ===
+1637:            <form asp-action="SubmitDisabilityQuote" asp-controller="DisabilityQuote" method="post" id="disabilityQuoteForm" data-form-key="quote_disability_form" novalidate>
+2079:        var formKey = form.getAttribute('data-form-key') || 'quote_disability_form';
+2750:                EventType: 'disability_quote_processing_view',
+2767:                    EventType: 'disability_quote_started',
+2847:            track({ EventType: 'disability_quote_thank_you_view', PageKey: pageKey, FormKey: formKey });
+2848:            track({ EventType: 'quote_thank_you_view', PageKey: pageKey, FormKey: formKey });
+
+=== 4) Shared tracking catalog names ===
+Protect-Website/Views/Quote/Disability.cshtml:2750:                EventType: 'disability_quote_processing_view',
+Protect-Website/Views/Quote/Disability.cshtml:2767:                    EventType: 'disability_quote_started',
+Protect-Website/Views/Quote/Disability.cshtml:2847:            track({ EventType: 'disability_quote_thank_you_view', PageKey: pageKey, FormKey: formKey });
+Protect-Website/Views/Quote/Disability.cshtml:2848:            track({ EventType: 'quote_thank_you_view', PageKey: pageKey, FormKey: formKey });
+Protect-Website/Views/Quote/Health.cshtml:2948:                EventType: 'health_quote_processing_view',
+Protect-Website/Views/Quote/Health.cshtml:2965:                    EventType: 'health_quote_started',
+Protect-Website/Views/Quote/Health.cshtml:3045:            track({ EventType: 'health_quote_thank_you_view', PageKey: pageKey, FormKey: formKey });
+Protect-Website/Views/Quote/Health.cshtml:3046:            track({ EventType: 'quote_thank_you_view', PageKey: pageKey, FormKey: formKey });
+
+=== 5) Marketing Health client tracking error counting ===
+AgentPortal/Services/Analytics/AnalyticsQueryService.cs:20:    private const int MarketingHealthRecentTrackingErrorLimit = 10;
+AgentPortal/Services/Analytics/AnalyticsQueryService.cs:1012:    private sealed record TrackingErrorMetadata(
+AgentPortal/Services/Analytics/AnalyticsQueryService.cs:1025:    private static TrackingErrorMetadata ReadTrackingErrorMetadata(string? metadataJson)
+AgentPortal/Services/Analytics/AnalyticsQueryService.cs:1029:            return new TrackingErrorMetadata(string.Empty, null, string.Empty, 0, string.Empty, string.Empty, string.Empty, string.Empty, string.Empty, string.Empty, string.Empty);
+AgentPortal/Services/Analytics/AnalyticsQueryService.cs:1036:            return new TrackingErrorMetadata(
+AgentPortal/Services/Analytics/AnalyticsQueryService.cs:1051:            return new TrackingErrorMetadata(string.Empty, null, string.Empty, 0, string.Empty, string.Empty, string.Empty, string.Empty, string.Empty, string.Empty, string.Empty);
+AgentPortal/Services/Analytics/AnalyticsQueryService.cs:1148:    private static bool? ResolveTrackingErrorRecoveredState(
+AgentPortal/Services/Analytics/AnalyticsQueryService.cs:1157:             !string.Equals(attemptedEventName, "fetch_non_ok", StringComparison.OrdinalIgnoreCase) &&
+AgentPortal/Services/Analytics/AnalyticsQueryService.cs:1158:             !string.Equals(attemptedEventName, "fetch_failed", StringComparison.OrdinalIgnoreCase)))
+AgentPortal/Services/Analytics/AnalyticsQueryService.cs:1163:        if (string.Equals(attemptedEventName, "fetch_non_ok", StringComparison.OrdinalIgnoreCase) ||
+AgentPortal/Services/Analytics/AnalyticsQueryService.cs:1164:            string.Equals(attemptedEventName, "fetch_failed", StringComparison.OrdinalIgnoreCase) ||
+AgentPortal/Services/Analytics/AnalyticsQueryService.cs:1165:            string.Equals(attemptedEventName, "window_error", StringComparison.OrdinalIgnoreCase) ||
+AgentPortal/Services/Analytics/AnalyticsQueryService.cs:1175:            !string.Equals(candidate.EventType, AnalyticsEventCatalog.ClientTrackingErrorEventName, StringComparison.OrdinalIgnoreCase) &&
+AgentPortal/Services/Analytics/AnalyticsQueryService.cs:1194:    private static string ResolveTrackingErrorSeverity(string attemptedEventName, int? statusCode, bool? recovered)
+AgentPortal/Services/Analytics/AnalyticsQueryService.cs:1216:    private static string ResolveTrackingErrorSuggestedAction(int? statusCode, string? errorMessage)
+AgentPortal/Services/Analytics/AnalyticsQueryService.cs:1239:    private static string ResolveTrackingAttemptedEndpoint(TrackingErrorMetadata metadata)
+AgentPortal/Services/Analytics/AnalyticsQueryService.cs:1248:    private static string BuildTrackingErrorWarningSummary(int count, MarketingHealthTrackingErrorDto? recentError)
+AgentPortal/Services/Analytics/AnalyticsQueryService.cs:1278:    private static MarketingHealthMatchedLeadDto? ResolveTrackingErrorMatchedLead(
+AgentPortal/Services/Analytics/AnalyticsQueryService.cs:1335:    private static string BuildTrackingErrorActionWarning(MarketingHealthTrackingErrorDto detail)
+AgentPortal/Services/Analytics/AnalyticsQueryService.cs:1341:    private static MarketingHealthTrackingErrorDto BuildTrackingErrorDetail(
+AgentPortal/Services/Analytics/AnalyticsQueryService.cs:1347:        var metadata = ReadTrackingErrorMetadata(errorEvent.MetadataJson);
+AgentPortal/Services/Analytics/AnalyticsQueryService.cs:1351:        var recovered = ResolveTrackingErrorRecoveredState(attemptedEventName, errorEvent, allEvents, sessionId, visitorId);
+AgentPortal/Services/Analytics/AnalyticsQueryService.cs:1352:        var severity = ResolveTrackingErrorSeverity(attemptedEventName, metadata.StatusCode, recovered);
+AgentPortal/Services/Analytics/AnalyticsQueryService.cs:1353:        var matchedLead = ResolveTrackingErrorMatchedLead(errorEvent, candidateLeads, sessionId, visitorId, viewerTimeZone);
+AgentPortal/Services/Analytics/AnalyticsQueryService.cs:1355:        return new MarketingHealthTrackingErrorDto
+AgentPortal/Services/Analytics/AnalyticsQueryService.cs:1383:            SuggestedAction = ResolveTrackingErrorSuggestedAction(metadata.StatusCode, metadata.ErrorMessage),
+AgentPortal/Services/Analytics/AnalyticsQueryService.cs:1969:        var clientTrackingErrorEvents = events
+AgentPortal/Services/Analytics/AnalyticsQueryService.cs:1970:            .Where(e => string.Equals(e.EventType, "client_tracking_error", StringComparison.OrdinalIgnoreCase))
+AgentPortal/Services/Analytics/AnalyticsQueryService.cs:1972:        var recentTrackingErrorEvents = clientTrackingErrorEvents
+AgentPortal/Services/Analytics/AnalyticsQueryService.cs:1974:            .Take(MarketingHealthRecentTrackingErrorLimit)
+AgentPortal/Services/Analytics/AnalyticsQueryService.cs:1977:        var recentTrackingSessionIds = recentTrackingErrorEvents
+AgentPortal/Services/Analytics/AnalyticsQueryService.cs:1980:                var metadata = ReadTrackingErrorMetadata(e.MetadataJson);
+AgentPortal/Services/Analytics/AnalyticsQueryService.cs:1987:        var recentTrackingVisitorIds = recentTrackingErrorEvents
+AgentPortal/Services/Analytics/AnalyticsQueryService.cs:1990:                var metadata = ReadTrackingErrorMetadata(e.MetadataJson);
+AgentPortal/Services/Analytics/AnalyticsQueryService.cs:2013:        var recentTrackingErrors = recentTrackingErrorEvents
+AgentPortal/Services/Analytics/AnalyticsQueryService.cs:2014:            .Select(e => BuildTrackingErrorDetail(e, events, recentTrackingLinkedLeads, range.ViewerTimeZone))
+AgentPortal/Services/Analytics/AnalyticsQueryService.cs:2072:        if (clientTrackingErrorEvents.Count > 0)
+AgentPortal/Services/Analytics/AnalyticsQueryService.cs:2074:            var mostRecentTrackingError = recentTrackingErrors.FirstOrDefault();
+AgentPortal/Services/Analytics/AnalyticsQueryService.cs:2075:            warnings.Add(BuildTrackingErrorWarningSummary(clientTrackingErrorEvents.Count, mostRecentTrackingError));
+AgentPortal/Services/Analytics/AnalyticsQueryService.cs:2077:            var mostActionableTrackingError = recentTrackingErrors
+AgentPortal/Services/Analytics/AnalyticsQueryService.cs:2085:            if (mostActionableTrackingError != null)
+AgentPortal/Services/Analytics/AnalyticsQueryService.cs:2086:                warnings.Add(BuildTrackingErrorActionWarning(mostActionableTrackingError));
+AgentPortal/Services/Analytics/AnalyticsQueryService.cs:2088:            var recoveredCritical = recentTrackingErrors.FirstOrDefault(detail =>
+AgentPortal/Services/Analytics/AnalyticsQueryService.cs:2096:            var unrecoveredCritical = recentTrackingErrors.FirstOrDefault(detail =>
+AgentPortal/Services/Analytics/AnalyticsQueryService.cs:2116:            ClientTrackingErrors = clientTrackingErrorEvents.Count,
+AgentPortal/Services/Analytics/AnalyticsQueryService.cs:2117:            ClientTrackingErrorSessions = clientTrackingErrorEvents
+AgentPortal/Services/Analytics/AnalyticsQueryService.cs:2145:            RecentTrackingErrors = recentTrackingErrors,
+Protect-Website/wwwroot/js/tracking.js:33:    typeof ANALYTICS_CONFIG.clientTrackingErrorEvent === 'string' &&
+Protect-Website/wwwroot/js/tracking.js:34:    ANALYTICS_CONFIG.clientTrackingErrorEvent.trim()
+Protect-Website/wwwroot/js/tracking.js:35:      ? ANALYTICS_CONFIG.clientTrackingErrorEvent.trim()
+Protect-Website/wwwroot/js/tracking.js:36:      : 'client_tracking_error';
+Protect-Website/wwwroot/js/tracking.js:592:  async function reportClientTrackingError(details) {
+Protect-Website/wwwroot/js/tracking.js:697:        void reportClientTrackingError({
+Protect-Website/wwwroot/js/tracking.js:715:      void reportClientTrackingError({
+Protect-Website/wwwroot/js/tracking.js:1105:      void reportClientTrackingError({
+Protect-Website/wwwroot/js/tracking.js:1106:        attemptedEventName: 'window_error',
+Protect-Website/wwwroot/js/tracking.js:1109:        errorMessage: clampErrorText(event?.message || sourceUrl || 'window_error'),
+Protect-Website/wwwroot/js/tracking.js:1125:      void reportClientTrackingError({
+Protect-Website/wwwroot/js/tracking.js:1144:          void reportClientTrackingError({
+Protect-Website/wwwroot/js/tracking.js:1145:            attemptedEventName: 'fetch_non_ok',
+Protect-Website/wwwroot/js/tracking.js:1149:            errorMessage: clampErrorText(response.statusText || 'fetch_non_ok'),
+Protect-Website/wwwroot/js/tracking.js:1160:          void reportClientTrackingError({
+Protect-Website/wwwroot/js/tracking.js:1161:            attemptedEventName: 'fetch_failed',
+Protect-Website/wwwroot/js/tracking.js:1164:            errorMessage: clampErrorText(error && error.message ? error.message : String(error || 'fetch_failed')),
+
+=== 6) page_exit send path + behavior dependency ===
+Protect-Website/wwwroot/js/tracking.js:506:      DwellMilliseconds: payload.DwellMilliseconds != null ? payload.DwellMilliseconds : null,
+Protect-Website/wwwroot/js/tracking.js:510:      IsExitPage: payload.IsExitPage || null
+Protect-Website/wwwroot/js/tracking.js:535:        keepalive: true,
+Protect-Website/wwwroot/js/tracking.js:738:    if (navigator.sendBeacon && navigator.sendBeacon(INGEST_URL, blob)) return true;
+Protect-Website/wwwroot/js/tracking.js:971:        DwellMilliseconds: Date.now() - _pageStart,
+Protect-Website/wwwroot/js/tracking.js:1007:          DwellMilliseconds: Date.now() - _pageStart,
+Protect-Website/wwwroot/js/tracking.js:1014:  function firePageExit(reason, event) {
+Protect-Website/wwwroot/js/tracking.js:1029:      EventType: 'page_exit',
+Protect-Website/wwwroot/js/tracking.js:1030:      IsExitPage: true,
+Protect-Website/wwwroot/js/tracking.js:1032:      DwellMilliseconds: dwell,
+Protect-Website/wwwroot/js/tracking.js:1041:    debug('page_exit tracked', {
+Protect-Website/wwwroot/js/tracking.js:1067:  function fireExitSignals(lifecycleSource, event) {
+Protect-Website/wwwroot/js/tracking.js:1076:    debug('fireExitSignals', { lifecycleSource });
+Protect-Website/wwwroot/js/tracking.js:1078:    firePageExit(lifecycleSource || 'pagehide', event);
+Protect-Website/wwwroot/js/tracking.js:1178:  document.addEventListener('visibilitychange', function () {
+Protect-Website/wwwroot/js/tracking.js:1189:        DwellMilliseconds: Date.now() - _pageStart,
+Protect-Website/wwwroot/js/tracking.js:1194:      debug('visibilitychange:hidden', {
+Protect-Website/wwwroot/js/tracking.js:1207:        DwellMilliseconds: Date.now() - _pageStart,
+Protect-Website/wwwroot/js/tracking.js:1211:      debug('visibilitychange:visible', {
+Protect-Website/wwwroot/js/tracking.js:1221:    fireExitSignals('pagehide', event);
+Protect-Website/wwwroot/js/tracking.js:1226:    fireExitSignals('beforeunload', event);
+AgentPortal/Services/Analytics/AnalyticsQueryService.cs:1663:            if (eventTypes.Contains("page_exit")) parts.Add("exited");
+AgentPortal/Services/Analytics/AnalyticsQueryService.cs:1682:            if (eventTypes.Contains("page_exit")) return "Exited before start";
+AgentPortal/Services/Analytics/AnalyticsQueryService.cs:2436:        // page_exit events carry the real per-page dwell (elapsed ms at departure).
+AgentPortal/Services/Analytics/AnalyticsQueryService.cs:2437:        // page_view.DwellMilliseconds is always 0 (captured at load time), so we use page_exit for all dwell metrics.
+AgentPortal/Services/Analytics/AnalyticsQueryService.cs:2438:        var exitEvents = events.Where(e => e.EventType == "page_exit" && e.DwellMilliseconds.HasValue).ToList();
+AgentPortal/Services/Analytics/AnalyticsQueryService.cs:2439:        var dwellSamples = exitEvents.Select(e => (double)e.DwellMilliseconds!.Value).ToList();
+AgentPortal/Services/Analytics/AnalyticsQueryService.cs:2445:        // immediately from page_view events — no dependency on page_exit being present.
+AgentPortal/Services/Analytics/AnalyticsQueryService.cs:2446:        // Sum(DwellMilliseconds) was wrong: it summed per-page dwell across pages, which
+AgentPortal/Services/Analytics/AnalyticsQueryService.cs:2447:        // double-counts time and returns 0 when page_exit has not been emitted yet.
+AgentPortal/Services/Analytics/AnalyticsQueryService.cs:2463:        // Quick exits: sessions whose final page_exit had dwell < 10 s or was a bounce candidate.
+AgentPortal/Services/Analytics/AnalyticsQueryService.cs:2464:        // Use page_exit only so Summary and Exit Analysis tabs use the same quick-exit methodology.
+AgentPortal/Services/Analytics/AnalyticsQueryService.cs:2465:        var lastExitPerSession = exitEvents
+AgentPortal/Services/Analytics/AnalyticsQueryService.cs:2470:        int quickExits = lastExitPerSession.Count(e =>
+AgentPortal/Services/Analytics/AnalyticsQueryService.cs:2472:            (e.DwellMilliseconds.HasValue && e.DwellMilliseconds.Value < 10_000));
+AgentPortal/Services/Analytics/AnalyticsQueryService.cs:2473:        // Return null (not 0) when no page_exit data exists at all.
+AgentPortal/Services/Analytics/AnalyticsQueryService.cs:2476:        decimal? quickExitRate = lastExitPerSession.Count > 0
+AgentPortal/Services/Analytics/AnalyticsQueryService.cs:2477:            ? Math.Round((decimal)quickExits / lastExitPerSession.Count * 100, 2)
+AgentPortal/Services/Analytics/AnalyticsQueryService.cs:2499:        // Top exit page: last page_exit per session (which page did visitors actually leave from),
+AgentPortal/Services/Analytics/AnalyticsQueryService.cs:2502:        var topExitPage = (exitEvents.Count > 0
+AgentPortal/Services/Analytics/AnalyticsQueryService.cs:2513:        // Top long-dwell page: from page_exit.DwellMilliseconds (real elapsed time per page).
+AgentPortal/Services/Analytics/AnalyticsQueryService.cs:2519:                Avg = RobustAverage(g.Select(x => (double)x.DwellMilliseconds!.Value).ToList(), PageDwellHardCapMs)
+AgentPortal/Services/Analytics/AnalyticsQueryService.cs:2523:        // Highest scroll completion: from page_exit.ScrollPercent (scroll at moment of exit).
+AgentPortal/Services/Analytics/AnalyticsQueryService.cs:2525:            .Where(e => e.EventType == "page_exit" && e.ScrollPercent.HasValue)
+AgentPortal/Services/Analytics/AnalyticsQueryService.cs:2536:            QuickExitRate = quickExitRate,
+AgentPortal/Services/Analytics/AnalyticsQueryService.cs:2538:            TopExitPage = topExitPage,
+AgentPortal/Services/Analytics/AnalyticsQueryService.cs:2562:        // Use page_exit for exit counts (IsExitPage is reliably set on page_exit, not page_view).
+AgentPortal/Services/Analytics/AnalyticsQueryService.cs:2563:        var exitByPage = events.Where(e => e.EventType == "page_exit")
+AgentPortal/Services/Analytics/AnalyticsQueryService.cs:2569:        // page_exit.DwellMilliseconds = real elapsed time at departure (page_view is always 0 at load).
+AgentPortal/Services/Analytics/AnalyticsQueryService.cs:2570:        var exitDwellByPage = events.Where(e => e.EventType == "page_exit" && e.DwellMilliseconds.HasValue)
+AgentPortal/Services/Analytics/AnalyticsQueryService.cs:2572:            .ToDictionary(g => g.Key, g => g.Select(x => (double)x.DwellMilliseconds!.Value).ToList());
+AgentPortal/Services/Analytics/AnalyticsQueryService.cs:2587:                ExitRate = views > 0 ? Math.Round((decimal)(exitByPage.TryGetValue(p, out var c) ? c : 0) / views * 100, 2) : 0,
+AgentPortal/Services/Analytics/AnalyticsQueryService.cs:2604:        // page_exit carries the real elapsed dwell per page visit; page_view.DwellMilliseconds is always 0 at load.
+AgentPortal/Services/Analytics/AnalyticsQueryService.cs:2606:            .Where(e => e.EventType == "page_exit" && e.DwellMilliseconds != null)
+AgentPortal/Services/Analytics/AnalyticsQueryService.cs:2622:            var d = g.Select(x => (double)x.DwellMilliseconds!.Value).ToList();
+AgentPortal/Services/Analytics/AnalyticsQueryService.cs:2644:    public async Task<ExitAnalysisDto> GetExitAnalysisAsync(TimeRangeRequest range, ScopeContext scope, TrafficType trafficType = TrafficType.All)
+AgentPortal/Services/Analytics/AnalyticsQueryService.cs:2651:        // Load page_view for view counts and page_exit for exit/dwell signals.
+AgentPortal/Services/Analytics/AnalyticsQueryService.cs:2653:        var pageExitEvents = filteredEvents.Where(e => e.EventType == "page_exit").ToList();
+AgentPortal/Services/Analytics/AnalyticsQueryService.cs:2655:        var lastExitPerSession = pageExitEvents
+AgentPortal/Services/Analytics/AnalyticsQueryService.cs:2660:        // Use last page_exit per session as the exit signal — consistent across all pages.
+AgentPortal/Services/Analytics/AnalyticsQueryService.cs:2663:        var lastExitPerSessionByPage = lastExitPerSession
+AgentPortal/Services/Analytics/AnalyticsQueryService.cs:2666:        var topExitRows = viewsByPage.Keys.Select(p =>
+AgentPortal/Services/Analytics/AnalyticsQueryService.cs:2668:            var ex = lastExitPerSessionByPage.TryGetValue(p, out var ee) ? ee : 0;
+AgentPortal/Services/Analytics/AnalyticsQueryService.cs:2670:            return new ExitPageRow { PageKey = p, Views = v, Exits = ex, ExitRate = v > 0 ? Math.Round((decimal)ex / v * 100, 2) : 0 };
+AgentPortal/Services/Analytics/AnalyticsQueryService.cs:2671:        }).OrderByDescending(r => r.Exits).Take(15).ToList();
+AgentPortal/Services/Analytics/AnalyticsQueryService.cs:2672:        // Quick exits use the same population as TopExitPages: final page_exit per session.
+AgentPortal/Services/Analytics/AnalyticsQueryService.cs:2673:        var quickExits = lastExitPerSession
+AgentPortal/Services/Analytics/AnalyticsQueryService.cs:2674:            .Where(e => e.IsBounceCandidate == true || (e.DwellMilliseconds.HasValue && e.DwellMilliseconds.Value < 10_000))
+AgentPortal/Services/Analytics/AnalyticsQueryService.cs:2677:        return new ExitAnalysisDto { TopExitPages = topExitRows, QuickExitPages = quickExits, RangeLabel = range.Label };
+AgentPortal/Services/Analytics/AnalyticsQueryService.cs:2761:        // Sum page_exit dwell times per session = total time on site for that session.
+AgentPortal/Services/Analytics/AnalyticsQueryService.cs:2763:            .Where(e => e.EventType == "page_exit" && e.DwellMilliseconds != null && !string.IsNullOrWhiteSpace(e.SessionId))
+AgentPortal/Services/Analytics/AnalyticsQueryService.cs:2765:            .ToDictionary(g => g.Key, g => (double)g.Sum(x => x.DwellMilliseconds!.Value));
+AgentPortal/Services/Analytics/AnalyticsQueryService.cs:2829:        // Sum page_exit dwell times per session = total time on site for that session.
+AgentPortal/Services/Analytics/AnalyticsQueryService.cs:2831:            .Where(e => e.EventType == "page_exit" && e.DwellMilliseconds != null && !string.IsNullOrWhiteSpace(e.SessionId))
+AgentPortal/Services/Analytics/AnalyticsQueryService.cs:2833:            .ToDictionary(g => g.Key, g => (double)g.Sum(x => x.DwellMilliseconds!.Value));
+AgentPortal/Services/Analytics/AnalyticsQueryService.cs:3105:                var lastExit = g
+AgentPortal/Services/Analytics/AnalyticsQueryService.cs:3106:                    .Where(e => e.EventType == "page_exit" && IsQuoteFormKey(e.PageKey))
+AgentPortal/Services/Analytics/AnalyticsQueryService.cs:3114:                    HasPageExit = lastExit != null,
+AgentPortal/Services/Analytics/AnalyticsQueryService.cs:3115:                    ExitDwellMs = (double)(lastExit?.DwellMilliseconds ?? 0),
+AgentPortal/Services/Analytics/AnalyticsQueryService.cs:3116:                    ExitEngagedMs = (double)(lastExit?.EngagedMilliseconds ?? 0),
+AgentPortal/Services/Analytics/AnalyticsQueryService.cs:3127:            .Where(u => u.HasLandingView && u.HasPageExit && !u.HadFunnelInteraction && !u.HadLeadSuccess)
+AgentPortal/Services/Analytics/AnalyticsQueryService.cs:3134:                ExitCount = g.Count(),
+AgentPortal/Services/Analytics/AnalyticsQueryService.cs:3135:                Engaged5sPlusCount = g.Count(x => (x.ExitEngagedMs > 0 ? x.ExitEngagedMs : x.ExitDwellMs) >= 5000),
+AgentPortal/Services/Analytics/AnalyticsQueryService.cs:3136:                Engaged15sPlusCount = g.Count(x => (x.ExitEngagedMs > 0 ? x.ExitEngagedMs : x.ExitDwellMs) >= 15000),
+AgentPortal/Services/Analytics/AnalyticsQueryService.cs:3137:                AvgDwellMs = Math.Round(g.Average(x => x.ExitDwellMs), 0)
+AgentPortal/Services/Analytics/AnalyticsQueryService.cs:3139:            .OrderByDescending(r => r.ExitCount)
+
+=== 7) Device Intelligence grouping math ===
+                "windows" => "Windows",
+                "desktop" => "Desktop",
+                "mobile" => "Mobile",
+                "tablet" => "Tablet",
+                _ => char.ToUpperInvariant(normalized[0]) + normalized[1..]
+            };
+        }
+
+        static string ResolveDeviceType(AnalyticsEvent e)
+        {
+            var existing = Clean(e.DeviceType);
+            if (!existing.Equals("Unknown", StringComparison.OrdinalIgnoreCase)) return existing;
+
+            var width = e.ViewportWidth ?? e.ScreenWidth ?? 0;
+            if (width <= 0) return "Unknown";
+            if (width < 768) return "Mobile";
+            if (width < 1024) return "Tablet";
+            return "Desktop";
+        }
+
+        static string BucketWidth(int? width)
+        {
+            if (!width.HasValue || width.Value <= 0) return "Unknown";
+            var w = width.Value;
+            if (w < 390) return "Small mobile (<390)";
+            if (w < 480) return "Large mobile (390-479)";
+            if (w < 768) return "Phablet (480-767)";
+            if (w < 1024) return "Tablet (768-1023)";
+            if (w < 1440) return "Laptop/Desktop (1024-1439)";
+            return "Wide desktop (1440+)";
+        }
+
+        List<DeviceIntelligenceRowDto> BuildRows(Func<AnalyticsEvent, string> selector)
+        {
+            return rows
+                .GroupBy(selector)
+                .Select(g =>
+                {
+                    var events = g.ToList();
+                    var sessions = events.Select(e => e.SessionId).Where(x => !string.IsNullOrWhiteSpace(x)).Distinct().Count();
+                    var ctas = events.Count(e => e.EventType == "cta_click" || e.EventType == "quote_click");
+                    var starts = events.Count(e => e.EventType == "form_start");
+                    var submits = events.Count(e => e.EventType == "form_submit");
+                    var leads = events.Count(e =>
+                        e.EventType == "form_submit" &&
+                        (e.SubmitOutcome ?? "").ToLower() == "success");
+
+                    return new DeviceIntelligenceRowDto
+                    {
+                        Label = string.IsNullOrWhiteSpace(g.Key) ? "Unknown" : g.Key,
+                        Sessions = sessions,
+                        Events = events.Count,
+                        CtaClicks = ctas,
+                        FormStarts = starts,
+                        SubmitAttempts = submits,
+                        ConfirmedLeads = leads,
+                        StartRate = sessions <= 0 ? 0 : Math.Round((decimal)starts / sessions * 100, 1),
+                        LeadRate = sessions <= 0 ? 0 : Math.Round((decimal)leads / sessions * 100, 1)
+                    };
+                })
+                .OrderByDescending(x => x.Sessions)
+                .ThenBy(x => x.Label)
+                .Take(12)
+                .ToList();
+        }
+
+        return new DeviceIntelligenceDto
+        {
+            RangeLabel = range.Label,
+            TrafficType = trafficType,
+            Sessions = rows.Select(e => e.SessionId).Where(x => !string.IsNullOrWhiteSpace(x)).Distinct().Count(),
+            Events = rows.Count,
+            FormStarts = rows.Count(e => e.EventType == "form_start"),
+            ConfirmedLeads = rows.Count(e => e.EventType == "form_submit" && (e.SubmitOutcome ?? "").ToLower() == "success"),
+            Devices = BuildRows(ResolveDeviceType),
+            Browsers = BuildRows(e => Clean(e.Browser)),
+            OperatingSystems = BuildRows(e => Clean(e.OperatingSystem)),
+            Viewports = BuildRows(e => BucketWidth(e.ViewportWidth)),
+            Screens = BuildRows(e => BucketWidth(e.ScreenWidth)),
+            TimeZones = BuildRows(e => Clean(e.TimeZone)),
+            Languages = BuildRows(e => Clean(e.Language))
+        };
+    }
+
+}
+
+=== 8) Session Activity timezone formatting ===
+11:        offsetMinutes: new Date().getTimezoneOffset()
+294:        const fromUtc = new Date(fy, fm - 1, fd, 0, 0, 0).toISOString();
+295:        const toUtc = new Date(ty, tm - 1, td, 23, 59, 59).toISOString();
+456:    // so the server receives UTC instants that correspond to the viewer's day boundaries.
+460:      fromUtc: new Date(fy, fm - 1, fd, 0, 0, 0).toISOString(),
+461:      toUtc: new Date(ty, tm - 1, td, 23, 59, 59).toISOString()
+691:      const timeLabel = escapeHtml(row?.localDisplayTime || formatDisplayDate(row?.eventUtc) || '—');
+802:        renderHealthDetailMetaItem('Time', row?.localDisplayTime || formatDisplayDate(row?.eventUtc) || '—'),
+1007:      { render: r => formatActivityTimeRange(r) },
+1041:      { render: r => formatActivityTimeRange(r) },
+1318:      { render: r => formatDisplayDate(r.eventUtc) },
+1353:      if (meta) meta.textContent = `Most recent (local): ${formatDisplayDate(newest.createdUtc)}`;
+1377:          <td>${escapeHtml(formatDisplayDate(lead.createdUtc) || '—')}</td>
+2436:    setText('ai-snapshot-generated', data.generatedAtLocal ? formatDisplayDate(data.generatedAtLocal) : '—');
+2481:  function formatActivityTimeRange(row) {
+2482:    const startDate = row?.eventUtc ? new Date(row.eventUtc) : null;
+2483:    const endDate = row?.endUtc ? new Date(row.endUtc) : null;
+2485:    const start = formatDisplayDate(row?.eventUtc);
+2486:    const end = formatDisplayDate(row?.endUtc);
+2526:  function formatDisplayDate(utcString) {
+2531:    // Backend UTC DateTime values may arrive without a timezone suffix.
+2532:    // Force UTC parsing first, then display in the viewer's browser timezone.
+2537:    const d = new Date(value);
+2968:      { render: row => escapeHtml(formatDisplayDate(row.createdUtc) || '—') },
+3073:    const dt = new Date(value);
+3106:    if (o.includes('LEAD') || o.includes('CONVERSION') || o.includes('OUTCOME')) return 'meta-good';
+3193:    setText('meta-campaigns-synced', data.syncedUtc ? formatDisplayDate(data.syncedUtc) : '—');
+3254:      return new Date(iso).toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' });
+3416:        renderList('team-recent-activity', (traffic.recentActivity || []).slice(0, 10), a => `<li class="mb-1"><span class="text-silver">${formatDisplayDate(a.eventUtc)}</span> · <strong>${a.eventType}</strong> · ${a.pageKey || ''}${a.elementKey ? ' / ' + a.elementKey : ''}</li>`);
+3538:    const date = new Date(Date.UTC(yyyy, mm - 1, dd));
+3758:          { header: 'ReportTimezone', selector: () => 'UTC' },
+3784:          { header: 'ReportTimezone', selector: () => 'UTC' },
+
+=== 9) Attribution earliest signal bias ===
+            host: snapshot.Host,
+            referrerHost: snapshot.ReferrerHost);
+
+    private static Dictionary<string, EventAttributionSnapshot> BuildSessionAttributionMap(List<AnalyticsEvent> events)
+    {
+        var map = new Dictionary<string, EventAttributionSnapshot>(StringComparer.OrdinalIgnoreCase);
+        var groups = events
+            .Where(e => !string.IsNullOrWhiteSpace(e.SessionId))
+            .GroupBy(e => e.SessionId!, StringComparer.OrdinalIgnoreCase);
+
+        foreach (var group in groups)
+        {
+            var selected =
+                group.Where(e => e.EventType == "page_view")
+                    .OrderBy(e => e.EventUtc)
+                    .Select(SnapshotFromEvent)
+                    .FirstOrDefault(HasAttributionSignal)
+                ?? group.OrderBy(e => e.EventUtc)
+                    .Select(SnapshotFromEvent)
+                    .FirstOrDefault(HasAttributionSignal);
+
+            if (selected != null && HasAttributionSignal(selected))
+                map[group.Key] = selected;
+        }
+
+        return map;
+    }
+
+    private static Dictionary<string, EventAttributionSnapshot> BuildVisitorAttributionMap(List<AnalyticsEvent> events)
+    {
+        var map = new Dictionary<string, EventAttributionSnapshot>(StringComparer.OrdinalIgnoreCase);
+        var groups = events
+            .Where(e => !string.IsNullOrWhiteSpace(e.VisitorId))
+            .GroupBy(e => e.VisitorId!, StringComparer.OrdinalIgnoreCase);
+
+        foreach (var group in groups)
+        {
+            var selected =
+                group.Where(e => e.EventType == "page_view")
+                    .OrderBy(e => e.EventUtc)
+                    .Select(SnapshotFromEvent)
+                    .FirstOrDefault(HasAttributionSignal)
+                ?? group.OrderBy(e => e.EventUtc)
+                    .Select(SnapshotFromEvent)
+                    .FirstOrDefault(HasAttributionSignal);
+
+            if (selected != null && HasAttributionSignal(selected))
+                map[group.Key] = selected;
+        }
+
+        return map;
+    }
+
+    private static (EventAttributionSnapshot Snapshot, string ResolutionSource) ResolveAttribution(
+        AnalyticsEvent e,
+        IReadOnlyDictionary<string, EventAttributionSnapshot> sessionMap,
+        IReadOnlyDictionary<string, EventAttributionSnapshot> visitorMap,
+        bool allowVisitorFallback)
+    {
+        var direct = SnapshotFromEvent(e);
+        if (HasAttributionSignal(direct))
+            return (direct, "direct");
+
+        if (!string.IsNullOrWhiteSpace(e.SessionId) &&
+            sessionMap.TryGetValue(e.SessionId!, out var sessionAttribution) &&
+            HasAttributionSignal(sessionAttribution))
+        {
+            return (sessionAttribution, "session");
+        }
+
+        if (allowVisitorFallback &&
+            !string.IsNullOrWhiteSpace(e.VisitorId) &&
+            visitorMap.TryGetValue(e.VisitorId!, out var visitorAttribution) &&
+            HasAttributionSignal(visitorAttribution))
+        {
+            return (visitorAttribution, "visitor");
+        }
+
+        return (direct, "unknown");
+    }
+
+
+=== 10) Internal handling separation ===
+AgentPortal/Services/Analytics/AnalyticsQueryService.cs:46:    private IQueryable<AnalyticsEvent> BaseEvents(TimeRangeRequest range, ScopeContext scope, Guid[]? scopedAgentIds = null) =>
+AgentPortal/Services/Analytics/AnalyticsQueryService.cs:48:            .Where(e => !e.IsInternal)
+AgentPortal/Services/Analytics/AnalyticsQueryService.cs:54:    private IQueryable<WebsiteLead> BaseLeads(TimeRangeRequest range, ScopeContext scope, Guid[]? scopedAgentIds = null) =>
+AgentPortal/Services/Analytics/AnalyticsQueryService.cs:56:            .Where(l => !l.IsInternal)
+AgentPortal/Services/Analytics/AnalyticsQueryService.cs:65:            .Where(e => !e.IsInternal)
+AgentPortal/Services/Analytics/AnalyticsQueryService.cs:73:            .Where(l => !l.IsInternal)
+AgentPortal/Services/Analytics/AnalyticsQueryService.cs:600:        bool IsInternal,
+AgentPortal/Services/Analytics/AnalyticsQueryService.cs:650:            e.IsInternal,
+AgentPortal/Services/Analytics/AnalyticsQueryService.cs:675:            isInternal: snapshot.IsInternal,
+AgentPortal/Services/Analytics/AnalyticsQueryService.cs:688:            isInternal: snapshot.IsInternal,
+AgentPortal/Services/Analytics/AnalyticsQueryService.cs:855:            lead.IsInternal,
+AgentPortal/Services/Analytics/AnalyticsQueryService.cs:1444:        var allEvents = await BaseEvents(range, scope, scopedAgentIds).ToListAsync();
+AgentPortal/Services/Analytics/AnalyticsQueryService.cs:1445:        var allLeads  = await BaseLeads(range, scope, scopedAgentIds).ToListAsync();
+AgentPortal/Services/Analytics/AnalyticsQueryService.cs:1570:        var allEvents = await BaseEvents(range, scope, scopedAgentIds).ToListAsync();
+AgentPortal/Services/Analytics/AnalyticsQueryService.cs:1780:        var allEvents = await BaseEvents(range, scope, scopedAgentIds).ToListAsync();
+AgentPortal/Services/Analytics/AnalyticsQueryService.cs:1781:        var allLeads  = await BaseLeads(range, scope, scopedAgentIds).ToListAsync();
+AgentPortal/Services/Analytics/AnalyticsQueryService.cs:1835:        var allEvents = await BaseEvents(range, scope, scopedAgentIds).ToListAsync();
+AgentPortal/Services/Analytics/AnalyticsQueryService.cs:1836:        var allLeads = await BaseLeads(range, scope, scopedAgentIds).ToListAsync();
+AgentPortal/Services/Analytics/AnalyticsQueryService.cs:1877:        var allEvents = await BaseEvents(range, scope, scopedAgentIds).ToListAsync();
+AgentPortal/Services/Analytics/AnalyticsQueryService.cs:1878:        var allLeads = await BaseLeads(range, scope, scopedAgentIds).ToListAsync();
+AgentPortal/Services/Analytics/AnalyticsQueryService.cs:1961:        var allEvents = await BaseEvents(range, scope, scopedAgentIds).ToListAsync();
+AgentPortal/Services/Analytics/AnalyticsQueryService.cs:1962:        var allLeads = await BaseLeads(range, scope, scopedAgentIds).ToListAsync();
+AgentPortal/Services/Analytics/AnalyticsQueryService.cs:2001:                .Where(l => !l.IsInternal)
+AgentPortal/Services/Analytics/AnalyticsQueryService.cs:2154:        var allEvents = await BaseEvents(range, scope, scopedAgentIds).ToListAsync();
+AgentPortal/Services/Analytics/AnalyticsQueryService.cs:2155:        var allLeads = await BaseLeads(range, scope, scopedAgentIds).ToListAsync();
+AgentPortal/Services/Analytics/AnalyticsQueryService.cs:2197:        var allLeads = await BaseLeads(range, scope, scopedAgentIds)
+AgentPortal/Services/Analytics/AnalyticsQueryService.cs:2200:        var contextEvents = await BaseEvents(range, scope, scopedAgentIds).ToListAsync();
+AgentPortal/Services/Analytics/AnalyticsQueryService.cs:2316:        var events = await BaseEvents(range, ScopeContext.Global).ToListAsync();
+AgentPortal/Services/Analytics/AnalyticsQueryService.cs:2317:        var leads = await BaseLeads(range, ScopeContext.Global).ToListAsync();
+AgentPortal/Services/Analytics/AnalyticsQueryService.cs:2427:        var events = await BaseEvents(range, scope, scopedAgentIds).ToListAsync();
+AgentPortal/Services/Analytics/AnalyticsQueryService.cs:2550:        var events = await BaseEvents(range, scope, scopedAgentIds).ToListAsync();
+AgentPortal/Services/Analytics/AnalyticsQueryService.cs:2551:        var leads = await BaseLeads(range, scope, scopedAgentIds).ToListAsync();
+AgentPortal/Services/Analytics/AnalyticsQueryService.cs:2600:        var allEvents = await BaseEvents(range, scope, scopedAgentIds).ToListAsync();
+AgentPortal/Services/Analytics/AnalyticsQueryService.cs:2647:        var allEvents = await BaseEvents(range, scope, scopedAgentIds).ToListAsync();
+AgentPortal/Services/Analytics/AnalyticsQueryService.cs:2684:        var events = await BaseEvents(range, scope, scopedAgentIds)
+AgentPortal/Services/Analytics/AnalyticsQueryService.cs:2708:        var allEvents = await BaseEvents(range, scope, scopedAgentIds).ToListAsync();
+AgentPortal/Services/Analytics/AnalyticsQueryService.cs:2709:        var leads = await BaseLeads(range, scope, scopedAgentIds).ToListAsync();
+AgentPortal/Services/Analytics/AnalyticsQueryService.cs:2736:        var allEvents = await BaseEvents(range, scope, scopedAgentIds).ToListAsync();
+AgentPortal/Services/Analytics/AnalyticsQueryService.cs:2737:        var allLeads = await BaseLeads(range, scope, scopedAgentIds).ToListAsync();
+AgentPortal/Services/Analytics/AnalyticsQueryService.cs:2809:        var allEvents = await BaseEvents(range, scope, scopedAgentIds).ToListAsync();
+AgentPortal/Services/Analytics/AnalyticsQueryService.cs:2813:        var leads = await BaseLeads(range, scope, scopedAgentIds).ToListAsync();
+AgentPortal/Services/Analytics/AnalyticsQueryService.cs:2862:        var events = await BaseEvents(range, scope, scopedAgentIds)
+AgentPortal/Services/Analytics/AnalyticsQueryService.cs:2929:        var allEvents = await BaseEvents(range, scope, scopedAgentIds).ToListAsync();
+AgentPortal/Services/Analytics/AnalyticsQueryService.cs:3218:        var allEvents = await BaseEvents(range, scope, scopedAgentIds).ToListAsync();
+Protect-Website/wwwroot/js/tracking.js:504:      IsInternal: false,
+AgentPortal/Services/Analytics/TrafficAttribution.cs:124:        private static bool IsInternalReferrer(string? referrerHost)
+AgentPortal/Services/Analytics/TrafficAttribution.cs:167:            if (IsInternalReferrer(referrerHost))
+
+=== 11) Founder fallback / default domain profile ===
+37:        _founderUpn = config["Founder:Upn"] ?? "zac.owen@mylegnd.com";
+365:    /// 2) Slug parsed from /a/{slug}/... path
+366:    /// 3) Founder fallback for default-domain pages
+370:        // If a slug is provided but profile id is missing, resolve it.
+371:        if (!req.AgentTrackingProfileId.HasValue && !string.IsNullOrWhiteSpace(req.AgentSlug))
+376:                req.AgentTrackingProfileId = bySlug.Profile.Id;
+383:        if (req.AgentTrackingProfileId.HasValue && !string.IsNullOrWhiteSpace(req.AgentSlug))
+386:        // Attempt slug extraction from page path ("/a/{slug}/...").
+393:                var slug = segments[1];
+394:                var bySlug = await _resolver.ResolveBySlugAsync(slug, ct);
+397:                    req.AgentTrackingProfileId = bySlug.Profile.Id;
+404:        // Founder default-domain fallback.
+405:        if (!req.AgentTrackingProfileId.HasValue && string.IsNullOrWhiteSpace(req.AgentSlug))
+410:                req.AgentTrackingProfileId = founder.Profile.Id;
+438:        public Guid? AgentTrackingProfileId { get; set; }
+502:        public Guid? AgentTrackingProfileId { get; set; }
+
+DONE

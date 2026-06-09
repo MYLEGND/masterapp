@@ -204,8 +204,15 @@
                 <div><strong>Title:</strong> @(string.IsNullOrWhiteSpace(Model.Title) ? "Not set" : Model.Title)</div>
                 <div><strong>Email:</strong> @Model.Email (read-only)</div>
                 <div><strong>Phone:</strong> @(string.IsNullOrWhiteSpace(Model.Phone) ? "Not set" : Model.Phone)</div>
+                <div><strong>Short bio:</strong> @(string.IsNullOrWhiteSpace(Model.ShortBio) ? "Not set" : Model.ShortBio)</div>
                 <div><strong>NPN:</strong> @(string.IsNullOrWhiteSpace(Model.Npn) ? "Not set" : Model.Npn)</div>
-                <div class="legend-help mb-0">These values show to clients and under your profile name.</div>
+                <div><strong>Meta Pixel ID:</strong> @(string.IsNullOrWhiteSpace(Model.MetaPixelId) ? "Not set" : Model.MetaPixelId)</div>
+                <div><strong>Agent Meta CAPI:</strong> @(Model.HasSecureMetaCapiAccessToken ? "Securely configured" : "Not configured")</div>
+                <div><strong>Booking:</strong> @(Model.BookingEnabled ? "Enabled" : "Disabled or not configured")</div>
+                <div><strong>Bookings embed:</strong> @(string.IsNullOrWhiteSpace(Model.MicrosoftBookingsEmbedUrl) ? "Not set" : Model.MicrosoftBookingsEmbedUrl)</div>
+                <div><strong>Fallback booking URL:</strong> @(string.IsNullOrWhiteSpace(Model.FallbackBookingUrl) ? "Not set" : Model.FallbackBookingUrl)</div>
+                <div><strong>Calendar email:</strong> @(string.IsNullOrWhiteSpace(Model.CalendarEmail) ? "Not set" : Model.CalendarEmail)</div>
+                <div class="legend-help mb-0">These values power your public quote handoff card and profile surfaces.</div>
             </div>
 
             <form asp-action="ManageProfile" method="post" novalidate>
@@ -232,9 +239,68 @@
                         <span asp-validation-for="Phone" class="text-danger"></span>
                     </div>
                     <div class="field">
+                        <label asp-for="ShortBio" class="legend-label"></label>
+                        <textarea asp-for="ShortBio" class="legend-input" rows="4" maxlength="280" placeholder="A short public intro for your quote links, like how you help families review protection options."></textarea>
+                        <p class="legend-help">Optional. This shows on your public quote handoff card.</p>
+                        <span asp-validation-for="ShortBio" class="text-danger"></span>
+                    </div>
+                    <div class="field">
                         <label asp-for="Npn" class="legend-label"></label>
                         <input asp-for="Npn" class="legend-input" autocomplete="off" placeholder="National Producer Number" />
                         <span asp-validation-for="Npn" class="text-danger"></span>
+                    </div>
+                    <div class="field" style="grid-column:1 / -1;">
+                        <div class="legend-label" style="margin-bottom:0;">Marketing Settings</div>
+                        <p class="legend-help">Manage the tracking defaults used on your public quote links.</p>
+                    </div>
+                    <div class="field" style="grid-column:1 / -1;">
+                        <label asp-for="MetaPixelId" class="legend-label"></label>
+                        <input asp-for="MetaPixelId" class="legend-input" autocomplete="off" inputmode="numeric" placeholder="Meta browser pixel / dataset ID" />
+                        <p class="legend-help">Optional. If set, your personal/agency Meta Pixel will be used on your agent quote links. If blank, Legend’s default tracking pixel will be used.</p>
+                        <p class="legend-help">Agent-specific server-side Meta CAPI tokens are configured separately and are not editable here.</p>
+                        <span asp-validation-for="MetaPixelId" class="text-danger"></span>
+                    </div>
+                    <div class="field" style="grid-column:1 / -1;">
+                        <div class="legend-label" style="margin-bottom:0;">Booking Settings</div>
+                        <p class="legend-help">These fields let your public quote flow use your own Microsoft Bookings page and calendar identity instead of a shared fallback.</p>
+                    </div>
+                    <div class="field" style="grid-column:1 / -1;">
+                        <label class="legend-label" asp-for="BookingEnabled"></label>
+                        <label style="display:flex;align-items:center;gap:.65rem;color:#f8fafc;font-weight:700;">
+                            <input asp-for="BookingEnabled" type="checkbox" />
+                            <span>Use my personal booking configuration on public quote handoff flows</span>
+                        </label>
+                    </div>
+                    <div class="field">
+                        <label asp-for="MicrosoftBookingsEmbedUrl" class="legend-label"></label>
+                        <input asp-for="MicrosoftBookingsEmbedUrl" class="legend-input" autocomplete="off" placeholder="https://outlook.office.com/bookings/..." />
+                        <p class="legend-help">The embedded Microsoft Bookings page used inside the quote follow-up flow.</p>
+                        <span asp-validation-for="MicrosoftBookingsEmbedUrl" class="text-danger"></span>
+                    </div>
+                    <div class="field">
+                        <label asp-for="FallbackBookingUrl" class="legend-label"></label>
+                        <input asp-for="FallbackBookingUrl" class="legend-input" autocomplete="off" placeholder="https://outlook.office.com/book/..." />
+                        <p class="legend-help">Optional new-tab fallback if embedding is unavailable.</p>
+                        <span asp-validation-for="FallbackBookingUrl" class="text-danger"></span>
+                    </div>
+                    <div class="field">
+                        <label asp-for="BookingPageIdOrMailbox" class="legend-label"></label>
+                        <input asp-for="BookingPageIdOrMailbox" class="legend-input" autocomplete="off" placeholder="Mailbox, Bookings page id, or shared calendar handle" />
+                        <p class="legend-help">Used internally for matching confirmed bookings back to the right calendar when Microsoft Graph is available.</p>
+                        <span asp-validation-for="BookingPageIdOrMailbox" class="text-danger"></span>
+                    </div>
+                    <div class="field">
+                        <label asp-for="CalendarEmail" class="legend-label"></label>
+                        <input asp-for="CalendarEmail" class="legend-input" autocomplete="email" placeholder="your-calendar@example.com" />
+                        <p class="legend-help">Safe internal calendar identity for confirmation lookup. This is not shown publicly.</p>
+                        <span asp-validation-for="CalendarEmail" class="text-danger"></span>
+                    </div>
+                    <div class="field" style="grid-column:1 / -1;">
+                        <label class="legend-label" asp-for="PreferModalOnMobile"></label>
+                        <label style="display:flex;align-items:center;gap:.65rem;color:#f8fafc;font-weight:700;">
+                            <input asp-for="PreferModalOnMobile" type="checkbox" />
+                            <span>Open the embedded scheduler in a mobile modal when possible</span>
+                        </label>
                     </div>
                 </div>
 
@@ -247,6 +313,6 @@
     </div>
 </div>
 
-@section Scripts{
-    @{await Html.RenderPartialAsync("_ValidationScriptsPartial");}
+@section Scripts {
+    <partial name="_ValidationScriptsPartial" />
 }

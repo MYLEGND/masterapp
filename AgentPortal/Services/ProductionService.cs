@@ -19,6 +19,20 @@ public sealed class ProductionTotals
     public int CountPersonal { get; set; }
 }
 
+internal enum ResolvedProductionBucket
+{
+    Lead = 0,
+    Client = 1
+}
+
+internal sealed record ResolvedProductionRow(
+    string AgentUserId,
+    ResolvedProductionBucket Bucket,
+    ProductionStatus Status,
+    decimal Amount,
+    decimal PersonalAmount,
+    DateTime UpdatedUtc);
+
 /// <summary>
 /// Central production/read/write surface. Status buckets are mutually exclusive by current Status.
 /// </summary>
@@ -46,6 +60,113 @@ public class ProductionService
     }
 
     private static string Norm(string? v) => (v ?? "").Trim().ToLowerInvariant();
+    private static string OwnershipKey(string? agentUserId, string? subjectId) => $"{Norm(agentUserId)}|{Norm(subjectId)}";
+    private static bool IsClientRecordType(string? recordType)
+        => string.Equals(recordType, "Client", StringComparison.OrdinalIgnoreCase)
+           || string.Equals(recordType, "BusinessClient", StringComparison.OrdinalIgnoreCase);
+
+    private static string? ResolveClientRecordType(string? clientUserId, string? crmNotes)
+    {
+        var meta = ClientCrmMetaSerializer.Deserialize(crmNotes);
+        var normalized = ClientCrmMetaSerializer.NormalizeRecordType(meta.RecordType, defaultToLead: false);
+        if (!string.IsNullOrWhiteSpace(normalized))
+            return normalized;
+
+        var fromStage = ClientCrmMetaSerializer.NormalizeRecordType(meta.PipelineStage, defaultToLead: false);
+        if (!string.IsNullOrWhiteSpace(fromStage))
+            return fromStage;
+
+        return null;
+    }
+
+    private static ResolvedProductionBucket ResolveBucket(
+        string agentUserId,
+        ProductionSide side,
+        string? leadId,
+        string? clientUserId,
+        IReadOnlySet<string> validLeadOwnership,
+        IReadOnlyDictionary<string, string> clientRecordTypes)
+    {
+        var clientKey = OwnershipKey(agentUserId, clientUserId);
+        if (clientRecordTypes.TryGetValue(clientKey, out var recordType))
+            return IsClientRecordType(recordType) ? ResolvedProductionBucket.Client : ResolvedProductionBucket.Lead;
+
+        var leadKey = OwnershipKey(agentUserId, leadId);
+        if (!string.IsNullOrWhiteSpace(leadId) && validLeadOwnership.Contains(leadKey))
+            return ResolvedProductionBucket.Lead;
+
+        return side == ProductionSide.Client ? ResolvedProductionBucket.Client : ResolvedProductionBucket.Lead;
+    }
+
+    private async Task<(HashSet<string> ValidLeadOwnership, Dictionary<string, string> ClientRecordTypes)> LoadProductionOwnershipMapsAsync(CancellationToken ct = default)
+    {
+        var leadOwnership = (await _db.WorkstationLeadProfiles
+                .AsNoTracking()
+                .Where(x => x.AgentUserId != null && x.LeadId != null)
+                .Select(x => new { x.AgentUserId, x.LeadId })
+                .ToListAsync(ct))
+            .Select(x => OwnershipKey(x.AgentUserId, x.LeadId))
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+        var clientRows = await (from ac in _db.AgentClients.AsNoTracking()
+                                join cp in _db.ClientProfiles.AsNoTracking() on ac.ClientUserId equals cp.ClientUserId
+                                select new
+                                {
+                                    ac.AgentUserId,
+                                    cp.ClientUserId,
+                                    cp.CrmNotes
+                                })
+            .ToListAsync(ct);
+
+        var clientRecordTypes = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var row in clientRows)
+        {
+            var recordType = ResolveClientRecordType(row.ClientUserId, row.CrmNotes);
+            if (!string.IsNullOrWhiteSpace(recordType))
+                clientRecordTypes[OwnershipKey(row.AgentUserId, row.ClientUserId)] = recordType;
+        }
+
+        return (leadOwnership, clientRecordTypes);
+    }
+
+    private async Task<List<ResolvedProductionRow>> LoadResolvedProductionRowsAsync(
+        DateTime? startUtc = null,
+        DateTime? endUtc = null,
+        CancellationToken ct = default)
+    {
+        var (validLeadOwnership, clientRecordTypes) = await LoadProductionOwnershipMapsAsync(ct);
+
+        var query = _db.ProductionRecords.AsNoTracking();
+        if (startUtc.HasValue)
+            query = query.Where(p => p.UpdatedUtc >= startUtc.Value);
+        if (endUtc.HasValue)
+            query = query.Where(p => p.UpdatedUtc <= endUtc.Value);
+
+        var rows = await query
+            .Select(p => new
+            {
+                p.AgentUserId,
+                p.Side,
+                p.Status,
+                p.Amount,
+                p.PersonalAmount,
+                p.UpdatedUtc,
+                p.LeadId,
+                p.ClientUserId
+            })
+            .ToListAsync(ct);
+
+        return rows
+            .Select(row => new ResolvedProductionRow(
+                Norm(row.AgentUserId),
+                ResolveBucket(row.AgentUserId, row.Side, row.LeadId, row.ClientUserId, validLeadOwnership, clientRecordTypes),
+                row.Status,
+                row.Amount,
+                row.PersonalAmount,
+                row.UpdatedUtc))
+            .ToList();
+    }
+
     private static void Accumulate(ProductionStatus status, decimal amount, ProductionTotals totals)
     {
         switch (status)
@@ -64,44 +185,33 @@ public class ProductionService
         if (amount < 0) throw new ArgumentException("Amount cannot be negative.", nameof(amount));
         if (personalAmount < 0) personalAmount = 0;
 
+        if (side == ProductionSide.Lead && string.IsNullOrWhiteSpace(leadId))
+            throw new ArgumentException("LeadId is required for lead production.", nameof(leadId));
+        if (side == ProductionSide.Client && string.IsNullOrWhiteSpace(clientUserId))
+            throw new ArgumentException("ClientUserId is required for client production.", nameof(clientUserId));
+
         var normAgent = Norm(targetAgentUserId);
-        var query = _db.ProductionRecords
-            .Where(p =>
-                p.AgentUserId == normAgent &&
-                p.Side == side &&
-                ((side == ProductionSide.Lead && p.LeadId == leadId) ||
-                 (side == ProductionSide.Client && p.ClientUserId == clientUserId)));
+        var now = DateTime.UtcNow;
 
-        var existing = await query
-            .OrderByDescending(p => p.UpdatedUtc)
-            .FirstOrDefaultAsync(ct);
-
-        if (existing == null)
+        // Add operation should always create a new production row.
+        // Editing/deleting specific rows is handled via UpdateAsync/DeleteAsync using record Id.
+        var record = new ProductionRecord
         {
-            existing = new ProductionRecord
-            {
-                AgentUserId = normAgent,
-                Side = side,
-                LeadId = leadId,
-                ClientUserId = clientUserId,
-                CreatedUtc = DateTime.UtcNow
-            };
-            _db.ProductionRecords.Add(existing);
-        }
+            AgentUserId = normAgent,
+            Side = side,
+            LeadId = side == ProductionSide.Lead ? leadId : null,
+            ClientUserId = side == ProductionSide.Client ? clientUserId : null,
+            Status = status,
+            Amount = amount,
+            PersonalAmount = personalAmount,
+            Notes = notes?.Trim(),
+            CreatedUtc = now,
+            UpdatedUtc = now
+        };
 
-        existing.Status = status;
-        existing.Amount = amount;
-        existing.PersonalAmount = personalAmount;
-        existing.Notes = notes?.Trim();
-        existing.UpdatedUtc = DateTime.UtcNow;
-
-        // ensure only one record per contact/side to avoid double counting
-        var extras = await query.Where(p => p.Id != existing.Id).ToListAsync(ct);
-        if (extras.Count > 0)
-            _db.ProductionRecords.RemoveRange(extras);
-
+        _db.ProductionRecords.Add(record);
         await _db.SaveChangesAsync(ct);
-        _logger.LogInformation("Production upsert by {Actor} for agent {Agent} side {Side} status {Status} amount {Amount} personal {Personal}", actorUserId, targetAgentUserId, side, status, amount, personalAmount);
+        _logger.LogInformation("Production add by {Actor} for agent {Agent} side {Side} status {Status} amount {Amount} personal {Personal}", actorUserId, targetAgentUserId, side, status, amount, personalAmount);
     }
 
     public async Task<List<ProductionRecord>> GetForContactAsync(string agentUserId, ProductionSide side, string contactId, CancellationToken ct = default)
@@ -179,46 +289,27 @@ public class ProductionService
 
     public async Task<(ProductionTotals Leads, ProductionTotals Clients, Dictionary<string, ProductionTotals> ByAgent)> GetAgencyTotalsAsync(CancellationToken ct = default)
     {
-        var grouped = await _db.ProductionRecords
-            .AsNoTracking()
-            .GroupBy(p => new { p.AgentUserId, p.Side, p.Status })
-            .Select(g => new { g.Key.AgentUserId, g.Key.Side, g.Key.Status, Amount = g.Sum(x => (decimal?)x.Amount) ?? 0, Count = g.Count() })
-            .ToListAsync(ct);
-        var personalGrouped = await _db.ProductionRecords
-            .AsNoTracking()
-            .GroupBy(p => new { p.AgentUserId, p.Side })
-            .Select(g => new { g.Key.AgentUserId, g.Key.Side, Amount = g.Sum(x => x.PersonalAmount), Count = g.Count(x => x.PersonalAmount > 0) })
-            .ToListAsync(ct);
+        var rows = await LoadResolvedProductionRowsAsync(ct: ct);
 
         ProductionTotals leads = new(), clients = new();
         var byAgent = new Dictionary<string, ProductionTotals>(StringComparer.OrdinalIgnoreCase);
 
-        foreach (var row in grouped)
+        foreach (var row in rows)
         {
-            var targetTotals = row.Side == ProductionSide.Lead ? leads : clients;
-            Apply(row, targetTotals);
+            var targetTotals = row.Bucket == ResolvedProductionBucket.Lead ? leads : clients;
+            Accumulate(row.Status, row.Amount, targetTotals);
+            targetTotals.Personal += row.PersonalAmount;
+            if (row.PersonalAmount > 0) targetTotals.CountPersonal += 1;
 
             if (!byAgent.TryGetValue(row.AgentUserId, out var agentTotals))
             {
                 agentTotals = new ProductionTotals();
                 byAgent[row.AgentUserId] = agentTotals;
             }
-            Apply(row, agentTotals);
-        }
 
-        foreach (var p in personalGrouped)
-        {
-            var targetTotals = p.Side == ProductionSide.Lead ? leads : clients;
-            targetTotals.Personal += p.Amount;
-            targetTotals.CountPersonal += p.Count;
-
-            if (!byAgent.TryGetValue(p.AgentUserId, out var agentTotals))
-            {
-                agentTotals = new ProductionTotals();
-                byAgent[p.AgentUserId] = agentTotals;
-            }
-            agentTotals.Personal += p.Amount;
-            agentTotals.CountPersonal += p.Count;
+            Accumulate(row.Status, row.Amount, agentTotals);
+            agentTotals.Personal += row.PersonalAmount;
+            if (row.PersonalAmount > 0) agentTotals.CountPersonal += 1;
         }
 
         return (leads, clients, byAgent);
@@ -334,11 +425,7 @@ public class ProductionService
         var startUtc = TimeZoneInfo.ConvertTimeToUtc(startLocal, localTz);
         var endUtc = TimeZoneInfo.ConvertTimeToUtc(endLocal, localTz);
 
-        var records = await _db.ProductionRecords
-            .AsNoTracking()
-            .Where(p => p.UpdatedUtc >= startUtc && p.UpdatedUtc <= endUtc)
-            .Select(p => new { p.AgentUserId, p.Side, p.Status, p.Amount, p.PersonalAmount, p.UpdatedUtc })
-            .ToListAsync(ct);
+        var records = await LoadResolvedProductionRowsAsync(startUtc, endUtc, ct);
 
         var months = new Dictionary<int, MonthlyProducerVm>();
 
@@ -364,7 +451,7 @@ public class ProductionService
             producer.Totals.Personal += r.PersonalAmount;
             if (r.PersonalAmount > 0) producer.Totals.CountPersonal += 1;
 
-            var sideTotals = r.Side == ProductionSide.Lead ? producer.LeadsTotals : producer.ClientsTotals;
+            var sideTotals = r.Bucket == ResolvedProductionBucket.Lead ? producer.LeadsTotals : producer.ClientsTotals;
             Accumulate(r.Status, r.Amount, sideTotals);
             sideTotals.Personal += r.PersonalAmount;
             if (r.PersonalAmount > 0) sideTotals.CountPersonal += 1;

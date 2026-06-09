@@ -4,6 +4,11 @@
     bool isBusinessClient = User?.Claims?.Any(c => c.Type == "RecordType" && c.Value == "BusinessClient") == true;
     bool isAgent = User?.IsInRole("Agent") == true || User?.IsInRole("Admin") == true;
     bool showBookings = isAgent || isBusinessClient;
+    var homeClientHubFlash = TempData["Created"]?.ToString();
+}
+
+@section Styles {
+    <link rel="stylesheet" href="~/css/workstation-home-proposal.css" asp-append-version="true" />
 }
 
 <div class="home-container">
@@ -17,11 +22,19 @@
         <hr class="my-3 hero-hr" />
     </div>
 
+    @if (!string.IsNullOrWhiteSpace(homeClientHubFlash))
+    {
+        <div class="home-flash" role="status">@homeClientHubFlash</div>
+    }
+
     <!-- FREQUENTLY USED TOOLS -->
     <section class="home-tools mb-5">
         <div class="home-tools-head">
             <div class="home-tools-copy">
                 <h3 class="mb-0 fw-bold">Frequently Used Tools</h3>
+            </div>
+            <div class="home-tools-head-actions">
+                <button type="button" class="home-clients-trigger home-clients-trigger-inline" id="homeClientsTrigger">Clients</button>
             </div>
         </div>
 
@@ -30,6 +43,13 @@
                 <a href="https://outlook.office.com" target="_blank" rel="noopener">
                     <img class="outlook-link" src="~/images/tools-icons/outlook2.png" alt="Outlook" />
                 </a>
+                <button type="button" class="zoom-hub-trigger" id="homeZoomTrigger" aria-label="Open Zoom Links">
+                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 36 36" width="36" height="36" fill="none" aria-hidden="true">
+                        <rect width="36" height="36" rx="8" fill="#2D8CFF"/>
+                        <path d="M6 13a3 3 0 0 1 3-3h13a3 3 0 0 1 3 3v10a3 3 0 0 1-3 3H9a3 3 0 0 1-3-3V13z" fill="white"/>
+                        <path d="M25 15.5l5-3v11l-5-3V15.5z" fill="white"/>
+                    </svg>
+                </button>
                 <a href="https://outlook.office.com/calendar/view/workweek" target="_blank" rel="noopener">
                     <img class="outlook-link" src="~/images/tools-icons/calendar.png" alt="Outlook Calendar" />
                 </a>
@@ -171,6 +191,109 @@
 
 </div>
 
+<div class="home-clients-hub" id="homeClientsHub" hidden
+     data-lookup-url="@Url.Action("PortalQuickAccessClients", "Clients")"
+     data-create-url="@Url.Action("Create", "Clients")"
+     data-crm-url="@Url.Action("Index", "Clients")">
+    <div class="home-clients-backdrop" id="homeClientsBackdrop"></div>
+    <div class="home-clients-dialog" role="dialog" aria-modal="true" aria-labelledby="homeClientsTitle">
+        <div class="home-clients-shell">
+            <div class="home-clients-head">
+                <div>
+                    <div class="home-clients-kicker">Legend™ Client Access</div>
+                    <h3 class="home-clients-title" id="homeClientsTitle">Clients</h3>
+                    <p class="home-clients-sub">Search portal-enabled clients, reopen recent profiles fast, or launch the same create flow used in the Clients CRM page.</p>
+                </div>
+                <button type="button" class="home-clients-close" id="homeClientsClose" aria-label="Close client hub">×</button>
+            </div>
+
+            @if (!string.IsNullOrWhiteSpace(homeClientHubFlash))
+            {
+                <div class="home-clients-banner">@homeClientHubFlash</div>
+            }
+
+            <div class="home-clients-toolbar">
+                <div class="home-clients-search-wrap">
+                    <span class="home-clients-search-icon">⌕</span>
+                    <input id="homeClientsSearch"
+                           class="home-clients-search"
+                           type="search"
+                           autocomplete="off"
+                           placeholder="Search client name, email, or phone..."
+                           aria-label="Search clients" />
+                    <div class="home-clients-results" id="homeClientsResults" hidden></div>
+                </div>
+                <div class="home-clients-toolbar-actions">
+                    <div class="hp-proposal-group">
+                        @await Html.PartialAsync(
+                            "~/Views/Shared/_ProposalLauncher.cshtml",
+                            viewData: new Microsoft.AspNetCore.Mvc.ViewFeatures.ViewDataDictionary(ViewData)
+                            {
+                                { "ProposalTriggerClass", "home-clients-action home-clients-action-gold" },
+                                { "ProposalTriggerLabel", "Proposals ▾" },
+                                { "ProposalIncludeLead", false },
+                                { "ProposalIncludeClient", true },
+                                { "ProposalIncludeScratch", true }
+                            })
+                    </div>
+                    <button type="button" class="home-clients-action home-clients-action-gold" id="homeClientsAdd">Add Lead / Client / Business Client</button>
+                    <button type="button" class="home-clients-action home-clients-action-ghost" id="homeClientsOpenCrm">Open CRM</button>
+                </div>
+            </div>
+
+            <div class="home-clients-result-status" id="homeClientsResultStatus" aria-live="polite"></div>
+
+            <div class="home-clients-recent-head">
+                <div>
+                    <div class="home-clients-recent-title" id="homeClientsRecentHeading">Recently Viewed Clients</div>
+                    <div class="home-clients-recent-sub" id="homeClientsRecentSub"></div>
+                </div>
+            </div>
+            <div class="home-clients-recent-grid" id="homeClientsRecentGrid"></div>
+        </div>
+    </div>
+</div>
+
+<!-- ══ ZOOM LINKS HUB ════════════════════════════════════════════════════ -->
+<div class="home-zoom-hub" id="homeZoomHub" hidden>
+    <div class="home-zoom-backdrop" id="homeZoomBackdrop"></div>
+    <div class="home-zoom-dialog" role="dialog" aria-modal="true" aria-labelledby="homeZoomTitle">
+        <div class="home-zoom-shell">
+            <div class="home-zoom-head">
+                <div>
+                    <div class="home-zoom-kicker">Legend™ Quick Access</div>
+                    <h3 class="home-zoom-title" id="homeZoomTitle">Zoom Links</h3>
+                    <p class="home-zoom-sub">Save and launch your personal Zoom meeting links instantly. One click to copy.</p>
+                </div>
+                <button type="button" class="home-zoom-close" id="homeZoomClose" aria-label="Close Zoom hub">×</button>
+            </div>
+
+            <form class="home-zoom-add-form" id="homeZoomForm" autocomplete="off">
+                <div class="home-zoom-add-fields">
+                    <input id="homeZoomName" class="home-zoom-input" type="text" placeholder="Link name (e.g. Personal Meeting Room)" maxlength="200" />
+                    <input id="homeZoomUrl" class="home-zoom-input" type="url" placeholder="https://zoom.us/j/..." maxlength="2048" />
+                </div>
+                <button type="submit" class="home-zoom-save-btn" id="homeZoomSave">Save Link</button>
+                <div class="home-zoom-error" id="homeZoomError" hidden></div>
+            </form>
+
+            <div class="home-zoom-list-head">Saved Links</div>
+            <div class="home-zoom-empty" id="homeZoomEmpty" hidden>No Zoom links saved yet. Add one above.</div>
+            <div class="home-zoom-list" id="homeZoomList"></div>
+        </div>
+    </div>
+</div>
+
+@await Html.PartialAsync("~/Views/Shared/_WorkstationClientPicker.cshtml")
+@await Html.PartialAsync("~/Views/Shared/_ProposalBuilder.cshtml",
+    viewData: new Microsoft.AspNetCore.Mvc.ViewFeatures.ViewDataDictionary(ViewData)
+    {
+        { "ProposalIncludeLead", false },
+        { "ProposalIncludeClient", true },
+        { "ProposalIncludeScratch", true }
+    })
+@await Html.PartialAsync("~/Views/Proposals/_DecisionModal.cshtml")
+
 <style>
 :root {
     --gold-color: #a68023;
@@ -195,6 +318,497 @@
     border-width: 2px;
     max-width: 800px;
     margin: 1rem auto 0;
+}
+
+.home-flash{
+    max-width: 980px;
+    margin: 0 auto 1.25rem;
+    padding: 12px 16px;
+    border-radius: 14px;
+    border: 1.5px solid rgba(166,128,35,.46);
+    background: linear-gradient(180deg, rgba(166,128,35,.14), rgba(166,128,35,.06));
+    color: var(--navy-900);
+    font-weight: 800;
+    box-shadow: 0 14px 28px rgba(0,0,0,.08);
+}
+
+.home-clients-trigger{
+    display:inline-flex;
+    align-items:center;
+    justify-content:center;
+    min-width: 200px;
+    min-height: 60px;
+    padding: 0 1.6rem;
+    border-radius: 18px;
+    border: 1.8px solid rgba(245,214,141,.9);
+    background:
+        linear-gradient(180deg, rgba(255,255,255,.46), rgba(255,255,255,.08) 36%, rgba(255,255,255,0) 37%),
+        linear-gradient(160deg, #f8e2a6 0%, #e2bb64 52%, #c99534 100%);
+    color: #0a1730;
+    font-size: 1.02rem;
+    font-weight: 950;
+    letter-spacing: .03em;
+    text-shadow: 0 1px 0 rgba(255,255,255,.35);
+    box-shadow:
+        0 20px 38px rgba(0,0,0,.36),
+        0 12px 24px rgba(221,180,87,.28),
+        inset 0 1px 0 rgba(255,255,255,.62);
+    transition: transform .15s ease, box-shadow .15s ease, filter .15s ease;
+}
+
+.home-clients-trigger-inline{
+    min-width: 148px;
+    min-height: 48px;
+    padding: 0 1.05rem;
+    border-radius: 14px;
+    font-size: .92rem;
+}
+
+.home-clients-trigger:hover{
+    transform: translateY(-3px);
+    filter: brightness(1.06) saturate(1.02);
+    box-shadow:
+        0 26px 54px rgba(0,0,0,.42),
+        0 16px 30px rgba(221,180,87,.34),
+        inset 0 1px 0 rgba(255,255,255,.68);
+}
+
+.home-clients-trigger:focus-visible{
+    outline: none;
+    box-shadow: 0 0 0 3px rgba(221,180,87,.30), 0 22px 46px rgba(0,0,0,.34), inset 0 1px 0 rgba(255,255,255,.62);
+}
+
+.home-clients-hub{
+    position: fixed;
+    inset: 0;
+    z-index: 2100;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity .18s ease;
+}
+
+.home-clients-hub.open{
+    opacity: 1;
+    pointer-events: auto;
+}
+
+.home-clients-backdrop{
+    position: absolute;
+    inset: 0;
+    background: rgba(7, 12, 23, .68);
+    backdrop-filter: blur(7px);
+}
+
+.home-clients-dialog{
+    position: relative;
+    z-index: 1;
+    min-height: 100%;
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    padding: 2rem 1rem;
+}
+
+.home-clients-shell{
+    width: min(1160px, 100%);
+    max-height: min(88vh, 980px);
+    overflow: auto;
+    border-radius: 26px;
+    border: 1px solid rgba(214, 188, 128, .34);
+    background:
+        radial-gradient(860px 360px at -6% -10%, rgba(88, 121, 190, .16), transparent 56%),
+        radial-gradient(760px 340px at 102% -4%, rgba(214, 188, 128, .08), transparent 60%),
+        linear-gradient(180deg, rgba(11,22,44,.995), rgba(17,33,63,.995) 56%, rgba(19,39,72,.995));
+    color: var(--text-strong);
+    box-shadow:
+        0 34px 80px rgba(0,0,0,.5),
+        0 0 0 1px rgba(255,255,255,.06) inset,
+        0 20px 40px rgba(13, 24, 49, .34);
+    padding: 1.7rem 1.75rem 1.85rem;
+}
+
+.home-clients-head{
+    display:flex;
+    align-items:flex-start;
+    justify-content:space-between;
+    gap: 1.25rem;
+    padding-bottom: 1rem;
+    border-bottom: 1px solid rgba(214, 188, 128, .16);
+}
+
+.home-clients-kicker{
+    display:inline-flex;
+    align-items:center;
+    font-size:.8rem;
+    font-weight:900;
+    letter-spacing:.1em;
+    text-transform:uppercase;
+    color:#dcc38a;
+}
+
+.home-clients-title{
+    margin:.45rem 0 .4rem;
+    font-size:2rem;
+    font-weight:950;
+    line-height:1.15;
+}
+
+.home-clients-sub{
+    margin:0;
+    color:#c2cee3;
+    font-weight:600;
+    line-height:1.55;
+    max-width: 820px;
+}
+
+.home-clients-close{
+    display:inline-flex;
+    align-items:center;
+    justify-content:center;
+    width: 50px;
+    height: 50px;
+    border-radius: 16px;
+    border: 1px solid rgba(214, 188, 128, .34);
+    background: linear-gradient(180deg, rgba(35,53,92,.96), rgba(24,39,70,.96));
+    color:#f6f8fd;
+    font-size:1.55rem;
+    line-height:1;
+    box-shadow: 0 14px 30px rgba(0,0,0,.22), inset 0 1px 0 rgba(255,255,255,.06);
+    transition: transform .14s ease, background .14s ease, border-color .14s ease, box-shadow .14s ease;
+}
+
+.home-clients-close:hover{
+    transform: translateY(-1px);
+    border-color: rgba(214, 188, 128, .54);
+    background: linear-gradient(180deg, rgba(42,62,104,.96), rgba(27,44,78,.96));
+    box-shadow: 0 18px 34px rgba(0,0,0,.26), inset 0 1px 0 rgba(255,255,255,.08);
+}
+
+.home-clients-banner{
+    margin-top: 1.2rem;
+    padding: 1rem 1.1rem;
+    border-radius: 14px;
+    border: 1.5px solid rgba(166,128,35,.42);
+    background: rgba(166,128,35,.12);
+    color: #f8fafc;
+    font-weight: 800;
+}
+
+.home-clients-toolbar{
+    margin-top: 1.35rem;
+    display:grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: .9rem;
+    align-items:center;
+}
+
+.home-clients-search-wrap{
+    position:relative;
+    border-radius: 16px;
+    border: 1px solid rgba(214, 188, 128, .26);
+    background: linear-gradient(180deg, rgba(255,255,255,.08), rgba(255,255,255,.03));
+    box-shadow:
+        inset 0 1px 0 rgba(255,255,255,.05),
+        0 12px 26px rgba(0,0,0,.2);
+    transition: border-color .15s ease, box-shadow .15s ease, background .15s ease;
+}
+
+.home-clients-search-wrap:focus-within{
+    border-color: rgba(212, 189, 127, .5);
+    box-shadow: 0 0 0 3px rgba(110, 140, 205, .18), 0 18px 32px rgba(0,0,0,.26);
+    background: linear-gradient(180deg, rgba(255,255,255,.11), rgba(255,255,255,.045));
+}
+
+.home-clients-search-icon{
+    position:absolute;
+    left: 14px;
+    top: 50%;
+    transform: translateY(-50%);
+    color:#c9d6ee;
+    font-weight:900;
+    pointer-events:none;
+}
+
+.home-clients-search{
+    width:100%;
+    min-height:56px;
+    border-radius:16px;
+    border:1px solid transparent;
+    background: transparent;
+    color:#f8fafc;
+    padding: 0 1.1rem 0 2.95rem;
+    font-size:1rem;
+    font-weight:600;
+    box-shadow: none;
+}
+
+.home-clients-search::placeholder{ color:#93a4bf; }
+
+.home-clients-search:focus{
+    outline:none;
+    border-color: transparent;
+    box-shadow: none;
+}
+
+.home-clients-toolbar-actions{
+    display:flex;
+    gap:.65rem;
+    flex-wrap:wrap;
+    justify-content:flex-end;
+    align-items:center;
+}
+
+.home-clients-action{
+    display:inline-flex;
+    align-items:center;
+    justify-content:center;
+    min-height:54px;
+    padding: 0 1rem;
+    border-radius: 15px;
+    border: 1px solid rgba(214, 188, 128, .3);
+    font-weight: 900;
+    letter-spacing:.015em;
+    box-shadow:
+        0 12px 24px rgba(0,0,0,.2),
+        inset 0 1px 0 rgba(255,255,255,.06);
+    transition: transform .14s ease, box-shadow .14s ease, filter .14s ease, background .14s ease, border-color .14s ease;
+}
+
+.home-clients-action-gold{
+    background: linear-gradient(180deg, #efd489, #ddb35a);
+    color: #10213e;
+    border-color: rgba(236, 205, 130, .82);
+}
+
+.home-clients-action-ghost{
+    background: linear-gradient(180deg, rgba(40,59,99,.92), rgba(24,40,72,.92));
+    color:#eef4ff;
+    border-color: rgba(137, 159, 206, .28);
+}
+
+#btnProposal.home-clients-action{
+    min-width: 156px;
+    background: linear-gradient(180deg, rgba(36,54,93,.98), rgba(22,37,67,.98));
+    color: #f0d694;
+    border-color: rgba(214, 188, 128, .38);
+}
+
+#btnProposal.home-clients-action:hover{
+    background: linear-gradient(180deg, rgba(45,66,110,.98), rgba(26,43,76,.98));
+}
+
+#homeClientsAdd.home-clients-action{
+    padding-inline: 1.25rem;
+    min-width: 332px;
+}
+
+.home-clients-action:hover{
+    transform: translateY(-1px);
+    box-shadow: 0 16px 28px rgba(0,0,0,.24), inset 0 1px 0 rgba(255,255,255,.08);
+}
+
+.home-clients-action-gold:hover{
+    filter: brightness(1.04);
+}
+
+.home-clients-action-ghost:hover{
+    border-color: rgba(154, 177, 228, .38);
+    background: linear-gradient(180deg, rgba(48,70,116,.94), rgba(27,45,79,.94));
+}
+
+.home-clients-action:focus-visible{
+    outline: none;
+    box-shadow: 0 0 0 3px rgba(123, 150, 210, .2), 0 14px 28px rgba(0,0,0,.22), inset 0 1px 0 rgba(255,255,255,.06);
+}
+
+.home-clients-result-status{
+    margin-top:1rem;
+    min-height: 1.5rem;
+    color:#d8e0ec;
+    font-weight:600;
+}
+
+.home-clients-result-status[data-state="error"]{
+    color:#f7c2bc;
+}
+
+.home-clients-results{
+    position:absolute;
+    top: calc(100% + .45rem);
+    left: 0;
+    right: 0;
+    z-index: 4;
+    display:flex;
+    flex-direction:column;
+    gap:.45rem;
+    padding:.6rem;
+    border-radius: 20px;
+    border: 1.5px solid rgba(166,128,35,.38);
+    background: linear-gradient(180deg, rgba(11,21,41,.995), rgba(15,29,56,.995));
+    box-shadow: 0 24px 54px rgba(0,0,0,.34);
+    max-height: 360px;
+    overflow:auto;
+}
+
+.home-clients-recent-head{
+    margin-top: 1.6rem;
+    padding-top: 1.15rem;
+    border-top: 1px solid rgba(214, 188, 128, .16);
+}
+
+.home-clients-recent-title{
+    font-size:1.06rem;
+    font-weight: 900;
+    color:#f8fafc;
+}
+
+.home-clients-recent-sub{
+    margin-top:.2rem;
+    color:#b9c5d8;
+    font-weight:600;
+}
+
+.home-clients-recent-grid{
+    margin-top:1rem;
+    display:grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap:.9rem;
+}
+
+.home-clients-card{
+    text-align:left;
+    width:100%;
+    border-radius: 18px;
+    border: 1px solid rgba(214, 188, 128, .2);
+    background: linear-gradient(180deg, rgba(38,57,98,.74), rgba(28,44,78,.78));
+    color:#f8fafc;
+    padding: 1rem;
+    box-shadow: 0 14px 28px rgba(0,0,0,.18);
+    display:flex;
+    flex-direction:column;
+    transition: transform .14s ease, box-shadow .14s ease, border-color .14s ease;
+}
+
+.home-clients-card.is-result{
+    padding: .85rem .95rem;
+    border-radius: 16px;
+    background: linear-gradient(180deg, rgba(31,48,84,.82), rgba(22,36,65,.82));
+    box-shadow: 0 10px 20px rgba(0,0,0,.14);
+}
+
+.home-clients-card:hover{
+    transform: translateY(-1px);
+    border-color: rgba(155, 178, 225, .28);
+    box-shadow: 0 18px 32px rgba(0,0,0,.24);
+}
+
+.home-clients-card.is-result:hover{
+    transform:none;
+    box-shadow: 0 12px 24px rgba(0,0,0,.16);
+    background: linear-gradient(180deg, rgba(37,56,97,.86), rgba(24,39,69,.86));
+}
+
+.home-clients-card-top{
+    display:flex;
+    align-items:flex-start;
+    justify-content:space-between;
+    gap:.75rem;
+    margin-bottom:.65rem;
+}
+
+.home-clients-card-title{
+    font-size:1.02rem;
+    font-weight:900;
+    line-height:1.25;
+}
+
+.home-clients-card-badge{
+    display:inline-flex;
+    align-items:center;
+    justify-content:center;
+    padding:.3rem .55rem;
+    border-radius:999px;
+    border:1px solid rgba(214, 188, 128, .26);
+    background: rgba(244, 222, 169, .1);
+    color:#f1d798;
+    font-size:.72rem;
+    font-weight:900;
+    text-transform:uppercase;
+    white-space:nowrap;
+}
+
+.home-clients-card-meta{
+    color:#c9d6ea;
+    font-weight:600;
+    line-height:1.5;
+    word-break: break-word;
+}
+
+.home-clients-card.is-result .home-clients-card-meta{
+    font-size: .9rem;
+}
+
+.home-clients-card-cta{
+    margin-top:1rem;
+    color:#d8e5fb;
+    font-weight:900;
+}
+
+.home-clients-card.is-result .home-clients-card-cta{
+    margin-top:.55rem;
+    font-size: .88rem;
+}
+
+.home-clients-card-actions{
+    display:flex;
+    flex-wrap:wrap;
+    gap:.6rem;
+    margin-top: .85rem;
+}
+
+.home-clients-card-action{
+    display:inline-flex;
+    align-items:center;
+    justify-content:center;
+    min-height: 38px;
+    padding: 0 .9rem;
+    border-radius: 999px;
+    border: 1px solid rgba(145, 169, 219, .24);
+    background: rgba(255,255,255,.045);
+    color:#edf4ff;
+    font-weight:800;
+    box-shadow: none;
+    transition: border-color .14s ease, background .14s ease, transform .14s ease;
+}
+
+.home-clients-card-action:hover{
+    transform: translateY(-1px);
+    border-color: rgba(163, 187, 235, .34);
+    background: rgba(255,255,255,.08);
+}
+
+.home-clients-card-action.is-primary{
+    background: linear-gradient(180deg, #edd187, #ddb059);
+    color:#10213e;
+    border-color: rgba(236, 205, 130, .72);
+}
+
+.home-clients-card-action.is-primary:hover{
+    background: linear-gradient(180deg, #f1d68f, #dfb966);
+    border-color: rgba(241, 214, 143, .86);
+}
+
+.home-clients-empty{
+    padding: 1.05rem 1.15rem;
+    border-radius: 18px;
+    border: 1px dashed rgba(166,128,35,.35);
+    color:#d4dde9;
+    font-weight:600;
+    background: rgba(255,255,255,.03);
+}
+
+.home-clients-empty-block{
+    grid-column: 1 / -1;
 }
 
 .home-tools{
@@ -288,6 +902,11 @@
     margin-bottom: 1.5rem;
 }
 
+.home-tools-head-actions{
+    grid-column: 3;
+    justify-self: end;
+}
+
 .home-tools-copy{
     display: grid;
     gap: 0.25rem;
@@ -363,6 +982,20 @@
 }
 
 @@media (max-width: 992px) {
+    .home-clients-toolbar,
+    .home-clients-results,
+    .home-clients-recent-grid{
+        grid-template-columns: 1fr;
+    }
+
+    .home-clients-toolbar-actions{
+        justify-content:stretch;
+    }
+
+    .home-clients-action{
+        flex:1 1 auto;
+    }
+
     .home-tools{
         padding: 1.2rem 1rem 1.35rem;
     }
@@ -373,10 +1006,12 @@
     }
 
     .home-tools-copy,
+    .home-tools-head-actions,
     .btn-legend-store{
         grid-column: auto;
     }
 
+    .home-tools-head-actions,
     .btn-legend-store{
         justify-self: center;
     }
@@ -391,6 +1026,14 @@
 }
 
 @@media (max-width: 576px) {
+    .home-clients-shell{
+        padding: 1.2rem;
+    }
+
+    .home-clients-title{
+        font-size: 1.55rem;
+    }
+
     .home-tools{
         padding: 1rem .85rem 1.2rem;
     }
@@ -597,8 +1240,310 @@
     font-weight: 650;
 }
 .ff-home-footer strong{ color: var(--text-strong); }
+
+/* =========================================
+   ZOOM HUB TRIGGER BUTTON (mini tools)
+========================================= */
+.zoom-hub-trigger{
+    display:inline-flex;
+    align-items:center;
+    justify-content:center;
+    width:36px;
+    height:36px;
+    padding:0;
+    border:none;
+    background:transparent;
+    cursor:pointer;
+    border-radius:8px;
+    transition: transform .2s ease, opacity .2s ease;
+    flex-shrink:0;
+}
+.zoom-hub-trigger:hover{
+    transform: translateY(-2px) scale(1.05);
+    opacity: 0.9;
+}
+.zoom-hub-trigger svg{
+    display:block;
+    border-radius:7px;
+    box-shadow: 0 2px 8px rgba(0,0,0,.35);
+}
+
+/* =========================================
+   ZOOM LINKS HUB OVERLAY
+========================================= */
+.home-zoom-hub{
+    position: fixed;
+    inset: 0;
+    z-index: 2100;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity .18s ease;
+}
+.home-zoom-hub.open{
+    opacity: 1;
+    pointer-events: auto;
+}
+.home-zoom-backdrop{
+    position: absolute;
+    inset: 0;
+    background: rgba(7, 12, 23, .68);
+    backdrop-filter: blur(7px);
+}
+.home-zoom-dialog{
+    position: relative;
+    z-index: 1;
+    min-height: 100%;
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    padding: 2rem 1rem;
+}
+.home-zoom-shell{
+    width: min(680px, 100%);
+    max-height: min(88vh, 820px);
+    overflow: auto;
+    border-radius: 28px;
+    border: 1.8px solid rgba(221,180,87,.5);
+    background:
+        radial-gradient(860px 360px at -6% -10%, rgba(221,180,87,.22), transparent 56%),
+        radial-gradient(760px 340px at 102% -4%, rgba(84,120,176,.16), transparent 60%),
+        linear-gradient(168deg, rgba(8,18,36,.995), rgba(14,29,56,.995) 56%, rgba(16,34,64,.995));
+    color: var(--text-strong);
+    box-shadow:
+        0 38px 96px rgba(0,0,0,.54),
+        0 0 0 1px rgba(255,255,255,.06) inset,
+        0 24px 42px rgba(221,180,87,.12);
+    padding: 2rem;
+}
+.home-zoom-head{
+    display:flex;
+    align-items:flex-start;
+    justify-content:space-between;
+    gap: 1.25rem;
+    padding-bottom: 1.2rem;
+    border-bottom: 1px solid rgba(221,180,87,.24);
+    margin-bottom: 1.5rem;
+}
+.home-zoom-kicker{
+    display:inline-flex;
+    align-items:center;
+    font-size:.8rem;
+    font-weight:900;
+    letter-spacing:.1em;
+    text-transform:uppercase;
+    color:#e7c06d;
+}
+.home-zoom-title{
+    margin:.45rem 0 .4rem;
+    font-size:1.9rem;
+    font-weight:950;
+    line-height:1.15;
+}
+.home-zoom-sub{
+    margin:0;
+    color:#d4dde9;
+    font-weight:600;
+    line-height:1.6;
+}
+.home-zoom-close{
+    display:inline-flex;
+    align-items:center;
+    justify-content:center;
+    width: 44px;
+    height: 44px;
+    border-radius: 12px;
+    border: 1.5px solid rgba(166,128,35,.44);
+    background: rgba(255,255,255,.05);
+    color:#f8fafc;
+    font-size:1.6rem;
+    line-height:1;
+    cursor:pointer;
+    flex-shrink:0;
+    transition: background .15s ease, border-color .15s ease;
+}
+.home-zoom-close:hover{
+    background: rgba(255,255,255,.1);
+    border-color: rgba(166,128,35,.7);
+}
+
+/* Add Form */
+.home-zoom-add-form{
+    margin-bottom: 1.75rem;
+}
+.home-zoom-add-fields{
+    display:flex;
+    gap:.75rem;
+    flex-wrap:wrap;
+    margin-bottom:.75rem;
+}
+.home-zoom-input{
+    flex:1 1 200px;
+    padding: .6rem .85rem;
+    border-radius: 10px;
+    border: 1.5px solid rgba(221,180,87,.4);
+    background: rgba(255,255,255,.06);
+    color: var(--text-strong);
+    font-size: .95rem;
+    font-weight:600;
+    outline:none;
+    transition: border-color .15s ease, background .15s ease;
+}
+.home-zoom-input:focus{
+    border-color: rgba(221,180,87,.8);
+    background: rgba(255,255,255,.1);
+}
+.home-zoom-input::placeholder{ color: rgba(255,255,255,.38); }
+.home-zoom-save-btn{
+    display:inline-flex;
+    align-items:center;
+    justify-content:center;
+    padding: .6rem 1.35rem;
+    border-radius:10px;
+    border: 1.8px solid var(--gold-color);
+    background: var(--gold-color);
+    color: #0b1529;
+    font-size:.95rem;
+    font-weight:900;
+    cursor:pointer;
+    transition: background .15s ease, transform .12s ease, box-shadow .15s ease;
+    box-shadow: 0 6px 18px rgba(0,0,0,.26);
+}
+.home-zoom-save-btn:hover{
+    background: #c79931;
+    border-color: #c79931;
+    transform: translateY(-1px);
+    box-shadow: 0 10px 24px rgba(0,0,0,.3);
+}
+.home-zoom-save-btn:disabled{
+    opacity:.6;
+    cursor:default;
+    transform:none;
+}
+.home-zoom-error{
+    margin-top:.6rem;
+    padding:.55rem .85rem;
+    border-radius:8px;
+    background: rgba(220,53,69,.18);
+    border: 1px solid rgba(220,53,69,.45);
+    color: #f8b4bc;
+    font-size:.9rem;
+    font-weight:600;
+}
+
+/* Links List */
+.home-zoom-list-head{
+    font-size:.8rem;
+    font-weight:900;
+    letter-spacing:.08em;
+    text-transform:uppercase;
+    color:#e7c06d;
+    margin-bottom:.75rem;
+}
+.home-zoom-empty{
+    color:#d4dde9;
+    font-weight:600;
+    font-size:.95rem;
+    padding: 1rem 0;
+}
+.home-zoom-list{
+    display:flex;
+    flex-direction:column;
+    gap:.6rem;
+}
+.zoom-link-row{
+    display:flex;
+    align-items:center;
+    justify-content:space-between;
+    gap:1rem;
+    padding:.85rem 1rem;
+    border-radius:14px;
+    border: 1.5px solid rgba(221,180,87,.28);
+    background: rgba(255,255,255,.04);
+    transition: border-color .15s ease, background .15s ease;
+}
+.zoom-link-row:hover{
+    border-color: rgba(221,180,87,.5);
+    background: rgba(255,255,255,.07);
+}
+.zoom-link-info{
+    display:flex;
+    flex-direction:column;
+    gap:.2rem;
+    min-width:0;
+}
+.zoom-link-name{
+    font-weight:800;
+    font-size:.95rem;
+    color: var(--text-strong);
+    white-space:nowrap;
+    overflow:hidden;
+    text-overflow:ellipsis;
+}
+.zoom-link-url{
+    font-size:.8rem;
+    font-weight:600;
+    color:#94a3b8;
+    white-space:nowrap;
+    overflow:hidden;
+    text-overflow:ellipsis;
+}
+.zoom-link-actions{
+    display:flex;
+    gap:.5rem;
+    flex-shrink:0;
+}
+.zoom-link-btn{
+    display:inline-flex;
+    align-items:center;
+    justify-content:center;
+    padding:.4rem .85rem;
+    border-radius:8px;
+    font-size:.82rem;
+    font-weight:800;
+    cursor:pointer;
+    transition: background .15s ease, transform .1s ease, border-color .15s ease;
+}
+.zoom-link-btn-open{
+    border: 1.5px solid rgba(100,180,120,.5);
+    background: rgba(100,180,120,.12);
+    color: #a8e6bb;
+    text-decoration: none;
+}
+.zoom-link-btn-open:hover{
+    background: rgba(100,180,120,.26);
+    border-color: rgba(100,180,120,.75);
+    color: #a8e6bb;
+}
+.zoom-link-btn-copy{
+    border: 1.5px solid rgba(221,180,87,.5);
+    background: rgba(221,180,87,.12);
+    color: #f6e6b4;
+}
+.zoom-link-btn-copy:hover,
+.zoom-link-btn-copy.copied{
+    background: rgba(221,180,87,.26);
+    border-color: rgba(221,180,87,.75);
+}
+.zoom-link-btn-delete{
+    border: 1.5px solid rgba(220,53,69,.35);
+    background: rgba(220,53,69,.1);
+    color: #f8b4bc;
+}
+.zoom-link-btn-delete:hover{
+    background: rgba(220,53,69,.22);
+    border-color: rgba(220,53,69,.6);
+}
+@@media (max-width: 576px){
+    .home-zoom-add-fields{ flex-direction:column; }
+    .zoom-link-row{ flex-direction:column; align-items:flex-start; }
+    .zoom-link-actions{ align-self:flex-end; }
+}
 </style>
 
 @section Scripts {
-    <!-- No scripts required -->
+    <script src="~/js/legend-modal.js" asp-append-version="true"></script>
+    <script src="~/js/home-clients-hub.js" asp-append-version="true"></script>
+    <script src="~/js/workstation-client-picker.js" asp-append-version="true"></script>
+    <script src="~/js/proposal-uw.js" asp-append-version="true"></script>
+    <script src="~/js/home-zoom-hub.js" asp-append-version="true"></script>
 }

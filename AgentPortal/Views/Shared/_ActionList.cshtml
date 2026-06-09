@@ -2,6 +2,15 @@
 @{
     var showControls = (ViewData["ShowActionControls"] as bool?) == true;
     var emptyMessage = ViewData["EmptyMessage"] as string ?? "No actions yet. Create your next step.";
+    var relatedEntityNames = ViewData["RelatedEntityNames"] as IDictionary<string, string>;
+    string RelatedTypeLabel(Domain.Enums.RelatedEntityType t) => t switch
+    {
+        Domain.Enums.RelatedEntityType.Lead => "Lead Card",
+        Domain.Enums.RelatedEntityType.Client => "Client Card",
+        _ => "Related Card"
+    };
+    string RelatedKey(Domain.Enums.RelatedEntityType t, string? id)
+        => $"{(int)t}:{(id ?? string.Empty).Trim().ToLowerInvariant()}";
     string StatusClass(Domain.Enums.ActionStatus s) => s switch
     {
         Domain.Enums.ActionStatus.Completed => "status-completed",
@@ -12,143 +21,7 @@
         _ => "status-neutral"
     };
 }
-<style>
-    /* Scoped to action list */
-    .action-table-wrap{
-        width: 100%;
-        overflow: hidden;
-        border-radius: 14px;
-        border: 1.5px solid #a68023;
-        background: #ffffff;
-        padding-right: 0;
-        padding-left: 0;
-        box-sizing: border-box;
-        position: relative;
-        box-shadow: 0 8px 18px rgba(0,0,0,0.12);
-    }
-    .action-table {
-        table-layout: auto;
-        width: 100%;
-        max-width: 100%;
-        margin-bottom: 0;
-        border-collapse: separate;
-        border-spacing: 0;
-        border-radius: 14px;
-        overflow: hidden;
-        box-sizing: border-box;
-        background:#ffffff;
-    }
-    .action-table th,
-    .action-table td {
-        white-space: nowrap;
-        word-break: normal;
-        overflow-wrap: normal;
-        padding: 9px 12px;
-        vertical-align: middle;
-        font-size: 0.8rem;
-        box-sizing: border-box;
-        color:#0b1224;
-        background:#ffffff;
-    }
-    .action-table th:first-child,
-    .action-table td:first-child{
-        white-space: normal;
-        word-break: break-word;
-        overflow-wrap: anywhere;
-    }
-    .action-table td.text-end{
-        position: relative;
-    }
-    .action-table th:last-child,
-    .action-table td:last-child{
-        width: 196px;
-        min-width: 196px;
-    }
-    .action-table th{
-        font-size: 0.78rem;
-        font-weight: 800;
-        letter-spacing: .01em;
-    }
-    .action-table th.text-end{
-        text-align: right;
-        white-space: nowrap;
-    }
-    .action-table tbody tr:nth-child(odd){
-        background-color: #f8fafc;
-    }
-    .action-table tbody tr:hover{
-        background-color: #eef2f7;
-    }
-    .status-pill{
-        display:inline-flex;
-        align-items:center;
-        gap:6px;
-        padding:1px 4px;
-        border-radius:999px;
-        font-weight:700;
-        font-size:.68rem;
-        letter-spacing:.01em;
-        text-transform:uppercase;
-    }
-    .status-planned{ background:#7f1d1d; color:#fef2f2; }
-    .status-inprogress{ background:#1d4ed8; color:#e0e7ff; }
-    .status-completed{ background:#166534; color:#dcfce7; }
-    .status-blocked{ background:#78350f; color:#ffedd5; }
-    .status-dismissed{ background:#374151; color:#e5e7eb; }
-    .status-neutral{ background:#1f2937; color:#e5e7eb; }
-    .action-row.status-planned td:first-child{ box-shadow: inset 4px 0 0 #b91c1c; }
-    .action-row.status-inprogress td:first-child{ box-shadow: inset 4px 0 0 #2563eb; }
-    .action-row.status-completed td:first-child{ box-shadow: inset 4px 0 0 #16a34a; }
-    .action-row.status-blocked td:first-child{ box-shadow: inset 4px 0 0 #d97706; }
-    .action-row.status-dismissed td:first-child{ box-shadow: inset 4px 0 0 #4b5563; }
-    .action-row.status-neutral td:first-child{ box-shadow: inset 4px 0 0 #1f2937; }
-    .action-controls-inline{
-        display: inline-flex;
-        align-items: center;
-        justify-content: flex-end;
-        gap: 6px;
-        flex-wrap: nowrap;
-        white-space: nowrap;
-    }
-    .action-inline-btn{
-        border: 1px solid rgba(148,163,184,.35);
-        border-radius: 8px;
-        background: #111827;
-        color: #f8fafc;
-        padding: 4px 8px;
-        font-size: 12px;
-        font-weight: 700;
-        text-align: center;
-        text-decoration: none;
-        line-height: 1.1;
-        display: inline-flex;
-        align-items: center;
-        justify-content: center;
-        white-space: nowrap !important;
-        word-break: normal !important;
-        min-width: max-content;
-    }
-    .action-inline-btn:hover{
-        background: #1f2937;
-        color: #ffffff;
-        text-decoration: none;
-    }
-    .action-inline-btn.action-inline-danger{
-        border-color: rgba(248,113,113,.5);
-        color: #fecaca;
-        background: #3f1013;
-    }
-    .action-inline-btn.action-inline-danger:hover{
-        background: #5a1317;
-        color: #fee2e2;
-    }
-    .action-inline-form{
-        margin: 0;
-        display: inline-flex;
-        white-space: nowrap;
-    }
-</style>
-
+<div class="action-list-shell">
 <div class="action-table-wrap">
 <table class="table table-sm table-striped mb-0 action-table">
     <thead>
@@ -173,8 +46,17 @@
         foreach (var item in Model)
         {
             var statusClass = StatusClass(item.Status);
+            var relatedKey = RelatedKey(item.RelatedEntityType, item.RelatedEntityId);
+            string? relatedName = null;
+            var hasRelated = relatedEntityNames != null && relatedEntityNames.TryGetValue(relatedKey, out relatedName) && !string.IsNullOrWhiteSpace(relatedName);
             <tr class="action-row @statusClass">
-                <td>@item.Title</td>
+                <td>
+                    <div class="action-title">@item.Title</div>
+                    @if (hasRelated)
+                    {
+                        <div class="action-related">@RelatedTypeLabel(item.RelatedEntityType): @relatedName</div>
+                    }
+                </td>
                 <td>@(item.DueDateUtc?.ToLocalTime().ToString("MM/dd"))</td>
                 <td><span class="status-pill @statusClass">@item.Status</span></td>
                 <td>@item.Priority</td>
@@ -199,4 +81,5 @@
     }
     </tbody>
 </table>
+</div>
 </div>

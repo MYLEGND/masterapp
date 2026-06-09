@@ -1,0 +1,75 @@
+Infrastructure/Migrations/20260413074810_EnsureFbclidColumn.cs:8:    public partial class EnsureFbclidColumn : Migration
+Infrastructure/Migrations/20260322113000_AddAgentTitleToProfile.cs:10:    // Manual migration to add agent Title field
+Infrastructure/Migrations/20260516115000_BackfillMissingMetaAttributionColumns.cs:11:[Migration("20260516115000_BackfillMissingMetaAttributionColumns")]
+Infrastructure/Migrations/20260516115000_BackfillMissingMetaAttributionColumns.cs:12:public partial class BackfillMissingMetaAttributionColumns : Migration
+Infrastructure/Migrations/20260321130615_AddAgentAssistantsRuntimeFix.Designer.cs:14:    [Migration("20260321130615_AddAgentAssistantsRuntimeFix")]
+Infrastructure/Migrations/20260321130615_AddAgentAssistantsRuntimeFix.Designer.cs:15:    partial class AddAgentAssistantsRuntimeFix
+Infrastructure/Migrations/20260330011403_ActionSurfaceSeparation.cs:13:            // ActionItems was never created on SQLite (ExecutionMvp_Regen skipped it).
+Infrastructure/Migrations/20260521212348_AddWebsiteLeadIntakeLinks.cs:57:                    SnapshotJson = table.Column<string>(type: largeTextType, nullable: true)
+Infrastructure/Migrations/20260217224629_20260217_ManualAddRecurringType.cs:9:    public partial class _20260217_ManualAddRecurringType : Migration
+Infrastructure/Migrations/20260413074919_FixMetadataJsonText.cs:8:    public partial class FixMetadataJsonText : Migration
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:9:    public partial class ExecutionMvp_Regen : Migration
+Infrastructure/Migrations/20260521212348_AddWebsiteLeadIntakeLinks.Designer.cs:2332:                    b.Property<string>("SnapshotJson")
+Infrastructure/Migrations/20260217173126_20260217_ModelSync.Designer.cs:15:    [Migration("20260217173126_20260217_ModelSync")]
+Infrastructure/Migrations/20260217173126_20260217_ModelSync.Designer.cs:16:    partial class _20260217_ModelSync
+Infrastructure/Migrations/20260411000000_FixWebsiteLeadSqlitePrimaryKey.cs:18:    [Migration("20260411000000_FixWebsiteLeadSqlitePrimaryKey")]
+Infrastructure/Migrations/20260411000000_FixWebsiteLeadSqlitePrimaryKey.cs:19:    public partial class FixWebsiteLeadSqlitePrimaryKey : Migration
+Infrastructure/Migrations/20260306092018_AddFinanceToolStatesFresh.Designer.cs:15:    [Migration("20260306092018_AddFinanceToolStatesFresh")]
+Infrastructure/Migrations/20260306092018_AddFinanceToolStatesFresh.Designer.cs:16:    partial class AddFinanceToolStatesFresh
+Infrastructure/Migrations/20260522021601_AddAgentAwarePublicBookingConfirmationSync.cs:9:    public partial class AddAgentAwarePublicBookingConfirmationSync : Migration
+Infrastructure/Migrations/MasterAppDbContextModelSnapshot.cs:12:    partial class MasterAppDbContextModelSnapshot : ModelSnapshot
+Infrastructure/Migrations/MasterAppDbContextModelSnapshot.cs:2523:                    b.Property<string>("SnapshotJson")
+Infrastructure/Migrations/20260210135445_ProfileAndHouseholdHardening.cs:39:            // Clean existing duplicates so ONE-OWNER unique index can be applied safely
+Infrastructure/Migrations/20260321130615_AddAgentAssistantsRuntimeFix.cs:9:    public partial class AddAgentAssistantsRuntimeFix : Migration
+Infrastructure/Migrations/20260327121010_CreateAnalyticsEventsManual.cs:11:    [Migration("20260327121010_CreateAnalyticsEventsManual")]
+Infrastructure/Migrations/20260327121010_CreateAnalyticsEventsManual.cs:12:    public partial class CreateAnalyticsEventsManual : Migration
+Infrastructure/Migrations/20260306092018_AddFinanceToolStatesFresh.cs:8:    public partial class AddFinanceToolStatesFresh : Migration
+Infrastructure/Migrations/20260327121000_CreateWebsiteLeadManual.cs:11:    [Migration("20260327121000_CreateWebsiteLeadManual")]
+Infrastructure/Migrations/20260327121000_CreateWebsiteLeadManual.cs:12:    public partial class CreateWebsiteLeadManual : Migration
+Infrastructure/Migrations/20260217224629_20260217_ManualAddRecurringType.Designer.cs:15:    [Migration("20260217224629_20260217_ManualAddRecurringType")]
+Infrastructure/Migrations/20260217224629_20260217_ManualAddRecurringType.Designer.cs:16:    partial class _20260217_ManualAddRecurringType
+Infrastructure/Migrations/20260413074919_FixMetadataJsonText.Designer.cs:14:    [Migration("20260413074919_FixMetadataJsonText")]
+Infrastructure/Migrations/20260413074919_FixMetadataJsonText.Designer.cs:15:    partial class FixMetadataJsonText
+Infrastructure/Migrations/20260213015112_InitialBaseline.Designer.cs:15:    [Migration("20260213015112_InitialBaseline")]
+Infrastructure/Migrations/20260213015112_InitialBaseline.Designer.cs:16:    partial class InitialBaseline
+Infrastructure/Migrations/20260330094500_RepairAgentProfilesSqlite.cs:11:    public partial class RepairAgentProfilesSqlite : Migration
+Infrastructure/Migrations/20260306091641_AddFinanceToolStatesClean.cs:8:    public partial class AddFinanceToolStatesClean : Migration
+Infrastructure/Migrations/20260401000000_Stage1IdentityHardening.cs:33:            // 2. Fix AssistantUserId unique index on SQL Server.
+Infrastructure/Migrations/20260521230742_AddLeadAppointments.Designer.cs:2404:                    b.Property<string>("SnapshotJson")
+Infrastructure/Migrations/20260217173126_20260217_ModelSync.cs:8:    public partial class _20260217_ModelSync : Migration
+Infrastructure/Migrations/20260524120743_RepairAnalyticsEventsLanguageTimeZoneSqlServer.cs:7:    public partial class RepairAnalyticsEventsLanguageTimeZoneSqlServer : Migration
+Infrastructure/Migrations/20260306091641_AddFinanceToolStatesClean.Designer.cs:15:    [Migration("20260306091641_AddFinanceToolStatesClean")]
+Infrastructure/Migrations/20260306091641_AddFinanceToolStatesClean.Designer.cs:16:    partial class AddFinanceToolStatesClean
+Infrastructure/Migrations/20260413074957_FixMetadataJsonText2.Designer.cs:14:    [Migration("20260413074957_FixMetadataJsonText2")]
+Infrastructure/Migrations/20260413074957_FixMetadataJsonText2.Designer.cs:15:    partial class FixMetadataJsonText2
+Infrastructure/Migrations/20260413074810_EnsureFbclidColumn.Designer.cs:14:    [Migration("20260413074810_EnsureFbclidColumn")]
+Infrastructure/Migrations/20260413074810_EnsureFbclidColumn.Designer.cs:15:    partial class EnsureFbclidColumn
+Infrastructure/Migrations/20260515142700_SyncCurrentModel_20260515.Designer.cs:15:    [Migration("20260515142700_SyncCurrentModel_20260515")]
+Infrastructure/Migrations/20260515142700_SyncCurrentModel_20260515.Designer.cs:16:    partial class SyncCurrentModel_20260515
+Infrastructure/Migrations/20260516113000_BackfillMissingAgentProfileMetaColumns.cs:11:[Migration("20260516113000_BackfillMissingAgentProfileMetaColumns")]
+Infrastructure/Migrations/20260516113000_BackfillMissingAgentProfileMetaColumns.cs:12:public partial class BackfillMissingAgentProfileMetaColumns : Migration
+Infrastructure/Migrations/README_migration_hygiene.md:10:- 20260330094500_RepairAgentProfilesSqlite ensures AgentProfiles exists on SQLite before later ALTERs.
+Infrastructure/Migrations/20260319141942_20260319_SnapshotSync.Designer.cs:14:    [Migration("20260319141942_20260319_SnapshotSync")]
+Infrastructure/Migrations/20260319141942_20260319_SnapshotSync.Designer.cs:15:    partial class _20260319_SnapshotSync
+Infrastructure/Migrations/20260413074810_EnsureFbclidColumn.cs.preclean:8:    public partial class EnsureFbclidColumn : Migration
+Infrastructure/Migrations/20260524120743_RepairAnalyticsEventsLanguageTimeZoneSqlServer.Designer.cs:14:    [Migration("20260524120743_RepairAnalyticsEventsLanguageTimeZoneSqlServer")]
+Infrastructure/Migrations/20260524120743_RepairAnalyticsEventsLanguageTimeZoneSqlServer.Designer.cs:15:    partial class RepairAnalyticsEventsLanguageTimeZoneSqlServer
+Infrastructure/Migrations/20260524120743_RepairAnalyticsEventsLanguageTimeZoneSqlServer.Designer.cs:2474:                    b.Property<string>("SnapshotJson")
+Infrastructure/Migrations/20260515142700_SyncCurrentModel_20260515.cs:8:    public partial class SyncCurrentModel_20260515 : Migration
+Infrastructure/Migrations/20260522021601_AddAgentAwarePublicBookingConfirmationSync.Designer.cs:14:    [Migration("20260522021601_AddAgentAwarePublicBookingConfirmationSync")]
+Infrastructure/Migrations/20260522021601_AddAgentAwarePublicBookingConfirmationSync.Designer.cs:15:    partial class AddAgentAwarePublicBookingConfirmationSync
+Infrastructure/Migrations/20260522021601_AddAgentAwarePublicBookingConfirmationSync.Designer.cs:2466:                    b.Property<string>("SnapshotJson")
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.Designer.cs:14:    [Migration("20260330000618_ExecutionMvp_Regen")]
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.Designer.cs:15:    partial class ExecutionMvp_Regen
+Infrastructure/Migrations/20260319141942_20260319_SnapshotSync.cs:8:    public partial class _20260319_SnapshotSync : Migration
+Infrastructure/Migrations/20260315190000_BackfillLegacyWorkstationLeadOriginalType.cs:11:[Migration("20260315190000_BackfillLegacyWorkstationLeadOriginalType")]
+Infrastructure/Migrations/20260315190000_BackfillLegacyWorkstationLeadOriginalType.cs:12:public partial class BackfillLegacyWorkstationLeadOriginalType : Migration
+Infrastructure/Migrations/20260213015112_InitialBaseline.cs:8:    public partial class InitialBaseline : Migration
+Infrastructure/Migrations/20260315153000_CleanupLegacyLeadPlaceholderEmails.cs:11:    [Migration("20260315153000_CleanupLegacyLeadPlaceholderEmails")]
+Infrastructure/Migrations/20260315153000_CleanupLegacyLeadPlaceholderEmails.cs:12:    public partial class CleanupLegacyLeadPlaceholderEmails : Migration
+Infrastructure/Migrations/20260413074957_FixMetadataJsonText2.cs:8:    public partial class FixMetadataJsonText2 : Migration
+Infrastructure/Migrations/20260322051537_AddAgentPhoneToProfile.cs:15:                // Ensure table exists in SQLite dev files that missed earlier migration.
+Infrastructure/Migrations/ScriptsCrm/20260312090000_BackfillAgentUserIdForZac.cs:10:    [Migration("20260312090000_BackfillAgentUserIdForZac")]
+Infrastructure/Migrations/ScriptsCrm/20260312090000_BackfillAgentUserIdForZac.cs:11:    public partial class BackfillAgentUserIdForZac : Migration
+Infrastructure/Migrations/ScriptsCrm/20260314032017_AddOriginalLeadType.cs:19:            // Backfill origin to current bucket for existing rows
+Infrastructure/Migrations/20260331130000_IdentityEmailNormalization.cs:37:            // Backfill from source email columns

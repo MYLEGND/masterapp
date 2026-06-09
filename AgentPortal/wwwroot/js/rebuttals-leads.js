@@ -6,39 +6,79 @@
   const bucketLabels = {
     MortgageProtection: "Mortgage Protection",
     LifeInsurance: "Life Insurance",
+    TermLife: "Term Life",
+    WholeLife: "Whole Life",
+    IUL: "IUL",
     FinalExpense: "Final Expense",
-    Medicare: "Medicare",
     DisabilityInsurance: "Disability Insurance",
+    AutoInsurance: "Auto Insurance",
+    HomeInsurance: "Home Insurance",
+    HealthInsurance: "Health Insurance",
+    CommercialInsurance: "Commercial Insurance",
+    CalledToday: "Called Today",
+    CallBack: "Call Back",
     Contacted: "Contacted",
     Booked: "Booked",
     FollowUp: "Follow Up",
     NeedsDocs: "Needs Docs",
     PolicyPlaced: "Policy Placed",
+    Voicemail: "Voicemail Left",
     NotInterested: "Not Interested",
     Nurture: "Nurture",
     NoAnswer: "No Answer",
     Lost: "Lost",
-    AIReception: "AI Reception"
+    AIReception: "AI Reception",
+    DoNotCallList: "Do Not Call List"
   };
   const allStages = [
     "MortgageProtection",
     "LifeInsurance",
+    "TermLife",
+    "WholeLife",
+    "IUL",
     "FinalExpense",
-    "Medicare",
     "DisabilityInsurance",
+    "AutoInsurance",
+    "HomeInsurance",
+    "HealthInsurance",
+    "CommercialInsurance",
+    "CalledToday",
+    "CallBack",
     "Contacted",
     "Booked",
     "FollowUp",
     "NeedsDocs",
     "PolicyPlaced",
+    "Voicemail",
     "NotInterested",
     "Nurture",
     "NoAnswer",
     "Lost",
-    "AIReception"
+    "AIReception",
+    "DoNotCallList"
   ];
   const noCallStages = new Set(["Booked", "FollowUp", "PolicyPlaced"]);
-  const productBuckets = new Set(allStages.slice(0, 5));
+  const doNotCallStages = new Set(["DoNotCallList"]);
+  const productBuckets = new Set([
+    "MortgageProtection",
+    "LifeInsurance",
+    "TermLife",
+    "WholeLife",
+    "IUL",
+    "FinalExpense",
+    "DisabilityInsurance",
+    "AutoInsurance",
+    "HomeInsurance",
+    "HealthInsurance",
+    "CommercialInsurance"
+  ]);
+  const requestedAmountLeadTypes = new Set([
+    "LifeInsurance",
+    "TermLife",
+    "WholeLife",
+    "IUL",
+    "FinalExpense"
+  ]);
   const agentTimeZone = Intl.DateTimeFormat().resolvedOptions().timeZone || "";
   const agentTzOffset = String(new Date().getTimezoneOffset());
   const signalRAvailable = typeof signalR !== 'undefined';
@@ -62,6 +102,15 @@
     window.LeadBridge.getCurrentLead = (queueKey) => {
       const controller = pickLeadBridgeController(queueKey);
       return controller ? controller.getCurrentLead() : null;
+    };
+    window.LeadBridge.getCurrentContext = (queueKey) => {
+      const controller = pickLeadBridgeController(queueKey);
+      return controller ? controller.getCurrentContext() : null;
+    };
+    window.LeadBridge.sendTextMessage = async ({ message, queueKey } = {}) => {
+      const controller = pickLeadBridgeController(queueKey);
+      if (!controller || !message) return false;
+      return controller.sendTextMessage(message);
     };
   }
 
@@ -93,6 +142,79 @@
     return Number.isFinite(age) ? age : null;
   }
 
+  function parseLeadDob(value){
+    if (!value) return null;
+
+    if (value instanceof Date && !Number.isNaN(value.getTime())){
+      return {
+        year: value.getFullYear(),
+        month: value.getMonth() + 1,
+        day: value.getDate()
+      };
+    }
+
+    const raw = String(value).trim();
+    if (!raw) return null;
+
+    let match = raw.match(/^(\d{4})-(\d{2})-(\d{2})/);
+    if (match){
+      const year = Number.parseInt(match[1], 10);
+      const month = Number.parseInt(match[2], 10);
+      const day = Number.parseInt(match[3], 10);
+      if (Number.isFinite(year) && Number.isFinite(month) && Number.isFinite(day)){
+        return { year, month, day };
+      }
+    }
+
+    match = raw.match(/^(\d{1,2})-(\d{1,2})-(\d{4})$/);
+    if (match){
+      const month = Number.parseInt(match[1], 10);
+      const day = Number.parseInt(match[2], 10);
+      const year = Number.parseInt(match[3], 10);
+      if (Number.isFinite(year) && Number.isFinite(month) && Number.isFinite(day)){
+        return { year, month, day };
+      }
+    }
+
+    const parsed = new Date(raw);
+    if (Number.isNaN(parsed.getTime())) return null;
+
+    return {
+      year: parsed.getFullYear(),
+      month: parsed.getMonth() + 1,
+      day: parsed.getDate()
+    };
+  }
+
+  function deriveLeadAgeFromDob(value){
+    const dob = parseLeadDob(value);
+    if (!dob) return null;
+
+    const today = new Date();
+    let age = today.getFullYear() - dob.year;
+    const monthDelta = (today.getMonth() + 1) - dob.month;
+    const hasHadBirthday =
+      monthDelta > 0 ||
+      (monthDelta === 0 && today.getDate() >= dob.day);
+
+    if (!hasHadBirthday) age -= 1;
+    return age >= 0 ? age : null;
+  }
+
+  function resolveLeadAgeNumber(lead){
+    const explicitAge = parseLeadAge(lead?.age);
+    if (explicitAge !== null) return explicitAge;
+    return deriveLeadAgeFromDob(lead?.dob);
+  }
+
+  function normalizeLeadAgeFromDob(lead){
+    if (!lead) return lead;
+    const derivedAge = deriveLeadAgeFromDob(lead.dob);
+    if (derivedAge === null) return lead;
+    lead.age = String(derivedAge);
+    return lead;
+  }
+
   function parseAgeRangeValue(value){
     const raw = (value || '').trim();
     if (!raw) return null;
@@ -108,7 +230,7 @@
     if (!rangeValue) return true;
     const range = parseAgeRangeValue(rangeValue);
     if (!range) return true;
-    const leadAge = parseLeadAge(lead?.age);
+    const leadAge = resolveLeadAgeNumber(lead);
     if (leadAge === null) return false;
     return leadAge >= range.min && leadAge < range.max;
   }
@@ -117,19 +239,60 @@
     return normalizedOriginalLeadType(lead?.originalLeadType) || normalizedOriginalLeadType(lead?.bucket);
   }
 
+  function leadWasCalledToday(lead){
+    return Number(lead?.attemptsToday ?? lead?.dialsToday ?? 0) > 0;
+  }
+
   function matchesStageSelection(lead, stage){
     if (!stage) return true;
     if (productBuckets.has(stage)) return leadOriginalLeadType(lead) === stage;
+    if (stage === "CalledToday") return leadWasCalledToday(lead);
     return ((lead?.bucket || lead?.crmStage || '').trim()) === stage;
   }
 
+  function normalizedStageKey(value){
+    return (value || '')
+      .trim()
+      .replace(/\s+/g, '')
+      .replace(/[-_]/g, '');
+  }
+
   function loadProfile(){
-    try { return JSON.parse(localStorage.getItem(LS_PROFILE) || "{}") || {}; }
-    catch { return {}; }
+    let profile;
+    try { profile = JSON.parse(localStorage.getItem(LS_PROFILE) || "{}") || {}; }
+    catch { profile = {}; }
+
+    const serverFirstName = normalizeProfileField(window.LegendAgentProfileApi?.getFirstName?.());
+    const serverPhone = normalizeProfileField(window.LegendAgentProfileApi?.getPhone?.());
+    let changed = false;
+
+    if (serverFirstName && profile.firstName !== serverFirstName){
+      profile.firstName = serverFirstName;
+      changed = true;
+    }
+
+    if (serverPhone && !normalizeProfileField(profile.phone)){
+      profile.phone = serverPhone;
+      changed = true;
+    }
+
+    if (changed){
+      try {
+        localStorage.setItem(LS_PROFILE, JSON.stringify(profile));
+      } catch {}
+    }
+
+    return profile;
+  }
+
+  function normalizeProfileField(value){
+    return typeof value === "string" ? value.trim() : "";
   }
 
   function normalizeDialTotal(value){
-    return typeof value === 'number' && Number.isFinite(value) ? value : null;
+    if (typeof value === 'number' && Number.isFinite(value)) return value;
+    const parsed = Number(value);
+    return Number.isFinite(parsed) ? parsed : null;
   }
 
   function readAgentWideDialTotals(payload){
@@ -158,20 +321,45 @@
     const key = raw.replace(/[\s\-_]/g, '').toLowerCase();
     const map = {
       mortgageprotection: 'MortgageProtection',
-        mortgageprotectionleads: 'MortgageProtection',
-        mortgageprotectionrebuttals: 'MortgageProtection',
+      mortgageprotectionleads: 'MortgageProtection',
+      mortgageprotectionrebuttals: 'MortgageProtection',
       finalexpense: 'FinalExpense',
-        finalexpenseleads: 'FinalExpense',
-        finalexpenserebuttals: 'FinalExpense',
+      finalexpenseleads: 'FinalExpense',
+      finalexpenserebuttals: 'FinalExpense',
       lifeinsurance: 'LifeInsurance',
-        lifeinsuranceleads: 'LifeInsurance',
-        lifeinsurancerebuttals: 'LifeInsurance',
-      medicare: 'Medicare',
-        medicareleads: 'Medicare',
-        medicarerebuttals: 'Medicare',
-        disabilityinsurance: 'DisabilityInsurance',
-        disabilityinsuranceleads: 'DisabilityInsurance',
-        disabilityinsurancerebuttals: 'DisabilityInsurance'
+      lifeinsuranceleads: 'LifeInsurance',
+      lifeinsurancerebuttals: 'LifeInsurance',
+      termlife: 'TermLife',
+      termlifeleads: 'TermLife',
+      termliferebuttals: 'TermLife',
+      wholelife: 'WholeLife',
+      wholelifeleads: 'WholeLife',
+      wholeliferebuttals: 'WholeLife',
+      iul: 'IUL',
+      iulleads: 'IUL',
+      iulrebuttals: 'IUL',
+      indexeduniversallife: 'IUL',
+      indexeduniversallifeleads: 'IUL',
+      indexeduniversalliferebuttals: 'IUL',
+      disabilityinsurance: 'DisabilityInsurance',
+      disabilityinsuranceleads: 'DisabilityInsurance',
+      disabilityinsurancerebuttals: 'DisabilityInsurance',
+      auto: 'AutoInsurance',
+      autoinsurance: 'AutoInsurance',
+      autoinsuranceleads: 'AutoInsurance',
+      autoinsurancerebuttals: 'AutoInsurance',
+      home: 'HomeInsurance',
+      homeinsurance: 'HomeInsurance',
+      homeinsuranceleads: 'HomeInsurance',
+      homeinsurancerebuttals: 'HomeInsurance',
+      health: 'HealthInsurance',
+      healthinsurance: 'HealthInsurance',
+      healthinsuranceleads: 'HealthInsurance',
+      healthinsurancerebuttals: 'HealthInsurance',
+      commercial: 'CommercialInsurance',
+      commercialinsurance: 'CommercialInsurance',
+      commercialinsuranceleads: 'CommercialInsurance',
+      commercialinsurancerebuttals: 'CommercialInsurance'
     };
     return map[key] || raw;
   }
@@ -213,19 +401,110 @@
     return raw || '';
   }
 
+  function normalizeSearchDigits(value){
+    return (value || '').replace(/\D/g, '');
+  }
+
+  function leadMatchesBridgeSearch(lead, query){
+    const textQuery = (query || '').toLowerCase().trim();
+    if (!textQuery) return true;
+
+    const digitQuery = normalizeSearchDigits(query);
+    const hay = [
+      lead?.firstName || '',
+      lead?.lastName || '',
+      lead?.email || '',
+      lead?.phone || '',
+      lead?.phone2 || ''
+    ].join(' ').toLowerCase();
+
+    if (hay.includes(textQuery)) return true;
+    if (!digitQuery) return false;
+
+    const phoneDigits = [
+      normalizeSearchDigits(lead?.phone || ''),
+      normalizeSearchDigits(lead?.phone2 || '')
+    ].filter(Boolean);
+
+    return phoneDigits.some(value => value.includes(digitQuery));
+  }
+
 
   function formatDob(value){
-    if (!value) return '—';
+    const dob = parseLeadDob(value);
+    if (!dob) return '—';
 
-    const d = new Date(value);
-    if (Number.isNaN(d.getTime())) return '—';
-
-    const mm = String(d.getMonth() + 1).padStart(2, '0');
-    const dd = String(d.getDate()).padStart(2, '0');
-    const yyyy = d.getFullYear();
+    const mm = String(dob.month).padStart(2, '0');
+    const dd = String(dob.day).padStart(2, '0');
+    const yyyy = dob.year;
 
     return `${mm}-${dd}-${yyyy}`;
   }
+
+  const US_STATE_NAME_BY_CODE = Object.freeze({
+    AL: 'ALABAMA',
+    AK: 'ALASKA',
+    AZ: 'ARIZONA',
+    AR: 'ARKANSAS',
+    CA: 'CALIFORNIA',
+    CO: 'COLORADO',
+    CT: 'CONNECTICUT',
+    DE: 'DELAWARE',
+    DC: 'DISTRICT OF COLUMBIA',
+    FL: 'FLORIDA',
+    GA: 'GEORGIA',
+    HI: 'HAWAII',
+    ID: 'IDAHO',
+    IL: 'ILLINOIS',
+    IN: 'INDIANA',
+    IA: 'IOWA',
+    KS: 'KANSAS',
+    KY: 'KENTUCKY',
+    LA: 'LOUISIANA',
+    ME: 'MAINE',
+    MD: 'MARYLAND',
+    MA: 'MASSACHUSETTS',
+    MI: 'MICHIGAN',
+    MN: 'MINNESOTA',
+    MS: 'MISSISSIPPI',
+    MO: 'MISSOURI',
+    MT: 'MONTANA',
+    NE: 'NEBRASKA',
+    NV: 'NEVADA',
+    NH: 'NEW HAMPSHIRE',
+    NJ: 'NEW JERSEY',
+    NM: 'NEW MEXICO',
+    NY: 'NEW YORK',
+    NC: 'NORTH CAROLINA',
+    ND: 'NORTH DAKOTA',
+    OH: 'OHIO',
+    OK: 'OKLAHOMA',
+    OR: 'OREGON',
+    PA: 'PENNSYLVANIA',
+    RI: 'RHODE ISLAND',
+    SC: 'SOUTH CAROLINA',
+    SD: 'SOUTH DAKOTA',
+    TN: 'TENNESSEE',
+    TX: 'TEXAS',
+    UT: 'UTAH',
+    VT: 'VERMONT',
+    VA: 'VIRGINIA',
+    WA: 'WASHINGTON',
+    WV: 'WEST VIRGINIA',
+    WI: 'WISCONSIN',
+    WY: 'WYOMING',
+    PR: 'PUERTO RICO',
+    GU: 'GUAM',
+    VI: 'U.S. VIRGIN ISLANDS',
+    AS: 'AMERICAN SAMOA',
+    MP: 'NORTHERN MARIANA ISLANDS'
+  });
+  const US_STATE_CANONICAL_BY_KEY = Object.freeze(
+    Object.values(US_STATE_NAME_BY_CODE).reduce((acc, name) => {
+      acc[name.replace(/[^A-Z]/g, '')] = name;
+      return acc;
+    }, {})
+  );
 
   function buildTextMessage(lead, bucket){
     const leadFirst = (lead.firstName || "there").trim() || "there";
@@ -242,7 +521,38 @@
       return `${leadFirst}, this is ${agentFirst} regarding your mortgage with ${lender}. Just left you a message. Give me a call back when you get this, we have some pending paperwork to get out to you regarding the mortgage for your property at ${addrFull || 'your property'}. The office number is ${agentPhone}, thanks`;
     }
 
-    return `Hi ${leadFirst}, this is ${agentFirst}. Let's connect about your ${bucket || 'policy'} - call or text me at ${agentPhone}.`;
+    const normalizedBucket = normalizeQueueKey(bucket || "") || "LifeInsurance";
+    const productLabel = bucketLabel(normalizedBucket || "Life Insurance").toLowerCase();
+    return `Hi ${leadFirst}, this is ${agentFirst}. Let's connect about your ${productLabel} request. Call or text me at ${agentPhone}.`;
+  }
+
+  function parseTextScriptTemplates(node){
+    const raw = String(node?.textContent || '').trim();
+    if (!raw) return [];
+    try {
+      const parsed = JSON.parse(raw);
+      return Array.isArray(parsed)
+        ? parsed
+            .map(item => {
+              if (!item || typeof item !== 'object') return null;
+              const key = String(item.key || item.Key || '').trim();
+              const title = String(item.title || item.Title || '').trim();
+              const template = String(item.template || item.Template || '').trim();
+              if (!title || !template) return null;
+              return { key, title, template };
+            })
+            .filter(Boolean)
+        : [];
+    } catch {
+      return [];
+    }
+  }
+
+  function buildSmsLaunchHref(rawDigits, message){
+    const digits = String(rawDigits || '').replace(/\D/g, '');
+    const recipient = digits.length === 10 ? `+1${digits}` : digits;
+    if (!recipient) return '';
+    return `sms:${recipient}&body=${encodeURIComponent(String(message || '').trim())}`;
   }
 
   // Only treat true phone-sized viewports as mobile (protect desktop/tablet).
@@ -262,6 +572,7 @@
 
   bridges.forEach(async (bridge) => {
     const bucket = bridge.getAttribute('data-bucket') || '';
+    const shellRoot = bridge.closest('#rbShell') || document;
     const queueKey = bucket || '';
     const normalizedQueueKey = normalizeQueueKey(queueKey);
     const filterStoreKey = `leadbridge_filters_${normalizedQueueKey || 'all'}`;
@@ -273,12 +584,18 @@
     const statusEl = bridge.querySelector('[data-lb-status]');
     const posEl = bridge.querySelector('[data-lb-pos]');
     const originEl = bridge.querySelector('[data-lb-origin]');
+    const metaWrap = posEl?.closest('.lb-meta') || null;
     const nextBtn = bridge.querySelector('[data-lb-next]');
+    const headerMetaHost = shellRoot.querySelector('[data-lb-header-meta]');
+    const headerNextHost = shellRoot.querySelector('[data-lb-header-next]');
     const callBtn = bridge.querySelector('[data-lb-call]');
     const textBtn = bridge.querySelector('[data-lb-text]');
+    const actionHost = callBtn?.closest('.lb-actions') || null;
+    const dayDialsBtn = bridge.querySelector('[data-lb-dials-day]');
     const deleteBtn = bridge.querySelector('[data-lb-delete]');
-    const outcomeButtons = Array.from(bridge.querySelectorAll('[data-outcome]'));
+    const originalMetaHost = metaWrap?.parentElement || null;
     const clearBtn = bridge.querySelector('[data-lb-clear]');
+    const editClientBtn = bridge.querySelector('[data-lb-edit-client]');
     const openCrmLink = bridge.querySelector('[data-lb-open-crm]');
     const stateFilter = bridge.querySelector('[data-lb-state-filter]');
     const stageFilter = bridge.querySelector('[data-lb-stage-filter]');
@@ -295,6 +612,132 @@
     const noteWentWell = bridge.querySelector('[data-note-self-well]');
     const noteCouldBetter = bridge.querySelector('[data-note-self-better]');
     const noteStatusEl = bridge.querySelector('[data-note-self-status]');
+    const scriptHandoffRoot = bridge.querySelector('[data-lb-script-handoff]');
+    const summaryRequestedEl = scriptHandoffRoot?.querySelector('[data-lb-summary-requested]') || null;
+    const summarySourceEl = scriptHandoffRoot?.querySelector('[data-lb-summary-source]') || null;
+    const summaryActivityEl = scriptHandoffRoot?.querySelector('[data-lb-summary-activity]') || null;
+    const drawerNoteOpenBtn = document.getElementById('noteSelfOpen');
+    const globalizeQuickViewNode = (node) => {
+      if (!node) return null;
+      if (node.dataset.workstationDrawer !== '1'){
+        node.dataset.workstationDrawer = '1';
+      }
+      if (node.parentElement !== document.body){
+        document.body.appendChild(node);
+      }
+      return node;
+    };
+    const editOverlay = globalizeQuickViewNode(bridge.querySelector('#drawerBackdrop'));
+    const editDrawer = globalizeQuickViewNode(bridge.querySelector('#drawer'));
+    globalizeQuickViewNode(bridge.querySelector('#noteSelfOverlay'));
+    const editTitleEl = document.getElementById('dName');
+    const editHeaderEmailEl = document.getElementById('dEmail');
+    const editHeaderPhoneEl = document.getElementById('dPhone');
+    const editStageAgeEl = document.getElementById('dStageAge');
+    const editAttemptsEl = document.getElementById('dAttempts');
+    const editWaitingPillEl = document.getElementById('dWaitingOnPill');
+    const editOutcomeSuggestion = document.getElementById('dOutcomeSuggestion');
+    const editPortalWrap = document.getElementById('dPortalWrap');
+    const editStatusEl = document.getElementById('dSaved');
+    const editSaveBtn = document.getElementById('btnSaveLocal');
+    const editResetBtn = document.getElementById('btnResetLocal');
+    const editDeleteBtn = document.getElementById('btnDeleteClient');
+    const editMarkTodayBtn = document.getElementById('btnMarkToday');
+    const editNextTodayBtn = document.getElementById('btnSetNextToday');
+    const editCopyContactBtn = document.getElementById('btnCopyContact');
+    const editMailBtn = document.getElementById('btnMail');
+    const editCallBtn = document.getElementById('btnCall');
+    const editActionsShortcutBtn = document.getElementById('leadQuickActionsShortcut');
+    const editOpenQueueBtn = document.getElementById('btnOpenQueue');
+    const editCloseButtons = Array.from(document.querySelectorAll('#btnCloseDrawer'));
+    const editLenderField = document.getElementById('dLenderField');
+    const editLoanField = document.getElementById('dLoanField');
+    const editLenderLabel = document.getElementById('dLenderLabel');
+    const editLoanLabel = document.getElementById('dLoanLabel');
+    const editIntakeSection = document.getElementById('dIntakeSection');
+    const editIntakeSubmitted = document.getElementById('dIntakeSubmitted');
+    const editIntakeHistory = document.getElementById('dIntakeHistory');
+    const editIntakeOrigin = document.getElementById('dIntakeOrigin');
+    const editIntakeOwner = document.getElementById('dIntakeOwner');
+    const editIntakeProduct = document.getElementById('dIntakeProduct');
+    const editIntakeQuoteType = document.getElementById('dIntakeQuoteType');
+    const editIntakePage = document.getElementById('dIntakePage');
+    const editIntakeSource = document.getElementById('dIntakeSource');
+    const editIntakeLanding = document.getElementById('dIntakeLanding');
+    const editIntakeIds = document.getElementById('dIntakeIds');
+    const editIntakeRecommendation = document.getElementById('dIntakeRecommendation');
+    const editIntakeDiscovery = document.getElementById('dIntakeDiscovery');
+    const editIntakeRawMeta = document.getElementById('dIntakeRawMeta');
+    const editAppointmentSection = document.getElementById('dAppointmentSection');
+    const editAppointmentStatus = document.getElementById('dAppointmentStatus');
+    const editAppointmentTime = document.getElementById('dAppointmentTime');
+    const editAppointmentSource = document.getElementById('dAppointmentSource');
+    const editAppointmentRequestedSource = document.getElementById('dAppointmentRequestedSource');
+    const editAppointmentConfirmation = document.getElementById('dAppointmentConfirmation');
+    const editAppointmentBookingConfig = document.getElementById('dAppointmentBookingConfig');
+    const editAppointmentTimeline = document.getElementById('dAppointmentTimeline');
+    const editAppointmentMeetingLink = document.getElementById('dAppointmentMeetingLink');
+    const editAppointmentCalendarLink = document.getElementById('dAppointmentCalendarLink');
+    const editAppointmentStatusSelect = document.getElementById('dAppointmentStatusSelect');
+    const editSaveAppointmentStatusBtn = document.getElementById('btnSaveAppointmentStatus');
+    const cardOutcomeButtons = Array.from(bridge.querySelectorAll('.lb-actions [data-outcome]'));
+    const drawerOutcomeButtons = Array.from(editDrawer?.querySelectorAll('.outcome-btn[data-outcome]') || []);
+    const outcomeButtons = cardOutcomeButtons.concat(drawerOutcomeButtons);
+    const firstOutcomeBtn = cardOutcomeButtons[0] || null;
+    const editInputs = {
+      firstName: document.getElementById('dFirst'),
+      lastName: document.getElementById('dLast'),
+      email: document.getElementById('dEmailInput'),
+      phone: document.getElementById('dPhoneInput'),
+      phone2: document.getElementById('dPhone2Input'),
+      dob: document.getElementById('dDob'),
+      age: document.getElementById('dAge'),
+      gender: document.getElementById('dGender'),
+      addressLine: document.getElementById('dAddress'),
+      city: document.getElementById('dCity'),
+      state: document.getElementById('dState'),
+      county: document.getElementById('dCounty'),
+      zipCode: document.getElementById('dZip'),
+      mortgageLender: document.getElementById('dLender'),
+      loanAmount: document.getElementById('dLoanAmount'),
+      btc: document.getElementById('dBtc'),
+      crmStatus: document.getElementById('dStatus'),
+      pipelineStage: document.getElementById('dPipelineStage'),
+      waitingOn: document.getElementById('dWaitingOn'),
+      crmLastTouch: document.getElementById('dLastTouch'),
+      crmNextDate: document.getElementById('dNextDate'),
+      crmPriority: document.getElementById('dPriority'),
+      crmNextText: document.getElementById('dNextText'),
+      pinnedBrief: document.getElementById('dPinnedBrief'),
+      crmTags: document.getElementById('dTags'),
+      agentNotes: document.getElementById('dNotes'),
+      docIdReceived: document.getElementById('dDocIdReceived'),
+      docAppSent: document.getElementById('dDocAppSent'),
+      docAppSigned: document.getElementById('dDocAppSigned'),
+      docPolicyDelivered: document.getElementById('dDocPolicyDelivered'),
+      docReviewBooked: document.getElementById('dDocReviewBooked'),
+      assignedOwner: document.getElementById('dAssignedOwner'),
+      watchers: document.getElementById('dWatchers'),
+      mentionNote: document.getElementById('dMentionNote')
+    };
+    const editActionsModal = document.getElementById('leadActionsHubModal');
+    const editLeadActionsContainer = document.getElementById('leadActionsContainer');
+    const editLeadCommitmentsContainer = document.getElementById('leadCommitmentsContainer');
+    const editTimeline = document.getElementById('timeline');
+    const editTimelineFilters = document.getElementById('timelineFilters');
+    const editActivityTypeInput = document.getElementById('dActType');
+    const editActivityDateInput = document.getElementById('dActDate');
+    const editActivityNoteInput = document.getElementById('dActNote');
+    const editAddActivityBtn = document.getElementById('btnAddActivity');
+    const editClearTimelineBtn = document.getElementById('btnClearTimeline');
+    const editAddProductionBtn = document.getElementById('phAddFromDrawer');
+    editCloseButtons.forEach(btn => {
+      btn.textContent = '×';
+      btn.setAttribute('aria-label', 'Close');
+      btn.setAttribute('title', 'Close');
+    });
+    const textTemplatesNode = bridge.querySelector('[data-lb-text-templates]');
+    const textScriptTemplates = parseTextScriptTemplates(textTemplatesNode);
     const baseLabels = {
       call: (callBtn?.textContent || 'Call').trim() || 'Call',
       text: (textBtn?.textContent || 'Text').trim() || 'Text'
@@ -303,22 +746,10 @@
       name: bridge.querySelector('[data-lf-value="name"]'),
       leadId: bridge.querySelector('[data-lf-value="leadId"]'),
       calls: bridge.querySelector('[data-lf-value="calls"]'),
-      address: bridge.querySelector('[data-lf-value="address"]'),
-      city: bridge.querySelector('[data-lf-value="city"]'),
-      state: bridge.querySelector('[data-lf-value="state"]'),
-      county: bridge.querySelector('[data-lf-value="county"]'),
-      dob: bridge.querySelector('[data-lf-value="dob"]'),
-      gender: bridge.querySelector('[data-lf-value="gender"]'),
-      lender: bridge.querySelector('[data-lf-value="lender"]'),
-      loan: bridge.querySelector('[data-lf-value="loan"]'),
       phone: bridge.querySelector('[data-lf-value="phone"]'),
-      phone2: bridge.querySelector('[data-lf-value="phone2"]'),
-      age: bridge.querySelector('[data-lf-value="age"]'),
-      btc: bridge.querySelector('[data-lf-value="btc"]')
+      email: bridge.querySelector('[data-lf-value="email"]'),
+      location: bridge.querySelector('[data-lf-value="location"]')
     };
-    const lenderField = bridge.querySelector('[data-lf="lender"]');
-    const lenderLabel = bridge.querySelector('[data-lf-label="lender"]');
-    const loanLabel = bridge.querySelector('[data-lf-label="loan"]');
     let confirmTimer = 0;
     let pendingAction = null;
     let baseLeads = [];
@@ -336,6 +767,488 @@
     let serverStateOptions = [];
     let noteDatesLoaded = false;
     let dialTotalsRefreshInFlight = false;
+    let textMenuEl = null;
+    let editDrawerOpen = false;
+    let editTimelineFilter = 'all';
+    let currentLeadOverlayContext = null;
+
+    function restoreMobileLeadControls(){
+      if (originalMetaHost && metaWrap && metaWrap.parentElement !== originalMetaHost){
+        originalMetaHost.appendChild(metaWrap);
+      }
+
+      if (!actionHost) return;
+
+      if (callBtn && callBtn.parentElement !== actionHost){
+        actionHost.insertBefore(callBtn, actionHost.firstElementChild || null);
+      }
+
+      if (textBtn && textBtn.parentElement !== actionHost){
+        actionHost.insertBefore(textBtn, dayDialsBtn || firstOutcomeBtn || null);
+      }
+
+      if (nextBtn && nextBtn.parentElement !== actionHost){
+        actionHost.insertBefore(nextBtn, firstOutcomeBtn || null);
+      }
+    }
+
+    function moveDesktopLeadControls(){
+      if (headerMetaHost && metaWrap && metaWrap.parentElement !== headerMetaHost){
+        headerMetaHost.appendChild(metaWrap);
+      }
+
+      if (!headerNextHost) return;
+
+      if (callBtn && callBtn.parentElement !== headerNextHost){
+        headerNextHost.appendChild(callBtn);
+      }
+      if (textBtn && textBtn.parentElement !== headerNextHost){
+        headerNextHost.appendChild(textBtn);
+      }
+      if (nextBtn && nextBtn.parentElement !== headerNextHost){
+        headerNextHost.appendChild(nextBtn);
+      }
+    }
+
+    function syncLeadBridgeHeaderPlacement(){
+      closeTextMenu();
+      if (isMobileScreen()){
+        restoreMobileLeadControls();
+        return;
+      }
+
+      moveDesktopLeadControls();
+    }
+
+    syncLeadBridgeHeaderPlacement();
+    window.addEventListener('resize', syncLeadBridgeHeaderPlacement);
+    window.addEventListener('orientationchange', syncLeadBridgeHeaderPlacement);
+
+    function setEditStatus(message, tone){
+      if (!editStatusEl) return;
+      editStatusEl.textContent = message || 'Ready';
+      editStatusEl.dataset.tone = tone || '';
+    }
+
+    function editDrawerLeadType(lead){
+      return leadOriginalLeadType(lead)
+        || normalizedQueueKey
+        || normalizeQueueKey(lead?.bucket || lead?.crmStage || bucket || '');
+    }
+
+    function applyEditDrawerLeadTypeDisplay(lead){
+      const leadType = normalizeQueueKey(editInputs.pipelineStage?.value || '') || editDrawerLeadType(lead);
+      const hideLender = isLifeOrFinal(leadType);
+
+      if (editLenderField){
+        editLenderField.style.display = hideLender ? 'none' : '';
+      }
+      if (editLenderLabel){
+        editLenderLabel.textContent = 'Mortgage Lender';
+      }
+      if (editLoanLabel){
+        editLoanLabel.textContent = hideLender ? 'Requested' : 'Loan Amount';
+      }
+      if (editLoanField){
+        editLoanField.style.display = '';
+      }
+    }
+
+    function formatEditDrawerName(lead){
+      return `${lead?.firstName || ''} ${lead?.lastName || ''}`.trim() || 'Lead';
+    }
+
+    function formatEditDrawerStageAge(lead){
+      const explicit = Number.parseInt(lead?.stageAgeDays, 10);
+      if (Number.isFinite(explicit) && explicit >= 0){
+        return explicit;
+      }
+
+      const raw = lead?.createdUtc || lead?.updatedUtc || '';
+      const parsed = raw ? new Date(raw) : null;
+      if (!parsed || Number.isNaN(parsed.getTime())){
+        return 0;
+      }
+
+      const now = new Date();
+      const ms = now.getTime() - parsed.getTime();
+      return ms > 0 ? Math.floor(ms / 86400000) : 0;
+    }
+
+    function syncEditDrawerHeader(lead){
+      if (editTitleEl){
+        editTitleEl.textContent = formatEditDrawerName(lead);
+      }
+      if (editHeaderEmailEl){
+        editHeaderEmailEl.textContent = (lead?.email || '').trim() || '-';
+      }
+      if (editHeaderPhoneEl){
+        editHeaderPhoneEl.textContent = fmtPhone(lead?.phone || lead?.phone2 || '') || 'No phone';
+      }
+      if (editStageAgeEl){
+        editStageAgeEl.textContent = `Stage Age: ${formatEditDrawerStageAge(lead)}d`;
+      }
+      if (editAttemptsEl){
+        editAttemptsEl.textContent = `Attempts: ${Number(lead?.attemptsToday ?? lead?.dialsToday ?? 0) || 0} today • ${Number(lead?.attemptsThisWeek ?? lead?.dialsWeek ?? 0) || 0} week • ${Number(lead?.attemptsLifetime ?? lead?.callCount ?? 0) || 0} total`;
+      }
+      if (editWaitingPillEl){
+        editWaitingPillEl.textContent = waitingOnLabel(lead?.waitingOn || 'WaitingOnAgent');
+      }
+      if (editOutcomeSuggestion){
+        editOutcomeSuggestion.textContent = 'Use one-click outcomes to move leads into the correct non-lead buckets.';
+      }
+      if (editMailBtn){
+        const email = (lead?.email || '').trim();
+        editMailBtn.href = email ? `mailto:${email}` : '#';
+        editMailBtn.classList.toggle('disabled', !email);
+      }
+      if (editCallBtn){
+        const phone = normalizeSearchDigits(lead?.phone || lead?.phone2 || '');
+        editCallBtn.href = phone ? `tel:${phone}` : '#';
+        editCallBtn.classList.toggle('disabled', !phone);
+      }
+      if (editPortalWrap){
+        const leadId = (lead?.leadId || '').trim();
+        if (leadId){
+          editPortalWrap.hidden = false;
+          editPortalWrap.innerHTML = `<a class="btn btn-ghost" href="/Leads?open=${encodeURIComponent(leadId)}" target="_blank" rel="noopener">Open in CRM</a>`;
+        } else {
+          editPortalWrap.innerHTML = '';
+          editPortalWrap.hidden = true;
+        }
+      }
+    }
+
+    function fillEditInput(name, value){
+      const input = editInputs[name];
+      if (!input) return;
+      if (input.type === 'checkbox'){
+        input.checked = !!value;
+        return;
+      }
+      input.value = value == null ? '' : String(value);
+    }
+
+    function populateEditDrawer(lead){
+      fillEditInput('firstName', lead?.firstName || '');
+      fillEditInput('lastName', lead?.lastName || '');
+      fillEditInput('email', lead?.email || '');
+      fillEditInput('phone', lead?.phone || '');
+      fillEditInput('phone2', lead?.phone2 || '');
+      fillEditInput('dob', lead?.dob || '');
+      fillEditInput('age', lead?.age || (resolveLeadAgeNumber(lead) ?? ''));
+      fillEditInput('gender', lead?.gender || '');
+      fillEditInput('addressLine', lead?.addressLine || '');
+      fillEditInput('city', lead?.city || '');
+      fillEditInput('state', lead?.state || '');
+      fillEditInput('county', lead?.county || '');
+      fillEditInput('zipCode', lead?.zipCode || '');
+      fillEditInput('mortgageLender', lead?.mortgageLender || '');
+      fillEditInput('loanAmount', lead?.loanAmount || '');
+      fillEditInput('btc', lead?.btc || '');
+      fillEditInput('crmStatus', lead?.crmStatus || 'Lead');
+      fillEditInput('pipelineStage', lead?.bucket || lead?.pipelineStage || lead?.crmStage || '');
+      fillEditInput('waitingOn', lead?.waitingOn || 'WaitingOnAgent');
+      fillEditInput('crmLastTouch', lead?.crmLastTouch || '');
+      fillEditInput('crmNextDate', lead?.crmNextDate || '');
+      fillEditInput('crmPriority', lead?.crmPriority || 'Normal');
+      fillEditInput('crmNextText', lead?.crmNextText || '');
+      fillEditInput('pinnedBrief', lead?.pinnedBrief || '');
+      fillEditInput('crmTags', lead?.crmTags || '');
+      fillEditInput('agentNotes', lead?.agentNotes || lead?.crmNotes || '');
+      fillEditInput('docIdReceived', lead?.docChecklist?.idReceived || false);
+      fillEditInput('docAppSent', lead?.docChecklist?.appSent || false);
+      fillEditInput('docAppSigned', lead?.docChecklist?.appSigned || false);
+      fillEditInput('docPolicyDelivered', lead?.docChecklist?.policyDelivered || false);
+      fillEditInput('docReviewBooked', lead?.docChecklist?.reviewBooked || false);
+      fillEditInput('assignedOwner', lead?.collaboration?.owner || '');
+      fillEditInput('watchers', Array.isArray(lead?.collaboration?.watchers) ? lead.collaboration.watchers.join(', ') : (lead?.watchers || ''));
+      fillEditInput('mentionNote', '');
+
+      applyEditDrawerLeadTypeDisplay(lead);
+      syncEditDrawerHeader(lead);
+      renderEditIntakeSnapshot(lead);
+      renderEditAppointmentSnapshot(lead);
+      renderEditTimeline(Array.isArray(lead?.activities) ? lead.activities : []);
+      setEditStatus('Ready');
+    }
+
+    function renderEditTimeline(items){
+      if (!editTimeline) return;
+
+      let timelineItems = Array.isArray(items) ? items.slice() : [];
+      if (editTimelineFilter === 'calls'){
+        timelineItems = timelineItems.filter(item => String(item?.type || '').toLowerCase() === 'call');
+      } else if (editTimelineFilter === 'meetings'){
+        timelineItems = timelineItems.filter(item => String(item?.type || '').toLowerCase() === 'meeting');
+      } else if (editTimelineFilter === 'notes'){
+        timelineItems = timelineItems.filter(item => String(item?.type || '').toLowerCase() === 'note');
+      } else if (editTimelineFilter === 'system'){
+        timelineItems = timelineItems.filter(item => !!item?.isSystem);
+      }
+
+      if (!timelineItems.length){
+        editTimeline.innerHTML = '<div class="tiny">No activity yet. Log the first touchpoint.</div>';
+        return;
+      }
+
+      editTimeline.innerHTML = timelineItems.slice().reverse().map(item => {
+        const location = item?.location ? `<div class="meta">Location: ${escapeHtml(item.location)}</div>` : '';
+        const meetingLink = item?.meetingLink ? `<div class="meta"><a class="link" href="${escapeHtml(item.meetingLink)}" target="_blank" rel="noopener">Open Meeting Link</a></div>` : '';
+        const calendarLink = item?.calendarWebLink ? `<div class="meta"><a class="link" href="${escapeHtml(item.calendarWebLink)}" target="_blank" rel="noopener">Open Outlook Event</a></div>` : '';
+        return `
+          <div class="event">
+            <div class="top">
+              <div class="type">${escapeHtml(item?.type || 'Note')}</div>
+              <div class="meta">${escapeHtml(item?.date || '')}</div>
+            </div>
+            <div class="note">${escapeHtml(item?.note || '')}</div>
+            ${location}${meetingLink}${calendarLink}
+          </div>
+        `;
+      }).join('');
+    }
+
+    function loadEditDrawerActionsPlaceholders(){
+      if (editLeadActionsContainer){
+        editLeadActionsContainer.innerHTML = '<div class="text-muted">Open this lead in CRM for full action management, or use the one-click lead outcomes here in Workstation.</div>';
+      }
+      if (editLeadCommitmentsContainer){
+        editLeadCommitmentsContainer.innerHTML = '<div class="text-muted">Open this lead in CRM for commitments and advanced workflow items.</div>';
+      }
+    }
+
+    function openEditActionsHub(){
+      if (!editActionsModal){
+        setEditStatus('Actions hub is unavailable on this page', 'bad');
+        return;
+      }
+
+      const lead = resolveCurrentLead();
+      if (!lead){
+        setEditStatus('No lead selected', 'bad');
+        return;
+      }
+
+      if (editActivityDateInput && !String(editActivityDateInput.value || '').trim()){
+        editActivityDateInput.value = todayIsoDate();
+      }
+
+      renderEditTimeline(Array.isArray(lead?.activities) ? lead.activities : []);
+      loadEditDrawerActionsPlaceholders();
+
+      if (window.bootstrap?.Modal){
+        window.bootstrap.Modal.getOrCreateInstance(editActionsModal).show();
+      } else {
+        editActionsModal.classList.add('show');
+        editActionsModal.style.display = 'block';
+        editActionsModal.removeAttribute('aria-hidden');
+      }
+    }
+
+    function closeEditDrawer(){
+      if (!editOverlay) return;
+      editDrawerOpen = false;
+      if (window.bootstrap?.Modal && editActionsModal){
+        const modal = window.bootstrap.Modal.getInstance(editActionsModal);
+        modal?.hide();
+      }
+      editOverlay.classList.remove('open');
+      editDrawer?.classList.remove('open');
+      editDrawer?.setAttribute('aria-hidden', 'true');
+    }
+
+    function openEditDrawerShell(){
+      if (!editOverlay) return;
+      editDrawerOpen = true;
+      editOverlay.classList.add('open');
+      editDrawer?.classList.add('open');
+      editDrawer?.setAttribute('aria-hidden', 'false');
+    }
+
+    async function openEditClientDrawer(){
+      const lead = resolveCurrentLead();
+      if (!lead){
+        setStatusMessage('No lead selected', 'bad');
+        return;
+      }
+
+      openEditDrawerShell();
+      if (editDrawer){
+        editDrawer.dataset.clientId = lead.leadId || '';
+      }
+      setEditStatus('Loading…');
+      if (editSaveBtn) editSaveBtn.disabled = true;
+
+      try {
+        const res = await fetch(`/Leads/Lead?id=${encodeURIComponent(lead.leadId || '')}`, withDialHeaders({
+          credentials: 'include',
+          cache: 'no-store'
+        }));
+        if (!res.ok) throw new Error('Lead not found');
+        const payload = await res.json();
+        populateEditDrawer({
+          ...lead,
+          ...payload,
+          zipCode: payload?.zipCode || payload?.zip || lead?.zipCode || ''
+        });
+      } catch (err){
+        console.error(err);
+        setEditStatus('Could not load this lead', 'bad');
+        return;
+      } finally {
+        if (editSaveBtn) editSaveBtn.disabled = false;
+      }
+    }
+
+    async function saveEditClientDrawer(){
+      const lead = resolveCurrentLead();
+      if (!lead){
+        setEditStatus('No lead selected', 'bad');
+        return;
+      }
+
+      if (editSaveBtn) editSaveBtn.disabled = true;
+      setEditStatus('Saving…');
+
+      const leadType = editDrawerLeadType(lead);
+      const hideLender = isLifeOrFinal(leadType);
+      const payload = {
+        clientUserId: lead.leadId || '',
+        firstName: editInputs.firstName?.value || '',
+        lastName: editInputs.lastName?.value || '',
+        email: editInputs.email?.value || '',
+        phone: editInputs.phone?.value || '',
+        phone2: editInputs.phone2?.value || '',
+        dob: editInputs.dob?.value || null,
+        age: editInputs.age?.value || '',
+        gender: editInputs.gender?.value || '',
+        addressLine: editInputs.addressLine?.value || '',
+        city: editInputs.city?.value || '',
+        state: editInputs.state?.value || '',
+        county: editInputs.county?.value || '',
+        zipCode: editInputs.zipCode?.value || '',
+        mortgageLender: hideLender ? '' : (editInputs.mortgageLender?.value || ''),
+        loanAmount: editInputs.loanAmount?.value || '',
+        btc: editInputs.btc?.value || '',
+        crmStatus: editInputs.crmStatus?.value || 'Lead',
+        crmPriority: editInputs.crmPriority?.value || 'Normal',
+        crmLastTouch: editInputs.crmLastTouch?.value || null,
+        crmNextDate: editInputs.crmNextDate?.value || null,
+        crmNextText: editInputs.crmNextText?.value || '',
+        crmTags: editInputs.crmTags?.value || '',
+        agentNotes: editInputs.agentNotes?.value || '',
+        pipelineStage: editInputs.pipelineStage?.value || lead.bucket || lead.crmStage || '',
+        waitingOn: editInputs.waitingOn?.value || 'WaitingOnAgent',
+        pinnedBrief: editInputs.pinnedBrief?.value || '',
+        docIdReceived: !!editInputs.docIdReceived?.checked,
+        docAppSent: !!editInputs.docAppSent?.checked,
+        docAppSigned: !!editInputs.docAppSigned?.checked,
+        docPolicyDelivered: !!editInputs.docPolicyDelivered?.checked,
+        docReviewBooked: !!editInputs.docReviewBooked?.checked,
+        watchers: editInputs.watchers?.value || '',
+        mentionNote: editInputs.mentionNote?.value || ''
+      };
+
+      try {
+        const res = await fetch('/Leads/SaveQuickView', withDialHeaders({
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'RequestVerificationToken': token
+          },
+          credentials: 'include',
+          body: JSON.stringify(payload)
+        }));
+        if (!res.ok){
+          const raw = await res.text().catch(() => '');
+          throw new Error(raw || `Save failed: ${res.status}`);
+        }
+
+        const response = await res.json().catch(() => ({}));
+        const saved = response?.payload || response || {};
+        const patchLead = (item) => {
+          if (!item || item.leadId !== lead.leadId) return;
+          applyLeadPayload(item, saved);
+        };
+        baseLeads.forEach(patchLead);
+        leads.forEach(patchLead);
+        applyLeadPayload(lead, saved);
+        broadcastLeadUpdate(lead, saved);
+        populateEditDrawer({
+          ...lead,
+          ...saved,
+          zipCode: saved?.zipCode || lead?.zipCode || ''
+        });
+        showCurrent({ lead });
+        setEditStatus('Saved ✔', 'good');
+      } catch (err){
+        console.error(err);
+        setEditStatus(err?.message || 'Save failed', 'bad');
+      } finally {
+        if (editSaveBtn) editSaveBtn.disabled = false;
+      }
+    }
+
+    async function saveEditAppointmentStatus(){
+      const lead = resolveCurrentLead();
+      if (!lead){
+        setEditStatus('No lead selected', 'bad');
+        return;
+      }
+
+      const nextStatus = String(editAppointmentStatusSelect?.value || '').trim();
+      if (!nextStatus){
+        setEditStatus('Choose an appointment status first', 'bad');
+        return;
+      }
+
+      if (editSaveAppointmentStatusBtn) editSaveAppointmentStatusBtn.disabled = true;
+      setEditStatus('Saving appointment…');
+
+      try {
+        const res = await fetch('/Leads/UpdateLeadAppointmentStatus', withDialHeaders({
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'RequestVerificationToken': token
+          },
+          credentials: 'include',
+          body: JSON.stringify({
+            clientUserId: lead.leadId || '',
+            appointmentId: lead?.latestAppointment?.id || null,
+            status: nextStatus
+          })
+        }));
+        if (!res.ok){
+          const raw = await res.text().catch(() => '');
+          throw new Error(raw || `Appointment update failed: ${res.status}`);
+        }
+
+        const response = await res.json().catch(() => ({}));
+        const saved = response?.payload || response || {};
+        const patchLead = (item) => {
+          if (!item || item.leadId !== lead.leadId) return;
+          applyLeadPayload(item, saved);
+        };
+        baseLeads.forEach(patchLead);
+        leads.forEach(patchLead);
+        applyLeadPayload(lead, saved);
+        broadcastLeadUpdate(lead, saved);
+        populateEditDrawer({
+          ...lead,
+          ...saved,
+          zipCode: saved?.zipCode || lead?.zipCode || ''
+        });
+        showCurrent({ lead });
+        setEditStatus(`Appointment marked ${humanizeAppointmentStatus(nextStatus)}`, 'good');
+      } catch (err){
+        console.error(err);
+        setEditStatus(err?.message || 'Appointment save failed', 'bad');
+      } finally {
+        if (editSaveAppointmentStatusBtn) editSaveAppointmentStatusBtn.disabled = false;
+      }
+    }
 
     function todayIsoDate(){
       return new Date().toISOString().slice(0, 10);
@@ -364,6 +1277,28 @@
         .map(stripExistingPrefix)
         .filter(x => !!x);
       return normalizedLines.join('\n').trim();
+    }
+
+    function syncNoteTextareaTone(textarea){
+      if (!textarea) return;
+      const hasBody = !!extractNoteBodyText(textarea.value || '');
+      textarea.classList.toggle('note-self-has-body', hasBody);
+      textarea.classList.toggle('note-self-prefix-only', !hasBody);
+    }
+
+    function syncAllNoteTextareaTones(){
+      [noteWentWell, noteCouldBetter].forEach(syncNoteTextareaTone);
+    }
+
+    function syncNotePrefixVisual(dateValue){
+      const date = (dateValue || noteDateInput?.value || todayIsoDate()).trim();
+      const prefix = notePrefix(date);
+      [noteWentWell, noteCouldBetter].forEach((textarea) => {
+        const col = textarea?.closest('.note-self-col');
+        if (!col) return;
+        col.dataset.notePrefix = prefix;
+        col.classList.toggle('has-note-prefix', !!prefix);
+      });
     }
 
     function normalizeNoteBodyForDate(rawText, isoDate){
@@ -523,8 +1458,10 @@
         const res = await fetch(`/WorkstationNotes/Entry?leadId=${encodeURIComponent(leadId)}&date=${encodeURIComponent(date)}`, withDialHeaders({ credentials: 'include' }));
         if (!res.ok) throw new Error('failed');
         const payload = await res.json();
-        noteWentWell.value = normalizeNoteBodyForDate(payload?.wentWell || '', date);
-        noteCouldBetter.value = normalizeNoteBodyForDate(payload?.couldBetter || '', date);
+        noteWentWell.value = extractNoteBodyText(payload?.wentWell || '');
+        noteCouldBetter.value = extractNoteBodyText(payload?.couldBetter || '');
+        syncNotePrefixVisual(date);
+        syncAllNoteTextareaTones();
         const loadedLeadName = (payload?.leadName || currentLeadContext().leadName || 'Lead').toString();
         if (noteDatesSelect) noteDatesSelect.value = encodeNoteKey(leadId, date);
         setNoteStatus(`Loaded ${loadedLeadName} — ${displayDate(date)}`);
@@ -552,8 +1489,10 @@
         const wentWellBody = extractNoteBodyText(normalizedWentWell);
         const couldBetterBody = extractNoteBodyText(normalizedCouldBetter);
 
-        noteWentWell.value = normalizedWentWell;
-        noteCouldBetter.value = normalizedCouldBetter;
+        noteWentWell.value = wentWellBody;
+        noteCouldBetter.value = couldBetterBody;
+        syncNotePrefixVisual(date);
+        syncAllNoteTextareaTones();
 
         const res = await fetch('/WorkstationNotes/Entry', withDialHeaders({
           method: 'POST',
@@ -597,11 +1536,14 @@
         setNoteStatus('Select a lead first', true);
         if (noteWentWell) noteWentWell.value = '';
         if (noteCouldBetter) noteCouldBetter.value = '';
+        syncNotePrefixVisual();
+        syncAllNoteTextareaTones();
         if (noteDatesSelect) noteDatesSelect.innerHTML = '<option value="">Select lead + date</option>';
         if (noteDateInput && !noteDateInput.value) noteDateInput.value = todayIsoDate();
         return;
       }
       if (noteDateInput && !noteDateInput.value) noteDateInput.value = todayIsoDate();
+      syncNotePrefixVisual();
       const list = await loadNoteDates(ctx.leadId);
       if (Array.isArray(list) && list.length){
         const newestDate = (list[0]?.noteDate || '').toString();
@@ -625,13 +1567,44 @@
     }
 
     function normalizeStateOption(value){
-      return (value ?? '').toString().trim().toUpperCase();
+      const raw = (value ?? '').toString().trim();
+      if (!raw) return '';
+
+      const upper = raw
+        .toUpperCase()
+        .replace(/\./g, '')
+        .replace(/\s+/g, ' ')
+        .trim();
+
+      if (US_STATE_NAME_BY_CODE[upper]) {
+        return US_STATE_NAME_BY_CODE[upper];
+      }
+
+      // Handle mixed formats like "AZ - Arizona" or "Arizona (AZ)".
+      const tokens = upper.split(/[^A-Z]/).filter(Boolean);
+      for (const token of tokens){
+        if (token.length === 2 && US_STATE_NAME_BY_CODE[token]) {
+          return US_STATE_NAME_BY_CODE[token];
+        }
+      }
+
+      const key = upper.replace(/[^A-Z]/g, '');
+      if (US_STATE_CANONICAL_BY_KEY[key]) {
+        return US_STATE_CANONICAL_BY_KEY[key];
+      }
+
+      return upper;
     }
 
     // Ensure Open CRM always goes somewhere useful even before leads load.
     if (openCrmLink){
       openCrmLink.href = "/Leads";
       openCrmLink.classList.remove("disabled");
+    }
+    if (editClientBtn){
+      editClientBtn.disabled = true;
+      editClientBtn.dataset.href = '';
+      editClientBtn.title = 'No lead selected';
     }
 
     function updateAgentWideDials(payload){
@@ -645,6 +1618,33 @@
       const dWeek = bridge.querySelector('[data-lb-dials-week] .lb-dials-count');
       if (dDay) dDay.textContent = String(agentWideDials.today ?? 0);
       if (dWeek) dWeek.textContent = String(agentWideDials.week ?? 0);
+    }
+
+    function renderLeadCallCount(lead){
+      if (!lead || !fields.calls) return;
+      const currentLead = resolveCurrentLead();
+      if (!currentLead || currentLead.leadId !== lead.leadId) return;
+      fields.calls.textContent = `Calls: ${lead.callCount ?? 0}`;
+    }
+
+    function applyOptimisticCallIncrement(lead){
+      if (!lead) return;
+      const priorCallCount = Number(lead.callCount ?? 0);
+      const priorLifetime = Number(lead.attemptsLifetime ?? priorCallCount);
+      lead.callCount = priorCallCount + 1;
+      lead.attemptsToday = Number(lead.attemptsToday ?? lead.dialsToday ?? 0) + 1;
+      lead.attemptsThisWeek = Number(lead.attemptsThisWeek ?? lead.dialsWeek ?? 0) + 1;
+      lead.attemptsThisMonth = Number(lead.attemptsThisMonth ?? 0) + 1;
+      lead.attemptsThisYear = Number(lead.attemptsThisYear ?? 0) + 1;
+      lead.attemptsLifetime = (Number.isFinite(priorLifetime) ? priorLifetime : priorCallCount) + 1;
+      lead.dialsToday = lead.attemptsToday;
+      lead.dialsWeek = lead.attemptsThisWeek;
+
+      agentWideDials.today = Number(agentWideDials.today ?? 0) + 1;
+      agentWideDials.week = Number(agentWideDials.week ?? 0) + 1;
+
+      renderLeadCallCount(lead);
+      renderAgentWideDialCounters();
     }
 
     async function refreshAgentWideDialCounters(){
@@ -677,6 +1677,423 @@
       setStatusHtml(`<span class="lb-status-note">${escapeHtml(message)}</span>`, tone);
     }
 
+    function formatIntakeDate(value){
+      if (!value) return '—';
+      const parsed = new Date(value);
+      return Number.isNaN(parsed.getTime())
+        ? '—'
+        : parsed.toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' });
+    }
+
+    function joinIntakeParts(parts){
+      return parts
+        .map(part => String(part || '').trim())
+        .filter(Boolean)
+        .join(' • ') || '—';
+    }
+
+    function normalizeSummaryText(value){
+      return String(value || '')
+        .replace(/\s+/g, ' ')
+        .trim();
+    }
+
+    function normalizeContextToken(value){
+      return String(value || '')
+        .trim()
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, '');
+    }
+
+    function humanizeContextToken(value){
+      const raw = String(value || '').trim();
+      if (!raw) return '';
+      return raw
+        .replace(/[_-]+/g, ' ')
+        .replace(/\s+/g, ' ')
+        .trim()
+        .replace(/\b\w/g, char => char.toUpperCase());
+    }
+
+    function resolveLeadContextBucket(lead, snapshot){
+      const tokenMap = Object.freeze({
+        mortgage: 'MortgageProtection',
+        mortgageprotection: 'MortgageProtection',
+        lifemp: 'MortgageProtection',
+        term: 'TermLife',
+        termlife: 'TermLife',
+        lifeterm: 'TermLife',
+        wholelife: 'WholeLife',
+        lifewhole: 'WholeLife',
+        iul: 'IUL',
+        lifeiul: 'IUL',
+        finalexpense: 'FinalExpense',
+        lifefinalexpense: 'FinalExpense',
+        life: 'LifeInsurance',
+        lifegeneral: 'LifeInsurance',
+        lifeinsurance: 'LifeInsurance'
+      });
+
+      const candidates = [
+        snapshot?.quoteTypeLabel,
+        snapshot?.interestLabel,
+        snapshot?.offerKey,
+        snapshot?.productType,
+        leadOriginalLeadType(lead),
+        snapshot?.bucket,
+        normalizedQueueKey,
+        normalizeQueueKey(lead?.bucket || lead?.crmStage || bucket || '')
+      ];
+
+      for (const candidate of candidates){
+        const normalizedCandidate = normalizeQueueKey(candidate || '');
+        if (productBuckets.has(normalizedCandidate)) return normalizedCandidate;
+
+        const mapped = tokenMap[normalizeContextToken(candidate)];
+        if (mapped) return mapped;
+      }
+
+      return normalizedQueueKey || leadOriginalLeadType(lead) || 'LifeInsurance';
+    }
+
+    function resolveLeadContextProductLabel(lead, snapshot){
+      const direct = normalizeSummaryText(snapshot?.quoteTypeLabel)
+        || normalizeSummaryText(snapshot?.interestLabel);
+      if (direct) return direct;
+
+      const bucketKey = resolveLeadContextBucket(lead, snapshot);
+      const label = bucketLabel(bucketKey);
+      return label && label !== 'Lead' ? label : 'Life Insurance';
+    }
+
+    function summarizeDiscoveryItems(snapshot, limit = 2){
+      const items = Array.isArray(snapshot?.discoveryItems) ? snapshot.discoveryItems : [];
+      if (!items.length) return '';
+
+      return items
+        .slice(0, Math.max(1, limit))
+        .map(item => {
+          const label = normalizeSummaryText(item?.label || 'Detail');
+          const value = normalizeSummaryText(item?.value || '—');
+          return `${label}: ${value}`;
+        })
+        .join(' • ');
+    }
+
+    function historyCountLabel(snapshot){
+      const count = Number(snapshot?.historyCount || 0);
+      if (count <= 0) return 'No web intakes';
+      return `${count} intake${count === 1 ? '' : 's'} on file`;
+    }
+
+    function humanizeAppointmentStatus(value){
+      const raw = normalizeSummaryText(value);
+      if (!raw) return 'No appointment recorded';
+      if (raw === 'NoShow') return 'No Show';
+      return raw.replace(/([a-z])([A-Z])/g, '$1 $2');
+    }
+
+    function humanizeAppointmentSource(value){
+      const raw = normalizeSummaryText(value);
+      if (!raw) return 'Not tracked yet';
+      switch (raw){
+        case 'internal_manual': return 'Internal manual';
+        case 'internal_calendar': return 'Internal calendar';
+        case 'website_embed': return 'Website embed';
+        case 'website_modal': return 'Website modal';
+        case 'external_redirect_fallback': return 'External redirect fallback';
+        case 'microsoft_graph_confirmation': return 'Microsoft Graph confirmation';
+        case 'manual_verified': return 'Manual verified';
+        default: break;
+      }
+      return raw
+        .replace(/[_-]+/g, ' ')
+        .replace(/\b\w/g, char => char.toUpperCase());
+    }
+
+    function summarizeRequestedAppointmentSource(appointment){
+      if (!appointment) return 'Not tracked yet';
+      return appointment.requestedBookingSourceLabel
+        || humanizeAppointmentSource(appointment.requestedBookingSource)
+        || 'Not tracked yet';
+    }
+
+    function summarizeAppointmentConfirmation(appointment){
+      if (!appointment) return 'No appointment recorded';
+      const state = normalizeSummaryText(appointment.confirmationStateLabel);
+      const source = normalizeSummaryText(appointment.confirmationSourceLabel) || humanizeAppointmentSource(appointment.confirmationSource);
+      const parts = [state, source].filter(Boolean);
+      return parts.join(' • ') || 'No confirmation recorded';
+    }
+
+    function summarizeAppointmentBookingConfig(appointment){
+      if (!appointment) return 'No public booking config used';
+      const label = normalizeSummaryText(appointment.bookingConfigurationLabel);
+      if (label) return label;
+      if (appointment.bookingSource === 'internal_calendar'){
+        return 'Internal calendar path';
+      }
+      return 'No public booking config used';
+    }
+
+    function formatAppointmentDateTime(value){
+      if (!value) return '—';
+      const parsed = new Date(value);
+      return Number.isNaN(parsed.getTime())
+        ? '—'
+        : parsed.toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' });
+    }
+
+    function formatAppointmentRange(snapshot){
+      const start = snapshot?.scheduledStartUtc ? new Date(snapshot.scheduledStartUtc) : null;
+      const end = snapshot?.scheduledEndUtc ? new Date(snapshot.scheduledEndUtc) : null;
+
+      if (!start || Number.isNaN(start.getTime())){
+        return 'No appointment scheduled';
+      }
+
+      if (!end || Number.isNaN(end.getTime())){
+        return start.toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' });
+      }
+
+      const sameDay =
+        start.getFullYear() === end.getFullYear() &&
+        start.getMonth() === end.getMonth() &&
+        start.getDate() === end.getDate();
+
+      if (sameDay){
+        return `${start.toLocaleDateString([], { dateStyle: 'medium' })} • ${start.toLocaleTimeString([], { timeStyle: 'short' })} - ${end.toLocaleTimeString([], { timeStyle: 'short' })}`;
+      }
+
+      return `${start.toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' })} - ${end.toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' })}`;
+    }
+
+    function appointmentStatusTimestampText(snapshot){
+      if (!snapshot) return 'No appointment status updates yet';
+      const label = snapshot.statusLabel || humanizeAppointmentStatus(snapshot.status);
+      const value = formatAppointmentDateTime(snapshot.statusTimestampUtc || snapshot.lastStatusChangedUtc || snapshot.updatedUtc || snapshot.createdUtc);
+      return value === '—' ? label : `${label} • ${value}`;
+    }
+
+    function renderAppointmentLink(node, url, label){
+      if (!node) return;
+      const cleanUrl = normalizeSummaryText(url);
+      if (!cleanUrl){
+        node.textContent = '—';
+        return;
+      }
+
+      node.innerHTML = `<a class="link" href="${escapeHtml(cleanUrl)}" target="_blank" rel="noopener">${escapeHtml(label)}</a>`;
+    }
+
+    function formatLeadLocation(lead){
+      return joinIntakeParts([lead?.city, lead?.state]);
+    }
+
+    function buildRequestedSummaryText(lead, snapshot){
+      const productLabel = resolveLeadContextProductLabel(lead, snapshot);
+      const requestedAmount = normalizeSummaryText(lead?.loanAmount);
+      const parts = [productLabel];
+      if (requestedAmount) parts.push(`Target ${requestedAmount}`);
+      if (snapshot?.offerKey) parts.push(humanizeContextToken(snapshot.offerKey));
+      return joinIntakeParts(parts);
+    }
+
+    function buildSourceSummaryText(snapshot){
+      if (!snapshot){
+        return 'CRM lead only';
+      }
+
+      const origin = normalizeSummaryText(snapshot.originLabel) || 'Website inquiry';
+      const page = snapshot.sourcePageKey ? humanizeContextToken(snapshot.sourcePageKey) : '';
+      const campaign = normalizeSummaryText(snapshot.utmCampaign) || normalizeSummaryText(snapshot.utmSource);
+      return joinIntakeParts([origin, page, campaign]);
+    }
+
+    function buildActivitySummaryText(lead, snapshot){
+      const appointment = lead?.latestAppointment || null;
+      const parts = [];
+
+      if (snapshot){
+        const submitted = formatIntakeDate(snapshot.submittedUtc);
+        if (submitted !== '—') parts.push(submitted);
+
+        const historyLabel = historyCountLabel(snapshot);
+        if (historyLabel && historyLabel !== 'No web intakes'){
+          parts.push(historyLabel);
+        }
+      }
+
+      parts.push(appointment?.statusLabel ? `Appointment ${appointment.statusLabel}` : 'No appointment on file');
+      return joinIntakeParts(parts);
+    }
+
+    function buildLeadOverlayContext(lead){
+      if (!lead){
+        return {
+          leadId: '',
+          leadName: 'Lead',
+          bucket: normalizedQueueKey || normalizeQueueKey(bucket || '') || '',
+          snapshot: null,
+          summary: {
+            requested: 'Pick a lead to load the website summary.',
+            source: '—',
+            activity: '—'
+          }
+        };
+      }
+
+      const snapshot = lead?.intakeSnapshot || null;
+      return {
+        leadId: normalizeSummaryText(lead?.leadId),
+        leadName: `${lead?.firstName || ''} ${lead?.lastName || ''}`.trim() || 'Lead',
+        bucket: resolveLeadContextBucket(lead, snapshot),
+        snapshot,
+        summary: {
+          requested: buildRequestedSummaryText(lead, snapshot),
+          source: buildSourceSummaryText(snapshot),
+          activity: buildActivitySummaryText(lead, snapshot)
+        }
+      };
+    }
+
+    function renderLeadOverlayContext(lead){
+      const context = buildLeadOverlayContext(lead);
+      currentLeadOverlayContext = context;
+
+      if (summaryRequestedEl) summaryRequestedEl.textContent = context.summary.requested;
+      if (summarySourceEl) summarySourceEl.textContent = context.summary.source;
+      if (summaryActivityEl) summaryActivityEl.textContent = context.summary.activity;
+
+      return context;
+    }
+
+    function renderEditIntakeSnapshot(lead){
+      const snapshot = lead?.intakeSnapshot || null;
+      const nodes = [
+        editIntakeSubmitted,
+        editIntakeHistory,
+        editIntakeOrigin,
+        editIntakeOwner,
+        editIntakeProduct,
+        editIntakeQuoteType,
+        editIntakePage,
+        editIntakeSource,
+        editIntakeLanding,
+        editIntakeIds,
+        editIntakeRecommendation,
+        editIntakeDiscovery,
+        editIntakeRawMeta
+      ];
+
+      if (!snapshot){
+        if (editIntakeSection) editIntakeSection.hidden = true;
+        nodes.forEach(node => { if (node) node.textContent = '—'; });
+        return;
+      }
+
+      if (editIntakeSection) editIntakeSection.hidden = false;
+      if (editIntakeSubmitted) editIntakeSubmitted.textContent = formatIntakeDate(snapshot.submittedUtc);
+      if (editIntakeHistory) editIntakeHistory.textContent = historyCountLabel(snapshot);
+      if (editIntakeOrigin) editIntakeOrigin.textContent = joinIntakeParts([
+        snapshot.originLabel,
+        snapshot.originTone ? `Tone: ${snapshot.originTone}` : ''
+      ]);
+      if (editIntakeOwner) editIntakeOwner.textContent = snapshot.agentUserId || lead?.agentUserId || '—';
+      if (editIntakeProduct) editIntakeProduct.textContent = joinIntakeParts([
+        snapshot.interestLabel,
+        snapshot.offerKey ? `Offer: ${snapshot.offerKey}` : '',
+        snapshot.productType ? `Type: ${snapshot.productType}` : ''
+      ]);
+      if (editIntakeQuoteType) editIntakeQuoteType.textContent = snapshot.quoteTypeLabel || '—';
+      if (editIntakePage) editIntakePage.textContent = joinIntakeParts([
+        snapshot.sourcePageKey,
+        snapshot.pageVariant ? `Variant: ${snapshot.pageVariant}` : '',
+        snapshot.pageMode ? `Mode: ${snapshot.pageMode}` : '',
+        snapshot.pagePath
+      ]);
+      if (editIntakeSource) editIntakeSource.textContent = joinIntakeParts([
+        snapshot.utmSource,
+        snapshot.utmMedium,
+        snapshot.utmCampaign,
+        snapshot.referrerUrl ? `Referrer: ${snapshot.referrerUrl}` : ''
+      ]);
+      if (editIntakeLanding) editIntakeLanding.textContent = joinIntakeParts([
+        snapshot.landingPageUrl,
+        snapshot.referrerUrl
+      ]);
+      if (editIntakeIds) editIntakeIds.textContent = joinIntakeParts([
+        snapshot.utmId ? `utm_id ${snapshot.utmId}` : '',
+        snapshot.fbclid ? `fbclid ${snapshot.fbclid}` : '',
+        snapshot.metaCampaignId ? `campaign ${snapshot.metaCampaignId}` : '',
+        snapshot.metaAdSetId ? `adset ${snapshot.metaAdSetId}` : '',
+        snapshot.metaAdId ? `ad ${snapshot.metaAdId}` : ''
+      ]);
+      if (editIntakeRecommendation) editIntakeRecommendation.textContent = joinIntakeParts([
+        snapshot.estimateSummary,
+        snapshot.recommendationPrimaryTitle ? `Primary: ${snapshot.recommendationPrimaryTitle}` : '',
+        snapshot.recommendationSecondaryTitle ? `Secondary: ${snapshot.recommendationSecondaryTitle}` : ''
+      ]);
+      if (editIntakeDiscovery) editIntakeDiscovery.textContent = Array.isArray(snapshot.discoveryItems) && snapshot.discoveryItems.length
+        ? snapshot.discoveryItems
+            .map(item => `${String(item?.label || 'Detail').trim()}: ${String(item?.value || '—').trim()}`)
+            .join(' • ')
+        : '—';
+      if (editIntakeRawMeta) editIntakeRawMeta.textContent = snapshot.rawMetadataJson || '—';
+    }
+
+    function renderEditAppointmentSnapshot(lead){
+      const appointment = lead?.latestAppointment || null;
+      const hasLead = !!lead;
+      const nodes = [
+        editAppointmentStatus,
+        editAppointmentTime,
+        editAppointmentSource,
+        editAppointmentRequestedSource,
+        editAppointmentConfirmation,
+        editAppointmentBookingConfig,
+        editAppointmentTimeline,
+        editAppointmentMeetingLink,
+        editAppointmentCalendarLink
+      ];
+
+      if (editAppointmentSection) editAppointmentSection.hidden = !hasLead;
+
+      if (!hasLead){
+        nodes.forEach(node => { if (node) node.textContent = '—'; });
+        if (editAppointmentStatusSelect) editAppointmentStatusSelect.value = 'Requested';
+        if (editSaveAppointmentStatusBtn) editSaveAppointmentStatusBtn.disabled = true;
+        return;
+      }
+
+      if (!appointment){
+        if (editAppointmentStatus) editAppointmentStatus.textContent = 'No appointment recorded';
+        if (editAppointmentTime) editAppointmentTime.textContent = 'No appointment scheduled';
+        if (editAppointmentSource) editAppointmentSource.textContent = 'Not tracked yet';
+        if (editAppointmentRequestedSource) editAppointmentRequestedSource.textContent = 'Not tracked yet';
+        if (editAppointmentConfirmation) editAppointmentConfirmation.textContent = 'No confirmation recorded';
+        if (editAppointmentBookingConfig) editAppointmentBookingConfig.textContent = 'No public booking config used';
+        if (editAppointmentTimeline) editAppointmentTimeline.textContent = 'No appointment status updates yet';
+        if (editAppointmentMeetingLink) editAppointmentMeetingLink.textContent = '—';
+        if (editAppointmentCalendarLink) editAppointmentCalendarLink.textContent = '—';
+        if (editAppointmentStatusSelect) editAppointmentStatusSelect.value = 'Requested';
+        if (editSaveAppointmentStatusBtn) editSaveAppointmentStatusBtn.disabled = false;
+        return;
+      }
+
+      if (editAppointmentStatus) editAppointmentStatus.textContent = appointment.statusLabel || humanizeAppointmentStatus(appointment.status);
+      if (editAppointmentTime) editAppointmentTime.textContent = formatAppointmentRange(appointment);
+      if (editAppointmentSource) editAppointmentSource.textContent = appointment.bookingSourceLabel || humanizeAppointmentSource(appointment.bookingSource);
+      if (editAppointmentRequestedSource) editAppointmentRequestedSource.textContent = summarizeRequestedAppointmentSource(appointment);
+      if (editAppointmentConfirmation) editAppointmentConfirmation.textContent = summarizeAppointmentConfirmation(appointment);
+      if (editAppointmentBookingConfig) editAppointmentBookingConfig.textContent = summarizeAppointmentBookingConfig(appointment);
+      if (editAppointmentTimeline) editAppointmentTimeline.textContent = appointmentStatusTimestampText(appointment);
+      renderAppointmentLink(editAppointmentMeetingLink, appointment.meetingUrl, 'Open meeting link');
+      renderAppointmentLink(editAppointmentCalendarLink, appointment.calendarEventWebLink, 'Open Outlook event');
+      if (editAppointmentStatusSelect) editAppointmentStatusSelect.value = appointment.status || 'Requested';
+      if (editSaveAppointmentStatusBtn) editSaveAppointmentStatusBtn.disabled = false;
+    }
+
     function setOrigin(lead){
       if (!originEl) return;
       if (!lead){
@@ -684,60 +2101,87 @@
         return;
       }
       const origin = leadOriginalLeadType(lead) || bucket || '';
-      originEl.textContent = `Origin: ${bucketLabel(origin || 'Lead')}`;
+      const snapshot = lead.intakeSnapshot || null;
+      const sourceSummary = snapshot
+        ? joinIntakeParts([
+            snapshot.utmSource,
+            snapshot.utmMedium,
+            snapshot.utmCampaign,
+            snapshot.sourcePageKey
+          ])
+        : '';
+      originEl.textContent = sourceSummary
+        ? `Origin: ${bucketLabel(origin || 'Lead')} • ${sourceSummary}`
+        : `Origin: ${bucketLabel(origin || 'Lead')}`;
     }
 
 
     function isLifeOrFinal(leadType){
-      return leadType === 'LifeInsurance' || leadType === 'FinalExpense';
+      return requestedAmountLeadTypes.has(leadType);
     }
 
-    function applyLeadTypeFieldDisplay(lead){
-      const leadType = leadOriginalLeadType(lead)
-        || normalizedQueueKey
-        || normalizeQueueKey(lead?.bucket || lead?.crmStage || bucket || '');
-      const hideLender = isLifeOrFinal(leadType);
+    function leadStageKey(lead){
+      return normalizedStageKey(lead?.bucket || lead?.crmStage || '');
+    }
 
-      if (lenderField){
-        lenderField.style.display = hideLender ? 'none' : '';
-      }
-      if (lenderLabel){
-        lenderLabel.textContent = 'Lender';
-      }
-      if (loanLabel){
-        loanLabel.textContent = hideLender ? 'Requested' : 'Loan Amount';
-      }
+    function isDoNotCallLead(lead){
+      const stage = leadStageKey(lead);
+      return doNotCallStages.has(stage) || stage.toLowerCase() === 'donotcalllist';
     }
 
     function isCallBlockedForLead(lead){
       if (!lead) return false;
-      const rawStage = (lead.bucket || lead.crmStage || '').trim();
-      const stage = rawStage
-        .replace(/\s+/g, '')
-        .replace(/[-_]/g, '');
+      const stage = leadStageKey(lead);
+      if (isDoNotCallLead(lead)) return true;
       if (stage.toLowerCase() === 'followup') return true;
       if (stage.toLowerCase() === 'booked') return true;
       if (stage.toLowerCase() === 'policyplaced') return true;
       return noCallStages.has(stage);
     }
 
-    function updateCallAvailability(lead){
-      if (!callBtn) return;
+    function isTextBlockedForLead(lead){
+      return isDoNotCallLead(lead);
+    }
 
+    function updateCommunicationAvailability(lead){
       if (!lead){
-        callBtn.disabled = true;
-        callBtn.title = 'No lead selected';
+        if (callBtn){
+          callBtn.disabled = true;
+          callBtn.title = 'No lead selected';
+        }
+        if (textBtn){
+          textBtn.disabled = true;
+          textBtn.title = 'No lead selected';
+        }
         return;
       }
 
-      if (isCallBlockedForLead(lead)){
-        callBtn.disabled = true;
-        callBtn.title = 'Calling from Workstation is disabled for Booked, Follow Up, and Policy Placed leads.';
+      if (isDoNotCallLead(lead)){
+        if (callBtn){
+          callBtn.disabled = true;
+          callBtn.title = 'This lead is in Do Not Call List. Calling is disabled in Workstation.';
+        }
+        if (textBtn){
+          textBtn.disabled = true;
+          textBtn.title = 'This lead is in Do Not Call List. Texting is disabled in Workstation.';
+        }
         return;
       }
 
-      callBtn.disabled = false;
-      callBtn.title = '';
+      if (callBtn){
+        if (isCallBlockedForLead(lead)){
+          callBtn.disabled = true;
+          callBtn.title = 'Calling from Workstation is disabled for Booked, Follow Up, and Policy Placed leads.';
+        } else {
+          callBtn.disabled = false;
+          callBtn.title = '';
+        }
+      }
+
+      if (textBtn){
+        textBtn.disabled = false;
+        textBtn.title = '';
+      }
     }
 
   function getStatusHtml(lead){
@@ -774,6 +2218,90 @@
       if (!preserveStatus){
         setStatusHtml(getStatusHtml(resolveCurrentLead()));
       }
+    }
+
+    function ensureTextMenu(){
+      if (textMenuEl) return textMenuEl;
+
+      textMenuEl = document.createElement('div');
+      textMenuEl.className = 'lb-text-menu';
+      textMenuEl.hidden = true;
+      textMenuEl.style.display = 'none';
+      textMenuEl.dataset.open = '0';
+      document.body.appendChild(textMenuEl);
+
+      textMenuEl.addEventListener('click', async (event) => {
+        const item = event.target.closest('[data-lb-text-template-index]');
+        if (!item) return;
+        event.preventDefault();
+
+        const templateIndex = Number.parseInt(item.getAttribute('data-lb-text-template-index') || '', 10);
+        const template = Number.isFinite(templateIndex) ? textScriptTemplates[templateIndex] : null;
+        closeTextMenu();
+        if (!template?.template) return;
+
+        if (typeof window.LegendAgentProfileApi?.sendTextMessage === 'function'){
+          await window.LegendAgentProfileApi.sendTextMessage(template.template);
+          return;
+        }
+
+        await sendCustomTextMessage(template.template);
+      });
+
+      return textMenuEl;
+    }
+
+    function closeTextMenu(){
+      if (!textMenuEl) return;
+      textMenuEl.hidden = true;
+      textMenuEl.style.display = 'none';
+      textMenuEl.dataset.open = '0';
+      textMenuEl.dataset.leadId = '';
+    }
+
+    function isTextMenuOpenForLead(leadId){
+      return !!textMenuEl && textMenuEl.dataset.open === '1' && textMenuEl.dataset.leadId === String(leadId || '');
+    }
+
+    function openTextMenu(anchorEl, lead){
+      if (!anchorEl || !lead) return;
+      if (!textScriptTemplates.length){
+        setStatusMessage('No text scripts available on this workstation view.', 'bad');
+        return;
+      }
+
+      const menu = ensureTextMenu();
+      menu.innerHTML = '';
+
+      textScriptTemplates.forEach((template, index) => {
+        const button = document.createElement('button');
+        button.type = 'button';
+        button.className = 'lb-text-menu-item';
+        button.setAttribute('data-lb-text-template-index', String(index));
+        button.textContent = template.title;
+        menu.appendChild(button);
+      });
+
+      const rect = anchorEl.getBoundingClientRect();
+      const preferredWidth = Math.max(rect.width, 220);
+      menu.style.minWidth = `${preferredWidth}px`;
+      menu.style.visibility = 'hidden';
+      menu.hidden = false;
+      menu.style.display = 'flex';
+
+      const menuWidth = menu.offsetWidth || preferredWidth;
+      const menuHeight = menu.offsetHeight || 0;
+      const left = Math.max(12, Math.min(window.innerWidth - menuWidth - 12, rect.left));
+      const preferredTop = rect.bottom + 8;
+      const top = preferredTop + menuHeight > window.innerHeight - 12
+        ? Math.max(12, rect.top - menuHeight - 8)
+        : preferredTop;
+
+      menu.style.left = `${Math.round(left)}px`;
+      menu.style.top = `${Math.round(top)}px`;
+      menu.style.visibility = 'visible';
+      menu.dataset.open = '1';
+      menu.dataset.leadId = String(lead.leadId || '');
     }
 
     function findLeadById(leadId){
@@ -859,6 +2387,19 @@
           return;
         }
 
+        // Backward compatibility: previously persisted filter state may store
+        // abbreviations (e.g. "AZ"), while options now use full names.
+        if (selectEl === stateFilter){
+          const normalizedState = normalizeStateOption(next);
+          if (normalizedState){
+            const mapped = options.find(opt => normalizeStateOption(opt.value || opt.textContent || '') === normalizedState);
+            if (mapped){
+              selectEl.value = mapped.value;
+              return;
+            }
+          }
+        }
+
         // Backward compatibility: if older cache/server state stored exact age (e.g. "37"),
         // map it into the corresponding range option (e.g. "35-40").
         if (selectEl === ageFilter){
@@ -942,7 +2483,8 @@
       }, 8000);
     }
 
-    async function incrementCallForLead(lead){
+    async function incrementCallForLead(lead, options = {}){
+      const skipLocalFallback = !!options.skipLocalFallback;
       let payload = null;
       try {
         const res = await fetch('/Leads/IncrementCall', withDialHeaders({
@@ -952,21 +2494,41 @@
             'RequestVerificationToken': token
           },
           credentials: 'include',
+          keepalive: true,
           body: `id=${encodeURIComponent(lead.leadId || '')}`
         }));
         if (res.ok){
           payload = await res.json().catch(() => ({}));
         }
       } catch {}
-      lead.callCount = payload?.callCount ?? ((lead.callCount ?? 0) + 1);
-      lead.attemptsToday = payload?.attemptsToday ?? ((lead.attemptsToday ?? lead.dialsToday ?? 0) + 1);
-      lead.attemptsThisWeek = payload?.attemptsThisWeek ?? ((lead.attemptsThisWeek ?? lead.dialsWeek ?? 0) + 1);
-      lead.attemptsThisMonth = payload?.attemptsThisMonth ?? ((lead.attemptsThisMonth ?? 0) + 1);
-      lead.attemptsThisYear = payload?.attemptsThisYear ?? ((lead.attemptsThisYear ?? 0) + 1);
-      lead.attemptsLifetime = payload?.attemptsLifetime ?? lead.callCount;
-      lead.dialsToday = payload?.dialsToday ?? lead.attemptsToday;
-      lead.dialsWeek = payload?.dialsWeek ?? lead.attemptsThisWeek;
+
+      const currentCallCount = Number(lead.callCount ?? 0);
+      const currentToday = Number(lead.attemptsToday ?? lead.dialsToday ?? 0);
+      const currentWeek = Number(lead.attemptsThisWeek ?? lead.dialsWeek ?? 0);
+      const currentMonth = Number(lead.attemptsThisMonth ?? 0);
+      const currentYear = Number(lead.attemptsThisYear ?? 0);
+      const currentLifetime = Number(lead.attemptsLifetime ?? currentCallCount);
+
+      const payloadCallCount = normalizeDialTotal(payload?.callCount);
+      const payloadToday = normalizeDialTotal(payload?.attemptsToday);
+      const payloadWeek = normalizeDialTotal(payload?.attemptsThisWeek);
+      const payloadMonth = normalizeDialTotal(payload?.attemptsThisMonth);
+      const payloadYear = normalizeDialTotal(payload?.attemptsThisYear);
+      const payloadLifetime = normalizeDialTotal(payload?.attemptsLifetime);
+      const payloadDialsToday = normalizeDialTotal(payload?.dialsToday);
+      const payloadDialsWeek = normalizeDialTotal(payload?.dialsWeek);
+
+      lead.callCount = payloadCallCount ?? (skipLocalFallback ? currentCallCount : currentCallCount + 1);
+      lead.attemptsToday = payloadToday ?? (skipLocalFallback ? currentToday : currentToday + 1);
+      lead.attemptsThisWeek = payloadWeek ?? (skipLocalFallback ? currentWeek : currentWeek + 1);
+      lead.attemptsThisMonth = payloadMonth ?? (skipLocalFallback ? currentMonth : currentMonth + 1);
+      lead.attemptsThisYear = payloadYear ?? (skipLocalFallback ? currentYear : currentYear + 1);
+      lead.attemptsLifetime = payloadLifetime ?? (skipLocalFallback ? currentLifetime : currentLifetime + 1);
+      lead.dialsToday = payloadDialsToday ?? lead.attemptsToday;
+      lead.dialsWeek = payloadDialsWeek ?? lead.attemptsThisWeek;
       updateAgentWideDials(payload);
+      renderLeadCallCount(lead);
+      renderAgentWideDialCounters();
       if (window.liveSync && lead?.leadId){
         window.liveSync.sendCall(lead.leadId, Number(lead.callCount ?? 0) || 0);
         window.liveSync.sendUpdate({
@@ -1001,6 +2563,16 @@
       target.age = payload.age ?? target.age;
       target.btc = payload.btc ?? target.btc;
       target.crmStatus = payload.crmStatus ?? target.crmStatus;
+      target.crmPriority = payload.crmPriority ?? target.crmPriority;
+      target.crmLastTouch = payload.crmLastTouch ?? payload.updatedUtc ?? target.crmLastTouch;
+      target.crmNextDate = payload.crmNextDate ?? target.crmNextDate;
+      target.crmNextText = payload.crmNextText ?? target.crmNextText;
+      target.crmTags = payload.crmTags ?? target.crmTags;
+      target.agentNotes = payload.agentNotes ?? payload.crmNotes ?? target.agentNotes;
+      target.waitingOn = payload.waitingOn ?? target.waitingOn;
+      target.pinnedBrief = payload.pinnedBrief ?? target.pinnedBrief;
+      target.docChecklist = payload.docChecklist ?? target.docChecklist;
+      target.collaboration = payload.collaboration ?? target.collaboration;
       target.crmNotes = payload.crmNotes ?? payload.agentNotes ?? payload.crmNextText ?? target.crmNotes;
       target.bucket = payload.bucket ?? payload.pipelineStage ?? target.bucket;
       target.crmStage = payload.pipelineStage ?? target.crmStage;
@@ -1015,6 +2587,10 @@
       target.attemptsLifetime = payload.attemptsLifetime ?? target.attemptsLifetime ?? target.callCount;
       target.dialsToday = payload.dialsToday ?? target.attemptsToday;
       target.dialsWeek = payload.dialsWeek ?? target.attemptsThisWeek;
+      target.intakeSnapshot = payload.intakeSnapshot ?? target.intakeSnapshot;
+      target.latestAppointment = payload.latestAppointment ?? target.latestAppointment;
+      target.agentUserId = payload.agentUserId ?? target.agentUserId;
+      normalizeLeadAgeFromDob(target);
       updateAgentWideDials(payload);
     }
 
@@ -1039,12 +2615,92 @@
       });
     }
 
+    async function hydrateLeadIntakeSnapshot(lead){
+      if (!lead?.leadId || lead._intakeSnapshotRequested) return;
+      lead._intakeSnapshotRequested = true;
+
+      try {
+        const res = await fetch(`/Leads/Lead?id=${encodeURIComponent(lead.leadId)}`, withDialHeaders({
+          credentials: 'include',
+          cache: 'no-store'
+        }));
+        if (!res.ok) return;
+        const payload = await res.json();
+        applyLeadPayload(lead, payload);
+
+        const currentLead = resolveCurrentLead();
+        if (currentLead?.leadId === lead.leadId){
+          setOrigin(lead);
+          renderLeadOverlayContext(lead);
+          renderEditIntakeSnapshot(lead);
+          renderEditAppointmentSnapshot(lead);
+        }
+      } catch {}
+    }
+
+    async function launchTextMessageForLead(lead, rawMessage){
+      const digits = ((lead?.phone || lead?.phone2 || '')).replace(/\D/g,'');
+      if (!digits){
+        setStatusMessage('No phone on file', 'bad');
+        return false;
+      }
+
+      const msg = String(rawMessage || '').trim();
+      if (!msg){
+        setStatusMessage('No message to send', 'bad');
+        return false;
+      }
+
+      let copied = false;
+      try {
+        await navigator.clipboard.writeText(msg);
+        copied = true;
+      } catch {}
+
+      setStatusMessage(copied ? 'Text copied. Opening messages...' : 'Opening messages...');
+      const smsHref = buildSmsLaunchHref(digits, msg);
+      if (!smsHref){
+        setStatusMessage('No phone on file', 'bad');
+        return false;
+      }
+      window.location.href = smsHref;
+      return true;
+    }
+
+    async function sendCustomTextMessage(rawMessage){
+      const lead = resolveCurrentLead();
+      if (!lead){
+        setStatusMessage('No active lead available', 'bad');
+        return false;
+      }
+
+      if (isTextBlockedForLead(lead)){
+        setStatusMessage('Calling and texting are disabled in Workstation for Do Not Call List leads.', 'bad');
+        return false;
+      }
+
+      let resolvedMessage = String(rawMessage || '');
+      if (typeof window.LegendAgentProfileApi?.fillTextMessagePlaceholders === 'function'){
+        resolvedMessage = window.LegendAgentProfileApi.fillTextMessagePlaceholders(resolvedMessage);
+      } else if (typeof window.LegendAgentProfileApi?.fillScriptPlaceholders === 'function'){
+        resolvedMessage = window.LegendAgentProfileApi.fillScriptPlaceholders(resolvedMessage);
+      }
+
+      return launchTextMessageForLead(lead, resolvedMessage);
+    }
+
     async function authorizePendingAction(){
       if (!pendingAction) return;
       const lead = findLeadById(pendingAction.leadId);
       if (!lead) return;
       const digits = pendingAction.digits;
       const action = pendingAction.action;
+
+      if (action === 'call' && isDoNotCallLead(lead)){
+        resetPendingAction();
+        setStatusMessage('Calling and texting are disabled in Workstation for Do Not Call List leads.', 'bad');
+        return;
+      }
 
       resetPendingAction({ preserveStatus: true });
 
@@ -1056,51 +2712,35 @@
       }
 
       const msg = buildTextMessage(lead, leadOriginalLeadType(lead) || bucket || lead.bucket);
-      let copied = false;
-      try {
-        await navigator.clipboard.writeText(msg);
-        copied = true;
-      } catch {}
-      setStatusMessage(copied ? 'Text copied. Opening messages...' : 'Opening messages...');
-      window.location.href = `sms:${digits}?&body=${encodeURIComponent(msg)}`;
+      await launchTextMessageForLead(lead, msg);
     }
 
     function renderLead(lead, index, total){
       resetPendingAction({ preserveStatus: true });
       if (!lead){
-        applyLeadTypeFieldDisplay(null);
         Object.values(fields).forEach(f => f && (f.textContent = '—'));
         if (fields.leadId) fields.leadId.textContent = '';
         if (fields.calls) fields.calls.textContent = 'Calls: —';
         setStatusMessage('No leads found');
         posEl.textContent = 'Lead 0 of 0';
         setOrigin(null);
+        renderLeadOverlayContext(null);
         renderAgentWideDialCounters();
-        updateCallAvailability(null);
+        updateCommunicationAvailability(null);
         return;
       }
       fields.name.textContent = `${lead.firstName || ''} ${lead.lastName || ''}`.trim() || '—';
       if (fields.leadId) fields.leadId.textContent = lead.leadId || '';
       if (fields.calls) fields.calls.textContent = `Calls: ${lead.callCount ?? 0}`;
-      fields.address.textContent = lead.addressLine || '—';
-      fields.city.textContent = lead.city || '—';
-      fields.state.textContent = lead.state || '—';
-      fields.county.textContent = lead.county || '—';
-      fields.dob.textContent = formatDob(lead.dob);
-      fields.gender.textContent = lead.gender || '—';
-      applyLeadTypeFieldDisplay(lead);
-      fields.lender.textContent = lead.mortgageLender || '—';
-      fields.loan.textContent = lead.loanAmount || '—';
-      fields.phone.textContent = fmtPhone(lead.phone) || '—';
-      fields.phone2.textContent = fmtPhone(lead.phone2) || '—';
-      fields.age.textContent = lead.age || '—';
-      fields.btc.textContent = lead.btc || '—';
+      if (fields.phone) fields.phone.textContent = fmtPhone(lead.phone) || '—';
+      if (fields.email) fields.email.textContent = lead.email || '—';
+      if (fields.location) fields.location.textContent = formatLeadLocation(lead);
       posEl.textContent = `Lead ${Math.min(index+1, total)} of ${total}`;
       setOrigin(lead);
       setStatusHtml(getStatusHtml(lead));
       updateAgentWideDials(lead);
       renderAgentWideDialCounters();
-      updateCallAvailability(lead);
+      updateCommunicationAvailability(lead);
       if (noteOverlay && !noteOverlay.hidden) syncLeadField();
     }
 
@@ -1110,6 +2750,9 @@
       const res = await fetch(`/Leads/Leads`, withDialHeaders());
       if (!res.ok) throw new Error('Unable to load leads.');
       const data = await res.json();
+      if (Array.isArray(data)){
+        data.forEach(normalizeLeadAgeFromDob);
+      }
 
       updateAgentWideDials(Array.isArray(data) && data.length ? data[0] : null);
       data.sort((a,b)=>{
@@ -1284,7 +2927,7 @@
       if (ageFilter){
         const ageSet = new Set();
         source.forEach(l => {
-          const age = parseLeadAge(l?.age);
+          const age = resolveLeadAgeNumber(l);
           if (age !== null) ageSet.add(age);
         });
         const ages = Array.from(ageSet).sort((a, b) => a - b);
@@ -1372,19 +3015,26 @@
       const defaultBucket = normalizedQueueKey || bucket || "";
       let working = baseLeads.slice();
 
-      const stateSel = (stateFilter?.value || '').toUpperCase();
+      const stateSel = normalizeStateOption(stateFilter?.value || '');
       const stageSel = stageFilter?.value || '';
       const callsRaw = (calledFilter?.value || '').trim();
       const callsSel = callsRaw === '' ? null : parseInt(callsRaw, 10);
       const ageRaw = (ageFilter?.value || '').trim();
-      const q = (searchInput?.value || '').toLowerCase().trim();
+      const q = (searchInput?.value || '').trim();
+      const searchActive = !!q;
       const enforceDefaultBucket = false;
       const filtersActive = !!(stateSel || stageSel || callsRaw || ageRaw || q);
 
       const filtered = working.filter(l => {
         const leadTypeValue = leadOriginalLeadType(l);
         if (enforceDefaultBucket && defaultBucket && leadTypeValue !== defaultBucket) return false;
-        if (stateSel && (l.state || '').toUpperCase() !== stateSel) return false;
+
+        // Search intentionally bypasses all other filter dropdowns so callbacks
+        // can always be found by name, phone, or email regardless of UI state.
+        if (searchActive) return leadMatchesBridgeSearch(l, q);
+
+        const leadState = normalizeStateOption(l?.state ?? l?.State ?? l?.crmState ?? l?.sState ?? '');
+        if (stateSel && leadState !== stateSel) return false;
         if (stageSel && !matchesStageSelection(l, stageSel)) return false;
         const calls = Number(l.callCount || 0);
         if (callsSel === null){
@@ -1395,10 +3045,6 @@
           if (calls !== callsSel) return false;
         }
         if (ageRaw && !leadMatchesAgeRange(l, ageRaw)) return false;
-        if (q){
-          const hay = `${l.firstName||''} ${l.lastName||''} ${l.email||''} ${l.phone||''}`.toLowerCase();
-          if (!hay.includes(q)) return false;
-        }
         return true;
       });
 
@@ -1433,12 +3079,20 @@
       const lead = options.lead || resolveCurrentLead();
       const renderState = resolveRenderState(lead);
       renderLead(lead, renderState.index, renderState.total);
+      const leadContext = renderLeadOverlayContext(lead);
+      if (lead && !lead.intakeSnapshot){
+        void hydrateLeadIntakeSnapshot(lead);
+      } else {
+        renderEditIntakeSnapshot(lead);
+        renderEditAppointmentSnapshot(lead);
+      }
       window.__currentLead = lead || null;
       try {
         window.dispatchEvent(new CustomEvent('leadbridge:currentLead', {
           detail: {
             queueKey,
             lead: lead || null,
+            context: leadContext,
             position: renderState.index + 1,
             total: renderState.total
           }
@@ -1452,6 +3106,18 @@
           openCrmLink.href = "/Leads";
         }
         openCrmLink.classList.remove('disabled');
+      }
+      if (editClientBtn){
+        const leadId = (lead?.leadId || '').trim();
+        if (leadId){
+          editClientBtn.disabled = false;
+          editClientBtn.dataset.href = `/Leads?open=${encodeURIComponent(leadId)}`;
+          editClientBtn.title = 'Open this lead in CRM Quick View';
+        } else {
+          editClientBtn.disabled = true;
+          editClientBtn.dataset.href = '';
+          editClientBtn.title = 'No lead selected';
+        }
       }
       if (options.pushSelection){
         pushSelect(lead);
@@ -1497,7 +3163,9 @@
       queueKey: normalizedQueueKey || '',
       rawQueueKey: queueKey || '',
       selectLeadById,
-      getCurrentLead: () => resolveCurrentLead()
+      getCurrentLead: () => resolveCurrentLead(),
+      getCurrentContext: () => currentLeadOverlayContext,
+      sendTextMessage: (message) => sendCustomTextMessage(message)
     });
 
     async function deleteCurrentLead(){
@@ -1525,7 +3193,8 @@
       }
     }
 
-    async function syncNext(){
+    async function syncNext(options = {}){
+      const retrying = !!options.retrying;
       if (nextInFlight) return;
       nextInFlight = true;
       try {
@@ -1555,20 +3224,31 @@
         }
 
         if (!resolveCurrentLead()){
-          setStatusMessage('No active lead available', 'bad');
-          return;
+          const hydrated = await fetchActiveState();
+          if (!hydrated || !resolveCurrentLead()){
+            setStatusMessage('No active lead available', 'bad');
+            return;
+          }
         }
 
         if (!activeStateVersion){
           const hydrated = await fetchActiveState();
           if (!hydrated || !activeStateVersion){
             setStatusMessage('Unable to sync active lead', 'bad');
-          } else {
-            setStatusMessage('Synced to latest lead. Tap Next again.');
+            return;
           }
+
+          nextInFlight = false;
+          return syncNext({ retrying: true });
+        }
+
+        const currentLeadBeforeRequest = resolveCurrentLead();
+        if (!currentLeadBeforeRequest){
+          setStatusMessage('No active lead available', 'bad');
           return;
         }
 
+        const beforeLeadId = currentLeadBeforeRequest.leadId || '';
         const beforeVersion = activeStateVersion;
         const res = await fetch('/LeadBridge/Next', withDialHeaders({
           method: 'POST',
@@ -1580,13 +3260,34 @@
           body: `QueueKey=${encodeURIComponent(queueKey)}&Version=${encodeURIComponent(activeStateVersion||'')}`
         }));
         if (res.ok){
-        const payload = await res.json();
-        await applyRemoteState(payload, false);
-        const afterVersion = payload?.version || payload?.Version || activeStateVersion;
-        if (beforeVersion && afterVersion === beforeVersion){
-            setStatusMessage('Synced to latest lead. Tap Next again.');
+          const payload = await res.json();
+          await applyRemoteState(payload, false);
+
+          const afterLead = resolveCurrentLead();
+          const afterLeadId = afterLead?.leadId || '';
+          const afterVersion = payload?.version || payload?.Version || activeStateVersion;
+
+          const stateReconciledOnly =
+            !!beforeVersion &&
+            !!afterVersion &&
+            beforeVersion !== afterVersion &&
+            beforeLeadId &&
+            afterLeadId === beforeLeadId;
+
+          const leadDidNotAdvance =
+            beforeLeadId &&
+            afterLeadId &&
+            beforeLeadId === afterLeadId;
+
+          if (!retrying && (stateReconciledOnly || leadDidNotAdvance)){
+            nextInFlight = false;
+            return syncNext({ retrying: true });
+          }
+
+          if (beforeLeadId && afterLeadId && beforeLeadId !== afterLeadId){
+            setStatusMessage('Advanced to next lead');
+          }
         }
-      }
         else {
           const text = await res.text();
           console.error('LeadBridge Next failed', res.status, text);
@@ -1608,6 +3309,10 @@
     callBtn?.addEventListener('click', () => {
       const lead = resolveCurrentLead();
       if (!lead) return;
+      if (isDoNotCallLead(lead)){
+        setStatusMessage('Calling and texting are disabled in Workstation for Do Not Call List leads.', 'bad');
+        return;
+      }
       if (isCallBlockedForLead(lead)){
         setStatusMessage('Calls are disabled in Workstation for Booked, Follow Up, and Policy Placed leads.', 'bad');
         return;
@@ -1619,25 +3324,35 @@
       }
       // One-click call: launch dialer immediately; track dials without blocking.
       resetPendingAction({ preserveStatus: true });
+      applyOptimisticCallIncrement(lead);
       setStatusMessage(`Dialing ${fmtPhone(digits) || digits}...`);
-      setTimeout(() => { window.location.href = `tel:${digits}`; }, 0);
-      // fire-and-forget tracking so UI is not blocked
-      incrementCallForLead(lead).catch(() => {});
+      // Keep UI instant via optimistic update, then reconcile with server totals.
+      incrementCallForLead(lead, { skipLocalFallback: true }).catch(() => {});
+      const launchDelayMs = isMobileScreen() ? 0 : 140;
+      setTimeout(() => { window.location.href = `tel:${digits}`; }, launchDelayMs);
     });
 
     textBtn?.addEventListener('click', () => {
       const lead = resolveCurrentLead();
       if (!lead) return;
-      const digits = (lead?.phone || '').replace(/\D/g,'');
+      if (isTextBlockedForLead(lead)){
+        setStatusMessage('Calling and texting are disabled in Workstation for Do Not Call List leads.', 'bad');
+        return;
+      }
+      const digits = String(lead?.phone || lead?.phone2 || '').replace(/\D/g,'');
       if (!digits){
         setStatusMessage('No phone on file', 'bad');
         return;
       }
-      if (pendingAction && pendingAction.action === 'text' && pendingAction.leadId === lead.leadId){
-        authorizePendingAction();
+
+      resetPendingAction({ preserveStatus: true });
+
+      if (isTextMenuOpenForLead(lead.leadId)){
+        closeTextMenu();
         return;
       }
-      armPendingAction('text', lead, digits);
+
+      openTextMenu(textBtn, lead);
     });
 
     deleteBtn?.addEventListener('click', (event) => {
@@ -1728,16 +3443,24 @@
     }));
 
     document.addEventListener('click', (event) => {
-      if (!pendingAction) return;
       const target = event.target;
       if (!(target instanceof Node)) return;
-      if (callBtn?.contains(target) || textBtn?.contains(target) || statusEl?.contains(target)) return;
+      if (textMenuEl && !textMenuEl.contains(target) && !textBtn?.contains(target)){
+        closeTextMenu();
+      }
+      if (!pendingAction) return;
+      if (callBtn?.contains(target) || textBtn?.contains(target) || statusEl?.contains(target) || textMenuEl?.contains(target)) return;
       resetPendingAction();
     }, true);
 
     document.addEventListener('keydown', (event) => {
-      if (!pendingAction) return;
       if (event.key !== 'Escape') return;
+      if (noteOverlay && !noteOverlay.hidden) {
+        closeNoteModal();
+        return;
+      }
+      closeTextMenu();
+      if (!pendingAction) return;
       resetPendingAction();
     });
 
@@ -1776,13 +3499,158 @@
       setStatusMessage('Filters cleared');
     });
 
+    editClientBtn?.addEventListener('click', () => {
+      if (editClientBtn.disabled) return;
+      openEditClientDrawer();
+    });
+
+    editCloseButtons.forEach((btn) => {
+      btn.addEventListener('click', closeEditDrawer);
+    });
+
+    editOverlay?.addEventListener('click', (event) => {
+      if (event.target === editOverlay){
+        closeEditDrawer();
+      }
+    });
+
+    editSaveBtn?.addEventListener('click', () => {
+      saveEditClientDrawer();
+    });
+
+    editSaveAppointmentStatusBtn?.addEventListener('click', () => {
+      saveEditAppointmentStatus();
+    });
+
+    editInputs.pipelineStage?.addEventListener('change', () => {
+      const lead = resolveCurrentLead() || {};
+      applyEditDrawerLeadTypeDisplay({
+        ...lead,
+        bucket: editInputs.pipelineStage?.value || lead.bucket || lead.crmStage || '',
+        crmStage: editInputs.pipelineStage?.value || lead.crmStage || lead.bucket || ''
+      });
+    });
+
+    [editInputs.firstName, editInputs.lastName, editInputs.email, editInputs.phone].forEach((input) => {
+      input?.addEventListener('input', () => {
+        syncEditDrawerHeader({
+          ...resolveCurrentLead(),
+          firstName: editInputs.firstName?.value || '',
+          lastName: editInputs.lastName?.value || '',
+          email: editInputs.email?.value || '',
+          phone: editInputs.phone?.value || '',
+          phone2: editInputs.phone2?.value || ''
+        });
+      });
+    });
+
+    editResetBtn?.addEventListener('click', () => {
+      if (!resolveCurrentLead()) return;
+      openEditClientDrawer();
+    });
+
+    editMarkTodayBtn?.addEventListener('click', () => {
+      fillEditInput('crmLastTouch', todayIsoDate());
+      setEditStatus('Touched today — saving…');
+      saveEditClientDrawer();
+    });
+
+    editNextTodayBtn?.addEventListener('click', () => {
+      fillEditInput('crmNextDate', todayIsoDate());
+      if (!String(editInputs.crmNextText?.value || '').trim()){
+        fillEditInput('crmNextText', 'Follow up today');
+      }
+      setEditStatus('Next action set — saving…');
+      saveEditClientDrawer();
+    });
+
+    editCopyContactBtn?.addEventListener('click', async () => {
+      const lead = resolveCurrentLead();
+      if (!lead) return;
+      const value = `${formatEditDrawerName(lead)}\n${(lead.email || '').trim()}\n${fmtPhone(lead.phone || lead.phone2 || '')}`.trim();
+      try {
+        await navigator.clipboard.writeText(value);
+        setEditStatus('Contact copied', 'good');
+      } catch {
+        setEditStatus('Copy failed', 'bad');
+      }
+    });
+
+    editDeleteBtn?.addEventListener('click', async (event) => {
+      event.preventDefault();
+      const leadId = resolveCurrentLead()?.leadId || '';
+      if (!leadId) return;
+      await deleteCurrentLead();
+      if (!findLeadById(leadId)){
+        closeEditDrawer();
+      }
+    });
+
+    editActionsShortcutBtn?.addEventListener('click', (event) => {
+      event.preventDefault();
+      openEditActionsHub();
+    });
+
+    editCallBtn?.addEventListener('click', (event) => {
+      const lead = resolveCurrentLead();
+      const phone = normalizeSearchDigits(lead?.phone || lead?.phone2 || '');
+      if (!phone){
+        event.preventDefault();
+        setEditStatus('No phone for this lead', 'bad');
+      }
+    });
+
+    editOpenQueueBtn?.addEventListener('click', (event) => {
+      event.preventDefault();
+      setEditStatus('Client queues are disabled in Leads quick view.', 'bad');
+    });
+
+    editAddProductionBtn?.addEventListener('click', (event) => {
+      event.preventDefault();
+      setEditStatus('Use Open in CRM for production history updates.', 'bad');
+    });
+
+    editAddActivityBtn?.addEventListener('click', (event) => {
+      event.preventDefault();
+      setEditStatus('Timeline activity is disabled in Leads-only mode.', 'bad');
+    });
+
+    editClearTimelineBtn?.addEventListener('click', (event) => {
+      event.preventDefault();
+      setEditStatus('Timeline clear is disabled in Leads-only mode.', 'bad');
+    });
+
+    editTimelineFilters?.addEventListener('click', (event) => {
+      const btn = event.target.closest('[data-timelinefilter]');
+      if (!btn) return;
+      editTimelineFilter = btn.getAttribute('data-timelinefilter') || 'all';
+      Array.from(editTimelineFilters.querySelectorAll('[data-timelinefilter]')).forEach(item => {
+        item.classList.toggle('active', item === btn);
+      });
+      renderEditTimeline(Array.isArray(resolveCurrentLead()?.activities) ? resolveCurrentLead().activities : []);
+    });
+
+    document.addEventListener('keydown', (event) => {
+      if (event.key === 'Escape' && editDrawerOpen){
+        closeEditDrawer();
+      }
+    });
+
     noteOpenBtn?.addEventListener('click', async () => {
+      await openNoteModal();
+    });
+    drawerNoteOpenBtn?.addEventListener('click', async () => {
       await openNoteModal();
     });
     noteCloseBtn?.addEventListener('click', () => {
       closeNoteModal();
     });
+    noteOverlay?.addEventListener('click', (event) => {
+      if (event.target !== noteOverlay) return;
+      closeNoteModal();
+    });
     noteDateInput?.addEventListener('change', async () => {
+      syncNotePrefixVisual(noteDateInput.value);
       await loadNoteForDate(noteDateInput.value, currentLeadContext().leadId);
     });
     noteDatesSelect?.addEventListener('change', async () => {
@@ -1799,8 +3667,7 @@
       if (!textarea) return;
 
       textarea.addEventListener('focus', () => {
-        const date = (noteDateInput?.value || todayIsoDate()).trim();
-        if (!textarea.value.trim()) textarea.value = `${notePrefix(date)} `;
+        syncNoteTextareaTone(textarea);
       });
 
       textarea.addEventListener('keydown', (event) => {
@@ -1826,17 +3693,15 @@
 
       textarea.addEventListener('input', () => {
         enforceCaretAfterPrefix(textarea);
+        syncNoteTextareaTone(textarea);
       });
 
       textarea.addEventListener('blur', () => {
-        const date = (noteDateInput?.value || todayIsoDate()).trim();
-        textarea.value = normalizeNoteBodyForDate(textarea.value || '', date);
-        if (!textarea.value.trim()) textarea.value = `${notePrefix(date)} `;
+        syncNoteTextareaTone(textarea);
       });
     });
-    // Intentionally no outside-click/Escape close for Note to Self.
-    // Modal closes only when the explicit close button is clicked.
-
+    syncAllNoteTextareaTones();
+    syncNotePrefixVisual();
     // Initialize SignalR and active state sync
     if (signalRAvailable){
       try {
@@ -1864,8 +3729,10 @@
       populateFilters(baseLeads);
       idx = 0;
       const hydrated = await fetchActiveState();
-      if (!hydrated){
-        restoreFilters(); // cache-only fallback when server state cannot be reached
+      if (!hydrated || !serverFilterState){
+        // Fallback: server unreachable OR server had no saved filter state for this session.
+        // restoreFilters() is a no-op when serverFilterState is already set (set inside applyRemoteState).
+        restoreFilters();
         applyFilters();
       }
 

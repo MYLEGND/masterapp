@@ -1,121 +1,133 @@
 <div class="backdrop" id="drawerBackdrop"></div>
 
-<aside class="drawer qv-theme-shell" id="drawer" aria-hidden="true" aria-label="Client quick view" style="overflow-y:auto;">
+<aside class="drawer crm-qv-shell" id="drawer" aria-hidden="true" aria-label="Client quick view">
     <div class="dhead">
-        <div class="dtitle">
-            <span id="dName">Client</span>
-            <button type="button" class="btn btn-ghost" id="btnCloseDrawer">Close</button>
-        </div>
-        <div class="dsub">
-            <span id="dEmail" class="crm-email-display">—</span> • <span id="dPhone">—</span>
-        </div>
+        <div class="drawer-head-main">
+            <div class="dtitle">
+                <span id="dName">Client</span>
+            </div>
+            <div class="dsub">
+                <span id="dEmail" class="crm-email-display">—</span> • <span id="dPhone">—</span>
+            </div>
 
-        <div class="drawer-statbar">
-            <span class="pill" id="dStageAge">Stage Age: 0d</span>
-            <span class="pill" id="dAttempts">Attempts: 0 today • 0 week • 0 total</span>
-            <span class="pill" id="dWaitingOnPill">Waiting On Agent</span>
+            <div class="drawer-statbar">
+                <span class="pill" id="dStageAge">Stage Age: 0d</span>
+                <span class="pill" id="dAttempts">Attempts: 0 today • 0 week • 0 total</span>
+                <span class="pill" id="dWaitingOnPill">Waiting On Agent</span>
+            </div>
         </div>
-
-        <div class="drawer-top-actions">
-            <button type="button" class="btn btn-gold" id="btnMarkToday">Mark Touched Today</button>
-            <button type="button" class="btn btn-ghost" id="btnSetNextToday">Set Next Action: Today</button>
-            <button type="button" class="btn btn-ghost" id="btnCopyContact">Copy Contact</button>
-            <a class="btn btn-ghost" id="btnOpenEdit" href="#" target="_blank" rel="noopener">Edit Client</a>
-            <a class="btn btn-gold" id="btnOpenProfile" href="#" target="_blank" rel="noopener">Open Client Profile</a>
-            <a class="btn btn-ghost" id="btnMail" href="#" target="_blank" rel="noopener">Email</a>
-            <a class="btn btn-ghost" id="btnCall" href="#" target="_blank" rel="noopener">Call</a>
-            <a class="btn btn-ghost" id="btnOpenQueue" href="/Clients/Queue">Queues</a>
-            <span id="dPortalWrap">—</span>
+        <div class="drawer-head-side">
+            <div class="drawer-top-actions">
+                <button type="button" class="btn btn-gold" id="btnMarkToday">Mark Touched Today</button>
+                <button type="button" class="btn btn-ghost" id="btnSetNextToday">Set Next Action: Today</button>
+                <button type="button" class="btn btn-ghost" id="btnCopyContact">Copy Contact</button>
+                <a class="btn btn-ghost" id="btnOpenEdit" href="#" target="_blank" rel="noopener">Edit Client</a>
+                <a class="btn btn-gold" id="btnOpenProfile" href="#" target="_blank" rel="noopener">Open Client Profile</a>
+                <a class="btn btn-ghost" id="btnMail" href="#" target="_blank" rel="noopener">Email</a>
+                <a class="btn btn-ghost" id="btnCall" href="#" target="_blank" rel="noopener">Call</a>
+                <button type="button" class="btn btn-ghost" data-zoom-popup aria-label="Open Zoom Links">
+                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" width="14" height="14" fill="none" class="lead-zoom-icon" aria-hidden="true"><rect width="20" height="20" rx="4" fill="#2D8CFF"/><path d="M3 7.5A1.5 1.5 0 0 1 4.5 6H12A1.5 1.5 0 0 1 13.5 7.5v5A1.5 1.5 0 0 1 12 14H4.5A1.5 1.5 0 0 1 3 12.5v-5z" fill="white"/><path d="M13.5 9l3.5-2v6l-3.5-2V9z" fill="white"/></svg>Zoom
+                </button>
+                <a class="btn btn-ghost" id="btnOpenQueue" href="/Clients/Queue">Queues</a>
+                <button type="button" class="btn btn-ghost" id="btnCloseDrawer">Close</button>
+            </div>
+            <div id="dPortalWrap">—</div>
         </div>
     </div>
 
-    <div class="dbody" style="overflow:visible;">
-        <div class="section section-teal qv-contact-card">
-            <div style="display:flex; align-items:center; justify-content:space-between; gap:10px;">
-                <h4 style="margin:0;">Contact &amp; Profile</h4>
-                <div style="display:inline-flex; align-items:center; gap:8px; flex-wrap:wrap;">
+    <div class="dbody">
+        <section class="crm-qv-contact-card">
+            <div class="crm-qv-contact-head lead-contact-card-head">
+                <h4>Contact &amp; Profile</h4>
+                <div class="lead-contact-card-actions">
                     <button type="button" class="btn btn-ghost" id="clientQuickActionsShortcut">Actions</button>
-                    <button type="button" class="btn lb-btn note-self-cta" id="noteSelfOpen" data-note-self-open style="display:inline-flex; align-items:center; gap:8px;">
+                    <button type="button" class="btn btn-gold qv-btn-wide" id="btnClientFinPlan">Accumulation + Distribution</button>
+                    <button type="button" class="btn lb-btn note-self-cta" id="noteSelfOpen" data-note-self-open>
                         📝 Note to Self
                     </button>
                 </div>
             </div>
-            <div class="grid2">
-                <div class="f">
-                    <label>Phone</label>
-                    <input type="tel" id="dPhoneInput" placeholder="Primary phone" />
+            <div class="crm-qv-contact-shell">
+                <div class="crm-qv-field-grid crm-qv-field-grid-contact">
+                    <div class="qv-field">
+                        <label>Phone</label>
+                        <input type="tel" id="dPhoneInput" placeholder="Primary phone" />
+                    </div>
+                    <div class="qv-field">
+                        <label>Email</label>
+                        <input type="email" id="dEmailInput" placeholder="Primary email" />
+                    </div>
+                    <div class="qv-field qv-field-action">
+                        <button type="button" class="btn btn-gold qv-btn-nowrap" id="btnResendClientInvite" style="display:none;">Send Access Link</button>
+                    </div>
                 </div>
-                <div class="f">
-                    <label>Email</label>
-                    <input type="email" id="dEmailInput" placeholder="Primary email" />
-                </div>
-            </div>
-            <div class="grid2" style="margin-top:10px;">
-                <div class="f">
-                    <label>Phone #2</label>
-                    <input type="tel" id="dPhone2Input" placeholder="Alternate phone" />
-                </div>
-                <div class="f">
-                    <label>BTC</label>
-                    <input type="text" id="dBtc" placeholder="BTC" />
-                </div>
-            </div>
-            <div class="grid2" style="margin-top:10px;">
-                <div class="f">
-                    <label>DOB</label>
-                    <input type="date" id="dDob" />
-                </div>
-                <div class="f">
-                    <label>M / F</label>
-                    <select id="dGender">
-                        <option value="">—</option>
-                        <option value="M">M</option>
-                        <option value="F">F</option>
-                        <option value="Other">Other</option>
-                    </select>
-                </div>
-            </div>
-            <div class="f" style="margin-top:10px;">
-                <label>Street Address</label>
-                <input type="text" id="dAddress" placeholder="123 Main St" />
-            </div>
-            <div class="grid2" style="margin-top:10px;">
-                <div class="f">
-                    <label>City</label>
-                    <input type="text" id="dCity" placeholder="City" />
-                </div>
-                <div class="f">
-                    <label>State</label>
-                    <input type="text" id="dState" placeholder="State" />
-                </div>
-            </div>
-            <div class="grid2" style="margin-top:10px;">
-                <div class="f">
-                    <label>County</label>
-                    <input type="text" id="dCounty" placeholder="County / Parish" />
-                </div>
-                <div class="f">
-                    <label>Zip Code</label>
-                    <input type="text" id="dZip" placeholder="Zip" />
-                </div>
-                <div class="f">
-                    <label>Age</label>
-                    <input type="text" id="dAge" placeholder="Age" />
-                </div>
-            </div>
-            <div class="grid2" style="margin-top:10px;">
-                <div class="f">
-                    <label>Mortgage Lender</label>
-                    <input type="text" id="dLender" placeholder="Current lender" />
-                </div>
-                <div class="f">
-                    <label>Loan Amount</label>
-                    <input type="text" id="dLoanAmount" placeholder="e.g. 250000" />
-                </div>
-            </div>
-        </div>
+                <div class="qv-inline-status"><span class="tiny" id="dResendInviteStatus"></span></div>
 
-        <details class="section section-gold qv-disclosure">
+                <div class="crm-qv-field-grid crm-qv-field-grid-auto qv-stack-md">
+                    <div class="qv-field">
+                        <label>Phone #2</label>
+                        <input type="tel" id="dPhone2Input" placeholder="Alternate phone" />
+                    </div>
+                    <div class="qv-field">
+                        <label>BTC</label>
+                        <input type="text" id="dBtc" placeholder="BTC" />
+                    </div>
+                    <div class="qv-field">
+                        <label>DOB</label>
+                        <input type="date" id="dDob" />
+                    </div>
+                </div>
+                <div class="crm-qv-field-grid crm-qv-field-grid-auto qv-stack-md">
+                    <div class="qv-field">
+                        <label>M / F</label>
+                        <select id="dGender">
+                            <option value="">—</option>
+                            <option value="M">M</option>
+                            <option value="F">F</option>
+                            <option value="Other">Other</option>
+                        </select>
+                    </div>
+                    <div class="qv-field">
+                        <label>Age</label>
+                        <input type="text" id="dAge" placeholder="Age" />
+                    </div>
+                    <div class="qv-field">
+                        <label>Zip Code</label>
+                        <input type="text" id="dZip" placeholder="Zip" />
+                    </div>
+                </div>
+                <div class="qv-field qv-stack-md">
+                    <label>Street Address</label>
+                    <input type="text" id="dAddress" placeholder="123 Main St" />
+                </div>
+                <div class="crm-qv-field-grid crm-qv-field-grid-auto qv-stack-md">
+                    <div class="qv-field">
+                        <label>City</label>
+                        <input type="text" id="dCity" placeholder="City" />
+                    </div>
+                    <div class="qv-field">
+                        <label>State</label>
+                        <input type="text" id="dState" placeholder="State" />
+                    </div>
+                    <div class="qv-field">
+                        <label>County</label>
+                        <input type="text" id="dCounty" placeholder="County / Parish" />
+                    </div>
+                </div>
+                <div class="qv-grid-two qv-stack-md">
+                    <div class="qv-field">
+                        <label>Mortgage Lender</label>
+                        <input type="text" id="dLender" placeholder="Current lender" />
+                    </div>
+                    <div class="qv-field">
+                        <label>Loan Amount</label>
+                        <input type="text" id="dLoanAmount" placeholder="e.g. 250000" />
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <details class="qv-panel crm-qv-disclosure qv-panel-data qv-disclosure">
             <summary>
                 <div class="qv-section-header">
                     <div class="qv-section-title">Production</div>
@@ -138,7 +150,7 @@
             </div>
         </details>
 
-        <details class="section section-advanced-markets qv-disclosure" id="advancedMarketsActionRow" style="display:none;">
+        <details class="qv-panel crm-qv-disclosure qv-panel-advanced qv-disclosure" id="advancedMarketsActionRow" style="display:none;">
             <summary>
                 <div class="advanced-markets-summary">
                     <span class="btn btn-advanced-markets" id="btnAdvancedMarketsInputs">Advanced Markets</span>
@@ -166,7 +178,7 @@
             </div>
         </details>
 
-        <details class="section section-relationship qv-disclosure">
+        <details class="qv-panel crm-qv-disclosure qv-panel-relationship qv-disclosure">
             <summary>
                 <div class="qv-section-header">
                     <div class="qv-section-title">Relationship / CRM</div>
@@ -174,43 +186,10 @@
                 </div>
             </summary>
             <div class="qv-section-body">
-                <style>
-                    /* Force Relationship/CRM to its own indigo tone (separate from Production gold) */
-                    .section.section-relationship{
-                        background: linear-gradient(180deg,#1a1f33,#0f1430) !important;
-                        border: 1.5px solid rgba(148,129,255,.7) !important;
-                        color:#a5b4fc !important;
-                    }
-                    .section.section-relationship h5{
-                        color:#f1c76a !important;
-                    }
-                </style>
-                <style>
-                    .qv-tabs{display:flex;gap:8px;flex-wrap:wrap;}
-                    .qv-tabpanel{padding:8px 0;}
-                    #clientActionsContainer{
-                        background: rgba(17,24,39,.35);
-                        border: 1px solid rgba(217,179,90,.28);
-                        border-radius: 12px;
-                        padding: 10px;
-                        padding-right: 14px;
-                        min-height: 140px;
-                        overflow: visible;
-                        width: 100%;
-                        box-sizing: border-box;
-                    }
-                    #clientActionsContainer .action-table-wrap,
-                    #clientActionsContainer .action-table,
-                    #clientActionsContainer .action-table th,
-                    #clientActionsContainer .action-table td{
-                        box-sizing: border-box;
-                    }
-                </style>
-
                     <div class="qv-subsection">
                         <h5>Relationship Control</h5>
-                        <div class="grid2">
-                            <div class="f">
+                        <div class="qv-grid-two">
+                            <div class="qv-field">
                                 <label>Status</label>
                                 <select id="dStatus">
                                     <option value="Lead">Lead</option>
@@ -219,7 +198,7 @@
                                     <option value="Dormant">Inactive</option>
                                 </select>
                             </div>
-                            <div class="f">
+                            <div class="qv-field">
                                 <label>Pipeline Stage</label>
                                 <select id="dPipelineStage">
                                     <option value="NewLead">Lead</option>
@@ -236,7 +215,7 @@
                                     <option value="Nurture">Nurture</option>
                                 </select>
                             </div>
-                            <div class="f">
+                            <div class="qv-field">
                                 <label>Waiting On</label>
                                 <select id="dWaitingOn">
                                     <option value="WaitingOnAgent">Waiting On Agent</option>
@@ -246,18 +225,18 @@
                                     <option value="WaitingOnDocs">Waiting On Docs</option>
                                 </select>
                             </div>
-                            <div class="f">
+                            <div class="qv-field">
                                 <label>Last Touch</label>
                                 <input type="date" id="dLastTouch" />
                             </div>
                         </div>
 
-                        <div class="grid2" style="margin-top:10px;">
-                            <div class="f">
+                        <div class="qv-grid-two qv-stack-md">
+                            <div class="qv-field">
                                 <label>Next Action Date</label>
                                 <input type="date" id="dNextDate" />
                             </div>
-                            <div class="f">
+                            <div class="qv-field">
                                 <label>Priority</label>
                                 <select id="dPriority">
                                     <option value="Low">Low</option>
@@ -268,24 +247,24 @@
                             </div>
                         </div>
 
-                        <div class="f" style="margin-top:10px;">
+                        <div class="qv-field qv-stack-md">
                             <label>Next Action (what will you do?)</label>
                             <input type="text" id="dNextText" placeholder="e.g. Send quote, schedule review, follow up on application..." />
                         </div>
 
-                        <div class="f" style="margin-top:10px;">
+                        <div class="qv-field qv-stack-md">
                             <label>Pinned Client Brief</label>
                             <textarea id="dPinnedBrief" placeholder="Current situation, objection, and next move in one fast briefing line."></textarea>
                         </div>
 
-                        <div class="scheduler-row" style="margin-top:10px;">
+                        <div class="scheduler-row qv-stack-md">
                             <button type="button" class="preset-chip" data-schedulepreset="today3">Today 3pm</button>
                             <button type="button" class="preset-chip" data-schedulepreset="tomorrow10">Tomorrow 10am</button>
                             <button type="button" class="preset-chip" data-schedulepreset="nextbiz">Next business day</button>
                             <button type="button" class="preset-chip" data-schedulepreset="week">1 week follow-up</button>
                         </div>
 
-                        <div class="tiny" style="margin-top:10px;">
+                        <div class="tiny qv-stack-md">
                             Reminders stay browser-local, but client CRM, pipeline, and activity data are persisted for the agent account.
                         </div>
                     </div>
@@ -301,12 +280,12 @@
                             <button type="button" class="btn btn-ghost outcome-btn" data-outcome="BusinessClient">Business Client</button>
                             <button type="button" class="btn btn-ghost outcome-btn" data-outcome="ClosedLost">Not Moving Forward</button>
                         </div>
-                        <div class="tiny" id="dOutcomeSuggestion" style="margin-top:10px;">Use one-click outcomes to auto-log activity, move stage, and queue the next move.</div>
+                        <div class="tiny qv-stack-md" id="dOutcomeSuggestion">Use one-click outcomes to auto-log activity, move stage, and queue the next move.</div>
                     </div>
 
                     <div class="qv-subsection">
                         <h5>Tags</h5>
-                        <div class="f">
+                        <div class="qv-field">
                             <label>Tags (comma separated)</label>
                             <input type="text" id="dTags" placeholder="Mortgage, Family, Referral, Gym..." />
                         </div>
@@ -314,7 +293,7 @@
 
                     <div class="qv-subsection">
                         <h5>Notes</h5>
-                        <div class="f">
+                        <div class="qv-field">
                             <label>Relationship Notes</label>
                             <textarea id="dNotes" placeholder="Values, objections, family, context, follow-up intel..."></textarea>
                         </div>
@@ -326,20 +305,63 @@
             <div class="modal-dialog modal-dialog-centered actions-hub-dialog">
                 <div class="modal-content actions-hub-content">
                     <div class="modal-header actions-hub-header">
-                        <h5 class="modal-title">Actions &amp; Commitments</h5>
+                        <h5 class="modal-title">Actions, Activity &amp; Commitments</h5>
                         <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
                     </div>
                     <div class="modal-body actions-hub-body">
                         <div class="qv-subsection">
-                            <h5 style="margin-bottom:8px;">Actions</h5>
-                            <div class="text-muted tiny" style="margin-bottom:6px;">Agent-owned tasks you will execute. Check “Show in Dashboard” on create to surface in Command Center.</div>
+                            <h5 class="qv-subsection-heading">Actions</h5>
+                            <div class="text-muted tiny qv-modal-copy">Agent-owned tasks you will execute. Check “Show in Dashboard” on create to surface in Command Center.</div>
                             <div id="clientActionsContainer">
                                 <div class="text-muted">Actions will load here.</div>
                             </div>
                         </div>
                         <div class="qv-subsection">
-                            <h5 style="margin-bottom:8px;">Commitments</h5>
-                            <div class="text-muted tiny" style="margin-bottom:6px;">Promises you made to this client. They stay in CRM; Actions stay your execution layer.</div>
+                            <h5 class="qv-subsection-heading">Activity / Timeline</h5>
+                            <div class="text-muted tiny qv-modal-copy">Log contact history here, keep the timeline visible, and create follow-up actions from the same hub.</div>
+
+                            <div class="preset-row" id="timelineFilters">
+                                <button type="button" class="preset-chip active" data-timelinefilter="all">All</button>
+                                <button type="button" class="preset-chip" data-timelinefilter="calls">Calls</button>
+                                <button type="button" class="preset-chip" data-timelinefilter="meetings">Meetings</button>
+                                <button type="button" class="preset-chip" data-timelinefilter="notes">Notes</button>
+                                <button type="button" class="preset-chip" data-timelinefilter="system">System</button>
+                            </div>
+
+                            <div class="qv-grid-two">
+                                <div class="qv-field">
+                                    <label>Type</label>
+                                    <select id="dActType">
+                                        <option value="Call">Call</option>
+                                        <option value="Email">Email</option>
+                                        <option value="Meeting">Meeting</option>
+                                        <option value="Text">Text</option>
+                                        <option value="Note">Note</option>
+                                    </select>
+                                </div>
+                                <div class="qv-field">
+                                    <label>Date</label>
+                                    <input type="date" id="dActDate" />
+                                </div>
+                            </div>
+
+                            <div class="qv-field qv-stack-sm">
+                                <label>Outcome / Notes</label>
+                                <textarea id="dActNote" placeholder="What happened? Next step? Any objections?"></textarea>
+                            </div>
+
+                            <div class="qv-action-row">
+                                <button type="button" class="btn btn-gold" id="btnAddActivity">Add Activity</button>
+                                <button type="button" class="btn btn-ghost" id="btnClearTimeline">Clear Timeline</button>
+                            </div>
+
+                            <div class="qv-timeline-wrap">
+                                <div class="timeline" id="timeline"></div>
+                            </div>
+                        </div>
+                        <div class="qv-subsection">
+                            <h5 class="qv-subsection-heading">Commitments</h5>
+                            <div class="text-muted tiny qv-modal-copy">Promises you made to this client. They stay in CRM; Actions stay your execution layer.</div>
                             <div id="clientCommitmentsContainer">
                                 <div class="text-muted">Commitments will load here.</div>
                             </div>
@@ -349,89 +371,7 @@
             </div>
         </div>
 
-        <details class="section section-blue qv-disclosure">
-            <summary>
-                <div class="qv-section-header">
-                    <div class="qv-section-title">Meeting / Calendar</div>
-                    <div class="qv-section-copy">Scheduling details, Zoom helpers, and Outlook availability.</div>
-                </div>
-            </summary>
-            <div class="qv-section-body">
-                <div class="grid2">
-                    <div class="f">
-                        <label>Next Action Date</label>
-                        <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
-                            <input type="date" id="dMeetingNextDate" style="flex:1 1 180px;" />
-                            <button type="button" class="btn btn-ghost" id="btnMeetingNextToday">Today</button>
-                        </div>
-                    </div>
-                    <div class="f">
-                        <label>Meeting Type</label>
-                        <select id="dMeetingType">
-                            <option value="Phone">Phone Call</option>
-                            <option value="Zoom">Zoom Call</option>
-                            <option value="InPerson">In Person</option>
-                        </select>
-                    </div>
-                    <div class="f">
-                        <label>Meeting Time</label>
-                        <input type="time" id="dMeetingTime" />
-                    </div>
-                    <div class="f">
-                        <label>Duration (minutes)</label>
-                        <select id="dMeetingDuration">
-                            <option value="15">15 minutes</option>
-                            <option value="30" selected>30 minutes</option>
-                            <option value="45">45 minutes</option>
-                            <option value="60">1 hour</option>
-                            <option value="90">1 hour 30 minutes</option>
-                            <option value="120">2 hours</option>
-                        </select>
-                    </div>
-                </div>
-
-                <div class="grid2" style="margin-top:10px;">
-                    <div class="f">
-                        <label>Location</label>
-                        <input type="text" id="dMeetingLocation" placeholder="Office, Phone, Zoom, Client Home..." />
-                        <div class="meeting-address-suggest" id="dMeetingLocationSuggest"></div>
-                    </div>
-                    <div class="f zoom-panel" id="dZoomWrap">
-                        <label>Zoom</label>
-                        <div class="tiny zoom-status" id="dZoomStatus">No saved personal Zoom room link yet.</div>
-                        <div class="zoom-actions">
-                            <button type="button" class="btn btn-ghost" id="btnZoomSavePersonal">Save My Zoom Link</button>
-                            <button type="button" class="btn btn-ghost" id="btnZoomClearPersonal">Clear Saved Zoom Link</button>
-                        </div>
-                        <label class="zoom-toggle">
-                            <input type="checkbox" id="dUsePersonalZoomLink" />
-                            <span>Use my saved personal Zoom link automatically</span>
-                        </label>
-                        <label class="zoom-link-label">Manual Zoom Link Override (optional)</label>
-                        <input type="url" id="dZoomJoinUrl" placeholder="Leave blank to use your saved personal Zoom link" />
-                    </div>
-                </div>
-
-                <div class="tiny" style="margin-top:10px;">Create Outlook calendar events directly from this client without leaving the workspace. If you save a personal Zoom room link, you can reuse it here instead of pasting it every time.</div>
-                <div class="calendar-busy-panel" id="dCalendarBusyPanel">
-                    <div class="calendar-busy-head">
-                        <span class="calendar-busy-title">My Day Availability</span>
-                        <span class="pill" id="dCalendarBusyDate">Select a date</span>
-                    </div>
-                    <div class="tiny calendar-busy-note" id="dCalendarBusyNote">Choose a Next Action Date to see your Outlook busy blocks for that day.</div>
-                    <div class="calendar-free-wrap">
-                        <div class="calendar-free-head">
-                            <span class="calendar-free-title">Available To Book</span>
-                            <span class="tiny" id="dCalendarWorkHours">Uses your Outlook work hours</span>
-                        </div>
-                        <div class="calendar-free-list" id="dCalendarFreeList"></div>
-                    </div>
-                    <div class="calendar-busy-list" id="dCalendarBusyList"></div>
-                </div>
-            </div>
-        </details>
-
-        <details class="section section-green qv-disclosure">
+        <details class="qv-panel qv-panel-support qv-disclosure">
             <summary>
                 <div class="qv-section-header">
                     <div class="qv-section-title">Planning &amp; Docs</div>
@@ -481,7 +421,7 @@
             </div>
         </details>
 
-        <details class="section section-teal qv-disclosure" id="protectionSnapshotSection">
+        <details class="qv-panel qv-panel-protection qv-disclosure" id="protectionSnapshotSection">
             <summary>
                 <div class="qv-section-header">
                     <div class="qv-section-title">Protection Snapshot</div>
@@ -489,8 +429,8 @@
                 </div>
             </summary>
             <div class="qv-section-body">
-                <div style="display:flex; justify-content:space-between; gap:10px; align-items:center; flex-wrap:wrap; margin-bottom:10px;">
-                    <div style="display:flex; gap:8px; flex-wrap:wrap; align-items:center;">
+                <div class="qv-section-head-row">
+                    <div class="qv-section-chip-row">
                         <span class="pill" id="qvProtectionScorePill">Readiness —</span>
                         <span class="pill" id="qvProtectionStagePill">Stage —</span>
                         <span class="pill" id="qvProtectionReviewPill">Review —</span>
@@ -498,18 +438,18 @@
                     <a class="btn btn-gold" id="btnOpenProtectionSnapshot" href="#" target="_blank" rel="noopener" style="display:none;">Open Protection Snapshot</a>
                 </div>
 
-                <div class="grid2">
-                    <div class="f">
+                <div class="qv-grid-two">
+                    <div class="qv-field">
                         <label>Priority Focus</label>
                         <div class="tiny" id="qvProtectionPriorities">Loading shared snapshot…</div>
                     </div>
-                    <div class="f">
+                    <div class="qv-field">
                         <label>Life Events</label>
                         <div class="tiny" id="qvProtectionLifeEvents">—</div>
                     </div>
                 </div>
 
-                <div class="qv-subsection" style="margin-top:12px;">
+                <div class="qv-subsection qv-stack-md">
                     <h5>Coverage Foundation</h5>
                     <div class="doc-grid" id="qvProtectionCoverageGrid">
                         <span class="pill">Life Insurance —</span>
@@ -521,122 +461,280 @@
                     </div>
                 </div>
 
-                <div class="qv-subsection" style="margin-top:12px;">
+                <div class="qv-subsection qv-stack-md">
                     <h5>Next Best Steps</h5>
                     <div class="timeline" id="qvProtectionNextSteps">
                         <div class="tiny">No shared snapshot yet.</div>
                     </div>
                 </div>
 
-                <div class="qv-subsection" style="margin-top:12px;">
+                <div class="qv-subsection qv-stack-md">
                     <h5>Agent Follow-Up Focus</h5>
                     <div class="tiny" id="qvProtectionAgentFocus">—</div>
                 </div>
 
-                <div class="qv-subsection" style="margin-top:12px;">
+                <div class="qv-subsection qv-stack-md">
                     <h5>Client Notes</h5>
                     <div class="tiny" id="qvProtectionClientNotes">—</div>
                 </div>
             </div>
         </details>
 
-        <details class="section section-violet qv-disclosure">
+        <details class="qv-panel qv-panel-collab qv-disclosure">
             <summary>
                 <div class="qv-section-header">
                     <div class="qv-section-title">Team / Collaboration</div>
-                    <div class="qv-section-copy">Owner, watchers, and mention notes for internal coordination.</div>
+                    <div class="qv-section-copy">Owner, watchers, mention notes, and explicit client-sharing permissions.</div>
                 </div>
             </summary>
             <div class="qv-section-body">
-                <div class="grid2">
-                    <div class="f">
+                <div class="qv-grid-two">
+                    <div class="qv-field">
                         <label>Assigned Owner</label>
                         <input type="text" id="dAssignedOwner" readonly disabled />
                     </div>
-                    <div class="f">
+                    <div class="qv-field">
                         <label>Watchers</label>
                         <input type="text" id="dWatchers" placeholder="comma-separated emails or names" />
                     </div>
                 </div>
-                <div class="f" style="margin-top:10px;">
+                <div class="qv-field qv-stack-sm">
                     <label>Mention Note</label>
                     <textarea id="dMentionNote" placeholder="Add a handoff or mention note with context for the team."></textarea>
                 </div>
-                <div class="timeline mention-list" id="mentionList" style="margin-top:10px;"></div>
-            </div>
-        </details>
+                <div class="timeline mention-list qv-stack-sm" id="mentionList"></div>
 
-        <details class="section section-blue qv-disclosure">
-            <summary>
-                <div class="qv-section-header">
-                    <div class="qv-section-title">Activity / Timeline</div>
-                    <div class="qv-section-copy">Log contact activity, filter history, and create calendar events.</div>
-                </div>
-            </summary>
-            <div class="qv-section-body">
-                <div class="preset-row" id="timelineFilters">
-                    <button type="button" class="preset-chip active" data-timelinefilter="all">All</button>
-                    <button type="button" class="preset-chip" data-timelinefilter="calls">Calls</button>
-                    <button type="button" class="preset-chip" data-timelinefilter="meetings">Meetings</button>
-                    <button type="button" class="preset-chip" data-timelinefilter="notes">Notes</button>
-                    <button type="button" class="preset-chip" data-timelinefilter="system">System</button>
-                </div>
-                <div class="grid2">
-                    <div class="f">
-                        <label>Type</label>
-                        <select id="dActType">
-                            <option value="Call">Call</option>
-                            <option value="Email">Email</option>
-                            <option value="Meeting">Meeting</option>
-                            <option value="Text">Text</option>
-                            <option value="Note">Note</option>
-                        </select>
+                <div class="qv-subsection qv-stack-md">
+                    <h5>Client Access Sharing</h5>
+                    <div class="tiny qv-modal-copy">Search tenant agents (@@mylegnd.com) by name, email, or phone and grant access to this client only.</div>
+
+                    <div class="qv-grid-two">
+                        <div class="qv-field">
+                            <label for="dShareAgentSearch">Find Agent</label>
+                            <input type="search" id="dShareAgentSearch" placeholder="Type agent name, email, or phone..." autocomplete="off" />
+                        </div>
+                        <div class="qv-field">
+                            <label>Selected Agent</label>
+                            <div id="dShareSelectedAgent" class="tiny qv-share-selected">No agent selected.</div>
+                        </div>
                     </div>
-                    <div class="f">
-                        <label>Date</label>
-                        <input type="date" id="dActDate" />
+
+                    <div id="dShareAgentResults" class="timeline mention-list qv-stack-sm"></div>
+
+                    <div class="qv-action-row">
+                        <button type="button" class="btn btn-gold" id="btnShareAgentAccess" disabled>Grant Access</button>
+                        <span class="tiny" id="dShareAgentStatus">Client access remains blocked for non-permitted agents.</span>
                     </div>
-                </div>
 
-                <div class="f" style="margin-top:10px;">
-                    <label>Outcome / Notes</label>
-                    <textarea id="dActNote" placeholder="What happened? Next step? Any objections?"></textarea>
-                </div>
-
-                <div style="margin-top:10px; display:flex; gap:10px; flex-wrap:wrap;">
-                    <button type="button" class="btn btn-gold" id="btnAddActivity">Add Activity</button>
-                    <button type="button" class="btn btn-ghost" id="btnClearTimeline">Clear Timeline</button>
-                    <button type="button" class="btn btn-ghost" id="btnCreateCalendarEvent" title="Create a calendar event from Next Action (requires Connect Calendar)">
-                        Create Calendar Event
-                    </button>
-                </div>
-
-                <div style="margin-top:12px;">
-                    <div class="timeline" id="timeline"></div>
+                    <div class="timeline mention-list qv-stack-md" id="dSharedAgentList"></div>
                 </div>
             </div>
         </details>
 
-        <details class="section section-red qv-disclosure" style="border-color:#dc2626;">
+        <details class="qv-panel qv-panel-danger qv-disclosure">
             <summary>
                 <div>
                     <span class="qv-section-title">Secondary Controls</span>
                     <span class="qv-section-copy">Save, reset local state, or delete the client record.</span>
                 </div>
             </summary>
-            <div class="qv-section-body" style="text-align:right;">
-                <div style="display:flex; justify-content:flex-end; gap:10px; flex-wrap:wrap;">
+            <div class="qv-section-body qv-section-body-actions">
+                <div class="qv-right-actions">
                     <button type="button" class="btn btn-ghost" id="btnResetLocal">Reset Local CRM</button>
                     <button type="button" class="btn btn-gold" id="btnSaveLocal">Save</button>
-                    <button type="button" class="btn btn-ghost" id="btnDeleteClient" style="background:#dc2626; color:#fff; border-color:#b91c1c;">
+                    <button type="button" class="btn btn-ghost" id="btnDeleteClient">
                         Delete Client
                     </button>
                 </div>
-                <div class="tiny" id="dSaved" style="margin-top:6px; text-align:right;">Loaded</div>
+                <div class="tiny qv-save-state" id="dSaved">Loaded</div>
             </div>
         </details>
     </div>
 </aside>
+
+<!-- Accumulation + Distribution Modal (uses existing Legend modal system/backdrop) -->
+<div class="modal fade finplan-modal" id="clientFinPlanModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-xl modal-dialog-centered">
+        <div class="modal-content" style="background:#0f172a; color:#e2e8f0; border:1.5px solid rgba(166,128,35,.5); border-radius:16px;">
+            <div class="modal-header" style="border:0; align-items:flex-start;">
+                <div>
+                    <h5 class="modal-title fw-bold" style="color:#d9b35a;">Accumulation + Distribution</h5>
+                    <div class="text-muted small" id="finPlanClientLabel">Client</div>
+                    <div class="text-muted small" id="finPlanStatusLabel">Loading…</div>
+                </div>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body" style="max-height:70vh; overflow:auto;">
+                <form id="finPlanForm">
+                    <input type="hidden" id="finPlanVersion" value="0" />
+                    <input type="hidden" id="finPlanClientProfileId" value="" />
+                    <input type="hidden" id="finPlanClientUserId" value="" />
+                    <input type="hidden" id="wfd_base" value="" />
+                    <div class="finplan-section">
+                        <div class="fw-bold text-uppercase small" style="color:#94a3b8;">Wealth Forecast Inputs</div>
+                        <div class="row g-2 mt-1">
+                            <div class="col-md-6"><label class="form-label">Starting Balance</label><input class="form-control" id="wbStartingBalance" /></div>
+                            <div class="col-md-6"><label class="form-label">Annual Income</label><input class="form-control" id="wbIncome" /></div>
+                            <div class="col-md-6"><label class="form-label">Working Period (Years)</label><input class="form-control" id="wbYears" /></div>
+                            <div class="col-md-6"><label class="form-label">Inflation %</label><input class="form-control" id="wbInflation" /></div>
+                            <div class="col-md-6"><label class="form-label">After-Tax Return %</label><input class="form-control" id="wbReturn" /></div>
+                            <div class="col-md-6"><label class="form-label">Tax Bracket %</label><input class="form-control" id="wbTax" /></div>
+                            <div class="col-md-6"><label class="form-label">Fixed Liabilities %</label><input class="form-control" id="wbLiabilities" /></div>
+                            <div class="col-md-6"><label class="form-label">Lifestyle Spending %</label><input class="form-control" id="wbLifestyle" /></div>
+                        </div>
+                    </div>
+
+                    <div class="finplan-section">
+                        <div class="fw-bold text-uppercase small" style="color:#94a3b8;">Distribution Planner — Foundation</div>
+                        <div class="row g-2 mt-1">
+                            <div class="col-md-4"><label class="form-label">Retire Age</label><input class="form-control" id="wfd_retAge" /></div>
+                            <div class="col-md-4"><label class="form-label">End Age</label><input class="form-control" id="wfd_endAge" /></div>
+                            <div class="col-md-4"><label class="form-label">Emergency Reserve</label><input class="form-control" id="wfd_emergency" /></div>
+                            <div class="col-md-4"><label class="form-label">Desired Income</label><input class="form-control" id="wfd_desiredIncome" /></div>
+                            <div class="col-md-4"><label class="form-label">Guaranteed Income</label><input class="form-control" id="wfd_guaranteedIncome" /></div>
+                            <div class="col-md-4 form-check mt-2">
+                                <input class="form-check-input" type="checkbox" id="wfd_manualOverride">
+                                <label class="form-check-label" for="wfd_manualOverride">Manual Base Override</label>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="finplan-section wfd-sec">
+                        <p class="wfd-sec-title" style="margin:0;">2 — Three Bucket Allocation</p>
+                        <p style="font-size:.8rem;color:#64748b;margin:0 0 10px;">Allocations must total exactly 100%. Dollar amounts are auto-calculated from the Retirement Base.</p>
+
+                        <div class="wfd-alloc-row">
+                            <span style="font-size:.85rem;font-weight:600;color:#475569;">Total Allocated:</span>
+                            <span id="wfd_allocTotal" class="wfd-alloc-bad">0%</span>
+                            <span id="wfd_allocStatus" style="font-size:.78rem;font-weight:600;color:#dc2626;">— must equal 100%</span>
+                        </div>
+
+                        <div class="wfd-bkt-vis" id="wfd_allocVis">
+                            <div class="wfd-bkt-bar-wrap">
+                                <div id="wfd_invBar" class="wfd-bkt-bar" style="height:3px;background:#3b82f6;"></div>
+                                <div class="wfd-bkt-bar-lbl">Investments</div>
+                            </div>
+                            <div class="wfd-bkt-bar-wrap">
+                                <div id="wfd_liBar" class="wfd-bkt-bar" style="height:3px;background:#a68023;"></div>
+                                <div class="wfd-bkt-bar-lbl">Life Ins</div>
+                            </div>
+                            <div class="wfd-bkt-bar-wrap">
+                                <div id="wfd_annBar" class="wfd-bkt-bar" style="height:3px;background:#16a34a;"></div>
+                                <div class="wfd-bkt-bar-lbl">Annuities</div>
+                            </div>
+                        </div>
+
+                        <div class="wfd-bkt-grid">
+                            <div id="wfd_invCard" class="wfd-bkt" style="border-color:rgba(59,130,246,.4);">
+                                <p class="wfd-bkt-title" style="color:#1d4ed8;">A — Investments</p>
+                                <p class="wfd-bkt-sub">Growth Engine — Stocks, bonds, ETFs, mutual funds, brokerage, retirement accounts</p>
+                                <div class="wfd-tog-wrap" style="margin-top:4px;margin-bottom:6px;">
+                                    <span id="wfd_invDmBadge" class="wfd-dm-badge">Down-Market: Off</span>
+                                </div>
+                                <label class="wfd-lbl" for="wfd_invAlloc">Allocation %</label>
+                                <input id="wfd_invAlloc" class="wfd-inp" type="number" min="0" max="100" step="1" placeholder="60" />
+                                <label class="wfd-lbl" for="wfd_invAmt">Starting Dollar Amount</label>
+                                <input id="wfd_invAmt" class="wfd-inp" type="text" readonly placeholder="auto-calc" />
+                                <label class="wfd-lbl" for="wfd_invReturn">Expected Annual Return %</label>
+                                <input id="wfd_invReturn" class="wfd-inp" type="number" step="0.1" placeholder="7.0" />
+                                <label class="wfd-lbl" for="wfd_invTax">Tax Rate %</label>
+                                <input id="wfd_invTax" class="wfd-inp" type="number" step="0.1" placeholder="22" />
+                                <div class="wfd-tog-wrap">
+                                    <label class="wfd-tog"><input type="checkbox" id="wfd_invDownMkt" /><span class="wfd-tog-sl"></span></label>
+                                    <span class="wfd-tog-lbl">Use in Down Market?</span>
+                                </div>
+                            </div>
+
+                            <div id="wfd_liCard" class="wfd-bkt" style="border-color:rgba(166,128,35,.45);">
+                                <p class="wfd-bkt-title" style="color:#a68023;">B — Life Insurance / Equivalent</p>
+                                <p class="wfd-bkt-sub">Stability Buffer — Cash value life insurance, overfunded permanent insurance, protected strategies</p>
+                                <div class="wfd-tog-wrap" style="margin-top:4px;margin-bottom:6px;">
+                                    <span id="wfd_liDmBadge" class="wfd-dm-badge">Down-Market: On</span>
+                                </div>
+                                <label class="wfd-lbl" for="wfd_liType">Policy Type</label>
+                                <select id="wfd_liType" class="wfd-inp" style="cursor:pointer;">
+                                    <option value="whole">Whole Life</option>
+                                    <option value="iul">Indexed UL</option>
+                                    <option value="vul">Variable UL</option>
+                                    <option value="legacy_rpu">Legacy / Reduced Paid-Up</option>
+                                </select>
+                                <label class="wfd-lbl" for="wfd_liAccess">Access Method</label>
+                                <select id="wfd_liAccess" class="wfd-inp" style="cursor:pointer;">
+                                    <option value="withdrawal">Withdrawals</option>
+                                    <option value="loan">Policy Loans</option>
+                                    <option value="none">No Distributions</option>
+                                </select>
+                                <label class="wfd-lbl" for="wfd_liAlloc">Allocation %</label>
+                                <input id="wfd_liAlloc" class="wfd-inp" type="number" min="0" max="100" step="1" placeholder="20" />
+                                <label class="wfd-lbl" for="wfd_liDeath">Death Benefit</label>
+                                <input id="wfd_liDeath" class="wfd-inp" type="text" placeholder="e.g., 500,000" />
+                                <label class="wfd-lbl" for="wfd_liAmt">Whole Life Cash Value</label>
+                                <input id="wfd_liAmt" class="wfd-inp" type="text" readonly placeholder="auto-calc from allocation" />
+                                <label class="wfd-lbl" for="wfd_liGrowth">Growth / Credited Rate %</label>
+                                <input id="wfd_liGrowth" class="wfd-inp" type="number" step="0.1" placeholder="5.0" />
+                                <label class="wfd-lbl" for="wfd_liTax">Tax Rate %</label>
+                                <input id="wfd_liTax" class="wfd-inp" type="number" step="0.1" placeholder="0" />
+                                <label class="wfd-lbl" for="wfd_liEfficiency">Access / Efficiency Factor % <span style="color:#94a3b8;font-weight:400;font-size:.72rem;">optional, default 100</span></label>
+                                <input id="wfd_liEfficiency" class="wfd-inp" type="number" step="0.1" placeholder="100" />
+                                <div class="wfd-tog-wrap">
+                                    <label class="wfd-tog"><input type="checkbox" id="wfd_liDownMkt" checked /><span class="wfd-tog-sl"></span></label>
+                                    <span class="wfd-tog-lbl">Use in Down Market?</span>
+                                </div>
+                            </div>
+
+                            <div id="wfd_annCard" class="wfd-bkt" style="border-color:rgba(22,163,74,.4);">
+                                <p class="wfd-bkt-title" style="color:#15803d;">C — Annuities</p>
+                                <p class="wfd-bkt-sub">Income Floor — Protected income / accumulation hybrid</p>
+                                <div class="wfd-tog-wrap" style="margin-top:4px;margin-bottom:6px;">
+                                    <span id="wfd_annDmBadge" class="wfd-dm-badge">Down-Market: On</span>
+                                </div>
+                                <label class="wfd-lbl" for="wfd_annDesign">Annuity Design</label>
+                                <select id="wfd_annDesign" class="wfd-inp" style="cursor:pointer;">
+                                    <option value="fixed">Fixed Annuity</option>
+                                    <option value="fixedIndexed">Fixed Indexed Annuity</option>
+                                    <option value="variable">Variable Annuity</option>
+                                </select>
+                                <label class="wfd-lbl" for="wfd_annAlloc">Allocation %</label>
+                                <input id="wfd_annAlloc" class="wfd-inp" type="number" min="0" max="100" step="1" placeholder="20" />
+                                <label class="wfd-lbl" for="wfd_annDeath">Annuity Death Benefit (optional)</label>
+                                <input id="wfd_annDeath" class="wfd-inp" type="text" placeholder="e.g., 250,000" />
+                                <label class="wfd-lbl" for="wfd_annAmt">Starting Annuity Value</label>
+                                <input id="wfd_annAmt" class="wfd-inp" type="text" readonly placeholder="auto-calc from allocation" />
+                                <div class="wfd-tog-wrap" style="margin-top:4px;">
+                                    <label class="wfd-tog"><input type="checkbox" id="wfd_annIncomeRider" /><span class="wfd-tog-sl"></span></label>
+                                    <span class="wfd-tog-lbl">Income Rider</span>
+                                </div>
+                                <div id="wfd_annRollupWrap" style="display:none;">
+                                    <label class="wfd-lbl" for="wfd_annRollup">Income Rider Rollup Rate (%)</label>
+                                    <input id="wfd_annRollup" class="wfd-inp" type="number" step="0.1" placeholder="5.0" value="5.0" />
+                                </div>
+                                <div class="wfd-tog-wrap" style="margin-top:4px;">
+                                    <label class="wfd-tog"><input type="checkbox" id="wfd_annDbRider" /><span class="wfd-tog-sl"></span></label>
+                                    <span class="wfd-tog-lbl">Death Benefit Rider</span>
+                                </div>
+                                <label class="wfd-lbl" for="wfd_annReturn">Credited / Expected Return %</label>
+                                <input id="wfd_annReturn" class="wfd-inp" type="number" step="0.1" placeholder="4.0" />
+                                <label class="wfd-lbl" for="wfd_annTax">Tax Rate %</label>
+                                <input id="wfd_annTax" class="wfd-inp" type="number" step="0.1" placeholder="22" />
+                                <div class="wfd-tog-wrap">
+                                    <label class="wfd-tog"><input type="checkbox" id="wfd_annDownMkt" checked /><span class="wfd-tog-sl"></span></label>
+                                    <span class="wfd-tog-lbl">Use in Down Market?</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Strategy & scenarios are managed on the Finance page planner only (source of truth). -->
+                </form>
+            </div>
+            <div class="modal-footer" style="border:0;">
+                <div class="text-danger small me-auto" id="finPlanError" style="display:none;"></div>
+                <button type="button" class="btn btn-ghost" data-bs-dismiss="modal">Close</button>
+                <button type="button" class="btn btn-gold" id="finPlanSaveBtn">Save Plan</button>
+            </div>
+        </div>
+    </div>
+</div>
 
 <div class="note-self-overlay" id="noteSelfOverlay" data-note-self-overlay hidden>
     <div class="note-self-modal" role="dialog" aria-modal="true" aria-label="Note to Self">
@@ -682,17 +780,66 @@
 </div>
 
 <style>
-    .production-history{margin-bottom:14px;border:1px solid rgba(255,255,255,.08);border-radius:12px;padding:12px;background:#0f1629;}
-    .ph-head{display:flex;justify-content:space-between;align-items:center;gap:10px;margin-bottom:10px;}
-    .ph-title{font-weight:900;letter-spacing:.04em;}
-    .ph-sub{color:#94a3b8;font-weight:700;font-size:0.9rem;}
-    .ph-list{display:flex;flex-direction:column;gap:8px;}
-    .ph-item{display:flex;justify-content:space-between;align-items:center;padding:10px;border-radius:10px;border:1px solid rgba(255,255,255,.08);background:#0c1222;}
-    .ph-left{display:flex;flex-direction:column;gap:2px;}
-    .ph-status.submitted{color:#fbbf24;}
-    .ph-status.issued{color:#60a5fa;}
-    .ph-status.paid{color:#34d399;}
-    .ph-amt{font-weight:900;}
-    .ph-note{color:#cbd5e1;font-size:0.9rem;}
-    .ph-empty{color:#94a3b8;font-weight:700;}
+    /* Mini distribution planner styling (matched to Finance DP) */
+    .finplan-modal .modal-dialog{max-width:1140px;width:calc(100% - 32px);}
+    .finplan-section{
+        margin-bottom:16px;
+        padding:14px 14px 12px;
+        border:1.5px solid rgba(166,128,35,.35);
+        border-radius:16px;
+        background:#0b1529;
+        box-shadow:0 12px 32px rgba(0,0,0,.32);
+    }
+    .finplan-section .form-label{font-weight:800;color:#cbd5e1;}
+    .finplan-section input.form-control,
+    .finplan-section select.form-select{
+        background:#0f1d38;
+        border:1.5px solid rgba(166,128,35,.45);
+        color:#e2e8f0;
+        border-radius:12px;
+        padding:10px 12px;
+        font-weight:800;
+    }
+    .finplan-section input.form-control:focus,
+    .finplan-section select.form-select:focus{
+        border-color:rgba(221,180,87,.9);
+        box-shadow:0 0 0 3px rgba(221,180,87,.15);
+    }
+
+    /* Buckets (exact Finance DP classes) */
+    #clientFinPlanModal .wfd-sec{background:rgba(255,255,255,.02);border-radius:12px;padding:20px;}
+    #clientFinPlanModal .wfd-sec-title{color:#d9b35a;font-weight:900;font-size:1.1rem;letter-spacing:.4px;}
+    #clientFinPlanModal .wfd-lbl{display:block;font-weight:650;font-size:.82rem;color:#e2e8f0;margin:12px 0 3px;}
+    #clientFinPlanModal .wfd-inp{
+        width:100%;padding:8px 11px;
+        border:1.5px solid rgba(217,179,90,.7);border-radius:8px;
+        font-size:.92rem;font-weight:700;color:#d9b35a;
+        background:#0f172a;box-sizing:border-box;
+        transition:border-color .15s, box-shadow .15s;
+    }
+    #clientFinPlanModal .wfd-inp::placeholder{color:#94a3b8;}
+    #clientFinPlanModal .wfd-inp[readonly]{background:#0d1a30;color:#94a3b8;cursor:default;}
+    #clientFinPlanModal .wfd-inp:focus{outline:none;border-color:#d9b35a;background:#111e3a;box-shadow:0 0 0 2px rgba(217,179,90,.22);}
+    #clientFinPlanModal .wfd-alloc-row{display:flex;align-items:center;gap:10px;margin-top:10px;flex-wrap:wrap;}
+    #clientFinPlanModal .wfd-alloc-good{color:#16a34a;font-weight:800;}
+    #clientFinPlanModal .wfd-alloc-bad{color:#dc2626;font-weight:800;}
+    #clientFinPlanModal .wfd-bkt-vis{display:flex;gap:10px;align-items:flex-end;height:110px;margin:12px 0 0;justify-content:center;color:#e5e7eb;}
+    #clientFinPlanModal .wfd-bkt-bar-wrap{flex:1;display:flex;flex-direction:column;align-items:center;gap:4px;height:100%;justify-content:flex-end;}
+    #clientFinPlanModal .wfd-bkt-bar{width:100%;border-radius:6px 6px 0 0;min-height:3px;transition:height .3s ease;}
+    #clientFinPlanModal .wfd-bkt-bar-lbl{font-size:.7rem;font-weight:700;text-align:center;color:#e5e7eb;line-height:1.3;}
+    #clientFinPlanModal .wfd-bkt-grid{display:flex;gap:14px;flex-wrap:wrap;margin-top:8px;}
+    #clientFinPlanModal .wfd-bkt{flex:1;min-width:230px;background:#0f172a;border:1.5px solid rgba(166,128,35,.45);border-radius:14px;padding:16px 14px;box-shadow:0 8px 24px rgba(0,0,0,.22);}
+    #clientFinPlanModal .wfd-bkt-title{font-weight:800;font-size:.97rem;color:#e2e8f0;margin:0 0 2px;}
+    #clientFinPlanModal .wfd-bkt-sub{font-size:.73rem;color:#cbd5e1;margin:0 0 8px;line-height:1.4;}
+    #clientFinPlanModal .wfd-tog-wrap{display:flex;align-items:center;gap:10px;margin-top:12px;}
+    #clientFinPlanModal .wfd-tog{position:relative;width:38px;height:20px;display:inline-block;flex-shrink:0;}
+    #clientFinPlanModal .wfd-tog input{opacity:0;width:0;height:0;}
+    #clientFinPlanModal .wfd-tog-sl{position:absolute;inset:0;background:#1f2937;border-radius:99px;cursor:pointer;transition:background .2s;border:1px solid rgba(217,179,90,.5);}
+    #clientFinPlanModal .wfd-tog input:checked + .wfd-tog-sl{background:#d9b35a;}
+    #clientFinPlanModal .wfd-tog-sl:before{content:'';position:absolute;width:14px;height:14px;background:#fff;border-radius:50%;left:3px;top:3px;transition:transform .2s;box-shadow:0 1px 4px rgba(0,0,0,.2);}
+    #clientFinPlanModal .wfd-tog input:checked + .wfd-tog-sl:before{transform:translateX(18px);}
+    #clientFinPlanModal .wfd-tog-lbl{font-size:.8rem;font-weight:600;color:#475569;}
+    #clientFinPlanModal .wfd-dm-badge{padding:5px 10px;border-radius:999px;font-size:.72rem;font-weight:800;border:1px solid rgba(217,179,90,.35);background:#ecfdf3;color:#166534;}
+    #clientFinPlanModal .wfd-dm-badge.off{background:#fef2f2;color:#b91c1c;border-color:#fecaca;}
+    #clientFinPlanModal .wfd-bkt.wfd-dm-off{opacity:.8;border-style:dashed;}
 </style>

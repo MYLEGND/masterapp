@@ -17,10 +17,39 @@ public sealed class TimeRangeRequest
     public TimeGrouping Grouping { get; init; }
     public string Label { get; init; } = "Last 30 Days";
     public string Preset { get; init; } = "30d";
+    public TimeZoneInfo ViewerTimeZone { get; init; } = TimeZoneInfo.Utc;
+    public TrafficQualityMode QualityMode { get; init; } = TrafficQualityMode.RealHuman;
 
-    public static TimeRangeRequest FromPreset(string? preset, DateTime? fromUtc = null, DateTime? toUtc = null)
+    public static TimeRangeRequest FromPreset(string? preset, DateTime? fromUtc = null, DateTime? toUtc = null, TimeZoneInfo? viewerTz = null, TrafficQualityMode qualityMode = TrafficQualityMode.RealHuman)
     {
+        var tz = viewerTz ?? TimeZoneInfo.Utc;
         var now = DateTime.UtcNow;
+
+        // Convert UTC now to viewer-local time (DST-aware via TimeZoneInfo).
+        var localNow = TimeZoneInfo.ConvertTimeFromUtc(now, tz);
+
+        // Helper: convert a viewer-local midnight DateTime to UTC safely.
+        // Wraps ConvertTimeToUtc which can throw for times in a DST gap (extremely
+        // unlikely at midnight, but we guard anyway).
+        static DateTime LocalMidnightToUtc(DateTime localMidnight, TimeZoneInfo tzInfo)
+        {
+            try
+            {
+                return TimeZoneInfo.ConvertTimeToUtc(
+                    DateTime.SpecifyKind(localMidnight, DateTimeKind.Unspecified), tzInfo);
+            }
+            catch
+            {
+                // DST gap edge-case: shift one hour forward and retry.
+                var shifted = localMidnight.AddHours(1);
+                return TimeZoneInfo.ConvertTimeToUtc(
+                    DateTime.SpecifyKind(shifted, DateTimeKind.Unspecified), tzInfo);
+            }
+        }
+
+        var localTodayMidnight = new DateTime(localNow.Year, localNow.Month, localNow.Day, 0, 0, 0);
+        var localTodayUtc = LocalMidnightToUtc(localTodayMidnight, tz);
+
         preset = (preset ?? "30d").ToLowerInvariant();
 
         DateTime start;
@@ -31,27 +60,27 @@ public sealed class TimeRangeRequest
         switch (preset)
         {
             case "today":
-                start = now.Date;
+                start = localTodayUtc;
                 grouping = TimeGrouping.Day;
                 label = "Today";
                 break;
             case "7d":
-                start = now.Date.AddDays(-6);
+                start = localTodayUtc.AddDays(-6);
                 grouping = TimeGrouping.Day;
                 label = "Last 7 Days";
                 break;
             case "30d":
-                start = now.Date.AddDays(-29);
+                start = localTodayUtc.AddDays(-29);
                 grouping = TimeGrouping.Day;
                 label = "Last 30 Days";
                 break;
             case "month":
-                start = new DateTime(now.Year, now.Month, 1, 0, 0, 0, DateTimeKind.Utc);
+                start = LocalMidnightToUtc(new DateTime(localNow.Year, localNow.Month, 1, 0, 0, 0), tz);
                 grouping = TimeGrouping.Day;
                 label = "This Month";
                 break;
             case "year":
-                start = new DateTime(now.Year, 1, 1, 0, 0, 0, DateTimeKind.Utc);
+                start = LocalMidnightToUtc(new DateTime(localNow.Year, 1, 1, 0, 0, 0), tz);
                 grouping = TimeGrouping.Month;
                 label = "This Year";
                 break;
@@ -67,7 +96,7 @@ public sealed class TimeRangeRequest
                 label = "Custom";
                 break;
             default:
-                start = now.Date.AddDays(-29);
+                start = localTodayUtc.AddDays(-29);
                 grouping = TimeGrouping.Day;
                 label = "Last 30 Days";
                 break;
@@ -79,7 +108,9 @@ public sealed class TimeRangeRequest
             ToUtc = end,
             Grouping = grouping,
             Label = label,
-            Preset = preset
+            Preset = preset,
+            ViewerTimeZone = tz,
+            QualityMode = qualityMode
         };
     }
 }

@@ -59,6 +59,99 @@ function formatDob(value){
   return `${mm}-${dd}-${yyyy}`;
 }
 
+const US_STATE_NAME_BY_CODE = Object.freeze({
+  AL: 'ALABAMA',
+  AK: 'ALASKA',
+  AZ: 'ARIZONA',
+  AR: 'ARKANSAS',
+  CA: 'CALIFORNIA',
+  CO: 'COLORADO',
+  CT: 'CONNECTICUT',
+  DE: 'DELAWARE',
+  DC: 'DISTRICT OF COLUMBIA',
+  FL: 'FLORIDA',
+  GA: 'GEORGIA',
+  HI: 'HAWAII',
+  ID: 'IDAHO',
+  IL: 'ILLINOIS',
+  IN: 'INDIANA',
+  IA: 'IOWA',
+  KS: 'KANSAS',
+  KY: 'KENTUCKY',
+  LA: 'LOUISIANA',
+  ME: 'MAINE',
+  MD: 'MARYLAND',
+  MA: 'MASSACHUSETTS',
+  MI: 'MICHIGAN',
+  MN: 'MINNESOTA',
+  MS: 'MISSISSIPPI',
+  MO: 'MISSOURI',
+  MT: 'MONTANA',
+  NE: 'NEBRASKA',
+  NV: 'NEVADA',
+  NH: 'NEW HAMPSHIRE',
+  NJ: 'NEW JERSEY',
+  NM: 'NEW MEXICO',
+  NY: 'NEW YORK',
+  NC: 'NORTH CAROLINA',
+  ND: 'NORTH DAKOTA',
+  OH: 'OHIO',
+  OK: 'OKLAHOMA',
+  OR: 'OREGON',
+  PA: 'PENNSYLVANIA',
+  RI: 'RHODE ISLAND',
+  SC: 'SOUTH CAROLINA',
+  SD: 'SOUTH DAKOTA',
+  TN: 'TENNESSEE',
+  TX: 'TEXAS',
+  UT: 'UTAH',
+  VT: 'VERMONT',
+  VA: 'VIRGINIA',
+  WA: 'WASHINGTON',
+  WV: 'WEST VIRGINIA',
+  WI: 'WISCONSIN',
+  WY: 'WYOMING',
+  PR: 'PUERTO RICO',
+  GU: 'GUAM',
+  VI: 'U.S. VIRGIN ISLANDS',
+  AS: 'AMERICAN SAMOA',
+  MP: 'NORTHERN MARIANA ISLANDS'
+});
+const US_STATE_CANONICAL_BY_KEY = Object.freeze(
+  Object.values(US_STATE_NAME_BY_CODE).reduce((acc, name) => {
+    acc[name.replace(/[^A-Z]/g, '')] = name;
+    return acc;
+  }, {})
+);
+function normalizeStateOption(value){
+  const raw = (value ?? '').toString().trim();
+  if (!raw) return '';
+
+  const upper = raw
+    .toUpperCase()
+    .replace(/\./g, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+
+  if (US_STATE_NAME_BY_CODE[upper]) {
+    return US_STATE_NAME_BY_CODE[upper];
+  }
+
+  const tokens = upper.split(/[^A-Z]/).filter(Boolean);
+  for (const token of tokens){
+    if (token.length === 2 && US_STATE_NAME_BY_CODE[token]) {
+      return US_STATE_NAME_BY_CODE[token];
+    }
+  }
+
+  const key = upper.replace(/[^A-Z]/g, '');
+  if (US_STATE_CANONICAL_BY_KEY[key]) {
+    return US_STATE_CANONICAL_BY_KEY[key];
+  }
+
+  return upper;
+}
+
 /* ===== Note to Self helpers ===== */
 function noteTodayISO(){
   const d = new Date();
@@ -84,48 +177,6 @@ function noteDecodeKey(raw){
   return { leadId: decodeURIComponent(value.slice(0, sep)), noteDate: value.slice(sep + 1) };
 }
 
-function showQuickViewTab(target, opts = {}){
-  if (!target) return;
-  const drawerRoot = $("#drawer") || document;
-  const panels = $$('.qv-tabpanel', drawerRoot);
-  if (!panels.length) return;
-
-  const targetPanel = panels.find(p => p.id === target) || document.getElementById(target);
-  if (!targetPanel) return;
-
-  const disclosure = targetPanel.closest('details.qv-disclosure');
-  if (disclosure) disclosure.open = true;
-
-  panels.forEach(panel => {
-    panel.style.display = panel.id === target ? '' : 'none';
-  });
-
-  const tabButtons = $$('.qv-tabs button[data-tab-target]', drawerRoot);
-  tabButtons.forEach(tab => {
-    const isActive = tab.dataset.tabTarget === target;
-    tab.classList.toggle('btn-gold', isActive);
-    tab.classList.toggle('btn-ghost', !isActive);
-  });
-
-  if (opts.scroll){
-    targetPanel.scrollIntoView({ behavior: 'smooth', block: 'start' });
-  }
-}
-
-// quick view tab switcher for notes/actions, including top-level shortcuts
-function bindQuickViewTabs(){
-  const drawerRoot = $("#drawer") || document;
-  const launchers = $$('[data-tab-target]', drawerRoot);
-  if (!launchers.length) return;
-
-  launchers.forEach(btn => {
-    if (btn.dataset.tabBound === "1") return;
-    btn.dataset.tabBound = "1";
-    btn.addEventListener('click', () => {
-      showQuickViewTab(btn.dataset.tabTarget, { scroll: btn.dataset.tabScroll === "1" });
-    });
-  });
-}
 
 const LegendModalApi = window.LegendModal || {};
 const ensureModalInBody = LegendModalApi.ensureInBody?.bind(LegendModalApi) || (() => null);
@@ -161,6 +212,8 @@ function wireActionForm(){
     event.preventDefault();
     if (!actionsContainer) return;
     const data = new FormData(form);
+    const showInDashboardInput = form.querySelector('input[name="ShowInCommandCenter"]');
+    data.set("ShowInCommandCenter", showInDashboardInput?.checked ? "true" : "false");
     const dueInput = form.querySelector('input[name="DueDateUtc"]');
     if (dueInput && dueInput.value){
       const local = new Date(dueInput.value);
@@ -615,6 +668,7 @@ async function loadQuickView(clientId){
       btc: lead?.btc || row.dataset.btc || "",
       crmStatus: row.dataset.crmStatus || row.dataset.sStatus || "Lead",
       crmPriority: row.dataset.crmPriority || row.dataset.sPriority || "Normal",
+      contactStatus: row.dataset.crmContactStatus || row.dataset.sContactstatus || "NotSet",
       crmLastTouch: row.dataset.crmLastTouch || row.dataset.sLasttouch || "",
       crmNextDate: row.dataset.crmNextDate || row.dataset.sNextdate || "",
       crmNextText: row.dataset.crmNextText || row.dataset.sNexttext || "",
@@ -639,7 +693,8 @@ async function loadQuickView(clientId){
       attemptsLifetime: attemptsLife,
       lastContactChannel: row.dataset.crmLastChannel || row.dataset.sChannel || "",
       docChecklist: { completedCount: row.dataset.sDoccount || 0 },
-      collaboration: { watchers: (row.dataset.crmWatchers || row.dataset.sWatchers || "").split(/,\s*/).filter(Boolean) }
+      collaboration: { watchers: (row.dataset.crmWatchers || row.dataset.sWatchers || "").split(/,\s*/).filter(Boolean) },
+      intakeSnapshot: lead?.intakeSnapshot || null
     };
   }
 
@@ -667,30 +722,32 @@ async function loadQuickView(clientId){
       loanAmount: lead.loanAmount || "",
       btc: lead.btc || "",
       crmStatus: lead.crmStatus || "Lead",
-      crmPriority: "Normal",
+      crmPriority: lead.crmPriority || "Normal",
+      contactStatus: lead.contactStatus || "NotSet",
       crmLastTouch: lead.crmLastTouch || lead.updatedUtc || "",
-      crmNextDate: null,
-      crmNextText: lead.crmNotes || "",
-      crmTags: "",
-      agentNotes: lead.crmNotes || "",
+      crmNextDate: lead.crmNextDate || "",
+      crmNextText: lead.crmNextText || "",
+      crmTags: lead.crmTags || "",
+      agentNotes: lead.agentNotes || lead.crmNotes || "",
       pipelineStage: lead.bucket || "MortgageProtection",
       originalLeadType: normalizeOriginalLeadTypeValue(lead.originalLeadType) || normalizeOriginalLeadTypeValue(lead.bucket),
-      meetingLocation: lead.addressLine || "",
-      zoomJoinUrl: "",
-      usePersonalZoomLink: false,
-      meetingTime: "09:00",
-      meetingDurationMinutes: 30,
-      waitingOn: "WaitingOnAgent",
-      pinnedBrief: lead.crmNotes || "",
+      meetingLocation: lead.meetingLocation || lead.addressLine || "",
+      zoomJoinUrl: lead.zoomJoinUrl || "",
+      usePersonalZoomLink: !!lead.usePersonalZoomLink,
+      meetingTime: lead.meetingTime || "09:00",
+      meetingDurationMinutes: lead.meetingDurationMinutes || 30,
+      waitingOn: lead.waitingOn || "WaitingOnAgent",
+      pinnedBrief: lead.pinnedBrief || "",
       stageEnteredUtc: lead.createdUtc || todayISO(),
-      attemptsToday: lead.attemptsToday ?? lead.dialsToday ?? lead.callCount ?? 0,
-      attemptsThisWeek: lead.attemptsThisWeek ?? lead.dialsWeek ?? lead.callCount ?? 0,
-      attemptsThisMonth: lead.attemptsThisMonth ?? lead.callCount ?? 0,
-      attemptsThisYear: lead.attemptsThisYear ?? lead.callCount ?? 0,
+      attemptsToday: lead.attemptsToday ?? lead.dialsToday ?? 0,
+      attemptsThisWeek: lead.attemptsThisWeek ?? lead.dialsWeek ?? 0,
+      attemptsThisMonth: lead.attemptsThisMonth ?? 0,
+      attemptsThisYear: lead.attemptsThisYear ?? 0,
       attemptsLifetime: lead.attemptsLifetime ?? lead.callCount ?? 0,
-      lastContactChannel: "Call",
-      docChecklist: { completedCount: 0 },
-      collaboration: { watchers: [] }
+      lastContactChannel: lead.lastContactChannel || "Call",
+      docChecklist: lead.docChecklist || { completedCount: 0 },
+      collaboration: lead.collaboration || { watchers: [] },
+      intakeSnapshot: lead.intakeSnapshot || null
     };
   }
 
@@ -793,7 +850,12 @@ function buildTextMessage(templateKey, row){
     return `${leadFirst}, this is ${agentFirst} regarding your mortgage with ${lender}. Just left you a message. Give me a call back when you get this, we have some pending paperwork to get out to you regarding the mortgage for your property at ${addrFull || 'your property'}. The office number is ${agentPhone}, thanks`;
   }
 
-  return `Hi ${leadFirst}, this is ${agentFirst}. Let's connect.`;
+  const normalizedTemplateKey = normalizePipelineStageValue(templateKey || "LifeInsurance", "LifeInsurance");
+  const productLabel = (pipelineLabels[normalizedTemplateKey] || "Life Insurance")
+    .replace(/\s+LEADS$/i, "")
+    .trim()
+    .toLowerCase();
+  return `Hi ${leadFirst}, this is ${agentFirst}. Let's connect about your ${productLabel} request.`;
 }
 
 function formatPhoneDisplay(raw){
@@ -807,6 +869,19 @@ function formatPhoneDisplay(raw){
 function formatCurrency(value){
   const num = Number(value) || 0;
   return num.toLocaleString("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 0 });
+}
+
+function formatCompactCurrency(value){
+  const num = Number(value) || 0;
+  if (Math.abs(num) >= 1000){
+    return new Intl.NumberFormat("en-US", {
+      style: "currency",
+      currency: "USD",
+      notation: "compact",
+      maximumFractionDigits: 1
+    }).format(num);
+  }
+  return formatCurrency(num);
 }
 
 async function sendTextForRow(row, templateKey){
@@ -1009,6 +1084,7 @@ async function incrementCallLead(row){
   row.dataset.sAttemptsyear = String(year);
   row.dataset.sAttemptslife = String(life);
   hydrateRow(row);
+  updateCallMetrics();
   syncAttemptSummary(row);
   if (liveSync) liveSync.sendCall(clientId, life);
   renderAll();
@@ -1036,19 +1112,29 @@ function isSoon(nextISO){
 const pipelineLabels = {
   MortgageProtection: "MORTGAGE PROTECTION LEADS",
   LifeInsurance: "LIFE INSURANCE LEADS",
+  TermLife: "TERM LIFE LEADS",
+  WholeLife: "WHOLE LIFE LEADS",
+  IUL: "IUL LEADS",
   FinalExpense: "FINAL EXPENSE LEADS",
-  Medicare: "MEDICARE LEADS",
   DisabilityInsurance: "DISABILITY INSURANCE LEADS",
+  AutoInsurance: "AUTO INSURANCE LEADS",
+  HomeInsurance: "HOME INSURANCE LEADS",
+  HealthInsurance: "HEALTH INSURANCE LEADS",
+  CommercialInsurance: "COMMERCIAL INSURANCE LEADS",
+  CalledToday: "Called Today",
+  CallBack: "Call Back",
   Contacted: "Contacted",
   Booked: "Booked",
   FollowUp: "Follow Up",
   NeedsDocs: "Needs Docs",
   PolicyPlaced: "Policy Placed",
+  Voicemail: "Voicemail Left",
   NotInterested: "Not Interested",
   Nurture: "Nurture",
   NoAnswer: "No Answer",
   Lost: "Lost",
-  AIReception: "AI Reception"
+  AIReception: "AI Reception",
+  DoNotCallList: "Do Not Call List"
 };
 
 const statusLabels = {
@@ -1069,17 +1155,27 @@ const pipelineStages = [
   { key: "FollowUp", label: "Follow Up", tone: "warn", className: "stage-proposalsent", note: "Needs follow-up after conversation." },
   // Core lead buckets (keep existing order)
   { key: "MortgageProtection", label: "MORTGAGE PROTECTION LEADS", tone: "warn", className: "stage-newlead", note: "Mortgage Protection leads direct from scripts." },
-  { key: "LifeInsurance", label: "LIFE INSURANCE LEADS", tone: "good", className: "stage-qualified", note: "Life Insurance leads ready for first touch." },
+  { key: "LifeInsurance", label: "LIFE INSURANCE LEADS", tone: "good", className: "stage-qualified", note: "General life insurance requests ready for first touch." },
+  { key: "TermLife", label: "TERM LIFE LEADS", tone: "good", className: "stage-qualified", note: "Term life requests ready for fast protection reviews." },
+  { key: "WholeLife", label: "WHOLE LIFE LEADS", tone: "good", className: "stage-qualified", note: "Whole life requests ready for permanent protection conversations." },
+  { key: "IUL", label: "IUL LEADS", tone: "good", className: "stage-qualified", note: "IUL requests ready for cash-value and strategy conversations." },
   { key: "FinalExpense", label: "FINAL EXPENSE LEADS", tone: "warn", className: "stage-contacted", note: "Final Expense leads queued for contact." },
-  { key: "Medicare", label: "MEDICARE LEADS", tone: "info", className: "stage-meetingscheduled", note: "Medicare leads with compliance-first outreach." },
   { key: "DisabilityInsurance", label: "DISABILITY INSURANCE LEADS", tone: "warn", className: "stage-opportunities", note: "Disability Insurance leads to qualify fast." },
+  { key: "AutoInsurance", label: "AUTO INSURANCE LEADS", tone: "info", className: "stage-qualified", note: "Auto insurance leads ready for rating and driver review." },
+  { key: "HomeInsurance", label: "HOME INSURANCE LEADS", tone: "info", className: "stage-qualified", note: "Home insurance leads ready for property review." },
+  { key: "HealthInsurance", label: "HEALTH INSURANCE LEADS", tone: "info", className: "stage-qualified", note: "Health insurance leads ready for eligibility review." },
+  { key: "CommercialInsurance", label: "COMMERCIAL INSURANCE LEADS", tone: "info", className: "stage-qualified", note: "Commercial insurance leads ready for business coverage review." },
+  { key: "CalledToday", label: "Called Today", tone: "info", className: "stage-calledtoday", note: "Touched today and ready for same-day follow-through." },
+  { key: "CallBack", label: "Call Back", tone: "info", className: "stage-callback", note: "Asked for a callback or needs a scheduled return touch." },
   { key: "Contacted", label: "Contacted", tone: "info", className: "stage-contacted", note: "The first touch happened. Keep momentum alive." },
   { key: "NeedsDocs", label: "Needs Docs", tone: "info", className: "stage-applicationstarted", note: "Waiting on documents to proceed." },
+  { key: "Voicemail", label: "Voicemail Left", tone: "info", className: "stage-contacted", note: "Voicemail was left and needs callback tracking." },
   { key: "NotInterested", label: "Not Interested", tone: "bad", className: "stage-closedlost", note: "Lead not moving forward right now." },
   { key: "Nurture", label: "Nurture", tone: "warn", className: "stage-nurture", note: "Stay in touch over time." },
   { key: "NoAnswer", label: "No Answer", tone: "warn", className: "stage-nurture", note: "Could not reach lead yet." },
   { key: "Lost", label: "Lost", tone: "bad", className: "stage-closedlost", note: "Opportunity was lost." },
-  { key: "AIReception", label: "AI Reception", tone: "info", className: "stage-contacted", note: "Handled by AI receptionist flow." }
+  { key: "AIReception", label: "AI Reception", tone: "info", className: "stage-contacted", note: "Handled by AI receptionist flow." },
+  { key: "DoNotCallList", label: "Do Not Call List", tone: "bad", className: "stage-donotcall", note: "No call or text activity should happen from the workstation." }
 ];
 
 const pipelineAliases = {
@@ -1091,7 +1187,40 @@ const pipelineAliases = {
   meetingscheduled: "Booked",
   proposalsent: "FollowUp",
   applicationstarted: "NeedsDocs",
+  medicare: "MortgageProtection",
+  medicareleads: "MortgageProtection",
+  termlife: "TermLife",
+  termlifeleads: "TermLife",
+  termliferebuttals: "TermLife",
+  wholelife: "WholeLife",
+  wholelifeleads: "WholeLife",
+  wholeliferebuttals: "WholeLife",
+  iul: "IUL",
+  iulleads: "IUL",
+  iulrebuttals: "IUL",
+  indexeduniversallife: "IUL",
+  indexeduniversallifeleads: "IUL",
+  indexeduniversalliferebuttals: "IUL",
+  disabilityinsurance: "DisabilityInsurance",
+  disabilityinsuranceleads: "DisabilityInsurance",
+  disabilityinsurancerebuttals: "DisabilityInsurance",
+  autoinsurance: "AutoInsurance",
+  autoinsuranceleads: "AutoInsurance",
+  homeinsurance: "HomeInsurance",
+  homeinsuranceleads: "HomeInsurance",
+  healthinsurance: "HealthInsurance",
+  healthinsuranceleads: "HealthInsurance",
+  commercialinsurance: "CommercialInsurance",
+  commercialinsuranceleads: "CommercialInsurance",
   submitted: "PolicyPlaced",
+  calledtoday: "CalledToday",
+  callback: "CallBack",
+  donotcall: "DoNotCallList",
+  donotcalllist: "DoNotCallList",
+  dnc: "DoNotCallList",
+  voicemail: "Voicemail",
+  leftvm: "Voicemail",
+  leftvoicemail: "Voicemail",
   closedlost: "NotInterested",
   closedwon: "PolicyPlaced",
   noanswer: "NoAnswer",
@@ -1104,6 +1233,8 @@ const pipelineAliases = {
   spoke: "Contacted"
 };
 
+const PIPELINE_STAGE_CLASSES = Array.from(new Set(pipelineStages.map(stage => stage.className).filter(Boolean)));
+
 function normalizePipelineStageValue(stage, fallback = "MortgageProtection"){
   const value = norm(stage);
   if (!value) return fallback;
@@ -1112,7 +1243,9 @@ function normalizePipelineStageValue(stage, fallback = "MortgageProtection"){
   return pipelineAliases[value.toLowerCase()] || fallback;
 }
 
-const productBuckets = new Set(["MortgageProtection","LifeInsurance","FinalExpense","Medicare","DisabilityInsurance"]);
+const productBuckets = new Set(["MortgageProtection","LifeInsurance","TermLife","WholeLife","IUL","FinalExpense","DisabilityInsurance","AutoInsurance","HomeInsurance","HealthInsurance","CommercialInsurance"]);
+const requestedAmountLeadTypes = new Set(["LifeInsurance","TermLife","WholeLife","IUL","FinalExpense"]);
+const derivedPipelineFilterStages = new Set(["CalledToday"]);
 
 function normalizeOriginalLeadTypeValue(value){
   const normalized = normalizePipelineStageValue(value, "");
@@ -1126,7 +1259,7 @@ function rowOriginalLeadType(row){
 }
 
 function isLifeOrFinalExpenseLeadType(leadType){
-  return leadType === "LifeInsurance" || leadType === "FinalExpense";
+  return requestedAmountLeadTypes.has(leadType);
 }
 
 function resolveQuickViewLeadType(row, detail, stageOverride){
@@ -1138,12 +1271,143 @@ function resolveQuickViewLeadType(row, detail, stageOverride){
     || normalizeOriginalLeadTypeValue(row?.dataset?.sPipeline);
 }
 
+function resolveWorkLeadTypeHint(...values){
+  for (const value of values){
+    const raw = norm(value).toLowerCase();
+    if (!raw) continue;
+    if (raw === "term" || raw.includes("term life")) return "TermLife";
+    if (raw.includes("whole")) return "WholeLife";
+    if (raw === "iul" || raw.includes("indexed universal")) return "IUL";
+    if (raw.includes("final")) return "FinalExpense";
+    if (raw.includes("mortgage")) return "MortgageProtection";
+    if (raw.includes("disability")) return "DisabilityInsurance";
+    if (raw.includes("auto")) return "AutoInsurance";
+    if (raw.includes("home")) return "HomeInsurance";
+    if (raw.includes("health")) return "HealthInsurance";
+    if (raw.includes("commercial")) return "CommercialInsurance";
+    if (raw.includes("life")) return "LifeInsurance";
+  }
+
+  return "";
+}
+
+function resolveWorkLeadDestination(row, detail){
+  const leadType = resolveQuickViewLeadType(row, detail, detail?.pipelineStage || row?.dataset?.crmPipeline || row?.dataset?.sPipeline)
+    || resolveWorkLeadTypeHint(
+      detail?.intakeSnapshot?.offerKey,
+      detail?.intakeSnapshot?.productType,
+      detail?.intakeSnapshot?.quoteTypeLabel,
+      detail?.intakeSnapshot?.interestLabel,
+      row?.dataset?.intakeQuoteType,
+      row?.dataset?.intakeProductInterest
+    );
+
+  if (leadType === "FinalExpense"){
+    return {
+      queueKey: "FinalExpense",
+      route: "/Workstation/FinalExpenseRebuttals",
+      label: "Work Final Expense Lead",
+      note: "Final Expense workstation ready."
+    };
+  }
+
+  if (leadType === "MortgageProtection"){
+    return {
+      queueKey: "MortgageProtection",
+      route: "/Workstation/Rebuttals",
+      label: "Work Mortgage Lead",
+      note: "Mortgage Protection workstation ready."
+    };
+  }
+
+  if (["LifeInsurance", "TermLife", "WholeLife", "IUL"].includes(leadType)){
+    return {
+      queueKey: "LifeInsurance",
+      route: "/Workstation/LifeInsuranceRebuttals",
+      label: "Work Life Lead",
+      note: "Life Insurance workstation ready."
+    };
+  }
+
+  if (["DisabilityInsurance", "AutoInsurance", "HomeInsurance", "HealthInsurance", "CommercialInsurance"].includes(leadType)){
+    return {
+      queueKey: leadType,
+      route: `/Workstation/Queue?queueKey=${encodeURIComponent(leadType)}`,
+      label: "Open Product Queue",
+      note: "Product queue ready."
+    };
+  }
+
+  return {
+    queueKey: leadType || "",
+    route: "/Workstation",
+    label: "Open Workstation Hub",
+    note: "Workstation ready."
+  };
+}
+
+async function workLeadInWorkstation(row, detail){
+  const clientId = row?.dataset?.clientId || detail?.clientUserId || activeClientId || "";
+  if (!clientId){
+    toast("Lead not found.");
+    return;
+  }
+
+  const destination = resolveWorkLeadDestination(row, detail);
+  const workstationWin = window.open("", "_blank");
+
+  try{
+    if (destination.queueKey){
+      const token = getAntiForgeryToken();
+      const body = new URLSearchParams({
+        LeadId: clientId,
+        QueueKey: destination.queueKey
+      });
+
+      const res = await fetch("/LeadBridge/Select", withDialHeaders({
+        method: "POST",
+        headers: {
+          "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8",
+          "RequestVerificationToken": token
+        },
+        credentials: "include",
+        body: body.toString()
+      }));
+
+      if (!res.ok){
+        const raw = await res.text().catch(() => "");
+        throw new Error(raw || "Could not load this lead into Workstation.");
+      }
+    }
+
+    if (workstationWin){
+      workstationWin.location = destination.route;
+    }else{
+      window.location.assign(destination.route);
+    }
+    toast(destination.note);
+  }catch(err){
+    try { workstationWin?.close(); } catch {}
+    console.error(err);
+    toast(err?.message || "Could not load this lead into Workstation.", { error: true });
+  }
+}
+
+function isDerivedPipelineFilterStage(stage){
+  return derivedPipelineFilterStages.has(stage);
+}
+
+function isCalledTodayRow(row){
+  const today = parseInt(row?.dataset?.crmAttemptsToday || row?.dataset?.sAttemptstoday || "0", 10) || 0;
+  return today > 0;
+}
+
 function updateImportCsvHelp(bucket){
   const help = document.getElementById("importCsvHelp");
   if (!help) return;
 
   const key = normalizePipelineStageValue(bucket || "MortgageProtection", "MortgageProtection");
-  if (key === "LifeInsurance" || key === "FinalExpense"){
+  if (requestedAmountLeadTypes.has(key)){
     help.textContent = "Save your Excel sheet as CSV (UTF-8). Required column order (no extra columns): First Name, Last Name, Address, City, State, County, Zip Code, Age, DOB, M/F, Requested, Phone #, Phone # 2. Everything is created as a Lead in the Lead bucket. Max 500 rows per upload.";
     return;
   }
@@ -1179,6 +1443,7 @@ function applyQuickViewContactProfileLabels(row, detail, stageOverride){
 function matchesStageSelection(row, stage){
   if (!stage) return true;
   if (productBuckets.has(stage)) return rowOriginalLeadType(row) === stage;
+  if (isDerivedPipelineFilterStage(stage)) return isCalledTodayRow(row);
   return norm(row.dataset.crmPipeline) === stage;
 }
 
@@ -1335,6 +1600,12 @@ const bar = $("#legendBar");
 
 const rows = $$(".client-row");
 const kpiGrid = $("#kpiGrid");
+const performanceModal = $("#performanceModal");
+const btnTogglePerformance = $("#btnTogglePerformance");
+const perfPreviewPaid = $("#perfPreviewPaid");
+const perfPreviewPersonal = $("#perfPreviewPersonal");
+const perfPreviewCalls = $("#perfPreviewCalls");
+const perfPreviewOverdue = $("#perfPreviewOverdue");
 const cmToday = $("#cmToday");
 const cmWeek = $("#cmWeek");
 const cmMonth = $("#cmMonth");
@@ -1350,6 +1621,11 @@ const sortBy = $("#sortBy");
 const pageSize = $("#pageSize");
 const viewMode = $("#viewMode");
 const density = $("#density");
+const PIPELINE_ONLY_VIEW = "pipeline";
+
+function getDensityValue(){
+  return density?.value === "compact" ? "compact" : "comfort";
+}
 
 const btnCopyEmails = $("#btnCopyEmails");
 const btnExportCsv = $("#btnExportCsv");
@@ -1360,7 +1636,12 @@ const btnBulkDelete = $("#btnBulkDelete");
 const btnDeleteBucket = $("#btnDeleteBucket");
 const savedViewsBar = $("#savedViewsBar");
 const btnCallTaskMode = $("#btnCallTaskMode");
-const myDayQueue = $("#myDayQueue");
+const myDayModal = $("#myDayModal");
+const btnToggleMyDay = $("#btnToggleMyDay");
+const qCallsNowPreview = $("#qCallsNowPreview");
+const qDueTodayPreview = $("#qDueTodayPreview");
+const qOverduePreview = $("#qOverduePreview");
+const qMeetingsPreview = $("#qMeetingsPreview");
 const mydayFocus = $("#mydayFocus");
 const btnMyDayBack = $("#btnMyDayBack");
 const btnMyDayCallTask = $("#btnMyDayCallTask");
@@ -1388,7 +1669,6 @@ const pipelineFocusPill = $("#pipelineFocusPill");
 const btnPipeOverdue = $("#btnPipeOverdue");
 const btnPipeNeeds = $("#btnPipeNeeds");
 const btnPipeMeetings = $("#btnPipeMeetings");
-const btnPipeTable = $("#btnPipeTable");
 const btnPipeReset = $("#btnPipeReset");
 const pipelineFocusBar = $("#pipelineFocusBar");
 const pipelineFocusTitle = $("#pipelineFocusTitle");
@@ -1433,6 +1713,38 @@ const bNextDate = $("#bNextDate");
 const bNextText = $("#bNextText");
 const bTags = $("#bTags");
 const bSharedNote = $("#bSharedNote");
+
+function initCommandCenterModal(button, modal){
+  if (!button || !modal) return null;
+
+  const open = () => {
+    if (!modalBackdrop) return;
+    openModal(modal);
+  };
+
+  const close = () => {
+    modal.classList.remove("open");
+    if (!$$(".modal.open").length){
+      modalBackdrop?.classList.remove("open");
+    }
+  };
+
+  button.addEventListener("click", open);
+
+  return {
+    open,
+    close,
+    isOpen(){ return modal.classList.contains("open"); }
+  };
+}
+
+let performancePanelController = null;
+let myDayPanelController = null;
+
+function initCollapsiblePanels(){
+  performancePanelController = initCommandCenterModal(btnTogglePerformance, performanceModal);
+  myDayPanelController = initCommandCenterModal(btnToggleMyDay, myDayModal);
+}
 const btnRunBulk = $("#btnRunBulk");
 const stagePickerSelect = $("#stagePickerSelect");
 const stagePickerDetail = $("#stagePickerDetail");
@@ -1473,27 +1785,22 @@ let meetingSuggestAbort = null;
 let quickViewOpenedFromUrl = false;
 let leadActionsLoadPromise = null;
 
-const STAGE_PICKER_TONES = [
-  "stage-newlead",
-  "stage-opportunities",
-  "stage-contacted",
-  "stage-qualified",
-  "stage-client",
-  "stage-businessclient",
-  "stage-meetingscheduled",
-  "stage-proposalsent",
-  "stage-applicationstarted",
-  "stage-submitted",
-  "stage-closedlost",
-  "stage-nurture"
-];
+const STAGE_PICKER_TONES = PIPELINE_STAGE_CLASSES.slice();
 
-function countRowsForStage(stageKey){
-  if (!Array.isArray(rows) || !rows.length) return 0;
+function rowsForStage(stageKey, sourceRows = rows){
+  const pool = Array.isArray(sourceRows) ? sourceRows : [];
+  if (!pool.length) return [];
   if (productBuckets.has(stageKey)){
-    return rows.filter(r => matchesStageSelection(r, stageKey)).length;
+    return pool.filter(r => matchesStageSelection(r, stageKey));
   }
-  return rows.filter(r => norm(r.dataset.crmPipeline) === stageKey).length;
+  if (isDerivedPipelineFilterStage(stageKey)){
+    return pool.filter(isCalledTodayRow);
+  }
+  return pool.filter(r => norm(r.dataset.crmPipeline) === stageKey);
+}
+
+function countRowsForStage(stageKey, sourceRows = rows){
+  return rowsForStage(stageKey, sourceRows).length;
 }
 
 function applyStagePickerTone(el, className){
@@ -1621,20 +1928,21 @@ const dPipelineStage = $("#dPipelineStage");
 const dLastTouch = $("#dLastTouch");
 const dTags = $("#dTags");
 const dNotes = $("#dNotes");
+const dContactStatus = $("#dContactStatus");
 
 const dNextDate = $("#dNextDate");
-const dMeetingNextDate = $("#dMeetingNextDate");
+const dMeetingNextDate = $("#dMeetingNextDate") || { value: "", addEventListener(){} };
 const dNextText = $("#dNextText");
 const dPriority = $("#dPriority");
-const dMeetingType = $("#dMeetingType");
-const dMeetingTime = $("#dMeetingTime");
-const dMeetingDuration = $("#dMeetingDuration");
-const dMeetingLocation = $("#dMeetingLocation");
-const dMeetingLocationSuggest = $("#dMeetingLocationSuggest");
-const dZoomWrap = $("#dZoomWrap");
-const dUsePersonalZoomLink = $("#dUsePersonalZoomLink");
-const dZoomJoinUrl = $("#dZoomJoinUrl");
-const dZoomStatus = $("#dZoomStatus");
+const dMeetingType = $("#dMeetingType") || { value: "Phone", addEventListener(){} };
+const dMeetingTime = $("#dMeetingTime") || { value: "09:00", addEventListener(){} };
+const dMeetingDuration = $("#dMeetingDuration") || { value: "30", addEventListener(){} };
+const dMeetingLocation = $("#dMeetingLocation") || { value: "", dataset: {}, classList: { add(){}, remove(){} }, addEventListener(){}, readOnly: false, placeholder: "" };
+const dMeetingLocationSuggest = $("#dMeetingLocationSuggest") || { classList: { add(){}, remove(){} }, innerHTML: "" };
+const dZoomWrap = $("#dZoomWrap") || { style: {}, classList: { add(){}, remove(){} } };
+const dUsePersonalZoomLink = $("#dUsePersonalZoomLink") || { checked: false, addEventListener(){} };
+const dZoomJoinUrl = $("#dZoomJoinUrl") || { value: "", addEventListener(){} };
+const dZoomStatus = $("#dZoomStatus") || { textContent: "" };
 const btnZoomSavePersonal = $("#btnZoomSavePersonal");
 const btnZoomClearPersonal = $("#btnZoomClearPersonal");
 const dCalendarBusyDate = $("#dCalendarBusyDate");
@@ -1660,6 +1968,32 @@ const dAssignedOwner = $("#dAssignedOwner");
 const dWatchers = $("#dWatchers");
 const dMentionNote = $("#dMentionNote");
 const mentionList = $("#mentionList");
+const dIntakeSection = $("#dIntakeSection");
+const dIntakeSubmitted = $("#dIntakeSubmitted");
+const dIntakeHistory = $("#dIntakeHistory");
+const dIntakeOrigin = $("#dIntakeOrigin");
+const dIntakeOwner = $("#dIntakeOwner");
+const dIntakeProduct = $("#dIntakeProduct");
+const dIntakeQuoteType = $("#dIntakeQuoteType");
+const dIntakePage = $("#dIntakePage");
+const dIntakeSource = $("#dIntakeSource");
+const dIntakeLanding = $("#dIntakeLanding");
+const dIntakeIds = $("#dIntakeIds");
+const dIntakeRecommendation = $("#dIntakeRecommendation");
+const dIntakeDiscovery = $("#dIntakeDiscovery");
+const dIntakeRawMeta = $("#dIntakeRawMeta");
+const dAppointmentSection = $("#dAppointmentSection");
+const dAppointmentStatus = $("#dAppointmentStatus");
+const dAppointmentTime = $("#dAppointmentTime");
+const dAppointmentSource = $("#dAppointmentSource");
+const dAppointmentRequestedSource = $("#dAppointmentRequestedSource");
+const dAppointmentConfirmation = $("#dAppointmentConfirmation");
+const dAppointmentBookingConfig = $("#dAppointmentBookingConfig");
+const dAppointmentTimeline = $("#dAppointmentTimeline");
+const dAppointmentMeetingLink = $("#dAppointmentMeetingLink");
+const dAppointmentCalendarLink = $("#dAppointmentCalendarLink");
+const dAppointmentStatusSelect = $("#dAppointmentStatusSelect");
+const btnSaveAppointmentStatus = $("#btnSaveAppointmentStatus");
 
 const btnSaveLocal = $("#btnSaveLocal");
 const btnResetLocal = $("#btnResetLocal");
@@ -1669,6 +2003,7 @@ const btnMeetingNextToday = $("#btnMeetingNextToday");
 const btnCopyContact = $("#btnCopyContact");
 const btnMail = $("#btnMail");
 const btnCall = $("#btnCall");
+const btnText = $("#btnText");
 const btnOpenQueue = $("#btnOpenQueue");
 const btnDeleteClient = $("#btnDeleteClient");
 
@@ -1680,37 +2015,414 @@ const btnClearTimeline = $("#btnClearTimeline");
 const btnCreateCalendarEvent = $("#btnCreateCalendarEvent");
 const timeline = $("#timeline");
 const timelineFilters = $("#timelineFilters");
+const leadContactStatusPreview = $("#leadContactStatusPreview");
+const leadLastTouchPreview = $("#leadLastTouchPreview");
 const leadNextActionDatePreview = $("#leadNextActionDatePreview");
-const leadNextActionPreview = $("#leadNextActionPreview");
-const leadNotePreview = $("#leadNotePreview");
+const leadProductPreview = $("#leadProductPreview");
+const leadSourcePreview = $("#leadSourcePreview");
 
 const cmdInput = $("#cmdInput");
 let activeTimelineFilter = "all";
 
+function syncQuickViewDisclosure(panel){
+  if (!panel) return;
+  if (panel.hidden && panel.open) panel.open = false;
+}
+
+function syncQuickViewDisclosures(root = drawer){
+  if (!root) return;
+  root.querySelectorAll("details.qv-panel").forEach(syncQuickViewDisclosure);
+}
+
+function bindQuickViewDisclosures(root = drawer){
+  if (!root) return;
+  root.querySelectorAll("details.qv-panel").forEach(panel => {
+    if (panel.dataset.qvDisclosureBound === "true") return;
+    panel.dataset.qvDisclosureBound = "true";
+    panel.addEventListener("toggle", () => syncQuickViewDisclosure(panel));
+    syncQuickViewDisclosure(panel);
+  });
+}
+
+bindQuickViewDisclosures();
+
+function normalizeContactStatusValue(value){
+  const raw = norm(value);
+  if (!raw) return "NotSet";
+  const allowed = new Set([
+    "NotSet",
+    "NoContactYet",
+    "AttemptingContact",
+    "Connected",
+    "Quoted",
+    "WaitingOnDecision",
+    "Unresponsive"
+  ]);
+  return allowed.has(raw) ? raw : "NotSet";
+}
+
+function contactStatusLabel(value){
+  switch (normalizeContactStatusValue(value)){
+    case "NoContactYet": return "No contact yet";
+    case "AttemptingContact": return "Attempting contact";
+    case "Connected": return "Connected";
+    case "Quoted": return "Quoted";
+    case "WaitingOnDecision": return "Waiting on decision";
+    case "Unresponsive": return "Unresponsive";
+    default: return "Contact status not set";
+  }
+}
+
+function leadWarningSummary(row){
+  if (!row) return "";
+  const nextDate = norm(row.dataset.crmNextDate);
+  const lastTouch = norm(row.dataset.crmLastTouch);
+  const contactStatus = normalizeContactStatusValue(row.dataset.crmContactStatus);
+
+  if (!lastTouch) return "No touch logged yet";
+  if (isOverdue(nextDate)) return "Overdue follow-up";
+  if (!nextDate && (contactStatus === "NotSet" || contactStatus === "NoContactYet")) return "No contact plan set";
+  if (!nextDate && stageAgeDays(row) >= 7) return "Stale: next step missing";
+  if (contactStatus === "Unresponsive" && stageAgeDays(row) >= 7) return "Stale: follow-up needs reset";
+  return "";
+}
+
 function refreshLeadOverviewSummary(){
+  const row = activeLeadRow();
+  const snapshot = activeClientDetail?.intakeSnapshot || null;
+  const appointment = activeClientDetail?.latestAppointment || null;
+  if (leadContactStatusPreview){
+    leadContactStatusPreview.textContent = contactStatusLabel(dContactStatus?.value);
+  }
+  if (leadLastTouchPreview){
+    const lastTouch = norm(dLastTouch?.value);
+    leadLastTouchPreview.textContent = lastTouch || "Not tracked";
+  }
   if (leadNextActionDatePreview){
     const nextDate = norm(dNextDate?.value);
     leadNextActionDatePreview.textContent = nextDate || "Not tracked";
   }
-  if (leadNextActionPreview){
-    const nextText = norm(dNextText?.value);
-    leadNextActionPreview.textContent = nextText || "Not tracked for this lead yet.";
+  if (leadProductPreview){
+    leadProductPreview.textContent = summarizeLeadPath(snapshot, row);
   }
-  if (leadNotePreview){
-    const note = norm(dNotes?.value);
-    leadNotePreview.textContent = note || "No CRM note yet.";
+  if (leadSourcePreview){
+    leadSourcePreview.textContent = summarizeLeadSource(snapshot, row);
   }
 }
 
+function formatIntakeSnapshotDate(value){
+  if (!value) return "—";
+  const parsed = new Date(value);
+  return Number.isNaN(parsed.getTime())
+    ? "—"
+    : parsed.toLocaleString([], { dateStyle: "medium", timeStyle: "short" });
+}
+
+function joinIntakeParts(parts){
+  return parts.map(part => norm(part)).filter(Boolean).join(" • ") || "—";
+}
+
+function activeLeadRow(){
+  return activeClientId
+    ? (rows.find(row => row.dataset.clientId === activeClientId) || null)
+    : null;
+}
+
+function summarizeLeadPath(snapshot, row){
+  if (snapshot){
+    return joinIntakeParts([
+      snapshot.interestLabel,
+      snapshot.quoteTypeLabel ? `Quote: ${snapshot.quoteTypeLabel}` : "",
+      snapshot.productType ? `Type: ${snapshot.productType}` : ""
+    ]);
+  }
+
+  const product = norm(row?.dataset.intakeProductInterest) || pipelineLabel(rowOriginalLeadType(row) || row?.dataset.crmPipeline);
+  const quoteType = norm(row?.dataset.intakeQuoteType);
+  return joinIntakeParts([
+    product,
+    quoteType && !product.toLowerCase().includes(quoteType.toLowerCase()) ? `Quote: ${quoteType}` : ""
+  ]);
+}
+
+function summarizeLeadSource(snapshot, row){
+  if (snapshot){
+    return joinIntakeParts([
+      snapshot.originLabel,
+      snapshot.utmSource,
+      snapshot.utmMedium,
+      snapshot.utmCampaign
+    ]);
+  }
+
+  return joinIntakeParts([
+    row?.dataset.intakeOrigin,
+    row?.dataset.intakeSource,
+    row?.dataset.intakeMedium,
+    row?.dataset.intakeCampaign
+  ]);
+}
+
+function humanizeAppointmentStatus(value){
+  const raw = norm(value);
+  if (!raw) return "No appointment recorded";
+  if (raw === "NoShow") return "No Show";
+  return raw.replace(/([a-z])([A-Z])/g, "$1 $2");
+}
+
+function humanizeAppointmentSource(value){
+  const raw = norm(value);
+  if (!raw) return "Not tracked yet";
+  switch (raw){
+    case "internal_manual": return "Internal manual";
+    case "internal_calendar": return "Internal calendar";
+    case "website_embed": return "Website embed";
+    case "website_modal": return "Website modal";
+    case "external_redirect_fallback": return "External redirect fallback";
+    case "microsoft_graph_confirmation": return "Microsoft Graph confirmation";
+    case "manual_verified": return "Manual verified";
+    default: break;
+  }
+  return raw
+    .replace(/[_-]+/g, " ")
+    .replace(/\b\w/g, char => char.toUpperCase());
+}
+
+function formatAppointmentTimestamp(value){
+  if (!value) return "—";
+  const parsed = new Date(value);
+  return Number.isNaN(parsed.getTime())
+    ? "—"
+    : parsed.toLocaleString([], { dateStyle: "medium", timeStyle: "short" });
+}
+
+function formatAppointmentDateTimeRange(snapshot){
+  const start = snapshot?.scheduledStartUtc ? new Date(snapshot.scheduledStartUtc) : null;
+  const end = snapshot?.scheduledEndUtc ? new Date(snapshot.scheduledEndUtc) : null;
+
+  if (!start || Number.isNaN(start.getTime())){
+    return "No appointment scheduled";
+  }
+
+  if (!end || Number.isNaN(end.getTime())){
+    return start.toLocaleString([], { dateStyle: "medium", timeStyle: "short" });
+  }
+
+  const sameDay =
+    start.getFullYear() === end.getFullYear() &&
+    start.getMonth() === end.getMonth() &&
+    start.getDate() === end.getDate();
+
+  if (sameDay){
+    return `${start.toLocaleDateString([], { dateStyle: "medium" })} • ${start.toLocaleTimeString([], { timeStyle: "short" })} - ${end.toLocaleTimeString([], { timeStyle: "short" })}`;
+  }
+
+  return `${start.toLocaleString([], { dateStyle: "medium", timeStyle: "short" })} - ${end.toLocaleString([], { dateStyle: "medium", timeStyle: "short" })}`;
+}
+
+function appointmentStatusTimestampText(snapshot){
+  if (!snapshot) return "—";
+  const label = snapshot.statusLabel || humanizeAppointmentStatus(snapshot.status);
+  const value = formatAppointmentTimestamp(snapshot.statusTimestampUtc || snapshot.lastStatusChangedUtc || snapshot.updatedUtc || snapshot.createdUtc);
+  return value === "—" ? label : `${label} • ${value}`;
+}
+
+function summarizeLeadAppointmentStatus(snapshot){
+  return snapshot?.statusLabel || humanizeAppointmentStatus(snapshot?.status);
+}
+
+function summarizeLeadAppointmentTime(snapshot){
+  return snapshot ? formatAppointmentDateTimeRange(snapshot) : "No appointment scheduled";
+}
+
+function summarizeLeadAppointmentSource(snapshot){
+  return snapshot?.bookingSourceLabel || humanizeAppointmentSource(snapshot?.bookingSource);
+}
+
+function summarizeLeadAppointmentRequestedSource(snapshot){
+  if (!snapshot) return "Not tracked yet";
+  return snapshot.requestedBookingSourceLabel
+    || humanizeAppointmentSource(snapshot.requestedBookingSource)
+    || "Not tracked yet";
+}
+
+function summarizeLeadAppointmentConfirmation(snapshot){
+  if (!snapshot) return "No appointment recorded";
+  const state = norm(snapshot.confirmationStateLabel);
+  const source = norm(snapshot.confirmationSourceLabel) || humanizeAppointmentSource(snapshot.confirmationSource);
+  const parts = [state, source].filter(Boolean);
+  return parts.join(" • ") || "No confirmation recorded";
+}
+
+function summarizeLeadAppointmentConfig(snapshot){
+  if (!snapshot) return "No public booking config used";
+  const label = norm(snapshot.bookingConfigurationLabel);
+  if (label) return label;
+  if (snapshot.bookingSource === "internal_calendar"){
+    return "Internal calendar path";
+  }
+  return "No public booking config used";
+}
+
+function renderAppointmentLink(node, url, label){
+  if (!node) return;
+  const cleanUrl = norm(url);
+  if (!cleanUrl){
+    node.textContent = "—";
+    return;
+  }
+
+  node.innerHTML = `<a class="link" href="${escapeHtml(cleanUrl)}" target="_blank" rel="noopener">${escapeHtml(label)}</a>`;
+}
+
+function renderAppointmentSnapshot(snapshot){
+  const hasLeadLoaded = !!activeClientId;
+  const nodes = [
+    dAppointmentStatus,
+    dAppointmentTime,
+    dAppointmentSource,
+    dAppointmentRequestedSource,
+    dAppointmentConfirmation,
+    dAppointmentBookingConfig,
+    dAppointmentTimeline,
+    dAppointmentMeetingLink,
+    dAppointmentCalendarLink
+  ];
+
+  if (dAppointmentSection) dAppointmentSection.hidden = !hasLeadLoaded;
+
+  if (!hasLeadLoaded){
+    nodes.forEach(node => { if (node) node.textContent = "—"; });
+    if (dAppointmentStatusSelect) dAppointmentStatusSelect.value = "Requested";
+    if (btnSaveAppointmentStatus) btnSaveAppointmentStatus.disabled = true;
+    syncQuickViewDisclosures();
+    return;
+  }
+
+  if (!snapshot){
+    if (dAppointmentStatus) dAppointmentStatus.textContent = "No appointment recorded";
+    if (dAppointmentTime) dAppointmentTime.textContent = "No appointment scheduled";
+    if (dAppointmentSource) dAppointmentSource.textContent = "Not tracked yet";
+    if (dAppointmentRequestedSource) dAppointmentRequestedSource.textContent = "Not tracked yet";
+    if (dAppointmentConfirmation) dAppointmentConfirmation.textContent = "No confirmation recorded";
+    if (dAppointmentBookingConfig) dAppointmentBookingConfig.textContent = "No public booking config used";
+    if (dAppointmentTimeline) dAppointmentTimeline.textContent = "No appointment status updates yet";
+    if (dAppointmentMeetingLink) dAppointmentMeetingLink.textContent = "—";
+    if (dAppointmentCalendarLink) dAppointmentCalendarLink.textContent = "—";
+    if (dAppointmentStatusSelect) dAppointmentStatusSelect.value = "Requested";
+    if (btnSaveAppointmentStatus) btnSaveAppointmentStatus.disabled = false;
+    syncQuickViewDisclosures();
+    return;
+  }
+
+  if (dAppointmentStatus) dAppointmentStatus.textContent = summarizeLeadAppointmentStatus(snapshot);
+  if (dAppointmentTime) dAppointmentTime.textContent = formatAppointmentDateTimeRange(snapshot);
+  if (dAppointmentSource) dAppointmentSource.textContent = summarizeLeadAppointmentSource(snapshot);
+  if (dAppointmentRequestedSource) dAppointmentRequestedSource.textContent = summarizeLeadAppointmentRequestedSource(snapshot);
+  if (dAppointmentConfirmation) dAppointmentConfirmation.textContent = summarizeLeadAppointmentConfirmation(snapshot);
+  if (dAppointmentBookingConfig) dAppointmentBookingConfig.textContent = summarizeLeadAppointmentConfig(snapshot);
+  if (dAppointmentTimeline) dAppointmentTimeline.textContent = appointmentStatusTimestampText(snapshot);
+  renderAppointmentLink(dAppointmentMeetingLink, snapshot.meetingUrl, "Open meeting link");
+  renderAppointmentLink(dAppointmentCalendarLink, snapshot.calendarEventWebLink, "Open Outlook event");
+  if (dAppointmentStatusSelect) dAppointmentStatusSelect.value = snapshot.status || "Requested";
+  if (btnSaveAppointmentStatus) btnSaveAppointmentStatus.disabled = false;
+  syncQuickViewDisclosures();
+}
+
+function renderIntakeSnapshot(snapshot){
+  const nodes = [
+    dIntakeSubmitted,
+    dIntakeHistory,
+    dIntakeOrigin,
+    dIntakeOwner,
+    dIntakeProduct,
+    dIntakeQuoteType,
+    dIntakePage,
+    dIntakeSource,
+    dIntakeLanding,
+    dIntakeIds,
+    dIntakeRecommendation,
+    dIntakeDiscovery,
+    dIntakeRawMeta
+  ];
+
+  if (!snapshot){
+    if (dIntakeSection) dIntakeSection.hidden = true;
+    nodes.forEach(node => { if (node) node.textContent = "—"; });
+    syncQuickViewDisclosures();
+    return;
+  }
+
+  if (dIntakeSection) dIntakeSection.hidden = false;
+  if (dIntakeSubmitted) dIntakeSubmitted.textContent = formatIntakeSnapshotDate(snapshot.submittedUtc);
+  if (dIntakeHistory) dIntakeHistory.textContent = `${Number(snapshot.historyCount || 1)} public submission${Number(snapshot.historyCount || 1) === 1 ? "" : "s"}`;
+  if (dIntakeOrigin) dIntakeOrigin.textContent = snapshot.originLabel || "—";
+  if (dIntakeOwner) dIntakeOwner.textContent = snapshot.agentUserId || activeClientDetail?.agentUserId || "—";
+  if (dIntakeProduct) dIntakeProduct.textContent = joinIntakeParts([
+    snapshot.interestLabel,
+    snapshot.offerKey ? `Offer: ${snapshot.offerKey}` : "",
+    snapshot.productType ? `Type: ${snapshot.productType}` : ""
+  ]);
+  if (dIntakeQuoteType) dIntakeQuoteType.textContent = snapshot.quoteTypeLabel || "—";
+  if (dIntakePage) dIntakePage.textContent = joinIntakeParts([
+    snapshot.sourcePageKey,
+    snapshot.pageVariant ? `Variant: ${snapshot.pageVariant}` : "",
+    snapshot.pageMode ? `Mode: ${snapshot.pageMode}` : "",
+    snapshot.pagePath
+  ]);
+  if (dIntakeSource) dIntakeSource.textContent = joinIntakeParts([
+    snapshot.utmSource,
+    snapshot.utmMedium,
+    snapshot.utmCampaign,
+    snapshot.referrerUrl ? `Referrer: ${snapshot.referrerUrl}` : ""
+  ]);
+  if (dIntakeLanding) dIntakeLanding.textContent = joinIntakeParts([
+    snapshot.landingPageUrl ? `Landing: ${snapshot.landingPageUrl}` : "",
+    snapshot.referrerUrl ? `Referrer: ${snapshot.referrerUrl}` : ""
+  ]);
+  if (dIntakeIds) dIntakeIds.textContent = joinIntakeParts([
+    snapshot.utmId ? `utm_id ${snapshot.utmId}` : "",
+    snapshot.fbclid ? `fbclid ${snapshot.fbclid}` : "",
+    snapshot.metaCampaignId ? `campaign ${snapshot.metaCampaignId}` : "",
+    snapshot.metaAdSetId ? `adset ${snapshot.metaAdSetId}` : "",
+    snapshot.metaAdId ? `ad ${snapshot.metaAdId}` : ""
+  ]);
+  if (dIntakeRecommendation) dIntakeRecommendation.textContent = snapshot.recommendationSummary || joinIntakeParts([
+    snapshot.estimateSummary,
+    snapshot.recommendationPrimaryTitle ? `Primary: ${snapshot.recommendationPrimaryTitle}` : "",
+    snapshot.recommendationSecondaryTitle ? `Secondary: ${snapshot.recommendationSecondaryTitle}` : ""
+  ]);
+  if (dIntakeDiscovery) dIntakeDiscovery.textContent = Array.isArray(snapshot.discoveryItems) && snapshot.discoveryItems.length
+    ? snapshot.discoveryItems
+        .map(item => `${norm(item?.label) || "Detail"}: ${norm(item?.value) || "—"}`)
+        .join(" • ")
+    : "—";
+  if (dIntakeRawMeta) dIntakeRawMeta.textContent = snapshot.rawMetadataJson || "—";
+  syncQuickViewDisclosures();
+}
+
 // Quick View autosave (debounced)
-const AUTOSAVE_DELAY_MS = 900;
+const AUTOSAVE_DELAY_MS = 2000;  // 2 seconds: reduces UI lag from rapid keystroke autosaves
 let quickViewAutosaveTimer = null;
 let quickViewAutosaveInFlight = false;
+
+function calculateAgeFromDOB(dobString) {
+  if (!dobString) return "";
+  const dob = new Date(dobString);
+  if (isNaN(dob.getTime())) return "";
+  const today = new Date();
+  let age = today.getFullYear() - dob.getFullYear();
+  const hasHadBirthdayThisYear = (today.getMonth() > dob.getMonth()) || 
+    (today.getMonth() === dob.getMonth() && today.getDate() >= dob.getDate());
+  if (!hasHadBirthdayThisYear) age--;
+  return age.toString();
+}
 
 function buildLeadQuickViewOverrides(){
   return {
     crmStatus: norm(dStatus.value) || "Lead",
     crmPriority: norm(dPriority.value) || "Normal",
+    contactStatus: normalizeContactStatusValue(dContactStatus?.value),
     crmLastTouch: norm(dLastTouch.value) || null,
     crmNextDate: norm(dNextDate.value) || null,
     crmNextText: norm(dNextText.value),
@@ -1763,11 +2475,19 @@ function queueQuickViewAutosave(reason){
   quickViewAutosaveTimer = setTimeout(performQuickViewAutosave, AUTOSAVE_DELAY_MS);
 }
 
+function flushQuickViewAutosave(reason){
+  if (!activeClientId) return;
+  if (dSaved) dSaved.textContent = reason || "Saving…";
+  clearTimeout(quickViewAutosaveTimer);
+  void performQuickViewAutosave();
+}
+
 function wireQuickViewAutosave(){
   const autosaveFields = [
-    dFirst,dLast,dEmailInput,dPhoneInput,dPhone2Input,dDob,dAge,dGender,
-    dAddress,dCity,dState,dCounty,dZip,dBtc,dLender,dLoanAmount,
-    dStatus,dPriority,dLastTouch,dNextDate,dNextText,dTags,dNotes,
+    // Contact fields (email, phone, address) are excluded here to allow clean editing without lag.
+    // They will autosave on blur instead (see wireContactFieldBlur below).
+    dFirst,dLast,dDob,dAge,dGender,dBtc,dLender,dLoanAmount,
+    dStatus,dPriority,dContactStatus,dLastTouch,dNextDate,dNextText,dTags,dNotes,
     dPipelineStage,dMeetingTime,dMeetingDuration,dMeetingLocation,dZoomJoinUrl,
     dUsePersonalZoomLink,dWaitingOn,dPinnedBrief,
     dDocIdReceived,dDocAppSent,dDocAppSigned,dDocPolicyDelivered,dDocReviewBooked,
@@ -1788,6 +2508,26 @@ function wireQuickViewAutosave(){
       });
     }
   });
+
+  // Contact fields (email, phone, address) save on blur for clean editing without lag
+  const contactFields = [dFirst, dLast, dEmailInput, dPhoneInput, dPhone2Input, dAddress, dCity, dState, dCounty, dZip];
+  contactFields.forEach(el => {
+    if (!el) return;
+    el.addEventListener("blur", () => {
+      if (activeClientId) queueQuickViewAutosave("Saving…");
+    });
+  });
+
+  // Auto-calculate age when DOB changes
+  if (dDob) {
+    dDob.addEventListener("change", () => {
+      const calculatedAge = calculateAgeFromDOB(dDob.value);
+      if (calculatedAge && dAge) {
+        dAge.value = calculatedAge;
+        queueQuickViewAutosave("Age updated…");
+      }
+    });
+  }
 }
 
 const clientSearchForm = $("#clientSearchForm");
@@ -1796,10 +2536,10 @@ const clientSearchWarning = $("#clientSearchWarning");
 
 function refreshStateFilterOptions(){
   if (!stateFilter) return;
-  const current = (stateFilter.value || "").toUpperCase();
+  const current = normalizeStateOption(stateFilter.value || "");
   const states = Array.from(new Set(
     rows
-      .map(r => (norm(r.dataset.state) || "").toUpperCase())
+      .map(r => normalizeStateOption(r.dataset.state || ""))
       .filter(Boolean)
   )).sort();
   const options = ['<option value=\"\">State</option>']
@@ -1926,6 +2666,7 @@ function hydrateRow(row){
   const priority  = row.dataset.sPriority  || "Normal";
   const pipeline  = normalizePipelineStageValue(row.dataset.sPipeline, "MortgageProtection");
   const waitingOn = row.dataset.sWaiting   || "WaitingOnAgent";
+  const contactStatus = normalizeContactStatusValue(row.dataset.sContactstatus || row.dataset.crmContactStatus);
   const pinnedBrief = row.dataset.sPinnedbrief || "";
   const stageEntered = row.dataset.sStageentered || todayISO();
   const attemptsToday = row.dataset.sAttemptstoday || "0";
@@ -1952,6 +2693,7 @@ function hydrateRow(row){
   row.dataset.crmPriority  = priority;
   row.dataset.crmPipeline  = pipeline;
   row.dataset.crmWaitingOn = waitingOn;
+  row.dataset.crmContactStatus = contactStatus;
   row.dataset.crmPinnedBrief = pinnedBrief;
   row.dataset.crmStageEntered = stageEntered;
   row.dataset.crmAttemptsToday = attemptsToday;
@@ -1977,12 +2719,15 @@ function hydrateRow(row){
   const nextTextEl = $("[data-nextaction]", row);
   const nextPill = $("[data-nextpill]", row);
   const waitingTextEl = $("[data-waiting-text]", row);
+  const contactStatusTextEl = $("[data-contact-status-text]", row);
+  const commandWarningEl = $("[data-command-warning]", row);
   const stageAgeEl = $("[data-stageage]", row);
 
   syncRowEmailDisplays(row);
 
   if (statusText) statusText.textContent = crmStatusLabel(status);
   if (waitingTextEl) waitingTextEl.textContent = waitingLabel(waitingOn);
+  if (contactStatusTextEl) contactStatusTextEl.textContent = contactStatusLabel(contactStatus);
   if (stageAgeEl) stageAgeEl.textContent = `Stage Age: ${stageAgeDays(row)}d`;
 
   const cls = classifyBadge(status, row);
@@ -1992,18 +2737,10 @@ function hydrateRow(row){
   }
 
   if (pipelineText) pipelineText.textContent = pipelineLabel(pipeline);
-  row.classList.remove(
-    "stage-newlead","stage-contacted","stage-qualified","stage-client","stage-meetingscheduled",
-    "stage-proposalsent","stage-applicationstarted","stage-submitted",
-    "stage-closedwon","stage-closedlost","stage-nurture"
-  );
+  row.classList.remove(...PIPELINE_STAGE_CLASSES);
   row.classList.add(pipelineBadgeClass(pipeline));
   if (pipelineBadge){
-    pipelineBadge.classList.remove(
-      "stage-newlead","stage-contacted","stage-qualified","stage-client","stage-meetingscheduled",
-      "stage-proposalsent","stage-applicationstarted","stage-submitted",
-      "stage-closedwon","stage-closedlost","stage-nurture"
-    );
+    pipelineBadge.classList.remove(...PIPELINE_STAGE_CLASSES);
     pipelineBadge.classList.add(pipelineBadgeClass(pipeline));
   }
 
@@ -2045,21 +2782,39 @@ function hydrateRow(row){
       (!nextDate && !nextText) ? "Set Next Action in Quick View" : "Next Action";
   }
 
+  if (commandWarningEl){
+    const warning = leadWarningSummary(row);
+    commandWarningEl.textContent = warning || "—";
+    commandWarningEl.classList.toggle("is-active", !!warning);
+  }
+
   setLeadProduction(row, prodStatus, prodAmount);
 }
 
-function setLeadProduction(row, status, amount){
+function setLeadProduction(row, status, amount, totals){
   const badge = $("[data-prod-card]", row);
   const cleanStatus = (status || "").trim();
   const amt = Number(amount || 0);
-  row.dataset.prodStatus = cleanStatus;
-  row.dataset.prodAmount = amt;
+  const resolved = resolveProductionTotals(cleanStatus, amt, {
+    paid: totals?.paid ?? row.dataset.prodPaid ?? row.dataset.paid,
+    issued: totals?.issued ?? row.dataset.prodIssued,
+    submitted: totals?.submitted ?? row.dataset.prodSubmitted
+  });
+  const paid = resolved.paid;
+  const issued = resolved.issued;
+  const submitted = resolved.submitted;
+  const hasAny = paid > 0 || issued > 0 || submitted > 0;
 
-  console.log("PROD DATA:", row?.dataset?.clientId, cleanStatus, amt);
+  row.dataset.prodPaid = Number.isFinite(paid) ? `${paid}` : "0";
+  row.dataset.prodIssued = Number.isFinite(issued) ? `${issued}` : "0";
+  row.dataset.prodSubmitted = Number.isFinite(submitted) ? `${submitted}` : "0";
+  row.dataset.paid = row.dataset.prodPaid;
+  row.dataset.prodStatus = (paid > 0 ? "Paid" : cleanStatus);
+  row.dataset.prodAmount = paid > 0 ? paid : amt;
 
   if (!badge) return;
-  if (cleanStatus && amt > 0){
-    badge.innerHTML = `<span class="prod-status">${escapeHtml(cleanStatus)}</span><span class="prod-amt"> ${formatCurrency(amt)}</span>`;
+  if (hasAny){
+    badge.innerHTML = renderPipelineProdBadge({ paid, issued, submitted });
     badge.classList.remove("hidden");
   } else {
     badge.textContent = "";
@@ -2067,10 +2822,70 @@ function setLeadProduction(row, status, amount){
   }
 }
 
-function setLeadProductionById(leadId, status, amount){
+function setLeadProductionById(leadId, status, amount, totals){
   const row = rows.find(r => r.dataset.clientId === leadId);
-  if (row) setLeadProduction(row, status, amount);
+  if (row) setLeadProduction(row, status, amount, totals);
   updatePipelineCardProduction(leadId);
+}
+
+function productionBucket(rawStatus){
+  const s = norm(rawStatus).toLowerCase();
+  if (!s) return "";
+  if (s === "2" || s.includes("paid")) return "paid";
+  if (s === "1" || s.includes("issued")) return "issued";
+  if (s === "0" || s.includes("submitted")) return "submitted";
+  return "";
+}
+
+function resolveProductionTotals(status, amount, seed = {}){
+  let paid = Number(seed.paid ?? 0);
+  let issued = Number(seed.issued ?? 0);
+  let submitted = Number(seed.submitted ?? 0);
+  if (!Number.isFinite(paid)) paid = 0;
+  if (!Number.isFinite(issued)) issued = 0;
+  if (!Number.isFinite(submitted)) submitted = 0;
+
+  if (paid <= 0 && issued <= 0 && submitted <= 0){
+    const amt = Number(amount || 0);
+    if (amt > 0){
+      const bucket = productionBucket(status);
+      if (bucket === "paid") paid = amt;
+      else if (bucket === "issued") issued = amt;
+      else if (bucket === "submitted") submitted = amt;
+    }
+  }
+
+  return { paid, issued, submitted };
+}
+
+function renderPipelineProdBadge({ paid = 0, issued = 0, submitted = 0 } = {}){
+  const paidAmt = Number(paid || 0);
+  const issuedAmt = Number(issued || 0);
+  const submittedAmt = Number(submitted || 0);
+  if (paidAmt <= 0 && issuedAmt <= 0 && submittedAmt <= 0) return "";
+
+  return `
+    <div class="prod-line prod-line-paid"><span class="prod-lbl">Paid:</span><span class="prod-val">${formatCurrency(paidAmt)}</span></div>
+    <div class="prod-line prod-line-issued"><span class="prod-lbl">Issued:</span><span class="prod-val">${formatCurrency(issuedAmt)}</span></div>
+    <div class="prod-line prod-line-submitted"><span class="prod-lbl">Submitted:</span><span class="prod-val">${formatCurrency(submittedAmt)}</span></div>
+  `;
+}
+
+function renderPipelineProdCompactBadge({ paid = 0, issued = 0, submitted = 0 } = {}){
+  const states = [
+    { label: "Submitted", shortLabel: "Sub", amount: Number(submitted || 0), className: "prod-line-submitted" },
+    { label: "Issued", shortLabel: "Iss", amount: Number(issued || 0), className: "prod-line-issued" },
+    { label: "Paid", shortLabel: "Paid", amount: Number(paid || 0), className: "prod-line-paid" }
+  ];
+  const activeStates = states.filter(state => state.amount > 0);
+  if (!activeStates.length) return "";
+
+  return activeStates.map(state => `
+    <span class="prod-mini-pill ${state.className}" title="${escapeHtml(state.label)} ${escapeHtml(formatCurrency(state.amount))}">
+      <span class="prod-mini-key">${escapeHtml(state.shortLabel)}</span>
+      <span class="prod-mini-val">${escapeHtml(formatCompactCurrency(state.amount))}</span>
+    </span>
+  `).join("");
 }
 
 function updatePipelineCardProduction(leadId){
@@ -2080,10 +2895,13 @@ function updatePipelineCardProduction(leadId){
   if (!card || !row) return;
   const badge = card.querySelector("[data-prod-card]");
   if (!badge) return;
-  const status = (row.dataset.prodStatus || "").trim();
-  const amount = Number(row.dataset.prodAmount || 0);
-  if (status && amount > 0){
-    badge.innerHTML = `${escapeHtml(status)} <span class="prod-amt">${formatCurrency(amount)}</span>`;
+
+  const paid = Number(row.dataset.prodPaid || row.dataset.paid || 0);
+  const issued = Number(row.dataset.prodIssued || 0);
+  const submitted = Number(row.dataset.prodSubmitted || 0);
+  const html = renderPipelineProdCompactBadge({ paid, issued, submitted });
+  if (html){
+    badge.innerHTML = html;
     badge.classList.remove("hidden");
   } else {
     badge.textContent = "";
@@ -2115,6 +2933,8 @@ async function refreshLeadProductionTiles(){
     if (tileIssuedCount) tileIssuedCount.textContent = data.countIssued ?? 0;
     if (tilePaidCount) tilePaidCount.textContent = data.countPaid ?? 0;
     if (tilePersonalCount) tilePersonalCount.textContent = data.countPersonal ?? 0;
+    if (perfPreviewPaid) perfPreviewPaid.textContent = fmt(data.paid);
+    if (perfPreviewPersonal) perfPreviewPersonal.textContent = fmt(data.personal);
   }catch(err){
     console.warn("Production tile refresh failed", err);
   }
@@ -2135,6 +2955,7 @@ function updateCallMetrics(){
   cmWeek.textContent = week.toLocaleString();
   cmMonth.textContent = month.toLocaleString();
   if (cmYearBtn) cmYearBtn.textContent = year.toLocaleString();
+  if (perfPreviewCalls) perfPreviewCalls.textContent = day.toLocaleString();
 }
 rows.forEach(hydrateRow);
 refreshStateFilterOptions();
@@ -2173,10 +2994,10 @@ function updateSelectionUI(){
   const checked = getCheckedRows();
   const count = checked.length;
 
-  selCount.textContent = String(count);
-  btnCopyEmails.disabled = count === 0;
-  btnClearSel.disabled = count === 0;
-  btnOpenFirst.disabled = count === 0;
+  if (selCount) selCount.textContent = String(count);
+  if (btnCopyEmails) btnCopyEmails.disabled = count === 0;
+  if (btnClearSel) btnClearSel.disabled = count === 0;
+  if (btnOpenFirst) btnOpenFirst.disabled = count === 0;
   if (btnBulkEdit) btnBulkEdit.disabled = count === 0;
   // keep bulk delete clickable; handler will guard zero-selection
   if (btnBulkDelete) btnBulkDelete.disabled = false;
@@ -2325,6 +3146,7 @@ if (liveSync){
     if (payload.crmNextText !== undefined) row.dataset.sNexttext = payload.crmNextText || "";
     if (payload.crmStatus) row.dataset.sStatus = payload.crmStatus;
     if (payload.crmPriority) row.dataset.sPriority = payload.crmPriority;
+    if (payload.contactStatus !== undefined) row.dataset.sContactstatus = normalizeContactStatusValue(payload.contactStatus || row.dataset.sContactstatus || "NotSet");
     if (payload.attemptsToday !== undefined) row.dataset.sAttemptstoday = String(payload.attemptsToday ?? 0);
     if (payload.attemptsThisWeek !== undefined) row.dataset.sAttemptsweek = String(payload.attemptsThisWeek ?? 0);
     if (payload.attemptsThisMonth !== undefined) row.dataset.sAttemptsmonth = String(payload.attemptsThisMonth ?? 0);
@@ -2353,6 +3175,10 @@ async function deleteCurrentBucket(){
   const bucket = inferCurrentBucket();
   if (!bucket){
     toast("No bucket detected. Pick a bucket or filter first.");
+    return;
+  }
+  if (isDerivedPipelineFilterStage(bucket)){
+    toast("Called Today is a daily filter bucket, not a saved stage you can delete.");
     return;
   }
   const bucketLabel = pipelineLabel(bucket);
@@ -2405,6 +3231,16 @@ document.addEventListener("click", (e) => {
 
   if (e.target === drawerBackdrop) closeDrawer();
   if (e.target === modalBackdrop) closeModal();
+
+  const workLeadId = e.target.closest("[data-work-lead]")?.getAttribute("data-work-lead");
+  if (workLeadId){
+    e.preventDefault();
+    e.stopPropagation();
+    const row = rows.find(r => r.dataset.clientId === workLeadId);
+    const detail = activeClientId === workLeadId ? activeClientDetail : null;
+    workLeadInWorkstation(row, detail);
+    return;
+  }
 
   const openDrawerEl = e.target.closest(".open-drawer");
   if (openDrawerEl){
@@ -2689,7 +3525,7 @@ function computeFiltered(){
   const s = norm(statusFilter.value);
   const priority = norm(priorityFilter.value);
   const stage = norm(stageFilter.value);
-  const state = norm(stateFilter?.value);
+  const state = normalizeStateOption(stateFilter?.value || "");
   const attn = norm(attentionFilter.value);
 
   let filtered = rows.slice();
@@ -2702,7 +3538,7 @@ function computeFiltered(){
   if (s) filtered = filtered.filter(r => norm(r.dataset.crmStatus) === s);
   if (priority) filtered = filtered.filter(r => norm(r.dataset.crmPriority) === priority);
   if (stage) filtered = filtered.filter(r => matchesStageSelection(r, stage));
-  if (state) filtered = filtered.filter(r => norm(r.dataset.state).toUpperCase() === state.toUpperCase());
+  if (state) filtered = filtered.filter(r => normalizeStateOption(r.dataset.state || "") === state);
 
   if (attn === "needs") filtered = filtered.filter(needsAttention);
   if (attn === "callsnow") filtered = filtered.filter(r => HIGH_PRIORITY_KEYS.has(priorityKey(r)) && (isToday(norm(r.dataset.crmNextDate)) || isOverdue(norm(r.dataset.crmNextDate))));
@@ -2751,15 +3587,15 @@ function renderList(filtered){
   rows.forEach(r => r.style.display = "none");
   pageRows.forEach(r => r.style.display = "");
 
-  pageNow.textContent = String(currentPage);
-  pageMax.textContent = String(max);
+  if (pageNow) pageNow.textContent = String(currentPage);
+  if (pageMax) pageMax.textContent = String(max);
 
   const showingA = filtered.length === 0 ? 0 : (start + 1);
   const showingB = Math.min(end, filtered.length);
-  pagerInfo.textContent = `${filtered.length} result(s) • Showing ${showingA}–${showingB}`;
+  if (pagerInfo) pagerInfo.textContent = `${filtered.length} live records - ${showingA}-${showingB} visible`;
 
-  btnPrev.disabled = currentPage <= 1;
-  btnNext.disabled = currentPage >= max;
+  if (btnPrev) btnPrev.disabled = currentPage <= 1;
+  if (btnNext) btnNext.disabled = currentPage >= max;
 }
 
 function renderAll(){
@@ -2828,7 +3664,7 @@ if (clientSearchForm && clientSearchInput){
 function applyDensityClass(){
   if (!legendWrap) return;
   legendWrap.classList.remove("density-compact","density-comfort");
-  legendWrap.classList.add(density.value === "compact" ? "density-compact" : "density-comfort");
+  legendWrap.classList.add(getDensityValue() === "compact" ? "density-compact" : "density-comfort");
 }
 
 function resetFilters(){
@@ -2873,26 +3709,29 @@ function applyPreset(name){
 }
 
 function applyViewMode(){
-  const mode = viewMode.value || "pipeline";
-  const isPipeline = mode === "pipeline";
-  const isTable = mode === "table";
-  const isHybrid = mode === "hybrid";
+  if (viewMode) viewMode.value = PIPELINE_ONLY_VIEW;
 
-  legendWrap?.classList.toggle("pipeline-mode", isPipeline);
-  legendWrap?.classList.toggle("table-mode", isTable);
-  legendWrap?.classList.toggle("hybrid-mode", isHybrid);
+  legendWrap?.classList.add("pipeline-mode");
+  legendWrap?.classList.remove("table-mode", "hybrid-mode");
 
-  if (tableView) tableView.style.display = isPipeline ? "none" : "block";
-  if (cardsView) cardsView.style.display = isTable ? "none" : "block";
+  if (tableView) {
+    tableView.style.display = "none";
+    tableView.setAttribute("aria-hidden", "true");
+  }
+  if (cardsView) {
+    cardsView.style.display = "block";
+    cardsView.removeAttribute("aria-hidden");
+  }
 }
 
 density?.addEventListener("change", () => {
-  saveJSON(LS_PREFS, { ...loadJSON(LS_PREFS, {}), density: density.value });
+  saveJSON(LS_PREFS, { ...loadJSON(LS_PREFS, {}), density: getDensityValue() });
   applyDensityClass();
 });
 
 viewMode?.addEventListener("change", () => {
-  saveJSON(LS_PREFS, { ...loadJSON(LS_PREFS, {}), view: viewMode.value });
+  viewMode.value = PIPELINE_ONLY_VIEW;
+  saveJSON(LS_PREFS, { ...loadJSON(LS_PREFS, {}), view: PIPELINE_ONLY_VIEW });
   applyViewMode();
   renderAll();
 });
@@ -2916,6 +3755,7 @@ function refreshKPIs(){
   $("#kTouched").textContent = touched;
   $("#kOverdue").textContent = overdue;
   $("#kToday").textContent = today;
+  if (perfPreviewOverdue) perfPreviewOverdue.textContent = overdue.toLocaleString();
 
   kpiGrid.style.display = "";
 }
@@ -3009,6 +3849,7 @@ function renderMyDayFocus(){
   mydayFocus.classList.toggle("active", !!meta);
   $$(".myday-tile").forEach(tile => tile.classList.toggle("active", tile.getAttribute("data-queue") === activeMyDayQueue));
   if (!meta) return;
+  myDayPanelController?.open();
   if (mydayFocusTitle) mydayFocusTitle.textContent = meta.title;
   if (mydayFocusSub) mydayFocusSub.textContent = `${meta.sub} Open a record to edit it in Quick View.`;
   if (mydayFocusCount) mydayFocusCount.textContent = `${meta.count} record${meta.count === 1 ? "" : "s"}`;
@@ -3016,21 +3857,28 @@ function renderMyDayFocus(){
 }
 
 function refreshMyDay(){
-  $("#qCallsNow") && ($("#qCallsNow").textContent = String(myDaySnapshot.counts?.callsnow ?? queueRows("callsnow").length));
-  $("#qDueToday") && ($("#qDueToday").textContent = String(myDaySnapshot.counts?.today ?? queueRows("today").length));
-  $("#qOverdue") && ($("#qOverdue").textContent = String(myDaySnapshot.counts?.overdue ?? queueRows("overdue").length));
-  $("#qMeetings") && ($("#qMeetings").textContent = String(myDaySnapshot.counts?.meetings ?? queueRows("meetings").length));
-  $("#qWaitingClient") && ($("#qWaitingClient").textContent = String(myDaySnapshot.counts?.waitingclient ?? queueRows("waitingclient").length));
-  $("#qWaitingCarrier") && ($("#qWaitingCarrier").textContent = String(myDaySnapshot.counts?.waitingcarrier ?? queueRows("waitingcarrier").length));
+  const syncQueueCount = (selector, previewEl, value) => {
+    const text = String(value);
+    const el = $(selector);
+    if (el) el.textContent = text;
+    if (previewEl) previewEl.textContent = text;
+  };
+
+  syncQueueCount("#qCallsNow", qCallsNowPreview, myDaySnapshot.counts?.callsnow ?? queueRows("callsnow").length);
+  syncQueueCount("#qDueToday", qDueTodayPreview, myDaySnapshot.counts?.today ?? queueRows("today").length);
+  syncQueueCount("#qOverdue", qOverduePreview, myDaySnapshot.counts?.overdue ?? queueRows("overdue").length);
+  syncQueueCount("#qMeetings", qMeetingsPreview, myDaySnapshot.counts?.meetings ?? queueRows("meetings").length);
+  syncQueueCount("#qWaitingClient", null, myDaySnapshot.counts?.waitingclient ?? queueRows("waitingclient").length);
+  syncQueueCount("#qWaitingCarrier", null, myDaySnapshot.counts?.waitingcarrier ?? queueRows("waitingcarrier").length);
   renderMyDayFocus();
 
   loadMyDaySnapshot().then(() => {
-    $("#qCallsNow") && ($("#qCallsNow").textContent = String(myDaySnapshot.counts?.callsnow ?? 0));
-    $("#qDueToday") && ($("#qDueToday").textContent = String(myDaySnapshot.counts?.today ?? 0));
-    $("#qOverdue") && ($("#qOverdue").textContent = String(myDaySnapshot.counts?.overdue ?? 0));
-    $("#qMeetings") && ($("#qMeetings").textContent = String(myDaySnapshot.counts?.meetings ?? 0));
-    $("#qWaitingClient") && ($("#qWaitingClient").textContent = String(myDaySnapshot.counts?.waitingclient ?? 0));
-    $("#qWaitingCarrier") && ($("#qWaitingCarrier").textContent = String(myDaySnapshot.counts?.waitingcarrier ?? 0));
+    syncQueueCount("#qCallsNow", qCallsNowPreview, myDaySnapshot.counts?.callsnow ?? 0);
+    syncQueueCount("#qDueToday", qDueTodayPreview, myDaySnapshot.counts?.today ?? 0);
+    syncQueueCount("#qOverdue", qOverduePreview, myDaySnapshot.counts?.overdue ?? 0);
+    syncQueueCount("#qMeetings", qMeetingsPreview, myDaySnapshot.counts?.meetings ?? 0);
+    syncQueueCount("#qWaitingClient", null, myDaySnapshot.counts?.waitingclient ?? 0);
+    syncQueueCount("#qWaitingCarrier", null, myDaySnapshot.counts?.waitingcarrier ?? 0);
     renderMyDayFocus();
   }).catch(() => {});
 }
@@ -3063,7 +3911,7 @@ function saveCurrentView(){
     stage: norm(stageFilter.value),
     attention: norm(attentionFilter.value),
     sort: norm(sortBy.value),
-    view: norm(viewMode.value)
+    view: PIPELINE_ONLY_VIEW
   });
   saveJSON(LS_VIEWS, views.slice(-8));
   renderSavedViews();
@@ -3078,7 +3926,7 @@ function applySavedView(index){
   stageFilter.value = view.stage || "";
   attentionFilter.value = view.attention || "";
   sortBy.value = view.sort || "name_asc";
-  viewMode.value = view.view || "pipeline";
+  viewMode.value = PIPELINE_ONLY_VIEW;
   applyViewMode();
   currentPage = 1;
   renderAll();
@@ -3112,6 +3960,8 @@ async function openDrawerById(clientId){
         loanAmount: lead.loanAmount || "",
         crmStatus: lead.crmStatus || "Lead",
         crmPriority: "Normal",
+        crmContactStatus: lead.contactStatus || "NotSet",
+        sContactstatus: lead.contactStatus || "NotSet",
         crmLastTouch: lead.crmLastTouch || lead.updatedUtc || "",
         crmNextDate: "",
         crmNextText: lead.crmNotes || "",
@@ -3180,6 +4030,7 @@ async function openDrawerForRow(row){
   dStatus.value = row.dataset.crmStatus || "Active";
   dPipelineStage.value = normalizePipelineStageValue(row.dataset.crmPipeline, "MortgageProtection");
   applyQuickViewContactProfileLabels(row, null);
+  if (dContactStatus) dContactStatus.value = normalizeContactStatusValue(row.dataset.crmContactStatus || row.dataset.sContactstatus || "NotSet");
   dLastTouch.value = row.dataset.crmLastTouch || "";
   dTags.value = row.dataset.crmTags || "";
   dNotes.value = row.dataset.crmNotes || "";
@@ -3208,7 +4059,7 @@ async function openDrawerForRow(row){
   dStageAge.textContent = `Stage Age: ${stageAgeDays(row)}d`;
   dAttempts.textContent = `Attempts: ${row.dataset.crmAttemptsToday || 0} today • ${row.dataset.crmAttemptsWeek || 0} week • ${row.dataset.crmAttemptsLife || 0} total`;
   dWaitingOnPill.textContent = waitingLabel(row.dataset.crmWaitingOn || "WaitingOnAgent");
-  dOutcomeSuggestion.textContent = "Use one-click outcomes to move leads into the last 7 non-lead buckets.";
+  dOutcomeSuggestion.textContent = "Use one-click outcomes to move leads into the last 8 non-lead buckets.";
   refreshCalendarBusyPanel();
 
   renderPortalActions(row, null);
@@ -3217,6 +4068,8 @@ async function openDrawerForRow(row){
   dActNote.value = "";
   renderTimeline([]);
   renderMentionNotes([]);
+  renderIntakeSnapshot(null);
+  renderAppointmentSnapshot(null);
   refreshLeadOverviewSummary();
   dSaved.textContent = "Loading…";
 
@@ -3225,6 +4078,7 @@ async function openDrawerForRow(row){
   drawer.setAttribute("aria-hidden", "false");
   lockPageScrollForQuickView();
   updateZoomControls();
+  syncQuickViewDisclosures();
 
   closeAllMenus(null);
 
@@ -3234,9 +4088,14 @@ async function openDrawerForRow(row){
 
     activeClientDetail = detail;
     noteSyncLeadField();
+    const resolvedContactStatus = normalizeContactStatusValue(detail.contactStatus || row.dataset.crmContactStatus || row.dataset.sContactstatus || "NotSet");
+    row.dataset.sContactstatus = resolvedContactStatus;
+    row.dataset.crmContactStatus = resolvedContactStatus;
+    hydrateRow(row);
     dStatus.value = detail.crmStatus || row.dataset.crmStatus || "Active";
     dPipelineStage.value = normalizePipelineStageValue(detail.pipelineStage || row.dataset.crmPipeline, "MortgageProtection");
     applyQuickViewContactProfileLabels(row, detail, dPipelineStage.value);
+    if (dContactStatus) dContactStatus.value = resolvedContactStatus;
     dLastTouch.value = detail.crmLastTouch || row.dataset.crmLastTouch || "";
     dTags.value = detail.crmTags || row.dataset.crmTags || "";
     dNotes.value = detail.agentNotes || row.dataset.crmNotes || "";
@@ -3284,13 +4143,18 @@ async function openDrawerForRow(row){
     refreshCalendarBusyPanel();
     renderTimeline(detail.activities || []);
     renderMentionNotes(detail.collaboration?.mentionNotes || []);
+    renderIntakeSnapshot(detail.intakeSnapshot || null);
+    renderAppointmentSnapshot(detail.latestAppointment || null);
     refreshLeadOverviewSummary();
+    syncQuickViewDisclosures();
 
     renderPortalActions(row, detail);
 
     dSaved.textContent = "Loaded";
   }catch(err){
     console.error(err);
+    renderIntakeSnapshot(null);
+    renderAppointmentSnapshot(null);
     dSaved.textContent = "Load failed";
     toast("Failed to load lead details.");
   }
@@ -3310,7 +4174,16 @@ async function loadProductionHistory(leadId){
       if (!res.ok) throw new Error("load fail");
       const data = await res.json();
     const latest = (data && data.length) ? data[0] : null;
-    setLeadProductionById(leadId, latest?.status || "", latest?.amount || 0);
+    const totals = (data || []).reduce((acc, p) => {
+      const amt = Number(p?.amount || 0);
+      const raw = norm(p?.status);
+      const st = productionBucket(raw);
+      if (st === "paid") acc.paid += amt;
+      else if (st === "issued") acc.issued += amt;
+      else if (st === "submitted") acc.submitted += amt;
+      return acc;
+    }, { paid: 0, issued: 0, submitted: 0 });
+    setLeadProductionById(leadId, latest?.status || "", latest?.amount || 0, totals);
     // --- Production summary logic ---
     if (summary) {
       if (!data || !data.length) {
@@ -3338,12 +4211,26 @@ async function loadProductionHistory(leadId){
     data.forEach(item => {
       const div = document.createElement("div");
       div.className = "ph-item";
+      const safeStatus = norm(item.status) || "Submitted";
+      const toneClass = safeStatus.toLowerCase();
+      const updatedLabel = item.updated ? new Date(item.updated).toLocaleString() : "";
       div.innerHTML = `
         <div class="ph-left">
+        <div class="ph-top">
+          <div class="ph-status ${toneClass}">${safeStatus}</div>
+          ${updatedLabel ? `<div class="ph-updated">${safeHtml(updatedLabel)}</div>` : ""}
+        </div>
+        <div class="ph-metrics">
+          <div class="ph-metric ${toneClass}">
+            <span class="ph-metric-label">${safeHtml(safeStatus)} Amount</span>
             <div class="ph-amt">$${Number(item.amount).toLocaleString(undefined,{maximumFractionDigits:2})}</div>
-            <div class="ph-amt personal">Personal: $${Number(item.personalAmount || 0).toLocaleString(undefined,{maximumFractionDigits:2})}</div>
-            <div class="ph-status ${item.status.toLowerCase()}">${item.status}</div>
-            <div class="ph-note">${item.notes ?? ""}</div>
+          </div>
+          ${Number(item.personalAmount || 0) > 0 ? `<div class="ph-metric">
+            <span class="ph-metric-label">Personal Revenue</span>
+            <div class="ph-amt personal">$${Number(item.personalAmount || 0).toLocaleString(undefined,{maximumFractionDigits:2})}</div>
+          </div>` : ""}
+          ${norm(item.notes) ? `<div class="ph-note"><span class="ph-note-label">Notes</span><span class="ph-note-text">${safeHtml(item.notes)}</span></div>` : ""}
+        </div>
         </div>
         <div class="ph-actions">
             <button class="btn btn-ghost ph-edit" data-id="${item.id}" data-amount="${item.amount}" data-personal="${item.personalAmount ?? ""}" data-status="${item.status}" data-notes="${item.notes ?? ""}">Edit</button>
@@ -3435,34 +4322,14 @@ function openProductionModalAdd(leadId, name){
   form.querySelector("input[name='id']")?.remove();
   document.getElementById('prodLeadId').value = leadId;
   document.getElementById('prodLeadName').textContent = name;
-
-  // hydrate from draft
-  const draftAll = loadJSON(LS_PROD_DRAFT_LEAD, {});
-  const draft = draftAll[leadId] || {};
   const amtEl = form.querySelector("input[name='amount']");
   const personalEl = form.querySelector("input[name='personalAmount']");
   const statusEl = form.querySelector("select[name='status']");
   const notesEl = form.querySelector("textarea[name='notes']");
-  if (amtEl && draft.amount != null) amtEl.value = draft.amount;
-  if (personalEl && draft.personalAmount != null) personalEl.value = draft.personalAmount;
-  if (statusEl && draft.status != null) statusEl.value = draft.status;
-  if (notesEl && draft.notes != null) notesEl.value = draft.notes;
-
-  const persistDraft = () => {
-    draftAll[leadId] = {
-      amount: amtEl?.value || "",
-      personalAmount: personalEl?.value || "",
-      status: statusEl?.value || "0",
-      notes: notesEl?.value || ""
-    };
-    saveJSON(LS_PROD_DRAFT_LEAD, draftAll);
-  };
-  [amtEl, personalEl, statusEl, notesEl].forEach(el => el?.addEventListener("input", persistDraft, { once: false }));
-
-  form.addEventListener("submit", () => {
-    delete draftAll[leadId];
-    saveJSON(LS_PROD_DRAFT_LEAD, draftAll);
-  }, { once: true });
+  if (amtEl) amtEl.value = "";
+  if (personalEl) personalEl.value = "";
+  if (statusEl) statusEl.value = "0";
+  if (notesEl) notesEl.value = "";
 
   bootstrap.Modal.getOrCreateInstance(modalEl).show();
 }
@@ -3569,6 +4436,7 @@ function renderMentionNotes(items){
 function closeDrawer(){
   drawerEditing = false;
   activeClientId = null;
+  activeClientDetail = null;
   if (drawer) drawer.dataset.clientId = "";
   leadActionsLoadPromise = null;
   if (leadActionsHubModal && window.bootstrap){
@@ -3578,6 +4446,9 @@ function closeDrawer(){
   drawer.classList.remove("open");
   drawerBackdrop.classList.remove("open");
   drawer.setAttribute("aria-hidden", "true");
+  renderIntakeSnapshot(null);
+  renderAppointmentSnapshot(null);
+  refreshLeadOverviewSummary();
   unlockPageScrollForQuickView();
 }
 function openLeadActionsHub(){
@@ -3596,6 +4467,8 @@ function openLeadActionsHub(){
   if (modalEl && window.bootstrap){
     bootstrap.Modal.getOrCreateInstance(modalEl).show();
   }
+  if (dActDate && !norm(dActDate.value)) dActDate.value = todayISO();
+  renderTimeline(activeClientDetail?.activities || []);
   void loadLeadActionsPanel();
   void loadLeadCommitmentsPanel();
 }
@@ -3630,6 +4503,28 @@ function extractNoteBodyText(rawText){
     .map(stripExistingPrefix)
     .filter(x => !!x);
   return normalizedLines.join("\n").trim();
+}
+
+function noteSyncTextareaTone(textarea){
+  if (!textarea) return;
+  const hasBody = !!extractNoteBodyText(textarea.value || "");
+  textarea.classList.toggle("note-self-has-body", hasBody);
+  textarea.classList.toggle("note-self-prefix-only", !hasBody);
+}
+
+function noteSyncAllTextareaTones(){
+  [noteWentWell, noteCouldBetter].forEach(noteSyncTextareaTone);
+}
+
+function noteSyncPrefixVisual(dateValue){
+  const date = (dateValue || noteDateInput?.value || noteTodayISO()).trim();
+  const prefix = notePrefix(date);
+  [noteWentWell, noteCouldBetter].forEach((textarea) => {
+    const col = textarea?.closest(".note-self-col");
+    if (!col) return;
+    col.dataset.notePrefix = prefix;
+    col.classList.toggle("has-note-prefix", !!prefix);
+  });
 }
 
 function normalizeNoteBodyForDate(rawText, isoDate){
@@ -3764,8 +4659,10 @@ async function noteLoadForDate(dateValue, leadIdValue){
     const res = await fetch(`/WorkstationNotes/Entry?leadId=${encodeURIComponent(leadId)}&date=${encodeURIComponent(date)}`, withDialHeaders({ credentials: "include" }));
     if (!res.ok) throw new Error("fail");
     const payload = await res.json();
-    noteWentWell.value = normalizeNoteBodyForDate(payload?.wentWell || "", date);
-    noteCouldBetter.value = normalizeNoteBodyForDate(payload?.couldBetter || "", date);
+    noteWentWell.value = extractNoteBodyText(payload?.wentWell || "");
+    noteCouldBetter.value = extractNoteBodyText(payload?.couldBetter || "");
+    noteSyncPrefixVisual(date);
+    noteSyncAllTextareaTones();
     if (noteDatesSelect) noteDatesSelect.value = noteEncodeKey(leadId, date);
     noteSetStatus(`Loaded ${payload?.leadName || noteCurrentLeadContext().leadName} — ${noteDisplayDate(date)}`);
   }catch{
@@ -3792,8 +4689,10 @@ async function noteSave(){
     const wentWellBody = extractNoteBodyText(normalizedWentWell);
     const couldBetterBody = extractNoteBodyText(normalizedCouldBetter);
 
-    noteWentWell.value = normalizedWentWell;
-    noteCouldBetter.value = normalizedCouldBetter;
+    noteWentWell.value = wentWellBody;
+    noteCouldBetter.value = couldBetterBody;
+    noteSyncPrefixVisual(date);
+    noteSyncAllTextareaTones();
 
     const token = getAntiForgeryToken();
     const res = await fetch("/WorkstationNotes/Entry", withDialHeaders({
@@ -3831,12 +4730,15 @@ async function openNoteModal(){
     noteSetStatus("Select a lead first", true);
     if (noteWentWell) noteWentWell.value = "";
     if (noteCouldBetter) noteCouldBetter.value = "";
+    noteSyncPrefixVisual();
+    noteSyncAllTextareaTones();
     if (noteDatesSelect) noteDatesSelect.innerHTML = '<option value="">Select lead + date</option>';
     if (noteDateInput && !noteDateInput.value) noteDateInput.value = noteTodayISO();
     return;
   }
 
   if (noteDateInput && !noteDateInput.value) noteDateInput.value = noteTodayISO();
+  noteSyncPrefixVisual();
 
   const list = await noteLoadDates(ctx.leadId);
   if (Array.isArray(list) && list.length){
@@ -3869,6 +4771,7 @@ noteDatesSelect?.addEventListener("change", (e) => {
   noteLoadForDate(decoded.noteDate, decoded.leadId);
 });
 noteDateInput?.addEventListener("change", () => {
+  noteSyncPrefixVisual(noteDateInput.value);
   noteLoadForDate(noteDateInput.value, noteCurrentLeadContext().leadId);
 });
 noteSaveBtn?.addEventListener("click", noteSave);
@@ -3880,9 +4783,13 @@ noteSaveBtn?.addEventListener("click", noteSave);
   });
   ta.addEventListener("click", () => enforceCaretAfterPrefix(ta));
   ta.addEventListener("keyup", () => enforceCaretAfterPrefix(ta));
+  ta.addEventListener("input", () => noteSyncTextareaTone(ta));
   ta.addEventListener("mouseup", () => enforceCaretAfterPrefix(ta));
   ta.addEventListener("paste", () => setTimeout(() => enforceCaretAfterPrefix(ta), 0));
 });
+
+noteSyncAllTextareaTones();
+noteSyncPrefixVisual();
 
 function safeHtml(s){
   return (s || "").toString()
@@ -3929,7 +4836,15 @@ function renderPortalActions(row, detail){
 
   // Leads CRM should not create client portal users
   if (LEADS_ONLY){
-    dPortalWrap.innerHTML = `<span class="pill">Portal actions disabled for leads</span>`;
+    const destination = resolveWorkLeadDestination(row, detail);
+    dPortalWrap.innerHTML = `
+      <div class="lead-workstation-actions">
+        <button type="button" class="btn btn-gold" data-work-lead="${safeHtml(row.dataset.clientId || detail?.clientUserId || "")}">
+          ${safeHtml(destination.label)}
+        </button>
+        <span class="pill">Lead-only CRM</span>
+      </div>
+    `;
     return;
   }
   const isGuid = (row.dataset.isguid === "true");
@@ -3937,7 +4852,7 @@ function renderPortalActions(row, detail){
 
   if (!isGuid) {
     dPortalWrap.innerHTML = `
-      <div style="display:flex; gap:10px; flex-wrap:wrap;">
+      <div class="lead-workstation-actions">
         <button type="button" class="btn btn-gold" id="btnEnablePortalAccess" title="Convert to Client">Convert To Client</button>
         <button type="button" class="btn btn-gold" id="btnEnableBizPortal" title="Convert to Business Client">Convert To Business Client</button>
       </div>
@@ -4002,22 +4917,22 @@ btnOpenFirst?.addEventListener("click", () => {
 });
 
 btnMarkToday?.addEventListener("click", () => {
-  dLastTouch.value = todayISO();
-  dSaved.textContent = "Touched today — saving…";
-  queueQuickViewAutosave();
+  if (dLastTouch) dLastTouch.value = todayISO();
+  refreshLeadOverviewSummary();
+  flushQuickViewAutosave("Touched today — saving…");
 });
 
 btnSetNextToday?.addEventListener("click", () => {
   setDrawerNextActionDate(todayISO());
-  dSaved.textContent = "Next action set — saving…";
-  queueQuickViewAutosave();
+  refreshLeadOverviewSummary();
+  flushQuickViewAutosave("Next action set — saving…");
   refreshCalendarBusyPanel();
 });
 
 btnMeetingNextToday?.addEventListener("click", () => {
   setDrawerNextActionDate(todayISO());
-  dSaved.textContent = "Meeting date set — saving…";
-  queueQuickViewAutosave();
+  refreshLeadOverviewSummary();
+  flushQuickViewAutosave("Meeting date set — saving…");
   refreshCalendarBusyPanel();
 });
 
@@ -4100,6 +5015,24 @@ btnCall?.addEventListener("click", (e) => {
   }
   e.preventDefault();
   showLeadCommAuth(btnCall, { action: "call", row, phone });
+});
+
+btnText?.addEventListener("click", (e) => {
+  if (!activeClientId) return;
+  const row = rows.find(r => r.dataset.clientId === activeClientId);
+  const phone = norm(row?.dataset.phone || dPhoneInput?.value || dPhone?.textContent);
+  if (!phone){
+    e.preventDefault();
+    toast("No phone for this lead");
+    return;
+  }
+  e.preventDefault();
+  showLeadCommAuth(btnText, {
+    action: "text",
+    row,
+    phone,
+    templateKey: rowOriginalLeadType(row) || normalizePipelineStageValue(row?.dataset.crmPipeline, "LifeInsurance") || "LifeInsurance"
+  });
 });
 
 // Disable client queues jump in leads-only mode
@@ -4371,6 +5304,7 @@ function renderCallTaskMode(){
         <button type="button" class="btn btn-ghost" data-taskoutcome="${safeHtml(row.dataset.clientId)}:Contacted">Mark Contacted</button>
         <button type="button" class="btn btn-ghost" data-taskoutcome="${safeHtml(row.dataset.clientId)}:Booked">Booked Meeting</button>
         <button type="button" class="btn btn-ghost" data-taskoutcome="${safeHtml(row.dataset.clientId)}:FollowUp">Follow Up</button>
+        <button type="button" class="btn btn-ghost" data-taskoutcome="${safeHtml(row.dataset.clientId)}:Voicemail">Voicemail Left</button>
         <button type="button" class="btn btn-ghost" data-taskoutcome="${safeHtml(row.dataset.clientId)}:NotInterested">Not Interested</button>
       </div>
     </div>
@@ -4402,7 +5336,7 @@ btnMyDayBack?.addEventListener("click", () => {
   applyViewMode();
   currentPage = 1;
   renderAll();
-  myDayQueue?.scrollIntoView({ behavior: "smooth", block: "start" });
+  myDayPanelController?.open();
 });
 
 $$(".outcome-btn").forEach(btn => {
@@ -4414,12 +5348,16 @@ $$(".outcome-btn").forEach(btn => {
 
     const outcomeStageMap = {
       Contacted: "Contacted",
+      CallBack: "CallBack",
       Booked: "Booked",
       FollowUp: "FollowUp",
       NeedsDocs: "NeedsDocs",
       PolicyPlaced: "PolicyPlaced",
+      AIReception: "AIReception",
+      Voicemail: "Voicemail",
       NotInterested: "NotInterested",
-      Nurture: "Nurture"
+      Nurture: "Nurture",
+      DoNotCallList: "DoNotCallList"
     };
 
     // If outcome targets a non-lead bucket, move it client-side without server ApplyOutcome.
@@ -4508,31 +5446,54 @@ function cardTags(raw){
 function renderPipelineNav(filteredRows){
   if (!pipelineStageNav) return;
 
+  const activeStage = pipelineFocusStage || pipelineNavSelectedStage || "";
+  const activeMeta = activeStage ? pipelineMeta(activeStage) : null;
+  const activeCount = activeMeta ? countRowsForStage(activeMeta.key, filteredRows) : filteredRows.length;
+  const activeCountLabel = activeCount === 1 ? "live card" : "live cards";
+  const boardFocusTitle = activeMeta ? activeMeta.label : "All Buckets";
+  const boardFocusState = activeMeta ? "Focused Bucket" : "Full Pipeline";
+  const boardFocusNote = activeMeta
+    ? activeMeta.note
+    : "Choose a bucket for a tighter work lane, or stay wide and manage the full board.";
+  const canDeleteBucket = !!activeMeta && !isDerivedPipelineFilterStage(activeMeta.key);
+  const shellClass = activeMeta ? `pipeline-nav-shell ${activeMeta.className}` : "pipeline-nav-shell";
   const optionHtml = pipelineStages.map(stage => {
-    const count = filteredRows.filter(r => norm(r.dataset.crmPipeline) === stage.key).length;
+    const count = countRowsForStage(stage.key, filteredRows);
     const selected = pipelineNavSelectedStage === stage.key ? "selected" : "";
     return `<option value="${safeHtml(stage.key)}" ${selected}>${safeHtml(stage.label)} (${count})</option>`;
   }).join("");
 
   pipelineStageNav.innerHTML = `
-    <div class="pipeline-nav-shell">
+    <div class="${shellClass}">
       <div class="pipeline-nav-toolbar">
         <div class="pipeline-nav-copy">
-          <div class="pipeline-nav-label">Bucket Selector</div>
+          <div class="pipeline-nav-kicker-row">
+            <div class="pipeline-nav-label">Board Focus</div>
+            <span class="pipeline-nav-state">${boardFocusState}</span>
+          </div>
           <div class="pipeline-nav-title-row">
-          <div class="pipeline-nav-name">${safeHtml(pipelineFocusStage || pipelineNavSelectedStage || "Select A Bucket")}</div>
-          <span class="pipeline-nav-count">${filteredRows.length}</span>
+            <div class="pipeline-nav-title-stack">
+              <div class="pipeline-nav-name">${safeHtml(boardFocusTitle)}</div>
+              <div class="pipeline-nav-note">${safeHtml(boardFocusNote)}</div>
+            </div>
+            <span class="pipeline-nav-count">
+              <strong>${activeCount}</strong>
+              <span>${activeCountLabel}</span>
+            </span>
+          </div>
         </div>
-      </div>
-      <div class="pipeline-nav-actions">
-          <select class="select pipeline-nav-select" id="pipelineNavSelect" aria-label="Select pipeline bucket">
-            <option value="" ${pipelineNavSelectedStage ? "" : "selected"} disabled>--SELECT--</option>
+        <div class="pipeline-nav-actions">
+          <label class="pipeline-nav-field" for="pipelineNavSelect">
+            <span class="pipeline-nav-field-label">Jump To Bucket</span>
+            <select class="select pipeline-nav-select" id="pipelineNavSelect" aria-label="Select pipeline bucket">
+              <option value="" ${pipelineNavSelectedStage ? "" : "selected"} disabled>Choose bucket...</option>
             ${optionHtml}
           </select>
-          <button type="button" class="btn btn-ghost pipeline-nav-reset" id="pipelineNavReset" ${pipelineNavSelectedStage || pipelineFocusStage ? "" : "disabled"}>All Buckets</button>
+          </label>
+          <button type="button" class="btn btn-ghost pipeline-nav-reset" id="pipelineNavReset" ${pipelineNavSelectedStage || pipelineFocusStage ? "" : "disabled"}>Full Pipeline</button>
+          <button type="button" class="btn btn-red pipeline-nav-danger" id="pipelineNavDeleteBucket" ${canDeleteBucket ? "" : "disabled"}>Delete Bucket</button>
         </div>
       </div>
-      <div class="pipeline-nav-note">Use the dropdown to jump into a bucket. Click the back button in the board to return.</div>
     </div>
   `;
 
@@ -4551,6 +5512,11 @@ function renderPipelineNav(filteredRows){
     pipelineNavSearchTerm = "";
     pipelineFocusStage = "";
     renderAll();
+  });
+
+  const navDeleteBucket = pipelineStageNav.querySelector("#pipelineNavDeleteBucket");
+  navDeleteBucket?.addEventListener("click", () => {
+    deleteCurrentBucket();
   });
 }
 
@@ -4572,39 +5538,63 @@ function renderLaneCards(rowsForStage){
     const email = norm(r.dataset.email);
     const phone = norm(r.dataset.phone);
     const stage = norm(r.dataset.crmPipeline);
+    const leadType = rowOriginalLeadType(r) || stage;
     const phoneDisplay = formatPhone(phone);
     const phoneDigits = phone.replace(/\D/g, "");
     const shortPhone = phoneDigits ? `···${phoneDigits.slice(-4)}` : "";
     const displayName = name || (phone ? `Lead • ${shortPhone}` : `Lead • ${r.dataset.clientId.slice(0, 6)}`);
     const callCount = norm(r.dataset.sAttemptslife || r.dataset.crmAttemptsLife || "0");
-    const prodStatus = (r.dataset.prodStatus || "").trim();
-    const prodAmount = Number(r.dataset.prodAmount || 0);
-    const prodBadge = `<div class="lead-prod-badge ${prodStatus && prodAmount > 0 ? "" : "hidden"}" data-prod-card data-card-prod="${safeHtml(r.dataset.clientId)}">${prodStatus && prodAmount > 0 ? `${safeHtml(prodStatus)} <span class="prod-amt">${formatCurrency(prodAmount)}</span>` : ""}</div>`;
+    const originLabel = norm(r.dataset.intakeOrigin) || "Manual Lead";
+    const originTone = norm(r.dataset.intakeOriginTone) || "manual";
+    const productInterest = norm(r.dataset.intakeProductInterest) || pipelineLabel(leadType);
+    const warning = leadWarningSummary(r);
+    const nextActionDate = norm(r.dataset.crmNextDate);
+    const operationalSummary = warning
+      || (nextActionDate ? `Next action ${nextActionDate}` : "")
+      || contactStatusLabel(r.dataset.crmContactStatus || r.dataset.sContactstatus || "NotSet");
+    const paidAmount = Number(r.dataset.prodPaid || r.dataset.paid || 0);
+    const issuedAmount = Number(r.dataset.prodIssued || 0);
+    const submittedAmount = Number(r.dataset.prodSubmitted || 0);
+    const prodBadgeHtml = renderPipelineProdCompactBadge({
+      paid: paidAmount,
+      issued: issuedAmount,
+      submitted: submittedAmount
+    });
+    const prodBadge = `<div class="lead-prod-badge ${prodBadgeHtml ? "" : "hidden"}" data-prod-card data-card-prod="${safeHtml(r.dataset.clientId)}">${prodBadgeHtml}</div>`;
 
     return `
       <article class="client-card ${pipelineBadgeClass(stage)}"
-               style="overflow:visible;"
                draggable="true"
                data-cardid="${safeHtml(r.dataset.clientId)}">
-        <div class="client-card-head" style="position:relative;">
+        <div class="client-card-head pipeline-card-head-compact">
           <div class="client-card-main">
-            <h3 class="cc-name" data-open-card="${safeHtml(r.dataset.clientId)}">${safeHtml(displayName)}</h3>
-              <div class="cc-sub cc-sub-primary">${phone ? `<a class=\"link link-phone\" style=\"color:#c48d02;font-weight:700;\" href=\"tel:${safeHtml(phone)}\" data-call-link=\"${safeHtml(r.dataset.clientId)}\" data-call-phone=\"${safeHtml(phone)}\">${safeHtml(phoneDisplay)}</a>` : "No phone"}</div>
-              <div class="cc-sub">${renderEmailLinkHtml(email, "color:#7a7a7a;opacity:0.78;")}</div>
+            <div class="pipeline-card-topline">
+              <h3 class="cc-name" data-open-card="${safeHtml(r.dataset.clientId)}">${safeHtml(displayName)}</h3>
+              <div class="pipeline-card-contact-rail">
+                <div class="pipeline-card-phone-wrap">
+                  ${phone ? `<a class="link link-phone pipeline-card-phone" href="tel:${safeHtml(phone)}" title="${safeHtml(phoneDisplay)}">${safeHtml(phoneDisplay)}</a>` : `<span class="pipeline-card-phone pipeline-card-phone-missing">No phone</span>`}
+                </div>
+                <div class="pipeline-card-email">${renderEmailLinkHtml(email)}</div>
+              </div>
+              <button type="button"
+                      class="btn btn-gold openCard pipeline-card-open"
+                      data-open-card="${safeHtml(r.dataset.clientId)}"
+                      title="Open Quick View">
+                Open
+              </button>
+            </div>
+            <div class="pipeline-card-midline">
+              <div class="pipeline-card-summary">
+                <span class="meta-chip lead-origin-chip lead-origin-${safeHtml(originTone)}">${safeHtml(originLabel)}</span>
+                <span class="meta-chip">${safeHtml(productInterest)}</span>
+              </div>
+              <div class="pipeline-card-kpis">
+                <span class="pill pipeline-card-attempts">${safeHtml(callCount)} calls</span>
+                ${prodBadge}
+              </div>
+            </div>
+            <div class="pipeline-card-plan${warning ? " is-active" : ""}">${safeHtml(operationalSummary)}</div>
           </div>
-          <div class="client-card-actions actions" style="gap:6px; flex-wrap:wrap; align-items:center;">
-            <span class="pill" style="border:1px solid #dc2626;color:#b91c1c;font-weight:700;padding:3px 7px;font-size:12px;">Called: ${safeHtml(callCount)}</span>
-            ${phone ? `<button type="button" class="btn btn-ghost" style="padding:5px 8px;font-size:12px;" data-call-lead="${safeHtml(r.dataset.clientId)}" data-call-phone="${safeHtml(phone)}">Call</button>` : ""}
-            ${phone ? `<button type="button" class="btn btn-ghost" style="padding:5px 8px;font-size:12px;" data-text-menu="${safeHtml(r.dataset.clientId)}">Text ▾</button>` : ""}
-            <button type="button"
-                    class="btn btn-gold openCard"
-                    data-open-card="${safeHtml(r.dataset.clientId)}"
-                    title="Open Quick View"
-                    style="min-width:90px; padding:5px 8px;font-size:12px;">
-              Quick View
-            </button>
-          </div>
-          ${prodBadge}
         </div>
       </article>
     `;
@@ -4615,7 +5605,7 @@ function renderCards(filteredRows){
   if (!pipelineBoard || !cardsView) return;
 
   const focusMeta = pipelineFocusStage ? pipelineMeta(pipelineFocusStage) : (pipelineNavSelectedStage ? pipelineMeta(pipelineNavSelectedStage) : null);
-  const lanes = focusMeta ? [focusMeta] : pipelineStages;
+  const lanes = focusMeta ? [focusMeta] : pipelineStages.filter(stage => !isDerivedPipelineFilterStage(stage.key));
 
   renderPipelineNav(filteredRows);
 
@@ -4638,7 +5628,7 @@ function renderCards(filteredRows){
   }
 
   pipelineBoard.innerHTML = lanes.map(stage => {
-    const stageRows = orderedStageRows(stage.key, filteredRows.filter(r => norm(r.dataset.crmPipeline) === stage.key));
+    const stageRows = orderedStageRows(stage.key, rowsForStage(stage.key, filteredRows));
     return `
       <section class="pipeline-lane ${stage.className}" data-dropstage="${stage.key}">
         <div class="pipeline-lane-head">
@@ -4688,6 +5678,7 @@ async function saveQuickViewForRow(row, overrides, successMessage){
     loanAmount: dLoanAmount?.value || "",
     crmStatus: (overrides?.crmStatus ?? norm(row.dataset.crmStatus)) || "Lead",
     crmPriority: (overrides?.crmPriority ?? norm(row.dataset.crmPriority)) || "Normal",
+    contactStatus: overrides?.contactStatus ?? normalizeContactStatusValue(row.dataset.crmContactStatus || row.dataset.sContactstatus || dContactStatus?.value || "NotSet"),
     crmLastTouch: (overrides?.crmLastTouch ?? norm(row.dataset.crmLastTouch)) || null,
     crmNextDate: (overrides?.crmNextDate ?? norm(row.dataset.crmNextDate)) || null,
     crmNextText: overrides?.crmNextText ?? norm(row.dataset.crmNextText),
@@ -4712,13 +5703,23 @@ async function saveQuickViewForRow(row, overrides, successMessage){
 
   const response = await postJson("/Leads/SaveQuickView", payload);
   const data = response.payload || response;
+  const payloadNextText = payload.crmNextText ?? "";
+  const resolvedAgentNotes = data.agentNotes ?? data.crmNotes ?? payload.agentNotes ?? row.dataset.sNotes ?? "";
+  const resolvedNextDate = data.crmNextDate ?? payload.crmNextDate ?? row.dataset.sNextdate ?? "";
+  const resolvedTags = data.crmTags ?? payload.crmTags ?? row.dataset.sTags ?? "";
+  let resolvedNextText = data.crmNextText ?? payloadNextText ?? row.dataset.sNexttext ?? "";
+  if ((data.crmNotes ?? null) !== null && data.crmNextText === data.crmNotes && payloadNextText && payloadNextText !== data.crmNotes){
+    resolvedNextText = payloadNextText;
+  }
+  const resolvedContactStatus = normalizeContactStatusValue(data.contactStatus || payload.contactStatus || row.dataset.sContactstatus || "NotSet");
   row.dataset.sStatus = data.crmStatus || "Lead";
   row.dataset.sPriority = data.crmPriority || "Normal";
+  row.dataset.sContactstatus = resolvedContactStatus;
   row.dataset.sLasttouch = data.crmLastTouch || "";
-  row.dataset.sNextdate = data.crmNextDate || "";
-  row.dataset.sNexttext = data.crmNextText || "";
-  row.dataset.sTags = data.crmTags || "";
-  row.dataset.sNotes = data.agentNotes || "";
+  row.dataset.sNextdate = resolvedNextDate || "";
+  row.dataset.sNexttext = resolvedNextText || "";
+  row.dataset.sTags = resolvedTags || "";
+  row.dataset.sNotes = resolvedAgentNotes || "";
   row.dataset.sPipeline = normalizePipelineStageValue(data.pipelineStage, "MortgageProtection");
   row.dataset.sMeetingLocation = data.meetingLocation || "";
   row.dataset.sZoom = data.zoomJoinUrl || "";
@@ -4764,6 +5765,7 @@ async function saveQuickViewForRow(row, overrides, successMessage){
       crmNextText: row.dataset.sNexttext,
       crmStatus: row.dataset.sStatus,
       crmPriority: row.dataset.sPriority,
+      contactStatus: row.dataset.sContactstatus,
       attemptsLifetime: row.dataset.sAttemptslife,
       firstName: row.dataset.first,
       lastName: row.dataset.last,
@@ -4782,14 +5784,23 @@ async function saveQuickViewForRow(row, overrides, successMessage){
   if (dBtc) dBtc.value = row.dataset.btc || dBtc.value;
 
   if (activeClientId === row.dataset.clientId){
-    activeClientDetail = { ...(activeClientDetail || {}), ...data };
+    activeClientDetail = {
+      ...(activeClientDetail || {}),
+      ...data,
+      contactStatus: resolvedContactStatus,
+      crmNextDate: resolvedNextDate || null,
+      crmNextText: resolvedNextText,
+      crmTags: resolvedTags,
+      agentNotes: resolvedAgentNotes
+    };
     dStatus.value = data.crmStatus || dStatus.value;
     dPriority.value = data.crmPriority || dPriority.value;
+    if (dContactStatus) dContactStatus.value = resolvedContactStatus;
     dLastTouch.value = data.crmLastTouch || dLastTouch.value;
-    setDrawerNextActionDate(data.crmNextDate || dNextDate.value);
-    dNextText.value = data.crmNextText || dNextText.value;
-    dTags.value = data.crmTags || dTags.value;
-    dNotes.value = data.agentNotes || dNotes.value;
+    setDrawerNextActionDate(resolvedNextDate || dNextDate.value);
+    dNextText.value = resolvedNextText || dNextText.value;
+    dTags.value = resolvedTags || dTags.value;
+    dNotes.value = resolvedAgentNotes || dNotes.value;
     if (dFirst) dFirst.value = data.firstName || dFirst.value || "";
     if (dLast) dLast.value = data.lastName || dLast.value || "";
     if (dEmailInput) dEmailInput.value = data.email || dEmailInput.value;
@@ -4829,6 +5840,8 @@ async function saveQuickViewForRow(row, overrides, successMessage){
     dAttempts.textContent = `Attempts: ${data.attemptsToday || 0} today • ${data.attemptsThisWeek || 0} week • ${data.attemptsLifetime || 0} total`;
     dWaitingOnPill.textContent = data.waitingOnLabel || waitingLabel(data.waitingOn || "WaitingOnAgent");
     renderMentionNotes(data.collaboration?.mentionNotes || []);
+    renderIntakeSnapshot(data.intakeSnapshot || activeClientDetail?.intakeSnapshot || null);
+    renderAppointmentSnapshot(data.latestAppointment || activeClientDetail?.latestAppointment || null);
     refreshLeadOverviewSummary();
     dSaved.textContent = successMessage || "Saved ✔";
   }
@@ -4861,12 +5874,6 @@ btnPipeNeeds?.addEventListener("click", () => {
 
 btnPipeMeetings?.addEventListener("click", () => {
   applyPreset("meetingstoday");
-});
-
-btnPipeTable?.addEventListener("click", () => {
-  if (viewMode) viewMode.value = "table";
-  applyViewMode();
-  renderAll();
 });
 
 btnPipeReset?.addEventListener("click", () => {
@@ -4987,6 +5994,11 @@ pipelineBoard?.addEventListener("drop", async (e) => {
   if (!row) return;
 
   const sourceStage = norm(row.dataset.crmPipeline);
+  if (isDerivedPipelineFilterStage(targetStage)){
+    toast("Called Today is a daily filter bucket and cannot receive manual stage moves.");
+    renderAll();
+    return;
+  }
   // Prevent moving between lead buckets (product buckets cannot be moved into other lead buckets)
   if (productBuckets.has(sourceStage) && productBuckets.has(targetStage) && sourceStage !== targetStage){
     toast("Lead buckets cannot move into other lead buckets.");
@@ -5107,12 +6119,15 @@ pipelineBoard?.addEventListener("click", (e) => {
 
 /* ========= Columns Modal ========= */
 function openModal(el){
+  if (!el || !modalBackdrop) return;
+  document.body.classList.add("legend-bootstrap-modal-open");
   modalBackdrop.classList.add("open");
   el.classList.add("open");
 }
 function closeModal(){
+  document.body.classList.remove("legend-bootstrap-modal-open");
   modalBackdrop.classList.remove("open");
-  [colsModal, shortcutsModal, remindersModal, cmdModal, bulkModal, callTaskModal, importModal].forEach(m => m.classList.remove("open"));
+  [colsModal, shortcutsModal, remindersModal, cmdModal, bulkModal, callTaskModal, importModal, performanceModal, myDayModal].forEach(m => m?.classList.remove("open"));
 }
 
 $("#btnCols")?.addEventListener("click", () => {
@@ -5388,8 +6403,8 @@ function runCommand(text){
   else if (t.includes("copy")) btnCopyEmails?.click();
   else if (t.includes("reminders")) openRemindersModal();
   else if (t.includes("enable reminders")) enableReminders();
-  else if (t.includes("view pipeline") || t.includes("view cards")) { viewMode.value = "pipeline"; viewMode.dispatchEvent(new Event("change")); }
-  else if (t.includes("view table")) { viewMode.value = "table"; viewMode.dispatchEvent(new Event("change")); }
+  else if (t.includes("view pipeline") || t.includes("view cards")) { viewMode.value = PIPELINE_ONLY_VIEW; viewMode.dispatchEvent(new Event("change")); }
+  else if (t.includes("view table") || t.includes("view hybrid")) { toast("Pipeline CRM is the only available view."); }
   else if (t.includes("filter overdue")) { attentionFilter.value = "overdue"; attentionFilter.dispatchEvent(new Event("change")); }
   else if (t.includes("filter needs")) { attentionFilter.value = "needs"; attentionFilter.dispatchEvent(new Event("change")); }
   else if (t.includes("density compact")) { density.value = "compact"; density.dispatchEvent(new Event("change")); }
@@ -5983,10 +6998,17 @@ async function createCalendarEventFromDrawer(){
     const data = await postJson("/calendar/create-event", payload);
     row.dataset.sLasttouch = data.crmLastTouch || todayISO();
     hydrateRow(row);
-    activeClientDetail = { ...(activeClientDetail || {}), activities: data.activities || [], lastCalendarEventWebLink: data.webLink || "" };
+    activeClientDetail = {
+      ...(activeClientDetail || {}),
+      activities: data.activities || [],
+      lastCalendarEventWebLink: data.webLink || "",
+      latestAppointment: data.latestAppointment || activeClientDetail?.latestAppointment || null
+    };
     renderTimeline(data.activities || []);
+    renderAppointmentSnapshot(activeClientDetail.latestAppointment || null);
     dLastTouch.value = data.crmLastTouch || todayISO();
     dSaved.textContent = "Calendar event synced ✔";
+    refreshLeadOverviewSummary();
     refreshCalendarBusyPanel();
     toast("Calendar event created");
   }catch(err){
@@ -5997,10 +7019,60 @@ async function createCalendarEventFromDrawer(){
 
 btnCreateCalendarEvent?.addEventListener("click", createCalendarEventFromDrawer);
 
+async function saveLeadAppointmentStatus(){
+  if (!activeClientId) return toast("Open a lead first.");
+  const nextStatus = norm(dAppointmentStatusSelect?.value);
+  if (!nextStatus) return toast("Choose an appointment status first.");
+
+  const row = rows.find(r => r.dataset.clientId === activeClientId);
+  const appointmentId = activeClientDetail?.latestAppointment?.id || null;
+  if (btnSaveAppointmentStatus) btnSaveAppointmentStatus.disabled = true;
+
+  try{
+    const response = await postJson("/Leads/UpdateLeadAppointmentStatus", {
+      clientUserId: activeClientId,
+      appointmentId,
+      status: nextStatus
+    });
+    const data = response?.payload || response || {};
+
+    if (row){
+      row.dataset.sLasttouch = data.crmLastTouch || row.dataset.sLasttouch || todayISO();
+      row.dataset.sNotes = data.agentNotes || data.crmNotes || row.dataset.sNotes || "";
+      row.dataset.sMeetingLocation = data.meetingLocation || row.dataset.sMeetingLocation || "";
+      row.dataset.sZoom = data.zoomJoinUrl || row.dataset.sZoom || "";
+      row.dataset.sUsezoom = data.usePersonalZoomLink ? "true" : (row.dataset.sUsezoom || "false");
+      row.dataset.sMeetingTime = data.meetingTime || row.dataset.sMeetingTime || "09:00";
+      row.dataset.sMeetingDuration = String(data.meetingDurationMinutes || row.dataset.sMeetingDuration || 30);
+      row.dataset.sAttemptstoday = String(data.attemptsToday ?? row.dataset.sAttemptstoday ?? 0);
+      row.dataset.sAttemptsweek = String(data.attemptsThisWeek ?? row.dataset.sAttemptsweek ?? 0);
+      row.dataset.sAttemptslife = String(data.attemptsLifetime ?? row.dataset.sAttemptslife ?? 0);
+      row.dataset.crmNotes = data.agentNotes || data.crmNotes || row.dataset.crmNotes || "";
+      hydrateRow(row);
+    }
+
+    activeClientDetail = { ...(activeClientDetail || {}), ...data };
+    if (dLastTouch) dLastTouch.value = data.crmLastTouch || dLastTouch.value || todayISO();
+    renderTimeline(data.activities || activeClientDetail?.activities || []);
+    renderIntakeSnapshot(data.intakeSnapshot || activeClientDetail?.intakeSnapshot || null);
+    renderAppointmentSnapshot(data.latestAppointment || null);
+    refreshLeadOverviewSummary();
+    dSaved.textContent = "Appointment updated ✔";
+    toast(`Appointment marked ${humanizeAppointmentStatus(nextStatus)}`);
+  }catch(err){
+    console.error(err);
+    toast(err?.message || "Appointment update failed.");
+  }finally{
+    if (btnSaveAppointmentStatus) btnSaveAppointmentStatus.disabled = false;
+  }
+}
+
+btnSaveAppointmentStatus?.addEventListener("click", saveLeadAppointmentStatus);
+
 /* ========= Prefs Restore ========= */
 (function restorePrefs(){
   const prefs = loadJSON(LS_PREFS, {});
-  viewMode.value = "pipeline";
+  viewMode.value = PIPELINE_ONLY_VIEW;
   if (prefs.density) density.value = prefs.density;
   applyViewMode();
   applyDensityClass();
@@ -6042,13 +7114,13 @@ async function boot(){
   syncBarHeight();
   applyColumnPrefs();
   applyDensityClass();
+  initCollapsiblePanels();
   renderSavedViews();
   ensureModalInBody('quickCreateActionModal');
 
   await loadMyDaySnapshot(true);
 
   renderAll();
-  bindQuickViewTabs();
   focusLeadFromUrl();
   openQuickViewFromUrl();
   updateSelectionUI();

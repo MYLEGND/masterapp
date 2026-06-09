@@ -14,6 +14,7 @@ public class MasterAppDbContext : DbContext
     public DbSet<AgentAssistant> AgentAssistants => Set<AgentAssistant>();
     public DbSet<HouseholdMember> HouseholdMembers => Set<HouseholdMember>();
     public DbSet<FinanceToolState> FinanceToolStates => Set<FinanceToolState>();
+    public DbSet<AgentFinanceToolState> AgentFinanceToolStates => Set<AgentFinanceToolState>();
     public DbSet<BookkeepingEntry> BookkeepingEntries => Set<BookkeepingEntry>();
     public DbSet<RecurringExpense> RecurringExpenses => Set<RecurringExpense>();
     public DbSet<WorkstationLeadProfile> WorkstationLeadProfiles => Set<WorkstationLeadProfile>();
@@ -24,7 +25,12 @@ public class MasterAppDbContext : DbContext
     public DbSet<AgentProfile> AgentProfiles => Set<AgentProfile>();
     public DbSet<ProductionRecord> ProductionRecords => Set<ProductionRecord>();
     public DbSet<WebsiteLead> WebsiteLeads => Set<WebsiteLead>();
+    public DbSet<WebsiteLeadIntakeLink> WebsiteLeadIntakeLinks => Set<WebsiteLeadIntakeLink>();
+    public DbSet<LeadAppointment> LeadAppointments => Set<LeadAppointment>();
+    public DbSet<GraphCalendarSubscription> GraphCalendarSubscriptions => Set<GraphCalendarSubscription>();
+    public DbSet<AppointmentSyncLog> AppointmentSyncLogs => Set<AppointmentSyncLog>();
     public DbSet<AnalyticsEvent> AnalyticsEvents => Set<AnalyticsEvent>();
+    public DbSet<MetaSignalEvent> MetaSignalEvents => Set<MetaSignalEvent>();
     public DbSet<AgentTrackingProfile> AgentTrackingProfiles => Set<AgentTrackingProfile>();
     public DbSet<AgentTrackingAlias> AgentTrackingAliases => Set<AgentTrackingAlias>();
     public DbSet<ActionItem> ActionItems => Set<ActionItem>();
@@ -33,10 +39,12 @@ public class MasterAppDbContext : DbContext
     public DbSet<DecisionRecord> DecisionRecords => Set<DecisionRecord>();
     public DbSet<PlaybookExecution> PlaybookExecutions => Set<PlaybookExecution>();
     public DbSet<Commitment> Commitments => Set<Commitment>();
+    public DbSet<ClientFinancialPlan> ClientFinancialPlans => Set<ClientFinancialPlan>();
+    public DbSet<AgentZoomLink> AgentZoomLinks => Set<AgentZoomLink>();
 
-        protected override void OnModelCreating(ModelBuilder modelBuilder)
-        {
-            base.OnModelCreating(modelBuilder);
+    protected override void OnModelCreating(ModelBuilder modelBuilder)
+    {
+        base.OnModelCreating(modelBuilder);
         var isSqlServer = Database.ProviderName?.Contains("SqlServer", StringComparison.OrdinalIgnoreCase) == true;
 
         modelBuilder.Entity<OnboardingInvite>(e =>
@@ -64,6 +72,15 @@ public class MasterAppDbContext : DbContext
             e.Property(x => x.AgentUserId).HasMaxLength(450);
             e.Property(x => x.AgentUpn).HasMaxLength(450);
             e.Property(x => x.NormalizedEmail).HasMaxLength(320);
+            e.Property(x => x.ShortBio).HasMaxLength(280);
+            e.Property(x => x.MetaPixelId).HasMaxLength(64);
+            e.Property(x => x.MetaCapiAccessToken).HasColumnName("MetaAccessToken").HasMaxLength(2048);
+            e.Property(x => x.MetaTestEventCode).HasMaxLength(128);
+            e.Property(x => x.MicrosoftBookingsEmbedUrl).HasMaxLength(2048);
+            e.Property(x => x.FallbackBookingUrl).HasMaxLength(2048);
+            e.Property(x => x.BookingPageIdOrMailbox).HasMaxLength(320);
+            e.Property(x => x.CalendarUserId).HasMaxLength(450);
+            e.Property(x => x.CalendarEmail).HasMaxLength(320);
 
             if (isSqlServer)
                 e.HasIndex(x => x.NormalizedEmail).IsUnique().HasFilter("[NormalizedEmail] IS NOT NULL");
@@ -96,6 +113,34 @@ public class MasterAppDbContext : DbContext
                 e.HasIndex(x => x.NormalizedEmail).IsUnique().HasFilter("[NormalizedEmail] IS NOT NULL");
             else
                 e.HasIndex(x => x.NormalizedEmail).IsUnique();
+
+            if (isSqlServer)
+                e.Property(x => x.RowVersion).IsRowVersion();
+            else
+                e.Property(x => x.RowVersion)
+                    .IsRequired()
+                    .IsConcurrencyToken()
+                    .HasDefaultValueSql("X''")
+                    .ValueGeneratedNever();
+        });
+
+        modelBuilder.Entity<ClientFinancialPlan>(e =>
+        {
+            e.HasKey(x => x.Id);
+            e.Property(x => x.JsonData).IsRequired().HasColumnType("TEXT");
+            e.Property(x => x.UpdatedBy).HasMaxLength(320);
+            e.Property(x => x.Version).HasDefaultValue(1);
+            e.Property(x => x.IsDeleted).HasDefaultValue(false);
+
+            e.HasOne<ClientProfile>()
+                .WithMany()
+                .HasForeignKey(x => x.ClientId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            if (isSqlServer)
+                e.HasIndex(x => x.ClientId).IsUnique().HasFilter("[IsDeleted] = 0");
+            else
+                e.HasIndex(x => new { x.ClientId, x.IsDeleted }).IsUnique();
         });
 
         // ==========================================================
@@ -212,10 +257,14 @@ public class MasterAppDbContext : DbContext
             e.Property(x => x.UtmSource).HasMaxLength(160);
             e.Property(x => x.UtmMedium).HasMaxLength(160);
             e.Property(x => x.UtmCampaign).HasMaxLength(160);
+            e.Property(x => x.UtmId).HasMaxLength(160);
+            e.Property(x => x.Fbclid).HasMaxLength(120);
             e.Property(x => x.Environment).HasMaxLength(40);
             e.Property(x => x.Host).HasMaxLength(160);
             e.Property(x => x.SubmitOutcome).HasMaxLength(40);
-            e.Property(x => x.MetadataJson).HasColumnType("nvarchar(max)");
+            e.Property(x => x.MetadataJson).HasColumnType(isSqlServer ? "nvarchar(max)" : "TEXT");
+            e.Property(x => x.SchemaVersion).HasDefaultValue(1);
+            e.Property(x => x.TrackingVersion).HasMaxLength(80);
             e.Property(x => x.EventUtc).IsRequired();
             e.Property(x => x.ReceivedUtc).IsRequired();
             e.Property(x => x.AgentSlug).HasMaxLength(200);
@@ -229,13 +278,103 @@ public class MasterAppDbContext : DbContext
             e.HasIndex(x => x.VisitorId);
             e.HasIndex(x => x.AgentTrackingProfileId);
             e.HasIndex(x => x.AgentSlug);
+            e.HasIndex(x => x.ClientEventId)
+                .IsUnique()
+                .HasDatabaseName("UX_AnalyticsEvents_ClientEventId")
+                .HasFilter("[ClientEventId] IS NOT NULL");
             e.HasIndex(x => x.UtmSource);
             e.HasIndex(x => x.UtmCampaign);
+            e.HasIndex(x => x.UtmId);
             e.HasIndex(x => new { x.AgentTrackingProfileId, x.EventUtc });
             e.HasIndex(x => new { x.Environment, x.EventUtc });
             e.HasIndex(x => new { x.EventType, x.EventUtc });
             e.HasIndex(x => new { x.PageKey, x.EventUtc });
             e.HasIndex(x => new { x.ElementKey, x.EventUtc });
+
+            // ── Behavior Intelligence columns (all nullable, additive) ──
+            e.Property(x => x.ReferrerHost).HasMaxLength(200);
+            e.Property(x => x.DeviceType).HasMaxLength(60);
+            e.Property(x => x.Browser).HasMaxLength(100);
+            e.Property(x => x.OperatingSystem).HasMaxLength(100);
+            e.Property(x => x.TimeZone).HasMaxLength(100);
+            e.Property(x => x.Language).HasMaxLength(40);
+
+            e.Property(x => x.UserAgent).HasMaxLength(2048);
+            e.Property(x => x.IpAddress).HasMaxLength(100);
+            e.Property(x => x.ScreenWidth);
+            e.Property(x => x.ScreenHeight);
+            e.Property(x => x.ViewportWidth);
+            e.Property(x => x.ViewportHeight);
+            e.Property(x => x.ScrollPercent);
+            e.Property(x => x.HumanInteractionCount);
+            e.Property(x => x.DwellMilliseconds);
+            e.Property(x => x.EngagedMilliseconds);
+            e.Property(x => x.IsBounceCandidate);
+            e.Property(x => x.IsExitPage);
+            e.Property(x => x.UtmTerm).HasMaxLength(160);
+            e.Property(x => x.UtmContent).HasMaxLength(160);
+            e.Property(x => x.MetaCampaignId).HasMaxLength(200);
+            e.Property(x => x.MetaCampaignName).HasMaxLength(200);
+            e.Property(x => x.MetaAdSetId).HasMaxLength(200);
+            e.Property(x => x.MetaAdSetName).HasMaxLength(200);
+            e.Property(x => x.MetaAdId).HasMaxLength(200);
+            e.Property(x => x.MetaAdName).HasMaxLength(200);
+            e.Property(x => x.Placement).HasMaxLength(100);
+            e.Property(x => x.FormId).HasMaxLength(120);
+            e.Property(x => x.FieldName).HasMaxLength(120);
+            e.Property(x => x.ElementId).HasMaxLength(120);
+
+            // Behavior intelligence indexes
+            e.HasIndex(x => x.DeviceType);
+            e.HasIndex(x => x.SessionId).HasDatabaseName("IX_AnalyticsEvents_SessionId_Behavior");
+        });
+
+        modelBuilder.Entity<MetaSignalEvent>(e =>
+        {
+            e.HasKey(x => x.Id);
+            e.Property(x => x.CreatedUtc).IsRequired();
+            e.Property(x => x.EventId).IsRequired().HasMaxLength(120);
+            e.Property(x => x.EventName).IsRequired().HasMaxLength(120);
+            e.Property(x => x.EventCategory).HasMaxLength(80);
+            e.Property(x => x.SessionId).HasMaxLength(120);
+            e.Property(x => x.VisitorId).HasMaxLength(120);
+            e.Property(x => x.QuoteType).HasMaxLength(80);
+            e.Property(x => x.PageKey).HasMaxLength(120);
+            e.Property(x => x.EffectivePageKey).HasMaxLength(120);
+            e.Property(x => x.PageVariant).HasMaxLength(80);
+            e.Property(x => x.PageMode).HasMaxLength(80);
+            e.Property(x => x.TrafficType).HasMaxLength(40);
+            e.Property(x => x.StepName).HasMaxLength(120);
+            e.Property(x => x.ScoreTier).HasMaxLength(40);
+            e.Property(x => x.MetaDeduplicationKey).HasMaxLength(220);
+            e.Property(x => x.UtmSource).HasMaxLength(160);
+            e.Property(x => x.UtmMedium).HasMaxLength(160);
+            e.Property(x => x.UtmCampaign).HasMaxLength(160);
+            e.Property(x => x.UtmId).HasMaxLength(160);
+            e.Property(x => x.UtmContent).HasMaxLength(160);
+            e.Property(x => x.Referrer).HasMaxLength(500);
+            e.Property(x => x.UserAgentHash).HasMaxLength(128);
+            e.Property(x => x.IpHash).HasMaxLength(128);
+            e.Property(x => x.AgentSlug).HasMaxLength(200);
+            e.Property(x => x.Environment).HasMaxLength(40);
+            e.Property(x => x.Host).HasMaxLength(160);
+            e.Property(x => x.MetadataJson).HasColumnType(isSqlServer ? "nvarchar(max)" : "TEXT");
+
+            e.HasIndex(x => x.CreatedUtc);
+            e.HasIndex(x => x.SessionId);
+            e.HasIndex(x => x.VisitorId);
+            e.HasIndex(x => x.LeadId);
+            e.HasIndex(x => x.QuoteType);
+            e.HasIndex(x => x.EventName);
+            e.HasIndex(x => x.PageMode);
+            e.HasIndex(x => x.ScoreTier);
+            e.HasIndex(x => x.TrafficType);
+            e.HasIndex(x => x.UtmCampaign);
+            e.HasIndex(x => x.AgentTrackingProfileId);
+            e.HasIndex(x => x.AgentSlug);
+            e.HasIndex(x => x.EventId).IsUnique();
+            e.HasIndex(x => new { x.SessionId, x.QuoteType, x.CreatedUtc });
+            e.HasIndex(x => new { x.EventName, x.CreatedUtc });
         });
 
         // WEBSITE LEADS
@@ -250,6 +389,58 @@ public class MasterAppDbContext : DbContext
             e.HasIndex(x => x.SourceCtaKey);
             e.HasIndex(x => x.UtmSource);
             e.HasIndex(x => x.UtmCampaign);
+        });
+
+        modelBuilder.Entity<WebsiteLeadIntakeLink>(e =>
+        {
+            e.HasKey(x => x.Id);
+            e.Property(x => x.WorkstationLeadId).IsRequired().HasMaxLength(64);
+            e.Property(x => x.AgentUserId).IsRequired().HasMaxLength(180);
+            e.Property(x => x.Bucket).IsRequired().HasMaxLength(80);
+            e.Property(x => x.SourcePageKey).HasMaxLength(160);
+            e.Property(x => x.SourceCtaKey).HasMaxLength(160);
+            e.Property(x => x.PageVariant).HasMaxLength(80);
+            e.Property(x => x.PageMode).HasMaxLength(80);
+            e.Property(x => x.PagePath).HasMaxLength(300);
+            e.Property(x => x.LandingPageUrl).HasMaxLength(500);
+            e.Property(x => x.ReferrerUrl).HasMaxLength(500);
+            e.Property(x => x.InterestType).HasMaxLength(120);
+            e.Property(x => x.OfferKey).HasMaxLength(120);
+            e.Property(x => x.ProductType).HasMaxLength(120);
+            e.Property(x => x.UtmSource).HasMaxLength(160);
+            e.Property(x => x.UtmMedium).HasMaxLength(160);
+            e.Property(x => x.UtmCampaign).HasMaxLength(160);
+            e.Property(x => x.UtmId).HasMaxLength(160);
+            e.Property(x => x.UtmTerm).HasMaxLength(160);
+            e.Property(x => x.UtmContent).HasMaxLength(160);
+            e.Property(x => x.Fbclid).HasMaxLength(160);
+            e.Property(x => x.MetaCampaignId).HasMaxLength(160);
+            e.Property(x => x.MetaAdSetId).HasMaxLength(160);
+            e.Property(x => x.MetaAdId).HasMaxLength(160);
+            e.Property(x => x.SessionId).HasMaxLength(120);
+            e.Property(x => x.VisitorId).HasMaxLength(120);
+            e.Property(x => x.DiscoverySummaryJson).HasColumnType(isSqlServer ? "nvarchar(max)" : "TEXT");
+            e.Property(x => x.EstimateSummary).HasMaxLength(600);
+            e.Property(x => x.RecommendationPrimaryKey).HasMaxLength(160);
+            e.Property(x => x.RecommendationPrimaryTitle).HasMaxLength(240);
+            e.Property(x => x.RecommendationSecondaryKey).HasMaxLength(160);
+            e.Property(x => x.RecommendationSecondaryTitle).HasMaxLength(240);
+            e.Property(x => x.SnapshotJson).HasColumnType(isSqlServer ? "nvarchar(max)" : "TEXT");
+
+            e.HasIndex(x => x.WebsiteLeadRowId).IsUnique();
+            e.HasIndex(x => new { x.WorkstationLeadId, x.SubmittedUtc });
+            e.HasIndex(x => new { x.AgentUserId, x.SubmittedUtc });
+
+            e.HasOne<WebsiteLead>()
+                .WithMany()
+                .HasForeignKey(x => x.WebsiteLeadRowId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            e.HasOne<WorkstationLeadProfile>()
+                .WithMany()
+                .HasForeignKey(x => x.WorkstationLeadId)
+                .HasPrincipalKey(x => x.LeadId)
+                .OnDelete(DeleteBehavior.Cascade);
         });
 
         // AGENT TRACKING
@@ -386,6 +577,103 @@ public class MasterAppDbContext : DbContext
             e.HasIndex(x => new { x.AgentUserId, x.OriginalLeadType });
             e.HasIndex(x => x.Phone);
             e.HasIndex(x => x.Email);
+
+            if (isSqlServer)
+                e.Property(x => x.RowVersion).IsRowVersion();
+            else
+                e.Property(x => x.RowVersion)
+                    .IsRequired()
+                    .IsConcurrencyToken()
+                    .HasDefaultValueSql("X''")
+                    .ValueGeneratedNever();
+        });
+
+
+        modelBuilder.Entity<GraphCalendarSubscription>(e =>
+        {
+            e.HasKey(x => x.Id);
+            e.ToTable("GraphCalendarSubscriptions");
+            e.Property(x => x.AgentUserId).HasMaxLength(450).IsRequired();
+            e.Property(x => x.CalendarUserId).HasMaxLength(450);
+            e.Property(x => x.CalendarEmail).HasMaxLength(320);
+            e.Property(x => x.GraphSubscriptionId).HasMaxLength(256).IsRequired();
+            e.Property(x => x.Resource).HasMaxLength(512).IsRequired();
+            e.Property(x => x.ChangeType).HasMaxLength(80).IsRequired();
+            e.Property(x => x.ClientState).HasMaxLength(256).IsRequired();
+            e.Property(x => x.LastError).HasMaxLength(2048);
+
+            e.HasIndex(x => x.GraphSubscriptionId).IsUnique();
+            e.HasIndex(x => new { x.AgentUserId, x.CalendarEmail });
+            e.HasIndex(x => new { x.IsActive, x.ExpirationUtc });
+        });
+
+        modelBuilder.Entity<AppointmentSyncLog>(e =>
+        {
+            e.HasKey(x => x.Id);
+            e.ToTable("AppointmentSyncLogs");
+            e.Property(x => x.WorkstationLeadId).HasMaxLength(64);
+            e.Property(x => x.ClientProfileId).HasMaxLength(450);
+            e.Property(x => x.AgentUserId).HasMaxLength(450);
+            e.Property(x => x.CalendarUserId).HasMaxLength(450);
+            e.Property(x => x.CalendarEmail).HasMaxLength(320);
+            e.Property(x => x.GraphSubscriptionId).HasMaxLength(256);
+            e.Property(x => x.GraphEventId).HasMaxLength(256);
+            e.Property(x => x.Operation).HasMaxLength(80).IsRequired();
+            e.Property(x => x.Source).HasMaxLength(80).IsRequired();
+            e.Property(x => x.Error).HasMaxLength(2048);
+            e.Property(x => x.DiagnosticJson).HasColumnType("text");
+
+            e.HasIndex(x => x.AppointmentId);
+            e.HasIndex(x => x.WorkstationLeadId);
+            e.HasIndex(x => x.GraphEventId);
+            e.HasIndex(x => x.CreatedUtc);
+        });
+
+        modelBuilder.Entity<LeadAppointment>(e =>
+        {
+            e.HasKey(x => x.Id);
+            e.ToTable("LeadAppointments");
+            e.Property(x => x.WorkstationLeadId).HasMaxLength(64).IsRequired();
+            e.Property(x => x.OwnerAgentUserId).HasMaxLength(450).IsRequired();
+            e.Property(x => x.WebsiteLeadId).HasMaxLength(64);
+            e.Property(x => x.ClientProfileId).HasMaxLength(450);
+            e.Property(x => x.Status).HasConversion<string>().HasMaxLength(32).IsRequired();
+            e.Property(x => x.BookingProvider).HasMaxLength(80);
+            e.Property(x => x.BookingSource).HasMaxLength(80).IsRequired();
+            e.Property(x => x.RequestedBookingSource).HasMaxLength(80).IsRequired();
+            e.Property(x => x.ConfirmationSource).HasMaxLength(80);
+            e.Property(x => x.BookingConfigurationSource).HasMaxLength(80);
+            e.Property(x => x.BookingAgentSlug).HasMaxLength(200);
+            e.Property(x => x.BookingAgentUserId).HasMaxLength(450);
+            e.Property(x => x.BookingCalendarUserId).HasMaxLength(450);
+            e.Property(x => x.BookingCalendarEmail).HasMaxLength(320);
+            e.Property(x => x.BookingPageIdOrMailbox).HasMaxLength(320);
+            e.Property(x => x.CalendarEventId).HasMaxLength(256);
+            e.Property(x => x.CalendarEventWebLink).HasMaxLength(2048);
+            e.Property(x => x.MeetingUrl).HasMaxLength(2048);
+            e.Property(x => x.LastSyncStatus).HasMaxLength(80);
+            e.Property(x => x.LastSyncError).HasMaxLength(2048);
+            e.Property(x => x.RawProviderPayloadJson).HasColumnType("text");
+
+            e.HasIndex(x => x.WorkstationLeadId);
+            e.HasIndex(x => new { x.WorkstationLeadId, x.UpdatedUtc });
+            e.HasIndex(x => new { x.WorkstationLeadId, x.ScheduledStartUtc });
+            e.HasIndex(x => new { x.OwnerAgentUserId, x.Status, x.ScheduledStartUtc });
+            e.HasIndex(x => x.CalendarEventId);
+            e.HasIndex(x => x.WebsiteLeadIntakeLinkId);
+            e.HasIndex(x => x.WebsiteLeadId);
+            e.HasIndex(x => x.ClientProfileId);
+            e.HasIndex(x => new { x.BookingProvider, x.CalendarEventId });
+
+            e.HasOne(x => x.WorkstationLead)
+                .WithMany()
+                .HasForeignKey(x => x.WorkstationLeadId)
+                .OnDelete(isSqlServer ? DeleteBehavior.NoAction : DeleteBehavior.Cascade);
+
+            e.HasOne(x => x.WebsiteLeadIntakeLink)
+                .WithMany()
+                .HasForeignKey(x => x.WebsiteLeadIntakeLinkId)
+                .OnDelete(DeleteBehavior.SetNull);
         });
 
         // PROPOSALS
@@ -450,6 +738,25 @@ public class MasterAppDbContext : DbContext
                 .IsUnique();
         });
 
+        modelBuilder.Entity<AgentFinanceToolState>(e =>
+        {
+            e.HasKey(x => x.Id);
+
+            e.Property(x => x.AgentUserId)
+                .IsRequired()
+                .HasMaxLength(450);
+
+            e.Property(x => x.ToolId)
+                .IsRequired()
+                .HasMaxLength(100);
+
+            e.Property(x => x.JsonState)
+                .IsRequired();
+
+            e.HasIndex(x => new { x.AgentUserId, x.ToolId })
+                .IsUnique();
+        });
+
         // ==========================================================
         // AGENT CLIENT
         // ==========================================================
@@ -460,8 +767,8 @@ public class MasterAppDbContext : DbContext
             e.Property(x => x.ClientUserId).HasMaxLength(450);
             e.Property(x => x.AgentUpn).HasMaxLength(320);
 
-            // HARD RULE: client belongs to one agent
-            e.HasIndex(x => x.ClientUserId).IsUnique();
+            // Collaboration rule: a client can be shared with multiple permitted agents.
+            e.HasIndex(x => x.ClientUserId);
 
             // no duplicate pairs
             e.HasIndex(x => new { x.AgentUserId, x.ClientUserId }).IsUnique();
@@ -492,38 +799,6 @@ public class MasterAppDbContext : DbContext
             else
                 e.HasIndex(x => x.AssistantUserId).IsUnique();
             e.HasIndex(x => new { x.ParentAgentUserId, x.Email }).IsUnique();
-        });
-
-        // ==========================================================
-        // AGENT PROFILE (per-agent stored settings like NPN)
-        // ==========================================================
-        modelBuilder.Entity<AgentProfile>(e =>
-        {
-            e.HasKey(x => x.Id);
-
-            e.Property(x => x.AgentUserId)
-                .HasMaxLength(450)
-                .IsRequired();
-
-            e.Property(x => x.AgentUpn)
-                .HasMaxLength(320);
-
-            e.Property(x => x.FullName)
-                .HasMaxLength(200);
-
-            e.Property(x => x.Title)
-                .HasMaxLength(120);
-
-            e.Property(x => x.Npn)
-                .HasMaxLength(64);
-
-            e.Property(x => x.Phone)
-                .HasMaxLength(64);
-
-            e.Property(x => x.DisplayOrder);
-
-            e.HasIndex(x => x.AgentUserId).IsUnique();
-            e.HasIndex(x => x.AgentUpn);
         });
 
         // ==========================================================
@@ -592,12 +867,20 @@ public class MasterAppDbContext : DbContext
             e.Property(x => x.UtmSource).HasMaxLength(160);
             e.Property(x => x.UtmMedium).HasMaxLength(160);
             e.Property(x => x.UtmCampaign).HasMaxLength(160);
+            e.Property(x => x.UtmId).HasMaxLength(160);
+            e.Property(x => x.MetaCampaignId).HasMaxLength(200);
+            e.Property(x => x.MetaAdSetId).HasMaxLength(200);
+            e.Property(x => x.MetaAdId).HasMaxLength(200);
+            e.Property(x => x.Fbclid).HasMaxLength(120);
             e.Property(x => x.SessionId).HasMaxLength(120);
             e.Property(x => x.VisitorId).HasMaxLength(120);
             e.Property(x => x.Environment).HasMaxLength(40);
             e.Property(x => x.Host).HasMaxLength(160);
             e.Property(x => x.Status).HasMaxLength(40).IsRequired();
-            e.Property(x => x.MetadataJson).HasColumnType("nvarchar(max)");
+            e.Property(x => x.MetadataJson).HasColumnType(isSqlServer ? "nvarchar(max)" : "TEXT");
+            e.Property(x => x.IsDeleted).HasDefaultValue(false);
+            e.Property(x => x.DeletedByUserId).HasMaxLength(200);
+            e.Property(x => x.DeleteReason).HasMaxLength(500);
             e.Property(x => x.CreatedUtc).IsRequired();
             e.Property(x => x.AgentSlug).HasMaxLength(200);
 
@@ -606,6 +889,8 @@ public class MasterAppDbContext : DbContext
             e.HasIndex(x => x.SourceCtaKey);
             e.HasIndex(x => x.InterestType);
             e.HasIndex(x => x.Email);
+            e.HasIndex(x => x.UtmId);
+            e.HasIndex(x => x.MetaCampaignId);
             e.HasIndex(x => x.AgentTrackingProfileId);
             e.HasIndex(x => x.AgentSlug);
         });
@@ -654,6 +939,15 @@ public class MasterAppDbContext : DbContext
             e.HasIndex(x => x.LeadId);
             e.HasIndex(x => x.ClientUserId);
             e.HasIndex(x => x.Status);
+
+            if (isSqlServer)
+                e.Property(x => x.RowVersion).IsRowVersion();
+            else
+                e.Property(x => x.RowVersion)
+                    .IsRequired()
+                    .IsConcurrencyToken()
+                    .HasDefaultValueSql("X''")
+                    .ValueGeneratedNever();
         });
     }
 }

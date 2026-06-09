@@ -252,8 +252,7 @@ namespace Infrastructure.Migrations
 
                     b.HasKey("Id");
 
-                    b.HasIndex("ClientUserId")
-                        .IsUnique();
+                    b.HasIndex("ClientUserId");
 
                     b.HasIndex("AgentUserId", "ClientUserId")
                         .IsUnique();
@@ -261,15 +260,10 @@ namespace Infrastructure.Migrations
                     b.ToTable("AgentClients");
                 });
 
-            modelBuilder.Entity("Domain.Entities.AgentProfile", b =>
+            modelBuilder.Entity("Domain.Entities.AgentFinanceToolState", b =>
                 {
                     b.Property<Guid>("Id")
                         .ValueGeneratedOnAdd()
-                        .HasColumnType("TEXT");
-
-                    b.Property<string>("AgentUpn")
-                        .IsRequired()
-                        .HasMaxLength(320)
                         .HasColumnType("TEXT");
 
                     b.Property<string>("AgentUserId")
@@ -280,27 +274,13 @@ namespace Infrastructure.Migrations
                     b.Property<DateTime>("CreatedUtc")
                         .HasColumnType("TEXT");
 
-                    b.Property<int?>("DisplayOrder")
-                        .HasColumnType("INTEGER");
-
-                    b.Property<string>("FullName")
-                        .HasMaxLength(200)
+                    b.Property<string>("JsonState")
+                        .IsRequired()
                         .HasColumnType("TEXT");
 
-                    b.Property<string>("NormalizedEmail")
-                        .HasMaxLength(320)
-                        .HasColumnType("TEXT");
-
-                    b.Property<string>("Npn")
-                        .HasMaxLength(64)
-                        .HasColumnType("TEXT");
-
-                    b.Property<string>("Phone")
-                        .HasMaxLength(64)
-                        .HasColumnType("TEXT");
-
-                    b.Property<string>("Title")
-                        .HasMaxLength(120)
+                    b.Property<string>("ToolId")
+                        .IsRequired()
+                        .HasMaxLength(100)
                         .HasColumnType("TEXT");
 
                     b.Property<DateTime>("UpdatedUtc")
@@ -308,7 +288,97 @@ namespace Infrastructure.Migrations
 
                     b.HasKey("Id");
 
-                    b.HasIndex("AgentUpn");
+                    b.HasIndex("AgentUserId", "ToolId")
+                        .IsUnique();
+
+                    b.ToTable("AgentFinanceToolStates");
+                });
+
+            modelBuilder.Entity("Domain.Entities.AgentProfile", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("AgentUpn")
+                        .IsRequired()
+                        .HasMaxLength(450)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("AgentUserId")
+                        .IsRequired()
+                        .HasMaxLength(450)
+                        .HasColumnType("TEXT");
+
+                    b.Property<bool?>("BookingEnabled")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("BookingPageIdOrMailbox")
+                        .HasMaxLength(320)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("CalendarEmail")
+                        .HasMaxLength(320)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("CalendarUserId")
+                        .HasMaxLength(450)
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime>("CreatedUtc")
+                        .HasColumnType("TEXT");
+
+                    b.Property<int?>("DisplayOrder")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("FallbackBookingUrl")
+                        .HasMaxLength(2048)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("FullName")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("MetaCapiAccessToken")
+                        .HasMaxLength(2048)
+                        .HasColumnType("TEXT")
+                        .HasColumnName("MetaAccessToken");
+
+                    b.Property<string>("MetaPixelId")
+                        .HasMaxLength(64)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("MetaTestEventCode")
+                        .HasMaxLength(128)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("MicrosoftBookingsEmbedUrl")
+                        .HasMaxLength(2048)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("NormalizedEmail")
+                        .HasMaxLength(320)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Npn")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Phone")
+                        .HasColumnType("TEXT");
+
+                    b.Property<bool?>("PreferModalOnMobile")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("ShortBio")
+                        .HasMaxLength(280)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Title")
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime>("UpdatedUtc")
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("Id");
 
                     b.HasIndex("AgentUserId")
                         .IsUnique();
@@ -402,6 +472,35 @@ namespace Infrastructure.Migrations
                     b.ToTable("AgentTrackingProfiles");
                 });
 
+            modelBuilder.Entity("Domain.Entities.AgentZoomLink", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("AgentUserId")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime>("CreatedUtc")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("SortOrder")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("Url")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("Id");
+
+                    b.ToTable("AgentZoomLinks");
+                });
+
             modelBuilder.Entity("Domain.Entities.AnalyticsEvent", b =>
                 {
                     b.Property<long>("Id")
@@ -415,6 +514,10 @@ namespace Infrastructure.Migrations
                     b.Property<Guid?>("AgentTrackingProfileId")
                         .HasColumnType("TEXT");
 
+                    b.Property<string>("Browser")
+                        .HasMaxLength(100)
+                        .HasColumnType("TEXT");
+
                     b.Property<string>("ButtonLabel")
                         .HasMaxLength(200)
                         .HasColumnType("TEXT");
@@ -422,9 +525,23 @@ namespace Infrastructure.Migrations
                     b.Property<Guid?>("ClientEventId")
                         .HasColumnType("TEXT");
 
+                    b.Property<string>("DeviceType")
+                        .HasMaxLength(60)
+                        .HasColumnType("TEXT");
+
+                    b.Property<long?>("DwellMilliseconds")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("ElementId")
+                        .HasMaxLength(120)
+                        .HasColumnType("TEXT");
+
                     b.Property<string>("ElementKey")
                         .HasMaxLength(160)
                         .HasColumnType("TEXT");
+
+                    b.Property<long?>("EngagedMilliseconds")
+                        .HasColumnType("INTEGER");
 
                     b.Property<string>("Environment")
                         .HasMaxLength(40)
@@ -441,6 +558,18 @@ namespace Infrastructure.Migrations
                     b.Property<DateTime>("EventUtc")
                         .HasColumnType("TEXT");
 
+                    b.Property<string>("Fbclid")
+                        .HasMaxLength(120)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("FieldName")
+                        .HasMaxLength(120)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("FormId")
+                        .HasMaxLength(120)
+                        .HasColumnType("TEXT");
+
                     b.Property<string>("FormKey")
                         .HasMaxLength(120)
                         .HasColumnType("TEXT");
@@ -449,11 +578,62 @@ namespace Infrastructure.Migrations
                         .HasMaxLength(160)
                         .HasColumnType("TEXT");
 
+                    b.Property<int?>("HumanInteractionCount")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("IpAddress")
+                        .HasMaxLength(100)
+                        .HasColumnType("TEXT");
+
+                    b.Property<bool?>("IsBounceCandidate")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<bool?>("IsExitPage")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<bool?>("IsHeadless")
+                        .HasColumnType("INTEGER");
+
                     b.Property<bool>("IsInternal")
                         .HasColumnType("INTEGER");
 
+                    b.Property<string>("Language")
+                        .HasMaxLength(40)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("MetaAdId")
+                        .HasMaxLength(200)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("MetaAdName")
+                        .HasMaxLength(200)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("MetaAdSetId")
+                        .HasMaxLength(200)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("MetaAdSetName")
+                        .HasMaxLength(200)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("MetaCampaignId")
+                        .HasMaxLength(200)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("MetaCampaignName")
+                        .HasMaxLength(200)
+                        .HasColumnType("TEXT");
+
                     b.Property<string>("MetadataJson")
-                        .HasColumnType("nvarchar(max)");
+                        .HasColumnType("TEXT");
+
+                    b.Property<int?>("MouseMoveCount")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("OperatingSystem")
+                        .HasMaxLength(100)
+                        .HasColumnType("TEXT");
 
                     b.Property<string>("PageKey")
                         .HasMaxLength(120)
@@ -461,6 +641,10 @@ namespace Infrastructure.Migrations
 
                     b.Property<string>("Path")
                         .HasMaxLength(300)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Placement")
+                        .HasMaxLength(100)
                         .HasColumnType("TEXT");
 
                     b.Property<string>("QuoteType")
@@ -474,6 +658,24 @@ namespace Infrastructure.Migrations
                         .HasMaxLength(500)
                         .HasColumnType("TEXT");
 
+                    b.Property<string>("ReferrerHost")
+                        .HasMaxLength(200)
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("SchemaVersion")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("INTEGER")
+                        .HasDefaultValue(1);
+
+                    b.Property<int?>("ScreenHeight")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int?>("ScreenWidth")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int?>("ScrollPercent")
+                        .HasColumnType("INTEGER");
+
                     b.Property<string>("SectionKey")
                         .HasMaxLength(120)
                         .HasColumnType("TEXT");
@@ -486,11 +688,31 @@ namespace Infrastructure.Migrations
                         .HasMaxLength(40)
                         .HasColumnType("TEXT");
 
+                    b.Property<string>("TimeZone")
+                        .HasMaxLength(100)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("TrackingVersion")
+                        .HasMaxLength(80)
+                        .HasColumnType("TEXT");
+
                     b.Property<string>("Url")
                         .HasMaxLength(500)
                         .HasColumnType("TEXT");
 
+                    b.Property<string>("UserAgent")
+                        .HasMaxLength(2048)
+                        .HasColumnType("TEXT");
+
                     b.Property<string>("UtmCampaign")
+                        .HasMaxLength(160)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("UtmContent")
+                        .HasMaxLength(160)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("UtmId")
                         .HasMaxLength(160)
                         .HasColumnType("TEXT");
 
@@ -502,15 +724,38 @@ namespace Infrastructure.Migrations
                         .HasMaxLength(160)
                         .HasColumnType("TEXT");
 
+                    b.Property<string>("UtmTerm")
+                        .HasMaxLength(160)
+                        .HasColumnType("TEXT");
+
+                    b.Property<int?>("ViewportHeight")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int?>("ViewportWidth")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int?>("VisibilityChangeCount")
+                        .HasColumnType("INTEGER");
+
                     b.Property<string>("VisitorId")
                         .HasMaxLength(120)
                         .HasColumnType("TEXT");
+
+                    b.Property<bool?>("WebDriver")
+                        .HasColumnType("INTEGER");
 
                     b.HasKey("Id");
 
                     b.HasIndex("AgentSlug");
 
                     b.HasIndex("AgentTrackingProfileId");
+
+                    b.HasIndex("ClientEventId")
+                        .IsUnique()
+                        .HasDatabaseName("UX_AnalyticsEvents_ClientEventId")
+                        .HasFilter("[ClientEventId] IS NOT NULL");
+
+                    b.HasIndex("DeviceType");
 
                     b.HasIndex("ElementKey");
 
@@ -522,9 +767,12 @@ namespace Infrastructure.Migrations
 
                     b.HasIndex("ReceivedUtc");
 
-                    b.HasIndex("SessionId");
+                    b.HasIndex("SessionId")
+                        .HasDatabaseName("IX_AnalyticsEvents_SessionId_Behavior");
 
                     b.HasIndex("UtmCampaign");
+
+                    b.HasIndex("UtmId");
 
                     b.HasIndex("UtmSource");
 
@@ -541,6 +789,79 @@ namespace Infrastructure.Migrations
                     b.HasIndex("PageKey", "EventUtc");
 
                     b.ToTable("AnalyticsEvents");
+                });
+
+            modelBuilder.Entity("Domain.Entities.AppointmentSyncLog", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("AgentUserId")
+                        .HasMaxLength(450)
+                        .HasColumnType("TEXT");
+
+                    b.Property<Guid?>("AppointmentId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("CalendarEmail")
+                        .HasMaxLength(320)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("CalendarUserId")
+                        .HasMaxLength(450)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("ClientProfileId")
+                        .HasMaxLength(450)
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime>("CreatedUtc")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("DiagnosticJson")
+                        .HasColumnType("text");
+
+                    b.Property<string>("Error")
+                        .HasMaxLength(2048)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("GraphEventId")
+                        .HasMaxLength(256)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("GraphSubscriptionId")
+                        .HasMaxLength(256)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Operation")
+                        .IsRequired()
+                        .HasMaxLength(80)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Source")
+                        .IsRequired()
+                        .HasMaxLength(80)
+                        .HasColumnType("TEXT");
+
+                    b.Property<bool>("Success")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("WorkstationLeadId")
+                        .HasMaxLength(64)
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("AppointmentId");
+
+                    b.HasIndex("CreatedUtc");
+
+                    b.HasIndex("GraphEventId");
+
+                    b.HasIndex("WorkstationLeadId");
+
+                    b.ToTable("AppointmentSyncLogs", (string)null);
                 });
 
             modelBuilder.Entity("Domain.Entities.Blocker", b =>
@@ -661,6 +982,45 @@ namespace Infrastructure.Migrations
                     b.ToTable("BookkeepingEntries");
                 });
 
+            modelBuilder.Entity("Domain.Entities.ClientFinancialPlan", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("TEXT");
+
+                    b.Property<Guid>("ClientId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<bool>("IsDeleted")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("INTEGER")
+                        .HasDefaultValue(false);
+
+                    b.Property<string>("JsonData")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime>("LastUpdatedUtc")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("UpdatedBy")
+                        .IsRequired()
+                        .HasMaxLength(320)
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("Version")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("INTEGER")
+                        .HasDefaultValue(1);
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ClientId", "IsDeleted")
+                        .IsUnique();
+
+                    b.ToTable("ClientFinancialPlans");
+                });
+
             modelBuilder.Entity("Domain.Entities.ClientProfile", b =>
                 {
                     b.Property<Guid>("Id")
@@ -726,6 +1086,12 @@ namespace Infrastructure.Migrations
                     b.Property<string>("Phone")
                         .IsRequired()
                         .HasColumnType("TEXT");
+
+                    b.Property<byte[]>("RowVersion")
+                        .IsConcurrencyToken()
+                        .IsRequired()
+                        .HasColumnType("BLOB")
+                        .HasDefaultValueSql("X''");
 
                     b.Property<DateTime?>("SignificantOtherDOB")
                         .HasColumnType("TEXT");
@@ -907,6 +1273,79 @@ namespace Infrastructure.Migrations
                     b.ToTable("FinanceToolStates");
                 });
 
+            modelBuilder.Entity("Domain.Entities.GraphCalendarSubscription", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("AgentUserId")
+                        .IsRequired()
+                        .HasMaxLength(450)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("CalendarEmail")
+                        .HasMaxLength(320)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("CalendarUserId")
+                        .HasMaxLength(450)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("ChangeType")
+                        .IsRequired()
+                        .HasMaxLength(80)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("ClientState")
+                        .IsRequired()
+                        .HasMaxLength(256)
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime>("CreatedUtc")
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime>("ExpirationUtc")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("GraphSubscriptionId")
+                        .IsRequired()
+                        .HasMaxLength(256)
+                        .HasColumnType("TEXT");
+
+                    b.Property<bool>("IsActive")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("LastError")
+                        .HasMaxLength(2048)
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime?>("LastRenewedUtc")
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime?>("LastWebhookUtc")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Resource")
+                        .IsRequired()
+                        .HasMaxLength(512)
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime>("UpdatedUtc")
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("GraphSubscriptionId")
+                        .IsUnique();
+
+                    b.HasIndex("AgentUserId", "CalendarEmail");
+
+                    b.HasIndex("IsActive", "ExpirationUtc");
+
+                    b.ToTable("GraphCalendarSubscriptions", (string)null);
+                });
+
             modelBuilder.Entity("Domain.Entities.HouseholdMember", b =>
                 {
                     b.Property<Guid>("Id")
@@ -957,6 +1396,360 @@ namespace Infrastructure.Migrations
                         .IsUnique();
 
                     b.ToTable("HouseholdMembers");
+                });
+
+            modelBuilder.Entity("Domain.Entities.LeadAppointment", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime?>("BookedUtc")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("BookingAgentSlug")
+                        .HasMaxLength(200)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("BookingAgentUserId")
+                        .HasMaxLength(450)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("BookingCalendarEmail")
+                        .HasMaxLength(320)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("BookingCalendarUserId")
+                        .HasMaxLength(450)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("BookingConfigurationSource")
+                        .HasMaxLength(80)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("BookingPageIdOrMailbox")
+                        .HasMaxLength(320)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("BookingProvider")
+                        .HasMaxLength(80)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("BookingSource")
+                        .IsRequired()
+                        .HasMaxLength(80)
+                        .HasColumnType("TEXT");
+
+                    b.Property<Guid?>("BookingTrackingProfileId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("CalendarEventId")
+                        .HasMaxLength(256)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("CalendarEventWebLink")
+                        .HasMaxLength(2048)
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime?>("CancelledUtc")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("ClientProfileId")
+                        .HasMaxLength(450)
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime?>("CompletedUtc")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("ConfirmationSource")
+                        .HasMaxLength(80)
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime?>("ConfirmedUtc")
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime>("CreatedUtc")
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime?>("LastStatusChangedUtc")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("LastSyncError")
+                        .HasMaxLength(2048)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("LastSyncStatus")
+                        .HasMaxLength(80)
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime?>("LastSyncedUtc")
+                        .HasColumnType("TEXT");
+
+                    b.Property<int?>("MatchConfidence")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("MeetingUrl")
+                        .HasMaxLength(2048)
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime?>("NoShowUtc")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("OwnerAgentUserId")
+                        .IsRequired()
+                        .HasMaxLength(450)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("RawProviderPayloadJson")
+                        .HasColumnType("text");
+
+                    b.Property<string>("RequestedBookingSource")
+                        .IsRequired()
+                        .HasMaxLength(80)
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime?>("RequestedUtc")
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime?>("RescheduledUtc")
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime?>("ScheduledEndUtc")
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime?>("ScheduledStartUtc")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime>("UpdatedUtc")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("WebsiteLeadId")
+                        .HasMaxLength(64)
+                        .HasColumnType("TEXT");
+
+                    b.Property<Guid?>("WebsiteLeadIntakeLinkId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("WorkstationLeadId")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("CalendarEventId");
+
+                    b.HasIndex("ClientProfileId");
+
+                    b.HasIndex("WebsiteLeadId");
+
+                    b.HasIndex("WebsiteLeadIntakeLinkId");
+
+                    b.HasIndex("WorkstationLeadId");
+
+                    b.HasIndex("BookingProvider", "CalendarEventId");
+
+                    b.HasIndex("WorkstationLeadId", "ScheduledStartUtc");
+
+                    b.HasIndex("WorkstationLeadId", "UpdatedUtc");
+
+                    b.HasIndex("OwnerAgentUserId", "Status", "ScheduledStartUtc");
+
+                    b.ToTable("LeadAppointments", (string)null);
+                });
+
+            modelBuilder.Entity("Domain.Entities.MetaSignalEvent", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("AgentSlug")
+                        .HasMaxLength(200)
+                        .HasColumnType("TEXT");
+
+                    b.Property<Guid?>("AgentTrackingProfileId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime>("CreatedUtc")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("EffectivePageKey")
+                        .HasMaxLength(120)
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("EngagementScore")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("Environment")
+                        .HasMaxLength(40)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("EventCategory")
+                        .HasMaxLength(80)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("EventId")
+                        .IsRequired()
+                        .HasMaxLength(120)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("EventName")
+                        .IsRequired()
+                        .HasMaxLength(120)
+                        .HasColumnType("TEXT");
+
+                    b.Property<bool>("FbcPresent")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<bool>("FbclidPresent")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<bool>("FbpPresent")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int>("FrictionScore")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int?>("FunnelStep")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("Host")
+                        .HasMaxLength(160)
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("IntentScore")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("IpHash")
+                        .HasMaxLength(128)
+                        .HasColumnType("TEXT");
+
+                    b.Property<Guid?>("LeadId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<bool>("MetaBrowserSent")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("MetaDeduplicationKey")
+                        .HasMaxLength(220)
+                        .HasColumnType("TEXT");
+
+                    b.Property<bool>("MetaServerSent")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("MetadataJson")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("PageKey")
+                        .HasMaxLength(120)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("PageMode")
+                        .HasMaxLength(80)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("PageVariant")
+                        .HasMaxLength(80)
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("QualificationScore")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("QuoteType")
+                        .HasMaxLength(80)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Referrer")
+                        .HasMaxLength(500)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("ScoreTier")
+                        .HasMaxLength(40)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("SessionId")
+                        .HasMaxLength(120)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("StepName")
+                        .HasMaxLength(120)
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("TotalSignalScore")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("TrafficType")
+                        .HasMaxLength(40)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("UserAgentHash")
+                        .HasMaxLength(128)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("UtmCampaign")
+                        .HasMaxLength(160)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("UtmContent")
+                        .HasMaxLength(160)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("UtmId")
+                        .HasMaxLength(160)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("UtmMedium")
+                        .HasMaxLength(160)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("UtmSource")
+                        .HasMaxLength(160)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("VisitorId")
+                        .HasMaxLength(120)
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("AgentSlug");
+
+                    b.HasIndex("AgentTrackingProfileId");
+
+                    b.HasIndex("CreatedUtc");
+
+                    b.HasIndex("EventId")
+                        .IsUnique();
+
+                    b.HasIndex("EventName");
+
+                    b.HasIndex("LeadId");
+
+                    b.HasIndex("PageMode");
+
+                    b.HasIndex("QuoteType");
+
+                    b.HasIndex("ScoreTier");
+
+                    b.HasIndex("SessionId");
+
+                    b.HasIndex("TrafficType");
+
+                    b.HasIndex("UtmCampaign");
+
+                    b.HasIndex("VisitorId");
+
+                    b.HasIndex("EventName", "CreatedUtc");
+
+                    b.HasIndex("SessionId", "QuoteType", "CreatedUtc");
+
+                    b.ToTable("MetaSignalEvents");
                 });
 
             modelBuilder.Entity("Domain.Entities.OnboardingInvite", b =>
@@ -1398,6 +2191,12 @@ namespace Infrastructure.Migrations
                     b.Property<decimal>("PersonalAmount")
                         .HasColumnType("decimal(18,2)");
 
+                    b.Property<byte[]>("RowVersion")
+                        .IsConcurrencyToken()
+                        .IsRequired()
+                        .HasColumnType("BLOB")
+                        .HasDefaultValueSql("X''");
+
                     b.Property<int>("Side")
                         .HasColumnType("INTEGER");
 
@@ -1629,6 +2428,17 @@ namespace Infrastructure.Migrations
                     b.Property<DateTime>("CreatedUtc")
                         .HasColumnType("TEXT");
 
+                    b.Property<string>("DeleteReason")
+                        .HasMaxLength(500)
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime?>("DeletedAtUtc")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("DeletedByUserId")
+                        .HasMaxLength(200)
+                        .HasColumnType("TEXT");
+
                     b.Property<string>("Email")
                         .IsRequired()
                         .HasMaxLength(320)
@@ -1636,6 +2446,10 @@ namespace Infrastructure.Migrations
 
                     b.Property<string>("Environment")
                         .HasMaxLength(40)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Fbclid")
+                        .HasMaxLength(120)
                         .HasColumnType("TEXT");
 
                     b.Property<string>("FirstName")
@@ -1651,6 +2465,11 @@ namespace Infrastructure.Migrations
                         .HasMaxLength(120)
                         .HasColumnType("TEXT");
 
+                    b.Property<bool>("IsDeleted")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("INTEGER")
+                        .HasDefaultValue(false);
+
                     b.Property<bool>("IsInternal")
                         .HasColumnType("INTEGER");
 
@@ -1664,8 +2483,20 @@ namespace Infrastructure.Migrations
                     b.Property<bool>("MarketingEmailConsent")
                         .HasColumnType("INTEGER");
 
+                    b.Property<string>("MetaAdId")
+                        .HasMaxLength(200)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("MetaAdSetId")
+                        .HasMaxLength(200)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("MetaCampaignId")
+                        .HasMaxLength(200)
+                        .HasColumnType("TEXT");
+
                     b.Property<string>("MetadataJson")
-                        .HasColumnType("nvarchar(max)");
+                        .HasColumnType("TEXT");
 
                     b.Property<string>("Notes")
                         .HasMaxLength(2000)
@@ -1703,6 +2534,10 @@ namespace Infrastructure.Migrations
                         .HasMaxLength(160)
                         .HasColumnType("TEXT");
 
+                    b.Property<string>("UtmId")
+                        .HasMaxLength(160)
+                        .HasColumnType("TEXT");
+
                     b.Property<string>("UtmMedium")
                         .HasMaxLength(160)
                         .HasColumnType("TEXT");
@@ -1727,11 +2562,15 @@ namespace Infrastructure.Migrations
 
                     b.HasIndex("InterestType");
 
+                    b.HasIndex("MetaCampaignId");
+
                     b.HasIndex("SourceCtaKey");
 
                     b.HasIndex("SourcePageKey");
 
                     b.HasIndex("UtmCampaign");
+
+                    b.HasIndex("UtmId");
 
                     b.HasIndex("UtmSource");
 
@@ -1740,6 +2579,165 @@ namespace Infrastructure.Migrations
                     b.HasIndex("Environment", "CreatedUtc");
 
                     b.ToTable("WebsiteLeads");
+                });
+
+            modelBuilder.Entity("Domain.Entities.WebsiteLeadIntakeLink", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("AgentUserId")
+                        .IsRequired()
+                        .HasMaxLength(180)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Bucket")
+                        .IsRequired()
+                        .HasMaxLength(80)
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime>("CapturedUtc")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("DiscoverySummaryJson")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("EstimateSummary")
+                        .HasMaxLength(600)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Fbclid")
+                        .HasMaxLength(160)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("InterestType")
+                        .HasMaxLength(120)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("LandingPageUrl")
+                        .HasMaxLength(500)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("MetaAdId")
+                        .HasMaxLength(160)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("MetaAdSetId")
+                        .HasMaxLength(160)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("MetaCampaignId")
+                        .HasMaxLength(160)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("OfferKey")
+                        .HasMaxLength(120)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("PageMode")
+                        .HasMaxLength(80)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("PagePath")
+                        .HasMaxLength(300)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("PageVariant")
+                        .HasMaxLength(80)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("ProductType")
+                        .HasMaxLength(120)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("RecommendationPrimaryKey")
+                        .HasMaxLength(160)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("RecommendationPrimaryTitle")
+                        .HasMaxLength(240)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("RecommendationSecondaryKey")
+                        .HasMaxLength(160)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("RecommendationSecondaryTitle")
+                        .HasMaxLength(240)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("ReferrerUrl")
+                        .HasMaxLength(500)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("SessionId")
+                        .HasMaxLength(120)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("SnapshotJson")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("SourceCtaKey")
+                        .HasMaxLength(160)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("SourcePageKey")
+                        .HasMaxLength(160)
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime>("SubmittedUtc")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("UtmCampaign")
+                        .HasMaxLength(160)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("UtmContent")
+                        .HasMaxLength(160)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("UtmId")
+                        .HasMaxLength(160)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("UtmMedium")
+                        .HasMaxLength(160)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("UtmSource")
+                        .HasMaxLength(160)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("UtmTerm")
+                        .HasMaxLength(160)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("VisitorId")
+                        .HasMaxLength(120)
+                        .HasColumnType("TEXT");
+
+                    b.Property<Guid>("WebsiteLeadPublicId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<long>("WebsiteLeadRowId")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("WorkstationLeadId")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("WebsiteLeadRowId")
+                        .IsUnique();
+
+                    b.HasIndex("AgentUserId", "SubmittedUtc");
+
+                    b.HasIndex("WorkstationLeadId", "SubmittedUtc");
+
+                    b.ToTable("WebsiteLeadIntakeLinks");
                 });
 
             modelBuilder.Entity("Domain.Entities.WorkstationLeadProfile", b =>
@@ -1867,6 +2865,12 @@ namespace Infrastructure.Migrations
                         .HasMaxLength(60)
                         .HasColumnType("TEXT");
 
+                    b.Property<byte[]>("RowVersion")
+                        .IsConcurrencyToken()
+                        .IsRequired()
+                        .HasColumnType("BLOB")
+                        .HasDefaultValueSql("X''");
+
                     b.Property<string>("State")
                         .HasMaxLength(40)
                         .HasColumnType("TEXT");
@@ -1928,6 +2932,15 @@ namespace Infrastructure.Migrations
                     b.Navigation("RecurringExpense");
                 });
 
+            modelBuilder.Entity("Domain.Entities.ClientFinancialPlan", b =>
+                {
+                    b.HasOne("Domain.Entities.ClientProfile", null)
+                        .WithMany()
+                        .HasForeignKey("ClientId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
             modelBuilder.Entity("Domain.Entities.HouseholdMember", b =>
                 {
                     b.HasOne("Domain.Entities.ClientProfile", null)
@@ -1936,6 +2949,24 @@ namespace Infrastructure.Migrations
                         .HasPrincipalKey("ClientUserId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
+                });
+
+            modelBuilder.Entity("Domain.Entities.LeadAppointment", b =>
+                {
+                    b.HasOne("Domain.Entities.WebsiteLeadIntakeLink", "WebsiteLeadIntakeLink")
+                        .WithMany()
+                        .HasForeignKey("WebsiteLeadIntakeLinkId")
+                        .OnDelete(DeleteBehavior.SetNull);
+
+                    b.HasOne("Domain.Entities.WorkstationLeadProfile", "WorkstationLead")
+                        .WithMany()
+                        .HasForeignKey("WorkstationLeadId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("WebsiteLeadIntakeLink");
+
+                    b.Navigation("WorkstationLead");
                 });
 
             modelBuilder.Entity("Domain.Entities.OnboardingSubmission", b =>
@@ -1947,6 +2978,21 @@ namespace Infrastructure.Migrations
                         .IsRequired();
 
                     b.Navigation("Invite");
+                });
+
+            modelBuilder.Entity("Domain.Entities.WebsiteLeadIntakeLink", b =>
+                {
+                    b.HasOne("Domain.Entities.WebsiteLead", null)
+                        .WithMany()
+                        .HasForeignKey("WebsiteLeadRowId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("Domain.Entities.WorkstationLeadProfile", null)
+                        .WithMany()
+                        .HasForeignKey("WorkstationLeadId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
                 });
 
             modelBuilder.Entity("Domain.Entities.AgentTrackingProfile", b =>

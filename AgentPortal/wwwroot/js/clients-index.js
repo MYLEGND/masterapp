@@ -49,7 +49,19 @@ function withAgentTimeZone(init = {}){
 }
 if (window.fetch){
   const __origFetch = window.fetch.bind(window);
-  window.fetch = (input, init = {}) => __origFetch(input, withAgentTimeZone(init));
+  window.fetch = (input, init = {}) => {
+    const patched = withAgentTimeZone(init);
+    // Mark every fetch so the server can return 401 instead of redirecting to Azure AD
+    patched.headers.set("X-Requested-With", "XMLHttpRequest");
+    return __origFetch(input, patched).then(res => {
+      // If the server says the session expired, force a full page reload to re-auth
+      if (res.status === 401) {
+        const currentPath = encodeURIComponent(window.location.pathname + window.location.search);
+        window.location.href = `/MicrosoftIdentity/Account/SignIn?returnUrl=${currentPath}`;
+      }
+      return res;
+    });
+  };
 }
 
 function loadJSON(key, fallback){
@@ -103,55 +115,517 @@ function bindQuickViewBootstrapModals(){
     onHidden: () => {
       hideBootstrapModalById("clientQuickCreateActionModal");
       hideBootstrapModalById("addClientCommitmentModal");
+      hideBootstrapModalById(finPlanModalId);
     }
   });
 
   bindBootstrapModalStability("clientQuickCreateActionModal", { modalZ: 1085, backdropZ: 1080 });
   bindBootstrapModalStability("addClientCommitmentModal", { modalZ: 1085, backdropZ: 1080 });
+  bindBootstrapModalStability(finPlanModalId, { modalZ: 1095, backdropZ: 1090 });
 }
 
-function showQuickViewTab(target, opts = {}){
-  if (!target) return;
-  const drawerRoot = $("#drawer") || document;
-  const panels = $$('.qv-tabpanel', drawerRoot);
-  if (!panels.length) return;
 
-  const targetPanel = panels.find(p => p.id === target) || document.getElementById(target);
-  if (!targetPanel) return;
+/* ========= Financial Plan (Accumulation + Distribution) ========= */
+async function openFinPlanModal(clientUserId){
+  bindQuickViewBootstrapModals();
+  closeLegacyOverlayModals();
+  reconcileBootstrapModalState();
+  ensureModalInBody(finPlanModalId);
+  const modalEl = document.getElementById(finPlanModalId);
+  if (!modalEl) { toast("Modal not found."); return; }
+  if (!window.bootstrap){
+    toast("UI library missing; cannot open modal.");
+    return;
+  }
+  ensureFinPlanSelectOptions();
+  finPlanModal = window.bootstrap.Modal.getOrCreateInstance(modalEl);
+  resetFinPlanForm();
+  await loadFinPlan(clientUserId);
+  finPlanModal.show();
+}
 
-  const disclosure = targetPanel.closest('details.qv-disclosure');
-  if (disclosure) disclosure.open = true;
+function resetFinPlanForm(){
+  finPlanVersion = 0;
+  window.__wfFinalBalance = null;
+  finPlanAllocManual = false;
+  const form = document.getElementById("finPlanForm");
+  if (!form) return;
+  form.reset();
+  $("#finPlanError").style.display = "none";
+  $("#finPlanStatusLabel").textContent = "Loading…";
+  $("#finPlanClientLabel").textContent = "";
+  const profileIdEl = document.getElementById("finPlanClientProfileId");
+  if (profileIdEl) profileIdEl.value = "";
+  const userIdEl = document.getElementById("finPlanClientUserId");
+  if (userIdEl) userIdEl.value = "";
+  updateFinPlanAllocTotal();
+}
 
-  panels.forEach(panel => {
-    panel.style.display = panel.id === target ? '' : 'none';
-  });
+function recalcFinPlanWealthForecastBalance(){
+  const toNumber = (id, def = 0) => {
+    const raw = ((document.getElementById(id)?.value) || "").toString().replace(/,/g, '').replace('%', '');
+    const num = parseFloat(raw);
+    return Number.isFinite(num) ? num : def;
+  };
+  const clamp = (val, min, max) => Math.min(Math.max(val, min), max);
 
-  const tabButtons = $$('.qv-tabs button[data-tab-target]', drawerRoot);
-  tabButtons.forEach(tab => {
-    const isActive = tab.dataset.tabTarget === target;
-    tab.classList.toggle('btn-gold', isActive);
-    tab.classList.toggle('btn-ghost', !isActive);
-  });
+  const income = Math.max(0, toNumber("wbIncome", 0));
+  const startingBalance = Math.max(0, toNumber("wbStartingBalance", 0));
+  const years = Math.max(0, Math.floor(toNumber("wbYears", 0)));
+  const inflation = Math.max(-0.95, toNumber("wbInflation", 0) / 100);
+  const nominalReturn = Math.max(-0.95, toNumber("wbReturn", 0) / 100);
+  const tax = clamp(toNumber("wbTax", 0) / 100, 0, 1);
+  const liabilities = clamp(toNumber("wbLiabilities", 0) / 100, 0, 1);
+  const lifestyle = clamp(toNumber("wbLifestyle", 0) / 100, 0, 1);
+  const realGrowthRate = (1 + nominalReturn) / (1 + inflation) - 1;
 
-  if (opts.scroll){
-    targetPanel.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  const baselineLiabAmt = income * liabilities;
+  const baselineLifeAmt = income * lifestyle;
+
+  let investedBalance = startingBalance;
+  for (let y = 1; y <= years; y++) {
+    const annualExpenses = (income * tax) + baselineLiabAmt + baselineLifeAmt;
+    const annualSavings = income - annualExpenses;
+    investedBalance = investedBalance * (1 + realGrowthRate) + annualSavings;
+  }
+
+  window.__wfFinalBalance = investedBalance > 0 ? investedBalance : null;
+  const baseEl = document.getElementById("wfd_base");
+  if (baseEl && !document.getElementById("wfd_manualOverride")?.checked) {
+    baseEl.value = window.__wfFinalBalance ? Math.round(window.__wfFinalBalance).toLocaleString() : "";
+  }
+  return window.__wfFinalBalance || 0;
+}
+
+function finPlanPayload(){
+  const pf = (v)=>{ const n = Number((v||"").toString().replace(/,/g,'')); return isNaN(n)?0:n; };
+  const parseManualReturns = (txt) => String(txt || "")
+    .split(/[\n,]+/)
+    .map(s => Number(String(s).trim()))
+    .filter(n => Number.isFinite(n));
+  const manualOverride = !!document.getElementById("wfd_manualOverride")?.checked;
+  const wfFinalBalance = recalcFinPlanWealthForecastBalance();
+  const base = manualOverride ? pf($("#wfd_base")?.value) : wfFinalBalance;
+  if (!manualOverride && $("#wfd_base")) $("#wfd_base").value = (base||0).toLocaleString();
+
+  const canonical = {
+    schemaVersion: (window.DP_CONSTANTS?.DP_SCHEMA_VERSION) || "1.0",
+    planVersion: finPlanVersion || 1,
+    retireAge: pf($("#wfd_retAge")?.value),
+    endAge: pf($("#wfd_endAge")?.value),
+    inflationPct: (window.DP_CONSTANTS?.DP_DEFAULTS?.inflationPct) ?? 3,
+    retirementBase: base,
+    desiredIncome: pf($("#wfd_desiredIncome")?.value),
+    guaranteedIncome: pf($("#wfd_guaranteedIncome")?.value),
+    emergencyReserve: pf($("#wfd_emergency")?.value),
+    manualBaseOverride: manualOverride,
+    invAllocPct: pf($("#wfd_invAlloc")?.value),
+    invReturnPct: pf($("#wfd_invReturn")?.value),
+    invTaxPct: pf($("#wfd_invTax")?.value),
+    liAllocPct: pf($("#wfd_liAlloc")?.value),
+    liReturnPct: pf($("#wfd_liGrowth")?.value),
+    liTaxPct: pf($("#wfd_liTax")?.value),
+    liAccessMode: ($("#wfd_liAccess")?.value || "withdrawal"),
+    liPolicyType: ($("#wfd_liType")?.value || "whole"),
+    annAllocPct: pf($("#wfd_annAlloc")?.value),
+    annReturnPct: pf($("#wfd_annReturn")?.value),
+    annTaxPct: pf($("#wfd_annTax")?.value),
+    annDesign: ($("#wfd_annDesign")?.value || "fixed"),
+    invDownMarket: !!document.getElementById("wfd_invDownMkt")?.checked,
+    liDownMarket: !!document.getElementById("wfd_liDownMkt")?.checked,
+    annDownMarket: !!document.getElementById("wfd_annDownMkt")?.checked,
+    protectInvest: !!document.getElementById("wfd_protectInvest")?.checked,
+    annIncomeRider: !!document.getElementById("wfd_annIncomeRider")?.checked,
+    annDbRider: !!document.getElementById("wfd_annDbRider")?.checked,
+    annRollupPct: pf($("#wfd_annRollup")?.value),
+    liEfficiencyPct: pf($("#wfd_liEfficiency")?.value),
+    annDeathBenefit: pf($("#wfd_annDeath")?.value),
+    liDeathBenefit: pf($("#wfd_liDeath")?.value),
+    strategy: ($("#wfd_strategy")?.value || "proportional"),
+    gapSource: ($("#wfd_gapSource")?.value || "life"),
+    downThreshold: pf($("#wfd_downThreshold")?.value),
+    scenarioMode: ($("#wfd_scenarioMode")?.value || "fixed"),
+    manualReturns: parseManualReturns($("#wfd_manualReturns")?.value),
+    withdrawalOrder: (window.DP_CONSTANTS?.DP_WITHDRAWAL_ORDER_DEFAULT) || ["inv","li","ann","reserve"]
+  };
+
+  return {
+    version: finPlanVersion,
+    wealthForecast: { inputs: { wbStartingBalance: $("#wbStartingBalance")?.value || "", wbIncome: $("#wbIncome")?.value || "", wbYears: $("#wbYears")?.value || "", wbInflation: $("#wbInflation")?.value || "", wbReturn: $("#wbReturn")?.value || "", wbTax: $("#wbTax")?.value || "", wbLiabilities: $("#wbLiabilities")?.value || "", wbLifestyle: $("#wbLifestyle")?.value || "" } },
+    distribution: { canonicalInput: canonical, meta:{ source:'crm' } }
+  };
+}
+
+let finPlanPreviewTimer = null;
+function scheduleDpPreview(){
+  clearTimeout(finPlanPreviewTimer);
+  finPlanPreviewTimer = setTimeout(runDpPreview, 280);
+}
+
+function runDpPreview(){
+  const status = $("#finPlanStatusLabel");
+  if (!window.DP_VALIDATORS?.validatePlanInput || !window.runDistributionPlan){
+    if (status) status.textContent = "Ready";
+    return;
+  }
+  const lockedInputs = captureFinPlanEditableState();
+  try {
+    const canonical = finPlanPayload().distribution?.canonicalInput || {};
+    const errs = window.DP_VALIDATORS.validatePlanInput(canonical);
+    if (errs.length){
+      if (status) status.textContent = `Needs fix: ${errs[0].message}`;
+      return;
+    }
+    const res = window.runDistributionPlan(canonical);
+    if (res.errors?.length){
+      if (status) status.textContent = `Error: ${res.errors[0].message}`;
+      return;
+    }
+    const sum = res.summary || {};
+    const fmt = (v)=> (Number(v)||0).toLocaleString("en-US",{style:"currency",currency:"USD",maximumFractionDigits:0});
+    const shortTxt = sum.totalShortfall > 0 ? ` | Shortfall ${fmt(sum.totalShortfall)}` : "";
+    if (status) status.textContent = `Preview: Avg Net ${fmt(sum.avgIncomeDeliveredNet||0)} | End ${fmt(sum.totalEndBalance||0)}${shortTxt}`;
+  } finally {
+    restoreFinPlanEditableState(lockedInputs);
+    recalcFinPlanWealthForecastBalance();
+    updateFinPlanAllocTotal();
+    updateFinPlanDownMarketState();
   }
 }
 
-// quick view tab switcher for notes/actions, including top-level shortcuts
-function bindQuickViewTabs(){
-  const drawerRoot = $("#drawer") || document;
-  const launchers = $$('[data-tab-target]', drawerRoot);
-  if (!launchers.length) return;
+async function loadFinPlan(clientUserId){
+  const status = $("#finPlanStatusLabel");
+  const label = $("#finPlanClientLabel");
+  if (status) status.textContent = "Loading…";
+  if (label) label.textContent = clientUserId || "";
+  try{
+    const planUrl = `/clients/${encodeURIComponent(clientUserId)}/financial-plan?clientUserId=${encodeURIComponent(clientUserId)}`;
+    const res = await fetch(planUrl, { credentials:"include" });
+    if (!res.ok){
+      throw new Error(`Load failed (${res.status})`);
+    }
+    const text = await res.text();
+    let data;
+    try{
+      data = JSON.parse(text);
+    }catch(parseErr){
+      throw new Error("Unexpected response while loading plan.");
+    }
+    finPlanVersion = data.version || 0;
+    $("#finPlanVersion").value = finPlanVersion;
+    if (data.clientProfileId) $("#finPlanClientProfileId").value = data.clientProfileId;
+    if (data.clientUserId) $("#finPlanClientUserId").value = data.clientUserId;
+    if (data.clientName) $("#finPlanClientLabel").textContent = data.clientName;
+    else $("#finPlanClientLabel").textContent = data.clientUserId || "";
+    hydrateFinPlan(data.jsonData);
+    if (status) status.textContent = data.updatedUtc ? `Last updated ${new Date(data.updatedUtc).toLocaleString()}` : "Loaded";
+  }catch(err){
+    if (status) status.textContent = "Failed to load plan.";
+    showFinPlanError(err?.message || "Failed to load plan.");
+  }
+}
 
-  launchers.forEach(btn => {
-    if (btn.dataset.tabBound === "1") return;
-    btn.dataset.tabBound = "1";
-    btn.addEventListener('click', () => {
-      showQuickViewTab(btn.dataset.tabTarget, { scroll: btn.dataset.tabScroll === "1" });
-    });
+function hydrateFinPlan(jsonData){
+  let payload = {};
+  try { payload = JSON.parse(jsonData || "{}"); } catch { payload = {}; }
+  const wf = payload.wealthForecast?.inputs || {};
+  Object.keys(wf).forEach(id => { const el = document.getElementById(id); if (el) el.value = wf[id]; });
+
+  const canonical = payload.distribution?.canonicalInput || {};
+  const setVal = (id, v) => { const el = document.getElementById(id); if (el) el.value = v ?? ""; };
+  const setChecked = (id, v) => { const el = document.getElementById(id); if (el) el.checked = !!v; };
+  setVal("wfd_base", canonical.retirementBase ?? "");
+  setChecked("wfd_manualOverride", !!canonical.manualBaseOverride);
+  setVal("wfd_retAge", canonical.retireAge ?? "");
+  setVal("wfd_endAge", canonical.endAge ?? "");
+  setVal("wfd_emergency", canonical.emergencyReserve ?? "");
+  setVal("wfd_desiredIncome", canonical.desiredIncome ?? "");
+  setVal("wfd_guaranteedIncome", canonical.guaranteedIncome ?? "");
+  setVal("wfd_invAlloc", canonical.invAllocPct ?? "");
+  setVal("wfd_invReturn", canonical.invReturnPct ?? "");
+  setVal("wfd_invTax", canonical.invTaxPct ?? "");
+  setVal("wfd_liAlloc", canonical.liAllocPct ?? "");
+  setVal("wfd_liGrowth", canonical.liReturnPct ?? "");
+  setVal("wfd_liTax", canonical.liTaxPct ?? "");
+  setVal("wfd_annAlloc", canonical.annAllocPct ?? "");
+  setVal("wfd_annReturn", canonical.annReturnPct ?? "");
+  setVal("wfd_annTax", canonical.annTaxPct ?? "");
+  const liAccess = canonical.liAccessMode || "withdrawal";
+  const liType = canonical.liPolicyType || "whole";
+  const annDesign = canonical.annDesign || "fixed";
+  const liAccessEl = document.getElementById("wfd_liAccess"); if (liAccessEl) liAccessEl.value = liAccess;
+  const liTypeEl = document.getElementById("wfd_liType"); if (liTypeEl) liTypeEl.value = liType;
+  const annDesignEl = document.getElementById("wfd_annDesign"); if (annDesignEl) annDesignEl.value = annDesign;
+  const setCheck = (id, val, fallback = false) => {
+    const el = document.getElementById(id);
+    if (el) el.checked = (typeof val === "boolean") ? val : fallback;
+  };
+  setCheck("wfd_invDownMkt", canonical.invDownMarket, false);
+  setCheck("wfd_liDownMkt", canonical.liDownMarket, true);
+  setCheck("wfd_annDownMkt", canonical.annDownMarket, true);
+  setCheck("wfd_protectInvest", canonical.protectInvest, true);
+  setCheck("wfd_annIncomeRider", canonical.annIncomeRider, false);
+  setCheck("wfd_annDbRider", canonical.annDbRider, false);
+  setVal("wfd_annRollup", canonical.annRollupPct ?? "");
+  setVal("wfd_liEfficiency", canonical.liEfficiencyPct ?? "");
+  setVal("wfd_annDeath", canonical.annDeathBenefit ?? "");
+  setVal("wfd_liDeath", canonical.liDeathBenefit ?? "");
+  setVal("wfd_strategy", canonical.strategy ?? "proportional");
+  setVal("wfd_gapSource", canonical.gapSource ?? "life");
+  setVal("wfd_downThreshold", canonical.downThreshold ?? "0");
+  setVal("wfd_scenarioMode", canonical.scenarioMode ?? "fixed");
+  const manualReturnsEl = document.getElementById("wfd_manualReturns");
+  if (manualReturnsEl && Array.isArray(canonical.manualReturns)) {
+    manualReturnsEl.value = canonical.manualReturns.join(", ");
+  }
+  finPlanAllocManual = true;
+  recalcFinPlanWealthForecastBalance();
+  updateFinPlanAllocTotal();
+  updateFinPlanDownMarketState();
+}
+
+function updateFinPlanDownMarketState(){
+  const gid = (id) => document.getElementById(id);
+  const rows = [
+    { chk:'wfd_invDownMkt', badge:'wfd_invDmBadge', card:'wfd_invCard' },
+    { chk:'wfd_liDownMkt',  badge:'wfd_liDmBadge',  card:'wfd_liCard' },
+    { chk:'wfd_annDownMkt', badge:'wfd_annDmBadge', card:'wfd_annCard' }
+  ];
+  rows.forEach(r => {
+    const on = !!gid(r.chk)?.checked;
+    const badge = gid(r.badge);
+    const card = gid(r.card);
+    if (badge){
+      badge.textContent = on ? 'Down-Market: On' : 'Down-Market: Off';
+      badge.classList.toggle('off', !on);
+    }
+    if (card) card.classList.toggle('wfd-dm-off', !on);
   });
 }
+
+function captureFinPlanEditableState(){
+  const state = { inputs:{}, checks:{} };
+  [
+    'wbStartingBalance','wbIncome','wbYears','wbInflation','wbReturn','wbTax','wbLiabilities','wbLifestyle',
+    'wfd_retAge','wfd_endAge','wfd_emergency','wfd_desiredIncome','wfd_guaranteedIncome',
+    'wfd_invAlloc','wfd_invReturn','wfd_invTax',
+    'wfd_liAlloc','wfd_liGrowth','wfd_liTax','wfd_liEfficiency','wfd_liDeath','wfd_liType','wfd_liAccess',
+    'wfd_annAlloc','wfd_annReturn','wfd_annTax','wfd_annDeath','wfd_annRollup','wfd_annDesign',
+    'wfd_strategy','wfd_gapSource','wfd_downThreshold','wfd_scenarioMode','wfd_manualReturns'
+  ].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) state.inputs[id] = el.value;
+  });
+  if (document.getElementById('wfd_manualOverride')?.checked) {
+    const baseEl = document.getElementById('wfd_base');
+    if (baseEl) state.inputs.wfd_base = baseEl.value;
+  }
+  ['wfd_manualOverride','wfd_invDownMkt','wfd_liDownMkt','wfd_annDownMkt','wfd_protectInvest','wfd_annIncomeRider','wfd_annDbRider'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) state.checks[id] = !!el.checked;
+  });
+  return state;
+}
+
+function restoreFinPlanEditableState(state){
+  if (!state) return;
+  Object.entries(state.inputs || {}).forEach(([id, value]) => {
+    const el = document.getElementById(id);
+    if (el) el.value = value ?? '';
+  });
+  Object.entries(state.checks || {}).forEach(([id, value]) => {
+    const el = document.getElementById(id);
+    if (el) el.checked = !!value;
+  });
+}
+
+function showFinPlanError(msg){
+  const errEl = $("#finPlanError");
+  if (!errEl) return;
+  errEl.textContent = msg || "";
+  errEl.style.display = msg ? "block" : "none";
+}
+
+function ensureFinPlanSelectOptions(){
+  const setOptions = (id, opts) => {
+    const sel = document.getElementById(id);
+    if (!sel) return;
+    if (sel.children.length === 0){
+      opts.forEach(o => {
+        const opt = document.createElement("option");
+        opt.value = o.value; opt.textContent = o.label;
+        sel.appendChild(opt);
+      });
+    }
+  };
+  setOptions("wfd_liType", [
+    { value:"whole",      label:"Whole Life" },
+    { value:"iul",        label:"Indexed UL" },
+    { value:"vul",        label:"Variable UL" },
+    { value:"legacy_rpu", label:"Legacy / Reduced Paid-Up" }
+  ]);
+
+  setOptions("wfd_liAccess", [
+    { value:"withdrawal", label:"Withdrawals" },
+    { value:"loan",       label:"Policy Loans" },
+    { value:"none",       label:"No Distributions" }
+  ]);
+
+  setOptions("wfd_annDesign", [
+    { value:"fixed",        label:"Fixed Annuity" },
+    { value:"fixedIndexed", label:"Fixed Indexed Annuity" },
+    { value:"variable",     label:"Variable Annuity" }
+  ]);
+
+  // Keep all DP controls visible in CRM quick view for exact parity with Finance DP.
+}
+
+function updateFinPlanAllocTotal(trigger = "generic"){
+  const inv = parseFloat((($("#wfd_invAlloc")?.value || "").replace(/[^0-9.\-]/g,""))) || 0;
+  const li  = parseFloat((($("#wfd_liAlloc")?.value || "").replace(/[^0-9.\-]/g,""))) || 0;
+  const ann = parseFloat((($("#wfd_annAlloc")?.value || "").replace(/[^0-9.\-]/g,""))) || 0;
+  let invPct = inv;
+  let liPct  = li;
+  let annPct = ann;
+
+  if (invPct >= 100){
+    invPct = 100;
+    liPct = 0;
+    annPct = 0;
+    finPlanAllocManual = false;
+    $("#wfd_invAlloc").value = "100";
+    $("#wfd_liAlloc").value = "0";
+    $("#wfd_annAlloc").value = "0";
+  } else if (trigger === "inv" && !finPlanAllocManual){
+    const remaining = Math.max(0, 100 - invPct);
+  const half = +(remaining / 2).toFixed(1);
+    liPct = half;
+    annPct = remaining - half;
+    $("#wfd_liAlloc").value = liPct.toString();
+    $("#wfd_annAlloc").value = annPct.toString();
+  }
+
+  const total = invPct + liPct + annPct;
+  const manualOverride = !!document.getElementById("wfd_manualOverride")?.checked;
+  const base = manualOverride
+    ? (parseFloat(((document.getElementById("wfd_base")?.value || "").replace(/[^0-9.\-]/g, ""))) || 0)
+    : (window.__wfFinalBalance || 0);
+  const el = document.getElementById("finPlanAllocTotal");
+  if (el){
+    el.textContent = `${total.toFixed(1)}%`;
+    el.classList.toggle("text-success", Math.abs(total-100) < 0.1);
+    el.classList.toggle("text-warning", Math.abs(total-100) >= 0.1);
+  }
+
+  const setMoney = (id, val) => {
+    const target = document.getElementById(id);
+    if (target) target.value = Math.round(val || 0).toLocaleString();
+  };
+  setMoney('wfd_invAmt', base * (invPct / 100));
+  setMoney('wfd_liAmt', base * (liPct / 100));
+  setMoney('wfd_annAmt', base * (annPct / 100));
+
+  // DP visual parity: update badges and bars
+  const totEl = document.getElementById('wfd_allocTotal');
+  const stEl  = document.getElementById('wfd_allocStatus');
+  if (totEl){
+    const ready = Math.abs(total - 100) < 0.11;
+    totEl.textContent = `${total.toFixed(1)}%`;
+    totEl.className = ready ? 'wfd-alloc-good' : 'wfd-alloc-bad';
+    if (stEl){
+      stEl.textContent = ready ? '✓ Ready' : '— must equal 100%';
+      stEl.style.color = ready ? '#16a34a' : '#dc2626';
+    }
+  }
+
+  const mx = Math.max(invPct, liPct, annPct, 1);
+  const invBar = document.getElementById('wfd_invBar');
+  const liBar  = document.getElementById('wfd_liBar');
+  const annBar = document.getElementById('wfd_annBar');
+  if (invBar) invBar.style.height = Math.max(invPct / mx * 100, 3) + '%';
+  if (liBar)  liBar.style.height  = Math.max(liPct  / mx * 100, 3) + '%';
+  if (annBar) annBar.style.height = Math.max(annPct / mx * 100, 3) + '%';
+}
+
+async function saveFinPlan(){
+  const lockedInputs = captureFinPlanEditableState();
+  const payload = finPlanPayload();
+  const canonical = payload.distribution?.canonicalInput;
+  const errs = window.DP_VALIDATORS?.validatePlanInput ? window.DP_VALIDATORS.validatePlanInput(canonical) : [{message:"Validator unavailable"}];
+  if (errs.length){
+    showFinPlanError(errs.map(e=>e.message).join("; "));
+    return;
+  }
+  const clientProfileId = $("#finPlanClientProfileId")?.value?.trim() || "";
+  const clientUserId = finPlanActiveClientId || $("#finPlanClientUserId")?.value || "";
+  const routeId = clientProfileId || clientUserId;
+  if (!routeId){
+    showFinPlanError("Missing client id.");
+    return;
+  }
+  if (!finPlanVersion){
+    showFinPlanError("Plan not loaded — load the client before saving.");
+    return;
+  }
+  showFinPlanError("");
+  $("#finPlanStatusLabel").textContent = "Saving…";
+  const planUrl = `/clients/${encodeURIComponent(routeId)}/financial-plan?clientUserId=${encodeURIComponent(clientUserId)}`;
+  try {
+    const res = await fetch(planUrl, {
+      method:"POST",
+      credentials:"include",
+      headers:{
+        "Content-Type":"application/json",
+        "RequestVerificationToken": getAntiForgeryToken()
+      },
+      body: JSON.stringify({ clientProfileId, clientUserId, jsonData: JSON.stringify(payload), version: payload.version })
+    });
+    if (!res.ok){
+      const errorText = (await res.text().catch(() => "")).trim();
+      if (res.status === 409){
+        showFinPlanError("Version conflict — reload the latest plan before saving.");
+      } else {
+        showFinPlanError(errorText || `Save failed (${res.status}).`);
+      }
+      $("#finPlanStatusLabel").textContent = "Save failed";
+      return;
+    }
+    const data = await res.json();
+    finPlanVersion = data.version || payload.version;
+    $("#finPlanVersion").value = finPlanVersion;
+    if (data.clientProfileId) $("#finPlanClientProfileId").value = data.clientProfileId;
+    if (data.clientUserId) $("#finPlanClientUserId").value = data.clientUserId;
+    $("#finPlanStatusLabel").textContent = data.updatedUtc ? `Saved ${new Date(data.updatedUtc).toLocaleString()}` : "Saved";
+    toast("Plan saved.", { autoClose: 1800 });
+  } finally {
+    restoreFinPlanEditableState(lockedInputs);
+    recalcFinPlanWealthForecastBalance();
+    updateFinPlanAllocTotal();
+    updateFinPlanDownMarketState();
+  }
+}
+
+document.getElementById("finPlanSaveBtn")?.addEventListener("click", () => { void saveFinPlan(); });
+document.getElementById("wfd_invAlloc")?.addEventListener("input", ()=>{ updateFinPlanAllocTotal("inv"); });
+document.getElementById("wfd_liAlloc")?.addEventListener("input", ()=>{ finPlanAllocManual = true; updateFinPlanAllocTotal("li"); });
+document.getElementById("wfd_annAlloc")?.addEventListener("input", ()=>{ finPlanAllocManual = true; updateFinPlanAllocTotal("ann"); });
+['wfd_invDownMkt','wfd_liDownMkt','wfd_annDownMkt'].forEach(id=>{
+  const el = document.getElementById(id);
+  if (!el) return;
+  el.addEventListener('change', ()=>{ updateFinPlanDownMarketState(); scheduleDpPreview(); });
+});
+['wbStartingBalance','wbIncome','wbYears','wbInflation','wbReturn','wbTax','wbLiabilities','wbLifestyle'].forEach(id=>{
+  const el = document.getElementById(id);
+  if (!el) return;
+  ['input','change','blur'].forEach(evt => el.addEventListener(evt, ()=>{ recalcFinPlanWealthForecastBalance(); scheduleDpPreview(); }));
+});
+['wfd_retAge','wfd_endAge','wfd_emergency','wfd_desiredIncome','wfd_guaranteedIncome','wfd_invAlloc','wfd_invReturn','wfd_invTax','wfd_liAlloc','wfd_liGrowth','wfd_liTax','wfd_liAccess','wfd_liType','wfd_annAlloc','wfd_annReturn','wfd_annTax','wfd_annDesign','wfd_manualOverride','wfd_base','wfd_protectInvest','wfd_annIncomeRider','wfd_annDbRider','wfd_annRollup','wfd_liEfficiency','wfd_annDeath','wfd_liDeath','wfd_strategy','wfd_gapSource','wfd_downThreshold','wfd_scenarioMode','wfd_manualReturns'].forEach(id=>{
+  const el = document.getElementById(id);
+  if (!el) return;
+  ['input','change','blur'].forEach(evt=> el.addEventListener(evt, scheduleDpPreview));
+});
+updateFinPlanDownMarketState();
+scheduleDpPreview();
 
 function norm(v){ return (v || "").toString().trim(); }
 function fullName(row){ return (norm(row.dataset.first) + " " + norm(row.dataset.last)).trim(); }
@@ -258,6 +732,38 @@ function getAntiForgeryToken(scope){
   // Standalone partial pages (e.g. /Clients/Actions/{id}) do not render #__af.
   const any = document.querySelector('input[name="__RequestVerificationToken"]');
   return any?.value || "";
+}
+
+async function deleteClientRecord(clientUserId){
+  const token = getAntiForgeryToken();
+  if (!token){
+    throw new Error("Missing antiforgery token.");
+  }
+
+  const formData = new FormData();
+  formData.append("__RequestVerificationToken", token);
+  formData.append("clientUserId", clientUserId);
+
+  const res = await fetch("/Clients/Delete", {
+    method: "POST",
+    credentials: "include",
+    headers: {
+      "X-Requested-With": "fetch"
+    },
+    body: formData
+  });
+
+  const contentType = res.headers.get("content-type") || "";
+  const payload = contentType.includes("application/json")
+    ? await res.json().catch(() => null)
+    : null;
+
+  if (!res.ok || payload?.ok === false){
+    throw new Error(payload?.error || `Delete failed (${res.status})`);
+  }
+
+  toast(payload?.message || "Client deleted. Reloading…");
+  window.location.href = payload?.redirectUrl || "/Clients";
 }
 
 async function postJson(url, payload){
@@ -725,6 +1231,8 @@ function wireClientActionForm(){
     event.preventDefault();
     if (!actionsContainer) return;
     const data = new FormData(form);
+    const showInDashboardInput = form.querySelector('input[name="ShowInCommandCenter"]');
+    data.set("ShowInCommandCenter", showInDashboardInput?.checked ? "true" : "false");
     const dueInput = form.querySelector('input[name="DueDateUtc"]');
     if (dueInput && dueInput.value){
       const local = new Date(dueInput.value);
@@ -1314,7 +1822,7 @@ function crmStatusLabel(status){
 
 const pipelineStages = [
   { key: "Client", label: "Clients", tone: "good", className: "stage-client", note: "Portal-enabled clients with active access to the shared client workspace." },
-  { key: "BusinessClient", label: "Business Clients", tone: "good", className: "stage-businessclient", note: "Business clients with finance and bookkeeping workspace access." },
+  { key: "BusinessClient", label: "Business Clients", tone: "good", className: "stage-businessclient", note: "Business clients with expanded finance workspace access." },
   { key: "Opportunities", label: "Opportunities", tone: "warn", className: "stage-opportunities", note: "Qualified opportunities that need pressure and movement before becoming full clients." },
   { key: "NewLead", label: "Lead", tone: "warn", className: "stage-newlead", note: "Fresh incoming records that need first contact and qualification." },
   { key: "Contacted", label: "Contacted", tone: "info", className: "stage-contacted", note: "The first touch happened. Keep momentum alive." },
@@ -1410,6 +1918,12 @@ const bar = $("#legendBar");
 
 const rows = $$(".client-row");
 const kpiGrid = $("#kpiGrid");
+const performanceModal = $("#performanceModal");
+const btnTogglePerformance = $("#btnTogglePerformance");
+const perfPreviewPaid = $("#perfPreviewPaid");
+const perfPreviewPersonal = $("#perfPreviewPersonal");
+const perfPreviewCalls = $("#perfPreviewCalls");
+const perfPreviewOverdue = $("#perfPreviewOverdue");
 const cmToday = $("#cmToday");
 const cmWeek = $("#cmWeek");
 const cmMonth = $("#cmMonth");
@@ -1423,6 +1937,19 @@ const sortBy = $("#sortBy");
 const pageSize = $("#pageSize");
 const viewMode = $("#viewMode");
 const density = $("#density");
+const PIPELINE_ONLY_VIEW = "pipeline";
+
+function getControlValue(control, fallback = ""){
+  return control?.value ?? fallback;
+}
+
+function setControlValue(control, value){
+  if (control) control.value = value;
+}
+
+function getDensityValue(){
+  return density?.value === "compact" ? "compact" : "comfort";
+}
 
 const btnCopyEmails = $("#btnCopyEmails");
 const btnExportCsv = $("#btnExportCsv");
@@ -1431,7 +1958,12 @@ const btnOpenFirst = $("#btnOpenFirst");
 const btnBulkEdit = $("#btnBulkEdit");
 const savedViewsBar = $("#savedViewsBar");
 const btnCallTaskMode = $("#btnCallTaskMode");
-const myDayQueue = $("#myDayQueue");
+const myDayModal = $("#myDayModal");
+const btnToggleMyDay = $("#btnToggleMyDay");
+const qCallsNowPreview = $("#qCallsNowPreview");
+const qDueTodayPreview = $("#qDueTodayPreview");
+const qOverduePreview = $("#qOverduePreview");
+const qMeetingsPreview = $("#qMeetingsPreview");
 const mydayFocus = $("#mydayFocus");
 const btnMyDayBack = $("#btnMyDayBack");
 const btnMyDayCallTask = $("#btnMyDayCallTask");
@@ -1459,10 +1991,41 @@ const pipelineFocusPill = $("#pipelineFocusPill");
 const btnPipeOverdue = $("#btnPipeOverdue");
 const btnPipeNeeds = $("#btnPipeNeeds");
 const btnPipeMeetings = $("#btnPipeMeetings");
-const btnPipeTable = $("#btnPipeTable");
 const btnPipeReset = $("#btnPipeReset");
 const pipelineFocusBar = $("#pipelineFocusBar");
 const pipelineFocusTitle = $("#pipelineFocusTitle");
+
+function initCommandCenterModal(button, modal){
+  if (!button || !modal) return null;
+
+  const open = () => {
+    if (!modalBackdrop) return;
+    openModal(modal);
+  };
+
+  const close = () => {
+    modal.classList.remove("open");
+    if (!$$(".modal.open").length){
+      modalBackdrop?.classList.remove("open");
+    }
+  };
+
+  button.addEventListener("click", open);
+
+  return {
+    open,
+    close,
+    isOpen(){ return modal.classList.contains("open"); }
+  };
+}
+
+let performancePanelController = null;
+let myDayPanelController = null;
+
+function initCollapsiblePanels(){
+  performancePanelController = initCommandCenterModal(btnTogglePerformance, performanceModal);
+  myDayPanelController = initCommandCenterModal(btnToggleMyDay, myDayModal);
+}
 const pipelineFocusSub = $("#pipelineFocusSub");
 const btnBoardBack = $("#btnBoardBack");
 
@@ -1524,6 +2087,12 @@ const drawer = $("#drawer");
 const drawerBackdrop = $("#drawerBackdrop");
 const btnCloseDrawer = $("#btnCloseDrawer");
 const clientQuickActionsShortcut = $("#clientQuickActionsShortcut");
+const clientFinPlanBtn = $("#btnClientFinPlan");
+const finPlanModalId = "clientFinPlanModal";
+let finPlanModal = null;
+let finPlanActiveClientId = null;
+let finPlanVersion = 0;
+let finPlanAllocManual = false; // align with workstation auto-split behavior
 const clientActionsHubModal = $("#clientActionsHubModal");
 const noteOpenBtn = document.querySelector("[data-note-self-open]");
 const noteOverlay = document.querySelector("[data-note-self-overlay]");
@@ -1566,6 +2135,28 @@ let advancedMarketsCurrentSession = 0;
 let quickViewOpenedFromUrl = false;
 let clientActionsLoadPromise = null;
 
+function syncQuickViewDisclosure(panel){
+  if (!panel) return;
+  if (panel.hidden && panel.open) panel.open = false;
+}
+
+function syncQuickViewDisclosures(root = drawer){
+  if (!root) return;
+  root.querySelectorAll("details.qv-panel").forEach(syncQuickViewDisclosure);
+}
+
+function bindQuickViewDisclosures(root = drawer){
+  if (!root) return;
+  root.querySelectorAll("details.qv-panel").forEach(panel => {
+    if (panel.dataset.qvDisclosureBound === "true") return;
+    panel.dataset.qvDisclosureBound = "true";
+    panel.addEventListener("toggle", () => syncQuickViewDisclosure(panel));
+    syncQuickViewDisclosure(panel);
+  });
+}
+
+bindQuickViewDisclosures();
+
 const STAGE_PICKER_TONES = [
   "stage-newlead",
   "stage-opportunities",
@@ -1596,10 +2187,10 @@ function syncStagePickerUi(stageOverride = ""){
   if (!stagePickerSelect) return;
 
   const fallback = pipelineStages[0]?.key || "Client";
-  const selectedRaw = stageOverride || stagePickerSelect.value || fallback;
+  const selectedRaw = stageOverride || getControlValue(stagePickerSelect, fallback) || fallback;
   const selected = pipelineMeta(selectedRaw).key;
   const option = stagePickerSelect.querySelector(`option[value="${selected}"]`);
-  if (option) stagePickerSelect.value = selected;
+  if (option) setControlValue(stagePickerSelect, selected);
 
   const meta = pipelineMeta(selected);
   const stageCount = countRowsForStage(selected);
@@ -1667,18 +2258,24 @@ const dTags = $("#dTags");
 const dNotes = $("#dNotes");
 
 const dNextDate = $("#dNextDate");
-const dMeetingNextDate = $("#dMeetingNextDate");
 const dNextText = $("#dNextText");
 const dPriority = $("#dPriority");
-const dMeetingType = $("#dMeetingType");
-const dMeetingTime = $("#dMeetingTime");
-const dMeetingDuration = $("#dMeetingDuration");
-const dMeetingLocation = $("#dMeetingLocation");
-const dMeetingLocationSuggest = $("#dMeetingLocationSuggest");
-const dZoomWrap = $("#dZoomWrap");
-const dUsePersonalZoomLink = $("#dUsePersonalZoomLink");
-const dZoomJoinUrl = $("#dZoomJoinUrl");
-const dZoomStatus = $("#dZoomStatus");
+const dMeetingNextDate = $("#dMeetingNextDate") || { value: "", addEventListener(){} };
+const dMeetingType = $("#dMeetingType") || { value: "Phone", addEventListener(){} };
+const dMeetingTime = $("#dMeetingTime") || { value: "09:00", addEventListener(){} };
+const dMeetingDuration = $("#dMeetingDuration") || { value: "30", addEventListener(){} };
+const dMeetingLocation = $("#dMeetingLocation") || { value: "", dataset: {}, classList: { add(){}, remove(){} }, addEventListener(){}, readOnly: false, placeholder: "" };
+const dMeetingLocationSuggest = $("#dMeetingLocationSuggest") || { classList: { add(){}, remove(){} }, innerHTML: "" };
+const dZoomWrap = $("#dZoomWrap") || { style: {}, classList: { add(){}, remove(){} } };
+const dUsePersonalZoomLink = $("#dUsePersonalZoomLink") || { checked: false, addEventListener(){} };
+const dZoomJoinUrl = $("#dZoomJoinUrl") || { value: "", addEventListener(){} };
+const dZoomStatus = $("#dZoomStatus") || { textContent: "" };
+const hasMeetingTypeInput = !!document.getElementById("dMeetingType");
+const hasMeetingTimeInput = !!document.getElementById("dMeetingTime");
+const hasMeetingDurationInput = !!document.getElementById("dMeetingDuration");
+const hasMeetingLocationInput = !!document.getElementById("dMeetingLocation");
+const hasZoomJoinUrlInput = !!document.getElementById("dZoomJoinUrl");
+const hasUsePersonalZoomInput = !!document.getElementById("dUsePersonalZoomLink");
 const btnZoomSavePersonal = $("#btnZoomSavePersonal");
 const btnZoomClearPersonal = $("#btnZoomClearPersonal");
 const dCalendarBusyDate = $("#dCalendarBusyDate");
@@ -1688,6 +2285,8 @@ const dCalendarWorkHours = $("#dCalendarWorkHours");
 const dCalendarFreeList = $("#dCalendarFreeList");
 
 const dPortalWrap = $("#dPortalWrap");
+const btnResendClientInvite = $("#btnResendClientInvite");
+const dResendInviteStatus = $("#dResendInviteStatus");
 const dSaved = $("#dSaved");
 const dWaitingOn = $("#dWaitingOn");
 const dPinnedBrief = $("#dPinnedBrief");
@@ -1726,14 +2325,35 @@ const dAssignedOwner = $("#dAssignedOwner");
 const dWatchers = $("#dWatchers");
 const dMentionNote = $("#dMentionNote");
 const mentionList = $("#mentionList");
+const dShareAgentSearch = $("#dShareAgentSearch");
+const dShareSelectedAgent = $("#dShareSelectedAgent");
+const dShareAgentResults = $("#dShareAgentResults");
+const btnShareAgentAccess = $("#btnShareAgentAccess");
+const dShareAgentStatus = $("#dShareAgentStatus");
+const dSharedAgentList = $("#dSharedAgentList");
+
+let shareLookupTimer = null;
+let selectedShareAgent = null;
 
 // Quick View autosave (debounced)
-const AUTOSAVE_DELAY_MS = 900;
+const AUTOSAVE_DELAY_MS = 2000;  // 2 seconds: reduces UI lag from rapid keystroke autosaves
 let quickViewAutosaveTimer = null;
 let quickViewAutosaveInFlight = false;
 
+function calculateAgeFromDOB(dobString) {
+  if (!dobString) return "";
+  const dob = new Date(dobString);
+  if (isNaN(dob.getTime())) return "";
+  const today = new Date();
+  let age = today.getFullYear() - dob.getFullYear();
+  const hasHadBirthdayThisYear = (today.getMonth() > dob.getMonth()) || 
+    (today.getMonth() === dob.getMonth() && today.getDate() >= dob.getDate());
+  if (!hasHadBirthdayThisYear) age--;
+  return age.toString();
+}
+
 function buildClientQuickViewOverrides(){
-  return {
+  const overrides = {
     crmStatus: norm(dStatus.value) || "Active",
     crmPriority: norm(dPriority.value) || "Normal",
     crmLastTouch: norm(dLastTouch.value) || null,
@@ -1742,11 +2362,6 @@ function buildClientQuickViewOverrides(){
     crmTags: norm(dTags.value),
     agentNotes: norm(dNotes.value),
     pipelineStage: norm(dPipelineStage.value) || "NewLead",
-    meetingLocation: norm(dMeetingLocation.value),
-    zoomJoinUrl: norm(dZoomJoinUrl.value),
-    usePersonalZoomLink: !!dUsePersonalZoomLink.checked,
-    meetingTime: norm(dMeetingTime.value) || "09:00",
-    meetingDurationMinutes: parseInt(dMeetingDuration.value || "30", 10) || 30,
     waitingOn: norm(dWaitingOn.value) || "WaitingOnAgent",
     pinnedBrief: norm(dPinnedBrief.value),
     docIdReceived: !!dDocIdReceived.checked,
@@ -1758,6 +2373,12 @@ function buildClientQuickViewOverrides(){
     mentionNote: norm(dMentionNote.value),
     opportunityPlanning: buildOpportunityPlanningPayload()
   };
+  if (hasMeetingLocationInput) overrides.meetingLocation = norm(dMeetingLocation.value);
+  if (hasZoomJoinUrlInput) overrides.zoomJoinUrl = norm(dZoomJoinUrl.value);
+  if (hasUsePersonalZoomInput) overrides.usePersonalZoomLink = !!dUsePersonalZoomLink.checked;
+  if (hasMeetingTimeInput) overrides.meetingTime = norm(dMeetingTime.value) || "09:00";
+  if (hasMeetingDurationInput) overrides.meetingDurationMinutes = parseInt(dMeetingDuration.value || "30", 10) || 30;
+  return overrides;
 }
 
 async function performQuickViewAutosave(){
@@ -1789,11 +2410,20 @@ function queueQuickViewAutosave(reason){
   quickViewAutosaveTimer = setTimeout(performQuickViewAutosave, AUTOSAVE_DELAY_MS);
 }
 
+function flushQuickViewAutosave(reason){
+  if (!activeClientId) return;
+  if (dSaved) dSaved.textContent = reason || "Saving…";
+  clearTimeout(quickViewAutosaveTimer);
+  void performQuickViewAutosave();
+}
+
 function wireQuickViewAutosave(){
   const autosaveFields = [
-    dEmailInput,dPhoneInput,dPhone2Input,dDob,dAge,dGender,dAddress,dCity,dState,dCounty,dZip,
-    dBtc,dLender,dLoanAmount,dStatus,dPriority,dLastTouch,dNextDate,dNextText,dTags,dNotes,
-    dPipelineStage,dMeetingTime,dMeetingDuration,dMeetingLocation,dZoomJoinUrl,dUsePersonalZoomLink,
+    // Contact fields (email, phone, address) are excluded here to allow clean editing without lag.
+    // They will autosave on blur instead (see wireContactFieldBlur below).
+    dDob,dAge,dGender,dBtc,dLender,dLoanAmount,dStatus,dPriority,dLastTouch,dNextDate,dNextText,dTags,dNotes,
+    dPipelineStage,
+    dMeetingTime,dMeetingDuration,dMeetingLocation,dZoomJoinUrl,dUsePersonalZoomLink,
     dWaitingOn,dPinnedBrief,dDocIdReceived,dDocAppSent,dDocAppSigned,dDocPolicyDelivered,dDocReviewBooked,
     dAssignedOwner,dWatchers,dMentionNote
   ];
@@ -1810,6 +2440,26 @@ function wireQuickViewAutosave(){
     if (!input) return;
     input.addEventListener("change", () => queueQuickViewAutosave());
   });
+
+  // Contact fields (email, phone, address) save on blur for clean editing without lag
+  const contactFields = [dEmailInput, dPhoneInput, dPhone2Input, dAddress, dCity, dState, dCounty, dZip];
+  contactFields.forEach(el => {
+    if (!el) return;
+    el.addEventListener("blur", () => {
+      if (activeClientId) queueQuickViewAutosave("Saving…");
+    });
+  });
+
+  // Auto-calculate age when DOB changes
+  if (dDob) {
+    dDob.addEventListener("change", () => {
+      const calculatedAge = calculateAgeFromDOB(dDob.value);
+      if (calculatedAge && dAge) {
+        dAge.value = calculatedAge;
+        queueQuickViewAutosave("Age updated…");
+      }
+    });
+  }
 }
 
 const opportunityPlanningInputs = [
@@ -1860,7 +2510,6 @@ const btnSaveLocal = $("#btnSaveLocal");
 const btnResetLocal = $("#btnResetLocal");
 const btnMarkToday = $("#btnMarkToday");
 const btnSetNextToday = $("#btnSetNextToday");
-const btnMeetingNextToday = $("#btnMeetingNextToday");
 const btnCopyContact = $("#btnCopyContact");
 const btnMail = $("#btnMail");
 const btnCall = $("#btnCall");
@@ -1874,7 +2523,6 @@ const dActDate = $("#dActDate");
 const dActNote = $("#dActNote");
 const btnAddActivity = $("#btnAddActivity");
 const btnClearTimeline = $("#btnClearTimeline");
-const btnCreateCalendarEvent = $("#btnCreateCalendarEvent");
 const timeline = $("#timeline");
 const timelineFilters = $("#timelineFilters");
 
@@ -1884,7 +2532,6 @@ let activeTimelineFilter = "all";
 function setDrawerNextActionDate(value){
   const safeValue = value || "";
   if (dNextDate) dNextDate.value = safeValue;
-  if (dMeetingNextDate) dMeetingNextDate.value = safeValue;
 }
 
 /* ========= Sticky header height (real, no guesswork) ========= */
@@ -2083,16 +2730,30 @@ function hydrateRow(row){
   setClientProduction(row, prodStatus, prodAmount);
 }
 
-function setClientProduction(row, status, amount){
+function setClientProduction(row, status, amount, totals){
   const badge = $("[data-prod-card]", row);
   const cleanStatus = (status || "").trim();
   const amt = Number(amount || 0);
-  row.dataset.prodStatus = cleanStatus;
-  row.dataset.prodAmount = amt;
+  const resolved = resolveProductionTotals(cleanStatus, amt, {
+    paid: totals?.paid ?? row.dataset.prodPaid ?? row.dataset.paid,
+    issued: totals?.issued ?? row.dataset.prodIssued,
+    submitted: totals?.submitted ?? row.dataset.prodSubmitted
+  });
+  const paid = resolved.paid;
+  const issued = resolved.issued;
+  const submitted = resolved.submitted;
+  const hasAny = paid > 0 || issued > 0 || submitted > 0;
+
+  row.dataset.prodPaid = Number.isFinite(paid) ? `${paid}` : "0";
+  row.dataset.prodIssued = Number.isFinite(issued) ? `${issued}` : "0";
+  row.dataset.prodSubmitted = Number.isFinite(submitted) ? `${submitted}` : "0";
+  row.dataset.paid = row.dataset.prodPaid;
+  row.dataset.prodStatus = (paid > 0 ? "Paid" : cleanStatus);
+  row.dataset.prodAmount = paid > 0 ? paid : amt;
 
   if (!badge) return;
-  if (cleanStatus && amt > 0){
-    badge.innerHTML = `<span class="prod-status">${escapeHtml(cleanStatus)}</span><span class="prod-amt"> ${formatCurrency(amt)}</span>`;
+  if (hasAny){
+    badge.innerHTML = renderPipelineProdBadge({ paid, issued, submitted });
     badge.classList.remove("hidden");
   } else {
     badge.textContent = "";
@@ -2100,10 +2761,53 @@ function setClientProduction(row, status, amount){
   }
 }
 
-function setClientProductionById(clientId, status, amount){
+function setClientProductionById(clientId, status, amount, totals){
   const row = rows.find(r => r.dataset.clientId === clientId);
-  if (row) setClientProduction(row, status, amount);
+  if (row) setClientProduction(row, status, amount, totals);
   updatePipelineCardProduction(clientId);
+}
+
+function productionBucket(rawStatus){
+  const s = norm(rawStatus).toLowerCase();
+  if (!s) return "";
+  if (s === "2" || s.includes("paid")) return "paid";
+  if (s === "1" || s.includes("issued")) return "issued";
+  if (s === "0" || s.includes("submitted")) return "submitted";
+  return "";
+}
+
+function resolveProductionTotals(status, amount, seed = {}){
+  let paid = Number(seed.paid ?? 0);
+  let issued = Number(seed.issued ?? 0);
+  let submitted = Number(seed.submitted ?? 0);
+  if (!Number.isFinite(paid)) paid = 0;
+  if (!Number.isFinite(issued)) issued = 0;
+  if (!Number.isFinite(submitted)) submitted = 0;
+
+  if (paid <= 0 && issued <= 0 && submitted <= 0){
+    const amt = Number(amount || 0);
+    if (amt > 0){
+      const bucket = productionBucket(status);
+      if (bucket === "paid") paid = amt;
+      else if (bucket === "issued") issued = amt;
+      else if (bucket === "submitted") submitted = amt;
+    }
+  }
+
+  return { paid, issued, submitted };
+}
+
+function renderPipelineProdBadge({ paid = 0, issued = 0, submitted = 0 } = {}){
+  const paidAmt = Number(paid || 0);
+  const issuedAmt = Number(issued || 0);
+  const submittedAmt = Number(submitted || 0);
+  if (paidAmt <= 0 && issuedAmt <= 0 && submittedAmt <= 0) return "";
+
+  return `
+    <div class="prod-line prod-line-paid"><span class="prod-lbl">Paid:</span><span class="prod-val">${formatCurrency(paidAmt)}</span></div>
+    <div class="prod-line prod-line-issued"><span class="prod-lbl">Issued:</span><span class="prod-val">${formatCurrency(issuedAmt)}</span></div>
+    <div class="prod-line prod-line-submitted"><span class="prod-lbl">Submitted:</span><span class="prod-val">${formatCurrency(submittedAmt)}</span></div>
+  `;
 }
 
 function updatePipelineCardProduction(clientId){
@@ -2113,10 +2817,13 @@ function updatePipelineCardProduction(clientId){
   if (!card || !row) return;
   const badge = card.querySelector("[data-prod-card]");
   if (!badge) return;
-  const status = (row.dataset.prodStatus || "").trim();
-  const amount = Number(row.dataset.prodAmount || 0);
-  if (status && amount > 0){
-    badge.innerHTML = `${escapeHtml(status)} <span class="prod-amt">${formatCurrency(amount)}</span>`;
+
+  const paid = Number(row.dataset.prodPaid || row.dataset.paid || 0);
+  const issued = Number(row.dataset.prodIssued || 0);
+  const submitted = Number(row.dataset.prodSubmitted || 0);
+  const html = renderPipelineProdBadge({ paid, issued, submitted });
+  if (html){
+    badge.innerHTML = html;
     badge.classList.remove("hidden");
   } else {
     badge.textContent = "";
@@ -2148,6 +2855,8 @@ async function refreshClientProductionTiles(){
     if (tileClientIssuedCount) tileClientIssuedCount.textContent = data.countIssued ?? 0;
     if (tileClientPaidCount) tileClientPaidCount.textContent = data.countPaid ?? 0;
     if (tileClientPersonalCount) tileClientPersonalCount.textContent = data.countPersonal ?? 0;
+    if (perfPreviewPaid) perfPreviewPaid.textContent = fmt(data.paid);
+    if (perfPreviewPersonal) perfPreviewPersonal.textContent = fmt(data.personal);
   }catch(err){
     console.warn("Client production tile refresh failed", err);
   }
@@ -2164,6 +2873,7 @@ function updateCallMetrics(){
   cmToday.textContent = day.toLocaleString();
   cmWeek.textContent = week.toLocaleString();
   cmMonth.textContent = month.toLocaleString();
+  if (perfPreviewCalls) perfPreviewCalls.textContent = day.toLocaleString();
 }
 rows.forEach(hydrateRow);
 updateCallMetrics();
@@ -2180,10 +2890,10 @@ function updateSelectionUI(){
   const checked = getCheckedRows();
   const count = checked.length;
 
-  selCount.textContent = String(count);
-  btnCopyEmails.disabled = count === 0;
-  btnClearSel.disabled = count === 0;
-  btnOpenFirst.disabled = count === 0;
+  if (selCount) selCount.textContent = String(count);
+  if (btnCopyEmails) btnCopyEmails.disabled = count === 0;
+  if (btnClearSel) btnClearSel.disabled = count === 0;
+  if (btnOpenFirst) btnOpenFirst.disabled = count === 0;
   if (btnBulkEdit) btnBulkEdit.disabled = count === 0;
 
   rows.forEach(r => r.classList.toggle("row-selected", !!$(".row-chk", r)?.checked));
@@ -2314,19 +3024,8 @@ document.addEventListener("click", (e) => {
   if (deleteClientId){
     if (!confirm("Delete this client? This will remove the profile + household + Entra login for this client.")) return;
 
-    const f = document.getElementById("__af");
-    if (!f) return toast("Missing antiforgery form.");
-
-    f.setAttribute("action", "/Clients/Delete");
-    f.querySelectorAll("input[name='clientUserId']").forEach(x => x.remove());
-
-    const inp = document.createElement("input");
-    inp.type = "hidden";
-    inp.name = "clientUserId";
-    inp.value = deleteClientId;
-    f.appendChild(inp);
-
-    f.submit();
+    void deleteClientRecord(deleteClientId)
+      .catch(err => toast(err.message || "Delete failed.", { error:true, persistent:true }));
     return;
   }
 });
@@ -2439,7 +3138,7 @@ function docChecklistOpen(row){
 }
 
 function applySort(filtered){
-  const sort = norm(sortBy.value) || "name_asc";
+  const sort = norm(getControlValue(sortBy)) || "name_asc";
   const cmp = (x,y) => x < y ? -1 : x > y ? 1 : 0;
 
   filtered.sort((a,b) => {
@@ -2477,10 +3176,10 @@ function applySort(filtered){
 }
 
 function computeFiltered(){
-  const s = norm(statusFilter.value);
-  const priority = norm(priorityFilter.value);
-  const stage = norm(stageFilter.value);
-  const attn = norm(attentionFilter.value);
+  const s = norm(getControlValue(statusFilter));
+  const priority = norm(getControlValue(priorityFilter));
+  const stage = norm(getControlValue(stageFilter));
+  const attn = norm(getControlValue(attentionFilter));
 
   let filtered = rows.slice();
 
@@ -2524,7 +3223,7 @@ function renderList(filtered){
   rows.forEach(r => { const c = $(".row-chk", r); if (c) c.checked = false; });
   updateSelectionUI();
 
-  const size = parseInt(pageSize.value || "20", 10);
+  const size = parseInt(getControlValue(pageSize, "20") || "20", 10);
   const max = Math.max(1, Math.ceil(filtered.length / size));
   currentPage = Math.min(currentPage, max);
 
@@ -2535,15 +3234,15 @@ function renderList(filtered){
   rows.forEach(r => r.style.display = "none");
   pageRows.forEach(r => r.style.display = "");
 
-  pageNow.textContent = String(currentPage);
-  pageMax.textContent = String(max);
+  if (pageNow) pageNow.textContent = String(currentPage);
+  if (pageMax) pageMax.textContent = String(max);
 
   const showingA = filtered.length === 0 ? 0 : (start + 1);
   const showingB = Math.min(end, filtered.length);
-  pagerInfo.textContent = `${filtered.length} result(s) • Showing ${showingA}–${showingB}`;
+  if (pagerInfo) pagerInfo.textContent = `${filtered.length} live records - ${showingA}-${showingB} visible`;
 
-  btnPrev.disabled = currentPage <= 1;
-  btnNext.disabled = currentPage >= max;
+  if (btnPrev) btnPrev.disabled = currentPage <= 1;
+  if (btnNext) btnNext.disabled = currentPage >= max;
 }
 
 function renderAll(){
@@ -2582,22 +3281,22 @@ btnNext?.addEventListener("click", () => {
 });
 
 stagePickerSelect?.addEventListener("change", () => {
-  syncStagePickerUi(stagePickerSelect.value || "Client");
+  syncStagePickerUi(getControlValue(stagePickerSelect, "Client") || "Client");
 });
 
 /* ========= Density + View ========= */
 function applyDensityClass(){
   if (!legendWrap) return;
   legendWrap.classList.remove("density-compact","density-comfort");
-  legendWrap.classList.add(density.value === "compact" ? "density-compact" : "density-comfort");
+  legendWrap.classList.add(getDensityValue() === "compact" ? "density-compact" : "density-comfort");
 }
 
 function resetFilters(){
-  if (statusFilter) statusFilter.value = "";
-  if (priorityFilter) priorityFilter.value = "";
-  if (stageFilter) stageFilter.value = "";
-  if (attentionFilter) attentionFilter.value = "";
-  if (sortBy) sortBy.value = "name_asc";
+  setControlValue(statusFilter, "");
+  setControlValue(priorityFilter, "");
+  setControlValue(stageFilter, "");
+  setControlValue(attentionFilter, "");
+  setControlValue(sortBy, "name_asc");
   pipelineFocusStage = "";
   pipelineNavSelectedStage = "";
   pipelineNavSearchTerm = "";
@@ -2607,26 +3306,26 @@ function applyPreset(name){
   resetFilters();
 
   if (name === "hotleads"){
-    priorityFilter.value = "High";
-    stageFilter.value = "NewLead";
-    attentionFilter.value = "needs";
-    sortBy.value = "nextaction_asc";
+    setControlValue(priorityFilter, "High");
+    setControlValue(stageFilter, "NewLead");
+    setControlValue(attentionFilter, "needs");
+    setControlValue(sortBy, "nextaction_asc");
   } else if (name === "followup"){
-    attentionFilter.value = "overdue";
-    sortBy.value = "nextaction_asc";
+    setControlValue(attentionFilter, "overdue");
+    setControlValue(sortBy, "nextaction_asc");
   } else if (name === "meetingstoday"){
-    stageFilter.value = "MeetingScheduled";
-    attentionFilter.value = "today";
-    sortBy.value = "nextaction_asc";
+    setControlValue(stageFilter, "MeetingScheduled");
+    setControlValue(attentionFilter, "today");
+    setControlValue(sortBy, "nextaction_asc");
     pipelineFocusStage = "MeetingScheduled";
     if (viewMode) viewMode.value = "pipeline";
     applyViewMode();
   } else if (name === "rescue"){
-    attentionFilter.value = "rescue";
-    sortBy.value = "nextaction_asc";
+    setControlValue(attentionFilter, "rescue");
+    setControlValue(sortBy, "nextaction_asc");
   } else if (name === "appsinflight"){
-    attentionFilter.value = "appsinflight";
-    sortBy.value = "lasttouch_desc";
+    setControlValue(attentionFilter, "appsinflight");
+    setControlValue(sortBy, "lasttouch_desc");
   }
 
   currentPage = 1;
@@ -2634,26 +3333,29 @@ function applyPreset(name){
 }
 
 function applyViewMode(){
-  const mode = viewMode.value || "pipeline";
-  const isPipeline = mode === "pipeline";
-  const isTable = mode === "table";
-  const isHybrid = mode === "hybrid";
+  if (viewMode) viewMode.value = PIPELINE_ONLY_VIEW;
 
-  legendWrap?.classList.toggle("pipeline-mode", isPipeline);
-  legendWrap?.classList.toggle("table-mode", isTable);
-  legendWrap?.classList.toggle("hybrid-mode", isHybrid);
+  legendWrap?.classList.add("pipeline-mode");
+  legendWrap?.classList.remove("table-mode", "hybrid-mode");
 
-  if (tableView) tableView.style.display = isPipeline ? "none" : "block";
-  if (cardsView) cardsView.style.display = isTable ? "none" : "block";
+  if (tableView) {
+    tableView.style.display = "none";
+    tableView.setAttribute("aria-hidden", "true");
+  }
+  if (cardsView) {
+    cardsView.style.display = "block";
+    cardsView.removeAttribute("aria-hidden");
+  }
 }
 
 density?.addEventListener("change", () => {
-  saveJSON(LS_PREFS, { ...loadJSON(LS_PREFS, {}), density: density.value });
+  saveJSON(LS_PREFS, { ...loadJSON(LS_PREFS, {}), density: getDensityValue() });
   applyDensityClass();
 });
 
 viewMode?.addEventListener("change", () => {
-  saveJSON(LS_PREFS, { ...loadJSON(LS_PREFS, {}), view: viewMode.value });
+  if (viewMode) viewMode.value = PIPELINE_ONLY_VIEW;
+  saveJSON(LS_PREFS, { ...loadJSON(LS_PREFS, {}), view: PIPELINE_ONLY_VIEW });
   applyViewMode();
   renderAll();
 });
@@ -2677,6 +3379,7 @@ function refreshKPIs(){
   $("#kTouched").textContent = touched;
   $("#kOverdue").textContent = overdue;
   $("#kToday").textContent = today;
+  if (perfPreviewOverdue) perfPreviewOverdue.textContent = overdue.toLocaleString();
 
   kpiGrid.style.display = "";
 }
@@ -2756,6 +3459,7 @@ function renderMyDayFocus(){
   mydayFocus.classList.toggle("active", !!meta);
   $$(".myday-tile").forEach(tile => tile.classList.toggle("active", tile.getAttribute("data-queue") === activeMyDayQueue));
   if (!meta) return;
+  myDayPanelController?.open();
   if (mydayFocusTitle) mydayFocusTitle.textContent = meta.title;
   if (mydayFocusSub) mydayFocusSub.textContent = `${meta.sub} Open a record to edit it in Quick View.`;
   if (mydayFocusCount) mydayFocusCount.textContent = `${meta.count} record${meta.count === 1 ? "" : "s"}`;
@@ -2763,21 +3467,28 @@ function renderMyDayFocus(){
 }
 
 function refreshMyDay(){
-  $("#qCallsNow") && ($("#qCallsNow").textContent = String(myDaySnapshot.counts?.callsnow ?? queueRows("callsnow").length));
-  $("#qDueToday") && ($("#qDueToday").textContent = String(myDaySnapshot.counts?.today ?? queueRows("today").length));
-  $("#qOverdue") && ($("#qOverdue").textContent = String(myDaySnapshot.counts?.overdue ?? queueRows("overdue").length));
-  $("#qMeetings") && ($("#qMeetings").textContent = String(myDaySnapshot.counts?.meetings ?? queueRows("meetings").length));
-  $("#qWaitingClient") && ($("#qWaitingClient").textContent = String(myDaySnapshot.counts?.waitingclient ?? queueRows("waitingclient").length));
-  $("#qWaitingCarrier") && ($("#qWaitingCarrier").textContent = String(myDaySnapshot.counts?.waitingcarrier ?? queueRows("waitingcarrier").length));
+  const syncQueueCount = (selector, previewEl, value) => {
+    const text = String(value);
+    const el = $(selector);
+    if (el) el.textContent = text;
+    if (previewEl) previewEl.textContent = text;
+  };
+
+  syncQueueCount("#qCallsNow", qCallsNowPreview, myDaySnapshot.counts?.callsnow ?? queueRows("callsnow").length);
+  syncQueueCount("#qDueToday", qDueTodayPreview, myDaySnapshot.counts?.today ?? queueRows("today").length);
+  syncQueueCount("#qOverdue", qOverduePreview, myDaySnapshot.counts?.overdue ?? queueRows("overdue").length);
+  syncQueueCount("#qMeetings", qMeetingsPreview, myDaySnapshot.counts?.meetings ?? queueRows("meetings").length);
+  syncQueueCount("#qWaitingClient", null, myDaySnapshot.counts?.waitingclient ?? queueRows("waitingclient").length);
+  syncQueueCount("#qWaitingCarrier", null, myDaySnapshot.counts?.waitingcarrier ?? queueRows("waitingcarrier").length);
   renderMyDayFocus();
 
   loadMyDaySnapshot().then(() => {
-    $("#qCallsNow") && ($("#qCallsNow").textContent = String(myDaySnapshot.counts?.callsnow ?? 0));
-    $("#qDueToday") && ($("#qDueToday").textContent = String(myDaySnapshot.counts?.today ?? 0));
-    $("#qOverdue") && ($("#qOverdue").textContent = String(myDaySnapshot.counts?.overdue ?? 0));
-    $("#qMeetings") && ($("#qMeetings").textContent = String(myDaySnapshot.counts?.meetings ?? 0));
-    $("#qWaitingClient") && ($("#qWaitingClient").textContent = String(myDaySnapshot.counts?.waitingclient ?? 0));
-    $("#qWaitingCarrier") && ($("#qWaitingCarrier").textContent = String(myDaySnapshot.counts?.waitingcarrier ?? 0));
+    syncQueueCount("#qCallsNow", qCallsNowPreview, myDaySnapshot.counts?.callsnow ?? 0);
+    syncQueueCount("#qDueToday", qDueTodayPreview, myDaySnapshot.counts?.today ?? 0);
+    syncQueueCount("#qOverdue", qOverduePreview, myDaySnapshot.counts?.overdue ?? 0);
+    syncQueueCount("#qMeetings", qMeetingsPreview, myDaySnapshot.counts?.meetings ?? 0);
+    syncQueueCount("#qWaitingClient", null, myDaySnapshot.counts?.waitingclient ?? 0);
+    syncQueueCount("#qWaitingCarrier", null, myDaySnapshot.counts?.waitingcarrier ?? 0);
     renderMyDayFocus();
   }).catch(() => {});
 }
@@ -2822,12 +3533,12 @@ function saveCurrentView(){
   const views = savedViews();
   views.push({
     name: name.trim(),
-    status: norm(statusFilter.value),
-    priority: norm(priorityFilter.value),
-    stage: norm(stageFilter.value),
-    attention: norm(attentionFilter.value),
-    sort: norm(sortBy.value),
-    view: norm(viewMode.value)
+    status: norm(getControlValue(statusFilter)),
+    priority: norm(getControlValue(priorityFilter)),
+    stage: norm(getControlValue(stageFilter)),
+    attention: norm(getControlValue(attentionFilter)),
+    sort: norm(getControlValue(sortBy)),
+    view: PIPELINE_ONLY_VIEW
   });
   saveJSON(LS_VIEWS, views.slice(-8));
   renderSavedViews();
@@ -2837,12 +3548,12 @@ function saveCurrentView(){
 function applySavedView(index){
   const view = savedViews()[index];
   if (!view) return;
-  statusFilter.value = view.status || "";
-  priorityFilter.value = view.priority || "";
-  stageFilter.value = view.stage || "";
-  attentionFilter.value = view.attention || "";
-  sortBy.value = view.sort || "name_asc";
-  viewMode.value = view.view || "pipeline";
+  setControlValue(statusFilter, view.status || "");
+  setControlValue(priorityFilter, view.priority || "");
+  setControlValue(stageFilter, view.stage || "");
+  setControlValue(attentionFilter, view.attention || "");
+  setControlValue(sortBy, view.sort || "name_asc");
+  if (viewMode) viewMode.value = PIPELINE_ONLY_VIEW;
   applyViewMode();
   currentPage = 1;
   renderAll();
@@ -2904,13 +3615,6 @@ async function openDrawerForRow(row){
   setDrawerNextActionDate(row.dataset.crmNextDate || "");
   dNextText.value = row.dataset.crmNextText || "";
   dPriority.value = row.dataset.crmPriority || "Normal";
-  dMeetingLocation.value = row.dataset.sMeetingLocation || "";
-  dZoomJoinUrl.value = row.dataset.sZoom || "";
-  dUsePersonalZoomLink.checked = (row.dataset.sUsezoom || "false") === "true";
-  if (!dZoomJoinUrl.value && dUsePersonalZoomLink.checked) dZoomJoinUrl.value = loadSavedZoomLink();
-  applyMeetingType(inferMeetingType(null, row), row);
-  dMeetingTime.value = row.dataset.sMeetingTime || "09:00";
-  dMeetingDuration.value = row.dataset.sMeetingDuration || "30";
   dWaitingOn.value = row.dataset.crmWaitingOn || "WaitingOnAgent";
   dPinnedBrief.value = row.dataset.crmPinnedBrief || "";
   dDocIdReceived.checked = false;
@@ -2933,8 +3637,14 @@ async function openDrawerForRow(row){
   dAttempts.textContent = `Attempts: ${row.dataset.crmAttemptsToday || 0} today • ${row.dataset.crmAttemptsWeek || 0} week • ${row.dataset.crmAttemptsLife || 0} total`;
   dWaitingOnPill.textContent = waitingLabel(row.dataset.crmWaitingOn || "WaitingOnAgent");
   dOutcomeSuggestion.textContent = "Use one-click outcomes to log activity, move the record forward, and queue the next move.";
-  refreshCalendarBusyPanel();
   setAdvancedMarketsActionState(row.dataset.sRecordtype || "", row.dataset.advancedMarketsEligible);
+  dMeetingLocation.value = row.dataset.sMeetingLocation || "";
+  dZoomJoinUrl.value = row.dataset.sZoom || "";
+  dUsePersonalZoomLink.checked = (row.dataset.sUsezoom || "false") === "true";
+  if (!dZoomJoinUrl.value && dUsePersonalZoomLink.checked) dZoomJoinUrl.value = loadSavedZoomLink();
+  applyMeetingType(inferMeetingType(null, row), row);
+  dMeetingTime.value = row.dataset.sMeetingTime || "09:00";
+  dMeetingDuration.value = row.dataset.sMeetingDuration || "30";
 
   renderPortalActions(row, null);
   renderProtectionSnapshotSummary(null, { loading: true });
@@ -2949,8 +3659,7 @@ async function openDrawerForRow(row){
   drawerBackdrop.classList.add("open");
   drawer.setAttribute("aria-hidden", "false");
   lockPageScrollForQuickView();
-  updateZoomControls();
-
+  syncQuickViewDisclosures();
   closeAllMenus(null);
 
   try{
@@ -2980,8 +3689,6 @@ async function openDrawerForRow(row){
     if (dBtc) dBtc.value = detail.btc || row.dataset.btc || "";
     if (dLender) dLender.value = detail.mortgageLender || "";
     if (dLoanAmount) dLoanAmount.value = detail.loanAmount || "";
-    syncDrawerEmailDisplay(detail.email || email);
-    dPhone.textContent = detail.phone || phone || "No phone";
     dMeetingLocation.value = detail.meetingLocation || row.dataset.sMeetingLocation || "";
     dZoomJoinUrl.value = detail.zoomJoinUrl || row.dataset.sZoom || "";
     dUsePersonalZoomLink.checked = !!detail.usePersonalZoomLink;
@@ -2989,6 +3696,8 @@ async function openDrawerForRow(row){
     applyMeetingType(inferMeetingType(detail, row), row);
     dMeetingTime.value = detail.meetingTime || row.dataset.sMeetingTime || "09:00";
     dMeetingDuration.value = String(detail.meetingDurationMinutes || row.dataset.sMeetingDuration || 30);
+    syncDrawerEmailDisplay(detail.email || email);
+    dPhone.textContent = detail.phone || phone || "No phone";
     dWaitingOn.value = detail.waitingOn || row.dataset.crmWaitingOn || "WaitingOnAgent";
     dPinnedBrief.value = detail.pinnedBrief || row.dataset.crmPinnedBrief || "";
     dAssignedOwner.value = detail.collaboration?.owner || row.dataset.crmOwner || "";
@@ -3002,9 +3711,9 @@ async function openDrawerForRow(row){
     dStageAge.textContent = `Stage Age: ${detail.stageAgeDays || stageAgeDays(row)}d`;
     dAttempts.textContent = `Attempts: ${detail.attemptsToday || 0} today • ${detail.attemptsThisWeek || 0} week • ${detail.attemptsLifetime || 0} total`;
     dWaitingOnPill.textContent = detail.waitingOnLabel || waitingLabel(detail.waitingOn || row.dataset.crmWaitingOn || "WaitingOnAgent");
-    refreshCalendarBusyPanel();
     renderTimeline(detail.activities || []);
     renderMentionNotes(detail.collaboration?.mentionNotes || []);
+    await loadSharedAgentAccess(activeClientId);
     setAdvancedMarketsActionState(
       detail.recordType || row.dataset.sRecordtype || "",
       detail.advancedMarketsEligible ?? row.dataset.advancedMarketsEligible
@@ -3012,6 +3721,7 @@ async function openDrawerForRow(row){
 
     renderPortalActions(row, detail);
     void hydrateProtectionSnapshot(row, detail);
+    syncQuickViewDisclosures();
 
     dSaved.textContent = "Loaded";
   }catch(err){
@@ -3046,6 +3756,244 @@ function renderMentionNotes(items){
   `).join("");
 }
 
+function clearShareSelection(){
+  selectedShareAgent = null;
+  if (dShareSelectedAgent){
+    dShareSelectedAgent.textContent = "No agent selected.";
+  }
+  if (btnShareAgentAccess){
+    btnShareAgentAccess.disabled = true;
+  }
+}
+
+function renderShareLookupResults(items){
+  if (!dShareAgentResults) return;
+  dShareAgentResults.innerHTML = "";
+
+  const rows = Array.isArray(items) ? items : [];
+  if (!rows.length){
+    dShareAgentResults.innerHTML = `<div class="tiny">No tenant agents matched that search.</div>`;
+    return;
+  }
+
+  const frag = document.createDocumentFragment();
+  rows.forEach(item => {
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = "btn btn-ghost";
+    btn.style.width = "100%";
+    btn.style.textAlign = "left";
+    btn.style.marginTop = "6px";
+
+    const name = norm(item.fullName) || norm(item.agentUpn) || "Agent";
+    const email = norm(item.agentUpn) || "No email";
+    const phone = norm(item.phone) || "No phone";
+    const already = item.isShared ? " • Shared" : "";
+    btn.textContent = `${name} — ${email}${phone ? ` — ${phone}` : ""}${already}`;
+
+    btn.addEventListener("click", () => {
+      selectedShareAgent = {
+        agentUserId: norm(item.agentUserId),
+        agentUpn: norm(item.agentUpn),
+        fullName: norm(item.fullName),
+        phone: norm(item.phone)
+      };
+
+      if (dShareSelectedAgent){
+        dShareSelectedAgent.textContent = `${name} (${email})${phone ? ` • ${phone}` : ""}`;
+      }
+      if (btnShareAgentAccess){
+        btnShareAgentAccess.disabled = !selectedShareAgent.agentUserId;
+      }
+      if (dShareAgentStatus){
+        dShareAgentStatus.textContent = item.isShared
+          ? "This agent already has access."
+          : "Ready to grant this agent access to the current client.";
+      }
+    });
+
+    frag.appendChild(btn);
+  });
+
+  dShareAgentResults.appendChild(frag);
+}
+
+function renderSharedAgentList(items){
+  if (!dSharedAgentList) return;
+  dSharedAgentList.innerHTML = "";
+
+  const rows = Array.isArray(items) ? items : [];
+  if (!rows.length){
+    dSharedAgentList.innerHTML = `<div class="tiny">No shared agents yet. Access is currently restricted to the original owner only.</div>`;
+    return;
+  }
+
+  const frag = document.createDocumentFragment();
+  rows.forEach(item => {
+    const card = document.createElement("div");
+    card.className = "event";
+
+    const top = document.createElement("div");
+    top.className = "top";
+
+    const type = document.createElement("div");
+    type.className = "type";
+    const name = norm(item.fullName) || norm(item.agentUpn) || "Agent";
+    type.textContent = `${name}${item.isOwner ? " (Owner)" : ""}`;
+
+    const meta = document.createElement("div");
+    meta.className = "meta";
+    meta.textContent = norm(item.agentUpn) || "";
+
+    top.appendChild(type);
+    top.appendChild(meta);
+
+    const note = document.createElement("div");
+    note.className = "note";
+    note.textContent = norm(item.phone) || "No phone on file";
+
+    card.appendChild(top);
+    card.appendChild(note);
+
+    if (!item.isOwner && norm(item.agentUserId)){
+      const actions = document.createElement("div");
+      actions.style.marginTop = "8px";
+
+      const revokeBtn = document.createElement("button");
+      revokeBtn.type = "button";
+      revokeBtn.className = "btn btn-ghost";
+      revokeBtn.textContent = "Revoke Access";
+      revokeBtn.addEventListener("click", () => {
+        void revokeSharedAgentAccess(item.agentUserId);
+      });
+
+      actions.appendChild(revokeBtn);
+      card.appendChild(actions);
+    }
+
+    frag.appendChild(card);
+  });
+
+  dSharedAgentList.appendChild(frag);
+}
+
+async function loadSharedAgentAccess(clientId){
+  if (!clientId || !dSharedAgentList) return;
+  try{
+    const res = await fetch(`/Clients/ClientAccessCollaborators?clientUserId=${encodeURIComponent(clientId)}`, {
+      credentials: "include"
+    });
+    if (!res.ok){
+      throw new Error(`Shared access load failed (${res.status})`);
+    }
+    const data = await res.json();
+    renderSharedAgentList(data);
+  }catch(err){
+    console.error("Shared access load failed", err);
+    dSharedAgentList.innerHTML = `<div class="tiny">Unable to load shared access right now.</div>`;
+  }
+}
+
+async function searchShareAgents(query){
+  const q = norm(query);
+  if (!activeClientId || !dShareAgentResults) return;
+
+  if (!q || q.length < 2){
+    dShareAgentResults.innerHTML = `<div class="tiny">Type at least 2 characters to search tenant agents.</div>`;
+    return;
+  }
+
+  try{
+    const res = await fetch(`/Clients/CollaboratorLookup?clientUserId=${encodeURIComponent(activeClientId)}&q=${encodeURIComponent(q)}`, {
+      credentials: "include"
+    });
+    if (!res.ok){
+      throw new Error(`Lookup failed (${res.status})`);
+    }
+    const data = await res.json();
+    renderShareLookupResults(data);
+  }catch(err){
+    console.error("Collaborator lookup failed", err);
+    dShareAgentResults.innerHTML = `<div class="tiny">Unable to search agents right now.</div>`;
+  }
+}
+
+async function grantSelectedAgentAccess(){
+  if (!activeClientId || !selectedShareAgent?.agentUserId) return;
+
+  try{
+    const response = await postJson("/Clients/GrantClientAccess", {
+      clientUserId: activeClientId,
+      agentUserId: selectedShareAgent.agentUserId,
+      agentUpn: selectedShareAgent.agentUpn,
+      agentName: selectedShareAgent.fullName,
+      agentPhone: selectedShareAgent.phone
+    });
+
+    renderSharedAgentList(response.sharedAgents || []);
+    clearShareSelection();
+    if (dShareAgentSearch) dShareAgentSearch.value = "";
+    if (dShareAgentResults) dShareAgentResults.innerHTML = "";
+    if (dShareAgentStatus) dShareAgentStatus.textContent = "Access granted.";
+    toast("Client access granted.");
+  }catch(err){
+    console.error("GrantClientAccess failed", err);
+    toast(err?.message || "Unable to grant access.", { error: true, persistent: true });
+  }
+}
+
+async function resendClientInvite(){
+  if (!activeClientId) return;
+  const btn = btnResendClientInvite;
+  const emailVal = (dEmailInput?.value || "").trim();
+  if (!emailVal) {
+    if (dResendInviteStatus) dResendInviteStatus.textContent = "Enter an email address first.";
+    return;
+  }
+
+  // Determine if email changed from what's on record
+  const currentEmail = (activeClientDetail?.email || "").trim().toLowerCase();
+  const newEmail = emailVal.toLowerCase() === currentEmail ? null : emailVal;
+
+  if (btn) btn.disabled = true;
+  if (dResendInviteStatus) dResendInviteStatus.textContent = "Sending…";
+
+  try {
+    const response = await postJson("/Clients/ResendClientInvite", {
+      clientUserId: activeClientId,
+      newEmail: newEmail
+    });
+
+    if (dResendInviteStatus) dResendInviteStatus.textContent = `✔ Sent to ${response.sentTo}`;
+    if (newEmail && activeClientDetail) activeClientDetail.email = emailVal;
+    toast(`Access link resent to ${response.sentTo}`);
+  } catch(err) {
+    console.error("ResendClientInvite failed", err);
+    if (dResendInviteStatus) dResendInviteStatus.textContent = `⚠ ${err?.message || "Send failed"}`;
+    toast(err?.message || "Failed to resend invite.", { error: true, persistent: true });
+  } finally {
+    if (btn) btn.disabled = false;
+  }
+}
+
+async function revokeSharedAgentAccess(agentUserId){
+  if (!activeClientId || !agentUserId) return;
+  if (!confirm("Revoke this agent's access to the current client?")) return;
+
+  try{
+    const response = await postJson("/Clients/RevokeClientAccess", {
+      clientUserId: activeClientId,
+      agentUserId
+    });
+    renderSharedAgentList(response.sharedAgents || []);
+    if (dShareAgentStatus) dShareAgentStatus.textContent = "Access revoked.";
+    toast("Client access revoked.");
+  }catch(err){
+    console.error("RevokeClientAccess failed", err);
+    toast(err?.message || "Unable to revoke access.", { error: true, persistent: true });
+  }
+}
+
 function closeDrawer(){
   // Always capture Advanced Markets before leaving the drawer to avoid clearing on reopen.
   const draftPayload = buildAdvancedMarketsSavePayload();
@@ -3061,6 +4009,13 @@ function closeDrawer(){
   advancedMarketsCurrentSession = ++advancedMarketsModalSessionCounter;
   activeClientId = null;
   if (drawer) drawer.dataset.clientId = "";
+  clearShareSelection();
+  if (dShareAgentSearch) dShareAgentSearch.value = "";
+  if (dShareAgentResults) dShareAgentResults.innerHTML = "";
+  if (dSharedAgentList) dSharedAgentList.innerHTML = "";
+  if (dShareAgentStatus) dShareAgentStatus.textContent = "Client access remains blocked for non-permitted agents.";
+  if (btnResendClientInvite) btnResendClientInvite.style.display = "none";
+  if (dResendInviteStatus) dResendInviteStatus.textContent = "";
   clientActionsLoadPromise = null;
   if (clientActionsHubModal && window.bootstrap){
     const inst = bootstrap.Modal.getInstance(clientActionsHubModal);
@@ -3088,6 +4043,8 @@ function openClientActionsHub(){
   if (modalEl && window.bootstrap){
     bootstrap.Modal.getOrCreateInstance(modalEl).show();
   }
+  if (dActDate && !norm(dActDate.value)) dActDate.value = todayISO();
+  renderTimeline(activeClientDetail?.activities || []);
   void loadClientActionsPanel();
   void loadClientCommitmentsPanel();
 }
@@ -3096,6 +4053,16 @@ btnCloseDrawer?.addEventListener("click", closeDrawer);
 clientQuickActionsShortcut?.addEventListener("click", (event) => {
   event.preventDefault();
   openClientActionsHub();
+});
+clientFinPlanBtn?.addEventListener("click", async (e) => {
+  e.preventDefault();
+  const requestedClientId = (activeClientId || drawer?.dataset?.clientId || "").toString().trim();
+  if (!requestedClientId){
+    toast("Open a client first.");
+    return;
+  }
+  finPlanActiveClientId = requestedClientId;
+  await openFinPlanModal(requestedClientId);
 });
 
 /* ========= Note to Self (Quick View) ========= */
@@ -3424,7 +4391,7 @@ function renderPortalActions(row, detail){
 
   if (!isGuid) {
     dPortalWrap.innerHTML = `
-      <div style="display:flex; gap:10px; flex-wrap:wrap;">
+      <div class="lead-workstation-actions">
         <button type="button" class="btn btn-gold" id="btnEnablePortalAccess" title="Convert to Client">Convert To Client</button>
         <button type="button" class="btn btn-gold" id="btnEnableBizPortal" title="Convert to Business Client">Convert To Business Client</button>
       </div>
@@ -3478,6 +4445,8 @@ function renderPortalActions(row, detail){
 
     btn?.addEventListener("click", () => runConvert("Client", btn));
     btnBiz?.addEventListener("click", () => runConvert("BusinessClient", btnBiz));
+    if (btnResendClientInvite) btnResendClientInvite.style.display = "none";
+    if (dResendInviteStatus) dResendInviteStatus.textContent = "";
     return;
   }
 
@@ -3487,9 +4456,22 @@ function renderPortalActions(row, detail){
     dPortalWrap.innerHTML = "";
   }
 
-  if (detail?.lastCalendarEventWebLink){
-    dPortalWrap.innerHTML += `${dPortalWrap.innerHTML ? " " : ""}<a class="btn btn-ghost" href="${detail.lastCalendarEventWebLink}" target="_blank" rel="noopener">Last Calendar Event</a>`;
+  const latestAppointment = detail?.latestAppointment || null;
+  const appointmentLabel = latestAppointment?.confirmationStateLabel || latestAppointment?.statusLabel || "";
+  const appointmentSync = latestAppointment?.lastSyncStatus ? ` • ${safeHtml(latestAppointment.lastSyncStatus)}` : "";
+  const appointmentLink = latestAppointment?.calendarEventWebLink || detail?.lastCalendarEventWebLink || "";
+
+  if (appointmentLabel){
+    dPortalWrap.innerHTML += `${dPortalWrap.innerHTML ? " " : ""}<span class="btn btn-ghost" aria-disabled="true">Appointment: ${safeHtml(appointmentLabel)}${appointmentSync}</span>`;
   }
+
+  if (appointmentLink){
+    dPortalWrap.innerHTML += `${dPortalWrap.innerHTML ? " " : ""}<a class="btn btn-ghost" href="${appointmentLink}" target="_blank" rel="noopener">Calendar Event</a>`;
+  }
+
+  // Show resend button beside primary email field
+  if (btnResendClientInvite) btnResendClientInvite.style.display = "";
+  if (dResendInviteStatus) dResendInviteStatus.textContent = "";
 }
 
 function formatAdvancedMarketsSavedAt(value){
@@ -3734,26 +4716,18 @@ btnOpenFirst?.addEventListener("click", () => {
 });
 
 btnMarkToday?.addEventListener("click", () => {
-  dLastTouch.value = todayISO();
-  dSaved.textContent = "Touched today — saving…";
-  queueQuickViewAutosave();
+  if (dLastTouch) dLastTouch.value = todayISO();
+  flushQuickViewAutosave("Touched today — saving…");
 });
 
 btnSetNextToday?.addEventListener("click", () => {
   setDrawerNextActionDate(todayISO());
-  dSaved.textContent = "Next action set — saving…";
-  queueQuickViewAutosave();
-  refreshCalendarBusyPanel();
-});
-
-btnMeetingNextToday?.addEventListener("click", () => {
-  setDrawerNextActionDate(todayISO());
-  dSaved.textContent = "Meeting date set — saving…";
-  queueQuickViewAutosave();
+  flushQuickViewAutosave("Next action set — saving…");
   refreshCalendarBusyPanel();
 });
 
 dMeetingType?.addEventListener("change", () => {
+  if (!hasMeetingTypeInput) return;
   const row = rows.find(r => r.dataset.clientId === activeClientId);
   applyMeetingType(dMeetingType.value, row);
   refreshCalendarBusyPanel();
@@ -3761,19 +4735,9 @@ dMeetingType?.addEventListener("change", () => {
 });
 
 dNextDate?.addEventListener("change", refreshCalendarBusyPanel);
-dNextDate?.addEventListener("change", () => {
-  if (dMeetingNextDate && dMeetingNextDate.value !== dNextDate.value) {
-    dMeetingNextDate.value = dNextDate.value;
-  }
-});
-dMeetingNextDate?.addEventListener("change", () => {
-  if (dNextDate && dNextDate.value !== dMeetingNextDate.value) {
-    dNextDate.value = dMeetingNextDate.value;
-  }
-  refreshCalendarBusyPanel();
-});
 dMeetingTime?.addEventListener("change", refreshCalendarBusyPanel);
 dMeetingDuration?.addEventListener("change", refreshCalendarBusyPanel);
+
 
 $$("[data-schedulepreset]").forEach(btn => {
   btn.addEventListener("click", () => {
@@ -3781,31 +4745,26 @@ $$("[data-schedulepreset]").forEach(btn => {
     const now = new Date();
     if (preset === "today3"){
       setDrawerNextActionDate(todayISO());
-      dMeetingTime.value = "15:00";
       dNextText.value = dNextText.value || "Same-day follow-up";
     } else if (preset === "tomorrow10"){
       const d = new Date();
       d.setDate(d.getDate() + 1);
       setDrawerNextActionDate(d.toISOString().slice(0, 10));
-      dMeetingTime.value = "10:00";
       dNextText.value = dNextText.value || "Tomorrow morning follow-up";
     } else if (preset === "nextbiz"){
       let d = new Date();
       d.setDate(d.getDate() + 1);
       while ([0, 6].includes(d.getDay())) d.setDate(d.getDate() + 1);
       setDrawerNextActionDate(d.toISOString().slice(0, 10));
-      dMeetingTime.value = "09:00";
       dNextText.value = dNextText.value || "Next business day touch";
     } else if (preset === "week"){
       const d = new Date(now);
       d.setDate(d.getDate() + 7);
       setDrawerNextActionDate(d.toISOString().slice(0, 10));
-      dMeetingTime.value = "09:00";
       dNextText.value = dNextText.value || "1 week follow-up";
     }
     dSaved.textContent = "Next-step preset applied — saving…";
     queueQuickViewAutosave();
-    refreshCalendarBusyPanel();
   });
 });
 
@@ -3820,23 +4779,27 @@ btnEditProfile?.addEventListener("click", () => {
   // noop; link handles navigation
 });
 
+dShareAgentSearch?.addEventListener("input", () => {
+  clearTimeout(shareLookupTimer);
+  shareLookupTimer = setTimeout(() => {
+    void searchShareAgents(dShareAgentSearch.value || "");
+  }, 220);
+});
+
+btnShareAgentAccess?.addEventListener("click", () => {
+  void grantSelectedAgentAccess();
+});
+
+btnResendClientInvite?.addEventListener("click", () => {
+  void resendClientInvite();
+});
+
 btnDeleteClient?.addEventListener("click", () => {
   if (!activeClientId) return;
   if (!confirm("ARE YOU SURE YOU WANT TO DELETE THIS CLIENT? This removes the profile, household, and portal access.")) return;
 
-  const f = document.getElementById("__af");
-  if (!f) return toast("Missing antiforgery form.");
-
-  f.setAttribute("action", "/Clients/Delete");
-  f.querySelectorAll("input[name='clientUserId']").forEach(x => x.remove());
-
-  const inp = document.createElement("input");
-  inp.type = "hidden";
-  inp.name = "clientUserId";
-  inp.value = activeClientId;
-  f.appendChild(inp);
-
-  f.submit();
+  void deleteClientRecord(activeClientId)
+    .catch(err => toast(err.message || "Delete failed.", { error:true, persistent:true }));
 });
 
 btnAddActivity?.addEventListener("click", () => {
@@ -4104,7 +5067,7 @@ btnMyDayBack?.addEventListener("click", () => {
   applyViewMode();
   currentPage = 1;
   renderAll();
-  myDayQueue?.scrollIntoView({ behavior: "smooth", block: "start" });
+  myDayPanelController?.open();
 });
 
 $$(".outcome-btn").forEach(btn => {
@@ -4178,6 +5141,18 @@ function cardTags(raw){
 function renderPipelineNav(filteredRows){
   if (!pipelineStageNav) return;
 
+  const activeStage = pipelineFocusStage || pipelineNavSelectedStage || "";
+  const activeMeta = activeStage ? pipelineMeta(activeStage) : null;
+  const activeCount = activeMeta
+    ? filteredRows.filter(r => norm(r.dataset.crmPipeline) === activeMeta.key).length
+    : filteredRows.length;
+  const activeCountLabel = activeCount === 1 ? "live card" : "live cards";
+  const boardFocusTitle = activeMeta ? activeMeta.label : "All Buckets";
+  const boardFocusState = activeMeta ? "Focused Bucket" : "Full Pipeline";
+  const boardFocusNote = activeMeta
+    ? activeMeta.note
+    : "Choose a bucket for a tighter work lane, or stay wide and manage the full board.";
+  const shellClass = activeMeta ? `pipeline-nav-shell ${activeMeta.className}` : "pipeline-nav-shell";
   const optionHtml = pipelineStages.map(stage => {
     const count = filteredRows.filter(r => norm(r.dataset.crmPipeline) === stage.key).length;
     const selected = pipelineNavSelectedStage === stage.key ? "selected" : "";
@@ -4185,24 +5160,35 @@ function renderPipelineNav(filteredRows){
   }).join("");
 
   pipelineStageNav.innerHTML = `
-    <div class="pipeline-nav-shell">
+    <div class="${shellClass}">
       <div class="pipeline-nav-toolbar">
         <div class="pipeline-nav-copy">
-          <div class="pipeline-nav-label">Bucket Selector</div>
+          <div class="pipeline-nav-kicker-row">
+            <div class="pipeline-nav-label">Board Focus</div>
+            <span class="pipeline-nav-state">${boardFocusState}</span>
+          </div>
           <div class="pipeline-nav-title-row">
-          <div class="pipeline-nav-name">${safeHtml(pipelineFocusStage || pipelineNavSelectedStage || "Select A Bucket")}</div>
-          <span class="pipeline-nav-count">${filteredRows.length}</span>
+            <div class="pipeline-nav-title-stack">
+              <div class="pipeline-nav-name">${safeHtml(boardFocusTitle)}</div>
+              <div class="pipeline-nav-note">${safeHtml(boardFocusNote)}</div>
+            </div>
+            <span class="pipeline-nav-count">
+              <strong>${activeCount}</strong>
+              <span>${activeCountLabel}</span>
+            </span>
+          </div>
         </div>
-      </div>
-      <div class="pipeline-nav-actions">
-          <select class="select pipeline-nav-select" id="pipelineNavSelect" aria-label="Select pipeline bucket">
-            <option value="" ${pipelineNavSelectedStage ? "" : "selected"} disabled>--SELECT--</option>
+        <div class="pipeline-nav-actions">
+          <label class="pipeline-nav-field" for="pipelineNavSelect">
+            <span class="pipeline-nav-field-label">Jump To Bucket</span>
+            <select class="select pipeline-nav-select" id="pipelineNavSelect" aria-label="Select pipeline bucket">
+              <option value="" ${pipelineNavSelectedStage ? "" : "selected"} disabled>Choose bucket...</option>
             ${optionHtml}
           </select>
-          <button type="button" class="btn btn-ghost pipeline-nav-reset" id="pipelineNavReset" ${pipelineNavSelectedStage || pipelineFocusStage ? "" : "disabled"}>All Buckets</button>
+          </label>
+          <button type="button" class="btn btn-ghost pipeline-nav-reset" id="pipelineNavReset" ${pipelineNavSelectedStage || pipelineFocusStage ? "" : "disabled"}>Full Pipeline</button>
         </div>
       </div>
-      <div class="pipeline-nav-note">Use the dropdown to jump into a bucket. Click the back button in the board to return.</div>
     </div>
   `;
 
@@ -4246,31 +5232,37 @@ function renderLaneCards(rowsForStage){
     const phoneDigits = phone.replace(/\D/g, "");
     const shortPhone = phoneDigits ? `···${phoneDigits.slice(-4)}` : "";
     const displayName = name || (phone ? `Lead • ${shortPhone}` : `Lead • ${r.dataset.clientId.slice(0, 6)}`);
-    const prodStatus = (r.dataset.prodStatus || "").trim();
-    const prodAmount = Number(r.dataset.prodAmount || 0);
-    const prodBadge = `<div class="lead-prod-badge ${prodStatus && prodAmount > 0 ? "" : "hidden"}" data-prod-card data-card-prod="${safeHtml(r.dataset.clientId)}">${prodStatus && prodAmount > 0 ? `${safeHtml(prodStatus)} <span class="prod-amt">${formatCurrency(prodAmount)}</span>` : ""}</div>`;
+    const paidAmount = Number(r.dataset.prodPaid || r.dataset.paid || 0);
+    const issuedAmount = Number(r.dataset.prodIssued || 0);
+    const submittedAmount = Number(r.dataset.prodSubmitted || 0);
+    const prodBadgeHtml = renderPipelineProdBadge({
+      paid: paidAmount,
+      issued: issuedAmount,
+      submitted: submittedAmount
+    });
+    const prodBadge = `<div class="lead-prod-badge ${prodBadgeHtml ? "" : "hidden"}" data-prod-card data-card-prod="${safeHtml(r.dataset.clientId)}">${prodBadgeHtml}</div>`;
 
     return `
       <article class="client-card ${pipelineBadgeClass(stage)}"
                draggable="true"
                data-cardid="${safeHtml(r.dataset.clientId)}">
-        <div class="client-card-head" style="position:relative;">
+        <div class="client-card-head">
           <div class="client-card-main">
             <h3 class="cc-name" data-open-card="${safeHtml(r.dataset.clientId)}">${safeHtml(displayName)}</h3>
             <div class="cc-sub cc-sub-primary">${phone ? `<a class=\"link link-phone\" href=\"tel:${safeHtml(phone)}\">${safeHtml(phoneDisplay)}</a>` : "No phone"}</div>
             <div class="cc-sub">${renderEmailLinkHtml(email)}</div>
           </div>
-          <div class="client-card-actions actions">
-            ${phone ? `<a class="btn btn-ghost" href="tel:${safeHtml(phone)}">Call</a>` : ""}
-            <button type="button"
-                    class="btn btn-gold openCard"
-                    data-open-card="${safeHtml(r.dataset.clientId)}"
-                    title="Open Quick View"
-                    style="min-width:110px;">
-              Quick View
-            </button>
-          </div>
           ${prodBadge}
+        </div>
+        <div class="client-card-actions actions pipeline-card-actions-row">
+          ${phone ? `<a class="btn btn-ghost" href="tel:${safeHtml(phone)}">Call</a>` : ""}
+          ${phone ? `<a class="btn btn-ghost" href="sms:${safeHtml(phone)}">Text</a>` : ""}
+          <button type="button"
+                  class="btn btn-gold openCard pipeline-card-open"
+                  data-open-card="${safeHtml(r.dataset.clientId)}"
+                  title="Open Quick View">
+            Quick View
+          </button>
         </div>
       </article>
     `;
@@ -4331,6 +5323,7 @@ async function saveQuickViewForRow(row, overrides, successMessage){
   const clientId = row?.dataset.clientId;
   // Keep a local alias for any legacy references that still expect `id`.
   const id = clientId;
+  const fallbackMeetingDuration = parseInt(row.dataset.sMeetingDuration || "30", 10) || 30;
   const payload = {
     clientUserId: row.dataset.clientId,
     email: dEmailInput?.value || "",
@@ -4355,11 +5348,11 @@ async function saveQuickViewForRow(row, overrides, successMessage){
     crmTags: overrides?.crmTags ?? norm(row.dataset.crmTags),
     agentNotes: overrides?.agentNotes ?? norm(row.dataset.crmNotes),
     pipelineStage: (overrides?.pipelineStage ?? norm(row.dataset.crmPipeline)) || "NewLead",
-    meetingLocation: overrides?.meetingLocation ?? norm(row.dataset.sMeetingLocation),
-    zoomJoinUrl: overrides?.zoomJoinUrl ?? norm(row.dataset.sZoom),
-    usePersonalZoomLink: overrides?.usePersonalZoomLink ?? ((row.dataset.sUsezoom || "false") === "true"),
-    meetingTime: (overrides?.meetingTime ?? norm(row.dataset.sMeetingTime)) || "09:00",
-    meetingDurationMinutes: (overrides?.meetingDurationMinutes ?? parseInt(row.dataset.sMeetingDuration || "30", 10)) || 30,
+    meetingLocation: overrides?.meetingLocation ?? (hasMeetingLocationInput ? norm(dMeetingLocation.value) : norm(row.dataset.sMeetingLocation)),
+    zoomJoinUrl: overrides?.zoomJoinUrl ?? (hasZoomJoinUrlInput ? norm(dZoomJoinUrl.value) : norm(row.dataset.sZoom)),
+    usePersonalZoomLink: overrides?.usePersonalZoomLink ?? (hasUsePersonalZoomInput ? !!dUsePersonalZoomLink.checked : ((row.dataset.sUsezoom || "false") === "true")),
+    meetingTime: (overrides?.meetingTime ?? (hasMeetingTimeInput ? norm(dMeetingTime.value) : norm(row.dataset.sMeetingTime))) || "09:00",
+    meetingDurationMinutes: (overrides?.meetingDurationMinutes ?? (hasMeetingDurationInput ? (parseInt(dMeetingDuration.value || "30", 10) || 30) : fallbackMeetingDuration)) || 30,
     waitingOn: overrides?.waitingOn ?? norm(row.dataset.crmWaitingOn),
     pinnedBrief: overrides?.pinnedBrief ?? norm(row.dataset.crmPinnedBrief),
     docIdReceived: overrides?.docIdReceived ?? !!dDocIdReceived?.checked,
@@ -4488,14 +5481,14 @@ btnBoardBack?.addEventListener("click", () => {
 });
 
 btnPipeOverdue?.addEventListener("click", () => {
-  if (attentionFilter) attentionFilter.value = "overdue";
+  setControlValue(attentionFilter, "overdue");
   if (viewMode) viewMode.value = "pipeline";
   applyViewMode();
   renderAll();
 });
 
 btnPipeNeeds?.addEventListener("click", () => {
-  if (attentionFilter) attentionFilter.value = "needs";
+  setControlValue(attentionFilter, "needs");
   if (viewMode) viewMode.value = "pipeline";
   applyViewMode();
   renderAll();
@@ -4503,12 +5496,6 @@ btnPipeNeeds?.addEventListener("click", () => {
 
 btnPipeMeetings?.addEventListener("click", () => {
   applyPreset("meetingstoday");
-});
-
-btnPipeTable?.addEventListener("click", () => {
-  if (viewMode) viewMode.value = "table";
-  applyViewMode();
-  renderAll();
 });
 
 btnPipeReset?.addEventListener("click", () => {
@@ -4655,14 +5642,17 @@ pipelineBoard?.addEventListener("drop", async (e) => {
 
 /* ========= Columns Modal ========= */
 function openModal(el){
+  if (!el || !modalBackdrop) return;
+  document.body.classList.add("legend-bootstrap-modal-open");
   modalBackdrop.classList.add("open");
   el.classList.add("open");
 }
 function closeModal(){
   clearAdvancedMarketsAutosaveTimer();
   activeAdvancedMarketsLoadSeq += 1;
+  document.body.classList.remove("legend-bootstrap-modal-open");
   modalBackdrop.classList.remove("open");
-  [colsModal, shortcutsModal, remindersModal, cmdModal, bulkModal, callTaskModal, importModal].forEach(m => m?.classList.remove("open"));
+  [colsModal, shortcutsModal, remindersModal, cmdModal, bulkModal, callTaskModal, importModal, performanceModal, myDayModal].forEach(m => m?.classList.remove("open"));
 }
 
 $("#btnCols")?.addEventListener("click", () => {
@@ -4929,12 +5919,12 @@ function runCommand(text){
   else if (t.includes("copy")) btnCopyEmails?.click();
   else if (t.includes("reminders")) openRemindersModal();
   else if (t.includes("enable reminders")) enableReminders();
-  else if (t.includes("view pipeline") || t.includes("view cards")) { viewMode.value = "pipeline"; viewMode.dispatchEvent(new Event("change")); }
-  else if (t.includes("view table")) { viewMode.value = "table"; viewMode.dispatchEvent(new Event("change")); }
-  else if (t.includes("filter overdue")) { attentionFilter.value = "overdue"; attentionFilter.dispatchEvent(new Event("change")); }
-  else if (t.includes("filter needs")) { attentionFilter.value = "needs"; attentionFilter.dispatchEvent(new Event("change")); }
-  else if (t.includes("density compact")) { density.value = "compact"; density.dispatchEvent(new Event("change")); }
-  else if (t.includes("density comfort")) { density.value = "comfort"; density.dispatchEvent(new Event("change")); }
+  else if (t.includes("view pipeline") || t.includes("view cards")) { if (viewMode) { viewMode.value = PIPELINE_ONLY_VIEW; viewMode.dispatchEvent(new Event("change")); } }
+  else if (t.includes("view table") || t.includes("view hybrid")) { toast("Pipeline CRM is the only available view."); }
+  else if (t.includes("filter overdue")) { setControlValue(attentionFilter, "overdue"); attentionFilter?.dispatchEvent(new Event("change")); }
+  else if (t.includes("filter needs")) { setControlValue(attentionFilter, "needs"); attentionFilter?.dispatchEvent(new Event("change")); }
+  else if (t.includes("density compact")) { if (density) { density.value = "compact"; density.dispatchEvent(new Event("change")); } }
+  else if (t.includes("density comfort")) { if (density) { density.value = "comfort"; density.dispatchEvent(new Event("change")); } }
   else if (t.includes("connect calendar")) { startCalendarConnect(); }
   else if (t.includes("save zoom")) { savePersonalZoomLink(); }
   else if (t.includes("clear zoom")) { clearPersonalZoomLink(); }
@@ -5057,7 +6047,7 @@ btnFilterMeetings?.addEventListener("click", () => {
 });
 
 btnFilterOverdue?.addEventListener("click", () => {
-  attentionFilter.value = "overdue";
+  setControlValue(attentionFilter, "overdue");
   currentPage = 1;
   renderAll();
 });
@@ -5518,13 +6508,11 @@ async function createCalendarEventFromDrawer(){
   }
 }
 
-btnCreateCalendarEvent?.addEventListener("click", createCalendarEventFromDrawer);
-
 /* ========= Prefs Restore ========= */
 (function restorePrefs(){
   const prefs = loadJSON(LS_PREFS, {});
-  viewMode.value = "pipeline";
-  if (prefs.density) density.value = prefs.density;
+  if (viewMode) viewMode.value = PIPELINE_ONLY_VIEW;
+  if (density && prefs.density) density.value = prefs.density;
   applyViewMode();
   applyDensityClass();
 })();
@@ -5614,10 +6602,20 @@ async function loadClientProductionHistory(clientUserId, displayName, hydrate=tr
     if (!res.ok) throw new Error("load fail");
     const data = await res.json();
     const item = (data && data.length) ? data[0] : null;
+    const totals = (data || []).reduce((acc, p) => {
+      const amt = Number(p?.amount || 0);
+      const raw = norm(p?.status);
+      const st = productionBucket(raw);
+      if (st === "paid") acc.paid += amt;
+      else if (st === "issued") acc.issued += amt;
+      else if (st === "submitted") acc.submitted += amt;
+      return acc;
+    }, { paid: 0, issued: 0, submitted: 0 });
+
     if (item){
-      setClientProductionById(clientUserId, item.status, item.amount);
+      setClientProductionById(clientUserId, item.status, item.amount, totals);
     } else {
-      setClientProductionById(clientUserId, "", 0);
+      setClientProductionById(clientUserId, "", 0, totals);
     }
     if (hydrate) hydrateClientProdForm(item);
     if (!data || !data.length){
@@ -5627,11 +6625,25 @@ async function loadClientProductionHistory(clientUserId, displayName, hydrate=tr
       data.forEach(p=>{
         const div = document.createElement("div");
         div.className = "ph-item";
+        const safeStatus = norm(p.status) || "Submitted";
+        const toneClass = safeStatus.toLowerCase();
+        const updatedLabel = p.updated ? new Date(p.updated).toLocaleString() : "";
         div.innerHTML = `<div class="ph-left">
-            <div class="ph-amt">$${Number(p.amount).toLocaleString(undefined,{maximumFractionDigits:2})}</div>
-            <div class="ph-amt personal">Personal: $${Number(p.personalAmount || 0).toLocaleString(undefined,{maximumFractionDigits:2})}</div>
-            <div class="ph-status ${p.status.toLowerCase()}">${p.status}</div>
-            <div class="ph-note">${p.notes ?? ""}</div>
+            <div class="ph-top">
+              <div class="ph-status ${toneClass}">${safeStatus}</div>
+              ${updatedLabel ? `<div class="ph-updated">${safeHtml(updatedLabel)}</div>` : ""}
+            </div>
+            <div class="ph-metrics">
+              <div class="ph-metric ${toneClass}">
+                <span class="ph-metric-label">${safeHtml(safeStatus)} Amount</span>
+                <div class="ph-amt">$${Number(p.amount).toLocaleString(undefined,{maximumFractionDigits:2})}</div>
+              </div>
+              ${Number(p.personalAmount || 0) > 0 ? `<div class="ph-metric">
+                <span class="ph-metric-label">Personal Revenue</span>
+                <div class="ph-amt personal">$${Number(p.personalAmount || 0).toLocaleString(undefined,{maximumFractionDigits:2})}</div>
+              </div>` : ""}
+              ${norm(p.notes) ? `<div class="ph-note"><span class="ph-note-label">Notes</span><span class="ph-note-text">${safeHtml(p.notes)}</span></div>` : ""}
+            </div>
           </div>
           <div class="ph-actions">
             <button class="btn btn-ghost ph-edit" data-id="${p.id}" data-amount="${p.amount}" data-personal="${p.personalAmount ?? ""}" data-status="${p.status}" data-notes="${p.notes ?? ""}">Edit</button>
@@ -5698,32 +6710,14 @@ function openClientProductionModalAdd(clientId, name){
   form.querySelector("input[name='id']")?.remove();
   document.getElementById('clientProdId').value = clientId;
   document.getElementById('clientProdName').textContent = name;
-
-  const draftAll = loadJSON(LS_PROD_DRAFT_CLIENT, {});
-  const draft = draftAll[clientId] || {};
   const amtEl = form.querySelector("input[name='amount']");
   const personalEl = form.querySelector("input[name='personalAmount']");
   const statusEl = form.querySelector("select[name='status']");
   const notesEl = form.querySelector("textarea[name='notes']");
-  if (amtEl && draft.amount != null) amtEl.value = draft.amount;
-  if (personalEl && draft.personalAmount != null) personalEl.value = draft.personalAmount;
-  if (statusEl && draft.status != null) statusEl.value = draft.status;
-  if (notesEl && draft.notes != null) notesEl.value = draft.notes;
-
-  const persistDraft = () => {
-    draftAll[clientId] = {
-      amount: amtEl?.value || "",
-      personalAmount: personalEl?.value || "",
-      status: statusEl?.value || "0",
-      notes: notesEl?.value || ""
-    };
-    saveJSON(LS_PROD_DRAFT_CLIENT, draftAll);
-  };
-  [amtEl, personalEl, statusEl, notesEl].forEach(el => el?.addEventListener("input", persistDraft, { once: false }));
-  form.addEventListener("submit", () => {
-    delete draftAll[clientId];
-    saveJSON(LS_PROD_DRAFT_CLIENT, draftAll);
-  }, { once: true });
+  if (amtEl) amtEl.value = "";
+  if (personalEl) personalEl.value = "";
+  if (statusEl) statusEl.value = "0";
+  if (notesEl) notesEl.value = "";
 
   bootstrap.Modal.getOrCreateInstance(modalEl).show();
 }
@@ -5800,10 +6794,9 @@ async function boot(){
   syncBarHeight();
   applyColumnPrefs();
   applyDensityClass();
+  initCollapsiblePanels();
   renderSavedViews();
   ensureModalInBody('clientQuickCreateActionModal');
-  bindQuickViewTabs();
-
   await loadMyDaySnapshot(true);
 
   renderAll();

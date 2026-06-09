@@ -1,0 +1,1341 @@
+Infrastructure/Migrations/20260413074810_EnsureFbclidColumn.cs:13:            migrationBuilder.AlterColumn<string>(
+Infrastructure/Migrations/20260413074810_EnsureFbclidColumn.cs:23:            migrationBuilder.AlterColumn<int>(
+Infrastructure/Migrations/20260413074810_EnsureFbclidColumn.cs:32:            migrationBuilder.AlterColumn<int>(
+Infrastructure/Migrations/20260413074810_EnsureFbclidColumn.cs:41:            migrationBuilder.AlterColumn<string>(
+Infrastructure/Migrations/20260413074810_EnsureFbclidColumn.cs:52:            migrationBuilder.AlterColumn<string>(
+Infrastructure/Migrations/20260413074810_EnsureFbclidColumn.cs:63:            migrationBuilder.AlterColumn<int>(
+Infrastructure/Migrations/20260413074810_EnsureFbclidColumn.cs:72:            migrationBuilder.AlterColumn<int>(
+Infrastructure/Migrations/20260413074810_EnsureFbclidColumn.cs:81:            migrationBuilder.AlterColumn<int>(
+Infrastructure/Migrations/20260413074810_EnsureFbclidColumn.cs:90:            migrationBuilder.AlterColumn<string>(
+Infrastructure/Migrations/20260413074810_EnsureFbclidColumn.cs:101:            migrationBuilder.AlterColumn<string>(
+Infrastructure/Migrations/20260413074810_EnsureFbclidColumn.cs:112:            migrationBuilder.AlterColumn<string>(
+Infrastructure/Migrations/20260413074810_EnsureFbclidColumn.cs:123:            migrationBuilder.AlterColumn<string>(
+Infrastructure/Migrations/20260413074810_EnsureFbclidColumn.cs:134:            migrationBuilder.AlterColumn<string>(
+Infrastructure/Migrations/20260413074810_EnsureFbclidColumn.cs:145:            migrationBuilder.AlterColumn<string>(
+Infrastructure/Migrations/20260413074810_EnsureFbclidColumn.cs:156:            migrationBuilder.AlterColumn<string>(
+Infrastructure/Migrations/20260413074810_EnsureFbclidColumn.cs:167:            migrationBuilder.AlterColumn<string>(
+Infrastructure/Migrations/20260413074810_EnsureFbclidColumn.cs:178:            migrationBuilder.AlterColumn<string>(
+Infrastructure/Migrations/20260413074810_EnsureFbclidColumn.cs:189:            migrationBuilder.AlterColumn<bool>(
+Infrastructure/Migrations/20260413074810_EnsureFbclidColumn.cs:198:            migrationBuilder.AlterColumn<bool>(
+Infrastructure/Migrations/20260413074810_EnsureFbclidColumn.cs:207:            migrationBuilder.AlterColumn<string>(
+Infrastructure/Migrations/20260413074810_EnsureFbclidColumn.cs:218:            migrationBuilder.AlterColumn<string>(
+Infrastructure/Migrations/20260413074810_EnsureFbclidColumn.cs:229:            migrationBuilder.AlterColumn<string>(
+Infrastructure/Migrations/20260413074810_EnsureFbclidColumn.cs:239:            migrationBuilder.AlterColumn<long>(
+Infrastructure/Migrations/20260413074810_EnsureFbclidColumn.cs:248:            migrationBuilder.AlterColumn<string>(
+Infrastructure/Migrations/20260413074810_EnsureFbclidColumn.cs:259:            migrationBuilder.AlterColumn<long>(
+Infrastructure/Migrations/20260413074810_EnsureFbclidColumn.cs:268:            migrationBuilder.AlterColumn<string>(
+Infrastructure/Migrations/20260413074810_EnsureFbclidColumn.cs:279:            migrationBuilder.AlterColumn<string>(
+Infrastructure/Migrations/20260413074810_EnsureFbclidColumn.cs:294:            migrationBuilder.AlterColumn<string>(
+Infrastructure/Migrations/20260413074810_EnsureFbclidColumn.cs:304:            migrationBuilder.AlterColumn<int>(
+Infrastructure/Migrations/20260413074810_EnsureFbclidColumn.cs:313:            migrationBuilder.AlterColumn<int>(
+Infrastructure/Migrations/20260413074810_EnsureFbclidColumn.cs:322:            migrationBuilder.AlterColumn<string>(
+Infrastructure/Migrations/20260413074810_EnsureFbclidColumn.cs:333:            migrationBuilder.AlterColumn<string>(
+Infrastructure/Migrations/20260413074810_EnsureFbclidColumn.cs:344:            migrationBuilder.AlterColumn<int>(
+Infrastructure/Migrations/20260413074810_EnsureFbclidColumn.cs:353:            migrationBuilder.AlterColumn<int>(
+Infrastructure/Migrations/20260413074810_EnsureFbclidColumn.cs:362:            migrationBuilder.AlterColumn<int>(
+Infrastructure/Migrations/20260413074810_EnsureFbclidColumn.cs:371:            migrationBuilder.AlterColumn<string>(
+Infrastructure/Migrations/20260413074810_EnsureFbclidColumn.cs:382:            migrationBuilder.AlterColumn<string>(
+Infrastructure/Migrations/20260413074810_EnsureFbclidColumn.cs:393:            migrationBuilder.AlterColumn<string>(
+Infrastructure/Migrations/20260413074810_EnsureFbclidColumn.cs:404:            migrationBuilder.AlterColumn<string>(
+Infrastructure/Migrations/20260413074810_EnsureFbclidColumn.cs:415:            migrationBuilder.AlterColumn<string>(
+Infrastructure/Migrations/20260413074810_EnsureFbclidColumn.cs:426:            migrationBuilder.AlterColumn<string>(
+Infrastructure/Migrations/20260413074810_EnsureFbclidColumn.cs:437:            migrationBuilder.AlterColumn<string>(
+Infrastructure/Migrations/20260413074810_EnsureFbclidColumn.cs:448:            migrationBuilder.AlterColumn<string>(
+Infrastructure/Migrations/20260413074810_EnsureFbclidColumn.cs:459:            migrationBuilder.AlterColumn<string>(
+Infrastructure/Migrations/20260413074810_EnsureFbclidColumn.cs:470:            migrationBuilder.AlterColumn<bool>(
+Infrastructure/Migrations/20260413074810_EnsureFbclidColumn.cs:479:            migrationBuilder.AlterColumn<bool>(
+Infrastructure/Migrations/20260413074810_EnsureFbclidColumn.cs:488:            migrationBuilder.AlterColumn<string>(
+Infrastructure/Migrations/20260413074810_EnsureFbclidColumn.cs:499:            migrationBuilder.AlterColumn<string>(
+Infrastructure/Migrations/20260413074810_EnsureFbclidColumn.cs:510:            migrationBuilder.AlterColumn<string>(
+Infrastructure/Migrations/20260413074810_EnsureFbclidColumn.cs:520:            migrationBuilder.AlterColumn<long>(
+Infrastructure/Migrations/20260413074810_EnsureFbclidColumn.cs:529:            migrationBuilder.AlterColumn<string>(
+Infrastructure/Migrations/20260413074810_EnsureFbclidColumn.cs:540:            migrationBuilder.AlterColumn<long>(
+Infrastructure/Migrations/20260413074810_EnsureFbclidColumn.cs:549:            migrationBuilder.AlterColumn<string>(
+Infrastructure/Migrations/20260413074810_EnsureFbclidColumn.cs:560:            migrationBuilder.AlterColumn<string>(
+Infrastructure/Migrations/20260322113000_AddAgentTitleToProfile.cs:17:            if (migrationBuilder.ActiveProvider == "Microsoft.EntityFrameworkCore.Sqlite")
+Infrastructure/Migrations/20260322113000_AddAgentTitleToProfile.cs:33:            migrationBuilder.DropColumn(
+Infrastructure/Migrations/20260517120000_AddMetaSignalIntelligence.cs:21:                    .Annotation("SqlServer:Identity", "1, 1"),
+Infrastructure/Migrations/20260517120000_AddMetaSignalIntelligence.cs:61:                MetadataJson = table.Column<string>(type: "nvarchar(max)", nullable: true)
+Infrastructure/Migrations/20260517120000_AddMetaSignalIntelligence.cs:142:        migrationBuilder.DropTable(
+Infrastructure/Migrations/20260401023834_AddProductionRecords_PersonalAmount.cs:16:            if (ActiveProvider == "Microsoft.EntityFrameworkCore.Sqlite")
+Infrastructure/Migrations/20260401023834_AddProductionRecords_PersonalAmount.cs:30:            if (ActiveProvider == "Microsoft.EntityFrameworkCore.Sqlite")
+Infrastructure/Migrations/20260401023834_AddProductionRecords_PersonalAmount.cs:33:            migrationBuilder.DropColumn(
+Infrastructure/Migrations/20260210213538_20260210_AddBookkeeping.cs:19:                        .Annotation("SqlServer:Identity", "1, 1"),
+Infrastructure/Migrations/20260210213538_20260210_AddBookkeeping.cs:42:                        .Annotation("SqlServer:Identity", "1, 1"),
+Infrastructure/Migrations/20260210213538_20260210_AddBookkeeping.cs:83:            migrationBuilder.DropTable(
+Infrastructure/Migrations/20260210213538_20260210_AddBookkeeping.cs:86:            migrationBuilder.DropTable(
+Infrastructure/Migrations/20260516115000_BackfillMissingMetaAttributionColumns.cs:16:        if (string.Equals(ActiveProvider, "Microsoft.EntityFrameworkCore.SqlServer", StringComparison.Ordinal))
+Infrastructure/Migrations/20260516115000_BackfillMissingMetaAttributionColumns.cs:18:            migrationBuilder.Sql(
+Infrastructure/Migrations/20260516115000_BackfillMissingMetaAttributionColumns.cs:115:        if (string.Equals(ActiveProvider, "Microsoft.EntityFrameworkCore.SqlServer", StringComparison.Ordinal))
+Infrastructure/Migrations/20260516115000_BackfillMissingMetaAttributionColumns.cs:117:            migrationBuilder.Sql(
+Infrastructure/Migrations/20260516115000_BackfillMissingMetaAttributionColumns.cs:173:        migrationBuilder.DropColumn(
+Infrastructure/Migrations/20260516115000_BackfillMissingMetaAttributionColumns.cs:177:        migrationBuilder.DropColumn(
+Infrastructure/Migrations/20260516115000_BackfillMissingMetaAttributionColumns.cs:181:        migrationBuilder.DropColumn(
+Infrastructure/Migrations/20260516115000_BackfillMissingMetaAttributionColumns.cs:185:        migrationBuilder.DropColumn(
+Infrastructure/Migrations/20260516115000_BackfillMissingMetaAttributionColumns.cs:189:        migrationBuilder.DropColumn(
+Infrastructure/Migrations/20260401061601_AddRowVersionConcurrency.Designer.cs:459:                        .HasColumnType("nvarchar(max)");
+Infrastructure/Migrations/20260401061601_AddRowVersionConcurrency.Designer.cs:1683:                        .HasColumnType("nvarchar(max)");
+Infrastructure/Migrations/20260330011403_ActionSurfaceSeparation.cs:15:            if (ActiveProvider == "Microsoft.EntityFrameworkCore.Sqlite")
+Infrastructure/Migrations/20260330011403_ActionSurfaceSeparation.cs:44:            migrationBuilder.Sql("UPDATE ActionItems SET ActionSurface = 'CrmOnly', ActionCategory = 'Other', IsEscalated = 0 WHERE ActionSurface IS NULL OR ActionSurface = '' OR ActionCategory IS NULL OR ActionCategory = ''");
+Infrastructure/Migrations/20260330011403_ActionSurfaceSeparation.cs:50:            if (ActiveProvider == "Microsoft.EntityFrameworkCore.Sqlite")
+Infrastructure/Migrations/20260330011403_ActionSurfaceSeparation.cs:53:            migrationBuilder.DropColumn(
+Infrastructure/Migrations/20260330011403_ActionSurfaceSeparation.cs:57:            migrationBuilder.DropColumn(
+Infrastructure/Migrations/20260330011403_ActionSurfaceSeparation.cs:61:            migrationBuilder.DropColumn(
+Infrastructure/Migrations/20260330011403_ActionSurfaceSeparation.cs:65:            migrationBuilder.DropColumn(
+Infrastructure/Migrations/20260521212348_AddWebsiteLeadIntakeLinks.cs:14:            var isSqlite = migrationBuilder.ActiveProvider.Contains("Sqlite", StringComparison.OrdinalIgnoreCase);
+Infrastructure/Migrations/20260521212348_AddWebsiteLeadIntakeLinks.cs:15:            var largeTextType = isSqlite ? "TEXT" : "nvarchar(max)";
+Infrastructure/Migrations/20260521212348_AddWebsiteLeadIntakeLinks.cs:96:            migrationBuilder.DropTable(
+Infrastructure/Migrations/20260217224629_20260217_ManualAddRecurringType.cs:14:            if (!migrationBuilder.ActiveProvider.Contains("SqlServer", StringComparison.OrdinalIgnoreCase))
+Infrastructure/Migrations/20260217224629_20260217_ManualAddRecurringType.cs:18:            migrationBuilder.Sql(@"
+Infrastructure/Migrations/20260217224629_20260217_ManualAddRecurringType.cs:26:            migrationBuilder.Sql(@"
+Infrastructure/Migrations/20260217224629_20260217_ManualAddRecurringType.cs:42:            if (!migrationBuilder.ActiveProvider.Contains("SqlServer", StringComparison.OrdinalIgnoreCase))
+Infrastructure/Migrations/20260217224629_20260217_ManualAddRecurringType.cs:46:            migrationBuilder.Sql(@"
+Infrastructure/Migrations/20260217224629_20260217_ManualAddRecurringType.cs:59:            migrationBuilder.Sql(@"
+Infrastructure/Migrations/20260315010000_AddNormalizedEmailUnique.cs:18:            if (migrationBuilder.ActiveProvider.Contains("SqlServer", StringComparison.OrdinalIgnoreCase))
+Infrastructure/Migrations/20260315010000_AddNormalizedEmailUnique.cs:20:                migrationBuilder.Sql(@"
+Infrastructure/Migrations/20260315010000_AddNormalizedEmailUnique.cs:39:            migrationBuilder.Sql(@"
+Infrastructure/Migrations/20260315010000_AddNormalizedEmailUnique.cs:45:            if (migrationBuilder.ActiveProvider.Contains("Sqlite", StringComparison.OrdinalIgnoreCase))
+Infrastructure/Migrations/20260315010000_AddNormalizedEmailUnique.cs:47:                migrationBuilder.Sql("DROP INDEX IF EXISTS \"IX_ClientProfiles_NormalizedEmail\";");
+Infrastructure/Migrations/20260315010000_AddNormalizedEmailUnique.cs:65:            migrationBuilder.DropColumn(
+Infrastructure/Migrations/20260516072716_AddWebsiteLeadSoftDelete.cs:45:            migrationBuilder.DropColumn(
+Infrastructure/Migrations/20260516072716_AddWebsiteLeadSoftDelete.cs:49:            migrationBuilder.DropColumn(
+Infrastructure/Migrations/20260516072716_AddWebsiteLeadSoftDelete.cs:53:            migrationBuilder.DropColumn(
+Infrastructure/Migrations/20260516072716_AddWebsiteLeadSoftDelete.cs:57:            migrationBuilder.DropColumn(
+Infrastructure/Migrations/20260413074919_FixMetadataJsonText.cs:13:            migrationBuilder.AlterColumn<string>(
+Infrastructure/Migrations/20260413074919_FixMetadataJsonText.cs:19:                oldType: "nvarchar(max)",
+Infrastructure/Migrations/20260413074919_FixMetadataJsonText.cs:22:            migrationBuilder.AlterColumn<string>(
+Infrastructure/Migrations/20260413074919_FixMetadataJsonText.cs:28:                oldType: "nvarchar(max)",
+Infrastructure/Migrations/20260413074919_FixMetadataJsonText.cs:35:            migrationBuilder.AlterColumn<string>(
+Infrastructure/Migrations/20260413074919_FixMetadataJsonText.cs:38:                type: "nvarchar(max)",
+Infrastructure/Migrations/20260413074919_FixMetadataJsonText.cs:44:            migrationBuilder.AlterColumn<string>(
+Infrastructure/Migrations/20260413074919_FixMetadataJsonText.cs:47:                type: "nvarchar(max)",
+Infrastructure/Migrations/20260401023834_AddProductionRecords_PersonalAmount.Designer.cs:459:                        .HasColumnType("nvarchar(max)");
+Infrastructure/Migrations/20260401023834_AddProductionRecords_PersonalAmount.Designer.cs:1671:                        .HasColumnType("nvarchar(max)");
+Infrastructure/Migrations/20260331000000_CommitmentsMvp.cs:58:            migrationBuilder.DropTable(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:14:            if (migrationBuilder.ActiveProvider == "Microsoft.EntityFrameworkCore.Sqlite")
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:23:            migrationBuilder.AlterColumn<string>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:34:            migrationBuilder.AlterColumn<DateTime>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:42:            migrationBuilder.AlterColumn<string>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:53:            migrationBuilder.AlterColumn<string>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:64:            migrationBuilder.AlterColumn<string>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:74:            migrationBuilder.AlterColumn<string>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:85:            migrationBuilder.AlterColumn<string>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:96:            migrationBuilder.AlterColumn<string>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:107:            migrationBuilder.AlterColumn<string>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:117:            migrationBuilder.AlterColumn<string>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:128:            migrationBuilder.AlterColumn<string>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:138:            migrationBuilder.AlterColumn<string>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:148:            migrationBuilder.AlterColumn<DateTime>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:157:            migrationBuilder.AlterColumn<string>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:167:            migrationBuilder.AlterColumn<string>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:177:            migrationBuilder.AlterColumn<long>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:185:            migrationBuilder.AlterColumn<DateTime>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:193:            migrationBuilder.AlterColumn<string>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:204:            migrationBuilder.AlterColumn<string>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:215:            migrationBuilder.AlterColumn<DateTime>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:224:            migrationBuilder.AlterColumn<int>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:232:            migrationBuilder.AlterColumn<DateTime>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:241:            migrationBuilder.AlterColumn<int>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:249:            migrationBuilder.AlterColumn<DateTime>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:258:            migrationBuilder.AlterColumn<int>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:266:            migrationBuilder.AlterColumn<DateTime>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:275:            migrationBuilder.AlterColumn<int>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:283:            migrationBuilder.AlterColumn<int>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:291:            migrationBuilder.AlterColumn<string>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:301:            migrationBuilder.AlterColumn<string>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:312:            migrationBuilder.AlterColumn<string>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:322:            migrationBuilder.AlterColumn<string>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:333:            migrationBuilder.AlterColumn<string>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:344:            migrationBuilder.AlterColumn<string>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:354:            migrationBuilder.AlterColumn<string>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:365:            migrationBuilder.AlterColumn<string>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:376:            migrationBuilder.AlterColumn<string>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:387:            migrationBuilder.AlterColumn<string>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:398:            migrationBuilder.AlterColumn<bool>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:406:            migrationBuilder.AlterColumn<string>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:416:            migrationBuilder.AlterColumn<string>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:427:            migrationBuilder.AlterColumn<string>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:438:            migrationBuilder.AlterColumn<string>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:449:            migrationBuilder.AlterColumn<string>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:460:            migrationBuilder.AlterColumn<string>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:471:            migrationBuilder.AlterColumn<string>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:482:            migrationBuilder.AlterColumn<bool>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:490:            migrationBuilder.AlterColumn<Guid>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:498:            migrationBuilder.AlterColumn<string>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:509:            migrationBuilder.AlterColumn<bool>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:517:            migrationBuilder.AlterColumn<string>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:528:            migrationBuilder.AlterColumn<string>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:539:            migrationBuilder.AlterColumn<string>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:549:            migrationBuilder.AlterColumn<string>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:560:            migrationBuilder.AlterColumn<string>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:570:            migrationBuilder.AlterColumn<DateTime>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:578:            migrationBuilder.AlterColumn<bool>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:586:            migrationBuilder.AlterColumn<Guid>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:595:            migrationBuilder.AlterColumn<string>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:606:            migrationBuilder.AlterColumn<long>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:613:                .Annotation("Sqlite:Autoincrement", true)
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:614:                .OldAnnotation("Sqlite:Autoincrement", true);
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:616:            migrationBuilder.AlterColumn<DateTime>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:624:            migrationBuilder.AlterColumn<string>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:635:            migrationBuilder.AlterColumn<string>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:646:            migrationBuilder.AlterColumn<string>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:657:            migrationBuilder.AlterColumn<string>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:663:                oldType: "nvarchar(max)");
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:665:            migrationBuilder.AlterColumn<string>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:676:            migrationBuilder.AlterColumn<string>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:686:            migrationBuilder.AlterColumn<string>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:697:            migrationBuilder.AlterColumn<string>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:708:            migrationBuilder.AlterColumn<bool>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:716:            migrationBuilder.AlterColumn<DateTime>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:724:            migrationBuilder.AlterColumn<string>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:734:            migrationBuilder.AlterColumn<Guid>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:742:            migrationBuilder.AlterColumn<DateTime>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:750:            migrationBuilder.AlterColumn<int>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:758:            migrationBuilder.AlterColumn<DateTime>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:766:            migrationBuilder.AlterColumn<int>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:774:            migrationBuilder.AlterColumn<string>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:784:            migrationBuilder.AlterColumn<string>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:795:            migrationBuilder.AlterColumn<DateTime>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:804:            migrationBuilder.AlterColumn<string>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:814:            migrationBuilder.AlterColumn<bool>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:822:            migrationBuilder.AlterColumn<int>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:830:            migrationBuilder.AlterColumn<DateTime>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:838:            migrationBuilder.AlterColumn<int>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:846:            migrationBuilder.AlterColumn<string>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:857:            migrationBuilder.AlterColumn<int>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:864:                .Annotation("Sqlite:Autoincrement", true)
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:865:                .OldAnnotation("Sqlite:Autoincrement", true);
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:867:            migrationBuilder.AlterColumn<DateTime>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:875:            migrationBuilder.AlterColumn<string>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:886:            migrationBuilder.AlterColumn<string>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:897:            migrationBuilder.AlterColumn<string>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:908:            migrationBuilder.AlterColumn<string>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:918:            migrationBuilder.AlterColumn<string>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:929:            migrationBuilder.AlterColumn<string>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:940:            migrationBuilder.AlterColumn<string>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:950:            migrationBuilder.AlterColumn<bool>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:958:            migrationBuilder.AlterColumn<DateTime>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:966:            migrationBuilder.AlterColumn<string>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:972:                oldType: "nvarchar(max)");
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:974:            migrationBuilder.AlterColumn<string>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:984:            migrationBuilder.AlterColumn<Guid>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:992:            migrationBuilder.AlterColumn<DateTime>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:1000:            migrationBuilder.AlterColumn<int>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:1008:            migrationBuilder.AlterColumn<int>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:1016:            migrationBuilder.AlterColumn<string>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:1027:            migrationBuilder.AlterColumn<string>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:1038:            migrationBuilder.AlterColumn<DateTime>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:1046:            migrationBuilder.AlterColumn<string>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:1057:            migrationBuilder.AlterColumn<string>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:1067:            migrationBuilder.AlterColumn<Guid>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:1075:            migrationBuilder.AlterColumn<string>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:1086:            migrationBuilder.AlterColumn<string>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:1097:            migrationBuilder.AlterColumn<string>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:1108:            migrationBuilder.AlterColumn<string>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:1118:            migrationBuilder.AlterColumn<bool>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:1126:            migrationBuilder.AlterColumn<string>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:1136:            migrationBuilder.AlterColumn<DateTime>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:1145:            migrationBuilder.AlterColumn<string>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:1156:            migrationBuilder.AlterColumn<string>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:1166:            migrationBuilder.AlterColumn<DateTime>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:1175:            migrationBuilder.AlterColumn<string>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:1186:            migrationBuilder.AlterColumn<string>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:1197:            migrationBuilder.AlterColumn<string>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:1207:            migrationBuilder.AlterColumn<string>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:1218:            migrationBuilder.AlterColumn<string>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:1229:            migrationBuilder.AlterColumn<string>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:1239:            migrationBuilder.AlterColumn<bool>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:1247:            migrationBuilder.AlterColumn<string>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:1257:            migrationBuilder.AlterColumn<bool>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:1265:            migrationBuilder.AlterColumn<string>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:1276:            migrationBuilder.AlterColumn<string>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:1287:            migrationBuilder.AlterColumn<string>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:1298:            migrationBuilder.AlterColumn<string>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:1309:            migrationBuilder.AlterColumn<string>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:1320:            migrationBuilder.AlterColumn<string>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:1331:            migrationBuilder.AlterColumn<bool>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:1339:            migrationBuilder.AlterColumn<string>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:1349:            migrationBuilder.AlterColumn<string>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:1359:            migrationBuilder.AlterColumn<Guid>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:1367:            migrationBuilder.AlterColumn<bool>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:1376:            migrationBuilder.AlterColumn<bool>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:1385:            migrationBuilder.AlterColumn<bool>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:1394:            migrationBuilder.AlterColumn<bool>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:1403:            migrationBuilder.AlterColumn<bool>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:1412:            migrationBuilder.AlterColumn<bool>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:1421:            migrationBuilder.AlterColumn<bool>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:1430:            migrationBuilder.AlterColumn<bool>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:1439:            migrationBuilder.AlterColumn<bool>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:1448:            migrationBuilder.AlterColumn<bool>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:1457:            migrationBuilder.AlterColumn<bool>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:1466:            migrationBuilder.AlterColumn<bool>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:1475:            migrationBuilder.AlterColumn<bool>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:1483:            migrationBuilder.AlterColumn<string>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:1493:            migrationBuilder.AlterColumn<string>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:1504:            migrationBuilder.AlterColumn<string>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:1514:            migrationBuilder.AlterColumn<string>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:1524:            migrationBuilder.AlterColumn<string>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:1534:            migrationBuilder.AlterColumn<string>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:1544:            migrationBuilder.AlterColumn<string>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:1554:            migrationBuilder.AlterColumn<bool>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:1562:            migrationBuilder.AlterColumn<string>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:1572:            migrationBuilder.AlterColumn<DateTime>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:1581:            migrationBuilder.AlterColumn<bool>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:1589:            migrationBuilder.AlterColumn<string>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:1600:            migrationBuilder.AlterColumn<string>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:1611:            migrationBuilder.AlterColumn<string>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:1622:            migrationBuilder.AlterColumn<string>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:1633:            migrationBuilder.AlterColumn<DateTime>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:1642:            migrationBuilder.AlterColumn<string>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:1652:            migrationBuilder.AlterColumn<DateTime>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:1660:            migrationBuilder.AlterColumn<bool>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:1668:            migrationBuilder.AlterColumn<bool>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:1676:            migrationBuilder.AlterColumn<bool>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:1684:            migrationBuilder.AlterColumn<string>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:1694:            migrationBuilder.AlterColumn<string>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:1705:            migrationBuilder.AlterColumn<bool>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:1713:            migrationBuilder.AlterColumn<string>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:1724:            migrationBuilder.AlterColumn<string>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:1734:            migrationBuilder.AlterColumn<string>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:1744:            migrationBuilder.AlterColumn<string>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:1754:            migrationBuilder.AlterColumn<string>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:1764:            migrationBuilder.AlterColumn<Guid>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:1772:            migrationBuilder.AlterColumn<string>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:1782:            migrationBuilder.AlterColumn<DateTime>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:1791:            migrationBuilder.AlterColumn<string>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:1801:            migrationBuilder.AlterColumn<string>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:1811:            migrationBuilder.AlterColumn<DateTime>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:1820:            migrationBuilder.AlterColumn<string>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:1830:            migrationBuilder.AlterColumn<string>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:1840:            migrationBuilder.AlterColumn<DateTime>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:1849:            migrationBuilder.AlterColumn<string>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:1859:            migrationBuilder.AlterColumn<DateTime>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:1867:            migrationBuilder.AlterColumn<string>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:1877:            migrationBuilder.AlterColumn<Guid>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:1885:            migrationBuilder.AlterColumn<DateTime>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:1893:            migrationBuilder.AlterColumn<string>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:1903:            migrationBuilder.AlterColumn<string>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:1909:                oldType: "nvarchar(max)");
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:1911:            migrationBuilder.AlterColumn<string>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:1917:                oldType: "nvarchar(max)");
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:1919:            migrationBuilder.AlterColumn<string>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:1925:                oldType: "nvarchar(max)");
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:1927:            migrationBuilder.AlterColumn<string>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:1933:                oldType: "nvarchar(max)");
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:1935:            migrationBuilder.AlterColumn<DateTime>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:1944:            migrationBuilder.AlterColumn<DateTime>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:1952:            migrationBuilder.AlterColumn<string>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:1962:            migrationBuilder.AlterColumn<Guid>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:1972:            migrationBuilder.AlterColumn<DateTime>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:1980:            migrationBuilder.AlterColumn<string>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:1990:            migrationBuilder.AlterColumn<string>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:1996:                oldType: "nvarchar(max)");
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:1998:            migrationBuilder.AlterColumn<DateTime>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:2006:            migrationBuilder.AlterColumn<Guid>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:2014:            migrationBuilder.AlterColumn<Guid>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:2022:            migrationBuilder.AlterColumn<DateTime>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:2030:            migrationBuilder.AlterColumn<string>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:2036:                oldType: "nvarchar(max)",
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:2039:            migrationBuilder.AlterColumn<string>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:2045:                oldType: "nvarchar(max)",
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:2048:            migrationBuilder.AlterColumn<string>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:2054:                oldType: "nvarchar(max)",
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:2057:            migrationBuilder.AlterColumn<string>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:2063:                oldType: "nvarchar(max)",
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:2066:            migrationBuilder.AlterColumn<DateTime>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:2075:            migrationBuilder.AlterColumn<string>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:2081:                oldType: "nvarchar(max)");
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:2083:            migrationBuilder.AlterColumn<string>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:2092:            migrationBuilder.AlterColumn<string>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:2098:                oldType: "nvarchar(max)");
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:2100:            migrationBuilder.AlterColumn<string>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:2106:                oldType: "nvarchar(max)");
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:2108:            migrationBuilder.AlterColumn<string>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:2114:                oldType: "nvarchar(max)");
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:2116:            migrationBuilder.AlterColumn<string>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:2124:            migrationBuilder.AlterColumn<DateTime>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:2133:            migrationBuilder.AlterColumn<string>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:2139:                oldType: "nvarchar(max)",
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:2142:            migrationBuilder.AlterColumn<string>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:2148:                oldType: "nvarchar(max)",
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:2151:            migrationBuilder.AlterColumn<string>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:2157:                oldType: "nvarchar(max)",
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:2160:            migrationBuilder.AlterColumn<string>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:2166:                oldType: "nvarchar(max)",
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:2169:            migrationBuilder.AlterColumn<string>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:2175:                oldType: "nvarchar(max)",
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:2178:            migrationBuilder.AlterColumn<DateTime>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:2187:            migrationBuilder.AlterColumn<DateTime>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:2196:            migrationBuilder.AlterColumn<DateTime>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:2204:            migrationBuilder.AlterColumn<string>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:2212:            migrationBuilder.AlterColumn<string>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:2218:                oldType: "nvarchar(max)");
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:2220:            migrationBuilder.AlterColumn<Guid>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:2228:            migrationBuilder.AlterColumn<DateTime>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:2236:            migrationBuilder.AlterColumn<int>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:2244:            migrationBuilder.AlterColumn<int>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:2252:            migrationBuilder.AlterColumn<int>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:2261:            migrationBuilder.AlterColumn<string>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:2271:            migrationBuilder.AlterColumn<string>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:2282:            migrationBuilder.AlterColumn<DateTime>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:2290:            migrationBuilder.AlterColumn<DateTime>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:2298:            migrationBuilder.AlterColumn<int>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:2306:            migrationBuilder.AlterColumn<string>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:2317:            migrationBuilder.AlterColumn<int>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:2324:                .Annotation("Sqlite:Autoincrement", true)
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:2325:                .OldAnnotation("Sqlite:Autoincrement", true);
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:2327:            migrationBuilder.AlterColumn<string>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:2338:            migrationBuilder.AlterColumn<string>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:2349:            migrationBuilder.AlterColumn<string>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:2360:            migrationBuilder.AlterColumn<string>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:2371:            migrationBuilder.AlterColumn<string>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:2382:            migrationBuilder.AlterColumn<string>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:2393:            migrationBuilder.AlterColumn<string>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:2404:            migrationBuilder.AlterColumn<string>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:2415:            migrationBuilder.AlterColumn<string>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:2426:            migrationBuilder.AlterColumn<DateTime>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:2434:            migrationBuilder.AlterColumn<string>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:2445:            migrationBuilder.AlterColumn<string>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:2456:            migrationBuilder.AlterColumn<string>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:2467:            migrationBuilder.AlterColumn<bool>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:2475:            migrationBuilder.AlterColumn<string>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:2486:            migrationBuilder.AlterColumn<string>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:2497:            migrationBuilder.AlterColumn<DateTime>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:2505:            migrationBuilder.AlterColumn<string>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:2515:            migrationBuilder.AlterColumn<Guid>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:2523:            migrationBuilder.AlterColumn<string>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:2534:            migrationBuilder.AlterColumn<string>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:2545:            migrationBuilder.AlterColumn<Guid>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:2554:            migrationBuilder.AlterColumn<string>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:2565:            migrationBuilder.AlterColumn<Guid>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:2574:            migrationBuilder.AlterColumn<string>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:2585:            migrationBuilder.AlterColumn<long>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:2592:                .Annotation("Sqlite:Autoincrement", true)
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:2593:                .OldAnnotation("Sqlite:Autoincrement", true);
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:2595:            migrationBuilder.AlterColumn<DateTime>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:2603:            migrationBuilder.AlterColumn<string>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:2613:            migrationBuilder.AlterColumn<string>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:2623:            migrationBuilder.AlterColumn<string>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:2634:            migrationBuilder.AlterColumn<string>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:2645:            migrationBuilder.AlterColumn<DateTime>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:2653:            migrationBuilder.AlterColumn<string>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:2663:            migrationBuilder.AlterColumn<string>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:2673:            migrationBuilder.AlterColumn<Guid>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:2681:            migrationBuilder.AlterColumn<string>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:2691:            migrationBuilder.AlterColumn<bool>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:2699:            migrationBuilder.AlterColumn<DateTime>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:2707:            migrationBuilder.AlterColumn<Guid>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:2715:            migrationBuilder.AlterColumn<Guid>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:2723:            migrationBuilder.AlterColumn<DateTime>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:2731:            migrationBuilder.AlterColumn<string>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:2742:            migrationBuilder.AlterColumn<string>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:2753:            migrationBuilder.AlterColumn<string>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:2764:            migrationBuilder.AlterColumn<string>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:2775:            migrationBuilder.AlterColumn<int>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:2784:            migrationBuilder.AlterColumn<DateTime>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:2792:            migrationBuilder.AlterColumn<string>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:2802:            migrationBuilder.AlterColumn<string>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:2812:            migrationBuilder.AlterColumn<Guid>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:2820:            migrationBuilder.AlterColumn<DateTime>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:2828:            migrationBuilder.AlterColumn<string>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:2838:            migrationBuilder.AlterColumn<string>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:2848:            migrationBuilder.AlterColumn<string>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:2858:            migrationBuilder.AlterColumn<Guid>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:2868:            migrationBuilder.AlterColumn<string>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:2878:            migrationBuilder.AlterColumn<string>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:2888:            migrationBuilder.AlterColumn<bool>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:2896:            migrationBuilder.AlterColumn<DateTime>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:2904:            migrationBuilder.AlterColumn<string>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:2914:            migrationBuilder.AlterColumn<string>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:2924:            migrationBuilder.AlterColumn<DateTime>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:2932:            migrationBuilder.AlterColumn<string>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:2943:            migrationBuilder.AlterColumn<Guid>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:3114:            migrationBuilder.DropTable(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:3117:            migrationBuilder.DropTable(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:3120:            migrationBuilder.DropTable(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:3123:            migrationBuilder.DropTable(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:3126:            migrationBuilder.DropTable(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:3133:            migrationBuilder.AlterColumn<string>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:3144:            migrationBuilder.AlterColumn<DateTime>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:3152:            migrationBuilder.AlterColumn<string>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:3163:            migrationBuilder.AlterColumn<string>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:3174:            migrationBuilder.AlterColumn<string>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:3184:            migrationBuilder.AlterColumn<string>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:3195:            migrationBuilder.AlterColumn<string>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:3206:            migrationBuilder.AlterColumn<string>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:3217:            migrationBuilder.AlterColumn<string>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:3227:            migrationBuilder.AlterColumn<string>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:3238:            migrationBuilder.AlterColumn<string>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:3248:            migrationBuilder.AlterColumn<string>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:3258:            migrationBuilder.AlterColumn<DateTime>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:3267:            migrationBuilder.AlterColumn<string>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:3277:            migrationBuilder.AlterColumn<string>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:3287:            migrationBuilder.AlterColumn<long>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:3295:            migrationBuilder.AlterColumn<DateTime>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:3303:            migrationBuilder.AlterColumn<string>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:3314:            migrationBuilder.AlterColumn<string>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:3325:            migrationBuilder.AlterColumn<DateTime>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:3334:            migrationBuilder.AlterColumn<int>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:3342:            migrationBuilder.AlterColumn<DateTime>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:3351:            migrationBuilder.AlterColumn<int>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:3359:            migrationBuilder.AlterColumn<DateTime>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:3368:            migrationBuilder.AlterColumn<int>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:3376:            migrationBuilder.AlterColumn<DateTime>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:3385:            migrationBuilder.AlterColumn<int>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:3393:            migrationBuilder.AlterColumn<int>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:3401:            migrationBuilder.AlterColumn<string>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:3411:            migrationBuilder.AlterColumn<string>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:3422:            migrationBuilder.AlterColumn<string>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:3432:            migrationBuilder.AlterColumn<string>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:3443:            migrationBuilder.AlterColumn<string>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:3454:            migrationBuilder.AlterColumn<string>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:3464:            migrationBuilder.AlterColumn<string>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:3475:            migrationBuilder.AlterColumn<string>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:3486:            migrationBuilder.AlterColumn<string>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:3497:            migrationBuilder.AlterColumn<string>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:3508:            migrationBuilder.AlterColumn<bool>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:3516:            migrationBuilder.AlterColumn<string>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:3526:            migrationBuilder.AlterColumn<string>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:3537:            migrationBuilder.AlterColumn<string>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:3548:            migrationBuilder.AlterColumn<string>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:3559:            migrationBuilder.AlterColumn<string>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:3570:            migrationBuilder.AlterColumn<string>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:3581:            migrationBuilder.AlterColumn<string>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:3592:            migrationBuilder.AlterColumn<bool>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:3600:            migrationBuilder.AlterColumn<Guid>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:3608:            migrationBuilder.AlterColumn<string>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:3619:            migrationBuilder.AlterColumn<bool>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:3627:            migrationBuilder.AlterColumn<string>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:3638:            migrationBuilder.AlterColumn<string>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:3649:            migrationBuilder.AlterColumn<string>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:3659:            migrationBuilder.AlterColumn<string>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:3670:            migrationBuilder.AlterColumn<string>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:3680:            migrationBuilder.AlterColumn<DateTime>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:3688:            migrationBuilder.AlterColumn<bool>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:3696:            migrationBuilder.AlterColumn<Guid>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:3705:            migrationBuilder.AlterColumn<string>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:3716:            migrationBuilder.AlterColumn<long>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:3723:                .Annotation("Sqlite:Autoincrement", true)
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:3724:                .OldAnnotation("Sqlite:Autoincrement", true);
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:3726:            migrationBuilder.AlterColumn<DateTime>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:3734:            migrationBuilder.AlterColumn<string>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:3745:            migrationBuilder.AlterColumn<string>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:3756:            migrationBuilder.AlterColumn<string>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:3767:            migrationBuilder.AlterColumn<string>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:3770:                type: "nvarchar(max)",
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:3775:            migrationBuilder.AlterColumn<string>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:3786:            migrationBuilder.AlterColumn<string>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:3796:            migrationBuilder.AlterColumn<string>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:3807:            migrationBuilder.AlterColumn<string>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:3818:            migrationBuilder.AlterColumn<bool>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:3826:            migrationBuilder.AlterColumn<DateTime>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:3834:            migrationBuilder.AlterColumn<string>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:3844:            migrationBuilder.AlterColumn<Guid>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:3852:            migrationBuilder.AlterColumn<DateTime>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:3860:            migrationBuilder.AlterColumn<int>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:3868:            migrationBuilder.AlterColumn<DateTime>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:3876:            migrationBuilder.AlterColumn<int>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:3884:            migrationBuilder.AlterColumn<string>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:3894:            migrationBuilder.AlterColumn<string>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:3905:            migrationBuilder.AlterColumn<DateTime>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:3914:            migrationBuilder.AlterColumn<string>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:3924:            migrationBuilder.AlterColumn<bool>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:3932:            migrationBuilder.AlterColumn<int>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:3940:            migrationBuilder.AlterColumn<DateTime>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:3948:            migrationBuilder.AlterColumn<int>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:3956:            migrationBuilder.AlterColumn<string>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:3967:            migrationBuilder.AlterColumn<int>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:3974:                .Annotation("Sqlite:Autoincrement", true)
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:3975:                .OldAnnotation("Sqlite:Autoincrement", true);
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:3977:            migrationBuilder.AlterColumn<DateTime>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:3985:            migrationBuilder.AlterColumn<string>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:3996:            migrationBuilder.AlterColumn<string>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:4007:            migrationBuilder.AlterColumn<string>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:4018:            migrationBuilder.AlterColumn<string>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:4028:            migrationBuilder.AlterColumn<string>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:4039:            migrationBuilder.AlterColumn<string>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:4050:            migrationBuilder.AlterColumn<string>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:4060:            migrationBuilder.AlterColumn<bool>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:4068:            migrationBuilder.AlterColumn<DateTime>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:4076:            migrationBuilder.AlterColumn<string>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:4079:                type: "nvarchar(max)",
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:4084:            migrationBuilder.AlterColumn<string>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:4094:            migrationBuilder.AlterColumn<Guid>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:4102:            migrationBuilder.AlterColumn<DateTime>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:4110:            migrationBuilder.AlterColumn<int>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:4118:            migrationBuilder.AlterColumn<int>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:4126:            migrationBuilder.AlterColumn<string>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:4137:            migrationBuilder.AlterColumn<string>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:4148:            migrationBuilder.AlterColumn<DateTime>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:4156:            migrationBuilder.AlterColumn<string>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:4167:            migrationBuilder.AlterColumn<string>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:4177:            migrationBuilder.AlterColumn<Guid>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:4185:            migrationBuilder.AlterColumn<string>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:4196:            migrationBuilder.AlterColumn<string>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:4207:            migrationBuilder.AlterColumn<string>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:4218:            migrationBuilder.AlterColumn<string>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:4228:            migrationBuilder.AlterColumn<bool>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:4236:            migrationBuilder.AlterColumn<string>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:4246:            migrationBuilder.AlterColumn<DateTime>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:4255:            migrationBuilder.AlterColumn<string>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:4266:            migrationBuilder.AlterColumn<string>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:4276:            migrationBuilder.AlterColumn<DateTime>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:4285:            migrationBuilder.AlterColumn<string>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:4296:            migrationBuilder.AlterColumn<string>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:4307:            migrationBuilder.AlterColumn<string>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:4317:            migrationBuilder.AlterColumn<string>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:4328:            migrationBuilder.AlterColumn<string>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:4339:            migrationBuilder.AlterColumn<string>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:4349:            migrationBuilder.AlterColumn<bool>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:4357:            migrationBuilder.AlterColumn<string>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:4367:            migrationBuilder.AlterColumn<bool>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:4375:            migrationBuilder.AlterColumn<string>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:4386:            migrationBuilder.AlterColumn<string>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:4397:            migrationBuilder.AlterColumn<string>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:4408:            migrationBuilder.AlterColumn<string>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:4419:            migrationBuilder.AlterColumn<string>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:4430:            migrationBuilder.AlterColumn<string>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:4441:            migrationBuilder.AlterColumn<bool>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:4449:            migrationBuilder.AlterColumn<string>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:4459:            migrationBuilder.AlterColumn<string>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:4469:            migrationBuilder.AlterColumn<Guid>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:4477:            migrationBuilder.AlterColumn<bool>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:4486:            migrationBuilder.AlterColumn<bool>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:4495:            migrationBuilder.AlterColumn<bool>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:4504:            migrationBuilder.AlterColumn<bool>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:4513:            migrationBuilder.AlterColumn<bool>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:4522:            migrationBuilder.AlterColumn<bool>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:4531:            migrationBuilder.AlterColumn<bool>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:4540:            migrationBuilder.AlterColumn<bool>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:4549:            migrationBuilder.AlterColumn<bool>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:4558:            migrationBuilder.AlterColumn<bool>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:4567:            migrationBuilder.AlterColumn<bool>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:4576:            migrationBuilder.AlterColumn<bool>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:4585:            migrationBuilder.AlterColumn<bool>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:4593:            migrationBuilder.AlterColumn<string>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:4603:            migrationBuilder.AlterColumn<string>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:4614:            migrationBuilder.AlterColumn<string>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:4624:            migrationBuilder.AlterColumn<string>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:4634:            migrationBuilder.AlterColumn<string>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:4644:            migrationBuilder.AlterColumn<string>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:4654:            migrationBuilder.AlterColumn<string>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:4664:            migrationBuilder.AlterColumn<bool>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:4672:            migrationBuilder.AlterColumn<string>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:4682:            migrationBuilder.AlterColumn<DateTime>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:4691:            migrationBuilder.AlterColumn<bool>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:4699:            migrationBuilder.AlterColumn<string>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:4710:            migrationBuilder.AlterColumn<string>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:4721:            migrationBuilder.AlterColumn<string>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:4732:            migrationBuilder.AlterColumn<string>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:4743:            migrationBuilder.AlterColumn<DateTime>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:4752:            migrationBuilder.AlterColumn<string>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:4762:            migrationBuilder.AlterColumn<DateTime>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:4770:            migrationBuilder.AlterColumn<bool>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:4778:            migrationBuilder.AlterColumn<bool>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:4786:            migrationBuilder.AlterColumn<bool>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:4794:            migrationBuilder.AlterColumn<string>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:4804:            migrationBuilder.AlterColumn<string>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:4815:            migrationBuilder.AlterColumn<bool>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:4823:            migrationBuilder.AlterColumn<string>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:4834:            migrationBuilder.AlterColumn<string>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:4844:            migrationBuilder.AlterColumn<string>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:4854:            migrationBuilder.AlterColumn<string>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:4864:            migrationBuilder.AlterColumn<string>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:4874:            migrationBuilder.AlterColumn<Guid>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:4882:            migrationBuilder.AlterColumn<string>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:4892:            migrationBuilder.AlterColumn<DateTime>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:4901:            migrationBuilder.AlterColumn<string>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:4911:            migrationBuilder.AlterColumn<string>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:4921:            migrationBuilder.AlterColumn<DateTime>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:4930:            migrationBuilder.AlterColumn<string>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:4940:            migrationBuilder.AlterColumn<string>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:4950:            migrationBuilder.AlterColumn<DateTime>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:4959:            migrationBuilder.AlterColumn<string>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:4969:            migrationBuilder.AlterColumn<DateTime>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:4977:            migrationBuilder.AlterColumn<string>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:4987:            migrationBuilder.AlterColumn<Guid>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:4995:            migrationBuilder.AlterColumn<DateTime>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:5003:            migrationBuilder.AlterColumn<string>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:5013:            migrationBuilder.AlterColumn<string>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:5016:                type: "nvarchar(max)",
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:5021:            migrationBuilder.AlterColumn<string>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:5024:                type: "nvarchar(max)",
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:5029:            migrationBuilder.AlterColumn<string>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:5032:                type: "nvarchar(max)",
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:5037:            migrationBuilder.AlterColumn<string>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:5040:                type: "nvarchar(max)",
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:5045:            migrationBuilder.AlterColumn<DateTime>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:5054:            migrationBuilder.AlterColumn<DateTime>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:5062:            migrationBuilder.AlterColumn<string>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:5072:            migrationBuilder.AlterColumn<Guid>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:5082:            migrationBuilder.AlterColumn<DateTime>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:5090:            migrationBuilder.AlterColumn<string>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:5100:            migrationBuilder.AlterColumn<string>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:5103:                type: "nvarchar(max)",
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:5108:            migrationBuilder.AlterColumn<DateTime>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:5116:            migrationBuilder.AlterColumn<Guid>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:5124:            migrationBuilder.AlterColumn<Guid>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:5132:            migrationBuilder.AlterColumn<DateTime>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:5140:            migrationBuilder.AlterColumn<string>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:5143:                type: "nvarchar(max)",
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:5149:            migrationBuilder.AlterColumn<string>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:5152:                type: "nvarchar(max)",
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:5158:            migrationBuilder.AlterColumn<string>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:5161:                type: "nvarchar(max)",
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:5167:            migrationBuilder.AlterColumn<string>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:5170:                type: "nvarchar(max)",
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:5176:            migrationBuilder.AlterColumn<DateTime>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:5185:            migrationBuilder.AlterColumn<string>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:5188:                type: "nvarchar(max)",
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:5193:            migrationBuilder.AlterColumn<string>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:5202:            migrationBuilder.AlterColumn<string>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:5205:                type: "nvarchar(max)",
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:5210:            migrationBuilder.AlterColumn<string>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:5213:                type: "nvarchar(max)",
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:5218:            migrationBuilder.AlterColumn<string>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:5221:                type: "nvarchar(max)",
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:5226:            migrationBuilder.AlterColumn<string>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:5234:            migrationBuilder.AlterColumn<DateTime>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:5243:            migrationBuilder.AlterColumn<string>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:5246:                type: "nvarchar(max)",
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:5252:            migrationBuilder.AlterColumn<string>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:5255:                type: "nvarchar(max)",
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:5261:            migrationBuilder.AlterColumn<string>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:5264:                type: "nvarchar(max)",
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:5270:            migrationBuilder.AlterColumn<string>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:5273:                type: "nvarchar(max)",
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:5279:            migrationBuilder.AlterColumn<string>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:5282:                type: "nvarchar(max)",
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:5288:            migrationBuilder.AlterColumn<DateTime>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:5297:            migrationBuilder.AlterColumn<DateTime>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:5306:            migrationBuilder.AlterColumn<DateTime>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:5314:            migrationBuilder.AlterColumn<string>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:5322:            migrationBuilder.AlterColumn<string>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:5325:                type: "nvarchar(max)",
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:5330:            migrationBuilder.AlterColumn<Guid>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:5338:            migrationBuilder.AlterColumn<DateTime>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:5346:            migrationBuilder.AlterColumn<int>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:5354:            migrationBuilder.AlterColumn<int>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:5362:            migrationBuilder.AlterColumn<int>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:5371:            migrationBuilder.AlterColumn<string>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:5381:            migrationBuilder.AlterColumn<string>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:5392:            migrationBuilder.AlterColumn<DateTime>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:5400:            migrationBuilder.AlterColumn<DateTime>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:5408:            migrationBuilder.AlterColumn<int>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:5416:            migrationBuilder.AlterColumn<string>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:5427:            migrationBuilder.AlterColumn<int>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:5434:                .Annotation("Sqlite:Autoincrement", true)
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:5435:                .OldAnnotation("Sqlite:Autoincrement", true);
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:5437:            migrationBuilder.AlterColumn<string>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:5448:            migrationBuilder.AlterColumn<string>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:5459:            migrationBuilder.AlterColumn<string>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:5470:            migrationBuilder.AlterColumn<string>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:5481:            migrationBuilder.AlterColumn<string>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:5492:            migrationBuilder.AlterColumn<string>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:5503:            migrationBuilder.AlterColumn<string>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:5514:            migrationBuilder.AlterColumn<string>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:5525:            migrationBuilder.AlterColumn<string>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:5536:            migrationBuilder.AlterColumn<DateTime>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:5544:            migrationBuilder.AlterColumn<string>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:5555:            migrationBuilder.AlterColumn<string>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:5566:            migrationBuilder.AlterColumn<string>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:5577:            migrationBuilder.AlterColumn<bool>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:5585:            migrationBuilder.AlterColumn<string>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:5596:            migrationBuilder.AlterColumn<string>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:5607:            migrationBuilder.AlterColumn<DateTime>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:5615:            migrationBuilder.AlterColumn<string>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:5625:            migrationBuilder.AlterColumn<Guid>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:5633:            migrationBuilder.AlterColumn<string>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:5644:            migrationBuilder.AlterColumn<string>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:5655:            migrationBuilder.AlterColumn<Guid>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:5664:            migrationBuilder.AlterColumn<string>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:5675:            migrationBuilder.AlterColumn<Guid>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:5684:            migrationBuilder.AlterColumn<string>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:5695:            migrationBuilder.AlterColumn<long>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:5702:                .Annotation("Sqlite:Autoincrement", true)
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:5703:                .OldAnnotation("Sqlite:Autoincrement", true);
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:5705:            migrationBuilder.AlterColumn<DateTime>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:5713:            migrationBuilder.AlterColumn<string>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:5723:            migrationBuilder.AlterColumn<string>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:5733:            migrationBuilder.AlterColumn<string>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:5744:            migrationBuilder.AlterColumn<string>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:5755:            migrationBuilder.AlterColumn<DateTime>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:5763:            migrationBuilder.AlterColumn<string>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:5773:            migrationBuilder.AlterColumn<string>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:5783:            migrationBuilder.AlterColumn<Guid>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:5791:            migrationBuilder.AlterColumn<string>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:5801:            migrationBuilder.AlterColumn<bool>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:5809:            migrationBuilder.AlterColumn<DateTime>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:5817:            migrationBuilder.AlterColumn<Guid>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:5825:            migrationBuilder.AlterColumn<Guid>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:5833:            migrationBuilder.AlterColumn<DateTime>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:5841:            migrationBuilder.AlterColumn<string>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:5852:            migrationBuilder.AlterColumn<string>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:5863:            migrationBuilder.AlterColumn<string>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:5874:            migrationBuilder.AlterColumn<string>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:5885:            migrationBuilder.AlterColumn<int>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:5894:            migrationBuilder.AlterColumn<DateTime>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:5902:            migrationBuilder.AlterColumn<string>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:5912:            migrationBuilder.AlterColumn<string>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:5922:            migrationBuilder.AlterColumn<Guid>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:5930:            migrationBuilder.AlterColumn<DateTime>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:5938:            migrationBuilder.AlterColumn<string>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:5948:            migrationBuilder.AlterColumn<string>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:5958:            migrationBuilder.AlterColumn<string>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:5968:            migrationBuilder.AlterColumn<Guid>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:5978:            migrationBuilder.AlterColumn<string>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:5988:            migrationBuilder.AlterColumn<string>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:5998:            migrationBuilder.AlterColumn<bool>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:6006:            migrationBuilder.AlterColumn<DateTime>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:6014:            migrationBuilder.AlterColumn<string>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:6024:            migrationBuilder.AlterColumn<string>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:6034:            migrationBuilder.AlterColumn<DateTime>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:6042:            migrationBuilder.AlterColumn<string>(
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.cs:6053:            migrationBuilder.AlterColumn<Guid>(
+Infrastructure/Migrations/20260209083538_20260209_InitialSqlServer.cs:9:    public partial class _20260209_InitialSqlServer : Migration
+Infrastructure/Migrations/20260209083538_20260209_InitialSqlServer.cs:102:            migrationBuilder.DropTable(
+Infrastructure/Migrations/20260209083538_20260209_InitialSqlServer.cs:105:            migrationBuilder.DropTable(
+Infrastructure/Migrations/20260209083538_20260209_InitialSqlServer.cs:108:            migrationBuilder.DropTable(
+Infrastructure/Migrations/20260521212348_AddWebsiteLeadIntakeLinks.Designer.cs:26:            SqlServerModelBuilderExtensions.UseIdentityColumns(modelBuilder);
+Infrastructure/Migrations/20260521212348_AddWebsiteLeadIntakeLinks.Designer.cs:63:                        .HasColumnType("nvarchar(max)");
+Infrastructure/Migrations/20260521212348_AddWebsiteLeadIntakeLinks.Designer.cs:163:                        .HasColumnType("nvarchar(max)");
+Infrastructure/Migrations/20260521212348_AddWebsiteLeadIntakeLinks.Designer.cs:289:                        .HasColumnType("nvarchar(max)");
+Infrastructure/Migrations/20260521212348_AddWebsiteLeadIntakeLinks.Designer.cs:475:                        .HasColumnType("nvarchar(max)");
+Infrastructure/Migrations/20260521212348_AddWebsiteLeadIntakeLinks.Designer.cs:482:                        .HasColumnType("nvarchar(max)");
+Infrastructure/Migrations/20260521212348_AddWebsiteLeadIntakeLinks.Designer.cs:489:                        .HasColumnType("nvarchar(max)");
+Infrastructure/Migrations/20260521212348_AddWebsiteLeadIntakeLinks.Designer.cs:502:                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<long>("Id"));
+Infrastructure/Migrations/20260521212348_AddWebsiteLeadIntakeLinks.Designer.cs:609:                        .HasColumnType("nvarchar(max)");
+Infrastructure/Migrations/20260521212348_AddWebsiteLeadIntakeLinks.Designer.cs:820:                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+Infrastructure/Migrations/20260521212348_AddWebsiteLeadIntakeLinks.Designer.cs:916:                        .HasColumnType("nvarchar(max)");
+Infrastructure/Migrations/20260521212348_AddWebsiteLeadIntakeLinks.Designer.cs:932:                        .HasColumnType("nvarchar(max)");
+Infrastructure/Migrations/20260521212348_AddWebsiteLeadIntakeLinks.Designer.cs:935:                        .HasColumnType("nvarchar(max)");
+Infrastructure/Migrations/20260521212348_AddWebsiteLeadIntakeLinks.Designer.cs:938:                        .HasColumnType("nvarchar(max)");
+Infrastructure/Migrations/20260521212348_AddWebsiteLeadIntakeLinks.Designer.cs:941:                        .HasColumnType("nvarchar(max)");
+Infrastructure/Migrations/20260521212348_AddWebsiteLeadIntakeLinks.Designer.cs:944:                        .HasColumnType("nvarchar(max)");
+Infrastructure/Migrations/20260521212348_AddWebsiteLeadIntakeLinks.Designer.cs:956:                        .HasColumnType("nvarchar(max)");
+Infrastructure/Migrations/20260521212348_AddWebsiteLeadIntakeLinks.Designer.cs:960:                        .HasColumnType("nvarchar(max)");
+Infrastructure/Migrations/20260521212348_AddWebsiteLeadIntakeLinks.Designer.cs:964:                        .HasColumnType("nvarchar(max)");
+Infrastructure/Migrations/20260521212348_AddWebsiteLeadIntakeLinks.Designer.cs:972:                        .HasColumnType("nvarchar(max)");
+Infrastructure/Migrations/20260521212348_AddWebsiteLeadIntakeLinks.Designer.cs:978:                        .HasColumnType("rowversion");
+Infrastructure/Migrations/20260521212348_AddWebsiteLeadIntakeLinks.Designer.cs:984:                        .HasColumnType("nvarchar(max)");
+Infrastructure/Migrations/20260521212348_AddWebsiteLeadIntakeLinks.Designer.cs:987:                        .HasColumnType("nvarchar(max)");
+Infrastructure/Migrations/20260521212348_AddWebsiteLeadIntakeLinks.Designer.cs:990:                        .HasColumnType("nvarchar(max)");
+Infrastructure/Migrations/20260521212348_AddWebsiteLeadIntakeLinks.Designer.cs:993:                        .HasColumnType("nvarchar(max)");
+Infrastructure/Migrations/20260521212348_AddWebsiteLeadIntakeLinks.Designer.cs:1097:                        .HasColumnType("nvarchar(max)");
+Infrastructure/Migrations/20260521212348_AddWebsiteLeadIntakeLinks.Designer.cs:1143:                        .HasColumnType("nvarchar(max)");
+Infrastructure/Migrations/20260521212348_AddWebsiteLeadIntakeLinks.Designer.cs:1181:                        .HasColumnType("nvarchar(max)");
+Infrastructure/Migrations/20260521212348_AddWebsiteLeadIntakeLinks.Designer.cs:1185:                        .HasColumnType("nvarchar(max)");
+Infrastructure/Migrations/20260521212348_AddWebsiteLeadIntakeLinks.Designer.cs:1189:                        .HasColumnType("nvarchar(max)");
+Infrastructure/Migrations/20260521212348_AddWebsiteLeadIntakeLinks.Designer.cs:1193:                        .HasColumnType("nvarchar(max)");
+Infrastructure/Migrations/20260521212348_AddWebsiteLeadIntakeLinks.Designer.cs:1219:                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<long>("Id"));
+Infrastructure/Migrations/20260521212348_AddWebsiteLeadIntakeLinks.Designer.cs:1296:                        .HasColumnType("nvarchar(max)");
+Infrastructure/Migrations/20260521212348_AddWebsiteLeadIntakeLinks.Designer.cs:1802:                        .HasColumnType("nvarchar(max)");
+Infrastructure/Migrations/20260521212348_AddWebsiteLeadIntakeLinks.Designer.cs:1848:                        .HasColumnType("rowversion");
+Infrastructure/Migrations/20260521212348_AddWebsiteLeadIntakeLinks.Designer.cs:1887:                        .HasColumnType("nvarchar(max)");
+Infrastructure/Migrations/20260521212348_AddWebsiteLeadIntakeLinks.Designer.cs:1943:                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+Infrastructure/Migrations/20260521212348_AddWebsiteLeadIntakeLinks.Designer.cs:2036:                        .HasColumnType("nvarchar(max)");
+Infrastructure/Migrations/20260521212348_AddWebsiteLeadIntakeLinks.Designer.cs:2070:                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<long>("Id"));
+Infrastructure/Migrations/20260521212348_AddWebsiteLeadIntakeLinks.Designer.cs:2153:                        .HasColumnType("nvarchar(max)");
+Infrastructure/Migrations/20260521212348_AddWebsiteLeadIntakeLinks.Designer.cs:2258:                        .HasColumnType("nvarchar(max)");
+Infrastructure/Migrations/20260521212348_AddWebsiteLeadIntakeLinks.Designer.cs:2333:                        .HasColumnType("nvarchar(max)");
+Infrastructure/Migrations/20260521212348_AddWebsiteLeadIntakeLinks.Designer.cs:2526:                        .HasColumnType("rowversion");
+Infrastructure/Migrations/20260209083538_20260209_InitialSqlServer.Designer.cs:15:    [Migration("20260209083538_20260209_InitialSqlServer")]
+Infrastructure/Migrations/20260209083538_20260209_InitialSqlServer.Designer.cs:16:    partial class _20260209_InitialSqlServer
+Infrastructure/Migrations/20260209083538_20260209_InitialSqlServer.Designer.cs:26:            SqlServerModelBuilderExtensions.UseIdentityColumns(modelBuilder);
+Infrastructure/Migrations/20260515064258_AddAgentProfileShortBio.cs:24:            migrationBuilder.DropColumn(
+Infrastructure/Migrations/20260217173126_20260217_ModelSync.Designer.cs:26:            SqlServerModelBuilderExtensions.UseIdentityColumns(modelBuilder);
+Infrastructure/Migrations/20260217173126_20260217_ModelSync.Designer.cs:70:                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+Infrastructure/Migrations/20260217173126_20260217_ModelSync.Designer.cs:279:                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+Infrastructure/Migrations/20260401061601_AddRowVersionConcurrency.cs:13:            // RowVersion DDL differs between SQLite (BLOB + trigger) and SQL Server (rowversion).
+Infrastructure/Migrations/20260401061601_AddRowVersionConcurrency.cs:16:            if (migrationBuilder.ActiveProvider.Contains("SqlServer", StringComparison.OrdinalIgnoreCase))
+Infrastructure/Migrations/20260401061601_AddRowVersionConcurrency.cs:47:            if (migrationBuilder.ActiveProvider.Contains("SqlServer", StringComparison.OrdinalIgnoreCase))
+Infrastructure/Migrations/20260401061601_AddRowVersionConcurrency.cs:50:            migrationBuilder.DropColumn(
+Infrastructure/Migrations/20260401061601_AddRowVersionConcurrency.cs:54:            migrationBuilder.DropColumn(
+Infrastructure/Migrations/20260401061601_AddRowVersionConcurrency.cs:58:            migrationBuilder.DropColumn(
+Infrastructure/Migrations/20260411000000_FixWebsiteLeadSqlitePrimaryKey.cs:18:    [Migration("20260411000000_FixWebsiteLeadSqlitePrimaryKey")]
+Infrastructure/Migrations/20260411000000_FixWebsiteLeadSqlitePrimaryKey.cs:19:    public partial class FixWebsiteLeadSqlitePrimaryKey : Migration
+Infrastructure/Migrations/20260411000000_FixWebsiteLeadSqlitePrimaryKey.cs:23:            if (migrationBuilder.ActiveProvider != "Microsoft.EntityFrameworkCore.Sqlite")
+Infrastructure/Migrations/20260411000000_FixWebsiteLeadSqlitePrimaryKey.cs:28:            migrationBuilder.Sql(@"
+Infrastructure/Migrations/20260411000000_FixWebsiteLeadSqlitePrimaryKey.cs:74:            migrationBuilder.Sql(@"
+Infrastructure/Migrations/20260306092018_AddFinanceToolStatesFresh.Designer.cs:26:            SqlServerModelBuilderExtensions.UseIdentityColumns(modelBuilder);
+Infrastructure/Migrations/20260306092018_AddFinanceToolStatesFresh.Designer.cs:70:                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+Infrastructure/Migrations/20260306092018_AddFinanceToolStatesFresh.Designer.cs:292:                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+Infrastructure/Migrations/20260522021601_AddAgentAwarePublicBookingConfirmationSync.cs:14:            var isSqlite = migrationBuilder.ActiveProvider.Contains("Sqlite", StringComparison.OrdinalIgnoreCase);
+Infrastructure/Migrations/20260522021601_AddAgentAwarePublicBookingConfirmationSync.cs:15:            var string80Type = isSqlite ? "TEXT" : "nvarchar(80)";
+Infrastructure/Migrations/20260522021601_AddAgentAwarePublicBookingConfirmationSync.cs:16:            var string200Type = isSqlite ? "TEXT" : "nvarchar(200)";
+Infrastructure/Migrations/20260522021601_AddAgentAwarePublicBookingConfirmationSync.cs:17:            var string320Type = isSqlite ? "TEXT" : "nvarchar(320)";
+Infrastructure/Migrations/20260522021601_AddAgentAwarePublicBookingConfirmationSync.cs:18:            var string450Type = isSqlite ? "TEXT" : "nvarchar(450)";
+Infrastructure/Migrations/20260522021601_AddAgentAwarePublicBookingConfirmationSync.cs:19:            var string2048Type = isSqlite ? "TEXT" : "nvarchar(2048)";
+Infrastructure/Migrations/20260522021601_AddAgentAwarePublicBookingConfirmationSync.cs:20:            var guidType = isSqlite ? "TEXT" : "uniqueidentifier";
+Infrastructure/Migrations/20260522021601_AddAgentAwarePublicBookingConfirmationSync.cs:21:            var boolType = isSqlite ? "INTEGER" : "bit";
+Infrastructure/Migrations/20260522021601_AddAgentAwarePublicBookingConfirmationSync.cs:137:            migrationBuilder.DropColumn(
+Infrastructure/Migrations/20260522021601_AddAgentAwarePublicBookingConfirmationSync.cs:141:            migrationBuilder.DropColumn(
+Infrastructure/Migrations/20260522021601_AddAgentAwarePublicBookingConfirmationSync.cs:145:            migrationBuilder.DropColumn(
+Infrastructure/Migrations/20260522021601_AddAgentAwarePublicBookingConfirmationSync.cs:149:            migrationBuilder.DropColumn(
+Infrastructure/Migrations/20260522021601_AddAgentAwarePublicBookingConfirmationSync.cs:153:            migrationBuilder.DropColumn(
+Infrastructure/Migrations/20260522021601_AddAgentAwarePublicBookingConfirmationSync.cs:157:            migrationBuilder.DropColumn(
+Infrastructure/Migrations/20260522021601_AddAgentAwarePublicBookingConfirmationSync.cs:161:            migrationBuilder.DropColumn(
+Infrastructure/Migrations/20260522021601_AddAgentAwarePublicBookingConfirmationSync.cs:165:            migrationBuilder.DropColumn(
+Infrastructure/Migrations/20260522021601_AddAgentAwarePublicBookingConfirmationSync.cs:169:            migrationBuilder.DropColumn(
+Infrastructure/Migrations/20260522021601_AddAgentAwarePublicBookingConfirmationSync.cs:173:            migrationBuilder.DropColumn(
+Infrastructure/Migrations/20260522021601_AddAgentAwarePublicBookingConfirmationSync.cs:177:            migrationBuilder.DropColumn(
+Infrastructure/Migrations/20260522021601_AddAgentAwarePublicBookingConfirmationSync.cs:181:            migrationBuilder.DropColumn(
+Infrastructure/Migrations/20260522021601_AddAgentAwarePublicBookingConfirmationSync.cs:185:            migrationBuilder.DropColumn(
+Infrastructure/Migrations/20260522021601_AddAgentAwarePublicBookingConfirmationSync.cs:189:            migrationBuilder.DropColumn(
+Infrastructure/Migrations/20260522021601_AddAgentAwarePublicBookingConfirmationSync.cs:193:            migrationBuilder.DropColumn(
+Infrastructure/Migrations/20260522021601_AddAgentAwarePublicBookingConfirmationSync.cs:197:            migrationBuilder.DropColumn(
+Infrastructure/Migrations/20260305042555_AddClientCrmFields.cs:60:            migrationBuilder.DropColumn(
+Infrastructure/Migrations/20260305042555_AddClientCrmFields.cs:64:            migrationBuilder.DropColumn(
+Infrastructure/Migrations/20260305042555_AddClientCrmFields.cs:68:            migrationBuilder.DropColumn(
+Infrastructure/Migrations/20260305042555_AddClientCrmFields.cs:72:            migrationBuilder.DropColumn(
+Infrastructure/Migrations/20260305042555_AddClientCrmFields.cs:76:            migrationBuilder.DropColumn(
+Infrastructure/Migrations/20260305042555_AddClientCrmFields.cs:80:            migrationBuilder.DropColumn(
+Infrastructure/Migrations/20260305042555_AddClientCrmFields.cs:84:            migrationBuilder.DropColumn(
+Infrastructure/Migrations/20260315180000_AddWorkstationLeadAttemptWindows.cs:68:        if (ActiveProvider.Contains("SqlServer", StringComparison.OrdinalIgnoreCase))
+Infrastructure/Migrations/20260315180000_AddWorkstationLeadAttemptWindows.cs:70:            migrationBuilder.Sql(
+Infrastructure/Migrations/20260315180000_AddWorkstationLeadAttemptWindows.cs:93:        migrationBuilder.DropColumn(
+Infrastructure/Migrations/20260315180000_AddWorkstationLeadAttemptWindows.cs:97:        migrationBuilder.DropColumn(
+Infrastructure/Migrations/20260315180000_AddWorkstationLeadAttemptWindows.cs:101:        migrationBuilder.DropColumn(
+Infrastructure/Migrations/20260315180000_AddWorkstationLeadAttemptWindows.cs:105:        migrationBuilder.DropColumn(
+Infrastructure/Migrations/20260315180000_AddWorkstationLeadAttemptWindows.cs:109:        migrationBuilder.DropColumn(
+Infrastructure/Migrations/20260315180000_AddWorkstationLeadAttemptWindows.cs:113:        migrationBuilder.DropColumn(
+Infrastructure/Migrations/20260315180000_AddWorkstationLeadAttemptWindows.cs:117:        migrationBuilder.DropColumn(
+Infrastructure/Migrations/20260315180000_AddWorkstationLeadAttemptWindows.cs:121:        migrationBuilder.DropColumn(
+Infrastructure/Migrations/20260413000000_AddFbclidColumns.cs:34:            migrationBuilder.DropColumn(
+Infrastructure/Migrations/20260413000000_AddFbclidColumns.cs:38:            migrationBuilder.DropColumn(
+Infrastructure/Migrations/20260210135445_ProfileAndHouseholdHardening.cs:15:            migrationBuilder.AlterColumn<string>(
+Infrastructure/Migrations/20260210135445_ProfileAndHouseholdHardening.cs:24:            migrationBuilder.AlterColumn<string>(
+Infrastructure/Migrations/20260210135445_ProfileAndHouseholdHardening.cs:40:            if (migrationBuilder.ActiveProvider.Contains("SqlServer", StringComparison.OrdinalIgnoreCase))
+Infrastructure/Migrations/20260210135445_ProfileAndHouseholdHardening.cs:42:                migrationBuilder.Sql(@"
+Infrastructure/Migrations/20260210135445_ProfileAndHouseholdHardening.cs:57:            else if (migrationBuilder.ActiveProvider.Contains("Sqlite", StringComparison.OrdinalIgnoreCase))
+Infrastructure/Migrations/20260210135445_ProfileAndHouseholdHardening.cs:59:                migrationBuilder.Sql(@"
+Infrastructure/Migrations/20260210135445_ProfileAndHouseholdHardening.cs:97:            migrationBuilder.AlterColumn<string>(
+Infrastructure/Migrations/20260210135445_ProfileAndHouseholdHardening.cs:106:            migrationBuilder.AlterColumn<string>(
+Infrastructure/Migrations/20260329093000_ExecutionMvp.cs:196:            migrationBuilder.DropTable(
+Infrastructure/Migrations/20260329093000_ExecutionMvp.cs:199:            migrationBuilder.DropTable(
+Infrastructure/Migrations/20260329093000_ExecutionMvp.cs:202:            migrationBuilder.DropTable(
+Infrastructure/Migrations/20260329093000_ExecutionMvp.cs:205:            migrationBuilder.DropTable(
+Infrastructure/Migrations/20260329093000_ExecutionMvp.cs:208:            migrationBuilder.DropTable(
+Infrastructure/Migrations/20260516100806_AddAgentProfileMetaFields.cs:24:            migrationBuilder.DropColumn(
+Infrastructure/Migrations/20260324083000_AddAgentProfileDisplayOrder.cs:15:        if (migrationBuilder.ActiveProvider == "Microsoft.EntityFrameworkCore.Sqlite")
+Infrastructure/Migrations/20260324083000_AddAgentProfileDisplayOrder.cs:31:        migrationBuilder.DropColumn(
+Infrastructure/Migrations/20260526230124_AddAnalyticsForensicTrafficSignals.cs:11:            migrationBuilder.Sql("""
+Infrastructure/Migrations/20260526230124_AddAnalyticsForensicTrafficSignals.cs:34:            migrationBuilder.Sql("""
+Infrastructure/Migrations/20260321130615_AddAgentAssistantsRuntimeFix.cs:54:            migrationBuilder.DropTable(
+Infrastructure/Migrations/20260327121010_CreateAnalyticsEventsManual.cs:21:                        .Annotation("SqlServer:Identity", "1, 1"),
+Infrastructure/Migrations/20260327121010_CreateAnalyticsEventsManual.cs:90:            migrationBuilder.DropTable(
+Infrastructure/Migrations/20260212200153_AddOwnerUserIdToBookkeeping.Designer.cs:26:            SqlServerModelBuilderExtensions.UseIdentityColumns(modelBuilder);
+Infrastructure/Migrations/20260212200153_AddOwnerUserIdToBookkeeping.Designer.cs:70:                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+Infrastructure/Migrations/20260212200153_AddOwnerUserIdToBookkeeping.Designer.cs:245:                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+Infrastructure/Migrations/20260212221532_ScopeAlignment.cs:57:            migrationBuilder.DropColumn(
+Infrastructure/Migrations/20260212221532_ScopeAlignment.cs:61:            migrationBuilder.DropColumn(
+Infrastructure/Migrations/20260327121000_CreateWebsiteLeadManual.cs:21:                        .Annotation("SqlServer:Identity", "1, 1"),
+Infrastructure/Migrations/20260327121000_CreateWebsiteLeadManual.cs:80:            migrationBuilder.DropTable(
+Infrastructure/Migrations/20260217224629_20260217_ManualAddRecurringType.Designer.cs:26:            SqlServerModelBuilderExtensions.UseIdentityColumns(modelBuilder);
+Infrastructure/Migrations/20260217224629_20260217_ManualAddRecurringType.Designer.cs:70:                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+Infrastructure/Migrations/20260217224629_20260217_ManualAddRecurringType.Designer.cs:279:                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+Infrastructure/Migrations/20260213015112_InitialBaseline.Designer.cs:26:            SqlServerModelBuilderExtensions.UseIdentityColumns(modelBuilder);
+Infrastructure/Migrations/20260213015112_InitialBaseline.Designer.cs:70:                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+Infrastructure/Migrations/20260213015112_InitialBaseline.Designer.cs:279:                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+Infrastructure/Migrations/20260330094500_RepairAgentProfilesSqlite.cs:11:    public partial class RepairAgentProfilesSqlite : Migration
+Infrastructure/Migrations/20260330094500_RepairAgentProfilesSqlite.cs:15:            if (migrationBuilder.ActiveProvider == "Microsoft.EntityFrameworkCore.Sqlite")
+Infrastructure/Migrations/20260330094500_RepairAgentProfilesSqlite.cs:18:                migrationBuilder.Sql(@"
+Infrastructure/Migrations/20260330094500_RepairAgentProfilesSqlite.cs:33:                migrationBuilder.Sql(@"ALTER TABLE ""AgentProfiles"" ADD COLUMN IF NOT EXISTS ""Phone"" TEXT NULL;");
+Infrastructure/Migrations/20260318143000_AddProposalsServerBacking.cs:47:        migrationBuilder.DropTable(
+Infrastructure/Migrations/20260306091641_AddFinanceToolStatesClean.cs:12:            if (migrationBuilder.ActiveProvider.Contains("Sqlite", StringComparison.OrdinalIgnoreCase))
+Infrastructure/Migrations/20260306091641_AddFinanceToolStatesClean.cs:14:                migrationBuilder.Sql("DROP TABLE IF EXISTS \"FinanceToolStates\";");
+Infrastructure/Migrations/20260306091641_AddFinanceToolStatesClean.cs:18:                migrationBuilder.Sql(@"
+Infrastructure/Migrations/20260306091641_AddFinanceToolStatesClean.cs:51:            migrationBuilder.DropTable(
+Infrastructure/Migrations/20260516100000_AddMetaAttributionReconciliation.cs:79:            migrationBuilder.DropColumn(
+Infrastructure/Migrations/20260516100000_AddMetaAttributionReconciliation.cs:83:            migrationBuilder.DropColumn(
+Infrastructure/Migrations/20260516100000_AddMetaAttributionReconciliation.cs:87:            migrationBuilder.DropColumn(
+Infrastructure/Migrations/20260516100000_AddMetaAttributionReconciliation.cs:91:            migrationBuilder.DropColumn(
+Infrastructure/Migrations/20260516100000_AddMetaAttributionReconciliation.cs:95:            migrationBuilder.DropColumn(
+Infrastructure/Migrations/20260526214309_AddAnalyticsEventSchemaTrackingVersion.cs:11:            migrationBuilder.Sql(@"
+Infrastructure/Migrations/20260526214309_AddAnalyticsEventSchemaTrackingVersion.cs:25:            migrationBuilder.Sql(@"
+Infrastructure/Migrations/20260305042555_AddClientCrmFields.Designer.cs:26:            SqlServerModelBuilderExtensions.UseIdentityColumns(modelBuilder);
+Infrastructure/Migrations/20260305042555_AddClientCrmFields.Designer.cs:70:                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+Infrastructure/Migrations/20260305042555_AddClientCrmFields.Designer.cs:300:                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+Infrastructure/Migrations/20260401000000_Stage1IdentityHardening.cs:39:            if (migrationBuilder.ActiveProvider.Contains("SqlServer", StringComparison.OrdinalIgnoreCase))
+Infrastructure/Migrations/20260401000000_Stage1IdentityHardening.cs:64:            if (migrationBuilder.ActiveProvider.Contains("SqlServer", StringComparison.OrdinalIgnoreCase))
+Infrastructure/Migrations/20260318012000_AddMissingOriginalLeadTypeToWorkstation.cs:23:        migrationBuilder.Sql(
+Infrastructure/Migrations/20260318012000_AddMissingOriginalLeadTypeToWorkstation.cs:27:        if (migrationBuilder.ActiveProvider.Contains("Sqlite", StringComparison.OrdinalIgnoreCase))
+Infrastructure/Migrations/20260318012000_AddMissingOriginalLeadTypeToWorkstation.cs:29:            migrationBuilder.Sql("CREATE INDEX IF NOT EXISTS \"IX_WorkstationLeadProfiles_OriginalLeadType\" ON \"WorkstationLeadProfiles\" (\"OriginalLeadType\");");
+Infrastructure/Migrations/20260318012000_AddMissingOriginalLeadTypeToWorkstation.cs:30:            migrationBuilder.Sql("CREATE INDEX IF NOT EXISTS \"IX_WorkstationLeadProfiles_AgentUserId_OriginalLeadType\" ON \"WorkstationLeadProfiles\" (\"AgentUserId\", \"OriginalLeadType\");");
+Infrastructure/Migrations/20260318012000_AddMissingOriginalLeadTypeToWorkstation.cs:34:            migrationBuilder.Sql(@"
+Infrastructure/Migrations/20260318012000_AddMissingOriginalLeadTypeToWorkstation.cs:54:        migrationBuilder.DropColumn(
+Infrastructure/Migrations/20260217173126_20260217_ModelSync.cs:24:            migrationBuilder.DropColumn(
+Infrastructure/Migrations/20260524120743_RepairAnalyticsEventsLanguageTimeZoneSqlServer.cs:7:    public partial class RepairAnalyticsEventsLanguageTimeZoneSqlServer : Migration
+Infrastructure/Migrations/20260524120743_RepairAnalyticsEventsLanguageTimeZoneSqlServer.cs:11:            migrationBuilder.Sql("""
+Infrastructure/Migrations/20260524120743_RepairAnalyticsEventsLanguageTimeZoneSqlServer.cs:22:            migrationBuilder.Sql("""
+Infrastructure/Migrations/20260319033500_AddUnderwritingServerBacking.cs:88:        migrationBuilder.DropTable(
+Infrastructure/Migrations/20260319033500_AddUnderwritingServerBacking.cs:91:        migrationBuilder.DropColumn(
+Infrastructure/Migrations/20260319033500_AddUnderwritingServerBacking.cs:95:        migrationBuilder.DropColumn(
+Infrastructure/Migrations/20260319033500_AddUnderwritingServerBacking.cs:99:        migrationBuilder.DropColumn(
+Infrastructure/Migrations/20260319033500_AddUnderwritingServerBacking.cs:103:        migrationBuilder.DropColumn(
+Infrastructure/Migrations/20260319033500_AddUnderwritingServerBacking.cs:107:        migrationBuilder.DropColumn(
+Infrastructure/Migrations/20260306091641_AddFinanceToolStatesClean.Designer.cs:26:            SqlServerModelBuilderExtensions.UseIdentityColumns(modelBuilder);
+Infrastructure/Migrations/20260306091641_AddFinanceToolStatesClean.Designer.cs:70:                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+Infrastructure/Migrations/20260306091641_AddFinanceToolStatesClean.Designer.cs:292:                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+Infrastructure/Migrations/20260209085729_20260209_AddFinanceToolStates.Designer.cs:26:            SqlServerModelBuilderExtensions.UseIdentityColumns(modelBuilder);
+Infrastructure/Migrations/20260209085729_20260209_AddFinanceToolStates.cs:39:            migrationBuilder.DropTable(
+Infrastructure/Migrations/20260330011403_ActionSurfaceSeparation.Designer.cs:445:                        .HasColumnType("nvarchar(max)");
+Infrastructure/Migrations/20260330011403_ActionSurfaceSeparation.Designer.cs:1578:                        .HasColumnType("nvarchar(max)");
+Infrastructure/Migrations/20260524025508_AddAnalyticsEventTimeZoneLanguageColumns.cs:28:            migrationBuilder.DropColumn(
+Infrastructure/Migrations/20260524025508_AddAnalyticsEventTimeZoneLanguageColumns.cs:32:            migrationBuilder.DropColumn(
+Infrastructure/Migrations/20260516100806_AddAgentProfileMetaFields.Designer.cs:26:            SqlServerModelBuilderExtensions.UseIdentityColumns(modelBuilder);
+Infrastructure/Migrations/20260516100806_AddAgentProfileMetaFields.Designer.cs:63:                        .HasColumnType("nvarchar(max)");
+Infrastructure/Migrations/20260516100806_AddAgentProfileMetaFields.Designer.cs:163:                        .HasColumnType("nvarchar(max)");
+Infrastructure/Migrations/20260516100806_AddAgentProfileMetaFields.Designer.cs:289:                        .HasColumnType("nvarchar(max)");
+Infrastructure/Migrations/20260516100806_AddAgentProfileMetaFields.Designer.cs:475:                        .HasColumnType("nvarchar(max)");
+Infrastructure/Migrations/20260516100806_AddAgentProfileMetaFields.Designer.cs:482:                        .HasColumnType("nvarchar(max)");
+Infrastructure/Migrations/20260516100806_AddAgentProfileMetaFields.Designer.cs:489:                        .HasColumnType("nvarchar(max)");
+Infrastructure/Migrations/20260516100806_AddAgentProfileMetaFields.Designer.cs:502:                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<long>("Id"));
+Infrastructure/Migrations/20260516100806_AddAgentProfileMetaFields.Designer.cs:609:                        .HasColumnType("nvarchar(max)");
+Infrastructure/Migrations/20260516100806_AddAgentProfileMetaFields.Designer.cs:820:                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+Infrastructure/Migrations/20260516100806_AddAgentProfileMetaFields.Designer.cs:916:                        .HasColumnType("nvarchar(max)");
+Infrastructure/Migrations/20260516100806_AddAgentProfileMetaFields.Designer.cs:932:                        .HasColumnType("nvarchar(max)");
+Infrastructure/Migrations/20260516100806_AddAgentProfileMetaFields.Designer.cs:935:                        .HasColumnType("nvarchar(max)");
+Infrastructure/Migrations/20260516100806_AddAgentProfileMetaFields.Designer.cs:938:                        .HasColumnType("nvarchar(max)");
+Infrastructure/Migrations/20260516100806_AddAgentProfileMetaFields.Designer.cs:941:                        .HasColumnType("nvarchar(max)");
+Infrastructure/Migrations/20260516100806_AddAgentProfileMetaFields.Designer.cs:944:                        .HasColumnType("nvarchar(max)");
+Infrastructure/Migrations/20260516100806_AddAgentProfileMetaFields.Designer.cs:956:                        .HasColumnType("nvarchar(max)");
+Infrastructure/Migrations/20260516100806_AddAgentProfileMetaFields.Designer.cs:960:                        .HasColumnType("nvarchar(max)");
+Infrastructure/Migrations/20260516100806_AddAgentProfileMetaFields.Designer.cs:964:                        .HasColumnType("nvarchar(max)");
+Infrastructure/Migrations/20260516100806_AddAgentProfileMetaFields.Designer.cs:972:                        .HasColumnType("nvarchar(max)");
+Infrastructure/Migrations/20260516100806_AddAgentProfileMetaFields.Designer.cs:978:                        .HasColumnType("rowversion");
+Infrastructure/Migrations/20260516100806_AddAgentProfileMetaFields.Designer.cs:984:                        .HasColumnType("nvarchar(max)");
+Infrastructure/Migrations/20260516100806_AddAgentProfileMetaFields.Designer.cs:987:                        .HasColumnType("nvarchar(max)");
+Infrastructure/Migrations/20260516100806_AddAgentProfileMetaFields.Designer.cs:990:                        .HasColumnType("nvarchar(max)");
+Infrastructure/Migrations/20260516100806_AddAgentProfileMetaFields.Designer.cs:993:                        .HasColumnType("nvarchar(max)");
+Infrastructure/Migrations/20260516100806_AddAgentProfileMetaFields.Designer.cs:1097:                        .HasColumnType("nvarchar(max)");
+Infrastructure/Migrations/20260516100806_AddAgentProfileMetaFields.Designer.cs:1143:                        .HasColumnType("nvarchar(max)");
+Infrastructure/Migrations/20260516100806_AddAgentProfileMetaFields.Designer.cs:1181:                        .HasColumnType("nvarchar(max)");
+Infrastructure/Migrations/20260516100806_AddAgentProfileMetaFields.Designer.cs:1185:                        .HasColumnType("nvarchar(max)");
+Infrastructure/Migrations/20260516100806_AddAgentProfileMetaFields.Designer.cs:1189:                        .HasColumnType("nvarchar(max)");
+Infrastructure/Migrations/20260516100806_AddAgentProfileMetaFields.Designer.cs:1193:                        .HasColumnType("nvarchar(max)");
+Infrastructure/Migrations/20260516100806_AddAgentProfileMetaFields.Designer.cs:1611:                        .HasColumnType("nvarchar(max)");
+Infrastructure/Migrations/20260516100806_AddAgentProfileMetaFields.Designer.cs:1657:                        .HasColumnType("rowversion");
+Infrastructure/Migrations/20260516100806_AddAgentProfileMetaFields.Designer.cs:1696:                        .HasColumnType("nvarchar(max)");
+Infrastructure/Migrations/20260516100806_AddAgentProfileMetaFields.Designer.cs:1752:                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+Infrastructure/Migrations/20260516100806_AddAgentProfileMetaFields.Designer.cs:1845:                        .HasColumnType("nvarchar(max)");
+Infrastructure/Migrations/20260516100806_AddAgentProfileMetaFields.Designer.cs:1879:                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<long>("Id"));
+Infrastructure/Migrations/20260516100806_AddAgentProfileMetaFields.Designer.cs:1962:                        .HasColumnType("nvarchar(max)");
+Infrastructure/Migrations/20260516100806_AddAgentProfileMetaFields.Designer.cs:2176:                        .HasColumnType("rowversion");
+Infrastructure/Migrations/20260420000000_AddAgentFinanceToolStates.cs:16:            if (migrationBuilder.ActiveProvider.Contains("SqlServer", StringComparison.OrdinalIgnoreCase))
+Infrastructure/Migrations/20260420000000_AddAgentFinanceToolStates.cs:18:                migrationBuilder.Sql("""
+Infrastructure/Migrations/20260420000000_AddAgentFinanceToolStates.cs:23:    JsonState nvarchar(max) NOT NULL,
+Infrastructure/Migrations/20260420000000_AddAgentFinanceToolStates.cs:33:                migrationBuilder.Sql("""
+Infrastructure/Migrations/20260420000000_AddAgentFinanceToolStates.cs:50:            migrationBuilder.DropTable(name: "AgentFinanceToolStates");
+Infrastructure/Migrations/20260323090000_AddProductionRecords.cs:63:        migrationBuilder.DropTable(
+Infrastructure/Migrations/20260413074810_EnsureFbclidColumn.Designer.cs:517:                        .HasColumnType("nvarchar(max)");
+Infrastructure/Migrations/20260413074810_EnsureFbclidColumn.Designer.cs:1826:                        .HasColumnType("nvarchar(max)");
+Infrastructure/Migrations/20260515142700_SyncCurrentModel_20260515.Designer.cs:26:            SqlServerModelBuilderExtensions.UseIdentityColumns(modelBuilder);
+Infrastructure/Migrations/20260515142700_SyncCurrentModel_20260515.Designer.cs:63:                        .HasColumnType("nvarchar(max)");
+Infrastructure/Migrations/20260515142700_SyncCurrentModel_20260515.Designer.cs:163:                        .HasColumnType("nvarchar(max)");
+Infrastructure/Migrations/20260515142700_SyncCurrentModel_20260515.Designer.cs:289:                        .HasColumnType("nvarchar(max)");
+Infrastructure/Migrations/20260515142700_SyncCurrentModel_20260515.Designer.cs:462:                        .HasColumnType("nvarchar(max)");
+Infrastructure/Migrations/20260515142700_SyncCurrentModel_20260515.Designer.cs:469:                        .HasColumnType("nvarchar(max)");
+Infrastructure/Migrations/20260515142700_SyncCurrentModel_20260515.Designer.cs:476:                        .HasColumnType("nvarchar(max)");
+Infrastructure/Migrations/20260515142700_SyncCurrentModel_20260515.Designer.cs:489:                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<long>("Id"));
+Infrastructure/Migrations/20260515142700_SyncCurrentModel_20260515.Designer.cs:596:                        .HasColumnType("nvarchar(max)");
+Infrastructure/Migrations/20260515142700_SyncCurrentModel_20260515.Designer.cs:801:                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+Infrastructure/Migrations/20260515142700_SyncCurrentModel_20260515.Designer.cs:897:                        .HasColumnType("nvarchar(max)");
+Infrastructure/Migrations/20260515142700_SyncCurrentModel_20260515.Designer.cs:913:                        .HasColumnType("nvarchar(max)");
+Infrastructure/Migrations/20260515142700_SyncCurrentModel_20260515.Designer.cs:916:                        .HasColumnType("nvarchar(max)");
+Infrastructure/Migrations/20260515142700_SyncCurrentModel_20260515.Designer.cs:919:                        .HasColumnType("nvarchar(max)");
+Infrastructure/Migrations/20260515142700_SyncCurrentModel_20260515.Designer.cs:922:                        .HasColumnType("nvarchar(max)");
+Infrastructure/Migrations/20260515142700_SyncCurrentModel_20260515.Designer.cs:925:                        .HasColumnType("nvarchar(max)");
+Infrastructure/Migrations/20260515142700_SyncCurrentModel_20260515.Designer.cs:937:                        .HasColumnType("nvarchar(max)");
+Infrastructure/Migrations/20260515142700_SyncCurrentModel_20260515.Designer.cs:941:                        .HasColumnType("nvarchar(max)");
+Infrastructure/Migrations/20260515142700_SyncCurrentModel_20260515.Designer.cs:945:                        .HasColumnType("nvarchar(max)");
+Infrastructure/Migrations/20260515142700_SyncCurrentModel_20260515.Designer.cs:953:                        .HasColumnType("nvarchar(max)");
+Infrastructure/Migrations/20260515142700_SyncCurrentModel_20260515.Designer.cs:959:                        .HasColumnType("rowversion");
+Infrastructure/Migrations/20260515142700_SyncCurrentModel_20260515.Designer.cs:965:                        .HasColumnType("nvarchar(max)");
+Infrastructure/Migrations/20260515142700_SyncCurrentModel_20260515.Designer.cs:968:                        .HasColumnType("nvarchar(max)");
+Infrastructure/Migrations/20260515142700_SyncCurrentModel_20260515.Designer.cs:971:                        .HasColumnType("nvarchar(max)");
+Infrastructure/Migrations/20260515142700_SyncCurrentModel_20260515.Designer.cs:974:                        .HasColumnType("nvarchar(max)");
+Infrastructure/Migrations/20260515142700_SyncCurrentModel_20260515.Designer.cs:1078:                        .HasColumnType("nvarchar(max)");
+Infrastructure/Migrations/20260515142700_SyncCurrentModel_20260515.Designer.cs:1124:                        .HasColumnType("nvarchar(max)");
+Infrastructure/Migrations/20260515142700_SyncCurrentModel_20260515.Designer.cs:1162:                        .HasColumnType("nvarchar(max)");
+Infrastructure/Migrations/20260515142700_SyncCurrentModel_20260515.Designer.cs:1166:                        .HasColumnType("nvarchar(max)");
+Infrastructure/Migrations/20260515142700_SyncCurrentModel_20260515.Designer.cs:1170:                        .HasColumnType("nvarchar(max)");
+Infrastructure/Migrations/20260515142700_SyncCurrentModel_20260515.Designer.cs:1174:                        .HasColumnType("nvarchar(max)");
+Infrastructure/Migrations/20260515142700_SyncCurrentModel_20260515.Designer.cs:1592:                        .HasColumnType("nvarchar(max)");
+Infrastructure/Migrations/20260515142700_SyncCurrentModel_20260515.Designer.cs:1638:                        .HasColumnType("rowversion");
+Infrastructure/Migrations/20260515142700_SyncCurrentModel_20260515.Designer.cs:1677:                        .HasColumnType("nvarchar(max)");
+Infrastructure/Migrations/20260515142700_SyncCurrentModel_20260515.Designer.cs:1733:                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+Infrastructure/Migrations/20260515142700_SyncCurrentModel_20260515.Designer.cs:1826:                        .HasColumnType("nvarchar(max)");
+Infrastructure/Migrations/20260515142700_SyncCurrentModel_20260515.Designer.cs:1860:                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<long>("Id"));
+Infrastructure/Migrations/20260515142700_SyncCurrentModel_20260515.Designer.cs:1915:                        .HasColumnType("nvarchar(max)");
+Infrastructure/Migrations/20260515142700_SyncCurrentModel_20260515.Designer.cs:2121:                        .HasColumnType("rowversion");
+Infrastructure/Migrations/20260409000940_AddBehaviorIntelligenceColumns.cs:20:            migrationBuilder.AlterColumn<string>(
+Infrastructure/Migrations/20260409000940_AddBehaviorIntelligenceColumns.cs:211:            migrationBuilder.DropColumn(
+Infrastructure/Migrations/20260409000940_AddBehaviorIntelligenceColumns.cs:215:            migrationBuilder.DropColumn(
+Infrastructure/Migrations/20260409000940_AddBehaviorIntelligenceColumns.cs:219:            migrationBuilder.DropColumn(
+Infrastructure/Migrations/20260409000940_AddBehaviorIntelligenceColumns.cs:223:            migrationBuilder.DropColumn(
+Infrastructure/Migrations/20260409000940_AddBehaviorIntelligenceColumns.cs:227:            migrationBuilder.DropColumn(
+Infrastructure/Migrations/20260409000940_AddBehaviorIntelligenceColumns.cs:231:            migrationBuilder.DropColumn(
+Infrastructure/Migrations/20260409000940_AddBehaviorIntelligenceColumns.cs:235:            migrationBuilder.DropColumn(
+Infrastructure/Migrations/20260409000940_AddBehaviorIntelligenceColumns.cs:239:            migrationBuilder.DropColumn(
+Infrastructure/Migrations/20260409000940_AddBehaviorIntelligenceColumns.cs:243:            migrationBuilder.DropColumn(
+Infrastructure/Migrations/20260409000940_AddBehaviorIntelligenceColumns.cs:247:            migrationBuilder.DropColumn(
+Infrastructure/Migrations/20260409000940_AddBehaviorIntelligenceColumns.cs:251:            migrationBuilder.DropColumn(
+Infrastructure/Migrations/20260409000940_AddBehaviorIntelligenceColumns.cs:255:            migrationBuilder.DropColumn(
+Infrastructure/Migrations/20260409000940_AddBehaviorIntelligenceColumns.cs:259:            migrationBuilder.DropColumn(
+Infrastructure/Migrations/20260409000940_AddBehaviorIntelligenceColumns.cs:263:            migrationBuilder.DropColumn(
+Infrastructure/Migrations/20260409000940_AddBehaviorIntelligenceColumns.cs:267:            migrationBuilder.DropColumn(
+Infrastructure/Migrations/20260409000940_AddBehaviorIntelligenceColumns.cs:271:            migrationBuilder.DropColumn(
+Infrastructure/Migrations/20260409000940_AddBehaviorIntelligenceColumns.cs:275:            migrationBuilder.DropColumn(
+Infrastructure/Migrations/20260409000940_AddBehaviorIntelligenceColumns.cs:279:            migrationBuilder.DropColumn(
+Infrastructure/Migrations/20260409000940_AddBehaviorIntelligenceColumns.cs:283:            migrationBuilder.DropColumn(
+Infrastructure/Migrations/20260409000940_AddBehaviorIntelligenceColumns.cs:287:            migrationBuilder.DropColumn(
+Infrastructure/Migrations/20260409000940_AddBehaviorIntelligenceColumns.cs:291:            migrationBuilder.DropColumn(
+Infrastructure/Migrations/20260409000940_AddBehaviorIntelligenceColumns.cs:295:            migrationBuilder.DropColumn(
+Infrastructure/Migrations/20260409000940_AddBehaviorIntelligenceColumns.cs:299:            migrationBuilder.DropColumn(
+Infrastructure/Migrations/20260409000940_AddBehaviorIntelligenceColumns.cs:303:            migrationBuilder.DropColumn(
+Infrastructure/Migrations/20260409000940_AddBehaviorIntelligenceColumns.cs:307:            migrationBuilder.DropColumn(
+Infrastructure/Migrations/20260409000940_AddBehaviorIntelligenceColumns.cs:316:            migrationBuilder.AlterColumn<string>(
+Infrastructure/Migrations/20260516113000_BackfillMissingAgentProfileMetaColumns.cs:16:        if (string.Equals(ActiveProvider, "Microsoft.EntityFrameworkCore.SqlServer", StringComparison.Ordinal))
+Infrastructure/Migrations/20260516113000_BackfillMissingAgentProfileMetaColumns.cs:18:            migrationBuilder.Sql(
+Infrastructure/Migrations/20260516113000_BackfillMissingAgentProfileMetaColumns.cs:46:        if (string.Equals(ActiveProvider, "Microsoft.EntityFrameworkCore.SqlServer", StringComparison.Ordinal))
+Infrastructure/Migrations/20260516113000_BackfillMissingAgentProfileMetaColumns.cs:48:            migrationBuilder.Sql(
+Infrastructure/Migrations/20260516113000_BackfillMissingAgentProfileMetaColumns.cs:59:        migrationBuilder.DropColumn(
+Infrastructure/Migrations/20260516113000_BackfillMissingAgentProfileMetaColumns.cs:63:        migrationBuilder.DropColumn(
+Infrastructure/Migrations/README_migration_hygiene.md:10:- 20260330094500_RepairAgentProfilesSqlite ensures AgentProfiles exists on SQLite before later ALTERs.
+Infrastructure/Migrations/20260321204757_AddAgentProfiles.cs:46:            migrationBuilder.DropTable(
+Infrastructure/Migrations/20260401070000_AddRowVersionConcurrency_SqlServer.cs:12:    [Migration("20260401070000_AddRowVersionConcurrency_SqlServer")]
+Infrastructure/Migrations/20260401070000_AddRowVersionConcurrency_SqlServer.cs:13:    public partial class AddRowVersionConcurrency_SqlServer : Migration
+Infrastructure/Migrations/20260401070000_AddRowVersionConcurrency_SqlServer.cs:18:            if (!migrationBuilder.ActiveProvider.Contains("SqlServer", StringComparison.OrdinalIgnoreCase))
+Infrastructure/Migrations/20260401070000_AddRowVersionConcurrency_SqlServer.cs:24:                type: "rowversion",
+Infrastructure/Migrations/20260401070000_AddRowVersionConcurrency_SqlServer.cs:32:                type: "rowversion",
+Infrastructure/Migrations/20260401070000_AddRowVersionConcurrency_SqlServer.cs:40:                type: "rowversion",
+Infrastructure/Migrations/20260401070000_AddRowVersionConcurrency_SqlServer.cs:48:            if (!migrationBuilder.ActiveProvider.Contains("SqlServer", StringComparison.OrdinalIgnoreCase))
+Infrastructure/Migrations/20260401070000_AddRowVersionConcurrency_SqlServer.cs:51:            migrationBuilder.DropColumn(
+Infrastructure/Migrations/20260401070000_AddRowVersionConcurrency_SqlServer.cs:55:            migrationBuilder.DropColumn(
+Infrastructure/Migrations/20260401070000_AddRowVersionConcurrency_SqlServer.cs:59:            migrationBuilder.DropColumn(
+Infrastructure/Migrations/20260401012634_PiiFieldEncryption.cs:14:            // AlterColumn is only required on SQL Server; SQLite TEXT has no enforced length.
+Infrastructure/Migrations/20260401012634_PiiFieldEncryption.cs:17:            if (ActiveProvider == "Microsoft.EntityFrameworkCore.Sqlite")
+Infrastructure/Migrations/20260401012634_PiiFieldEncryption.cs:20:            migrationBuilder.AlterColumn<string>(
+Infrastructure/Migrations/20260401012634_PiiFieldEncryption.cs:30:            migrationBuilder.AlterColumn<string>(
+Infrastructure/Migrations/20260401012634_PiiFieldEncryption.cs:40:            migrationBuilder.AlterColumn<string>(
+Infrastructure/Migrations/20260401012634_PiiFieldEncryption.cs:51:            migrationBuilder.AlterColumn<string>(
+Infrastructure/Migrations/20260401012634_PiiFieldEncryption.cs:68:            if (ActiveProvider == "Microsoft.EntityFrameworkCore.Sqlite")
+Infrastructure/Migrations/20260401012634_PiiFieldEncryption.cs:71:            migrationBuilder.AlterColumn<string>(
+Infrastructure/Migrations/20260401012634_PiiFieldEncryption.cs:81:            migrationBuilder.AlterColumn<string>(
+Infrastructure/Migrations/20260401012634_PiiFieldEncryption.cs:91:            migrationBuilder.AlterColumn<string>(
+Infrastructure/Migrations/20260401012634_PiiFieldEncryption.cs:102:            migrationBuilder.AlterColumn<string>(
+Infrastructure/Migrations/20260210213538_20260210_AddBookkeeping.Designer.cs:26:            SqlServerModelBuilderExtensions.UseIdentityColumns(modelBuilder);
+Infrastructure/Migrations/20260210213538_20260210_AddBookkeeping.Designer.cs:70:                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+Infrastructure/Migrations/20260210213538_20260210_AddBookkeeping.Designer.cs:241:                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+Infrastructure/Migrations/20260321020000_AddAgentAssistants.cs:51:            migrationBuilder.DropTable(name: "AgentAssistants");
+Infrastructure/Migrations/20260315000000_AddUniqueIndex_ClientProfile_Email.cs:19:            if (migrationBuilder.ActiveProvider.Contains("SqlServer", StringComparison.OrdinalIgnoreCase))
+Infrastructure/Migrations/20260315000000_AddUniqueIndex_ClientProfile_Email.cs:21:                migrationBuilder.Sql(@"
+Infrastructure/Migrations/20260315000000_AddUniqueIndex_ClientProfile_Email.cs:33:            if (migrationBuilder.ActiveProvider.Contains("Sqlite", StringComparison.OrdinalIgnoreCase))
+Infrastructure/Migrations/20260315000000_AddUniqueIndex_ClientProfile_Email.cs:35:                migrationBuilder.Sql("DROP INDEX IF EXISTS \"IX_ClientProfiles_Email\";");
+Infrastructure/Migrations/20260210135445_ProfileAndHouseholdHardening.Designer.cs:26:            SqlServerModelBuilderExtensions.UseIdentityColumns(modelBuilder);
+Infrastructure/Migrations/20260401012634_PiiFieldEncryption.Designer.cs:459:                        .HasColumnType("nvarchar(max)");
+Infrastructure/Migrations/20260401012634_PiiFieldEncryption.Designer.cs:1671:                        .HasColumnType("nvarchar(max)");
+Infrastructure/Migrations/20260404113000_AddAnalyticsClientEventIdUnique.cs:15:            if (migrationBuilder.ActiveProvider.Contains("SqlServer", StringComparison.OrdinalIgnoreCase))
+Infrastructure/Migrations/20260404113000_AddAnalyticsClientEventIdUnique.cs:17:                migrationBuilder.Sql("""
+Infrastructure/Migrations/20260404113000_AddAnalyticsClientEventIdUnique.cs:33:                migrationBuilder.Sql("""
+Infrastructure/Migrations/20260321_AddOnboarding.cs:152:            migrationBuilder.DropTable(
+Infrastructure/Migrations/20260321_AddOnboarding.cs:155:            migrationBuilder.DropTable(
+Infrastructure/Migrations/20260413074810_EnsureFbclidColumn.cs.preclean:13:            migrationBuilder.AlterColumn<string>(
+Infrastructure/Migrations/20260413074810_EnsureFbclidColumn.cs.preclean:23:            migrationBuilder.AlterColumn<int>(
+Infrastructure/Migrations/20260413074810_EnsureFbclidColumn.cs.preclean:32:            migrationBuilder.AlterColumn<int>(
+Infrastructure/Migrations/20260413074810_EnsureFbclidColumn.cs.preclean:41:            migrationBuilder.AlterColumn<string>(
+Infrastructure/Migrations/20260413074810_EnsureFbclidColumn.cs.preclean:52:            migrationBuilder.AlterColumn<string>(
+Infrastructure/Migrations/20260413074810_EnsureFbclidColumn.cs.preclean:63:            migrationBuilder.AlterColumn<int>(
+Infrastructure/Migrations/20260413074810_EnsureFbclidColumn.cs.preclean:72:            migrationBuilder.AlterColumn<int>(
+Infrastructure/Migrations/20260413074810_EnsureFbclidColumn.cs.preclean:81:            migrationBuilder.AlterColumn<int>(
+Infrastructure/Migrations/20260413074810_EnsureFbclidColumn.cs.preclean:90:            migrationBuilder.AlterColumn<string>(
+Infrastructure/Migrations/20260413074810_EnsureFbclidColumn.cs.preclean:101:            migrationBuilder.AlterColumn<string>(
+Infrastructure/Migrations/20260413074810_EnsureFbclidColumn.cs.preclean:112:            migrationBuilder.AlterColumn<string>(
+Infrastructure/Migrations/20260413074810_EnsureFbclidColumn.cs.preclean:123:            migrationBuilder.AlterColumn<string>(
+Infrastructure/Migrations/20260413074810_EnsureFbclidColumn.cs.preclean:134:            migrationBuilder.AlterColumn<string>(
+Infrastructure/Migrations/20260413074810_EnsureFbclidColumn.cs.preclean:145:            migrationBuilder.AlterColumn<string>(
+Infrastructure/Migrations/20260413074810_EnsureFbclidColumn.cs.preclean:156:            migrationBuilder.AlterColumn<string>(
+Infrastructure/Migrations/20260413074810_EnsureFbclidColumn.cs.preclean:167:            migrationBuilder.AlterColumn<string>(
+Infrastructure/Migrations/20260413074810_EnsureFbclidColumn.cs.preclean:178:            migrationBuilder.AlterColumn<string>(
+Infrastructure/Migrations/20260413074810_EnsureFbclidColumn.cs.preclean:189:            migrationBuilder.AlterColumn<bool>(
+Infrastructure/Migrations/20260413074810_EnsureFbclidColumn.cs.preclean:198:            migrationBuilder.AlterColumn<bool>(
+Infrastructure/Migrations/20260413074810_EnsureFbclidColumn.cs.preclean:207:            migrationBuilder.AlterColumn<string>(
+Infrastructure/Migrations/20260413074810_EnsureFbclidColumn.cs.preclean:218:            migrationBuilder.AlterColumn<string>(
+Infrastructure/Migrations/20260413074810_EnsureFbclidColumn.cs.preclean:229:            migrationBuilder.AlterColumn<string>(
+Infrastructure/Migrations/20260413074810_EnsureFbclidColumn.cs.preclean:239:            migrationBuilder.AlterColumn<long>(
+Infrastructure/Migrations/20260413074810_EnsureFbclidColumn.cs.preclean:248:            migrationBuilder.AlterColumn<string>(
+Infrastructure/Migrations/20260413074810_EnsureFbclidColumn.cs.preclean:259:            migrationBuilder.AlterColumn<long>(
+Infrastructure/Migrations/20260413074810_EnsureFbclidColumn.cs.preclean:268:            migrationBuilder.AlterColumn<string>(
+Infrastructure/Migrations/20260413074810_EnsureFbclidColumn.cs.preclean:279:            migrationBuilder.AlterColumn<string>(
+Infrastructure/Migrations/20260413074810_EnsureFbclidColumn.cs.preclean:294:            migrationBuilder.AlterColumn<string>(
+Infrastructure/Migrations/20260413074810_EnsureFbclidColumn.cs.preclean:304:            migrationBuilder.AlterColumn<int>(
+Infrastructure/Migrations/20260413074810_EnsureFbclidColumn.cs.preclean:313:            migrationBuilder.AlterColumn<int>(
+Infrastructure/Migrations/20260413074810_EnsureFbclidColumn.cs.preclean:322:            migrationBuilder.AlterColumn<string>(
+Infrastructure/Migrations/20260413074810_EnsureFbclidColumn.cs.preclean:333:            migrationBuilder.AlterColumn<string>(
+Infrastructure/Migrations/20260413074810_EnsureFbclidColumn.cs.preclean:344:            migrationBuilder.AlterColumn<int>(
+Infrastructure/Migrations/20260413074810_EnsureFbclidColumn.cs.preclean:353:            migrationBuilder.AlterColumn<int>(
+Infrastructure/Migrations/20260413074810_EnsureFbclidColumn.cs.preclean:362:            migrationBuilder.AlterColumn<int>(
+Infrastructure/Migrations/20260413074810_EnsureFbclidColumn.cs.preclean:371:            migrationBuilder.AlterColumn<string>(
+Infrastructure/Migrations/20260413074810_EnsureFbclidColumn.cs.preclean:382:            migrationBuilder.AlterColumn<string>(
+Infrastructure/Migrations/20260413074810_EnsureFbclidColumn.cs.preclean:393:            migrationBuilder.AlterColumn<string>(
+Infrastructure/Migrations/20260413074810_EnsureFbclidColumn.cs.preclean:404:            migrationBuilder.AlterColumn<string>(
+Infrastructure/Migrations/20260413074810_EnsureFbclidColumn.cs.preclean:415:            migrationBuilder.AlterColumn<string>(
+Infrastructure/Migrations/20260413074810_EnsureFbclidColumn.cs.preclean:426:            migrationBuilder.AlterColumn<string>(
+Infrastructure/Migrations/20260413074810_EnsureFbclidColumn.cs.preclean:437:            migrationBuilder.AlterColumn<string>(
+Infrastructure/Migrations/20260413074810_EnsureFbclidColumn.cs.preclean:448:            migrationBuilder.AlterColumn<string>(
+Infrastructure/Migrations/20260413074810_EnsureFbclidColumn.cs.preclean:459:            migrationBuilder.AlterColumn<string>(
+Infrastructure/Migrations/20260413074810_EnsureFbclidColumn.cs.preclean:470:            migrationBuilder.AlterColumn<bool>(
+Infrastructure/Migrations/20260413074810_EnsureFbclidColumn.cs.preclean:479:            migrationBuilder.AlterColumn<bool>(
+Infrastructure/Migrations/20260413074810_EnsureFbclidColumn.cs.preclean:488:            migrationBuilder.AlterColumn<string>(
+Infrastructure/Migrations/20260413074810_EnsureFbclidColumn.cs.preclean:499:            migrationBuilder.AlterColumn<string>(
+Infrastructure/Migrations/20260413074810_EnsureFbclidColumn.cs.preclean:510:            migrationBuilder.AlterColumn<string>(
+Infrastructure/Migrations/20260413074810_EnsureFbclidColumn.cs.preclean:520:            migrationBuilder.AlterColumn<long>(
+Infrastructure/Migrations/20260413074810_EnsureFbclidColumn.cs.preclean:529:            migrationBuilder.AlterColumn<string>(
+Infrastructure/Migrations/20260413074810_EnsureFbclidColumn.cs.preclean:540:            migrationBuilder.AlterColumn<long>(
+Infrastructure/Migrations/20260413074810_EnsureFbclidColumn.cs.preclean:549:            migrationBuilder.AlterColumn<string>(
+Infrastructure/Migrations/20260413074810_EnsureFbclidColumn.cs.preclean:560:            migrationBuilder.AlterColumn<string>(
+Infrastructure/Migrations/20260414120000_AddAgentZoomLinks.cs:45:            migrationBuilder.DropTable(
+Infrastructure/Migrations/20260327225000_AddAgentTrackingProfiles.cs:133:        migrationBuilder.DropTable(
+Infrastructure/Migrations/20260327225000_AddAgentTrackingProfiles.cs:136:        migrationBuilder.DropTable(
+Infrastructure/Migrations/20260327225000_AddAgentTrackingProfiles.cs:155:        migrationBuilder.DropColumn(
+Infrastructure/Migrations/20260327225000_AddAgentTrackingProfiles.cs:159:        migrationBuilder.DropColumn(
+Infrastructure/Migrations/20260327225000_AddAgentTrackingProfiles.cs:163:        migrationBuilder.DropColumn(
+Infrastructure/Migrations/20260327225000_AddAgentTrackingProfiles.cs:167:        migrationBuilder.DropColumn(
+Infrastructure/Migrations/20260524120743_RepairAnalyticsEventsLanguageTimeZoneSqlServer.Designer.cs:14:    [Migration("20260524120743_RepairAnalyticsEventsLanguageTimeZoneSqlServer")]
+Infrastructure/Migrations/20260524120743_RepairAnalyticsEventsLanguageTimeZoneSqlServer.Designer.cs:15:    partial class RepairAnalyticsEventsLanguageTimeZoneSqlServer
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.Designer.cs:428:                        .HasColumnType("nvarchar(max)");
+Infrastructure/Migrations/20260330000618_ExecutionMvp_Regen.Designer.cs:1561:                        .HasColumnType("nvarchar(max)");
+Infrastructure/Migrations/20260328071506_AddAnalyticsScaleIndexes.cs:9:            var isSqlite = migrationBuilder.ActiveProvider?.Contains("Sqlite", StringComparison.OrdinalIgnoreCase) ?? false;
+Infrastructure/Migrations/20260328071506_AddAnalyticsScaleIndexes.cs:10:            if (isSqlite)
+Infrastructure/Migrations/20260328071506_AddAnalyticsScaleIndexes.cs:91:            var isSqlite = migrationBuilder.ActiveProvider?.Contains("Sqlite", StringComparison.OrdinalIgnoreCase) ?? false;
+Infrastructure/Migrations/20260328071506_AddAnalyticsScaleIndexes.cs:92:            if (isSqlite)
+Infrastructure/Migrations/20260217223951_20260217_AddRecurringType.Designer.cs:26:            SqlServerModelBuilderExtensions.UseIdentityColumns(modelBuilder);
+Infrastructure/Migrations/20260217223951_20260217_AddRecurringType.Designer.cs:70:                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+Infrastructure/Migrations/20260217223951_20260217_AddRecurringType.Designer.cs:279:                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+Infrastructure/Migrations/20260315190000_BackfillLegacyWorkstationLeadOriginalType.cs:16:        if (ActiveProvider.Contains("SqlServer", StringComparison.OrdinalIgnoreCase))
+Infrastructure/Migrations/20260315190000_BackfillLegacyWorkstationLeadOriginalType.cs:18:            migrationBuilder.Sql(
+Infrastructure/Migrations/20260516072716_AddWebsiteLeadSoftDelete.Designer.cs:26:            SqlServerModelBuilderExtensions.UseIdentityColumns(modelBuilder);
+Infrastructure/Migrations/20260516072716_AddWebsiteLeadSoftDelete.Designer.cs:63:                        .HasColumnType("nvarchar(max)");
+Infrastructure/Migrations/20260516072716_AddWebsiteLeadSoftDelete.Designer.cs:163:                        .HasColumnType("nvarchar(max)");
+Infrastructure/Migrations/20260516072716_AddWebsiteLeadSoftDelete.Designer.cs:289:                        .HasColumnType("nvarchar(max)");
+Infrastructure/Migrations/20260516072716_AddWebsiteLeadSoftDelete.Designer.cs:462:                        .HasColumnType("nvarchar(max)");
+Infrastructure/Migrations/20260516072716_AddWebsiteLeadSoftDelete.Designer.cs:469:                        .HasColumnType("nvarchar(max)");
+Infrastructure/Migrations/20260516072716_AddWebsiteLeadSoftDelete.Designer.cs:476:                        .HasColumnType("nvarchar(max)");
+Infrastructure/Migrations/20260516072716_AddWebsiteLeadSoftDelete.Designer.cs:489:                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<long>("Id"));
+Infrastructure/Migrations/20260516072716_AddWebsiteLeadSoftDelete.Designer.cs:596:                        .HasColumnType("nvarchar(max)");
+Infrastructure/Migrations/20260516072716_AddWebsiteLeadSoftDelete.Designer.cs:801:                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+Infrastructure/Migrations/20260516072716_AddWebsiteLeadSoftDelete.Designer.cs:897:                        .HasColumnType("nvarchar(max)");
+Infrastructure/Migrations/20260516072716_AddWebsiteLeadSoftDelete.Designer.cs:913:                        .HasColumnType("nvarchar(max)");
+Infrastructure/Migrations/20260516072716_AddWebsiteLeadSoftDelete.Designer.cs:916:                        .HasColumnType("nvarchar(max)");
+Infrastructure/Migrations/20260516072716_AddWebsiteLeadSoftDelete.Designer.cs:919:                        .HasColumnType("nvarchar(max)");
+Infrastructure/Migrations/20260516072716_AddWebsiteLeadSoftDelete.Designer.cs:922:                        .HasColumnType("nvarchar(max)");
+Infrastructure/Migrations/20260516072716_AddWebsiteLeadSoftDelete.Designer.cs:925:                        .HasColumnType("nvarchar(max)");
+Infrastructure/Migrations/20260516072716_AddWebsiteLeadSoftDelete.Designer.cs:937:                        .HasColumnType("nvarchar(max)");
+Infrastructure/Migrations/20260516072716_AddWebsiteLeadSoftDelete.Designer.cs:941:                        .HasColumnType("nvarchar(max)");
+Infrastructure/Migrations/20260516072716_AddWebsiteLeadSoftDelete.Designer.cs:945:                        .HasColumnType("nvarchar(max)");
+Infrastructure/Migrations/20260516072716_AddWebsiteLeadSoftDelete.Designer.cs:953:                        .HasColumnType("nvarchar(max)");
+Infrastructure/Migrations/20260516072716_AddWebsiteLeadSoftDelete.Designer.cs:959:                        .HasColumnType("rowversion");
+Infrastructure/Migrations/20260516072716_AddWebsiteLeadSoftDelete.Designer.cs:965:                        .HasColumnType("nvarchar(max)");
+Infrastructure/Migrations/20260516072716_AddWebsiteLeadSoftDelete.Designer.cs:968:                        .HasColumnType("nvarchar(max)");
+Infrastructure/Migrations/20260516072716_AddWebsiteLeadSoftDelete.Designer.cs:971:                        .HasColumnType("nvarchar(max)");
+Infrastructure/Migrations/20260516072716_AddWebsiteLeadSoftDelete.Designer.cs:974:                        .HasColumnType("nvarchar(max)");
+Infrastructure/Migrations/20260516072716_AddWebsiteLeadSoftDelete.Designer.cs:1078:                        .HasColumnType("nvarchar(max)");
+Infrastructure/Migrations/20260516072716_AddWebsiteLeadSoftDelete.Designer.cs:1124:                        .HasColumnType("nvarchar(max)");
+Infrastructure/Migrations/20260516072716_AddWebsiteLeadSoftDelete.Designer.cs:1162:                        .HasColumnType("nvarchar(max)");
+Infrastructure/Migrations/20260516072716_AddWebsiteLeadSoftDelete.Designer.cs:1166:                        .HasColumnType("nvarchar(max)");
+Infrastructure/Migrations/20260516072716_AddWebsiteLeadSoftDelete.Designer.cs:1170:                        .HasColumnType("nvarchar(max)");
+Infrastructure/Migrations/20260516072716_AddWebsiteLeadSoftDelete.Designer.cs:1174:                        .HasColumnType("nvarchar(max)");
+Infrastructure/Migrations/20260516072716_AddWebsiteLeadSoftDelete.Designer.cs:1592:                        .HasColumnType("nvarchar(max)");
+Infrastructure/Migrations/20260516072716_AddWebsiteLeadSoftDelete.Designer.cs:1638:                        .HasColumnType("rowversion");
+Infrastructure/Migrations/20260516072716_AddWebsiteLeadSoftDelete.Designer.cs:1677:                        .HasColumnType("nvarchar(max)");
+Infrastructure/Migrations/20260516072716_AddWebsiteLeadSoftDelete.Designer.cs:1733:                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+Infrastructure/Migrations/20260516072716_AddWebsiteLeadSoftDelete.Designer.cs:1826:                        .HasColumnType("nvarchar(max)");
+Infrastructure/Migrations/20260516072716_AddWebsiteLeadSoftDelete.Designer.cs:1860:                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<long>("Id"));
+Infrastructure/Migrations/20260516072716_AddWebsiteLeadSoftDelete.Designer.cs:1931:                        .HasColumnType("nvarchar(max)");
+Infrastructure/Migrations/20260516072716_AddWebsiteLeadSoftDelete.Designer.cs:2137:                        .HasColumnType("rowversion");
+Infrastructure/Migrations/20260409000940_AddBehaviorIntelligenceColumns.Designer.cs:514:                        .HasColumnType("nvarchar(max)");
+Infrastructure/Migrations/20260409000940_AddBehaviorIntelligenceColumns.Designer.cs:1820:                        .HasColumnType("nvarchar(max)");
+Infrastructure/Migrations/20260521230742_AddLeadAppointments.cs:14:            var isSqlite = migrationBuilder.ActiveProvider.Contains("Sqlite", StringComparison.OrdinalIgnoreCase);
+Infrastructure/Migrations/20260521230742_AddLeadAppointments.cs:15:            var guidType = isSqlite ? "TEXT" : "uniqueidentifier";
+Infrastructure/Migrations/20260521230742_AddLeadAppointments.cs:16:            var workstationLeadIdType = isSqlite ? "TEXT" : "nvarchar(64)";
+Infrastructure/Migrations/20260521230742_AddLeadAppointments.cs:17:            var ownerAgentUserIdType = isSqlite ? "TEXT" : "nvarchar(450)";
+Infrastructure/Migrations/20260521230742_AddLeadAppointments.cs:18:            var statusType = isSqlite ? "TEXT" : "nvarchar(32)";
+Infrastructure/Migrations/20260521230742_AddLeadAppointments.cs:19:            var bookingSourceType = isSqlite ? "TEXT" : "nvarchar(80)";
+Infrastructure/Migrations/20260521230742_AddLeadAppointments.cs:20:            var calendarEventIdType = isSqlite ? "TEXT" : "nvarchar(256)";
+Infrastructure/Migrations/20260521230742_AddLeadAppointments.cs:21:            var urlType = isSqlite ? "TEXT" : "nvarchar(2048)";
+Infrastructure/Migrations/20260521230742_AddLeadAppointments.cs:22:            var dateTimeType = isSqlite ? "TEXT" : "datetime2";
+Infrastructure/Migrations/20260521230742_AddLeadAppointments.cs:23:            var workstationLeadDeleteBehavior = isSqlite ? ReferentialAction.Cascade : ReferentialAction.NoAction;
+Infrastructure/Migrations/20260521230742_AddLeadAppointments.cs:102:            migrationBuilder.DropTable(
+Infrastructure/Migrations/20260328071506_AddAnalyticsScaleIndexes.Designer.cs:26:            SqlServerModelBuilderExtensions.UseIdentityColumns(modelBuilder);
+Infrastructure/Migrations/20260328071506_AddAnalyticsScaleIndexes.Designer.cs:257:                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<long>("Id"));
+Infrastructure/Migrations/20260328071506_AddAnalyticsScaleIndexes.Designer.cs:304:                        .HasColumnType("nvarchar(max)");
+Infrastructure/Migrations/20260328071506_AddAnalyticsScaleIndexes.Designer.cs:400:                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+Infrastructure/Migrations/20260328071506_AddAnalyticsScaleIndexes.Designer.cs:456:                        .HasColumnType("nvarchar(max)");
+Infrastructure/Migrations/20260328071506_AddAnalyticsScaleIndexes.Designer.cs:472:                        .HasColumnType("nvarchar(max)");
+Infrastructure/Migrations/20260328071506_AddAnalyticsScaleIndexes.Designer.cs:475:                        .HasColumnType("nvarchar(max)");
+Infrastructure/Migrations/20260328071506_AddAnalyticsScaleIndexes.Designer.cs:478:                        .HasColumnType("nvarchar(max)");
+Infrastructure/Migrations/20260328071506_AddAnalyticsScaleIndexes.Designer.cs:481:                        .HasColumnType("nvarchar(max)");
+Infrastructure/Migrations/20260328071506_AddAnalyticsScaleIndexes.Designer.cs:484:                        .HasColumnType("nvarchar(max)");
+Infrastructure/Migrations/20260328071506_AddAnalyticsScaleIndexes.Designer.cs:495:                        .HasColumnType("nvarchar(max)");
+Infrastructure/Migrations/20260328071506_AddAnalyticsScaleIndexes.Designer.cs:499:                        .HasColumnType("nvarchar(max)");
+Infrastructure/Migrations/20260328071506_AddAnalyticsScaleIndexes.Designer.cs:503:                        .HasColumnType("nvarchar(max)");
+Infrastructure/Migrations/20260328071506_AddAnalyticsScaleIndexes.Designer.cs:510:                        .HasColumnType("nvarchar(max)");
+Infrastructure/Migrations/20260328071506_AddAnalyticsScaleIndexes.Designer.cs:516:                        .HasColumnType("nvarchar(max)");
+Infrastructure/Migrations/20260328071506_AddAnalyticsScaleIndexes.Designer.cs:519:                        .HasColumnType("nvarchar(max)");
+Infrastructure/Migrations/20260328071506_AddAnalyticsScaleIndexes.Designer.cs:522:                        .HasColumnType("nvarchar(max)");
+Infrastructure/Migrations/20260328071506_AddAnalyticsScaleIndexes.Designer.cs:525:                        .HasColumnType("nvarchar(max)");
+Infrastructure/Migrations/20260328071506_AddAnalyticsScaleIndexes.Designer.cs:556:                        .HasColumnType("nvarchar(max)");
+Infrastructure/Migrations/20260328071506_AddAnalyticsScaleIndexes.Designer.cs:594:                        .HasColumnType("nvarchar(max)");
+Infrastructure/Migrations/20260328071506_AddAnalyticsScaleIndexes.Designer.cs:598:                        .HasColumnType("nvarchar(max)");
+Infrastructure/Migrations/20260328071506_AddAnalyticsScaleIndexes.Designer.cs:602:                        .HasColumnType("nvarchar(max)");
+Infrastructure/Migrations/20260328071506_AddAnalyticsScaleIndexes.Designer.cs:606:                        .HasColumnType("nvarchar(max)");
+Infrastructure/Migrations/20260328071506_AddAnalyticsScaleIndexes.Designer.cs:1070:                        .HasColumnType("nvarchar(max)");
+Infrastructure/Migrations/20260328071506_AddAnalyticsScaleIndexes.Designer.cs:1126:                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+Infrastructure/Migrations/20260328071506_AddAnalyticsScaleIndexes.Designer.cs:1219:                        .HasColumnType("nvarchar(max)");
+Infrastructure/Migrations/20260328071506_AddAnalyticsScaleIndexes.Designer.cs:1253:                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<long>("Id"));
+Infrastructure/Migrations/20260328071506_AddAnalyticsScaleIndexes.Designer.cs:1304:                        .HasColumnType("nvarchar(max)");
+Infrastructure/Migrations/20260315153000_CleanupLegacyLeadPlaceholderEmails.cs:17:            if (migrationBuilder.ActiveProvider.Contains("SqlServer", StringComparison.OrdinalIgnoreCase))
+Infrastructure/Migrations/20260315153000_CleanupLegacyLeadPlaceholderEmails.cs:19:                migrationBuilder.Sql(@"
+Infrastructure/Migrations/20260212200153_AddOwnerUserIdToBookkeeping.cs:22:            if (migrationBuilder.ActiveProvider.Contains("Sqlite", StringComparison.OrdinalIgnoreCase))
+Infrastructure/Migrations/20260212200153_AddOwnerUserIdToBookkeeping.cs:51:            migrationBuilder.AlterColumn<string>(
+Infrastructure/Migrations/20260212200153_AddOwnerUserIdToBookkeeping.cs:69:            migrationBuilder.AlterColumn<string>(
+Infrastructure/Migrations/20260212200153_AddOwnerUserIdToBookkeeping.cs:109:            if (migrationBuilder.ActiveProvider.Contains("Sqlite", StringComparison.OrdinalIgnoreCase))
+Infrastructure/Migrations/20260212200153_AddOwnerUserIdToBookkeeping.cs:111:                migrationBuilder.DropColumn(
+Infrastructure/Migrations/20260212200153_AddOwnerUserIdToBookkeeping.cs:115:                migrationBuilder.DropColumn(
+Infrastructure/Migrations/20260212200153_AddOwnerUserIdToBookkeeping.cs:132:            migrationBuilder.DropColumn(
+Infrastructure/Migrations/20260212200153_AddOwnerUserIdToBookkeeping.cs:136:            migrationBuilder.DropColumn(
+Infrastructure/Migrations/20260212200153_AddOwnerUserIdToBookkeeping.cs:140:            migrationBuilder.AlterColumn<string>(
+Infrastructure/Migrations/20260212200153_AddOwnerUserIdToBookkeeping.cs:152:            migrationBuilder.AlterColumn<string>(
+Infrastructure/Migrations/20260322051537_AddAgentPhoneToProfile.cs:13:            if (migrationBuilder.ActiveProvider == "Microsoft.EntityFrameworkCore.Sqlite")
+Infrastructure/Migrations/20260322051537_AddAgentPhoneToProfile.cs:16:                migrationBuilder.Sql(@"
+Infrastructure/Migrations/20260322051537_AddAgentPhoneToProfile.cs:44:            migrationBuilder.DropColumn(
+Infrastructure/Migrations/ScriptsCrm/20260311113000_AddLeadOpportunityPlanningJson.cs:24:            migrationBuilder.DropColumn(
+Infrastructure/Migrations/ScriptsCrm/20260312090000_BackfillAgentUserIdForZac.cs:18:            migrationBuilder.Sql($@"
+Infrastructure/Migrations/ScriptsCrm/20260312090000_BackfillAgentUserIdForZac.cs:27:            migrationBuilder.Sql($@"
+Infrastructure/Migrations/ScriptsCrm/20260311140000_AddAgeAndBtcToScriptLeadProfiles.cs:32:            migrationBuilder.DropColumn(
+Infrastructure/Migrations/ScriptsCrm/20260311140000_AddAgeAndBtcToScriptLeadProfiles.cs:36:            migrationBuilder.DropColumn(
+Infrastructure/Migrations/ScriptsCrm/20260311123000_AddAgentUserIdToScriptLeadProfiles.cs:44:            migrationBuilder.DropColumn(
+Infrastructure/Migrations/ScriptsCrm/20260310190000_CreateScriptLeadProfiles.cs:67:            migrationBuilder.DropTable(
+Infrastructure/Migrations/ScriptsCrm/20260314032017_AddOriginalLeadType.cs:20:            migrationBuilder.Sql("""
+Infrastructure/Migrations/ScriptsCrm/20260314032017_AddOriginalLeadType.cs:48:            migrationBuilder.DropColumn(
+Infrastructure/Migrations/ScriptsCrm/20260315090000_RenameScriptLeadProfilesToWorkstation.cs:15:            if (migrationBuilder.ActiveProvider.Contains("Sqlite", System.StringComparison.OrdinalIgnoreCase))
+Infrastructure/Migrations/ScriptsCrm/20260315090000_RenameScriptLeadProfilesToWorkstation.cs:17:                migrationBuilder.Sql(@"
+Infrastructure/Migrations/ScriptsCrm/20260315090000_RenameScriptLeadProfilesToWorkstation.cs:24:            migrationBuilder.Sql(@"
+Infrastructure/Migrations/ScriptsCrm/20260315090000_RenameScriptLeadProfilesToWorkstation.cs:64:            if (migrationBuilder.ActiveProvider.Contains("Sqlite", System.StringComparison.OrdinalIgnoreCase))
+Infrastructure/Migrations/ScriptsCrm/20260315090000_RenameScriptLeadProfilesToWorkstation.cs:66:                migrationBuilder.Sql(@"
+Infrastructure/Migrations/ScriptsCrm/20260315090000_RenameScriptLeadProfilesToWorkstation.cs:72:            migrationBuilder.Sql(@"
+Infrastructure/Migrations/20260331130000_IdentityEmailNormalization.cs:38:            migrationBuilder.Sql("UPDATE AgentProfiles SET NormalizedEmail = LOWER(LTRIM(RTRIM(AgentUpn))) WHERE NormalizedEmail IS NULL AND AgentUpn IS NOT NULL AND LTRIM(RTRIM(AgentUpn)) <> '';");
+Infrastructure/Migrations/20260331130000_IdentityEmailNormalization.cs:39:            migrationBuilder.Sql("UPDATE ClientProfiles SET NormalizedEmail = LOWER(LTRIM(RTRIM(Email))) WHERE NormalizedEmail IS NULL AND Email IS NOT NULL AND LTRIM(RTRIM(Email)) <> '';");
+Infrastructure/Migrations/20260331130000_IdentityEmailNormalization.cs:40:            migrationBuilder.Sql("UPDATE AgentAssistants SET NormalizedEmail = LOWER(LTRIM(RTRIM(Email))) WHERE NormalizedEmail IS NULL AND Email IS NOT NULL AND LTRIM(RTRIM(Email)) <> '';");
+Infrastructure/Migrations/20260331130000_IdentityEmailNormalization.cs:41:            migrationBuilder.Sql("UPDATE OnboardingInvites SET NormalizedEmail = LOWER(LTRIM(RTRIM(Email))) WHERE NormalizedEmail IS NULL AND Email IS NOT NULL AND LTRIM(RTRIM(Email)) <> '';");
+Infrastructure/Migrations/20260331130000_IdentityEmailNormalization.cs:44:            if (migrationBuilder.ActiveProvider.Contains("SqlServer", StringComparison.OrdinalIgnoreCase))
+Infrastructure/Migrations/20260331130000_IdentityEmailNormalization.cs:46:                migrationBuilder.Sql(@"
+Infrastructure/Migrations/20260331130000_IdentityEmailNormalization.cs:99:            migrationBuilder.DropColumn(
+Infrastructure/Migrations/20260331130000_IdentityEmailNormalization.cs:103:            migrationBuilder.DropColumn(
+Infrastructure/Migrations/20260331130000_IdentityEmailNormalization.cs:107:            migrationBuilder.DropColumn(
+Infrastructure/Migrations/20260212221532_ScopeAlignment.Designer.cs:26:            SqlServerModelBuilderExtensions.UseIdentityColumns(modelBuilder);
+Infrastructure/Migrations/20260212221532_ScopeAlignment.Designer.cs:70:                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+Infrastructure/Migrations/20260212221532_ScopeAlignment.Designer.cs:248:                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+Infrastructure/Migrations/20260403090000_AddClientFinancialPlan.cs:37:            if (ActiveProvider == "Microsoft.EntityFrameworkCore.SqlServer")
+Infrastructure/Migrations/20260403090000_AddClientFinancialPlan.cs:59:            migrationBuilder.DropTable(

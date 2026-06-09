@@ -84,7 +84,6 @@ namespace Protect_Website.Models
 
         [Required, DataType(DataType.Date)] public DateTime? NewPolicyEffectiveDate { get; set; }
 
-        [Required] public string AdditionalCarrierQuestions { get; set; } = "";
         [Required] public string Paperless { get; set; } = ""; // Yes/No
         [Required] public string MultiPolicyDiscount { get; set; } = "";
 
@@ -109,8 +108,23 @@ namespace Protect_Website.Models
         [Required] public string ResidenceType { get; set; } = "";
 
         // ===================== DISCLAIMER / AUTH =====================
-        [Range(typeof(bool), "true", "true", ErrorMessage = "You must acknowledge the authorization to submit.")]
         public bool AcknowledgedDisclaimer { get; set; }
+
+        // ── Attribution (populated by JS before submit, persisted server-side) ──
+        public string? SessionId { get; set; }
+        public string? VisitorId { get; set; }
+        public string? UtmSource { get; set; }
+        public string? UtmMedium { get; set; }
+        public string? UtmCampaign { get; set; }
+        public string? UtmId { get; set; }
+        public string? UtmTerm { get; set; }
+        public string? UtmContent { get; set; }
+        public string? MetaCampaignId { get; set; }
+        public string? MetaAdSetId { get; set; }
+        public string? MetaAdId { get; set; }
+        public string? Fbclid { get; set; }
+        public string? ReferrerUrl { get; set; }
+        public string? LandingPageUrl { get; set; }
     }
 
     public class Driver

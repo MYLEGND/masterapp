@@ -6,10 +6,10 @@ namespace AgentPortal.Controllers.API
 {
     [ApiController]
     [Route("api/diag")]
+    [Authorize]
     public class DiagController : ControllerBase
     {
         [HttpGet("whoami")]
-        [AllowAnonymous]
         public IActionResult WhoAmI()
         {
             if (!HttpContext.RequestServices.GetRequiredService<IWebHostEnvironment>().IsDevelopment())
@@ -24,7 +24,6 @@ namespace AgentPortal.Controllers.API
         }
 
         [HttpGet("routes")]
-        [AllowAnonymous]
         public IActionResult Routes([FromServices] IEnumerable<EndpointDataSource> sources)
         {
             if (!HttpContext.RequestServices.GetRequiredService<IWebHostEnvironment>().IsDevelopment())

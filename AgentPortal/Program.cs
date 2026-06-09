@@ -3,6 +3,7 @@ using AgentPortal.Middleware;
 using AgentPortal.Services;
 using Azure.Identity;
 using Infrastructure.Data;
+using Infrastructure.Identity;
 using AgentPortal.Security;
 using AgentPortal.Services.Analytics;
 using Microsoft.AspNetCore.Authentication.Cookies;
@@ -19,6 +20,7 @@ using Microsoft.Extensions.Options;
 using Microsoft.Graph;
 using Microsoft.Identity.Web;
 using AgentPortal.Services.Tracking;
+using Microsoft.Extensions.Caching.Distributed;
 using Microsoft.EntityFrameworkCore;
 using LegendApp.Services.Budget;
 using LegendApp.Services.Budget.Interfaces;
@@ -26,6 +28,7 @@ using Microsoft.Identity.Web.UI;
 using QuestPDF.Infrastructure;
 using System.Threading.RateLimiting;
 using System.IO;
+using System.Linq;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -57,6 +60,10 @@ builder.Services
 // ✅ REQUIRED: Identity UI endpoints are Razor Pages
 builder.Services.AddRazorPages().AddMicrosoftIdentityUI();
 
+// Feature flags (all default false; override via configuration)
+builder.Services.Configure<AgentPortal.Models.AppFeatureFlags>(builder.Configuration.GetSection("Features"));
+builder.Services.Configure<AgentPortal.Models.Analytics.LandingRoutesOptions>(builder.Configuration.GetSection("LandingRoutes"));
+
 builder.Services.AddAuthorization(options =>
 {
     options.AddPolicy("FounderOnly", policy =>
@@ -67,6 +74,7 @@ builder.Services.AddAuthorization(options =>
 
 builder.Services.AddHttpContextAccessor();
 builder.Services.AddScoped<ClientProvisioningService>();
+builder.Services.AddScoped<IAzureClientEmailSyncService, AzureClientEmailSyncService>();
 builder.Services.AddScoped<AssistantContextService>();
 builder.Services.AddScoped<AgentRegistryService>();
 builder.Services.AddScoped<AgencyCommandService>();
@@ -76,8 +84,42 @@ builder.Services.AddScoped<EffectiveAgentContext>();
 builder.Services.AddScoped<IAdvancedMarketsCalculationService, AdvancedMarketsCalculationService>();
 builder.Services.AddSingleton<IAgentTimeZoneResolver, AgentTimeZoneResolver>();
 builder.Services.AddSingleton<IBudgetCalculator, BudgetCalculator>();
-builder.Services.AddSingleton<ILeadBridgeStateService, LeadBridgeStateService>();
+var redisConn = builder.Configuration["SignalR:RedisConnectionString"];
+// LeadBridge state: Redis-backed (multi-instance ready) when Redis is configured; in-memory fallback for local dev
+if (!string.IsNullOrWhiteSpace(redisConn))
+    builder.Services.AddSingleton<ILeadBridgeStateService, DistributedLeadBridgeStateService>();
+else
+    builder.Services.AddSingleton<ILeadBridgeStateService, LeadBridgeStateService>();
 builder.Services.AddScoped<IAnalyticsQueryService, AnalyticsQueryService>();
+builder.Services.AddScoped<IMetaSignalAnalyticsService, MetaSignalAnalyticsService>();
+builder.Services.AddSingleton<ILandingRouteDiscoveryService, LandingRouteDiscoveryService>();
+builder.Services.AddScoped<AgentPortal.Services.Analytics.WebsiteAnalyticsAiDataBuilder>();
+builder.Services.AddScoped<AgentPortal.Services.Analytics.IVisitorConcentrationService, AgentPortal.Services.Analytics.VisitorConcentrationService>();
+builder.Services.AddScoped<AgentPortal.Services.Analytics.IKpiDetailBreakdownService, AgentPortal.Services.Analytics.KpiDetailBreakdownService>();
+builder.Services.AddScoped<AgentPortal.Services.Analytics.IVisitorTrustScoringService, AgentPortal.Services.Analytics.VisitorTrustScoringService>();
+builder.Services.AddScoped<AgentPortal.Services.Analytics.OpenAiWebsiteAnalyticsReviewService>();
+builder.Services.AddHttpClient("OpenAI", c =>
+{
+    // IsNullOrWhiteSpace so an empty string in config ("BaseUrl": "") falls through
+    // to the default instead of producing a schemeless URI that resolves to file:///.
+    var configuredBase = builder.Configuration["OpenAI:BaseUrl"];
+    var resolvedBase = !string.IsNullOrWhiteSpace(configuredBase)
+        ? configuredBase.TrimEnd('/') + "/"
+        : "https://api.openai.com/";
+    c.BaseAddress = new Uri(resolvedBase);
+    // Timeout is slightly longer than the service-level timeout (OpenAI:TimeoutSeconds)
+    // so the service's CancellationTokenSource fires first and returns a clean error.
+    var svcTimeout = int.TryParse(builder.Configuration["OpenAI:TimeoutSeconds"], out var st) && st > 0 ? st : 30;
+    c.Timeout = TimeSpan.FromSeconds(svcTimeout + 5);
+});
+// Warn at startup if OpenAI key is missing — non-fatal; AI features simply return error results
+if (!AgentPortal.Services.Analytics.OpenAiKeyResolver.IsConfigured(builder.Configuration))
+{
+    Console.WriteLine("[WARN] OpenAI API key is not configured. AI insights features will return error results until a key is set via OpenAI:ApiKey (config) or the OPENAI_API_KEY environment variable.");
+}
+builder.Services.AddScoped<IMetaAdsService, MetaAdsService>();
+builder.Services.AddScoped<IMetaAdsConnectionStore, MetaAdsConnectionStore>();
+builder.Services.AddScoped<IMetaAdsOAuthService, MetaAdsOAuthService>();
 builder.Services.AddScoped<IAgentTrackingService, AgentTrackingService>();
 builder.Services.AddScoped<AgentTrackingProvisioningFilter>();
 builder.Services.AddScoped<AgentTrackingResolver>();
@@ -88,12 +130,47 @@ builder.Services.AddScoped<ICommitmentService, CommitmentService>();
 builder.Services.AddScoped<IPlaybookEngine, PlaybookEngine>();
 builder.Services.AddScoped<INotificationService, NoOpNotificationService>();
 builder.Services.AddHostedService<MigrationHealthHostedService>();
+builder.Services.AddHostedService<GraphCalendarSubscriptionHostedService>();
+builder.Services.AddSingleton<MetaCapiCredentialProtector>();
 builder.Services.AddSingleton<PiiProtector>();
-builder.Services.AddHealthChecks()
+builder.Services.AddSingleton<IngestSignatureValidator>();
+builder.Services.AddMemoryCache();
+builder.Services.AddSingleton<AgentPortal.Services.ImportValidation.LeadImportValidator>();
+builder.Services.AddScoped<DerivedAnalyticsService>();
+builder.Services.AddHttpClient("ResilientDefault")
+    .SetHandlerLifetime(TimeSpan.FromMinutes(5));
+var hcBuilder = builder.Services.AddHealthChecks()
     .AddCheck<DbReadinessCheck>("db", tags: ["ready"]);
+// Redis health check registered only when Redis is configured (redisConn declared above)
+if (!string.IsNullOrWhiteSpace(redisConn))
+    hcBuilder.AddCheck<RedisReadinessCheck>("redis", tags: ["ready"]);
+hcBuilder.AddCheck<AgentPortal.Health.LiveSyncPingHealthCheck>("livesync", tags: ["ready"]);
+hcBuilder.AddCheck<AgentPortal.Health.IngestHealthCheck>("ingest", tags: ["ready"]);
 builder.Services.Configure<EmailOptions>(builder.Configuration.GetSection("Email"));
-builder.Services.AddSingleton<IEmailSender, SmtpEmailSender>();
-builder.Services.AddSignalR();
+builder.Services.AddSingleton<SmtpEmailSender>();
+builder.Services.AddSingleton<IEmailSender>(sp =>
+{
+    var inner = sp.GetRequiredService<SmtpEmailSender>();
+    var logger = sp.GetRequiredService<ILogger<AgentPortal.Services.Resilience.ResilientEmailSender>>();
+    var flags = sp.GetRequiredService<Microsoft.Extensions.Options.IOptions<AgentPortal.Models.AppFeatureFlags>>();
+    return new AgentPortal.Services.Resilience.ResilientEmailSender(inner, logger, flags);
+});
+// Application Insights telemetry — only registered when connection string is present
+if (!string.IsNullOrWhiteSpace(builder.Configuration["APPLICATIONINSIGHTS_CONNECTION_STRING"]))
+    builder.Services.AddApplicationInsightsTelemetry();
+
+var signalRBuilder = builder.Services.AddSignalR(o =>
+{
+    o.MaximumReceiveMessageSize = 64 * 1024; // 64 KB per message — guard against oversized payloads
+});
+if (!string.IsNullOrWhiteSpace(redisConn))
+    signalRBuilder.AddStackExchangeRedis(redisConn);
+
+// Distributed cache: Redis when available; in-memory fallback for local dev
+if (!string.IsNullOrWhiteSpace(redisConn))
+    builder.Services.AddStackExchangeRedisCache(o => o.Configuration = redisConn);
+else
+    builder.Services.AddDistributedMemoryCache();
 
 // CORS for ingest endpoints (allow local testing + portal host)
 var allowedOrigins = builder.Configuration.GetSection("Cors:AllowedOrigins").Get<string[]>() ?? Array.Empty<string>();
@@ -146,6 +223,16 @@ else
 builder.Services.AddRateLimiter(options =>
 {
     options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
+    options.AddPolicy("ingest", context =>
+        RateLimitPartition.GetFixedWindowLimiter(
+            partitionKey: context.Connection.RemoteIpAddress?.ToString() ?? "anon",
+            factory: _ => new FixedWindowRateLimiterOptions
+            {
+                PermitLimit = 300,
+                Window = TimeSpan.FromMinutes(1),
+                QueueProcessingOrder = QueueProcessingOrder.OldestFirst,
+                QueueLimit = 0
+            }));
     options.AddPolicy("anon-public", context =>
         RateLimitPartition.GetFixedWindowLimiter(
             partitionKey: context.Connection.RemoteIpAddress?.ToString() ?? "anon",
@@ -273,16 +360,18 @@ static void EnsureSqliteBackup(string sqliteConnString, int keepLatest = 20)
 
 static string? ResolveMasterDb(IConfiguration config)
 {
-    var cs = config.GetConnectionString("MasterAppDb");
-    if (!string.IsNullOrWhiteSpace(cs)) return cs.Trim();
-
-    cs = Environment.GetEnvironmentVariable("SQLCONNSTR_MasterAppDb");
+    // Azure App Service injects Connection Strings as SQLCONNSTR_<Name>.
+    // Check environment first so appsettings SQLite defaults never override production SQL.
+    var cs = Environment.GetEnvironmentVariable("SQLCONNSTR_MasterAppDb");
     if (!string.IsNullOrWhiteSpace(cs)) return cs.Trim();
 
     cs = Environment.GetEnvironmentVariable("ConnectionStrings__MasterAppDb");
     if (!string.IsNullOrWhiteSpace(cs)) return cs.Trim();
 
     cs = Environment.GetEnvironmentVariable("MasterAppDb");
+    if (!string.IsNullOrWhiteSpace(cs)) return cs.Trim();
+
+    cs = config.GetConnectionString("MasterAppDb");
     if (!string.IsNullOrWhiteSpace(cs)) return cs.Trim();
 
     return null;
@@ -309,6 +398,28 @@ static string ResolveDevSqlite(string contentRootPath)
 
 var configuredDb = ResolveMasterDb(builder.Configuration);
 var useSqlServer = IsSqlServerConn(configuredDb) && !IsSqliteConn(configuredDb);
+var isAzureAppService = !string.IsNullOrEmpty(Environment.GetEnvironmentVariable("WEBSITE_SITE_NAME"));
+var useSqlServerInDevelopment =
+    !string.Equals(
+        builder.Configuration["Database:UseSqlServerInDevelopment"],
+        "false",
+        StringComparison.OrdinalIgnoreCase)
+    || string.Equals(
+        Environment.GetEnvironmentVariable("MASTERAPP_DEV_USE_SQLSERVER"),
+        "true",
+        StringComparison.OrdinalIgnoreCase);
+
+if (builder.Environment.IsDevelopment() &&
+    !isAzureAppService &&
+    useSqlServer &&
+    !useSqlServerInDevelopment)
+{
+    Console.WriteLine(
+        "[INFO] Development environment detected with a SQL Server connection string available. " +
+        "Using SQL Server as the default local provider. " +
+        "Set Database:UseSqlServerInDevelopment=false only if you intentionally want SQLite locally.");
+    useSqlServer = false;
+}
 
 // Resolve SQLite path: on Azure App Service use persistent %HOME%/data/ storage;
 // on local dev use ContentRootPath/App_Data/.
@@ -328,11 +439,44 @@ static string ResolveSqliteForEnvironment(IWebHostEnvironment env)
 
 var sqliteConn = useSqlServer ? null : ResolveSqliteForEnvironment(builder.Environment);
 
+// ── Founder / owner identity resolution ──────────────────────────────────
+// Primary:   OWNER_EMAIL / FOUNDER_OID  Azure App Service Application Settings (env vars)
+// Secondary: Founder:Email / Founder:Oid  appsettings.Production.json config keys
+// Sets env vars so that OnboardingGuard / FounderGuard static fields pick them up
+// on first use (which happens per-request, after this startup block runs).
+{
+    var resolvedOwnerEmail =
+        Environment.GetEnvironmentVariable("OWNER_EMAIL")
+        ?? Environment.GetEnvironmentVariable("OwnerEmail")
+        ?? builder.Configuration["Founder:Email"]?.Trim();
+
+    if (!string.IsNullOrWhiteSpace(resolvedOwnerEmail))
+        Environment.SetEnvironmentVariable("OWNER_EMAIL", resolvedOwnerEmail);
+
+    var resolvedFounderOid =
+        Environment.GetEnvironmentVariable("FOUNDER_OID")
+        ?? Environment.GetEnvironmentVariable("FounderOid")
+        ?? builder.Configuration["Founder:Oid"]?.Trim();
+
+    if (!string.IsNullOrWhiteSpace(resolvedFounderOid))
+        Environment.SetEnvironmentVariable("FOUNDER_OID", resolvedFounderOid);
+}
+
+// PRODUCTION GUARD: owner email must resolve from at least one source.
+var ownerEmail = Environment.GetEnvironmentVariable("OWNER_EMAIL");
+if (string.IsNullOrWhiteSpace(ownerEmail) &&
+    string.Equals(builder.Environment.EnvironmentName, "Production", StringComparison.OrdinalIgnoreCase))
+{
+    throw new InvalidOperationException(
+        "STARTUP BLOCKED: Owner email is required in Production. " +
+        "Set OWNER_EMAIL in Azure App Service → Configuration → Application settings, " +
+        "or add Founder:Email to appsettings.Production.json.");
+}
+
 // PRODUCTION GUARD: refuse to start on SQLite when running on Azure App Service.
 // If WEBSITE_SITE_NAME is set, we are in a hosted/deployed environment and must have
 // a SQL Server connection string. A missing or misconfigured connection string must
 // produce a hard startup failure, not a silent SQLite fallback.
-var isAzureAppService = !string.IsNullOrEmpty(Environment.GetEnvironmentVariable("WEBSITE_SITE_NAME"));
 if (!useSqlServer && isAzureAppService)
 {
     throw new InvalidOperationException(
@@ -347,10 +491,22 @@ if (sqliteConn != null)
     EnsureSqliteBackup(sqliteConn);
 }
 
+// Migration strictness is opt-in.
+// When enabled, startup will hard-stop on pending migrations and pending model changes.
+// Leave disabled when the priority is app availability over schema enforcement.
+var strictMigrations = string.Equals(builder.Configuration["Migrations:Strict"], "true", StringComparison.OrdinalIgnoreCase)
+    || string.Equals(Environment.GetEnvironmentVariable("MIGRATION_STRICT"), "true", StringComparison.OrdinalIgnoreCase);
+
 builder.Services.AddDbContext<MasterAppDbContext>(options =>
 {
-    // Suppress PendingModelChangesWarning in all environments so Migrate() never throws on snapshot drift
-    options.ConfigureWarnings(w => w.Ignore(RelationalEventId.PendingModelChangesWarning));
+    // In strict environments, treat model drift as fatal; in local/dev keep warnings noisy but non-blocking.
+    options.ConfigureWarnings(w =>
+    {
+        if (strictMigrations)
+            w.Throw(RelationalEventId.PendingModelChangesWarning);
+        else
+            w.Ignore(RelationalEventId.PendingModelChangesWarning);
+    });
 
     if (useSqlServer)
     {
@@ -410,6 +566,24 @@ builder.Services.AddSingleton<GraphServiceClient>(sp =>
     return new GraphServiceClient(cred, new[] { "https://graph.microsoft.com/.default" });
 });
 
+// For OIDC challenges (Graph token expiry), also return 401 for AJAX requests
+// instead of redirecting to Azure AD — same reason as the cookie handler below.
+builder.Services.Configure<OpenIdConnectOptions>(OpenIdConnectDefaults.AuthenticationScheme, oidcOptions =>
+{
+    var original = oidcOptions.Events?.OnRedirectToIdentityProvider;
+    oidcOptions.Events ??= new Microsoft.AspNetCore.Authentication.OpenIdConnect.OpenIdConnectEvents();
+    oidcOptions.Events.OnRedirectToIdentityProvider = async ctx =>
+    {
+        if (ctx.Request.Headers["X-Requested-With"] == "XMLHttpRequest")
+        {
+            ctx.Response.StatusCode = StatusCodes.Status401Unauthorized;
+            ctx.HandleResponse();
+            return;
+        }
+        if (original != null) await original(ctx);
+    };
+});
+
 // Cookie behavior (kept)
 builder.Services.ConfigureApplicationCookie(options =>
 {
@@ -423,11 +597,76 @@ builder.Services.ConfigureApplicationCookie(options =>
     options.LoginPath = "/MicrosoftIdentity/Account/SignIn";
     options.LogoutPath = "/MicrosoftIdentity/Account/SignOut";
     options.AccessDeniedPath = "/Access/Denied";
+
+    // For AJAX/fetch calls, return 401 instead of redirecting to Azure AD.
+    // Without this, fetch() follows the 302 cross-origin → CORS blocks it.
+    options.Events.OnRedirectToLogin = ctx =>
+    {
+        if (ctx.Request.Headers["X-Requested-With"] == "XMLHttpRequest")
+        {
+            ctx.Response.StatusCode = StatusCodes.Status401Unauthorized;
+            return Task.CompletedTask;
+        }
+        ctx.Response.Redirect(ctx.RedirectUri);
+        return Task.CompletedTask;
+    };
+    options.Events.OnRedirectToAccessDenied = ctx =>
+    {
+        if (ctx.Request.Headers["X-Requested-With"] == "XMLHttpRequest")
+        {
+            ctx.Response.StatusCode = StatusCodes.Status403Forbidden;
+            return Task.CompletedTask;
+        }
+        ctx.Response.Redirect(ctx.RedirectUri);
+        return Task.CompletedTask;
+    };
 });
 
 builder.Services.AddAuthorization();
 
 var app = builder.Build();
+
+if (builder.Configuration.GetValue<bool>("Database:RunMigrationsOnStartup"))
+{
+    using var scope = app.Services.CreateScope();
+    var db = scope.ServiceProvider.GetRequiredService<MasterAppDbContext>();
+
+    try
+    {
+        db.Database.Migrate();
+        Console.WriteLine("SUCCESS: Production migrations applied.");
+    }
+    catch (Exception ex)
+    {
+        Console.WriteLine($"FAILED applying migrations: {ex}");
+        throw;
+    }
+}
+
+
+// Hard-stop on unapplied migrations in strict environments to prevent schema drift reaching prod.
+if (strictMigrations && !builder.Environment.IsDevelopment())
+{
+    using var scope = app.Services.CreateScope();
+    var db = scope.ServiceProvider.GetRequiredService<MasterAppDbContext>();
+    var pending = db.Database.GetPendingMigrations().ToList();
+    if (pending.Count > 0)
+    {
+        var preview = string.Join(", ", pending.Take(5));
+        throw new InvalidOperationException($"STARTUP BLOCKED: pending EF migrations detected ({pending.Count}). Apply migrations before deploy. First: {preview}");
+    }
+
+    // Optional: require Redis for SignalR when the feature flag is enabled
+    var flags = scope.ServiceProvider.GetRequiredService<Microsoft.Extensions.Options.IOptions<AgentPortal.Models.AppFeatureFlags>>().Value;
+    if (flags.SignalRRequireRedis && string.IsNullOrWhiteSpace(builder.Configuration["SignalR:RedisConnectionString"]))
+    {
+        throw new InvalidOperationException("STARTUP BLOCKED: SignalR Redis connection is required in production when SignalRRequireRedis is enabled.");
+    }
+
+    // Emit applied migration signature for observability
+    var applied = db.Database.GetAppliedMigrations().ToList();
+    app.Logger.LogInformation("Migrations applied: {AppliedCount} latest={LatestMigration}", applied.Count, applied.LastOrDefault() ?? "(none)");
+}
 
 // Auto-migrate SQLite (local dev only). SQL Server migrations must be applied explicitly
 // via 'dotnet ef database update' before deployment — never at runtime on production.
@@ -448,12 +687,20 @@ var app = builder.Build();
         var db = scope.ServiceProvider.GetRequiredService<MasterAppDbContext>();
         try
         {
-            db.Database.Migrate();
-            startupLogger.LogInformation("SQLite startup migration applied successfully.");
+            if (builder.Environment.IsDevelopment())
+            {
+                db.Database.EnsureCreated();
+                startupLogger.LogInformation("SQLite local development database ensured from current model without destructive reset.");
+            }
+            else
+            {
+                db.Database.Migrate();
+                startupLogger.LogInformation("SQLite startup migration applied successfully.");
+            }
         }
         catch (Exception ex)
         {
-            startupLogger.LogError(ex, "SQLite startup migration failed — schema may be stale.");
+            startupLogger.LogError(ex, "SQLite startup database initialization failed.");
         }
     }
 }
@@ -505,7 +752,7 @@ app.Use(async (context, next) =>
         var csp = "default-src 'self'; " +
                   "img-src 'self' data: blob: https:; " +
                   "style-src 'self' 'unsafe-inline' https:; " +
-                  "script-src 'self' 'unsafe-inline' 'unsafe-eval' https:; " +
+                  "script-src 'self' 'unsafe-inline' https:; " +
                   "font-src 'self' data: https:; " +
                   "connect-src 'self' https: wss:; " +
                   "frame-ancestors 'self';";
@@ -516,7 +763,12 @@ app.Use(async (context, next) =>
 });
 
 app.UseForwardedHeaders();
-app.UseHttpsRedirection();
+// Keep local proxy-to-portal calls simple in Development (Protect-Website -> AgentPortal)
+// by allowing HTTP on localhost. HTTPS redirection remains enforced outside Development.
+if (!app.Environment.IsDevelopment())
+{
+    app.UseHttpsRedirection();
+}
 app.UseStaticFiles();
 
 // Required for SignalR WebSocket upgrades on Azure App Service

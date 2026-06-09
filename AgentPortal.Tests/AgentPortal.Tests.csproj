@@ -2,24 +2,56 @@
   <PropertyGroup>
     <TargetFramework>net10.0</TargetFramework>
     <IsPackable>false</IsPackable>
+    <IsTestProject>true</IsTestProject>
+    <CopyLocalLockFileAssemblies>true</CopyLocalLockFileAssemblies>
     <Nullable>enable</Nullable>
   </PropertyGroup>
 
   <ItemGroup>
     <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.10.0" />
     <PackageReference Include="xunit" Version="2.6.4" />
-    <PackageReference Include="xunit.runner.visualstudio" Version="2.6.4">
+    <PackageReference Include="xunit.runner.visualstudio" Version="2.8.0">
       <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
       <PrivateAssets>all</PrivateAssets>
     </PackageReference>
+    <PackageReference Include="Microsoft.TestPlatform.TestHost" Version="17.10.0" />
     <PackageReference Include="Moq" Version="4.20.70" />
     <PackageReference Include="Microsoft.EntityFrameworkCore.InMemory" Version="10.0.2" />
+    <PackageReference Include="Microsoft.AspNetCore.Mvc.Testing" Version="10.0.1" />
+    <PackageReference Include="Microsoft.Extensions.Caching.Memory" Version="10.0.2" />
+    <!-- Pin patched transitive packages used by the net10 Microsoft.Identity.Web.TokenCache test graph. -->
+    <PackageReference Include="Microsoft.AspNetCore.DataProtection" Version="10.0.7" />
+    <PackageReference Include="System.Security.Cryptography.Xml" Version="10.0.7" />
   </ItemGroup>
 
   <ItemGroup>
     <ProjectReference Include="..\\AgentPortal\\AgentPortal.csproj" />
+    <ProjectReference Include="..\\ClientApp\\ClientApp.csproj" />
     <ProjectReference Include="..\\Domain\\Domain.csproj" />
     <ProjectReference Include="..\\Infrastructure\\Infrastructure.csproj" />
+    <ProjectReference Include="..\\Protect-Website\\ProtectWebsite.csproj" />
     <ProjectReference Include="..\\SHARED\\Shared.csproj" />
   </ItemGroup>
+
+  <Target Name="EnsureTestHostRuntimeConfig" AfterTargets="Build">
+    <Copy
+      SourceFiles="$(OutDir)AgentPortal.runtimeconfig.json"
+      DestinationFiles="$(OutDir)testhost.runtimeconfig.json"
+      Condition="Exists('$(OutDir)AgentPortal.runtimeconfig.json')" />
+  </Target>
+
+  <Target Name="EnsureXunitAdapterPresent" AfterTargets="Build">
+    <ItemGroup>
+      <XunitAdapterFiles Include="$(HOME)/.nuget/packages/xunit.runner.visualstudio/2.8.0/build/net6.0/xunit.runner.visualstudio.testadapter.dll" />
+      <XunitAdapterFiles Include="$(HOME)/.nuget/packages/xunit.runner.visualstudio/2.8.0/build/net6.0/xunit.runner.utility.netcoreapp10.dll" />
+      <XunitAdapterFiles Include="$(HOME)/.nuget/packages/xunit.runner.visualstudio/2.8.0/build/net6.0/xunit.runner.reporters.netcoreapp10.dll" />
+      <XunitAdapterFiles Include="$(HOME)/.nuget/packages/xunit.runner.visualstudio/2.8.0/build/net6.0/xunit.abstractions.dll" />
+    </ItemGroup>
+
+    <Copy
+      SourceFiles="@(XunitAdapterFiles)"
+      DestinationFolder="$(OutDir)"
+      SkipUnchangedFiles="true"
+      Condition="'@(XunitAdapterFiles)' != ''" />
+  </Target>
 </Project>

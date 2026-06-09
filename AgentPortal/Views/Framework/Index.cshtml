@@ -8,6 +8,7 @@
 
     var selectedToolFile = selectedTool != null ? selectedTool.File : "";
     var selectedToolLabel = selectedTool != null ? selectedTool.Label : "Framework Tool";
+    var selectedToolPath = $"~/images/illustrations/{selectedToolFile}";
 
     var taglineLine1 = "Where Your Faith Fuels Your Future";
     var taglineLine2 = "& Wellness Meets Wealth";
@@ -48,7 +49,8 @@
 
     <div id="toolDisplay" class="mt-4 text-center framework-display" style="border:1.5px solid #a68023; border-radius:6px; padding:10px;">
         <img id="currentTool" 
-             src="@Url.Content($"~/images/illustrations/{selectedToolFile}")" 
+             src="@selectedToolPath"
+             asp-append-version="true"
              alt="@selectedToolLabel" 
              style="max-width:100%; max-height:80vh; height:auto; display:block; margin:0 auto;" />
     </div>

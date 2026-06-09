@@ -1,8 +1,10 @@
 using Infrastructure.Data;
+using Infrastructure.Identity;
 using ClientApp.Services;
 using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.Authentication.OpenIdConnect;
 using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.DataProtection;
 using Microsoft.AspNetCore.Diagnostics;
 using Microsoft.AspNetCore.Mvc.Authorization;
 using Microsoft.EntityFrameworkCore;
@@ -27,7 +29,9 @@ builder.Services.AddControllersWithViews(options =>
 
 builder.Services.AddHttpContextAccessor();
 builder.Services.AddScoped<EffectiveClientContextService>();
-builder.Services.AddScoped<IAzureUserUpdater, NoopAzureUserUpdater>();
+builder.Services.AddScoped<IAzureClientEmailSyncService, AzureClientEmailSyncService>();
+builder.Services.AddScoped<IAzureUserUpdater, AzureUserUpdaterAdapter>();
+builder.Services.AddDataProtection().SetApplicationName("MasterApp.ClientApp");
 
 // ------------------------------------------------------------
 // DB CONNECTION RESOLUTION
@@ -114,13 +118,21 @@ static void EnsureSqliteDirectoryExists(string sqliteConnString)
 // Pull the connection string Azure injects (or secrets/local)
 var configuredDb = builder.Configuration.GetConnectionString("MasterAppDb");
 
-// In local development, prefer SQLite unless explicitly opting into Azure SQL.
-var useSqlServerInDev = string.Equals(
-    Environment.GetEnvironmentVariable("USE_SQLSERVER_IN_DEV"),
+// Development provider selection:
+// - If Azure SQL connection string exists, use it by default for parity with live data.
+// - Set USE_SQLITE_IN_DEV=true to force local SQLite.
+// - Legacy toggle USE_SQLSERVER_IN_DEV=false also forces SQLite.
+var forceSqliteInDev = string.Equals(
+    Environment.GetEnvironmentVariable("USE_SQLITE_IN_DEV"),
     "true",
     StringComparison.OrdinalIgnoreCase);
 
-if (builder.Environment.IsDevelopment() && !useSqlServerInDev && IsSqlServerConn(configuredDb))
+var disableSqlServerInDev = string.Equals(
+    Environment.GetEnvironmentVariable("USE_SQLSERVER_IN_DEV"),
+    "false",
+    StringComparison.OrdinalIgnoreCase);
+
+if (builder.Environment.IsDevelopment() && (forceSqliteInDev || disableSqlServerInDev) && IsSqlServerConn(configuredDb))
     configuredDb = null;
 
 // Decide provider
@@ -184,7 +196,8 @@ builder.Services.AddAuthentication(options =>
 {
     options.Authority = $"https://login.microsoftonline.com/{tenantId}/v2.0";
     options.ClientId = clientId;
-    options.ClientSecret = clientSecret ?? "";
+    if (!string.IsNullOrWhiteSpace(clientSecret))
+        options.ClientSecret = clientSecret;
     options.CallbackPath = callbackPath;
 
     options.ResponseType = "code";
@@ -219,7 +232,44 @@ builder.Services.AddAuthentication(options =>
             }
 
             return Task.CompletedTask;
+        },
+
+        // Return 401 for AJAX requests instead of redirecting to Azure AD
+        OnRedirectToIdentityProvider = ctx =>
+        {
+            if (ctx.Request.Headers["X-Requested-With"] == "XMLHttpRequest")
+            {
+                ctx.Response.StatusCode = StatusCodes.Status401Unauthorized;
+                ctx.HandleResponse();
+                return Task.CompletedTask;
+            }
+            return Task.CompletedTask;
         }
+    };
+});
+
+builder.Services.Configure<CookieAuthenticationOptions>(CookieAuthenticationDefaults.AuthenticationScheme, options =>
+{
+    options.Events.OnRedirectToLogin = ctx =>
+    {
+        if (ctx.Request.Headers["X-Requested-With"] == "XMLHttpRequest")
+        {
+            ctx.Response.StatusCode = StatusCodes.Status401Unauthorized;
+            return Task.CompletedTask;
+        }
+        ctx.Response.Redirect(ctx.RedirectUri);
+        return Task.CompletedTask;
+    };
+
+    options.Events.OnRedirectToAccessDenied = ctx =>
+    {
+        if (ctx.Request.Headers["X-Requested-With"] == "XMLHttpRequest")
+        {
+            ctx.Response.StatusCode = StatusCodes.Status403Forbidden;
+            return Task.CompletedTask;
+        }
+        ctx.Response.Redirect(ctx.RedirectUri);
+        return Task.CompletedTask;
     };
 });
 

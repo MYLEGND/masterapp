@@ -1,6 +1,8 @@
 @model ClientApp.Models.EditClientViewModel
 @{
     ViewData["Title"] = "Update Profile";
+    var childCount = Model?.Children?.Count ?? 0;
+    var dobText = Model?.DOB.HasValue == true ? Model.DOB.Value.ToString("MM/dd/yyyy") : "—";
 }
 
 <style>
@@ -13,64 +15,94 @@
     body { background:#ffffff; color:#0f172a; font-family:'Inter', sans-serif; }
 
     .profile-shell{
-        max-width:1100px;
+        max-width:1040px;
         margin:0 auto;
-        padding:24px 16px 42px;
+        padding:14px 16px 32px;
     }
     .profile-card{
         background: var(--navy);
         color:#f8fafc;
         border:1.6px solid var(--gold);
-        border-radius:16px;
-        box-shadow:0 20px 42px rgba(0,0,0,.28), inset 0 0 0 1px rgba(255,255,255,.08);
+        border-radius:14px;
+        box-shadow:0 18px 36px rgba(0,0,0,.30), inset 0 0 0 1px rgba(255,255,255,.07);
         overflow:hidden;
     }
-    .profile-card .card-header{
-        background: var(--navy-2);
-        border-bottom:1px solid rgba(166,128,35,.38);
-        padding:1.1rem 1.5rem;
+    .profile-card-header{
+        position:relative;
+        background:
+            linear-gradient(180deg, rgba(15,29,56,.96), rgba(8,18,36,.98));
+        border-bottom:1px solid rgba(166,128,35,.42);
+        padding:.95rem 1.2rem;
         display:flex;
         justify-content:space-between;
         align-items:center;
-        gap:1rem;
+        gap:.95rem;
         flex-wrap:wrap;
+        box-shadow:inset 0 1px 0 rgba(255,255,255,.07);
+    }
+    .profile-card-header::before{
+        content:"";
+        position:absolute;
+        top:0;
+        left:0;
+        right:0;
+        height:3px;
+        background:linear-gradient(90deg, #8f6b14, #c79931, #f2d891, #c79931);
+    }
+    .profile-header-copy{
+        display:grid;
+        gap:.22rem;
+        min-width:0;
     }
     .profile-card h2{
         margin:0;
-        font-weight:900;
-        letter-spacing:.4px;
-        color: #c79931;
+        font-size:1.28rem;
+        line-height:1.1;
+        font-weight:950;
+        letter-spacing:.2px;
+        color:#f8fafc;
     }
-    .badge{
-        background: rgba(166,128,35,.16);
-        border:1px solid rgba(166,128,35,.52);
+    .profile-badge{
+        width:max-content;
+        background:rgba(166,128,35,.12);
+        border:1px solid rgba(242,216,145,.40);
         border-radius:999px;
-        padding:0.35rem 0.9rem;
-        font-weight:800;
-        color:#0b1529;
+        padding:.18rem .64rem;
+        font-weight:900;
+        color:#f2d891;
+        font-size:.72rem;
+        letter-spacing:.08em;
+        text-transform:uppercase;
     }
     .legend-help{
-        color:#0b1529;
-        font-size:0.95rem;
+        color:#cbd5e1;
+        font-size:.86rem;
         margin:0.15rem 0 0;
     }
+    .profile-header-copy .legend-help{
+        color:rgba(203,213,225,.84);
+        font-size:.83rem;
+        line-height:1.35;
+        margin:0;
+        font-weight:650;
+    }
     .profile-card .card-body{
-        padding:1.5rem;
+        padding:1.15rem 1.2rem 1.25rem;
         display:grid;
-        gap:1rem;
+        gap:.85rem;
     }
     .avatar-block{
         display:flex;
         flex-wrap:wrap;
-        gap:1.2rem;
+        gap:1rem;
         align-items:center;
-        padding:0.8rem 0.6rem;
+        padding:0.45rem 0 0.9rem;
         border-bottom:1px solid rgba(166,128,35,.24);
-        margin-bottom:0.5rem;
+        margin-bottom:0.15rem;
     }
     .avatar-preview{
-        width:110px;
-        height:110px;
+        width:88px;
+        height:88px;
         border-radius:50%;
         overflow:hidden;
         border:2px solid var(--gold-strong);
@@ -100,10 +132,10 @@
         background: var(--gold);
         color:#0b1529;
         border:1px solid var(--gold-strong);
-        border-radius:12px;
+        border-radius:10px;
         font-weight:900;
-        padding:0.9rem 1.4rem;
-        box-shadow:0 14px 28px rgba(0,0,0,.28), inset 0 1px 0 rgba(255,255,255,.16);
+        padding:.72rem 1.05rem;
+        box-shadow:0 10px 22px rgba(0,0,0,.26), inset 0 1px 0 rgba(255,255,255,.16);
         text-decoration:none;
         display:inline-flex;
         align-items:center;
@@ -122,28 +154,35 @@
         border-color: rgba(166,128,35,.62);
         box-shadow:0 10px 22px rgba(0,0,0,.24), inset 0 1px 0 rgba(255,255,255,.10);
     }
+    .profile-card-header .legend-btn.secondary{
+        min-height:40px;
+        padding:.58rem .95rem;
+        border-radius:9px;
+        box-shadow:inset 0 1px 0 rgba(255,255,255,.08);
+    }
     .legend-btn-small{
-        padding:0.65rem 1.1rem;
-        border-radius:10px;
+        padding:.55rem .95rem;
+        border-radius:9px;
     }
     .two-col{
         display:grid;
-        gap:1rem;
-        grid-template-columns:repeat(auto-fit, minmax(240px,1fr));
+        gap:.75rem;
+        grid-template-columns:repeat(auto-fit, minmax(220px,1fr));
     }
     .label{
         font-weight:800;
         color:#f8fafc;
-        margin-bottom:.35rem;
+        margin-bottom:.22rem;
         letter-spacing:.2px;
+        font-size:.9rem;
     }
     .input{
         width:100%;
-        border-radius:10px;
+        border-radius:9px;
         border:1.5px solid rgba(166,128,35,.62);
         background: var(--navy-2);
         color:#f8fafc;
-        padding:0.85rem 1rem;
+        padding:.68rem .8rem;
         font-weight:700;
         box-shadow: inset 0 1px 0 rgba(255,255,255,.08);
     }
@@ -157,49 +196,100 @@
     .note{ color:#cbd5e1; font-size:0.9rem; margin:4px 0 0; }
     .form-actions{
         display:flex;
-        gap:0.75rem;
+        gap:.65rem;
         flex-wrap:wrap;
-        margin-top:0.5rem;
+        margin-top:.2rem;
     }
-    .subcard{
-        border:1px solid rgba(166,128,35,.22);
-        background: rgba(15,29,56,.72);
-        border-radius:14px;
-        padding:14px;
+    .profile-card .subcard{
+        border:1px solid rgba(166,128,35,.42) !important;
+        background:linear-gradient(180deg, rgba(15,29,56,.88), rgba(8,18,36,.84)) !important;
+        border-radius:12px;
+        padding:.75rem;
+        box-shadow: inset 0 1px 0 rgba(255,255,255,.05);
     }
     .subcard-top{
         display:flex;
-        align-items:center;
+        align-items:flex-start;
         justify-content:space-between;
-        gap:10px;
+        gap:.7rem;
         flex-wrap:wrap;
-        margin-bottom:10px;
+        margin-bottom:.6rem;
     }
     .section-title{
         font-weight:950;
         letter-spacing:.25px;
-        color: var(--gold-strong);
+        color:#f2d891;
         margin:0;
-        font-size:1.05rem;
+        font-size:1rem;
+        line-height:1.2;
     }
     .pill{
         border-radius:999px;
-        padding:6px 12px;
+        padding:5px 10px;
         font-weight:950;
         border:1px solid rgba(166,128,35,.35);
         background: rgba(166,128,35,.16);
-        color: var(--gold-strong);
+        color:#f6e6b4;
+        font-size:.8rem;
         white-space:nowrap;
+    }
+    .full{ grid-column:1 / -1; }
+    .child-list{
+        display:grid;
+        gap:.55rem;
+    }
+    .child-card{
+        border:1px solid rgba(166,128,35,.34);
+        border-radius:10px;
+        padding:.65rem;
+        background:rgba(8,18,36,.64);
+        display:grid;
+        gap:.6rem;
+    }
+    .child-card-top{
+        display:flex;
+        justify-content:space-between;
+        align-items:center;
+        gap:.5rem;
+        flex-wrap:wrap;
+    }
+    .child-title{
+        font-weight:900;
+        color:#f8fafc;
+        font-size:.92rem;
+    }
+    .small-action{
+        border:1px solid rgba(166,128,35,.62);
+        border-radius:999px;
+        min-height:32px;
+        padding:0 .72rem;
+        background:rgba(166,128,35,.14);
+        color:#f2d891;
+        font-weight:900;
+        font-size:.82rem;
+        cursor:pointer;
+    }
+    .small-action:hover{
+        background:rgba(166,128,35,.24);
+        color:#fff;
+    }
+    @@media (max-width:640px){
+        .profile-card-header{
+            align-items:stretch;
+        }
+        .profile-card-header .legend-btn.secondary{
+            width:100%;
+        }
     }
 </style>
 
 <div class="profile-shell">
     <div class="profile-card">
-        <div class="card-header">
-            <div>
-                <div class="badge">My Profile</div>
-                <h2>Update account</h2>
-                <p class="legend-help mb-0">Keep your contact info current; DOB is read-only and shown to your agent.</p>
+        <div class="profile-card-header">
+            <div class="profile-header-copy">
+                <div class="profile-badge">Client Profile</div>
+                <h2>Edit profile</h2>
+                <p class="legend-help mb-0">Update contact and household details shared with your agent.</p>
             </div>
             <a class="legend-btn secondary" href="/profile">Back to profile</a>
         </div>
@@ -262,7 +352,7 @@
                     </div>
                     <div>
                         <label class="label">Date of birth</label>
-                        <input class="input" value="@((Model.DOB.HasValue ? Model.DOB.Value.ToString("MM/dd/yyyy") : "—"))" readonly />
+                        <input class="input" value="@dobText" readonly />
                         <p class="legend-help mb-0">Contact support to correct your DOB.</p>
                     </div>
                 </div>
@@ -289,8 +379,7 @@
                         </div>
                         <div>
                             <label asp-for="SignificantOtherDOB" class="label">Date of birth</label>
-                            <input asp-for="SignificantOtherDOB" class="input" readonly id="SignificantOtherDOB" />
-                            <div class="note">Contact support to update.</div>
+                            <input asp-for="SignificantOtherDOB" type="date" class="input" id="SignificantOtherDOB" />
                             <span asp-validation-for="SignificantOtherDOB" class="text-danger validation"></span>
                         </div>
                         <div>
@@ -303,6 +392,56 @@
                             <input asp-for="SignificantOtherEmail" class="input" />
                             <span asp-validation-for="SignificantOtherEmail" class="text-danger validation"></span>
                         </div>
+                    </div>
+                </div>
+
+                <div class="subcard" style="margin-top:12px;">
+                    <div class="subcard-top">
+                        <div>
+                            <div class="section-title">Children</div>
+                            <div class="note">Shared with your agent.</div>
+                        </div>
+                        <button type="button" class="small-action" id="addChildBtn">Add Child</button>
+                    </div>
+
+                    <div class="child-list" id="childrenList" data-next-index="@childCount">
+                        @for (var i = 0; i < childCount; i++)
+                        {
+                            <div class="child-card" data-child-row>
+                                <div class="child-card-top">
+                                    <div class="child-title">Child</div>
+                                    <button type="button" class="small-action" data-remove-child>Remove</button>
+                                </div>
+                                <input asp-for="Children[i].Id" type="hidden" data-field="Id" />
+                                <div class="two-col">
+                                    <div>
+                                        <label asp-for="Children[i].FirstName" class="label">First name</label>
+                                        <input asp-for="Children[i].FirstName" class="input" autocomplete="off" data-field="FirstName" />
+                                        <span asp-validation-for="Children[i].FirstName" class="text-danger validation" data-valmsg-field="FirstName"></span>
+                                    </div>
+                                    <div>
+                                        <label asp-for="Children[i].LastName" class="label">Last name</label>
+                                        <input asp-for="Children[i].LastName" class="input" autocomplete="off" data-field="LastName" />
+                                        <span asp-validation-for="Children[i].LastName" class="text-danger validation" data-valmsg-field="LastName"></span>
+                                    </div>
+                                    <div>
+                                        <label asp-for="Children[i].DOB" class="label">Date of birth</label>
+                                        <input asp-for="Children[i].DOB" type="date" class="input" data-field="DOB" />
+                                        <span asp-validation-for="Children[i].DOB" class="text-danger validation" data-valmsg-field="DOB"></span>
+                                    </div>
+                                    <div>
+                                        <label asp-for="Children[i].Phone" class="label">Phone</label>
+                                        <input asp-for="Children[i].Phone" class="input" autocomplete="tel" inputmode="tel" data-field="Phone" />
+                                        <span asp-validation-for="Children[i].Phone" class="text-danger validation" data-valmsg-field="Phone"></span>
+                                    </div>
+                                    <div>
+                                        <label asp-for="Children[i].Email" class="label">Email</label>
+                                        <input asp-for="Children[i].Email" class="input" autocomplete="email" inputmode="email" data-field="Email" />
+                                        <span asp-validation-for="Children[i].Email" class="text-danger validation" data-valmsg-field="Email"></span>
+                                    </div>
+                                </div>
+                            </div>
+                        }
                     </div>
                 </div>
 
@@ -324,6 +463,8 @@
             const soFirst = document.getElementById('SignificantOtherFirstName');
             const soLast  = document.getElementById('SignificantOtherLastName');
             const soDob   = document.getElementById('SignificantOtherDOB');
+            const childrenList = document.getElementById('childrenList');
+            const addChildBtn = document.getElementById('addChildBtn');
 
             const needsSO = (v) => {
                 if (!v) return false;
@@ -345,10 +486,82 @@
                 }
             };
 
+            const childTemplate = (index) => `
+                <div class="child-card" data-child-row>
+                    <div class="child-card-top">
+                        <div class="child-title">Child</div>
+                        <button type="button" class="small-action" data-remove-child>Remove</button>
+                    </div>
+                    <input type="hidden" name="Children[${index}].Id" id="Children_${index}__Id" data-field="Id" />
+                    <div class="two-col">
+                        <div>
+                            <label class="label" for="Children_${index}__FirstName">First name</label>
+                            <input class="input" type="text" name="Children[${index}].FirstName" id="Children_${index}__FirstName" autocomplete="off" data-field="FirstName" />
+                            <span class="text-danger validation" data-valmsg-for="Children[${index}].FirstName" data-valmsg-replace="true" data-valmsg-field="FirstName"></span>
+                        </div>
+                        <div>
+                            <label class="label" for="Children_${index}__LastName">Last name</label>
+                            <input class="input" type="text" name="Children[${index}].LastName" id="Children_${index}__LastName" autocomplete="off" data-field="LastName" />
+                            <span class="text-danger validation" data-valmsg-for="Children[${index}].LastName" data-valmsg-replace="true" data-valmsg-field="LastName"></span>
+                        </div>
+                        <div>
+                            <label class="label" for="Children_${index}__DOB">Date of birth</label>
+                            <input class="input" type="date" name="Children[${index}].DOB" id="Children_${index}__DOB" data-field="DOB" />
+                            <span class="text-danger validation" data-valmsg-for="Children[${index}].DOB" data-valmsg-replace="true" data-valmsg-field="DOB"></span>
+                        </div>
+                        <div>
+                            <label class="label" for="Children_${index}__Phone">Phone</label>
+                            <input class="input" type="tel" name="Children[${index}].Phone" id="Children_${index}__Phone" autocomplete="tel" inputmode="tel" data-field="Phone" />
+                            <span class="text-danger validation" data-valmsg-for="Children[${index}].Phone" data-valmsg-replace="true" data-valmsg-field="Phone"></span>
+                        </div>
+                        <div>
+                            <label class="label" for="Children_${index}__Email">Email</label>
+                            <input class="input" type="email" name="Children[${index}].Email" id="Children_${index}__Email" autocomplete="email" inputmode="email" data-field="Email" />
+                            <span class="text-danger validation" data-valmsg-for="Children[${index}].Email" data-valmsg-replace="true" data-valmsg-field="Email"></span>
+                        </div>
+                    </div>
+                </div>`;
+
+            const reindexChildren = () => {
+                if (!childrenList) return;
+                childrenList.querySelectorAll('[data-child-row]').forEach((row, index) => {
+                    row.querySelectorAll('[data-field]').forEach((input) => {
+                        const field = input.getAttribute('data-field');
+                        input.name = `Children[${index}].${field}`;
+                        input.id = `Children_${index}__${field}`;
+                    });
+                    row.querySelectorAll('[data-valmsg-field]').forEach((span) => {
+                        const field = span.getAttribute('data-valmsg-field');
+                        span.setAttribute('data-valmsg-for', `Children[${index}].${field}`);
+                    });
+                    row.querySelectorAll('label[for]').forEach((label) => {
+                        const field = label.getAttribute('for')?.split('__').pop() || '';
+                        const target = row.querySelector(`[data-field="${field}"]`);
+                        if (target) label.setAttribute('for', target.id);
+                    });
+                });
+                childrenList.dataset.nextIndex = String(childrenList.querySelectorAll('[data-child-row]').length);
+            };
+
             if (status) {
                 status.addEventListener('change', applySO);
                 applySO();
             }
+
+            addChildBtn?.addEventListener('click', () => {
+                if (!childrenList) return;
+                const index = Number.parseInt(childrenList.dataset.nextIndex || '0', 10);
+                childrenList.insertAdjacentHTML('beforeend', childTemplate(Number.isFinite(index) ? index : 0));
+                reindexChildren();
+                childrenList.querySelector('[data-child-row]:last-child input[data-field="FirstName"]')?.focus();
+            });
+
+            childrenList?.addEventListener('click', (event) => {
+                const removeBtn = event.target.closest('[data-remove-child]');
+                if (!removeBtn) return;
+                removeBtn.closest('[data-child-row]')?.remove();
+                reindexChildren();
+            });
         })();
     </script>
 }

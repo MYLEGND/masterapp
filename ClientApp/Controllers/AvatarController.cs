@@ -25,8 +25,27 @@ namespace ClientApp.Controllers
             var configured = Environment.GetEnvironmentVariable("LEGEND_AVATAR_ROOT");
             if (!string.IsNullOrWhiteSpace(configured))
             {
-                Directory.CreateDirectory(configured);
-                return configured;
+                var expanded = Environment.ExpandEnvironmentVariables(configured.Trim());
+                try
+                {
+                    var root = Path.GetFullPath(expanded);
+                    Directory.CreateDirectory(root);
+                    return root;
+                }
+                catch { }
+            }
+
+            // Azure App Service exposes HOME as a persistent writable root that survives redeployment.
+            var home = Environment.GetEnvironmentVariable("HOME");
+            if (!string.IsNullOrWhiteSpace(home))
+            {
+                try
+                {
+                    var appServiceRoot = Path.GetFullPath(Path.Combine(home.Trim(), "avatars"));
+                    Directory.CreateDirectory(appServiceRoot);
+                    return appServiceRoot;
+                }
+                catch { }
             }
 
             var fallback = Path.Combine(_env.ContentRootPath, "App_Data", "avatars");
@@ -137,7 +156,21 @@ namespace ClientApp.Controllers
                 }
             }
 
-            return NotFound();
+                        const string fallbackSvg = """
+<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 120 120'>
+    <defs>
+        <linearGradient id='g' x1='0' y1='0' x2='1' y2='1'>
+            <stop offset='0%' stop-color='#0f1d38'/>
+            <stop offset='100%' stop-color='#1f355f'/>
+        </linearGradient>
+    </defs>
+    <rect width='120' height='120' rx='60' fill='url(#g)'/>
+    <circle cx='60' cy='47' r='24' fill='#f1f5f9'/>
+    <path d='M18 104c8-19 24-30 42-30s34 11 42 30' fill='#f1f5f9'/>
+</svg>
+""";
+
+                        return Content(fallbackSvg, "image/svg+xml");
         }
     }
 }

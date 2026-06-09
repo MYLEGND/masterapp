@@ -156,7 +156,6 @@ namespace Protect_Website.Models
         [Required]
         public string? DogsOnPremises { get; set; }
 
-        // Additional Carrier Questions
         [Required]
         public string? Paperless { get; set; }
 
@@ -165,8 +164,6 @@ namespace Protect_Website.Models
 
         [Required]
         public string? LapseInCoveragePast12Months { get; set; }
-
-        public string? AdditionalCarrierQuestions { get; set; }
 
         [Required]
         public string? AutoYearsWithPriorCarrierOrAgent { get; set; }
@@ -299,7 +296,22 @@ namespace Protect_Website.Models
         public string? EarthquakeDeductible { get; set; }
         public string? PercentVeneer { get; set; }
 
-        [Range(typeof(bool), "true", "true", ErrorMessage = "You must acknowledge the authorization to proceed.")]
         public bool AcknowledgedDisclaimer { get; set; }
+
+        // ── Attribution (populated by JS before submit, persisted server-side) ──
+        public string? SessionId { get; set; }
+        public string? VisitorId { get; set; }
+        public string? UtmSource { get; set; }
+        public string? UtmMedium { get; set; }
+        public string? UtmCampaign { get; set; }
+        public string? UtmId { get; set; }
+        public string? UtmTerm { get; set; }
+        public string? UtmContent { get; set; }
+        public string? MetaCampaignId { get; set; }
+        public string? MetaAdSetId { get; set; }
+        public string? MetaAdId { get; set; }
+        public string? Fbclid { get; set; }
+        public string? ReferrerUrl { get; set; }
+        public string? LandingPageUrl { get; set; }
     }
 }

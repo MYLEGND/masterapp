@@ -1,0 +1,210 @@
+@model string
+@{
+    var requestedProduct = (Model ?? string.Empty).Trim();
+
+    var productContexts = new Dictionary<string, Dictionary<string, string>>(StringComparer.OrdinalIgnoreCase)
+    {
+        ["LifeInsurance"] = new(StringComparer.OrdinalIgnoreCase)
+        {
+            ["ProductName"] = "life insurance coverage",
+            ["ProductPurpose"] = "helps protect your family, replace income, and leave behind money if something happens",
+            ["AssignedRole"] = "field underwriter",
+            ["FamilyBenefitLanguage"] = "help protect your family and leave behind money for the people you care about",
+            ["UrgencyLanguage"] = "make sure the life insurance request is reviewed",
+            ["StopCtaLabel"] = "Go to \"3 Insurances\""
+        },
+        ["FinalExpense"] = new(StringComparer.OrdinalIgnoreCase)
+        {
+            ["ProductName"] = "final expense coverage",
+            ["ProductPurpose"] = "helps your family handle funeral costs, unpaid bills, and final expenses",
+            ["AssignedRole"] = "field underwriter",
+            ["FamilyBenefitLanguage"] = "help your family handle funeral costs and final bills",
+            ["UrgencyLanguage"] = "make sure the final expense request is reviewed",
+            ["StopCtaLabel"] = "Go to \"3 Insurances\""
+        },
+        ["MortgageProtection"] = new(StringComparer.OrdinalIgnoreCase)
+        {
+            ["ProductName"] = "mortgage protection coverage",
+            ["ProductPurpose"] = "helps protect the home and gives your family money for the mortgage and bills if something happens",
+            ["AssignedRole"] = "field underwriter",
+            ["FamilyBenefitLanguage"] = "help protect the home and keep your family from getting hit with the mortgage payment",
+            ["UrgencyLanguage"] = "make sure the mortgage protection request is reviewed",
+            ["StopCtaLabel"] = "Go to \"3 Insurances\""
+        },
+        ["DisabilityInsurance"] = new(StringComparer.OrdinalIgnoreCase)
+        {
+            ["ProductName"] = "disability income protection",
+            ["ProductPurpose"] = "helps protect your income if an injury or illness kept you from working",
+            ["AssignedRole"] = "field underwriter",
+            ["FamilyBenefitLanguage"] = "help protect your income",
+            ["UrgencyLanguage"] = "make sure the income protection request is reviewed",
+            ["StopCtaLabel"] = "Go to \"3 Insurances\""
+        },
+        ["AutoInsurance"] = new(StringComparer.OrdinalIgnoreCase)
+        {
+            ["ProductName"] = "auto insurance coverage",
+            ["ProductPurpose"] = "helps protect you from accidents, vehicle damage, liability claims, and road risks",
+            ["AssignedRole"] = "licensed coverage specialist",
+            ["FamilyBenefitLanguage"] = "help protect your vehicles and keep liability exposure from turning into a bigger financial hit",
+            ["UrgencyLanguage"] = "make sure the auto insurance request is reviewed",
+            ["StopCtaLabel"] = "Return to Auto Queue"
+        },
+        ["HomeInsurance"] = new(StringComparer.OrdinalIgnoreCase)
+        {
+            ["ProductName"] = "home insurance coverage",
+            ["ProductPurpose"] = "helps protect your home, property, and belongings from storms, fire, theft, and damage",
+            ["AssignedRole"] = "licensed coverage specialist",
+            ["FamilyBenefitLanguage"] = "help protect your home and everything tied to it",
+            ["UrgencyLanguage"] = "make sure the home insurance request is reviewed",
+            ["StopCtaLabel"] = "Return to Home Queue"
+        },
+        ["HealthInsurance"] = new(StringComparer.OrdinalIgnoreCase)
+        {
+            ["ProductName"] = "health insurance coverage",
+            ["ProductPurpose"] = "helps protect you from major medical costs and keeps coverage options in place for your care",
+            ["AssignedRole"] = "licensed coverage specialist",
+            ["FamilyBenefitLanguage"] = "help protect your access to care without getting crushed by medical bills",
+            ["UrgencyLanguage"] = "make sure the health insurance request is reviewed",
+            ["StopCtaLabel"] = "Return to Health Queue"
+        },
+        ["CommercialInsurance"] = new(StringComparer.OrdinalIgnoreCase)
+        {
+            ["ProductName"] = "commercial insurance coverage",
+            ["ProductPurpose"] = "helps protect your business from liability, property damage, and costly interruptions",
+            ["AssignedRole"] = "licensed coverage specialist",
+            ["FamilyBenefitLanguage"] = "help protect the business, the people tied to it, and the income it supports",
+            ["UrgencyLanguage"] = "make sure the commercial insurance request is reviewed",
+            ["StopCtaLabel"] = "Return to Commercial Queue"
+        }
+    };
+
+    var productKey = productContexts.ContainsKey(requestedProduct) ? requestedProduct : "LifeInsurance";
+    var productContext = productContexts[productKey];
+
+    string ResolveProductTemplate(string template)
+    {
+        var runtimeTokens = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+        {
+            ["Greeting"] = "&lt;GREETING&gt;",
+            ["ClientFirstName"] = "&lt;CLIENT FIRST NAME&gt;",
+            ["ClientName"] = "&lt;CLIENT NAME&gt;",
+            ["AgentName"] = "&lt;YOUR NAME&gt;",
+            ["OfficeNumber"] = "&lt;OFFICE NUMBER&gt;",
+            ["AppointmentTime"] = "&lt;APPOINTMENT TIME&gt;"
+        };
+
+        foreach (var pair in productContext)
+        {
+            runtimeTokens[pair.Key] = pair.Value;
+        }
+
+        var rendered = template ?? string.Empty;
+        foreach (var pair in runtimeTokens)
+        {
+            rendered = rendered.Replace($"{{{{{pair.Key}}}}}", pair.Value, StringComparison.OrdinalIgnoreCase);
+        }
+
+        return rendered.Trim();
+    }
+
+    var textStages = new[]
+    {
+        new
+        {
+            Id = "txtPreCall",
+            Label = "PRE-CALL TEXT",
+            Note = "Sent before the first call.",
+            Template = "{{Greeting}} {{ClientFirstName}}, this is {{AgentName}} regarding the {{ProductName}} request you filled out. I'm reaching out to help you review the information and get the next step taken care of. Give me a call back when you get this. The office number is {{OfficeNumber}}. Thanks."
+        },
+        new
+        {
+            Id = "txtNoAnswer",
+            Label = "NO ANSWER AFTER FIRST CALL",
+            Note = "Sent right after the first missed call.",
+            Template = "{{Greeting}} {{ClientFirstName}}, it's {{AgentName}}. I just tried reaching you regarding the {{ProductName}} request you filled out. This is the coverage that {{ProductPurpose}}. What time today works?"
+        },
+        new
+        {
+            Id = "txtQuestionResponse",
+            Label = "QUESTION RESPONSE RULE",
+            Note = "If they respond with questions, move to call. Do not debate by text.",
+            Template = "{{Greeting}} {{ClientFirstName}}, absolutely, I can walk you through that. It'll be easier to explain clearly over the phone. What time today works?"
+        },
+        new
+        {
+            Id = "txtConfirm",
+            Label = "APPOINTMENT CONFIRMATION",
+            Note = "Set expectation and get acknowledgement.",
+            Template = "{{Greeting}} {{ClientFirstName}}, {{AgentName}} here, {{AssignedRole}}. Confirming our appointment at {{AppointmentTime}}. If there is any reason you can't make that meeting, please let myself or my staff know so we can reschedule and help another family in your place. I look forward to serving you and your family!\n\nReply \"Yes\" or send a thumbs up to let me know you received this message."
+        },
+        new
+        {
+            Id = "txtMissedAppointment",
+            Label = "MISSED APPOINTMENT TEXT",
+            Note = "Send immediately after the appointment is missed.",
+            Template = "{{Greeting}} {{ClientFirstName}}, just gave you a call for our appointment. Do you need a few minutes?"
+        },
+        new
+        {
+            Id = "txtReschedule",
+            Label = "RESCHEDULE TEXT",
+            Note = "Use if they miss the appointment and do not respond.",
+            Template = "{{Greeting}} {{ClientFirstName}}, just need to get this rescheduled so we can help you review your {{ProductName}} request. Would later today or tomorrow work better?"
+        },
+        new
+        {
+            Id = "txtHailMary",
+            Label = "HAIL MARY / FINAL ATTEMPT",
+            Note = "Last respectful follow-up after multiple unanswered touches.",
+            Template = "{{Greeting}} {{ClientFirstName}}, I've tried to reach out a few times regarding your {{ProductName}} request and haven't heard back. I don't want to keep bothering you if this is no longer important.\n\nWhere should we go from here?"
+        }
+    };
+}
+
+<details class="section" data-step="2" data-flow="start" data-signal="warn" id="sec-texts" data-text-script-product="@productKey">
+    <summary>
+        <div class="sum-left">
+            <div class="chev">›</div>
+            <div>
+                <span class="title">Text Scripts</span>
+                <span class="sub">Direction only. No debate.</span>
+            </div>
+        </div>
+        <div class="sum-actions">
+            <button class="btn-mini good" type="button" data-focus="#sec-texts">Focus</button>
+        </div>
+    </summary>
+
+    <div class="body">
+        <div class="callout warn">
+            <div>
+                <span class="cue warn">RULE</span> Direction only. No debate.
+                <div class="hint">If they respond with questions -&gt; move to call.</div>
+                <div class="hint">No-answer and question-response replies should end with "What time today works?"</div>
+            </div>
+        </div>
+
+        @foreach (var stage in textStages)
+        {
+            <div class="keyline"><strong>@stage.Label</strong> @stage.Note</div>
+            <div id="@stage.Id" class="script">@Html.Raw(ResolveProductTemplate(stage.Template))</div>
+            <div class="text-script-actions">
+                <button class="btn-mini gold" type="button" data-copy-script-selector="#@stage.Id">Copy</button>
+                <button class="btn-mini good" type="button" data-send-script-selector="#@stage.Id">Text</button>
+            </div>
+            <div style="height:12px"></div>
+        }
+
+        <div class="callout bad">
+            <div>
+                <span class="cue bad">STOP</span> If they respond with questions, move to call.
+                <div class="hint">Do not debate by text.</div>
+            </div>
+            <button class="btn-mini bad" type="button" data-jump="#sec-threeins">@productContext["StopCtaLabel"]</button>
+        </div>
+
+        <div class="side-actions" style="margin-top:12px;">
+            <button class="btn" type="button" data-jump="#sec-aged">Return to START HERE</button>
+        </div>
+    </div>
+</details>

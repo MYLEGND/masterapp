@@ -74,7 +74,6 @@ namespace Protect_Website.Models
 
         // Disclaimer
         [Display(Name = "Acknowledged Disclaimer")]
-        [Range(typeof(bool), "true", "true", ErrorMessage = "You must acknowledge the disclaimer.")]
         public bool AcknowledgedDisclaimer { get; set; } = false;
 
         // ===================== OPTIONAL (NOT REQUIRED) =====================
@@ -202,5 +201,21 @@ namespace Protect_Website.Models
         public decimal? BuildingCoverageLimit { get; set; }
         public string? ValuationType { get; set; }
         public int? InflationGuardPercent { get; set; }
+
+        // ── Attribution (populated by JS before submit, persisted server-side) ──
+        public string? SessionId { get; set; }
+        public string? VisitorId { get; set; }
+        public string? UtmSource { get; set; }
+        public string? UtmMedium { get; set; }
+        public string? UtmCampaign { get; set; }
+        public string? UtmId { get; set; }
+        public string? UtmTerm { get; set; }
+        public string? UtmContent { get; set; }
+        public string? MetaCampaignId { get; set; }
+        public string? MetaAdSetId { get; set; }
+        public string? MetaAdId { get; set; }
+        public string? Fbclid { get; set; }
+        public string? ReferrerUrl { get; set; }
+        public string? LandingPageUrl { get; set; }
     }
 }

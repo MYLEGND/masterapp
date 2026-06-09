@@ -1,4 +1,5 @@
 using System.Linq;
+using Infrastructure.Leads;
 using Microsoft.AspNetCore.Mvc;
 
 namespace AgentPortal.Controllers;
@@ -14,12 +15,30 @@ public class WorkstationController : Controller
         _logger = logger;
     }
 
-    // Landing: default to Mortgage Protection rebuttals
+    // Landing: default to Life Insurance rebuttals
     [HttpGet("")]
     [HttpGet("Index")]
     public IActionResult Index()
     {
-        return RedirectToAction(nameof(Rebuttals));
+        return RedirectToAction(nameof(LifeInsuranceRebuttals));
+    }
+
+    [HttpGet("Queue")]
+    public IActionResult Queue([FromQuery] string? queueKey)
+    {
+        var normalizedQueue = WorkstationLeadBuckets.NormalizeBucket(queueKey) ?? WorkstationLeadBuckets.LifeInsurance;
+
+        if (string.Equals(normalizedQueue, WorkstationLeadBuckets.MortgageProtection, StringComparison.OrdinalIgnoreCase))
+            return RedirectToAction(nameof(Rebuttals));
+
+        if (WorkstationLeadBuckets.LifeWorkstationQueueBuckets.Contains(normalizedQueue, StringComparer.OrdinalIgnoreCase))
+            return RedirectToAction(nameof(LifeInsuranceRebuttals));
+
+        if (string.Equals(normalizedQueue, WorkstationLeadBuckets.FinalExpense, StringComparison.OrdinalIgnoreCase))
+            return RedirectToAction(nameof(FinalExpenseRebuttals));
+
+        ViewData["Title"] = $"Workstation — {ResolveQueueTitle(normalizedQueue)}";
+        return View("Queue", normalizedQueue);
     }
 
     // =========================================================
@@ -44,20 +63,6 @@ public class WorkstationController : Controller
     {
         ViewData["Title"] = "Life Insurance";
         return View("LifeInsurance");
-    }
-
-    [HttpGet("Medicare")]
-    public IActionResult Medicare()
-    {
-        ViewData["Title"] = "Medicare";
-        return View("Medicare");
-    }
-
-    [HttpGet("DisabilityInsurance")]
-    public IActionResult DisabilityInsurance()
-    {
-        ViewData["Title"] = "Disability Insurance";
-        return View("DisabilityInsurance");
     }
 
     // =========================================================
@@ -85,13 +90,6 @@ public class WorkstationController : Controller
         return View("FinalExpenseRebuttals");
     }
 
-    [HttpGet("MedicareRebuttals")]
-    public IActionResult MedicareRebuttals()
-    {
-        ViewData["Title"] = "Medicare Rebuttals";
-        return View("MedicareRebuttals");
-    }
-
     [HttpGet("LifeInsuranceRebuttals")]
     public IActionResult LifeInsuranceRebuttals()
     {
@@ -99,12 +97,16 @@ public class WorkstationController : Controller
         return View("LifeInsuranceRebuttals");
     }
 
-    [HttpGet("DisabilityInsuranceRebuttals")]
-    public IActionResult DisabilityInsuranceRebuttals()
-    {
-        ViewData["Title"] = "Disability Insurance Rebuttals";
-        return View("DisabilityInsuranceRebuttals");
-    }
+    private static string ResolveQueueTitle(string queueKey)
+        => queueKey switch
+        {
+            var key when string.Equals(key, WorkstationLeadBuckets.DisabilityInsurance, StringComparison.OrdinalIgnoreCase) => "Disability Insurance Queue",
+            var key when string.Equals(key, WorkstationLeadBuckets.AutoInsurance, StringComparison.OrdinalIgnoreCase) => "Auto Insurance Queue",
+            var key when string.Equals(key, WorkstationLeadBuckets.HomeInsurance, StringComparison.OrdinalIgnoreCase) => "Home Insurance Queue",
+            var key when string.Equals(key, WorkstationLeadBuckets.HealthInsurance, StringComparison.OrdinalIgnoreCase) => "Health Insurance Queue",
+            var key when string.Equals(key, WorkstationLeadBuckets.CommercialInsurance, StringComparison.OrdinalIgnoreCase) => "Commercial Insurance Queue",
+            _ => "Lead Queue"
+        };
 
     // =========================================================
     // Advanced Markets Planner
@@ -118,6 +120,7 @@ public class WorkstationController : Controller
     }
 
     [HttpPost("AdvancedMarkets/Calculate")]
+    [IgnoreAntiforgeryToken]
     public IActionResult AdvancedMarketsCalculate(
         [FromServices] AgentPortal.Services.IAdvancedMarketsCalculationService calcService,
         [FromForm] Models.AdvancedMarketsPageViewModel model)

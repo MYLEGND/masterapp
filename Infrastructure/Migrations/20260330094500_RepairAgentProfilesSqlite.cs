@@ -1,3 +1,4 @@
+using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Migrations;
 
 #nullable disable
@@ -8,6 +9,7 @@ namespace Infrastructure.Migrations
     /// SQLite repair: ensure AgentProfiles exists before later ALTERs.
     /// Safe no-op on SQL Server.
     /// </summary>
+    [Migration("20260330094500_RepairAgentProfilesSqlite")]
     public partial class RepairAgentProfilesSqlite : Migration
     {
         protected override void Up(MigrationBuilder migrationBuilder)

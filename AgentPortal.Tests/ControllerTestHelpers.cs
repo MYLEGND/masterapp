@@ -1,17 +1,21 @@
 using System;
 using System.Collections.Generic;
 using System.Security.Claims;
+using System.Net.Http;
 using AgentPortal.Controllers;
 using AgentPortal.Services;
 using AgentPortal.Services.Tracking;
 using AgentPortal.Hubs;
 using Infrastructure.Data;
+using Infrastructure.Identity;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.SignalR;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging.Abstractions;
+using Microsoft.Extensions.Options;
+using Microsoft.Identity.Web;
 using Moq;
 
 namespace AgentPortal.Tests;
@@ -43,7 +47,9 @@ internal static class ControllerTestHelpers
         var accessor = new HttpContextAccessor { HttpContext = new DefaultHttpContext { User = user } };
         var tracking = Mock.Of<IAgentTrackingService>();
         var effCtx = new EffectiveAgentContext(accessor, tracking, NullLogger<EffectiveAgentContext>.Instance);
-        var controller = new LeadsController(db, timeResolver, prod, effCtx, execution, commitments, NullLogger<LeadsController>.Instance)
+        var featureFlags = Options.Create(new AgentPortal.Models.AppFeatureFlags());
+        var importValidator = new AgentPortal.Services.ImportValidation.LeadImportValidator();
+        var controller = new LeadsController(db, timeResolver, prod, effCtx, execution, commitments, NullLogger<LeadsController>.Instance, featureFlags, importValidator)
         {
             ControllerContext = new ControllerContext { HttpContext = accessor.HttpContext! }
         };
@@ -54,7 +60,13 @@ internal static class ControllerTestHelpers
     {
         var blockers = Mock.Of<IBlockerService>();
         var http = new DefaultHttpContext { User = user };
-        var controller = new DashboardController(execution, blockers)
+        var accessor = new HttpContextAccessor { HttpContext = http };
+        var tracking = Mock.Of<IAgentTrackingService>();
+        var effCtx = new EffectiveAgentContext(accessor, tracking, NullLogger<EffectiveAgentContext>.Instance);
+        var db = BuildDb();
+        var derivedAnalytics = new AgentPortal.Services.Analytics.DerivedAnalyticsService(db);
+        var featureFlags = Options.Create(new AgentPortal.Models.AppFeatureFlags());
+        var controller = new DashboardController(execution, blockers, db, effCtx, derivedAnalytics, featureFlags)
         {
             ControllerContext = new ControllerContext { HttpContext = http }
         };
@@ -84,18 +96,19 @@ internal static class ControllerTestHelpers
         var config = new ConfigurationBuilder()
             .AddInMemoryCollection(new[]
             {
-                new KeyValuePair<string,string>("GraphProvisioning:TenantId","test-tenant"),
-                new KeyValuePair<string,string>("GraphProvisioning:ClientId","test-client"),
-                new KeyValuePair<string,string>("GraphProvisioning:ClientSecret","secret")
+                new KeyValuePair<string,string?>("GraphProvisioning:TenantId","test-tenant"),
+                new KeyValuePair<string,string?>("GraphProvisioning:ClientId","test-client"),
+                new KeyValuePair<string,string?>("GraphProvisioning:ClientSecret","secret")
             })
             .Build();
         var provisioning = new ClientProvisioningService(config, NullLogger<ClientProvisioningService>.Instance, db);
         var timeResolver = Mock.Of<IAgentTimeZoneResolver>();
+        var azureClientEmailSync = Mock.Of<IAzureClientEmailSyncService>();
         var prod = new ProductionService(db, NullLogger<ProductionService>.Instance);
         var accessor = new HttpContextAccessor { HttpContext = new DefaultHttpContext { User = user } };
         var tracking = Mock.Of<IAgentTrackingService>();
         var effCtx = new EffectiveAgentContext(accessor, tracking, NullLogger<EffectiveAgentContext>.Instance);
-        var controller = new ClientsController(db, provisioning, config, NullLogger<ClientsController>.Instance, timeResolver, prod, effCtx, execution, commitments)
+        var controller = new ClientsController(db, provisioning, config, NullLogger<ClientsController>.Instance, timeResolver, azureClientEmailSync, prod, effCtx, execution, commitments)
         {
             ControllerContext = new ControllerContext { HttpContext = accessor.HttpContext! }
         };
@@ -116,6 +129,35 @@ internal static class ControllerTestHelpers
         hubContext.Setup(h => h.Clients).Returns(hubClients.Object);
 
         return new LeadBridgeController(db, stateService, hubContext.Object, effCtx)
+        {
+            ControllerContext = new ControllerContext { HttpContext = accessor.HttpContext! }
+        };
+    }
+
+    public static CalendarController BuildCalendarController(
+        MasterAppDbContext db,
+        ClaimsPrincipal user,
+        HttpMessageHandler handler,
+        string accessToken = "test-access-token")
+    {
+        var accessor = new HttpContextAccessor { HttpContext = new DefaultHttpContext { User = user } };
+        var tokenAcquisition = new Mock<ITokenAcquisition>();
+        tokenAcquisition
+            .Setup(x => x.GetAccessTokenForUserAsync(
+                It.IsAny<IEnumerable<string>>(),
+                It.IsAny<string>(),
+                It.IsAny<string>(),
+                It.IsAny<ClaimsPrincipal>(),
+                It.IsAny<TokenAcquisitionOptions>()))
+            .ReturnsAsync(accessToken);
+
+        var client = new HttpClient(handler, disposeHandler: false);
+        var httpClientFactory = new Mock<IHttpClientFactory>();
+        httpClientFactory
+            .Setup(x => x.CreateClient(It.IsAny<string>()))
+            .Returns(client);
+
+        return new CalendarController(tokenAcquisition.Object, NullLogger<CalendarController>.Instance, db, httpClientFactory.Object)
         {
             ControllerContext = new ControllerContext { HttpContext = accessor.HttpContext! }
         };

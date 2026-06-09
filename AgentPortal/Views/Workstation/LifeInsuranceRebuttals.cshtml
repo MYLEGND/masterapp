@@ -5,6 +5,8 @@
 
 @section Styles {
     <link rel="stylesheet" href="~/css/scripts-rebuttals.css" asp-append-version="true" />
+    <link rel="stylesheet" href="~/css/workstation-home-proposal.css" asp-append-version="true" />
+    <link rel="stylesheet" href="~/css/clients-index.css" asp-append-version="true" />
 }
 
 
@@ -19,35 +21,27 @@
                 </div>
                 <div class="hero-actions">
                     <div class="hero-action-group">
-                        <button type="button" class="btn gold hero-proposal" id="btnProposal">Proposal ▾</button>
-                        <div class="proposal-menu" id="proposalMenu" hidden>
-                            <div class="proposal-menu-head">
-                                <span>Saved Proposals</span>
-                                <button type="button" class="btn-mini" id="btnProposalNew">+ New</button>
-                            </div>
-                            <div class="proposal-menu-list" id="proposalMenuList"></div>
-                        </div>
+                        @await Html.PartialAsync("~/Views/Shared/_ProposalLauncher.cshtml")
                     </div>
                     <div class="hero-action-group">
                         <button type="button" class="btn gold hero-underwrite" id="btnUnderwriting">Underwriting ▾</button>
                         <div class="proposal-menu" id="uwMenu" hidden>
                             <div class="proposal-menu-head">
                                 <span>Saved Underwriting</span>
-                                <button type="button" class="btn-mini" id="btnUwNew">+ New</button>
+                                <div class="hp-menu-head-actions">
+                                    <button type="button" class="btn-mini" id="btnUwNew">Lead</button>
+                                    <button type="button" class="btn-mini" id="btnUwClient">Use Client</button>
+                                    <button type="button" class="btn-mini" id="btnUwScratch">Scratch</button>
+                                </div>
                             </div>
                             <div class="proposal-menu-list" id="uwMenuList"></div>
                         </div>
                     </div>
                     <div class="hero-action-group">
-                        <details class="quick-links">
-                            <summary class="btn gold hero-quick-links">Quick Links ▾</summary>
-                            <div class="proposal-menu quick-links-menu">
-                                <div class="proposal-menu-head"><span>Quick Links</span></div>
-                                <div class="proposal-menu-list">
-                                    <a class="btn gold rb-link" href="https://outlook.office.com/book/LEGEND@mylegnd.com/?ismsaljsauthenabled=true" target="_blank" rel="noopener noreferrer">Book Appointment</a>
-                                </div>
-                            </div>
-                        </details>
+                        <button type="button" class="btn hero-zoom-btn" data-zoom-popup aria-label="Open Zoom Links">
+                            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" width="14" height="14" fill="none" aria-hidden="true"><rect width="20" height="20" rx="4" fill="#2D8CFF"/><path d="M3 7.5A1.5 1.5 0 0 1 4.5 6H12A1.5 1.5 0 0 1 13.5 7.5v5A1.5 1.5 0 0 1 12 14H4.5A1.5 1.5 0 0 1 3 12.5v-5z" fill="white"/><path d="M13.5 9l3.5-2v6l-3.5-2V9z" fill="white"/></svg>
+                            Zoom Links
+                        </button>
                     </div>
                     @await Html.PartialAsync("_ScriptSwitcher", "life")
                 </div>
@@ -56,152 +50,72 @@
 
         <div class="rb-link-bar">
             <a class="btn gold rb-link" href="https://hq-whl.us.auth0.com/login?state=hKFo2SAtbGV5NkRzX1BpSW1MaE52Qy1uOTdidkNuMm5MXzV0MqFupWxvZ2luo3RpZNkgODF2NXpTdHBMeGcxU0VmSVF5Y1ppOVhwWGhOTlo0SzajY2lk2SBjQ3FEb2dNbHNoUlhQWEpvck1EWmdLZEFRUGVCczlJSA&amp;client=cCqDogMlshRXPXJorMDZgKdAQPeBs9IH&amp;protocol=oauth2&amp;audience=http%3A%2F%2Fapi-whl.quility.com&amp;redirect_uri=https%3A%2F%2Fb2b-hq.quility.com&amp;scope=openid%20profile%20email&amp;response_type=code&amp;response_mode=query&amp;nonce=MGhlT1ZOcXVQcC44UlNRZER5NWFUNU1lMEgwfkR2MzlHTXVqeGpkZGlXWA%3D%3D&amp;code_challenge=mmd1hG_9XoAkIByduyMmB1n6fai45wDlZghr5abcNYw&amp;code_challenge_method=S256&amp;auth0Client=eyJuYW1lIjoiYXV0aDAtc3BhLWpzIiwidmVyc2lvbiI6IjEuMjIuNiJ9" target="_blank" rel="noopener noreferrer">Quility</a>
-            <a class="btn gold rb-link" href="https://connect.integrity.com/agent/dashboard" target="_blank" rel="noopener noreferrer">Integrity Marketing</a>
+            <a class="btn gold rb-link" href="https://connect.integrity.com/agent/dashboard" target="_blank" rel="noopener noreferrer">GET A QUOTE</a>
             <a class="btn gold rb-link" href="https://app.ezlynx.com/auth/account/login" target="_blank" rel="noopener noreferrer">EZLynx</a>
         </div>
 
-        @await Html.PartialAsync("_LeadBridge", "LifeInsurance")
+        <div class="rebuttal-command-center">
+            <div class="lead-contact-zone">
+                @await Html.PartialAsync("_LeadBridge", "LifeInsurance")
+            </div>
 
-        <div class="shell">
-            <div class="nav-rail-arrow nav-rail-arrow-left" id="rbNavArrow" aria-hidden="true"></div>
-            <section class="nav-card">
-                <div class="card-head">
-                    <div>
-                        <p class="card-title">Categories</p>
-                        <p class="card-sub">Most common at the top. Least common at the bottom.</p>
+            <div class="shell rebuttal-workspace-grid" id="rebuttalWorkspaceGrid">
+                <div class="nav-rail-arrow nav-rail-arrow-left" id="rbNavArrow" aria-hidden="true"></div>
+                <section class="nav-card objections-card">
+                    <div class="card-head">
+                        <div>
+                            <p class="card-title">Objections / Rebuttals</p>
+                        </div>
+                        <div class="count-pill"><span id="catCount">0</span> groups</div>
                     </div>
-                    <div class="count-pill"><span id="catCount">0</span> groups</div>
-                </div>
-                <div class="nav-body" id="rbNav"></div>
-            </section>
+                    <div class="nav-body" id="rbNav"></div>
+                </section>
 
-            <section class="content-card">
-                <div class="card-head">
-                    <div>
-                        <p class="card-title">Scripts</p>
-                        <p class="card-sub" id="contentSub">Select a category from the left.</p>
+                <section class="content-card scripts-card">
+                    <div class="card-head">
+                        <div class="content-head-copy">
+                            <div class="content-head-text">
+                                <p class="card-title">Scripts</p>
+                                <p class="card-sub" id="contentSub">Select a category from the left.</p>
+                            </div>
+                            <div class="content-head-leadmeta" data-lb-header-meta></div>
+                        </div>
+                        <div class="content-head-controls">
+                            <div class="content-head-primary">
+                                <div class="content-head-next" data-lb-header-next></div>
+                            </div>
+                            <div class="content-head-shortcuts" data-guide-shortcuts></div>
+                        </div>
                     </div>
-                    <div class="count-pill" id="contentCount">0 scripts</div>
-                </div>
-                <div class="content-body" id="rbContent">
-                    <div class="content-empty">
-                        Click a category on the left and all objections for that category will load here.
+                    <div class="content-body" id="rbContent">
+                        <div class="content-empty">
+                            Click a category on the left and all objections for that category will load here.
+                        </div>
                     </div>
-                </div>
-            </section>
+                </section>
 
-            <section class="nav-card prosper-nav-card">
-                <div class="card-head">
-                    <div>
-                        <p class="card-title">Life Insurance Guide</p>
-                        <p class="card-sub">Mirror rail for the full life insurance flow.</p>
+                <section class="nav-card prosper-nav-card guide-card">
+                    <div class="card-head">
+                        <div>
+                            <p class="card-title">Life Insurance Guide</p>
+                        </div>
+                        <div class="count-pill"><span id="prosperCount">0</span> steps</div>
                     </div>
-                    <div class="count-pill"><span id="prosperCount">0</span> steps</div>
-                </div>
-                <div class="nav-body" id="prosperNav">
-                    <div class="content-empty small">
-                        Loading Life Insurance script steps…
+                    <div class="nav-body" id="prosperNav">
+                        <div class="content-empty small">
+                            Loading Life Insurance script steps…
+                        </div>
                     </div>
-                </div>
-            </section>
-            <div class="nav-rail-arrow nav-rail-arrow-right" id="prosperNavArrow" aria-hidden="true"></div>
+                </section>
+                <div class="nav-rail-arrow nav-rail-arrow-right" id="prosperNavArrow" aria-hidden="true"></div>
+            </div>
         </div>
     </div>
 </div>
 
 @await Html.PartialAsync("~/Views/Shared/_UnderwritingForm.cshtml", viewData: new ViewDataDictionary(ViewData) { { "UwSubtitle", "Underwriting Intake — Life Insurance" }, { "UwProduct", "LIFE" } })
-
-<div class="proposal-overlay" id="proposalOverlay" hidden>
-    <div class="proposal-dialog" id="proposalDialog" role="dialog" aria-modal="true" aria-labelledby="proposalTitle">
-        <div class="uw-head">
-            <div class="uw-brand">
-                <img src="~/images/company-icons/protect.png" alt="Legend logo" class="uw-logo" />
-                <div>
-                    <div class="uw-name" id="proposalTitle">Proposal Builder</div>
-                    <div class="uw-sub">Compare side-by-side options</div>
-                </div>
-            </div>
-            <button type="button" class="uw-close" data-proposal-close aria-label="Close proposal builder">×</button>
-        </div>
-
-        <form id="proposalForm" class="proposal-form">
-            <div class="proposal-meta">
-                <label class="uw-field uw-span-2">Proposal Name
-                    <input id="propName" name="propName" placeholder="Client name or label" />
-                </label>
-                <div class="proposal-actions-inline">
-                    <button type="submit" class="btn gold" id="btnSaveProposal">Save Proposal</button>
-                    <button type="button" class="btn btn-ghost" id="btnCaptureDecision" data-bs-toggle="modal" data-bs-target="#captureDecisionModal">Capture Decision</button>
-                    <button type="button" class="btn btn-ghost" data-proposal-close>Cancel</button>
-                </div>
-            </div>
-
-            <div class="proposal-latest-decision" id="latestDecisionSummary" hidden style="margin-bottom:12px; border:1px solid rgba(255,255,255,.08); border-radius:10px; padding:10px; background:#0f1629;">
-                <div class="tiny text-muted">Latest decision</div>
-                <div class="fw-bold" data-decision-title>-</div>
-                <div class="tiny" data-decision-type></div>
-                <div class="small" data-decision-rationale></div>
-                <div class="tiny text-muted" data-decision-time></div>
-            </div>
-
-            <div class="proposal-buckets">
-                @for (var i = 1; i <= 3; i++)
-                {
-                    <div class="proposal-bucket" data-bucket="@i">
-                        <div class="pb-head">Option @i</div>
-                        <label class="uw-field">Insurance Carrier
-                            <select class="prop-carrier" id="propCarrier@i">
-                                <option value="">Select carrier</option>
-                                <option>Banner Life</option>
-                                <option>Protective</option>
-                                <option>Pacific Life</option>
-                                <option>Symetra</option>
-                                <option>Lincoln Financial</option>
-                                <option>John Hancock</option>
-                                <option>Prudential</option>
-                                <option>Nationwide</option>
-                                <option>Mutual of Omaha</option>
-                                <option>Foresters Financial</option>
-                                <option>American General (AIG/Corebridge)</option>
-                                <option>Brighthouse</option>
-                                <option>North American</option>
-                                <option>Other</option>
-                            </select>
-                        </label>
-                        <label class="uw-field">Type
-                            <select class="prop-type" id="propType@i">
-                                <option value="">Select</option>
-                                <option value="Term">Term</option>
-                                <option value="Whole Life">Whole Life</option>
-                                <option value="Universal Life">Universal Life</option>
-                                <option value="Indexed UL">IUL</option>
-                                <option value="Final Expense">Final Expense</option>
-                            </select>
-                        </label>
-                        @for (var r = 1; r <= 3; r++)
-                        {
-                            <div class="pb-row">
-                                <label class="uw-field">Death Benefit @r
-                                    <div class="currency-wrap">
-                                        <span>$</span>
-                                        <input class="prop-benefit currency-input" id="propBenefit@i@r" inputmode="decimal" />
-                                    </div>
-                                </label>
-                                <label class="uw-field">Premium @r
-                                    <div class="currency-wrap">
-                                        <span>$</span>
-                                        <input class="prop-premium currency-input" id="propPremium@i@r" inputmode="decimal" />
-                                        <span class="suffix">/mo</span>
-                                    </div>
-                                </label>
-                            </div>
-                        }
-                    </div>
-                }
-            </div>
-        </form>
-    </div>
-</div>
+@await Html.PartialAsync("~/Views/Shared/_WorkstationClientPicker.cshtml")
+@await Html.PartialAsync("~/Views/Shared/_ProposalBuilder.cshtml")
 
 <script>
 (function(){
@@ -450,8 +364,45 @@
     const shellEl = document.querySelector("#rbShell .shell");
     const rbNavArrow = document.getElementById("rbNavArrow");
     const prosperNavArrow = document.getElementById("prosperNavArrow");
+    const guideShortcutHost = document.querySelector("[data-guide-shortcuts]");
+    const objectionsStorageKey = "legend:scripts:objectionsHidden";
     const prosperUrl = '@Url.Action("LifeInsurance", "Workstation")';
     const defaultProsperId = "sec-aged";
+    const guideShortcutIds = new Set(["sec-voicemail", "sec-texts"]);
+    const guideNavSequence = new Map([
+        ["sec-aged", { number: 1, label: "START HERE" }],
+        ["sec-verify", { number: 2 }],
+        ["sec-occ", { number: 3 }],
+        ["sec-termwhole", { number: 4 }],
+        ["sec-replace", { number: 5 }],
+        ["sec-book", { number: 6 }],
+        ["sec-threeins", { number: 7 }],
+        ["sec-equity", { number: 8 }],
+        ["sec-living", { number: 9 }],
+        ["sec-rop", { number: 10 }],
+        ["sec-iul", { number: 11 }],
+        ["sec-options-choose", { number: 12 }],
+        ["sec-eapp", { number: 13 }],
+        ["sec-closeout", { number: 14 }]
+    ]);
+    const guideNavOrder = new Map([
+        ["sec-aged", 1],
+        ["sec-verify", 2],
+        ["sec-occ", 3],
+        ["sec-termwhole", 4],
+        ["sec-replace", 5],
+        ["sec-book", 6],
+        ["sec-threeins", 7],
+        ["sec-equity", 8],
+        ["sec-living", 9],
+        ["sec-rop", 10],
+        ["sec-iul", 11],
+        ["sec-options-choose", 12],
+        ["sec-eapp", 13],
+        ["sec-closeout", 14],
+        ["sec-voicemail", 98],
+        ["sec-texts", 99]
+    ]);
 
     let activeCategoryKey = null;
     let activeProsperId = defaultProsperId;
@@ -460,12 +411,28 @@
     let prosperSections = [];
     let prosperLoaded = false;
     let prosperLoadFailed = false;
+    let lastGuideShortcutRailMode = false;
+    let objectionsHidden = false;
+
+    try{
+        objectionsHidden = window.localStorage.getItem(objectionsStorageKey) === "true";
+    } catch {
+        objectionsHidden = false;
+    }
 
     function escapeHtml(v){
         return String(v || "")
             .replace(/&/g, "&amp;")
             .replace(/</g, "&lt;")
             .replace(/>/g, "&gt;");
+    }
+
+    function personalizeScriptText(text){
+        if (window.LegendAgentProfileApi?.fillScriptPlaceholders){
+            return window.LegendAgentProfileApi.fillScriptPlaceholders(text);
+        }
+
+        return String(text || "");
     }
 
     function highlightText(text, search){
@@ -489,6 +456,48 @@
         return "INFO";
     }
 
+    function getGuideNavTitle(section){
+        if(!section) return "";
+        const meta = guideNavSequence.get(section.id || "");
+        if(!meta) return section.title || "";
+        return `${meta.number}. ${meta.label || section.title || ""}`;
+    }
+
+    function getGuideNavOrderValue(section){
+        if(!section) return 999;
+        return guideNavOrder.get(section.id || "") ?? 90;
+    }
+
+    function shouldKeepGuideShortcutsInRail(){
+        return window.matchMedia("(max-width: 900px)").matches;
+    }
+
+    function shouldHideGuideShortcutFromRail(section){
+        return !shouldKeepGuideShortcutsInRail() && guideShortcutIds.has(section?.id || "");
+    }
+
+    function applyObjectionsVisibility(){
+        if(!shellEl){
+            return;
+        }
+
+        shellEl.classList.toggle("objections-hidden", objectionsHidden);
+    }
+
+    function setObjectionsHidden(nextValue){
+        objectionsHidden = !!nextValue;
+
+        try{
+            window.localStorage.setItem(objectionsStorageKey, objectionsHidden ? "true" : "false");
+        } catch {
+            // Ignore storage failures.
+        }
+
+        applyObjectionsVisibility();
+        renderGuideShortcutButtons();
+        updateRailArrows();
+    }
+
     function getFilteredCategories(){
         const searchVal = (rbSearch.value || "").trim().toLowerCase();
         const toneVal = rbTone.value || "";
@@ -496,7 +505,7 @@
         return categories
             .map(cat => {
                 const filteredItems = cat.items.filter(item => {
-                    const hay = [cat.name, cat.note, item.title, item.script].join(" ").toLowerCase();
+                    const hay = [cat.name, cat.note, item.title, personalizeScriptText(item.script)].join(" ").toLowerCase();
                     const matchesSearch = !searchVal || hay.includes(searchVal);
                     const matchesTone = !toneVal || item.signal === toneVal;
                     return matchesSearch && matchesTone;
@@ -523,6 +532,116 @@
             const matchesTone = !toneVal || section.signal === toneVal;
             return matchesSearch && matchesTone;
         });
+    }
+
+    function renderFlowActionButtons(options, variant){
+        if(!options?.length) return "";
+
+        return options.map(option => `
+            <button type="button" class="btn ${variant || ""} flow-guide-action ${option.signal || ""}" data-route="${escapeHtml(option.id)}" title="${escapeHtml(option.targetTitle || option.label || option.id)}">
+                ${escapeHtml(option.label || option.targetTitle || option.id)}
+            </button>
+        `).join("");
+    }
+
+    function renderProsperFlowGuide(section){
+        if(!section || !window.WorkstationScriptGuide?.getRouteSnapshot){
+            return "";
+        }
+
+        const snapshot = window.WorkstationScriptGuide.getRouteSnapshot(section.id, prosperSections, {
+            lastSectionId: defaultProsperId
+        });
+
+        if(!snapshot){
+            return "";
+        }
+
+        const hint = snapshot.hint || {};
+        const signalLabel = window.WorkstationScriptGuide.getSignalLabel
+            ? window.WorkstationScriptGuide.getSignalLabel(section.signal)
+            : getSignalLabel(section.signal);
+        const noteParts = [section.sub, hint.note].filter(Boolean);
+        const branchOptions = hint.requiresChoice
+            ? (snapshot.branches || [])
+            : (snapshot.branches || []).filter(option => option.id !== snapshot.primary?.id);
+
+        let primaryHtml = "";
+        if(hint.terminal){
+            primaryHtml = `
+                <div class="flow-guide-terminal">
+                    <strong>Lane complete.</strong>
+                    <span>${escapeHtml(hint.note || "No automatic next step is expected here.")}</span>
+                </div>
+            `;
+        } else if(snapshot.primary){
+            primaryHtml = `
+                <div class="flow-guide-primary-card">
+                    <div class="flow-guide-primary-copy">
+                        <div class="flow-guide-primary-kicker">Most Likely Next</div>
+                        <div class="flow-guide-primary-title">${escapeHtml(snapshot.primary.targetTitle || snapshot.primary.label || "Next step")}</div>
+                    </div>
+                    ${renderFlowActionButtons([snapshot.primary], "gold")}
+                </div>
+            `;
+        } else if(hint.requiresChoice){
+            primaryHtml = `
+                <div class="flow-guide-terminal">
+                    <strong>Pick the branch that matches the answer.</strong>
+                    <span>${escapeHtml(hint.note || "This step needs a branch choice before moving on.")}</span>
+                </div>
+            `;
+        } else {
+            primaryHtml = `
+                <div class="flow-guide-terminal">
+                    <strong>No automatic next step.</strong>
+                    <span>Use the route buttons below if the call branches.</span>
+                </div>
+            `;
+        }
+
+        const branchesHtml = branchOptions.length
+            ? `
+                <div class="flow-guide-branches">
+                    <div class="flow-guide-block-label">Likely branches</div>
+                    <div class="flow-guide-button-row">
+                        ${renderFlowActionButtons(branchOptions, "")}
+                    </div>
+                </div>
+            `
+            : "";
+
+        const fallbackHtml = snapshot.fallbacks?.length
+            ? `
+                <div class="flow-guide-fallbacks">
+                    <div class="flow-guide-block-label">If the call slips</div>
+                    <div class="flow-guide-button-row compact">
+                        ${renderFlowActionButtons(snapshot.fallbacks, "dark")}
+                    </div>
+                </div>
+            `
+            : "";
+
+        return `
+            <section class="flow-guide-shell">
+                <div class="flow-guide-head">
+                    <div class="flow-guide-copy">
+                        <div class="flow-guide-kicker">Conversation Guide</div>
+                        <div class="flow-guide-title">Current lane: ${escapeHtml(section.title)}</div>
+                        <div class="flow-guide-note">${escapeHtml(noteParts.join(" "))}</div>
+                    </div>
+                    <div class="flow-guide-meta">
+                        <div class="flow-guide-step">${escapeHtml(section.stepLabel || `Step ${section.step || ""}`)}</div>
+                        <span class="mini-tag ${section.signal}">${escapeHtml(signalLabel)}</span>
+                    </div>
+                </div>
+                <div class="flow-guide-primary">
+                    ${primaryHtml}
+                </div>
+                ${branchesHtml}
+                ${fallbackHtml}
+            </section>
+        `;
     }
 
     function ensureActiveSelection(){
@@ -602,7 +721,10 @@
             return;
         }
 
-        const filteredProsper = getFilteredProsperSections();
+        const filteredProsper = getFilteredProsperSections()
+            .slice()
+            .sort((a, b) => getGuideNavOrderValue(a) - getGuideNavOrderValue(b))
+            .filter(section => !shouldHideGuideShortcutFromRail(section));
         prosperCount.textContent = String(filteredProsper.length);
 
         if(!filteredProsper.length){
@@ -613,9 +735,10 @@
         filteredProsper.forEach(section => {
             const btn = document.createElement("button");
             btn.type = "button";
-            btn.className = `cat-btn ${section.signal}${section.id === activeProsperId ? " active" : ""}`;
+            btn.className = `cat-btn ${section.signal}${section.id === activeProsperId ? " active" : ""}${section.isNested ? " is-nested" : ""}`;
+            btn.setAttribute("data-guide-id", section.id);
             btn.innerHTML = `
-                <div class="cat-top-single">${highlightText(section.title, (rbSearch.value || "").trim())}</div>
+                <div class="cat-top-single">${highlightText(getGuideNavTitle(section), (rbSearch.value || "").trim())}</div>
             `;
             btn.addEventListener("click", function(){
                 activePane = "prosper";
@@ -626,6 +749,48 @@
         });
     }
 
+    function renderGuideShortcutButtons(){
+        if(!guideShortcutHost){
+            return;
+        }
+
+        if(shouldKeepGuideShortcutsInRail() || !prosperLoaded || prosperLoadFailed){
+            guideShortcutHost.innerHTML = "";
+            return;
+        }
+
+        const shortcutSections = getFilteredProsperSections()
+            .filter(section => guideShortcutIds.has(section.id || ""))
+            .sort((a, b) => getGuideNavOrderValue(a) - getGuideNavOrderValue(b));
+
+        const toggleButtonHtml = `
+            <button type="button" class="btn lb-btn ghost objections-toggle-btn" data-objections-toggle>
+                ${objectionsHidden ? "Show Objections" : "Hide Objections"}
+            </button>
+        `;
+
+        guideShortcutHost.innerHTML = toggleButtonHtml + shortcutSections.map(section => `
+            <button type="button" class="btn lb-btn ghost guide-shortcut-btn${activePane === "prosper" && activeProsperId === section.id ? " active" : ""}" data-guide-shortcut="${escapeHtml(section.id)}">
+                ${escapeHtml(section.title)}
+            </button>
+        `).join("");
+
+        const toggleBtn = guideShortcutHost.querySelector("[data-objections-toggle]");
+        if(toggleBtn){
+            toggleBtn.addEventListener("click", function(){
+                setObjectionsHidden(!objectionsHidden);
+            });
+        }
+
+        guideShortcutHost.querySelectorAll("[data-guide-shortcut]").forEach(btn => {
+            btn.addEventListener("click", function(){
+                activePane = "prosper";
+                activeProsperId = btn.getAttribute("data-guide-shortcut") || activeProsperId;
+                rerenderAll();
+            });
+        });
+    }
+
     function renderRebuttalContent(){
         const filteredCategories = getFilteredCategories();
         const activeCategory = filteredCategories.find(x => x.key === activeCategoryKey);
@@ -633,14 +798,14 @@
         if(!activeCategory){
             rbContent.innerHTML = `<div class="content-empty">Pick a rebuttal category on the left or a Life Insurance step on the right.</div>`;
             rbCount.textContent = "0";
-            contentCount.textContent = "0 scripts";
+            if (contentCount) contentCount.textContent = "0 scripts";
             contentSub.textContent = "No category selected.";
             return;
         }
 
         const searchVal = (rbSearch.value || "").trim();
         rbCount.textContent = String(activeCategory.items.length);
-        contentCount.textContent = `${activeCategory.items.length} scripts`;
+        if (contentCount) contentCount.textContent = `${activeCategory.items.length} scripts`;
         contentSub.textContent = activeCategory.name;
 
         let html = `
@@ -658,7 +823,7 @@
                         <span class="mini-tag ${item.signal}">${getSignalLabel(item.signal)}</span>
                     </div>
                     <div class="objection-body">
-                        <pre class="script">${highlightText(item.script, searchVal)}</pre>
+                        <pre class="script">${highlightText(personalizeScriptText(item.script), searchVal)}</pre>
                     </div>
                 </div>
             `;
@@ -671,7 +836,7 @@
         if(!prosperLoaded && !prosperLoadFailed){
             rbContent.innerHTML = `<div class="content-empty">Loading life insurance steps…</div>`;
             rbCount.textContent = "0";
-            contentCount.textContent = "0 steps";
+            if (contentCount) contentCount.textContent = "0 steps";
             contentSub.textContent = "Life Insurance Guide";
             return;
         }
@@ -679,7 +844,7 @@
         if(prosperLoadFailed){
             rbContent.innerHTML = `<div class="content-empty">Life Insurance steps could not be loaded.</div>`;
             rbCount.textContent = "0";
-            contentCount.textContent = "0 steps";
+            if (contentCount) contentCount.textContent = "0 steps";
             contentSub.textContent = "Life Insurance Guide";
             return;
         }
@@ -690,27 +855,30 @@
         if(!activeSection){
             rbContent.innerHTML = `<div class="content-empty">Pick a Life Insurance step on the right to load it here.</div>`;
             rbCount.textContent = "0";
-            contentCount.textContent = "0 steps";
+            if (contentCount) contentCount.textContent = "0 steps";
             contentSub.textContent = "Life Insurance Guide";
             return;
         }
 
         rbCount.textContent = "1";
-        contentCount.textContent = `Step ${activeSection.step}`;
+        if (contentCount) contentCount.textContent = `Step ${activeSection.step}`;
         contentSub.textContent = "Life Insurance Guide";
+        const searchVal = (rbSearch.value || "").trim();
+        const flowGuideHtml = renderProsperFlowGuide(activeSection);
 
         rbContent.innerHTML = `
-            <div class="prosper-stage ${activeSection.signal}">
+            <div class="prosper-stage ${activeSection.signal}" data-guide-id="${escapeHtml(activeSection.id)}">
                 <div class="prosper-stage-head">
                     <div>
                         <p class="prosper-step">${escapeHtml(activeSection.stepLabel)}</p>
-                        <h2 class="prosper-title">${highlightText(activeSection.title, (rbSearch.value || "").trim())}</h2>
-                        <p class="prosper-sub">${highlightText(activeSection.sub || "Selected step from the life insurance guide.", (rbSearch.value || "").trim())}</p>
+                        <h2 class="prosper-title">${highlightText(activeSection.title, searchVal)}</h2>
+                        <p class="prosper-sub">${highlightText(activeSection.sub || "Selected step from the life insurance guide.", searchVal)}</p>
                     </div>
                     <span class="mini-tag ${activeSection.signal}">${getSignalLabel(activeSection.signal)}</span>
                 </div>
-                <div class="prosper-body">${activeSection.bodyHtml}</div>
+                <div class="prosper-body" data-guide-id="${escapeHtml(activeSection.id)}">${activeSection.bodyHtml}</div>
             </div>
+            ${flowGuideHtml}
         `;
     }
 
@@ -760,9 +928,12 @@
     }
 
     function rerenderAll(){
+        lastGuideShortcutRailMode = shouldKeepGuideShortcutsInRail();
+        applyObjectionsVisibility();
         ensureActiveSelection();
         renderNav();
         renderProsperNav();
+        renderGuideShortcutButtons();
         renderContent();
         updateRailArrows();
     }
@@ -779,7 +950,8 @@
 
             const html = await response.text();
             const doc = new DOMParser().parseFromString(html, "text/html");
-            const nodes = Array.from(doc.querySelectorAll("#mpCard > details.section"));
+            const nodes = Array.from(doc.querySelectorAll("#mpCard details.section"))
+                .filter(node => node.id !== "sec-hub");
 
             prosperSections = nodes.map((node, index) => {
                 const step = (node.getAttribute("data-step") || String(index + 1)).trim();
@@ -787,13 +959,16 @@
                 const flow = (node.getAttribute("data-flow") || "").trim();
                 const title = (node.querySelector(".title")?.textContent || `Step ${step}`).trim();
                 const sub = (node.querySelector(".sub")?.textContent || "").trim();
-                const bodyHtml = node.querySelector(".body")?.innerHTML || "";
+                const bodyClone = node.querySelector(".body")?.cloneNode(true);
+                bodyClone?.querySelectorAll('[data-jump="#sec-hub"]').forEach(button => button.remove());
+                const bodyHtml = bodyClone?.innerHTML || "";
 
                 return {
                     id: node.id || `prosper-step-${index + 1}`,
                     step,
                     stepLabel: `Step ${step}${flow ? " · " + flow.replace(/-/g, " ") : ""}`,
                     signal,
+                    isNested: !!node.parentElement.closest("details.section"),
                     flowLabel: flow ? flow.replace(/-/g, " ") : "",
                     title,
                     sub,
@@ -825,8 +1000,16 @@
     if(rbTone.addEventListener){
         rbTone.addEventListener("change", rerenderAll);
     }
+    applyObjectionsVisibility();
     prosperNav.addEventListener("scroll", updateRailArrows);
-    window.addEventListener("resize", updateRailArrows);
+    window.addEventListener("resize", function(){
+        const nextMode = shouldKeepGuideShortcutsInRail();
+        if(nextMode !== lastGuideShortcutRailMode){
+            rerenderAll();
+            return;
+        }
+        updateRailArrows();
+    });
 
     if(btnClearAll){
         btnClearAll.addEventListener("click", function(){
@@ -841,6 +1024,41 @@
     }
 
     rbContent.addEventListener("click", function(event){
+        const branchCloseBtn = event.target.closest("[data-branch-close]");
+        if(branchCloseBtn){
+            const nestedSection = branchCloseBtn.closest("details.section");
+            if(nestedSection){
+                event.preventDefault();
+                event.stopPropagation();
+                nestedSection.open = false;
+            }
+            return;
+        }
+
+        const backBtn = event.target.closest("[data-back]");
+        if(backBtn){
+            const nestedSection = backBtn.closest("details.section");
+            if(nestedSection){
+                event.preventDefault();
+                event.stopPropagation();
+                nestedSection.open = false;
+            }
+            return;
+        }
+
+        const routeBtn = event.target.closest("[data-route]");
+        if(routeBtn){
+            const targetId = routeBtn.getAttribute("data-route") || "";
+            if(!prosperSections.some(section => section.id === targetId)) return;
+
+            event.preventDefault();
+            activePane = "prosper";
+            activeProsperId = targetId;
+            rerenderAll();
+            rbContent.scrollIntoView({ behavior: "smooth", block: "start" });
+            return;
+        }
+
         const jumpBtn = event.target.closest("[data-jump]");
         if(!jumpBtn) return;
 
@@ -861,13 +1079,14 @@
     loadProsperSections();
 })();
 </script>
-<script src="~/js/uw-intake.js" asp-append-version="true"></script>
 
 @await Html.PartialAsync("~/Views/Proposals/_DecisionModal.cshtml")
 
 @section Scripts {
     <script src="~/js/rebuttals-leads.js" asp-append-version="true"></script>
-    <script src="~/js/workstation/dialer.js" asp-append-version="true"></script>
     <script src="~/js/legend-modal.js" asp-append-version="true"></script>
+    <script src="~/js/workstation-client-picker.js" asp-append-version="true"></script>
+    <script src="~/js/uw-intake.js" asp-append-version="true"></script>
     <script src="~/js/proposal-uw.js" asp-append-version="true"></script>
+    <script src="~/js/zoom-quick-popup.js" asp-append-version="true"></script>
 }

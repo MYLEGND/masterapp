@@ -20,21 +20,37 @@ public sealed class AgentTrackingService : IAgentTrackingService
         _db = db;
         _logger = logger;
         _publicBaseUrl = config["Protect:PublicBaseUrl"] ?? "https://protect.mylegnd.com";
-        _founderUpn = config["Founder:Upn"] ?? "zac.owen@mylegnd.com";
+        _founderUpn = config["Founder:Upn"] ?? throw new InvalidOperationException("Founder:Upn configuration is required");
+    }
+
+    private static string? NormalizeUpn(string? agentUpn)
+    {
+        var value = agentUpn?.Trim().ToLowerInvariant();
+        return string.IsNullOrWhiteSpace(value) ? null : value;
     }
 
     public async Task<AgentTrackingProfile?> GetByUserIdAsync(string agentUserId, CancellationToken ct = default)
     {
         if (string.IsNullOrWhiteSpace(agentUserId)) return null;
+        var key = agentUserId.Trim();
+        var profile = await _db.AgentTrackingProfiles.AsNoTracking()
+            .FirstOrDefaultAsync(x => x.AgentUserId == key, ct);
+        if (profile != null) return profile;
+
+        // SQLite can behave case-sensitively for text equality; fall back to normalized match.
+        var lower = key.ToLowerInvariant();
         return await _db.AgentTrackingProfiles.AsNoTracking()
-            .FirstOrDefaultAsync(x => x.AgentUserId == agentUserId, ct);
+            .FirstOrDefaultAsync(x => x.AgentUserId != null && x.AgentUserId.ToLower() == lower, ct);
     }
 
     public async Task<AgentTrackingProfile?> GetByUpnAsync(string agentUpn, CancellationToken ct = default)
     {
         if (string.IsNullOrWhiteSpace(agentUpn)) return null;
         return await _db.AgentTrackingProfiles.AsNoTracking()
-            .FirstOrDefaultAsync(x => x.AgentUpn == agentUpn, ct);
+            .Where(x => x.AgentUpn == agentUpn)
+            .OrderBy(x => x.CreatedUtc)
+            .ThenBy(x => x.Id)
+            .FirstOrDefaultAsync(ct);
     }
 
     public async Task<AgentTrackingProfile> EnsureProfileAsync(string agentUserId, string agentUpn, string? displayName = null, CancellationToken ct = default)
@@ -43,9 +59,33 @@ public sealed class AgentTrackingService : IAgentTrackingService
             throw new ArgumentException("agentUserId is required", nameof(agentUserId));
         agentUpn ??= string.Empty;
 
+        var agentUserIdLower = agentUserId.ToLowerInvariant();
+        var agentUpnNorm = NormalizeUpn(agentUpn);
         var existing = await _db.AgentTrackingProfiles
             .Include(x => x.Aliases)
-            .FirstOrDefaultAsync(x => x.AgentUserId == agentUserId, ct);
+            .FirstOrDefaultAsync(x => x.AgentUserId == agentUserId || (x.AgentUserId != null && x.AgentUserId.ToLower() == agentUserIdLower), ct);
+        if (existing == null && agentUpnNorm != null)
+        {
+            var upnMatches = await _db.AgentTrackingProfiles
+                .Include(x => x.Aliases)
+                .Where(x => x.AgentUpn != null && x.AgentUpn.ToLower() == agentUpnNorm)
+                .ToListAsync(ct);
+
+            if (upnMatches.Count > 0)
+            {
+                existing = upnMatches
+                    .OrderBy(x => Regex.IsMatch(x.Slug ?? string.Empty, "-\\d+$") ? 1 : 0)
+                    .ThenBy(x => x.CreatedUtc)
+                    .ThenBy(x => x.Id)
+                    .First();
+
+                _logger.LogWarning(
+                    "AgentTracking: reusing tracking profile {ProfileId} for oid {Oid} via agent UPN {AgentUpn} to avoid creating a duplicate tracking slug.",
+                    existing.Id,
+                    agentUserId,
+                    agentUpnNorm);
+            }
+        }
         if (existing != null)
         {
             // refresh UPN / display name if changed

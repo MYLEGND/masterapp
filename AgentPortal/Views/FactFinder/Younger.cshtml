@@ -1480,12 +1480,8 @@
                 checkbox.focus();
                 return;
             }
-
-            if (!form.checkValidity()) {
-                event.preventDefault();
-                const invalidEls = revealValidation();
-                focusFirstInvalid(invalidEls);
-            }
+            // Per-step validation already ensured required fields are filled.
+            // Server handles final validation before generating the PDF.
         });
 
         // Init wizard and reveal server-side errors
@@ -1495,6 +1491,6 @@
     })();
 </script>
 
-@section Scripts{
+@section Scripts {
     <partial name="_ValidationScriptsPartial" />
 }

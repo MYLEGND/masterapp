@@ -5,6 +5,7 @@
 
 @section Styles {
     <link rel="stylesheet" href="~/css/scripts-rebuttals.css" asp-append-version="true" />
+    <link rel="stylesheet" href="~/css/clients-index.css" asp-append-version="true" />
 }
 
 
@@ -63,6 +64,8 @@
                 </div>
             </div>
 
+            @await Html.PartialAsync("_LeadBridge", "LifeInsurance")
+
             <div class="focus-banner" id="focusBanner">
                 <div class="left">
                     <div class="t1">Focus Mode is ON</div>
@@ -75,7 +78,6 @@
             </div>
 
             <div class="card" id="mpCard">
-
                 <details class="section" data-step="0" data-flow="verify" data-signal="bad" id="sec-hub">
                     <summary>
                         <div class="sum-left">
@@ -121,6 +123,76 @@ Is it the price, the timing, or are you just unsure what this even is?</span></d
                     </div>
                 </details>
 
+                <details class="section termwhole-step" data-step="2" data-flow="close" data-signal="info" id="sec-termwhole">
+                    <summary>
+                        <div class="sum-left">
+                            <div class="chev">›</div>
+                            <div>
+                                <span class="title">Coverage Options</span>
+                                <span class="sub">Temporary vs. permanent protection.</span>
+                            </div>
+                        </div>
+                        <div class="sum-actions">
+                            <button class="btn-mini info termwhole-focus" type="button" data-focus="#sec-termwhole">Focus</button>
+                            <button class="btn-mini bad" type="button" data-jump="#sec-hub">Unsure?</button>
+                        </div>
+                    </summary>
+                    <div class="body">
+                        <div class="callout warn">
+                            <div>
+                                <span class="cue warn">CLARIFY</span> Use this when they need the difference explained without making it feel complicated.
+                                <div class="hint">Educate clearly, then bring them back to the protection their family can truly depend on.</div>
+                            </div>
+                        </div>
+
+                        <div id="termWhole" class="script"><span class="note">Work / Employer Life Insurance</span>
+<span class="say">A lot of people do have some sort of coverage through work, and there's nothing wrong with that at all. In many cases, the employer gives a small amount of protection at little to no cost, so it can absolutely be a good starting point for families.
+
+The biggest thing people don't always realize, though, is that work coverage is usually tied directly to the job itself. So if somebody retires, changes companies, gets laid off, or becomes too sick to continue working, there's a chance that coverage could reduce or disappear right when the family may need protection the most.
+
+Another thing families sometimes run into is lack of control. Since the employer controls the policy, the benefits and long-term availability can change over time based on the company's decisions rather than yours.
+
+That's why many families choose to have something personal in place that they fully own and control themselves — so no matter what happens with work, health, or retirement later on, they know their loved ones still have protection they can count on.</span>
+
+<span class="note">Term Life Insurance</span>
+<span class="say">Term life insurance is designed more for temporary responsibilities during the heavier financial years of life. So for example, while the mortgage is high, the kids are still young, or the family is depending heavily on your income, term coverage can help create a financial safety net during those years.
+
+A lot of families like term because it usually allows them to get a larger amount of protection for a lower monthly payment upfront. The tradeoff is that term coverage is designed to eventually expire after a certain number of years.
+
+So the question families usually ask themselves is:
+"Will I still want protection later in life after the term ends?"
+
+Because if coverage expires later on and health changes with age, it can become harder or much more expensive to replace that protection down the road.</span>
+
+<span class="note">Whole Life Insurance</span>
+<span class="say">Whole life insurance is designed for families who want protection that stays in place for life instead of expiring after a temporary period of time. A lot of people like the peace of mind that comes from knowing that no matter what happens with age or health later on, they've already got something in place their family can depend on.
+
+Unlike temporary coverage, whole life is built to stay with you permanently as long as premiums are paid. The premiums are typically fixed, meaning they don't continue increasing because of age or declining health later in life.
+
+Many whole life policies can build cash value over time and may include living benefits as well, which can help if life ever takes an unexpected turn through things like serious illness, disability, or major health events.
+
+At the end of the day, the biggest difference really comes down to temporary protection versus permanent protection. Temporary coverage can absolutely make sense for temporary needs. But many families feel more comfortable knowing they have at least some permanent protection in place because the reality is, the need for life insurance itself does not disappear.</span>
+
+<span class="note">Comparing the Two</span>
+<span class="say">At the end of the day, the biggest difference really comes down to temporary protection versus permanent protection.
+
+Term insurance can make a lot of sense for families trying to protect temporary responsibilities during the heavier financial years of life — things like a mortgage, raising children, replacing income, or covering debt while keeping the monthly payment lower.
+
+Whole life insurance is usually more about long-term certainty and making sure there is protection in place no matter when that day eventually comes. A lot of families like knowing the coverage is designed to stay with them for life instead of potentially expiring later on when age or health may make it difficult to qualify again.
+
+The reality is that life changes, health changes, and eventually we all pass away at some point. That's why many families feel more comfortable having at least some permanent protection in place, so the people they love are not left trying to figure everything out alone later on.
+
+At the end of the day, this is not really about choosing the "most expensive" policy or the "cheapest" policy. It's about making sure your family has protection they can truly depend on when they need it most.</span>
+
+<span class="silent">USE THIS TO EDUCATE, THEN TRANSITION BACK INTO THE BEST-FIT PROTECTION OPTION.</span></div>
+
+                        <div class="quick-branch-actions">
+                            <button class="btn-mini bad" type="button" data-jump="#sec-occ">Back to Start One Call Close</button>
+                            <button class="btn info branch-continue termwhole-continue" type="button" data-jump="#sec-equity">Continue → Equity Protection</button>
+                        </div>
+                    </div>
+                </details>
+
                 <details class="section" data-step="1" data-flow="start" data-signal="good" id="sec-voicemail">
                     <summary>
                         <div class="sum-left">
@@ -143,7 +215,7 @@ Is it the price, the timing, or are you just unsure what this even is?</span></d
                             </div>
                         </div>
 
-                        <div id="vm" class="script"><span class="say">This message is for </span><span class="fill">&lt;CLIENT NAME&gt;</span><span class="say">, this is </span><span class="fill">&lt;YOUR NAME&gt;</span><span class="say">. I manage the brokerage that handles the life insurance requests for families in your area. We do have pending paperwork to get back to you regarding the life insurance request you filled out. Give me a call back at </span><span class="fill">&lt;YOUR PHONE NUMBER&gt;</span><span class="say">. Talk to you soon.</span></div>
+                        <div id="vm" class="script"><span class="say">Hi </span><span class="fill">&lt;CLIENT NAME&gt;</span><span class="say">, this is </span><span class="fill">&lt;YOUR NAME&gt;</span><span class="say">. I manage the brokerage that handles the life insurance requests for families in your area. We do have pending paperwork to get back to you regarding your request. If you could give me a call back at </span><span class="fill">&lt;YOUR PHONE NUMBER&gt;</span><span class="say">. Again, that's </span><span class="fill">&lt;YOUR PHONE NUMBER&gt;</span><span class="say">. That would be great. Talk to you soon.</span></div>
 
                         <div style="height:12px"></div>
 
@@ -155,73 +227,13 @@ Is it the price, the timing, or are you just unsure what this even is?</span></d
                         </div>
 
                         <div class="side-actions" style="grid-template-columns:1fr 1fr;">
-                            <button class="btn" type="button" data-jump="#sec-aged">Go to Aged Lead Opener</button>
+                            <button class="btn" type="button" data-jump="#sec-aged">Return to START HERE</button>
                             <button class="btn dark" type="button" data-jump="#sec-verify">Verify Coverage Lane</button>
                         </div>
                     </div>
                 </details>
 
-                <details class="section" data-step="2" data-flow="start" data-signal="warn" id="sec-texts">
-                    <summary>
-                        <div class="sum-left">
-                            <div class="chev">›</div>
-                            <div>
-                                <span class="title">Text Scripts</span>
-                                <span class="sub">Direction only. No debate.</span>
-                            </div>
-                        </div>
-                        <div class="sum-actions">
-                            <button class="btn-mini good" type="button" data-focus="#sec-texts">Focus</button>
-                        </div>
-                    </summary>
-
-                    <div class="body">
-                        <div class="callout warn">
-                            <div>
-                                <span class="cue warn">RULE</span> If they respond with questions → move to call.
-                                <div class="hint">Text ends with “What time today works?”</div>
-                            </div>
-                        </div>
-
-                        <div class="keyline"><strong>TEXT (1)</strong> Quick “pending paperwork” text.</div>
-                        <div id="txt1" class="script"><span class="fill">&lt;NAME&gt;</span><span class="say">, this is </span><span class="fill">&lt;YOUR NAME&gt;</span><span class="say"> regarding the life insurance request you filled out. Give me a call back when you get this, we have some pending paperwork to get out to you. The office number is </span><span class="fill">&lt;OFFICE NUMBER&gt;</span><span class="say">. Thanks.</span></div>
-
-                        <div style="height:12px"></div>
-
-                        <div class="keyline"><strong>TEXT (2)</strong> Underwriter assigned + book a call.</div>
-                        <div id="txt2" class="script"><span class="fill">&lt;NAME&gt;</span><span class="say">, it’s </span><span class="fill">&lt;YOUR NAME&gt;</span><span class="say"> following up with you on the request you filled out looking for life insurance coverage. This is the coverage that helps replace income, cover final expenses, and protect the family, God forbid something happened to you.
-
-I'm the field underwriter assigned to help you take care of this for your family. What time are you available for me to give you a call today or tomorrow?</span></div>
-
-                        <div style="height:12px"></div>
-
-                        <div class="keyline"><strong>APPT CONFIRM</strong> Set expectation + get acknowledgement.</div>
-                        <div id="txtConfirm" class="script"><span class="say">Hey </span><span class="fill">&lt;NAME&gt;</span><span class="say">, </span><span class="fill">&lt;YOUR NAME&gt;</span><span class="say"> here, medical underwriter. Confirming our appointment at </span><span class="fill">&lt;TIME&gt;</span><span class="say">. If there is any reason you can’t make that meeting, please let myself or my staff know so we can reschedule and help another family in your place. I look forward to serving you and your family!
-
-Reply “Yes” or give me a “👍🏻” to let me know you received this message.</span></div>
-
-                        <div style="height:12px"></div>
-
-                        <div class="keyline"><strong>HAIL MARY</strong> Reschedule + last attempt language.</div>
-                        <div id="txtHail" class="script"><span class="say">Hey, just gave a call for our appointment. Do you need a few minutes?
-
-Just need to get this rescheduled — will later today or tomorrow work better for you?
-I have some availability this evening. If not, I can try to squeeze you in for tomorrow. I know this is important to you. Give me a call back when you get this.
-
-Tried to reach out a few times and haven't heard back…
-Where should we go from here?</span></div>
-
-                        <div style="height:12px"></div>
-
-                        <div class="callout bad">
-                            <div>
-                                <span class="cue bad">STOP</span> If they reply “What is this?” → don’t type a paragraph.
-                                <div class="hint">Jump to the 3-insurance explanation and bring them to a call.</div>
-                            </div>
-                            <button class="btn-mini bad" type="button" data-jump="#sec-threeins">Go to “3 Insurances”</button>
-                        </div>
-                    </div>
-                </details>
+                @await Html.PartialAsync("_UnifiedTextScripts", "LifeInsurance")
 
                 <details class="section" open data-step="3" data-flow="verify" data-signal="good" id="sec-aged">
                     <summary>
@@ -229,7 +241,7 @@ Where should we go from here?</span></div>
                             <div class="chev">›</div>
                             <div>
                                 <span class="title">Mail-In Aged Leads</span>
-                                <span class="sub">Purple chill / Red concerned.</span>
+                                <span class="sub">Lead opener and verification setup.</span>
                             </div>
                         </div>
                         <div class="sum-actions">
@@ -239,18 +251,18 @@ Where should we go from here?</span></div>
                     </summary>
 
                     <div class="body">
-                        <div class="callout good">
-                            <div>
-                                <span class="cue good">PURPLE</span> Chill tone
-                                <span class="cue bad">RED</span> Concerned / confused tone
-                                <div class="hint">Goal: “file correction” not “sales pitch”.</div>
-                            </div>
-                        </div>
+                        <div id="agedOpen" class="script"><span class="say">Yeah, </span><span class="fill">&lt;CLIENT&gt;</span><span class="say">? This is just </span><span class="fill">&lt;YOUR NAME&gt;</span><span class="say">. Had to give you a quick call here- How are you doing today? 
+                            
+Again, my name is </span><span class="fill">&lt;YOUR NAME&gt;</span><span class="say">.</span>
+I’m the senior underwriter assigned to the life insurance request tied to your file. It looks like your information never fully made it through the underwriting process on our end, so my job is just to get this cleaned up and finalized for you today. 
 
-                        <div id="agedOpen" class="script"><span class="say">Yeah, </span><span class="fill">&lt;CLIENT&gt;</span><span class="say">? This is </span><span class="fill">&lt;YOUR NAME&gt;</span><span class="say">. Had to give you a quick call here... I manage the brokerage that handles the life insurance requests for families in your area.</span>
-Your file came across my desk… still showing me as incomplete… you probably remember… sometime back you filled out a form looking for information on life insurance coverage. Right… where it helps protect the family, replace income, and handle the financial burden if you get sick or pass away. Do you remember that?
+Now </span><span class="fill">&lt;CLIENT&gt;</span><span class="say">, let me ask you — what originally had you looking into coverage in the first place? Was this more about making sure your family isn’t left carrying any financial burden if something happened… or was there something specific that prompted you to start looking into this?</span></div>
 
-It looks like you actually did the right thing. You filled out the form looking for coverage, but for whatever reason on our end, we still haven't got that completed. I'm the senior underwriter, so it’s my job to see what’s going on so we can get this taken care of. By chance, do you remember one of our junior underwriters reaching out to take care of you?</span></div>
+                        <div style="height:12px"></div>
+
+                        <div id="agedYes" class="script"><span class="say">Okay, perfect. That makes sense. And honestly, that’s exactly why families usually start looking into this stuff in the first place — just making sure things are handled properly so the people they care about aren’t left dealing with all the stress later on.
+So let me just verify a few things here and see exactly where things stopped in the process. Did somebody already help you get something properly set up for your family, or did things stop before you got that far?
+                        </span></div>
 
                         <div style="height:12px"></div>
 
@@ -271,7 +283,7 @@ It looks like you actually did the right thing. You filled out the form looking 
                             </div>
                         </div>
 
-                        <div id="clarify" class="script"><span class="say">So it is </span><span class="fill">&lt;STATE&gt;</span><span class="say"> state law that you would have received a policy packet in the mail — I’m assuming you received that, right? Okay, now you would have been assigned a carrier and gone through a series of medical questions with one of our underwriters. I’m assuming you did that too, right?</span></div>
+                        <div id="clarify" class="script"><span class="say">Okay, perfect. And just so I can see exactly where things ended in the process — usually if everything had fully gone through already, you would’ve received the policy documents either by mail or electronically and completed the health portion to see what you qualified for. Do you remember getting through those steps?</span></div>
                     </div>
                 </details>
 
@@ -307,23 +319,24 @@ It looks like you actually did the right thing. You filled out the form looking 
 
                         <div style="height:16px"></div>
 
-                        <div class="keyline"><strong>IF NO COVERAGE</strong> Reframe → protect the home → start FI.</div>
-                        <div id="noCoverage" class="script"><span class="say">Okay, perfect — that’s probably why your file is flagged here. It looks like our junior medical underwriter wasn’t able to get ahold of you.
+                        <div style="height:10px"></div>
+                        <button class="btn info termwhole-jump" type="button" data-jump="#sec-termwhole">Coverage Options</button>
 
-Now </span><span class="fill">&lt;CLIENT NAME&gt;</span><span class="say">, correct me if I’m wrong… I’m assuming when you filled out the form that you were looking for something that would protect your family financially or replace income if, God forbid, you were to pass away... does that sound about right?
+                        <div style="height:10px"></div>
 
-Okay, and who are we looking to protect in this situation?...
+                        <div class="keyline"><strong>IF NO COVERAGE</strong> Reframe → protect the family → start FI.</div>
+                        <div id="noCoverage" class="script"><span class="say">Okay, perfect — that actually makes a lot more sense now. It looks like things probably just never got fully finished up on your file.
 
-If yes: Okay perfect, I’m the senior underwriter, like I said, and it’s my job to ask a couple questions to see what you are able to qualify for.</span>
-<span class="silent">START FILLING OUT FINANCIAL INVENTORY</span>
-<span class="silent">GO INTO ONE CALL CLOSE SCRIPT</span></div>
+Now </span><span class="fill">&lt;CLIENT NAME&gt;</span><span class="say">, correct me if I’m wrong… I’m assuming when you filled out the form that you were looking for something that would help protect your family, replace income, and handle any bills if, God forbid, you were to pass away... does that sound about right?
+
+</span></div>
 
                         <div style="height:10px"></div>
                         <button class="btn gold" type="button" data-jump="#sec-occ">➡️ Jump to One Call Close</button>
                     </div>
                 </details>
 
-                <details class="section" data-step="5" data-flow="verify" data-signal="warn" id="sec-replace">
+                <details class="section" data-step="4A" data-flow="verify" data-signal="warn" id="sec-replace">
                     <summary>
                         <div class="sum-left">
                             <div class="chev">›</div>
@@ -339,21 +352,6 @@ If yes: Okay perfect, I’m the senior underwriter, like I said, and it’s my j
                     </summary>
 
                     <div class="body">
-                        <div class="callout warn">
-                            <div>
-                                <span class="cue warn">RULE</span> Never say “replace” first. Say “review”.
-                                <div class="hint">You’re the fixer. Not the seller.</div>
-                            </div>
-                        </div>
-
-                        <div class="callout bad">
-                            <div>
-                                <span class="cue bad">STOP</span> If they get defensive → ask why they picked that policy.
-                                <div class="hint">Then route into “options that match your real goal”.</div>
-                            </div>
-                            <button class="btn-mini bad" type="button" data-jump="#sec-options-choose">Go to Options Choice</button>
-                        </div>
-
                         <div id="prKnown" class="script"><span class="note">If client knows carrier:</span>
 <span class="silent">ACT CONFUSED</span>
 <span class="say">Okay </span><span class="fill">&lt;NAME&gt;</span><span class="say">, was there a certain reason they put you with that carrier? Do you have any serious medical history? I’m just a little confused here since </span><span class="fill">&lt;CARRIER NAME&gt;</span><span class="say"> is one of our more expensive carriers.</span>
@@ -384,7 +382,7 @@ Now, what my job is today is to take a look at the policies you currently have a
                     </div>
                 </details>
 
-                <details class="section" data-step="6" data-flow="start" data-signal="warn" id="sec-book">
+                <details class="section" data-step="4B" data-flow="start" data-signal="warn" id="sec-book">
                     <summary>
                         <div class="sum-left">
                             <div class="chev">›</div>
@@ -428,7 +426,7 @@ If tomorrow, is morning, afternoon, or evening best for you?</span>
                     </div>
                 </details>
 
-                <details class="section" data-step="7" data-flow="close" data-signal="good" id="sec-occ">
+                <details class="section" data-step="5" data-flow="close" data-signal="good" id="sec-occ">
                     <summary>
                         <div class="sum-left">
                             <div class="chev">›</div>
@@ -450,15 +448,11 @@ If tomorrow, is morning, afternoon, or evening best for you?</span>
                             </div>
                         </div>
 
-                        <div id="occ" class="script"><span class="say">Okay great, is this your first time going through the life insurance process?
-
-Gotcha, and I am recording this call for quality assurance and training purposes. That’s okay with you?
+                        <div id="occ" class="script"><span class="say">I understand how important it is to make sure your family is taken care of. We’ll make this process as smooth and straightforward as possible for you. Is this your first time going through the life insurance underwriting process?
 
 Perfect, and just so you understand everything, I’ll explain the entire process.
 
-It’s really simple. Again, I am an underwriter for an insurance brokerage, so it’s my job first to get you approved for coverage, and next get you approved at the best rate with one of our 40+ carriers.
-
-So I’m going to spend 2 minutes asking you some basic health questions so I can understand what coverage you may qualify for. So as I go through the medical questions and ask if you have COPD or smoke and you tell me you don't, but you do, this will flag that insurance carrier and will decline the coverage… so just be honest with me as we go through this process.
+It’s really simple. So I’m going to spend 2 minutes asking you some basic health questions so I can understand what coverage you may qualify for. So as I go through the medical questions and ask if you have COPD or smoke and you tell me you don't, but you do, this will flag that insurance carrier and will decline the coverage… so just be honest with me as we go through this process.
 
 Next, I’ll ask some basic financial questions so I can understand how much coverage you need and find something that will fit your budget.
 
@@ -475,7 +469,7 @@ I’ll present those various options to you. After we decide what option is the 
 
                         <div style="height:12px"></div>
 
-                        <details class="section" data-step="7A" data-flow="verify" data-signal="warn" id="sec-threeins">
+                        <details class="section quick-branch" data-step="5A" data-flow="verify" data-signal="warn" id="sec-threeins">
                             <summary>
                                 <div class="sum-left">
                                     <div class="chev">›</div>
@@ -483,10 +477,6 @@ I’ll present those various options to you. After we decide what option is the 
                                         <span class="title">3 Insurances on the Home (Client Unsure)</span>
                                         <span class="sub">20 seconds. Then move.</span>
                                     </div>
-                                </div>
-                                <div class="sum-actions">
-                                    <button class="btn-mini bad" type="button" data-back>Back</button>
-                                    <button class="btn-mini gold" type="button" data-jump="#sec-options-choose">Go Options</button>
                                 </div>
                             </summary>
                             <div class="body">
@@ -498,19 +488,24 @@ I’ll present those various options to you. After we decide what option is the 
                                 </div>
                                 <div id="threeIns" class="script"><span class="say">Now, the first part of my job is finding protection for the family, but secondly is education. Okay?
 
-So </span><span class="fill">&lt;CLIENT&gt;</span><span class="say">, when people start looking at life insurance there are usually 3 main types of coverage they hear about:
+So </span><span class="fill">&lt;CLIENT&gt;</span><span class="say">, when families start looking at coverage, there are usually 3 things they hear about:
 
-1. Term life insurance — this gives you protection for a set period of time, like 10, 20, or 30 years.
-2. Whole life insurance — this is permanent coverage that lasts your whole life and can build cash value over time.
-3. Life insurance with living benefits — this is coverage that can help protect you and your family not just if you pass away, but in the event you become sick, disabled, or deal with a serious illness. Make sense?</span>
+1. Basic life insurance — this is just straight death benefit coverage that pays the family if something happens.
+2. Coverage with living benefits — this can help if you get sick, disabled, or hit with a serious illness while you’re still living.
+3. Traditional life insurance coverage — this is what most families look at when they want to leave behind money, cover bills, and make sure their loved ones are protected if something happens. Make sense?</span>
 
 <span class="silent">BOOM — GO INTO THE FINANCIAL INVENTORY AND START FILLING IT OUT</span></div>
+
+                                <div class="quick-branch-actions">
+                                    <button class="btn-mini bad" type="button" data-branch-close>Back</button>
+                                    <button class="btn branch-continue" type="button" data-branch-close>Continue → Start FI</button>
+                                </div>
                             </div>
                         </details>
                     </div>
                 </details>
 
-                <details class="section" data-step="8" data-flow="close" data-signal="good" id="sec-equity">
+                <details class="section" data-step="7" data-flow="close" data-signal="good" id="sec-equity">
                     <summary>
                         <div class="sum-left">
                             <div class="chev">›</div>
@@ -528,13 +523,13 @@ So </span><span class="fill">&lt;CLIENT&gt;</span><span class="say">, when peopl
                         <div class="callout good">
                             <div>
                                 <span class="cue good">GO</span> Slow down here — this is where they feel it.
-                                <div class="hint">Goal: make protection feel real.</div>
+                                <div class="hint">Goal: make “months of payments” land as protection.</div>
                             </div>
                         </div>
 
                         <div id="equity" class="script"><span class="say"> </span><span class="fill">&lt;NAME&gt;</span><span class="say">, still with me?
 
-As I’m sure you’re already aware, if you wanted to cover every single financial need all at once, that can turn into a much bigger monthly payment… which don’t worry, none of the families we help do in your situation. What the families do in your situation is put together a practical protection plan.
+As I’m sure you’re already aware, if you wanted to cover every possible need all at once, that would be a much bigger monthly payment… which don’t worry, none of the families we help do in your situation. What the families do in your situation is put together a practical life insurance plan.
 
 Has anyone walked you through how the life insurance process works?
 
@@ -542,20 +537,20 @@ Gotcha, well basically it’s a much more practical, much more affordable approa
 
 Now, this plan is different for every family and their situation, so let’s run you through a realistic hypothetical here.
 
-Now, if you were to God forbid pass away, your family would still be dealing with all the same bills and responsibilities while trying to grieve. Now what does that mean?
+Now, if you were to God forbid pass away, your family would not only be dealing with that emotionally, they’d immediately be hit with lost income, unpaid bills, and the pressure of trying to hold everything together. Now what does that mean?
 
-That means if </span><span class="fill">&lt;BENEFICIARY&gt;</span><span class="say"> is suddenly left trying to keep everything together during that transition process, the financial pressure can hit hard and fast. Which obviously we don’t want, right?
+That means if </span><span class="fill">&lt;BENEFICIARY&gt;</span><span class="say"> is trying to come up with thousands of dollars out of nowhere during that transition process, it can completely turn a bad situation into a financial mess. Which obviously we don’t want, right?
 
-Now, what life insurance does is buy time. Now what does that mean?
+Now, what life insurance does is buy breathing room. Now what does that mean?
 
-It means when </span><span class="fill">&lt;BENEFICIARY&gt;</span><span class="say"> is not only going through the hardest part of their life emotionally, but also financially, it provides real breathing room so they have enough time to properly mourn, grieve, and recover — but also have time to plan financially for the future without having to scramble and come up with thousands of dollars out of nowhere.
+It means when </span><span class="fill">&lt;BENEFICIARY&gt;</span><span class="say"> is not only going through the hardest part of their life emotionally, but also financially, it provides the money needed to handle immediate bills, replace income, and take care of whatever needs have to be covered, so that way in that time of passing, they have enough room to properly mourn, grieve, and recover — but also have time to plan financially for the future without having to scramble for cash.
 
 Now correct me if I’m wrong, but protecting the family and avoiding that situation would be important to you, correct?</span>
 
 <span class="note">If they plan on selling:</span>
-<span class="say">As well as have time to get things organized, make good decisions, and move forward without being forced into rushed financial choices while emotions are high.
+<span class="say">And if the family needs time to get things cleaned up, handled, and figured out after you pass, what this policy allows for is to give </span><span class="fill">&lt;BENEFICIARY&gt;</span><span class="say"> that grace period of time to get things organized so they’re not making emotional decisions under financial pressure.
 
-Gotcha, the main goal of this policy is to provide </span><span class="fill">&lt;BENEFICIARY&gt;</span><span class="say"> enough time just to get things figured out and move forward in a healthy manner, as well as protect the financial stability of your family. Does that make sense?
+Gotcha, the main goal of this policy is to provide </span><span class="fill">&lt;BENEFICIARY&gt;</span><span class="say"> enough room just to get things figured out and move forward in a healthy manner, as well as protect the family from the financial hit of losing you. Does that make sense?
 
 Gotcha, so we’re going to be looking at </span><span class="fill">&lt;MONTHS OPTION 1&gt;</span><span class="say">, </span><span class="fill">&lt;MONTHS OPTION 2&gt;</span><span class="say">, and </span><span class="fill">&lt;MONTHS OPTION 3&gt;</span><span class="say"> as your 3 coverage options.</span>
 
@@ -567,7 +562,7 @@ Gotcha, so we’re going to be looking at </span><span class="fill">&lt;MONTHS O
 <span class="silent">BUILDS CASH VALUE</span>
 <span class="say">So let’s say you decided to surrender the policy in 15–20 years for whatever reason, you’d be able to claim all the money back that you paid into the policy plus interest, acting as a high-interest savings account.</span>
 
-<span class="say">And the way that this pays out is in the form of a lump sum tax-free check, which is obviously designed to protect your family financially, but can also be used toward any sort of final expenses, unpaid bills, or income replacement and double as supplemental life insurance.</span>
+<span class="say">And the way that this pays out is in the form of a lump sum tax-free check, which is obviously designed to protect the family and help with bills, income replacement, or anything else they need, but can also be used toward any sort of unpaid bills and double as supplemental life insurance.</span>
 
 <span class="note">Then write:</span>
 <span class="silent">&lt;MONTHS OPTION 1&gt;, &lt;MONTHS OPTION 2&gt;, &lt;MONTHS OPTION 3&gt;</span>
@@ -600,12 +595,12 @@ Gotcha, were you wanting to think about which option you wanted to go with, or w
                     </div>
                 </details>
 
-                <details class="section" data-step="9" data-flow="options" data-signal="warn" id="sec-living">
+                <details class="section" data-step="8" data-flow="options" data-signal="warn" id="sec-living">
                     <summary>
                         <div class="sum-left">
                             <div class="chev">›</div>
                             <div>
-                                <span class="title">Mortgage Protection + Living Benefits</span>
+                                <span class="title">Life Insurance + Living Benefits</span>
                                 <span class="sub">Keep it simple. Then present.</span>
                             </div>
                         </div>
@@ -627,11 +622,19 @@ Gotcha, were you wanting to think about which option you wanted to go with, or w
 Okay, I have some options here ready for you — let me know when you are ready to write them down.</span>
 
 <span class="note">If term has living benefits:</span>
-<span class="say">Gotcha, I’m assuming you were looking for coverage on the living side as well? So God forbid any situation where you become sick, disabled, have cancer, a heart attack, stroke, or any other critical, terminal, or chronic illness, that your family is still financially protected?
+<span class="say">Gotcha, I’m assuming you were looking for coverage on the living side as well?
 
-So one of the biggest reasons families end up in financial trouble is death. Another major reason is becoming ill and not being able to work and continue handling the bills. So with the living benefits in this policy, you will be able to access a portion of the face amount, assuming you qualify for the coverage, which would pay out if you ever had any sort of major critical, terminal, or chronic illness.
+So God forbid something ever happened where you became seriously ill and it affected your ability to work or continue handling the bills, your family would still have financial protection in place.
 
-So for example, if you were ever told you had 2 years or less to live from a terminal illness, ever have any chronic illness or a serious illness for over 90 days, or if you ever have a heart attack, stroke, cancer, organ failure, blindness, ALS, or essentially anything that turns your world upside down where you can’t work, you would be able to claim </span><span class="fill">&lt;XX%&gt;</span><span class="say"> of the total coverage amount, which would be paid in a lump sum tax-free check while you’re still living. Does that make sense?</span>
+The number one reason families look into life insurance is because of death. The second is because of a serious health event that creates financial strain while they’re still living.
+
+With the living benefits included in this policy, if you qualify for coverage and later experience a qualifying critical, chronic, or terminal illness, you may be able to access a portion of the death benefit while you’re still living.
+
+So for example, if you were ever diagnosed with a qualifying condition such as cancer, heart attack, stroke, organ failure, ALS, blindness, or a terminal illness where a physician determines you have a limited life expectancy, the policy can allow you to accelerate a portion of the death benefit early.
+
+Depending on the carrier and policy terms, those funds are typically paid directly to you in a lump sum, and most families use that money to help cover things like mortgage payments, household bills, medical-related expenses, or time away from work.
+
+Does that make sense so far?</span>
 
 <span class="note">If they want more info:</span>
 <span class="say">Terminal illness means 2 years or less to live.
@@ -666,7 +669,7 @@ Gotcha, were you wanting to think about which option you wanted to go with, or w
                     </div>
                 </details>
 
-                <details class="section" data-step="10" data-flow="options" data-signal="good" id="sec-rop">
+                <details class="section" data-step="9" data-flow="options" data-signal="good" id="sec-rop">
                     <summary>
                         <div class="sum-left">
                             <div class="chev">›</div>
@@ -696,7 +699,7 @@ So as long as you don’t cancel early, there’s no situation where you are goi
                     </div>
                 </details>
 
-                <details class="section" data-step="11" data-flow="options" data-signal="warn" id="sec-iul">
+                <details class="section" data-step="10" data-flow="options" data-signal="warn" id="sec-iul">
                     <summary>
                         <div class="sum-left">
                             <div class="chev">›</div>
@@ -732,7 +735,7 @@ So the insurance company knows that, and they’ve done actuarial studies on thi
 
 Versus on whole life, there’s really no situation where you come out behind in a whole life policy, because that policy is paying out. You never have to worry about it expiring or outliving it, because it’s going to last until you are 120 years old.
 
-And </span><span class="fill">&lt;NAME&gt;</span><span class="say">, I still sit down with some clients that tell me, “Hey, whole life sounds great but I really only care about having protection in place while I’m raising the family, covering the bills, and making sure everyone is okay, and then after that I’m really not concerned with it.”
+And </span><span class="fill">&lt;NAME&gt;</span><span class="say">, I still sit down with some clients that tell me, “Hey, whole life sounds great but I really only care about having insurance in place while I’m worried about protecting the family financially, and then after that I’m really not concerned with it.”
 
 And I still tell them to take out a whole life policy because 20–30 years down the road, with this IUL with Mutual of Omaha, if you decide you no longer want it, you can simply go and surrender it and you will get all the money you paid into it back refunded to you, plus interest.
 
@@ -760,7 +763,7 @@ So either A, that policy is paying out because it never expires, or B, 20–30 y
                     </div>
                 </details>
 
-                <details class="section" data-step="11A" data-flow="options" data-signal="bad" id="sec-options-choose">
+                <details class="section" data-step="10A" data-flow="options" data-signal="bad" id="sec-options-choose">
                     <summary>
                         <div class="sum-left">
                             <div class="chev">›</div>
@@ -793,7 +796,7 @@ Are you deciding which option fits best, or are you still deciding whether you w
                     </div>
                 </details>
 
-                <details class="section" data-step="12" data-flow="eapp" data-signal="good" id="sec-eapp">
+                <details class="section" data-step="11" data-flow="eapp" data-signal="good" id="sec-eapp">
                     <summary>
                         <div class="sum-left">
                             <div class="chev">›</div>
@@ -889,6 +892,8 @@ Sounds good. I’ll be calling you in a year to check in on your benefits, but f
                     </div>
                 </details>
 
+>
+
             </div>
         </main>
     </div>
@@ -896,8 +901,17 @@ Sounds good. I’ll be calling you in a year to check in on your benefits, but f
 
 <div id="toast" class="toast">Copied.</div>
 
+<script src="~/js/rebuttals-leads.js" asp-append-version="true"></script>
+<script src="~/js/zoom-quick-popup.js" asp-append-version="true"></script>
+<script src="~/js/workstation/script-guide.js" asp-append-version="true"></script>
+
 <script>
 (function(){
+    if (window.WorkstationScriptGuide?.initSharedGuide){
+        const initialized = window.WorkstationScriptGuide.initSharedGuide();
+        if (initialized) return;
+    }
+
     const shell = document.getElementById('mpShell');
     const card  = document.getElementById('mpCard');
     const search = document.getElementById('mpSearch');
@@ -941,6 +955,19 @@ Sounds good. I’ll be calling you in a year to check in on your benefits, but f
         });
     }
 
+    function scrollBehaviorFor(targetOrSelector){
+        const id = typeof targetOrSelector === 'string'
+            ? targetOrSelector
+            : targetOrSelector?.id ? ('#' + targetOrSelector.id) : '';
+        return id === '#sec-termwhole' ? 'auto' : 'smooth';
+    }
+
+    function snapToTarget(target){
+        if(!target) return;
+        const top = Math.max(target.getBoundingClientRect().top + window.scrollY - 14, 0);
+        window.scrollTo({ top, behavior: 'auto' });
+    }
+
     function focusSection(id){
         sections.forEach(s => s.classList.remove('is-focus'));
         const target = document.querySelector(id);
@@ -948,7 +975,11 @@ Sounds good. I’ll be calling you in a year to check in on your benefits, but f
         target.classList.add('is-focus');
         target.open = true;
         shell.classList.add('focus-on');
-        target.scrollIntoView({ behavior:'smooth', block:'start' });
+        if(id === '#sec-termwhole'){
+            requestAnimationFrame(() => snapToTarget(target));
+        } else {
+            target.scrollIntoView({ behavior: scrollBehaviorFor(id), block:'start' });
+        }
         updateProgress();
         updateCurrentState();
     }
@@ -996,7 +1027,11 @@ Sounds good. I’ll be calling you in a year to check in on your benefits, but f
             next.classList.add('is-focus');
         }
 
-        next.scrollIntoView({ behavior:'smooth', block:'start' });
+        if(next.id === 'sec-termwhole'){
+            requestAnimationFrame(() => snapToTarget(next));
+        } else {
+            next.scrollIntoView({ behavior: scrollBehaviorFor(next), block:'start' });
+        }
         updateProgress();
         updateCurrentState();
     }
@@ -1061,7 +1096,11 @@ Sounds good. I’ll be calling you in a year to check in on your benefits, but f
             }
         }
 
-        target.scrollIntoView({ behavior:'smooth', block:'start' });
+        if(selector === '#sec-termwhole'){
+            requestAnimationFrame(() => snapToTarget(target));
+        } else {
+            target.scrollIntoView({ behavior: scrollBehaviorFor(selector), block:'start' });
+        }
         updateProgress();
         updateCurrentState();
     }
@@ -1081,6 +1120,19 @@ Sounds good. I’ll be calling you in a year to check in on your benefits, but f
             const prev = navStack.pop();
             if(prev) goTo(prev, false);
             else toast('No previous step.');
+        });
+    });
+
+    document.querySelectorAll('[data-branch-close]').forEach(btn=>{
+        btn.addEventListener('click', (e)=>{
+            e.preventDefault();
+            e.stopPropagation();
+            const branch = btn.closest('details.section');
+            if(!branch) return;
+            branch.open = false;
+            updateProgress();
+            updateCurrentState();
+            toast('Continue the financial inventory.');
         });
     });
 

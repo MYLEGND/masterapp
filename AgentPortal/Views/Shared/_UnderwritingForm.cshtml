@@ -154,6 +154,18 @@
         </div>
 
         <form id="uwForm" class="uw-form">
+            <div class="uw-context-bar">
+                <div class="uw-context-copy">
+                    <span class="uw-context-label">Builder Source</span>
+                    <span class="uw-context-value" data-uw-context-label>Current lead</span>
+                </div>
+                <div class="uw-context-actions">
+                    <button type="button" class="btn btn-ghost" data-uw-new>Lead</button>
+                    <button type="button" class="btn btn-ghost" data-uw-client>Use Client</button>
+                    <button type="button" class="btn btn-ghost" data-uw-scratch>Scratch</button>
+                </div>
+            </div>
+
             <div class="uw-section">
                 <div class="uw-section-title">@SectionTitle("Borrower Basics","Client Basics","Beneficiary Basics","Client Basics","Client Basics")</div>
                 <div class="uw-grid">
@@ -410,7 +422,9 @@
 
             <div class="uw-actions">
                 <div class="proposal-actions-inline">
-                    <button type="button" class="btn btn-ghost" id="btnUwNew">+ New</button>
+                    <button type="button" class="btn btn-ghost" id="btnUwFormNew" data-uw-new>Lead</button>
+                    <button type="button" class="btn btn-ghost" id="btnUwFormClient" data-uw-client>Use Client</button>
+                    <button type="button" class="btn btn-ghost" id="btnUwFormScratch" data-uw-scratch>Scratch</button>
                     <div class="proposal-saved">
                         <span>Saved Underwriting</span>
                         <button type="button" class="btn btn-ghost" id="btnUwDownload">Download PDF</button>
@@ -418,19 +432,6 @@
                 </div>
                 <div class="uw-right">
                     <button type="submit" class="btn btn-gold" id="uwSave">Save</button>
-                </div>
-            </div>
-
-            <div class="uw-menu" id="uwMenu" hidden>
-                <div class="uw-menu-head">
-                    <div>
-                        <div class="uw-menu-title">Underwriting</div>
-                        <div class="uw-menu-sub">Saved forms</div>
-                    </div>
-                    <button type="button" class="btn btn-ghost" data-uw-close>Close</button>
-                </div>
-                <div class="uw-menu-body" id="uwMenuList">
-                    <div class="proposal-empty">No underwriting saved</div>
                 </div>
             </div>
         </form>

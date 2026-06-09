@@ -1,0 +1,55 @@
+@model string
+@{
+    Layout = "~/Views/Shared/_Layout.cshtml";
+    var queueKey = string.IsNullOrWhiteSpace(Model) ? "LifeInsurance" : Model;
+    var queueTitle = queueKey switch
+    {
+        "DisabilityInsurance" => "Disability Insurance Queue",
+        "AutoInsurance" => "Auto Insurance Queue",
+        "HomeInsurance" => "Home Insurance Queue",
+        "HealthInsurance" => "Health Insurance Queue",
+        "CommercialInsurance" => "Commercial Insurance Queue",
+        _ => "Lead Queue"
+    };
+}
+
+@section Styles {
+    <link rel="stylesheet" href="~/css/scripts-rebuttals.css" asp-append-version="true" />
+    <link rel="stylesheet" href="~/css/workstation-home-proposal.css" asp-append-version="true" />
+    <link rel="stylesheet" href="~/css/clients-index.css" asp-append-version="true" />
+}
+
+<div id="rbShell" class="theme-life">
+    <div class="rb-wrap">
+        <div class="rb-hero">
+            <div class="rb-hero-top">
+                <div class="hero-left">
+                    <h1>Workstation — @queueTitle</h1>
+                    <p class="hero-sub">Protect website leads stay loaded here with CRM actions, notes, texting, and handoff context intact.</p>
+                </div>
+            </div>
+        </div>
+
+        <div class="rebuttal-command-center">
+            <div class="lead-contact-zone">
+                @await Html.PartialAsync("_LeadBridge", queueKey)
+            </div>
+
+            <section class="content-card">
+                <div class="card-head">
+                    <div class="content-head-copy">
+                        <div class="content-head-text">
+                            <p class="card-title">@queueTitle</p>
+                            <p class="card-sub">This product queue keeps the selected lead active inside Workstation while the contact, note, CRM, and follow-up tools stay available.</p>
+                        </div>
+                    </div>
+                </div>
+                <div class="content-body">
+                    <div class="content-empty">
+                        Product-specific script decks are still being expanded for this queue, but the lead bridge above is fully live and tied to the same CRM lead record.
+                    </div>
+                </div>
+            </section>
+        </div>
+    </div>
+</div>

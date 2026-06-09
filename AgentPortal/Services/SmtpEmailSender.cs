@@ -25,7 +25,7 @@ public sealed class SmtpEmailSender : IEmailSender
         _logger = logger;
     }
 
-    public async Task<bool> TrySendAsync(string toEmail, string subject, string? htmlBody, string? textBody = null)
+    public async Task<bool> TrySendAsync(string toEmail, string subject, string? htmlBody, string? textBody = null, string? fromEmail = null, string? fromDisplayName = null, string? replyToEmail = null)
     {
         var recipients = ParseRecipients(toEmail);
         if (recipients.Count == 0)
@@ -44,7 +44,7 @@ public sealed class SmtpEmailSender : IEmailSender
             {
                 using var message = new MailMessage
                 {
-                    From = new MailAddress(senderAddress, _options.FromName ?? senderAddress),
+                    From = new MailAddress(string.IsNullOrWhiteSpace(fromEmail) ? (_options.From ?? "connect@mylegnd.com") : fromEmail.Trim(), string.IsNullOrWhiteSpace(fromDisplayName) ? null : fromDisplayName.Trim()),
                     Subject = subject ?? "",
                     Body = htmlBody ?? textBody ?? "",
                     IsBodyHtml = !string.IsNullOrWhiteSpace(htmlBody)
@@ -53,6 +53,14 @@ public sealed class SmtpEmailSender : IEmailSender
                 foreach (var r in recipients)
                 {
                     message.To.Add(new MailAddress(r));
+                }
+
+                var resolvedReplyTo = string.IsNullOrWhiteSpace(replyToEmail) ? fromEmail : replyToEmail;
+                if (!string.IsNullOrWhiteSpace(resolvedReplyTo))
+                {
+                    message.ReplyToList.Add(new MailAddress(
+                        resolvedReplyTo.Trim(),
+                        string.IsNullOrWhiteSpace(fromDisplayName) ? null : fromDisplayName.Trim()));
                 }
 
                 if (!string.IsNullOrWhiteSpace(textBody) && message.IsBodyHtml)

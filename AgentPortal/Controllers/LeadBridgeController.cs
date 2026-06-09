@@ -4,6 +4,7 @@ using AgentPortal.Services;
 using AgentPortal.Helpers;
 using Domain.Entities;
 using Infrastructure.Data;
+using Infrastructure.Leads;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.SignalR;
@@ -21,24 +22,6 @@ public class LeadBridgeController : ControllerBase
     private readonly ILeadBridgeStateService _stateService;
     private readonly IHubContext<LeadBridgeHub> _hub;
     private readonly EffectiveAgentContext _agentContext;
-    private static readonly IReadOnlyDictionary<string, string> BucketMap = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
-    {
-        ["mortgageprotection"] = "MortgageProtection",
-        ["mortgageprotectionleads"] = "MortgageProtection",
-        ["mortgageprotectionrebuttals"] = "MortgageProtection",
-        ["finalexpense"] = "FinalExpense",
-        ["finalexpenseleads"] = "FinalExpense",
-        ["finalexpenserebuttals"] = "FinalExpense",
-        ["lifeinsurance"] = "LifeInsurance",
-        ["lifeinsuranceleads"] = "LifeInsurance",
-        ["lifeinsurancerebuttals"] = "LifeInsurance",
-        ["medicare"] = "Medicare",
-        ["medicareleads"] = "Medicare",
-        ["medicarerebuttals"] = "Medicare",
-        ["disabilityinsurance"] = "DisabilityInsurance",
-        ["disabilityinsuranceleads"] = "DisabilityInsurance",
-        ["disabilityinsurancerebuttals"] = "DisabilityInsurance"
-    };
 
     public LeadBridgeController(MasterAppDbContext db, ILeadBridgeStateService stateService, IHubContext<LeadBridgeHub> hub, EffectiveAgentContext agentContext)
     {
@@ -52,18 +35,16 @@ public class LeadBridgeController : ControllerBase
 
     private static string? NormalizeBucket(string? bucket)
     {
-        if (string.IsNullOrWhiteSpace(bucket)) return null;
-        var key = bucket.Replace(" ", "", StringComparison.OrdinalIgnoreCase)
-                        .Replace("-", "", StringComparison.OrdinalIgnoreCase)
-                        .Replace("_", "", StringComparison.OrdinalIgnoreCase)
-                        .Trim();
-        return BucketMap.TryGetValue(key, out var val) ? val : null;
+        return WorkstationLeadBuckets.NormalizeBucket(bucket);
     }
 
     private static string? ResolveLeadQueueBucket(WorkstationLeadProfile lead, string? fallbackBucket = null)
         => NormalizeBucket(lead.OriginalLeadType)
            ?? NormalizeBucket(lead.Bucket)
            ?? fallbackBucket;
+
+    private static string[] ExpandQueueBucketValues(string normalizedQueue)
+        => WorkstationLeadBuckets.ExpandLifeWorkstationQueueValues(normalizedQueue);
 
     private string GetAgentId()
     {
@@ -93,17 +74,17 @@ public class LeadBridgeController : ControllerBase
 
         if (!string.IsNullOrWhiteSpace(normalizedQueue))
         {
+            var queueValues = ExpandQueueBucketValues(normalizedQueue);
             query = query.Where(x =>
-                (x.OriginalLeadType != null && x.OriginalLeadType == normalizedQueue) ||
-                ((x.OriginalLeadType == null || x.OriginalLeadType == "") && x.Bucket == normalizedQueue));
+                (x.OriginalLeadType != null && queueValues.Contains(x.OriginalLeadType)) ||
+                ((x.OriginalLeadType == null || x.OriginalLeadType == "") && x.Bucket != null && queueValues.Contains(x.Bucket)));
         }
 
-        var rows = await query
-            .OrderBy(x => x.CallCount)         // fewest calls first
-            .ThenByDescending(x => x.CrmOrder) // then highest order
-            .ToListAsync();
+        var rows = await query.ToListAsync();
 
         rows = LeadCanonicalizer.Canonicalize(rows, null, "LeadBridge queue")
+            .OrderBy(x => x.CallCount)                               // fewest calls first
+            .ThenByDescending(WorkstationLeadOrder.ResolveSortValue) // then highest order
             .ToList();
 
         return rows;

@@ -101,16 +101,7 @@ a, .btn, button {
 }
 
 /* ------------------ FOOTER ------------------ */
-/* You asked for all backgrounds WHITE — footer included */
-footer.footer {
-    background-color: #fff !important; /* was #f8f8f8 */
-    color: #0f172a;
-    border-top: 1.5px solid rgba(166,128,35,.45);
-    text-align: center;
-    font-size: 0.95rem;
-    font-weight: 500;
-    padding: 1rem 0;
-}
+/* Footer theme is defined in Views/Shared/_Layout.cshtml to avoid stacked duplicates. */
 
 /* ------------------------ HEADER / NAVBAR ------------------------ */
 header {
@@ -123,10 +114,10 @@ header {
     background-color: #fff !important;
     border: 1.5px solid #a68023;
     border-radius: 12px;
-    height: 180px;       /* FIXED banner height */
+    height: 180px;
     display: flex;
     flex-direction: column;
-    justify-content: center; /* vertical centering */
+    justify-content: center;
     padding: 0 2rem;
     box-sizing: border-box;
 }
@@ -136,12 +127,12 @@ header {
     justify-content: space-between;
     align-items: center;
     width: 100%;
-    height: 100%;          /* fills navbar height */
+    height: 100%;
 }
 
 .navbar-brand img {
-    height: auto;          /* preserve aspect ratio */
-    max-height: 170px;     /* fixed maximum height for the logo */
+    height: auto;
+    max-height: 170px;
     width: auto;
     display: block;
 }
@@ -158,7 +149,83 @@ header {
     gap: 1rem;
 }
 
+@media (max-width: 840px) {
+    .layout-content { padding-top: 1rem; padding-bottom: 2rem; }
+
+    .navbar {
+        height: auto;
+        padding: 14px 14px 12px;
+        border-radius: 14px;
+    }
+    .navbar-top {
+        flex-direction: row;
+        align-items: center;
+        gap: 12px;
+    }
+    .navbar-brand img {
+        max-height: 52px;
+        filter: drop-shadow(0 4px 10px rgba(0,0,0,.25));
+    }
+    .nav-links {
+        position: absolute;
+        left: 12px;
+        right: 12px;
+        top: 100%;
+        margin-top: 10px;
+        flex-direction: column;
+        gap: 8px;
+        background: linear-gradient(175deg, #0b1224, #0c142a);
+        border: 1.4px solid rgba(199,153,49,0.55);
+        border-radius: 14px;
+        padding: 12px;
+        box-shadow: 0 20px 32px rgba(0,0,0,.32);
+        display: none;
+        z-index: 50;
+    }
+    .navbar.mobile-open .nav-links { display: flex; }
+    .nav-link {
+        width: 100%;
+        text-align: left;
+        padding: 0.65rem 0.9rem;
+        border-radius: 10px;
+    }
+}
+
 /* ---------- NAV LINKS (NO GREY FILL ON HOVER) ---------- */
+header .nav-links .nav-link {
+    font-weight: 800;
+    padding: .5rem 1.1rem;
+    border-radius: 50px;
+    color: #ffffff !important;
+    text-decoration: none;
+    transition: all .25s ease;
+    white-space: nowrap;
+    border: 1.4px solid rgba(166,128,35,.42);
+    box-shadow: inset 0 1px 0 rgba(255,255,255,.08);
+}
+
+header .nav-links .nav-link:hover,
+header .nav-links .nav-link.active {
+    color: var(--gold-strong) !important;
+    background-color: rgba(166,128,35,0.16);
+    border-color: var(--border);
+    transform: translateY(-2px);
+    box-shadow:
+        0 14px 24px rgba(0,0,0,.28),
+        inset 0 1px 0 rgba(255,255,255,.12);
+}
+
+header .nav-links .nav-link:focus,
+header .nav-links .nav-link:focus-visible {
+    outline: none;
+    background-color: rgba(166,128,35,0.16);
+    border-color: var(--border);
+    box-shadow:
+        0 14px 24px rgba(0,0,0,.28),
+        inset 0 1px 0 rgba(255,255,255,.12),
+        0 0 0 4px rgba(199,153,49,0.18);
+}
+
 .navbar-left .nav-link,
 .navbar-right .nav-link {
     font-weight: 700;
@@ -423,17 +490,131 @@ header {
     text-decoration: underline;
 }
 
-/* ========================= Required Notes ========================= */
-.required-star {
-    color: red;
-    margin-left: 2px;
-    font-weight: bold;
+/* ========================= Legal Pages ========================= */
+body.legal-theme {
+    background: #fff !important;
+    background-color: #fff !important;
+    color: #111 !important;
 }
 
-.required-note {
+body.legal-theme main.layout-content,
+body.legal-theme main.container.layout-content {
+    background: #fff !important;
+    background-color: #fff !important;
+}
+
+body.legal-theme .legal-page-wrap {
+    background: transparent !important;
+}
+
+/* Keep page canvas white, but force legal containers dark/premium */
+body.legal-theme .legal-page-wrap .legal-hero {
+    background: linear-gradient(160deg, #080d1a, #0a1020) !important;
+}
+
+body.legal-theme .legal-page-wrap .legal-card {
+    background: linear-gradient(180deg, #0f1b33, #0c162b) !important;
+}
+
+.legal-page-wrap {
+    width: 100%;
+    max-width: 960px;
+    margin: 0 auto;
+    padding: 0 8px 20px;
+}
+
+.legal-hero {
+    background: linear-gradient(160deg, #080d1a, #0a1020) !important;
+    border: 1.5px solid rgba(199, 153, 49, 0.82);
+    border-radius: 18px;
+    box-shadow: 0 20px 42px rgba(0, 0, 0, 0.26), inset 0 1px 0 rgba(255, 255, 255, 0.06);
+    padding: 30px 26px;
+}
+
+.legal-kicker {
+    margin: 0 0 10px;
+    color: rgba(248, 250, 252, 0.78);
+    font-size: 0.84rem;
+    font-weight: 800;
+    letter-spacing: 0.15em;
+    text-transform: uppercase;
+}
+
+.legal-title {
+    margin: 0;
+    color: #c79931;
+    font-size: clamp(1.9rem, 4vw, 2.45rem);
+    font-weight: 900;
+    letter-spacing: 0.02em;
+    line-height: 1.12;
+}
+
+.legal-intro {
+    margin: 12px 0 0;
+    color: rgba(248, 250, 252, 0.93);
+    font-size: 1.03rem;
+    line-height: 1.6;
+    font-weight: 600;
+}
+
+.legal-card {
+    margin-top: 14px;
+    background: linear-gradient(180deg, #0f1b33, #0c162b) !important;
+    border: 1.2px solid rgba(199, 153, 49, 0.58);
+    border-radius: 16px;
+    box-shadow: 0 18px 38px rgba(0, 0, 0, 0.22);
+    padding: 24px 24px 22px;
+}
+
+.legal-prose p {
+    margin: 0 0 14px;
+    color: rgba(232, 237, 247, 0.94);
     font-size: 1rem;
-    color: #a3a2a2;
-    margin-bottom: 24px;
+    line-height: 1.75;
+    max-width: 72ch;
+}
+
+.legal-prose p:last-child {
+    margin-bottom: 0;
+}
+
+.legal-contact a {
+    color: #f2c967;
+    font-weight: 700;
+    text-decoration: none;
+}
+
+.legal-contact a:hover {
+    color: #f6da92;
+    text-decoration: underline;
+}
+
+.legal-updated {
+    margin-top: 18px !important;
+    font-size: 0.84rem !important;
+    color: rgba(226, 233, 247, 0.66) !important;
+    letter-spacing: 0.02em;
+}
+
+@media (max-width: 768px) {
+    .legal-page-wrap {
+        padding: 0 2px 18px;
+    }
+
+    .legal-hero {
+        border-radius: 14px;
+        padding: 20px 16px;
+    }
+
+    .legal-card {
+        border-radius: 12px;
+        padding: 16px 14px;
+    }
+
+    .legal-prose p {
+        font-size: 0.95rem;
+        line-height: 1.65;
+    }
 }
 
 /* ------------------- PRAYER SECTION ------------------- */
@@ -517,98 +698,4 @@ a:hover {
 .floating{
     background:#fff !important;
     background-color:#fff !important;
-}
-
-/* ==================================================
-   FORM / APPLICATION THEME (Quote & Application pages)
-   - aligns with home/risk navy + gold styling
-================================================== */
-:root{
-    --form-surface:#0f172a;
-    --form-surface-soft:#111c32;
-    --form-gold:#a68023;
-    --form-gold-strong:#c79931;
-    --form-text:#f8fafc;
-    --form-ink:#0f172a;
-}
-
-.section-card{
-    background-color: var(--form-surface) !important;
-    border: 1.6px solid var(--form-gold-strong) !important;
-    color: var(--form-text) !important;
-    box-shadow: 0 18px 40px rgba(0,0,0,0.18) !important;
-}
-.section-card h5,
-.section-title{
-    color: var(--form-gold-strong) !important;
-}
-
-.mini-card{
-    background: var(--form-surface-soft) !important;
-    border: 1.2px solid var(--form-gold-strong) !important;
-    color: var(--form-text) !important;
-    box-shadow: 0 12px 28px rgba(0,0,0,0.16) !important;
-}
-.mini-card h5{
-    color: var(--form-gold-strong) !important;
-}
-
-label{
-    color: var(--form-text) !important;
-}
-
-.form-control,
-.form-select,
-textarea{
-    background: #ffffff !important;
-    color: var(--form-ink) !important;
-    border: 1.6px solid var(--form-gold-strong) !important;
-}
-.form-control::placeholder,
-textarea::placeholder{
-    color: rgba(15,23,42,0.55) !important;
-}
-.form-control:focus,
-.form-select:focus,
-textarea:focus{
-    background: #ffffff !important;
-    color: var(--form-ink) !important;
-    border-color: var(--form-gold-strong) !important;
-    box-shadow: 0 0 0 0.2rem rgba(199,153,49,0.22) !important;
-}
-
-.btn-gold{
-    background: linear-gradient(180deg, var(--form-gold-strong), var(--form-gold)) !important;
-    color: #fff !important;
-    border: 1.4px solid var(--form-gold-strong) !important;
-    box-shadow: 0 14px 32px rgba(0,0,0,0.18) !important;
-}
-
-.btn-outline,
-.btn-outline-gold{
-    background: var(--form-surface-soft) !important;
-    border: 2px solid var(--form-gold-strong) !important;
-    color: var(--form-text) !important;
-    box-shadow: 0 12px 30px rgba(0,0,0,0.14) !important;
-}
-.btn-outline:hover,
-.btn-outline-gold:hover{
-    border-color: var(--form-gold-strong) !important;
-    color: var(--form-text) !important;
-}
-
-.wizard-pill{
-    border: 1.4px solid var(--form-gold-strong) !important;
-    background: var(--form-surface-soft) !important;
-    color: var(--form-text) !important;
-    box-shadow: 0 10px 24px rgba(0,0,0,0.12) !important;
-}
-.wizard-pill.active{
-    background: rgba(199,153,49,0.18) !important;
-    color: var(--form-text) !important;
-    border-color: var(--form-gold-strong) !important;
-}
-
-.required-note{
-    color: #0f172a !important;
 }
