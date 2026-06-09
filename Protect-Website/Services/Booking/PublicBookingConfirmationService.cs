@@ -158,6 +158,7 @@ public sealed class PublicBookingConfirmationService : IPublicBookingConfirmatio
             .FirstOrDefaultAsync(x => x.LeadId == context.WebsiteLeadId, cancellationToken);
 
         var calendarMatch = await _calendarMatcher.TryMatchAsync(
+if (calendarMatch == null) _logger.LogWarning("No matching Graph event for WebsiteLead {WebsiteLeadId}", context.WebsiteLeadId);
             new PublicBookingCalendarMatchRequest(
                 CalendarUserId: appointment.BookingCalendarUserId,
                 CalendarEmail: appointment.BookingCalendarEmail,
@@ -195,6 +196,8 @@ public sealed class PublicBookingConfirmationService : IPublicBookingConfirmatio
             ? LeadAppointmentBookingSources.WebsiteEmbed
             : appointment.RequestedBookingSource;
         appointment.CalendarEventId = calendarMatch.EventId;
+_logger.LogInformation("Assigning CalendarEventId {EventId} to LeadAppointment {AppointmentId}", appointment.CalendarEventId, appointment.Id);
+_logger.LogInformation("Assigning CalendarEventId {EventId} to LeadAppointment {AppointmentId}", appointment.CalendarEventId, appointment.Id);
         appointment.CalendarEventWebLink = calendarMatch.WebLink;
         appointment.ScheduledStartUtc = calendarMatch.ScheduledStartUtc;
         appointment.ScheduledEndUtc = calendarMatch.ScheduledEndUtc;
