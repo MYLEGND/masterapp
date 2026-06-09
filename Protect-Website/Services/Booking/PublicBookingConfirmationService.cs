@@ -485,10 +485,13 @@ public sealed class MicrosoftGraphPublicBookingCalendarMatcher : IPublicBookingC
             .Where(value => !string.IsNullOrWhiteSpace(value))
             .Select(value => value!.Trim()))
             .Trim();
+        var firstName = request.LeadFirstName?.Trim();
+        var lastName = request.LeadLastName?.Trim();
         var normalizedEmail = NormalizeEmail(request.LeadEmail);
         var normalizedPhone = NormalizePhone(request.LeadPhone);
         var subject = (evt.Subject ?? string.Empty).Trim();
         var body = (evt.BodyPreview ?? string.Empty).Trim();
+        var searchable = $"{subject} {body}";
         var eventAttendeeEmails = evt.Attendees?
             .Select(attendee => NormalizeEmail(attendee.EmailAddress?.Address))
             .Where(value => !string.IsNullOrWhiteSpace(value))
@@ -501,24 +504,36 @@ public sealed class MicrosoftGraphPublicBookingCalendarMatcher : IPublicBookingC
         }
 
         if (!string.IsNullOrWhiteSpace(fullName) &&
-            subject.Contains(fullName, StringComparison.OrdinalIgnoreCase))
+            searchable.Contains(fullName, StringComparison.OrdinalIgnoreCase))
         {
-            score += 70;
+            score += 85;
+        }
+
+        if (!string.IsNullOrWhiteSpace(firstName) &&
+            searchable.Contains(firstName, StringComparison.OrdinalIgnoreCase))
+        {
+            score += 35;
+        }
+
+        if (!string.IsNullOrWhiteSpace(lastName) &&
+            searchable.Contains(lastName, StringComparison.OrdinalIgnoreCase))
+        {
+            score += 35;
         }
 
         if (!string.IsNullOrWhiteSpace(normalizedEmail) &&
-            body.Contains(normalizedEmail, StringComparison.OrdinalIgnoreCase))
+            searchable.Contains(normalizedEmail, StringComparison.OrdinalIgnoreCase))
         {
-            score += 60;
+            score += 75;
         }
 
         if (!string.IsNullOrWhiteSpace(normalizedPhone))
         {
-            var digits = NormalizePhone(body);
+            var digits = NormalizePhone(searchable);
             if (!string.IsNullOrWhiteSpace(digits) &&
                 digits.Contains(normalizedPhone, StringComparison.OrdinalIgnoreCase))
             {
-                score += 35;
+                score += 50;
             }
         }
 
