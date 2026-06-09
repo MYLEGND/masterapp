@@ -12405,6 +12405,36 @@ const contactFieldProgress = new Map();
     trackEvent('appointment_embed_viewed', buildAppointmentTrackingMetadata(payload, {
       bookingSurface: surface || resolveRequestedBookingSurface(payload)
     }));
+
+    if (payload?.contextToken) {
+      [15000, 45000, 90000].forEach((delayMs) => {
+        window.setTimeout(() => {
+          if (
+            publicBookingBookedConfirmed ||
+            publicBookingConfirmationRequested ||
+            publicBookingFallbackClicked ||
+            !publicBookingState?.contextToken
+          ) {
+            return;
+          }
+
+          publicBookingConfirmationRequested = true;
+          void confirmPublicBookingExperience(publicBookingState).then((confirmedState) => {
+            publicBookingConfirmationRequested = false;
+            publicBookingState = normalizePublicBookingPayload(confirmedState, publicBookingState);
+            renderPostSubmitBookingState(publicBookingState);
+
+            if (publicBookingState.confirmationVerified && !publicBookingBookedConfirmed) {
+              publicBookingBookedConfirmed = true;
+              trackEvent('appointment_booked', buildAppointmentTrackingMetadata(publicBookingState));
+            }
+          }).catch((error) => {
+            publicBookingConfirmationRequested = false;
+            console.warn('[LifeQuote] scheduled booking confirmation failed', error);
+          });
+        }, delayMs);
+      });
+    }
   }
 
   async function activatePublicBookingExperience(hint, surfaceOverride = '') {
