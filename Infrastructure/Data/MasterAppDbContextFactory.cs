@@ -39,7 +39,7 @@ public sealed class MasterAppDbContextFactory : IDesignTimeDbContextFactory<Mast
             // SQLite remains supported for lightweight local runtime only.
             // EF migration authority and production lineage are SQL Server-first.
             opts.ConfigureWarnings(w => w.Ignore(RelationalEventId.PendingModelChangesWarning));
-            opts.UseSqlite(cs);
+            opts.UseSqlServer(cs);
         }
         else
         {

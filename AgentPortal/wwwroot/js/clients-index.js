@@ -6860,3 +6860,28 @@ const hbClearFilters = null;
 const hbRefresh = null;
 const hbCallTasks = null;
 const hbTop = null;
+
+
+document.addEventListener("click", function(e) {
+    if (e.target && e.target.id === "btnCreateAppointment") {
+        const id =
+            window.currentLeadId ||
+            window.currentClientId;
+
+        if (!id) {
+            alert("No lead/client context loaded.");
+            return;
+        }
+
+        // hook into existing scheduling flow
+        if (typeof openAppointmentModalFromDrawer === "function") {
+            openAppointmentModalFromDrawer(id);
+        } else {
+            console.warn("Appointment modal function not found");
+        }
+    }
+});
+
+window.setCurrentClient = function(client) {
+    window.currentClient = client;
+};

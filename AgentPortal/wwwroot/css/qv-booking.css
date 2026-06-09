@@ -1,0 +1,32 @@
+.qv-booking-inline{
+    display:flex;
+    align-items:center;
+    gap:8px;
+    flex-wrap:wrap;
+    margin-right:auto;
+}
+.qv-booking-label{
+    font-weight:900;
+    color:#f5d37a;
+    font-size:.78rem;
+    text-transform:uppercase;
+    letter-spacing:.04em;
+}
+.qv-booking-inline input,
+.qv-booking-inline select{
+    height:34px;
+    border-radius:12px;
+    border:1px solid rgba(255,255,255,.22);
+    padding:0 10px;
+    max-width:140px;
+}
+.qv-booking-inline #qvBookTime{
+    max-width:115px;
+}
+.qv-booking-inline #qvBookDuration{
+    max-width:95px;
+}
+.qv-booking-inline #qvBookStatus{
+    color:#f5d37a;
+    font-weight:800;
+}

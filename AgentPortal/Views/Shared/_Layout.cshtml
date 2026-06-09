@@ -1031,6 +1031,7 @@
         .impersonation-text { font-weight: 800; letter-spacing: 0.02em; }
         .impersonation-text .muted { color: #4b5563; font-weight: 700; margin-left: 6px; }
     </style>
+<link rel="stylesheet" href="/css/qv-booking.css" asp-append-version="true" />
 </head>
 
 <body class="@layoutBodyClass">
@@ -2570,5 +2571,33 @@
 </script>
 
 @await RenderSectionAsync("Scripts", required:false)
+
+<div id="appointmentModal" style="display:none; position:fixed; top:10%; left:30%; width:40%; background:white; padding:20px; z-index:9999;">
+    <h3>Book Appointment</h3>
+
+    <input id="apptTitle" placeholder="Title" style="width:100%;" />
+    <br/><br/>
+
+    <input id="apptStart" type="datetime-local" style="width:100%;" />
+    <br/><br/>
+
+    <input id="apptDuration" type="number" value="30" style="width:100%;" />
+    <br/><br/>
+
+    <textarea id="apptNotes" placeholder="Notes" style="width:100%;"></textarea>
+    <br/><br/>
+
+    <button onclick="submitAppointment()">Create</button>
+    <button onclick="closeAppointmentModal()">Cancel</button>
+</div>
+
+<script src="/js/appointment-modal.js"></script>
+
+<script src="/js/scheduling/quickViewSlots.js"></script>
+<script src="/js/scheduling/appointmentModal.js"></script>
+
+<script src="/js/scheduling/qv-booking.js"></script>
+<script src="/js/scheduling/qv-booking.js"></script>
+    <script src="~/js/app-date-format.js" asp-append-version="true"></script>
 </body>
 </html>

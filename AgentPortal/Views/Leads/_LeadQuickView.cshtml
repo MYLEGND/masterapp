@@ -76,7 +76,21 @@
             <div class="crm-qv-contact-head lead-contact-card-head">
                 <h4>Contact &amp; Profile</h4>
                 <div class="lead-contact-card-actions">
-                    <a class="btn btn-ghost" id="btnMail" href="#" target="_blank" rel="noopener">Email</a>
+
+                    <div class="qv-booking-inline" id="qvBookingInline">
+                        <span class="qv-booking-label">Book Appointment</span>
+                        <input id="qvBookDate" type="date" />
+                        <input id="qvBookTime" type="time" />
+                        <select id="qvBookDuration">
+                            <option value="30">30 min</option>
+                            <option value="45">45 min</option>
+                            <option value="60">60 min</option>
+                        </select>
+                        <button type="button" id="btnBookAppointment" class="btn btn-gold">Book</button>
+                        <span id="qvBookStatus" class="tiny"></span>
+                    </div>
+
+<a class="btn btn-ghost" id="btnMail" href="#" target="_blank" rel="noopener">Email</a>
                     <a class="btn btn-ghost" id="btnCall" href="#" target="_blank" rel="noopener">Call</a>
                     <button type="button" class="btn btn-ghost" id="btnText">Text</button>
                     <button type="button" class="btn btn-ghost" id="leadQuickActionsShortcut">Actions</button>

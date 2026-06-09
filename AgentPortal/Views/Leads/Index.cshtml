@@ -629,6 +629,7 @@ var sCity = (c.City ?? "").Trim();
                                 }
                             </div>
                             <span class="name open-drawer" title="Quick View">@c.FirstName @c.LastName</span>
+window.setCurrentClient({ ownerAgentUserId: c.ownerAgentUserId });
                             <span class="muted@(isFakeEmail ? " crm-email-fake" : "")" data-email-summary="true">@c.Email</span>
                             @if (!string.IsNullOrWhiteSpace(dialPhone))
                             {
@@ -759,6 +760,7 @@ var sCity = (c.City ?? "").Trim();
 
                     <td class="actions" data-label="Actions" data-col="actions">
                         <button type="button" class="btn btn-quickview open-drawer">Quick View</button>
+window.setCurrentClient({ ownerAgentUserId: c.ownerAgentUserId });
                         <button type="button" class="btn btn-ghost lead-work-btn" data-work-lead="@c.ClientUserId">Work Lead</button>
                         <button type="button" class="btn btn-confirm add-production-btn" data-lead-id="@c.ClientUserId" data-lead-name="@($"{c.FirstName} {c.LastName}")">Add Production</button>
                     </td>

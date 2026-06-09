@@ -561,6 +561,7 @@ else
                                 }
                             </div>
                             <span class="name open-drawer" title="Quick View">@c.FirstName @c.LastName</span>
+window.setCurrentClient({ ownerAgentUserId: c.ownerAgentUserId });
                             <span class="muted@(isFakeEmail ? " crm-email-fake" : "")" data-email-summary="true">@c.Email</span>
                             @if (!string.IsNullOrWhiteSpace(dialPhone))
                             {
@@ -657,6 +658,7 @@ else
 
                     <td class="actions" data-label="Actions" data-col="actions">
                         <button type="button" class="btn btn-gold open-drawer">Quick View</button>
+window.setCurrentClient({ ownerAgentUserId: c.ownerAgentUserId });
                         <a class="btn btn-ghost" href="@Url.Action("Edit", "Clients", new { clientUserId = c.ClientUserId, workspace = true })" target="_blank" rel="noopener">Edit</a>
                         <button type="button" class="btn btn-outline-light add-client-production-btn"
                                 data-client-id="@c.ClientUserId"
