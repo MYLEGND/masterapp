@@ -50,7 +50,7 @@ footer.footer {
     width: 100%;
     text-align: center;
     padding: 1rem 0;
-    background: linear-gradient(180deg,#0f172a,#0b111f);
+    background: linear-gradient(180deg, #0e1b3d, #0b1530);
     color: var(--legend-gold);
     border-top: 1.5px solid var(--legend-gold);
 }

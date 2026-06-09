@@ -82,7 +82,6 @@ public class ProposalsController : ControllerBase
     {
         var userId = CurrentUserId;
         if (string.IsNullOrWhiteSpace(userId)) return Challenge();
-        if (string.IsNullOrWhiteSpace(dto.LeadId)) return BadRequest("LeadId is required");
 
         var requestedId = dto.Id.GetValueOrDefault();
         if (requestedId != Guid.Empty)
@@ -209,7 +208,22 @@ public class ProposalsController : ControllerBase
     }
 
     private static bool SameLead(Proposal entity, ProposalDto dto)
-        => string.Equals(entity.LeadId, dto.LeadId?.Trim() ?? string.Empty, StringComparison.OrdinalIgnoreCase);
+    {
+        var entityLeadId = (entity.LeadId ?? string.Empty).Trim();
+        var dtoLeadId = (dto.LeadId ?? string.Empty).Trim();
+        if (!string.IsNullOrWhiteSpace(entityLeadId) || !string.IsNullOrWhiteSpace(dtoLeadId))
+            return string.Equals(entityLeadId, dtoLeadId, StringComparison.OrdinalIgnoreCase);
+
+        var entityLeadKey = (entity.LeadKey ?? string.Empty).Trim();
+        var dtoLeadKey = (dto.LeadKey ?? string.Empty).Trim();
+        if (!string.IsNullOrWhiteSpace(entityLeadKey) || !string.IsNullOrWhiteSpace(dtoLeadKey))
+            return string.Equals(entityLeadKey, dtoLeadKey, StringComparison.OrdinalIgnoreCase);
+
+        return string.Equals(
+            (entity.ScopeKey ?? string.Empty).Trim(),
+            (dto.ScopeKey ?? string.Empty).Trim(),
+            StringComparison.OrdinalIgnoreCase);
+    }
 
     private static void Apply(Proposal entity, ProposalDto dto)
     {

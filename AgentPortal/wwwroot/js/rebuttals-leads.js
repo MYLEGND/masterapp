@@ -11,6 +11,10 @@
     IUL: "IUL",
     FinalExpense: "Final Expense",
     DisabilityInsurance: "Disability Insurance",
+    AutoInsurance: "Auto Insurance",
+    HomeInsurance: "Home Insurance",
+    HealthInsurance: "Health Insurance",
+    CommercialInsurance: "Commercial Insurance",
     CalledToday: "Called Today",
     CallBack: "Call Back",
     Contacted: "Contacted",
@@ -34,6 +38,10 @@
     "IUL",
     "FinalExpense",
     "DisabilityInsurance",
+    "AutoInsurance",
+    "HomeInsurance",
+    "HealthInsurance",
+    "CommercialInsurance",
     "CalledToday",
     "CallBack",
     "Contacted",
@@ -58,7 +66,11 @@
     "WholeLife",
     "IUL",
     "FinalExpense",
-    "DisabilityInsurance"
+    "DisabilityInsurance",
+    "AutoInsurance",
+    "HomeInsurance",
+    "HealthInsurance",
+    "CommercialInsurance"
   ]);
   const requestedAmountLeadTypes = new Set([
     "LifeInsurance",
@@ -331,7 +343,23 @@
       indexeduniversalliferebuttals: 'IUL',
       disabilityinsurance: 'DisabilityInsurance',
       disabilityinsuranceleads: 'DisabilityInsurance',
-      disabilityinsurancerebuttals: 'DisabilityInsurance'
+      disabilityinsurancerebuttals: 'DisabilityInsurance',
+      auto: 'AutoInsurance',
+      autoinsurance: 'AutoInsurance',
+      autoinsuranceleads: 'AutoInsurance',
+      autoinsurancerebuttals: 'AutoInsurance',
+      home: 'HomeInsurance',
+      homeinsurance: 'HomeInsurance',
+      homeinsuranceleads: 'HomeInsurance',
+      homeinsurancerebuttals: 'HomeInsurance',
+      health: 'HealthInsurance',
+      healthinsurance: 'HealthInsurance',
+      healthinsuranceleads: 'HealthInsurance',
+      healthinsurancerebuttals: 'HealthInsurance',
+      commercial: 'CommercialInsurance',
+      commercialinsurance: 'CommercialInsurance',
+      commercialinsuranceleads: 'CommercialInsurance',
+      commercialinsurancerebuttals: 'CommercialInsurance'
     };
     return map[key] || raw;
   }
@@ -584,16 +612,10 @@
     const noteWentWell = bridge.querySelector('[data-note-self-well]');
     const noteCouldBetter = bridge.querySelector('[data-note-self-better]');
     const noteStatusEl = bridge.querySelector('[data-note-self-status]');
-    const contextWhyEl = bridge.querySelector('[data-lb-context-why]');
-    const contextAskEl = bridge.querySelector('[data-lb-context-ask]');
-    const contextStartEl = bridge.querySelector('[data-lb-context-start]');
-    const contextSourceEl = bridge.querySelector('[data-lb-context-source]');
-    const contextSubmittedEl = bridge.querySelector('[data-lb-context-submitted]');
-    const contextAppointmentEl = bridge.querySelector('[data-lb-context-appointment]');
-    const contextMetaEl = bridge.querySelector('[data-lb-context-meta]');
-    const scriptProductEl = bridge.querySelector('[data-lb-script-product]');
-    const scriptSourceEl = bridge.querySelector('[data-lb-script-source]');
-    const scriptEstimateEl = bridge.querySelector('[data-lb-script-estimate]');
+    const scriptHandoffRoot = bridge.querySelector('[data-lb-script-handoff]');
+    const summaryRequestedEl = scriptHandoffRoot?.querySelector('[data-lb-summary-requested]') || null;
+    const summarySourceEl = scriptHandoffRoot?.querySelector('[data-lb-summary-source]') || null;
+    const summaryActivityEl = scriptHandoffRoot?.querySelector('[data-lb-summary-activity]') || null;
     const drawerNoteOpenBtn = document.getElementById('noteSelfOpen');
     const globalizeQuickViewNode = (node) => {
       if (!node) return null;
@@ -724,22 +746,10 @@
       name: bridge.querySelector('[data-lf-value="name"]'),
       leadId: bridge.querySelector('[data-lf-value="leadId"]'),
       calls: bridge.querySelector('[data-lf-value="calls"]'),
-      address: bridge.querySelector('[data-lf-value="address"]'),
-      city: bridge.querySelector('[data-lf-value="city"]'),
-      state: bridge.querySelector('[data-lf-value="state"]'),
-      county: bridge.querySelector('[data-lf-value="county"]'),
-      dob: bridge.querySelector('[data-lf-value="dob"]'),
-      gender: bridge.querySelector('[data-lf-value="gender"]'),
-      lender: bridge.querySelector('[data-lf-value="lender"]'),
-      loan: bridge.querySelector('[data-lf-value="loan"]'),
       phone: bridge.querySelector('[data-lf-value="phone"]'),
-      phone2: bridge.querySelector('[data-lf-value="phone2"]'),
-      age: bridge.querySelector('[data-lf-value="age"]'),
-      btc: bridge.querySelector('[data-lf-value="btc"]')
+      email: bridge.querySelector('[data-lf-value="email"]'),
+      location: bridge.querySelector('[data-lf-value="location"]')
     };
-    const lenderField = bridge.querySelector('[data-lf="lender"]');
-    const lenderLabel = bridge.querySelector('[data-lf-label="lender"]');
-    const loanLabel = bridge.querySelector('[data-lf-label="loan"]');
     let confirmTimer = 0;
     let pendingAction = null;
     let baseLeads = [];
@@ -1865,20 +1875,6 @@
       return value === '—' ? label : `${label} • ${value}`;
     }
 
-    function buildLatestAppointmentText(appointment){
-      if (!appointment){
-        return 'No appointment is linked yet.\nStatus controls stay internal until public embedded booking is turned on.';
-      }
-
-      return [
-        appointment.statusLabel || humanizeAppointmentStatus(appointment.status),
-        formatAppointmentRange(appointment),
-        appointment.bookingSourceLabel || humanizeAppointmentSource(appointment.bookingSource),
-        summarizeAppointmentConfirmation(appointment),
-        summarizeAppointmentBookingConfig(appointment)
-      ].filter(Boolean).join('\n');
-    }
-
     function renderAppointmentLink(node, url, label){
       if (!node) return;
       const cleanUrl = normalizeSummaryText(url);
@@ -1890,255 +1886,74 @@
       node.innerHTML = `<a class="link" href="${escapeHtml(cleanUrl)}" target="_blank" rel="noopener">${escapeHtml(label)}</a>`;
     }
 
-    function leadFirstName(lead){
-      return normalizeSummaryText(lead?.firstName) || 'there';
+    function formatLeadLocation(lead){
+      return joinIntakeParts([lead?.city, lead?.state]);
     }
 
-    function defaultWhyTheyCameInText(bucketKey, productLabel){
-      switch (bucketKey){
-        case 'MortgageProtection':
-          return 'They came in to protect the home and keep the payment burden off the household.';
-        case 'TermLife':
-          return 'They came in looking for practical family and income protection during the heavy financial years.';
-        case 'WholeLife':
-          return 'They came in looking at permanent protection and long-range value, not just a temporary term.';
-        case 'IUL':
-          return 'They came in exploring permanent coverage with flexibility and cash-value strategy potential.';
-        case 'FinalExpense':
-          return 'They came in to keep burial costs, final bills, and family burden from landing on loved ones.';
-        default:
-          return `They came in to figure out what kind of ${productLabel.toLowerCase()} may fit best.`;
-      }
-    }
-
-    function defaultStartingLaneText(bucketKey){
-      switch (bucketKey){
-        case 'MortgageProtection':
-          return 'Start in the mortgage lane and confirm the home, the lender, and the payment or balance they wanted protected.';
-        case 'TermLife':
-          return 'Start in the life opener and confirm the family, income, or bill protection window they were trying to cover.';
-        case 'WholeLife':
-          return 'Start in the life opener and steer early into permanent protection, long-term fit, and stable value.';
-        case 'IUL':
-          return 'Start in the life opener and frame the conversation around permanent protection, flexibility, and future cash-value access.';
-        case 'FinalExpense':
-          return 'Start in the final expense lane and anchor the conversation around burial costs, final bills, and family burden relief.';
-        default:
-          return 'Start in the life opener and confirm whether they were leaning term, whole life, or another permanent option.';
-      }
-    }
-
-    function buildWhyTheyCameInText(lead, snapshot){
-      if (!snapshot){
-        return 'No public intake is attached yet.\nConfirm the protection reason early and work from the saved CRM details.';
-      }
-
-      const bucketKey = resolveLeadContextBucket(lead, snapshot);
+    function buildRequestedSummaryText(lead, snapshot){
       const productLabel = resolveLeadContextProductLabel(lead, snapshot);
-      const discovery = summarizeDiscoveryItems(snapshot, 2);
-      const lines = [defaultWhyTheyCameInText(bucketKey, productLabel)];
-
-      if (discovery){
-        lines.push(`Intake signals: ${discovery}`);
-      }
-
-      return lines.join('\n');
+      const requestedAmount = normalizeSummaryText(lead?.loanAmount);
+      const parts = [productLabel];
+      if (requestedAmount) parts.push(`Target ${requestedAmount}`);
+      if (snapshot?.offerKey) parts.push(humanizeContextToken(snapshot.offerKey));
+      return joinIntakeParts(parts);
     }
 
-    function buildWhatTheyAskedForText(lead, snapshot){
-      const productLabel = resolveLeadContextProductLabel(lead, snapshot);
+    function buildSourceSummaryText(snapshot){
       if (!snapshot){
-        return `Requested: ${productLabel}\nNo website intake answers are attached to this lead yet.`;
+        return 'CRM lead only';
       }
 
-      const lines = [
-        `Requested: ${joinIntakeParts([
-          productLabel,
-          snapshot.offerKey ? `Offer ${humanizeContextToken(snapshot.offerKey)}` : '',
-          snapshot.productType ? `Type ${humanizeContextToken(snapshot.productType)}` : ''
-        ])}`
-      ];
-
-      const discovery = summarizeDiscoveryItems(snapshot, 3);
-      if (discovery){
-        lines.push(`Discovery: ${discovery}`);
-      }
-
-      const estimateSummary = normalizeSummaryText(snapshot.estimateSummary);
-      if (estimateSummary){
-        lines.push(`Estimate context: ${estimateSummary}`);
-      }
-
-      return lines.join('\n');
+      const origin = normalizeSummaryText(snapshot.originLabel) || 'Website inquiry';
+      const page = snapshot.sourcePageKey ? humanizeContextToken(snapshot.sourcePageKey) : '';
+      const campaign = normalizeSummaryText(snapshot.utmCampaign) || normalizeSummaryText(snapshot.utmSource);
+      return joinIntakeParts([origin, page, campaign]);
     }
 
-    function buildRecommendedStartingPointText(lead, snapshot){
-      const bucketKey = resolveLeadContextBucket(lead, snapshot);
-      const lines = [defaultStartingLaneText(bucketKey)];
-      const primary = normalizeSummaryText(snapshot?.recommendationPrimaryTitle);
-      const secondary = normalizeSummaryText(snapshot?.recommendationSecondaryTitle);
-      const estimateSummary = normalizeSummaryText(snapshot?.estimateSummary);
-
-      if (primary){
-        lines.push(secondary
-          ? `Lead with ${primary} first and keep ${secondary} ready as the comparison backup.`
-          : `Lead with ${primary} as the starting recommendation.`);
-      }
-
-      if (estimateSummary){
-        lines.push(`Bridge off the estimate they already touched: ${estimateSummary}`);
-      }
-
-      return lines.join('\n');
-    }
-
-    function buildSourceCampaignText(snapshot){
-      if (!snapshot){
-        return 'No website attribution is attached to this lead yet.';
-      }
-
-      const attribution = joinIntakeParts([
-        snapshot.utmSource,
-        snapshot.utmMedium,
-        snapshot.utmCampaign
-      ]);
-      const pageContext = joinIntakeParts([
-        snapshot.sourcePageKey,
-        snapshot.pageVariant ? `Variant ${humanizeContextToken(snapshot.pageVariant)}` : '',
-        snapshot.pageMode ? `Mode ${humanizeContextToken(snapshot.pageMode)}` : ''
-      ]);
-
-      return [
-        attribution === '—' ? (snapshot.originLabel || 'Website intake') : attribution,
-        pageContext === '—' ? '' : pageContext
-      ].filter(Boolean).join('\n');
-    }
-
-    function buildLastSubmittedText(snapshot){
-      if (!snapshot){
-        return 'No website submission is attached to this lead yet.';
-      }
-
-      return [
-        formatIntakeDate(snapshot.submittedUtc),
-        historyCountLabel(snapshot)
-      ].join('\n');
-    }
-
-    function buildContextMetaChips(lead, snapshot){
+    function buildActivitySummaryText(lead, snapshot){
       const appointment = lead?.latestAppointment || null;
-      if (!snapshot){
-        return [
-          'CRM-only lead context',
-          appointment?.statusLabel || ''
-        ].filter(Boolean);
-      }
+      const parts = [];
 
-      const chips = [
-        bucketLabel(resolveLeadContextBucket(lead, snapshot)),
-        normalizeSummaryText(snapshot.originLabel),
-        snapshot.sourcePageKey ? `Page ${snapshot.sourcePageKey}` : '',
-        snapshot.pageVariant ? `Variant ${humanizeContextToken(snapshot.pageVariant)}` : '',
-        snapshot.pageMode ? `Mode ${humanizeContextToken(snapshot.pageMode)}` : '',
-        historyCountLabel(snapshot),
-        appointment?.statusLabel ? `Appointment ${appointment.statusLabel}` : ''
-      ];
+      if (snapshot){
+        const submitted = formatIntakeDate(snapshot.submittedUtc);
+        if (submitted !== '—') parts.push(submitted);
 
-      return chips.filter(Boolean);
-    }
-
-    function buildProductAwareOpenerText(lead, snapshot){
-      const firstName = leadFirstName(lead);
-      const bucketKey = resolveLeadContextBucket(lead, snapshot);
-      const opener = (() => {
-        switch (bucketKey){
-          case 'MortgageProtection':
-            return `Hi ${firstName}, I'm calling about the mortgage protection request you filled out so we can review the home and what you wanted protected first.`;
-          case 'TermLife':
-            return `Hi ${firstName}, I'm calling about the term life request you filled out so we can review the family and income protection you were looking for.`;
-          case 'WholeLife':
-            return `Hi ${firstName}, I'm calling about the whole life request you filled out so we can review the permanent protection fit you were exploring.`;
-          case 'IUL':
-            return `Hi ${firstName}, I'm calling about the IUL request you filled out so we can review the permanent protection and flexibility you were exploring.`;
-          case 'FinalExpense':
-            return `Hi ${firstName}, I'm calling about the final expense request you filled out so we can review what costs you wanted handled first.`;
-          default:
-            return `Hi ${firstName}, I'm calling about the life insurance request you filled out so we can review the protection direction you were looking for.`;
+        const historyLabel = historyCountLabel(snapshot);
+        if (historyLabel && historyLabel !== 'No web intakes'){
+          parts.push(historyLabel);
         }
-      })();
-
-      return `${opener}\nStay anchored to the request they already started before widening the product conversation.`;
-    }
-
-    function buildSourceAwareOpenerText(lead, snapshot){
-      const firstName = leadFirstName(lead);
-      if (!snapshot){
-        return `Hi ${firstName}, I'm following up on the request we received so we can make sure we're reviewing the right protection fit.`;
       }
 
-      const taggedSource = joinIntakeParts([
-        snapshot.utmSource,
-        snapshot.utmCampaign
-      ]);
-
-      if (normalizeSummaryText(snapshot.originLabel) === 'Paid Landing' || taggedSource !== '—'){
-        const sourceDescriptor = taggedSource !== '—' ? taggedSource : 'the online estimate request';
-        return `Lead with the request they already started: "You recently asked for info through ${sourceDescriptor}, so I'm following up on the request you already submitted."`;
-      }
-
-      return `Lead with the website request itself: "You recently asked for information on the site, so I'm following up on that request and where you wanted to start."`;
-    }
-
-    function buildEstimateTalkingPointsText(lead, snapshot){
-      const points = [];
-      const discovery = summarizeDiscoveryItems(snapshot, 3);
-      const estimateSummary = normalizeSummaryText(snapshot?.estimateSummary);
-      const primary = normalizeSummaryText(snapshot?.recommendationPrimaryTitle);
-      const secondary = normalizeSummaryText(snapshot?.recommendationSecondaryTitle);
-
-      if (estimateSummary){
-        points.push(`Use the estimate as the bridge: ${estimateSummary}`);
-      } else {
-        points.push(defaultStartingLaneText(resolveLeadContextBucket(lead, snapshot)));
-      }
-
-      if (primary){
-        points.push(secondary
-          ? `Position ${primary} first and keep ${secondary} ready if they need a comparison.`
-          : `Position ${primary} as the clearest starting recommendation.`);
-      }
-
-      if (discovery){
-        points.push(`Tie the explanation back to their intake answers: ${discovery}`);
-      }
-
-      points.push('Ask for a small confirmation before presenting: "Is that still the direction you wanted to look at?"');
-
-      return points.map(point => `- ${point}`).join('\n');
+      parts.push(appointment?.statusLabel ? `Appointment ${appointment.statusLabel}` : 'No appointment on file');
+      return joinIntakeParts(parts);
     }
 
     function buildLeadOverlayContext(lead){
+      if (!lead){
+        return {
+          leadId: '',
+          leadName: 'Lead',
+          bucket: normalizedQueueKey || normalizeQueueKey(bucket || '') || '',
+          snapshot: null,
+          summary: {
+            requested: 'Pick a lead to load the website summary.',
+            source: '—',
+            activity: '—'
+          }
+        };
+      }
+
       const snapshot = lead?.intakeSnapshot || null;
-      const appointment = lead?.latestAppointment || null;
       return {
         leadId: normalizeSummaryText(lead?.leadId),
         leadName: `${lead?.firstName || ''} ${lead?.lastName || ''}`.trim() || 'Lead',
         bucket: resolveLeadContextBucket(lead, snapshot),
         snapshot,
-        cards: {
-          whyTheyCameIn: buildWhyTheyCameInText(lead, snapshot),
-          whatTheyAskedFor: buildWhatTheyAskedForText(lead, snapshot),
-          recommendedStartingPoint: buildRecommendedStartingPointText(lead, snapshot),
-          sourceCampaign: buildSourceCampaignText(snapshot),
-          lastSubmitted: buildLastSubmittedText(snapshot),
-          latestAppointment: buildLatestAppointmentText(appointment)
-        },
-        scripts: {
-          productAwareOpener: buildProductAwareOpenerText(lead, snapshot),
-          sourceAwareOpener: buildSourceAwareOpenerText(lead, snapshot),
-          estimateAwareTalkingPoints: buildEstimateTalkingPointsText(lead, snapshot)
-        },
-        metaChips: buildContextMetaChips(lead, snapshot)
+        summary: {
+          requested: buildRequestedSummaryText(lead, snapshot),
+          source: buildSourceSummaryText(snapshot),
+          activity: buildActivitySummaryText(lead, snapshot)
+        }
       };
     }
 
@@ -2146,20 +1961,9 @@
       const context = buildLeadOverlayContext(lead);
       currentLeadOverlayContext = context;
 
-      if (contextWhyEl) contextWhyEl.textContent = context.cards.whyTheyCameIn;
-      if (contextAskEl) contextAskEl.textContent = context.cards.whatTheyAskedFor;
-      if (contextStartEl) contextStartEl.textContent = context.cards.recommendedStartingPoint;
-      if (contextSourceEl) contextSourceEl.textContent = context.cards.sourceCampaign;
-      if (contextSubmittedEl) contextSubmittedEl.textContent = context.cards.lastSubmitted;
-      if (contextAppointmentEl) contextAppointmentEl.textContent = context.cards.latestAppointment;
-      if (scriptProductEl) scriptProductEl.textContent = context.scripts.productAwareOpener;
-      if (scriptSourceEl) scriptSourceEl.textContent = context.scripts.sourceAwareOpener;
-      if (scriptEstimateEl) scriptEstimateEl.textContent = context.scripts.estimateAwareTalkingPoints;
-      if (contextMetaEl){
-        contextMetaEl.innerHTML = context.metaChips.length
-          ? context.metaChips.map(chip => `<span class="lb-context-chip">${escapeHtml(chip)}</span>`).join('')
-          : '<span class="lb-context-chip">No intake context loaded yet</span>';
-      }
+      if (summaryRequestedEl) summaryRequestedEl.textContent = context.summary.requested;
+      if (summarySourceEl) summarySourceEl.textContent = context.summary.source;
+      if (summaryActivityEl) summaryActivityEl.textContent = context.summary.activity;
 
       return context;
     }
@@ -2314,23 +2118,6 @@
 
     function isLifeOrFinal(leadType){
       return requestedAmountLeadTypes.has(leadType);
-    }
-
-    function applyLeadTypeFieldDisplay(lead){
-      const leadType = leadOriginalLeadType(lead)
-        || normalizedQueueKey
-        || normalizeQueueKey(lead?.bucket || lead?.crmStage || bucket || '');
-      const hideLender = isLifeOrFinal(leadType);
-
-      if (lenderField){
-        lenderField.style.display = hideLender ? 'none' : '';
-      }
-      if (lenderLabel){
-        lenderLabel.textContent = 'Lender';
-      }
-      if (loanLabel){
-        loanLabel.textContent = hideLender ? 'Requested' : 'Loan Amount';
-      }
     }
 
     function leadStageKey(lead){
@@ -2931,7 +2718,6 @@
     function renderLead(lead, index, total){
       resetPendingAction({ preserveStatus: true });
       if (!lead){
-        applyLeadTypeFieldDisplay(null);
         Object.values(fields).forEach(f => f && (f.textContent = '—'));
         if (fields.leadId) fields.leadId.textContent = '';
         if (fields.calls) fields.calls.textContent = 'Calls: —';
@@ -2946,19 +2732,9 @@
       fields.name.textContent = `${lead.firstName || ''} ${lead.lastName || ''}`.trim() || '—';
       if (fields.leadId) fields.leadId.textContent = lead.leadId || '';
       if (fields.calls) fields.calls.textContent = `Calls: ${lead.callCount ?? 0}`;
-      fields.address.textContent = lead.addressLine || '—';
-      fields.city.textContent = lead.city || '—';
-      fields.state.textContent = lead.state || '—';
-      fields.county.textContent = lead.county || '—';
-      fields.dob.textContent = formatDob(lead.dob);
-      fields.gender.textContent = lead.gender || '—';
-      applyLeadTypeFieldDisplay(lead);
-      fields.lender.textContent = lead.mortgageLender || '—';
-      fields.loan.textContent = lead.loanAmount || '—';
-      fields.phone.textContent = fmtPhone(lead.phone) || '—';
-      fields.phone2.textContent = fmtPhone(lead.phone2) || '—';
-      fields.age.textContent = normalizeLeadAgeFromDob(lead)?.age || '—';
-      fields.btc.textContent = lead.btc || '—';
+      if (fields.phone) fields.phone.textContent = fmtPhone(lead.phone) || '—';
+      if (fields.email) fields.email.textContent = lead.email || '—';
+      if (fields.location) fields.location.textContent = formatLeadLocation(lead);
       posEl.textContent = `Lead ${Math.min(index+1, total)} of ${total}`;
       setOrigin(lead);
       setStatusHtml(getStatusHtml(lead));

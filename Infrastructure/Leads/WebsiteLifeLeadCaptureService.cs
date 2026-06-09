@@ -26,6 +26,18 @@ public sealed class WebsiteLifeLeadCaptureService : IWebsiteLifeLeadCaptureServi
     public async Task<WebsiteLifeLeadCaptureResult> UpsertAsync(WebsiteLifeLeadCaptureRequest request, CancellationToken cancellationToken = default)
     {
         var bucket = WorkstationLeadBuckets.ResolveWebsiteLeadBucket(request.ProductType, request.OfferKey);
+        var websiteLead = await _db.WebsiteLeads
+            .FirstOrDefaultAsync(x => x.LeadId == request.WebsiteLeadId, cancellationToken);
+
+        if (WebsiteLeadCaptureSafety.ShouldSkipWorkstationCapture(websiteLead))
+        {
+            _logger.LogInformation(
+                "Website lead {WebsiteLeadId} marked internal/local test traffic. Skipping workstation capture for bucket {Bucket}.",
+                request.WebsiteLeadId,
+                bucket);
+            return new WebsiteLifeLeadCaptureResult(false, false, null, bucket, null, "InternalTestLead");
+        }
+
         var agentUserId = await ResolveAgentUserIdAsync(request, cancellationToken);
         if (string.IsNullOrWhiteSpace(agentUserId))
         {
@@ -35,9 +47,6 @@ public sealed class WebsiteLifeLeadCaptureService : IWebsiteLifeLeadCaptureServi
                 bucket);
             return new WebsiteLifeLeadCaptureResult(false, false, null, bucket, null, "NoAgentOwner");
         }
-
-        var websiteLead = await _db.WebsiteLeads
-            .FirstOrDefaultAsync(x => x.LeadId == request.WebsiteLeadId, cancellationToken);
 
         if (websiteLead == null)
         {
@@ -103,7 +112,7 @@ public sealed class WebsiteLifeLeadCaptureService : IWebsiteLifeLeadCaptureServi
                 LoanAmount = requestedAmount,
                 CrmStage = "New",
                 CrmStatus = "Lead",
-                CrmOrder = submittedUtc.Ticks * 1000L,
+                CrmOrder = WorkstationLeadOrder.Build(submittedUtc),
                 CreatedUtc = submittedUtc,
                 UpdatedUtc = submittedUtc
             };
@@ -140,7 +149,7 @@ public sealed class WebsiteLifeLeadCaptureService : IWebsiteLifeLeadCaptureServi
             if (string.IsNullOrWhiteSpace(lead.CrmStatus))
                 lead.CrmStatus = "Lead";
 
-            lead.CrmOrder = submittedUtc.Ticks * 1000L;
+            lead.CrmOrder = WorkstationLeadOrder.Build(submittedUtc);
             lead.UpdatedUtc = submittedUtc;
         }
 

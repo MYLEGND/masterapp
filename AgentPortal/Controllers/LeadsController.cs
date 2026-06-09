@@ -261,6 +261,43 @@ public class LeadsController : Controller
         return LeadCanonicalizer.SelectCanonical(rows, _logger, context);
     }
 
+    private async Task<int> DeleteLeadProfilesAsync(IEnumerable<WorkstationLeadProfile> leads)
+    {
+        var ownedLeads = leads
+            .Where(x => x != null && !string.IsNullOrWhiteSpace(x.LeadId))
+            .GroupBy(x => x.LeadId, StringComparer.OrdinalIgnoreCase)
+            .Select(g => g.OrderByDescending(x => x.UpdatedUtc).First())
+            .ToList();
+
+        if (ownedLeads.Count == 0)
+            return 0;
+
+        var leadIds = ownedLeads
+            .Select(x => x.LeadId)
+            .Where(x => !string.IsNullOrWhiteSpace(x))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+
+        if (leadIds.Length == 0)
+            return 0;
+
+        var appointments = await _db.LeadAppointments
+            .Where(x => leadIds.Contains(x.WorkstationLeadId))
+            .ToListAsync();
+        if (appointments.Count != 0)
+            _db.LeadAppointments.RemoveRange(appointments);
+
+        var intakeLinks = await _db.WebsiteLeadIntakeLinks
+            .Where(x => leadIds.Contains(x.WorkstationLeadId))
+            .ToListAsync();
+        if (intakeLinks.Count != 0)
+            _db.WebsiteLeadIntakeLinks.RemoveRange(intakeLinks);
+
+        _db.WorkstationLeadProfiles.RemoveRange(ownedLeads);
+        await _db.SaveChangesAsync();
+        return ownedLeads.Count;
+    }
+
     private static string Norm(string? v) => (v ?? "").Trim().ToLowerInvariant();
 
     private string GetAgentIdOrChallenge()
@@ -311,7 +348,6 @@ public class LeadsController : Controller
                 .Where(x => x.AgentUserId == agentId
                     && (x.Bucket == null || x.Bucket.ToLower() != "notinterested")
                     && (x.CrmStage == null || x.CrmStage.ToLower() != "notinterested"))
-                .OrderByDescending(x => x.CrmOrder)
                 .Select(x => new
                 {
                     Lead = x,
@@ -324,6 +360,7 @@ public class LeadsController : Controller
             // Use the canonical entity directly — do NOT re-look-up from leadsRaw by CrmOrder,
             // which could return a different (stale) duplicate with incorrect dial counts.
             var leads = LeadCanonicalizer.Canonicalize(leadsRaw.Select(r => r.Lead), _logger, "Leads/Index preload")
+                .OrderByDescending(WorkstationLeadOrder.ResolveSortValue)
                 .Select(c => new { Lead = c, Paid = 0m, Personal = 0m })
                 .ToList();
 
@@ -1138,12 +1175,11 @@ public class LeadsController : Controller
                 ((x.OriginalLeadType == null || x.OriginalLeadType == "") && x.Bucket != null && bucketValues.Contains(x.Bucket)));
         }
 
-        var rawLeads = await query
-            .OrderBy(x => x.CallCount)           // fewest calls first
-            .ThenByDescending(x => x.CrmOrder)   // then newest/priority
-            .ToListAsync();
+        var rawLeads = await query.ToListAsync();
 
         rawLeads = LeadCanonicalizer.Canonicalize(rawLeads, _logger, "Leads/Leads api")
+            .OrderBy(x => x.CallCount)                               // fewest calls first
+            .ThenByDescending(WorkstationLeadOrder.ResolveSortValue) // then newest/priority
             .ToList();
 
         var intakeSummaries = await LoadLeadIntakeSummariesAsync(rawLeads.Select(x => x.LeadId), HttpContext.RequestAborted);
@@ -1370,8 +1406,11 @@ public class LeadsController : Controller
         var leads = await _db.WorkstationLeadProfiles
             .AsNoTracking()
             .Where(x => x.AgentUserId == agentId)
-            .OrderByDescending(x => x.CrmOrder)
             .ToListAsync();
+
+        leads = LeadCanonicalizer.Canonicalize(leads, _logger, "Leads/Queue api")
+            .OrderByDescending(WorkstationLeadOrder.ResolveSortValue)
+            .ToList();
 
         var leadIds = leads.Select(x => x.LeadId).Where(id => !string.IsNullOrWhiteSpace(id)).ToList();
 
@@ -2433,9 +2472,7 @@ public class LeadsController : Controller
             x.LeadId == clientUserId && x.AgentUserId == agentId);
         if (lead == null) return NotFound();
 
-        _db.WorkstationLeadProfiles.Remove(lead);
-        await _db.SaveChangesAsync();
-
+        await DeleteLeadProfilesAsync(new[] { lead });
         return RedirectToAction(nameof(Index));
     }
 
@@ -2454,9 +2491,8 @@ public class LeadsController : Controller
             .ToListAsync();
         if (toDelete.Count == 0) return Json(new { deleted = 0 });
 
-        _db.WorkstationLeadProfiles.RemoveRange(toDelete);
-        await _db.SaveChangesAsync();
-        return Json(new { deleted = toDelete.Count });
+        var deletedCount = await DeleteLeadProfilesAsync(toDelete);
+        return Json(new { deleted = deletedCount });
     }
 
     [HttpPost]
@@ -2498,8 +2534,7 @@ public class LeadsController : Controller
 
         if (toDelete.Count == 0) return Json(new { deleted = 0 });
 
-        _db.WorkstationLeadProfiles.RemoveRange(toDelete);
-        await _db.SaveChangesAsync();
+        var deletedCount = await DeleteLeadProfilesAsync(toDelete);
         var remaining = isProductBucket
             ? await _db.WorkstationLeadProfiles
                 .CountAsync(x =>
@@ -2508,7 +2543,7 @@ public class LeadsController : Controller
                      ((x.OriginalLeadType == null || x.OriginalLeadType == "") && x.Bucket != null && bucketValues.Contains(x.Bucket))))
             : await _db.WorkstationLeadProfiles
                 .CountAsync(x => x.AgentUserId == agentId && x.Bucket == bucket);
-        return Json(new { deleted = toDelete.Count, remaining });
+        return Json(new { deleted = deletedCount, remaining });
     }
 
     public sealed class DeleteBucketRequest
@@ -2535,7 +2570,7 @@ public class LeadsController : Controller
             .ToListAsync();
 
         var now = DateTime.UtcNow;
-        long seed = now.Ticks * 10;
+        long seed = WorkstationLeadOrder.Build(now);
         for (int i = 0; i < ids.Count; i++)
         {
             var lead = leads.FirstOrDefault(l => l.LeadId == ids[i]);
@@ -2577,7 +2612,7 @@ public class LeadsController : Controller
             var imported = 0; var updated = 0; var skipped = 0;
             var errors = new List<string>();
             var generatedPlaceholderEmails = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-            var crmOrderSeed = now.Ticks * 1000L;
+            var crmOrderSeed = WorkstationLeadOrder.Build(now);
             var importedRowOffset = 0;
 
             var existingLeads = await _db.WorkstationLeadProfiles

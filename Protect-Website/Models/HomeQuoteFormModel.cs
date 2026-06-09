@@ -156,7 +156,6 @@ namespace Protect_Website.Models
         [Required]
         public string? DogsOnPremises { get; set; }
 
-        // Additional Carrier Questions
         [Required]
         public string? Paperless { get; set; }
 
@@ -165,8 +164,6 @@ namespace Protect_Website.Models
 
         [Required]
         public string? LapseInCoveragePast12Months { get; set; }
-
-        public string? AdditionalCarrierQuestions { get; set; }
 
         [Required]
         public string? AutoYearsWithPriorCarrierOrAgent { get; set; }

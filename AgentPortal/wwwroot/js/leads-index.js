@@ -13,7 +13,6 @@ const LS_VIEWS = "legend_saved_views_v1";
 const LS_PIPELINE_ORDER = "legend_pipeline_order_v1";
 const LS_PROD_DRAFT_LEAD = "legend_prod_draft_lead_v1";
 const LS_DIAL_BASE = "legend_dial_baseline_v1";
-const LS_PANELS = "legend_leads_panels_v1";
 const liveSync = window.liveSync;
 const REORDER_URL = "/Leads/Reorder";
 const LEADS_ONLY = true; // guard against creating client/portal records from the Leads CRM
@@ -178,48 +177,6 @@ function noteDecodeKey(raw){
   return { leadId: decodeURIComponent(value.slice(0, sep)), noteDate: value.slice(sep + 1) };
 }
 
-function showQuickViewTab(target, opts = {}){
-  if (!target) return;
-  const drawerRoot = $("#drawer") || document;
-  const panels = $$('.qv-tabpanel', drawerRoot);
-  if (!panels.length) return;
-
-  const targetPanel = panels.find(p => p.id === target) || document.getElementById(target);
-  if (!targetPanel) return;
-
-  const disclosure = targetPanel.closest('details.qv-disclosure');
-  if (disclosure) disclosure.open = true;
-
-  panels.forEach(panel => {
-    panel.style.display = panel.id === target ? '' : 'none';
-  });
-
-  const tabButtons = $$('.qv-tabs button[data-tab-target]', drawerRoot);
-  tabButtons.forEach(tab => {
-    const isActive = tab.dataset.tabTarget === target;
-    tab.classList.toggle('btn-gold', isActive);
-    tab.classList.toggle('btn-ghost', !isActive);
-  });
-
-  if (opts.scroll){
-    targetPanel.scrollIntoView({ behavior: 'smooth', block: 'start' });
-  }
-}
-
-// quick view tab switcher for notes/actions, including top-level shortcuts
-function bindQuickViewTabs(){
-  const drawerRoot = $("#drawer") || document;
-  const launchers = $$('[data-tab-target]', drawerRoot);
-  if (!launchers.length) return;
-
-  launchers.forEach(btn => {
-    if (btn.dataset.tabBound === "1") return;
-    btn.dataset.tabBound = "1";
-    btn.addEventListener('click', () => {
-      showQuickViewTab(btn.dataset.tabTarget, { scroll: btn.dataset.tabScroll === "1" });
-    });
-  });
-}
 
 const LegendModalApi = window.LegendModal || {};
 const ensureModalInBody = LegendModalApi.ensureInBody?.bind(LegendModalApi) || (() => null);
@@ -1160,6 +1117,10 @@ const pipelineLabels = {
   IUL: "IUL LEADS",
   FinalExpense: "FINAL EXPENSE LEADS",
   DisabilityInsurance: "DISABILITY INSURANCE LEADS",
+  AutoInsurance: "AUTO INSURANCE LEADS",
+  HomeInsurance: "HOME INSURANCE LEADS",
+  HealthInsurance: "HEALTH INSURANCE LEADS",
+  CommercialInsurance: "COMMERCIAL INSURANCE LEADS",
   CalledToday: "Called Today",
   CallBack: "Call Back",
   Contacted: "Contacted",
@@ -1200,6 +1161,10 @@ const pipelineStages = [
   { key: "IUL", label: "IUL LEADS", tone: "good", className: "stage-qualified", note: "IUL requests ready for cash-value and strategy conversations." },
   { key: "FinalExpense", label: "FINAL EXPENSE LEADS", tone: "warn", className: "stage-contacted", note: "Final Expense leads queued for contact." },
   { key: "DisabilityInsurance", label: "DISABILITY INSURANCE LEADS", tone: "warn", className: "stage-opportunities", note: "Disability Insurance leads to qualify fast." },
+  { key: "AutoInsurance", label: "AUTO INSURANCE LEADS", tone: "info", className: "stage-qualified", note: "Auto insurance leads ready for rating and driver review." },
+  { key: "HomeInsurance", label: "HOME INSURANCE LEADS", tone: "info", className: "stage-qualified", note: "Home insurance leads ready for property review." },
+  { key: "HealthInsurance", label: "HEALTH INSURANCE LEADS", tone: "info", className: "stage-qualified", note: "Health insurance leads ready for eligibility review." },
+  { key: "CommercialInsurance", label: "COMMERCIAL INSURANCE LEADS", tone: "info", className: "stage-qualified", note: "Commercial insurance leads ready for business coverage review." },
   { key: "CalledToday", label: "Called Today", tone: "info", className: "stage-calledtoday", note: "Touched today and ready for same-day follow-through." },
   { key: "CallBack", label: "Call Back", tone: "info", className: "stage-callback", note: "Asked for a callback or needs a scheduled return touch." },
   { key: "Contacted", label: "Contacted", tone: "info", className: "stage-contacted", note: "The first touch happened. Keep momentum alive." },
@@ -1236,6 +1201,17 @@ const pipelineAliases = {
   indexeduniversallife: "IUL",
   indexeduniversallifeleads: "IUL",
   indexeduniversalliferebuttals: "IUL",
+  disabilityinsurance: "DisabilityInsurance",
+  disabilityinsuranceleads: "DisabilityInsurance",
+  disabilityinsurancerebuttals: "DisabilityInsurance",
+  autoinsurance: "AutoInsurance",
+  autoinsuranceleads: "AutoInsurance",
+  homeinsurance: "HomeInsurance",
+  homeinsuranceleads: "HomeInsurance",
+  healthinsurance: "HealthInsurance",
+  healthinsuranceleads: "HealthInsurance",
+  commercialinsurance: "CommercialInsurance",
+  commercialinsuranceleads: "CommercialInsurance",
   submitted: "PolicyPlaced",
   calledtoday: "CalledToday",
   callback: "CallBack",
@@ -1267,7 +1243,7 @@ function normalizePipelineStageValue(stage, fallback = "MortgageProtection"){
   return pipelineAliases[value.toLowerCase()] || fallback;
 }
 
-const productBuckets = new Set(["MortgageProtection","LifeInsurance","TermLife","WholeLife","IUL","FinalExpense","DisabilityInsurance"]);
+const productBuckets = new Set(["MortgageProtection","LifeInsurance","TermLife","WholeLife","IUL","FinalExpense","DisabilityInsurance","AutoInsurance","HomeInsurance","HealthInsurance","CommercialInsurance"]);
 const requestedAmountLeadTypes = new Set(["LifeInsurance","TermLife","WholeLife","IUL","FinalExpense"]);
 const derivedPipelineFilterStages = new Set(["CalledToday"]);
 
@@ -1305,6 +1281,10 @@ function resolveWorkLeadTypeHint(...values){
     if (raw.includes("final")) return "FinalExpense";
     if (raw.includes("mortgage")) return "MortgageProtection";
     if (raw.includes("disability")) return "DisabilityInsurance";
+    if (raw.includes("auto")) return "AutoInsurance";
+    if (raw.includes("home")) return "HomeInsurance";
+    if (raw.includes("health")) return "HealthInsurance";
+    if (raw.includes("commercial")) return "CommercialInsurance";
     if (raw.includes("life")) return "LifeInsurance";
   }
 
@@ -1327,7 +1307,7 @@ function resolveWorkLeadDestination(row, detail){
       queueKey: "FinalExpense",
       route: "/Workstation/FinalExpenseRebuttals",
       label: "Work Final Expense Lead",
-      note: "Loads this lead into the Final Expense workstation queue."
+      note: "Final Expense workstation ready."
     };
   }
 
@@ -1336,7 +1316,7 @@ function resolveWorkLeadDestination(row, detail){
       queueKey: "MortgageProtection",
       route: "/Workstation/Rebuttals",
       label: "Work Mortgage Lead",
-      note: "Loads this lead into the Mortgage Protection workstation queue."
+      note: "Mortgage Protection workstation ready."
     };
   }
 
@@ -1345,7 +1325,16 @@ function resolveWorkLeadDestination(row, detail){
       queueKey: "LifeInsurance",
       route: "/Workstation/LifeInsuranceRebuttals",
       label: "Work Life Lead",
-      note: "Loads this lead into the Life Insurance workstation queue."
+      note: "Life Insurance workstation ready."
+    };
+  }
+
+  if (["DisabilityInsurance", "AutoInsurance", "HomeInsurance", "HealthInsurance", "CommercialInsurance"].includes(leadType)){
+    return {
+      queueKey: leadType,
+      route: `/Workstation/Queue?queueKey=${encodeURIComponent(leadType)}`,
+      label: "Open Product Queue",
+      note: "Product queue ready."
     };
   }
 
@@ -1353,7 +1342,7 @@ function resolveWorkLeadDestination(row, detail){
     queueKey: leadType || "",
     route: "/Workstation",
     label: "Open Workstation Hub",
-    note: "Opens the Workstation hub for this lead."
+    note: "Workstation ready."
   };
 }
 
@@ -1611,8 +1600,7 @@ const bar = $("#legendBar");
 
 const rows = $$(".client-row");
 const kpiGrid = $("#kpiGrid");
-const performanceShell = $("#performanceShell");
-const performanceBody = $("#performanceBody");
+const performanceModal = $("#performanceModal");
 const btnTogglePerformance = $("#btnTogglePerformance");
 const perfPreviewPaid = $("#perfPreviewPaid");
 const perfPreviewPersonal = $("#perfPreviewPersonal");
@@ -1635,6 +1623,10 @@ const viewMode = $("#viewMode");
 const density = $("#density");
 const PIPELINE_ONLY_VIEW = "pipeline";
 
+function getDensityValue(){
+  return density?.value === "compact" ? "compact" : "comfort";
+}
+
 const btnCopyEmails = $("#btnCopyEmails");
 const btnExportCsv = $("#btnExportCsv");
 const btnClearSel = $("#btnClearSel");
@@ -1644,8 +1636,7 @@ const btnBulkDelete = $("#btnBulkDelete");
 const btnDeleteBucket = $("#btnDeleteBucket");
 const savedViewsBar = $("#savedViewsBar");
 const btnCallTaskMode = $("#btnCallTaskMode");
-const myDayQueue = $("#myDayQueue");
-const myDayBody = $("#myDayBody");
+const myDayModal = $("#myDayModal");
 const btnToggleMyDay = $("#btnToggleMyDay");
 const qCallsNowPreview = $("#qCallsNowPreview");
 const qDueTodayPreview = $("#qDueTodayPreview");
@@ -1723,47 +1714,27 @@ const bNextText = $("#bNextText");
 const bTags = $("#bTags");
 const bSharedNote = $("#bSharedNote");
 
-function panelPrefs(){
-  return loadJSON(LS_PANELS, {});
-}
+function initCommandCenterModal(button, modal){
+  if (!button || !modal) return null;
 
-function savePanelPref(key, isOpen){
-  saveJSON(LS_PANELS, { ...panelPrefs(), [key]: !!isOpen });
-}
-
-function applyCollapsiblePanelState(shell, button, body, isOpen){
-  if (!shell || !button || !body) return;
-
-  shell.classList.toggle("is-open", !!isOpen);
-  body.hidden = !isOpen;
-  button.setAttribute("aria-expanded", isOpen ? "true" : "false");
-
-  const label = $("[data-panel-label]", button);
-  const showLabel = button.dataset.showLabel || "Show";
-  const hideLabel = button.dataset.hideLabel || "Hide";
-  if (label) label.textContent = isOpen ? hideLabel : showLabel;
-}
-
-function initCollapsiblePanel(key, shell, button, body, defaultOpen = false){
-  if (!shell || !button || !body) return null;
-
-  const prefs = panelPrefs();
-  let isOpen = typeof prefs[key] === "boolean" ? prefs[key] : defaultOpen;
-
-  const setOpen = (nextOpen, { persist = true } = {}) => {
-    isOpen = !!nextOpen;
-    applyCollapsiblePanelState(shell, button, body, isOpen);
-    if (persist) savePanelPref(key, isOpen);
+  const open = () => {
+    if (!modalBackdrop) return;
+    openModal(modal);
   };
 
-  button.addEventListener("click", () => setOpen(!isOpen));
-  setOpen(isOpen, { persist: false });
+  const close = () => {
+    modal.classList.remove("open");
+    if (!$$(".modal.open").length){
+      modalBackdrop?.classList.remove("open");
+    }
+  };
+
+  button.addEventListener("click", open);
 
   return {
-    open(options){ setOpen(true, options); },
-    close(options){ setOpen(false, options); },
-    toggle(options){ setOpen(!isOpen, options); },
-    isOpen(){ return isOpen; }
+    open,
+    close,
+    isOpen(){ return modal.classList.contains("open"); }
   };
 }
 
@@ -1771,8 +1742,8 @@ let performancePanelController = null;
 let myDayPanelController = null;
 
 function initCollapsiblePanels(){
-  performancePanelController = initCollapsiblePanel("performance", performanceShell, btnTogglePerformance, performanceBody, false);
-  myDayPanelController = initCollapsiblePanel("myDay", myDayQueue, btnToggleMyDay, myDayBody, false);
+  performancePanelController = initCommandCenterModal(btnTogglePerformance, performanceModal);
+  myDayPanelController = initCommandCenterModal(btnToggleMyDay, myDayModal);
 }
 const btnRunBulk = $("#btnRunBulk");
 const stagePickerSelect = $("#stagePickerSelect");
@@ -2047,20 +2018,33 @@ const timelineFilters = $("#timelineFilters");
 const leadContactStatusPreview = $("#leadContactStatusPreview");
 const leadLastTouchPreview = $("#leadLastTouchPreview");
 const leadNextActionDatePreview = $("#leadNextActionDatePreview");
-const leadNextActionPreview = $("#leadNextActionPreview");
 const leadProductPreview = $("#leadProductPreview");
 const leadSourcePreview = $("#leadSourcePreview");
-const leadLatestIntakePreview = $("#leadLatestIntakePreview");
-const leadRecommendationPreview = $("#leadRecommendationPreview");
-const leadDiscoveryPreview = $("#leadDiscoveryPreview");
-const leadAppointmentStatusPreview = $("#leadAppointmentStatusPreview");
-const leadAppointmentTimePreview = $("#leadAppointmentTimePreview");
-const leadAppointmentSourcePreview = $("#leadAppointmentSourcePreview");
-const leadAppointmentConfirmationPreview = $("#leadAppointmentConfirmationPreview");
-const leadAppointmentConfigPreview = $("#leadAppointmentConfigPreview");
 
 const cmdInput = $("#cmdInput");
 let activeTimelineFilter = "all";
+
+function syncQuickViewDisclosure(panel){
+  if (!panel) return;
+  if (panel.hidden && panel.open) panel.open = false;
+}
+
+function syncQuickViewDisclosures(root = drawer){
+  if (!root) return;
+  root.querySelectorAll("details.qv-panel").forEach(syncQuickViewDisclosure);
+}
+
+function bindQuickViewDisclosures(root = drawer){
+  if (!root) return;
+  root.querySelectorAll("details.qv-panel").forEach(panel => {
+    if (panel.dataset.qvDisclosureBound === "true") return;
+    panel.dataset.qvDisclosureBound = "true";
+    panel.addEventListener("toggle", () => syncQuickViewDisclosure(panel));
+    syncQuickViewDisclosure(panel);
+  });
+}
+
+bindQuickViewDisclosures();
 
 function normalizeContactStatusValue(value){
   const raw = norm(value);
@@ -2118,39 +2102,11 @@ function refreshLeadOverviewSummary(){
     const nextDate = norm(dNextDate?.value);
     leadNextActionDatePreview.textContent = nextDate || "Not tracked";
   }
-  if (leadNextActionPreview){
-    const nextText = norm(dNextText?.value);
-    leadNextActionPreview.textContent = nextText || "Not tracked for this lead yet.";
-  }
   if (leadProductPreview){
     leadProductPreview.textContent = summarizeLeadPath(snapshot, row);
   }
   if (leadSourcePreview){
     leadSourcePreview.textContent = summarizeLeadSource(snapshot, row);
-  }
-  if (leadLatestIntakePreview){
-    leadLatestIntakePreview.textContent = summarizeLeadLatestIntake(snapshot, row);
-  }
-  if (leadRecommendationPreview){
-    leadRecommendationPreview.textContent = summarizeLeadRecommendation(snapshot, row);
-  }
-  if (leadDiscoveryPreview){
-    leadDiscoveryPreview.textContent = summarizeLeadDiscovery(snapshot);
-  }
-  if (leadAppointmentStatusPreview){
-    leadAppointmentStatusPreview.textContent = summarizeLeadAppointmentStatus(appointment);
-  }
-  if (leadAppointmentTimePreview){
-    leadAppointmentTimePreview.textContent = summarizeLeadAppointmentTime(appointment);
-  }
-  if (leadAppointmentSourcePreview){
-    leadAppointmentSourcePreview.textContent = summarizeLeadAppointmentSource(appointment);
-  }
-  if (leadAppointmentConfirmationPreview){
-    leadAppointmentConfirmationPreview.textContent = summarizeLeadAppointmentConfirmation(appointment);
-  }
-  if (leadAppointmentConfigPreview){
-    leadAppointmentConfigPreview.textContent = summarizeLeadAppointmentConfig(appointment);
   }
 }
 
@@ -2205,43 +2161,6 @@ function summarizeLeadSource(snapshot, row){
     row?.dataset.intakeMedium,
     row?.dataset.intakeCampaign
   ]);
-}
-
-function summarizeLeadLatestIntake(snapshot, row){
-  if (snapshot){
-    const historyCount = Number(snapshot.historyCount || 1);
-    return joinIntakeParts([
-      formatIntakeSnapshotDate(snapshot.submittedUtc),
-      Number.isFinite(historyCount) && historyCount > 0
-        ? `${historyCount} submission${historyCount === 1 ? "" : "s"}`
-        : ""
-    ]);
-  }
-
-  const submitted = formatIntakeSnapshotDate(norm(row?.dataset.intakeSubmitted));
-  return submitted !== "—" ? submitted : "No public intake captured";
-}
-
-function summarizeLeadRecommendation(snapshot, row){
-  if (snapshot){
-    return snapshot.recommendationSummary || joinIntakeParts([
-      snapshot.estimateSummary,
-      snapshot.recommendationPrimaryTitle ? `Primary: ${snapshot.recommendationPrimaryTitle}` : "",
-      snapshot.recommendationSecondaryTitle ? `Secondary: ${snapshot.recommendationSecondaryTitle}` : ""
-    ]);
-  }
-
-  return norm(row?.dataset.intakeRecommendation) || "No recommendation or estimate loaded yet.";
-}
-
-function summarizeLeadDiscovery(snapshot){
-  if (!Array.isArray(snapshot?.discoveryItems) || snapshot.discoveryItems.length === 0){
-    return "No public-funnel answers loaded yet.";
-  }
-
-  return snapshot.discoveryItems
-    .map(item => `${norm(item?.label) || "Detail"}: ${norm(item?.value) || "—"}`)
-    .join(" • ");
 }
 
 function humanizeAppointmentStatus(value){
@@ -2376,6 +2295,7 @@ function renderAppointmentSnapshot(snapshot){
     nodes.forEach(node => { if (node) node.textContent = "—"; });
     if (dAppointmentStatusSelect) dAppointmentStatusSelect.value = "Requested";
     if (btnSaveAppointmentStatus) btnSaveAppointmentStatus.disabled = true;
+    syncQuickViewDisclosures();
     return;
   }
 
@@ -2391,6 +2311,7 @@ function renderAppointmentSnapshot(snapshot){
     if (dAppointmentCalendarLink) dAppointmentCalendarLink.textContent = "—";
     if (dAppointmentStatusSelect) dAppointmentStatusSelect.value = "Requested";
     if (btnSaveAppointmentStatus) btnSaveAppointmentStatus.disabled = false;
+    syncQuickViewDisclosures();
     return;
   }
 
@@ -2405,6 +2326,7 @@ function renderAppointmentSnapshot(snapshot){
   renderAppointmentLink(dAppointmentCalendarLink, snapshot.calendarEventWebLink, "Open Outlook event");
   if (dAppointmentStatusSelect) dAppointmentStatusSelect.value = snapshot.status || "Requested";
   if (btnSaveAppointmentStatus) btnSaveAppointmentStatus.disabled = false;
+  syncQuickViewDisclosures();
 }
 
 function renderIntakeSnapshot(snapshot){
@@ -2427,6 +2349,7 @@ function renderIntakeSnapshot(snapshot){
   if (!snapshot){
     if (dIntakeSection) dIntakeSection.hidden = true;
     nodes.forEach(node => { if (node) node.textContent = "—"; });
+    syncQuickViewDisclosures();
     return;
   }
 
@@ -2475,6 +2398,7 @@ function renderIntakeSnapshot(snapshot){
         .join(" • ")
     : "—";
   if (dIntakeRawMeta) dIntakeRawMeta.textContent = snapshot.rawMetadataJson || "—";
+  syncQuickViewDisclosures();
 }
 
 // Quick View autosave (debounced)
@@ -2549,6 +2473,13 @@ function queueQuickViewAutosave(reason){
   if (dSaved) dSaved.textContent = reason || "Saving…";
   clearTimeout(quickViewAutosaveTimer);
   quickViewAutosaveTimer = setTimeout(performQuickViewAutosave, AUTOSAVE_DELAY_MS);
+}
+
+function flushQuickViewAutosave(reason){
+  if (!activeClientId) return;
+  if (dSaved) dSaved.textContent = reason || "Saving…";
+  clearTimeout(quickViewAutosaveTimer);
+  void performQuickViewAutosave();
 }
 
 function wireQuickViewAutosave(){
@@ -3063,10 +2994,10 @@ function updateSelectionUI(){
   const checked = getCheckedRows();
   const count = checked.length;
 
-  selCount.textContent = String(count);
-  btnCopyEmails.disabled = count === 0;
-  btnClearSel.disabled = count === 0;
-  btnOpenFirst.disabled = count === 0;
+  if (selCount) selCount.textContent = String(count);
+  if (btnCopyEmails) btnCopyEmails.disabled = count === 0;
+  if (btnClearSel) btnClearSel.disabled = count === 0;
+  if (btnOpenFirst) btnOpenFirst.disabled = count === 0;
   if (btnBulkEdit) btnBulkEdit.disabled = count === 0;
   // keep bulk delete clickable; handler will guard zero-selection
   if (btnBulkDelete) btnBulkDelete.disabled = false;
@@ -3656,15 +3587,15 @@ function renderList(filtered){
   rows.forEach(r => r.style.display = "none");
   pageRows.forEach(r => r.style.display = "");
 
-  pageNow.textContent = String(currentPage);
-  pageMax.textContent = String(max);
+  if (pageNow) pageNow.textContent = String(currentPage);
+  if (pageMax) pageMax.textContent = String(max);
 
   const showingA = filtered.length === 0 ? 0 : (start + 1);
   const showingB = Math.min(end, filtered.length);
-  pagerInfo.textContent = `${filtered.length} live records - ${showingA}-${showingB} visible`;
+  if (pagerInfo) pagerInfo.textContent = `${filtered.length} live records - ${showingA}-${showingB} visible`;
 
-  btnPrev.disabled = currentPage <= 1;
-  btnNext.disabled = currentPage >= max;
+  if (btnPrev) btnPrev.disabled = currentPage <= 1;
+  if (btnNext) btnNext.disabled = currentPage >= max;
 }
 
 function renderAll(){
@@ -3733,7 +3664,7 @@ if (clientSearchForm && clientSearchInput){
 function applyDensityClass(){
   if (!legendWrap) return;
   legendWrap.classList.remove("density-compact","density-comfort");
-  legendWrap.classList.add(density.value === "compact" ? "density-compact" : "density-comfort");
+  legendWrap.classList.add(getDensityValue() === "compact" ? "density-compact" : "density-comfort");
 }
 
 function resetFilters(){
@@ -3794,7 +3725,7 @@ function applyViewMode(){
 }
 
 density?.addEventListener("change", () => {
-  saveJSON(LS_PREFS, { ...loadJSON(LS_PREFS, {}), density: density.value });
+  saveJSON(LS_PREFS, { ...loadJSON(LS_PREFS, {}), density: getDensityValue() });
   applyDensityClass();
 });
 
@@ -4147,6 +4078,7 @@ async function openDrawerForRow(row){
   drawer.setAttribute("aria-hidden", "false");
   lockPageScrollForQuickView();
   updateZoomControls();
+  syncQuickViewDisclosures();
 
   closeAllMenus(null);
 
@@ -4214,6 +4146,7 @@ async function openDrawerForRow(row){
     renderIntakeSnapshot(detail.intakeSnapshot || null);
     renderAppointmentSnapshot(detail.latestAppointment || null);
     refreshLeadOverviewSummary();
+    syncQuickViewDisclosures();
 
     renderPortalActions(row, detail);
 
@@ -4911,7 +4844,6 @@ function renderPortalActions(row, detail){
         </button>
         <span class="pill">Lead-only CRM</span>
       </div>
-      <div class="tiny lead-workstation-note">${safeHtml(destination.note)}</div>
     `;
     return;
   }
@@ -4920,7 +4852,7 @@ function renderPortalActions(row, detail){
 
   if (!isGuid) {
     dPortalWrap.innerHTML = `
-      <div style="display:flex; gap:10px; flex-wrap:wrap;">
+      <div class="lead-workstation-actions">
         <button type="button" class="btn btn-gold" id="btnEnablePortalAccess" title="Convert to Client">Convert To Client</button>
         <button type="button" class="btn btn-gold" id="btnEnableBizPortal" title="Convert to Business Client">Convert To Business Client</button>
       </div>
@@ -4985,22 +4917,22 @@ btnOpenFirst?.addEventListener("click", () => {
 });
 
 btnMarkToday?.addEventListener("click", () => {
-  dLastTouch.value = todayISO();
-  dSaved.textContent = "Touched today — saving…";
-  queueQuickViewAutosave();
+  if (dLastTouch) dLastTouch.value = todayISO();
+  refreshLeadOverviewSummary();
+  flushQuickViewAutosave("Touched today — saving…");
 });
 
 btnSetNextToday?.addEventListener("click", () => {
   setDrawerNextActionDate(todayISO());
-  dSaved.textContent = "Next action set — saving…";
-  queueQuickViewAutosave();
+  refreshLeadOverviewSummary();
+  flushQuickViewAutosave("Next action set — saving…");
   refreshCalendarBusyPanel();
 });
 
 btnMeetingNextToday?.addEventListener("click", () => {
   setDrawerNextActionDate(todayISO());
-  dSaved.textContent = "Meeting date set — saving…";
-  queueQuickViewAutosave();
+  refreshLeadOverviewSummary();
+  flushQuickViewAutosave("Meeting date set — saving…");
   refreshCalendarBusyPanel();
 });
 
@@ -5404,7 +5336,7 @@ btnMyDayBack?.addEventListener("click", () => {
   applyViewMode();
   currentPage = 1;
   renderAll();
-  myDayQueue?.scrollIntoView({ behavior: "smooth", block: "start" });
+  myDayPanelController?.open();
 });
 
 $$(".outcome-btn").forEach(btn => {
@@ -6187,12 +6119,15 @@ pipelineBoard?.addEventListener("click", (e) => {
 
 /* ========= Columns Modal ========= */
 function openModal(el){
+  if (!el || !modalBackdrop) return;
+  document.body.classList.add("legend-bootstrap-modal-open");
   modalBackdrop.classList.add("open");
   el.classList.add("open");
 }
 function closeModal(){
+  document.body.classList.remove("legend-bootstrap-modal-open");
   modalBackdrop.classList.remove("open");
-  [colsModal, shortcutsModal, remindersModal, cmdModal, bulkModal, callTaskModal, importModal].forEach(m => m.classList.remove("open"));
+  [colsModal, shortcutsModal, remindersModal, cmdModal, bulkModal, callTaskModal, importModal, performanceModal, myDayModal].forEach(m => m?.classList.remove("open"));
 }
 
 $("#btnCols")?.addEventListener("click", () => {
@@ -7186,7 +7121,6 @@ async function boot(){
   await loadMyDaySnapshot(true);
 
   renderAll();
-  bindQuickViewTabs();
   focusLeadFromUrl();
   openQuickViewFromUrl();
   updateSelectionUI();

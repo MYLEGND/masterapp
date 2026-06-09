@@ -242,6 +242,194 @@ public class LeadsControllerTests
     }
 
     [Fact]
+    public async Task Delete_Removes_Appointment_And_IntakeLink_Dependents()
+    {
+        await using var conn = new SqliteConnection("Data Source=:memory:");
+        await conn.OpenAsync();
+
+        var options = new DbContextOptionsBuilder<MasterAppDbContext>()
+            .UseSqlite(conn)
+            .Options;
+
+        await using var db = new MasterAppDbContext(options);
+        await db.Database.EnsureCreatedAsync();
+
+        var websiteLeadPublicId = Guid.NewGuid();
+        db.WorkstationLeadProfiles.Add(new WorkstationLeadProfile
+        {
+            LeadId = "L-DELETE-1",
+            AgentUserId = "agent-1",
+            Bucket = "LifeInsurance",
+            OriginalLeadType = "LifeInsurance",
+            FirstName = "Jordan",
+            LastName = "Delete",
+            Email = "jordan@example.com",
+            Phone = "6025550160",
+            CreatedUtc = new DateTime(2026, 5, 30, 8, 0, 0, DateTimeKind.Utc),
+            UpdatedUtc = new DateTime(2026, 5, 30, 8, 0, 0, DateTimeKind.Utc)
+        });
+        db.WebsiteLeads.Add(new WebsiteLead
+        {
+            Id = 1001,
+            LeadId = websiteLeadPublicId,
+            FirstName = "Jordan",
+            LastName = "Delete",
+            Email = "jordan@example.com",
+            Phone = "6025550160",
+            InterestType = "life",
+            CreatedUtc = new DateTime(2026, 5, 30, 8, 1, 0, DateTimeKind.Utc),
+            Status = "New"
+        });
+
+        var intakeLinkId = Guid.NewGuid();
+        db.WebsiteLeadIntakeLinks.Add(new WebsiteLeadIntakeLink
+        {
+            Id = intakeLinkId,
+            WebsiteLeadRowId = 1001,
+            WebsiteLeadPublicId = websiteLeadPublicId,
+            WorkstationLeadId = "L-DELETE-1",
+            AgentUserId = "agent-1",
+            Bucket = "LifeInsurance",
+            SubmittedUtc = new DateTime(2026, 5, 30, 8, 2, 0, DateTimeKind.Utc),
+            CapturedUtc = new DateTime(2026, 5, 30, 8, 2, 30, DateTimeKind.Utc)
+        });
+        db.LeadAppointments.Add(new LeadAppointment
+        {
+            Id = Guid.NewGuid(),
+            WorkstationLeadId = "L-DELETE-1",
+            OwnerAgentUserId = "agent-1",
+            WebsiteLeadIntakeLinkId = intakeLinkId,
+            Status = LeadAppointmentStatus.Requested,
+            BookingSource = LeadAppointmentBookingSources.InternalManual,
+            RequestedBookingSource = LeadAppointmentBookingSources.InternalManual,
+            CreatedUtc = new DateTime(2026, 5, 30, 8, 3, 0, DateTimeKind.Utc),
+            UpdatedUtc = new DateTime(2026, 5, 30, 8, 3, 0, DateTimeKind.Utc),
+            RequestedUtc = new DateTime(2026, 5, 30, 8, 3, 0, DateTimeKind.Utc)
+        });
+        await db.SaveChangesAsync();
+
+        var controller = ControllerTestHelpers.BuildLeadsController(
+            db,
+            Mock.Of<IExecutionEngine>(),
+            Mock.Of<ICommitmentService>(),
+            ControllerTestHelpers.BuildUser());
+
+        var result = await controller.Delete("L-DELETE-1");
+
+        Assert.IsType<RedirectToActionResult>(result);
+        Assert.False(await db.WorkstationLeadProfiles.AnyAsync(x => x.LeadId == "L-DELETE-1"));
+        Assert.False(await db.LeadAppointments.AnyAsync(x => x.WorkstationLeadId == "L-DELETE-1"));
+        Assert.False(await db.WebsiteLeadIntakeLinks.AnyAsync(x => x.WorkstationLeadId == "L-DELETE-1"));
+        Assert.True(await db.WebsiteLeads.AnyAsync(x => x.Id == 1001));
+    }
+
+    [Fact]
+    public async Task DeleteBulk_Removes_Appointment_Dependents_For_All_Deleted_Leads()
+    {
+        await using var conn = new SqliteConnection("Data Source=:memory:");
+        await conn.OpenAsync();
+
+        var options = new DbContextOptionsBuilder<MasterAppDbContext>()
+            .UseSqlite(conn)
+            .Options;
+
+        await using var db = new MasterAppDbContext(options);
+        await db.Database.EnsureCreatedAsync();
+
+        db.WorkstationLeadProfiles.AddRange(
+            new WorkstationLeadProfile
+            {
+                LeadId = "L-BULK-1",
+                AgentUserId = "agent-1",
+                Bucket = "MortgageProtection",
+                OriginalLeadType = "MortgageProtection",
+                FirstName = "Ari",
+                LastName = "Bulk",
+                CreatedUtc = new DateTime(2026, 5, 30, 9, 0, 0, DateTimeKind.Utc),
+                UpdatedUtc = new DateTime(2026, 5, 30, 9, 0, 0, DateTimeKind.Utc)
+            },
+            new WorkstationLeadProfile
+            {
+                LeadId = "L-BULK-2",
+                AgentUserId = "agent-1",
+                Bucket = "MortgageProtection",
+                OriginalLeadType = "MortgageProtection",
+                FirstName = "Blair",
+                LastName = "Bulk",
+                CreatedUtc = new DateTime(2026, 5, 30, 9, 5, 0, DateTimeKind.Utc),
+                UpdatedUtc = new DateTime(2026, 5, 30, 9, 5, 0, DateTimeKind.Utc)
+            },
+            new WorkstationLeadProfile
+            {
+                LeadId = "L-BULK-OTHER",
+                AgentUserId = "agent-2",
+                Bucket = "MortgageProtection",
+                OriginalLeadType = "MortgageProtection",
+                FirstName = "Casey",
+                LastName = "Other",
+                CreatedUtc = new DateTime(2026, 5, 30, 9, 10, 0, DateTimeKind.Utc),
+                UpdatedUtc = new DateTime(2026, 5, 30, 9, 10, 0, DateTimeKind.Utc)
+            });
+        db.LeadAppointments.AddRange(
+            new LeadAppointment
+            {
+                Id = Guid.NewGuid(),
+                WorkstationLeadId = "L-BULK-1",
+                OwnerAgentUserId = "agent-1",
+                Status = LeadAppointmentStatus.Requested,
+                BookingSource = LeadAppointmentBookingSources.InternalManual,
+                RequestedBookingSource = LeadAppointmentBookingSources.InternalManual,
+                CreatedUtc = new DateTime(2026, 5, 30, 9, 1, 0, DateTimeKind.Utc),
+                UpdatedUtc = new DateTime(2026, 5, 30, 9, 1, 0, DateTimeKind.Utc),
+                RequestedUtc = new DateTime(2026, 5, 30, 9, 1, 0, DateTimeKind.Utc)
+            },
+            new LeadAppointment
+            {
+                Id = Guid.NewGuid(),
+                WorkstationLeadId = "L-BULK-2",
+                OwnerAgentUserId = "agent-1",
+                Status = LeadAppointmentStatus.Requested,
+                BookingSource = LeadAppointmentBookingSources.InternalManual,
+                RequestedBookingSource = LeadAppointmentBookingSources.InternalManual,
+                CreatedUtc = new DateTime(2026, 5, 30, 9, 6, 0, DateTimeKind.Utc),
+                UpdatedUtc = new DateTime(2026, 5, 30, 9, 6, 0, DateTimeKind.Utc),
+                RequestedUtc = new DateTime(2026, 5, 30, 9, 6, 0, DateTimeKind.Utc)
+            },
+            new LeadAppointment
+            {
+                Id = Guid.NewGuid(),
+                WorkstationLeadId = "L-BULK-OTHER",
+                OwnerAgentUserId = "agent-2",
+                Status = LeadAppointmentStatus.Requested,
+                BookingSource = LeadAppointmentBookingSources.InternalManual,
+                RequestedBookingSource = LeadAppointmentBookingSources.InternalManual,
+                CreatedUtc = new DateTime(2026, 5, 30, 9, 11, 0, DateTimeKind.Utc),
+                UpdatedUtc = new DateTime(2026, 5, 30, 9, 11, 0, DateTimeKind.Utc),
+                RequestedUtc = new DateTime(2026, 5, 30, 9, 11, 0, DateTimeKind.Utc)
+            });
+        await db.SaveChangesAsync();
+
+        var controller = ControllerTestHelpers.BuildLeadsController(
+            db,
+            Mock.Of<IExecutionEngine>(),
+            Mock.Of<ICommitmentService>(),
+            ControllerTestHelpers.BuildUser());
+
+        var result = await controller.DeleteBulk(new[] { "L-BULK-1", "L-BULK-2", "L-BULK-OTHER" });
+
+        var json = Assert.IsType<JsonResult>(result);
+        var payload = JsonSerializer.Serialize(json.Value);
+        using var doc = JsonDocument.Parse(payload);
+        Assert.Equal(2, doc.RootElement.GetProperty("deleted").GetInt32());
+        Assert.False(await db.WorkstationLeadProfiles.AnyAsync(x => x.LeadId == "L-BULK-1"));
+        Assert.False(await db.WorkstationLeadProfiles.AnyAsync(x => x.LeadId == "L-BULK-2"));
+        Assert.True(await db.WorkstationLeadProfiles.AnyAsync(x => x.LeadId == "L-BULK-OTHER"));
+        Assert.False(await db.LeadAppointments.AnyAsync(x => x.WorkstationLeadId == "L-BULK-1"));
+        Assert.False(await db.LeadAppointments.AnyAsync(x => x.WorkstationLeadId == "L-BULK-2"));
+        Assert.True(await db.LeadAppointments.AnyAsync(x => x.WorkstationLeadId == "L-BULK-OTHER"));
+    }
+
+    [Fact]
     public async Task IncrementCall_Targets_Canonical_Row()
     {
         var db = ControllerTestHelpers.BuildDb();
@@ -882,6 +1070,46 @@ public class LeadsControllerTests
         dynamic payload = ok.Value!;
         Assert.Equal(3, (int)payload.Total);
         Assert.Contains((string)payload.ActiveLeadId, new[] { "LT-1", "LW-1", "LI-1" });
+    }
+
+    [Fact]
+    public async Task LeadBridge_Queue_Falls_Back_To_Timestamps_When_CrmOrder_Is_Invalid()
+    {
+        var db = ControllerTestHelpers.BuildDb();
+        var now = DateTime.UtcNow;
+        db.WorkstationLeadProfiles.AddRange(
+            new WorkstationLeadProfile
+            {
+                LeadId = "NEW-BAD-ORDER",
+                AgentUserId = "agent-1",
+                Bucket = "MortgageProtection",
+                OriginalLeadType = "MortgageProtection",
+                CallCount = 0,
+                CrmOrder = -1,
+                UpdatedUtc = now,
+                CreatedUtc = now.AddMinutes(-30)
+            },
+            new WorkstationLeadProfile
+            {
+                LeadId = "OLD-GOOD-ORDER",
+                AgentUserId = "agent-1",
+                Bucket = "MortgageProtection",
+                OriginalLeadType = "MortgageProtection",
+                CallCount = 0,
+                CrmOrder = now.AddHours(-2).Ticks,
+                UpdatedUtc = now.AddHours(-2),
+                CreatedUtc = now.AddHours(-3)
+            });
+        await db.SaveChangesAsync();
+
+        var stateService = new LeadBridgeStateService();
+        var controller = ControllerTestHelpers.BuildLeadBridgeController(db, stateService, ControllerTestHelpers.BuildUser());
+
+        var result = await controller.Active("MortgageProtection");
+        var ok = Assert.IsType<OkObjectResult>(result);
+        dynamic payload = ok.Value!;
+        Assert.Equal("NEW-BAD-ORDER", (string)payload.ActiveLeadId);
+        Assert.Equal(2, (int)payload.Total);
     }
 
     [Fact]

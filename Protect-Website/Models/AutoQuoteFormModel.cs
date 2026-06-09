@@ -84,7 +84,6 @@ namespace Protect_Website.Models
 
         [Required, DataType(DataType.Date)] public DateTime? NewPolicyEffectiveDate { get; set; }
 
-        [Required] public string AdditionalCarrierQuestions { get; set; } = "";
         [Required] public string Paperless { get; set; } = ""; // Yes/No
         [Required] public string MultiPolicyDiscount { get; set; } = "";
 

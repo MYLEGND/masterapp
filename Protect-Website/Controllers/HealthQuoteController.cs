@@ -147,6 +147,7 @@ namespace Protect_Website.Controllers
                     MarketingEmailConsent = model.AcknowledgedDisclaimer,
                     CallTextConsent = model.AcknowledgedDisclaimer && !string.IsNullOrWhiteSpace(model.Phone),
                     TermsAccepted = true,
+                    IsInternal    = WebsiteLeadCaptureSafety.ShouldMarkAsInternalTest(Request?.Host.Host),
                     Host          = Request?.Host.ToString(),
                     Environment   = EnvironmentLabelResolver.Resolve(),
                     CreatedUtc    = now,

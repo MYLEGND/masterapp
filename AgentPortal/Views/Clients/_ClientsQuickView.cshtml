@@ -1,128 +1,133 @@
 <div class="backdrop" id="drawerBackdrop"></div>
 
-<aside class="drawer qv-theme-shell client-qv-shell" id="drawer" aria-hidden="true" aria-label="Client quick view" style="overflow-y:auto;">
+<aside class="drawer crm-qv-shell" id="drawer" aria-hidden="true" aria-label="Client quick view">
     <div class="dhead">
-        <div class="dtitle">
-            <span id="dName">Client</span>
-            <button type="button" class="btn btn-ghost" id="btnCloseDrawer">Close</button>
-        </div>
-        <div class="dsub">
-            <span id="dEmail" class="crm-email-display">—</span> • <span id="dPhone">—</span>
-        </div>
+        <div class="drawer-head-main">
+            <div class="dtitle">
+                <span id="dName">Client</span>
+            </div>
+            <div class="dsub">
+                <span id="dEmail" class="crm-email-display">—</span> • <span id="dPhone">—</span>
+            </div>
 
-        <div class="drawer-statbar">
-            <span class="pill" id="dStageAge">Stage Age: 0d</span>
-            <span class="pill" id="dAttempts">Attempts: 0 today • 0 week • 0 total</span>
-            <span class="pill" id="dWaitingOnPill">Waiting On Agent</span>
+            <div class="drawer-statbar">
+                <span class="pill" id="dStageAge">Stage Age: 0d</span>
+                <span class="pill" id="dAttempts">Attempts: 0 today • 0 week • 0 total</span>
+                <span class="pill" id="dWaitingOnPill">Waiting On Agent</span>
+            </div>
         </div>
-
-        <div class="drawer-top-actions">
-            <button type="button" class="btn btn-gold" id="btnMarkToday">Mark Touched Today</button>
-            <button type="button" class="btn btn-ghost" id="btnSetNextToday">Set Next Action: Today</button>
-            <button type="button" class="btn btn-ghost" id="btnCopyContact">Copy Contact</button>
-            <a class="btn btn-ghost" id="btnOpenEdit" href="#" target="_blank" rel="noopener">Edit Client</a>
-            <a class="btn btn-gold" id="btnOpenProfile" href="#" target="_blank" rel="noopener">Open Client Profile</a>
-            <a class="btn btn-ghost" id="btnMail" href="#" target="_blank" rel="noopener">Email</a>
-            <a class="btn btn-ghost" id="btnCall" href="#" target="_blank" rel="noopener">Call</a>
-            <button type="button" class="btn btn-ghost" data-zoom-popup aria-label="Open Zoom Links">
-                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" width="14" height="14" fill="none" style="display:inline-block;vertical-align:middle;margin-right:4px;" aria-hidden="true"><rect width="20" height="20" rx="4" fill="#2D8CFF"/><path d="M3 7.5A1.5 1.5 0 0 1 4.5 6H12A1.5 1.5 0 0 1 13.5 7.5v5A1.5 1.5 0 0 1 12 14H4.5A1.5 1.5 0 0 1 3 12.5v-5z" fill="white"/><path d="M13.5 9l3.5-2v6l-3.5-2V9z" fill="white"/></svg>Zoom
-            </button>
-            <a class="btn btn-ghost" id="btnOpenQueue" href="/Clients/Queue">Queues</a>
-            <span id="dPortalWrap">—</span>
+        <div class="drawer-head-side">
+            <div class="drawer-top-actions">
+                <button type="button" class="btn btn-gold" id="btnMarkToday">Mark Touched Today</button>
+                <button type="button" class="btn btn-ghost" id="btnSetNextToday">Set Next Action: Today</button>
+                <button type="button" class="btn btn-ghost" id="btnCopyContact">Copy Contact</button>
+                <a class="btn btn-ghost" id="btnOpenEdit" href="#" target="_blank" rel="noopener">Edit Client</a>
+                <a class="btn btn-gold" id="btnOpenProfile" href="#" target="_blank" rel="noopener">Open Client Profile</a>
+                <a class="btn btn-ghost" id="btnMail" href="#" target="_blank" rel="noopener">Email</a>
+                <a class="btn btn-ghost" id="btnCall" href="#" target="_blank" rel="noopener">Call</a>
+                <button type="button" class="btn btn-ghost" data-zoom-popup aria-label="Open Zoom Links">
+                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" width="14" height="14" fill="none" class="lead-zoom-icon" aria-hidden="true"><rect width="20" height="20" rx="4" fill="#2D8CFF"/><path d="M3 7.5A1.5 1.5 0 0 1 4.5 6H12A1.5 1.5 0 0 1 13.5 7.5v5A1.5 1.5 0 0 1 12 14H4.5A1.5 1.5 0 0 1 3 12.5v-5z" fill="white"/><path d="M13.5 9l3.5-2v6l-3.5-2V9z" fill="white"/></svg>Zoom
+                </button>
+                <a class="btn btn-ghost" id="btnOpenQueue" href="/Clients/Queue">Queues</a>
+                <button type="button" class="btn btn-ghost" id="btnCloseDrawer">Close</button>
+            </div>
+            <div id="dPortalWrap">—</div>
         </div>
     </div>
 
-    <div class="dbody" style="overflow:visible;">
-        <div class="section section-blue qv-contact-card">
-            <div style="display:flex; align-items:center; justify-content:space-between; gap:10px;">
-                <h4 style="margin:0;">Contact &amp; Profile</h4>
-                <div style="display:inline-flex; align-items:center; gap:8px; flex-wrap:wrap;">
+    <div class="dbody">
+        <section class="crm-qv-contact-card">
+            <div class="crm-qv-contact-head lead-contact-card-head">
+                <h4>Contact &amp; Profile</h4>
+                <div class="lead-contact-card-actions">
                     <button type="button" class="btn btn-ghost" id="clientQuickActionsShortcut">Actions</button>
-                    <button type="button" class="btn btn-gold" id="btnClientFinPlan" style="min-width:180px;">Accumulation + Distribution</button>
-                    <button type="button" class="btn lb-btn note-self-cta" id="noteSelfOpen" data-note-self-open style="display:inline-flex; align-items:center; gap:8px;">
+                    <button type="button" class="btn btn-gold qv-btn-wide" id="btnClientFinPlan">Accumulation + Distribution</button>
+                    <button type="button" class="btn lb-btn note-self-cta" id="noteSelfOpen" data-note-self-open>
                         📝 Note to Self
                     </button>
                 </div>
             </div>
-            <div style="display:grid; grid-template-columns:minmax(180px,1fr) minmax(220px,1fr) auto; gap:10px; align-items:end;">
-                <div class="f" style="margin:0;">
-                    <label>Phone</label>
-                    <input type="tel" id="dPhoneInput" placeholder="Primary phone" />
+            <div class="crm-qv-contact-shell">
+                <div class="crm-qv-field-grid crm-qv-field-grid-contact">
+                    <div class="qv-field">
+                        <label>Phone</label>
+                        <input type="tel" id="dPhoneInput" placeholder="Primary phone" />
+                    </div>
+                    <div class="qv-field">
+                        <label>Email</label>
+                        <input type="email" id="dEmailInput" placeholder="Primary email" />
+                    </div>
+                    <div class="qv-field qv-field-action">
+                        <button type="button" class="btn btn-gold qv-btn-nowrap" id="btnResendClientInvite" style="display:none;">Send Access Link</button>
+                    </div>
                 </div>
-                <div class="f" style="margin:0;">
-                    <label>Email</label>
-                    <input type="email" id="dEmailInput" placeholder="Primary email" />
-                </div>
-                <div class="f" style="margin:0; display:flex; align-items:flex-end;">
-                    <button type="button" class="btn btn-gold" id="btnResendClientInvite" style="display:none; white-space:nowrap;">Send Access Link</button>
-                </div>
-            </div>
-            <div style="margin-top:6px;"><span class="tiny" id="dResendInviteStatus"></span></div>
+                <div class="qv-inline-status"><span class="tiny" id="dResendInviteStatus"></span></div>
 
-            <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:10px;margin-top:10px;">
-                <div class="f">
-                    <label>Phone #2</label>
-                    <input type="tel" id="dPhone2Input" placeholder="Alternate phone" />
+                <div class="crm-qv-field-grid crm-qv-field-grid-auto qv-stack-md">
+                    <div class="qv-field">
+                        <label>Phone #2</label>
+                        <input type="tel" id="dPhone2Input" placeholder="Alternate phone" />
+                    </div>
+                    <div class="qv-field">
+                        <label>BTC</label>
+                        <input type="text" id="dBtc" placeholder="BTC" />
+                    </div>
+                    <div class="qv-field">
+                        <label>DOB</label>
+                        <input type="date" id="dDob" />
+                    </div>
                 </div>
-                <div class="f">
-                    <label>BTC</label>
-                    <input type="text" id="dBtc" placeholder="BTC" />
+                <div class="crm-qv-field-grid crm-qv-field-grid-auto qv-stack-md">
+                    <div class="qv-field">
+                        <label>M / F</label>
+                        <select id="dGender">
+                            <option value="">—</option>
+                            <option value="M">M</option>
+                            <option value="F">F</option>
+                            <option value="Other">Other</option>
+                        </select>
+                    </div>
+                    <div class="qv-field">
+                        <label>Age</label>
+                        <input type="text" id="dAge" placeholder="Age" />
+                    </div>
+                    <div class="qv-field">
+                        <label>Zip Code</label>
+                        <input type="text" id="dZip" placeholder="Zip" />
+                    </div>
                 </div>
-                <div class="f">
-                    <label>DOB</label>
-                    <input type="date" id="dDob" />
+                <div class="qv-field qv-stack-md">
+                    <label>Street Address</label>
+                    <input type="text" id="dAddress" placeholder="123 Main St" />
+                </div>
+                <div class="crm-qv-field-grid crm-qv-field-grid-auto qv-stack-md">
+                    <div class="qv-field">
+                        <label>City</label>
+                        <input type="text" id="dCity" placeholder="City" />
+                    </div>
+                    <div class="qv-field">
+                        <label>State</label>
+                        <input type="text" id="dState" placeholder="State" />
+                    </div>
+                    <div class="qv-field">
+                        <label>County</label>
+                        <input type="text" id="dCounty" placeholder="County / Parish" />
+                    </div>
+                </div>
+                <div class="qv-grid-two qv-stack-md">
+                    <div class="qv-field">
+                        <label>Mortgage Lender</label>
+                        <input type="text" id="dLender" placeholder="Current lender" />
+                    </div>
+                    <div class="qv-field">
+                        <label>Loan Amount</label>
+                        <input type="text" id="dLoanAmount" placeholder="e.g. 250000" />
+                    </div>
                 </div>
             </div>
-            <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:10px;margin-top:10px;">
-                <div class="f">
-                    <label>M / F</label>
-                    <select id="dGender">
-                        <option value="">—</option>
-                        <option value="M">M</option>
-                        <option value="F">F</option>
-                        <option value="Other">Other</option>
-                    </select>
-                </div>
-                <div class="f">
-                    <label>Age</label>
-                    <input type="text" id="dAge" placeholder="Age" />
-                </div>
-                <div class="f">
-                    <label>Zip Code</label>
-                    <input type="text" id="dZip" placeholder="Zip" />
-                </div>
-            </div>
-            <div class="f" style="margin-top:10px;">
-                <label>Street Address</label>
-                <input type="text" id="dAddress" placeholder="123 Main St" />
-            </div>
-            <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:10px;margin-top:10px;">
-                <div class="f">
-                    <label>City</label>
-                    <input type="text" id="dCity" placeholder="City" />
-                </div>
-                <div class="f">
-                    <label>State</label>
-                    <input type="text" id="dState" placeholder="State" />
-                </div>
-                <div class="f">
-                    <label>County</label>
-                    <input type="text" id="dCounty" placeholder="County / Parish" />
-                </div>
-            </div>
-            <div class="grid2" style="margin-top:10px;">
-                <div class="f">
-                    <label>Mortgage Lender</label>
-                    <input type="text" id="dLender" placeholder="Current lender" />
-                </div>
-                <div class="f">
-                    <label>Loan Amount</label>
-                    <input type="text" id="dLoanAmount" placeholder="e.g. 250000" />
-                </div>
-            </div>
-        </div>
+        </section>
 
-        <details class="section section-gold qv-disclosure">
+        <details class="qv-panel crm-qv-disclosure qv-panel-data qv-disclosure">
             <summary>
                 <div class="qv-section-header">
                     <div class="qv-section-title">Production</div>
@@ -145,7 +150,7 @@
             </div>
         </details>
 
-        <details class="section section-advanced-markets qv-disclosure" id="advancedMarketsActionRow" style="display:none;">
+        <details class="qv-panel crm-qv-disclosure qv-panel-advanced qv-disclosure" id="advancedMarketsActionRow" style="display:none;">
             <summary>
                 <div class="advanced-markets-summary">
                     <span class="btn btn-advanced-markets" id="btnAdvancedMarketsInputs">Advanced Markets</span>
@@ -173,7 +178,7 @@
             </div>
         </details>
 
-        <details class="section section-relationship qv-disclosure">
+        <details class="qv-panel crm-qv-disclosure qv-panel-relationship qv-disclosure">
             <summary>
                 <div class="qv-section-header">
                     <div class="qv-section-title">Relationship / CRM</div>
@@ -181,43 +186,10 @@
                 </div>
             </summary>
             <div class="qv-section-body">
-                <style>
-                    /* Force Relationship/CRM to its own indigo tone (separate from Production gold) */
-                    .section.section-relationship{
-                        background: linear-gradient(180deg,#1a1f33,#0f1430) !important;
-                        border: 1.5px solid rgba(148,129,255,.7) !important;
-                        color:#a5b4fc !important;
-                    }
-                    .section.section-relationship h5{
-                        color:#f1c76a !important;
-                    }
-                </style>
-                <style>
-                    .qv-tabs{display:flex;gap:8px;flex-wrap:wrap;}
-                    .qv-tabpanel{padding:8px 0;}
-                    #clientActionsContainer{
-                        background: rgba(17,24,39,.35);
-                        border: 1px solid rgba(217,179,90,.28);
-                        border-radius: 12px;
-                        padding: 10px;
-                        padding-right: 14px;
-                        min-height: 140px;
-                        overflow: visible;
-                        width: 100%;
-                        box-sizing: border-box;
-                    }
-                    #clientActionsContainer .action-table-wrap,
-                    #clientActionsContainer .action-table,
-                    #clientActionsContainer .action-table th,
-                    #clientActionsContainer .action-table td{
-                        box-sizing: border-box;
-                    }
-                </style>
-
                     <div class="qv-subsection">
                         <h5>Relationship Control</h5>
-                        <div class="grid2">
-                            <div class="f">
+                        <div class="qv-grid-two">
+                            <div class="qv-field">
                                 <label>Status</label>
                                 <select id="dStatus">
                                     <option value="Lead">Lead</option>
@@ -226,7 +198,7 @@
                                     <option value="Dormant">Inactive</option>
                                 </select>
                             </div>
-                            <div class="f">
+                            <div class="qv-field">
                                 <label>Pipeline Stage</label>
                                 <select id="dPipelineStage">
                                     <option value="NewLead">Lead</option>
@@ -243,7 +215,7 @@
                                     <option value="Nurture">Nurture</option>
                                 </select>
                             </div>
-                            <div class="f">
+                            <div class="qv-field">
                                 <label>Waiting On</label>
                                 <select id="dWaitingOn">
                                     <option value="WaitingOnAgent">Waiting On Agent</option>
@@ -253,18 +225,18 @@
                                     <option value="WaitingOnDocs">Waiting On Docs</option>
                                 </select>
                             </div>
-                            <div class="f">
+                            <div class="qv-field">
                                 <label>Last Touch</label>
                                 <input type="date" id="dLastTouch" />
                             </div>
                         </div>
 
-                        <div class="grid2" style="margin-top:10px;">
-                            <div class="f">
+                        <div class="qv-grid-two qv-stack-md">
+                            <div class="qv-field">
                                 <label>Next Action Date</label>
                                 <input type="date" id="dNextDate" />
                             </div>
-                            <div class="f">
+                            <div class="qv-field">
                                 <label>Priority</label>
                                 <select id="dPriority">
                                     <option value="Low">Low</option>
@@ -275,24 +247,24 @@
                             </div>
                         </div>
 
-                        <div class="f" style="margin-top:10px;">
+                        <div class="qv-field qv-stack-md">
                             <label>Next Action (what will you do?)</label>
                             <input type="text" id="dNextText" placeholder="e.g. Send quote, schedule review, follow up on application..." />
                         </div>
 
-                        <div class="f" style="margin-top:10px;">
+                        <div class="qv-field qv-stack-md">
                             <label>Pinned Client Brief</label>
                             <textarea id="dPinnedBrief" placeholder="Current situation, objection, and next move in one fast briefing line."></textarea>
                         </div>
 
-                        <div class="scheduler-row" style="margin-top:10px;">
+                        <div class="scheduler-row qv-stack-md">
                             <button type="button" class="preset-chip" data-schedulepreset="today3">Today 3pm</button>
                             <button type="button" class="preset-chip" data-schedulepreset="tomorrow10">Tomorrow 10am</button>
                             <button type="button" class="preset-chip" data-schedulepreset="nextbiz">Next business day</button>
                             <button type="button" class="preset-chip" data-schedulepreset="week">1 week follow-up</button>
                         </div>
 
-                        <div class="tiny" style="margin-top:10px;">
+                        <div class="tiny qv-stack-md">
                             Reminders stay browser-local, but client CRM, pipeline, and activity data are persisted for the agent account.
                         </div>
                     </div>
@@ -308,12 +280,12 @@
                             <button type="button" class="btn btn-ghost outcome-btn" data-outcome="BusinessClient">Business Client</button>
                             <button type="button" class="btn btn-ghost outcome-btn" data-outcome="ClosedLost">Not Moving Forward</button>
                         </div>
-                        <div class="tiny" id="dOutcomeSuggestion" style="margin-top:10px;">Use one-click outcomes to auto-log activity, move stage, and queue the next move.</div>
+                        <div class="tiny qv-stack-md" id="dOutcomeSuggestion">Use one-click outcomes to auto-log activity, move stage, and queue the next move.</div>
                     </div>
 
                     <div class="qv-subsection">
                         <h5>Tags</h5>
-                        <div class="f">
+                        <div class="qv-field">
                             <label>Tags (comma separated)</label>
                             <input type="text" id="dTags" placeholder="Mortgage, Family, Referral, Gym..." />
                         </div>
@@ -321,7 +293,7 @@
 
                     <div class="qv-subsection">
                         <h5>Notes</h5>
-                        <div class="f">
+                        <div class="qv-field">
                             <label>Relationship Notes</label>
                             <textarea id="dNotes" placeholder="Values, objections, family, context, follow-up intel..."></textarea>
                         </div>
@@ -338,15 +310,15 @@
                     </div>
                     <div class="modal-body actions-hub-body">
                         <div class="qv-subsection">
-                            <h5 style="margin-bottom:8px;">Actions</h5>
-                            <div class="text-muted tiny" style="margin-bottom:6px;">Agent-owned tasks you will execute. Check “Show in Dashboard” on create to surface in Command Center.</div>
+                            <h5 class="qv-subsection-heading">Actions</h5>
+                            <div class="text-muted tiny qv-modal-copy">Agent-owned tasks you will execute. Check “Show in Dashboard” on create to surface in Command Center.</div>
                             <div id="clientActionsContainer">
                                 <div class="text-muted">Actions will load here.</div>
                             </div>
                         </div>
                         <div class="qv-subsection">
-                            <h5 style="margin-bottom:8px;">Activity / Timeline</h5>
-                            <div class="text-muted tiny" style="margin-bottom:6px;">Log contact history here, keep the timeline visible, and create follow-up actions from the same hub.</div>
+                            <h5 class="qv-subsection-heading">Activity / Timeline</h5>
+                            <div class="text-muted tiny qv-modal-copy">Log contact history here, keep the timeline visible, and create follow-up actions from the same hub.</div>
 
                             <div class="preset-row" id="timelineFilters">
                                 <button type="button" class="preset-chip active" data-timelinefilter="all">All</button>
@@ -356,8 +328,8 @@
                                 <button type="button" class="preset-chip" data-timelinefilter="system">System</button>
                             </div>
 
-                            <div class="grid2">
-                                <div class="f">
+                            <div class="qv-grid-two">
+                                <div class="qv-field">
                                     <label>Type</label>
                                     <select id="dActType">
                                         <option value="Call">Call</option>
@@ -367,29 +339,29 @@
                                         <option value="Note">Note</option>
                                     </select>
                                 </div>
-                                <div class="f">
+                                <div class="qv-field">
                                     <label>Date</label>
                                     <input type="date" id="dActDate" />
                                 </div>
                             </div>
 
-                            <div class="f" style="margin-top:10px;">
+                            <div class="qv-field qv-stack-sm">
                                 <label>Outcome / Notes</label>
                                 <textarea id="dActNote" placeholder="What happened? Next step? Any objections?"></textarea>
                             </div>
 
-                            <div style="margin-top:10px; display:flex; gap:10px; flex-wrap:wrap;">
+                            <div class="qv-action-row">
                                 <button type="button" class="btn btn-gold" id="btnAddActivity">Add Activity</button>
                                 <button type="button" class="btn btn-ghost" id="btnClearTimeline">Clear Timeline</button>
                             </div>
 
-                            <div style="margin-top:12px;">
+                            <div class="qv-timeline-wrap">
                                 <div class="timeline" id="timeline"></div>
                             </div>
                         </div>
                         <div class="qv-subsection">
-                            <h5 style="margin-bottom:8px;">Commitments</h5>
-                            <div class="text-muted tiny" style="margin-bottom:6px;">Promises you made to this client. They stay in CRM; Actions stay your execution layer.</div>
+                            <h5 class="qv-subsection-heading">Commitments</h5>
+                            <div class="text-muted tiny qv-modal-copy">Promises you made to this client. They stay in CRM; Actions stay your execution layer.</div>
                             <div id="clientCommitmentsContainer">
                                 <div class="text-muted">Commitments will load here.</div>
                             </div>
@@ -399,7 +371,7 @@
             </div>
         </div>
 
-        <details class="section section-green qv-disclosure">
+        <details class="qv-panel qv-panel-support qv-disclosure">
             <summary>
                 <div class="qv-section-header">
                     <div class="qv-section-title">Planning &amp; Docs</div>
@@ -449,7 +421,7 @@
             </div>
         </details>
 
-        <details class="section section-teal qv-disclosure" id="protectionSnapshotSection">
+        <details class="qv-panel qv-panel-protection qv-disclosure" id="protectionSnapshotSection">
             <summary>
                 <div class="qv-section-header">
                     <div class="qv-section-title">Protection Snapshot</div>
@@ -457,8 +429,8 @@
                 </div>
             </summary>
             <div class="qv-section-body">
-                <div style="display:flex; justify-content:space-between; gap:10px; align-items:center; flex-wrap:wrap; margin-bottom:10px;">
-                    <div style="display:flex; gap:8px; flex-wrap:wrap; align-items:center;">
+                <div class="qv-section-head-row">
+                    <div class="qv-section-chip-row">
                         <span class="pill" id="qvProtectionScorePill">Readiness —</span>
                         <span class="pill" id="qvProtectionStagePill">Stage —</span>
                         <span class="pill" id="qvProtectionReviewPill">Review —</span>
@@ -466,18 +438,18 @@
                     <a class="btn btn-gold" id="btnOpenProtectionSnapshot" href="#" target="_blank" rel="noopener" style="display:none;">Open Protection Snapshot</a>
                 </div>
 
-                <div class="grid2">
-                    <div class="f">
+                <div class="qv-grid-two">
+                    <div class="qv-field">
                         <label>Priority Focus</label>
                         <div class="tiny" id="qvProtectionPriorities">Loading shared snapshot…</div>
                     </div>
-                    <div class="f">
+                    <div class="qv-field">
                         <label>Life Events</label>
                         <div class="tiny" id="qvProtectionLifeEvents">—</div>
                     </div>
                 </div>
 
-                <div class="qv-subsection" style="margin-top:12px;">
+                <div class="qv-subsection qv-stack-md">
                     <h5>Coverage Foundation</h5>
                     <div class="doc-grid" id="qvProtectionCoverageGrid">
                         <span class="pill">Life Insurance —</span>
@@ -489,26 +461,26 @@
                     </div>
                 </div>
 
-                <div class="qv-subsection" style="margin-top:12px;">
+                <div class="qv-subsection qv-stack-md">
                     <h5>Next Best Steps</h5>
                     <div class="timeline" id="qvProtectionNextSteps">
                         <div class="tiny">No shared snapshot yet.</div>
                     </div>
                 </div>
 
-                <div class="qv-subsection" style="margin-top:12px;">
+                <div class="qv-subsection qv-stack-md">
                     <h5>Agent Follow-Up Focus</h5>
                     <div class="tiny" id="qvProtectionAgentFocus">—</div>
                 </div>
 
-                <div class="qv-subsection" style="margin-top:12px;">
+                <div class="qv-subsection qv-stack-md">
                     <h5>Client Notes</h5>
                     <div class="tiny" id="qvProtectionClientNotes">—</div>
                 </div>
             </div>
         </details>
 
-        <details class="section section-violet qv-disclosure">
+        <details class="qv-panel qv-panel-collab qv-disclosure">
             <summary>
                 <div class="qv-section-header">
                     <div class="qv-section-title">Team / Collaboration</div>
@@ -516,65 +488,65 @@
                 </div>
             </summary>
             <div class="qv-section-body">
-                <div class="grid2">
-                    <div class="f">
+                <div class="qv-grid-two">
+                    <div class="qv-field">
                         <label>Assigned Owner</label>
                         <input type="text" id="dAssignedOwner" readonly disabled />
                     </div>
-                    <div class="f">
+                    <div class="qv-field">
                         <label>Watchers</label>
                         <input type="text" id="dWatchers" placeholder="comma-separated emails or names" />
                     </div>
                 </div>
-                <div class="f" style="margin-top:10px;">
+                <div class="qv-field qv-stack-sm">
                     <label>Mention Note</label>
                     <textarea id="dMentionNote" placeholder="Add a handoff or mention note with context for the team."></textarea>
                 </div>
-                <div class="timeline mention-list" id="mentionList" style="margin-top:10px;"></div>
+                <div class="timeline mention-list qv-stack-sm" id="mentionList"></div>
 
-                <div class="qv-subsection" style="margin-top:14px;">
+                <div class="qv-subsection qv-stack-md">
                     <h5>Client Access Sharing</h5>
-                    <div class="tiny" style="margin-bottom:8px;">Search tenant agents (@@mylegnd.com) by name, email, or phone and grant access to this client only.</div>
+                    <div class="tiny qv-modal-copy">Search tenant agents (@@mylegnd.com) by name, email, or phone and grant access to this client only.</div>
 
-                    <div class="grid2">
-                        <div class="f">
+                    <div class="qv-grid-two">
+                        <div class="qv-field">
                             <label for="dShareAgentSearch">Find Agent</label>
                             <input type="search" id="dShareAgentSearch" placeholder="Type agent name, email, or phone..." autocomplete="off" />
                         </div>
-                        <div class="f">
+                        <div class="qv-field">
                             <label>Selected Agent</label>
-                            <div id="dShareSelectedAgent" class="tiny" style="min-height:42px; display:flex; align-items:center; padding:10px 12px; border:1px solid rgba(197,146,31,.35); border-radius:10px; background:rgba(11,21,41,.35);">No agent selected.</div>
+                            <div id="dShareSelectedAgent" class="tiny qv-share-selected">No agent selected.</div>
                         </div>
                     </div>
 
-                    <div id="dShareAgentResults" class="timeline mention-list" style="margin-top:10px;"></div>
+                    <div id="dShareAgentResults" class="timeline mention-list qv-stack-sm"></div>
 
-                    <div style="margin-top:10px; display:flex; gap:10px; flex-wrap:wrap; align-items:center;">
+                    <div class="qv-action-row">
                         <button type="button" class="btn btn-gold" id="btnShareAgentAccess" disabled>Grant Access</button>
                         <span class="tiny" id="dShareAgentStatus">Client access remains blocked for non-permitted agents.</span>
                     </div>
 
-                    <div class="timeline mention-list" id="dSharedAgentList" style="margin-top:12px;"></div>
+                    <div class="timeline mention-list qv-stack-md" id="dSharedAgentList"></div>
                 </div>
             </div>
         </details>
 
-        <details class="section section-red qv-disclosure" style="border-color:#dc2626;">
+        <details class="qv-panel qv-panel-danger qv-disclosure">
             <summary>
                 <div>
                     <span class="qv-section-title">Secondary Controls</span>
                     <span class="qv-section-copy">Save, reset local state, or delete the client record.</span>
                 </div>
             </summary>
-            <div class="qv-section-body" style="text-align:right;">
-                <div style="display:flex; justify-content:flex-end; gap:10px; flex-wrap:wrap;">
+            <div class="qv-section-body qv-section-body-actions">
+                <div class="qv-right-actions">
                     <button type="button" class="btn btn-ghost" id="btnResetLocal">Reset Local CRM</button>
                     <button type="button" class="btn btn-gold" id="btnSaveLocal">Save</button>
-                    <button type="button" class="btn btn-ghost" id="btnDeleteClient" style="background:#dc2626; color:#fff; border-color:#b91c1c;">
+                    <button type="button" class="btn btn-ghost" id="btnDeleteClient">
                         Delete Client
                     </button>
                 </div>
-                <div class="tiny" id="dSaved" style="margin-top:6px; text-align:right;">Loaded</div>
+                <div class="tiny qv-save-state" id="dSaved">Loaded</div>
             </div>
         </details>
     </div>
@@ -808,37 +780,6 @@
 </div>
 
 <style>
-    .production-history{margin-bottom:14px;border:1px solid rgba(217,179,90,.20);border-radius:16px;padding:14px;background:linear-gradient(180deg,#121a2e,#0a1020);box-shadow:0 16px 36px rgba(0,0,0,.22), inset 0 1px 0 rgba(255,255,255,.04);}
-    .ph-head{display:flex;justify-content:space-between;align-items:center;gap:12px;margin-bottom:12px;}
-    .ph-title{font-weight:950;letter-spacing:.04em;color:#f8fafc;}
-    .ph-sub{color:#8ea0bd;font-weight:700;font-size:0.9rem;}
-    .ph-list{display:flex;flex-direction:column;gap:10px;}
-    .ph-item{display:flex;justify-content:space-between;align-items:stretch;gap:14px;padding:14px 15px;border-radius:16px;border:1px solid rgba(255,255,255,.08);background:linear-gradient(180deg,rgba(19,29,51,.96),rgba(10,17,34,.96));box-shadow:0 12px 28px rgba(0,0,0,.18);}
-    .ph-left{display:flex;flex-direction:column;gap:10px;min-width:0;flex:1 1 auto;}
-    .ph-top{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;}
-    .ph-status{display:inline-flex;align-items:center;border-radius:999px;padding:6px 10px;font-size:11px;font-weight:900;letter-spacing:.04em;text-transform:uppercase;border:1px solid transparent;box-shadow:inset 0 1px 0 rgba(255,255,255,.08);}
-    .ph-status.submitted{color:#2563eb;background:rgba(37,99,235,.12);border-color:rgba(37,99,235,.30);}
-    .ph-status.issued{color:#c2410c;background:rgba(194,65,12,.12);border-color:rgba(194,65,12,.30);}
-    .ph-status.paid{color:#15803d;background:rgba(21,128,61,.12);border-color:rgba(21,128,61,.30);}
-    .ph-updated{color:#7f8da7;font-size:12px;font-weight:700;}
-    .ph-metrics{display:flex;gap:10px;flex-wrap:wrap;align-items:stretch;}
-    .ph-metric{min-width:140px;padding:10px 12px;border-radius:12px;border:1px solid rgba(255,255,255,.07);background:rgba(255,255,255,.03);}
-    .ph-metric.submitted{border-color:rgba(37,99,235,.28);background:rgba(37,99,235,.08);}
-    .ph-metric.issued{border-color:rgba(194,65,12,.28);background:rgba(194,65,12,.08);}
-    .ph-metric.paid{border-color:rgba(21,128,61,.28);background:rgba(21,128,61,.08);}
-    .ph-metric-label{display:block;font-size:11px;font-weight:900;letter-spacing:.04em;text-transform:uppercase;color:#8ea0bd;margin-bottom:4px;}
-    .ph-amt{font-weight:950;font-size:1.05rem;color:#f8fafc;}
-    .ph-metric.submitted .ph-amt{color:#60a5fa;}
-    .ph-metric.issued .ph-amt{color:#fb923c;}
-    .ph-metric.paid .ph-amt{color:#4ade80;}
-    .ph-amt.personal{color:#c4b5fd;}
-    .ph-note{display:flex;flex-direction:column;justify-content:center;gap:4px;flex:1 1 220px;min-width:180px;color:#d7dfec;font-size:0.94rem;line-height:1.35;padding:10px 12px;border-radius:12px;background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.05);}
-    .ph-note-label{font-size:11px;font-weight:900;letter-spacing:.04em;text-transform:uppercase;color:#8ea0bd;}
-    .ph-note-text{color:#d7dfec;white-space:normal;word-break:break-word;}
-    .ph-actions{display:flex;flex-direction:column;gap:8px;justify-content:center;}
-    .ph-actions .btn{min-width:110px;padding:9px 12px !important;border-radius:12px;font-size:12px !important;font-weight:900;letter-spacing:.02em;min-height:0;box-shadow:none;}
-    .ph-empty{color:#94a3b8;font-weight:800;padding:10px 2px;}
-
     /* Mini distribution planner styling (matched to Finance DP) */
     .finplan-modal .modal-dialog{max-width:1140px;width:calc(100% - 32px);}
     .finplan-section{
@@ -901,633 +842,4 @@
     #clientFinPlanModal .wfd-dm-badge{padding:5px 10px;border-radius:999px;font-size:.72rem;font-weight:800;border:1px solid rgba(217,179,90,.35);background:#ecfdf3;color:#166534;}
     #clientFinPlanModal .wfd-dm-badge.off{background:#fef2f2;color:#b91c1c;border-color:#fecaca;}
     #clientFinPlanModal .wfd-bkt.wfd-dm-off{opacity:.8;border-style:dashed;}
-</style>
-
-<style>
-    /* Section polish: Production, Relationship/CRM, Planning/Docs, Protection, Team, Secondary */
-    .lead-qv-shell .section.section-gold,
-    .lead-qv-shell .section.section-relationship,
-    .lead-qv-shell .section.section-green,
-    .lead-qv-shell .section.section-violet,
-    .lead-qv-shell .section.section-red,
-    .lead-qv-shell #protectionSnapshotSection,
-    .client-qv-shell .section.section-gold,
-    .client-qv-shell .section.section-relationship,
-    .client-qv-shell .section.section-green,
-    .client-qv-shell .section.section-violet,
-    .client-qv-shell .section.section-red,
-    .client-qv-shell #protectionSnapshotSection{
-        border-width:1px !important;
-        border-style:solid !important;
-        border-color:rgba(123,92,26,.58) !important;
-        background:
-            radial-gradient(820px 220px at 100% -14%, rgba(230,194,110,.09), transparent 56%),
-            linear-gradient(180deg, rgba(16,24,38,.95), rgba(10,16,29,.95)) !important;
-        box-shadow: 0 14px 28px rgba(2,6,23,.24), inset 0 1px 0 rgba(255,255,255,.04) !important;
-    }
-
-    .lead-qv-shell .qv-section-title,
-    .client-qv-shell .qv-section-title{
-        color:#f8ecd0 !important;
-        font-weight:950;
-        letter-spacing:.06em;
-    }
-    .lead-qv-shell .qv-section-header,
-    .client-qv-shell .qv-section-header{position:relative;}
-    .lead-qv-shell .qv-section-header::after,
-    .client-qv-shell .qv-section-header::after{
-        content:"";
-        display:block;
-        width:88px;
-        height:2px;
-        margin-top:7px;
-        border-radius:999px;
-        background:linear-gradient(90deg, rgba(230,194,110,.9), rgba(230,194,110,0));
-    }
-    .lead-qv-shell .qv-section-copy,
-    .client-qv-shell .qv-section-copy{color:#b8c6db !important;}
-
-    .lead-qv-shell .qv-subsection,
-    .client-qv-shell .qv-subsection{
-        border:1px solid rgba(123,92,26,.34) !important;
-        background:linear-gradient(180deg, rgba(255,255,255,.04), rgba(255,255,255,.015)) !important;
-        box-shadow: inset 0 1px 0 rgba(255,255,255,.04), 0 8px 16px rgba(2,6,23,.16) !important;
-    }
-
-    /* Buttons inside the target sections */
-    .lead-qv-shell .section .btn,
-    .lead-qv-shell .section a.btn,
-    .client-qv-shell .section .btn,
-    .client-qv-shell .section a.btn{
-        border:1px solid #7b5c1a !important;
-        border-radius:12px !important;
-        box-shadow:0 9px 18px rgba(2,6,23,.2), inset 0 1px 0 rgba(255,255,255,.08) !important;
-        font-weight:900 !important;
-        letter-spacing:.012em;
-    }
-    .lead-qv-shell .section .btn-gold,
-    .client-qv-shell .section .btn-gold{
-        background:linear-gradient(135deg,#fff1bc 0%,#e8cb82 54%,#b8852a 100%) !important;
-        color:#2a1a08 !important;
-    }
-    .lead-qv-shell .section .btn-ghost,
-    .lead-qv-shell .section a.btn-ghost,
-    .client-qv-shell .section .btn-ghost,
-    .client-qv-shell .section a.btn-ghost{
-        background:linear-gradient(180deg,#2d3748,#1f2937) !important;
-        color:#edf2fb !important;
-    }
-    .lead-qv-shell .section #btnDeleteClient,
-    .client-qv-shell .section #btnDeleteClient{
-        background:linear-gradient(180deg,#b33a3a,#892c2c) !important;
-        color:#fff !important;
-        border-color:#7b5c1a !important;
-    }
-    .lead-qv-shell .section .btn:hover,
-    .lead-qv-shell .section a.btn:hover,
-    .client-qv-shell .section .btn:hover,
-    .client-qv-shell .section a.btn:hover{
-        transform:translateY(-1px);
-        border-color:#a68023 !important;
-        filter:brightness(1.05);
-    }
-
-    .lead-qv-shell .preset-chip,
-    .client-qv-shell .preset-chip{
-        border:1px solid #7b5c1a !important;
-        background:linear-gradient(180deg,#2f3b50,#222c3d) !important;
-        color:#e7eef9 !important;
-        box-shadow:0 8px 16px rgba(2,6,23,.18), inset 0 1px 0 rgba(255,255,255,.05) !important;
-    }
-    .lead-qv-shell .preset-chip.active,
-    .lead-qv-shell .preset-chip:hover,
-    .client-qv-shell .preset-chip.active,
-    .client-qv-shell .preset-chip:hover{
-        border-color:#a68023 !important;
-        background:linear-gradient(180deg,#3a4861,#29354a) !important;
-        color:#fff4cf !important;
-    }
-
-    .lead-qv-shell .outcome-btn,
-    .client-qv-shell .outcome-btn{
-        border:1px solid #7b5c1a !important;
-        border-radius:12px !important;
-    }
-
-    /* Explicit color coding for section-internal buttons */
-    .lead-qv-shell #phAddFromDrawer,
-    .lead-qv-shell #clientPhAdd,
-    .lead-qv-shell #btnSaveLocal,
-    .lead-qv-shell #btnOpenProtectionSnapshot,
-    .client-qv-shell #phAddFromDrawer,
-    .client-qv-shell #clientPhAdd,
-    .client-qv-shell #btnSaveLocal,
-    .client-qv-shell #btnOpenProtectionSnapshot{
-        background:linear-gradient(135deg,#fff1bc 0%,#e8cb82 54%,#b8852a 100%) !important;
-        color:#2a1a08 !important;
-        border:1px solid #7b5c1a !important;
-    }
-
-    .lead-qv-shell #btnAddActivity,
-    .client-qv-shell #btnAddActivity{
-        background:linear-gradient(180deg,#2f6fa2,#24567d) !important;
-        color:#eaf5ff !important;
-        border:1px solid #7b5c1a !important;
-    }
-    .lead-qv-shell #btnClearTimeline,
-    .lead-qv-shell #btnResetLocal,
-    .client-qv-shell #btnClearTimeline,
-    .client-qv-shell #btnResetLocal{
-        background:linear-gradient(180deg,#3b4557,#2a3342) !important;
-        color:#e8edf5 !important;
-        border:1px solid #7b5c1a !important;
-    }
-    .lead-qv-shell #btnShareAgentAccess,
-    .client-qv-shell #btnShareAgentAccess{
-        background:linear-gradient(180deg,#2a7a55,#205e42) !important;
-        color:#ebfff5 !important;
-        border:1px solid #7b5c1a !important;
-    }
-    .lead-qv-shell #btnShareAgentAccess[disabled],
-    .client-qv-shell #btnShareAgentAccess[disabled]{
-        background:linear-gradient(180deg,#6b7280,#4b5563) !important;
-        color:#e5e7eb !important;
-        opacity:.7;
-        cursor:not-allowed;
-    }
-    .lead-qv-shell #btnDeleteClient,
-    .client-qv-shell #btnDeleteClient{
-        background:linear-gradient(180deg,#b33a3a,#892c2c) !important;
-        color:#fff !important;
-        border:1px solid #7b5c1a !important;
-    }
-
-    .lead-qv-shell .outcome-btn[data-outcome="Booked"],
-    .lead-qv-shell .outcome-btn[data-outcome="PolicyPlaced"],
-    .lead-qv-shell .outcome-btn[data-outcome="BusinessClient"],
-    .client-qv-shell .outcome-btn[data-outcome="Booked"],
-    .client-qv-shell .outcome-btn[data-outcome="PolicyPlaced"],
-    .client-qv-shell .outcome-btn[data-outcome="BusinessClient"]{
-        background:linear-gradient(180deg,#2a7a55,#205e42) !important;
-        color:#ebfff5 !important;
-    }
-    .lead-qv-shell .outcome-btn[data-outcome="Contacted"],
-    .lead-qv-shell .outcome-btn[data-outcome="Spoke"],
-    .lead-qv-shell .outcome-btn[data-outcome="NoAnswer"],
-    .lead-qv-shell .outcome-btn[data-outcome="LeftVM"],
-    .client-qv-shell .outcome-btn[data-outcome="Contacted"],
-    .client-qv-shell .outcome-btn[data-outcome="Spoke"],
-    .client-qv-shell .outcome-btn[data-outcome="NoAnswer"],
-    .client-qv-shell .outcome-btn[data-outcome="LeftVM"]{
-        background:linear-gradient(180deg,#2f6fa2,#24567d) !important;
-        color:#eaf5ff !important;
-    }
-    .lead-qv-shell .outcome-btn[data-outcome="FollowUp"],
-    .lead-qv-shell .outcome-btn[data-outcome="Nurture"],
-    .lead-qv-shell .outcome-btn[data-outcome="NeedsDocs"],
-    .client-qv-shell .outcome-btn[data-outcome="FollowUp"],
-    .client-qv-shell .outcome-btn[data-outcome="Nurture"],
-    .client-qv-shell .outcome-btn[data-outcome="NeedsDocs"]{
-        background:linear-gradient(180deg,#8b6a1e,#5f4615) !important;
-        color:#fff4cf !important;
-    }
-    .lead-qv-shell .outcome-btn[data-outcome="NotInterested"],
-    .lead-qv-shell .outcome-btn[data-outcome="ClosedLost"],
-    .lead-qv-shell .outcome-btn[data-outcome="Lost"],
-    .client-qv-shell .outcome-btn[data-outcome="NotInterested"],
-    .client-qv-shell .outcome-btn[data-outcome="ClosedLost"],
-    .client-qv-shell .outcome-btn[data-outcome="Lost"]{
-        background:linear-gradient(180deg,#b33a3a,#892c2c) !important;
-        color:#fff !important;
-    }
-
-    .lead-qv-shell .doc-grid label,
-    .client-qv-shell .doc-grid label{
-        border:1px solid rgba(123,92,26,.58) !important;
-        border-radius:12px !important;
-        background:linear-gradient(180deg,#212d41,#172133) !important;
-        color:#edf2fb !important;
-        box-shadow:0 8px 16px rgba(2,6,23,.16), inset 0 1px 0 rgba(255,255,255,.04) !important;
-    }
-    .lead-qv-shell .doc-grid input[type="checkbox"],
-    .client-qv-shell .doc-grid input[type="checkbox"]{accent-color:#d6a84a;}
-
-    .lead-qv-shell .timeline,
-    .lead-qv-shell .mention-list,
-    .lead-qv-shell #leadActionsContainer,
-    .lead-qv-shell #leadCommitmentsContainer,
-    .client-qv-shell .timeline,
-    .client-qv-shell .mention-list,
-    .client-qv-shell #clientActionsContainer,
-    .client-qv-shell #clientCommitmentsContainer{
-        border:1px solid rgba(123,92,26,.34) !important;
-        background:linear-gradient(180deg,#1a2437,#131c2b) !important;
-        box-shadow:inset 0 1px 0 rgba(255,255,255,.04), 0 10px 20px rgba(2,6,23,.18) !important;
-    }
-
-    .lead-qv-shell .pill,
-    .client-qv-shell .pill{
-        border:1px solid rgba(123,92,26,.58) !important;
-        background:linear-gradient(180deg,#2a3650,#1f2a40) !important;
-        color:#f0f5ff !important;
-    }
-</style>
-
-<style>
-    /* Hard override: top action buttons (beats global quick-view ID rules) */
-    .drawer.qv-theme-shell.client-qv-shell .drawer-top-actions #btnMarkToday{
-        background:linear-gradient(135deg,#fff1bc 0%,#e8cb82 54%,#b8852a 100%) !important;
-        color:#2a1a08 !important;
-        border:1px solid #7b5c1a !important;
-        box-shadow:0 10px 22px rgba(184,133,42,.24) !important;
-    }
-    .drawer.qv-theme-shell.client-qv-shell .drawer-top-actions #btnSetNextToday{
-        background:linear-gradient(180deg,#2b5b86,#21486a) !important;
-        color:#eaf5ff !important;
-        border:1px solid #7b5c1a !important;
-        box-shadow:0 10px 22px rgba(33,72,106,.24) !important;
-    }
-    .drawer.qv-theme-shell.client-qv-shell .drawer-top-actions #btnCopyContact{
-        background:linear-gradient(180deg,#3b4557,#2a3342) !important;
-        color:#e8edf5 !important;
-        border:1px solid #7b5c1a !important;
-        box-shadow:0 10px 22px rgba(42,51,66,.26) !important;
-    }
-    .drawer.qv-theme-shell.client-qv-shell .drawer-top-actions #btnOpenEdit{
-        background:linear-gradient(180deg,#4c3d74,#372a56) !important;
-        color:#efe9ff !important;
-        border:1px solid #7b5c1a !important;
-        box-shadow:0 10px 22px rgba(55,42,86,.24) !important;
-    }
-    .drawer.qv-theme-shell.client-qv-shell .drawer-top-actions #btnOpenProfile{
-        background:linear-gradient(180deg,#1f6648,#184d37) !important;
-        color:#e8fff4 !important;
-        border:1px solid #7b5c1a !important;
-        box-shadow:0 10px 22px rgba(24,77,55,.24) !important;
-    }
-    .drawer.qv-theme-shell.client-qv-shell .drawer-top-actions #btnMail{
-        background:linear-gradient(180deg,#2f6fa2,#24567d) !important;
-        color:#eaf5ff !important;
-        border:1px solid #7b5c1a !important;
-        box-shadow:0 10px 22px rgba(36,86,125,.24) !important;
-    }
-    .drawer.qv-theme-shell.client-qv-shell .drawer-top-actions #btnCall{
-        background:linear-gradient(180deg,#2a7a55,#205e42) !important;
-        color:#ebfff5 !important;
-        border:1px solid #7b5c1a !important;
-        box-shadow:0 10px 22px rgba(32,94,66,.24) !important;
-    }
-    .drawer.qv-theme-shell.client-qv-shell .drawer-top-actions #btnOpenQueue{
-        background:linear-gradient(180deg,#5c4b8f,#43356a) !important;
-        color:#f2eeff !important;
-        border:1px solid #7b5c1a !important;
-        box-shadow:0 10px 22px rgba(67,53,106,.24) !important;
-    }
-
-    .drawer.qv-theme-shell.client-qv-shell .drawer-top-actions #btnMarkToday:hover,
-    .drawer.qv-theme-shell.client-qv-shell .drawer-top-actions #btnSetNextToday:hover,
-    .drawer.qv-theme-shell.client-qv-shell .drawer-top-actions #btnCopyContact:hover,
-    .drawer.qv-theme-shell.client-qv-shell .drawer-top-actions #btnOpenEdit:hover,
-    .drawer.qv-theme-shell.client-qv-shell .drawer-top-actions #btnOpenProfile:hover,
-    .drawer.qv-theme-shell.client-qv-shell .drawer-top-actions #btnMail:hover,
-    .drawer.qv-theme-shell.client-qv-shell .drawer-top-actions #btnCall:hover,
-    .drawer.qv-theme-shell.client-qv-shell .drawer-top-actions #btnOpenQueue:hover{
-        filter:brightness(1.06) !important;
-        border-color:#a68023 !important;
-        transform:translateY(-1px);
-    }
-</style>
-
-<style>
-    /* Premium button system + Contact/Profile title chip */
-    .lead-qv-shell .qv-contact-card h4,
-    .client-qv-shell .qv-contact-card h4{
-        display:inline-flex;
-        align-items:center;
-        gap:8px;
-        padding:8px 14px;
-        border-radius:999px;
-        border:1px solid rgba(123,92,26,.95);
-        background:linear-gradient(180deg, rgba(24,34,53,.96), rgba(14,22,38,.96));
-        color:#f8e9bf !important;
-        box-shadow: inset 0 1px 0 rgba(255,255,255,.06), 0 8px 18px rgba(2,6,23,.24);
-    }
-
-    .lead-qv-shell .drawer-top-actions .btn,
-    .lead-qv-shell .qv-contact-card .btn,
-    .lead-qv-shell .qv-contact-card a.btn,
-    .client-qv-shell .drawer-top-actions .btn,
-    .client-qv-shell .qv-contact-card .btn,
-    .client-qv-shell .qv-contact-card a.btn{
-        border:1px solid #7b5c1a !important;
-        border-radius:13px !important;
-        font-weight:900 !important;
-        letter-spacing:.015em;
-        box-shadow: 0 9px 18px rgba(2,6,23,.2), inset 0 1px 0 rgba(255,255,255,.09);
-        transition: transform .14s ease, box-shadow .14s ease, filter .14s ease, border-color .14s ease;
-    }
-    .lead-qv-shell .drawer-top-actions .btn:hover,
-    .lead-qv-shell .qv-contact-card .btn:hover,
-    .lead-qv-shell .qv-contact-card a.btn:hover,
-    .client-qv-shell .drawer-top-actions .btn:hover,
-    .client-qv-shell .qv-contact-card .btn:hover,
-    .client-qv-shell .qv-contact-card a.btn:hover{
-        transform:translateY(-1px);
-        box-shadow: 0 12px 24px rgba(2,6,23,.26), inset 0 1px 0 rgba(255,255,255,.12);
-        border-color:#a68023 !important;
-    }
-
-    /* Contact & Profile local actions */
-    .lead-qv-shell #leadQuickActionsShortcut,
-    .client-qv-shell #clientQuickActionsShortcut{
-        background:linear-gradient(180deg,#2a3850,#1e2a3f) !important;
-        color:#e9f0fa !important;
-    }
-    .client-qv-shell #btnClientFinPlan{
-        background:linear-gradient(135deg,#fff1bc 0%,#e8cb82 54%,#b8852a 100%) !important;
-        color:#2a1a08 !important;
-    }
-    .lead-qv-shell #noteSelfOpen,
-    .client-qv-shell #noteSelfOpen{
-        background:linear-gradient(180deg,#3a2a59,#2a1f42) !important;
-        color:#f1e9ff !important;
-    }
-    .client-qv-shell #btnResendClientInvite{
-        background:linear-gradient(180deg,#26507a,#1e3f61) !important;
-        color:#e8f4ff !important;
-    }
-
-    /* Top action ribbon color coding with unified premium borders */
-    .lead-qv-shell .drawer-top-actions #btnMarkToday,
-    .client-qv-shell .drawer-top-actions #btnMarkToday{
-        background:linear-gradient(135deg,#fff1bc 0%,#e8cb82 54%,#b8852a 100%) !important;
-        color:#2a1a08 !important;
-    }
-    .lead-qv-shell .drawer-top-actions #btnSetNextToday,
-    .client-qv-shell .drawer-top-actions #btnSetNextToday{
-        background:linear-gradient(180deg,#2b5b86,#21486a) !important;
-        color:#eaf5ff !important;
-    }
-    .lead-qv-shell .drawer-top-actions #btnCopyContact,
-    .client-qv-shell .drawer-top-actions #btnCopyContact{
-        background:linear-gradient(180deg,#3b4557,#2a3342) !important;
-        color:#e8edf5 !important;
-    }
-    .client-qv-shell .drawer-top-actions #btnOpenEdit{
-        background:linear-gradient(180deg,#4c3d74,#372a56) !important;
-        color:#efe9ff !important;
-    }
-    .client-qv-shell .drawer-top-actions #btnOpenProfile{
-        background:linear-gradient(180deg,#1f6648,#184d37) !important;
-        color:#e8fff4 !important;
-    }
-    .lead-qv-shell .drawer-top-actions #btnMail,
-    .client-qv-shell .drawer-top-actions #btnMail{
-        background:linear-gradient(180deg,#2f6fa2,#24567d) !important;
-        color:#eaf5ff !important;
-    }
-    .lead-qv-shell .drawer-top-actions #btnCall,
-    .client-qv-shell .drawer-top-actions #btnCall{
-        background:linear-gradient(180deg,#2a7a55,#205e42) !important;
-        color:#ebfff5 !important;
-    }
-    .lead-qv-shell .drawer-top-actions #btnOpenQueue,
-    .client-qv-shell .drawer-top-actions #btnOpenQueue{
-        background:linear-gradient(180deg,#5c4b8f,#43356a) !important;
-        color:#f2eeff !important;
-    }
-</style>
-
-<style>
-    /* Unified luxe + compact Quick View theme (Clients mirrors Leads exactly) */
-    .lead-qv-shell,
-    .client-qv-shell{
-        background: linear-gradient(180deg,#0b1220 0%, #0c1424 100%);
-        border: 1px solid rgba(230,194,110,.34);
-        box-shadow: 0 26px 56px rgba(2,6,23,.58), inset 0 1px 0 rgba(255,255,255,.03);
-    }
-    .lead-qv-shell .dhead,
-    .client-qv-shell .dhead{
-        padding: 12px 13px 11px;
-        background: linear-gradient(180deg, rgba(9,14,25,.95), rgba(11,18,32,.88));
-        border-bottom: 1px solid rgba(230,194,110,.14);
-        box-shadow: 0 10px 24px rgba(2,6,23,.26);
-    }
-    .lead-qv-shell .dtitle,
-    .client-qv-shell .dtitle{font-size:1.08rem;letter-spacing:.012em;}
-    .lead-qv-shell .dsub,
-    .client-qv-shell .dsub{margin-top:6px;font-size:.84rem;font-weight:760;color:#d9e4f3;}
-    .lead-qv-shell .drawer-statbar,
-    .client-qv-shell .drawer-statbar{gap:7px;margin-top:9px;}
-    .lead-qv-shell .pill,
-    .lead-qv-shell #dPortalWrap,
-    .client-qv-shell .pill,
-    .client-qv-shell #dPortalWrap{
-        min-height:28px;
-        padding:5px 9px;
-        font-size:.74rem;
-        font-weight:800;
-        border-radius:999px;
-        border:1px solid rgba(255,255,255,.1);
-        background:linear-gradient(180deg, rgba(255,255,255,.08), rgba(255,255,255,.03));
-        color:#d9e4f4;
-    }
-    .lead-qv-shell .drawer-top-actions,
-    .client-qv-shell .drawer-top-actions{gap:8px;margin-top:10px;}
-    .lead-qv-shell .btn,
-    .lead-qv-shell a.btn,
-    .client-qv-shell .btn,
-    .client-qv-shell a.btn{
-        min-height:36px;
-        padding:8px 11px;
-        font-size:.82rem;
-        border-radius:12px;
-        letter-spacing:.01em;
-    }
-    .lead-qv-shell .btn-gold,
-    .client-qv-shell .btn-gold{
-        background: linear-gradient(135deg,#f9edc1 0%, #e8cb82 54%, #b8852a 100%) !important;
-        color:#2a1a08 !important;
-        border: 1px solid rgba(230,194,110,.85) !important;
-        box-shadow: 0 8px 16px rgba(184,133,42,.22), inset 0 1px 0 rgba(255,255,255,.45);
-    }
-    .lead-qv-shell .btn-ghost,
-    .lead-qv-shell a.btn-ghost,
-    .lead-qv-shell .lb-btn,
-    .client-qv-shell .btn-ghost,
-    .client-qv-shell a.btn-ghost,
-    .client-qv-shell .lb-btn{
-        background: linear-gradient(180deg, rgba(21,31,52,.92), rgba(14,22,38,.92)) !important;
-        border: 1px solid rgba(148,163,184,.2) !important;
-        color:#edf2fb !important;
-        box-shadow: 0 7px 14px rgba(2,6,23,.2), inset 0 1px 0 rgba(255,255,255,.04);
-    }
-
-    .lead-qv-shell .dbody,
-    .client-qv-shell .dbody{
-        padding:12px 13px 17px;
-        background: linear-gradient(180deg,#0d1627 0%, #0b1423 100%);
-    }
-    .lead-qv-shell .section,
-    .client-qv-shell .section{
-        padding:11px;
-        margin-bottom:10px;
-        border-radius:16px;
-        border:1px solid rgba(148,163,184,.14);
-        background: linear-gradient(180deg, rgba(15,23,38,.92), rgba(10,16,29,.92));
-        box-shadow: 0 8px 18px rgba(2,6,23,.2), inset 0 1px 0 rgba(255,255,255,.03);
-    }
-    .lead-qv-shell .section.qv-contact-card,
-    .client-qv-shell .section.qv-contact-card{border-color:rgba(56,189,248,.2) !important;}
-    .lead-qv-shell .section.section-gold,
-    .client-qv-shell .section.section-gold{border-color: rgba(230,194,110,.24) !important;}
-    .lead-qv-shell .section.section-relationship,
-    .client-qv-shell .section.section-relationship{border-color: rgba(167,139,250,.22) !important;}
-    .lead-qv-shell .section.section-green,
-    .client-qv-shell .section.section-green{border-color: rgba(74,222,128,.2) !important;}
-    .lead-qv-shell .section.section-violet,
-    .client-qv-shell .section.section-violet{border-color: rgba(192,132,252,.2) !important;}
-    .lead-qv-shell .section.section-red,
-    .client-qv-shell .section.section-red{border-color: rgba(248,113,113,.2) !important;}
-
-    .lead-qv-shell .qv-contact-card > div:first-child,
-    .client-qv-shell .qv-contact-card > div:first-child{margin-bottom:8px;}
-    .lead-qv-shell .qv-contact-card h4,
-    .client-qv-shell .qv-contact-card h4{font-size:.86rem;letter-spacing:.06em;}
-
-    .lead-qv-shell .qv-disclosure > summary,
-    .client-qv-shell .qv-disclosure > summary{padding:0 0 8px;gap:10px;}
-    .lead-qv-shell .qv-disclosure > summary::after,
-    .client-qv-shell .qv-disclosure > summary::after{width:27px;height:27px;}
-    .lead-qv-shell .qv-disclosure[open] > .qv-section-body,
-    .client-qv-shell .qv-disclosure[open] > .qv-section-body{padding-top:9px;}
-    .lead-qv-shell .qv-section-title,
-    .client-qv-shell .qv-section-title{font-size:.8rem;letter-spacing:.05em;}
-    .lead-qv-shell .qv-section-copy,
-    .client-qv-shell .qv-section-copy{font-size:.72rem;line-height:1.3;color:#9fb0c8;}
-
-    .lead-qv-shell .qv-subsection,
-    .client-qv-shell .qv-subsection{
-        padding:9px 9px 8px;
-        border-radius:12px;
-        background:linear-gradient(180deg, rgba(255,255,255,.025), rgba(255,255,255,.012));
-        border:1px solid rgba(255,255,255,.06);
-        box-shadow: inset 0 1px 0 rgba(255,255,255,.03);
-    }
-    .lead-qv-shell .qv-subsection h5,
-    .client-qv-shell .qv-subsection h5{font-size:.76rem;letter-spacing:.045em;margin-bottom:1px;}
-
-    .lead-qv-shell .f label,
-    .client-qv-shell .f label{
-        font-size:.64rem !important;
-        letter-spacing:.09em !important;
-        margin-bottom:5px;
-    }
-    .lead-qv-shell input,
-    .lead-qv-shell select,
-    .lead-qv-shell textarea,
-    .client-qv-shell input,
-    .client-qv-shell select,
-    .client-qv-shell textarea{
-        border-radius:11px !important;
-        border:1px solid #cdd6e1 !important;
-        background: linear-gradient(180deg, #f8fafc, #eef2f8) !important;
-        box-shadow: 0 3px 8px rgba(2,6,23,.07), inset 0 1px 0 rgba(255,255,255,.78) !important;
-        font-size:.86rem !important;
-        padding:8px 10px !important;
-    }
-    .lead-qv-shell textarea,
-    .client-qv-shell textarea{min-height:88px !important;}
-    .lead-qv-shell input:focus,
-    .lead-qv-shell select:focus,
-    .lead-qv-shell textarea:focus,
-    .client-qv-shell input:focus,
-    .client-qv-shell select:focus,
-    .client-qv-shell textarea:focus{
-        border-color: rgba(230,194,110,.62) !important;
-        box-shadow: 0 0 0 2px rgba(230,194,110,.14), 0 6px 12px rgba(2,6,23,.12) !important;
-    }
-
-    .lead-qv-shell .preset-chip,
-    .client-qv-shell .preset-chip{
-        padding:7px 10px;
-        font-size:.72rem;
-        border-radius:999px;
-        box-shadow: 0 6px 12px rgba(2,6,23,.14), inset 0 1px 0 rgba(255,255,255,.04);
-    }
-    .lead-qv-shell .outcome-grid,
-    .client-qv-shell .outcome-grid{gap:8px;}
-    .lead-qv-shell .outcome-grid .btn,
-    .client-qv-shell .outcome-grid .btn{min-height:36px;padding:7px 10px;font-size:.78rem;border-radius:11px;}
-
-    .lead-qv-shell .doc-grid,
-    .client-qv-shell .doc-grid{gap:8px;}
-    .lead-qv-shell .doc-grid label,
-    .client-qv-shell .doc-grid label{
-        border-radius:11px;
-        padding:8px 10px;
-        font-size:.82rem;
-        box-shadow: 0 6px 12px rgba(2,6,23,.14), inset 0 1px 0 rgba(255,255,255,.04);
-    }
-
-    .lead-qv-shell .production-history,
-    .client-qv-shell .production-history{
-        padding:11px;
-        border-radius:15px;
-        margin-bottom:10px;
-        box-shadow: 0 8px 18px rgba(2,6,23,.18), inset 0 1px 0 rgba(255,255,255,.03);
-    }
-    .lead-qv-shell .ph-sub,
-    .client-qv-shell .ph-sub{font-size:.78rem;}
-    .lead-qv-shell .ph-item,
-    .client-qv-shell .ph-item{padding:9px 10px;gap:10px;border-radius:13px;box-shadow:0 7px 14px rgba(0,0,0,.14);}
-    .lead-qv-shell .ph-metric,
-    .client-qv-shell .ph-metric{padding:7px 9px;min-width:118px;border-radius:10px;}
-    .lead-qv-shell .ph-amt,
-    .client-qv-shell .ph-amt{font-size:.88rem;}
-    .lead-qv-shell .ph-note,
-    .client-qv-shell .ph-note{padding:7px 9px;border-radius:10px;font-size:.8rem;min-width:145px;}
-    .lead-qv-shell .ph-actions .btn,
-    .client-qv-shell .ph-actions .btn{min-width:84px;padding:6px 8px !important;font-size:10.5px !important;border-radius:10px;}
-
-    .lead-qv-shell #leadActionsContainer,
-    .lead-qv-shell #leadCommitmentsContainer,
-    .lead-qv-shell .timeline,
-    .lead-qv-shell .mention-list,
-    .client-qv-shell #clientActionsContainer,
-    .client-qv-shell #clientCommitmentsContainer,
-    .client-qv-shell .timeline,
-    .client-qv-shell .mention-list{
-        border-radius:12px !important;
-        box-shadow: 0 8px 16px rgba(2,6,23,.16), inset 0 1px 0 rgba(255,255,255,.03);
-    }
-    .lead-qv-shell #leadActionsContainer,
-    .lead-qv-shell #leadCommitmentsContainer,
-    .client-qv-shell #clientActionsContainer,
-    .client-qv-shell #clientCommitmentsContainer{padding:9px 10px !important;}
-
-    .lead-qv-shell .note-self-overlay,
-    .client-qv-shell .note-self-overlay{padding:14px;}
-    .lead-qv-shell .note-self-modal,
-    .client-qv-shell .note-self-modal{
-        border-radius:16px;
-        padding:12px;
-        box-shadow: 0 18px 36px rgba(2,6,23,.44), inset 0 1px 0 rgba(255,255,255,.03);
-    }
-    .lead-qv-shell .note-self-col,
-    .client-qv-shell .note-self-col{padding:10px;border-radius:12px;}
-
-    #leadActionsHubModal .qv-subsection,
-    #clientActionsHubModal .qv-subsection{padding:10px 10px 9px;border-radius:12px;}
-
-    @@media (max-width: 920px){
-        .lead-qv-shell .drawer-top-actions .btn,
-        .client-qv-shell .drawer-top-actions .btn{flex:1 1 calc(50% - 8px);}
-    }
-    @@media (max-width: 640px){
-        .lead-qv-shell .drawer-top-actions .btn,
-        .client-qv-shell .drawer-top-actions .btn{flex:1 1 100%;width:100%;}
-        .lead-qv-shell .grid2,
-        .client-qv-shell .grid2{grid-template-columns:1fr;}
-    }
 </style>

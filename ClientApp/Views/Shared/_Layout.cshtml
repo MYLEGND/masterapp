@@ -15,8 +15,8 @@
 
     <!-- Bootstrap -->
     <link rel="stylesheet" href="~/lib/bootstrap/dist/css/bootstrap.min.css" />
-    <link rel="stylesheet" href="~/css/site.css" asp-append-version="true" />
-    <link rel="stylesheet" href="~/css/layout-inline.css" asp-append-version="true" />
+    <link rel="stylesheet" href="~/css/site.css?v=20260528-royal2" asp-append-version="true" />
+    <link rel="stylesheet" href="~/css/layout-inline.css?v=20260528-royal2" asp-append-version="true" />
     <link rel="stylesheet" href="~/LegendCorePlatform.styles.css" asp-append-version="true" />
 
     <!-- Google Font for Psalms 23 | Proverbs 3:5-6 -->
@@ -27,16 +27,12 @@
 <body class="d-flex flex-column min-vh-100">
 
 <header>
-    <nav class="navbar navbar-expand-sm navbar-light">
+    <nav class="navbar navbar-expand-sm navbar-dark">
         <div class="container-fluid d-flex flex-wrap align-items-start justify-content-between">
 
             <a class="navbar-brand" asp-controller="Home" asp-action="Index">
                 <img src="~/images/company-icons/legend-protect-transparent.png" asp-append-version="true" alt="Legend™" />
             </a>
-
-            <button class="nav-toggle" id="clientNavToggle" aria-label="Toggle navigation" aria-expanded="false">
-                <span class="nav-toggle-bars"></span>
-            </button>
 
             <div class="navbar-left">
                 <div class="nav-rows-grid">
@@ -66,6 +62,26 @@
                             }
                         }
 
+                        <li class="nav-item nav-item-explore">
+                            <button id="exploreTrigger"
+                                    type="button"
+                                    class="explore-trigger"
+                                    aria-label="Open Explore"
+                                    aria-controls="exploreDrawer"
+                                    aria-expanded="false">
+                                <div class="explore-bars" aria-hidden="true">
+                                    <span></span>
+                                    <span></span>
+                                    <span></span>
+                                </div>
+                            </button>
+                        </li>
+
+                        <li class="nav-item nav-item-mobile-toggle">
+                            <button class="nav-toggle" id="clientNavToggle" aria-label="Toggle navigation" aria-expanded="false">
+                                <span class="nav-toggle-bars"></span>
+                            </button>
+                        </li>
                         <li class="nav-item"><a class="nav-link @Active("Home")" asp-controller="Home" asp-action="Index">Home</a></li>
                         <li class="nav-item"><a class="nav-link @Active("Finance")" asp-controller="Finance" asp-action="Index">Finance</a></li>
                         <li class="nav-item"><a class="nav-link" href="https://protect.mylegnd.com/Quote" target="_blank" rel="noopener">Insurance Quote</a></li>
@@ -237,19 +253,6 @@
 </header>
 
 <div id="exploreOverlay" class="explore-overlay" aria-hidden="true"></div>
-
-<button id="exploreTrigger"
-        type="button"
-        class="explore-trigger"
-        aria-label="Open Explore"
-        aria-controls="exploreDrawer"
-        aria-expanded="false">
-    <div class="explore-bars" aria-hidden="true">
-        <span></span>
-        <span></span>
-        <span></span>
-    </div>
-</button>
 
 <aside id="exploreDrawer" class="explore-drawer" aria-label="Explore Panel">
     <div class="explore-card">

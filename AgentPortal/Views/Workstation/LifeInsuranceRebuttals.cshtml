@@ -21,21 +21,18 @@
                 </div>
                 <div class="hero-actions">
                     <div class="hero-action-group">
-                        <button type="button" class="btn hp-proposal-trigger" id="btnProposal">Proposal ▾</button>
-                        <div class="hp-proposal-menu" id="proposalMenu" hidden>
-                            <div class="hp-proposal-menu-head">
-                                <span>Saved Proposals</span>
-                                <button type="button" class="btn-mini" id="btnProposalNew">+ New</button>
-                            </div>
-                            <div class="hp-proposal-menu-list" id="proposalMenuList"></div>
-                        </div>
+                        @await Html.PartialAsync("~/Views/Shared/_ProposalLauncher.cshtml")
                     </div>
                     <div class="hero-action-group">
                         <button type="button" class="btn gold hero-underwrite" id="btnUnderwriting">Underwriting ▾</button>
                         <div class="proposal-menu" id="uwMenu" hidden>
                             <div class="proposal-menu-head">
                                 <span>Saved Underwriting</span>
-                                <button type="button" class="btn-mini" id="btnUwNew">+ New</button>
+                                <div class="hp-menu-head-actions">
+                                    <button type="button" class="btn-mini" id="btnUwNew">Lead</button>
+                                    <button type="button" class="btn-mini" id="btnUwClient">Use Client</button>
+                                    <button type="button" class="btn-mini" id="btnUwScratch">Scratch</button>
+                                </div>
                             </div>
                             <div class="proposal-menu-list" id="uwMenuList"></div>
                         </div>
@@ -86,7 +83,6 @@
                         <div class="content-head-controls">
                             <div class="content-head-primary">
                                 <div class="content-head-next" data-lb-header-next></div>
-                                <div class="count-pill" id="contentCount">0 scripts</div>
                             </div>
                             <div class="content-head-shortcuts" data-guide-shortcuts></div>
                         </div>
@@ -118,108 +114,8 @@
 </div>
 
 @await Html.PartialAsync("~/Views/Shared/_UnderwritingForm.cshtml", viewData: new ViewDataDictionary(ViewData) { { "UwSubtitle", "Underwriting Intake — Life Insurance" }, { "UwProduct", "LIFE" } })
-
-<div class="hp-overlay" id="proposalOverlay" hidden>
-    <div class="hp-dialog" id="proposalDialog" role="dialog" aria-modal="true" aria-labelledby="proposalTitle">
-        <div class="hp-dialog-head">
-            <div class="hp-dialog-brand">
-                <div class="hp-dialog-icon">📋</div>
-                <div>
-                    <div class="hp-dialog-title" id="proposalTitle">Proposal Builder</div>
-                    <div class="hp-dialog-sub">Compare side-by-side options for any client</div>
-                </div>
-            </div>
-            <button type="button" class="hp-dialog-close" data-proposal-close aria-label="Close proposal builder">×</button>
-        </div>
-
-        <form id="proposalForm" class="hp-form">
-            <div class="hp-form-meta">
-                <label class="hp-field">Proposal Name
-                    <input id="propName" name="propName" placeholder="Client name or label" />
-                </label>
-                <div class="hp-form-actions">
-                    <button type="submit" class="hp-btn hp-btn-gold" id="btnSaveProposal">Save Proposal</button>
-                    <button type="button" class="hp-btn hp-btn-ghost" id="btnCaptureDecision" data-bs-toggle="modal" data-bs-target="#captureDecisionModal">Capture Decision</button>
-                    <button type="button" class="hp-btn hp-btn-ghost" data-proposal-close>Cancel</button>
-                </div>
-            </div>
-
-            <div class="proposal-latest-decision" id="latestDecisionSummary" hidden style="margin-bottom:12px; border:1px solid rgba(255,255,255,.08); border-radius:10px; padding:10px; background:#0f1629;">
-                <div class="tiny text-muted">Latest decision</div>
-                <div class="fw-bold" data-decision-title>-</div>
-                <div class="tiny" data-decision-type></div>
-                <div class="small" data-decision-rationale></div>
-                <div class="tiny text-muted" data-decision-time></div>
-            </div>
-
-            <div class="hp-buckets">
-                @for (var i = 1; i <= 3; i++)
-                {
-                    <div class="hp-bucket" data-bucket="@i">
-                        <div class="hp-bucket-head">Option @i</div>
-                        <label class="hp-field">Insurance Carrier
-                            <select class="prop-carrier" id="propCarrier@i">
-                                <option value="">Select carrier</option>
-                                <option>Banner Life</option>
-                                <option>Protective</option>
-                                <option>Pacific Life</option>
-                                <option>Symetra</option>
-                                <option>Lincoln Financial</option>
-                                <option>John Hancock</option>
-                                <option>Prudential</option>
-                                <option>Nationwide</option>
-                                <option>Mutual of Omaha</option>
-                                <option>Foresters Financial</option>
-                                <option>American General (AIG/Corebridge)</option>
-                                <option>Brighthouse</option>
-                                <option>North American</option>
-                                <option>Other</option>
-                            </select>
-                        </label>
-                        <label class="hp-field">Term
-                            <select class="prop-term" id="propTerm@i">
-                                <option value="">N/A</option>
-                                <option>10 Year</option>
-                                <option>15 Year</option>
-                                <option>20 Year</option>
-                                <option>30 Year</option>
-                                <option>40 Year</option>
-                            </select>
-                        </label>
-                        <label class="hp-field">Type
-                            <select class="prop-type" id="propType@i">
-                                <option value="">Select</option>
-                                <option value="Term">Term</option>
-                                <option value="Whole Life">Whole Life</option>
-                                <option value="Universal Life">Universal Life</option>
-                                <option value="Indexed UL">IUL</option>
-                                <option value="Final Expense">Final Expense</option>
-                            </select>
-                        </label>
-                        @for (var r = 1; r <= 3; r++)
-                        {
-                            <div class="hp-row">
-                                <label class="hp-field">Death Benefit @r
-                                    <div class="hp-currency-wrap">
-                                        <span class="hp-currency-sym">$</span>
-                                        <input class="prop-benefit currency-input hp-currency-input" id="propBenefit@i@r" inputmode="decimal" />
-                                    </div>
-                                </label>
-                                <label class="hp-field">Premium @r
-                                    <div class="hp-currency-wrap">
-                                        <span class="hp-currency-sym">$</span>
-                                        <input class="prop-premium currency-input hp-currency-input" id="propPremium@i@r" inputmode="decimal" />
-                                        <span class="hp-currency-sfx">/mo</span>
-                                    </div>
-                                </label>
-                            </div>
-                        }
-                    </div>
-                }
-            </div>
-        </form>
-    </div>
-</div>
+@await Html.PartialAsync("~/Views/Shared/_WorkstationClientPicker.cshtml")
+@await Html.PartialAsync("~/Views/Shared/_ProposalBuilder.cshtml")
 
 <script>
 (function(){
@@ -902,14 +798,14 @@
         if(!activeCategory){
             rbContent.innerHTML = `<div class="content-empty">Pick a rebuttal category on the left or a Life Insurance step on the right.</div>`;
             rbCount.textContent = "0";
-            contentCount.textContent = "0 scripts";
+            if (contentCount) contentCount.textContent = "0 scripts";
             contentSub.textContent = "No category selected.";
             return;
         }
 
         const searchVal = (rbSearch.value || "").trim();
         rbCount.textContent = String(activeCategory.items.length);
-        contentCount.textContent = `${activeCategory.items.length} scripts`;
+        if (contentCount) contentCount.textContent = `${activeCategory.items.length} scripts`;
         contentSub.textContent = activeCategory.name;
 
         let html = `
@@ -940,7 +836,7 @@
         if(!prosperLoaded && !prosperLoadFailed){
             rbContent.innerHTML = `<div class="content-empty">Loading life insurance steps…</div>`;
             rbCount.textContent = "0";
-            contentCount.textContent = "0 steps";
+            if (contentCount) contentCount.textContent = "0 steps";
             contentSub.textContent = "Life Insurance Guide";
             return;
         }
@@ -948,7 +844,7 @@
         if(prosperLoadFailed){
             rbContent.innerHTML = `<div class="content-empty">Life Insurance steps could not be loaded.</div>`;
             rbCount.textContent = "0";
-            contentCount.textContent = "0 steps";
+            if (contentCount) contentCount.textContent = "0 steps";
             contentSub.textContent = "Life Insurance Guide";
             return;
         }
@@ -959,13 +855,13 @@
         if(!activeSection){
             rbContent.innerHTML = `<div class="content-empty">Pick a Life Insurance step on the right to load it here.</div>`;
             rbCount.textContent = "0";
-            contentCount.textContent = "0 steps";
+            if (contentCount) contentCount.textContent = "0 steps";
             contentSub.textContent = "Life Insurance Guide";
             return;
         }
 
         rbCount.textContent = "1";
-        contentCount.textContent = `Step ${activeSection.step}`;
+        if (contentCount) contentCount.textContent = `Step ${activeSection.step}`;
         contentSub.textContent = "Life Insurance Guide";
         const searchVal = (rbSearch.value || "").trim();
         const flowGuideHtml = renderProsperFlowGuide(activeSection);
@@ -1183,14 +1079,14 @@
     loadProsperSections();
 })();
 </script>
-<script src="~/js/uw-intake.js" asp-append-version="true"></script>
 
 @await Html.PartialAsync("~/Views/Proposals/_DecisionModal.cshtml")
 
 @section Scripts {
     <script src="~/js/rebuttals-leads.js" asp-append-version="true"></script>
-    <script src="~/js/workstation/dialer.js" asp-append-version="true"></script>
     <script src="~/js/legend-modal.js" asp-append-version="true"></script>
+    <script src="~/js/workstation-client-picker.js" asp-append-version="true"></script>
+    <script src="~/js/uw-intake.js" asp-append-version="true"></script>
     <script src="~/js/proposal-uw.js" asp-append-version="true"></script>
     <script src="~/js/zoom-quick-popup.js" asp-append-version="true"></script>
 }

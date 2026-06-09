@@ -1,0 +1,30 @@
+@using Microsoft.AspNetCore.Mvc.ViewFeatures
+@{
+    var triggerClass = (ViewData["ProposalTriggerClass"] as string ?? "btn hp-proposal-trigger").Trim();
+    var triggerLabel = (ViewData["ProposalTriggerLabel"] as string ?? "Proposal ▾").Trim();
+    var includeLead = ViewData["ProposalIncludeLead"] as bool? ?? true;
+    var includeClient = ViewData["ProposalIncludeClient"] as bool? ?? true;
+    var includeScratch = ViewData["ProposalIncludeScratch"] as bool? ?? true;
+}
+
+<button type="button" class="@triggerClass" id="btnProposal">@triggerLabel</button>
+<div class="hp-proposal-menu" id="proposalMenu" hidden>
+    <div class="hp-proposal-menu-head">
+        <span>Saved Proposals</span>
+        <div class="hp-menu-head-actions">
+            @if (includeLead)
+            {
+                <button type="button" class="btn-mini" id="btnProposalNew">Lead</button>
+            }
+            @if (includeClient)
+            {
+                <button type="button" class="btn-mini" id="btnProposalClient">Use Client</button>
+            }
+            @if (includeScratch)
+            {
+                <button type="button" class="btn-mini" id="btnProposalScratch">Scratch</button>
+            }
+        </div>
+    </div>
+    <div class="hp-proposal-menu-list" id="proposalMenuList"></div>
+</div>

@@ -46,6 +46,30 @@
             ["ProductName"] = "disability income protection",
             ["ProductPurpose"] = "helps protect your income if an injury or illness kept you from working",
             ["AssignedRole"] = "field underwriter"
+        },
+        ["AutoInsurance"] = new(StringComparer.OrdinalIgnoreCase)
+        {
+            ["ProductName"] = "auto insurance coverage",
+            ["ProductPurpose"] = "helps protect you from accidents, vehicle damage, liability claims, and road risks",
+            ["AssignedRole"] = "licensed coverage specialist"
+        },
+        ["HomeInsurance"] = new(StringComparer.OrdinalIgnoreCase)
+        {
+            ["ProductName"] = "home insurance coverage",
+            ["ProductPurpose"] = "helps protect your home, property, and belongings from storms, fire, theft, and damage",
+            ["AssignedRole"] = "licensed coverage specialist"
+        },
+        ["HealthInsurance"] = new(StringComparer.OrdinalIgnoreCase)
+        {
+            ["ProductName"] = "health insurance coverage",
+            ["ProductPurpose"] = "helps protect you from major medical costs and keeps coverage options in place for your care",
+            ["AssignedRole"] = "licensed coverage specialist"
+        },
+        ["CommercialInsurance"] = new(StringComparer.OrdinalIgnoreCase)
+        {
+            ["ProductName"] = "commercial insurance coverage",
+            ["ProductPurpose"] = "helps protect your business from liability, property damage, and costly interruptions",
+            ["AssignedRole"] = "licensed coverage specialist"
         }
     };
 
@@ -227,126 +251,28 @@
 
     @await Html.PartialAsync("~/Views/Leads/_LeadQuickView.cshtml")
 
-    <section class="lb-context-shell" data-lb-context-shell aria-label="Lead intake context">
-        <div class="lb-context-head">
-            <div class="lb-context-head-copy">
-                <div class="lb-context-kicker">Lead context</div>
-                <div class="lb-context-title">Work the lead with the intake in view</div>
-                <div class="lb-context-sub">Keep the why, the ask, the recommended lane, and the talking points visible while you close.</div>
-            </div>
-            <div class="lb-context-chip-row" data-lb-context-meta>
-                <span class="lb-context-chip">No intake context loaded yet</span>
-            </div>
-        </div>
-
-        <div class="lb-context-grid">
-            <article class="lb-context-card">
-                <div class="lb-context-label">Why they came in</div>
-                <div class="lb-context-value" data-lb-context-why>No lead selected yet.</div>
-            </article>
-            <article class="lb-context-card">
-                <div class="lb-context-label">What they asked for</div>
-                <div class="lb-context-value" data-lb-context-ask>LeadBridge will fill this from the latest intake snapshot.</div>
-            </article>
-            <article class="lb-context-card lb-context-card-wide">
-                <div class="lb-context-label">Recommended starting point</div>
-                <div class="lb-context-value" data-lb-context-start>Open the right product lane and confirm the request they already started.</div>
-            </article>
-            <article class="lb-context-card">
-                <div class="lb-context-label">Source / campaign</div>
-                <div class="lb-context-value" data-lb-context-source>Source, medium, and campaign will appear here.</div>
-            </article>
-            <article class="lb-context-card">
-                <div class="lb-context-label">Last submitted</div>
-                <div class="lb-context-value" data-lb-context-submitted>Latest submission timing and intake count will appear here.</div>
-            </article>
-            <article class="lb-context-card">
-                <div class="lb-context-label">Latest appointment</div>
-                <div class="lb-context-value" data-lb-context-appointment>No appointment is linked yet.</div>
-            </article>
-        </div>
-
-        <div class="lb-script-shell" data-lb-script-shell>
-            <div class="lb-script-head">
-                <div>
-                    <div class="lb-script-kicker">Script overlay</div>
-                    <div class="lb-script-title">Static call cues built from the lead context</div>
-                </div>
-                <div class="lb-script-note">Product-aware | Source-aware | Estimate-aware | No AI generation</div>
-            </div>
-            <div class="lb-script-grid">
-                <article class="lb-script-card">
-                    <div class="lb-script-label">Product-aware opener</div>
-                    <div class="lb-script-copy" data-lb-script-product>Pick a lead to load the product opener.</div>
-                </article>
-                <article class="lb-script-card">
-                    <div class="lb-script-label">Source-aware opener</div>
-                    <div class="lb-script-copy" data-lb-script-source>Lead attribution context will shape this opener.</div>
-                </article>
-                <article class="lb-script-card lb-script-card-wide">
-                    <div class="lb-script-label">Estimate-aware talking points</div>
-                    <div class="lb-script-copy" data-lb-script-estimate>Estimate and recommendation cues will appear here.</div>
-                </article>
-            </div>
-        </div>
-    </section>
-
     <div class="lb-row lb-row-fields">
         <div class="lead-field mobile-allowed" data-lf="name">
             <span class="lf-label">Name</span>
             <span class="lf-value" data-lf-value="name">—</span>
             <span class="lf-sub" data-lf-value="calls">Calls: —</span>
         </div>
-        <div class="lead-field mobile-hidden" data-lf="address">
-            <span class="lf-label">Address</span>
-            <span class="lf-value" data-lf-value="address">—</span>
-        </div>
-        <div class="lead-field mobile-allowed" data-lf="city">
-            <span class="lf-label">City</span>
-            <span class="lf-value" data-lf-value="city">—</span>
-        </div>
-        <div class="lead-field mobile-allowed" data-lf="state">
-            <span class="lf-label">State</span>
-            <span class="lf-value" data-lf-value="state">—</span>
-        </div>
-        <div class="lead-field mobile-hidden" data-lf="county">
-            <span class="lf-label">County</span>
-            <span class="lf-value" data-lf-value="county">—</span>
-        </div>
-        <div class="lead-field mobile-hidden" data-lf="dob">
-            <span class="lf-label">DOB</span>
-            <span class="lf-value" data-lf-value="dob">—</span>
-        </div>
-        <div class="lead-field mobile-hidden" data-lf="gender">
-            <span class="lf-label">M/F</span>
-            <span class="lf-value" data-lf-value="gender">—</span>
-        </div>
-        <div class="lead-field mobile-allowed" data-lf="lender">
-            <span class="lf-label" data-lf-label="lender">Lender</span>
-            <span class="lf-value" data-lf-value="lender">—</span>
-        </div>
-        <div class="lead-field mobile-hidden" data-lf="loan">
-            <span class="lf-label" data-lf-label="loan">Loan Amount</span>
-            <span class="lf-value" data-lf-value="loan">—</span>
-        </div>
-        <div class="lead-field mobile-hidden" data-lf="phone">
+        <div class="lead-field mobile-allowed" data-lf="phone">
             <span class="lf-label">Phone #</span>
             <span class="lf-value" data-lf-value="phone">—</span>
         </div>
-        <div class="lead-field mobile-hidden" data-lf="phone2">
-            <span class="lf-label">Phone #2</span>
-            <span class="lf-value" data-lf-value="phone2">—</span>
+        <div class="lead-field mobile-hidden" data-lf="email">
+            <span class="lf-label">Email</span>
+            <span class="lf-value" data-lf-value="email">—</span>
         </div>
-        <div class="lead-field mobile-hidden" data-lf="age">
-            <span class="lf-label">Age</span>
-            <span class="lf-value" data-lf-value="age">—</span>
-        </div>
-        <div class="lead-field mobile-hidden" data-lf="btc">
-            <span class="lf-label">BTC</span>
-            <span class="lf-value" data-lf-value="btc">—</span>
+        <div class="lead-field mobile-allowed" data-lf="location">
+            <span class="lf-label">Location</span>
+            <span class="lf-value" data-lf-value="location">—</span>
         </div>
         <span class="visually-hidden" data-lf-value="leadId"></span>
     </div>
+
+    @await Html.PartialAsync("_LeadScriptHandoff")
 
     <div class="lb-row lb-row-actions">
         <div class="lb-actions">

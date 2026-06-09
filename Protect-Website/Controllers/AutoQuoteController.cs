@@ -134,6 +134,7 @@ namespace Protect_Website.Controllers
                     MarketingEmailConsent = model.AcknowledgedDisclaimer,
                     CallTextConsent = model.AcknowledgedDisclaimer && !string.IsNullOrWhiteSpace(model.PhoneNumber),
                     TermsAccepted = true,
+                    IsInternal    = WebsiteLeadCaptureSafety.ShouldMarkAsInternalTest(Request?.Host.Host),
                     Host          = Request?.Host.ToString(),
                     Environment   = EnvironmentLabelResolver.Resolve(),
                     CreatedUtc    = now,
@@ -450,7 +451,6 @@ namespace Protect_Website.Controllers
                 .Row("New Policy Term",           model.NewPolicyTerm)
                 .Row("Package Policy",            model.PackagePolicy)
                 .Row("New Policy Effective Date", Nd(model.NewPolicyEffectiveDate))
-                .Row("Additional Notes",          model.AdditionalCarrierQuestions)
                 .Row("Paperless",                 model.Paperless)
                 .Row("Multi-Policy Discount",     model.MultiPolicyDiscount);
 

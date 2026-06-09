@@ -3,32 +3,32 @@
     var clientId = ViewBag.ClientId as string ?? string.Empty;
 }
 
-<div class="d-flex justify-content-between align-items-center mb-2 flex-wrap" style="gap:10px;">
-    <div>
+<div class="commitments-head">
+    <div class="commitments-head-copy">
         <h5 class="mb-0">Commitments</h5>
         <div class="text-muted small">Promises tracked server-side. Actions remain the execution layer.</div>
     </div>
-    <button class="btn btn-sm btn-gold" data-bs-toggle="modal" data-bs-target="#addClientCommitmentModal">Add Commitment</button>
+    <button class="btn btn-ghost commitment-add-btn" data-bs-toggle="modal" data-bs-target="#addClientCommitmentModal">Add Commitment</button>
 </div>
 
 @if (ViewBag.CommitmentsError != null)
 {
-    <div class="text-muted" role="status" style="padding:6px 0;">@ViewBag.CommitmentsError</div>
+    <div class="text-muted commitments-status" role="status">@ViewBag.CommitmentsError</div>
 }
 else if (Model == null || !Model.Any())
 {
-    <div class="text-muted">No commitments yet. Set a promise to keep this client accountable.</div>
+    <div class="text-muted commitments-status">No commitments yet. Set a promise to keep this client accountable.</div>
 }
 else
 {
-    <div class="table-responsive">
+    <div class="table-responsive commitments-table-wrap">
         <table class="table table-sm table-dark align-middle mb-2 commitments-table">
             <thead>
                 <tr>
                     <th scope="col">Promise</th>
-                    <th scope="col" style="width:140px;">Due</th>
-                    <th scope="col" style="width:120px;">Status</th>
-                    <th scope="col" style="width:170px;">Actions</th>
+                    <th scope="col" class="commitments-col-due">Due</th>
+                    <th scope="col" class="commitments-col-status">Status</th>
+                    <th scope="col" class="commitments-col-actions">Actions</th>
                 </tr>
             </thead>
             <tbody>
@@ -38,11 +38,11 @@ else
                 <tr>
                     <td>@c.PromiseText</td>
                     <td>@c.DueDateUtc.ToLocalTime().ToString("MMM d, yyyy h:mm tt")</td>
-                    <td><span class="badge bg-secondary text-uppercase" style="letter-spacing:.04em;">@c.Status</span></td>
+                    <td><span class="commitment-status-pill">@c.Status</span></td>
                     <td>
-                        <div class="d-flex gap-2 flex-wrap">
-                            <button type="button" class="btn btn-success btn-sm" data-client-commitment-action="fulfill" data-commitment-id="@c.Id" @(isOpen ? "" : "disabled")>Fulfill</button>
-                            <button type="button" class="btn btn-outline-danger btn-sm" data-client-commitment-action="break" data-commitment-id="@c.Id" @(isOpen ? "" : "disabled")>Break</button>
+                        <div class="commitment-action-row">
+                            <button type="button" class="btn btn-ghost commitment-action-btn" data-client-commitment-action="fulfill" data-commitment-id="@c.Id" @(isOpen ? "" : "disabled")>Fulfill</button>
+                            <button type="button" class="btn btn-ghost commitment-action-btn commitment-action-btn-danger" data-client-commitment-action="break" data-commitment-id="@c.Id" @(isOpen ? "" : "disabled")>Break</button>
                         </div>
                     </td>
                 </tr>
@@ -53,8 +53,8 @@ else
 }
 
 <!-- Add Commitment Modal (Client) -->
-<div class="modal fade" id="addClientCommitmentModal" tabindex="-1" aria-hidden="true">
-  <div class="modal-dialog modal-dialog-centered modal-lg">
+<div class="modal fade quick-entry-shell" id="addClientCommitmentModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered modal-lg quick-entry-dialog">
     <div class="modal-content">
       <div class="modal-header">
         <h5 class="modal-title">Add Commitment</h5>
@@ -81,83 +81,3 @@ else
     </div>
   </div>
 </div>
-
-<style>
-    .commitments-table{
-        width:100%;
-        margin:0;
-        background-color:#ffffff;
-        border:1px solid rgba(15,23,42,.15);
-        border-radius:10px;
-        overflow:hidden;
-        border-collapse: separate;
-        border-spacing: 0;
-    }
-    .commitments-table td,
-    .commitments-table th{
-        color:#0b1224;
-        vertical-align:middle;
-        padding:8px 10px;
-        border-color:rgba(15,23,42,.12);
-    }
-    .commitments-table th{
-        white-space:nowrap;
-        font-size:.74rem;
-        letter-spacing:.03em;
-        text-transform:uppercase;
-        background:#f7f8fb;
-    }
-    .commitments-table th:first-child,
-    .commitments-table td:first-child{
-        width:46%;
-        white-space:normal;
-        word-break:break-word;
-    }
-    .commitments-table th:last-child,
-    .commitments-table td:last-child{
-        width:188px;
-        min-width:188px;
-        white-space:nowrap;
-    }
-    .commitments-table td .btn{
-        padding:4px 10px;
-        font-size:12px;
-        line-height:1.2;
-        border-radius:8px;
-        white-space:nowrap;
-    }
-    #addClientCommitmentModal{
-        background: rgba(0,0,0,0.75);
-    }
-    #addClientCommitmentModal .modal-dialog{
-        max-width: 640px;
-        margin: 0 auto;
-        height: 100%;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        padding: 20px;
-        pointer-events: auto;
-        background: transparent;
-    }
-    #addClientCommitmentModal .modal-content{
-        background:#0b1325 !important;
-        color:#f8fafc !important;
-        border:1px solid #1f2b3d !important;
-        border-radius: 12px;
-        box-shadow: 0 18px 38px rgba(0,0,0,0.45);
-    }
-    #addClientCommitmentModal .modal-header{
-        background:#0b1325 !important;
-        border-bottom:1px solid #1f2b3d !important;
-        padding:12px 16px;
-    }
-    #addClientCommitmentModal .modal-body{
-        background:#0b1325 !important;
-        padding:14px 16px;
-    }
-    #addClientCommitmentModal .form-control, #addClientCommitmentModal textarea{ background:#0f172a; color:#f8fafc; border:1px solid #2c3a5a; }
-    #addClientCommitmentModal .form-control::placeholder, #addClientCommitmentModal textarea::placeholder{ color:#94a3b8; }
-    #addClientCommitmentModal .form-label{ color:#f1c76a; font-weight:600; }
-    #addClientCommitmentModal .btn-close{ filter: invert(1); }
-</style>

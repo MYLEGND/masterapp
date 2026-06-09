@@ -91,11 +91,71 @@ public class WebsiteLifeLeadCaptureServiceTests
         Assert.Equal("agent-sqlite", lead.AgentUserId);
         Assert.Equal(WorkstationLeadBuckets.LifeInsurance, lead.Bucket);
         Assert.Equal("6025550188", lead.Phone);
+        Assert.Equal(new DateTime(2026, 5, 21, 18, 5, 0, DateTimeKind.Utc).Ticks, lead.CrmOrder);
 
         var intake = await db.WebsiteLeadIntakeLinks.SingleAsync();
         Assert.Equal(lead.LeadId, intake.WorkstationLeadId);
         Assert.Equal("agent-sqlite", intake.AgentUserId);
         Assert.Equal(websiteLeadId, intake.WebsiteLeadPublicId);
+    }
+
+    [Fact]
+    public async Task UpsertAsync_Skips_Workstation_Capture_For_Internal_Localhost_Leads()
+    {
+        await using var db = ControllerTestHelpers.BuildDb();
+        var trackingProfileId = Guid.NewGuid();
+        var websiteLeadId = Guid.NewGuid();
+
+        db.AgentTrackingProfiles.Add(new AgentTrackingProfile
+        {
+            Id = trackingProfileId,
+            AgentUserId = "agent-internal",
+            AgentUpn = "internal@example.com",
+            Slug = "internal-agent"
+        });
+        db.WebsiteLeads.Add(new WebsiteLead
+        {
+            LeadId = websiteLeadId,
+            FirstName = "Local",
+            LastName = "Tester",
+            Email = "local@example.com",
+            Phone = "(602) 555-0199",
+            InterestType = "life_general",
+            SourcePageKey = "quote_life",
+            AgentTrackingProfileId = trackingProfileId,
+            AgentSlug = "internal-agent",
+            IsInternal = true,
+            Environment = "development",
+            Host = "localhost:6205",
+            CreatedUtc = new DateTime(2026, 5, 31, 20, 0, 0, DateTimeKind.Utc),
+            Status = "New"
+        });
+        await db.SaveChangesAsync();
+
+        var service = new WebsiteLifeLeadCaptureService(db, NullLogger<WebsiteLifeLeadCaptureService>.Instance);
+
+        var result = await service.UpsertAsync(new WebsiteLifeLeadCaptureRequest
+        {
+            WebsiteLeadId = websiteLeadId,
+            SubmittedUtc = new DateTime(2026, 5, 31, 20, 0, 0, DateTimeKind.Utc),
+            ProductType = "life_general",
+            OfferKey = "life",
+            FirstName = "Local",
+            LastName = "Tester",
+            Email = "local@example.com",
+            Phone = "(602) 555-0199",
+            AgentTrackingProfileId = trackingProfileId,
+            AgentSlug = "internal-agent",
+            RecipientEmail = "internal@example.com"
+        });
+        await db.SaveChangesAsync();
+
+        Assert.False(result.Captured);
+        Assert.False(result.Created);
+        Assert.Equal(WorkstationLeadBuckets.LifeInsurance, result.Bucket);
+        Assert.Equal("InternalTestLead", result.Reason);
+        Assert.False(await db.WorkstationLeadProfiles.AnyAsync());
+        Assert.False(await db.WebsiteLeadIntakeLinks.AnyAsync());
     }
 
     [Fact]

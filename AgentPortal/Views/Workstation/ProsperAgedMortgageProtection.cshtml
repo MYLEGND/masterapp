@@ -51,22 +51,19 @@
                     </div>
                     <div class="hero-actions">
                         <div class="hero-action-group">
-                            <button type="button" class="btn hp-proposal-trigger" id="btnProposal">Proposal ▾</button>
-                            <div class="hp-proposal-menu" id="proposalMenu" hidden>
-                                <div class="hp-proposal-menu-head">
-                                    <span>Saved Proposals</span>
-                                    <button type="button" class="btn-mini" id="btnProposalNew">+ New</button>
-                                </div>
-                                <div class="hp-proposal-menu-list" id="proposalMenuList"></div>
-                            </div>
+                            @await Html.PartialAsync("~/Views/Shared/_ProposalLauncher.cshtml")
                         </div>
-                    <div class="hero-action-group">
-                        <button type="button" class="btn gold hero-underwrite" id="btnUnderwriting">Underwriting ▾</button>
-                        <div class="proposal-menu" id="uwMenu" hidden>
-                            <div class="proposal-menu-head">
-                                <span>Saved Underwriting</span>
-                                <button type="button" class="btn-mini" id="btnUwNew">+ New</button>
-                            </div>
+                        <div class="hero-action-group">
+                            <button type="button" class="btn gold hero-underwrite" id="btnUnderwriting">Underwriting ▾</button>
+                            <div class="proposal-menu" id="uwMenu" hidden>
+                                <div class="proposal-menu-head">
+                                    <span>Saved Underwriting</span>
+                                    <div class="hp-menu-head-actions">
+                                        <button type="button" class="btn-mini" id="btnUwNew">Lead</button>
+                                        <button type="button" class="btn-mini" id="btnUwClient">Use Client</button>
+                                        <button type="button" class="btn-mini" id="btnUwScratch">Scratch</button>
+                                    </div>
+                                </div>
                                 <div class="proposal-menu-list" id="uwMenuList"></div>
                             </div>
                         </div>
@@ -101,7 +98,6 @@
             </div>
 
             <div class="card" id="mpCard">
-
                 <details class="section" data-step="0" data-flow="verify" data-signal="bad" id="sec-hub">
                     <summary>
                         <div class="sum-left">
@@ -923,11 +919,18 @@ Sounds good. I’ll be calling you in a year to check in on your benefits, but f
     </div>
 </div>
 
+@await Html.PartialAsync("~/Views/Shared/_UnderwritingForm.cshtml", viewData: new ViewDataDictionary(ViewData) { { "UwSubtitle", "Underwriting Intake — Mortgage Protection" } })
+@await Html.PartialAsync("~/Views/Shared/_WorkstationClientPicker.cshtml")
+@await Html.PartialAsync("~/Views/Shared/_ProposalBuilder.cshtml")
+@await Html.PartialAsync("~/Views/Proposals/_DecisionModal.cshtml")
+
 <div id="toast" class="toast">Copied.</div>
 
 <script src="~/js/rebuttals-leads.js" asp-append-version="true"></script>
+<script src="~/js/legend-modal.js" asp-append-version="true"></script>
 <script src="~/js/uw-intake.js" asp-append-version="true"></script>
-<script src="~/js/proposal-builder.js" asp-append-version="true"></script>
+<script src="~/js/workstation-client-picker.js" asp-append-version="true"></script>
+<script src="~/js/proposal-uw.js" asp-append-version="true"></script>
 <script src="~/js/workstation/script-guide.js" asp-append-version="true"></script>
 
 <script>
@@ -1316,5 +1319,3 @@ Sounds good. I’ll be calling you in a year to check in on your benefits, but f
     updateCurrentState();
 })();
 </script>
-
-@await Html.PartialAsync("~/Views/Proposals/_DecisionModal.cshtml")

@@ -3,6 +3,7 @@ using System.Text.Json;
 using AgentPortal.Security;
 using Domain.Entities;
 using Infrastructure.Data;
+using Infrastructure.Leads;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Cors;
@@ -142,6 +143,7 @@ public class LeadSubmitController : ControllerBase
         }
 
         var now = DateTime.UtcNow;
+        var requestHost = string.IsNullOrWhiteSpace(req.Host) ? Request.Host.ToString() : req.Host;
         var lead = new WebsiteLead
         {
             LeadId = Guid.NewGuid(),
@@ -167,9 +169,9 @@ public class LeadSubmitController : ControllerBase
             MarketingEmailConsent = req.MarketingEmailConsent,
             CallTextConsent = req.CallTextConsent && !string.IsNullOrWhiteSpace(req.Phone),
             TermsAccepted = req.TermsAccepted,
-            IsInternal = FounderGuard.IsFounder(User),
+            IsInternal = FounderGuard.IsFounder(User) || WebsiteLeadCaptureSafety.ShouldMarkAsInternalTest(requestHost),
             Environment = ResolveEnvironment(req.Environment),
-            Host = string.IsNullOrWhiteSpace(req.Host) ? Request.Host.ToString() : req.Host,
+            Host = requestHost,
             CreatedUtc = now,
             Status = "New",
             AgentTrackingProfileId = resolved.Found ? resolved.Profile.Id : null,

@@ -8,20 +8,26 @@
 
   function init() {
     const openBtn = document.getElementById("btnUnderwriting");
-    const newBtn = document.getElementById("btnUwNew");
-    const menu = document.getElementById("uwMenu");
-    const menuList = document.getElementById("uwMenuList");
-    const overlay = document.getElementById("uwOverlay");
-    const dialog = document.getElementById("uwDialog");
+    const newButtons = Array.from(document.querySelectorAll('[data-uw-new], #btnUwNew'));
+    const clientButtons = Array.from(document.querySelectorAll('[data-uw-client], #btnUwClient'));
+    const scratchButtons = Array.from(document.querySelectorAll('[data-uw-scratch], #btnUwScratch'));
+    const menu = window.LegendModal?.ensureInBody("uwMenu") || document.getElementById("uwMenu");
+    const menuList = menu?.querySelector("#uwMenuList") || document.getElementById("uwMenuList");
+    const overlay = window.LegendModal?.ensureInBody("uwOverlay") || document.getElementById("uwOverlay");
+    const dialog = overlay?.querySelector("#uwDialog") || document.getElementById("uwDialog");
     const form = document.getElementById("uwForm");
     const saveBtn = document.getElementById("uwSave");
     const downloadBtn = document.getElementById("btnUwDownload");
     const closeEls = Array.from(document.querySelectorAll("[data-uw-close]"));
+    const contextLabelEl = document.querySelector("[data-uw-context-label]");
+    const refreshViewportOffsets = () => window.LegendModal?.refreshViewportOffsets?.();
 
     if (!openBtn || !overlay || !form) return;
 
     let cache = [];
     let editingId = null;
+    let manualContext = null;
+    let manualScopeKey = "";
     let isSaving = false;
     let migrationPromise = null;
 
@@ -206,6 +212,88 @@
       };
     }
 
+    function ensureScratchScopeKey() {
+      if (!manualScopeKey) manualScopeKey = `scratch:${crypto.randomUUID()}`;
+      return manualScopeKey;
+    }
+
+    function getActiveMeta() {
+      if (!manualContext) return getLeadMeta();
+
+      if (manualContext.kind === "client") {
+        const clientKey = normalizeKeyPart(manualContext.clientUserId);
+        return {
+          leadId: "",
+          leadName: (manualContext.displayName || "").trim(),
+          queueKey: "manual-client",
+          pageTitle: `Client CRM • ${(manualContext.displayName || "Client").trim()}`,
+          scopeKey: `client:${clientKey}`
+        };
+      }
+
+      return {
+        leadId: "",
+        leadName: (manualContext.displayName || "").trim(),
+        queueKey: "manual-scratch",
+        pageTitle: "Scratch Underwriting",
+        scopeKey: ensureScratchScopeKey()
+      };
+    }
+
+    function setManualContext(context = null) {
+      manualContext = context ? { ...context } : null;
+      if (!manualContext) {
+        manualScopeKey = "";
+      } else if (manualContext.kind === "scratch") {
+        manualScopeKey = (manualContext.scopeKey || "").trim() || ensureScratchScopeKey();
+      } else {
+        manualScopeKey = "";
+      }
+      syncContextLabel();
+    }
+
+    function syncContextLabel() {
+      if (!contextLabelEl) return;
+      if (!manualContext) {
+        const meta = getLeadMeta();
+        contextLabelEl.textContent = meta.leadName ? `Current lead: ${meta.leadName}` : "Current lead";
+        return;
+      }
+
+      if (manualContext.kind === "client") {
+        contextLabelEl.textContent = `Client CRM: ${manualContext.displayName || "Manual client"}`;
+        return;
+      }
+
+      contextLabelEl.textContent = manualContext.displayName
+        ? `Scratch: ${manualContext.displayName}`
+        : "Scratch build";
+    }
+
+    function restoreContextFromRecord(record) {
+      const recordLeadId = (record?.leadId || "").trim();
+      if (recordLeadId) {
+        setManualContext(null);
+        return;
+      }
+
+      const scopeKey = (record?.scopeKey || "").trim();
+      if (scopeKey.toLowerCase().startsWith("client:")) {
+        setManualContext({
+          kind: "client",
+          clientUserId: scopeKey.slice("client:".length),
+          displayName: (record?.leadName || record?.name || "Client").trim()
+        });
+        return;
+      }
+
+      setManualContext({
+        kind: "scratch",
+        displayName: (record?.leadName || "").trim(),
+        scopeKey
+      });
+    }
+
     function mergeLeadMeta(existing = {}, fresh = getLeadMeta()) {
       return {
         ...fresh,
@@ -217,7 +305,7 @@
       };
     }
 
-    function currentScopeMatches(record, meta = getLeadMeta()) {
+    function currentScopeMatches(record, meta = getActiveMeta()) {
       if (!record) return false;
       const recLead = (record.leadId || "").trim();
       const curLead = (meta.leadId || "").trim();
@@ -368,13 +456,27 @@
       updateEquityFromInputs();
     }
 
+    function prefillFromManualContext() {
+      if (fields.date && !fields.date.value) fields.date.value = new Date().toLocaleDateString();
+      if (fields.clientName && !fields.clientName.value) fields.clientName.value = (manualContext?.displayName || "").trim();
+      if (fields.email && !fields.email.value) fields.email.value = (manualContext?.email || "").trim();
+      if (fields.phone && !fields.phone.value) fields.phone.value = (manualContext?.phone || "").trim();
+    }
+
     function toggleModal(show, opts = {}) {
       const shouldPrefill = opts.prefill !== false;
       if (show) {
-        if (shouldPrefill) prefillFromLeadBridge();
+        refreshViewportOffsets();
+        if (shouldPrefill) {
+          if (manualContext) prefillFromManualContext();
+          else prefillFromLeadBridge();
+        }
+        overlay.scrollTop = 0;
+        if (dialog) dialog.scrollTop = 0;
         overlay.hidden = false;
         document.body.classList.add("uw-open");
         dialog?.focus();
+        syncContextLabel();
         return;
       }
       overlay.hidden = true;
@@ -565,14 +667,14 @@
 
     function renderMenu() {
       if (!menuList) return;
-      const currentLeadId = readLead("leadId");
+      const activeMeta = getActiveMeta();
       const store = sortStore(cache);
       if (!store.length) {
         menuList.innerHTML = `<div class="proposal-empty">No underwriting saved</div>`;
         return;
       }
       menuList.innerHTML = store.map((record) => `
-        <div class="proposal-item${currentLeadId && record.leadId === currentLeadId ? " is-current" : ""}" data-id="${escapeHtml(record.id)}">
+        <div class="proposal-item${currentScopeMatches(record, activeMeta) ? " is-current" : ""}" data-id="${escapeHtml(record.id)}">
           <div class="proposal-name-wrap" data-uw-open>
             <div class="proposal-name">${escapeHtml(record.name || "Underwriting")}</div>
             ${(record.isDraft || ((record.leadName || record.leadId) && (record.leadName || "").trim().toLowerCase() !== (record.name || "").trim().toLowerCase()))
@@ -592,6 +694,7 @@
     }
 
     function openRecord(record = null) {
+      if (record) restoreContextFromRecord(record);
       const currentDraft = !record ? cache.find((item) => item.isDraft && currentScopeMatches(item)) : null;
       const source = record || currentDraft || null;
       editingId = source?.id || null;
@@ -601,7 +704,7 @@
     }
 
     function buildRequestPayload(data, isDraft) {
-      const meta = mergeLeadMeta(cache.find((item) => item.id === editingId) || {}, getLeadMeta());
+      const meta = mergeLeadMeta(cache.find((item) => item.id === editingId) || {}, getActiveMeta());
       return {
         id: editingId || crypto.randomUUID(),
         leadId: meta.leadId,
@@ -610,7 +713,7 @@
         scopeKey: meta.scopeKey,
         pageTitle: meta.pageTitle,
         productCode: productCode(),
-        name: (data.clientName || "Underwriting").trim() || "Underwriting",
+        name: (data.clientName || meta.leadName || "Underwriting").trim() || "Underwriting",
         payloadJson: JSON.stringify(data || {}),
         isDraft
       };
@@ -706,6 +809,7 @@
 
     function toggleMenu() {
       if (menu) {
+        refreshViewportOffsets();
         renderMenu();
         menu.hidden = !menu.hidden;
       }
@@ -722,14 +826,17 @@
       const isMobile = !!window.matchMedia?.("(max-width: 900px)")?.matches;
       if (isMobile) {
         closeMenu();
+        setManualContext(null);
         openRecord(null);
         return;
       }
       toggleMenu();
     });
 
-    newBtn?.addEventListener("click", async (event) => {
+    newButtons.forEach((button) => button.addEventListener("click", async (event) => {
+      event.preventDefault();
       event.stopPropagation();
+      setManualContext(null);
       closeMenu();
       try {
         await ensureServerData();
@@ -739,7 +846,49 @@
       editingId = null;
       clearForm();
       openRecord(null);
-    });
+    }));
+
+    scratchButtons.forEach((button) => button.addEventListener("click", async (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      setManualContext({ kind: "scratch", displayName: "", scopeKey: `scratch:${crypto.randomUUID()}` });
+      closeMenu();
+      try {
+        await ensureServerData();
+      } catch (error) {
+        console.error("Underwriting refresh failed", error);
+      }
+      editingId = null;
+      clearForm();
+      openRecord(null);
+    }));
+
+    clientButtons.forEach((button) => button.addEventListener("click", async (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      try {
+        const picked = await window.WorkstationClientPicker?.open?.({
+          title: "Load client into underwriting",
+          subtitle: "Search your Clients CRM records and launch underwriting without touching lead dialing."
+        });
+        if (!picked) return;
+        setManualContext({
+          kind: "client",
+          clientUserId: picked.clientUserId || "",
+          displayName: picked.displayName || "",
+          email: picked.email || "",
+          phone: picked.phone || "",
+          recordType: picked.recordType || ""
+        });
+        closeMenu();
+        await ensureServerData();
+        editingId = null;
+        clearForm();
+        openRecord(null);
+      } catch (error) {
+        console.error("Underwriting client load failed", error);
+      }
+    }));
 
     document.addEventListener("click", (event) => {
       if (menu && (menu.contains(event.target) || event.target === openBtn)) return;
@@ -773,7 +922,11 @@
     enhanceAllMultiSelects();
     renderMenu();
 
-    window.addEventListener("leadbridge:currentLead", () => renderMenu());
+    window.addEventListener("leadbridge:currentLead", () => {
+      renderMenu();
+      if (!manualContext) syncContextLabel();
+    });
+    syncContextLabel();
 
     downloadBtn?.addEventListener("click", () => {
       const data = collectForm();

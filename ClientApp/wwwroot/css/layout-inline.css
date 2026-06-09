@@ -1,6 +1,6 @@
         :root{
-            --client-navy:#080d1a;
-            --client-navy-deep:#0a1020;
+            --client-navy:#0e1b3d;
+            --client-navy-deep:#0b1530;
             --client-gold:#a68023;
             --client-gold-bright:#c79931;
             --client-line:rgba(166,128,35,.42);
@@ -239,6 +239,7 @@
             box-shadow: 0 10px 18px rgba(0,0,0,.26), inset 0 1px 0 rgba(255,255,255,.06);
             cursor: pointer;
             padding: 0;
+            overflow: hidden;
             transition: transform .12s ease, box-shadow .16s ease, background .16s ease;
         }
         .nav-toggle:focus-visible { outline: 2px solid var(--client-gold-bright); outline-offset: 3px; }
@@ -247,12 +248,13 @@
         .nav-toggle-bars::before,
         .nav-toggle-bars::after {
             display: block;
-            width: 20px;
+            width: 16px;
             height: 2px;
             background: #f8fafc;
             border-radius: 4px;
             position: relative;
             transition: transform .18s ease, opacity .18s ease;
+            transform-origin: center;
         }
         .nav-toggle-bars::before,
         .nav-toggle-bars::after {
@@ -260,11 +262,17 @@
             position: absolute;
             left: 0;
         }
-        .nav-toggle-bars::before { top: -6px; }
-        .nav-toggle-bars::after { top: 6px; }
+        .nav-toggle-bars::before { top: -5px; }
+        .nav-toggle-bars::after { top: 5px; }
         .navbar.mobile-open .nav-toggle-bars { transform: rotate(45deg); }
-        .navbar.mobile-open .nav-toggle-bars::before { transform: rotate(-90deg) translateX(-6px); }
+        .navbar.mobile-open .nav-toggle-bars::before { transform: rotate(-90deg); }
         .navbar.mobile-open .nav-toggle-bars::after { opacity: 0; }
+
+        .nav-item-mobile-toggle {
+            display: none;
+            align-items: center;
+            list-style: none;
+        }
 
         .agent-pill-shell {
             order: 2;
@@ -637,30 +645,31 @@
         .explore-overlay.open{ display:block; }
 
         .explore-trigger{
-            position: fixed;
-            left: 18px;
-            top: 185px;
-            z-index: 1100;
-            width: 54px;
-            height: 54px;
-            border-radius: 16px;
+            position: static;
+            left: auto;
+            top: auto;
+            z-index: auto;
+            width: 42px;
+            height: 42px;
+            border-radius: 13px;
             border: 1.6px solid rgba(166,128,35,.86);
             background: #0b1529;
             box-shadow:
-                0 16px 34px rgba(0,0,0,.26),
+                0 10px 20px rgba(0,0,0,.22),
                 inset 0 0 0 1px rgba(255,255,255,.10);
             display: flex;
             align-items: center;
             justify-content: center;
             cursor: pointer;
             transition: all .2s ease;
+            padding: 0;
         }
 
         .explore-trigger:hover{
-            transform: translateY(-2px) scale(1.01);
+            transform: translateY(-1px) scale(1.01);
             border-color: rgba(166,128,35,.94);
             box-shadow:
-                0 20px 42px rgba(0,0,0,.32),
+                0 14px 24px rgba(0,0,0,.26),
                 inset 0 0 0 1px rgba(255,255,255,.14);
         }
 
@@ -684,9 +693,15 @@
             background: linear-gradient(90deg, #f8fafc, #efc866);
         }
 
+        .navbar-left .nav-item-explore{
+            display: flex;
+            align-items: center;
+            flex: 0 0 auto;
+        }
+
         .explore-drawer{
             position: fixed;
-            left: 78px;
+            left: 18px;
             top: 185px;
             z-index: 1099;
             width: 320px;
@@ -866,9 +881,9 @@
         }
 
         footer.footer {
-            background: #ffffff !important;
-            color: #1a1a1a !important;
-            border-top: 1.5px solid rgba(166,128,35,.30) !important;
+            background: linear-gradient(180deg, #0e1b3d, #0b1530) !important;
+            color: #a68023 !important;
+            border-top: 1.5px solid rgba(166,128,35,.50) !important;
             font-weight: 700;
             font-size: 0.95rem;
         }
@@ -960,7 +975,7 @@
        Mobile: hide nav items until hamburger opens.
        Desktop: show nav inline, hide hamburger.
        ========================= */
-    @@media (max-width: 840px) {
+    @media (max-width: 840px) {
         .navbar {
             flex-direction: column;
             align-items: stretch;
@@ -981,8 +996,16 @@
             gap: 0.5rem;
         }
 
-        /* keep rows hidden until toggled */
-        .navbar-left,
+        .navbar-left {
+            display: block !important;
+            width: 100%;
+            margin-top: .35rem;
+            background: transparent;
+            border: 0;
+            padding: 0;
+            box-shadow: none;
+        }
+
         .navbar-right {
             display: none !important;
             width: 100%;
@@ -997,6 +1020,35 @@
         .navbar.mobile-open .navbar-left,
         .navbar.mobile-open .navbar-right {
             display: block !important;
+        }
+
+        .navbar-left .nav-row > .nav-item {
+            display: none;
+            width: 100%;
+        }
+
+        .navbar-left .nav-row > .nav-item-mobile-toggle {
+            display: flex;
+            width: auto;
+        }
+
+        .navbar.mobile-open .navbar-left .nav-row > .nav-item {
+            display: block;
+        }
+
+        .navbar.mobile-open .navbar-left .nav-row > .nav-item-mobile-toggle {
+            display: flex;
+            width: auto;
+        }
+
+        .navbar-left .nav-context-row {
+            display: none;
+        }
+
+        .navbar.mobile-open .navbar-left .nav-context-row {
+            display: flex;
+            flex-wrap: wrap;
+            margin-top: .45rem;
         }
 
         header .navbar .navbar-left .nav-row {
@@ -1039,14 +1091,15 @@
             justify-content: flex-start;
         }
 
-        .nav-toggle { display: inline-flex !important; margin-left: auto; }
+        .nav-item-mobile-toggle .nav-toggle { display: inline-flex !important; margin-left: 0; }
 
         .explore-trigger { top: 185px; left: 12px; }
         .explore-drawer  { top: 185px; left: 70px; }
     }
 
-    @@media (min-width: 841px) {
+    @media (min-width: 841px) {
         .nav-toggle { display: none !important; }
+        .nav-item-mobile-toggle { display: none !important; }
         .navbar {
             flex-direction: row;
             align-items: center;
@@ -1064,7 +1117,7 @@
         }
     }
 
-        @@media (max-width: 768px) {
+        @media (max-width: 768px) {
             .footer-shell{
                 grid-template-columns: 1fr;
                 justify-items:center;
@@ -1092,7 +1145,7 @@
            iPad/Tablets: keep desktop vibe,
            but prevent overflow + keep Psalms inside.
            ========================= */
-        @@media (min-width: 577px) and (max-width: 840px) {
+        @media (min-width: 577px) and (max-width: 840px) {
             .navbar { max-height: none; }
 
             /* allow wrap but keep layout clean */
@@ -1133,7 +1186,7 @@
             }
         }
 
-        @@media (max-width: 576px) {
+        @media (max-width: 576px) {
             .nav-context-row {
                 width: 100%;
             }

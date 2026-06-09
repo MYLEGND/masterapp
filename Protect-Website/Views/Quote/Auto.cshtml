@@ -21,205 +21,108 @@
     Model.Drivers ??= new List<Protect_Website.Models.Driver>();
     if (Model.Drivers.Count == 0) Model.Drivers.Add(new Protect_Website.Models.Driver());
 
-    Model.Vehicles ??= new List<Protect_Website.Models.Vehicle>();
-    if (Model.Vehicles.Count == 0) Model.Vehicles.Add(new Protect_Website.Models.Vehicle());
-
-    Model.Accidents ??= new List<Protect_Website.Models.Accident>();
-    Model.Violations ??= new List<Protect_Website.Models.Violation>();
-    Model.CompLosses ??= new List<Protect_Website.Models.CompLoss>();
-}
-
-<div class="container-narrow">
-
-    <div class="text-center" style="margin-top:18px; margin-bottom:6px;">
-        <h1 style="
-            font-weight: 900;
-            font-size: 2.4rem;
-            color: #a68023;
-            letter-spacing: .5px;
-            margin-bottom: 6px;">
-            Auto Insurance Quote
-        </h1>
-    </div>
-
-    <p class="required-note text-center">
-        <strong>
-            <span class="text-danger">*</span> Fields marked with a red asterisk are required.
-        </strong>
-    </p>
-
-@if (!ViewData.ModelState.IsValid)
-{
-    <div class="alert alert-danger fw-bold">
-        @Html.ValidationSummary(excludePropertyErrors: false)
-    </div>
-}
-
-<style>
-    body { background-color: #0f172a; color: #f8fafc; }
-
-    form.container { max-width: 1200px; padding-bottom: 40px; }
-
-    .section-card {
-        background-color: #0f172a;
-        border: 1.6px solid #c79931;
-        padding: 26px;
-        border-radius: 12px;
-        margin: 18px auto 26px;
-        box-shadow: 0 18px 40px rgba(0,0,0,0.18);
-        color: #f8fafc;
-    }
-
-    .section-title {
-        font-size: 1.45rem;
-        font-weight: 900;
-        color: #c79931;
-        margin-bottom: 18px;
-        letter-spacing: 0.2px;
-    }
-
-    .section-card h5 { font-weight: 900; margin-top: 10px; margin-bottom: 10px; color: #c79931; }
-
-    label { font-weight: 800; color: #f8fafc; }
-
-    .form-control, .form-select, textarea {
-        border: 1.6px solid #c79931;
-        margin-bottom: 12px;
-        border-radius: 10px;
-        padding: 10px 12px;
-        background: #ffffff;
-        color: #0f172a;
-    }
-
-    .form-control::placeholder,
-    textarea::placeholder{
-        color: rgba(15,23,42,0.55);
-    }
-
-    .form-control:focus, .form-select:focus, textarea:focus {
-        outline: none;
-        box-shadow: 0 0 0 0.2rem rgba(199,153,49,0.22);
-        border-color: #c79931;
-        background: #ffffff;
-        color: #0f172a;
-    }
-
-    .btn-gold {
-        background: linear-gradient(180deg, #c79931, #a68023);
-        color: #fff;
-        font-weight: 900;
-        padding: 12px 26px;
-        border-radius: 10px;
-        font-size: 1.05rem;
-        border: 1.4px solid #c79931;
-        letter-spacing: 0.2px;
-        box-shadow: 0 14px 32px rgba(0,0,0,0.18);
-    }
-
-    .btn-gold:hover { background-color: #8f6f1e; color: #fff; }
-
-    /* Back button styling (avoid flat white) */
-    .btn-secondary {
-        background: transparent;
-        color: #c79931;
-        border: 1.6px solid #c79931;
-        font-weight: 800;
-        box-shadow: none;
-    }
-    .btn-secondary:hover {
-        background: rgba(199,153,49,0.12);
-        color: #c79931;
-        border-color: #c79931;
-    }
-
-    .mini-card {
-        border: 1.2px solid #c79931;
-        padding: 18px;
-        border-radius: 12px;
-        margin-bottom: 16px;
-        background: #111c32;
-        box-shadow: 0 12px 28px rgba(0,0,0,0.16);
-        color: #f8fafc;
-    }
-
-    .mini-card h5 { color: #c79931; margin-bottom: 12px; font-weight: 900; }
-
-    /* Answered vs missing (inline cues) */
-    .input-answered {
-        border-color: #c79931 !important;
-        box-shadow: 0 0 0 1px #c79931 !important;
-    }
-
-    .input-required-missing {
-        border-color: #dc3545 !important;
-        box-shadow: 0 0 10px rgba(220, 53, 69, 0.55) !important;
-    }
-
-    .wizard-steps {
-        display: flex;
-        gap: 10px;
-        flex-wrap: wrap;
-        margin: 10px auto 18px;
-        justify-content: center;
-        max-width: 1200px;
-        padding: 0 12px;
-    }
-
-    .wizard-pill {
-        border: 1.4px solid #c79931;
-        padding: 8px 12px;
-        border-radius: 999px;
-        font-weight: 900;
-        font-size: 0.95rem;
-        color: #f8fafc;
-        opacity: 0.65;
-        background: #111c32;
-        user-select: none;
-        box-shadow: 0 10px 24px rgba(0,0,0,0.12);
-    }
-
-    .wizard-pill.active { opacity: 1; background: rgba(199,153,49,0.18); color: #f8fafc; border-color: #c79931; }
-
-    .wizard-step { display: none; }
-    .wizard-step.active { display: block; }
-
-    @@media (max-width: 768px) {
-        .section-card { padding: 18px; }
-        .btn-gold { width: 100%; min-height: 48px; }
-
-        .wizard-steps {
-            flex-wrap: nowrap;
-            overflow-x: auto;
-            justify-content: flex-start;
-            -webkit-overflow-scrolling: touch;
-            scrollbar-width: none;
-            padding-bottom: 6px;
-        }
-
-        .wizard-steps::-webkit-scrollbar { display: none; }
-
-        .wizard-pill {
-            flex: 0 0 auto;
-            white-space: nowrap;
-        }
-    }
-</style>
-
-<div class="wizard-steps">
-    <div class="wizard-pill" data-pill="1">Section 1 — Policy</div>
-    <div class="wizard-pill" data-pill="2">Section 2 — Drivers</div>
-    <div class="wizard-pill" data-pill="3">Section 3 — Vehicles</div>
-    <div class="wizard-pill" data-pill="4">Section 4 — Incidents</div>
-    <div class="wizard-pill" data-pill="5">Section 5 — Coverage</div>
-</div>
-
-<form action="/Quote/Auto" method="post" class="container" id="autoQuoteForm" novalidate data-form-key="@formKey">
-    @Html.AntiForgeryToken()
-    @if (!string.IsNullOrWhiteSpace(agentSlug))
-    {
-        <input type="hidden" name="AgentSlug" value="@agentSlug" />
-    }
-    <input type="hidden" name="PageKey" value="@pageKey" />
+	    Model.Vehicles ??= new List<Protect_Website.Models.Vehicle>();
+	    if (Model.Vehicles.Count == 0) Model.Vehicles.Add(new Protect_Website.Models.Vehicle());
+	
+	    Model.Accidents ??= new List<Protect_Website.Models.Accident>();
+	    Model.Violations ??= new List<Protect_Website.Models.Violation>();
+	    Model.CompLosses ??= new List<Protect_Website.Models.CompLoss>();
+	    var startStep = ((int?)ViewData["StartStep"] ?? 1);
+	    var hasServerErrors = !ViewData.ModelState.IsValid;
+	    var showQuoteStartedByDefault = hasServerErrors || startStep > 1;
+	    IReadOnlyList<string> heroProofChips = new[] { "25+ carriers", "Driver-first review", "No obligation" };
+	    var heroStepIntroTitle = "Start with the accident-cost pressure";
+	    var heroStepIntroHelper = "A quick auto protection review built around your drivers, vehicles, recent incidents, and the coverage choices that matter before a claim catches you off guard.";
+	    var primaryStartCtaText = "Check My Auto Protection Fit";
+	    var primaryStartCtaNote = "Takes about 2 minutes. No obligation. Real coverage context before you shop.";
+	    var formHeadingTitle = "Build your auto protection plan";
+	    var formHeadingCopy = "Answer a few quick questions so we can match your drivers, vehicles, and coverage needs with protection options that fit.";
+	}
+	
+	<partial name="_PropertyCasualtyQuoteStyles" />
+	
+	<div class="container-narrow">
+	    <div class="pcq-shell">
+	        <div class="pcq-surface">
+	            <div class="pcq-hero-entry" id="autoHeroEntryPanel" @((showQuoteStartedByDefault ? "hidden" : null))>
+	                <figure class="pcq-hero-banner-wrap">
+	                    <img class="pcq-hero-banner-image" src="~/images/ads/auto-top-banner.png" asp-append-version="true" alt="Legend auto insurance review creative asking what an accident could really cost you." loading="eager" />
+	                </figure>
+	
+	                <div class="pcq-proof-row" aria-label="Auto quote benefits">
+	                    <span class="pcq-proof-pill">
+	                        <svg class="pcq-proof-icon" viewBox="0 0 24 24" aria-hidden="true">
+	                            <circle cx="12" cy="8" r="3.1"></circle>
+	                            <circle cx="5.6" cy="10" r="2.35"></circle>
+	                            <circle cx="18.4" cy="10" r="2.35"></circle>
+	                            <path d="M6.8 19.2c.65-3.15 2.55-5 5.2-5s4.55 1.85 5.2 5"></path>
+	                            <path d="M1.9 18.6c.45-2.25 1.8-3.55 3.7-3.55 1.05 0 1.95.38 2.65 1.1"></path>
+	                            <path d="M15.75 16.15c.7-.72 1.6-1.1 2.65-1.1 1.9 0 3.25 1.3 3.7 3.55"></path>
+	                        </svg>
+	                        @heroProofChips[0]
+	                    </span>
+	                    <span class="pcq-proof-pill">
+	                        <svg class="pcq-proof-icon" viewBox="0 0 24 24" aria-hidden="true">
+	                            <circle cx="12" cy="12" r="8.2"></circle>
+	                            <path d="M12 7.2v5.15l3.35 2.05"></path>
+	                        </svg>
+	                        @heroProofChips[1]
+	                    </span>
+	                    <span class="pcq-proof-pill">
+	                        <svg class="pcq-proof-icon" viewBox="0 0 24 24" aria-hidden="true">
+	                            <path d="M12 2.8 19.2 5.6v5.55c0 4.55-2.85 8.25-7.2 10.05-4.35-1.8-7.2-5.5-7.2-10.05V5.6L12 2.8Z"></path>
+	                            <path d="m8.7 12.1 2.15 2.15 4.55-4.8"></path>
+	                        </svg>
+	                        @heroProofChips[2]
+	                    </span>
+	                </div>
+	
+	                <div class="pcq-step-copy">
+	                    <div class="pcq-step-copy-title">@heroStepIntroTitle</div>
+	                    <p class="pcq-step-copy-helper">@heroStepIntroHelper</p>
+	                </div>
+	
+	                <div class="pcq-hero-actions">
+	                    <button type="button" class="btn btn-gold pcq-primary-start-cta" id="autoHeroStartCta" data-cta="auto_funnel_start" data-primary-cta="hero">@primaryStartCtaText</button>
+	                    <div class="pcq-start-note"><span>@primaryStartCtaNote</span></div>
+	                </div>
+	            </div>
+	
+	            <div class="pcq-form-shell" id="autoQuoteFlowShell" @((showQuoteStartedByDefault ? null : "hidden"))>
+	                <div class="pcq-form-heading">
+	                    <h1 class="pcq-form-heading-title">@formHeadingTitle</h1>
+	                    <p class="pcq-form-heading-copy">@formHeadingCopy</p>
+	                </div>
+	
+	                <p class="required-note text-center">
+	                    <strong>
+	                        <span class="text-danger">*</span> Fields marked with a red asterisk are required.
+	                    </strong>
+	                </p>
+	
+	                @if (!ViewData.ModelState.IsValid)
+	                {
+	                    <div class="alert alert-danger fw-bold">
+	                        @Html.ValidationSummary(excludePropertyErrors: false)
+	                    </div>
+	                }
+	
+	                <div class="wizard-steps">
+	                    <div class="wizard-pill" data-pill="1">Section 1 - Policy</div>
+	                    <div class="wizard-pill" data-pill="2">Section 2 - Drivers</div>
+	                    <div class="wizard-pill" data-pill="3">Section 3 - Vehicles</div>
+	                    <div class="wizard-pill" data-pill="4">Section 4 - Incidents</div>
+	                    <div class="wizard-pill" data-pill="5">Section 5 - Coverage</div>
+	                </div>
+	
+	                <form action="/Quote/Auto" method="post" class="pcq-form-frame" id="autoQuoteForm" novalidate data-form-key="@formKey">
+	    @Html.AntiForgeryToken()
+	    @if (!string.IsNullOrWhiteSpace(agentSlug))
+	    {
+	        <input type="hidden" name="AgentSlug" value="@agentSlug" />
+	    }
+	    <input type="hidden" name="PageKey" value="@pageKey" />
+	    <input type="hidden" name="CurrentStep" id="CurrentStep" value="@startStep" />
 
     <!-- ===================== SECTION 1 ===================== -->
     <div class="section-card wizard-step active" data-step="1">
@@ -710,14 +613,6 @@
                     <option>None</option>
                 </select>
                 <span asp-validation-for="MultiPolicyDiscount" class="text-danger"></span>
-            </div>
-        </div>
-
-        <div class="row">
-            <div class="col-md-12">
-                <label>Additional Carrier Questions<span class="text-danger">*</span></label>
-                <textarea asp-for="AdditionalCarrierQuestions" class="form-control" rows="3" required data-original-required="1"></textarea>
-                <span asp-validation-for="AdditionalCarrierQuestions" class="text-danger"></span>
             </div>
         </div>
 
@@ -1472,41 +1367,18 @@
 
         <hr />
 
-        <div class="section-card mt-3">
-            <style>
-                .disclaimer-check{
-                    display:flex;
-                    align-items:flex-start;
-                    gap:10px;
-                    padding:10px 0;
-                }
-                .disclaimer-check .form-check-input{
-                    width:18px;
-                    height:18px;
-                    margin-top:2px;
-                    margin-left:0;
-                    margin-right:0;
-                    position:static;
-                    flex-shrink:0;
-                }
-                .disclaimer-check .form-check-label{
-                    line-height:1.5;
-                    white-space:normal;
-                    color:#0f172a;
-                    font-weight:600;
-                }
-            </style>
-            <div class="form-check disclaimer-check">
-                <input asp-for="AcknowledgedDisclaimer" class="form-check-input" type="checkbox" required data-original-required="1" id="AcknowledgedDisclaimer" />
-                <label class="form-check-label" for="AcknowledgedDisclaimer">
-                    I acknowledge that by submitting this form, I authorize the company to contact me regarding my auto insurance quote request.<span class="text-danger">*</span>
+	        <div class="section-card mt-3">
+	            <div class="form-check disclaimer-check">
+	                <input asp-for="AcknowledgedDisclaimer" class="form-check-input" type="checkbox" required data-original-required="1" id="AcknowledgedDisclaimer" />
+	                <label class="form-check-label" for="AcknowledgedDisclaimer">
+	                    I acknowledge that by submitting this form, I authorize the company to contact me regarding my auto insurance quote request.<span class="text-danger">*</span>
                 </label>
             </div>
             <span asp-validation-for="AcknowledgedDisclaimer" class="text-danger"></span>
 
             <div class="d-flex justify-content-between mt-3">
                 <button type="button" class="btn btn-outline-gold fw-bold" onclick="goBack()">Back</button>
-                <button type="submit" class="btn btn-gold">Submit Auto Quote Request</button>
+	                <button type="submit" class="btn btn-gold">Submit Auto Quote Request</button>
             </div>
         </div>
     </div>
@@ -1520,12 +1392,16 @@
     <input type="hidden" name="UtmContent" />
     <input type="hidden" name="MetaCampaignId" />
     <input type="hidden" name="MetaAdSetId" />
-    <input type="hidden" name="MetaAdId" />
-    <input type="hidden" name="Fbclid" />
-    <input type="hidden" name="ReferrerUrl" />
-    <input type="hidden" name="LandingPageUrl" />
-</form>
-<script>
+	    <input type="hidden" name="MetaAdId" />
+	    <input type="hidden" name="Fbclid" />
+	    <input type="hidden" name="ReferrerUrl" />
+	    <input type="hidden" name="LandingPageUrl" />
+	</form>
+	            </div>
+	        </div>
+	    </div>
+	</div>
+	<script>
 (function () {
     var ids = window.legendTrackingIds;
     var p = new URLSearchParams(window.location.search);
@@ -1551,17 +1427,48 @@
 @section Scripts {
     <partial name="_ValidationScriptsPartial" />
 
-    <script>
-    let currentStep = 1;
-    const pageKey = '@pageKey';
-    const formKey = '@formKey';
-    const trackAutoQuote = (window.LegendAnalytics?.track && typeof window.LegendAnalytics.track === 'function')
-        ? window.LegendAnalytics.track
-        : (window.legendTrack && typeof window.legendTrack === 'function')
-            ? window.legendTrack
-            : null;
-    const autoCompletedSteps = new Set();
-    const autoViewedContactSteps = new Set();
+	    <script>
+	    let currentStep = 1;
+	    const pageKey = '@pageKey';
+	    const formKey = '@formKey';
+	    const initialStartStep = parseInt("@(ViewData["StartStep"] ?? 1)") || 1;
+	    let quoteStarted = '@(showQuoteStartedByDefault ? "true" : "false")' === 'true';
+	    const trackAutoQuote = (window.LegendAnalytics?.track && typeof window.LegendAnalytics.track === 'function')
+	        ? window.LegendAnalytics.track
+	        : (window.legendTrack && typeof window.legendTrack === 'function')
+	            ? window.legendTrack
+	            : null;
+	    const autoCompletedSteps = new Set();
+	    const autoViewedContactSteps = new Set();
+	    const heroEntryPanel = document.getElementById("autoHeroEntryPanel");
+	    const quoteFlowShell = document.getElementById("autoQuoteFlowShell");
+	    const startButton = document.getElementById("autoHeroStartCta");
+	    const currentStepField = document.getElementById("CurrentStep");
+
+	    function setQuoteStartedState(started) {
+	        quoteStarted = !!started;
+	        document.body.classList.toggle("pcq-quote-started", quoteStarted);
+	        if (heroEntryPanel) heroEntryPanel.hidden = quoteStarted;
+	        if (quoteFlowShell) quoteFlowShell.hidden = !quoteStarted;
+	    }
+
+	    function trackAutoCta(elementKey, buttonLabel) {
+	        if (!trackAutoQuote) return;
+	        trackAutoQuote({
+	            EventType: 'quote_cta_click',
+	            ElementKey: elementKey,
+	            ButtonLabel: buttonLabel,
+	            FormKey: formKey,
+	            PageKey: pageKey
+	        });
+	        trackAutoQuote({
+	            EventType: 'cta_click',
+	            ElementKey: elementKey,
+	            ButtonLabel: buttonLabel,
+	            FormKey: formKey,
+	            PageKey: pageKey
+	        });
+	    }
 
     function emitAutoStepComplete(stepNumber, nextStep) {
         if (!trackAutoQuote || autoCompletedSteps.has(stepNumber)) return;
@@ -1585,12 +1492,13 @@
         });
     }
 
-    function setStep(step) {
-        currentStep = step;
-
-        document.querySelectorAll(".wizard-step").forEach(s => {
-            const isActive = parseInt(s.getAttribute("data-step")) === step;
-            s.classList.toggle("active", isActive);
+	    function setStep(step) {
+	        currentStep = step;
+	        if (currentStepField) currentStepField.value = step.toString();
+	
+	        document.querySelectorAll(".wizard-step").forEach(s => {
+	            const isActive = parseInt(s.getAttribute("data-step")) === step;
+	            s.classList.toggle("active", isActive);
 
             s.querySelectorAll("input, select, textarea").forEach(el => {
                 el.disabled = !isActive;
@@ -1606,13 +1514,35 @@
             syncIncidentDropdowns();
             applyPendingIncidentSelections();
         }
-        if (step === 5) {
-            buildVehicleCoverageCards();
-        }
-        if (step === 1) {
-            emitAutoContactStepView(step);
-        }
-    }
+	        if (step === 5) {
+	            buildVehicleCoverageCards();
+	        }
+	        if (step === 1 && quoteStarted) {
+	            emitAutoContactStepView(step);
+	        }
+	        refreshFieldStates();
+	    }
+
+	    function updateFieldState(el) {
+	        if (!el) return;
+	        el.classList.remove("input-answered", "input-required-missing");
+	        if (el.disabled || el.type === "hidden") return;
+
+	        const isRequired = el.hasAttribute("required") || el.dataset.originalRequired === "1";
+	        const hasValue = el.type === "checkbox"
+	            ? !!el.checked
+	            : (el.value ?? "").trim() !== "";
+
+	        if (hasValue) {
+	            el.classList.add("input-answered");
+	        } else if (isRequired) {
+	            el.classList.add("input-required-missing");
+	        }
+	    }
+
+	    function refreshFieldStates() {
+	        document.querySelectorAll("input, select, textarea").forEach(updateFieldState);
+	    }
 
     function validateCurrentStep() {
         const stepEl = document.querySelector(`.wizard-step[data-step="${currentStep}"]`);
@@ -2175,19 +2105,19 @@
 
     // ------------------------------------------------------------------------------------------------
 
-    document.addEventListener("DOMContentLoaded", function () {
-        const startStep = parseInt("@(ViewData["StartStep"] ?? 1)") || 1;
-
-        // ✅ rebuild incident cards from server model so they persist after validation errors
-        const initialAccidents = @Html.Raw(JsonSerializer.Serialize(Model.Accidents ?? new List<Protect_Website.Models.Accident>()));
-        const initialViolations = @Html.Raw(JsonSerializer.Serialize(Model.Violations ?? new List<Protect_Website.Models.Violation>()));
-        const initialCompLosses = @Html.Raw(JsonSerializer.Serialize(Model.CompLosses ?? new List<Protect_Website.Models.CompLoss>()));
+	    document.addEventListener("DOMContentLoaded", function () {
+	        setQuoteStartedState(quoteStarted);
+	
+	        // ✅ rebuild incident cards from server model so they persist after validation errors
+	        const initialAccidents = @Html.Raw(JsonSerializer.Serialize(Model.Accidents ?? new List<Protect_Website.Models.Accident>()));
+	        const initialViolations = @Html.Raw(JsonSerializer.Serialize(Model.Violations ?? new List<Protect_Website.Models.Violation>()));
+	        const initialCompLosses = @Html.Raw(JsonSerializer.Serialize(Model.CompLosses ?? new List<Protect_Website.Models.CompLoss>()));
 
         rebuildAccidentsFromModel(initialAccidents);
         rebuildViolationsFromModel(initialViolations);
         rebuildCompLossesFromModel(initialCompLosses);
 
-        setStep(startStep);
+	        setStep(initialStartStep);
 
         syncAllDriverDropdowns();
         syncIncidentDropdowns();
@@ -2285,33 +2215,35 @@
             } catch { /* ignore */ }
         }
 
-        restoreFormState();
-        if (form) {
-            form.addEventListener("input", saveFormState);
-            form.addEventListener("change", saveFormState);
-        }
+	        restoreFormState();
+	        if (currentStep > 1) {
+	            setQuoteStartedState(true);
+	        }
+	        if (form) {
+	            form.addEventListener("input", saveFormState);
+	            form.addEventListener("change", saveFormState);
+	        }
 
-        // Visual cues: answered vs missing required
-        function updateFieldState(el) {
-            if (!el) return;
-            el.classList.remove("input-answered", "input-required-missing");
-
-            const isRequired = el.hasAttribute("required") || el.dataset.originalRequired === "1";
-            const val = (el.value ?? "").trim();
-
-            if (val !== "") {
-                el.classList.add("input-answered");
-            } else if (isRequired) {
-                el.classList.add("input-required-missing");
-            }
-        }
-
-        const watchedSelectors = "input, select, textarea";
-        document.querySelectorAll(watchedSelectors).forEach(el => {
-            updateFieldState(el);
-            el.addEventListener("input", () => updateFieldState(el));
-            el.addEventListener("change", () => updateFieldState(el));
-        });
-    });
-</script>
-}
+	        if (startButton) {
+	            startButton.addEventListener("click", function () {
+	                const label = (startButton.textContent || "").trim();
+	                if (!quoteStarted) {
+	                    trackAutoCta('auto_quote_start', label || 'Check My Auto Protection Fit');
+	                }
+	                setQuoteStartedState(true);
+	                setStep(currentStep || initialStartStep || 1);
+	                if (quoteFlowShell) {
+	                    quoteFlowShell.scrollIntoView({ behavior: "smooth", block: "start" });
+	                }
+	            });
+	        }
+	
+	        const watchedSelectors = "input, select, textarea";
+	        document.querySelectorAll(watchedSelectors).forEach(el => {
+	            el.addEventListener("input", () => updateFieldState(el));
+	            el.addEventListener("change", () => updateFieldState(el));
+	        });
+	        refreshFieldStates();
+	    });
+	</script>
+	}

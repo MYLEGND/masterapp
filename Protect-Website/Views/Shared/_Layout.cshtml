@@ -30,6 +30,11 @@
         (Config["ClientPortalBaseUrl"]
         ?? (Env.IsDevelopment() ? "https://localhost:5221" : "https://client.mylegnd.com"))
         .TrimEnd('/');
+    var agentPortalBaseUrl =
+        (Config["AgentPortalBaseUrl"]
+        ?? (Env.IsDevelopment() ? "https://localhost:6205" : "https://portal.mylegnd.com"))
+        .TrimEnd('/');
+    var agentLoginUrl = $"{agentPortalBaseUrl}/Account/Login";
     var clientLoginUrl = $"{clientPortalBaseUrl}/Account/AzureLogin";
     var metaPixelId = (ViewData["ResolvedMetaPixelId"]?.ToString() ?? string.Empty).Trim();
     var metaPixelOwnerType = (ViewData["MetaPixelOwnerType"]?.ToString() ?? string.Empty).Trim().ToLowerInvariant();
@@ -147,11 +152,9 @@
         }
 
         footer.footer {
-            background:
-                radial-gradient(circle at top center, rgba(199,153,49,0.08), transparent 36%),
-                linear-gradient(180deg, rgba(8,14,27,0.94) 0%, rgba(6,11,21,0.98) 100%) !important;
+            background: linear-gradient(180deg, #0e1b3d 0%, #0b1530 100%) !important;
             color: rgba(236,240,247,0.76);
-            border-top: 1px solid rgba(199,153,49,0.22);
+            border-top: 1.5px solid #a68023 !important;
             text-align: center;
             font-size: 0.95rem;
             font-weight: 500;
@@ -271,6 +274,91 @@
             max-width: 100%;
             margin-left: auto;
             justify-content: flex-end;
+        }
+
+        .nav-login {
+            position: relative;
+            display: flex;
+            align-items: stretch;
+        }
+
+        .nav-login-toggle {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: .45rem;
+            min-width: 116px;
+            padding-inline: 1rem;
+            cursor: pointer;
+            background: linear-gradient(180deg, #18244a, #101a37);
+            border-radius: 999px;
+        }
+
+        .nav-login-caret {
+            width: 10px;
+            height: 10px;
+            border-right: 2px solid currentColor;
+            border-bottom: 2px solid currentColor;
+            transform: translateY(-1px) rotate(45deg);
+            transition: transform .16s ease;
+            opacity: .86;
+        }
+
+        .nav-login.open .nav-login-caret {
+            transform: translateY(2px) rotate(225deg);
+        }
+
+        .nav-login-menu {
+            position: absolute;
+            top: calc(100% + 8px);
+            right: 0;
+            min-width: 158px;
+            padding: .38rem;
+            display: grid;
+            gap: .3rem;
+            border-radius: 24px;
+            border: 1.4px solid rgba(199,153,49,0.55);
+            background: linear-gradient(175deg, #0b1224, #0c142a);
+            box-shadow: 0 22px 34px rgba(0,0,0,.34), inset 0 1px 0 rgba(255,255,255,.05);
+            opacity: 0;
+            pointer-events: none;
+            transform: translateY(-6px);
+            transition: opacity .16s ease, transform .16s ease;
+            z-index: 60;
+        }
+
+        .nav-login.open .nav-login-menu {
+            opacity: 1;
+            pointer-events: auto;
+            transform: translateY(0);
+        }
+
+        .nav-login-option {
+            display: inline-flex;
+            align-items: center;
+            justify-content: flex-start;
+            width: 100%;
+            padding: .72rem .95rem;
+            border-radius: 999px;
+            border: 1px solid rgba(199,153,49,0.28);
+            color: #f8fafc;
+            text-decoration: none;
+            background: linear-gradient(180deg, rgba(24,36,74,.92), rgba(14,24,52,.96));
+            transition: background .16s ease, border-color .16s ease, transform .16s ease, box-shadow .16s ease;
+            font-weight: 800;
+            letter-spacing: -.01em;
+            line-height: 1.1;
+            white-space: nowrap;
+        }
+
+        .nav-login-option:hover,
+        .nav-login-option:focus-visible {
+            color: #ffffff;
+            background: linear-gradient(180deg, rgba(199,153,49,.18), rgba(24,36,74,.96));
+            border-color: rgba(199,153,49,0.46);
+            transform: translateY(-1px);
+            box-shadow: 0 10px 20px rgba(0,0,0,.22);
+            outline: none;
         }
 
         .header-bottom {
@@ -459,6 +547,31 @@
                 text-align: left;
                 padding: 0.65rem 0.9rem;
                 border-radius: 10px;
+            }
+
+            .nav-login {
+                width: 100%;
+                flex-direction: column;
+            }
+
+            .nav-login-toggle {
+                width: 100%;
+                justify-content: space-between;
+            }
+
+            .nav-login-menu {
+                position: static;
+                min-width: 0;
+                margin-top: 8px;
+                transform: none;
+                display: none;
+                opacity: 1;
+                pointer-events: auto;
+                box-shadow: none;
+            }
+
+            .nav-login.open .nav-login-menu {
+                display: grid;
             }
 
             .header-bottom {
@@ -792,7 +905,35 @@
                     <a class="nav-link" asp-controller="RiskAssessment" asp-action="Index" data-cta="nav_risk_assessment">Risk Assessment</a>
                     <a class="nav-link" asp-controller="Quote" asp-action="Index" data-cta="nav_quote">Get a Quote</a>
                     <a class="nav-link" asp-controller="Contact" asp-action="Index" data-cta="nav_contact">Contact</a>
-                    <a class="nav-link" href="@clientLoginUrl" data-cta="nav_client_login">Login</a>
+                    <div class="nav-login" id="navLogin">
+                        <button class="nav-link nav-login-toggle"
+                                id="navLoginToggle"
+                                type="button"
+                                aria-haspopup="true"
+                                aria-expanded="false"
+                                aria-controls="navLoginMenu">
+                            <span>Login</span>
+                            <span class="nav-login-caret" aria-hidden="true"></span>
+                        </button>
+                        <div class="nav-login-menu" id="navLoginMenu" role="menu" aria-label="Login options">
+                            <a class="nav-login-option"
+                               href="@agentLoginUrl"
+                               target="_blank"
+                               rel="noopener noreferrer"
+                               data-cta="nav_agent_login"
+                               role="menuitem">
+                                Agent Login
+                            </a>
+                            <a class="nav-login-option"
+                               href="@clientLoginUrl"
+                               target="_blank"
+                               rel="noopener noreferrer"
+                               data-cta="nav_client_login"
+                               role="menuitem">
+                                Client Login
+                            </a>
+                        </div>
+                    </div>
                 </div>
             }
         </div>
@@ -999,31 +1140,61 @@
         const nav = document.querySelector('.navbar');
         const toggle = document.getElementById('navToggle');
         const links = document.getElementById('navLinks');
+        const login = document.getElementById('navLogin');
+        const loginToggle = document.getElementById('navLoginToggle');
 
         if (!nav || !toggle || !links) return;
+
+        function closeLoginMenu() {
+            if (!login || !loginToggle) return;
+            login.classList.remove('open');
+            loginToggle.setAttribute('aria-expanded', 'false');
+        }
 
         function closeNav() {
             nav.classList.remove('mobile-open');
             toggle.setAttribute('aria-expanded', 'false');
+            closeLoginMenu();
         }
 
         toggle.addEventListener('click', function () {
             const isOpen = nav.classList.toggle('mobile-open');
             toggle.setAttribute('aria-expanded', isOpen ? 'true' : 'false');
+            if (!isOpen) closeLoginMenu();
         });
 
         links.querySelectorAll('a').forEach(function (link) {
-            link.addEventListener('click', function () { closeNav(); });
+            link.addEventListener('click', function () {
+                closeLoginMenu();
+                closeNav();
+            });
         });
 
+        if (login && loginToggle) {
+            loginToggle.addEventListener('click', function (e) {
+                e.preventDefault();
+                const isOpen = login.classList.toggle('open');
+                loginToggle.setAttribute('aria-expanded', isOpen ? 'true' : 'false');
+            });
+        }
+
         document.addEventListener('click', function (e) {
-            if (!nav.classList.contains('mobile-open')) return;
-            if (nav.contains(e.target) || e.target === toggle) return;
-            closeNav();
+            if (login && !login.contains(e.target)) {
+                closeLoginMenu();
+            }
+
+            if (nav.classList.contains('mobile-open')) {
+                if (nav.contains(e.target) || e.target === toggle) return;
+                closeNav();
+            }
         });
 
         window.addEventListener('resize', function () {
-            if (window.innerWidth > 820) closeNav();
+            if (window.innerWidth > 820) {
+                closeNav();
+            } else {
+                closeLoginMenu();
+            }
         });
     }());
 </script>

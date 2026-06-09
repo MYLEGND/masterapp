@@ -80,12 +80,11 @@ public class LeadBridgeController : ControllerBase
                 ((x.OriginalLeadType == null || x.OriginalLeadType == "") && x.Bucket != null && queueValues.Contains(x.Bucket)));
         }
 
-        var rows = await query
-            .OrderBy(x => x.CallCount)         // fewest calls first
-            .ThenByDescending(x => x.CrmOrder) // then highest order
-            .ToListAsync();
+        var rows = await query.ToListAsync();
 
         rows = LeadCanonicalizer.Canonicalize(rows, null, "LeadBridge queue")
+            .OrderBy(x => x.CallCount)                               // fewest calls first
+            .ThenByDescending(WorkstationLeadOrder.ResolveSortValue) // then highest order
             .ToList();
 
         return rows;

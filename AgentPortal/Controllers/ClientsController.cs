@@ -3942,6 +3942,84 @@ meta.Activities ??= new List<ClientCrmActivity>();
     }
 
     [HttpGet]
+    public async Task<IActionResult> WorkstationLookupClients(string? q)
+    {
+        string agentOid;
+        try { agentOid = GetAgentOidOrThrow(); }
+        catch { return Challenge(); }
+
+        var search = NormLower(q);
+
+        try
+        {
+            var ownedProfiles = await (
+                from link in _db.AgentClients.AsNoTracking()
+                join profile in _db.ClientProfiles.AsNoTracking() on link.ClientUserId equals profile.ClientUserId
+                where link.AgentUserId == agentOid
+                select new
+                {
+                    profile.ClientUserId,
+                    profile.FirstName,
+                    profile.LastName,
+                    profile.Email,
+                    profile.Phone,
+                    profile.CrmNotes,
+                    profile.UpdatedUtc
+                }
+            ).ToListAsync();
+
+            var results = ownedProfiles
+                .Select(profile =>
+                {
+                    var meta = EnsureMeta(ClientCrmMetaSerializer.Deserialize(profile.CrmNotes));
+                    var recordType = RecordTypeLabel(ResolveRecordType(profile.ClientUserId, meta));
+                    var displayName = $"{Norm(profile.FirstName)} {Norm(profile.LastName)}".Trim();
+                    if (string.IsNullOrWhiteSpace(displayName))
+                        displayName = recordType;
+
+                    var haystack = string.Join(" ",
+                        displayName,
+                        profile.Email ?? "",
+                        profile.Phone ?? "",
+                        recordType).ToLowerInvariant();
+
+                    return new
+                    {
+                        profile.ClientUserId,
+                        displayName,
+                        email = profile.Email ?? "",
+                        phone = profile.Phone ?? "",
+                        recordType,
+                        updatedUtc = profile.UpdatedUtc,
+                        haystack
+                    };
+                })
+                .Where(x => !string.IsNullOrWhiteSpace(x.ClientUserId))
+                .Where(x => string.IsNullOrWhiteSpace(search) || x.haystack.Contains(search))
+                .OrderByDescending(x => x.updatedUtc)
+                .ThenBy(x => x.displayName)
+                .Take(string.IsNullOrWhiteSpace(search) ? 12 : 24)
+                .Select(x => new
+                {
+                    clientUserId = x.ClientUserId,
+                    displayName = x.displayName,
+                    email = x.email,
+                    phone = x.phone,
+                    recordType = x.recordType,
+                    updatedUtc = x.updatedUtc.ToString("o")
+                })
+                .ToList();
+
+            return Json(results);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "WorkstationLookupClients error agent={Agent} q={Search}", agentOid, q);
+            return Json(Array.Empty<object>());
+        }
+    }
+
+    [HttpGet]
     public async Task<IActionResult> CollaboratorLookup(string clientUserId, string? q)
     {
         string agentOid;

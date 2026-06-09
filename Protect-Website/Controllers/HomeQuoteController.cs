@@ -9,6 +9,7 @@ using ProtectWebsite.Services.Meta;
 using ProtectWebsite.Services;
 using ProtectWebsite.Services.Tracking;
 using ProtectWebsite.Services.Communication;
+using Microsoft.AspNetCore.Mvc.ModelBinding;
 
 namespace Protect_Website.Controllers
 {
@@ -67,12 +68,15 @@ namespace Protect_Website.Controllers
                         ackRaw.Equals("1"));
             model.AcknowledgedDisclaimer = ack;
             ModelState.Remove(nameof(model.AcknowledgedDisclaimer));
-            if (!ack)
-                ModelState.AddModelError(nameof(model.AcknowledgedDisclaimer),
-                    "Please check the authorization box so we can contact you about this quote.");
-
-            if (!ModelState.IsValid)
-                return View("~/Views/Quote/Home.cshtml", model);
+	            if (!ack)
+	                ModelState.AddModelError(nameof(model.AcknowledgedDisclaimer),
+	                    "Please check the authorization box so we can contact you about this quote.");
+	
+	            if (!ModelState.IsValid)
+	            {
+	                ViewData["StartStep"] = ResolveStartStep(ModelState);
+	                return View("~/Views/Quote/Home.cshtml", model);
+	            }
 
             var correlationId = Guid.NewGuid();
             _logger.LogInformation(
@@ -116,6 +120,7 @@ namespace Protect_Website.Controllers
                     MarketingEmailConsent = model.AcknowledgedDisclaimer,
                     CallTextConsent = model.AcknowledgedDisclaimer && !string.IsNullOrWhiteSpace(model.PhoneNumber),
                     TermsAccepted = true,
+                    IsInternal    = WebsiteLeadCaptureSafety.ShouldMarkAsInternalTest(Request?.Host.Host),
                     Host          = Request?.Host.ToString(),
                     Environment   = EnvironmentLabelResolver.Resolve(),
                     CreatedUtc    = now,
@@ -145,14 +150,15 @@ namespace Protect_Website.Controllers
                     "HomeQuote [{CorrelationId}]: WebsiteLead {LeadId} saved",
                     correlationId, lead.LeadId);
             }
-            catch (Exception persistEx)
-            {
-                _logger.LogError(persistEx,
-                    "HomeQuote [{CorrelationId}]: lead persistence failed for {Email}",
-                    correlationId, model.EmailAddress);
-                ModelState.AddModelError("", $"Failed to save lead: {persistEx.Message}");
-                return View("~/Views/Quote/Home.cshtml", model);
-            }
+	            catch (Exception persistEx)
+	            {
+	                _logger.LogError(persistEx,
+	                    "HomeQuote [{CorrelationId}]: lead persistence failed for {Email}",
+	                    correlationId, model.EmailAddress);
+	                ModelState.AddModelError("", $"Failed to save lead: {persistEx.Message}");
+	                ViewData["StartStep"] = ResolveStartStep(ModelState);
+	                return View("~/Views/Quote/Home.cshtml", model);
+	            }
 
             async Task TryWriteLeadEventAsync(string eventType, object metadata, DateTime? eventUtc = null)
             {
@@ -437,14 +443,59 @@ namespace Protect_Website.Controllers
             return null;
         }
 
-        private string? ResolveExplicitAgentSlugFromRequest()
-        {
-            var formSlug = Request?.Form["AgentSlug"].ToString();
-            if (!string.IsNullOrWhiteSpace(formSlug))
-                return formSlug.Trim();
+	        private string? ResolveExplicitAgentSlugFromRequest()
+	        {
+	            var formSlug = Request?.Form["AgentSlug"].ToString();
+	            if (!string.IsNullOrWhiteSpace(formSlug))
+	                return formSlug.Trim();
+	
+	            return ExtractSlugFromPath(Request?.Path.Value)
+	                ?? ExtractSlugFromPath(Request?.Headers["Referer"].ToString());
+	        }
 
-            return ExtractSlugFromPath(Request?.Path.Value)
-                ?? ExtractSlugFromPath(Request?.Headers["Referer"].ToString());
-        }
-    }
-}
+	        private int ResolveStartStep(ModelStateDictionary modelState)
+	        {
+	            var postedStep = ResolvePostedStep(1);
+
+	            bool HasKey(string key) =>
+	                modelState.TryGetValue(key, out var entry) && entry.Errors.Count > 0;
+
+	            if (HasKey(nameof(HomeQuoteFormModel.AcknowledgedDisclaimer)))
+	                return 6;
+
+	            if (HasKey(nameof(HomeQuoteFormModel.DwellingCoverage)) ||
+	                HasKey(nameof(HomeQuoteFormModel.EstReplacementCost)) ||
+	                HasKey(nameof(HomeQuoteFormModel.PersonalLiability)) ||
+	                HasKey(nameof(HomeQuoteFormModel.MedicalPayments)))
+	                return 5;
+	
+	            if (HasKey(nameof(HomeQuoteFormModel.DwellingUsage)) ||
+	                HasKey(nameof(HomeQuoteFormModel.DwellingType)) ||
+	                HasKey(nameof(HomeQuoteFormModel.YearBuilt)) ||
+	                HasKey(nameof(HomeQuoteFormModel.RoofingYearUpdated)))
+	                return 4;
+
+	            if (HasKey(nameof(HomeQuoteFormModel.PolicyFormType)) ||
+	                HasKey(nameof(HomeQuoteFormModel.CurrentPolicyExpirationDate)) ||
+	                HasKey(nameof(HomeQuoteFormModel.NewPolicyEffectiveDate)))
+	                return 3;
+
+	            if (HasKey(nameof(HomeQuoteFormModel.PrimaryAddress)) ||
+	                HasKey(nameof(HomeQuoteFormModel.PrimaryCity)) ||
+	                HasKey(nameof(HomeQuoteFormModel.PrimaryPostalCode)) ||
+	                HasKey(nameof(HomeQuoteFormModel.EmailAddress)) ||
+	                HasKey(nameof(HomeQuoteFormModel.PhoneNumber)))
+	                return 2;
+
+	            return postedStep;
+	        }
+
+	        private int ResolvePostedStep(int fallbackStep)
+	        {
+	            var rawStep = Request?.Form["CurrentStep"].FirstOrDefault();
+	            return int.TryParse(rawStep, out var step)
+	                ? Math.Clamp(step, 1, 6)
+	                : fallbackStep;
+	        }
+	    }
+	}

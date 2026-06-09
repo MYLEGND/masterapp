@@ -13,7 +13,6 @@ const LS_VIEWS = "legend_saved_views_v1";
 const LS_PIPELINE_ORDER = "legend_pipeline_order_v1";
 const LS_PROD_DRAFT_CLIENT = "legend_prod_draft_client_v1";
 const LS_ADVANCED_MARKETS_DRAFTS = "legend_adv_markets_drafts_v1";
-const LS_PANELS = "legend_clients_panels_v1";
 const liveSync = window.liveSync;
 
 const $  = (sel, root=document) => root.querySelector(sel);
@@ -125,48 +124,6 @@ function bindQuickViewBootstrapModals(){
   bindBootstrapModalStability(finPlanModalId, { modalZ: 1095, backdropZ: 1090 });
 }
 
-function showQuickViewTab(target, opts = {}){
-  if (!target) return;
-  const drawerRoot = $("#drawer") || document;
-  const panels = $$('.qv-tabpanel', drawerRoot);
-  if (!panels.length) return;
-
-  const targetPanel = panels.find(p => p.id === target) || document.getElementById(target);
-  if (!targetPanel) return;
-
-  const disclosure = targetPanel.closest('details.qv-disclosure');
-  if (disclosure) disclosure.open = true;
-
-  panels.forEach(panel => {
-    panel.style.display = panel.id === target ? '' : 'none';
-  });
-
-  const tabButtons = $$('.qv-tabs button[data-tab-target]', drawerRoot);
-  tabButtons.forEach(tab => {
-    const isActive = tab.dataset.tabTarget === target;
-    tab.classList.toggle('btn-gold', isActive);
-    tab.classList.toggle('btn-ghost', !isActive);
-  });
-
-  if (opts.scroll){
-    targetPanel.scrollIntoView({ behavior: 'smooth', block: 'start' });
-  }
-}
-
-// quick view tab switcher for notes/actions, including top-level shortcuts
-function bindQuickViewTabs(){
-  const drawerRoot = $("#drawer") || document;
-  const launchers = $$('[data-tab-target]', drawerRoot);
-  if (!launchers.length) return;
-
-  launchers.forEach(btn => {
-    if (btn.dataset.tabBound === "1") return;
-    btn.dataset.tabBound = "1";
-    btn.addEventListener('click', () => {
-      showQuickViewTab(btn.dataset.tabTarget, { scroll: btn.dataset.tabScroll === "1" });
-    });
-  });
-}
 
 /* ========= Financial Plan (Accumulation + Distribution) ========= */
 async function openFinPlanModal(clientUserId){
@@ -1961,8 +1918,7 @@ const bar = $("#legendBar");
 
 const rows = $$(".client-row");
 const kpiGrid = $("#kpiGrid");
-const performanceShell = $("#performanceShell");
-const performanceBody = $("#performanceBody");
+const performanceModal = $("#performanceModal");
 const btnTogglePerformance = $("#btnTogglePerformance");
 const perfPreviewPaid = $("#perfPreviewPaid");
 const perfPreviewPersonal = $("#perfPreviewPersonal");
@@ -1983,6 +1939,18 @@ const viewMode = $("#viewMode");
 const density = $("#density");
 const PIPELINE_ONLY_VIEW = "pipeline";
 
+function getControlValue(control, fallback = ""){
+  return control?.value ?? fallback;
+}
+
+function setControlValue(control, value){
+  if (control) control.value = value;
+}
+
+function getDensityValue(){
+  return density?.value === "compact" ? "compact" : "comfort";
+}
+
 const btnCopyEmails = $("#btnCopyEmails");
 const btnExportCsv = $("#btnExportCsv");
 const btnClearSel = $("#btnClearSel");
@@ -1990,8 +1958,7 @@ const btnOpenFirst = $("#btnOpenFirst");
 const btnBulkEdit = $("#btnBulkEdit");
 const savedViewsBar = $("#savedViewsBar");
 const btnCallTaskMode = $("#btnCallTaskMode");
-const myDayQueue = $("#myDayQueue");
-const myDayBody = $("#myDayBody");
+const myDayModal = $("#myDayModal");
 const btnToggleMyDay = $("#btnToggleMyDay");
 const qCallsNowPreview = $("#qCallsNowPreview");
 const qDueTodayPreview = $("#qDueTodayPreview");
@@ -2028,47 +1995,27 @@ const btnPipeReset = $("#btnPipeReset");
 const pipelineFocusBar = $("#pipelineFocusBar");
 const pipelineFocusTitle = $("#pipelineFocusTitle");
 
-function panelPrefs(){
-  return loadJSON(LS_PANELS, {});
-}
+function initCommandCenterModal(button, modal){
+  if (!button || !modal) return null;
 
-function savePanelPref(key, isOpen){
-  saveJSON(LS_PANELS, { ...panelPrefs(), [key]: !!isOpen });
-}
-
-function applyCollapsiblePanelState(shell, button, body, isOpen){
-  if (!shell || !button || !body) return;
-
-  shell.classList.toggle("is-open", !!isOpen);
-  body.hidden = !isOpen;
-  button.setAttribute("aria-expanded", isOpen ? "true" : "false");
-
-  const label = $("[data-panel-label]", button);
-  const showLabel = button.dataset.showLabel || "Show";
-  const hideLabel = button.dataset.hideLabel || "Hide";
-  if (label) label.textContent = isOpen ? hideLabel : showLabel;
-}
-
-function initCollapsiblePanel(key, shell, button, body, defaultOpen = false){
-  if (!shell || !button || !body) return null;
-
-  const prefs = panelPrefs();
-  let isOpen = typeof prefs[key] === "boolean" ? prefs[key] : defaultOpen;
-
-  const setOpen = (nextOpen, { persist = true } = {}) => {
-    isOpen = !!nextOpen;
-    applyCollapsiblePanelState(shell, button, body, isOpen);
-    if (persist) savePanelPref(key, isOpen);
+  const open = () => {
+    if (!modalBackdrop) return;
+    openModal(modal);
   };
 
-  button.addEventListener("click", () => setOpen(!isOpen));
-  setOpen(isOpen, { persist: false });
+  const close = () => {
+    modal.classList.remove("open");
+    if (!$$(".modal.open").length){
+      modalBackdrop?.classList.remove("open");
+    }
+  };
+
+  button.addEventListener("click", open);
 
   return {
-    open(options){ setOpen(true, options); },
-    close(options){ setOpen(false, options); },
-    toggle(options){ setOpen(!isOpen, options); },
-    isOpen(){ return isOpen; }
+    open,
+    close,
+    isOpen(){ return modal.classList.contains("open"); }
   };
 }
 
@@ -2076,8 +2023,8 @@ let performancePanelController = null;
 let myDayPanelController = null;
 
 function initCollapsiblePanels(){
-  performancePanelController = initCollapsiblePanel("performance", performanceShell, btnTogglePerformance, performanceBody, false);
-  myDayPanelController = initCollapsiblePanel("myDay", myDayQueue, btnToggleMyDay, myDayBody, false);
+  performancePanelController = initCommandCenterModal(btnTogglePerformance, performanceModal);
+  myDayPanelController = initCommandCenterModal(btnToggleMyDay, myDayModal);
 }
 const pipelineFocusSub = $("#pipelineFocusSub");
 const btnBoardBack = $("#btnBoardBack");
@@ -2188,6 +2135,28 @@ let advancedMarketsCurrentSession = 0;
 let quickViewOpenedFromUrl = false;
 let clientActionsLoadPromise = null;
 
+function syncQuickViewDisclosure(panel){
+  if (!panel) return;
+  if (panel.hidden && panel.open) panel.open = false;
+}
+
+function syncQuickViewDisclosures(root = drawer){
+  if (!root) return;
+  root.querySelectorAll("details.qv-panel").forEach(syncQuickViewDisclosure);
+}
+
+function bindQuickViewDisclosures(root = drawer){
+  if (!root) return;
+  root.querySelectorAll("details.qv-panel").forEach(panel => {
+    if (panel.dataset.qvDisclosureBound === "true") return;
+    panel.dataset.qvDisclosureBound = "true";
+    panel.addEventListener("toggle", () => syncQuickViewDisclosure(panel));
+    syncQuickViewDisclosure(panel);
+  });
+}
+
+bindQuickViewDisclosures();
+
 const STAGE_PICKER_TONES = [
   "stage-newlead",
   "stage-opportunities",
@@ -2218,10 +2187,10 @@ function syncStagePickerUi(stageOverride = ""){
   if (!stagePickerSelect) return;
 
   const fallback = pipelineStages[0]?.key || "Client";
-  const selectedRaw = stageOverride || stagePickerSelect.value || fallback;
+  const selectedRaw = stageOverride || getControlValue(stagePickerSelect, fallback) || fallback;
   const selected = pipelineMeta(selectedRaw).key;
   const option = stagePickerSelect.querySelector(`option[value="${selected}"]`);
-  if (option) stagePickerSelect.value = selected;
+  if (option) setControlValue(stagePickerSelect, selected);
 
   const meta = pipelineMeta(selected);
   const stageCount = countRowsForStage(selected);
@@ -2439,6 +2408,13 @@ function queueQuickViewAutosave(reason){
   if (dSaved) dSaved.textContent = reason || "Saving…";
   clearTimeout(quickViewAutosaveTimer);
   quickViewAutosaveTimer = setTimeout(performQuickViewAutosave, AUTOSAVE_DELAY_MS);
+}
+
+function flushQuickViewAutosave(reason){
+  if (!activeClientId) return;
+  if (dSaved) dSaved.textContent = reason || "Saving…";
+  clearTimeout(quickViewAutosaveTimer);
+  void performQuickViewAutosave();
 }
 
 function wireQuickViewAutosave(){
@@ -2914,10 +2890,10 @@ function updateSelectionUI(){
   const checked = getCheckedRows();
   const count = checked.length;
 
-  selCount.textContent = String(count);
-  btnCopyEmails.disabled = count === 0;
-  btnClearSel.disabled = count === 0;
-  btnOpenFirst.disabled = count === 0;
+  if (selCount) selCount.textContent = String(count);
+  if (btnCopyEmails) btnCopyEmails.disabled = count === 0;
+  if (btnClearSel) btnClearSel.disabled = count === 0;
+  if (btnOpenFirst) btnOpenFirst.disabled = count === 0;
   if (btnBulkEdit) btnBulkEdit.disabled = count === 0;
 
   rows.forEach(r => r.classList.toggle("row-selected", !!$(".row-chk", r)?.checked));
@@ -3162,7 +3138,7 @@ function docChecklistOpen(row){
 }
 
 function applySort(filtered){
-  const sort = norm(sortBy.value) || "name_asc";
+  const sort = norm(getControlValue(sortBy)) || "name_asc";
   const cmp = (x,y) => x < y ? -1 : x > y ? 1 : 0;
 
   filtered.sort((a,b) => {
@@ -3200,10 +3176,10 @@ function applySort(filtered){
 }
 
 function computeFiltered(){
-  const s = norm(statusFilter.value);
-  const priority = norm(priorityFilter.value);
-  const stage = norm(stageFilter.value);
-  const attn = norm(attentionFilter.value);
+  const s = norm(getControlValue(statusFilter));
+  const priority = norm(getControlValue(priorityFilter));
+  const stage = norm(getControlValue(stageFilter));
+  const attn = norm(getControlValue(attentionFilter));
 
   let filtered = rows.slice();
 
@@ -3247,7 +3223,7 @@ function renderList(filtered){
   rows.forEach(r => { const c = $(".row-chk", r); if (c) c.checked = false; });
   updateSelectionUI();
 
-  const size = parseInt(pageSize.value || "20", 10);
+  const size = parseInt(getControlValue(pageSize, "20") || "20", 10);
   const max = Math.max(1, Math.ceil(filtered.length / size));
   currentPage = Math.min(currentPage, max);
 
@@ -3258,15 +3234,15 @@ function renderList(filtered){
   rows.forEach(r => r.style.display = "none");
   pageRows.forEach(r => r.style.display = "");
 
-  pageNow.textContent = String(currentPage);
-  pageMax.textContent = String(max);
+  if (pageNow) pageNow.textContent = String(currentPage);
+  if (pageMax) pageMax.textContent = String(max);
 
   const showingA = filtered.length === 0 ? 0 : (start + 1);
   const showingB = Math.min(end, filtered.length);
-  pagerInfo.textContent = `${filtered.length} live records - ${showingA}-${showingB} visible`;
+  if (pagerInfo) pagerInfo.textContent = `${filtered.length} live records - ${showingA}-${showingB} visible`;
 
-  btnPrev.disabled = currentPage <= 1;
-  btnNext.disabled = currentPage >= max;
+  if (btnPrev) btnPrev.disabled = currentPage <= 1;
+  if (btnNext) btnNext.disabled = currentPage >= max;
 }
 
 function renderAll(){
@@ -3305,22 +3281,22 @@ btnNext?.addEventListener("click", () => {
 });
 
 stagePickerSelect?.addEventListener("change", () => {
-  syncStagePickerUi(stagePickerSelect.value || "Client");
+  syncStagePickerUi(getControlValue(stagePickerSelect, "Client") || "Client");
 });
 
 /* ========= Density + View ========= */
 function applyDensityClass(){
   if (!legendWrap) return;
   legendWrap.classList.remove("density-compact","density-comfort");
-  legendWrap.classList.add(density.value === "compact" ? "density-compact" : "density-comfort");
+  legendWrap.classList.add(getDensityValue() === "compact" ? "density-compact" : "density-comfort");
 }
 
 function resetFilters(){
-  if (statusFilter) statusFilter.value = "";
-  if (priorityFilter) priorityFilter.value = "";
-  if (stageFilter) stageFilter.value = "";
-  if (attentionFilter) attentionFilter.value = "";
-  if (sortBy) sortBy.value = "name_asc";
+  setControlValue(statusFilter, "");
+  setControlValue(priorityFilter, "");
+  setControlValue(stageFilter, "");
+  setControlValue(attentionFilter, "");
+  setControlValue(sortBy, "name_asc");
   pipelineFocusStage = "";
   pipelineNavSelectedStage = "";
   pipelineNavSearchTerm = "";
@@ -3330,26 +3306,26 @@ function applyPreset(name){
   resetFilters();
 
   if (name === "hotleads"){
-    priorityFilter.value = "High";
-    stageFilter.value = "NewLead";
-    attentionFilter.value = "needs";
-    sortBy.value = "nextaction_asc";
+    setControlValue(priorityFilter, "High");
+    setControlValue(stageFilter, "NewLead");
+    setControlValue(attentionFilter, "needs");
+    setControlValue(sortBy, "nextaction_asc");
   } else if (name === "followup"){
-    attentionFilter.value = "overdue";
-    sortBy.value = "nextaction_asc";
+    setControlValue(attentionFilter, "overdue");
+    setControlValue(sortBy, "nextaction_asc");
   } else if (name === "meetingstoday"){
-    stageFilter.value = "MeetingScheduled";
-    attentionFilter.value = "today";
-    sortBy.value = "nextaction_asc";
+    setControlValue(stageFilter, "MeetingScheduled");
+    setControlValue(attentionFilter, "today");
+    setControlValue(sortBy, "nextaction_asc");
     pipelineFocusStage = "MeetingScheduled";
     if (viewMode) viewMode.value = "pipeline";
     applyViewMode();
   } else if (name === "rescue"){
-    attentionFilter.value = "rescue";
-    sortBy.value = "nextaction_asc";
+    setControlValue(attentionFilter, "rescue");
+    setControlValue(sortBy, "nextaction_asc");
   } else if (name === "appsinflight"){
-    attentionFilter.value = "appsinflight";
-    sortBy.value = "lasttouch_desc";
+    setControlValue(attentionFilter, "appsinflight");
+    setControlValue(sortBy, "lasttouch_desc");
   }
 
   currentPage = 1;
@@ -3373,12 +3349,12 @@ function applyViewMode(){
 }
 
 density?.addEventListener("change", () => {
-  saveJSON(LS_PREFS, { ...loadJSON(LS_PREFS, {}), density: density.value });
+  saveJSON(LS_PREFS, { ...loadJSON(LS_PREFS, {}), density: getDensityValue() });
   applyDensityClass();
 });
 
 viewMode?.addEventListener("change", () => {
-  viewMode.value = PIPELINE_ONLY_VIEW;
+  if (viewMode) viewMode.value = PIPELINE_ONLY_VIEW;
   saveJSON(LS_PREFS, { ...loadJSON(LS_PREFS, {}), view: PIPELINE_ONLY_VIEW });
   applyViewMode();
   renderAll();
@@ -3557,11 +3533,11 @@ function saveCurrentView(){
   const views = savedViews();
   views.push({
     name: name.trim(),
-    status: norm(statusFilter.value),
-    priority: norm(priorityFilter.value),
-    stage: norm(stageFilter.value),
-    attention: norm(attentionFilter.value),
-    sort: norm(sortBy.value),
+    status: norm(getControlValue(statusFilter)),
+    priority: norm(getControlValue(priorityFilter)),
+    stage: norm(getControlValue(stageFilter)),
+    attention: norm(getControlValue(attentionFilter)),
+    sort: norm(getControlValue(sortBy)),
     view: PIPELINE_ONLY_VIEW
   });
   saveJSON(LS_VIEWS, views.slice(-8));
@@ -3572,12 +3548,12 @@ function saveCurrentView(){
 function applySavedView(index){
   const view = savedViews()[index];
   if (!view) return;
-  statusFilter.value = view.status || "";
-  priorityFilter.value = view.priority || "";
-  stageFilter.value = view.stage || "";
-  attentionFilter.value = view.attention || "";
-  sortBy.value = view.sort || "name_asc";
-  viewMode.value = PIPELINE_ONLY_VIEW;
+  setControlValue(statusFilter, view.status || "");
+  setControlValue(priorityFilter, view.priority || "");
+  setControlValue(stageFilter, view.stage || "");
+  setControlValue(attentionFilter, view.attention || "");
+  setControlValue(sortBy, view.sort || "name_asc");
+  if (viewMode) viewMode.value = PIPELINE_ONLY_VIEW;
   applyViewMode();
   currentPage = 1;
   renderAll();
@@ -3683,6 +3659,7 @@ async function openDrawerForRow(row){
   drawerBackdrop.classList.add("open");
   drawer.setAttribute("aria-hidden", "false");
   lockPageScrollForQuickView();
+  syncQuickViewDisclosures();
   closeAllMenus(null);
 
   try{
@@ -3744,6 +3721,7 @@ async function openDrawerForRow(row){
 
     renderPortalActions(row, detail);
     void hydrateProtectionSnapshot(row, detail);
+    syncQuickViewDisclosures();
 
     dSaved.textContent = "Loaded";
   }catch(err){
@@ -4413,7 +4391,7 @@ function renderPortalActions(row, detail){
 
   if (!isGuid) {
     dPortalWrap.innerHTML = `
-      <div style="display:flex; gap:10px; flex-wrap:wrap;">
+      <div class="lead-workstation-actions">
         <button type="button" class="btn btn-gold" id="btnEnablePortalAccess" title="Convert to Client">Convert To Client</button>
         <button type="button" class="btn btn-gold" id="btnEnableBizPortal" title="Convert to Business Client">Convert To Business Client</button>
       </div>
@@ -4729,15 +4707,13 @@ btnOpenFirst?.addEventListener("click", () => {
 });
 
 btnMarkToday?.addEventListener("click", () => {
-  dLastTouch.value = todayISO();
-  dSaved.textContent = "Touched today — saving…";
-  queueQuickViewAutosave();
+  if (dLastTouch) dLastTouch.value = todayISO();
+  flushQuickViewAutosave("Touched today — saving…");
 });
 
 btnSetNextToday?.addEventListener("click", () => {
   setDrawerNextActionDate(todayISO());
-  dSaved.textContent = "Next action set — saving…";
-  queueQuickViewAutosave();
+  flushQuickViewAutosave("Next action set — saving…");
   refreshCalendarBusyPanel();
 });
 
@@ -5082,7 +5058,7 @@ btnMyDayBack?.addEventListener("click", () => {
   applyViewMode();
   currentPage = 1;
   renderAll();
-  myDayQueue?.scrollIntoView({ behavior: "smooth", block: "start" });
+  myDayPanelController?.open();
 });
 
 $$(".outcome-btn").forEach(btn => {
@@ -5261,7 +5237,7 @@ function renderLaneCards(rowsForStage){
       <article class="client-card ${pipelineBadgeClass(stage)}"
                draggable="true"
                data-cardid="${safeHtml(r.dataset.clientId)}">
-        <div class="client-card-head" style="position:relative;">
+        <div class="client-card-head">
           <div class="client-card-main">
             <h3 class="cc-name" data-open-card="${safeHtml(r.dataset.clientId)}">${safeHtml(displayName)}</h3>
             <div class="cc-sub cc-sub-primary">${phone ? `<a class=\"link link-phone\" href=\"tel:${safeHtml(phone)}\">${safeHtml(phoneDisplay)}</a>` : "No phone"}</div>
@@ -5269,14 +5245,13 @@ function renderLaneCards(rowsForStage){
           </div>
           ${prodBadge}
         </div>
-        <div class="client-card-actions actions" style="margin-top:10px; padding-top:8px; border-top:1px solid rgba(0,0,0,.10); justify-content:flex-end; gap:8px;">
+        <div class="client-card-actions actions pipeline-card-actions-row">
           ${phone ? `<a class="btn btn-ghost" href="tel:${safeHtml(phone)}">Call</a>` : ""}
           ${phone ? `<a class="btn btn-ghost" href="sms:${safeHtml(phone)}">Text</a>` : ""}
           <button type="button"
-                  class="btn btn-gold openCard"
+                  class="btn btn-gold openCard pipeline-card-open"
                   data-open-card="${safeHtml(r.dataset.clientId)}"
-                  title="Open Quick View"
-                  style="min-width:110px;">
+                  title="Open Quick View">
             Quick View
           </button>
         </div>
@@ -5497,14 +5472,14 @@ btnBoardBack?.addEventListener("click", () => {
 });
 
 btnPipeOverdue?.addEventListener("click", () => {
-  if (attentionFilter) attentionFilter.value = "overdue";
+  setControlValue(attentionFilter, "overdue");
   if (viewMode) viewMode.value = "pipeline";
   applyViewMode();
   renderAll();
 });
 
 btnPipeNeeds?.addEventListener("click", () => {
-  if (attentionFilter) attentionFilter.value = "needs";
+  setControlValue(attentionFilter, "needs");
   if (viewMode) viewMode.value = "pipeline";
   applyViewMode();
   renderAll();
@@ -5658,14 +5633,17 @@ pipelineBoard?.addEventListener("drop", async (e) => {
 
 /* ========= Columns Modal ========= */
 function openModal(el){
+  if (!el || !modalBackdrop) return;
+  document.body.classList.add("legend-bootstrap-modal-open");
   modalBackdrop.classList.add("open");
   el.classList.add("open");
 }
 function closeModal(){
   clearAdvancedMarketsAutosaveTimer();
   activeAdvancedMarketsLoadSeq += 1;
+  document.body.classList.remove("legend-bootstrap-modal-open");
   modalBackdrop.classList.remove("open");
-  [colsModal, shortcutsModal, remindersModal, cmdModal, bulkModal, callTaskModal, importModal].forEach(m => m?.classList.remove("open"));
+  [colsModal, shortcutsModal, remindersModal, cmdModal, bulkModal, callTaskModal, importModal, performanceModal, myDayModal].forEach(m => m?.classList.remove("open"));
 }
 
 $("#btnCols")?.addEventListener("click", () => {
@@ -5932,12 +5910,12 @@ function runCommand(text){
   else if (t.includes("copy")) btnCopyEmails?.click();
   else if (t.includes("reminders")) openRemindersModal();
   else if (t.includes("enable reminders")) enableReminders();
-  else if (t.includes("view pipeline") || t.includes("view cards")) { viewMode.value = PIPELINE_ONLY_VIEW; viewMode.dispatchEvent(new Event("change")); }
+  else if (t.includes("view pipeline") || t.includes("view cards")) { if (viewMode) { viewMode.value = PIPELINE_ONLY_VIEW; viewMode.dispatchEvent(new Event("change")); } }
   else if (t.includes("view table") || t.includes("view hybrid")) { toast("Pipeline CRM is the only available view."); }
-  else if (t.includes("filter overdue")) { attentionFilter.value = "overdue"; attentionFilter.dispatchEvent(new Event("change")); }
-  else if (t.includes("filter needs")) { attentionFilter.value = "needs"; attentionFilter.dispatchEvent(new Event("change")); }
-  else if (t.includes("density compact")) { density.value = "compact"; density.dispatchEvent(new Event("change")); }
-  else if (t.includes("density comfort")) { density.value = "comfort"; density.dispatchEvent(new Event("change")); }
+  else if (t.includes("filter overdue")) { setControlValue(attentionFilter, "overdue"); attentionFilter?.dispatchEvent(new Event("change")); }
+  else if (t.includes("filter needs")) { setControlValue(attentionFilter, "needs"); attentionFilter?.dispatchEvent(new Event("change")); }
+  else if (t.includes("density compact")) { if (density) { density.value = "compact"; density.dispatchEvent(new Event("change")); } }
+  else if (t.includes("density comfort")) { if (density) { density.value = "comfort"; density.dispatchEvent(new Event("change")); } }
   else if (t.includes("connect calendar")) { startCalendarConnect(); }
   else if (t.includes("save zoom")) { savePersonalZoomLink(); }
   else if (t.includes("clear zoom")) { clearPersonalZoomLink(); }
@@ -6060,7 +6038,7 @@ btnFilterMeetings?.addEventListener("click", () => {
 });
 
 btnFilterOverdue?.addEventListener("click", () => {
-  attentionFilter.value = "overdue";
+  setControlValue(attentionFilter, "overdue");
   currentPage = 1;
   renderAll();
 });
@@ -6524,8 +6502,8 @@ async function createCalendarEventFromDrawer(){
 /* ========= Prefs Restore ========= */
 (function restorePrefs(){
   const prefs = loadJSON(LS_PREFS, {});
-  viewMode.value = PIPELINE_ONLY_VIEW;
-  if (prefs.density) density.value = prefs.density;
+  if (viewMode) viewMode.value = PIPELINE_ONLY_VIEW;
+  if (density && prefs.density) density.value = prefs.density;
   applyViewMode();
   applyDensityClass();
 })();
@@ -6810,8 +6788,6 @@ async function boot(){
   initCollapsiblePanels();
   renderSavedViews();
   ensureModalInBody('clientQuickCreateActionModal');
-  bindQuickViewTabs();
-
   await loadMyDaySnapshot(true);
 
   renderAll();

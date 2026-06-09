@@ -1236,129 +1236,75 @@ body.note-self-open{
 .lb-context-shell{
     display: grid;
     gap: 10px;
-    padding: 12px 13px;
+    padding: 10px 12px;
     border-radius: 16px;
-    border: 1px solid rgba(166,128,35,.30);
+    border: 1px solid rgba(227,184,79,.28);
     background:
-        radial-gradient(120% 180% at 100% 0%, rgba(255,255,255,.72) 0%, rgba(255,248,227,.58) 46%, rgba(247,231,188,.40) 100%),
-        linear-gradient(180deg, rgba(255,255,255,.86) 0%, rgba(255,250,240,.78) 100%);
+        radial-gradient(120% 170% at 100% 0%, rgba(59,130,246,.16) 0%, rgba(22,54,104,.10) 42%, transparent 100%),
+        linear-gradient(180deg, rgba(14,39,76,.98) 0%, rgba(8,25,52,.99) 100%);
     box-shadow:
-        inset 0 1px 0 rgba(255,255,255,.92),
-        0 10px 22px rgba(15,23,42,.08),
-        0 2px 6px rgba(166,128,35,.08);
+        0 14px 28px rgba(2,6,23,.28),
+        inset 0 1px 0 rgba(255,255,255,.08);
 }
 
-.lb-context-head,
-.lb-script-head{
-    display: flex;
-    align-items: flex-start;
-    justify-content: space-between;
-    gap: 12px;
-}
-
-.lb-context-head-copy{
-    min-width: 0;
-    display: grid;
-    gap: 4px;
-}
-
-.lb-context-kicker,
-.lb-script-kicker{
-    color: #8a6116;
+.lb-context-kicker{
+    color: #f0cb76;
     font-size: 11px;
     font-weight: 900;
     letter-spacing: .12em;
     text-transform: uppercase;
 }
 
-.lb-context-title,
-.lb-script-title{
-    color: #111827;
-    font-size: 18px;
-    font-weight: 950;
-    line-height: 1.12;
-}
-
-.lb-context-sub,
-.lb-script-note{
-    color: #5b6472;
-    font-size: 12.5px;
-    font-weight: 700;
-    line-height: 1.4;
-}
-
-.lb-context-chip-row{
-    display: flex;
-    flex-wrap: wrap;
-    gap: 6px;
-    justify-content: flex-end;
-}
-
-.lb-context-chip{
-    display: inline-flex;
-    align-items: center;
-    min-height: 28px;
-    padding: 5px 9px;
-    border-radius: 999px;
-    border: 1px solid rgba(166,128,35,.30);
-    background: linear-gradient(180deg, rgba(255,255,255,.95) 0%, rgba(255,248,227,.86) 100%);
-    color: #3f2d08;
-    font-size: 11.5px;
-    font-weight: 860;
-    letter-spacing: .02em;
-    box-shadow: inset 0 1px 0 rgba(255,255,255,.92);
-}
-
-.lb-context-grid,
-.lb-script-grid{
+.lb-summary-list{
     display: grid;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
     gap: 8px;
 }
 
-.lb-context-card,
-.lb-script-card{
+.lb-context-shell-inline{
+    grid-template-columns: auto minmax(0, 1fr);
+    align-items: center;
+    gap: 12px;
+}
+
+.lb-context-shell-inline .lb-context-kicker{
+    white-space: nowrap;
+}
+
+.lb-context-shell-inline .lb-summary-list{
+    grid-template-columns: minmax(260px, 1.4fr) repeat(2, minmax(180px, 1fr));
+    align-items: stretch;
+    gap: 10px;
+}
+
+.lb-summary-row{
     display: grid;
-    gap: 6px;
-    min-width: 0;
-    padding: 10px 11px;
-    border-radius: 13px;
-    border: 1px solid rgba(166,128,35,.24);
-    background: linear-gradient(180deg, rgba(255,255,255,.94) 0%, rgba(255,250,240,.84) 100%);
+    grid-template-columns: 1fr;
+    align-items: start;
+    gap: 4px;
+    padding: 9px 10px;
+    border-radius: 12px;
+    border: 1px solid rgba(227,184,79,.18);
+    background: linear-gradient(180deg, rgba(19,50,96,.94) 0%, rgba(10,29,59,.98) 100%);
     box-shadow:
-        inset 0 1px 0 rgba(255,255,255,.94),
-        0 6px 14px rgba(15,23,42,.06);
+        inset 0 1px 0 rgba(255,255,255,.08),
+        0 10px 20px rgba(2,6,23,.14);
 }
 
-.lb-context-card-wide,
-.lb-script-card-wide{
-    grid-column: 1 / -1;
-}
-
-.lb-context-label,
-.lb-script-label{
-    color: #8a6116;
+.lb-summary-label{
+    color: #f0cb76;
     font-size: 11px;
     font-weight: 900;
     letter-spacing: .1em;
     text-transform: uppercase;
+    line-height: 1.4;
 }
 
-.lb-context-value,
-.lb-script-copy{
-    color: #111827;
+.lb-summary-value{
+    color: #f7fbff;
     font-size: 13px;
     font-weight: 760;
-    line-height: 1.48;
-    white-space: pre-line;
+    line-height: 1.32;
     overflow-wrap: anywhere;
-}
-
-.lb-script-shell{
-    display: grid;
-    gap: 10px;
-    padding-top: 2px;
-    border-top: 1px solid rgba(166,128,35,.14);
 }
 
 .lead-bridge .lb-row{
@@ -1372,22 +1318,21 @@ body.note-self-open{
 }
 
 .lead-field{
-    flex: 0 1 auto;
-    min-width: 150px;
+    flex: 1 1 220px;
+    min-width: 190px;
     max-width: 100%;
-    padding: 9px 11px;
-    border-radius: 12px;
-    background: linear-gradient(180deg, #ffffff 0%, #fff8e8 100%);
-    border: 1px solid rgba(166,128,35,.38);
+    padding: 12px 13px;
+    border-radius: 14px;
+    background: linear-gradient(180deg, rgba(9,31,63,.98) 0%, rgba(6,23,49,.99) 100%);
+    border: 1px solid rgba(227,184,79,.28);
     box-shadow:
-        inset 0 1px 0 rgba(255,255,255,.9),
-        0 6px 16px rgba(15,23,42,.08),
-        0 2px 6px rgba(166,128,35,.10);
-    min-height: 64px;
+        inset 0 1px 0 rgba(255,255,255,.08),
+        0 12px 24px rgba(2,6,23,.22);
+    min-height: 76px;
     display: flex;
     flex-direction: column;
-    gap: 4px;
-    white-space: nowrap;
+    gap: 6px;
+    white-space: normal;
     overflow: hidden;
     text-overflow: ellipsis;
     transition: transform .16s ease, box-shadow .16s ease, border-color .16s ease;
@@ -1395,30 +1340,31 @@ body.note-self-open{
 
 .lead-field:hover{
     transform: translateY(-1px);
-    border-color: rgba(166,128,35,.58);
+    border-color: rgba(227,184,79,.52);
     box-shadow:
-        inset 0 1px 0 rgba(255,255,255,.94),
-        0 10px 22px rgba(15,23,42,.12),
-        0 3px 8px rgba(166,128,35,.14);
+        inset 0 1px 0 rgba(255,255,255,.10),
+        0 16px 30px rgba(2,6,23,.28);
 }
 
 .lead-field .lf-label{
     align-self: flex-start;
     padding: 4px 7px;
     border-radius: 10px;
-    background: rgba(16,16,16,.9);
-    color: #f3f4f6;
-    font-weight: 750;
+    border: 1px solid rgba(227,184,79,.20);
+    background: rgba(227,184,79,.10);
+    color: #f3d88d;
+    font-weight: 800;
     font-size: 11px;
     letter-spacing: .8px;
     text-transform: uppercase;
 }
 
 .lead-field .lf-value{
-    font-size: 18px;
+    font-size: 17px;
     font-weight: 950;
     line-height: 1.25;
-    color: #0f172a;
+    color: #f7fbff;
+    white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
 }
@@ -1426,39 +1372,33 @@ body.note-self-open{
     font-size: 12px;
     font-weight: 820;
     line-height: 1.3;
-    color: #0f172a;
-    background: linear-gradient(90deg, rgba(166,128,35,.16), transparent);
+    color: #e3edf9;
+    background: linear-gradient(90deg, rgba(227,184,79,.12), transparent);
     padding: 4px 6px;
     border-radius: 8px;
     letter-spacing: .15px;
 }
 .lead-field .lf-sub{
     position: absolute;
-    top: 4px;
-    right: 6px;
-    font-size: 12px;
+    top: 8px;
+    right: 10px;
+    font-size: 11.5px;
     font-weight: 900;
-    color: #dc2626;
+    color: #f4d995;
     letter-spacing: .1px;
 }
 .lead-field[data-lf="name"]{
     position: relative;
+    flex-basis: 280px;
 }
 .lead-field .lf-note.is-saved::before{
     content: "● ";
     color: #15803d;
 }
 
-.lead-field[data-lf="name"] .lf-value{ color:#0f766e; }
-.lead-field[data-lf="address"] .lf-value{ color:#2563eb; }
-.lead-field[data-lf="city"] .lf-value{ color:#0ea5e9; }
-.lead-field[data-lf="state"] .lf-value{ color:#4f46e5; }
-.lead-field[data-lf="county"] .lf-value{ color:#9333ea; }
-.lead-field[data-lf="dob"] .lf-value{ color:#be185d; }
-.lead-field[data-lf="gender"] .lf-value{ color:#f97316; }
-.lead-field[data-lf="lender"] .lf-value{ color:#c2410c; }
-.lead-field[data-lf="loan"] .lf-value{ color:#dc2626; }
-.lead-field[data-lf="phone"] .lf-value{ color:#0ea5e9; font-weight: 900; }
+.lead-field[data-lf="phone"] .lf-value{ color:#f4d995; }
+.lead-field[data-lf="email"] .lf-value{ color:#e8f1ff; font-size:15px; }
+.lead-field[data-lf="location"] .lf-value{ color:#d7e6ff; }
 
 .lb-row-actions{
     align-items: center;
@@ -11388,9 +11328,11 @@ details.section{
 }
 
     #rbShell .lead-field{
-    background: linear-gradient(180deg, #fffefb, #efe5cf) !important;
-    border-color: rgba(212,167,67,.68) !important;
-    box-shadow: 0 10px 20px rgba(5,10,22,.14) !important;
+    background: linear-gradient(180deg, rgba(15,41,80,.98), rgba(9,26,54,.99)) !important;
+    border-color: rgba(227,184,79,.38) !important;
+    box-shadow:
+        inset 0 1px 0 rgba(255,255,255,.08),
+        0 10px 20px rgba(5,10,22,.22) !important;
 }
 
 #rbShell .lead-field .lf-label{
@@ -12491,11 +12433,6 @@ details.section{
         gap: 6px !important;
     }
 
-    html.lead-bridge-mobile #rbShell [data-lf="city"],
-    html.lead-bridge-mobile #rbShell [data-lf="lender"]{
-        display: none !important;
-    }
-
     html.lead-bridge-mobile #rbShell .lb-filterbar{
         gap: 6px !important;
     }
@@ -12611,11 +12548,6 @@ details.section{
         font-size: 11.5px !important;
     }
 
-    #rbShell [data-lf="city"],
-    #rbShell [data-lf="lender"]{
-        display: none !important;
-    }
-
     #rbShell .lb-row.lb-row-fields{
         display: grid !important;
         grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
@@ -12623,13 +12555,18 @@ details.section{
     }
 
     #rbShell [data-lf="name"]{
-        grid-column: 1;
+        grid-column: 1 / -1;
         grid-row: 1;
     }
 
-    #rbShell [data-lf="state"]{
+    #rbShell [data-lf="phone"]{
+        grid-column: 1;
+        grid-row: 2;
+    }
+
+    #rbShell [data-lf="location"]{
         grid-column: 2;
-        grid-row: 1;
+        grid-row: 2;
     }
 
     #rbShell .lead-field.mobile-allowed{
@@ -12709,13 +12646,6 @@ details.section{
         gap: 6px !important;
     }
 
-    #rbShell .lead-field.mobile-allowed[data-lf="city"],
-    #rbShell .lead-field.mobile-allowed[data-lf="lender"],
-    .lead-bridge-mobile #rbShell .lead-field.mobile-allowed[data-lf="city"],
-    .lead-bridge-mobile #rbShell .lead-field.mobile-allowed[data-lf="lender"]{
-        display: none !important;
-    }
-
     #rbShell .lb-row.lb-row-fields{
         display: grid !important;
         grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
@@ -12723,13 +12653,18 @@ details.section{
     }
 
     #rbShell .lead-field.mobile-allowed[data-lf="name"]{
-        grid-column: 1 !important;
+        grid-column: 1 / -1 !important;
         grid-row: 1 !important;
     }
 
-    #rbShell .lead-field.mobile-allowed[data-lf="state"]{
+    #rbShell .lead-field.mobile-allowed[data-lf="phone"]{
+        grid-column: 1 !important;
+        grid-row: 2 !important;
+    }
+
+    #rbShell .lead-field.mobile-allowed[data-lf="location"]{
         grid-column: 2 !important;
-        grid-row: 1 !important;
+        grid-row: 2 !important;
     }
 }
 
@@ -14701,7 +14636,7 @@ details.section{
 /* Re-assert the real Leads Quick View styling inside workstation.
    The rebuttals shell has broader #rbShell rules that would otherwise override
    the shared lead quick-view theme. */
-#rbShell #drawer.lead-qv-shell{
+#rbShell #drawer.crm-qv-shell{
     background:
         radial-gradient(1100px 520px at 14% -8%, rgba(168,85,247,.18), transparent 48%),
         radial-gradient(900px 420px at 110% 12%, rgba(56,189,248,.16), transparent 46%),
@@ -14710,7 +14645,7 @@ details.section{
     box-shadow: 0 32px 72px rgba(2,6,23,.62), 0 10px 26px rgba(139,92,246,.12), inset 0 1px 0 rgba(255,255,255,.05) !important;
 }
 
-#rbShell #drawer.lead-qv-shell .dhead{
+#rbShell #drawer.crm-qv-shell .dhead{
     position: sticky;
     top: 0;
     z-index: 5;
@@ -14722,37 +14657,37 @@ details.section{
     color: #f8fafc !important;
 }
 
-#rbShell #drawer.lead-qv-shell .dtitle{
+#rbShell #drawer.crm-qv-shell .dtitle{
     font-size: 1.14rem;
     letter-spacing: .015em;
 }
 
-#rbShell #drawer.lead-qv-shell #dName{
+#rbShell #drawer.crm-qv-shell #dName{
     font-weight: 1000;
     color: #f8fafc !important;
     text-shadow: 0 1px 16px rgba(148,163,184,.16);
 }
 
-#rbShell #drawer.lead-qv-shell .dsub{
+#rbShell #drawer.crm-qv-shell .dsub{
     margin-top: 7px;
     color: #d9e4f3 !important;
     font-weight: 760;
     font-size: .87rem;
 }
 
-#rbShell #drawer.lead-qv-shell .crm-email-display{
+#rbShell #drawer.crm-qv-shell .crm-email-display{
     color: #fde68a !important;
 }
 
-#rbShell #drawer.lead-qv-shell .drawer-statbar{
+#rbShell #drawer.crm-qv-shell .drawer-statbar{
     display: flex;
     gap: 8px;
     flex-wrap: wrap;
     margin-top: 10px;
 }
 
-#rbShell #drawer.lead-qv-shell .pill,
-#rbShell #drawer.lead-qv-shell #dPortalWrap{
+#rbShell #drawer.crm-qv-shell .pill,
+#rbShell #drawer.crm-qv-shell #dPortalWrap{
     display: inline-flex;
     align-items: center;
     gap: 8px;
@@ -14767,17 +14702,17 @@ details.section{
     font-size: .78rem;
 }
 
-#rbShell #drawer.lead-qv-shell #dStageAge{ border-color: rgba(56,189,248,.28); color: #bae6fd !important; }
-#rbShell #drawer.lead-qv-shell #dAttempts{ border-color: rgba(244,208,121,.24); color: #fef3c7 !important; }
-#rbShell #drawer.lead-qv-shell #dWaitingOnPill{ border-color: rgba(168,85,247,.24); color: #e9d5ff !important; }
+#rbShell #drawer.crm-qv-shell #dStageAge{ border-color: rgba(56,189,248,.28); color: #bae6fd !important; }
+#rbShell #drawer.crm-qv-shell #dAttempts{ border-color: rgba(244,208,121,.24); color: #fef3c7 !important; }
+#rbShell #drawer.crm-qv-shell #dWaitingOnPill{ border-color: rgba(168,85,247,.24); color: #e9d5ff !important; }
 
-#rbShell #drawer.lead-qv-shell .drawer-top-actions{
+#rbShell #drawer.crm-qv-shell .drawer-top-actions{
     gap: 10px;
     margin-top: 12px;
 }
 
-#rbShell #drawer.lead-qv-shell .btn,
-#rbShell #drawer.lead-qv-shell a.btn{
+#rbShell #drawer.crm-qv-shell .btn,
+#rbShell #drawer.crm-qv-shell a.btn{
     border-radius: 14px !important;
     min-height: 40px !important;
     padding: 9px 13px !important;
@@ -14787,48 +14722,48 @@ details.section{
     transition: transform .16s ease, box-shadow .16s ease, border-color .16s ease, background .16s ease, color .16s ease !important;
 }
 
-#rbShell #drawer.lead-qv-shell .btn:hover,
-#rbShell #drawer.lead-qv-shell .btn:focus{
+#rbShell #drawer.crm-qv-shell .btn:hover,
+#rbShell #drawer.crm-qv-shell .btn:focus{
     transform: translateY(-1px);
 }
 
-#rbShell #drawer.lead-qv-shell .btn-gold{
+#rbShell #drawer.crm-qv-shell .btn-gold{
     background: linear-gradient(135deg,#fff1bc 0%, #f0cf7a 34%, #d6a84a 68%, #9f6f16 100%) !important;
     color: #251607 !important;
     border: 1px solid rgba(244,208,121,.9) !important;
     box-shadow: 0 12px 26px rgba(217,179,90,.24), inset 0 1px 0 rgba(255,255,255,.42) !important;
 }
 
-#rbShell #drawer.lead-qv-shell .btn-gold:hover,
-#rbShell #drawer.lead-qv-shell .btn-gold:focus{
+#rbShell #drawer.crm-qv-shell .btn-gold:hover,
+#rbShell #drawer.crm-qv-shell .btn-gold:focus{
     box-shadow: 0 15px 30px rgba(217,179,90,.28), inset 0 1px 0 rgba(255,255,255,.5) !important;
 }
 
-#rbShell #drawer.lead-qv-shell .btn-ghost,
-#rbShell #drawer.lead-qv-shell a.btn-ghost,
-#rbShell #drawer.lead-qv-shell .lb-btn{
+#rbShell #drawer.crm-qv-shell .btn-ghost,
+#rbShell #drawer.crm-qv-shell a.btn-ghost,
+#rbShell #drawer.crm-qv-shell .lb-btn{
     background: linear-gradient(180deg, rgba(20,31,52,.96), rgba(12,19,33,.96)) !important;
     color: #eef4ff !important;
     border: 1px solid rgba(148,163,184,.22) !important;
     box-shadow: 0 10px 20px rgba(2,6,23,.24), inset 0 1px 0 rgba(255,255,255,.06) !important;
 }
 
-#rbShell #drawer.lead-qv-shell .btn-ghost:hover,
-#rbShell #drawer.lead-qv-shell a.btn-ghost:hover,
-#rbShell #drawer.lead-qv-shell .lb-btn:hover,
-#rbShell #drawer.lead-qv-shell .btn-ghost:focus,
-#rbShell #drawer.lead-qv-shell a.btn-ghost:focus,
-#rbShell #drawer.lead-qv-shell .lb-btn:focus{
+#rbShell #drawer.crm-qv-shell .btn-ghost:hover,
+#rbShell #drawer.crm-qv-shell a.btn-ghost:hover,
+#rbShell #drawer.crm-qv-shell .lb-btn:hover,
+#rbShell #drawer.crm-qv-shell .btn-ghost:focus,
+#rbShell #drawer.crm-qv-shell a.btn-ghost:focus,
+#rbShell #drawer.crm-qv-shell .lb-btn:focus{
     border-color: rgba(244,208,121,.34) !important;
     color: #fff7dd !important;
     box-shadow: 0 12px 24px rgba(2,6,23,.3), 0 0 0 1px rgba(244,208,121,.16) !important;
 }
 
-#rbShell #drawer.lead-qv-shell #btnCloseDrawer{
+#rbShell #drawer.crm-qv-shell #btnCloseDrawer{
     min-width: 88px;
 }
 
-#rbShell #drawer.lead-qv-shell .dbody{
+#rbShell #drawer.crm-qv-shell .dbody{
     padding: 14px 15px 20px !important;
     background:
         radial-gradient(720px 300px at 100% 0%, rgba(56,189,248,.06), transparent 54%),
@@ -14837,7 +14772,7 @@ details.section{
     color: #dbe7f3 !important;
 }
 
-#rbShell #drawer.lead-qv-shell .section{
+#rbShell #drawer.crm-qv-shell .qv-panel{
     border: 1px solid rgba(148,163,184,.18) !important;
     border-radius: 20px !important;
     padding: 14px !important;
@@ -14848,14 +14783,14 @@ details.section{
     color: #dbe7f3 !important;
 }
 
-#rbShell #drawer.lead-qv-shell .section.section-teal.qv-contact-card{
+#rbShell #drawer.crm-qv-shell .qv-panel.qv-panel-contact.qv-contact-card{
     border-color: rgba(56,189,248,.24) !important;
     background:
         radial-gradient(520px 200px at 0% 0%, rgba(56,189,248,.12), transparent 55%),
         linear-gradient(180deg, rgba(10,28,44,.96), rgba(9,19,34,.96)) !important;
 }
 
-#rbShell #drawer.lead-qv-shell .section.section-gold{
+#rbShell #drawer.crm-qv-shell .qv-panel.qv-panel-data{
     border-color: rgba(244,208,121,.22) !important;
     background:
         radial-gradient(520px 220px at 100% 0%, rgba(244,208,121,.1), transparent 55%),
@@ -14863,7 +14798,7 @@ details.section{
     color: #fde7af !important;
 }
 
-#rbShell #drawer.lead-qv-shell .section.section-relationship{
+#rbShell #drawer.crm-qv-shell .qv-panel.qv-panel-relationship{
     border: 1px solid rgba(167,139,250,.28) !important;
     background:
         radial-gradient(520px 220px at 100% 0%, rgba(167,139,250,.12), transparent 55%),
@@ -14871,7 +14806,7 @@ details.section{
     color: #ddd6fe !important;
 }
 
-#rbShell #drawer.lead-qv-shell .section.section-green{
+#rbShell #drawer.crm-qv-shell .qv-panel.qv-panel-support{
     border-color: rgba(74,222,128,.24) !important;
     background:
         radial-gradient(420px 180px at 0% 0%, rgba(74,222,128,.1), transparent 56%),
@@ -14879,7 +14814,7 @@ details.section{
     color: #bbf7d0 !important;
 }
 
-#rbShell #drawer.lead-qv-shell .section.section-violet{
+#rbShell #drawer.crm-qv-shell .qv-panel.qv-panel-collab{
     border-color: rgba(192,132,252,.24) !important;
     background:
         radial-gradient(420px 180px at 100% 0%, rgba(192,132,252,.1), transparent 56%),
@@ -14887,7 +14822,7 @@ details.section{
     color: #e9d5ff !important;
 }
 
-#rbShell #drawer.lead-qv-shell .section.section-red{
+#rbShell #drawer.crm-qv-shell .qv-panel.qv-panel-danger{
     border-color: rgba(248,113,113,.28) !important;
     background:
         radial-gradient(420px 180px at 0% 0%, rgba(248,113,113,.1), transparent 56%),
@@ -14895,17 +14830,17 @@ details.section{
     color: #fecaca !important;
 }
 
-#rbShell #drawer.lead-qv-shell .section h4,
-#rbShell #drawer.lead-qv-shell .qv-subsection h5,
-#rbShell #drawer.lead-qv-shell .section.section-relationship h5{
+#rbShell #drawer.crm-qv-shell .qv-panel h4,
+#rbShell #drawer.crm-qv-shell .qv-subsection h5,
+#rbShell #drawer.crm-qv-shell .qv-panel.qv-panel-relationship h5{
     color: #f8fafc !important;
 }
 
-#rbShell #drawer.lead-qv-shell .qv-contact-card > div:first-child{
+#rbShell #drawer.crm-qv-shell .qv-contact-card > div:first-child{
     margin-bottom: 10px;
 }
 
-#rbShell #drawer.lead-qv-shell .qv-contact-card h4{
+#rbShell #drawer.crm-qv-shell .qv-contact-card h4{
     margin: 0;
     padding: 0 !important;
     background: none !important;
@@ -14917,7 +14852,7 @@ details.section{
     color: #eef7ff !important;
 }
 
-#rbShell #drawer.lead-qv-shell .qv-disclosure > summary{
+#rbShell #drawer.crm-qv-shell .qv-disclosure > summary{
     display: flex !important;
     align-items: center !important;
     justify-content: space-between !important;
@@ -14931,15 +14866,15 @@ details.section{
     color: inherit !important;
 }
 
-#rbShell #drawer.lead-qv-shell .qv-disclosure > summary::-webkit-details-marker{
+#rbShell #drawer.crm-qv-shell .qv-disclosure > summary::-webkit-details-marker{
     display: none !important;
 }
 
-#rbShell #drawer.lead-qv-shell .qv-disclosure > summary::marker{
+#rbShell #drawer.crm-qv-shell .qv-disclosure > summary::marker{
     content: "" !important;
 }
 
-#rbShell #drawer.lead-qv-shell .qv-disclosure > summary::after{
+#rbShell #drawer.crm-qv-shell .qv-disclosure > summary::after{
     content: "" !important;
     width: 30px !important;
     height: 30px !important;
@@ -14953,16 +14888,16 @@ details.section{
     box-shadow: inset 0 1px 0 rgba(255,255,255,.08) !important;
 }
 
-#rbShell #drawer.lead-qv-shell .qv-disclosure[open] > .qv-section-body{
+#rbShell #drawer.crm-qv-shell .qv-disclosure[open] > .qv-section-body{
     padding-top: 11px !important;
     border-top: 1px solid rgba(255,255,255,.08) !important;
 }
 
-#rbShell #drawer.lead-qv-shell .qv-section-header{
+#rbShell #drawer.crm-qv-shell .qv-section-header{
     position: relative;
 }
 
-#rbShell #drawer.lead-qv-shell .qv-section-header::after{
+#rbShell #drawer.crm-qv-shell .qv-section-header::after{
     content: "" !important;
     display: block !important;
     width: 88px !important;
@@ -14972,7 +14907,7 @@ details.section{
     background: linear-gradient(90deg, rgba(230,194,110,.9), rgba(230,194,110,0)) !important;
 }
 
-#rbShell #drawer.lead-qv-shell .qv-subsection{
+#rbShell #drawer.crm-qv-shell .qv-subsection{
     padding: 11px 11px 10px !important;
     border-radius: 15px !important;
     background: linear-gradient(180deg, rgba(255,255,255,.05), rgba(255,255,255,.02)) !important;
@@ -14980,7 +14915,7 @@ details.section{
     box-shadow: inset 0 1px 0 rgba(255,255,255,.04) !important;
 }
 
-#rbShell #drawer.lead-qv-shell .qv-section-title{
+#rbShell #drawer.crm-qv-shell .qv-section-title{
     font-size: .88rem;
     font-weight: 950;
     letter-spacing: .06em;
@@ -14988,16 +14923,16 @@ details.section{
     color: #f8fafc !important;
 }
 
-#rbShell #drawer.lead-qv-shell .qv-section-copy{
+#rbShell #drawer.crm-qv-shell .qv-section-copy{
     font-size: .76rem;
     color: #b7c4d9 !important;
     font-weight: 750;
     line-height: 1.35;
 }
 
-#rbShell #drawer.lead-qv-shell .f label,
-#rbShell #drawer.lead-qv-shell .drawer label,
-#rbShell #drawer.lead-qv-shell .cc-label{
+#rbShell #drawer.crm-qv-shell .qv-field label,
+#rbShell #drawer.crm-qv-shell .drawer label,
+#rbShell #drawer.crm-qv-shell .cc-label{
     color: #cfdbed !important;
     font-size: .68rem !important;
     font-weight: 950 !important;
@@ -15005,9 +14940,9 @@ details.section{
     text-transform: uppercase !important;
 }
 
-#rbShell #drawer.lead-qv-shell input,
-#rbShell #drawer.lead-qv-shell select,
-#rbShell #drawer.lead-qv-shell textarea{
+#rbShell #drawer.crm-qv-shell input,
+#rbShell #drawer.crm-qv-shell select,
+#rbShell #drawer.crm-qv-shell textarea{
     width: 100%;
     border-radius: 13px !important;
     border: 1px solid rgba(148,163,184,.22) !important;
@@ -15019,29 +14954,29 @@ details.section{
     padding: 10px 12px !important;
 }
 
-#rbShell #drawer.lead-qv-shell textarea{
+#rbShell #drawer.crm-qv-shell textarea{
     min-height: 104px;
 }
 
-#rbShell #drawer.lead-qv-shell input:focus,
-#rbShell #drawer.lead-qv-shell select:focus,
-#rbShell #drawer.lead-qv-shell textarea:focus{
+#rbShell #drawer.crm-qv-shell input:focus,
+#rbShell #drawer.crm-qv-shell select:focus,
+#rbShell #drawer.crm-qv-shell textarea:focus{
     border-color: rgba(244,208,121,.58) !important;
     box-shadow: 0 0 0 3px rgba(244,208,121,.14), 0 10px 20px rgba(2,6,23,.16), inset 0 1px 0 rgba(255,255,255,.75) !important;
     outline: none;
 }
 
-#rbShell #drawer.lead-qv-shell input::placeholder,
-#rbShell #drawer.lead-qv-shell textarea::placeholder{
+#rbShell #drawer.crm-qv-shell input::placeholder,
+#rbShell #drawer.crm-qv-shell textarea::placeholder{
     color: #64748b !important;
 }
 
-#rbShell #drawer.lead-qv-shell .tiny,
-#rbShell #drawer.lead-qv-shell .muted{
+#rbShell #drawer.crm-qv-shell .tiny,
+#rbShell #drawer.crm-qv-shell .muted{
     color: #b9c8da !important;
 }
 
-#rbShell #drawer.lead-qv-shell .preset-chip{
+#rbShell #drawer.crm-qv-shell .preset-chip{
     border: 1px solid rgba(148,163,184,.18) !important;
     background: linear-gradient(180deg, rgba(19,30,49,.96), rgba(12,19,33,.96)) !important;
     color: #edf4ff !important;
@@ -15050,29 +14985,29 @@ details.section{
     font-size: .76rem !important;
 }
 
-#rbShell #drawer.lead-qv-shell .preset-chip.active,
-#rbShell #drawer.lead-qv-shell .preset-chip:hover{
+#rbShell #drawer.crm-qv-shell .preset-chip.active,
+#rbShell #drawer.crm-qv-shell .preset-chip:hover{
     border-color: rgba(244,208,121,.34) !important;
     color: #fff5cf !important;
     box-shadow: 0 10px 20px rgba(2,6,23,.22), 0 0 0 1px rgba(244,208,121,.14) !important;
 }
 
-#rbShell #drawer.lead-qv-shell .outcome-grid{
+#rbShell #drawer.crm-qv-shell .outcome-grid{
     gap: 12px;
 }
 
-#rbShell #drawer.lead-qv-shell .outcome-grid .btn{
+#rbShell #drawer.crm-qv-shell .outcome-grid .btn{
     min-height: 42px !important;
     padding: 9px 12px !important;
     border-radius: 14px !important;
     box-shadow: 0 10px 20px rgba(2,6,23,.18), inset 0 1px 0 rgba(255,255,255,.06) !important;
 }
 
-#rbShell #drawer.lead-qv-shell .doc-grid{
+#rbShell #drawer.crm-qv-shell .doc-grid{
     gap: 12px;
 }
 
-#rbShell #drawer.lead-qv-shell .doc-grid label{
+#rbShell #drawer.crm-qv-shell .doc-grid label{
     border: 1px solid rgba(255,255,255,.08) !important;
     border-radius: 14px !important;
     padding: 10px 12px !important;
@@ -15082,15 +15017,15 @@ details.section{
     font-size: .88rem !important;
 }
 
-#rbShell #drawer.lead-qv-shell .doc-grid input[type="checkbox"]{
+#rbShell #drawer.crm-qv-shell .doc-grid input[type="checkbox"]{
     accent-color: #34d399;
     transform: scale(1.08);
 }
 
-#rbShell #drawer.lead-qv-shell #leadActionsContainer,
-#rbShell #drawer.lead-qv-shell #leadCommitmentsContainer,
-#rbShell #drawer.lead-qv-shell .timeline,
-#rbShell #drawer.lead-qv-shell .mention-list{
+#rbShell #drawer.crm-qv-shell #leadActionsContainer,
+#rbShell #drawer.crm-qv-shell #leadCommitmentsContainer,
+#rbShell #drawer.crm-qv-shell .timeline,
+#rbShell #drawer.crm-qv-shell .mention-list{
     border-radius: 14px !important;
     border: 1px solid rgba(255,255,255,.08) !important;
     background: linear-gradient(180deg, rgba(13,21,35,.96), rgba(9,15,27,.96)) !important;
@@ -15098,12 +15033,12 @@ details.section{
     color: #e7edf7 !important;
 }
 
-#rbShell #drawer.lead-qv-shell #leadActionsContainer,
-#rbShell #drawer.lead-qv-shell #leadCommitmentsContainer{
+#rbShell #drawer.crm-qv-shell #leadActionsContainer,
+#rbShell #drawer.crm-qv-shell #leadCommitmentsContainer{
     padding: 11px 12px !important;
 }
 
-#rbShell #drawer.lead-qv-shell #dSaved{
+#rbShell #drawer.crm-qv-shell #dSaved{
     color: #fde68a !important;
     font-weight: 900 !important;
     letter-spacing: .03em !important;
@@ -15175,84 +15110,100 @@ details.section{
 
 #rbShell .rebuttal-workspace-grid .content-head-controls{
     display: flex;
-    flex-direction: column;
-    align-items: flex-end;
-    justify-content: flex-start;
-    gap: 4px;
+    flex-direction: row;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 10px;
     margin-left: auto;
     flex: 0 1 auto;
     min-width: 0;
+    flex-wrap: nowrap;
 }
 
 #rbShell .rebuttal-workspace-grid .content-head-primary{
-    display: flex;
+    display: inline-flex;
     align-items: center;
     justify-content: flex-end;
     gap: 8px;
-    flex-wrap: wrap;
+    flex-wrap: nowrap;
+    min-width: 0;
 }
 
 #rbShell .rebuttal-workspace-grid .content-head-next{
-    display: flex;
+    display: inline-flex;
     align-items: center;
     gap: 8px;
-    flex-wrap: wrap;
+    flex-wrap: nowrap;
     justify-content: flex-end;
 }
 
-#rbShell .rebuttal-workspace-grid .content-head-next .lb-btn{
+#rbShell .rebuttal-workspace-grid .content-head-next .lb-btn,
+#rbShell .rebuttal-workspace-grid .content-head-shortcuts .lb-btn{
     margin: 0;
-    padding: 8px 13px;
+    min-height: 38px;
+    padding: 8px 14px;
     border-radius: 12px;
-    font-size: .9rem;
+    font-size: .86rem;
     line-height: 1;
+    white-space: nowrap;
+    background: linear-gradient(180deg, #274779 0%, #1b3157 55%, #132544 100%) !important;
+    border-color: rgba(244,220,147,.38) !important;
+    color: #f8fbff !important;
     box-shadow:
-        inset 0 1px 0 rgba(255,255,255,.22),
-        0 8px 16px rgba(5,10,22,.14) !important;
+        inset 0 1px 0 rgba(255,255,255,.16),
+        0 10px 18px rgba(5,10,22,.18),
+        0 0 0 1px rgba(92,126,188,.14) inset !important;
 }
 
-#rbShell .rebuttal-workspace-grid .content-head-next .lb-btn.ghost{
+#rbShell .rebuttal-workspace-grid .content-head-next .lb-btn.ghost,
+#rbShell .rebuttal-workspace-grid .content-head-shortcuts .lb-btn.ghost{
+    background: linear-gradient(180deg, #274779 0%, #1b3157 55%, #132544 100%) !important;
+    border-color: rgba(244,220,147,.38) !important;
+    color: #f8fbff !important;
     box-shadow:
-        inset 0 1px 0 rgba(255,255,255,.9),
-        0 8px 16px rgba(5,10,22,.12),
-        0 0 0 1px rgba(198,153,45,.24) inset !important;
+        inset 0 1px 0 rgba(255,255,255,.16),
+        0 10px 18px rgba(5,10,22,.18),
+        0 0 0 1px rgba(92,126,188,.14) inset !important;
+}
+
+#rbShell .rebuttal-workspace-grid .content-head-next .lb-btn:hover,
+#rbShell .rebuttal-workspace-grid .content-head-next .lb-btn:focus,
+#rbShell .rebuttal-workspace-grid .content-head-shortcuts .lb-btn:hover,
+#rbShell .rebuttal-workspace-grid .content-head-shortcuts .lb-btn:focus{
+    background: linear-gradient(180deg, #31558c 0%, #213b67 55%, #16294a 100%) !important;
+    border-color: rgba(244,220,147,.48) !important;
+    color: #ffffff !important;
 }
 
 #rbShell .rebuttal-workspace-grid .content-head-next .lb-btn.next{
+    background: linear-gradient(180deg, #69eea6 0%, #1f9e7d 56%, #0d5b48 100%) !important;
+    border-color: rgba(105,238,166,.76) !important;
+    color: #04120d !important;
     box-shadow:
         inset 0 1px 0 rgba(255,255,255,.22),
         0 10px 18px rgba(5,150,105,.22) !important;
 }
 
 #rbShell .rebuttal-workspace-grid .content-head-shortcuts{
-    display: flex;
+    display: inline-flex;
     align-items: center;
     justify-content: flex-end;
-    gap: 6px;
-    flex-wrap: wrap;
-}
-
-#rbShell .rebuttal-workspace-grid .content-head-shortcuts .lb-btn{
-    margin: 0;
-    padding: 7px 11px;
-    min-height: 32px;
-    border-radius: 11px;
-    font-size: .82rem;
-    line-height: 1;
-    box-shadow:
-        inset 0 1px 0 rgba(255,255,255,.88),
-        0 7px 14px rgba(5,10,22,.10),
-        0 0 0 1px rgba(198,153,45,.22) inset !important;
+    gap: 8px;
+    flex-wrap: nowrap;
+    min-width: 0;
+    margin-left: 2px;
+    padding-left: 10px;
+    border-left: 1px solid rgba(244,220,147,.16);
 }
 
 #rbShell .rebuttal-workspace-grid .content-head-shortcuts .guide-shortcut-btn.active{
-    background: linear-gradient(180deg, #fff2b8 0%, #e4bc57 100%) !important;
-    border-color: #16243a !important;
-    color: #12213a !important;
+    background: linear-gradient(180deg, #34578f 0%, #223b66 58%, #172b4d 100%) !important;
+    border-color: rgba(244,220,147,.62) !important;
+    color: #fffdf8 !important;
     box-shadow:
-        inset 0 1px 0 rgba(255,255,255,.42),
-        0 0 0 1px rgba(15,23,42,.12),
-        0 8px 16px rgba(15,23,42,.14) !important;
+        inset 0 1px 0 rgba(255,255,255,.18),
+        0 10px 20px rgba(5,10,22,.18),
+        0 0 0 1px rgba(244,220,147,.18) inset !important;
 }
 
 #rbShell .rebuttal-workspace-grid .content-head-shortcuts .objections-toggle-btn{
@@ -15385,13 +15336,8 @@ details.section{
         min-width: 100%;
     }
 
-    .lb-context-head,
-    .lb-script-head{
+    .lb-context-head{
         flex-direction: column;
-    }
-
-    .lb-context-chip-row{
-        justify-content: flex-start;
     }
 
     #rbShell .rebuttal-workspace-grid{
@@ -15443,8 +15389,12 @@ details.section{
         display: none !important;
     }
 
-    .lb-context-grid,
-    .lb-script-grid{
+    .lb-context-shell-inline{
+        grid-template-columns: 1fr;
+        align-items: start;
+    }
+
+    .lb-context-shell-inline .lb-summary-list{
         grid-template-columns: 1fr;
     }
 }
@@ -15461,36 +15411,9 @@ details.section{
     margin-bottom: 8px;
 }
 
-#rbShell .lead-contact-zone .lb-context-shell{
-    padding: 10px 11px;
-    gap: 8px;
-}
-
-#rbShell .lead-contact-zone .lb-context-title,
-#rbShell .lead-contact-zone .lb-script-title{
-    font-size: 16px;
-}
-
-#rbShell .lead-contact-zone .lb-context-sub,
-#rbShell .lead-contact-zone .lb-script-note{
-    font-size: 12px;
-}
-
-#rbShell .lead-contact-zone .lb-context-grid,
-#rbShell .lead-contact-zone .lb-script-grid{
-    gap: 7px;
-}
-
-#rbShell .lead-contact-zone .lb-context-card,
-#rbShell .lead-contact-zone .lb-script-card{
-    padding: 9px 10px;
-    border-radius: 12px;
-}
-
-#rbShell .lead-contact-zone .lb-context-value,
-#rbShell .lead-contact-zone .lb-script-copy{
-    font-size: 12.5px;
-    line-height: 1.42;
+#rbShell .lead-contact-zone .lb-context-shell,
+#mpShell .lead-bridge > .lb-context-shell{
+    margin-top: 8px;
 }
 
 #rbShell .lead-contact-zone .lb-row{
@@ -15503,23 +15426,23 @@ details.section{
 }
 
 #rbShell .lead-contact-zone .lead-field{
-    min-width: 138px;
-    min-height: 54px;
-    padding: 7px 10px;
+    min-width: 180px;
+    min-height: 64px;
+    padding: 10px 11px;
     border-radius: 11px;
-    gap: 2px;
+    gap: 4px;
+    background: linear-gradient(180deg, rgba(16,43,84,.98), rgba(9,26,54,.99)) !important;
+    border-color: rgba(227,184,79,.34) !important;
     box-shadow:
-        inset 0 1px 0 rgba(255,255,255,.92),
-        0 5px 12px rgba(5,10,22,.08),
-        0 1px 3px rgba(166,128,35,.08) !important;
+        inset 0 1px 0 rgba(255,255,255,.08),
+        0 10px 18px rgba(5,10,22,.20) !important;
 }
 
 #rbShell .lead-contact-zone .lead-field:hover{
     transform: translateY(-1px);
     box-shadow:
-        inset 0 1px 0 rgba(255,255,255,.94),
-        0 8px 18px rgba(5,10,22,.12),
-        0 2px 6px rgba(166,128,35,.10) !important;
+        inset 0 1px 0 rgba(255,255,255,.10),
+        0 12px 22px rgba(5,10,22,.24) !important;
 }
 
 #rbShell .lead-contact-zone .lead-field .lf-label{
@@ -15527,17 +15450,26 @@ details.section{
     border-radius: 9px;
     font-size: 10px;
     letter-spacing: .72px;
+    background: linear-gradient(180deg, rgba(15,24,40,.96), rgba(8,14,26,.98)) !important;
+    border-color: rgba(227,184,79,.26) !important;
+    color: #f6dd97 !important;
 }
 
 #rbShell .lead-contact-zone .lead-field .lf-value{
     font-size: 15px;
     line-height: 1.22;
+    color: #f7fbff !important;
+}
+
+#rbShell .lead-contact-zone .lead-field[data-lf="name"] .lf-value{
+    color: #f7fbff !important;
 }
 
 #rbShell .lead-contact-zone .lead-field .lf-sub{
-    top: 5px;
+    top: 8px;
     right: 8px;
     font-size: 11px;
+    color: #f4d995 !important;
 }
 
 #rbShell .lead-contact-zone .lb-row.lb-row-actions{
@@ -17828,5 +17760,71 @@ details.section{
         overflow-y: auto !important;
         overflow-x: hidden !important;
         scrollbar-gutter: stable;
+    }
+}
+
+/* ========================================================================
+   Natural workstation page scrolling
+   Let the document own vertical scroll on desktop instead of trapping the
+   mouse wheel inside nested rails and script panes.
+   ======================================================================== */
+@media (min-width: 901px){
+    #rbShell .nav-card:not(.prosper-nav-card){
+        height: auto !important;
+        min-height: 0 !important;
+        max-height: none !important;
+    }
+
+    #rbShell .nav-card:not(.prosper-nav-card) .nav-body,
+    #rbShell .content-card .content-body,
+    #rbShell #rbNav,
+    #mpShell .mp-main{
+        height: auto !important;
+        min-height: 0 !important;
+        max-height: none !important;
+        overflow: visible !important;
+    }
+
+    #rbShell #rbNav{
+        scrollbar-gutter: auto !important;
+    }
+
+    #rbShell .prosper-nav-card{
+        height: auto !important;
+        min-height: 0 !important;
+        max-height: calc(100dvh - var(--rb-sticky-top, 12px) - 24px) !important;
+        overflow: hidden !important;
+    }
+
+    #rbShell .prosper-nav-card .nav-body{
+        height: 100% !important;
+        min-height: 0 !important;
+        max-height: none !important;
+        overflow: hidden !important;
+    }
+
+    #rbShell #prosperNav{
+        height: 100% !important;
+        min-height: 0 !important;
+        max-height: none !important;
+        overflow-y: auto !important;
+        overflow-x: hidden !important;
+        scrollbar-gutter: stable !important;
+    }
+
+    #mpShell .side-card{
+        height: auto !important;
+        min-height: 0 !important;
+        max-height: calc(100dvh - 24px) !important;
+        overflow: hidden !important;
+    }
+
+    #mpShell .side-nav{
+        height: auto !important;
+        min-height: 0 !important;
+        max-height: none !important;
+        overflow-y: auto !important;
+        overflow-x: hidden !important;
+        flex: 1 1 auto !important;
     }
 }

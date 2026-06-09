@@ -27,268 +27,94 @@
         "Bond","Cyber","E&O","D&O","EPLI","Other"
     };
 
-    var contactMethodOptions = new[]{ "Call","Text","Email" };
-    var bestTimeOptions = new[]{ "Morning","Afternoon","Evening" };
-
-    var totalSteps = 14;
-}
-
-<style>
-    /* ============================================================
-       QUOTE WIZARD — match Finance theme (white + subtle gold)
-       ============================================================ */
-
-    body { background: #ffffff; }
-
-    .container-narrow{
-        width: 100%;
-        max-width: 1100px;
-        margin: 0 auto;
-        padding: 0 14px 40px;
-    }
-
-    /* Top header area like Finance */
-    .wizard-top{
-        position: relative;
-        padding: 18px 16px;
-        border-radius: 18px;
-        border: 1px solid rgba(166,128,35,0.28);
-        background: #ffffff;
-        box-shadow: 0 18px 55px rgba(0,0,0,0.07);
-        margin: 18px auto 16px;
-        display:flex;
-        justify-content:space-between;
-        align-items:center;
-        gap: 14px;
-    }
-    .wizard-top:before{
-        content:"";
-        position:absolute;
-        inset:0;
-        border-radius: 18px;
-        pointer-events:none;
-        background: radial-gradient(700px 240px at 18% 0%, rgba(166,128,35,0.10), transparent 55%);
-    }
-
-    .wizard-steptext{
-        font-weight: 900;
-        color: #111;
-        white-space: nowrap;
-        position: relative;
-        z-index: 1;
-    }
-
-    .wizard-progress{
-        width: 100%;
-        height: 10px;
-        background: #eee;
-        border-radius: 999px;
-        overflow:hidden;
-        border: 1px solid #e2e2e2;
-        position: relative;
-        z-index: 1;
-    }
-    .wizard-progress-fill{
-        height: 100%;
-        width: 0%;
-        background: #a68023;
-        transition: width .25s ease;
-    }
-
-    .required-note{
-        margin: 14px auto 0;
-    }
-
-    /* Step cards like Finance side/main cards */
-    .section-card{
-        position: relative;
-        background: #ffffff;
-        border: 1px solid rgba(166,128,35,0.28);
-        border-radius: 20px;
-        padding: 22px 18px;
-        margin-bottom: 20px;
-        box-shadow:
-            0 20px 60px rgba(0,0,0,0.08),
-            inset 0 1px 0 rgba(255,255,255,0.85);
-        overflow: hidden;
-    }
-    .section-card:before{
-        content:"";
-        position:absolute;
-        inset:0;
-        border-radius: 20px;
-        pointer-events:none;
-        background: radial-gradient(700px 260px at 12% 0%, rgba(166,128,35,0.10), transparent 60%);
-    }
-    .section-card > *{ position: relative; z-index: 1; }
-
-    .section-title{
-        font-size: 1.25rem;
-        font-weight: 900;
-        color: #131313;
-        margin-bottom: 14px;
-        letter-spacing: .2px;
-    }
-
-    /* Inputs / selects like Finance */
-    .form-control, .form-select{
-        border: 2px solid rgba(166,128,35,0.45) !important;
-        border-radius: 14px !important;
-        padding: 12px 14px !important;
-        font-weight: 800 !important;
-        color: #222 !important;
-        background: #ffffff !important;
-        box-shadow: 0 10px 28px rgba(0,0,0,0.06) !important;
-        transition: transform .18s ease, box-shadow .18s ease, border-color .18s ease;
-        margin-bottom: 15px;
-    }
-    .form-control:hover, .form-select:hover{
-        transform: translateY(-1px);
-        border-color: rgba(166,128,35,0.70) !important;
-        box-shadow: 0 14px 34px rgba(0,0,0,0.08) !important;
-    }
-    .form-control:focus, .form-select:focus{
-        outline: none !important;
-        box-shadow: 0 0 0 .2rem rgba(166,128,35,0.18) !important;
-    }
-
-    .required-star{ color: #b42318; margin-left: 2px; font-weight: 900; }
-
-    /* Buttons */
-    .btn-gold{
-        background: linear-gradient(180deg, #c79931, #a68023);
-        color: #fff;
-        font-weight: 900;
-        padding: 10px 30px;
-        border-radius: 12px;
-        font-size: 1.05rem;
-        border: 1.4px solid #c79931;
-        box-shadow: 0 14px 32px rgba(0,0,0,0.18);
-        transition: transform .18s ease, box-shadow .18s ease, filter .18s ease;
-    }
-    .btn-gold:hover{
-        background: linear-gradient(180deg, #c79931, #a68023);
-        color: #fff;
-        transform: translateY(-1px);
-        box-shadow: 0 12px 26px rgba(0,0,0,0.12);
-        filter: brightness(0.99);
-    }
-
-    .btn-outline-gold{
-        border: 2px solid #c79931;
-        color: #f8fafc;
-        background: #0b1529;
-        font-weight: 900;
-        padding: 10px 24px;
-        border-radius: 12px;
-        transition: transform .18s ease, box-shadow .18s ease, filter .18s ease;
-        box-shadow: 0 12px 30px rgba(0,0,0,0.14);
-    }
-    .btn-outline-gold:hover{
-        background: #0b1529;
-        border-color: #c79931;
-        color: #f8fafc;
-        transform: translateY(-1px);
-        box-shadow: 0 12px 26px rgba(0,0,0,0.12);
-        filter: brightness(0.99);
-    }
-
-    /* Gold checkboxes */
-    .form-check-input{
-        width: 20px;
-        height: 20px;
-        border: 2px solid #000;
-        border-radius: 6px;
-        background-color: #fff;
-        transition: all 0.2s ease;
-    }
-    .form-check-input:checked{ background-color: #a68023; border-color: #a68023; }
-    .form-check-input:hover, .form-check-input:focus{
-        outline: 2px solid rgba(166,128,35,0.65);
-        box-shadow: 0 0 2px rgba(166,128,35,0.65);
-    }
-    .form-check-label{ margin-left: 8px; font-weight: 700; color: #222; }
-
-    /* Wizard steps */
-    .form-step{ display:none; }
-    .form-step.active{ display:block; }
-
-    .wizard-actions{
-        display:flex;
-        gap: 10px;
-        justify-content: space-between;
-        align-items:center;
-        margin-top: 12px;
-    }
-
-    /* Better error visibility */
-    .input-validation-error{
-        border-color: rgba(180,35,24,0.85) !important;
-        box-shadow: 0 0 0 .2rem rgba(180,35,24,0.12) !important;
-    }
-    .field-validation-error{ font-weight: 800; }
-
-    @@media (max-width: 575.98px){
-        .wizard-top{ border-radius: 16px; }
-        .section-card{ border-radius: 18px; padding: 18px 14px; }
-        .section-title{ font-size: 1.15rem; }
-
-        .wizard-top{
-            flex-direction: column;
-            align-items: stretch;
-            gap: 10px;
-        }
-
-        .wizard-steptext{ white-space: normal; }
-
-        .btn-gold,
-        .btn-outline-gold{
-            min-height: 48px;
-        }
-
-        .wizard-actions{
-            flex-direction: column;
-            align-items: stretch;
-        }
-
-        .wizard-actions .btn-gold,
-        .wizard-actions .btn-outline-gold{
-            width: 100%;
-        }
-    }
-</style>
-
-<div class="container-narrow">
-
-    <div class="text-center" style="margin-top:18px; margin-bottom:6px;">
-        <h1 style="
-            font-weight: 900;
-            font-size: 2.4rem;
-            color: #a68023;
-            letter-spacing: .5px;
-            margin-bottom: 6px;">
-            Commercial Insurance Quote
-        </h1>
-    </div>
-
-    <p class="required-note text-center">
-        <strong>
-            <span class="text-danger">*</span> Fields marked with a red asterisk are required.
-        </strong>
-    </p>
-
-
-    <div class="wizard-top">
-        <div class="wizard-steptext" id="stepLabel"></div>
-        <div class="wizard-progress">
-            <div class="wizard-progress-fill" id="progressFill"></div>
-        </div>
-    </div>
-
-<form action="/Quote/Commercial"
-      method="post"
-      id="commercialQuoteForm"
-      data-form-key="@formKey">
+	    var contactMethodOptions = new[]{ "Call","Text","Email" };
+	    var bestTimeOptions = new[]{ "Morning","Afternoon","Evening" };
+	
+	    var totalSteps = 14;
+	    var startStep = ((int?)ViewData["StartStep"] ?? (Model.CurrentStep > 0 ? Model.CurrentStep : 1));
+	    var hasServerErrors = !ViewData.ModelState.IsValid;
+	    var showQuoteStartedByDefault = hasServerErrors || startStep > 1;
+	    IReadOnlyList<string> heroProofChips = new[] { "25+ carriers", "Exposure-first review", "No obligation" };
+	    var heroStepIntroTitle = "Start with the business exposure points";
+	    var heroStepIntroHelper = "A fast commercial insurance review built around your operations, coverage types, payroll, property details, and contact timeline so you can explore protection options with confidence.";
+	    var primaryStartCtaText = "Check My Business Protection Fit";
+	    var primaryStartCtaNote = "Takes about 2 minutes. No obligation. Start with the essentials and keep moving at your pace.";
+	    var formHeadingTitle = "Build your commercial protection plan";
+	    var formHeadingCopy = "Tell us about your business, operations, and coverage needs so we can review protection options that fit how you work.";
+	}
+	
+<partial name="_PropertyCasualtyQuoteStyles" />
+	
+	<div class="container-narrow">
+	    <div class="pcq-shell">
+	        <div class="pcq-surface">
+	            <div class="pcq-hero-entry" id="commercialHeroEntryPanel" @((showQuoteStartedByDefault ? "hidden" : null))>
+	                <figure class="pcq-hero-banner-wrap">
+	                    <img class="pcq-hero-banner-image" src="~/images/ads/commercial-top-banner.png" asp-append-version="true" alt="Legend commercial insurance review creative asking what happens if your business is not protected." loading="eager" />
+	                </figure>
+	
+	                <div class="pcq-proof-row" aria-label="Commercial quote benefits">
+	                    <span class="pcq-proof-pill">
+	                        <svg class="pcq-proof-icon" viewBox="0 0 24 24" aria-hidden="true">
+	                            <circle cx="12" cy="8" r="3.1"></circle>
+	                            <circle cx="5.6" cy="10" r="2.35"></circle>
+	                            <circle cx="18.4" cy="10" r="2.35"></circle>
+	                            <path d="M6.8 19.2c.65-3.15 2.55-5 5.2-5s4.55 1.85 5.2 5"></path>
+	                            <path d="M1.9 18.6c.45-2.25 1.8-3.55 3.7-3.55 1.05 0 1.95.38 2.65 1.1"></path>
+	                            <path d="M15.75 16.15c.7-.72 1.6-1.1 2.65-1.1 1.9 0 3.25 1.3 3.7 3.55"></path>
+	                        </svg>
+	                        @heroProofChips[0]
+	                    </span>
+	                    <span class="pcq-proof-pill">
+	                        <svg class="pcq-proof-icon" viewBox="0 0 24 24" aria-hidden="true">
+	                            <circle cx="12" cy="12" r="8.2"></circle>
+	                            <path d="M12 7.2v5.15l3.35 2.05"></path>
+	                        </svg>
+	                        @heroProofChips[1]
+	                    </span>
+	                    <span class="pcq-proof-pill">
+	                        <svg class="pcq-proof-icon" viewBox="0 0 24 24" aria-hidden="true">
+	                            <path d="M12 2.8 19.2 5.6v5.55c0 4.55-2.85 8.25-7.2 10.05-4.35-1.8-7.2-5.5-7.2-10.05V5.6L12 2.8Z"></path>
+	                            <path d="m8.7 12.1 2.15 2.15 4.55-4.8"></path>
+	                        </svg>
+	                        @heroProofChips[2]
+	                    </span>
+	                </div>
+	
+	                <div class="pcq-step-copy">
+	                    <div class="pcq-step-copy-title">@heroStepIntroTitle</div>
+	                    <p class="pcq-step-copy-helper">@heroStepIntroHelper</p>
+	                </div>
+	
+	                <div class="pcq-hero-actions">
+	                    <button type="button" class="btn btn-gold pcq-primary-start-cta" id="commercialHeroStartCta" data-cta="commercial_funnel_start" data-primary-cta="hero">@primaryStartCtaText</button>
+	                    <div class="pcq-start-note"><span>@primaryStartCtaNote</span></div>
+	                </div>
+	            </div>
+	
+	            <div class="pcq-form-shell" id="commercialQuoteFlowShell" @((showQuoteStartedByDefault ? null : "hidden"))>
+	                <div class="pcq-form-heading">
+	                    <h1 class="pcq-form-heading-title">@formHeadingTitle</h1>
+	                    <p class="pcq-form-heading-copy">@formHeadingCopy</p>
+	                </div>
+	
+	                <p class="required-note text-center">
+	                    <strong>
+	                        <span class="text-danger">*</span> Fields marked with a red asterisk are required.
+	                    </strong>
+	                </p>
+	
+	                <div class="wizard-top">
+	                    <div class="wizard-steptext" id="stepLabel"></div>
+	                    <div class="wizard-progress">
+	                        <div class="wizard-progress-fill" id="progressFill"></div>
+	                    </div>
+	                </div>
+	
+	<form action="/Quote/Commercial"
+	      method="post"
+	      id="commercialQuoteForm"
+	      data-form-key="@formKey">
 
 
         @Html.AntiForgeryToken()
@@ -492,25 +318,27 @@
                     </div>
                 </div>
 
-                <label class="fw-bold mt-4">
-                    Coverage Types Needed<span class="required-star">*</span>
-                </label>
-
-                @foreach (var option in interestedInOptions)
-                {
-                    var id = "interest_" + option.Replace(" ", "").Replace("&", "").Replace("/", "").Replace("-", "");
-                    var isChecked = Model.InterestedIn != null && Model.InterestedIn.Contains(option);
-
-                    <div class="form-check">
-                        <input class="form-check-input"
-                               type="checkbox"
-                               name="InterestedIn"
-                               value="@option"
-                               id="@id"
-                               @(isChecked ? "checked" : "") />
-                        <label class="form-check-label" for="@id">@option</label>
-                    </div>
-                }
+	                <label class="fw-bold mt-4">
+	                    Coverage Types Needed<span class="required-star">*</span>
+	                </label>
+	
+	                <div class="pcq-choice-grid" id="commercialInterestedInGroup">
+	                    @foreach (var option in interestedInOptions)
+	                    {
+	                        var id = "interest_" + option.Replace(" ", "").Replace("&", "").Replace("/", "").Replace("-", "");
+	                        var isChecked = Model.InterestedIn != null && Model.InterestedIn.Contains(option);
+	
+	                        <div class="form-check">
+	                            <input class="form-check-input"
+	                                   type="checkbox"
+	                                   name="InterestedIn"
+	                                   value="@option"
+	                                   id="@id"
+	                                   @(isChecked ? "checked" : "") />
+	                            <label class="form-check-label" for="@id">@option</label>
+	                        </div>
+	                    }
+	                </div>
 
                 <span asp-validation-for="InterestedIn" class="text-danger d-block mt-2"></span>
 
@@ -1434,41 +1262,17 @@
                     </div>
                 </div>
 
-                <hr />
-
-                <style>
-                    .disclaimer-check{
-                        display:flex;
-                        align-items:flex-start;
-                        gap:10px;
-                        padding:10px 0;
-                    }
-                    .disclaimer-check .form-check-input{
-                        width:18px;
-                        height:18px;
-                        margin-top:2px;
-                        margin-left:0;
-                        margin-right:0;
-                        position:static;
-                        flex-shrink:0;
-                    }
-                    .disclaimer-check .form-check-label{
-                        line-height:1.5;
-                        white-space:normal;
-                        color:#222;
-                        font-weight:700;
-                    }
-                </style>
-                <div class="form-check mt-2 disclaimer-check">
-                    <input asp-for="AcknowledgedDisclaimer" class="form-check-input" required />
-                    <label asp-for="AcknowledgedDisclaimer" class="form-check-label">
-                        I acknowledge that by submitting this form, I authorize the company to contact me regarding my commercial insurance quote request<span class="required-star">*</span>.
+	                <hr />
+	                <div class="form-check mt-2 disclaimer-check">
+	                    <input asp-for="AcknowledgedDisclaimer" class="form-check-input" required />
+	                    <label asp-for="AcknowledgedDisclaimer" class="form-check-label">
+	                        I acknowledge that by submitting this form, I authorize the company to contact me regarding my commercial insurance quote request<span class="required-star">*</span>.
                     </label>
                 </div>
                 <span asp-validation-for="AcknowledgedDisclaimer" class="text-danger d-block mt-1"></span>
 
                 <div class="text-center mt-4">
-                    <button type="submit" class="btn btn-gold">
+	                    <button type="submit" class="btn btn-gold">
                         Submit Commercial Quote Request
                     </button>
                 </div>
@@ -1489,13 +1293,16 @@
     <input type="hidden" name="UtmContent" />
     <input type="hidden" name="MetaCampaignId" />
     <input type="hidden" name="MetaAdSetId" />
-    <input type="hidden" name="MetaAdId" />
-    <input type="hidden" name="Fbclid" />
-    <input type="hidden" name="ReferrerUrl" />
-    <input type="hidden" name="LandingPageUrl" />
-    </form>
-</div>
-<script>
+	    <input type="hidden" name="MetaAdId" />
+	    <input type="hidden" name="Fbclid" />
+	    <input type="hidden" name="ReferrerUrl" />
+	    <input type="hidden" name="LandingPageUrl" />
+	    </form>
+	            </div>
+	        </div>
+	    </div>
+	</div>
+	<script>
 (function () {
     var ids = window.legendTrackingIds;
     var p = new URLSearchParams(window.location.search);
@@ -1520,35 +1327,65 @@
 
 @section Scripts {
     <script>
-        (function () {
-            const totalSteps = @totalSteps;
-            const pageKey = '@pageKey';
-            const formKey = '@formKey';
-            const form = document.getElementById('commercialQuoteForm');
-            const stepLabel = document.getElementById('stepLabel');
-            const progressFill = document.getElementById('progressFill');
-            const currentStepInput = document.getElementById('CurrentStep');
-            const trackCommercialQuote = (window.LegendAnalytics?.track && typeof window.LegendAnalytics.track === 'function')
-                ? window.LegendAnalytics.track
-                : (window.legendTrack && typeof window.legendTrack === 'function')
-                    ? window.legendTrack
-                    : null;
+	        (function () {
+	            const totalSteps = @totalSteps;
+	            const pageKey = '@pageKey';
+	            const formKey = '@formKey';
+	            const form = document.getElementById('commercialQuoteForm');
+	            const stepLabel = document.getElementById('stepLabel');
+	            const progressFill = document.getElementById('progressFill');
+	            const currentStepInput = document.getElementById('CurrentStep');
+	            const heroEntryPanel = document.getElementById('commercialHeroEntryPanel');
+	            const quoteFlowShell = document.getElementById('commercialQuoteFlowShell');
+	            const startButton = document.getElementById('commercialHeroStartCta');
+	            const interestedInGroup = document.getElementById('commercialInterestedInGroup');
+	            let quoteStarted = '@(showQuoteStartedByDefault ? "true" : "false")' === 'true';
+	            const trackCommercialQuote = (window.LegendAnalytics?.track && typeof window.LegendAnalytics.track === 'function')
+	                ? window.LegendAnalytics.track
+	                : (window.legendTrack && typeof window.legendTrack === 'function')
+	                    ? window.legendTrack
+	                    : null;
             const commercialCompletedSteps = new Set();
             const commercialViewedContactSteps = new Set();
 
-            if (!form) return;
+	            if (!form) return;
 
-            // -----------------------------
-            // Helpers
-            // -----------------------------
+	            function setQuoteStartedState(started) {
+	                quoteStarted = !!started;
+	                document.body.classList.toggle('pcq-quote-started', quoteStarted);
+	                if (heroEntryPanel) heroEntryPanel.hidden = quoteStarted;
+	                if (quoteFlowShell) quoteFlowShell.hidden = !quoteStarted;
+	            }
+
+	            function trackCommercialCta(elementKey, buttonLabel) {
+	                if (!trackCommercialQuote) return;
+	                trackCommercialQuote({
+	                    EventType: 'quote_cta_click',
+	                    ElementKey: elementKey,
+	                    ButtonLabel: buttonLabel,
+	                    FormKey: formKey,
+	                    PageKey: pageKey
+	                });
+	                trackCommercialQuote({
+	                    EventType: 'cta_click',
+	                    ElementKey: elementKey,
+	                    ButtonLabel: buttonLabel,
+	                    FormKey: formKey,
+	                    PageKey: pageKey
+	                });
+	            }
+	
+	            // -----------------------------
+	            // Helpers
+	            // -----------------------------
             function getStep() {
                 const n = parseInt(currentStepInput?.value || '1', 10);
                 return isNaN(n) ? 1 : Math.min(Math.max(n, 1), totalSteps);
             }
 
-            function setStep(step) {
-                step = Math.min(Math.max(step, 1), totalSteps);
-                if (currentStepInput) currentStepInput.value = step;
+	            function setStep(step) {
+	                step = Math.min(Math.max(step, 1), totalSteps);
+	                if (currentStepInput) currentStepInput.value = step;
 
                 document.querySelectorAll('.form-step').forEach(el => {
                     el.classList.toggle('active', el.getAttribute('data-step') == step);
@@ -1556,18 +1393,20 @@
 
                 if (stepLabel) stepLabel.textContent = `Step ${step} of ${totalSteps}`;
                 if (progressFill) progressFill.style.width = Math.round((step / totalSteps) * 100) + '%';
-                if (step === 3 && trackCommercialQuote && !commercialViewedContactSteps.has(step)) {
-                    commercialViewedContactSteps.add(step);
-                    trackCommercialQuote({
-                        EventType: 'quote_contact_step_view',
-                        FormKey: formKey,
+	                if (quoteStarted && step === 3 && trackCommercialQuote && !commercialViewedContactSteps.has(step)) {
+	                    commercialViewedContactSteps.add(step);
+	                    trackCommercialQuote({
+	                        EventType: 'quote_contact_step_view',
+	                        FormKey: formKey,
                         PageKey: pageKey,
                         MetadataJson: JSON.stringify({ stepNumber: step, source: 'wizard_step_view' })
                     });
-                }
+	                }
 
-                window.scrollTo({ top: 0, behavior: 'smooth' });
-            }
+	                window.scrollTo({ top: 0, behavior: 'smooth' });
+	                refreshFieldStates();
+	                syncInterestedInState(false);
+	            }
 
             function scrollAndFocus(el) {
                 if (!el) return;
@@ -1581,15 +1420,65 @@
                 return document.querySelector(`.form-step[data-step="${stepNumber}"]`);
             }
 
-            function getStepForElement(el) {
-                const stepEl = el?.closest?.('.form-step');
-                if (!stepEl) return null;
-                const n = parseInt(stepEl.getAttribute('data-step') || '', 10);
-                return isNaN(n) ? null : n;
-            }
+	            function getStepForElement(el) {
+	                const stepEl = el?.closest?.('.form-step');
+	                if (!stepEl) return null;
+	                const n = parseInt(stepEl.getAttribute('data-step') || '', 10);
+	                return isNaN(n) ? null : n;
+	            }
 
-            // -----------------------------
-            // Make "required-star" actually required in HTML
+	            function updateFieldState(el) {
+	                if (!el) return;
+	                el.classList.remove('input-answered', 'input-required-missing');
+	                if (el.disabled || el.type === 'hidden') return;
+
+	                if (el.type === 'checkbox') {
+	                    if (el.name === 'InterestedIn') {
+	                        el.classList.toggle('input-answered', !!el.checked);
+	                        return;
+	                    }
+
+	                    if (el.checked) {
+	                        el.classList.add('input-answered');
+	                    } else if (el.required) {
+	                        el.classList.add('input-required-missing');
+	                    }
+	                    return;
+	                }
+
+	                const isRequired = el.hasAttribute('required');
+	                const hasValue = (el.value ?? '').trim() !== '';
+	                if (hasValue) {
+	                    el.classList.add('input-answered');
+	                } else if (isRequired) {
+	                    el.classList.add('input-required-missing');
+	                }
+	            }
+
+	            function refreshFieldStates() {
+	                document.querySelectorAll('input, select, textarea').forEach(updateFieldState);
+	            }
+
+	            function syncInterestedInState(markMissing) {
+	                const inputs = Array.from(document.querySelectorAll('input[name="InterestedIn"]'));
+	                if (!inputs.length) return;
+	                const hasChecked = inputs.some(input => input.checked);
+	                if (interestedInGroup) {
+	                    interestedInGroup.classList.toggle('pcq-group-missing', !!markMissing && !hasChecked);
+	                }
+
+	                inputs.forEach(input => {
+	                    input.classList.toggle('input-answered', input.checked);
+	                    if (markMissing && !hasChecked) {
+	                        input.classList.add('input-required-missing');
+	                    } else {
+	                        input.classList.remove('input-required-missing');
+	                    }
+	                });
+	            }
+	
+	            // -----------------------------
+	            // Make "required-star" actually required in HTML
             // (so native validity works even if you forgot required attrs)
             // -----------------------------
 function enforceRequiredByLabels() {
@@ -1640,40 +1529,43 @@ function enforceRequiredByLabels() {
             // -----------------------------
             // Custom rules
             // -----------------------------
-            function validateInterestedIn(stepEl) {
-                if (!stepEl) return true;
-
-                const inputs = stepEl.querySelectorAll('input[name="InterestedIn"]');
-                if (!inputs || inputs.length === 0) return true;
+	            function validateInterestedIn(stepEl) {
+	                if (!stepEl) return true;
+	
+	                const inputs = stepEl.querySelectorAll('input[name="InterestedIn"]');
+	                if (!inputs || inputs.length === 0) return true;
 
                 const checked = stepEl.querySelectorAll('input[name="InterestedIn"]:checked').length;
                 const msg = stepEl.querySelector('[data-valmsg-for="InterestedIn"], span[data-valmsg-for="InterestedIn"]');
 
-                if (checked < 1) {
-                    if (msg) {
-                        msg.classList.remove('field-validation-valid');
-                        msg.classList.add('field-validation-error');
-                        msg.textContent = "Please select at least one coverage type.";
+	                if (checked < 1) {
+	                    syncInterestedInState(true);
+	                    if (msg) {
+	                        msg.classList.remove('field-validation-valid');
+	                        msg.classList.add('field-validation-error');
+	                        msg.textContent = "Please select at least one coverage type.";
                     }
                     scrollAndFocus(inputs[0]);
                     return false;
                 }
 
-                if (msg) {
-                    msg.classList.remove('field-validation-error');
-                    msg.classList.add('field-validation-valid');
-                    msg.textContent = "";
-                }
-                return true;
-            }
+	                if (msg) {
+	                    msg.classList.remove('field-validation-error');
+	                    msg.classList.add('field-validation-valid');
+	                    msg.textContent = "";
+	                }
+	                syncInterestedInState(false);
+	                return true;
+	            }
 
-            function validateDisclaimer(stepEl) {
-                if (!stepEl) return true;
-
-                const cb = stepEl.querySelector('input[name="AcknowledgedDisclaimer"]');
-                if (!cb) return true;
-
-                const msg = stepEl.querySelector('[data-valmsg-for="AcknowledgedDisclaimer"], span[data-valmsg-for="AcknowledgedDisclaimer"]');
+	            function validateDisclaimer(stepEl) {
+	                if (!stepEl) return true;
+	
+	                const cb = stepEl.querySelector('input[name="AcknowledgedDisclaimer"]');
+	                if (!cb) return true;
+	                updateFieldState(cb);
+	
+	                const msg = stepEl.querySelector('[data-valmsg-for="AcknowledgedDisclaimer"], span[data-valmsg-for="AcknowledgedDisclaimer"]');
 
                 if (!cb.checked) {
                     if (msg) {
@@ -1685,13 +1577,14 @@ function enforceRequiredByLabels() {
                     return false;
                 }
 
-                if (msg) {
-                    msg.classList.remove('field-validation-error');
-                    msg.classList.add('field-validation-valid');
-                    msg.textContent = "";
-                }
-                return true;
-            }
+	                if (msg) {
+	                    msg.classList.remove('field-validation-error');
+	                    msg.classList.add('field-validation-valid');
+	                    msg.textContent = "";
+	                }
+	                updateFieldState(cb);
+	                return true;
+	            }
 
             // -----------------------------
             // Native per-step validation
@@ -1764,15 +1657,37 @@ function enforceRequiredByLabels() {
                 return true;
             }
 
-            // -----------------------------
-            // Events
-            // -----------------------------
-            // Ensure required attrs exist for all "starred" label fields
-            enforceRequiredByLabels();
+	            // -----------------------------
+	            // Events
+	            // -----------------------------
+	            // Ensure required attrs exist for all "starred" label fields
+	            enforceRequiredByLabels();
+	            setQuoteStartedState(quoteStarted);
 
-            document.addEventListener('click', function (e) {
-                const nextBtn = e.target.closest('.btn-next');
-                const prevBtn = e.target.closest('.btn-prev');
+	            document.querySelectorAll('input, select, textarea').forEach(el => {
+	                el.addEventListener('input', () => updateFieldState(el));
+	                el.addEventListener('change', () => updateFieldState(el));
+	            });
+	            refreshFieldStates();
+	            syncInterestedInState(false);
+
+	            if (startButton) {
+	                startButton.addEventListener('click', function () {
+	                    const label = (startButton.textContent || '').trim();
+	                    if (!quoteStarted) {
+	                        trackCommercialCta('commercial_quote_start', label || 'Check My Business Protection Fit');
+	                    }
+	                    setQuoteStartedState(true);
+	                    setStep(getStep());
+	                    if (quoteFlowShell) {
+	                        quoteFlowShell.scrollIntoView({ behavior: 'smooth', block: 'start' });
+	                    }
+	                });
+	            }
+
+	            document.addEventListener('click', function (e) {
+	                const nextBtn = e.target.closest('.btn-next');
+	                const prevBtn = e.target.closest('.btn-prev');
 
                 if (nextBtn) {
                     const step = getStep();
@@ -1829,19 +1744,19 @@ function enforceRequiredByLabels() {
                 }
             });
 
-            // Initial step (supports postback keeping CurrentStep)
-            setStep(getStep());
+	            // Initial step (supports postback keeping CurrentStep)
+	            setStep(getStep());
 
-            // Dev-only sticky form state (localhost only)
-            const storageKey = 'commercialQuoteForm-dev';
+	            // Dev-only sticky form state (localhost only)
+	            const storageKey = 'commercialQuoteForm-dev';
             const isLocalHost = ['localhost', '127.0.0.1'].includes(location.hostname);
-            if (isLocalHost) {
-                function saveState() {
-                    const data = { step: currentStep, values: {} };
-                    form.querySelectorAll('input, select, textarea').forEach(el => {
-                        if (!el.name) return;
-                        data.values[el.name] = el.type === 'checkbox' ? el.checked : el.value;
-                    });
+	            if (isLocalHost) {
+	                function saveState() {
+	                    const data = { step: getStep(), values: {} };
+	                    form.querySelectorAll('input, select, textarea').forEach(el => {
+	                        if (!el.name) return;
+	                        data.values[el.name] = el.type === 'checkbox' ? el.checked : el.value;
+	                    });
                     try { localStorage.setItem(storageKey, JSON.stringify(data)); } catch { /* ignore */ }
                 }
 
@@ -1851,15 +1766,18 @@ function enforceRequiredByLabels() {
                         if (!raw) return;
                         const data = JSON.parse(raw);
                         const vals = data?.values ?? {};
-                        Object.keys(vals).forEach(name => {
-                            const el = form.querySelector(`[name="${name}"]`);
-                            if (!el) return;
-                            if (el.type === 'checkbox') el.checked = !!vals[name];
-                            else el.value = vals[name];
-                        });
-                        if (data?.step) setStep(parseInt(data.step) || 1);
-                    } catch { /* ignore */ }
-                }
+	                        Object.keys(vals).forEach(name => {
+	                            const el = form.querySelector(`[name="${name}"]`);
+	                            if (!el) return;
+	                            if (el.type === 'checkbox') el.checked = !!vals[name];
+	                            else el.value = vals[name];
+	                        });
+	                        if (data?.step) setStep(parseInt(data.step) || 1);
+	                        if ((data?.step && parseInt(data.step, 10) > 1) || Object.keys(vals).length > 0) {
+	                            setQuoteStartedState(true);
+	                        }
+	                    } catch { /* ignore */ }
+	                }
 
                 restoreState();
                 form.addEventListener('input', saveState);

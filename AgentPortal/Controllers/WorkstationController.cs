@@ -1,4 +1,5 @@
 using System.Linq;
+using Infrastructure.Leads;
 using Microsoft.AspNetCore.Mvc;
 
 namespace AgentPortal.Controllers;
@@ -14,12 +15,30 @@ public class WorkstationController : Controller
         _logger = logger;
     }
 
-    // Landing: default to Final Expense rebuttals
+    // Landing: default to Life Insurance rebuttals
     [HttpGet("")]
     [HttpGet("Index")]
     public IActionResult Index()
     {
-        return RedirectToAction(nameof(FinalExpenseRebuttals));
+        return RedirectToAction(nameof(LifeInsuranceRebuttals));
+    }
+
+    [HttpGet("Queue")]
+    public IActionResult Queue([FromQuery] string? queueKey)
+    {
+        var normalizedQueue = WorkstationLeadBuckets.NormalizeBucket(queueKey) ?? WorkstationLeadBuckets.LifeInsurance;
+
+        if (string.Equals(normalizedQueue, WorkstationLeadBuckets.MortgageProtection, StringComparison.OrdinalIgnoreCase))
+            return RedirectToAction(nameof(Rebuttals));
+
+        if (WorkstationLeadBuckets.LifeWorkstationQueueBuckets.Contains(normalizedQueue, StringComparer.OrdinalIgnoreCase))
+            return RedirectToAction(nameof(LifeInsuranceRebuttals));
+
+        if (string.Equals(normalizedQueue, WorkstationLeadBuckets.FinalExpense, StringComparison.OrdinalIgnoreCase))
+            return RedirectToAction(nameof(FinalExpenseRebuttals));
+
+        ViewData["Title"] = $"Workstation — {ResolveQueueTitle(normalizedQueue)}";
+        return View("Queue", normalizedQueue);
     }
 
     // =========================================================
@@ -77,6 +96,17 @@ public class WorkstationController : Controller
         ViewData["Title"] = "Life Insurance Rebuttals";
         return View("LifeInsuranceRebuttals");
     }
+
+    private static string ResolveQueueTitle(string queueKey)
+        => queueKey switch
+        {
+            var key when string.Equals(key, WorkstationLeadBuckets.DisabilityInsurance, StringComparison.OrdinalIgnoreCase) => "Disability Insurance Queue",
+            var key when string.Equals(key, WorkstationLeadBuckets.AutoInsurance, StringComparison.OrdinalIgnoreCase) => "Auto Insurance Queue",
+            var key when string.Equals(key, WorkstationLeadBuckets.HomeInsurance, StringComparison.OrdinalIgnoreCase) => "Home Insurance Queue",
+            var key when string.Equals(key, WorkstationLeadBuckets.HealthInsurance, StringComparison.OrdinalIgnoreCase) => "Health Insurance Queue",
+            var key when string.Equals(key, WorkstationLeadBuckets.CommercialInsurance, StringComparison.OrdinalIgnoreCase) => "Commercial Insurance Queue",
+            _ => "Lead Queue"
+        };
 
     // =========================================================
     // Advanced Markets Planner

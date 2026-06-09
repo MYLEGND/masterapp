@@ -4,17 +4,19 @@
   const MIGRATION_FLAG = "legend_proposals_v4_server_migrated";
 
   const openBtn = document.getElementById("btnProposal");
-  const newBtn = document.getElementById("btnProposalNew");
-  const menu = document.getElementById("proposalMenu");
+  const leadButtons = Array.from(document.querySelectorAll("#btnProposalNew, [data-proposal-source='lead']"));
+  const clientButtons = Array.from(document.querySelectorAll("#btnProposalClient, [data-proposal-source='client']"));
+  const scratchButtons = Array.from(document.querySelectorAll("#btnProposalScratch, [data-proposal-source='scratch']"));
+  const menu = window.LegendModal?.ensureInBody("proposalMenu") || document.getElementById("proposalMenu");
   const menuList = document.getElementById("proposalMenuList");
-  const overlay = document.getElementById("proposalOverlay");
-  const dialog = document.getElementById("proposalDialog");
+  const overlay = window.LegendModal?.ensureInBody("proposalOverlay") || document.getElementById("proposalOverlay");
+  const dialog = overlay?.querySelector("#proposalDialog") || document.getElementById("proposalDialog");
   const form = document.getElementById("proposalForm");
   const saveBtn = document.getElementById("btnSaveProposal");
   const closeEls = Array.from(document.querySelectorAll("[data-proposal-close]"));
   const nameInput = document.getElementById("propName");
   const captureDecisionBtn = document.getElementById("btnCaptureDecision");
-  const decisionModalEl = document.getElementById("captureDecisionModal");
+  const decisionModalEl = window.LegendModal?.ensureInBody("captureDecisionModal") || document.getElementById("captureDecisionModal");
   const decisionForm = document.getElementById("decisionForm");
   const decisionProposalId = document.getElementById("decisionProposalId");
   let decisionModalInstance = null;
@@ -24,6 +26,8 @@
   const decisionSummaryType = document.querySelector("[data-decision-type]");
   const decisionSummaryRationale = document.querySelector("[data-decision-rationale]");
   const decisionSummaryTime = document.querySelector("[data-decision-time]");
+  const contextLabelEl = document.querySelector("[data-proposal-context-label]");
+  const refreshViewportOffsets = () => window.LegendModal?.refreshViewportOffsets?.();
 
   if (!openBtn || !overlay || !form) return;
 
@@ -34,6 +38,8 @@
   let draftId = null;
   let editingLeadId = "";
   let editingLeadName = "";
+  let manualContext = null;
+  let manualScopeKey = "";
   let migrationPromise = null;
   let isSaving = false;
 
@@ -67,12 +73,8 @@
     if (!el) return "";
     return (el.textContent || "").replace(/\s+/g, " ").trim();
   };
-
-  const LegendModalApi = window.LegendModal || {};
-  const ensureModalInBody = LegendModalApi.ensureInBody?.bind(LegendModalApi) || (() => null);
-
   function getDecisionModalEl() {
-    const moved = ensureModalInBody("captureDecisionModal");
+    const moved = window.LegendModal?.ensureInBody("captureDecisionModal");
     if (moved) activeDecisionModalEl = moved;
     return activeDecisionModalEl;
   }
@@ -104,6 +106,91 @@
     };
   }
 
+  function ensureScratchScopeKey() {
+    if (!manualScopeKey) manualScopeKey = `scratch:${crypto.randomUUID()}`;
+    return manualScopeKey;
+  }
+
+  function getActiveMeta() {
+    if (!manualContext) return getLeadMeta();
+
+    if (manualContext.kind === "client") {
+      const clientKey = normalizeKeyPart(manualContext.clientUserId);
+      return {
+        leadId: "",
+        leadName: (manualContext.displayName || "").trim(),
+        queueKey: "manual-client",
+        pageTitle: `Client CRM • ${(manualContext.displayName || "Client").trim()}`,
+        scopeKey: `client:${clientKey}`,
+        leadKey: `client:${clientKey}`
+      };
+    }
+
+    const scratchKey = ensureScratchScopeKey();
+    return {
+      leadId: "",
+      leadName: (manualContext.displayName || "").trim(),
+      queueKey: "manual-scratch",
+      pageTitle: "Scratch Proposal",
+      scopeKey: scratchKey,
+      leadKey: scratchKey
+    };
+  }
+
+  function setManualContext(context = null) {
+    manualContext = context ? { ...context } : null;
+    if (!manualContext) {
+      manualScopeKey = "";
+    } else if (manualContext.kind === "scratch") {
+      manualScopeKey = (manualContext.scopeKey || "").trim() || ensureScratchScopeKey();
+    } else {
+      manualScopeKey = "";
+    }
+    syncContextLabel();
+  }
+
+  function syncContextLabel() {
+    if (!contextLabelEl) return;
+    if (!manualContext) {
+      const meta = getLeadMeta();
+      contextLabelEl.textContent = meta.leadName ? `Current lead: ${meta.leadName}` : "Current lead";
+      return;
+    }
+
+    if (manualContext.kind === "client") {
+      contextLabelEl.textContent = `Client CRM: ${manualContext.displayName || "Manual client"}`;
+      return;
+    }
+
+    contextLabelEl.textContent = manualContext.displayName
+      ? `Scratch: ${manualContext.displayName}`
+      : "Scratch build";
+  }
+
+  function restoreContextFromRecord(record) {
+    const recordLeadId = (record?.leadId || "").trim();
+    if (recordLeadId) {
+      setManualContext(null);
+      return;
+    }
+
+    const scopeKey = (record?.scopeKey || "").trim();
+    if (scopeKey.toLowerCase().startsWith("client:")) {
+      setManualContext({
+        kind: "client",
+        clientUserId: scopeKey.slice("client:".length),
+        displayName: (record?.leadName || record?.name || "Client").trim()
+      });
+      return;
+    }
+
+    setManualContext({
+      kind: "scratch",
+      displayName: (record?.leadName || "").trim(),
+      scopeKey
+    });
+  }
+
   function buildLeadKey(meta = getLeadMeta()) {
     const leadIdKey = normalizeKeyPart(meta?.leadId);
     if (leadIdKey) return `lead:${leadIdKey}`;
@@ -114,7 +201,7 @@
     return "";
   }
 
-  function sameScope(record, meta = getLeadMeta()) {
+  function sameScope(record, meta = getActiveMeta()) {
     const recKey = normalizeKeyPart(record?.leadKey || buildLeadKey(record));
     const curKey = normalizeKeyPart(buildLeadKey(meta));
     return !!recKey && !!curKey && recKey === curKey;
@@ -207,7 +294,7 @@
   }
 
   function sortStore(list) {
-    const meta = getLeadMeta();
+    const meta = getActiveMeta();
     const curKey = normalizeKeyPart(buildLeadKey(meta));
     return (Array.isArray(list) ? list.slice() : []).sort((a, b) => {
       const aKey = normalizeKeyPart(a?.leadKey || buildLeadKey(a));
@@ -489,8 +576,7 @@
 
   function renderMenu() {
     if (!menuList) return;
-    const meta = getLeadMeta();
-    const currentLeadId = meta.leadId;
+    const meta = getActiveMeta();
     const store = sortStore(cache.filter((record) => !record.isDraft));
 
     if (!store.length) {
@@ -499,7 +585,7 @@
     }
 
     menuList.innerHTML = store.map((record) => `
-      <div class="hp-proposal-item${currentLeadId && record.leadId === currentLeadId ? " is-current" : ""}" data-id="${escapeHtml(record.id)}">
+      <div class="hp-proposal-item${sameScope(record, meta) ? " is-current" : ""}" data-id="${escapeHtml(record.id)}">
         <div class="hp-proposal-name-wrap" data-prop-open>
           <div class="hp-proposal-name">${escapeHtml(record.name || "Proposal")}</div>
           ${(record.leadName || record.leadId) && (record.leadName || "").trim().toLowerCase() !== (record.name || "").trim().toLowerCase()
@@ -520,7 +606,9 @@
   }
 
   function openModal(record = null) {
-    const meta = getLeadMeta();
+    refreshViewportOffsets();
+    if (record) restoreContextFromRecord(record);
+    const meta = getActiveMeta();
     const currentDraft = !record ? cache.find((item) => item.isDraft && sameScope(item, meta)) : null;
     const source = record || currentDraft || null;
     const defaultName = meta.leadName ? `${meta.leadName}` : "";
@@ -534,8 +622,11 @@
     else resetForm({ ...source, buckets: deepCloneBuckets(source.buckets || []) }, true);
 
     overlay.hidden = false;
+    overlay.scrollTop = 0;
+    if (dialog) dialog.scrollTop = 0;
     document.body.classList.add("uw-open");
     dialog?.focus();
+    syncContextLabel();
     if (editingId || source?.id) {
       loadLatestDecision(editingId || source?.id);
     } else {
@@ -561,12 +652,11 @@
   }
 
   async function saveRecord(isDraft) {
-    const meta = getLeadMeta();
+    const meta = getActiveMeta();
     const effectiveLeadId = (editingLeadId || meta.leadId || "").trim();
-    if (!effectiveLeadId) return null;
-    const effectiveLeadName = (editingLeadName || meta.leadName || "").trim();
-
     const payload = collectFormPayload();
+    const effectiveLeadName = (editingLeadName || meta.leadName || payload.name || "").trim();
+    if (!effectiveLeadId && !manualContext) return null;
     const recordPayload = {
       id: editingId || draftId || crypto.randomUUID(),
       leadId: effectiveLeadId,
@@ -616,9 +706,9 @@
 
   form.addEventListener("submit", async (event) => {
     event.preventDefault();
-    const meta = getLeadMeta();
-    if (!(editingLeadId || meta.leadId || "").trim()) {
-      alert("No lead is selected. Select a lead first.");
+    const meta = getActiveMeta();
+    if (!(editingLeadId || meta.leadId || "").trim() && !manualContext) {
+      alert("Choose the current lead, load a client, or start from scratch first.");
       return;
     }
     if (isSaving) return;
@@ -660,7 +750,11 @@
       if (window.LegendModal?.closeLegacyExecutionOverlays) {
         window.LegendModal.closeLegacyExecutionOverlays();
       }
+      refreshViewportOffsets();
       const modalEl = getDecisionModalEl();
+      if (modalEl && window.LegendModal?.bind) {
+        window.LegendModal.bind("captureDecisionModal", { modalZ: 12050, backdropZ: 12040 });
+      }
       if (modalEl && window.bootstrap) {
         decisionModalInstance = bootstrap.Modal.getOrCreateInstance(modalEl);
         decisionModalInstance.show();
@@ -732,6 +826,7 @@
   });
 
   function toggleMenu() {
+    refreshViewportOffsets();
     renderMenu();
     if (menu) menu.hidden = !menu.hidden;
   }
@@ -751,14 +846,15 @@
     const isMobile = !!window.matchMedia?.("(max-width: 900px)")?.matches;
     if (isMobile) {
       closeMenu();
+      setManualContext(null);
       openModal(null);
       return;
     }
     toggleMenu();
   });
 
-  newBtn?.addEventListener("click", async (event) => {
-    event.stopPropagation();
+  async function openCurrentLeadProposal() {
+    setManualContext(null);
     closeMenu();
     try {
       await ensureServerData();
@@ -768,7 +864,63 @@
     editingId = null;
     draftId = null;
     openModal(null);
-  });
+  }
+
+  async function openScratchProposal() {
+    setManualContext({ kind: "scratch", displayName: "", scopeKey: `scratch:${crypto.randomUUID()}` });
+    closeMenu();
+    try {
+      await ensureServerData();
+    } catch (error) {
+      console.error("Proposal refresh failed", error);
+    }
+    editingId = null;
+    draftId = null;
+    openModal(null);
+  }
+
+  async function openClientProposal() {
+    try {
+      const picked = await window.WorkstationClientPicker?.open?.({
+        title: "Load client into proposal builder",
+        subtitle: "Search your Clients CRM records and build a proposal without touching lead dialing."
+      });
+      if (!picked) return;
+      setManualContext({
+        kind: "client",
+        clientUserId: picked.clientUserId || "",
+        displayName: picked.displayName || "",
+        email: picked.email || "",
+        phone: picked.phone || "",
+        recordType: picked.recordType || ""
+      });
+      closeMenu();
+      await ensureServerData();
+      editingId = null;
+      draftId = null;
+      openModal(null);
+    } catch (error) {
+      console.error("Proposal client load failed", error);
+    }
+  }
+
+  leadButtons.forEach((button) => button.addEventListener("click", (event) => {
+    event.preventDefault();
+    event.stopPropagation();
+    openCurrentLeadProposal();
+  }));
+
+  scratchButtons.forEach((button) => button.addEventListener("click", (event) => {
+    event.preventDefault();
+    event.stopPropagation();
+    openScratchProposal();
+  }));
+
+  clientButtons.forEach((button) => button.addEventListener("click", async (event) => {
+    event.preventDefault();
+    event.stopPropagation();
+    await openClientProposal();
+  }));
 
   document.addEventListener("click", (event) => {
     if (menu && (menu.contains(event.target) || event.target === openBtn)) return;
@@ -799,7 +951,11 @@
     observer.observe(el, { childList: true, characterData: true, subtree: true });
   });
 
-  window.addEventListener("leadbridge:currentLead", () => renderMenu());
+  window.addEventListener("leadbridge:currentLead", () => {
+    renderMenu();
+    if (!manualContext) syncContextLabel();
+  });
+  syncContextLabel();
 
   ensureServerData().catch((error) => {
     console.error("Proposal initialization failed", error);
