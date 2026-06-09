@@ -130,6 +130,7 @@ builder.Services.AddScoped<ICommitmentService, CommitmentService>();
 builder.Services.AddScoped<IPlaybookEngine, PlaybookEngine>();
 builder.Services.AddScoped<INotificationService, NoOpNotificationService>();
 builder.Services.AddHostedService<MigrationHealthHostedService>();
+builder.Services.AddHostedService<GraphCalendarSubscriptionHostedService>();
 builder.Services.AddSingleton<MetaCapiCredentialProtector>();
 builder.Services.AddSingleton<PiiProtector>();
 builder.Services.AddSingleton<IngestSignatureValidator>();

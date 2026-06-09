@@ -4456,8 +4456,17 @@ function renderPortalActions(row, detail){
     dPortalWrap.innerHTML = "";
   }
 
-  if (detail?.lastCalendarEventWebLink){
-    dPortalWrap.innerHTML += `${dPortalWrap.innerHTML ? " " : ""}<a class="btn btn-ghost" href="${detail.lastCalendarEventWebLink}" target="_blank" rel="noopener">Last Calendar Event</a>`;
+  const latestAppointment = detail?.latestAppointment || null;
+  const appointmentLabel = latestAppointment?.confirmationStateLabel || latestAppointment?.statusLabel || "";
+  const appointmentSync = latestAppointment?.lastSyncStatus ? ` • ${safeHtml(latestAppointment.lastSyncStatus)}` : "";
+  const appointmentLink = latestAppointment?.calendarEventWebLink || detail?.lastCalendarEventWebLink || "";
+
+  if (appointmentLabel){
+    dPortalWrap.innerHTML += `${dPortalWrap.innerHTML ? " " : ""}<span class="btn btn-ghost" aria-disabled="true">Appointment: ${safeHtml(appointmentLabel)}${appointmentSync}</span>`;
+  }
+
+  if (appointmentLink){
+    dPortalWrap.innerHTML += `${dPortalWrap.innerHTML ? " " : ""}<a class="btn btn-ghost" href="${appointmentLink}" target="_blank" rel="noopener">Calendar Event</a>`;
   }
 
   // Show resend button beside primary email field
