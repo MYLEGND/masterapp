@@ -16,53 +16,53 @@ namespace Infrastructure.Migrations
             migrationBuilder.AddColumn<string>(
                 name: "BookingProvider",
                 table: "LeadAppointments",
-                type: "TEXT",
+                type: "nvarchar(80)",
                 maxLength: 80,
                 nullable: true);
 
             migrationBuilder.AddColumn<string>(
                 name: "ClientProfileId",
                 table: "LeadAppointments",
-                type: "TEXT",
+                type: "nvarchar(450)",
                 maxLength: 450,
                 nullable: true);
 
             migrationBuilder.AddColumn<string>(
                 name: "LastSyncError",
                 table: "LeadAppointments",
-                type: "TEXT",
+                type: "nvarchar(2048)",
                 maxLength: 2048,
                 nullable: true);
 
             migrationBuilder.AddColumn<string>(
                 name: "LastSyncStatus",
                 table: "LeadAppointments",
-                type: "TEXT",
+                type: "nvarchar(80)",
                 maxLength: 80,
                 nullable: true);
 
             migrationBuilder.AddColumn<DateTime>(
                 name: "LastSyncedUtc",
                 table: "LeadAppointments",
-                type: "TEXT",
+                type: "datetime2",
                 nullable: true);
 
             migrationBuilder.AddColumn<int>(
                 name: "MatchConfidence",
                 table: "LeadAppointments",
-                type: "INTEGER",
+                type: "int",
                 nullable: true);
 
             migrationBuilder.AddColumn<string>(
                 name: "RawProviderPayloadJson",
                 table: "LeadAppointments",
-                type: "text",
+                type: "nvarchar(max)",
                 nullable: true);
 
             migrationBuilder.AddColumn<string>(
                 name: "WebsiteLeadId",
                 table: "LeadAppointments",
-                type: "TEXT",
+                type: "nvarchar(64)",
                 maxLength: 64,
                 nullable: true);
 
