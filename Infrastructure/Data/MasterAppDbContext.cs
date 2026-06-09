@@ -81,6 +81,7 @@ public class MasterAppDbContext : DbContext
             e.Property(x => x.BookingPageIdOrMailbox).HasMaxLength(320);
             e.Property(x => x.CalendarUserId).HasMaxLength(450);
             e.Property(x => x.CalendarEmail).HasMaxLength(320);
+            e.Property(x => x.DeactivationReason).HasMaxLength(512);
 
             if (isSqlServer)
                 e.HasIndex(x => x.NormalizedEmail).IsUnique().HasFilter("[NormalizedEmail] IS NOT NULL");

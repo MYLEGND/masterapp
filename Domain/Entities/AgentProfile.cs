@@ -28,6 +28,10 @@ public class AgentProfile
     public string? CalendarEmail { get; set; }
     public bool? PreferModalOnMobile { get; set; }
 
+    public bool IsActive { get; set; } = true;
+    public DateTime? DeactivatedUtc { get; set; }
+    public string? DeactivationReason { get; set; }
+
     public int? DisplayOrder { get; set; }
 
     public DateTime CreatedUtc { get; set; } = DateTime.UtcNow;
