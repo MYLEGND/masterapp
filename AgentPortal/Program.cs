@@ -866,7 +866,7 @@ app.MapPost("/api/graph/calendar-webhook", async (
     {
         Id = Guid.NewGuid(),
         Operation = string.IsNullOrWhiteSpace(rawBody) ? "minimal_empty_body" : "minimal_received",
-        Source = Domain.Enums.LeadAppointmentBookingSources.MicrosoftGraphWebhook,
+        Source = Domain.Entities.LeadAppointmentBookingSources.MicrosoftGraphWebhook,
         Success = false,
         Error = string.IsNullOrWhiteSpace(rawBody) ? "Minimal webhook endpoint received empty body." : null,
         DiagnosticJson = string.IsNullOrWhiteSpace(rawBody) ? null : (rawBody.Length > 3500 ? rawBody[..3500] : rawBody),
