@@ -768,7 +768,28 @@ app.UseForwardedHeaders();
 // by allowing HTTP on localhost. HTTPS redirection remains enforced outside Development.
 if (!app.Environment.IsDevelopment())
 {
-    app.UseHttpsRedirection();
+app.Use(async (context, next) => {
+    if (context.Request.Path.StartsWithSegments("/api/graph/calendar-webhook")) {
+        await next(); return;
+    }
+    await next();
+});
+    
+app.Use(async (context, next) =>
+{
+    if (context.Request.Path.StartsWithSegments("/api/graph/calendar-webhook") &&
+        context.Request.Method.Equals("POST", StringComparison.OrdinalIgnoreCase) &&
+        context.Request.Query.TryGetValue("validationToken", out var validationToken) &&
+        !string.IsNullOrWhiteSpace(validationToken.ToString()))
+    {
+        context.Response.StatusCode = StatusCodes.Status200OK;
+        context.Response.ContentType = "text/plain";
+        await context.Response.WriteAsync(validationToken.ToString());
+        return;
+    }
+    await next();
+});
+app.UseHttpsRedirection();
 }
 app.UseStaticFiles();
 
@@ -822,6 +843,41 @@ app.MapHealthChecks("/readyz", new Microsoft.AspNetCore.Diagnostics.HealthChecks
 
 // ✅ REQUIRED so /MicrosoftIdentity/Account/... exists
 app.MapRazorPages();
+
+
+app.MapPost("/api/graph/calendar-webhook", async (
+    HttpContext context,
+    Infrastructure.Data.MasterAppDbContext db,
+    CancellationToken cancellationToken) =>
+{
+    if (context.Request.Query.TryGetValue("validationToken", out var validationToken) &&
+        !string.IsNullOrWhiteSpace(validationToken.ToString()))
+    {
+        return Results.Text(validationToken.ToString(), "text/plain");
+    }
+
+    string rawBody;
+    using (var reader = new StreamReader(context.Request.Body))
+    {
+        rawBody = await reader.ReadToEndAsync(cancellationToken);
+    }
+
+    db.AppointmentSyncLogs.Add(new Domain.Entities.AppointmentSyncLog
+    {
+        Id = Guid.NewGuid(),
+        Operation = string.IsNullOrWhiteSpace(rawBody) ? "minimal_empty_body" : "minimal_received",
+        Source = Domain.Entities.LeadAppointmentBookingSources.MicrosoftGraphWebhook,
+        Success = false,
+        Error = string.IsNullOrWhiteSpace(rawBody) ? "Minimal webhook endpoint received empty body." : null,
+        DiagnosticJson = string.IsNullOrWhiteSpace(rawBody) ? null : (rawBody.Length > 3500 ? rawBody[..3500] : rawBody),
+        CreatedUtc = DateTime.UtcNow
+    });
+
+    await db.SaveChangesAsync(cancellationToken);
+    return Results.Accepted();
+})
+.AllowAnonymous();
+
 
 app.MapControllers();
 

@@ -845,40 +845,6 @@ app.MapHealthChecks("/readyz", new Microsoft.AspNetCore.Diagnostics.HealthChecks
 app.MapRazorPages();
 
 
-app.MapPost("/api/graph/calendar-webhook", async (
-    HttpContext context,
-    Infrastructure.Data.MasterAppDbContext db,
-    CancellationToken cancellationToken) =>
-{
-    if (context.Request.Query.TryGetValue("validationToken", out var validationToken) &&
-        !string.IsNullOrWhiteSpace(validationToken.ToString()))
-    {
-        return Results.Text(validationToken.ToString(), "text/plain");
-    }
-
-    string rawBody;
-    using (var reader = new StreamReader(context.Request.Body))
-    {
-        rawBody = await reader.ReadToEndAsync(cancellationToken);
-    }
-
-    db.AppointmentSyncLogs.Add(new Domain.Entities.AppointmentSyncLog
-    {
-        Id = Guid.NewGuid(),
-        Operation = string.IsNullOrWhiteSpace(rawBody) ? "minimal_empty_body" : "minimal_received",
-        Source = Domain.Entities.LeadAppointmentBookingSources.MicrosoftGraphWebhook,
-        Success = false,
-        Error = string.IsNullOrWhiteSpace(rawBody) ? "Minimal webhook endpoint received empty body." : null,
-        DiagnosticJson = string.IsNullOrWhiteSpace(rawBody) ? null : (rawBody.Length > 3500 ? rawBody[..3500] : rawBody),
-        CreatedUtc = DateTime.UtcNow
-    });
-
-    await db.SaveChangesAsync(cancellationToken);
-    return Results.Accepted();
-})
-.AllowAnonymous();
-
-
 app.MapControllers();
 
 // Explicit route for assistant workspace (helps when custom rewrite rules are present)
