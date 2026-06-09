@@ -442,6 +442,19 @@ if (!ModelState.IsValid)
                         lead.LeadId,
                         captureResult.Reason ?? "unknown");
 
+                    if (IsAjax() && string.Equals(captureResult.Reason, "InternalTestLead", StringComparison.OrdinalIgnoreCase))
+                    {
+                        return Json(new
+                        {
+                            success = true,
+                            skippedWorkstationCapture = true,
+                            reason = captureResult.Reason,
+                            bucket = captureResult.Bucket,
+                            agentUserId = captureResult.AgentUserId,
+                            leadId = lead.LeadId
+                        });
+                    }
+
                     if (IsAjax())
                         return StatusCode(500, new { error = "Workstation capture skipped", reason = captureResult.Reason ?? "unknown", bucket = captureResult.Bucket, agentUserId = captureResult.AgentUserId });
                 }
