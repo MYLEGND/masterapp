@@ -10279,28 +10279,20 @@ const contactFieldProgress = new Map();
   }
 
   function trackMetaLeadSuccess(leadId, metaLeadEventId) {
-    if (!metaLeadEventId) {
+    if (!leadId || !metaLeadEventId) {
       return Promise.resolve(false);
     }
 
-    if (typeof window.fbq !== 'function') {
-      notifyBrowserPixelStatus(leadId, metaLeadEventId, 'unavailable', 'fbq_unavailable');
+    // Hard safety gate: never send browser Meta Lead events from non-paid/site-mode traffic.
+    if (!isPaidLandingExperience || !metaSignalApi) {
+      notifyBrowserPixelStatus(leadId, metaLeadEventId, 'skipped', 'not_paid_landing_or_meta_signal_unavailable');
       return Promise.resolve(false);
     }
 
-    try {
-      window.fbq('track', 'Lead', {
-        content_name: pageKey,
-        content_category: '@cfg.OfferKey'
-      }, {
-        eventID: metaLeadEventId
-      });
-      notifyBrowserPixelStatus(leadId, metaLeadEventId, 'sent');
-      return Promise.resolve(true);
-    } catch {
-      notifyBrowserPixelStatus(leadId, metaLeadEventId, 'error', 'fbq_exception');
-      return Promise.resolve(false);
-    }
+    // Browser pixel dispatch is owned by the Meta Signal wrapper.
+    // Do not call window.fbq directly here; this prevents raw/non-human traffic from bypassing funnel gating.
+    notifyBrowserPixelStatus(leadId, metaLeadEventId, 'skipped', 'direct_fbq_disabled_use_meta_signal');
+    return Promise.resolve(false);
   }
 
   async function flushSuccessTracking(leadId, metaLeadEventId) {

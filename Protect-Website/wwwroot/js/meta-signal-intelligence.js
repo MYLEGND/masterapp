@@ -48,7 +48,6 @@
   });
 
   const DEFAULT_META_BROWSER_EVENTS = [
-    'ViewContent',
     'LeadFormStart',
     'DiscoveryComplete',
     'RecommendationViewed',
@@ -716,18 +715,34 @@
       return payload;
     }
 
+    function hasHumanBehaviorForMetaBrowserEvent(eventName) {
+      if (eventName === 'ViewContent') return false;
+
+      return Boolean(
+        state.stayed5Seconds ||
+        state.meaningfulScroll ||
+        state.firstQuestionAnswered ||
+        state.completedSteps['1'] ||
+        state.recommendationViewed ||
+        state.contactStepReached ||
+        state.contactInputStarted ||
+        state.submitAttempted ||
+        state.leadSubmitted
+      );
+    }
+
     function fireBrowserPixel(eventName, eventId, stepNumber, stepName, score) {
-      if (!config.sendBrowserEvents || !config.browserEventNames.has(eventName) || typeof window.fbq !== 'function') {
+      if (!config.enabled || !config.sendBrowserEvents || !config.browserEventNames.has(eventName) || typeof window.fbq !== 'function') {
+        return false;
+      }
+
+      if (!hasHumanBehaviorForMetaBrowserEvent(eventName)) {
         return false;
       }
 
       try {
         const payload = buildPixelPayload(eventName, stepNumber, stepName, score);
-        if (eventName === 'ViewContent') {
-          window.fbq('track', 'ViewContent', payload, { eventID: eventId });
-        } else {
-          window.fbq('trackCustom', eventName, payload, { eventID: eventId });
-        }
+        window.fbq('trackCustom', eventName, payload, { eventID: eventId });
         return true;
       } catch {
         return false;

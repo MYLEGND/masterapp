@@ -166,7 +166,7 @@ public sealed class MetaSignalIntelligenceService : IMetaSignalIntelligenceServi
         };
 
         MetaConversionsApiResult? metaServerResult = null;
-        if (_options.SendServerEvents && metaEventDefinition.AllowServerForward)
+        if (_options.SendServerEvents && metaEventDefinition.AllowServerForward && ShouldForwardToMeta(normalized.EventName, userAgent, accumulator))
         {
             var pixelContext = await ResolvePixelContextAsync(normalized.AgentTrackingProfileId, normalized.AgentSlug, cancellationToken);
             metaServerResult = await _metaConversionsApi.SendEventAsync(
@@ -397,7 +397,7 @@ public sealed class MetaSignalIntelligenceService : IMetaSignalIntelligenceServi
             pixelContext = await ResolvePixelContextAsync(request.AgentTrackingProfileId, Normalize(request.AgentSlug), cancellationToken);
         }
 
-        var capiResult = _options.SendServerEvents
+        var capiResult = _options.SendServerEvents && ShouldForwardToMeta("QualifiedLead", userAgent, accumulator)
             ? await _metaConversionsApi.SendEventAsync(
                 new MetaConversionsApiEventRequest
                 {
@@ -1040,6 +1040,52 @@ public sealed class MetaSignalIntelligenceService : IMetaSignalIntelligenceServi
             WebsiteLeadSignalRules.Default);
 
         return evaluation.QualifiedLead;
+    }
+
+    private static bool ShouldForwardToMeta(string eventName, string? userAgent, SignalAccumulator state)
+    {
+        if (ContainsAutomationUserAgentToken(userAgent))
+            return false;
+
+        if (eventName is "Lead" or "QualifiedLead")
+            return state.LeadSubmitted || state.SubmitAttempted || state.RequiredContactFieldsCompleted;
+
+        return HasHumanBehaviorSignal(state);
+    }
+
+    private static bool HasHumanBehaviorSignal(SignalAccumulator state)
+    {
+        return state.FirstQuestionAnswered ||
+            state.CompletedSteps.Count > 0 ||
+            state.RecommendationViewed ||
+            state.ContactStepReached ||
+            state.ContactInputStarted ||
+            state.PhoneCompleted ||
+            state.RequiredContactFieldsCompleted ||
+            state.SubmitAttempted ||
+            state.LeadSubmitted ||
+            (state.Stayed15Seconds && state.MeaningfulScroll);
+    }
+
+    private static bool ContainsAutomationUserAgentToken(string? userAgent)
+    {
+        if (string.IsNullOrWhiteSpace(userAgent))
+            return true;
+
+        var normalized = userAgent.ToLowerInvariant();
+        return normalized.Contains("bot") ||
+            normalized.Contains("crawler") ||
+            normalized.Contains("spider") ||
+            normalized.Contains("headless") ||
+            normalized.Contains("selenium") ||
+            normalized.Contains("puppeteer") ||
+            normalized.Contains("playwright") ||
+            normalized.Contains("phantomjs") ||
+            normalized.Contains("slimerjs") ||
+            normalized.Contains("curl") ||
+            normalized.Contains("wget") ||
+            normalized.Contains("python-requests") ||
+            normalized.Contains("httpclient");
     }
 
     private static int ResolveProtectingWhoScore(string? protectingWho, MetaSignalScoreWeights weights) => Normalize(protectingWho) switch
