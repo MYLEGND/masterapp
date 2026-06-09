@@ -15,7 +15,11 @@ public class LeadAppointment
     public Guid? WebsiteLeadIntakeLinkId { get; set; }
     public WebsiteLeadIntakeLink? WebsiteLeadIntakeLink { get; set; }
 
+    public string? WebsiteLeadId { get; set; }
+    public string? ClientProfileId { get; set; }
+
     public LeadAppointmentStatus Status { get; set; } = LeadAppointmentStatus.Requested;
+    public string? BookingProvider { get; set; }
     public string BookingSource { get; set; } = LeadAppointmentBookingSources.InternalManual;
     public string RequestedBookingSource { get; set; } = LeadAppointmentBookingSources.InternalManual;
     public string? ConfirmationSource { get; set; }
@@ -32,6 +36,12 @@ public class LeadAppointment
     public DateTime? ScheduledStartUtc { get; set; }
     public DateTime? ScheduledEndUtc { get; set; }
     public string? MeetingUrl { get; set; }
+
+    public DateTime? LastSyncedUtc { get; set; }
+    public string? LastSyncStatus { get; set; }
+    public string? LastSyncError { get; set; }
+    public string? RawProviderPayloadJson { get; set; }
+    public int? MatchConfidence { get; set; }
 
     public DateTime CreatedUtc { get; set; } = DateTime.UtcNow;
     public DateTime UpdatedUtc { get; set; } = DateTime.UtcNow;
@@ -53,6 +63,8 @@ public class LeadAppointment
 
         switch (status)
         {
+            case LeadAppointmentStatus.SchedulingOffered:
+                break;
             case LeadAppointmentStatus.Requested:
                 RequestedUtc = utcNow;
                 break;
@@ -74,6 +86,8 @@ public class LeadAppointment
             case LeadAppointmentStatus.Rescheduled:
                 RescheduledUtc = utcNow;
                 break;
+            case LeadAppointmentStatus.FailedConfirmation:
+                break;
         }
     }
 }
@@ -87,5 +101,7 @@ public static class LeadAppointmentBookingSources
     public const string WebsiteModal = "website_modal";
     public const string ExternalRedirectFallback = "external_redirect_fallback";
     public const string MicrosoftGraphConfirmation = "microsoft_graph_confirmation";
+    public const string MicrosoftGraphWebhook = "microsoft_graph_webhook";
+    public const string MicrosoftGraphFallbackMatch = "graph_fallback_match";
     public const string ManualVerified = "manual_verified";
 }

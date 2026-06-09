@@ -167,6 +167,11 @@ public sealed class PublicBookingConfirmationService : IPublicBookingConfirmatio
 
         if (calendarMatch == null)
         {
+            var pendingUtc = DateTime.UtcNow;
+            appointment.LastSyncedUtc = pendingUtc;
+            appointment.LastSyncStatus = "graph_fallback_pending";
+            appointment.LastSyncError = "No matching Microsoft Graph calendar event found.";
+            appointment.UpdatedUtc = pendingUtc;
             await _db.SaveChangesAsync(cancellationToken);
 
             return BuildResult(
@@ -190,8 +195,12 @@ public sealed class PublicBookingConfirmationService : IPublicBookingConfirmatio
         appointment.ScheduledStartUtc = calendarMatch.ScheduledStartUtc;
         appointment.ScheduledEndUtc = calendarMatch.ScheduledEndUtc;
         appointment.MeetingUrl = calendarMatch.MeetingUrl;
-        appointment.BookingSource = LeadAppointmentBookingSources.MicrosoftGraphConfirmation;
-        appointment.ConfirmationSource = LeadAppointmentBookingSources.MicrosoftGraphConfirmation;
+        appointment.BookingProvider = "microsoft_graph";
+        appointment.BookingSource = LeadAppointmentBookingSources.MicrosoftGraphFallbackMatch;
+        appointment.ConfirmationSource = LeadAppointmentBookingSources.MicrosoftGraphFallbackMatch;
+        appointment.LastSyncedUtc = nowUtc;
+        appointment.LastSyncStatus = calendarMatch.MatchReason;
+        appointment.LastSyncError = null;
         if (!appointment.RequestedUtc.HasValue)
         {
             appointment.RequestedUtc = nowUtc;
@@ -225,6 +234,8 @@ public sealed class PublicBookingConfirmationService : IPublicBookingConfirmatio
         return appointment.Status is LeadAppointmentStatus.Booked or LeadAppointmentStatus.Confirmed or LeadAppointmentStatus.Completed &&
             (string.Equals(trustedSource, LeadAppointmentBookingSources.InternalCalendar, StringComparison.OrdinalIgnoreCase) ||
              string.Equals(trustedSource, LeadAppointmentBookingSources.MicrosoftGraphConfirmation, StringComparison.OrdinalIgnoreCase) ||
+             string.Equals(trustedSource, LeadAppointmentBookingSources.MicrosoftGraphWebhook, StringComparison.OrdinalIgnoreCase) ||
+             string.Equals(trustedSource, LeadAppointmentBookingSources.MicrosoftGraphFallbackMatch, StringComparison.OrdinalIgnoreCase) ||
              string.Equals(trustedSource, LeadAppointmentBookingSources.ManualVerified, StringComparison.OrdinalIgnoreCase));
     }
 

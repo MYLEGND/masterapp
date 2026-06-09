@@ -8,5 +8,7 @@ public enum LeadAppointmentStatus
     Completed = 3,
     NoShow = 4,
     Cancelled = 5,
-    Rescheduled = 6
+    Rescheduled = 6,
+    SchedulingOffered = 7,
+    FailedConfirmation = 8
 }

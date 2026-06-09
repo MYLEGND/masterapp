@@ -27,6 +27,8 @@ public class MasterAppDbContext : DbContext
     public DbSet<WebsiteLead> WebsiteLeads => Set<WebsiteLead>();
     public DbSet<WebsiteLeadIntakeLink> WebsiteLeadIntakeLinks => Set<WebsiteLeadIntakeLink>();
     public DbSet<LeadAppointment> LeadAppointments => Set<LeadAppointment>();
+    public DbSet<GraphCalendarSubscription> GraphCalendarSubscriptions => Set<GraphCalendarSubscription>();
+    public DbSet<AppointmentSyncLog> AppointmentSyncLogs => Set<AppointmentSyncLog>();
     public DbSet<AnalyticsEvent> AnalyticsEvents => Set<AnalyticsEvent>();
     public DbSet<MetaSignalEvent> MetaSignalEvents => Set<MetaSignalEvent>();
     public DbSet<AgentTrackingProfile> AgentTrackingProfiles => Set<AgentTrackingProfile>();
@@ -586,13 +588,57 @@ public class MasterAppDbContext : DbContext
                     .ValueGeneratedNever();
         });
 
+
+        modelBuilder.Entity<GraphCalendarSubscription>(e =>
+        {
+            e.HasKey(x => x.Id);
+            e.ToTable("GraphCalendarSubscriptions");
+            e.Property(x => x.AgentUserId).HasMaxLength(450).IsRequired();
+            e.Property(x => x.CalendarUserId).HasMaxLength(450);
+            e.Property(x => x.CalendarEmail).HasMaxLength(320);
+            e.Property(x => x.GraphSubscriptionId).HasMaxLength(256).IsRequired();
+            e.Property(x => x.Resource).HasMaxLength(512).IsRequired();
+            e.Property(x => x.ChangeType).HasMaxLength(80).IsRequired();
+            e.Property(x => x.ClientState).HasMaxLength(256).IsRequired();
+            e.Property(x => x.LastError).HasMaxLength(2048);
+
+            e.HasIndex(x => x.GraphSubscriptionId).IsUnique();
+            e.HasIndex(x => new { x.AgentUserId, x.CalendarEmail });
+            e.HasIndex(x => new { x.IsActive, x.ExpirationUtc });
+        });
+
+        modelBuilder.Entity<AppointmentSyncLog>(e =>
+        {
+            e.HasKey(x => x.Id);
+            e.ToTable("AppointmentSyncLogs");
+            e.Property(x => x.WorkstationLeadId).HasMaxLength(64);
+            e.Property(x => x.ClientProfileId).HasMaxLength(450);
+            e.Property(x => x.AgentUserId).HasMaxLength(450);
+            e.Property(x => x.CalendarUserId).HasMaxLength(450);
+            e.Property(x => x.CalendarEmail).HasMaxLength(320);
+            e.Property(x => x.GraphSubscriptionId).HasMaxLength(256);
+            e.Property(x => x.GraphEventId).HasMaxLength(256);
+            e.Property(x => x.Operation).HasMaxLength(80).IsRequired();
+            e.Property(x => x.Source).HasMaxLength(80).IsRequired();
+            e.Property(x => x.Error).HasMaxLength(2048);
+            e.Property(x => x.DiagnosticJson).HasColumnType("text");
+
+            e.HasIndex(x => x.AppointmentId);
+            e.HasIndex(x => x.WorkstationLeadId);
+            e.HasIndex(x => x.GraphEventId);
+            e.HasIndex(x => x.CreatedUtc);
+        });
+
         modelBuilder.Entity<LeadAppointment>(e =>
         {
             e.HasKey(x => x.Id);
             e.ToTable("LeadAppointments");
             e.Property(x => x.WorkstationLeadId).HasMaxLength(64).IsRequired();
             e.Property(x => x.OwnerAgentUserId).HasMaxLength(450).IsRequired();
+            e.Property(x => x.WebsiteLeadId).HasMaxLength(64);
+            e.Property(x => x.ClientProfileId).HasMaxLength(450);
             e.Property(x => x.Status).HasConversion<string>().HasMaxLength(32).IsRequired();
+            e.Property(x => x.BookingProvider).HasMaxLength(80);
             e.Property(x => x.BookingSource).HasMaxLength(80).IsRequired();
             e.Property(x => x.RequestedBookingSource).HasMaxLength(80).IsRequired();
             e.Property(x => x.ConfirmationSource).HasMaxLength(80);
@@ -605,6 +651,9 @@ public class MasterAppDbContext : DbContext
             e.Property(x => x.CalendarEventId).HasMaxLength(256);
             e.Property(x => x.CalendarEventWebLink).HasMaxLength(2048);
             e.Property(x => x.MeetingUrl).HasMaxLength(2048);
+            e.Property(x => x.LastSyncStatus).HasMaxLength(80);
+            e.Property(x => x.LastSyncError).HasMaxLength(2048);
+            e.Property(x => x.RawProviderPayloadJson).HasColumnType("text");
 
             e.HasIndex(x => x.WorkstationLeadId);
             e.HasIndex(x => new { x.WorkstationLeadId, x.UpdatedUtc });
@@ -612,6 +661,9 @@ public class MasterAppDbContext : DbContext
             e.HasIndex(x => new { x.OwnerAgentUserId, x.Status, x.ScheduledStartUtc });
             e.HasIndex(x => x.CalendarEventId);
             e.HasIndex(x => x.WebsiteLeadIntakeLinkId);
+            e.HasIndex(x => x.WebsiteLeadId);
+            e.HasIndex(x => x.ClientProfileId);
+            e.HasIndex(x => new { x.BookingProvider, x.CalendarEventId });
 
             e.HasOne(x => x.WorkstationLead)
                 .WithMany()
@@ -747,53 +799,6 @@ public class MasterAppDbContext : DbContext
             else
                 e.HasIndex(x => x.AssistantUserId).IsUnique();
             e.HasIndex(x => new { x.ParentAgentUserId, x.Email }).IsUnique();
-        });
-
-        // ==========================================================
-        // AGENT PROFILE (per-agent stored settings like NPN)
-        // ==========================================================
-        modelBuilder.Entity<AgentProfile>(e =>
-        {
-            e.HasKey(x => x.Id);
-
-            e.Property(x => x.AgentUserId)
-                .HasMaxLength(450)
-                .IsRequired();
-
-            e.Property(x => x.AgentUpn)
-                .HasMaxLength(320);
-
-            e.Property(x => x.FullName)
-                .HasMaxLength(200);
-
-            e.Property(x => x.Title)
-                .HasMaxLength(120);
-
-            e.Property(x => x.Npn)
-                .HasMaxLength(64);
-
-            e.Property(x => x.Phone)
-                .HasMaxLength(64);
-
-            e.Property(x => x.MicrosoftBookingsEmbedUrl)
-                .HasMaxLength(2048);
-
-            e.Property(x => x.FallbackBookingUrl)
-                .HasMaxLength(2048);
-
-            e.Property(x => x.BookingPageIdOrMailbox)
-                .HasMaxLength(320);
-
-            e.Property(x => x.CalendarUserId)
-                .HasMaxLength(450);
-
-            e.Property(x => x.CalendarEmail)
-                .HasMaxLength(320);
-
-            e.Property(x => x.DisplayOrder);
-
-            e.HasIndex(x => x.AgentUserId).IsUnique();
-            e.HasIndex(x => x.AgentUpn);
         });
 
         // ==========================================================

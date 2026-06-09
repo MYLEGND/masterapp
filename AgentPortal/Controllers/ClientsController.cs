@@ -1300,7 +1300,81 @@ namespace AgentPortal.Controllers;
         return meta;
     }
 
-    private static object BuildQuickViewPayload(ClientProfile profile, ClientCrmMeta meta, TimeZoneInfo dialTimeZone, DateTime nowUtc)
+    private async Task<LeadAppointment?> LoadClientLatestAppointmentAsync(ClientProfile profile)
+    {
+        var clientUserId = Norm(profile.ClientUserId);
+        var profileId = profile.Id.ToString();
+
+        if (string.IsNullOrWhiteSpace(clientUserId) && string.IsNullOrWhiteSpace(profileId))
+            return null;
+
+        return await _db.LeadAppointments
+            .AsNoTracking()
+            .Where(x => x.ClientProfileId == profileId || x.WorkstationLeadId == clientUserId)
+            .OrderByDescending(x => x.ScheduledStartUtc ?? x.UpdatedUtc)
+            .ThenByDescending(x => x.UpdatedUtc)
+            .FirstOrDefaultAsync();
+    }
+
+    private static object? BuildClientAppointmentPayload(LeadAppointment? appointment)
+    {
+        if (appointment == null)
+            return null;
+
+        return new
+        {
+            id = appointment.Id,
+            workstationLeadId = appointment.WorkstationLeadId,
+            clientProfileId = appointment.ClientProfileId,
+            status = appointment.Status.ToString(),
+            statusLabel = HumanizeClientAppointmentStatus(appointment.Status),
+            confirmationStateLabel = BuildClientAppointmentConfirmationStateLabel(appointment),
+            bookingProvider = appointment.BookingProvider,
+            bookingSource = appointment.BookingSource,
+            confirmationSource = appointment.ConfirmationSource,
+            calendarEventId = appointment.CalendarEventId,
+            calendarEventWebLink = appointment.CalendarEventWebLink,
+            scheduledStartUtc = appointment.ScheduledStartUtc,
+            scheduledEndUtc = appointment.ScheduledEndUtc,
+            meetingUrl = appointment.MeetingUrl,
+            lastSyncedUtc = appointment.LastSyncedUtc,
+            lastSyncStatus = appointment.LastSyncStatus,
+            lastSyncError = appointment.LastSyncError
+        };
+    }
+
+    private static string HumanizeClientAppointmentStatus(LeadAppointmentStatus status)
+        => status switch
+        {
+            LeadAppointmentStatus.NoShow => "No Show",
+            LeadAppointmentStatus.SchedulingOffered => "Scheduling Offered",
+            LeadAppointmentStatus.FailedConfirmation => "Failed Confirmation",
+            _ => status.ToString()
+        };
+
+    private static bool IsTrustedClientAppointment(LeadAppointment appointment)
+    {
+        var trustedSource = appointment.ConfirmationSource ?? appointment.BookingSource;
+        return appointment.Status is LeadAppointmentStatus.Booked or LeadAppointmentStatus.Confirmed or LeadAppointmentStatus.Completed or LeadAppointmentStatus.Rescheduled &&
+            (string.Equals(trustedSource, LeadAppointmentBookingSources.InternalCalendar, StringComparison.OrdinalIgnoreCase) ||
+             string.Equals(trustedSource, LeadAppointmentBookingSources.MicrosoftGraphConfirmation, StringComparison.OrdinalIgnoreCase) ||
+             string.Equals(trustedSource, LeadAppointmentBookingSources.MicrosoftGraphWebhook, StringComparison.OrdinalIgnoreCase) ||
+             string.Equals(trustedSource, LeadAppointmentBookingSources.MicrosoftGraphFallbackMatch, StringComparison.OrdinalIgnoreCase) ||
+             string.Equals(trustedSource, LeadAppointmentBookingSources.ManualVerified, StringComparison.OrdinalIgnoreCase));
+    }
+
+    private static string BuildClientAppointmentConfirmationStateLabel(LeadAppointment appointment)
+    {
+        if (IsTrustedClientAppointment(appointment))
+            return "Booked / verified";
+        if (appointment.Status == LeadAppointmentStatus.Requested)
+            return "Requested / awaiting verification";
+        if (appointment.Status is LeadAppointmentStatus.Booked or LeadAppointmentStatus.Confirmed or LeadAppointmentStatus.Completed or LeadAppointmentStatus.Rescheduled)
+            return $"{HumanizeClientAppointmentStatus(appointment.Status)} / source not verified";
+        return HumanizeClientAppointmentStatus(appointment.Status);
+    }
+
+    private static object BuildQuickViewPayload(ClientProfile profile, ClientCrmMeta meta, TimeZoneInfo dialTimeZone, DateTime nowUtc, LeadAppointment? latestAppointment = null)
     {
         var safeActivities = (meta.Activities ?? new List<ClientCrmActivity>()).Where(a => a != null).ToList();
         meta.Activities = safeActivities;
@@ -1348,8 +1422,9 @@ namespace AgentPortal.Controllers;
             usePersonalZoomLink = meta.UsePersonalZoomLink,
             meetingTime = meta.MeetingTime ?? "09:00",
             meetingDurationMinutes = meta.MeetingDurationMinutes,
-            lastCalendarEventId = meta.LastCalendarEventId ?? "",
-            lastCalendarEventWebLink = meta.LastCalendarEventWebLink ?? "",
+            lastCalendarEventId = latestAppointment?.CalendarEventId ?? meta.LastCalendarEventId ?? "",
+            lastCalendarEventWebLink = latestAppointment?.CalendarEventWebLink ?? meta.LastCalendarEventWebLink ?? "",
+            latestAppointment = BuildClientAppointmentPayload(latestAppointment),
             lastContactChannel = meta.LastContactChannel ?? "",
             attemptsToday = attemptCounts.Today,
             attemptsThisWeek = attemptCounts.Week,
@@ -3696,7 +3771,7 @@ meta.Activities ??= new List<ClientCrmActivity>();
 
             var nowUtc = DateTime.UtcNow;
             var dialTimeZone = _agentTimeZoneResolver.Resolve(HttpContext);
-            return Json(BuildQuickViewPayload(profile, meta, dialTimeZone, nowUtc));
+            return Json(BuildQuickViewPayload(profile, meta, dialTimeZone, nowUtc, await LoadClientLatestAppointmentAsync(profile)));
         }
         catch (Exception ex)
         {
@@ -4890,7 +4965,7 @@ meta.Activities ??= new List<ClientCrmActivity>();
         return Json(new
         {
             ok = true,
-            payload = BuildQuickViewPayload(profile, meta, dialTimeZone, nowUtc)
+            payload = BuildQuickViewPayload(profile, meta, dialTimeZone, nowUtc, await LoadClientLatestAppointmentAsync(profile))
         });
     }
 
@@ -5064,7 +5139,7 @@ meta.Activities ??= new List<ClientCrmActivity>();
                 meetingTime = meta.MeetingTime ?? "09:00",
                 meetingDurationMinutes = meta.MeetingDurationMinutes
             },
-            payload = BuildQuickViewPayload(profile, meta, dialTimeZone, nowUtc)
+            payload = BuildQuickViewPayload(profile, meta, dialTimeZone, nowUtc, await LoadClientLatestAppointmentAsync(profile))
         });
     }
 
