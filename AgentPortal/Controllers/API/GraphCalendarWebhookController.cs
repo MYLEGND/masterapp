@@ -49,17 +49,71 @@ public sealed class GraphCalendarWebhookController : ControllerBase
             return Content(validationToken, "text/plain");
         }
 
-        using var document = await JsonDocument.ParseAsync(Request.Body, cancellationToken: cancellationToken);
-
-        if (!document.RootElement.TryGetProperty("value", out var notifications) ||
-            notifications.ValueKind != JsonValueKind.Array)
+        string rawBody;
+        using (var reader = new StreamReader(Request.Body))
         {
+            rawBody = await reader.ReadToEndAsync(cancellationToken);
+        }
+
+        if (string.IsNullOrWhiteSpace(rawBody))
+        {
+            _db.AppointmentSyncLogs.Add(new AppointmentSyncLog
+            {
+                Id = Guid.NewGuid(),
+                Operation = "empty_body",
+                Source = LeadAppointmentBookingSources.MicrosoftGraphWebhook,
+                Success = false,
+                Error = "Microsoft Graph webhook POST body was empty.",
+                CreatedUtc = DateTime.UtcNow
+            });
+            await _db.SaveChangesAsync(cancellationToken);
             return Accepted();
         }
 
-        foreach (var notification in notifications.EnumerateArray())
+        JsonDocument document;
+        try
         {
-            await HandleNotificationAsync(notification, cancellationToken);
+            document = JsonDocument.Parse(rawBody);
+        }
+        catch (Exception ex)
+        {
+            _db.AppointmentSyncLogs.Add(new AppointmentSyncLog
+            {
+                Id = Guid.NewGuid(),
+                Operation = "parse_failed",
+                Source = LeadAppointmentBookingSources.MicrosoftGraphWebhook,
+                Success = false,
+                Error = ex.Message,
+                DiagnosticJson = rawBody.Length > 3500 ? rawBody[..3500] : rawBody,
+                CreatedUtc = DateTime.UtcNow
+            });
+            await _db.SaveChangesAsync(cancellationToken);
+            return Accepted();
+        }
+
+        using (document)
+        {
+            if (!document.RootElement.TryGetProperty("value", out var notifications) ||
+                notifications.ValueKind != JsonValueKind.Array)
+            {
+                _db.AppointmentSyncLogs.Add(new AppointmentSyncLog
+                {
+                    Id = Guid.NewGuid(),
+                    Operation = "missing_value",
+                    Source = LeadAppointmentBookingSources.MicrosoftGraphWebhook,
+                    Success = false,
+                    Error = "Microsoft Graph webhook payload did not contain a value array.",
+                    DiagnosticJson = rawBody.Length > 3500 ? rawBody[..3500] : rawBody,
+                    CreatedUtc = DateTime.UtcNow
+                });
+                await _db.SaveChangesAsync(cancellationToken);
+                return Accepted();
+            }
+
+            foreach (var notification in notifications.EnumerateArray())
+            {
+                await HandleNotificationAsync(notification, cancellationToken);
+            }
         }
 
         return Accepted();
