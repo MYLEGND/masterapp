@@ -22,6 +22,7 @@ using Moq;
 using Protect_Website.Controllers;
 using Protect_Website.Models;
 using ProtectWebsite.Services.Booking;
+using ProtectWebsite.Services.Communication;
 using ProtectWebsite.Services.Meta;
 using ProtectWebsite.Services.MetaSignal;
 using ProtectWebsite.Services.Tracking;
@@ -489,6 +490,7 @@ public class LifeQuoteControllerPublicBookingTests
             publicBookingResolver ?? Mock.Of<IPublicBookingResolver>(),
             publicBookingConfirmationService ?? Mock.Of<IPublicBookingConfirmationService>(),
             publicBookingContextProtector ?? BuildBookingProtector(),
+            Mock.Of<IProtectEmailSender>(),
             NullLogger<LifeQuoteController>.Instance)
         {
             ControllerContext = new ControllerContext

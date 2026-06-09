@@ -84,6 +84,42 @@ public sealed class MetaSignalConfirmedLeadRequest
     public JsonElement Metadata { get; set; }
 }
 
+public sealed class MetaSignalAppointmentBookedRequest
+{
+    public Guid AppointmentId { get; set; }
+    public Guid LeadId { get; set; }
+    public string QuoteType { get; set; } = string.Empty;
+    public string PageKey { get; set; } = string.Empty;
+    public string EffectivePageKey { get; set; } = string.Empty;
+    public string? PageVariant { get; set; }
+    public string PageMode { get; set; } = string.Empty;
+    public string? Url { get; set; }
+    public string? Referrer { get; set; }
+    public string? SessionId { get; set; }
+    public string? VisitorId { get; set; }
+    public Guid? AgentTrackingProfileId { get; set; }
+    public string? AgentSlug { get; set; }
+    public string? UtmSource { get; set; }
+    public string? UtmMedium { get; set; }
+    public string? UtmCampaign { get; set; }
+    public string? UtmId { get; set; }
+    public string? UtmContent { get; set; }
+    public string? Fbclid { get; set; }
+    public string? Email { get; set; }
+    public string? Phone { get; set; }
+    public bool AllowHashedContactData { get; set; }
+    public string? CalendarEventId { get; set; }
+    public string? CalendarEventWebLink { get; set; }
+    public DateTime? ScheduledStartUtc { get; set; }
+    public DateTime? ScheduledEndUtc { get; set; }
+    public string? BookingSource { get; set; }
+    public string? ConfirmationSource { get; set; }
+    public string? PixelId { get; set; }
+    public string? AccessToken { get; set; }
+    public string? TestEventCode { get; set; }
+    public string? PixelOwnerType { get; set; }
+}
+
 public sealed class MetaSignalProcessResult
 {
     public bool Accepted { get; set; }

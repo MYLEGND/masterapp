@@ -34,7 +34,8 @@ public static class MetaSignalEventCatalog
         new("RageClick", "friction", false, false),
         new("AbandonedHighIntentLead", "abandon", true, true),
         new("Lead", "conversion", false, true),
-        new("QualifiedLead", "conversion", false, true)
+        new("QualifiedLead", "conversion", false, true),
+        new("AppointmentBooked", "conversion", false, true)
     ];
 
     private static readonly ReadOnlyDictionary<string, MetaSignalEventDefinition> DefinitionsByNameInternal =

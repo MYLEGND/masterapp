@@ -16,10 +16,185 @@ public interface IMetaSignalIntelligenceService
 {
     Task<MetaSignalProcessResult> IngestAsync(MetaSignalIngestRequest request, HttpContext? httpContext, CancellationToken cancellationToken = default);
     Task<MetaSignalProcessResult?> RecordConfirmedLeadAsync(MetaSignalConfirmedLeadRequest request, HttpContext? httpContext, CancellationToken cancellationToken = default);
+    Task<MetaSignalProcessResult?> RecordAppointmentBookedAsync(MetaSignalAppointmentBookedRequest request, HttpContext? httpContext, CancellationToken cancellationToken = default);
 }
 
 public sealed class MetaSignalIntelligenceService : IMetaSignalIntelligenceService
 {
+
+    public async Task<MetaSignalProcessResult?> RecordAppointmentBookedAsync(
+        MetaSignalAppointmentBookedRequest request,
+        HttpContext? httpContext,
+        CancellationToken cancellationToken = default)
+    {
+        if (!_options.Enabled)
+            return null;
+
+        if (request.AppointmentId == Guid.Empty || request.LeadId == Guid.Empty)
+            return null;
+
+        var quoteType = NormalizeQuoteType(request.QuoteType);
+        if (string.IsNullOrWhiteSpace(quoteType))
+            quoteType = "life";
+
+        var userAgent = httpContext?.Request.Headers.UserAgent.ToString();
+        if (ContainsAutomationUserAgentToken(userAgent))
+            return new MetaSignalProcessResult
+            {
+                Accepted = true,
+                Skipped = true,
+                EventName = "AppointmentBooked",
+                EventId = request.AppointmentId.ToString("N"),
+                ScoreTier = "AppointmentBooked",
+                MetaServerSent = false,
+                MetaServerStatus = "skipped_automation_user_agent"
+            };
+
+        var eventId = $"appointment_booked_{request.AppointmentId:N}";
+        var deduplicationKey = $"AppointmentBooked:{request.LeadId:N}:{request.AppointmentId:N}";
+        var clientIp = MetaLeadTrackingWorkflow.ResolveClientIpAddress(httpContext?.Request);
+
+        var attribution = new MetaSignalAttributionPayload
+        {
+            UtmSource = request.UtmSource,
+            UtmMedium = request.UtmMedium,
+            UtmCampaign = request.UtmCampaign,
+            UtmId = request.UtmId,
+            UtmContent = request.UtmContent,
+            Fbclid = request.Fbclid
+        };
+
+        var existing = await _db.MetaSignalEvents.AsNoTracking()
+            .Where(x => x.MetaDeduplicationKey == deduplicationKey && x.EventName == "AppointmentBooked")
+            .OrderByDescending(x => x.CreatedUtc)
+            .FirstOrDefaultAsync(cancellationToken);
+
+        if (existing != null)
+            return ToProcessResult(existing, duplicate: true, metaServerStatus: existing.MetaServerSent ? "sent" : "duplicate");
+
+        var capiResult = _options.SendServerEvents
+            ? await _metaConversionsApi.SendEventAsync(
+                new MetaConversionsApiEventRequest
+                {
+                    LeadId = request.LeadId,
+                    CorrelationId = Guid.NewGuid(),
+                    EventName = "AppointmentBooked",
+                    EventId = eventId,
+                    QuoteType = quoteType,
+                    PageKey = request.EffectivePageKey,
+                    OfferKey = quoteType,
+                    EventSourceUrl = Normalize(request.Url),
+                    ClientIpAddress = clientIp,
+                    ClientUserAgent = userAgent,
+                    Fbp = MetaLeadTrackingWorkflow.ResolveCookieValue(httpContext?.Request, "_fbp"),
+                    Fbc = MetaLeadTrackingWorkflow.ResolveCookieValue(httpContext?.Request, "_fbc"),
+                    Fbclid = attribution.Fbclid,
+                    Email = request.Email,
+                    Phone = request.Phone,
+                    AllowHashedContactData = request.AllowHashedContactData,
+                    EventUtc = DateTime.UtcNow,
+                    PixelId = request.PixelId,
+                    AccessToken = request.AccessToken,
+                    TestEventCode = request.TestEventCode,
+                    PixelOwnerType = request.PixelOwnerType,
+                    CustomData = new Dictionary<string, object?>
+                    {
+                        ["event_category"] = "conversion",
+                        ["conversion_stage"] = "appointment_booked",
+                        ["quote_type"] = quoteType,
+                        ["page_key"] = request.PageKey,
+                        ["effective_page_key"] = request.EffectivePageKey,
+                        ["page_mode"] = request.PageMode,
+                        ["appointment_id"] = request.AppointmentId.ToString("N"),
+                        ["calendar_event_id"] = request.CalendarEventId,
+                        ["scheduled_start_utc"] = request.ScheduledStartUtc?.ToString("O"),
+                        ["scheduled_end_utc"] = request.ScheduledEndUtc?.ToString("O"),
+                        ["booking_source"] = request.BookingSource,
+                        ["confirmation_source"] = request.ConfirmationSource
+                    }
+                },
+                cancellationToken)
+            : new MetaConversionsApiResult { Attempted = false, Sent = false, Status = "server_events_disabled" };
+
+        var row = new MetaSignalEvent
+        {
+            CreatedUtc = DateTime.UtcNow,
+            LeadId = request.LeadId,
+            EventId = eventId,
+            EventName = "AppointmentBooked",
+            EventCategory = "conversion",
+            SessionId = Normalize(request.SessionId),
+            VisitorId = Normalize(request.VisitorId),
+            QuoteType = quoteType,
+            PageKey = Normalize(request.PageKey),
+            EffectivePageKey = Normalize(request.EffectivePageKey),
+            PageVariant = Normalize(request.PageVariant),
+            PageMode = Normalize(request.PageMode),
+            TrafficType = ClassifyTrafficType(attribution.UtmSource, attribution.UtmMedium, attribution.UtmCampaign, attribution.Fbclid, null, null, null),
+            FunnelStep = 4,
+            StepName = "appointment_booked",
+            IntentScore = 120,
+            EngagementScore = 120,
+            QualificationScore = 120,
+            FrictionScore = 0,
+            TotalSignalScore = 120,
+            ScoreTier = "AppointmentBooked",
+            MetaBrowserSent = false,
+            MetaServerSent = capiResult.Sent,
+            MetaDeduplicationKey = deduplicationKey,
+            UtmSource = attribution.UtmSource,
+            UtmMedium = attribution.UtmMedium,
+            UtmCampaign = attribution.UtmCampaign,
+            UtmId = attribution.UtmId,
+            UtmContent = attribution.UtmContent,
+            FbclidPresent = !string.IsNullOrWhiteSpace(attribution.Fbclid),
+            FbcPresent = !string.IsNullOrWhiteSpace(MetaLeadTrackingWorkflow.ResolveCookieValue(httpContext?.Request, "_fbc")),
+            FbpPresent = !string.IsNullOrWhiteSpace(MetaLeadTrackingWorkflow.ResolveCookieValue(httpContext?.Request, "_fbp")),
+            Referrer = Normalize(request.Referrer),
+            UserAgentHash = SafeHash(userAgent),
+            IpHash = SafeHash(clientIp),
+            AgentTrackingProfileId = request.AgentTrackingProfileId,
+            AgentSlug = Normalize(request.AgentSlug),
+            Environment = EnvironmentLabelResolver.Resolve(),
+            Host = httpContext?.Request.Host.ToString(),
+            MetadataJson = BuildSimpleAppointmentMetadataJson(request, capiResult.Status, capiResult.Note)
+        };
+
+        if (_options.PersistEvents)
+        {
+            _db.MetaSignalEvents.Add(row);
+            await _db.SaveChangesAsync(cancellationToken);
+        }
+
+        _logger.LogInformation(
+            "MetaSignal appointment booked recorded appointmentId={AppointmentId} leadId={LeadId} status={Status}",
+            request.AppointmentId,
+            request.LeadId,
+            capiResult.Status);
+
+        return ToProcessResult(row, duplicate: false, metaServerStatus: capiResult.Status);
+    }
+
+    private static string BuildSimpleAppointmentMetadataJson(
+        MetaSignalAppointmentBookedRequest request,
+        string metaServerStatus,
+        string? metaServerNote)
+    {
+        return JsonSerializer.Serialize(new
+        {
+            metaServerStatus,
+            metaServerNote,
+            appointmentId = request.AppointmentId,
+            calendarEventId = request.CalendarEventId,
+            calendarEventWebLink = request.CalendarEventWebLink,
+            scheduledStartUtc = request.ScheduledStartUtc,
+            scheduledEndUtc = request.ScheduledEndUtc,
+            bookingSource = request.BookingSource,
+            confirmationSource = request.ConfirmationSource,
+            pageMode = request.PageMode
+        });
+    }
+
     private static readonly TimeSpan SemanticDeduplicationWindow = TimeSpan.FromHours(2);
 
     private readonly MasterAppDbContext _db;

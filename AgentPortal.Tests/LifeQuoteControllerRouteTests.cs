@@ -10,6 +10,7 @@ using Microsoft.Extensions.Logging.Abstractions;
 using Moq;
 using Protect_Website.Controllers;
 using ProtectWebsite.Services.Booking;
+using ProtectWebsite.Services.Communication;
 using ProtectWebsite.Services.Meta;
 using ProtectWebsite.Services.MetaSignal;
 using ProtectWebsite.Services.Tracking;
@@ -35,6 +36,7 @@ public class LifeQuoteControllerRouteTests
             Mock.Of<IPublicBookingResolver>(),
             Mock.Of<IPublicBookingConfirmationService>(),
             new PublicBookingContextProtector(DataProtectionProvider.Create(new System.IO.DirectoryInfo(System.IO.Path.Combine(System.IO.Path.GetTempPath(), Guid.NewGuid().ToString("N"))))),
+            Mock.Of<IProtectEmailSender>(),
             NullLogger<LifeQuoteController>.Instance);
 
         var http = new DefaultHttpContext();

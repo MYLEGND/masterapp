@@ -7,6 +7,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging.Abstractions;
 using Moq;
 using ProtectWebsite.Services.Booking;
+using ProtectWebsite.Services.MetaSignal;
 using Xunit;
 
 namespace AgentPortal.Tests;
@@ -51,6 +52,7 @@ public class PublicBookingConfirmationServiceTests
             db,
             matcher.Object,
             resolver.Object,
+            Mock.Of<IMetaSignalIntelligenceService>(),
             NullLogger<PublicBookingConfirmationService>.Instance);
 
         var result = await service.TryConfirmAsync(new PublicBookingContext(
@@ -119,6 +121,7 @@ public class PublicBookingConfirmationServiceTests
             db,
             matcher.Object,
             resolver.Object,
+            Mock.Of<IMetaSignalIntelligenceService>(),
             NullLogger<PublicBookingConfirmationService>.Instance);
 
         var result = await service.TryConfirmAsync(new PublicBookingContext(

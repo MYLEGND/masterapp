@@ -15,6 +15,7 @@ using Microsoft.AspNetCore.WebUtilities;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
+using ProtectWebsite.Services.MetaSignal;
 
 namespace ProtectWebsite.Services.Booking;
 
@@ -65,17 +66,20 @@ public sealed class PublicBookingConfirmationService : IPublicBookingConfirmatio
     private readonly MasterAppDbContext _db;
     private readonly IPublicBookingCalendarMatcher _calendarMatcher;
     private readonly IPublicBookingResolver _publicBookingResolver;
+    private readonly IMetaSignalIntelligenceService _metaSignal;
     private readonly ILogger<PublicBookingConfirmationService> _logger;
 
     public PublicBookingConfirmationService(
         MasterAppDbContext db,
         IPublicBookingCalendarMatcher calendarMatcher,
         IPublicBookingResolver publicBookingResolver,
+        IMetaSignalIntelligenceService metaSignal,
         ILogger<PublicBookingConfirmationService> logger)
     {
         _db = db;
         _calendarMatcher = calendarMatcher;
         _publicBookingResolver = publicBookingResolver;
+        _metaSignal = metaSignal;
         _logger = logger;
     }
 
@@ -210,6 +214,51 @@ public sealed class PublicBookingConfirmationService : IPublicBookingConfirmatio
         try
         {
             await _db.SaveChangesAsync(cancellationToken);
+
+            try
+            {
+                if (websiteLead != null)
+                {
+                    await _metaSignal.RecordAppointmentBookedAsync(
+                        new MetaSignalAppointmentBookedRequest
+                        {
+                            AppointmentId = appointment.Id,
+                            LeadId = websiteLead.LeadId,
+                            QuoteType = websiteLead.InterestType ?? string.Empty,
+                            PageKey = websiteLead.SourcePageKey ?? string.Empty,
+                            EffectivePageKey = websiteLead.SourcePageKey ?? string.Empty,
+                            PageMode = string.Empty,
+                            SessionId = websiteLead.SessionId,
+                            VisitorId = websiteLead.VisitorId,
+                            AgentTrackingProfileId = websiteLead.AgentTrackingProfileId ?? resolution.AgentTrackingProfileId,
+                            AgentSlug = websiteLead.AgentSlug ?? resolution.AgentSlug,
+                            UtmSource = websiteLead.UtmSource,
+                            UtmMedium = websiteLead.UtmMedium,
+                            UtmCampaign = websiteLead.UtmCampaign,
+                            UtmId = websiteLead.UtmId,
+                            Fbclid = websiteLead.Fbclid,
+                            Email = !string.IsNullOrWhiteSpace(websiteLead.Email) ? websiteLead.Email : leadProfile?.Email,
+                            Phone = !string.IsNullOrWhiteSpace(websiteLead.Phone) ? websiteLead.Phone : leadProfile?.Phone,
+                            AllowHashedContactData = true,
+                            CalendarEventId = appointment.CalendarEventId,
+                            CalendarEventWebLink = appointment.CalendarEventWebLink,
+                            ScheduledStartUtc = appointment.ScheduledStartUtc,
+                            ScheduledEndUtc = appointment.ScheduledEndUtc,
+                            BookingSource = appointment.BookingSource,
+                            ConfirmationSource = appointment.ConfirmationSource
+                        },
+                        null,
+                        cancellationToken);
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(
+                    ex,
+                    "MetaSignal AppointmentBooked failed for WebsiteLead {LeadId} appointment {AppointmentId}.",
+                    context.WebsiteLeadId,
+                    appointment.Id);
+            }
         }
         catch (Exception ex)
         {
