@@ -13,7 +13,7 @@
 
   <ItemGroup>
     <!-- MailKit for SMTP -->
-    <PackageReference Include="MailKit" Version="4.14.1" />
+    <PackageReference Include="MailKit" Version="4.17.0" />
 
     <!-- Microsoft Graph client library -->
     <PackageReference Include="Microsoft.Graph" Version="5.101.0" />
@@ -23,8 +23,9 @@
 
     <!-- Azure Identity for ClientSecretCredential -->
     <PackageReference Include="Azure.Identity" Version="1.17.1" />
-    <PackageReference Include="Microsoft.Kiota.Http.HttpClientLibrary" Version="1.21.1" />
-    <PackageReference Include="Microsoft.Kiota.Serialization.Json" Version="1.21.1" />
+    <PackageReference Include="Microsoft.Kiota.Abstractions" Version="2.0.0" />
+    <PackageReference Include="Microsoft.Kiota.Http.HttpClientLibrary" Version="2.0.0" />
+    <PackageReference Include="Microsoft.Kiota.Serialization.Json" Version="2.0.0" />
     <PackageReference Include="Newtonsoft.Json" Version="13.0.4" />
 
     <!-- JWT & JsonWebTokens -->

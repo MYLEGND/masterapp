@@ -78,9 +78,9 @@ public class SchedulingController : ControllerBase
 
     public class BookRequest
     {
-        public string OwnerAgentUserId { get; set; }
+        public string OwnerAgentUserId { get; set; } = string.Empty;
         public DateTime ScheduledStartUtc { get; set; }
         public DateTime ScheduledEndUtc { get; set; }
-        public string Title { get; set; }
+        public string Title { get; set; } = string.Empty;
     }
 }

@@ -44,7 +44,7 @@ public class CalendarBookingController : ControllerBase
 
     public class BookRequest
     {
-        public string OwnerAgentUserId { get; set; }
+        public string OwnerAgentUserId { get; set; } = string.Empty;
         public DateTime ScheduledStartUtc { get; set; }
         public DateTime ScheduledEndUtc { get; set; }
         
