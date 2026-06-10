@@ -694,7 +694,8 @@ async function loadQuickView(clientId){
       lastContactChannel: row.dataset.crmLastChannel || row.dataset.sChannel || "",
       docChecklist: { completedCount: row.dataset.sDoccount || 0 },
       collaboration: { watchers: (row.dataset.crmWatchers || row.dataset.sWatchers || "").split(/,\s*/).filter(Boolean) },
-      intakeSnapshot: lead?.intakeSnapshot || null
+      intakeSnapshot: lead?.intakeSnapshot || null,
+      latestAppointment: lead?.latestAppointment || null
     };
   }
 
