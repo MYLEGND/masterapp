@@ -21,18 +21,15 @@ public sealed class MetaSignalOutcomeDispatcherHostedService : BackgroundService
 
     private readonly IServiceScopeFactory _scopeFactory;
     private readonly IOptions<MetaSignalIntelligenceOptions> _options;
-    private readonly IMetaPixelResolutionService _metaPixelResolutionService;
     private readonly ILogger<MetaSignalOutcomeDispatcherHostedService> _logger;
 
     public MetaSignalOutcomeDispatcherHostedService(
         IServiceScopeFactory scopeFactory,
         IOptions<MetaSignalIntelligenceOptions> options,
-        IMetaPixelResolutionService metaPixelResolutionService,
         ILogger<MetaSignalOutcomeDispatcherHostedService> logger)
     {
         _scopeFactory = scopeFactory;
         _options = options;
-        _metaPixelResolutionService = metaPixelResolutionService;
         _logger = logger;
     }
 
@@ -61,6 +58,7 @@ public sealed class MetaSignalOutcomeDispatcherHostedService : BackgroundService
         using var scope = _scopeFactory.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<MasterAppDbContext>();
         var capi = scope.ServiceProvider.GetRequiredService<IMetaConversionsApiService>();
+        var metaPixelResolutionService = scope.ServiceProvider.GetRequiredService<IMetaPixelResolutionService>();
 
         var rows = await db.MetaSignalEvents
             .Where(x =>
@@ -96,7 +94,7 @@ public sealed class MetaSignalOutcomeDispatcherHostedService : BackgroundService
                 !string.IsNullOrWhiteSpace(websiteLead?.Email) ||
                 !string.IsNullOrWhiteSpace(websiteLead?.Phone);
 
-            var pixelContext = await _metaPixelResolutionService.ResolveForLeadAsync(
+            var pixelContext = await metaPixelResolutionService.ResolveForLeadAsync(
                 websiteLead?.AgentTrackingProfileId,
                 websiteLead?.AgentSlug,
                 isFounderPath: false,
