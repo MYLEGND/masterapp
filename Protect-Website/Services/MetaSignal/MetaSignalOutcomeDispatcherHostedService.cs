@@ -76,9 +76,19 @@ public sealed class MetaSignalOutcomeDispatcherHostedService : BackgroundService
             .Distinct()
             .ToList();
 
+        var intakeLinksByWorkstationLeadId = await db.WebsiteLeadIntakeLinks
+            .AsNoTracking()
+            .Where(x => leadIds.Contains(x.WorkstationLeadId))
+            .ToDictionaryAsync(x => x.WorkstationLeadId, cancellationToken);
+
+        var websiteLeadIds = intakeLinksByWorkstationLeadId.Values
+            .Select(x => x.WebsiteLeadPublicId)
+            .Distinct()
+            .ToArray();
+
         var leadsById = await db.WebsiteLeads
             .AsNoTracking()
-            .Where(x => leadIds.Contains(x.LeadId))
+            .Where(x => websiteLeadIds.Contains(x.LeadId))
             .ToDictionaryAsync(x => x.LeadId, cancellationToken);
 
         foreach (var row in rows)
@@ -87,8 +97,11 @@ public sealed class MetaSignalOutcomeDispatcherHostedService : BackgroundService
                 continue;
 
             WebsiteLead? websiteLead = null;
-            if (row.LeadId.HasValue)
-                leadsById.TryGetValue(row.LeadId.Value, out websiteLead);
+            if (row.LeadId.HasValue &&
+                intakeLinksByWorkstationLeadId.TryGetValue(row.LeadId.Value.ToString("N"), out var intakeLink))
+            {
+                leadsById.TryGetValue(intakeLink.WebsiteLeadPublicId, out websiteLead);
+            }
 
             var hasContactData =
                 !string.IsNullOrWhiteSpace(websiteLead?.Email) ||
