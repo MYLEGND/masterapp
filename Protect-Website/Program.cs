@@ -77,6 +77,7 @@ builder.Services.AddHttpClient<IMetaConversionsApiService, MetaConversionsApiSer
 {
     client.Timeout = TimeSpan.FromSeconds(10);
 });
+builder.Services.AddHostedService<MetaSignalOutcomeDispatcherHostedService>();
 
 var dpBlobUri = builder.Configuration["DataProtection:BlobUri"];
 var dpKeyVaultId = builder.Configuration["DataProtection:KeyVaultKeyId"];
