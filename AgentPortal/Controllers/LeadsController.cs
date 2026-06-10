@@ -907,6 +907,13 @@ public class LeadsController : Controller
     {
         var ids = leadIds
             .Where(id => !string.IsNullOrWhiteSpace(id))
+            .SelectMany(id =>
+            {
+                var key = id.Trim();
+                var noDash = key.Replace("-", string.Empty, StringComparison.OrdinalIgnoreCase);
+                return new[] { key, noDash };
+            })
+            .Where(id => !string.IsNullOrWhiteSpace(id))
             .Distinct(StringComparer.OrdinalIgnoreCase)
             .ToList();
 
@@ -977,6 +984,13 @@ public class LeadsController : Controller
     private async Task<Dictionary<string, LeadAppointmentSummary>> LoadLeadAppointmentSummariesAsync(IEnumerable<string> leadIds, CancellationToken ct = default)
     {
         var ids = leadIds
+            .Where(id => !string.IsNullOrWhiteSpace(id))
+            .SelectMany(id =>
+            {
+                var key = id.Trim();
+                var noDash = key.Replace("-", string.Empty, StringComparison.OrdinalIgnoreCase);
+                return new[] { key, noDash };
+            })
             .Where(id => !string.IsNullOrWhiteSpace(id))
             .Distinct(StringComparer.OrdinalIgnoreCase)
             .ToList();
@@ -1772,11 +1786,18 @@ public class LeadsController : Controller
 
     private async Task<LeadAppointmentListRow?> LoadLeadAppointmentSnapshotContextAsync(string leadId)
     {
+        var leadKey = (leadId ?? string.Empty).Trim();
+        var leadKeyNoDashes = leadKey.Replace("-", string.Empty, StringComparison.OrdinalIgnoreCase);
+        var leadKeys = new[] { leadKey, leadKeyNoDashes }
+            .Where(x => !string.IsNullOrWhiteSpace(x))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+
         try
         {
             return await _db.LeadAppointments
                 .AsNoTracking()
-                .Where(x => x.WorkstationLeadId == leadId)
+                .Where(x => leadKeys.Contains(x.WorkstationLeadId))
                 .OrderByDescending(x => x.UpdatedUtc)
                 .ThenByDescending(x => x.ScheduledStartUtc)
                 .ThenByDescending(x => x.CreatedUtc)
