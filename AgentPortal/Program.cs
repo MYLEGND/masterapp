@@ -132,6 +132,7 @@ builder.Services.AddScoped<IPlaybookEngine, PlaybookEngine>();
 builder.Services.AddScoped<INotificationService, NoOpNotificationService>();
 builder.Services.AddHostedService<MigrationHealthHostedService>();
 builder.Services.AddHostedService<GraphCalendarSubscriptionHostedService>();
+builder.Services.AddHostedService<LeadAppointmentAutoCompletionHostedService>();
 builder.Services.AddHostedService<AzureAgentDirectorySyncHostedService>();
 builder.Services.AddSingleton<MetaCapiCredentialProtector>();
 builder.Services.AddSingleton<PiiProtector>();
