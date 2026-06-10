@@ -104,19 +104,32 @@ public sealed class MetaConversionsApiService : IMetaConversionsApiService
 
     public Task<MetaConversionsApiResult> SendLeadAsync(MetaLeadConversionRequest request, CancellationToken cancellationToken = default)
     {
-        _logger.LogInformation(
-            "MetaCapi [{CorrelationId}]: skipped direct SendLeadAsync event=Lead lead={LeadId} quoteType={QuoteType} eventId={EventId} status={Status}",
-            request.CorrelationId, request.LeadId, request.QuoteType, request.EventId, "skipped_direct_lead_disabled");
-
-        return Task.FromResult(new MetaConversionsApiResult
-        {
-            Attempted = false,
-            Sent = false,
-            Status = "skipped_direct_lead_disabled",
-            Note = "direct_lead_capi_disabled_use_meta_signal",
-            PixelId = Normalize(request.PixelId) ?? Normalize(_options.Value.PixelId),
-            PixelOwnerType = Normalize(request.PixelOwnerType)
-        });
+        return SendEventAsync(
+            new MetaConversionsApiEventRequest
+            {
+                LeadId = request.LeadId,
+                CorrelationId = request.CorrelationId,
+                EventName = "Lead",
+                EventId = request.EventId,
+                QuoteType = request.QuoteType,
+                PageKey = request.PageKey,
+                OfferKey = request.OfferKey,
+                EventSourceUrl = request.EventSourceUrl,
+                ClientIpAddress = request.ClientIpAddress,
+                ClientUserAgent = request.ClientUserAgent,
+                Fbp = request.Fbp,
+                Fbc = request.Fbc,
+                Fbclid = request.Fbclid,
+                Email = request.Email,
+                Phone = request.Phone,
+                AllowHashedContactData = request.AllowHashedContactData,
+                EventUtc = request.EventUtc,
+                PixelId = request.PixelId,
+                AccessToken = request.AccessToken,
+                TestEventCode = request.TestEventCode,
+                PixelOwnerType = request.PixelOwnerType,
+            },
+            cancellationToken);
     }
 
     public async Task<MetaConversionsApiResult> SendEventAsync(MetaConversionsApiEventRequest request, CancellationToken cancellationToken = default)
