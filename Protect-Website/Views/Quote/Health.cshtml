@@ -1795,22 +1795,21 @@ body.health-landing.page-mode-paid-landing header .navbar-brand img {
 
     #healthPostSubmitSlot .lq-final-review-unified-card {
         display: grid !important;
-        grid-template-columns: repeat(12, minmax(0, 1fr)) !important;
-        gap: 10px 12px !important;
-        padding: 14px 16px 12px !important;
+        grid-template-columns: minmax(0, 1fr) !important;
+        gap: 14px !important;
+        padding: 22px 24px 20px !important;
     }
 
     #healthPostSubmitSlot .lq-final-review-head,
     #healthPostSubmitSlot .lq-final-review-proof-row,
     #healthPostSubmitSlot .lq-final-review-impact-grid,
-    #healthPostSubmitSlot .lq-final-review-result-slot {
-        grid-column: 1 / span 6 !important;
-    }
-
+    #healthPostSubmitSlot .lq-final-review-result-slot,
     #healthPostSubmitSlot .lq-final-review-next-step,
     #healthPostSubmitSlot .lq-final-review-booking-card {
-        grid-column: 7 / span 6 !important;
-        margin: 0 !important;
+        grid-column: 1 / -1 !important;
+        min-width: 0 !important;
+        margin-left: 0 !important;
+        margin-right: 0 !important;
     }
 
     #healthPostSubmitSlot .lq-final-review-agent-row {
@@ -1835,7 +1834,7 @@ body.health-landing.page-mode-paid-landing header .navbar-brand img {
     }
 
     #healthPostSubmitSlot .lq-booking-iframe {
-        min-height: 480px !important;
+        min-height: 720px !important;
     }
 }
 

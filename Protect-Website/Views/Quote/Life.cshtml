@@ -9216,9 +9216,9 @@ body.life-landing .lq-hero-shell,
 
     #lifePostSubmitSlot .lq-final-review-unified-card {
         display: grid !important;
-        grid-template-columns: repeat(12, minmax(0, 1fr)) !important;
-        gap: 10px 12px !important;
-        padding: 14px 16px 12px !important;
+        grid-template-columns: minmax(0, 1fr) !important;
+        gap: 14px !important;
+        padding: 22px 24px 20px !important;
     }
 
     #lifePostSubmitSlot .lq-final-review-head,
@@ -9226,14 +9226,13 @@ body.life-landing .lq-hero-shell,
     #lifePostSubmitSlot .lq-final-review-impact-grid,
     #lifePostSubmitSlot .lq-final-review-result-slot,
     #lifePostSubmitSlot .lq-contact-estimate-main,
-    #lifePostSubmitSlot .lq-contact-estimate-carrier-note {
-        grid-column: 1 / span 6 !important;
-    }
-
+    #lifePostSubmitSlot .lq-contact-estimate-carrier-note,
     #lifePostSubmitSlot .lq-final-review-next-step,
     #lifePostSubmitSlot .lq-final-review-booking-card {
-        grid-column: 7 / span 6 !important;
-        margin: 0 !important;
+        grid-column: 1 / -1 !important;
+        min-width: 0 !important;
+        margin-left: 0 !important;
+        margin-right: 0 !important;
     }
 
     #lifePostSubmitSlot .lq-final-review-agent-row {
@@ -9258,7 +9257,7 @@ body.life-landing .lq-hero-shell,
     }
 
     #lifePostSubmitSlot .lq-booking-iframe {
-        min-height: 500px !important;
+        min-height: 760px !important;
     }
 }
 
