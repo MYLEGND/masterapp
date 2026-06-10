@@ -270,6 +270,14 @@ public class ProductionService
         return await query.OrderByDescending(p => p.UpdatedUtc).ToListAsync(ct);
     }
 
+    public async Task<ProductionRecord?> GetByIdAsync(string agentUserId, Guid id, CancellationToken ct = default)
+    {
+        var normAgent = Norm(agentUserId);
+        return await _db.ProductionRecords
+            .AsNoTracking()
+            .FirstOrDefaultAsync(p => p.Id == id && p.AgentUserId == normAgent, ct);
+    }
+
     public async Task UpdateAsync(string actorUserId, string agentUserId, Guid id, ProductionStatus status, decimal amount, decimal personalAmount, string? notes, CancellationToken ct = default)
     {
         var normAgent = Norm(agentUserId);

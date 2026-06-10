@@ -80,6 +80,7 @@ builder.Services.AddScoped<AgentRegistryService>();
 builder.Services.AddScoped<AgencyCommandService>();
 builder.Services.AddScoped<FounderImpersonationService>();
 builder.Services.AddScoped<ProductionService>();
+builder.Services.AddScoped<MetaSignalCrmOutcomeService>();
 builder.Services.AddScoped<EffectiveAgentContext>();
 builder.Services.AddScoped<IAdvancedMarketsCalculationService, AdvancedMarketsCalculationService>();
 builder.Services.AddSingleton<IAgentTimeZoneResolver, AgentTimeZoneResolver>();

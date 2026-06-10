@@ -35,7 +35,10 @@ public static class MetaSignalEventCatalog
         new("AbandonedHighIntentLead", "abandon", true, true),
         new("Lead", "conversion", false, true),
         new("QualifiedLead", "conversion", false, true),
-        new("AppointmentBooked", "conversion", false, true)
+        new("AppointmentBooked", "conversion", false, true),
+        new("AppointmentCompleted", "conversion", false, true),
+        new("ApplicationSubmitted", "conversion", false, true),
+        new("PolicyIssued", "conversion", false, true)
     ];
 
     private static readonly ReadOnlyDictionary<string, MetaSignalEventDefinition> DefinitionsByNameInternal =
