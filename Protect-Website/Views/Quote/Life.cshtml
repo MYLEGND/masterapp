@@ -9124,6 +9124,124 @@ body.life-landing .lq-hero-shell,
     box-sizing: border-box !important;
 }
 
+@@media (min-width: 1024px) {
+    main.layout-content {
+        width: 75vw !important;
+        max-width: 75vw !important;
+        min-width: 980px !important;
+        margin-left: auto !important;
+        margin-right: auto !important;
+    }
+
+    body.life-landing .lq-hero-shell,
+    .lq-hero-shell {
+        width: 100% !important;
+        max-width: 100% !important;
+    }
+
+    #lifeEducationContactPanel {
+        width: 100% !important;
+        max-width: 100% !important;
+        margin: 0 auto !important;
+        padding: 8px 10px 10px !important;
+    }
+
+    #lifeEducationContactPanel .lq-contact-first-form-surface,
+    #lifeEducationContactPanel .lq-contact-first-flow-surface,
+    #lifeEducationContactPanel #lifeStep2Panel,
+    #lifeEducationContactPanel .lq-step-panel-pad {
+        width: 100% !important;
+        max-width: none !important;
+        margin: 0 !important;
+        padding-left: 0 !important;
+        padding-right: 0 !important;
+    }
+
+    #lifeContactCaptureWrap {
+        width: 100% !important;
+        max-width: none !important;
+        margin: 0 !important;
+        padding: 6px 0 0 !important;
+    }
+
+    #lifeContactCaptureWrap .lq-contact-grid {
+        grid-template-columns: repeat(12, minmax(0, 1fr)) !important;
+        gap: 10px 12px !important;
+    }
+
+    #lifeContactCaptureWrap .lq-contact-capture-head {
+        grid-column: 1 / span 6 !important;
+        text-align: left !important;
+        margin: 0 !important;
+        align-self: end !important;
+    }
+
+    #lifeContactCaptureWrap .lq-field-row.two.full {
+        grid-column: 1 / -1 !important;
+        display: grid !important;
+        grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+        gap: 10px 12px !important;
+        align-items: start !important;
+        margin: 0 !important;
+    }
+
+    #lifeContactCaptureWrap .lq-field-row.two.full > .lq-field {
+        width: 100% !important;
+        min-width: 0 !important;
+    }
+
+    #lifeContactCaptureWrap .full {
+        grid-column: 1 / -1 !important;
+    }
+
+    #lifePostSubmitSlot .lq-final-review-unified-card {
+        display: grid !important;
+        grid-template-columns: repeat(12, minmax(0, 1fr)) !important;
+        gap: 10px 12px !important;
+        padding: 14px 16px 12px !important;
+    }
+
+    #lifePostSubmitSlot .lq-final-review-head,
+    #lifePostSubmitSlot .lq-final-review-proof-row,
+    #lifePostSubmitSlot .lq-final-review-impact-grid,
+    #lifePostSubmitSlot .lq-final-review-result-slot,
+    #lifePostSubmitSlot .lq-contact-estimate-main,
+    #lifePostSubmitSlot .lq-contact-estimate-carrier-note {
+        grid-column: 1 / span 6 !important;
+    }
+
+    #lifePostSubmitSlot .lq-final-review-next-step,
+    #lifePostSubmitSlot .lq-final-review-booking-card {
+        grid-column: 7 / span 6 !important;
+        margin: 0 !important;
+    }
+
+    #lifePostSubmitSlot .lq-final-review-agent-row {
+        grid-column: 1 / -1 !important;
+        margin: 0 0 8px !important;
+        padding: 6px 6px 2px !important;
+    }
+
+    #lifePostSubmitSlot .lq-final-review-agent-row .dq-proof-card {
+        margin: 0 !important;
+        border-radius: 14px !important;
+        padding: 10px 12px !important;
+    }
+
+    #lifePostSubmitSlot .lq-final-review-title {
+        font-size: clamp(1.34rem, 2.05vw, 1.74rem) !important;
+        line-height: 1.12 !important;
+    }
+
+    #lifePostSubmitSlot .lq-final-review-checklist {
+        grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+    }
+
+    #lifePostSubmitSlot .lq-booking-iframe {
+        min-height: 500px !important;
+    }
+}
+
 @@media (max-width: 720px) {
     #lifePostSubmitSlot .lq-final-review-unified-card {
         padding: 17px !important;

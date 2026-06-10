@@ -1533,6 +1533,161 @@ body.disability-landing.page-mode-paid-landing header .navbar-brand img {
     text-decoration: none !important;
 }
 
+@@media (min-width: 1024px) {
+    main.layout-content {
+        width: 75vw !important;
+        max-width: 75vw !important;
+        min-width: 980px !important;
+        margin-left: auto !important;
+        margin-right: auto !important;
+    }
+
+    .dq-shell {
+        width: 100% !important;
+        max-width: 100% !important;
+        padding-left: 0 !important;
+        padding-right: 0 !important;
+    }
+
+    .dq-surface {
+        width: 100% !important;
+        max-width: 100% !important;
+        padding: 8px 8px 10px !important;
+    }
+
+    .lq-hero-shell {
+        width: 100% !important;
+        max-width: 100% !important;
+    }
+
+    #disabilityEducationContactPanel {
+        width: 100% !important;
+        max-width: 100% !important;
+        margin: 0 auto !important;
+        padding: 8px 10px 10px !important;
+    }
+
+    #disabilityEducationContactPanel .dq-wizard-surface,
+    #disabilityEducationContactPanel #dqContactPanel,
+    #disabilityEducationContactPanel .lq-step-panel-pad {
+        width: 100% !important;
+        max-width: none !important;
+        margin: 0 !important;
+        padding-left: 0 !important;
+        padding-right: 0 !important;
+    }
+
+    #disabilityEducationContactPanel .dq-contact-capture-wrap {
+        display: grid !important;
+        grid-template-columns: repeat(12, minmax(0, 1fr)) !important;
+        gap: 10px 12px !important;
+        width: 100% !important;
+        max-width: none !important;
+        margin: 0 !important;
+        padding: 6px 0 0 !important;
+    }
+
+    #disabilityEducationContactPanel .dq-contact-head {
+        grid-column: 1 / span 6 !important;
+        text-align: left !important;
+        align-self: end !important;
+    }
+
+    #disabilityEducationContactPanel .dq-review-summary {
+        grid-column: 7 / span 6 !important;
+        align-self: end !important;
+        margin: 0 !important;
+    }
+
+    #disabilityEducationContactPanel .dq-contact-hint {
+        grid-column: 1 / -1 !important;
+        margin: 0 0 2px !important;
+    }
+
+    #disabilityEducationContactPanel .lq-field-row.two.full {
+        grid-column: 1 / -1 !important;
+        display: grid !important;
+        grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+        gap: 10px 12px !important;
+        align-items: start !important;
+        margin: 0 !important;
+    }
+
+    #disabilityEducationContactPanel .lq-field-row.two.full > .lq-field {
+        width: 100% !important;
+        min-width: 0 !important;
+    }
+
+    #disabilityEducationContactPanel .full.lq-field-help,
+    #disabilityEducationContactPanel .full.lq-field-err,
+    #disabilityEducationContactPanel .lq-consent,
+    #disabilityEducationContactPanel .lq-step-actions,
+    #disabilityEducationContactPanel .lq-error,
+    #disabilityEducationContactPanel .lq-success {
+        grid-column: 1 / -1 !important;
+    }
+
+    #disabilityEducationContactPanel .lq-step-actions {
+        display: flex !important;
+        gap: 12px !important;
+        align-items: stretch !important;
+    }
+
+    #disabilityEducationContactPanel .lq-step-actions .btn-ghost {
+        flex: 0 0 220px !important;
+    }
+
+    #disabilityEducationContactPanel .lq-step-actions .btn-block {
+        flex: 1 1 auto !important;
+        margin: 0 !important;
+    }
+
+    #disabilityPostSubmitSlot .lq-final-review-unified-card {
+        display: grid !important;
+        grid-template-columns: repeat(12, minmax(0, 1fr)) !important;
+        gap: 10px 12px !important;
+        padding: 14px 16px 12px !important;
+    }
+
+    #disabilityPostSubmitSlot .lq-final-review-head,
+    #disabilityPostSubmitSlot .lq-final-review-proof-row,
+    #disabilityPostSubmitSlot .lq-final-review-impact-grid,
+    #disabilityPostSubmitSlot .lq-final-review-result-slot {
+        grid-column: 1 / span 6 !important;
+    }
+
+    #disabilityPostSubmitSlot .lq-final-review-next-step,
+    #disabilityPostSubmitSlot .lq-final-review-booking-card {
+        grid-column: 7 / span 6 !important;
+        margin: 0 !important;
+    }
+
+    #disabilityPostSubmitSlot .lq-final-review-agent-row {
+        grid-column: 1 / -1 !important;
+        margin: 0 0 8px !important;
+        padding: 6px 6px 2px !important;
+    }
+
+    #disabilityPostSubmitSlot .lq-final-review-agent-row .dq-proof-card {
+        margin: 0 !important;
+        border-radius: 14px !important;
+        padding: 10px 12px !important;
+    }
+
+    #disabilityPostSubmitSlot .lq-final-review-title {
+        font-size: clamp(1.34rem, 2.05vw, 1.74rem) !important;
+        line-height: 1.12 !important;
+    }
+
+    #disabilityPostSubmitSlot .lq-final-review-checklist {
+        grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+    }
+
+    #disabilityPostSubmitSlot .lq-booking-iframe {
+        min-height: 480px !important;
+    }
+}
+
 @@media (max-width: 720px) {
     #disabilityPostSubmitSlot .lq-final-review-unified-card {
         padding: 17px !important;
