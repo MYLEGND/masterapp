@@ -69,10 +69,29 @@ public sealed class MetaSignalOutcomeDispatcherHostedService : BackgroundService
             .Take(25)
             .ToListAsync(cancellationToken);
 
+        var leadIds = rows
+            .Where(x => x.LeadId.HasValue)
+            .Select(x => x.LeadId!.Value)
+            .Distinct()
+            .ToList();
+
+        var leadsById = await db.WebsiteLeads
+            .AsNoTracking()
+            .Where(x => leadIds.Contains(x.LeadId))
+            .ToDictionaryAsync(x => x.LeadId, cancellationToken);
+
         foreach (var row in rows)
         {
             if (!MetaSignalEventCatalog.TryGet(row.EventName, out var definition) || !definition.AllowServerForward)
                 continue;
+
+            WebsiteLead? websiteLead = null;
+            if (row.LeadId.HasValue)
+                leadsById.TryGetValue(row.LeadId.Value, out websiteLead);
+
+            var hasContactData =
+                !string.IsNullOrWhiteSpace(websiteLead?.Email) ||
+                !string.IsNullOrWhiteSpace(websiteLead?.Phone);
 
             var result = await capi.SendEventAsync(
                 new MetaConversionsApiEventRequest
@@ -82,12 +101,15 @@ public sealed class MetaSignalOutcomeDispatcherHostedService : BackgroundService
                     EventName = row.EventName,
                     EventId = string.IsNullOrWhiteSpace(row.MetaDeduplicationKey) ? row.EventId : row.MetaDeduplicationKey,
                     QuoteType = row.QuoteType ?? "crm",
-                    PageKey = row.EffectivePageKey ?? row.PageKey ?? "crm",
-                    OfferKey = row.QuoteType ?? "crm",
-                    EventSourceUrl = null,
-                    AllowHashedContactData = false,
+                    PageKey = row.EffectivePageKey ?? row.PageKey ?? websiteLead?.SourcePageKey ?? "crm",
+                    OfferKey = row.QuoteType ?? websiteLead?.InterestType ?? "crm",
+                    EventSourceUrl = BuildEventSourceUrl(websiteLead),
+                    Fbclid = websiteLead?.Fbclid,
+                    Email = websiteLead?.Email,
+                    Phone = websiteLead?.Phone,
+                    AllowHashedContactData = hasContactData,
                     EventUtc = row.CreatedUtc == default ? DateTime.UtcNow : row.CreatedUtc,
-                    CustomData = BuildCustomData(row)
+                    CustomData = BuildCustomData(row, websiteLead)
                 },
                 cancellationToken);
 
@@ -106,7 +128,7 @@ public sealed class MetaSignalOutcomeDispatcherHostedService : BackgroundService
         await db.SaveChangesAsync(cancellationToken);
     }
 
-    private static Dictionary<string, object?> BuildCustomData(MetaSignalEvent row)
+    private static Dictionary<string, object?> BuildCustomData(MetaSignalEvent row, WebsiteLead? websiteLead)
         => new()
         {
             ["event_category"] = row.EventCategory,
@@ -116,8 +138,31 @@ public sealed class MetaSignalOutcomeDispatcherHostedService : BackgroundService
             ["step_name"] = row.StepName,
             ["score_tier"] = row.ScoreTier,
             ["total_signal_score"] = row.TotalSignalScore,
-            ["source"] = "crm_outcome_dispatcher"
+            ["source"] = "crm_outcome_dispatcher",
+            ["website_lead_id"] = row.LeadId,
+            ["lead_interest_type"] = websiteLead?.InterestType,
+            ["lead_source_page_key"] = websiteLead?.SourcePageKey,
+            ["lead_utm_source"] = websiteLead?.UtmSource,
+            ["lead_utm_medium"] = websiteLead?.UtmMedium,
+            ["lead_utm_campaign"] = websiteLead?.UtmCampaign
         };
+
+    private static string? BuildEventSourceUrl(WebsiteLead? websiteLead)
+    {
+        if (websiteLead == null || string.IsNullOrWhiteSpace(websiteLead.Host))
+            return null;
+
+        var host = websiteLead.Host.Trim();
+        var scheme = host.StartsWith("localhost", StringComparison.OrdinalIgnoreCase)
+            ? "http"
+            : "https";
+
+        var path = string.IsNullOrWhiteSpace(websiteLead.SourcePageKey)
+            ? "/"
+            : $"/Quote/{websiteLead.SourcePageKey.Trim().TrimStart('/')}";
+
+        return $"{scheme}://{host}{path}";
+    }
 
     private static string MergeDispatchMetadata(string? existingJson, MetaConversionsApiResult result)
     {
