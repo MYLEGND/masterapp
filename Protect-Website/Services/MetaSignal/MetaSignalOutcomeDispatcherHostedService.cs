@@ -76,9 +76,13 @@ public sealed class MetaSignalOutcomeDispatcherHostedService : BackgroundService
             .Distinct()
             .ToList();
 
+        var workstationLeadIds = leadIds
+            .Select(x => x.ToString("N"))
+            .ToArray();
+
         var intakeLinksByWorkstationLeadId = await db.WebsiteLeadIntakeLinks
             .AsNoTracking()
-            .Where(x => leadIds.Contains(x.WorkstationLeadId))
+            .Where(x => workstationLeadIds.Contains(x.WorkstationLeadId))
             .ToDictionaryAsync(x => x.WorkstationLeadId, cancellationToken);
 
         var websiteLeadIds = intakeLinksByWorkstationLeadId.Values
