@@ -349,8 +349,14 @@ public sealed class MetaConversionsApiService : IMetaConversionsApiService
                 ? subcodeValue.ToString()
                 : null;
 
-            var parts = new[] { type, code, subcode }
+            var message = error.TryGetProperty("message", out var messageEl) &&
+                          messageEl.ValueKind == JsonValueKind.String
+                ? messageEl.GetString()
+                : null;
+
+            var parts = new[] { type, code, subcode, message }
                 .Where(part => !string.IsNullOrWhiteSpace(part))
+                .Select(part => part!.Trim())
                 .ToArray();
 
             return parts.Length == 0 ? "meta_error" : string.Join(":", parts);
