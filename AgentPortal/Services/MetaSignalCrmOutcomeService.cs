@@ -93,9 +93,11 @@ public sealed class MetaSignalCrmOutcomeService
         if (await AlreadyRecordedAsync(eventName, dedupKey, cancellationToken))
             return;
 
-        var websiteLeadId = side == ProductionSide.Lead
-            ? await ResolveWebsiteLeadIdAsync(leadId, null, cancellationToken)
-            : null;
+        var websiteLeadId = await ResolveProductionWebsiteLeadIdAsync(
+            side,
+            leadId,
+            clientUserId,
+            cancellationToken);
 
         var row = BuildRow(
             eventName: eventName,
@@ -146,6 +148,25 @@ public sealed class MetaSignalCrmOutcomeService
             side,
             contactKey,
             amount);
+    }
+
+    private async Task<Guid?> ResolveProductionWebsiteLeadIdAsync(
+        ProductionSide side,
+        string? leadId,
+        string? clientUserId,
+        CancellationToken cancellationToken)
+    {
+        if (side == ProductionSide.Lead)
+            return await ResolveWebsiteLeadIdAsync(leadId, null, cancellationToken);
+
+        // Many converted clients preserve the original workstation lead id as ClientUserId.
+        // This lets client-side production remain attributable to the original website lead.
+        var byClientUserId = await ResolveWebsiteLeadIdAsync(clientUserId, null, cancellationToken);
+        if (byClientUserId.HasValue)
+            return byClientUserId.Value;
+
+        // Defensive fallback for mixed caller paths where leadId may still be populated.
+        return await ResolveWebsiteLeadIdAsync(leadId, null, cancellationToken);
     }
 
     private async Task<bool> AlreadyRecordedAsync(string eventName, string dedupKey, CancellationToken cancellationToken)
