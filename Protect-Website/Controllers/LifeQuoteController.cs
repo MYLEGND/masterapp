@@ -283,6 +283,14 @@ if (!ModelState.IsValid)
                     MetaAdSetId   = string.IsNullOrWhiteSpace(model.MetaAdSetId) ? null : model.MetaAdSetId.Trim(),
                     MetaAdId      = string.IsNullOrWhiteSpace(model.MetaAdId) ? null : model.MetaAdId.Trim(),
                     Fbclid        = string.IsNullOrWhiteSpace(model.Fbclid)      ? null : model.Fbclid.Trim(),
+                    ClientIpAddress = !string.IsNullOrWhiteSpace(Request?.Headers["CF-Connecting-IP"].ToString())
+                        ? Request!.Headers["CF-Connecting-IP"].ToString()
+                        : (!string.IsNullOrWhiteSpace(Request?.Headers["X-Forwarded-For"].ToString())
+                            ? Request!.Headers["X-Forwarded-For"].ToString().Split(',')[0].Trim()
+                            : HttpContext?.Connection?.RemoteIpAddress?.ToString()),
+                    ClientUserAgent = Request?.Headers["User-Agent"].ToString(),
+                    Fbp = Request?.Cookies.TryGetValue("_fbp", out var fbp) == true ? fbp : null,
+                    Fbc = Request?.Cookies.TryGetValue("_fbc", out var fbc) == true ? fbc : null,
                     SessionId     = string.IsNullOrWhiteSpace(model.SessionId)   ? null : model.SessionId.Trim(),
                     VisitorId     = string.IsNullOrWhiteSpace(model.VisitorId)   ? null : model.VisitorId.Trim(),
                     MarketingEmailConsent = model.MarketingEmailConsent,
