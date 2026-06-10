@@ -2785,13 +2785,22 @@ body.disability-final-step-active .dq-form-panel {
                 return;
             }
 
+            var normalizedUrl = asTrimmed(url);
+            var existingIframe = frameSlot.querySelector('iframe.lq-booking-iframe');
+
+            if (existingIframe instanceof HTMLIFrameElement && existingIframe.dataset.bookingSrc === normalizedUrl) {
+                statusEl.hidden = true;
+                return;
+            }
+
             frameSlot.innerHTML = '';
             statusEl.hidden = false;
             statusEl.textContent = publicBookingLoadingText;
 
             var iframe = document.createElement('iframe');
             iframe.className = 'lq-booking-iframe';
-            iframe.src = url;
+            iframe.src = normalizedUrl;
+            iframe.dataset.bookingSrc = normalizedUrl;
             iframe.loading = 'lazy';
             iframe.referrerPolicy = 'strict-origin-when-cross-origin';
             iframe.title = 'Continue your disability coverage review';
