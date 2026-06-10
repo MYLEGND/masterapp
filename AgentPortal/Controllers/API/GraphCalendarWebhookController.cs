@@ -265,7 +265,20 @@ public sealed class GraphCalendarWebhookController : ControllerBase
         }
 
         var appointment = await _db.LeadAppointments
-            .FirstOrDefaultAsync(x => x.CalendarEventId == graphEvent.Id, cancellationToken);
+            .OrderByDescending(x => x.UpdatedUtc)
+            .ThenByDescending(x => x.CreatedUtc)
+            .FirstOrDefaultAsync(x =>
+                x.CalendarEventId == graphEvent.Id ||
+                (x.CalendarEventId == null &&
+                 x.BookingCalendarUserId == subscription.CalendarUserId &&
+                 x.BookingCalendarEmail == subscription.CalendarEmail &&
+                 x.LastSyncStatus == "graph_fallback_pending"),
+                cancellationToken);
+
+        if (appointment != null && string.IsNullOrWhiteSpace(appointment.CalendarEventId))
+        {
+            appointment.CalendarEventId = graphEvent.Id;
+        }
 
         if (appointment == null)
         {
