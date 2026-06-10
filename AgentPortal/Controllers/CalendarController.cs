@@ -2,6 +2,7 @@ using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.OpenIdConnect;
 using Microsoft.AspNetCore.Authorization;
 using AgentPortal.Filters;
+using AgentPortal.Services;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Identity.Client;
 using Microsoft.Identity.Web;
@@ -29,6 +30,7 @@ public class CalendarController : Controller
     private readonly ILogger<CalendarController> _logger;
     private readonly MasterAppDbContext _db;
     private readonly IHttpClientFactory _httpClientFactory;
+    private readonly IAgentTimeZoneResolver _agentTimeZoneResolver;
 
     // Scopes must match what you consent to in /calendar/connect
     private static readonly string[] CalendarScopes = new[] { "offline_access", "Calendars.ReadWrite" };
@@ -39,12 +41,14 @@ public class CalendarController : Controller
     public CalendarController(ITokenAcquisition tokenAcquisition,
         ILogger<CalendarController> logger,
         MasterAppDbContext db,
-        IHttpClientFactory httpClientFactory)
+        IHttpClientFactory httpClientFactory,
+        IAgentTimeZoneResolver agentTimeZoneResolver)
     {
         _tokenAcquisition = tokenAcquisition;
         _logger = logger;
         _db = db;
         _httpClientFactory = httpClientFactory;
+        _agentTimeZoneResolver = agentTimeZoneResolver;
     }
 
     private static string Norm(string? v) => (v ?? "").Trim().ToLowerInvariant();
@@ -664,8 +668,14 @@ public class CalendarController : Controller
                            <div>{encodedBody}</div>
                            {(string.IsNullOrWhiteSpace(zoomJoinUrl) ? "" : $"<p><strong>Zoom:</strong> <a href=\"{System.Net.WebUtility.HtmlEncode(zoomJoinUrl)}\">Join Meeting</a></p>")}
                            """;
-            var utcStart = localStart.ToUniversalTime();
-            var utcEnd = localEnd.ToUniversalTime();
+            var agentTimeZone = _agentTimeZoneResolver.Resolve(HttpContext);
+            var utcStart = TimeZoneInfo.ConvertTimeToUtc(
+                DateTime.SpecifyKind(localStart, DateTimeKind.Unspecified),
+                agentTimeZone);
+
+            var utcEnd = TimeZoneInfo.ConvertTimeToUtc(
+                DateTime.SpecifyKind(localEnd, DateTimeKind.Unspecified),
+                agentTimeZone);
             var graphPayload = new
             {
                 subject = req.Subject.Trim(),
