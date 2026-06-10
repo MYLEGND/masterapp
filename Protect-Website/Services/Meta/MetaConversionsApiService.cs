@@ -139,6 +139,7 @@ public sealed class MetaConversionsApiService : IMetaConversionsApiService
         var testEventCode = Normalize(request.TestEventCode) ?? Normalize(_options.Value.TestEventCode);
         var pixelOwnerType = Normalize(request.PixelOwnerType);
         var normalizedEventName = Normalize(request.EventName) ?? "CustomEvent";
+        var outboundEventName = MapToMetaStandardEventName(normalizedEventName);
 
         if (string.IsNullOrWhiteSpace(pixelId) || string.IsNullOrWhiteSpace(accessToken))
         {
@@ -167,7 +168,7 @@ public sealed class MetaConversionsApiService : IMetaConversionsApiService
         var userData = BuildUserData(request);
         var eventPayload = new Dictionary<string, object?>
         {
-            ["event_name"] = normalizedEventName,
+            ["event_name"] = outboundEventName,
             ["event_time"] = new DateTimeOffset(request.EventUtc).ToUnixTimeSeconds(),
             ["event_id"] = request.EventId,
             ["action_source"] = "website",
@@ -198,8 +199,8 @@ public sealed class MetaConversionsApiService : IMetaConversionsApiService
             if (response.IsSuccessStatusCode)
             {
                 _logger.LogInformation(
-                    "MetaCapi [{CorrelationId}]: sent event={EventName} lead={LeadId} quoteType={QuoteType} eventId={EventId} status={Status}",
-                    request.CorrelationId, normalizedEventName, request.LeadId, request.QuoteType, request.EventId, "sent");
+                    "MetaCapi [{CorrelationId}]: sent event={EventName} outboundEvent={OutboundEventName} lead={LeadId} quoteType={QuoteType} eventId={EventId} status={Status}",
+                    request.CorrelationId, normalizedEventName, outboundEventName, request.LeadId, request.QuoteType, request.EventId, "sent");
 
                 return new MetaConversionsApiResult
                 {
@@ -244,6 +245,18 @@ public sealed class MetaConversionsApiService : IMetaConversionsApiService
             };
         }
     }
+
+    private static string MapToMetaStandardEventName(string eventName)
+        => eventName switch
+        {
+            "QualifiedLead" => "Lead",
+            "AppointmentBooked" => "Schedule",
+            "ApplicationSubmitted" => "SubmitApplication",
+            "PolicyIssued" => "CompleteRegistration",
+            "PolicyPaid" => "Purchase",
+            "AppointmentCompleted" => "Contact",
+            _ => eventName
+        };
 
     private static Dictionary<string, object?> BuildUserData(MetaConversionsApiEventRequest request)
     {
