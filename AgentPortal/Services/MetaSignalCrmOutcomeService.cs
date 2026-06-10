@@ -78,6 +78,7 @@ public sealed class MetaSignalCrmOutcomeService
         {
             ProductionStatus.Submitted => "ApplicationSubmitted",
             ProductionStatus.Issued => "PolicyIssued",
+            ProductionStatus.Paid => "PolicyPaid",
             _ => null
         };
 
@@ -102,10 +103,28 @@ public sealed class MetaSignalCrmOutcomeService
             dedupKey: dedupKey,
             websiteLeadId: websiteLeadId,
             quoteType: "crm",
-            funnelStep: status == ProductionStatus.Submitted ? 6 : 7,
-            stepName: status == ProductionStatus.Submitted ? "application_submitted" : "policy_issued",
+            funnelStep: status switch
+            {
+                ProductionStatus.Submitted => 6,
+                ProductionStatus.Issued => 7,
+                ProductionStatus.Paid => 8,
+                _ => 0
+            },
+            stepName: status switch
+            {
+                ProductionStatus.Submitted => "application_submitted",
+                ProductionStatus.Issued => "policy_issued",
+                ProductionStatus.Paid => "policy_paid",
+                _ => "production_outcome"
+            },
             scoreTier: eventName,
-            totalScore: status == ProductionStatus.Submitted ? 220 : 320,
+            totalScore: status switch
+            {
+                ProductionStatus.Submitted => 220,
+                ProductionStatus.Issued => 320,
+                ProductionStatus.Paid => 500,
+                _ => 0
+            },
             metadata: new
             {
                 agentUserId,
