@@ -146,6 +146,9 @@ public sealed class MetaSignalOutcomeDispatcherHostedService : BackgroundService
                 cancellationToken);
 
             row.MetaServerSent = result.Sent;
+            row.FbclidPresent = !string.IsNullOrWhiteSpace(websiteLead?.Fbclid);
+            row.FbcPresent = !string.IsNullOrWhiteSpace(websiteLead?.Fbc);
+            row.FbpPresent = !string.IsNullOrWhiteSpace(websiteLead?.Fbp);
             row.MetadataJson = MergeDispatchMetadata(row.MetadataJson, result);
 
             _logger.LogInformation(
