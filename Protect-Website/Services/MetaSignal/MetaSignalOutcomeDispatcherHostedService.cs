@@ -21,15 +21,18 @@ public sealed class MetaSignalOutcomeDispatcherHostedService : BackgroundService
 
     private readonly IServiceScopeFactory _scopeFactory;
     private readonly IOptions<MetaSignalIntelligenceOptions> _options;
+    private readonly IMetaPixelResolutionService _metaPixelResolutionService;
     private readonly ILogger<MetaSignalOutcomeDispatcherHostedService> _logger;
 
     public MetaSignalOutcomeDispatcherHostedService(
         IServiceScopeFactory scopeFactory,
         IOptions<MetaSignalIntelligenceOptions> options,
+        IMetaPixelResolutionService metaPixelResolutionService,
         ILogger<MetaSignalOutcomeDispatcherHostedService> logger)
     {
         _scopeFactory = scopeFactory;
         _options = options;
+        _metaPixelResolutionService = metaPixelResolutionService;
         _logger = logger;
     }
 
@@ -93,6 +96,12 @@ public sealed class MetaSignalOutcomeDispatcherHostedService : BackgroundService
                 !string.IsNullOrWhiteSpace(websiteLead?.Email) ||
                 !string.IsNullOrWhiteSpace(websiteLead?.Phone);
 
+            var pixelContext = await _metaPixelResolutionService.ResolveForLeadAsync(
+                websiteLead?.AgentTrackingProfileId,
+                websiteLead?.AgentSlug,
+                isFounderPath: false,
+                cancellationToken);
+
             var result = await capi.SendEventAsync(
                 new MetaConversionsApiEventRequest
                 {
@@ -109,7 +118,11 @@ public sealed class MetaSignalOutcomeDispatcherHostedService : BackgroundService
                     Phone = websiteLead?.Phone,
                     AllowHashedContactData = hasContactData,
                     EventUtc = row.CreatedUtc == default ? DateTime.UtcNow : row.CreatedUtc,
-                    CustomData = BuildCustomData(row, websiteLead)
+                    PixelId = pixelContext.PixelId,
+                    AccessToken = pixelContext.AccessToken,
+                    TestEventCode = pixelContext.TestEventCode,
+                    PixelOwnerType = pixelContext.PixelOwnerType,
+                    CustomData = BuildCustomData(row, websiteLead, pixelContext)
                 },
                 cancellationToken);
 
@@ -128,7 +141,10 @@ public sealed class MetaSignalOutcomeDispatcherHostedService : BackgroundService
         await db.SaveChangesAsync(cancellationToken);
     }
 
-    private static Dictionary<string, object?> BuildCustomData(MetaSignalEvent row, WebsiteLead? websiteLead)
+    private static Dictionary<string, object?> BuildCustomData(
+        MetaSignalEvent row,
+        WebsiteLead? websiteLead,
+        ResolvedMetaPixelContext pixelContext)
         => new()
         {
             ["event_category"] = row.EventCategory,
@@ -144,7 +160,10 @@ public sealed class MetaSignalOutcomeDispatcherHostedService : BackgroundService
             ["lead_source_page_key"] = websiteLead?.SourcePageKey,
             ["lead_utm_source"] = websiteLead?.UtmSource,
             ["lead_utm_medium"] = websiteLead?.UtmMedium,
-            ["lead_utm_campaign"] = websiteLead?.UtmCampaign
+            ["lead_utm_campaign"] = websiteLead?.UtmCampaign,
+            ["agent_tracking_profile_id"] = pixelContext.AgentTrackingProfileId,
+            ["agent_slug"] = pixelContext.AgentSlug,
+            ["pixel_owner_type"] = pixelContext.PixelOwnerType
         };
 
     private static string? BuildEventSourceUrl(WebsiteLead? websiteLead)
@@ -186,6 +205,8 @@ public sealed class MetaSignalOutcomeDispatcherHostedService : BackgroundService
         metadata["metaServerNote"] = result.Note;
         metadata["metaServerAttempted"] = result.Attempted;
         metadata["metaServerSent"] = result.Sent;
+        metadata["metaServerPixelId"] = result.PixelId;
+        metadata["metaServerPixelOwnerType"] = result.PixelOwnerType;
         metadata["metaServerDispatchedUtc"] = DateTime.UtcNow;
 
         return JsonSerializer.Serialize(metadata);
