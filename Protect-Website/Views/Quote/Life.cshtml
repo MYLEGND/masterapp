@@ -5392,7 +5392,8 @@ body.life-final-step-active .lq-hero-rail {
     display: none !important;
 }
 body.life-final-step-active .lq-hero-shell {
-    max-width: 760px;
+    max-width: min(1180px, calc(100vw - 56px));
+    width: min(1180px, calc(100vw - 56px));
 }
 body.life-final-step-active .lq-contact-step {
     position: relative;
@@ -5824,7 +5825,8 @@ body.life-final-step-active #submitLife {
 
 /* Contact step: make the submit action the visual destination */
 body.life-final-step-active .lq-hero-shell {
-    max-width: 720px !important;
+    max-width: min(1180px, calc(100vw - 56px)) !important;
+    width: min(1180px, calc(100vw - 56px)) !important;
 }
 
 body.life-final-step-active #lifeEducationContactPanel {
@@ -6192,7 +6194,8 @@ input:checked + .lq-answer-card {
 /* ---------- Contact step: make submit the visual destination ---------- */
 
 body.life-final-step-active .lq-hero-shell {
-    max-width: 700px !important;
+    max-width: min(1180px, calc(100vw - 56px)) !important;
+    width: min(1180px, calc(100vw - 56px)) !important;
     padding: 18px !important;
 }
 
@@ -9092,7 +9095,7 @@ body.life-landing .lq-hero-shell,
 #lifePostSubmitSlot .lq-booking-iframe {
     display: block !important;
     width: 100% !important;
-    min-height: 650px !important;
+    min-height: 760px !important;
     border-radius: 18px !important;
     border: 1px solid rgba(199,153,49,.28) !important;
     background: #ffffff !important;
