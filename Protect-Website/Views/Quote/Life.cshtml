@@ -12507,13 +12507,22 @@ const contactFieldProgress = new Map();
       return;
     }
 
+    const normalizedUrl = asTrimmed(url);
+    const existingIframe = frameSlot.querySelector('iframe.lq-booking-iframe');
+
+    if (existingIframe instanceof HTMLIFrameElement && existingIframe.dataset.bookingSrc === normalizedUrl) {
+      statusEl.hidden = true;
+      return;
+    }
+
     frameSlot.innerHTML = '';
     statusEl.hidden = false;
     statusEl.textContent = publicBookingLoadingText;
 
     const iframe = document.createElement('iframe');
     iframe.className = 'lq-booking-iframe';
-    iframe.src = url;
+    iframe.src = normalizedUrl;
+    iframe.dataset.bookingSrc = normalizedUrl;
     iframe.loading = 'lazy';
     iframe.referrerPolicy = 'strict-origin-when-cross-origin';
     iframe.title = 'Continue your review';
