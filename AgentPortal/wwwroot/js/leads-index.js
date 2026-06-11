@@ -5728,17 +5728,15 @@ function renderLaneCards(rowsForStage){
           ${prodBadge}
         </div>
         <div class="pipeline-card-footer">
-          ${phoneActions
-            ? `<div class="client-card-actions actions pipeline-card-actions-row">${phoneActions}</div>`
-            : ""}
-          <div class="pipeline-card-context pipeline-card-footer-context">
+          <div class="client-card-actions actions pipeline-card-actions-row">
             <div class="pipeline-card-chips">
               <span class="meta-chip pipeline-appointment-chip pipeline-appointment-chip-${safeHtml(appointmentStatusKey)}">Appointment: ${safeHtml(appointmentStatus)}</span>
             </div>
-            ${appointmentTime && appointmentTime !== "No appointment scheduled"
-              ? `<div class="pipeline-card-warning">${safeHtml(appointmentTime)}</div>`
-              : ""}
+            ${phoneActions}
           </div>
+          ${appointmentTime && appointmentTime !== "No appointment scheduled"
+            ? `<div class="pipeline-card-warning">${safeHtml(appointmentTime)}</div>`
+            : ""}
         </div>
       </article>
     `;
