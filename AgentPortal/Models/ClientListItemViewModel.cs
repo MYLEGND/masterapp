@@ -37,6 +37,11 @@ public sealed class ClientListItemViewModel
     public bool UsePersonalZoomLink { get; set; }
     public string? MeetingTime { get; set; }
     public int MeetingDurationMinutes { get; set; } = 30;
+    public string? LatestAppointmentStatus { get; set; }
+    public string? LatestAppointmentStatusLabel { get; set; }
+    public string? LatestAppointmentConfirmationStateLabel { get; set; }
+    public DateTime? LatestAppointmentScheduledStartUtc { get; set; }
+    public DateTime? LatestAppointmentScheduledEndUtc { get; set; }
     public string WaitingOn { get; set; } = ClientCrmMeta.DefaultWaitingOn;
     public string? PinnedBrief { get; set; }
     public DateTime StageEnteredUtc { get; set; } = DateTime.UtcNow;

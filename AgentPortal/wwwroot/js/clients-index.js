@@ -2656,6 +2656,11 @@ function hydrateRow(row){
   row.dataset.crmAttemptsLife = attemptsLife;
   row.dataset.crmLastChannel = lastChannel;
   row.dataset.crmDocCount = docCount;
+  row.dataset.crmAppointmentStatus = row.dataset.sAppointmentStatus || "";
+  row.dataset.crmAppointmentStatusLabel = row.dataset.sAppointmentStatusLabel || "";
+  row.dataset.crmAppointmentConfirmationLabel = row.dataset.sAppointmentConfirmationLabel || "";
+  row.dataset.crmAppointmentStart = row.dataset.sAppointmentStart || "";
+  row.dataset.crmAppointmentEnd = row.dataset.sAppointmentEnd || "";
   row.dataset.crmOwner = owner;
   row.dataset.crmWatchers = watchers;
   row.dataset.crmDupeEmail = dupeEmail;
@@ -3112,7 +3117,84 @@ function waitingOn(row, key){
 }
 
 const HIGH_PRIORITY_KEYS = new Set(["high", "urgent"]);
-const CLIENTS_MEETING_BUCKET_KEYS = new Set(["meetingscheduled"]);
+const ACTIVE_MEETING_APPOINTMENT_STATUSES = new Set(["booked", "confirmed", "rescheduled"]);
+
+function parseUtcDate(value){
+  if (!value) return null;
+  if (value instanceof Date){
+    return Number.isNaN(value.getTime()) ? null : value;
+  }
+
+  const raw = String(value).trim();
+  if (!raw) return null;
+  const parsed = new Date(raw);
+  return Number.isNaN(parsed.getTime()) ? null : parsed;
+}
+
+function rowLatestAppointment(row){
+  if (!row) return null;
+  if (row.__latestAppointment && typeof row.__latestAppointment === "object") return row.__latestAppointment;
+
+  const status = norm(row.dataset.sAppointmentStatus || row.dataset.crmAppointmentStatus);
+  const statusLabel = norm(row.dataset.sAppointmentStatusLabel || row.dataset.crmAppointmentStatusLabel);
+  const confirmationStateLabel = norm(row.dataset.sAppointmentConfirmationLabel || row.dataset.crmAppointmentConfirmationLabel);
+  const scheduledStartUtc = norm(row.dataset.sAppointmentStart || row.dataset.crmAppointmentStart);
+  const scheduledEndUtc = norm(row.dataset.sAppointmentEnd || row.dataset.crmAppointmentEnd);
+
+  if (!status && !statusLabel && !confirmationStateLabel && !scheduledStartUtc && !scheduledEndUtc) return null;
+
+  row.__latestAppointment = {
+    status,
+    statusLabel,
+    confirmationStateLabel,
+    scheduledStartUtc,
+    scheduledEndUtc
+  };
+
+  return row.__latestAppointment;
+}
+
+function storeRowLatestAppointment(row, snapshot){
+  if (!row) return;
+
+  const normalizeAppointmentValue = (value) => {
+    if (!value) return "";
+    if (value instanceof Date){
+      return Number.isNaN(value.getTime()) ? "" : value.toISOString();
+    }
+    return String(value).trim();
+  };
+
+  const normalized = snapshot && typeof snapshot === "object"
+    ? {
+        ...snapshot,
+        status: normalizeAppointmentValue(snapshot.status),
+        statusLabel: normalizeAppointmentValue(snapshot.statusLabel),
+        confirmationStateLabel: normalizeAppointmentValue(snapshot.confirmationStateLabel),
+        scheduledStartUtc: normalizeAppointmentValue(snapshot.scheduledStartUtc),
+        scheduledEndUtc: normalizeAppointmentValue(snapshot.scheduledEndUtc)
+      }
+    : null;
+
+  row.__latestAppointment = normalized;
+  row.dataset.sAppointmentStatus = normalized?.status || "";
+  row.dataset.sAppointmentStatusLabel = normalized?.statusLabel || "";
+  row.dataset.sAppointmentConfirmationLabel = normalized?.confirmationStateLabel || "";
+  row.dataset.sAppointmentStart = normalized?.scheduledStartUtc || "";
+  row.dataset.sAppointmentEnd = normalized?.scheduledEndUtc || "";
+  row.dataset.crmAppointmentStatus = row.dataset.sAppointmentStatus;
+  row.dataset.crmAppointmentStatusLabel = row.dataset.sAppointmentStatusLabel;
+  row.dataset.crmAppointmentConfirmationLabel = row.dataset.sAppointmentConfirmationLabel;
+  row.dataset.crmAppointmentStart = row.dataset.sAppointmentStart;
+  row.dataset.crmAppointmentEnd = row.dataset.sAppointmentEnd;
+}
+
+function hasBookedAppointment(row){
+  const snapshot = rowLatestAppointment(row);
+  if (!snapshot) return false;
+  const status = norm(snapshot.status).toLowerCase();
+  return ACTIVE_MEETING_APPOINTMENT_STATUSES.has(status) && !!parseUtcDate(snapshot.scheduledStartUtc);
+}
 
 function rowIdentity(row){
   return norm(row.dataset.clientId)
@@ -3211,7 +3293,7 @@ function computeFiltered(){
   if (attn === "missingemail") filtered = filtered.filter(r => !norm(r.dataset.email));
   if (attn === "missingphone") filtered = filtered.filter(r => !norm(r.dataset.phone));
   if (attn === "broken") filtered = filtered.filter(r => r.dataset.isguid !== "true");
-  if (attn === "meeting") filtered = filtered.filter(r => CLIENTS_MEETING_BUCKET_KEYS.has(pipelineKey(r)));
+  if (attn === "meeting") filtered = filtered.filter(hasBookedAppointment);
   if (attn === "zoom") filtered = filtered.filter(r => !!norm(r.dataset.sZoom));
   if (attn === "location") filtered = filtered.filter(r => !!norm(r.dataset.sMeetingLocation));
   if (attn === "waitingclient") filtered = filtered.filter(r => waitingOn(r, "WaitingOnClient"));
@@ -3324,11 +3406,9 @@ function applyPreset(name){
   } else if (name === "followup"){
     setControlValue(attentionFilter, "overdue");
     setControlValue(sortBy, "nextaction_asc");
-  } else if (name === "meetingstoday"){
-    setControlValue(stageFilter, "MeetingScheduled");
-    setControlValue(attentionFilter, "today");
+  } else if (name === "meetings" || name === "meetingstoday"){
+    setControlValue(attentionFilter, "meeting");
     setControlValue(sortBy, "nextaction_asc");
-    pipelineFocusStage = "MeetingScheduled";
     if (viewMode) viewMode.value = "pipeline";
     applyViewMode();
   } else if (name === "rescue"){
@@ -3416,7 +3496,7 @@ function queueRowsLocal(type){
   if (type === "callsnow") return sourceRows.filter(isCallsNowRow);
   if (type === "today") return sourceRows.filter(r => hasScheduledNextDate(r) && isToday(norm(r.dataset.crmNextDate)) && !isCallsNowRow(r));
   if (type === "overdue") return sourceRows.filter(r => hasScheduledNextDate(r) && isOverdue(norm(r.dataset.crmNextDate)) && !isCallsNowRow(r));
-  if (type === "meetings") return sourceRows.filter(r => CLIENTS_MEETING_BUCKET_KEYS.has(pipelineKey(r)));
+  if (type === "meetings") return sourceRows.filter(hasBookedAppointment);
   if (type === "waitingclient") return sourceRows.filter(r => waitingOn(r, "WaitingOnClient"));
   if (type === "waitingcarrier") return sourceRows.filter(r => waitingOn(r, "WaitingOnCarrier"));
   return [];
@@ -3458,7 +3538,7 @@ function queueMeta(type){
   if (type === "callsnow") return { title: "Calls Now", sub: "Priority follow-up calls that should happen immediately.", count: queueRows(type).length, callTask: true };
   if (type === "today") return { title: "Due Today", sub: "Touches due today and ready for execution.", count: queueRows(type).length, callTask: false };
   if (type === "overdue") return { title: "Overdue", sub: "Rescue this list before it gets stale.", count: queueRows(type).length, callTask: true };
-  if (type === "meetings") return { title: "Meetings", sub: "Meeting-stage clients with event execution pressure.", count: queueRows(type).length, callTask: false };
+  if (type === "meetings") return { title: "Meetings", sub: "Booked appointments that need preparation or follow-through.", count: queueRows(type).length, callTask: false };
   if (type === "waitingclient") return { title: "Waiting On Client", sub: "Clients who owe the next move back to you.", count: queueRows(type).length, callTask: false };
   if (type === "waitingcarrier") return { title: "Waiting On Carrier", sub: "Cases blocked externally and needing visibility.", count: queueRows(type).length, callTask: false };
   return null;
@@ -3678,6 +3758,7 @@ async function openDrawerForRow(row){
     if (activeClientId !== row.dataset.clientId) return;
 
     activeClientDetail = detail;
+    storeRowLatestAppointment(row, detail.latestAppointment || rowLatestAppointment(row));
     dStatus.value = detail.crmStatus || row.dataset.crmStatus || "Active";
     dPipelineStage.value = detail.pipelineStage || row.dataset.crmPipeline || "NewLead";
     dLastTouch.value = detail.crmLastTouch || row.dataset.crmLastTouch || "";
@@ -5421,6 +5502,7 @@ async function saveQuickViewForRow(row, overrides, successMessage){
   row.dataset.btc = data.btc || "";
   row.dataset.mortgageLender = data.mortgageLender || "";
   row.dataset.loanAmount = data.loanAmount || "";
+  storeRowLatestAppointment(row, data.latestAppointment || rowLatestAppointment(row));
   hydrateRow(row);
 
   syncDrawerEmailDisplay(row.dataset.email);
@@ -5507,7 +5589,7 @@ btnPipeNeeds?.addEventListener("click", () => {
 });
 
 btnPipeMeetings?.addEventListener("click", () => {
-  applyPreset("meetingstoday");
+  applyPreset("meetings");
 });
 
 btnPipeReset?.addEventListener("click", () => {
@@ -6055,11 +6137,7 @@ btnZoomSavePersonal?.addEventListener("click", savePersonalZoomLink);
 btnZoomClearPersonal?.addEventListener("click", clearPersonalZoomLink);
 
 btnFilterMeetings?.addEventListener("click", () => {
-  pipelineFocusStage = "MeetingScheduled";
-  pipelineNavSelectedStage = "MeetingScheduled";
-  if (viewMode) viewMode.value = "pipeline";
-  applyViewMode();
-  renderAll();
+  applyPreset("meetings");
 });
 
 btnFilterOverdue?.addEventListener("click", () => {

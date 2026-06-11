@@ -410,6 +410,7 @@ public class LeadsController : Controller
             }
 
             var intakeSummaryLookup = await LoadLeadIntakeSummariesAsync(leadIds);
+            var appointmentSummaries = await LoadLeadAppointmentSummariesAsync(leadIds, HttpContext.RequestAborted);
             ViewData["ProductionTotals"] = await _production.GetAgentTotalsAsync(agentId, ProductionSide.Lead);
 
             var vm = leads.Select(l =>
@@ -422,6 +423,7 @@ public class LeadsController : Controller
                 var contactStatus = ClientCrmMetaSerializer.NormalizeContactStatus(crmMeta.ContactStatus);
                 var stageEnteredUtc = crmMeta.StageEnteredUtc == default ? lead.CreatedUtc : crmMeta.StageEnteredUtc;
                 intakeSummaryLookup.TryGetValue(lead.LeadId, out var intakeSummary);
+                appointmentSummaries.TryGetValue(lead.LeadId, out var appointmentSummary);
                 var origin = intakeSummary == null
                     ? ResolveLeadOriginInfo(null, null, null, null, null, null, hasWebsiteIntake: false, email: lead.Email)
                     : ResolveLeadOriginInfo(
@@ -481,6 +483,11 @@ public class LeadsController : Controller
                     UsePersonalZoomLink = crmMeta.UsePersonalZoomLink,
                     MeetingTime = crmMeta.MeetingTime,
                     MeetingDurationMinutes = crmMeta.MeetingDurationMinutes,
+                    LatestAppointmentStatus = appointmentSummary?.Latest?.Status.ToString(),
+                    LatestAppointmentStatusLabel = appointmentSummary?.Latest == null ? null : HumanizeAppointmentStatus(appointmentSummary.Latest.Status),
+                    LatestAppointmentConfirmationStateLabel = appointmentSummary?.Latest == null ? null : BuildAppointmentConfirmationStateLabel(appointmentSummary.Latest),
+                    LatestAppointmentScheduledStartUtc = appointmentSummary?.Latest?.ScheduledStartUtc,
+                    LatestAppointmentScheduledEndUtc = appointmentSummary?.Latest?.ScheduledEndUtc,
                     WaitingOn = string.IsNullOrWhiteSpace(crmMeta.WaitingOn) ? ClientCrmMeta.DefaultWaitingOn : crmMeta.WaitingOn,
                     PinnedBrief = crmMeta.PinnedBrief,
                     StageEnteredUtc = stageEnteredUtc,
@@ -1328,8 +1335,8 @@ public class LeadsController : Controller
             ),
             "meetings" => (
                 "Meetings",
-                "Booked leads with event execution pressure.",
-                "Leads currently in the Booked stage."
+                "Leads with a live booked appointment that needs preparation or follow-through.",
+                "Leads whose latest appointment is Booked, Confirmed, or Rescheduled with a scheduled meeting time."
             ),
             "waitingclient" => (
                 "Waiting On Client",
@@ -1348,9 +1355,18 @@ public class LeadsController : Controller
             )
         };
 
-    private static bool MatchesLeadQueue(WorkstationLeadProfile lead, string queueKey)
+    private static bool HasBookedMeetingAppointment(LeadAppointmentListRow? latestAppointment)
     {
-        var stage = NormalizePipelineStage(lead.Bucket) ?? lead.Bucket;
+        if (latestAppointment?.ScheduledStartUtc == null)
+            return false;
+
+        return latestAppointment.Status is LeadAppointmentStatus.Booked
+            or LeadAppointmentStatus.Confirmed
+            or LeadAppointmentStatus.Rescheduled;
+    }
+
+    private static bool MatchesLeadQueue(WorkstationLeadProfile lead, string queueKey, LeadAppointmentListRow? latestAppointment = null)
+    {
         var meta = ReadLeadMeta(lead);
         var waitingOn = (meta.WaitingOn ?? ClientCrmMeta.DefaultWaitingOn).Trim();
         var nextDate = meta.CrmNextDate?.Date;
@@ -1363,7 +1379,7 @@ public class LeadsController : Controller
             "callsnow" => isHighPriority && (IsToday(nextDate) || IsOverdue(nextDate)),
             "today" => IsToday(nextDate),
             "overdue" => IsOverdue(nextDate),
-            "meetings" => string.Equals(stage, "Booked", StringComparison.OrdinalIgnoreCase),
+            "meetings" => HasBookedMeetingAppointment(latestAppointment),
             "waitingclient" => string.Equals(waitingOn, "WaitingOnClient", StringComparison.OrdinalIgnoreCase),
             "waitingcarrier" => string.Equals(waitingOn, "WaitingOnCarrier", StringComparison.OrdinalIgnoreCase),
             _ => false
@@ -1382,13 +1398,19 @@ public class LeadsController : Controller
             .Where(x => x.AgentUserId == agentId)
             .ToListAsync();
 
+        var appointmentSummaries = await LoadLeadAppointmentSummariesAsync(leads.Select(x => x.LeadId), HttpContext.RequestAborted);
+
         var queueKeys = new[] { "callsnow", "today", "overdue", "meetings", "waitingclient", "waitingcarrier" };
         var queues = new Dictionary<string, object>(StringComparer.OrdinalIgnoreCase);
 
         foreach (var key in queueKeys)
         {
             var matchingIds = leads
-                .Where(x => MatchesLeadQueue(x, key))
+                .Where(x =>
+                {
+                    appointmentSummaries.TryGetValue(x.LeadId, out var appointmentSummary);
+                    return MatchesLeadQueue(x, key, appointmentSummary?.Latest);
+                })
                 .Select(x => x.LeadId)
                 .Where(x => !string.IsNullOrWhiteSpace(x))
                 .Distinct(StringComparer.OrdinalIgnoreCase)
@@ -1467,8 +1489,13 @@ public class LeadsController : Controller
         }
 
         var intakeSummaryLookup = await LoadLeadIntakeSummariesAsync(leadIds);
+        var appointmentSummaries = await LoadLeadAppointmentSummariesAsync(leadIds, HttpContext.RequestAborted);
         var items = leads
-            .Where(x => MatchesLeadQueue(x, queueKey))
+            .Where(x =>
+            {
+                appointmentSummaries.TryGetValue(x.LeadId, out var appointmentSummary);
+                return MatchesLeadQueue(x, queueKey, appointmentSummary?.Latest);
+            })
             .Select(l =>
             {
                 var attempts = CrmAttemptTracking.GetLeadAttemptCounts(l, nowUtc, dialTimeZone);
@@ -1477,6 +1504,7 @@ public class LeadsController : Controller
                 var contactStatus = ClientCrmMetaSerializer.NormalizeContactStatus(crmMeta.ContactStatus);
                 var stageEnteredUtc = crmMeta.StageEnteredUtc == default ? l.CreatedUtc : crmMeta.StageEnteredUtc;
                 intakeSummaryLookup.TryGetValue(l.LeadId, out var intakeSummary);
+                appointmentSummaries.TryGetValue(l.LeadId, out var appointmentSummary);
                 var origin = intakeSummary == null
                     ? ResolveLeadOriginInfo(null, null, null, null, null, null, hasWebsiteIntake: false, email: l.Email)
                     : ResolveLeadOriginInfo(
@@ -1537,6 +1565,11 @@ public class LeadsController : Controller
                     UsePersonalZoomLink = crmMeta.UsePersonalZoomLink,
                     MeetingTime = crmMeta.MeetingTime,
                     MeetingDurationMinutes = crmMeta.MeetingDurationMinutes,
+                    LatestAppointmentStatus = appointmentSummary?.Latest?.Status.ToString(),
+                    LatestAppointmentStatusLabel = appointmentSummary?.Latest == null ? null : HumanizeAppointmentStatus(appointmentSummary.Latest.Status),
+                    LatestAppointmentConfirmationStateLabel = appointmentSummary?.Latest == null ? null : BuildAppointmentConfirmationStateLabel(appointmentSummary.Latest),
+                    LatestAppointmentScheduledStartUtc = appointmentSummary?.Latest?.ScheduledStartUtc,
+                    LatestAppointmentScheduledEndUtc = appointmentSummary?.Latest?.ScheduledEndUtc,
                     WaitingOn = string.IsNullOrWhiteSpace(crmMeta.WaitingOn) ? ClientCrmMeta.DefaultWaitingOn : crmMeta.WaitingOn,
                     PinnedBrief = crmMeta.PinnedBrief,
                     StageEnteredUtc = stageEnteredUtc,

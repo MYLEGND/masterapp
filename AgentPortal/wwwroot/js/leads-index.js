@@ -2065,12 +2065,61 @@ function contactStatusLabel(value){
 }
 
 function rowLatestAppointment(row){
-  return row?.__latestAppointment || null;
+  if (!row) return null;
+  if (row.__latestAppointment && typeof row.__latestAppointment === "object") return row.__latestAppointment;
+
+  const status = norm(row.dataset.sAppointmentStatus || row.dataset.crmAppointmentStatus);
+  const statusLabel = norm(row.dataset.sAppointmentStatusLabel || row.dataset.crmAppointmentStatusLabel);
+  const confirmationStateLabel = norm(row.dataset.sAppointmentConfirmationLabel || row.dataset.crmAppointmentConfirmationLabel);
+  const scheduledStartUtc = norm(row.dataset.sAppointmentStart || row.dataset.crmAppointmentStart);
+  const scheduledEndUtc = norm(row.dataset.sAppointmentEnd || row.dataset.crmAppointmentEnd);
+
+  if (!status && !statusLabel && !confirmationStateLabel && !scheduledStartUtc && !scheduledEndUtc) return null;
+
+  row.__latestAppointment = {
+    status,
+    statusLabel,
+    confirmationStateLabel,
+    scheduledStartUtc,
+    scheduledEndUtc
+  };
+
+  return row.__latestAppointment;
 }
 
 function storeRowLatestAppointment(row, snapshot){
   if (!row) return;
-  row.__latestAppointment = snapshot || null;
+
+  const normalizeAppointmentValue = (value) => {
+    if (!value) return "";
+    if (value instanceof Date){
+      return Number.isNaN(value.getTime()) ? "" : value.toISOString();
+    }
+    return String(value).trim();
+  };
+
+  const normalized = snapshot && typeof snapshot === "object"
+    ? {
+        ...snapshot,
+        status: normalizeAppointmentValue(snapshot.status),
+        statusLabel: normalizeAppointmentValue(snapshot.statusLabel),
+        confirmationStateLabel: normalizeAppointmentValue(snapshot.confirmationStateLabel),
+        scheduledStartUtc: normalizeAppointmentValue(snapshot.scheduledStartUtc),
+        scheduledEndUtc: normalizeAppointmentValue(snapshot.scheduledEndUtc)
+      }
+    : null;
+
+  row.__latestAppointment = normalized;
+  row.dataset.sAppointmentStatus = normalized?.status || "";
+  row.dataset.sAppointmentStatusLabel = normalized?.statusLabel || "";
+  row.dataset.sAppointmentConfirmationLabel = normalized?.confirmationStateLabel || "";
+  row.dataset.sAppointmentStart = normalized?.scheduledStartUtc || "";
+  row.dataset.sAppointmentEnd = normalized?.scheduledEndUtc || "";
+  row.dataset.crmAppointmentStatus = row.dataset.sAppointmentStatus;
+  row.dataset.crmAppointmentStatusLabel = row.dataset.sAppointmentStatusLabel;
+  row.dataset.crmAppointmentConfirmationLabel = row.dataset.sAppointmentConfirmationLabel;
+  row.dataset.crmAppointmentStart = row.dataset.sAppointmentStart;
+  row.dataset.crmAppointmentEnd = row.dataset.sAppointmentEnd;
 }
 
 function parseUtcDate(value){
@@ -3529,14 +3578,13 @@ function waitingOn(row, key){
 }
 
 const HIGH_PRIORITY_KEYS = new Set(["high", "urgent"]);
-const LEADS_MEETING_BUCKET_KEYS = new Set(["booked"]);
+const ACTIVE_MEETING_APPOINTMENT_STATUSES = new Set(["booked", "confirmed", "rescheduled"]);
 
-function hasScheduledAppointment(row){
+function hasBookedAppointment(row){
   const snapshot = rowLatestAppointment(row);
   if (!snapshot) return false;
-  const status = norm(snapshot.status);
-  if (["Cancelled", "Completed", "NoShow"].includes(status)) return false;
-  return !!parseUtcDate(snapshot.scheduledStartUtc);
+  const status = norm(snapshot.status).toLowerCase();
+  return ACTIVE_MEETING_APPOINTMENT_STATUSES.has(status) && !!parseUtcDate(snapshot.scheduledStartUtc);
 }
 
 function rowIdentity(row){
@@ -3643,7 +3691,7 @@ function computeFiltered(){
   if (attn === "missingemail") filtered = filtered.filter(r => !norm(r.dataset.email));
   if (attn === "missingphone") filtered = filtered.filter(r => !norm(r.dataset.phone));
   if (attn === "broken") filtered = filtered.filter(r => r.dataset.isguid !== "true");
-  if (attn === "meeting") filtered = filtered.filter(r => LEADS_MEETING_BUCKET_KEYS.has(pipelineKey(r)) || hasScheduledAppointment(r));
+  if (attn === "meeting") filtered = filtered.filter(hasBookedAppointment);
   if (attn === "zoom") filtered = filtered.filter(r => !!norm(r.dataset.sZoom));
   if (attn === "location") filtered = filtered.filter(r => !!norm(r.dataset.sMeetingLocation));
   if (attn === "waitingclient") filtered = filtered.filter(r => waitingOn(r, "WaitingOnClient"));
@@ -3779,11 +3827,9 @@ function applyPreset(name){
   } else if (name === "followup"){
     attentionFilter.value = "overdue";
     sortBy.value = "nextaction_asc";
-  } else if (name === "meetingstoday"){
-    stageFilter.value = "Booked";
-    attentionFilter.value = "today";
+  } else if (name === "meetings" || name === "meetingstoday"){
+    attentionFilter.value = "meeting";
     sortBy.value = "nextaction_asc";
-    pipelineFocusStage = "Booked";
     if (viewMode) viewMode.value = "pipeline";
     applyViewMode();
   } else if (name === "rescue"){
@@ -3878,7 +3924,7 @@ function queueRowsLocal(type){
     const qd = queueDate(r);
     return hasScheduledNextDate(r) && isOverdue(qd) && !isCallsNowRow(r);
   });
-  if (type === "meetings") return sourceRows.filter(r => LEADS_MEETING_BUCKET_KEYS.has(pipelineKey(r)) || hasScheduledAppointment(r));
+  if (type === "meetings") return sourceRows.filter(hasBookedAppointment);
   if (type === "waitingclient") return sourceRows.filter(r => waitingOn(r, "WaitingOnClient"));
   if (type === "waitingcarrier") return sourceRows.filter(r => waitingOn(r, "WaitingOnCarrier"));
   return [];
@@ -3933,7 +3979,7 @@ function queueMeta(type){
   if (type === "callsnow") return { title: "Calls Now", sub: "Priority follow-up calls that should happen immediately.", count: queueRows(type).length, callTask: true };
   if (type === "today") return { title: "Due Today", sub: "Touches due today and ready for execution.", count: queueRows(type).length, callTask: false };
   if (type === "overdue") return { title: "Overdue", sub: "Rescue this list before it gets stale.", count: queueRows(type).length, callTask: true };
-  if (type === "meetings") return { title: "Meetings", sub: "Meeting-stage clients with event execution pressure.", count: queueRows(type).length, callTask: false };
+  if (type === "meetings") return { title: "Meetings", sub: "Booked appointments that need preparation or follow-through.", count: queueRows(type).length, callTask: false };
   if (type === "waitingclient") return { title: "Waiting On Client", sub: "Clients who owe the next move back to you.", count: queueRows(type).length, callTask: false };
   if (type === "waitingcarrier") return { title: "Waiting On Carrier", sub: "Cases blocked externally and needing visibility.", count: queueRows(type).length, callTask: false };
   return null;
@@ -5956,7 +6002,7 @@ btnPipeNeeds?.addEventListener("click", () => {
 });
 
 btnPipeMeetings?.addEventListener("click", () => {
-  applyPreset("meetingstoday");
+  applyPreset("meetings");
 });
 
 btnPipeReset?.addEventListener("click", () => {
@@ -6636,11 +6682,7 @@ btnZoomSavePersonal?.addEventListener("click", savePersonalZoomLink);
 btnZoomClearPersonal?.addEventListener("click", clearPersonalZoomLink);
 
 btnFilterMeetings?.addEventListener("click", () => {
-  pipelineFocusStage = "Booked";
-  pipelineNavSelectedStage = "Booked";
-  if (viewMode) viewMode.value = "pipeline";
-  applyViewMode();
-  renderAll();
+  applyPreset("meetings");
 });
 
 btnFilterOverdue?.addEventListener("click", () => {

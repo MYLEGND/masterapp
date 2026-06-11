@@ -252,6 +252,11 @@ else
                 var sUsePersonalZoom = c.UsePersonalZoomLink ? "true" : "false";
                 var sMeetingTime = (c.MeetingTime ?? "09:00").Trim();
                 var sMeetingDuration = c.MeetingDurationMinutes <= 0 ? 30 : c.MeetingDurationMinutes;
+                var sAppointmentStatus = (c.LatestAppointmentStatus ?? "").Trim();
+                var sAppointmentStatusLabel = (c.LatestAppointmentStatusLabel ?? "").Trim();
+                var sAppointmentConfirmationLabel = (c.LatestAppointmentConfirmationStateLabel ?? "").Trim();
+                var sAppointmentStart = c.LatestAppointmentScheduledStartUtc?.ToString("O") ?? "";
+                var sAppointmentEnd = c.LatestAppointmentScheduledEndUtc?.ToString("O") ?? "";
                 var sWaitingOn = (c.WaitingOn ?? AgentPortal.Models.ClientCrmMeta.DefaultWaitingOn).Trim();
                 var sContactStatus = (c.ContactStatus ?? "NotSet").Trim();
                 var sPinnedBrief = (c.PinnedBrief ?? "").Trim();
@@ -329,6 +334,11 @@ var sCity = (c.City ?? "").Trim();
                     data-s-usezoom="@sUsePersonalZoom"
                     data-s-meeting-time="@sMeetingTime"
                     data-s-meeting-duration="@sMeetingDuration"
+                    data-s-appointment-status="@sAppointmentStatus"
+                    data-s-appointment-status-label="@sAppointmentStatusLabel"
+                    data-s-appointment-confirmation-label="@sAppointmentConfirmationLabel"
+                    data-s-appointment-start="@sAppointmentStart"
+                    data-s-appointment-end="@sAppointmentEnd"
                     data-s-waiting="@sWaitingOn"
                     data-s-contactstatus="@sContactStatus"
                     data-s-pinnedbrief="@sPinnedBrief"

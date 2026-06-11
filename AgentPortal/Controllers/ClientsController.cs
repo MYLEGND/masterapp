@@ -1316,6 +1316,68 @@ namespace AgentPortal.Controllers;
             .FirstOrDefaultAsync();
     }
 
+    private async Task<Dictionary<string, LeadAppointment>> LoadClientLatestAppointmentsByUserIdAsync(
+        IReadOnlyCollection<ClientProfile> profiles,
+        CancellationToken ct = default)
+    {
+        if (profiles.Count == 0)
+            return new Dictionary<string, LeadAppointment>(StringComparer.OrdinalIgnoreCase);
+
+        var profileIds = profiles
+            .Select(x => x.Id.ToString())
+            .Where(x => !string.IsNullOrWhiteSpace(x))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
+        var clientUserIds = profiles
+            .Select(x => Norm(x.ClientUserId))
+            .Where(x => !string.IsNullOrWhiteSpace(x))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
+        if (profileIds.Count == 0 && clientUserIds.Count == 0)
+            return new Dictionary<string, LeadAppointment>(StringComparer.OrdinalIgnoreCase);
+
+        var appointments = await _db.LeadAppointments
+            .AsNoTracking()
+            .Where(x =>
+                (x.ClientProfileId != null && profileIds.Contains(x.ClientProfileId)) ||
+                (x.WorkstationLeadId != null && clientUserIds.Contains(x.WorkstationLeadId)))
+            .OrderByDescending(x => x.ScheduledStartUtc ?? x.UpdatedUtc)
+            .ThenByDescending(x => x.UpdatedUtc)
+            .ToListAsync(ct);
+
+        var latestByProfileId = appointments
+            .Where(x => !string.IsNullOrWhiteSpace(x.ClientProfileId))
+            .GroupBy(x => x.ClientProfileId!, StringComparer.OrdinalIgnoreCase)
+            .ToDictionary(g => g.Key, g => g.First(), StringComparer.OrdinalIgnoreCase);
+
+        var latestByClientUserId = appointments
+            .Where(x => !string.IsNullOrWhiteSpace(x.WorkstationLeadId))
+            .GroupBy(x => x.WorkstationLeadId!, StringComparer.OrdinalIgnoreCase)
+            .ToDictionary(g => g.Key, g => g.First(), StringComparer.OrdinalIgnoreCase);
+
+        var latestByOwnedClientUserId = new Dictionary<string, LeadAppointment>(StringComparer.OrdinalIgnoreCase);
+        foreach (var profile in profiles)
+        {
+            var clientUserId = Norm(profile.ClientUserId);
+            if (string.IsNullOrWhiteSpace(clientUserId))
+                continue;
+
+            var profileId = profile.Id.ToString();
+            if (latestByProfileId.TryGetValue(profileId, out var byProfile))
+            {
+                latestByOwnedClientUserId[clientUserId] = byProfile;
+                continue;
+            }
+
+            if (latestByClientUserId.TryGetValue(clientUserId, out var byClientUserId))
+                latestByOwnedClientUserId[clientUserId] = byClientUserId;
+        }
+
+        return latestByOwnedClientUserId;
+    }
+
     private static object? BuildClientAppointmentPayload(LeadAppointment? appointment)
     {
         if (appointment == null)
@@ -1372,6 +1434,16 @@ namespace AgentPortal.Controllers;
         if (appointment.Status is LeadAppointmentStatus.Booked or LeadAppointmentStatus.Confirmed or LeadAppointmentStatus.Completed or LeadAppointmentStatus.Rescheduled)
             return $"{HumanizeClientAppointmentStatus(appointment.Status)} / source not verified";
         return HumanizeClientAppointmentStatus(appointment.Status);
+    }
+
+    private static bool HasBookedMeetingAppointment(string? status, DateTime? scheduledStartUtc)
+    {
+        if (!scheduledStartUtc.HasValue)
+            return false;
+
+        return string.Equals(status, LeadAppointmentStatus.Booked.ToString(), StringComparison.OrdinalIgnoreCase)
+            || string.Equals(status, LeadAppointmentStatus.Confirmed.ToString(), StringComparison.OrdinalIgnoreCase)
+            || string.Equals(status, LeadAppointmentStatus.Rescheduled.ToString(), StringComparison.OrdinalIgnoreCase);
     }
 
     private static object BuildQuickViewPayload(ClientProfile profile, ClientCrmMeta meta, TimeZoneInfo dialTimeZone, DateTime nowUtc, LeadAppointment? latestAppointment = null)
@@ -1615,7 +1687,7 @@ namespace AgentPortal.Controllers;
                 && (IsToday(item.CrmNextDate?.Ticks) || IsOverdue(item.CrmNextDate?.Ticks)),
             "today" => IsToday(item.CrmNextDate?.Ticks),
             "overdue" => IsOverdue(item.CrmNextDate?.Ticks),
-            "meetings" => string.Equals(item.PipelineStage, "MeetingScheduled", StringComparison.OrdinalIgnoreCase),
+            "meetings" => HasBookedMeetingAppointment(item.LatestAppointmentStatus, item.LatestAppointmentScheduledStartUtc),
             "waitingclient" => string.Equals(item.WaitingOn, "WaitingOnClient", StringComparison.OrdinalIgnoreCase),
             "waitingcarrier" => string.Equals(item.WaitingOn, "WaitingOnCarrier", StringComparison.OrdinalIgnoreCase),
             _ => false
@@ -1641,8 +1713,8 @@ namespace AgentPortal.Controllers;
             ),
             "meetings" => (
                 "Meetings",
-                "Meeting-stage clients with event execution pressure.",
-                "Any record currently in the Meeting Scheduled pipeline stage."
+                "Clients with a live booked appointment that needs preparation or follow-through.",
+                "Any record whose latest appointment is Booked, Confirmed, or Rescheduled with a scheduled meeting time."
             ),
             "waitingclient" => (
                 "Waiting On Client",
@@ -1700,6 +1772,8 @@ namespace AgentPortal.Controllers;
             .ThenBy(x => x.FirstName)
             .ToListAsync();
 
+        var latestAppointmentsByClientUserId = await LoadClientLatestAppointmentsByUserIdAsync(clients, HttpContext.RequestAborted);
+
         var clientIds = clients
             .Select(x => x.ClientUserId)
             .Where(id => !string.IsNullOrWhiteSpace(id))
@@ -1737,6 +1811,7 @@ namespace AgentPortal.Controllers;
                 var meta = EnsureMeta(ClientCrmMetaSerializer.Deserialize(x.CrmNotes));
                 var recordType = ResolveRecordType(x.ClientUserId, meta);
                 productionDict.TryGetValue(x.ClientUserId, out var prod);
+                latestAppointmentsByClientUserId.TryGetValue(x.ClientUserId, out var latestAppointment);
                 var submitted = prod?.Submitted ?? 0;
                 var issued = prod?.Issued ?? 0;
                 var paid = prod?.Paid ?? 0;
@@ -1788,6 +1863,11 @@ namespace AgentPortal.Controllers;
                     UsePersonalZoomLink = meta.UsePersonalZoomLink,
                     MeetingTime = meta.MeetingTime,
                     MeetingDurationMinutes = meta.MeetingDurationMinutes,
+                    LatestAppointmentStatus = latestAppointment?.Status.ToString(),
+                    LatestAppointmentStatusLabel = latestAppointment == null ? null : HumanizeClientAppointmentStatus(latestAppointment.Status),
+                    LatestAppointmentConfirmationStateLabel = latestAppointment == null ? null : BuildClientAppointmentConfirmationStateLabel(latestAppointment),
+                    LatestAppointmentScheduledStartUtc = latestAppointment?.ScheduledStartUtc,
+                    LatestAppointmentScheduledEndUtc = latestAppointment?.ScheduledEndUtc,
                     WaitingOn = meta.WaitingOn,
                     PinnedBrief = meta.PinnedBrief,
                     StageEnteredUtc = meta.StageEnteredUtc,
