@@ -517,7 +517,15 @@ public sealed class MetaSignalIntelligenceService : IMetaSignalIntelligenceServi
                 AgentSlug = Normalize(request.AgentSlug),
                 Environment = EnvironmentLabelResolver.Resolve(),
                 Host = httpContext?.Request.Host.ToString(),
-                MetadataJson = BuildLeadMetadataJson(request, attribution, score, "Lead", request.LeadMetaServerStatus ?? (request.LeadMetaServerSent ? "sent" : "not_attempted"), request.LeadMetaServerNote)
+                MetadataJson = BuildLeadMetadataJson(
+                    request,
+                    attribution,
+                    score,
+                    "Lead",
+                    request.LeadMetaServerStatus ?? (request.LeadMetaServerSent ? "sent" : "not_attempted"),
+                    request.LeadMetaServerNote,
+                    request.PixelId,
+                    request.PixelOwnerType)
             };
 
             var duplicateLeadRow = await _db.MetaSignalEvents.AsNoTracking()
@@ -730,21 +738,6 @@ public sealed class MetaSignalIntelligenceService : IMetaSignalIntelligenceServi
     }
 
 
-    private static string? AppendMetaServerPixelAudit(string? note, string? pixelId, string? pixelOwnerType)
-    {
-        var parts = new List<string>();
-
-        if (!string.IsNullOrWhiteSpace(note))
-            parts.Add(note);
-
-        if (!string.IsNullOrWhiteSpace(pixelId))
-            parts.Add($"metaServerPixelId={pixelId}");
-
-        if (!string.IsNullOrWhiteSpace(pixelOwnerType))
-            parts.Add($"metaServerPixelOwnerType={pixelOwnerType}");
-
-        return parts.Count == 0 ? note : string.Join("; ", parts);
-    }
 
     private async Task<List<MetaSignalEvent>> LoadPriorEventsAsync(string? sessionId, string? visitorId, string quoteType, CancellationToken cancellationToken)
     {
