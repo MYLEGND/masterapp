@@ -217,22 +217,27 @@ public class CalendarController : Controller
             bookingPageIdOrMailbox = appointment.BookingPageIdOrMailbox,
             calendarEventId = appointment.CalendarEventId,
             calendarEventWebLink = appointment.CalendarEventWebLink,
-            scheduledStartUtc = appointment.ScheduledStartUtc,
-            scheduledEndUtc = appointment.ScheduledEndUtc,
+            scheduledStartUtc = UtcDate(appointment.ScheduledStartUtc),
+            scheduledEndUtc = UtcDate(appointment.ScheduledEndUtc),
             meetingUrl = appointment.MeetingUrl,
-            createdUtc = appointment.CreatedUtc,
-            updatedUtc = appointment.UpdatedUtc,
-            lastStatusChangedUtc = appointment.LastStatusChangedUtc,
-            statusTimestampUtc = ResolveAppointmentStatusTimestamp(appointment),
-            requestedUtc = appointment.RequestedUtc,
-            bookedUtc = appointment.BookedUtc,
-            confirmedUtc = appointment.ConfirmedUtc,
-            completedUtc = appointment.CompletedUtc,
-            noShowUtc = appointment.NoShowUtc,
-            cancelledUtc = appointment.CancelledUtc,
-            rescheduledUtc = appointment.RescheduledUtc
+            createdUtc = UtcDate(appointment.CreatedUtc),
+            updatedUtc = UtcDate(appointment.UpdatedUtc),
+            lastStatusChangedUtc = UtcDate(appointment.LastStatusChangedUtc),
+            statusTimestampUtc = UtcDate(ResolveAppointmentStatusTimestamp(appointment)),
+            requestedUtc = UtcDate(appointment.RequestedUtc),
+            bookedUtc = UtcDate(appointment.BookedUtc),
+            confirmedUtc = UtcDate(appointment.ConfirmedUtc),
+            completedUtc = UtcDate(appointment.CompletedUtc),
+            noShowUtc = UtcDate(appointment.NoShowUtc),
+            cancelledUtc = UtcDate(appointment.CancelledUtc),
+            rescheduledUtc = UtcDate(appointment.RescheduledUtc)
         };
     }
+
+    private static DateTime? UtcDate(DateTime? value)
+        => value.HasValue
+            ? DateTime.SpecifyKind(value.Value, DateTimeKind.Utc)
+            : null;
 
     private string GetAgentOidOrThrow()
     {

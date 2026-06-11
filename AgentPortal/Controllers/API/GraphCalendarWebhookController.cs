@@ -299,7 +299,10 @@ public sealed class GraphCalendarWebhookController : ControllerBase
         appointment.CalendarEventWebLink = Clean(graphEvent.WebLink);
         appointment.ScheduledStartUtc = newStart;
         appointment.ScheduledEndUtc = newEnd;
-        appointment.MeetingUrl = Clean(graphEvent.OnlineMeeting?.JoinUrl) ?? appointment.MeetingUrl;
+        appointment.MeetingUrl =
+            Clean(graphEvent.OnlineMeeting?.JoinUrl) ??
+            Clean(graphEvent.OnlineMeetingUrl) ??
+            appointment.MeetingUrl;
         appointment.ConfirmationSource = LeadAppointmentBookingSources.MicrosoftGraphWebhook;
         appointment.LastSyncedUtc = utcNow;
         appointment.LastSyncStatus = isReschedule ? "webhook_rescheduled" : "webhook_updated";
@@ -335,7 +338,7 @@ public sealed class GraphCalendarWebhookController : ControllerBase
             return null;
         }
 
-        var url = $"https://graph.microsoft.com/v1.0/users/{Uri.EscapeDataString(calendarIdentity)}/events/{Uri.EscapeDataString(eventId)}?$select=id,webLink,subject,bodyPreview,start,end,attendees,onlineMeeting";
+        var url = $"https://graph.microsoft.com/v1.0/users/{Uri.EscapeDataString(calendarIdentity)}/events/{Uri.EscapeDataString(eventId)}?$select=id,webLink,subject,bodyPreview,start,end,attendees,onlineMeeting,onlineMeetingUrl";
 
         try
         {
@@ -441,6 +444,7 @@ public sealed class GraphCalendarWebhookController : ControllerBase
         public GraphDateTimeTimeZone? Start { get; set; }
         public GraphDateTimeTimeZone? End { get; set; }
         public GraphOnlineMeeting? OnlineMeeting { get; set; }
+        public string? OnlineMeetingUrl { get; set; }
     }
 
     private sealed class GraphDateTimeTimeZone

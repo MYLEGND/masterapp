@@ -1864,8 +1864,18 @@ async function ensureDialPeriodsFresh(){
         row.dataset.sAttemptsmonth = String(payload.attemptsThisMonth ?? row.dataset.sAttemptsmonth ?? 0);
         row.dataset.sAttemptsyear = String(payload.attemptsThisYear ?? row.dataset.sAttemptsyear ?? 0);
         row.dataset.sAttemptslife = String(payload.attemptsLifetime ?? payload.callCount ?? row.dataset.sAttemptslife ?? 0);
+        storeRowLatestAppointment(row, payload.latestAppointment || null);
         hydrateRow(row);
-        if (activeClientId === row.dataset.clientId) syncAttemptSummary(row);
+        if (activeClientId === row.dataset.clientId){
+          activeClientDetail = {
+            ...(activeClientDetail || {}),
+            latestAppointment: payload.latestAppointment || null
+          };
+          renderAppointmentSnapshot(activeClientDetail.latestAppointment || null);
+          refreshLeadOverviewSummary();
+          renderPortalActions(row, activeClientDetail);
+          syncAttemptSummary(row);
+        }
       });
     }
   }catch(err){
@@ -2074,12 +2084,100 @@ function contactStatusLabel(value){
   }
 }
 
+function rowLatestAppointment(row){
+  return row?.__latestAppointment || null;
+}
+
+function storeRowLatestAppointment(row, snapshot){
+  if (!row) return;
+  row.__latestAppointment = snapshot || null;
+}
+
+function parseUtcDate(value){
+  if (!value) return null;
+  if (value instanceof Date){
+    return Number.isNaN(value.getTime()) ? null : value;
+  }
+
+  const raw = String(value).trim();
+  if (!raw) return null;
+
+  const hasTimeZoneDesignator = /(?:z|[+-]\d{2}:\d{2})$/i.test(raw);
+  const normalized = hasTimeZoneDesignator ? raw : `${raw}Z`;
+  const parsed = new Date(normalized);
+  if (!Number.isNaN(parsed.getTime())){
+    return parsed;
+  }
+
+  const fallback = new Date(raw);
+  return Number.isNaN(fallback.getTime()) ? null : fallback;
+}
+
+function localDateIsoFromUtc(value){
+  const parsed = parseUtcDate(value);
+  if (!parsed) return "";
+  const month = String(parsed.getMonth() + 1).padStart(2, "0");
+  const day = String(parsed.getDate()).padStart(2, "0");
+  return `${parsed.getFullYear()}-${month}-${day}`;
+}
+
+function timeZoneShortLabel(value){
+  const parsed = parseUtcDate(value);
+  if (!parsed || typeof Intl === "undefined" || typeof Intl.DateTimeFormat !== "function"){
+    return "";
+  }
+
+  try{
+    const parts = new Intl.DateTimeFormat([], { timeZoneName: "short" }).formatToParts(parsed);
+    return (parts.find(part => part.type === "timeZoneName")?.value || "").trim();
+  }catch{
+    return "";
+  }
+}
+
+function buildAppointmentNextTouchpoint(snapshot){
+  if (!snapshot) return null;
+
+  const status = norm(snapshot.status);
+  if (["Cancelled", "Completed", "NoShow"].includes(status)) return null;
+
+  const start = parseUtcDate(snapshot.scheduledStartUtc);
+  if (!start) return null;
+
+  return {
+    date: localDateIsoFromUtc(snapshot.scheduledStartUtc),
+    text: `Appointment ${humanizeAppointmentStatus(status).toLowerCase()}`,
+    source: "appointment",
+    start
+  };
+}
+
+function resolveLeadNextActionState(row, overrides = {}){
+  const explicitDate = norm(overrides.crmNextDate ?? row?.dataset?.crmNextDate);
+  const explicitText = norm(overrides.crmNextText ?? row?.dataset?.crmNextText);
+
+  if (explicitDate || explicitText){
+    return {
+      date: explicitDate,
+      text: explicitText,
+      source: "crm"
+    };
+  }
+
+  const appointmentFallback = buildAppointmentNextTouchpoint(overrides.latestAppointment ?? rowLatestAppointment(row));
+  return appointmentFallback || { date: "", text: "", source: "none" };
+}
+
 function leadWarningSummary(row){
   if (!row) return "";
-  const nextDate = norm(row.dataset.crmNextDate);
+  const nextAction = resolveLeadNextActionState(row);
+  const nextDate = nextAction.date;
   const lastTouch = norm(row.dataset.crmLastTouch);
   const contactStatus = normalizeContactStatusValue(row.dataset.crmContactStatus);
 
+  if (nextAction.source === "appointment"){
+    return nextDate && isOverdue(nextDate) ? "Past appointment needs review" : "";
+  }
   if (!lastTouch) return "No touch logged yet";
   if (isOverdue(nextDate)) return "Overdue follow-up";
   if (!nextDate && (contactStatus === "NotSet" || contactStatus === "NoContactYet")) return "No contact plan set";
@@ -2092,6 +2190,11 @@ function refreshLeadOverviewSummary(){
   const row = activeLeadRow();
   const snapshot = activeClientDetail?.intakeSnapshot || null;
   const appointment = activeClientDetail?.latestAppointment || null;
+  const nextAction = resolveLeadNextActionState(row, {
+    crmNextDate: norm(dNextDate?.value) || activeClientDetail?.crmNextDate || "",
+    crmNextText: norm(dNextText?.value) || activeClientDetail?.crmNextText || "",
+    latestAppointment: appointment
+  });
   if (leadContactStatusPreview){
     leadContactStatusPreview.textContent = contactStatusLabel(dContactStatus?.value);
   }
@@ -2100,8 +2203,9 @@ function refreshLeadOverviewSummary(){
     leadLastTouchPreview.textContent = lastTouch || "Not tracked";
   }
   if (leadNextActionDatePreview){
-    const nextDate = norm(dNextDate?.value);
-    leadNextActionDatePreview.textContent = nextDate || "Not tracked";
+    leadNextActionDatePreview.textContent = nextAction.source === "appointment" && appointment
+      ? formatAppointmentDateTimeRange(appointment)
+      : (nextAction.date || "Not tracked");
   }
   if (leadProductPreview){
     leadProductPreview.textContent = summarizeLeadPath(snapshot, row);
@@ -2191,22 +2295,25 @@ function humanizeAppointmentSource(value){
 
 function formatAppointmentTimestamp(value){
   if (!value) return "—";
-  const parsed = new Date(value);
-  return Number.isNaN(parsed.getTime())
-    ? "—"
-    : parsed.toLocaleString([], { dateStyle: "medium", timeStyle: "short" });
+  const parsed = parseUtcDate(value);
+  if (!parsed) return "—";
+  const zone = timeZoneShortLabel(parsed);
+  const label = parsed.toLocaleString([], { dateStyle: "medium", timeStyle: "short" });
+  return zone ? `${label} ${zone}` : label;
 }
 
 function formatAppointmentDateTimeRange(snapshot){
-  const start = snapshot?.scheduledStartUtc ? new Date(snapshot.scheduledStartUtc) : null;
-  const end = snapshot?.scheduledEndUtc ? new Date(snapshot.scheduledEndUtc) : null;
+  const start = parseUtcDate(snapshot?.scheduledStartUtc);
+  const end = parseUtcDate(snapshot?.scheduledEndUtc);
 
-  if (!start || Number.isNaN(start.getTime())){
+  if (!start){
     return "No appointment scheduled";
   }
 
-  if (!end || Number.isNaN(end.getTime())){
-    return start.toLocaleString([], { dateStyle: "medium", timeStyle: "short" });
+  const zone = timeZoneShortLabel(start);
+  if (!end){
+    const label = start.toLocaleString([], { dateStyle: "medium", timeStyle: "short" });
+    return zone ? `${label} ${zone}` : label;
   }
 
   const sameDay =
@@ -2215,10 +2322,12 @@ function formatAppointmentDateTimeRange(snapshot){
     start.getDate() === end.getDate();
 
   if (sameDay){
-    return `${start.toLocaleDateString([], { dateStyle: "medium" })} • ${start.toLocaleTimeString([], { timeStyle: "short" })} - ${end.toLocaleTimeString([], { timeStyle: "short" })}`;
+    const label = `${start.toLocaleDateString([], { dateStyle: "medium" })} • ${start.toLocaleTimeString([], { timeStyle: "short" })} - ${end.toLocaleTimeString([], { timeStyle: "short" })}`;
+    return zone ? `${label} ${zone}` : label;
   }
 
-  return `${start.toLocaleString([], { dateStyle: "medium", timeStyle: "short" })} - ${end.toLocaleString([], { dateStyle: "medium", timeStyle: "short" })}`;
+  const label = `${start.toLocaleString([], { dateStyle: "medium", timeStyle: "short" })} - ${end.toLocaleString([], { dateStyle: "medium", timeStyle: "short" })}`;
+  return zone ? `${label} ${zone}` : label;
 }
 
 function appointmentStatusTimestampText(snapshot){
@@ -2263,6 +2372,10 @@ function summarizeLeadAppointmentConfig(snapshot){
     return "Internal calendar path";
   }
   return "No public booking config used";
+}
+
+function resolveAppointmentMeetingUrl(snapshot){
+  return norm(snapshot?.meetingUrl) || "";
 }
 
 function renderAppointmentLink(node, url, label){
@@ -2323,7 +2436,7 @@ function renderAppointmentSnapshot(snapshot){
   if (dAppointmentConfirmation) dAppointmentConfirmation.textContent = summarizeLeadAppointmentConfirmation(snapshot);
   if (dAppointmentBookingConfig) dAppointmentBookingConfig.textContent = summarizeLeadAppointmentConfig(snapshot);
   if (dAppointmentTimeline) dAppointmentTimeline.textContent = appointmentStatusTimestampText(snapshot);
-  renderAppointmentLink(dAppointmentMeetingLink, snapshot.meetingUrl, "Open meeting link");
+  renderAppointmentLink(dAppointmentMeetingLink, resolveAppointmentMeetingUrl(snapshot), "Open meeting link");
   renderAppointmentLink(dAppointmentCalendarLink, snapshot.calendarEventWebLink, "Open Outlook event");
   if (dAppointmentStatusSelect) dAppointmentStatusSelect.value = snapshot.status || "Requested";
   if (btnSaveAppointmentStatus) btnSaveAppointmentStatus.disabled = false;
@@ -2647,7 +2760,7 @@ function needsAttention(row){
   const email = norm(row.dataset.email);
   const phone = norm(row.dataset.phone);
   const status = norm(row.dataset.crmStatus);
-  const nextDate = norm(row.dataset.crmNextDate);
+  const nextDate = queueDate(row);
 
   if (!isGuid) return true;
   if (!email && !phone) return true;
@@ -2748,21 +2861,24 @@ function hydrateRow(row){
   if (lastTouchEl) lastTouchEl.textContent = lastTouch ? lastTouch : "—";
 
   if (nextPill && nextTextEl){
+    const nextAction = resolveLeadNextActionState(row);
+    const nextDateResolved = nextAction.date;
+    const nextTextResolved = nextAction.text;
     nextPill.classList.remove("overdue","today","soon","none");
     let label = "—";
     let pillCls = "none";
 
-    if (!nextDate && !nextText){
+    if (!nextDateResolved && !nextTextResolved){
       label = "No next action";
       pillCls = "none";
     } else {
-      const datePart = nextDate || "No date";
-      const actPart = nextText || "Next action";
+      const datePart = nextDateResolved || "No date";
+      const actPart = nextTextResolved || "Next action";
       label = `${datePart} • ${actPart}`;
 
-      if (isOverdue(nextDate)) pillCls = "overdue";
-      else if (isToday(nextDate)) pillCls = "today";
-      else if (isSoon(nextDate)) pillCls = "soon";
+      if (isOverdue(nextDateResolved)) pillCls = "overdue";
+      else if (isToday(nextDateResolved)) pillCls = "today";
+      else if (isSoon(nextDateResolved)) pillCls = "soon";
       else pillCls = "";
     }
 
@@ -2780,7 +2896,7 @@ function hydrateRow(row){
       pillCls === "overdue" ? "Overdue" :
       pillCls === "today" ? "Due Today" :
       pillCls === "soon" ? "Due Soon" :
-      (!nextDate && !nextText) ? "Set Next Action in Quick View" : "Next Action";
+      (!nextDateResolved && !nextTextResolved) ? "Set Next Action in Quick View" : "Next Action";
   }
 
   if (commandWarningEl){
@@ -3389,6 +3505,7 @@ btnExportCsv?.addEventListener("click", () => {
   const lines = [header.join(",")];
 
   visible.forEach(r => {
+    const nextAction = resolveLeadNextActionState(r);
     const row = [
       norm(r.dataset.first),
       norm(r.dataset.last),
@@ -3398,8 +3515,8 @@ btnExportCsv?.addEventListener("click", () => {
       norm(r.dataset.clienturl),
       norm(r.dataset.crmStatus),
       norm(r.dataset.crmLastTouch),
-      norm(r.dataset.crmNextDate),
-      norm(r.dataset.crmNextText),
+      nextAction.date,
+      nextAction.text,
       norm(r.dataset.crmPriority),
       pipelineLabel(norm(r.dataset.crmPipeline)),
       norm(r.dataset.crmTags),
@@ -3436,7 +3553,8 @@ function missingContact(row){
 }
 
 function hasNextAction(row){
-  return !!(norm(row.dataset.crmNextDate) || norm(row.dataset.crmNextText));
+  const nextAction = resolveLeadNextActionState(row);
+  return !!(nextAction.date || nextAction.text);
 }
 
 function noLastTouch(row){
@@ -3449,6 +3567,14 @@ function waitingOn(row, key){
 
 const HIGH_PRIORITY_KEYS = new Set(["high", "urgent"]);
 const LEADS_MEETING_BUCKET_KEYS = new Set(["booked"]);
+
+function hasScheduledAppointment(row){
+  const snapshot = rowLatestAppointment(row);
+  if (!snapshot) return false;
+  const status = norm(snapshot.status);
+  if (["Cancelled", "Completed", "NoShow"].includes(status)) return false;
+  return !!parseUtcDate(snapshot.scheduledStartUtc);
+}
 
 function rowIdentity(row){
   return norm(row.dataset.clientId)
@@ -3494,8 +3620,8 @@ function applySort(filtered){
     const as = norm(a.dataset.crmStatus).toLowerCase();
     const bs = norm(b.dataset.crmStatus).toLowerCase();
 
-    const na = norm(a.dataset.crmNextDate);
-    const nb = norm(b.dataset.crmNextDate);
+    const na = queueDate(a);
+    const nb = queueDate(b);
 
     const la = norm(a.dataset.crmLastTouch);
     const lb = norm(b.dataset.crmLastTouch);
@@ -3542,10 +3668,10 @@ function computeFiltered(){
   if (state) filtered = filtered.filter(r => normalizeStateOption(r.dataset.state || "") === state);
 
   if (attn === "needs") filtered = filtered.filter(needsAttention);
-  if (attn === "callsnow") filtered = filtered.filter(r => HIGH_PRIORITY_KEYS.has(priorityKey(r)) && (isToday(norm(r.dataset.crmNextDate)) || isOverdue(norm(r.dataset.crmNextDate))));
-  if (attn === "overdue") filtered = filtered.filter(r => isOverdue(norm(r.dataset.crmNextDate)));
-  if (attn === "today") filtered = filtered.filter(r => isToday(norm(r.dataset.crmNextDate)));
-  if (attn === "soon") filtered = filtered.filter(r => isSoon(norm(r.dataset.crmNextDate)));
+  if (attn === "callsnow") filtered = filtered.filter(isCallsNowRow);
+  if (attn === "overdue") filtered = filtered.filter(r => isOverdue(queueDate(r)));
+  if (attn === "today") filtered = filtered.filter(r => isToday(queueDate(r)));
+  if (attn === "soon") filtered = filtered.filter(r => isSoon(queueDate(r)));
   if (attn === "hasnext") filtered = filtered.filter(hasNextAction);
   if (attn === "nonext") filtered = filtered.filter(r => !hasNextAction(r));
   if (attn === "notouch") filtered = filtered.filter(noLastTouch);
@@ -3554,7 +3680,7 @@ function computeFiltered(){
   if (attn === "missingemail") filtered = filtered.filter(r => !norm(r.dataset.email));
   if (attn === "missingphone") filtered = filtered.filter(r => !norm(r.dataset.phone));
   if (attn === "broken") filtered = filtered.filter(r => r.dataset.isguid !== "true");
-  if (attn === "meeting") filtered = filtered.filter(r => LEADS_MEETING_BUCKET_KEYS.has(pipelineKey(r)));
+  if (attn === "meeting") filtered = filtered.filter(r => LEADS_MEETING_BUCKET_KEYS.has(pipelineKey(r)) || hasScheduledAppointment(r));
   if (attn === "zoom") filtered = filtered.filter(r => !!norm(r.dataset.sZoom));
   if (attn === "location") filtered = filtered.filter(r => !!norm(r.dataset.sMeetingLocation));
   if (attn === "waitingclient") filtered = filtered.filter(r => waitingOn(r, "WaitingOnClient"));
@@ -3566,7 +3692,7 @@ function computeFiltered(){
   if (attn === "attempts3") filtered = filtered.filter(r => attemptsThisWeek(r) >= 3);
   if (attn === "duplicates") filtered = filtered.filter(hasDuplicateWarning);
   if (attn === "docsopen") filtered = filtered.filter(docChecklistOpen);
-  if (attn === "rescue") filtered = filtered.filter(r => isOverdue(norm(r.dataset.crmNextDate)) || stageAgeDays(r) >= 10 || hasDuplicateWarning(r));
+  if (attn === "rescue") filtered = filtered.filter(r => isOverdue(queueDate(r)) || stageAgeDays(r) >= 10 || hasDuplicateWarning(r));
   if (attn === "appsinflight") filtered = filtered.filter(r => ["NeedsDocs", "PolicyPlaced"].includes(norm(r.dataset.crmPipeline)));
 
   return applySort(filtered);
@@ -3747,8 +3873,8 @@ function refreshKPIs(){
   const broken = sourceRows.filter(r => r.dataset.isguid !== "true").length;
   const needs = sourceRows.filter(needsAttention).length;
   const touched = sourceRows.filter(r => touchedWithinDays(r, 14)).length;
-  const overdue = sourceRows.filter(r => isOverdue(norm(r.dataset.crmNextDate))).length;
-  const today = sourceRows.filter(r => isToday(norm(r.dataset.crmNextDate))).length;
+  const overdue = sourceRows.filter(r => isOverdue(queueDate(r))).length;
+  const today = sourceRows.filter(r => isToday(queueDate(r))).length;
 
   $("#kTotal").textContent = total;
   $("#kBroken").textContent = broken;
@@ -3762,7 +3888,7 @@ function refreshKPIs(){
 }
 
 function queueDate(row){
-  return norm(row.dataset.crmNextDate);
+  return resolveLeadNextActionState(row).date;
 }
 
 function hasScheduledNextDate(row){
@@ -3770,8 +3896,10 @@ function hasScheduledNextDate(row){
 }
 
 function isCallsNowRow(row){
-  const qd = queueDate(row);
+  const nextAction = resolveLeadNextActionState(row);
+  const qd = nextAction.date;
   if (!qd) return false;
+  if (nextAction.source === "appointment") return false;
   return HIGH_PRIORITY_KEYS.has(priorityKey(row)) && (isToday(qd) || isOverdue(qd));
 }
 
@@ -3787,7 +3915,7 @@ function queueRowsLocal(type){
     const qd = queueDate(r);
     return hasScheduledNextDate(r) && isOverdue(qd) && !isCallsNowRow(r);
   });
-  if (type === "meetings") return sourceRows.filter(r => LEADS_MEETING_BUCKET_KEYS.has(pipelineKey(r)));
+  if (type === "meetings") return sourceRows.filter(r => LEADS_MEETING_BUCKET_KEYS.has(pipelineKey(r)) || hasScheduledAppointment(r));
   if (type === "waitingclient") return sourceRows.filter(r => waitingOn(r, "WaitingOnClient"));
   if (type === "waitingcarrier") return sourceRows.filter(r => waitingOn(r, "WaitingOnCarrier"));
   return [];
@@ -3826,6 +3954,10 @@ async function loadMyDaySnapshot(force = false){
 }
 
 function queueRows(type){
+  if (["callsnow", "today", "overdue", "meetings"].includes(type)){
+    return queueRowsLocal(type);
+  }
+
   const sourceRows = uniqueRows(rows);
   const ids = myDaySnapshot.idsByQueue?.[type];
   if (ids instanceof Set){
@@ -3865,21 +3997,21 @@ function refreshMyDay(){
     if (previewEl) previewEl.textContent = text;
   };
 
-  syncQueueCount("#qCallsNow", qCallsNowPreview, myDaySnapshot.counts?.callsnow ?? queueRows("callsnow").length);
-  syncQueueCount("#qDueToday", qDueTodayPreview, myDaySnapshot.counts?.today ?? queueRows("today").length);
-  syncQueueCount("#qOverdue", qOverduePreview, myDaySnapshot.counts?.overdue ?? queueRows("overdue").length);
-  syncQueueCount("#qMeetings", qMeetingsPreview, myDaySnapshot.counts?.meetings ?? queueRows("meetings").length);
-  syncQueueCount("#qWaitingClient", null, myDaySnapshot.counts?.waitingclient ?? queueRows("waitingclient").length);
-  syncQueueCount("#qWaitingCarrier", null, myDaySnapshot.counts?.waitingcarrier ?? queueRows("waitingcarrier").length);
+  syncQueueCount("#qCallsNow", qCallsNowPreview, queueRows("callsnow").length);
+  syncQueueCount("#qDueToday", qDueTodayPreview, queueRows("today").length);
+  syncQueueCount("#qOverdue", qOverduePreview, queueRows("overdue").length);
+  syncQueueCount("#qMeetings", qMeetingsPreview, queueRows("meetings").length);
+  syncQueueCount("#qWaitingClient", null, queueRows("waitingclient").length);
+  syncQueueCount("#qWaitingCarrier", null, queueRows("waitingcarrier").length);
   renderMyDayFocus();
 
   loadMyDaySnapshot().then(() => {
-    syncQueueCount("#qCallsNow", qCallsNowPreview, myDaySnapshot.counts?.callsnow ?? 0);
-    syncQueueCount("#qDueToday", qDueTodayPreview, myDaySnapshot.counts?.today ?? 0);
-    syncQueueCount("#qOverdue", qOverduePreview, myDaySnapshot.counts?.overdue ?? 0);
-    syncQueueCount("#qMeetings", qMeetingsPreview, myDaySnapshot.counts?.meetings ?? 0);
-    syncQueueCount("#qWaitingClient", null, myDaySnapshot.counts?.waitingclient ?? 0);
-    syncQueueCount("#qWaitingCarrier", null, myDaySnapshot.counts?.waitingcarrier ?? 0);
+    syncQueueCount("#qCallsNow", qCallsNowPreview, queueRows("callsnow").length);
+    syncQueueCount("#qDueToday", qDueTodayPreview, queueRows("today").length);
+    syncQueueCount("#qOverdue", qOverduePreview, queueRows("overdue").length);
+    syncQueueCount("#qMeetings", qMeetingsPreview, queueRows("meetings").length);
+    syncQueueCount("#qWaitingClient", null, queueRows("waitingclient").length);
+    syncQueueCount("#qWaitingCarrier", null, queueRows("waitingcarrier").length);
     renderMyDayFocus();
   }).catch(() => {});
 }
@@ -4092,6 +4224,7 @@ async function openDrawerForRow(row){
     const resolvedContactStatus = normalizeContactStatusValue(detail.contactStatus || row.dataset.crmContactStatus || row.dataset.sContactstatus || "NotSet");
     row.dataset.sContactstatus = resolvedContactStatus;
     row.dataset.crmContactStatus = resolvedContactStatus;
+    storeRowLatestAppointment(row, detail.latestAppointment || rowLatestAppointment(row));
     hydrateRow(row);
     dStatus.value = detail.crmStatus || row.dataset.crmStatus || "Active";
     dPipelineStage.value = normalizePipelineStageValue(detail.pipelineStage || row.dataset.crmPipeline, "MortgageProtection");
@@ -5549,9 +5682,10 @@ function renderLaneCards(rowsForStage){
     const originTone = norm(r.dataset.intakeOriginTone) || "manual";
     const productInterest = norm(r.dataset.intakeProductInterest) || pipelineLabel(leadType);
     const warning = leadWarningSummary(r);
-    const nextActionDate = norm(r.dataset.crmNextDate);
+    const nextAction = resolveLeadNextActionState(r);
+    const nextActionDate = nextAction.date;
     const operationalSummary = warning
-      || (nextActionDate ? `Next action ${nextActionDate}` : "")
+      || (nextActionDate ? `${nextAction.source === "appointment" ? nextAction.text : "Next action"} ${nextActionDate}` : "")
       || contactStatusLabel(r.dataset.crmContactStatus || r.dataset.sContactstatus || "NotSet");
     const paidAmount = Number(r.dataset.prodPaid || r.dataset.paid || 0);
     const issuedAmount = Number(r.dataset.prodIssued || 0);
@@ -5756,6 +5890,7 @@ async function saveQuickViewForRow(row, overrides, successMessage){
   row.dataset.btc = data.btc || row.dataset.btc || "";
   row.dataset.mortgageLender = data.mortgageLender || "";
   row.dataset.loanAmount = data.loanAmount || "";
+  storeRowLatestAppointment(row, data.latestAppointment || rowLatestAppointment(row));
   hydrateRow(row);
 
   if (liveSync){
@@ -6222,8 +6357,9 @@ function listDueItems(){
     const name = fullName(r) || "Client";
     const email = norm(r.dataset.email);
     const phone = norm(r.dataset.phone);
-    const nextDate = norm(r.dataset.crmNextDate);
-    const nextText = norm(r.dataset.crmNextText);
+    const nextAction = resolveLeadNextActionState(r);
+    const nextDate = nextAction.date;
+    const nextText = nextAction.text;
     const pri = norm(r.dataset.crmPriority) || "Normal";
 
     if (!nextDate && !nextText) return null;
@@ -6353,7 +6489,8 @@ document.addEventListener("click", (e) => {
   if (copyId){
     const row = rows.find(r => r.dataset.clientId === copyId);
     if (!row) return;
-    const line = `${fullName(row)}\nNext: ${norm(row.dataset.crmNextDate)} • ${norm(row.dataset.crmNextText)}\nEmail: ${norm(row.dataset.email)}\nPhone: ${norm(row.dataset.phone)}`.trim();
+    const nextAction = resolveLeadNextActionState(row);
+    const line = `${fullName(row)}\nNext: ${nextAction.date || ""} • ${nextAction.text || ""}\nEmail: ${norm(row.dataset.email)}\nPhone: ${norm(row.dataset.phone)}`.trim();
     copyText(line);
   }
 });
@@ -6379,8 +6516,9 @@ function checkReminders(){
 function maybeNotifyImmediateForDue(clientId){
   const row = rows.find(r => r.dataset.clientId === clientId);
   if (!row) return;
-  const nextDate = norm(row.dataset.crmNextDate);
-  const nextText = norm(row.dataset.crmNextText);
+  const nextAction = resolveLeadNextActionState(row);
+  const nextDate = nextAction.date;
+  const nextText = nextAction.text;
   if (!isToday(nextDate)) return;
   if (alreadyNotifiedToday(clientId)) return;
 
@@ -6560,7 +6698,9 @@ btnFilterOverdue?.addEventListener("click", () => {
   renderAll();
 });
 
-btnPipelineRefresh?.addEventListener("click", () => {
+btnPipelineRefresh?.addEventListener("click", async () => {
+  await ensureDialPeriodsFresh();
+  await loadMyDaySnapshot(true);
   renderAll();
   toast("Pipeline refreshed");
 });
@@ -6998,6 +7138,7 @@ async function createCalendarEventFromDrawer(){
   try{
     const data = await postJson("/calendar/create-event", payload);
     row.dataset.sLasttouch = data.crmLastTouch || todayISO();
+    storeRowLatestAppointment(row, data.latestAppointment || rowLatestAppointment(row));
     hydrateRow(row);
     activeClientDetail = {
       ...(activeClientDetail || {}),
@@ -7049,6 +7190,7 @@ async function saveLeadAppointmentStatus(){
       row.dataset.sAttemptsweek = String(data.attemptsThisWeek ?? row.dataset.sAttemptsweek ?? 0);
       row.dataset.sAttemptslife = String(data.attemptsLifetime ?? row.dataset.sAttemptslife ?? 0);
       row.dataset.crmNotes = data.agentNotes || data.crmNotes || row.dataset.crmNotes || "";
+      storeRowLatestAppointment(row, data.latestAppointment || rowLatestAppointment(row));
       hydrateRow(row);
     }
 
