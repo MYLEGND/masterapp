@@ -683,10 +683,9 @@ public sealed class MetaSignalIntelligenceService : IMetaSignalIntelligenceServi
                 score,
                 "QualifiedLead",
                 capiResult.Status,
-                AppendMetaServerPixelAudit(
-                    capiResult.Note,
-                    pixelContext.PixelId,
-                    pixelContext.PixelOwnerType))
+                capiResult.Note,
+                capiResult.PixelId ?? pixelContext.PixelId,
+                capiResult.PixelOwnerType ?? pixelContext.PixelOwnerType)
         };
 
         var duplicateQualifiedRow = await _db.MetaSignalEvents.AsNoTracking()
@@ -1139,7 +1138,15 @@ public sealed class MetaSignalIntelligenceService : IMetaSignalIntelligenceServi
         return root.ToJsonString(JsonSerializerOptions.Web);
     }
 
-    private static string BuildLeadMetadataJson(MetaSignalConfirmedLeadRequest request, ResolvedAttribution attribution, MetaSignalScoreResult score, string eventName, string metaServerStatus, string? metaServerNote)
+    private static string BuildLeadMetadataJson(
+        MetaSignalConfirmedLeadRequest request,
+        ResolvedAttribution attribution,
+        MetaSignalScoreResult score,
+        string eventName,
+        string metaServerStatus,
+        string? metaServerNote,
+        string? metaServerPixelId = null,
+        string? metaServerPixelOwnerType = null)
     {
         var root = ParseMetadataObject(request.Metadata);
         root["resolvedTrafficType"] = attribution.TrafficType;
@@ -1147,8 +1154,16 @@ public sealed class MetaSignalIntelligenceService : IMetaSignalIntelligenceServi
         root["serverScore"] = JsonSerializer.SerializeToNode(score with { ScoreTier = "SubmittedLead", TotalSignalScore = Math.Max(100, score.TotalSignalScore) }, JsonSerializerOptions.Web);
         root["metaSignalEventName"] = eventName;
         root["metaServerStatus"] = metaServerStatus;
+
         if (!string.IsNullOrWhiteSpace(metaServerNote))
             root["metaServerNote"] = metaServerNote;
+
+        if (!string.IsNullOrWhiteSpace(metaServerPixelId))
+            root["metaServerPixelId"] = metaServerPixelId;
+
+        if (!string.IsNullOrWhiteSpace(metaServerPixelOwnerType))
+            root["metaServerPixelOwnerType"] = metaServerPixelOwnerType;
+
         return root.ToJsonString(JsonSerializerOptions.Web);
     }
 

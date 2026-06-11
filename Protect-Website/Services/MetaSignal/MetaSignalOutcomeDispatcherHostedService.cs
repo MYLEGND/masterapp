@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Text.Json;
 using Domain.Entities;
 using Infrastructure.Data;
@@ -167,7 +168,8 @@ public sealed class MetaSignalOutcomeDispatcherHostedService : BackgroundService
         MetaSignalEvent row,
         WebsiteLead? websiteLead,
         ResolvedMetaPixelContext pixelContext)
-        => new()
+    {
+        var customData = new Dictionary<string, object?>
         {
             ["event_category"] = row.EventCategory,
             ["quote_type"] = row.QuoteType,
@@ -187,6 +189,49 @@ public sealed class MetaSignalOutcomeDispatcherHostedService : BackgroundService
             ["agent_slug"] = pixelContext.AgentSlug,
             ["pixel_owner_type"] = pixelContext.PixelOwnerType
         };
+
+        if (IsProductionValueEvent(row.EventName) &&
+            TryReadPositiveDecimal(row.MetadataJson, "personalAmount", out var personalAmount))
+        {
+            customData["value"] = decimal.Round(personalAmount, 2);
+            customData["currency"] = "USD";
+        }
+
+        return customData;
+    }
+
+    private static bool IsProductionValueEvent(string? eventName)
+        => string.Equals(eventName, "ApplicationSubmitted", StringComparison.OrdinalIgnoreCase) ||
+           string.Equals(eventName, "PolicyIssued", StringComparison.OrdinalIgnoreCase) ||
+           string.Equals(eventName, "PolicyPaid", StringComparison.OrdinalIgnoreCase);
+
+    private static bool TryReadPositiveDecimal(string? metadataJson, string propertyName, out decimal value)
+    {
+        value = 0;
+
+        if (string.IsNullOrWhiteSpace(metadataJson))
+            return false;
+
+        try
+        {
+            using var doc = JsonDocument.Parse(metadataJson);
+            if (!doc.RootElement.TryGetProperty(propertyName, out var element))
+                return false;
+
+            if (element.ValueKind == JsonValueKind.Number && element.TryGetDecimal(out value))
+                return value > 0;
+
+            if (element.ValueKind == JsonValueKind.String &&
+                decimal.TryParse(element.GetString(), NumberStyles.Number, CultureInfo.InvariantCulture, out value))
+                return value > 0;
+        }
+        catch
+        {
+            value = 0;
+        }
+
+        return false;
+    }
 
     private static string? BuildEventSourceUrl(WebsiteLead? websiteLead)
     {
