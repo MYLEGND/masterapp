@@ -311,6 +311,11 @@ public sealed class GraphCalendarWebhookController : ControllerBase
         appointment.UpdatedUtc = utcNow;
         appointment.ApplyStatus(isReschedule ? LeadAppointmentStatus.Rescheduled : LeadAppointmentStatus.Booked, utcNow);
 
+        if (!isReschedule)
+        {
+            await TryRecordAppointmentBookedMetaSignalAsync(appointment, utcNow, cancellationToken);
+        }
+
         syncLog.AppointmentId = appointment.Id;
         syncLog.WorkstationLeadId = appointment.WorkstationLeadId;
         syncLog.ClientProfileId = appointment.ClientProfileId;
@@ -319,6 +324,92 @@ public sealed class GraphCalendarWebhookController : ControllerBase
 
         _db.AppointmentSyncLogs.Add(syncLog);
         await _db.SaveChangesAsync(cancellationToken);
+    }
+
+    private async Task TryRecordAppointmentBookedMetaSignalAsync(
+        LeadAppointment appointment,
+        DateTime utcNow,
+        CancellationToken cancellationToken)
+    {
+        if (appointment.Id == Guid.Empty || string.IsNullOrWhiteSpace(appointment.WorkstationLeadId))
+            return;
+
+        if (!Guid.TryParse(appointment.WorkstationLeadId, out var workstationLeadGuid))
+            return;
+
+        var deduplicationKey = $"AppointmentBooked:{workstationLeadGuid:N}:{appointment.Id:N}";
+        var alreadyRecorded = await _db.MetaSignalEvents
+            .AsNoTracking()
+            .AnyAsync(x => x.EventName == "AppointmentBooked" && x.MetaDeduplicationKey == deduplicationKey, cancellationToken);
+
+        if (alreadyRecorded)
+            return;
+
+        var intakeLink = await _db.WebsiteLeadIntakeLinks
+            .AsNoTracking()
+            .Where(x =>
+                x.Id == appointment.WebsiteLeadIntakeLinkId ||
+                x.WorkstationLeadId == appointment.WorkstationLeadId)
+            .OrderByDescending(x => x.SubmittedUtc)
+            .ThenByDescending(x => x.CapturedUtc)
+            .FirstOrDefaultAsync(cancellationToken);
+
+        var metadataJson = JsonSerializer.Serialize(new
+        {
+            appointmentId = appointment.Id,
+            appointment.WorkstationLeadId,
+            appointment.OwnerAgentUserId,
+            appointment.CalendarEventId,
+            appointment.CalendarEventWebLink,
+            appointment.ScheduledStartUtc,
+            appointment.ScheduledEndUtc,
+            appointment.BookingSource,
+            appointment.ConfirmationSource,
+            appointment.LastSyncStatus,
+            source = "graph_calendar_webhook",
+            metaServerStatus = "pending"
+        }, JsonOptions);
+
+        _db.MetaSignalEvents.Add(new MetaSignalEvent
+        {
+            CreatedUtc = utcNow,
+            EventId = $"appointment_booked_{appointment.Id:N}",
+            EventName = "AppointmentBooked",
+            EventCategory = "conversion",
+            LeadId = workstationLeadGuid,
+            SessionId = intakeLink?.SessionId,
+            VisitorId = intakeLink?.VisitorId,
+            QuoteType = intakeLink?.InterestType ?? intakeLink?.ProductType ?? "crm",
+            PageKey = intakeLink?.SourcePageKey,
+            EffectivePageKey = intakeLink?.SourcePageKey,
+            PageVariant = intakeLink?.PageVariant,
+            PageMode = intakeLink?.PageMode,
+            TrafficType = "crm",
+            FunnelStep = 4,
+            StepName = "appointment_booked",
+            IntentScore = 120,
+            EngagementScore = 120,
+            QualificationScore = 120,
+            FrictionScore = 0,
+            TotalSignalScore = 120,
+            ScoreTier = "AppointmentBooked",
+            MetaBrowserSent = false,
+            MetaServerSent = false,
+            MetaDeduplicationKey = deduplicationKey,
+            UtmSource = intakeLink?.UtmSource,
+            UtmMedium = intakeLink?.UtmMedium,
+            UtmCampaign = intakeLink?.UtmCampaign,
+            UtmId = intakeLink?.UtmId,
+            UtmContent = intakeLink?.UtmContent,
+            FbclidPresent = !string.IsNullOrWhiteSpace(intakeLink?.Fbclid),
+            FbcPresent = false,
+            FbpPresent = false,
+            Referrer = intakeLink?.ReferrerUrl,
+            AgentSlug = null,
+            Environment = Environment.GetEnvironmentVariable("ASPNETCORE_ENVIRONMENT"),
+            Host = null,
+            MetadataJson = metadataJson
+        });
     }
 
     private async Task<GraphCalendarEvent?> TryFetchGraphEventAsync(

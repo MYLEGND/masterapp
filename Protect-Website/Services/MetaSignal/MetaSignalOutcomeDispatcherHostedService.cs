@@ -14,6 +14,7 @@ public sealed class MetaSignalOutcomeDispatcherHostedService : BackgroundService
     private static readonly TimeSpan PollInterval = TimeSpan.FromSeconds(30);
     private static readonly HashSet<string> DispatchableEvents = new(StringComparer.OrdinalIgnoreCase)
     {
+        "AppointmentBooked",
         "AppointmentCompleted",
         "ApplicationSubmitted",
         "PolicyIssued",
