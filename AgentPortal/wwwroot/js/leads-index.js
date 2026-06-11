@@ -5635,6 +5635,10 @@ function renderLaneCards(rowsForStage){
     const email = norm(r.dataset.email);
     const phone = norm(r.dataset.phone);
     const stage = norm(r.dataset.crmPipeline);
+    const appointment = rowLatestAppointment(r);
+    const appointmentStatus = appointment ? summarizeLeadAppointmentStatus(appointment) : "Not Set";
+    const appointmentStatusKey = (appointment?.status ? norm(appointment.status) : "NotSet").toLowerCase();
+    const appointmentTime = appointment ? summarizeLeadAppointmentTime(appointment) : "";
     const phoneDisplay = formatPhone(phone);
     const phoneDigits = phone.replace(/\D/g, "");
     const shortPhone = phoneDigits ? `···${phoneDigits.slice(-4)}` : "";
@@ -5658,6 +5662,14 @@ function renderLaneCards(rowsForStage){
             <h3 class="cc-name" data-open-card="${safeHtml(r.dataset.clientId)}">${safeHtml(displayName)}</h3>
             <div class="cc-sub cc-sub-primary">${phone ? `<a class="link link-phone" href="tel:${safeHtml(phone)}">${safeHtml(phoneDisplay)}</a>` : "No phone"}</div>
             <div class="cc-sub">${renderEmailLinkHtml(email)}</div>
+            <div class="pipeline-card-context">
+              <div class="pipeline-card-chips">
+                <span class="meta-chip pipeline-appointment-chip pipeline-appointment-chip-${safeHtml(appointmentStatusKey)}">Appointment: ${safeHtml(appointmentStatus)}</span>
+              </div>
+              ${appointmentTime && appointmentTime !== "No appointment scheduled"
+                ? `<div class="pipeline-card-warning">${safeHtml(appointmentTime)}</div>`
+                : ""}
+            </div>
           </div>
           ${prodBadge}
         </div>
@@ -5790,6 +5802,7 @@ async function saveQuickViewForRow(row, overrides, successMessage){
   row.dataset.sTags = resolvedTags || "";
   row.dataset.sNotes = resolvedAgentNotes || "";
   row.dataset.sPipeline = normalizePipelineStageValue(data.pipelineStage, "MortgageProtection");
+  row.dataset.sPipelineorder = String(data.pipelineOrder ?? row.dataset.sPipelineorder ?? 0);
   row.dataset.sMeetingLocation = data.meetingLocation || "";
   row.dataset.sZoom = data.zoomJoinUrl || "";
   row.dataset.sUsezoom = data.usePersonalZoomLink ? "true" : "false";

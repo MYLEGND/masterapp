@@ -3523,6 +3523,12 @@ meta.Activities ??= new List<ClientCrmActivity>();
         public string? MentionNote { get; set; }
     }
 
+    public sealed class ReorderRequest
+    {
+        public string? Bucket { get; set; }
+        public List<string> Ids { get; set; } = new();
+    }
+
     public sealed class GrantClientAccessRequest
     {
         public string ClientUserId { get; set; } = "";
@@ -4967,6 +4973,68 @@ meta.Activities ??= new List<ClientCrmActivity>();
             ok = true,
             payload = BuildQuickViewPayload(profile, meta, dialTimeZone, nowUtc, await LoadClientLatestAppointmentAsync(profile))
         });
+    }
+
+    [HttpPost]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> Reorder([FromBody] ReorderRequest request)
+    {
+        if (request?.Ids == null || request.Ids.Count == 0) return BadRequest("No ids provided");
+
+        var ids = request.Ids
+            .Select(NormLower)
+            .Where(x => !string.IsNullOrWhiteSpace(x))
+            .Distinct()
+            .ToList();
+
+        if (ids.Count == 0) return BadRequest("No ids provided");
+
+        string agentOid;
+        try { agentOid = GetAgentOidOrThrow(); }
+        catch { return Challenge(); }
+
+        var agentOidNorm = NormLower(agentOid);
+        var normalizedBucket = string.IsNullOrWhiteSpace(request.Bucket) ? null : NormalizePipelineStage(request.Bucket);
+        var ownedClientIds = await _db.AgentClients
+            .Where(x => x.AgentUserId != null
+                && x.ClientUserId != null
+                && x.AgentUserId.ToLower() == agentOidNorm
+                && ids.Contains(x.ClientUserId.ToLower()))
+            .Select(x => x.ClientUserId!)
+            .ToListAsync();
+
+        if (ownedClientIds.Count == 0)
+            return Json(new { ok = true, updated = 0 });
+
+        var profiles = await _db.ClientProfiles
+            .Where(x => x.ClientUserId != null && ownedClientIds.Contains(x.ClientUserId))
+            .ToListAsync();
+
+        var nowUtc = DateTime.UtcNow;
+        var profilesById = profiles
+            .Where(x => !string.IsNullOrWhiteSpace(x.ClientUserId))
+            .ToDictionary(x => x.ClientUserId!, StringComparer.OrdinalIgnoreCase);
+
+        for (int i = 0; i < ids.Count; i++)
+        {
+            if (!profilesById.TryGetValue(ids[i], out var profile))
+                continue;
+
+            var meta = EnsureMeta(ClientCrmMetaSerializer.Deserialize(profile.CrmNotes));
+            if (!string.IsNullOrWhiteSpace(normalizedBucket) &&
+                !string.Equals(meta.PipelineStage, normalizedBucket, StringComparison.Ordinal))
+            {
+                meta.PipelineStage = normalizedBucket;
+                meta.StageEnteredUtc = nowUtc;
+            }
+
+            meta.PipelineOrder = i;
+            profile.CrmNotes = ClientCrmMetaSerializer.Serialize(meta);
+            profile.UpdatedUtc = nowUtc;
+        }
+
+        await _db.SaveChangesAsync();
+        return Json(new { ok = true, updated = profiles.Count });
     }
 
     [HttpPost]

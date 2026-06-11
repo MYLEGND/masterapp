@@ -2254,8 +2254,10 @@ public class LeadsController : Controller
 
         var normalizedStage = NormalizePipelineStage(req.pipelineStage)
             ?? ResolveEffectivePipelineStage(lead, ResolveOriginalLeadType(lead.OriginalLeadType, lead.Bucket) ?? "Contacted");
-        if (!string.Equals(lead.Bucket, normalizedStage, StringComparison.OrdinalIgnoreCase))
+        var currentStage = ResolveEffectivePipelineStage(lead, ResolveOriginalLeadType(lead.OriginalLeadType, lead.Bucket) ?? "Contacted");
+        if (!string.Equals(currentStage, normalizedStage, StringComparison.OrdinalIgnoreCase))
             meta.StageEnteredUtc = DateTime.UtcNow;
+        lead.CrmStage = normalizedStage;
         lead.Bucket = normalizedStage;
 
         meta.CrmPriority = normalizedPriority;
@@ -2612,7 +2614,10 @@ public class LeadsController : Controller
             lead.CrmOrder = seed - i;
             PreserveOriginalLeadType(lead);
             if (normalizedBucket != null)
+            {
+                lead.CrmStage = normalizedBucket;
                 lead.Bucket = normalizedBucket;
+            }
             lead.AgentUserId = agentId;
             lead.UpdatedUtc = now;
         }

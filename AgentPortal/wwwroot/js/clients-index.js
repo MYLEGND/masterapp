@@ -11,6 +11,7 @@ const LS_NOTIF = "legend_crm_notif_v1";
 const LS_ZOOM  = "legend_agent_zoom_v1";
 const LS_VIEWS = "legend_saved_views_v1";
 const LS_PIPELINE_ORDER = "legend_pipeline_order_v1";
+const REORDER_URL = "/Clients/Reorder";
 const LS_PROD_DRAFT_CLIENT = "legend_prod_draft_client_v1";
 const LS_ADVANCED_MARKETS_DRAFTS = "legend_adv_markets_drafts_v1";
 const liveSync = window.liveSync;
@@ -1840,6 +1841,16 @@ let pipelineOrder = loadJSON(LS_PIPELINE_ORDER, {});
 function savePipelineOrder(db){
   pipelineOrder = db || {};
   saveJSON(LS_PIPELINE_ORDER, pipelineOrder);
+}
+
+async function persistOrder(stageKey, orderedIds){
+  if (!orderedIds || !orderedIds.length) return;
+  try{
+    await postJson(REORDER_URL, { bucket: stageKey, ids: orderedIds });
+    if (liveSync) liveSync.sendReorder(stageKey, orderedIds);
+  }catch(err){
+    console.error("Reorder persist failed", err);
+  }
 }
 
 function ensureStageOrder(stageKey, ids){
@@ -5377,6 +5388,7 @@ async function saveQuickViewForRow(row, overrides, successMessage){
   row.dataset.sRecordtype = data.recordType || row.dataset.sRecordtype || "";
   row.dataset.advancedMarketsEligible = ((data.advancedMarketsEligible ?? isAdvancedMarketsEligible(data.recordType || row.dataset.sRecordtype || "", row.dataset.advancedMarketsEligible)) ? "true" : "false");
   row.dataset.sPipeline = data.pipelineStage || "NewLead";
+  row.dataset.sPipelineorder = String(data.pipelineOrder ?? row.dataset.sPipelineorder ?? 0);
   row.dataset.sMeetingLocation = data.meetingLocation || "";
   row.dataset.sZoom = data.zoomJoinUrl || "";
   row.dataset.sUsezoom = data.usePersonalZoomLink ? "true" : "false";
@@ -5627,6 +5639,7 @@ pipelineBoard?.addEventListener("drop", async (e) => {
   savePipelineOrder(db);
 
   if (sourceStage === targetStage){
+    await persistOrder(targetStage, targetOrder);
     toast("Priority reordered");
     renderAll();
     return;
@@ -5634,6 +5647,8 @@ pipelineBoard?.addEventListener("drop", async (e) => {
 
   try{
     await saveQuickViewForRow(row, { pipelineStage: targetStage }, `Moved to ${pipelineLabel(targetStage)} ✔`);
+    await persistOrder(targetStage, targetOrder);
+    await persistOrder(sourceStage, sourceOrder);
     toast(`Moved to ${pipelineLabel(targetStage)}`);
   }catch(err){
     console.error(err);

@@ -2301,6 +2301,17 @@ body.legend-bootstrap-modal-open .modal-backdrop.legend-managed-backdrop{
         flex-wrap:wrap;
     }
 
+    .pipeline-scope-actions{
+        display:flex;
+        align-items:center;
+        gap:8px;
+        flex-wrap:wrap;
+    }
+
+    .pipeline-scope-btn{
+        white-space:nowrap;
+    }
+
     .pipeline-quick{
         display:flex;
         gap:8px;
@@ -2859,11 +2870,6 @@ body.legend-bootstrap-modal-open .modal-backdrop.legend-managed-backdrop{
         flex:0 0 auto;
         position:relative;
         z-index:5;
-    }
-
-    .pipeline-mode .crm-command-hub,
-    .pipeline-mode .crm-deck{
-        display:none !important;
     }
 
     .pipeline-mode .head{
@@ -4886,6 +4892,48 @@ button.note-self-cta[data-note-self-open]:focus-visible{
     color:#edf3ff;
 }
 
+.pipeline-board .pipeline-card-context .pipeline-appointment-chip{
+    font-weight:900;
+}
+
+.pipeline-board .pipeline-card-context .pipeline-appointment-chip-notset{
+    background:rgba(148,163,184,.16);
+    border-color:rgba(148,163,184,.3);
+    color:#e2e8f0;
+}
+
+.pipeline-board .pipeline-card-context .pipeline-appointment-chip-requested{
+    background:rgba(180,83,9,.18);
+    border-color:rgba(245,158,11,.34);
+    color:#fde68a;
+}
+
+.pipeline-board .pipeline-card-context .pipeline-appointment-chip-booked,
+.pipeline-board .pipeline-card-context .pipeline-appointment-chip-confirmed{
+    background:rgba(37,99,235,.18);
+    border-color:rgba(96,165,250,.34);
+    color:#dbeafe;
+}
+
+.pipeline-board .pipeline-card-context .pipeline-appointment-chip-rescheduled{
+    background:rgba(109,40,217,.18);
+    border-color:rgba(167,139,250,.34);
+    color:#ede9fe;
+}
+
+.pipeline-board .pipeline-card-context .pipeline-appointment-chip-completed{
+    background:rgba(21,128,61,.18);
+    border-color:rgba(74,222,128,.34);
+    color:#dcfce7;
+}
+
+.pipeline-board .pipeline-card-context .pipeline-appointment-chip-cancelled,
+.pipeline-board .pipeline-card-context .pipeline-appointment-chip-noshow{
+    background:rgba(153,27,27,.18);
+    border-color:rgba(248,113,113,.34);
+    color:#fee2e2;
+}
+
 .pipeline-card-warning{
     color:rgba(218,228,246,.72);
     font-size:.78rem;
@@ -5422,7 +5470,7 @@ button.note-self-cta[data-note-self-open]:focus-visible{
 .leads-crm .pipeline-interact,
 .clients-crm .pipeline-interact{
     display:grid;
-    grid-template-columns:minmax(260px, .6fr) minmax(320px, 1fr);
+    grid-template-columns:minmax(520px, 1.15fr) minmax(280px, .85fr);
     gap:10px;
     margin-top:10px;
 }
@@ -5440,8 +5488,13 @@ button.note-self-cta[data-note-self-open]:focus-visible{
 
 .leads-crm .pipeline-metrics,
 .clients-crm .pipeline-metrics{
+    display:flex;
+    align-items:center;
+    justify-content:space-between;
     gap:8px;
     min-height:36px;
+    flex-wrap:nowrap;
+    min-width:0;
 }
 
 .leads-crm .pipeline-focus-pill,
@@ -5467,7 +5520,37 @@ button.note-self-cta[data-note-self-open]:focus-visible{
 
 .leads-crm .pipeline-quick,
 .clients-crm .pipeline-quick{
+    justify-content:flex-end;
     gap:8px;
+}
+
+.leads-crm .pipeline-scope-actions,
+.clients-crm .pipeline-scope-actions{
+    margin-left:auto;
+    display:inline-flex;
+    align-items:center;
+    gap:8px;
+    flex-wrap:nowrap;
+    min-width:0;
+}
+
+.leads-crm .pipeline-scope-btn,
+.clients-crm .pipeline-scope-btn{
+    min-height:36px;
+    padding:7px 12px !important;
+    border-radius:14px !important;
+    border:1px solid rgba(166,191,235,.18) !important;
+    background:linear-gradient(180deg, rgba(31,56,104,.98), rgba(19,37,72,.98)) !important;
+    color:#ebf2ff !important;
+    box-shadow:0 10px 18px rgba(6,16,28,.18), inset 0 1px 0 rgba(255,255,255,.08) !important;
+    text-shadow:none !important;
+}
+
+.leads-crm .pipeline-scope-btn:hover,
+.clients-crm .pipeline-scope-btn:hover{
+    border-color:rgba(198,217,250,.3) !important;
+    filter:brightness(1.05);
+    transform:translateY(-1px);
 }
 
 .leads-crm .pipeline-quick .chip,
@@ -6053,6 +6136,20 @@ button.note-self-cta[data-note-self-open]:focus-visible{
     .leads-crm .pipeline-interact,
     .clients-crm .pipeline-interact{
         grid-template-columns:1fr;
+    }
+
+    .leads-crm .pipeline-metrics,
+    .clients-crm .pipeline-metrics{
+        flex-wrap:wrap;
+        justify-content:flex-start;
+    }
+
+    .leads-crm .pipeline-scope-actions,
+    .clients-crm .pipeline-scope-actions{
+        width:100%;
+        margin-left:0;
+        justify-content:flex-start;
+        flex-wrap:wrap;
     }
 
     .pipeline-nav-actions{
