@@ -275,6 +275,10 @@ public sealed class MetaConversionsApiService : IMetaConversionsApiService
         if (!string.IsNullOrWhiteSpace(fbc))
             userData["fbc"] = fbc;
 
+        var externalIdHash = HashSha256(NormalizeExternalId(request.LeadId));
+        if (!string.IsNullOrWhiteSpace(externalIdHash))
+            userData["external_id"] = new[] { externalIdHash };
+
         if (request.AllowHashedContactData)
         {
             var emailHash = HashSha256(NormalizeEmail(request.Email));
@@ -325,6 +329,14 @@ public sealed class MetaConversionsApiService : IMetaConversionsApiService
             return null;
 
         return $"fb.1.{new DateTimeOffset(eventUtc).ToUnixTimeMilliseconds()}.{fbclid.Trim()}";
+    }
+
+    private static string? NormalizeExternalId(Guid? leadId)
+    {
+        if (!leadId.HasValue || leadId.Value == Guid.Empty)
+            return null;
+
+        return leadId.Value.ToString("N").ToLowerInvariant();
     }
 
     private static string? NormalizeEmail(string? email)
