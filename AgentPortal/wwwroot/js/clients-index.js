@@ -5528,6 +5528,7 @@ pipelineBoard?.addEventListener("click", (e) => {
 
   const openId = e.target.closest("[data-open-card]")?.getAttribute("data-open-card");
   if (openId){
+    e.stopPropagation();
     const row = rows.find(r => r.dataset.clientId === openId);
     if (row) openDrawerForRow(row);
     return;

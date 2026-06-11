@@ -872,19 +872,6 @@ function formatCurrency(value){
   return num.toLocaleString("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 0 });
 }
 
-function formatCompactCurrency(value){
-  const num = Number(value) || 0;
-  if (Math.abs(num) >= 1000){
-    return new Intl.NumberFormat("en-US", {
-      style: "currency",
-      currency: "USD",
-      notation: "compact",
-      maximumFractionDigits: 1
-    }).format(num);
-  }
-  return formatCurrency(num);
-}
-
 async function sendTextForRow(row, templateKey){
   const phone = norm(row.dataset.phone);
   if (!phone) return toast("No phone for this lead");
@@ -1546,17 +1533,6 @@ function wireOpenHandlers(){
   });
 
   // Pipeline cards
-  $$("[data-open-card]").forEach(el => {
-    if (el.dataset.boundOpen) return;
-    el.dataset.boundOpen = "1";
-    el.addEventListener("click", (e) => {
-      e.preventDefault();
-      const id = el.getAttribute("data-open-card");
-      if (!id) return;
-      const row = rows.find(r => r.dataset.clientId === id);
-      if (row) openDrawerForRow(row);
-    });
-  });
 }
 
 function pipelineLabel(stage){
@@ -2988,23 +2964,6 @@ function renderPipelineProdBadge({ paid = 0, issued = 0, submitted = 0 } = {}){
   `;
 }
 
-function renderPipelineProdCompactBadge({ paid = 0, issued = 0, submitted = 0 } = {}){
-  const states = [
-    { label: "Submitted", shortLabel: "Sub", amount: Number(submitted || 0), className: "prod-line-submitted" },
-    { label: "Issued", shortLabel: "Iss", amount: Number(issued || 0), className: "prod-line-issued" },
-    { label: "Paid", shortLabel: "Paid", amount: Number(paid || 0), className: "prod-line-paid" }
-  ];
-  const activeStates = states.filter(state => state.amount > 0);
-  if (!activeStates.length) return "";
-
-  return activeStates.map(state => `
-    <span class="prod-mini-pill ${state.className}" title="${escapeHtml(state.label)} ${escapeHtml(formatCurrency(state.amount))}">
-      <span class="prod-mini-key">${escapeHtml(state.shortLabel)}</span>
-      <span class="prod-mini-val">${escapeHtml(formatCompactCurrency(state.amount))}</span>
-    </span>
-  `).join("");
-}
-
 function updatePipelineCardProduction(leadId){
   if (!leadId || !pipelineBoard) return;
   const card = pipelineBoard.querySelector(`[data-cardid="${CSS.escape(leadId)}"]`);
@@ -3016,7 +2975,7 @@ function updatePipelineCardProduction(leadId){
   const paid = Number(row.dataset.prodPaid || row.dataset.paid || 0);
   const issued = Number(row.dataset.prodIssued || 0);
   const submitted = Number(row.dataset.prodSubmitted || 0);
-  const html = renderPipelineProdCompactBadge({ paid, issued, submitted });
+  const html = renderPipelineProdBadge({ paid, issued, submitted });
   if (html){
     badge.innerHTML = html;
     badge.classList.remove("hidden");
@@ -5672,25 +5631,14 @@ function renderLaneCards(rowsForStage){
     const email = norm(r.dataset.email);
     const phone = norm(r.dataset.phone);
     const stage = norm(r.dataset.crmPipeline);
-    const leadType = rowOriginalLeadType(r) || stage;
     const phoneDisplay = formatPhone(phone);
     const phoneDigits = phone.replace(/\D/g, "");
     const shortPhone = phoneDigits ? `···${phoneDigits.slice(-4)}` : "";
     const displayName = name || (phone ? `Lead • ${shortPhone}` : `Lead • ${r.dataset.clientId.slice(0, 6)}`);
-    const callCount = norm(r.dataset.sAttemptslife || r.dataset.crmAttemptsLife || "0");
-    const originLabel = norm(r.dataset.intakeOrigin) || "Manual Lead";
-    const originTone = norm(r.dataset.intakeOriginTone) || "manual";
-    const productInterest = norm(r.dataset.intakeProductInterest) || pipelineLabel(leadType);
-    const warning = leadWarningSummary(r);
-    const nextAction = resolveLeadNextActionState(r);
-    const nextActionDate = nextAction.date;
-    const operationalSummary = warning
-      || (nextActionDate ? `${nextAction.source === "appointment" ? nextAction.text : "Next action"} ${nextActionDate}` : "")
-      || contactStatusLabel(r.dataset.crmContactStatus || r.dataset.sContactstatus || "NotSet");
     const paidAmount = Number(r.dataset.prodPaid || r.dataset.paid || 0);
     const issuedAmount = Number(r.dataset.prodIssued || 0);
     const submittedAmount = Number(r.dataset.prodSubmitted || 0);
-    const prodBadgeHtml = renderPipelineProdCompactBadge({
+    const prodBadgeHtml = renderPipelineProdBadge({
       paid: paidAmount,
       issued: issuedAmount,
       submitted: submittedAmount
@@ -5701,35 +5649,17 @@ function renderLaneCards(rowsForStage){
       <article class="client-card ${pipelineBadgeClass(stage)}"
                draggable="true"
                data-cardid="${safeHtml(r.dataset.clientId)}">
-        <div class="client-card-head pipeline-card-head-compact">
+        <div class="client-card-head">
           <div class="client-card-main">
-            <div class="pipeline-card-topline">
-              <h3 class="cc-name" data-open-card="${safeHtml(r.dataset.clientId)}">${safeHtml(displayName)}</h3>
-              <div class="pipeline-card-contact-rail">
-                <div class="pipeline-card-phone-wrap">
-                  ${phone ? `<a class="link link-phone pipeline-card-phone" href="tel:${safeHtml(phone)}" title="${safeHtml(phoneDisplay)}">${safeHtml(phoneDisplay)}</a>` : `<span class="pipeline-card-phone pipeline-card-phone-missing">No phone</span>`}
-                </div>
-                <div class="pipeline-card-email">${renderEmailLinkHtml(email)}</div>
-              </div>
-              <button type="button"
-                      class="btn btn-gold openCard pipeline-card-open"
-                      data-open-card="${safeHtml(r.dataset.clientId)}"
-                      title="Open Quick View">
-                Open
-              </button>
-            </div>
-            <div class="pipeline-card-midline">
-              <div class="pipeline-card-summary">
-                <span class="meta-chip lead-origin-chip lead-origin-${safeHtml(originTone)}">${safeHtml(originLabel)}</span>
-                <span class="meta-chip">${safeHtml(productInterest)}</span>
-              </div>
-              <div class="pipeline-card-kpis">
-                <span class="pill pipeline-card-attempts">${safeHtml(callCount)} calls</span>
-                ${prodBadge}
-              </div>
-            </div>
-            <div class="pipeline-card-plan${warning ? " is-active" : ""}">${safeHtml(operationalSummary)}</div>
+            <h3 class="cc-name" data-open-card="${safeHtml(r.dataset.clientId)}">${safeHtml(displayName)}</h3>
+            <div class="cc-sub cc-sub-primary">${phone ? `<a class="link link-phone" href="tel:${safeHtml(phone)}">${safeHtml(phoneDisplay)}</a>` : "No phone"}</div>
+            <div class="cc-sub">${renderEmailLinkHtml(email)}</div>
           </div>
+          ${prodBadge}
+        </div>
+        <div class="client-card-actions actions pipeline-card-actions-row">
+          ${phone ? `<a class="btn btn-ghost" href="tel:${safeHtml(phone)}">Call</a>` : ""}
+          ${phone ? `<a class="btn btn-ghost" href="sms:${safeHtml(phone)}">Text</a>` : ""}
         </div>
       </article>
     `;
@@ -6042,6 +5972,7 @@ pipelineBoard?.addEventListener("click", (e) => {
 
   const openId = e.target.closest("[data-open-card]")?.getAttribute("data-open-card");
   if (openId){
+    e.stopPropagation();
     const row = rows.find(r => r.dataset.clientId === openId);
     if (row) openDrawerForRow(row);
     return;
