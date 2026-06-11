@@ -4914,49 +4914,49 @@ button.note-self-cta[data-note-self-open]:focus-visible{
     gap:6px;
 }
 
-.pipeline-board .pipeline-card-context .meta-chip{
+.pipeline-board .pipeline-card-footer .meta-chip{
     background:rgba(232,239,255,.09);
     border-color:rgba(171,194,237,.18);
     color:#edf3ff;
 }
 
-.pipeline-board .pipeline-card-context .pipeline-appointment-chip{
+.pipeline-board .pipeline-card-footer .pipeline-appointment-chip{
     font-weight:900;
 }
 
-.pipeline-board .pipeline-card-context .pipeline-appointment-chip-notset{
+.pipeline-board .pipeline-card-footer .pipeline-appointment-chip-notset{
     background:rgba(148,163,184,.16);
     border-color:rgba(148,163,184,.3);
     color:#e2e8f0;
 }
 
-.pipeline-board .pipeline-card-context .pipeline-appointment-chip-requested{
+.pipeline-board .pipeline-card-footer .pipeline-appointment-chip-requested{
     background:rgba(180,83,9,.18);
     border-color:rgba(245,158,11,.34);
     color:#fde68a;
 }
 
-.pipeline-board .pipeline-card-context .pipeline-appointment-chip-booked,
-.pipeline-board .pipeline-card-context .pipeline-appointment-chip-confirmed{
+.pipeline-board .pipeline-card-footer .pipeline-appointment-chip-booked,
+.pipeline-board .pipeline-card-footer .pipeline-appointment-chip-confirmed{
     background:rgba(37,99,235,.18);
     border-color:rgba(96,165,250,.34);
     color:#dbeafe;
 }
 
-.pipeline-board .pipeline-card-context .pipeline-appointment-chip-rescheduled{
+.pipeline-board .pipeline-card-footer .pipeline-appointment-chip-rescheduled{
     background:rgba(109,40,217,.18);
     border-color:rgba(167,139,250,.34);
     color:#ede9fe;
 }
 
-.pipeline-board .pipeline-card-context .pipeline-appointment-chip-completed{
+.pipeline-board .pipeline-card-footer .pipeline-appointment-chip-completed{
     background:rgba(21,128,61,.18);
     border-color:rgba(74,222,128,.34);
     color:#dcfce7;
 }
 
-.pipeline-board .pipeline-card-context .pipeline-appointment-chip-cancelled,
-.pipeline-board .pipeline-card-context .pipeline-appointment-chip-noshow{
+.pipeline-board .pipeline-card-footer .pipeline-appointment-chip-cancelled,
+.pipeline-board .pipeline-card-footer .pipeline-appointment-chip-noshow{
     background:rgba(153,27,27,.18);
     border-color:rgba(248,113,113,.34);
     color:#fee2e2;
