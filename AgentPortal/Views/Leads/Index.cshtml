@@ -51,7 +51,7 @@
 
 <link rel="stylesheet" href="~/css/clients-index.css" asp-append-version="true" />
 
-<div class="wrap density-comfort leads-crm" id="legendWrap">
+<div class="wrap density-comfort leads-crm pipeline-mode" id="legendWrap">
 
 <form id="__af" method="post" style="display:none;">
     @Html.AntiForgeryToken()
@@ -64,7 +64,7 @@
     bool personalActive = personalRevenueAmount != 0 || personalRevenueCount != 0;
 }
 
-<section class="crm-command-hub crm-command-hub-leads">
+<section class="crm-command-hub crm-command-hub-leads" hidden aria-hidden="true">
     <div class="crm-command-hub-top">
         <div class="crm-command-hub-copy">
             <h2 class="title">Leads</h2>
@@ -287,7 +287,7 @@
     <div class="flash">@TempData["Created"]</div>
 }
 
-<section class="crm-deck">
+<section class="crm-deck" hidden aria-hidden="true">
     <article class="crm-card navy-shell">
         <div class="crm-card-head">
             <div>
@@ -629,7 +629,6 @@ var sCity = (c.City ?? "").Trim();
                                 }
                             </div>
                             <span class="name open-drawer" title="Quick View">@c.FirstName @c.LastName</span>
-window.setCurrentClient({ ownerAgentUserId: c.ownerAgentUserId });
                             <span class="muted@(isFakeEmail ? " crm-email-fake" : "")" data-email-summary="true">@c.Email</span>
                             @if (!string.IsNullOrWhiteSpace(dialPhone))
                             {
@@ -760,7 +759,6 @@ window.setCurrentClient({ ownerAgentUserId: c.ownerAgentUserId });
 
                     <td class="actions" data-label="Actions" data-col="actions">
                         <button type="button" class="btn btn-quickview open-drawer">Quick View</button>
-window.setCurrentClient({ ownerAgentUserId: c.ownerAgentUserId });
                         <button type="button" class="btn btn-ghost lead-work-btn" data-work-lead="@c.ClientUserId">Work Lead</button>
                         <button type="button" class="btn btn-confirm add-production-btn" data-lead-id="@c.ClientUserId" data-lead-name="@($"{c.FirstName} {c.LastName}")">Add Production</button>
                     </td>

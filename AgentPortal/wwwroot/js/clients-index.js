@@ -6882,7 +6882,3 @@ document.addEventListener("click", function(e) {
         }
     }
 });
-
-window.setCurrentClient = function(client) {
-    window.currentClient = client;
-};

@@ -1600,6 +1600,10 @@ const viewMode = $("#viewMode");
 const density = $("#density");
 const PIPELINE_ONLY_VIEW = "pipeline";
 
+function setPipelineOnlyViewMode(){
+  if (viewMode) viewMode.value = PIPELINE_ONLY_VIEW;
+}
+
 function getDensityValue(){
   return density?.value === "compact" ? "compact" : "comfort";
 }
@@ -3795,7 +3799,7 @@ function applyPreset(name){
 }
 
 function applyViewMode(){
-  if (viewMode) viewMode.value = PIPELINE_ONLY_VIEW;
+  setPipelineOnlyViewMode();
 
   legendWrap?.classList.add("pipeline-mode");
   legendWrap?.classList.remove("table-mode", "hybrid-mode");
@@ -3816,7 +3820,7 @@ density?.addEventListener("change", () => {
 });
 
 viewMode?.addEventListener("change", () => {
-  viewMode.value = PIPELINE_ONLY_VIEW;
+  setPipelineOnlyViewMode();
   saveJSON(LS_PREFS, { ...loadJSON(LS_PREFS, {}), view: PIPELINE_ONLY_VIEW });
   applyViewMode();
   renderAll();
@@ -4018,7 +4022,7 @@ function applySavedView(index){
   stageFilter.value = view.stage || "";
   attentionFilter.value = view.attention || "";
   sortBy.value = view.sort || "name_asc";
-  viewMode.value = PIPELINE_ONLY_VIEW;
+  setPipelineOnlyViewMode();
   applyViewMode();
   currentPage = 1;
   renderAll();
@@ -6473,7 +6477,10 @@ function runCommand(text){
   else if (t.includes("copy")) btnCopyEmails?.click();
   else if (t.includes("reminders")) openRemindersModal();
   else if (t.includes("enable reminders")) enableReminders();
-  else if (t.includes("view pipeline") || t.includes("view cards")) { viewMode.value = PIPELINE_ONLY_VIEW; viewMode.dispatchEvent(new Event("change")); }
+  else if (t.includes("view pipeline") || t.includes("view cards")) {
+    setPipelineOnlyViewMode();
+    viewMode?.dispatchEvent(new Event("change"));
+  }
   else if (t.includes("view table") || t.includes("view hybrid")) { toast("Pipeline CRM is the only available view."); }
   else if (t.includes("filter overdue")) { attentionFilter.value = "overdue"; attentionFilter.dispatchEvent(new Event("change")); }
   else if (t.includes("filter needs")) { attentionFilter.value = "needs"; attentionFilter.dispatchEvent(new Event("change")); }
@@ -7146,8 +7153,8 @@ btnSaveAppointmentStatus?.addEventListener("click", saveLeadAppointmentStatus);
 /* ========= Prefs Restore ========= */
 (function restorePrefs(){
   const prefs = loadJSON(LS_PREFS, {});
-  viewMode.value = PIPELINE_ONLY_VIEW;
-  if (prefs.density) density.value = prefs.density;
+  setPipelineOnlyViewMode();
+  if (density && prefs.density) density.value = prefs.density;
   applyViewMode();
   applyDensityClass();
 })();

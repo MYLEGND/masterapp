@@ -2861,7 +2861,7 @@ body.legend-bootstrap-modal-open .modal-backdrop.legend-managed-backdrop{
         z-index:5;
     }
 
-    .pipeline-mode .kpis,
+    .pipeline-mode .crm-command-hub,
     .pipeline-mode .crm-deck{
         display:none !important;
     }
