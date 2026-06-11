@@ -2374,6 +2374,25 @@ function summarizeLeadAppointmentTime(snapshot){
   return snapshot ? formatAppointmentDateTimeRange(snapshot) : "No appointment scheduled";
 }
 
+function renderProductionSummaryHtml(counts){
+  const summaryCounts = counts && typeof counts === "object" ? counts : {};
+  const items = [
+    summaryCounts.Submitted
+      ? `<span class="ph-summary-chip submitted"><strong>${safeHtml(summaryCounts.Submitted)}</strong><span>Submitted</span></span>`
+      : "",
+    summaryCounts.Issued
+      ? `<span class="ph-summary-chip issued"><strong>${safeHtml(summaryCounts.Issued)}</strong><span>Issued</span></span>`
+      : "",
+    summaryCounts.Paid
+      ? `<span class="ph-summary-chip paid"><strong>${safeHtml(summaryCounts.Paid)}</strong><span>Paid</span></span>`
+      : ""
+  ].filter(Boolean);
+
+  return items.length
+    ? items.join("")
+    : '<span class="ph-summary-chip empty">No production yet</span>';
+}
+
 function summarizeLeadAppointmentSource(snapshot){
   return snapshot?.bookingSourceLabel || humanizeAppointmentSource(snapshot?.bookingSource);
 }
@@ -4329,22 +4348,13 @@ async function loadProductionHistory(leadId){
     setLeadProductionById(leadId, latest?.status || "", latest?.amount || 0, totals);
     // --- Production summary logic ---
     if (summary) {
-      if (!data || !data.length) {
-        summary.textContent = "No production";
-      } else {
-        // Count by status
-        const counts = { Submitted: 0, Issued: 0, Paid: 0 };
-        data.forEach(item => {
-          if (item.status === "Submitted") counts.Submitted++;
-          if (item.status === "Issued") counts.Issued++;
-          if (item.status === "Paid") counts.Paid++;
-        });
-        const parts = [];
-        if (counts.Submitted) parts.push(`${counts.Submitted} Submitted`);
-        if (counts.Issued) parts.push(`${counts.Issued} Issued`);
-        if (counts.Paid) parts.push(`${counts.Paid} Paid`);
-        summary.textContent = parts.length ? parts.join(" • ") : "No production";
-      }
+      const counts = { Submitted: 0, Issued: 0, Paid: 0 };
+      (data || []).forEach(item => {
+        if (item.status === "Submitted") counts.Submitted++;
+        if (item.status === "Issued") counts.Issued++;
+        if (item.status === "Paid") counts.Paid++;
+      });
+      summary.innerHTML = renderProductionSummaryHtml(counts);
     }
     if (!data || !data.length){
       list.innerHTML = '<div class="ph-empty muted">No production yet.</div>';
@@ -5698,6 +5708,12 @@ function renderLaneCards(rowsForStage){
       submitted: submittedAmount
     });
     const prodBadge = `<div class="lead-prod-badge ${prodBadgeHtml ? "" : "hidden"}" data-prod-card data-card-prod="${safeHtml(r.dataset.clientId)}">${prodBadgeHtml}</div>`;
+    const phoneActions = phone
+      ? `
+          <a class="btn btn-ghost" href="tel:${safeHtml(phone)}">Call</a>
+          <a class="btn btn-ghost" href="sms:${safeHtml(phone)}">Text</a>
+        `
+      : "";
 
     return `
       <article class="client-card ${pipelineBadgeClass(stage)}"
@@ -5708,20 +5724,21 @@ function renderLaneCards(rowsForStage){
             <h3 class="cc-name" data-open-card="${safeHtml(r.dataset.clientId)}">${safeHtml(displayName)}</h3>
             <div class="cc-sub cc-sub-primary">${phone ? `<a class="link link-phone" href="tel:${safeHtml(phone)}">${safeHtml(phoneDisplay)}</a>` : "No phone"}</div>
             <div class="cc-sub">${renderEmailLinkHtml(email)}</div>
-            <div class="pipeline-card-context">
-              <div class="pipeline-card-chips">
-                <span class="meta-chip pipeline-appointment-chip pipeline-appointment-chip-${safeHtml(appointmentStatusKey)}">Appointment: ${safeHtml(appointmentStatus)}</span>
-              </div>
-              ${appointmentTime && appointmentTime !== "No appointment scheduled"
-                ? `<div class="pipeline-card-warning">${safeHtml(appointmentTime)}</div>`
-                : ""}
-            </div>
           </div>
           ${prodBadge}
         </div>
-        <div class="client-card-actions actions pipeline-card-actions-row">
-          ${phone ? `<a class="btn btn-ghost" href="tel:${safeHtml(phone)}">Call</a>` : ""}
-          ${phone ? `<a class="btn btn-ghost" href="sms:${safeHtml(phone)}">Text</a>` : ""}
+        <div class="pipeline-card-footer">
+          ${phoneActions
+            ? `<div class="client-card-actions actions pipeline-card-actions-row">${phoneActions}</div>`
+            : ""}
+          <div class="pipeline-card-context pipeline-card-footer-context">
+            <div class="pipeline-card-chips">
+              <span class="meta-chip pipeline-appointment-chip pipeline-appointment-chip-${safeHtml(appointmentStatusKey)}">Appointment: ${safeHtml(appointmentStatus)}</span>
+            </div>
+            ${appointmentTime && appointmentTime !== "No appointment scheduled"
+              ? `<div class="pipeline-card-warning">${safeHtml(appointmentTime)}</div>`
+              : ""}
+          </div>
         </div>
       </article>
     `;

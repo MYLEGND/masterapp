@@ -5333,6 +5333,12 @@ function renderLaneCards(rowsForStage){
       submitted: submittedAmount
     });
     const prodBadge = `<div class="lead-prod-badge ${prodBadgeHtml ? "" : "hidden"}" data-prod-card data-card-prod="${safeHtml(r.dataset.clientId)}">${prodBadgeHtml}</div>`;
+    const phoneActions = phone
+      ? `
+          <a class="btn btn-ghost" href="tel:${safeHtml(phone)}">Call</a>
+          <a class="btn btn-ghost" href="sms:${safeHtml(phone)}">Text</a>
+        `
+      : "";
 
     return `
       <article class="client-card ${pipelineBadgeClass(stage)}"
@@ -5346,16 +5352,9 @@ function renderLaneCards(rowsForStage){
           </div>
           ${prodBadge}
         </div>
-        <div class="client-card-actions actions pipeline-card-actions-row">
-          ${phone ? `<a class="btn btn-ghost" href="tel:${safeHtml(phone)}">Call</a>` : ""}
-          ${phone ? `<a class="btn btn-ghost" href="sms:${safeHtml(phone)}">Text</a>` : ""}
-          <button type="button"
-                  class="btn btn-gold openCard pipeline-card-open"
-                  data-open-card="${safeHtml(r.dataset.clientId)}"
-                  title="Open Quick View">
-            Quick View
-          </button>
-        </div>
+        ${phoneActions
+          ? `<div class="client-card-actions actions pipeline-card-actions-row">${phoneActions}</div>`
+          : ""}
       </article>
     `;
   }).join("");
