@@ -1063,3 +1063,15 @@
     font-weight:950;
 }
 
+
+/* Selected status text emphasis */
+.qv-booking-status[data-state="selected"]{
+    gap:4px;
+    white-space:normal;
+}
+
+.qv-status-highlight{
+    color:#f6c343;
+    font-weight:950;
+}
+

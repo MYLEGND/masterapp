@@ -494,7 +494,10 @@
             while (cursor.getTime() + durationMinutes * 60000 <= end.getTime()) {
                 const candidate = new Date(cursor);
                 const timeValue = toTimeValue(candidate);
-                if (!isOptimisticallyBookedSlot(selectedDateValue, timeValue)) {
+                const now = new Date();
+                const isPastCandidate = candidate.getTime() <= now.getTime();
+
+                if (!isPastCandidate && !isOptimisticallyBookedSlot(selectedDateValue, timeValue)) {
                     generated.push(candidate);
                 }
                 cursor = new Date(cursor.getTime() + (slotIntervalMinutes || 30) * 60000);
@@ -528,7 +531,7 @@
 
                 container.querySelectorAll(".qv-slot-btn").forEach((item) => item.classList.remove("selected"));
                 button.classList.add("selected");
-                setStatus(`Selected <strong>${button.textContent}</strong> on <strong>${dateLabel}</strong>.`, "selected");
+                setStatus(`Selected <span class="qv-status-highlight">${button.textContent}</span> on <span class="qv-status-highlight">${dateLabel}</span>.`, "selected");
             });
 
             if (button.dataset.time === requestedSelection) {
@@ -547,7 +550,7 @@
                 const selectedButton = Array.from(container.querySelectorAll(".qv-slot-btn"))
                     .find((button) => button.dataset.time === restoredSelection);
                 if (selectedButton) {
-                    setStatus(`Selected <strong>${selectedButton.textContent}</strong> on <strong>${dateLabel}</strong>.`, "selected");
+                    setStatus(`Selected <span class="qv-status-highlight">${selectedButton.textContent}</span> on <span class="qv-status-highlight">${dateLabel}</span>.`, "selected");
                 }
             }
             return;
