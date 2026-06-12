@@ -7138,7 +7138,8 @@ async function refreshCalendarBusyPanel(){
 }
 
 async function createCalendarEventFromDrawer(){
-  if (!activeClientId){
+  const leadId = activeClientId || document.getElementById("prodLeadId")?.value || "";
+  if (!leadId){
     toast("Open a lead first.");
     return false;
   }
@@ -7149,7 +7150,12 @@ async function createCalendarEventFromDrawer(){
     return false;
   }
 
-  const row = rows.find(r => r.dataset.clientId === activeClientId);
+  const row = rows.find(r =>
+    r.dataset.clientId === leadId ||
+    r.dataset.leadId === leadId ||
+    r.dataset.id === leadId ||
+    r.getAttribute("data-lead-id") === leadId
+  );
   if (!row){
     toast("Lead not found.");
     return false;
@@ -7170,7 +7176,7 @@ async function createCalendarEventFromDrawer(){
   const { startISO, endISO } = defaultEventTimes(nextDate);
 
   const payload = {
-    clientUserId: activeClientId,
+    clientUserId: leadId,
     subject: `Client Follow-up: ${fullName(row)}`,
     startISO,
     endISO,
