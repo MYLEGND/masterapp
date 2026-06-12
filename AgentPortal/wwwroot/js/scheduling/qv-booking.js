@@ -1,5 +1,6 @@
 (() => {
     let selectedSlotTime = "";
+    const calendarState = { visibleMonth: null };
 
     const $ = (id) => document.getElementById(id);
     const LegendModalApi = window.LegendModal || {};
@@ -26,41 +27,69 @@
         return window.bootstrap.Modal.getOrCreateInstance(modalEl);
     }
 
-    function syncBookingContext() {
-        const name = ($("dName")?.textContent || "").trim() || "Current contact";
-        const email = ($("dEmail")?.textContent || "").trim().replace(/^[-—]\s*$/, "");
-        const phone = ($("dPhone")?.textContent || "").trim().replace(/^[-—]\s*$/, "");
-        const recordLabel = $("qvBookingClientLabel");
-        const recordSub = $("qvBookingClientSub");
-
-        if (recordLabel) recordLabel.textContent = name;
-        if (recordSub) {
-            const parts = [email, phone].filter(Boolean);
-            recordSub.textContent = parts.length
-                ? parts.join(" • ")
-                : "Pick a date, choose a free slot, and create the appointment without leaving Quick View.";
-        }
-
-        const dateInput = $("qvBookDate");
-        const durationInput = $("qvBookDuration");
-        const nextDate = $("dNextDate")?.value || "";
-        const meetingDuration = $("dMeetingDuration")?.value || "";
-
-        if (dateInput && !dateInput.value && nextDate) {
-            dateInput.value = nextDate;
-        }
-        if (durationInput && meetingDuration) {
-            durationInput.value = meetingDuration;
-        }
+    function todayLocal() {
+        const today = new Date();
+        return new Date(today.getFullYear(), today.getMonth(), today.getDate());
     }
 
-    function openBookingModal() {
-        closeLegacyOverlayModals();
-        reconcileBootstrapModalState();
-        syncBookingContext();
-        const modal = bookingModalInstance();
-        if (!modal) return;
-        modal.show();
+    function startOfMonth(date) {
+        return new Date(date.getFullYear(), date.getMonth(), 1);
+    }
+
+    function addMonths(date, amount) {
+        return new Date(date.getFullYear(), date.getMonth() + amount, 1);
+    }
+
+    function parseDateInputValue(value) {
+        if (!value || typeof value !== "string") return null;
+        const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value.trim());
+        if (!match) return null;
+
+        const year = Number(match[1]);
+        const month = Number(match[2]) - 1;
+        const day = Number(match[3]);
+        const date = new Date(year, month, day);
+
+        if (Number.isNaN(date.getTime())) return null;
+        if (date.getFullYear() !== year || date.getMonth() !== month || date.getDate() !== day) return null;
+        return date;
+    }
+
+    function formatDateInputValue(date) {
+        const year = date.getFullYear();
+        const month = String(date.getMonth() + 1).padStart(2, "0");
+        const day = String(date.getDate()).padStart(2, "0");
+        return `${year}-${month}-${day}`;
+    }
+
+    function isSameDate(a, b) {
+        return a.getFullYear() === b.getFullYear()
+            && a.getMonth() === b.getMonth()
+            && a.getDate() === b.getDate();
+    }
+
+    function isBeforeDate(a, b) {
+        return a.getTime() < b.getTime();
+    }
+
+    function formatHumanDate(date) {
+        return date.toLocaleDateString([], {
+            weekday: "long",
+            month: "long",
+            day: "numeric"
+        });
+    }
+
+    function formatHumanMonth(date) {
+        return date.toLocaleDateString([], {
+            month: "long",
+            year: "numeric"
+        });
+    }
+
+    function formatDurationLabel(durationMinutes) {
+        const duration = parseInt(durationMinutes || "30", 10) || 30;
+        return duration === 60 ? "60 min meeting" : `${duration} min meeting`;
     }
 
     function formatSlotLabel(date) {
@@ -69,8 +98,8 @@
 
     function parseSlotDate(value) {
         if (!value) return null;
-        const d = new Date(value);
-        return Number.isNaN(d.getTime()) ? null : d;
+        const date = new Date(value);
+        return Number.isNaN(date.getTime()) ? null : date;
     }
 
     function getSlotStart(slot) {
@@ -87,11 +116,83 @@
 
     function setStatus(message, tone = "") {
         const status = $("qvBookStatus");
-        if (status) {
-            status.innerText = message || "";
-            if (tone) status.dataset.state = tone;
-            else status.removeAttribute("data-state");
+        if (!status) return;
+
+        status.innerText = message || "";
+        if (tone) status.dataset.state = tone;
+        else status.removeAttribute("data-state");
+    }
+
+    function updateSelectionSummary() {
+        const selectedDate = parseDateInputValue($("qvBookDate")?.value || "");
+        const duration = $("qvBookDuration")?.value || "30";
+        const selectedDateLabel = $("qvBookingSelectedDateLabel");
+        const selectedMeta = $("qvBookingSelectedMeta");
+        const slotFocus = $("qvBookingSlotFocus");
+        const slotNote = $("qvBookingSlotNote");
+
+        if (!selectedDate) {
+            if (selectedDateLabel) selectedDateLabel.textContent = "Choose a date";
+            if (selectedMeta) selectedMeta.textContent = "Available times will update as soon as you switch dates or duration.";
+            if (slotFocus) slotFocus.textContent = "Pick a date";
+            if (slotNote) slotNote.textContent = "Open Outlook slots for the selected day appear here automatically.";
+            return;
         }
+
+        const humanDate = formatHumanDate(selectedDate);
+        if (selectedDateLabel) selectedDateLabel.textContent = humanDate;
+        if (selectedMeta) selectedMeta.textContent = `${formatDurationLabel(duration)}. Pick any open slot on the right to lock in the appointment.`;
+        if (slotFocus) slotFocus.textContent = humanDate;
+        if (slotNote) slotNote.textContent = `Open Outlook slots for ${humanDate} appear here automatically.`;
+    }
+
+    function setSelectedDate(valueOrDate) {
+        const date = valueOrDate instanceof Date
+            ? new Date(valueOrDate.getFullYear(), valueOrDate.getMonth(), valueOrDate.getDate())
+            : parseDateInputValue(valueOrDate);
+        const dateInput = $("qvBookDate");
+        if (!date || !dateInput) return false;
+
+        dateInput.value = formatDateInputValue(date);
+        calendarState.visibleMonth = startOfMonth(date);
+        updateSelectionSummary();
+        renderCalendar();
+        return true;
+    }
+
+    function syncBookingContext() {
+        const name = ($("dName")?.textContent || "").trim() || "Current contact";
+        const email = ($("dEmail")?.textContent || "").trim().replace(/^[-—]\s*$/, "");
+        const phone = ($("dPhone")?.textContent || "").trim().replace(/^[-—]\s*$/, "");
+        const recordLabel = $("qvBookingClientLabel");
+        const recordSub = $("qvBookingClientSub");
+
+        if (recordLabel) recordLabel.textContent = name;
+        if (recordSub) {
+            const parts = [email, phone].filter(Boolean);
+            recordSub.textContent = parts.length
+                ? parts.join(" • ")
+                : "Pick a date, choose a free slot, and create the appointment without leaving Quick View.";
+        }
+
+        const durationInput = $("qvBookDuration");
+        const meetingDuration = $("dMeetingDuration")?.value || "";
+        if (durationInput && meetingDuration) {
+            durationInput.value = meetingDuration;
+        }
+    }
+
+    function ensureDefaultBookingDate() {
+        const dateInput = $("qvBookDate");
+        if (!dateInput) return null;
+
+        const nextDate = $("dNextDate")?.value || "";
+        const existing = parseDateInputValue(dateInput.value || nextDate);
+        const today = todayLocal();
+        const resolved = existing && !isBeforeDate(existing, today) ? existing : today;
+
+        setSelectedDate(resolved);
+        return resolved;
     }
 
     function clearSlots(message, tone = "") {
@@ -101,24 +202,79 @@
                 ? `<span class="qv-slot-empty">${message}</span>`
                 : "";
         }
+
         selectedSlotTime = "";
         const timeInput = $("qvBookTime");
         if (timeInput) timeInput.value = "";
+
         if (message) setStatus(message, tone);
         else setStatus("");
     }
 
+    function renderCalendar() {
+        const grid = $("qvBookingCalendar");
+        const monthLabel = $("qvBookingMonthLabel");
+        const prevButton = $("qvBookPrevMonth");
+        if (!grid) return;
+
+        const selectedDate = parseDateInputValue($("qvBookDate")?.value || "") || todayLocal();
+        const today = todayLocal();
+        const currentMonth = startOfMonth(today);
+
+        if (!(calendarState.visibleMonth instanceof Date) || Number.isNaN(calendarState.visibleMonth.getTime())) {
+            calendarState.visibleMonth = startOfMonth(selectedDate);
+        }
+
+        const visibleMonth = startOfMonth(calendarState.visibleMonth);
+        if (monthLabel) monthLabel.textContent = formatHumanMonth(visibleMonth);
+        if (prevButton) prevButton.disabled = visibleMonth.getTime() <= currentMonth.getTime();
+
+        const firstGridDay = new Date(visibleMonth.getFullYear(), visibleMonth.getMonth(), 1 - visibleMonth.getDay());
+        const cells = [];
+
+        for (let index = 0; index < 42; index += 1) {
+            const day = new Date(firstGridDay.getFullYear(), firstGridDay.getMonth(), firstGridDay.getDate() + index);
+            const iso = formatDateInputValue(day);
+            const isOutside = day.getMonth() !== visibleMonth.getMonth();
+            const isDisabled = isBeforeDate(day, today);
+            const isToday = isSameDate(day, today);
+            const isSelected = isSameDate(day, selectedDate);
+
+            const classNames = [
+                "qv-cal-day",
+                isOutside ? "is-outside" : "",
+                isDisabled ? "is-disabled" : "",
+                isToday ? "is-today" : "",
+                isSelected ? "is-selected" : ""
+            ].filter(Boolean).join(" ");
+
+            cells.push(`
+                <button
+                    type="button"
+                    class="${classNames}"
+                    data-qv-booking-date="${iso}"
+                    aria-pressed="${isSelected ? "true" : "false"}"
+                    ${isDisabled ? "disabled" : ""}>
+                    <span>${day.getDate()}</span>
+                </button>
+            `);
+        }
+
+        grid.innerHTML = cells.join("");
+    }
+
     function renderSlots(freeSlots, durationMinutes, slotIntervalMinutes) {
         const container = $("qvBookSlots");
+        const selectedDate = parseDateInputValue($("qvBookDate")?.value || "");
         if (!container) return;
 
         container.innerHTML = "";
         selectedSlotTime = "";
+
         const timeInput = $("qvBookTime");
         if (timeInput) timeInput.value = "";
 
         const generated = [];
-
         for (const slot of freeSlots || []) {
             const start = getSlotStart(slot);
             const end = getSlotEnd(slot);
@@ -132,121 +288,162 @@
         }
 
         if (!generated.length) {
-            clearSlots("No open slots", "warning");
+            const dateLabel = selectedDate ? formatHumanDate(selectedDate) : "the selected day";
+            clearSlots(`No open ${durationMinutes}-minute slots on ${dateLabel}. Try another day in the calendar.`, "warning");
             return;
         }
 
-        setStatus("");
+        const dateLabel = selectedDate ? formatHumanDate(selectedDate) : "the selected day";
+        setStatus(`${generated.length} open start ${generated.length === 1 ? "time" : "times"} found for ${dateLabel}.`, "selected");
 
         for (const start of generated) {
-            const btn = document.createElement("button");
-            btn.type = "button";
-            btn.className = "btn btn-ghost qv-slot-btn";
-            btn.textContent = formatSlotLabel(start);
-            btn.dataset.time = toTimeValue(start);
+            const button = document.createElement("button");
+            button.type = "button";
+            button.className = "btn btn-ghost qv-slot-btn";
+            button.textContent = formatSlotLabel(start);
+            button.dataset.time = toTimeValue(start);
 
-            btn.addEventListener("click", () => {
-                selectedSlotTime = btn.dataset.time;
+            button.addEventListener("click", () => {
+                selectedSlotTime = button.dataset.time;
                 if (timeInput) timeInput.value = selectedSlotTime;
 
-                container.querySelectorAll(".qv-slot-btn").forEach(x => x.classList.remove("selected"));
-                btn.classList.add("selected");
-                setStatus(`Selected ${btn.textContent}`, "selected");
+                container.querySelectorAll(".qv-slot-btn").forEach((item) => item.classList.remove("selected"));
+                button.classList.add("selected");
+                setStatus(`Selected ${button.textContent} on ${dateLabel}.`, "selected");
             });
 
-            container.appendChild(btn);
+            container.appendChild(button);
         }
     }
 
     async function loadSlots() {
         const date = $("qvBookDate")?.value || "";
+        const selectedDate = parseDateInputValue(date);
         const duration = parseInt($("qvBookDuration")?.value || "30", 10) || 30;
 
-        if (!date) {
-            clearSlots("Select a date to see open slots.", "warning");
+        updateSelectionSummary();
+
+        if (!date || !selectedDate) {
+            clearSlots("Choose a day from the calendar to see open slots.", "warning");
             return;
         }
 
-        clearSlots("Loading slots…", "loading");
+        clearSlots(`Loading ${duration}-minute slots for ${formatHumanDate(selectedDate)}…`, "loading");
 
         try {
-            const res = await fetch(`/calendar/day-availability?date=${encodeURIComponent(date)}`, {
+            const response = await fetch(`/calendar/day-availability?date=${encodeURIComponent(date)}`, {
                 credentials: "include"
             });
 
-            if (!res.ok) {
-                const text = await res.text().catch(() => "");
+            if (!response.ok) {
+                const text = await response.text().catch(() => "");
                 throw new Error(text || "Availability failed");
             }
 
-            const data = await res.json();
+            const data = await response.json();
             const freeSlots = Array.isArray(data.freeSlots) ? data.freeSlots : [];
             const slotInterval = parseInt(data.slotIntervalMinutes || "30", 10) || 30;
             renderSlots(freeSlots, duration, slotInterval);
-        } catch (err) {
-            console.error(err);
-            clearSlots("Could not load slots", "error");
+        } catch (error) {
+            console.error(error);
+            clearSlots("Could not load slots for that day right now.", "error");
         }
     }
 
+    function openBookingModal() {
+        closeLegacyOverlayModals();
+        reconcileBootstrapModalState();
+        syncBookingContext();
+        const modal = bookingModalInstance();
+        if (!modal) return;
+        modal.show();
+    }
 
-    document.addEventListener("focusin", (e) => {
-        if (!e.target) return;
-        if (e.target.id === "qvBookDate" && e.target.value) {
+    document.addEventListener("change", (event) => {
+        if (!event.target) return;
+
+        if (event.target.id === "qvBookDuration") {
             loadSlots();
         }
     });
 
-    document.addEventListener("click", (e) => {
-        if (!e.target) return;
-        if (e.target.id === "qvBookDate" && e.target.value) {
-            loadSlots();
-        }
-    });
-
-    document.addEventListener("change", (e) => {
-        if (!e.target) return;
-        if (e.target.id === "qvBookDate" || e.target.id === "qvBookDuration") {
-            loadSlots();
-        }
-    });
-
-    document.addEventListener("click", (e) => {
-        const trigger = e.target?.closest?.("[data-qv-booking-open]");
+    document.addEventListener("click", (event) => {
+        const trigger = event.target?.closest?.("[data-qv-booking-open]");
         if (!trigger) return;
-        e.preventDefault();
+
+        event.preventDefault();
         openBookingModal();
     });
 
-    document.addEventListener("shown.bs.modal", (e) => {
-        if (e.target?.id !== BOOKING_MODAL_ID) return;
-        syncBookingContext();
-        const dateInput = $("qvBookDate");
-        if (dateInput?.value) {
-            loadSlots();
-        } else {
-            clearSlots("Select a date to see open slots.", "warning");
+    document.addEventListener("click", (event) => {
+        const prev = event.target?.closest?.("#qvBookPrevMonth");
+        if (prev) {
+            event.preventDefault();
+            const todayMonth = startOfMonth(todayLocal());
+            const nextVisible = addMonths(calendarState.visibleMonth || todayMonth, -1);
+            if (nextVisible.getTime() >= todayMonth.getTime()) {
+                calendarState.visibleMonth = nextVisible;
+                renderCalendar();
+            }
+            return;
         }
-        dateInput?.focus?.({ preventScroll: true });
+
+        const next = event.target?.closest?.("#qvBookNextMonth");
+        if (next) {
+            event.preventDefault();
+            calendarState.visibleMonth = addMonths(calendarState.visibleMonth || todayLocal(), 1);
+            renderCalendar();
+            return;
+        }
+
+        const dayButton = event.target?.closest?.("[data-qv-booking-date]");
+        if (!dayButton) return;
+
+        event.preventDefault();
+        const iso = dayButton.getAttribute("data-qv-booking-date") || "";
+        if (setSelectedDate(iso)) {
+            loadSlots();
+        }
     });
 
-    document.addEventListener("hidden.bs.modal", (e) => {
-        if (e.target?.id !== BOOKING_MODAL_ID) return;
+    document.addEventListener("shown.bs.modal", (event) => {
+        if (event.target?.id !== BOOKING_MODAL_ID) return;
+
+        syncBookingContext();
+        ensureDefaultBookingDate();
+        renderCalendar();
+        loadSlots();
+
+        window.requestAnimationFrame(() => {
+            $("btnBookAppointment")?.blur?.();
+        });
+    });
+
+    document.addEventListener("hidden.bs.modal", (event) => {
+        if (event.target?.id !== BOOKING_MODAL_ID) return;
+
         selectedSlotTime = "";
         const timeInput = $("qvBookTime");
         if (timeInput) timeInput.value = "";
         setStatus("");
     });
 
-    document.addEventListener("click", async (e) => {
-        if (!e.target || e.target.id !== "btnBookAppointment") return;
+    document.addEventListener("click", async (event) => {
+        if (!event.target || event.target.id !== "btnBookAppointment") return;
 
         const date = $("qvBookDate")?.value || "";
         const time = $("qvBookTime")?.value || selectedSlotTime;
         const duration = $("qvBookDuration")?.value || "30";
 
-        if (!date) return setStatus("Select date");
-        if (!time) return setStatus("Select a slot");
+        if (!date) {
+            setStatus("Choose a day from the calendar first.", "warning");
+            return;
+        }
+
+        if (!time) {
+            setStatus("Pick an open time on the right before booking.", "warning");
+            return;
+        }
 
         const nextDate = $("dNextDate");
         const nextText = $("dNextText");
@@ -262,10 +459,11 @@
 
         if (typeof createCalendarEventFromDrawer !== "function") {
             console.error("createCalendarEventFromDrawer is unavailable on this page.");
-            return setStatus("Calendar flow unavailable", "error");
+            setStatus("Calendar flow unavailable", "error");
+            return;
         }
 
-        setStatus("Booking…", "loading");
+        setStatus("Booking appointment…", "loading");
 
         try {
             const booked = await createCalendarEventFromDrawer();
@@ -273,10 +471,11 @@
                 setStatus(`Booking stopped: ${window.__lastBookingStopReason || "unknown frontend guard"}`, "error");
                 return;
             }
-            setStatus("Booked successfully", "success");
+
+            setStatus("Booked successfully. Refreshing open times…", "success");
             loadSlots();
-        } catch (err) {
-            console.error(err);
+        } catch (error) {
+            console.error(error);
             setStatus("Booking failed", "error");
         }
     });

@@ -17,35 +17,75 @@
                 </div>
 
                 <div class="qv-booking-shell">
-                    <div class="qv-booking-controls">
-                        <label class="qv-booking-field">
-                            <span>Date</span>
-                            <input id="qvBookDate" type="date" />
-                        </label>
-                        <label class="qv-booking-field">
-                            <span>Duration</span>
-                            <select id="qvBookDuration">
-                                <option value="15">15 min</option>
-                                <option value="30" selected>30 min</option>
-                                <option value="45">45 min</option>
-                                <option value="60">60 min</option>
-                            </select>
-                        </label>
-                    </div>
-
                     <input id="qvBookTime" type="hidden" />
+                    <input id="qvBookDate" type="date" class="qv-booking-date-native" />
 
-                    <div class="qv-booking-slot-card">
-                        <div class="qv-booking-slot-head">
-                            <div class="qv-booking-slot-title">Available times</div>
-                            <div class="qv-booking-slot-note">Free Outlook slots for the date you choose.</div>
-                        </div>
-                        <div id="qvBookSlots" class="qv-book-slots"></div>
-                    </div>
+                    <div class="qv-booking-layout">
+                        <aside class="qv-booking-sidebar">
+                            <div class="qv-booking-panel qv-booking-panel-calendar">
+                                <div class="qv-booking-panel-head">
+                                    <div class="qv-booking-panel-copy">
+                                        <div class="qv-booking-panel-kicker">Choose a day</div>
+                                        <div class="qv-booking-panel-title">Dates are visible right away.</div>
+                                        <div class="qv-booking-panel-note">Move month to month and pick the day you want without opening a browser date picker.</div>
+                                    </div>
 
-                    <div class="qv-booking-foot">
-                        <span id="qvBookStatus" class="tiny qv-booking-status" aria-live="polite"></span>
-                        <button type="button" id="btnBookAppointment" class="btn btn-gold qv-booking-submit">Book Appointment</button>
+                                    <label class="qv-booking-field qv-booking-field-compact">
+                                        <span>Duration</span>
+                                        <select id="qvBookDuration">
+                                            <option value="15">15 min</option>
+                                            <option value="30" selected>30 min</option>
+                                            <option value="45">45 min</option>
+                                            <option value="60">60 min</option>
+                                        </select>
+                                    </label>
+                                </div>
+
+                                <div class="qv-booking-calendar-card">
+                                    <div class="qv-booking-calendar-head">
+                                        <button type="button" class="btn btn-ghost qv-booking-calendar-nav" id="qvBookPrevMonth" aria-label="Show previous month">Prev</button>
+                                        <div class="qv-booking-calendar-label" id="qvBookingMonthLabel">Month</div>
+                                        <button type="button" class="btn btn-ghost qv-booking-calendar-nav" id="qvBookNextMonth" aria-label="Show next month">Next</button>
+                                    </div>
+
+                                    <div class="qv-booking-calendar-weekdays" aria-hidden="true">
+                                        <span>Sun</span>
+                                        <span>Mon</span>
+                                        <span>Tue</span>
+                                        <span>Wed</span>
+                                        <span>Thu</span>
+                                        <span>Fri</span>
+                                        <span>Sat</span>
+                                    </div>
+
+                                    <div id="qvBookingCalendar" class="qv-booking-calendar-grid" role="grid" aria-label="Choose appointment date"></div>
+                                </div>
+                            </div>
+
+                            <div class="qv-booking-panel qv-booking-panel-selection">
+                                <div class="qv-booking-panel-kicker">Selection</div>
+                                <div class="qv-booking-selection-date" id="qvBookingSelectedDateLabel">Choose a date</div>
+                                <div class="qv-booking-selection-meta" id="qvBookingSelectedMeta">Available times will update as soon as you switch dates or duration.</div>
+                            </div>
+                        </aside>
+
+                        <section class="qv-booking-main">
+                            <div class="qv-booking-slot-card">
+                                <div class="qv-booking-slot-head">
+                                    <div>
+                                        <div class="qv-booking-slot-title">Available times</div>
+                                        <div class="qv-booking-slot-note" id="qvBookingSlotNote">Open Outlook slots for the selected day appear here automatically.</div>
+                                    </div>
+                                    <div class="qv-booking-slot-focus" id="qvBookingSlotFocus">Pick a date</div>
+                                </div>
+                                <div id="qvBookSlots" class="qv-book-slots"></div>
+                            </div>
+
+                            <div class="qv-booking-foot">
+                                <span id="qvBookStatus" class="tiny qv-booking-status" aria-live="polite"></span>
+                                <button type="button" id="btnBookAppointment" class="btn btn-gold qv-booking-submit">Book Appointment</button>
+                            </div>
+                        </section>
                     </div>
                 </div>
             </div>
