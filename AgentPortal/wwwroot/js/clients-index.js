@@ -6588,9 +6588,16 @@ async function createCalendarEventFromDrawer(){
   try{
     const data = await postJson("/calendar/create-event", payload);
     row.dataset.sLasttouch = data.crmLastTouch || todayISO();
+    storeRowLatestAppointment(row, data.latestAppointment || rowLatestAppointment(row));
     hydrateRow(row);
-    activeClientDetail = { ...(activeClientDetail || {}), activities: data.activities || [], lastCalendarEventWebLink: data.webLink || "" };
+    activeClientDetail = {
+      ...(activeClientDetail || {}),
+      activities: data.activities || [],
+      lastCalendarEventWebLink: data.webLink || "",
+      latestAppointment: data.latestAppointment || activeClientDetail?.latestAppointment || null
+    };
     renderTimeline(data.activities || []);
+    renderAppointmentSnapshot(activeClientDetail.latestAppointment || null);
     dLastTouch.value = data.crmLastTouch || todayISO();
     dSaved.textContent = "Calendar event synced ✔";
     refreshCalendarBusyPanel();
