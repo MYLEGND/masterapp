@@ -550,9 +550,20 @@ builder.Services.AddSingleton<GraphServiceClient>(sp =>
 {
     var cfg = sp.GetRequiredService<IConfiguration>();
 
-    var tenantId = cfg["AzureAd:TenantId"];
-    var clientId = cfg["AzureAd:ClientId"];
-    var clientSecret = cfg["AzureAd:ClientSecret"];
+    var tenantId = cfg["GraphProvisioning:TenantId"]
+                   ?? cfg["GraphProvisioning__TenantId"]
+                   ?? cfg["AzureAd:TenantId"]
+                   ?? cfg["AzureAd__TenantId"];
+
+    var clientId = cfg["GraphProvisioning:ClientId"]
+                  ?? cfg["GraphProvisioning__ClientId"]
+                  ?? cfg["AzureAd:ClientId"]
+                  ?? cfg["AzureAd__ClientId"];
+
+    var clientSecret = cfg["GraphProvisioning:ClientSecret"]
+                      ?? cfg["GraphProvisioning__ClientSecret"]
+                      ?? cfg["AzureAd:ClientSecret"]
+                      ?? cfg["AzureAd__ClientSecret"];
 
     if (string.IsNullOrWhiteSpace(tenantId) ||
         string.IsNullOrWhiteSpace(clientId) ||
