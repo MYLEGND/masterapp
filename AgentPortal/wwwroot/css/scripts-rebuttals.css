@@ -17828,3 +17828,31 @@ details.section{
         flex: 1 1 auto !important;
     }
 }
+
+/* =========================================================
+   WORKSTATION BOOKING LAUNCH CTA
+   Match shared scheduler Book Appointment CTA.
+========================================================= */
+
+#rbShell .rebuttal-workspace-grid .content-head-next .workstation-booking-btn.qv-booking-launch,
+#rbShell .rebuttal-workspace-grid .content-head-next .lb-btn.workstation-booking-btn.qv-booking-launch,
+#rbShell .rebuttal-workspace-grid .content-head-next .btn.workstation-booking-btn.qv-booking-launch{
+    background:linear-gradient(180deg, #ffe58a 0%, #f6c343 48%, #d99a13 100%) !important;
+    color:#08111f !important;
+    border:1px solid rgba(255,229,138,.98) !important;
+    border-radius:14px !important;
+    font-weight:950 !important;
+    text-shadow:none !important;
+    box-shadow:
+        0 18px 44px rgba(245,158,11,.42),
+        0 0 32px rgba(245,158,11,.22),
+        inset 0 1px 0 rgba(255,255,255,.75) !important;
+}
+
+#rbShell .rebuttal-workspace-grid .content-head-next .workstation-booking-btn.qv-booking-launch:hover,
+#rbShell .rebuttal-workspace-grid .content-head-next .workstation-booking-btn.qv-booking-launch:focus-visible{
+    background:linear-gradient(180deg, #fff0a8 0%, #f8c94d 48%, #e2a117 100%) !important;
+    color:#04070d !important;
+    border-color:rgba(255,240,168,.98) !important;
+}
+
