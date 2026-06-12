@@ -7327,6 +7327,232 @@ input:checked + .lq-answer-card {
 }
 </style>
 
+
+<style>
+/* LIFE HIERARCHY REBALANCE */
+@@media (min-width: 768px) {
+    body.life-landing:not(.life-quote-started) #lifeHeroEntryPanel {
+        max-width: 1040px;
+        margin: 0 auto;
+    }
+
+    body.life-landing:not(.life-quote-started) .lq-hero-banner-wrap {
+        max-width: 920px !important;
+        margin: 0 auto 18px !important;
+    }
+
+    body.life-landing:not(.life-quote-started) .lq-above-fold-proof {
+        gap: 12px !important;
+        margin: 14px auto 12px !important;
+    }
+
+    body.life-landing:not(.life-quote-started) .lq-above-fold-proof span {
+        min-height: 40px !important;
+        padding: 8px 16px !important;
+        font-size: .88rem !important;
+    }
+
+    body.life-landing:not(.life-quote-started) .lq-hero-step-copy {
+        width: min(100%, 700px) !important;
+        margin-bottom: 14px !important;
+    }
+
+    body.life-landing:not(.life-quote-started) .lq-hero-step-copy-title {
+        font-size: 1.26rem !important;
+    }
+
+    body.life-landing:not(.life-quote-started) .lq-hero-step-copy-helper {
+        font-size: .92rem !important;
+        line-height: 1.42 !important;
+    }
+
+    body.life-landing:not(.life-quote-started) .lq-contact-first-hero-actions {
+        gap: 10px !important;
+        margin-top: 10px !important;
+    }
+
+    body.life-landing:not(.life-quote-started) .lq-primary-start-note {
+        max-width: 44ch !important;
+        font-size: .9rem !important;
+    }
+}
+
+@@media (min-width: 960px) {
+    body.life-landing.life-quote-started .lq-hero-shell {
+        max-width: 1220px !important;
+        margin: 10px auto 24px !important;
+        padding: 0 16px 12px !important;
+        border: 0 !important;
+        background: transparent !important;
+        box-shadow: none !important;
+        overflow: visible !important;
+    }
+
+    body.life-landing.life-quote-started #lifeEducationContactPanel {
+        max-width: 1120px !important;
+        margin: 0 auto !important;
+        padding: 0 !important;
+        border: 0 !important;
+        background: transparent !important;
+        box-shadow: none !important;
+    }
+
+    body.life-landing.life-quote-started #lifeEducationContactPanel > .lq-contact-first-proof-row,
+    body.life-landing.life-quote-started #lifeEducationContactPanel > .lq-contact-first-proof-chips {
+        display: none !important;
+    }
+
+    body.life-landing.life-quote-started #lifeEducationContactPanel .lq-contact-first-form-surface {
+        position: relative !important;
+        padding: 34px 38px 38px !important;
+        border-radius: 34px !important;
+        border: 1px solid rgba(218, 170, 76, 0.30) !important;
+        background:
+            radial-gradient(circle at top, rgba(233, 184, 69, 0.10), transparent 34%),
+            linear-gradient(180deg, rgba(13, 37, 76, 0.98) 0%, rgba(9, 26, 56, 0.99) 100%) !important;
+        box-shadow:
+            0 30px 56px rgba(2, 12, 27, 0.30),
+            inset 0 1px 0 rgba(255, 255, 255, 0.05),
+            0 0 0 1px rgba(255, 255, 255, 0.02) !important;
+        overflow: hidden !important;
+    }
+
+    body.life-landing.life-quote-started #lifeEducationContactPanel .lq-contact-first-form-surface::before {
+        content: "";
+        position: absolute;
+        inset: 0 0 auto;
+        height: 132px;
+        pointer-events: none;
+        background: linear-gradient(180deg, rgba(255, 222, 150, 0.06), transparent 100%);
+    }
+
+    body.life-landing.life-quote-started #lifeEducationContactPanel #lifeStep1Panel,
+    body.life-landing.life-quote-started #lifeEducationContactPanel #lifeStep2Panel,
+    body.life-landing.life-quote-started #lifeEducationContactPanel .lq-step-panel-pad {
+        padding: 0 !important;
+        border: 0 !important;
+        background: transparent !important;
+        box-shadow: none !important;
+    }
+
+    body.life-landing.life-quote-started #lifeEducationContactPanel .lq-step-progress-wrap {
+        gap: 12px !important;
+        margin-bottom: 20px !important;
+    }
+
+    body.life-landing.life-quote-started #lifeEducationContactPanel .lq-step-progress {
+        width: fit-content !important;
+        min-height: 30px !important;
+        padding: 0 12px !important;
+        border-radius: 999px !important;
+        background: rgba(243, 214, 136, 0.10) !important;
+        color: #f3d688 !important;
+        font-size: .72rem !important;
+        font-weight: 900 !important;
+        letter-spacing: 0.12em !important;
+    }
+
+    body.life-landing.life-quote-started #lifeEducationContactPanel .lq-step-progress-track {
+        height: 8px !important;
+        max-width: 280px !important;
+    }
+
+    body.life-landing.life-quote-started #lifeEducationContactPanel .lq-step-title,
+    body.life-landing.life-quote-started #lifeEducationContactPanel .lq-step-helper,
+    body.life-landing.life-quote-started #lifeEducationContactPanel .lq-step-question {
+        text-align: left !important;
+    }
+
+    body.life-landing.life-quote-started #lifeEducationContactPanel .lq-step-title {
+        max-width: 18ch !important;
+        margin: 0 0 10px !important;
+        color: rgba(248, 250, 252, 0.84) !important;
+        font-size: 1rem !important;
+        font-weight: 800 !important;
+        line-height: 1.34 !important;
+    }
+
+    body.life-landing.life-quote-started #lifeEducationContactPanel .lq-step-helper {
+        max-width: 52ch !important;
+        margin: 0 0 14px !important;
+        color: rgba(226, 232, 240, 0.72) !important;
+        font-size: .96rem !important;
+        line-height: 1.52 !important;
+    }
+
+    body.life-landing.life-quote-started #lifeEducationContactPanel .lq-step-question {
+        max-width: 11ch !important;
+        margin: 0 0 18px !important;
+        color: #fff8e7 !important;
+        font-size: clamp(2rem, 3.1vw, 2.6rem) !important;
+        font-weight: 940 !important;
+        line-height: 1.02 !important;
+        letter-spacing: -0.04em !important;
+        text-wrap: balance !important;
+    }
+
+    body.life-landing.life-quote-started #lifeEducationContactPanel .lq-step-question::after {
+        width: 60px !important;
+        margin: 14px 0 0 !important;
+    }
+
+    body.life-landing.life-quote-started #lifeEducationContactPanel .lq-choice-grid {
+        gap: 16px !important;
+    }
+
+    body.life-landing.life-quote-started #lifeEducationContactPanel .lq-choice-grid.lq-step1-twoup {
+        grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+        align-items: stretch !important;
+    }
+
+    body.life-landing.life-quote-started #lifeEducationContactPanel .lq-choice-grid.lq-step1-twoup > .lq-card:last-child:nth-child(odd) {
+        grid-column: 1 / -1 !important;
+        width: min(100%, 520px) !important;
+        justify-self: center !important;
+    }
+
+    body.life-landing.life-quote-started #lifeEducationContactPanel .lq-card {
+        min-height: 184px !important;
+        border-radius: 24px !important;
+    }
+
+    body.life-landing.life-quote-started #lifeEducationContactPanel .lq-card-rich {
+        gap: 16px !important;
+        padding: 22px 22px 20px !important;
+    }
+
+    body.life-landing.life-quote-started #lifeEducationContactPanel .lq-card-rich .lq-card-visual {
+        width: 70px !important;
+        height: 70px !important;
+        border-radius: 20px !important;
+    }
+
+    body.life-landing.life-quote-started #lifeEducationContactPanel .lq-card-rich .lq-card-icon {
+        width: 34px !important;
+        height: 34px !important;
+    }
+
+    body.life-landing.life-quote-started #lifeEducationContactPanel .lq-card-rich .lq-card-copy {
+        gap: 8px !important;
+    }
+
+    body.life-landing.life-quote-started #lifeEducationContactPanel .lq-card-rich .lq-card-kicker {
+        font-size: .7rem !important;
+        letter-spacing: 0.12em !important;
+    }
+
+    body.life-landing.life-quote-started #lifeEducationContactPanel .lq-card-rich .lq-card-title {
+        font-size: 1.12rem !important;
+        line-height: 1.18 !important;
+    }
+
+    body.life-landing.life-quote-started #lifeEducationContactPanel .lq-card-rich .lq-card-helper {
+        font-size: .9rem !important;
+        line-height: 1.48 !important;
+    }
+}
+</style>
+
 <svg aria-hidden="true" width="0" height="0" focusable="false" style="position:absolute; width:0; height:0; overflow:hidden;">
     <defs>
         <symbol id="choice-icon-partner" viewBox="0 0 48 48">

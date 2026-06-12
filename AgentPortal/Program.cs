@@ -129,7 +129,6 @@ builder.Services.AddScoped<IDecisionService, DecisionService>();
 builder.Services.AddScoped<IBlockerService, BlockerService>();
 builder.Services.AddScoped<ICommitmentService, CommitmentService>();
 builder.Services.AddScoped<IPlaybookEngine, PlaybookEngine>();
-builder.Services.AddScoped<INotificationService, NoOpNotificationService>();
 builder.Services.AddHostedService<MigrationHealthHostedService>();
 builder.Services.AddHostedService<GraphCalendarSubscriptionHostedService>();
 builder.Services.AddHostedService<LeadAppointmentAutoCompletionHostedService>();
