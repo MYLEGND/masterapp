@@ -1085,6 +1085,22 @@ public class CalendarController : Controller
     private async Task<BookingService?> ResolveBookingServiceByDurationAsync(string businessId, int durationMinutes, CancellationToken ct)
     {
         var services = await _appGraph.Solutions.BookingBusinesses[businessId].Services.GetAsync(cancellationToken: ct);
+
+        _logger.LogInformation(
+            "Bookings services: {Services}",
+            JsonSerializer.Serialize(
+                services?.Value?.Select(x => new
+                {
+                    x.Id,
+                    x.DisplayName,
+                    DurationMinutes = x.DefaultDuration.HasValue
+                        ? (int)Math.Round(x.DefaultDuration.Value.TotalMinutes)
+                        : 0,
+                    x.IsHiddenFromCustomers
+                })
+            )
+        );
+
         return services?.Value?
             .Where(x => x.IsHiddenFromCustomers != true && x.DefaultDuration.HasValue)
             .Select(x => new { Service = x, Minutes = (int)Math.Round(x.DefaultDuration!.Value.TotalMinutes) })

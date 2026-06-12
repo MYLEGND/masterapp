@@ -24,6 +24,7 @@
             modalZ: BOOKING_MODAL_MODAL_Z,
             backdropZ: BOOKING_MODAL_BACKDROP_Z
         });
+        bindBookingModalLifecycle(modalEl);
         return window.bootstrap.Modal.getOrCreateInstance(modalEl);
     }
 
@@ -211,6 +212,10 @@
         else setStatus("");
     }
 
+    function calendarHasRenderedDays() {
+        return Boolean(document.querySelector("#qvBookingCalendar [data-qv-booking-date]"));
+    }
+
     function renderCalendar() {
         const grid = $("qvBookingCalendar");
         const monthLabel = $("qvBookingMonthLabel");
@@ -350,13 +355,56 @@
         }
     }
 
+    function initializeBookingModal() {
+        syncBookingContext();
+        ensureDefaultBookingDate();
+        renderCalendar();
+        loadSlots();
+    }
+
+    function resetBookingModalState() {
+        selectedSlotTime = "";
+        const timeInput = $("qvBookTime");
+        if (timeInput) timeInput.value = "";
+        setStatus("");
+    }
+
+    function bindBookingModalLifecycle(modalEl) {
+        const resolvedModal = modalEl || bookingModalElement();
+        if (!resolvedModal || resolvedModal.dataset.qvBookingLifecycleBound === "1") {
+            return resolvedModal;
+        }
+
+        resolvedModal.dataset.qvBookingLifecycleBound = "1";
+
+        resolvedModal.addEventListener("shown.bs.modal", () => {
+            if (!calendarHasRenderedDays()) {
+                initializeBookingModal();
+            }
+            window.requestAnimationFrame(() => {
+                $("btnBookAppointment")?.blur?.();
+            });
+        });
+
+        resolvedModal.addEventListener("hidden.bs.modal", () => {
+            resetBookingModalState();
+        });
+
+        return resolvedModal;
+    }
+
     function openBookingModal() {
         closeLegacyOverlayModals();
         reconcileBootstrapModalState();
-        syncBookingContext();
         const modal = bookingModalInstance();
         if (!modal) return;
+        initializeBookingModal();
         modal.show();
+        window.setTimeout(() => {
+            if (!calendarHasRenderedDays()) {
+                initializeBookingModal();
+            }
+        }, 32);
     }
 
     document.addEventListener("change", (event) => {
@@ -404,28 +452,6 @@
         if (setSelectedDate(iso)) {
             loadSlots();
         }
-    });
-
-    document.addEventListener("shown.bs.modal", (event) => {
-        if (event.target?.id !== BOOKING_MODAL_ID) return;
-
-        syncBookingContext();
-        ensureDefaultBookingDate();
-        renderCalendar();
-        loadSlots();
-
-        window.requestAnimationFrame(() => {
-            $("btnBookAppointment")?.blur?.();
-        });
-    });
-
-    document.addEventListener("hidden.bs.modal", (event) => {
-        if (event.target?.id !== BOOKING_MODAL_ID) return;
-
-        selectedSlotTime = "";
-        const timeInput = $("qvBookTime");
-        if (timeInput) timeInput.value = "";
-        setStatus("");
     });
 
     document.addEventListener("click", async (event) => {
