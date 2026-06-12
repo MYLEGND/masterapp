@@ -4230,7 +4230,7 @@ async function openDrawerForRow(row){
   dDocAppSent.checked = false;
   dDocAppSigned.checked = false;
 
-  loadProductionHistory(row.dataset.leadId || row.dataset.id || row.getAttribute("data-lead-id"));
+  loadProductionHistory(row.dataset.clientId);
   dDocPolicyDelivered.checked = false;
   dDocReviewBooked.checked = false;
   dAssignedOwner.value = row.dataset.crmOwner || "";
@@ -4345,6 +4345,13 @@ async function openDrawerForRow(row){
 const prodAmountInput = document.getElementById("prodAmount");
 const prodPersonalInput = document.getElementById("prodPersonal");
 async function loadProductionHistory(leadId){
+  leadId = (leadId ?? "").toString().trim();
+  if (!leadId || leadId.toLowerCase() === "null" || leadId.toLowerCase() === "undefined"){
+    const list = document.getElementById("phList");
+    if (list) list.innerHTML = '<div class="ph-empty muted">Open a valid lead before loading production.</div>';
+    return;
+  }
+
   const list = document.getElementById("phList");
   const addBtn = document.getElementById("phAddFromDrawer");
   const summary = document.getElementById("phProductionSummary");
