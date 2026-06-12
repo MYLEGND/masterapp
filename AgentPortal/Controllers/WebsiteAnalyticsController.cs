@@ -40,8 +40,9 @@ namespace AgentPortal.Controllers;
         private readonly IVisitorConcentrationService _visitorConcentrationService;
         private readonly IKpiDetailBreakdownService _kpiDetailBreakdownService;
         private readonly IVisitorTrustScoringService _visitorTrustScoringService;
+        private readonly MetaCapiCredentialProtector _metaCapiCredentialProtector;
 
-        public WebsiteAnalyticsController(IAnalyticsQueryService analytics, IMetaAdsService metaAds, IMetaAdsOAuthService metaAdsOAuth, IMetaAdsConnectionStore metaAdsConnectionStore, Services.Tracking.IAgentTrackingService tracking, IMetaSignalAnalyticsService metaSignalAnalytics, ILandingRouteDiscoveryService landingRouteDiscovery, WebsiteAnalyticsAiDataBuilder aiDataBuilder, IVisitorConcentrationService visitorConcentrationService, IKpiDetailBreakdownService kpiDetailBreakdownService, IVisitorTrustScoringService visitorTrustScoringService, ILogger<WebsiteAnalyticsController> logger, Infrastructure.Data.MasterAppDbContext db, IConfiguration config, EffectiveAgentContext effectiveContext)
+        public WebsiteAnalyticsController(IAnalyticsQueryService analytics, IMetaAdsService metaAds, IMetaAdsOAuthService metaAdsOAuth, IMetaAdsConnectionStore metaAdsConnectionStore, Services.Tracking.IAgentTrackingService tracking, IMetaSignalAnalyticsService metaSignalAnalytics, ILandingRouteDiscoveryService landingRouteDiscovery, WebsiteAnalyticsAiDataBuilder aiDataBuilder, IVisitorConcentrationService visitorConcentrationService, IKpiDetailBreakdownService kpiDetailBreakdownService, IVisitorTrustScoringService visitorTrustScoringService, ILogger<WebsiteAnalyticsController> logger, Infrastructure.Data.MasterAppDbContext db, IConfiguration config, EffectiveAgentContext effectiveContext, MetaCapiCredentialProtector metaCapiCredentialProtector)
         {
             _analytics = analytics;
             _metaAds = metaAds;
@@ -59,6 +60,7 @@ namespace AgentPortal.Controllers;
             _founderUpn = config["Founder:Upn"] ?? throw new InvalidOperationException("Founder:Upn configuration is required");
             _config = config;
             _effectiveContext = effectiveContext;
+            _metaCapiCredentialProtector = metaCapiCredentialProtector;
         }
 
     [HttpGet("")]
@@ -1100,7 +1102,8 @@ namespace AgentPortal.Controllers;
 
         try
         {
-            await _metaAdsOAuth.CompleteCallbackAsync(code ?? string.Empty, state ?? string.Empty, HttpContext.RequestAborted);
+            var record = await _metaAdsOAuth.CompleteCallbackAsync(code ?? string.Empty, state ?? string.Empty, HttpContext.RequestAborted);
+            await SaveMetaCapiTokenToAgentProfileAsync(record, HttpContext.RequestAborted);
             return Redirect($"{target}?meta=connected");
         }
         catch (InvalidOperationException ex)
@@ -1114,6 +1117,39 @@ namespace AgentPortal.Controllers;
             return Redirect($"{target}?meta=error&message={Uri.EscapeDataString("Meta connection failed unexpectedly. Please try again.")}");
         }
     }
+
+    private async Task SaveMetaCapiTokenToAgentProfileAsync(MetaAdsConnectionRecord record, CancellationToken cancellationToken)
+    {
+        if (record.AgentTrackingProfileId == Guid.Empty || string.IsNullOrWhiteSpace(record.AccessToken))
+            return;
+
+        var trackingProfile = await _db.AgentTrackingProfiles
+            .AsNoTracking()
+            .FirstOrDefaultAsync(x => x.Id == record.AgentTrackingProfileId, cancellationToken);
+
+        if (trackingProfile == null || string.IsNullOrWhiteSpace(trackingProfile.AgentUserId))
+        {
+            _logger.LogWarning("Meta CAPI token bridge skipped because tracking profile was not found. agentTrackingProfileId={AgentTrackingProfileId}", record.AgentTrackingProfileId);
+            return;
+        }
+
+        var agentProfile = await _db.AgentProfiles
+            .FirstOrDefaultAsync(x => x.AgentUserId == trackingProfile.AgentUserId, cancellationToken);
+
+        if (agentProfile == null)
+        {
+            _logger.LogWarning("Meta CAPI token bridge skipped because agent profile was not found. agentTrackingProfileId={AgentTrackingProfileId} agentUserId={AgentUserId}", record.AgentTrackingProfileId, trackingProfile.AgentUserId);
+            return;
+        }
+
+        agentProfile.MetaCapiAccessToken = _metaCapiCredentialProtector.Protect(record.AccessToken);
+        agentProfile.UpdatedUtc = DateTime.UtcNow;
+
+        await _db.SaveChangesAsync(cancellationToken);
+
+        _logger.LogInformation("Meta CAPI token securely configured from Meta OAuth connection. agentTrackingProfileId={AgentTrackingProfileId} agentUserId={AgentUserId}", record.AgentTrackingProfileId, trackingProfile.AgentUserId);
+    }
+
 
     [HttpGet("meta-connection-status")]
     [HttpGet("/website-analytics/meta-connection-status")]
