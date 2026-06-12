@@ -12,115 +12,117 @@
 
 <div class="home-container dashboard-page-shell">
 
-    <section class="dashboard-hero-panel">
-        <div class="dashboard-hero-copy">
-            <div class="dashboard-eyebrow">Legend Command Center</div>
-            <h1 class="dashboard-hero-title">Legend™ Core Dashboard</h1>
-            <p class="dashboard-hero-lead">
-                Premium execution workspace for agent tasks, carrier access, and the action items you flagged from Leads or Clients.
-            </p>
-            <div class="dashboard-hero-tags">
-                <span>Execution tracking</span>
-                <span>Carrier access</span>
-                <span>Faster follow-through</span>
+    <section class="dashboard-command-center-panel">
+        <div class="dashboard-command-center-top">
+            <div class="dashboard-hero-copy">
+                <div class="dashboard-eyebrow">Legend Command Center</div>
+                <h1 class="dashboard-hero-title">Legend™ Core Dashboard</h1>
+                <p class="dashboard-hero-lead">
+                    One premium workspace for execution, carrier access, and the client follow-through items that need movement today.
+                </p>
+                <div class="dashboard-hero-tags">
+                    <span>Execution tracking</span>
+                    <span>Carrier access</span>
+                    <span>Faster follow-through</span>
+                </div>
+            </div>
+            <div class="dashboard-hero-stats">
+                <div class="dashboard-stat-card is-primary">
+                    <div class="dashboard-stat-label">Open execution</div>
+                    <div class="dashboard-stat-value" id="countOpenExecution">@totalExecutionItems</div>
+                    <div class="dashboard-stat-note">Today, overdue, and blocker items in one view.</div>
+                </div>
+                <div class="dashboard-stat-card">
+                    <div class="dashboard-stat-label">Due today</div>
+                    <div class="dashboard-stat-value" id="countTodayStat">@todayCount</div>
+                    <div class="dashboard-stat-note">Current-day commitments that should move now.</div>
+                </div>
+                <div class="dashboard-stat-card">
+                    <div class="dashboard-stat-label">Overdue</div>
+                    <div class="dashboard-stat-value" id="countOverdueStat">@overdueCount</div>
+                    <div class="dashboard-stat-note">Items that need rescue before they age further.</div>
+                </div>
+                <div class="dashboard-stat-card">
+                    <div class="dashboard-stat-label">Blockers</div>
+                    <div class="dashboard-stat-value" id="countBlockersStat">@blockerCount</div>
+                    <div class="dashboard-stat-note">Dependencies and friction slowing execution down.</div>
+                </div>
             </div>
         </div>
-        <div class="dashboard-hero-stats">
-            <div class="dashboard-stat-card is-primary">
-                <div class="dashboard-stat-label">Open execution</div>
-                <div class="dashboard-stat-value" id="countOpenExecution">@totalExecutionItems</div>
-                <div class="dashboard-stat-note">Today, overdue, and blocker items in one view.</div>
-            </div>
-            <div class="dashboard-stat-card">
-                <div class="dashboard-stat-label">Due today</div>
-                <div class="dashboard-stat-value" id="countTodayStat">@todayCount</div>
-                <div class="dashboard-stat-note">Current-day commitments that should move now.</div>
-            </div>
-            <div class="dashboard-stat-card">
-                <div class="dashboard-stat-label">Overdue</div>
-                <div class="dashboard-stat-value" id="countOverdueStat">@overdueCount</div>
-                <div class="dashboard-stat-note">Items that need rescue before they age further.</div>
-            </div>
-            <div class="dashboard-stat-card">
-                <div class="dashboard-stat-label">Blockers</div>
-                <div class="dashboard-stat-value" id="countBlockersStat">@blockerCount</div>
-                <div class="dashboard-stat-note">Dependencies and friction slowing execution down.</div>
-            </div>
-        </div>
-    </section>
 
-    <section class="dashboard-command-panel">
-        <div class="dashboard-section-head dashboard-section-head-tight">
-            <div>
+        <div class="dashboard-command-center-divider" aria-hidden="true"></div>
+
+        <div class="dashboard-command-center-middle">
+            <div class="dashboard-command-center-head">
                 <div class="dashboard-section-kicker">Command Tools</div>
-                <h2 class="dashboard-section-title">Search your carrier stack and keep settings close.</h2>
-                <p class="dashboard-section-copy">Jump to any portal fast, or manage agent numbers and commission settings without leaving the command center.</p>
+                <h2 class="dashboard-section-title">Search the stack, manage settings, and keep your essentials close.</h2>
+                <p class="dashboard-section-copy">Jump to any portal fast or manage agent numbers and commission settings without leaving the command center.</p>
+            </div>
+
+            <div class="search-container dashboard-search-panel">
+                <div class="dashboard-search-shell">
+                    <div class="search-input-wrap">
+                        <input type="text" id="toolSearch" class="search-input" placeholder="Search all tools..." />
+                        <div id="autocompleteList" class="autocomplete-list"></div>
+                    </div>
+                    <div class="search-actions">
+                        <button id="clearSearch" class="btn-clear-search" type="button">Clear Search</button>
+                        <button
+                            id="openCarrierSettings"
+                            class="btn-carrier-settings"
+                            type="button"
+                            data-bs-toggle="modal"
+                            data-bs-target="#carrierSettingsModal">
+                            Carrier Numbers &amp; Commissions
+                        </button>
+                    </div>
+                </div>
             </div>
         </div>
 
-        <div class="search-container dashboard-search-panel">
-            <div class="dashboard-search-shell">
-                <div class="search-input-wrap">
-                    <input type="text" id="toolSearch" class="search-input" placeholder="Search all tools..." />
-                    <div id="autocompleteList" class="autocomplete-list"></div>
-                </div>
-                <div class="search-actions">
-                    <button id="clearSearch" class="btn-clear-search" type="button">Clear Search</button>
-                    <button
-                        id="openCarrierSettings"
-                        class="btn-carrier-settings"
-                        type="button"
-                        data-bs-toggle="modal"
-                        data-bs-target="#carrierSettingsModal">
-                        Carrier Numbers &amp; Commissions
-                    </button>
-                </div>
-            </div>
-        </div>
-    </section>
+        <div class="dashboard-command-center-divider" aria-hidden="true"></div>
 
-    <section class="dashboard-focus-panel">
-        <div class="dashboard-section-head dashboard-section-head-tight">
-            <div>
+        <div class="dashboard-command-center-bottom">
+            <div class="dashboard-command-center-head dashboard-command-center-head-compact">
                 <div class="dashboard-section-kicker">Execution Snapshot</div>
                 <h2 class="dashboard-section-title">Open the work that actually needs attention.</h2>
                 <p class="dashboard-section-copy">Each bucket opens into the live modal so you can review, complete, or clear work without hunting through the CRM first.</p>
             </div>
-        </div>
 
-        <div class="row g-3 dashboard-focus-grid">
-            <div class="col-lg-4 col-md-6">
-                <button class="legend-exec-btn" data-bs-toggle="modal" data-bs-target="#modalToday">
-                    <span class="legend-exec-kicker">Execution</span>
-                    <span class="legend-exec-title-row">
-                        <span class="legend-exec-title">Today</span>
-                        <span class="legend-badge" id="countToday">@todayCount</span>
-                    </span>
-                    <span class="legend-exec-sub">Current-day commitments that should get moved before momentum drops.</span>
-                    <span class="chevron">Open</span>
-                </button>
-            </div>
-            <div class="col-lg-4 col-md-6">
-                <button class="legend-exec-btn" data-bs-toggle="modal" data-bs-target="#modalOverdue">
-                    <span class="legend-exec-kicker">Recovery</span>
-                    <span class="legend-exec-title-row">
-                        <span class="legend-exec-title">Overdue</span>
-                        <span class="legend-badge" id="countOverdue">@overdueCount</span>
-                    </span>
-                    <span class="legend-exec-sub">Aging items that need immediate rescue before they become stale.</span>
-                    <span class="chevron">Open</span>
-                </button>
-            </div>
-            <div class="col-lg-4 col-md-6">
-                <button class="legend-exec-btn" data-bs-toggle="modal" data-bs-target="#modalBlockers">
-                    <span class="legend-exec-kicker">Friction</span>
-                    <span class="legend-exec-title-row">
-                        <span class="legend-exec-title">Blockers</span>
-                        <span class="legend-badge" id="countBlockers">@blockerCount</span>
-                    </span>
-                    <span class="legend-exec-sub">Dependencies, missing pieces, or stalled next steps slowing the board.</span>
-                    <span class="chevron">Open</span>
-                </button>
+            <div class="row g-3 dashboard-focus-grid">
+                <div class="col-lg-4 col-md-6">
+                    <button class="legend-exec-btn" data-bs-toggle="modal" data-bs-target="#modalToday">
+                        <span class="legend-exec-kicker">Execution</span>
+                        <span class="legend-exec-title-row">
+                            <span class="legend-exec-title">Today</span>
+                            <span class="legend-badge" id="countToday">@todayCount</span>
+                        </span>
+                        <span class="legend-exec-sub">Current-day commitments that should get moved before momentum drops.</span>
+                        <span class="chevron">Open</span>
+                    </button>
+                </div>
+                <div class="col-lg-4 col-md-6">
+                    <button class="legend-exec-btn" data-bs-toggle="modal" data-bs-target="#modalOverdue">
+                        <span class="legend-exec-kicker">Recovery</span>
+                        <span class="legend-exec-title-row">
+                            <span class="legend-exec-title">Overdue</span>
+                            <span class="legend-badge" id="countOverdue">@overdueCount</span>
+                        </span>
+                        <span class="legend-exec-sub">Aging items that need immediate rescue before they become stale.</span>
+                        <span class="chevron">Open</span>
+                    </button>
+                </div>
+                <div class="col-lg-4 col-md-6">
+                    <button class="legend-exec-btn" data-bs-toggle="modal" data-bs-target="#modalBlockers">
+                        <span class="legend-exec-kicker">Friction</span>
+                        <span class="legend-exec-title-row">
+                            <span class="legend-exec-title">Blockers</span>
+                            <span class="legend-badge" id="countBlockers">@blockerCount</span>
+                        </span>
+                        <span class="legend-exec-sub">Dependencies, missing pieces, or stalled next steps slowing the board.</span>
+                        <span class="chevron">Open</span>
+                    </button>
+                </div>
             </div>
         </div>
     </section>
@@ -560,9 +562,7 @@
         linear-gradient(180deg, #eef3fb 0%, #f7f9fc 100%);
 }
 
-.dashboard-hero-panel,
-.dashboard-command-panel,
-.dashboard-focus-panel,
+.dashboard-command-center-panel,
 .dashboard-analytics-panel,
 .dashboard-page-shell .category-container {
     width: min(1480px, 100%);
@@ -579,9 +579,7 @@
         inset 0 1px 0 rgba(255, 255, 255, 0.05);
 }
 
-.dashboard-hero-panel::before,
-.dashboard-command-panel::before,
-.dashboard-focus-panel::before,
+.dashboard-command-center-panel::before,
 .dashboard-analytics-panel::before,
 .dashboard-page-shell .category-container::before {
     content: "";
@@ -594,17 +592,20 @@
     pointer-events: none;
 }
 
-.dashboard-hero-panel {
+.dashboard-command-center-panel {
+    padding: 1.25rem 1.35rem 1.3rem;
+}
+
+.dashboard-command-center-top {
     display: grid;
     grid-template-columns: minmax(0, 1.25fr) minmax(340px, 0.95fr);
-    gap: 1.2rem;
-    padding: 1.45rem 1.5rem 1.35rem;
+    gap: 1rem 1.2rem;
 }
 
 .dashboard-hero-copy {
     display: grid;
     align-content: start;
-    gap: 0.72rem;
+    gap: 0.58rem;
 }
 
 .dashboard-eyebrow,
@@ -629,7 +630,7 @@
 .dashboard-hero-title {
     margin: 0;
     color: #ffffff;
-    font-size: clamp(2rem, 3.6vw, 3.45rem);
+    font-size: clamp(1.9rem, 3.2vw, 3.08rem);
     font-weight: 980;
     line-height: 0.98;
     letter-spacing: -0.05em;
@@ -637,25 +638,25 @@
 
 .dashboard-hero-lead {
     margin: 0;
-    max-width: 66ch;
+    max-width: 58ch;
     color: var(--dash-text-soft);
-    font-size: 1rem;
-    line-height: 1.66;
+    font-size: 0.98rem;
+    line-height: 1.58;
     font-weight: 620;
 }
 
 .dashboard-hero-tags {
     display: flex;
     flex-wrap: wrap;
-    gap: 0.65rem;
-    margin-top: 0.2rem;
+    gap: 0.55rem;
+    margin-top: 0.1rem;
 }
 
 .dashboard-hero-tags span {
     display: inline-flex;
     align-items: center;
-    min-height: 38px;
-    padding: 0.55rem 0.95rem;
+    min-height: 34px;
+    padding: 0.5rem 0.88rem;
     border-radius: 999px;
     border: 1px solid rgba(150, 182, 255, 0.2);
     background: rgba(8, 18, 38, 0.54);
@@ -668,16 +669,16 @@
 .dashboard-hero-stats {
     display: grid;
     grid-template-columns: repeat(2, minmax(0, 1fr));
-    gap: 0.9rem;
+    gap: 0.8rem;
 }
 
 .dashboard-stat-card {
     display: grid;
     align-content: start;
     gap: 0.34rem;
-    min-height: 142px;
-    padding: 1rem 1.05rem;
-    border-radius: 20px;
+    min-height: 124px;
+    padding: 0.9rem 0.95rem;
+    border-radius: 18px;
     border: 1px solid rgba(150, 182, 255, 0.18);
     background:
         radial-gradient(circle at top right, rgba(77, 111, 255, 0.12), transparent 42%),
@@ -714,10 +715,49 @@
     line-height: 1.45;
 }
 
-.dashboard-command-panel,
-.dashboard-focus-panel,
 .dashboard-analytics-panel {
     padding: 1.22rem 1.3rem 1.28rem;
+}
+
+.dashboard-command-center-divider {
+    width: 100%;
+    height: 1px;
+    margin: 1rem 0;
+    background: linear-gradient(90deg, transparent, rgba(212, 170, 71, 0.32), transparent);
+    opacity: 0.9;
+}
+
+.dashboard-command-center-middle {
+    display: grid;
+    grid-template-columns: minmax(280px, 0.58fr) minmax(0, 1fr);
+    gap: 1rem 1.2rem;
+    align-items: end;
+}
+
+.dashboard-command-center-bottom {
+    display: grid;
+    gap: 0.85rem;
+}
+
+.dashboard-command-center-head {
+    display: grid;
+    gap: 0.26rem;
+}
+
+.dashboard-command-center-head .dashboard-section-title {
+    margin-top: 0.16rem;
+    font-size: clamp(1.08rem, 1.8vw, 1.42rem);
+    line-height: 1.1;
+}
+
+.dashboard-command-center-head .dashboard-section-copy {
+    max-width: 56ch;
+    font-size: 0.9rem;
+    line-height: 1.5;
+}
+
+.dashboard-command-center-head-compact .dashboard-section-copy {
+    max-width: 70ch;
 }
 
 .dashboard-section-head {
@@ -756,6 +796,20 @@
     display: block;
 }
 
+.dashboard-search-shell {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 0.8rem;
+    align-items: center;
+}
+
+.search-actions {
+    display: flex;
+    gap: 0.7rem;
+    align-items: center;
+    justify-content: flex-end;
+}
+
 .search-input-wrap .search-input {
     min-height: 56px;
     border-radius: 18px;
@@ -787,7 +841,7 @@
 }
 
 .dashboard-focus-grid {
-    margin-top: 0.15rem;
+    margin-top: 0.05rem;
 }
 
 .legend-exec-btn {
@@ -795,8 +849,8 @@
     display: grid;
     gap: 0.65rem;
     width: 100%;
-    min-height: 210px;
-    padding: 1.15rem 1.15rem 1rem;
+    min-height: 182px;
+    padding: 1rem 1rem 0.95rem;
     text-align: left;
     border: 1px solid rgba(212, 170, 71, 0.3);
     border-radius: 22px;
@@ -1165,13 +1219,17 @@
 }
 
 @@media (max-width: 1180px) {
-    .dashboard-hero-panel {
+    .dashboard-command-center-top {
         grid-template-columns: 1fr;
     }
 
     .dashboard-hero-stats,
     .dashboard-analytics-grid {
         grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
+    .dashboard-command-center-middle {
+        grid-template-columns: 1fr;
     }
 }
 
@@ -1180,17 +1238,13 @@
         padding: 1rem 0.75rem 2rem;
     }
 
-    .dashboard-hero-panel,
-    .dashboard-command-panel,
-    .dashboard-focus-panel,
+    .dashboard-command-center-panel,
     .dashboard-analytics-panel,
     .dashboard-page-shell .category-container {
         border-radius: 24px;
     }
 
-    .dashboard-hero-panel,
-    .dashboard-command-panel,
-    .dashboard-focus-panel,
+    .dashboard-command-center-panel,
     .dashboard-analytics-panel,
     .dashboard-page-shell .category-container {
         padding-left: 1rem;
@@ -1227,6 +1281,7 @@
 
     .dashboard-search-shell {
         gap: 0.75rem;
+        grid-template-columns: 1fr;
     }
 
     .search-actions,
@@ -1236,7 +1291,7 @@
     }
 
     .legend-exec-btn {
-        min-height: 190px;
+        min-height: 170px;
     }
 
     .dashboard-page-shell .centered-tools {
@@ -1276,9 +1331,7 @@
         padding: 0.85rem 0.55rem 1.5rem;
     }
 
-    .dashboard-hero-panel,
-    .dashboard-command-panel,
-    .dashboard-focus-panel,
+    .dashboard-command-center-panel,
     .dashboard-analytics-panel,
     .dashboard-page-shell .category-container {
         width: 100%;
