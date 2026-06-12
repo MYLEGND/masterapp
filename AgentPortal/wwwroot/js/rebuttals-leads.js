@@ -832,7 +832,7 @@
     function createWorkstationBookingButton(){
       const btn = document.createElement('button');
       btn.type = 'button';
-      btn.className = 'btn lb-btn ghost workstation-booking-btn';
+      btn.className = 'btn lb-btn qv-booking-launch workstation-booking-btn';
       btn.setAttribute('data-qv-booking-open', '');
       btn.textContent = 'Book Appointment';
 
