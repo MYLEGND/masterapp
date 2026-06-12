@@ -7,51 +7,52 @@
 
 <link rel="stylesheet" href="~/css/clients-index.css" asp-append-version="true" />
 
-<div class="wrap density-comfort leads-crm" id="legendWrap">
-    <div class="head">
+<div class="wrap density-comfort leads-crm queue-workspace-page queue-workspace-page-leads" id="legendWrap">
+    <div class="head queue-workspace-hero navy-shell">
         <div>
+            <div class="queue-workspace-kicker">My Day Queue</div>
             <h2 class="title">@Model.QueueTitle</h2>
             <div class="subtitle">@Model.QueueDescription</div>
         </div>
-        <div class="pill">@Model.Items.Count record@(Model.Items.Count == 1 ? "" : "s")</div>
+        <div class="pill queue-workspace-count">@Model.Items.Count record@(Model.Items.Count == 1 ? "" : "s")</div>
     </div>
 
-    <section class="crm-card" style="margin-bottom:14px;">
+    <section class="crm-card queue-workspace-panel navy-shell">
         <div class="crm-card-head">
             <div>
                 <h3 class="crm-card-title">Lead Queue Workspace</h3>
                 <p class="crm-card-sub">@Model.QueueRule</p>
             </div>
         </div>
-        <div class="crm-card-body" style="display:flex; gap:10px; flex-wrap:wrap; align-items:center;">
+        <div class="crm-card-body queue-workspace-toolbar">
             <a class="btn btn-ghost" asp-action="Index">← Back To Leads</a>
-            <span class="pill">Open a lead to continue work in Quick View.</span>
+            <span class="pill queue-workspace-toolbar-note">Open a lead to continue work in Quick View.</span>
         </div>
     </section>
 
     @if (Model.Items.Count == 0)
     {
-        <div class="empty">No leads are currently in this queue.</div>
+        <div class="empty queue-workspace-empty">No leads are currently in this queue.</div>
     }
     else
     {
         <div class="queue-grid">
             @foreach (var l in Model.Items)
             {
-                <section class="call-task">
-                    <div class="call-task-head">
+                <section class="call-task queue-record-card">
+                    <div class="call-task-head queue-record-head">
                         <div>
-                            <div class="call-task-name">@l.FirstName @l.LastName</div>
-                            <div class="call-task-sub">@l.Email • @l.Phone</div>
-                            <div class="tiny" style="margin-top:6px;">
+                            <div class="call-task-name queue-record-name">@l.FirstName @l.LastName</div>
+                            <div class="call-task-sub queue-record-sub">@l.Email • @l.Phone</div>
+                            <div class="tiny queue-record-meta">
                                 Stage: @l.PipelineStage • Priority: @l.CrmPriority • Waiting On: @l.WaitingOn
                             </div>
                             @if (!string.IsNullOrWhiteSpace(l.AgentNotes))
                             {
-                                <div class="tiny" style="margin-top:6px;">@l.AgentNotes</div>
+                                <div class="tiny queue-record-note">@l.AgentNotes</div>
                             }
                         </div>
-                        <div style="display:flex; gap:8px; flex-wrap:wrap;">
+                        <div class="queue-record-actions">
                             <a class="btn btn-gold" asp-action="Index" asp-route-open="@l.ClientUserId">Open In Leads CRM</a>
                         </div>
                     </div>

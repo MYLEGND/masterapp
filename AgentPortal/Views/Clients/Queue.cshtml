@@ -19,13 +19,14 @@
 
 <link rel="stylesheet" href="~/css/clients-index.css" asp-append-version="true" />
 
-<div class="wrap density-comfort" id="legendWrap">
-    <div class="head">
+<div class="wrap density-comfort clients-crm queue-workspace-page queue-workspace-page-clients" id="legendWrap">
+    <div class="head queue-workspace-hero navy-shell-clients">
         <div>
+            <div class="queue-workspace-kicker">My Day Queue</div>
             <h2 class="title">@Model.QueueTitle</h2>
             <div class="subtitle">@Model.QueueDescription</div>
         </div>
-        <div class="pill">@Model.Items.Count record@(Model.Items.Count == 1 ? "" : "s")</div>
+        <div class="pill queue-workspace-count">@Model.Items.Count record@(Model.Items.Count == 1 ? "" : "s")</div>
     </div>
 
     @if (TempData["Created"] != null)
@@ -33,27 +34,27 @@
         <div class="flash">@TempData["Created"]</div>
     }
 
-    <section class="crm-card" style="margin-bottom:14px;">
+    <section class="crm-card queue-workspace-panel navy-shell-clients">
         <div class="crm-card-head">
             <div>
                 <h3 class="crm-card-title">Queue Workspace</h3>
                 <p class="crm-card-sub">@Model.QueueRule</p>
             </div>
         </div>
-        <div class="crm-card-body" style="display:flex; gap:10px; flex-wrap:wrap; align-items:center;">
+        <div class="crm-card-body queue-workspace-toolbar">
             <a class="btn btn-ghost" asp-action="Index">← Back To Clients</a>
             <a class="btn btn-gold" asp-action="Create">+ Add Lead / Client / Business Client</a>
             @if (string.Equals(Model.QueueKey, "callsnow", StringComparison.OrdinalIgnoreCase) ||
                  string.Equals(Model.QueueKey, "overdue", StringComparison.OrdinalIgnoreCase))
             {
-                <span class="pill">Use the forms below to schedule the next follow-up call directly from this queue.</span>
+                <span class="pill queue-workspace-toolbar-note">Use the forms below to schedule the next follow-up directly from this queue.</span>
             }
         </div>
     </section>
 
     @if (Model.Items.Count == 0)
     {
-        <div class="empty">No records are currently in this queue.</div>
+        <div class="empty queue-workspace-empty">No records are currently in this queue.</div>
     }
     else
     {
@@ -64,23 +65,23 @@
                 var portalUrl = $"{portalBase}/support/view-as-client/{c.Id}";
                 var isFakeEmail = IsPlaceholderEmail(c.Email);
 
-                <section class="call-task"
+                <section class="call-task queue-record-card"
                          data-client-name="@($"{c.FirstName} {c.LastName}".Trim())"
                          data-client-email="@c.Email"
                          data-client-phone="@c.Phone">
-                    <div class="call-task-head">
+                    <div class="call-task-head queue-record-head">
                         <div>
-                            <div class="call-task-name">@c.FirstName @c.LastName</div>
-                            <div class="call-task-sub"><span class="@(isFakeEmail ? "crm-email-fake" : "")">@c.Email</span> • @c.Phone</div>
-                            <div class="tiny" style="margin-top:6px;">
+                            <div class="call-task-name queue-record-name">@c.FirstName @c.LastName</div>
+                            <div class="call-task-sub queue-record-sub"><span class="@(isFakeEmail ? "crm-email-fake" : "")">@c.Email</span> • @c.Phone</div>
+                            <div class="tiny queue-record-meta">
                                 Stage: @c.PipelineStage • Priority: @c.CrmPriority • Waiting On: @c.WaitingOn
                             </div>
                             @if (!string.IsNullOrWhiteSpace(c.PinnedBrief))
                             {
-                                <div class="tiny" style="margin-top:6px;">@c.PinnedBrief</div>
+                                <div class="tiny queue-record-note">@c.PinnedBrief</div>
                             }
                         </div>
-                        <div style="display:flex; gap:8px; flex-wrap:wrap;">
+                        <div class="queue-record-actions">
                             <a class="btn btn-ghost" asp-action="Edit" asp-route-clientUserId="@c.ClientUserId">Edit Full Record</a>
                             @if (portalEnabled)
                             {
@@ -89,7 +90,7 @@
                         </div>
                     </div>
 
-                    <form asp-action="QueueUpdate" method="post" class="queue-form" style="margin-top:14px;">
+                    <form asp-action="QueueUpdate" method="post" class="queue-form queue-record-form">
                         @Html.AntiForgeryToken()
                         <input type="hidden" name="Queue" value="@Model.QueueKey" />
                         <input type="hidden" name="ClientUserId" value="@c.ClientUserId" />
@@ -187,8 +188,11 @@
                             </div>
                         </div>
 
-                        <div class="section section-blue" style="margin-top:14px;">
-                            <h4>Schedule Appointment</h4>
+                        <div class="section section-blue queue-schedule-panel">
+                            <div class="queue-section-head">
+                                <h4>Schedule Appointment</h4>
+                                <p>Book the next touch without leaving this queue card.</p>
+                            </div>
                             <div class="grid2">
                                 <div class="f">
                                     <label>Meeting Type</label>
@@ -245,9 +249,9 @@
                                 </div>
                             </div>
 
-                            <div class="f queue-zoom-wrap" style="margin-top:10px;">
+                            <div class="f queue-zoom-wrap queue-zoom-stack-wrap">
                                 <label>Zoom</label>
-                                <label style="display:flex; gap:8px; align-items:center; margin:6px 0 8px;">
+                                <label class="queue-checkline">
                                     <input type="checkbox" name="UsePersonalZoomLink" class="queue-use-personal-zoom" @(c.UsePersonalZoomLink ? "checked" : null) />
                                     <span>Use my saved personal Zoom link automatically</span>
                                 </label>
@@ -258,23 +262,23 @@
                                        placeholder="Leave blank to use your saved personal Zoom link" />
                             </div>
 
-                            <div class="scheduler-row" style="margin-top:10px;">
+                            <div class="scheduler-row queue-scheduler-presets">
                                 <button type="button" class="preset-chip" data-queue-schedulepreset="today3">Today 3pm</button>
                                 <button type="button" class="preset-chip" data-queue-schedulepreset="tomorrow10">Tomorrow 10am</button>
                                 <button type="button" class="preset-chip" data-queue-schedulepreset="nextbiz">Next business day</button>
                                 <button type="button" class="preset-chip" data-queue-schedulepreset="week">1 week follow-up</button>
                             </div>
 
-                            <div class="tiny" style="margin-top:10px;">Schedule an appointment directly from this queue card and create the Outlook event without opening Quick View.</div>
-                            <div class="queue-calendar-status tiny" style="margin-top:8px;"></div>
+                            <div class="tiny queue-schedule-helper">Schedule an appointment directly from this queue card and create the Outlook event without opening Quick View.</div>
+                            <div class="queue-calendar-status tiny"></div>
                         </div>
 
-                        <div class="f" style="margin-top:10px;">
+                        <div class="f queue-note-field">
                             <label>Queue Note</label>
                             <textarea name="QueueNote" placeholder="Add a follow-up note, update, or manual action from this queue."></textarea>
                         </div>
 
-                        <div class="call-task-actions">
+                        <div class="call-task-actions queue-record-footer">
                             <button type="button" class="btn btn-ghost queue-create-event">Create Calendar Event</button>
                             <button type="submit" class="btn btn-gold">Save Queue Update</button>
                             <a class="btn btn-ghost" href="@backToClientsUrl">Back To Clients</a>

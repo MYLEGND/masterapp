@@ -8217,3 +8217,353 @@ button.note-self-cta[data-note-self-open]:focus-visible{
         min-height:0;
     }
 }
+
+/* ===== Queue workspace refresh (Clients + Leads My Day redirects) ===== */
+.queue-workspace-page{
+    max-width:1540px;
+    padding-top:18px !important;
+    padding-bottom:64px !important;
+}
+
+.queue-workspace-hero{
+    margin-bottom:18px;
+    padding:24px 28px;
+    align-items:center;
+}
+
+.queue-workspace-kicker{
+    display:inline-flex;
+    align-items:center;
+    gap:8px;
+    margin-bottom:8px;
+    color:#f3d688;
+    font-size:.78rem;
+    font-weight:1000;
+    letter-spacing:.14em;
+    text-transform:uppercase;
+}
+
+.queue-workspace-count{
+    min-height:48px;
+    padding:0 18px;
+    border-radius:999px;
+    font-size:.92rem;
+    font-weight:950;
+}
+
+.queue-workspace-panel{
+    overflow:hidden;
+    margin-bottom:18px;
+}
+
+.queue-workspace-panel .crm-card-head{
+    padding:18px 22px 14px;
+    border-bottom:1px solid rgba(255,255,255,.12);
+    background:linear-gradient(180deg, rgba(255,255,255,.06), rgba(255,255,255,.02));
+}
+
+.queue-workspace-toolbar{
+    display:flex;
+    align-items:center;
+    gap:12px;
+    flex-wrap:wrap;
+    padding:18px 22px 20px !important;
+}
+
+.queue-workspace-toolbar-note{
+    flex:1 1 320px;
+    min-height:46px;
+    padding:10px 16px;
+    border-radius:999px;
+    background:rgba(255,255,255,.10) !important;
+    color:#edf3fb !important;
+    font-weight:850;
+    justify-content:flex-start;
+    text-align:left;
+}
+
+.queue-workspace-empty{
+    padding:32px 28px;
+    border:1px dashed rgba(166,128,35,.34);
+    border-radius:22px;
+    background:linear-gradient(180deg, rgba(16,32,57,.94), rgba(12,24,43,.98));
+    color:#d7e0ee;
+    box-shadow:0 20px 40px rgba(15,23,42,.18);
+}
+
+.queue-workspace-page .queue-grid{
+    grid-template-columns:1fr;
+    gap:18px;
+}
+
+.queue-workspace-page .queue-record-card{
+    margin:0;
+    padding:0;
+    overflow:hidden;
+    border:1px solid rgba(22,39,68,.16);
+    border-radius:24px;
+    background:
+        radial-gradient(circle at top right, rgba(230,178,58,.10), transparent 32%),
+        linear-gradient(180deg, rgba(22,39,68,.98) 0%, rgba(12,23,43,.995) 100%);
+    box-shadow:0 24px 52px rgba(15,23,42,.18);
+}
+
+.queue-workspace-page .queue-record-head{
+    display:grid;
+    grid-template-columns:minmax(0, 1fr) auto;
+    gap:18px;
+    padding:20px 22px 16px;
+    align-items:start;
+}
+
+.queue-workspace-page .queue-record-name{
+    color:#f8fafc;
+    font-size:1.2rem;
+    font-weight:1000;
+    letter-spacing:-.02em;
+}
+
+.queue-workspace-page .queue-record-sub{
+    margin-top:6px;
+    color:#e2e8f0;
+    font-size:1rem;
+    font-weight:860;
+}
+
+.queue-workspace-page .queue-record-meta{
+    margin-top:10px;
+    color:#c7d2e5;
+    font-size:.82rem;
+    font-weight:900;
+    letter-spacing:.03em;
+    line-height:1.5;
+}
+
+.queue-workspace-page .queue-record-note{
+    margin-top:12px;
+    padding:10px 12px;
+    border:1px solid rgba(230,178,58,.16);
+    border-radius:14px;
+    background:rgba(4,12,24,.28);
+    color:#e9eef7;
+    line-height:1.55;
+}
+
+.queue-workspace-page .queue-record-actions{
+    align-self:stretch;
+    justify-content:flex-end;
+    margin-top:0;
+}
+
+.queue-workspace-page .queue-record-actions .btn,
+.queue-workspace-page .queue-record-footer .btn{
+    min-height:48px;
+    padding:0 16px;
+    border-radius:14px;
+    font-weight:900;
+}
+
+.queue-workspace-page .queue-record-form{
+    display:grid;
+    gap:18px;
+    padding:18px 22px 22px;
+    border-top:1px solid rgba(255,255,255,.08);
+    background:linear-gradient(180deg, rgba(7,16,31,.12), rgba(255,255,255,.02));
+}
+
+.queue-workspace-page .grid2{
+    display:grid;
+    grid-template-columns:repeat(2, minmax(0, 1fr));
+    gap:14px;
+}
+
+.queue-workspace-page .f{
+    min-width:0;
+    display:grid;
+    gap:8px;
+}
+
+.queue-workspace-page .f label{
+    color:#f0d58a;
+    font-size:.76rem;
+    font-weight:1000;
+    letter-spacing:.13em;
+    text-transform:uppercase;
+}
+
+.queue-workspace-page input:not([type="checkbox"]):not([type="radio"]),
+.queue-workspace-page select,
+.queue-workspace-page textarea{
+    width:100%;
+    border-radius:14px !important;
+    border:1.5px solid rgba(154,172,197,.72) !important;
+    background:linear-gradient(180deg, #ffffff, #edf3fb) !important;
+    color:#0f172a !important;
+    box-shadow:0 12px 24px rgba(2,8,23,.14) !important;
+}
+
+.queue-workspace-page input:not([type="checkbox"]):not([type="radio"]),
+.queue-workspace-page select{
+    min-height:50px;
+    padding:0 14px;
+}
+
+.queue-workspace-page textarea{
+    min-height:110px;
+    padding:12px 14px;
+    resize:vertical;
+}
+
+.queue-workspace-page input::placeholder,
+.queue-workspace-page textarea::placeholder{
+    color:rgba(30,41,59,.64) !important;
+}
+
+.queue-workspace-page .queue-schedule-panel{
+    display:grid;
+    gap:14px;
+    padding:18px;
+    border:1px solid rgba(230,178,58,.16);
+    border-radius:20px;
+    background:
+        radial-gradient(circle at top right, rgba(230,178,58,.08), transparent 28%),
+        linear-gradient(180deg, rgba(15,31,57,.72), rgba(9,18,36,.88));
+    box-shadow:inset 0 1px 0 rgba(255,255,255,.04);
+}
+
+.queue-workspace-page .queue-section-head{
+    display:grid;
+    gap:6px;
+}
+
+.queue-workspace-page .queue-section-head h4{
+    margin:0;
+    color:#ffffff;
+    font-size:1.02rem;
+    font-weight:950;
+}
+
+.queue-workspace-page .queue-section-head p{
+    margin:0;
+    color:#ced7e7;
+    font-size:.92rem;
+    line-height:1.5;
+}
+
+.queue-workspace-page .queue-zoom-stack-wrap{
+    margin-top:2px;
+}
+
+.queue-workspace-page .queue-checkline{
+    display:flex;
+    align-items:center;
+    gap:10px;
+    margin:4px 0 6px;
+    color:#e8edf7;
+    font-size:.92rem;
+    font-weight:760;
+    letter-spacing:normal !important;
+    text-transform:none !important;
+}
+
+.queue-workspace-page .queue-checkline input{
+    width:18px !important;
+    height:18px !important;
+    accent-color:#d7b24d;
+    box-shadow:none !important;
+}
+
+.queue-workspace-page .queue-scheduler-presets{
+    gap:10px;
+}
+
+.queue-workspace-page .preset-chip{
+    min-height:40px;
+    padding:0 14px;
+    border:1px solid rgba(230,178,58,.24);
+    border-radius:999px;
+    background:rgba(255,255,255,.08);
+    color:#f8fafc;
+    font-weight:850;
+    box-shadow:none;
+}
+
+.queue-workspace-page .preset-chip:hover{
+    background:rgba(230,178,58,.16);
+    border-color:rgba(230,178,58,.42);
+}
+
+.queue-workspace-page .queue-schedule-helper{
+    color:#c9d2e4;
+    line-height:1.5;
+}
+
+.queue-workspace-page .queue-calendar-status{
+    min-height:20px;
+    color:#dbe4f2;
+    font-weight:800;
+}
+
+.queue-workspace-page .queue-note-field{
+    gap:10px;
+}
+
+.queue-workspace-page .queue-record-footer{
+    margin-top:0;
+    padding-top:4px;
+}
+
+.queue-workspace-page .queue-record-footer .btn{
+    justify-content:center;
+}
+
+@media (max-width: 960px){
+    .queue-workspace-page .queue-record-head{
+        grid-template-columns:1fr;
+    }
+
+    .queue-workspace-page .queue-record-actions{
+        justify-content:flex-start;
+    }
+}
+
+@media (max-width: 720px){
+    .queue-workspace-hero{
+        padding:20px 18px;
+    }
+
+    .queue-workspace-panel .crm-card-head{
+        padding:16px 18px 12px;
+    }
+
+    .queue-workspace-toolbar,
+    .queue-workspace-page .queue-record-form,
+    .queue-workspace-page .queue-record-head{
+        padding-left:18px !important;
+        padding-right:18px !important;
+    }
+
+    .queue-workspace-toolbar{
+        align-items:stretch;
+    }
+
+    .queue-workspace-toolbar .btn,
+    .queue-workspace-toolbar-note{
+        width:100%;
+    }
+
+    .queue-workspace-page .grid2{
+        grid-template-columns:1fr;
+    }
+
+    .queue-workspace-page .queue-record-actions,
+    .queue-workspace-page .queue-record-footer{
+        flex-direction:column;
+        align-items:stretch;
+    }
+
+    .queue-workspace-page .queue-record-actions .btn,
+    .queue-workspace-page .queue-record-footer .btn{
+        width:100%;
+    }
+}
