@@ -276,8 +276,7 @@ namespace AgentPortal.Controllers
                 return Forbid();
             }
 
-            ViewBag.AvatarUrl = Url.Action(nameof(Current));
-            return View();
+            return RedirectToAction("ManageProfile", "Account");
         }
 
         [HttpPost]
@@ -293,20 +292,20 @@ namespace AgentPortal.Controllers
             if (photo == null || photo.Length == 0)
             {
                 TempData["AvatarError"] = "Please choose an image file.";
-                return RedirectToAction(nameof(Edit));
+                return RedirectToAction("ManageProfile", "Account");
             }
 
             if (photo.Length > 3 * 1024 * 1024)
             {
                 TempData["AvatarError"] = "Please upload an image under 3 MB.";
-                return RedirectToAction(nameof(Edit));
+                return RedirectToAction("ManageProfile", "Account");
             }
 
             var allowed = new[] { "image/png", "image/jpeg", "image/jpg", "image/webp" };
             if (!allowed.Contains(photo.ContentType))
             {
                 TempData["AvatarError"] = "Only PNG, JPG, or WEBP images are allowed.";
-                return RedirectToAction(nameof(Edit));
+                return RedirectToAction("ManageProfile", "Account");
             }
 
             var ext = Path.GetExtension(photo.FileName);
@@ -336,7 +335,7 @@ namespace AgentPortal.Controllers
                 }
 
                 TempData["AvatarSuccess"] = "Profile picture updated.";
-                return RedirectToAction(nameof(Edit));
+                return RedirectToAction("ManageProfile", "Account");
             }
             catch (Exception ex)
             {
@@ -345,7 +344,7 @@ namespace AgentPortal.Controllers
                     "Avatar upload failed for user {UserId}.",
                     userId);
                 TempData["AvatarError"] = "We couldn’t save your profile picture right now. Please try again.";
-                return RedirectToAction(nameof(Edit));
+                return RedirectToAction("ManageProfile", "Account");
             }
         }
 

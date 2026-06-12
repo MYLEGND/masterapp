@@ -265,6 +265,12 @@
         font-weight: 800;
     }
 
+    .profile-flash-error {
+        border-color: rgba(252, 165, 165, 0.24);
+        background: rgba(185, 28, 28, 0.16);
+        color: #ffe2e7;
+    }
+
     .profile-form {
         display: grid;
         gap: 10px;
@@ -535,7 +541,6 @@
                     <p class="profile-help">Square PNG, JPG, or WEBP under 3 MB.</p>
                     <div class="profile-actions profile-actions-start">
                         <button type="submit" class="profile-btn profile-btn-primary">Upload photo</button>
-                        <a class="profile-btn profile-btn-secondary" asp-controller="Avatar" asp-action="Edit">Photo settings</a>
                     </div>
                 </form>
             </aside>
@@ -544,6 +549,14 @@
         @if (TempData["ProfileSaved"] is string ok)
         {
             <div class="profile-flash">@ok</div>
+        }
+        @if (TempData["AvatarSuccess"] is string avatarOk)
+        {
+            <div class="profile-flash">@avatarOk</div>
+        }
+        @if (TempData["AvatarError"] is string avatarErr)
+        {
+            <div class="profile-flash profile-flash-error">@avatarErr</div>
         }
 
         <form asp-action="ManageProfile" method="post" novalidate class="profile-form">
