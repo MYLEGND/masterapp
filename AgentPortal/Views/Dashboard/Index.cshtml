@@ -592,6 +592,15 @@
         inset 0 1px 0 rgba(255, 255, 255, 0.05);
 }
 
+.dashboard-command-center-panel {
+    z-index: 40;
+}
+
+.dashboard-analytics-panel,
+.dashboard-page-shell .category-container {
+    z-index: 1;
+}
+
 .dashboard-command-center-panel::before,
 .dashboard-analytics-panel::before,
 .dashboard-page-shell .category-container::before {
@@ -846,9 +855,10 @@
     right: 0;
     z-index: 35;
     display: none;
-    max-height: min(360px, 55vh);
-    overflow-y: auto;
+    max-height: clamp(220px, 34vh, 300px);
+    overflow-y: scroll;
     overscroll-behavior: contain;
+    scrollbar-gutter: stable;
     padding: 0.4rem;
     border: 1px solid rgba(212, 170, 71, 0.3);
     border-radius: 18px;
