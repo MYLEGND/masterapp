@@ -32,7 +32,11 @@
 
     function clearSlots(message) {
         const container = $("qvBookSlots");
-        if (container) container.innerHTML = "";
+        if (container) {
+            container.innerHTML = message
+                ? `<span class="qv-slot-empty">${message}</span>`
+                : "";
+        }
         selectedSlotTime = "";
         const timeInput = $("qvBookTime");
         if (timeInput) timeInput.value = "";
@@ -118,6 +122,21 @@
             clearSlots("Could not load slots");
         }
     }
+
+
+    document.addEventListener("focusin", (e) => {
+        if (!e.target) return;
+        if (e.target.id === "qvBookDate" && e.target.value) {
+            loadSlots();
+        }
+    });
+
+    document.addEventListener("click", (e) => {
+        if (!e.target) return;
+        if (e.target.id === "qvBookDate" && e.target.value) {
+            loadSlots();
+        }
+    });
 
     document.addEventListener("change", (e) => {
         if (!e.target) return;

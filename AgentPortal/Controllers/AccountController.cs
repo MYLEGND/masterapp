@@ -192,7 +192,7 @@ public class AccountController : Controller
             FallbackBookingUrl = profile.FallbackBookingUrl,
             BookingPageIdOrMailbox = profile.BookingPageIdOrMailbox,
             CalendarEmail = profile.CalendarEmail,
-            PreferModalOnMobile = profile.PreferModalOnMobile ?? true,
+            PreferModalOnMobile = false,
             HasSecureMetaCapiAccessToken = !string.IsNullOrWhiteSpace(profile.MetaCapiAccessToken)
         };
 
@@ -251,7 +251,7 @@ public class AccountController : Controller
         profile.FallbackBookingUrl = vm.FallbackBookingUrl;
         profile.BookingPageIdOrMailbox = vm.BookingPageIdOrMailbox;
         profile.CalendarEmail = vm.CalendarEmail;
-        profile.PreferModalOnMobile = vm.BookingEnabled || hasBookingFieldValues ? vm.PreferModalOnMobile : null;
+        profile.PreferModalOnMobile = false;
         // Email (UPN) remains authoritative from directory; do not allow editing here.
         // Only write it when Azure AD gives us a clean value.
         if (!string.IsNullOrWhiteSpace(directoryUpn) && normalizedUpn != null)
