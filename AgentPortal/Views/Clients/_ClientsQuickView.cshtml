@@ -23,6 +23,7 @@
                 <button type="button" class="btn btn-ghost" id="btnCopyContact">Copy Contact</button>
                 <a class="btn btn-ghost" id="btnOpenEdit" href="#" target="_blank" rel="noopener">Edit Client</a>
                 <a class="btn btn-gold" id="btnOpenProfile" href="#" target="_blank" rel="noopener">Open Client Profile</a>
+                <button type="button" class="btn btn-gold qv-booking-launch" data-qv-booking-open>Book Appointment</button>
                 <a class="btn btn-ghost" id="btnMail" href="#" target="_blank" rel="noopener">Email</a>
                 <a class="btn btn-ghost" id="btnCall" href="#" target="_blank" rel="noopener">Call</a>
                 <button type="button" class="btn btn-ghost" data-zoom-popup aria-label="Open Zoom Links">
@@ -40,23 +41,7 @@
             <div class="crm-qv-contact-head lead-contact-card-head">
                 <h4>Contact &amp; Profile</h4>
                 <div class="lead-contact-card-actions">
-
-                    <div class="qv-booking-inline" id="qvBookingInline">
-                        <span class="qv-booking-label">Book Appointment</span>
-                        <input id="qvBookDate" type="date" />
-                        <input id="qvBookTime" type="hidden" />
-                        <div id="qvBookSlots" class="qv-book-slots"></div>
-                        <select id="qvBookDuration">
-                            <option value="15">15 min</option>
-                            <option value="30" selected>30 min</option>
-                            <option value="45">45 min</option>
-                            <option value="60">60 min</option>
-                        </select>
-                        <button type="button" id="btnBookAppointment" class="btn btn-gold">Book</button>
-                        <span id="qvBookStatus" class="tiny"></span>
-                    </div>
-
-<button type="button" class="btn btn-ghost" id="clientQuickActionsShortcut">Actions</button>
+                    <button type="button" class="btn btn-ghost" id="clientQuickActionsShortcut">Actions</button>
                     <button type="button" class="btn btn-gold qv-btn-wide" id="btnClientFinPlan">Accumulation + Distribution</button>
                     <button type="button" class="btn lb-btn note-self-cta" id="noteSelfOpen" data-note-self-open>
                         📝 Note to Self
@@ -794,6 +779,8 @@
         <div class="note-self-foot" id="noteSelfStatus" data-note-self-status>Ready</div>
     </div>
 </div>
+
+@await Html.PartialAsync("~/Views/Shared/_QuickViewBookingModal.cshtml")
 
 <style>
     /* Mini distribution planner styling (matched to Finance DP) */

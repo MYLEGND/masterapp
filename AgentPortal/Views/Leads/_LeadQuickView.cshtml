@@ -77,22 +77,8 @@
                 <h4>Contact &amp; Profile</h4>
                 <div class="lead-contact-card-actions">
 
-                    <div class="qv-booking-inline" id="qvBookingInline">
-                        <span class="qv-booking-label">Book Appointment</span>
-                        <input id="qvBookDate" type="date" />
-                        <input id="qvBookTime" type="hidden" />
-                        <div id="qvBookSlots" class="qv-book-slots"></div>
-                        <select id="qvBookDuration">
-                            <option value="15">15 min</option>
-                            <option value="30" selected>30 min</option>
-                            <option value="45">45 min</option>
-                            <option value="60">60 min</option>
-                        </select>
-                        <button type="button" id="btnBookAppointment" class="btn btn-gold">Book</button>
-                        <span id="qvBookStatus" class="tiny"></span>
-                    </div>
-
-<a class="btn btn-ghost" id="btnMail" href="#" target="_blank" rel="noopener">Email</a>
+                    <button type="button" class="btn btn-gold qv-booking-launch" data-qv-booking-open>Book Appointment</button>
+                    <a class="btn btn-ghost" id="btnMail" href="#" target="_blank" rel="noopener">Email</a>
                     <a class="btn btn-ghost" id="btnCall" href="#" target="_blank" rel="noopener">Call</a>
                     <button type="button" class="btn btn-ghost" id="btnText">Text</button>
                     <button type="button" class="btn btn-ghost" id="leadQuickActionsShortcut">Actions</button>
@@ -626,6 +612,8 @@
         </section>
     </div>
 </aside>
+
+@await Html.PartialAsync("~/Views/Shared/_QuickViewBookingModal.cshtml")
 
 <div class="note-self-overlay" id="noteSelfOverlay" data-note-self-overlay hidden>
     <div class="note-self-modal" role="dialog" aria-modal="true" aria-label="Note to Self">

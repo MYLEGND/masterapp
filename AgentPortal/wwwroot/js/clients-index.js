@@ -4113,6 +4113,7 @@ function closeDrawer(){
     const inst = bootstrap.Modal.getInstance(clientActionsHubModal);
     inst?.hide();
   }
+  window.closeQuickViewBookingModal?.();
   drawer.classList.remove("open");
   drawerBackdrop.classList.remove("open");
   drawer.setAttribute("aria-hidden", "true");
@@ -6551,22 +6552,34 @@ async function refreshCalendarBusyPanel(){
 }
 
 async function createCalendarEventFromDrawer(){
-  if (!activeClientId) return toast("Open a client first.");
+  if (!activeClientId){
+    toast("Open a client first.");
+    return false;
+  }
 
   const st = await calendarStatus();
   if (!st.connected){
     toast("Connect calendar first.");
-    return;
+    return false;
   }
 
   const row = rows.find(r => r.dataset.clientId === activeClientId);
-  if (!row) return toast("Client not found.");
+  if (!row){
+    toast("Client not found.");
+    return false;
+  }
 
   const nextDate = norm(dNextDate.value);
   const nextText = norm(dNextText.value);
 
-  if (!nextDate) return toast("Set a Next Action Date first.");
-  if (!nextText) return toast("Add Next Action text first.");
+  if (!nextDate){
+    toast("Set a Next Action Date first.");
+    return false;
+  }
+  if (!nextText){
+    toast("Add Next Action text first.");
+    return false;
+  }
 
   const { startISO, endISO } = defaultEventTimes(nextDate);
 
@@ -6602,9 +6615,11 @@ async function createCalendarEventFromDrawer(){
     dSaved.textContent = "Calendar event synced ✔";
     refreshCalendarBusyPanel();
     toast("Calendar event created");
+    return true;
   }catch(err){
     console.error(err);
     toast(err?.message || "Calendar create failed.");
+    return false;
   }
 }
 
