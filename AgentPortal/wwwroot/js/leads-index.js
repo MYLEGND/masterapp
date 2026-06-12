@@ -4230,7 +4230,7 @@ async function openDrawerForRow(row){
   dDocAppSent.checked = false;
   dDocAppSigned.checked = false;
 
-  loadProductionHistory(row.dataset.clientId);
+  loadProductionHistory(row.dataset.leadId || row.dataset.id || row.getAttribute("data-lead-id"));
   dDocPolicyDelivered.checked = false;
   dDocReviewBooked.checked = false;
   dAssignedOwner.value = row.dataset.crmOwner || "";
