@@ -1522,6 +1522,26 @@ document.addEventListener('DOMContentLoaded', function () {
     const autocompleteList = document.getElementById('autocompleteList');
     const clearBtn = document.getElementById('clearSearch');
 
+    function positionAutocompleteList() {
+        if (!searchInput || !autocompleteList || autocompleteList.style.display === 'none') {
+            return;
+        }
+
+        const rect = searchInput.getBoundingClientRect();
+        const viewportPadding = 16;
+        const availableBelow = window.innerHeight - rect.bottom - viewportPadding;
+        const availableAbove = rect.top - viewportPadding;
+        const showAbove = availableBelow < 220 && availableAbove > availableBelow;
+        const maxHeight = Math.max(180, Math.min(320, showAbove ? availableAbove - 10 : availableBelow - 10));
+
+        autocompleteList.style.width = rect.width + 'px';
+        autocompleteList.style.left = Math.max(viewportPadding, rect.left) + 'px';
+        autocompleteList.style.maxHeight = maxHeight + 'px';
+        autocompleteList.style.top = showAbove
+            ? Math.max(viewportPadding, rect.top - maxHeight - 10) + 'px'
+            : Math.max(viewportPadding, rect.bottom + 10) + 'px';
+    }
+
     const tools = Array.from(document.querySelectorAll('.dashboard-tool')).map(tool => ({
         name: tool.dataset.name || tool.querySelector('.tool-name').textContent.trim(),
         description: tool.querySelector('.tool-desc')?.textContent.toLowerCase() || '',
@@ -1532,6 +1552,13 @@ document.addEventListener('DOMContentLoaded', function () {
     clearBtn.addEventListener('click', () => {
         searchInput.value = '';
         autocompleteList.style.display = 'none';
+    });
+
+    searchInput.addEventListener('focus', () => {
+        if (searchInput.value.trim() && autocompleteList.children.length) {
+            autocompleteList.style.display = 'block';
+            positionAutocompleteList();
+        }
     });
 
     searchInput.addEventListener('input', () => {
@@ -1580,6 +1607,7 @@ document.addEventListener('DOMContentLoaded', function () {
         });
 
         autocompleteList.style.display = 'block';
+        positionAutocompleteList();
     });
 
     document.addEventListener('click', e => {
@@ -1587,6 +1615,9 @@ document.addEventListener('DOMContentLoaded', function () {
             autocompleteList.style.display = 'none';
         }
     });
+
+    window.addEventListener('resize', positionAutocompleteList);
+    window.addEventListener('scroll', positionAutocompleteList, true);
 
         const enableMobileCollapses = () => {
             const mq = window.matchMedia('(max-width: 720px)');
