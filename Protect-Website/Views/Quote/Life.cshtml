@@ -8833,19 +8833,6 @@ input:checked + .lq-answer-card {
         </div>
         }
 
-        <div class="lq-booking-modal" id="lifeBookingModal" hidden aria-hidden="true">
-            <div class="lq-booking-modal-backdrop" data-booking-modal-close></div>
-            <div class="lq-booking-modal-dialog" role="dialog" aria-modal="true" aria-labelledby="lifeBookingModalTitle">
-                <div class="lq-booking-modal-head">
-                    <div class="lq-booking-modal-title" id="lifeBookingModalTitle">Continue Your Review</div>
-                    <button type="button" class="lq-booking-modal-close" data-booking-modal-close aria-label="Close scheduling">Close</button>
-                </div>
-                <div class="lq-booking-embed-shell is-modal" id="lifeBookingModalShell">
-                    <div class="lq-booking-embed-status" id="lifeBookingModalStatus">Loading your scheduling options...</div>
-                    <div class="lq-booking-embed-frame-wrap" id="lifeBookingModalFrameSlot"></div>
-                </div>
-            </div>
-        </div>
     </form>
 </div>
 </div>
@@ -9908,10 +9895,6 @@ body.life-landing .lq-contact-capture-head .lq-agent-handoff-head {
   const step2EstimateSlot = document.getElementById('lifeStep2EstimateSlot');
   const contactCaptureWrap = document.getElementById('lifeContactCaptureWrap');
   const postSubmitSlot = document.getElementById('lifePostSubmitSlot');
-  const bookingModal = document.getElementById('lifeBookingModal');
-  const bookingModalFrameSlot = document.getElementById('lifeBookingModalFrameSlot');
-  const bookingModalStatus = document.getElementById('lifeBookingModalStatus');
-  const bookingModalCloseButtons = Array.from(document.querySelectorAll('[data-booking-modal-close]'));
   const microSteps = Array.from(document.querySelectorAll('[data-micro-step]'));
   const ageStepContinueBtn = document.getElementById('ageStepContinueBtn');
   const step1ContinueBtn = document.getElementById('step1Continue');
@@ -12918,19 +12901,9 @@ const contactFieldProgress = new Map();
   }
 
   function resolveRequestedBookingSurface(payload) {
-    if (!payload?.canEmbed) {
-      return 'external_redirect_fallback';
-    }
-
-    return shouldUseBookingModal(payload)
-      ? 'website_modal'
-      : 'website_embed';
-  }
-
-  function shouldUseBookingModal(payload) {
-    return Boolean(payload?.canEmbed)
-      && Boolean(payload?.preferModalOnMobile)
-      && window.matchMedia('(max-width: 767.98px)').matches;
+    return Boolean(payload?.canEmbed || payload?.eligible)
+      ? 'website_embed'
+      : 'external_redirect_fallback';
   }
 
   function buildDisabledBookingState(reason = 'disabled') {
@@ -12938,7 +12911,7 @@ const contactFieldProgress = new Map();
       enabled: false,
       canEmbed: false,
       canFallback: false,
-      preferModalOnMobile: true,
+      preferModalOnMobile: false,
       embedUrl: '',
       fallbackUrl: '',
       surface: 'external_redirect_fallback',
@@ -12955,14 +12928,13 @@ const contactFieldProgress = new Map();
     const sourceHint = hint && typeof hint === 'object' ? hint : {};
     const canEmbed = Boolean(source.canEmbed ?? sourceHint.canEmbed);
     const canFallback = Boolean(source.canFallback ?? sourceHint.canFallback);
-    const preferModalOnMobile = Boolean(source.preferModalOnMobile ?? sourceHint.preferModalOnMobile);
     const enabled = Boolean(source.enabled ?? sourceHint.eligible) && (canEmbed || canFallback);
 
     return {
       enabled,
       canEmbed,
       canFallback,
-      preferModalOnMobile,
+      preferModalOnMobile: false,
       embedUrl: asTrimmed(source.embedUrl || sourceHint.embedUrl || ''),
       fallbackUrl: asTrimmed(source.fallbackUrl || sourceHint.fallbackUrl || ''),
       surface: asTrimmed(source.surface || resolveRequestedBookingSurface(sourceHint)),
@@ -12988,7 +12960,7 @@ const contactFieldProgress = new Map();
     const normalized = normalizePublicBookingPayload(payload, publicBookingState);
     return {
       bookingSurface: normalized.surface || resolveRequestedBookingSurface(normalized),
-      bookingMode: shouldUseBookingModal(normalized) ? 'modal' : normalized.canEmbed ? 'inline' : 'fallback',
+      bookingMode: normalized.canEmbed ? 'inline' : 'fallback',
       hasFallback: normalized.canFallback,
       appointmentStatus: normalized.appointmentStatus || '',
       requestedBookingSource: normalized.requestedBookingSource || '',
@@ -13007,50 +12979,6 @@ const contactFieldProgress = new Map();
     };
   }
 
-  function closeBookingModal(options = {}) {
-    if (!(bookingModal instanceof HTMLElement)) {
-      return;
-    }
-
-    const shouldAttemptFallbackConfirmation =
-      publicBookingEmbedViewed &&
-      !publicBookingBookedConfirmed &&
-      !publicBookingFallbackClicked &&
-      !publicBookingConfirmationRequested &&
-      publicBookingState?.contextToken;
-
-    bookingModal.hidden = true;
-    bookingModal.setAttribute('aria-hidden', 'true');
-    document.body.style.removeProperty('overflow');
-
-    if (options.clearFrame !== false && bookingModalFrameSlot instanceof HTMLElement) {
-      bookingModalFrameSlot.innerHTML = '';
-    }
-    if (bookingModalStatus instanceof HTMLElement) {
-      bookingModalStatus.hidden = false;
-      bookingModalStatus.textContent = publicBookingLoadingText;
-    }
-
-    if (shouldAttemptFallbackConfirmation) {
-      publicBookingConfirmationRequested = true;
-      window.setTimeout(() => {
-        void confirmPublicBookingExperience(publicBookingState).then((confirmedState) => {
-          publicBookingConfirmationRequested = false;
-          publicBookingState = normalizePublicBookingPayload(confirmedState, publicBookingState);
-          renderPostSubmitBookingState(publicBookingState);
-
-          if (publicBookingState.confirmationVerified && !publicBookingBookedConfirmed) {
-            publicBookingBookedConfirmed = true;
-            trackEvent('appointment_booked', buildAppointmentTrackingMetadata(publicBookingState));
-          }
-        }).catch((error) => {
-          publicBookingConfirmationRequested = false;
-          console.warn('[LifeQuote] fallback booking confirmation failed', error);
-        });
-      }, 2500);
-    }
-  }
-
   function resetPostSubmitSuccessState() {
     postSubmitSuccessActive = false;
     thankYouViewTracked = false;
@@ -13063,7 +12991,6 @@ const contactFieldProgress = new Map();
     publicBookingAbandonedTracked = false;
     activeInlineBookingFrame = null;
     activeInlineBookingSlot = null;
-    closeBookingModal({ clearFrame: true });
 
     if (contactCaptureWrap instanceof HTMLElement) {
       contactCaptureWrap.hidden = false;
@@ -13477,15 +13404,6 @@ const contactFieldProgress = new Map();
   window.addEventListener('resize', () => {
     if (activeInlineBookingFrame && activeInlineBookingSlot) {
       window.requestAnimationFrame(() => syncInlineBookingDesktopViewport());
-    }
-  });
-
-  bookingModalCloseButtons.forEach((button) => {
-    button.addEventListener('click', () => closeBookingModal({ clearFrame: true }));
-  });
-  document.addEventListener('keydown', (event) => {
-    if (event.key === 'Escape' && bookingModal instanceof HTMLElement && !bookingModal.hidden) {
-      closeBookingModal({ clearFrame: true });
     }
   });
 
