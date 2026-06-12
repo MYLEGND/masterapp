@@ -665,12 +665,6 @@ public class CalendarController : Controller
                     return Forbid();
             }
 
-            // Ensure token exists (will throw if not consented)
-            var accessToken = await _tokenAcquisition.GetAccessTokenForUserAsync(CalendarScopes);
-
-            var httpClient = _httpClientFactory.CreateClient("ResilientDefault");
-            httpClient.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", accessToken);
-
             var zoomJoinUrl = string.IsNullOrWhiteSpace(req.ZoomJoinUrl) ? null : req.ZoomJoinUrl.Trim();
             var displayLocation = string.IsNullOrWhiteSpace(req.Location) ? "" : req.Location.Trim();
             var encodedBody = System.Net.WebUtility.HtmlEncode(req.Body ?? "").Replace("\n", "<br/>");
@@ -686,44 +680,90 @@ public class CalendarController : Controller
             var utcEnd = TimeZoneInfo.ConvertTimeToUtc(
                 DateTime.SpecifyKind(localEnd, DateTimeKind.Unspecified),
                 agentTimeZone);
-            var graphPayload = new
-            {
-                subject = req.Subject.Trim(),
-                start = new
-                {
-                    dateTime = utcStart.ToString("yyyy-MM-dd'T'HH:mm:ss", CultureInfo.InvariantCulture),
-                    timeZone = "UTC"
-                },
-                end = new
-                {
-                    dateTime = utcEnd.ToString("yyyy-MM-dd'T'HH:mm:ss", CultureInfo.InvariantCulture),
-                    timeZone = "UTC"
-                },
-                body = new
-                {
-                    contentType = "HTML",
-                    content = htmlBody
-                },
-                isReminderOn = true,
-                reminderMinutesBeforeStart = 30,
-                location = new { displayName = displayLocation }
-            };
 
-            using var response = await httpClient.PostAsync(
-                "https://graph.microsoft.com/v1.0/me/events",
-                new StringContent(JsonSerializer.Serialize(graphPayload), Encoding.UTF8, "application/json"));
+            var ownerAgentUserId = profile == null
+                ? (string.IsNullOrWhiteSpace(leadProfile?.AgentUserId) ? agentOid : leadProfile!.AgentUserId)
+                : agentOid;
 
-            var responseText = await response.Content.ReadAsStringAsync();
-            if (!response.IsSuccessStatusCode)
+            var ownerAgentProfile = await _db.AgentProfiles.AsNoTracking()
+                .FirstOrDefaultAsync(x => (x.AgentUserId ?? "").Trim().ToLower() == ownerAgentUserId.Trim().ToLower());
+
+            if (ownerAgentProfile == null)
             {
-                _logger.LogError("Graph event create failed. Status={StatusCode}. Body={Body}", (int)response.StatusCode, responseText);
-                return StatusCode((int)response.StatusCode, ExtractGraphErrorMessage(responseText) ?? "Calendar create failed.");
+                var currentUpn = User.FindFirstValue("preferred_username") ?? User.FindFirstValue(ClaimTypes.Upn) ?? User.Identity?.Name ?? "";
+                ownerAgentProfile = await _db.AgentProfiles.AsNoTracking()
+                    .FirstOrDefaultAsync(x => !string.IsNullOrWhiteSpace(currentUpn) &&
+                                              ((x.AgentUpn ?? "").Trim().ToLower() == currentUpn.Trim().ToLower() ||
+                                               (x.NormalizedEmail ?? "").Trim().ToLower() == currentUpn.Trim().ToLower()));
             }
 
-            var created = JsonSerializer.Deserialize<GraphEventResponse>(responseText, new JsonSerializerOptions
+            var bookingBusinessId = (ownerAgentProfile?.BookingPageIdOrMailbox ?? "").Trim();
+            if (string.IsNullOrWhiteSpace(bookingBusinessId))
+                return BadRequest("Agent booking configuration missing.");
+
+            var durationMinutes = MinutesBetween(localStart, localEnd);
+            var bookingService = await ResolveBookingServiceByDurationAsync(bookingBusinessId, durationMinutes, HttpContext.RequestAborted);
+            if (bookingService == null || string.IsNullOrWhiteSpace(bookingService.Id))
+                return BadRequest($"No Microsoft Bookings service matches {durationMinutes} minutes.");
+
+            var customerName = profile != null
+                ? $"{profile.FirstName} {profile.LastName}".Trim()
+                : $"{leadProfile?.FirstName} {leadProfile?.LastName}".Trim();
+
+            if (string.IsNullOrWhiteSpace(customerName))
+                customerName = "Client";
+
+            var customerEmail = profile != null ? profile.Email : leadProfile?.Email;
+            var customerPhone = profile != null ? profile.Phone : leadProfile?.Phone;
+
+            var bookingAppointment = new BookingAppointment
             {
-                PropertyNameCaseInsensitive = true
-            });
+                ServiceId = bookingService.Id,
+                ServiceName = bookingService.DisplayName,
+                StaffMemberIds = bookingService.StaffMemberIds?.Where(x => !string.IsNullOrWhiteSpace(x)).Take(1).ToList(),
+                StartDateTime = new DateTimeTimeZone
+                {
+                    DateTime = utcStart.ToString("yyyy-MM-dd'T'HH:mm:ss", CultureInfo.InvariantCulture),
+                    TimeZone = "UTC"
+                },
+                EndDateTime = new DateTimeTimeZone
+                {
+                    DateTime = utcEnd.ToString("yyyy-MM-dd'T'HH:mm:ss", CultureInfo.InvariantCulture),
+                    TimeZone = "UTC"
+                },
+                CustomerName = customerName,
+                CustomerEmailAddress = customerEmail,
+                CustomerPhone = customerPhone,
+                CustomerTimeZone = agentTimeZone.Id,
+                Customers = new List<BookingCustomerInformationBase>
+                {
+                    new BookingCustomerInformation
+                    {
+                        Name = customerName,
+                        EmailAddress = customerEmail,
+                        Phone = customerPhone,
+                        TimeZone = agentTimeZone.Id
+                    }
+                },
+                AdditionalInformation = htmlBody,
+                IsCustomerAllowedToManageBooking = true,
+                OptOutOfCustomerEmail = false
+            };
+
+            var bookingCreated = await _appGraph
+                .Solutions
+                .BookingBusinesses[bookingBusinessId]
+                .Appointments
+                .PostAsync(bookingAppointment, cancellationToken: HttpContext.RequestAborted);
+
+            var created = new CreatedCalendarLikeResponse
+            {
+                Id = bookingCreated?.Id,
+                WebLink = bookingCreated?.SelfServiceAppointmentId,
+                SelfServiceAppointmentId = bookingCreated?.SelfServiceAppointmentId,
+                ServiceId = bookingCreated?.ServiceId,
+                ServiceName = bookingCreated?.ServiceName
+            };
 
             if (profile != null)
             {
@@ -794,7 +834,7 @@ public class CalendarController : Controller
                             OwnerAgentUserId = string.IsNullOrWhiteSpace(linkedLeadProfile.AgentUserId) ? agentOid : linkedLeadProfile.AgentUserId,
                             WebsiteLeadIntakeLinkId = clientLatestIntakeLinkId,
                             ClientProfileId = profile.Id.ToString(),
-                            BookingProvider = "microsoft_graph",
+                            BookingProvider = "microsoft_bookings",
                             BookingSource = LeadAppointmentBookingSources.InternalCalendar,
                             RequestedBookingSource = LeadAppointmentBookingSources.InternalCalendar,
                             ConfirmationSource = LeadAppointmentBookingSources.InternalCalendar,
@@ -807,14 +847,14 @@ public class CalendarController : Controller
                     }
 
                     clientPersistedAppointment.ClientProfileId = profile.Id.ToString();
-                    clientPersistedAppointment.BookingProvider = "microsoft_graph";
+                    clientPersistedAppointment.BookingProvider = "microsoft_bookings";
                     clientPersistedAppointment.CalendarEventId = created?.Id;
                     clientPersistedAppointment.CalendarEventWebLink = created?.WebLink;
                     clientPersistedAppointment.ScheduledStartUtc = utcStart;
                     clientPersistedAppointment.ScheduledEndUtc = utcEnd;
                     clientPersistedAppointment.MeetingUrl = zoomJoinUrl;
                     clientPersistedAppointment.LastSyncedUtc = clientNowUtc;
-                    clientPersistedAppointment.LastSyncStatus = "internal_calendar_created";
+                    clientPersistedAppointment.LastSyncStatus = "bookings_appointment_created";
                     clientPersistedAppointment.LastSyncError = null;
                     clientPersistedAppointment.UpdatedUtc = clientNowUtc;
                     clientPersistedAppointment.ApplyStatus(LeadAppointmentStatus.Booked, clientNowUtc);
@@ -891,6 +931,7 @@ public class CalendarController : Controller
                 WorkstationLeadId = resolvedLeadProfile.LeadId,
                 OwnerAgentUserId = string.IsNullOrWhiteSpace(resolvedLeadProfile.AgentUserId) ? agentOid : resolvedLeadProfile.AgentUserId,
                 WebsiteLeadIntakeLinkId = latestIntakeLinkId,
+                BookingProvider = "microsoft_bookings",
                 BookingSource = LeadAppointmentBookingSources.InternalCalendar,
                 RequestedBookingSource = LeadAppointmentBookingSources.InternalCalendar,
                 ConfirmationSource = LeadAppointmentBookingSources.InternalCalendar,
@@ -942,6 +983,30 @@ public class CalendarController : Controller
             _logger.LogError(ex, "Create calendar event failed.");
             return StatusCode(500, ex.Message);
         }
+    }
+
+
+    private static int MinutesBetween(DateTime start, DateTime end)
+        => Math.Max(1, (int)Math.Round((end - start).TotalMinutes));
+
+    private async Task<BookingService?> ResolveBookingServiceByDurationAsync(string businessId, int durationMinutes, CancellationToken ct)
+    {
+        var services = await _appGraph.Solutions.BookingBusinesses[businessId].Services.GetAsync(cancellationToken: ct);
+        return services?.Value?
+            .Where(x => x.IsHiddenFromCustomers != true && x.DefaultDuration.HasValue)
+            .Select(x => new { Service = x, Minutes = (int)Math.Round(x.DefaultDuration!.Value.TotalMinutes) })
+            .OrderBy(x => Math.Abs(x.Minutes - durationMinutes))
+            .FirstOrDefault(x => Math.Abs(x.Minutes - durationMinutes) <= 2)
+            ?.Service;
+    }
+
+    private sealed class CreatedCalendarLikeResponse
+    {
+        public string? Id { get; set; }
+        public string? WebLink { get; set; }
+        public string? SelfServiceAppointmentId { get; set; }
+        public string? ServiceName { get; set; }
+        public string? ServiceId { get; set; }
     }
 
     private static string? ExtractGraphErrorMessage(string? responseText)
