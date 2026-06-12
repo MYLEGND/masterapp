@@ -1,0 +1,36 @@
+using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Mvc;
+using Microsoft.Graph;
+
+namespace AgentPortal.Controllers.API;
+
+[Authorize]
+[ApiController]
+[Route("api/bookings-diagnostics")]
+public sealed class BookingsDiagnosticsController : ControllerBase
+{
+    private readonly GraphServiceClient _graph;
+
+    public BookingsDiagnosticsController(GraphServiceClient graph)
+    {
+        _graph = graph;
+    }
+
+    [HttpGet("businesses")]
+    public async Task<IActionResult> Businesses(CancellationToken cancellationToken)
+    {
+        var result = await _graph.Solutions.BookingBusinesses.GetAsync(cancellationToken: cancellationToken);
+
+        return Ok(new
+        {
+            value = result?.Value?.Select(x => new
+            {
+                x.Id,
+                x.DisplayName,
+                x.Email,
+                x.WebSiteUrl,
+                x.BusinessType
+            }).ToList()
+        });
+    }
+}
