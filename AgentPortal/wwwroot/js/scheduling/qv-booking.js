@@ -88,9 +88,72 @@
         });
     }
 
+    function selectedBookingService() {
+        const select = $("qvBookDuration");
+        const option = select?.selectedOptions?.[0] || null;
+        const duration = parseInt(option?.value || select?.value || "30", 10) || 30;
+        return {
+            duration,
+            serviceId: option?.dataset?.serviceId || "",
+            serviceName: (option?.textContent || "").trim()
+        };
+    }
+
     function formatDurationLabel(durationMinutes) {
+        const selected = selectedBookingService();
+        if (selected.serviceName && !selected.serviceName.toLowerCase().includes("loading")) {
+            return selected.serviceName;
+        }
+
         const duration = parseInt(durationMinutes || "30", 10) || 30;
         return duration === 60 ? "60 min meeting" : `${duration} min meeting`;
+    }
+
+    function syncBookingServiceOptions(rawServices) {
+        const select = $("qvBookDuration");
+        if (!select) return false;
+
+        const services = (Array.isArray(rawServices) ? rawServices : [])
+            .map(service => {
+                const duration = parseInt(service.durationMinutes || service.DurationMinutes || "0", 10);
+                return {
+                    serviceId: service.serviceId || service.id || "",
+                    serviceName: service.serviceName || service.name || "",
+                    durationMinutes: duration > 0 ? duration : 30
+                };
+            })
+            .filter(service => service.serviceId && service.serviceName && service.durationMinutes > 0)
+            .sort((a, b) => a.durationMinutes - b.durationMinutes || a.serviceName.localeCompare(b.serviceName));
+
+        if (!services.length) return false;
+
+        const previousServiceId = select.selectedOptions?.[0]?.dataset?.serviceId || "";
+        const previousDuration = select.value || $("dMeetingDuration")?.value || "30";
+
+        select.innerHTML = "";
+
+        for (const service of services) {
+            const option = document.createElement("option");
+            option.value = String(service.durationMinutes);
+            option.dataset.serviceId = service.serviceId;
+            option.textContent = service.serviceName;
+
+            if (
+                service.serviceId === previousServiceId ||
+                (!previousServiceId && String(service.durationMinutes) === String(previousDuration))
+            ) {
+                option.selected = true;
+            }
+
+            select.appendChild(option);
+        }
+
+        if (!select.value && select.options.length) {
+            select.options[0].selected = true;
+        }
+
+        updateSelectionSummary();
+        return true;
     }
 
     function formatSlotLabel(date) {
@@ -126,7 +189,7 @@
 
     function updateSelectionSummary() {
         const selectedDate = parseDateInputValue($("qvBookDate")?.value || "");
-        const duration = $("qvBookDuration")?.value || "30";
+        const duration = selectedBookingService().duration;
         const selectedDateLabel = $("qvBookingSelectedDateLabel");
         const selectedMeta = $("qvBookingSelectedMeta");
         const slotFocus = $("qvBookingSlotFocus");
@@ -324,7 +387,7 @@
     async function loadSlots() {
         const date = $("qvBookDate")?.value || "";
         const selectedDate = parseDateInputValue(date);
-        const duration = parseInt($("qvBookDuration")?.value || "30", 10) || 30;
+        let duration = selectedBookingService().duration;
 
         updateSelectionSummary();
 
@@ -346,6 +409,9 @@
             }
 
             const data = await response.json();
+            syncBookingServiceOptions(Array.isArray(data.buffers) ? data.buffers : data.services);
+            duration = selectedBookingService().duration;
+
             const freeSlots = Array.isArray(data.freeSlots) ? data.freeSlots : [];
             const slotInterval = parseInt(data.slotIntervalMinutes || "30", 10) || 30;
             renderSlots(freeSlots, duration, slotInterval);

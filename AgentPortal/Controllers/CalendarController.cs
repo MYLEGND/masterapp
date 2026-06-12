@@ -644,6 +644,7 @@ public class CalendarController : Controller
                     {
                         serviceId = x.Id,
                         serviceName = x.DisplayName,
+                        durationMinutes = (int)Math.Round((x.DefaultDuration ?? TimeSpan.FromMinutes(30)).TotalMinutes),
                         preBufferMinutes = (int)Math.Round((x.PreBuffer ?? TimeSpan.Zero).TotalMinutes),
                         postBufferMinutes = (int)Math.Round((x.PostBuffer ?? TimeSpan.Zero).TotalMinutes)
                     })
