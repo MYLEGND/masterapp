@@ -12,9 +12,9 @@
     }
 
     .container-narrow {
-        width: min(100%, 1180px);
+        width: min(100%, 1360px);
         margin: 0 auto;
-        padding: 24px 16px 48px;
+        padding: 20px 18px 48px;
     }
 
     .pcq-shell {
@@ -40,7 +40,7 @@
         border-radius: 34px;
         border: 1.6px solid var(--pcq-border-strong);
         background: var(--pcq-shell-bg);
-        padding: clamp(18px, 2.6vw, 28px);
+        padding: clamp(20px, 2.3vw, 30px);
         box-shadow:
             0 28px 80px rgba(2, 8, 21, 0.42),
             inset 0 1px 0 rgba(255, 255, 255, 0.06);
@@ -140,7 +140,7 @@
         text-align: center;
         display: grid;
         gap: 10px;
-        max-width: 780px;
+        max-width: 860px;
         margin: 0 auto;
     }
 
@@ -164,7 +164,7 @@
         display: grid;
         gap: 14px;
         justify-items: center;
-        max-width: 820px;
+        max-width: 900px;
         margin: 0 auto;
     }
 
@@ -279,7 +279,7 @@
         justify-content: center;
         margin: 0 auto;
         padding: 0;
-        max-width: 1200px;
+        max-width: 1260px;
     }
 
     .wizard-pill {
@@ -317,7 +317,7 @@
             0 18px 40px rgba(0, 0, 0, 0.18),
             inset 0 1px 0 rgba(255, 255, 255, 0.05);
         margin: 0 auto;
-        max-width: 1200px;
+        max-width: 1260px;
     }
 
     .wizard-steptext {
@@ -365,7 +365,7 @@
     .pcq-form-frame,
     #commercialQuoteForm {
         width: 100%;
-        max-width: 1200px;
+        max-width: 1260px;
         margin: 0 auto;
         padding-bottom: 8px;
         background: transparent !important;
@@ -385,7 +385,7 @@
     .section-card {
         background: var(--pcq-card-bg);
         border: 1.5px solid var(--pcq-border-strong);
-        padding: 26px;
+        padding: clamp(24px, 2vw, 30px);
         border-radius: 24px;
         margin: 0 auto 24px;
         box-shadow:
@@ -412,7 +412,7 @@
 
     .mini-card {
         border: 1.3px solid rgba(243, 214, 136, 0.38);
-        padding: 18px;
+        padding: 20px 22px;
         border-radius: 18px;
         margin-bottom: 16px;
         background: var(--pcq-card-soft-bg);
@@ -677,6 +677,39 @@
     hr {
         border-color: rgba(214, 173, 73, 0.22);
         opacity: 1;
+    }
+
+    @@media (min-width: 1200px) {
+        main.layout-content {
+            width: min(96vw, 1460px);
+            max-width: 1460px;
+            margin-left: auto;
+            margin-right: auto;
+        }
+
+        .container-narrow {
+            width: min(100%, 1400px);
+            padding: 18px 20px 48px;
+        }
+
+        .pcq-surface {
+            padding: 22px 24px 30px;
+        }
+
+        .pcq-form-shell {
+            gap: 22px;
+        }
+
+        .pcq-form-heading {
+            max-width: 980px;
+        }
+
+        .wizard-steps,
+        .wizard-top,
+        .pcq-form-frame,
+        #commercialQuoteForm {
+            max-width: 1280px;
+        }
     }
 
     @@media (max-width: 991.98px) {

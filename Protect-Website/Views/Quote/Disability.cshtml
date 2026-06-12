@@ -1133,10 +1133,10 @@ body.disability-landing.page-mode-paid-landing header .navbar-brand img {
 }
 
 #disabilityPostSubmitSlot .lq-final-review-unified-card {
-    width: min(960px, 100%) !important;
-    max-width: 960px !important;
+    width: min(1240px, 100%) !important;
+    max-width: 1240px !important;
     margin: 0 auto !important;
-    padding: 22px 24px 20px !important;
+    padding: 26px 30px 30px !important;
     border-radius: 24px !important;
     border: 1px solid rgba(199,153,49,.38) !important;
     background:
@@ -1191,7 +1191,7 @@ body.disability-landing.page-mode-paid-landing header .navbar-brand img {
     font-size: .96rem !important;
     line-height: 1.42 !important;
     font-weight: 720 !important;
-    max-width: 64ch !important;
+    max-width: 78ch !important;
     margin: 0 !important;
 }
 
@@ -1354,6 +1354,7 @@ body.disability-landing.page-mode-paid-landing header .navbar-brand img {
 }
 
 #disabilityPostSubmitSlot .lq-booking-frame-only {
+    width: 100% !important;
     margin: 10px 0 0 !important;
     padding: 0 !important;
     background: transparent !important;
@@ -1535,9 +1536,9 @@ body.disability-landing.page-mode-paid-landing header .navbar-brand img {
 
 @@media (min-width: 1024px) {
     main.layout-content {
-        width: 75vw !important;
-        max-width: 75vw !important;
-        min-width: 980px !important;
+        width: min(96vw, 1480px) !important;
+        max-width: 1480px !important;
+        min-width: 0 !important;
         margin-left: auto !important;
         margin-right: auto !important;
     }
@@ -1552,7 +1553,7 @@ body.disability-landing.page-mode-paid-landing header .navbar-brand img {
     .dq-surface {
         width: 100% !important;
         max-width: 100% !important;
-        padding: 10px 10px 12px !important;
+        padding: 16px 18px 20px !important;
     }
 
     .lq-hero-shell {
@@ -1564,7 +1565,7 @@ body.disability-landing.page-mode-paid-landing header .navbar-brand img {
         width: 100% !important;
         max-width: 100% !important;
         margin: 0 !important;
-        padding: 16px 18px 14px !important;
+        padding: 20px 24px 22px !important;
     }
 
     #disabilityEducationContactPanel .dq-wizard-surface,
@@ -1580,11 +1581,11 @@ body.disability-landing.page-mode-paid-landing header .navbar-brand img {
     #disabilityEducationContactPanel .dq-contact-capture-wrap {
         display: grid !important;
         grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
-        gap: 16px 18px !important;
+        gap: 18px 24px !important;
         width: 100% !important;
         max-width: none !important;
         margin: 0 !important;
-        padding: 10px 10px 0 !important;
+        padding: 14px 14px 0 !important;
     }
 
     #disabilityEducationContactPanel .dq-contact-head {
@@ -1608,16 +1609,16 @@ body.disability-landing.page-mode-paid-landing header .navbar-brand img {
     }
 
     #disabilityEducationContactPanel .dq-proof-card {
-        padding: 8px 12px 14px !important;
+        padding: 10px 14px 16px !important;
         margin: 0 0 16px !important;
     }
 
     #disabilityEducationContactPanel > .dq-proof-chips {
-        padding: 0 12px !important;
+        padding: 0 14px !important;
     }
 
     #disabilityEducationContactPanel > .dq-wizard-surface {
-        padding: 0 12px 8px !important;
+        padding: 0 14px 10px !important;
     }
 
     #disabilityEducationContactPanel .lq-field-row.two.full {
@@ -1662,7 +1663,7 @@ body.disability-landing.page-mode-paid-landing header .navbar-brand img {
         display: grid !important;
         grid-template-columns: minmax(0, 1fr) !important;
         gap: 14px !important;
-        padding: 22px 24px 20px !important;
+        padding: 28px 32px 32px !important;
     }
 
     #disabilityPostSubmitSlot .lq-final-review-head,
@@ -1699,7 +1700,8 @@ body.disability-landing.page-mode-paid-landing header .navbar-brand img {
     }
 
     #disabilityPostSubmitSlot .lq-booking-iframe {
-        min-height: 720px !important;
+        height: clamp(780px, 92vh, 1100px) !important;
+        min-height: clamp(780px, 92vh, 1100px) !important;
     }
 }
 
