@@ -13,6 +13,8 @@ using Domain.Enums;
 using System.Security.Claims;
 using System.Net.Http.Headers;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Graph;
+using Microsoft.Graph.Models;
 using Microsoft.Data.Sqlite;
 using System.Globalization;
 using System.Text;
@@ -31,6 +33,7 @@ public class CalendarController : Controller
     private readonly MasterAppDbContext _db;
     private readonly IHttpClientFactory _httpClientFactory;
     private readonly IAgentTimeZoneResolver _agentTimeZoneResolver;
+    private readonly GraphServiceClient _appGraph;
 
     // Scopes must match what you consent to in /calendar/connect
     private static readonly string[] CalendarScopes = new[] { "offline_access", "Calendars.ReadWrite" };
@@ -42,13 +45,15 @@ public class CalendarController : Controller
         ILogger<CalendarController> logger,
         MasterAppDbContext db,
         IHttpClientFactory httpClientFactory,
-        IAgentTimeZoneResolver agentTimeZoneResolver)
+        IAgentTimeZoneResolver agentTimeZoneResolver,
+        GraphServiceClient appGraph)
     {
         _tokenAcquisition = tokenAcquisition;
         _logger = logger;
         _db = db;
         _httpClientFactory = httpClientFactory;
         _agentTimeZoneResolver = agentTimeZoneResolver;
+        _appGraph = appGraph;
     }
 
     private static string Norm(string? v) => (v ?? "").Trim().ToLowerInvariant();

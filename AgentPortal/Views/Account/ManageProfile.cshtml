@@ -11,56 +11,63 @@
         !string.IsNullOrWhiteSpace(Model.Phone);
 
     var marketingLabel = string.IsNullOrWhiteSpace(Model.MetaPixelId)
-        ? "Using Legend default"
-        : "Custom pixel active";
+        ? "Legend default"
+        : "Custom pixel";
 
     var bookingLabel = Model.BookingEnabled
-        ? (string.IsNullOrWhiteSpace(Model.MicrosoftBookingsEmbedUrl) ? "Needs embed URL" : "Personal scheduler live")
+        ? (string.IsNullOrWhiteSpace(Model.MicrosoftBookingsEmbedUrl) ? "Needs embed" : "Personal live")
         : "Shared scheduler";
 
     var calendarLabel = string.IsNullOrWhiteSpace(Model.CalendarEmail)
         ? "Not linked"
         : "Linked";
+
+    var publicStatusClass = publicProfileReady ? "is-good" : "is-warn";
+    var marketingStatusClass = string.IsNullOrWhiteSpace(Model.MetaPixelId) ? "is-neutral" : "is-good";
+    var bookingStatusClass = !Model.BookingEnabled
+        ? "is-neutral"
+        : string.IsNullOrWhiteSpace(Model.MicrosoftBookingsEmbedUrl) ? "is-warn" : "is-good";
+    var calendarStatusClass = string.IsNullOrWhiteSpace(Model.CalendarEmail) ? "is-neutral" : "is-good";
 }
 
 <style>
     .profile-shell {
-        max-width: 1140px;
+        max-width: 1100px;
         margin: 0 auto;
-        padding: 1.5rem 1rem 3rem;
+        padding: 0.7rem 0.9rem 1.5rem;
     }
 
     .profile-page {
         overflow: hidden;
-        border: 1px solid rgba(157, 194, 255, 0.28);
-        border-radius: 28px;
+        border: 1px solid rgba(151, 188, 255, 0.22);
+        border-radius: 18px;
         background:
-            radial-gradient(circle at top right, rgba(110, 168, 255, 0.22), transparent 26%),
-            linear-gradient(180deg, #102753 0%, #17386f 48%, #143160 100%);
+            radial-gradient(circle at top right, rgba(92, 153, 255, 0.14), transparent 24%),
+            linear-gradient(180deg, #102552 0%, #17356a 52%, #143161 100%);
         color: #f8fbff;
         box-shadow:
-            0 28px 60px rgba(10, 23, 48, 0.24),
+            0 18px 34px rgba(10, 23, 48, 0.16),
             inset 0 1px 0 rgba(255, 255, 255, 0.08);
     }
 
     .profile-hero {
         display: grid;
-        grid-template-columns: minmax(0, 1.4fr) minmax(300px, .9fr);
-        gap: 18px;
-        padding: 26px 28px 22px;
-        border-bottom: 1px solid rgba(184, 211, 255, 0.18);
+        grid-template-columns: minmax(0, 1fr) 300px;
+        gap: 12px;
+        padding: 14px 16px 12px;
+        border-bottom: 1px solid rgba(184, 211, 255, 0.14);
     }
 
     .profile-panel {
-        border: 1px solid rgba(184, 211, 255, 0.18);
-        border-radius: 22px;
-        background: linear-gradient(180deg, rgba(7, 19, 42, 0.28), rgba(255, 255, 255, 0.06));
+        border: 1px solid rgba(184, 211, 255, 0.16);
+        border-radius: 15px;
+        background: linear-gradient(180deg, rgba(8, 18, 38, 0.22), rgba(255, 255, 255, 0.05));
         box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.05);
     }
 
     .profile-hero-copy {
         display: grid;
-        gap: 16px;
+        gap: 8px;
         align-content: start;
     }
 
@@ -68,97 +75,102 @@
         display: inline-flex;
         align-items: center;
         width: fit-content;
-        min-height: 32px;
-        padding: 0 12px;
-        border: 1px solid rgba(184, 211, 255, 0.24);
+        min-height: 26px;
+        padding: 0 10px;
+        border: 1px solid rgba(184, 211, 255, 0.18);
         border-radius: 999px;
-        background: rgba(255, 255, 255, 0.08);
+        background: rgba(255, 255, 255, 0.07);
         color: #dce9ff;
-        font-size: 0.75rem;
+        font-size: 0.66rem;
         font-weight: 900;
-        letter-spacing: 0.14em;
+        letter-spacing: 0.12em;
         text-transform: uppercase;
     }
 
     .profile-title {
         margin: 0;
         color: #ffffff;
-        font-size: clamp(1.9rem, 3vw, 2.55rem);
-        line-height: 1.04;
+        font-size: clamp(1.32rem, 1.8vw, 1.68rem);
+        line-height: 1.08;
         font-weight: 1000;
         letter-spacing: -0.03em;
     }
 
     .profile-sub {
         margin: 0;
-        max-width: 58ch;
-        color: #d8e6ff;
-        font-size: 1rem;
-        line-height: 1.6;
-        font-weight: 650;
+        max-width: 56ch;
+        color: #d9e7ff;
+        font-size: 0.84rem;
+        line-height: 1.35;
+        font-weight: 620;
     }
 
-    .profile-status-grid {
-        display: grid;
-        grid-template-columns: repeat(4, minmax(0, 1fr));
-        gap: 12px;
-    }
-
-    .profile-status-card {
-        display: grid;
+    .profile-status-strip {
+        display: flex;
+        flex-wrap: wrap;
         gap: 6px;
-        min-height: 104px;
-        padding: 14px 15px;
-        border: 1px solid rgba(184, 211, 255, 0.18);
-        border-radius: 18px;
-        background: linear-gradient(180deg, rgba(255, 255, 255, 0.10), rgba(8, 17, 36, 0.10));
+        margin-top: 1px;
     }
 
-    .profile-status-label {
-        color: #adc8f9;
-        font-size: 0.72rem;
+    .profile-status-chip {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        min-height: 30px;
+        padding: 0 10px;
+        border-radius: 999px;
+        border: 1px solid rgba(184, 211, 255, 0.16);
+        background: rgba(255, 255, 255, 0.08);
+        color: #eef4ff;
+        font-size: 0.74rem;
+        font-weight: 820;
+        line-height: 1;
+    }
+
+    .profile-status-chip-label {
+        color: #aecaef;
+        font-size: 0.61rem;
         font-weight: 950;
-        letter-spacing: 0.12em;
+        letter-spacing: 0.08em;
         text-transform: uppercase;
     }
 
-    .profile-status-value {
-        color: #ffffff;
-        font-size: 1rem;
-        line-height: 1.25;
-        font-weight: 900;
+    .profile-status-chip.is-good {
+        border-color: rgba(110, 231, 183, 0.22);
+        background: rgba(22, 163, 74, 0.14);
     }
 
-    .profile-status-note {
-        color: #d7e4fb;
-        font-size: 0.84rem;
-        line-height: 1.45;
+    .profile-status-chip.is-warn {
+        border-color: rgba(253, 224, 71, 0.22);
+        background: rgba(202, 138, 4, 0.15);
     }
 
     .profile-avatar-panel {
         display: grid;
-        gap: 16px;
-        padding: 20px;
+        gap: 10px;
+        padding: 12px;
         align-content: start;
     }
 
     .profile-avatar-top {
         display: flex;
         align-items: center;
-        gap: 14px;
+        gap: 10px;
     }
 
     .profile-avatar-preview {
         position: relative;
-        width: 108px;
-        height: 108px;
+        width: 64px;
+        height: 64px;
+        aspect-ratio: 1 / 1;
         border-radius: 50%;
         overflow: hidden;
-        border: 3px solid rgba(183, 212, 255, 0.28);
-        background: linear-gradient(180deg, #234b91, #153260);
+        border: 2px solid rgba(183, 212, 255, 0.24);
+        background: linear-gradient(180deg, #2d58a8, #1a3769);
         box-shadow:
-            0 18px 30px rgba(7, 16, 34, 0.22),
+            0 8px 16px rgba(7, 16, 34, 0.16),
             inset 0 1px 0 rgba(255, 255, 255, 0.18);
+        flex: 0 0 64px;
     }
 
     .profile-avatar-preview img,
@@ -172,103 +184,107 @@
     .profile-avatar-preview img {
         display: block;
         object-fit: cover;
+        object-position: center center;
+        transform: scale(1.01);
     }
 
     .profile-avatar-preview span {
         display: grid;
         place-items: center;
         color: #ffffff;
-        font-size: 2rem;
+        font-size: 1.35rem;
         font-weight: 1000;
     }
 
     .profile-avatar-copy {
         display: grid;
-        gap: 4px;
+        gap: 3px;
     }
 
     .profile-avatar-name {
         color: #ffffff;
-        font-size: 1.08rem;
+        font-size: 0.9rem;
         font-weight: 950;
         line-height: 1.2;
     }
 
     .profile-avatar-meta {
         color: #d4e3ff;
-        font-size: 0.92rem;
-        line-height: 1.45;
+        font-size: 0.75rem;
+        line-height: 1.28;
     }
 
     .profile-upload-form {
         display: grid;
-        gap: 10px;
+        gap: 6px;
     }
 
     .profile-label {
         color: #eaf2ff;
-        font-size: 0.84rem;
+        font-size: 0.71rem;
         font-weight: 900;
-        letter-spacing: 0.03em;
+        letter-spacing: 0.02em;
     }
 
     .profile-help {
         margin: 0;
-        color: #c7daf8;
-        font-size: 0.86rem;
-        line-height: 1.45;
+        color: #c8daf8;
+        font-size: 0.72rem;
+        line-height: 1.3;
     }
 
     .profile-file-input {
         width: 100%;
-        padding: 0.7rem 0.85rem;
-        border: 1px solid rgba(184, 211, 255, 0.26);
-        border-radius: 14px;
-        background: rgba(255, 255, 255, 0.10);
-        color: #eaf2ff;
+        min-height: 40px;
+        padding: 0.4rem 0.6rem;
+        border: 1px solid rgba(184, 211, 255, 0.20);
+        border-radius: 10px;
+        background: rgba(255, 255, 255, 0.09);
+        color: #eef4ff;
     }
 
     .profile-file-input::file-selector-button {
-        margin-right: 12px;
-        padding: 0.55rem 0.8rem;
+        margin-right: 8px;
+        padding: 0.36rem 0.62rem;
         border: 0;
-        border-radius: 10px;
-        background: #2f66dd;
+        border-radius: 8px;
+        background: #3d72ea;
         color: #ffffff;
         font-weight: 900;
         cursor: pointer;
     }
 
     .profile-flash {
-        margin: 18px 28px 0;
-        padding: 13px 16px;
-        border: 1px solid rgba(134, 239, 172, 0.24);
-        border-radius: 16px;
+        margin: 10px 16px 0;
+        padding: 8px 11px;
+        border: 1px solid rgba(134, 239, 172, 0.22);
+        border-radius: 11px;
         background: rgba(22, 163, 74, 0.18);
         color: #e9fff0;
+        font-size: 0.8rem;
         font-weight: 800;
     }
 
     .profile-form {
         display: grid;
-        gap: 18px;
-        padding: 22px 28px 28px;
+        gap: 10px;
+        padding: 10px 16px 14px;
     }
 
     .profile-section {
-        padding: 18px;
+        padding: 12px;
     }
 
     .profile-section-head {
         display: grid;
-        gap: 4px;
-        margin-bottom: 14px;
+        gap: 2px;
+        margin-bottom: 8px;
     }
 
     .profile-section-title {
         margin: 0;
         color: #ffffff;
-        font-size: 1.08rem;
+        font-size: 0.92rem;
         font-weight: 950;
         letter-spacing: -0.01em;
     }
@@ -276,20 +292,20 @@
     .profile-section-sub {
         margin: 0;
         color: #cfdef8;
-        font-size: 0.92rem;
-        line-height: 1.5;
+        font-size: 0.75rem;
+        line-height: 1.28;
     }
 
     .profile-fields {
         display: grid;
         grid-template-columns: repeat(2, minmax(0, 1fr));
-        gap: 14px 16px;
+        gap: 8px 10px;
     }
 
     .profile-field {
         min-width: 0;
         display: grid;
-        gap: 8px;
+        gap: 5px;
     }
 
     .profile-field-full {
@@ -298,30 +314,31 @@
 
     .profile-input {
         width: 100%;
-        min-height: 52px;
-        padding: 0 14px;
+        min-height: 40px;
+        padding: 0 11px;
         border: 1px solid rgba(181, 207, 247, 0.22);
-        border-radius: 14px;
+        border-radius: 10px;
         background: linear-gradient(180deg, #f8fbff, #eaf2ff);
         color: #0f172a;
         font-weight: 700;
-        box-shadow: 0 12px 24px rgba(7, 16, 34, 0.10);
+        box-shadow: 0 6px 12px rgba(7, 16, 34, 0.07);
+        font-size: 0.94rem;
     }
 
     textarea.profile-input {
-        min-height: 112px;
-        padding: 12px 14px;
+        min-height: 72px;
+        padding: 9px 11px;
         resize: vertical;
     }
 
     .profile-input:focus {
         outline: none;
-        border-color: rgba(59, 130, 246, 0.76);
+        border-color: rgba(59, 130, 246, 0.72);
         box-shadow: 0 0 0 3px rgba(96, 165, 250, 0.18);
     }
 
     .profile-input[readonly] {
-        background: linear-gradient(180deg, #dfe9fb, #d4e1f6);
+        background: linear-gradient(180deg, #dfe8f8, #d4dff0);
         color: #334155;
     }
 
@@ -332,15 +349,16 @@
     .profile-toggle {
         display: flex;
         align-items: center;
-        gap: 12px;
-        min-height: 52px;
-        padding: 0.85rem 1rem;
-        border: 1px solid rgba(184, 211, 255, 0.18);
-        border-radius: 14px;
+        gap: 9px;
+        min-height: 40px;
+        padding: 0.56rem 0.72rem;
+        border: 1px solid rgba(184, 211, 255, 0.16);
+        border-radius: 10px;
         background: rgba(255, 255, 255, 0.06);
         color: #eef4ff;
-        font-weight: 760;
-        line-height: 1.4;
+        font-size: 0.79rem;
+        font-weight: 720;
+        line-height: 1.25;
     }
 
     .profile-toggle input[type="checkbox"] {
@@ -355,27 +373,27 @@
         align-items: center;
         gap: 8px;
         width: fit-content;
-        min-height: 34px;
-        padding: 0 12px;
+        min-height: 26px;
+        padding: 0 9px;
         border-radius: 999px;
         background: rgba(255, 255, 255, 0.08);
         color: #e8f1ff;
-        font-size: 0.84rem;
+        font-size: 0.72rem;
         font-weight: 820;
     }
 
     .profile-validation {
-        color: #ffd5dc;
-        font-size: 0.84rem;
+        color: #ffd7de;
+        font-size: 0.72rem;
         font-weight: 700;
     }
 
     .profile-actions {
         display: flex;
-        gap: 12px;
+        gap: 8px;
         flex-wrap: wrap;
         justify-content: flex-end;
-        padding-top: 4px;
+        padding-top: 2px;
     }
 
     .profile-actions-start {
@@ -387,13 +405,14 @@
         display: inline-flex;
         align-items: center;
         justify-content: center;
-        min-height: 50px;
-        padding: 0 18px;
+        min-height: 38px;
+        padding: 0 12px;
         border: 1px solid transparent;
-        border-radius: 14px;
+        border-radius: 10px;
         text-decoration: none;
         font-weight: 900;
         letter-spacing: 0.01em;
+        font-size: 0.86rem;
         transition: transform .18s ease, box-shadow .18s ease, background .18s ease, color .18s ease;
     }
 
@@ -405,52 +424,47 @@
     .profile-btn-primary {
         background: linear-gradient(180deg, #4f8fff, #2f66dd);
         color: #ffffff;
-        box-shadow: 0 16px 30px rgba(18, 74, 181, 0.28);
+        box-shadow: 0 10px 18px rgba(18, 74, 181, 0.20);
     }
 
     .profile-btn-primary:hover {
         color: #ffffff;
-        box-shadow: 0 18px 32px rgba(18, 74, 181, 0.34);
+        box-shadow: 0 12px 20px rgba(18, 74, 181, 0.24);
     }
 
     .profile-btn-secondary {
-        border-color: rgba(184, 211, 255, 0.22);
+        border-color: rgba(184, 211, 255, 0.20);
         background: rgba(255, 255, 255, 0.08);
         color: #edf4ff;
     }
 
     .profile-btn-secondary:hover {
         color: #ffffff;
-        background: rgba(255, 255, 255, 0.14);
+        background: rgba(255, 255, 255, 0.13);
     }
 
     @@media (max-width: 980px) {
         .profile-hero {
             grid-template-columns: 1fr;
         }
-
-        .profile-status-grid {
-            grid-template-columns: repeat(2, minmax(0, 1fr));
-        }
     }
 
     @@media (max-width: 720px) {
         .profile-shell {
-            padding: 1rem 0.75rem 2.2rem;
+            padding: 0.55rem 0.6rem 1.2rem;
         }
 
         .profile-hero,
         .profile-form {
-            padding-left: 18px;
-            padding-right: 18px;
+            padding-left: 12px;
+            padding-right: 12px;
         }
 
         .profile-flash {
-            margin-left: 18px;
-            margin-right: 18px;
+            margin-left: 12px;
+            margin-right: 12px;
         }
 
-        .profile-status-grid,
         .profile-fields {
             grid-template-columns: 1fr;
         }
@@ -476,29 +490,25 @@
                 <span class="profile-eyebrow">Agent Portal</span>
                 <div>
                     <h1 class="profile-title">Agent Profile</h1>
-                    <p class="profile-sub">Keep your public contact details, tracking setup, and scheduling handoff clean, current, and easy to manage.</p>
+                    <p class="profile-sub">Manage the details behind your public handoff, tracking, and scheduling.</p>
                 </div>
 
-                <div class="profile-status-grid" aria-label="Profile status">
-                    <div class="profile-status-card">
-                        <div class="profile-status-label">Public Profile</div>
-                        <div class="profile-status-value">@(publicProfileReady ? "Ready" : "Needs attention")</div>
-                        <div class="profile-status-note">Name, phone, and intro are what prospects see first.</div>
+                <div class="profile-status-strip" aria-label="Profile status">
+                    <div class="profile-status-chip @publicStatusClass">
+                        <span class="profile-status-chip-label">Public</span>
+                        <strong>@(publicProfileReady ? "Ready" : "Needs attention")</strong>
                     </div>
-                    <div class="profile-status-card">
-                        <div class="profile-status-label">Meta Tracking</div>
-                        <div class="profile-status-value">@marketingLabel</div>
-                        <div class="profile-status-note">@(Model.HasSecureMetaCapiAccessToken ? "Secure CAPI token is already connected." : "Shared/default server-side tracking is in place.")</div>
+                    <div class="profile-status-chip @marketingStatusClass">
+                        <span class="profile-status-chip-label">Meta</span>
+                        <strong>@marketingLabel</strong>
                     </div>
-                    <div class="profile-status-card">
-                        <div class="profile-status-label">Booking</div>
-                        <div class="profile-status-value">@bookingLabel</div>
-                        <div class="profile-status-note">Use your own Microsoft Bookings setup only if you want a personal scheduler.</div>
+                    <div class="profile-status-chip @bookingStatusClass">
+                        <span class="profile-status-chip-label">Booking</span>
+                        <strong>@bookingLabel</strong>
                     </div>
-                    <div class="profile-status-card">
-                        <div class="profile-status-label">Calendar Link</div>
-                        <div class="profile-status-value">@calendarLabel</div>
-                        <div class="profile-status-note">Calendar email helps confirmation lookups stay attached to the right profile.</div>
+                    <div class="profile-status-chip @calendarStatusClass">
+                        <span class="profile-status-chip-label">Calendar</span>
+                        <strong>@calendarLabel</strong>
                     </div>
                 </div>
             </div>
@@ -514,13 +524,13 @@
                     </div>
                     <div class="profile-avatar-copy">
                         <div class="profile-avatar-name">@Model.FullName</div>
-                        <div class="profile-avatar-meta">This photo shows up on your agent-facing profile surfaces and quote handoff experience.</div>
+                        <div class="profile-avatar-meta">Shown on profile and quote handoff surfaces.</div>
                     </div>
                 </div>
 
                 <form asp-controller="Avatar" asp-action="Upload" method="post" enctype="multipart/form-data" class="profile-upload-form">
                     @Html.AntiForgeryToken()
-                    <label for="photo" class="profile-label">Update photo</label>
+                    <label for="photo" class="profile-label">Photo</label>
                     <input type="file" id="photo" name="photo" class="profile-file-input" accept=".png,.jpg,.jpeg,.webp" required />
                     <p class="profile-help">Square PNG, JPG, or WEBP under 3 MB.</p>
                     <div class="profile-actions profile-actions-start">
@@ -571,7 +581,7 @@
             <section class="profile-panel profile-section">
                 <div class="profile-section-head">
                     <h2 class="profile-section-title">Public Card</h2>
-                    <p class="profile-section-sub">What prospects see when your quote flow hands them off to the next step.</p>
+                    <p class="profile-section-sub">What prospects see before they move into the next step.</p>
                 </div>
                 <div class="profile-fields">
                     <div class="profile-field profile-field-full">
@@ -580,7 +590,7 @@
                                   class="profile-input"
                                   rows="4"
                                   maxlength="280"
-                                  placeholder="Short, confident intro about how you help people review coverage options."></textarea>
+                                  placeholder="Short intro about how you help people review coverage options."></textarea>
                         <span asp-validation-for="ShortBio" class="profile-validation"></span>
                     </div>
                     <div class="profile-field">
@@ -594,7 +604,7 @@
             <section class="profile-panel profile-section">
                 <div class="profile-section-head">
                     <h2 class="profile-section-title">Marketing</h2>
-                    <p class="profile-section-sub">Leave this blank if you want to keep using the default Legend tracking setup.</p>
+                    <p class="profile-section-sub">Leave blank to keep using the default Legend tracking setup.</p>
                 </div>
                 <div class="profile-fields">
                     <div class="profile-field profile-field-full">
@@ -611,7 +621,7 @@
             <section class="profile-panel profile-section">
                 <div class="profile-section-head">
                     <h2 class="profile-section-title">Booking</h2>
-                    <p class="profile-section-sub">Only turn this on if you want your own Microsoft Bookings experience in quote handoff flows.</p>
+                    <p class="profile-section-sub">Use your own Bookings setup only if you want a personal scheduler in public quote flows.</p>
                 </div>
                 <div class="profile-fields">
                     <div class="profile-field profile-field-full">
