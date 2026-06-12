@@ -614,8 +614,8 @@ public class CalendarController : Controller
             var freeSlots = freeRanges
                 .Select(x => new
                 {
-                    startIso = new DateTimeOffset(x.Start, agentTimeZone.GetUtcOffset(x.Start)).ToString("o", CultureInfo.InvariantCulture),
-                    endIso = new DateTimeOffset(x.End, agentTimeZone.GetUtcOffset(x.End)).ToString("o", CultureInfo.InvariantCulture),
+                    startIso = DateTime.SpecifyKind(x.Start, DateTimeKind.Unspecified).ToString("o", CultureInfo.InvariantCulture),
+                    endIso = DateTime.SpecifyKind(x.End, DateTimeKind.Unspecified).ToString("o", CultureInfo.InvariantCulture),
                     startTimeValue = x.Start.ToString("HH:mm", CultureInfo.InvariantCulture),
                     startLabel = x.Start.ToString("h:mm tt", CultureInfo.InvariantCulture),
                     endLabel = x.End.ToString("h:mm tt", CultureInfo.InvariantCulture),
