@@ -7497,14 +7497,15 @@ input:checked + .lq-answer-card {
     }
 
     body.life-landing.life-quote-started #lifeEducationContactPanel .lq-step-question {
-        max-width: 13ch !important;
+        max-width: none !important;
+        width: 100% !important;
         margin: 0 0 14px !important;
         color: #fff8e7 !important;
-        font-size: clamp(1.6rem, 2.5vw, 2rem) !important;
+        font-size: clamp(1.24rem, 1.75vw, 1.54rem) !important;
         font-weight: 940 !important;
-        line-height: 1.04 !important;
-        letter-spacing: -0.03em !important;
-        text-wrap: balance !important;
+        line-height: 1.08 !important;
+        letter-spacing: -0.025em !important;
+        white-space: nowrap !important;
     }
 
     body.life-landing.life-quote-started #lifeEducationContactPanel .lq-step-question::after {
@@ -7565,6 +7566,41 @@ input:checked + .lq-answer-card {
     body.life-landing.life-quote-started #lifeEducationContactPanel .lq-card-rich .lq-card-helper {
         font-size: .84rem !important;
         line-height: 1.4 !important;
+    }
+
+    body.life-landing.life-quote-started #lifeEducationContactPanel .lq-choice-group[aria-labelledby="lbl-step1-coverage-amount"] .lq-choice-grid {
+        gap: 12px !important;
+    }
+
+    body.life-landing.life-quote-started #lifeEducationContactPanel .lq-choice-group[aria-labelledby="lbl-step1-coverage-amount"] .lq-card {
+        min-height: 118px !important;
+        border-radius: 18px !important;
+    }
+
+    body.life-landing.life-quote-started #lifeEducationContactPanel .lq-choice-group[aria-labelledby="lbl-step1-coverage-amount"] .lq-card-rich {
+        min-height: 118px !important;
+        gap: 10px !important;
+        padding: 16px 16px 14px !important;
+    }
+
+    body.life-landing.life-quote-started #lifeEducationContactPanel .lq-choice-group[aria-labelledby="lbl-step1-coverage-amount"] .lq-card-rich.no-visual {
+        min-height: 104px !important;
+        padding-top: 15px !important;
+        padding-bottom: 15px !important;
+    }
+
+    body.life-landing.life-quote-started #lifeEducationContactPanel .lq-choice-group[aria-labelledby="lbl-step1-coverage-amount"] .lq-card-copy {
+        gap: 6px !important;
+    }
+
+    body.life-landing.life-quote-started #lifeEducationContactPanel .lq-choice-group[aria-labelledby="lbl-step1-coverage-amount"] .lq-card-title {
+        font-size: .96rem !important;
+        line-height: 1.14 !important;
+    }
+
+    body.life-landing.life-quote-started #lifeEducationContactPanel .lq-choice-group[aria-labelledby="lbl-step1-coverage-amount"] .lq-card-helper {
+        font-size: .76rem !important;
+        line-height: 1.32 !important;
     }
 }
 </style>
@@ -14371,12 +14407,12 @@ body.life-landing.life-quote-started .lq-hero-shell {
     .lq-step-question,
     body.life-landing .lq-step-question,
     .lq-contact-first-flow-surface .lq-step-question {
-        max-width: 16ch !important;
+        max-width: none !important;
         margin-bottom: 10px !important;
-        font-size: clamp(1.18rem, 5.3vw, 1.42rem) !important;
-        line-height: 1.08 !important;
-        letter-spacing: -0.03em !important;
-        text-wrap: balance;
+        font-size: clamp(1.02rem, 4.2vw, 1.16rem) !important;
+        line-height: 1.14 !important;
+        letter-spacing: -0.02em !important;
+        text-wrap: pretty;
     }
 
     .lq-step-question::after,
@@ -14440,6 +14476,31 @@ body.life-landing.life-quote-started .lq-hero-shell {
         grid-template-columns: 1fr;
         min-height: 86px !important;
         padding-left: 14px !important;
+    }
+
+    .lq-choice-group[aria-labelledby="lbl-step1-coverage-amount"] .lq-card {
+        min-height: 84px !important;
+    }
+
+    .lq-choice-group[aria-labelledby="lbl-step1-coverage-amount"] .lq-card-rich {
+        min-height: 84px !important;
+        gap: 8px !important;
+        padding: 12px 13px !important;
+    }
+
+    .lq-choice-group[aria-labelledby="lbl-step1-coverage-amount"] .lq-card-rich.no-visual {
+        min-height: 78px !important;
+        padding-top: 12px !important;
+        padding-bottom: 12px !important;
+    }
+
+    .lq-choice-group[aria-labelledby="lbl-step1-coverage-amount"] .lq-card-title {
+        font-size: .93rem !important;
+    }
+
+    .lq-choice-group[aria-labelledby="lbl-step1-coverage-amount"] .lq-card-helper {
+        font-size: .72rem !important;
+        line-height: 1.28 !important;
     }
 
     .lq-card:has(input:checked)::before {
@@ -14607,6 +14668,100 @@ body.life-landing.life-quote-started .lq-hero-shell {
 
     .lq-contact-capture-title {
         font-size: 1.04rem !important;
+    }
+}
+
+@@media (max-width: 767.98px) {
+    body.life-final-step-active .lq-hero-shell,
+    body.life-landing .lq-hero-shell:has(#lifeEducationContactPanel.is-submitted),
+    body.life-landing .lq-hero-shell:has(#lifeEducationContactPanel.lq-final-panel-no-chrome),
+    body.life-landing .lq-hero-shell:has(#lifePostSubmitSlot:not([hidden])) {
+        margin: 4px auto 10px !important;
+        padding: 0 !important;
+        border: 0 !important;
+        background: transparent !important;
+        box-shadow: none !important;
+    }
+
+    #lifeEducationContactPanel.is-submitted,
+    #lifeEducationContactPanel.lq-final-panel-no-chrome,
+    #lifeEducationContactPanel.lq-final-review-flat-mode {
+        padding: 0 !important;
+        border: 0 !important;
+        background: transparent !important;
+        box-shadow: none !important;
+    }
+
+    #lifePostSubmitSlot {
+        margin: 0 !important;
+        padding: 0 !important;
+    }
+
+    #lifePostSubmitSlot .lq-final-review-unified-card {
+        width: 100% !important;
+        padding: 14px 13px 16px !important;
+        border-radius: 18px !important;
+        box-shadow:
+            0 14px 28px rgba(2, 12, 27, 0.2),
+            inset 0 1px 0 rgba(255,255,255,.045) !important;
+    }
+
+    #lifePostSubmitSlot .lq-final-review-head {
+        padding-bottom: 10px !important;
+        margin-bottom: 10px !important;
+    }
+
+    #lifePostSubmitSlot .lq-final-review-title {
+        font-size: 1.28rem !important;
+        line-height: 1.08 !important;
+    }
+
+    #lifePostSubmitSlot .lq-final-review-copy {
+        font-size: .88rem !important;
+        line-height: 1.38 !important;
+    }
+
+    #lifePostSubmitSlot .lq-final-review-proof-row {
+        gap: 6px !important;
+        margin: 0 0 10px !important;
+    }
+
+    #lifePostSubmitSlot .lq-final-review-proof-row span {
+        min-height: 26px !important;
+        padding: 5px 8px !important;
+        font-size: .68rem !important;
+    }
+
+    #lifePostSubmitSlot .lq-final-review-impact-card,
+    #lifePostSubmitSlot .lq-final-review-next-step,
+    #lifePostSubmitSlot .lq-final-review-booking-card,
+    #lifePostSubmitSlot .lq-contact-estimate-wrap,
+    #lifePostSubmitSlot .lq-contact-estimate-card,
+    #lifePostSubmitSlot .lq-rec-card,
+    #lifePostSubmitSlot .lq-estimate-card {
+        padding: 12px !important;
+        border-radius: 14px !important;
+    }
+
+    #lifePostSubmitSlot .lq-final-review-booking-card {
+        margin: 8px 0 !important;
+    }
+
+    #lifePostSubmitSlot .lq-booking-frame-only {
+        margin-top: 8px !important;
+    }
+
+    #lifePostSubmitSlot .lq-final-review-loading,
+    #lifePostSubmitSlot .lq-final-review-unavailable,
+    #lifePostSubmitSlot .lq-booking-embed-status {
+        margin: 8px 0 !important;
+        padding: 9px 10px !important;
+        border-radius: 12px !important;
+    }
+
+    #lifePostSubmitSlot .lq-booking-iframe {
+        min-height: 680px !important;
+        border-radius: 12px !important;
     }
 }
 </style>
