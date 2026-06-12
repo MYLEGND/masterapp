@@ -1779,28 +1779,9 @@ namespace AgentPortal.Controllers;
             .Where(id => !string.IsNullOrWhiteSpace(id))
             .ToList();
 
-        var productionLookup = await _db.ProductionRecords
-            .Where(p => p.AgentUserId == agentOid
-                        && p.Side == ProductionSide.Client
-                        && p.ClientUserId != null
-                        && clientIds.Contains(p.ClientUserId))
-            .GroupBy(p => p.ClientUserId!)
-            .Select(g => new
-            {
-                ClientUserId = g.Key,
-                Submitted = g.Where(p => p.Status == ProductionStatus.Submitted)
-                             .Select(p => (decimal?)p.Amount).Sum() ?? 0,
-                Issued = g.Where(p => p.Status == ProductionStatus.Issued)
-                          .Select(p => (decimal?)p.Amount).Sum() ?? 0,
-                Paid = g.Where(p => p.Status == ProductionStatus.Paid)
-                        .Select(p => (decimal?)p.Amount).Sum() ?? 0,
-                Personal = g.Select(p => (decimal?)p.PersonalAmount).Sum() ?? 0,
-                LatestStatus = g.OrderByDescending(p => p.UpdatedUtc).Select(p => p.Status).FirstOrDefault(),
-                LatestAmount = g.OrderByDescending(p => p.UpdatedUtc).Select(p => p.Amount).FirstOrDefault()
-            })
-            .ToListAsync();
-
-        var productionDict = productionLookup.ToDictionary(x => x.ClientUserId, x => x, StringComparer.OrdinalIgnoreCase);
+        var productionDict = clientIds.Count > 0
+            ? await _production.GetContactSnapshotsAsync(agentOid, ProductionSide.Client, clientIds, HttpContext.RequestAborted)
+            : new Dictionary<string, ProductionContactSnapshot>(StringComparer.OrdinalIgnoreCase);
 
         var mapped = new List<ClientListItemViewModel>();
 
@@ -1884,8 +1865,8 @@ namespace AgentPortal.Controllers;
                     HasDuplicateHousehold = allByHousehold > 1,
                     AssignedOwner = meta.Collaboration.Owner,
                     WatchersCsv = string.Join(", ", meta.Collaboration.Watchers),
-                    ProductionStatus = prod?.LatestStatus.ToString() ?? "",
-                    ProductionAmount = prod?.LatestAmount ?? 0,
+                    ProductionStatus = prod?.Status.ToString() ?? "",
+                    ProductionAmount = prod?.Amount ?? 0,
                     ProductionSubmittedAmount = submitted,
                     ProductionIssuedAmount = issued,
                     ProductionPaidAmount = paid,

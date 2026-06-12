@@ -33,6 +33,17 @@ internal sealed record ResolvedProductionRow(
     decimal PersonalAmount,
     DateTime UpdatedUtc);
 
+internal sealed record ProductionContactSnapshot(
+    ProductionStatus Status,
+    decimal Amount,
+    decimal Personal,
+    DateTime UpdatedUtc)
+{
+    public decimal Submitted => Status == ProductionStatus.Submitted ? Amount : 0m;
+    public decimal Issued => Status == ProductionStatus.Issued ? Amount : 0m;
+    public decimal Paid => Status == ProductionStatus.Paid ? Amount : 0m;
+}
+
 /// <summary>
 /// Central production/read/write surface. Status buckets are mutually exclusive by current Status.
 /// </summary>
@@ -180,6 +191,91 @@ public class ProductionService
         }
     }
 
+    private static void Accumulate(ProductionContactSnapshot snapshot, ProductionTotals totals)
+    {
+        switch (snapshot.Status)
+        {
+            case ProductionStatus.Submitted:
+                totals.Submitted += snapshot.Amount;
+                totals.CountSubmitted += 1;
+                break;
+            case ProductionStatus.Issued:
+                totals.Issued += snapshot.Amount;
+                totals.CountIssued += 1;
+                break;
+            case ProductionStatus.Paid:
+                totals.Paid += snapshot.Amount;
+                totals.CountPaid += 1;
+                break;
+        }
+
+        totals.Personal += snapshot.Personal;
+        if (snapshot.Personal > 0)
+            totals.CountPersonal += 1;
+    }
+
+    private static Dictionary<string, ProductionContactSnapshot> BuildCurrentContactSnapshots(
+        IEnumerable<ProductionRecord> records,
+        Func<ProductionRecord, string?> contactSelector)
+    {
+        return records
+            .Select(record => new
+            {
+                Record = record,
+                ContactId = (contactSelector(record) ?? string.Empty).Trim()
+            })
+            .Where(x => !string.IsNullOrWhiteSpace(x.ContactId))
+            .GroupBy(x => x.ContactId, StringComparer.OrdinalIgnoreCase)
+            .ToDictionary(
+                g => g.Key,
+                g =>
+                {
+                    var latest = g.Select(x => x.Record)
+                        .OrderByDescending(x => x.UpdatedUtc)
+                        .ThenByDescending(x => x.CreatedUtc)
+                        .ThenByDescending(x => x.Id)
+                        .First();
+
+                    return new ProductionContactSnapshot(
+                        latest.Status,
+                        latest.Amount,
+                        latest.PersonalAmount,
+                        latest.UpdatedUtc);
+                },
+                StringComparer.OrdinalIgnoreCase);
+    }
+
+    internal async Task<Dictionary<string, ProductionContactSnapshot>> GetContactSnapshotsAsync(
+        string agentUserId,
+        ProductionSide side,
+        IEnumerable<string> contactIds,
+        CancellationToken ct = default)
+    {
+        var normAgent = Norm(agentUserId);
+        var ids = contactIds
+            .Select(id => (id ?? string.Empty).Trim())
+            .Where(id => !string.IsNullOrWhiteSpace(id))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
+        if (ids.Count == 0)
+            return new Dictionary<string, ProductionContactSnapshot>(StringComparer.OrdinalIgnoreCase);
+
+        var query = _db.ProductionRecords
+            .AsNoTracking()
+            .Where(p => p.AgentUserId == normAgent && p.Side == side);
+
+        if (side == ProductionSide.Lead)
+            query = query.Where(p => p.LeadId != null && ids.Contains(p.LeadId));
+        else
+            query = query.Where(p => p.ClientUserId != null && ids.Contains(p.ClientUserId));
+
+        var rows = await query.ToListAsync(ct);
+        return BuildCurrentContactSnapshots(rows, side == ProductionSide.Lead
+            ? static p => p.LeadId
+            : static p => p.ClientUserId);
+    }
+
     public async Task UpsertAsync(string actorUserId, string targetAgentUserId, ProductionSide side, ProductionStatus status, decimal amount, decimal personalAmount, string? leadId, string? clientUserId, string? notes, CancellationToken ct = default)
     {
         if (amount < 0) throw new ArgumentException("Amount cannot be negative.", nameof(amount));
@@ -229,32 +325,21 @@ public class ProductionService
     public async Task<ProductionTotals> GetAgentTotalsAsync(string agentUserId, ProductionSide side, CancellationToken ct = default)
     {
         var normAgent = Norm(agentUserId);
-        var grouped = await _db.ProductionRecords
+        var rows = await _db.ProductionRecords
             .AsNoTracking()
             .Where(p => p.AgentUserId == normAgent && p.Side == side)
-            .GroupBy(p => p.Status)
-            .Select(g => new { Status = g.Key, Amount = g.Sum(x => (decimal?)x.Amount) ?? 0, Count = g.Count() })
             .ToListAsync(ct);
 
         var totals = new ProductionTotals();
-        foreach (var g in grouped)
+        var currentSnapshots = BuildCurrentContactSnapshots(rows, side == ProductionSide.Lead
+            ? static p => p.LeadId
+            : static p => p.ClientUserId);
+
+        foreach (var snapshot in currentSnapshots.Values)
         {
-            switch (g.Status)
-            {
-                case ProductionStatus.Submitted:
-                    totals.Submitted = g.Amount; totals.CountSubmitted = g.Count; break;
-                case ProductionStatus.Issued:
-                    totals.Issued = g.Amount; totals.CountIssued = g.Count; break;
-                case ProductionStatus.Paid:
-                    totals.Paid = g.Amount; totals.CountPaid = g.Count; break;
-            }
+            Accumulate(snapshot, totals);
         }
-        totals.Personal = await _db.ProductionRecords.AsNoTracking()
-            .Where(p => p.AgentUserId == normAgent && p.Side == side)
-            .SumAsync(p => p.PersonalAmount, ct);
-        totals.CountPersonal = await _db.ProductionRecords.AsNoTracking()
-            .Where(p => p.AgentUserId == normAgent && p.Side == side && p.PersonalAmount > 0)
-            .CountAsync(ct);
+
         return totals;
     }
 

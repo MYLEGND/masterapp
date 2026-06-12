@@ -368,46 +368,9 @@ public class LeadsController : Controller
 
             var leadIds = leads.Select(l => l.Lead.LeadId).Where(id => !string.IsNullOrWhiteSpace(id)).ToList();
 
-            var productionLookup = new Dictionary<string, ProductionSnapshot>(StringComparer.OrdinalIgnoreCase);
-            if (leadIds.Count > 0)
-            {
-                var prevTimeout = _db.Database.GetCommandTimeout();
-                _db.Database.SetCommandTimeout(TimeSpan.FromSeconds(12));
-                try
-                {
-                    var prodRows = await _db.ProductionRecords
-                        .AsNoTracking()
-                        .Where(p => p.AgentUserId == agentId && p.Side == ProductionSide.Lead && p.LeadId != null && leadIds.Contains(p.LeadId))
-                        .OrderByDescending(p => p.UpdatedUtc)
-                        .Select(p => new { p.LeadId, p.Status, p.Amount, p.PersonalAmount, p.UpdatedUtc })
-                        .ToListAsync();
-
-                    productionLookup = prodRows
-                        .GroupBy(p => p.LeadId!, StringComparer.OrdinalIgnoreCase)
-                        .ToDictionary(
-                            g => g.Key!,
-                            g =>
-                            {
-                                var latest = g.First(); // already ordered desc
-                                var submittedSum = g.Where(x => x.Status == ProductionStatus.Submitted).Sum(x => x.Amount);
-                                var issuedSum = g.Where(x => x.Status == ProductionStatus.Issued).Sum(x => x.Amount);
-                                var paidSum = g.Where(x => x.Status == ProductionStatus.Paid).Sum(x => x.Amount);
-                                var personalSum = g.Sum(x => (decimal?)x.PersonalAmount ?? 0m);
-                                return new ProductionSnapshot(latest.Status, latest.Amount, submittedSum, issuedSum, paidSum, personalSum);
-                            },
-                            StringComparer.OrdinalIgnoreCase);
-                }
-                catch (Exception ex)
-                {
-                    // Do not block the page if production lookup is slow; log and continue with empty production.
-                    Console.WriteLine($"Leads/Index production lookup skipped: {ex.Message}");
-                    productionLookup = new Dictionary<string, ProductionSnapshot>(StringComparer.OrdinalIgnoreCase);
-                }
-                finally
-                {
-                    _db.Database.SetCommandTimeout(prevTimeout);
-                }
-            }
+            var productionLookup = leadIds.Count > 0
+                ? await _production.GetContactSnapshotsAsync(agentId, ProductionSide.Lead, leadIds, HttpContext.RequestAborted)
+                : new Dictionary<string, ProductionContactSnapshot>(StringComparer.OrdinalIgnoreCase);
 
             var intakeSummaryLookup = await LoadLeadIntakeSummariesAsync(leadIds);
             var appointmentSummaries = await LoadLeadAppointmentSummariesAsync(leadIds, HttpContext.RequestAborted);
@@ -518,7 +481,7 @@ public class LeadsController : Controller
                     IntakePageMode = intakeSummary?.Latest.PageMode,
                     PaidAmount = prod?.Paid ?? 0,
                     PersonalAmount = prod?.Personal ?? 0,
-                    ProductionStatus = prod?.Status?.ToString() ?? "",
+                    ProductionStatus = prod?.Status.ToString() ?? "",
                     ProductionAmount = prod?.Amount ?? 0,
                     ProductionSubmittedAmount = prod?.Submitted ?? 0,
                     ProductionIssuedAmount = prod?.Issued ?? 0,
@@ -566,7 +529,6 @@ public class LeadsController : Controller
     private static string NormalizeStateValue(string? state)
         => (state ?? "").Trim().ToUpperInvariant();
 
-    private sealed record ProductionSnapshot(ProductionStatus? Status, decimal Amount, decimal Submitted, decimal Issued, decimal Paid, decimal Personal);
     private sealed record LeadOriginInfo(string Label, string Tone);
     private sealed record LeadIntakeListRow
     {
@@ -1453,40 +1415,9 @@ public class LeadsController : Controller
 
         var leadIds = leads.Select(x => x.LeadId).Where(id => !string.IsNullOrWhiteSpace(id)).ToList();
 
-        var productionLookup = new Dictionary<string, ProductionSnapshot>(StringComparer.OrdinalIgnoreCase);
-        if (leadIds.Count > 0)
-        {
-            var prevTimeout = _db.Database.GetCommandTimeout();
-            _db.Database.SetCommandTimeout(TimeSpan.FromSeconds(30));
-            try
-            {
-                var prodRows = await _db.ProductionRecords
-                    .AsNoTracking()
-                    .Where(p => p.AgentUserId == agentId && p.Side == ProductionSide.Lead && p.LeadId != null && leadIds.Contains(p.LeadId))
-                    .OrderByDescending(p => p.UpdatedUtc)
-                    .Select(p => new { p.LeadId, p.Status, p.Amount, p.PersonalAmount, p.UpdatedUtc })
-                    .ToListAsync();
-
-                productionLookup = prodRows
-                    .GroupBy(p => p.LeadId!, StringComparer.OrdinalIgnoreCase)
-                    .ToDictionary(
-                        g => g.Key!,
-                        g =>
-                        {
-                            var latest = g.First();
-                            var submittedSum = g.Where(x => x.Status == ProductionStatus.Submitted).Sum(x => x.Amount);
-                            var issuedSum = g.Where(x => x.Status == ProductionStatus.Issued).Sum(x => x.Amount);
-                            var paidSum = g.Where(x => x.Status == ProductionStatus.Paid).Sum(x => x.Amount);
-                            var personalSum = g.Sum(x => (decimal?)(x.PersonalAmount) ?? 0m);
-                            return new ProductionSnapshot(latest.Status, latest.Amount, submittedSum, issuedSum, paidSum, personalSum);
-                        },
-                        StringComparer.OrdinalIgnoreCase);
-            }
-            finally
-            {
-                _db.Database.SetCommandTimeout(prevTimeout);
-            }
-        }
+        var productionLookup = leadIds.Count > 0
+            ? await _production.GetContactSnapshotsAsync(agentId, ProductionSide.Lead, leadIds, HttpContext.RequestAborted)
+            : new Dictionary<string, ProductionContactSnapshot>(StringComparer.OrdinalIgnoreCase);
 
         var intakeSummaryLookup = await LoadLeadIntakeSummariesAsync(leadIds);
         var appointmentSummaries = await LoadLeadAppointmentSummariesAsync(leadIds, HttpContext.RequestAborted);
@@ -1600,7 +1531,7 @@ public class LeadsController : Controller
                     IntakePageMode = intakeSummary?.Latest.PageMode,
                     PaidAmount = prod?.Paid ?? 0,
                     PersonalAmount = prod?.Personal ?? 0,
-                    ProductionStatus = prod?.Status?.ToString() ?? "",
+                    ProductionStatus = prod?.Status.ToString() ?? "",
                     ProductionAmount = prod?.Amount ?? 0,
                     ProductionSubmittedAmount = prod?.Submitted ?? 0,
                     ProductionIssuedAmount = prod?.Issued ?? 0,

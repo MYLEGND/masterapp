@@ -2746,10 +2746,36 @@ function hydrateRow(row){
   setClientProduction(row, prodStatus, prodAmount);
 }
 
-function setClientProduction(row, status, amount, totals){
+function renderProductionPillHtml({ paid = 0, personal = 0 } = {}){
+  const paidAmt = Number(paid || 0);
+  const personalAmt = Number(personal || 0);
+  if (paidAmt <= 0 && personalAmt <= 0) return "";
+
+  const items = [];
+  if (paidAmt > 0){
+    items.push(`<span class="pill pill-paid" title="Paid production">${formatCurrency(paidAmt)}</span>`);
+  }
+  if (personalAmt > 0){
+    items.push(`<span class="pill pill-personal" title="Personal revenue">${formatCurrency(personalAmt)}</span>`);
+  }
+  return items.join("");
+}
+
+function syncClientProductionPill(row, paid, personal){
+  const pill = $("[data-prod-pill]", row);
+  if (!pill) return;
+
+  const paidAmt = Number(paid || 0);
+  const personalAmt = Number(personal || 0);
+  pill.innerHTML = renderProductionPillHtml({ paid: paidAmt, personal: personalAmt });
+  pill.hidden = paidAmt <= 0 && personalAmt <= 0;
+}
+
+function setClientProduction(row, status, amount, totals, personalAmount){
   const badge = $("[data-prod-card]", row);
   const cleanStatus = (status || "").trim();
   const amt = Number(amount || 0);
+  const personal = Number(personalAmount ?? row.dataset.personal ?? 0);
   const resolved = resolveProductionTotals(cleanStatus, amt, {
     paid: totals?.paid ?? row.dataset.prodPaid ?? row.dataset.paid,
     issued: totals?.issued ?? row.dataset.prodIssued,
@@ -2764,8 +2790,10 @@ function setClientProduction(row, status, amount, totals){
   row.dataset.prodIssued = Number.isFinite(issued) ? `${issued}` : "0";
   row.dataset.prodSubmitted = Number.isFinite(submitted) ? `${submitted}` : "0";
   row.dataset.paid = row.dataset.prodPaid;
+  row.dataset.personal = Number.isFinite(personal) ? `${personal}` : "0";
   row.dataset.prodStatus = (paid > 0 ? "Paid" : cleanStatus);
   row.dataset.prodAmount = paid > 0 ? paid : amt;
+  syncClientProductionPill(row, paid, personal);
 
   if (!badge) return;
   if (hasAny){
@@ -2777,9 +2805,9 @@ function setClientProduction(row, status, amount, totals){
   }
 }
 
-function setClientProductionById(clientId, status, amount, totals){
+function setClientProductionById(clientId, status, amount, totals, personalAmount){
   const row = rows.find(r => r.dataset.clientId === clientId);
-  if (row) setClientProduction(row, status, amount, totals);
+  if (row) setClientProduction(row, status, amount, totals, personalAmount);
   updatePipelineCardProduction(clientId);
 }
 
@@ -2819,11 +2847,18 @@ function renderPipelineProdBadge({ paid = 0, issued = 0, submitted = 0 } = {}){
   const submittedAmt = Number(submitted || 0);
   if (paidAmt <= 0 && issuedAmt <= 0 && submittedAmt <= 0) return "";
 
-  return `
-    <div class="prod-line prod-line-paid"><span class="prod-lbl">Paid:</span><span class="prod-val">${formatCurrency(paidAmt)}</span></div>
-    <div class="prod-line prod-line-issued"><span class="prod-lbl">Issued:</span><span class="prod-val">${formatCurrency(issuedAmt)}</span></div>
-    <div class="prod-line prod-line-submitted"><span class="prod-lbl">Submitted:</span><span class="prod-val">${formatCurrency(submittedAmt)}</span></div>
-  `;
+  const items = [];
+  if (paidAmt > 0){
+    items.push(`<div class="prod-line prod-line-paid"><span class="prod-lbl">Paid:</span><span class="prod-val">${formatCurrency(paidAmt)}</span></div>`);
+  }
+  if (issuedAmt > 0){
+    items.push(`<div class="prod-line prod-line-issued"><span class="prod-lbl">Issued:</span><span class="prod-val">${formatCurrency(issuedAmt)}</span></div>`);
+  }
+  if (submittedAmt > 0){
+    items.push(`<div class="prod-line prod-line-submitted"><span class="prod-lbl">Submitted:</span><span class="prod-val">${formatCurrency(submittedAmt)}</span></div>`);
+  }
+
+  return items.join("");
 }
 
 function updatePipelineCardProduction(clientId){
@@ -6717,20 +6752,14 @@ async function loadClientProductionHistory(clientUserId, displayName, hydrate=tr
     if (!res.ok) throw new Error("load fail");
     const data = await res.json();
     const item = (data && data.length) ? data[0] : null;
-    const totals = (data || []).reduce((acc, p) => {
-      const amt = Number(p?.amount || 0);
-      const raw = norm(p?.status);
-      const st = productionBucket(raw);
-      if (st === "paid") acc.paid += amt;
-      else if (st === "issued") acc.issued += amt;
-      else if (st === "submitted") acc.submitted += amt;
-      return acc;
-    }, { paid: 0, issued: 0, submitted: 0 });
+    const totals = item
+      ? resolveProductionTotals(item.status, item.amount, { paid: 0, issued: 0, submitted: 0 })
+      : { paid: 0, issued: 0, submitted: 0 };
 
     if (item){
-      setClientProductionById(clientUserId, item.status, item.amount, totals);
+      setClientProductionById(clientUserId, item.status, item.amount, totals, item.personalAmount || 0);
     } else {
-      setClientProductionById(clientUserId, "", 0, totals);
+      setClientProductionById(clientUserId, "", 0, totals, 0);
     }
     if (hydrate) hydrateClientProdForm(item);
     if (!data || !data.length){
