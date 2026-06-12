@@ -773,3 +773,164 @@
     display:inline-flex;
     align-items:center;
 }
+
+
+/* =========================================================
+   VIEWPORT FIT SYSTEM
+   Keeps scheduler inside visible modal without scroll.
+========================================================= */
+
+.qv-booking-modal-shell .modal-dialog{
+    width:min(91vw, 1250px);
+    max-width:1250px;
+    margin:clamp(10px, 2vh, 22px) auto;
+}
+
+.qv-booking-modal-shell .modal-content{
+    height:calc(100vh - clamp(20px, 4vh, 44px));
+    max-height:calc(100vh - clamp(20px, 4vh, 44px));
+    overflow:hidden;
+}
+
+.qv-booking-head{
+    padding:
+        clamp(16px, 2.2vh, 22px)
+        clamp(26px, 2.8vw, 34px)
+        clamp(12px, 1.8vh, 18px);
+}
+
+.qv-booking-title{
+    font-size:clamp(28px, 3.2vh, 38px);
+}
+
+.qv-booking-body{
+    height:calc(100% - clamp(96px, 14vh, 132px));
+    display:flex;
+    flex-direction:column;
+    padding:
+        clamp(14px, 2vh, 20px)
+        clamp(22px, 2.4vw, 28px)
+        clamp(14px, 2vh, 22px);
+}
+
+.qv-booking-record{
+    flex:0 0 auto;
+    min-height:clamp(72px, 9vh, 88px);
+    padding:clamp(14px, 1.7vh, 19px) 24px;
+    margin-bottom:clamp(10px, 1.6vh, 14px);
+}
+
+.qv-booking-record:before{
+    width:clamp(54px, 6.4vh, 64px);
+    height:clamp(54px, 6.4vh, 64px);
+}
+
+.qv-booking-shell{
+    flex:1 1 auto;
+    min-height:0;
+}
+
+.qv-booking-layout{
+    height:100%;
+    align-items:stretch;
+    grid-template-columns:clamp(320px, 28vw, 365px) minmax(0,1fr);
+}
+
+.qv-booking-sidebar,
+.qv-booking-main{
+    min-height:0;
+    display:flex;
+    flex-direction:column;
+}
+
+.qv-booking-panel-calendar,
+.qv-booking-slot-card{
+    flex:1 1 auto;
+    min-height:0;
+    padding:clamp(16px, 1.8vh, 20px);
+}
+
+.qv-booking-panel-head,
+.qv-booking-slot-head{
+    flex:0 0 auto;
+    margin-bottom:clamp(8px, 1.4vh, 12px);
+}
+
+.qv-booking-field{
+    margin:clamp(10px, 1.3vh, 14px) 0 clamp(10px, 1.4vh, 16px);
+}
+
+.qv-booking-field select{
+    min-height:clamp(44px, 5.4vh, 52px);
+}
+
+.qv-booking-calendar-card{
+    min-height:0;
+}
+
+.qv-booking-calendar-head{
+    margin:clamp(8px, 1.2vh, 12px) 0 clamp(8px, 1.3vh, 12px);
+}
+
+.qv-booking-calendar-nav.btn,
+.qv-booking-calendar-nav.btn-ghost{
+    width:clamp(40px, 5.2vh, 50px);
+    height:clamp(40px, 5.2vh, 50px);
+    min-width:clamp(40px, 5.2vh, 50px);
+}
+
+.qv-booking-calendar-grid,
+.qv-booking-calendar-weekdays{
+    gap:clamp(5px, .8vh, 8px);
+}
+
+.qv-booking-calendar-grid button{
+    min-height:clamp(28px, 3.8vh, 35px);
+    font-size:clamp(12px, 1.55vh, 14px);
+}
+
+.qv-book-slots{
+    flex:1 1 auto;
+    min-height:0;
+    display:grid;
+    grid-template-rows:repeat(5, minmax(0, 1fr));
+    gap:clamp(7px, 1vh, 10px);
+    margin-top:clamp(8px, 1.2vh, 14px);
+}
+
+.qv-slot-btn.btn,
+.qv-slot-btn.btn-ghost,
+.qv-slot-btn{
+    min-height:0 !important;
+    height:100%;
+    padding:0 10px;
+}
+
+.qv-booking-foot{
+    flex:0 0 auto;
+    grid-template-columns:minmax(0,1fr) clamp(240px, 22vw, 280px);
+    gap:14px;
+    margin-top:clamp(10px, 1.5vh, 16px);
+}
+
+.qv-booking-status,
+.qv-booking-submit.btn,
+.qv-booking-submit.btn-gold{
+    min-height:clamp(52px, 6.5vh, 68px);
+}
+
+@media (max-height:760px){
+    .qv-booking-record{
+        min-height:68px;
+    }
+
+    .qv-booking-panel-note,
+    .qv-booking-slot-note{
+        font-size:12px;
+        line-height:1.25;
+    }
+
+    .qv-booking-record-name{
+        font-size:24px;
+    }
+}
