@@ -1218,15 +1218,19 @@
 }
 
 .dashboard-page-shell .dashboard-tool img {
-    max-width: 86px;
-    max-height: 56px;
-    padding: 0.42rem 0.66rem;
+    width: 112px;
+    height: 64px;
+    min-width: 112px;
+    min-height: 64px;
+    padding: 0.55rem 0.8rem;
     border-radius: 14px;
     background: linear-gradient(180deg, rgba(255, 255, 255, 0.98), rgba(234, 241, 252, 0.94));
     box-shadow:
         0 10px 18px rgba(4, 10, 28, 0.12),
         inset 0 1px 0 rgba(255, 255, 255, 0.82);
     object-fit: contain;
+    object-position: center;
+    flex: 0 0 auto;
     transition: opacity 0.2s ease, transform 0.2s ease;
     filter: drop-shadow(0 8px 12px rgba(7, 18, 40, 0.12));
 }
@@ -1453,8 +1457,11 @@
     }
 
     .dashboard-page-shell .dashboard-tool img {
-        max-width: 62px;
-        max-height: 46px;
+        width: 96px;
+        height: 58px;
+        min-width: 96px;
+        min-height: 58px;
+        padding: 0.45rem 0.72rem;
     }
 
     .dashboard-page-shell .category-toggle {
