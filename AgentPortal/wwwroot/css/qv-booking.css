@@ -16,8 +16,8 @@
 }
 
 .qv-booking-modal-shell .modal-dialog{
-    width:min(94vw, 1180px);
-    max-width:1180px;
+    width:min(93vw, 1140px);
+    max-width:1140px;
 }
 
 .qv-booking-modal-shell .modal-content{
@@ -137,34 +137,36 @@
 }
 
 .qv-booking-layout{
-    display:grid;
-    grid-template-columns:300px minmax(0, 1fr);
+    display:flex;
+    align-items:flex-start;
     gap:0;
     min-height:0;
     height:auto;
-    align-items:start;
 }
 
 .qv-booking-sidebar{
-    display:grid;
-    align-content:start;
+    display:flex;
+    flex-direction:column;
     gap:10px;
     padding:12px;
     border-right:1px solid var(--qv-royal-line);
     background:
         linear-gradient(180deg, rgba(10,24,63,.96), rgba(8,18,46,.99));
     min-height:0;
-    align-self:start;
+    align-self:flex-start;
+    flex:0 0 336px;
+    width:336px;
 }
 
 .qv-booking-main{
-    display:grid;
-    grid-template-rows:auto auto;
+    display:flex;
+    flex-direction:column;
     gap:10px;
     padding:12px;
     min-width:0;
     min-height:0;
-    align-self:start;
+    align-self:flex-start;
+    flex:1 1 auto;
 }
 
 .qv-booking-panel{
@@ -182,9 +184,8 @@
 
 .qv-booking-panel-head{
     display:grid;
-    grid-template-columns:minmax(0, 1fr) 168px;
-    gap:10px 12px;
-    align-items:end;
+    gap:8px;
+    align-items:start;
 }
 
 .qv-booking-panel-copy{
@@ -247,9 +248,9 @@
 
 .qv-booking-field-compact{
     width:100%;
-    max-width:168px;
-    justify-self:end;
-    align-self:end;
+    max-width:none;
+    justify-self:stretch;
+    align-self:start;
 }
 
 .qv-booking-calendar-card{
@@ -376,8 +377,8 @@
 }
 
 .qv-booking-slot-card{
-    display:grid;
-    grid-template-rows:auto auto;
+    display:flex;
+    flex-direction:column;
     gap:10px;
     min-height:0;
     padding:14px;
@@ -387,6 +388,7 @@
         radial-gradient(520px 220px at 100% 0%, rgba(77,111,255,.15), transparent 56%),
         linear-gradient(180deg, rgba(10,22,56,.72), rgba(7,16,38,.7));
     min-width:0;
+    flex:0 0 auto;
 }
 
 .qv-booking-slot-head{
@@ -427,7 +429,7 @@
 .qv-book-slots{
     display:grid;
     align-content:start;
-    grid-template-columns:repeat(4, minmax(0, 1fr));
+    grid-template-columns:repeat(4, minmax(145px, 1fr));
     grid-auto-rows:minmax(44px, auto);
     gap:10px;
     width:100%;
@@ -573,13 +575,14 @@
         max-width:1160px;
     }
 
-    .qv-booking-layout{
-        grid-template-columns:minmax(234px, 27%) minmax(0, 1fr);
-    }
-
     .qv-booking-sidebar,
     .qv-booking-main{
         padding:12px;
+    }
+
+    .qv-booking-sidebar{
+        flex-basis:320px;
+        width:320px;
     }
 
     .qv-booking-slot-card{
@@ -605,7 +608,12 @@
     }
 
     .qv-booking-layout{
-        grid-template-columns:minmax(220px, 28%) minmax(0, 1fr);
+        gap:0;
+    }
+
+    .qv-booking-sidebar{
+        flex-basis:304px;
+        width:304px;
     }
 
     .qv-booking-panel,
@@ -639,11 +647,13 @@
     }
 
     .qv-booking-layout{
-        grid-template-columns:1fr;
+        flex-direction:column;
         min-height:0;
     }
 
     .qv-booking-sidebar{
+        width:100%;
+        flex-basis:auto;
         border-right:0;
         border-bottom:1px solid rgba(255,255,255,.08);
     }
@@ -683,6 +693,10 @@
     .qv-booking-sidebar,
     .qv-booking-main{
         padding:12px;
+    }
+
+    .qv-booking-panel-head{
+        gap:8px;
     }
 
     .qv-book-slots{
