@@ -586,7 +586,6 @@
     const originEl = bridge.querySelector('[data-lb-origin]');
     const metaWrap = posEl?.closest('.lb-meta') || null;
     const nextBtn = bridge.querySelector('[data-lb-next]');
-    const bookingBtn = createWorkstationBookingButton();
     const headerMetaHost = shellRoot.querySelector('[data-lb-header-meta]');
     const headerNextHost = shellRoot.querySelector('[data-lb-header-next]');
     const callBtn = bridge.querySelector('[data-lb-call]');
@@ -791,10 +790,6 @@
       if (nextBtn && nextBtn.parentElement !== actionHost){
         actionHost.insertBefore(nextBtn, firstOutcomeBtn || null);
       }
-
-      if (bookingBtn && bookingBtn.parentElement !== actionHost){
-        actionHost.insertBefore(bookingBtn, firstOutcomeBtn || null);
-      }
     }
 
     function moveDesktopLeadControls(){
@@ -813,10 +808,6 @@
       if (nextBtn && nextBtn.parentElement !== headerNextHost){
         headerNextHost.appendChild(nextBtn);
       }
-
-      if (bookingBtn && bookingBtn.parentElement !== headerNextHost){
-        headerNextHost.appendChild(bookingBtn);
-      }
     }
 
     function syncLeadBridgeHeaderPlacement(){
@@ -828,127 +819,6 @@
 
       moveDesktopLeadControls();
     }
-
-    function createWorkstationBookingButton(){
-      const btn = document.createElement('button');
-      btn.type = 'button';
-      btn.className = 'btn lb-btn ghost workstation-booking-btn';
-      btn.setAttribute('data-qv-booking-open', '');
-      btn.textContent = 'Book Appointment';
-
-      btn.addEventListener('click', () => {
-        const lead = resolveCurrentLead();
-        if (!lead){
-          setStatusMessage?.('No lead selected', 'bad');
-          return;
-        }
-
-        const full = `${lead.firstName || ''} ${lead.lastName || ''}`.trim() || 'Lead';
-        if (editTitleEl) editTitleEl.textContent = full;
-        if (editHeaderEmailEl) editHeaderEmailEl.textContent = lead.email || '-';
-        if (editHeaderPhoneEl) editHeaderPhoneEl.textContent = lead.phone || '-';
-
-        if (editInputs.firstName) editInputs.firstName.value = lead.firstName || '';
-        if (editInputs.lastName) editInputs.lastName.value = lead.lastName || '';
-        if (editInputs.email) editInputs.email.value = lead.email || '';
-        if (editInputs.phone) editInputs.phone.value = lead.phone || '';
-
-        window.createCalendarEventFromDrawer = createWorkstationCalendarEventFromDrawer;
-      });
-
-      return btn;
-    }
-
-    function localIsoFromDateAndTime(date, time, minutesToAdd = 0){
-      const [year, month, day] = String(date || '').split('-').map(Number);
-      const [hour, minute] = String(time || '').split(':').map(Number);
-      const dt = new Date(year, (month || 1) - 1, day || 1, hour || 0, minute || 0, 0, 0);
-      dt.setMinutes(dt.getMinutes() + minutesToAdd);
-
-      const pad = value => String(value).padStart(2, '0');
-      return `${dt.getFullYear()}-${pad(dt.getMonth() + 1)}-${pad(dt.getDate())}T${pad(dt.getHours())}:${pad(dt.getMinutes())}:00`;
-    }
-
-    async function createWorkstationCalendarEventFromDrawer(){
-      const lead = resolveCurrentLead();
-      const leadId = (lead?.leadId || '').trim();
-
-      if (!leadId){
-        window.__lastBookingStopReason = 'missing leadId';
-        setStatusMessage?.('No lead selected', 'bad');
-        return false;
-      }
-
-      const date = document.getElementById('qvBookDate')?.value || editInputs.crmNextDate?.value || '';
-      const time = document.getElementById('qvBookTime')?.value || '';
-      const durationSelect = document.getElementById('qvBookDuration');
-      const selectedOption = durationSelect?.selectedOptions?.[0] || null;
-      const duration = parseInt(
-        selectedOption?.dataset?.durationMinutes ||
-        selectedOption?.dataset?.duration ||
-        durationSelect?.value ||
-        '30',
-        10
-      ) || 30;
-
-      if (!date || !time){
-        window.__lastBookingStopReason = 'missing date/time';
-        setStatusMessage?.('Pick an appointment time first', 'bad');
-        return false;
-      }
-
-      const full = `${lead.firstName || ''} ${lead.lastName || ''}`.trim() || 'Lead';
-      const phone = lead.phone || editInputs.phone?.value || '';
-      const email = lead.email || editInputs.email?.value || '';
-      const nextText = editInputs.crmNextText?.value || 'Appointment booked from Workstation';
-
-      if (editInputs.crmNextDate) editInputs.crmNextDate.value = date;
-      if (editInputs.crmNextText && !editInputs.crmNextText.value.trim()) {
-        editInputs.crmNextText.value = nextText;
-      }
-
-      const payload = {
-        clientUserId: leadId,
-        subject: `Client Follow-up: ${full}`,
-        startISO: localIsoFromDateAndTime(date, time, 0),
-        endISO: localIsoFromDateAndTime(date, time, duration),
-        body: `Next Action: ${nextText}\n\nClient: ${full}\nEmail: ${email}\nPhone: ${phone}`,
-        location: `Phone Call • ${phone || 'No phone on file'}`,
-        zoomJoinUrl: '',
-        activityNote: `Calendar event created: ${nextText}`
-      };
-
-      try {
-        const res = await fetch('/calendar/create-event', withDialHeaders({
-          method: 'POST',
-          credentials: 'include',
-          headers: {
-            'Content-Type': 'application/json',
-            'RequestVerificationToken': token,
-            'Accept': 'application/json'
-          },
-          body: JSON.stringify(payload)
-        }));
-
-        if (!res.ok){
-          const text = await res.text().catch(() => '');
-          throw new Error(text || 'Calendar create failed.');
-        }
-
-        const data = await res.json().catch(() => ({}));
-        lead.latestAppointment = data.latestAppointment || lead.latestAppointment || null;
-        lead.crmNextDate = date;
-        lead.crmNextText = nextText;
-        setStatusMessage?.('Calendar event synced ✔', 'good');
-        return true;
-      } catch (err){
-        console.error(err);
-        window.__lastBookingStopReason = err?.message || 'calendar create failed';
-        setStatusMessage?.(err?.message || 'Calendar create failed', 'bad');
-        return false;
-      }
-    }
-
 
     syncLeadBridgeHeaderPlacement();
     window.addEventListener('resize', syncLeadBridgeHeaderPlacement);
