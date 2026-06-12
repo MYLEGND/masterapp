@@ -934,3 +934,82 @@
         font-size:24px;
     }
 }
+
+/* =========================================================
+   AUTO-FIT TIME SLOT GRID
+   Handles 20, 24, or more slots evenly without clipping.
+========================================================= */
+
+.qv-book-slots{
+    grid-template-rows:none !important;
+    grid-auto-rows:minmax(0, 1fr) !important;
+    align-content:stretch !important;
+    min-height:0 !important;
+}
+
+.qv-slot-btn.btn,
+.qv-slot-btn.btn-ghost,
+.qv-slot-btn{
+    height:100% !important;
+    min-height:0 !important;
+    max-height:none !important;
+    padding-block:0 !important;
+}
+
+
+/* =========================================================
+   AUTO-FIT TIME SLOT GRID + CLEAR MONTH BOUNDARIES
+========================================================= */
+
+/* Time slots: allow 20, 24, or more slots to divide evenly */
+.qv-book-slots{
+    grid-template-rows:none !important;
+    grid-auto-rows:minmax(0, 1fr) !important;
+    align-content:stretch !important;
+    min-height:0 !important;
+}
+
+.qv-slot-btn.btn,
+.qv-slot-btn.btn-ghost,
+.qv-slot-btn{
+    height:100% !important;
+    min-height:0 !important;
+    max-height:none !important;
+    padding-block:0 !important;
+}
+
+/* Calendar: make previous/next month days visually distinct */
+.qv-booking-calendar-grid button.is-muted{
+    color:rgba(203,213,225,.26) !important;
+    background:rgba(3,15,43,.22) !important;
+    border-color:rgba(96,165,250,.06) !important;
+    box-shadow:none !important;
+    opacity:.55;
+}
+
+.qv-booking-calendar-grid button:not(.is-muted){
+    color:#f8fbff;
+    background:rgba(3,15,43,.62);
+    border-color:rgba(96,165,250,.18);
+    opacity:1;
+}
+
+.qv-booking-calendar-grid button.is-muted:hover{
+    color:rgba(203,213,225,.38) !important;
+    background:rgba(3,15,43,.30) !important;
+    border-color:rgba(96,165,250,.10) !important;
+}
+
+/* Keep selected day dominant even if classes overlap */
+.qv-booking-calendar-grid button.is-selected,
+.qv-booking-calendar-grid button.selected,
+.qv-booking-calendar-grid button[aria-pressed="true"]{
+    color:#08111f !important;
+    background:linear-gradient(180deg, #ffe58a 0%, #f6c343 48%, #d99a13 100%) !important;
+    border-color:rgba(255,229,138,.98) !important;
+    opacity:1 !important;
+    box-shadow:
+        0 10px 28px rgba(245,158,11,.42),
+        inset 0 1px 0 rgba(255,255,255,.68) !important;
+}
+
