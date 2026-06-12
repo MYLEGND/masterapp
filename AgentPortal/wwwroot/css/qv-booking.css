@@ -1056,3 +1056,10 @@
         inset 0 1px 0 rgba(255,255,255,.68) !important;
 }
 
+
+/* Selected appointment summary emphasis */
+.qv-booking-status[data-state="selected"] strong{
+    color:#f6c343;
+    font-weight:950;
+}
+

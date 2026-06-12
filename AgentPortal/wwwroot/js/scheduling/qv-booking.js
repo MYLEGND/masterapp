@@ -221,7 +221,12 @@
         const status = $("qvBookStatus");
         if (!status) return;
 
-        status.innerText = message || "";
+        if (tone === "selected") {
+            status.innerHTML = message || "";
+        } else {
+            status.innerText = message || "";
+        }
+
         if (tone) status.dataset.state = tone;
         else status.removeAttribute("data-state");
     }
@@ -523,7 +528,7 @@
 
                 container.querySelectorAll(".qv-slot-btn").forEach((item) => item.classList.remove("selected"));
                 button.classList.add("selected");
-                setStatus(`Selected ${button.textContent} on ${dateLabel}.`, "selected");
+                setStatus(`Selected <strong>${button.textContent}</strong> on <strong>${dateLabel}</strong>.`, "selected");
             });
 
             if (button.dataset.time === requestedSelection) {
@@ -542,7 +547,7 @@
                 const selectedButton = Array.from(container.querySelectorAll(".qv-slot-btn"))
                     .find((button) => button.dataset.time === restoredSelection);
                 if (selectedButton) {
-                    setStatus(`Selected ${selectedButton.textContent} on ${dateLabel}.`, "selected");
+                    setStatus(`Selected <strong>${selectedButton.textContent}</strong> on <strong>${dateLabel}</strong>.`, "selected");
                 }
             }
             return;
