@@ -28,22 +28,22 @@
         <div class="dashboard-hero-stats">
             <div class="dashboard-stat-card is-primary">
                 <div class="dashboard-stat-label">Open execution</div>
-                <div class="dashboard-stat-value">@totalExecutionItems</div>
+                <div class="dashboard-stat-value" id="countOpenExecution">@totalExecutionItems</div>
                 <div class="dashboard-stat-note">Today, overdue, and blocker items in one view.</div>
             </div>
             <div class="dashboard-stat-card">
                 <div class="dashboard-stat-label">Due today</div>
-                <div class="dashboard-stat-value" id="countToday">@todayCount</div>
+                <div class="dashboard-stat-value" id="countTodayStat">@todayCount</div>
                 <div class="dashboard-stat-note">Current-day commitments that should move now.</div>
             </div>
             <div class="dashboard-stat-card">
                 <div class="dashboard-stat-label">Overdue</div>
-                <div class="dashboard-stat-value" id="countOverdue">@overdueCount</div>
+                <div class="dashboard-stat-value" id="countOverdueStat">@overdueCount</div>
                 <div class="dashboard-stat-note">Items that need rescue before they age further.</div>
             </div>
             <div class="dashboard-stat-card">
                 <div class="dashboard-stat-label">Blockers</div>
-                <div class="dashboard-stat-value" id="countBlockers">@blockerCount</div>
+                <div class="dashboard-stat-value" id="countBlockersStat">@blockerCount</div>
                 <div class="dashboard-stat-note">Dependencies and friction slowing execution down.</div>
             </div>
         </div>
@@ -94,7 +94,7 @@
                     <span class="legend-exec-kicker">Execution</span>
                     <span class="legend-exec-title-row">
                         <span class="legend-exec-title">Today</span>
-                        <span class="legend-badge">@todayCount</span>
+                        <span class="legend-badge" id="countToday">@todayCount</span>
                     </span>
                     <span class="legend-exec-sub">Current-day commitments that should get moved before momentum drops.</span>
                     <span class="chevron">Open</span>
@@ -105,7 +105,7 @@
                     <span class="legend-exec-kicker">Recovery</span>
                     <span class="legend-exec-title-row">
                         <span class="legend-exec-title">Overdue</span>
-                        <span class="legend-badge">@overdueCount</span>
+                        <span class="legend-badge" id="countOverdue">@overdueCount</span>
                     </span>
                     <span class="legend-exec-sub">Aging items that need immediate rescue before they become stale.</span>
                     <span class="chevron">Open</span>
@@ -116,7 +116,7 @@
                     <span class="legend-exec-kicker">Friction</span>
                     <span class="legend-exec-title-row">
                         <span class="legend-exec-title">Blockers</span>
-                        <span class="legend-badge">@blockerCount</span>
+                        <span class="legend-badge" id="countBlockers">@blockerCount</span>
                     </span>
                     <span class="legend-exec-sub">Dependencies, missing pieces, or stalled next steps slowing the board.</span>
                     <span class="chevron">Open</span>
@@ -264,9 +264,16 @@
                 .then(r => r.json())
                 .then(data => {
                     const set = (id,val) => { const el=document.getElementById(id); if(el) el.textContent = val ?? 0; };
+                    const today = data.today ?? 0;
+                    const overdue = data.overdue ?? 0;
+                    const blockers = data.blockers ?? 0;
                     set("countToday", data.today);
                     set("countOverdue", data.overdue);
                     set("countBlockers", data.blockers);
+                    set("countTodayStat", today);
+                    set("countOverdueStat", overdue);
+                    set("countBlockersStat", blockers);
+                    set("countOpenExecution", today + overdue + blockers);
                 })
                 .catch(() => {});
         };
@@ -339,6 +346,21 @@
 
 <!-- LIFE & HEALTH -->
 <div class="category-container mb-5" data-category="Life & Health">
+    @{
+        var lifeHealthTools = new[]
+        {
+            new { Name = "Integrity Marketing", Url = "https://connect.integrity.com/agent/dashboard", Icon = "integrity.png", Desc = "LIFE INSURANCE QUOTE TOOL, CRM, LIFE LEADS MARKETPLACE" },
+            new { Name = "TransAmerica", Url = "https://secure.transamerica.com/login/sign-in/login.html", Icon = "transamerica.png", Desc = "Top 3 rated companies, Life Insurance, Disability Income" },
+            new { Name = "United of Omaha", Url = "https://producer.mutualofomaha.com/enterprise/myportal/home", Icon = "united.png", Desc = "Life, Disability, Final Expense" },
+            new { Name = "Guardian", Url = "https://login.glic.com/", Icon = "guardian.png", Desc = "Top 3 rated companies, Life Insurance, Disability Income" },
+            new { Name = "Banner Life", Url = "https://partner.bannerlife.com/dashboard", Icon = "bannerlife.png", Desc = "Term Life, Univeral Life" },
+            new { Name = "Americo", Url = "https://account.americoagent.com/Identity/Account/Login/?returnUrl=https%3a%2f%2fportal.americoagent.com%2f", Icon = "americo.png", Desc = "Life, Final Expense" },
+            new { Name = "MassMutual", Url = "https://compass.massmutual.com/", Icon = "massmutual.png", Desc = "Top 3 rated companies, Life Insurance, Disability Income" },
+            new { Name = "Aetna", Url = "https://www.aetnaseniorproducts.com/ssibrokerwebaz/agent/home?channel=broker", Icon = "aetna.png", Desc = "Life, Final Expense, AD&D, Disability Income," },
+            new { Name = "Cigna", Url = "https://cignaforbrokers.com/secure/home", Icon = "cigna.png", Desc = "Dental, Vision, Hearing" },
+            new { Name = "Lincoln Financial", Url = "https://www.lincolnfinancial.com/secure/producer/newbusinesssubmissiontools", Icon = "lincoln.png", Desc = "Life, Disability, Fast Underwriting, Good Product Flexibility" },
+        };
+    }
     <div class="category-head">
         <div class="category-head-copy">
             <div class="category-kicker">Carrier Stack</div>
@@ -348,22 +370,6 @@
         <div class="category-count-pill">@lifeHealthTools.Length tools</div>
     </div>
     <div class="centered-tools">
-        @{
-            var lifeHealthTools = new[]
-            {
-                new { Name = "Integrity Marketing", Url = "https://connect.integrity.com/agent/dashboard", Icon = "integrity.png", Desc = "LIFE INSURANCE QUOTE TOOL, CRM, LIFE LEADS MARKETPLACE" },
-                new { Name = "TransAmerica", Url = "https://secure.transamerica.com/login/sign-in/login.html", Icon = "transamerica.png", Desc = "Top 3 rated companies, Life Insurance, Disability Income" },
-                new { Name = "United of Omaha", Url = "https://producer.mutualofomaha.com/enterprise/myportal/home", Icon = "united.png", Desc = "Life, Disability, Final Expense" },
-                new { Name = "Guardian", Url = "https://login.glic.com/", Icon = "guardian.png", Desc = "Top 3 rated companies, Life Insurance, Disability Income" },
-                new { Name = "Banner Life", Url = "https://partner.bannerlife.com/dashboard", Icon = "bannerlife.png", Desc = "Term Life, Univeral Life" },
-                new { Name = "Americo", Url = "https://account.americoagent.com/Identity/Account/Login/?returnUrl=https%3a%2f%2fportal.americoagent.com%2f", Icon = "americo.png", Desc = "Life, Final Expense" },
-                new { Name = "MassMutual", Url = "https://compass.massmutual.com/", Icon = "massmutual.png", Desc = "Top 3 rated companies, Life Insurance, Disability Income" },
-                new { Name = "Aetna", Url = "https://www.aetnaseniorproducts.com/ssibrokerwebaz/agent/home?channel=broker", Icon = "aetna.png", Desc = "Life, Final Expense, AD&D, Disability Income," },
-                new { Name = "Cigna", Url = "https://cignaforbrokers.com/secure/home", Icon = "cigna.png", Desc = "Health Care Plans" },
-                new { Name = "Lincoln Financial", Url = "https://www.lincolnfinancial.com/secure/producer/newbusinesssubmissiontools", Icon = "lincoln.png", Desc = "Life, Disability, Fast Underwriting, Good Product Flexibility" },
-            };
-        }
-
         @foreach (var tool in lifeHealthTools)
         {
             <a href="@tool.Url" target="_blank" rel="noopener noreferrer" class="dashboard-tool" data-name="@tool.Name">
@@ -378,6 +384,21 @@
 
 <!-- THE PINACLE LIFE GROUP LIFE & HEALTH -->
 <div class="category-container mb-5" data-category="Life & Health">
+    @{
+        var pinnacleLifeHealthTools = new[]
+        {
+            new { Name = "Pinacle Life CRM", Url = "https://www.score.insure/login", Icon = "score.png", Desc = "LIFE INSURANCE QUOTE TOOL, CRM, LIFE LEADS MARKETPLACE" },
+            new { Name = "Mutual of Omaha", Url = "https://accounts.mutualofomaha.com/samlAuthnRequest", Icon = "mutualofomaha.png", Desc = "Life, Disability, Final Expense" },
+            new { Name = "Royal Neighbors Of America", Url = "https://royalneighborsims.b2clogin.com/royalneighborsims.onmicrosoft.com/b2c_1_rna.agentportal.unifiedlogin2/oauth2/v2.0/authorize?client_id=6c623a2c-9e5b-4fc5-9cbf-725453a605a4&scope=openid%20profile%20offline_access&redirect_uri=https%3A%2F%2Fagent.royalneighbors.org%2Fsecure&client-request-id=019cbc1e-ef05-7fe1-ae20-32683ff48f18&response_mode=fragment&client_info=1&nonce=019cbc1e-ef07-77e6-8482-f6221dff75cf&state=eyJpZCI6IjAxOWNiYzFlLWVmMDYtNzI3ZC05MGI4LTZhMjUxZGE5MjZmOSIsIm1ldGEiOnsiaW50ZXJhY3Rpb25UeXBlIjoicmVkaXJlY3QifX0%3D&x-client-SKU=msal.js.browser&x-client-VER=4.20.0&response_type=code&code_challenge=KsutDkEHbFdf410_KzREgsCPNPJg6rKLL0DcfvQ5JJY&code_challenge_method=S256", Icon = "royal.png", Desc = "Life, Final Expense" },
+            new { Name = "Liberty Bankers Life Ins Co", Url = "https://myportal.lbig.com/login.php", Icon = "liberty.png", Desc = "Term Life, Univeral Life" },
+            new { Name = "Kansas City Life Ins Co", Url = "https://www.kclife.com/account/Login.aspx", Icon = "kcl.png", Desc = "Life, Final Expense, AD&D, Disability Income," },
+            new { Name = "American General Life Ins Co", Url = "https://www-1p.aig.com/login", Icon = "americangeneral.png", Desc = "Life, Disability, Fast Underwriting, Good Product Flexibility" },
+            new { Name = "American Home Life", Url = "https://www.amhomelife.com/ahlcas/login?service=https://www.amhomelife.com/ahlsec2/servlet/mainlogin", Icon = "americanhomelife.png", Desc = "Life, Disability, Fast Underwriting, Good Product Flexibility" },
+            new { Name = "Fidelity & Guaranty Life Insurance Company", Url = "https://saleslink.fglife.com/", Icon = "fidelity.png", Desc = "Term Life, Univeral Life" },
+            new { Name = "Banner (Beyond Term)", Url = "https://login.bannerlife.com/login?signin=1c5409709a3c9bd18a8eede7a0c90b94", Icon = "banner.png", Desc = "Term Life, Univeral Life" },
+            new { Name = "Foresters - Independent Order Of", Url = "https://myezbiz.foresters.com/my.policy", Icon = "foresters.png", Desc = "Term Life, Univeral Life" },
+        };
+    }
     <div class="category-head">
         <div class="category-head-copy">
             <div class="category-kicker">Partner Stack</div>
@@ -387,22 +408,6 @@
         <div class="category-count-pill">@pinnacleLifeHealthTools.Length tools</div>
     </div>
     <div class="centered-tools">
-        @{
-            var pinnacleLifeHealthTools = new[]
-            {
-                new { Name = "Pinacle Life CRM", Url = "https://www.score.insure/login", Icon = "score.png", Desc = "LIFE INSURANCE QUOTE TOOL, CRM, LIFE LEADS MARKETPLACE" },
-                new { Name = "Mutual of Omaha", Url = "https://accounts.mutualofomaha.com/samlAuthnRequest", Icon = "mutualofomaha.png", Desc = "Life, Disability, Final Expense" },
-                new { Name = "Royal Neighbors Of America", Url = "https://royalneighborsims.b2clogin.com/royalneighborsims.onmicrosoft.com/b2c_1_rna.agentportal.unifiedlogin2/oauth2/v2.0/authorize?client_id=6c623a2c-9e5b-4fc5-9cbf-725453a605a4&scope=openid%20profile%20offline_access&redirect_uri=https%3A%2F%2Fagent.royalneighbors.org%2Fsecure&client-request-id=019cbc1e-ef05-7fe1-ae20-32683ff48f18&response_mode=fragment&client_info=1&nonce=019cbc1e-ef07-77e6-8482-f6221dff75cf&state=eyJpZCI6IjAxOWNiYzFlLWVmMDYtNzI3ZC05MGI4LTZhMjUxZGE5MjZmOSIsIm1ldGEiOnsiaW50ZXJhY3Rpb25UeXBlIjoicmVkaXJlY3QifX0%3D&x-client-SKU=msal.js.browser&x-client-VER=4.20.0&response_type=code&code_challenge=KsutDkEHbFdf410_KzREgsCPNPJg6rKLL0DcfvQ5JJY&code_challenge_method=S256", Icon = "royal.png", Desc = "Life, Final Expense" },
-                new { Name = "Liberty Bankers Life Ins Co", Url = "https://myportal.lbig.com/login.php", Icon = "liberty.png", Desc = "Term Life, Univeral Life" },
-                new { Name = "Kansas City Life Ins Co", Url = "https://www.kclife.com/account/Login.aspx", Icon = "kcl.png", Desc = "Life, Final Expense, AD&D, Disability Income," },
-                new { Name = "American General Life Ins Co", Url = "https://www-1p.aig.com/login", Icon = "americangeneral.png", Desc = "Life, Disability, Fast Underwriting, Good Product Flexibility" },
-                new { Name = "American Home Life", Url = "https://www.amhomelife.com/ahlcas/login?service=https://www.amhomelife.com/ahlsec2/servlet/mainlogin", Icon = "americanhomelife.png", Desc = "Life, Disability, Fast Underwriting, Good Product Flexibility" },
-                new { Name = "Fidelity & Guaranty Life Insurance Company", Url = "https://saleslink.fglife.com/", Icon = "fidelity.png", Desc = "Term Life, Univeral Life" },
-                new { Name = "Banner (Beyond Term)", Url = "https://login.bannerlife.com/login?signin=1c5409709a3c9bd18a8eede7a0c90b94", Icon = "banner.png", Desc = "Term Life, Univeral Life" },
-                new { Name = "Foresters - Independent Order Of", Url = "https://myezbiz.foresters.com/my.policy", Icon = "foresters.png", Desc = "Term Life, Univeral Life" },
-            };
-        }
-
         @foreach (var tool in pinnacleLifeHealthTools)
         {
             <a href="@tool.Url" target="_blank" rel="noopener noreferrer" class="dashboard-tool" data-name="@tool.Name">
@@ -417,6 +422,14 @@
 
 <!-- DISABILITY INSURANCE -->
 <div class="category-container mb-5" data-category="Disability Insurance">
+    @{
+        var disabilityTools = new[]
+        {
+            new { Name = "MassMutual", Url = "https://compass.massmutual.com/", Icon = "massmutual.png", Desc = "Top 3 rated companies, Life Insurance, Disability Income" },
+            new { Name = "Guardian", Url = "https://login.glic.com/", Icon = "guardian.png", Desc = "Top 3 rated companies, Life Insurance, Disability Income" },
+            new { Name = "Aetna", Url = "https://www.aetnaseniorproducts.com/ssibrokerwebaz/agent/home?channel=broker", Icon = "aetna.png", Desc = "Life, Final Expense, AD&D, Disability Income," },
+        };
+    }
     <div class="category-head">
         <div class="category-head-copy">
             <div class="category-kicker">Focused Access</div>
@@ -426,15 +439,6 @@
         <div class="category-count-pill">@disabilityTools.Length tools</div>
     </div>
     <div class="centered-tools">
-        @{
-            var disabilityTools = new[]
-            {
-                new { Name = "MassMutual", Url = "https://compass.massmutual.com/", Icon = "massmutual.png", Desc = "Top 3 rated companies, Life Insurance, Disability Income" },
-                new { Name = "Guardian", Url = "https://login.glic.com/", Icon = "guardian.png", Desc = "Top 3 rated companies, Life Insurance, Disability Income" },
-                new { Name = "Aetna", Url = "https://www.aetnaseniorproducts.com/ssibrokerwebaz/agent/home?channel=broker", Icon = "aetna.png", Desc = "Life, Final Expense, AD&D, Disability Income," },
-            };
-        }
-
         @foreach (var tool in disabilityTools)
         {
             <a href="@tool.Url" target="_blank" rel="noopener noreferrer" class="dashboard-tool" data-name="@tool.Name">
@@ -449,6 +453,25 @@
 
 <!-- PERSONAL LINES -->
 <div class="category-container mb-5" data-category="Personal Lines">
+    @{
+        var personalLinesTools = new[]
+        {
+            new { Name = "Ezlynx AMS", Url = "https://app.ezlynx.com/auth/account/login", Icon = "ezlynx.png", Desc = "P&C QUOTE TOOL, CRM" },
+            new { Name = "Smart Choice - P&C", Url = "https://commissions.smartchoiceagents.com/", Icon = "smartchoice.png", Desc = "Access personal & Commercial lines, Commissions & Policies" },
+             new { Name = "Progressive", Url = "https://account.apps.progressive.com/access/login?", Icon = "progressive.png", Desc = "Personal coverage, Home, Auto, Commercial, Business Auto, Liability, Specialized Business Owner Policy" },
+            new { Name = "Branch", Url = "https://account.ourbranch.com/", Icon = "branch.png", Desc = "Bundlers, Value Seekers, Independent Agencies, Underinsured/Uninsured" },
+            new { Name = "Mexico Insurance Online", Url = "https://sb.iigins.com/bts/menu/", Icon = "mexico.png", Desc = "Quote and bind Mexico auto & travel insurance" },
+            new { Name = "Tapco Underwriters", Url = "https://secure.gotapco.com/#/Home", Icon = "tapco.png", Desc = "Excess Surplus Lines, Personal Lines, Commercial Lines" },
+            new { Name = "Orion180", Url = "https://app.orion180.com/", Icon = "orion180.png", Desc = "Homeowners, Dwelling, Personal Property, Liability, + Endorsements For Specific Needs" },
+            new { Name = "Hagerty", Url = "https://www.hagertyagent.com/Agent/Home", Icon = "hagerty.png", Desc = "Classic Cars, Antique, Collector, Modified Vehicles" },
+            new { Name = "Tower Hill Insurance", Url = "https://portal.thig.com/#/home", Icon = "towerhill.png", Desc = "Mobile Homeowners, Residential & Commercial Property, Dwelling, rental property, etc. " },
+            new { Name = "EPremium", Url = "https://www.epremiuminsurance.com/DirectToConsumerPartner.aspx?IRISAccountID=PHgYKGChQrc%3d&TopLevelIRISAccountID=pKgVh2ygOEw%3d", Icon = "epremium.png", Desc = "Primarily offers enhanced renters insurance, Personal Property, Liability for Resident Caused damages" },
+            new { Name = "Steadily", Url = "https://agent.steadily.com/policy/start-quote", Icon = "steadily.png", Desc = "Specialized Landlord Insurance | Property Damage (Fire, Water, Wind, Vandalism)" },
+            new { Name = "Common Wealth", Url = "https://agent.commonwealthcasualty.com/dashboard.jsp", Icon = "commonwealth.png", Desc = "Basic Auto Insurance, Liability, Collision, Comprehensive, Uninsured/Underinsured Motorist, Optional Add Ons" },
+            new { Name = "Vacant Express", Url = "https://app1.uai-sys.com/express/default.aspx", Icon = "vacant.png", Desc = "Inland Marine Builders Risk, Residential-Vacant or Rental, Vacant With Prior Commercial Occupancy" },
+            new { Name = "Collectibles Insurance Services", Url = "https://app1.uai-sys.com/express/default.aspx", Icon = "collectibles.png", Desc = "Inland Marine Builders Risk, Residential-Vacant or Rental, Vacant With Prior Commercial Occupancy" },
+        };
+    }
     <div class="category-head">
         <div class="category-head-copy">
             <div class="category-kicker">Coverage Access</div>
@@ -458,26 +481,6 @@
         <div class="category-count-pill">@personalLinesTools.Length tools</div>
     </div>
     <div class="centered-tools">
-        @{
-            var personalLinesTools = new[]
-            {
-                new { Name = "Ezlynx AMS", Url = "https://app.ezlynx.com/auth/account/login", Icon = "ezlynx.png", Desc = "P&C QUOTE TOOL, CRM" },
-                new { Name = "Smart Choice - P&C", Url = "https://commissions.smartchoiceagents.com/", Icon = "smartchoice.png", Desc = "Access personal & Commercial lines, Commissions & Policies" },
-                 new { Name = "Progressive", Url = "https://account.apps.progressive.com/access/login?", Icon = "progressive.png", Desc = "Personal coverage, Home, Auto, Commercial, Business Auto, Liability, Specialized Business Owner Policy" },
-                new { Name = "Branch", Url = "https://account.ourbranch.com/", Icon = "branch.png", Desc = "Bundlers, Value Seekers, Independent Agencies, Underinsured/Uninsured" },
-                new { Name = "Mexico Insurance Online", Url = "https://sb.iigins.com/bts/menu/", Icon = "mexico.png", Desc = "Quote and bind Mexico auto & travel insurance" },
-                new { Name = "Tapco Underwriters", Url = "https://secure.gotapco.com/#/Home", Icon = "tapco.png", Desc = "Excess Surplus Lines, Personal Lines, Commercial Lines" },
-                new { Name = "Orion180", Url = "https://app.orion180.com/", Icon = "orion180.png", Desc = "Homeowners, Dwelling, Personal Property, Liability, + Endorsements For Specific Needs" },
-                new { Name = "Hagerty", Url = "https://www.hagertyagent.com/Agent/Home", Icon = "hagerty.png", Desc = "Classic Cars, Antique, Collector, Modified Vehicles" },
-                new { Name = "Tower Hill Insurance", Url = "https://portal.thig.com/#/home", Icon = "towerhill.png", Desc = "Mobile Homeowners, Residential & Commercial Property, Dwelling, rental property, etc. " },
-                new { Name = "EPremium", Url = "https://www.epremiuminsurance.com/DirectToConsumerPartner.aspx?IRISAccountID=PHgYKGChQrc%3d&TopLevelIRISAccountID=pKgVh2ygOEw%3d", Icon = "epremium.png", Desc = "Primarily offers enhanced renters insurance, Personal Property, Liability for Resident Caused damages" },
-                new { Name = "Steadily", Url = "https://agent.steadily.com/policy/start-quote", Icon = "steadily.png", Desc = "Specialized Landlord Insurance | Property Damage (Fire, Water, Wind, Vandalism)" },
-                new { Name = "Common Wealth", Url = "https://agent.commonwealthcasualty.com/dashboard.jsp", Icon = "commonwealth.png", Desc = "Basic Auto Insurance, Liability, Collision, Comprehensive, Uninsured/Underinsured Motorist, Optional Add Ons" },
-                new { Name = "Vacant Express", Url = "https://app1.uai-sys.com/express/default.aspx", Icon = "vacant.png", Desc = "Inland Marine Builders Risk, Residential-Vacant or Rental, Vacant With Prior Commercial Occupancy" },
-                new { Name = "Collectibles Insurance Services", Url = "https://app1.uai-sys.com/express/default.aspx", Icon = "collectibles.png", Desc = "Inland Marine Builders Risk, Residential-Vacant or Rental, Vacant With Prior Commercial Occupancy" },
-            };
-        }
-
         @foreach (var tool in personalLinesTools)
         {
             <a href="@tool.Url" target="_blank" rel="noopener noreferrer" class="dashboard-tool" data-name="@tool.Name">
@@ -492,6 +495,22 @@
 
 <!-- COMMERCIAL LINES -->
 <div class="category-container mb-5" data-category="Commercial Lines">
+    @{
+        var commercialTools = new[]
+        {
+            new { Name = "Ezlynx AMS", Url = "https://app.ezlynx.com/auth/account/login", Icon = "ezlynx.png", Desc = "P&C QUOTE TOOL, CRM" },
+            new { Name = "Smart Choice - P&C", Url = "https://commissions.smartchoiceagents.com/", Icon = "smartchoice.png", Desc = "Access personal & Commercial lines, Commissions & Policies" },
+            new { Name = "Progressive", Url = "https://account.apps.progressive.com/access/login?", Icon = "progressive.png", Desc = "Personal coverage, Home, Auto, Commercial, Business Auto, Liability, Specialized Business Owner Policy" },
+            new { Name = "Branch", Url = "https://account.ourbranch.com/", Icon = "branch.png", Desc = "Bundlers, Value Seekers, Independent Agencies, Underinsured/Uninsured" },
+            new { Name = "Hiscox", Url = "https://portal.hiscox.com/oneshield/sso", Icon = "hiscox.png", Desc = "Small Business General Liability, Professional Liability, E&O, BOP, Cyber Liability, Worker's Comp" },
+            new { Name = "Tapco Underwriters", Url = "https://secure.gotapco.com/#/Home", Icon = "tapco.png", Desc = "Excess Surplus Lines, Personal Lines, Commercial Lines" },
+            new { Name = "Vacant Express", Url = "https://app1.uai-sys.com/express/default.aspx", Icon = "vacant.png", Desc = "Inland Marine Builders Risk, Residential-Vacant or Rental, Vacant With Prior Commercial Occupancy" },
+            new { Name = "Collectibles Insurance Services", Url = "https://app1.uai-sys.com/express/default.aspx", Icon = "collectibles.png", Desc = "Inland Marine Builders Risk, Residential-Vacant or Rental, Vacant With Prior Commercial Occupancy" },
+            new { Name = "Obie", Url = "https://commissions.smartchoiceagents.com/", Icon = "obie.png", Desc = "Landlords & Property Owners, Real Estate Investors, Lenders, Property Managers, Independent Agents" },
+            new { Name = "Tower Hill Insurance", Url = "https://portal.thig.com/#/home", Icon = "towerhill.png", Desc = "Mobile Homeowners, Residential & Commercial Property, Dwelling, rental property, etc. " },
+            new { Name = "Adaptive", Url = "https://app.adaptiveinsurance.com/", Icon = "adaptive.png", Desc = "Businesses, Primarily defend against climate change. " },
+        };
+    }
     <div class="category-head">
         <div class="category-head-copy">
             <div class="category-kicker">Business Coverage</div>
@@ -501,23 +520,6 @@
         <div class="category-count-pill">@commercialTools.Length tools</div>
     </div>
     <div class="centered-tools">
-        @{
-            var commercialTools = new[]
-            {
-                new { Name = "Ezlynx AMS", Url = "https://app.ezlynx.com/auth/account/login", Icon = "ezlynx.png", Desc = "P&C QUOTE TOOL, CRM" },
-                new { Name = "Smart Choice - P&C", Url = "https://commissions.smartchoiceagents.com/", Icon = "smartchoice.png", Desc = "Access personal & Commercial lines, Commissions & Policies" },
-                new { Name = "Progressive", Url = "https://account.apps.progressive.com/access/login?", Icon = "progressive.png", Desc = "Personal coverage, Home, Auto, Commercial, Business Auto, Liability, Specialized Business Owner Policy" },
-                new { Name = "Branch", Url = "https://account.ourbranch.com/", Icon = "branch.png", Desc = "Bundlers, Value Seekers, Independent Agencies, Underinsured/Uninsured" },
-                new { Name = "Hiscox", Url = "https://portal.hiscox.com/oneshield/sso", Icon = "hiscox.png", Desc = "Small Business General Liability, Professional Liability, E&O, BOP, Cyber Liability, Worker's Comp" },
-                new { Name = "Tapco Underwriters", Url = "https://secure.gotapco.com/#/Home", Icon = "tapco.png", Desc = "Excess Surplus Lines, Personal Lines, Commercial Lines" },
-                new { Name = "Vacant Express", Url = "https://app1.uai-sys.com/express/default.aspx", Icon = "vacant.png", Desc = "Inland Marine Builders Risk, Residential-Vacant or Rental, Vacant With Prior Commercial Occupancy" },
-                new { Name = "Collectibles Insurance Services", Url = "https://app1.uai-sys.com/express/default.aspx", Icon = "collectibles.png", Desc = "Inland Marine Builders Risk, Residential-Vacant or Rental, Vacant With Prior Commercial Occupancy" },
-                new { Name = "Obie", Url = "https://commissions.smartchoiceagents.com/", Icon = "obie.png", Desc = "Landlords & Property Owners, Real Estate Investors, Lenders, Property Managers, Independent Agents" },
-                new { Name = "Tower Hill Insurance", Url = "https://portal.thig.com/#/home", Icon = "towerhill.png", Desc = "Mobile Homeowners, Residential & Commercial Property, Dwelling, rental property, etc. " },
-                new { Name = "Adaptive", Url = "https://app.adaptiveinsurance.com/", Icon = "adaptive.png", Desc = "Businesses, Primarily defend against climate change. " },
-            };
-        }
-
         @foreach (var tool in commercialTools)
         {
             <a href="@tool.Url" target="_blank" rel="noopener noreferrer" class="dashboard-tool" data-name="@tool.Name">
@@ -533,270 +535,759 @@
 </div>
 
 <style>
-/* ==============================
-   THEME VARIABLES
-============================== */
 :root {
-    /* Colors */
-    --gold-color: #a68023;
-    --gold-light: rgba(166,128,35,0.26);
-    --navy-900: #0b1529;
-    --navy-800: #0f1d38;
-    --navy-700: #162445;
-    --text-color: #f8fafc;
-    --muted-text: #cbd5e1;
-    --background-color: #0b1529;
-
-    /* Tool card dimensions */
-    --tool-width: 180px;
-    --tool-height: 150px;
-    --tool-radius: 10px;
-    --tool-gap: 1.5rem;
-
-    /* Search input */
-    --search-width: 400px;
-    --search-radius: 50px;
-
-    /* Hero divider */
-    --divider-color: var(--gold-color);
-    --divider-width: 2px;
-    --divider-margin: 1rem auto 1.5rem;
-
-    /* Tool glow on hover */
-    --tool-glow-color: rgba(166,128,35,0.45);
+    --dash-gold: #d4aa47;
+    --dash-gold-deep: #8f6a1d;
+    --dash-gold-soft: rgba(212, 170, 71, 0.18);
+    --dash-royal-950: #091225;
+    --dash-royal-925: #0d1c38;
+    --dash-royal-900: #10254c;
+    --dash-royal-860: #17356d;
+    --dash-royal-820: #21448d;
+    --dash-line: rgba(150, 182, 255, 0.16);
+    --dash-line-strong: rgba(212, 170, 71, 0.34);
+    --dash-text: #f8fbff;
+    --dash-text-soft: rgba(226, 232, 240, 0.78);
+    --dash-shadow: 0 28px 60px rgba(4, 10, 28, 0.26);
+    --dash-shadow-strong: 0 34px 80px rgba(3, 8, 22, 0.38);
 }
 
-/* ==============================
-   GENERAL CONTAINER
-============================== */
-.home-container {
-    padding: 2rem 1rem;
-    color: #0b1529;
-    background: #fff;
+.dashboard-page-shell {
+    padding: 1.35rem 0.95rem 2.4rem;
+    color: var(--dash-text);
+    background:
+        radial-gradient(circle at top, rgba(49, 89, 191, 0.1), transparent 34%),
+        linear-gradient(180deg, #eef3fb 0%, #f7f9fc 100%);
 }
 
-.category-container{
-    background: var(--navy-800) !important;
-    border: 2.2px solid var(--gold-color) !important;
-    border-radius: 18px;
-    padding: 1.5rem;
-    box-shadow: 0 20px 42px rgba(0,0,0,.36), 0 0 0 2px rgba(166,128,35,.15), inset 0 1px 0 rgba(255,255,255,.06);
-    color: var(--text-color);
-}
-.category-container h3{
-    color: var(--text-color) !important;
-}
-.category-container .tool-desc,
-.category-container .tool-name{
-    color: #0b1529 !important;
-}
-
-/* inside dashboard sections, keep tiles white with gold edges for contrast */
-.category-container .dashboard-tool{
-    background: #fff;
-    color: #0b1529;
-    border-color: var(--gold-color);
-    box-shadow: 0 10px 24px rgba(0,0,0,0.18);
-}
-.category-container .dashboard-tool .tool-name,
-.category-container .dashboard-tool .tool-desc{
-    color: #0b1529;
-}
-.category-container .dashboard-tool:hover{
-    color: #0b1529;
-    box-shadow: 0 14px 30px rgba(0,0,0,0.26), 0 0 0 3px rgba(166,128,35,.18);
+.dashboard-hero-panel,
+.dashboard-command-panel,
+.dashboard-focus-panel,
+.dashboard-analytics-panel,
+.category-container {
+    width: min(1480px, 100%);
+    margin: 0 auto 1.4rem;
+    position: relative;
+    overflow: hidden;
+    border-radius: 28px;
+    border: 1px solid var(--dash-line-strong);
+    background:
+        radial-gradient(720px 260px at 50% 0%, rgba(49, 89, 191, 0.18), transparent 58%),
+        linear-gradient(180deg, rgba(16, 37, 76, 0.98), rgba(10, 22, 46, 0.995));
+    box-shadow:
+        var(--dash-shadow-strong),
+        inset 0 1px 0 rgba(255, 255, 255, 0.05);
 }
 
-/* ==============================
-   HERO / TITLE
-============================== */
-.hero-hr {
-    border-color: var(--divider-color);
-    border-width: var(--divider-width);
-    max-width: 1500px;
-    margin: var(--divider-margin);
-}
-
-/* ==============================
-   SEARCH BAR
-============================== */
-.search-container {
-    display: flex;
-    justify-content: center; /* center input + button */
-    align-items: center;
-    gap: 0.5rem;
-    margin-bottom: 2rem;
-}
-
-.search-input {
-    width: var(--search-width);
-    max-width: 90%;
-    padding: 0.6rem 1rem;
-    border-radius: var(--search-radius);
-    border: 2px solid var(--gold-color);
-    background: #fff;
-    color: #0b1529;
-    caret-color: #0b1529;
-    box-shadow: 0 8px 20px rgba(0,0,0,0.18);
-    font-size: 1rem;
-    transition: all 0.3s ease;
-}
-.search-input::placeholder{
-    color: #1f2a44;
-    opacity: 0.95;
-}
-
-.search-input:focus {
-    outline: none;
-    border-color: #b2882b;
-    box-shadow: 0 12px 26px rgba(0,0,0,0.22);
-}
-
-/* New clear button next to input */
-.btn-clear-search {
-    padding: 0.55rem 1rem;
-    font-size: 1rem;
-    font-weight: 600;
-    border-radius: 50px;
-    border: 2px solid var(--gold-color);
-    background-color: var(--gold-color);
-    color: #0b1529;
-    cursor: pointer;
-    transition: all 0.2s ease;
-}
-
-.btn-clear-search:hover {
-    background-color: #b2882b;
-    color: #0b1529;
-    box-shadow: 0 0 16px rgba(0,0,0,.28);
-}
-.btn-clear-search:focus-visible {
-    outline: 2px solid #ddb457;
-    outline-offset: 3px;
-    box-shadow: 0 0 18px rgba(0,0,0,.32);
-}
-
-/* ==============================
-   AUTOCOMPLETE
-============================== */
-.autocomplete-list {
+.dashboard-hero-panel::before,
+.dashboard-command-panel::before,
+.dashboard-focus-panel::before,
+.dashboard-analytics-panel::before,
+.category-container::before {
+    content: "";
     position: absolute;
-    top: 110%;
-    left: 0;
-    right: 0;
-    background: var(--navy-800);
-    border: 1.5px solid var(--gold-color);
-    border-radius: 12px;
-    box-shadow: 0 14px 30px rgba(0,0,0,0.32);
-    z-index: 999;
-    max-height: 150px;
-    overflow-y: auto;
-    display: none;
+    inset: 0 auto auto 32px;
+    width: calc(100% - 64px);
+    height: 1px;
+    background: linear-gradient(90deg, transparent, rgba(255, 235, 183, 0.78), transparent);
+    opacity: 0.42;
+    pointer-events: none;
+}
+
+.dashboard-hero-panel {
+    display: grid;
+    grid-template-columns: minmax(0, 1.25fr) minmax(340px, 0.95fr);
+    gap: 1.2rem;
+    padding: 1.45rem 1.5rem 1.35rem;
+}
+
+.dashboard-hero-copy {
+    display: grid;
+    align-content: start;
+    gap: 0.72rem;
+}
+
+.dashboard-eyebrow,
+.dashboard-section-kicker,
+.category-kicker,
+.legend-exec-kicker {
+    display: inline-flex;
+    align-items: center;
+    width: fit-content;
+    min-height: 30px;
+    padding: 0.28rem 0.8rem;
+    border-radius: 999px;
+    border: 1px solid rgba(212, 170, 71, 0.34);
+    background: rgba(212, 170, 71, 0.1);
+    color: #f0d991;
+    font-size: 0.75rem;
+    font-weight: 900;
+    letter-spacing: 0.09em;
+    text-transform: uppercase;
+}
+
+.dashboard-hero-title {
+    margin: 0;
+    color: #ffffff;
+    font-size: clamp(2rem, 3.6vw, 3.45rem);
+    font-weight: 980;
+    line-height: 0.98;
+    letter-spacing: -0.05em;
+}
+
+.dashboard-hero-lead {
+    margin: 0;
+    max-width: 66ch;
+    color: var(--dash-text-soft);
+    font-size: 1rem;
+    line-height: 1.66;
+    font-weight: 620;
+}
+
+.dashboard-hero-tags {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.65rem;
+    margin-top: 0.2rem;
+}
+
+.dashboard-hero-tags span {
+    display: inline-flex;
+    align-items: center;
+    min-height: 38px;
+    padding: 0.55rem 0.95rem;
+    border-radius: 999px;
+    border: 1px solid rgba(150, 182, 255, 0.2);
+    background: rgba(8, 18, 38, 0.54);
+    color: rgba(248, 251, 255, 0.88);
+    font-size: 0.86rem;
+    font-weight: 760;
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
+}
+
+.dashboard-hero-stats {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 0.9rem;
+}
+
+.dashboard-stat-card {
+    display: grid;
+    align-content: start;
+    gap: 0.34rem;
+    min-height: 142px;
+    padding: 1rem 1.05rem;
+    border-radius: 20px;
+    border: 1px solid rgba(150, 182, 255, 0.18);
+    background:
+        radial-gradient(circle at top right, rgba(77, 111, 255, 0.12), transparent 42%),
+        linear-gradient(180deg, rgba(11, 23, 49, 0.9), rgba(8, 16, 34, 0.96));
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
+}
+
+.dashboard-stat-card.is-primary {
+    border-color: rgba(212, 170, 71, 0.38);
+    background:
+        radial-gradient(circle at top right, rgba(212, 170, 71, 0.16), transparent 42%),
+        linear-gradient(180deg, rgba(20, 38, 84, 0.96), rgba(11, 23, 49, 0.98));
+}
+
+.dashboard-stat-label {
+    color: #f0d991;
+    font-size: 0.75rem;
+    font-weight: 900;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+}
+
+.dashboard-stat-value {
+    color: #ffffff;
+    font-size: clamp(1.65rem, 2.8vw, 2.3rem);
+    font-weight: 980;
+    line-height: 1;
+    letter-spacing: -0.04em;
+}
+
+.dashboard-stat-note {
+    color: rgba(226, 232, 240, 0.72);
+    font-size: 0.86rem;
+    line-height: 1.45;
+}
+
+.dashboard-command-panel,
+.dashboard-focus-panel,
+.dashboard-analytics-panel {
+    padding: 1.22rem 1.3rem 1.28rem;
+}
+
+.dashboard-section-head {
+    display: flex;
+    align-items: start;
+    justify-content: space-between;
+    gap: 1rem;
+}
+
+.dashboard-section-head-tight {
+    margin-bottom: 1rem;
+}
+
+.dashboard-section-title {
+    margin: 0.24rem 0 0;
+    color: #ffffff;
+    font-size: clamp(1.24rem, 2vw, 1.72rem);
+    font-weight: 930;
+    line-height: 1.1;
+    letter-spacing: -0.03em;
+}
+
+.dashboard-section-copy {
+    margin: 0.42rem 0 0;
+    color: rgba(226, 232, 240, 0.72);
+    font-size: 0.93rem;
+    line-height: 1.52;
+    max-width: 72ch;
+}
+
+.dashboard-search-panel {
+    margin: 0;
+}
+
+.search-container {
+    display: block;
+}
+
+.search-input-wrap .search-input {
+    min-height: 56px;
+    border-radius: 18px;
+    border: 1.5px solid rgba(212, 170, 71, 0.34);
+    background: linear-gradient(180deg, rgba(255, 255, 255, 0.98), rgba(238, 244, 252, 0.98));
+    box-shadow:
+        0 16px 28px rgba(0, 0, 0, 0.12),
+        inset 0 1px 0 rgba(255, 255, 255, 0.58);
+}
+
+.search-input-wrap .search-input:focus {
+    border-color: rgba(212, 170, 71, 0.68);
+    box-shadow:
+        0 18px 34px rgba(0, 0, 0, 0.15),
+        0 0 0 4px rgba(212, 170, 71, 0.12);
+}
+
+.search-input-wrap .autocomplete-list {
+    background: linear-gradient(180deg, rgba(16, 37, 76, 0.99), rgba(10, 22, 46, 0.99));
 }
 
 .autocomplete-item {
-    padding: 0.5rem 1rem;
-    cursor: pointer;
+    min-height: 54px;
+    border-bottom: 1px solid rgba(150, 182, 255, 0.08);
+}
+
+.autocomplete-item:last-child {
+    border-bottom: 0;
+}
+
+.dashboard-focus-grid {
+    margin-top: 0.15rem;
+}
+
+.legend-exec-btn {
+    position: relative;
+    display: grid;
+    gap: 0.65rem;
+    width: 100%;
+    min-height: 210px;
+    padding: 1.15rem 1.15rem 1rem;
+    text-align: left;
+    border: 1px solid rgba(212, 170, 71, 0.3);
+    border-radius: 22px;
+    background:
+        radial-gradient(circle at top right, rgba(77, 111, 255, 0.14), transparent 42%),
+        linear-gradient(180deg, rgba(11, 23, 49, 0.98), rgba(8, 16, 34, 0.995));
+    color: var(--dash-text);
+    box-shadow:
+        var(--dash-shadow),
+        inset 0 1px 0 rgba(255, 255, 255, 0.04);
+    transition: transform 0.16s ease, box-shadow 0.16s ease, border-color 0.16s ease;
+}
+
+.legend-exec-btn:hover {
+    transform: translateY(-4px);
+    border-color: rgba(244, 220, 147, 0.56);
+    box-shadow:
+        0 34px 70px rgba(4, 10, 28, 0.34),
+        inset 0 1px 0 rgba(255, 255, 255, 0.05);
+}
+
+.legend-exec-btn:focus-visible {
+    outline: 2px solid rgba(255, 235, 183, 0.92);
+    outline-offset: 3px;
+}
+
+.legend-exec-title-row {
     display: flex;
     align-items: center;
-    gap: 0.75rem;
-    transition: background 0.2s;
-    color: var(--text-color);
+    justify-content: space-between;
+    gap: 0.85rem;
 }
 
-.autocomplete-item img {
-    width: 30px;
-    height: 30px;
+.legend-exec-title {
+    color: #ffffff;
+    font-size: 1.5rem;
+    font-weight: 940;
+    line-height: 1.05;
+    letter-spacing: -0.03em;
 }
 
-.autocomplete-item:hover {
-    background-color: rgba(166,128,35,.16);
+.legend-exec-sub {
+    margin: 0;
+    color: rgba(226, 232, 240, 0.76);
+    font-size: 0.93rem;
+    line-height: 1.52;
+    max-width: 28ch;
 }
 
-/* ==============================
-   TOOL CARD
-============================== */
-.dashboard-tool {
-    width: var(--tool-width);
-    max-width: 180px;
-    height: var(--tool-height);
-    border: 1.6px solid var(--gold-color);
-    border-radius: var(--tool-radius);
-    padding: 0.5rem;
-    text-decoration: none;
-    color: #0b1529;
-    font-weight: 700;
-    background: #fff;
-    display: flex;
-    flex-direction: column;
+.legend-exec-btn .chevron {
+    margin-top: auto;
+    color: #f0d991;
+    font-size: 0.9rem;
+    font-weight: 900;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+}
+
+.legend-badge {
+    display: inline-flex;
     align-items: center;
     justify-content: center;
-    box-shadow: 0 10px 24px rgba(0,0,0,0.18), inset 0 0 0 1px rgba(166,128,35,.14);
-    transition: all 0.3s ease;
-    position: relative; /* added for overlay */
+    min-width: 38px;
+    min-height: 38px;
+    padding: 0 0.78rem;
+    border-radius: 999px;
+    border: 1px solid rgba(244, 220, 147, 0.34);
+    background: linear-gradient(180deg, #f5da96 0%, #d4aa47 100%);
+    color: #1d1202;
+    font-size: 0.92rem;
+    font-weight: 950;
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.45);
+}
+
+.dashboard-analytics-grid {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 0.9rem;
+}
+
+.dashboard-analytics-card {
+    display: grid;
+    gap: 0.35rem;
+    min-height: 156px;
+    padding: 1rem 1.02rem;
+    border-radius: 20px;
+    border: 1px solid rgba(150, 182, 255, 0.18);
+    background:
+        radial-gradient(circle at top right, rgba(77, 111, 255, 0.12), transparent 44%),
+        linear-gradient(180deg, rgba(13, 29, 60, 0.98), rgba(9, 18, 38, 0.995));
+}
+
+.dashboard-analytics-label {
+    color: #f0d991;
+    font-size: 0.74rem;
+    font-weight: 900;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+}
+
+.dashboard-analytics-value {
+    color: #ffffff;
+    font-size: clamp(1.4rem, 2.6vw, 2.05rem);
+    font-weight: 970;
+    line-height: 1;
+    letter-spacing: -0.04em;
+}
+
+.dashboard-analytics-copy {
+    color: rgba(226, 232, 240, 0.72);
+    font-size: 0.85rem;
+    line-height: 1.5;
+}
+
+.hero-hr {
+    width: min(240px, 44%);
+    height: 1px;
+    margin: 1.1rem auto 1.25rem;
+    border: 0;
+    background: linear-gradient(90deg, transparent, rgba(212, 170, 71, 0.82), transparent);
+    opacity: 0.75;
+}
+
+.category-container {
+    padding: 1.3rem 1.35rem 1.42rem;
+}
+
+.category-head {
+    display: flex;
+    align-items: start;
+    justify-content: space-between;
+    gap: 1rem;
+    margin-bottom: 1.05rem;
+}
+
+.category-head-copy {
+    display: grid;
+    gap: 0.28rem;
+}
+
+.category-toggle {
+    margin: 0;
+    color: #ffffff !important;
+    font-size: clamp(1.26rem, 2vw, 1.74rem);
+    line-height: 1.1;
+    letter-spacing: -0.03em;
+}
+
+.category-copy {
+    margin: 0;
+    color: rgba(226, 232, 240, 0.72);
+    font-size: 0.92rem;
+    line-height: 1.52;
+    max-width: 72ch;
+}
+
+.category-count-pill {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 38px;
+    padding: 0.55rem 0.95rem;
+    border-radius: 999px;
+    border: 1px solid rgba(212, 170, 71, 0.28);
+    background: rgba(212, 170, 71, 0.1);
+    color: #f0d991;
+    font-size: 0.84rem;
+    font-weight: 900;
+    white-space: nowrap;
+}
+
+.centered-tools {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(178px, 1fr));
+    gap: 1rem;
+    align-items: stretch;
+}
+
+.dashboard-tool {
+    width: 100%;
+    max-width: none;
+    min-height: 170px;
+    height: 170px;
+    padding: 1rem 0.9rem;
+    position: relative;
+    overflow: hidden;
+    border: 1px solid rgba(212, 170, 71, 0.42);
+    border-radius: 18px;
+    background: linear-gradient(180deg, rgba(255, 255, 255, 0.99), rgba(240, 245, 252, 0.99));
+    color: #101827;
+    text-decoration: none;
+    box-shadow:
+        0 18px 28px rgba(0, 0, 0, 0.12),
+        inset 0 1px 0 rgba(255, 255, 255, 0.76);
+    transition: transform 0.18s ease, box-shadow 0.18s ease, border-color 0.18s ease, background 0.18s ease;
 }
 
 .dashboard-tool:hover {
-    transform: translateY(-6px);
-    box-shadow: 0 16px 32px rgba(0,0,0,.26), inset 0 0 0 1.6px #c79931;
-    color: #0b1529;
-    border-color: #c79931;
+    transform: translateY(-5px);
+    border-color: rgba(212, 170, 71, 0.66);
+    background: linear-gradient(180deg, rgba(255, 255, 255, 1), rgba(246, 240, 221, 0.98));
+    color: #101827;
+    box-shadow:
+        0 24px 36px rgba(0, 0, 0, 0.16),
+        0 0 0 3px rgba(212, 170, 71, 0.1);
 }
+
 .dashboard-tool:focus-visible {
-    outline: 2px solid #ddb457;
+    outline: 2px solid rgba(221, 180, 87, 0.9);
     outline-offset: 3px;
-    box-shadow: 0 16px 32px rgba(0,0,0,.32), 0 0 0 3px rgba(221,180,87,.32);
-}
-.dashboard-tool:active{
-    transform: translateY(-3px);
-    box-shadow: 0 10px 22px rgba(0,0,0,.26), 0 0 0 2px rgba(166,128,35,.24);
 }
 
 .dashboard-tool img {
-    max-width: 80px;
-    max-height: 60px;
+    max-width: 84px;
+    max-height: 62px;
+    object-fit: contain;
+    transition: opacity 0.2s ease, transform 0.2s ease;
 }
 
-/* ==============================
-   TOOL HOVER DESCRIPTION OVERLAY
-============================== */
+.dashboard-tool .tool-name {
+    color: #0f172a;
+    font-size: 0.95rem;
+    line-height: 1.22;
+    transition: opacity 0.2s ease;
+}
+
 .dashboard-tool .tool-desc {
     position: absolute;
-    top: 0;
-    left: 0;
-    width: 100%;
-    height: 100%;
-    background: rgba(12,21,41,0.92);
-    color: #f6e6b4;
+    inset: 0;
     display: flex;
     align-items: center;
     justify-content: center;
+    padding: 0.95rem;
+    border-radius: 18px;
+    background:
+        radial-gradient(circle at top, rgba(212, 170, 71, 0.18), transparent 40%),
+        linear-gradient(180deg, rgba(13, 28, 56, 0.96), rgba(8, 17, 35, 0.98));
+    color: #f6e6b4;
     text-align: center;
-    font-size: 0.9rem;
-    padding: 0.5rem;
+    font-size: 0.84rem;
+    font-weight: 760;
+    line-height: 1.48;
     opacity: 0;
-    transition: opacity 0.25s ease-in-out;
-    border-radius: var(--tool-radius);
-    font-weight: 700;
+    transition: opacity 0.24s ease;
 }
+
 .dashboard-tool:hover .tool-desc {
     opacity: 1;
 }
 
 .dashboard-tool:hover img,
 .dashboard-tool:hover .tool-name {
-    opacity: 0.2;
-    transition: opacity 0.25s ease-in-out;
+    opacity: 0.14;
 }
 
-/* ==============================
-   RESPONSIVE
-============================== */
-@@media (max-width: 576px) {
-    .dashboard-tool { width: 160px; height: 130px; }
-    .dashboard-tool img { width: 50px; height: 50px; }
-    .search-input { width: 90%; font-size: 0.95rem; }
-    .btn-clear-search { font-size: 0.9rem; padding: 0.45rem 0.8rem; }
+.legend-modal .modal-dialog {
+    margin: clamp(16px, 4vh, 36px) auto;
+}
+
+.legend-modal .modal-content {
+    background:
+        radial-gradient(720px 260px at 50% 0%, rgba(49, 89, 191, 0.18), transparent 54%),
+        linear-gradient(180deg, rgba(16, 37, 76, 0.995), rgba(10, 22, 46, 0.995));
+    color: var(--dash-text);
+    border: 1px solid rgba(212, 170, 71, 0.36);
+    border-radius: 24px;
+    box-shadow: 0 30px 70px rgba(0, 0, 0, 0.42);
+    max-height: calc(100vh - clamp(32px, 8vh, 72px));
+    display: flex;
+    flex-direction: column;
+}
+
+.legend-modal .modal-header {
+    border-color: rgba(212, 170, 71, 0.16);
+    background: rgba(255, 255, 255, 0.02);
+}
+
+.legend-modal .modal-title {
+    color: #f0d991;
+    font-weight: 900;
+    letter-spacing: 0.02em;
+}
+
+.legend-modal .modal-body {
+    overflow-y: auto;
+    min-height: 0;
+    overscroll-behavior: contain;
+}
+
+.legend-modal .btn-close {
+    opacity: 0.96;
+}
+
+.legend-modal .action-table-wrap {
+    background: rgba(8, 18, 38, 0.68);
+    border: 1px solid rgba(212, 170, 71, 0.24);
+    padding: 10px;
+    border-radius: 16px;
+}
+
+.legend-modal .action-table {
+    background: transparent;
+}
+
+.legend-modal .action-table th {
+    color: #f0d991;
+    border-bottom: 1px solid rgba(212, 170, 71, 0.28);
+    background: linear-gradient(180deg, rgba(12, 22, 45, 0.98), rgba(8, 18, 38, 0.98));
+}
+
+.legend-modal .action-table td {
+    color: #0f172a;
+    border-top: 1px solid rgba(15, 23, 42, 0.08);
+    background: #ffffff;
+}
+
+.legend-modal .text-muted {
+    color: rgba(240, 217, 145, 0.74) !important;
+}
+
+#dashboardToast {
+    position: fixed;
+    right: 18px;
+    bottom: 18px;
+    z-index: 1085;
+    min-width: 220px;
+    padding: 0.85rem 1rem;
+    border-radius: 16px;
+    border: 1px solid rgba(212, 170, 71, 0.34);
+    background: linear-gradient(180deg, rgba(16, 37, 76, 0.98), rgba(10, 22, 46, 0.98));
+    color: #ffffff;
+    box-shadow: 0 24px 40px rgba(0, 0, 0, 0.22);
+    opacity: 0;
+    pointer-events: none;
+    transform: translateY(12px);
+    transition: opacity 0.2s ease, transform 0.2s ease;
+}
+
+#dashboardToast.show {
+    opacity: 1;
+    transform: translateY(0);
+}
+
+#dashboardToast.error {
+    border-color: rgba(248, 113, 113, 0.42);
+    background: linear-gradient(180deg, rgba(127, 29, 29, 0.98), rgba(69, 10, 10, 0.98));
+}
+
+@@media (max-width: 1180px) {
+    .dashboard-hero-panel {
+        grid-template-columns: 1fr;
+    }
+
+    .dashboard-hero-stats,
+    .dashboard-analytics-grid {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+}
+
+@@media (max-width: 920px) {
+    .dashboard-page-shell {
+        padding: 1rem 0.75rem 2rem;
+    }
+
+    .dashboard-hero-panel,
+    .dashboard-command-panel,
+    .dashboard-focus-panel,
+    .dashboard-analytics-panel,
+    .category-container {
+        border-radius: 24px;
+    }
+
+    .dashboard-hero-panel,
+    .dashboard-command-panel,
+    .dashboard-focus-panel,
+    .dashboard-analytics-panel,
+    .category-container {
+        padding-left: 1rem;
+        padding-right: 1rem;
+    }
+
+    .dashboard-hero-stats,
+    .dashboard-analytics-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .category-head {
+        flex-direction: column;
+        align-items: stretch;
+    }
+
+    .category-count-pill {
+        width: fit-content;
+    }
+}
+
+@@media (max-width: 720px) {
+    .dashboard-hero-title {
+        font-size: 2rem;
+        line-height: 1.02;
+    }
+
+    .dashboard-hero-lead,
+    .dashboard-section-copy,
+    .category-copy {
+        font-size: 0.89rem;
+        line-height: 1.5;
+    }
+
+    .dashboard-search-shell {
+        gap: 0.75rem;
+    }
+
+    .search-actions,
+    .dashboard-search-shell .btn-clear-search,
+    .dashboard-search-shell .btn-carrier-settings {
+        width: 100%;
+    }
+
+    .legend-exec-btn {
+        min-height: 190px;
+    }
+
+    .centered-tools {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 0.85rem;
+    }
+
+    .dashboard-tool {
+        min-height: 150px;
+        height: 150px;
+        padding: 0.9rem 0.7rem;
+    }
+
+    .dashboard-tool img {
+        max-width: 66px;
+        max-height: 50px;
+    }
+
+    .category-toggle {
+        padding-right: 1.8rem;
+        position: relative;
+        cursor: pointer;
+    }
+
+    .category-toggle::after {
+        content: attr(data-mobile-state);
+        position: absolute;
+        right: 0;
+        top: 0.02rem;
+        color: #f0d991;
+        font-weight: 900;
+    }
+}
+
+@@media (max-width: 520px) {
+    .dashboard-page-shell {
+        padding: 0.85rem 0.55rem 1.5rem;
+    }
+
+    .dashboard-hero-panel,
+    .dashboard-command-panel,
+    .dashboard-focus-panel,
+    .dashboard-analytics-panel,
+    .category-container {
+        width: 100%;
+        border-radius: 20px;
+        margin-bottom: 1rem;
+    }
+
+    .dashboard-eyebrow,
+    .dashboard-section-kicker,
+    .category-kicker,
+    .legend-exec-kicker {
+        font-size: 0.7rem;
+        letter-spacing: 0.08em;
+    }
+
+    .dashboard-hero-tags span {
+        min-height: 34px;
+        font-size: 0.78rem;
+    }
+
+    .centered-tools {
+        grid-template-columns: 1fr;
+    }
+
+    .dashboard-tool {
+        min-height: 138px;
+        height: 138px;
+    }
 }
 </style>
 
@@ -858,21 +1349,21 @@ document.addEventListener('DOMContentLoaded', function () {
         }
     });
 
-    const enableMobileCollapses = () => {
-        const mq = window.matchMedia('(max-width: 720px)');
-        if (!mq.matches) return;
+        const enableMobileCollapses = () => {
+            const mq = window.matchMedia('(max-width: 720px)');
+            if (!mq.matches) return;
 
-        const categories = Array.from(document.querySelectorAll('.category-container'));
-        categories.forEach((cat, idx) => {
-            const tools = cat.querySelector('.centered-tools');
-            const heading = cat.querySelector('h3');
-            if (!tools || !heading) return;
+            const categories = Array.from(document.querySelectorAll('.category-container'));
+            categories.forEach((cat, idx) => {
+                const tools = cat.querySelector('.centered-tools');
+                const heading = cat.querySelector('.category-toggle') || cat.querySelector('h3');
+                if (!tools || !heading) return;
 
-            const setState = (open) => {
-                cat.classList.toggle('is-open', open);
-                tools.style.display = open ? 'flex' : 'none';
-                heading.dataset.mobileState = open ? '−' : '+';
-            };
+                const setState = (open) => {
+                    cat.classList.toggle('is-open', open);
+                    tools.style.display = open ? '' : 'none';
+                    heading.dataset.mobileState = open ? '−' : '+';
+                };
 
             heading.setAttribute('role', 'button');
             heading.setAttribute('tabindex', '0');
