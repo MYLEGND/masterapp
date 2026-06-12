@@ -1132,3 +1132,64 @@
     border-color:rgba(255,240,168,.98) !important;
 }
 
+
+/* =========================================================
+   SHARED BOOKING STATUS VISIBILITY
+   Keeps scheduler status readable across Leads, Clients, Workstation.
+========================================================= */
+
+#qvBookStatus.qv-booking-status,
+.qv-booking-status{
+    color:#f8fbff !important;
+    background:linear-gradient(180deg, rgba(8,36,108,.92), rgba(3,14,44,.96)) !important;
+    border:1px solid rgba(96,165,250,.38) !important;
+    text-shadow:none !important;
+}
+
+#qvBookStatus.qv-booking-status[data-state="selected"],
+#qvBookStatus.qv-booking-status[data-state="loading"],
+#qvBookStatus.qv-booking-status[data-state="success"],
+#qvBookStatus.qv-booking-status[data-state="warning"],
+#qvBookStatus.qv-booking-status[data-state="error"]{
+    color:#f8fbff !important;
+}
+
+#qvBookStatus.qv-booking-status strong,
+#qvBookStatus.qv-booking-status b,
+#qvBookStatus.qv-booking-status .qv-status-highlight{
+    color:#f6c343 !important;
+    font-weight:950 !important;
+}
+
+
+/* =========================================================
+   SHARED MODAL OPENER BUTTONS
+   Match the bottom-right scheduler Book Appointment CTA.
+========================================================= */
+
+button.qv-booking-launch,
+.btn.qv-booking-launch,
+.content-head-next .workstation-booking-btn.qv-booking-launch{
+    background:linear-gradient(180deg, #ffe58a 0%, #f6c343 48%, #d99a13 100%) !important;
+    color:#08111f !important;
+    border:1px solid rgba(255,229,138,.98) !important;
+    border-radius:14px !important;
+    font-weight:950 !important;
+    box-shadow:
+        0 18px 44px rgba(245,158,11,.42),
+        0 0 32px rgba(245,158,11,.22),
+        inset 0 1px 0 rgba(255,255,255,.75) !important;
+    text-shadow:none !important;
+}
+
+button.qv-booking-launch:hover,
+button.qv-booking-launch:focus-visible,
+.btn.qv-booking-launch:hover,
+.btn.qv-booking-launch:focus-visible,
+.content-head-next .workstation-booking-btn.qv-booking-launch:hover,
+.content-head-next .workstation-booking-btn.qv-booking-launch:focus-visible{
+    background:linear-gradient(180deg, #fff0a8 0%, #f8c94d 48%, #e2a117 100%) !important;
+    color:#04070d !important;
+    border-color:rgba(255,240,168,.98) !important;
+}
+
