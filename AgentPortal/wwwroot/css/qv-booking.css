@@ -823,3 +823,498 @@
     border-color:rgba(255,229,138,.98) !important;
 }
 
+
+/* =========================================================
+   FINAL VIEWPORT FIT + MOCK ALIGNMENT OVERRIDE
+========================================================= */
+
+.qv-booking-modal-shell .modal-dialog{
+    width:min(91vw, 1250px) !important;
+    max-width:1250px !important;
+    margin:18px auto !important;
+}
+
+.qv-booking-modal-shell .modal-content{
+    height:auto !important;
+    max-height:calc(100vh - 36px) !important;
+    overflow:hidden !important;
+}
+
+.qv-booking-head{
+    padding:22px 34px 18px !important;
+}
+
+.qv-booking-body{
+    padding:22px 30px 24px !important;
+}
+
+.qv-booking-title{
+    margin:8px 0 8px !important;
+    font-size:40px !important;
+}
+
+.qv-booking-sub{
+    font-size:15px !important;
+}
+
+.qv-booking-record{
+    display:flex !important;
+    align-items:center !important;
+    gap:22px !important;
+    min-height:84px !important;
+    padding:16px 22px !important;
+    margin-bottom:16px !important;
+}
+
+.qv-booking-record:before{
+    content:attr(data-initials) !important;
+    display:grid !important;
+    place-items:center !important;
+    width:66px !important;
+    height:66px !important;
+    flex:0 0 66px !important;
+}
+
+.qv-booking-record-main{
+    flex:1 1 auto !important;
+}
+
+.qv-booking-record-name{
+    margin:8px 0 0 !important;
+    font-size:26px !important;
+    text-align:left !important;
+}
+
+.qv-booking-record-icon{
+    margin-left:auto !important;
+    flex:0 0 54px !important;
+}
+
+.qv-booking-layout{
+    grid-template-columns:350px minmax(0,1fr) !important;
+    gap:16px !important;
+}
+
+.qv-booking-panel,
+.qv-booking-slot-card{
+    padding:20px !important;
+}
+
+.qv-booking-field{
+    margin:14px 0 16px !important;
+}
+
+.qv-booking-calendar-head{
+    margin:10px 0 12px !important;
+}
+
+.qv-booking-calendar-grid,
+.qv-booking-calendar-weekdays{
+    gap:7px !important;
+}
+
+.qv-booking-calendar-grid button{
+    min-height:32px !important;
+    font-size:13px !important;
+}
+
+.qv-booking-slot-head{
+    margin-bottom:14px !important;
+}
+
+.qv-book-slots{
+    gap:9px !important;
+    margin-top:14px !important;
+}
+
+.qv-slot-btn.btn,
+.qv-slot-btn.btn-ghost{
+    min-height:54px !important;
+}
+
+.qv-booking-foot{
+    margin-top:12px !important;
+    grid-template-columns:minmax(0,1fr) 270px !important;
+}
+
+.qv-booking-status,
+.qv-booking-submit.btn{
+    min-height:56px !important;
+}
+
+/* Gold hints/icons */
+.qv-booking-panel-kicker,
+.qv-booking-slot-title{
+    color:#ffe37a !important;
+}
+
+.qv-booking-slot-title{
+    font-size:15px !important;
+    font-weight:950 !important;
+    letter-spacing:.16em !important;
+    text-transform:uppercase !important;
+}
+
+.qv-booking-status::before{
+    content:"◷";
+    margin-right:12px;
+    color:#f6c343;
+    font-size:24px;
+    line-height:1;
+}
+
+.qv-booking-slot-focus::before{
+    content:"▣";
+    margin-right:10px;
+    color:#dbeafe;
+}
+
+.qv-booking-close::after{
+    content:"×";
+    margin-left:12px;
+    font-size:24px;
+    line-height:1;
+    color:currentColor;
+}
+
+.qv-booking-submit::before{
+    content:"▣";
+    margin-right:12px;
+    font-size:23px;
+}
+
+.qv-booking-submit::after{
+    content:"›";
+    margin-left:auto;
+    font-size:30px;
+    line-height:1;
+}
+
+/* Only selected time is gold */
+.qv-slot-btn.btn,
+.qv-slot-btn.btn-ghost{
+    color:#ffffff !important;
+    background:linear-gradient(180deg, rgba(9,37,111,.92), rgba(4,17,54,.98)) !important;
+    border:1px solid rgba(96,165,250,.24) !important;
+}
+
+.qv-slot-btn.selected{
+    color:#08111f !important;
+    background:linear-gradient(180deg,#ffe58a 0%,#f6c343 48%,#d99a13 100%) !important;
+    border-color:rgba(255,229,138,.98) !important;
+}
+
+
+/* =========================================================
+   DURATION DROPDOWN — MOCK MATCH
+========================================================= */
+
+.qv-booking-field select{
+    -webkit-appearance:none !important;
+    appearance:none !important;
+
+    background:
+        linear-gradient(
+            180deg,
+            rgba(8,34,102,.96),
+            rgba(4,17,54,.98)
+        ) !important;
+
+    color:#ffffff !important;
+    border:1px solid rgba(96,165,250,.28) !important;
+
+    box-shadow:
+        inset 0 1px 0 rgba(255,255,255,.05),
+        0 10px 24px rgba(0,0,0,.14) !important;
+
+    font-weight:800 !important;
+    padding-right:48px !important;
+}
+
+.qv-field-shell{
+    position:relative;
+}
+
+.qv-field-shell::after{
+    content:"⌄";
+    position:absolute;
+    right:16px;
+    top:50%;
+    transform:translateY(-55%);
+    color:#dbeafe;
+    font-size:22px;
+    line-height:1;
+    pointer-events:none;
+}
+
+.qv-field-shell .qv-icon{
+    color:#f6c343;
+}
+
+
+/* =========================================================
+   STRUCTURAL MOCK FIX — no fake masks, no scroll
+========================================================= */
+
+.qv-booking-modal-shell .modal-dialog{
+    width:min(91vw, 1250px) !important;
+    max-width:1250px !important;
+    margin:16px auto !important;
+}
+
+.qv-booking-modal-shell .modal-content{
+    max-height:calc(100vh - 32px) !important;
+    overflow:hidden !important;
+}
+
+.qv-booking-head{
+    padding:22px 34px 18px !important;
+}
+
+.qv-booking-body{
+    padding:22px 30px 24px !important;
+}
+
+.qv-booking-title{
+    margin:8px 0 8px !important;
+    font-family:Georgia, "Times New Roman", serif !important;
+    font-size:40px !important;
+    font-weight:800 !important;
+    letter-spacing:-.04em !important;
+}
+
+.qv-booking-kicker{
+    display:flex !important;
+    align-items:center !important;
+    gap:10px !important;
+    color:#ffe37a !important;
+}
+
+.qv-booking-sub{
+    font-size:15px !important;
+}
+
+.qv-booking-sub::before{
+    content:"✉";
+    margin-right:8px;
+}
+
+.qv-booking-close{
+    display:flex !important;
+    align-items:center !important;
+    justify-content:center !important;
+    gap:14px !important;
+    min-width:126px !important;
+    height:50px !important;
+}
+
+/* Record card */
+.qv-booking-record{
+    display:grid !important;
+    grid-template-columns:72px 1fr 56px !important;
+    align-items:center !important;
+    gap:20px !important;
+    min-height:84px !important;
+    padding:16px 22px !important;
+    margin-bottom:16px !important;
+}
+
+.qv-booking-record:before{
+    content:attr(data-initials) !important;
+    display:grid !important;
+    place-items:center !important;
+    width:66px !important;
+    height:66px !important;
+    color:#ffe37a !important;
+    font-size:22px !important;
+    font-weight:950 !important;
+}
+
+.qv-booking-record-main{
+    min-width:0 !important;
+}
+
+.qv-booking-record-label{
+    margin-bottom:9px !important;
+}
+
+.qv-booking-record-name{
+    margin:0 !important;
+    text-align:left !important;
+    font-family:Georgia, "Times New Roman", serif !important;
+    font-size:27px !important;
+    font-weight:800 !important;
+}
+
+.qv-booking-record-user{
+    width:54px;
+    height:54px;
+    display:grid;
+    place-items:center;
+    border-radius:16px;
+    color:#ffe37a;
+    font-size:30px;
+    background:rgba(5,20,62,.55);
+    border:1px solid rgba(96,165,250,.30);
+}
+
+/* Fit layout */
+.qv-booking-layout{
+    grid-template-columns:350px minmax(0,1fr) !important;
+    gap:16px !important;
+}
+
+.qv-booking-panel,
+.qv-booking-slot-card{
+    padding:20px !important;
+}
+
+.qv-booking-panel-kicker,
+.qv-booking-slot-title{
+    color:#ffe37a !important;
+    font-size:12px !important;
+    font-weight:950 !important;
+    letter-spacing:.16em !important;
+    text-transform:uppercase !important;
+}
+
+.qv-booking-panel-title{
+    font-size:17px !important;
+}
+
+.qv-booking-field{
+    margin:14px 0 16px !important;
+}
+
+/* Duration dropdown */
+.qv-duration-wrap{
+    position:relative;
+    display:flex;
+    align-items:center;
+    gap:12px;
+    height:52px;
+    padding:0 14px;
+    border-radius:14px;
+    background:linear-gradient(180deg, rgba(8,34,102,.96), rgba(4,17,54,.98));
+    border:1px solid rgba(96,165,250,.28);
+}
+
+.qv-duration-icon{
+    color:#f6c343;
+    font-size:23px;
+}
+
+.qv-duration-wrap select{
+    -webkit-appearance:none !important;
+    appearance:none !important;
+    flex:1;
+    height:50px !important;
+    min-height:0 !important;
+    padding:0 34px 0 0 !important;
+    color:#fff !important;
+    background:transparent !important;
+    border:0 !important;
+    box-shadow:none !important;
+    font-weight:850 !important;
+}
+
+.qv-duration-caret{
+    position:absolute;
+    right:16px;
+    color:#dbeafe;
+    font-size:24px;
+    pointer-events:none;
+}
+
+/* Calendar */
+.qv-booking-calendar-head{
+    margin:10px 0 12px !important;
+}
+
+.qv-booking-calendar-nav{
+    width:46px !important;
+    height:46px !important;
+    min-width:46px !important;
+    padding:0 !important;
+    border-radius:999px !important;
+    font-size:28px !important;
+    line-height:1 !important;
+    color:#dbeafe !important;
+    background:rgba(5,20,62,.44) !important;
+    border-color:rgba(96,165,250,.20) !important;
+}
+
+.qv-booking-calendar-grid,
+.qv-booking-calendar-weekdays{
+    gap:7px !important;
+}
+
+.qv-booking-calendar-grid button{
+    min-height:32px !important;
+    font-size:13px !important;
+}
+
+/* Slots */
+.qv-booking-slot-head{
+    margin-bottom:14px !important;
+}
+
+.qv-booking-slot-focus{
+    display:flex !important;
+    align-items:center !important;
+    gap:10px !important;
+    color:#fff !important;
+}
+
+.qv-book-slots{
+    gap:9px !important;
+    margin-top:14px !important;
+}
+
+.qv-slot-btn{
+    min-height:54px !important;
+    color:#fff !important;
+    background:linear-gradient(180deg, rgba(9,37,111,.92), rgba(4,17,54,.98)) !important;
+    border:1px solid rgba(96,165,250,.24) !important;
+}
+
+.qv-slot-btn.selected{
+    color:#08111f !important;
+    background:linear-gradient(180deg,#ffe58a 0%,#f6c343 48%,#d99a13 100%) !important;
+    border-color:rgba(255,229,138,.98) !important;
+}
+
+/* Footer */
+.qv-booking-foot{
+    grid-template-columns:minmax(0,1fr) 270px !important;
+    gap:14px !important;
+    margin-top:12px !important;
+}
+
+.qv-booking-status,
+.qv-booking-submit{
+    min-height:56px !important;
+}
+
+.qv-booking-status::before{
+    content:"◷";
+    margin-right:12px;
+    color:#f6c343;
+    font-size:24px;
+}
+
+.qv-booking-submit{
+    display:flex !important;
+    align-items:center !important;
+    justify-content:center !important;
+    gap:13px !important;
+    font-family:Georgia, "Times New Roman", serif !important;
+    font-size:19px !important;
+}
+
+.qv-booking-submit span:last-child{
+    margin-left:auto;
+    font-size:30px;
+    line-height:1;
+}
+
