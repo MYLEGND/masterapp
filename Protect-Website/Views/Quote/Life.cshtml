@@ -12535,7 +12535,7 @@ const contactFieldProgress = new Map();
       }
 
       statusEl.hidden = false;
-      statusEl.textContent = 'Scheduling is taking longer than expected. You can still open it in a new tab if needed.';
+      statusEl.textContent = 'Scheduling is taking longer than expected. Please give the secure booking window another moment.';
     }, 8000);
 
     iframe.addEventListener('load', () => {
@@ -12677,7 +12677,7 @@ const contactFieldProgress = new Map();
       if (normalized.confirmationVerified) publicBookingBookedConfirmed = true;
     }
 
-    const showFallbackLink = !normalized.loading && normalized.canFallback && normalized.fallbackUrl;
+    const showFallbackLink = false;
     const showInlineShell = !normalized.loading && normalized.enabled && normalized.canEmbed && normalized.embedUrl;
     const bookingUnavailableCopy = !normalized.loading && !showInlineShell && !showFallbackLink
       ? (normalized.enabled
@@ -12777,10 +12777,6 @@ const contactFieldProgress = new Map();
         ${bookingUnavailableCopy ? `
           <div class="lq-final-review-unavailable">${escapeHtml(bookingUnavailableCopy)}</div>
         ` : ''}
-
-        ${showFallbackLink ? `
-          <a href="${escapeHtml(normalized.fallbackUrl)}" target="_blank" rel="noopener noreferrer" class="lq-booking-secondary-link" id="lifeBookingFallbackLink">${escapeHtml(publicBookingFallbackText || 'Open scheduling')}</a>
-        ` : ''}
       </section>`;
 
     postSubmitSlot.hidden = false;
@@ -12793,21 +12789,6 @@ const contactFieldProgress = new Map();
       markAppointmentEmbedViewed('website_embed', normalizePublicBookingPayload(publicBookingState, payload));
     }
 
-    const fallbackLink = document.getElementById('lifeBookingFallbackLink');
-    if (fallbackLink instanceof HTMLAnchorElement) {
-      fallbackLink.addEventListener('click', () => {
-        publicBookingFallbackClicked = true;
-        trackEvent('appointment_booking_fallback_clicked', buildAppointmentTrackingMetadata(publicBookingState, {
-          bookingSurface: 'external_redirect_fallback'
-        }));
-        if (publicBookingState?.contextToken) {
-          void activatePublicBookingExperience(publicBookingState, 'external_redirect_fallback')
-            .then((nextState) => {
-              publicBookingState = normalizePublicBookingPayload(nextState, publicBookingState);
-            });
-        }
-      });
-    }
   }
 
   function trackAppointmentAbandonedIfNeeded() {

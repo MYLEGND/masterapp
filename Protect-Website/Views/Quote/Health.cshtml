@@ -2992,7 +2992,7 @@ body.health-final-step-active .dq-form-panel {
                 }
 
                 statusEl.hidden = false;
-                statusEl.textContent = 'Scheduling is taking longer than expected. You can still open it in a new tab if needed.';
+                statusEl.textContent = 'Scheduling is taking longer than expected. Please give the secure booking window another moment.';
             }, 8000);
 
             iframe.addEventListener('load', function () {
@@ -3116,7 +3116,7 @@ body.health-final-step-active .dq-form-panel {
                 +   '<div class="dq-final-review-stat"><div class="dq-final-review-stat-label">Review focus</div><div class="dq-final-review-stat-value">' + escapeHtml(coverageType) + '</div></div>'
                 + '</div>';
             var showInlineShell = !normalized.loading && normalized.enabled && normalized.canEmbed && normalized.embedUrl;
-            var showFallbackLink = !normalized.loading && normalized.canFallback && normalized.fallbackUrl;
+            var showFallbackLink = false;
             var bookingUnavailableCopy = !normalized.loading && !showInlineShell && !showFallbackLink
                 ? (normalized.enabled
                     ? 'Your review is saved. Scheduling is not available in this view right now, but a licensed agent can still continue the conversation with you.'
@@ -3174,9 +3174,6 @@ body.health-final-step-active .dq-form-panel {
                 +   (bookingUnavailableCopy
                     ? '<div class="lq-final-review-unavailable">' + escapeHtml(bookingUnavailableCopy) + '</div>'
                     : '')
-                +   (showFallbackLink
-                    ? '<a href="' + escapeHtml(normalized.fallbackUrl) + '" target="_blank" rel="noopener noreferrer" class="lq-booking-secondary-link" id="healthBookingFallbackLink">Open scheduling</a>'
-                    : '')
                 + '</section>';
 
             postSubmitSlot.hidden = false;
@@ -3188,15 +3185,6 @@ body.health-final-step-active .dq-form-panel {
                 markAppointmentEmbedViewed(normalizePublicBookingPayload(publicBookingState, payload));
             }
 
-            var fallbackLink = document.getElementById('healthBookingFallbackLink');
-            if (fallbackLink instanceof HTMLAnchorElement) {
-                fallbackLink.addEventListener('click', function () {
-                    publicBookingFallbackClicked = true;
-                    trackBookingEvent('appointment_booking_fallback_clicked', buildAppointmentTrackingMetadata(publicBookingState, {
-                        bookingSurface: 'external_redirect_fallback'
-                    }));
-                });
-            }
         }
 
         function showContactStep(trackView) {
