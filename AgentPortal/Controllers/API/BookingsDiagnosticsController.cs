@@ -50,4 +50,17 @@ public sealed class BookingsDiagnosticsController : ControllerBase
         });
     }
 
+
+    [HttpGet("businesses/{businessId}/services/{serviceId}")]
+    public async Task<IActionResult> Service(string businessId, string serviceId, CancellationToken cancellationToken)
+    {
+        var result = await _graph
+            .Solutions
+            .BookingBusinesses[businessId]
+            .Services[serviceId]
+            .GetAsync(cancellationToken: cancellationToken);
+
+        return Ok(result);
+    }
+
 }

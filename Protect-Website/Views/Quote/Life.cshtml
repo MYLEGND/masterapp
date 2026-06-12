@@ -5397,6 +5397,12 @@ body.life-final-step-active .lq-hero-shell {
     max-width: min(1180px, calc(100vw - 56px));
     width: min(1180px, calc(100vw - 56px));
 }
+body.life-final-step-active .lq-hero-shell:has(#lifeEducationContactPanel.is-submitted),
+body.life-final-step-active .lq-hero-shell:has(#lifeEducationContactPanel.lq-final-panel-no-chrome),
+body.life-final-step-active .lq-hero-shell:has(#lifePostSubmitSlot:not([hidden])) {
+    max-width: min(1480px, calc(100vw - 32px)) !important;
+    width: min(1480px, calc(100vw - 32px)) !important;
+}
 body.life-final-step-active .lq-contact-step {
     position: relative;
     z-index: 2;
@@ -9224,10 +9230,10 @@ body.life-landing .lq-hero-shell,
 }
 
 #lifePostSubmitSlot .lq-final-review-unified-card {
-    width: min(1240px, 100%) !important;
-    max-width: 1240px !important;
+    width: min(1360px, 100%) !important;
+    max-width: 1360px !important;
     margin: 0 auto !important;
-    padding: 26px 30px 30px !important;
+    padding: 24px 24px 28px !important;
     border-radius: 24px !important;
     border: 1px solid rgba(199,153,49,.38) !important;
     background:
@@ -9459,17 +9465,20 @@ body.life-landing .lq-hero-shell,
 
 #lifePostSubmitSlot .lq-booking-frame-only {
     width: 100% !important;
+    min-height: 860px !important;
     margin: 14px 0 0 !important;
     padding: 0 !important;
     background: transparent !important;
     border: 0 !important;
     box-shadow: none !important;
+    overflow: hidden !important;
 }
 
 #lifePostSubmitSlot .lq-booking-iframe {
     display: block !important;
     width: 100% !important;
-    min-height: 760px !important;
+    min-height: 860px !important;
+    height: 860px !important;
     border-radius: 18px !important;
     border: 1px solid rgba(199,153,49,.28) !important;
     background: #ffffff !important;
@@ -9500,8 +9509,8 @@ body.life-landing .lq-hero-shell,
 
 @@media (min-width: 1024px) {
     main.layout-content {
-        width: min(96vw, 1480px) !important;
-        max-width: 1480px !important;
+        width: min(98vw, 1560px) !important;
+        max-width: 1560px !important;
         min-width: 0 !important;
         margin-left: auto !important;
         margin-right: auto !important;
@@ -9518,7 +9527,7 @@ body.life-landing .lq-hero-shell,
     body.life-landing .lq-hero-shell:has(#lifeEducationContactPanel.is-submitted),
     body.life-landing .lq-hero-shell:has(#lifeEducationContactPanel.lq-final-panel-no-chrome),
     body.life-landing .lq-hero-shell:has(#lifePostSubmitSlot:not([hidden])) {
-        max-width: 1320px !important;
+        max-width: 1480px !important;
     }
 
     #lifeEducationContactPanel {
@@ -9601,7 +9610,9 @@ body.life-landing .lq-hero-shell,
         display: grid !important;
         grid-template-columns: minmax(0, 1fr) !important;
         gap: 14px !important;
-        padding: 28px 32px 32px !important;
+        width: min(1420px, 100%) !important;
+        max-width: 1420px !important;
+        padding: 22px 22px 26px !important;
     }
 
     #lifePostSubmitSlot .lq-final-review-head,
@@ -9640,8 +9651,8 @@ body.life-landing .lq-hero-shell,
     }
 
     #lifePostSubmitSlot .lq-booking-iframe {
-        height: clamp(780px, 92vh, 1100px) !important;
-        min-height: clamp(780px, 92vh, 1100px) !important;
+        height: clamp(920px, 95vh, 1180px) !important;
+        min-height: clamp(920px, 95vh, 1180px) !important;
     }
 }
 
@@ -9713,16 +9724,19 @@ body.life-landing .lq-hero-shell,
     border: 0 !important;
     box-shadow: none !important;
     display: grid !important;
-    gap: 14px !important;
-    justify-items: center !important;
-    max-width: 680px !important;
-    padding: 26px 24px 28px !important;
+    grid-template-columns: minmax(0, 1.08fr) minmax(280px, .92fr) !important;
+    gap: 16px 22px !important;
+    align-items: center !important;
+    justify-items: stretch !important;
+    max-width: 900px !important;
+    padding: 24px 24px 26px !important;
     margin: 0 auto !important;
-    text-align: center !important;
+    text-align: left !important;
 }
 
 #lifeProcessingPanel .lq-agent-handoff {
-    width: min(100%, 620px) !important;
+    grid-column: 1 / -1 !important;
+    width: 100% !important;
     margin: 0 0 2px !important;
     text-align: left !important;
 }
@@ -9738,40 +9752,104 @@ body.life-landing .lq-hero-shell,
 }
 
 #lifeProcessingPanel .lq-step-progress {
-    margin: 0 auto !important;
+    grid-column: 1 !important;
+    justify-self: start !important;
+    margin: 0 !important;
 }
 
 #lifeProcessingPanel .lq-step-title {
+    grid-column: 1 !important;
     color: #fff8e7 !important;
-    font-size: 1.34rem !important;
+    font-size: clamp(1.34rem, 2vw, 1.72rem) !important;
     line-height: 1.1 !important;
-    max-width: 20ch !important;
-    margin: 0 auto !important;
-    text-align: center !important;
+    max-width: 16ch !important;
+    margin: 0 !important;
+    text-align: left !important;
 }
 
 #lifeProcessingPanel .lq-step-helper {
+    grid-column: 1 !important;
     color: rgba(248,250,252,.84) !important;
-    max-width: 54ch !important;
-    margin: 0 auto !important;
-    text-align: center !important;
+    max-width: 38ch !important;
+    margin: 0 !important;
+    text-align: left !important;
 }
 
 #lifeProcessingPanel .lq-processing-bridge {
-    width: min(100%, 540px) !important;
+    grid-column: 2 !important;
+    grid-row: 2 / span 3 !important;
+    width: 100% !important;
+    max-width: 340px !important;
     display: grid !important;
-    gap: 10px !important;
-    margin: 0 auto !important;
+    gap: 12px !important;
+    align-self: stretch !important;
+    justify-self: end !important;
+    margin: 0 !important;
+    padding: 18px 18px 16px !important;
+    border-radius: 20px !important;
+    border: 1px solid rgba(243,214,136,.18) !important;
+    background:
+        radial-gradient(circle at 50% 0%, rgba(243,214,136,.08), transparent 38%),
+        linear-gradient(180deg, rgba(8,27,56,.84) 0%, rgba(6,19,39,.92) 100%) !important;
+    box-shadow:
+        inset 0 1px 0 rgba(255,255,255,.045),
+        0 16px 32px rgba(2,12,27,.18) !important;
 }
 
 #lifeProcessingPanel .lq-processing-track {
     width: 100% !important;
+    height: 8px !important;
 }
 
 #lifeProcessingPanel .lq-processing-note {
-    text-align: center !important;
-    font-size: .84rem !important;
+    text-align: left !important;
+    font-size: .88rem !important;
+    line-height: 1.45 !important;
     letter-spacing: .02em !important;
+}
+
+@@media (max-width: 767.98px) {
+    #lifeProcessingPanel .lq-step-panel-pad {
+        grid-template-columns: 1fr !important;
+        gap: 14px !important;
+        max-width: 100% !important;
+        padding: 18px 16px 20px !important;
+        text-align: center !important;
+    }
+
+    #lifeProcessingPanel .lq-step-progress,
+    #lifeProcessingPanel .lq-step-title,
+    #lifeProcessingPanel .lq-step-helper,
+    #lifeProcessingPanel .lq-processing-bridge {
+        grid-column: auto !important;
+        grid-row: auto !important;
+        justify-self: stretch !important;
+    }
+
+    #lifeProcessingPanel .lq-step-progress {
+        justify-self: center !important;
+    }
+
+    #lifeProcessingPanel .lq-step-title,
+    #lifeProcessingPanel .lq-step-helper,
+    #lifeProcessingPanel .lq-processing-note {
+        text-align: center !important;
+        margin-left: auto !important;
+        margin-right: auto !important;
+    }
+
+    #lifeProcessingPanel .lq-step-title {
+        max-width: 18ch !important;
+    }
+
+    #lifeProcessingPanel .lq-step-helper {
+        max-width: 30ch !important;
+    }
+
+    #lifeProcessingPanel .lq-processing-bridge {
+        max-width: none !important;
+        padding: 14px 14px 13px !important;
+    }
 }
 
 .lq-contact-capture-head .lq-agent-handoff {
@@ -9812,6 +9890,7 @@ body.life-landing .lq-contact-capture-head .lq-agent-handoff-head {
   )];
   const step1Panel = document.getElementById('lifeStep1Panel');
   const processingPanel = document.getElementById('lifeProcessingPanel');
+  const processingProgress = processingPanel?.querySelector('.lq-step-progress');
   const step2Panel = document.getElementById('lifeStep2Panel');
   const processingHeading = document.getElementById('lifeProcessingHeading');
   const processingHelper = processingPanel?.querySelector('.lq-step-helper');
@@ -9912,6 +9991,8 @@ body.life-landing .lq-contact-capture-head .lq-agent-handoff-head {
   const AGE_DEFAULT = @selectedAgeValue;
   const AGE_SELECTION_PROVIDED = '@(hasExplicitAgeSelection ? "true" : "false")' === 'true';
   const PROCESSING_BRIDGE_MS = 450;
+  const DESKTOP_BOOKING_MIN_WIDTH = 1180;
+  const DESKTOP_BOOKING_MIN_HEIGHT = 980;
   const postSubmitSuccessHeadingText = 'Your personalized review is ready.';
   const postSubmitSuccessHelperText = 'Review the recommendation below, then schedule while this is fresh if you want help comparing the fit in more detail.';
   const publicBookingHeadingText = 'Continue Your Review';
@@ -9998,6 +10079,7 @@ body.life-landing .lq-contact-capture-head .lq-agent-handoff-head {
   const defaultProcessingHeadingText = processingHeading?.textContent?.trim() || '';
   const defaultProcessingHelperText = processingHelper?.textContent?.trim() || '';
   const defaultProcessingNoteText = processingNote?.textContent?.trim() || '';
+  const defaultProcessingProgressText = processingProgress?.textContent?.trim() || '';
   const defaultStep2ProgressText = step2Progress?.textContent?.trim() || '';
   const defaultStep2HeadingText = step2Heading?.textContent?.trim() || '';
   const defaultStep2HelperText = step2Helper?.textContent?.trim() || '';
@@ -10032,6 +10114,8 @@ body.life-landing .lq-contact-capture-head .lq-agent-handoff-head {
   let autoAdvanceTimer = null;
   let processingTimer = null;
   let processingStageTimers = [];
+  let activeInlineBookingFrame = null;
+  let activeInlineBookingSlot = null;
   let latestEstimatePreview = null;
   let estimatePreviewPromise = null;
   let isRestoringFunnelState = false;
@@ -10952,6 +11036,9 @@ const contactFieldProgress = new Map();
       return;
     }
 
+    if (processingProgress && stage.progress) {
+      processingProgress.textContent = stage.progress;
+    }
     if (processingHeading && stage.heading) {
       processingHeading.textContent = stage.heading;
     }
@@ -10960,6 +11047,58 @@ const contactFieldProgress = new Map();
     }
     if (processingNote && stage.note) {
       processingNote.textContent = stage.note;
+    }
+  }
+
+  function getSubmitProcessingStage() {
+    const agentName = asTrimmed(agentDirectContactName) || 'our licensed team';
+    return {
+      progress: 'Saving your review',
+      heading: 'Saving your answers and opening scheduling...',
+      helper: `We are locking in your estimate and preparing the secure booking window so ${agentName} can confirm what fits best.`,
+      note: 'Unlocking your secure next step...'
+    };
+  }
+
+  function syncInlineBookingDesktopViewport() {
+    if (!(activeInlineBookingFrame instanceof HTMLIFrameElement) || !(activeInlineBookingSlot instanceof HTMLElement)) {
+      return;
+    }
+
+    const shouldForceDesktopViewport =
+      activeInlineBookingSlot.id === 'lifeBookingInlineFrameSlot' &&
+      window.matchMedia('(min-width: 1180px)').matches;
+
+    activeInlineBookingSlot.removeAttribute('data-desktop-booking');
+    activeInlineBookingSlot.style.removeProperty('height');
+    activeInlineBookingSlot.style.removeProperty('min-height');
+    activeInlineBookingFrame.style.removeProperty('width');
+    activeInlineBookingFrame.style.removeProperty('max-width');
+    activeInlineBookingFrame.style.removeProperty('height');
+    activeInlineBookingFrame.style.removeProperty('min-height');
+    activeInlineBookingFrame.style.removeProperty('transform');
+    activeInlineBookingFrame.style.removeProperty('transform-origin');
+
+    if (!shouldForceDesktopViewport) {
+      return;
+    }
+
+    const containerWidth = Math.max(0, Math.round(activeInlineBookingSlot.getBoundingClientRect().width));
+    const desktopViewportWidth = Math.max(DESKTOP_BOOKING_MIN_WIDTH, containerWidth);
+    const desktopViewportHeight = containerWidth >= 1320 ? 1040 : DESKTOP_BOOKING_MIN_HEIGHT;
+    const scale = containerWidth > 0 ? Math.min(1, containerWidth / desktopViewportWidth) : 1;
+
+    activeInlineBookingSlot.setAttribute('data-desktop-booking', 'true');
+    activeInlineBookingSlot.style.minHeight = `${Math.round(desktopViewportHeight * scale)}px`;
+    activeInlineBookingSlot.style.height = `${Math.round(desktopViewportHeight * scale)}px`;
+    activeInlineBookingFrame.style.width = `${desktopViewportWidth}px`;
+    activeInlineBookingFrame.style.maxWidth = 'none';
+    activeInlineBookingFrame.style.height = `${desktopViewportHeight}px`;
+    activeInlineBookingFrame.style.minHeight = `${desktopViewportHeight}px`;
+
+    if (scale < 0.999) {
+      activeInlineBookingFrame.style.transformOrigin = 'top left';
+      activeInlineBookingFrame.style.transform = `scale(${scale})`;
     }
   }
 
@@ -12146,6 +12285,9 @@ const contactFieldProgress = new Map();
     processingStageTimers.forEach((timerId) => window.clearTimeout(timerId));
     processingStageTimers = [];
     if (resetBar) {
+      if (processingProgress) {
+        processingProgress.textContent = defaultProcessingProgressText;
+      }
       if (processingHeading) {
         processingHeading.textContent = defaultProcessingHeadingText;
       }
@@ -12919,6 +13061,8 @@ const contactFieldProgress = new Map();
     publicBookingSlotSelectedTracked = false;
     publicBookingFallbackClicked = false;
     publicBookingAbandonedTracked = false;
+    activeInlineBookingFrame = null;
+    activeInlineBookingSlot = null;
     closeBookingModal({ clearFrame: true });
 
     if (contactCaptureWrap instanceof HTMLElement) {
@@ -12988,9 +13132,17 @@ const contactFieldProgress = new Map();
       frameLoaded = true;
       window.clearTimeout(loadTimeout);
       statusEl.hidden = true;
+      syncInlineBookingDesktopViewport();
     }, { once: true });
 
     frameSlot.appendChild(iframe);
+
+    if (frameSlot.id === 'lifeBookingInlineFrameSlot') {
+      activeInlineBookingSlot = frameSlot;
+      activeInlineBookingFrame = iframe;
+      window.requestAnimationFrame(() => syncInlineBookingDesktopViewport());
+      window.setTimeout(() => syncInlineBookingDesktopViewport(), 180);
+    }
   }
 
   function markAppointmentEmbedViewed(surface, payload) {
@@ -13319,6 +13471,12 @@ const contactFieldProgress = new Map();
         publicBookingConfirmationRequested = false;
         console.warn('[LifeQuote] trusted booking confirmation failed', error);
       });
+    }
+  });
+
+  window.addEventListener('resize', () => {
+    if (activeInlineBookingFrame && activeInlineBookingSlot) {
+      window.requestAnimationFrame(() => syncInlineBookingDesktopViewport());
     }
   });
 
@@ -13884,13 +14042,19 @@ const contactFieldProgress = new Map();
     populateAttributionFields();
 
     const enterSubmitLoading = () => {
+      clearProcessingTimer(true);
       contactFirstPanel?.classList.add('is-submit-loading');
       processingPanel?.removeAttribute('hidden');
       if (processingPanel) processingPanel.style.display = 'block';
       if (postSubmitSlot) postSubmitSlot.style.display = 'none';
+      applyProcessingStage(getSubmitProcessingStage());
       if (processingFill) {
-        processingFill.style.width = '18%';
-        requestAnimationFrame(() => { processingFill.style.width = '76%'; });
+        processingFill.style.transition = 'none';
+        processingFill.style.width = '0%';
+        requestAnimationFrame(() => {
+          processingFill.style.transition = 'width 1.05s cubic-bezier(0.22, 1, 0.36, 1)';
+          processingFill.style.width = '78%';
+        });
       }
       processingPanel?.scrollIntoView({ behavior: 'smooth', block: 'center' });
     };
@@ -13900,7 +14064,7 @@ const contactFieldProgress = new Map();
       if (processingPanel) processingPanel.style.display = 'none';
       if (step2Panel) step2Panel.style.display = 'block';
       if (contactCaptureWrap) contactCaptureWrap.style.display = 'block';
-      if (processingFill) processingFill.style.width = '0%';
+      clearProcessingTimer(true);
     };
 
     enterSubmitLoading();
