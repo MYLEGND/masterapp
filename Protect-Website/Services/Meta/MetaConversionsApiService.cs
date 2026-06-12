@@ -135,9 +135,18 @@ public sealed class MetaConversionsApiService : IMetaConversionsApiService
     public async Task<MetaConversionsApiResult> SendEventAsync(MetaConversionsApiEventRequest request, CancellationToken cancellationToken = default)
     {
         var pixelId = Normalize(request.PixelId) ?? Normalize(_options.Value.PixelId);
-        var accessToken = Normalize(request.AccessToken) ?? Normalize(_options.Value.AccessToken);
-        var testEventCode = Normalize(request.TestEventCode) ?? Normalize(_options.Value.TestEventCode);
         var pixelOwnerType = Normalize(request.PixelOwnerType);
+        var requestAccessToken = Normalize(request.AccessToken);
+        var isAgentPixel =
+            string.Equals(pixelOwnerType, MetaPixelOwnerTypes.Agent, StringComparison.OrdinalIgnoreCase);
+
+        // Do not allow an agent-scoped pixel to fall back to the global/agency CAPI token.
+        // Agent pixels must use the agent's own stored Meta CAPI token.
+        var accessToken = isAgentPixel
+            ? requestAccessToken
+            : requestAccessToken ?? Normalize(_options.Value.AccessToken);
+
+        var testEventCode = Normalize(request.TestEventCode) ?? Normalize(_options.Value.TestEventCode);
         var normalizedEventName = Normalize(request.EventName) ?? "CustomEvent";
         var outboundEventName = MapToMetaStandardEventName(normalizedEventName);
 
