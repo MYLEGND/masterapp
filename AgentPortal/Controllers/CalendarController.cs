@@ -557,13 +557,30 @@ public class CalendarController : Controller
                 .OrderBy(x => x.Start)
                 .ToList();
 
-            var existingAppointments = await _appGraph.Solutions.BookingBusinesses[bookingBusinessId]
+            var appointmentPage = await _appGraph.Solutions.BookingBusinesses[bookingBusinessId]
                 .Appointments
                 .GetAsync(config =>
                 {
                     config.QueryParameters.Top = 100;
                     config.QueryParameters.Select = new[] { "id", "startDateTime", "endDateTime", "serviceId", "customerName" };
+                    config.QueryParameters.Filter =
+                        $"startDateTime/dateTime ge '{utcStart:yyyy-MM-ddTHH:mm:ss}' and startDateTime/dateTime lt '{utcEnd:yyyy-MM-ddTHH:mm:ss}'";
                 }, cancellationToken: HttpContext.RequestAborted);
+
+            var allExistingAppointments = new List<BookingAppointment>();
+            if (appointmentPage?.Value != null)
+                allExistingAppointments.AddRange(appointmentPage.Value);
+
+            while (!string.IsNullOrWhiteSpace(appointmentPage?.OdataNextLink))
+            {
+                appointmentPage = await _appGraph.Solutions.BookingBusinesses[bookingBusinessId]
+                    .Appointments
+                    .WithUrl(appointmentPage.OdataNextLink)
+                    .GetAsync(cancellationToken: HttpContext.RequestAborted);
+
+                if (appointmentPage?.Value != null)
+                    allExistingAppointments.AddRange(appointmentPage.Value);
+            }
 
             var serviceBufferMap = visibleServices
                 .Where(x => !string.IsNullOrWhiteSpace(x.Id))
@@ -576,7 +593,7 @@ public class CalendarController : Controller
                     },
                     StringComparer.OrdinalIgnoreCase);
 
-            var busyRanges = (existingAppointments?.Value ?? new List<BookingAppointment>())
+            var busyRanges = allExistingAppointments
                 .Select(x =>
                 {
                     var start = ParseAvailabilityLocal(x.StartDateTime, agentTimeZone);
