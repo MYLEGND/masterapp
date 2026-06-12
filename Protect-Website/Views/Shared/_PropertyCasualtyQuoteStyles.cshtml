@@ -12,9 +12,9 @@
     }
 
     .container-narrow {
-        width: min(100%, 1360px);
+        width: min(100%, 1280px);
         margin: 0 auto;
-        padding: 20px 18px 48px;
+        padding: 18px 16px 42px;
     }
 
     .pcq-shell {
@@ -37,10 +37,10 @@
         --pcq-ink-contrast: #0b1020;
         position: relative;
         overflow: hidden;
-        border-radius: 34px;
+        border-radius: 30px;
         border: 1.6px solid var(--pcq-border-strong);
         background: var(--pcq-shell-bg);
-        padding: clamp(20px, 2.3vw, 30px);
+        padding: clamp(18px, 2vw, 26px);
         box-shadow:
             0 28px 80px rgba(2, 8, 21, 0.42),
             inset 0 1px 0 rgba(255, 255, 255, 0.06);
@@ -69,13 +69,13 @@
 
     .pcq-hero-entry {
         display: grid;
-        gap: 18px;
+        gap: 14px;
     }
 
     .pcq-hero-banner-wrap {
         position: relative;
         margin: 0;
-        border-radius: 28px;
+        border-radius: 24px;
         overflow: hidden;
         border: 1.5px solid var(--pcq-border-strong);
         box-shadow:
@@ -102,7 +102,7 @@
     .pcq-proof-row {
         display: grid;
         grid-template-columns: repeat(3, minmax(0, 1fr));
-        gap: 14px;
+        gap: 10px;
     }
 
     .pcq-proof-pill {
@@ -110,8 +110,8 @@
         align-items: center;
         justify-content: center;
         gap: 10px;
-        min-height: 58px;
-        padding: 12px 18px;
+        min-height: 48px;
+        padding: 10px 14px;
         border-radius: 999px;
         border: 1.4px solid var(--pcq-border-strong);
         background: var(--pcq-pill-bg);
@@ -119,7 +119,7 @@
             0 14px 28px rgba(0, 0, 0, 0.18),
             inset 0 1px 0 rgba(255, 255, 255, 0.05);
         color: #f7ecd0;
-        font-size: 0.98rem;
+        font-size: 0.88rem;
         font-weight: 800;
         letter-spacing: 0.01em;
         text-align: center;
@@ -139,14 +139,14 @@
     .pcq-step-copy {
         text-align: center;
         display: grid;
-        gap: 10px;
-        max-width: 860px;
+        gap: 8px;
+        max-width: 720px;
         margin: 0 auto;
     }
 
     .pcq-step-copy-title {
         color: #fff6df;
-        font-size: clamp(1.72rem, 2.7vw, 2.18rem);
+        font-size: clamp(1.38rem, 2.1vw, 1.82rem);
         font-weight: 900;
         line-height: 1.08;
         letter-spacing: -0.02em;
@@ -155,27 +155,27 @@
     .pcq-step-copy-helper {
         margin: 0;
         color: var(--pcq-text-muted);
-        font-size: 1rem;
-        line-height: 1.65;
+        font-size: 0.93rem;
+        line-height: 1.55;
         font-weight: 600;
     }
 
     .pcq-hero-actions {
         display: grid;
-        gap: 14px;
+        gap: 10px;
         justify-items: center;
-        max-width: 900px;
+        max-width: 780px;
         margin: 0 auto;
     }
 
     .btn-gold {
-        min-height: 54px;
-        padding: 12px 26px;
+        min-height: 50px;
+        padding: 11px 24px;
         border-radius: 14px;
         border: 1.5px solid rgba(255, 244, 211, 0.88);
         background: linear-gradient(180deg, #f7da7a 0%, #e0b347 54%, #b57d20 100%);
         color: var(--pcq-ink-contrast);
-        font-size: 1rem;
+        font-size: 0.96rem;
         font-weight: 900;
         letter-spacing: -0.01em;
         box-shadow:
@@ -195,11 +195,11 @@
     }
 
     .pcq-primary-start-cta {
-        width: min(100%, 780px);
-        min-height: 82px;
-        padding: 16px 34px;
-        border-radius: 20px;
-        font-size: clamp(1.12rem, 2.1vw, 1.34rem);
+        width: min(100%, 660px);
+        min-height: 68px;
+        padding: 14px 28px;
+        border-radius: 18px;
+        font-size: clamp(1.04rem, 1.55vw, 1.16rem);
         box-shadow:
             0 24px 48px rgba(0, 0, 0, 0.28),
             inset 0 1px 0 rgba(255, 255, 255, 0.46);
@@ -214,7 +214,7 @@
 
     .pcq-start-note {
         color: var(--pcq-text-soft);
-        font-size: 0.95rem;
+        font-size: 0.86rem;
         font-weight: 700;
         line-height: 1.4;
         text-align: center;
@@ -222,7 +222,7 @@
 
     .pcq-form-shell {
         display: grid;
-        gap: 18px;
+        gap: 14px;
     }
 
     .pcq-form-heading {
@@ -235,7 +235,7 @@
     .pcq-form-heading-title {
         margin: 0;
         color: #fff6df;
-        font-size: clamp(1.52rem, 2.3vw, 1.92rem);
+        font-size: clamp(1.3rem, 1.9vw, 1.6rem);
         font-weight: 900;
         letter-spacing: -0.02em;
     }
@@ -243,15 +243,15 @@
     .pcq-form-heading-copy {
         margin: 0;
         color: var(--pcq-text-muted);
-        font-size: 0.99rem;
-        line-height: 1.6;
+        font-size: 0.92rem;
+        line-height: 1.5;
         font-weight: 600;
     }
 
     .required-note {
         margin: 0;
         color: var(--pcq-text-soft) !important;
-        font-size: 0.96rem;
+        font-size: 0.88rem;
         font-weight: 700;
     }
 
@@ -274,20 +274,20 @@
 
     .wizard-steps {
         display: flex;
-        gap: 10px;
+        gap: 8px;
         flex-wrap: wrap;
         justify-content: center;
         margin: 0 auto;
         padding: 0;
-        max-width: 1260px;
+        max-width: 1180px;
     }
 
     .wizard-pill {
         border: 1.35px solid var(--pcq-border-strong);
-        padding: 10px 14px;
+        padding: 8px 12px;
         border-radius: 999px;
         font-weight: 900;
-        font-size: 0.94rem;
+        font-size: 0.84rem;
         color: rgba(247, 236, 208, 0.76);
         background: var(--pcq-pill-bg);
         user-select: none;
@@ -308,16 +308,16 @@
     .wizard-top {
         position: relative;
         display: grid;
-        gap: 12px;
-        padding: 18px 20px;
-        border-radius: 24px;
+        gap: 10px;
+        padding: 14px 16px;
+        border-radius: 20px;
         border: 1.4px solid var(--pcq-border-strong);
         background: var(--pcq-panel-bg);
         box-shadow:
             0 18px 40px rgba(0, 0, 0, 0.18),
             inset 0 1px 0 rgba(255, 255, 255, 0.05);
         margin: 0 auto;
-        max-width: 1260px;
+        max-width: 1180px;
     }
 
     .wizard-steptext {
@@ -329,7 +329,7 @@
 
     .wizard-progress {
         width: 100%;
-        height: 12px;
+        height: 10px;
         background: rgba(255, 255, 255, 0.1);
         border-radius: 999px;
         overflow: hidden;
@@ -365,7 +365,7 @@
     .pcq-form-frame,
     #commercialQuoteForm {
         width: 100%;
-        max-width: 1260px;
+        max-width: 1180px;
         margin: 0 auto;
         padding-bottom: 8px;
         background: transparent !important;
@@ -385,9 +385,9 @@
     .section-card {
         background: var(--pcq-card-bg);
         border: 1.5px solid var(--pcq-border-strong);
-        padding: clamp(24px, 2vw, 30px);
-        border-radius: 24px;
-        margin: 0 auto 24px;
+        padding: clamp(20px, 1.7vw, 24px);
+        border-radius: 20px;
+        margin: 0 auto 20px;
         box-shadow:
             0 22px 46px rgba(0, 0, 0, 0.22),
             inset 0 1px 0 rgba(255, 255, 255, 0.05);
@@ -395,10 +395,10 @@
     }
 
     .section-title {
-        font-size: 1.42rem;
+        font-size: 1.22rem;
         font-weight: 900;
         color: #f6de96;
-        margin-bottom: 18px;
+        margin-bottom: 14px;
         letter-spacing: 0.01em;
     }
 
@@ -412,9 +412,9 @@
 
     .mini-card {
         border: 1.3px solid rgba(243, 214, 136, 0.38);
-        padding: 20px 22px;
-        border-radius: 18px;
-        margin-bottom: 16px;
+        padding: 16px 18px;
+        border-radius: 16px;
+        margin-bottom: 14px;
         background: var(--pcq-card-soft-bg);
         box-shadow:
             0 16px 34px rgba(0, 0, 0, 0.16),
@@ -681,34 +681,34 @@
 
     @@media (min-width: 1200px) {
         main.layout-content {
-            width: min(96vw, 1460px);
-            max-width: 1460px;
+            width: min(94vw, 1380px);
+            max-width: 1380px;
             margin-left: auto;
             margin-right: auto;
         }
 
         .container-narrow {
-            width: min(100%, 1400px);
-            padding: 18px 20px 48px;
+            width: min(100%, 1320px);
+            padding: 18px 18px 42px;
         }
 
         .pcq-surface {
-            padding: 22px 24px 30px;
+            padding: 20px 22px 26px;
         }
 
         .pcq-form-shell {
-            gap: 22px;
+            gap: 18px;
         }
 
         .pcq-form-heading {
-            max-width: 980px;
+            max-width: 880px;
         }
 
         .wizard-steps,
         .wizard-top,
         .pcq-form-frame,
         #commercialQuoteForm {
-            max-width: 1280px;
+            max-width: 1180px;
         }
     }
 
@@ -775,7 +775,7 @@
         }
 
         .pcq-primary-start-cta {
-            min-height: 72px;
+            min-height: 64px;
             padding-inline: 24px;
         }
     }
