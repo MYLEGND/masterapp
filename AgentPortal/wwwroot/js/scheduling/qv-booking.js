@@ -324,7 +324,18 @@
         const recordLabel = $("qvBookingClientLabel");
         const recordSub = $("qvBookingClientSub");
 
-        if (recordLabel) recordLabel.textContent = name;
+        if (recordLabel) {
+            recordLabel.textContent = name;
+
+            const initials = name
+                .split(/\s+/)
+                .filter(Boolean)
+                .slice(0, 2)
+                .map(part => part.charAt(0).toUpperCase())
+                .join("") || "•";
+
+            recordLabel.closest(".qv-booking-record")?.setAttribute("data-initials", initials);
+        }
         if (recordSub) {
             const parts = [email, phone].filter(Boolean);
             recordSub.textContent = parts.length

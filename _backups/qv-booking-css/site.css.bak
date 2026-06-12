@@ -1388,3 +1388,31 @@ main #training-frame {
 }
 
 
+.qv-booking-inline{
+  display:flex;
+  align-items:center;
+  gap:.55rem;
+  flex-wrap:wrap;
+}
+
+.qv-book-slots{
+  display:flex;
+  align-items:center;
+  gap:.35rem;
+  flex-wrap:wrap;
+  max-width:520px;
+}
+
+.qv-slot-btn{
+  min-width:72px;
+  padding:.45rem .65rem;
+  border-radius:999px;
+  font-size:.82rem;
+  line-height:1;
+}
+
+.qv-slot-btn.selected{
+  box-shadow:0 0 0 2px rgba(255,255,255,.8), 0 0 0 4px rgba(220,176,84,.55);
+  transform:translateY(-1px);
+}
+
