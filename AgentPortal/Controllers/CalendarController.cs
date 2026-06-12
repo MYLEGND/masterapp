@@ -565,14 +565,42 @@ public class CalendarController : Controller
                     config.QueryParameters.Select = new[] { "id", "startDateTime", "endDateTime", "serviceId", "customerName" };
                 }, cancellationToken: HttpContext.RequestAborted);
 
+            var serviceBufferMap = visibleServices
+                .Where(x => !string.IsNullOrWhiteSpace(x.Id))
+                .ToDictionary(
+                    x => x.Id!,
+                    x => new
+                    {
+                        Pre = x.PreBuffer ?? TimeSpan.Zero,
+                        Post = x.PostBuffer ?? TimeSpan.Zero
+                    },
+                    StringComparer.OrdinalIgnoreCase);
+
             var busyRanges = (existingAppointments?.Value ?? new List<BookingAppointment>())
                 .Select(x =>
                 {
                     var start = ParseAvailabilityLocal(x.StartDateTime, agentTimeZone);
                     var end = ParseAvailabilityLocal(x.EndDateTime, agentTimeZone);
-                    return new { Start = start, End = end };
+
+                    var pre = TimeSpan.Zero;
+                    var post = TimeSpan.Zero;
+                    if (!string.IsNullOrWhiteSpace(x.ServiceId) &&
+                        serviceBufferMap.TryGetValue(x.ServiceId, out var buffers))
+                    {
+                        pre = buffers.Pre;
+                        post = buffers.Post;
+                    }
+
+                    return new
+                    {
+                        Start = start == DateTime.MinValue ? start : start.Subtract(pre),
+                        End = end == DateTime.MinValue ? end : end.Add(post),
+                        AppointmentStart = start,
+                        AppointmentEnd = end,
+                        ServiceId = x.ServiceId ?? ""
+                    };
                 })
-                .Where(x => x.Start.Date == localDate.Date &&
+                .Where(x => x.AppointmentStart.Date == localDate.Date &&
                             x.Start != DateTime.MinValue &&
                             x.End != DateTime.MinValue &&
                             x.End > x.Start)
@@ -610,6 +638,16 @@ public class CalendarController : Controller
                     startLabel = freeSlots.FirstOrDefault()?.startLabel ?? "",
                     endLabel = freeSlots.LastOrDefault()?.endLabel ?? ""
                 },
+                buffers = visibleServices
+                    .Where(x => x.IsHiddenFromCustomers != true)
+                    .Select(x => new
+                    {
+                        serviceId = x.Id,
+                        serviceName = x.DisplayName,
+                        preBufferMinutes = (int)Math.Round((x.PreBuffer ?? TimeSpan.Zero).TotalMinutes),
+                        postBufferMinutes = (int)Math.Round((x.PostBuffer ?? TimeSpan.Zero).TotalMinutes)
+                    })
+                    .ToList(),
                 freeSlots
             });
         }
