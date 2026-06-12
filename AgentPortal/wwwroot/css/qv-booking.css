@@ -1013,3 +1013,46 @@
         inset 0 1px 0 rgba(255,255,255,.68) !important;
 }
 
+
+/* =========================================================
+   CALENDAR MONTH BOUNDARY CLARITY
+   JS uses .is-outside for previous/next month days.
+========================================================= */
+
+.qv-booking-calendar-grid button.is-outside{
+    color:rgba(203,213,225,.24) !important;
+    background:rgba(3,15,43,.18) !important;
+    border-color:rgba(96,165,250,.05) !important;
+    box-shadow:none !important;
+    opacity:.48 !important;
+}
+
+.qv-booking-calendar-grid button.is-outside span{
+    opacity:.75;
+}
+
+.qv-booking-calendar-grid button.is-outside:hover{
+    color:rgba(203,213,225,.34) !important;
+    background:rgba(3,15,43,.26) !important;
+    border-color:rgba(96,165,250,.08) !important;
+}
+
+.qv-booking-calendar-grid button:not(.is-outside){
+    color:#f8fbff !important;
+    background:rgba(3,15,43,.64) !important;
+    border-color:rgba(96,165,250,.18) !important;
+    opacity:1 !important;
+}
+
+.qv-booking-calendar-grid button.is-selected,
+.qv-booking-calendar-grid button.selected,
+.qv-booking-calendar-grid button[aria-pressed="true"]{
+    color:#08111f !important;
+    background:linear-gradient(180deg, #ffe58a 0%, #f6c343 48%, #d99a13 100%) !important;
+    border-color:rgba(255,229,138,.98) !important;
+    opacity:1 !important;
+    box-shadow:
+        0 10px 28px rgba(245,158,11,.42),
+        inset 0 1px 0 rgba(255,255,255,.68) !important;
+}
+
