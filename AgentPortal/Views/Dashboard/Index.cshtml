@@ -607,6 +607,8 @@
 
 .dashboard-command-center-panel {
     padding: 0.78rem 0.96rem 0.84rem;
+    overflow: visible;
+    isolation: isolate;
 }
 
 .dashboard-command-center-top {
@@ -744,6 +746,8 @@
     grid-template-columns: minmax(260px, 0.42fr) minmax(0, 1fr);
     gap: 0.58rem 0.9rem;
     align-items: center;
+    position: relative;
+    z-index: 12;
 }
 
 .dashboard-command-center-bottom {
@@ -808,6 +812,7 @@
 .dashboard-page-shell .search-input-wrap {
     position: relative;
     width: 100%;
+    z-index: 22;
 }
 
 .search-actions {
@@ -843,6 +848,7 @@
     display: none;
     max-height: min(360px, 55vh);
     overflow-y: auto;
+    overscroll-behavior: contain;
     padding: 0.4rem;
     border: 1px solid rgba(212, 170, 71, 0.3);
     border-radius: 18px;
@@ -850,6 +856,23 @@
     box-shadow:
         0 26px 46px rgba(5, 11, 28, 0.3),
         inset 0 1px 0 rgba(255, 255, 255, 0.04);
+    scrollbar-width: thin;
+    scrollbar-color: rgba(244, 220, 147, 0.52) rgba(9, 19, 38, 0.55);
+}
+
+.search-input-wrap .autocomplete-list::-webkit-scrollbar {
+    width: 10px;
+}
+
+.search-input-wrap .autocomplete-list::-webkit-scrollbar-track {
+    background: rgba(9, 19, 38, 0.62);
+    border-radius: 999px;
+}
+
+.search-input-wrap .autocomplete-list::-webkit-scrollbar-thumb {
+    background: linear-gradient(180deg, rgba(244, 220, 147, 0.94), rgba(212, 170, 71, 0.8));
+    border-radius: 999px;
+    border: 2px solid rgba(9, 19, 38, 0.62);
 }
 
 .dashboard-page-shell .autocomplete-item {
@@ -861,22 +884,36 @@
     width: 100%;
     min-height: 58px;
     padding: 0.72rem 0.78rem;
-    border: 1px solid transparent;
+    border: 1px solid rgba(150, 182, 255, 0.14);
     border-radius: 14px;
-    background: transparent;
+    background:
+        radial-gradient(circle at top left, rgba(77, 111, 255, 0.14), transparent 45%),
+        linear-gradient(180deg, rgba(19, 40, 82, 0.94), rgba(11, 24, 50, 0.98));
     color: #f8fbff;
     font: inherit;
     text-align: left;
     cursor: pointer;
-    transition: background 0.16s ease, border-color 0.16s ease, transform 0.16s ease;
+    box-shadow:
+        0 12px 20px rgba(4, 10, 28, 0.18),
+        inset 0 1px 0 rgba(255, 255, 255, 0.03);
+    transition: background 0.16s ease, border-color 0.16s ease, transform 0.16s ease, box-shadow 0.16s ease;
+}
+
+.dashboard-page-shell .autocomplete-item + .autocomplete-item {
+    margin-top: 0.36rem;
 }
 
 .dashboard-page-shell .autocomplete-item:hover,
 .dashboard-page-shell .autocomplete-item:focus-visible {
-    background: linear-gradient(180deg, rgba(33, 68, 141, 0.34), rgba(17, 37, 78, 0.44));
-    border-color: rgba(212, 170, 71, 0.34);
+    background:
+        radial-gradient(circle at top left, rgba(212, 170, 71, 0.16), transparent 44%),
+        linear-gradient(180deg, rgba(24, 50, 100, 0.98), rgba(14, 30, 61, 0.99));
+    border-color: rgba(244, 220, 147, 0.46);
     outline: none;
     transform: translateY(-1px);
+    box-shadow:
+        0 16px 26px rgba(4, 10, 28, 0.24),
+        0 0 0 2px rgba(244, 220, 147, 0.08);
 }
 
 .dashboard-page-shell .autocomplete-item-media {
@@ -905,7 +942,7 @@
     font-size: 0.95rem;
     font-weight: 760;
     line-height: 1.2;
-    white-space: nowrap;
+    white-space: normal;
     overflow: hidden;
     text-overflow: ellipsis;
 }
