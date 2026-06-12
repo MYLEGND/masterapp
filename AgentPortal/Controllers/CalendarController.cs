@@ -557,7 +557,33 @@ public class CalendarController : Controller
                 .OrderBy(x => x.Start)
                 .ToList();
 
-            var freeSlots = availabilityItems
+            var existingAppointments = await _appGraph.Solutions.BookingBusinesses[bookingBusinessId]
+                .Appointments
+                .GetAsync(config =>
+                {
+                    config.QueryParameters.Top = 100;
+                    config.QueryParameters.Select = new[] { "id", "startDateTime", "endDateTime", "serviceId", "customerName" };
+                }, cancellationToken: HttpContext.RequestAborted);
+
+            var busyRanges = (existingAppointments?.Value ?? new List<BookingAppointment>())
+                .Select(x =>
+                {
+                    var start = ParseAvailabilityLocal(x.StartDateTime, agentTimeZone);
+                    var end = ParseAvailabilityLocal(x.EndDateTime, agentTimeZone);
+                    return new { Start = start, End = end };
+                })
+                .Where(x => x.Start.Date == localDate.Date &&
+                            x.Start != DateTime.MinValue &&
+                            x.End != DateTime.MinValue &&
+                            x.End > x.Start)
+                .Select(x => (x.Start, x.End))
+                .ToList();
+
+            var freeRanges = SubtractBusyRanges(
+                availabilityItems.Select(x => (x.Start, x.End)),
+                busyRanges);
+
+            var freeSlots = freeRanges
                 .Select(x => new
                 {
                     startIso = new DateTimeOffset(x.Start, agentTimeZone.GetUtcOffset(x.Start)).ToString("o", CultureInfo.InvariantCulture),
@@ -565,7 +591,7 @@ public class CalendarController : Controller
                     startTimeValue = x.Start.ToString("HH:mm", CultureInfo.InvariantCulture),
                     startLabel = x.Start.ToString("h:mm tt", CultureInfo.InvariantCulture),
                     endLabel = x.End.ToString("h:mm tt", CultureInfo.InvariantCulture),
-                    serviceId = x.ServiceId
+                    serviceId = ""
                 })
                 .ToList();
 
@@ -974,6 +1000,46 @@ public class CalendarController : Controller
         }
     }
 
+
+
+    private static List<(DateTime Start, DateTime End)> SubtractBusyRanges(
+        IEnumerable<(DateTime Start, DateTime End)> freeRanges,
+        IEnumerable<(DateTime Start, DateTime End)> busyRanges)
+    {
+        var result = new List<(DateTime Start, DateTime End)>();
+
+        foreach (var free in freeRanges.OrderBy(x => x.Start))
+        {
+            var segments = new List<(DateTime Start, DateTime End)> { free };
+
+            foreach (var busy in busyRanges.Where(x => x.End > free.Start && x.Start < free.End).OrderBy(x => x.Start))
+            {
+                var next = new List<(DateTime Start, DateTime End)>();
+
+                foreach (var seg in segments)
+                {
+                    if (busy.End <= seg.Start || busy.Start >= seg.End)
+                    {
+                        next.Add(seg);
+                        continue;
+                    }
+
+                    if (busy.Start > seg.Start)
+                        next.Add((seg.Start, busy.Start));
+
+                    if (busy.End < seg.End)
+                        next.Add((busy.End, seg.End));
+                }
+
+                segments = next;
+                if (segments.Count == 0) break;
+            }
+
+            result.AddRange(segments.Where(x => x.End > x.Start));
+        }
+
+        return result;
+    }
 
     private static int MinutesBetween(DateTime start, DateTime end)
         => Math.Max(1, (int)Math.Round((end - start).TotalMinutes));
