@@ -674,7 +674,7 @@ async function loadQuickView(clientId){
       crmNextText: row.dataset.crmNextText || row.dataset.sNexttext || "",
       crmTags: row.dataset.crmTags || row.dataset.sTags || "",
       agentNotes: row.dataset.crmNotes || row.dataset.sNotes || "",
-      pipelineStage: row.dataset.crmPipeline || row.dataset.sPipeline || "MortgageProtection",
+      pipelineStage: currentPipelineStage(row, "MortgageProtection"),
       originalLeadType: rowOriginalLeadType(row),
       meetingLocation: row.dataset.sMeetingLocation || "",
       zoomJoinUrl: row.dataset.sZoom || "",
@@ -1240,6 +1240,10 @@ function normalizeOriginalLeadTypeValue(value){
   return productBuckets.has(normalized) ? normalized : "";
 }
 
+function currentPipelineStage(row, fallback = "MortgageProtection"){
+  return normalizePipelineStageValue(row?.dataset?.sPipeline || row?.dataset?.crmPipeline, fallback);
+}
+
 function rowOriginalLeadType(row){
   return normalizeOriginalLeadTypeValue(row?.dataset?.originalLeadType)
     || normalizeOriginalLeadTypeValue(row?.dataset?.crmPipeline)
@@ -1430,9 +1434,8 @@ function applyQuickViewContactProfileLabels(row, detail, stageOverride){
 
 function matchesStageSelection(row, stage){
   if (!stage) return true;
-  if (productBuckets.has(stage)) return rowOriginalLeadType(row) === stage;
   if (isDerivedPipelineFilterStage(stage)) return isCalledTodayRow(row);
-  return norm(row.dataset.crmPipeline) === stage;
+  return currentPipelineStage(row, "") === normalizePipelineStageValue(stage, "");
 }
 
 let pipelineOrder = loadJSON(LS_PIPELINE_ORDER, {});
@@ -1771,17 +1774,33 @@ const STAGE_PICKER_TONES = PIPELINE_STAGE_CLASSES.slice();
 function rowsForStage(stageKey, sourceRows = rows){
   const pool = Array.isArray(sourceRows) ? sourceRows : [];
   if (!pool.length) return [];
-  if (productBuckets.has(stageKey)){
-    return pool.filter(r => matchesStageSelection(r, stageKey));
-  }
   if (isDerivedPipelineFilterStage(stageKey)){
     return pool.filter(isCalledTodayRow);
   }
-  return pool.filter(r => norm(r.dataset.crmPipeline) === stageKey);
+  return pool.filter(r => currentPipelineStage(r, "") === stageKey);
 }
 
 function countRowsForStage(stageKey, sourceRows = rows){
   return rowsForStage(stageKey, sourceRows).length;
+}
+
+function shouldCollapseEmptyPipelineLanes(){
+  return !pipelineFocusStage
+    && !pipelineNavSelectedStage
+    && (norm(attentionFilter?.value) === "meeting" || activeMyDayQueue === "meetings");
+}
+
+function visiblePipelineStages(filteredRows){
+  const baseStages = pipelineStages.filter(stage => !isDerivedPipelineFilterStage(stage.key));
+  if (pipelineFocusStage || pipelineNavSelectedStage){
+    const activeKey = pipelineFocusStage || pipelineNavSelectedStage;
+    const activeMeta = pipelineMeta(activeKey);
+    return activeMeta ? [activeMeta] : baseStages;
+  }
+  if (!shouldCollapseEmptyPipelineLanes()){
+    return baseStages;
+  }
+  return baseStages.filter(stage => countRowsForStage(stage.key, filteredRows) > 0);
 }
 
 function applyStagePickerTone(el, className){
@@ -3315,8 +3334,8 @@ function inferCurrentBucket(){
   if (fromFilter) return fromFilter;
   const fromFocus = norm(pipelineFocusStage || pipelineNavSelectedStage);
   if (fromFocus) return fromFocus;
-  const firstVisible = getVisibleRows().find(r => norm(r.dataset.crmPipeline));
-  return norm(firstVisible?.dataset.crmPipeline);
+  const firstVisible = getVisibleRows().find(r => currentPipelineStage(r, ""));
+  return currentPipelineStage(firstVisible, "");
 }
 
 async function deleteCurrentBucket(){
@@ -3549,7 +3568,7 @@ btnExportCsv?.addEventListener("click", () => {
       nextAction.date,
       nextAction.text,
       norm(r.dataset.crmPriority),
-      pipelineLabel(norm(r.dataset.crmPipeline)),
+      pipelineLabel(currentPipelineStage(r, "")),
       norm(r.dataset.crmTags),
       norm(r.dataset.crmNotes)
     ].map(csvEscape);
@@ -3629,7 +3648,7 @@ function priorityKey(row){
 }
 
 function pipelineKey(row){
-  return norm(row.dataset.crmPipeline).toLowerCase();
+  return currentPipelineStage(row, "").toLowerCase();
 }
 
 function attemptsThisWeek(row){
@@ -3723,7 +3742,7 @@ function computeFiltered(){
   if (attn === "duplicates") filtered = filtered.filter(hasDuplicateWarning);
   if (attn === "docsopen") filtered = filtered.filter(docChecklistOpen);
   if (attn === "rescue") filtered = filtered.filter(r => isOverdue(queueDate(r)) || stageAgeDays(r) >= 10 || hasDuplicateWarning(r));
-  if (attn === "appsinflight") filtered = filtered.filter(r => ["NeedsDocs", "PolicyPlaced"].includes(norm(r.dataset.crmPipeline)));
+  if (attn === "appsinflight") filtered = filtered.filter(r => ["NeedsDocs", "PolicyPlaced"].includes(currentPipelineStage(r, "")));
 
   return applySort(filtered);
 }
@@ -4189,7 +4208,7 @@ async function openDrawerForRow(row){
   btnMail.href = email ? ("mailto:" + email) : "#";
   btnCall.href = phone ? ("tel:" + phone) : "#";
   dStatus.value = row.dataset.crmStatus || "Active";
-  dPipelineStage.value = normalizePipelineStageValue(row.dataset.crmPipeline, "MortgageProtection");
+  dPipelineStage.value = currentPipelineStage(row, "MortgageProtection");
   applyQuickViewContactProfileLabels(row, null);
   if (dContactStatus) dContactStatus.value = normalizeContactStatusValue(row.dataset.crmContactStatus || row.dataset.sContactstatus || "NotSet");
   dLastTouch.value = row.dataset.crmLastTouch || "";
@@ -4255,7 +4274,7 @@ async function openDrawerForRow(row){
     storeRowLatestAppointment(row, detail.latestAppointment || rowLatestAppointment(row));
     hydrateRow(row);
     dStatus.value = detail.crmStatus || row.dataset.crmStatus || "Active";
-    dPipelineStage.value = normalizePipelineStageValue(detail.pipelineStage || row.dataset.crmPipeline, "MortgageProtection");
+    dPipelineStage.value = normalizePipelineStageValue(detail.pipelineStage || currentPipelineStage(row, "MortgageProtection"), "MortgageProtection");
     applyQuickViewContactProfileLabels(row, detail, dPipelineStage.value);
     if (dContactStatus) dContactStatus.value = resolvedContactStatus;
     dLastTouch.value = detail.crmLastTouch || row.dataset.crmLastTouch || "";
@@ -5184,7 +5203,7 @@ btnText?.addEventListener("click", (e) => {
     action: "text",
     row,
     phone,
-    templateKey: rowOriginalLeadType(row) || normalizePipelineStageValue(row?.dataset.crmPipeline, "LifeInsurance") || "LifeInsurance"
+    templateKey: rowOriginalLeadType(row) || currentPipelineStage(row, "LifeInsurance") || "LifeInsurance"
   });
 });
 
@@ -5449,7 +5468,7 @@ function renderCallTaskMode(){
           <div class="call-task-sub">${safeHtml(norm(row.dataset.phone) || "No phone")} • Last touch: ${safeHtml(norm(row.dataset.crmLastTouch) || "—")}</div>
           <div class="tiny" style="margin-top:6px;">${safeHtml(norm(row.dataset.crmPinnedBrief) || norm(row.dataset.crmNextText) || "No pinned brief yet.")}</div>
         </div>
-        <span class="meta-chip">${safeHtml(pipelineLabel(norm(row.dataset.crmPipeline)))}</span>
+        <span class="meta-chip">${safeHtml(pipelineLabel(currentPipelineStage(row, "")))}</span>
       </div>
       <div class="call-task-actions">
         <button type="button" class="btn btn-gold" data-open-card="${safeHtml(row.dataset.clientId)}">Open</button>
@@ -5601,6 +5620,7 @@ function renderPipelineNav(filteredRows){
 
   const activeStage = pipelineFocusStage || pipelineNavSelectedStage || "";
   const activeMeta = activeStage ? pipelineMeta(activeStage) : null;
+  const selectableStages = visiblePipelineStages(filteredRows);
   const activeCount = activeMeta ? countRowsForStage(activeMeta.key, filteredRows) : filteredRows.length;
   const activeCountLabel = activeCount === 1 ? "live card" : "live cards";
   const boardFocusTitle = activeMeta ? activeMeta.label : "All Buckets";
@@ -5610,7 +5630,7 @@ function renderPipelineNav(filteredRows){
     : "Choose a bucket for a tighter work lane, or stay wide and manage the full board.";
   const canDeleteBucket = !!activeMeta && !isDerivedPipelineFilterStage(activeMeta.key);
   const shellClass = activeMeta ? `pipeline-nav-shell ${activeMeta.className}` : "pipeline-nav-shell";
-  const optionHtml = pipelineStages.map(stage => {
+  const optionHtml = selectableStages.map(stage => {
     const count = countRowsForStage(stage.key, filteredRows);
     const selected = pipelineNavSelectedStage === stage.key ? "selected" : "";
     return `<option value="${safeHtml(stage.key)}" ${selected}>${safeHtml(stage.label)} (${count})</option>`;
@@ -5690,7 +5710,7 @@ function renderLaneCards(rowsForStage){
     const name = fullName(r);
     const email = norm(r.dataset.email);
     const phone = norm(r.dataset.phone);
-    const stage = norm(r.dataset.crmPipeline);
+    const stage = currentPipelineStage(r, "");
     const appointment = rowLatestAppointment(r);
     const appointmentStatus = appointment ? summarizeLeadAppointmentStatus(appointment) : "Not Set";
     const appointmentStatusKey = (appointment?.status ? norm(appointment.status) : "NotSet").toLowerCase();
@@ -5747,7 +5767,7 @@ function renderCards(filteredRows){
   if (!pipelineBoard || !cardsView) return;
 
   const focusMeta = pipelineFocusStage ? pipelineMeta(pipelineFocusStage) : (pipelineNavSelectedStage ? pipelineMeta(pipelineNavSelectedStage) : null);
-  const lanes = focusMeta ? [focusMeta] : pipelineStages.filter(stage => !isDerivedPipelineFilterStage(stage.key));
+  const lanes = focusMeta ? [focusMeta] : visiblePipelineStages(filteredRows);
 
   renderPipelineNav(filteredRows);
 
@@ -5767,6 +5787,14 @@ function renderCards(filteredRows){
   if (focusMeta){
     pipelineFocusTitle.textContent = `${focusMeta.label} Review`;
     pipelineFocusSub.textContent = focusMeta.note;
+  }
+
+  if (!lanes.length){
+    const emptyMessage = shouldCollapseEmptyPipelineLanes()
+      ? "No booked appointments are sitting in any pipeline bucket right now."
+      : "No contacts match this pipeline view right now.";
+    pipelineBoard.innerHTML = `<div class="pipeline-empty">${safeHtml(emptyMessage)}</div>`;
+    return;
   }
 
   pipelineBoard.innerHTML = lanes.map(stage => {
@@ -5826,7 +5854,7 @@ async function saveQuickViewForRow(row, overrides, successMessage){
     crmNextText: overrides?.crmNextText ?? norm(row.dataset.crmNextText),
     crmTags: overrides?.crmTags ?? norm(row.dataset.crmTags),
     agentNotes: overrides?.agentNotes ?? norm(row.dataset.crmNotes),
-    pipelineStage: normalizePipelineStageValue(overrides?.pipelineStage ?? norm(row.dataset.crmPipeline), "MortgageProtection"),
+    pipelineStage: normalizePipelineStageValue(overrides?.pipelineStage ?? currentPipelineStage(row, "MortgageProtection"), "MortgageProtection"),
     meetingLocation: overrides?.meetingLocation ?? norm(row.dataset.sMeetingLocation),
     zoomJoinUrl: overrides?.zoomJoinUrl ?? norm(row.dataset.sZoom),
     usePersonalZoomLink: overrides?.usePersonalZoomLink ?? ((row.dataset.sUsezoom || "false") === "true"),
@@ -6138,7 +6166,7 @@ pipelineBoard?.addEventListener("drop", async (e) => {
   const row = rows.find(r => r.dataset.clientId === clientId);
   if (!row) return;
 
-  const sourceStage = norm(row.dataset.crmPipeline);
+  const sourceStage = currentPipelineStage(row, "");
   if (isDerivedPipelineFilterStage(targetStage)){
     toast("Called Today is a daily filter bucket and cannot receive manual stage moves.");
     renderAll();
