@@ -711,3 +711,66 @@
     gap:8px;
 }
 
+
+/* =========================================================
+   FINAL LAYOUT BALANCE
+========================================================= */
+
+/* Make both columns visually finish together */
+.qv-booking-layout{
+    align-items:stretch;
+}
+
+.qv-booking-sidebar,
+.qv-booking-main{
+    display:flex;
+    flex-direction:column;
+}
+
+.qv-booking-panel-calendar{
+    flex:1;
+}
+
+.qv-booking-slot-card{
+    flex:1;
+    display:flex;
+    flex-direction:column;
+}
+
+/* Give slot area the same visual weight as calendar */
+.qv-book-slots{
+    flex:1;
+    align-content:start;
+}
+
+/* Taller premium slots */
+.qv-slot-btn.btn,
+.qv-slot-btn.btn-ghost,
+.qv-slot-btn{
+    min-height:68px !important;
+    font-size:14px;
+}
+
+/* Footer closer to generated reference */
+.qv-booking-status{
+    min-height:68px;
+    padding:0 22px;
+}
+
+.qv-booking-submit.btn,
+.qv-booking-submit.btn-gold{
+    min-height:68px;
+}
+
+/* Better vertical balance */
+.qv-booking-foot{
+    margin-top:16px;
+}
+
+/* Slightly larger date pill */
+.qv-booking-slot-focus{
+    min-height:48px;
+    display:inline-flex;
+    align-items:center;
+}
+
