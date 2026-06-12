@@ -16,8 +16,8 @@
 }
 
 .qv-booking-modal-shell .modal-dialog{
-    width:min(94vw, 1240px);
-    max-width:1240px;
+    width:min(94vw, 1180px);
+    max-width:1180px;
 }
 
 .qv-booking-modal-shell .modal-content{
@@ -138,10 +138,11 @@
 
 .qv-booking-layout{
     display:grid;
-    grid-template-columns:minmax(248px, 28%) minmax(0, 1fr);
+    grid-template-columns:300px minmax(0, 1fr);
     gap:0;
     min-height:0;
     height:auto;
+    align-items:start;
 }
 
 .qv-booking-sidebar{
@@ -153,6 +154,7 @@
     background:
         linear-gradient(180deg, rgba(10,24,63,.96), rgba(8,18,46,.99));
     min-height:0;
+    align-self:start;
 }
 
 .qv-booking-main{
@@ -162,6 +164,7 @@
     padding:12px;
     min-width:0;
     min-height:0;
+    align-self:start;
 }
 
 .qv-booking-panel{
@@ -179,12 +182,14 @@
 
 .qv-booking-panel-head{
     display:grid;
-    gap:10px;
+    grid-template-columns:minmax(0, 1fr) 168px;
+    gap:10px 12px;
+    align-items:end;
 }
 
 .qv-booking-panel-copy{
     display:grid;
-    gap:5px;
+    gap:4px;
 }
 
 .qv-booking-panel-kicker{
@@ -242,6 +247,9 @@
 
 .qv-booking-field-compact{
     width:100%;
+    max-width:168px;
+    justify-self:end;
+    align-self:end;
 }
 
 .qv-booking-calendar-card{
@@ -300,16 +308,17 @@
 .qv-booking-calendar-grid{
     display:grid;
     grid-template-columns:repeat(7, minmax(0, 1fr));
-    grid-auto-rows:minmax(40px, auto);
+    grid-auto-rows:auto;
     gap:6px;
-    min-height:276px;
+    min-height:0;
 }
 
 .qv-cal-day{
     position:relative;
     display:grid;
     place-items:center;
-    min-height:40px;
+    aspect-ratio:1 / 1;
+    min-height:0;
     padding:0;
     border-radius:14px;
     border:1px solid rgba(240,206,112,.24);
@@ -418,7 +427,7 @@
 .qv-book-slots{
     display:grid;
     align-content:start;
-    grid-template-columns:repeat(3, minmax(0, 1fr));
+    grid-template-columns:repeat(4, minmax(0, 1fr));
     grid-auto-rows:minmax(44px, auto);
     gap:10px;
     width:100%;
@@ -426,19 +435,58 @@
 }
 
 .qv-slot-btn{
+    position:relative;
     min-height:44px;
     border-radius:14px;
     padding:10px 12px;
+    border:1px solid rgba(240,206,112,.34);
+    background:linear-gradient(180deg, rgba(43,47,56,.96), rgba(26,31,42,.98));
+    color:#f2d688;
     font-size:.92rem;
     font-weight:880;
     line-height:1.15;
+    box-shadow:
+        inset 0 1px 0 rgba(255,255,255,.05),
+        0 8px 16px rgba(5,10,24,.16);
+    transition:
+        transform .16s ease,
+        border-color .16s ease,
+        background .16s ease,
+        color .16s ease,
+        box-shadow .16s ease;
 }
 
-.qv-slot-btn.selected{
-    box-shadow:
-        0 0 0 1px rgba(255,255,255,.7),
-        0 0 0 4px rgba(220,176,84,.42);
+.qv-slot-btn:hover{
+    border-color:rgba(240,206,112,.52);
+    background:linear-gradient(180deg, rgba(52,57,68,.98), rgba(31,36,48,1));
     transform:translateY(-1px);
+    box-shadow:
+        inset 0 1px 0 rgba(255,255,255,.06),
+        0 12px 20px rgba(5,10,24,.22);
+}
+
+.qv-slot-btn:focus-visible{
+    outline:none;
+    border-color:rgba(255,255,255,.84);
+    box-shadow:
+        0 0 0 2px rgba(255,255,255,.20),
+        0 0 0 5px rgba(220,176,84,.28);
+}
+
+.qv-slot-btn.selected,
+.qv-slot-btn.selected:hover,
+.qv-slot-btn.selected:focus-visible{
+    border-color:rgba(255,255,255,.94);
+    background:
+        linear-gradient(180deg, rgba(55,82,155,.98), rgba(20,34,77,.99));
+    color:#ffffff;
+    text-shadow:0 1px 0 rgba(0,0,0,.22);
+    box-shadow:
+        inset 0 1px 0 rgba(255,255,255,.22),
+        0 0 0 2px rgba(255,255,255,.18),
+        0 0 0 5px rgba(220,176,84,.34),
+        0 14px 26px rgba(6,14,36,.34);
+    transform:translateY(-1px) scale(1.01);
 }
 
 .qv-slot-empty{
