@@ -960,9 +960,6 @@ main .tool-display,
 main .finance-card,
 main #training-embed,
 main .category-container,
-main .home-tools,
-main .home-mini-tools,
-main .ff-home-card,
 main .tools-container,
 main .training-page {
     background: #ffffff;
@@ -977,15 +974,12 @@ main .empty-state,
 main .tool-display,
 main .finance-card,
 main #training-embed,
-main .home-mini-tools,
-main .ff-home-card,
 main .tools-container,
 main .training-page {
     border-radius: 18px;
 }
 
 main .category-container,
-main .home-tools,
 main .tools-container,
 main .training-page {
     position: relative;
@@ -993,14 +987,11 @@ main .training-page {
 }
 
 main .category-container,
-main .home-tools,
 main .training-page {
     padding: 1.4rem 1.25rem;
 }
 
 main .category-container::before,
-main .home-tools::before,
-main .ff-home-card::before,
 main .tools-container::before,
 main .training-page::before {
     content: "";
@@ -1013,7 +1004,6 @@ main .training-page::before {
 }
 
 main .category-container > h3,
-main .home-tools h3,
 main .tools-container h1,
 main .training-page h1 {
     color: var(--legend-gold-deep);
@@ -1205,8 +1195,7 @@ body .pagination .page-link.active {
 body .search-container .search-input,
 body .search-wrap .premium-input,
 body #training-search,
-body #resourceSearch,
-body #toolSearch {
+body #resourceSearch {
     border: 1.8px solid var(--legend-line-strong) !important;
     background: #ffffff !important;
     box-shadow: 0 12px 28px rgba(64,47,11,.08), var(--legend-inset) !important;
@@ -1215,12 +1204,10 @@ body #toolSearch {
 body .search-container .search-input:focus,
 body .search-wrap .premium-input:focus,
 body #training-search:focus,
-body #resourceSearch:focus,
-body #toolSearch:focus {
+body #resourceSearch:focus {
     box-shadow: var(--legend-ring), 0 16px 34px rgba(64,47,11,.10), var(--legend-inset) !important;
 }
 
-main .dashboard-tool,
 main .trusted-partners-tool {
     border: 1.6px solid var(--legend-line-strong) !important;
     border-radius: 16px !important;
@@ -1229,7 +1216,6 @@ main .trusted-partners-tool {
     color: var(--legend-ink) !important;
 }
 
-main .dashboard-tool:hover,
 main .trusted-partners-tool:hover {
     border-color: rgba(166,128,35,.92) !important;
     background: #fffdf8 !important;
@@ -1237,21 +1223,17 @@ main .trusted-partners-tool:hover {
     color: var(--legend-gold-deep) !important;
 }
 
-main .dashboard-tool .tool-desc,
 main .trusted-partners-tool .tool-desc {
     background: #ffffff !important;
     color: var(--legend-gold-deep) !important;
 }
 
-main .home-mini-tools,
-main .ff-home-card,
 main .tools-container,
 main .training-page,
 main #training-embed {
     position: relative;
 }
 
-main .home-mini-tools::before,
 main #training-embed::before {
     content: "";
     position: absolute;
@@ -1267,31 +1249,8 @@ main .btn-legend-store {
     box-shadow: 0 16px 34px rgba(64,47,11,.14), inset 0 1px 0 rgba(255,255,255,.18) !important;
 }
 
-main .home-mini-tools,
-main .ff-home-card,
 main #training-embed {
     overflow: hidden;
-}
-
-main .ff-home-tile,
-main .ff-home-btn,
-main .ff-home-pill {
-    border-color: var(--legend-line-strong) !important;
-}
-
-main .ff-home-tile {
-    background: #ffffff !important;
-    box-shadow: var(--legend-shadow) !important;
-}
-
-main .ff-home-tile:hover {
-    box-shadow: var(--legend-shadow-strong) !important;
-    border-color: rgba(166,128,35,.92) !important;
-}
-
-main .ff-home-pill {
-    background: #ffffff !important;
-    color: var(--legend-gold-deep) !important;
 }
 
 main .ff-home-footer,
@@ -1386,5 +1345,4 @@ main #training-frame {
     margin: 0;
     max-width: 340px;
 }
-
 

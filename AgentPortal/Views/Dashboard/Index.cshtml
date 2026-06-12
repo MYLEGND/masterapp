@@ -785,32 +785,42 @@
 
 .dashboard-search-panel {
     margin: 0;
+    width: 100%;
 }
 
 .search-container {
     display: block;
+    width: 100%;
 }
 
 .dashboard-search-shell {
-    display: grid;
-    grid-template-columns: minmax(0, 1fr) auto;
-    gap: 0.55rem;
+    display: flex;
+    gap: 0.7rem;
     align-items: center;
+    width: 100%;
 }
 
 .dashboard-page-shell .search-input-wrap {
     position: relative;
-    width: 100%;
+    flex: 1 1 520px;
+    min-width: 280px;
+    width: auto;
 }
 
 .search-actions {
     display: flex;
+    flex: 0 0 auto;
     gap: 0.48rem;
     align-items: center;
     justify-content: flex-end;
 }
 
+.dashboard-page-shell #toolSearch,
 .search-input-wrap .search-input {
+    display: block;
+    width: 100% !important;
+    max-width: none !important;
+    min-width: 0;
     min-height: 46px;
     border-radius: 15px;
     border: 1.5px solid rgba(212, 170, 71, 0.34);
@@ -1420,14 +1430,20 @@
     }
 
     .dashboard-search-shell {
+        display: flex;
+        flex-wrap: wrap;
         gap: 0.75rem;
-        grid-template-columns: 1fr;
     }
 
     .search-actions,
     .dashboard-search-shell .btn-clear-search,
     .dashboard-search-shell .btn-carrier-settings {
         width: 100%;
+    }
+
+    .dashboard-page-shell .search-input-wrap {
+        flex-basis: 100%;
+        min-width: 0;
     }
 
     .legend-exec-btn {
