@@ -74,7 +74,7 @@
             btn.type = "button";
             btn.className = "btn btn-ghost qv-slot-btn";
             btn.textContent = formatSlotLabel(start);
-            btn.dataset.time = slot.startTimeValue || toTimeValue(start);
+            btn.dataset.time = toTimeValue(start);
 
             btn.addEventListener("click", () => {
                 selectedSlotTime = btn.dataset.time;

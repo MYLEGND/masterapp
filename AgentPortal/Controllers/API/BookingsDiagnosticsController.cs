@@ -114,4 +114,17 @@ public sealed class BookingsDiagnosticsController : ControllerBase
         return Ok(result);
     }
 
+
+    [HttpGet("businesses/{businessId}/staff")]
+    public async Task<IActionResult> Staff(string businessId, CancellationToken cancellationToken)
+    {
+        var result = await _graph
+            .Solutions
+            .BookingBusinesses[businessId]
+            .StaffMembers
+            .GetAsync(cancellationToken: cancellationToken);
+
+        return Ok(result);
+    }
+
 }

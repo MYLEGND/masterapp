@@ -1,315 +1,661 @@
 @model AgentPortal.Models.ManageAgentProfileViewModel
 @{
     ViewData["Title"] = "Manage Profile";
+
+    var avatarInitial = string.IsNullOrWhiteSpace(Model.FullName)
+        ? "A"
+        : Model.FullName.Trim().Substring(0, 1).ToUpperInvariant();
+
+    var publicProfileReady =
+        !string.IsNullOrWhiteSpace(Model.FullName) &&
+        !string.IsNullOrWhiteSpace(Model.Phone);
+
+    var marketingLabel = string.IsNullOrWhiteSpace(Model.MetaPixelId)
+        ? "Using Legend default"
+        : "Custom pixel active";
+
+    var bookingLabel = Model.BookingEnabled
+        ? (string.IsNullOrWhiteSpace(Model.MicrosoftBookingsEmbedUrl) ? "Needs embed URL" : "Personal scheduler live")
+        : "Shared scheduler";
+
+    var calendarLabel = string.IsNullOrWhiteSpace(Model.CalendarEmail)
+        ? "Not linked"
+        : "Linked";
 }
 
 <style>
     .profile-shell {
-        max-width: 960px;
+        max-width: 1140px;
         margin: 0 auto;
-        padding: 1.5rem;
+        padding: 1.5rem 1rem 3rem;
     }
-    .profile-card {
-        background: #0b1529;
-        color: #f8fafc;
-        border: 1.6px solid #a68023;
-        border-radius: 16px;
-        box-shadow: 0 20px 42px rgba(0,0,0,.28), inset 0 0 0 1px rgba(255,255,255,.08);
+
+    .profile-page {
         overflow: hidden;
+        border: 1px solid rgba(157, 194, 255, 0.28);
+        border-radius: 28px;
+        background:
+            radial-gradient(circle at top right, rgba(110, 168, 255, 0.22), transparent 26%),
+            linear-gradient(180deg, #102753 0%, #17386f 48%, #143160 100%);
+        color: #f8fbff;
+        box-shadow:
+            0 28px 60px rgba(10, 23, 48, 0.24),
+            inset 0 1px 0 rgba(255, 255, 255, 0.08);
     }
-    .profile-card .card-header {
-        background: #0f1d38;
-        border-bottom: 1px solid rgba(166,128,35,.42);
-        padding: 1.15rem 1.5rem;
+
+    .profile-hero {
+        display: grid;
+        grid-template-columns: minmax(0, 1.4fr) minmax(300px, .9fr);
+        gap: 18px;
+        padding: 26px 28px 22px;
+        border-bottom: 1px solid rgba(184, 211, 255, 0.18);
+    }
+
+    .profile-panel {
+        border: 1px solid rgba(184, 211, 255, 0.18);
+        border-radius: 22px;
+        background: linear-gradient(180deg, rgba(7, 19, 42, 0.28), rgba(255, 255, 255, 0.06));
+        box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.05);
+    }
+
+    .profile-hero-copy {
+        display: grid;
+        gap: 16px;
+        align-content: start;
+    }
+
+    .profile-eyebrow {
+        display: inline-flex;
+        align-items: center;
+        width: fit-content;
+        min-height: 32px;
+        padding: 0 12px;
+        border: 1px solid rgba(184, 211, 255, 0.24);
+        border-radius: 999px;
+        background: rgba(255, 255, 255, 0.08);
+        color: #dce9ff;
+        font-size: 0.75rem;
+        font-weight: 900;
+        letter-spacing: 0.14em;
+        text-transform: uppercase;
+    }
+
+    .profile-title {
+        margin: 0;
+        color: #ffffff;
+        font-size: clamp(1.9rem, 3vw, 2.55rem);
+        line-height: 1.04;
+        font-weight: 1000;
+        letter-spacing: -0.03em;
+    }
+
+    .profile-sub {
+        margin: 0;
+        max-width: 58ch;
+        color: #d8e6ff;
+        font-size: 1rem;
+        line-height: 1.6;
+        font-weight: 650;
+    }
+
+    .profile-status-grid {
+        display: grid;
+        grid-template-columns: repeat(4, minmax(0, 1fr));
+        gap: 12px;
+    }
+
+    .profile-status-card {
+        display: grid;
+        gap: 6px;
+        min-height: 104px;
+        padding: 14px 15px;
+        border: 1px solid rgba(184, 211, 255, 0.18);
+        border-radius: 18px;
+        background: linear-gradient(180deg, rgba(255, 255, 255, 0.10), rgba(8, 17, 36, 0.10));
+    }
+
+    .profile-status-label {
+        color: #adc8f9;
+        font-size: 0.72rem;
+        font-weight: 950;
+        letter-spacing: 0.12em;
+        text-transform: uppercase;
+    }
+
+    .profile-status-value {
+        color: #ffffff;
+        font-size: 1rem;
+        line-height: 1.25;
+        font-weight: 900;
+    }
+
+    .profile-status-note {
+        color: #d7e4fb;
+        font-size: 0.84rem;
+        line-height: 1.45;
+    }
+
+    .profile-avatar-panel {
+        display: grid;
+        gap: 16px;
+        padding: 20px;
+        align-content: start;
+    }
+
+    .profile-avatar-top {
         display: flex;
         align-items: center;
-        justify-content: space-between;
-        gap: 1rem;
+        gap: 14px;
     }
-    .profile-card .card-header h2 {
+
+    .profile-avatar-preview {
+        position: relative;
+        width: 108px;
+        height: 108px;
+        border-radius: 50%;
+        overflow: hidden;
+        border: 3px solid rgba(183, 212, 255, 0.28);
+        background: linear-gradient(180deg, #234b91, #153260);
+        box-shadow:
+            0 18px 30px rgba(7, 16, 34, 0.22),
+            inset 0 1px 0 rgba(255, 255, 255, 0.18);
+    }
+
+    .profile-avatar-preview img,
+    .profile-avatar-preview span {
+        position: absolute;
+        inset: 0;
+        width: 100%;
+        height: 100%;
+    }
+
+    .profile-avatar-preview img {
+        display: block;
+        object-fit: cover;
+    }
+
+    .profile-avatar-preview span {
+        display: grid;
+        place-items: center;
+        color: #ffffff;
+        font-size: 2rem;
+        font-weight: 1000;
+    }
+
+    .profile-avatar-copy {
+        display: grid;
+        gap: 4px;
+    }
+
+    .profile-avatar-name {
+        color: #ffffff;
+        font-size: 1.08rem;
+        font-weight: 950;
+        line-height: 1.2;
+    }
+
+    .profile-avatar-meta {
+        color: #d4e3ff;
+        font-size: 0.92rem;
+        line-height: 1.45;
+    }
+
+    .profile-upload-form {
+        display: grid;
+        gap: 10px;
+    }
+
+    .profile-label {
+        color: #eaf2ff;
+        font-size: 0.84rem;
+        font-weight: 900;
+        letter-spacing: 0.03em;
+    }
+
+    .profile-help {
         margin: 0;
-        font-weight: 900;
-        letter-spacing: .5px;
-        color: #f8fafc;
+        color: #c7daf8;
+        font-size: 0.86rem;
+        line-height: 1.45;
     }
-    .profile-card .badge {
-        background: rgba(166,128,35,.16);
-        color: #f8fafc;
-        border: 1px solid rgba(166,128,35,.52);
-        border-radius: 999px;
-        padding: 0.35rem 0.9rem;
-        font-weight: 800;
-        letter-spacing: .4px;
+
+    .profile-file-input {
+        width: 100%;
+        padding: 0.7rem 0.85rem;
+        border: 1px solid rgba(184, 211, 255, 0.26);
+        border-radius: 14px;
+        background: rgba(255, 255, 255, 0.10);
+        color: #eaf2ff;
     }
-    .profile-card .card-body {
-        padding: 1.5rem;
-        display: grid;
-        gap: 1rem;
-    }
-    .legend-input {
-        background: #0f1d38;
-        border: 1.5px solid rgba(166,128,35,.62);
-        color: #f8fafc;
+
+    .profile-file-input::file-selector-button {
+        margin-right: 12px;
+        padding: 0.55rem 0.8rem;
+        border: 0;
         border-radius: 10px;
-        padding: 0.85rem 1rem;
-        font-weight: 700;
-        box-shadow: inset 0 1px 0 rgba(255,255,255,.08);
-    }
-    .legend-input:focus {
-        outline: none;
-        border-color: rgba(166,128,35,.92);
-        box-shadow: 0 0 0 3px rgba(166,128,35,.24);
-    }
-    .legend-label {
-        font-weight: 800;
-        color: #f8fafc;
-        margin-bottom: .35rem;
-        letter-spacing: .25px;
-    }
-    .legend-help {
-        color: #cbd5e1;
-        font-size: 0.9rem;
-        margin-bottom: 0;
-    }
-    .legend-btn {
-        background: #a68023;
-        color: #0b1529;
-        border: 1px solid #c79931;
-        border-radius: 12px;
+        background: #2f66dd;
+        color: #ffffff;
         font-weight: 900;
-        padding: 0.9rem 1.4rem;
-        box-shadow: 0 14px 28px rgba(0,0,0,.28), inset 0 1px 0 rgba(255,255,255,.18);
+        cursor: pointer;
     }
-    .legend-btn:hover {
-        color: #0b1529;
-        background: #ddb457;
-        border-color: #ddb457;
-        text-decoration: none;
+
+    .profile-flash {
+        margin: 18px 28px 0;
+        padding: 13px 16px;
+        border: 1px solid rgba(134, 239, 172, 0.24);
+        border-radius: 16px;
+        background: rgba(22, 163, 74, 0.18);
+        color: #e9fff0;
+        font-weight: 800;
     }
-    .note-pill {
-        background: rgba(15,29,56,.9);
-        border: 1px solid rgba(166,128,35,.52);
-        color: #cbd5e1;
-        border-radius: 12px;
+
+    .profile-form {
+        display: grid;
+        gap: 18px;
+        padding: 22px 28px 28px;
+    }
+
+    .profile-section {
+        padding: 18px;
+    }
+
+    .profile-section-head {
+        display: grid;
+        gap: 4px;
+        margin-bottom: 14px;
+    }
+
+    .profile-section-title {
+        margin: 0;
+        color: #ffffff;
+        font-size: 1.08rem;
+        font-weight: 950;
+        letter-spacing: -0.01em;
+    }
+
+    .profile-section-sub {
+        margin: 0;
+        color: #cfdef8;
+        font-size: 0.92rem;
+        line-height: 1.5;
+    }
+
+    .profile-fields {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 14px 16px;
+    }
+
+    .profile-field {
+        min-width: 0;
+        display: grid;
+        gap: 8px;
+    }
+
+    .profile-field-full {
+        grid-column: 1 / -1;
+    }
+
+    .profile-input {
+        width: 100%;
+        min-height: 52px;
+        padding: 0 14px;
+        border: 1px solid rgba(181, 207, 247, 0.22);
+        border-radius: 14px;
+        background: linear-gradient(180deg, #f8fbff, #eaf2ff);
+        color: #0f172a;
+        font-weight: 700;
+        box-shadow: 0 12px 24px rgba(7, 16, 34, 0.10);
+    }
+
+    textarea.profile-input {
+        min-height: 112px;
+        padding: 12px 14px;
+        resize: vertical;
+    }
+
+    .profile-input:focus {
+        outline: none;
+        border-color: rgba(59, 130, 246, 0.76);
+        box-shadow: 0 0 0 3px rgba(96, 165, 250, 0.18);
+    }
+
+    .profile-input[readonly] {
+        background: linear-gradient(180deg, #dfe9fb, #d4e1f6);
+        color: #334155;
+    }
+
+    .profile-input::placeholder {
+        color: rgba(51, 65, 85, 0.66);
+    }
+
+    .profile-toggle {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        min-height: 52px;
         padding: 0.85rem 1rem;
+        border: 1px solid rgba(184, 211, 255, 0.18);
+        border-radius: 14px;
+        background: rgba(255, 255, 255, 0.06);
+        color: #eef4ff;
+        font-weight: 760;
+        line-height: 1.4;
+    }
+
+    .profile-toggle input[type="checkbox"] {
+        width: 18px;
+        height: 18px;
+        margin: 0;
+        accent-color: #3b82f6;
+    }
+
+    .profile-inline-note {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        width: fit-content;
+        min-height: 34px;
+        padding: 0 12px;
+        border-radius: 999px;
+        background: rgba(255, 255, 255, 0.08);
+        color: #e8f1ff;
+        font-size: 0.84rem;
+        font-weight: 820;
+    }
+
+    .profile-validation {
+        color: #ffd5dc;
+        font-size: 0.84rem;
         font-weight: 700;
     }
-    .summary-card{
-        border:1.2px dashed rgba(166,128,35,.45);
-        border-radius:12px;
-        padding:0.9rem 1rem;
-        background:rgba(15,29,56,.55);
-        color:#e2e8f0;
-        display:grid;
-        gap:0.35rem;
-    }
-    .summary-card strong{color:#f8fafc;}
-    .avatar-block{
-        display:flex;
-        flex-wrap:wrap;
-        gap:1.2rem;
-        align-items:center;
-        padding: 0.8rem 0.6rem;
-        border-bottom:1px solid rgba(166,128,35,.24);
-        margin-bottom: 0.5rem;
-    }
-    .avatar-preview{
-        width:110px;
-        height:110px;
-        border-radius:50%;
-        overflow:hidden;
-        border:2px solid #c79931;
-        display:grid;
-        place-items:center;
-        background: #0f172a;
-        color:#f8fafc;
-        font-weight:900;
-        font-size:1.6rem;
-        box-shadow: inset 0 1px 0 rgba(255,255,255,.12), 0 10px 24px rgba(0,0,0,.22);
-    }
-    .avatar-actions{
-        flex:1;
-        min-width:240px;
-        display:grid;
-        gap:0.45rem;
-    }
-    .avatar-actions label{ color:#f8fafc; font-weight:800; }
-    .avatar-actions input[type=file]{
-        background:#0f1d38;
-        border:1.5px solid rgba(166,128,35,.62);
-        border-radius:10px;
-        color:#e2e8f0;
-        padding:0.65rem;
-    }
-    .avatar-actions .legend-btn-small{
-        width: fit-content;
-        padding:0.65rem 1.1rem;
-        border-radius:10px;
-        background:#a68023;
-        color:#0b1529;
-        border:1px solid #c79931;
-        font-weight:900;
-        box-shadow: 0 10px 20px rgba(0,0,0,.24), inset 0 1px 0 rgba(255,255,255,.16);
-    }
-    .avatar-actions .legend-btn-small:hover{
-        background:#ddb457;
-        border-color:#ddb457;
-        text-decoration:none;
-    }
-    .two-col {
-        display: grid;
-        gap: 1rem;
-        grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
-        align-items: start;
-    }
-    .field {
+
+    .profile-actions {
         display: flex;
-        flex-direction: column;
-        gap: 0.35rem;
+        gap: 12px;
+        flex-wrap: wrap;
+        justify-content: flex-end;
+        padding-top: 4px;
+    }
+
+    .profile-actions-start {
+        justify-content: flex-start;
+        padding-top: 0;
+    }
+
+    .profile-btn {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        min-height: 50px;
+        padding: 0 18px;
+        border: 1px solid transparent;
+        border-radius: 14px;
+        text-decoration: none;
+        font-weight: 900;
+        letter-spacing: 0.01em;
+        transition: transform .18s ease, box-shadow .18s ease, background .18s ease, color .18s ease;
+    }
+
+    .profile-btn:hover {
+        text-decoration: none;
+        transform: translateY(-1px);
+    }
+
+    .profile-btn-primary {
+        background: linear-gradient(180deg, #4f8fff, #2f66dd);
+        color: #ffffff;
+        box-shadow: 0 16px 30px rgba(18, 74, 181, 0.28);
+    }
+
+    .profile-btn-primary:hover {
+        color: #ffffff;
+        box-shadow: 0 18px 32px rgba(18, 74, 181, 0.34);
+    }
+
+    .profile-btn-secondary {
+        border-color: rgba(184, 211, 255, 0.22);
+        background: rgba(255, 255, 255, 0.08);
+        color: #edf4ff;
+    }
+
+    .profile-btn-secondary:hover {
+        color: #ffffff;
+        background: rgba(255, 255, 255, 0.14);
+    }
+
+    @@media (max-width: 980px) {
+        .profile-hero {
+            grid-template-columns: 1fr;
+        }
+
+        .profile-status-grid {
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+        }
+    }
+
+    @@media (max-width: 720px) {
+        .profile-shell {
+            padding: 1rem 0.75rem 2.2rem;
+        }
+
+        .profile-hero,
+        .profile-form {
+            padding-left: 18px;
+            padding-right: 18px;
+        }
+
+        .profile-flash {
+            margin-left: 18px;
+            margin-right: 18px;
+        }
+
+        .profile-status-grid,
+        .profile-fields {
+            grid-template-columns: 1fr;
+        }
+
+        .profile-avatar-top {
+            align-items: flex-start;
+        }
+
+        .profile-actions {
+            justify-content: stretch;
+        }
+
+        .profile-btn {
+            width: 100%;
+        }
     }
 </style>
 
 <div class="profile-shell">
-    <div class="profile-card">
-        <div class="card-header">
-            <div>
-                <div class="badge">Agent Profile</div>
-                <h2>Manage Account</h2>
-                <p class="legend-help mb-0">Name, title, phone, and NPN flow to the client app and the profile chip.</p>
-            </div>
-            <a class="legend-btn" asp-controller="Avatar" asp-action="Edit" style="color:#0b1529;">Edit photo</a>
-        </div>
+    <div class="profile-page">
+        <section class="profile-hero">
+            <div class="profile-hero-copy">
+                <span class="profile-eyebrow">Agent Portal</span>
+                <div>
+                    <h1 class="profile-title">Agent Profile</h1>
+                    <p class="profile-sub">Keep your public contact details, tracking setup, and scheduling handoff clean, current, and easy to manage.</p>
+                </div>
 
-        <div class="card-body">
-            @if (TempData["ProfileSaved"] is string ok)
-            {
-                <div class="note-pill">@ok</div>
-            }
-            <div class="avatar-block">
-                <div class="avatar-preview">
-                    <img src="@Url.Action("Current","Avatar")" alt="Current avatar" style="width:100%;height:100%;object-fit:cover;" onerror="this.style.display='none'; this.parentElement.textContent='A';" />
+                <div class="profile-status-grid" aria-label="Profile status">
+                    <div class="profile-status-card">
+                        <div class="profile-status-label">Public Profile</div>
+                        <div class="profile-status-value">@(publicProfileReady ? "Ready" : "Needs attention")</div>
+                        <div class="profile-status-note">Name, phone, and intro are what prospects see first.</div>
+                    </div>
+                    <div class="profile-status-card">
+                        <div class="profile-status-label">Meta Tracking</div>
+                        <div class="profile-status-value">@marketingLabel</div>
+                        <div class="profile-status-note">@(Model.HasSecureMetaCapiAccessToken ? "Secure CAPI token is already connected." : "Shared/default server-side tracking is in place.")</div>
+                    </div>
+                    <div class="profile-status-card">
+                        <div class="profile-status-label">Booking</div>
+                        <div class="profile-status-value">@bookingLabel</div>
+                        <div class="profile-status-note">Use your own Microsoft Bookings setup only if you want a personal scheduler.</div>
+                    </div>
+                    <div class="profile-status-card">
+                        <div class="profile-status-label">Calendar Link</div>
+                        <div class="profile-status-value">@calendarLabel</div>
+                        <div class="profile-status-note">Calendar email helps confirmation lookups stay attached to the right profile.</div>
+                    </div>
                 </div>
-                <div class="avatar-actions">
-                    <form asp-controller="Avatar" asp-action="Upload" method="post" enctype="multipart/form-data">
-                        @Html.AntiForgeryToken()
-                        <label for="photo">Profile picture</label>
-                        <input type="file" id="photo" name="photo" accept=".png,.jpg,.jpeg,.webp" required />
-                        <button type="submit" class="legend-btn-small mt-1">Upload photo</button>
-                        <p class="legend-help mb-0">PNG/JPG/WEBP under 3 MB.</p>
-                    </form>
-                </div>
-            </div>
-            <div class="summary-card" aria-label="Contact card preview">
-                <div><strong>Name:</strong> @Model.FullName</div>
-                <div><strong>Title:</strong> @(string.IsNullOrWhiteSpace(Model.Title) ? "Not set" : Model.Title)</div>
-                <div><strong>Email:</strong> @Model.Email (read-only)</div>
-                <div><strong>Phone:</strong> @(string.IsNullOrWhiteSpace(Model.Phone) ? "Not set" : Model.Phone)</div>
-                <div><strong>Short bio:</strong> @(string.IsNullOrWhiteSpace(Model.ShortBio) ? "Not set" : Model.ShortBio)</div>
-                <div><strong>NPN:</strong> @(string.IsNullOrWhiteSpace(Model.Npn) ? "Not set" : Model.Npn)</div>
-                <div><strong>Meta Pixel ID:</strong> @(string.IsNullOrWhiteSpace(Model.MetaPixelId) ? "Not set" : Model.MetaPixelId)</div>
-                <div><strong>Agent Meta CAPI:</strong> @(Model.HasSecureMetaCapiAccessToken ? "Securely configured" : "Not configured")</div>
-                <div><strong>Booking:</strong> @(Model.BookingEnabled ? "Enabled" : "Disabled or not configured")</div>
-                <div><strong>Bookings embed:</strong> @(string.IsNullOrWhiteSpace(Model.MicrosoftBookingsEmbedUrl) ? "Not set" : Model.MicrosoftBookingsEmbedUrl)</div>
-                <div><strong>Fallback booking URL:</strong> @(string.IsNullOrWhiteSpace(Model.FallbackBookingUrl) ? "Not set" : Model.FallbackBookingUrl)</div>
-                <div><strong>Calendar email:</strong> @(string.IsNullOrWhiteSpace(Model.CalendarEmail) ? "Not set" : Model.CalendarEmail)</div>
-                <div class="legend-help mb-0">These values power your public quote handoff card and profile surfaces.</div>
             </div>
 
-            <form asp-action="ManageProfile" method="post" novalidate>
-                @Html.AntiForgeryToken()
-                <div class="two-col">
-                    <div class="field">
-                        <label asp-for="FullName" class="legend-label"></label>
-                        <input asp-for="FullName" class="legend-input" autocomplete="name" />
-                        <span asp-validation-for="FullName" class="text-danger"></span>
+            <aside class="profile-panel profile-avatar-panel">
+                <div class="profile-avatar-top">
+                    <div class="profile-avatar-preview">
+                        <span>@avatarInitial</span>
+                        <img src="@Url.Action("Current","Avatar")"
+                             alt="Current avatar"
+                             onload="this.previousElementSibling.style.display='none';"
+                             onerror="this.style.display='none';" />
                     </div>
-                    <div class="field">
-                        <label asp-for="Title" class="legend-label"></label>
-                        <input asp-for="Title" class="legend-input" autocomplete="organization-title" placeholder="e.g., Senior Agent" />
-                        <span asp-validation-for="Title" class="text-danger"></span>
+                    <div class="profile-avatar-copy">
+                        <div class="profile-avatar-name">@Model.FullName</div>
+                        <div class="profile-avatar-meta">This photo shows up on your agent-facing profile surfaces and quote handoff experience.</div>
                     </div>
-                    <div class="field">
-                        <label asp-for="Email" class="legend-label"></label>
-                        <input asp-for="Email" class="legend-input" readonly />
-                        <p class="legend-help">Email cannot be changed here.</p>
+                </div>
+
+                <form asp-controller="Avatar" asp-action="Upload" method="post" enctype="multipart/form-data" class="profile-upload-form">
+                    @Html.AntiForgeryToken()
+                    <label for="photo" class="profile-label">Update photo</label>
+                    <input type="file" id="photo" name="photo" class="profile-file-input" accept=".png,.jpg,.jpeg,.webp" required />
+                    <p class="profile-help">Square PNG, JPG, or WEBP under 3 MB.</p>
+                    <div class="profile-actions profile-actions-start">
+                        <button type="submit" class="profile-btn profile-btn-primary">Upload photo</button>
+                        <a class="profile-btn profile-btn-secondary" asp-controller="Avatar" asp-action="Edit">Photo settings</a>
                     </div>
-                    <div class="field">
-                        <label asp-for="Phone" class="legend-label"></label>
-                        <input asp-for="Phone" class="legend-input" autocomplete="tel" inputmode="tel" placeholder="e.g., 555-555-1234" />
-                        <span asp-validation-for="Phone" class="text-danger"></span>
+                </form>
+            </aside>
+        </section>
+
+        @if (TempData["ProfileSaved"] is string ok)
+        {
+            <div class="profile-flash">@ok</div>
+        }
+
+        <form asp-action="ManageProfile" method="post" novalidate class="profile-form">
+            @Html.AntiForgeryToken()
+
+            <section class="profile-panel profile-section">
+                <div class="profile-section-head">
+                    <h2 class="profile-section-title">Identity</h2>
+                    <p class="profile-section-sub">The essentials tied to your contact card and account identity.</p>
+                </div>
+                <div class="profile-fields">
+                    <div class="profile-field">
+                        <label asp-for="FullName" class="profile-label"></label>
+                        <input asp-for="FullName" class="profile-input" autocomplete="name" />
+                        <span asp-validation-for="FullName" class="profile-validation"></span>
                     </div>
-                    <div class="field">
-                        <label asp-for="ShortBio" class="legend-label"></label>
-                        <textarea asp-for="ShortBio" class="legend-input" rows="4" maxlength="280" placeholder="A short public intro for your quote links, like how you help families review protection options."></textarea>
-                        <p class="legend-help">Optional. This shows on your public quote handoff card.</p>
-                        <span asp-validation-for="ShortBio" class="text-danger"></span>
+                    <div class="profile-field">
+                        <label asp-for="Title" class="profile-label"></label>
+                        <input asp-for="Title" class="profile-input" autocomplete="organization-title" placeholder="Senior Agent" />
+                        <span asp-validation-for="Title" class="profile-validation"></span>
                     </div>
-                    <div class="field">
-                        <label asp-for="Npn" class="legend-label"></label>
-                        <input asp-for="Npn" class="legend-input" autocomplete="off" placeholder="National Producer Number" />
-                        <span asp-validation-for="Npn" class="text-danger"></span>
+                    <div class="profile-field">
+                        <label asp-for="Email" class="profile-label"></label>
+                        <input asp-for="Email" class="profile-input" readonly />
+                        <p class="profile-help">Managed from your Microsoft login.</p>
                     </div>
-                    <div class="field" style="grid-column:1 / -1;">
-                        <div class="legend-label" style="margin-bottom:0;">Marketing Settings</div>
-                        <p class="legend-help">Manage the tracking defaults used on your public quote links.</p>
+                    <div class="profile-field">
+                        <label asp-for="Phone" class="profile-label"></label>
+                        <input asp-for="Phone" class="profile-input" autocomplete="tel" inputmode="tel" placeholder="555-555-1234" />
+                        <span asp-validation-for="Phone" class="profile-validation"></span>
                     </div>
-                    <div class="field" style="grid-column:1 / -1;">
-                        <label asp-for="MetaPixelId" class="legend-label"></label>
-                        <input asp-for="MetaPixelId" class="legend-input" autocomplete="off" inputmode="numeric" placeholder="Meta browser pixel / dataset ID" />
-                        <p class="legend-help">Optional. If set, your personal/agency Meta Pixel will be used on your agent quote links. If blank, Legend’s default tracking pixel will be used.</p>
-                        <p class="legend-help">Agent-specific server-side Meta CAPI tokens are configured separately and are not editable here.</p>
-                        <span asp-validation-for="MetaPixelId" class="text-danger"></span>
+                </div>
+            </section>
+
+            <section class="profile-panel profile-section">
+                <div class="profile-section-head">
+                    <h2 class="profile-section-title">Public Card</h2>
+                    <p class="profile-section-sub">What prospects see when your quote flow hands them off to the next step.</p>
+                </div>
+                <div class="profile-fields">
+                    <div class="profile-field profile-field-full">
+                        <label asp-for="ShortBio" class="profile-label"></label>
+                        <textarea asp-for="ShortBio"
+                                  class="profile-input"
+                                  rows="4"
+                                  maxlength="280"
+                                  placeholder="Short, confident intro about how you help people review coverage options."></textarea>
+                        <span asp-validation-for="ShortBio" class="profile-validation"></span>
                     </div>
-                    <div class="field" style="grid-column:1 / -1;">
-                        <div class="legend-label" style="margin-bottom:0;">Booking Settings</div>
-                        <p class="legend-help">These fields let your public quote flow use your own Microsoft Bookings page and calendar identity instead of a shared fallback.</p>
+                    <div class="profile-field">
+                        <label asp-for="Npn" class="profile-label"></label>
+                        <input asp-for="Npn" class="profile-input" autocomplete="off" placeholder="National Producer Number" />
+                        <span asp-validation-for="Npn" class="profile-validation"></span>
                     </div>
-                    <div class="field" style="grid-column:1 / -1;">
-                        <label class="legend-label" asp-for="BookingEnabled"></label>
-                        <label style="display:flex;align-items:center;gap:.65rem;color:#f8fafc;font-weight:700;">
+                </div>
+            </section>
+
+            <section class="profile-panel profile-section">
+                <div class="profile-section-head">
+                    <h2 class="profile-section-title">Marketing</h2>
+                    <p class="profile-section-sub">Leave this blank if you want to keep using the default Legend tracking setup.</p>
+                </div>
+                <div class="profile-fields">
+                    <div class="profile-field profile-field-full">
+                        <div class="profile-inline-note">Meta CAPI: @(Model.HasSecureMetaCapiAccessToken ? "Configured securely" : "Using shared/default setup")</div>
+                    </div>
+                    <div class="profile-field profile-field-full">
+                        <label asp-for="MetaPixelId" class="profile-label"></label>
+                        <input asp-for="MetaPixelId" class="profile-input" autocomplete="off" inputmode="numeric" placeholder="Numeric Meta Pixel ID" />
+                        <span asp-validation-for="MetaPixelId" class="profile-validation"></span>
+                    </div>
+                </div>
+            </section>
+
+            <section class="profile-panel profile-section">
+                <div class="profile-section-head">
+                    <h2 class="profile-section-title">Booking</h2>
+                    <p class="profile-section-sub">Only turn this on if you want your own Microsoft Bookings experience in quote handoff flows.</p>
+                </div>
+                <div class="profile-fields">
+                    <div class="profile-field profile-field-full">
+                        <label class="profile-label" asp-for="BookingEnabled"></label>
+                        <label class="profile-toggle">
                             <input asp-for="BookingEnabled" type="checkbox" />
-                            <span>Use my personal booking configuration on public quote handoff flows</span>
+                            <span>Use my personal scheduler on public quote handoff flows</span>
                         </label>
                     </div>
-                    <div class="field">
-                        <label asp-for="MicrosoftBookingsEmbedUrl" class="legend-label"></label>
-                        <input asp-for="MicrosoftBookingsEmbedUrl" class="legend-input" autocomplete="off" placeholder="https://outlook.office.com/bookings/..." />
-                        <p class="legend-help">The embedded Microsoft Bookings page used inside the quote follow-up flow.</p>
-                        <span asp-validation-for="MicrosoftBookingsEmbedUrl" class="text-danger"></span>
+                    <div class="profile-field">
+                        <label asp-for="MicrosoftBookingsEmbedUrl" class="profile-label">Embed URL</label>
+                        <input asp-for="MicrosoftBookingsEmbedUrl" class="profile-input" autocomplete="off" placeholder="https://outlook.office.com/bookings/..." />
+                        <span asp-validation-for="MicrosoftBookingsEmbedUrl" class="profile-validation"></span>
                     </div>
-                    <div class="field">
-                        <label asp-for="FallbackBookingUrl" class="legend-label"></label>
-                        <input asp-for="FallbackBookingUrl" class="legend-input" autocomplete="off" placeholder="https://outlook.office.com/book/..." />
-                        <p class="legend-help">Optional new-tab fallback if embedding is unavailable.</p>
-                        <span asp-validation-for="FallbackBookingUrl" class="text-danger"></span>
+                    <div class="profile-field">
+                        <label asp-for="FallbackBookingUrl" class="profile-label">Fallback URL</label>
+                        <input asp-for="FallbackBookingUrl" class="profile-input" autocomplete="off" placeholder="Optional backup scheduler link" />
+                        <span asp-validation-for="FallbackBookingUrl" class="profile-validation"></span>
                     </div>
-                    <div class="field">
-                        <label asp-for="BookingPageIdOrMailbox" class="legend-label"></label>
-                        <input asp-for="BookingPageIdOrMailbox" class="legend-input" autocomplete="off" placeholder="Mailbox, Bookings page id, or shared calendar handle" />
-                        <p class="legend-help">Used internally for matching confirmed bookings back to the right calendar when Microsoft Graph is available.</p>
-                        <span asp-validation-for="BookingPageIdOrMailbox" class="text-danger"></span>
+                    <div class="profile-field">
+                        <label asp-for="BookingPageIdOrMailbox" class="profile-label">Mailbox / Page ID</label>
+                        <input asp-for="BookingPageIdOrMailbox" class="profile-input" autocomplete="off" placeholder="Mailbox, page ID, or calendar handle" />
+                        <span asp-validation-for="BookingPageIdOrMailbox" class="profile-validation"></span>
                     </div>
-                    <div class="field">
-                        <label asp-for="CalendarEmail" class="legend-label"></label>
-                        <input asp-for="CalendarEmail" class="legend-input" autocomplete="email" placeholder="your-calendar@example.com" />
-                        <p class="legend-help">Safe internal calendar identity for confirmation lookup. This is not shown publicly.</p>
-                        <span asp-validation-for="CalendarEmail" class="text-danger"></span>
+                    <div class="profile-field">
+                        <label asp-for="CalendarEmail" class="profile-label"></label>
+                        <input asp-for="CalendarEmail" class="profile-input" autocomplete="email" placeholder="calendar@example.com" />
+                        <span asp-validation-for="CalendarEmail" class="profile-validation"></span>
                     </div>
-                    <div class="field" style="grid-column:1 / -1;">
-                        <label class="legend-label" asp-for="PreferModalOnMobile"></label>
-                        <label style="display:flex;align-items:center;gap:.65rem;color:#f8fafc;font-weight:700;">
+                    <div class="profile-field profile-field-full">
+                        <label class="profile-label" asp-for="PreferModalOnMobile"></label>
+                        <label class="profile-toggle">
                             <input asp-for="PreferModalOnMobile" type="checkbox" />
-                            <span>Open the embedded scheduler in a mobile modal when possible</span>
+                            <span>Prefer a mobile modal for the embedded scheduler when available</span>
                         </label>
                     </div>
                 </div>
+            </section>
 
-                <div class="mt-3 d-flex gap-2">
-                    <button type="submit" class="legend-btn">Save profile</button>
-                    <a class="legend-btn" style="background:#0f1d38;color:#f8fafc;border-color:rgba(166,128,35,.62);" asp-controller="Home" asp-action="Index">Cancel</a>
-                </div>
-            </form>
-        </div>
+            <div class="profile-actions">
+                <a class="profile-btn profile-btn-secondary" asp-controller="Home" asp-action="Index">Cancel</a>
+                <button type="submit" class="profile-btn profile-btn-primary">Save profile</button>
+            </div>
+        </form>
     </div>
 </div>
 
