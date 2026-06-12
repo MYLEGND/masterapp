@@ -270,7 +270,7 @@
         try {
             const booked = await createCalendarEventFromDrawer();
             if (!booked) {
-                setStatus("Booking failed", "error");
+                setStatus(`Booking stopped: ${window.__lastBookingStopReason || "unknown frontend guard"}`, "error");
                 return;
             }
             setStatus("Booked successfully", "success");

@@ -7148,12 +7148,7 @@ async function createCalendarEventFromDrawer(){
   const leadId = activeClientId || document.getElementById("prodLeadId")?.value || "";
   if (!leadId){
     toast("Open a lead first.");
-    return false;
-  }
-
-  const st = await calendarStatus();
-  if (!st.connected){
-    toast("Connect calendar first.");
+    window.__lastBookingStopReason = "missing leadId";
     return false;
   }
 
@@ -7165,6 +7160,7 @@ async function createCalendarEventFromDrawer(){
   );
   if (!row){
     toast("Lead not found.");
+    window.__lastBookingStopReason = `lead row not found for ${leadId}`;
     return false;
   }
 
@@ -7173,10 +7169,12 @@ async function createCalendarEventFromDrawer(){
 
   if (!nextDate){
     toast("Set a Next Action Date first.");
+    window.__lastBookingStopReason = "missing nextDate";
     return false;
   }
   if (!nextText){
     toast("Add Next Action text first.");
+    window.__lastBookingStopReason = "missing nextText";
     return false;
   }
 
