@@ -1,6 +1,12 @@
 (() => {
     let selectedSlotTime = "";
     const calendarState = { visibleMonth: null };
+    const optimisticBookedSlots = new Map();
+    const BOOKED_SLOT_HIDE_MS = 8000;
+    const LIVE_REFRESH_INTERVAL_MS = 30000;
+    let availabilityRequestSequence = 0;
+    let availabilityRefreshIntervalId = 0;
+    let scheduledAvailabilityRefreshIds = [];
 
     const $ = (id) => document.getElementById(id);
     const LegendModalApi = window.LegendModal || {};
@@ -26,6 +32,11 @@
         });
         bindBookingModalLifecycle(modalEl);
         return window.bootstrap.Modal.getOrCreateInstance(modalEl);
+    }
+
+    function bookingModalIsOpen() {
+        const modalEl = bookingModalElement();
+        return Boolean(modalEl && modalEl.classList.contains("show"));
     }
 
     function todayLocal() {
@@ -86,6 +97,34 @@
             month: "long",
             year: "numeric"
         });
+    }
+
+    function slotReservationKey(dateValue, timeValue) {
+        return `${dateValue || ""}::${timeValue || ""}`;
+    }
+
+    function pruneOptimisticBookedSlots() {
+        const now = Date.now();
+        for (const [key, expiresAt] of optimisticBookedSlots.entries()) {
+            if (expiresAt <= now) {
+                optimisticBookedSlots.delete(key);
+            }
+        }
+    }
+
+    function rememberOptimisticBookedSlot(dateValue, timeValue) {
+        if (!dateValue || !timeValue) return;
+        pruneOptimisticBookedSlots();
+        optimisticBookedSlots.set(slotReservationKey(dateValue, timeValue), Date.now() + BOOKED_SLOT_HIDE_MS);
+    }
+
+    function isOptimisticallyBookedSlot(dateValue, timeValue) {
+        pruneOptimisticBookedSlots();
+        return optimisticBookedSlots.has(slotReservationKey(dateValue, timeValue));
+    }
+
+    function clearOptimisticBookedSlots() {
+        optimisticBookedSlots.clear();
     }
 
     function selectedBookingService() {
@@ -187,6 +226,60 @@
         else status.removeAttribute("data-state");
     }
 
+    function clearScheduledAvailabilityRefreshes() {
+        scheduledAvailabilityRefreshIds.forEach((refreshId) => window.clearTimeout(refreshId));
+        scheduledAvailabilityRefreshIds = [];
+    }
+
+    function scheduleAvailabilityRefresh(delayMs = 0, options = {}) {
+        clearScheduledAvailabilityRefreshes();
+        const refreshId = window.setTimeout(() => {
+            scheduledAvailabilityRefreshIds = scheduledAvailabilityRefreshIds.filter((candidate) => candidate !== refreshId);
+            if (!bookingModalIsOpen() || document.hidden) return;
+            void loadSlots({
+                background: true,
+                preferredTime: options.preferredTime,
+                preserveStatus: Boolean(options.preserveStatus)
+            });
+        }, Math.max(0, delayMs));
+        scheduledAvailabilityRefreshIds.push(refreshId);
+    }
+
+    function queueAvailabilityRefreshes(delays, options = {}) {
+        clearScheduledAvailabilityRefreshes();
+        for (const delayMs of Array.isArray(delays) ? delays : []) {
+            const refreshId = window.setTimeout(() => {
+                scheduledAvailabilityRefreshIds = scheduledAvailabilityRefreshIds.filter((candidate) => candidate !== refreshId);
+                if (!bookingModalIsOpen() || document.hidden) return;
+                void loadSlots({
+                    background: true,
+                    preferredTime: options.preferredTime,
+                    preserveStatus: Boolean(options.preserveStatus)
+                });
+            }, Math.max(0, delayMs));
+            scheduledAvailabilityRefreshIds.push(refreshId);
+        }
+    }
+
+    function stopLiveAvailabilityRefresh() {
+        if (availabilityRefreshIntervalId) {
+            window.clearInterval(availabilityRefreshIntervalId);
+            availabilityRefreshIntervalId = 0;
+        }
+        clearScheduledAvailabilityRefreshes();
+    }
+
+    function startLiveAvailabilityRefresh() {
+        stopLiveAvailabilityRefresh();
+        availabilityRefreshIntervalId = window.setInterval(() => {
+            if (!bookingModalIsOpen() || document.hidden) return;
+            void loadSlots({
+                background: true,
+                preferredTime: selectedSlotTime || $("qvBookTime")?.value || ""
+            });
+        }, LIVE_REFRESH_INTERVAL_MS);
+    }
+
     function updateSelectionSummary() {
         const selectedDate = parseDateInputValue($("qvBookDate")?.value || "");
         const duration = selectedBookingService().duration;
@@ -275,6 +368,38 @@
         else setStatus("");
     }
 
+    function removeBookedSlotFromUi(dateValue, timeValue) {
+        if (!dateValue || !timeValue) return "";
+
+        rememberOptimisticBookedSlot(dateValue, timeValue);
+
+        const container = $("qvBookSlots");
+        const timeInput = $("qvBookTime");
+        let removedLabel = timeValue;
+
+        if (container) {
+            const slotButtons = Array.from(container.querySelectorAll(".qv-slot-btn"));
+            const bookedButton = slotButtons.find((button) => button.dataset.time === timeValue) || null;
+            if (bookedButton) {
+                removedLabel = (bookedButton.textContent || "").trim() || removedLabel;
+                bookedButton.remove();
+            }
+
+            if (!container.querySelector(".qv-slot-btn")) {
+                container.innerHTML = '<span class="qv-slot-empty">That time is no longer open. Checking the next available openings now…</span>';
+            }
+        }
+
+        if (selectedSlotTime === timeValue) {
+            selectedSlotTime = "";
+        }
+        if (timeInput && timeInput.value === timeValue) {
+            timeInput.value = "";
+        }
+
+        return removedLabel;
+    }
+
     function calendarHasRenderedDays() {
         return Boolean(document.querySelector("#qvBookingCalendar [data-qv-booking-date]"));
     }
@@ -331,16 +456,17 @@
         grid.innerHTML = cells.join("");
     }
 
-    function renderSlots(freeSlots, durationMinutes, slotIntervalMinutes) {
+    function renderSlots(freeSlots, durationMinutes, slotIntervalMinutes, options = {}) {
         const container = $("qvBookSlots");
         const selectedDate = parseDateInputValue($("qvBookDate")?.value || "");
+        const selectedDateValue = $("qvBookDate")?.value || "";
+        const requestedSelection = (options.preferredTime || selectedSlotTime || $("qvBookTime")?.value || "").trim();
+        const preserveStatus = Boolean(options.preserveStatus);
         if (!container) return;
 
         container.innerHTML = "";
-        selectedSlotTime = "";
-
         const timeInput = $("qvBookTime");
-        if (timeInput) timeInput.value = "";
+        let restoredSelection = "";
 
         const generated = [];
         for (const slot of freeSlots || []) {
@@ -350,19 +476,28 @@
 
             let cursor = new Date(start);
             while (cursor.getTime() + durationMinutes * 60000 <= end.getTime()) {
-                generated.push(new Date(cursor));
+                const candidate = new Date(cursor);
+                const timeValue = toTimeValue(candidate);
+                if (!isOptimisticallyBookedSlot(selectedDateValue, timeValue)) {
+                    generated.push(candidate);
+                }
                 cursor = new Date(cursor.getTime() + (slotIntervalMinutes || 30) * 60000);
             }
         }
 
         if (!generated.length) {
             const dateLabel = selectedDate ? formatHumanDate(selectedDate) : "the selected day";
-            clearSlots(`No open ${durationMinutes}-minute slots on ${dateLabel}. Try another day in the calendar.`, "warning");
+            if (preserveStatus) {
+                container.innerHTML = `<span class="qv-slot-empty">No open ${durationMinutes}-minute slots on ${dateLabel}. Try another day in the calendar.</span>`;
+                selectedSlotTime = "";
+                if (timeInput) timeInput.value = "";
+            } else {
+                clearSlots(`No open ${durationMinutes}-minute slots on ${dateLabel}. Try another day in the calendar.`, "warning");
+            }
             return;
         }
 
         const dateLabel = selectedDate ? formatHumanDate(selectedDate) : "the selected day";
-        setStatus(`${generated.length} open start ${generated.length === 1 ? "time" : "times"} found for ${dateLabel}.`, "selected");
 
         for (const start of generated) {
             const button = document.createElement("button");
@@ -380,14 +515,44 @@
                 setStatus(`Selected ${button.textContent} on ${dateLabel}.`, "selected");
             });
 
+            if (button.dataset.time === requestedSelection) {
+                button.classList.add("selected");
+                restoredSelection = button.dataset.time;
+            }
+
             container.appendChild(button);
+        }
+
+        if (restoredSelection) {
+            selectedSlotTime = restoredSelection;
+            if (timeInput) timeInput.value = restoredSelection;
+
+            if (!preserveStatus) {
+                const selectedButton = Array.from(container.querySelectorAll(".qv-slot-btn"))
+                    .find((button) => button.dataset.time === restoredSelection);
+                if (selectedButton) {
+                    setStatus(`Selected ${selectedButton.textContent} on ${dateLabel}.`, "selected");
+                }
+            }
+            return;
+        }
+
+        selectedSlotTime = "";
+        if (timeInput) timeInput.value = "";
+
+        if (!preserveStatus) {
+            setStatus(`${generated.length} open start ${generated.length === 1 ? "time" : "times"} found for ${dateLabel}.`, "selected");
         }
     }
 
-    async function loadSlots() {
+    async function loadSlots(options = {}) {
         const date = $("qvBookDate")?.value || "";
         const selectedDate = parseDateInputValue(date);
         let duration = selectedBookingService().duration;
+        const background = Boolean(options.background);
+        const preferredTime = (options.preferredTime || selectedSlotTime || $("qvBookTime")?.value || "").trim();
+        const preserveStatus = Boolean(options.preserveStatus);
+        const requestSequence = ++availabilityRequestSequence;
 
         updateSelectionSummary();
 
@@ -396,10 +561,14 @@
             return;
         }
 
-        clearSlots(`Loading ${duration}-minute slots for ${formatHumanDate(selectedDate)}…`, "loading");
+        if (!background) {
+            clearSlots(`Loading ${duration}-minute slots for ${formatHumanDate(selectedDate)}…`, "loading");
+        } else if (!preserveStatus) {
+            setStatus(`Refreshing ${duration}-minute slots for ${formatHumanDate(selectedDate)}…`, "loading");
+        }
 
         try {
-            const response = await fetch(`/calendar/day-availability?date=${encodeURIComponent(date)}`, {
+            const response = await fetch(`/calendar/day-availability?date=${encodeURIComponent(date)}&v=${Date.now()}`, {
                 credentials: "include"
             });
 
@@ -409,15 +578,29 @@
             }
 
             const data = await response.json();
+            if (requestSequence !== availabilityRequestSequence) {
+                return;
+            }
+
             syncBookingServiceOptions(Array.isArray(data.buffers) ? data.buffers : data.services);
             duration = selectedBookingService().duration;
 
             const freeSlots = Array.isArray(data.freeSlots) ? data.freeSlots : [];
             const slotInterval = parseInt(data.slotIntervalMinutes || "30", 10) || 30;
-            renderSlots(freeSlots, duration, slotInterval);
+            renderSlots(freeSlots, duration, slotInterval, {
+                preferredTime,
+                preserveStatus
+            });
         } catch (error) {
+            if (requestSequence !== availabilityRequestSequence) {
+                return;
+            }
             console.error(error);
-            clearSlots("Could not load slots for that day right now.", "error");
+            if (background) {
+                setStatus("Live availability refresh failed. Keeping the current times on screen.", "warning");
+            } else {
+                clearSlots("Could not load slots for that day right now.", "error");
+            }
         }
     }
 
@@ -430,6 +613,9 @@
 
     function resetBookingModalState() {
         selectedSlotTime = "";
+        stopLiveAvailabilityRefresh();
+        clearOptimisticBookedSlots();
+        availabilityRequestSequence += 1;
         const timeInput = $("qvBookTime");
         if (timeInput) timeInput.value = "";
         setStatus("");
@@ -447,6 +633,7 @@
             if (!calendarHasRenderedDays()) {
                 initializeBookingModal();
             }
+            startLiveAvailabilityRefresh();
             window.requestAnimationFrame(() => {
                 $("btnBookAppointment")?.blur?.();
             });
@@ -516,7 +703,7 @@
         event.preventDefault();
         const iso = dayButton.getAttribute("data-qv-booking-date") || "";
         if (setSelectedDate(iso)) {
-            loadSlots();
+            void loadSlots();
         }
     });
 
@@ -564,12 +751,38 @@
                 return;
             }
 
-            setStatus("Booked successfully. Refreshing open times…", "success");
-            loadSlots();
+            const selectedDateValue = parseDateInputValue(date);
+            const selectedDateLabel = selectedDateValue ? formatHumanDate(selectedDateValue) : date;
+            const bookedLabel = removeBookedSlotFromUi(date, time);
+            setStatus(`Booked ${bookedLabel} on ${selectedDateLabel}. Refreshing live availability…`, "success");
+
+            void loadSlots({
+                background: true,
+                preferredTime: "",
+                preserveStatus: true
+            });
+            queueAvailabilityRefreshes([1200, 4500, 9000], {
+                preferredTime: "",
+                preserveStatus: true
+            });
         } catch (error) {
             console.error(error);
             setStatus("Booking failed", "error");
         }
+    });
+
+    window.addEventListener("focus", () => {
+        if (!bookingModalIsOpen()) return;
+        scheduleAvailabilityRefresh(180, {
+            preferredTime: selectedSlotTime || $("qvBookTime")?.value || ""
+        });
+    });
+
+    document.addEventListener("visibilitychange", () => {
+        if (document.hidden || !bookingModalIsOpen()) return;
+        scheduleAvailabilityRefresh(220, {
+            preferredTime: selectedSlotTime || $("qvBookTime")?.value || ""
+        });
     });
 
     window.closeQuickViewBookingModal = () => hideBootstrapModalById(BOOKING_MODAL_ID);
