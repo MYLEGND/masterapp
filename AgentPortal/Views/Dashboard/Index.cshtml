@@ -2,144 +2,128 @@
 @{
     ViewData["Title"] = "Dashboard";
     Layout = "~/Views/Shared/_Layout.cshtml";
+    var todayCount = Model?.Today?.Count() ?? 0;
+    var overdueCount = Model?.Overdue?.Count() ?? 0;
+    var blockerCount = Model?.Blockers?.Count() ?? 0;
+    var totalExecutionItems = todayCount + overdueCount + blockerCount;
 }
 
 <link rel="stylesheet" href="~/css/dashboard-carrier-settings.css" asp-append-version="true" />
 
-<div class="home-container">
+<div class="home-container dashboard-page-shell">
 
-    <!-- HERO -->
-    <div class="text-center mb-5">
-        <h1 class="display-4 fw-bold">Legend™ Core Dashboard</h1>
-        <p class="lead mb-3">
-            Command Center for any Actions you flagged “Show in Dashboard” from Leads or Clients.
-        </p>
-        <hr class="my-3 hero-hr" />
-    </div>
-
-    <!-- SEARCH BAR -->
-    <div class="text-center mb-5 search-container">
-        <div class="dashboard-search-shell">
-            <div class="search-input-wrap">
-                <input type="text" id="toolSearch" class="search-input" placeholder="Search all tools..." />
-                <div id="autocompleteList" class="autocomplete-list"></div>
+    <section class="dashboard-hero-panel">
+        <div class="dashboard-hero-copy">
+            <div class="dashboard-eyebrow">Legend Command Center</div>
+            <h1 class="dashboard-hero-title">Legend™ Core Dashboard</h1>
+            <p class="dashboard-hero-lead">
+                Premium execution workspace for agent tasks, carrier access, and the action items you flagged from Leads or Clients.
+            </p>
+            <div class="dashboard-hero-tags">
+                <span>Execution tracking</span>
+                <span>Carrier access</span>
+                <span>Faster follow-through</span>
             </div>
-            <div class="search-actions">
-                <button id="clearSearch" class="btn-clear-search" type="button">Clear Search</button>
-                <button
-                    id="openCarrierSettings"
-                    class="btn-carrier-settings"
-                    type="button"
-                    data-bs-toggle="modal"
-                    data-bs-target="#carrierSettingsModal">
-                    Carrier Numbers &amp; Commissions
+        </div>
+        <div class="dashboard-hero-stats">
+            <div class="dashboard-stat-card is-primary">
+                <div class="dashboard-stat-label">Open execution</div>
+                <div class="dashboard-stat-value">@totalExecutionItems</div>
+                <div class="dashboard-stat-note">Today, overdue, and blocker items in one view.</div>
+            </div>
+            <div class="dashboard-stat-card">
+                <div class="dashboard-stat-label">Due today</div>
+                <div class="dashboard-stat-value" id="countToday">@todayCount</div>
+                <div class="dashboard-stat-note">Current-day commitments that should move now.</div>
+            </div>
+            <div class="dashboard-stat-card">
+                <div class="dashboard-stat-label">Overdue</div>
+                <div class="dashboard-stat-value" id="countOverdue">@overdueCount</div>
+                <div class="dashboard-stat-note">Items that need rescue before they age further.</div>
+            </div>
+            <div class="dashboard-stat-card">
+                <div class="dashboard-stat-label">Blockers</div>
+                <div class="dashboard-stat-value" id="countBlockers">@blockerCount</div>
+                <div class="dashboard-stat-note">Dependencies and friction slowing execution down.</div>
+            </div>
+        </div>
+    </section>
+
+    <section class="dashboard-command-panel">
+        <div class="dashboard-section-head dashboard-section-head-tight">
+            <div>
+                <div class="dashboard-section-kicker">Command Tools</div>
+                <h2 class="dashboard-section-title">Search your carrier stack and keep settings close.</h2>
+                <p class="dashboard-section-copy">Jump to any portal fast, or manage agent numbers and commission settings without leaving the command center.</p>
+            </div>
+        </div>
+
+        <div class="search-container dashboard-search-panel">
+            <div class="dashboard-search-shell">
+                <div class="search-input-wrap">
+                    <input type="text" id="toolSearch" class="search-input" placeholder="Search all tools..." />
+                    <div id="autocompleteList" class="autocomplete-list"></div>
+                </div>
+                <div class="search-actions">
+                    <button id="clearSearch" class="btn-clear-search" type="button">Clear Search</button>
+                    <button
+                        id="openCarrierSettings"
+                        class="btn-carrier-settings"
+                        type="button"
+                        data-bs-toggle="modal"
+                        data-bs-target="#carrierSettingsModal">
+                        Carrier Numbers &amp; Commissions
+                    </button>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <section class="dashboard-focus-panel">
+        <div class="dashboard-section-head dashboard-section-head-tight">
+            <div>
+                <div class="dashboard-section-kicker">Execution Snapshot</div>
+                <h2 class="dashboard-section-title">Open the work that actually needs attention.</h2>
+                <p class="dashboard-section-copy">Each bucket opens into the live modal so you can review, complete, or clear work without hunting through the CRM first.</p>
+            </div>
+        </div>
+
+        <div class="row g-3 dashboard-focus-grid">
+            <div class="col-lg-4 col-md-6">
+                <button class="legend-exec-btn" data-bs-toggle="modal" data-bs-target="#modalToday">
+                    <span class="legend-exec-kicker">Execution</span>
+                    <span class="legend-exec-title-row">
+                        <span class="legend-exec-title">Today</span>
+                        <span class="legend-badge">@todayCount</span>
+                    </span>
+                    <span class="legend-exec-sub">Current-day commitments that should get moved before momentum drops.</span>
+                    <span class="chevron">Open</span>
+                </button>
+            </div>
+            <div class="col-lg-4 col-md-6">
+                <button class="legend-exec-btn" data-bs-toggle="modal" data-bs-target="#modalOverdue">
+                    <span class="legend-exec-kicker">Recovery</span>
+                    <span class="legend-exec-title-row">
+                        <span class="legend-exec-title">Overdue</span>
+                        <span class="legend-badge">@overdueCount</span>
+                    </span>
+                    <span class="legend-exec-sub">Aging items that need immediate rescue before they become stale.</span>
+                    <span class="chevron">Open</span>
+                </button>
+            </div>
+            <div class="col-lg-4 col-md-6">
+                <button class="legend-exec-btn" data-bs-toggle="modal" data-bs-target="#modalBlockers">
+                    <span class="legend-exec-kicker">Friction</span>
+                    <span class="legend-exec-title-row">
+                        <span class="legend-exec-title">Blockers</span>
+                        <span class="legend-badge">@blockerCount</span>
+                    </span>
+                    <span class="legend-exec-sub">Dependencies, missing pieces, or stalled next steps slowing the board.</span>
+                    <span class="chevron">Open</span>
                 </button>
             </div>
         </div>
-    </div>
-
-    <!-- EXECUTION SNAPSHOT (Command Center) -->
-    <style>
-        .legend-exec-btn{
-            background:#0f172a;
-            color:#f8fafc;
-            border:2px solid #8b6f1f;
-            border-radius:14px;
-            width:100%;
-            padding:18px 14px;
-            text-align:left;
-            box-shadow: 0 14px 28px rgba(0,0,0,.28);
-            transition: transform .12s ease, box-shadow .12s ease;
-        }
-        .legend-exec-btn:hover{ transform: translateY(-2px); box-shadow:0 18px 32px rgba(0,0,0,.32); }
-        .legend-exec-title{ color:#d5b24d; font-weight:800; letter-spacing:.02em; margin:0; }
-        .legend-exec-sub{ color:#f8fafc; opacity:.78; margin:0; }
-        .legend-exec-btn .chevron{ float:right; color:#d5b24d; font-weight:900; }
-        .legend-badge{
-            display:inline-flex;
-            align-items:center;
-            justify-content:center;
-            min-width:26px;
-            padding:2px 8px;
-            margin-left:8px;
-            border-radius:999px;
-            background:#8b6f1f;
-            color:#0b1224;
-            font-weight:800;
-            font-size:.9rem;
-        }
-        .legend-modal .modal-content{
-            background:#0f172a;
-            color:#f8fafc;
-            border:2px solid #8b6f1f;
-            border-radius:16px;
-            box-shadow:0 22px 48px rgba(0,0,0,.45);
-            max-height: calc(100vh - clamp(32px, 8vh, 72px));
-            display:flex;
-            flex-direction:column;
-        }
-        .legend-modal .modal-dialog{
-            margin: clamp(16px, 4vh, 36px) auto;
-        }
-        .legend-modal .modal-header{ border-color:#8b6f1f; }
-        .legend-modal .modal-title{ color:#d5b24d; font-weight:800; letter-spacing:.02em; }
-        .legend-modal .modal-body{
-            overflow-y:auto;
-            min-height:0;
-            overscroll-behavior:contain;
-        }
-        .legend-modal .btn-close{ opacity:.96; }
-        /* Legend-styled action lists inside modals */
-        .legend-modal .action-table-wrap{
-            background:#0b1224;
-            border:1px solid #8b6f1f;
-            padding:10px;
-            border-radius:14px;
-        }
-        .legend-modal .action-table{
-            background:transparent;
-        }
-        .legend-modal .action-table th{
-            color:#d5b24d;
-            border-bottom:1px solid rgba(139,111,31,.45);
-            background:linear-gradient(180deg,#0f172a,#0c1524);
-        }
-        .legend-modal .action-table td{
-            color:#0b1224;
-            border-top:1px solid rgba(15,23,42,.12);
-            background:#ffffff;
-        }
-        .legend-modal .action-table tbody tr:nth-child(odd){
-            background: #f8fafc;
-        }
-        .legend-modal .status-pill{
-            color:#0b1224;
-        }
-        .legend-modal .text-muted{
-            color:#d5b24d !important;
-            opacity:0.7;
-        }
-    </style>
-    <div class="row mb-4">
-        <div class="col-md-4 mb-3">
-            <button class="legend-exec-btn" data-bs-toggle="modal" data-bs-target="#modalToday">
-                <span class="legend-exec-title">Today <span class="legend-badge" id="countToday">@((Model?.Today?.Count() ?? 0))</span></span>
-                <span class="chevron">⇱</span>
-            </button>
-        </div>
-        <div class="col-md-4 mb-3">
-            <button class="legend-exec-btn" data-bs-toggle="modal" data-bs-target="#modalOverdue">
-                <span class="legend-exec-title">Overdue <span class="legend-badge" id="countOverdue">@((Model?.Overdue?.Count() ?? 0))</span></span>
-                <span class="chevron">⇱</span>
-            </button>
-        </div>
-        <div class="col-md-4 mb-3">
-            <button class="legend-exec-btn" data-bs-toggle="modal" data-bs-target="#modalBlockers">
-                <span class="legend-exec-title">Blockers <span class="legend-badge" id="countBlockers">@((Model?.Blockers?.Count() ?? 0))</span></span>
-                <span class="chevron">⇱</span>
-            </button>
-        </div>
-    </div>
+    </section>
 
     <!-- Today Modal -->
     <div class="modal fade legend-modal" id="modalToday" tabindex="-1" aria-hidden="true">
@@ -229,34 +213,37 @@
 
 @if (Model?.DerivedAnalytics != null)
 {
-    <div class="card mb-4" style="border:1px solid rgba(139,111,31,.35); background:#0f172a; color:#f8fafc;">
-        <div class="card-body">
-            <div class="d-flex justify-content-between align-items-center flex-wrap" style="gap:8px;">
-                <div>
-                    <div class="text-uppercase small" style="letter-spacing:.08em;color:#d5b24d;">Insights (read-only)</div>
-                    <div class="fw-bold">Conversion & Promise Fulfillment</div>
-                </div>
-                <div class="d-flex flex-wrap" style="gap:14px;">
-                    <div class="text-center">
-                        <div class="h4 mb-0">@($"{Model.DerivedAnalytics.LeadConversionRate:P1}")</div>
-                        <div class="text-muted small">Lead Conversion</div>
-                    </div>
-                    <div class="text-center">
-                        <div class="h4 mb-0">@($"{Model.DerivedAnalytics.CommitmentFulfillmentRate:P1}")</div>
-                        <div class="text-muted small">Commitments On-Time (30d)</div>
-                    </div>
-                    <div class="text-center">
-                        <div class="h5 mb-0">@Model.DerivedAnalytics.CommitmentsOpen30d</div>
-                        <div class="text-muted small">Open Commitments (30d)</div>
-                    </div>
-                    <div class="text-center">
-                        <div class="h5 mb-0">@Model.DerivedAnalytics.LeadCount</div>
-                        <div class="text-muted small">Total Leads</div>
-                    </div>
-                </div>
+    <section class="dashboard-analytics-panel">
+        <div class="dashboard-section-head dashboard-section-head-tight">
+            <div>
+                <div class="dashboard-section-kicker">Read-Only Insights</div>
+                <h2 class="dashboard-section-title">Conversion and promise fulfillment at a glance.</h2>
+                <p class="dashboard-section-copy">High-signal metrics for how well lead flow is converting and whether commitments are being kept on time.</p>
             </div>
         </div>
-    </div>
+        <div class="dashboard-analytics-grid">
+            <div class="dashboard-analytics-card">
+                <div class="dashboard-analytics-label">Lead Conversion</div>
+                <div class="dashboard-analytics-value">@($"{Model.DerivedAnalytics.LeadConversionRate:P1}")</div>
+                <div class="dashboard-analytics-copy">Closed-loop lead conversion performance across the current data set.</div>
+            </div>
+            <div class="dashboard-analytics-card">
+                <div class="dashboard-analytics-label">Commitments On-Time</div>
+                <div class="dashboard-analytics-value">@($"{Model.DerivedAnalytics.CommitmentFulfillmentRate:P1}")</div>
+                <div class="dashboard-analytics-copy">Follow-through rate on commitments over the last 30 days.</div>
+            </div>
+            <div class="dashboard-analytics-card">
+                <div class="dashboard-analytics-label">Open Commitments</div>
+                <div class="dashboard-analytics-value">@Model.DerivedAnalytics.CommitmentsOpen30d</div>
+                <div class="dashboard-analytics-copy">Outstanding 30-day commitments still on the board.</div>
+            </div>
+            <div class="dashboard-analytics-card">
+                <div class="dashboard-analytics-label">Total Leads</div>
+                <div class="dashboard-analytics-value">@Model.DerivedAnalytics.LeadCount</div>
+                <div class="dashboard-analytics-copy">Tracked leads feeding the current conversion insight model.</div>
+            </div>
+        </div>
+    </section>
 }
 
 <script src="~/js/legend-modal.js" asp-append-version="true"></script>
@@ -352,7 +339,14 @@
 
 <!-- LIFE & HEALTH -->
 <div class="category-container mb-5" data-category="Life & Health">
-    <h3 class="text-center mb-4 fw-bold">Life & Health</h3>
+    <div class="category-head">
+        <div class="category-head-copy">
+            <div class="category-kicker">Carrier Stack</div>
+            <h3 class="fw-bold category-toggle">Life &amp; Health</h3>
+            <p class="category-copy">Core life, health, disability, and underwriting access for the everyday quote workflow.</p>
+        </div>
+        <div class="category-count-pill">@lifeHealthTools.Length tools</div>
+    </div>
     <div class="centered-tools">
         @{
             var lifeHealthTools = new[]
@@ -372,7 +366,7 @@
 
         @foreach (var tool in lifeHealthTools)
         {
-            <a href="@tool.Url" target="_blank" class="dashboard-tool" data-name="@tool.Name">
+            <a href="@tool.Url" target="_blank" rel="noopener noreferrer" class="dashboard-tool" data-name="@tool.Name">
                 <img src="@Url.Content($"~/images/company-icons/{tool.Icon}")" alt="@tool.Name" />
                 <div class="fw-bold text-center mt-1 tool-name">@tool.Name</div>
                 <div class="tool-desc">@tool.Desc</div>
@@ -384,7 +378,14 @@
 
 <!-- THE PINACLE LIFE GROUP LIFE & HEALTH -->
 <div class="category-container mb-5" data-category="Life & Health">
-    <h3 class="text-center mb-4 fw-bold">The Pinnacle Life Group - Life & Health</h3>
+    <div class="category-head">
+        <div class="category-head-copy">
+            <div class="category-kicker">Partner Stack</div>
+            <h3 class="fw-bold category-toggle">The Pinnacle Life Group</h3>
+            <p class="category-copy">Dedicated life and health carrier access tailored to the Pinnacle workflow and partner stack.</p>
+        </div>
+        <div class="category-count-pill">@pinnacleLifeHealthTools.Length tools</div>
+    </div>
     <div class="centered-tools">
         @{
             var pinnacleLifeHealthTools = new[]
@@ -404,7 +405,7 @@
 
         @foreach (var tool in pinnacleLifeHealthTools)
         {
-            <a href="@tool.Url" target="_blank" class="dashboard-tool" data-name="@tool.Name">
+            <a href="@tool.Url" target="_blank" rel="noopener noreferrer" class="dashboard-tool" data-name="@tool.Name">
                 <img src="@Url.Content($"~/images/company-icons/{tool.Icon}")" alt="@tool.Name" />
                 <div class="fw-bold text-center mt-1 tool-name">@tool.Name</div>
                 <div class="tool-desc">@tool.Desc</div>
@@ -416,7 +417,14 @@
 
 <!-- DISABILITY INSURANCE -->
 <div class="category-container mb-5" data-category="Disability Insurance">
-    <h3 class="text-center mb-4 fw-bold">Disability Insurance</h3>
+    <div class="category-head">
+        <div class="category-head-copy">
+            <div class="category-kicker">Focused Access</div>
+            <h3 class="fw-bold category-toggle">Disability Insurance</h3>
+            <p class="category-copy">A tighter set of DI carriers for faster movement when disability coverage is the primary need.</p>
+        </div>
+        <div class="category-count-pill">@disabilityTools.Length tools</div>
+    </div>
     <div class="centered-tools">
         @{
             var disabilityTools = new[]
@@ -429,7 +437,7 @@
 
         @foreach (var tool in disabilityTools)
         {
-            <a href="@tool.Url" target="_blank" class="dashboard-tool" data-name="@tool.Name">
+            <a href="@tool.Url" target="_blank" rel="noopener noreferrer" class="dashboard-tool" data-name="@tool.Name">
                 <img src="@Url.Content($"~/images/company-icons/{tool.Icon}")" alt="@tool.Name" />
                 <div class="fw-bold text-center mt-1 tool-name">@tool.Name</div>
                 <div class="tool-desc">@tool.Desc</div>
@@ -441,7 +449,14 @@
 
 <!-- PERSONAL LINES -->
 <div class="category-container mb-5" data-category="Personal Lines">
-    <h3 class="text-center mb-4 fw-bold">Personal Lines</h3>
+    <div class="category-head">
+        <div class="category-head-copy">
+            <div class="category-kicker">Coverage Access</div>
+            <h3 class="fw-bold category-toggle">Personal Lines</h3>
+            <p class="category-copy">Auto, home, renters, landlord, and specialty tools grouped into one cleaner launch surface.</p>
+        </div>
+        <div class="category-count-pill">@personalLinesTools.Length tools</div>
+    </div>
     <div class="centered-tools">
         @{
             var personalLinesTools = new[]
@@ -465,7 +480,7 @@
 
         @foreach (var tool in personalLinesTools)
         {
-            <a href="@tool.Url" target="_blank" class="dashboard-tool" data-name="@tool.Name">
+            <a href="@tool.Url" target="_blank" rel="noopener noreferrer" class="dashboard-tool" data-name="@tool.Name">
                 <img src="@Url.Content($"~/images/company-icons/{tool.Icon}")" alt="@tool.Name" />
                 <div class="fw-bold text-center mt-1 tool-name">@tool.Name</div>
                 <div class="tool-desc">@tool.Desc</div>
@@ -477,7 +492,14 @@
 
 <!-- COMMERCIAL LINES -->
 <div class="category-container mb-5" data-category="Commercial Lines">
-    <h3 class="text-center mb-4 fw-bold">Commercial Lines</h3>
+    <div class="category-head">
+        <div class="category-head-copy">
+            <div class="category-kicker">Business Coverage</div>
+            <h3 class="fw-bold category-toggle">Commercial Lines</h3>
+            <p class="category-copy">Business, property, E&amp;S, and specialty commercial portals organized for cleaner quoting access.</p>
+        </div>
+        <div class="category-count-pill">@commercialTools.Length tools</div>
+    </div>
     <div class="centered-tools">
         @{
             var commercialTools = new[]
@@ -498,7 +520,7 @@
 
         @foreach (var tool in commercialTools)
         {
-            <a href="@tool.Url" target="_blank" class="dashboard-tool" data-name="@tool.Name">
+            <a href="@tool.Url" target="_blank" rel="noopener noreferrer" class="dashboard-tool" data-name="@tool.Name">
                 <img src="@Url.Content($"~/images/company-icons/{tool.Icon}")" alt="@tool.Name" />
                 <div class="fw-bold text-center mt-1 tool-name">@tool.Name</div>
                 <div class="tool-desc">@tool.Desc</div>
