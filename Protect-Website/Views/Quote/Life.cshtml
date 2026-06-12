@@ -9380,15 +9380,29 @@ body.life-landing .lq-hero-shell,
     body.life-landing .lq-hero-shell,
     .lq-hero-shell {
         width: 100% !important;
-        max-width: 100% !important;
+        max-width: 980px !important;
+        margin: 10px auto 16px !important;
         padding: 14px 16px 18px !important;
+    }
+
+    body.life-landing .lq-hero-shell:has(#lifeEducationContactPanel.is-submitted),
+    body.life-landing .lq-hero-shell:has(#lifeEducationContactPanel.lq-final-panel-no-chrome),
+    body.life-landing .lq-hero-shell:has(#lifePostSubmitSlot:not([hidden])) {
+        max-width: 1320px !important;
     }
 
     #lifeEducationContactPanel {
         width: 100% !important;
+        max-width: 980px !important;
+        margin: 0 auto !important;
+        padding: 18px 20px 20px !important;
+    }
+
+    #lifeEducationContactPanel.is-submitted,
+    #lifeEducationContactPanel.lq-final-panel-no-chrome,
+    #lifeEducationContactPanel.lq-final-review-flat-mode {
         max-width: 100% !important;
-        margin: 0 !important;
-        padding: 20px 24px 22px !important;
+        padding: 0 !important;
     }
 
     #lifeEducationContactPanel .lq-contact-first-form-surface,
