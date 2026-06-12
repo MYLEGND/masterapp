@@ -43,7 +43,7 @@
         if (message) setStatus(message);
     }
 
-    function renderSlots(freeSlots, durationMinutes) {
+    function renderSlots(freeSlots, durationMinutes, slotIntervalMinutes) {
         const container = $("qvBookSlots");
         if (!container) return;
 
@@ -62,7 +62,7 @@
             let cursor = new Date(start);
             while (cursor.getTime() + durationMinutes * 60000 <= end.getTime()) {
                 generated.push(new Date(cursor));
-                cursor = new Date(cursor.getTime() + 15 * 60000);
+                cursor = new Date(cursor.getTime() + (slotIntervalMinutes || 30) * 60000);
             }
         }
 
@@ -116,7 +116,8 @@
 
             const data = await res.json();
             const freeSlots = Array.isArray(data.freeSlots) ? data.freeSlots : [];
-            renderSlots(freeSlots, duration);
+            const slotInterval = parseInt(data.slotIntervalMinutes || "30", 10) || 30;
+            renderSlots(freeSlots, duration, slotInterval);
         } catch (err) {
             console.error(err);
             clearSlots("Could not load slots");

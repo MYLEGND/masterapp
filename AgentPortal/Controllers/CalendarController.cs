@@ -469,6 +469,19 @@ public class CalendarController : Controller
                 .Distinct(StringComparer.OrdinalIgnoreCase)
                 .ToList();
 
+            var visibleServices = (services?.Value ?? new List<BookingService>())
+                .Where(x => x.IsHiddenFromCustomers != true)
+                .ToList();
+
+            var slotIntervalMinutes = visibleServices
+                .Select(x => x.SchedulingPolicy?.TimeSlotInterval)
+                .Where(x => x.HasValue && x.Value.TotalMinutes > 0)
+                .Select(x => (int)Math.Round(x!.Value.TotalMinutes))
+                .FirstOrDefault();
+
+            if (slotIntervalMinutes <= 0)
+                slotIntervalMinutes = 30;
+
             if (serviceStaffIds.Count == 0)
             {
                 var staff = await _appGraph.Solutions.BookingBusinesses[bookingBusinessId]
@@ -562,6 +575,7 @@ public class CalendarController : Controller
                 date = localDate.ToString("yyyy-MM-dd"),
                 source = "microsoft_bookings",
                 businessId = bookingBusinessId,
+                slotIntervalMinutes,
                 items = Array.Empty<object>(),
                 workHours = new
                 {
