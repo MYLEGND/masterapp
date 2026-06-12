@@ -798,6 +798,10 @@
             ("A stronger next step", "Review the result first, then continue into a personalized review if the direction is worth exploring.")
         };
     }
+    var resolvedAgentTrustMessage = !string.IsNullOrWhiteSpace(agentTrustProfile?.ShortBio)
+        ? agentTrustProfile!.ShortBio!.Trim()
+        : agentTrustBio;
+    contactFirstProofText = resolvedAgentTrustMessage;
     var productLanguageKey =
         normalizedOfferKey.Contains("term", StringComparison.OrdinalIgnoreCase) || requestPath.Contains("term", StringComparison.OrdinalIgnoreCase) || pageKey.Contains("term", StringComparison.OrdinalIgnoreCase) ? "term" :
         normalizedOfferKey.Contains("whole", StringComparison.OrdinalIgnoreCase) || requestPath.Contains("whole", StringComparison.OrdinalIgnoreCase) || pageKey.Contains("whole", StringComparison.OrdinalIgnoreCase) ? "wholelife" :
@@ -8076,6 +8080,29 @@ input:checked + .lq-answer-card {
 
                             <div class="lq-step-panel lq-contact-first-wizard-panel" id="lifeProcessingPanel" data-funnel-step="1.5" hidden>
                                 <div class="lq-step-panel-pad">
+                                    <div class="lq-agent-handoff" role="note" aria-label="Licensed guidance from @contactFirstTrustLabelName">
+                                        <div class="lq-contact-capture-kicker">Licensed review with @contactFirstTrustLabelName</div>
+                                        <div class="lq-agent-handoff-head">
+                                            <div class="lq-agent-identity">
+                                                <div class="lq-agent-avatar" aria-hidden="true">
+                                                    @if (!string.IsNullOrWhiteSpace(contactFirstTrustImageUrl))
+                                                    {
+                                                        <img src="@contactFirstTrustImageUrl" alt="" loading="lazy" onerror="this.style.display='none'; this.nextElementSibling.hidden=false;" />
+                                                    }
+                                                    <span class="lq-agent-avatar-fallback" @(!string.IsNullOrWhiteSpace(contactFirstTrustImageUrl) ? "hidden" : null)>@contactFirstTrustInitials</span>
+                                                </div>
+                                            </div>
+                                            <div>
+                                                <div class="lq-agent-name">@contactFirstTrustIntroLine</div>
+                                                <div class="lq-agent-display-name">@agentTrustHeadline</div>
+                                                <div class="lq-agent-bio">@resolvedAgentTrustMessage</div>
+                                                @if (!string.IsNullOrWhiteSpace(agentTrustNpn))
+                                                {
+                                                    <div class="lq-agent-license">NPN @agentTrustNpn</div>
+                                                }
+                                            </div>
+                                        </div>
+                                    </div>
                                     <div class="lq-step-progress">One moment</div>
                                     <div class="lq-step-title" id="lifeProcessingHeading" tabindex="-1">@contactFirstProcessingHeading</div>
                                     <div class="lq-step-helper">@contactFirstProcessingHelper</div>
@@ -8099,6 +8126,29 @@ input:checked + .lq-answer-card {
                                     <div id="lifeContactCaptureWrap">
                                         <div class="lq-contact-grid">
                                         <div class="full lq-contact-capture-head">
+                                            <div class="lq-agent-handoff" role="note" aria-label="Licensed guidance from @contactFirstTrustLabelName">
+                                                <div class="lq-contact-capture-kicker">Your licensed review</div>
+                                                <div class="lq-agent-handoff-head">
+                                                    <div class="lq-agent-identity">
+                                                        <div class="lq-agent-avatar" aria-hidden="true">
+                                                            @if (!string.IsNullOrWhiteSpace(contactFirstTrustImageUrl))
+                                                            {
+                                                                <img src="@contactFirstTrustImageUrl" alt="" loading="lazy" onerror="this.style.display='none'; this.nextElementSibling.hidden=false;" />
+                                                            }
+                                                            <span class="lq-agent-avatar-fallback" @(!string.IsNullOrWhiteSpace(contactFirstTrustImageUrl) ? "hidden" : null)>@contactFirstTrustInitials</span>
+                                                        </div>
+                                                    </div>
+                                                    <div>
+                                                        <div class="lq-agent-name">@contactFirstTrustIntroLine</div>
+                                                        <div class="lq-agent-display-name">@agentTrustHeadline</div>
+                                                        <div class="lq-agent-bio">@resolvedAgentTrustMessage</div>
+                                                        @if (!string.IsNullOrWhiteSpace(agentTrustNpn))
+                                                        {
+                                                            <div class="lq-agent-license">NPN @agentTrustNpn</div>
+                                                        }
+                                                    </div>
+                                                </div>
+                                            </div>
                                             <div class="lq-contact-capture-kicker">@stepTwoContactKickerText</div>
                                             <div class="lq-contact-capture-title" id="lifeStep2ContactTitle">@stepTwoContactTitleText</div>
                                             <div class="lq-contact-capture-copy" id="lifeStep2ContactCopy">@stepTwoContactCopyText</div>
@@ -8537,6 +8587,29 @@ input:checked + .lq-answer-card {
 
         <div class="lq-step-panel" id="lifeProcessingPanel" data-funnel-step="1.5" hidden>
             <div class="lq-step-panel-pad">
+                <div class="lq-agent-handoff" role="note" aria-label="Licensed guidance from @contactFirstTrustLabelName">
+                    <div class="lq-contact-capture-kicker">Licensed review with @contactFirstTrustLabelName</div>
+                    <div class="lq-agent-handoff-head">
+                        <div class="lq-agent-identity">
+                            <div class="lq-agent-avatar" aria-hidden="true">
+                                @if (!string.IsNullOrWhiteSpace(contactFirstTrustImageUrl))
+                                {
+                                    <img src="@contactFirstTrustImageUrl" alt="" loading="lazy" onerror="this.style.display='none'; this.nextElementSibling.hidden=false;" />
+                                }
+                                <span class="lq-agent-avatar-fallback" @(!string.IsNullOrWhiteSpace(contactFirstTrustImageUrl) ? "hidden" : null)>@contactFirstTrustInitials</span>
+                            </div>
+                        </div>
+                        <div>
+                            <div class="lq-agent-name">@contactFirstTrustIntroLine</div>
+                            <div class="lq-agent-display-name">@agentTrustHeadline</div>
+                            <div class="lq-agent-bio">@resolvedAgentTrustMessage</div>
+                            @if (!string.IsNullOrWhiteSpace(agentTrustNpn))
+                            {
+                                <div class="lq-agent-license">NPN @agentTrustNpn</div>
+                            }
+                        </div>
+                    </div>
+                </div>
                 <div class="lq-step-progress">One moment</div>
                 <div class="lq-step-title" id="lifeProcessingHeading" tabindex="-1">@contactFirstProcessingHeading</div>
                 <div class="lq-step-helper">@contactFirstProcessingHelper</div>
@@ -8560,6 +8633,29 @@ input:checked + .lq-answer-card {
                 <div id="lifeContactCaptureWrap">
                     <div class="lq-contact-grid">
                         <div class="full lq-contact-capture-head">
+                            <div class="lq-agent-handoff" role="note" aria-label="Licensed guidance from @contactFirstTrustLabelName">
+                                <div class="lq-contact-capture-kicker">Your licensed review</div>
+                                <div class="lq-agent-handoff-head">
+                                    <div class="lq-agent-identity">
+                                        <div class="lq-agent-avatar" aria-hidden="true">
+                                            @if (!string.IsNullOrWhiteSpace(contactFirstTrustImageUrl))
+                                            {
+                                                <img src="@contactFirstTrustImageUrl" alt="" loading="lazy" onerror="this.style.display='none'; this.nextElementSibling.hidden=false;" />
+                                            }
+                                            <span class="lq-agent-avatar-fallback" @(!string.IsNullOrWhiteSpace(contactFirstTrustImageUrl) ? "hidden" : null)>@contactFirstTrustInitials</span>
+                                        </div>
+                                    </div>
+                                    <div>
+                                        <div class="lq-agent-name">@contactFirstTrustIntroLine</div>
+                                        <div class="lq-agent-display-name">@agentTrustHeadline</div>
+                                        <div class="lq-agent-bio">@resolvedAgentTrustMessage</div>
+                                        @if (!string.IsNullOrWhiteSpace(agentTrustNpn))
+                                        {
+                                            <div class="lq-agent-license">NPN @agentTrustNpn</div>
+                                        }
+                                    </div>
+                                </div>
+                            </div>
                             <div class="lq-contact-capture-kicker">@stepTwoContactKickerText</div>
                             <div class="lq-contact-capture-title" id="lifeStep2ContactTitle">@stepTwoContactTitleText</div>
                             <div class="lq-contact-capture-copy" id="lifeStep2ContactCopy">@stepTwoContactCopyText</div>
@@ -9582,8 +9678,24 @@ body.life-landing .lq-hero-shell,
     background: transparent !important;
     border: 0 !important;
     box-shadow: none !important;
-    padding: 24px !important;
-    margin: 0 !important;
+    display: grid !important;
+    gap: 14px !important;
+    justify-items: center !important;
+    max-width: 680px !important;
+    padding: 26px 24px 28px !important;
+    margin: 0 auto !important;
+    text-align: center !important;
+}
+
+#lifeProcessingPanel .lq-agent-handoff {
+    width: min(100%, 620px) !important;
+    margin: 0 0 2px !important;
+    text-align: left !important;
+}
+
+#lifeProcessingPanel .lq-agent-handoff-head {
+    align-items: center !important;
+    text-align: left !important;
 }
 
 #lifeProcessingPanel .lq-step-progress,
@@ -9591,12 +9703,60 @@ body.life-landing .lq-hero-shell,
     color: #f3d688 !important;
 }
 
+#lifeProcessingPanel .lq-step-progress {
+    margin: 0 auto !important;
+}
+
 #lifeProcessingPanel .lq-step-title {
     color: #fff8e7 !important;
+    font-size: 1.34rem !important;
+    line-height: 1.1 !important;
+    max-width: 20ch !important;
+    margin: 0 auto !important;
+    text-align: center !important;
 }
 
 #lifeProcessingPanel .lq-step-helper {
     color: rgba(248,250,252,.84) !important;
+    max-width: 54ch !important;
+    margin: 0 auto !important;
+    text-align: center !important;
+}
+
+#lifeProcessingPanel .lq-processing-bridge {
+    width: min(100%, 540px) !important;
+    display: grid !important;
+    gap: 10px !important;
+    margin: 0 auto !important;
+}
+
+#lifeProcessingPanel .lq-processing-track {
+    width: 100% !important;
+}
+
+#lifeProcessingPanel .lq-processing-note {
+    text-align: center !important;
+    font-size: .84rem !important;
+    letter-spacing: .02em !important;
+}
+
+.lq-contact-capture-head .lq-agent-handoff {
+    width: min(100%, 680px);
+    margin: 0 auto 10px;
+    text-align: left;
+}
+
+.lq-contact-capture-head .lq-agent-handoff .lq-contact-capture-kicker {
+    margin-bottom: 4px;
+}
+
+body.life-landing .lq-contact-capture-head .lq-agent-handoff {
+    width: 100% !important;
+    margin: 0 0 10px !important;
+}
+
+body.life-landing .lq-contact-capture-head .lq-agent-handoff-head {
+    align-items: flex-start !important;
 }
 </style>
 
