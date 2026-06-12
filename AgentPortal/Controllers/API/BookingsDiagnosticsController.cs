@@ -33,4 +33,21 @@ public sealed class BookingsDiagnosticsController : ControllerBase
             }).ToList()
         });
     }
+    [HttpGet("businesses/{businessId}/services")]
+    public async Task<IActionResult> Services(string businessId, CancellationToken cancellationToken)
+    {
+        var result = await _graph.Solutions.BookingBusinesses[businessId].Services.GetAsync(cancellationToken: cancellationToken);
+
+        return Ok(new
+        {
+            value = result?.Value?.Select(x => new
+            {
+                x.Id,
+                x.DisplayName,
+                x.DefaultDuration,
+                x.IsHiddenFromCustomers
+            }).ToList()
+        });
+    }
+
 }
