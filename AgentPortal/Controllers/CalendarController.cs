@@ -15,6 +15,7 @@ using System.Net.Http.Headers;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Graph;
 using Microsoft.Graph.Models;
+using Microsoft.Graph.Solutions.BookingBusinesses.Item.GetStaffAvailability;
 using Microsoft.Data.Sqlite;
 using System.Globalization;
 using System.Text;
@@ -431,183 +432,157 @@ public class CalendarController : Controller
 
         try
         {
-            var accessToken = await _tokenAcquisition.GetAccessTokenForUserAsync(CalendarScopes);
+            var agentOid = GetAgentOidOrThrow();
+            var agentProfile = await _db.AgentProfiles.AsNoTracking()
+                .FirstOrDefaultAsync(x => (x.AgentUserId ?? "").Trim().ToLower() == agentOid.Trim().ToLower());
 
-            using var httpClient = _httpClientFactory.CreateClient("ResilientDefault");
-            httpClient.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", accessToken);
-            httpClient.DefaultRequestHeaders.Add("Accept", "application/json");
-
-            var dayStart = new DateTimeOffset(localDate.Date, TimeZoneInfo.Local.GetUtcOffset(localDate.Date));
-            var dayEnd = dayStart.AddDays(1);
-            var url =
-                "https://graph.microsoft.com/v1.0/me/calendar/calendarView" +
-                $"?startDateTime={Uri.EscapeDataString(dayStart.ToString("o", CultureInfo.InvariantCulture))}" +
-                $"&endDateTime={Uri.EscapeDataString(dayEnd.ToString("o", CultureInfo.InvariantCulture))}" +
-                "&$select=id,subject,start,end,showAs,isAllDay&$orderby=start/dateTime";
-
-            using var response = await httpClient.GetAsync(url);
-            var responseText = await response.Content.ReadAsStringAsync();
-
-            if (!response.IsSuccessStatusCode)
+            if (agentProfile == null)
             {
-                _logger.LogError("Graph day availability failed. Status={StatusCode}. Body={Body}", (int)response.StatusCode, responseText);
-                return StatusCode((int)response.StatusCode, ExtractGraphErrorMessage(responseText) ?? "Calendar availability failed.");
+                var currentUpn = User.FindFirstValue("preferred_username") ?? User.FindFirstValue(ClaimTypes.Upn) ?? User.Identity?.Name ?? "";
+                agentProfile = await _db.AgentProfiles.AsNoTracking()
+                    .FirstOrDefaultAsync(x => !string.IsNullOrWhiteSpace(currentUpn) &&
+                                              ((x.AgentUpn ?? "").Trim().ToLower() == currentUpn.Trim().ToLower() ||
+                                               (x.NormalizedEmail ?? "").Trim().ToLower() == currentUpn.Trim().ToLower()));
             }
 
-            var parsed = JsonSerializer.Deserialize<CalendarViewResponse>(responseText, new JsonSerializerOptions
+            var bookingBusinessId = (agentProfile?.BookingPageIdOrMailbox ?? "").Trim().TrimEnd('/');
+            if (string.IsNullOrWhiteSpace(bookingBusinessId))
             {
-                PropertyNameCaseInsensitive = true
-            });
-
-            MailboxSettingsResponse? mailbox = null;
-            try
-            {
-                var mailboxToken = await _tokenAcquisition.GetAccessTokenForUserAsync(CalendarAvailabilityScopes);
-                using var mailboxClient = _httpClientFactory.CreateClient("ResilientDefault");
-                mailboxClient.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", mailboxToken);
-                mailboxClient.DefaultRequestHeaders.Add("Accept", "application/json");
-                using var mailboxResponse = await mailboxClient.GetAsync("https://graph.microsoft.com/v1.0/me/mailboxSettings?$select=timeZone,workingHours");
-                var mailboxText = await mailboxResponse.Content.ReadAsStringAsync();
-
-                if (mailboxResponse.IsSuccessStatusCode)
+                return Ok(new
                 {
-                    mailbox = JsonSerializer.Deserialize<MailboxSettingsResponse>(mailboxText, new JsonSerializerOptions
-                    {
-                        PropertyNameCaseInsensitive = true
-                    });
-                }
-                else
-                {
-                    _logger.LogWarning("Graph mailbox settings unavailable. Status={StatusCode}. Body={Body}", (int)mailboxResponse.StatusCode, mailboxText);
-                }
-            }
-            catch (Exception ex)
-            {
-                _logger.LogInformation(ex, "MailboxSettings.Read unavailable. Falling back to default work hours.");
+                    connected = false,
+                    date = localDate.ToString("yyyy-MM-dd"),
+                    items = Array.Empty<object>(),
+                    freeSlots = Array.Empty<object>(),
+                    message = "Agent booking configuration missing."
+                });
             }
 
-            var busyStates = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+            var services = await _appGraph.Solutions.BookingBusinesses[bookingBusinessId]
+                .Services
+                .GetAsync(cancellationToken: HttpContext.RequestAborted);
+
+            var serviceStaffIds = (services?.Value ?? new List<BookingService>())
+                .Where(x => x.IsHiddenFromCustomers != true)
+                .SelectMany(x => x.StaffMemberIds ?? new List<string>())
+                .Where(x => !string.IsNullOrWhiteSpace(x))
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToList();
+
+            if (serviceStaffIds.Count == 0)
             {
-                "busy",
-                "tentative",
-                "oof",
-                "workingElsewhere"
+                var staff = await _appGraph.Solutions.BookingBusinesses[bookingBusinessId]
+                    .StaffMembers
+                    .GetAsync(cancellationToken: HttpContext.RequestAborted);
+
+                serviceStaffIds = (staff?.Value ?? new List<BookingStaffMemberBase>())
+                    .Select(x => x.Id)
+                    .Where(x => !string.IsNullOrWhiteSpace(x))
+                    .Distinct(StringComparer.OrdinalIgnoreCase)
+                    .ToList()!;
+            }
+
+            if (serviceStaffIds.Count == 0)
+            {
+                return Ok(new
+                {
+                    connected = false,
+                    date = localDate.ToString("yyyy-MM-dd"),
+                    items = Array.Empty<object>(),
+                    freeSlots = Array.Empty<object>(),
+                    message = "No Bookings staff configured."
+                });
+            }
+
+            var agentTimeZone = _agentTimeZoneResolver.Resolve(HttpContext);
+            var localStart = localDate.Date;
+            var localEnd = localStart.AddDays(1);
+            var utcStart = TimeZoneInfo.ConvertTimeToUtc(DateTime.SpecifyKind(localStart, DateTimeKind.Unspecified), agentTimeZone);
+            var utcEnd = TimeZoneInfo.ConvertTimeToUtc(DateTime.SpecifyKind(localEnd, DateTimeKind.Unspecified), agentTimeZone);
+
+            var request = new GetStaffAvailabilityPostRequestBody
+            {
+                StaffIds = serviceStaffIds,
+                StartDateTime = new DateTimeTimeZone
+                {
+                    DateTime = utcStart.ToString("yyyy-MM-dd'T'HH:mm:ss", CultureInfo.InvariantCulture),
+                    TimeZone = "UTC"
+                },
+                EndDateTime = new DateTimeTimeZone
+                {
+                    DateTime = utcEnd.ToString("yyyy-MM-dd'T'HH:mm:ss", CultureInfo.InvariantCulture),
+                    TimeZone = "UTC"
+                }
             };
 
-            var items = (parsed?.Value ?? new List<CalendarViewEvent>())
-                .Where(x => x.IsAllDay || busyStates.Contains(x.ShowAs ?? ""))
+            var availability = await _appGraph.Solutions.BookingBusinesses[bookingBusinessId]
+                .GetStaffAvailability
+                .PostAsGetStaffAvailabilityPostResponseAsync(request, cancellationToken: HttpContext.RequestAborted);
+
+            static DateTime ParseAvailabilityLocal(DateTimeTimeZone? value, TimeZoneInfo tz)
+            {
+                if (value == null || string.IsNullOrWhiteSpace(value.DateTime))
+                    return DateTime.MinValue;
+
+                var parsed = DateTime.Parse(value.DateTime, CultureInfo.InvariantCulture, DateTimeStyles.AssumeUniversal);
+                if (string.Equals(value.TimeZone, "UTC", StringComparison.OrdinalIgnoreCase))
+                    return TimeZoneInfo.ConvertTimeFromUtc(DateTime.SpecifyKind(parsed, DateTimeKind.Utc), tz);
+
+                return parsed;
+            }
+
+            var availabilityItems = (availability?.Value ?? new List<StaffAvailabilityItem>())
+                .SelectMany(staff => staff.AvailabilityItems ?? new List<AvailabilityItem>())
+                .Where(x => x.Status == BookingsAvailabilityStatus.Available)
                 .Select(x =>
                 {
-                    var start = ParseGraphDateTime(x.Start);
-                    var end = ParseGraphDateTime(x.End);
-
-                    return new
-                    {
-                        id = x.Id ?? "",
-                        subject = string.IsNullOrWhiteSpace(x.Subject) ? "Busy" : x.Subject.Trim(),
-                        showAs = string.IsNullOrWhiteSpace(x.ShowAs) ? "busy" : x.ShowAs!.Trim().ToLowerInvariant(),
-                        isAllDay = x.IsAllDay,
-                        startIso = start == DateTimeOffset.MinValue ? "" : start.ToString("o", CultureInfo.InvariantCulture),
-                        endIso = end == DateTimeOffset.MinValue ? "" : end.ToString("o", CultureInfo.InvariantCulture),
-                        startLabel = x.IsAllDay
-                            ? "All day"
-                            : (start == DateTimeOffset.MinValue ? "" : start.ToString("h:mm tt", CultureInfo.InvariantCulture)),
-                        endLabel = x.IsAllDay
-                            ? "All day"
-                            : (end == DateTimeOffset.MinValue ? "" : end.ToString("h:mm tt", CultureInfo.InvariantCulture))
-                    };
+                    var start = ParseAvailabilityLocal(x.StartDateTime, agentTimeZone);
+                    var end = ParseAvailabilityLocal(x.EndDateTime, agentTimeZone);
+                    return new { Start = start, End = end, ServiceId = x.ServiceId ?? "" };
                 })
-                .OrderBy(x => x.isAllDay ? 0 : 1)
-                .ThenBy(x => x.startIso)
+                .Where(x => x.Start != DateTime.MinValue && x.End != DateTime.MinValue && x.End > x.Start)
+                .OrderBy(x => x.Start)
                 .ToList();
 
-            var workingHours = mailbox?.WorkingHours;
-            var isWorkingDay = IsWorkingDay(localDate, workingHours);
-            var workStartTime = ParseWorkingTime(workingHours?.StartTime, DefaultWorkdayStart);
-            var workEndTime = ParseWorkingTime(workingHours?.EndTime, DefaultWorkdayEnd);
-            var workStart = localDate.Date.Add(workStartTime);
-            var workEnd = localDate.Date.Add(workEndTime);
-
-            if (workEnd <= workStart)
-                workEnd = workStart.AddHours(8);
-
-            var busyRanges = items
+            var freeSlots = availabilityItems
                 .Select(x => new
                 {
-                    IsAllDay = x.isAllDay,
-                    Start = DateTimeOffset.TryParse(x.startIso, CultureInfo.InvariantCulture, DateTimeStyles.AssumeUniversal, out var start)
-                        ? start.LocalDateTime
-                        : DateTime.MinValue,
-                    End = DateTimeOffset.TryParse(x.endIso, CultureInfo.InvariantCulture, DateTimeStyles.AssumeUniversal, out var end)
-                        ? end.LocalDateTime
-                        : DateTime.MinValue
+                    startIso = new DateTimeOffset(x.Start, agentTimeZone.GetUtcOffset(x.Start)).ToString("o", CultureInfo.InvariantCulture),
+                    endIso = new DateTimeOffset(x.End, agentTimeZone.GetUtcOffset(x.End)).ToString("o", CultureInfo.InvariantCulture),
+                    startTimeValue = x.Start.ToString("HH:mm", CultureInfo.InvariantCulture),
+                    startLabel = x.Start.ToString("h:mm tt", CultureInfo.InvariantCulture),
+                    endLabel = x.End.ToString("h:mm tt", CultureInfo.InvariantCulture),
+                    serviceId = x.ServiceId
                 })
-                .OrderBy(x => x.IsAllDay ? DateTime.MinValue : x.Start)
                 .ToList();
-
-            var freeSlots = new List<object>();
-
-            if (isWorkingDay && !busyRanges.Any(x => x.IsAllDay))
-            {
-                var cursor = workStart;
-                foreach (var busy in busyRanges.Where(x => !x.IsAllDay && x.End > workStart && x.Start < workEnd))
-                {
-                    var busyStart = busy.Start < workStart ? workStart : busy.Start;
-                    var busyEnd = busy.End > workEnd ? workEnd : busy.End;
-
-                if (busyStart > cursor)
-                {
-                    freeSlots.Add(new
-                    {
-                        startIso = new DateTimeOffset(cursor, TimeZoneInfo.Local.GetUtcOffset(cursor)).ToString("o", CultureInfo.InvariantCulture),
-                        endIso = new DateTimeOffset(busyStart, TimeZoneInfo.Local.GetUtcOffset(busyStart)).ToString("o", CultureInfo.InvariantCulture),
-                        startTimeValue = cursor.ToString("HH:mm", CultureInfo.InvariantCulture),
-                        startLabel = cursor.ToString("h:mm tt", CultureInfo.InvariantCulture),
-                        endLabel = busyStart.ToString("h:mm tt", CultureInfo.InvariantCulture)
-                    });
-                }
-
-                    if (busyEnd > cursor)
-                        cursor = busyEnd;
-                }
-
-                if (cursor < workEnd)
-                {
-                    freeSlots.Add(new
-                    {
-                        startIso = new DateTimeOffset(cursor, TimeZoneInfo.Local.GetUtcOffset(cursor)).ToString("o", CultureInfo.InvariantCulture),
-                        endIso = new DateTimeOffset(workEnd, TimeZoneInfo.Local.GetUtcOffset(workEnd)).ToString("o", CultureInfo.InvariantCulture),
-                        startTimeValue = cursor.ToString("HH:mm", CultureInfo.InvariantCulture),
-                        startLabel = cursor.ToString("h:mm tt", CultureInfo.InvariantCulture),
-                        endLabel = workEnd.ToString("h:mm tt", CultureInfo.InvariantCulture)
-                    });
-                }
-            }
 
             return Ok(new
             {
                 connected = true,
                 date = localDate.ToString("yyyy-MM-dd"),
-                items,
+                source = "microsoft_bookings",
+                businessId = bookingBusinessId,
+                items = Array.Empty<object>(),
                 workHours = new
                 {
-                    enabled = isWorkingDay,
-                    source = mailbox?.WorkingHours != null ? "outlook" : "default",
-                    startLabel = workStart.ToString("h:mm tt", CultureInfo.InvariantCulture),
-                    endLabel = workEnd.ToString("h:mm tt", CultureInfo.InvariantCulture)
+                    enabled = freeSlots.Count > 0,
+                    source = "microsoft_bookings",
+                    startLabel = freeSlots.FirstOrDefault()?.startLabel ?? "",
+                    endLabel = freeSlots.LastOrDefault()?.endLabel ?? ""
                 },
                 freeSlots
             });
         }
         catch (Exception ex)
         {
-            _logger.LogWarning(ex, "Calendar day availability failed.");
+            _logger.LogWarning(ex, "Bookings day availability failed.");
             return Ok(new
             {
                 connected = false,
                 date = localDate.ToString("yyyy-MM-dd"),
                 items = Array.Empty<object>(),
-                freeSlots = Array.Empty<object>()
+                freeSlots = Array.Empty<object>(),
+                message = ex.Message
             });
         }
     }
