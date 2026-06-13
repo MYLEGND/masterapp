@@ -3674,7 +3674,7 @@ body.legend-bootstrap-modal-open .modal-backdrop.legend-managed-backdrop{
 .lead-prod-badge .prod-line + .prod-line,
 .lead-prod-card .prod-line + .prod-line{margin-top:2px;}
 .lead-prod-badge .prod-lbl,
-.lead-prod-card .prod-lbl{font-weight:900;color:var(--gold2);}
+.lead-prod-card .prod-lbl{font-weight:900;color:var(--gold);}
 .lead-prod-badge .prod-val,
 .lead-prod-card .prod-val{font-weight:900;color:#0f172a;}
 .lead-prod-badge .prod-line-paid .prod-val,
