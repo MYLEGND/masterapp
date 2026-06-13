@@ -3682,7 +3682,7 @@ body.legend-bootstrap-modal-open .modal-backdrop.legend-managed-backdrop{
 .lead-prod-badge .prod-line-issued .prod-val,
 .lead-prod-card .prod-line-issued .prod-val{color:#2563eb;}    /* blue */
 .lead-prod-badge .prod-line-submitted .prod-val,
-.lead-prod-card .prod-line-submitted .prod-val{color:#6b7280;} /* gray */
+.lead-prod-card .prod-line-submitted .prod-val{color:#374151;} /* readable gray */
 .lead-prod-badge.hidden{display:none;}
 
     .meta-chip{
