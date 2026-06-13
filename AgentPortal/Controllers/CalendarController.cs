@@ -510,6 +510,8 @@ public class CalendarController : Controller
             var agentTimeZone = _agentTimeZoneResolver.Resolve(HttpContext);
             var localStart = localDate.Date;
             var localEnd = localStart.AddDays(1);
+            var utcStart = TimeZoneInfo.ConvertTimeToUtc(DateTime.SpecifyKind(localStart, DateTimeKind.Unspecified), agentTimeZone);
+            var utcEnd = TimeZoneInfo.ConvertTimeToUtc(DateTime.SpecifyKind(localEnd, DateTimeKind.Unspecified), agentTimeZone);
             var graphTimeZone = string.IsNullOrWhiteSpace(agentTimeZone.Id)
                 ? "UTC"
                 : agentTimeZone.Id;
