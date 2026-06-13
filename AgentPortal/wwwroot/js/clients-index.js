@@ -6926,30 +6926,6 @@ function openClientProductionModalEdit(id, clientId, amount, status, notes, name
   bootstrap.Modal.getOrCreateInstance(modalEl).show();
 }
 
-function addResetActionClient(list, clientUserId, displayName){
-  if (!list) return;
-  const reset = document.createElement("button");
-  reset.type = "button";
-  reset.className = "btn btn-red";
-  reset.textContent = "Reset Production";
-  reset.style.marginTop = "10px";
-  reset.addEventListener("click", async ()=>{
-    if (!confirm("Reset production for this client?")) return;
-    const token = getAntiForgeryToken();
-    await fetch("/production/reset/client", {
-      method:"POST",
-      headers:{
-        "Content-Type":"application/x-www-form-urlencoded",
-        "RequestVerificationToken": token,
-        "Accept":"application/json"
-      },
-      body:`clientUserId=${encodeURIComponent(clientUserId)}`
-    }).catch(()=>{});
-    loadClientProductionHistory(clientUserId, displayName);
-  });
-  list.appendChild(reset);
-}
-
 /* ========= Boot ========= */
 async function boot(){
   syncBarHeight();

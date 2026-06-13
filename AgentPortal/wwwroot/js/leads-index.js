@@ -4377,8 +4377,6 @@ async function openDrawerForRow(row){
 }
 
 // ===== Production (Lead) - inline, autosave =====
-const prodAmountInput = document.getElementById("prodAmount");
-const prodPersonalInput = document.getElementById("prodPersonal");
 async function loadProductionHistory(leadId){
   leadId = (leadId ?? "").toString().trim();
   if (!leadId || leadId.toLowerCase() === "null" || leadId.toLowerCase() === "undefined"){
@@ -4499,30 +4497,6 @@ if (qvAddProductionBtn){
     }
     openProductionModalAdd(leadId, dName?.textContent || "Lead");
   });
-}
-
-function addResetAction(list, leadId){
-  if (!list) return;
-  const reset = document.createElement("button");
-  reset.type = "button";
-  reset.className = "btn btn-red";
-  reset.textContent = "Reset Production";
-  reset.style.marginTop = "10px";
-  reset.addEventListener("click", async ()=>{
-    if (!confirm("Reset production for this lead?")) return;
-    const token = getAntiForgeryToken();
-    await fetch("/production/reset/lead", {
-      method:"POST",
-      headers:{
-        "Content-Type":"application/x-www-form-urlencoded",
-        "RequestVerificationToken": token,
-        "Accept":"application/json"
-      },
-      body:`leadId=${encodeURIComponent(leadId)}`
-    }).catch(()=>{});
-    loadProductionHistory(leadId);
-  });
-  list.appendChild(reset);
 }
 
 function openProductionModalAdd(leadId, name){
