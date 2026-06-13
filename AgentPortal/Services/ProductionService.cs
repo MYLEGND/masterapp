@@ -36,16 +36,14 @@ internal sealed record ResolvedProductionRow(
 internal sealed record ProductionContactSnapshot(
     ProductionStatus Status,
     decimal Amount,
+    decimal Submitted,
+    decimal Issued,
+    decimal Paid,
     decimal Personal,
-    DateTime UpdatedUtc)
-{
-    public decimal Submitted => Status == ProductionStatus.Submitted ? Amount : 0m;
-    public decimal Issued => Status == ProductionStatus.Issued ? Amount : 0m;
-    public decimal Paid => Status == ProductionStatus.Paid ? Amount : 0m;
-}
+    DateTime UpdatedUtc);
 
 /// <summary>
-/// Central production/read/write surface. Status buckets are mutually exclusive by current Status.
+/// Central production/read/write surface.
 /// </summary>
 public class ProductionService
 {
@@ -191,29 +189,6 @@ public class ProductionService
         }
     }
 
-    private static void Accumulate(ProductionContactSnapshot snapshot, ProductionTotals totals)
-    {
-        switch (snapshot.Status)
-        {
-            case ProductionStatus.Submitted:
-                totals.Submitted += snapshot.Amount;
-                totals.CountSubmitted += 1;
-                break;
-            case ProductionStatus.Issued:
-                totals.Issued += snapshot.Amount;
-                totals.CountIssued += 1;
-                break;
-            case ProductionStatus.Paid:
-                totals.Paid += snapshot.Amount;
-                totals.CountPaid += 1;
-                break;
-        }
-
-        totals.Personal += snapshot.Personal;
-        if (snapshot.Personal > 0)
-            totals.CountPersonal += 1;
-    }
-
     private static Dictionary<string, ProductionContactSnapshot> BuildCurrentContactSnapshots(
         IEnumerable<ProductionRecord> records,
         Func<ProductionRecord, string?> contactSelector)
@@ -230,16 +205,32 @@ public class ProductionService
                 g => g.Key,
                 g =>
                 {
-                    var latest = g.Select(x => x.Record)
+                    var contactRecords = g.Select(x => x.Record).ToList();
+
+                    var latest = contactRecords
                         .OrderByDescending(x => x.UpdatedUtc)
                         .ThenByDescending(x => x.CreatedUtc)
                         .ThenByDescending(x => x.Id)
                         .First();
 
+                    var submitted = contactRecords
+                        .Where(x => x.Status == ProductionStatus.Submitted)
+                        .Sum(x => x.Amount);
+                    var issued = contactRecords
+                        .Where(x => x.Status == ProductionStatus.Issued)
+                        .Sum(x => x.Amount);
+                    var paid = contactRecords
+                        .Where(x => x.Status == ProductionStatus.Paid)
+                        .Sum(x => x.Amount);
+                    var personal = contactRecords.Sum(x => x.PersonalAmount);
+
                     return new ProductionContactSnapshot(
                         latest.Status,
                         latest.Amount,
-                        latest.PersonalAmount,
+                        submitted,
+                        issued,
+                        paid,
+                        personal,
                         latest.UpdatedUtc);
                 },
                 StringComparer.OrdinalIgnoreCase);
@@ -331,13 +322,12 @@ public class ProductionService
             .ToListAsync(ct);
 
         var totals = new ProductionTotals();
-        var currentSnapshots = BuildCurrentContactSnapshots(rows, side == ProductionSide.Lead
-            ? static p => p.LeadId
-            : static p => p.ClientUserId);
-
-        foreach (var snapshot in currentSnapshots.Values)
+        foreach (var row in rows)
         {
-            Accumulate(snapshot, totals);
+            Accumulate(row.Status, row.Amount, totals);
+            totals.Personal += row.PersonalAmount;
+            if (row.PersonalAmount > 0)
+                totals.CountPersonal += 1;
         }
 
         return totals;

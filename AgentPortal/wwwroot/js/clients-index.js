@@ -6765,14 +6765,20 @@ async function loadClientProductionHistory(clientUserId, displayName, hydrate=tr
     if (!res.ok) throw new Error("load fail");
     const data = await res.json();
     const item = (data && data.length) ? data[0] : null;
-    const totals = item
-      ? resolveProductionTotals(item.status, item.amount, { paid: 0, issued: 0, submitted: 0 })
-      : { paid: 0, issued: 0, submitted: 0 };
+    const totals = (Array.isArray(data) ? data : []).reduce((acc, entry) => {
+      const bucket = productionBucket(entry?.status);
+      const amt = Number(entry?.amount || 0);
+      if (bucket === "paid") acc.paid += amt;
+      else if (bucket === "issued") acc.issued += amt;
+      else if (bucket === "submitted") acc.submitted += amt;
+      return acc;
+    }, { paid: 0, issued: 0, submitted: 0 });
+    const personalTotal = (Array.isArray(data) ? data : []).reduce((sum, entry) => sum + Number(entry?.personalAmount || 0), 0);
 
     if (item){
-      setClientProductionById(clientUserId, item.status, item.amount, totals, item.personalAmount || 0);
+      setClientProductionById(clientUserId, item.status, item.amount, totals, personalTotal);
     } else {
-      setClientProductionById(clientUserId, "", 0, totals, 0);
+      setClientProductionById(clientUserId, "", 0, totals, personalTotal);
     }
     if (hydrate) hydrateClientProdForm(item);
     if (!data || !data.length){

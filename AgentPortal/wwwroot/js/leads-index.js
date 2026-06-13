@@ -4397,10 +4397,16 @@ async function loadProductionHistory(leadId){
       if (!res.ok) throw new Error("load fail");
       const data = await res.json();
     const latest = (data && data.length) ? data[0] : null;
-    const totals = latest
-      ? resolveProductionTotals(latest.status, latest.amount, { paid: 0, issued: 0, submitted: 0 })
-      : { paid: 0, issued: 0, submitted: 0 };
-    setLeadProductionById(leadId, latest?.status || "", latest?.amount || 0, totals, latest?.personalAmount || 0);
+    const totals = (Array.isArray(data) ? data : []).reduce((acc, item) => {
+      const bucket = productionBucket(item?.status);
+      const amt = Number(item?.amount || 0);
+      if (bucket === "paid") acc.paid += amt;
+      else if (bucket === "issued") acc.issued += amt;
+      else if (bucket === "submitted") acc.submitted += amt;
+      return acc;
+    }, { paid: 0, issued: 0, submitted: 0 });
+    const personalTotal = (Array.isArray(data) ? data : []).reduce((sum, item) => sum + Number(item?.personalAmount || 0), 0);
+    setLeadProductionById(leadId, latest?.status || "", latest?.amount || 0, totals, personalTotal);
     // --- Production summary logic ---
     if (summary) {
       const counts = { Submitted: 0, Issued: 0, Paid: 0 };
