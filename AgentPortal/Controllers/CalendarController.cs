@@ -532,14 +532,37 @@ public class CalendarController : Controller
                 .GetStaffAvailability
                 .PostAsGetStaffAvailabilityPostResponseAsync(request, cancellationToken: HttpContext.RequestAborted);
 
-            static DateTime ParseAvailabilityLocal(DateTimeTimeZone? value, TimeZoneInfo tz)
+            DateTime ParseAvailabilityLocal(DateTimeTimeZone? value, TimeZoneInfo tz)
             {
                 if (value == null || string.IsNullOrWhiteSpace(value.DateTime))
                     return DateTime.MinValue;
 
-                var parsed = DateTime.Parse(value.DateTime, CultureInfo.InvariantCulture, DateTimeStyles.AssumeUniversal);
+                _logger.LogWarning(
+                    "BOOKINGS RAW DateTime={DateTime} TimeZone={TimeZone}",
+                    value.DateTime,
+                    value.TimeZone);
+
+                var parsed = DateTime.Parse(
+                    value.DateTime,
+                    CultureInfo.InvariantCulture,
+                    DateTimeStyles.RoundtripKind);
+
+                _logger.LogWarning(
+                    "BOOKINGS PARSED={Parsed:o}",
+                    parsed);
+
                 if (string.Equals(value.TimeZone, "UTC", StringComparison.OrdinalIgnoreCase))
-                    return TimeZoneInfo.ConvertTimeFromUtc(DateTime.SpecifyKind(parsed, DateTimeKind.Utc), tz);
+                {
+                    var converted = TimeZoneInfo.ConvertTimeFromUtc(
+                        DateTime.SpecifyKind(parsed, DateTimeKind.Utc),
+                        tz);
+
+                    _logger.LogWarning(
+                        "BOOKINGS CONVERTED={Converted:o}",
+                        converted);
+
+                    return converted;
+                }
 
                 return parsed;
             }
