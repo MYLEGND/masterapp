@@ -6459,10 +6459,23 @@ function formatBusyRange(item){
 function isBusyConflict(item, selectedStart, selectedEnd){
   if (!selectedStart || !selectedEnd) return false;
   if (item.isAllDay) return true;
-  const start = item.startIso ? new Date(item.startIso) : null;
-  const end = item.endIso ? new Date(item.endIso) : null;
+  const start = parseLocalCalendarIso(item.startIso);
+  const end = parseLocalCalendarIso(item.endIso);
   if (!start || !end || Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) return false;
   return start < selectedEnd && end > selectedStart;
+}
+
+
+function parseLocalCalendarIso(value){
+  if (!value) return null;
+  const match = String(value).match(/^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})(?::(\d{2}))?/);
+  if (!match) {
+    const fallback = new Date(value);
+    return Number.isNaN(fallback.getTime()) ? null : fallback;
+  }
+  const [, y, mo, d, h, mi, se] = match;
+  const dt = new Date(Number(y), Number(mo) - 1, Number(d), Number(h), Number(mi), Number(se || 0));
+  return Number.isNaN(dt.getTime()) ? null : dt;
 }
 
 function renderCalendarBusyState(message, tone = "neutral"){

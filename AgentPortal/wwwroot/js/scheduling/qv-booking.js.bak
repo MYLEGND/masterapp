@@ -199,30 +199,10 @@
         return date.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
     }
 
-    function parseLocalSlotDate(value) {
-        if (!value) return null;
-
-        const match = String(value).match(/^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})(?::(\d{2}))?/);
-        if (!match) {
-            const fallback = new Date(value);
-            return Number.isNaN(fallback.getTime()) ? null : fallback;
-        }
-
-        const [, y, mo, d, h, mi, se] = match;
-        const date = new Date(
-            Number(y),
-            Number(mo) - 1,
-            Number(d),
-            Number(h),
-            Number(mi),
-            Number(se || 0)
-        );
-
-        return Number.isNaN(date.getTime()) ? null : date;
-    }
-
     function parseSlotDate(value) {
-        return parseLocalSlotDate(value);
+        if (!value) return null;
+        const date = new Date(value);
+        return Number.isNaN(date.getTime()) ? null : date;
     }
 
     function getSlotStart(slot) {
