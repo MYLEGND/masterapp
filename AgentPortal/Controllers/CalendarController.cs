@@ -546,19 +546,10 @@ public class CalendarController : Controller
                 if (value == null || string.IsNullOrWhiteSpace(value.DateTime))
                     return DateTime.MinValue;
 
-                _logger.LogWarning(
-                    "BOOKINGS RAW DateTime={DateTime} TimeZone={TimeZone}",
-                    value.DateTime,
-                    value.TimeZone);
-
                 var parsed = DateTime.Parse(
                     value.DateTime,
                     CultureInfo.InvariantCulture,
                     DateTimeStyles.RoundtripKind);
-
-                _logger.LogWarning(
-                    "BOOKINGS PARSED={Parsed:o}",
-                    parsed);
 
                 // Microsoft Bookings availability can return wall-clock business hours with a UTC label.
                 // Treat the payload as local Bookings time here; otherwise Azure shifts the workday into evening/overnight.
