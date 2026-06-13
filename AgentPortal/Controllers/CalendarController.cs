@@ -8,6 +8,7 @@ using Microsoft.Identity.Client;
 using Microsoft.Identity.Web;
 using Infrastructure.Data;
 using AgentPortal.Models;
+using AgentPortal.Helpers;
 using Domain.Entities;
 using Domain.Enums;
 using System.Security.Claims;
@@ -512,15 +513,7 @@ public class CalendarController : Controller
             var localEnd = localStart.AddDays(1);
             var utcStart = TimeZoneInfo.ConvertTimeToUtc(DateTime.SpecifyKind(localStart, DateTimeKind.Unspecified), agentTimeZone);
             var utcEnd = TimeZoneInfo.ConvertTimeToUtc(DateTime.SpecifyKind(localEnd, DateTimeKind.Unspecified), agentTimeZone);
-            var graphTimeZone = agentTimeZone.Id switch
-            {
-                "America/Phoenix" => "US Mountain Standard Time",
-                "America/Denver" => "Mountain Standard Time",
-                "America/Los_Angeles" => "Pacific Standard Time",
-                "America/Chicago" => "Central Standard Time",
-                "America/New_York" => "Eastern Standard Time",
-                _ => string.IsNullOrWhiteSpace(agentTimeZone.Id) ? "UTC" : agentTimeZone.Id
-            };
+            var graphTimeZone = TimeZoneIdMapper.ToGraphTimeZoneId(agentTimeZone);
 
             var request = new GetStaffAvailabilityPostRequestBody
             {

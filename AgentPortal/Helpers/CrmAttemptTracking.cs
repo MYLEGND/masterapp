@@ -21,17 +21,6 @@ public readonly record struct AttemptAnchors(
 
 public static class CrmAttemptTracking
 {
-    private static readonly Dictionary<string, string> IanaToWindows = new(StringComparer.OrdinalIgnoreCase)
-    {
-        ["America/New_York"] = "Eastern Standard Time",
-        ["America/Chicago"] = "Central Standard Time",
-        ["America/Denver"] = "Mountain Standard Time",
-        ["America/Phoenix"] = "US Mountain Standard Time",
-        ["America/Los_Angeles"] = "Pacific Standard Time",
-        ["America/Anchorage"] = "Alaskan Standard Time",
-        ["Pacific/Honolulu"] = "Hawaiian Standard Time"
-    };
-
     private static readonly Lazy<TimeZoneInfo> DialTimeZoneLazy = new(() =>
     {
         var candidates = new[]
@@ -62,9 +51,7 @@ public static class CrmAttemptTracking
 
         if (!string.IsNullOrWhiteSpace(timeZoneId))
         {
-            if (TryFindTimeZone(timeZoneId, out var tz)) return tz;
-            if (IanaToWindows.TryGetValue(timeZoneId, out var windowsId) && TryFindTimeZone(windowsId, out tz))
-                return tz;
+            if (TimeZoneIdMapper.TryFindTimeZone(timeZoneId, out var tz)) return tz;
         }
 
         if (int.TryParse(offsetMinutes, out var minutes))
@@ -83,13 +70,8 @@ public static class CrmAttemptTracking
 
     private static bool TryFindTimeZone(string id, out TimeZoneInfo timeZone)
     {
-        try
-        {
-            timeZone = TimeZoneInfo.FindSystemTimeZoneById(id);
+        if (TimeZoneIdMapper.TryFindTimeZone(id, out timeZone))
             return true;
-        }
-        catch (TimeZoneNotFoundException) { }
-        catch (InvalidTimeZoneException) { }
 
         timeZone = DialTimeZone;
         return false;
