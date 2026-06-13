@@ -124,19 +124,25 @@ public sealed class BookingsDiagnosticsController : ControllerBase
             .StaffMembers
             .GetAsync(cancellationToken: cancellationToken);
 
+        var staff = new List<object>();
+
+        foreach (var member in result?.Value ?? new List<Microsoft.Graph.Models.BookingStaffMemberBase>())
+        {
+            if (string.IsNullOrWhiteSpace(member.Id))
+                continue;
+
+            var full = await _graph
+                .Solutions
+                .BookingBusinesses[businessId]
+                .StaffMembers[member.Id]
+                .GetAsync(cancellationToken: cancellationToken);
+
+            staff.Add(full ?? member);
+        }
+
         return Ok(new
         {
-            value = result?.Value?.Select(x => new
-            {
-                x.Id,
-                x.DisplayName,
-                x.EmailAddress,
-                x.Role,
-                x.UseBusinessHours,
-                x.AvailabilityIsAffectedByPersonalCalendar,
-                x.WorkingHours,
-                x.TimeZone
-            }).ToList()
+            value = staff
         });
     }
 
