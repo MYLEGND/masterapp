@@ -124,7 +124,20 @@ public sealed class BookingsDiagnosticsController : ControllerBase
             .StaffMembers
             .GetAsync(cancellationToken: cancellationToken);
 
-        return Ok(result);
+        return Ok(new
+        {
+            value = result?.Value?.Select(x => new
+            {
+                x.Id,
+                x.DisplayName,
+                x.EmailAddress,
+                x.Role,
+                x.UseBusinessHours,
+                x.AvailabilityIsAffectedByPersonalCalendar,
+                x.WorkingHours,
+                x.TimeZone
+            }).ToList()
+        });
     }
 
 }
