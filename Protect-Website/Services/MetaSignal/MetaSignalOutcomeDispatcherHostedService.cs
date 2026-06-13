@@ -65,7 +65,6 @@ public sealed class MetaSignalOutcomeDispatcherHostedService : BackgroundService
         var rows = await db.MetaSignalEvents
             .Where(x =>
                 !x.MetaServerSent &&
-                x.LeadId != null &&
                 x.TrafficType == "crm" &&
                 DispatchableEvents.Contains(x.EventName))
             .OrderBy(x => x.CreatedUtc)
@@ -109,9 +108,36 @@ public sealed class MetaSignalOutcomeDispatcherHostedService : BackgroundService
                 leadsById.TryGetValue(intakeLink.WebsiteLeadPublicId, out websiteLead);
             }
 
+            var crmContact = await ResolveCrmContactAsync(db, row, cancellationToken);
+
+            var email = FirstNonBlank(websiteLead?.Email, crmContact.Email);
+            var phone = FirstNonBlank(websiteLead?.Phone, crmContact.Phone);
+
             var hasContactData =
-                !string.IsNullOrWhiteSpace(websiteLead?.Email) ||
-                !string.IsNullOrWhiteSpace(websiteLead?.Phone);
+                !string.IsNullOrWhiteSpace(email) ||
+                !string.IsNullOrWhiteSpace(phone);
+
+            if (!hasContactData &&
+                string.IsNullOrWhiteSpace(websiteLead?.Fbp) &&
+                string.IsNullOrWhiteSpace(websiteLead?.Fbc) &&
+                string.IsNullOrWhiteSpace(websiteLead?.ClientIpAddress) &&
+                string.IsNullOrWhiteSpace(websiteLead?.ClientUserAgent))
+            {
+                row.MetadataJson = MergeDispatchMetadata(row.MetadataJson, new MetaConversionsApiResult
+                {
+                    Attempted = false,
+                    Sent = false,
+                    Status = "skipped",
+                    Note = "No website attribution or CRM contact identity available for Meta CAPI."
+                });
+
+                _logger.LogWarning(
+                    "MetaSignal outcome dispatcher skipped event={EventName} rowId={RowId}; no website attribution or CRM contact identity.",
+                    row.EventName,
+                    row.Id);
+
+                continue;
+            }
 
             var pixelContext = await metaPixelResolutionService.ResolveForLeadAsync(
                 websiteLead?.AgentTrackingProfileId,
@@ -135,8 +161,8 @@ public sealed class MetaSignalOutcomeDispatcherHostedService : BackgroundService
                     ClientUserAgent = websiteLead?.ClientUserAgent,
                     Fbp = websiteLead?.Fbp,
                     Fbc = websiteLead?.Fbc,
-                    Email = websiteLead?.Email,
-                    Phone = websiteLead?.Phone,
+                    Email = email,
+                    Phone = phone,
                     AllowHashedContactData = hasContactData,
                     EventUtc = row.CreatedUtc == default ? DateTime.UtcNow : row.CreatedUtc,
                     PixelId = pixelContext.PixelId,
@@ -163,6 +189,80 @@ public sealed class MetaSignalOutcomeDispatcherHostedService : BackgroundService
         }
 
         await db.SaveChangesAsync(cancellationToken);
+    }
+
+
+    private sealed record CrmContactIdentity(string? Email, string? Phone);
+
+    private static string? FirstNonBlank(params string?[] values)
+        => values.FirstOrDefault(x => !string.IsNullOrWhiteSpace(x))?.Trim();
+
+    private static string? ReadMetadataString(string? metadataJson, string propertyName)
+    {
+        if (string.IsNullOrWhiteSpace(metadataJson))
+            return null;
+
+        try
+        {
+            using var doc = JsonDocument.Parse(metadataJson);
+            return doc.RootElement.TryGetProperty(propertyName, out var element) &&
+                   element.ValueKind == JsonValueKind.String
+                ? element.GetString()
+                : null;
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    private static async Task<CrmContactIdentity> ResolveCrmContactAsync(
+        MasterAppDbContext db,
+        MetaSignalEvent row,
+        CancellationToken cancellationToken)
+    {
+        var side = ReadMetadataString(row.MetadataJson, "side");
+        var leadId = ReadMetadataString(row.MetadataJson, "leadId");
+        var clientUserId = ReadMetadataString(row.MetadataJson, "clientUserId");
+
+        if (string.Equals(side, "Client", StringComparison.OrdinalIgnoreCase) &&
+            !string.IsNullOrWhiteSpace(clientUserId))
+        {
+            var client = await db.ClientProfiles
+                .AsNoTracking()
+                .Where(x => x.ClientUserId == clientUserId)
+                .Select(x => new CrmContactIdentity(x.Email, x.Phone))
+                .FirstOrDefaultAsync(cancellationToken);
+
+            if (client is not null)
+                return client;
+        }
+
+        if (!string.IsNullOrWhiteSpace(leadId))
+        {
+            var lead = await db.WorkstationLeadProfiles
+                .AsNoTracking()
+                .Where(x => x.LeadId == leadId)
+                .Select(x => new CrmContactIdentity(x.Email, x.Phone))
+                .FirstOrDefaultAsync(cancellationToken);
+
+            if (lead is not null)
+                return lead;
+        }
+
+        if (!string.IsNullOrWhiteSpace(clientUserId))
+        {
+            var convertedLead = await db.WorkstationLeadProfiles
+                .AsNoTracking()
+                .Where(x => x.LeadId == clientUserId)
+                .Select(x => new CrmContactIdentity(x.Email, x.Phone))
+                .FirstOrDefaultAsync(cancellationToken);
+
+            if (convertedLead is not null)
+                return convertedLead;
+        }
+
+        return new CrmContactIdentity(null, null);
     }
 
     private static Dictionary<string, object?> BuildCustomData(
