@@ -189,6 +189,20 @@ public class ProductionService
         }
     }
 
+    private static ProductionTotals CalculateTotals(IEnumerable<ProductionRecord> records)
+    {
+        var totals = new ProductionTotals();
+        foreach (var row in records)
+        {
+            Accumulate(row.Status, row.Amount, totals);
+            totals.Personal += row.PersonalAmount;
+            if (row.PersonalAmount > 0)
+                totals.CountPersonal += 1;
+        }
+
+        return totals;
+    }
+
     private static Dictionary<string, ProductionContactSnapshot> BuildCurrentContactSnapshots(
         IEnumerable<ProductionRecord> records,
         Func<ProductionRecord, string?> contactSelector)
@@ -321,16 +335,28 @@ public class ProductionService
             .Where(p => p.AgentUserId == normAgent && p.Side == side)
             .ToListAsync(ct);
 
-        var totals = new ProductionTotals();
-        foreach (var row in rows)
-        {
-            Accumulate(row.Status, row.Amount, totals);
-            totals.Personal += row.PersonalAmount;
-            if (row.PersonalAmount > 0)
-                totals.CountPersonal += 1;
-        }
+        return CalculateTotals(rows);
+    }
 
-        return totals;
+    public async Task<ProductionTotals> GetContactTotalsAsync(string agentUserId, ProductionSide side, string contactId, CancellationToken ct = default)
+    {
+        if (string.IsNullOrWhiteSpace(contactId))
+            return new ProductionTotals();
+
+        var normAgent = Norm(agentUserId);
+        var normContact = contactId.Trim();
+
+        var query = _db.ProductionRecords
+            .AsNoTracking()
+            .Where(p => p.AgentUserId == normAgent && p.Side == side);
+
+        if (side == ProductionSide.Lead)
+            query = query.Where(p => p.LeadId == normContact);
+        else
+            query = query.Where(p => p.ClientUserId == normContact);
+
+        var rows = await query.ToListAsync(ct);
+        return CalculateTotals(rows);
     }
 
     public async Task<List<ProductionRecord>> GetHistoryAsync(string agentUserId, ProductionSide side, string? leadId, string? clientUserId, CancellationToken ct = default)

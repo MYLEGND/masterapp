@@ -4395,34 +4395,31 @@ async function loadProductionHistory(leadId){
     try{
     const res = await fetch(`/production/history/lead?leadId=${encodeURIComponent(leadId)}`, { headers: { 'Accept':'application/json' }});
       if (!res.ok) throw new Error("load fail");
-      const data = await res.json();
-    const latest = (data && data.length) ? data[0] : null;
-    const totals = (Array.isArray(data) ? data : []).reduce((acc, item) => {
-      const bucket = productionBucket(item?.status);
-      const amt = Number(item?.amount || 0);
-      if (bucket === "paid") acc.paid += amt;
-      else if (bucket === "issued") acc.issued += amt;
-      else if (bucket === "submitted") acc.submitted += amt;
-      return acc;
-    }, { paid: 0, issued: 0, submitted: 0 });
-    const personalTotal = (Array.isArray(data) ? data : []).reduce((sum, item) => sum + Number(item?.personalAmount || 0), 0);
+      const payload = await res.json();
+    const items = Array.isArray(payload?.items) ? payload.items : [];
+    const latest = items.length ? items[0] : null;
+    const totals = {
+      paid: Number(payload?.totals?.paid || 0),
+      issued: Number(payload?.totals?.issued || 0),
+      submitted: Number(payload?.totals?.submitted || 0)
+    };
+    const personalTotal = Number(payload?.totals?.personal || 0);
     setLeadProductionById(leadId, latest?.status || "", latest?.amount || 0, totals, personalTotal);
     // --- Production summary logic ---
     if (summary) {
-      const counts = { Submitted: 0, Issued: 0, Paid: 0 };
-      (data || []).forEach(item => {
-        if (item.status === "Submitted") counts.Submitted++;
-        if (item.status === "Issued") counts.Issued++;
-        if (item.status === "Paid") counts.Paid++;
-      });
+      const counts = {
+        Submitted: Number(payload?.totals?.countSubmitted || 0),
+        Issued: Number(payload?.totals?.countIssued || 0),
+        Paid: Number(payload?.totals?.countPaid || 0)
+      };
       summary.innerHTML = renderProductionSummaryHtml(counts);
     }
-    if (!data || !data.length){
+    if (!items || !items.length){
       list.innerHTML = '<div class="ph-empty muted">No production yet.</div>';
       return;
     }
     list.innerHTML = "";
-    data.forEach(item => {
+    items.forEach(item => {
       const div = document.createElement("div");
       div.className = "ph-item";
       const safeStatus = norm(item.status) || "Submitted";

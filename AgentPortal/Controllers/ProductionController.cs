@@ -49,7 +49,22 @@ public class ProductionController : Controller
             if (string.IsNullOrWhiteSpace(leadId))
                 return BadRequest(new { error = "Missing leadId" });
             var history = await _production.GetHistoryAsync(agent, ProductionSide.Lead, leadId, null);
-            return Json(history.Select(p => new { id = p.Id, amount = p.Amount, personalAmount = p.PersonalAmount, status = p.Status.ToString(), notes = p.Notes, updated = p.UpdatedUtc }));
+            var totals = await _production.GetContactTotalsAsync(agent, ProductionSide.Lead, leadId);
+            return Json(new
+            {
+                items = history.Select(p => new { id = p.Id, amount = p.Amount, personalAmount = p.PersonalAmount, status = p.Status.ToString(), notes = p.Notes, updated = p.UpdatedUtc }),
+                totals = new
+                {
+                    submitted = totals.Submitted,
+                    issued = totals.Issued,
+                    paid = totals.Paid,
+                    personal = totals.Personal,
+                    countSubmitted = totals.CountSubmitted,
+                    countIssued = totals.CountIssued,
+                    countPaid = totals.CountPaid,
+                    countPersonal = totals.CountPersonal
+                }
+            });
         }
         catch (Exception ex)
         {
@@ -65,7 +80,22 @@ public class ProductionController : Controller
     {
         var agent = GetEffectiveAgent();
         var history = await _production.GetHistoryAsync(agent, ProductionSide.Client, null, clientUserId);
-        return Json(history.Select(p => new { id = p.Id, amount = p.Amount, personalAmount = p.PersonalAmount, status = p.Status.ToString(), notes = p.Notes, updated = p.UpdatedUtc }));
+        var totals = await _production.GetContactTotalsAsync(agent, ProductionSide.Client, clientUserId);
+        return Json(new
+        {
+            items = history.Select(p => new { id = p.Id, amount = p.Amount, personalAmount = p.PersonalAmount, status = p.Status.ToString(), notes = p.Notes, updated = p.UpdatedUtc }),
+            totals = new
+            {
+                submitted = totals.Submitted,
+                issued = totals.Issued,
+                paid = totals.Paid,
+                personal = totals.Personal,
+                countSubmitted = totals.CountSubmitted,
+                countIssued = totals.CountIssued,
+                countPaid = totals.CountPaid,
+                countPersonal = totals.CountPersonal
+            }
+        });
     }
 
     [HttpGet]

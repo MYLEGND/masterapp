@@ -6763,17 +6763,15 @@ async function loadClientProductionHistory(clientUserId, displayName, hydrate=tr
   try{
     const res = await fetch(`/production/history/client?clientUserId=${encodeURIComponent(clientUserId)}`, { headers: { 'Accept':'application/json' }});
     if (!res.ok) throw new Error("load fail");
-    const data = await res.json();
+    const payload = await res.json();
+    const data = Array.isArray(payload?.items) ? payload.items : [];
     const item = (data && data.length) ? data[0] : null;
-    const totals = (Array.isArray(data) ? data : []).reduce((acc, entry) => {
-      const bucket = productionBucket(entry?.status);
-      const amt = Number(entry?.amount || 0);
-      if (bucket === "paid") acc.paid += amt;
-      else if (bucket === "issued") acc.issued += amt;
-      else if (bucket === "submitted") acc.submitted += amt;
-      return acc;
-    }, { paid: 0, issued: 0, submitted: 0 });
-    const personalTotal = (Array.isArray(data) ? data : []).reduce((sum, entry) => sum + Number(entry?.personalAmount || 0), 0);
+    const totals = {
+      paid: Number(payload?.totals?.paid || 0),
+      issued: Number(payload?.totals?.issued || 0),
+      submitted: Number(payload?.totals?.submitted || 0)
+    };
+    const personalTotal = Number(payload?.totals?.personal || 0);
 
     if (item){
       setClientProductionById(clientUserId, item.status, item.amount, totals, personalTotal);
