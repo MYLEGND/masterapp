@@ -35,6 +35,8 @@ public sealed class MetaSignalCrmOutcomeService
             eventId: $"appointment_completed_{appointment.Id:N}",
             dedupKey: dedupKey,
             websiteLeadId: websiteLeadId,
+            agentTrackingProfileId: null,
+            agentSlug: null,
             quoteType: "crm",
             funnelStep: 5,
             stepName: "appointment_completed",
@@ -99,11 +101,19 @@ public sealed class MetaSignalCrmOutcomeService
             clientUserId,
             cancellationToken);
 
+        var trackingProfile = await _db.AgentTrackingProfiles
+            .AsNoTracking()
+            .Where(x => x.AgentUserId == agentUserId && x.Status == "active")
+            .OrderByDescending(x => x.UpdatedUtc)
+            .FirstOrDefaultAsync(cancellationToken);
+
         var row = BuildRow(
             eventName: eventName,
             eventId: $"{eventName.ToLowerInvariant()}_{Guid.NewGuid():N}",
             dedupKey: dedupKey,
             websiteLeadId: websiteLeadId,
+            agentTrackingProfileId: trackingProfile?.Id,
+            agentSlug: trackingProfile?.Slug,
             quoteType: "crm",
             funnelStep: status switch
             {
@@ -205,6 +215,8 @@ public sealed class MetaSignalCrmOutcomeService
         string eventId,
         string dedupKey,
         Guid? websiteLeadId,
+        Guid? agentTrackingProfileId,
+        string? agentSlug,
         string quoteType,
         int funnelStep,
         string stepName,
@@ -233,6 +245,8 @@ public sealed class MetaSignalCrmOutcomeService
             MetaDeduplicationKey = dedupKey,
             Environment = Environment.GetEnvironmentVariable("ASPNETCORE_ENVIRONMENT") ?? "Production",
             Host = "AgentPortal",
+            AgentTrackingProfileId = agentTrackingProfileId,
+            AgentSlug = agentSlug,
             MetadataJson = JsonSerializer.Serialize(metadata)
         };
 }

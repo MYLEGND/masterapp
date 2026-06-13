@@ -140,8 +140,8 @@ public sealed class MetaSignalOutcomeDispatcherHostedService : BackgroundService
             }
 
             var pixelContext = await metaPixelResolutionService.ResolveForLeadAsync(
-                websiteLead?.AgentTrackingProfileId,
-                websiteLead?.AgentSlug,
+                row.AgentTrackingProfileId ?? websiteLead?.AgentTrackingProfileId,
+                row.AgentSlug ?? websiteLead?.AgentSlug,
                 isFounderPath: false,
                 cancellationToken);
 
