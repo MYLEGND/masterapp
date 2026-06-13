@@ -551,20 +551,9 @@ public class CalendarController : Controller
                     "BOOKINGS PARSED={Parsed:o}",
                     parsed);
 
-                if (string.Equals(value.TimeZone, "UTC", StringComparison.OrdinalIgnoreCase))
-                {
-                    var converted = TimeZoneInfo.ConvertTimeFromUtc(
-                        DateTime.SpecifyKind(parsed, DateTimeKind.Utc),
-                        tz);
-
-                    _logger.LogWarning(
-                        "BOOKINGS CONVERTED={Converted:o}",
-                        converted);
-
-                    return converted;
-                }
-
-                return parsed;
+                // Microsoft Bookings availability can return wall-clock business hours with a UTC label.
+                // Treat the payload as local Bookings time here; otherwise Azure shifts the workday into evening/overnight.
+                return DateTime.SpecifyKind(parsed, DateTimeKind.Unspecified);
             }
 
             var availabilityItems = (availability?.Value ?? new List<StaffAvailabilityItem>())
