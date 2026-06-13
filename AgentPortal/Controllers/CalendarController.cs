@@ -510,21 +510,22 @@ public class CalendarController : Controller
             var agentTimeZone = _agentTimeZoneResolver.Resolve(HttpContext);
             var localStart = localDate.Date;
             var localEnd = localStart.AddDays(1);
-            var utcStart = TimeZoneInfo.ConvertTimeToUtc(DateTime.SpecifyKind(localStart, DateTimeKind.Unspecified), agentTimeZone);
-            var utcEnd = TimeZoneInfo.ConvertTimeToUtc(DateTime.SpecifyKind(localEnd, DateTimeKind.Unspecified), agentTimeZone);
+            var graphTimeZone = string.IsNullOrWhiteSpace(agentTimeZone.Id)
+                ? "UTC"
+                : agentTimeZone.Id;
 
             var request = new GetStaffAvailabilityPostRequestBody
             {
                 StaffIds = serviceStaffIds,
                 StartDateTime = new DateTimeTimeZone
                 {
-                    DateTime = utcStart.ToString("yyyy-MM-dd'T'HH:mm:ss", CultureInfo.InvariantCulture),
-                    TimeZone = "UTC"
+                    DateTime = localStart.ToString("yyyy-MM-dd'T'HH:mm:ss", CultureInfo.InvariantCulture),
+                    TimeZone = graphTimeZone
                 },
                 EndDateTime = new DateTimeTimeZone
                 {
-                    DateTime = utcEnd.ToString("yyyy-MM-dd'T'HH:mm:ss", CultureInfo.InvariantCulture),
-                    TimeZone = "UTC"
+                    DateTime = localEnd.ToString("yyyy-MM-dd'T'HH:mm:ss", CultureInfo.InvariantCulture),
+                    TimeZone = graphTimeZone
                 }
             };
 
