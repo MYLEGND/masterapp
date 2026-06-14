@@ -3323,7 +3323,14 @@ function escapeHtml(value) {
       { render: r => pill(formatMoney(r.cpm), metaCpmClass(r.cpm)), align: 'text-end' },
       { render: r => pill(formatInt(r.leads), metaLeadsClass(r.leads)), align: 'text-end' },
       { render: r => pill(formatInt(r.websiteLeads), metaLeadsClass(r.websiteLeads)), align: 'text-end' },
-      { render: r => pill(formatInt(r.websiteLeadGap), metaLeadGapClass(r.websiteLeadGap)), align: 'text-end' }
+      { render: r => pill(formatInt(r.websiteLeadGap), metaLeadGapClass(r.websiteLeadGap)), align: 'text-end' },
+      { render: r => pill(formatInt(r.qualifiedLeads), metaLeadsClass(r.qualifiedLeads)), align: 'text-end' },
+      { render: r => pill(formatInt(r.appointments), metaLeadsClass(r.appointments)), align: 'text-end' },
+      { render: r => pill(formatInt(r.applications), metaLeadsClass(r.applications)), align: 'text-end' },
+      { render: r => pill(formatInt(r.policiesIssued), metaLeadsClass(r.policiesIssued)), align: 'text-end' },
+      { render: r => pill(formatInt(r.policiesPaid), metaLeadsClass(r.policiesPaid)), align: 'text-end' },
+      { render: r => pill(formatMoney(r.paidPremium), r.paidPremium > 0 ? 'bg-success-subtle text-success-emphasis' : 'bg-secondary-subtle text-secondary-emphasis'), align: 'text-end' },
+      { render: r => pill(`${Number(r.premiumRoas || 0).toFixed(2)}x`, r.premiumRoas > 0 ? 'bg-success-subtle text-success-emphasis' : 'bg-secondary-subtle text-secondary-emphasis'), align: 'text-end' }
     ]);
   }
 
@@ -3352,7 +3359,7 @@ function escapeHtml(value) {
       const body = document.getElementById('meta-campaigns-body');
       const message = (err && err.message) ? err.message : 'Unable to load Meta campaigns.';
       if (body) {
-        body.innerHTML = `<tr><td colspan="13" class="text-danger">${message}</td></tr>`;
+        body.innerHTML = `<tr><td colspan="20" class="text-danger">${message}</td></tr>`;
       }
       console.error(err);
     }
@@ -3423,7 +3430,7 @@ function escapeHtml(value) {
       await fetchPostJson('meta-disconnect', endpoints.metaDisconnect);
       await loadMetaConnectionStatus();
       const body = document.getElementById('meta-campaigns-body');
-      if (body) body.innerHTML = '<tr><td colspan="13" class="fa-empty">Disconnected. Reconnect Meta Ads to load campaigns.</td></tr>';
+      if (body) body.innerHTML = '<tr><td colspan="20" class="fa-empty">Disconnected. Reconnect Meta Ads to load campaigns.</td></tr>';
     } catch (err) {
       const statusEl = document.getElementById('meta-connection-status');
       if (statusEl) {

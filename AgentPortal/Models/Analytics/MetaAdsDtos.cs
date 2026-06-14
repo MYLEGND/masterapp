@@ -24,6 +24,14 @@ public sealed class MetaCampaignRow
     public long Leads { get; set; }
     public long WebsiteLeads { get; set; }
     public long WebsiteLeadGap { get; set; }
+
+    public long QualifiedLeads { get; set; }
+    public long Appointments { get; set; }
+    public long Applications { get; set; }
+    public long PoliciesIssued { get; set; }
+    public long PoliciesPaid { get; set; }
+    public decimal PaidPremium { get; set; }
+    public decimal PremiumRoas { get; set; }
 }
 
 public sealed class MetaCampaignsDto

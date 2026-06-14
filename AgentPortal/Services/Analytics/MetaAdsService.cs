@@ -58,6 +58,7 @@ public sealed class MetaAdsService : IMetaAdsService
         var insights = await FetchCampaignInsightsAsync(client, version, accountId, token, range, accountMetadata.TimeZone, ct);
         var scopedAgentIds = await ResolveScopedAgentIdsAsync(scope, ct);
         var websiteLeadCounts = await BuildWebsiteLeadCountsAsync(range, scope, scopedAgentIds, campaigns, ct);
+        var campaignOutcomes = await BuildCampaignOutcomeCountsAsync(range, scope, scopedAgentIds, campaigns, ct);
 
         var rows = campaigns
             .Select(c =>
@@ -67,6 +68,9 @@ public sealed class MetaAdsService : IMetaAdsService
                     ? websiteLeadCount
                     : 0;
                 var metaLeads = i?.Leads ?? 0;
+                campaignOutcomes.TryGetValue(c.CampaignId, out var outcomes);
+                var paidPremium = outcomes?.PaidPremium ?? 0m;
+                var spend = i?.Spend ?? 0m;
                 return new MetaCampaignRow
                 {
                     CampaignId = c.CampaignId,
@@ -76,7 +80,7 @@ public sealed class MetaAdsService : IMetaAdsService
                     StartTimeUtc = c.StartTimeUtc,
                     StopTimeUtc = c.StopTimeUtc,
                     UpdatedTimeUtc = c.UpdatedTimeUtc,
-                    Spend = i?.Spend ?? 0m,
+                    Spend = spend,
                     Impressions = i?.Impressions ?? 0,
                     Reach = i?.Reach ?? 0,
                     Clicks = i?.Clicks ?? 0,
@@ -86,7 +90,14 @@ public sealed class MetaAdsService : IMetaAdsService
                     Frequency = i?.Frequency ?? 0m,
                     Leads = metaLeads,
                     WebsiteLeads = websiteLeads,
-                    WebsiteLeadGap = metaLeads - websiteLeads
+                    WebsiteLeadGap = metaLeads - websiteLeads,
+                    QualifiedLeads = outcomes?.QualifiedLeads ?? 0,
+                    Appointments = outcomes?.Appointments ?? 0,
+                    Applications = outcomes?.Applications ?? 0,
+                    PoliciesIssued = outcomes?.PoliciesIssued ?? 0,
+                    PoliciesPaid = outcomes?.PoliciesPaid ?? 0,
+                    PaidPremium = paidPremium,
+                    PremiumRoas = spend > 0m ? Math.Round(paidPremium / spend, 2) : 0m
                 };
             })
             .OrderByDescending(x => x.Spend)
@@ -202,6 +213,127 @@ public sealed class MetaAdsService : IMetaAdsService
         return counts;
     }
 
+    private async Task<Dictionary<string, CampaignOutcomeTotals>> BuildCampaignOutcomeCountsAsync(
+        TimeRangeRequest range,
+        ScopeContext scope,
+        Guid[]? scopedAgentIds,
+        IReadOnlyCollection<MetaCampaignSeed> campaigns,
+        CancellationToken ct)
+    {
+        if (campaigns.Count == 0)
+            return new Dictionary<string, CampaignOutcomeTotals>(StringComparer.OrdinalIgnoreCase);
+
+        var campaignIds = campaigns
+            .Select(c => NormalizeCampaignKey(c.CampaignId))
+            .Where(v => !string.IsNullOrWhiteSpace(v))
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+        var campaignNameMap = campaigns
+            .Select(c => new
+            {
+                Name = NormalizeCampaignKey(c.CampaignName),
+                Id = NormalizeCampaignKey(c.CampaignId)
+            })
+            .Where(x => !string.IsNullOrWhiteSpace(x.Name) && !string.IsNullOrWhiteSpace(x.Id))
+            .GroupBy(x => x.Name!, StringComparer.OrdinalIgnoreCase)
+            .ToDictionary(g => g.Key, g => g.First().Id!, StringComparer.OrdinalIgnoreCase);
+
+        var events = await BaseMetaSignalEvents(range, scope, scopedAgentIds)
+            .Where(e =>
+                e.EventName == "QualifiedLead" ||
+                e.EventName == "AppointmentBooked" ||
+                e.EventName == "Schedule" ||
+                e.EventName == "ApplicationSubmitted" ||
+                e.EventName == "SubmitApplication" ||
+                e.EventName == "PolicyIssued" ||
+                e.EventName == "CompleteRegistration" ||
+                e.EventName == "PolicyPaid" ||
+                e.EventName == "Purchase")
+            .Select(e => new MetaSignalOutcomeSeed
+            {
+                EventName = e.EventName,
+                UtmCampaign = e.UtmCampaign,
+                UtmId = e.UtmId,
+                MetadataJson = e.MetadataJson
+            })
+            .ToListAsync(ct);
+
+        var result = new Dictionary<string, CampaignOutcomeTotals>(StringComparer.OrdinalIgnoreCase);
+
+        foreach (var signal in events)
+        {
+            var metaCampaignId = ReadResolvedAttributionString(signal.MetadataJson, "metaCampaignId");
+            var utmId = NormalizeCampaignKey(signal.UtmId) ?? ReadResolvedAttributionString(signal.MetadataJson, "utmId");
+            var utmCampaign = NormalizeCampaignKey(signal.UtmCampaign) ?? ReadResolvedAttributionString(signal.MetadataJson, "utmCampaign");
+
+            string? matchedCampaignId = null;
+
+            if (!string.IsNullOrWhiteSpace(metaCampaignId) && campaignIds.Contains(metaCampaignId))
+                matchedCampaignId = metaCampaignId;
+            else if (!string.IsNullOrWhiteSpace(utmId) && campaignIds.Contains(utmId))
+                matchedCampaignId = utmId;
+            else if (!string.IsNullOrWhiteSpace(utmCampaign) && campaignNameMap.TryGetValue(utmCampaign, out var byName))
+                matchedCampaignId = byName;
+
+            if (string.IsNullOrWhiteSpace(matchedCampaignId))
+                continue;
+
+            if (!result.TryGetValue(matchedCampaignId, out var totals))
+            {
+                totals = new CampaignOutcomeTotals();
+                result[matchedCampaignId] = totals;
+            }
+
+            switch (signal.EventName)
+            {
+                case "QualifiedLead":
+                    totals.QualifiedLeads++;
+                    break;
+                case "AppointmentBooked":
+                case "Schedule":
+                    totals.Appointments++;
+                    break;
+                case "ApplicationSubmitted":
+                case "SubmitApplication":
+                    totals.Applications++;
+                    break;
+                case "PolicyIssued":
+                case "CompleteRegistration":
+                    totals.PoliciesIssued++;
+                    break;
+                case "PolicyPaid":
+                case "Purchase":
+                    totals.PoliciesPaid++;
+                    totals.PaidPremium += ReadOutcomeValue(signal.MetadataJson);
+                    break;
+            }
+        }
+
+        return result;
+    }
+
+    private IQueryable<MetaSignalEvent> BaseMetaSignalEvents(TimeRangeRequest range, ScopeContext scope, Guid[]? scopedAgentIds) =>
+        _db.MetaSignalEvents.AsNoTracking()
+            .Where(e => e.CreatedUtc >= range.FromUtc && e.CreatedUtc <= range.ToUtc)
+            .Where(e => _envFilter == "prod"
+                ? e.Environment == "prod" || e.Environment == "production" || e.Environment == "Prod" || e.Environment == "Production"
+                : _envFilter == "dev"
+                    ? e.Environment == "dev" || e.Environment == "development" || e.Environment == "Dev" || e.Environment == "Development"
+                    : e.Environment == null || e.Environment == "" ||
+                      e.Environment == "prod" || e.Environment == "production" || e.Environment == "Prod" || e.Environment == "Production" ||
+                      e.Environment == "dev" || e.Environment == "development" || e.Environment == "Dev" || e.Environment == "Development")
+            .Where(e => !_excludeLocalHosts ||
+                e.Host == null || e.Host == "" ||
+                (!e.Host.StartsWith("localhost") &&
+                 !e.Host.StartsWith("127.0.0.1") &&
+                 !e.Host.StartsWith("::1") &&
+                 !e.Host.StartsWith("[::1]")))
+            .Where(e => scope.ScopeType != ScopeType.Agent || !scope.AgentTrackingProfileId.HasValue
+                ? true
+                : scopedAgentIds != null
+                    ? e.AgentTrackingProfileId.HasValue && scopedAgentIds.Contains(e.AgentTrackingProfileId.Value)
+                    : e.AgentTrackingProfileId == scope.AgentTrackingProfileId.Value);
+
     private IQueryable<WebsiteLead> BaseWebsiteLeads(TimeRangeRequest range, ScopeContext scope, Guid[]? scopedAgentIds) =>
         _db.WebsiteLeads.AsNoTracking()
             .Where(l => !l.IsInternal)
@@ -267,6 +399,61 @@ public sealed class MetaAdsService : IMetaAdsService
 
     private static string? NormalizeCampaignKey(string? value) =>
         string.IsNullOrWhiteSpace(value) ? null : value.Trim();
+
+    private static string? ReadResolvedAttributionString(string? metadataJson, string propertyName)
+    {
+        if (string.IsNullOrWhiteSpace(metadataJson) || string.IsNullOrWhiteSpace(propertyName))
+            return null;
+
+        try
+        {
+            using var doc = JsonDocument.Parse(metadataJson);
+            if (!doc.RootElement.TryGetProperty("resolvedAttribution", out var resolvedAttribution) ||
+                resolvedAttribution.ValueKind != JsonValueKind.Object ||
+                !resolvedAttribution.TryGetProperty(propertyName, out var property) ||
+                property.ValueKind != JsonValueKind.String)
+            {
+                return null;
+            }
+
+            return NormalizeCampaignKey(property.GetString());
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    private static decimal ReadOutcomeValue(string? metadataJson)
+    {
+        if (string.IsNullOrWhiteSpace(metadataJson))
+            return 0m;
+
+        try
+        {
+            using var doc = JsonDocument.Parse(metadataJson);
+            var root = doc.RootElement;
+
+            foreach (var propertyName in new[] { "personalAmount", "PersonalAmount", "value", "Value", "amount", "Amount" })
+            {
+                if (!root.TryGetProperty(propertyName, out var property))
+                    continue;
+
+                if (property.ValueKind == JsonValueKind.Number && property.TryGetDecimal(out var numeric))
+                    return numeric;
+
+                if (property.ValueKind == JsonValueKind.String &&
+                    decimal.TryParse(property.GetString(), NumberStyles.Any, CultureInfo.InvariantCulture, out var parsed))
+                    return parsed;
+            }
+        }
+        catch
+        {
+            return 0m;
+        }
+
+        return 0m;
+    }
 
     private static WebsiteLeadMetadataSeed ReadLeadMetadata(string? metadataJson)
     {
@@ -686,4 +873,22 @@ public sealed class MetaAdsService : IMetaAdsService
         public TimeZoneInfo TimeZone { get; set; } = TimeZoneInfo.Utc;
         public string TimeZoneLabel { get; set; } = "UTC";
     }
+    private sealed class MetaSignalOutcomeSeed
+    {
+        public string EventName { get; set; } = "";
+        public string? UtmCampaign { get; set; }
+        public string? UtmId { get; set; }
+        public string? MetadataJson { get; set; }
+    }
+
+    private sealed class CampaignOutcomeTotals
+    {
+        public long QualifiedLeads { get; set; }
+        public long Appointments { get; set; }
+        public long Applications { get; set; }
+        public long PoliciesIssued { get; set; }
+        public long PoliciesPaid { get; set; }
+        public decimal PaidPremium { get; set; }
+    }
+
 }
