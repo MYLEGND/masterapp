@@ -703,7 +703,7 @@
       const pageLabel = escapeHtml(row?.pageKey || row?.pagePath || row?.quoteType || '—');
       const pagePathValue = asTrimmed(row?.pagePath || row?.pageUrl || '');
       const quoteLabel = asTrimmed(row?.quoteType) ? escapeHtml(prettifyQuoteType(row.quoteType)) : '';
-      const eventLabel = escapeHtml(row?.attemptedEventName || '—');
+      const eventLabel = escapeHtml(formatEventName(row?.attemptedEventName));
       const sessionLabel = row?.sessionIdShort ? `Session ${escapeHtml(row.sessionIdShort)}` : '';
       const visitorLabel = row?.visitorIdShort ? `Visitor ${escapeHtml(row.visitorIdShort)}` : '';
       const eventMeta = [sessionLabel, visitorLabel].filter(Boolean).join(' · ');
@@ -796,7 +796,7 @@
     const gridEl = document.getElementById('mh-error-detail-grid');
 
     if (titleEl) {
-      titleEl.textContent = row?.attemptedEventName || 'Tracking event';
+      titleEl.textContent = formatEventName(row?.attemptedEventName) || 'Tracking event';
     }
 
     if (subtitleEl) {
@@ -1719,7 +1719,18 @@
     el.textContent = message || '';
   }
 
-  function escapeHtml(value) {
+  
+    function formatEventName(value) {
+      const raw = String(value || '').trim();
+      if (!raw) return '—';
+      return raw
+        .replace(/_/g, ' ')
+        .replace(/([a-z0-9])([A-Z])/g, '$1 $2')
+        .replace(/\s+/g, ' ')
+        .trim();
+    }
+
+function escapeHtml(value) {
     return String(value || '')
       .replace(/&/g, '&amp;')
       .replace(/</g, '&lt;')
@@ -3015,7 +3026,7 @@
     setText('metasignal-excluded-events', data.excludedSignalEvents ?? 0);
     setText('metasignal-excluded-visitors', data.excludedSignalVisitors ?? 0);
     setText('metasignal-signal-conv', `${data.signalToLeadConversionRate ?? 0}%`);
-    setText('metasignal-optimize', data.recommendedOptimizationEvent || '—');
+    setText('metasignal-optimize', formatEventName(data.recommendedOptimizationEvent));
     setText('metasignal-best-variant', data.bestPerformingLandingPageVersion || '—');
     setText('metasignal-worst-friction', data.worstFrictionStep || '—');
     applyMetaSignalHealthTones(data);
@@ -3034,7 +3045,7 @@
       { key: 'value', align: 'text-end' }
     ]);
     renderTable('metasignal-tier-body', data.visitorsByScoreTier || [], [
-      { key: 'scoreTier' },
+      { render: row => escapeHtml(formatEventName(row.scoreTier)) },
       { key: 'visitors', align: 'text-end' }
     ]);
     renderTable('metasignal-campaign-score-body', data.averageScoreByCampaign || [], [
@@ -3065,7 +3076,7 @@
     ]);
     renderTable('metasignal-diagnostics-body', data.recentDiagnostics || [], [
       { render: row => escapeHtml(formatDisplayDate(row.createdUtc) || '—') },
-      { render: row => `${escapeHtml(row.eventName || '—')}<div class="text-muted small">${escapeHtml(row.quoteType || '—')}</div>` },
+      { render: row => `${escapeHtml(formatEventName(row.eventName))}<div class="text-muted small">${escapeHtml(row.quoteType || '—')}</div>` },
       { render: row => `${escapeHtml(row.trafficType || 'Unknown')}${row.campaignLabel ? `<div class="text-muted small">${escapeHtml(row.campaignLabel)}</div>` : ''}` },
       { render: row => row.excludedFromMetaLearningReadiness ? '<span class="badge bg-warning text-dark">Excluded</span>' : '<span class="badge bg-success">Included</span>' },
       { render: row => escapeHtml(row.learningReason || '—') },
