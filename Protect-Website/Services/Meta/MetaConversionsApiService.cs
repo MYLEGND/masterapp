@@ -265,12 +265,12 @@ public sealed class MetaConversionsApiService : IMetaConversionsApiService
     private static string MapToMetaStandardEventName(string eventName)
         => eventName switch
         {
-            "QualifiedLead" => "Lead",
-            "AppointmentBooked" => "Schedule",
-            "ApplicationSubmitted" => "SubmitApplication",
-            "PolicyIssued" => "CompleteRegistration",
+            "QualifiedLead" => "QualifiedLead",
+            "AppointmentBooked" => "AppointmentBooked",
+            "ApplicationSubmitted" => "ApplicationSubmitted",
+            "PolicyIssued" => "PolicyIssued",
             "PolicyPaid" => "Purchase",
-            "AppointmentCompleted" => "Contact",
+            "AppointmentCompleted" => "AppointmentCompleted",
             _ => eventName
         };
 
