@@ -163,6 +163,13 @@ public sealed class MetaSignalOutcomeDispatcherHostedService : BackgroundService
                     Fbc = websiteLead?.Fbc,
                     Email = email,
                     Phone = phone,
+                    FirstName = crmContact.FirstName,
+                    LastName = crmContact.LastName,
+                    DateOfBirth = crmContact.DateOfBirth,
+                    Gender = crmContact.Gender,
+                    City = crmContact.City,
+                    State = crmContact.State,
+                    ZipCode = crmContact.ZipCode,
                     AllowHashedContactData = hasContactData,
                     EventUtc = row.CreatedUtc == default ? DateTime.UtcNow : row.CreatedUtc,
                     PixelId = pixelContext.PixelId,
@@ -192,7 +199,16 @@ public sealed class MetaSignalOutcomeDispatcherHostedService : BackgroundService
     }
 
 
-    private sealed record CrmContactIdentity(string? Email, string? Phone);
+    private sealed record CrmContactIdentity(
+        string? Email,
+        string? Phone,
+        string? FirstName,
+        string? LastName,
+        DateTime? DateOfBirth,
+        string? Gender,
+        string? City,
+        string? State,
+        string? ZipCode);
 
     private static string? FirstNonBlank(params string?[] values)
         => values.FirstOrDefault(x => !string.IsNullOrWhiteSpace(x))?.Trim();
@@ -231,11 +247,31 @@ public sealed class MetaSignalOutcomeDispatcherHostedService : BackgroundService
             var client = await db.ClientProfiles
                 .AsNoTracking()
                 .Where(x => x.ClientUserId == clientUserId)
-                .Select(x => new CrmContactIdentity(x.Email, x.Phone))
+                .Select(x => new
+                {
+                    x.Email,
+                    x.Phone,
+                    x.FirstName,
+                    x.LastName,
+                    x.DOB,
+                    x.CrmNotes
+                })
                 .FirstOrDefaultAsync(cancellationToken);
 
             if (client is not null)
-                return client;
+            {
+                var meta = ReadClientCrmMeta(client.CrmNotes);
+                return new CrmContactIdentity(
+                    client.Email,
+                    client.Phone,
+                    client.FirstName,
+                    client.LastName,
+                    client.DOB,
+                    meta.Gender,
+                    meta.City,
+                    meta.State,
+                    meta.ZipCode);
+            }
         }
 
         if (!string.IsNullOrWhiteSpace(leadId))
@@ -243,7 +279,16 @@ public sealed class MetaSignalOutcomeDispatcherHostedService : BackgroundService
             var lead = await db.WorkstationLeadProfiles
                 .AsNoTracking()
                 .Where(x => x.LeadId == leadId)
-                .Select(x => new CrmContactIdentity(x.Email, x.Phone))
+                .Select(x => new CrmContactIdentity(
+                    x.Email,
+                    x.Phone,
+                    x.FirstName,
+                    x.LastName,
+                    x.DOB,
+                    x.Gender,
+                    x.City,
+                    x.State,
+                    x.ZipCode))
                 .FirstOrDefaultAsync(cancellationToken);
 
             if (lead is not null)
@@ -255,15 +300,54 @@ public sealed class MetaSignalOutcomeDispatcherHostedService : BackgroundService
             var convertedLead = await db.WorkstationLeadProfiles
                 .AsNoTracking()
                 .Where(x => x.LeadId == clientUserId)
-                .Select(x => new CrmContactIdentity(x.Email, x.Phone))
+                .Select(x => new CrmContactIdentity(
+                    x.Email,
+                    x.Phone,
+                    x.FirstName,
+                    x.LastName,
+                    x.DOB,
+                    x.Gender,
+                    x.City,
+                    x.State,
+                    x.ZipCode))
                 .FirstOrDefaultAsync(cancellationToken);
 
             if (convertedLead is not null)
                 return convertedLead;
         }
 
-        return new CrmContactIdentity(null, null);
+        return new CrmContactIdentity(null, null, null, null, null, null, null, null, null);
     }
+
+    private sealed record ClientCrmMetaIdentity(string? Gender, string? City, string? State, string? ZipCode);
+
+    private static ClientCrmMetaIdentity ReadClientCrmMeta(string? crmNotes)
+    {
+        if (string.IsNullOrWhiteSpace(crmNotes))
+            return new ClientCrmMetaIdentity(null, null, null, null);
+
+        try
+        {
+            using var doc = JsonDocument.Parse(crmNotes);
+            var root = doc.RootElement;
+
+            return new ClientCrmMetaIdentity(
+                ReadJsonString(root, "gender"),
+                ReadJsonString(root, "city"),
+                ReadJsonString(root, "state"),
+                ReadJsonString(root, "zipCode"));
+        }
+        catch
+        {
+            return new ClientCrmMetaIdentity(null, null, null, null);
+        }
+    }
+
+    private static string? ReadJsonString(JsonElement root, string propertyName)
+        => root.TryGetProperty(propertyName, out var element) &&
+           element.ValueKind == JsonValueKind.String
+            ? element.GetString()
+            : null;
 
     private static Dictionary<string, object?> BuildCustomData(
         MetaSignalEvent row,

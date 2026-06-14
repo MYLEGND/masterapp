@@ -60,6 +60,13 @@ public sealed class MetaConversionsApiEventRequest
     public string? Fbclid { get; init; }
     public string? Email { get; init; }
     public string? Phone { get; init; }
+    public string? FirstName { get; init; }
+    public string? LastName { get; init; }
+    public DateTime? DateOfBirth { get; init; }
+    public string? Gender { get; init; }
+    public string? City { get; init; }
+    public string? State { get; init; }
+    public string? ZipCode { get; init; }
     public bool AllowHashedContactData { get; init; }
     public DateTime EventUtc { get; init; }
     public string? PixelId { get; init; }
@@ -297,6 +304,14 @@ public sealed class MetaConversionsApiService : IMetaConversionsApiService
             var phoneHash = HashSha256(NormalizePhone(request.Phone));
             if (!string.IsNullOrWhiteSpace(phoneHash))
                 userData["ph"] = new[] { phoneHash };
+
+            AddHashedUserData(userData, "fn", NormalizeText(request.FirstName));
+            AddHashedUserData(userData, "ln", NormalizeText(request.LastName));
+            AddHashedUserData(userData, "db", NormalizeDateOfBirth(request.DateOfBirth));
+            AddHashedUserData(userData, "ge", NormalizeGender(request.Gender));
+            AddHashedUserData(userData, "ct", NormalizeText(request.City));
+            AddHashedUserData(userData, "st", NormalizeText(request.State));
+            AddHashedUserData(userData, "zp", NormalizeZip(request.ZipCode));
         }
 
         return userData;
@@ -364,6 +379,48 @@ public sealed class MetaConversionsApiService : IMetaConversionsApiService
 
         var digits = new string(phone.Where(char.IsDigit).ToArray());
         return digits.Length == 0 ? null : digits;
+    }
+
+    private static void AddHashedUserData(Dictionary<string, object?> userData, string key, string? normalizedValue)
+    {
+        var hash = HashSha256(normalizedValue);
+        if (!string.IsNullOrWhiteSpace(hash))
+            userData[key] = new[] { hash };
+    }
+
+    private static string? NormalizeText(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+            return null;
+
+        var normalized = value.Trim().ToLowerInvariant();
+        return normalized.Length == 0 ? null : normalized;
+    }
+
+    private static string? NormalizeDateOfBirth(DateTime? value)
+        => value.HasValue ? value.Value.ToString("yyyyMMdd") : null;
+
+    private static string? NormalizeGender(string? value)
+    {
+        var normalized = NormalizeText(value);
+        if (string.IsNullOrWhiteSpace(normalized))
+            return null;
+
+        return normalized switch
+        {
+            "m" or "male" => "m",
+            "f" or "female" => "f",
+            _ => null
+        };
+    }
+
+    private static string? NormalizeZip(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+            return null;
+
+        var normalized = new string(value.Trim().ToLowerInvariant().Where(char.IsLetterOrDigit).ToArray());
+        return normalized.Length == 0 ? null : normalized;
     }
 
     private static string? HashSha256(string? value)
