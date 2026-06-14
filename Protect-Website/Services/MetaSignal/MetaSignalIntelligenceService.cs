@@ -220,7 +220,7 @@ public sealed class MetaSignalIntelligenceService : IMetaSignalIntelligenceServi
     public async Task<MetaSignalProcessResult> IngestAsync(MetaSignalIngestRequest request, HttpContext? httpContext, CancellationToken cancellationToken = default)
     {
         var normalized = NormalizeRequest(request);
-        if (!_options.Enabled || !normalized.IsPaidLandingExperience)
+        if (!_options.Enabled)
         {
             return new MetaSignalProcessResult
             {
