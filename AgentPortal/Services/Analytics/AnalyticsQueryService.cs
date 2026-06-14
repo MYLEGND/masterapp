@@ -1226,13 +1226,13 @@ public sealed class AnalyticsQueryService : IAnalyticsQueryService
     private static string CampaignBucketLabel(AttributedEventRow row) =>
         CampaignBucketLabel(row.Attribution);
 
-    private static string ResolveMetaLearningReason(string? pageMode, EventAttributionSnapshot attribution, TrafficType trafficType)
+    private static string ResolveMetaLearningReason(bool sentToMeta, EventAttributionSnapshot attribution, TrafficType trafficType)
     {
-        if (!string.Equals(pageMode, "paid_landing", StringComparison.OrdinalIgnoreCase))
-            return "Excluded: not a paid landing experience.";
+        if (sentToMeta && IsMetaAttributedPaid(attribution))
+            return "Included: sent to Meta CAPI and paid Meta-attributed.";
 
-        if (IsMetaAttributedPaid(attribution))
-            return "Included: paid Meta-attributed traffic.";
+        if (sentToMeta)
+            return "Included: sent to Meta CAPI; not paid Meta-attributed.";
 
         return trafficType switch
         {
@@ -2631,10 +2631,11 @@ public sealed class AnalyticsQueryService : IAnalyticsQueryService
                 var metaTracking = metadata.MetaTracking;
                 var isMetaAttributedPaid = IsMetaAttributedPaid(resolved.Attribution);
                 var isPaidLandingExperience = string.Equals(metadata.PageMode, "paid_landing", StringComparison.OrdinalIgnoreCase);
-                var metaLearningReason = ResolveMetaLearningReason(metadata.PageMode, resolved.Attribution, classified);
-                var excludedFromMetaLearning = !(isPaidLandingExperience && isMetaAttributedPaid);
                 var browserPixelSent = string.Equals(metaTracking?.BrowserPixelStatus, "sent", StringComparison.OrdinalIgnoreCase);
                 var serverCapiSent = string.Equals(metaTracking?.ServerCapiStatus, "sent", StringComparison.OrdinalIgnoreCase);
+                var sentToMeta = browserPixelSent || serverCapiSent;
+                var metaLearningReason = ResolveMetaLearningReason(sentToMeta, resolved.Attribution, classified);
+                var excludedFromMetaLearning = !sentToMeta;
                 var resolvedUtmId = resolved.Attribution.UtmId;
                 var resolvedMetaCampaignId = resolved.Attribution.MetaCampaignId;
                 var resolvedMetaAdSetId = resolved.Attribution.MetaAdSetId;

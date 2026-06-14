@@ -781,19 +781,16 @@ public sealed class MetaSignalAnalyticsService : IMetaSignalAnalyticsService
 
     private static bool IsMetaLearningEligible(MetaSignalEvent row)
     {
-        if (!string.Equals(Normalize(row.PageMode), "paid_landing", StringComparison.OrdinalIgnoreCase))
-            return false;
-
-        return IsMetaAttributedPaid(ResolveAttributionSnapshot(row));
+        return row.MetaServerSent || row.MetaBrowserSent;
     }
 
     private static string ResolveLearningReason(MetaSignalEvent row, MetaSignalAttributionSnapshot attribution)
     {
-        if (!string.Equals(Normalize(row.PageMode), "paid_landing", StringComparison.OrdinalIgnoreCase))
-            return "Excluded: not a paid landing experience.";
+        if ((row.MetaServerSent || row.MetaBrowserSent) && IsMetaAttributedPaid(attribution))
+            return "Included: sent to Meta and paid Meta-attributed.";
 
-        if (IsMetaAttributedPaid(attribution))
-            return "Included: paid Meta-attributed traffic.";
+        if (row.MetaServerSent || row.MetaBrowserSent)
+            return "Included: sent to Meta; not paid Meta-attributed.";
 
         return Normalize(row.TrafficType) switch
         {
