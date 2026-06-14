@@ -219,6 +219,10 @@ public sealed class WebsiteLifeLeadCaptureService : IWebsiteLifeLeadCaptureServi
         intakeLink.UtmTerm = ReadMetadataString(metadata, "UtmTerm");
         intakeLink.UtmContent = ReadMetadataString(metadata, "UtmContent");
         intakeLink.Fbclid = Clean(websiteLead.Fbclid) ?? ReadMetadataString(metadata, "Fbclid");
+        intakeLink.Fbp = Clean(websiteLead.Fbp) ?? ReadMetadataString(metadata, "Fbp");
+        intakeLink.Fbc = Clean(websiteLead.Fbc) ?? ReadMetadataString(metadata, "Fbc");
+        intakeLink.ClientIpAddress = Clean(websiteLead.ClientIpAddress) ?? ReadMetadataString(metadata, "ClientIpAddress");
+        intakeLink.ClientUserAgent = Clean(websiteLead.ClientUserAgent) ?? ReadMetadataString(metadata, "ClientUserAgent");
         intakeLink.MetaCampaignId = Clean(websiteLead.MetaCampaignId) ?? ReadMetadataString(metadata, "MetaCampaignId");
         intakeLink.MetaAdSetId = Clean(websiteLead.MetaAdSetId) ?? ReadMetadataString(metadata, "MetaAdSetId");
         intakeLink.MetaAdId = Clean(websiteLead.MetaAdId) ?? ReadMetadataString(metadata, "MetaAdId");

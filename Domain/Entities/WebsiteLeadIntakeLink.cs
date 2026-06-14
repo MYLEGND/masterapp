@@ -35,6 +35,10 @@ public class WebsiteLeadIntakeLink
     public string? UtmTerm { get; set; }
     public string? UtmContent { get; set; }
     public string? Fbclid { get; set; }
+    public string? Fbp { get; set; }
+    public string? Fbc { get; set; }
+    public string? ClientIpAddress { get; set; }
+    public string? ClientUserAgent { get; set; }
     public string? MetaCampaignId { get; set; }
     public string? MetaAdSetId { get; set; }
     public string? MetaAdId { get; set; }

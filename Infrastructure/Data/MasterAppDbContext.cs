@@ -415,6 +415,10 @@ public class MasterAppDbContext : DbContext
             e.Property(x => x.UtmTerm).HasMaxLength(160);
             e.Property(x => x.UtmContent).HasMaxLength(160);
             e.Property(x => x.Fbclid).HasMaxLength(160);
+            e.Property(x => x.Fbp).HasMaxLength(256);
+            e.Property(x => x.Fbc).HasMaxLength(512);
+            e.Property(x => x.ClientIpAddress).HasMaxLength(128);
+            e.Property(x => x.ClientUserAgent).HasMaxLength(1024);
             e.Property(x => x.MetaCampaignId).HasMaxLength(160);
             e.Property(x => x.MetaAdSetId).HasMaxLength(160);
             e.Property(x => x.MetaAdId).HasMaxLength(160);
