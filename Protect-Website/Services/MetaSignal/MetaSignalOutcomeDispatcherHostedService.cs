@@ -112,10 +112,19 @@ public sealed class MetaSignalOutcomeDispatcherHostedService : BackgroundService
 
             var email = FirstNonBlank(websiteLead?.Email, crmContact.Email);
             var phone = FirstNonBlank(websiteLead?.Phone, crmContact.Phone);
+            var firstName = FirstNonBlank(websiteLead?.FirstName, crmContact.FirstName);
+            var lastName = FirstNonBlank(websiteLead?.LastName, crmContact.LastName);
 
             var hasContactData =
                 !string.IsNullOrWhiteSpace(email) ||
-                !string.IsNullOrWhiteSpace(phone);
+                !string.IsNullOrWhiteSpace(phone) ||
+                !string.IsNullOrWhiteSpace(firstName) ||
+                !string.IsNullOrWhiteSpace(lastName) ||
+                crmContact.DateOfBirth.HasValue ||
+                !string.IsNullOrWhiteSpace(crmContact.Gender) ||
+                !string.IsNullOrWhiteSpace(crmContact.City) ||
+                !string.IsNullOrWhiteSpace(crmContact.State) ||
+                !string.IsNullOrWhiteSpace(crmContact.ZipCode);
 
             if (!hasContactData &&
                 string.IsNullOrWhiteSpace(websiteLead?.Fbp) &&
@@ -163,8 +172,8 @@ public sealed class MetaSignalOutcomeDispatcherHostedService : BackgroundService
                     Fbc = websiteLead?.Fbc,
                     Email = email,
                     Phone = phone,
-                    FirstName = crmContact.FirstName,
-                    LastName = crmContact.LastName,
+                    FirstName = firstName,
+                    LastName = lastName,
                     DateOfBirth = crmContact.DateOfBirth,
                     Gender = crmContact.Gender,
                     City = crmContact.City,
