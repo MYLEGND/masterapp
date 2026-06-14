@@ -877,7 +877,7 @@
     var metaSignalOptions = MetaSignalOptionsAccessor.Value;
     var metaSignalConfigJson = JsonSerializer.Serialize(new
     {
-        enabled = isPaidLandingExperience && metaSignalOptions.Enabled,
+        enabled = metaSignalOptions.Enabled,
         sendBrowserEvents = metaSignalOptions.SendBrowserEvents,
         sendServerEvents = metaSignalOptions.SendServerEvents,
         persistEvents = metaSignalOptions.PersistEvents,
