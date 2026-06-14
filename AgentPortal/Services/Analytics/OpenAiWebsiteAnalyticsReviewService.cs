@@ -61,6 +61,9 @@ public sealed class OpenAiWebsiteAnalyticsReviewService
         "  • If campaign data shows clicks but zero website leads, output: " +
         "'Ad traffic is present but not converting — primary issue is landing page or funnel, not traffic generation.'\n" +
         "  • If marketingHealth or warnings indicate tracking instability, your scaleReadinessVerdict MUST be either DoNotScale or StabilizeFirst.\n" +
+        "  • Fallback warnings reduce data trust, but NEVER overwrite or contradict non-zero observed metrics in the snapshot. If sessions, events, form starts, submit attempts, or confirmed leads are non-zero, explicitly acknowledge that website activity occurred and say affected module details may be incomplete.\n" +
+        "  • If Meta Signal Intelligence is Ads Only and zero while traffic is internal, unknown, direct, or non-paid, state that paid Meta-attributed signal is absent in this slice; do NOT claim the website itself has zero activity or broken tracking solely from that.\n" +
+        "  • Include campaign outcome/revenue attribution when present: qualified leads, appointments, applications, policies issued, policies paid, paid premium, and premium ROAS.\n" +
         "  • dataTrustWarning should be a short blunt statement when data quality is questionable; otherwise return an empty string.\n" +
         "  • Be blunt. No padding. Return ONLY: " +
         "one summary sentence (must mention ads), a growth operator score, a scale readiness verdict, a data trust warning, up to 3 reasons not to scale, up to 3 next actions, up to 3 breakpoints, up to 3 actions, up to 2 tests, up to 3 confidence notes.";

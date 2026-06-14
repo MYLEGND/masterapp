@@ -358,7 +358,7 @@ public sealed class WebsiteAnalyticsAiDataBuilder
         {
             foreach (var c in activeCampaigns)
             {
-                Line($"- {Safe(c.CampaignName)} | {Safe(c.Status)} | {Safe(c.Objective)} | spend {Money(c.Spend)} | impr {Whole(c.Impressions)} | reach {Whole(c.Reach)} | clicks {Whole(c.Clicks)} | CTR {c.Ctr:0.##}% | CPC {Money(c.Cpc)} | CPM {Money(c.Cpm)} | leads {Whole(c.Leads)}");
+                Line($"- {Safe(c.CampaignName)} | {Safe(c.Status)} | {Safe(c.Objective)} | spend {Money(c.Spend)} | impr {Whole(c.Impressions)} | reach {Whole(c.Reach)} | clicks {Whole(c.Clicks)} | CTR {c.Ctr:0.##}% | CPC {Money(c.Cpc)} | CPM {Money(c.Cpm)} | meta leads {Whole(c.Leads)} | website leads {Whole(c.WebsiteLeads)} | qualified {Whole(c.QualifiedLeads)} | appointments {Whole(c.Appointments)} | applications {Whole(c.Applications)} | issued {Whole(c.PoliciesIssued)} | paid {Whole(c.PoliciesPaid)} | paid premium {Money(c.PaidPremium)} | premium ROAS {c.PremiumRoas:0.##}x");
             }
 
             var bestCtr = activeCampaigns
@@ -376,6 +376,32 @@ public sealed class WebsiteAnalyticsAiDataBuilder
             if (lowestCpc != null)
                 Line($"Lowest CPC campaign: {Safe(lowestCpc.CampaignName)} ({Money(lowestCpc.Cpc)})");
         }
+        Line();
+
+        Line("SECTION B2 — CAMPAIGN OUTCOME / REVENUE ATTRIBUTION");
+        var campaignOutcomeRows = (metaCampaigns?.Rows ?? new List<MetaCampaignRow>())
+            .OrderByDescending(x => x.PaidPremium)
+            .ThenByDescending(x => x.PoliciesPaid)
+            .ThenByDescending(x => x.WebsiteLeads)
+            .ThenByDescending(x => x.Spend)
+            .ThenBy(x => x.CampaignName)
+            .Take(10)
+            .ToList();
+
+        if (campaignOutcomeRows.Count == 0)
+        {
+            Line("- No campaign rows available in range.");
+        }
+        else
+        {
+            foreach (var c in campaignOutcomeRows)
+            {
+                Line($"- {Safe(c.CampaignName)} | {Safe(c.Status)} | spend {Money(c.Spend)} | meta leads {Whole(c.Leads)} | website leads {Whole(c.WebsiteLeads)} | gap {Whole(c.WebsiteLeadGap)} | qualified {Whole(c.QualifiedLeads)} | appointments {Whole(c.Appointments)} | applications {Whole(c.Applications)} | issued {Whole(c.PoliciesIssued)} | paid {Whole(c.PoliciesPaid)} | paid premium {Money(c.PaidPremium)} | premium ROAS {c.PremiumRoas:0.##}x");
+            }
+        }
+
+        Line("Interpretation rule: Campaign outcome/revenue fields come from server-side Meta signal attribution. Zeroes mean no attributed outcome in this selected range, not necessarily that the feature is broken.");
+
         Line();
 
         Line("SECTION C — META SIGNAL INTELLIGENCE");
@@ -598,6 +624,8 @@ public sealed class WebsiteAnalyticsAiDataBuilder
         Line("- Snapshot excludes sensitive lead details.");
         Line($"- Production/local filtering follows current analytics configuration: {summary.EnvironmentLabel}.");
         Line("- Use this summary together with campaign context and recent page changes.");
+        Line("- Fallback warnings reduce confidence in affected modules only; they must not be treated as proof that observed non-zero sessions, events, form starts, submit attempts, or confirmed leads are zero.");
+        Line("- If paid Meta Signal Intelligence is zero while traffic is internal or non-paid, describe it as no paid Meta-attributed signal in this slice, not as broken website tracking.");
         if (warnings.Any())
         {
             Line("- Current warnings:");
