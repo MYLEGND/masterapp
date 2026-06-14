@@ -1256,6 +1256,11 @@ public sealed class MetaSignalIntelligenceService : IMetaSignalIntelligenceServi
         if (ContainsAutomationUserAgentToken(userAgent))
             return false;
 
+        // Early-funnel Meta learning signals. These must reach CAPI so Meta can learn
+        // who viewed/started the funnel even before a submitted lead exists.
+        if (eventName is "ViewContent" or "LeadFormStart")
+            return true;
+
         if (eventName is "Lead" or "QualifiedLead")
             return state.LeadSubmitted || state.SubmitAttempted || state.RequiredContactFieldsCompleted;
 
