@@ -313,7 +313,7 @@ public sealed class MetaSignalAnalyticsService : IMetaSignalAnalyticsService
             ),
             (
                 "contact_step_reached",
-                "Contact Step Reached",
+                "Contact Details Signal",
                 visitorSummaries.Count(x => x.ContactStepReached)
             ),
             (
