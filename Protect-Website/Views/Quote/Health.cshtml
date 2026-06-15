@@ -36,6 +36,7 @@
     ViewData["QuoteTypeForTracking"] = "health";
     ViewData["IsLandingPage"] = isStandaloneLandingExperience;
     ViewData["BodyClass"] = isStandaloneLandingExperience ? "health-landing" : "health-quote";
+    ViewData["MetaSignalFormId"] = "healthQuoteForm";
 
     var isFounderPath = ViewData["IsFounderPath"] as bool? == true;
     var trackedSlug = ((string?)ViewData["TrackingSlug"] ?? string.Empty).Trim();
@@ -2714,6 +2715,9 @@ body.health-final-step-active .dq-form-panel {
                     </section>
                 </div>
             </form>
+
+@await Html.PartialAsync("_QuoteMetaSignalBootstrap")
+
         </div>
     </div>
 </div>

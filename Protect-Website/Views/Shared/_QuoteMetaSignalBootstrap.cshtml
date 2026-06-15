@@ -1,0 +1,79 @@
+@using System.Text.Json
+@using Shared.Analytics
+@using ProtectWebsite.Services.MetaSignal
+@inject Microsoft.Extensions.Options.IOptionsSnapshot<ProtectWebsite.Services.MetaSignal.MetaSignalIntelligenceOptions> MetaSignalOptionsAccessor
+
+@{
+    var metaSignalOptions = MetaSignalOptionsAccessor.Value;
+    var pageKey = ((string?)ViewData["PageKey"] ?? string.Empty).Trim();
+    var pageVariant = ((string?)ViewData["PageVariant"] ?? "website").Trim();
+    var pageMode = ((string?)ViewData["PageMode"] ?? "site_mode").Trim();
+    var quoteType = ((string?)ViewData["QuoteTypeForTracking"] ?? pageKey).Trim();
+    var agentSlug = ((string?)ViewData["TrackingSlug"] ?? string.Empty).Trim();
+    var formId = ((string?)ViewData["MetaSignalFormId"] ?? string.Empty).Trim();
+    var requiredContactFieldNames = new[] { "FirstName", "Phone" };
+
+    var metaSignalConfigJson = JsonSerializer.Serialize(new
+    {
+        enabled = metaSignalOptions.Enabled,
+        sendBrowserEvents = metaSignalOptions.SendBrowserEvents,
+        sendServerEvents = metaSignalOptions.SendServerEvents,
+        persistEvents = metaSignalOptions.PersistEvents,
+        debugMode = metaSignalOptions.DebugMode,
+        highIntentThreshold = metaSignalOptions.HighIntentThreshold,
+        leadReadyThreshold = metaSignalOptions.LeadReadyThreshold,
+        endpoint = Url.Content("~/analytics/meta-signal"),
+        quoteType,
+        pageKey,
+        effectivePageKey = pageKey,
+        pageVariant,
+        pageMode,
+        agentTrackingProfileId = (string?)null,
+        agentSlug,
+        formId,
+        requiredContactFields = requiredContactFieldNames,
+        browserEventNames = MetaSignalEventCatalog.BrowserPixelEventNames,
+        leadSignalRules = new
+        {
+            leadReadyRequiresContactStep = WebsiteLeadSignalRules.Default.LeadReadyRequiresContactStep,
+            leadReadyRequiresValidPhone = WebsiteLeadSignalRules.Default.LeadReadyRequiresValidPhone,
+            leadReadyRequiresValidEmail = WebsiteLeadSignalRules.Default.LeadReadyRequiresValidEmail,
+            qualifiedLeadRequiresLeadReady = WebsiteLeadSignalRules.Default.QualifiedLeadRequiresLeadReady,
+            qualifiedLeadMinimumTotalScore = WebsiteLeadSignalRules.Default.QualifiedLeadMinimumTotalScore
+        },
+        weights = metaSignalOptions.Weights
+    });
+}
+
+<script src="~/js/meta-signal-intelligence.js" asp-append-version="true"></script>
+<script>
+(() => {
+  const formId = @Html.Raw(JsonSerializer.Serialize(formId));
+  const form = formId ? document.getElementById(formId) : null;
+  const metaSignal = window.metaSignalIntelligence?.createLandingSession(@Html.Raw(metaSignalConfigJson)) || null;
+
+  if (!form || !metaSignal || typeof metaSignal.trackLeadFormStart !== 'function') {
+    return;
+  }
+
+  let started = false;
+  const trackStart = (source) => {
+    if (started) return;
+    started = true;
+    Promise.resolve(metaSignal.trackLeadFormStart({
+      startSource: source || 'quote_form_interaction',
+      formId
+    })).catch(() => {});
+  };
+
+  form.addEventListener('focusin', (event) => {
+    const target = event.target;
+    if (target && target.matches && target.matches('input, select, textarea, button')) {
+      trackStart('form_focusin');
+    }
+  }, { once: true });
+
+  form.addEventListener('change', () => trackStart('form_change'), { once: true });
+  form.addEventListener('input', () => trackStart('form_input'), { once: true });
+})();
+</script>
