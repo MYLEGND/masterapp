@@ -557,7 +557,7 @@
     var contactMethodErrorText = "Please enter your phone number so we can send and review your options.";
     var consentPromptText = "I’m okay with a quick call or text to review my options. No obligation.";
     var consentErrorText = "Please check the box so we can follow up about your review.";
-    var stepTwoContactTitleText = "Where should we send your review?";
+    var stepTwoContactTitleText = "Where should we send your full review?";
     var stepTwoContactCopyText = "Your starting point is ready. Add your first name and best number so we can send the review and help you compare the next step.";
     var stepTwoSubmitNoteText = "No pressure. You decide what happens next.";
     var stepTwoProgressText = "Almost done";
@@ -3905,6 +3905,9 @@ body.page-variant-emotional-continuity-v1.life-landing #lifeHeroTrustStrip {
 }
 .lq-contact-first-flow-surface .lq-step-panel-pad {
     padding: 0;
+}
+.lq-contact-estimate-after-submit {
+    margin-top: 22px;
 }
 .lq-contact-first-flow-surface .lq-contact-step .lq-step-actions {
     margin-top: 14px;
@@ -8253,7 +8256,7 @@ input:checked + .lq-answer-card {
                                             <div class="lq-error" id="lifeError"></div>
                                             <div class="lq-success" id="lifeSuccess">Thanks! We received your request.</div>
                                             <div class="lq-contact-grid">
-                                                <div class="full lq-contact-estimate-slot" id="lifeStep2EstimateSlot" hidden></div>
+                                                <div class="full lq-contact-estimate-slot lq-contact-estimate-after-submit" id="lifeStep2EstimateSlot" hidden></div>
                                             </div>
                                         </div>
                                     </div>
@@ -8823,7 +8826,7 @@ input:checked + .lq-answer-card {
                         <div class="lq-error" id="lifeError"></div>
                         <div class="lq-success" id="lifeSuccess">Thanks! We received your request.</div>
                         <div class="lq-contact-grid">
-                            <div class="full lq-contact-estimate-slot" id="lifeStep2EstimateSlot" hidden></div>
+                            <div class="full lq-contact-estimate-slot lq-contact-estimate-after-submit" id="lifeStep2EstimateSlot" hidden></div>
                         </div>
                     </div>
                 </div>
