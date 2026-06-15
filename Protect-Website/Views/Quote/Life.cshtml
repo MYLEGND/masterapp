@@ -12212,7 +12212,7 @@ const contactFieldProgress = new Map();
     const value = asTrimmed(el.value);
     if (name === 'Email') {
       if (!value) {
-        return '';
+        return requiredContactFields.includes(name) ? 'Please enter your email.' : '';
       }
 
       if (el instanceof HTMLInputElement && !el.checkValidity()) {
