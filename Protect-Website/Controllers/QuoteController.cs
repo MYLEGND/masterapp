@@ -22,7 +22,7 @@ namespace Protect_Website.Controllers
         public IActionResult Auto() => View("Auto");
         public IActionResult Home() => View("Home");
         public IActionResult Life() => View("Life");
-        public IActionResult Health() => View("Health");
+        public IActionResult DentalVisionHearing() => View("DentalVisionHearing");
         public IActionResult Commercial() => View("Commercial");
         public IActionResult Other() => View("Other");
     }

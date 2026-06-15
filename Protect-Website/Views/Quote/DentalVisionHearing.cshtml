@@ -1,8 +1,8 @@
 @using System.Text.Json
-@model Protect_Website.Models.HealthQuoteFormModel
+@model Protect_Website.Models.DentalVisionHearingQuoteFormModel
 
 @{
-    var form = Model ?? new Protect_Website.Models.HealthQuoteFormModel();
+    var form = Model ?? new Protect_Website.Models.DentalVisionHearingQuoteFormModel();
     var requestPath = Context?.Request?.Path.Value ?? string.Empty;
     var isLandingRoutePath = requestPath.Contains("/landing", StringComparison.OrdinalIgnoreCase);
     const string websitePageVariant = "website";
@@ -16,27 +16,27 @@
     var isPaidLandingExperience = string.Equals(pageMode, "paid_landing", StringComparison.OrdinalIgnoreCase);
     var isStandaloneLandingExperience = isLandingRoutePath || isPaidLandingExperience;
     var pageKey = string.IsNullOrWhiteSpace(form.PageKey)
-        ? (isStandaloneLandingExperience ? "quote_health_landing" : "quote_health")
+        ? (isStandaloneLandingExperience ? "quote_dvh_landing" : "quote_dvh")
         : form.PageKey.Trim();
     var formKey = $"{pageKey}_form";
     var requestScheme = Context?.Request?.Scheme ?? "https";
     var requestHost = Context?.Request?.Host.Value ?? string.Empty;
     var seoImageUrl = string.IsNullOrWhiteSpace(requestHost)
-        ? "/images/ads/health-top-banner.png"
-        : $"{requestScheme}://{requestHost}/images/ads/health-top-banner.png";
+        ? "/images/ads/dvh-top-banner.png"
+        : $"{requestScheme}://{requestHost}/images/ads/dvh-top-banner.png";
 
-    ViewData["SeoTitle"] = "Health Insurance Review";
-    ViewData["SeoDescription"] = "Review health insurance options around household needs, current coverage, doctor access, and affordability.";
+    ViewData["SeoTitle"] = "Dental, Vision & Hearing Coverage Review";
+    ViewData["SeoDescription"] = "Review dental, vision, and hearing coverage options around your needs, budget, and benefit gaps.";
     ViewData["SeoImage"] = seoImageUrl;
-    ViewData["Title"] = "Get Your Personalized Health Coverage Review";
+    ViewData["Title"] = "Get Your Personalized Dental, Vision & Hearing Review";
     ViewData["PageKey"] = pageKey;
     ViewData["PageCategory"] = "quote";
     ViewData["PageVariant"] = pageVariant;
     ViewData["PageMode"] = pageMode;
-    ViewData["QuoteTypeForTracking"] = "health";
+    ViewData["QuoteTypeForTracking"] = "dvh";
     ViewData["IsLandingPage"] = isStandaloneLandingExperience;
-    ViewData["BodyClass"] = isStandaloneLandingExperience ? "health-landing" : "health-quote";
-    ViewData["MetaSignalFormId"] = "healthQuoteForm";
+    ViewData["BodyClass"] = isStandaloneLandingExperience ? "dvh-landing" : "dvh-quote";
+    ViewData["MetaSignalFormId"] = "dvhQuoteForm";
 
     var isFounderPath = ViewData["IsFounderPath"] as bool? == true;
     var trackedSlug = ((string?)ViewData["TrackingSlug"] ?? string.Empty).Trim();
@@ -88,14 +88,14 @@
         !string.IsNullOrWhiteSpace(form.LastName) ||
         !string.IsNullOrWhiteSpace(form.Email) ||
         !string.IsNullOrWhiteSpace(form.Phone);
-    IReadOnlyList<string> heroProofChips = new[] { "Affordable options", "Licensed review", "No obligation" };
-    var heroStepIntroTitle = "Start with the coverage pressure";
-    var heroStepIntroHelper = "A quick health coverage review built around your household, current plan status, and what matters most before unexpected medical costs catch you off guard.";
-    var primaryStartCtaText = "Check My Coverage Fit";
-    var primaryStartCtaNote = "A quick review now can help protect your household from costly coverage gaps later.";
-    var contactMethodHelperText = "Best number to save and review your health coverage details.";
-    var contactMethodErrorText = "Please enter your phone number so we can save your review.";
-    var consentPromptText = "I agree to receive a call or text to review my health coverage options and next steps.";
+    IReadOnlyList<string> heroProofChips = new[] { "Dental", "Vision", "Hearing" };
+    var heroStepIntroTitle = "Start with the benefits you want covered";
+    var heroStepIntroHelper = "A clean review built around dental work, vision needs, hearing benefits, and overall value.";
+    var primaryStartCtaText = "Check My DVH Coverage Fit";
+    var primaryStartCtaNote = "A quick review can help spot dental, vision, or hearing gaps before they become expensive.";
+    var contactMethodHelperText = "Best number to save and review your dental, vision, and hearing options.";
+    var contactMethodErrorText = "Please enter your phone number so we can save your DVH review.";
+    var consentPromptText = "I agree to receive a call or text to review my dental, vision, and hearing coverage options.";
     var consentErrorText = "Please check the box so we can save your review.";
 
     form.PageVariant = pageVariant;
@@ -103,31 +103,31 @@
 }
 
 <style>
-body.health-quote main.layout-content {
+body.dvh-quote main.layout-content {
     padding-top: 1.3rem;
     padding-bottom: 2rem;
 }
 
-body.health-landing {
+body.dvh-landing {
     background:
         radial-gradient(circle at top, rgba(25, 75, 140, 0.26), transparent 36%),
         linear-gradient(180deg, #041325 0%, #061a34 42%, #071a2f 100%);
     color: #f8fafc;
 }
 
-body.health-landing main.layout-content {
+body.dvh-landing main.layout-content {
     padding-top: 0.45rem;
     padding-bottom: 2rem;
 }
 
-body.health-landing.page-mode-paid-landing header .nav-links,
-body.health-landing.page-mode-paid-landing header .nav-toggle,
-body.health-landing.page-mode-paid-landing header .header-bottom,
-body.health-landing.page-mode-paid-landing header .header-psalms {
+body.dvh-landing.page-mode-paid-landing header .nav-links,
+body.dvh-landing.page-mode-paid-landing header .nav-toggle,
+body.dvh-landing.page-mode-paid-landing header .header-bottom,
+body.dvh-landing.page-mode-paid-landing header .header-psalms {
     display: none !important;
 }
 
-body.health-landing.page-mode-paid-landing header .navbar {
+body.dvh-landing.page-mode-paid-landing header .navbar {
     height: auto;
     min-height: 84px;
     padding: 0.8rem 1rem;
@@ -135,11 +135,11 @@ body.health-landing.page-mode-paid-landing header .navbar {
     box-shadow: 0 20px 34px rgba(2, 12, 27, 0.32);
 }
 
-body.health-landing.page-mode-paid-landing header .navbar-top {
+body.dvh-landing.page-mode-paid-landing header .navbar-top {
     min-height: 0;
 }
 
-body.health-landing.page-mode-paid-landing header .navbar-brand img {
+body.dvh-landing.page-mode-paid-landing header .navbar-brand img {
     max-height: 52px;
 }
 
@@ -506,7 +506,7 @@ body.health-landing.page-mode-paid-landing header .navbar-brand img {
     }
 }
 
-#healthEducationPanel[hidden] {
+#dvhEducationPanel[hidden] {
     display: none !important;
 }
 
@@ -1253,13 +1253,13 @@ body.health-landing.page-mode-paid-landing header .navbar-brand img {
     display: block !important;
 }
 
-#healthPostSubmitSlot,
-#healthPostSubmitSlot * {
+#dvhPostSubmitSlot,
+#dvhPostSubmitSlot * {
     opacity: 1 !important;
     box-sizing: border-box !important;
 }
 
-#healthPostSubmitSlot {
+#dvhPostSubmitSlot {
     width: 100% !important;
     margin: 0 !important;
     padding: 0 !important;
@@ -1268,7 +1268,7 @@ body.health-landing.page-mode-paid-landing header .navbar-brand img {
     box-shadow: none !important;
 }
 
-#healthPostSubmitSlot .lq-final-review-unified-card {
+#dvhPostSubmitSlot .lq-final-review-unified-card {
     width: min(1240px, 100%) !important;
     max-width: 1240px !important;
     margin: 0 auto !important;
@@ -1285,14 +1285,14 @@ body.health-landing.page-mode-paid-landing header .navbar-brand img {
     overflow: hidden !important;
 }
 
-#healthPostSubmitSlot .lq-final-review-head {
+#dvhPostSubmitSlot .lq-final-review-head {
     position: relative !important;
     padding: 0 0 13px !important;
     margin: 0 0 12px !important;
     border-bottom: 1px solid rgba(243,214,136,.14) !important;
 }
 
-#healthPostSubmitSlot .lq-final-review-kicker {
+#dvhPostSubmitSlot .lq-final-review-kicker {
     display: inline-flex !important;
     align-items: center !important;
     gap: 8px !important;
@@ -1304,7 +1304,7 @@ body.health-landing.page-mode-paid-landing header .navbar-brand img {
     margin: 0 0 8px !important;
 }
 
-#healthPostSubmitSlot .lq-final-review-kicker::after {
+#dvhPostSubmitSlot .lq-final-review-kicker::after {
     content: "" !important;
     width: 42px !important;
     height: 1px !important;
@@ -1312,7 +1312,7 @@ body.health-landing.page-mode-paid-landing header .navbar-brand img {
     display: block !important;
 }
 
-#healthPostSubmitSlot .lq-final-review-title {
+#dvhPostSubmitSlot .lq-final-review-title {
     color: #fff8e7 !important;
     font-size: clamp(1.72rem, 4vw, 2.28rem) !important;
     line-height: 1.02 !important;
@@ -1322,7 +1322,7 @@ body.health-landing.page-mode-paid-landing header .navbar-brand img {
     text-wrap: balance !important;
 }
 
-#healthPostSubmitSlot .lq-final-review-copy {
+#dvhPostSubmitSlot .lq-final-review-copy {
     color: rgba(248,250,252,.84) !important;
     font-size: .96rem !important;
     line-height: 1.42 !important;
@@ -1331,14 +1331,14 @@ body.health-landing.page-mode-paid-landing header .navbar-brand img {
     margin: 0 !important;
 }
 
-#healthPostSubmitSlot .lq-final-review-proof-row {
+#dvhPostSubmitSlot .lq-final-review-proof-row {
     display: flex !important;
     flex-wrap: wrap !important;
     gap: 7px !important;
     margin: 0 0 13px !important;
 }
 
-#healthPostSubmitSlot .lq-final-review-proof-row span {
+#dvhPostSubmitSlot .lq-final-review-proof-row span {
     display: inline-flex !important;
     align-items: center !important;
     min-height: 28px !important;
@@ -1351,19 +1351,19 @@ body.health-landing.page-mode-paid-landing header .navbar-brand img {
     font-weight: 900 !important;
 }
 
-#healthPostSubmitSlot .lq-final-review-impact-grid,
-#healthPostSubmitSlot .dq-final-review-stats {
+#dvhPostSubmitSlot .lq-final-review-impact-grid,
+#dvhPostSubmitSlot .dq-final-review-stats {
     display: grid !important;
     grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
     gap: 10px !important;
 }
 
-#healthPostSubmitSlot .lq-final-review-impact-grid {
+#dvhPostSubmitSlot .lq-final-review-impact-grid {
     margin: 0 0 14px !important;
 }
 
-#healthPostSubmitSlot .lq-final-review-impact-card,
-#healthPostSubmitSlot .dq-final-review-stat {
+#dvhPostSubmitSlot .lq-final-review-impact-card,
+#dvhPostSubmitSlot .dq-final-review-stat {
     padding: 13px 14px !important;
     border-radius: 16px !important;
     border: 1px solid rgba(199,153,49,.22) !important;
@@ -1372,17 +1372,17 @@ body.health-landing.page-mode-paid-landing header .navbar-brand img {
         linear-gradient(180deg, rgba(6,29,61,.78) 0%, rgba(7,26,54,.92) 100%) !important;
 }
 
-#healthPostSubmitSlot .lq-final-review-impact-card.is-urgent {
+#dvhPostSubmitSlot .lq-final-review-impact-card.is-urgent {
     border-color: rgba(243,214,136,.38) !important;
     background:
         radial-gradient(circle at 15% 0%, rgba(243,214,136,.14), transparent 38%),
         linear-gradient(180deg, rgba(8,37,77,.90) 0%, rgba(7,26,54,.96) 100%) !important;
 }
 
-#healthPostSubmitSlot .lq-final-review-impact-label,
-#healthPostSubmitSlot .lq-final-review-next-kicker,
-#healthPostSubmitSlot .lq-final-review-booking-kicker,
-#healthPostSubmitSlot .dq-final-review-stat-label {
+#dvhPostSubmitSlot .lq-final-review-impact-label,
+#dvhPostSubmitSlot .lq-final-review-next-kicker,
+#dvhPostSubmitSlot .lq-final-review-booking-kicker,
+#dvhPostSubmitSlot .dq-final-review-stat-label {
     color: #f3d688 !important;
     font-size: .70rem !important;
     font-weight: 940 !important;
@@ -1391,16 +1391,16 @@ body.health-landing.page-mode-paid-landing header .navbar-brand img {
     margin: 0 0 5px !important;
 }
 
-#healthPostSubmitSlot .lq-final-review-impact-text,
-#healthPostSubmitSlot .lq-final-review-next-copy,
-#healthPostSubmitSlot .lq-final-review-booking-copy {
+#dvhPostSubmitSlot .lq-final-review-impact-text,
+#dvhPostSubmitSlot .lq-final-review-next-copy,
+#dvhPostSubmitSlot .lq-final-review-booking-copy {
     color: rgba(248,250,252,.88) !important;
     font-size: .87rem !important;
     font-weight: 760 !important;
     line-height: 1.34 !important;
 }
 
-#healthPostSubmitSlot .lq-final-review-result-slot {
+#dvhPostSubmitSlot .lq-final-review-result-slot {
     background: transparent !important;
     border: 0 !important;
     box-shadow: none !important;
@@ -1408,18 +1408,18 @@ body.health-landing.page-mode-paid-landing header .navbar-brand img {
     margin: 0 0 14px !important;
 }
 
-#healthPostSubmitSlot .dq-final-review-stats {
+#dvhPostSubmitSlot .dq-final-review-stats {
     margin: 0 !important;
 }
 
-#healthPostSubmitSlot .dq-final-review-stat-value {
+#dvhPostSubmitSlot .dq-final-review-stat-value {
     color: #fff8e7 !important;
     font-size: 1.05rem !important;
     font-weight: 900 !important;
     line-height: 1.3 !important;
 }
 
-#healthPostSubmitSlot .lq-final-review-next-step {
+#dvhPostSubmitSlot .lq-final-review-next-step {
     margin: 2px 0 14px !important;
     padding: 15px 16px !important;
     border-radius: 18px !important;
@@ -1432,7 +1432,7 @@ body.health-landing.page-mode-paid-landing header .navbar-brand img {
         0 14px 28px rgba(2,12,27,.14) !important;
 }
 
-#healthPostSubmitSlot .lq-final-review-next-title {
+#dvhPostSubmitSlot .lq-final-review-next-title {
     color: #fff7df !important;
     font-size: 1.02rem !important;
     font-weight: 930 !important;
@@ -1440,13 +1440,13 @@ body.health-landing.page-mode-paid-landing header .navbar-brand img {
     margin: 0 0 6px !important;
 }
 
-#healthPostSubmitSlot .lq-final-review-checklist {
+#dvhPostSubmitSlot .lq-final-review-checklist {
     display: grid !important;
     grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
     gap: 7px !important;
 }
 
-#healthPostSubmitSlot .lq-final-review-checklist span {
+#dvhPostSubmitSlot .lq-final-review-checklist span {
     padding: 8px 9px !important;
     border-radius: 12px !important;
     border: 1px solid rgba(243,214,136,.20) !important;
@@ -1457,7 +1457,7 @@ body.health-landing.page-mode-paid-landing header .navbar-brand img {
     text-align: center !important;
 }
 
-#healthPostSubmitSlot .lq-final-review-booking-card {
+#dvhPostSubmitSlot .lq-final-review-booking-card {
     margin: 12px 0 10px !important;
     padding: 15px 16px !important;
     border-radius: 18px !important;
@@ -1467,7 +1467,7 @@ body.health-landing.page-mode-paid-landing header .navbar-brand img {
         linear-gradient(180deg, rgba(9,41,85,.96) 0%, rgba(6,26,55,.98) 100%) !important;
 }
 
-#healthPostSubmitSlot .lq-final-review-booking-title {
+#dvhPostSubmitSlot .lq-final-review-booking-title {
     color: #fff8e7 !important;
     font-size: 1.16rem !important;
     font-weight: 950 !important;
@@ -1476,9 +1476,9 @@ body.health-landing.page-mode-paid-landing header .navbar-brand img {
     text-wrap: balance !important;
 }
 
-#healthPostSubmitSlot .lq-final-review-loading,
-#healthPostSubmitSlot .lq-final-review-unavailable,
-#healthPostSubmitSlot .lq-booking-embed-status {
+#dvhPostSubmitSlot .lq-final-review-loading,
+#dvhPostSubmitSlot .lq-final-review-unavailable,
+#dvhPostSubmitSlot .lq-booking-embed-status {
     margin: 10px 0 !important;
     padding: 10px 12px !important;
     border-radius: 14px !important;
@@ -1489,7 +1489,7 @@ body.health-landing.page-mode-paid-landing header .navbar-brand img {
     font-weight: 760 !important;
 }
 
-#healthPostSubmitSlot .lq-booking-frame-only {
+#dvhPostSubmitSlot .lq-booking-frame-only {
     width: 100% !important;
     margin: 10px 0 0 !important;
     padding: 0 !important;
@@ -1498,7 +1498,7 @@ body.health-landing.page-mode-paid-landing header .navbar-brand img {
     box-shadow: none !important;
 }
 
-#healthPostSubmitSlot .lq-booking-iframe {
+#dvhPostSubmitSlot .lq-booking-iframe {
     display: block !important;
     width: 100% !important;
     min-height: 650px !important;
@@ -1508,12 +1508,12 @@ body.health-landing.page-mode-paid-landing header .navbar-brand img {
     box-shadow: 0 16px 34px rgba(2,12,27,.22) !important;
 }
 
-#healthEducationContactPanel,
-#healthEducationContactPanel * {
+#dvhEducationContactPanel,
+#dvhEducationContactPanel * {
     box-sizing: border-box !important;
 }
 
-#healthEducationContactPanel {
+#dvhEducationContactPanel {
     width: 100% !important;
     padding: 20px 26px 18px !important;
     border-radius: 26px !important;
@@ -1526,25 +1526,25 @@ body.health-landing.page-mode-paid-landing header .navbar-brand img {
         inset 0 1px 0 rgba(255, 255, 255, 0.055) !important;
 }
 
-#healthEducationContactPanel .dq-wizard-surface,
-#healthEducationContactPanel #dqStep1Panel,
-#healthEducationContactPanel #dqContactPanel,
-#healthEducationContactPanel #dqProcessingPanel,
-#healthEducationContactPanel .lq-step-panel-pad {
+#dvhEducationContactPanel .dq-wizard-surface,
+#dvhEducationContactPanel #dqStep1Panel,
+#dvhEducationContactPanel #dqContactPanel,
+#dvhEducationContactPanel #dqProcessingPanel,
+#dvhEducationContactPanel .lq-step-panel-pad {
     background: transparent !important;
     border: 0 !important;
     box-shadow: none !important;
     margin: 0 !important;
 }
 
-#healthEducationContactPanel #dqStep1Panel,
-#healthEducationContactPanel #dqContactPanel,
-#healthEducationContactPanel #dqProcessingPanel,
-#healthEducationContactPanel .lq-step-panel-pad {
+#dvhEducationContactPanel #dqStep1Panel,
+#dvhEducationContactPanel #dqContactPanel,
+#dvhEducationContactPanel #dqProcessingPanel,
+#dvhEducationContactPanel .lq-step-panel-pad {
     padding: 0 !important;
 }
 
-#healthEducationContactPanel .dq-proof-card {
+#dvhEducationContactPanel .dq-proof-card {
     background: transparent !important;
     border: 0 !important;
     border-bottom: 1px solid rgba(59, 130, 246, 0.09) !important;
@@ -1553,11 +1553,11 @@ body.health-landing.page-mode-paid-landing header .navbar-brand img {
     box-shadow: none !important;
 }
 
-#healthEducationContactPanel .dq-proof-chips {
+#dvhEducationContactPanel .dq-proof-chips {
     margin: 0 0 16px !important;
 }
 
-#healthEducationContactPanel .dq-contact-capture-wrap {
+#dvhEducationContactPanel .dq-contact-capture-wrap {
     width: 100% !important;
     max-width: 100% !important;
     margin: 0 !important;
@@ -1566,11 +1566,11 @@ body.health-landing.page-mode-paid-landing header .navbar-brand img {
     background: transparent !important;
 }
 
-#healthEducationContactPanel .dq-contact-head {
+#dvhEducationContactPanel .dq-contact-head {
     text-align: center !important;
 }
 
-#healthEducationContactPanel .dq-contact-kicker {
+#dvhEducationContactPanel .dq-contact-kicker {
     color: #f3d688 !important;
     font-size: .8rem !important;
     font-weight: 950 !important;
@@ -1579,18 +1579,18 @@ body.health-landing.page-mode-paid-landing header .navbar-brand img {
     margin: 0 0 8px !important;
 }
 
-#healthEducationContactPanel .dq-contact-title {
+#dvhEducationContactPanel .dq-contact-title {
     color: #fff8e7 !important;
     font-size: 1.55rem !important;
     line-height: 1.08 !important;
     margin: 0 0 20px !important;
 }
 
-#healthEducationContactPanel .dq-contact-copy {
+#dvhEducationContactPanel .dq-contact-copy {
     display: none !important;
 }
 
-#healthEducationContactPanel .dq-contact-capture-wrap .lq-field label {
+#dvhEducationContactPanel .dq-contact-capture-wrap .lq-field label {
     color: rgba(248,250,252,.92) !important;
     opacity: 1 !important;
     font-size: .82rem !important;
@@ -1599,14 +1599,14 @@ body.health-landing.page-mode-paid-landing header .navbar-brand img {
     display: inline-block !important;
 }
 
-#healthEducationContactPanel .dq-contact-capture-wrap .lq-required-star {
+#dvhEducationContactPanel .dq-contact-capture-wrap .lq-required-star {
     color: #ff2d2d !important;
     opacity: 1 !important;
     font-weight: 950 !important;
 }
 
-#healthEducationContactPanel .dq-contact-capture-wrap input:not([type="checkbox"]):not([type="radio"]),
-#healthEducationContactPanel .dq-contact-capture-wrap select {
+#dvhEducationContactPanel .dq-contact-capture-wrap input:not([type="checkbox"]):not([type="radio"]),
+#dvhEducationContactPanel .dq-contact-capture-wrap select {
     height: 50px !important;
     min-height: 50px !important;
     border-radius: 12px !important;
@@ -1615,7 +1615,7 @@ body.health-landing.page-mode-paid-landing header .navbar-brand img {
     color: #0f172a !important;
 }
 
-#healthEducationContactPanel .dq-contact-capture-wrap .lq-consent {
+#dvhEducationContactPanel .dq-contact-capture-wrap .lq-consent {
     margin-top: 16px !important;
     padding: 12px 14px !important;
     border-radius: 12px !important;
@@ -1623,38 +1623,38 @@ body.health-landing.page-mode-paid-landing header .navbar-brand img {
     border: 1px solid rgba(59,130,246,.14) !important;
 }
 
-#healthEducationContactPanel.qf-final-panel-no-chrome,
-#healthEducationContactPanel.qf-final-review-flat-mode,
-#healthEducationContactPanel.is-submitted {
+#dvhEducationContactPanel.qf-final-panel-no-chrome,
+#dvhEducationContactPanel.qf-final-review-flat-mode,
+#dvhEducationContactPanel.is-submitted {
     background: transparent !important;
     border: 0 !important;
     box-shadow: none !important;
     padding: 0 !important;
 }
 
-#healthEducationContactPanel.qf-final-panel-no-chrome .dq-proof-card,
-#healthEducationContactPanel.qf-final-panel-no-chrome .dq-proof-chips,
-#healthEducationContactPanel.qf-final-panel-no-chrome #healthContactCaptureWrap,
-#healthEducationContactPanel.qf-final-panel-no-chrome #dqContactPanel > .lq-step-panel-pad > .lq-step-progress {
+#dvhEducationContactPanel.qf-final-panel-no-chrome .dq-proof-card,
+#dvhEducationContactPanel.qf-final-panel-no-chrome .dq-proof-chips,
+#dvhEducationContactPanel.qf-final-panel-no-chrome #dvhContactCaptureWrap,
+#dvhEducationContactPanel.qf-final-panel-no-chrome #dqContactPanel > .lq-step-panel-pad > .lq-step-progress {
     display: none !important;
 }
 
-#healthEducationContactPanel.is-submit-loading #dqStep1Panel,
-#healthEducationContactPanel.is-submit-loading #dqContactPanel,
-#healthEducationContactPanel.is-submit-loading #healthContactCaptureWrap,
-#healthEducationContactPanel.is-submit-loading #healthPostSubmitSlot {
+#dvhEducationContactPanel.is-submit-loading #dqStep1Panel,
+#dvhEducationContactPanel.is-submit-loading #dqContactPanel,
+#dvhEducationContactPanel.is-submit-loading #dvhContactCaptureWrap,
+#dvhEducationContactPanel.is-submit-loading #dvhPostSubmitSlot {
     display: none !important;
 }
 
-#healthEducationContactPanel.is-submit-loading #dqProcessingPanel {
+#dvhEducationContactPanel.is-submit-loading #dqProcessingPanel {
     display: block !important;
 }
 
-#healthPostSubmitSlot .lq-final-review-agent-row .dq-proof-card {
+#dvhPostSubmitSlot .lq-final-review-agent-row .dq-proof-card {
     margin: 0 0 8px !important;
 }
 
-#healthPostSubmitSlot .lq-booking-secondary-link {
+#dvhPostSubmitSlot .lq-booking-secondary-link {
     display: inline-flex !important;
     justify-content: center !important;
     align-items: center !important;
@@ -1697,16 +1697,16 @@ body.health-landing.page-mode-paid-landing header .navbar-brand img {
         max-width: 100% !important;
     }
 
-    #healthEducationContactPanel {
+    #dvhEducationContactPanel {
         width: 100% !important;
         max-width: 100% !important;
         margin: 0 !important;
         padding: 20px 24px 22px !important;
     }
 
-    #healthEducationContactPanel .dq-wizard-surface,
-    #healthEducationContactPanel #dqContactPanel,
-    #healthEducationContactPanel .lq-step-panel-pad {
+    #dvhEducationContactPanel .dq-wizard-surface,
+    #dvhEducationContactPanel #dqContactPanel,
+    #dvhEducationContactPanel .lq-step-panel-pad {
         width: 100% !important;
         max-width: none !important;
         margin: 0 !important;
@@ -1714,7 +1714,7 @@ body.health-landing.page-mode-paid-landing header .navbar-brand img {
         padding-right: 0 !important;
     }
 
-    #healthEducationContactPanel .dq-contact-capture-wrap {
+    #dvhEducationContactPanel .dq-contact-capture-wrap {
         display: grid !important;
         grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
         gap: 18px 24px !important;
@@ -1724,40 +1724,40 @@ body.health-landing.page-mode-paid-landing header .navbar-brand img {
         padding: 14px 14px 0 !important;
     }
 
-    #healthEducationContactPanel .dq-contact-head {
+    #dvhEducationContactPanel .dq-contact-head {
         grid-column: 1 / span 1 !important;
         text-align: left !important;
         align-self: end !important;
         padding: 4px 6px 0 !important;
     }
 
-    #healthEducationContactPanel .dq-review-summary {
+    #dvhEducationContactPanel .dq-review-summary {
         grid-column: 2 / span 1 !important;
         align-self: end !important;
         margin: 0 !important;
         padding: 4px 6px 0 !important;
     }
 
-    #healthEducationContactPanel .dq-contact-hint {
+    #dvhEducationContactPanel .dq-contact-hint {
         grid-column: 1 / -1 !important;
         margin: 0 0 2px !important;
         padding: 0 6px !important;
     }
 
-    #healthEducationContactPanel .dq-proof-card {
+    #dvhEducationContactPanel .dq-proof-card {
         padding: 10px 14px 16px !important;
         margin: 0 0 16px !important;
     }
 
-    #healthEducationContactPanel > .dq-proof-chips {
+    #dvhEducationContactPanel > .dq-proof-chips {
         padding: 0 14px !important;
     }
 
-    #healthEducationContactPanel > .dq-wizard-surface {
+    #dvhEducationContactPanel > .dq-wizard-surface {
         padding: 0 14px 10px !important;
     }
 
-    #healthEducationContactPanel .lq-field-row.two.full {
+    #dvhEducationContactPanel .lq-field-row.two.full {
         grid-column: 1 / -1 !important;
         display: grid !important;
         grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
@@ -1766,76 +1766,76 @@ body.health-landing.page-mode-paid-landing header .navbar-brand img {
         margin: 0 !important;
     }
 
-    #healthEducationContactPanel .lq-field-row.two.full > .lq-field {
+    #dvhEducationContactPanel .lq-field-row.two.full > .lq-field {
         width: 100% !important;
         min-width: 0 !important;
     }
 
-    #healthEducationContactPanel .full.lq-field-help,
-    #healthEducationContactPanel .full.lq-field-err,
-    #healthEducationContactPanel .lq-consent,
-    #healthEducationContactPanel .lq-step-actions,
-    #healthEducationContactPanel .lq-error,
-    #healthEducationContactPanel .lq-success {
+    #dvhEducationContactPanel .full.lq-field-help,
+    #dvhEducationContactPanel .full.lq-field-err,
+    #dvhEducationContactPanel .lq-consent,
+    #dvhEducationContactPanel .lq-step-actions,
+    #dvhEducationContactPanel .lq-error,
+    #dvhEducationContactPanel .lq-success {
         grid-column: 1 / -1 !important;
     }
 
-    #healthEducationContactPanel .lq-step-actions {
+    #dvhEducationContactPanel .lq-step-actions {
         display: flex !important;
         gap: 12px !important;
         align-items: stretch !important;
     }
 
-    #healthEducationContactPanel .lq-step-actions .btn-ghost {
+    #dvhEducationContactPanel .lq-step-actions .btn-ghost {
         flex: 0 0 220px !important;
     }
 
-    #healthEducationContactPanel .lq-step-actions .btn-block {
+    #dvhEducationContactPanel .lq-step-actions .btn-block {
         flex: 1 1 auto !important;
         margin: 0 !important;
     }
 
-    #healthPostSubmitSlot .lq-final-review-unified-card {
+    #dvhPostSubmitSlot .lq-final-review-unified-card {
         display: grid !important;
         grid-template-columns: minmax(0, 1fr) !important;
         gap: 14px !important;
         padding: 28px 32px 32px !important;
     }
 
-    #healthPostSubmitSlot .lq-final-review-head,
-    #healthPostSubmitSlot .lq-final-review-proof-row,
-    #healthPostSubmitSlot .lq-final-review-impact-grid,
-    #healthPostSubmitSlot .lq-final-review-result-slot,
-    #healthPostSubmitSlot .lq-final-review-next-step,
-    #healthPostSubmitSlot .lq-final-review-booking-card {
+    #dvhPostSubmitSlot .lq-final-review-head,
+    #dvhPostSubmitSlot .lq-final-review-proof-row,
+    #dvhPostSubmitSlot .lq-final-review-impact-grid,
+    #dvhPostSubmitSlot .lq-final-review-result-slot,
+    #dvhPostSubmitSlot .lq-final-review-next-step,
+    #dvhPostSubmitSlot .lq-final-review-booking-card {
         grid-column: 1 / -1 !important;
         min-width: 0 !important;
         margin-left: 0 !important;
         margin-right: 0 !important;
     }
 
-    #healthPostSubmitSlot .lq-final-review-agent-row {
+    #dvhPostSubmitSlot .lq-final-review-agent-row {
         grid-column: 1 / -1 !important;
         margin: 0 0 8px !important;
         padding: 6px 6px 2px !important;
     }
 
-    #healthPostSubmitSlot .lq-final-review-agent-row .dq-proof-card {
+    #dvhPostSubmitSlot .lq-final-review-agent-row .dq-proof-card {
         margin: 0 !important;
         border-radius: 14px !important;
         padding: 10px 12px !important;
     }
 
-    #healthPostSubmitSlot .lq-final-review-title {
+    #dvhPostSubmitSlot .lq-final-review-title {
         font-size: clamp(1.34rem, 2.05vw, 1.74rem) !important;
         line-height: 1.12 !important;
     }
 
-    #healthPostSubmitSlot .lq-final-review-checklist {
+    #dvhPostSubmitSlot .lq-final-review-checklist {
         grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
     }
 
-    #healthPostSubmitSlot .lq-booking-iframe {
+    #dvhPostSubmitSlot .lq-booking-iframe {
         height: clamp(780px, 92vh, 1100px) !important;
         min-height: clamp(780px, 92vh, 1100px) !important;
     }
@@ -1846,35 +1846,35 @@ body.health-landing.page-mode-paid-landing header .navbar-brand img {
         padding: 16px !important;
     }
 
-    #healthPostSubmitSlot .lq-final-review-unified-card {
+    #dvhPostSubmitSlot .lq-final-review-unified-card {
         padding: 17px !important;
         border-radius: 22px !important;
     }
 
-    #healthPostSubmitSlot .lq-final-review-title {
+    #dvhPostSubmitSlot .lq-final-review-title {
         font-size: 1.52rem !important;
         line-height: 1.04 !important;
     }
 
-    #healthPostSubmitSlot .lq-final-review-copy {
+    #dvhPostSubmitSlot .lq-final-review-copy {
         font-size: .91rem !important;
         line-height: 1.4 !important;
     }
 
-    #healthPostSubmitSlot .lq-final-review-impact-grid,
-    #healthPostSubmitSlot .dq-final-review-stats,
-    #healthPostSubmitSlot .lq-final-review-checklist,
+    #dvhPostSubmitSlot .lq-final-review-impact-grid,
+    #dvhPostSubmitSlot .dq-final-review-stats,
+    #dvhPostSubmitSlot .lq-final-review-checklist,
     .dq-contact-capture-wrap .lq-field-row {
         grid-template-columns: 1fr !important;
     }
 
-    #healthPostSubmitSlot .lq-final-review-next-step,
-    #healthPostSubmitSlot .lq-final-review-booking-card {
+    #dvhPostSubmitSlot .lq-final-review-next-step,
+    #dvhPostSubmitSlot .lq-final-review-booking-card {
         padding: 14px !important;
         border-radius: 16px !important;
     }
 
-    #healthPostSubmitSlot .lq-booking-iframe {
+    #dvhPostSubmitSlot .lq-booking-iframe {
         min-height: 620px !important;
         border-radius: 14px !important;
     }
@@ -1885,11 +1885,11 @@ body.health-landing.page-mode-paid-landing header .navbar-brand img {
     }
 }
 
-body.health-final-step-active .dq-proof-chips {
+body.dvh-final-step-active .dq-proof-chips {
     display: none;
 }
 
-body.health-final-step-active .dq-form-panel {
+body.dvh-final-step-active .dq-form-panel {
     padding: 16px 18px 14px !important;
 }
 
@@ -1983,9 +1983,9 @@ body.health-final-step-active .dq-form-panel {
 </style>
 
 <style>
-/* HEALTH UX DENSITY REBALANCE */
+/* DVH UX DENSITY REBALANCE */
 @@media (min-width: 1024px) {
-    #healthHeroEntryPanel {
+    #dvhHeroEntryPanel {
         max-width: 940px;
         margin: 0 auto;
     }
@@ -2042,67 +2042,67 @@ body.health-final-step-active .dq-form-panel {
         font-size: 0.85rem;
     }
 
-    #healthEducationContactPanel:not(.is-submitted) {
+    #dvhEducationContactPanel:not(.is-submitted) {
         max-width: 1040px !important;
         margin: 0 auto !important;
         padding: 18px 20px 18px !important;
     }
 
-    #healthEducationContactPanel:not(.is-submitted) .dq-proof-card {
+    #dvhEducationContactPanel:not(.is-submitted) .dq-proof-card {
         margin-bottom: 12px !important;
         padding-bottom: 12px !important;
     }
 
-    #healthEducationContactPanel:not(.is-submitted) .dq-proof-chips {
+    #dvhEducationContactPanel:not(.is-submitted) .dq-proof-chips {
         gap: 8px !important;
         margin-bottom: 12px !important;
     }
 
-    #healthEducationContactPanel:not(.is-submitted) .dq-proof-chip {
+    #dvhEducationContactPanel:not(.is-submitted) .dq-proof-chip {
         min-height: 38px !important;
         padding: 8px 12px !important;
         font-size: 0.78rem !important;
     }
 
-    #healthEducationContactPanel:not(.is-submitted) .lq-step-title {
+    #dvhEducationContactPanel:not(.is-submitted) .lq-step-title {
         font-size: 1.24rem !important;
     }
 
-    #healthEducationContactPanel:not(.is-submitted) .lq-step-helper,
-    #healthEducationContactPanel:not(.is-submitted) .dq-contact-hint {
+    #dvhEducationContactPanel:not(.is-submitted) .lq-step-helper,
+    #dvhEducationContactPanel:not(.is-submitted) .dq-contact-hint {
         font-size: 0.9rem !important;
         line-height: 1.48 !important;
     }
 
-    #healthEducationContactPanel:not(.is-submitted) .lq-choice-grid {
+    #dvhEducationContactPanel:not(.is-submitted) .lq-choice-grid {
         gap: 10px !important;
     }
 
-    #healthEducationContactPanel:not(.is-submitted) .lq-card {
+    #dvhEducationContactPanel:not(.is-submitted) .lq-card {
         min-height: 118px !important;
         padding: 14px !important;
     }
 }
 
 @@media (max-width: 767.98px) {
-    body.health-final-step-active .dq-form-panel.qf-final-panel-no-chrome,
-    body.health-final-step-active .dq-form-panel.qf-final-review-flat-mode,
-    body.health-final-step-active .dq-form-panel.is-submitted,
-    #healthEducationContactPanel.qf-final-panel-no-chrome,
-    #healthEducationContactPanel.qf-final-review-flat-mode,
-    #healthEducationContactPanel.is-submitted {
+    body.dvh-final-step-active .dq-form-panel.qf-final-panel-no-chrome,
+    body.dvh-final-step-active .dq-form-panel.qf-final-review-flat-mode,
+    body.dvh-final-step-active .dq-form-panel.is-submitted,
+    #dvhEducationContactPanel.qf-final-panel-no-chrome,
+    #dvhEducationContactPanel.qf-final-review-flat-mode,
+    #dvhEducationContactPanel.is-submitted {
         padding: 0 !important;
         border: 0 !important;
         background: transparent !important;
         box-shadow: none !important;
     }
 
-    #healthPostSubmitSlot {
+    #dvhPostSubmitSlot {
         margin: 0 !important;
         padding: 0 !important;
     }
 
-    #healthPostSubmitSlot .lq-final-review-unified-card {
+    #dvhPostSubmitSlot .lq-final-review-unified-card {
         width: 100% !important;
         padding: 14px 13px 16px !important;
         border-radius: 18px !important;
@@ -2111,57 +2111,57 @@ body.health-final-step-active .dq-form-panel {
             inset 0 1px 0 rgba(255,255,255,.045) !important;
     }
 
-    #healthPostSubmitSlot .lq-final-review-head {
+    #dvhPostSubmitSlot .lq-final-review-head {
         padding-bottom: 10px !important;
         margin-bottom: 10px !important;
     }
 
-    #healthPostSubmitSlot .lq-final-review-title {
+    #dvhPostSubmitSlot .lq-final-review-title {
         font-size: 1.28rem !important;
         line-height: 1.08 !important;
     }
 
-    #healthPostSubmitSlot .lq-final-review-copy {
+    #dvhPostSubmitSlot .lq-final-review-copy {
         font-size: .88rem !important;
         line-height: 1.38 !important;
     }
 
-    #healthPostSubmitSlot .lq-final-review-proof-row {
+    #dvhPostSubmitSlot .lq-final-review-proof-row {
         gap: 6px !important;
         margin: 0 0 10px !important;
     }
 
-    #healthPostSubmitSlot .lq-final-review-proof-row span {
+    #dvhPostSubmitSlot .lq-final-review-proof-row span {
         min-height: 26px !important;
         padding: 5px 8px !important;
         font-size: .68rem !important;
     }
 
-    #healthPostSubmitSlot .lq-final-review-impact-card,
-    #healthPostSubmitSlot .dq-final-review-stat,
-    #healthPostSubmitSlot .lq-final-review-next-step,
-    #healthPostSubmitSlot .lq-final-review-booking-card {
+    #dvhPostSubmitSlot .lq-final-review-impact-card,
+    #dvhPostSubmitSlot .dq-final-review-stat,
+    #dvhPostSubmitSlot .lq-final-review-next-step,
+    #dvhPostSubmitSlot .lq-final-review-booking-card {
         padding: 12px !important;
         border-radius: 14px !important;
     }
 
-    #healthPostSubmitSlot .lq-final-review-booking-card {
+    #dvhPostSubmitSlot .lq-final-review-booking-card {
         margin: 8px 0 !important;
     }
 
-    #healthPostSubmitSlot .lq-final-review-loading,
-    #healthPostSubmitSlot .lq-final-review-unavailable,
-    #healthPostSubmitSlot .lq-booking-embed-status {
+    #dvhPostSubmitSlot .lq-final-review-loading,
+    #dvhPostSubmitSlot .lq-final-review-unavailable,
+    #dvhPostSubmitSlot .lq-booking-embed-status {
         margin: 8px 0 !important;
         padding: 9px 10px !important;
         border-radius: 12px !important;
     }
 
-    #healthPostSubmitSlot .lq-booking-frame-only {
+    #dvhPostSubmitSlot .lq-booking-frame-only {
         margin-top: 8px !important;
     }
 
-    #healthPostSubmitSlot .lq-booking-iframe {
+    #dvhPostSubmitSlot .lq-booking-iframe {
         min-height: 680px !important;
         border-radius: 12px !important;
     }
@@ -2212,9 +2212,9 @@ body.health-final-step-active .dq-form-panel {
 <div class="dq-shell">
     <div class="lq-hero-shell">
         <div class="dq-surface">
-            <div class="dq-hero-entry" id="healthHeroEntryPanel" @((showContactStepByDefault ? "hidden" : null))>
+            <div class="dq-hero-entry" id="dvhHeroEntryPanel" @((showContactStepByDefault ? "hidden" : null))>
                 <figure class="dq-hero-banner-wrap">
-                    <img class="dq-hero-banner-image" src="~/images/ads/health-top-banner.png" asp-append-version="true" alt="Legend health insurance review creative inviting a quick health coverage review." loading="eager" />
+                    <img class="dq-hero-banner-image" src="~/images/ads/dvh-top-banner.png" asp-append-version="true" alt="Legend dental, vision, and hearing review creative inviting a quick dental, vision, and hearing coverage review." loading="eager" />
                 </figure>
 
                 <div class="lq-above-fold-proof" aria-label="Review benefits">
@@ -2251,12 +2251,12 @@ body.health-final-step-active .dq-form-panel {
                 </div>
 
                 <div class="lq-contact-first-hero-actions">
-                    <button type="button" class="btn-gold lq-primary-start-cta lq-contact-first-hero-cta" id="healthHeroStartCta" data-cta="health_funnel_start" data-primary-cta="hero">@primaryStartCtaText</button>
+                    <button type="button" class="btn-gold lq-primary-start-cta lq-contact-first-hero-cta" id="dvhHeroStartCta" data-cta="dvh_funnel_start" data-primary-cta="hero">@primaryStartCtaText</button>
                     <div class="lq-contact-first-hero-cta-note lq-primary-start-note"><span>@primaryStartCtaNote</span></div>
                 </div>
             </div>
 
-            <form asp-action="SubmitHealthQuote" asp-controller="HealthQuote" method="post" id="healthQuoteForm" data-form-key="@formKey" novalidate>
+            <form asp-action="SubmitDentalVisionHearingQuote" asp-controller="DentalVisionHearingQuote" method="post" id="dvhQuoteForm" data-form-key="@formKey" novalidate>
                 @Html.AntiForgeryToken()
                 @if (!string.IsNullOrWhiteSpace(agentSlug))
                 {
@@ -2284,19 +2284,19 @@ body.health-final-step-active .dq-form-panel {
 
                 <noscript>
                     <style>
-                        #healthEducationPanel[hidden] { display: block !important; }
+                        #dvhEducationPanel[hidden] { display: block !important; }
                     </style>
                 </noscript>
 
-                <div class="dq-primary-grid" id="healthEducationPanel" @((showContactStepByDefault ? null : "hidden"))>
-                    <section class="dq-form-panel" id="healthEducationContactPanel">
-                        <div class="dq-proof-card" aria-label="How this health review helps">
+                <div class="dq-primary-grid" id="dvhEducationPanel" @((showContactStepByDefault ? null : "hidden"))>
+                    <section class="dq-form-panel" id="dvhEducationContactPanel">
+                        <div class="dq-proof-card" aria-label="How this dental, vision, and hearing review helps">
                             <div class="dq-proof-icon" aria-hidden="true">
                                 <svg viewBox="0 0 48 48" fill="none"><use href="#dq-icon-shield"></use></svg>
                             </div>
                             <div class="dq-proof-copy">
-                                <div class="dq-proof-kicker">Health coverage review</div>
-                                <div class="dq-proof-title">Protect your household from surprise medical costs and coverage gaps.</div>
+                                <div class="dq-proof-kicker">Dental, vision, and hearing coverage review</div>
+                                <div class="dq-proof-title">Protect your household from surprise dental, vision, or hearing costs and coverage gaps.</div>
                                 <p class="dq-proof-text">Answer a few quick questions so the conversation starts around your household needs, current coverage, and the kind of plan guidance you want first.</p>
                             </div>
                         </div>
@@ -2331,7 +2331,7 @@ body.health-final-step-active .dq-form-panel {
 
                                     <div class="lq-micro-step" data-micro-step="0">
                                         <div class="lq-step-intro">
-                                            <h2 class="lq-step-title">Let's tailor the health review.</h2>
+                                            <h2 class="lq-step-title">Let's tailor your dental, vision, and hearing review.</h2>
                                             <p class="lq-step-helper">Answer a few quick questions first so your review reflects your household, current coverage, and the tradeoffs that matter most.</p>
                                         </div>
                                         <div class="lq-choice-group" role="radiogroup" aria-labelledby="dqAgeRangeLabel">
@@ -2398,7 +2398,7 @@ body.health-final-step-active .dq-form-panel {
 
                                     <div class="lq-micro-step" data-micro-step="1" hidden>
                                         <div class="lq-choice-group" role="radiogroup" aria-labelledby="dqHouseholdSizeLabel">
-                                            <div class="lq-choice-label" id="dqHouseholdSizeLabel">Who needs this health coverage review?</div>
+                                            <div class="lq-choice-label" id="dqHouseholdSizeLabel">Who needs this dental, vision, and hearing coverage review?</div>
                                             <div class="lq-choice-grid">
                                                 <label class="lq-card lq-card-rich @SelectedClassIf(form.HouseholdSize == "Just me")">
                                                     <input type="radio" name="HouseholdSize" value="Just me" @CheckedIf(form.HouseholdSize == "Just me") />
@@ -2455,14 +2455,14 @@ body.health-final-step-active .dq-form-panel {
 
                                     <div class="lq-micro-step" data-micro-step="2" hidden>
                                         <div class="lq-choice-group" role="radiogroup" aria-labelledby="dqCurrentCoverageLabel">
-                                            <div class="lq-choice-label" id="dqCurrentCoverageLabel">What best describes your current health coverage?</div>
+                                            <div class="lq-choice-label" id="dqCurrentCoverageLabel">What best describes your current dental, vision, and hearing coverage?</div>
                                             <div class="lq-choice-grid">
-                                                <label class="lq-card lq-card-rich @SelectedClassIf(form.CurrentCoverage == "No current coverage")">
-                                                    <input type="radio" name="CurrentCoverage" value="No current coverage" @CheckedIf(form.CurrentCoverage == "No current coverage") />
+                                                <label class="lq-card lq-card-rich @SelectedClassIf(form.CurrentCoverage == "No current DVH coverage")">
+                                                    <input type="radio" name="CurrentCoverage" value="No current DVH coverage" @CheckedIf(form.CurrentCoverage == "No current DVH coverage") />
                                                     <span class="lq-card-visual" aria-hidden="true"><svg class="lq-card-icon" viewBox="0 0 48 48" fill="none"><use href="#dq-icon-coverage"></use></svg></span>
                                                     <span class="lq-card-copy">
                                                         <span class="lq-card-kicker">Current status</span>
-                                                        <span class="lq-card-title">No current coverage</span>
+                                                        <span class="lq-card-title">No current DVH coverage</span>
                                                         <span class="lq-card-helper">The review should start with affordable options and how quickly you want coverage in place.</span>
                                                     </span>
                                                 </label>
@@ -2475,12 +2475,12 @@ body.health-final-step-active .dq-form-panel {
                                                         <span class="lq-card-helper">We can review whether the employer option truly fits your household, doctors, and out-of-pocket needs.</span>
                                                     </span>
                                                 </label>
-                                                <label class="lq-card lq-card-rich @SelectedClassIf(form.CurrentCoverage == "Marketplace / ACA plan")">
-                                                    <input type="radio" name="CurrentCoverage" value="Marketplace / ACA plan" @CheckedIf(form.CurrentCoverage == "Marketplace / ACA plan") />
+                                                <label class="lq-card lq-card-rich @SelectedClassIf(form.CurrentCoverage == "Medical only / need DVH")">
+                                                    <input type="radio" name="CurrentCoverage" value="Medical only / need DVH" @CheckedIf(form.CurrentCoverage == "Medical only / need DVH") />
                                                     <span class="lq-card-visual" aria-hidden="true"><svg class="lq-card-icon" viewBox="0 0 48 48" fill="none"><use href="#dq-icon-coverage"></use></svg></span>
                                                     <span class="lq-card-copy">
                                                         <span class="lq-card-kicker">Current status</span>
-                                                        <span class="lq-card-title">Marketplace / ACA plan</span>
+                                                        <span class="lq-card-title">Medical only / need DVH</span>
                                                         <span class="lq-card-helper">We can compare plan fit, subsidy awareness, and whether a better option might exist.</span>
                                                     </span>
                                                 </label>
@@ -2512,7 +2512,7 @@ body.health-final-step-active .dq-form-panel {
 
                                     <div class="lq-micro-step" data-micro-step="3" hidden>
                                         <div class="lq-choice-group" role="radiogroup" aria-labelledby="dqCoverageTypeLabel">
-                                            <div class="lq-choice-label" id="dqCoverageTypeLabel">What kind of health coverage review are you looking for?</div>
+                                            <div class="lq-choice-label" id="dqCoverageTypeLabel">What kind of dental, vision, and hearing coverage review are you looking for?</div>
                                             <div class="lq-choice-grid">
                                                 <label class="lq-card lq-card-rich @SelectedClassIf(form.CoverageType == "Individual coverage")">
                                                     <input type="radio" name="CoverageType" value="Individual coverage" @CheckedIf(form.CoverageType == "Individual coverage") />
@@ -2532,21 +2532,21 @@ body.health-final-step-active .dq-form-panel {
                                                         <span class="lq-card-helper">Keep the review centered on dependents, shared care needs, and family plan fit.</span>
                                                     </span>
                                                 </label>
-                                                <label class="lq-card lq-card-rich @SelectedClassIf(form.CoverageType == "Marketplace / ACA guidance")">
-                                                    <input type="radio" name="CoverageType" value="Marketplace / ACA guidance" @CheckedIf(form.CoverageType == "Marketplace / ACA guidance") />
+                                                <label class="lq-card lq-card-rich @SelectedClassIf(form.CoverageType == "Dental, vision & hearing guidance")">
+                                                    <input type="radio" name="CoverageType" value="Dental, vision & hearing guidance" @CheckedIf(form.CoverageType == "Dental, vision & hearing guidance") />
                                                     <span class="lq-card-visual" aria-hidden="true"><svg class="lq-card-icon" viewBox="0 0 48 48" fill="none"><use href="#dq-icon-income"></use></svg></span>
                                                     <span class="lq-card-copy">
                                                         <span class="lq-card-kicker">Coverage goal</span>
-                                                        <span class="lq-card-title">Marketplace / ACA guidance</span>
+                                                        <span class="lq-card-title">Dental, vision & hearing guidance</span>
                                                         <span class="lq-card-helper">Useful when you want help comparing exchange plans and affordability options.</span>
                                                     </span>
                                                 </label>
-                                                <label class="lq-card lq-card-rich @SelectedClassIf(form.CoverageType == "Dental / vision options")">
-                                                    <input type="radio" name="CoverageType" value="Dental / vision options" @CheckedIf(form.CoverageType == "Dental / vision options") />
+                                                <label class="lq-card lq-card-rich @SelectedClassIf(form.CoverageType == "Dental, vision & hearing options")">
+                                                    <input type="radio" name="CoverageType" value="Dental, vision & hearing options" @CheckedIf(form.CoverageType == "Dental, vision & hearing options") />
                                                     <span class="lq-card-visual" aria-hidden="true"><svg class="lq-card-icon" viewBox="0 0 48 48" fill="none"><use href="#dq-icon-income"></use></svg></span>
                                                     <span class="lq-card-copy">
                                                         <span class="lq-card-kicker">Coverage goal</span>
-                                                        <span class="lq-card-title">Dental / vision options</span>
+                                                        <span class="lq-card-title">Dental, vision & hearing options</span>
                                                         <span class="lq-card-helper">Best when you want to look more closely at add-on benefits or supplemental support.</span>
                                                     </span>
                                                 </label>
@@ -2569,7 +2569,7 @@ body.health-final-step-active .dq-form-panel {
 
                                     <div class="lq-micro-step" data-micro-step="4" hidden>
                                         <div class="lq-choice-group" role="radiogroup" aria-labelledby="dqPrimaryConcernLabel">
-                                            <div class="lq-choice-label" id="dqPrimaryConcernLabel">What matters most in your health coverage review?</div>
+                                            <div class="lq-choice-label" id="dqPrimaryConcernLabel">What matters most in your dental, vision, and hearing coverage review?</div>
                                             <div class="lq-choice-grid">
                                                 <label class="lq-card lq-card-rich @SelectedClassIf(form.PrimaryConcern == "Lower Monthly Premium")">
                                                     <input type="radio" name="PrimaryConcern" value="Lower Monthly Premium" @CheckedIf(form.PrimaryConcern == "Lower Monthly Premium") />
@@ -2621,7 +2621,7 @@ body.health-final-step-active .dq-form-panel {
                                         </div>
                                         <div class="lq-step-actions">
                                             <button type="button" class="btn-ghost" data-step-back="3">Back</button>
-                                            <button type="button" class="btn-gold btn-progress btn-block" id="dqContinueToContactBtn" data-cta="health_see_review">Continue My Health Review</button>
+                                            <button type="button" class="btn-gold btn-progress btn-block" id="dqContinueToContactBtn" data-cta="dvh_see_review">Continue My DVH Review</button>
                                         </div>
                                     </div>
                                 </div>
@@ -2633,8 +2633,8 @@ body.health-final-step-active .dq-form-panel {
                                         <svg viewBox="0 0 48 48" fill="none"><use href="#dq-icon-check"></use></svg>
                                     </div>
                                     <div class="lq-step-progress">One moment</div>
-                                    <h2 class="lq-step-title" id="dqProcessingHeading">Pulling together your health review.</h2>
-                                    <p class="lq-step-helper">We are narrowing the conversation around household needs, current coverage, doctor access, and affordability.</p>
+                                    <h2 class="lq-step-title" id="dqProcessingHeading">Pulling together your dental, vision, and hearing review.</h2>
+                                    <p class="lq-step-helper">We are narrowing the conversation around household needs, current coverage, provider access, and affordability.</p>
                                     <div class="dq-processing-track" aria-hidden="true">
                                         <span class="dq-processing-fill" id="dqProcessingFill"></span>
                                     </div>
@@ -2645,14 +2645,14 @@ body.health-final-step-active .dq-form-panel {
                             <div class="lq-step-panel" id="dqContactPanel" @((showContactStepByDefault ? null : "hidden"))>
                                 <div class="lq-step-panel-pad">
                                     <div class="lq-step-progress">Final step</div>
-                                    <div class="dq-contact-capture-wrap" id="healthContactCaptureWrap">
+                                    <div class="dq-contact-capture-wrap" id="dvhContactCaptureWrap">
                                         <div class="dq-contact-head">
                                             <div class="dq-contact-kicker">Send the review</div>
-                                            <div class="dq-contact-title">Where should we send your health review?</div>
+                                            <div class="dq-contact-title">Where should we send your dental, vision, and hearing review?</div>
                                             <div class="dq-contact-copy">We will use your answers to focus the conversation on affordability, network fit, current coverage gaps, and the type of plan guidance that fits your household best.</div>
                                         </div>
 
-                                        <div class="dq-review-summary" id="healthReviewSummary" aria-live="polite"></div>
+                                        <div class="dq-review-summary" id="dvhReviewSummary" aria-live="polite"></div>
 
                                         <div class="dq-contact-hint">Share the same key contact details we need to save your review and continue the conversation clearly.</div>
 
@@ -2700,15 +2700,15 @@ body.health-final-step-active .dq-form-panel {
                                             <button type="button" class="btn-ghost" id="dqBackToQuestionsBtn">Back to answers</button>
                                             <div class="btn-block">
                                                 <p class="dq-submit-note">Private review. No obligation. You stay in control.</p>
-                                                <button type="submit" class="btn-gold btn-progress btn-block" id="dqSubmitBtn" data-cta="health_submit_review">Get My Health Review</button>
+                                                <button type="submit" class="btn-gold btn-progress btn-block" id="dqSubmitBtn" data-cta="dvh_submit_review">Get My DVH Review</button>
                                             </div>
                                         </div>
 
-                                        <div class="lq-error" id="healthError"></div>
-                                        <div class="lq-success" id="healthSuccess">Thanks! We received your request.</div>
+                                        <div class="lq-error" id="dvhError"></div>
+                                        <div class="lq-success" id="dvhSuccess">Thanks! We received your request.</div>
                                     </div>
 
-                                    <div class="lq-post-submit-slot" id="healthPostSubmitSlot" hidden></div>
+                                    <div class="lq-post-submit-slot" id="dvhPostSubmitSlot" hidden></div>
                                 </div>
                             </div>
                         </div>
@@ -2734,21 +2734,21 @@ body.health-final-step-active .dq-form-panel {
                 ? window.legendTrack
                 : function () {};
 
-        var form = document.getElementById('healthQuoteForm');
+        var form = document.getElementById('dvhQuoteForm');
         if (!form) return;
 
         var body = document.body;
         var pageKey = '@pageKey';
         var formKey = form.getAttribute('data-form-key') || '@formKey';
-        var heroEntryPanel = document.getElementById('healthHeroEntryPanel');
-        var educationPanel = document.getElementById('healthEducationPanel');
-        var startButton = document.getElementById('healthHeroStartCta');
+        var heroEntryPanel = document.getElementById('dvhHeroEntryPanel');
+        var educationPanel = document.getElementById('dvhEducationPanel');
+        var startButton = document.getElementById('dvhHeroStartCta');
         var step1Panel = document.getElementById('dqStep1Panel');
         var processingPanel = document.getElementById('dqProcessingPanel');
         var contactPanel = document.getElementById('dqContactPanel');
-        var contactFirstPanel = document.getElementById('healthEducationContactPanel');
-        var contactCaptureWrap = document.getElementById('healthContactCaptureWrap');
-        var postSubmitSlot = document.getElementById('healthPostSubmitSlot');
+        var contactFirstPanel = document.getElementById('dvhEducationContactPanel');
+        var contactCaptureWrap = document.getElementById('dvhContactCaptureWrap');
+        var postSubmitSlot = document.getElementById('dvhPostSubmitSlot');
         var progressLabel = document.getElementById('dqStep1Progress');
         var progressFill = document.getElementById('dqStep1ProgressFill');
         var processingFill = document.getElementById('dqProcessingFill');
@@ -2756,15 +2756,15 @@ body.health-final-step-active .dq-form-panel {
         var backToQuestionsButton = document.getElementById('dqBackToQuestionsBtn');
         var submitButton = document.getElementById('dqSubmitBtn');
         var proofCard = contactFirstPanel ? contactFirstPanel.querySelector('.dq-proof-card') : null;
-        var errorBanner = document.getElementById('healthError');
-        var successBanner = document.getElementById('healthSuccess');
-        var reviewSummary = document.getElementById('healthReviewSummary');
+        var errorBanner = document.getElementById('dvhError');
+        var successBanner = document.getElementById('dvhSuccess');
+        var reviewSummary = document.getElementById('dvhReviewSummary');
         var ageHidden = document.getElementById('Age');
         var contactMethodInput = document.getElementById('ContactMethod');
         var bestTimeInput = document.getElementById('BestTimeToContact');
-        var submitDefaultLabel = submitButton ? asTrimmed(submitButton.textContent) : 'Get My Health Review';
-        var bookingExperienceUrl = '@Url.Action("ActivatePublicBookingExperience", "HealthQuote")';
-        var bookingConfirmationUrl = '@Url.Action("ConfirmPublicBookingExperience", "HealthQuote")';
+        var submitDefaultLabel = submitButton ? asTrimmed(submitButton.textContent) : 'Get My DVH Review';
+        var bookingExperienceUrl = '@Url.Action("ActivatePublicBookingExperience", "DentalVisionHearingQuote")';
+        var bookingConfirmationUrl = '@Url.Action("ConfirmPublicBookingExperience", "DentalVisionHearingQuote")';
         var microSteps = Array.prototype.slice.call(step1Panel ? step1Panel.querySelectorAll('[data-micro-step]') : []);
         var hasServerErrors = '@(hasServerErrors ? "true" : "false")' === 'true';
         var showContactStepByDefault = '@(showContactStepByDefault ? "true" : "false")' === 'true';
@@ -2798,7 +2798,7 @@ body.health-final-step-active .dq-form-panel {
         var publicBookingSlotSelectedTracked = false;
         var publicBookingFallbackClicked = false;
         var publicBookingLoadingText = 'Preparing your scheduling options...';
-        var publicBookingDisabledText = 'Your health coverage review is saved. Scheduling is not available in this view right now, but a licensed agent can still continue the review with you.';
+        var publicBookingDisabledText = 'Your dental, vision, and hearing coverage review is saved. Scheduling is not available in this view right now, but a licensed agent can still continue the review with you.';
 
         function asTrimmed(value) {
             return typeof value === 'string' ? value.trim() : '';
@@ -2893,13 +2893,13 @@ body.health-final-step-active .dq-form-panel {
         }
 
         function setStartedState(started) {
-            body.classList.toggle('health-quote-started', !!started);
+            body.classList.toggle('dvh-quote-started', !!started);
             if (heroEntryPanel) heroEntryPanel.hidden = !!started;
             if (educationPanel) educationPanel.hidden = !started;
         }
 
         function setFinalStepState(active) {
-            body.classList.toggle('health-final-step-active', !!active);
+            body.classList.toggle('dvh-final-step-active', !!active);
         }
 
         function updateProgress(stepIndex) {
@@ -3038,9 +3038,9 @@ body.health-final-step-active .dq-form-panel {
             var coverageType = readSelectedValue('CoverageType') || 'Coverage goal';
             var primaryConcern = readSelectedValue('PrimaryConcern') || 'Priority';
 
-            var signal = 'Your review will focus on plan fit first, then narrow the tradeoffs between monthly cost, deductible exposure, and care access.';
-            if (currentCoverage === 'No current coverage') {
-                signal = 'No current coverage means the review should start with affordable options and how quickly you want coverage in place.';
+            var signal = 'Your review will focus on benefit fit first, then narrow dental, vision, hearing, and monthly cost tradeoffs.';
+            if (currentCoverage === 'No current DVH coverage') {
+                signal = 'No current DVH coverage means the review should start with affordable options and how quickly you want benefits in place.';
             } else if (currentCoverage === 'Employer plan') {
                 signal = 'Employer coverage can still leave gaps in deductibles, network fit, or family needs, so the conversation should start there.';
             } else if (primaryConcern === 'Lower Monthly Premium') {
@@ -3173,7 +3173,7 @@ body.health-final-step-active .dq-form-panel {
             iframe.dataset.bookingSrc = normalizedUrl;
             iframe.loading = 'lazy';
             iframe.referrerPolicy = 'strict-origin-when-cross-origin';
-            iframe.title = 'Continue your health coverage review';
+            iframe.title = 'Continue your dental, vision, and hearing coverage review';
 
             var frameLoaded = false;
             var loadTimeout = window.setTimeout(function () {
@@ -3230,7 +3230,7 @@ body.health-final-step-active .dq-form-panel {
                 var payload = await response.json().catch(function () { return {}; });
                 return normalizePublicBookingPayload(payload, hint);
             } catch (error) {
-                console.warn('[HealthQuote] public booking activation failed', error);
+                console.warn('[DentalVisionHearingQuote] public booking activation failed', error);
                 return normalizePublicBookingPayload({
                     enabled: Boolean(hint.eligible),
                     canEmbed: Boolean(hint.canEmbed),
@@ -3271,7 +3271,7 @@ body.health-final-step-active .dq-form-panel {
                 var confirmationPayload = await response.json().catch(function () { return {}; });
                 return normalizePublicBookingPayload(Object.assign({}, normalized, confirmationPayload), normalized);
             } catch (error) {
-                console.warn('[HealthQuote] public booking confirmation failed', error);
+                console.warn('[DentalVisionHearingQuote] public booking confirmation failed', error);
                 return normalized;
             }
         }
@@ -3314,11 +3314,11 @@ body.health-final-step-active .dq-form-panel {
                 : '';
 
             postSubmitSlot.innerHTML = ''
-                + '<section class="lq-final-review-unified-card" aria-labelledby="healthPostSubmitTitle">'
+                + '<section class="lq-final-review-unified-card" aria-labelledby="dvhPostSubmitTitle">'
                 + proofHtml
                 +   '<div class="lq-final-review-head">'
                 +     '<div class="lq-final-review-kicker">Review saved</div>'
-                +     '<div class="lq-final-review-title" id="healthPostSubmitTitle">Your health review is ready for the next step.</div>'
+                +     '<div class="lq-final-review-title" id="dvhPostSubmitTitle">Your dental, vision, and hearing review is ready for the next step.</div>'
                 +     '<div class="lq-final-review-copy">We saved your answers so the conversation can start with your household needs, current coverage, and the plan tradeoffs that matter most.</div>'
                 +   '</div>'
                 +   '<div class="lq-final-review-proof-row" aria-label="Review value">'
@@ -3358,8 +3358,8 @@ body.health-final-step-active .dq-form-panel {
                     ? '<div class="lq-final-review-loading">' + escapeHtml(publicBookingLoadingText) + '</div>'
                     : '')
                 +   (showInlineShell
-                    ? '<div class="lq-booking-frame-only" id="healthBookingInlineFrameSlot"></div>'
-                    + '<div class="lq-booking-embed-status" id="healthBookingInlineStatus" hidden>' + escapeHtml(publicBookingLoadingText) + '</div>'
+                    ? '<div class="lq-booking-frame-only" id="dvhBookingInlineFrameSlot"></div>'
+                    + '<div class="lq-booking-embed-status" id="dvhBookingInlineStatus" hidden>' + escapeHtml(publicBookingLoadingText) + '</div>'
                     : '')
                 +   (bookingUnavailableCopy
                     ? '<div class="lq-final-review-unavailable">' + escapeHtml(bookingUnavailableCopy) + '</div>'
@@ -3368,8 +3368,8 @@ body.health-final-step-active .dq-form-panel {
 
             postSubmitSlot.hidden = false;
 
-            var inlineFrameSlot = document.getElementById('healthBookingInlineFrameSlot');
-            var inlineStatus = document.getElementById('healthBookingInlineStatus');
+            var inlineFrameSlot = document.getElementById('dvhBookingInlineFrameSlot');
+            var inlineStatus = document.getElementById('dvhBookingInlineStatus');
             if (showInlineShell) {
                 renderBookingIframe(inlineFrameSlot, inlineStatus, normalizePublicBookingPayload(publicBookingState, payload).embedUrl);
                 markAppointmentEmbedViewed(normalizePublicBookingPayload(publicBookingState, payload));
@@ -3433,7 +3433,7 @@ body.health-final-step-active .dq-form-panel {
             setStartedState(true);
             if (trackStartClick) {
                 var label = startButton ? asTrimmed(startButton.textContent) : 'Check My Coverage Fit';
-                trackCta('health_funnel_start', label);
+                trackCta('dvh_funnel_start', label);
                 track({
                     EventType: 'form_start',
                     PageKey: pageKey,
@@ -3587,7 +3587,7 @@ body.health-final-step-active .dq-form-panel {
                     }
                 }).catch(function (error) {
                     publicBookingConfirmationRequested = false;
-                    console.warn('[HealthQuote] trusted booking confirmation failed', error);
+                    console.warn('[DentalVisionHearingQuote] trusted booking confirmation failed', error);
                 });
             }
         });
@@ -3726,7 +3726,7 @@ body.health-final-step-active .dq-form-panel {
                 var config = microStepConfigs[microSteps.length - 1];
                 if (!requireSelection(config.field, config.errorId)) return;
                 trackStepComplete(microSteps.length, microSteps.length + 1, 'continue_to_contact');
-                trackCta('health_see_review', asTrimmed(continueButton.textContent));
+                trackCta('dvh_see_review', asTrimmed(continueButton.textContent));
                 showProcessingThenContact();
             });
         }
@@ -3826,7 +3826,7 @@ body.health-final-step-active .dq-form-panel {
                 return false;
             }
 
-            trackCta('health_submit_review', submitButton ? asTrimmed(submitButton.textContent) : 'Get My Health Review');
+            trackCta('dvh_submit_review', submitButton ? asTrimmed(submitButton.textContent) : 'Get My DVH Review');
             track({
                 EventType: 'form_submit_attempt',
                 SubmitOutcome: 'attempt',
@@ -3873,7 +3873,7 @@ body.health-final-step-active .dq-form-panel {
                 setBannerMessage(errorBanner, errorMessage);
 
                 if (responseBody && responseBody.correlationId) {
-                    console.warn('[HealthQuote] submit failed correlationId=' + responseBody.correlationId, responseBody.fieldErrors || responseBody);
+                    console.warn('[DentalVisionHearingQuote] submit failed correlationId=' + responseBody.correlationId, responseBody.fieldErrors || responseBody);
                 }
 
                 track({

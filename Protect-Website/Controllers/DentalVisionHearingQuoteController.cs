@@ -18,16 +18,16 @@ using ProtectWebsite.Services.Communication;
 namespace Protect_Website.Controllers
 {
     [Route("Quote")]
-    public class HealthQuoteController : Controller
+    public class DentalVisionHearingQuoteController : Controller
     {
         private const string WebsitePageVariant = "website";
         private const string LandingPageVariant = "landing";
         private const string ContactFirstEducationVariant = "contact_first_education_v1";
-        private const string QuotePageKey = "quote_health";
-        private const string QuoteOfferKey = "health";
-        private const string QuoteProductType = "health";
-        private const string QuoteInterestType = "health_insurance";
-        private const string QuoteDisplayName = "Health Insurance Review";
+        private const string QuotePageKey = "quote_dvh";
+        private const string QuoteOfferKey = "dvh";
+        private const string QuoteProductType = "dental_vision_hearing";
+        private const string QuoteInterestType = "dental_vision_hearing";
+        private const string QuoteDisplayName = "Dental, Vision & Hearing Review";
 
         private readonly string tenantId;
         private readonly string clientId;
@@ -44,11 +44,11 @@ namespace Protect_Website.Controllers
         private readonly IPublicBookingResolver _publicBookingResolver;
         private readonly IPublicBookingConfirmationService _publicBookingConfirmationService;
         private readonly IPublicBookingContextProtector _publicBookingContextProtector;
-        private readonly ILogger<HealthQuoteController> _logger;
+        private readonly ILogger<DentalVisionHearingQuoteController> _logger;
         private readonly IProtectEmailSender _emailSender;
 
-        public HealthQuoteController(IConfiguration configuration, AgentTrackingResolver resolver,
-            MasterAppDbContext db, IMetaConversionsApiService metaConversionsApi, IMetaPixelResolutionService metaPixelResolution, IMetaSignalIntelligenceService metaSignalIntelligence, IWebsiteLifeLeadCaptureService websiteLeadCapture, IPublicBookingResolver publicBookingResolver, IPublicBookingConfirmationService publicBookingConfirmationService, IPublicBookingContextProtector publicBookingContextProtector, IProtectEmailSender emailSender, ILogger<HealthQuoteController> logger)
+        public DentalVisionHearingQuoteController(IConfiguration configuration, AgentTrackingResolver resolver,
+            MasterAppDbContext db, IMetaConversionsApiService metaConversionsApi, IMetaPixelResolutionService metaPixelResolution, IMetaSignalIntelligenceService metaSignalIntelligence, IWebsiteLifeLeadCaptureService websiteLeadCapture, IPublicBookingResolver publicBookingResolver, IPublicBookingConfirmationService publicBookingConfirmationService, IPublicBookingContextProtector publicBookingContextProtector, IProtectEmailSender emailSender, ILogger<DentalVisionHearingQuoteController> logger)
         {
             tenantId = configuration["AzureAd:TenantId"]!;
             clientId = configuration["AzureAd:ClientId"]!;
@@ -69,17 +69,17 @@ namespace Protect_Website.Controllers
             _logger = logger;
         }
 
-        // GET: /Quote/Health
-        [HttpGet("Health")]
-        public IActionResult HealthQuote() => RenderHealthQuote(isLandingPage: false);
+        // GET: /Quote/Dental-Vision-Hearing
+        [HttpGet("Dental-Vision-Hearing")]
+        public IActionResult DentalVisionHearingQuote() => RenderDentalVisionHearingQuote(isLandingPage: false);
 
-        // GET: /Quote/Health/landing
-        [HttpGet("Health/landing")]
-        public IActionResult HealthLandingQuote() => RenderHealthQuote(isLandingPage: true);
+        // GET: /Quote/Dental-Vision-Hearing/landing
+        [HttpGet("Dental-Vision-Hearing/landing")]
+        public IActionResult DentalVisionHearingLandingQuote() => RenderDentalVisionHearingQuote(isLandingPage: true);
 
-        // POST: /Quote/Health
-        [HttpPost("Health")]
-        public async Task<IActionResult> SubmitHealthQuote(HealthQuoteFormModel model)
+        // POST: /Quote/Dental-Vision-Hearing
+        [HttpPost("Dental-Vision-Hearing")]
+        public async Task<IActionResult> SubmitDentalVisionHearingQuote(DentalVisionHearingQuoteFormModel model)
         {
             var correlationId = Guid.NewGuid();
             NormalizeContactFields(model);
@@ -94,7 +94,7 @@ namespace Protect_Website.Controllers
                 {
                     var fieldErrors = CollectModelStateErrors();
                     _logger.LogWarning(
-                        "HealthQuote [{CorrelationId}]: invalid ajax submission errors={ValidationErrors}",
+                        "DentalVisionHearingQuote [{CorrelationId}]: invalid ajax submission errors={ValidationErrors}",
                         correlationId,
                         JsonSerializer.Serialize(fieldErrors));
                     return BadRequest(new
@@ -105,17 +105,17 @@ namespace Protect_Website.Controllers
                     });
                 }
 
-                return RenderHealthQuote(isLandingMode, model);
+                return RenderDentalVisionHearingQuote(isLandingMode, model);
             }
 
             _logger.LogInformation(
-                "HealthQuote [{CorrelationId}]: request received Email={Email}",
+                "DentalVisionHearingQuote [{CorrelationId}]: request received Email={Email}",
                 correlationId, model.Email);
 
             var (leadRecipientEmail, agentProfileId, agentSlug, isFounderPath) = await ResolveLeadContextAsync();
             var isAgentContext = IsAgentContext();
             _logger.LogInformation(
-                "HealthQuote [{CorrelationId}]: attribution resolved AgentSlug={Slug} ProfileId={ProfileId} Recipient={Recipient}",
+                "DentalVisionHearingQuote [{CorrelationId}]: attribution resolved AgentSlug={Slug} ProfileId={ProfileId} Recipient={Recipient}",
                 correlationId, agentSlug, agentProfileId, leadRecipientEmail);
             var resolvedMetaPixel = await _metaPixelResolution.ResolveForLeadAsync(
                 agentProfileId,
@@ -197,17 +197,17 @@ namespace Protect_Website.Controllers
                 _db.WebsiteLeads.Add(lead);
                 await _db.SaveChangesAsync();
                 _logger.LogInformation(
-                    "HealthQuote [{CorrelationId}]: WebsiteLead {LeadId} saved",
+                    "DentalVisionHearingQuote [{CorrelationId}]: WebsiteLead {LeadId} saved",
                     correlationId, lead.LeadId);
             }
             catch (Exception persistEx)
             {
                 _logger.LogError(persistEx,
-                    "HealthQuote [{CorrelationId}]: lead persistence failed for {Email}",
+                    "DentalVisionHearingQuote [{CorrelationId}]: lead persistence failed for {Email}",
                     correlationId, model.Email);
                 return IsAjax()
                     ? StatusCode(500, new { error = "Failed to save lead", detail = persistEx.Message, correlationId = correlationId.ToString("D") })
-                    : RenderHealthQuote(isLandingMode, model);
+                    : RenderDentalVisionHearingQuote(isLandingMode, model);
             }
 
             async Task TryWriteLeadEventAsync(string eventType, object metadata, DateTime? eventUtc = null)
@@ -236,7 +236,7 @@ namespace Protect_Website.Controllers
 
                     _logger.LogWarning(
                         analyticsEx,
-                        "HealthQuote [{CorrelationId}]: analytics event write failed for {EventType} lead {LeadId}",
+                        "DentalVisionHearingQuote [{CorrelationId}]: analytics event write failed for {EventType} lead {LeadId}",
                         correlationId,
                         eventType,
                         lead.LeadId);
@@ -296,7 +296,7 @@ namespace Protect_Website.Controllers
                 {
                     await _db.SaveChangesAsync(HttpContext?.RequestAborted ?? CancellationToken.None);
                     _logger.LogInformation(
-                        "HealthQuote [{CorrelationId}]: workstation lead {WorkstationLeadId} {CaptureMode} bucket={Bucket} owner={AgentUserId}",
+                        "DentalVisionHearingQuote [{CorrelationId}]: workstation lead {WorkstationLeadId} {CaptureMode} bucket={Bucket} owner={AgentUserId}",
                         correlationId,
                         captureResult.WorkstationLeadId,
                         captureResult.Created ? "created" : "updated",
@@ -336,7 +336,7 @@ namespace Protect_Website.Controllers
                         });
 
                     _logger.LogWarning(
-                        "HealthQuote [{CorrelationId}]: workstation lead capture skipped for WebsiteLead {LeadId}. reason={Reason}",
+                        "DentalVisionHearingQuote [{CorrelationId}]: workstation lead capture skipped for WebsiteLead {LeadId}. reason={Reason}",
                         correlationId,
                         lead.LeadId,
                         captureResult.Reason ?? "unknown");
@@ -370,7 +370,7 @@ namespace Protect_Website.Controllers
 
                 _logger.LogError(
                     captureEx,
-                    "HealthQuote [{CorrelationId}]: workstation capture failed for lead {LeadId}",
+                    "DentalVisionHearingQuote [{CorrelationId}]: workstation capture failed for lead {LeadId}",
                     correlationId,
                     lead.LeadId);
 
@@ -427,7 +427,7 @@ namespace Protect_Website.Controllers
                     LeadId = lead.LeadId,
                     CorrelationId = correlationId,
                     EventId = metaLeadEventId,
-                    QuoteType = "Health",
+                    QuoteType = "DVH",
                     PageKey = effectivePageKey,
                     OfferKey = QuoteOfferKey,
                     EventSourceUrl = MetaLeadTrackingWorkflow.ResolveEventSourceUrl(model.LandingPageUrl, Request),
@@ -531,7 +531,7 @@ namespace Protect_Website.Controllers
             catch (Exception signalEx)
             {
                 _logger.LogError(signalEx,
-                    "HealthQuote [{CorrelationId}]: meta signal lead recording failed for lead {LeadId} — lead is saved, continuing",
+                    "DentalVisionHearingQuote [{CorrelationId}]: meta signal lead recording failed for lead {LeadId} — lead is saved, continuing",
                     correlationId, lead.LeadId);
             }
 
@@ -556,7 +556,7 @@ namespace Protect_Website.Controllers
             {
                 var agentEmailSent = await _emailSender.TrySendAsync(
                     primary,
-                    $"[HEALTH QUOTE - {QuoteDisplayName.ToUpperInvariant()}] New Lead | {model.FirstName}",
+                    $"[DVH QUOTE - {QuoteDisplayName.ToUpperInvariant()}] New Lead | {model.FirstName}",
                     BuildLeadNotificationEmailBody(model),
                     replyToEmail: model.Email,
                     saveToSentItems: true,
@@ -565,20 +565,20 @@ namespace Protect_Website.Controllers
                 if (agentEmailSent)
                 {
                     _logger.LogInformation(
-                        "HealthQuote [{CorrelationId}]: agent notification email sent to {Recipient} for lead {LeadId}",
+                        "DentalVisionHearingQuote [{CorrelationId}]: agent notification email sent to {Recipient} for lead {LeadId}",
                         correlationId, primary, lead.LeadId);
                 }
                 else
                 {
                     _logger.LogError(
-                        "HealthQuote [{CorrelationId}]: agent notification email failed to {Recipient} for lead {LeadId} - lead is saved, continuing",
+                        "DentalVisionHearingQuote [{CorrelationId}]: agent notification email failed to {Recipient} for lead {LeadId} - lead is saved, continuing",
                         correlationId, primary, lead.LeadId);
                 }
             }
             else
             {
                 _logger.LogWarning(
-                    "HealthQuote [{CorrelationId}]: no recipient resolved for lead {LeadId} - email skipped",
+                    "DentalVisionHearingQuote [{CorrelationId}]: no recipient resolved for lead {LeadId} - email skipped",
                     correlationId, lead.LeadId);
             }
 
@@ -586,7 +586,7 @@ namespace Protect_Website.Controllers
             {
                 var userEmailSent = await _emailSender.TrySendAsync(
                     model.Email.Trim(),
-                    $"Your health coverage review is ready - {websiteName}",
+                    $"Your dental, vision, and hearing review is ready - {websiteName}",
                     BuildUserSummaryEmailBody(model, attachedAgentContact?.FirstName, attachedAgentContact?.BookingUrl),
                     saveToSentItems: false,
                     cancellationToken: HttpContext?.RequestAborted ?? CancellationToken.None);
@@ -594,13 +594,13 @@ namespace Protect_Website.Controllers
                 if (userEmailSent)
                 {
                     _logger.LogInformation(
-                        "HealthQuote [{CorrelationId}]: user summary email sent to {Email} for lead {LeadId}",
+                        "DentalVisionHearingQuote [{CorrelationId}]: user summary email sent to {Email} for lead {LeadId}",
                         correlationId, model.Email.Trim(), lead.LeadId);
                 }
                 else
                 {
                     _logger.LogError(
-                        "HealthQuote [{CorrelationId}]: user summary email failed for lead {LeadId} - lead is saved, continuing",
+                        "DentalVisionHearingQuote [{CorrelationId}]: user summary email failed for lead {LeadId} - lead is saved, continuing",
                         correlationId, lead.LeadId);
                 }
             }
@@ -643,13 +643,13 @@ namespace Protect_Website.Controllers
                 });
             }
 
-            TempData["QuoteType"] = "Health";
+            TempData["QuoteType"] = "Dental, Vision & Hearing";
             TempData["MetaLeadEventId"] = metaLeadEventId;
             TempData["MetaLeadLeadId"] = lead.LeadId.ToString("D");
             return RedirectToAction("Index", "ThankYou");
         }
 
-        [HttpPost("Health/booking-experience")]
+        [HttpPost("Dental-Vision-Hearing/booking-experience")]
         public async Task<IActionResult> ActivatePublicBookingExperience([FromBody] PublicBookingExperienceRequest? request)
         {
             if (request == null || string.IsNullOrWhiteSpace(request.ContextToken))
@@ -693,7 +693,7 @@ namespace Protect_Website.Controllers
                 {
                     _logger.LogWarning(
                         ex,
-                        "HealthQuote public booking activation failed for WebsiteLead {LeadId}. Returning booking UI without appointment linkage.",
+                        "DentalVisionHearingQuote public booking activation failed for WebsiteLead {LeadId}. Returning booking UI without appointment linkage.",
                         bookingContext.WebsiteLeadId);
                 }
             }
@@ -721,7 +721,7 @@ namespace Protect_Website.Controllers
             });
         }
 
-        [HttpPost("Health/booking-confirmation")]
+        [HttpPost("Dental-Vision-Hearing/booking-confirmation")]
         public async Task<IActionResult> ConfirmPublicBookingExperience([FromBody] PublicBookingExperienceRequest? request)
         {
             if (request == null || string.IsNullOrWhiteSpace(request.ContextToken))
@@ -780,7 +780,7 @@ namespace Protect_Website.Controllers
             return "Please complete the highlighted fields and try again.";
         }
 
-        private static string BuildLeadNotificationEmailBody(HealthQuoteFormModel model)
+        private static string BuildLeadNotificationEmailBody(DentalVisionHearingQuoteFormModel model)
         {
             static string H(string? value) => WebUtility.HtmlEncode(value ?? string.Empty);
 
@@ -804,11 +804,11 @@ namespace Protect_Website.Controllers
 
             var surfacedCopy = currentCoverageLabel switch
             {
-                "No current coverage" => "This prospect may be trying to close a health coverage gap before medical costs or unexpected care needs hit the household.",
+                "No current coverage" => "This prospect may be trying to close a dental, vision, and hearing coverage gap before dental, vision, or hearing costs or unexpected dental, vision, or hearing needs hit the household.",
                 "Employer plan" => "This prospect may already have an employer option, but still needs help reviewing affordability, provider fit, and uncovered gaps.",
-                "Marketplace / ACA plan" => "This prospect may need a closer marketplace review around subsidy fit, plan design, and whether a stronger option is available.",
+                "Medical only / need DVH" => "This prospect may need a closer DVH benefits review around benefit fit, plan design, and whether a stronger option is available.",
                 "Spouse / family plan" => "This prospect may be reviewing whether the current family arrangement still fits dependents, network access, and cost exposure.",
-                _ => "This prospect's answers point toward a health coverage decision that still needs guidance around cost, access, and plan fit."
+                _ => "This prospect's answers point toward a dental, vision, and hearing coverage decision that still needs guidance around cost, access, and plan fit."
             };
 
             var timingCopy = primaryConcernLabel switch
@@ -817,7 +817,7 @@ namespace Protect_Website.Controllers
                 "Lower Deductible" => "Out-of-pocket exposure matters here, and a delayed review can leave the household carrying the same deductible risk longer than necessary.",
                 "Better Doctor Network" => "Doctor and specialist access usually becomes more important once care is needed, so network fit is worth confirming before that pressure increases.",
                 "Prescription Coverage" => "Prescription costs rarely get easier by waiting, so medication access and pharmacy fit are worth reviewing now.",
-                _ => "Health coverage decisions usually become more urgent once medical needs, provider access, or monthly affordability pressure increase."
+                _ => "Dental, vision, and hearing coverage decisions usually become more urgent once dental, vision, or hearing needs, provider access, or monthly affordability pressure increase."
             };
 
             return $@"
@@ -829,7 +829,7 @@ namespace Protect_Website.Controllers
 
 <div style=""padding:18px;background:#061832;border-bottom:1px solid rgba(243,214,136,.24);"">
 <div style=""color:#f3d688;font-size:12px;font-weight:900;letter-spacing:.12em;text-transform:uppercase;margin-bottom:8px;"">New lead ready for review</div>
-                <div style=""color:#fff8e7;font-size:24px;line-height:1.12;font-weight:900;"">{H(fullName)} submitted a health coverage review.</div>
+                <div style=""color:#fff8e7;font-size:24px;line-height:1.12;font-weight:900;"">{H(fullName)} submitted a dental, vision, and hearing review.</div>
                 <div style=""color:rgba(248,250,252,.82);font-size:14px;line-height:1.45;font-weight:650;margin-top:10px;"">
                 The prospect received the review-style follow-up email. Use the answers below to keep the conversation focused on affordability, provider access, and the plan fit this household needs most instead of restarting cold.
                 </div>
@@ -844,7 +844,7 @@ namespace Protect_Website.Controllers
 <strong style=""color:#f3d688;"">Phone:</strong> {H(model.Phone)}<br/>
 <strong style=""color:#f3d688;"">Email:</strong> {H(model.Email)}<br/>
 {stateLine}
-<strong style=""color:#f3d688;"">Product:</strong> Health Insurance Review<br/>
+<strong style=""color:#f3d688;"">Product:</strong> Dental, Vision & Hearing Review<br/>
 <strong style=""color:#f3d688;"">Preferred contact:</strong> {H(contactMethodLabel)}
 </div>
 </div>
@@ -904,7 +904,7 @@ namespace Protect_Website.Controllers
 <div style=""color:#f3d688;font-size:11px;font-weight:900;letter-spacing:.10em;text-transform:uppercase;margin-bottom:8px;"">Agent next step</div>
 <div style=""color:#fff8e7;font-size:22px;line-height:1.13;font-weight:900;margin-bottom:9px;"">Follow up from the review they already started.</div>
 <div style=""color:rgba(248,250,252,.84);font-size:14px;line-height:1.45;font-weight:650;"">
-Start by confirming household fit, provider access, deductible comfort, and whether the current coverage path still makes sense before discussing plan options.
+Start by confirming household fit, provider access, out-of-pocket comfort, and whether the current coverage path still makes sense before discussing plan options.
 </div>
 </div>
 
@@ -919,7 +919,7 @@ Start by confirming household fit, provider access, deductible comfort, and whet
         </html>";
         }
 
-        private static string BuildUserSummaryEmailBody(HealthQuoteFormModel model, string? attachedAgentFirstName, string? attachedAgentBookingUrl)
+        private static string BuildUserSummaryEmailBody(DentalVisionHearingQuoteFormModel model, string? attachedAgentFirstName, string? attachedAgentBookingUrl)
         {
             static string H(string? value) => WebUtility.HtmlEncode(value ?? string.Empty);
 
@@ -934,11 +934,11 @@ Start by confirming household fit, provider access, deductible comfort, and whet
 
             var surfacedCopy = currentCoverageLabel switch
             {
-                "No current coverage" => "You may be trying to close a coverage gap before medical needs or unexpected costs put pressure on the household.",
+                "No current coverage" => "You may be trying to close a coverage gap before dental, vision, or hearing needs or unexpected costs put pressure on the household.",
                 "Employer plan" => "You may already have an employer option, but still need help checking affordability, doctor access, and uncovered gaps.",
-                "Marketplace / ACA plan" => "You may need a closer marketplace review around subsidy fit, deductibles, and whether a stronger option is available.",
+                "Medical only / need DVH" => "You may need a closer DVH benefits review around benefit fit, out-of-pocket costs, and whether a stronger option is available.",
                 "Spouse / family plan" => "You may be reviewing whether the current family setup still fits dependents, providers, and out-of-pocket exposure.",
-                _ => "Your answers point toward a health coverage decision that still needs a clearer side-by-side review."
+                _ => "Your answers point toward a dental, vision, and hearing coverage decision that still needs a clearer side-by-side review."
             };
 
             var timingCopy = primaryConcernLabel switch
@@ -947,7 +947,7 @@ Start by confirming household fit, provider access, deductible comfort, and whet
                 "Lower Deductible" => "If out-of-pocket exposure matters most, it helps to confirm the deductible tradeoff before a care need makes that decision feel urgent.",
                 "Better Doctor Network" => "Provider access becomes more important once appointments and care are already in motion, so network fit is worth confirming now.",
                 "Prescription Coverage" => "Prescription costs rarely get easier by waiting, so it helps to review medication access and pharmacy fit before needs increase.",
-                _ => "Health coverage decisions usually feel more urgent once care needs, provider access, or monthly cost pressure start to build."
+                _ => "Dental, vision, and hearing coverage decisions usually feel more urgent once dental, vision, or hearing needs, provider access, or monthly cost pressure start to build."
             };
 
             var nextStepName = !string.IsNullOrWhiteSpace(attachedAgentFirstName)
@@ -959,7 +959,7 @@ Start by confirming household fit, provider access, deductible comfort, and whet
                 : string.Empty;
 
             var bookingButtonHtml = !string.IsNullOrWhiteSpace(bookingUrl)
-                ? $@"<a href=""{WebUtility.HtmlEncode(bookingUrl)}"" style=""display:block;text-align:center;background:#f3d688;color:#111827;text-decoration:none;font-size:16px;font-weight:900;padding:14px 16px;border-radius:14px;border:1px solid #f7dc96;"">Complete My Health Review</a>"
+                ? $@"<a href=""{WebUtility.HtmlEncode(bookingUrl)}"" style=""display:block;text-align:center;background:#f3d688;color:#111827;text-decoration:none;font-size:16px;font-weight:900;padding:14px 16px;border-radius:14px;border:1px solid #f7dc96;"">Complete My DVH Review</a>"
                 : @"<div style=""text-align:center;background:#071932;color:#fff8e7;font-size:15px;font-weight:800;padding:14px 16px;border-radius:14px;border:1px solid rgba(243,214,136,.35);"">Your review is saved. Your licensed agent can help confirm the next step.</div>";
 
             return $@"
@@ -975,7 +975,7 @@ Review Ready
 </div>
 
 <div style=""color:#fff8e7;font-size:24px;line-height:1.14;font-weight:900;max-width:560px;"">
-Your health coverage review is ready.
+Your dental, vision, and hearing review is ready.
 </div>
 
 <div style=""margin-top:16px;color:rgba(248,250,252,.84);font-size:14px;line-height:1.45;font-weight:650;max-width:580px;"">
@@ -1089,7 +1089,7 @@ Choose a time to confirm the best fit.
 </div>
 
 <div style=""color:rgba(248,250,252,.84);font-size:15px;line-height:1.55;font-weight:650;margin-bottom:18px;"">
-{H(nextStepName)} can help confirm affordability, deductible comfort, provider access, and which health coverage path makes the most sense next.
+{H(nextStepName)} can help confirm affordability, out-of-pocket comfort, provider access, and which dental, vision, and hearing coverage path makes the most sense next.
 </div>
 
 {bookingButtonHtml}
@@ -1276,7 +1276,7 @@ Review summary only. Final plan availability, pricing, provider networks, and el
                     hdr.Contains("xmlhttprequest", StringComparison.OrdinalIgnoreCase));
         }
 
-        private static void NormalizeContactFields(HealthQuoteFormModel model)
+        private static void NormalizeContactFields(DentalVisionHearingQuoteFormModel model)
         {
             model.FirstName = model.FirstName?.Trim() ?? string.Empty;
             model.LastName = string.IsNullOrWhiteSpace(model.LastName) ? null : model.LastName.Trim();
@@ -1496,15 +1496,15 @@ Review summary only. Final plan availability, pricing, provider networks, and el
             }
         }
 
-        private IActionResult RenderHealthQuote(bool isLandingPage, HealthQuoteFormModel? model = null)
+        private IActionResult RenderDentalVisionHearingQuote(bool isLandingPage, DentalVisionHearingQuoteFormModel? model = null)
         {
-            var viewModel = model ?? new HealthQuoteFormModel();
+            var viewModel = model ?? new DentalVisionHearingQuoteFormModel();
             ApplyPageMode(viewModel, isLandingPage);
             viewModel.PageKey = ResolveEffectivePageKey(viewModel, isLandingPage);
-            return View("~/Views/Quote/Health.cshtml", viewModel);
+            return View("~/Views/Quote/DentalVisionHearing.cshtml", viewModel);
         }
 
-        private static string ResolveEffectivePageKey(HealthQuoteFormModel model, bool isLandingPage) =>
+        private static string ResolveEffectivePageKey(DentalVisionHearingQuoteFormModel model, bool isLandingPage) =>
             BuildVariantPageKey(QuotePageKey, isLandingPage, model.PageVariant);
 
         private static string BuildVariantPageKey(string basePageKey, bool isLandingPage, string? pageVariant = null)
@@ -1525,7 +1525,7 @@ Review summary only. Final plan availability, pricing, provider networks, and el
                 : $"{basePageKey}_landing_{normalizedVariant}";
         }
 
-        private static void ApplyPageMode(HealthQuoteFormModel model, bool isLandingPage)
+        private static void ApplyPageMode(DentalVisionHearingQuoteFormModel model, bool isLandingPage)
         {
             model.PageVariant = string.IsNullOrWhiteSpace(model.PageVariant)
                 ? (isLandingPage ? ContactFirstEducationVariant : WebsitePageVariant)
@@ -1536,7 +1536,7 @@ Review summary only. Final plan availability, pricing, provider networks, and el
                 : model.PageMode.Trim();
         }
 
-        private bool ShouldUseLandingMode(HealthQuoteFormModel? model)
+        private bool ShouldUseLandingMode(DentalVisionHearingQuoteFormModel? model)
         {
             if (string.Equals(model?.PageMode, "paid_landing", StringComparison.OrdinalIgnoreCase))
                 return true;
@@ -1556,7 +1556,7 @@ Review summary only. Final plan availability, pricing, provider networks, and el
 
             var referer = Request?.Headers["Referer"].ToString();
             return !string.IsNullOrWhiteSpace(referer) &&
-                   referer.Contains("/Quote/Health/landing", StringComparison.OrdinalIgnoreCase);
+                   referer.Contains("/Quote/Dental-Vision-Hearing/landing", StringComparison.OrdinalIgnoreCase);
         }
 
         public sealed class PublicBookingExperienceRequest

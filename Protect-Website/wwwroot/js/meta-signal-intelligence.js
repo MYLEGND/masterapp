@@ -325,7 +325,7 @@
         return 'iul';
       case 'health':
       case 'health_insurance':
-      case 'quote_health':
+      case 'quote_dvh':
         return 'health';
       case 'disability':
       case 'disability_insurance':

@@ -2,7 +2,7 @@ using System.ComponentModel.DataAnnotations;
 
 namespace Protect_Website.Models
 {
-    public class HealthQuoteFormModel
+    public class DentalVisionHearingQuoteFormModel
     {
         // ===================== PERSONAL INFO =====================
         [Required(ErrorMessage = "First Name is required")]
