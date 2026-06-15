@@ -2216,7 +2216,7 @@ public sealed class AnalyticsQueryService : IAnalyticsQueryService
             submitAttemptKeys);
 
         var startBucketCounts = CountDistinctUnitsByReportingBucket(
-            allAttributedRows,
+            attributedRows,
             e => IsQuoteEntryEngagedSignalEvent(e) || IsQuoteSubmitAttempt(e),
             BuildQuoteStageUnitKey);
         var directFormStartCount = formStartedKeys.Count - formStartedKeys.Intersect(ctaStartKeys, StringComparer.OrdinalIgnoreCase).Count();
