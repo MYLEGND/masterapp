@@ -145,6 +145,63 @@
     return hasAttribution(fromLocal) ? normalizeAttribution(fromLocal) : null;
   }
 
+  function readCookieValue(name) {
+    try {
+      const prefix = `${encodeURIComponent(name)}=`;
+      const parts = String(document.cookie || '').split(';');
+      for (const part of parts) {
+        const trimmed = part.trim();
+        if (trimmed.startsWith(prefix)) {
+          return decodeURIComponent(trimmed.slice(prefix.length));
+        }
+      }
+    } catch {
+      return null;
+    }
+
+    return null;
+  }
+
+  function writeCookieValue(name, value, maxAgeSeconds) {
+    if (!name || !value) return;
+
+    try {
+      const secure = window.location.protocol === 'https:' ? '; Secure' : '';
+      document.cookie = `${encodeURIComponent(name)}=${encodeURIComponent(value)}; Max-Age=${maxAgeSeconds}; Path=/; SameSite=Lax${secure}`;
+    } catch {
+      // Cookie writes can fail in restricted browsers; server-side CAPI still proceeds with IP/UA.
+    }
+  }
+
+  function ensureFbpCookie() {
+    const existing = readCookieValue('_fbp');
+    if (existing) return existing;
+
+    const timestamp = Date.now();
+    const randomPart = Math.floor(Math.random() * 2147483647);
+    const generated = `fb.1.${timestamp}.${randomPart}`;
+    writeCookieValue('_fbp', generated, 90 * 24 * 60 * 60);
+    return generated;
+  }
+
+  function ensureFbcCookie(attribution) {
+    const existing = readCookieValue('_fbc');
+    if (existing) return existing;
+
+    const fbclid = asTrimmed(attribution?.fbclid);
+    if (!fbclid) return null;
+
+    const generated = `fb.1.${Date.now()}.${fbclid}`;
+    writeCookieValue('_fbc', generated, 90 * 24 * 60 * 60);
+    return generated;
+  }
+
+  function ensureEarlyMetaCookies() {
+    const attribution = resolveAttribution();
+    ensureFbpCookie();
+    ensureFbcCookie(attribution);
+  }
+
   function writeAttributionToStorage(key, attribution) {
     const normalized = normalizeAttribution(attribution);
     if (!hasAttribution(normalized)) return;
@@ -1143,6 +1200,7 @@
       scheduleEngagementTimers();
 
       if (!state.fired['view-content']) {
+        ensureEarlyMetaCookies();
         void emitSignal('ViewContent', { onceKey: 'view-content' });
       }
 
@@ -1161,6 +1219,7 @@
     return {
       enabled: true,
       trackLeadFormStart(metadata = {}) {
+        ensureEarlyMetaCookies();
         return emitSignal('LeadFormStart', {
           onceKey: 'lead-form-start',
           metadata
