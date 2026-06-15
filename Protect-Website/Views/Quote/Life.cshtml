@@ -10880,6 +10880,47 @@ const contactFieldProgress = new Map();
     trackEvent('contact_step_view', metadata);
   }
 
+  let lifeFormSubmitSucceeded = false;
+  let lifeFormAbandonTracked = false;
+
+  function shouldTrackLifeFormAbandon() {
+    return quoteStartTracked && !lifeFormSubmitSucceeded && !postSubmitSuccessActive;
+  }
+
+  function trackLifeFormAbandon(reason = 'unknown') {
+    if (lifeFormAbandonTracked || !shouldTrackLifeFormAbandon()) {
+      return;
+    }
+
+    lifeFormAbandonTracked = true;
+    const contactSnapshot = getContactCompletionSnapshot();
+
+    trackEvent('form_abandon', {
+      reason,
+      pageVariant,
+      pageMode,
+      quoteType: 'life',
+      contactStepReached: Boolean(contactSnapshot.contactStepReached),
+      contactFocusedCount: contactSnapshot.contactFocusedCount,
+      contactCompletedCount: contactSnapshot.contactCompletedCount,
+      lastContactFieldFocused: contactSnapshot.lastContactFieldFocused || '',
+      lastContactFieldCompleted: contactSnapshot.lastContactFieldCompleted || '',
+      requiredContactFieldsComplete: Boolean(contactSnapshot.requiredContactFieldsComplete)
+    });
+  }
+
+  ['pagehide', 'beforeunload'].forEach((eventName) => {
+    window.addEventListener(eventName, () => {
+      trackLifeFormAbandon(eventName);
+    });
+  });
+
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'hidden') {
+      trackLifeFormAbandon('visibility_hidden');
+    }
+  });
+
   function trackFormSubmitOutcome(submitOutcome, metadata = {}) {
     return safeTrackingCall(`track:form_submit:${submitOutcome}`, () => window.LegendAnalytics?.trackEvent?.(
       'form_submit_attempt',
@@ -14029,6 +14070,7 @@ const contactFieldProgress = new Map();
       const leadId = typeof responseBody.leadId === 'string' ? responseBody.leadId.trim() : '';
       const metaLeadEventId = typeof responseBody.metaLeadEventId === 'string' ? responseBody.metaLeadEventId.trim() : '';
       metaSignalApi?.markSubmitted({ leadId, metaLeadEventId, requiredContactFieldsComplete: true, contactStepReached: true });
+      lifeFormSubmitSucceeded = true;
       form._trackSubmitSuccess?.();
       if (tracksContactFirstFlow) {
         await flushContactFirstSuccessTracking(leadId, metaLeadEventId);
