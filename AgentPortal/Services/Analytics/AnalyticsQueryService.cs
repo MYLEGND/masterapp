@@ -1861,8 +1861,7 @@ public sealed class AnalyticsQueryService : IAnalyticsQueryService
         var attributedRows = FilterAttributedRowsByTraffic(allAttributedRows, trafficType);
         var events = attributedRows.Select(r => r.Event).ToList();
         var sessionAttributionRows = BuildSessionAttributionRows(attributedRows);
-        var allSessionAttributionRows = BuildSessionAttributionRows(allAttributedRows);
-        var sessionBucketCounts = CountSessionsByReportingBucket(allSessionAttributionRows);
+        var sessionBucketCounts = CountSessionsByReportingBucket(sessionAttributionRows);
         var topAttributionRows = sessionAttributionRows.Count > 0 ? sessionAttributionRows : attributedRows;
 
         var traffic = new TrafficOverviewDto
