@@ -7982,13 +7982,6 @@ input:checked + .lq-answer-card {
                                             <div class="lq-choice-group">
                                                 <div class="lq-choice-label lq-step-question" id="lbl-step1-age">@ageStepQuestionText</div>
                                                 <div class="lq-age-picker lq-dob-picker @(form.DateOfBirth.HasValue ? "is-active" : "")" data-dob-picker data-age-selected="@(form.DateOfBirth.HasValue ? "true" : "false")">
-                                                    <div class="lq-age-picker-top">
-                                                        <div class="lq-age-picker-copy">
-                                                            <div class="lq-age-picker-kicker">Date of birth</div>
-                                                            
-                                                        </div>
-                                                        <div class="lq-age-pill" data-age-display aria-live="polite">@(form.DateOfBirth.HasValue ? $"Age {ageValue}" : "Enter DOB")</div>
-                                                    </div>
                                                     <input
                                                         type="date"
                                                         class="form-control lq-dob-input"
@@ -8073,13 +8066,6 @@ input:checked + .lq-answer-card {
                                             <div class="lq-choice-group">
                                                 <div class="lq-choice-label lq-step-question" id="lbl-step1-age">@ageStepQuestionText</div>
                                                 <div class="lq-age-picker lq-dob-picker @(form.DateOfBirth.HasValue ? "is-active" : "")" data-dob-picker data-age-selected="@(form.DateOfBirth.HasValue ? "true" : "false")">
-                                                    <div class="lq-age-picker-top">
-                                                        <div class="lq-age-picker-copy">
-                                                            <div class="lq-age-picker-kicker">Date of birth</div>
-                                                            
-                                                        </div>
-                                                        <div class="lq-age-pill" data-age-display aria-live="polite">@(form.DateOfBirth.HasValue ? $"Age {ageValue}" : "Enter DOB")</div>
-                                                    </div>
                                                     <input
                                                         type="date"
                                                         class="form-control lq-dob-input"
@@ -8471,13 +8457,6 @@ input:checked + .lq-answer-card {
                         <div class="lq-choice-group">
                             <div class="lq-choice-label lq-step-question" id="lbl-step1-age">@ageStepQuestionText</div>
                             <div class="lq-age-picker lq-dob-picker @(form.DateOfBirth.HasValue ? "is-active" : "")" data-dob-picker data-age-selected="@(form.DateOfBirth.HasValue ? "true" : "false")">
-                                <div class="lq-age-picker-top">
-                                    <div class="lq-age-picker-copy">
-                                        <div class="lq-age-picker-kicker">Date of birth</div>
-                                        
-                                    </div>
-                                    <div class="lq-age-pill" data-age-display aria-live="polite">@(form.DateOfBirth.HasValue ? $"Age {ageValue}" : "Enter DOB")</div>
-                                </div>
                                 <input
                                     type="date"
                                     class="form-control lq-dob-input"
@@ -8562,13 +8541,6 @@ input:checked + .lq-answer-card {
                         <div class="lq-choice-group">
                             <div class="lq-choice-label lq-step-question" id="lbl-step1-age">@ageStepQuestionText</div>
                             <div class="lq-age-picker lq-dob-picker @(form.DateOfBirth.HasValue ? "is-active" : "")" data-dob-picker data-age-selected="@(form.DateOfBirth.HasValue ? "true" : "false")">
-                                <div class="lq-age-picker-top">
-                                    <div class="lq-age-picker-copy">
-                                        <div class="lq-age-picker-kicker">Date of birth</div>
-                                        
-                                    </div>
-                                    <div class="lq-age-pill" data-age-display aria-live="polite">@(form.DateOfBirth.HasValue ? $"Age {ageValue}" : "Enter DOB")</div>
-                                </div>
                                 <input
                                     type="date"
                                     class="form-control lq-dob-input"
@@ -13821,9 +13793,19 @@ const contactFieldProgress = new Map();
     input.addEventListener('input', () => {
       const rawDob = String(input.value || '').trim();
       const hasCompleteDob = /^\d{4}-\d{2}-\d{2}$/.test(rawDob);
+
+      if (!hasCompleteDob) {
+        showChoiceError('err-step1-age', false);
+        clearQuoteFieldError('DateOfBirth');
+        clearQuoteFieldError('AgeBracket');
+        syncStepOneAnswersFromUI();
+        persistFunnelState();
+        return;
+      }
+
       const hasValidAge = syncAgePickerUi(input.value, true);
 
-      if (hasCompleteDob && !hasValidAge) {
+      if (!hasValidAge) {
         showChoiceError('err-step1-age', true);
         trackQuoteFieldError('DateOfBirth', 'invalid_dob', 'discovery');
         metaSignalApi?.trackFieldError('DateOfBirth', { fieldContext: 'discovery' });
