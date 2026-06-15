@@ -576,7 +576,8 @@ public sealed class AnalyticsQueryService : IAnalyticsQueryService
     private static bool IsQuoteContactStepReachedEvent(AnalyticsEvent e)
     {
         return AnalyticsEventCatalog.MatchesDashboardMetric(e.EventType, "contact_step_view") ||
-               AnalyticsEventCatalog.MatchesDashboardMetric(e.EventType, "quote_contact_step_view");
+               AnalyticsEventCatalog.MatchesDashboardMetric(e.EventType, "quote_contact_step_view") ||
+               string.Equals(e.EventType, "life_contact_first_start", StringComparison.OrdinalIgnoreCase);
     }
 
     private static bool IsQuoteExplicitFormStartEvent(AnalyticsEvent e)
