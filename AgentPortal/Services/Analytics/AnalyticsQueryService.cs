@@ -655,17 +655,21 @@ public sealed class AnalyticsQueryService : IAnalyticsQueryService
         if (string.IsNullOrWhiteSpace(key)) return null;
         var normalized = key.Trim().ToLowerInvariant();
 
-        if (normalized.Contains("mortgage_protection") || normalized.Contains("mortgageprotection")) return "mortgage_protection";
-        if (normalized.Contains("final_expense") || normalized.Contains("finalexpense")) return "final_expense";
-        if (normalized.Contains("whole_life") || normalized.Contains("wholelife")) return "whole_life";
-        if (normalized.Contains("term_life") || normalized.Contains("termlife")) return "term_life";
-        if (normalized.Contains("quote_life") || normalized == "life") return "life";
-        if (normalized.Contains("iul")) return "iul";
-        if (normalized.Contains("quote_auto") || normalized == "auto") return "auto";
-        if (normalized.Contains("quote_home") || normalized == "home") return "home";
-        if (normalized.Contains("quote_commercial") || normalized == "commercial") return "commercial";
-        if (normalized.Contains("quote_disability") || normalized == "disability") return "disability";
-        if (normalized.Contains("quote_health") || normalized == "health") return "health";
+        if (normalized.Contains("quote_mortgage_protection") || normalized.Contains("quote_mortgageprotection")) return "mortgage_protection";
+        if (normalized.Contains("quote_final_expense") || normalized.Contains("quote_finalexpense")) return "final_expense";
+        if (normalized.Contains("quote_whole_life") || normalized.Contains("quote_wholelife")) return "whole_life";
+        if (normalized.Contains("quote_term_life") || normalized.Contains("quote_termlife")) return "term_life";
+        if (normalized.Contains("quote_life")) return "life";
+        if (normalized.Contains("quote_iul")) return "iul";
+        if (normalized.Contains("quote_auto")) return "auto";
+        if (normalized.Contains("quote_home")) return "home";
+        if (normalized.Contains("quote_commercial")) return "commercial";
+        if (normalized.Contains("quote_disability")) return "disability";
+        if (normalized.Contains("quote_health")) return "health";
+        if (normalized.Contains("quote_dvh") ||
+            normalized.Contains("quote_dental_vision_hearing") ||
+            normalized.Contains("quote_dentalvisionhearing"))
+            return "dvh";
 
         return null;
     }
