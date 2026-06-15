@@ -873,7 +873,7 @@
         _ => "Build My Protection Plan"
     };
 
-    var requiredContactFieldNames = new[] { "FirstName", "Phone" };
+    var requiredContactFieldNames = new[] { "FirstName", "LastName", "Phone", "Email" };
     var metaSignalOptions = MetaSignalOptionsAccessor.Value;
     var metaSignalConfigJson = JsonSerializer.Serialize(new
     {
@@ -8218,20 +8218,20 @@ input:checked + .lq-answer-card {
                                                 <div class="lq-field-err" id="err-FirstName">Please enter your first name.</div>
                                             </div>
                                             <div class="lq-field">
-                                                <label for="Phone">Phone Number <span class="lq-required-star">*</span></label>
-                                                <input type="tel" id="Phone" name="Phone" class="form-control" placeholder="(555) 555-5555" autocomplete="tel" inputmode="tel" value="@form.Phone" required />
-                                                <div class="lq-field-err" id="err-Phone">Please enter a valid phone number.</div>
+                                                <label for="LastName">Last Name <span class="lq-required-star">*</span></label>
+                                                <input type="text" id="LastName" name="LastName" class="form-control" autocomplete="family-name" value="@form.LastName" required />
+                                                <div class="lq-field-err" id="err-LastName">Please enter your last name.</div>
                                             </div>
                                         </div>
                                         <div class="lq-field-row two full">
                                             <div class="lq-field">
-                                                <label for="LastName">Last Name <span class="lq-optional-tag">(optional)</span></label>
-                                                <input type="text" id="LastName" name="LastName" class="form-control" autocomplete="family-name" value="@form.LastName" />
-                                                <div class="lq-field-err" id="err-LastName">@(isContactFirstEducationVariant ? "Please enter your last name." : string.Empty)</div>
+                                                <label for="Phone">Phone Number <span class="lq-required-star">*</span></label>
+                                                <input type="tel" id="Phone" name="Phone" class="form-control" placeholder="(555) 555-5555" autocomplete="tel" inputmode="tel" value="@form.Phone" required />
+                                                <div class="lq-field-err" id="err-Phone">Please enter a valid phone number.</div>
                                             </div>
                                             <div class="lq-field">
-                                                <label for="Email">Email <span class="lq-optional-tag">(optional)</span></label>
-                                                <input type="email" id="Email" name="Email" class="form-control" placeholder="you@example.com" autocomplete="email" inputmode="email" value="@form.Email" />
+                                                <label for="Email">Email <span class="lq-required-star">*</span></label>
+                                                <input type="email" id="Email" name="Email" class="form-control" placeholder="you@example.com" autocomplete="email" inputmode="email" value="@form.Email" required />
                                                 <div class="lq-field-err" id="err-Email">Please enter a valid email address.</div>
                                             </div>
                                         </div>
@@ -8725,20 +8725,20 @@ input:checked + .lq-answer-card {
                                 <div class="lq-field-err" id="err-FirstName">Please enter your first name.</div>
                             </div>
                             <div class="lq-field">
-                                <label for="Phone">Phone Number <span class="lq-required-star">*</span></label>
-                                <input type="tel" id="Phone" name="Phone" class="form-control" placeholder="(555) 555-5555" autocomplete="tel" inputmode="tel" value="@form.Phone" required />
-                                <div class="lq-field-err" id="err-Phone">Please enter a valid phone number.</div>
+                                <label for="LastName">Last Name <span class="lq-required-star">*</span></label>
+                                <input type="text" id="LastName" name="LastName" class="form-control" autocomplete="family-name" value="@form.LastName" required />
+                                <div class="lq-field-err" id="err-LastName">Please enter your last name.</div>
                             </div>
                         </div>
                         <div class="lq-field-row two full">
                             <div class="lq-field">
-                                <label for="LastName">Last Name <span class="lq-optional-tag">(optional)</span></label>
-                                <input type="text" id="LastName" name="LastName" class="form-control" autocomplete="family-name" value="@form.LastName" />
-                                <div class="lq-field-err" id="err-LastName">@(isContactFirstEducationVariant ? "Please enter your last name." : string.Empty)</div>
+                                <label for="Phone">Phone Number <span class="lq-required-star">*</span></label>
+                                <input type="tel" id="Phone" name="Phone" class="form-control" placeholder="(555) 555-5555" autocomplete="tel" inputmode="tel" value="@form.Phone" required />
+                                <div class="lq-field-err" id="err-Phone">Please enter a valid phone number.</div>
                             </div>
                             <div class="lq-field">
-                                <label for="Email">Email <span class="lq-optional-tag">(optional)</span></label>
-                                <input type="email" id="Email" name="Email" class="form-control" placeholder="you@example.com" autocomplete="email" inputmode="email" value="@form.Email" />
+                                <label for="Email">Email <span class="lq-required-star">*</span></label>
+                                <input type="email" id="Email" name="Email" class="form-control" placeholder="you@example.com" autocomplete="email" inputmode="email" value="@form.Email" required />
                                 <div class="lq-field-err" id="err-Email">Please enter a valid email address.</div>
                             </div>
                         </div>
@@ -10580,7 +10580,9 @@ const contactFieldProgress = new Map();
       lastContactFieldCompleted: lastCompletedField,
       requiredContactFieldsComplete:
         Boolean(contactFieldProgress.get('FirstName')?.completed) &&
+        Boolean(contactFieldProgress.get('LastName')?.completed) &&
         Boolean(contactFieldProgress.get('Phone')?.completed) &&
+        Boolean(contactFieldProgress.get('Email')?.completed) &&
         Boolean(contactFieldProgress.get('MarketingEmailConsent')?.completed)
     };
   }
