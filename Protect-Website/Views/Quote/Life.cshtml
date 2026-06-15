@@ -8160,9 +8160,6 @@ input:checked + .lq-answer-card {
                                     <div class="lq-step-progress" id="lifeStep2Progress">@stepTwoProgressText</div>
                                     <div class="lq-step-title" id="lifeStep2Heading" tabindex="-1">@finalStepHeading</div>
                                     <div class="lq-step-helper" id="lifeStep2Helper" @(string.IsNullOrWhiteSpace(finalStepHelper) ? "hidden" : null)>@finalStepHelper</div>
-                                    <div class="lq-contact-grid">
-                                        <div class="full lq-contact-estimate-slot" id="lifeStep2EstimateSlot" hidden></div>
-                                    </div>
                                     <div id="lifeContactCaptureWrap">
                                         <div class="lq-contact-grid">
                                         <div class="full lq-contact-capture-head">
@@ -8255,7 +8252,10 @@ input:checked + .lq-answer-card {
                                             </div>
                                             <div class="lq-error" id="lifeError"></div>
                                             <div class="lq-success" id="lifeSuccess">Thanks! We received your request.</div>
-</div>
+                                            <div class="lq-contact-grid">
+                                                <div class="full lq-contact-estimate-slot" id="lifeStep2EstimateSlot" hidden></div>
+                                            </div>
+                                        </div>
                                     </div>
                                     <div class="lq-post-submit-slot" id="lifePostSubmitSlot" hidden></div>
                                 </div>
@@ -8667,9 +8667,6 @@ input:checked + .lq-answer-card {
                 <div class="lq-step-progress" id="lifeStep2Progress">@stepTwoProgressText</div>
                 <div class="lq-step-title" id="lifeStep2Heading" tabindex="-1">@finalStepHeading</div>
                 <div class="lq-step-helper" id="lifeStep2Helper" @(string.IsNullOrWhiteSpace(finalStepHelper) ? "hidden" : null)>@finalStepHelper</div>
-                <div class="lq-contact-grid">
-                    <div class="full lq-contact-estimate-slot" id="lifeStep2EstimateSlot" hidden></div>
-                </div>
                 <div id="lifeContactCaptureWrap">
                     <div class="lq-contact-grid">
                         <div class="full lq-contact-capture-head">
@@ -8825,7 +8822,10 @@ input:checked + .lq-answer-card {
                         </div>
                         <div class="lq-error" id="lifeError"></div>
                         <div class="lq-success" id="lifeSuccess">Thanks! We received your request.</div>
-</div>
+                        <div class="lq-contact-grid">
+                            <div class="full lq-contact-estimate-slot" id="lifeStep2EstimateSlot" hidden></div>
+                        </div>
+                    </div>
                 </div>
                 <div class="lq-post-submit-slot" id="lifePostSubmitSlot" hidden></div>
                 <div class="lq-reassurance" hidden></div>
