@@ -8,6 +8,7 @@ using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
 using Infrastructure.Leads;
 using ProtectWebsite.Services.Meta;
+using ProtectWebsite.Services.MetaSignal;
 using ProtectWebsite.Services;
 using ProtectWebsite.Services.Tracking;
 using Microsoft.AspNetCore.WebUtilities;
@@ -38,6 +39,7 @@ namespace Protect_Website.Controllers
         private readonly MasterAppDbContext _db;
         private readonly IMetaConversionsApiService _metaConversionsApi;
         private readonly IMetaPixelResolutionService _metaPixelResolution;
+        private readonly IMetaSignalIntelligenceService _metaSignalIntelligence;
         private readonly IWebsiteLifeLeadCaptureService _websiteLeadCapture;
         private readonly IPublicBookingResolver _publicBookingResolver;
         private readonly IPublicBookingConfirmationService _publicBookingConfirmationService;
@@ -46,7 +48,7 @@ namespace Protect_Website.Controllers
         private readonly IProtectEmailSender _emailSender;
 
         public HealthQuoteController(IConfiguration configuration, AgentTrackingResolver resolver,
-            MasterAppDbContext db, IMetaConversionsApiService metaConversionsApi, IMetaPixelResolutionService metaPixelResolution, IWebsiteLifeLeadCaptureService websiteLeadCapture, IPublicBookingResolver publicBookingResolver, IPublicBookingConfirmationService publicBookingConfirmationService, IPublicBookingContextProtector publicBookingContextProtector, IProtectEmailSender emailSender, ILogger<HealthQuoteController> logger)
+            MasterAppDbContext db, IMetaConversionsApiService metaConversionsApi, IMetaPixelResolutionService metaPixelResolution, IMetaSignalIntelligenceService metaSignalIntelligence, IWebsiteLifeLeadCaptureService websiteLeadCapture, IPublicBookingResolver publicBookingResolver, IPublicBookingConfirmationService publicBookingConfirmationService, IPublicBookingContextProtector publicBookingContextProtector, IProtectEmailSender emailSender, ILogger<HealthQuoteController> logger)
         {
             tenantId = configuration["AzureAd:TenantId"]!;
             clientId = configuration["AzureAd:ClientId"]!;
@@ -58,6 +60,7 @@ namespace Protect_Website.Controllers
             _db = db;
             _metaConversionsApi = metaConversionsApi;
             _metaPixelResolution = metaPixelResolution;
+            _metaSignalIntelligence = metaSignalIntelligence;
             _websiteLeadCapture = websiteLeadCapture;
             _publicBookingResolver = publicBookingResolver;
             _publicBookingConfirmationService = publicBookingConfirmationService;
@@ -473,6 +476,65 @@ namespace Protect_Website.Controllers
                     PixelId = metaCapiResult.PixelId ?? resolvedMetaPixel.PixelId,
                     PixelOwnerType = metaCapiResult.PixelOwnerType ?? resolvedMetaPixel.PixelOwnerType
                 });
+
+            try
+            {
+                var signalMetadata = JsonSerializer.SerializeToElement(new
+                {
+                    productType = QuoteProductType,
+                    pageVariant = model.PageVariant,
+                    pageMode = model.PageMode,
+                    pagePath = Request?.Path.Value,
+                    requiredContactFieldsComplete = true,
+                    contactStepReached = true,
+                    phoneCompleted = !string.IsNullOrWhiteSpace(lead.Phone)
+                });
+
+                await _metaSignalIntelligence.RecordConfirmedLeadAsync(
+                    new MetaSignalConfirmedLeadRequest
+                    {
+                        LeadId = lead.LeadId,
+                        QuoteType = QuoteOfferKey,
+                        PageKey = effectivePageKey,
+                        EffectivePageKey = effectivePageKey,
+                        PageVariant = model.PageVariant,
+                        PageMode = model.PageMode,
+                        Url = model.LandingPageUrl,
+                        Referrer = model.ReferrerUrl,
+                        SessionId = lead.SessionId,
+                        VisitorId = lead.VisitorId,
+                        AgentTrackingProfileId = lead.AgentTrackingProfileId,
+                        AgentSlug = lead.AgentSlug,
+                        UtmSource = lead.UtmSource,
+                        UtmMedium = lead.UtmMedium,
+                        UtmCampaign = lead.UtmCampaign,
+                        UtmId = lead.UtmId,
+                        UtmContent = model.UtmContent,
+                        Fbclid = lead.Fbclid,
+                        Email = lead.Email,
+                        Phone = lead.Phone,
+                        AllowHashedContactData = lead.TermsAccepted && lead.MarketingEmailConsent,
+                        CreatedUtc = lead.CreatedUtc,
+                        LeadEventId = metaLeadEventId,
+                        LeadMetaServerSent = metaCapiResult.Sent,
+                        LeadMetaServerStatus = metaCapiResult.Status,
+                        LeadMetaServerNote = metaCapiResult.Note,
+                        PixelId = resolvedMetaPixel.PixelId,
+                        AccessToken = resolvedMetaPixel.AccessToken,
+                        TestEventCode = resolvedMetaPixel.TestEventCode,
+                        PixelOwnerType = resolvedMetaPixel.PixelOwnerType,
+                        Metadata = signalMetadata
+                    },
+                    HttpContext,
+                    HttpContext?.RequestAborted ?? CancellationToken.None);
+            }
+            catch (Exception signalEx)
+            {
+                _logger.LogError(signalEx,
+                    "HealthQuote [{CorrelationId}]: meta signal lead recording failed for lead {LeadId} — lead is saved, continuing",
+                    correlationId, lead.LeadId);
+            }
+
 
             var attachedAgentContact = await ResolveAttachedAgentContactAsync(
                 agentProfileId,
