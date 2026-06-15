@@ -323,6 +323,26 @@
       case 'iul':
       case 'life_iul':
         return 'iul';
+      case 'health':
+      case 'health_insurance':
+      case 'quote_health':
+        return 'health';
+      case 'disability':
+      case 'disability_insurance':
+      case 'quote_disability':
+        return 'disability';
+      case 'commercial':
+      case 'commercial_insurance':
+      case 'quote_commercial':
+        return 'commercial';
+      case 'home':
+      case 'home_insurance':
+      case 'quote_home':
+        return 'home';
+      case 'auto':
+      case 'auto_insurance':
+      case 'quote_auto':
+        return 'auto';
       case 'life_general':
       case 'life':
       default:
