@@ -7985,7 +7985,7 @@ input:checked + .lq-answer-card {
                                                     <div class="lq-age-picker-top">
                                                         <div class="lq-age-picker-copy">
                                                             <div class="lq-age-picker-kicker">Date of birth</div>
-                                                            <div class="lq-age-picker-note">Used to calculate your age accurately for this review.</div>
+                                                            
                                                         </div>
                                                         <div class="lq-age-pill" data-age-display aria-live="polite">@(form.DateOfBirth.HasValue ? $"Age {ageValue}" : "Enter DOB")</div>
                                                     </div>
@@ -8076,7 +8076,7 @@ input:checked + .lq-answer-card {
                                                     <div class="lq-age-picker-top">
                                                         <div class="lq-age-picker-copy">
                                                             <div class="lq-age-picker-kicker">Date of birth</div>
-                                                            <div class="lq-age-picker-note">Used to calculate your age accurately for this review.</div>
+                                                            
                                                         </div>
                                                         <div class="lq-age-pill" data-age-display aria-live="polite">@(form.DateOfBirth.HasValue ? $"Age {ageValue}" : "Enter DOB")</div>
                                                     </div>
@@ -8474,7 +8474,7 @@ input:checked + .lq-answer-card {
                                 <div class="lq-age-picker-top">
                                     <div class="lq-age-picker-copy">
                                         <div class="lq-age-picker-kicker">Date of birth</div>
-                                        <div class="lq-age-picker-note">Used to calculate your age accurately for this review.</div>
+                                        
                                     </div>
                                     <div class="lq-age-pill" data-age-display aria-live="polite">@(form.DateOfBirth.HasValue ? $"Age {ageValue}" : "Enter DOB")</div>
                                 </div>
@@ -8565,7 +8565,7 @@ input:checked + .lq-answer-card {
                                 <div class="lq-age-picker-top">
                                     <div class="lq-age-picker-copy">
                                         <div class="lq-age-picker-kicker">Date of birth</div>
-                                        <div class="lq-age-picker-note">Used to calculate your age accurately for this review.</div>
+                                        
                                     </div>
                                     <div class="lq-age-pill" data-age-display aria-live="polite">@(form.DateOfBirth.HasValue ? $"Age {ageValue}" : "Enter DOB")</div>
                                 </div>
@@ -13819,10 +13819,20 @@ const contactFieldProgress = new Map();
     }
 
     input.addEventListener('input', () => {
-      syncAgePickerUi(input.value, true);
-      showChoiceError('err-step1-age', false);
-      clearQuoteFieldError('DateOfBirth');
-      clearQuoteFieldError('AgeBracket');
+      const rawDob = String(input.value || '').trim();
+      const hasCompleteDob = /^\d{4}-\d{2}-\d{2}$/.test(rawDob);
+      const hasValidAge = syncAgePickerUi(input.value, true);
+
+      if (hasCompleteDob && !hasValidAge) {
+        showChoiceError('err-step1-age', true);
+        trackQuoteFieldError('DateOfBirth', 'invalid_dob', 'discovery');
+        metaSignalApi?.trackFieldError('DateOfBirth', { fieldContext: 'discovery' });
+      } else {
+        showChoiceError('err-step1-age', false);
+        clearQuoteFieldError('DateOfBirth');
+        clearQuoteFieldError('AgeBracket');
+      }
+
       syncStepOneAnswersFromUI();
       persistFunnelState();
     });
