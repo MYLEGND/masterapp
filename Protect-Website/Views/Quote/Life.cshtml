@@ -13820,6 +13820,18 @@ const contactFieldProgress = new Map();
     });
 
     input.addEventListener('change', () => {
+      const rawDob = String(input.value || '').trim();
+      const hasCompleteDob = /^\d{4}-\d{2}-\d{2}$/.test(rawDob);
+
+      if (!hasCompleteDob) {
+        showChoiceError('err-step1-age', false);
+        clearQuoteFieldError('DateOfBirth');
+        clearQuoteFieldError('AgeBracket');
+        syncStepOneAnswersFromUI();
+        persistFunnelState();
+        return;
+      }
+
       const hasValidAge = syncAgePickerUi(input.value, true);
       syncStepOneAnswersFromUI();
       persistFunnelState();
