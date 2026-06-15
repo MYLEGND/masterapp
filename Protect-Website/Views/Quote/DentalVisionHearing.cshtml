@@ -2331,8 +2331,7 @@ body.dvh-final-step-active .dq-form-panel {
 
                                     <div class="lq-micro-step" data-micro-step="0">
                                         <div class="lq-step-intro">
-                                            <h2 class="lq-step-title">Let's tailor your dental, vision, and hearing review.</h2>
-                                            <p class="lq-step-helper">Answer a few quick questions first so your review reflects your household, current coverage, and the tradeoffs that matter most.</p>
+                                            <h2 class="lq-step-title">Build Your Dental, Vision & Hearing Review</h2>
                                         </div>
                                         <div class="lq-choice-group" role="radiogroup" aria-labelledby="dqAgeRangeLabel">
                                             <div class="lq-choice-label" id="dqAgeRangeLabel">What is your age range?</div>
@@ -2341,54 +2340,42 @@ body.dvh-final-step-active .dq-form-panel {
                                                     <input type="radio" name="AgeRange" value="18-24" @CheckedIf(selectedAgeRange == "18-24") />
                                                     <span class="lq-card-visual" aria-hidden="true"><svg class="lq-card-icon" viewBox="0 0 48 48" fill="none"><use href="#dq-icon-calendar"></use></svg></span>
                                                     <span class="lq-card-copy">
-                                                        <span class="lq-card-kicker">Age band</span>
                                                         <span class="lq-card-title">18-24</span>
-                                                        <span class="lq-card-helper">A strong time to lock in affordable basics before care gets more expensive.</span>
                                                     </span>
                                                 </label>
                                                 <label class="lq-card lq-card-rich @SelectedClassIf(selectedAgeRange == "25-34")">
                                                     <input type="radio" name="AgeRange" value="25-34" @CheckedIf(selectedAgeRange == "25-34") />
                                                     <span class="lq-card-visual" aria-hidden="true"><svg class="lq-card-icon" viewBox="0 0 48 48" fill="none"><use href="#dq-icon-calendar"></use></svg></span>
                                                     <span class="lq-card-copy">
-                                                        <span class="lq-card-kicker">Age band</span>
                                                         <span class="lq-card-title">25-34</span>
-                                                        <span class="lq-card-helper">Monthly cost, preventive care, and reliable access often matter more here.</span>
                                                     </span>
                                                 </label>
                                                 <label class="lq-card lq-card-rich @SelectedClassIf(selectedAgeRange == "35-44")">
                                                     <input type="radio" name="AgeRange" value="35-44" @CheckedIf(selectedAgeRange == "35-44") />
                                                     <span class="lq-card-visual" aria-hidden="true"><svg class="lq-card-icon" viewBox="0 0 48 48" fill="none"><use href="#dq-icon-calendar"></use></svg></span>
                                                     <span class="lq-card-copy">
-                                                        <span class="lq-card-kicker">Age band</span>
                                                         <span class="lq-card-title">35-44</span>
-                                                        <span class="lq-card-helper">Family needs, prescriptions, and network fit often shape plan choices here.</span>
                                                     </span>
                                                 </label>
                                                 <label class="lq-card lq-card-rich @SelectedClassIf(selectedAgeRange == "45-54")">
                                                     <input type="radio" name="AgeRange" value="45-54" @CheckedIf(selectedAgeRange == "45-54") />
                                                     <span class="lq-card-visual" aria-hidden="true"><svg class="lq-card-icon" viewBox="0 0 48 48" fill="none"><use href="#dq-icon-calendar"></use></svg></span>
                                                     <span class="lq-card-copy">
-                                                        <span class="lq-card-kicker">Age band</span>
                                                         <span class="lq-card-title">45-54</span>
-                                                        <span class="lq-card-helper">Doctor access, deductible exposure, and preventive care usually matter more here.</span>
                                                     </span>
                                                 </label>
                                                 <label class="lq-card lq-card-rich @SelectedClassIf(selectedAgeRange == "55-64")">
                                                     <input type="radio" name="AgeRange" value="55-64" @CheckedIf(selectedAgeRange == "55-64") />
                                                     <span class="lq-card-visual" aria-hidden="true"><svg class="lq-card-icon" viewBox="0 0 48 48" fill="none"><use href="#dq-icon-calendar"></use></svg></span>
                                                     <span class="lq-card-copy">
-                                                        <span class="lq-card-kicker">Age band</span>
                                                         <span class="lq-card-title">55-64</span>
-                                                        <span class="lq-card-helper">Coverage gaps can get more expensive here, so fit matters more.</span>
                                                     </span>
                                                 </label>
                                                 <label class="lq-card lq-card-rich @SelectedClassIf(selectedAgeRange == "65+")">
                                                     <input type="radio" name="AgeRange" value="65+" @CheckedIf(selectedAgeRange == "65+") />
                                                     <span class="lq-card-visual" aria-hidden="true"><svg class="lq-card-icon" viewBox="0 0 48 48" fill="none"><use href="#dq-icon-calendar"></use></svg></span>
                                                     <span class="lq-card-copy">
-                                                        <span class="lq-card-kicker">Age band</span>
                                                         <span class="lq-card-title">65+</span>
-                                                        <span class="lq-card-helper">We can still point you toward the coverage options that make the most sense.</span>
                                                     </span>
                                                 </label>
                                             </div>
@@ -2400,51 +2387,35 @@ body.dvh-final-step-active .dq-form-panel {
                                         <div class="lq-choice-group" role="radiogroup" aria-labelledby="dqHouseholdSizeLabel">
                                             <div class="lq-choice-label" id="dqHouseholdSizeLabel">Who needs this dental, vision, and hearing coverage review?</div>
                                             <div class="lq-choice-grid">
-                                                <label class="lq-card lq-card-rich @SelectedClassIf(form.HouseholdSize == "Just me")">
-                                                    <input type="radio" name="HouseholdSize" value="Just me" @CheckedIf(form.HouseholdSize == "Just me") />
+                                                <label class="lq-card lq-card-rich @SelectedClassIf(form.HouseholdSize == "Insured Only")">
+                                                    <input type="radio" name="HouseholdSize" value="Insured Only" @CheckedIf(form.HouseholdSize == "Insured Only") />
                                                     <span class="lq-card-visual" aria-hidden="true"><svg class="lq-card-icon" viewBox="0 0 48 48" fill="none"><use href="#dq-icon-briefcase"></use></svg></span>
                                                     <span class="lq-card-copy">
-                                                        <span class="lq-card-kicker">Household</span>
-                                                        <span class="lq-card-title">Just me</span>
-                                                        <span class="lq-card-helper">A solo review can focus tightly on your own doctors, prescriptions, and budget.</span>
+                                                        <span class="lq-card-title">Insured Only</span>
                                                     </span>
                                                 </label>
-                                                <label class="lq-card lq-card-rich @SelectedClassIf(form.HouseholdSize == "Me + spouse / partner")">
-                                                    <input type="radio" name="HouseholdSize" value="Me + spouse / partner" @CheckedIf(form.HouseholdSize == "Me + spouse / partner") />
+                                                <label class="lq-card lq-card-rich @SelectedClassIf(form.HouseholdSize == "Insured & Spouse")">
+                                                    <input type="radio" name="HouseholdSize" value="Insured & Spouse" @CheckedIf(form.HouseholdSize == "Insured & Spouse") />
                                                     <span class="lq-card-visual" aria-hidden="true"><svg class="lq-card-icon" viewBox="0 0 48 48" fill="none"><use href="#dq-icon-briefcase"></use></svg></span>
                                                     <span class="lq-card-copy">
-                                                        <span class="lq-card-kicker">Household</span>
-                                                        <span class="lq-card-title">Me + spouse / partner</span>
-                                                        <span class="lq-card-helper">This review can focus on balancing cost, network fit, and shared care needs.</span>
+                                                        <span class="lq-card-title">Insured & Spouse</span>
                                                     </span>
                                                 </label>
-                                                <label class="lq-card lq-card-rich @SelectedClassIf(form.HouseholdSize == "Me + child / children")">
-                                                    <input type="radio" name="HouseholdSize" value="Me + child / children" @CheckedIf(form.HouseholdSize == "Me + child / children") />
+                                                <label class="lq-card lq-card-rich @SelectedClassIf(form.HouseholdSize == "Insured & Child")">
+                                                    <input type="radio" name="HouseholdSize" value="Insured & Child" @CheckedIf(form.HouseholdSize == "Insured & Child") />
                                                     <span class="lq-card-visual" aria-hidden="true"><svg class="lq-card-icon" viewBox="0 0 48 48" fill="none"><use href="#dq-icon-briefcase"></use></svg></span>
                                                     <span class="lq-card-copy">
-                                                        <span class="lq-card-kicker">Household</span>
-                                                        <span class="lq-card-title">Me + child / children</span>
-                                                        <span class="lq-card-helper">Family care needs and pediatric access usually become a bigger part of the decision.</span>
+                                                        <span class="lq-card-title">Insured & Child</span>
                                                     </span>
                                                 </label>
-                                                <label class="lq-card lq-card-rich @SelectedClassIf(form.HouseholdSize == "Family of 4+")">
-                                                    <input type="radio" name="HouseholdSize" value="Family of 4+" @CheckedIf(form.HouseholdSize == "Family of 4+") />
+                                                <label class="lq-card lq-card-rich @SelectedClassIf(form.HouseholdSize == "Insured, Spouse & Child")">
+                                                    <input type="radio" name="HouseholdSize" value="Insured, Spouse & Child" @CheckedIf(form.HouseholdSize == "Insured, Spouse & Child") />
                                                     <span class="lq-card-visual" aria-hidden="true"><svg class="lq-card-icon" viewBox="0 0 48 48" fill="none"><use href="#dq-icon-briefcase"></use></svg></span>
                                                     <span class="lq-card-copy">
-                                                        <span class="lq-card-kicker">Household</span>
-                                                        <span class="lq-card-title">Family of 4+</span>
-                                                        <span class="lq-card-helper">A larger household often needs a closer look at premium, deductible, and provider tradeoffs.</span>
+                                                        <span class="lq-card-title">Insured, Spouse & Child</span>
                                                     </span>
                                                 </label>
-                                                <label class="lq-card lq-card-rich @SelectedClassIf(form.HouseholdSize == "Not sure yet")">
-                                                    <input type="radio" name="HouseholdSize" value="Not sure yet" @CheckedIf(form.HouseholdSize == "Not sure yet") />
-                                                    <span class="lq-card-visual" aria-hidden="true"><svg class="lq-card-icon" viewBox="0 0 48 48" fill="none"><use href="#dq-icon-briefcase"></use></svg></span>
-                                                    <span class="lq-card-copy">
-                                                        <span class="lq-card-kicker">Household</span>
-                                                        <span class="lq-card-title">Not sure yet</span>
-                                                        <span class="lq-card-helper">That is fine. We can still focus on the coverage options most likely to fit.</span>
-                                                    </span>
-                                                </label>
+                                                
                                             </div>
                                             <div class="lq-choice-error" id="err-HouseholdSize">Please choose who needs this review.</div>
                                         </div>
@@ -2461,45 +2432,35 @@ body.dvh-final-step-active .dq-form-panel {
                                                     <input type="radio" name="CurrentCoverage" value="No current DVH coverage" @CheckedIf(form.CurrentCoverage == "No current DVH coverage") />
                                                     <span class="lq-card-visual" aria-hidden="true"><svg class="lq-card-icon" viewBox="0 0 48 48" fill="none"><use href="#dq-icon-coverage"></use></svg></span>
                                                     <span class="lq-card-copy">
-                                                        <span class="lq-card-kicker">Current status</span>
                                                         <span class="lq-card-title">No current DVH coverage</span>
-                                                        <span class="lq-card-helper">The review should start with affordable options and how quickly you want coverage in place.</span>
                                                     </span>
                                                 </label>
                                                 <label class="lq-card lq-card-rich @SelectedClassIf(form.CurrentCoverage == "Employer plan")">
                                                     <input type="radio" name="CurrentCoverage" value="Employer plan" @CheckedIf(form.CurrentCoverage == "Employer plan") />
                                                     <span class="lq-card-visual" aria-hidden="true"><svg class="lq-card-icon" viewBox="0 0 48 48" fill="none"><use href="#dq-icon-coverage"></use></svg></span>
                                                     <span class="lq-card-copy">
-                                                        <span class="lq-card-kicker">Current status</span>
                                                         <span class="lq-card-title">Employer plan</span>
-                                                        <span class="lq-card-helper">We can review whether the employer option truly fits your household, doctors, and out-of-pocket needs.</span>
                                                     </span>
                                                 </label>
                                                 <label class="lq-card lq-card-rich @SelectedClassIf(form.CurrentCoverage == "Medical only / need DVH")">
                                                     <input type="radio" name="CurrentCoverage" value="Medical only / need DVH" @CheckedIf(form.CurrentCoverage == "Medical only / need DVH") />
                                                     <span class="lq-card-visual" aria-hidden="true"><svg class="lq-card-icon" viewBox="0 0 48 48" fill="none"><use href="#dq-icon-coverage"></use></svg></span>
                                                     <span class="lq-card-copy">
-                                                        <span class="lq-card-kicker">Current status</span>
                                                         <span class="lq-card-title">Medical only / need DVH</span>
-                                                        <span class="lq-card-helper">We can compare plan fit, subsidy awareness, and whether a better option might exist.</span>
                                                     </span>
                                                 </label>
                                                 <label class="lq-card lq-card-rich @SelectedClassIf(form.CurrentCoverage == "Spouse / family plan")">
                                                     <input type="radio" name="CurrentCoverage" value="Spouse / family plan" @CheckedIf(form.CurrentCoverage == "Spouse / family plan") />
                                                     <span class="lq-card-visual" aria-hidden="true"><svg class="lq-card-icon" viewBox="0 0 48 48" fill="none"><use href="#dq-icon-coverage"></use></svg></span>
                                                     <span class="lq-card-copy">
-                                                        <span class="lq-card-kicker">Current status</span>
                                                         <span class="lq-card-title">Spouse / family plan</span>
-                                                        <span class="lq-card-helper">That gives the review a starting point for cost, dependents, and whether the current fit still makes sense.</span>
                                                     </span>
                                                 </label>
                                                 <label class="lq-card lq-card-rich @SelectedClassIf(form.CurrentCoverage == "Not sure")">
                                                     <input type="radio" name="CurrentCoverage" value="Not sure" @CheckedIf(form.CurrentCoverage == "Not sure") />
                                                     <span class="lq-card-visual" aria-hidden="true"><svg class="lq-card-icon" viewBox="0 0 48 48" fill="none"><use href="#dq-icon-coverage"></use></svg></span>
                                                     <span class="lq-card-copy">
-                                                        <span class="lq-card-kicker">Current status</span>
                                                         <span class="lq-card-title">Not sure</span>
-                                                        <span class="lq-card-helper">That is common. We can still focus on the options that fit best.</span>
                                                     </span>
                                                 </label>
                                             </div>
@@ -2518,45 +2479,35 @@ body.dvh-final-step-active .dq-form-panel {
                                                     <input type="radio" name="CoverageType" value="Individual coverage" @CheckedIf(form.CoverageType == "Individual coverage") />
                                                     <span class="lq-card-visual" aria-hidden="true"><svg class="lq-card-icon" viewBox="0 0 48 48" fill="none"><use href="#dq-icon-income"></use></svg></span>
                                                     <span class="lq-card-copy">
-                                                        <span class="lq-card-kicker">Coverage goal</span>
                                                         <span class="lq-card-title">Individual coverage</span>
-                                                        <span class="lq-card-helper">Focus the review on your own doctors, prescriptions, and monthly budget.</span>
                                                     </span>
                                                 </label>
                                                 <label class="lq-card lq-card-rich @SelectedClassIf(form.CoverageType == "Family coverage")">
                                                     <input type="radio" name="CoverageType" value="Family coverage" @CheckedIf(form.CoverageType == "Family coverage") />
                                                     <span class="lq-card-visual" aria-hidden="true"><svg class="lq-card-icon" viewBox="0 0 48 48" fill="none"><use href="#dq-icon-income"></use></svg></span>
                                                     <span class="lq-card-copy">
-                                                        <span class="lq-card-kicker">Coverage goal</span>
                                                         <span class="lq-card-title">Family coverage</span>
-                                                        <span class="lq-card-helper">Keep the review centered on dependents, shared care needs, and family plan fit.</span>
                                                     </span>
                                                 </label>
                                                 <label class="lq-card lq-card-rich @SelectedClassIf(form.CoverageType == "Dental, vision & hearing guidance")">
                                                     <input type="radio" name="CoverageType" value="Dental, vision & hearing guidance" @CheckedIf(form.CoverageType == "Dental, vision & hearing guidance") />
                                                     <span class="lq-card-visual" aria-hidden="true"><svg class="lq-card-icon" viewBox="0 0 48 48" fill="none"><use href="#dq-icon-income"></use></svg></span>
                                                     <span class="lq-card-copy">
-                                                        <span class="lq-card-kicker">Coverage goal</span>
                                                         <span class="lq-card-title">Dental, vision & hearing guidance</span>
-                                                        <span class="lq-card-helper">Useful when you want help comparing exchange plans and affordability options.</span>
                                                     </span>
                                                 </label>
                                                 <label class="lq-card lq-card-rich @SelectedClassIf(form.CoverageType == "Dental, vision & hearing options")">
                                                     <input type="radio" name="CoverageType" value="Dental, vision & hearing options" @CheckedIf(form.CoverageType == "Dental, vision & hearing options") />
                                                     <span class="lq-card-visual" aria-hidden="true"><svg class="lq-card-icon" viewBox="0 0 48 48" fill="none"><use href="#dq-icon-income"></use></svg></span>
                                                     <span class="lq-card-copy">
-                                                        <span class="lq-card-kicker">Coverage goal</span>
                                                         <span class="lq-card-title">Dental, vision & hearing options</span>
-                                                        <span class="lq-card-helper">Best when you want to look more closely at add-on benefits or supplemental support.</span>
                                                     </span>
                                                 </label>
                                                 <label class="lq-card lq-card-rich @SelectedClassIf(form.CoverageType == "Not sure / need guidance")">
                                                     <input type="radio" name="CoverageType" value="Not sure / need guidance" @CheckedIf(form.CoverageType == "Not sure / need guidance") />
                                                     <span class="lq-card-visual" aria-hidden="true"><svg class="lq-card-icon" viewBox="0 0 48 48" fill="none"><use href="#dq-icon-income"></use></svg></span>
                                                     <span class="lq-card-copy">
-                                                        <span class="lq-card-kicker">Coverage goal</span>
                                                         <span class="lq-card-title">Not sure / need guidance</span>
-                                                        <span class="lq-card-helper">A good place to start when you want help narrowing your options before comparing plans.</span>
                                                     </span>
                                                 </label>
                                             </div>
@@ -2575,45 +2526,35 @@ body.dvh-final-step-active .dq-form-panel {
                                                     <input type="radio" name="PrimaryConcern" value="Lower Monthly Premium" @CheckedIf(form.PrimaryConcern == "Lower Monthly Premium") />
                                                     <span class="lq-card-visual" aria-hidden="true"><svg class="lq-card-icon" viewBox="0 0 48 48" fill="none"><use href="#dq-icon-priority"></use></svg></span>
                                                     <span class="lq-card-copy">
-                                                        <span class="lq-card-kicker">Priority</span>
                                                         <span class="lq-card-title">Lower Monthly Premium</span>
-                                                        <span class="lq-card-helper">Keep the review centered on affordability and predictable monthly cost.</span>
                                                     </span>
                                                 </label>
                                                 <label class="lq-card lq-card-rich @SelectedClassIf(form.PrimaryConcern == "Lower Deductible")">
                                                     <input type="radio" name="PrimaryConcern" value="Lower Deductible" @CheckedIf(form.PrimaryConcern == "Lower Deductible") />
                                                     <span class="lq-card-visual" aria-hidden="true"><svg class="lq-card-icon" viewBox="0 0 48 48" fill="none"><use href="#dq-icon-priority"></use></svg></span>
                                                     <span class="lq-card-copy">
-                                                        <span class="lq-card-kicker">Priority</span>
                                                         <span class="lq-card-title">Lower Deductible</span>
-                                                        <span class="lq-card-helper">Best when out-of-pocket surprises matter more than the lowest monthly payment.</span>
                                                     </span>
                                                 </label>
                                                 <label class="lq-card lq-card-rich @SelectedClassIf(form.PrimaryConcern == "Better Doctor Network")">
                                                     <input type="radio" name="PrimaryConcern" value="Better Doctor Network" @CheckedIf(form.PrimaryConcern == "Better Doctor Network") />
                                                     <span class="lq-card-visual" aria-hidden="true"><svg class="lq-card-icon" viewBox="0 0 48 48" fill="none"><use href="#dq-icon-priority"></use></svg></span>
                                                     <span class="lq-card-copy">
-                                                        <span class="lq-card-kicker">Priority</span>
                                                         <span class="lq-card-title">Better Doctor Network</span>
-                                                        <span class="lq-card-helper">The review should stay focused on keeping the doctors, specialists, and facilities you trust.</span>
                                                     </span>
                                                 </label>
                                                 <label class="lq-card lq-card-rich @SelectedClassIf(form.PrimaryConcern == "Prescription Coverage")">
                                                     <input type="radio" name="PrimaryConcern" value="Prescription Coverage" @CheckedIf(form.PrimaryConcern == "Prescription Coverage") />
                                                     <span class="lq-card-visual" aria-hidden="true"><svg class="lq-card-icon" viewBox="0 0 48 48" fill="none"><use href="#dq-icon-priority"></use></svg></span>
                                                     <span class="lq-card-copy">
-                                                        <span class="lq-card-kicker">Priority</span>
                                                         <span class="lq-card-title">Prescription Coverage</span>
-                                                        <span class="lq-card-helper">Medication access and predictable pharmacy costs should stay front and center.</span>
                                                     </span>
                                                 </label>
                                                 <label class="lq-card lq-card-rich @SelectedClassIf(form.PrimaryConcern == "Not Sure / Need Guidance")">
                                                     <input type="radio" name="PrimaryConcern" value="Not Sure / Need Guidance" @CheckedIf(form.PrimaryConcern == "Not Sure / Need Guidance") />
                                                     <span class="lq-card-visual" aria-hidden="true"><svg class="lq-card-icon" viewBox="0 0 48 48" fill="none"><use href="#dq-icon-priority"></use></svg></span>
                                                     <span class="lq-card-copy">
-                                                        <span class="lq-card-kicker">Priority</span>
                                                         <span class="lq-card-title">Not Sure / Need Guidance</span>
-                                                        <span class="lq-card-helper">That is okay. We can start broad and narrow the tradeoffs together.</span>
                                                     </span>
                                                 </label>
                                             </div>
@@ -2634,7 +2575,6 @@ body.dvh-final-step-active .dq-form-panel {
                                     </div>
                                     <div class="lq-step-progress">One moment</div>
                                     <h2 class="lq-step-title" id="dqProcessingHeading">Pulling together your dental, vision, and hearing review.</h2>
-                                    <p class="lq-step-helper">We are narrowing the conversation around household needs, current coverage, provider access, and affordability.</p>
                                     <div class="dq-processing-track" aria-hidden="true">
                                         <span class="dq-processing-fill" id="dqProcessingFill"></span>
                                     </div>
