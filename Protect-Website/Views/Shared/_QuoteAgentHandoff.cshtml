@@ -1,0 +1,35 @@
+@model Protect_Website.Models.QuoteAgentHandoffViewModel
+
+@{
+    var labelName = string.IsNullOrWhiteSpace(Model.LabelName) ? "your licensed agent" : Model.LabelName.Trim();
+    var introLine = string.IsNullOrWhiteSpace(Model.IntroLine) ? "Your licensed agent is ready to help." : Model.IntroLine.Trim();
+    var headline = string.IsNullOrWhiteSpace(Model.Headline) ? string.Empty : Model.Headline.Trim();
+    var message = string.IsNullOrWhiteSpace(Model.Message) ? "I’ll help you review the recommendation and confirm the next step." : Model.Message.Trim();
+    var imageUrl = string.IsNullOrWhiteSpace(Model.ImageUrl) ? string.Empty : Model.ImageUrl.Trim();
+    var initials = string.IsNullOrWhiteSpace(Model.Initials) ? "AG" : Model.Initials.Trim();
+    var npn = string.IsNullOrWhiteSpace(Model.Npn) ? string.Empty : Model.Npn.Trim();
+}
+
+<div class="lq-agent-handoff" role="note" aria-label="Licensed guidance from @labelName">
+    <div class="lq-contact-capture-kicker">Your licensed review</div>
+    <div class="lq-agent-handoff-head">
+        <div class="lq-agent-identity">
+            <div class="lq-agent-avatar" aria-hidden="true">
+                @if (!string.IsNullOrWhiteSpace(imageUrl))
+                {
+                    <img src="@imageUrl" alt="" loading="lazy" onerror="this.style.display='none'; this.nextElementSibling.hidden=false;" />
+                }
+                <span class="lq-agent-avatar-fallback" @(!string.IsNullOrWhiteSpace(imageUrl) ? "hidden" : null)>@initials</span>
+            </div>
+        </div>
+        <div>
+            <div class="lq-agent-name">@introLine</div>
+            <div class="lq-agent-display-name">@headline</div>
+            <div class="lq-agent-bio">@message</div>
+            @if (!string.IsNullOrWhiteSpace(npn))
+            {
+                <div class="lq-agent-license">NPN @npn</div>
+            }
+        </div>
+    </div>
+</div>
