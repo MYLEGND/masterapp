@@ -252,8 +252,8 @@ namespace Protect_Website.Controllers
                         QuoteType = QuoteInterestType,
                         OfferKey = QuoteOfferKey,
                         ProductType = QuoteProductType,
-                        PageVariant = model.PageVariant,
-                        PageMode = model.PageMode,
+                        PageVariant = string.IsNullOrWhiteSpace(model.PageVariant) ? WebsitePageVariant : model.PageVariant.Trim(),
+                        PageMode = string.IsNullOrWhiteSpace(model.PageMode) ? "site_mode" : model.PageMode.Trim(),
                         PagePath = Request?.Path.Value
                     },
                     lead.CreatedUtc);
@@ -268,8 +268,8 @@ namespace Protect_Website.Controllers
                         CorrelationId = correlationId,
                         ProductType = QuoteProductType,
                         OfferKey = QuoteOfferKey,
-                        PageVariant = model.PageVariant,
-                        PageMode = model.PageMode,
+                        PageVariant = string.IsNullOrWhiteSpace(model.PageVariant) ? WebsitePageVariant : model.PageVariant.Trim(),
+                        PageMode = string.IsNullOrWhiteSpace(model.PageMode) ? "site_mode" : model.PageMode.Trim(),
                         PagePath = Request?.Path.Value
                     });
 
@@ -310,8 +310,8 @@ namespace Protect_Website.Controllers
                             CorrelationId = correlationId,
                             ProductType = QuoteProductType,
                             OfferKey = QuoteOfferKey,
-                            PageVariant = model.PageVariant,
-                            PageMode = model.PageMode,
+                            PageVariant = string.IsNullOrWhiteSpace(model.PageVariant) ? WebsitePageVariant : model.PageVariant.Trim(),
+                            PageMode = string.IsNullOrWhiteSpace(model.PageMode) ? "site_mode" : model.PageMode.Trim(),
                             WorkstationLeadId = captureResult.WorkstationLeadId,
                             Bucket = captureResult.Bucket,
                             AgentUserId = captureResult.AgentUserId,
@@ -328,8 +328,8 @@ namespace Protect_Website.Controllers
                             CorrelationId = correlationId,
                             ProductType = QuoteProductType,
                             OfferKey = QuoteOfferKey,
-                            PageVariant = model.PageVariant,
-                            PageMode = model.PageMode,
+                            PageVariant = string.IsNullOrWhiteSpace(model.PageVariant) ? WebsitePageVariant : model.PageVariant.Trim(),
+                            PageMode = string.IsNullOrWhiteSpace(model.PageMode) ? "site_mode" : model.PageMode.Trim(),
                             Reason = captureResult.Reason ?? "unknown",
                             Bucket = captureResult.Bucket,
                             AgentUserId = captureResult.AgentUserId
@@ -382,8 +382,8 @@ namespace Protect_Website.Controllers
                         CorrelationId = correlationId,
                         ProductType = QuoteProductType,
                         OfferKey = QuoteOfferKey,
-                        PageVariant = model.PageVariant,
-                        PageMode = model.PageMode,
+                        PageVariant = string.IsNullOrWhiteSpace(model.PageVariant) ? WebsitePageVariant : model.PageVariant.Trim(),
+                        PageMode = string.IsNullOrWhiteSpace(model.PageMode) ? "site_mode" : model.PageMode.Trim(),
                         Reason = "capture_exception",
                         ErrorMessage = captureEx.Message
                     });
@@ -497,8 +497,8 @@ namespace Protect_Website.Controllers
                         QuoteType = QuoteOfferKey,
                         PageKey = effectivePageKey,
                         EffectivePageKey = effectivePageKey,
-                        PageVariant = model.PageVariant,
-                        PageMode = model.PageMode,
+                        PageVariant = string.IsNullOrWhiteSpace(model.PageVariant) ? WebsitePageVariant : model.PageVariant.Trim(),
+                        PageMode = string.IsNullOrWhiteSpace(model.PageMode) ? "site_mode" : model.PageMode.Trim(),
                         Url = model.LandingPageUrl,
                         Referrer = model.ReferrerUrl,
                         SessionId = lead.SessionId,
@@ -615,8 +615,8 @@ namespace Protect_Website.Controllers
                     OfferKey = QuoteOfferKey,
                     ProductType = QuoteProductType,
                     PageKey = effectivePageKey,
-                    PageVariant = model.PageVariant,
-                    PageMode = model.PageMode,
+                    PageVariant = string.IsNullOrWhiteSpace(model.PageVariant) ? WebsitePageVariant : model.PageVariant.Trim(),
+                    PageMode = string.IsNullOrWhiteSpace(model.PageMode) ? "site_mode" : model.PageMode.Trim(),
                     PagePath = Request?.Path.Value
                 },
                 lead.CreatedUtc);
