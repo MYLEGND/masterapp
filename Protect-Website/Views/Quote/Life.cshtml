@@ -293,7 +293,7 @@
             ("55+", "55+", 60, true),
         };
     var ageRangeToNumericJson = JsonSerializer.Serialize(ageStepOptions.ToDictionary(option => option.Value, option => option.ApproxAge));
-    var ageStepQuestionText = "How old are you?";
+    var ageStepQuestionText = "What is your date of birth?";
     (string VisualMode, string VisualValue, string Kicker, string Helper, string ToneClass) GetChoiceCardMeta(string fieldName, string optionCode)
     {
         var normalizedField = (fieldName ?? string.Empty).Trim();
@@ -7799,6 +7799,7 @@ input:checked + .lq-answer-card {
         <input type="hidden" name="PageMode" value="@pageMode" />
         <input type="hidden" name="Age" id="Age" value="@(hasExplicitAgeSelection ? ageValue : string.Empty)" />
         <input type="hidden" name="AgeRange" id="AgeRange" value="@(hasExplicitAgeSelection ? selectedAgeBracket : string.Empty)" />
+        <input type="hidden" name="DateOfBirth" id="DateOfBirthHidden" value="@(form.DateOfBirth?.ToString("yyyy-MM-dd") ?? string.Empty)" />
         <input type="hidden" name="CoverageAmount" id="CoverageAmount" value="@(form.CoverageAmount?.ToString() ?? selectedCoverageAmountOption)" />
         <input type="hidden" name="ProtectFocus" id="ProtectFocus" value="@form.ProtectFocus" />
         <input type="hidden" name="Answer1" id="Answer1" value="@form.Answer1" />
@@ -7980,32 +7981,23 @@ input:checked + .lq-answer-card {
                                         {
                                             <div class="lq-choice-group">
                                                 <div class="lq-choice-label lq-step-question" id="lbl-step1-age">@ageStepQuestionText</div>
-                                                <div class="lq-age-picker @(hasExplicitAgeSelection ? "is-active" : "")" data-age-picker data-age-selected="@(hasExplicitAgeSelection ? "true" : "false")">
+                                                <div class="lq-age-picker lq-dob-picker @(form.DateOfBirth.HasValue ? "is-active" : "")" data-dob-picker data-age-selected="@(form.DateOfBirth.HasValue ? "true" : "false")">
                                                     <div class="lq-age-picker-top">
                                                         <div class="lq-age-picker-copy">
-                                                            <div class="lq-age-picker-kicker">Quick pick</div>
-                                                            <div class="lq-age-picker-note">Tap your range or fine-tune the slider.</div>
+                                                            <div class="lq-age-picker-kicker">Date of birth</div>
+                                                            <div class="lq-age-picker-note">Used to calculate your age accurately for this review.</div>
                                                         </div>
-                                                        <div class="lq-age-pill" data-age-display aria-live="polite">@(hasExplicitAgeSelection ? ageValue : "Select age")</div>
+                                                        <div class="lq-age-pill" data-age-display aria-live="polite">@(form.DateOfBirth.HasValue ? $"Age {ageValue}" : "Enter DOB")</div>
                                                     </div>
-                                                    
                                                     <input
-                                                        type="range"
-                                                        min="@minSelectableAge"
-                                                        max="@maxSelectableAge"
-                                                        step="1"
-                                                        value="@ageValue"
-                                                        class="lq-age-slider"
-                                                        data-age-slider
+                                                        type="date"
+                                                        class="form-control lq-dob-input"
+                                                        data-dob-input
+                                                        autocomplete="bday"
+                                                        value="@(form.DateOfBirth?.ToString("yyyy-MM-dd") ?? string.Empty)"
                                                         aria-labelledby="lbl-step1-age" />
-                                                    <div class="lq-age-scale" aria-hidden="true">
-                                                        @foreach (var markerAge in ageSliderMarkerValues)
-                                                        {
-                                                            <span>@markerAge@(markerAge == maxSelectableAge ? "+" : string.Empty)</span>
-                                                        }
-                                                    </div>
                                                 </div>
-                                                <div class="lq-choice-error" id="err-step1-age">Please select your age.</div>
+                                                <div class="lq-choice-error" id="err-step1-age">Please enter a valid date of birth between ages 18 and 85.</div>
                                             </div>
                                             <div class="lq-step-actions dual"><button type="button" class="btn-gold flex-fill" id="ageStepContinueBtn" hidden style="display:none !important;">Continue</button>
                                             </div>
@@ -8080,32 +8072,23 @@ input:checked + .lq-answer-card {
                                         {
                                             <div class="lq-choice-group">
                                                 <div class="lq-choice-label lq-step-question" id="lbl-step1-age">@ageStepQuestionText</div>
-                                                <div class="lq-age-picker @(hasExplicitAgeSelection ? "is-active" : "")" data-age-picker data-age-selected="@(hasExplicitAgeSelection ? "true" : "false")">
+                                                <div class="lq-age-picker lq-dob-picker @(form.DateOfBirth.HasValue ? "is-active" : "")" data-dob-picker data-age-selected="@(form.DateOfBirth.HasValue ? "true" : "false")">
                                                     <div class="lq-age-picker-top">
                                                         <div class="lq-age-picker-copy">
-                                                            <div class="lq-age-picker-kicker">Quick pick</div>
-                                                            <div class="lq-age-picker-note">Tap your range or fine-tune the slider.</div>
+                                                            <div class="lq-age-picker-kicker">Date of birth</div>
+                                                            <div class="lq-age-picker-note">Used to calculate your age accurately for this review.</div>
                                                         </div>
-                                                        <div class="lq-age-pill" data-age-display aria-live="polite">@(hasExplicitAgeSelection ? ageValue : "Select age")</div>
+                                                        <div class="lq-age-pill" data-age-display aria-live="polite">@(form.DateOfBirth.HasValue ? $"Age {ageValue}" : "Enter DOB")</div>
                                                     </div>
-                                                    
                                                     <input
-                                                        type="range"
-                                                        min="@minSelectableAge"
-                                                        max="@maxSelectableAge"
-                                                        step="1"
-                                                        value="@ageValue"
-                                                        class="lq-age-slider"
-                                                        data-age-slider
+                                                        type="date"
+                                                        class="form-control lq-dob-input"
+                                                        data-dob-input
+                                                        autocomplete="bday"
+                                                        value="@(form.DateOfBirth?.ToString("yyyy-MM-dd") ?? string.Empty)"
                                                         aria-labelledby="lbl-step1-age" />
-                                                    <div class="lq-age-scale" aria-hidden="true">
-                                                        @foreach (var markerAge in ageSliderMarkerValues)
-                                                        {
-                                                            <span>@markerAge@(markerAge == maxSelectableAge ? "+" : string.Empty)</span>
-                                                        }
-                                                    </div>
                                                 </div>
-                                                <div class="lq-choice-error" id="err-step1-age">Please select your age.</div>
+                                                <div class="lq-choice-error" id="err-step1-age">Please enter a valid date of birth between ages 18 and 85.</div>
                                             </div>
                                             <div class="lq-step-actions dual"><button type="button" class="btn-gold btn-progress flex-fill" id="step1Continue">@stepOneContinueButtonText</button>
                                             </div>
@@ -8487,32 +8470,23 @@ input:checked + .lq-answer-card {
                     {
                         <div class="lq-choice-group">
                             <div class="lq-choice-label lq-step-question" id="lbl-step1-age">@ageStepQuestionText</div>
-                            <div class="lq-age-picker @(hasExplicitAgeSelection ? "is-active" : "")" data-age-picker data-age-selected="@(hasExplicitAgeSelection ? "true" : "false")">
+                            <div class="lq-age-picker lq-dob-picker @(form.DateOfBirth.HasValue ? "is-active" : "")" data-dob-picker data-age-selected="@(form.DateOfBirth.HasValue ? "true" : "false")">
                                 <div class="lq-age-picker-top">
                                     <div class="lq-age-picker-copy">
-                                        <div class="lq-age-picker-kicker">Quick pick</div>
-                                        <div class="lq-age-picker-note">Tap your range or fine-tune the slider.</div>
+                                        <div class="lq-age-picker-kicker">Date of birth</div>
+                                        <div class="lq-age-picker-note">Used to calculate your age accurately for this review.</div>
                                     </div>
-                                    <div class="lq-age-pill" data-age-display aria-live="polite">@(hasExplicitAgeSelection ? ageValue : "Select age")</div>
+                                    <div class="lq-age-pill" data-age-display aria-live="polite">@(form.DateOfBirth.HasValue ? $"Age {ageValue}" : "Enter DOB")</div>
                                 </div>
-                                
                                 <input
-                                    type="range"
-                                    min="@minSelectableAge"
-                                    max="@maxSelectableAge"
-                                    step="1"
-                                    value="@ageValue"
-                                    class="lq-age-slider"
-                                    data-age-slider
+                                    type="date"
+                                    class="form-control lq-dob-input"
+                                    data-dob-input
+                                    autocomplete="bday"
+                                    value="@(form.DateOfBirth?.ToString("yyyy-MM-dd") ?? string.Empty)"
                                     aria-labelledby="lbl-step1-age" />
-                                <div class="lq-age-scale" aria-hidden="true">
-                                    @foreach (var markerAge in ageSliderMarkerValues)
-                                    {
-                                        <span>@markerAge@(markerAge == maxSelectableAge ? "+" : string.Empty)</span>
-                                    }
-                                </div>
                             </div>
-                            <div class="lq-choice-error" id="err-step1-age">Please select your age.</div>
+                            <div class="lq-choice-error" id="err-step1-age">Please enter a valid date of birth between ages 18 and 85.</div>
                         </div>
                         <div class="lq-step-actions dual"><button type="button" class="btn-gold flex-fill" id="ageStepContinueBtn" hidden style="display:none !important;">Continue</button>
                         </div>
@@ -8587,32 +8561,23 @@ input:checked + .lq-answer-card {
                     {
                         <div class="lq-choice-group">
                             <div class="lq-choice-label lq-step-question" id="lbl-step1-age">@ageStepQuestionText</div>
-                            <div class="lq-age-picker @(hasExplicitAgeSelection ? "is-active" : "")" data-age-picker data-age-selected="@(hasExplicitAgeSelection ? "true" : "false")">
+                            <div class="lq-age-picker lq-dob-picker @(form.DateOfBirth.HasValue ? "is-active" : "")" data-dob-picker data-age-selected="@(form.DateOfBirth.HasValue ? "true" : "false")">
                                 <div class="lq-age-picker-top">
                                     <div class="lq-age-picker-copy">
-                                        <div class="lq-age-picker-kicker">Quick pick</div>
-                                        <div class="lq-age-picker-note">Tap your range or fine-tune the slider.</div>
+                                        <div class="lq-age-picker-kicker">Date of birth</div>
+                                        <div class="lq-age-picker-note">Used to calculate your age accurately for this review.</div>
                                     </div>
-                                    <div class="lq-age-pill" data-age-display aria-live="polite">@(hasExplicitAgeSelection ? ageValue : "Select age")</div>
+                                    <div class="lq-age-pill" data-age-display aria-live="polite">@(form.DateOfBirth.HasValue ? $"Age {ageValue}" : "Enter DOB")</div>
                                 </div>
-                                
                                 <input
-                                    type="range"
-                                    min="@minSelectableAge"
-                                    max="@maxSelectableAge"
-                                    step="1"
-                                    value="@ageValue"
-                                    class="lq-age-slider"
-                                    data-age-slider
+                                    type="date"
+                                    class="form-control lq-dob-input"
+                                    data-dob-input
+                                    autocomplete="bday"
+                                    value="@(form.DateOfBirth?.ToString("yyyy-MM-dd") ?? string.Empty)"
                                     aria-labelledby="lbl-step1-age" />
-                                <div class="lq-age-scale" aria-hidden="true">
-                                    @foreach (var markerAge in ageSliderMarkerValues)
-                                    {
-                                        <span>@markerAge@(markerAge == maxSelectableAge ? "+" : string.Empty)</span>
-                                    }
-                                </div>
                             </div>
-                            <div class="lq-choice-error" id="err-step1-age">Please select your age.</div>
+                            <div class="lq-choice-error" id="err-step1-age">Please enter a valid date of birth between ages 18 and 85.</div>
                         </div>
                         <div class="lq-step-actions dual"><button type="button" class="btn-gold btn-progress flex-fill" id="step1Continue">@stepOneContinueButtonText</button>
                         </div>
@@ -9701,11 +9666,12 @@ body.life-landing .lq-hero-shell,
     border: 0 !important;
     box-shadow: none !important;
     display: grid !important;
-    grid-template-columns: minmax(0, 1.08fr) minmax(280px, .92fr) !important;
+    /* Keep the left column flexible but ensure the right bridge has a usable minimum width */
+    grid-template-columns: 1fr minmax(320px, 420px) !important;
     gap: 16px 22px !important;
     align-items: center !important;
     justify-items: stretch !important;
-    max-width: 900px !important;
+    max-width: 1100px !important;
     padding: 24px 24px 26px !important;
     margin: 0 auto !important;
     text-align: left !important;
@@ -9756,11 +9722,11 @@ body.life-landing .lq-hero-shell,
     grid-column: 2 !important;
     grid-row: 2 / span 3 !important;
     width: 100% !important;
-    max-width: 340px !important;
+    max-width: 420px !important; /* allow more room to avoid compression */
     display: grid !important;
     gap: 12px !important;
     align-self: stretch !important;
-    justify-self: end !important;
+    justify-self: center !important; /* center the bridge to avoid right-justified compression */
     margin: 0 !important;
     padding: 18px 18px 16px !important;
     border-radius: 20px !important;
@@ -9824,8 +9790,9 @@ body.life-landing .lq-hero-shell,
     }
 
     #lifeProcessingPanel .lq-processing-bridge {
-        max-width: none !important;
+        max-width: 100% !important;
         padding: 14px 14px 13px !important;
+        justify-self: stretch !important;
     }
 }
 
@@ -9931,10 +9898,10 @@ body.life-landing .lq-contact-capture-head .lq-agent-handoff-head {
   const isLandingMobile = document.body.classList.contains('life-landing') && window.matchMedia('(max-width: 767.98px)').matches;
   const stateSelect = document.getElementById('State');
   const ageInput = document.getElementById('Age');
-  const agePickers = Array.from(form.querySelectorAll('[data-age-picker]'));
-  const ageSliders = Array.from(form.querySelectorAll('[data-age-slider]'));
+  const dateOfBirthHidden = document.getElementById('DateOfBirthHidden');
+  const dobInputs = Array.from(form.querySelectorAll('[data-dob-input]'));
+  const agePickers = Array.from(form.querySelectorAll('[data-dob-picker]'));
   const ageDisplays = Array.from(form.querySelectorAll('[data-age-display]'));
-  const ageQuickButtons = Array.from(form.querySelectorAll('[data-age-quick-select]'));
   const requiredContactFields = ['FirstName', 'LastName', 'Phone', 'Email'];
   const contactFieldNames = usesLeanContactFields
     ? ['FirstName', 'LastName', 'Phone', 'Email']
@@ -10185,75 +10152,97 @@ body.life-landing .lq-contact-capture-head .lq-agent-handoff-head {
     if (parsedAge <= 34) return '25-34';
     if (parsedAge <= 44) return '35-44';
     if (parsedAge <= 54) return '45-54';
-    return '55+';
+    if (parsedAge <= 64) return '55-64';
+    return '65+';
   }
 
-  function resolveStoredAgeValue(value) {
-    const trimmedValue = String(value ?? '').trim();
-    if (!trimmedValue) {
-      return '';
+  function parseDobValue(value) {
+    const raw = String(value ?? '').trim();
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(raw)) {
+      return null;
     }
 
-    const parsedAge = Number.parseInt(trimmedValue, 10);
-    if (Number.isFinite(parsedAge)) {
-      return String(Math.max(AGE_MIN, Math.min(AGE_MAX, parsedAge)));
+    const [year, month, day] = raw.split('-').map((part) => Number.parseInt(part, 10));
+    const dob = new Date(year, month - 1, day);
+    if (
+      dob.getFullYear() !== year ||
+      dob.getMonth() !== month - 1 ||
+      dob.getDate() !== day
+    ) {
+      return null;
     }
 
-    const mappedAge = AGE_RANGE_TO_NUMERIC[trimmedValue];
-    return Number.isFinite(mappedAge) ? String(mappedAge) : '';
+    return dob;
   }
 
-  function getCurrentSliderAgeValue() {
-    const slider = ageSliders[0];
-    return slider instanceof HTMLInputElement ? resolveStoredAgeValue(slider.value) : '';
+  function calculateAgeFromDob(value) {
+    const dob = parseDobValue(value);
+    if (!dob) {
+      return null;
+    }
+
+    const today = new Date();
+    let age = today.getFullYear() - dob.getFullYear();
+    const hasHadBirthdayThisYear =
+      today.getMonth() > dob.getMonth() ||
+      (today.getMonth() === dob.getMonth() && today.getDate() >= dob.getDate());
+
+    if (!hasHadBirthdayThisYear) {
+      age -= 1;
+    }
+
+    return Number.isFinite(age) ? age : null;
+  }
+
+  function getSelectedDobValue() {
+    const visibleDob = dobInputs.find((input) => input instanceof HTMLInputElement && input.value);
+    if (visibleDob instanceof HTMLInputElement) {
+      return visibleDob.value;
+    }
+
+    return dateOfBirthHidden instanceof HTMLInputElement ? dateOfBirthHidden.value : '';
+  }
+
+  function getSelectedAgeValue() {
+    const age = calculateAgeFromDob(getSelectedDobValue());
+    return Number.isFinite(age) ? String(age) : '';
+  }
+
+  function getSelectedAgeBand() {
+    return resolveAgeBand(getSelectedAgeValue());
   }
 
   function hasExplicitAgeSelectionInUi() {
-    return agePickers.some((picker) => picker.dataset.ageSelected === 'true');
+    const age = Number.parseInt(getSelectedAgeValue(), 10);
+    return Number.isFinite(age) && age >= AGE_MIN && age <= AGE_MAX;
   }
 
-  function syncAgePickerUi(ageValue, isSelected) {
-    const resolvedAge = resolveStoredAgeValue(ageValue) || String(AGE_DEFAULT);
-    const numericAge = Number.parseInt(resolvedAge, 10);
-    const progress = Number.isFinite(numericAge) && AGE_MAX > AGE_MIN
-      ? ((numericAge - AGE_MIN) / (AGE_MAX - AGE_MIN)) * 100
-      : 0;
-    const pillText = isSelected ? resolvedAge : 'Select age';
-    const resolvedBand = resolveAgeBand(resolvedAge);
+  function syncAgePickerUi(dobValue = getSelectedDobValue(), isSelected = hasExplicitAgeSelectionInUi()) {
+    const age = calculateAgeFromDob(dobValue);
+    const hasValidAge = Number.isFinite(age) && age >= AGE_MIN && age <= AGE_MAX;
+    const normalizedDob = parseDobValue(dobValue) ? String(dobValue || '').trim() : '';
+    const pillText = hasValidAge ? `Age ${age}` : normalizedDob ? 'Outside age range' : 'Enter DOB';
 
-    agePickers.forEach((picker) => {
-      picker.dataset.ageSelected = isSelected ? 'true' : 'false';
-      picker.classList.toggle('is-active', isSelected);
-      picker.style.setProperty('--age-progress', `${Math.max(0, Math.min(100, progress))}%`);
+    if (dateOfBirthHidden instanceof HTMLInputElement) {
+      dateOfBirthHidden.value = normalizedDob;
+    }
+
+    dobInputs.forEach((input) => {
+      if (input instanceof HTMLInputElement && input.value !== normalizedDob) {
+        input.value = normalizedDob;
+      }
     });
 
-    ageSliders.forEach((slider) => {
-      slider.value = resolvedAge;
-      slider.setAttribute('aria-valuetext', isSelected ? `${resolvedAge} years old` : 'Select your age');
+    agePickers.forEach((picker) => {
+      picker.dataset.ageSelected = hasValidAge ? 'true' : 'false';
+      picker.classList.toggle('is-active', hasValidAge);
     });
 
     ageDisplays.forEach((display) => {
       display.textContent = pillText;
     });
 
-    ageQuickButtons.forEach((button) => {
-      if (!(button instanceof HTMLButtonElement)) {
-        return;
-      }
-
-      button.classList.toggle(
-        'is-active',
-        isSelected && String(button.dataset.ageRange || '').trim() === resolvedBand
-      );
-    });
-  }
-
-  function getSelectedAgeValue() {
-    return getCurrentSliderAgeValue() || String(AGE_DEFAULT);
-  }
-
-  function getSelectedAgeBand() {
-    return resolveAgeBand(getSelectedAgeValue());
+    return hasValidAge;
   }
 
   function extractPhoneDigits(value) {
@@ -10336,6 +10325,7 @@ body.life-landing .lq-contact-capture-head .lq-agent-handoff-head {
         CoverageGoal: selectedRadio('CoverageGoal')?.value || '',
         CoverageAmountOption: selectedRadio('CoverageAmountOption')?.value || '',
         TobaccoUse: selectedRadio('TobaccoUse')?.value || '',
+        DateOfBirth: getSelectedDobValue(),
         AgeBracket: getSelectedAgeBand(),
         AgeValue: getSelectedAgeValue(),
         FirstName: asTrimmed(form.querySelector('[name="FirstName"]')?.value || ''),
@@ -12808,7 +12798,7 @@ const contactFieldProgress = new Map();
       case 'TobaccoUse':
         return form.querySelector('input[name="TobaccoUse"]');
       case 'Age':
-        return form.querySelector('[data-age-slider]');
+        return form.querySelector('[data-dob-input]');
       default:
         return null;
     }
@@ -13796,7 +13786,7 @@ const contactFieldProgress = new Map();
     if (!validateAgeOnly()) {
       trackQuoteFieldError('AgeBracket', 'required_missing', 'discovery');
       metaSignalApi?.trackFieldError('AgeBracket', { fieldContext: 'discovery' });
-      form.querySelector('[data-age-slider]')?.focus();
+      form.querySelector('[data-dob-input]')?.focus();
       return;
     }
 
@@ -13823,65 +13813,48 @@ const contactFieldProgress = new Map();
   wireAutoAdvanceGroup('TobaccoUse', 'err-step1-tobacco-use', 'life_step1_tobacco_select', tobaccoStepIndex, tobaccoStepIndex + 1);
 
 
-  ageSliders.forEach((slider) => {
-    if (!(slider instanceof HTMLInputElement)) {
+  dobInputs.forEach((input) => {
+    if (!(input instanceof HTMLInputElement)) {
       return;
     }
 
-    slider.addEventListener('input', () => {
-      syncAgePickerUi(slider.value, true);
+    input.addEventListener('input', () => {
+      syncAgePickerUi(input.value, true);
       showChoiceError('err-step1-age', false);
+      clearQuoteFieldError('DateOfBirth');
       clearQuoteFieldError('AgeBracket');
       syncStepOneAnswersFromUI();
       persistFunnelState();
     });
 
-    slider.addEventListener('change', () => {
-      syncAgePickerUi(slider.value, true);
-      showChoiceError('err-step1-age', false);
-      clearQuoteFieldError('AgeBracket');
-      clearEstimatePreviewCache();
+    input.addEventListener('change', () => {
+      const hasValidAge = syncAgePickerUi(input.value, true);
       syncStepOneAnswersFromUI();
       persistFunnelState();
-      trackEvent('step1_age_entered', {
-        ageRange: getSelectedAgeBand(),
-        age: getSelectedAgeValue()
-      });
-      trackQuoteStepComplete('step1_age_entered', {
-        ageRange: getSelectedAgeBand(),
-        age: getSelectedAgeValue()
-      });
-      void ensureQuoteStartTracked({ startSource: 'age_change', fieldName: 'AgeBracket', ageRange: getSelectedAgeBand() });
-      void ensureMetaLeadFormStart();
-      queueMicroAdvance(ageStepIndex, tobaccoStepIndex);
-    });
-  });
-  ageQuickButtons.forEach((button) => {
-    if (!(button instanceof HTMLButtonElement)) {
-      return;
-    }
 
-    button.addEventListener('click', () => {
-      const nextValue = String(button.dataset.ageValue || '').trim();
-      if (!nextValue) {
+      if (!hasValidAge) {
+        showChoiceError('err-step1-age', true);
+        trackQuoteFieldError('DateOfBirth', 'invalid_dob', 'discovery');
+        metaSignalApi?.trackFieldError('DateOfBirth', { fieldContext: 'discovery' });
         return;
       }
 
-      syncAgePickerUi(nextValue, true);
       showChoiceError('err-step1-age', false);
+      clearQuoteFieldError('DateOfBirth');
       clearQuoteFieldError('AgeBracket');
       clearEstimatePreviewCache();
-      syncStepOneAnswersFromUI();
-      persistFunnelState();
+
       trackEvent('step1_age_entered', {
+        dateOfBirthProvided: true,
         ageRange: getSelectedAgeBand(),
         age: getSelectedAgeValue()
       });
       trackQuoteStepComplete('step1_age_entered', {
+        dateOfBirthProvided: true,
         ageRange: getSelectedAgeBand(),
         age: getSelectedAgeValue()
       });
-      void ensureQuoteStartTracked({ startSource: 'age_quick_select', fieldName: 'AgeBracket', ageRange: getSelectedAgeBand() });
+      void ensureQuoteStartTracked({ startSource: 'dob_change', fieldName: 'DateOfBirth', ageRange: getSelectedAgeBand() });
       void ensureMetaLeadFormStart();
       queueMicroAdvance(ageStepIndex, tobaccoStepIndex);
     });
@@ -14008,31 +13981,33 @@ const contactFieldProgress = new Map();
 
     populateAttributionFields();
 
-    const enterSubmitLoading = () => {
-      clearProcessingTimer(true);
-      contactFirstPanel?.classList.add('is-submit-loading');
-      processingPanel?.removeAttribute('hidden');
-      if (processingPanel) processingPanel.style.display = 'block';
-      if (postSubmitSlot) postSubmitSlot.style.display = 'none';
-      applyProcessingStage(getSubmitProcessingStage());
-      if (processingFill) {
-        processingFill.style.transition = 'none';
-        processingFill.style.width = '0%';
-        requestAnimationFrame(() => {
-          processingFill.style.transition = 'width 1.05s cubic-bezier(0.22, 1, 0.36, 1)';
-          processingFill.style.width = '78%';
-        });
-      }
-      processingPanel?.scrollIntoView({ behavior: 'smooth', block: 'center' });
-    };
+        const enterSubmitLoading = () => {
+            clearProcessingTimer(true);
+            contactFirstPanel?.classList.add('is-submit-loading');
+            processingPanel?.removeAttribute('hidden');
+            // rely on CSS for layout; avoid forcing permanent inline display
+            if (processingPanel) processingPanel.style.display = 'block';
+            if (postSubmitSlot) postSubmitSlot.style.display = 'none';
+            applyProcessingStage(getSubmitProcessingStage());
+            if (processingFill) {
+                processingFill.style.transition = 'none';
+                processingFill.style.width = '0%';
+                requestAnimationFrame(() => {
+                    processingFill.style.transition = 'width 1.05s cubic-bezier(0.22, 1, 0.36, 1)';
+                    processingFill.style.width = '78%';
+                });
+            }
+            processingPanel?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        };
 
-    const exitSubmitLoadingToContact = () => {
-      contactFirstPanel?.classList.remove('is-submit-loading');
-      if (processingPanel) processingPanel.style.display = 'none';
-      if (step2Panel) step2Panel.style.display = 'block';
-      if (contactCaptureWrap) contactCaptureWrap.style.display = 'block';
-      clearProcessingTimer(true);
-    };
+        const exitSubmitLoadingToContact = () => {
+            contactFirstPanel?.classList.remove('is-submit-loading');
+            // remove inline display overrides so CSS controls visibility
+            if (processingPanel) processingPanel.style.removeProperty('display');
+            if (step2Panel) step2Panel.style.removeProperty('display');
+            if (contactCaptureWrap) contactCaptureWrap.style.removeProperty('display');
+            clearProcessingTimer(true);
+        };
 
     enterSubmitLoading();
     await new Promise(resolve => requestAnimationFrame(resolve));

@@ -20,6 +20,7 @@ public sealed record WebsiteLifeLeadCaptureRequest
     public string? Email { get; init; }
     public string? Phone { get; init; }
     public string? State { get; init; }
+    public DateTime? DateOfBirth { get; init; }
     public int? Age { get; init; }
     public string? AgeRange { get; init; }
     public int? CoverageAmount { get; init; }

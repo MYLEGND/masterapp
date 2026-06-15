@@ -25,6 +25,7 @@ namespace Protect_Website.Models
         public string? CoverageAmountOption { get; set; }
         public int? CoverageAmount { get; set; }
         public string? TobaccoUse { get; set; }
+        public DateTime? DateOfBirth { get; set; }
         public int? Age { get; set; }
 
         public string? AgeRange { get; set; }

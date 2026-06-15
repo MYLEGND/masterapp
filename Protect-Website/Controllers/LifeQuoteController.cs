@@ -199,9 +199,13 @@ namespace Protect_Website.Controllers
                 ModelState.AddModelError(nameof(LifeQuoteFormModel.CoverageAmountOption), "Coverage amount is required.");
             }
 
-            if (model.Age.HasValue && (model.Age.Value < 18 || model.Age.Value > 85))
+            if (!model.DateOfBirth.HasValue)
             {
-                ModelState.AddModelError(nameof(LifeQuoteFormModel.Age), "Age must be between 18 and 85.");
+                ModelState.AddModelError(nameof(LifeQuoteFormModel.DateOfBirth), "Please enter your date of birth.");
+            }
+            else if (model.Age.HasValue && (model.Age.Value < 18 || model.Age.Value > 85))
+            {
+                ModelState.AddModelError(nameof(LifeQuoteFormModel.DateOfBirth), "Date of birth must show an age between 18 and 85.");
             }
 
             if (!model.MarketingEmailConsent)
@@ -312,6 +316,7 @@ if (!ModelState.IsValid)
                         CoverageAmountOption = model.CoverageAmountOption,
                         CoverageAmount = model.CoverageAmount,
                         TobaccoUse     = model.TobaccoUse,
+                        DateOfBirth    = model.DateOfBirth?.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture),
                         Age            = model.Age,
                         Answer1        = model.Answer1,
                         Answer2        = model.Answer2,
@@ -386,6 +391,7 @@ if (!ModelState.IsValid)
                         Email = lead.Email,
                         Phone = lead.Phone,
                         State = model.State,
+                        DateOfBirth = model.DateOfBirth,
                         Age = model.Age,
                         AgeRange = model.AgeRange,
                         CoverageAmount = model.CoverageAmount,
@@ -786,6 +792,8 @@ if (!ModelState.IsValid)
                     pagePath = Request?.Path.Value,
                     protectingWho = model.ProtectingWho ?? model.Answer1,
                     coverageGoal = model.CoverageGoal ?? model.Answer2,
+                    dateOfBirth = model.DateOfBirth?.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture),
+                    age = model.Age,
                     ageRange = model.AgeRange,
                     recommendationPrimaryKey = model.RecommendationPrimaryKey,
                     recommendationPrimaryTitle = model.RecommendationPrimaryTitle,
@@ -819,6 +827,8 @@ if (!ModelState.IsValid)
                         Fbclid = lead.Fbclid,
                         Email = lead.Email,
                         Phone = lead.Phone,
+                        DateOfBirth = model.DateOfBirth,
+                        Age = model.Age,
                         AllowHashedContactData = lead.TermsAccepted && lead.MarketingEmailConsent,
                         CreatedUtc = lead.CreatedUtc,
                         LeadEventId = metaLeadEventId,
@@ -1877,6 +1887,32 @@ Illustrative estimate only. Final eligibility, pricing, underwriting approval, a
             static string? Clean(string? value) =>
                 string.IsNullOrWhiteSpace(value) ? null : value.Trim();
 
+            static int CalculateAge(DateTime dateOfBirth)
+            {
+                var today = DateTime.UtcNow.Date;
+                var dob = dateOfBirth.Date;
+                var age = today.Year - dob.Year;
+                if (dob > today.AddYears(-age))
+                    age--;
+                return age;
+            }
+
+            static string? ResolveAgeRange(int? age)
+            {
+                if (!age.HasValue)
+                    return null;
+
+                return age.Value switch
+                {
+                    <= 24 => "18-24",
+                    <= 34 => "25-34",
+                    <= 44 => "35-44",
+                    <= 54 => "45-54",
+                    <= 64 => "55-64",
+                    _ => "65+"
+                };
+            }
+
             model.ProtectingWho = Clean(model.ProtectingWho) ?? Clean(model.Answer1);
             model.CoverageGoal = Clean(model.CoverageGoal) ?? Clean(model.Answer2) ?? Clean(model.ProtectFocus);
             model.CoverageAmountOption = Clean(model.CoverageAmountOption);
@@ -1888,7 +1924,12 @@ Illustrative estimate only. Final eligibility, pricing, underwriting approval, a
                 model.CoverageAmount = parsedCoverageAmount;
             }
 
-            if (!model.Age.HasValue)
+            if (model.DateOfBirth.HasValue)
+            {
+                model.DateOfBirth = model.DateOfBirth.Value.Date;
+                model.Age = CalculateAge(model.DateOfBirth.Value);
+            }
+            else if (!model.Age.HasValue)
             {
                 if (int.TryParse(Clean(model.Answer4), NumberStyles.Integer, CultureInfo.InvariantCulture, out var parsedAnswerAge))
                     model.Age = parsedAnswerAge;
@@ -1899,11 +1940,11 @@ Illustrative estimate only. Final eligibility, pricing, underwriting approval, a
             model.Answer1 = Clean(model.Answer1) ?? model.ProtectingWho;
             model.Answer2 = Clean(model.Answer2) ?? model.CoverageGoal;
             model.Answer3 = Clean(model.Answer3) ?? model.TobaccoUse;
-            model.Answer4 = Clean(model.Answer4) ?? (model.Age.HasValue ? model.Age.Value.ToString(CultureInfo.InvariantCulture) : null);
+            model.Answer4 = model.Age.HasValue ? model.Age.Value.ToString(CultureInfo.InvariantCulture) : Clean(model.Answer4);
             model.CoverageAmountOption = model.CoverageAmountOption ?? (model.CoverageAmount.HasValue ? model.CoverageAmount.Value.ToString(CultureInfo.InvariantCulture) : null);
 
             model.ProtectFocus = Clean(model.ProtectFocus) ?? model.CoverageGoal;
-            model.AgeRange = Clean(model.AgeRange) ?? (model.Age.HasValue ? model.Age.Value.ToString(CultureInfo.InvariantCulture) : null);
+            model.AgeRange = ResolveAgeRange(model.Age) ?? Clean(model.AgeRange);
         }
 
         private bool HasExplicitAgentContext()

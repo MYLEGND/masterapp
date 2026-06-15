@@ -108,6 +108,7 @@ public sealed class WebsiteLifeLeadCaptureService : IWebsiteLifeLeadCaptureServi
                 Phone = !string.IsNullOrWhiteSpace(normalizedPhone) ? normalizedPhone : (Clean(websiteLead?.Phone ?? request.Phone) ?? ""),
                 Phone2 = null,
                 State = NormalizeStateValue(ExtractLeadState(websiteLead, request.State)),
+                DOB = request.DateOfBirth,
                 Age = request.Age?.ToString(CultureInfo.InvariantCulture) ?? "",
                 LoanAmount = requestedAmount,
                 CrmStage = "New",
@@ -135,6 +136,8 @@ public sealed class WebsiteLifeLeadCaptureService : IWebsiteLifeLeadCaptureServi
             var extractedState = ExtractLeadState(websiteLead, request.State);
             if (!string.IsNullOrWhiteSpace(extractedState))
                 lead.State = NormalizeStateValue(extractedState);
+            if (request.DateOfBirth.HasValue)
+                lead.DOB = request.DateOfBirth;
             if (request.Age.HasValue)
                 lead.Age = request.Age.Value.ToString(CultureInfo.InvariantCulture);
             if (!string.IsNullOrWhiteSpace(requestedAmount))
