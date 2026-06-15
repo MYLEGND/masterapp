@@ -10591,15 +10591,31 @@ const contactFieldProgress = new Map();
       : '';
     const isCheckbox = el instanceof HTMLInputElement && el.type === 'checkbox';
 
-    return trackEvent(eventType, {
-      fieldName,
-      fieldGroup: 'contact',
-      fieldType: isCheckbox ? 'checkbox' : (el?.tagName || '').toLowerCase(),
-      valueLength: isCheckbox ? 0 : value.trim().length,
-      hasValue: isCheckbox ? Boolean(el.checked) : value.trim().length > 0,
-      ...getContactCompletionSnapshot(),
-      ...extra
-    });
+    const normalizedFieldName = String(fieldName || '').trim();
+    const normalizedFormKey = 'quote_life_landing';
+    const normalizedElementKey = normalizedFieldName || (el?.id || el?.name || '');
+
+    return safeTrackingCall(`track:${eventType}:${normalizedFieldName}`, () => window.LegendAnalytics?.trackEvent?.(
+      eventType,
+      {
+        fieldName: normalizedFieldName,
+        fieldGroup: 'contact',
+        fieldType: isCheckbox ? 'checkbox' : (el?.tagName || '').toLowerCase(),
+        valueLength: isCheckbox ? 0 : value.trim().length,
+        hasValue: isCheckbox ? Boolean(el.checked) : value.trim().length > 0,
+        formKey: normalizedFormKey,
+        sectionKey: 'contact',
+        elementKey: normalizedElementKey,
+        ...getContactCompletionSnapshot(),
+        ...extra
+      },
+      {
+        FormKey: normalizedFormKey,
+        SectionKey: 'contact',
+        ElementKey: normalizedElementKey || null,
+        FieldName: normalizedFieldName || null
+      }
+    ));
   }
 
   function markContactFieldFocused(fieldName, el) {
