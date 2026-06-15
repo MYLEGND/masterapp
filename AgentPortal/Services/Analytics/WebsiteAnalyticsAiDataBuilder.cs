@@ -54,44 +54,48 @@ public sealed class WebsiteAnalyticsAiDataBuilder
         var warnings = new List<string>();
 
         // Run only the queries needed for conversion-focused analysis.
-        // Removed: traffic breakdowns, CTA performance, total conversions, dwell time.
-        var summaryTask     = SafeLoadAsync("Summary",     () => _analytics.GetSummaryAsync(range, scope, trafficType),
-                                 () => new SummaryKpiDto { RangeLabel = range.Label }, warnings);
-        var pagePerfTask    = SafeLoadAsync("PagePerf",    () => _analytics.GetPagePerformanceAsync(range, scope, trafficType),
-                                 () => new PagePerformanceDto { RangeLabel = range.Label }, warnings);
-        var quoteFunnelTask = SafeLoadAsync("QuoteFunnel", () => _analytics.GetQuoteFunnelAsync(range, scope, trafficType),
-                                 () => new QuoteFunnelDto { RangeLabel = range.Label }, warnings);
-        var engagementTask  = SafeLoadAsync("Engagement",  () => _analytics.GetEngagementSummaryAsync(range, scope, trafficType),
-                                 () => new EngagementSummaryDto { RangeLabel = range.Label }, warnings);
-        var exitTask        = SafeLoadAsync("Exit",        () => _analytics.GetExitAnalysisAsync(range, scope, trafficType),
-                                 () => new ExitAnalysisDto { RangeLabel = range.Label }, warnings);
-        var sourceTask      = SafeLoadAsync("Source",      () => _analytics.GetSourcePerformanceAsync(range, scope, trafficType),
-                                 () => new SourcePerformanceDto { RangeLabel = range.Label }, warnings);
-        var abandonTask     = SafeLoadAsync("Abandon",     () => _analytics.GetFormAbandonmentAsync(range, scope, trafficType),
-                                 () => new FormAbandonmentDto { RangeLabel = range.Label }, warnings);
-        var marketingHealthTask = SafeLoadAsync("MarketingHealth", () => _analytics.GetMarketingHealthAsync(range, scope, trafficType),
-                                 () => new MarketingHealthDto { RangeLabel = range.Label, TrafficType = trafficType }, warnings);
+        // These calls intentionally run sequentially because the analytics services are scoped
+        // and share the same EF DbContext. Running them in parallel causes:
+        // "A second operation was started on this context instance..."
+        var summary = await SafeLoadAsync("Summary",
+            () => _analytics.GetSummaryAsync(range, scope, trafficType),
+            () => new SummaryKpiDto { RangeLabel = range.Label }, warnings);
 
-        // Meta Ads — active campaigns. SafeLoadAsync catches "not connected" / API errors gracefully.
-        var metaAdsTask = SafeLoadAsync("MetaAds", () => _metaAds.GetCampaignsAsync(range, scope, ct),
-                              () => new MetaCampaignsDto { RangeLabel = range.Label }, warnings);
-        var metaSignalTask = SafeLoadAsync("MetaSignal", () => _metaSignalAnalytics.GetAiSummaryAsync(range, scope, trafficType, ct),
-                              () => new MetaSignalAiSummaryDto(), warnings);
+        var pagePerf = await SafeLoadAsync("PagePerf",
+            () => _analytics.GetPagePerformanceAsync(range, scope, trafficType),
+            () => new PagePerformanceDto { RangeLabel = range.Label }, warnings);
 
-        await Task.WhenAll(
-            summaryTask, pagePerfTask, quoteFunnelTask,
-            engagementTask, exitTask, sourceTask, abandonTask, marketingHealthTask, metaAdsTask, metaSignalTask);
+        var quote = await SafeLoadAsync("QuoteFunnel",
+            () => _analytics.GetQuoteFunnelAsync(range, scope, trafficType),
+            () => new QuoteFunnelDto { RangeLabel = range.Label }, warnings);
 
-        var summary    = await summaryTask;
-        var pagePerf   = await pagePerfTask;
-        var quote      = await quoteFunnelTask;
-        var engagement = await engagementTask;
-        var exit       = await exitTask;
-        var source     = await sourceTask;
-        var abandon    = await abandonTask;
-        var marketingHealth = await marketingHealthTask;
-        var metaCampaigns = await metaAdsTask;
-        var metaSignal = await metaSignalTask;
+        var engagement = await SafeLoadAsync("Engagement",
+            () => _analytics.GetEngagementSummaryAsync(range, scope, trafficType),
+            () => new EngagementSummaryDto { RangeLabel = range.Label }, warnings);
+
+        var exit = await SafeLoadAsync("Exit",
+            () => _analytics.GetExitAnalysisAsync(range, scope, trafficType),
+            () => new ExitAnalysisDto { RangeLabel = range.Label }, warnings);
+
+        var source = await SafeLoadAsync("Source",
+            () => _analytics.GetSourcePerformanceAsync(range, scope, trafficType),
+            () => new SourcePerformanceDto { RangeLabel = range.Label }, warnings);
+
+        var abandon = await SafeLoadAsync("Abandon",
+            () => _analytics.GetFormAbandonmentAsync(range, scope, trafficType),
+            () => new FormAbandonmentDto { RangeLabel = range.Label }, warnings);
+
+        var marketingHealth = await SafeLoadAsync("MarketingHealth",
+            () => _analytics.GetMarketingHealthAsync(range, scope, trafficType),
+            () => new MarketingHealthDto { RangeLabel = range.Label, TrafficType = trafficType }, warnings);
+
+        var metaCampaigns = await SafeLoadAsync("MetaAds",
+            () => _metaAds.GetCampaignsAsync(range, scope, ct),
+            () => new MetaCampaignsDto { RangeLabel = range.Label }, warnings);
+
+        var metaSignal = await SafeLoadAsync("MetaSignal",
+            () => _metaSignalAnalytics.GetAiSummaryAsync(range, scope, trafficType, ct),
+            () => new MetaSignalAiSummaryDto(), warnings);
 
         if (!string.IsNullOrWhiteSpace(metaSignal.LearningScopeNote))
         {
