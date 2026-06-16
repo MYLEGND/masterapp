@@ -293,7 +293,7 @@
             ("55+", "55+", 60, true),
         };
     var ageRangeToNumericJson = JsonSerializer.Serialize(ageStepOptions.ToDictionary(option => option.Value, option => option.ApproxAge));
-    var ageStepQuestionText = "What is your date of birth?";
+    var ageStepQuestionText = "How old are you?";
     (string VisualMode, string VisualValue, string Kicker, string Helper, string ToneClass) GetChoiceCardMeta(string fieldName, string optionCode)
     {
         var normalizedField = (fieldName ?? string.Empty).Trim();
@@ -3137,8 +3137,16 @@ box-shadow:
     font-size: .88rem;
     line-height: 1.5;
 }
-
-.is-disabled {
+.lq-booking-shell {
+    display: grid;
+    gap: 10px;
+    padding: 0;
+    border: 0;
+    border-radius: 0;
+    background: transparent;
+    box-shadow: none;
+}
+.lq-booking-shell.is-disabled {
     opacity: .88;
 }
 .lq-booking-head {
@@ -3186,15 +3194,38 @@ box-shadow:
     opacity: 1;
     text-decoration: underline;
 }
-
+.lq-booking-embed-shell {
+    display: grid;
+    gap: 8px;
+    padding: 0;
+    border-radius: 0;
+    border: 0;
+    background: transparent;
+    box-shadow: none;
+}
 .lq-booking-embed-status {
     color: rgba(236,240,247,0.72);
     font-size: .8rem;
     font-weight: 760;
     line-height: 1.45;
 }
-
-
+.lq-booking-embed-frame-wrap {
+    position: relative;
+    width: 100%;
+    min-height: 620px;
+    margin-top: 2px;
+    border-radius: 18px;
+    overflow: hidden;
+    background: #ffffff;
+    box-shadow: inset 0 0 0 1px rgba(255,255,255,0.06);
+}
+.lq-booking-iframe {
+    display: block;
+    width: 100%;
+    min-height: 620px;
+    border: 0;
+    background: #ffffff;
+}
 .lq-booking-modal {
     position: fixed;
     inset: 0;
@@ -3256,9 +3287,14 @@ box-shadow:
     border-color: rgba(244,210,124,0.64);
     color: #fff7df;
 }
-
-
-.is-modal 
+.lq-booking-modal-shell .lq-booking-embed-frame-wrap,
+.lq-booking-embed-shell.is-modal .lq-booking-embed-frame-wrap {
+    min-height: min(78vh, 720px);
+}
+.lq-booking-modal-shell .lq-booking-iframe,
+.lq-booking-embed-shell.is-modal .lq-booking-iframe {
+    min-height: min(78vh, 720px);
+}
 @@media (max-width: 767.98px) {
     .lq-post-submit-slot {
         margin-top: 14px;
@@ -3275,6 +3311,11 @@ box-shadow:
     .lq-booking-head {
         max-width: none;
     }
+    .lq-booking-shell,
+    .lq-booking-embed-shell {
+        padding: 0;
+        border-radius: 0;
+    }
     .lq-booking-actions {
         gap: 8px 10px;
     }
@@ -3282,7 +3323,12 @@ box-shadow:
         width: 100%;
         min-width: 0;
     }
-.lq-booking-modal {
+    .lq-booking-embed-frame-wrap,
+    .lq-booking-iframe {
+        min-height: 520px;
+        border-radius: 14px;
+    }
+    .lq-booking-modal {
         padding: 8px;
         align-items: end;
     }
@@ -3292,7 +3338,13 @@ box-shadow:
         padding: 10px 10px 12px;
         border-radius: 16px 16px 14px 14px;
     }
-    
+    .lq-booking-modal-shell .lq-booking-embed-frame-wrap,
+    .lq-booking-embed-shell.is-modal .lq-booking-embed-frame-wrap,
+    .lq-booking-modal-shell .lq-booking-iframe,
+    .lq-booking-embed-shell.is-modal .lq-booking-iframe {
+        min-height: 68vh;
+    }
+}
 body.page-variant-contact-first-education-v1 .lq-contact-estimate-wrap {
     background:
         radial-gradient(circle at top right, rgba(226,187,100,0.10), transparent 34%),
@@ -5424,6 +5476,1228 @@ body.life-final-step-active.page-variant-contact-first-education-v1 #lifeEducati
 
 
 /* ================================================================
+   Booking UX cleanup — deep navy/gold, flattened embedded calendar
+   ================================================================ */
+.lq-post-submit-card {
+    background:
+        radial-gradient(circle at 18% 0%, rgba(226, 186, 93, 0.10), transparent 34%),
+        linear-gradient(180deg, #0d182d 0%, #09111f 100%) !important;
+    border: 1px solid rgba(199, 153, 49, 0.42) !important;
+    box-shadow: 0 18px 38px rgba(0,0,0,0.30), inset 0 1px 0 rgba(255,255,255,0.04) !important;
+    color: #f8fafc !important;
+}
+
+.lq-post-submit-kicker,
+.lq-booking-status-pill {
+    color: #f3d688 !important;
+    background: rgba(199,153,49,0.10) !important;
+    border: 1px solid rgba(199,153,49,0.34) !important;
+}
+
+.lq-post-submit-title,
+.lq-booking-title {
+    color: #fff7df !important;
+}
+
+.lq-post-submit-copy,
+.lq-booking-copy,
+.lq-booking-note,
+.lq-booking-pending-note,
+.lq-booking-embed-status {
+    color: rgba(248,250,252,0.78) !important;
+}
+
+.lq-booking-shell {
+    background: transparent !important;
+    border: 0 !important;
+    box-shadow: none !important;
+    padding: 0 !important;
+}
+
+.lq-booking-head {
+    background:
+        linear-gradient(180deg, rgba(16,28,48,0.72) 0%, rgba(9,17,31,0.58) 100%) !important;
+    border: 1px solid rgba(199,153,49,0.22) !important;
+    border-radius: 16px !important;
+    padding: 16px !important;
+    box-shadow: none !important;
+}
+
+.lq-booking-actions {
+    margin-top: 14px !important;
+    align-items: center !important;
+}
+
+.lq-booking-primary {
+    background: linear-gradient(180deg, #f3d688 0%, #d8aa3d 52%, #b78319 100%) !important;
+    color: #1b1304 !important;
+    box-shadow: 0 12px 26px rgba(0,0,0,0.28), inset 0 1px 0 rgba(255,255,255,0.34) !important;
+}
+
+.lq-booking-secondary-link {
+    color: #f3d688 !important;
+    opacity: 0.86 !important;
+    font-weight: 800 !important;
+}
+
+.lq-booking-embed-shell {
+    margin-top: 18px !important;
+    padding: 0 !important;
+    background: transparent !important;
+    border: 0 !important;
+    box-shadow: none !important;
+}
+
+.lq-booking-embed-frame-wrap {
+    margin-top: 10px !important;
+    border-radius: 18px !important;
+    overflow: hidden !important;
+    background: #0b1529 !important;
+    border: 1px solid rgba(199,153,49,0.30) !important;
+    box-shadow: 0 18px 34px rgba(0,0,0,0.32) !important;
+}
+
+.lq-booking-iframe {
+    display: block !important;
+    width: 100% !important;
+    min-height: 640px !important;
+    border: 0 !important;
+    background: #ffffff !important;
+}
+
+@@media (max-width: 767.98px) {
+    .lq-post-submit-card {
+        padding: 14px !important;
+        border-radius: 16px !important;
+    }
+
+    .lq-booking-head {
+        padding: 13px !important;
+        border-radius: 14px !important;
+    }
+
+    .lq-booking-actions {
+        display: grid !important;
+        gap: 10px !important;
+    }
+
+    .lq-booking-primary {
+        width: 100% !important;
+    }
+
+    .lq-booking-embed-frame-wrap {
+        border-radius: 14px !important;
+        margin-left: -2px !important;
+        margin-right: -2px !important;
+    }
+
+    .lq-booking-iframe {
+        min-height: 560px !important;
+    }
+}
+
+
+/* ================================================================
+   Booking UX cleanup — deep navy/gold, no white-out wrapper
+   ================================================================ */
+.lq-post-submit-card {
+    background:
+        radial-gradient(circle at 18% 0%, rgba(226, 186, 93, 0.10), transparent 34%),
+        linear-gradient(180deg, #0d182d 0%, #09111f 100%) !important;
+    border: 1px solid rgba(199, 153, 49, 0.42) !important;
+    box-shadow: 0 18px 38px rgba(0,0,0,0.30), inset 0 1px 0 rgba(255,255,255,0.04) !important;
+    color: #f8fafc !important;
+}
+
+.lq-post-submit-kicker,
+.lq-booking-status-pill {
+    color: #f3d688 !important;
+    background: rgba(199,153,49,0.10) !important;
+    border: 1px solid rgba(199,153,49,0.34) !important;
+}
+
+.lq-post-submit-title,
+.lq-booking-title {
+    color: #fff7df !important;
+}
+
+.lq-post-submit-copy,
+.lq-booking-copy,
+.lq-booking-pending-note,
+.lq-booking-embed-status {
+    color: rgba(248,250,252,0.78) !important;
+}
+
+.lq-booking-shell {
+    background: transparent !important;
+    border: 0 !important;
+    box-shadow: none !important;
+    padding: 0 !important;
+}
+
+.lq-booking-head {
+    background:
+        linear-gradient(180deg, rgba(16,28,48,0.72) 0%, rgba(9,17,31,0.58) 100%) !important;
+    border: 1px solid rgba(199,153,49,0.22) !important;
+    border-radius: 16px !important;
+    padding: 16px !important;
+    box-shadow: none !important;
+}
+
+.lq-booking-actions {
+    margin-top: 14px !important;
+    align-items: center !important;
+}
+
+.lq-booking-primary {
+    background: linear-gradient(180deg, #f3d688 0%, #d8aa3d 52%, #b78319 100%) !important;
+    color: #1b1304 !important;
+    box-shadow: 0 12px 26px rgba(0,0,0,0.28), inset 0 1px 0 rgba(255,255,255,0.34) !important;
+}
+
+.lq-booking-secondary-link {
+    color: #f3d688 !important;
+    opacity: 0.86 !important;
+    font-weight: 800 !important;
+}
+
+.lq-booking-embed-shell {
+    margin-top: 18px !important;
+    padding: 0 !important;
+    background: transparent !important;
+    border: 0 !important;
+    box-shadow: none !important;
+}
+
+.lq-booking-embed-frame-wrap {
+    margin-top: 10px !important;
+    border-radius: 18px !important;
+    overflow: hidden !important;
+    background: #0b1529 !important;
+    border: 1px solid rgba(199,153,49,0.30) !important;
+    box-shadow: 0 18px 34px rgba(0,0,0,0.32) !important;
+}
+
+.lq-booking-iframe {
+    display: block !important;
+    width: 100% !important;
+    min-height: 640px !important;
+    border: 0 !important;
+    background: #ffffff !important;
+}
+
+@@media (max-width: 767.98px) {
+    .lq-post-submit-card {
+        padding: 14px !important;
+        border-radius: 16px !important;
+    }
+
+    .lq-booking-head {
+        padding: 13px !important;
+        border-radius: 14px !important;
+    }
+
+    .lq-booking-actions {
+        display: grid !important;
+        gap: 10px !important;
+    }
+
+    .lq-booking-primary {
+        width: 100% !important;
+    }
+
+    .lq-booking-embed-frame-wrap {
+        border-radius: 14px !important;
+        margin-left: -2px !important;
+        margin-right: -2px !important;
+    }
+
+    .lq-booking-iframe {
+        min-height: 560px !important;
+    }
+}
+
+
+/* ================================================================
+   Final contact-step declutter — reduce crowding before submit
+   ================================================================ */
+body.life-final-step-active #lifeEducationContactPanel .lq-contact-first-proof-chips,
+body.life-final-step-active #lifeEducationContactPanel .lq-contact-capture-copy,
+body.life-final-step-active #lifeEducationContactPanel .lq-contact-method-helper,
+body.life-final-step-active #lifeEducationContactPanel .lq-contact-estimate-personal,
+body.life-final-step-active #lifeEducationContactPanel .lq-contact-estimate-signal {
+    display: none !important;
+}
+
+body.life-final-step-active #lifeEducationContactPanel {
+    padding-top: 10px !important;
+    padding-bottom: 12px !important;
+}
+
+body.life-final-step-active #lifeEducationContactPanel .lq-contact-first-proof-row {
+    margin-bottom: 8px !important;
+    padding-bottom: 8px !important;
+    gap: 10px !important;
+}
+
+body.life-final-step-active #lifeEducationContactPanel .lq-contact-first-proof-avatar {
+    width: 42px !important;
+    height: 42px !important;
+}
+
+body.life-final-step-active #lifeEducationContactPanel .lq-contact-first-proof-title {
+    font-size: .95rem !important;
+    line-height: 1.18 !important;
+}
+
+body.life-final-step-active #lifeEducationContactPanel .lq-contact-first-proof-text {
+    font-size: .76rem !important;
+    line-height: 1.28 !important;
+}
+
+body.life-final-step-active #lifeEducationContactPanel .lq-contact-capture-head {
+    margin-bottom: 8px !important;
+}
+
+body.life-final-step-active #lifeEducationContactPanel .lq-contact-capture-title {
+    font-size: 1.08rem !important;
+    line-height: 1.16 !important;
+}
+
+body.life-final-step-active #lifeEducationContactPanel .lq-contact-estimate-wrap {
+    margin-bottom: 10px !important;
+    gap: 8px !important;
+}
+
+body.life-final-step-active #lifeEducationContactPanel .lq-contact-estimate-stats {
+    display: grid !important;
+    grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
+    gap: 6px !important;
+}
+
+body.life-final-step-active #lifeEducationContactPanel .lq-contact-estimate-stat {
+    padding: 7px 8px !important;
+    border-radius: 10px !important;
+}
+
+body.life-final-step-active #lifeEducationContactPanel .lq-field-row {
+    gap: 8px !important;
+    margin-bottom: 8px !important;
+}
+
+body.life-final-step-active #lifeEducationContactPanel .lq-field label {
+    font-size: .78rem !important;
+    margin-bottom: 4px !important;
+}
+
+body.life-final-step-active #lifeEducationContactPanel .form-control {
+    min-height: 42px !important;
+    padding: 9px 10px !important;
+    margin-bottom: 0 !important;
+}
+
+body.life-final-step-active #lifeEducationContactPanel .lq-consent-box {
+    margin-top: 6px !important;
+    padding: 9px 10px !important;
+}
+
+body.life-final-step-active #submitLife {
+    min-height: 54px !important;
+    margin-top: 8px !important;
+}
+
+@@media (max-width: 767.98px) {
+    body.life-final-step-active #lifeEducationContactPanel .lq-contact-estimate-stats {
+        grid-template-columns: 1fr !important;
+        gap: 0 !important;
+    }
+
+    body.life-final-step-active #lifeEducationContactPanel .lq-contact-estimate-stat {
+        padding: 7px 0 !important;
+        border-radius: 0 !important;
+    }
+
+    body.life-final-step-active #lifeEducationContactPanel .lq-field-row.two {
+        grid-template-columns: 1fr !important;
+    }
+}
+
+
+/* ================================================================
+   Funnel hierarchy repair — lean contact step + auto booking embed
+   ================================================================ */
+
+/* Contact step: make the submit action the visual destination */
+body.life-final-step-active .lq-hero-shell {
+    max-width: min(1180px, calc(100vw - 56px)) !important;
+    width: min(1180px, calc(100vw - 56px)) !important;
+}
+
+body.life-final-step-active #lifeEducationContactPanel {
+    padding-top: 8px !important;
+    padding-bottom: 10px !important;
+}
+
+body.life-final-step-active #lifeEducationContactPanel .lq-contact-first-proof-chips,
+body.life-final-step-active #lifeEducationContactPanel .lq-contact-capture-copy,
+body.life-final-step-active #lifeEducationContactPanel .lq-contact-method-helper,
+body.life-final-step-active #lifeEducationContactPanel .lq-contact-estimate-personal,
+body.life-final-step-active #lifeEducationContactPanel .lq-contact-estimate-signal,
+body.life-final-step-active #lifeEducationContactPanel .lq-helper-intro {
+    display: none !important;
+}
+
+body.life-final-step-active #lifeEducationContactPanel .lq-contact-first-proof-row {
+    display: flex !important;
+    align-items: center !important;
+    gap: 10px !important;
+    margin-bottom: 8px !important;
+    padding-bottom: 8px !important;
+    border-bottom: 1px solid rgba(199,153,49,0.14) !important;
+}
+
+body.life-final-step-active #lifeEducationContactPanel .lq-contact-first-proof-avatar {
+    width: 38px !important;
+    height: 38px !important;
+}
+
+body.life-final-step-active #lifeEducationContactPanel .lq-contact-first-proof-title {
+    font-size: .92rem !important;
+    line-height: 1.12 !important;
+    color: #fff7df !important;
+}
+
+body.life-final-step-active #lifeEducationContactPanel .lq-contact-first-proof-text {
+    font-size: .72rem !important;
+    line-height: 1.22 !important;
+    color: rgba(248,250,252,0.68) !important;
+}
+
+body.life-final-step-active #lifeEducationContactPanel .lq-contact-capture-head {
+    margin-bottom: 7px !important;
+}
+
+body.life-final-step-active #lifeEducationContactPanel .lq-contact-capture-title {
+    font-size: 1.08rem !important;
+    line-height: 1.14 !important;
+    color: #fff7df !important;
+}
+
+body.life-final-step-active #lifeEducationContactPanel .lq-contact-estimate-wrap {
+    margin-bottom: 9px !important;
+    gap: 7px !important;
+}
+
+body.life-final-step-active #lifeEducationContactPanel .lq-contact-estimate-stats {
+    display: grid !important;
+    grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
+    gap: 6px !important;
+}
+
+body.life-final-step-active #lifeEducationContactPanel .lq-contact-estimate-stat {
+    padding: 7px 8px !important;
+    border-radius: 10px !important;
+    background: rgba(8,16,30,0.55) !important;
+    border: 1px solid rgba(199,153,49,0.16) !important;
+}
+
+body.life-final-step-active #lifeEducationContactPanel .lq-contact-estimate-stat strong,
+body.life-final-step-active #lifeEducationContactPanel .lq-contact-estimate-stat .value {
+    color: #f7d780 !important;
+    font-weight: 900 !important;
+}
+
+body.life-final-step-active #lifeEducationContactPanel .lq-field-row {
+    gap: 8px !important;
+    margin-bottom: 8px !important;
+}
+
+body.life-final-step-active #lifeEducationContactPanel .lq-field label {
+    font-size: .76rem !important;
+    margin-bottom: 4px !important;
+    color: rgba(248,250,252,0.78) !important;
+}
+
+body.life-final-step-active #lifeEducationContactPanel .form-control,
+body.life-final-step-active #lifeEducationContactPanel .form-select {
+    min-height: 42px !important;
+    padding: 9px 10px !important;
+    margin-bottom: 0 !important;
+    border-radius: 10px !important;
+}
+
+body.life-final-step-active #lifeEducationContactPanel .lq-consent,
+body.life-final-step-active #lifeEducationContactPanel .lq-consent-box {
+    margin-top: 6px !important;
+    padding: 9px 10px !important;
+    border-radius: 12px !important;
+    background: rgba(8,16,30,0.52) !important;
+    border: 1px solid rgba(199,153,49,0.14) !important;
+}
+
+body.life-final-step-active #lifeEducationContactPanel .consent-main {
+    font-size: .72rem !important;
+    line-height: 1.28 !important;
+    color: rgba(248,250,252,0.72) !important;
+}
+
+body.life-final-step-active #lifeSubmitTrustNote {
+    color: #f3d688 !important;
+    font-size: .8rem !important;
+    font-weight: 860 !important;
+    margin-bottom: 6px !important;
+}
+
+body.life-final-step-active #submitLife {
+    min-height: 56px !important;
+    margin-top: 6px !important;
+    font-size: 1rem !important;
+    box-shadow:
+        0 16px 30px rgba(0,0,0,0.30),
+        0 0 0 1px rgba(248,220,145,0.22),
+        0 0 24px rgba(226,186,93,0.18) !important;
+}
+
+/* Post-submit: booking appears automatically and stays on-brand */
+.lq-post-submit-card {
+    background:
+        radial-gradient(circle at 18% 0%, rgba(226,186,93,0.11), transparent 36%),
+        linear-gradient(180deg, #0d182d 0%, #08111f 100%) !important;
+    border: 1px solid rgba(199,153,49,0.42) !important;
+    color: #f8fafc !important;
+    box-shadow:
+        0 18px 38px rgba(0,0,0,0.30),
+        inset 0 1px 0 rgba(255,255,255,0.04) !important;
+}
+
+.lq-post-submit-kicker,
+.lq-booking-status-pill {
+    color: #f3d688 !important;
+    background: rgba(199,153,49,0.10) !important;
+    border: 1px solid rgba(199,153,49,0.30) !important;
+}
+
+.lq-post-submit-title,
+.lq-booking-title {
+    color: #fff7df !important;
+}
+
+.lq-post-submit-copy,
+.lq-booking-copy,
+.lq-booking-note,
+.lq-booking-pending-note,
+.lq-booking-embed-status {
+    color: rgba(248,250,252,0.76) !important;
+}
+
+.lq-booking-shell {
+    background: transparent !important;
+    border: 0 !important;
+    box-shadow: none !important;
+    padding: 0 !important;
+}
+
+.lq-booking-head {
+    background:
+        linear-gradient(180deg, rgba(16,28,48,0.72) 0%, rgba(9,17,31,0.58) 100%) !important;
+    border: 1px solid rgba(199,153,49,0.20) !important;
+    border-radius: 16px !important;
+    padding: 14px 15px !important;
+    box-shadow: none !important;
+}
+
+.lq-booking-actions {
+    margin-top: 8px !important;
+}
+
+.lq-booking-primary {
+    display: none !important;
+}
+
+.lq-booking-secondary-link {
+    color: #f3d688 !important;
+    opacity: 0.82 !important;
+    font-weight: 800 !important;
+    font-size: .78rem !important;
+}
+
+.lq-booking-embed-shell {
+    margin-top: 14px !important;
+    padding: 0 !important;
+    background: transparent !important;
+    border: 0 !important;
+    box-shadow: none !important;
+}
+
+.lq-booking-embed-shell.is-auto-open .lq-booking-embed-status {
+    margin-bottom: 7px !important;
+}
+
+.lq-booking-embed-frame-wrap {
+    margin-top: 8px !important;
+    border-radius: 18px !important;
+    overflow: hidden !important;
+    background: #0b1529 !important;
+    border: 1px solid rgba(199,153,49,0.30) !important;
+    box-shadow: 0 18px 34px rgba(0,0,0,0.32) !important;
+}
+
+.lq-booking-iframe {
+    display: block !important;
+    width: 100% !important;
+    min-height: 660px !important;
+    border: 0 !important;
+    background: #ffffff !important;
+}
+
+@@media (max-width: 767.98px) {
+    body.life-final-step-active .lq-hero-shell {
+        padding: 10px 12px 12px !important;
+    }
+
+    body.life-final-step-active #lifeEducationContactPanel .lq-contact-estimate-stats {
+        grid-template-columns: 1fr !important;
+        gap: 0 !important;
+    }
+
+    body.life-final-step-active #lifeEducationContactPanel .lq-contact-estimate-stat {
+        padding: 6px 0 !important;
+        border-left: 0 !important;
+        border-right: 0 !important;
+        border-radius: 0 !important;
+        background: transparent !important;
+    }
+
+    body.life-final-step-active #lifeEducationContactPanel .lq-field-row.two {
+        grid-template-columns: 1fr !important;
+    }
+
+    .lq-post-submit-card {
+        padding: 14px !important;
+        border-radius: 16px !important;
+    }
+
+    .lq-booking-head {
+        padding: 12px !important;
+        border-radius: 14px !important;
+    }
+
+    .lq-booking-embed-frame-wrap {
+        border-radius: 14px !important;
+        margin-left: -2px !important;
+        margin-right: -2px !important;
+    }
+
+    .lq-booking-iframe {
+        min-height: 590px !important;
+    }
+}
+
+
+/* ================================================================
+   Premium Funnel Flattening Pass
+   Goal: max 3 visual containers desktop, max 2 mobile.
+   Preserve all logic. Remove forced card-inside-card feeling.
+   ================================================================ */
+
+/* ---------- Global funnel container discipline ---------- */
+
+.lq-hero-shell {
+    max-width: 760px !important;
+    background:
+        radial-gradient(circle at 50% 0%, rgba(226,186,93,0.08), transparent 34%),
+        linear-gradient(180deg, #081426 0%, #0b1529 54%, #070d19 100%) !important;
+    border: 1px solid rgba(199,153,49,0.42) !important;
+    box-shadow:
+        0 24px 46px rgba(0,0,0,0.34),
+        inset 0 1px 0 rgba(255,255,255,0.035) !important;
+}
+
+/* Flatten all step panels so the hero shell is the main outer container. */
+.lq-step1-panel,
+.lq-step-panel,
+.lq-question-shell,
+.lq-contact-panel,
+.lq-contact-capture,
+#lifeEducationContactPanel {
+    background: transparent !important;
+    border: 0 !important;
+    box-shadow: none !important;
+}
+
+/* Remove nested visual noise from common inner containers. */
+.lq-step-panel-pad,
+.lq-question-card,
+.lq-contact-capture-inner,
+.lq-contact-first-proof,
+.lq-contact-estimate-wrap,
+.lq-contact-estimate-card,
+.lq-contact-summary-card,
+.lq-result-shell,
+.lq-result-panel,
+.lq-recommendation-card,
+.lq-recommendation-inner {
+    box-shadow: none !important;
+}
+
+/* ---------- Question steps: cleaner focus ---------- */
+
+.lq-step-question,
+.lq-question-title,
+.lq-contact-capture-title {
+    color: #fff7df !important;
+    letter-spacing: -0.02em !important;
+}
+
+.lq-step-question {
+    font-size: clamp(1.25rem, 3vw, 1.75rem) !important;
+    line-height: 1.08 !important;
+    margin-bottom: 14px !important;
+}
+
+.lq-step-helper,
+.lq-helper-intro,
+.lq-subtext {
+    color: rgba(248,250,252,0.72) !important;
+}
+
+/* Option cards should be the active selectable layer, not another heavy card stack. */
+.lq-choice-card,
+.lq-option-card,
+.lq-answer-card {
+    background:
+        linear-gradient(180deg, rgba(16,28,48,0.78) 0%, rgba(8,15,28,0.82) 100%) !important;
+    border: 1px solid rgba(199,153,49,0.20) !important;
+    box-shadow: none !important;
+    border-radius: 14px !important;
+}
+
+.lq-choice-card:hover,
+.lq-option-card:hover,
+.lq-answer-card:hover {
+    border-color: rgba(243,214,136,0.58) !important;
+    transform: translateY(-1px);
+    box-shadow: 0 10px 22px rgba(0,0,0,0.22) !important;
+}
+
+.lq-choice-card.is-selected,
+.lq-option-card.is-selected,
+.lq-answer-card.is-selected,
+input:checked + .lq-choice-card,
+input:checked + .lq-option-card,
+input:checked + .lq-answer-card {
+    background:
+        radial-gradient(circle at 0% 0%, rgba(243,214,136,0.14), transparent 42%),
+        linear-gradient(180deg, rgba(26,39,62,0.92), rgba(11,21,39,0.92)) !important;
+    border-color: rgba(243,214,136,0.78) !important;
+    box-shadow:
+        0 14px 28px rgba(0,0,0,0.26),
+        0 0 0 1px rgba(243,214,136,0.18) !important;
+}
+
+/* ---------- Contact step: make submit the visual destination ---------- */
+
+body.life-final-step-active .lq-hero-shell {
+    max-width: min(1180px, calc(100vw - 56px)) !important;
+    width: min(1180px, calc(100vw - 56px)) !important;
+    padding: 18px !important;
+}
+
+body.life-final-step-active #lifeEducationContactPanel {
+    padding: 0 12px 10px !important;
+}
+
+/* Keep only one meaningful pre-submit result block. Hide repetitive support copy. */
+body.life-final-step-active #lifeEducationContactPanel .lq-contact-first-proof-chips,
+body.life-final-step-active #lifeEducationContactPanel .lq-contact-capture-copy,
+body.life-final-step-active #lifeEducationContactPanel .lq-contact-method-helper,
+body.life-final-step-active #lifeEducationContactPanel .lq-contact-estimate-personal,
+body.life-final-step-active #lifeEducationContactPanel .lq-contact-estimate-signal,
+body.life-final-step-active #lifeEducationContactPanel .lq-helper-intro,
+body.life-final-step-active #lifeEducationContactPanel .lq-carrier-strip,
+body.life-final-step-active #lifeEducationContactPanel .trusted-carrier-strip {
+    display: none !important;
+}
+
+/* The recommendation block becomes one clean section, not multiple nested boxes. */
+body.life-final-step-active #lifeEducationContactPanel .lq-contact-estimate-wrap,
+body.life-final-step-active #lifeEducationContactPanel .lq-contact-estimate-card,
+body.life-final-step-active #lifeEducationContactPanel .lq-contact-summary-card {
+    background: transparent !important;
+    border: 0 !important;
+    padding: 0 8px !important;
+    margin-bottom: 14px !important;
+}
+
+body.life-final-step-active #lifeEducationContactPanel .lq-contact-first-proof-row {
+    padding: 8px 10px 14px !important;
+}
+
+/* Inner recommendation preview: one clear bordered block only. */
+body.life-final-step-active #lifeEducationContactPanel .lq-contact-estimate-main,
+body.life-final-step-active #lifeEducationContactPanel .lq-contact-estimate-result,
+body.life-final-step-active #lifeEducationContactPanel .lq-contact-estimate-recommendation {
+    background:
+        linear-gradient(180deg, rgba(16,28,48,0.74), rgba(8,15,28,0.80)) !important;
+    border: 1px solid rgba(199,153,49,0.34) !important;
+    border-radius: 16px !important;
+    box-shadow: none !important;
+    padding: 14px !important;
+}
+
+/* Stats should feel like data, not extra cards. */
+body.life-final-step-active #lifeEducationContactPanel .lq-contact-estimate-stats {
+    display: grid !important;
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+    gap: 8px !important;
+    margin-top: 12px !important;
+}
+
+body.life-final-step-active #lifeEducationContactPanel .lq-contact-estimate-stat {
+    background: rgba(5,11,22,0.52) !important;
+    border: 1px solid rgba(199,153,49,0.16) !important;
+    border-radius: 12px !important;
+    box-shadow: none !important;
+    padding: 10px !important;
+}
+
+body.life-final-step-active #lifeEducationContactPanel .lq-contact-estimate-stat span,
+body.life-final-step-active #lifeEducationContactPanel .lq-contact-estimate-stat label {
+    color: rgba(248,250,252,0.60) !important;
+    font-size: .68rem !important;
+    letter-spacing: .07em !important;
+    text-transform: uppercase !important;
+}
+
+body.life-final-step-active #lifeEducationContactPanel .lq-contact-estimate-stat strong,
+body.life-final-step-active #lifeEducationContactPanel .lq-contact-estimate-stat .value {
+    color: #fff7df !important;
+    font-size: 1.02rem !important;
+    font-weight: 950 !important;
+}
+
+/* Contact capture should feel like the next action. */
+body.life-final-step-active #lifeEducationContactPanel .lq-contact-capture-head {
+    text-align: center !important;
+    margin: 12px 0 10px !important;
+    padding: 6px 10px 0 !important;
+}
+
+body.life-final-step-active #lifeEducationContactPanel .lq-contact-capture-kicker,
+body.life-final-step-active #lifeEducationContactPanel .lq-contact-first-proof-kicker {
+    color: #f3d688 !important;
+    font-size: .72rem !important;
+    letter-spacing: .09em !important;
+    text-transform: uppercase !important;
+    font-weight: 950 !important;
+}
+
+body.life-final-step-active #lifeEducationContactPanel .lq-contact-capture-title {
+    font-size: clamp(1.25rem, 3vw, 1.55rem) !important;
+    line-height: 1.08 !important;
+    margin: 2px 0 0 !important;
+}
+
+body.life-final-step-active #lifeEducationContactPanel .lq-field-row {
+    gap: 9px !important;
+    margin-bottom: 8px !important;
+}
+
+body.life-final-step-active #lifeEducationContactPanel .lq-field label {
+    color: rgba(248,250,252,0.74) !important;
+    font-size: .76rem !important;
+    margin-bottom: 4px !important;
+    font-weight: 820 !important;
+}
+
+body.life-final-step-active #lifeEducationContactPanel .form-control,
+body.life-final-step-active #lifeEducationContactPanel .form-select {
+    min-height: 44px !important;
+    padding: 9px 11px !important;
+    border-radius: 11px !important;
+    margin-bottom: 0 !important;
+    border: 1.5px solid rgba(243,214,136,0.72) !important;
+}
+
+/* Compliance stays, but visually secondary. */
+body.life-final-step-active #lifeEducationContactPanel .lq-consent,
+body.life-final-step-active #lifeEducationContactPanel .lq-consent-box {
+    background: rgba(5,11,22,0.48) !important;
+    border: 1px solid rgba(199,153,49,0.16) !important;
+    border-radius: 12px !important;
+    box-shadow: none !important;
+    padding: 9px 10px !important;
+    margin-top: 8px !important;
+}
+
+body.life-final-step-active #lifeEducationContactPanel .consent-main {
+    color: rgba(248,250,252,0.68) !important;
+    font-size: .72rem !important;
+    line-height: 1.28 !important;
+}
+
+/* CTA must dominate the final step. */
+body.life-final-step-active #lifeSubmitTrustNote {
+    color: #f3d688 !important;
+    font-size: .82rem !important;
+    font-weight: 900 !important;
+    text-align: center !important;
+    margin: 8px 0 6px !important;
+}
+
+body.life-final-step-active #submitLife {
+    width: 100% !important;
+    min-height: 60px !important;
+    font-size: 1.05rem !important;
+    font-weight: 950 !important;
+    border-radius: 15px !important;
+    box-shadow:
+        0 18px 34px rgba(0,0,0,0.34),
+        0 0 0 1px rgba(248,220,145,0.30),
+        0 0 26px rgba(226,186,93,0.20) !important;
+}
+
+/* ---------- Post-submit: make booking the obvious next step ---------- */
+
+.lq-post-submit-card {
+    background:
+        radial-gradient(circle at 20% 0%, rgba(226,186,93,0.11), transparent 34%),
+        linear-gradient(180deg, #0d182d 0%, #08111f 100%) !important;
+    border: 1px solid rgba(199,153,49,0.42) !important;
+    color: #f8fafc !important;
+    box-shadow:
+        0 18px 38px rgba(0,0,0,0.30),
+        inset 0 1px 0 rgba(255,255,255,0.04) !important;
+}
+
+/* Flatten nested post-submit review blocks. */
+.lq-post-submit-review,
+.lq-post-submit-result,
+.lq-post-submit-summary,
+.lq-post-submit-details,
+.lq-booking-shell {
+    background: transparent !important;
+    border: 0 !important;
+    box-shadow: none !important;
+}
+
+.lq-post-submit-kicker,
+.lq-booking-status-pill {
+    color: #f3d688 !important;
+    background: rgba(199,153,49,0.10) !important;
+    border: 1px solid rgba(199,153,49,0.28) !important;
+}
+
+.lq-post-submit-title,
+.lq-booking-title {
+    color: #fff7df !important;
+}
+
+.lq-post-submit-copy,
+.lq-booking-copy,
+.lq-booking-note,
+.lq-booking-pending-note,
+.lq-booking-embed-status {
+    color: rgba(248,250,252,0.76) !important;
+}
+
+/* Booking section gets one header + iframe. No CTA gate, no extra visual weight. */
+.lq-booking-head {
+    background:
+        linear-gradient(180deg, rgba(16,28,48,0.72), rgba(8,15,28,0.68)) !important;
+    border: 1px solid rgba(199,153,49,0.22) !important;
+    border-radius: 16px !important;
+    box-shadow: none !important;
+    padding: 14px 15px !important;
+    margin-top: 14px !important;
+}
+
+.lq-booking-primary {
+    display: none !important;
+}
+
+.lq-booking-actions {
+    margin-top: 6px !important;
+}
+
+.lq-booking-secondary-link {
+    color: #f3d688 !important;
+    opacity: .82 !important;
+    font-size: .78rem !important;
+    font-weight: 850 !important;
+}
+
+.lq-booking-embed-shell {
+    display: block !important;
+    margin-top: 12px !important;
+    padding: 0 !important;
+    background: transparent !important;
+    border: 0 !important;
+    box-shadow: none !important;
+}
+
+.lq-booking-embed-frame-wrap {
+    margin-top: 8px !important;
+    border-radius: 18px !important;
+    overflow: hidden !important;
+    background: #0b1529 !important;
+    border: 1px solid rgba(199,153,49,0.28) !important;
+    box-shadow: 0 18px 34px rgba(0,0,0,0.32) !important;
+}
+
+.lq-booking-iframe {
+    display: block !important;
+    width: 100% !important;
+    min-height: 670px !important;
+    border: 0 !important;
+    background: #ffffff !important;
+}
+
+/* ---------- Mobile: max 2 containers, tighter hierarchy ---------- */
+
+@@media (max-width: 767.98px) {
+    .lq-container {
+        padding-left: 10px !important;
+        padding-right: 10px !important;
+    }
+
+    .lq-hero-shell {
+        border-radius: 16px !important;
+        padding: 12px !important;
+    }
+
+    body.life-final-step-active .lq-hero-shell {
+        padding: 11px !important;
+    }
+
+    body.life-final-step-active #lifeEducationContactPanel .lq-contact-estimate-main,
+    body.life-final-step-active #lifeEducationContactPanel .lq-contact-estimate-result,
+    body.life-final-step-active #lifeEducationContactPanel .lq-contact-estimate-recommendation {
+        padding: 12px !important;
+        border-radius: 14px !important;
+    }
+
+    body.life-final-step-active #lifeEducationContactPanel .lq-contact-estimate-stats {
+        grid-template-columns: 1fr !important;
+        gap: 6px !important;
+    }
+
+    body.life-final-step-active #lifeEducationContactPanel .lq-field-row.two,
+    body.life-final-step-active #lifeEducationContactPanel .lq-field-row {
+        grid-template-columns: 1fr !important;
+    }
+
+    body.life-final-step-active #lifeEducationContactPanel .lq-contact-first-proof-row {
+        display: none !important;
+    }
+
+    .lq-post-submit-card {
+        padding: 13px !important;
+        border-radius: 16px !important;
+    }
+
+    .lq-booking-head {
+        padding: 12px !important;
+        border-radius: 14px !important;
+    }
+
+    .lq-booking-embed-frame-wrap {
+        border-radius: 14px !important;
+        margin-left: -2px !important;
+        margin-right: -2px !important;
+    }
+
+    .lq-booking-iframe {
+        min-height: 600px !important;
+    }
+}
+
+
+/* ================================================================
+   Emergency funnel layout repair — unclipped, flatter, action-led
+   ================================================================ */
+
+/* Stop horizontal clipping everywhere */
+.lq-container,
+.lq-hero-shell,
+.lq-step1-panel,
+.lq-step-panel-pad,
+.lq-contact-first-proof,
+.lq-question-shell,
+.lq-step-question,
+.lq-choice-grid,
+.lq-options-grid,
+.lq-field-row,
+.lq-contact-estimate-wrap,
+.lq-contact-estimate-stats {
+    max-width: 100% !important;
+    min-width: 0 !important;
+    box-sizing: border-box !important;
+    overflow: visible !important;
+}
+
+body,
+main.layout-content {
+    overflow-x: hidden !important;
+}
+
+/* Main shell: one premium container */
+.lq-hero-shell {
+    max-width: 720px !important;
+    width: min(720px, calc(100vw - 24px)) !important;
+    padding: 16px !important;
+    margin: 10px auto 18px !important;
+}
+
+/* Trust image/card becomes a light strip, not another card */
+.lq-contact-first-proof {
+    display: flex !important;
+    align-items: center !important;
+    gap: 10px !important;
+    padding: 8px 0 12px !important;
+    margin: 0 0 12px !important;
+    background: transparent !important;
+    border: 0 !important;
+    border-bottom: 1px solid rgba(199,153,49,.18) !important;
+    box-shadow: none !important;
+}
+
+.lq-contact-first-proof-avatar,
+.lq-human-strip-avatar {
+    width: 38px !important;
+    height: 38px !important;
+    flex: 0 0 38px !important;
+}
+
+.lq-contact-first-proof-kicker,
+.lq-contact-first-proof-chips {
+    display: none !important;
+}
+
+.lq-contact-first-proof-title {
+    font-size: .95rem !important;
+    line-height: 1.12 !important;
+    margin: 0 !important;
+}
+
+.lq-contact-first-proof-text {
+    font-size: .76rem !important;
+    line-height: 1.25 !important;
+    color: rgba(248,250,252,.70) !important;
+    margin: 2px 0 0 !important;
+}
+
+/* Question area becomes the dominant surface */
+.lq-step1-panel,
+.lq-step-panel-pad,
+.lq-question-shell {
+    background: transparent !important;
+    border: 0 !important;
+    box-shadow: none !important;
+    padding: 0 !important;
+}
+
+.lq-step-question {
+    font-size: clamp(1.35rem, 3vw, 1.85rem) !important;
+    line-height: 1.08 !important;
+    max-width: 100% !important;
+    overflow-wrap: anywhere !important;
+    text-wrap: balance !important;
+    margin-bottom: 14px !important;
+}
+
+/* Fix clipped option grid */
+.lq-choice-grid,
+.lq-options-grid {
+    display: grid !important;
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+    gap: 10px !important;
+    width: 100% !important;
+}
+
+.lq-choice-card,
+.lq-option-card,
+.lq-answer-card {
+    min-width: 0 !important;
+    width: 100% !important;
+    box-sizing: border-box !important;
+    border-radius: 14px !important;
+    padding: 14px 12px !important;
+    background: linear-gradient(180deg, rgba(17,29,50,.84), rgba(8,15,28,.88)) !important;
+    border: 1px solid rgba(199,153,49,.28) !important;
+    box-shadow: none !important;
+}
+
+.lq-choice-card span,
+.lq-option-card span,
+.lq-answer-card span,
+.lq-choice-card strong,
+.lq-option-card strong,
+.lq-answer-card strong {
+    overflow-wrap: anywhere !important;
+    text-wrap: balance !important;
+}
+
+/* CTA hierarchy */
+#step1Continue,
+#submitLife {
+    width: 100% !important;
+    min-height: 60px !important;
+    font-size: 1.05rem !important;
+    font-weight: 950 !important;
+    margin-top: 12px !important;
+}
+
+/* Contact step: fewer boxes, submit-focused */
+body.life-final-step-active .lq-contact-estimate-wrap,
+body.life-final-step-active .lq-contact-estimate-card,
+body.life-final-step-active .lq-contact-summary-card {
+    background: transparent !important;
+    border: 0 !important;
+    box-shadow: none !important;
+    padding: 0 !important;
+}
+
+body.life-final-step-active .lq-contact-estimate-main,
+body.life-final-step-active .lq-contact-estimate-result,
+body.life-final-step-active .lq-contact-estimate-recommendation {
+    background: linear-gradient(180deg, rgba(16,28,48,.75), rgba(8,15,28,.82)) !important;
+    border: 1px solid rgba(199,153,49,.34) !important;
+    border-radius: 16px !important;
+    padding: 14px !important;
+    box-shadow: none !important;
+}
+
+/* Mobile: max 2 containers, no clipping */
+@@media (max-width: 767.98px) {
+    .lq-container {
+        padding: 0 10px 18px !important;
+    }
+
+    .lq-hero-shell {
+        width: calc(100vw - 20px) !important;
+        max-width: calc(100vw - 20px) !important;
+        padding: 12px !important;
+        border-radius: 16px !important;
+    }
+
+    .lq-choice-grid,
+    .lq-options-grid {
+        grid-template-columns: 1fr !important;
+        gap: 9px !important;
+    }
+
+    .lq-step-question {
+        font-size: 1.38rem !important;
+    }
+
+    .lq-contact-first-proof {
+        padding: 6px 0 10px !important;
+    }
+}
+
+
+/* ================================================================
    Booking copy/hierarchy cleanup — confident, not forced
    ================================================================ */
 .lq-booking-status-pill,
@@ -5458,7 +6732,9 @@ body.life-final-step-active.page-variant-contact-first-education-v1 #lifeEducati
     display: none !important;
 }
 
-
+.lq-booking-embed-shell {
+    margin-top: 10px !important;
+}
 
 
 /* ================================================================
@@ -5489,9 +6765,14 @@ body.life-final-step-active.page-variant-contact-first-education-v1 #lifeEducati
     margin-bottom: 0 !important;
 }
 
+.lq-booking-embed-shell {
+    margin-top: 6px !important;
+    padding-top: 0 !important;
+}
 
-
-
+.lq-booking-embed-frame-wrap {
+    margin-top: 4px !important;
+}
 
 
 /* ================================================================
@@ -5507,7 +6788,15 @@ body.life-final-step-active.page-variant-contact-first-education-v1 #lifeEducati
     display: none !important;
 }
 
-
+.lq-booking-shell {
+    background:
+        radial-gradient(circle at 15% 0%, rgba(226,186,93,0.10), transparent 32%),
+        linear-gradient(180deg, #0b172c 0%, #07101f 100%) !important;
+    border: 1px solid rgba(199,153,49,0.36) !important;
+    border-radius: 18px !important;
+    padding: 16px !important;
+    box-shadow: 0 18px 34px rgba(0,0,0,0.28) !important;
+}
 
 .lq-booking-head {
     background: transparent !important;
@@ -5532,14 +6821,37 @@ body.life-final-step-active.page-variant-contact-first-education-v1 #lifeEducati
     margin: 0 !important;
 }
 
+.lq-booking-embed-shell {
+    display: block !important;
+    background: transparent !important;
+    border: 0 !important;
+    box-shadow: none !important;
+    padding: 0 !important;
+    margin: 8px 0 0 !important;
+}
 
+.lq-booking-embed-frame-wrap {
+    margin: 0 !important;
+    border-radius: 16px !important;
+    overflow: hidden !important;
+    background: #0b172c !important;
+    border: 1px solid rgba(199,153,49,0.28) !important;
+    box-shadow: none !important;
+}
 
-
-
-
+.lq-booking-iframe {
+    display: block !important;
+    width: 100% !important;
+    border: 0 !important;
+    background: #ffffff !important;
+    min-height: 660px !important;
+}
 
 @@media (max-width: 767.98px) {
-    
+    .lq-booking-shell {
+        padding: 12px !important;
+        border-radius: 16px !important;
+    }
 
     .lq-booking-title {
         font-size: 1.22rem !important;
@@ -5549,11 +6861,17 @@ body.life-final-step-active.page-variant-contact-first-education-v1 #lifeEducati
         font-size: .88rem !important;
     }
 
-    
+    .lq-booking-embed-frame-wrap {
+        border-radius: 14px !important;
+    }
 
-    
+    .lq-booking-iframe {
+        min-height: 600px !important;
+    }
 }
 
+
+<style>
 
 
 .lq-step-panel,
@@ -6481,7 +7799,6 @@ input:checked + .lq-answer-card {
         <input type="hidden" name="PageMode" value="@pageMode" />
         <input type="hidden" name="Age" id="Age" value="@(hasExplicitAgeSelection ? ageValue : string.Empty)" />
         <input type="hidden" name="AgeRange" id="AgeRange" value="@(hasExplicitAgeSelection ? selectedAgeBracket : string.Empty)" />
-        <input type="hidden" name="DateOfBirth" id="DateOfBirthHidden" value="@(form.DateOfBirth?.ToString("yyyy-MM-dd") ?? string.Empty)" />
         <input type="hidden" name="CoverageAmount" id="CoverageAmount" value="@(form.CoverageAmount?.ToString() ?? selectedCoverageAmountOption)" />
         <input type="hidden" name="ProtectFocus" id="ProtectFocus" value="@form.ProtectFocus" />
         <input type="hidden" name="Answer1" id="Answer1" value="@form.Answer1" />
@@ -6663,16 +7980,32 @@ input:checked + .lq-answer-card {
                                         {
                                             <div class="lq-choice-group">
                                                 <div class="lq-choice-label lq-step-question" id="lbl-step1-age">@ageStepQuestionText</div>
-                                                <div class="lq-age-picker lq-dob-picker @(form.DateOfBirth.HasValue ? "is-active" : "")" data-dob-picker data-age-selected="@(form.DateOfBirth.HasValue ? "true" : "false")">
+                                                <div class="lq-age-picker @(hasExplicitAgeSelection ? "is-active" : "")" data-age-picker data-age-selected="@(hasExplicitAgeSelection ? "true" : "false")">
+                                                    <div class="lq-age-picker-top">
+                                                        <div class="lq-age-picker-copy">
+                                                            <div class="lq-age-picker-kicker">Quick pick</div>
+                                                            <div class="lq-age-picker-note">Tap your range or fine-tune the slider.</div>
+                                                        </div>
+                                                        <div class="lq-age-pill" data-age-display aria-live="polite">@(hasExplicitAgeSelection ? ageValue : "Select age")</div>
+                                                    </div>
+                                                    
                                                     <input
-                                                        type="date"
-                                                        class="form-control lq-dob-input"
-                                                        data-dob-input
-                                                        autocomplete="bday"
-                                                        value="@(form.DateOfBirth?.ToString("yyyy-MM-dd") ?? string.Empty)"
+                                                        type="range"
+                                                        min="@minSelectableAge"
+                                                        max="@maxSelectableAge"
+                                                        step="1"
+                                                        value="@ageValue"
+                                                        class="lq-age-slider"
+                                                        data-age-slider
                                                         aria-labelledby="lbl-step1-age" />
+                                                    <div class="lq-age-scale" aria-hidden="true">
+                                                        @foreach (var markerAge in ageSliderMarkerValues)
+                                                        {
+                                                            <span>@markerAge@(markerAge == maxSelectableAge ? "+" : string.Empty)</span>
+                                                        }
+                                                    </div>
                                                 </div>
-                                                <div class="lq-choice-error" id="err-step1-age">Please enter a valid date of birth between ages 18 and 85.</div>
+                                                <div class="lq-choice-error" id="err-step1-age">Please select your age.</div>
                                             </div>
                                             <div class="lq-step-actions dual"><button type="button" class="btn-gold flex-fill" id="ageStepContinueBtn" hidden style="display:none !important;">Continue</button>
                                             </div>
@@ -6747,16 +8080,32 @@ input:checked + .lq-answer-card {
                                         {
                                             <div class="lq-choice-group">
                                                 <div class="lq-choice-label lq-step-question" id="lbl-step1-age">@ageStepQuestionText</div>
-                                                <div class="lq-age-picker lq-dob-picker @(form.DateOfBirth.HasValue ? "is-active" : "")" data-dob-picker data-age-selected="@(form.DateOfBirth.HasValue ? "true" : "false")">
+                                                <div class="lq-age-picker @(hasExplicitAgeSelection ? "is-active" : "")" data-age-picker data-age-selected="@(hasExplicitAgeSelection ? "true" : "false")">
+                                                    <div class="lq-age-picker-top">
+                                                        <div class="lq-age-picker-copy">
+                                                            <div class="lq-age-picker-kicker">Quick pick</div>
+                                                            <div class="lq-age-picker-note">Tap your range or fine-tune the slider.</div>
+                                                        </div>
+                                                        <div class="lq-age-pill" data-age-display aria-live="polite">@(hasExplicitAgeSelection ? ageValue : "Select age")</div>
+                                                    </div>
+                                                    
                                                     <input
-                                                        type="date"
-                                                        class="form-control lq-dob-input"
-                                                        data-dob-input
-                                                        autocomplete="bday"
-                                                        value="@(form.DateOfBirth?.ToString("yyyy-MM-dd") ?? string.Empty)"
+                                                        type="range"
+                                                        min="@minSelectableAge"
+                                                        max="@maxSelectableAge"
+                                                        step="1"
+                                                        value="@ageValue"
+                                                        class="lq-age-slider"
+                                                        data-age-slider
                                                         aria-labelledby="lbl-step1-age" />
+                                                    <div class="lq-age-scale" aria-hidden="true">
+                                                        @foreach (var markerAge in ageSliderMarkerValues)
+                                                        {
+                                                            <span>@markerAge@(markerAge == maxSelectableAge ? "+" : string.Empty)</span>
+                                                        }
+                                                    </div>
                                                 </div>
-                                                <div class="lq-choice-error" id="err-step1-age">Please enter a valid date of birth between ages 18 and 85.</div>
+                                                <div class="lq-choice-error" id="err-step1-age">Please select your age.</div>
                                             </div>
                                             <div class="lq-step-actions dual"><button type="button" class="btn-gold btn-progress flex-fill" id="step1Continue">@stepOneContinueButtonText</button>
                                             </div>
@@ -7138,16 +8487,32 @@ input:checked + .lq-answer-card {
                     {
                         <div class="lq-choice-group">
                             <div class="lq-choice-label lq-step-question" id="lbl-step1-age">@ageStepQuestionText</div>
-                            <div class="lq-age-picker lq-dob-picker @(form.DateOfBirth.HasValue ? "is-active" : "")" data-dob-picker data-age-selected="@(form.DateOfBirth.HasValue ? "true" : "false")">
+                            <div class="lq-age-picker @(hasExplicitAgeSelection ? "is-active" : "")" data-age-picker data-age-selected="@(hasExplicitAgeSelection ? "true" : "false")">
+                                <div class="lq-age-picker-top">
+                                    <div class="lq-age-picker-copy">
+                                        <div class="lq-age-picker-kicker">Quick pick</div>
+                                        <div class="lq-age-picker-note">Tap your range or fine-tune the slider.</div>
+                                    </div>
+                                    <div class="lq-age-pill" data-age-display aria-live="polite">@(hasExplicitAgeSelection ? ageValue : "Select age")</div>
+                                </div>
+                                
                                 <input
-                                    type="date"
-                                    class="form-control lq-dob-input"
-                                    data-dob-input
-                                    autocomplete="bday"
-                                    value="@(form.DateOfBirth?.ToString("yyyy-MM-dd") ?? string.Empty)"
+                                    type="range"
+                                    min="@minSelectableAge"
+                                    max="@maxSelectableAge"
+                                    step="1"
+                                    value="@ageValue"
+                                    class="lq-age-slider"
+                                    data-age-slider
                                     aria-labelledby="lbl-step1-age" />
+                                <div class="lq-age-scale" aria-hidden="true">
+                                    @foreach (var markerAge in ageSliderMarkerValues)
+                                    {
+                                        <span>@markerAge@(markerAge == maxSelectableAge ? "+" : string.Empty)</span>
+                                    }
+                                </div>
                             </div>
-                            <div class="lq-choice-error" id="err-step1-age">Please enter a valid date of birth between ages 18 and 85.</div>
+                            <div class="lq-choice-error" id="err-step1-age">Please select your age.</div>
                         </div>
                         <div class="lq-step-actions dual"><button type="button" class="btn-gold flex-fill" id="ageStepContinueBtn" hidden style="display:none !important;">Continue</button>
                         </div>
@@ -7222,16 +8587,32 @@ input:checked + .lq-answer-card {
                     {
                         <div class="lq-choice-group">
                             <div class="lq-choice-label lq-step-question" id="lbl-step1-age">@ageStepQuestionText</div>
-                            <div class="lq-age-picker lq-dob-picker @(form.DateOfBirth.HasValue ? "is-active" : "")" data-dob-picker data-age-selected="@(form.DateOfBirth.HasValue ? "true" : "false")">
+                            <div class="lq-age-picker @(hasExplicitAgeSelection ? "is-active" : "")" data-age-picker data-age-selected="@(hasExplicitAgeSelection ? "true" : "false")">
+                                <div class="lq-age-picker-top">
+                                    <div class="lq-age-picker-copy">
+                                        <div class="lq-age-picker-kicker">Quick pick</div>
+                                        <div class="lq-age-picker-note">Tap your range or fine-tune the slider.</div>
+                                    </div>
+                                    <div class="lq-age-pill" data-age-display aria-live="polite">@(hasExplicitAgeSelection ? ageValue : "Select age")</div>
+                                </div>
+                                
                                 <input
-                                    type="date"
-                                    class="form-control lq-dob-input"
-                                    data-dob-input
-                                    autocomplete="bday"
-                                    value="@(form.DateOfBirth?.ToString("yyyy-MM-dd") ?? string.Empty)"
+                                    type="range"
+                                    min="@minSelectableAge"
+                                    max="@maxSelectableAge"
+                                    step="1"
+                                    value="@ageValue"
+                                    class="lq-age-slider"
+                                    data-age-slider
                                     aria-labelledby="lbl-step1-age" />
+                                <div class="lq-age-scale" aria-hidden="true">
+                                    @foreach (var markerAge in ageSliderMarkerValues)
+                                    {
+                                        <span>@markerAge@(markerAge == maxSelectableAge ? "+" : string.Empty)</span>
+                                    }
+                                </div>
                             </div>
-                            <div class="lq-choice-error" id="err-step1-age">Please enter a valid date of birth between ages 18 and 85.</div>
+                            <div class="lq-choice-error" id="err-step1-age">Please select your age.</div>
                         </div>
                         <div class="lq-step-actions dual"><button type="button" class="btn-gold btn-progress flex-fill" id="step1Continue">@stepOneContinueButtonText</button>
                         </div>
@@ -7452,7 +8833,6 @@ input:checked + .lq-answer-card {
 </div>
 </div>
 
-@await Html.PartialAsync("_QuoteBookingSystemStyles")
 <script src="~/js/meta-signal-intelligence.js" asp-append-version="true"></script>
 
 
@@ -8071,7 +9451,16 @@ body.life-landing .lq-hero-shell,
     overflow: hidden !important;
 }
 
-#lifePostSubmitSlot 
+#lifePostSubmitSlot .lq-booking-iframe {
+    display: block !important;
+    width: 100% !important;
+    min-height: 860px !important;
+    height: 860px !important;
+    border-radius: 18px !important;
+    border: 1px solid rgba(199,153,49,.28) !important;
+    background: #ffffff !important;
+    box-shadow: 0 16px 34px rgba(2,12,27,.22) !important;
+}
 
 #lifePostSubmitSlot .lq-booking-secondary-link {
     display: inline-flex !important;
@@ -8238,7 +9627,10 @@ body.life-landing .lq-hero-shell,
         grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
     }
 
-    #lifePostSubmitSlot 
+    #lifePostSubmitSlot .lq-booking-iframe {
+        height: clamp(920px, 95vh, 1180px) !important;
+        min-height: clamp(920px, 95vh, 1180px) !important;
+    }
 }
 
 @@media (max-width: 720px) {
@@ -8268,7 +9660,10 @@ body.life-landing .lq-hero-shell,
         border-radius: 16px !important;
     }
 
-    #lifePostSubmitSlot 
+    #lifePostSubmitSlot .lq-booking-iframe {
+        min-height: 620px !important;
+        border-radius: 14px !important;
+    }
 }
 </style>
 
@@ -8306,12 +9701,11 @@ body.life-landing .lq-hero-shell,
     border: 0 !important;
     box-shadow: none !important;
     display: grid !important;
-    /* Keep the left column flexible but ensure the right bridge has a usable minimum width */
-    grid-template-columns: 1fr minmax(320px, 420px) !important;
+    grid-template-columns: minmax(0, 1.08fr) minmax(280px, .92fr) !important;
     gap: 16px 22px !important;
     align-items: center !important;
     justify-items: stretch !important;
-    max-width: 1100px !important;
+    max-width: 900px !important;
     padding: 24px 24px 26px !important;
     margin: 0 auto !important;
     text-align: left !important;
@@ -8362,11 +9756,11 @@ body.life-landing .lq-hero-shell,
     grid-column: 2 !important;
     grid-row: 2 / span 3 !important;
     width: 100% !important;
-    max-width: 420px !important; /* allow more room to avoid compression */
+    max-width: 340px !important;
     display: grid !important;
     gap: 12px !important;
     align-self: stretch !important;
-    justify-self: center !important; /* center the bridge to avoid right-justified compression */
+    justify-self: end !important;
     margin: 0 !important;
     padding: 18px 18px 16px !important;
     border-radius: 20px !important;
@@ -8430,9 +9824,8 @@ body.life-landing .lq-hero-shell,
     }
 
     #lifeProcessingPanel .lq-processing-bridge {
-        max-width: 100% !important;
+        max-width: none !important;
         padding: 14px 14px 13px !important;
-        justify-self: stretch !important;
     }
 }
 
@@ -8538,10 +9931,10 @@ body.life-landing .lq-contact-capture-head .lq-agent-handoff-head {
   const isLandingMobile = document.body.classList.contains('life-landing') && window.matchMedia('(max-width: 767.98px)').matches;
   const stateSelect = document.getElementById('State');
   const ageInput = document.getElementById('Age');
-  const dateOfBirthHidden = document.getElementById('DateOfBirthHidden');
-  const dobInputs = Array.from(form.querySelectorAll('[data-dob-input]'));
-  const agePickers = Array.from(form.querySelectorAll('[data-dob-picker]'));
+  const agePickers = Array.from(form.querySelectorAll('[data-age-picker]'));
+  const ageSliders = Array.from(form.querySelectorAll('[data-age-slider]'));
   const ageDisplays = Array.from(form.querySelectorAll('[data-age-display]'));
+  const ageQuickButtons = Array.from(form.querySelectorAll('[data-age-quick-select]'));
   const requiredContactFields = ['FirstName', 'LastName', 'Phone', 'Email'];
   const contactFieldNames = usesLeanContactFields
     ? ['FirstName', 'LastName', 'Phone', 'Email']
@@ -8792,97 +10185,75 @@ body.life-landing .lq-contact-capture-head .lq-agent-handoff-head {
     if (parsedAge <= 34) return '25-34';
     if (parsedAge <= 44) return '35-44';
     if (parsedAge <= 54) return '45-54';
-    if (parsedAge <= 64) return '55-64';
-    return '65+';
+    return '55+';
   }
 
-  function parseDobValue(value) {
-    const raw = String(value ?? '').trim();
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(raw)) {
-      return null;
+  function resolveStoredAgeValue(value) {
+    const trimmedValue = String(value ?? '').trim();
+    if (!trimmedValue) {
+      return '';
     }
 
-    const [year, month, day] = raw.split('-').map((part) => Number.parseInt(part, 10));
-    const dob = new Date(year, month - 1, day);
-    if (
-      dob.getFullYear() !== year ||
-      dob.getMonth() !== month - 1 ||
-      dob.getDate() !== day
-    ) {
-      return null;
+    const parsedAge = Number.parseInt(trimmedValue, 10);
+    if (Number.isFinite(parsedAge)) {
+      return String(Math.max(AGE_MIN, Math.min(AGE_MAX, parsedAge)));
     }
 
-    return dob;
+    const mappedAge = AGE_RANGE_TO_NUMERIC[trimmedValue];
+    return Number.isFinite(mappedAge) ? String(mappedAge) : '';
   }
 
-  function calculateAgeFromDob(value) {
-    const dob = parseDobValue(value);
-    if (!dob) {
-      return null;
-    }
-
-    const today = new Date();
-    let age = today.getFullYear() - dob.getFullYear();
-    const hasHadBirthdayThisYear =
-      today.getMonth() > dob.getMonth() ||
-      (today.getMonth() === dob.getMonth() && today.getDate() >= dob.getDate());
-
-    if (!hasHadBirthdayThisYear) {
-      age -= 1;
-    }
-
-    return Number.isFinite(age) ? age : null;
-  }
-
-  function getSelectedDobValue() {
-    const visibleDob = dobInputs.find((input) => input instanceof HTMLInputElement && input.value);
-    if (visibleDob instanceof HTMLInputElement) {
-      return visibleDob.value;
-    }
-
-    return dateOfBirthHidden instanceof HTMLInputElement ? dateOfBirthHidden.value : '';
-  }
-
-  function getSelectedAgeValue() {
-    const age = calculateAgeFromDob(getSelectedDobValue());
-    return Number.isFinite(age) ? String(age) : '';
-  }
-
-  function getSelectedAgeBand() {
-    return resolveAgeBand(getSelectedAgeValue());
+  function getCurrentSliderAgeValue() {
+    const slider = ageSliders[0];
+    return slider instanceof HTMLInputElement ? resolveStoredAgeValue(slider.value) : '';
   }
 
   function hasExplicitAgeSelectionInUi() {
-    const age = Number.parseInt(getSelectedAgeValue(), 10);
-    return Number.isFinite(age) && age >= AGE_MIN && age <= AGE_MAX;
+    return agePickers.some((picker) => picker.dataset.ageSelected === 'true');
   }
 
-  function syncAgePickerUi(dobValue = getSelectedDobValue(), isSelected = hasExplicitAgeSelectionInUi()) {
-    const age = calculateAgeFromDob(dobValue);
-    const hasValidAge = Number.isFinite(age) && age >= AGE_MIN && age <= AGE_MAX;
-    const normalizedDob = parseDobValue(dobValue) ? String(dobValue || '').trim() : '';
-    const pillText = hasValidAge ? `Age ${age}` : normalizedDob ? 'Outside age range' : 'Enter DOB';
-
-    if (dateOfBirthHidden instanceof HTMLInputElement) {
-      dateOfBirthHidden.value = normalizedDob;
-    }
-
-    dobInputs.forEach((input) => {
-      if (input instanceof HTMLInputElement && input.value !== normalizedDob) {
-        input.value = normalizedDob;
-      }
-    });
+  function syncAgePickerUi(ageValue, isSelected) {
+    const resolvedAge = resolveStoredAgeValue(ageValue) || String(AGE_DEFAULT);
+    const numericAge = Number.parseInt(resolvedAge, 10);
+    const progress = Number.isFinite(numericAge) && AGE_MAX > AGE_MIN
+      ? ((numericAge - AGE_MIN) / (AGE_MAX - AGE_MIN)) * 100
+      : 0;
+    const pillText = isSelected ? resolvedAge : 'Select age';
+    const resolvedBand = resolveAgeBand(resolvedAge);
 
     agePickers.forEach((picker) => {
-      picker.dataset.ageSelected = hasValidAge ? 'true' : 'false';
-      picker.classList.toggle('is-active', hasValidAge);
+      picker.dataset.ageSelected = isSelected ? 'true' : 'false';
+      picker.classList.toggle('is-active', isSelected);
+      picker.style.setProperty('--age-progress', `${Math.max(0, Math.min(100, progress))}%`);
+    });
+
+    ageSliders.forEach((slider) => {
+      slider.value = resolvedAge;
+      slider.setAttribute('aria-valuetext', isSelected ? `${resolvedAge} years old` : 'Select your age');
     });
 
     ageDisplays.forEach((display) => {
       display.textContent = pillText;
     });
 
-    return hasValidAge;
+    ageQuickButtons.forEach((button) => {
+      if (!(button instanceof HTMLButtonElement)) {
+        return;
+      }
+
+      button.classList.toggle(
+        'is-active',
+        isSelected && String(button.dataset.ageRange || '').trim() === resolvedBand
+      );
+    });
+  }
+
+  function getSelectedAgeValue() {
+    return getCurrentSliderAgeValue() || String(AGE_DEFAULT);
+  }
+
+  function getSelectedAgeBand() {
+    return resolveAgeBand(getSelectedAgeValue());
   }
 
   function extractPhoneDigits(value) {
@@ -8965,7 +10336,6 @@ body.life-landing .lq-contact-capture-head .lq-agent-handoff-head {
         CoverageGoal: selectedRadio('CoverageGoal')?.value || '',
         CoverageAmountOption: selectedRadio('CoverageAmountOption')?.value || '',
         TobaccoUse: selectedRadio('TobaccoUse')?.value || '',
-        DateOfBirth: getSelectedDobValue(),
         AgeBracket: getSelectedAgeBand(),
         AgeValue: getSelectedAgeValue(),
         FirstName: asTrimmed(form.querySelector('[name="FirstName"]')?.value || ''),
@@ -11438,7 +12808,7 @@ const contactFieldProgress = new Map();
       case 'TobaccoUse':
         return form.querySelector('input[name="TobaccoUse"]');
       case 'Age':
-        return form.querySelector('[data-dob-input]');
+        return form.querySelector('[data-age-slider]');
       default:
         return null;
     }
@@ -12426,7 +13796,7 @@ const contactFieldProgress = new Map();
     if (!validateAgeOnly()) {
       trackQuoteFieldError('AgeBracket', 'required_missing', 'discovery');
       metaSignalApi?.trackFieldError('AgeBracket', { fieldContext: 'discovery' });
-      form.querySelector('[data-dob-input]')?.focus();
+      form.querySelector('[data-age-slider]')?.focus();
       return;
     }
 
@@ -12453,82 +13823,65 @@ const contactFieldProgress = new Map();
   wireAutoAdvanceGroup('TobaccoUse', 'err-step1-tobacco-use', 'life_step1_tobacco_select', tobaccoStepIndex, tobaccoStepIndex + 1);
 
 
-  dobInputs.forEach((input) => {
-    if (!(input instanceof HTMLInputElement)) {
+  ageSliders.forEach((slider) => {
+    if (!(slider instanceof HTMLInputElement)) {
       return;
     }
 
-    input.addEventListener('input', () => {
-      const rawDob = String(input.value || '').trim();
-      const dobYear = Number.parseInt(rawDob.slice(0, 4), 10);
-      const hasCompleteDob = /^\d{4}-\d{2}-\d{2}$/.test(rawDob) && dobYear >= 1000;
-
-      if (!hasCompleteDob) {
-        showChoiceError('err-step1-age', false);
-        clearQuoteFieldError('DateOfBirth');
-        clearQuoteFieldError('AgeBracket');
-        syncStepOneAnswersFromUI();
-        persistFunnelState();
-        return;
-      }
-
-      const hasValidAge = syncAgePickerUi(input.value, true);
-
-      if (!hasValidAge) {
-        showChoiceError('err-step1-age', true);
-        trackQuoteFieldError('DateOfBirth', 'invalid_dob', 'discovery');
-        metaSignalApi?.trackFieldError('DateOfBirth', { fieldContext: 'discovery' });
-      } else {
-        showChoiceError('err-step1-age', false);
-        clearQuoteFieldError('DateOfBirth');
-        clearQuoteFieldError('AgeBracket');
-      }
-
+    slider.addEventListener('input', () => {
+      syncAgePickerUi(slider.value, true);
+      showChoiceError('err-step1-age', false);
+      clearQuoteFieldError('AgeBracket');
       syncStepOneAnswersFromUI();
       persistFunnelState();
     });
 
-    input.addEventListener('change', () => {
-      const rawDob = String(input.value || '').trim();
-      const dobYear = Number.parseInt(rawDob.slice(0, 4), 10);
-      const hasCompleteDob = /^\d{4}-\d{2}-\d{2}$/.test(rawDob) && dobYear >= 1000;
-
-      if (!hasCompleteDob) {
-        showChoiceError('err-step1-age', false);
-        clearQuoteFieldError('DateOfBirth');
-        clearQuoteFieldError('AgeBracket');
-        syncStepOneAnswersFromUI();
-        persistFunnelState();
-        return;
-      }
-
-      const hasValidAge = syncAgePickerUi(input.value, true);
-      syncStepOneAnswersFromUI();
-      persistFunnelState();
-
-      if (!hasValidAge) {
-        showChoiceError('err-step1-age', true);
-        trackQuoteFieldError('DateOfBirth', 'invalid_dob', 'discovery');
-        metaSignalApi?.trackFieldError('DateOfBirth', { fieldContext: 'discovery' });
-        return;
-      }
-
+    slider.addEventListener('change', () => {
+      syncAgePickerUi(slider.value, true);
       showChoiceError('err-step1-age', false);
-      clearQuoteFieldError('DateOfBirth');
       clearQuoteFieldError('AgeBracket');
       clearEstimatePreviewCache();
-
+      syncStepOneAnswersFromUI();
+      persistFunnelState();
       trackEvent('step1_age_entered', {
-        dateOfBirthProvided: true,
         ageRange: getSelectedAgeBand(),
         age: getSelectedAgeValue()
       });
       trackQuoteStepComplete('step1_age_entered', {
-        dateOfBirthProvided: true,
         ageRange: getSelectedAgeBand(),
         age: getSelectedAgeValue()
       });
-      void ensureQuoteStartTracked({ startSource: 'dob_change', fieldName: 'DateOfBirth', ageRange: getSelectedAgeBand() });
+      void ensureQuoteStartTracked({ startSource: 'age_change', fieldName: 'AgeBracket', ageRange: getSelectedAgeBand() });
+      void ensureMetaLeadFormStart();
+      queueMicroAdvance(ageStepIndex, tobaccoStepIndex);
+    });
+  });
+  ageQuickButtons.forEach((button) => {
+    if (!(button instanceof HTMLButtonElement)) {
+      return;
+    }
+
+    button.addEventListener('click', () => {
+      const nextValue = String(button.dataset.ageValue || '').trim();
+      if (!nextValue) {
+        return;
+      }
+
+      syncAgePickerUi(nextValue, true);
+      showChoiceError('err-step1-age', false);
+      clearQuoteFieldError('AgeBracket');
+      clearEstimatePreviewCache();
+      syncStepOneAnswersFromUI();
+      persistFunnelState();
+      trackEvent('step1_age_entered', {
+        ageRange: getSelectedAgeBand(),
+        age: getSelectedAgeValue()
+      });
+      trackQuoteStepComplete('step1_age_entered', {
+        ageRange: getSelectedAgeBand(),
+        age: getSelectedAgeValue()
+      });
+      void ensureQuoteStartTracked({ startSource: 'age_quick_select', fieldName: 'AgeBracket', ageRange: getSelectedAgeBand() });
       void ensureMetaLeadFormStart();
       queueMicroAdvance(ageStepIndex, tobaccoStepIndex);
     });
@@ -12655,33 +14008,31 @@ const contactFieldProgress = new Map();
 
     populateAttributionFields();
 
-        const enterSubmitLoading = () => {
-            clearProcessingTimer(true);
-            contactFirstPanel?.classList.add('is-submit-loading');
-            processingPanel?.removeAttribute('hidden');
-            // rely on CSS for layout; avoid forcing permanent inline display
-            if (processingPanel) processingPanel.style.display = 'block';
-            if (postSubmitSlot) postSubmitSlot.style.display = 'none';
-            applyProcessingStage(getSubmitProcessingStage());
-            if (processingFill) {
-                processingFill.style.transition = 'none';
-                processingFill.style.width = '0%';
-                requestAnimationFrame(() => {
-                    processingFill.style.transition = 'width 1.05s cubic-bezier(0.22, 1, 0.36, 1)';
-                    processingFill.style.width = '78%';
-                });
-            }
-            processingPanel?.scrollIntoView({ behavior: 'smooth', block: 'center' });
-        };
+    const enterSubmitLoading = () => {
+      clearProcessingTimer(true);
+      contactFirstPanel?.classList.add('is-submit-loading');
+      processingPanel?.removeAttribute('hidden');
+      if (processingPanel) processingPanel.style.display = 'block';
+      if (postSubmitSlot) postSubmitSlot.style.display = 'none';
+      applyProcessingStage(getSubmitProcessingStage());
+      if (processingFill) {
+        processingFill.style.transition = 'none';
+        processingFill.style.width = '0%';
+        requestAnimationFrame(() => {
+          processingFill.style.transition = 'width 1.05s cubic-bezier(0.22, 1, 0.36, 1)';
+          processingFill.style.width = '78%';
+        });
+      }
+      processingPanel?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    };
 
-        const exitSubmitLoadingToContact = () => {
-            contactFirstPanel?.classList.remove('is-submit-loading');
-            // remove inline display overrides so CSS controls visibility
-            if (processingPanel) processingPanel.style.removeProperty('display');
-            if (step2Panel) step2Panel.style.removeProperty('display');
-            if (contactCaptureWrap) contactCaptureWrap.style.removeProperty('display');
-            clearProcessingTimer(true);
-        };
+    const exitSubmitLoadingToContact = () => {
+      contactFirstPanel?.classList.remove('is-submit-loading');
+      if (processingPanel) processingPanel.style.display = 'none';
+      if (step2Panel) step2Panel.style.display = 'block';
+      if (contactCaptureWrap) contactCaptureWrap.style.display = 'block';
+      clearProcessingTimer(true);
+    };
 
     enterSubmitLoading();
     await new Promise(resolve => requestAnimationFrame(resolve));
@@ -12866,6 +14217,8 @@ body.page-variant-low-friction-options-v1 #lifeEducationContactPanel .lq-step-qu
 </style>
 
 
+<style>
+</style>
 
 
 <style>
@@ -13536,39 +14889,9 @@ body.life-landing.life-quote-started .lq-hero-shell {
         border-radius: 12px !important;
     }
 
-    #lifePostSubmitSlot 
+    #lifePostSubmitSlot .lq-booking-iframe {
+        min-height: 680px !important;
+        border-radius: 12px !important;
+    }
 }
 </style>
-
-
-
-#lifePostSubmitSlot 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-.lq-booking-embed-frame-wrap {
-    width: 100% !important;
-    max-width: 1400px !important;
-    margin: 0 auto !important;
-    overflow: hidden !important;
-
-    border-radius: 16px !important;
-    background: #0b172c !important;
-    border: 1px solid rgba(199,153,49,0.28) !important;
-    box-shadow: 0 16px 34px rgba(2,12,27,.22) !important;
-}
-
-
-
-
