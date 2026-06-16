@@ -106,10 +106,13 @@ public sealed class GraphCalendarSubscriptionHostedService : BackgroundService
             return;
         }
 
+        var resource = $"users/{calendarIdentity}/events";
+
         var existing = await db.GraphCalendarSubscriptions
             .Where(x => x.AgentUserId == agent.AgentUserId &&
                         x.IsActive &&
-                        (x.CalendarUserId == calendarIdentity ||
+                        (x.Resource == resource ||
+                         x.CalendarUserId == calendarIdentity ||
                          x.CalendarEmail == calendarIdentity))
             .OrderByDescending(x => x.ExpirationUtc)
             .FirstOrDefaultAsync(cancellationToken);
@@ -234,7 +237,7 @@ public sealed class GraphCalendarSubscriptionHostedService : BackgroundService
             Id = Guid.NewGuid(),
             AgentUserId = agent.AgentUserId,
             CalendarUserId = string.IsNullOrWhiteSpace(agent.CalendarUserId) ? null : agent.CalendarUserId.Trim(),
-            CalendarEmail = string.IsNullOrWhiteSpace(agent.CalendarEmail) ? calendarIdentity : agent.CalendarEmail.Trim(),
+            CalendarEmail = calendarIdentity.Contains('@') ? calendarIdentity.Trim() : agent.CalendarEmail?.Trim(),
             Resource = resource,
             ChangeType = "created,updated,deleted",
             ClientState = clientState,
