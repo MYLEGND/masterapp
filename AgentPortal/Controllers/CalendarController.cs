@@ -143,7 +143,7 @@ public class CalendarController : Controller
     private static bool IsTrustedAppointment(LeadAppointment appointment)
     {
         var trustedSource = appointment.ConfirmationSource ?? appointment.BookingSource;
-        return appointment.Status is LeadAppointmentStatus.Booked or LeadAppointmentStatus.Confirmed or LeadAppointmentStatus.Completed &&
+        return appointment.Status is LeadAppointmentStatus.Booked or LeadAppointmentStatus.Confirmed or LeadAppointmentStatus.Completed or LeadAppointmentStatus.Rescheduled &&
             (string.Equals(trustedSource, LeadAppointmentBookingSources.InternalCalendar, StringComparison.OrdinalIgnoreCase) ||
              string.Equals(trustedSource, LeadAppointmentBookingSources.MicrosoftGraphConfirmation, StringComparison.OrdinalIgnoreCase) ||
              string.Equals(trustedSource, LeadAppointmentBookingSources.ManualVerified, StringComparison.OrdinalIgnoreCase));
@@ -174,7 +174,7 @@ public class CalendarController : Controller
             return "Booked / verified";
         if (appointment.Status == LeadAppointmentStatus.Requested)
             return "Requested / awaiting verification";
-        if (appointment.Status is LeadAppointmentStatus.Booked or LeadAppointmentStatus.Confirmed or LeadAppointmentStatus.Completed)
+        if (appointment.Status is LeadAppointmentStatus.Booked or LeadAppointmentStatus.Confirmed or LeadAppointmentStatus.Completed or LeadAppointmentStatus.Rescheduled)
             return $"{HumanizeAppointmentStatus(appointment.Status)} / source not verified";
         return HumanizeAppointmentStatus(appointment.Status);
     }

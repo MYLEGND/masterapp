@@ -759,7 +759,7 @@ public class LeadsController : Controller
     private static bool IsTrustedAppointment(LeadAppointmentListRow appointment)
     {
         var trustedSource = appointment.ConfirmationSource ?? appointment.BookingSource;
-        return appointment.Status is LeadAppointmentStatus.Booked or LeadAppointmentStatus.Confirmed or LeadAppointmentStatus.Completed &&
+        return appointment.Status is LeadAppointmentStatus.Booked or LeadAppointmentStatus.Confirmed or LeadAppointmentStatus.Completed or LeadAppointmentStatus.Rescheduled &&
             (string.Equals(trustedSource, LeadAppointmentBookingSources.InternalCalendar, StringComparison.OrdinalIgnoreCase) ||
              string.Equals(trustedSource, LeadAppointmentBookingSources.MicrosoftGraphConfirmation, StringComparison.OrdinalIgnoreCase) ||
              string.Equals(trustedSource, "microsoft_graph_webhook", StringComparison.OrdinalIgnoreCase) ||
@@ -791,7 +791,7 @@ public class LeadsController : Controller
             return "Booked / verified";
         if (appointment.Status == LeadAppointmentStatus.Requested)
             return "Requested / awaiting verification";
-        if (appointment.Status is LeadAppointmentStatus.Booked or LeadAppointmentStatus.Confirmed or LeadAppointmentStatus.Completed)
+        if (appointment.Status is LeadAppointmentStatus.Booked or LeadAppointmentStatus.Confirmed or LeadAppointmentStatus.Completed or LeadAppointmentStatus.Rescheduled)
             return $"{HumanizeAppointmentStatus(appointment.Status)} / source not verified";
         return HumanizeAppointmentStatus(appointment.Status);
     }
@@ -2356,16 +2356,16 @@ public class LeadsController : Controller
         }
 
         if (nextStatus == LeadAppointmentStatus.Requested &&
-            appointment.Status is LeadAppointmentStatus.Booked or LeadAppointmentStatus.Confirmed or LeadAppointmentStatus.Completed)
+            appointment.Status is LeadAppointmentStatus.Booked or LeadAppointmentStatus.Confirmed or LeadAppointmentStatus.Completed or LeadAppointmentStatus.Rescheduled)
         {
-            return BadRequest("Booked, confirmed, or completed appointments cannot be downgraded back to Requested.");
+            return BadRequest("Booked, confirmed, completed, or rescheduled appointments cannot be downgraded back to Requested.");
         }
 
         if (nextStatus == LeadAppointmentStatus.Booked && !appointment.RequestedUtc.HasValue)
             appointment.RequestedUtc = nowUtc;
         if (string.IsNullOrWhiteSpace(appointment.RequestedBookingSource))
             appointment.RequestedBookingSource = appointment.BookingSource;
-        if (nextStatus is LeadAppointmentStatus.Booked or LeadAppointmentStatus.Confirmed or LeadAppointmentStatus.Completed)
+        if (nextStatus is LeadAppointmentStatus.Booked or LeadAppointmentStatus.Confirmed or LeadAppointmentStatus.Completed or LeadAppointmentStatus.Rescheduled)
         {
             if (string.IsNullOrWhiteSpace(appointment.ConfirmationSource))
             {
