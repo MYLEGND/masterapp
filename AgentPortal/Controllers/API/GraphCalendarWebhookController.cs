@@ -1,5 +1,6 @@
 using System.Net.Http.Headers;
 using System.Text.Json;
+using AgentPortal.Models;
 using Azure.Core;
 using Azure.Identity;
 using Domain.Entities;
@@ -237,6 +238,7 @@ public sealed class GraphCalendarWebhookController : ControllerBase
         appointment.LastSyncError = null;
         appointment.UpdatedUtc = utcNow;
         appointment.ApplyStatus(LeadAppointmentStatus.Cancelled, utcNow);
+        await SyncCrmStageFromAppointmentAsync(appointment, utcNow, cancellationToken);
 
         syncLog.AppointmentId = appointment.Id;
         syncLog.WorkstationLeadId = appointment.WorkstationLeadId;
@@ -320,6 +322,7 @@ public sealed class GraphCalendarWebhookController : ControllerBase
         appointment.RawProviderPayloadJson = syncLog.DiagnosticJson;
         appointment.UpdatedUtc = utcNow;
         appointment.ApplyStatus(isReschedule ? LeadAppointmentStatus.Rescheduled : LeadAppointmentStatus.Booked, utcNow);
+        await SyncCrmStageFromAppointmentAsync(appointment, utcNow, cancellationToken);
 
         if (!isReschedule)
         {
@@ -334,6 +337,125 @@ public sealed class GraphCalendarWebhookController : ControllerBase
 
         _db.AppointmentSyncLogs.Add(syncLog);
         await _db.SaveChangesAsync(cancellationToken);
+    }
+
+    private async Task SyncCrmStageFromAppointmentAsync(
+        LeadAppointment appointment,
+        DateTime utcNow,
+        CancellationToken cancellationToken)
+    {
+        var targetStage = appointment.Status switch
+        {
+            LeadAppointmentStatus.Booked or LeadAppointmentStatus.Confirmed or LeadAppointmentStatus.Rescheduled => "MeetingScheduled",
+            LeadAppointmentStatus.Completed => "Qualified",
+            LeadAppointmentStatus.Cancelled or LeadAppointmentStatus.NoShow => "Contacted",
+            _ => null
+        };
+
+        if (string.IsNullOrWhiteSpace(targetStage))
+            return;
+
+        var waitingOn = appointment.Status switch
+        {
+            LeadAppointmentStatus.Booked or LeadAppointmentStatus.Confirmed or LeadAppointmentStatus.Rescheduled => "WaitingOnClient",
+            LeadAppointmentStatus.Completed => "WaitingOnAgent",
+            LeadAppointmentStatus.Cancelled or LeadAppointmentStatus.NoShow => "WaitingOnAgent",
+            _ => ClientCrmMeta.DefaultWaitingOn
+        };
+
+        var activityNote = appointment.Status switch
+        {
+            LeadAppointmentStatus.Rescheduled => "Appointment rescheduled automatically from Microsoft calendar.",
+            LeadAppointmentStatus.Booked or LeadAppointmentStatus.Confirmed => "Appointment booked automatically from Microsoft calendar.",
+            LeadAppointmentStatus.Completed => "Appointment completed automatically after scheduled end.",
+            LeadAppointmentStatus.Cancelled => "Appointment cancelled automatically from Microsoft calendar.",
+            LeadAppointmentStatus.NoShow => "Appointment marked no-show.",
+            _ => $"Appointment status synced automatically: {appointment.Status}."
+        };
+
+        if (!string.IsNullOrWhiteSpace(appointment.WorkstationLeadId))
+        {
+            var lead = await _db.WorkstationLeadProfiles
+                .FirstOrDefaultAsync(x =>
+                    x.LeadId == appointment.WorkstationLeadId &&
+                    x.AgentUserId == appointment.OwnerAgentUserId,
+                    cancellationToken);
+
+            if (lead != null)
+            {
+                var meta = ClientCrmMetaSerializer.Deserialize(lead.CrmNotes) ?? new ClientCrmMeta();
+
+                if (!string.Equals(lead.Bucket, targetStage, StringComparison.OrdinalIgnoreCase) ||
+                    !string.Equals(lead.CrmStage, targetStage, StringComparison.OrdinalIgnoreCase))
+                {
+                    meta.StageEnteredUtc = utcNow;
+                }
+
+                lead.CrmStage = targetStage;
+                lead.Bucket = targetStage;
+                lead.CrmStatus = string.IsNullOrWhiteSpace(lead.CrmStatus) ? "Lead" : lead.CrmStatus;
+                lead.AgentUserId = appointment.OwnerAgentUserId ?? lead.AgentUserId;
+                lead.UpdatedUtc = utcNow;
+
+                meta.WaitingOn = waitingOn;
+                meta.Activities ??= new List<ClientCrmActivity>();
+                meta.Activities.Insert(0, new ClientCrmActivity
+                {
+                    Type = "Meeting",
+                    Date = utcNow.ToString("yyyy-MM-dd"),
+                    Note = activityNote,
+                    MeetingLink = appointment.MeetingUrl,
+                    CalendarEventId = appointment.CalendarEventId,
+                    CalendarWebLink = appointment.CalendarEventWebLink,
+                    IsSystem = true,
+                    CreatedBy = appointment.OwnerAgentUserId
+                });
+
+                lead.CrmNotes = ClientCrmMetaSerializer.Serialize(meta);
+            }
+        }
+
+        ClientProfile? profile = null;
+
+        if (Guid.TryParse(appointment.ClientProfileId, out var clientProfileGuid))
+        {
+            profile = await _db.ClientProfiles
+                .FirstOrDefaultAsync(x => x.Id == clientProfileGuid, cancellationToken);
+        }
+
+        if (profile == null && !string.IsNullOrWhiteSpace(appointment.WorkstationLeadId))
+        {
+            profile = await _db.ClientProfiles
+                .FirstOrDefaultAsync(x => x.ClientUserId == appointment.WorkstationLeadId, cancellationToken);
+        }
+
+        if (profile != null)
+        {
+            var meta = ClientCrmMetaSerializer.Deserialize(profile.CrmNotes) ?? new ClientCrmMeta();
+
+            if (!string.Equals(meta.PipelineStage, targetStage, StringComparison.OrdinalIgnoreCase))
+            {
+                meta.StageEnteredUtc = utcNow;
+            }
+
+            meta.PipelineStage = targetStage;
+            meta.WaitingOn = waitingOn;
+            meta.Activities ??= new List<ClientCrmActivity>();
+            meta.Activities.Insert(0, new ClientCrmActivity
+            {
+                Type = "Meeting",
+                Date = utcNow.ToString("yyyy-MM-dd"),
+                Note = activityNote,
+                MeetingLink = appointment.MeetingUrl,
+                CalendarEventId = appointment.CalendarEventId,
+                CalendarWebLink = appointment.CalendarEventWebLink,
+                IsSystem = true,
+                CreatedBy = appointment.OwnerAgentUserId
+            });
+
+            profile.CrmNotes = ClientCrmMetaSerializer.Serialize(meta);
+            profile.UpdatedUtc = utcNow;
+        }
     }
 
     private async Task TryRecordAppointmentBookedMetaSignalAsync(
