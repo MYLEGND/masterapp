@@ -77,7 +77,10 @@ public sealed class GraphCalendarSubscriptionHostedService : BackgroundService
 
             foreach (var agent in agents)
             {
-                await EnsureSubscriptionForAgentAsync(db, accessToken, publicBaseUrl, agent, cancellationToken);
+                foreach (var calendarIdentity in ResolveCalendarIdentities(agent))
+                {
+                    await EnsureSubscriptionForAgentAsync(db, accessToken, publicBaseUrl, agent, calendarIdentity, cancellationToken);
+                }
             }
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
@@ -94,9 +97,10 @@ public sealed class GraphCalendarSubscriptionHostedService : BackgroundService
         string accessToken,
         string publicBaseUrl,
         AgentProfile agent,
+        string calendarIdentity,
         CancellationToken cancellationToken)
     {
-        var calendarIdentity = FirstNotEmpty(agent.CalendarUserId, agent.CalendarEmail, agent.BookingPageIdOrMailbox);
+        calendarIdentity = calendarIdentity.Trim();
         if (string.IsNullOrWhiteSpace(calendarIdentity))
         {
             return;
@@ -105,8 +109,7 @@ public sealed class GraphCalendarSubscriptionHostedService : BackgroundService
         var existing = await db.GraphCalendarSubscriptions
             .Where(x => x.AgentUserId == agent.AgentUserId &&
                         x.IsActive &&
-                        (x.CalendarUserId == agent.CalendarUserId ||
-                         x.CalendarEmail == agent.CalendarEmail ||
+                        (x.CalendarUserId == calendarIdentity ||
                          x.CalendarEmail == calendarIdentity))
             .OrderByDescending(x => x.ExpirationUtc)
             .FirstOrDefaultAsync(cancellationToken);
@@ -144,6 +147,20 @@ public sealed class GraphCalendarSubscriptionHostedService : BackgroundService
                 calendarIdentity,
                 created.LastError);
         }
+    }
+
+    private static IReadOnlyList<string> ResolveCalendarIdentities(AgentProfile agent)
+    {
+        return new[]
+        {
+            agent.CalendarUserId,
+            agent.CalendarEmail,
+            agent.BookingPageIdOrMailbox
+        }
+            .Where(value => !string.IsNullOrWhiteSpace(value))
+            .Select(value => value!.Trim())
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
     }
 
     private async Task<bool> TryRenewSubscriptionAsync(
