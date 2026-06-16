@@ -12522,7 +12522,10 @@ const contactFieldProgress = new Map();
           void confirmPublicBookingExperience(publicBookingState).then((confirmedState) => {
             publicBookingConfirmationRequested = false;
             publicBookingState = normalizePublicBookingPayload(confirmedState, publicBookingState);
-            renderPostSubmitBookingState(publicBookingState);
+
+            if (publicBookingState.confirmationVerified) {
+              renderPostSubmitBookingState(publicBookingState);
+            }
 
             if (publicBookingState.confirmationVerified && !publicBookingBookedConfirmed) {
               publicBookingBookedConfirmed = true;
