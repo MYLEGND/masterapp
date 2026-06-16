@@ -264,6 +264,8 @@ public sealed class GraphCalendarWebhookController : ControllerBase
             return;
         }
 
+        var subscriptionCalendarIdentity = ResolveSubscriptionCalendarIdentity(subscription);
+
         var appointment = await _db.LeadAppointments
             .OrderByDescending(x => x.UpdatedUtc)
             .ThenByDescending(x => x.CreatedUtc)
@@ -274,6 +276,9 @@ public sealed class GraphCalendarWebhookController : ControllerBase
                  (
                      (!string.IsNullOrWhiteSpace(subscription.CalendarUserId) &&
                       x.BookingCalendarUserId == subscription.CalendarUserId) ||
+                     (!string.IsNullOrWhiteSpace(subscriptionCalendarIdentity) &&
+                      (x.BookingCalendarEmail == subscriptionCalendarIdentity ||
+                       x.BookingPageIdOrMailbox == subscriptionCalendarIdentity)) ||
                      (!string.IsNullOrWhiteSpace(subscription.CalendarEmail) &&
                       (x.BookingCalendarEmail == subscription.CalendarEmail ||
                        x.BookingPageIdOrMailbox == subscription.CalendarEmail))
@@ -417,12 +422,32 @@ public sealed class GraphCalendarWebhookController : ControllerBase
         });
     }
 
+    private static string? ResolveSubscriptionCalendarIdentity(GraphCalendarSubscription subscription)
+    {
+        var resource = Clean(subscription.Resource);
+        const string prefix = "users/";
+        const string suffix = "/events";
+
+        if (!string.IsNullOrWhiteSpace(resource) &&
+            resource.StartsWith(prefix, StringComparison.OrdinalIgnoreCase) &&
+            resource.EndsWith(suffix, StringComparison.OrdinalIgnoreCase))
+        {
+            var identity = resource[prefix.Length..^suffix.Length];
+            if (!string.IsNullOrWhiteSpace(identity))
+            {
+                return identity.Trim();
+            }
+        }
+
+        return FirstNotEmpty(subscription.CalendarUserId, subscription.CalendarEmail);
+    }
+
     private async Task<GraphCalendarEvent?> TryFetchGraphEventAsync(
         GraphCalendarSubscription subscription,
         string eventId,
         CancellationToken cancellationToken)
     {
-        var calendarIdentity = FirstNotEmpty(subscription.CalendarUserId, subscription.CalendarEmail);
+        var calendarIdentity = ResolveSubscriptionCalendarIdentity(subscription);
         if (string.IsNullOrWhiteSpace(calendarIdentity))
         {
             return null;
