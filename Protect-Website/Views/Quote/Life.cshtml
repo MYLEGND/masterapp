@@ -5395,9 +5395,11 @@ body.life-final-step-active .lq-hero-shell {
 }
 body.life-final-step-active .lq-hero-shell:has(#lifeEducationContactPanel.is-submitted),
 body.life-final-step-active .lq-hero-shell:has(#lifeEducationContactPanel.lq-final-panel-no-chrome),
+body.life-final-step-active .lq-hero-shell:has(#lifeEducationContactPanel.lq-final-review-flat-mode),
 body.life-final-step-active .lq-hero-shell:has(#lifePostSubmitSlot:not([hidden])) {
-    max-width: min(1480px, calc(100vw - 32px)) !important;
     width: min(1480px, calc(100vw - 32px)) !important;
+    max-width: min(1480px, calc(100vw - 32px)) !important;
+    overflow: visible !important;
 }
 body.life-final-step-active .lq-contact-step {
     position: relative;
@@ -8229,6 +8231,12 @@ body.life-landing .lq-hero-shell,
     margin: 10px auto 16px !important;
     padding: 20px 22px 18px !important;
     border-radius: 26px !important;
+}
+
+body.life-landing .lq-hero-shell:has(#lifeEducationContactPanel.lq-final-panel-no-chrome),
+body.life-landing .lq-hero-shell:has(#lifeEducationContactPanel.lq-final-review-flat-mode),
+body.life-landing .lq-hero-shell:has(#lifeEducationContactPanel.is-submitted),
+body.life-landing .lq-hero-shell:has(#lifePostSubmitSlot:not([hidden])) {
     border: 1px solid var(--legend-gold-border) !important;
     background:
         radial-gradient(circle at 50% 0%, rgba(34,99,196,.12), transparent 42%),
@@ -8874,8 +8882,11 @@ body.life-landing .lq-hero-shell,
 
     body.life-landing .lq-hero-shell:has(#lifeEducationContactPanel.is-submitted),
     body.life-landing .lq-hero-shell:has(#lifeEducationContactPanel.lq-final-panel-no-chrome),
+    body.life-landing .lq-hero-shell:has(#lifeEducationContactPanel.lq-final-review-flat-mode),
     body.life-landing .lq-hero-shell:has(#lifePostSubmitSlot:not([hidden])) {
-        max-width: 1480px !important;
+        width: min(1480px, calc(100vw - 32px)) !important;
+        max-width: min(1480px, calc(100vw - 32px)) !important;
+        overflow: visible !important;
     }
 
     #lifeEducationContactPanel {
