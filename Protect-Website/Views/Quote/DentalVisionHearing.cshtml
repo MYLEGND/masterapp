@@ -1498,15 +1498,7 @@ body.dvh-landing.page-mode-paid-landing header .navbar-brand img {
     box-shadow: none !important;
 }
 
-#dvhPostSubmitSlot .lq-booking-iframe {
-    display: block !important;
-    width: 100% !important;
-    min-height: 650px !important;
-    border-radius: 18px !important;
-    border: 1px solid rgba(199,153,49,.28) !important;
-    background: #ffffff !important;
-    box-shadow: 0 16px 34px rgba(2,12,27,.22) !important;
-}
+
 
 #dvhEducationContactPanel,
 #dvhEducationContactPanel * {
@@ -1835,10 +1827,7 @@ body.dvh-landing.page-mode-paid-landing header .navbar-brand img {
         grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
     }
 
-    #dvhPostSubmitSlot .lq-booking-iframe {
-        height: clamp(780px, 92vh, 1100px) !important;
-        min-height: clamp(780px, 92vh, 1100px) !important;
-    }
+    
 }
 
 @@media (max-width: 720px) {
@@ -1874,10 +1863,7 @@ body.dvh-landing.page-mode-paid-landing header .navbar-brand img {
         border-radius: 16px !important;
     }
 
-    #dvhPostSubmitSlot .lq-booking-iframe {
-        min-height: 620px !important;
-        border-radius: 14px !important;
-    }
+    
 
     .dq-contact-capture-wrap {
         padding-left: 0;
@@ -2161,10 +2147,7 @@ body.dvh-final-step-active .dq-form-panel {
         margin-top: 8px !important;
     }
 
-    #dvhPostSubmitSlot .lq-booking-iframe {
-        min-height: 680px !important;
-        border-radius: 12px !important;
-    }
+    
 }
 </style>
 
@@ -3847,3 +3830,5 @@ body.dvh-final-step-active .dq-form-panel {
     }());
     </script>
 }
+
+@await Html.PartialAsync("_QuoteBookingSystemStyles")

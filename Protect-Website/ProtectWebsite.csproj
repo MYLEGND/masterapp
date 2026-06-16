@@ -1,4 +1,7 @@
 ﻿<Project>
+  <Target Name="BookingSystemIntegrityGuard" BeforeTargets="Build">
+    <Exec Command="dotnet script Tools/BookingSystemGuard.csx" WorkingDirectory="$(ProjectDir)" />
+  </Target>
   <PropertyGroup>
     <BaseIntermediateOutputPath>/tmp/masterapp/obj/ProtectWebsite/</BaseIntermediateOutputPath>
     <MSBuildProjectExtensionsPath>/tmp/masterapp/obj/ProtectWebsite/</MSBuildProjectExtensionsPath>
@@ -45,4 +48,7 @@
   </ItemGroup>
 
   <Import Project="Sdk.targets" Sdk="Microsoft.NET.Sdk.Web" />
+  <Target Name="MetaEventLock" BeforeTargets="Build">
+    <Exec Command="dotnet script Tools/MetaEventGuard.csx" />
+  </Target>
 </Project>
