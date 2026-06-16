@@ -11097,13 +11097,12 @@ const contactFieldProgress = new Map();
       return;
     }
 
-    const shouldForceDesktopViewport =
-      activeInlineBookingSlot.id === 'lifeBookingInlineFrameSlot' &&
-      window.matchMedia('(min-width: 1180px)').matches;
+    const shouldUseDesktopBookingViewport = window.matchMedia('(min-width: 980px)').matches;
 
     activeInlineBookingSlot.removeAttribute('data-desktop-booking');
     activeInlineBookingSlot.style.removeProperty('height');
     activeInlineBookingSlot.style.removeProperty('min-height');
+    activeInlineBookingSlot.style.removeProperty('overflow');
     activeInlineBookingFrame.style.removeProperty('width');
     activeInlineBookingFrame.style.removeProperty('max-width');
     activeInlineBookingFrame.style.removeProperty('height');
@@ -11111,27 +11110,22 @@ const contactFieldProgress = new Map();
     activeInlineBookingFrame.style.removeProperty('transform');
     activeInlineBookingFrame.style.removeProperty('transform-origin');
 
-    if (!shouldForceDesktopViewport) {
+    if (!shouldUseDesktopBookingViewport) {
       return;
     }
 
-    const containerWidth = Math.max(0, Math.round(activeInlineBookingSlot.getBoundingClientRect().width));
-    const desktopViewportWidth = Math.max(DESKTOP_BOOKING_MIN_WIDTH, containerWidth);
-    const desktopViewportHeight = containerWidth >= 1320 ? 1040 : DESKTOP_BOOKING_MIN_HEIGHT;
-    const scale = containerWidth > 0 ? Math.min(1, containerWidth / desktopViewportWidth) : 1;
+    const desktopViewportWidth = Math.max(DESKTOP_BOOKING_MIN_WIDTH, Math.round(activeInlineBookingSlot.getBoundingClientRect().width || 0));
+    const desktopViewportHeight = DESKTOP_BOOKING_MIN_HEIGHT;
 
     activeInlineBookingSlot.setAttribute('data-desktop-booking', 'true');
-    activeInlineBookingSlot.style.minHeight = `${Math.round(desktopViewportHeight * scale)}px`;
-    activeInlineBookingSlot.style.height = `${Math.round(desktopViewportHeight * scale)}px`;
+    activeInlineBookingSlot.style.minHeight = `${desktopViewportHeight}px`;
+    activeInlineBookingSlot.style.height = `${desktopViewportHeight}px`;
+    activeInlineBookingSlot.style.overflow = 'auto';
+
     activeInlineBookingFrame.style.width = `${desktopViewportWidth}px`;
     activeInlineBookingFrame.style.maxWidth = 'none';
     activeInlineBookingFrame.style.height = `${desktopViewportHeight}px`;
     activeInlineBookingFrame.style.minHeight = `${desktopViewportHeight}px`;
-
-    if (scale < 0.999) {
-      activeInlineBookingFrame.style.transformOrigin = 'top left';
-      activeInlineBookingFrame.style.transform = `scale(${scale})`;
-    }
   }
 
   function buildProcessingStages() {
