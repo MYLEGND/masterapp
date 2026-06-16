@@ -9448,12 +9448,13 @@ body.life-landing .lq-hero-shell,
     background: transparent !important;
     border: 0 !important;
     box-shadow: none !important;
-    overflow: hidden !important;
+    overflow: auto !important;
 }
 
 #lifePostSubmitSlot .lq-booking-iframe {
     display: block !important;
     width: 100% !important;
+    max-width: none !important;
     min-height: 860px !important;
     height: 860px !important;
     border-radius: 18px !important;
@@ -9627,9 +9628,16 @@ body.life-landing .lq-hero-shell,
         grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
     }
 
+    #lifePostSubmitSlot .lq-booking-frame-only {
+        min-height: 980px !important;
+        height: 980px !important;
+        overflow: auto !important;
+    }
+
     #lifePostSubmitSlot .lq-booking-iframe {
-        height: clamp(920px, 95vh, 1180px) !important;
-        min-height: clamp(920px, 95vh, 1180px) !important;
+        height: 980px !important;
+        min-height: 980px !important;
+        max-width: none !important;
     }
 }
 
