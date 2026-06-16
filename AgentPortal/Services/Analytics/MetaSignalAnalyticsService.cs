@@ -779,13 +779,34 @@ public sealed class MetaSignalAnalyticsService : IMetaSignalAnalyticsService
             attribution.MetaAdSetId,
             attribution.MetaAdId);
 
+    private static bool IsLocalhostOrInternalTest(MetaSignalEvent row)
+    {
+        var referrer = Normalize(row.Referrer);
+        var host = Normalize(row.Host);
+        var environment = Normalize(row.Environment);
+        var trafficType = Normalize(row.TrafficType);
+
+        return (referrer is not null && referrer.Contains("localhost", StringComparison.OrdinalIgnoreCase)) ||
+               (host is not null && (host.StartsWith("localhost", StringComparison.OrdinalIgnoreCase) ||
+                                      host.StartsWith("127.0.0.1", StringComparison.OrdinalIgnoreCase) ||
+                                      host.StartsWith("::1", StringComparison.OrdinalIgnoreCase))) ||
+               string.Equals(environment, "Development", StringComparison.OrdinalIgnoreCase) ||
+               trafficType is nameof(TrafficType.Internal) or nameof(TrafficType.Test);
+    }
+
     private static bool IsMetaLearningEligible(MetaSignalEvent row)
     {
+        if (IsLocalhostOrInternalTest(row))
+            return false;
+
         return row.MetaServerSent || row.MetaBrowserSent;
     }
 
     private static string ResolveLearningReason(MetaSignalEvent row, MetaSignalAttributionSnapshot attribution)
     {
+        if (IsLocalhostOrInternalTest(row))
+            return "Excluded: localhost/internal QA traffic.";
+
         if ((row.MetaServerSent || row.MetaBrowserSent) && IsMetaAttributedPaid(attribution))
             return "Included: sent to Meta and paid Meta-attributed.";
 
