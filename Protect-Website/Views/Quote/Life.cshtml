@@ -8583,21 +8583,16 @@ body.life-landing .lq-hero-shell:has(#lifePostSubmitSlot:not([hidden])) {
     box-shadow: none !important;
 }
 
-#lifePostSubmitSlot .lq-final-review-unified-card {
+#lifePostSubmitSlot {
     width: min(1480px, calc(100vw - 32px)) !important;
     max-width: min(1480px, calc(100vw - 32px)) !important;
     margin: 0 auto !important;
-    padding: 24px 24px 28px !important;
-    border-radius: 24px !important;
-    border: 1px solid rgba(199,153,49,.38) !important;
-    background:
-        radial-gradient(circle at 18% 0%, rgba(243,214,136,.12), transparent 36%),
-        linear-gradient(180deg, #09244a 0%, #071d3d 52%, #061832 100%) !important;
-    color: #f8fafc !important;
-    box-shadow:
-        0 22px 46px rgba(2,12,27,.26),
-        inset 0 1px 0 rgba(255,255,255,.055) !important;
+    padding: 0 !important;
     overflow: visible !important;
+}
+
+#lifePostSubmitSlot .lq-final-review-unified-card {
+    display: contents !important;
 }
 
 #lifePostSubmitSlot .lq-final-review-head {
@@ -8967,16 +8962,6 @@ body.life-landing .lq-hero-shell:has(#lifePostSubmitSlot:not([hidden])) {
         grid-column: 1 / -1 !important;
     }
 
-    #lifePostSubmitSlot .lq-final-review-unified-card {
-        display: grid !important;
-        grid-template-columns: minmax(0, 1fr) !important;
-        gap: 14px !important;
-        width: min(1480px, calc(100vw - 32px)) !important;
-        max-width: min(1480px, calc(100vw - 32px)) !important;
-        padding: 22px 22px 26px !important;
-        overflow: visible !important;
-    }
-
     #lifePostSubmitSlot .lq-final-review-head,
     #lifePostSubmitSlot .lq-final-review-proof-row,
     #lifePostSubmitSlot .lq-final-review-impact-grid,
@@ -9028,11 +9013,6 @@ body.life-landing .lq-hero-shell:has(#lifePostSubmitSlot:not([hidden])) {
 }
 
 @@media (max-width: 720px) {
-    #lifePostSubmitSlot .lq-final-review-unified-card {
-        padding: 17px !important;
-        border-radius: 22px !important;
-    }
-
     #lifePostSubmitSlot .lq-final-review-title {
         font-size: 1.52rem !important;
         line-height: 1.04 !important;
@@ -14216,15 +14196,6 @@ body.life-landing.life-quote-started .lq-hero-shell {
     #lifePostSubmitSlot {
         margin: 0 !important;
         padding: 0 !important;
-    }
-
-    #lifePostSubmitSlot .lq-final-review-unified-card {
-        width: 100% !important;
-        padding: 14px 13px 16px !important;
-        border-radius: 18px !important;
-        box-shadow:
-            0 14px 28px rgba(2, 12, 27, 0.2),
-            inset 0 1px 0 rgba(255,255,255,.045) !important;
     }
 
     #lifePostSubmitSlot .lq-final-review-head {
