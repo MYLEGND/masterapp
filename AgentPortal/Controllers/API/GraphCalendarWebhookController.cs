@@ -364,10 +364,13 @@ public sealed class GraphCalendarWebhookController : ControllerBase
             .ThenByDescending(x => x.CapturedUtc)
             .FirstOrDefaultAsync(cancellationToken);
 
+        var metaLeadId = intakeLink?.WebsiteLeadPublicId ?? workstationLeadGuid;
+
         var metadataJson = JsonSerializer.Serialize(new
         {
             appointmentId = appointment.Id,
             appointment.WorkstationLeadId,
+            WebsiteLeadPublicId = intakeLink?.WebsiteLeadPublicId,
             appointment.OwnerAgentUserId,
             appointment.CalendarEventId,
             appointment.CalendarEventWebLink,
@@ -386,7 +389,7 @@ public sealed class GraphCalendarWebhookController : ControllerBase
             EventId = $"appointment_booked_{appointment.Id:N}",
             EventName = "AppointmentBooked",
             EventCategory = "conversion",
-            LeadId = workstationLeadGuid,
+            LeadId = metaLeadId,
             SessionId = intakeLink?.SessionId,
             VisitorId = intakeLink?.VisitorId,
             QuoteType = intakeLink?.InterestType ?? intakeLink?.ProductType ?? "crm",
