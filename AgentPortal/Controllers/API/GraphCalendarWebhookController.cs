@@ -385,14 +385,6 @@ public sealed class GraphCalendarWebhookController : ControllerBase
             {
                 var meta = ClientCrmMetaSerializer.Deserialize(lead.CrmNotes) ?? new ClientCrmMeta();
 
-                if (!string.Equals(lead.Bucket, targetStage, StringComparison.OrdinalIgnoreCase) ||
-                    !string.Equals(lead.CrmStage, targetStage, StringComparison.OrdinalIgnoreCase))
-                {
-                    meta.StageEnteredUtc = utcNow;
-                }
-
-                lead.CrmStage = targetStage;
-                lead.Bucket = targetStage;
                 lead.CrmStatus = string.IsNullOrWhiteSpace(lead.CrmStatus) ? "Lead" : lead.CrmStatus;
                 lead.AgentUserId = appointment.OwnerAgentUserId ?? lead.AgentUserId;
                 lead.UpdatedUtc = utcNow;
@@ -433,12 +425,6 @@ public sealed class GraphCalendarWebhookController : ControllerBase
         {
             var meta = ClientCrmMetaSerializer.Deserialize(profile.CrmNotes) ?? new ClientCrmMeta();
 
-            if (!string.Equals(meta.PipelineStage, targetStage, StringComparison.OrdinalIgnoreCase))
-            {
-                meta.StageEnteredUtc = utcNow;
-            }
-
-            meta.PipelineStage = targetStage;
             meta.WaitingOn = waitingOn;
             meta.Activities ??= new List<ClientCrmActivity>();
             meta.Activities.Insert(0, new ClientCrmActivity
