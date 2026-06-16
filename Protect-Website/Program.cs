@@ -47,6 +47,15 @@ if (string.IsNullOrWhiteSpace(connString))
     throw new InvalidOperationException("ConnectionStrings:MasterAppDb is required for tracking resolution.");
 }
 
+
+if (builder.Environment.IsDevelopment() &&
+    connString.Contains("database.windows.net", StringComparison.OrdinalIgnoreCase) &&
+    !string.Equals(Environment.GetEnvironmentVariable("ALLOW_PROD_DB_LOCAL"), "true", StringComparison.OrdinalIgnoreCase))
+{
+    throw new InvalidOperationException(
+        "Refusing to run Protect-Website locally against Azure SQL. Use local SQLite or set ALLOW_PROD_DB_LOCAL=true intentionally.");
+}
+
 if (IsSqlServerConn(connString))
 {
     builder.Services.AddDbContext<Infrastructure.Data.MasterAppDbContext>(opts =>
