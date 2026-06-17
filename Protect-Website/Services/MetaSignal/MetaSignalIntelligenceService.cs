@@ -163,7 +163,6 @@ public sealed class MetaSignalIntelligenceService : IMetaSignalIntelligenceServi
         if (_options.PersistEvents)
         {
             _db.MetaSignalEvents.Add(row);
-            await MirrorMetaSignalIntoAnalyticsEventsAsync(row, cancellationToken);
             await _db.SaveChangesAsync(cancellationToken);
         }
 
@@ -398,7 +397,6 @@ public sealed class MetaSignalIntelligenceService : IMetaSignalIntelligenceServi
         if (_options.PersistEvents)
         {
             _db.MetaSignalEvents.Add(row);
-            await MirrorMetaSignalIntoAnalyticsEventsAsync(row, cancellationToken);
             await _db.SaveChangesAsync(cancellationToken);
         }
 
@@ -1422,125 +1420,6 @@ public sealed class MetaSignalIntelligenceService : IMetaSignalIntelligenceServi
 
         var bytes = SHA256.HashData(Encoding.UTF8.GetBytes(value.Trim()));
         return Convert.ToHexString(bytes).ToLowerInvariant()[..24];
-    }
-
-    /// <summary>
-    /// Mirrors MetaSignal website-behavior events into AnalyticsEvents so paid Meta traffic
-    /// appears in the normal Website Analytics dashboard. This is intentionally narrow:
-    /// ViewContent becomes page_view / quote_landing_view, LeadFormStart becomes lead_form_start.
-    /// It dedupes by profile + event type + session/visitor within a short window.
-    /// </summary>
-    private async Task MirrorMetaSignalIntoAnalyticsEventsAsync(MetaSignalEvent row, CancellationToken cancellationToken)
-    {
-        if (row == null)
-            return;
-
-        if (!row.AgentTrackingProfileId.HasValue)
-            return;
-
-        if (string.IsNullOrWhiteSpace(row.SessionId) && string.IsNullOrWhiteSpace(row.VisitorId))
-            return;
-
-        var mappedEventTypes = ResolveAnalyticsMirrorEventTypes(row).ToList();
-        if (mappedEventTypes.Count == 0)
-            return;
-
-        var eventUtc = row.CreatedUtc == default ? DateTime.UtcNow : row.CreatedUtc;
-        var windowStart = eventUtc.AddMinutes(-5);
-        var windowEnd = eventUtc.AddMinutes(5);
-
-        foreach (var eventType in mappedEventTypes)
-        {
-            var existingQuery = _db.AnalyticsEvents.AsNoTracking()
-                .Where(e =>
-                    e.AgentTrackingProfileId == row.AgentTrackingProfileId &&
-                    e.EventType == eventType &&
-                    e.EventUtc >= windowStart &&
-                    e.EventUtc <= windowEnd);
-
-            if (!string.IsNullOrWhiteSpace(row.SessionId))
-            {
-                existingQuery = existingQuery.Where(e => e.SessionId == row.SessionId);
-            }
-            else if (!string.IsNullOrWhiteSpace(row.VisitorId))
-            {
-                existingQuery = existingQuery.Where(e => e.VisitorId == row.VisitorId);
-            }
-
-            if (await existingQuery.AnyAsync(cancellationToken))
-                continue;
-
-            var utmSource = Normalize(row.UtmSource);
-            var utmMedium = Normalize(row.UtmMedium);
-
-            if (row.FbclidPresent)
-            {
-                utmSource ??= "facebook";
-                utmMedium ??= "paid";
-            }
-
-            _db.AnalyticsEvents.Add(new AnalyticsEvent
-            {
-                EventId = Guid.NewGuid(),
-                ClientEventId = Guid.NewGuid(),
-                SchemaVersion = 1,
-                TrackingVersion = "meta-signal-mirror",
-                EventType = eventType,
-                PageKey = Normalize(row.EffectivePageKey) ?? Normalize(row.PageKey),
-                QuoteType = Normalize(row.QuoteType),
-                SessionId = Normalize(row.SessionId),
-                VisitorId = Normalize(row.VisitorId),
-                UtmSource = utmSource,
-                UtmMedium = utmMedium,
-                UtmCampaign = Normalize(row.UtmCampaign),
-                UtmId = Normalize(row.UtmId),
-                UtmContent = Normalize(row.UtmContent),
-                Referrer = Normalize(row.Referrer),
-                Environment = Normalize(row.Environment),
-                Host = Normalize(row.Host),
-                EventUtc = eventUtc,
-                ReceivedUtc = DateTime.UtcNow,
-                IsInternal = false,
-                AgentTrackingProfileId = row.AgentTrackingProfileId,
-                AgentSlug = Normalize(row.AgentSlug),
-                DeviceType = row.DeviceType,
-                Browser = row.Browser,
-                OperatingSystem = row.OperatingSystem,
-                UserAgent = row.UserAgent,
-                ViewportWidth = row.ViewportWidth,
-                ViewportHeight = row.ViewportHeight,
-                ScreenWidth = row.ScreenWidth,
-                ScreenHeight = row.ScreenHeight,
-                WebDriver = row.WebDriver,
-                IsHeadless = row.IsHeadless,
-                MouseMoveCount = row.MouseMoveCount,
-                HumanInteractionCount = row.HumanInteractionCount,
-                VisibilityChangeCount = row.VisibilityChangeCount,
-                Language = row.Language,
-                TimeZone = row.TimeZone,
-                MetadataJson = $"{{\"mirroredFrom\":\"MetaSignalEvents\",\"metaSignalEventId\":\"{row.EventId}\",\"metaSignalEventName\":\"{row.EventName}\"}}"
-            });
-        }
-    }
-
-    private static IEnumerable<string> ResolveAnalyticsMirrorEventTypes(MetaSignalEvent row)
-    {
-        var eventName = Normalize(row.EventName);
-
-        if (string.Equals(eventName, "ViewContent", StringComparison.OrdinalIgnoreCase))
-        {
-            yield return "page_view";
-
-            if (LooksLikeQuoteLanding(row))
-                yield return "quote_landing_view";
-
-            yield break;
-        }
-
-        if (string.Equals(eventName, "LeadFormStart", StringComparison.OrdinalIgnoreCase))
-        {
-            yield return "lead_form_start";
-        }
     }
 
     private static bool LooksLikeQuoteLanding(MetaSignalEvent row)
