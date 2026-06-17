@@ -45,10 +45,16 @@ public sealed class AgentTrackingService : IAgentTrackingService
 
     public async Task<AgentTrackingProfile?> GetByUpnAsync(string agentUpn, CancellationToken ct = default)
     {
-        if (string.IsNullOrWhiteSpace(agentUpn)) return null;
+        var normalizedUpn = NormalizeUpn(agentUpn);
+        if (normalizedUpn == null) return null;
+
         return await _db.AgentTrackingProfiles.AsNoTracking()
-            .Where(x => x.AgentUpn == agentUpn)
-            .OrderBy(x => x.CreatedUtc)
+            .Where(x => x.AgentUpn != null && x.AgentUpn.ToLower() == normalizedUpn)
+            // Prefer active profiles.
+            .OrderBy(x => x.Status == "active" ? 0 : 1)
+            // Prefer clean canonical slugs over duplicate suffixes like -2, -3.
+            .ThenBy(x => Regex.IsMatch(x.Slug ?? string.Empty, "-\\d+$") ? 1 : 0)
+            .ThenBy(x => x.CreatedUtc)
             .ThenBy(x => x.Id)
             .FirstOrDefaultAsync(ct);
     }
