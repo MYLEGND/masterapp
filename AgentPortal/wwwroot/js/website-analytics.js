@@ -33,6 +33,7 @@
     to: initialTo,
     pollMs: 45000,
     qualityMode: 'real_human',
+    dashboardTrafficType: 'all',
     controllers: {},
     openModal: null,
     cache: {
@@ -433,7 +434,13 @@
     return 'RealHuman';
   }
 
-  function rangeParams({ team = false, modal = null } = {}) {
+  function mapTrafficTypeParam(value) {
+    if (value === 'paid') return 'PaidAds';
+    if (value === 'non_paid') return 'NonPaid';
+    return 'All';
+  }
+
+  function rangeParams({ team = false, modal = null, trafficType = null } = {}) {
     const p = { preset: state.scope.preset, timezoneOffsetMinutes: viewerTz.offsetMinutes, qualityMode: mapQualityMode(state.qualityMode) };
     if (viewerTz.id) p.timezoneId = viewerTz.id;
     const customRange = resolveCustomRangeUtc();
@@ -448,13 +455,12 @@
     if (state.scope.agentProfileId) {
       p.agentProfileId = state.scope.agentProfileId;
     }
-    // Add trafficType if modal context is provided
-    if (modal && state.trafficType && state.trafficType[modal]) {
-      let t = state.trafficType[modal];
-      if (t === 'paid') p.trafficType = 'PaidAds';
-      else if (t === 'non_paid') p.trafficType = 'NonPaid';
-      else p.trafficType = 'All';
-    }
+    const selectedTrafficType = modal && state.trafficType && state.trafficType[modal]
+      ? state.trafficType[modal]
+      : (trafficType || state.dashboardTrafficType || 'all');
+
+    p.trafficType = mapTrafficTypeParam(selectedTrafficType);
+
     return p;
   }
 
@@ -2660,7 +2666,7 @@ function escapeHtml(value) {
   // Fetch wrappers ---------------------------------------------------
   async function loadSummary() {
     try {
-      const data = await fetchJson('summary', endpoints.summary, rangeParams());
+      const data = await fetchJson('summary', endpoints.summary, rangeParams({ trafficType: state.dashboardTrafficType }));
       if (!data) return;
       setSummaryRefreshStatus('', false);
       renderSummary(data);
@@ -2674,7 +2680,7 @@ function escapeHtml(value) {
 
   async function loadMarketingHealth() {
     try {
-      const data = await fetchJson('marketing-health', endpoints.marketingHealth, rangeParams());
+      const data = await fetchJson('marketing-health', endpoints.marketingHealth, rangeParams({ trafficType: state.dashboardTrafficType }));
       if (!data) return;
       renderMarketingHealth(data);
     } catch (err) {
@@ -4002,7 +4008,7 @@ function escapeHtml(value) {
       get preset()      { return state.scope.preset || 'today'; },
       get from()        { return state.scope.from || null; },
       get to()          { return state.scope.to || null; },
-      get trafficType() { return 'all'; },
+      get trafficType() { return state.dashboardTrafficType || 'all'; },
       get agentProfileId() { return state.scope.agentProfileId || null; },
       get isFounder()      { return isFounder; },
       get scopeLabel()     { return state.scope.scopeLabel || 'Global'; },
