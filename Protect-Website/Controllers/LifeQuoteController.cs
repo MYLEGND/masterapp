@@ -2179,7 +2179,11 @@ Illustrative estimate only. Final eligibility, pricing, underwriting approval, a
             if (Request?.Cookies.TryGetValue(cookieName, out var cookieValue) != true)
                 return null;
 
-            return string.IsNullOrWhiteSpace(cookieValue) ? null : cookieValue.Trim();
+            if (string.IsNullOrEmpty(cookieValue))
+                return null;
+
+            // Preserve Meta _fbc/_fbp exactly. Do not trim/lowercase/decode/re-encode.
+            return cookieValue;
         }
 
         private static string NormalizeBrowserPixelStatus(string? status)

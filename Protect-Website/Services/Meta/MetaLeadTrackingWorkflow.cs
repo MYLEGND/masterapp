@@ -88,7 +88,11 @@ public static class MetaLeadTrackingWorkflow
         if (request?.Cookies.TryGetValue(cookieName, out var cookieValue) != true)
             return null;
 
-        return string.IsNullOrWhiteSpace(cookieValue) ? null : cookieValue.Trim();
+        if (string.IsNullOrEmpty(cookieValue))
+            return null;
+
+        // Preserve Meta _fbc/_fbp exactly. Do not trim/lowercase/decode/re-encode.
+        return cookieValue;
     }
 
     public static string NormalizeBrowserPixelStatus(string? status)
