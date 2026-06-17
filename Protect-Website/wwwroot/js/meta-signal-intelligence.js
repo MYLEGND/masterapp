@@ -861,6 +861,20 @@
       }
     }
 
+      function resolveClientContext() {
+        try {
+          const api = window.LegendAnalytics;
+          if (!api || typeof api.getClientContext !== 'function') {
+            return {};
+          }
+
+          const context = api.getClientContext();
+          return context && typeof context === 'object' ? context : {};
+        } catch {
+          return {};
+        }
+      }
+
     async function emitSignal(eventName, options = {}) {
       const onceKey = options.onceKey || null;
       if (onceKey && state.fired[onceKey]) {
@@ -901,6 +915,7 @@
           frictionScore: score.frictionScore,
           totalSignalScore: score.totalSignalScore
         },
+          clientContext: resolveClientContext(),
         attribution: resolveAttribution(),
         metadata
       };

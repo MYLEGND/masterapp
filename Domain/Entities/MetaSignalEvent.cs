@@ -45,4 +45,21 @@ public class MetaSignalEvent
     public string? Environment { get; set; }
     public string? Host { get; set; }
     public string? MetadataJson { get; set; }
+
+    public string? DeviceType { get; set; }
+    public string? Browser { get; set; }
+    public string? OperatingSystem { get; set; }
+    public string? UserAgent { get; set; }
+    public int? ViewportWidth { get; set; }
+    public int? ViewportHeight { get; set; }
+    public int? ScreenWidth { get; set; }
+    public int? ScreenHeight { get; set; }
+    public bool? WebDriver { get; set; }
+    public bool? IsHeadless { get; set; }
+    public int? MouseMoveCount { get; set; }
+    public int? HumanInteractionCount { get; set; }
+    public int? VisibilityChangeCount { get; set; }
+    public string? Language { get; set; }
+    public string? TimeZone { get; set; }
+
 }

@@ -1874,6 +1874,7 @@ function trackCustomFieldError(formKey, fieldName, errorType, offerKey) {
         MetadataJson: JSON.stringify(metadata || {})
       });
     },
+      getClientContext,
     ids: {
       getVisitorId,
       getSessionId,

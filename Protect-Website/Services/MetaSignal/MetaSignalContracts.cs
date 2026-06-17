@@ -24,6 +24,26 @@ public sealed class MetaSignalScorePayload
     public int TotalSignalScore { get; set; }
 }
 
+public sealed class MetaSignalClientContextPayload
+{
+
+    public string? DeviceType { get; set; }
+    public string? Browser { get; set; }
+    public string? OperatingSystem { get; set; }
+    public string? UserAgent { get; set; }
+    public int? ViewportWidth { get; set; }
+    public int? ViewportHeight { get; set; }
+    public int? ScreenWidth { get; set; }
+    public int? ScreenHeight { get; set; }
+    public bool? WebDriver { get; set; }
+    public bool? IsHeadless { get; set; }
+    public int? MouseMoveCount { get; set; }
+    public int? HumanInteractionCount { get; set; }
+    public int? VisibilityChangeCount { get; set; }
+    public string? Language { get; set; }
+    public string? TimeZone { get; set; }
+}
+
 public sealed class MetaSignalIngestRequest
 {
     public string EventName { get; set; } = string.Empty;
@@ -46,6 +66,7 @@ public sealed class MetaSignalIngestRequest
     public string? ScoreTier { get; set; }
     public MetaSignalScorePayload? Score { get; set; }
     public MetaSignalAttributionPayload? Attribution { get; set; }
+    public MetaSignalClientContextPayload? ClientContext { get; set; }
     public JsonElement Metadata { get; set; }
 }
 

@@ -338,7 +338,23 @@ public sealed class MetaSignalIntelligenceService : IMetaSignalIntelligenceServi
             AgentSlug = normalized.AgentSlug,
             Environment = EnvironmentLabelResolver.Resolve(),
             Host = httpContext?.Request.Host.ToString(),
-            MetadataJson = BuildMetadataJson(normalized.Metadata, normalized, attribution, score, browserSent: _options.SendBrowserEvents && normalized.BrowserEventSent, metaServerStatus: "pending", metaServerNote: null)
+            MetadataJson = BuildMetadataJson(normalized.Metadata, normalized, attribution, score, browserSent: _options.SendBrowserEvents && normalized.BrowserEventSent, metaServerStatus: "pending", metaServerNote: null),
+
+            DeviceType = Normalize(normalized.ClientContext?.DeviceType),
+            Browser = Normalize(normalized.ClientContext?.Browser),
+            OperatingSystem = Normalize(normalized.ClientContext?.OperatingSystem),
+            UserAgent = Normalize(normalized.ClientContext?.UserAgent),
+            ViewportWidth = normalized.ClientContext?.ViewportWidth,
+            ViewportHeight = normalized.ClientContext?.ViewportHeight,
+            ScreenWidth = normalized.ClientContext?.ScreenWidth,
+            ScreenHeight = normalized.ClientContext?.ScreenHeight,
+            WebDriver = normalized.ClientContext?.WebDriver,
+            IsHeadless = normalized.ClientContext?.IsHeadless,
+            MouseMoveCount = normalized.ClientContext?.MouseMoveCount,
+            HumanInteractionCount = normalized.ClientContext?.HumanInteractionCount,
+            VisibilityChangeCount = normalized.ClientContext?.VisibilityChangeCount,
+            Language = Normalize(normalized.ClientContext?.Language),
+            TimeZone = Normalize(normalized.ClientContext?.TimeZone),
         };
 
         MetaConversionsApiResult? metaServerResult = null;
@@ -1487,6 +1503,21 @@ public sealed class MetaSignalIntelligenceService : IMetaSignalIntelligenceServi
                 IsInternal = false,
                 AgentTrackingProfileId = row.AgentTrackingProfileId,
                 AgentSlug = Normalize(row.AgentSlug),
+                DeviceType = row.DeviceType,
+                Browser = row.Browser,
+                OperatingSystem = row.OperatingSystem,
+                UserAgent = row.UserAgent,
+                ViewportWidth = row.ViewportWidth,
+                ViewportHeight = row.ViewportHeight,
+                ScreenWidth = row.ScreenWidth,
+                ScreenHeight = row.ScreenHeight,
+                WebDriver = row.WebDriver,
+                IsHeadless = row.IsHeadless,
+                MouseMoveCount = row.MouseMoveCount,
+                HumanInteractionCount = row.HumanInteractionCount,
+                VisibilityChangeCount = row.VisibilityChangeCount,
+                Language = row.Language,
+                TimeZone = row.TimeZone,
                 MetadataJson = $"{{\"mirroredFrom\":\"MetaSignalEvents\",\"metaSignalEventId\":\"{row.EventId}\",\"metaSignalEventName\":\"{row.EventName}\"}}"
             });
         }
@@ -1567,6 +1598,7 @@ public sealed class MetaSignalIntelligenceService : IMetaSignalIntelligenceServi
             ScoreTier = Normalize(request.ScoreTier),
             Score = request.Score,
             Attribution = request.Attribution ?? new MetaSignalAttributionPayload(),
+            ClientContext = request.ClientContext,
             Metadata = request.Metadata,
             IsPaidLandingExperience = string.Equals(pageMode, "paid_landing", StringComparison.OrdinalIgnoreCase)
         };
@@ -1621,6 +1653,7 @@ public sealed class MetaSignalIntelligenceService : IMetaSignalIntelligenceServi
         public string? ScoreTier { get; init; }
         public MetaSignalScorePayload? Score { get; init; }
         public MetaSignalAttributionPayload Attribution { get; init; } = new();
+        public MetaSignalClientContextPayload? ClientContext { get; init; }
         public JsonElement Metadata { get; init; }
         public bool IsPaidLandingExperience { get; init; }
     }
