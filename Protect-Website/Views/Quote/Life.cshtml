@@ -7543,29 +7543,6 @@ input:checked + .lq-answer-card {
                                     <div id="lifeContactCaptureWrap">
                                         <div class="lq-contact-grid">
                                         <div class="full lq-contact-capture-head">
-                                            <div class="lq-agent-handoff" role="note" aria-label="Licensed guidance from @contactFirstTrustLabelName">
-                                                <div class="lq-contact-capture-kicker">Your licensed review</div>
-                                                <div class="lq-agent-handoff-head">
-                                                    <div class="lq-agent-identity">
-                                                        <div class="lq-agent-avatar" aria-hidden="true">
-                                                            @if (!string.IsNullOrWhiteSpace(contactFirstTrustImageUrl))
-                                                            {
-                                                                <img src="@contactFirstTrustImageUrl" alt="" loading="lazy" onerror="this.style.display='none'; this.nextElementSibling.hidden=false;" />
-                                                            }
-                                                            <span class="lq-agent-avatar-fallback" @(!string.IsNullOrWhiteSpace(contactFirstTrustImageUrl) ? "hidden" : null)>@contactFirstTrustInitials</span>
-                                                        </div>
-                                                    </div>
-                                                    <div>
-                                                        <div class="lq-agent-name">@contactFirstTrustIntroLine</div>
-                                                        <div class="lq-agent-display-name">@agentTrustHeadline</div>
-                                                        <div class="lq-agent-bio">@resolvedAgentTrustMessage</div>
-                                                        @if (!string.IsNullOrWhiteSpace(agentTrustNpn))
-                                                        {
-                                                            <div class="lq-agent-license">NPN @agentTrustNpn</div>
-                                                        }
-                                                    </div>
-                                                </div>
-                                            </div>
                                             <div class="lq-contact-capture-kicker">@stepTwoContactKickerText</div>
                                             <div class="lq-contact-capture-title" id="lifeStep2ContactTitle">@stepTwoContactTitleText</div>
                                             <div class="lq-contact-capture-copy" id="lifeStep2ContactCopy">@stepTwoContactCopyText</div>
@@ -8050,29 +8027,6 @@ input:checked + .lq-answer-card {
                 <div id="lifeContactCaptureWrap">
                     <div class="lq-contact-grid">
                         <div class="full lq-contact-capture-head">
-                            <div class="lq-agent-handoff" role="note" aria-label="Licensed guidance from @contactFirstTrustLabelName">
-                                <div class="lq-contact-capture-kicker">Your licensed review</div>
-                                <div class="lq-agent-handoff-head">
-                                    <div class="lq-agent-identity">
-                                        <div class="lq-agent-avatar" aria-hidden="true">
-                                            @if (!string.IsNullOrWhiteSpace(contactFirstTrustImageUrl))
-                                            {
-                                                <img src="@contactFirstTrustImageUrl" alt="" loading="lazy" onerror="this.style.display='none'; this.nextElementSibling.hidden=false;" />
-                                            }
-                                            <span class="lq-agent-avatar-fallback" @(!string.IsNullOrWhiteSpace(contactFirstTrustImageUrl) ? "hidden" : null)>@contactFirstTrustInitials</span>
-                                        </div>
-                                    </div>
-                                    <div>
-                                        <div class="lq-agent-name">@contactFirstTrustIntroLine</div>
-                                        <div class="lq-agent-display-name">@agentTrustHeadline</div>
-                                        <div class="lq-agent-bio">@resolvedAgentTrustMessage</div>
-                                        @if (!string.IsNullOrWhiteSpace(agentTrustNpn))
-                                        {
-                                            <div class="lq-agent-license">NPN @agentTrustNpn</div>
-                                        }
-                                    </div>
-                                </div>
-                            </div>
                             <div class="lq-contact-capture-kicker">@stepTwoContactKickerText</div>
                             <div class="lq-contact-capture-title" id="lifeStep2ContactTitle">@stepTwoContactTitleText</div>
                             <div class="lq-contact-capture-copy" id="lifeStep2ContactCopy">@stepTwoContactCopyText</div>
