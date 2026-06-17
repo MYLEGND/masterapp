@@ -9129,14 +9129,19 @@ body.life-landing .lq-hero-shell:has(#lifePostSubmitSlot:not([hidden])) {
     background: transparent !important;
     border: 0 !important;
     box-shadow: none !important;
-    display: grid !important;
-    grid-template-columns: minmax(0, 1.08fr) minmax(280px, .92fr) !important;
-    gap: 16px 22px !important;
-    align-items: center !important;
-    justify-items: stretch !important;
-    max-width: 900px !important;
-    padding: 24px 24px 26px !important;
+
+    display: flex !important;
+    flex-direction: column !important;
+    align-items: stretch !important;
+
+    width: 100% !important;
+    max-width: 1120px !important;
+
+    gap: 18px !important;
+
+    padding: 28px !important;
     margin: 0 auto !important;
+
     text-align: left !important;
 }
 
@@ -9182,21 +9187,22 @@ body.life-landing .lq-hero-shell:has(#lifePostSubmitSlot:not([hidden])) {
 }
 
 #lifeProcessingPanel .lq-processing-bridge {
-    grid-column: 2 !important;
-    grid-row: 2 / span 3 !important;
     width: 100% !important;
-    max-width: 340px !important;
+    max-width: none !important;
+
     display: grid !important;
-    gap: 12px !important;
-    align-self: stretch !important;
-    justify-self: end !important;
+    gap: 14px !important;
+
     margin: 0 !important;
-    padding: 18px 18px 16px !important;
+    padding: 24px !important;
+
     border-radius: 20px !important;
     border: 1px solid rgba(243,214,136,.18) !important;
+
     background:
         radial-gradient(circle at 50% 0%, rgba(243,214,136,.08), transparent 38%),
         linear-gradient(180deg, rgba(8,27,56,.84) 0%, rgba(6,19,39,.92) 100%) !important;
+
     box-shadow:
         inset 0 1px 0 rgba(255,255,255,.045),
         0 16px 32px rgba(2,12,27,.18) !important;
