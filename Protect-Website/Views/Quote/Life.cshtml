@@ -2792,7 +2792,7 @@ box-shadow:
 .lq-contact-estimate-slot[hidden] {
     display: none !important;
 }
-/* WRAP BACKGROUND DISABLED - PROD OVERRIDES ESTIMATE SUMMARY */
+
 .lq-contact-estimate-head {
     display: grid;
     gap: 4px;
@@ -3333,7 +3333,7 @@ box-shadow:
         min-height: 68vh;
     }
 }
-body.page-variant-contact-first-education-v1 /* WRAP BACKGROUND DISABLED - PROD OVERRIDES ESTIMATE SUMMARY */
+body.page-variant-contact-first-education-v1 
 body.page-variant-contact-first-education-v1 .lq-contact-estimate-copy,
 body.page-variant-contact-first-education-v1 .lq-contact-estimate-alt,
 body.page-variant-contact-first-education-v1 .lq-contact-estimate-signal-copy {
@@ -4799,7 +4799,7 @@ body.page-variant-contact-first-education-v1.life-landing .lq-trust-note {
     }
 
     body.life-landing .lq-contact-estimate-wrap,
-    body.life-final-step-active /* WRAP BACKGROUND DISABLED - PROD OVERRIDES ESTIMATE SUMMARY */
+    body.life-final-step-active 
 
     body.life-landing .lq-contact-estimate-copy,
     body.life-final-step-active .lq-contact-estimate-copy {
@@ -5835,7 +5835,7 @@ body.life-final-step-active #lifeEducationContactPanel .lq-contact-first-proof-r
 }
 
 /* Inner recommendation preview: one clear bordered block only. */
-/* REMOVED COMPETING POST-SUBMIT BACKGROUND */
+
     border: 1px solid rgba(199,153,49,0.34) !important;
     border-radius: 16px !important;
     box-shadow: none !important;
@@ -6096,7 +6096,7 @@ main.layout-content {
     padding: 0 !important;
 }
 
-/* REMOVED COMPETING POST-SUBMIT BACKGROUND */
+
     border: 1px solid rgba(199,153,49,.34) !important;
     border-radius: 16px !important;
     padding: 14px !important;
@@ -8721,7 +8721,7 @@ input:checked + .lq-answer-card {
 /* TRUE SUBMIT LOADING HANDOFF */
 #lifeEducationContactPanel.is-submit-loading #lifeStep1Panel,
 #lifeEducationContactPanel.is-submit-loading #lifeStep2Panel,
-#lifeEducationContactPanel.is-submit-loading #lifeStep2EstimateSummary /* PRIMARY POST-SUBMIT SURFACE */,
+#lifeEducationContactPanel.is-submit-loading #lifeStep2EstimateSummary ,
 #lifeEducationContactPanel.is-submit-loading #lifeContactCaptureWrap,
 #lifeEducationContactPanel.is-submit-loading #lifePostSubmitSlot {
     display: none !important;
@@ -13497,17 +13497,17 @@ body.life-landing .lq-hero-shell:has(#lifePostSubmitSlot:not([hidden])) {
 }
 
 /* estimate preview */
-#lifeStep2EstimateSummary /* PRIMARY POST-SUBMIT SURFACE */,
-#lifeStep2EstimateSummary /* PRIMARY POST-SUBMIT SURFACE */.lq-contact-teaser-final,
-#lifeWizardForm /* REMOVED LEGACY WRAP BACKGROUND (POST-SUBMIT) */
+#lifeStep2EstimateSummary ,
+#lifeStep2EstimateSummary .lq-contact-teaser-final,
+#lifeWizardForm 
     box-shadow: inset 0 1px 0 rgba(255,255,255,.05), 0 16px 34px rgba(2,12,27,.18) !important;
 }
 
-#lifeStep2EstimateSummary /* PRIMARY POST-SUBMIT SURFACE */ .lq-contact-teaser-final-copy {
+#lifeStep2EstimateSummary  .lq-contact-teaser-final-copy {
     margin: 0 0 16px !important;
 }
 
-#lifeStep2EstimateSummary /* PRIMARY POST-SUBMIT SURFACE */ .lq-contact-estimate-kicker,
+#lifeStep2EstimateSummary  .lq-contact-estimate-kicker,
 #lifeContactCaptureWrap .lq-contact-capture-kicker,
 #lifePostSubmitSlot .lq-kicker,
 #lifePostSubmitSlot .lq-section-kicker {
@@ -13519,22 +13519,22 @@ body.life-landing .lq-hero-shell:has(#lifePostSubmitSlot:not([hidden])) {
     margin: 0 0 8px !important;
 }
 
-#lifeStep2EstimateSummary /* PRIMARY POST-SUBMIT SURFACE */ .lq-contact-estimate-title {
+#lifeStep2EstimateSummary  .lq-contact-estimate-title {
     color: var(--legend-cream) !important;
     font-size: 1.42rem !important;
     line-height: 1.08 !important;
     margin: 0 0 8px !important;
 }
 
-#lifeStep2EstimateSummary /* PRIMARY POST-SUBMIT SURFACE */ .lq-contact-estimate-copy {
+#lifeStep2EstimateSummary  .lq-contact-estimate-copy {
     color: rgba(248,250,252,.84) !important;
     font-size: .98rem !important;
     line-height: 1.32 !important;
     margin: 0 !important;
 }
 
-#lifeStep2EstimateSummary /* PRIMARY POST-SUBMIT SURFACE */ .lq-contact-teaser-final-metrics,
-#lifeStep2EstimateSummary /* PRIMARY POST-SUBMIT SURFACE */ .lq-contact-estimate-metrics,
+#lifeStep2EstimateSummary  .lq-contact-teaser-final-metrics,
+#lifeStep2EstimateSummary  .lq-contact-estimate-metrics,
 #lifePostSubmitSlot .lq-estimate-metrics,
 #lifePostSubmitSlot .lq-metric-grid {
     display: grid !important;
@@ -13542,7 +13542,7 @@ body.life-landing .lq-hero-shell:has(#lifePostSubmitSlot:not([hidden])) {
     gap: 8px !important;
 }
 
-#lifeStep2EstimateSummary /* PRIMARY POST-SUBMIT SURFACE */ .lq-contact-estimate-metric,
+#lifeStep2EstimateSummary  .lq-contact-estimate-metric,
 #lifePostSubmitSlot .lq-metric,
 #lifePostSubmitSlot .lq-estimate-metric {
     min-height: 76px !important;
@@ -13668,8 +13668,8 @@ body.life-landing .lq-hero-shell:has(#lifePostSubmitSlot:not([hidden])) {
         padding: 16px !important;
     }
 
-    #lifeStep2EstimateSummary /* PRIMARY POST-SUBMIT SURFACE */ .lq-contact-teaser-final-metrics,
-    #lifeStep2EstimateSummary /* PRIMARY POST-SUBMIT SURFACE */ .lq-contact-estimate-metrics,
+    #lifeStep2EstimateSummary  .lq-contact-teaser-final-metrics,
+    #lifeStep2EstimateSummary  .lq-contact-estimate-metrics,
     #lifeContactCaptureWrap .lq-contact-grid,
     #lifeContactCaptureWrap .lq-field-row.two,
     #lifePostSubmitSlot .lq-estimate-metrics,
@@ -13683,8 +13683,8 @@ body.life-landing .lq-hero-shell:has(#lifePostSubmitSlot:not([hidden])) {
     }
 }
 
-/* FINAL AUTHORITY LOCK — POST SUBMIT */
-/* REMOVED COMPETING POST-SUBMIT BACKGROUND */
+
+
     border: 1px solid rgba(243,214,136,.56) !important;
     color: #f8fafc !important;
 }
@@ -13709,13 +13709,19 @@ body.life-final-step-active .lq-contact-estimate-wrap {
 
 
 
-/* RESTORED PRODUCTION POST-SUBMIT STYLE */
+
+
+
+
+
+/* PRODUCTION POST-SUBMIT RESTORE */
 body.life-final-step-active #lifeStep2EstimateSummary,
 body.life-landing.life-quote-started #lifeStep2EstimateSummary {
     background: linear-gradient(180deg, #08254d 0%, #061d3d 52%, #071a36 100%) !important;
     border: 1px solid rgba(243,214,136,.56) !important;
-    box-shadow: inset 0 1px 0 rgba(255,255,255,.05), 0 16px 34px rgba(2,12,27,.18) !important;
     color: #f8fafc !important;
+    box-shadow: inset 0 1px 0 rgba(255,255,255,.05),
+                0 16px 34px rgba(2,12,27,.18) !important;
 }
 
 </style>
