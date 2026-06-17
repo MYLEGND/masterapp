@@ -1224,7 +1224,7 @@ namespace AgentPortal.Controllers;
             return ScopeContext.Global;
         }
 
-        // Founder default (not viewing as agent)
+        // Founder default on Website Analytics is founder personal unless Global/team is explicitly selected.
         if (isFounder)
         {
             if (requestedAgentId.HasValue) return ScopeContext.ForAgent(requestedAgentId.Value);
@@ -1232,6 +1232,13 @@ namespace AgentPortal.Controllers;
             {
                 return await ResolveEffectiveImpersonatedAgentScopeAsync();
             }
+
+            var founderProfile = await GetCallerProfileAsync();
+            if (founderProfile != null)
+            {
+                return ScopeContext.ForAgent(founderProfile.Id);
+            }
+
             return ScopeContext.Global;
         }
 
