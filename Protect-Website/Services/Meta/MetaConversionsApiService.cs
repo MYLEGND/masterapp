@@ -346,13 +346,13 @@ public sealed class MetaConversionsApiService : IMetaConversionsApiService
 
     private static string? ResolveFbc(string? fbc, string? fbclid, DateTime eventUtc)
     {
-        if (!string.IsNullOrWhiteSpace(fbc))
-            return fbc.Trim();
+        if (!string.IsNullOrEmpty(fbc))
+            return fbc;
 
-        if (string.IsNullOrWhiteSpace(fbclid))
+        if (string.IsNullOrEmpty(fbclid))
             return null;
 
-        return $"fb.1.{new DateTimeOffset(eventUtc).ToUnixTimeMilliseconds()}.{fbclid.Trim()}";
+        return $"fb.1.{new DateTimeOffset(eventUtc).ToUnixTimeMilliseconds()}.{fbclid}";
     }
 
     private static string? NormalizeExternalId(Guid? leadId)
