@@ -38,13 +38,30 @@ public sealed class AgentTrackingResolver
                 .FirstOrDefaultAsync(a => a.Slug == slug, ct);
             if (alias != null)
             {
-                profile = alias.Profile ?? profile;
-                isCanonical = alias.IsCanonical;
-                canonicalSlug = alias.IsCanonical ? alias.Slug :
-                    await _db.AgentTrackingAliases
-                        .Where(a => a.AgentTrackingProfileId == alias.AgentTrackingProfileId && a.IsCanonical)
+                if (profile != null && alias.AgentTrackingProfileId != profile.Id)
+                {
+                    _logger.LogWarning(
+                        "AgentTrackingResolver: slug/profile mismatch slug={Slug} aliasProfileId={AliasProfileId} payloadProfileId={PayloadProfileId}; keeping payload profile id.",
+                        slug,
+                        alias.AgentTrackingProfileId,
+                        profile.Id);
+
+                    canonicalSlug = await _db.AgentTrackingAliases
+                        .Where(a => a.AgentTrackingProfileId == profile.Id && a.IsCanonical)
                         .Select(a => a.Slug)
-                        .FirstOrDefaultAsync(ct) ?? alias.Slug;
+                        .FirstOrDefaultAsync(ct) ?? profile.Slug;
+                    isCanonical = string.Equals(canonicalSlug, slug, StringComparison.OrdinalIgnoreCase);
+                }
+                else
+                {
+                    profile = alias.Profile ?? profile;
+                    isCanonical = alias.IsCanonical;
+                    canonicalSlug = alias.IsCanonical ? alias.Slug :
+                        await _db.AgentTrackingAliases
+                            .Where(a => a.AgentTrackingProfileId == alias.AgentTrackingProfileId && a.IsCanonical)
+                            .Select(a => a.Slug)
+                            .FirstOrDefaultAsync(ct) ?? alias.Slug;
+                }
             }
             else
             {
@@ -52,9 +69,26 @@ public sealed class AgentTrackingResolver
                 var profBySlug = await _db.AgentTrackingProfiles.AsNoTracking().FirstOrDefaultAsync(p => p.Slug == slug, ct);
                 if (profBySlug != null)
                 {
-                    profile = profBySlug;
-                    canonicalSlug = profBySlug.Slug;
-                    isCanonical = true;
+                    if (profile != null && profBySlug.Id != profile.Id)
+                    {
+                        _logger.LogWarning(
+                            "AgentTrackingResolver: profile slug mismatch slug={Slug} slugProfileId={SlugProfileId} payloadProfileId={PayloadProfileId}; keeping payload profile id.",
+                            slug,
+                            profBySlug.Id,
+                            profile.Id);
+
+                        canonicalSlug = await _db.AgentTrackingAliases
+                            .Where(a => a.AgentTrackingProfileId == profile.Id && a.IsCanonical)
+                            .Select(a => a.Slug)
+                            .FirstOrDefaultAsync(ct) ?? profile.Slug;
+                        isCanonical = string.Equals(canonicalSlug, slug, StringComparison.OrdinalIgnoreCase);
+                    }
+                    else
+                    {
+                        profile = profBySlug;
+                        canonicalSlug = profBySlug.Slug;
+                        isCanonical = true;
+                    }
                 }
                 else
                 {
