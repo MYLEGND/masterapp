@@ -6776,7 +6776,7 @@ input:checked + .lq-answer-card {
     }
 
     body.life-landing.life-quote-started #lifeEducationContactPanel {
-        max-width: 980px !important;
+        max-width: 1120px !important;
         margin: 0 auto !important;
         padding: 0 !important;
         border: 0 !important;
@@ -6789,7 +6789,7 @@ input:checked + .lq-answer-card {
         display: none !important;
     }
 
-    body.life-landing.life-quote-started #lifeEducationContactPanel .lq-contact-first-form-surface {
+    body.life-landing.life-quote-started #lifeEducationContactPanel:not(.is-submitted):not(.lq-final-panel-no-chrome):not(.lq-final-review-flat-mode) .lq-contact-first-form-surface {
         position: relative !important;
         padding: 24px 28px 28px !important;
         border-radius: 28px !important;
@@ -6804,7 +6804,7 @@ input:checked + .lq-answer-card {
         overflow: hidden !important;
     }
 
-    body.life-landing.life-quote-started #lifeEducationContactPanel .lq-contact-first-form-surface::before {
+    body.life-landing.life-quote-started #lifeEducationContactPanel:not(.is-submitted):not(.lq-final-panel-no-chrome):not(.lq-final-review-flat-mode) .lq-contact-first-form-surface::before {
         content: "";
         position: absolute;
         inset: 0 0 auto;
@@ -8584,15 +8584,54 @@ body.life-landing .lq-hero-shell:has(#lifePostSubmitSlot:not([hidden])) {
 }
 
 #lifePostSubmitSlot {
-    width: min(1480px, calc(100vw - 32px)) !important;
-    max-width: min(1480px, calc(100vw - 32px)) !important;
-    margin: 0 auto !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    min-width: 0 !important;
+    margin: 0 !important;
     padding: 0 !important;
-    overflow: visible !important;
+    overflow: hidden !important;
 }
 
 #lifePostSubmitSlot .lq-final-review-unified-card {
     display: contents !important;
+}
+
+@@media (min-width: 1024px) {
+    #lifePostSubmitSlot .lq-final-review-head,
+    #lifePostSubmitSlot .lq-final-review-proof-row,
+    #lifePostSubmitSlot .lq-final-review-impact-grid,
+    #lifePostSubmitSlot .lq-final-review-result-slot,
+    #lifePostSubmitSlot .lq-final-review-next-step,
+    #lifePostSubmitSlot .lq-final-review-booking-card,
+    #lifePostSubmitSlot .lq-final-review-loading,
+    #lifePostSubmitSlot .lq-final-review-unavailable,
+    #lifePostSubmitSlot .lq-booking-frame-only,
+    #lifePostSubmitSlot .lq-booking-embed-status {
+        width: min(100%, 1040px) !important;
+        max-width: 1040px !important;
+        margin-left: auto !important;
+        margin-right: auto !important;
+        min-width: 0 !important;
+    }
+
+    #lifePostSubmitSlot .lq-final-review-head {
+        text-align: left !important;
+    }
+
+    #lifePostSubmitSlot .lq-final-review-copy {
+        max-width: 86ch !important;
+    }
+
+    #lifePostSubmitSlot .lq-final-review-impact-grid,
+    #lifePostSubmitSlot .lq-contact-estimate-metrics {
+        grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+    }
+
+    #lifePostSubmitSlot .lq-final-review-next-step,
+    #lifePostSubmitSlot .lq-final-review-booking-card {
+        padding-left: 18px !important;
+        padding-right: 18px !important;
+    }
 }
 
 #lifePostSubmitSlot .lq-final-review-head {
@@ -8859,7 +8898,8 @@ body.life-landing .lq-hero-shell:has(#lifePostSubmitSlot:not([hidden])) {
 }
 
 @@media (min-width: 1024px) {
-    main.layout-content {
+    main.layout-content,
+    .container.layout-content {
         width: min(98vw, 1560px) !important;
         max-width: 1560px !important;
         min-width: 0 !important;
@@ -8879,14 +8919,14 @@ body.life-landing .lq-hero-shell:has(#lifePostSubmitSlot:not([hidden])) {
     body.life-landing .lq-hero-shell:has(#lifeEducationContactPanel.lq-final-panel-no-chrome),
     body.life-landing .lq-hero-shell:has(#lifeEducationContactPanel.lq-final-review-flat-mode),
     body.life-landing .lq-hero-shell:has(#lifePostSubmitSlot:not([hidden])) {
-        width: min(1480px, calc(100vw - 32px)) !important;
-        max-width: min(1480px, calc(100vw - 32px)) !important;
-        overflow: visible !important;
+        width: min(1180px, calc(100vw - 32px)) !important;
+        max-width: min(1180px, calc(100vw - 32px)) !important;
+        overflow: hidden !important;
     }
 
     #lifeEducationContactPanel {
         width: 100% !important;
-        max-width: 980px !important;
+        max-width: 1120px !important;
         margin: 0 auto !important;
         padding: 18px 20px 20px !important;
     }
@@ -8896,8 +8936,9 @@ body.life-landing .lq-hero-shell:has(#lifePostSubmitSlot:not([hidden])) {
     #lifeEducationContactPanel.lq-final-review-flat-mode {
         width: 100% !important;
         max-width: 100% !important;
+        margin: 0 auto !important;
         padding: 0 !important;
-        overflow: visible !important;
+        overflow: hidden !important;
     }
 
     #lifeEducationContactPanel .lq-contact-first-form-surface,
