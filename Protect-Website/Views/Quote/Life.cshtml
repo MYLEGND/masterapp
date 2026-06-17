@@ -5401,13 +5401,27 @@ body.life-final-step-active .lq-hero-shell:has(#lifePostSubmitSlot:not([hidden])
     max-width: min(1480px, calc(100vw - 32px)) !important;
     overflow: visible !important;
 }
+
+body.life-final-step-active.page-variant-contact-first-education-v1 {
+    --cf-rail-width: 1120px;
+}
+
+body.life-final-step-active.page-variant-contact-first-education-v1 .lq-education-stack,
+body.life-final-step-active.page-variant-contact-first-education-v1 .lq-contact-first-primary-grid,
+body.life-final-step-active.page-variant-contact-first-education-v1 #lifeEducationContactPanel {
+    width: 100% !important;
+    max-width: 1120px !important;
+}
+
 body.life-final-step-active .lq-contact-step {
     position: relative;
     z-index: 2;
 }
-body.life-final-step-active.page-variant-contact-first-education-v1 body.life-final-step-active.page-variant-contact-first-education-v1 .lq-education-stack {
+
+body.life-final-step-active.page-variant-contact-first-education-v1 .lq-education-stack {
     gap: 0;
 }
+
 body.life-final-step-active.page-variant-contact-first-education-v1 .lq-contact-first-primary-grid {
     margin-top: 0;
 }
