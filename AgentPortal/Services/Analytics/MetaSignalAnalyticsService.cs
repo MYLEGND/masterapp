@@ -57,10 +57,20 @@ public sealed class MetaSignalAnalyticsService : IMetaSignalAnalyticsService
         var baseQuery = _db.MetaSignalEvents.AsNoTracking()
             .Where(x => x.CreatedUtc >= range.FromUtc && x.CreatedUtc <= range.ToUtc);
 
+        var scopedAgentIds = await ResolveScopedAgentIdsAsync(scope, ct);
         if (scope.ScopeType == ScopeType.Agent && scope.AgentTrackingProfileId.HasValue)
         {
-            var agentId = scope.AgentTrackingProfileId.Value;
-            baseQuery = baseQuery.Where(x => x.AgentTrackingProfileId == agentId);
+            if (scopedAgentIds is { Length: > 0 })
+            {
+                baseQuery = baseQuery.Where(x =>
+                    x.AgentTrackingProfileId.HasValue &&
+                    scopedAgentIds.Contains(x.AgentTrackingProfileId.Value));
+            }
+            else
+            {
+                var agentId = scope.AgentTrackingProfileId.Value;
+                baseQuery = baseQuery.Where(x => x.AgentTrackingProfileId == agentId);
+            }
         }
 
         baseQuery = ApplyTrafficFilter(baseQuery, trafficType);
@@ -857,6 +867,37 @@ public sealed class MetaSignalAnalyticsService : IMetaSignalAnalyticsService
         if (!string.IsNullOrWhiteSpace(row.VisitorId)) return row.VisitorId.Trim();
         if (row.LeadId.HasValue && row.LeadId.Value != Guid.Empty) return row.LeadId.Value.ToString("D");
         return null;
+    }
+
+    /// <summary>
+    /// Expands an agent scope to all tracking profile IDs owned by the same AgentUpn.
+    /// This is the true agent boundary: same authenticated agent account, not slug guessing.
+    /// </summary>
+    private async Task<Guid[]?> ResolveScopedAgentIdsAsync(ScopeContext scope, CancellationToken ct)
+    {
+        if (scope.ScopeType != ScopeType.Agent || !scope.AgentTrackingProfileId.HasValue)
+            return null;
+
+        var selectedId = scope.AgentTrackingProfileId.Value;
+
+        var upn = await _db.AgentTrackingProfiles.AsNoTracking()
+            .Where(p => p.Id == selectedId)
+            .Select(p => p.AgentUpn)
+            .FirstOrDefaultAsync(ct);
+
+        if (string.IsNullOrWhiteSpace(upn))
+            return new[] { selectedId };
+
+        var ids = await _db.AgentTrackingProfiles.AsNoTracking()
+            .Where(p => p.AgentUpn == upn)
+            .Select(p => p.Id)
+            .Distinct()
+            .ToListAsync(ct);
+
+        if (!ids.Contains(selectedId))
+            ids.Add(selectedId);
+
+        return ids.ToArray();
     }
 
     private static string? Normalize(string? value) =>
