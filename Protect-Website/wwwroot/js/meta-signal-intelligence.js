@@ -105,6 +105,10 @@
     return trimmed || null;
   }
 
+  function preserveFbclidValue(value) {
+    return typeof value === 'string' && value.length > 0 ? value : null;
+  }
+
   function normalizeAttribution(raw) {
     return {
       utmSource: normalizeAttributionValue(raw?.utmSource),
@@ -112,7 +116,7 @@
       utmCampaign: normalizeAttributionValue(raw?.utmCampaign),
       utmId: normalizeAttributionValue(raw?.utmId),
       utmContent: normalizeAttributionValue(raw?.utmContent),
-      fbclid: normalizeAttributionValue(raw?.fbclid),
+      fbclid: preserveFbclidValue(raw?.fbclid),
       metaCampaignId: normalizeAttributionValue(raw?.metaCampaignId),
       metaAdSetId: normalizeAttributionValue(raw?.metaAdSetId),
       metaAdId: normalizeAttributionValue(raw?.metaAdId)
@@ -188,8 +192,8 @@
     const existing = readCookieValue('_fbc');
     if (existing) return existing;
 
-    const fbclid = asTrimmed(attribution?.fbclid);
-    if (!fbclid) return null;
+    const fbclid = attribution?.fbclid;
+    if (typeof fbclid !== 'string' || fbclid.length === 0) return null;
 
     const generated = `fb.1.${Date.now()}.${fbclid}`;
     writeCookieValue('_fbc', generated, 90 * 24 * 60 * 60);
