@@ -92,6 +92,7 @@ if (!string.IsNullOrWhiteSpace(redisConn))
 else
     builder.Services.AddSingleton<ILeadBridgeStateService, LeadBridgeStateService>();
 builder.Services.AddScoped<IAnalyticsQueryService, AnalyticsQueryService>();
+builder.Services.AddScoped<IAnalyticsIncidentQueryService, AnalyticsIncidentQueryService>();
 builder.Services.AddScoped<IMetaSignalAnalyticsService, MetaSignalAnalyticsService>();
 builder.Services.AddSingleton<ILandingRouteDiscoveryService, LandingRouteDiscoveryService>();
 builder.Services.AddScoped<AgentPortal.Services.Analytics.WebsiteAnalyticsAiDataBuilder>();
@@ -130,6 +131,7 @@ builder.Services.AddScoped<IBlockerService, BlockerService>();
 builder.Services.AddScoped<ICommitmentService, CommitmentService>();
 builder.Services.AddScoped<IPlaybookEngine, PlaybookEngine>();
 builder.Services.AddHostedService<MigrationHealthHostedService>();
+builder.Services.AddHostedService<AnalyticsIncidentResponseHostedService>();
 builder.Services.AddHostedService<GraphCalendarSubscriptionHostedService>();
 builder.Services.AddHostedService<LeadAppointmentAutoCompletionHostedService>();
 builder.Services.AddHostedService<AzureAgentDirectorySyncHostedService>();
@@ -700,16 +702,8 @@ if (strictMigrations && !builder.Environment.IsDevelopment())
         var db = scope.ServiceProvider.GetRequiredService<MasterAppDbContext>();
         try
         {
-            if (builder.Environment.IsDevelopment())
-            {
-                db.Database.EnsureCreated();
-                startupLogger.LogInformation("SQLite local development database ensured from current model without destructive reset.");
-            }
-            else
-            {
-                db.Database.Migrate();
-                startupLogger.LogInformation("SQLite startup migration applied successfully.");
-            }
+            await MasterAppSqliteSchemaBootstrapper.InitializeAsync(db, startupLogger, app.Lifetime.ApplicationStopping);
+            startupLogger.LogInformation("SQLite startup schema bootstrap completed successfully.");
         }
         catch (Exception ex)
         {

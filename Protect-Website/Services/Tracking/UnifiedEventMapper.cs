@@ -13,6 +13,7 @@ public static class UnifiedEventMapper
         return new AnalyticsEvent
         {
             EventId = Guid.NewGuid(),
+            PipelineStamp = UnifiedAnalyticsWriter.PipelineStamp,
             EventType = ctx.EventName ?? "unknown",
             PageKey = ctx.PageKey,
             FormKey = string.IsNullOrWhiteSpace(ctx.FormKey) && !string.IsNullOrWhiteSpace(ctx.PageKey)

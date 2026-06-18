@@ -194,7 +194,7 @@ namespace Protect_Website.Controllers
                 {
                     var ctx = BuildTrackingContext("quote_auto", lead, eventType, metadata, eventUtc);
                     analyticsEvent = UnifiedEventMapper.ToAnalytics(ctx);
-                    _db.AnalyticsEvents.Add(analyticsEvent);
+                    UnifiedAnalyticsWriter.Write(_db, analyticsEvent);
                     await _db.SaveChangesAsync(HttpContext?.RequestAborted ?? CancellationToken.None);
                 }
                 catch (Exception analyticsEx)

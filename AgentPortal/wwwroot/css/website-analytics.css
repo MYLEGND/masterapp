@@ -7120,4 +7120,384 @@ body {
   }
 }
 
+.wa-incident-banner {
+  margin-top: 1rem;
+  padding: .95rem 1.1rem;
+  border-radius: 16px;
+  border: 1.5px solid rgba(239,68,68,.44);
+  background: linear-gradient(145deg, rgba(127,29,29,.96), rgba(69,10,10,.94));
+  box-shadow: 0 18px 36px rgba(127,29,29,.22);
+  color: #fee2e2;
+}
 
+.wa-incident-banner-kicker {
+  font-size: .72rem;
+  font-weight: 900;
+  letter-spacing: .12em;
+  text-transform: uppercase;
+  color: rgba(254,202,202,.82);
+  margin-bottom: .28rem;
+}
+
+.wa-incident-banner-copy {
+  font-size: .95rem;
+  font-weight: 700;
+  line-height: 1.45;
+}
+
+.wa-health-panel-actions {
+  display: flex;
+  align-items: center;
+  gap: .55rem;
+  flex-wrap: wrap;
+}
+
+.wa-incident-monitor-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: .55rem;
+  border-radius: 999px;
+  border: 1.4px solid rgba(199,153,49,.58);
+  background: rgba(11,21,48,.92);
+  color: #f8fafc;
+  font-weight: 900;
+  letter-spacing: .01em;
+  padding: .46rem .85rem;
+}
+
+.wa-incident-monitor-btn:hover,
+.wa-incident-monitor-btn:focus {
+  color: #f8fafc;
+  border-color: rgba(245,180,45,.78);
+  box-shadow: 0 0 0 .2rem rgba(245,180,45,.16);
+}
+
+.wa-incident-monitor-count {
+  min-width: 1.7rem;
+  height: 1.7rem;
+  padding: 0 .42rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999px;
+  font-size: .78rem;
+  font-weight: 900;
+  background: rgba(255,255,255,.09);
+  color: #f8fafc;
+}
+
+.wa-incident-monitor-count.severity-critical {
+  background: rgba(239,68,68,.28);
+  color: #fee2e2;
+}
+
+.wa-incident-monitor-count.severity-high {
+  background: rgba(249,115,22,.28);
+  color: #ffedd5;
+}
+
+.wa-incident-monitor-count.severity-medium {
+  background: rgba(245,180,45,.28);
+  color: #fff7d6;
+}
+
+.wa-incident-modal-dialog {
+  max-width: 1240px;
+}
+
+.wa-incident-modal-body {
+  display: grid;
+  gap: 1.1rem;
+}
+
+.wa-incident-status {
+  padding: .72rem .92rem;
+  border-radius: 12px;
+  background: rgba(11,21,48,.08);
+  border: 1px solid rgba(148,163,184,.18);
+  color: #0f172a;
+  font-weight: 700;
+}
+
+.wa-incident-status.is-success {
+  background: rgba(22,163,74,.10);
+  border-color: rgba(22,163,74,.22);
+  color: #166534;
+}
+
+.wa-incident-status.is-error {
+  background: rgba(239,68,68,.10);
+  border-color: rgba(239,68,68,.22);
+  color: #991b1b;
+}
+
+.wa-incident-section {
+  border-radius: 18px;
+  border: 1px solid rgba(148,163,184,.18);
+  background: rgba(248,250,252,.96);
+  padding: 1rem;
+  box-shadow: 0 16px 28px rgba(15,23,42,.06);
+}
+
+.wa-incident-section-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: .85rem;
+  margin-bottom: .8rem;
+}
+
+.wa-incident-table-wrap {
+  border-radius: 14px;
+  border: 1px solid rgba(148,163,184,.18);
+  overflow: hidden;
+}
+
+.wa-incident-table {
+  margin-bottom: 0;
+}
+
+.wa-incident-table thead th {
+  background: #0f172a;
+  color: rgba(248,250,252,.86);
+  font-size: .74rem;
+  font-weight: 900;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+  border-bottom: 0;
+  white-space: nowrap;
+}
+
+.wa-incident-table tbody td {
+  vertical-align: top;
+  border-color: rgba(148,163,184,.14);
+}
+
+.wa-incident-row.severity-critical td:first-child {
+  border-left: 4px solid #dc2626;
+}
+
+.wa-incident-row.severity-high td:first-child {
+  border-left: 4px solid #ea580c;
+}
+
+.wa-incident-row.severity-medium td:first-child {
+  border-left: 4px solid #ca8a04;
+}
+
+.wa-incident-table-title {
+  font-weight: 900;
+  color: #0f172a;
+}
+
+.wa-incident-table-sub {
+  margin-top: .2rem;
+  font-size: .82rem;
+  color: rgba(15,23,42,.68);
+  line-height: 1.42;
+}
+
+.wa-incident-pill {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 1.65rem;
+  padding: .18rem .62rem;
+  border-radius: 999px;
+  font-size: .74rem;
+  font-weight: 900;
+  letter-spacing: .04em;
+  text-transform: uppercase;
+}
+
+.wa-incident-pill.severity-critical {
+  background: rgba(220,38,38,.12);
+  color: #991b1b;
+}
+
+.wa-incident-pill.severity-high {
+  background: rgba(234,88,12,.12);
+  color: #9a3412;
+}
+
+.wa-incident-pill.severity-medium {
+  background: rgba(245,180,45,.14);
+  color: #854d0e;
+}
+
+.wa-incident-pill.severity-low,
+.wa-incident-pill.is-status {
+  background: rgba(148,163,184,.12);
+  color: #334155;
+}
+
+.wa-incident-timeline {
+  display: grid;
+  gap: .75rem;
+}
+
+.wa-incident-timeline-item {
+  border-radius: 14px;
+  border: 1px solid rgba(148,163,184,.18);
+  background: #fff;
+  padding: .9rem .95rem;
+  box-shadow: 0 12px 24px rgba(15,23,42,.05);
+}
+
+.wa-incident-timeline-item.severity-critical {
+  border-color: rgba(220,38,38,.26);
+}
+
+.wa-incident-timeline-item.severity-high {
+  border-color: rgba(234,88,12,.24);
+}
+
+.wa-incident-timeline-top {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: .75rem;
+}
+
+.wa-incident-timeline-title {
+  font-weight: 900;
+  color: #0f172a;
+}
+
+.wa-incident-timeline-meta {
+  display: flex;
+  align-items: center;
+  gap: .4rem;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.wa-incident-timeline-time {
+  font-size: .82rem;
+  font-weight: 700;
+  color: rgba(15,23,42,.62);
+}
+
+.wa-incident-timeline-copy {
+  margin-top: .42rem;
+  color: rgba(15,23,42,.74);
+  line-height: 1.45;
+}
+
+.wa-incident-timeline-values {
+  margin-top: .55rem;
+  display: flex;
+  flex-wrap: wrap;
+  gap: .6rem;
+  font-size: .82rem;
+  font-weight: 700;
+  color: rgba(15,23,42,.62);
+}
+
+.wa-incident-focus-grid,
+.wa-incident-attribution-grid,
+.wa-incident-funnel-grid {
+  display: grid;
+  gap: .85rem;
+}
+
+.wa-incident-focus-grid {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.wa-incident-attribution-grid {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.wa-incident-funnel-grid {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.wa-incident-focus-card,
+.wa-incident-metric-card,
+.wa-incident-funnel-card {
+  border-radius: 16px;
+  border: 1px solid rgba(148,163,184,.18);
+  background: linear-gradient(180deg, #ffffff 0%, #f8fafc 100%);
+  padding: .95rem;
+  box-shadow: 0 14px 24px rgba(15,23,42,.05);
+}
+
+.wa-incident-focus-label,
+.wa-incident-metric-label,
+.wa-incident-funnel-stage {
+  font-size: .78rem;
+  font-weight: 900;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+  color: rgba(15,23,42,.56);
+}
+
+.wa-incident-focus-value,
+.wa-incident-metric-value,
+.wa-incident-funnel-count {
+  margin-top: .45rem;
+  font-size: 1.9rem;
+  line-height: 1;
+  font-weight: 950;
+  color: #0f172a;
+}
+
+.wa-incident-focus-sub,
+.wa-incident-metric-sub,
+.wa-incident-funnel-rate {
+  margin-top: .42rem;
+  color: rgba(15,23,42,.66);
+  font-weight: 700;
+  line-height: 1.42;
+}
+
+.wa-incident-focus-delta {
+  margin-top: .7rem;
+  font-weight: 900;
+}
+
+.wa-incident-focus-delta.is-up {
+  color: #166534;
+}
+
+.wa-incident-focus-delta.is-down {
+  color: #991b1b;
+}
+
+.wa-incident-empty {
+  padding: .85rem;
+  border-radius: 12px;
+  background: rgba(148,163,184,.08);
+  color: rgba(15,23,42,.62);
+  font-weight: 700;
+  text-align: center;
+}
+
+@media (max-width: 1100px) {
+  .wa-incident-focus-grid,
+  .wa-incident-attribution-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .wa-incident-funnel-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 700px) {
+  .wa-incident-funnel-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .wa-incident-section-head,
+  .wa-incident-timeline-top {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .wa-health-panel-actions,
+  .wa-incident-timeline-meta {
+    justify-content: flex-start;
+  }
+}

@@ -1,5 +1,6 @@
 using ProtectWebsite.Services.Communication;
 using Azure.Identity;
+using Infrastructure.Data;
 using Infrastructure.Leads;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.AspNetCore.DataProtection;
@@ -7,6 +8,7 @@ using ProtectWebsite.Services.Meta;
 using ProtectWebsite.Services.MetaSignal;
 using ProtectWebsite.Services.Booking;
 using System.IO;
+using System.Linq;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -120,6 +122,51 @@ builder.Services.AddSession(options =>
 });
 
 var app = builder.Build();
+
+if (!IsSqlServerConn(connString))
+{
+    using var scope = app.Services.CreateScope();
+    var startupLogger = scope.ServiceProvider
+        .GetRequiredService<ILoggerFactory>()
+        .CreateLogger("Startup");
+    var db = scope.ServiceProvider.GetRequiredService<Infrastructure.Data.MasterAppDbContext>();
+    await MasterAppSqliteSchemaBootstrapper.InitializeAsync(db, startupLogger, app.Lifetime.ApplicationStopping);
+}
+
+if (app.Environment.IsDevelopment())
+{
+    var analyticsValidatorLogger = app.Services
+        .GetRequiredService<ILoggerFactory>()
+        .CreateLogger("AnalyticsPipelineValidator");
+    // Attempt to locate and invoke AnalyticsPipelineValidator.LogWarnings via reflection so compilation
+    // succeeds even if the type/assembly isn't present.
+    var validatorType = AppDomain.CurrentDomain.GetAssemblies()
+        .Select(a => a.GetType("ProtectWebsite.Services.Tracking.AnalyticsPipelineValidator"))
+        .FirstOrDefault(t => t != null);
+    if (validatorType != null)
+    {
+        var method = validatorType.GetMethod("LogWarnings", System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Static);
+        if (method != null)
+        {
+            try
+            {
+                method.Invoke(null, new object[] { app.Environment.ContentRootPath, analyticsValidatorLogger });
+            }
+            catch (Exception ex)
+            {
+                analyticsValidatorLogger.LogWarning(ex, "AnalyticsPipelineValidator invocation failed.");
+            }
+        }
+        else
+        {
+            analyticsValidatorLogger.LogDebug("AnalyticsPipelineValidator.LogWarnings not found.");
+        }
+    }
+    else
+    {
+        analyticsValidatorLogger.LogDebug("AnalyticsPipelineValidator type not found; skipping analytics validation.");
+    }
+}
 
 // 🔹 Middleware
 if (app.Environment.IsDevelopment())

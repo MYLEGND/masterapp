@@ -801,6 +801,106 @@ namespace Infrastructure.Migrations
                     b.ToTable("AnalyticsEvents");
                 });
 
+            modelBuilder.Entity("Domain.Entities.AnalyticsDriftAlert", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("INTEGER");
+
+                    b.Property<decimal>("BaselineValue")
+                        .HasColumnType("decimal(18,4)");
+
+                    b.Property<string>("Category")
+                        .IsRequired()
+                        .HasMaxLength(80)
+                        .HasColumnType("TEXT");
+
+                    b.Property<decimal>("CurrentValue")
+                        .HasColumnType("decimal(18,4)");
+
+                    b.Property<decimal>("DeviationPercent")
+                        .HasColumnType("decimal(18,4)");
+
+                    b.Property<string>("DetailsJson")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("EventType")
+                        .IsRequired()
+                        .HasMaxLength(160)
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime>("FirstDetectedUtc")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("IncidentKey")
+                        .IsRequired()
+                        .HasMaxLength(160)
+                        .HasColumnType("TEXT");
+
+                    b.Property<bool>("IsActive")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<DateTime?>("LastNotifiedUtc")
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime>("LastDetectedUtc")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("MetricKey")
+                        .IsRequired()
+                        .HasMaxLength(120)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("MetricUnit")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime>("ObservedUtc")
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime?>("ResolvedUtc")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("ScopeKey")
+                        .IsRequired()
+                        .HasMaxLength(120)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Severity")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Summary")
+                        .HasMaxLength(500)
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime>("WindowEndUtc")
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime>("WindowStartUtc")
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("EventType");
+
+                    b.HasIndex("IncidentKey");
+
+                    b.HasIndex("IsActive");
+
+                    b.HasIndex("ObservedUtc");
+
+                    b.HasIndex("Severity");
+
+                    b.HasIndex("IsActive", "Severity", "ObservedUtc");
+
+                    b.HasIndex("ScopeKey", "ObservedUtc");
+
+                    b.ToTable("AnalyticsDriftAlerts");
+                });
+
             modelBuilder.Entity("Domain.Entities.AppointmentSyncLog", b =>
                 {
                     b.Property<Guid>("Id")
@@ -2435,6 +2535,12 @@ namespace Infrastructure.Migrations
                     b.Property<bool>("CallTextConsent")
                         .HasColumnType("INTEGER");
 
+                    b.Property<string>("ClientIpAddress")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("ClientUserAgent")
+                        .HasColumnType("TEXT");
+
                     b.Property<DateTime>("CreatedUtc")
                         .HasColumnType("TEXT");
 
@@ -2460,6 +2566,12 @@ namespace Infrastructure.Migrations
 
                     b.Property<string>("Fbclid")
                         .HasMaxLength(120)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Fbc")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Fbp")
                         .HasColumnType("TEXT");
 
                     b.Property<string>("FirstName")
@@ -2619,6 +2731,22 @@ namespace Infrastructure.Migrations
 
                     b.Property<string>("Fbclid")
                         .HasMaxLength(160)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Fbc")
+                        .HasMaxLength(512)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Fbp")
+                        .HasMaxLength(256)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("ClientIpAddress")
+                        .HasMaxLength(128)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("ClientUserAgent")
+                        .HasMaxLength(1024)
                         .HasColumnType("TEXT");
 
                     b.Property<string>("InterestType")

@@ -41,8 +41,9 @@ namespace AgentPortal.Controllers;
         private readonly IKpiDetailBreakdownService _kpiDetailBreakdownService;
         private readonly IVisitorTrustScoringService _visitorTrustScoringService;
         private readonly MetaCapiCredentialProtector _metaCapiCredentialProtector;
+        private readonly IAnalyticsIncidentQueryService _incidentMonitor;
 
-        public WebsiteAnalyticsController(IAnalyticsQueryService analytics, IMetaAdsService metaAds, IMetaAdsOAuthService metaAdsOAuth, IMetaAdsConnectionStore metaAdsConnectionStore, Services.Tracking.IAgentTrackingService tracking, IMetaSignalAnalyticsService metaSignalAnalytics, ILandingRouteDiscoveryService landingRouteDiscovery, WebsiteAnalyticsAiDataBuilder aiDataBuilder, IVisitorConcentrationService visitorConcentrationService, IKpiDetailBreakdownService kpiDetailBreakdownService, IVisitorTrustScoringService visitorTrustScoringService, ILogger<WebsiteAnalyticsController> logger, Infrastructure.Data.MasterAppDbContext db, IConfiguration config, EffectiveAgentContext effectiveContext, MetaCapiCredentialProtector metaCapiCredentialProtector)
+        public WebsiteAnalyticsController(IAnalyticsQueryService analytics, IMetaAdsService metaAds, IMetaAdsOAuthService metaAdsOAuth, IMetaAdsConnectionStore metaAdsConnectionStore, Services.Tracking.IAgentTrackingService tracking, IMetaSignalAnalyticsService metaSignalAnalytics, ILandingRouteDiscoveryService landingRouteDiscovery, WebsiteAnalyticsAiDataBuilder aiDataBuilder, IVisitorConcentrationService visitorConcentrationService, IKpiDetailBreakdownService kpiDetailBreakdownService, IVisitorTrustScoringService visitorTrustScoringService, IAnalyticsIncidentQueryService incidentMonitor, ILogger<WebsiteAnalyticsController> logger, Infrastructure.Data.MasterAppDbContext db, IConfiguration config, EffectiveAgentContext effectiveContext, MetaCapiCredentialProtector metaCapiCredentialProtector)
         {
             _analytics = analytics;
             _metaAds = metaAds;
@@ -55,6 +56,7 @@ namespace AgentPortal.Controllers;
             _visitorConcentrationService = visitorConcentrationService;
             _kpiDetailBreakdownService = kpiDetailBreakdownService;
             _visitorTrustScoringService = visitorTrustScoringService;
+            _incidentMonitor = incidentMonitor;
             _logger = logger;
             _db = db;
             _founderUpn = config["Founder:Upn"] ?? throw new InvalidOperationException("Founder:Upn configuration is required");
@@ -141,6 +143,15 @@ namespace AgentPortal.Controllers;
         }
 
         return View();
+    }
+
+    [Authorize(Policy = "FounderOnly")]
+    [HttpGet("incident-monitor")]
+    [HttpGet("/website-analytics/incident-monitor")]
+    public async Task<IActionResult> IncidentMonitor(CancellationToken cancellationToken)
+    {
+        var result = await _incidentMonitor.GetSystemMonitorAsync(cancellationToken);
+        return Json(result);
     }
 
     // JSON endpoints -------------------------------------------------

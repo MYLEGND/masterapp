@@ -1,4 +1,5 @@
 using System;
+using System.ComponentModel.DataAnnotations.Schema;
 
 namespace Domain.Entities;
 
@@ -141,4 +142,8 @@ public class AnalyticsEvent
 
     /// <summary>Total visibility-state changes during session.</summary>
     public int? VisibilityChangeCount { get; set; }
+
+    /// <summary>Internal runtime guard so analytics writes can verify unified pipeline origin.</summary>
+    [NotMapped]
+    public string? PipelineStamp { get; set; }
 }

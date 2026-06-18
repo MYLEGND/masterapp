@@ -139,8 +139,16 @@
                         </button>
                         }
                     </div>
+                    </div>
                 </div>
-            </div>
+
+                @if (canViewFounderTeamUi)
+                {
+                <div id="wa-critical-incident-banner" class="wa-incident-banner" hidden>
+                    <div class="wa-incident-banner-kicker">Critical Analytics Incident</div>
+                    <div class="wa-incident-banner-copy" id="wa-critical-incident-banner-copy">System-wide analytics guardrails need attention.</div>
+                </div>
+                }
 
             <div class="control-bar">
                 <div class="control-bar-group control-bar-presets">
@@ -561,7 +569,19 @@
                         <div class="wa-health-panel-kicker">Operator Alerts</div>
                         <div class="wa-health-warnings-title">Active Warnings</div>
                     </div>
-                    <div class="wa-health-panel-badge">Live</div>
+                    <div class="wa-health-panel-actions">
+                        @if (canViewFounderTeamUi)
+                        {
+                        <button type="button"
+                                class="btn btn-sm wa-incident-monitor-btn"
+                                data-bs-toggle="modal"
+                                data-bs-target="#analyticsIncidentModal">
+                            Incident Monitor
+                            <span class="wa-incident-monitor-count" id="wa-incident-monitor-count">0</span>
+                        </button>
+                        }
+                        <div class="wa-health-panel-badge">Live</div>
+                    </div>
                 </div>
                 <ul id="mh-warning-list" class="wa-health-warning-list">
                     <li>Loading current health checks…</li>
@@ -2153,10 +2173,19 @@
     </div>
 </div>
 
+@if (canViewFounderTeamUi)
+{
+    @await Html.PartialAsync("_AnalyticsIncidentModal")
+}
+
 <script src="~/lib/bootstrap/dist/js/bootstrap.bundle.min.js"></script>
 <script src="~/js/website-analytics.js" asp-append-version="true"></script>
 <script src="~/js/website-analytics-kpi-modal.js" asp-append-version="true"></script>
 <script src="~/js/website-analytics-ai.js" asp-append-version="true"></script>
+@if (canViewFounderTeamUi)
+{
+<script src="~/js/website-analytics-incidents.js" asp-append-version="true"></script>
+}
 <script>
     window.AGENT_OPTIONS = @Html.Raw(agentOptionsJson);
     window.CALLER_PROFILE_ID = "@callerProfileId";

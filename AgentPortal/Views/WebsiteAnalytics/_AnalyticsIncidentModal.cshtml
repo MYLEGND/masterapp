@@ -1,0 +1,139 @@
+<div class="modal fade fa-modal" id="analyticsIncidentModal" tabindex="-1" aria-labelledby="analyticsIncidentModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-xl modal-dialog-centered modal-dialog-scrollable wa-modal-dialog wa-incident-modal-dialog">
+        <div class="modal-content wa-modal-shell wa-incident-modal-shell">
+            <div class="modal-header wa-modal-header wa-incident-modal-header">
+                <div class="wa-modal-header-main">
+                    <div class="wa-modal-header-copy">
+                        <div class="wa-modal-kicker">Founder Incident Response</div>
+                        <h5 class="modal-title mb-0" id="analyticsIncidentModalLabel">Incident Monitor</h5>
+                        <div class="wa-modal-subtitle">System-wide analytics drift control center. Active incidents and the supporting health snapshot refresh lazily inside AgentPortal only.</div>
+                    </div>
+                    <div class="wa-modal-header-actions">
+                        <div class="wa-modal-range-chip">
+                            <span class="wa-modal-range-label">Scope</span>
+                            <span class="wa-modal-range-value" id="incident-monitor-scope-label">System-wide</span>
+                        </div>
+                        <div class="wa-modal-range-chip">
+                            <span class="wa-modal-range-label">Window</span>
+                            <span class="wa-modal-range-value" id="incident-monitor-range-label">Last 24 Hours</span>
+                        </div>
+                    </div>
+                </div>
+                <button type="button" class="btn-close btn-close-white wa-modal-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body wa-modal-body wa-incident-modal-body">
+                <div id="incident-monitor-status" class="wa-incident-status">Loading incident response snapshot…</div>
+
+                <section class="wa-incident-section">
+                    <div class="wa-incident-section-head">
+                        <div>
+                            <div class="wa-health-panel-kicker">Active Incidents</div>
+                            <div class="wa-health-warnings-title">Current Drift Alerts</div>
+                        </div>
+                        <div class="wa-health-panel-badge" id="incident-monitor-active-summary">0 Active</div>
+                    </div>
+                    <div class="table-responsive wa-incident-table-wrap">
+                        <table class="table wa-incident-table">
+                            <thead>
+                                <tr>
+                                    <th>Event Type</th>
+                                    <th>Severity</th>
+                                    <th>Current</th>
+                                    <th>Baseline</th>
+                                    <th>Deviation</th>
+                                    <th>Timestamp</th>
+                                </tr>
+                            </thead>
+                            <tbody id="incident-monitor-active-body">
+                                <tr>
+                                    <td colspan="6" class="fa-empty">Loading active incidents…</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </section>
+
+                <section class="wa-incident-section">
+                    <div class="wa-incident-section-head">
+                        <div>
+                            <div class="wa-health-panel-kicker">Incident Timeline</div>
+                            <div class="wa-health-warnings-title">Last 24 Hours</div>
+                        </div>
+                    </div>
+                    <div id="incident-monitor-timeline" class="wa-incident-timeline">
+                        <div class="wa-incident-empty">Loading incident timeline…</div>
+                    </div>
+                </section>
+
+                <section class="wa-incident-section">
+                    <div class="wa-incident-section-head">
+                        <div>
+                            <div class="wa-health-panel-kicker">Focus Metrics</div>
+                            <div class="wa-health-warnings-title">Lead, Purchase, and Quote Start Volume</div>
+                        </div>
+                    </div>
+                    <div id="incident-monitor-focus-grid" class="wa-incident-focus-grid">
+                        <div class="wa-incident-empty">Loading focus metrics…</div>
+                    </div>
+                </section>
+
+                <section class="wa-incident-section">
+                    <div class="wa-incident-section-head">
+                        <div>
+                            <div class="wa-health-panel-kicker">FBC / FBCLID Attribution Health</div>
+                            <div class="wa-health-warnings-title">Browser vs Server Match and Missing Attribution</div>
+                        </div>
+                    </div>
+                    <div class="wa-incident-attribution-grid">
+                        <article class="wa-incident-metric-card">
+                            <div class="wa-incident-metric-label">Server vs Browser Match</div>
+                            <div class="wa-incident-metric-value" id="incident-monitor-match-rate">0%</div>
+                            <div class="wa-incident-metric-sub" id="incident-monitor-match-sub">0 matched / 0 eligible</div>
+                        </article>
+                        <article class="wa-incident-metric-card">
+                            <div class="wa-incident-metric-label">Missing Attribution</div>
+                            <div class="wa-incident-metric-value" id="incident-monitor-missing-rate">0%</div>
+                            <div class="wa-incident-metric-sub" id="incident-monitor-missing-sub">0 missing / 0 eligible</div>
+                        </article>
+                        <article class="wa-incident-metric-card">
+                            <div class="wa-incident-metric-label">Dispatch Coverage</div>
+                            <div class="wa-incident-metric-value" id="incident-monitor-dispatch-sub">0 browser · 0 server</div>
+                            <div class="wa-incident-metric-sub">Eligible Meta signal events in the current system window.</div>
+                        </article>
+                    </div>
+                </section>
+
+                <section class="wa-incident-section">
+                    <div class="wa-incident-section-head">
+                        <div>
+                            <div class="wa-health-panel-kicker">Funnel Health Snapshot</div>
+                            <div class="wa-health-warnings-title">page_view → lead_form_start → lead → purchase</div>
+                        </div>
+                    </div>
+                    <div class="wa-incident-funnel-grid">
+                        <article class="wa-incident-funnel-card">
+                            <div class="wa-incident-funnel-stage">Page Views</div>
+                            <div class="wa-incident-funnel-count" id="incident-monitor-page-views">0</div>
+                            <div class="wa-incident-funnel-rate">Baseline stage</div>
+                        </article>
+                        <article class="wa-incident-funnel-card">
+                            <div class="wa-incident-funnel-stage">Lead Form Starts</div>
+                            <div class="wa-incident-funnel-count" id="incident-monitor-lead-starts">0</div>
+                            <div class="wa-incident-funnel-rate" id="incident-monitor-page-to-start-rate">0%</div>
+                        </article>
+                        <article class="wa-incident-funnel-card">
+                            <div class="wa-incident-funnel-stage">Leads</div>
+                            <div class="wa-incident-funnel-count" id="incident-monitor-leads">0</div>
+                            <div class="wa-incident-funnel-rate" id="incident-monitor-start-to-lead-rate">0%</div>
+                        </article>
+                        <article class="wa-incident-funnel-card">
+                            <div class="wa-incident-funnel-stage">Purchases</div>
+                            <div class="wa-incident-funnel-count" id="incident-monitor-purchases">0</div>
+                            <div class="wa-incident-funnel-rate" id="incident-monitor-lead-to-purchase-rate">0%</div>
+                        </article>
+                    </div>
+                </section>
+            </div>
+        </div>
+    </div>
+</div>

@@ -225,7 +225,7 @@ namespace Protect_Website.Controllers
                         string.IsNullOrWhiteSpace(model.PageMode) ? "site_mode" : model.PageMode.Trim(),
                         eventUtc);
                     analyticsEvent = UnifiedEventMapper.ToAnalytics(ctx);
-                    _db.AnalyticsEvents.Add(analyticsEvent);
+                    UnifiedAnalyticsWriter.Write(_db, analyticsEvent);
                     await _db.SaveChangesAsync(HttpContext?.RequestAborted ?? CancellationToken.None);
                 }
                 catch (Exception analyticsEx)

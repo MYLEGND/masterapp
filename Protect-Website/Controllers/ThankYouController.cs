@@ -140,13 +140,13 @@ try
     var trackingContext = BuildTrackingContext(lead);
     var ctx = BuildTrackingContext(trackingContext, lead, "meta_browser_event_attempt", analyticsMetadata);
     var analyticsEvent = UnifiedEventMapper.ToAnalytics(ctx);
-    _db.AnalyticsEvents.Add(analyticsEvent);
+    UnifiedAnalyticsWriter.Write(_db, analyticsEvent);
 
     if (string.Equals(normalizedStatus, "sent", StringComparison.OrdinalIgnoreCase))
     {
         var ctxSuccess = BuildTrackingContext(trackingContext, lead, "meta_browser_event_success", analyticsMetadata);
         var analyticsEventSuccess = UnifiedEventMapper.ToAnalytics(ctxSuccess);
-        _db.AnalyticsEvents.Add(analyticsEventSuccess);
+        UnifiedAnalyticsWriter.Write(_db, analyticsEventSuccess);
     }
 
     await _db.SaveChangesAsync(HttpContext?.RequestAborted ?? CancellationToken.None);

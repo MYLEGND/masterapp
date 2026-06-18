@@ -657,7 +657,7 @@ if (!ModelState.IsValid)
                     pageMode.PageMode,
                     lead.CreatedUtc);
                 var submittedAnalyticsEvent = UnifiedEventMapper.ToAnalytics(submittedCtx);
-                _db.AnalyticsEvents.Add(submittedAnalyticsEvent);
+                UnifiedAnalyticsWriter.Write(_db, submittedAnalyticsEvent);
 
                 var persistedCtx = BuildTrackingContext(
                     pageMode.EffectivePageKey,
@@ -668,7 +668,7 @@ if (!ModelState.IsValid)
                     pageMode.PageMode,
                     lead.CreatedUtc);
                 var persistedAnalyticsEvent = UnifiedEventMapper.ToAnalytics(persistedCtx);
-                _db.AnalyticsEvents.Add(persistedAnalyticsEvent);
+                UnifiedAnalyticsWriter.Write(_db, persistedAnalyticsEvent);
 
                 var capiAttemptCtx = BuildTrackingContext(
                     pageMode.EffectivePageKey,
@@ -686,7 +686,7 @@ if (!ModelState.IsValid)
                     pageMode.PageMode,
                     lead.CreatedUtc);
                 var capiAttemptAnalyticsEvent = UnifiedEventMapper.ToAnalytics(capiAttemptCtx);
-                _db.AnalyticsEvents.Add(capiAttemptAnalyticsEvent);
+                UnifiedAnalyticsWriter.Write(_db, capiAttemptAnalyticsEvent);
 
                 var capiResultCtx = BuildTrackingContext(
                     pageMode.EffectivePageKey,
@@ -707,7 +707,7 @@ if (!ModelState.IsValid)
                     pageMode.PageMode,
                     DateTime.UtcNow);
                 var capiResultAnalyticsEvent = UnifiedEventMapper.ToAnalytics(capiResultCtx);
-                _db.AnalyticsEvents.Add(capiResultAnalyticsEvent);
+                UnifiedAnalyticsWriter.Write(_db, capiResultAnalyticsEvent);
                 await _db.SaveChangesAsync();
                 _logger.LogInformation(
                     "LifeQuote [{CorrelationId}]: lead persistence analytics written for lead {LeadId} offer={Offer}",
@@ -876,7 +876,7 @@ if (!ModelState.IsValid)
                     pageVariant,
                     pageMode);
                 var analyticsEvent = UnifiedEventMapper.ToAnalytics(ctx);
-                _db.AnalyticsEvents.Add(analyticsEvent);
+                UnifiedAnalyticsWriter.Write(_db, analyticsEvent);
 
                 if (string.Equals(normalizedStatus, "sent", StringComparison.OrdinalIgnoreCase))
                 {
@@ -888,7 +888,7 @@ if (!ModelState.IsValid)
                         pageVariant,
                         pageMode);
                     var analyticsEventSuccess = UnifiedEventMapper.ToAnalytics(ctxSuccess);
-                    _db.AnalyticsEvents.Add(analyticsEventSuccess);
+                    UnifiedAnalyticsWriter.Write(_db, analyticsEventSuccess);
                 }
 
                 await _db.SaveChangesAsync(HttpContext?.RequestAborted ?? CancellationToken.None);
@@ -2402,7 +2402,7 @@ Illustrative estimate only. Final eligibility, pricing, underwriting approval, a
                     DateTime.UtcNow,
                     quoteType);
                 analyticsEvent = UnifiedEventMapper.ToAnalytics(ctx);
-                _db.AnalyticsEvents.Add(analyticsEvent);
+                UnifiedAnalyticsWriter.Write(_db, analyticsEvent);
 
                 await _db.SaveChangesAsync(HttpContext?.RequestAborted ?? CancellationToken.None);
             }

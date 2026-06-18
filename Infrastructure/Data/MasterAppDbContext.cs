@@ -30,6 +30,7 @@ public class MasterAppDbContext : DbContext
     public DbSet<GraphCalendarSubscription> GraphCalendarSubscriptions => Set<GraphCalendarSubscription>();
     public DbSet<AppointmentSyncLog> AppointmentSyncLogs => Set<AppointmentSyncLog>();
     public DbSet<AnalyticsEvent> AnalyticsEvents => Set<AnalyticsEvent>();
+    public DbSet<AnalyticsDriftAlert> AnalyticsDriftAlerts => Set<AnalyticsDriftAlert>();
     public DbSet<MetaSignalEvent> MetaSignalEvents => Set<MetaSignalEvent>();
     public DbSet<AgentTrackingProfile> AgentTrackingProfiles => Set<AgentTrackingProfile>();
     public DbSet<AgentTrackingAlias> AgentTrackingAliases => Set<AgentTrackingAlias>();
@@ -376,6 +377,31 @@ public class MasterAppDbContext : DbContext
             e.HasIndex(x => x.EventId).IsUnique();
             e.HasIndex(x => new { x.SessionId, x.QuoteType, x.CreatedUtc });
             e.HasIndex(x => new { x.EventName, x.CreatedUtc });
+        });
+
+        modelBuilder.Entity<AnalyticsDriftAlert>(e =>
+        {
+            e.HasKey(x => x.Id);
+            e.Property(x => x.IncidentKey).IsRequired().HasMaxLength(160);
+            e.Property(x => x.MetricKey).IsRequired().HasMaxLength(120);
+            e.Property(x => x.EventType).IsRequired().HasMaxLength(160);
+            e.Property(x => x.Category).IsRequired().HasMaxLength(80);
+            e.Property(x => x.Severity).IsRequired().HasMaxLength(32);
+            e.Property(x => x.MetricUnit).IsRequired().HasMaxLength(32);
+            e.Property(x => x.ScopeKey).IsRequired().HasMaxLength(120);
+            e.Property(x => x.CurrentValue).HasPrecision(18, 4);
+            e.Property(x => x.BaselineValue).HasPrecision(18, 4);
+            e.Property(x => x.DeviationPercent).HasPrecision(18, 4);
+            e.Property(x => x.Summary).HasMaxLength(500);
+            e.Property(x => x.DetailsJson).HasColumnType(isSqlServer ? "nvarchar(max)" : "TEXT");
+
+            e.HasIndex(x => x.IsActive);
+            e.HasIndex(x => x.ObservedUtc);
+            e.HasIndex(x => x.Severity);
+            e.HasIndex(x => x.EventType);
+            e.HasIndex(x => x.IncidentKey);
+            e.HasIndex(x => new { x.IsActive, x.Severity, x.ObservedUtc });
+            e.HasIndex(x => new { x.ScopeKey, x.ObservedUtc });
         });
 
         // WEBSITE LEADS
