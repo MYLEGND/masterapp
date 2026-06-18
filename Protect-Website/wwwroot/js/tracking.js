@@ -1794,9 +1794,13 @@ function trackCustomFieldError(formKey, fieldName, errorType, offerKey) {
       formKey,
       pageKey: PAGE_KEY
     });
-    sendEvent({ EventType: 'form_start', FormKey: formKey });
+    sendEvent({
+      clientContext: window.LegendAnalytics?.getClientContext?.() || {},
+      EventType: 'form_start', FormKey: formKey });
     if (PAGE_CATEGORY === 'quote' && allowedEvents.has('lead_form_start')) {
-      sendEvent({ EventType: 'lead_form_start', FormKey: formKey });
+      sendEvent({
+      clientContext: window.LegendAnalytics?.getClientContext?.() || {},
+      EventType: 'lead_form_start', FormKey: formKey });
     }
 
     return true;

@@ -90,7 +90,6 @@ public sealed class AnalyticsQueryService : IAnalyticsQueryService
         return mode switch
         {
             TrafficQualityMode.All => e => true,
-
             TrafficQualityMode.Internal => e => e.IsInternal,
 
             TrafficQualityMode.LikelyBot => e =>
@@ -98,6 +97,7 @@ public sealed class AnalyticsQueryService : IAnalyticsQueryService
                 (
                     e.WebDriver == true ||
                     e.IsHeadless == true ||
+                    (
                     ((e.UserAgent ?? "").ToLower().Contains("bot")) ||
                     ((e.UserAgent ?? "").ToLower().Contains("crawler")) ||
                     ((e.UserAgent ?? "").ToLower().Contains("spider")) ||
@@ -109,6 +109,7 @@ public sealed class AnalyticsQueryService : IAnalyticsQueryService
                     ((e.UserAgent ?? "").ToLower().Contains("wget")) ||
                     ((e.UserAgent ?? "").ToLower().Contains("python-requests")) ||
                     ((e.UserAgent ?? "").ToLower().Contains("httpclient"))
+                )
                 ),
 
             TrafficQualityMode.Suspicious => e =>
@@ -116,18 +117,29 @@ public sealed class AnalyticsQueryService : IAnalyticsQueryService
                 e.WebDriver != true &&
                 e.IsHeadless != true &&
                 !(
-                    !string.IsNullOrWhiteSpace(e.Fbclid) ||
-                    ((e.UtmMedium ?? "").ToLower() == "paid") ||
-                    ((e.UtmSource ?? "").ToLower() == "facebook") ||
-                    ((e.ReferrerHost ?? "").ToLower().Contains("facebook.com"))
+                    ((e.UserAgent ?? "").ToLower().Contains("bot")) ||
+                    ((e.UserAgent ?? "").ToLower().Contains("crawler")) ||
+                    ((e.UserAgent ?? "").ToLower().Contains("spider")) ||
+                    ((e.UserAgent ?? "").ToLower().Contains("headless")) ||
+                    ((e.UserAgent ?? "").ToLower().Contains("selenium")) ||
+                    ((e.UserAgent ?? "").ToLower().Contains("puppeteer")) ||
+                    ((e.UserAgent ?? "").ToLower().Contains("playwright")) ||
+                    ((e.UserAgent ?? "").ToLower().Contains("curl")) ||
+                    ((e.UserAgent ?? "").ToLower().Contains("wget")) ||
+                    ((e.UserAgent ?? "").ToLower().Contains("python-requests")) ||
+                    ((e.UserAgent ?? "").ToLower().Contains("httpclient"))
                 ) &&
                 (
-                    ((e.MouseMoveCount ?? 0) == 0 && (e.ScrollPercent ?? 0) < 25) ||
                     string.IsNullOrWhiteSpace(e.Browser) ||
                     e.Browser == "unknown" ||
                     string.IsNullOrWhiteSpace(e.OperatingSystem) ||
                     e.OperatingSystem == "unknown"
-                ) &&
+                ),
+
+            TrafficQualityMode.Review => e =>
+                !e.IsInternal &&
+                e.WebDriver != true &&
+                e.IsHeadless != true &&
                 !(
                     ((e.UserAgent ?? "").ToLower().Contains("bot")) ||
                     ((e.UserAgent ?? "").ToLower().Contains("crawler")) ||
@@ -140,43 +152,18 @@ public sealed class AnalyticsQueryService : IAnalyticsQueryService
                     ((e.UserAgent ?? "").ToLower().Contains("wget")) ||
                     ((e.UserAgent ?? "").ToLower().Contains("python-requests")) ||
                     ((e.UserAgent ?? "").ToLower().Contains("httpclient"))
-                ),
-
-            TrafficQualityMode.Review => e =>
-                !e.IsInternal &&
-                e.WebDriver != true &&
-                e.IsHeadless != true &&
-                !(
-                    !string.IsNullOrWhiteSpace(e.Fbclid) ||
-                    ((e.UtmMedium ?? "").ToLower() == "paid") ||
-                    ((e.UtmSource ?? "").ToLower() == "facebook") ||
-                    ((e.ReferrerHost ?? "").ToLower().Contains("facebook.com"))
                 ) &&
-                (
-                    ((e.MouseMoveCount ?? 0) > 0 && (e.ScrollPercent ?? 0) < 25) ||
-                    ((e.MouseMoveCount ?? 0) == 0 && (e.ScrollPercent ?? 0) >= 25)
+                !(
+                    string.IsNullOrWhiteSpace(e.Browser) ||
+                    e.Browser == "unknown" ||
+                    string.IsNullOrWhiteSpace(e.OperatingSystem) ||
+                    e.OperatingSystem == "unknown"
                 ),
 
             TrafficQualityMode.LikelyHuman => e =>
                 !e.IsInternal &&
                 e.WebDriver != true &&
                 e.IsHeadless != true &&
-                (
-                    (
-                        ((e.MouseMoveCount ?? 0) > 0 || (e.ScrollPercent ?? 0) >= 25) &&
-                        !string.IsNullOrWhiteSpace(e.Browser) &&
-                        e.Browser != "unknown" &&
-                        !string.IsNullOrWhiteSpace(e.OperatingSystem) &&
-                        e.OperatingSystem != "unknown"
-                    )
-                    ||
-                    (
-                        !string.IsNullOrWhiteSpace(e.Fbclid) ||
-                        ((e.UtmMedium ?? "").ToLower() == "paid") ||
-                        ((e.UtmSource ?? "").ToLower() == "facebook") ||
-                        ((e.ReferrerHost ?? "").ToLower().Contains("facebook.com"))
-                    )
-                ) &&
                 !(
                     ((e.UserAgent ?? "").ToLower().Contains("bot")) ||
                     ((e.UserAgent ?? "").ToLower().Contains("crawler")) ||
@@ -207,25 +194,6 @@ public sealed class AnalyticsQueryService : IAnalyticsQueryService
                     ((e.UserAgent ?? "").ToLower().Contains("wget")) ||
                     ((e.UserAgent ?? "").ToLower().Contains("python-requests")) ||
                     ((e.UserAgent ?? "").ToLower().Contains("httpclient"))
-                ) &&
-                (
-                    (
-                        (
-                            e.EventType == "page_view" ||
-                            ((e.MouseMoveCount ?? 0) > 0 || (e.ScrollPercent ?? 0) >= 25)
-                        ) &&
-                        !string.IsNullOrWhiteSpace(e.Browser) &&
-                        e.Browser != "unknown" &&
-                        !string.IsNullOrWhiteSpace(e.OperatingSystem) &&
-                        e.OperatingSystem != "unknown"
-                    )
-                    ||
-                    (
-                        !string.IsNullOrWhiteSpace(e.Fbclid) ||
-                        ((e.UtmMedium ?? "").ToLower() == "paid") ||
-                        ((e.UtmSource ?? "").ToLower() == "facebook") ||
-                        ((e.ReferrerHost ?? "").ToLower().Contains("facebook.com"))
-                    )
                 )
         };
     }

@@ -153,6 +153,7 @@
       modalInstanceId
     });
     tracking({
+      clientContext: window.LegendAnalytics?.getClientContext?.() || {},
       EventType: 'lead_form_start',
       PageKey: pageKey,
       ElementKey: pendingCta || resolveElementKey(null),
