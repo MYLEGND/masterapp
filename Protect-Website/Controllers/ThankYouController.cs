@@ -126,47 +126,33 @@ namespace Protect_Website.Controllers
                     state.BrowserPixelNote = normalizedNote;
                 });
 
-            try
-            {
-                var analyticsMetadata = new
-                {
-                    LeadId = lead.LeadId,
-                    EventId = request.EventId.Trim(),
-                    Status = normalizedStatus,
-                    Note = normalizedNote,
-                    Route = "/ThankYou/meta-browser-ack"
-                };
+try
+{
+    var analyticsMetadata = new
+    {
+        LeadId = lead.LeadId,
+        EventId = request.EventId.Trim(),
+        Status = normalizedStatus,
+        Note = normalizedNote,
+        Route = "/ThankYou/meta-browser-ack"
+    };
 
-var ctx = UnifiedEventContextBuilder.Build(
-    lead,
-    HttpContext,
-    "thankyou",
-    "thankyou",
-    "thankyou"
-);
+    var ctx = UnifiedEventContextBuilder.Build(HttpContext, lead.LeadId.ToString("D"), "thankyou", "thankyou", "thankyou");
+    var analyticsEvent = UnifiedEventMapper.ToAnalytics(ctx);
+    _db.AnalyticsEvents.Add(analyticsEvent);
 
-var analyticsEvent = UnifiedEventMapper.ToAnalytics(ctx);
-_db.AnalyticsEvents.Add(analyticsEvent);
+    if (string.Equals(normalizedStatus, "sent", StringComparison.OrdinalIgnoreCase))
+    {
+        var ctxSuccess = UnifiedEventContextBuilder.Build(HttpContext, lead.LeadId.ToString("D"), "thankyou", "thankyou", "thankyou");
+        var analyticsEventSuccess = UnifiedEventMapper.ToAnalytics(ctxSuccess);
+        _db.AnalyticsEvents.Add(analyticsEventSuccess);
+    }
 
-                if (string.Equals(normalizedStatus, "sent", StringComparison.OrdinalIgnoreCase))
-                {
-var ctx = UnifiedEventContextBuilder.Build(
-    lead,
-    HttpContext,
-    "thankyou",
-    "thankyou",
-    "thankyou"
-);
-
-var analyticsEvent = UnifiedEventMapper.ToAnalytics(ctx);
-_db.AnalyticsEvents.Add(analyticsEvent);
-                }
-
-                await _db.SaveChangesAsync(HttpContext?.RequestAborted ?? CancellationToken.None);
-                _logger.LogInformation(
-                    "ThankYou browser pixel ack lead={LeadId} status={Status} eventId={EventId}",
-                    request.LeadId, normalizedStatus, request.EventId);
-            }
+    await _db.SaveChangesAsync(HttpContext?.RequestAborted ?? CancellationToken.None);
+    _logger.LogInformation(
+        "ThankYou browser pixel ack lead={LeadId} status={Status} eventId={EventId}",
+        request.LeadId, normalizedStatus, request.EventId);
+}
             catch (Exception ackEx)
             {
                 _logger.LogError(
