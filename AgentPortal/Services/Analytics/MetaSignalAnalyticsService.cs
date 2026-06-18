@@ -8,6 +8,7 @@ using AgentPortal.Models.Analytics;
 using Domain.Entities;
 using Infrastructure.Data;
 using Microsoft.EntityFrameworkCore;
+using Shared.Analytics;
 
 namespace AgentPortal.Services.Analytics;
 
@@ -28,11 +29,38 @@ public interface IMetaSignalAnalyticsService
         ScopeContext scope,
         TrafficType trafficType,
         CancellationToken ct = default);
+
+    Task<MetaSignalHealthDashboardDto> GetHealthDashboardAsync(
+        TimeRangeRequest range,
+        ScopeContext scope,
+        CancellationToken ct = default);
 }
 
 public sealed class MetaSignalAnalyticsService : IMetaSignalAnalyticsService
 {
     private const string LearningScopeNoteText = "Meta Paid Signal Intelligence only evaluates paid Meta-attributed traffic. Non-paid/manual tests may appear in Quote Funnel and Conversion Center but are excluded from Meta learning readiness.";
+    private const int DispatcherGraceMinutes = 10;
+    private static readonly string[] ExplicitBridgeSourceEventTypes =
+    [
+        "qualified_lead",
+        AppointmentAnalyticsEventCatalog.Booked,
+        "application_submitted",
+        "policy_issued",
+        "policy_paid",
+        "purchase"
+    ];
+    private static readonly HashSet<string> BridgeSourceEventTypes = BuildBridgeSourceEventTypes();
+    private static readonly HashSet<string> BrowserPixelEventNames = new(
+        MetaSignalEventCatalog.BrowserPixelEventNames,
+        StringComparer.OrdinalIgnoreCase);
+    private static readonly HashSet<string> ServerForwardEventNames = new(
+        MetaSignalEventCatalog.ServerForwardEventNames,
+        StringComparer.OrdinalIgnoreCase);
+    private static readonly HashSet<string> ConversionEventNames = new(
+        MetaSignalEventCatalog.Definitions
+            .Where(x => string.Equals(x.Category, "conversion", StringComparison.OrdinalIgnoreCase))
+            .Select(x => x.Name),
+        StringComparer.OrdinalIgnoreCase);
     private readonly MasterAppDbContext _db;
     private readonly IAnalyticsQueryService _analytics;
 
@@ -74,7 +102,7 @@ public sealed class MetaSignalAnalyticsService : IMetaSignalAnalyticsService
         }
 
         baseQuery = ApplyTrafficFilter(baseQuery, trafficType);
-        baseQuery = await ApplyQualityFilterAsync(baseQuery, range, scope, ct);
+        baseQuery = await ApplyQualityFilterAsync(baseQuery, range, scope, scopedAgentIds, ct);
 
         var baseRows = await baseQuery
             .OrderBy(x => x.CreatedUtc)
@@ -173,6 +201,218 @@ public sealed class MetaSignalAnalyticsService : IMetaSignalAnalyticsService
             AverageScoreByPageVariant = dashboard.AverageScoreByPageVariant.Take(5).ToList(),
             EventLadder = dashboard.EventLadder
         };
+    }
+
+    public async Task<MetaSignalHealthDashboardDto> GetHealthDashboardAsync(
+        TimeRangeRequest range,
+        ScopeContext scope,
+        CancellationToken ct = default)
+    {
+        var scopedAgentIds = await ResolveScopedAgentIdsAsync(scope, ct);
+        var analyticsRows = await _analytics
+            .ScopedEvents(range, scope, scopedAgentIds)
+            .Select(x => new HealthAnalyticsEventRow
+            {
+                Id = x.Id,
+                EventType = x.EventType,
+                SessionId = x.SessionId,
+                VisitorId = x.VisitorId,
+                EventUtc = x.EventUtc
+            })
+            .ToListAsync(ct);
+
+        var metaRows = await BuildHealthMetaQuery(range, scope, scopedAgentIds, analyticsRows)
+            .Select(x => new HealthMetaSignalRow
+            {
+                Id = x.Id,
+                CreatedUtc = x.CreatedUtc,
+                EventId = x.EventId,
+                EventName = x.EventName,
+                EventCategory = x.EventCategory,
+                SessionId = x.SessionId,
+                VisitorId = x.VisitorId,
+                LeadId = x.LeadId,
+                FunnelStep = x.FunnelStep,
+                StepName = x.StepName,
+                MetaBrowserSent = x.MetaBrowserSent,
+                MetaServerSent = x.MetaServerSent,
+                MetaDeduplicationKey = x.MetaDeduplicationKey,
+                MetadataJson = x.MetadataJson
+            })
+            .ToListAsync(ct);
+
+        var leadsCount = await BuildHealthLeadQuery(range, scope, scopedAgentIds)
+            .CountAsync(ct);
+
+        var bridgeEligibleAnalytics = analyticsRows
+            .Where(IsBridgeEligibleAnalyticsEvent)
+            .ToList();
+        var bridgeEligibleAnalyticsIds = bridgeEligibleAnalytics
+            .Select(x => x.Id)
+            .Distinct()
+            .ToHashSet();
+
+        var metaContexts = metaRows
+            .Select(CreateHealthMetaContext)
+            .ToList();
+
+        var bridgeOwnedRows = metaContexts
+            .Where(x => x.IsBridgeOwned)
+            .ToList();
+
+        var bridgeOwnedAnalyticsIds = bridgeOwnedRows
+            .Where(x => x.SourceAnalyticsEventId.HasValue)
+            .Select(x => x.SourceAnalyticsEventId!.Value)
+            .Distinct()
+            .ToHashSet();
+
+        var identityReadyBridgeRows = bridgeOwnedRows
+            .Where(x =>
+                !string.IsNullOrWhiteSpace(x.Row.EventId) &&
+                !string.IsNullOrWhiteSpace(x.Row.MetaDeduplicationKey) &&
+                (x.Row.LeadId.HasValue && x.Row.LeadId.Value != Guid.Empty ||
+                 !string.IsNullOrWhiteSpace(x.Row.SessionId) ||
+                 !string.IsNullOrWhiteSpace(x.Row.VisitorId)))
+            .ToList();
+
+        var nowUtc = DateTime.UtcNow;
+        var dispatcherThresholdUtc = nowUtc.AddMinutes(-DispatcherGraceMinutes);
+        var dispatcherEligibleRows = metaContexts
+            .Where(x => RequiresDispatcher(x.Row))
+            .ToList();
+        var dispatcherDueRows = dispatcherEligibleRows
+            .Where(x => x.Row.CreatedUtc <= dispatcherThresholdUtc)
+            .ToList();
+        var dispatcherTouchedRows = dispatcherEligibleRows
+            .Where(HasDispatcherActivity)
+            .ToList();
+        var dispatcherTouchedDueRows = dispatcherDueRows
+            .Where(HasDispatcherActivity)
+            .ToList();
+
+        var authorityBlockedRows = dispatcherTouchedRows
+            .Where(x => string.Equals(x.MetaServerStatus, "blocked_by_authority", StringComparison.OrdinalIgnoreCase))
+            .ToList();
+        var authorityAllowedRows = dispatcherTouchedRows
+            .Where(x => !string.Equals(x.MetaServerStatus, "blocked_by_authority", StringComparison.OrdinalIgnoreCase))
+            .ToList();
+
+        var missingBridgeCount = bridgeEligibleAnalyticsIds.Count == 0
+            ? 0
+            : bridgeEligibleAnalyticsIds.Except(bridgeOwnedAnalyticsIds).Count();
+
+        var conversionRowsMissingLead = metaContexts
+            .Where(x => ConversionEventNames.Contains(x.Row.EventName))
+            .Count(x => !x.Row.LeadId.HasValue || x.Row.LeadId.Value == Guid.Empty);
+        var bridgeRowsMissingSession = bridgeOwnedRows
+            .Count(x => string.IsNullOrWhiteSpace(x.Row.SessionId));
+        var browserEligibleRows = metaContexts
+            .Where(x => BrowserPixelEventNames.Contains(x.Row.EventName))
+            .ToList();
+        var browserStuckCount = browserEligibleRows.Count(x => !x.Row.MetaBrowserSent);
+        var dispatcherMissingCount = dispatcherDueRows.Count(x => !HasDispatcherActivity(x));
+
+        var failureDetection = new List<MetaSignalHealthIssueDto>
+        {
+            BuildIssue(
+                "missing_bridge_rows",
+                "Events Missing MetaSignalEvents",
+                missingBridgeCount,
+                bridgeEligibleAnalyticsIds.Count,
+                missingBridgeCount == 0
+                    ? "Every bridge-eligible analytics event in the selected diagnostic range produced a derived signal row."
+                    : $"{missingBridgeCount} of {bridgeEligibleAnalyticsIds.Count} bridge-eligible analytics events do not have a matching bridge-owned MetaSignal row."),
+            BuildIssue(
+                "missing_identity",
+                "Meta Rows Missing LeadId or SessionId",
+                conversionRowsMissingLead + bridgeRowsMissingSession,
+                Math.Max(1, metaContexts.Count),
+                $"Missing lead on {conversionRowsMissingLead} conversion rows and missing session on {bridgeRowsMissingSession} bridge rows."),
+            BuildIssue(
+                "browser_pending",
+                "Events Stuck at MetaBrowserSent = 0",
+                browserStuckCount,
+                browserEligibleRows.Count,
+                browserEligibleRows.Count == 0
+                    ? "No browser-eligible Meta Signal rows were produced in the selected diagnostic range."
+                    : $"{browserStuckCount} of {browserEligibleRows.Count} browser-eligible rows never marked browser send success."),
+            BuildIssue(
+                "dispatcher_pending",
+                "Events Never Reaching Dispatcher",
+                dispatcherMissingCount,
+                dispatcherDueRows.Count,
+                dispatcherDueRows.Count == 0
+                    ? $"No dispatcher-eligible rows are older than the {DispatcherGraceMinutes}-minute grace window."
+                    : $"{dispatcherMissingCount} of {dispatcherDueRows.Count} dispatcher-eligible rows show no dispatch metadata after {DispatcherGraceMinutes} minutes.")
+        };
+
+        var result = new MetaSignalHealthDashboardDto
+        {
+            RangeLabel = range.Label,
+            LastUpdatedUtc = nowUtc,
+            DispatcherGraceMinutes = DispatcherGraceMinutes,
+            PipelineHealth = new MetaSignalHealthPipelineSummaryDto
+            {
+                AnalyticsEventsLast24Hours = analyticsRows.Count,
+                BridgeEligibleAnalyticsEventsLast24Hours = bridgeEligibleAnalyticsIds.Count,
+                BridgeOwnedMetaSignalEventsLast24Hours = bridgeOwnedRows.Count,
+                MetaSignalEventsLast24Hours = metaContexts.Count,
+                WebsiteLeadsLast24Hours = leadsCount,
+                MetaServerSentCount = metaContexts.Count(x => x.Row.MetaServerSent),
+                MetaBrowserSentCount = metaContexts.Count(x => x.Row.MetaBrowserSent)
+            },
+            FlowIntegrity = new List<MetaSignalHealthMetricDto>
+            {
+                BuildMetric(
+                    "analytics_bridge_coverage",
+                    "Analytics → Bridge Coverage",
+                    bridgeOwnedAnalyticsIds.Count,
+                    bridgeEligibleAnalyticsIds.Count,
+                    "Bridge-owned MetaSignal rows linked back to bridge-eligible analytics events."),
+                BuildMetric(
+                    "bridge_meta_signal_coverage",
+                    "Bridge → MetaSignal Coverage",
+                    identityReadyBridgeRows.Count,
+                    bridgeOwnedRows.Count,
+                    "Bridge rows carrying deduplication and visitor identity needed for downstream Meta handling."),
+                BuildMetric(
+                    "dispatcher_execution_rate",
+                    "Dispatcher Execution Rate",
+                    dispatcherTouchedDueRows.Count,
+                    dispatcherDueRows.Count,
+                    $"Rows older than {DispatcherGraceMinutes} minutes that already show dispatch metadata."),
+                BuildMetric(
+                    "authority_allow_rate",
+                    "MetaSendAuthority Allowed Ratio",
+                    authorityAllowedRows.Count,
+                    dispatcherTouchedRows.Count,
+                    dispatcherTouchedRows.Count == 0
+                        ? "No dispatcher decisions have been recorded in the selected diagnostic range."
+                        : $"{authorityAllowedRows.Count} allowed vs {authorityBlockedRows.Count} blocked by MetaSendAuthority.")
+            },
+            FailureDetection = failureDetection,
+            RecentEvents = metaContexts
+                .OrderByDescending(x => x.Row.CreatedUtc)
+                .Take(20)
+                .Select(x => new MetaSignalHealthRecentEventRowDto
+                {
+                    CreatedUtc = x.Row.CreatedUtc,
+                    EventType = x.SourceAnalyticsEventType ?? x.Row.EventCategory ?? "MetaSignal",
+                    EventName = x.Row.EventName,
+                    SourceLabel = x.IsBridgeOwned ? "Analytics Bridge" : "Direct Meta Signal",
+                    SessionId = Normalize(x.Row.SessionId),
+                    LeadId = x.Row.LeadId,
+                    FunnelStep = BuildFunnelStepLabel(x.Row),
+                    MetaBrowserSent = x.Row.MetaBrowserSent,
+                    MetaServerSent = x.Row.MetaServerSent,
+                    DispatcherStatus = ResolveDispatcherStatus(x, dispatcherThresholdUtc),
+                    AuthorityStatus = ResolveAuthorityStatus(x),
+                    MetaServerStatus = x.MetaServerStatus ?? string.Empty
+                })
+                .ToList()
+        };
+
+        return result;
     }
 
     private MetaSignalDashboardDto BuildDashboard(
@@ -453,13 +693,14 @@ public sealed class MetaSignalAnalyticsService : IMetaSignalAnalyticsService
         IQueryable<MetaSignalEvent> query,
         TimeRangeRequest range,
         ScopeContext scope,
+        Guid[]? scopedAgentIds,
         CancellationToken ct)
     {
         if (range.QualityMode == TrafficQualityMode.All)
             return query;
 
         var qualityEvents = await _analytics
-            .ScopedEvents(range, scope)
+            .ScopedEvents(range, scope, scopedAgentIds)
             .Select(e => new { e.VisitorId, e.SessionId })
             .ToListAsync(ct);
 
@@ -481,6 +722,105 @@ public sealed class MetaSignalAnalyticsService : IMetaSignalAnalyticsService
         return query.Where(x =>
             (!string.IsNullOrWhiteSpace(x.VisitorId) && visitorIds.Contains(x.VisitorId!)) ||
             (!string.IsNullOrWhiteSpace(x.SessionId) && sessionIds.Contains(x.SessionId!)));
+    }
+
+    private IQueryable<MetaSignalEvent> BuildHealthMetaQuery(
+        TimeRangeRequest range,
+        ScopeContext scope,
+        Guid[]? scopedAgentIds,
+        IReadOnlyCollection<HealthAnalyticsEventRow> analyticsRows)
+    {
+        var query = _db.MetaSignalEvents.AsNoTracking()
+            .Where(x => x.CreatedUtc >= range.FromUtc && x.CreatedUtc <= range.ToUtc);
+
+        if (scope.ScopeType == ScopeType.Agent && scope.AgentTrackingProfileId.HasValue)
+        {
+            if (scopedAgentIds is { Length: > 0 })
+            {
+                query = query.Where(x =>
+                    x.AgentTrackingProfileId.HasValue &&
+                    scopedAgentIds.Contains(x.AgentTrackingProfileId.Value));
+            }
+            else
+            {
+                var agentId = scope.AgentTrackingProfileId.Value;
+                query = query.Where(x => x.AgentTrackingProfileId == agentId);
+            }
+        }
+
+        return ApplyHealthMetaQualityFilter(query, range, analyticsRows);
+    }
+
+    private IQueryable<MetaSignalEvent> ApplyHealthMetaQualityFilter(
+        IQueryable<MetaSignalEvent> query,
+        TimeRangeRequest range,
+        IReadOnlyCollection<HealthAnalyticsEventRow> analyticsRows)
+    {
+        if (range.QualityMode == TrafficQualityMode.All)
+            return query;
+
+        var visitorIds = analyticsRows
+            .Select(x => Normalize(x.VisitorId))
+            .Where(x => !string.IsNullOrWhiteSpace(x))
+            .Select(x => x!)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
+        var sessionIds = analyticsRows
+            .Select(x => Normalize(x.SessionId))
+            .Where(x => !string.IsNullOrWhiteSpace(x))
+            .Select(x => x!)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
+        if (visitorIds.Count == 0 && sessionIds.Count == 0)
+            return query.Where(x => false);
+
+        return query.Where(x =>
+            (!string.IsNullOrWhiteSpace(x.VisitorId) && visitorIds.Contains(x.VisitorId!)) ||
+            (!string.IsNullOrWhiteSpace(x.SessionId) && sessionIds.Contains(x.SessionId!)));
+    }
+
+    private IQueryable<WebsiteLead> BuildHealthLeadQuery(
+        TimeRangeRequest range,
+        ScopeContext scope,
+        Guid[]? scopedAgentIds)
+    {
+        var query = _db.WebsiteLeads.AsNoTracking()
+            .Where(x => !x.IsDeleted)
+            .Where(x => x.CreatedUtc >= range.FromUtc && x.CreatedUtc <= range.ToUtc);
+
+        if (scope.ScopeType == ScopeType.Agent && scope.AgentTrackingProfileId.HasValue)
+        {
+            if (scopedAgentIds is { Length: > 0 })
+            {
+                query = query.Where(x =>
+                    x.AgentTrackingProfileId.HasValue &&
+                    scopedAgentIds.Contains(x.AgentTrackingProfileId.Value));
+            }
+            else
+            {
+                var agentId = scope.AgentTrackingProfileId.Value;
+                query = query.Where(x => x.AgentTrackingProfileId == agentId);
+            }
+        }
+
+        return ApplyHealthLeadQualityFilter(query, range.QualityMode);
+    }
+
+    private static IQueryable<WebsiteLead> ApplyHealthLeadQualityFilter(
+        IQueryable<WebsiteLead> query,
+        TrafficQualityMode qualityMode)
+    {
+        return qualityMode switch
+        {
+            TrafficQualityMode.All => query,
+            TrafficQualityMode.Internal => query.Where(x => x.IsInternal),
+            TrafficQualityMode.LikelyBot => query.Where(x => false),
+            TrafficQualityMode.Suspicious => query.Where(x => false),
+            TrafficQualityMode.Review => query.Where(x => false),
+            _ => query.Where(x => !x.IsInternal)
+        };
     }
 
     private static IQueryable<MetaSignalEvent> ApplyTrafficFilter(IQueryable<MetaSignalEvent> query, TrafficType trafficType)
@@ -869,6 +1209,152 @@ public sealed class MetaSignalAnalyticsService : IMetaSignalAnalyticsService
         return null;
     }
 
+    private static MetaSignalHealthMetricDto BuildMetric(
+        string key,
+        string label,
+        int numerator,
+        int denominator,
+        string detail)
+    {
+        if (denominator <= 0)
+        {
+            return new MetaSignalHealthMetricDto
+            {
+                Key = key,
+                Label = label,
+                Numerator = numerator,
+                Denominator = denominator,
+                Rate = 0,
+                Status = "NoData",
+                Detail = detail
+            };
+        }
+
+        var rate = Math.Round((numerator * 100m) / denominator, 1);
+        return new MetaSignalHealthMetricDto
+        {
+            Key = key,
+            Label = label,
+            Numerator = numerator,
+            Denominator = denominator,
+            Rate = rate,
+            Status = ResolveMetricStatus(rate),
+            Detail = detail
+        };
+    }
+
+    private static MetaSignalHealthIssueDto BuildIssue(
+        string key,
+        string label,
+        int count,
+        int baseline,
+        string detail)
+    {
+        var ratio = baseline <= 0 ? 0m : (decimal)count / baseline;
+        return new MetaSignalHealthIssueDto
+        {
+            Key = key,
+            Label = label,
+            Count = count,
+            Status = ResolveIssueStatus(count, ratio),
+            Detail = detail
+        };
+    }
+
+    private static string ResolveMetricStatus(decimal rate)
+    {
+        if (rate >= 98m) return "Healthy";
+        if (rate >= 90m) return "Watch";
+        if (rate >= 75m) return "Risk";
+        return "Critical";
+    }
+
+    private static string ResolveIssueStatus(int count, decimal ratio)
+    {
+        if (count <= 0) return "Healthy";
+        if (ratio <= 0.05m) return "Watch";
+        if (ratio <= 0.15m) return "Risk";
+        return "Critical";
+    }
+
+    private static bool IsBridgeEligibleAnalyticsEvent(HealthAnalyticsEventRow row) =>
+        BridgeSourceEventTypes.Contains(row.EventType);
+
+    private static HashSet<string> BuildBridgeSourceEventTypes()
+    {
+        var leadAndViewContentSources = AnalyticsEventCatalog.Definitions
+            .Where(x => x.CountsAsConfirmedLead || (x.EligibleForMetaSignal && x.CountsAsLandingView))
+            .Select(x => x.Name);
+
+        return new HashSet<string>(
+            leadAndViewContentSources
+                .Concat(ExplicitBridgeSourceEventTypes)
+                .Concat(MetaSignalEventCatalog.Definitions.Select(x => x.Name)),
+            StringComparer.OrdinalIgnoreCase);
+    }
+
+    private static HealthMetaSignalContext CreateHealthMetaContext(HealthMetaSignalRow row)
+    {
+        return new HealthMetaSignalContext
+        {
+            Row = row,
+            IsBridgeOwned = ReadStringMetadata(row.MetadataJson, "bridgeSource") == "analytics_events",
+            SourceAnalyticsEventId = ReadInt64Metadata(row.MetadataJson, "sourceAnalyticsEventId"),
+            SourceAnalyticsEventType = ReadStringMetadata(row.MetadataJson, "sourceAnalyticsEventType"),
+            MetaServerStatus = ReadStringMetadata(row.MetadataJson, "metaServerStatus"),
+            MetaServerAttempted = ReadBoolMetadataNullable(row.MetadataJson, "metaServerAttempted"),
+            MetaServerSentMetadata = ReadBoolMetadataNullable(row.MetadataJson, "metaServerSent"),
+            MetaServerDispatchedUtc = ReadDateTimeMetadata(row.MetadataJson, "metaServerDispatchedUtc")
+        };
+    }
+
+    private static bool RequiresDispatcher(HealthMetaSignalRow row) =>
+        ServerForwardEventNames.Contains(row.EventName);
+
+    private static bool HasDispatcherActivity(HealthMetaSignalContext row) =>
+        row.MetaServerDispatchedUtc.HasValue ||
+        row.MetaServerAttempted.HasValue ||
+        row.MetaServerSentMetadata.HasValue ||
+        !string.IsNullOrWhiteSpace(row.MetaServerStatus);
+
+    private static string ResolveDispatcherStatus(HealthMetaSignalContext row, DateTime dispatcherThresholdUtc)
+    {
+        if (!RequiresDispatcher(row.Row))
+            return "Not Required";
+
+        if (HasDispatcherActivity(row))
+            return row.Row.MetaServerSent || string.Equals(row.MetaServerStatus, "sent", StringComparison.OrdinalIgnoreCase)
+                ? "Sent"
+                : "Processed";
+
+        return row.Row.CreatedUtc <= dispatcherThresholdUtc
+            ? "Pending"
+            : "Queued";
+    }
+
+    private static string ResolveAuthorityStatus(HealthMetaSignalContext row)
+    {
+        if (!RequiresDispatcher(row.Row))
+            return "N/A";
+
+        if (!HasDispatcherActivity(row))
+            return "Pending";
+
+        return string.Equals(row.MetaServerStatus, "blocked_by_authority", StringComparison.OrdinalIgnoreCase)
+            ? "Blocked"
+            : "Allowed";
+    }
+
+    private static string BuildFunnelStepLabel(HealthMetaSignalRow row)
+    {
+        var stepName = Normalize(row.StepName);
+        if (row.FunnelStep.HasValue && !string.IsNullOrWhiteSpace(stepName))
+            return $"{row.FunnelStep.Value} · {stepName}";
+        if (row.FunnelStep.HasValue)
+            return row.FunnelStep.Value.ToString();
+        return stepName ?? "—";
+    }
+
     /// <summary>
     /// Expands an agent scope to all tracking profile IDs owned by the same AgentUpn.
     /// This is the true agent boundary: same authenticated agent account, not slug guessing.
@@ -939,6 +1425,69 @@ public sealed class MetaSignalAnalyticsService : IMetaSignalAnalyticsService
         }
     }
 
+    private static bool? ReadBoolMetadataNullable(string? metadataJson, string propertyName)
+    {
+        if (string.IsNullOrWhiteSpace(metadataJson) || string.IsNullOrWhiteSpace(propertyName))
+            return null;
+
+        try
+        {
+            using var doc = JsonDocument.Parse(metadataJson);
+            if (!doc.RootElement.TryGetProperty(propertyName, out var property))
+                return null;
+
+            if (property.ValueKind == JsonValueKind.True)
+                return true;
+            if (property.ValueKind == JsonValueKind.False)
+                return false;
+            if (property.ValueKind == JsonValueKind.String &&
+                bool.TryParse(property.GetString(), out var parsed))
+                return parsed;
+        }
+        catch
+        {
+            return null;
+        }
+
+        return null;
+    }
+
+    private static long? ReadInt64Metadata(string? metadataJson, string propertyName)
+    {
+        if (string.IsNullOrWhiteSpace(metadataJson) || string.IsNullOrWhiteSpace(propertyName))
+            return null;
+
+        try
+        {
+            using var doc = JsonDocument.Parse(metadataJson);
+            if (!doc.RootElement.TryGetProperty(propertyName, out var property))
+                return null;
+
+            if (property.ValueKind == JsonValueKind.Number && property.TryGetInt64(out var numeric))
+                return numeric;
+            if (property.ValueKind == JsonValueKind.String &&
+                long.TryParse(property.GetString(), out var parsed))
+                return parsed;
+        }
+        catch
+        {
+            return null;
+        }
+
+        return null;
+    }
+
+    private static DateTime? ReadDateTimeMetadata(string? metadataJson, string propertyName)
+    {
+        var raw = ReadStringMetadata(metadataJson, propertyName);
+        if (string.IsNullOrWhiteSpace(raw))
+            return null;
+
+        return DateTime.TryParse(raw, out var parsed)
+            ? parsed
+            : null;
+    }
+
     private sealed class VisitorSignalSummary
     {
         public string VisitorKey { get; init; } = string.Empty;
@@ -976,6 +1525,45 @@ public sealed class MetaSignalAnalyticsService : IMetaSignalAnalyticsService
             SubmitAttempted ||
             LeadSubmitted ||
             LeadReadySignal;
+    }
+
+    private sealed class HealthAnalyticsEventRow
+    {
+        public long Id { get; init; }
+        public string EventType { get; init; } = string.Empty;
+        public string? SessionId { get; init; }
+        public string? VisitorId { get; init; }
+        public DateTime EventUtc { get; init; }
+    }
+
+    private sealed class HealthMetaSignalRow
+    {
+        public long Id { get; init; }
+        public DateTime CreatedUtc { get; init; }
+        public string EventId { get; init; } = string.Empty;
+        public string EventName { get; init; } = string.Empty;
+        public string? EventCategory { get; init; }
+        public string? SessionId { get; init; }
+        public string? VisitorId { get; init; }
+        public Guid? LeadId { get; init; }
+        public int? FunnelStep { get; init; }
+        public string? StepName { get; init; }
+        public bool MetaBrowserSent { get; init; }
+        public bool MetaServerSent { get; init; }
+        public string? MetaDeduplicationKey { get; init; }
+        public string? MetadataJson { get; init; }
+    }
+
+    private sealed class HealthMetaSignalContext
+    {
+        public HealthMetaSignalRow Row { get; init; } = new();
+        public bool IsBridgeOwned { get; init; }
+        public long? SourceAnalyticsEventId { get; init; }
+        public string? SourceAnalyticsEventType { get; init; }
+        public string? MetaServerStatus { get; init; }
+        public bool? MetaServerAttempted { get; init; }
+        public bool? MetaServerSentMetadata { get; init; }
+        public DateTime? MetaServerDispatchedUtc { get; init; }
     }
 
     private sealed record MetaSignalAttributionSnapshot(

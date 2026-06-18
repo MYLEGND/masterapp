@@ -132,6 +132,9 @@
                     <div class="wa-header-rail-meta">
                         <div class="wa-tz-chip" id="wa-tz-label"><span class="wa-tz-chip-icon">🕐</span><span id="wa-tz-text"></span></div>
                         <div class="fa-env-badge" id="fa-env-label"></div>
+                        <button class="btn btn-sm wa-meta-signal-health-btn" id="meta-signal-health-open" type="button" data-bs-toggle="modal" data-bs-target="#metaSignalHealthModal">
+                            Meta Signal Health
+                        </button>
                         @if(canViewFounderTeamUi)
                         {
                         <button class="btn btn-sm wa-team-btn" id="team-rollup-btn" type="button" data-bs-toggle="modal" data-bs-target="#teamRollupModal">
@@ -1079,6 +1082,102 @@
         </section>
       </div>
       <div class="modal-footer meta-signal-footer">
+        <button type="button" class="btn btn-outline-light" data-bs-dismiss="modal">Close</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="modal fade fa-modal" id="metaSignalHealthModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable wa-modal-dialog meta-signal-health-dialog">
+    <div class="modal-content wa-modal-shell meta-signal-health-shell">
+      <div class="modal-header wa-modal-header meta-signal-health-header">
+        <div class="wa-modal-header-main">
+          <div class="wa-modal-header-copy">
+            <div class="wa-modal-kicker">Diagnostic Layer</div>
+            <h5 class="modal-title mb-0">Meta Signal Health Dashboard</h5>
+            <div class="wa-modal-subtitle">Read-only visibility into bridge coverage, dispatcher execution, and authority outcomes using the existing analytics and Meta Signal records.</div>
+          </div>
+          <div class="wa-modal-header-actions">
+            <div class="wa-modal-range-chip">
+              <span class="wa-modal-range-label">Window</span>
+              <span class="wa-modal-range-value" id="metasignal-health-range-label">Last 24 Hours</span>
+            </div>
+            <div class="wa-modal-range-chip meta-signal-health-scope-chip">
+              <span class="wa-modal-range-label">Scope</span>
+              <span class="wa-modal-range-value" id="metasignal-health-scope-label">—</span>
+            </div>
+            <div class="wa-modal-note-chip meta-signal-health-updated-chip" id="metasignal-health-updated">Updating…</div>
+          </div>
+        </div>
+        <button type="button" class="btn-close btn-close-white wa-modal-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body wa-modal-body meta-signal-health-body">
+        <div class="wa-modal-note">This dashboard is strictly read-only. It does not write events, alter dispatch behavior, or change Meta pipeline state.</div>
+
+        <section class="wa-modal-section meta-signal-health-section">
+          <div class="meta-signal-health-section-head">
+            <div>
+              <h6 class="mb-1">Pipeline Health</h6>
+              <p class="mb-0">Raw last-24-hour volume across analytics, bridge-derived signal rows, lead capture, and Meta send flags.</p>
+            </div>
+          </div>
+          <div class="meta-signal-health-pipeline-grid" id="metasignal-health-pipeline-grid">
+            <div class="meta-signal-health-empty">Loading pipeline health…</div>
+          </div>
+        </section>
+
+        <section class="wa-modal-section meta-signal-health-section">
+          <div class="meta-signal-health-section-head">
+            <div>
+              <h6 class="mb-1">Flow Integrity</h6>
+              <p class="mb-0">Derived coverage and execution checks from the existing analytics bridge, dispatcher metadata, and authority decisions.</p>
+            </div>
+          </div>
+          <div class="meta-signal-health-flow-grid" id="metasignal-health-flow-grid">
+            <div class="meta-signal-health-empty">Loading flow integrity…</div>
+          </div>
+        </section>
+
+        <section class="wa-modal-section meta-signal-health-section">
+          <div class="meta-signal-health-section-head">
+            <div>
+              <h6 class="mb-1">Failure Detection</h6>
+              <p class="mb-0">Read-only checks for missing derived rows, incomplete identity, browser-send gaps, and dispatcher misses.</p>
+            </div>
+          </div>
+          <div class="meta-signal-health-issue-grid" id="metasignal-health-issue-grid">
+            <div class="meta-signal-health-empty">Loading failure detection…</div>
+          </div>
+        </section>
+
+        <section class="wa-modal-section meta-signal-health-section">
+          <div class="meta-signal-health-section-head">
+            <div>
+              <h6 class="mb-1">Recent Events</h6>
+              <p class="mb-0">The latest 20 Meta Signal rows with session, lead, funnel step, and Meta status flags for quick inspection.</p>
+            </div>
+          </div>
+          <div class="table-responsive meta-signal-health-table-wrap">
+            <table class="table table-sm">
+              <thead>
+                <tr>
+                  <th>When (Local)</th>
+                  <th>Event Type / Name</th>
+                  <th>SessionId</th>
+                  <th>LeadId</th>
+                  <th>Funnel Step</th>
+                  <th>Meta Status</th>
+                </tr>
+              </thead>
+              <tbody id="metasignal-health-events-body">
+                <tr><td colspan="6" class="fa-empty">Loading…</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </section>
+      </div>
+      <div class="modal-footer wa-modal-footer meta-signal-health-footer">
         <button type="button" class="btn btn-outline-light" data-bs-dismiss="modal">Close</button>
       </div>
     </div>

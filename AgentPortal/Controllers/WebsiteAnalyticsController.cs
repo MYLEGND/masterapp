@@ -67,9 +67,7 @@ namespace AgentPortal.Controllers;
 
     [HttpGet("")]
     [HttpGet("Index")]
-    [HttpGet("/website-analytics")]
-    [HttpGet("/website-analytics/index")]
-    public async Task<IActionResult> Index([FromQuery] Guid? agentProfileId = null, [FromQuery] string? preset = null, [FromQuery] DateTime? fromUtc = null, [FromQuery] DateTime? toUtc = null)
+    public async Task<IActionResult> Index([FromQuery] Guid? agentProfileId = null, [FromQuery] bool team = false, [FromQuery] string? preset = null, [FromQuery] DateTime? fromUtc = null, [FromQuery] DateTime? toUtc = null)
     {
         var viewerTimeZone = GetViewerTimeZone();
         preset = string.IsNullOrWhiteSpace(preset) ? "today" : preset;
@@ -83,9 +81,9 @@ namespace AgentPortal.Controllers;
             range = TimeRangeRequest.FromPreset("today", null, null, viewerTimeZone);
         }
 
-        var scope = await ResolveScopeAsync(agentProfileId);
+        var scope = await ResolveScopeAsync(agentProfileId, team);
         var summary = await _analytics.GetSummaryAsync(range, scope);
-        summary.ScopeLabel = await ResolveScopeLabelAsync(scope, team: false);
+        summary.ScopeLabel = await ResolveScopeLabelAsync(scope, team);
         ViewData["InitialRangePreset"] = range.Preset;
         ViewData["InitialRangeLabel"] = range.Label;
         ViewData["InitialRangeFrom"] = range.Preset == "custom"
@@ -147,7 +145,6 @@ namespace AgentPortal.Controllers;
 
     [Authorize(Policy = "FounderOnly")]
     [HttpGet("incident-monitor")]
-    [HttpGet("/website-analytics/incident-monitor")]
     public async Task<IActionResult> IncidentMonitor(CancellationToken cancellationToken)
     {
         var result = await _incidentMonitor.GetSystemMonitorAsync(cancellationToken);
@@ -195,7 +192,6 @@ namespace AgentPortal.Controllers;
     }
 
     [HttpGet("summary")]
-    [HttpGet("/website-analytics/summary")]
     public async Task<IActionResult> Summary([FromQuery] string? preset, [FromQuery] DateTime? fromUtc, [FromQuery] DateTime? toUtc, [FromQuery] Guid? agentProfileId = null, [FromQuery] bool team = false, [FromQuery] TrafficType trafficType = TrafficType.All, [FromQuery] TrafficQualityMode qualityMode = TrafficQualityMode.RealHuman)
     {
         var range = TimeRangeRequest.FromPreset(preset, fromUtc, toUtc, GetViewerTimeZone(), qualityMode);
@@ -224,7 +220,6 @@ namespace AgentPortal.Controllers;
     }
 
     [HttpGet("page-performance")]
-    [HttpGet("/website-analytics/page-performance")]
     public async Task<IActionResult> PagePerformance([FromQuery] string? preset, [FromQuery] DateTime? fromUtc, [FromQuery] DateTime? toUtc, [FromQuery] Guid? agentProfileId = null, [FromQuery] bool team = false, [FromQuery] TrafficType trafficType = TrafficType.All, [FromQuery] TrafficQualityMode qualityMode = TrafficQualityMode.RealHuman)
     {
         var range = TimeRangeRequest.FromPreset(preset, fromUtc, toUtc, GetViewerTimeZone(), qualityMode);
@@ -234,7 +229,6 @@ namespace AgentPortal.Controllers;
     }
 
     [HttpGet("cta-performance")]
-    [HttpGet("/website-analytics/cta-performance")]
     public async Task<IActionResult> CtaPerformance([FromQuery] string? preset, [FromQuery] DateTime? fromUtc, [FromQuery] DateTime? toUtc, [FromQuery] Guid? agentProfileId = null, [FromQuery] bool team = false, [FromQuery] TrafficType trafficType = TrafficType.All, [FromQuery] TrafficQualityMode qualityMode = TrafficQualityMode.RealHuman)
     {
         var range = TimeRangeRequest.FromPreset(preset, fromUtc, toUtc, GetViewerTimeZone(), qualityMode);
@@ -244,7 +238,6 @@ namespace AgentPortal.Controllers;
     }
 
     [HttpGet("quote-funnel")]
-    [HttpGet("/website-analytics/quote-funnel")]
     public async Task<IActionResult> QuoteFunnel([FromQuery] string? preset, [FromQuery] DateTime? fromUtc, [FromQuery] DateTime? toUtc, [FromQuery] Guid? agentProfileId = null, [FromQuery] bool team = false, [FromQuery] TrafficType trafficType = TrafficType.All, [FromQuery] TrafficQualityMode qualityMode = TrafficQualityMode.RealHuman)
     {
         var range = TimeRangeRequest.FromPreset(preset, fromUtc, toUtc, GetViewerTimeZone(), qualityMode);
@@ -254,7 +247,6 @@ namespace AgentPortal.Controllers;
     }
 
     [HttpGet("marketing-health")]
-    [HttpGet("/website-analytics/marketing-health")]
     public async Task<IActionResult> MarketingHealth([FromQuery] string? preset, [FromQuery] DateTime? fromUtc, [FromQuery] DateTime? toUtc, [FromQuery] Guid? agentProfileId = null, [FromQuery] bool team = false, [FromQuery] TrafficType trafficType = TrafficType.All, [FromQuery] TrafficQualityMode qualityMode = TrafficQualityMode.RealHuman)
     {
         var range = TimeRangeRequest.FromPreset(preset, fromUtc, toUtc, GetViewerTimeZone(), qualityMode);
@@ -264,7 +256,6 @@ namespace AgentPortal.Controllers;
     }
 
     [HttpGet("conversions")]
-    [HttpGet("/website-analytics/conversions")]
     public async Task<IActionResult> Conversions([FromQuery] string? preset, [FromQuery] DateTime? fromUtc, [FromQuery] DateTime? toUtc, [FromQuery] Guid? agentProfileId = null, [FromQuery] bool team = false, [FromQuery] TrafficType trafficType = TrafficType.All, [FromQuery] TrafficQualityMode qualityMode = TrafficQualityMode.RealHuman, [FromQuery] int recentTake = 100)
     {
         var range = TimeRangeRequest.FromPreset(preset, fromUtc, toUtc, GetViewerTimeZone(), qualityMode);
@@ -274,7 +265,6 @@ namespace AgentPortal.Controllers;
     }
 
     [HttpGet("leads")]
-    [HttpGet("/website-analytics/leads")]
     public async Task<IActionResult> Leads([FromQuery] string? preset, [FromQuery] DateTime? fromUtc, [FromQuery] DateTime? toUtc, [FromQuery] Guid? agentProfileId = null, [FromQuery] bool team = false, [FromQuery] TrafficType trafficType = TrafficType.All, [FromQuery] TrafficQualityMode qualityMode = TrafficQualityMode.RealHuman, [FromQuery] int limit = 200)
     {
         var range = TimeRangeRequest.FromPreset(preset, fromUtc, toUtc, GetViewerTimeZone(), qualityMode);
@@ -284,7 +274,6 @@ namespace AgentPortal.Controllers;
     }
 
     [HttpGet("meta-signal")]
-    [HttpGet("/website-analytics/meta-signal")]
     public async Task<IActionResult> MetaSignal(
         [FromQuery] string? preset,
         [FromQuery] DateTime? fromUtc,
@@ -301,6 +290,22 @@ namespace AgentPortal.Controllers;
         var range = TimeRangeRequest.FromPreset(preset, fromUtc, toUtc, GetViewerTimeZone(), qualityMode);
         var scope = await ResolveScopeAsync(agentProfileId, team);
         var result = await _metaSignalAnalytics.GetDashboardAsync(range, scope, trafficType, quoteType, campaign, pageMode, scoreTier, HttpContext.RequestAborted);
+        result.ScopeLabel = await ResolveScopeLabelAsync(scope, team);
+        return Json(result);
+    }
+
+    [HttpGet("meta-signal-health")]
+    public async Task<IActionResult> MetaSignalHealth(
+        [FromQuery] string? preset,
+        [FromQuery] DateTime? fromUtc,
+        [FromQuery] DateTime? toUtc,
+        [FromQuery] Guid? agentProfileId = null,
+        [FromQuery] bool team = false,
+        [FromQuery] TrafficQualityMode qualityMode = TrafficQualityMode.RealHuman)
+    {
+        var range = TimeRangeRequest.FromPreset(preset, fromUtc, toUtc, GetViewerTimeZone(), qualityMode);
+        var scope = await ResolveScopeAsync(agentProfileId, team);
+        var result = await _metaSignalAnalytics.GetHealthDashboardAsync(range, scope, HttpContext.RequestAborted);
         result.ScopeLabel = await ResolveScopeLabelAsync(scope, team);
         return Json(result);
     }
@@ -531,13 +536,12 @@ namespace AgentPortal.Controllers;
     }
 
     [HttpGet("agent-performance")]
-    [HttpGet("/website-analytics/agent-performance")]
-    public async Task<IActionResult> AgentPerformance([FromQuery] string? preset, [FromQuery] DateTime? fromUtc, [FromQuery] DateTime? toUtc, [FromQuery] TrafficQualityMode qualityMode = TrafficQualityMode.RealHuman, [FromQuery] string? orderBy = null, [FromQuery] bool desc = true, [FromQuery] int? take = null, [FromQuery] int? skip = null)
+    public async Task<IActionResult> AgentPerformance([FromQuery] string? preset, [FromQuery] DateTime? fromUtc, [FromQuery] DateTime? toUtc, [FromQuery] TrafficType trafficType = TrafficType.All, [FromQuery] TrafficQualityMode qualityMode = TrafficQualityMode.RealHuman, [FromQuery] string? orderBy = null, [FromQuery] bool desc = true, [FromQuery] int? take = null, [FromQuery] int? skip = null)
     {
         if (!FounderGuard.IsFounder(User)) return Forbid();
         var range = TimeRangeRequest.FromPreset(preset, fromUtc, toUtc, GetViewerTimeZone(), qualityMode);
         var options = new AnalyticsQueryOptions { OrderBy = orderBy ?? "leads", Desc = desc, Take = take, Skip = skip };
-        var result = await _analytics.GetAgentPerformanceAsync(range, ScopeContext.Global, options);
+        var result = await _analytics.GetAgentPerformanceAsync(range, ScopeContext.Global, trafficType, options);
         return Json(result);
     }
 
@@ -597,7 +601,6 @@ namespace AgentPortal.Controllers;
     }
 
     [HttpGet("ai-review-snapshot")]
-    [HttpGet("/website-analytics/ai-review-snapshot")]
     public async Task<IActionResult> AiReviewSnapshot([FromQuery] string? preset, [FromQuery] DateTime? fromUtc, [FromQuery] DateTime? toUtc, [FromQuery] Guid? agentProfileId = null, [FromQuery] bool team = false, [FromQuery] TrafficType trafficType = TrafficType.All, [FromQuery] TrafficQualityMode qualityMode = TrafficQualityMode.RealHuman)
     {
         try
@@ -1062,13 +1065,16 @@ namespace AgentPortal.Controllers;
     }
 
     [HttpGet("meta-campaigns")]
-    [HttpGet("/website-analytics/meta-campaigns")]
-    public async Task<IActionResult> MetaCampaigns([FromQuery] string? preset, [FromQuery] DateTime? fromUtc, [FromQuery] DateTime? toUtc, [FromQuery] Guid? agentProfileId = null, [FromQuery] TrafficQualityMode qualityMode = TrafficQualityMode.RealHuman)
+    public async Task<IActionResult> MetaCampaigns([FromQuery] string? preset, [FromQuery] DateTime? fromUtc, [FromQuery] DateTime? toUtc, [FromQuery] Guid? agentProfileId = null, [FromQuery] bool team = false, [FromQuery] TrafficQualityMode qualityMode = TrafficQualityMode.RealHuman)
     {
         try
         {
+            var selectedAgentId = await ResolveMetaConnectionAgentIdAsync(agentProfileId, team);
+            if (!selectedAgentId.HasValue || selectedAgentId.Value == Guid.Empty)
+                throw new InvalidOperationException("Select an agent scope to view Meta campaigns.");
+
             var range = TimeRangeRequest.FromPreset(preset, fromUtc, toUtc, GetViewerTimeZone(), qualityMode);
-            var scope = await ResolveScopeAsync(agentProfileId, team: false);
+            var scope = ScopeContext.ForAgent(selectedAgentId.Value);
             var result = await _metaAds.GetCampaignsAsync(range, scope, HttpContext.RequestAborted);
             return Json(result);
         }
@@ -1080,15 +1086,14 @@ namespace AgentPortal.Controllers;
     }
 
     [HttpGet("meta-connect")]
-    [HttpGet("/website-analytics/meta-connect")]
-    public async Task<IActionResult> MetaConnect([FromQuery] string? returnUrl = null)
+    public async Task<IActionResult> MetaConnect([FromQuery] string? returnUrl = null, [FromQuery] Guid? agentProfileId = null, [FromQuery] bool team = false)
     {
         var target = string.IsNullOrWhiteSpace(returnUrl) ? "/WebsiteAnalytics/Index" : returnUrl!;
         try
         {
-            var agentId = await ResolveMetaConnectionAgentIdAsync();
+            var agentId = await ResolveMetaConnectionAgentIdAsync(agentProfileId, team);
             if (!agentId.HasValue || agentId.Value == Guid.Empty)
-                return Redirect($"{target}?meta=error&message={Uri.EscapeDataString("Unable to resolve agent context for Meta Ads connection.")}");
+                return Redirect($"{target}?meta=error&message={Uri.EscapeDataString("Select an agent scope to connect Meta Ads.")}");
 
             var connectUrl = _metaAdsOAuth.BuildConnectUrl(agentId.Value, returnUrl);
             return Redirect(connectUrl);
@@ -1163,21 +1168,22 @@ namespace AgentPortal.Controllers;
 
 
     [HttpGet("meta-connection-status")]
-    [HttpGet("/website-analytics/meta-connection-status")]
-    public async Task<IActionResult> MetaConnectionStatus()
+    public async Task<IActionResult> MetaConnectionStatus([FromQuery] Guid? agentProfileId = null, [FromQuery] bool team = false)
     {
-        var agentId = await ResolveMetaConnectionAgentIdAsync();
-        var hasConfiguredFallback = !string.IsNullOrWhiteSpace(_config["MetaAds:AccessToken"]) &&
-                                    !string.IsNullOrWhiteSpace(_config["MetaAds:DefaultAccountId"]);
+        var agentId = await ResolveMetaConnectionAgentIdAsync(agentProfileId, team);
         if (!agentId.HasValue || agentId.Value == Guid.Empty)
         {
             return Json(new MetaAdsConnectionStatusDto
             {
-                Connected = hasConfiguredFallback,
-                AgentTrackingProfileId = null
+                Connected = false,
+                AgentTrackingProfileId = null,
+                RequiresAgentScope = true,
+                Message = "Select an agent scope to view Meta Ads status."
             });
         }
 
+        var hasConfiguredFallback = !string.IsNullOrWhiteSpace(_config["MetaAds:AccessToken"]) &&
+                                    !string.IsNullOrWhiteSpace(_config["MetaAds:DefaultAccountId"]);
         var record = await _metaAdsConnectionStore.GetAsync(agentId.Value, HttpContext.RequestAborted);
         if (record == null)
         {
@@ -1187,7 +1193,10 @@ namespace AgentPortal.Controllers;
                 AgentTrackingProfileId = agentId,
                 AccountId = hasConfiguredFallback ? _config["MetaAds:DefaultAccountId"] : null,
                 AccountName = hasConfiguredFallback ? "Configured fallback account" : null,
-                MetaUserName = hasConfiguredFallback ? "Configured fallback" : null
+                MetaUserName = hasConfiguredFallback ? "Configured fallback" : null,
+                Message = hasConfiguredFallback
+                    ? "Using the configured fallback Meta Ads account for the selected agent."
+                    : "Meta Ads not connected for the selected agent."
             });
         }
 
@@ -1207,12 +1216,11 @@ namespace AgentPortal.Controllers;
 
     [HttpPost("meta-disconnect")]
     [ValidateAntiForgeryToken]
-    [HttpPost("/website-analytics/meta-disconnect")]
-    public async Task<IActionResult> MetaDisconnect()
+    public async Task<IActionResult> MetaDisconnect([FromQuery] Guid? agentProfileId = null, [FromQuery] bool team = false)
     {
-        var agentId = await ResolveMetaConnectionAgentIdAsync();
+        var agentId = await ResolveMetaConnectionAgentIdAsync(agentProfileId, team);
         if (!agentId.HasValue || agentId.Value == Guid.Empty)
-            return BadRequest(new { message = "Unable to resolve agent context for Meta Ads disconnect." });
+            return BadRequest(new { message = "Select an agent scope to disconnect Meta Ads." });
 
         await _metaAdsConnectionStore.DeleteAsync(agentId.Value, HttpContext.RequestAborted);
         return Json(new { ok = true });
@@ -1326,11 +1334,35 @@ namespace AgentPortal.Controllers;
         return null;
     }
 
-    private async Task<Guid?> ResolveMetaConnectionAgentIdAsync()
+    private async Task<Guid?> ResolveMetaConnectionAgentIdAsync(Guid? requestedAgentId = null, bool team = false)
     {
-        var scope = await ResolveScopeAsync(null, team: false);
-        if (scope.ScopeType == ScopeType.Agent && scope.AgentTrackingProfileId.HasValue && scope.AgentTrackingProfileId.Value != Guid.Empty)
-            return scope.AgentTrackingProfileId.Value;
+        if (team)
+            return null;
+
+        if (requestedAgentId.HasValue && requestedAgentId.Value != Guid.Empty)
+        {
+            var exists = await _db.AgentTrackingProfiles.AsNoTracking()
+                .AnyAsync(p => p.Id == requestedAgentId.Value);
+            return exists ? requestedAgentId.Value : null;
+        }
+
+        if (_effectiveContext.IsViewingAsAgent)
+        {
+            var impersonatedScope = await ResolveEffectiveImpersonatedAgentScopeAsync();
+            if (impersonatedScope.ScopeType == ScopeType.Agent &&
+                impersonatedScope.AgentTrackingProfileId.HasValue &&
+                impersonatedScope.AgentTrackingProfileId.Value != Guid.Empty)
+            {
+                return impersonatedScope.AgentTrackingProfileId.Value;
+            }
+        }
+
+        if (FounderGuard.IsFounder(User))
+            return null;
+
+        var effectiveProfile = await _effectiveContext.GetEffectiveTrackingProfileAsync();
+        if (effectiveProfile?.Id is Guid effectiveProfileId && effectiveProfileId != Guid.Empty)
+            return effectiveProfileId;
 
         var caller = await GetCallerProfileAsync();
         return caller?.Id;
@@ -1486,7 +1518,6 @@ namespace AgentPortal.Controllers;
     /// To hide from normal users, add [Authorize(Policy = "FounderOnly")] or restrict by role.
     /// </summary>
     [HttpGet("debug/traffic-buckets")]
-    [HttpGet("/website-analytics/debug/traffic-buckets")]
     public async Task<IActionResult> DebugTrafficBuckets(
         [FromQuery] string? preset,
         [FromQuery] DateTime? fromUtc,

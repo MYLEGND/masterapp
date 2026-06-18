@@ -14,7 +14,7 @@ public interface IAnalyticsQueryService
     Task<MarketingHealthDto> GetMarketingHealthAsync(TimeRangeRequest range, ScopeContext scope, TrafficType trafficType = TrafficType.All);
     Task<ConversionCenterDto> GetConversionsAsync(TimeRangeRequest range, ScopeContext scope, TrafficType trafficType = TrafficType.All, int recentTake = 100);
     Task<LeadSnapshotDto> GetLeadsAsync(TimeRangeRequest range, ScopeContext scope, TrafficType trafficType = TrafficType.All, int take = 200);
-    Task<AgentPerformanceDto> GetAgentPerformanceAsync(TimeRangeRequest range, ScopeContext scope, AnalyticsQueryOptions? options = null);
+    Task<AgentPerformanceDto> GetAgentPerformanceAsync(TimeRangeRequest range, ScopeContext scope, TrafficType trafficType = TrafficType.All, AnalyticsQueryOptions? options = null);
     // ── Behavior Intelligence Engine ─────────────────────────────────────────
     Task<EngagementSummaryDto> GetEngagementSummaryAsync(TimeRangeRequest range, ScopeContext scope, TrafficType trafficType = TrafficType.All);
     Task<PageEngagementDto> GetPageEngagementAsync(TimeRangeRequest range, ScopeContext scope);

@@ -2722,7 +2722,7 @@ public sealed class AnalyticsQueryService : IAnalyticsQueryService
         return dto;
     }
 
-    public async Task<AgentPerformanceDto> GetAgentPerformanceAsync(TimeRangeRequest range, ScopeContext scope, AnalyticsQueryOptions? options = null)
+    public async Task<AgentPerformanceDto> GetAgentPerformanceAsync(TimeRangeRequest range, ScopeContext scope, TrafficType trafficType = TrafficType.All, AnalyticsQueryOptions? options = null)
     {
         // Only allow founder/global rollup to compare agents
         if (scope.ScopeType != ScopeType.Global)
@@ -2735,9 +2735,19 @@ public sealed class AnalyticsQueryService : IAnalyticsQueryService
         var take = options.Take.HasValue && options.Take.Value > 0 ? options.Take.Value : 50;
         var skip = options.Skip.HasValue && options.Skip.Value >= 0 ? options.Skip.Value : 0;
 
-        var events = await BaseEvents(range, ScopeContext.Global).ToListAsync();
-        var leads = await BaseLeads(range, ScopeContext.Global).ToListAsync();
-        var attributedRows = BuildAttributedEventRows(events);
+        var allEvents = await BaseEvents(range, ScopeContext.Global).ToListAsync();
+        var allLeads = await BaseLeads(range, ScopeContext.Global).ToListAsync();
+        var attributedRows = BuildAttributedEventRows(allEvents);
+        var events = allEvents;
+        var leads = allLeads;
+
+        if (trafficType != TrafficType.All)
+        {
+            attributedRows = FilterAttributedRowsByTraffic(attributedRows, trafficType);
+            events = attributedRows.Select(r => r.Event).ToList();
+            leads = ResolveAndFilterLeads(allLeads, allEvents, trafficType);
+        }
+
         var attributedSessionRows = BuildSessionAttributionRows(attributedRows);
         var topAttributionRows = attributedSessionRows.Count > 0 ? attributedSessionRows : attributedRows;
 

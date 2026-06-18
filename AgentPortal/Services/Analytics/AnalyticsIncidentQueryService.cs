@@ -143,10 +143,19 @@ public sealed class AnalyticsIncidentQueryService : IAnalyticsIncidentQueryServi
             .Where(observation => SeverityRank(observation.Severity) > 0)
             .ToList();
 
-        var activeAlerts = await _db.AnalyticsDriftAlerts
-            .Where(x => x.ScopeKey == GlobalScopeKey && x.IsActive)
-            .OrderByDescending(x => x.LastDetectedUtc)
-            .ToListAsync(ct);
+        List<AnalyticsDriftAlert> activeAlerts;
+        try
+        {
+            activeAlerts = await _db.AnalyticsDriftAlerts
+                .Where(x => x.ScopeKey == GlobalScopeKey && x.IsActive)
+                .OrderByDescending(x => x.LastDetectedUtc)
+                .ToListAsync(ct);
+        }
+        catch (Exception ex) when (IsDriftAlertsStoreUnavailable(ex))
+        {
+            _logger.LogWarning(ex, "Incident monitor refresh skipped because AnalyticsDriftAlerts is not yet available.");
+            return 0;
+        }
 
         var emailQueue = new List<AnalyticsDriftAlert>();
         var activeKeys = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
@@ -225,7 +234,15 @@ public sealed class AnalyticsIncidentQueryService : IAnalyticsIncidentQueryServi
             alert.LastDetectedUtc = nowUtc;
         }
 
-        await _db.SaveChangesAsync(ct);
+        try
+        {
+            await _db.SaveChangesAsync(ct);
+        }
+        catch (Exception ex) when (IsDriftAlertsStoreUnavailable(ex))
+        {
+            _logger.LogWarning(ex, "Incident monitor refresh skipped while saving because AnalyticsDriftAlerts is not yet available.");
+            return 0;
+        }
 
         foreach (var alert in emailQueue)
         {
@@ -240,10 +257,38 @@ public sealed class AnalyticsIncidentQueryService : IAnalyticsIncidentQueryServi
 
         if (emailQueue.Count > 0)
         {
-            await _db.SaveChangesAsync(ct);
+            try
+            {
+                await _db.SaveChangesAsync(ct);
+            }
+            catch (Exception ex) when (IsDriftAlertsStoreUnavailable(ex))
+            {
+                _logger.LogWarning(ex, "Incident monitor notification state could not be saved because AnalyticsDriftAlerts is not yet available.");
+                return 0;
+            }
         }
 
         return observations.Count;
+    }
+
+    private static bool IsDriftAlertsStoreUnavailable(Exception ex)
+    {
+        for (var current = ex; current != null; current = current.InnerException)
+        {
+            var message = current.Message ?? string.Empty;
+            if (!message.Contains("AnalyticsDriftAlerts", StringComparison.OrdinalIgnoreCase))
+            {
+                continue;
+            }
+
+            if (message.Contains("Invalid object name", StringComparison.OrdinalIgnoreCase) ||
+                message.Contains("no such table", StringComparison.OrdinalIgnoreCase))
+            {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     private async Task<SystemMetricsSnapshot> BuildSystemMetricsAsync(DateTime nowUtc, CancellationToken ct)

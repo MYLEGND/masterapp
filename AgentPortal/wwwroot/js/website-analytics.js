@@ -44,6 +44,7 @@
       agentPerf: null,
       traffic: null,
       metaSignal: null,
+      metaSignalHealth: null,
       metaCampaigns: null,
       behaviorSources: null,
       aiSnapshot: null
@@ -100,7 +101,7 @@
   })();
 
   if (isFounder) {
-    // Founder default is global unless a personal or agent scope is explicitly selected.
+    // Founder scope is hydrated by the server so personal/global selection survives refreshes.
     state.agentProfileId = initialFounderAgentProfileId;
     state.scope.agentProfileId = initialFounderAgentProfileId;
   } else {
@@ -120,9 +121,11 @@
     conversions: '/WebsiteAnalytics/conversions',
     leads: '/WebsiteAnalytics/leads',
     metaSignal: '/WebsiteAnalytics/meta-signal',
+    metaSignalHealth: '/WebsiteAnalytics/meta-signal-health',
     deleteLead: '/WebsiteAnalytics/DeleteLead',
     agentPerf: '/WebsiteAnalytics/agent-performance',
     metaCampaigns: '/WebsiteAnalytics/meta-campaigns',
+    metaConnect: '/WebsiteAnalytics/meta-connect',
     metaConnectionStatus: '/WebsiteAnalytics/meta-connection-status',
     metaDisconnect: '/WebsiteAnalytics/meta-disconnect',
     behaviorSummary: '/WebsiteAnalytics/behavior/summary',
@@ -211,6 +214,11 @@
     }
   }
 
+  function buildUrlWithParams(url, params = {}) {
+    const qs = new URLSearchParams(params).toString();
+    return qs ? `${url}?${qs}` : url;
+  }
+
   function getRequestVerificationToken() {
     return document.querySelector('#meta-disconnect-form input[name="__RequestVerificationToken"]')?.value
       || document.querySelector('input[name="__RequestVerificationToken"]')?.value
@@ -255,8 +263,13 @@
     if (!isFounder) return;
     try {
       const url = new URL(window.location.href);
-      if (agentId) url.searchParams.set('agentProfileId', agentId);
-      else url.searchParams.delete('agentProfileId');
+      if (agentId) {
+        url.searchParams.set('agentProfileId', agentId);
+        url.searchParams.delete('team');
+      } else {
+        url.searchParams.delete('agentProfileId');
+        url.searchParams.set('team', 'true');
+      }
       window.history.replaceState({}, '', url);
     } catch {
       // ignore URL parse issues
@@ -303,6 +316,7 @@
       }
 
       window.history.replaceState({}, '', url);
+      updateMetaConnectHref();
     } catch {
       // ignore URL parse issues
     }
@@ -399,6 +413,7 @@
       updateFounderScopeUi();
       notifyScopeChange();
       updateGrowthBaseLink();
+      void loadMetaConnectionStatus();
       loadSummary();
       refreshOpenModal();
     });
@@ -452,7 +467,10 @@
       p.team = true;
       return p;
     }
-    if (state.scope.agentProfileId) {
+
+    if (isFounder && isGlobalScope()) {
+      p.team = true;
+    } else if (state.scope.agentProfileId) {
       p.agentProfileId = state.scope.agentProfileId;
     }
     const selectedTrafficType = modal && state.trafficType && state.trafficType[modal]
@@ -3122,6 +3140,187 @@ function escapeHtml(value) {
     }
   }
 
+  function formatMetaSignalHealthRate(value) {
+    const numeric = Number(value);
+    return Number.isFinite(numeric) ? `${numeric.toFixed(1)}%` : '0.0%';
+  }
+
+  function metaSignalHealthStatusClass(status) {
+    switch (String(status || '').toLowerCase()) {
+      case 'healthy': return 'is-healthy';
+      case 'watch': return 'is-watch';
+      case 'risk': return 'is-risk';
+      case 'critical': return 'is-critical';
+      default: return 'is-neutral';
+    }
+  }
+
+  function renderMetaSignalHealthStatusPill(status) {
+    const label = escapeHtml(formatEventName(status || 'NoData'));
+    return `<span class="meta-signal-health-status ${metaSignalHealthStatusClass(status)}">${label}</span>`;
+  }
+
+  function renderMetaSignalHealthFlag(label, tone = 'is-neutral') {
+    return `<span class="meta-signal-health-flag ${tone}">${escapeHtml(label)}</span>`;
+  }
+
+  function renderMetaSignalHealthPipeline(data) {
+    const grid = document.getElementById('metasignal-health-pipeline-grid');
+    if (!grid) return;
+
+    const pipeline = data?.pipelineHealth || {};
+    const cards = [
+      {
+        label: 'Analytics Events',
+        value: pipeline.analyticsEventsLast24Hours ?? 0,
+        note: 'All analytics events in the currently selected diagnostic range.'
+      },
+      {
+        label: 'Meta Signal Events',
+        value: pipeline.metaSignalEventsLast24Hours ?? 0,
+        note: 'Every MetaSignal row already persisted by the existing pipeline.'
+      },
+      {
+        label: 'Website Leads',
+        value: pipeline.websiteLeadsLast24Hours ?? 0,
+        note: 'Lead records captured in the currently selected diagnostic range.'
+      },
+      {
+        label: 'Meta Server Sent',
+        value: pipeline.metaServerSentCount ?? 0,
+        note: 'Rows marked as server-sent to Meta.'
+      },
+      {
+        label: 'Meta Browser Sent',
+        value: pipeline.metaBrowserSentCount ?? 0,
+        note: 'Rows already marked as browser pixel sent.'
+      },
+      {
+        label: 'Bridge Eligible',
+        value: pipeline.bridgeEligibleAnalyticsEventsLast24Hours ?? 0,
+        note: 'Analytics events that the existing bridge considers eligible in the selected range.'
+      },
+      {
+        label: 'Bridge Owned Rows',
+        value: pipeline.bridgeOwnedMetaSignalEventsLast24Hours ?? 0,
+        note: 'Derived MetaSignal rows traced back to analytics bridge metadata.'
+      }
+    ];
+
+    grid.innerHTML = cards.map(card => `
+      <article class="meta-signal-health-card meta-signal-health-card-pipeline">
+        <div class="meta-signal-health-card-label">${escapeHtml(card.label)}</div>
+        <div class="meta-signal-health-card-value">${formatInt(card.value)}</div>
+        <div class="meta-signal-health-card-note">${escapeHtml(card.note)}</div>
+      </article>
+    `).join('');
+  }
+
+  function renderMetaSignalHealthFlowIntegrity(data) {
+    const grid = document.getElementById('metasignal-health-flow-grid');
+    if (!grid) return;
+
+    const rows = Array.isArray(data?.flowIntegrity) ? data.flowIntegrity : [];
+    if (!rows.length) {
+      grid.innerHTML = '<div class="meta-signal-health-empty">No flow integrity metrics are available in this slice.</div>';
+      return;
+    }
+
+    grid.innerHTML = rows.map(row => `
+      <article class="meta-signal-health-card meta-signal-health-card-flow ${metaSignalHealthStatusClass(row.status)}">
+        <div class="meta-signal-health-card-topline">
+          <div class="meta-signal-health-card-label">${escapeHtml(row.label || 'Metric')}</div>
+          ${renderMetaSignalHealthStatusPill(row.status)}
+        </div>
+        <div class="meta-signal-health-card-value">${formatMetaSignalHealthRate(row.rate)}</div>
+        <div class="meta-signal-health-card-kicker">${formatInt(row.numerator)} / ${formatInt(row.denominator)}</div>
+        <div class="meta-signal-health-card-note">${escapeHtml(row.detail || '')}</div>
+      </article>
+    `).join('');
+  }
+
+  function renderMetaSignalHealthIssues(data) {
+    const grid = document.getElementById('metasignal-health-issue-grid');
+    if (!grid) return;
+
+    const rows = Array.isArray(data?.failureDetection) ? data.failureDetection : [];
+    if (!rows.length) {
+      grid.innerHTML = '<div class="meta-signal-health-empty">No failure checks are available in this slice.</div>';
+      return;
+    }
+
+    grid.innerHTML = rows.map(row => `
+      <article class="meta-signal-health-card meta-signal-health-card-issue ${metaSignalHealthStatusClass(row.status)}">
+        <div class="meta-signal-health-card-topline">
+          <div class="meta-signal-health-card-label">${escapeHtml(row.label || 'Issue')}</div>
+          ${renderMetaSignalHealthStatusPill(row.status)}
+        </div>
+        <div class="meta-signal-health-card-value">${formatInt(row.count)}</div>
+        <div class="meta-signal-health-card-kicker">Flagged rows</div>
+        <div class="meta-signal-health-card-note">${escapeHtml(row.detail || '')}</div>
+      </article>
+    `).join('');
+  }
+
+  function renderMetaSignalHealthEventFlags(row) {
+    const flags = [
+      row?.metaBrowserSent
+        ? renderMetaSignalHealthFlag('Browser Sent', 'is-browser-good')
+        : renderMetaSignalHealthFlag('Browser Missing', 'is-browser-missing'),
+      row?.metaServerSent
+        ? renderMetaSignalHealthFlag('Server Sent', 'is-server-good')
+        : renderMetaSignalHealthFlag(formatEventName(row?.metaServerStatus || 'Server Pending'), 'is-server-pending'),
+      renderMetaSignalHealthFlag(`Dispatcher ${formatEventName(row?.dispatcherStatus || 'Unknown')}`, row?.dispatcherStatus === 'Sent' ? 'is-server-good' : row?.dispatcherStatus === 'Pending' ? 'is-risk' : 'is-neutral'),
+      renderMetaSignalHealthFlag(`Authority ${formatEventName(row?.authorityStatus || 'Unknown')}`, row?.authorityStatus === 'Blocked' ? 'is-critical' : row?.authorityStatus === 'Allowed' ? 'is-healthy' : 'is-neutral')
+    ];
+
+    return `<div class="meta-signal-health-flag-group">${flags.join('')}</div>`;
+  }
+
+  function renderMetaSignalHealth(data) {
+    state.cache.metaSignalHealth = data;
+    setText('metasignal-health-range-label', data?.rangeLabel || 'Current Range');
+    setText('metasignal-health-scope-label', data?.scopeLabel || state.scope.scopeLabel || 'Global');
+    setText('metasignal-health-updated', data?.lastUpdatedUtc ? `Updated ${formatDisplayDate(data.lastUpdatedUtc) || 'just now'}` : 'Updated now');
+
+    renderMetaSignalHealthPipeline(data);
+    renderMetaSignalHealthFlowIntegrity(data);
+    renderMetaSignalHealthIssues(data);
+
+    renderTable('metasignal-health-events-body', data?.recentEvents || [], [
+      { render: row => escapeHtml(formatDisplayDate(row.createdUtc) || '—') },
+      {
+        render: row => `
+          <div class="meta-signal-health-cell-main">${escapeHtml(formatEventName(row.eventName))}</div>
+          <div class="meta-signal-health-cell-sub">${escapeHtml(formatEventName(row.eventType || 'MetaSignal'))} · ${escapeHtml(row.sourceLabel || 'Meta Signal')}</div>
+        `
+      },
+      { render: row => row.sessionId ? `<span class="meta-signal-health-code">${escapeHtml(row.sessionId)}</span>` : '<span class="meta-signal-health-empty-inline">—</span>' },
+      { render: row => row.leadId ? `<span class="meta-signal-health-code">${escapeHtml(row.leadId)}</span>` : '<span class="meta-signal-health-empty-inline">—</span>' },
+      { render: row => `<span class="meta-signal-health-step">${escapeHtml(row.funnelStep || '—')}</span>` },
+      { render: row => renderMetaSignalHealthEventFlags(row) }
+    ]);
+  }
+
+  async function loadMetaSignalHealth() {
+    try {
+      const data = await fetchJson('metaSignalHealth', endpoints.metaSignalHealth, rangeParams());
+      if (!data) return;
+      renderMetaSignalHealth(data);
+    } catch (err) {
+      const message = (err && err.message) ? err.message : 'Unable to load Meta Signal Health Dashboard.';
+      setText('metasignal-health-updated', message);
+      const pipelineGrid = document.getElementById('metasignal-health-pipeline-grid');
+      const flowGrid = document.getElementById('metasignal-health-flow-grid');
+      const issueGrid = document.getElementById('metasignal-health-issue-grid');
+      if (pipelineGrid) pipelineGrid.innerHTML = `<div class="meta-signal-health-empty is-error">${escapeHtml(message)}</div>`;
+      if (flowGrid) flowGrid.innerHTML = `<div class="meta-signal-health-empty is-error">${escapeHtml(message)}</div>`;
+      if (issueGrid) issueGrid.innerHTML = `<div class="meta-signal-health-empty is-error">${escapeHtml(message)}</div>`;
+      setTableMessage('metasignal-health-events-body', 6, message, 'text-danger');
+      console.error(err);
+    }
+  }
+
   function renderAgentPerfDisabledState() {
     setText('agentperf-range-label', state.cache.summary?.rangeLabel || 'Current Range');
     setTableMessage(
@@ -3348,6 +3547,44 @@ function escapeHtml(value) {
     btn.title = enabled ? 'View Meta campaigns' : 'Connect Meta Ads to view campaigns';
   }
 
+  function currentMetaScopeParams() {
+    if (isFounder && isGlobalScope()) {
+      return { team: true };
+    }
+
+    if (state.scope.agentProfileId) {
+      return { agentProfileId: state.scope.agentProfileId };
+    }
+
+    return {};
+  }
+
+  function updateMetaConnectHref() {
+    const connectBtn = document.getElementById('meta-connect-btn');
+    if (!connectBtn) return;
+
+    const params = currentMetaScopeParams();
+    params.returnUrl = `${window.location.pathname}${window.location.search}`;
+    connectBtn.href = buildUrlWithParams(endpoints.metaConnect, params);
+  }
+
+  function setMetaConnectState(enabled, label, title = '') {
+    const connectBtn = document.getElementById('meta-connect-btn');
+    if (!connectBtn) return;
+
+    connectBtn.textContent = label;
+    connectBtn.classList.toggle('disabled', !enabled);
+    connectBtn.setAttribute('aria-disabled', enabled ? 'false' : 'true');
+    connectBtn.tabIndex = enabled ? 0 : -1;
+    connectBtn.title = title;
+
+    if (enabled) {
+      updateMetaConnectHref();
+    } else {
+      connectBtn.href = '#';
+    }
+  }
+
   function setMetaAccountChip(text, connected = true) {
     const chip = document.getElementById('meta-campaigns-account-chip');
     if (!chip) return;
@@ -3386,13 +3623,24 @@ function escapeHtml(value) {
     const disconnectBtn = document.getElementById('meta-disconnect-btn');
     const statusBaseClass = 'wa-kpi-meta-status small';
     if (!statusEl) return;
+    updateMetaConnectHref();
 
     try {
-      const data = await fetchJson('meta-connection-status', endpoints.metaConnectionStatus, {});
-      if (!data || !data.connected) {
+      const data = await fetchJson('meta-connection-status', endpoints.metaConnectionStatus, currentMetaScopeParams());
+      if (!data || data.requiresAgentScope) {
         statusEl.className = `${statusBaseClass} text-warning`;
-        statusEl.textContent = 'Meta Ads not connected for this agent.';
-        if (connectBtn) connectBtn.textContent = 'Connect Meta Ads';
+        statusEl.textContent = (data && data.message) ? data.message : 'Select an agent scope to view Meta Ads status.';
+        setMetaConnectState(false, 'Select Agent Scope', statusEl.textContent);
+        if (disconnectBtn) disconnectBtn.style.display = 'none';
+        setMetaCampaignsEnabled(false);
+        setMetaAccountChip('Agent scope required', false);
+        return;
+      }
+
+      if (!data.connected) {
+        statusEl.className = `${statusBaseClass} text-warning`;
+        statusEl.textContent = data.message || 'Meta Ads not connected for this agent.';
+        setMetaConnectState(true, 'Connect Meta Ads', 'Connect Meta Ads for the selected agent');
         if (disconnectBtn) disconnectBtn.style.display = 'none';
         setMetaCampaignsEnabled(false);
         setMetaAccountChip('Not connected', false);
@@ -3404,7 +3652,7 @@ function escapeHtml(value) {
       const exp = data.accessTokenExpiresUtc ? ` · expires ${formatShortDate(data.accessTokenExpiresUtc)}` : '';
       statusEl.className = `${statusBaseClass} text-success`;
       statusEl.textContent = `Connected: ${acct}${user}${exp}`;
-      if (connectBtn) connectBtn.textContent = 'Reconnect Meta Ads';
+      setMetaConnectState(true, 'Reconnect Meta Ads', 'Reconnect Meta Ads for the selected agent');
       if (disconnectBtn) disconnectBtn.style.display = '';
       setMetaCampaignsEnabled(true);
       setMetaAccountChip(acct || 'Connected', true);
@@ -3425,6 +3673,7 @@ function escapeHtml(value) {
       statusEl.className = `${statusBaseClass} text-danger`;
       statusEl.textContent = 'Unable to read Meta Ads connection status.';
       if (disconnectBtn) disconnectBtn.style.display = 'none';
+      setMetaConnectState(false, 'Status Unavailable', statusEl.textContent);
       setMetaCampaignsEnabled(false);
       setMetaAccountChip('Status unavailable', false);
       console.error(err);
@@ -3433,7 +3682,7 @@ function escapeHtml(value) {
 
   async function handleMetaDisconnect() {
     try {
-      await fetchPostJson('meta-disconnect', endpoints.metaDisconnect);
+      await fetchPostJson('meta-disconnect', buildUrlWithParams(endpoints.metaDisconnect, currentMetaScopeParams()));
       await loadMetaConnectionStatus();
       const body = document.getElementById('meta-campaigns-body');
       if (body) body.innerHTML = '<tr><td colspan="20" class="fa-empty">Disconnected. Reconnect Meta Ads to load campaigns.</td></tr>';
@@ -3673,6 +3922,7 @@ function escapeHtml(value) {
       case 'convModal': loadConv(); break;
       case 'leadsModal': loadLeads(); break;
       case 'metaSignalModal': loadMetaSignal(); break;
+      case 'metaSignalHealthModal': loadMetaSignalHealth(); break;
       case 'agentPerfModal': loadAgentPerf(); break;
       case 'metaCampaignsModal': loadMetaCampaigns(); break;
       case 'behaviorModal': loadBehavior(); break;
@@ -3818,6 +4068,7 @@ function escapeHtml(value) {
     attachModal('convModal', () => { updateTrafficTypeHeader('convModal'); loadConv(); });
     attachModal('leadsModal', () => { updateTrafficTypeHeader('leadsModal'); loadLeads(); });
     attachModal('metaSignalModal', () => { updateTrafficTypeHeader('metaSignalModal'); loadMetaSignal(); });
+    attachModal('metaSignalHealthModal', loadMetaSignalHealth);
     attachModal('metaCampaignsModal', loadMetaCampaigns);
     attachModal('behaviorModal', loadBehavior);
     attachModal('aiReviewSnapshotModal', loadAiReviewSnapshot);
