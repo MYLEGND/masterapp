@@ -155,31 +155,43 @@ public sealed class AnalyticsQueryService : IAnalyticsQueryService
                 !string.IsNullOrWhiteSpace(e.OperatingSystem) &&
                 e.OperatingSystem != "unknown",
 
-            _ => e =>
-                !e.IsInternal &&
-                e.WebDriver != true &&
-                e.IsHeadless != true &&
-                (
-                    e.EventType == "page_view" ||
-                    ((e.MouseMoveCount ?? 0) > 0 || (e.ScrollPercent ?? 0) >= 25)
-                ) &&
-                !string.IsNullOrWhiteSpace(e.Browser) &&
-                e.Browser != "unknown" &&
-                !string.IsNullOrWhiteSpace(e.OperatingSystem) &&
-                e.OperatingSystem != "unknown" &&
-                !(
-                    ((e.UserAgent ?? "").ToLower().Contains("bot")) ||
-                    ((e.UserAgent ?? "").ToLower().Contains("crawler")) ||
-                    ((e.UserAgent ?? "").ToLower().Contains("spider")) ||
-                    ((e.UserAgent ?? "").ToLower().Contains("headless")) ||
-                    ((e.UserAgent ?? "").ToLower().Contains("selenium")) ||
-                    ((e.UserAgent ?? "").ToLower().Contains("puppeteer")) ||
-                    ((e.UserAgent ?? "").ToLower().Contains("playwright")) ||
-                    ((e.UserAgent ?? "").ToLower().Contains("curl")) ||
-                    ((e.UserAgent ?? "").ToLower().Contains("wget")) ||
-                    ((e.UserAgent ?? "").ToLower().Contains("python-requests")) ||
-                    ((e.UserAgent ?? "").ToLower().Contains("httpclient"))
-                )
+              _ => e =>
+                  !e.IsInternal &&
+                  e.WebDriver != true &&
+                  e.IsHeadless != true &&
+                  !(
+                      ((e.UserAgent ?? "").ToLower().Contains("bot")) ||
+                      ((e.UserAgent ?? "").ToLower().Contains("crawler")) ||
+                      ((e.UserAgent ?? "").ToLower().Contains("spider")) ||
+                      ((e.UserAgent ?? "").ToLower().Contains("headless")) ||
+                      ((e.UserAgent ?? "").ToLower().Contains("selenium")) ||
+                      ((e.UserAgent ?? "").ToLower().Contains("puppeteer")) ||
+                      ((e.UserAgent ?? "").ToLower().Contains("playwright")) ||
+                      ((e.UserAgent ?? "").ToLower().Contains("curl")) ||
+                      ((e.UserAgent ?? "").ToLower().Contains("wget")) ||
+                      ((e.UserAgent ?? "").ToLower().Contains("python-requests")) ||
+                      ((e.UserAgent ?? "").ToLower().Contains("httpclient"))
+                  ) &&
+                  (
+                      (
+                          (
+                              e.EventType == "page_view" ||
+                              ((e.MouseMoveCount ?? 0) > 0 || (e.ScrollPercent ?? 0) >= 25)
+                          ) &&
+                          !string.IsNullOrWhiteSpace(e.Browser) &&
+                          e.Browser != "unknown" &&
+                          !string.IsNullOrWhiteSpace(e.OperatingSystem) &&
+                          e.OperatingSystem != "unknown"
+                      )
+                      ||
+                      (
+                          !string.IsNullOrWhiteSpace(e.Fbclid) ||
+                          e.UtmMedium == "paid" ||
+                          e.UtmSource == "facebook" ||
+                          e.ReferrerHost == "www.facebook.com" ||
+                          e.ReferrerHost == "facebook.com"
+                      )
+                  )
         };
     }
 
