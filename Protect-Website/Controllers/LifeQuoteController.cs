@@ -18,7 +18,6 @@ using System.Net;
 using Microsoft.EntityFrameworkCore;
 using Infrastructure.Leads;
 using ProtectWebsite.Services.Meta;
-using ProtectWebsite.Services.MetaSignal;
 using Shared.Meta;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.WebUtilities;
@@ -45,9 +44,7 @@ namespace Protect_Website.Controllers
         private readonly string trackingApiBase;
         private readonly AgentTrackingResolver _resolver;
         private readonly MasterAppDbContext _db;
-        private readonly IMetaConversionsApiService _metaConversionsApi;
         private readonly IMetaPixelResolutionService _metaPixelResolution;
-        private readonly IMetaSignalIntelligenceService _metaSignalIntelligence;
         private readonly IWebsiteLifeLeadCaptureService _websiteLifeLeadCapture;
         private readonly IPublicBookingResolver _publicBookingResolver;
         private readonly IPublicBookingConfirmationService _publicBookingConfirmationService;
@@ -56,7 +53,7 @@ namespace Protect_Website.Controllers
         private readonly IProtectEmailSender _emailSender;
 
         public LifeQuoteController(IConfiguration configuration, AgentTrackingResolver resolver,
-            MasterAppDbContext db, IMetaConversionsApiService metaConversionsApi, IMetaPixelResolutionService metaPixelResolution, IMetaSignalIntelligenceService metaSignalIntelligence, IWebsiteLifeLeadCaptureService websiteLifeLeadCapture, IPublicBookingResolver publicBookingResolver, IPublicBookingConfirmationService publicBookingConfirmationService, IPublicBookingContextProtector publicBookingContextProtector, IProtectEmailSender emailSender, ILogger<LifeQuoteController> logger)
+            MasterAppDbContext db, IMetaPixelResolutionService metaPixelResolution, IWebsiteLifeLeadCaptureService websiteLifeLeadCapture, IPublicBookingResolver publicBookingResolver, IPublicBookingConfirmationService publicBookingConfirmationService, IPublicBookingContextProtector publicBookingContextProtector, IProtectEmailSender emailSender, ILogger<LifeQuoteController> logger)
         {
             tenantId = configuration["AzureAd:TenantId"]!;
             clientId = configuration["AzureAd:ClientId"]!;
@@ -67,9 +64,7 @@ namespace Protect_Website.Controllers
             trackingApiBase = (configuration["Tracking:ApiBase"] ?? "https://portal.mylegnd.com").TrimEnd('/');
             _resolver = resolver;
             _db = db;
-            _metaConversionsApi = metaConversionsApi;
             _metaPixelResolution = metaPixelResolution;
-            _metaSignalIntelligence = metaSignalIntelligence;
             _websiteLifeLeadCapture = websiteLifeLeadCapture;
             _publicBookingResolver = publicBookingResolver;
             _publicBookingConfirmationService = publicBookingConfirmationService;
@@ -517,49 +512,9 @@ if (!ModelState.IsValid)
                     state.BrowserPixelStatus = "pending";
                     state.BrowserPixelUpdatedUtc = DateTime.UtcNow;
                     state.BrowserPixelNote = null;
-                    state.ServerCapiStatus = "pending";
+                    state.ServerCapiStatus = "queued_for_bridge";
                     state.ServerCapiUpdatedUtc = DateTime.UtcNow;
-                    state.ServerCapiNote = null;
-                });
-
-            var metaCapiResult = await _metaConversionsApi.SendLeadAsync(
-                new MetaLeadConversionRequest
-                {
-                    LeadId = lead.LeadId,
-                    CorrelationId = correlationId,
-                    EventId = metaLeadEventId,
-                    QuoteType = cfg.ProductType,
-                    PageKey = pageMode.EffectivePageKey,
-                    OfferKey = cfg.OfferKey,
-                    EventSourceUrl = ResolveEventSourceUrl(model),
-                    ClientIpAddress = ResolveClientIpAddress(),
-                    ClientUserAgent = Request?.Headers["User-Agent"].ToString(),
-                    Fbp = ResolveCookieValue("_fbp"),
-                    Fbc = ResolveCookieValue("_fbc"),
-                    Fbclid = lead.Fbclid,
-                    Email = lead.Email,
-                    Phone = lead.Phone,
-                    AllowHashedContactData = lead.TermsAccepted && lead.MarketingEmailConsent,
-                    EventUtc = lead.CreatedUtc,
-                    PixelId = resolvedMetaPixel.PixelId,
-                    AccessToken = resolvedMetaPixel.AccessToken,
-                    TestEventCode = resolvedMetaPixel.TestEventCode,
-                    PixelOwnerType = resolvedMetaPixel.PixelOwnerType
-                },
-                HttpContext?.RequestAborted ?? CancellationToken.None);
-
-            await TryPersistMetaTrackingAsync(
-                lead,
-                correlationId,
-                "meta_capi_result",
-                state =>
-                {
-                    state.EventId ??= metaLeadEventId;
-                    state.ResolvedMetaPixelId ??= resolvedMetaPixel.PixelId;
-                    state.PixelOwnerType = resolvedMetaPixel.PixelOwnerType;
-                    state.ServerCapiStatus = metaCapiResult.Status;
-                    state.ServerCapiUpdatedUtc = DateTime.UtcNow;
-                    state.ServerCapiNote = metaCapiResult.Note;
+                    state.ServerCapiNote = "analytics_events_source_of_truth";
                 });
 
             // ── 2. Send agent/founder notification email ───────────────────────────
@@ -669,45 +624,6 @@ if (!ModelState.IsValid)
                     lead.CreatedUtc);
                 var persistedAnalyticsEvent = UnifiedEventMapper.ToAnalytics(persistedCtx);
                 UnifiedAnalyticsWriter.Write(_db, persistedAnalyticsEvent);
-
-                var capiAttemptCtx = BuildTrackingContext(
-                    pageMode.EffectivePageKey,
-                    lead,
-                    "capi_event_attempt",
-                    new
-                    {
-                        LeadId = lead.LeadId,
-                        CorrelationId = correlationId,
-                        EventId = metaLeadEventId,
-                        PixelId = resolvedMetaPixel.PixelId,
-                        PixelOwnerType = resolvedMetaPixel.PixelOwnerType
-                    },
-                    pageMode.PageVariant,
-                    pageMode.PageMode,
-                    lead.CreatedUtc);
-                var capiAttemptAnalyticsEvent = UnifiedEventMapper.ToAnalytics(capiAttemptCtx);
-                UnifiedAnalyticsWriter.Write(_db, capiAttemptAnalyticsEvent);
-
-                var capiResultCtx = BuildTrackingContext(
-                    pageMode.EffectivePageKey,
-                    lead,
-                    metaCapiResult.Sent ? "capi_event_success" : "capi_event_failure",
-                    new
-                    {
-                        LeadId = lead.LeadId,
-                        CorrelationId = correlationId,
-                        EventId = metaLeadEventId,
-                        Status = metaCapiResult.Status,
-                        Sent = metaCapiResult.Sent,
-                        Note = metaCapiResult.Note,
-                        PixelId = resolvedMetaPixel.PixelId,
-                        PixelOwnerType = resolvedMetaPixel.PixelOwnerType
-                    },
-                    pageMode.PageVariant,
-                    pageMode.PageMode,
-                    DateTime.UtcNow);
-                var capiResultAnalyticsEvent = UnifiedEventMapper.ToAnalytics(capiResultCtx);
-                UnifiedAnalyticsWriter.Write(_db, capiResultAnalyticsEvent);
                 await _db.SaveChangesAsync();
                 _logger.LogInformation(
                     "LifeQuote [{CorrelationId}]: lead persistence analytics written for lead {LeadId} offer={Offer}",
@@ -717,70 +633,6 @@ if (!ModelState.IsValid)
             {
                 _logger.LogError(analyticsEx,
                     "LifeQuote [{CorrelationId}]: analytics event write failed for lead {LeadId} offer={Offer} — lead is saved, continuing",
-                    correlationId, lead.LeadId, model.OfferKey);
-            }
-
-            try
-            {
-                var signalMetadata = JsonSerializer.SerializeToElement(new
-                {
-                    pageVariant = pageMode.PageVariant,
-                    pageMode = pageMode.PageMode,
-                    pagePath = Request?.Path.Value,
-                    protectingWho = model.ProtectingWho ?? model.Answer1,
-                    coverageGoal = model.CoverageGoal ?? model.Answer2,
-                    ageRange = model.AgeRange,
-                    recommendationPrimaryKey = model.RecommendationPrimaryKey,
-                    recommendationPrimaryTitle = model.RecommendationPrimaryTitle,
-                    recommendationSecondaryKey = model.RecommendationSecondaryKey,
-                    recommendationSecondaryTitle = model.RecommendationSecondaryTitle,
-                    requiredContactFieldsComplete = true,
-                    contactStepReached = true,
-                    phoneCompleted = !string.IsNullOrWhiteSpace(model.Phone)
-                });
-
-                await _metaSignalIntelligence.RecordConfirmedLeadAsync(
-                    new MetaSignalConfirmedLeadRequest
-                    {
-                        LeadId = lead.LeadId,
-                        QuoteType = cfg.OfferKey,
-                        PageKey = pageMode.EffectivePageKey,
-                        EffectivePageKey = pageMode.EffectivePageKey,
-                        PageVariant = pageMode.PageVariant,
-                        PageMode = pageMode.PageMode,
-                        Url = model.LandingPageUrl,
-                        Referrer = model.ReferrerUrl,
-                        SessionId = lead.SessionId,
-                        VisitorId = lead.VisitorId,
-                        AgentTrackingProfileId = lead.AgentTrackingProfileId,
-                        AgentSlug = lead.AgentSlug,
-                        UtmSource = lead.UtmSource,
-                        UtmMedium = lead.UtmMedium,
-                        UtmCampaign = lead.UtmCampaign,
-                        UtmId = lead.UtmId,
-                        UtmContent = model.UtmContent,
-                        Fbclid = lead.Fbclid,
-                        Email = lead.Email,
-                        Phone = lead.Phone,
-                        AllowHashedContactData = lead.TermsAccepted && lead.MarketingEmailConsent,
-                        CreatedUtc = lead.CreatedUtc,
-                        LeadEventId = metaLeadEventId,
-                        LeadMetaServerSent = metaCapiResult.Sent,
-                        LeadMetaServerStatus = metaCapiResult.Status,
-                        LeadMetaServerNote = metaCapiResult.Note,
-                        PixelId = resolvedMetaPixel.PixelId,
-                        AccessToken = resolvedMetaPixel.AccessToken,
-                        TestEventCode = resolvedMetaPixel.TestEventCode,
-                        PixelOwnerType = resolvedMetaPixel.PixelOwnerType,
-                        Metadata = signalMetadata
-                    },
-                    HttpContext,
-                    HttpContext?.RequestAborted ?? CancellationToken.None);
-            }
-            catch (Exception signalEx)
-            {
-                _logger.LogError(signalEx,
-                    "LifeQuote [{CorrelationId}]: meta signal lead recording failed for lead {LeadId} offer={Offer} — lead is saved, continuing",
                     correlationId, lead.LeadId, model.OfferKey);
             }
 
@@ -804,7 +656,7 @@ if (!ModelState.IsValid)
                     success = true,
                     leadId = lead.LeadId.ToString("D"),
                     metaLeadEventId,
-                    metaCapiStatus = metaCapiResult.Status,
+                    metaCapiStatus = "queued_for_bridge",
                     booking = publicBookingHint
                 });
 
@@ -2083,64 +1935,6 @@ Illustrative estimate only. Final eligibility, pricing, underwriting approval, a
                     "LifeQuote [{CorrelationId}]: meta tracking persistence failed stage={Stage} lead={LeadId}",
                     correlationId, stage, lead.LeadId);
             }
-        }
-
-        private string? ResolveEventSourceUrl(LifeQuoteFormModel model)
-        {
-            if (!string.IsNullOrWhiteSpace(model.LandingPageUrl) &&
-                Uri.TryCreate(model.LandingPageUrl.Trim(), UriKind.Absolute, out var landingUri))
-            {
-                return landingUri.ToString();
-            }
-
-            var referer = Request?.Headers.Referer.ToString();
-            if (!string.IsNullOrWhiteSpace(referer) &&
-                Uri.TryCreate(referer.Trim(), UriKind.Absolute, out var refererUri))
-            {
-                return refererUri.ToString();
-            }
-
-            var request = Request;
-            if (request == null || !request.Host.HasValue)
-                return null;
-
-            return $"{request.Scheme}://{request.Host}{request.PathBase}{request.Path}{request.QueryString}";
-        }
-
-        private string? ResolveClientIpAddress()
-        {
-            static string? FirstHeaderValue(string? raw)
-            {
-                if (string.IsNullOrWhiteSpace(raw))
-                    return null;
-
-                return raw.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
-                    .FirstOrDefault();
-            }
-
-            var request = Request;
-            if (request == null)
-                return null;
-
-            return FirstHeaderValue(request.Headers["X-Forwarded-For"].ToString())
-                ?? FirstHeaderValue(request.Headers["X-Real-IP"].ToString())
-                ?? FirstHeaderValue(request.Headers["CF-Connecting-IP"].ToString())
-                ?? request.HttpContext.Connection.RemoteIpAddress?.ToString();
-        }
-
-        private string? ResolveCookieValue(string cookieName)
-        {
-            if (string.IsNullOrWhiteSpace(cookieName))
-                return null;
-
-            if (Request?.Cookies.TryGetValue(cookieName, out var cookieValue) != true)
-                return null;
-
-            if (string.IsNullOrEmpty(cookieValue))
-                return null;
-
-            // Preserve Meta _fbc/_fbp exactly. Do not trim/lowercase/decode/re-encode.
-            return cookieValue;
         }
 
         private static string NormalizeBrowserPixelStatus(string? status)

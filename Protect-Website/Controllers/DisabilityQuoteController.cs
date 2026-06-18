@@ -8,7 +8,6 @@ using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
 using Infrastructure.Leads;
 using ProtectWebsite.Services.Meta;
-using ProtectWebsite.Services.MetaSignal;
 using ProtectWebsite.Services;
 using ProtectWebsite.Services.Tracking;
 using Microsoft.AspNetCore.WebUtilities;
@@ -37,9 +36,7 @@ namespace Protect_Website.Controllers
         private readonly string websiteName;
         private readonly AgentTrackingResolver _resolver;
         private readonly MasterAppDbContext _db;
-        private readonly IMetaConversionsApiService _metaConversionsApi;
         private readonly IMetaPixelResolutionService _metaPixelResolution;
-        private readonly IMetaSignalIntelligenceService _metaSignalIntelligence;
         private readonly IWebsiteLifeLeadCaptureService _websiteLeadCapture;
         private readonly IPublicBookingResolver _publicBookingResolver;
         private readonly IPublicBookingConfirmationService _publicBookingConfirmationService;
@@ -48,7 +45,7 @@ namespace Protect_Website.Controllers
         private readonly IProtectEmailSender _emailSender;
 
         public DisabilityQuoteController(IConfiguration configuration, AgentTrackingResolver resolver,
-            MasterAppDbContext db, IMetaConversionsApiService metaConversionsApi, IMetaPixelResolutionService metaPixelResolution, IMetaSignalIntelligenceService metaSignalIntelligence, IWebsiteLifeLeadCaptureService websiteLeadCapture, IPublicBookingResolver publicBookingResolver, IPublicBookingConfirmationService publicBookingConfirmationService, IPublicBookingContextProtector publicBookingContextProtector, IProtectEmailSender emailSender, ILogger<DisabilityQuoteController> logger)
+            MasterAppDbContext db, IMetaPixelResolutionService metaPixelResolution, IWebsiteLifeLeadCaptureService websiteLeadCapture, IPublicBookingResolver publicBookingResolver, IPublicBookingConfirmationService publicBookingConfirmationService, IPublicBookingContextProtector publicBookingContextProtector, IProtectEmailSender emailSender, ILogger<DisabilityQuoteController> logger)
         {
             tenantId = configuration["AzureAd:TenantId"]!;
             clientId = configuration["AzureAd:ClientId"]!;
@@ -58,9 +55,7 @@ namespace Protect_Website.Controllers
             websiteName = configuration["Contact:WebsiteName"] ?? "Legend Legacy Protection";
             _resolver = resolver;
             _db = db;
-            _metaConversionsApi = metaConversionsApi;
             _metaPixelResolution = metaPixelResolution;
-            _metaSignalIntelligence = metaSignalIntelligence;
             _websiteLeadCapture = websiteLeadCapture;
             _publicBookingResolver = publicBookingResolver;
             _publicBookingConfirmationService = publicBookingConfirmationService;
@@ -408,135 +403,10 @@ namespace Protect_Website.Controllers
                     state.BrowserPixelStatus = "pending";
                     state.BrowserPixelUpdatedUtc = DateTime.UtcNow;
                     state.BrowserPixelNote = null;
-                    state.ServerCapiStatus = "pending";
+                    state.ServerCapiStatus = "queued_for_bridge";
                     state.ServerCapiUpdatedUtc = DateTime.UtcNow;
-                    state.ServerCapiNote = null;
+                    state.ServerCapiNote = "analytics_events_source_of_truth";
                 });
-
-            await TryWriteLeadEventAsync(
-                "capi_event_attempt",
-                new
-                {
-                    LeadId = lead.LeadId,
-                    CorrelationId = correlationId,
-                    EventId = metaLeadEventId,
-                    PixelId = resolvedMetaPixel.PixelId,
-                    PixelOwnerType = resolvedMetaPixel.PixelOwnerType
-                });
-
-            var metaCapiResult = await _metaConversionsApi.SendLeadAsync(
-                new MetaLeadConversionRequest
-                {
-                    LeadId = lead.LeadId,
-                    CorrelationId = correlationId,
-                    EventId = metaLeadEventId,
-                    QuoteType = "Disability",
-                    PageKey = effectivePageKey,
-                    OfferKey = QuoteOfferKey,
-                    EventSourceUrl = MetaLeadTrackingWorkflow.ResolveEventSourceUrl(model.LandingPageUrl, Request),
-                    ClientIpAddress = MetaLeadTrackingWorkflow.ResolveClientIpAddress(Request),
-                    ClientUserAgent = Request?.Headers["User-Agent"].ToString(),
-                    Fbp = MetaLeadTrackingWorkflow.ResolveCookieValue(Request, "_fbp"),
-                    Fbc = MetaLeadTrackingWorkflow.ResolveCookieValue(Request, "_fbc"),
-                    Fbclid = lead.Fbclid,
-                    Email = lead.Email,
-                    Phone = lead.Phone,
-                    AllowHashedContactData = lead.TermsAccepted && lead.MarketingEmailConsent,
-                    EventUtc = lead.CreatedUtc,
-                    PixelId = resolvedMetaPixel.PixelId,
-                    AccessToken = resolvedMetaPixel.AccessToken,
-                    TestEventCode = resolvedMetaPixel.TestEventCode,
-                    PixelOwnerType = resolvedMetaPixel.PixelOwnerType
-                },
-                HttpContext?.RequestAborted ?? CancellationToken.None);
-
-            await MetaLeadTrackingWorkflow.TryPersistAsync(
-                lead,
-                _db,
-                correlationId,
-                "meta_capi_result",
-                _logger,
-                HttpContext?.RequestAborted ?? CancellationToken.None,
-                state =>
-                {
-                    state.EventId ??= metaLeadEventId;
-                    state.ResolvedMetaPixelId ??= resolvedMetaPixel.PixelId;
-                    state.PixelOwnerType = resolvedMetaPixel.PixelOwnerType;
-                    state.ServerCapiStatus = metaCapiResult.Status;
-                    state.ServerCapiUpdatedUtc = DateTime.UtcNow;
-                    state.ServerCapiNote = metaCapiResult.Note;
-                });
-
-            await TryWriteLeadEventAsync(
-                metaCapiResult.Sent ? "capi_event_success" : "capi_event_failure",
-                new
-                {
-                    LeadId = lead.LeadId,
-                    CorrelationId = correlationId,
-                    EventId = metaLeadEventId,
-                    Status = metaCapiResult.Status,
-                    Note = metaCapiResult.Note,
-                    PixelId = metaCapiResult.PixelId ?? resolvedMetaPixel.PixelId,
-                    PixelOwnerType = metaCapiResult.PixelOwnerType ?? resolvedMetaPixel.PixelOwnerType
-                });
-
-            try
-            {
-                var signalMetadata = JsonSerializer.SerializeToElement(new
-                {
-                    productType = QuoteProductType,
-                    pageVariant = model.PageVariant,
-                    pageMode = model.PageMode,
-                    pagePath = Request?.Path.Value,
-                    requiredContactFieldsComplete = true,
-                    contactStepReached = true,
-                    phoneCompleted = !string.IsNullOrWhiteSpace(lead.Phone)
-                });
-
-                await _metaSignalIntelligence.RecordConfirmedLeadAsync(
-                    new MetaSignalConfirmedLeadRequest
-                    {
-                        LeadId = lead.LeadId,
-                        QuoteType = QuoteOfferKey,
-                        PageKey = effectivePageKey,
-                        EffectivePageKey = effectivePageKey,
-                        PageVariant = string.IsNullOrWhiteSpace(model.PageVariant) ? WebsitePageVariant : model.PageVariant.Trim(),
-                        PageMode = string.IsNullOrWhiteSpace(model.PageMode) ? "site_mode" : model.PageMode.Trim(),
-                        Url = model.LandingPageUrl,
-                        Referrer = model.ReferrerUrl,
-                        SessionId = lead.SessionId,
-                        VisitorId = lead.VisitorId,
-                        AgentTrackingProfileId = lead.AgentTrackingProfileId,
-                        AgentSlug = lead.AgentSlug,
-                        UtmSource = lead.UtmSource,
-                        UtmMedium = lead.UtmMedium,
-                        UtmCampaign = lead.UtmCampaign,
-                        UtmId = lead.UtmId,
-                        UtmContent = model.UtmContent,
-                        Fbclid = lead.Fbclid,
-                        Email = lead.Email,
-                        Phone = lead.Phone,
-                        AllowHashedContactData = lead.TermsAccepted && lead.MarketingEmailConsent,
-                        CreatedUtc = lead.CreatedUtc,
-                        LeadEventId = metaLeadEventId,
-                        LeadMetaServerSent = metaCapiResult.Sent,
-                        LeadMetaServerStatus = metaCapiResult.Status,
-                        LeadMetaServerNote = metaCapiResult.Note,
-                        PixelId = resolvedMetaPixel.PixelId,
-                        AccessToken = resolvedMetaPixel.AccessToken,
-                        TestEventCode = resolvedMetaPixel.TestEventCode,
-                        PixelOwnerType = resolvedMetaPixel.PixelOwnerType,
-                        Metadata = signalMetadata
-                    },
-                    HttpContext,
-                    HttpContext?.RequestAborted ?? CancellationToken.None);
-            }
-            catch (Exception signalEx)
-            {
-                _logger.LogError(signalEx,
-                    "DisabilityQuote [{CorrelationId}]: meta signal lead recording failed for lead {LeadId} — lead is saved, continuing",
-                    correlationId, lead.LeadId);
-            }
 
 
             var attachedAgentContact = await ResolveAttachedAgentContactAsync(
@@ -639,7 +509,7 @@ namespace Protect_Website.Controllers
                     success = true,
                     leadId = lead.LeadId.ToString("D"),
                     metaLeadEventId,
-                    metaCapiStatus = metaCapiResult.Status,
+                    metaCapiStatus = "queued_for_bridge",
                     agentFirstName = attachedAgentContact?.FirstName,
                     bookingUrl = attachedAgentContact?.BookingUrl,
                     booking = publicBookingHint

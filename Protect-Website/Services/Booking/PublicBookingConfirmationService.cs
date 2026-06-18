@@ -15,7 +15,9 @@ using Microsoft.AspNetCore.WebUtilities;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
-using ProtectWebsite.Services.MetaSignal;
+using ProtectWebsite.Services.Meta;
+using ProtectWebsite.Services.Tracking;
+using Shared.Analytics;
 
 namespace ProtectWebsite.Services.Booking;
 
@@ -66,20 +68,17 @@ public sealed class PublicBookingConfirmationService : IPublicBookingConfirmatio
     private readonly MasterAppDbContext _db;
     private readonly IPublicBookingCalendarMatcher _calendarMatcher;
     private readonly IPublicBookingResolver _publicBookingResolver;
-    private readonly IMetaSignalIntelligenceService _metaSignal;
     private readonly ILogger<PublicBookingConfirmationService> _logger;
 
     public PublicBookingConfirmationService(
         MasterAppDbContext db,
         IPublicBookingCalendarMatcher calendarMatcher,
         IPublicBookingResolver publicBookingResolver,
-        IMetaSignalIntelligenceService metaSignal,
         ILogger<PublicBookingConfirmationService> logger)
     {
         _db = db;
         _calendarMatcher = calendarMatcher;
         _publicBookingResolver = publicBookingResolver;
-        _metaSignal = metaSignal;
         _logger = logger;
     }
 
@@ -220,43 +219,20 @@ public sealed class PublicBookingConfirmationService : IPublicBookingConfirmatio
             {
                 if (websiteLead != null)
                 {
-                    await _metaSignal.RecordAppointmentBookedAsync(
-                        new MetaSignalAppointmentBookedRequest
-                        {
-                            AppointmentId = appointment.Id,
-                            LeadId = websiteLead.LeadId,
-                            QuoteType = websiteLead.InterestType ?? string.Empty,
-                            PageKey = websiteLead.SourcePageKey ?? string.Empty,
-                            EffectivePageKey = websiteLead.SourcePageKey ?? string.Empty,
-                            PageMode = string.Empty,
-                            SessionId = websiteLead.SessionId,
-                            VisitorId = websiteLead.VisitorId,
-                            AgentTrackingProfileId = websiteLead.AgentTrackingProfileId ?? resolution.AgentTrackingProfileId,
-                            AgentSlug = websiteLead.AgentSlug ?? resolution.AgentSlug,
-                            UtmSource = websiteLead.UtmSource,
-                            UtmMedium = websiteLead.UtmMedium,
-                            UtmCampaign = websiteLead.UtmCampaign,
-                            UtmId = websiteLead.UtmId,
-                            Fbclid = websiteLead.Fbclid,
-                            Email = !string.IsNullOrWhiteSpace(websiteLead.Email) ? websiteLead.Email : leadProfile?.Email,
-                            Phone = !string.IsNullOrWhiteSpace(websiteLead.Phone) ? websiteLead.Phone : leadProfile?.Phone,
-                            AllowHashedContactData = true,
-                            CalendarEventId = appointment.CalendarEventId,
-                            CalendarEventWebLink = appointment.CalendarEventWebLink,
-                            ScheduledStartUtc = appointment.ScheduledStartUtc,
-                            ScheduledEndUtc = appointment.ScheduledEndUtc,
-                            BookingSource = appointment.BookingSource,
-                            ConfirmationSource = appointment.ConfirmationSource
-                        },
-                        null,
-                        cancellationToken);
+                    var analyticsEvent = BuildAppointmentBookedAnalyticsEvent(
+                        websiteLead,
+                        appointment,
+                        resolution,
+                        leadProfile);
+                    UnifiedAnalyticsWriter.Write(_db, analyticsEvent);
+                    await _db.SaveChangesAsync(cancellationToken);
                 }
             }
             catch (Exception ex)
             {
                 _logger.LogWarning(
                     ex,
-                    "MetaSignal AppointmentBooked failed for WebsiteLead {LeadId} appointment {AppointmentId}.",
+                    "Appointment booked analytics write failed for WebsiteLead {LeadId} appointment {AppointmentId}.",
                     context.WebsiteLeadId,
                     appointment.Id);
             }
@@ -276,6 +252,55 @@ public sealed class PublicBookingConfirmationService : IPublicBookingConfirmatio
             verified: true,
             pendingConfirmation: false,
             reason: calendarMatch.MatchReason);
+    }
+
+    private static AnalyticsEvent BuildAppointmentBookedAnalyticsEvent(
+        WebsiteLead websiteLead,
+        LeadAppointment appointment,
+        PublicBookingResolution resolution,
+        WorkstationLeadProfile? leadProfile)
+    {
+        var pageVariant = ReadTrackingMetadataValue(websiteLead.MetadataJson, "pageVariant") ?? "website";
+        var pageMode = ReadTrackingMetadataValue(websiteLead.MetadataJson, "pageMode") ?? "site_mode";
+        var trackingContext = UnifiedEventContextBuilder.Build(
+            httpContext: null,
+            eventName: AppointmentAnalyticsEventCatalog.Booked,
+            eventUtc: appointment.UpdatedUtc == default ? DateTime.UtcNow : appointment.UpdatedUtc,
+            sessionId: websiteLead.SessionId,
+            visitorId: websiteLead.VisitorId,
+            pageKey: websiteLead.SourcePageKey,
+            effectivePageKey: websiteLead.SourcePageKey,
+            pageVariant: pageVariant,
+            pageMode: pageMode,
+            utmSource: websiteLead.UtmSource,
+            utmMedium: websiteLead.UtmMedium,
+            utmCampaign: websiteLead.UtmCampaign,
+            utmId: websiteLead.UtmId,
+            metaCampaignId: websiteLead.MetaCampaignId,
+            metaAdSetId: websiteLead.MetaAdSetId,
+            metaAdId: websiteLead.MetaAdId,
+            fbclid: websiteLead.Fbclid,
+            agentSlug: websiteLead.AgentSlug ?? resolution.AgentSlug,
+            agentTrackingProfileId: websiteLead.AgentTrackingProfileId ?? resolution.AgentTrackingProfileId,
+            isInternal: websiteLead.IsInternal,
+            environment: websiteLead.Environment,
+            host: websiteLead.Host,
+            quoteType: websiteLead.InterestType,
+            metadata: new
+            {
+                LeadId = websiteLead.LeadId,
+                AppointmentId = appointment.Id,
+                CalendarEventId = appointment.CalendarEventId,
+                CalendarEventWebLink = appointment.CalendarEventWebLink,
+                ScheduledStartUtc = appointment.ScheduledStartUtc,
+                ScheduledEndUtc = appointment.ScheduledEndUtc,
+                BookingSource = appointment.BookingSource,
+                ConfirmationSource = appointment.ConfirmationSource,
+                Email = !string.IsNullOrWhiteSpace(websiteLead.Email) ? websiteLead.Email : leadProfile?.Email,
+                Phone = !string.IsNullOrWhiteSpace(websiteLead.Phone) ? websiteLead.Phone : leadProfile?.Phone
+            });
+
+        return UnifiedEventMapper.ToAnalytics(trackingContext);
     }
 
     private static bool IsTrustedBookedAppointment(LeadAppointment appointment)
@@ -319,6 +344,29 @@ public sealed class PublicBookingConfirmationService : IPublicBookingConfirmatio
             CalendarEventWebLink: appointment.CalendarEventWebLink,
             ScheduledStartUtc: appointment.ScheduledStartUtc,
             ScheduledEndUtc: appointment.ScheduledEndUtc);
+    }
+
+    private static string? ReadTrackingMetadataValue(string? metadataJson, string propertyName)
+    {
+        if (string.IsNullOrWhiteSpace(metadataJson) || string.IsNullOrWhiteSpace(propertyName))
+            return null;
+
+        try
+        {
+            using var doc = JsonDocument.Parse(metadataJson);
+            if (!doc.RootElement.TryGetProperty(propertyName, out var property) ||
+                property.ValueKind != JsonValueKind.String)
+            {
+                return null;
+            }
+
+            var value = property.GetString()?.Trim();
+            return string.IsNullOrWhiteSpace(value) ? null : value;
+        }
+        catch
+        {
+            return null;
+        }
     }
 }
 

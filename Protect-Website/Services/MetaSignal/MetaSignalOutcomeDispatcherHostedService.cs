@@ -12,17 +12,8 @@ namespace ProtectWebsite.Services.MetaSignal;
 public sealed class MetaSignalOutcomeDispatcherHostedService : BackgroundService
 {
     private static readonly TimeSpan PollInterval = TimeSpan.FromSeconds(30);
-    private static readonly HashSet<string> DispatchableEvents = new(StringComparer.OrdinalIgnoreCase)
-    {
-        "ViewContent",
-        "Lead",
-        "QualifiedLead",
-        "AppointmentBooked",
-        "AppointmentCompleted",
-        "ApplicationSubmitted",
-        "PolicyIssued",
-        "PolicyPaid"
-    };
+    private static readonly HashSet<string> DispatchableEvents =
+        new(MetaSignalEventCatalog.ServerForwardEventNames, StringComparer.OrdinalIgnoreCase);
 
     private readonly IServiceScopeFactory _scopeFactory;
     private readonly IOptions<MetaSignalIntelligenceOptions> _options;
@@ -191,47 +182,53 @@ public sealed class MetaSignalOutcomeDispatcherHostedService : BackgroundService
                 isFounderPath: false,
                 cancellationToken);
 
-            var result = await capi.SendEventAsync(
-                new MetaConversionsApiEventRequest
-                {
-                    LeadId = row.LeadId,
-                    CorrelationId = Guid.NewGuid(),
-                    EventName = row.EventName,
-                    EventId = isBridgeOwned
-                        ? FirstNonBlank(
-                            MetaSignalAnalyticsBridgeMetadata.ReadString(row.MetadataJson, "upstreamMetaEventId"),
-                            row.MetaDeduplicationKey,
-                            row.EventId) ?? row.EventId
-                        : string.IsNullOrWhiteSpace(row.MetaDeduplicationKey)
-                            ? row.EventId
-                            : row.MetaDeduplicationKey,
-                    QuoteType = row.QuoteType ?? "crm",
-                    PageKey = row.EffectivePageKey ?? row.PageKey ?? websiteLead?.SourcePageKey ?? "crm",
-                    OfferKey = row.QuoteType ?? websiteLead?.InterestType ?? "crm",
-                    EventSourceUrl = ResolveEventSourceUrl(row, websiteLead),
-                    Fbclid = FirstNonBlank(websiteLead?.Fbclid, bridgeFbclid),
-                    ClientIpAddress = FirstNonBlank(websiteLead?.ClientIpAddress, bridgeClientIp),
-                    ClientUserAgent = FirstNonBlank(websiteLead?.ClientUserAgent, bridgeUserAgent),
-                    Fbp = FirstNonBlank(websiteLead?.Fbp, bridgeFbp),
-                    Fbc = FirstNonBlank(websiteLead?.Fbc, bridgeFbc),
-                    Email = email,
-                    Phone = phone,
-                    FirstName = firstName,
-                    LastName = lastName,
-                    DateOfBirth = crmContact.DateOfBirth,
-                    Gender = crmContact.Gender,
-                    City = crmContact.City,
-                    State = crmContact.State,
-                    ZipCode = crmContact.ZipCode,
-                    AllowHashedContactData = hasContactData,
-                    EventUtc = row.CreatedUtc == default ? DateTime.UtcNow : row.CreatedUtc,
-                    PixelId = pixelContext.PixelId,
-                    AccessToken = pixelContext.AccessToken,
-                    TestEventCode = pixelContext.TestEventCode,
-                    PixelOwnerType = pixelContext.PixelOwnerType,
-                    CustomData = BuildCustomData(row, websiteLead, pixelContext)
-                },
-                cancellationToken);
+            var capiRequest = new MetaConversionsApiEventRequest
+            {
+                LeadId = row.LeadId,
+                CorrelationId = Guid.NewGuid(),
+                EventName = row.EventName,
+                EventId = isBridgeOwned
+                    ? FirstNonBlank(
+                        MetaSignalAnalyticsBridgeMetadata.ReadString(row.MetadataJson, "upstreamMetaEventId"),
+                        row.MetaDeduplicationKey,
+                        row.EventId) ?? row.EventId
+                    : string.IsNullOrWhiteSpace(row.MetaDeduplicationKey)
+                        ? row.EventId
+                        : row.MetaDeduplicationKey,
+                QuoteType = row.QuoteType ?? "crm",
+                PageKey = row.EffectivePageKey ?? row.PageKey ?? websiteLead?.SourcePageKey ?? "crm",
+                OfferKey = row.QuoteType ?? websiteLead?.InterestType ?? "crm",
+                EventSourceUrl = ResolveEventSourceUrl(row, websiteLead),
+                Fbclid = FirstNonBlank(websiteLead?.Fbclid, bridgeFbclid),
+                ClientIpAddress = FirstNonBlank(websiteLead?.ClientIpAddress, bridgeClientIp),
+                ClientUserAgent = FirstNonBlank(websiteLead?.ClientUserAgent, bridgeUserAgent),
+                Fbp = FirstNonBlank(websiteLead?.Fbp, bridgeFbp),
+                Fbc = FirstNonBlank(websiteLead?.Fbc, bridgeFbc),
+                Email = email,
+                Phone = phone,
+                FirstName = firstName,
+                LastName = lastName,
+                DateOfBirth = crmContact.DateOfBirth,
+                Gender = crmContact.Gender,
+                City = crmContact.City,
+                State = crmContact.State,
+                ZipCode = crmContact.ZipCode,
+                AllowHashedContactData = hasContactData,
+                EventUtc = row.CreatedUtc == default ? DateTime.UtcNow : row.CreatedUtc,
+                PixelId = pixelContext.PixelId,
+                AccessToken = pixelContext.AccessToken,
+                TestEventCode = pixelContext.TestEventCode,
+                PixelOwnerType = pixelContext.PixelOwnerType,
+                AuthoritySource = isBridgeOwned
+                    ? MetaSendAuthoritySources.MetaSignalAnalyticsBridge
+                    : MetaSendAuthoritySources.MetaSignalOutcomeDispatcherHostedService,
+                AuthorityDeduplicationKey = row.MetaDeduplicationKey,
+                AuthoritySessionId = row.SessionId,
+                AuthorityVisitorId = row.VisitorId,
+                CustomData = BuildCustomData(row, websiteLead, pixelContext)
+            };
+
+            var result = await capi.SendEventAsync(capiRequest, cancellationToken);
 
             row.MetaServerSent = result.Sent;
             row.FbclidPresent = !string.IsNullOrWhiteSpace(FirstNonBlank(websiteLead?.Fbclid, bridgeFbclid));

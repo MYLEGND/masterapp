@@ -7,6 +7,7 @@ using Infrastructure.Data;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
 using Shared.Analytics;
+using Shared.Meta;
 
 namespace ProtectWebsite.Services.MetaSignal;
 
@@ -195,7 +196,7 @@ public sealed class MetaSignalAnalyticsBridge : BackgroundService
         AnalyticsEvent analyticsEvent,
         CancellationToken cancellationToken)
     {
-        if (!TryResolveMapping(analyticsEvent.EventType, out var mapping))
+        if (!TryResolveMapping(analyticsEvent, out var mapping))
             return null;
 
         var eventUtc = analyticsEvent.EventUtc == default ? analyticsEvent.ReceivedUtc : analyticsEvent.EventUtc;
@@ -221,8 +222,10 @@ public sealed class MetaSignalAnalyticsBridge : BackgroundService
             analyticsEvent.SessionId,
             analyticsEvent.VisitorId,
             eventUtc);
+        var upstreamMetaEventId = ReadAnalyticsMetadataString(analyticsEvent.MetadataJson, "UpstreamMetaEventId")
+            ?? ReadAnalyticsMetadataString(analyticsEvent.MetadataJson, "upstreamMetaEventId");
         var leadDispatchState = string.Equals(mapping.MetaEventName, "Lead", StringComparison.OrdinalIgnoreCase)
-            ? await ResolveLeadDispatchStateAsync(db, analyticsEvent, leadId, eventUtc, cancellationToken)
+            ? await ResolveLeadDispatchStateAsync(db, analyticsEvent, resolvedLead, leadId, eventUtc, cancellationToken)
             : null;
 
         return new MetaSignalEvent
@@ -230,6 +233,8 @@ public sealed class MetaSignalAnalyticsBridge : BackgroundService
             CreatedUtc = eventUtc,
             EventId = !string.IsNullOrWhiteSpace(leadDispatchState?.MetaEventId)
                 ? leadDispatchState.MetaEventId!
+                : !string.IsNullOrWhiteSpace(upstreamMetaEventId)
+                    ? upstreamMetaEventId!
                 : analyticsEvent.EventId == Guid.Empty
                     ? $"analytics_bridge_{analyticsEvent.Id}"
                     : analyticsEvent.EventId.ToString("N"),
@@ -240,7 +245,9 @@ public sealed class MetaSignalAnalyticsBridge : BackgroundService
             VisitorId = Normalize(analyticsEvent.VisitorId),
             QuoteType = Normalize(resolvedLead?.InterestType) ?? Normalize(analyticsEvent.QuoteType),
             PageKey = Normalize(analyticsEvent.PageKey),
-            EffectivePageKey = Normalize(analyticsEvent.PageKey),
+            EffectivePageKey = Normalize(ReadAnalyticsMetadataString(analyticsEvent.MetadataJson, "EffectivePageKey"))
+                ?? Normalize(ReadAnalyticsMetadataString(analyticsEvent.MetadataJson, "effectivePageKey"))
+                ?? Normalize(analyticsEvent.PageKey),
             PageVariant = Normalize(pageVariant),
             PageMode = Normalize(pageMode),
             TrafficType = trafficType,
@@ -250,9 +257,9 @@ public sealed class MetaSignalAnalyticsBridge : BackgroundService
             EngagementScore = mapping.EngagementScore,
             QualificationScore = mapping.QualificationScore,
             FrictionScore = mapping.FrictionScore,
-            TotalSignalScore = Math.Max(0, mapping.IntentScore + mapping.EngagementScore + mapping.QualificationScore + mapping.FrictionScore),
+            TotalSignalScore = mapping.TotalSignalScore ?? Math.Max(0, mapping.IntentScore + mapping.EngagementScore + mapping.QualificationScore + mapping.FrictionScore),
             ScoreTier = mapping.ScoreTier,
-            MetaBrowserSent = false,
+            MetaBrowserSent = ReadAnalyticsMetadataBoolean(analyticsEvent.MetadataJson, "BrowserEventSent") ?? false,
             MetaServerSent = leadDispatchState?.MetaServerSent ?? false,
             MetaDeduplicationKey = deduplicationKey,
             UtmSource = Normalize(analyticsEvent.UtmSource),
@@ -302,6 +309,7 @@ public sealed class MetaSignalAnalyticsBridge : BackgroundService
     private async Task<LeadDispatchState?> ResolveLeadDispatchStateAsync(
         MasterAppDbContext db,
         AnalyticsEvent analyticsEvent,
+        WebsiteLead? resolvedLead,
         Guid? leadId,
         DateTime eventUtc,
         CancellationToken cancellationToken)
@@ -349,6 +357,18 @@ public sealed class MetaSignalAnalyticsBridge : BackgroundService
                 MetaServerSent: string.Equals(candidate.EventType, "capi_event_success", StringComparison.OrdinalIgnoreCase),
                 MetaServerStatus: MetaSignalAnalyticsBridgeMetadata.ReadString(candidate.MetadataJson, "Status"),
                 MetaServerNote: MetaSignalAnalyticsBridgeMetadata.ReadString(candidate.MetadataJson, "Note"));
+        }
+
+        var leadMetaTracking = MetaLeadTrackingJson.Read(resolvedLead?.MetadataJson);
+        if (!string.IsNullOrWhiteSpace(leadMetaTracking?.EventId) ||
+            !string.IsNullOrWhiteSpace(leadMetaTracking?.ServerCapiStatus) ||
+            !string.IsNullOrWhiteSpace(leadMetaTracking?.ServerCapiNote))
+        {
+            return new LeadDispatchState(
+                MetaEventId: leadMetaTracking?.EventId,
+                MetaServerSent: string.Equals(leadMetaTracking?.ServerCapiStatus, "sent", StringComparison.OrdinalIgnoreCase),
+                MetaServerStatus: leadMetaTracking?.ServerCapiStatus,
+                MetaServerNote: leadMetaTracking?.ServerCapiNote);
         }
 
         return null;
@@ -440,10 +460,10 @@ public sealed class MetaSignalAnalyticsBridge : BackgroundService
         return await query.AnyAsync(cancellationToken);
     }
 
-    private static bool TryResolveMapping(string? analyticsEventType, out BridgeMapping mapping)
+    private static bool TryResolveMapping(AnalyticsEvent analyticsEvent, out BridgeMapping mapping)
     {
         mapping = null!;
-        var normalized = Normalize(analyticsEventType);
+        var normalized = Normalize(analyticsEvent.EventType);
         if (string.IsNullOrWhiteSpace(normalized))
             return false;
 
@@ -493,6 +513,12 @@ public sealed class MetaSignalAnalyticsBridge : BackgroundService
             }
         }
 
+        if (MetaSignalEventCatalog.TryGet(normalized, out var metaSignalDefinition))
+        {
+            mapping = BuildMetaSignalSourceMapping(analyticsEvent, metaSignalDefinition);
+            return true;
+        }
+
         return false;
     }
 
@@ -504,6 +530,7 @@ public sealed class MetaSignalAnalyticsBridge : BackgroundService
 
         return leadAndViewContentSources
             .Concat(ExplicitSourceEventTypes)
+            .Concat(MetaSignalEventCatalog.Definitions.Select(x => x.Name))
             .Distinct(StringComparer.OrdinalIgnoreCase)
             .ToArray();
     }
@@ -527,6 +554,105 @@ public sealed class MetaSignalAnalyticsBridge : BackgroundService
 
     private static string? ReadAnalyticsMetadataString(string? metadataJson, string propertyName) =>
         MetaSignalAnalyticsBridgeMetadata.ReadString(metadataJson, propertyName);
+
+    private static int? ReadAnalyticsMetadataInt32(string? metadataJson, string propertyName)
+    {
+        var raw = ReadAnalyticsMetadataString(metadataJson, propertyName);
+        return int.TryParse(raw, NumberStyles.Integer, CultureInfo.InvariantCulture, out var parsed)
+            ? parsed
+            : null;
+    }
+
+    private static bool? ReadAnalyticsMetadataBoolean(string? metadataJson, string propertyName)
+    {
+        var raw = ReadAnalyticsMetadataString(metadataJson, propertyName);
+        return bool.TryParse(raw, out var parsed) ? parsed : null;
+    }
+
+    private static BridgeMapping BuildMetaSignalSourceMapping(AnalyticsEvent analyticsEvent, MetaSignalEventDefinition definition)
+    {
+        var metadataJson = analyticsEvent.MetadataJson;
+        var stepName = ReadAnalyticsMetadataString(metadataJson, "StepName")
+            ?? ReadAnalyticsMetadataString(metadataJson, "stepName")
+            ?? ResolveFallbackStepName(definition.Name);
+        var scoreTier = ReadAnalyticsMetadataString(metadataJson, "ScoreTier")
+            ?? ReadAnalyticsMetadataString(metadataJson, "scoreTier")
+            ?? definition.Name;
+
+        return new BridgeMapping(
+            MetaEventName: definition.Name,
+            EventCategory: ReadAnalyticsMetadataString(metadataJson, "EventCategory")
+                ?? ReadAnalyticsMetadataString(metadataJson, "eventCategory")
+                ?? definition.Category,
+            FunnelStep: ReadAnalyticsMetadataInt32(metadataJson, "StepNumber")
+                ?? ReadAnalyticsMetadataInt32(metadataJson, "stepNumber")
+                ?? ResolveFallbackFunnelStep(definition.Name),
+            StepName: stepName,
+            IntentScore: ReadAnalyticsMetadataInt32(metadataJson, "IntentScore")
+                ?? ReadAnalyticsMetadataInt32(metadataJson, "intentScore")
+                ?? 0,
+            EngagementScore: ReadAnalyticsMetadataInt32(metadataJson, "EngagementScore")
+                ?? ReadAnalyticsMetadataInt32(metadataJson, "engagementScore")
+                ?? 0,
+            QualificationScore: ReadAnalyticsMetadataInt32(metadataJson, "QualificationScore")
+                ?? ReadAnalyticsMetadataInt32(metadataJson, "qualificationScore")
+                ?? 0,
+            FrictionScore: ReadAnalyticsMetadataInt32(metadataJson, "FrictionScore")
+                ?? ReadAnalyticsMetadataInt32(metadataJson, "frictionScore")
+                ?? 0,
+            ScoreTier: scoreTier,
+            TotalSignalScore: ReadAnalyticsMetadataInt32(metadataJson, "TotalSignalScore")
+                ?? ReadAnalyticsMetadataInt32(metadataJson, "totalSignalScore"));
+    }
+
+    private static int ResolveFallbackFunnelStep(string eventName) =>
+        eventName switch
+        {
+            "ViewContent" => 1,
+            "LeadFormStart" => 2,
+            "DiscoveryComplete" => 2,
+            "FunnelStepComplete" => 2,
+            "RecommendationViewed" => 2,
+            "ContactStepReached" => 2,
+            "ContactInputStarted" => 2,
+            "PhoneFieldCompleted" => 2,
+            "RequiredContactFieldsCompleted" => 2,
+            "SubmitAttempt" => 2,
+            "HighIntentLeadSignal" => 2,
+            "LeadReadySignal" => 2,
+            "Lead" => 3,
+            "QualifiedLead" => 3,
+            "AppointmentBooked" => 4,
+            "AppointmentCompleted" => 5,
+            "ApplicationSubmitted" => 6,
+            "PolicyIssued" => 7,
+            "PolicyPaid" => 8,
+            _ => 0
+        };
+
+    private static string ResolveFallbackStepName(string eventName) =>
+        eventName switch
+        {
+            "ViewContent" => "view_content",
+            "LeadFormStart" => "lead_form_start",
+            "DiscoveryComplete" => "discovery_complete",
+            "FunnelStepComplete" => "funnel_step_complete",
+            "RecommendationViewed" => "recommendation_viewed",
+            "ContactStepReached" => "contact_step_reached",
+            "ContactInputStarted" => "contact_input_started",
+            "PhoneFieldCompleted" => "phone_field_completed",
+            "RequiredContactFieldsCompleted" => "required_contact_fields_completed",
+            "SubmitAttempt" => "submit_attempt",
+            "HighIntentLeadSignal" => "high_intent_lead_signal",
+            "LeadReadySignal" => "lead_ready_signal",
+            "AbandonedHighIntentLead" => "abandoned_high_intent_lead",
+            "FieldError" => "field_error",
+            "Backtrack" => "backtrack",
+            "DeadClick" => "dead_click",
+            "RageClick" => "rage_click",
+            "RapidBounce" => "rapid_bounce",
+            _ => Normalize(eventName)?.ToLowerInvariant() ?? "event"
+        };
 
     private static string BuildDeduplicationKey(
         string eventName,
@@ -639,7 +765,8 @@ public sealed class MetaSignalAnalyticsBridge : BackgroundService
         int EngagementScore,
         int QualificationScore,
         int FrictionScore,
-        string ScoreTier);
+        string ScoreTier,
+        int? TotalSignalScore = null);
 
     private sealed record LeadDispatchState(
         string? MetaEventId,

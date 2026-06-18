@@ -41,6 +41,11 @@ public sealed class MetaLeadConversionRequest
     public string? AccessToken { get; init; }
     public string? TestEventCode { get; init; }
     public string? PixelOwnerType { get; init; }
+    public string? AuthoritySource { get; set; }
+    public string? AuthorityDeduplicationKey { get; set; }
+    public string? AuthorityReservationToken { get; set; }
+    public string? AuthoritySessionId { get; set; }
+    public string? AuthorityVisitorId { get; set; }
 }
 
 public sealed class MetaConversionsApiEventRequest
@@ -74,6 +79,11 @@ public sealed class MetaConversionsApiEventRequest
     public string? TestEventCode { get; init; }
     public string? PixelOwnerType { get; init; }
     public IReadOnlyDictionary<string, object?>? CustomData { get; init; }
+    public string? AuthoritySource { get; set; }
+    public string? AuthorityDeduplicationKey { get; set; }
+    public string? AuthorityReservationToken { get; set; }
+    public string? AuthoritySessionId { get; set; }
+    public string? AuthorityVisitorId { get; set; }
 }
 
 public sealed class MetaConversionsApiResult
@@ -97,49 +107,86 @@ public sealed class MetaConversionsApiService : IMetaConversionsApiService
 
     private readonly HttpClient _httpClient;
     private readonly IOptions<MetaOptions> _options;
+    private readonly IMetaSendAuthority _metaSendAuthority;
     private readonly ILogger<MetaConversionsApiService> _logger;
 
     public MetaConversionsApiService(
         HttpClient httpClient,
         IOptions<MetaOptions> options,
+        IMetaSendAuthority metaSendAuthority,
         ILogger<MetaConversionsApiService> logger)
     {
         _httpClient = httpClient;
         _options = options;
+        _metaSendAuthority = metaSendAuthority;
         _logger = logger;
     }
 
-    public Task<MetaConversionsApiResult> SendLeadAsync(MetaLeadConversionRequest request, CancellationToken cancellationToken = default)
+    public async Task<MetaConversionsApiResult> SendLeadAsync(MetaLeadConversionRequest request, CancellationToken cancellationToken = default)
     {
-        return SendEventAsync(
-            new MetaConversionsApiEventRequest
-            {
-                LeadId = request.LeadId,
-                CorrelationId = request.CorrelationId,
-                EventName = "Lead",
-                EventId = request.EventId,
-                QuoteType = request.QuoteType,
-                PageKey = request.PageKey,
-                OfferKey = request.OfferKey,
-                EventSourceUrl = request.EventSourceUrl,
-                ClientIpAddress = request.ClientIpAddress,
-                ClientUserAgent = request.ClientUserAgent,
-                Fbp = request.Fbp,
-                Fbc = request.Fbc,
-                Fbclid = request.Fbclid,
-                Email = request.Email,
-                Phone = request.Phone,
-                AllowHashedContactData = request.AllowHashedContactData,
-                EventUtc = request.EventUtc,
-                PixelId = request.PixelId,
-                AccessToken = request.AccessToken,
-                TestEventCode = request.TestEventCode,
-                PixelOwnerType = request.PixelOwnerType,
-            },
+        var eventRequest = new MetaConversionsApiEventRequest
+        {
+            LeadId = request.LeadId,
+            CorrelationId = request.CorrelationId,
+            EventName = "Lead",
+            EventId = request.EventId,
+            QuoteType = request.QuoteType,
+            PageKey = request.PageKey,
+            OfferKey = request.OfferKey,
+            EventSourceUrl = request.EventSourceUrl,
+            ClientIpAddress = request.ClientIpAddress,
+            ClientUserAgent = request.ClientUserAgent,
+            Fbp = request.Fbp,
+            Fbc = request.Fbc,
+            Fbclid = request.Fbclid,
+            Email = request.Email,
+            Phone = request.Phone,
+            AllowHashedContactData = request.AllowHashedContactData,
+            EventUtc = request.EventUtc,
+            PixelId = request.PixelId,
+            AccessToken = request.AccessToken,
+            TestEventCode = request.TestEventCode,
+            PixelOwnerType = request.PixelOwnerType,
+            AuthoritySource = request.AuthoritySource,
+            AuthorityDeduplicationKey = request.AuthorityDeduplicationKey,
+            AuthorityReservationToken = request.AuthorityReservationToken,
+            AuthoritySessionId = request.AuthoritySessionId,
+            AuthorityVisitorId = request.AuthorityVisitorId
+        };
+
+        var authorityDecision = await _metaSendAuthority.TrySendAsync(
+            BuildAuthorityRequest(eventRequest),
             cancellationToken);
+        if (!authorityDecision.Allowed)
+            return CreateBlockedResult(authorityDecision, eventRequest);
+
+        eventRequest.AuthoritySource = authorityDecision.Source;
+        eventRequest.AuthorityDeduplicationKey = authorityDecision.DedupeKey;
+        eventRequest.AuthorityReservationToken = authorityDecision.ReservationToken;
+
+        var result = await SendEventCoreAsync(eventRequest, cancellationToken);
+        _metaSendAuthority.Complete(authorityDecision, result.Sent);
+        return result;
     }
 
     public async Task<MetaConversionsApiResult> SendEventAsync(MetaConversionsApiEventRequest request, CancellationToken cancellationToken = default)
+    {
+        var authorityDecision = await _metaSendAuthority.TrySendAsync(
+            BuildAuthorityRequest(request),
+            cancellationToken);
+        if (!authorityDecision.Allowed)
+            return CreateBlockedResult(authorityDecision, request);
+
+        request.AuthoritySource = authorityDecision.Source;
+        request.AuthorityDeduplicationKey = authorityDecision.DedupeKey;
+        request.AuthorityReservationToken = authorityDecision.ReservationToken;
+
+        var result = await SendEventCoreAsync(request, cancellationToken);
+        _metaSendAuthority.Complete(authorityDecision, result.Sent);
+        return result;
+    }
+
+    private async Task<MetaConversionsApiResult> SendEventCoreAsync(MetaConversionsApiEventRequest request, CancellationToken cancellationToken)
     {
         var pixelId = Normalize(request.PixelId) ?? Normalize(_options.Value.PixelId);
         var pixelOwnerType = Normalize(request.PixelOwnerType);
@@ -260,6 +307,37 @@ public sealed class MetaConversionsApiService : IMetaConversionsApiService
                 PixelOwnerType = pixelOwnerType
             };
         }
+    }
+
+    private MetaSendAuthorityRequest BuildAuthorityRequest(MetaConversionsApiEventRequest request)
+    {
+        return new MetaSendAuthorityRequest
+        {
+            EventType = request.EventName,
+            LeadId = request.LeadId,
+            EventUtc = request.EventUtc,
+            EventId = request.EventId,
+            DeduplicationKey = request.AuthorityDeduplicationKey,
+            SessionId = request.AuthoritySessionId,
+            VisitorId = request.AuthorityVisitorId,
+            Source = request.AuthoritySource,
+            ReservationToken = request.AuthorityReservationToken
+        };
+    }
+
+    private MetaConversionsApiResult CreateBlockedResult(
+        MetaSendAuthorityDecision authorityDecision,
+        MetaConversionsApiEventRequest request)
+    {
+        return new MetaConversionsApiResult
+        {
+            Attempted = false,
+            Sent = false,
+            Status = "blocked_by_authority",
+            Note = authorityDecision.Note ?? authorityDecision.Status ?? "blocked_duplicate",
+            PixelId = Normalize(request.PixelId) ?? Normalize(_options.Value.PixelId),
+            PixelOwnerType = Normalize(request.PixelOwnerType)
+        };
     }
 
     private static string MapToMetaStandardEventName(string eventName)

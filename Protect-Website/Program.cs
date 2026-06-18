@@ -75,7 +75,7 @@ builder.Services.AddScoped<ProtectWebsite.Services.Tracking.AgentTrackingResolve
 builder.Services.AddScoped<ProtectWebsite.Services.Tracking.SlugRoutingMiddleware>();
 builder.Services.AddScoped<IWebsiteLifeLeadCaptureService, WebsiteLifeLeadCaptureService>();
 builder.Services.AddScoped<IMetaPixelResolutionService, MetaPixelResolutionService>();
-builder.Services.AddScoped<IMetaSignalIntelligenceService, MetaSignalIntelligenceService>();
+builder.Services.AddScoped<IMetaSendAuthority, MetaSendAuthority>();
 builder.Services.Configure<PublicBookingOptions>(builder.Configuration.GetSection("PublicBooking"));
 builder.Services.AddScoped<IPublicBookingResolver, PublicBookingResolver>();
 builder.Services.AddScoped<IPublicBookingCalendarMatcher, MicrosoftGraphPublicBookingCalendarMatcher>();
