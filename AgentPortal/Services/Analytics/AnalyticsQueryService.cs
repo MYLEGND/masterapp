@@ -544,7 +544,7 @@ public sealed class AnalyticsQueryService : IAnalyticsQueryService
         if (!IsQuoteScopeEvent(e))
             return false;
 
-        return string.Equals(e.EventType, "page_view", StringComparison.OrdinalIgnoreCase) ||
+        return AnalyticsEventCatalog.MatchesDashboardMetric(e.EventType, "page_view") ||
                string.Equals(e.EventType, "quote_landing_view", StringComparison.OrdinalIgnoreCase);
     }
 
@@ -1783,7 +1783,7 @@ public sealed class AnalyticsQueryService : IAnalyticsQueryService
             prevLeads  = ResolveAndFilterLeads(prevAllLeads, prevAllEvents, trafficType);
         }
 
-        int pageViews = events.Count(e => e.EventType == "page_view");
+        int pageViews = events.Count(e => AnalyticsEventCatalog.MatchesDashboardMetric(e.EventType, "page_view"));
         int sessions = events.Where(e => !string.IsNullOrWhiteSpace(e.SessionId)).Select(e => e.SessionId!).Distinct().Count();
         int visitors = events.Where(e => !string.IsNullOrWhiteSpace(e.VisitorId)).Select(e => e.VisitorId!).Distinct().Count();
         int verifiedLeads = leads.Count;
@@ -1792,12 +1792,12 @@ public sealed class AnalyticsQueryService : IAnalyticsQueryService
         int quoteStarts = BuildQuoteEntryEngagedUnitKeys(events).Count;
         int convertedSessions = CountConvertedSessions(leads);
 
-        int prevPageViews = prevEvents.Count(e => e.EventType == "page_view");
+        int prevPageViews = prevEvents.Count(e => AnalyticsEventCatalog.MatchesDashboardMetric(e.EventType, "page_view"));
         int prevSessions = prevEvents.Where(e => !string.IsNullOrWhiteSpace(e.SessionId)).Select(e => e.SessionId!).Distinct().Count();
         int prevVisitors = prevEvents.Where(e => !string.IsNullOrWhiteSpace(e.VisitorId)).Select(e => e.VisitorId!).Distinct().Count();
         int prevVerifiedLeads = prevLeads.Count;
 
-        var topPage = events.Where(e => e.EventType == "page_view")
+        var topPage = events.Where(e => AnalyticsEventCatalog.MatchesDashboardMetric(e.EventType, "page_view"))
             .GroupBy(e => e.PageKey ?? "unknown")
             .OrderByDescending(g => g.Count())
             .Select(g => g.Key)
@@ -1859,7 +1859,7 @@ public sealed class AnalyticsQueryService : IAnalyticsQueryService
             PrevSessions = prevSessions,
             PrevUniqueVisitors = prevVisitors,
             PrevVerifiedLeads = prevVerifiedLeads,
-            PageViewTrend = TrendFromEvents(events.Where(e => e.EventType == "page_view"), e => e.EventUtc, range),
+            PageViewTrend = TrendFromEvents(events.Where(e => AnalyticsEventCatalog.MatchesDashboardMetric(e.EventType, "page_view")), e => e.EventUtc, range),
             TopPage = topPage,
             TopCta = topCta,
             TopSource = topSource,
@@ -1881,10 +1881,10 @@ public sealed class AnalyticsQueryService : IAnalyticsQueryService
 
         var traffic = new TrafficOverviewDto
         {
-            PageViewTrend = TrendFromEvents(events.Where(e => e.EventType == "page_view"), e => e.EventUtc, range),
+            PageViewTrend = TrendFromEvents(events.Where(e => AnalyticsEventCatalog.MatchesDashboardMetric(e.EventType, "page_view")), e => e.EventUtc, range),
             SessionTrend = TrendDistinct(events, e => e.SessionId, range, e => e.EventUtc),
             VisitorTrend = TrendDistinct(events, e => e.VisitorId, range, e => e.EventUtc),
-            TopPages = events.Where(e => e.EventType == "page_view")
+            TopPages = events.Where(e => AnalyticsEventCatalog.MatchesDashboardMetric(e.EventType, "page_view"))
                 .GroupBy(e => e.PageKey ?? "unknown")
                 .OrderByDescending(g => g.Count())
                 .Take(10)
@@ -1917,7 +1917,7 @@ public sealed class AnalyticsQueryService : IAnalyticsQueryService
 
         // Entry pages: first page_view per session within range
         var firstPerSession = events
-            .Where(e => e.EventType == "page_view" && !string.IsNullOrWhiteSpace(e.SessionId))
+            .Where(e => AnalyticsEventCatalog.MatchesDashboardMetric(e.EventType, "page_view") && !string.IsNullOrWhiteSpace(e.SessionId))
             .GroupBy(e => e.SessionId!)
             .Select(g => g.OrderBy(x => x.EventUtc).First())
             .GroupBy(e => e.PageKey ?? "unknown")
@@ -2111,7 +2111,7 @@ public sealed class AnalyticsQueryService : IAnalyticsQueryService
             leads = ResolveAndFilterLeads(allLeads, allEvents, trafficType);
         }
 
-        var pageViews = events.Where(e => e.EventType == "page_view")
+        var pageViews = events.Where(e => AnalyticsEventCatalog.MatchesDashboardMetric(e.EventType, "page_view"))
             .GroupBy(e => e.PageKey ?? "unknown")
             .ToDictionary(g => g.Key, g => g.Count());
 
@@ -2735,8 +2735,10 @@ public sealed class AnalyticsQueryService : IAnalyticsQueryService
         var take = options.Take.HasValue && options.Take.Value > 0 ? options.Take.Value : 50;
         var skip = options.Skip.HasValue && options.Skip.Value >= 0 ? options.Skip.Value : 0;
 
-        var allEvents = await BaseEvents(range, ScopeContext.Global).ToListAsync();
-        var allLeads = await BaseLeads(range, ScopeContext.Global).ToListAsync();
+        var scopedAgentIds = await ResolveScopedAgentIdsAsync(scope);
+
+        var allEvents = await BaseEvents(range, scope, scopedAgentIds).ToListAsync();
+        var allLeads = await BaseLeads(range, scope, scopedAgentIds).ToListAsync();
         var attributedRows = BuildAttributedEventRows(allEvents);
         var events = allEvents;
         var leads = allLeads;
@@ -2862,7 +2864,7 @@ public sealed class AnalyticsQueryService : IAnalyticsQueryService
                 .ToList();
         }
 
-        var pvs = events.Where(e => e.EventType == "page_view").ToList();
+        var pvs = events.Where(e => AnalyticsEventCatalog.MatchesDashboardMetric(e.EventType, "page_view")).ToList();
         // page_exit events carry the real per-page dwell (elapsed ms at departure).
         // page_view.DwellMilliseconds is always 0 (captured at load time), so we use page_exit for all dwell metrics.
         var exitEvents = events.Where(e => e.EventType == "page_exit" && e.DwellMilliseconds.HasValue).ToList();
@@ -2980,7 +2982,7 @@ public sealed class AnalyticsQueryService : IAnalyticsQueryService
         var events = await BaseEvents(range, scope, scopedAgentIds).ToListAsync();
         var leads = await BaseLeads(range, scope, scopedAgentIds).ToListAsync();
 
-        var pvList = events.Where(e => e.EventType == "page_view").ToList();
+        var pvList = events.Where(e => AnalyticsEventCatalog.MatchesDashboardMetric(e.EventType, "page_view")).ToList();
         var pageKeys = pvList.Select(e => e.PageKey ?? "unknown").Distinct().ToList();
 
         var ctaByPage = events.Where(IsCtaMetricEvent)
@@ -3037,7 +3039,7 @@ public sealed class AnalyticsQueryService : IAnalyticsQueryService
             .ToList();
         // Views count = distinct page_view events per page (for denominator context).
         var pvEvents = filteredEvents
-            .Where(e => e.EventType == "page_view")
+            .Where(e => AnalyticsEventCatalog.MatchesDashboardMetric(e.EventType, "page_view"))
             .ToList();
 
         var pvCounts = pvEvents
@@ -3079,7 +3081,7 @@ public sealed class AnalyticsQueryService : IAnalyticsQueryService
             .Select(r => r.Event)
             .ToList();
         // Load page_view for view counts and page_exit for exit/dwell signals.
-        var pageViewEvents = filteredEvents.Where(e => e.EventType == "page_view").ToList();
+        var pageViewEvents = filteredEvents.Where(e => AnalyticsEventCatalog.MatchesDashboardMetric(e.EventType, "page_view")).ToList();
         var pageExitEvents = filteredEvents.Where(e => e.EventType == "page_exit").ToList();
         var viewsByPage = pageViewEvents.GroupBy(e => e.PageKey ?? "unknown").ToDictionary(g => g.Key, g => g.Count());
         var lastExitPerSession = pageExitEvents
@@ -3113,7 +3115,7 @@ public sealed class AnalyticsQueryService : IAnalyticsQueryService
         var scrollTypes = new[] { "page_view", "scroll_depth_25", "scroll_depth_50", "scroll_depth_75", "scroll_depth_90", "scroll_depth_100" };
         var events = await BaseEvents(range, scope, scopedAgentIds)
             .Where(e => scrollTypes.Contains(e.EventType)).ToListAsync();
-        var pvByPage = events.Where(e => e.EventType == "page_view")
+        var pvByPage = events.Where(e => AnalyticsEventCatalog.MatchesDashboardMetric(e.EventType, "page_view"))
             .GroupBy(e => e.PageKey ?? "unknown").ToDictionary(g => g.Key, g => g.Count());
         int SC(string t, string p) => events.Count(e => e.EventType == t && (e.PageKey ?? "unknown") == p);
         var rows = pvByPage.Keys.Select(p =>
@@ -3140,7 +3142,7 @@ public sealed class AnalyticsQueryService : IAnalyticsQueryService
         var filteredEvents = FilterAttributedRowsByTraffic(BuildAttributedEventRows(allEvents), trafficType)
             .Select(r => r.Event)
             .ToList();
-        var events = filteredEvents.Where(e => e.EventType == "page_view").ToList();
+        var events = filteredEvents.Where(e => AnalyticsEventCatalog.MatchesDashboardMetric(e.EventType, "page_view")).ToList();
         if (trafficType != TrafficType.All)
             leads = ResolveAndFilterLeads(leads, allEvents, trafficType);
         var topLanding = events.Where(e => !string.IsNullOrWhiteSpace(e.SessionId))
@@ -3547,7 +3549,7 @@ public sealed class AnalyticsQueryService : IAnalyticsQueryService
                 return new
                 {
                     QuoteType = quoteType,
-                    HasLandingView = g.Any(e => e.EventType == "page_view" && IsQuoteFormKey(e.PageKey)),
+                    HasLandingView = g.Any(e => AnalyticsEventCatalog.MatchesDashboardMetric(e.EventType, "page_view") && IsQuoteFormKey(e.PageKey)),
                     HasPageExit = lastExit != null,
                     ExitDwellMs = (double)(lastExit?.DwellMilliseconds ?? 0),
                     ExitEngagedMs = (double)(lastExit?.EngagedMilliseconds ?? 0),
