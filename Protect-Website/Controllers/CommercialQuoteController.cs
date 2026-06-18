@@ -174,13 +174,8 @@ namespace Protect_Website.Controllers
                 AnalyticsEvent? analyticsEvent = null;
                 try
                 {
-                    analyticsEvent = WebsiteLeadAnalyticsWriter.CreateEvent(
-                        lead,
-                        eventType,
-                        "quote_commercial",
-                        "commercial_insurance",
-                        metadata,
-                        eventUtc);
+                    var ctx = BuildTrackingContext("quote_commercial", lead, eventType, metadata, eventUtc);
+                    analyticsEvent = UnifiedEventMapper.ToAnalytics(ctx);
                     _db.AnalyticsEvents.Add(analyticsEvent);
                     await _db.SaveChangesAsync(HttpContext?.RequestAborted ?? CancellationToken.None);
                 }
@@ -585,6 +580,40 @@ namespace Protect_Website.Controllers
             TempData["MetaLeadEventId"] = metaLeadEventId;
             TempData["MetaLeadLeadId"] = lead.LeadId.ToString("D");
             return RedirectToAction("Index", "ThankYou");
+        }
+
+        private UnifiedEventContext BuildTrackingContext(
+            string quoteKey,
+            WebsiteLead lead,
+            string eventType,
+            object metadata,
+            DateTime? eventUtc = null)
+        {
+            return UnifiedEventContextBuilder.Build(
+                httpContext: HttpContext,
+                eventName: eventType,
+                eventUtc: eventUtc,
+                sessionId: lead.SessionId,
+                visitorId: lead.VisitorId,
+                pageKey: quoteKey,
+                effectivePageKey: quoteKey,
+                pageVariant: "website",
+                pageMode: "site_mode",
+                utmSource: lead.UtmSource,
+                utmMedium: lead.UtmMedium,
+                utmCampaign: lead.UtmCampaign,
+                utmId: lead.UtmId,
+                metaCampaignId: lead.MetaCampaignId,
+                metaAdSetId: lead.MetaAdSetId,
+                metaAdId: lead.MetaAdId,
+                fbclid: lead.Fbclid,
+                agentSlug: lead.AgentSlug,
+                agentTrackingProfileId: lead.AgentTrackingProfileId,
+                isInternal: lead.IsInternal,
+                environment: lead.Environment,
+                host: lead.Host,
+                quoteType: lead.InterestType,
+                metadata: metadata);
         }
 
         private async Task<(string RecipientEmail, Guid? AgentProfileId, string? AgentSlug, bool IsFounderPath)> ResolveLeadContextAsync()

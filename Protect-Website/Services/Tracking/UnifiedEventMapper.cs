@@ -15,6 +15,10 @@ public static class UnifiedEventMapper
             EventId = Guid.NewGuid(),
             EventType = ctx.EventName ?? "unknown",
             PageKey = ctx.PageKey,
+            FormKey = string.IsNullOrWhiteSpace(ctx.FormKey) && !string.IsNullOrWhiteSpace(ctx.PageKey)
+                ? $"{ctx.PageKey}_form"
+                : ctx.FormKey,
+            QuoteType = ctx.QuoteType,
             Referrer = ctx.Referrer,
             SessionId = ctx.SessionId,
             VisitorId = ctx.VisitorId,
@@ -23,13 +27,17 @@ public static class UnifiedEventMapper
             UtmCampaign = ctx.UtmCampaign,
             UtmId = ctx.UtmId,
             UtmContent = ctx.UtmContent,
+            MetaCampaignId = ctx.MetaCampaignId,
+            MetaAdSetId = ctx.MetaAdSetId,
+            MetaAdId = ctx.MetaAdId,
 
             Fbclid = ctx.Fbclid,
             AgentSlug = ctx.AgentSlug,
             AgentTrackingProfileId = ctx.AgentTrackingProfileId,
 
-            Environment = null,
-            Host = null,
+            IsInternal = ctx.IsInternal ?? false,
+            Environment = ctx.Environment,
+            Host = ctx.Host,
 
             DeviceType = ctx.DeviceType,
             Browser = ctx.Browser,
@@ -53,7 +61,7 @@ public static class UnifiedEventMapper
             Language = ctx.Language,
             TimeZone = ctx.TimeZone,
 
-            EventUtc = DateTime.UtcNow,
+            EventUtc = ctx.EventUtc ?? DateTime.UtcNow,
             ReceivedUtc = DateTime.UtcNow,
 
             MetadataJson = ctx.Metadata == null ? null : System.Text.Json.JsonSerializer.Serialize(ctx.Metadata)

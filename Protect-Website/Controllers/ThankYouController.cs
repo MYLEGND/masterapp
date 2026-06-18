@@ -137,13 +137,14 @@ try
         Route = "/ThankYou/meta-browser-ack"
     };
 
-    var ctx = UnifiedEventContextBuilder.Build(HttpContext, lead.LeadId.ToString("D"), "thankyou", "thankyou", "thankyou");
+    var trackingContext = BuildTrackingContext(lead);
+    var ctx = BuildTrackingContext(trackingContext, lead, "meta_browser_event_attempt", analyticsMetadata);
     var analyticsEvent = UnifiedEventMapper.ToAnalytics(ctx);
     _db.AnalyticsEvents.Add(analyticsEvent);
 
     if (string.Equals(normalizedStatus, "sent", StringComparison.OrdinalIgnoreCase))
     {
-        var ctxSuccess = UnifiedEventContextBuilder.Build(HttpContext, lead.LeadId.ToString("D"), "thankyou", "thankyou", "thankyou");
+        var ctxSuccess = BuildTrackingContext(trackingContext, lead, "meta_browser_event_success", analyticsMetadata);
         var analyticsEventSuccess = UnifiedEventMapper.ToAnalytics(ctxSuccess);
         _db.AnalyticsEvents.Add(analyticsEventSuccess);
     }
@@ -352,6 +353,71 @@ try
                 PageVariant: pageVariant,
                 PageMode: pageMode,
                 QuoteTypeForTracking: ResolveQuoteTypeForTracking(quoteKey));
+        }
+
+        private static ThankYouTrackingContext BuildTrackingContext(WebsiteLead? lead)
+        {
+            var quoteKey = (lead?.SourcePageKey ?? string.Empty).Trim().ToLowerInvariant() switch
+            {
+                "quote_auto" => "auto",
+                "quote_home" => "home",
+                "quote_dvh" => "dvh",
+                "quote_disability" => "disability",
+                "quote_commercial" => "commercial",
+                "quote_term_life" => "term life",
+                "quote_whole_life" => "whole life",
+                "quote_final_expense" => "final expense",
+                "quote_mortgage_protection" => "mortgage protection",
+                "quote_iul" => "indexed universal life",
+                _ => string.IsNullOrWhiteSpace(lead?.InterestType)
+                    ? "life insurance"
+                    : lead!.InterestType!.Trim().ToLowerInvariant() switch
+                    {
+                        "auto_insurance" => "auto",
+                        "home_insurance" => "home",
+                        "dental_vision_hearing" => "dvh",
+                        "disability_insurance" => "disability",
+                        "commercial_insurance" => "commercial",
+                        "life" => "life insurance",
+                        _ => "life insurance"
+                    }
+            };
+
+            return BuildTrackingContext(quoteKey, lead);
+        }
+
+        private UnifiedEventContext BuildTrackingContext(
+            ThankYouTrackingContext trackingContext,
+            WebsiteLead lead,
+            string eventType,
+            object metadata,
+            DateTime? eventUtc = null)
+        {
+            return UnifiedEventContextBuilder.Build(
+                httpContext: HttpContext,
+                eventName: eventType,
+                eventUtc: eventUtc,
+                sessionId: lead.SessionId,
+                visitorId: lead.VisitorId,
+                pageKey: trackingContext.PageKey,
+                effectivePageKey: trackingContext.PageKey,
+                pageVariant: trackingContext.PageVariant,
+                pageMode: trackingContext.PageMode,
+                utmSource: lead.UtmSource,
+                utmMedium: lead.UtmMedium,
+                utmCampaign: lead.UtmCampaign,
+                utmId: lead.UtmId,
+                metaCampaignId: lead.MetaCampaignId,
+                metaAdSetId: lead.MetaAdSetId,
+                metaAdId: lead.MetaAdId,
+                fbclid: lead.Fbclid,
+                agentSlug: lead.AgentSlug,
+                agentTrackingProfileId: lead.AgentTrackingProfileId,
+                isInternal: lead.IsInternal,
+                environment: lead.Environment,
+                host: lead.Host,
+                quoteType: trackingContext.QuoteTypeForTracking,
+                metadata: metadata);
         }
 
         private static string ResolveQuoteTypeForTracking(string quoteKey)

@@ -648,51 +648,66 @@ if (!ModelState.IsValid)
                     RecommendationSecondaryTitle   = model.RecommendationSecondaryTitle,
                 };
 
-                _db.AnalyticsEvents.Add(WebsiteLeadAnalyticsWriter.CreateEvent(
-                  lead,
-                  "website_lead_submitted",
-                  pageMode.EffectivePageKey,
-                  cfg.ProductType,
-                  eventMetadata,
-                  lead.CreatedUtc));
-                _db.AnalyticsEvents.Add(WebsiteLeadAnalyticsWriter.CreateEvent(
-                  lead,
-                  "lead_persisted",
-                  pageMode.EffectivePageKey,
-                  cfg.ProductType,
-                  eventMetadata,
-                  lead.CreatedUtc));
-                _db.AnalyticsEvents.Add(WebsiteLeadAnalyticsWriter.CreateEvent(
-                  lead,
-                  "capi_event_attempt",
-                  pageMode.EffectivePageKey,
-                  cfg.ProductType,
-                  new
-                  {
-                      LeadId = lead.LeadId,
-                      CorrelationId = correlationId,
-                      EventId = metaLeadEventId,
-                      PixelId = resolvedMetaPixel.PixelId,
-                      PixelOwnerType = resolvedMetaPixel.PixelOwnerType
-                  },
-                  lead.CreatedUtc));
-                _db.AnalyticsEvents.Add(WebsiteLeadAnalyticsWriter.CreateEvent(
-                  lead,
-                  metaCapiResult.Sent ? "capi_event_success" : "capi_event_failure",
-                  pageMode.EffectivePageKey,
-                  cfg.ProductType,
-                  new
-                  {
-                      LeadId = lead.LeadId,
-                      CorrelationId = correlationId,
-                      EventId = metaLeadEventId,
-                      Status = metaCapiResult.Status,
-                      Sent = metaCapiResult.Sent,
-                      Note = metaCapiResult.Note,
-                      PixelId = resolvedMetaPixel.PixelId,
-                      PixelOwnerType = resolvedMetaPixel.PixelOwnerType
-                  },
-                  DateTime.UtcNow));
+                var submittedCtx = BuildTrackingContext(
+                    pageMode.EffectivePageKey,
+                    lead,
+                    "website_lead_submitted",
+                    eventMetadata,
+                    pageMode.PageVariant,
+                    pageMode.PageMode,
+                    lead.CreatedUtc);
+                var submittedAnalyticsEvent = UnifiedEventMapper.ToAnalytics(submittedCtx);
+                _db.AnalyticsEvents.Add(submittedAnalyticsEvent);
+
+                var persistedCtx = BuildTrackingContext(
+                    pageMode.EffectivePageKey,
+                    lead,
+                    "lead_persisted",
+                    eventMetadata,
+                    pageMode.PageVariant,
+                    pageMode.PageMode,
+                    lead.CreatedUtc);
+                var persistedAnalyticsEvent = UnifiedEventMapper.ToAnalytics(persistedCtx);
+                _db.AnalyticsEvents.Add(persistedAnalyticsEvent);
+
+                var capiAttemptCtx = BuildTrackingContext(
+                    pageMode.EffectivePageKey,
+                    lead,
+                    "capi_event_attempt",
+                    new
+                    {
+                        LeadId = lead.LeadId,
+                        CorrelationId = correlationId,
+                        EventId = metaLeadEventId,
+                        PixelId = resolvedMetaPixel.PixelId,
+                        PixelOwnerType = resolvedMetaPixel.PixelOwnerType
+                    },
+                    pageMode.PageVariant,
+                    pageMode.PageMode,
+                    lead.CreatedUtc);
+                var capiAttemptAnalyticsEvent = UnifiedEventMapper.ToAnalytics(capiAttemptCtx);
+                _db.AnalyticsEvents.Add(capiAttemptAnalyticsEvent);
+
+                var capiResultCtx = BuildTrackingContext(
+                    pageMode.EffectivePageKey,
+                    lead,
+                    metaCapiResult.Sent ? "capi_event_success" : "capi_event_failure",
+                    new
+                    {
+                        LeadId = lead.LeadId,
+                        CorrelationId = correlationId,
+                        EventId = metaLeadEventId,
+                        Status = metaCapiResult.Status,
+                        Sent = metaCapiResult.Sent,
+                        Note = metaCapiResult.Note,
+                        PixelId = resolvedMetaPixel.PixelId,
+                        PixelOwnerType = resolvedMetaPixel.PixelOwnerType
+                    },
+                    pageMode.PageVariant,
+                    pageMode.PageMode,
+                    DateTime.UtcNow);
+                var capiResultAnalyticsEvent = UnifiedEventMapper.ToAnalytics(capiResultCtx);
+                _db.AnalyticsEvents.Add(capiResultAnalyticsEvent);
                 await _db.SaveChangesAsync();
                 _logger.LogInformation(
                     "LifeQuote [{CorrelationId}]: lead persistence analytics written for lead {LeadId} offer={Offer}",
@@ -845,21 +860,35 @@ if (!ModelState.IsValid)
                     Route = "/Quote/Life/meta-browser-ack"
                 };
 
-                _db.AnalyticsEvents.Add(WebsiteLeadAnalyticsWriter.CreateEvent(
+                var pageKey = string.IsNullOrWhiteSpace(lead.SourcePageKey) ? "quote_life" : lead.SourcePageKey!;
+                var pageVariant = pageKey.Contains("_landing", StringComparison.OrdinalIgnoreCase)
+                    ? LandingPageVariant
+                    : WebsitePageVariant;
+                var pageMode = pageKey.Contains("_landing", StringComparison.OrdinalIgnoreCase)
+                    ? "paid_landing"
+                    : "site_mode";
+
+                var ctx = BuildTrackingContext(
+                    pageKey,
                     lead,
                     "meta_browser_event_attempt",
-                    string.IsNullOrWhiteSpace(lead.SourcePageKey) ? "quote_life" : lead.SourcePageKey!,
-                    string.IsNullOrWhiteSpace(lead.InterestType) ? "life" : lead.InterestType!,
-                    analyticsMetadata));
+                    analyticsMetadata,
+                    pageVariant,
+                    pageMode);
+                var analyticsEvent = UnifiedEventMapper.ToAnalytics(ctx);
+                _db.AnalyticsEvents.Add(analyticsEvent);
 
                 if (string.Equals(normalizedStatus, "sent", StringComparison.OrdinalIgnoreCase))
                 {
-                    _db.AnalyticsEvents.Add(WebsiteLeadAnalyticsWriter.CreateEvent(
+                    var ctxSuccess = BuildTrackingContext(
+                        pageKey,
                         lead,
                         "meta_browser_event_success",
-                        string.IsNullOrWhiteSpace(lead.SourcePageKey) ? "quote_life" : lead.SourcePageKey!,
-                        string.IsNullOrWhiteSpace(lead.InterestType) ? "life" : lead.InterestType!,
-                        analyticsMetadata));
+                        analyticsMetadata,
+                        pageVariant,
+                        pageMode);
+                    var analyticsEventSuccess = UnifiedEventMapper.ToAnalytics(ctxSuccess);
+                    _db.AnalyticsEvents.Add(analyticsEventSuccess);
                 }
 
                 await _db.SaveChangesAsync(HttpContext?.RequestAborted ?? CancellationToken.None);
@@ -2315,6 +2344,43 @@ Illustrative estimate only. Final eligibility, pricing, underwriting approval, a
             };
         }
 
+        private UnifiedEventContext BuildTrackingContext(
+            string quoteKey,
+            WebsiteLead lead,
+            string eventType,
+            object metadata,
+            string pageVariant,
+            string pageMode,
+            DateTime? eventUtc = null,
+            string? quoteType = null)
+        {
+            return UnifiedEventContextBuilder.Build(
+                httpContext: HttpContext,
+                eventName: eventType,
+                eventUtc: eventUtc,
+                sessionId: lead.SessionId,
+                visitorId: lead.VisitorId,
+                pageKey: quoteKey,
+                effectivePageKey: quoteKey,
+                pageVariant: pageVariant,
+                pageMode: pageMode,
+                utmSource: lead.UtmSource,
+                utmMedium: lead.UtmMedium,
+                utmCampaign: lead.UtmCampaign,
+                utmId: lead.UtmId,
+                metaCampaignId: lead.MetaCampaignId,
+                metaAdSetId: lead.MetaAdSetId,
+                metaAdId: lead.MetaAdId,
+                fbclid: lead.Fbclid,
+                agentSlug: lead.AgentSlug,
+                agentTrackingProfileId: lead.AgentTrackingProfileId,
+                isInternal: lead.IsInternal,
+                environment: lead.Environment,
+                host: lead.Host,
+                quoteType: string.IsNullOrWhiteSpace(quoteType) ? lead.InterestType : quoteType,
+                metadata: metadata);
+        }
+
         private async Task TryWriteLeadPipelineEventAsync(
             WebsiteLead lead,
             string quoteType,
@@ -2326,14 +2392,16 @@ Illustrative estimate only. Final eligibility, pricing, underwriting approval, a
             AnalyticsEvent? analyticsEvent = null;
             try
             {
-                analyticsEvent = WebsiteLeadAnalyticsWriter.CreateEvent(
+                var ctx = BuildTrackingContext(
+                    pageMode.EffectivePageKey,
                     lead,
                     eventType,
-                    pageMode.EffectivePageKey,
-                    quoteType,
                     metadata,
-                    DateTime.UtcNow);
-
+                    pageMode.PageVariant,
+                    pageMode.PageMode,
+                    DateTime.UtcNow,
+                    quoteType);
+                analyticsEvent = UnifiedEventMapper.ToAnalytics(ctx);
                 _db.AnalyticsEvents.Add(analyticsEvent);
 
                 await _db.SaveChangesAsync(HttpContext?.RequestAborted ?? CancellationToken.None);

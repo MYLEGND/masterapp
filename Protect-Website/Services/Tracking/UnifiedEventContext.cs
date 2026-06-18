@@ -14,6 +14,7 @@ public sealed record UnifiedEventContext
     public string? EventId { get; init; }
     public string? EventName { get; init; }
     public string? EventCategory { get; init; }
+    public DateTime? EventUtc { get; init; }
 
     // =========================
     // SESSION / USER
@@ -30,6 +31,7 @@ public sealed record UnifiedEventContext
     public string? EffectivePageKey { get; init; }
     public string? PageVariant { get; init; }
     public string? PageMode { get; init; }
+    public string? FormKey { get; init; }
 
     // =========================
     // CLIENT CONTEXT (BROWSER)
@@ -63,6 +65,9 @@ public sealed record UnifiedEventContext
     public string? UtmCampaign { get; init; }
     public string? UtmId { get; init; }
     public string? UtmContent { get; init; }
+    public string? MetaCampaignId { get; init; }
+    public string? MetaAdSetId { get; init; }
+    public string? MetaAdId { get; init; }
 
     public string? Fbclid { get; init; }
     public string? Fbc { get; init; }
@@ -73,6 +78,9 @@ public sealed record UnifiedEventContext
     // =========================
     public string? AgentSlug { get; init; }
     public Guid? AgentTrackingProfileId { get; init; }
+    public bool? IsInternal { get; init; }
+    public string? Environment { get; init; }
+    public string? Host { get; init; }
 
     public string? QuoteType { get; init; }
     public int? StepNumber { get; init; }

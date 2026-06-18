@@ -171,24 +171,33 @@ namespace Protect_Website.Controllers
 	                return View("~/Views/Quote/Home.cshtml", model);
 	            }
 
-async Task TryWriteLeadEventAsync(string eventType, object metadata, DateTime? eventUtc = null)
-{
-    try
-    {
-        // Analytics writing is best-effort and must not block the lead flow.
-        // Keep this method a safe no-op to avoid failures while preserving call sites.
-        await Task.CompletedTask;
-    }
-    catch (Exception analyticsEx)
-    {
-        _logger.LogWarning(
-            analyticsEx,
-            "HomeQuote [{CorrelationId}]: analytics event write failed for {EventType} lead {LeadId}",
-            correlationId,
-            eventType,
-            lead.LeadId);
-    }
-}
+            async Task TryWriteLeadEventAsync(string eventType, object metadata, DateTime? eventUtc = null)
+            {
+                AnalyticsEvent? analyticsEvent = null;
+                try
+                {
+                    var ctx = BuildTrackingContext("quote_home", lead, eventType, metadata, eventUtc);
+                    analyticsEvent = UnifiedEventMapper.ToAnalytics(ctx);
+                    _db.AnalyticsEvents.Add(analyticsEvent);
+                    await _db.SaveChangesAsync(HttpContext?.RequestAborted ?? CancellationToken.None);
+                }
+                catch (Exception analyticsEx)
+                {
+                    if (analyticsEvent != null)
+                    {
+                        var entry = _db.Entry(analyticsEvent);
+                        if (entry.State != EntityState.Detached)
+                            entry.State = EntityState.Detached;
+                    }
+
+                    _logger.LogWarning(
+                        analyticsEx,
+                        "HomeQuote [{CorrelationId}]: analytics event write failed for {EventType} lead {LeadId}",
+                        correlationId,
+                        eventType,
+                        lead.LeadId);
+                }
+            }
 
             await TryWriteLeadEventAsync(
                 "lead_persisted",
@@ -448,6 +457,40 @@ async Task TryWriteLeadEventAsync(string eventType, object metadata, DateTime? e
             TempData["MetaLeadEventId"] = metaLeadEventId;
             TempData["MetaLeadLeadId"] = lead.LeadId.ToString("D");
             return RedirectToAction("Index", "ThankYou");
+        }
+
+        private UnifiedEventContext BuildTrackingContext(
+            string quoteKey,
+            WebsiteLead lead,
+            string eventType,
+            object metadata,
+            DateTime? eventUtc = null)
+        {
+            return UnifiedEventContextBuilder.Build(
+                httpContext: HttpContext,
+                eventName: eventType,
+                eventUtc: eventUtc,
+                sessionId: lead.SessionId,
+                visitorId: lead.VisitorId,
+                pageKey: quoteKey,
+                effectivePageKey: quoteKey,
+                pageVariant: "website",
+                pageMode: "site_mode",
+                utmSource: lead.UtmSource,
+                utmMedium: lead.UtmMedium,
+                utmCampaign: lead.UtmCampaign,
+                utmId: lead.UtmId,
+                metaCampaignId: lead.MetaCampaignId,
+                metaAdSetId: lead.MetaAdSetId,
+                metaAdId: lead.MetaAdId,
+                fbclid: lead.Fbclid,
+                agentSlug: lead.AgentSlug,
+                agentTrackingProfileId: lead.AgentTrackingProfileId,
+                isInternal: lead.IsInternal,
+                environment: lead.Environment,
+                host: lead.Host,
+                quoteType: lead.InterestType,
+                metadata: metadata);
         }
 
         private async Task<(string RecipientEmail, Guid? AgentProfileId, string? AgentSlug, bool IsFounderPath)> ResolveLeadContextAsync()

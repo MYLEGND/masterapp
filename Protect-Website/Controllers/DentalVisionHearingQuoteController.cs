@@ -215,13 +215,15 @@ namespace Protect_Website.Controllers
                 AnalyticsEvent? analyticsEvent = null;
                 try
                 {
-                    analyticsEvent = WebsiteLeadAnalyticsWriter.CreateEvent(
+                    var ctx = BuildTrackingContext(
+                        effectivePageKey,
                         lead,
                         eventType,
-                        effectivePageKey,
-                        QuoteInterestType,
                         metadata,
+                        string.IsNullOrWhiteSpace(model.PageVariant) ? WebsitePageVariant : model.PageVariant.Trim(),
+                        string.IsNullOrWhiteSpace(model.PageMode) ? "site_mode" : model.PageMode.Trim(),
                         eventUtc);
+                    analyticsEvent = UnifiedEventMapper.ToAnalytics(ctx);
                     _db.AnalyticsEvents.Add(analyticsEvent);
                     await _db.SaveChangesAsync(HttpContext?.RequestAborted ?? CancellationToken.None);
                 }
@@ -1494,6 +1496,42 @@ Review summary only. Final plan availability, pricing, provider networks, and el
             {
                 return trimmedUrl;
             }
+        }
+
+        private UnifiedEventContext BuildTrackingContext(
+            string quoteKey,
+            WebsiteLead lead,
+            string eventType,
+            object metadata,
+            string pageVariant,
+            string pageMode,
+            DateTime? eventUtc = null)
+        {
+            return UnifiedEventContextBuilder.Build(
+                httpContext: HttpContext,
+                eventName: eventType,
+                eventUtc: eventUtc,
+                sessionId: lead.SessionId,
+                visitorId: lead.VisitorId,
+                pageKey: quoteKey,
+                effectivePageKey: quoteKey,
+                pageVariant: pageVariant,
+                pageMode: pageMode,
+                utmSource: lead.UtmSource,
+                utmMedium: lead.UtmMedium,
+                utmCampaign: lead.UtmCampaign,
+                utmId: lead.UtmId,
+                metaCampaignId: lead.MetaCampaignId,
+                metaAdSetId: lead.MetaAdSetId,
+                metaAdId: lead.MetaAdId,
+                fbclid: lead.Fbclid,
+                agentSlug: lead.AgentSlug,
+                agentTrackingProfileId: lead.AgentTrackingProfileId,
+                isInternal: lead.IsInternal,
+                environment: lead.Environment,
+                host: lead.Host,
+                quoteType: lead.InterestType,
+                metadata: metadata);
         }
 
         private IActionResult RenderDentalVisionHearingQuote(bool isLandingPage, DentalVisionHearingQuoteFormModel? model = null)
