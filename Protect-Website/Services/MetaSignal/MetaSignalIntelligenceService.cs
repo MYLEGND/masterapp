@@ -8,6 +8,7 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
 using ProtectWebsite.Services.Meta;
+using ProtectWebsite.Services.Tracking;
 using Shared.Analytics;
 
 namespace ProtectWebsite.Services.MetaSignal;
@@ -21,6 +22,17 @@ public interface IMetaSignalIntelligenceService
 
 public sealed class MetaSignalIntelligenceService : IMetaSignalIntelligenceService
 {
+    private static readonly string[] ConfirmedLeadAnalyticsEventTypes = AnalyticsEventCatalog.Definitions
+        .Where(x => x.CountsAsConfirmedLead)
+        .Select(x => x.Name)
+        .Distinct(StringComparer.OrdinalIgnoreCase)
+        .ToArray();
+
+    private static readonly string[] LandingViewAnalyticsEventTypes = AnalyticsEventCatalog.Definitions
+        .Where(x => x.EligibleForMetaSignal && x.CountsAsLandingView)
+        .Select(x => x.Name)
+        .Distinct(StringComparer.OrdinalIgnoreCase)
+        .ToArray();
 
     public async Task<MetaSignalProcessResult?> RecordAppointmentBookedAsync(
         MetaSignalAppointmentBookedRequest request,
@@ -71,6 +83,17 @@ public sealed class MetaSignalIntelligenceService : IMetaSignalIntelligenceServi
 
         if (existing != null)
             return ToProcessResult(existing, duplicate: true, metaServerStatus: existing.MetaServerSent ? "sent" : "duplicate");
+
+        var deferredAppointment = await TryDeferAppointmentBookedToAnalyticsBridgeAsync(
+            request,
+            quoteType,
+            attribution,
+            userAgent,
+            clientIp,
+            httpContext,
+            cancellationToken);
+        if (deferredAppointment != null)
+            return deferredAppointment;
 
         var capiResult = _options.SendServerEvents
             ? await _metaConversionsApi.SendEventAsync(
@@ -162,7 +185,8 @@ public sealed class MetaSignalIntelligenceService : IMetaSignalIntelligenceServi
 
         if (_options.PersistEvents)
         {
-            _db.MetaSignalEvents.Add(row);
+            // MIGRATION: disabled producer write (now bridge-owned)
+        // _db.MetaSignalEvents.Add(row);
             await _db.SaveChangesAsync(cancellationToken);
         }
 
@@ -256,6 +280,10 @@ public sealed class MetaSignalIntelligenceService : IMetaSignalIntelligenceServi
                 MetaServerStatus = "invalid_payload"
             };
         }
+
+        var deferredSignal = await TryDeferBrowserSignalToAnalyticsBridgeAsync(normalized, cancellationToken);
+        if (deferredSignal != null)
+            return deferredSignal;
 
         var existing = await _db.MetaSignalEvents.AsNoTracking()
             .FirstOrDefaultAsync(x => x.EventId == normalized.EventId, cancellationToken);
@@ -396,7 +424,8 @@ public sealed class MetaSignalIntelligenceService : IMetaSignalIntelligenceServi
 
         if (_options.PersistEvents)
         {
-            _db.MetaSignalEvents.Add(row);
+            // MIGRATION: disabled producer write (now bridge-owned)
+        // _db.MetaSignalEvents.Add(row);
             await _db.SaveChangesAsync(cancellationToken);
         }
 
@@ -483,6 +512,21 @@ public sealed class MetaSignalIntelligenceService : IMetaSignalIntelligenceServi
         var score = ComputeScores(accumulator);
         var userAgent = httpContext?.Request.Headers.UserAgent.ToString();
         var clientIp = MetaLeadTrackingWorkflow.ResolveClientIpAddress(httpContext?.Request);
+        var isQualifiedLead = IsQualifiedLead(request, score, priorEvents);
+
+        var deferredLead = await TryDeferConfirmedLeadToAnalyticsBridgeAsync(
+            request,
+            quoteType,
+            pageMode,
+            attribution,
+            score,
+            isQualifiedLead,
+            userAgent,
+            clientIp,
+            httpContext,
+            cancellationToken);
+        if (deferredLead != null)
+            return deferredLead;
 
         if (!await _db.MetaSignalEvents.AsNoTracking().AnyAsync(x => x.EventId == request.LeadEventId, cancellationToken))
         {
@@ -553,14 +597,14 @@ public sealed class MetaSignalIntelligenceService : IMetaSignalIntelligenceServi
             {
                 if (_options.PersistEvents)
                 {
-                    _db.MetaSignalEvents.Add(leadRow);
+                    // MIGRATION: disabled producer write (now bridge-owned)
+        // _db.MetaSignalEvents.Add(leadRow);
                     await _db.SaveChangesAsync(cancellationToken);
                 }
             }
 
         }
 
-        var isQualifiedLead = IsQualifiedLead(request, score, priorEvents);
         if (!isQualifiedLead)
         {
             return new MetaSignalProcessResult
@@ -724,7 +768,8 @@ public sealed class MetaSignalIntelligenceService : IMetaSignalIntelligenceServi
 
         if (_options.PersistEvents)
         {
-            _db.MetaSignalEvents.Add(qualifiedRow);
+            // MIGRATION: disabled producer write (now bridge-owned)
+        // _db.MetaSignalEvents.Add(qualifiedRow);
             await _db.SaveChangesAsync(cancellationToken);
         }
 
@@ -750,6 +795,372 @@ public sealed class MetaSignalIntelligenceService : IMetaSignalIntelligenceServi
             MetaServerStatus = capiResult.Status,
             MetaServerNote = capiResult.Note,
             DeduplicationKey = qualifiedRow.MetaDeduplicationKey
+        };
+    }
+
+    private async Task<MetaSignalProcessResult?> TryDeferBrowserSignalToAnalyticsBridgeAsync(
+        NormalizedMetaSignalRequest normalized,
+        CancellationToken cancellationToken)
+    {
+        if (!_options.AnalyticsBridgeEnabled ||
+            !string.Equals(normalized.EventName, "ViewContent", StringComparison.OrdinalIgnoreCase))
+        {
+            return null;
+        }
+
+        var existingAnalytics = await FindAnalyticsBridgeSourceAsync(
+            LandingViewAnalyticsEventTypes,
+            leadId: null,
+            sessionId: normalized.SessionId,
+            visitorId: normalized.VisitorId,
+            pageKey: normalized.PageKey ?? normalized.EffectivePageKey,
+            windowCenterUtc: DateTime.UtcNow,
+            windowRadius: TimeSpan.FromMinutes(5),
+            cancellationToken);
+
+        return existingAnalytics == null
+            ? null
+            : CreateDeferredProcessResult(
+                eventName: normalized.EventName,
+                eventId: normalized.EventId,
+                scoreTier: normalized.ScoreTier ?? "ViewContent",
+                metaServerSent: false,
+                metaServerStatus: "deferred_to_analytics_bridge");
+    }
+
+    private async Task<MetaSignalProcessResult?> TryDeferAppointmentBookedToAnalyticsBridgeAsync(
+        MetaSignalAppointmentBookedRequest request,
+        string quoteType,
+        MetaSignalAttributionPayload attribution,
+        string? userAgent,
+        string? clientIp,
+        HttpContext? httpContext,
+        CancellationToken cancellationToken)
+    {
+        if (!_options.AnalyticsBridgeEnabled)
+            return null;
+
+        var analyticsEvent = await FindAnalyticsBridgeSourceAsync(
+            [AppointmentAnalyticsEventCatalog.Booked],
+            request.LeadId,
+            Normalize(request.SessionId),
+            Normalize(request.VisitorId),
+            Normalize(request.EffectivePageKey) ?? Normalize(request.PageKey),
+            windowCenterUtc: DateTime.UtcNow,
+            windowRadius: TimeSpan.FromMinutes(15),
+            cancellationToken);
+
+        if (analyticsEvent == null)
+        {
+            var analyticsContext = new UnifiedEventContext
+            {
+                EventName = AppointmentAnalyticsEventCatalog.Booked,
+                EventCategory = "appointment",
+                EventUtc = DateTime.UtcNow,
+                QuoteType = quoteType,
+                PageKey = Normalize(request.PageKey),
+                EffectivePageKey = Normalize(request.EffectivePageKey),
+                PageVariant = Normalize(request.PageVariant),
+                PageMode = Normalize(request.PageMode),
+                Url = Normalize(request.Url),
+                Referrer = Normalize(request.Referrer),
+                SessionId = Normalize(request.SessionId),
+                VisitorId = Normalize(request.VisitorId),
+                UtmSource = Normalize(request.UtmSource),
+                UtmMedium = Normalize(request.UtmMedium),
+                UtmCampaign = Normalize(request.UtmCampaign),
+                UtmId = Normalize(request.UtmId),
+                UtmContent = Normalize(request.UtmContent),
+                Fbclid = Normalize(request.Fbclid),
+                AgentTrackingProfileId = request.AgentTrackingProfileId,
+                AgentSlug = Normalize(request.AgentSlug),
+                Environment = EnvironmentLabelResolver.Resolve(),
+                Host = httpContext?.Request.Host.ToString(),
+                UserAgent = Normalize(userAgent),
+                IpAddress = Normalize(clientIp),
+                Metadata = new
+                {
+                    LeadId = request.LeadId,
+                    AppointmentId = request.AppointmentId,
+                    request.CalendarEventId,
+                    request.CalendarEventWebLink,
+                    request.ScheduledStartUtc,
+                    request.ScheduledEndUtc,
+                    request.BookingSource,
+                    request.ConfirmationSource
+                }
+            };
+
+            await WriteAnalyticsBridgeSourceAsync(analyticsContext, cancellationToken);
+        }
+
+        return CreateDeferredProcessResult(
+            eventName: "AppointmentBooked",
+            eventId: request.AppointmentId.ToString("N"),
+            scoreTier: "AppointmentBooked",
+            metaServerSent: false,
+            metaServerStatus: "deferred_to_analytics_bridge");
+    }
+
+    private async Task<MetaSignalProcessResult?> TryDeferConfirmedLeadToAnalyticsBridgeAsync(
+        MetaSignalConfirmedLeadRequest request,
+        string quoteType,
+        string? pageMode,
+        ResolvedAttribution attribution,
+        MetaSignalScoreResult score,
+        bool isQualifiedLead,
+        string? userAgent,
+        string? clientIp,
+        HttpContext? httpContext,
+        CancellationToken cancellationToken)
+    {
+        if (!_options.AnalyticsBridgeEnabled)
+            return null;
+
+        var eventUtc = request.CreatedUtc == default ? DateTime.UtcNow : request.CreatedUtc;
+        var pageKey = Normalize(request.EffectivePageKey) ?? Normalize(request.PageKey);
+
+        var leadSourceEvent = await FindAnalyticsBridgeSourceAsync(
+            ConfirmedLeadAnalyticsEventTypes,
+            request.LeadId,
+            Normalize(request.SessionId),
+            Normalize(request.VisitorId),
+            pageKey,
+            eventUtc,
+            TimeSpan.FromMinutes(15),
+            cancellationToken);
+
+        if (leadSourceEvent == null)
+        {
+            var leadAnalyticsContext = new UnifiedEventContext
+            {
+                EventName = "lead_persisted",
+                EventCategory = "lead",
+                EventUtc = eventUtc,
+                QuoteType = quoteType,
+                PageKey = Normalize(request.PageKey),
+                EffectivePageKey = pageKey,
+                PageVariant = Normalize(request.PageVariant),
+                PageMode = pageMode,
+                Url = Normalize(request.Url),
+                Referrer = Normalize(request.Referrer),
+                SessionId = Normalize(request.SessionId),
+                VisitorId = Normalize(request.VisitorId),
+                UtmSource = attribution.UtmSource,
+                UtmMedium = attribution.UtmMedium,
+                UtmCampaign = attribution.UtmCampaign,
+                UtmId = attribution.UtmId,
+                UtmContent = attribution.UtmContent,
+                Fbclid = attribution.Fbclid,
+                AgentTrackingProfileId = request.AgentTrackingProfileId,
+                AgentSlug = Normalize(request.AgentSlug),
+                Environment = EnvironmentLabelResolver.Resolve(),
+                Host = httpContext?.Request.Host.ToString(),
+                UserAgent = Normalize(userAgent),
+                IpAddress = Normalize(clientIp),
+                Metadata = new
+                {
+                    LeadId = request.LeadId,
+                    EventId = request.LeadEventId,
+                    request.LeadMetaServerSent,
+                    request.LeadMetaServerStatus,
+                    request.LeadMetaServerNote,
+                    RequestMetadata = request.Metadata
+                }
+            };
+
+            await WriteAnalyticsBridgeSourceAsync(leadAnalyticsContext, cancellationToken);
+        }
+
+        if (isQualifiedLead)
+        {
+            var qualifiedLeadSourceEvent = await FindAnalyticsBridgeSourceAsync(
+                ["qualified_lead"],
+                request.LeadId,
+                Normalize(request.SessionId),
+                Normalize(request.VisitorId),
+                pageKey,
+                eventUtc,
+                TimeSpan.FromMinutes(15),
+                cancellationToken);
+
+            if (qualifiedLeadSourceEvent == null)
+            {
+                var qualifiedLeadContext = new UnifiedEventContext
+                {
+                    EventName = "qualified_lead",
+                    EventCategory = "conversion",
+                    EventUtc = DateTime.UtcNow,
+                    QuoteType = quoteType,
+                    PageKey = Normalize(request.PageKey),
+                    EffectivePageKey = pageKey,
+                    PageVariant = Normalize(request.PageVariant),
+                    PageMode = pageMode,
+                    Url = Normalize(request.Url),
+                    Referrer = Normalize(request.Referrer),
+                    SessionId = Normalize(request.SessionId),
+                    VisitorId = Normalize(request.VisitorId),
+                    UtmSource = attribution.UtmSource,
+                    UtmMedium = attribution.UtmMedium,
+                    UtmCampaign = attribution.UtmCampaign,
+                    UtmId = attribution.UtmId,
+                    UtmContent = attribution.UtmContent,
+                    Fbclid = attribution.Fbclid,
+                    AgentTrackingProfileId = request.AgentTrackingProfileId,
+                    AgentSlug = Normalize(request.AgentSlug),
+                    Environment = EnvironmentLabelResolver.Resolve(),
+                    Host = httpContext?.Request.Host.ToString(),
+                    UserAgent = Normalize(userAgent),
+                    IpAddress = Normalize(clientIp),
+                    Metadata = new
+                    {
+                        LeadId = request.LeadId,
+                        request.LeadEventId,
+                        score.IntentScore,
+                        score.EngagementScore,
+                        score.QualificationScore,
+                        score.FrictionScore,
+                        score.TotalSignalScore,
+                        request.AllowHashedContactData,
+                        RequestMetadata = request.Metadata
+                    }
+                };
+
+                await WriteAnalyticsBridgeSourceAsync(qualifiedLeadContext, cancellationToken);
+            }
+        }
+
+        return CreateDeferredProcessResult(
+            eventName: isQualifiedLead ? "QualifiedLead" : "Lead",
+            eventId: request.LeadEventId,
+            scoreTier: isQualifiedLead ? "QualifiedLead" : "SubmittedLead",
+            metaServerSent: !isQualifiedLead && request.LeadMetaServerSent,
+            metaServerStatus: "deferred_to_analytics_bridge",
+            intentScore: score.IntentScore,
+            engagementScore: score.EngagementScore,
+            qualificationScore: score.QualificationScore,
+            frictionScore: score.FrictionScore,
+            totalSignalScore: Math.Max(100, score.TotalSignalScore));
+    }
+
+    private async Task<AnalyticsEvent?> FindAnalyticsBridgeSourceAsync(
+        IEnumerable<string> eventTypes,
+        Guid? leadId,
+        string? sessionId,
+        string? visitorId,
+        string? pageKey,
+        DateTime windowCenterUtc,
+        TimeSpan windowRadius,
+        CancellationToken cancellationToken)
+    {
+        var sourceEventTypes = eventTypes
+            .Where(x => !string.IsNullOrWhiteSpace(x))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+
+        if (sourceEventTypes.Length == 0)
+            return null;
+
+        var windowStartUtc = windowCenterUtc.Add(-windowRadius);
+        var windowEndUtc = windowCenterUtc.Add(windowRadius);
+
+        var query = _db.AnalyticsEvents
+            .AsNoTracking()
+            .Where(x =>
+                sourceEventTypes.Contains(x.EventType) &&
+                x.ReceivedUtc >= windowStartUtc &&
+                x.ReceivedUtc <= windowEndUtc);
+
+        if (!string.IsNullOrWhiteSpace(sessionId))
+        {
+            query = query.Where(x => x.SessionId == sessionId);
+        }
+        else if (!string.IsNullOrWhiteSpace(visitorId))
+        {
+            query = query.Where(x => x.VisitorId == visitorId);
+        }
+
+        if (!string.IsNullOrWhiteSpace(pageKey))
+        {
+            query = query.Where(x => x.PageKey == pageKey);
+        }
+
+        var candidates = await query
+            .OrderByDescending(x => x.Id)
+            .Take(50)
+            .ToListAsync(cancellationToken);
+
+        if (!leadId.HasValue)
+            return candidates.FirstOrDefault();
+
+        foreach (var candidate in candidates)
+        {
+            if (TryReadAnalyticsLeadId(candidate.MetadataJson, out var candidateLeadId) &&
+                candidateLeadId == leadId.Value)
+            {
+                return candidate;
+            }
+        }
+
+        return candidates.FirstOrDefault(x => x.SessionId == sessionId || x.VisitorId == visitorId);
+    }
+
+    private async Task<AnalyticsEvent> WriteAnalyticsBridgeSourceAsync(
+        UnifiedEventContext context,
+        CancellationToken cancellationToken)
+    {
+        var analyticsEvent = UnifiedEventMapper.ToAnalytics(context);
+        UnifiedAnalyticsWriter.Write(_db, analyticsEvent);
+        await _db.SaveChangesAsync(cancellationToken);
+        return analyticsEvent;
+    }
+
+    private static bool TryReadAnalyticsLeadId(string? metadataJson, out Guid leadId)
+    {
+        leadId = Guid.Empty;
+
+        if (MetaSignalAnalyticsBridgeMetadata.TryReadGuid(metadataJson, "LeadId", out leadId) && leadId != Guid.Empty)
+            return true;
+
+        if (MetaSignalAnalyticsBridgeMetadata.TryReadGuid(metadataJson, "leadId", out leadId) && leadId != Guid.Empty)
+            return true;
+
+        if (MetaSignalAnalyticsBridgeMetadata.TryReadGuid(metadataJson, "WebsiteLeadId", out leadId) && leadId != Guid.Empty)
+            return true;
+
+        if (MetaSignalAnalyticsBridgeMetadata.TryReadGuid(metadataJson, "websiteLeadId", out leadId) && leadId != Guid.Empty)
+            return true;
+
+        return false;
+    }
+
+    private static MetaSignalProcessResult CreateDeferredProcessResult(
+        string eventName,
+        string eventId,
+        string scoreTier,
+        bool metaServerSent,
+        string metaServerStatus,
+        int intentScore = 0,
+        int engagementScore = 0,
+        int qualificationScore = 0,
+        int frictionScore = 0,
+        int totalSignalScore = 0)
+    {
+        return new MetaSignalProcessResult
+        {
+            Accepted = true,
+            Skipped = true,
+            EventName = eventName,
+            EventId = eventId,
+            ScoreTier = scoreTier,
+            IntentScore = intentScore,
+            EngagementScore = engagementScore,
+            QualificationScore = qualificationScore,
+            FrictionScore = frictionScore,
+            TotalSignalScore = totalSignalScore,
+            MetaBrowserSent = false,
+            MetaServerSent = metaServerSent,
+            MetaServerStatus = metaServerStatus
         };
     }
 

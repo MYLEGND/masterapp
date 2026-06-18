@@ -14,6 +14,9 @@ public sealed class MetaSignalOutcomeDispatcherHostedService : BackgroundService
     private static readonly TimeSpan PollInterval = TimeSpan.FromSeconds(30);
     private static readonly HashSet<string> DispatchableEvents = new(StringComparer.OrdinalIgnoreCase)
     {
+        "ViewContent",
+        "Lead",
+        "QualifiedLead",
         "AppointmentBooked",
         "AppointmentCompleted",
         "ApplicationSubmitted",
@@ -65,7 +68,8 @@ public sealed class MetaSignalOutcomeDispatcherHostedService : BackgroundService
         var rows = await db.MetaSignalEvents
             .Where(x =>
                 !x.MetaServerSent &&
-                x.TrafficType == "crm" &&
+                (x.TrafficType == "crm" ||
+                 (x.MetadataJson != null && x.MetadataJson.Contains(MetaSignalAnalyticsBridgeMetadata.BridgeSourceMarker))) &&
                 DispatchableEvents.Contains(x.EventName))
             .OrderBy(x => x.CreatedUtc)
             .Take(25)
@@ -101,11 +105,36 @@ public sealed class MetaSignalOutcomeDispatcherHostedService : BackgroundService
             if (!MetaSignalEventCatalog.TryGet(row.EventName, out var definition) || !definition.AllowServerForward)
                 continue;
 
+            var isBridgeOwned = MetaSignalAnalyticsBridgeMetadata.IsBridgeOwned(row.MetadataJson);
+            var bridgeClientIp = isBridgeOwned
+                ? FirstNonBlank(
+                    MetaSignalAnalyticsBridgeMetadata.ReadString(row.MetadataJson, "sourceClientIpAddress"))
+                : null;
+            var bridgeUserAgent = isBridgeOwned
+                ? FirstNonBlank(
+                    MetaSignalAnalyticsBridgeMetadata.ReadString(row.MetadataJson, "sourceClientUserAgent"),
+                    row.UserAgent)
+                : null;
+            var bridgeFbclid = isBridgeOwned
+                ? FirstNonBlank(MetaSignalAnalyticsBridgeMetadata.ReadString(row.MetadataJson, "sourceFbclid"))
+                : null;
+            var bridgeFbp = isBridgeOwned
+                ? FirstNonBlank(MetaSignalAnalyticsBridgeMetadata.ReadString(row.MetadataJson, "sourceFbp"))
+                : null;
+            var bridgeFbc = isBridgeOwned
+                ? FirstNonBlank(MetaSignalAnalyticsBridgeMetadata.ReadString(row.MetadataJson, "sourceFbc"))
+                : null;
+
             WebsiteLead? websiteLead = null;
-            if (row.LeadId.HasValue &&
-                intakeLinksByWorkstationLeadId.TryGetValue(row.LeadId.Value.ToString("N"), out var intakeLink))
+            if (row.LeadId.HasValue)
             {
-                leadsById.TryGetValue(intakeLink.WebsiteLeadPublicId, out websiteLead);
+                leadsById.TryGetValue(row.LeadId.Value, out websiteLead);
+
+                if (websiteLead == null &&
+                    intakeLinksByWorkstationLeadId.TryGetValue(row.LeadId.Value.ToString("N"), out var intakeLink))
+                {
+                    leadsById.TryGetValue(intakeLink.WebsiteLeadPublicId, out websiteLead);
+                }
             }
 
             var crmContact = await ResolveCrmContactAsync(db, row, cancellationToken);
@@ -126,11 +155,19 @@ public sealed class MetaSignalOutcomeDispatcherHostedService : BackgroundService
                 !string.IsNullOrWhiteSpace(crmContact.State) ||
                 !string.IsNullOrWhiteSpace(crmContact.ZipCode);
 
+            var hasBridgeAttribution =
+                !string.IsNullOrWhiteSpace(bridgeFbp) ||
+                !string.IsNullOrWhiteSpace(bridgeFbc) ||
+                !string.IsNullOrWhiteSpace(bridgeFbclid) ||
+                !string.IsNullOrWhiteSpace(bridgeClientIp) ||
+                !string.IsNullOrWhiteSpace(bridgeUserAgent);
+
             if (!hasContactData &&
                 string.IsNullOrWhiteSpace(websiteLead?.Fbp) &&
                 string.IsNullOrWhiteSpace(websiteLead?.Fbc) &&
                 string.IsNullOrWhiteSpace(websiteLead?.ClientIpAddress) &&
-                string.IsNullOrWhiteSpace(websiteLead?.ClientUserAgent))
+                string.IsNullOrWhiteSpace(websiteLead?.ClientUserAgent) &&
+                !hasBridgeAttribution)
             {
                 row.MetadataJson = MergeDispatchMetadata(row.MetadataJson, new MetaConversionsApiResult
                 {
@@ -160,16 +197,23 @@ public sealed class MetaSignalOutcomeDispatcherHostedService : BackgroundService
                     LeadId = row.LeadId,
                     CorrelationId = Guid.NewGuid(),
                     EventName = row.EventName,
-                    EventId = string.IsNullOrWhiteSpace(row.MetaDeduplicationKey) ? row.EventId : row.MetaDeduplicationKey,
+                    EventId = isBridgeOwned
+                        ? FirstNonBlank(
+                            MetaSignalAnalyticsBridgeMetadata.ReadString(row.MetadataJson, "upstreamMetaEventId"),
+                            row.MetaDeduplicationKey,
+                            row.EventId) ?? row.EventId
+                        : string.IsNullOrWhiteSpace(row.MetaDeduplicationKey)
+                            ? row.EventId
+                            : row.MetaDeduplicationKey,
                     QuoteType = row.QuoteType ?? "crm",
                     PageKey = row.EffectivePageKey ?? row.PageKey ?? websiteLead?.SourcePageKey ?? "crm",
                     OfferKey = row.QuoteType ?? websiteLead?.InterestType ?? "crm",
-                    EventSourceUrl = BuildEventSourceUrl(websiteLead),
-                    Fbclid = websiteLead?.Fbclid,
-                    ClientIpAddress = websiteLead?.ClientIpAddress,
-                    ClientUserAgent = websiteLead?.ClientUserAgent,
-                    Fbp = websiteLead?.Fbp,
-                    Fbc = websiteLead?.Fbc,
+                    EventSourceUrl = ResolveEventSourceUrl(row, websiteLead),
+                    Fbclid = FirstNonBlank(websiteLead?.Fbclid, bridgeFbclid),
+                    ClientIpAddress = FirstNonBlank(websiteLead?.ClientIpAddress, bridgeClientIp),
+                    ClientUserAgent = FirstNonBlank(websiteLead?.ClientUserAgent, bridgeUserAgent),
+                    Fbp = FirstNonBlank(websiteLead?.Fbp, bridgeFbp),
+                    Fbc = FirstNonBlank(websiteLead?.Fbc, bridgeFbc),
                     Email = email,
                     Phone = phone,
                     FirstName = firstName,
@@ -190,9 +234,9 @@ public sealed class MetaSignalOutcomeDispatcherHostedService : BackgroundService
                 cancellationToken);
 
             row.MetaServerSent = result.Sent;
-            row.FbclidPresent = !string.IsNullOrWhiteSpace(websiteLead?.Fbclid);
-            row.FbcPresent = !string.IsNullOrWhiteSpace(websiteLead?.Fbc);
-            row.FbpPresent = !string.IsNullOrWhiteSpace(websiteLead?.Fbp);
+            row.FbclidPresent = !string.IsNullOrWhiteSpace(FirstNonBlank(websiteLead?.Fbclid, bridgeFbclid));
+            row.FbcPresent = !string.IsNullOrWhiteSpace(FirstNonBlank(websiteLead?.Fbc, bridgeFbc));
+            row.FbpPresent = !string.IsNullOrWhiteSpace(FirstNonBlank(websiteLead?.Fbp, bridgeFbp));
             row.MetadataJson = MergeDispatchMetadata(row.MetadataJson, result);
 
             _logger.LogInformation(
@@ -363,6 +407,7 @@ public sealed class MetaSignalOutcomeDispatcherHostedService : BackgroundService
         WebsiteLead? websiteLead,
         ResolvedMetaPixelContext pixelContext)
     {
+        var isBridgeOwned = MetaSignalAnalyticsBridgeMetadata.IsBridgeOwned(row.MetadataJson);
         var customData = new Dictionary<string, object?>
         {
             ["event_category"] = row.EventCategory,
@@ -372,7 +417,7 @@ public sealed class MetaSignalOutcomeDispatcherHostedService : BackgroundService
             ["step_name"] = row.StepName,
             ["score_tier"] = row.ScoreTier,
             ["total_signal_score"] = row.TotalSignalScore,
-            ["source"] = "crm_outcome_dispatcher",
+            ["source"] = isBridgeOwned ? "analytics_bridge" : "crm_outcome_dispatcher",
             ["website_lead_id"] = row.LeadId,
             ["lead_interest_type"] = websiteLead?.InterestType,
             ["lead_source_page_key"] = websiteLead?.SourcePageKey,
@@ -383,6 +428,12 @@ public sealed class MetaSignalOutcomeDispatcherHostedService : BackgroundService
             ["agent_slug"] = pixelContext.AgentSlug,
             ["pixel_owner_type"] = pixelContext.PixelOwnerType
         };
+
+        if (isBridgeOwned)
+        {
+            customData["source_analytics_event_type"] = MetaSignalAnalyticsBridgeMetadata.ReadString(row.MetadataJson, "sourceAnalyticsEventType");
+            customData["source_analytics_event_id"] = MetaSignalAnalyticsBridgeMetadata.ReadInt64(row.MetadataJson, "sourceAnalyticsEventId");
+        }
 
         if (IsProductionValueEvent(row.EventName) &&
             TryReadPositiveDecimal(row.MetadataJson, "personalAmount", out var personalAmount))
@@ -427,21 +478,39 @@ public sealed class MetaSignalOutcomeDispatcherHostedService : BackgroundService
         return false;
     }
 
-    private static string? BuildEventSourceUrl(WebsiteLead? websiteLead)
+    private static string? ResolveEventSourceUrl(MetaSignalEvent row, WebsiteLead? websiteLead)
     {
-        if (websiteLead == null || string.IsNullOrWhiteSpace(websiteLead.Host))
+        var explicitUrl = MetaSignalAnalyticsBridgeMetadata.ReadString(row.MetadataJson, "sourceUrl");
+        if (!string.IsNullOrWhiteSpace(explicitUrl))
+            return explicitUrl.Trim();
+
+        if (websiteLead != null && !string.IsNullOrWhiteSpace(websiteLead.Host))
+        {
+            var host = websiteLead.Host.Trim();
+            var scheme = host.StartsWith("localhost", StringComparison.OrdinalIgnoreCase)
+                ? "http"
+                : "https";
+
+            var path = string.IsNullOrWhiteSpace(websiteLead.SourcePageKey)
+                ? "/"
+                : $"/Quote/{websiteLead.SourcePageKey.Trim().TrimStart('/')}";
+
+            return $"{scheme}://{host}{path}";
+        }
+
+        var fallbackHost = FirstNonBlank(row.Host, MetaSignalAnalyticsBridgeMetadata.ReadString(row.MetadataJson, "sourceHost"));
+        if (string.IsNullOrWhiteSpace(fallbackHost))
             return null;
 
-        var host = websiteLead.Host.Trim();
-        var scheme = host.StartsWith("localhost", StringComparison.OrdinalIgnoreCase)
+        var fallbackScheme = fallbackHost.StartsWith("localhost", StringComparison.OrdinalIgnoreCase)
             ? "http"
             : "https";
 
-        var path = string.IsNullOrWhiteSpace(websiteLead.SourcePageKey)
+        var fallbackPath = string.IsNullOrWhiteSpace(row.PageKey)
             ? "/"
-            : $"/Quote/{websiteLead.SourcePageKey.Trim().TrimStart('/')}";
+            : $"/Quote/{row.PageKey.Trim().TrimStart('/')}";
 
-        return $"{scheme}://{host}{path}";
+        return $"{fallbackScheme}://{fallbackHost}{fallbackPath}";
     }
 
     private static string MergeDispatchMetadata(string? existingJson, MetaConversionsApiResult result)

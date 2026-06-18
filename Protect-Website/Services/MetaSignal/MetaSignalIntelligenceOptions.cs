@@ -6,6 +6,10 @@ public sealed class MetaSignalIntelligenceOptions
     public bool SendBrowserEvents { get; set; } = true;
     public bool SendServerEvents { get; set; } = true;
     public bool PersistEvents { get; set; } = true;
+    public bool AnalyticsBridgeEnabled { get; set; } = true;
+    public int AnalyticsBridgePollSeconds { get; set; } = 45;
+    public int AnalyticsBridgeBatchSize { get; set; } = 100;
+    public int AnalyticsBridgeStartupLookbackHours { get; set; } = 24;
     public bool DebugMode { get; set; }
     public int HighIntentThreshold { get; set; } = 70;
     public int LeadReadyThreshold { get; set; } = 90;

@@ -88,6 +88,7 @@ builder.Services.AddHttpClient<IMetaConversionsApiService, MetaConversionsApiSer
 {
     client.Timeout = TimeSpan.FromSeconds(10);
 });
+builder.Services.AddHostedService<MetaSignalAnalyticsBridge>();
 builder.Services.AddHostedService<MetaSignalOutcomeDispatcherHostedService>();
 
 var dpBlobUri = builder.Configuration["DataProtection:BlobUri"];
