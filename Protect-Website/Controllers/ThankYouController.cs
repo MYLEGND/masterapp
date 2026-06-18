@@ -137,21 +137,29 @@ namespace Protect_Website.Controllers
                     Route = "/ThankYou/meta-browser-ack"
                 };
 
-                _db.AnalyticsEvents.Add(WebsiteLeadAnalyticsWriter.CreateEvent(
-                    lead,
-                    "meta_browser_event_attempt",
-                    string.IsNullOrWhiteSpace(lead.SourcePageKey) ? "quote_thank_you" : lead.SourcePageKey!,
-                    string.IsNullOrWhiteSpace(lead.InterestType) ? "unknown" : lead.InterestType!,
-                    analyticsMetadata));
+var ctx = UnifiedEventContextBuilder.Build(
+    lead,
+    HttpContext,
+    "thankyou",
+    "thankyou",
+    "thankyou"
+);
+
+var analyticsEvent = UnifiedEventMapper.ToAnalytics(ctx);
+_db.AnalyticsEvents.Add(analyticsEvent);
 
                 if (string.Equals(normalizedStatus, "sent", StringComparison.OrdinalIgnoreCase))
                 {
-                    _db.AnalyticsEvents.Add(WebsiteLeadAnalyticsWriter.CreateEvent(
-                        lead,
-                        "meta_browser_event_success",
-                        string.IsNullOrWhiteSpace(lead.SourcePageKey) ? "quote_thank_you" : lead.SourcePageKey!,
-                        string.IsNullOrWhiteSpace(lead.InterestType) ? "unknown" : lead.InterestType!,
-                        analyticsMetadata));
+var ctx = UnifiedEventContextBuilder.Build(
+    lead,
+    HttpContext,
+    "thankyou",
+    "thankyou",
+    "thankyou"
+);
+
+var analyticsEvent = UnifiedEventMapper.ToAnalytics(ctx);
+_db.AnalyticsEvents.Add(analyticsEvent);
                 }
 
                 await _db.SaveChangesAsync(HttpContext?.RequestAborted ?? CancellationToken.None);
