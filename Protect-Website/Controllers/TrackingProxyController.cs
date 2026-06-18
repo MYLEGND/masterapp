@@ -107,17 +107,14 @@ public sealed class TrackingProxyController : ControllerBase
 
     private void EnsureClientContextFallback(AnalyticsEventRequest req)
     {
-        var userAgent = FirstMeaningful(req.UserAgent, Request.Headers.UserAgent.ToString());
-        var acceptLanguage = Request.Headers.AcceptLanguage.ToString();
+        var unified = Services.Tracking.UnifiedEventContextBuilder.Build(HttpContext);
 
-        var parsed = ParseUserAgent(userAgent);
-
-        req.UserAgent = FirstMeaningful(req.UserAgent, userAgent);
-        req.IpAddress = FirstMeaningful(req.IpAddress, ResolveClientIp());
-        req.DeviceType = FirstMeaningful(req.DeviceType, parsed.DeviceType);
-        req.Browser = FirstMeaningful(req.Browser, parsed.Browser);
-        req.OperatingSystem = FirstMeaningful(req.OperatingSystem, parsed.OperatingSystem);
-        req.Language = FirstNonBlank(req.Language, NormalizeAcceptLanguage(acceptLanguage));
+        req.UserAgent = FirstMeaningful(req.UserAgent, unified.UserAgent, Request.Headers.UserAgent.ToString());
+        req.IpAddress = FirstMeaningful(req.IpAddress, unified.IpAddress, ResolveClientIp());
+        req.DeviceType = FirstMeaningful(req.DeviceType, unified.DeviceType);
+        req.Browser = FirstMeaningful(req.Browser, unified.Browser);
+        req.OperatingSystem = FirstMeaningful(req.OperatingSystem, unified.OperatingSystem);
+        req.Language = FirstNonBlank(req.Language, unified.Language, NormalizeAcceptLanguage(Request.Headers.AcceptLanguage.ToString()));
         req.Host = FirstNonBlank(req.Host, Request.Host.Value);
 
         if (!req.EventUtc.HasValue)
