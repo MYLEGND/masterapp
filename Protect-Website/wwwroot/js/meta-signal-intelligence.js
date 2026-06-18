@@ -861,19 +861,75 @@
       }
     }
 
-      function resolveClientContext() {
-        try {
-          const api = window.LegendAnalytics;
-          if (!api || typeof api.getClientContext !== 'function') {
-            return {};
+        function resolveClientContext() {
+          function parseBrowser(userAgent) {
+            const ua = String(userAgent || '').toLowerCase();
+            if (ua.includes('edg/')) return 'edge';
+            if (ua.includes('opr/') || ua.includes('opera')) return 'opera';
+            if (ua.includes('chrome/') || ua.includes('crios/')) return 'chrome';
+            if (ua.includes('firefox/') || ua.includes('fxios/')) return 'firefox';
+            if (ua.includes('safari/') || ua.includes('version/')) return 'safari';
+            return 'unknown';
           }
 
-          const context = api.getClientContext();
-          return context && typeof context === 'object' ? context : {};
-        } catch {
-          return {};
+          function parseOperatingSystem(userAgent) {
+            const ua = String(userAgent || '').toLowerCase();
+            if (ua.includes('windows nt')) return 'windows';
+            if (ua.includes('iphone') || ua.includes('ipad') || ua.includes('ios')) return 'ios';
+            if (ua.includes('android')) return 'android';
+            if (ua.includes('mac os x') || ua.includes('macintosh')) return 'macos';
+            if (ua.includes('linux')) return 'linux';
+            return 'unknown';
+          }
+
+          function parseDeviceType(userAgent) {
+            const ua = String(userAgent || '').toLowerCase();
+            const width = window.innerWidth || document.documentElement?.clientWidth || 0;
+            if (ua.includes('ipad') || ua.includes('tablet')) return 'tablet';
+            if (ua.includes('mobi') || ua.includes('iphone') || ua.includes('android')) return 'mobile';
+            if (width > 0 && width < 768) return 'mobile';
+            return 'desktop';
+          }
+
+          const fallbackUserAgent = navigator.userAgent || '';
+          const fallback = {
+            deviceType: parseDeviceType(fallbackUserAgent),
+            browser: parseBrowser(fallbackUserAgent),
+            operatingSystem: parseOperatingSystem(fallbackUserAgent),
+            userAgent: fallbackUserAgent,
+            viewportWidth: window.innerWidth || document.documentElement?.clientWidth || null,
+            viewportHeight: window.innerHeight || document.documentElement?.clientHeight || null,
+            screenWidth: window.screen?.width || null,
+            screenHeight: window.screen?.height || null,
+            webDriver: navigator.webdriver === true,
+            isHeadless: /headless|phantomjs|selenium|puppeteer|playwright/i.test(fallbackUserAgent),
+            language: navigator.language || null,
+            timeZone: Intl.DateTimeFormat?.().resolvedOptions?.().timeZone || null
+          };
+
+          try {
+            const api = window.LegendAnalytics;
+            if (!api || typeof api.getClientContext !== 'function') {
+              return fallback;
+            }
+
+            const context = api.getClientContext();
+            if (!context || typeof context !== 'object') {
+              return fallback;
+            }
+
+            return {
+              ...fallback,
+              ...context,
+              deviceType: context.deviceType || fallback.deviceType,
+              browser: context.browser || fallback.browser,
+              operatingSystem: context.operatingSystem || fallback.operatingSystem,
+              userAgent: context.userAgent || fallback.userAgent
+            };
+          } catch {
+            return fallback;
+          }
         }
-      }
 
     async function emitSignal(eventName, options = {}) {
       const onceKey = options.onceKey || null;
