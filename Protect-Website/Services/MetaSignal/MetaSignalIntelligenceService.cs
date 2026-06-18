@@ -97,6 +97,7 @@ public sealed class MetaSignalIntelligenceService : IMetaSignalIntelligenceServi
 
         var capiResult = _options.SendServerEvents
             ? await // REMOVED: IntelligenceService no longer sends Meta directly
+        // // REMOVED (verified audit): IntelligenceService no longer allowed to send Meta
         // _metaConversionsApi.SendEventAsync(
                 new MetaConversionsApiEventRequest
                 {
@@ -390,6 +391,7 @@ public sealed class MetaSignalIntelligenceService : IMetaSignalIntelligenceServi
         {
             var pixelContext = await ResolvePixelContextAsync(normalized.AgentTrackingProfileId, normalized.AgentSlug, cancellationToken);
             metaServerResult = await // REMOVED: IntelligenceService no longer sends Meta directly
+        // // REMOVED (verified audit): IntelligenceService no longer allowed to send Meta
         // _metaConversionsApi.SendEventAsync(
                 new MetaConversionsApiEventRequest
                 {
@@ -644,6 +646,7 @@ public sealed class MetaSignalIntelligenceService : IMetaSignalIntelligenceServi
 
         var capiResult = _options.SendServerEvents && ShouldForwardToMeta("QualifiedLead", userAgent, accumulator)
             ? await // REMOVED: IntelligenceService no longer sends Meta directly
+        // // REMOVED (verified audit): IntelligenceService no longer allowed to send Meta
         // _metaConversionsApi.SendEventAsync(
                 new MetaConversionsApiEventRequest
                 {
