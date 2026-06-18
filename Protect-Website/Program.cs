@@ -205,6 +205,9 @@ app.MapControllerRoute(
     pattern: "{controller=Home}/{action=Index}/{id?}");
 app.MapControllers();
 
+// 🔹 SAFE FALLBACK: prevent frontend incident-monitor from crashing dashboard
+app.MapGet("/website-analytics/incident-monitor", () => Results.NotFound());
+
 // 🔹 SAFELY set Azure port (does NOT break your email logic)
 var port = Environment.GetEnvironmentVariable("PORT");
 if (!string.IsNullOrEmpty(port))
