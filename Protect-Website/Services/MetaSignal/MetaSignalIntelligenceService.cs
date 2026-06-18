@@ -96,7 +96,8 @@ public sealed class MetaSignalIntelligenceService : IMetaSignalIntelligenceServi
             return deferredAppointment;
 
         var capiResult = _options.SendServerEvents
-            ? await _metaConversionsApi.SendEventAsync(
+            ? await // REMOVED: IntelligenceService no longer sends Meta directly
+        // _metaConversionsApi.SendEventAsync(
                 new MetaConversionsApiEventRequest
                 {
                     LeadId = request.LeadId,
@@ -388,7 +389,8 @@ public sealed class MetaSignalIntelligenceService : IMetaSignalIntelligenceServi
         if (_options.SendServerEvents && metaEventDefinition.AllowServerForward && ShouldForwardToMeta(normalized.EventName, userAgent, accumulator))
         {
             var pixelContext = await ResolvePixelContextAsync(normalized.AgentTrackingProfileId, normalized.AgentSlug, cancellationToken);
-            metaServerResult = await _metaConversionsApi.SendEventAsync(
+            metaServerResult = await // REMOVED: IntelligenceService no longer sends Meta directly
+        // _metaConversionsApi.SendEventAsync(
                 new MetaConversionsApiEventRequest
                 {
                     CorrelationId = Guid.NewGuid(),
@@ -641,7 +643,8 @@ public sealed class MetaSignalIntelligenceService : IMetaSignalIntelligenceServi
         }
 
         var capiResult = _options.SendServerEvents && ShouldForwardToMeta("QualifiedLead", userAgent, accumulator)
-            ? await _metaConversionsApi.SendEventAsync(
+            ? await // REMOVED: IntelligenceService no longer sends Meta directly
+        // _metaConversionsApi.SendEventAsync(
                 new MetaConversionsApiEventRequest
                 {
                     LeadId = request.LeadId,
