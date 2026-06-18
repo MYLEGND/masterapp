@@ -95,51 +95,7 @@ public sealed class MetaSignalIntelligenceService : IMetaSignalIntelligenceServi
         if (deferredAppointment != null)
             return deferredAppointment;
 
-        var capiResult = _options.SendServerEvents
-            ? await // REMOVED: IntelligenceService no longer sends Meta directly
-        // // REMOVED (verified audit): IntelligenceService no longer allowed to send Meta
-        // _metaConversionsApi.SendEventAsync(
-                new MetaConversionsApiEventRequest
-                {
-                    LeadId = request.LeadId,
-                    CorrelationId = Guid.NewGuid(),
-                    EventName = "AppointmentBooked",
-                    EventId = eventId,
-                    QuoteType = quoteType,
-                    PageKey = request.EffectivePageKey,
-                    OfferKey = quoteType,
-                    EventSourceUrl = Normalize(request.Url),
-                    ClientIpAddress = clientIp,
-                    ClientUserAgent = userAgent,
-                    Fbp = MetaLeadTrackingWorkflow.ResolveCookieValue(httpContext?.Request, "_fbp"),
-                    Fbc = MetaLeadTrackingWorkflow.ResolveCookieValue(httpContext?.Request, "_fbc"),
-                    Fbclid = attribution.Fbclid,
-                    Email = request.Email,
-                    Phone = request.Phone,
-                    AllowHashedContactData = request.AllowHashedContactData,
-                    EventUtc = DateTime.UtcNow,
-                    PixelId = request.PixelId,
-                    AccessToken = request.AccessToken,
-                    TestEventCode = request.TestEventCode,
-                    PixelOwnerType = request.PixelOwnerType,
-                    CustomData = new Dictionary<string, object?>
-                    {
-                        ["event_category"] = "conversion",
-                        ["conversion_stage"] = "appointment_booked",
-                        ["quote_type"] = quoteType,
-                        ["page_key"] = request.PageKey,
-                        ["effective_page_key"] = request.EffectivePageKey,
-                        ["page_mode"] = request.PageMode,
-                        ["appointment_id"] = request.AppointmentId.ToString("N"),
-                        ["calendar_event_id"] = request.CalendarEventId,
-                        ["scheduled_start_utc"] = request.ScheduledStartUtc?.ToString("O"),
-                        ["scheduled_end_utc"] = request.ScheduledEndUtc?.ToString("O"),
-                        ["booking_source"] = request.BookingSource,
-                        ["confirmation_source"] = request.ConfirmationSource
-                    }
-                },
-                cancellationToken)
-            : new MetaConversionsApiResult { Attempted = false, Sent = false, Status = "server_events_disabled" };
+        var capiResult = new MetaConversionsApiResult { Attempted = false, Sent = false, Status = "server_events_disabled" };
 
         var row = new MetaSignalEvent
         {
@@ -390,32 +346,10 @@ public sealed class MetaSignalIntelligenceService : IMetaSignalIntelligenceServi
         if (_options.SendServerEvents && metaEventDefinition.AllowServerForward && ShouldForwardToMeta(normalized.EventName, userAgent, accumulator))
         {
             var pixelContext = await ResolvePixelContextAsync(normalized.AgentTrackingProfileId, normalized.AgentSlug, cancellationToken);
-            metaServerResult = await // REMOVED: IntelligenceService no longer sends Meta directly
+            metaServerResult = new MetaConversionsApiResult { Attempted = false, Sent = false, Status = "disabled_intelligence_service" }; // SAFE NO-OP
         // // REMOVED (verified audit): IntelligenceService no longer allowed to send Meta
-        // _metaConversionsApi.SendEventAsync(
-                new MetaConversionsApiEventRequest
-                {
-                    CorrelationId = Guid.NewGuid(),
-                    EventName = normalized.EventName,
-                    EventId = normalized.EventId,
-                    QuoteType = normalized.QuoteType,
-                    PageKey = normalized.EffectivePageKey ?? normalized.PageKey ?? string.Empty,
-                    OfferKey = normalized.QuoteType,
-                    EventSourceUrl = normalized.Url,
-                    ClientIpAddress = clientIp,
-                    ClientUserAgent = userAgent,
-                    Fbp = fbp,
-                    Fbc = fbc,
-                    Fbclid = attribution.Fbclid,
-                    AllowHashedContactData = false,
-                    EventUtc = DateTime.UtcNow,
-                    PixelId = pixelContext.PixelId,
-                    AccessToken = pixelContext.AccessToken,
-                    TestEventCode = pixelContext.TestEventCode,
-                    PixelOwnerType = pixelContext.PixelOwnerType,
-                    CustomData = BuildMetaCustomData(row)
-                },
-                cancellationToken);
+        // REMOVED META CALL (disabled safely)
+            // IntelligenceService no longer sends Meta; call intentionally removed.
             row.MetaServerSent = metaServerResult.Sent;
             row.MetadataJson = BuildMetadataJson(normalized.Metadata, normalized, attribution, score, browserSent: row.MetaBrowserSent, metaServerStatus: metaServerResult.Status, metaServerNote: metaServerResult.Note);
             _logger.LogInformation(
@@ -644,65 +578,7 @@ public sealed class MetaSignalIntelligenceService : IMetaSignalIntelligenceServi
             pixelContext = await ResolvePixelContextAsync(request.AgentTrackingProfileId, Normalize(request.AgentSlug), cancellationToken);
         }
 
-        var capiResult = _options.SendServerEvents && ShouldForwardToMeta("QualifiedLead", userAgent, accumulator)
-            ? await // REMOVED: IntelligenceService no longer sends Meta directly
-        // // REMOVED (verified audit): IntelligenceService no longer allowed to send Meta
-        // _metaConversionsApi.SendEventAsync(
-                new MetaConversionsApiEventRequest
-                {
-                    LeadId = request.LeadId,
-                    CorrelationId = Guid.NewGuid(),
-                    EventName = "QualifiedLead",
-                    EventId = qualifiedEventId,
-                    QuoteType = quoteType,
-                    PageKey = request.EffectivePageKey,
-                    OfferKey = quoteType,
-                    EventSourceUrl = Normalize(request.Url),
-                    ClientIpAddress = clientIp,
-                    ClientUserAgent = userAgent,
-                    Fbp = MetaLeadTrackingWorkflow.ResolveCookieValue(httpContext?.Request, "_fbp"),
-                    Fbc = MetaLeadTrackingWorkflow.ResolveCookieValue(httpContext?.Request, "_fbc"),
-                    Fbclid = attribution.Fbclid,
-                    Email = request.Email,
-                    Phone = request.Phone,
-                    AllowHashedContactData = request.AllowHashedContactData,
-                    EventUtc = DateTime.UtcNow,
-                    PixelId = pixelContext.PixelId,
-                    AccessToken = pixelContext.AccessToken,
-                    TestEventCode = pixelContext.TestEventCode,
-                    PixelOwnerType = pixelContext.PixelOwnerType,
-                    CustomData = new Dictionary<string, object?>(BuildMetaCustomData(new MetaSignalEvent
-                    {
-                        EventName = "QualifiedLead",
-                        QuoteType = quoteType,
-                        PageKey = request.PageKey,
-                        EffectivePageKey = request.EffectivePageKey,
-                        PageVariant = request.PageVariant,
-                        PageMode = pageMode,
-                        SessionId = request.SessionId,
-                        UtmSource = attribution.UtmSource,
-                        UtmMedium = attribution.UtmMedium,
-                        UtmCampaign = attribution.UtmCampaign,
-                        UtmId = attribution.UtmId,
-                        UtmContent = attribution.UtmContent,
-                        FunnelStep = 3,
-                        StepName = "qualified_lead",
-                        ScoreTier = "SubmittedLead",
-                        TotalSignalScore = Math.Max(100, score.TotalSignalScore),
-                        EngagementScore = score.EngagementScore,
-                        QualificationScore = score.QualificationScore,
-                        FrictionScore = score.FrictionScore,
-                        TrafficType = attribution.TrafficType,
-                        FbclidPresent = !string.IsNullOrWhiteSpace(attribution.Fbclid),
-                        FbcPresent = !string.IsNullOrWhiteSpace(MetaLeadTrackingWorkflow.ResolveCookieValue(httpContext?.Request, "_fbc")),
-                        FbpPresent = !string.IsNullOrWhiteSpace(MetaLeadTrackingWorkflow.ResolveCookieValue(httpContext?.Request, "_fbp"))
-                    }))
-                    {
-                        ["lead_quality"] = "qualified"
-                    }
-                },
-                cancellationToken)
-            : new MetaConversionsApiResult { Attempted = false, Sent = false, Status = "not_attempted" };
+        var capiResult = new MetaConversionsApiResult { Attempted = false, Sent = false, Status = "not_attempted" };
 
         var qualifiedRow = new MetaSignalEvent
         {
