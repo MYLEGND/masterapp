@@ -541,7 +541,7 @@ namespace AgentPortal.Controllers;
         if (!FounderGuard.IsFounder(User)) return Forbid();
         var range = TimeRangeRequest.FromPreset(preset, fromUtc, toUtc, GetViewerTimeZone(), qualityMode);
         var options = new AnalyticsQueryOptions { OrderBy = orderBy ?? "leads", Desc = desc, Take = take, Skip = skip };
-        var result = await _analytics.GetAgentPerformanceAsync(range, ScopeContext.Global, trafficType, options);
+        var result = await _analytics.GetAgentPerformanceAsync(range, await ResolveScopeAsync(null, false), trafficType, options);
         return Json(result);
     }
 
