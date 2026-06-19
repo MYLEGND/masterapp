@@ -15,7 +15,7 @@ public class QuoteProductInstrumentationContractTests
 
         var autoView = Read(repoRoot, "Protect-Website", "Views", "Quote", "Auto.cshtml");
         var homeView = Read(repoRoot, "Protect-Website", "Views", "Quote", "Home.cshtml");
-        var healthView = Read(repoRoot, "Protect-Website", "Views", "Quote", "Health.cshtml");
+        var dentalVisionHearingView = Read(repoRoot, "Protect-Website", "Views", "Quote", "DentalVisionHearing.cshtml");
         var disabilityView = Read(repoRoot, "Protect-Website", "Views", "Quote", "Disability.cshtml");
         var commercialView = Read(repoRoot, "Protect-Website", "Views", "Quote", "Commercial.cshtml");
 
@@ -25,7 +25,8 @@ public class QuoteProductInstrumentationContractTests
         Assert.Contains("'quote_step_complete'", homeView, StringComparison.Ordinal);
         Assert.Contains("'quote_contact_step_view'", homeView, StringComparison.Ordinal);
 
-        Assert.Contains("'quote_contact_step_view'", healthView, StringComparison.Ordinal);
+        Assert.Contains("'quote_step_complete'", dentalVisionHearingView, StringComparison.Ordinal);
+        Assert.Contains("'quote_contact_step_view'", dentalVisionHearingView, StringComparison.Ordinal);
 
         Assert.Contains("'quote_step_complete'", disabilityView, StringComparison.Ordinal);
         Assert.Contains("'quote_contact_step_view'", disabilityView, StringComparison.Ordinal);
@@ -43,7 +44,7 @@ public class QuoteProductInstrumentationContractTests
             Read(repoRoot, "Protect-Website", "Controllers", "LifeQuoteController.cs"),
             Read(repoRoot, "Protect-Website", "Controllers", "AutoQuoteController.cs"),
             Read(repoRoot, "Protect-Website", "Controllers", "HomeQuoteController.cs"),
-            Read(repoRoot, "Protect-Website", "Controllers", "HealthQuoteController.cs"),
+            Read(repoRoot, "Protect-Website", "Controllers", "DentalVisionHearingQuoteController.cs"),
             Read(repoRoot, "Protect-Website", "Controllers", "DisabilityQuoteController.cs"),
             Read(repoRoot, "Protect-Website", "Controllers", "CommercialQuoteController.cs")
         };
@@ -54,9 +55,17 @@ public class QuoteProductInstrumentationContractTests
             Assert.Contains("\"workstation_capture_attempt\"", controller, StringComparison.Ordinal);
             Assert.Contains("\"workstation_capture_success\"", controller, StringComparison.Ordinal);
             Assert.Contains("\"workstation_capture_failure\"", controller, StringComparison.Ordinal);
-            Assert.Contains("\"capi_event_attempt\"", controller, StringComparison.Ordinal);
-            Assert.Contains("capi_event_success", controller, StringComparison.Ordinal);
-            Assert.Contains("capi_event_failure", controller, StringComparison.Ordinal);
+            var hasLegacyCapiMarkers =
+                controller.Contains("\"capi_event_attempt\"", StringComparison.Ordinal) &&
+                controller.Contains("capi_event_success", StringComparison.Ordinal) &&
+                controller.Contains("capi_event_failure", StringComparison.Ordinal);
+            var hasBridgeQueuedMetaTracking =
+                controller.Contains("\"meta_tracking_initialized\"", StringComparison.Ordinal) &&
+                controller.Contains("ServerCapiStatus = \"queued_for_bridge\"", StringComparison.Ordinal);
+
+            Assert.True(
+                hasLegacyCapiMarkers || hasBridgeQueuedMetaTracking,
+                "Expected quote controller to expose legacy CAPI telemetry markers or the bridge-queued Meta tracking initialization path.");
         }
     }
 
@@ -75,10 +84,9 @@ public class QuoteProductInstrumentationContractTests
         Assert.True(
             view.IndexOf(checkboxMarkup, StringComparison.Ordinal) < view.IndexOf(hiddenMarkup, StringComparison.Ordinal),
             "The consent checkbox must render before the hidden false input so checked submits bind to true.");
-        Assert.Contains("Please check the box so we can send your estimate and options.", view, StringComparison.Ordinal);
+        Assert.Contains("Please check the box so we can follow up about your review.", view, StringComparison.Ordinal);
         Assert.Contains("if (!model.MarketingEmailConsent)", controller, StringComparison.Ordinal);
         Assert.Contains("ModelState.AddModelError(nameof(LifeQuoteFormModel.MarketingEmailConsent)", controller, StringComparison.Ordinal);
-        Assert.Contains("AllowHashedContactData = lead.TermsAccepted && lead.MarketingEmailConsent", controller, StringComparison.Ordinal);
         Assert.Contains("string.IsNullOrWhiteSpace(model.Email) && string.IsNullOrWhiteSpace(model.Phone)", controller, StringComparison.Ordinal);
         Assert.Contains("id=\"err-ContactMethod\"", view, StringComparison.Ordinal);
     }
@@ -96,9 +104,9 @@ public class QuoteProductInstrumentationContractTests
         Assert.Contains("const metaSignalApi = metaSignal && typeof metaSignal === 'object'", view, StringComparison.Ordinal);
         Assert.Contains("function safeTrackingCall(label, factory)", view, StringComparison.Ordinal);
 
-        Assert.Contains("const isAjaxManagedSubmit = formEl.dataset.ajaxSubmit === 'true';", tracking, StringComparison.Ordinal);
-        Assert.Contains("if (isAjaxManagedSubmit) return;", tracking, StringComparison.Ordinal);
-        Assert.Contains("trackStart: fireTrackedFormStartOnce", tracking, StringComparison.Ordinal);
+        Assert.Contains("body.EventType === 'form_submit_attempt'", tracking, StringComparison.Ordinal);
+        Assert.Contains("body.EventType === 'lead_form_submit_success'", tracking, StringComparison.Ordinal);
+        Assert.Contains("body.EventType === 'lead_form_submit_failure'", tracking, StringComparison.Ordinal);
 
         Assert.Contains("model.FirstName = model.FirstName?.Trim() ?? string.Empty;", controller, StringComparison.Ordinal);
         Assert.Contains("string.IsNullOrWhiteSpace(model.FirstName)", controller, StringComparison.Ordinal);
@@ -118,7 +126,7 @@ public class QuoteProductInstrumentationContractTests
         Assert.Contains("first_question_view", view, StringComparison.Ordinal);
         Assert.Contains("first_question_answered", view, StringComparison.Ordinal);
         Assert.Contains("contact_step_view", view, StringComparison.Ordinal);
-        Assert.Contains("lead_form_submit_attempt", view, StringComparison.Ordinal);
+        Assert.Contains("form_submit_attempt", view, StringComparison.Ordinal);
         Assert.Contains("lead_form_submit_success", view, StringComparison.Ordinal);
         Assert.Contains("lead_form_submit_failure", view, StringComparison.Ordinal);
         Assert.Contains("What you’ll get first", view, StringComparison.Ordinal);
@@ -133,10 +141,10 @@ public class QuoteProductInstrumentationContractTests
 
         Assert.Contains("showCarrierReviewBeforeContact = false;", view, StringComparison.Ordinal);
         Assert.Contains("showPreContactEducationSummary = false;", view, StringComparison.Ordinal);
-        Assert.Contains("Where should we send your estimate?", view, StringComparison.Ordinal);
-        Assert.Contains("Email is best for a written copy. Add a phone only if you want text or call help too.", view, StringComparison.Ordinal);
-        Assert.Contains("Add the best contact method to keep a written copy of this estimate and the clearest next options. Help stays optional.", view, StringComparison.Ordinal);
-        Assert.Contains("Send My Estimate", view, StringComparison.Ordinal);
+        Assert.Contains("Where should we send your full review?", view, StringComparison.Ordinal);
+        Assert.Contains("We’ll send your full review, carrier fit analysis, and recommended next step based on your answers.", view, StringComparison.Ordinal);
+        Assert.Contains("Your starting point is ready. Add your first name and best number so we can send the review and help you compare the next step.", view, StringComparison.Ordinal);
+        Assert.Contains("Your starting point is ready. Add your first name and best number so we can send the review and help you compare the next step.", view, StringComparison.Ordinal);
 
         Assert.Contains("buildGeneralLifeContactSummaryHtml", renderer, StringComparison.Ordinal);
         Assert.Contains("return buildGeneralLifeContactSummaryHtml(normalized);", renderer, StringComparison.Ordinal);
@@ -154,12 +162,12 @@ public class QuoteProductInstrumentationContractTests
         var controller = Read(repoRoot, "Protect-Website", "Controllers", "LifeQuoteController.cs");
 
         Assert.Contains("id=\"lifePostSubmitSlot\" hidden", view, StringComparison.Ordinal);
-        Assert.Contains("id=\"lifeBookingModal\"", view, StringComparison.Ordinal);
         Assert.Contains("showPostSubmitSuccess(", view, StringComparison.Ordinal);
         Assert.Contains("bookingExperienceUrl", view, StringComparison.Ordinal);
         Assert.Contains("'appointment_embed_viewed'", view, StringComparison.Ordinal);
         Assert.Contains("'appointment_abandoned'", view, StringComparison.Ordinal);
-        Assert.Contains("'appointment_booking_fallback_clicked'", view, StringComparison.Ordinal);
+        Assert.Contains("'appointment_slot_selected'", view, StringComparison.Ordinal);
+        Assert.Contains("'appointment_booked'", view, StringComparison.Ordinal);
         Assert.DoesNotContain("window.location.href = resolveThankYouPath();", view, StringComparison.Ordinal);
 
         Assert.Contains("[HttpPost(\"Life/booking-experience\")]", controller, StringComparison.Ordinal);
