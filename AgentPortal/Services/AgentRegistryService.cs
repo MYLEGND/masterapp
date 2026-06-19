@@ -184,7 +184,16 @@ public class AgentRegistryService
                 }
             }
 
-            await _db.SaveChangesAsync(ct);
+            try
+            {
+                await _db.SaveChangesAsync(ct);
+            }
+            catch (Microsoft.EntityFrameworkCore.DbUpdateException ex) when (
+                _db.Database.ProviderName?.Contains("Sqlite", StringComparison.OrdinalIgnoreCase) == true &&
+                ex.InnerException?.Message.Contains("database is locked", StringComparison.OrdinalIgnoreCase) == true)
+            {
+                _logger.LogWarning(ex, "AgentRegistry: local SQLite database locked during profile upsert; skipping non-critical profile refresh.");
+            }
             try
             {
                 await _tracking.EnsureProfileAsync(oid, email, displayName, ct);
