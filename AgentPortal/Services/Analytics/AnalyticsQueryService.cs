@@ -37,11 +37,14 @@ public sealed class AnalyticsQueryService : IAnalyticsQueryService
         _resolver = resolver;
     }
 
-    private IQueryable<AnalyticsEvent> BaseEvents(TimeRangeRequest range, ScopeContext scope, Guid[]? scopedAgentIds = null) =>
-        _db.AnalyticsEvents.AsNoTracking()
+    private IQueryable<AnalyticsEvent> BaseEvents(TimeRangeRequest range, ScopeContext scope, Guid[]? scopedAgentIds = null)
+    {
+        var query = _db.AnalyticsEvents.AsNoTracking()
             .Where(e => e.EventUtc >= range.FromUtc && e.EventUtc <= range.ToUtc)
-            .Where(ScopePredicateEvents(scope, scopedAgentIds))
-            .Where(QualityPredicateEvents(range.QualityMode));
+            .Where(ScopePredicateEvents(scope, scopedAgentIds));
+
+        return ApplyQualityFilterEvents(query, range.QualityMode);
+    }
 
 
     public IQueryable<AnalyticsEvent> ScopedEvents(
@@ -57,11 +60,14 @@ public sealed class AnalyticsQueryService : IAnalyticsQueryService
             .Where(ScopePredicateLeads(scope, scopedAgentIds))
             .Where(QualityPredicateLeads(range.QualityMode));
 
-    private IQueryable<AnalyticsEvent> EventsInRange(DateTime from, DateTime to, ScopeContext scope, Guid[]? scopedAgentIds = null, TrafficQualityMode qualityMode = TrafficQualityMode.RealHumanTraffic) =>
-        _db.AnalyticsEvents.AsNoTracking()
+    private IQueryable<AnalyticsEvent> EventsInRange(DateTime from, DateTime to, ScopeContext scope, Guid[]? scopedAgentIds = null, TrafficQualityMode qualityMode = TrafficQualityMode.RealHumanTraffic)
+    {
+        var query = _db.AnalyticsEvents.AsNoTracking()
             .Where(e => e.EventUtc >= from && e.EventUtc <= to)
-            .Where(ScopePredicateEvents(scope, scopedAgentIds))
-            .Where(QualityPredicateEvents(qualityMode));
+            .Where(ScopePredicateEvents(scope, scopedAgentIds));
+
+        return ApplyQualityFilterEvents(query, qualityMode);
+    }
 
     private IQueryable<WebsiteLead> LeadsInRange(DateTime from, DateTime to, ScopeContext scope, Guid[]? scopedAgentIds = null, TrafficQualityMode qualityMode = TrafficQualityMode.RealHumanTraffic) =>
         _db.WebsiteLeads.AsNoTracking()
@@ -76,6 +82,153 @@ public sealed class AnalyticsQueryService : IAnalyticsQueryService
 
     private static Expression<Func<WebsiteLead, bool>> QualityPredicateLeads(TrafficQualityMode mode) =>
         TrafficQualityBucketFilters.BuildLeadPredicate(mode);
+
+    private sealed class EventBucketMembership
+    {
+        public EventBucketMembership(
+            IQueryable<string> sessionIds,
+            IQueryable<string> visitorIds,
+            IQueryable<Guid> eventIds)
+        {
+            SessionIds = sessionIds;
+            VisitorIds = visitorIds;
+            EventIds = eventIds;
+        }
+
+        public IQueryable<string> SessionIds { get; }
+        public IQueryable<string> VisitorIds { get; }
+        public IQueryable<Guid> EventIds { get; }
+    }
+
+    // Traffic buckets are assigned at the session/visitor identity level so
+    // supporting rows like page_view inherit the session's final quality bucket.
+    private static IQueryable<AnalyticsEvent> ApplyQualityFilterEvents(IQueryable<AnalyticsEvent> query, TrafficQualityMode mode)
+    {
+        if (mode == TrafficQualityMode.AllTraffic)
+            return query;
+
+        var internalQaBucket = BuildEventBucketMembership(query, QualityPredicateEvents(TrafficQualityMode.InternalQa));
+        if (mode == TrafficQualityMode.InternalQa)
+            return ApplyEventBucketMembership(query, internalQaBucket);
+
+        var botBucket = BuildEventBucketMembership(
+            query,
+            QualityPredicateEvents(TrafficQualityMode.LikelyBotsAutomation),
+            internalQaBucket);
+        if (mode == TrafficQualityMode.LikelyBotsAutomation)
+            return ApplyEventBucketMembership(query, botBucket);
+
+        var suspiciousBucket = BuildEventBucketMembership(
+            query,
+            QualityPredicateEvents(TrafficQualityMode.SuspiciousActivity),
+            internalQaBucket,
+            botBucket);
+        if (mode == TrafficQualityMode.SuspiciousActivity)
+            return ApplyEventBucketMembership(query, suspiciousBucket);
+
+        var realHumanBucket = BuildEventBucketMembership(
+            query,
+            QualityPredicateEvents(TrafficQualityMode.RealHumanTraffic),
+            internalQaBucket,
+            botBucket,
+            suspiciousBucket);
+        if (mode == TrafficQualityMode.RealHumanTraffic)
+            return ApplyEventBucketMembership(query, realHumanBucket);
+
+        var likelyHumanBucket = BuildEventBucketMembership(
+            query,
+            QualityPredicateEvents(TrafficQualityMode.LikelyHuman),
+            internalQaBucket,
+            botBucket,
+            suspiciousBucket,
+            realHumanBucket);
+        if (mode == TrafficQualityMode.LikelyHuman)
+            return ApplyEventBucketMembership(query, likelyHumanBucket);
+
+        var reviewedNeededBucket = BuildRemainingEventBucketMembership(
+            query,
+            internalQaBucket,
+            botBucket,
+            suspiciousBucket,
+            realHumanBucket,
+            likelyHumanBucket);
+
+        return ApplyEventBucketMembership(query, reviewedNeededBucket);
+    }
+
+    private static EventBucketMembership BuildEventBucketMembership(
+        IQueryable<AnalyticsEvent> query,
+        Expression<Func<AnalyticsEvent, bool>> bucketPredicate,
+        params EventBucketMembership[] excludedBuckets)
+    {
+        var candidates = query.Where(bucketPredicate);
+        return BuildEventBucketMembership(ExcludeEventBucketMembership(candidates, excludedBuckets));
+    }
+
+    private static EventBucketMembership BuildRemainingEventBucketMembership(
+        IQueryable<AnalyticsEvent> query,
+        params EventBucketMembership[] excludedBuckets)
+        => BuildEventBucketMembership(ExcludeEventBucketMembership(query, excludedBuckets));
+
+    private static EventBucketMembership BuildEventBucketMembership(IQueryable<AnalyticsEvent> query)
+    {
+        var sessionIds = query
+            .Where(e => e.SessionId != null && e.SessionId != string.Empty)
+            .Select(e => e.SessionId!)
+            .Distinct();
+
+        var visitorIds = query
+            .Where(e =>
+                (e.SessionId == null || e.SessionId == string.Empty) &&
+                e.VisitorId != null &&
+                e.VisitorId != string.Empty)
+            .Select(e => e.VisitorId!)
+            .Distinct();
+
+        var eventIds = query
+            .Where(e =>
+                (e.SessionId == null || e.SessionId == string.Empty) &&
+                (e.VisitorId == null || e.VisitorId == string.Empty))
+            .Select(e => e.EventId)
+            .Distinct();
+
+        return new EventBucketMembership(sessionIds, visitorIds, eventIds);
+    }
+
+    private static IQueryable<AnalyticsEvent> ExcludeEventBucketMembership(
+        IQueryable<AnalyticsEvent> query,
+        params EventBucketMembership[] excludedBuckets)
+    {
+        foreach (var excludedBucket in excludedBuckets)
+        {
+            query = query.Where(e =>
+                ((e.SessionId != null && e.SessionId != string.Empty) &&
+                 !excludedBucket.SessionIds.Contains(e.SessionId!)) ||
+                (((e.SessionId == null || e.SessionId == string.Empty) &&
+                  e.VisitorId != null &&
+                  e.VisitorId != string.Empty) &&
+                 !excludedBucket.VisitorIds.Contains(e.VisitorId!)) ||
+                ((e.SessionId == null || e.SessionId == string.Empty) &&
+                 (e.VisitorId == null || e.VisitorId == string.Empty) &&
+                 !excludedBucket.EventIds.Contains(e.EventId)));
+        }
+
+        return query;
+    }
+
+    private static IQueryable<AnalyticsEvent> ApplyEventBucketMembership(
+        IQueryable<AnalyticsEvent> query,
+        EventBucketMembership bucket)
+        => query.Where(e =>
+            ((e.SessionId != null && e.SessionId != string.Empty) &&
+             bucket.SessionIds.Contains(e.SessionId!)) ||
+            (((e.SessionId == null || e.SessionId == string.Empty) &&
+              e.VisitorId != null &&
+              e.VisitorId != string.Empty) &&
+             bucket.VisitorIds.Contains(e.VisitorId!)) ||
+            ((e.SessionId == null || e.SessionId == string.Empty) &&
+             (e.VisitorId == null || e.VisitorId == string.Empty) &&
+             bucket.EventIds.Contains(e.EventId)));
 
     // SCOPE SAFETY RULE:
     // Global scope must NEVER be passed directly into analytics queries.
