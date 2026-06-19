@@ -2203,6 +2203,8 @@ public sealed class AnalyticsQueryService : IAnalyticsQueryService
                     var first = visitEvents.First();
                     var last = visitEvents.Last();
                     var durationSeconds = Math.Max(0, (int)Math.Round((last.EventUtc - first.EventUtc).TotalSeconds));
+                    var sessionId = FirstNonBlank(visitEvents.AsEnumerable().Reverse().Select(x => x.SessionId).ToArray());
+                    var visitorId = FirstNonBlank(visitEvents.AsEnumerable().Reverse().Select(x => x.VisitorId).ToArray());
 
                     sessionActivityRows.Add(new ActivityItemDto
                     {
@@ -2214,7 +2216,11 @@ public sealed class AnalyticsQueryService : IAnalyticsQueryService
                         ActivitySummary = BuildActivitySummary(visitEvents),
                         PageKey = group.Key.PageKey,
                         ElementKey = BuildOutcomeSummary(visitEvents),
-                        OutcomeSummary = BuildOutcomeSummary(visitEvents)
+                        OutcomeSummary = BuildOutcomeSummary(visitEvents),
+                        SessionId = sessionId,
+                        SessionIdShort = ShortTrackingId(sessionId),
+                        VisitorId = visitorId,
+                        VisitorIdShort = ShortTrackingId(visitorId)
                     });
 
                     visitEvents = new List<AnalyticsEvent>();
@@ -2229,6 +2235,8 @@ public sealed class AnalyticsQueryService : IAnalyticsQueryService
                 var first = visitEvents.First();
                 var last = visitEvents.Last();
                 var durationSeconds = Math.Max(0, (int)Math.Round((last.EventUtc - first.EventUtc).TotalSeconds));
+                var sessionId = FirstNonBlank(visitEvents.AsEnumerable().Reverse().Select(x => x.SessionId).ToArray());
+                var visitorId = FirstNonBlank(visitEvents.AsEnumerable().Reverse().Select(x => x.VisitorId).ToArray());
 
                 sessionActivityRows.Add(new ActivityItemDto
                 {
@@ -2240,7 +2248,11 @@ public sealed class AnalyticsQueryService : IAnalyticsQueryService
                     ActivitySummary = BuildActivitySummary(visitEvents),
                     PageKey = group.Key.PageKey,
                     ElementKey = BuildOutcomeSummary(visitEvents),
-                    OutcomeSummary = BuildOutcomeSummary(visitEvents)
+                    OutcomeSummary = BuildOutcomeSummary(visitEvents),
+                    SessionId = sessionId,
+                    SessionIdShort = ShortTrackingId(sessionId),
+                    VisitorId = visitorId,
+                    VisitorIdShort = ShortTrackingId(visitorId)
                 });
             }
         }

@@ -28,6 +28,10 @@ public sealed class ActivityItemDto
     public string EventType { get; set; } = "";
     public string? PageKey { get; set; }
     public string? ElementKey { get; set; }
+    public string? SessionId { get; set; }
+    public string? SessionIdShort { get; set; }
+    public string? VisitorId { get; set; }
+    public string? VisitorIdShort { get; set; }
 
     public DateTime? EndUtc { get; set; }
     public int DurationSeconds { get; set; }

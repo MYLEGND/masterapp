@@ -411,6 +411,59 @@ public class AnalyticsQueryServiceQuoteFunnelTests
     }
 
     [Fact]
+    public async Task GetTrafficAsync_RecentActivity_ProjectsIdentityForFullInspector()
+    {
+        using var db = ControllerTestHelpers.BuildDb();
+        var now = DateTime.UtcNow;
+
+        db.AnalyticsEvents.AddRange(
+            new AnalyticsEvent
+            {
+                EventId = Guid.NewGuid(),
+                EventType = "page_view",
+                EventUtc = now.AddMinutes(-4),
+                ReceivedUtc = now.AddMinutes(-4),
+                SessionId = "sess1234",
+                VisitorId = "visit123",
+                PageKey = "quote_life",
+                Environment = "production",
+                Host = "portal.mylegnd.com"
+            },
+            new AnalyticsEvent
+            {
+                EventId = Guid.NewGuid(),
+                EventType = "page_exit",
+                EventUtc = now.AddMinutes(-1),
+                ReceivedUtc = now.AddMinutes(-1),
+                SessionId = "sess1234",
+                VisitorId = "visit123",
+                PageKey = "quote_life",
+                Environment = "production",
+                Host = "portal.mylegnd.com"
+            });
+        await db.SaveChangesAsync();
+
+        var service = BuildService(db);
+        var range = new TimeRangeRequest
+        {
+            FromUtc = now.AddHours(-2),
+            ToUtc = now.AddHours(2),
+            Grouping = TimeGrouping.Day,
+            Label = "test",
+            Preset = "custom",
+            QualityMode = TrafficQualityMode.AllTraffic
+        };
+
+        var traffic = await service.GetTrafficAsync(range, ScopeContext.Global, TrafficType.All);
+
+        var row = Assert.Single(traffic.RecentActivity);
+        Assert.Equal("sess1234", row.SessionId);
+        Assert.Equal("visit123", row.VisitorId);
+        Assert.Equal("sess1234", row.SessionIdShort);
+        Assert.Equal("visit123", row.VisitorIdShort);
+    }
+
+    [Fact]
     public async Task GetFormAbandonmentAsync_TrafficFilter_NonPaidIncludesOnlyKnownNonPaid()
     {
         using var db = ControllerTestHelpers.BuildDb();

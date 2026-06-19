@@ -945,6 +945,32 @@
     });
   }
 
+  function initTrafficActivityInspector() {
+    if (document.body.dataset.waTrafficActivityInspectorBound === 'true') return;
+    document.body.dataset.waTrafficActivityInspectorBound = 'true';
+
+    document.addEventListener('click', event => {
+      if (!(event.target instanceof Element)) return;
+
+      const trigger = event.target.closest('[data-traffic-activity-session], [data-traffic-activity-visitor]');
+      if (!trigger) return;
+
+      event.preventDefault();
+
+      const visitorId = (trigger.getAttribute('data-traffic-activity-visitor') || '').trim();
+      const sessionId = (trigger.getAttribute('data-traffic-activity-session') || '').trim();
+      if (!visitorId && !sessionId) return;
+
+      const timeline = window.websiteAnalyticsKpiModal?.openVisitorTimeline;
+      if (typeof timeline === 'function') {
+        timeline(visitorId, sessionId);
+        return;
+      }
+
+      console.warn('Visitor timeline inspector is not ready yet.');
+    });
+  }
+
   function initMarketingHealthCopyable() {
     document.addEventListener('click', async (event) => {
       const copyable = event.target.closest('.wa-health-copyable[data-copy-value]');
@@ -1071,7 +1097,8 @@
       { key: 'pageKey' },
       { render: r => r.activitySummary || r.eventType || 'activity recorded' },
       { render: r => r.outcomeSummary || r.elementKey || 'Viewed' },
-      { render: r => Number(r.eventCount || 0).toLocaleString('en-US'), align: 'text-end' }
+      { render: r => Number(r.eventCount || 0).toLocaleString('en-US'), align: 'text-end' },
+      { render: r => renderTrafficActivityInspector(r) }
     ]);
     renderExitedBeforeStartTraffic(data);
     setText('traffic-range-label', breakdown
@@ -1106,6 +1133,30 @@
       { render: r => r.activitySummary || r.eventType || 'activity recorded' },
       { render: r => Number(r.eventCount || 0).toLocaleString('en-US'), align: 'text-end' }
     ]);
+  }
+
+  function renderTrafficActivityInspector(row) {
+    const sessionId = typeof row?.sessionId === 'string' ? row.sessionId.trim() : '';
+    const visitorId = typeof row?.visitorId === 'string' ? row.visitorId.trim() : '';
+    if (!sessionId && !visitorId) {
+      return '<span class="text-muted small">No IDs</span>';
+    }
+
+    const identityParts = [];
+    if (row?.sessionIdShort) identityParts.push(`S ${escapeHtml(row.sessionIdShort)}`);
+    if (row?.visitorIdShort) identityParts.push(`V ${escapeHtml(row.visitorIdShort)}`);
+
+    return `
+      <button
+        type="button"
+        class="btn btn-sm btn-outline-warning"
+        data-traffic-activity-session="${escapeHtml(sessionId)}"
+        data-traffic-activity-visitor="${escapeHtml(visitorId)}"
+        title="Open full event inspector for this session or visitor">
+        Inspect
+      </button>
+      ${identityParts.length ? `<div class="text-muted small mt-1">${identityParts.join(' · ')}</div>` : ''}
+    `;
   }
 
   function renderPagePerf(data) {
@@ -1487,7 +1538,7 @@
           <td>${escapeHtml(lead.phone || '—')}</td>
           <td>${escapeHtml(lead.interest || '—')}</td>
           <td>${escapeHtml(lead.leadSource || '—')}</td>
-          <td>${escapeHtml(lead.resolvedSource || '—')}${leadAttributionIdSummary(lead)}</td>
+          <td>${renderLeadResolvedSourceCell(lead)}</td>
           <td>${renderLeadContextCell(lead)}</td>
           <td class="text-center">${trafficBadge(lead.attribution)} <span class="text-muted small">${escapeHtml(lead.attribution?.resolutionSource || 'unknown')}</span>${metaLearningBadge(lead.attribution)}</td>
           <td class="text-center">${metaTrackingBadge(lead.metaTracking)}</td>
@@ -1512,6 +1563,41 @@
 
     if (!parts.length) return '';
     return `<div class="text-muted small">${parts.join(' · ')}</div>`;
+  }
+
+  function renderLeadResolvedSourceCell(lead) {
+    if (!lead) return '—';
+
+    const primary = escapeHtml(lead.resolvedSource || '—');
+    const summaryParts = [lead.resolvedMedium, lead.resolvedCampaign]
+      .filter(value => value && String(value).trim())
+      .map(value => escapeHtml(String(value).trim()));
+    const deeperParts = [];
+
+    if (lead.resolvedContent) deeperParts.push(`content ${lead.resolvedContent}`);
+    if (lead.resolvedTerm) deeperParts.push(`term ${lead.resolvedTerm}`);
+
+    const detailLines = [
+      lead.resolvedMedium ? `<div><span class="text-muted">Medium:</span> ${escapeHtml(lead.resolvedMedium)}</div>` : '',
+      lead.resolvedCampaign ? `<div><span class="text-muted">Campaign:</span> ${escapeHtml(lead.resolvedCampaign)}</div>` : '',
+      lead.resolvedContent ? `<div><span class="text-muted">Content:</span> ${escapeHtml(lead.resolvedContent)}</div>` : '',
+      lead.resolvedTerm ? `<div><span class="text-muted">Term:</span> ${escapeHtml(lead.resolvedTerm)}</div>` : '',
+      lead.resolvedUtmId ? `<div><span class="text-muted">UTM ID:</span> <span class="font-monospace">${escapeHtml(lead.resolvedUtmId)}</span></div>` : '',
+      lead.resolvedMetaCampaignId ? `<div><span class="text-muted">Meta Campaign:</span> <span class="font-monospace">${escapeHtml(lead.resolvedMetaCampaignId)}</span></div>` : '',
+      lead.resolvedMetaAdSetId ? `<div><span class="text-muted">Meta Ad Set:</span> <span class="font-monospace">${escapeHtml(lead.resolvedMetaAdSetId)}</span></div>` : '',
+      lead.resolvedMetaAdId ? `<div><span class="text-muted">Meta Ad:</span> <span class="font-monospace">${escapeHtml(lead.resolvedMetaAdId)}</span></div>` : '',
+      lead.resolvedFbclidPresent !== null && lead.resolvedFbclidPresent !== undefined
+        ? `<div><span class="text-muted">Fbclid Present:</span> ${lead.resolvedFbclidPresent ? 'Yes' : 'No'}</div>`
+        : ''
+    ].filter(Boolean).join('');
+
+    return `
+      <div>${primary}</div>
+      ${summaryParts.length ? `<div class="text-muted small mt-1">${summaryParts.join(' · ')}</div>` : ''}
+      ${deeperParts.length ? `<div class="text-muted small">${escapeHtml(deeperParts.join(' · '))}</div>` : ''}
+      ${leadAttributionIdSummary(lead)}
+      ${detailLines ? `<details class="small mt-1"><summary>Inspect attribution</summary>${detailLines}</details>` : ''}
+    `;
   }
 
   function shortenTrackingToken(value, visible = 12) {
@@ -2826,7 +2912,7 @@ function escapeHtml(value) {
       setTableMessage('traffic-entry-pages-body', 2, message, 'text-danger');
       setTableMessage('traffic-top-sources-body', 2, message, 'text-danger');
       setTableMessage('traffic-top-campaigns-body', 2, message, 'text-danger');
-      setTableMessage('traffic-activity-body', 5, message, 'text-danger');
+      setTableMessage('traffic-activity-body', 6, message, 'text-danger');
       setTableMessage('traffic-exited-before-start-body', 4, message, 'text-danger');
       setText('traffic-exited-before-start-count', '0');
       setText('traffic-exited-before-start-modal-count', '0');
@@ -4163,6 +4249,7 @@ function escapeHtml(value) {
     initCopyAllModulesButton();
     initMarketingHealthInspector();
     initMarketingHealthCopyable();
+    initTrafficActivityInspector();
     attachModal('trafficModal', () => { updateTrafficTypeHeader('trafficModal'); loadTraffic(); });
     attachModal('pagePerfModal', () => { updateTrafficTypeHeader('pagePerfModal'); loadPagePerf(); });
     attachModal('ctaPerfModal', () => { updateTrafficTypeHeader('ctaPerfModal'); loadCtaPerf(); });

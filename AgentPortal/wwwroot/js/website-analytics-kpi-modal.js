@@ -151,6 +151,148 @@
         }
     }
 
+    function formatTimelineDate(value) {
+        if (!value) return '—';
+
+        const parsed = new Date(value);
+        if (Number.isNaN(parsed.getTime())) return escHtml(String(value));
+
+        return escHtml(parsed.toLocaleString('en-US', {
+            month: 'numeric',
+            day: 'numeric',
+            hour: 'numeric',
+            minute: '2-digit'
+        }));
+    }
+
+    function shortTrackingToken(value, visible = 10) {
+        const normalized = typeof value === 'string' ? value.trim() : '';
+        if (!normalized) return '';
+        return normalized.length <= visible ? normalized : `${normalized.slice(0, visible)}…`;
+    }
+
+    function renderEventDetail(label, value, options = {}) {
+        if (value === null || value === undefined) return '';
+
+        const raw = typeof value === 'string' ? value.trim() : value;
+        if (raw === '') return '';
+
+        const monospaceClass = options.monospace ? ' is-monospace' : '';
+        return `
+            <div class="vc-event-detail">
+                <span class="vc-event-detail-label">${escHtml(label)}</span>
+                <span class="vc-event-detail-value${monospaceClass}">${escHtml(String(raw))}</span>
+            </div>
+        `;
+    }
+
+    function buildEventContextSummary(eventRow) {
+        const contextParts = [eventRow?.deviceType, eventRow?.browser, eventRow?.operatingSystem]
+            .filter(value => value && String(value).trim())
+            .map(value => escHtml(String(value).trim()));
+        const behaviorParts = [];
+
+        if (eventRow?.scrollPercent !== null && eventRow?.scrollPercent !== undefined)
+            behaviorParts.push(`Scroll ${escHtml(String(eventRow.scrollPercent))}%`);
+
+        if (eventRow?.humanInteractionCount !== null && eventRow?.humanInteractionCount !== undefined)
+            behaviorParts.push(`Human ${escHtml(String(eventRow.humanInteractionCount))}`);
+
+        const identityParts = [];
+        if (eventRow?.sessionId) identityParts.push(`S ${escHtml(shortTrackingToken(eventRow.sessionId, 8))}`);
+        if (eventRow?.visitorId) identityParts.push(`V ${escHtml(shortTrackingToken(eventRow.visitorId, 8))}`);
+
+        return `
+            <div class="vc-event-context">
+                <div>${contextParts.length ? contextParts.join(' · ') : 'No device context'}</div>
+                <div class="vc-event-context-meta">${behaviorParts.length ? behaviorParts.join(' · ') : 'No engagement context'}</div>
+                ${identityParts.length ? `<div class="vc-event-context-meta">${identityParts.join(' · ')}</div>` : ''}
+            </div>
+        `;
+    }
+
+    function renderEventInspector(eventRow) {
+        const details = [
+            renderEventDetail('Event ID', eventRow?.eventId, { monospace: true }),
+            renderEventDetail('Client Event ID', eventRow?.clientEventId, { monospace: true }),
+            renderEventDetail('Received UTC', eventRow?.receivedUtc),
+            renderEventDetail('Session ID', eventRow?.sessionId, { monospace: true }),
+            renderEventDetail('Visitor ID', eventRow?.visitorId, { monospace: true }),
+            renderEventDetail('Page Key', eventRow?.pageKey),
+            renderEventDetail('Section Key', eventRow?.sectionKey),
+            renderEventDetail('Element Key', eventRow?.elementKey),
+            renderEventDetail('Element ID', eventRow?.elementId),
+            renderEventDetail('Button Label', eventRow?.buttonLabel),
+            renderEventDetail('Path', eventRow?.path, { monospace: true }),
+            renderEventDetail('URL', eventRow?.url, { monospace: true }),
+            renderEventDetail('Referrer Host', eventRow?.referrerHost),
+            renderEventDetail('Referrer', eventRow?.referrer, { monospace: true }),
+            renderEventDetail('Quote Type', eventRow?.quoteType),
+            renderEventDetail('Form Key', eventRow?.formKey),
+            renderEventDetail('Form ID', eventRow?.formId),
+            renderEventDetail('Field Name', eventRow?.fieldName),
+            renderEventDetail('Submit Outcome', eventRow?.submitOutcome),
+            renderEventDetail('Device Type', eventRow?.deviceType),
+            renderEventDetail('Browser', eventRow?.browser),
+            renderEventDetail('Operating System', eventRow?.operatingSystem),
+            renderEventDetail('Timezone', eventRow?.timeZone),
+            renderEventDetail('Language', eventRow?.language),
+            renderEventDetail('Viewport Width', eventRow?.viewportWidth),
+            renderEventDetail('Viewport Height', eventRow?.viewportHeight),
+            renderEventDetail('Screen Width', eventRow?.screenWidth),
+            renderEventDetail('Screen Height', eventRow?.screenHeight),
+            renderEventDetail('Scroll Percent', eventRow?.scrollPercent),
+            renderEventDetail('Dwell Milliseconds', eventRow?.dwellMilliseconds),
+            renderEventDetail('Engaged Milliseconds', eventRow?.engagedMilliseconds),
+            renderEventDetail('Human Interaction Count', eventRow?.humanInteractionCount),
+            renderEventDetail('Mouse Move Count', eventRow?.mouseMoveCount),
+            renderEventDetail('Visibility Change Count', eventRow?.visibilityChangeCount),
+            renderEventDetail('Bounce Candidate', eventRow?.isBounceCandidate),
+            renderEventDetail('Exit Page', eventRow?.isExitPage),
+            renderEventDetail('UTM Source', eventRow?.utmSource),
+            renderEventDetail('UTM Medium', eventRow?.utmMedium),
+            renderEventDetail('UTM Campaign', eventRow?.utmCampaign),
+            renderEventDetail('UTM ID', eventRow?.utmId, { monospace: true }),
+            renderEventDetail('UTM Term', eventRow?.utmTerm),
+            renderEventDetail('UTM Content', eventRow?.utmContent),
+            renderEventDetail('Fbclid', eventRow?.fbclid, { monospace: true }),
+            renderEventDetail('Meta Campaign ID', eventRow?.metaCampaignId, { monospace: true }),
+            renderEventDetail('Meta Campaign Name', eventRow?.metaCampaignName),
+            renderEventDetail('Meta Ad Set ID', eventRow?.metaAdSetId, { monospace: true }),
+            renderEventDetail('Meta Ad Set Name', eventRow?.metaAdSetName),
+            renderEventDetail('Meta Ad ID', eventRow?.metaAdId, { monospace: true }),
+            renderEventDetail('Meta Ad Name', eventRow?.metaAdName),
+            renderEventDetail('Placement', eventRow?.placement),
+            renderEventDetail('Host', eventRow?.host),
+            renderEventDetail('Environment', eventRow?.environment),
+            renderEventDetail('Agent Slug', eventRow?.agentSlug),
+            renderEventDetail('Agent Tracking Profile ID', eventRow?.agentTrackingProfileId, { monospace: true }),
+            renderEventDetail('Schema Version', eventRow?.schemaVersion),
+            renderEventDetail('Tracking Version', eventRow?.trackingVersion),
+            renderEventDetail('Internal Traffic', eventRow?.isInternal),
+            renderEventDetail('WebDriver', eventRow?.webDriver),
+            renderEventDetail('Headless', eventRow?.isHeadless),
+            renderEventDetail('User Agent', eventRow?.userAgent, { monospace: true }),
+            renderEventDetail('IP Address', eventRow?.ipAddress, { monospace: true }),
+            renderEventDetail('Metadata JSON', eventRow?.metadataJson, { monospace: true })
+        ].filter(Boolean).join('');
+
+        const rawJson = escHtml(JSON.stringify(eventRow || {}, null, 2));
+
+        return `
+            <details class="vc-event-inspector">
+                <summary>Inspect</summary>
+                ${details
+                    ? `<div class="vc-event-detail-grid">${details}</div>`
+                    : '<div class="vc-event-detail-empty">No additional event fields were captured for this row.</div>'}
+                <details class="vc-event-raw">
+                    <summary>Raw event JSON</summary>
+                    <pre class="vc-event-json">${rawJson}</pre>
+                </details>
+            </details>
+        `;
+    }
+
     // ── State views ───────────────────────────────────────────────────────────
     function showLoading() {
         elLoading.hidden = false;
@@ -453,6 +595,10 @@
                 Timeline
             </div>
 
+            <div class="vc-modal-note">
+                Use Inspect on any event to view every captured analytics field, including raw event JSON.
+            </div>
+
             <div class="vc-modal-table-wrap">
                 <table class="vc-modal-table">
                     <thead>
@@ -460,19 +606,19 @@
                             <th>When</th>
                             <th>Event</th>
                             <th>Page</th>
-                            <th>Element</th>
-                            <th>Scroll</th>
+                            <th>Context</th>
+                            <th>Inspect</th>
                         </tr>
                     </thead>
 
                     <tbody>
                         ${(data.events || []).map(e => `
                             <tr>
-                                <td>${e.eventUtc || ''}</td>
-                                <td>${e.eventType || ''}</td>
-                                <td>${e.pageKey || e.path || ''}</td>
-                                <td>${e.elementText || e.elementId || ''}</td>
-                                <td>${e.scrollPercent || 0}%</td>
+                                <td>${formatTimelineDate(e.eventUtc)}</td>
+                                <td>${escHtml(e.eventType || '')}</td>
+                                <td>${escHtml(e.pageKey || e.path || e.url || '')}</td>
+                                <td class="vc-event-cell-context">${buildEventContextSummary(e)}</td>
+                                <td class="vc-event-cell-inspect">${renderEventInspector(e)}</td>
                             </tr>
                         `).join('')}
                     </tbody>
@@ -1108,7 +1254,8 @@
             close: hideModal,
             isOpen: () => isOpen,
             activeMetric: () => activeMetric,
-            initialized: () => initialized
+            initialized: () => initialized,
+            openVisitorTimeline: openVisitorTimelineModal
         };
 
         window.dispatchEvent(new CustomEvent('websiteAnalytics:kpiModalReady'));
