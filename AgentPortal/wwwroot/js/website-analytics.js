@@ -112,6 +112,9 @@
   }
   state.scope.scopeLabel = shell?.dataset.initialScopeLabel || (isFounder ? 'Global' : 'Agent Scope');
 
+  let summaryRequestId = 0;
+  let openModalRefreshTimer = null;
+
   const endpoints = {
     summary: '/WebsiteAnalytics/summary',
     traffic: '/WebsiteAnalytics/traffic',
@@ -2892,13 +2895,23 @@ function escapeHtml(value) {
 
   // Fetch wrappers ---------------------------------------------------
   async function loadSummary() {
+    const requestId = ++summaryRequestId;
+
     try {
       const data = await fetchJson('summary', endpoints.summary, rangeParams({ trafficType: state.dashboardTrafficType }));
       if (!data) return;
+      if (requestId !== summaryRequestId) return;
+
       setSummaryRefreshStatus('', false);
       renderSummary(data);
-      void loadMarketingHealth();
+
+      if (!state.cache.marketingHealthLoaded) {
+        state.cache.marketingHealthLoaded = true;
+        void loadMarketingHealth();
+      }
     } catch (err) {
+      if (requestId !== summaryRequestId) return;
+
       const message = (err && err.message) ? err.message : 'Unable to refresh the current summary.';
       setSummaryRefreshStatus(`Live refresh warning: ${message} Showing the last successfully loaded summary.`, true);
       console.error(err);
@@ -4072,7 +4085,7 @@ function escapeHtml(value) {
           syncRangeInputsFromState();
           syncRangeQueryParams();
           loadSummary();
-          refreshOpenModal();
+          scheduleOpenModalRefresh();
         }
       });
     });
@@ -4098,7 +4111,6 @@ function escapeHtml(value) {
           if (notice) notice.textContent = 'Start date must be before end date.';
           return;
         }
-        state.preset = 'custom';
         state.scope.preset = 'custom';
         state.scope.from = parsedFrom.iso;
         state.scope.to = parsedTo.iso;
@@ -4106,7 +4118,7 @@ function escapeHtml(value) {
         syncRangeInputsFromState();
         syncRangeQueryParams();
         loadSummary();
-        refreshOpenModal();
+        scheduleOpenModalRefresh();
       });
     }
   }
@@ -4120,6 +4132,17 @@ function escapeHtml(value) {
     if (isNaN(date.getTime())) return null;
     const iso = `${yyyy.toString().padStart(4, '0')}-${mm.toString().padStart(2, '0')}-${dd.toString().padStart(2, '0')}`;
     return { date, iso };
+  }
+
+  function scheduleOpenModalRefresh(delayMs = 300) {
+    if (openModalRefreshTimer) {
+      window.clearTimeout(openModalRefreshTimer);
+    }
+
+    openModalRefreshTimer = window.setTimeout(() => {
+      openModalRefreshTimer = null;
+      refreshOpenModal();
+    }, delayMs);
   }
 
   function refreshOpenModal() {
