@@ -24,7 +24,7 @@ namespace AgentPortal.Tests;
 public class WebsiteAnalyticsInitialQualityModeTests
 {
     [Fact]
-    public async Task Index_DefaultsToInternalQuality_WhenOnlyInternalRowsExist()
+    public async Task Index_DefaultsToRealHumanTraffic_WhenOnlyInternalRowsExist()
     {
         using var db = ControllerTestHelpers.BuildDb();
         var profile = SeedTrackingProfile(db);
@@ -38,11 +38,10 @@ public class WebsiteAnalyticsInitialQualityModeTests
         var result = await controller.Index(preset: "today");
 
         var view = Assert.IsType<ViewResult>(result);
-        Assert.Equal("internal", Assert.IsType<string>(view.ViewData["InitialQualityMode"]));
+        Assert.Equal("real_human_traffic", Assert.IsType<string>(view.ViewData["InitialQualityMode"]));
 
         using var doc = JsonDocument.Parse(Assert.IsType<string>(view.ViewData["InitialSummaryJson"]));
-        Assert.Equal(1, doc.RootElement.GetProperty("PageViews").GetInt32());
-        Assert.Equal("Dataset: Internal QA / localhost / development", doc.RootElement.GetProperty("EnvironmentLabel").GetString());
+        Assert.Equal(0, doc.RootElement.GetProperty("PageViews").GetInt32());
     }
 
     [Fact]
@@ -61,7 +60,7 @@ public class WebsiteAnalyticsInitialQualityModeTests
         var result = await controller.Index(preset: "today");
 
         var view = Assert.IsType<ViewResult>(result);
-        Assert.Equal("real_human", Assert.IsType<string>(view.ViewData["InitialQualityMode"]));
+        Assert.Equal("real_human_traffic", Assert.IsType<string>(view.ViewData["InitialQualityMode"]));
 
         using var doc = JsonDocument.Parse(Assert.IsType<string>(view.ViewData["InitialSummaryJson"]));
         Assert.Equal(1, doc.RootElement.GetProperty("PageViews").GetInt32());

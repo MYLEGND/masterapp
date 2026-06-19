@@ -82,7 +82,7 @@ namespace AgentPortal.Controllers;
         }
 
         var scope = await ResolveScopeAsync(agentProfileId, team);
-        var initialQualityMode = await ResolveInitialQualityModeAsync(range, scope, qualityMode);
+        var initialQualityMode = ResolveInitialQualityMode(qualityMode);
         range = CloneRangeWithQualityMode(range, initialQualityMode);
         var summary = await _analytics.GetSummaryAsync(range, scope);
         summary.ScopeLabel = await ResolveScopeLabelAsync(scope, team);
@@ -194,28 +194,8 @@ namespace AgentPortal.Controllers;
         return TimeZoneInfo.Utc;
     }
 
-    private async Task<TrafficQualityMode> ResolveInitialQualityModeAsync(
-        TimeRangeRequest range,
-        ScopeContext scope,
-        TrafficQualityMode? requestedQualityMode = null)
-    {
-        if (requestedQualityMode.HasValue)
-            return requestedQualityMode.Value;
-
-        var realHumanRange = CloneRangeWithQualityMode(range, TrafficQualityMode.RealHuman);
-        if (await _analytics.ScopedEvents(realHumanRange, scope).AnyAsync())
-            return TrafficQualityMode.RealHuman;
-
-        var internalRange = CloneRangeWithQualityMode(range, TrafficQualityMode.Internal);
-        if (await _analytics.ScopedEvents(internalRange, scope).AnyAsync())
-            return TrafficQualityMode.Internal;
-
-        var allTrafficRange = CloneRangeWithQualityMode(range, TrafficQualityMode.All);
-        if (await _analytics.ScopedEvents(allTrafficRange, scope).AnyAsync())
-            return TrafficQualityMode.All;
-
-        return TrafficQualityMode.RealHuman;
-    }
+    private static TrafficQualityMode ResolveInitialQualityMode(TrafficQualityMode? requestedQualityMode = null) =>
+        requestedQualityMode ?? TrafficQualityMode.RealHumanTraffic;
 
     private static TimeRangeRequest CloneRangeWithQualityMode(TimeRangeRequest range, TrafficQualityMode qualityMode)
     {
@@ -232,21 +212,10 @@ namespace AgentPortal.Controllers;
     }
 
     private static string ToClientQualityMode(TrafficQualityMode qualityMode)
-    {
-        return qualityMode switch
-        {
-            TrafficQualityMode.LikelyHuman => "likely_human",
-            TrafficQualityMode.Review => "review",
-            TrafficQualityMode.Suspicious => "suspicious",
-            TrafficQualityMode.LikelyBot => "likely_bot",
-            TrafficQualityMode.Internal => "internal",
-            TrafficQualityMode.All => "all",
-            _ => "real_human"
-        };
-    }
+        => TrafficQualityBucketFilters.ToClientValue(qualityMode);
 
     [HttpGet("summary")]
-    public async Task<IActionResult> Summary([FromQuery] string? preset, [FromQuery] DateTime? fromUtc, [FromQuery] DateTime? toUtc, [FromQuery] Guid? agentProfileId = null, [FromQuery] bool team = false, [FromQuery] TrafficType trafficType = TrafficType.All, [FromQuery] TrafficQualityMode qualityMode = TrafficQualityMode.RealHuman)
+    public async Task<IActionResult> Summary([FromQuery] string? preset, [FromQuery] DateTime? fromUtc, [FromQuery] DateTime? toUtc, [FromQuery] Guid? agentProfileId = null, [FromQuery] bool team = false, [FromQuery] TrafficType trafficType = TrafficType.All, [FromQuery] TrafficQualityMode qualityMode = TrafficQualityMode.RealHumanTraffic)
     {
         var range = TimeRangeRequest.FromPreset(preset, fromUtc, toUtc, GetViewerTimeZone(), qualityMode);
         var scope = await ResolveScopeAsync(agentProfileId, team);
@@ -256,7 +225,7 @@ namespace AgentPortal.Controllers;
     }
 
     [HttpGet("DeviceIntelligence")]
-    public async Task<IActionResult> DeviceIntelligence([FromQuery] string? preset, [FromQuery] DateTime? fromUtc, [FromQuery] DateTime? toUtc, [FromQuery] Guid? agentProfileId = null, [FromQuery] bool team = false, [FromQuery] TrafficType trafficType = TrafficType.All, [FromQuery] TrafficQualityMode qualityMode = TrafficQualityMode.RealHuman)
+    public async Task<IActionResult> DeviceIntelligence([FromQuery] string? preset, [FromQuery] DateTime? fromUtc, [FromQuery] DateTime? toUtc, [FromQuery] Guid? agentProfileId = null, [FromQuery] bool team = false, [FromQuery] TrafficType trafficType = TrafficType.All, [FromQuery] TrafficQualityMode qualityMode = TrafficQualityMode.RealHumanTraffic)
     {
         var range = TimeRangeRequest.FromPreset(preset, fromUtc, toUtc, GetViewerTimeZone(), qualityMode);
         var scope = await ResolveScopeAsync(agentProfileId, team);
@@ -265,7 +234,7 @@ namespace AgentPortal.Controllers;
     }
 
     [HttpGet("traffic")]
-    public async Task<IActionResult> Traffic([FromQuery] string? preset, [FromQuery] DateTime? fromUtc, [FromQuery] DateTime? toUtc, [FromQuery] Guid? agentProfileId = null, [FromQuery] bool team = false, [FromQuery] TrafficType trafficType = TrafficType.All, [FromQuery] TrafficQualityMode qualityMode = TrafficQualityMode.RealHuman)
+    public async Task<IActionResult> Traffic([FromQuery] string? preset, [FromQuery] DateTime? fromUtc, [FromQuery] DateTime? toUtc, [FromQuery] Guid? agentProfileId = null, [FromQuery] bool team = false, [FromQuery] TrafficType trafficType = TrafficType.All, [FromQuery] TrafficQualityMode qualityMode = TrafficQualityMode.RealHumanTraffic)
     {
         var range = TimeRangeRequest.FromPreset(preset, fromUtc, toUtc, GetViewerTimeZone(), qualityMode);
         var scope = await ResolveScopeAsync(agentProfileId, team);
@@ -274,7 +243,7 @@ namespace AgentPortal.Controllers;
     }
 
     [HttpGet("page-performance")]
-    public async Task<IActionResult> PagePerformance([FromQuery] string? preset, [FromQuery] DateTime? fromUtc, [FromQuery] DateTime? toUtc, [FromQuery] Guid? agentProfileId = null, [FromQuery] bool team = false, [FromQuery] TrafficType trafficType = TrafficType.All, [FromQuery] TrafficQualityMode qualityMode = TrafficQualityMode.RealHuman)
+    public async Task<IActionResult> PagePerformance([FromQuery] string? preset, [FromQuery] DateTime? fromUtc, [FromQuery] DateTime? toUtc, [FromQuery] Guid? agentProfileId = null, [FromQuery] bool team = false, [FromQuery] TrafficType trafficType = TrafficType.All, [FromQuery] TrafficQualityMode qualityMode = TrafficQualityMode.RealHumanTraffic)
     {
         var range = TimeRangeRequest.FromPreset(preset, fromUtc, toUtc, GetViewerTimeZone(), qualityMode);
         var scope = await ResolveScopeAsync(agentProfileId, team);
@@ -283,7 +252,7 @@ namespace AgentPortal.Controllers;
     }
 
     [HttpGet("cta-performance")]
-    public async Task<IActionResult> CtaPerformance([FromQuery] string? preset, [FromQuery] DateTime? fromUtc, [FromQuery] DateTime? toUtc, [FromQuery] Guid? agentProfileId = null, [FromQuery] bool team = false, [FromQuery] TrafficType trafficType = TrafficType.All, [FromQuery] TrafficQualityMode qualityMode = TrafficQualityMode.RealHuman)
+    public async Task<IActionResult> CtaPerformance([FromQuery] string? preset, [FromQuery] DateTime? fromUtc, [FromQuery] DateTime? toUtc, [FromQuery] Guid? agentProfileId = null, [FromQuery] bool team = false, [FromQuery] TrafficType trafficType = TrafficType.All, [FromQuery] TrafficQualityMode qualityMode = TrafficQualityMode.RealHumanTraffic)
     {
         var range = TimeRangeRequest.FromPreset(preset, fromUtc, toUtc, GetViewerTimeZone(), qualityMode);
         var scope = await ResolveScopeAsync(agentProfileId, team);
@@ -292,7 +261,7 @@ namespace AgentPortal.Controllers;
     }
 
     [HttpGet("quote-funnel")]
-    public async Task<IActionResult> QuoteFunnel([FromQuery] string? preset, [FromQuery] DateTime? fromUtc, [FromQuery] DateTime? toUtc, [FromQuery] Guid? agentProfileId = null, [FromQuery] bool team = false, [FromQuery] TrafficType trafficType = TrafficType.All, [FromQuery] TrafficQualityMode qualityMode = TrafficQualityMode.RealHuman)
+    public async Task<IActionResult> QuoteFunnel([FromQuery] string? preset, [FromQuery] DateTime? fromUtc, [FromQuery] DateTime? toUtc, [FromQuery] Guid? agentProfileId = null, [FromQuery] bool team = false, [FromQuery] TrafficType trafficType = TrafficType.All, [FromQuery] TrafficQualityMode qualityMode = TrafficQualityMode.RealHumanTraffic)
     {
         var range = TimeRangeRequest.FromPreset(preset, fromUtc, toUtc, GetViewerTimeZone(), qualityMode);
         var scope = await ResolveScopeAsync(agentProfileId, team);
@@ -301,7 +270,7 @@ namespace AgentPortal.Controllers;
     }
 
     [HttpGet("marketing-health")]
-    public async Task<IActionResult> MarketingHealth([FromQuery] string? preset, [FromQuery] DateTime? fromUtc, [FromQuery] DateTime? toUtc, [FromQuery] Guid? agentProfileId = null, [FromQuery] bool team = false, [FromQuery] TrafficType trafficType = TrafficType.All, [FromQuery] TrafficQualityMode qualityMode = TrafficQualityMode.RealHuman)
+    public async Task<IActionResult> MarketingHealth([FromQuery] string? preset, [FromQuery] DateTime? fromUtc, [FromQuery] DateTime? toUtc, [FromQuery] Guid? agentProfileId = null, [FromQuery] bool team = false, [FromQuery] TrafficType trafficType = TrafficType.All, [FromQuery] TrafficQualityMode qualityMode = TrafficQualityMode.RealHumanTraffic)
     {
         var range = TimeRangeRequest.FromPreset(preset, fromUtc, toUtc, GetViewerTimeZone(), qualityMode);
         var scope = await ResolveScopeAsync(agentProfileId, team);
@@ -310,7 +279,7 @@ namespace AgentPortal.Controllers;
     }
 
     [HttpGet("conversions")]
-    public async Task<IActionResult> Conversions([FromQuery] string? preset, [FromQuery] DateTime? fromUtc, [FromQuery] DateTime? toUtc, [FromQuery] Guid? agentProfileId = null, [FromQuery] bool team = false, [FromQuery] TrafficType trafficType = TrafficType.All, [FromQuery] TrafficQualityMode qualityMode = TrafficQualityMode.RealHuman, [FromQuery] int recentTake = 100)
+    public async Task<IActionResult> Conversions([FromQuery] string? preset, [FromQuery] DateTime? fromUtc, [FromQuery] DateTime? toUtc, [FromQuery] Guid? agentProfileId = null, [FromQuery] bool team = false, [FromQuery] TrafficType trafficType = TrafficType.All, [FromQuery] TrafficQualityMode qualityMode = TrafficQualityMode.RealHumanTraffic, [FromQuery] int recentTake = 100)
     {
         var range = TimeRangeRequest.FromPreset(preset, fromUtc, toUtc, GetViewerTimeZone(), qualityMode);
         var scope = await ResolveScopeAsync(agentProfileId, team);
@@ -319,7 +288,7 @@ namespace AgentPortal.Controllers;
     }
 
     [HttpGet("leads")]
-    public async Task<IActionResult> Leads([FromQuery] string? preset, [FromQuery] DateTime? fromUtc, [FromQuery] DateTime? toUtc, [FromQuery] Guid? agentProfileId = null, [FromQuery] bool team = false, [FromQuery] TrafficType trafficType = TrafficType.All, [FromQuery] TrafficQualityMode qualityMode = TrafficQualityMode.RealHuman, [FromQuery] int limit = 200)
+    public async Task<IActionResult> Leads([FromQuery] string? preset, [FromQuery] DateTime? fromUtc, [FromQuery] DateTime? toUtc, [FromQuery] Guid? agentProfileId = null, [FromQuery] bool team = false, [FromQuery] TrafficType trafficType = TrafficType.All, [FromQuery] TrafficQualityMode qualityMode = TrafficQualityMode.RealHumanTraffic, [FromQuery] int limit = 200)
     {
         var range = TimeRangeRequest.FromPreset(preset, fromUtc, toUtc, GetViewerTimeZone(), qualityMode);
         var scope = await ResolveScopeAsync(agentProfileId, team);
@@ -335,7 +304,7 @@ namespace AgentPortal.Controllers;
         [FromQuery] Guid? agentProfileId = null,
         [FromQuery] bool team = false,
         [FromQuery] TrafficType trafficType = TrafficType.All,
-        [FromQuery] TrafficQualityMode qualityMode = TrafficQualityMode.RealHuman,
+        [FromQuery] TrafficQualityMode qualityMode = TrafficQualityMode.RealHumanTraffic,
         [FromQuery] string? quoteType = null,
         [FromQuery] string? campaign = null,
         [FromQuery] string? pageMode = null,
@@ -355,7 +324,7 @@ namespace AgentPortal.Controllers;
         [FromQuery] DateTime? toUtc,
         [FromQuery] Guid? agentProfileId = null,
         [FromQuery] bool team = false,
-        [FromQuery] TrafficQualityMode qualityMode = TrafficQualityMode.RealHuman)
+        [FromQuery] TrafficQualityMode qualityMode = TrafficQualityMode.RealHumanTraffic)
     {
         var range = TimeRangeRequest.FromPreset(preset, fromUtc, toUtc, GetViewerTimeZone(), qualityMode);
         var scope = await ResolveScopeAsync(agentProfileId, team);
@@ -590,7 +559,7 @@ namespace AgentPortal.Controllers;
     }
 
     [HttpGet("agent-performance")]
-    public async Task<IActionResult> AgentPerformance([FromQuery] string? preset, [FromQuery] DateTime? fromUtc, [FromQuery] DateTime? toUtc, [FromQuery] TrafficType trafficType = TrafficType.All, [FromQuery] TrafficQualityMode qualityMode = TrafficQualityMode.RealHuman, [FromQuery] string? orderBy = null, [FromQuery] bool desc = true, [FromQuery] int? take = null, [FromQuery] int? skip = null)
+    public async Task<IActionResult> AgentPerformance([FromQuery] string? preset, [FromQuery] DateTime? fromUtc, [FromQuery] DateTime? toUtc, [FromQuery] TrafficType trafficType = TrafficType.All, [FromQuery] TrafficQualityMode qualityMode = TrafficQualityMode.RealHumanTraffic, [FromQuery] string? orderBy = null, [FromQuery] bool desc = true, [FromQuery] int? take = null, [FromQuery] int? skip = null)
     {
         if (!FounderGuard.IsFounder(User)) return Forbid();
         var range = TimeRangeRequest.FromPreset(preset, fromUtc, toUtc, GetViewerTimeZone(), qualityMode);
@@ -601,7 +570,7 @@ namespace AgentPortal.Controllers;
 
     // ── Behavior Intelligence ─────────────────────────────────────
     [HttpGet("behavior/summary")]
-    public async Task<IActionResult> BehaviorSummary([FromQuery] string? preset, [FromQuery] DateTime? fromUtc, [FromQuery] DateTime? toUtc, [FromQuery] Guid? agentProfileId = null, [FromQuery] bool team = false, [FromQuery] TrafficType trafficType = TrafficType.All, [FromQuery] TrafficQualityMode qualityMode = TrafficQualityMode.RealHuman)
+    public async Task<IActionResult> BehaviorSummary([FromQuery] string? preset, [FromQuery] DateTime? fromUtc, [FromQuery] DateTime? toUtc, [FromQuery] Guid? agentProfileId = null, [FromQuery] bool team = false, [FromQuery] TrafficType trafficType = TrafficType.All, [FromQuery] TrafficQualityMode qualityMode = TrafficQualityMode.RealHumanTraffic)
     {
         var range = TimeRangeRequest.FromPreset(preset, fromUtc, toUtc, GetViewerTimeZone(), qualityMode);
         var scope = await ResolveScopeAsync(agentProfileId, team);
@@ -610,7 +579,7 @@ namespace AgentPortal.Controllers;
     }
 
     [HttpGet("behavior/time-on-page")]
-    public async Task<IActionResult> BehaviorTimeOnPage([FromQuery] string? preset, [FromQuery] DateTime? fromUtc, [FromQuery] DateTime? toUtc, [FromQuery] Guid? agentProfileId = null, [FromQuery] bool team = false, [FromQuery] TrafficType trafficType = TrafficType.All, [FromQuery] TrafficQualityMode qualityMode = TrafficQualityMode.RealHuman)
+    public async Task<IActionResult> BehaviorTimeOnPage([FromQuery] string? preset, [FromQuery] DateTime? fromUtc, [FromQuery] DateTime? toUtc, [FromQuery] Guid? agentProfileId = null, [FromQuery] bool team = false, [FromQuery] TrafficType trafficType = TrafficType.All, [FromQuery] TrafficQualityMode qualityMode = TrafficQualityMode.RealHumanTraffic)
     {
         var range = TimeRangeRequest.FromPreset(preset, fromUtc, toUtc, GetViewerTimeZone(), qualityMode);
         var scope = await ResolveScopeAsync(agentProfileId, team);
@@ -619,7 +588,7 @@ namespace AgentPortal.Controllers;
     }
 
     [HttpGet("behavior/exit-analysis")]
-    public async Task<IActionResult> BehaviorExit([FromQuery] string? preset, [FromQuery] DateTime? fromUtc, [FromQuery] DateTime? toUtc, [FromQuery] Guid? agentProfileId = null, [FromQuery] bool team = false, [FromQuery] TrafficType trafficType = TrafficType.All, [FromQuery] TrafficQualityMode qualityMode = TrafficQualityMode.RealHuman)
+    public async Task<IActionResult> BehaviorExit([FromQuery] string? preset, [FromQuery] DateTime? fromUtc, [FromQuery] DateTime? toUtc, [FromQuery] Guid? agentProfileId = null, [FromQuery] bool team = false, [FromQuery] TrafficType trafficType = TrafficType.All, [FromQuery] TrafficQualityMode qualityMode = TrafficQualityMode.RealHumanTraffic)
     {
         var range = TimeRangeRequest.FromPreset(preset, fromUtc, toUtc, GetViewerTimeZone(), qualityMode);
         var scope = await ResolveScopeAsync(agentProfileId, team);
@@ -628,7 +597,7 @@ namespace AgentPortal.Controllers;
     }
 
     [HttpGet("behavior/journey")]
-    public async Task<IActionResult> BehaviorJourney([FromQuery] string? preset, [FromQuery] DateTime? fromUtc, [FromQuery] DateTime? toUtc, [FromQuery] Guid? agentProfileId = null, [FromQuery] bool team = false, [FromQuery] TrafficType trafficType = TrafficType.All, [FromQuery] TrafficQualityMode qualityMode = TrafficQualityMode.RealHuman)
+    public async Task<IActionResult> BehaviorJourney([FromQuery] string? preset, [FromQuery] DateTime? fromUtc, [FromQuery] DateTime? toUtc, [FromQuery] Guid? agentProfileId = null, [FromQuery] bool team = false, [FromQuery] TrafficType trafficType = TrafficType.All, [FromQuery] TrafficQualityMode qualityMode = TrafficQualityMode.RealHumanTraffic)
     {
         var range = TimeRangeRequest.FromPreset(preset, fromUtc, toUtc, GetViewerTimeZone(), qualityMode);
         var scope = await ResolveScopeAsync(agentProfileId, team);
@@ -637,7 +606,7 @@ namespace AgentPortal.Controllers;
     }
 
     [HttpGet("behavior/source-performance")]
-    public async Task<IActionResult> BehaviorSourcePerformance([FromQuery] string? preset, [FromQuery] DateTime? fromUtc, [FromQuery] DateTime? toUtc, [FromQuery] Guid? agentProfileId = null, [FromQuery] bool team = false, [FromQuery] TrafficType trafficType = TrafficType.All, [FromQuery] TrafficQualityMode qualityMode = TrafficQualityMode.RealHuman)
+    public async Task<IActionResult> BehaviorSourcePerformance([FromQuery] string? preset, [FromQuery] DateTime? fromUtc, [FromQuery] DateTime? toUtc, [FromQuery] Guid? agentProfileId = null, [FromQuery] bool team = false, [FromQuery] TrafficType trafficType = TrafficType.All, [FromQuery] TrafficQualityMode qualityMode = TrafficQualityMode.RealHumanTraffic)
     {
         var range = TimeRangeRequest.FromPreset(preset, fromUtc, toUtc, GetViewerTimeZone(), qualityMode);
         var scope = await ResolveScopeAsync(agentProfileId, team);
@@ -646,7 +615,7 @@ namespace AgentPortal.Controllers;
     }
 
     [HttpGet("quote-funnel/abandonment")]
-    public async Task<IActionResult> QuoteFunnelAbandonment([FromQuery] string? preset, [FromQuery] DateTime? fromUtc, [FromQuery] DateTime? toUtc, [FromQuery] Guid? agentProfileId = null, [FromQuery] bool team = false, [FromQuery] TrafficType trafficType = TrafficType.All, [FromQuery] TrafficQualityMode qualityMode = TrafficQualityMode.RealHuman)
+    public async Task<IActionResult> QuoteFunnelAbandonment([FromQuery] string? preset, [FromQuery] DateTime? fromUtc, [FromQuery] DateTime? toUtc, [FromQuery] Guid? agentProfileId = null, [FromQuery] bool team = false, [FromQuery] TrafficType trafficType = TrafficType.All, [FromQuery] TrafficQualityMode qualityMode = TrafficQualityMode.RealHumanTraffic)
     {
         var range = TimeRangeRequest.FromPreset(preset, fromUtc, toUtc, GetViewerTimeZone(), qualityMode);
         var scope = await ResolveScopeAsync(agentProfileId, team);
@@ -655,7 +624,7 @@ namespace AgentPortal.Controllers;
     }
 
     [HttpGet("ai-review-snapshot")]
-    public async Task<IActionResult> AiReviewSnapshot([FromQuery] string? preset, [FromQuery] DateTime? fromUtc, [FromQuery] DateTime? toUtc, [FromQuery] Guid? agentProfileId = null, [FromQuery] bool team = false, [FromQuery] TrafficType trafficType = TrafficType.All, [FromQuery] TrafficQualityMode qualityMode = TrafficQualityMode.RealHuman)
+    public async Task<IActionResult> AiReviewSnapshot([FromQuery] string? preset, [FromQuery] DateTime? fromUtc, [FromQuery] DateTime? toUtc, [FromQuery] Guid? agentProfileId = null, [FromQuery] bool team = false, [FromQuery] TrafficType trafficType = TrafficType.All, [FromQuery] TrafficQualityMode qualityMode = TrafficQualityMode.RealHumanTraffic)
     {
         try
         {
@@ -957,7 +926,7 @@ namespace AgentPortal.Controllers;
         [FromQuery] DateTime? toUtc,
         [FromQuery] Guid? agentProfileId = null,
         [FromQuery] bool team = false,
-        [FromQuery] TrafficType trafficType = TrafficType.All, [FromQuery] TrafficQualityMode qualityMode = TrafficQualityMode.RealHuman)
+        [FromQuery] TrafficType trafficType = TrafficType.All, [FromQuery] TrafficQualityMode qualityMode = TrafficQualityMode.RealHumanTraffic)
     {
         if (string.IsNullOrWhiteSpace(metric))
             return BadRequest(new { message = "metric is required" });
@@ -1119,7 +1088,7 @@ namespace AgentPortal.Controllers;
     }
 
     [HttpGet("meta-campaigns")]
-    public async Task<IActionResult> MetaCampaigns([FromQuery] string? preset, [FromQuery] DateTime? fromUtc, [FromQuery] DateTime? toUtc, [FromQuery] Guid? agentProfileId = null, [FromQuery] bool team = false, [FromQuery] TrafficQualityMode qualityMode = TrafficQualityMode.RealHuman)
+    public async Task<IActionResult> MetaCampaigns([FromQuery] string? preset, [FromQuery] DateTime? fromUtc, [FromQuery] DateTime? toUtc, [FromQuery] Guid? agentProfileId = null, [FromQuery] bool team = false, [FromQuery] TrafficQualityMode qualityMode = TrafficQualityMode.RealHumanTraffic)
     {
         try
         {
@@ -1589,7 +1558,7 @@ namespace AgentPortal.Controllers;
         [FromQuery] DateTime? toUtc,
         [FromQuery] Guid? agentProfileId = null,
         [FromQuery] bool team = false,
-        [FromQuery] TrafficQualityMode qualityMode = TrafficQualityMode.RealHuman)
+        [FromQuery] TrafficQualityMode qualityMode = TrafficQualityMode.RealHumanTraffic)
     {
         if (!FounderGuard.IsFounder(User))
             return Forbid();

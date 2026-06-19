@@ -3,7 +3,7 @@
   const initialPreset = document.querySelector('.fa-shell')?.dataset.initialPreset || 'today';
   const initialFrom = document.querySelector('.fa-shell')?.dataset.initialFrom || null;
   const initialTo = document.querySelector('.fa-shell')?.dataset.initialTo || null;
-  const initialQualityMode = document.querySelector('.fa-shell')?.dataset.initialQualityMode || 'real_human';
+  const initialQualityMode = normalizeQualityModeKey(document.querySelector('.fa-shell')?.dataset.initialQualityMode || 'real_human_traffic');
 
   const viewerTz = (() => {
     try {
@@ -137,6 +137,31 @@
     quoteFunnelAbandonment: '/WebsiteAnalytics/quote-funnel/abandonment',
     aiReviewSnapshot: '/WebsiteAnalytics/ai-review-snapshot'
   };
+
+  function normalizeQualityModeKey(value) {
+    switch ((value || '').toString().trim().toLowerCase()) {
+      case 'all':
+      case 'all_traffic':
+        return 'all_traffic';
+      case 'likely_human':
+        return 'likely_human';
+      case 'review':
+      case 'review_needed':
+      case 'reviewed_needed':
+        return 'reviewed_needed';
+      case 'suspicious':
+      case 'suspicious_activity':
+        return 'suspicious_activity';
+      case 'likely_bot':
+      case 'likely_bots_automation':
+        return 'likely_bots_automation';
+      case 'internal':
+      case 'internal_qa':
+        return 'internal_qa';
+      default:
+        return 'real_human_traffic';
+    }
+  }
 
   function abort(key) {
     if (state.controllers[key]) {
@@ -441,13 +466,14 @@
   }
 
   function mapQualityMode(value) {
-    if (value === 'all') return 'All';
-    if (value === 'likely_human') return 'LikelyHuman';
-    if (value === 'review') return 'Review';
-    if (value === 'suspicious') return 'Suspicious';
-    if (value === 'likely_bot') return 'LikelyBot';
-    if (value === 'internal') return 'Internal';
-    return 'RealHuman';
+    const normalized = normalizeQualityModeKey(value);
+    if (normalized === 'all_traffic') return 'AllTraffic';
+    if (normalized === 'likely_human') return 'LikelyHuman';
+    if (normalized === 'reviewed_needed') return 'ReviewedNeeded';
+    if (normalized === 'suspicious_activity') return 'SuspiciousActivity';
+    if (normalized === 'likely_bots_automation') return 'LikelyBotsAutomation';
+    if (normalized === 'internal_qa') return 'InternalQa';
+    return 'RealHumanTraffic';
   }
 
   function mapTrafficTypeParam(value) {
@@ -611,6 +637,7 @@
     if (label) label.textContent = data.rangeLabel || '';
     const env = document.getElementById('fa-env-label');
     if (env) env.textContent = data.environmentLabel || '';
+    updateTrafficQualityEmptyState(data);
     updateFounderScopeUi();
     setText('ai-drawer-scope-label', `AI reviewing: All Traffic · ${data.rangeLabel || 'Current Range'} · ${state.scope.scopeLabel}`);
 
@@ -1562,7 +1589,7 @@
     if (!select) return;
 
     const update = () => {
-      state.qualityMode = select.value || 'real_human';
+      state.qualityMode = normalizeQualityModeKey(select.value || 'real_human_traffic');
       if (label) {
         const option = select.options[select.selectedIndex];
         label.textContent = option ? option.textContent : 'Real Human Traffic';
@@ -1574,12 +1601,32 @@
       }));
     };
 
-    select.value = state.qualityMode || 'real_human';
+    select.value = normalizeQualityModeKey(state.qualityMode || 'real_human_traffic');
     select.addEventListener('change', update);
     if (label) {
       const option = select.options[select.selectedIndex];
       label.textContent = option ? option.textContent : 'Real Human Traffic';
     }
+  }
+
+  function updateTrafficQualityEmptyState(data) {
+    const emptyState = document.getElementById('traffic-quality-empty-state');
+    if (!emptyState) return;
+
+    const normalizedMode = normalizeQualityModeKey(state.qualityMode);
+    const hasRows = Number(data?.pageViews || 0) > 0
+      || Number(data?.sessions || 0) > 0
+      || Number(data?.uniqueVisitors || 0) > 0
+      || Number(data?.verifiedLeads || 0) > 0;
+
+    if (normalizedMode === 'real_human_traffic' && !hasRows) {
+      emptyState.textContent = 'No real human traffic detected';
+      emptyState.hidden = false;
+      return;
+    }
+
+    emptyState.hidden = true;
+    emptyState.textContent = '';
   }
 
   function initTrafficTypeControls() {
@@ -4023,6 +4070,7 @@ function escapeHtml(value) {
             agentProfileId: state.scope.agentProfileId || null,
             scopeLabel: state.scope.scopeLabel || 'Global'
           },
+          qualityMode: normalizeQualityModeKey(state.qualityMode),
           trafficType: { ...state.trafficType }
         };
       },
@@ -4261,6 +4309,7 @@ function escapeHtml(value) {
       get from()        { return state.scope.from || null; },
       get to()          { return state.scope.to || null; },
       get trafficType() { return state.dashboardTrafficType || 'all'; },
+      get qualityMode() { return normalizeQualityModeKey(state.qualityMode); },
       get agentProfileId() { return state.scope.agentProfileId || null; },
       get isFounder()      { return isFounder; },
       get scopeLabel()     { return state.scope.scopeLabel || 'Global'; },

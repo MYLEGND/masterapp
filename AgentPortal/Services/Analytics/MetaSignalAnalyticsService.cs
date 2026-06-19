@@ -700,7 +700,7 @@ public sealed class MetaSignalAnalyticsService : IMetaSignalAnalyticsService
         Guid[]? scopedAgentIds,
         CancellationToken ct)
     {
-        if (range.QualityMode == TrafficQualityMode.All)
+        if (range.QualityMode == TrafficQualityMode.AllTraffic)
             return query;
 
         var qualityEvents = await _analytics
@@ -760,7 +760,7 @@ public sealed class MetaSignalAnalyticsService : IMetaSignalAnalyticsService
         TimeRangeRequest range,
         IReadOnlyCollection<HealthAnalyticsEventRow> analyticsRows)
     {
-        if (range.QualityMode == TrafficQualityMode.All)
+        if (range.QualityMode == TrafficQualityMode.AllTraffic)
             return query;
 
         var visitorIds = analyticsRows
@@ -816,15 +816,7 @@ public sealed class MetaSignalAnalyticsService : IMetaSignalAnalyticsService
         IQueryable<WebsiteLead> query,
         TrafficQualityMode qualityMode)
     {
-        return qualityMode switch
-        {
-            TrafficQualityMode.All => query,
-            TrafficQualityMode.Internal => query.Where(x => x.IsInternal),
-            TrafficQualityMode.LikelyBot => query.Where(x => false),
-            TrafficQualityMode.Suspicious => query.Where(x => false),
-            TrafficQualityMode.Review => query.Where(x => false),
-            _ => query.Where(x => !x.IsInternal)
-        };
+        return query.Where(TrafficQualityBucketFilters.BuildLeadPredicate(qualityMode));
     }
 
     private static IQueryable<MetaSignalEvent> ApplyTrafficFilter(IQueryable<MetaSignalEvent> query, TrafficType trafficType)

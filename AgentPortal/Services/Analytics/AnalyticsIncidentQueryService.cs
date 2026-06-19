@@ -299,8 +299,9 @@ public sealed class AnalyticsIncidentQueryService : IAnalyticsIncidentQueryServi
         var currentRange = BuildRange(currentWindowStartUtc, nowUtc);
         var previousRange = BuildRange(previousWindowStartUtc, currentWindowStartUtc);
 
-        var currentEvents = await _analytics.ScopedEvents(currentRange, ScopeContext.Global).ToListAsync(ct);
-        var previousEvents = await _analytics.ScopedEvents(previousRange, ScopeContext.Global).ToListAsync(ct);
+        var resolvedScope = await ResolveScopeAsync(null, false);
+        var currentEvents = await _analytics.ScopedEvents(currentRange, resolvedScope).ToListAsync(ct);
+        var previousEvents = await _analytics.ScopedEvents(previousRange, resolvedScope).ToListAsync(ct);
 
         var currentLeads = await QueryWebsiteLeads(currentWindowStartUtc, nowUtc).CountAsync(ct);
         var previousLeads = await QueryWebsiteLeads(previousWindowStartUtc, currentWindowStartUtc).CountAsync(ct);
@@ -542,6 +543,17 @@ public sealed class AnalyticsIncidentQueryService : IAnalyticsIncidentQueryServi
         return query;
     }
 
+    private static ValueTask<ScopeContext> ResolveScopeAsync(Guid? requestedAgentId, bool team)
+    {
+        _ = requestedAgentId;
+        _ = team;
+
+        return ValueTask.FromResult(new ScopeContext
+        {
+            ScopeType = ScopeType.Global
+        });
+    }
+
     private IQueryable<MetaSignalEvent> QueryMetaSignalEvents(DateTime fromUtc, DateTime toUtc)
     {
         var query = _db.MetaSignalEvents.AsNoTracking()
@@ -634,7 +646,7 @@ public sealed class AnalyticsIncidentQueryService : IAnalyticsIncidentQueryServi
             Label = "Last 24 Hours",
             Preset = "system_monitor_24h",
             ViewerTimeZone = TimeZoneInfo.Utc,
-            QualityMode = TrafficQualityMode.RealHuman
+            QualityMode = TrafficQualityMode.RealHumanTraffic
         };
     }
 

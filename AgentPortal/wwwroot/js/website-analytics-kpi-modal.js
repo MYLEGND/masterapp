@@ -37,7 +37,7 @@
                 fromUtc:       bridge.from   || null,
                 toUtc:         bridge.to     || null,
                 trafficType:   bridge.trafficType || 'all',
-                qualityMode:   bridge.qualityMode || 'real_human',
+                qualityMode:   bridge.qualityMode || 'real_human_traffic',
                 agentProfileId: bridge.agentProfileId || null,
                 isFounder:     bridge.isFounder || false,
                 rangeParams:   typeof bridge.rangeParams === 'function' ? bridge.rangeParams.bind(bridge) : null
@@ -51,7 +51,7 @@
             fromUtc:       null,
             toUtc:         null,
             trafficType:   'all',
-            qualityMode:   'real_human',
+            qualityMode:   'real_human_traffic',
             agentProfileId: (window.CALLER_PROFILE_ID && window.CALLER_PROFILE_ID !== '') ? window.CALLER_PROFILE_ID : null,
             isFounder:     (window.AGENT_OPTIONS && window.AGENT_OPTIONS.length > 0) || false
         };
@@ -81,14 +81,14 @@
         else if (tt === 'non_paid') p.set('trafficType', 'NonPaid');
         else                   p.set('trafficType', 'All');
 
-        const qm = s.qualityMode || 'real_human';
-        if (qm === 'all') p.set('qualityMode', 'All');
+        const qm = (s.qualityMode || 'real_human_traffic').toLowerCase();
+        if (qm === 'all' || qm === 'all_traffic') p.set('qualityMode', 'AllTraffic');
         else if (qm === 'likely_human') p.set('qualityMode', 'LikelyHuman');
-        else if (qm === 'review') p.set('qualityMode', 'Review');
-        else if (qm === 'suspicious') p.set('qualityMode', 'Suspicious');
-        else if (qm === 'likely_bot') p.set('qualityMode', 'LikelyBot');
-        else if (qm === 'internal') p.set('qualityMode', 'Internal');
-        else p.set('qualityMode', 'RealHuman');
+        else if (qm === 'review' || qm === 'reviewed_needed') p.set('qualityMode', 'ReviewedNeeded');
+        else if (qm === 'suspicious' || qm === 'suspicious_activity') p.set('qualityMode', 'SuspiciousActivity');
+        else if (qm === 'likely_bot' || qm === 'likely_bots_automation') p.set('qualityMode', 'LikelyBotsAutomation');
+        else if (qm === 'internal' || qm === 'internal_qa') p.set('qualityMode', 'InternalQa');
+        else p.set('qualityMode', 'RealHumanTraffic');
 
         // Agent scoping — include the selected agent scope for founders and agents.
         if (s.agentProfileId) {

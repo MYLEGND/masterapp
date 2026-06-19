@@ -324,11 +324,7 @@ public sealed class WebsiteAnalyticsAiController : Controller
 
     private static TrafficQualityMode ParseQualityMode(string? value)
     {
-        if (string.IsNullOrWhiteSpace(value)) return TrafficQualityMode.RealHuman;
-
-        return Enum.TryParse<TrafficQualityMode>(value, ignoreCase: true, out var result)
-            ? result
-            : TrafficQualityMode.RealHuman;
+        return TrafficQualityBucketFilters.ParseClientOrEnumValue(value);
     }
 
     private static TrafficType ParseTrafficType(string? value)

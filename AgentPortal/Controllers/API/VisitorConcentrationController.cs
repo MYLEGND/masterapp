@@ -36,7 +36,7 @@ public sealed class VisitorConcentrationController : ControllerBase
         [FromQuery] int? timezoneOffsetMinutes = null,
         [FromQuery] Guid? agentProfileId = null,
         [FromQuery] TrafficType trafficType = TrafficType.All,
-        [FromQuery] TrafficQualityMode qualityMode = TrafficQualityMode.RealHuman,
+        [FromQuery] TrafficQualityMode qualityMode = TrafficQualityMode.RealHumanTraffic,
         CancellationToken ct = default)
     {
         var range = ResolveRange(
