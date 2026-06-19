@@ -1770,8 +1770,18 @@
       || Number(data?.uniqueVisitors || 0) > 0
       || Number(data?.verifiedLeads || 0) > 0;
 
-    if (normalizedMode === 'real_human_traffic' && !hasRows) {
-      emptyState.textContent = 'No real human traffic detected';
+    if (!hasRows) {
+      const messages = {
+        real_human_traffic: 'No real human traffic detected',
+        internal_qa: 'No internal / QA traffic detected',
+        likely_bots_automation: 'No likely bot or automation traffic detected',
+        suspicious: 'No suspicious traffic detected',
+        all_traffic: 'No traffic detected'
+      };
+
+      emptyState.textContent =
+        messages[normalizedMode] || 'No traffic detected';
+
       emptyState.hidden = false;
       return;
     }
