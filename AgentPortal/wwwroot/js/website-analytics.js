@@ -1734,6 +1734,18 @@
         label.textContent = option ? option.textContent : 'Real Human Traffic';
       }
       loadSummary();
+      loadTraffic();
+      loadPagePerf();
+      loadCtaPerf();
+      loadQuote();
+      loadBehavior();
+      loadConv();
+      loadLeads();
+      loadMetaSignal();
+      loadMetaSignalHealth();
+      loadDeviceIntelligence();
+      loadAgentPerf();
+      loadTeamRollup();
       refreshOpenModal();
       window.dispatchEvent(new CustomEvent('wa:quality-mode-changed', {
         detail: { qualityMode: state.qualityMode }
