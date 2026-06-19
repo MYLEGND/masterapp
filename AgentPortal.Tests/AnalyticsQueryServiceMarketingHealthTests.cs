@@ -36,7 +36,8 @@ public class AnalyticsQueryServiceMarketingHealthTests
         ToUtc = nowUtc.AddHours(2),
         Grouping = TimeGrouping.Day,
         Label = "test",
-        Preset = "custom"
+        Preset = "custom",
+        QualityMode = TrafficQualityMode.AllTraffic
     };
 
     private static AnalyticsEvent E(
@@ -143,9 +144,9 @@ public class AnalyticsQueryServiceMarketingHealthTests
         Assert.Equal(1, dto.WorkstationCaptureSuccesses);
         Assert.Equal(1, dto.WorkstationCaptureFailures);
         Assert.Equal(1, dto.WorkstationNoOwnerFailures);
-        Assert.Equal(1, dto.InferredFormStarts);
-        Assert.Equal(1, dto.MissingStartEventSessions);
-        Assert.Equal(1, dto.UnknownAttributedLeads);
+        Assert.Equal(2, dto.InferredFormStarts);
+        Assert.Equal(2, dto.MissingStartEventSessions);
+        Assert.Equal(0, dto.UnknownAttributedLeads);
         Assert.Single(dto.RecentTrackingErrors);
         Assert.Contains(dto.Warnings, warning => warning.Contains("tracking errors detected", StringComparison.OrdinalIgnoreCase));
         Assert.Contains(dto.Warnings, warning => warning.Contains("Missing funnel start events suspected", StringComparison.OrdinalIgnoreCase));
@@ -227,7 +228,7 @@ public class AnalyticsQueryServiceMarketingHealthTests
         Assert.Equal(400, mostRecent.StatusCode);
         Assert.Equal("Check event catalog / payload schema", mostRecent.SuggestedAction);
         Assert.Equal("s-critic", mostRecent.SessionIdShort);
-        Assert.Equal("facebook", mostRecent.Source);
+        Assert.Equal("Facebook / Meta", mostRecent.Source);
         Assert.Equal("life-launch", mostRecent.Campaign);
 
         var recoveredCritical = dto.RecentTrackingErrors.Single(detail => detail.AttemptedEventName == "quote_cta_click");

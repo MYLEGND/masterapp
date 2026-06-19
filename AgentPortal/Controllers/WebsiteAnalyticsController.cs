@@ -84,7 +84,7 @@ namespace AgentPortal.Controllers;
         var scope = await ResolveScopeAsync(agentProfileId, team);
         var initialQualityMode = ResolveInitialQualityMode(qualityMode);
         range = CloneRangeWithQualityMode(range, initialQualityMode);
-        var summary = await _analytics.GetSummaryAsync(range, scope);
+        var summary = await LoadSummarySafelyAsync(range, scope);
         summary.ScopeLabel = await ResolveScopeLabelAsync(scope, team);
         ViewData["InitialRangePreset"] = range.Preset;
         ViewData["InitialRangeLabel"] = range.Label;
@@ -211,6 +211,70 @@ namespace AgentPortal.Controllers;
         };
     }
 
+    private async Task<SummaryKpiDto> LoadSummarySafelyAsync(
+        TimeRangeRequest range,
+        ScopeContext scope,
+        TrafficType trafficType = TrafficType.All)
+    {
+        try
+        {
+            return await _analytics.GetSummaryAsync(range, scope, trafficType);
+        }
+        catch (Exception ex) when (IsAnalyticsTimeout(ex))
+        {
+            _logger.LogWarning(
+                ex,
+                "Website analytics summary timed out for scope {ScopeType} profile {AgentProfileId}. Returning empty summary fallback.",
+                scope.ScopeType,
+                scope.AgentTrackingProfileId);
+
+            return new SummaryKpiDto
+            {
+                RangeLabel = range.Label,
+                EnvironmentLabel = "Summary temporarily unavailable"
+            };
+        }
+    }
+
+    private async Task<List<VisitorConcentrationDto>> LoadVisitorConcentrationSafelyAsync(
+        TimeRangeRequest range,
+        ScopeContext scope,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            return await _visitorConcentrationService.GetVisitorConcentrationAsync(range, scope, cancellationToken);
+        }
+        catch (Exception ex) when (IsAnalyticsTimeout(ex))
+        {
+            _logger.LogWarning(
+                ex,
+                "Visitor concentration drill-in timed out for scope {ScopeType} profile {AgentProfileId}. Returning empty concentration set.",
+                scope.ScopeType,
+                scope.AgentTrackingProfileId);
+            return new List<VisitorConcentrationDto>();
+        }
+    }
+
+    private static bool IsAnalyticsTimeout(Exception ex)
+    {
+        for (var current = ex; current != null; current = current.InnerException)
+        {
+            if (current is TimeoutException or DbException)
+                return true;
+
+            var message = current.Message ?? string.Empty;
+            if (message.Contains("execution timeout", StringComparison.OrdinalIgnoreCase) ||
+                message.Contains("timeout expired", StringComparison.OrdinalIgnoreCase) ||
+                message.Contains("command timeout", StringComparison.OrdinalIgnoreCase))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
     private static string ToClientQualityMode(TrafficQualityMode qualityMode)
         => TrafficQualityBucketFilters.ToClientValue(qualityMode);
 
@@ -219,7 +283,7 @@ namespace AgentPortal.Controllers;
     {
         var range = TimeRangeRequest.FromPreset(preset, fromUtc, toUtc, GetViewerTimeZone(), qualityMode);
         var scope = await ResolveScopeAsync(agentProfileId, team);
-        var result = await _analytics.GetSummaryAsync(range, scope, trafficType);
+        var result = await LoadSummarySafelyAsync(range, scope, trafficType);
         result.ScopeLabel = await ResolveScopeLabelAsync(scope, team);
         return Json(result);
     }
@@ -486,7 +550,7 @@ namespace AgentPortal.Controllers;
                 ? $"""
                     SELECT "Id", "LeadId", {(supportsSoftDelete ? "COALESCE(\"IsDeleted\", 0)" : "0")} AS "IsDeleted"
                     FROM "WebsiteLeads"
-                    WHERE "LeadId" = @leadId
+                    WHERE lower("LeadId") = lower(@leadId)
                     LIMIT 1
                     """
                 : $"""
@@ -948,7 +1012,8 @@ namespace AgentPortal.Controllers;
             Grouping = range.Grouping,
             Label = range.Label,
             Preset = range.Preset,
-            ViewerTimeZone = range.ViewerTimeZone
+            ViewerTimeZone = range.ViewerTimeZone,
+            QualityMode = range.QualityMode
         };
 
         // Pull the data we need — reuse existing service methods, no duplication
@@ -1016,7 +1081,7 @@ namespace AgentPortal.Controllers;
                     .Select(x => new Models.Analytics.KpiDetailBreakdownItemDto { Label = x.Key, Value = x.Count }).ToList();
 
                 breakdown.VisitorConcentration =
-                    await _visitorConcentrationService.GetVisitorConcentrationAsync(range, scope, HttpContext.RequestAborted);
+                    await LoadVisitorConcentrationSafelyAsync(range, scope, HttpContext.RequestAborted);
 
                 break;
 

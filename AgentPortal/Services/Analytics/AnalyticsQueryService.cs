@@ -463,11 +463,20 @@ public sealed class AnalyticsQueryService : IAnalyticsQueryService
     // Do NOT use form_submit as a canonical success signal moving forward.
     private static bool IsQuoteFallbackSubmitSuccessEvent(AnalyticsEvent e)
     {
-        return false;
+        return IsQuoteScopeEvent(e) &&
+               string.Equals(e.EventType, "form_submit", StringComparison.OrdinalIgnoreCase) &&
+               string.Equals(e.SubmitOutcome, "success", StringComparison.OrdinalIgnoreCase);
     }
 
     private static bool IsQuoteSuccessEvent(AnalyticsEvent e) =>
         IsOfficialLeadSuccessEvent(e) || IsQuoteFallbackSubmitSuccessEvent(e);
+
+    private static bool IsSubmitSuccessMetricEvent(AnalyticsEvent e) =>
+        AnalyticsEventCatalog.MatchesDashboardMetric(e.EventType, "submit_success") ||
+        AnalyticsEventCatalog.MatchesDashboardMetric(e.EventType, "confirmed_lead");
+
+    private static bool IsSubmitAttemptMetricEvent(AnalyticsEvent e) =>
+        AnalyticsEventCatalog.MatchesDashboardMetric(e.EventType, "submit_attempt");
 
     private static bool IsQuoteSubmitSuccess(AnalyticsEvent e) =>
         IsQuoteSuccessEvent(e) &&
@@ -794,12 +803,16 @@ public sealed class AnalyticsQueryService : IAnalyticsQueryService
 
     private static string BuildQuoteStageUnitKey(AnalyticsEvent e) => BuildSuccessUnitKey(e);
 
-    private static int SuccessEventPriority(AnalyticsEvent e) => e.EventType switch
+    private static int SuccessEventPriority(AnalyticsEvent e)
     {
-        "website_lead_submitted" => 3,
-        "lead_form_submit_success" => 2,
-        _ => 0
-    };
+        if (string.Equals(e.EventType, "website_lead_submitted", StringComparison.OrdinalIgnoreCase))
+            return 3;
+
+        if (IsSubmitSuccessMetricEvent(e))
+            return 2;
+
+        return 0;
+    }
 
     private static List<AnalyticsEvent> SelectCanonicalSuccessEvents(IEnumerable<AnalyticsEvent> events)
     {
@@ -2619,7 +2632,7 @@ public sealed class AnalyticsQueryService : IAnalyticsQueryService
             .Where(e =>
                 string.Equals(e.EventType, "lead_persisted", StringComparison.OrdinalIgnoreCase) ||
                 string.Equals(e.EventType, "website_lead_submitted", StringComparison.OrdinalIgnoreCase) ||
-                string.Equals(e.EventType, "lead_form_submit_success", StringComparison.OrdinalIgnoreCase))
+                IsSubmitSuccessMetricEvent(e))
             .GroupBy(e => !string.IsNullOrWhiteSpace(e.SessionId)
                 ? $"sid:{e.SessionId}"
                 : $"vid:{e.VisitorId}|{e.EventUtc:O}", StringComparer.OrdinalIgnoreCase)
@@ -3477,8 +3490,8 @@ public sealed class AnalyticsQueryService : IAnalyticsQueryService
         var scopedAgentIds = await ResolveScopedAgentIdsAsync(scope);
         var events = await BaseEvents(range, scope, scopedAgentIds)
             .Where(e => e.EventType == "form_start" ||
-                        e.EventType == "form_submit_attempt" ||
-                        e.EventType == "lead_form_submit_success" ||
+                        IsSubmitAttemptMetricEvent(e) ||
+                        IsSubmitSuccessMetricEvent(e) ||
                         e.EventType == "form_submit" || // legacy read-only compatibility
                         e.EventType == "form_field_focus" ||
                         e.EventType == "form_field_complete" ||
@@ -3489,7 +3502,7 @@ public sealed class AnalyticsQueryService : IAnalyticsQueryService
         Func<AnalyticsEvent, string> fKey = e => e.FormKey ?? e.FormId ?? "unknown";
         var starts = events.Where(e => e.EventType == "form_start").GroupBy(fKey).ToDictionary(g => g.Key, g => g.Count());
         var submits = events
-            .Where(e => e.EventType == "lead_form_submit_success")
+            .Where(e => IsSubmitSuccessMetricEvent(e))
             .GroupBy(fKey)
             .ToDictionary(g => g.Key, g => g.Count());
         var ffFocus = events.Where(e =>
@@ -3512,7 +3525,7 @@ public sealed class AnalyticsQueryService : IAnalyticsQueryService
             var startSids = events.Where(e => e.EventType == "form_start" && fKey(e) == fk && !string.IsNullOrWhiteSpace(e.SessionId))
                 .Select(e => e.SessionId!).Distinct().ToHashSet();
             var submitSids = events
-                .Where(e => e.EventType == "lead_form_submit_success" && fKey(e) == fk && !string.IsNullOrWhiteSpace(e.SessionId))
+                .Where(e => IsSubmitSuccessMetricEvent(e) && fKey(e) == fk && !string.IsNullOrWhiteSpace(e.SessionId))
                 .Select(e => e.SessionId!).Distinct().ToHashSet();
             var s = starts.TryGetValue(fk, out var sc) ? sc : 0;
             var sub = submits.TryGetValue(fk, out var sbc) ? sbc : 0;
@@ -3855,14 +3868,14 @@ public sealed class AnalyticsQueryService : IAnalyticsQueryService
                     var ctas = events.Count(e => e.EventType == "cta_click" || e.EventType == "quote_click");
                     var starts = BuildQuoteFormStartedUnitKeys(events).Count > 0 ? 1 : 0;
                     var submits = events.Count(e =>
-                        e.EventType == "form_submit_attempt" ||
+                        IsSubmitAttemptMetricEvent(e) ||
                         (
                             e.EventType == "form_submit" &&
                             (e.SubmitOutcome ?? "").ToLower() == "attempt"
                         ));
 
                     var leads =
-                        events.Any(e => e.EventType == "lead_form_submit_success")
+                        events.Any(e => IsSubmitSuccessMetricEvent(e))
                             ? 1
                             : 0;
 
@@ -3924,7 +3937,7 @@ public sealed class AnalyticsQueryService : IAnalyticsQueryService
             Events = rows.Count,
             FormStarts = BuildQuoteFormStartedUnitKeys(rows).Count,
             ConfirmedLeads = rows.Count(e =>
-                e.EventType == "lead_form_submit_success"),
+                IsSubmitSuccessMetricEvent(e)),
             Devices = BuildRows(ResolveDeviceTypeContext),
             Browsers = BuildRows(e => NormalizeDeviceContextLabel(e.Browser)),
             OperatingSystems = BuildRows(e => NormalizeDeviceContextLabel(e.OperatingSystem)),

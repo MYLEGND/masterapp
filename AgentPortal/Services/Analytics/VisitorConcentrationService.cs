@@ -7,6 +7,7 @@ namespace AgentPortal.Services.Analytics;
 
 public sealed class VisitorConcentrationService : IVisitorConcentrationService
 {
+    private const int MetaSignalLookupBatchSize = 250;
     private readonly Infrastructure.Data.MasterAppDbContext _db;
     private readonly IVisitorTrustScoringService _trustScoring;
     private readonly IAnalyticsQueryService _analytics;
@@ -80,24 +81,18 @@ public sealed class VisitorConcentrationService : IVisitorConcentrationService
         };
 
         var visitorIds = events
-            .Select(e => e.VisitorId)
+            .Select(e => e.VisitorId!)
             .Where(x => !string.IsNullOrWhiteSpace(x))
             .Distinct(StringComparer.OrdinalIgnoreCase)
             .ToList();
 
         var sessionIds = events
-            .Select(e => e.SessionId)
+            .Select(e => e.SessionId!)
             .Where(x => !string.IsNullOrWhiteSpace(x))
             .Distinct(StringComparer.OrdinalIgnoreCase)
             .ToList();
 
-        var metaSignals = await _db.MetaSignalEvents
-            .AsNoTracking()
-            .Where(x => x.CreatedUtc >= range.FromUtc && x.CreatedUtc < range.ToUtc)
-            .Where(x =>
-                (!string.IsNullOrWhiteSpace(x.VisitorId) && visitorIds.Contains(x.VisitorId!)) ||
-                (!string.IsNullOrWhiteSpace(x.SessionId) && sessionIds.Contains(x.SessionId!)))
-            .ToListAsync(ct);
+        var metaSignals = await LoadRelevantMetaSignalsAsync(range, visitorIds, sessionIds, ct);
 
         var visitorGroups = events
             .Where(e => !string.IsNullOrWhiteSpace(e.VisitorId))
@@ -222,6 +217,61 @@ public sealed class VisitorConcentrationService : IVisitorConcentrationService
             .ThenBy(g => g.Key)
             .Select(g => g.Key)
             .FirstOrDefault() ?? fallback;
+    }
+
+    private async Task<List<MetaSignalEvent>> LoadRelevantMetaSignalsAsync(
+        TimeRangeRequest range,
+        IReadOnlyCollection<string> visitorIds,
+        IReadOnlyCollection<string> sessionIds,
+        CancellationToken ct)
+    {
+        if (visitorIds.Count == 0 && sessionIds.Count == 0)
+            return new List<MetaSignalEvent>();
+
+        var deduped = new Dictionary<long, MetaSignalEvent>();
+
+        foreach (var visitorBatch in Batch(visitorIds, MetaSignalLookupBatchSize))
+        {
+            var batchSignals = await _db.MetaSignalEvents
+                .AsNoTracking()
+                .Where(x => x.CreatedUtc >= range.FromUtc && x.CreatedUtc < range.ToUtc)
+                .Where(x => !string.IsNullOrWhiteSpace(x.VisitorId) && visitorBatch.Contains(x.VisitorId!))
+                .ToListAsync(ct);
+
+            foreach (var signal in batchSignals)
+                deduped[signal.Id] = signal;
+        }
+
+        foreach (var sessionBatch in Batch(sessionIds, MetaSignalLookupBatchSize))
+        {
+            var batchSignals = await _db.MetaSignalEvents
+                .AsNoTracking()
+                .Where(x => x.CreatedUtc >= range.FromUtc && x.CreatedUtc < range.ToUtc)
+                .Where(x => !string.IsNullOrWhiteSpace(x.SessionId) && sessionBatch.Contains(x.SessionId!))
+                .ToListAsync(ct);
+
+            foreach (var signal in batchSignals)
+                deduped[signal.Id] = signal;
+        }
+
+        return deduped.Values.ToList();
+    }
+
+    private static IEnumerable<List<string>> Batch(IEnumerable<string> values, int batchSize)
+    {
+        var batch = new List<string>(batchSize);
+        foreach (var value in values)
+        {
+            batch.Add(value);
+            if (batch.Count == batchSize)
+            {
+                yield return batch;
+                batch = new List<string>(batchSize);
+            }
+        }
+
+        if (batch.Count > 0)
+            yield return batch;
     }
 
     private static string ShortId(string value)

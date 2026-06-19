@@ -66,7 +66,7 @@ public class WebsiteAnalyticsDeleteLeadTests
             Assert.NotNull(json.Value);
 
             await using var cmd = conn.CreateCommand();
-            cmd.CommandText = "SELECT IsDeleted FROM WebsiteLeads WHERE LeadId = $leadId";
+            cmd.CommandText = "SELECT IsDeleted FROM WebsiteLeads WHERE lower(LeadId) = lower($leadId)";
             cmd.Parameters.AddWithValue("$leadId", leadId.ToString());
 
             var scalar = await cmd.ExecuteScalarAsync();

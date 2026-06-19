@@ -35,7 +35,8 @@ public class AnalyticsQueryServiceQuoteFunnelTests
         ToUtc = nowUtc.AddHours(2),
         Grouping = TimeGrouping.Day,
         Label = "test",
-        Preset = "custom"
+        Preset = "custom",
+        QualityMode = TrafficQualityMode.AllTraffic
     };
 
     private static AnalyticsEvent E(
@@ -141,7 +142,7 @@ public class AnalyticsQueryServiceQuoteFunnelTests
     }
 
     [Fact]
-    public async Task GetQuoteFunnelAsync_TrafficFilters_ExposeUnknownSeparately_AndRemainExhaustive()
+    public async Task GetQuoteFunnelAsync_TrafficFilters_TreatDirectAsNonPaid_AndRemainExhaustive()
     {
         using var db = ControllerTestHelpers.BuildDb();
         var now = DateTime.UtcNow;
@@ -159,7 +160,7 @@ public class AnalyticsQueryServiceQuoteFunnelTests
             E("form_start", now.AddMinutes(-26), "o1", formKey: "quote_home_form", quoteType: "home", utmMedium: "organic")
         );
 
-        // Unknown session (no attribution)
+        // Direct session (no attribution)
         db.AnalyticsEvents.AddRange(
             E("quote_click", now.AddMinutes(-25), "u1", quoteType: "auto"),
             E("form_start", now.AddMinutes(-24), "u1", formKey: "quote_auto_form", quoteType: "auto"),
@@ -177,10 +178,10 @@ public class AnalyticsQueryServiceQuoteFunnelTests
 
         Assert.Equal((3, 3, 2), (all.QuoteStarts, all.QuoteFormStarts, all.QuoteFormSubmits));
         Assert.Equal((1, 1, 1), (paid.QuoteStarts, paid.QuoteFormStarts, paid.QuoteFormSubmits));
-        Assert.Equal((1, 1, 0), (nonPaid.QuoteStarts, nonPaid.QuoteFormStarts, nonPaid.QuoteFormSubmits));
+        Assert.Equal((2, 2, 1), (nonPaid.QuoteStarts, nonPaid.QuoteFormStarts, nonPaid.QuoteFormSubmits));
         Assert.Equal(1, all.PaidStartCount);
-        Assert.Equal(1, all.NonPaidStartCount);
-        Assert.Equal(1, all.UnknownStartCount);
+        Assert.Equal(2, all.NonPaidStartCount);
+        Assert.Equal(0, all.UnknownStartCount);
         Assert.Equal(all.QuoteStarts, all.PaidStartCount + all.NonPaidStartCount + all.UnknownStartCount);
     }
 
@@ -390,7 +391,7 @@ public class AnalyticsQueryServiceQuoteFunnelTests
     }
 
     [Fact]
-    public async Task GetTrafficAsync_ReportsUnknownSessionsSeparately()
+    public async Task GetTrafficAsync_TreatsUnattributedSessionsAsNonPaid()
     {
         using var db = ControllerTestHelpers.BuildDb();
         var now = DateTime.UtcNow;
@@ -406,8 +407,8 @@ public class AnalyticsQueryServiceQuoteFunnelTests
         var traffic = await service.GetTrafficAsync(BuildRange(now), ScopeContext.Global, TrafficType.All);
 
         Assert.Equal(1, traffic.PaidSessionCount);
-        Assert.Equal(1, traffic.NonPaidSessionCount);
-        Assert.Equal(2, traffic.UnknownSessionCount);
+        Assert.Equal(2, traffic.NonPaidSessionCount);
+        Assert.Equal(1, traffic.UnknownSessionCount);
     }
 
     [Fact]
@@ -464,7 +465,7 @@ public class AnalyticsQueryServiceQuoteFunnelTests
     }
 
     [Fact]
-    public async Task GetFormAbandonmentAsync_TrafficFilter_NonPaidIncludesOnlyKnownNonPaid()
+    public async Task GetFormAbandonmentAsync_TrafficFilter_NonPaidIncludesDirectSessions()
     {
         using var db = ControllerTestHelpers.BuildDb();
         var now = DateTime.UtcNow;
@@ -479,7 +480,7 @@ public class AnalyticsQueryServiceQuoteFunnelTests
             E("form_start", now.AddMinutes(-18), "o1", formKey: "quote_life_form", quoteType: "life", utmMedium: "organic"),
             E("form_abandon", now.AddMinutes(-17), "o1", formKey: "quote_life_form", quoteType: "life", utmMedium: "organic", metadataJson: meta),
 
-            // unknown
+            // direct
             E("form_start", now.AddMinutes(-16), "u1", formKey: "quote_life_form", quoteType: "life"),
             E("form_abandon", now.AddMinutes(-15), "u1", formKey: "quote_life_form", quoteType: "life", metadataJson: meta)
         );
@@ -495,6 +496,6 @@ public class AnalyticsQueryServiceQuoteFunnelTests
         var nonPaidLife = nonPaid.Summary.Single(r => r.QuoteType == "life");
 
         Assert.Equal((3, 3), (allLife.Abandons, allLife.Starts));
-        Assert.Equal((1, 1), (nonPaidLife.Abandons, nonPaidLife.Starts));
+        Assert.Equal((2, 2), (nonPaidLife.Abandons, nonPaidLife.Starts));
     }
 }

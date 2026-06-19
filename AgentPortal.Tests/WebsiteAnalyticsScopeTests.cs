@@ -44,8 +44,8 @@ public class WebsiteAnalyticsScopeTests
 
         ScopeContext? captured = null;
         var analytics = new Mock<IAnalyticsQueryService>();
-        analytics.Setup(x => x.GetSummaryAsync(It.IsAny<TimeRangeRequest>(), It.IsAny<ScopeContext>()))
-            .Callback<TimeRangeRequest, ScopeContext>((_, scope) => captured = scope)
+        analytics.Setup(x => x.GetSummaryAsync(It.IsAny<TimeRangeRequest>(), It.IsAny<ScopeContext>(), It.IsAny<TrafficType>()))
+            .Callback<TimeRangeRequest, ScopeContext, TrafficType>((_, scope, _) => captured = scope)
             .ReturnsAsync(new SummaryKpiDto());
 
         var config = new ConfigurationBuilder()

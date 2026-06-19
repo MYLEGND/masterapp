@@ -35,7 +35,8 @@ public class AnalyticsQueryServiceBehaviorIntelligenceTests
         ToUtc = nowUtc.AddHours(1),
         Grouping = TimeGrouping.Day,
         Label = "test",
-        Preset = "custom"
+        Preset = "custom",
+        QualityMode = TrafficQualityMode.AllTraffic
     };
 
     private static AnalyticsEvent E(
@@ -142,7 +143,7 @@ public class AnalyticsQueryServiceBehaviorIntelligenceTests
 
         var service = BuildService(db);
         var dto = await service.GetSourcePerformanceAsync(BuildRange(now), ScopeContext.Global);
-        var row = Assert.Single(dto.Rows.Where(r => r.Source == "facebook"));
+        var row = Assert.Single(dto.Rows.Where(r => r.Source == "Facebook / Meta"));
 
         Assert.Equal(2, row.Sessions);
         Assert.Equal(1, row.EngagedSessions);

@@ -52,6 +52,7 @@ public class WebsiteAnalyticsInitialQualityModeTests
         var now = DateTime.UtcNow;
 
         db.AnalyticsEvents.Add(BuildEvent(now.AddMinutes(-6), profile.Id, isInternal: false, sessionId: "human-s1", visitorId: "human-v1"));
+        db.AnalyticsEvents.Add(BuildEvent(now.AddMinutes(-5.5), profile.Id, isInternal: false, sessionId: "human-s1", visitorId: "human-v1", eventType: "page_engaged_15s"));
         db.AnalyticsEvents.Add(BuildEvent(now.AddMinutes(-5), profile.Id, isInternal: true, sessionId: "internal-s1", visitorId: "internal-v1"));
         await db.SaveChangesAsync();
 
@@ -156,20 +157,21 @@ public class WebsiteAnalyticsInitialQualityModeTests
         Guid agentTrackingProfileId,
         bool isInternal,
         string sessionId,
-        string visitorId)
+        string visitorId,
+        string eventType = "page_view")
     {
         return new AnalyticsEvent
         {
             EventId = Guid.NewGuid(),
             ClientEventId = Guid.NewGuid(),
-            EventType = "page_view",
+            EventType = eventType,
             EventUtc = eventUtc,
             ReceivedUtc = eventUtc,
             SessionId = sessionId,
             VisitorId = visitorId,
             AgentTrackingProfileId = agentTrackingProfileId,
-            Environment = "development",
-            Host = "localhost:1111",
+            Environment = "production",
+            Host = "portal.mylegnd.com",
             IsInternal = isInternal,
             PageKey = "quote_life"
         };
