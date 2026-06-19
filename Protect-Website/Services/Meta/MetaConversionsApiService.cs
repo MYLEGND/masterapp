@@ -228,6 +228,14 @@ public sealed class MetaConversionsApiService : IMetaConversionsApiService
         }
 
         var endpoint = $"https://graph.facebook.com/{ApiVersion}/{pixelId}/events";
+        // META AUDIT HOOK (SAFE)
+        // TODO: Finalizer layer validation point
+        // Make log arguments null-safe: normalizedEventName is expected non-null but coalesce defensively,
+        // and LeadId is nullable (Guid?), so stringify with a fallback to avoid nullable warnings.
+        _logger.LogInformation(
+            "MetaAuditHook: event={EventName} lead={LeadId}",
+            normalizedEventName ?? string.Empty,
+            request.LeadId.HasValue ? request.LeadId.Value.ToString() : string.Empty);
         var userData = BuildUserData(request);
         var eventPayload = new Dictionary<string, object?>
         {
