@@ -339,6 +339,67 @@ public sealed class AnalyticsQueryService : IAnalyticsQueryService
         return null;
     }
 
+    private string BuildEnvironmentLabel(IReadOnlyCollection<AnalyticsEvent> events)
+    {
+        if (events.Count == 0)
+        {
+            return _envFilter switch
+            {
+                "prod" => "Environment: Production",
+                "dev" => "Environment: Development",
+                _ => "Environment: Mixed/Legacy"
+            };
+        }
+
+        var internalOnly = events.All(e => e.IsInternal);
+        var localOnly = events.All(e => IsLocalHost(e.Host));
+        var environmentKinds = events
+            .Select(e => NormalizeEnv(e.Environment))
+            .Select(e => e switch
+            {
+                "prod" => "production",
+                "dev" => "development",
+                _ => "legacy"
+            })
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
+        var environmentDescriptor = environmentKinds.Count switch
+        {
+            0 => "legacy",
+            1 => environmentKinds[0],
+            _ => "mixed"
+        };
+
+        if (internalOnly && localOnly)
+            return $"Dataset: Internal QA / localhost / {environmentDescriptor}";
+
+        if (internalOnly)
+            return $"Dataset: Internal traffic / {environmentDescriptor}";
+
+        if (localOnly)
+            return $"Dataset: localhost traffic / {environmentDescriptor}";
+
+        return environmentDescriptor switch
+        {
+            "production" => "Environment: Production",
+            "development" => "Environment: Development",
+            _ => "Environment: Mixed/Legacy"
+        };
+    }
+
+    private static bool IsLocalHost(string? host)
+    {
+        if (string.IsNullOrWhiteSpace(host))
+            return false;
+
+        var normalized = host.Trim();
+        return normalized.StartsWith("localhost", StringComparison.OrdinalIgnoreCase) ||
+               normalized.StartsWith("127.0.0.1", StringComparison.OrdinalIgnoreCase) ||
+               normalized.StartsWith("::1", StringComparison.OrdinalIgnoreCase) ||
+               normalized.StartsWith("[::1]", StringComparison.OrdinalIgnoreCase);
+    }
+
     private static bool ParseBool(string? value) =>
         !string.IsNullOrWhiteSpace(value) && bool.TryParse(value, out var parsed) && parsed;
 
@@ -1835,12 +1896,7 @@ public sealed class AnalyticsQueryService : IAnalyticsQueryService
             ? Math.Min(100, Math.Round((decimal)quoteFormSubmits / intentDenom * 100, 2))
             : 0;
         bool intentLow = intentDenom > 0 && intentDenom < LowSampleThreshold;
-        var envLabel = _envFilter switch
-        {
-            "prod" => "Environment: Production",
-            "dev" => "Environment: Development",
-            _ => "Environment: Mixed/Legacy"
-        };
+        var envLabel = BuildEnvironmentLabel(events);
 
         return new SummaryKpiDto
         {

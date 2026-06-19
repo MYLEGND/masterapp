@@ -27,6 +27,7 @@ public sealed record UnifiedEventContext
     // =========================
     public string? Url { get; init; }
     public string? Referrer { get; init; }
+    public string? ReferrerHost { get; init; }
     public string? PageKey { get; init; }
     public string? EffectivePageKey { get; init; }
     public string? PageVariant { get; init; }
@@ -53,6 +54,11 @@ public sealed record UnifiedEventContext
     public int? MouseMoveCount { get; init; }
     public int? HumanInteractionCount { get; init; }
     public int? VisibilityChangeCount { get; init; }
+    public int? ScrollPercent { get; init; }
+    public long? DwellMilliseconds { get; init; }
+    public long? EngagedMilliseconds { get; init; }
+    public bool? IsBounceCandidate { get; init; }
+    public bool? IsExitPage { get; init; }
 
     public string? Language { get; init; }
     public string? TimeZone { get; init; }

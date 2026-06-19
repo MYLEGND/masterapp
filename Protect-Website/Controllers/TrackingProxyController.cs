@@ -496,6 +496,7 @@ public sealed class TrackingProxyController : ControllerBase
         public bool? WebDriver { get; set; }
         public bool? IsHeadless { get; set; }
         public int? MouseMoveCount { get; set; }
+        public int? HumanInteractionCount { get; set; }
         public int? VisibilityChangeCount { get; set; }
         public int? ScreenWidth { get; set; }
         public int? ScreenHeight { get; set; }

@@ -217,7 +217,11 @@ public sealed class MetaSignalAnalyticsService : IMetaSignalAnalyticsService
                 EventType = x.EventType,
                 SessionId = x.SessionId,
                 VisitorId = x.VisitorId,
-                EventUtc = x.EventUtc
+                EventUtc = x.EventUtc,
+                ScrollPercent = x.ScrollPercent,
+                DwellMilliseconds = x.DwellMilliseconds,
+                EngagedMilliseconds = x.EngagedMilliseconds,
+                IsBounceCandidate = x.IsBounceCandidate
             })
             .ToListAsync(ct);
 
@@ -1277,8 +1281,19 @@ public sealed class MetaSignalAnalyticsService : IMetaSignalAnalyticsService
         return "Critical";
     }
 
-    private static bool IsBridgeEligibleAnalyticsEvent(HealthAnalyticsEventRow row) =>
-        BridgeSourceEventTypes.Contains(row.EventType);
+    private static bool IsBridgeEligibleAnalyticsEvent(HealthAnalyticsEventRow row)
+    {
+        if (!BridgeSourceEventTypes.Contains(row.EventType))
+            return false;
+
+        return !MetaSignalAnalyticsAliasCatalog.TryGet(row.EventType, out _)
+            || MetaSignalAnalyticsAliasCatalog.IsBridgeEligibleAnalyticsSource(
+                row.EventType,
+                row.ScrollPercent,
+                row.DwellMilliseconds,
+                row.EngagedMilliseconds,
+                row.IsBounceCandidate);
+    }
 
     private static HashSet<string> BuildBridgeSourceEventTypes()
     {
@@ -1289,6 +1304,7 @@ public sealed class MetaSignalAnalyticsService : IMetaSignalAnalyticsService
         return new HashSet<string>(
             leadAndViewContentSources
                 .Concat(ExplicitBridgeSourceEventTypes)
+                .Concat(MetaSignalAnalyticsAliasCatalog.AnalyticsEventNames)
                 .Concat(MetaSignalEventCatalog.Definitions.Select(x => x.Name)),
             StringComparer.OrdinalIgnoreCase);
     }
@@ -1534,6 +1550,10 @@ public sealed class MetaSignalAnalyticsService : IMetaSignalAnalyticsService
         public string? SessionId { get; init; }
         public string? VisitorId { get; init; }
         public DateTime EventUtc { get; init; }
+        public int? ScrollPercent { get; init; }
+        public long? DwellMilliseconds { get; init; }
+        public long? EngagedMilliseconds { get; init; }
+        public bool? IsBounceCandidate { get; init; }
     }
 
     private sealed class HealthMetaSignalRow

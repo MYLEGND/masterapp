@@ -7,6 +7,7 @@ using AgentPortal.Services;
 using AgentPortal.Services.Analytics;
 using AgentPortal.Services.Tracking;
 using Infrastructure.Data;
+using Microsoft.AspNetCore.DataProtection;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Data.Sqlite;
@@ -152,23 +153,34 @@ public class WebsiteAnalyticsDeleteLeadTests
         var accessor = new HttpContextAccessor { HttpContext = http };
         var tracking = new Mock<IAgentTrackingService>();
         var effective = new EffectiveAgentContext(accessor, tracking.Object, NullLogger<EffectiveAgentContext>.Instance);
+        var analytics = Mock.Of<IAnalyticsQueryService>();
+        var metaAds = Mock.Of<IMetaAdsService>();
+        var metaSignalAnalytics = Mock.Of<IMetaSignalAnalyticsService>();
+        var aiDataBuilder = new WebsiteAnalyticsAiDataBuilder(
+            analytics,
+            metaAds,
+            metaSignalAnalytics,
+            NullLogger<WebsiteAnalyticsAiDataBuilder>.Instance);
+        var protector = new MetaCapiCredentialProtector(DataProtectionProvider.Create("AgentPortal.Tests"));
 
         return new WebsiteAnalyticsController(
-            Mock.Of<IAnalyticsQueryService>(),
-            Mock.Of<IMetaAdsService>(),
+            analytics,
+            metaAds,
             Mock.Of<IMetaAdsOAuthService>(),
             Mock.Of<IMetaAdsConnectionStore>(),
             tracking.Object,
-            Mock.Of<IMetaSignalAnalyticsService>(),
+            metaSignalAnalytics,
             Mock.Of<ILandingRouteDiscoveryService>(),
-            Mock.Of<WebsiteAnalyticsAiDataBuilder>(),
+            aiDataBuilder,
             Mock.Of<IVisitorConcentrationService>(),
             Mock.Of<IKpiDetailBreakdownService>(),
             Mock.Of<IVisitorTrustScoringService>(),
+            Mock.Of<IAnalyticsIncidentQueryService>(),
             NullLogger<WebsiteAnalyticsController>.Instance,
             db,
             config,
-            effective)
+            effective,
+            protector)
         {
             ControllerContext = new ControllerContext { HttpContext = http }
         };

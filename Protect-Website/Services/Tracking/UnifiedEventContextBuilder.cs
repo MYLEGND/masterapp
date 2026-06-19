@@ -15,6 +15,7 @@ public static class UnifiedEventContextBuilder
         string? visitorId = null,
         string? url = null,
         string? referrer = null,
+        string? referrerHost = null,
         string? pageKey = null,
         string? effectivePageKey = null,
         string? pageVariant = null,
@@ -37,6 +38,11 @@ public static class UnifiedEventContextBuilder
         string? quoteType = null,
         int? stepNumber = null,
         string? stepName = null,
+        int? scrollPercent = null,
+        long? dwellMilliseconds = null,
+        long? engagedMilliseconds = null,
+        bool? isBounceCandidate = null,
+        bool? isExitPage = null,
         bool? browserEventSent = null,
         object? metadata = null)
     {
@@ -58,6 +64,7 @@ public static class UnifiedEventContextBuilder
 
             Url = url,
             Referrer = referrer,
+            ReferrerHost = referrerHost,
             PageKey = pageKey,
             EffectivePageKey = effectivePageKey,
             PageVariant = pageVariant,
@@ -81,6 +88,11 @@ public static class UnifiedEventContextBuilder
             MouseMoveCount = clientContext.MouseMoveCount,
             HumanInteractionCount = clientContext.HumanInteractionCount,
             VisibilityChangeCount = clientContext.VisibilityChangeCount,
+            ScrollPercent = scrollPercent,
+            DwellMilliseconds = dwellMilliseconds,
+            EngagedMilliseconds = engagedMilliseconds,
+            IsBounceCandidate = isBounceCandidate,
+            IsExitPage = isExitPage,
 
             Language = clientContext.Language,
             TimeZone = clientContext.TimeZone,

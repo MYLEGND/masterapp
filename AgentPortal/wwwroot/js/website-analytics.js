@@ -3,6 +3,7 @@
   const initialPreset = document.querySelector('.fa-shell')?.dataset.initialPreset || 'today';
   const initialFrom = document.querySelector('.fa-shell')?.dataset.initialFrom || null;
   const initialTo = document.querySelector('.fa-shell')?.dataset.initialTo || null;
+  const initialQualityMode = document.querySelector('.fa-shell')?.dataset.initialQualityMode || 'real_human';
 
   const viewerTz = (() => {
     try {
@@ -32,7 +33,7 @@
     from: initialFrom,
     to: initialTo,
     pollMs: 45000,
-    qualityMode: 'real_human',
+    qualityMode: initialQualityMode,
     dashboardTrafficType: 'all',
     controllers: {},
     openModal: null,

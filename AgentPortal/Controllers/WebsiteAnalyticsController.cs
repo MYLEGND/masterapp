@@ -67,7 +67,7 @@ namespace AgentPortal.Controllers;
 
     [HttpGet("")]
     [HttpGet("Index")]
-    public async Task<IActionResult> Index([FromQuery] Guid? agentProfileId = null, [FromQuery] bool team = false, [FromQuery] string? preset = null, [FromQuery] DateTime? fromUtc = null, [FromQuery] DateTime? toUtc = null)
+    public async Task<IActionResult> Index([FromQuery] Guid? agentProfileId = null, [FromQuery] bool team = false, [FromQuery] string? preset = null, [FromQuery] DateTime? fromUtc = null, [FromQuery] DateTime? toUtc = null, [FromQuery] TrafficQualityMode? qualityMode = null)
     {
         var viewerTimeZone = GetViewerTimeZone();
         preset = string.IsNullOrWhiteSpace(preset) ? "today" : preset;
@@ -82,6 +82,8 @@ namespace AgentPortal.Controllers;
         }
 
         var scope = await ResolveScopeAsync(agentProfileId, team);
+        var initialQualityMode = await ResolveInitialQualityModeAsync(range, scope, qualityMode);
+        range = CloneRangeWithQualityMode(range, initialQualityMode);
         var summary = await _analytics.GetSummaryAsync(range, scope);
         summary.ScopeLabel = await ResolveScopeLabelAsync(scope, team);
         ViewData["InitialRangePreset"] = range.Preset;
@@ -92,6 +94,7 @@ namespace AgentPortal.Controllers;
         ViewData["InitialRangeTo"] = range.Preset == "custom"
             ? TimeZoneInfo.ConvertTimeFromUtc(range.ToUtc, range.ViewerTimeZone).ToString("yyyy-MM-dd", CultureInfo.InvariantCulture)
             : string.Empty;
+        ViewData["InitialQualityMode"] = ToClientQualityMode(initialQualityMode);
         ViewData["InitialSummaryJson"] = System.Text.Json.JsonSerializer.Serialize(summary);
         ViewData["InitialScopeLabel"] = summary.ScopeLabel;
         ViewData["InitialScopeProfileId"] = scope.ScopeType == ScopeType.Agent
@@ -189,6 +192,57 @@ namespace AgentPortal.Controllers;
 
         // 3. Safe fallback: UTC.
         return TimeZoneInfo.Utc;
+    }
+
+    private async Task<TrafficQualityMode> ResolveInitialQualityModeAsync(
+        TimeRangeRequest range,
+        ScopeContext scope,
+        TrafficQualityMode? requestedQualityMode = null)
+    {
+        if (requestedQualityMode.HasValue)
+            return requestedQualityMode.Value;
+
+        var realHumanRange = CloneRangeWithQualityMode(range, TrafficQualityMode.RealHuman);
+        if (await _analytics.ScopedEvents(realHumanRange, scope).AnyAsync())
+            return TrafficQualityMode.RealHuman;
+
+        var internalRange = CloneRangeWithQualityMode(range, TrafficQualityMode.Internal);
+        if (await _analytics.ScopedEvents(internalRange, scope).AnyAsync())
+            return TrafficQualityMode.Internal;
+
+        var allTrafficRange = CloneRangeWithQualityMode(range, TrafficQualityMode.All);
+        if (await _analytics.ScopedEvents(allTrafficRange, scope).AnyAsync())
+            return TrafficQualityMode.All;
+
+        return TrafficQualityMode.RealHuman;
+    }
+
+    private static TimeRangeRequest CloneRangeWithQualityMode(TimeRangeRequest range, TrafficQualityMode qualityMode)
+    {
+        return new TimeRangeRequest
+        {
+            FromUtc = range.FromUtc,
+            ToUtc = range.ToUtc,
+            Grouping = range.Grouping,
+            Label = range.Label,
+            Preset = range.Preset,
+            ViewerTimeZone = range.ViewerTimeZone,
+            QualityMode = qualityMode
+        };
+    }
+
+    private static string ToClientQualityMode(TrafficQualityMode qualityMode)
+    {
+        return qualityMode switch
+        {
+            TrafficQualityMode.LikelyHuman => "likely_human",
+            TrafficQualityMode.Review => "review",
+            TrafficQualityMode.Suspicious => "suspicious",
+            TrafficQualityMode.LikelyBot => "likely_bot",
+            TrafficQualityMode.Internal => "internal",
+            TrafficQualityMode.All => "all",
+            _ => "real_human"
+        };
     }
 
     [HttpGet("summary")]
@@ -1479,9 +1533,20 @@ namespace AgentPortal.Controllers;
             warnings.Add("Session conversion is based on a low sample size.");
         if (summary.IntentLowSample)
             warnings.Add("Intent conversion is based on a low sample size.");
-        if (string.Equals(summary.EnvironmentLabel, "Environment: Mixed/Legacy", StringComparison.OrdinalIgnoreCase))
-            warnings.Add("Environment filter is Mixed/Legacy; confirm production-only filtering before high-stakes decisions.");
+        if (RequiresEnvironmentCaution(summary.EnvironmentLabel))
+            warnings.Add("Snapshot includes non-production, localhost, or mixed analytics data; confirm production-only filtering before high-stakes decisions.");
         return warnings;
+    }
+
+    private static bool RequiresEnvironmentCaution(string? environmentLabel)
+    {
+        if (string.IsNullOrWhiteSpace(environmentLabel))
+            return false;
+
+        return environmentLabel.Contains("Mixed", StringComparison.OrdinalIgnoreCase) ||
+               environmentLabel.Contains("Development", StringComparison.OrdinalIgnoreCase) ||
+               environmentLabel.Contains("Internal", StringComparison.OrdinalIgnoreCase) ||
+               environmentLabel.Contains("localhost", StringComparison.OrdinalIgnoreCase);
     }
 
     private static string BuildAiReviewSnapshotFailureText(string generatedAtLocal, string rangeLabel, IReadOnlyCollection<string> warnings)

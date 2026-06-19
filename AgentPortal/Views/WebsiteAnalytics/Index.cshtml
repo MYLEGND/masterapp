@@ -4,6 +4,7 @@
     var initialLabel = ViewData["InitialRangeLabel"] as string ?? "Today";
     var initialRangeFrom = ViewData["InitialRangeFrom"] as string ?? string.Empty;
     var initialRangeTo = ViewData["InitialRangeTo"] as string ?? string.Empty;
+    var initialQualityMode = ViewData["InitialQualityMode"] as string ?? "real_human";
     var initialSummaryJson = ViewData["InitialSummaryJson"] as string ?? "{}";
     var initialScopeLabelRaw = ViewData["InitialScopeLabel"] as string ?? "Global";
     var initialScopeLabel = initialScopeLabelRaw.StartsWith("Agent:", StringComparison.OrdinalIgnoreCase)
@@ -23,7 +24,7 @@
 
 <link rel="stylesheet" href="~/css/website-analytics.css" asp-append-version="true" />
 
-<div class="container mt-4 mb-5 fa-shell" data-initial-preset="@initialPreset" data-initial-label="@initialLabel" data-initial-from="@initialRangeFrom" data-initial-to="@initialRangeTo" data-initial-summary='@initialSummaryJson' data-initial-scope-label="@initialScopeLabel" data-initial-scope-profile-id="@initialScopeProfileId" data-caller-profile-id="@callerProfileId" data-agent-options='@agentOptionsJson' data-personal-link="@personalLink" data-can-delete-leads="@(canDeleteAnalyticsLeads ? "true" : "false")" data-landing-routes='@landingRoutesJson' data-landing-routes-base-url="@landingRoutesBaseUrl">
+<div class="container mt-4 mb-5 fa-shell" data-initial-preset="@initialPreset" data-initial-label="@initialLabel" data-initial-from="@initialRangeFrom" data-initial-to="@initialRangeTo" data-initial-quality-mode="@initialQualityMode" data-initial-summary='@initialSummaryJson' data-initial-scope-label="@initialScopeLabel" data-initial-scope-profile-id="@initialScopeProfileId" data-caller-profile-id="@callerProfileId" data-agent-options='@agentOptionsJson' data-personal-link="@personalLink" data-can-delete-leads="@(canDeleteAnalyticsLeads ? "true" : "false")" data-landing-routes='@landingRoutesJson' data-landing-routes-base-url="@landingRoutesBaseUrl">
 <div id="wa-methodology-note" class="wa-methodology-note visually-hidden" aria-hidden="true">
     Metrics are session-aware and filtered by selected range, scope, timezone, and traffic type where supported.
 </div>
@@ -235,13 +236,13 @@
             <div class="wa-quality-filter">
               <label for="traffic-quality-mode" class="wa-quality-label">Traffic Quality</label>
               <select id="traffic-quality-mode" class="wa-quality-select">
-                <option value="real_human" selected>Real Human Traffic</option>
-                <option value="likely_human">Likely Human</option>
-                <option value="review">Review Needed</option>
-                <option value="suspicious">Suspicious Activity</option>
-                <option value="likely_bot">Likely Bots / Automation</option>
-                <option value="internal">Internal / QA</option>
-                <option value="all">All Traffic</option>
+                <option value="real_human" selected="@(initialQualityMode == "real_human" ? "selected" : null)">Real Human Traffic</option>
+                <option value="likely_human" selected="@(initialQualityMode == "likely_human" ? "selected" : null)">Likely Human</option>
+                <option value="review" selected="@(initialQualityMode == "review" ? "selected" : null)">Review Needed</option>
+                <option value="suspicious" selected="@(initialQualityMode == "suspicious" ? "selected" : null)">Suspicious Activity</option>
+                <option value="likely_bot" selected="@(initialQualityMode == "likely_bot" ? "selected" : null)">Likely Bots / Automation</option>
+                <option value="internal" selected="@(initialQualityMode == "internal" ? "selected" : null)">Internal / QA</option>
+                <option value="all" selected="@(initialQualityMode == "all" ? "selected" : null)">All Traffic</option>
               </select>
             </div>
 

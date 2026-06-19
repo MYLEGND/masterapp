@@ -10,6 +10,7 @@ using AgentPortal.Services.Analytics;
 using AgentPortal.Services.Tracking;
 using Domain.Entities;
 using Infrastructure.Data;
+using Microsoft.AspNetCore.DataProtection;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Configuration;
@@ -60,6 +61,12 @@ public class WebsiteAnalyticsScopeTests
 
         var accessor = new HttpContextAccessor { HttpContext = http };
         var effective = new EffectiveAgentContext(accessor, tracking.Object, NullLogger<EffectiveAgentContext>.Instance);
+        var protector = new MetaCapiCredentialProtector(DataProtectionProvider.Create("AgentPortal.Tests"));
+        var aiDataBuilder = new WebsiteAnalyticsAiDataBuilder(
+            analytics.Object,
+            Mock.Of<IMetaAdsService>(),
+            Mock.Of<IMetaSignalAnalyticsService>(),
+            NullLogger<WebsiteAnalyticsAiDataBuilder>.Instance);
 
         var controller = new WebsiteAnalyticsController(
             analytics.Object,
@@ -69,14 +76,16 @@ public class WebsiteAnalyticsScopeTests
             tracking.Object,
             Mock.Of<IMetaSignalAnalyticsService>(),
             Mock.Of<ILandingRouteDiscoveryService>(),
-            Mock.Of<WebsiteAnalyticsAiDataBuilder>(),
+            aiDataBuilder,
             Mock.Of<IVisitorConcentrationService>(),
             Mock.Of<IKpiDetailBreakdownService>(),
             Mock.Of<IVisitorTrustScoringService>(),
+            Mock.Of<IAnalyticsIncidentQueryService>(),
             NullLogger<WebsiteAnalyticsController>.Instance,
             db,
             config,
-            effective)
+            effective,
+            protector)
         {
             ControllerContext = new ControllerContext { HttpContext = http }
         };

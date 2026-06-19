@@ -460,7 +460,7 @@ public sealed class MetaSignalAnalyticsBridge : BackgroundService
         return await query.AnyAsync(cancellationToken);
     }
 
-    private static bool TryResolveMapping(AnalyticsEvent analyticsEvent, out BridgeMapping mapping)
+    private bool TryResolveMapping(AnalyticsEvent analyticsEvent, out BridgeMapping mapping)
     {
         mapping = null!;
         var normalized = Normalize(analyticsEvent.EventType);
@@ -513,6 +513,11 @@ public sealed class MetaSignalAnalyticsBridge : BackgroundService
             }
         }
 
+        if (MetaSignalAnalyticsAliasCatalog.TryGet(normalized, out var aliasDefinition))
+        {
+            return TryResolveAnalyticsAliasMapping(analyticsEvent, aliasDefinition, out mapping);
+        }
+
         if (MetaSignalEventCatalog.TryGet(normalized, out var metaSignalDefinition))
         {
             mapping = BuildMetaSignalSourceMapping(analyticsEvent, metaSignalDefinition);
@@ -530,6 +535,7 @@ public sealed class MetaSignalAnalyticsBridge : BackgroundService
 
         return leadAndViewContentSources
             .Concat(ExplicitSourceEventTypes)
+            .Concat(MetaSignalAnalyticsAliasCatalog.AnalyticsEventNames)
             .Concat(MetaSignalEventCatalog.Definitions.Select(x => x.Name))
             .Distinct(StringComparer.OrdinalIgnoreCase)
             .ToArray();
@@ -569,40 +575,142 @@ public sealed class MetaSignalAnalyticsBridge : BackgroundService
         return bool.TryParse(raw, out var parsed) ? parsed : null;
     }
 
-    private static BridgeMapping BuildMetaSignalSourceMapping(AnalyticsEvent analyticsEvent, MetaSignalEventDefinition definition)
+    private bool TryResolveAnalyticsAliasMapping(
+        AnalyticsEvent analyticsEvent,
+        MetaSignalAnalyticsAliasDefinition aliasDefinition,
+        out BridgeMapping mapping)
+    {
+        mapping = null!;
+        if (!MetaSignalAnalyticsAliasCatalog.IsBridgeEligibleAnalyticsSource(
+                aliasDefinition.AnalyticsEventName,
+                analyticsEvent.ScrollPercent,
+                analyticsEvent.DwellMilliseconds,
+                analyticsEvent.EngagedMilliseconds,
+                analyticsEvent.IsBounceCandidate))
+        {
+            return false;
+        }
+
+        if (!MetaSignalEventCatalog.TryGet(aliasDefinition.MetaSignalEventName, out var definition))
+            return false;
+
+        mapping = BuildMetaSignalSourceMapping(analyticsEvent, definition);
+        return true;
+    }
+
+    private BridgeMapping BuildMetaSignalSourceMapping(AnalyticsEvent analyticsEvent, MetaSignalEventDefinition definition)
     {
         var metadataJson = analyticsEvent.MetadataJson;
+        var defaults = ResolveDefaultBridgeMapping(definition);
         var stepName = ReadAnalyticsMetadataString(metadataJson, "StepName")
             ?? ReadAnalyticsMetadataString(metadataJson, "stepName")
-            ?? ResolveFallbackStepName(definition.Name);
+            ?? defaults.StepName;
         var scoreTier = ReadAnalyticsMetadataString(metadataJson, "ScoreTier")
             ?? ReadAnalyticsMetadataString(metadataJson, "scoreTier")
-            ?? definition.Name;
+            ?? defaults.ScoreTier;
 
         return new BridgeMapping(
             MetaEventName: definition.Name,
             EventCategory: ReadAnalyticsMetadataString(metadataJson, "EventCategory")
                 ?? ReadAnalyticsMetadataString(metadataJson, "eventCategory")
-                ?? definition.Category,
+                ?? defaults.EventCategory,
             FunnelStep: ReadAnalyticsMetadataInt32(metadataJson, "StepNumber")
                 ?? ReadAnalyticsMetadataInt32(metadataJson, "stepNumber")
-                ?? ResolveFallbackFunnelStep(definition.Name),
+                ?? defaults.FunnelStep,
             StepName: stepName,
             IntentScore: ReadAnalyticsMetadataInt32(metadataJson, "IntentScore")
                 ?? ReadAnalyticsMetadataInt32(metadataJson, "intentScore")
-                ?? 0,
+                ?? defaults.IntentScore,
             EngagementScore: ReadAnalyticsMetadataInt32(metadataJson, "EngagementScore")
                 ?? ReadAnalyticsMetadataInt32(metadataJson, "engagementScore")
-                ?? 0,
+                ?? defaults.EngagementScore,
             QualificationScore: ReadAnalyticsMetadataInt32(metadataJson, "QualificationScore")
                 ?? ReadAnalyticsMetadataInt32(metadataJson, "qualificationScore")
-                ?? 0,
+                ?? defaults.QualificationScore,
             FrictionScore: ReadAnalyticsMetadataInt32(metadataJson, "FrictionScore")
                 ?? ReadAnalyticsMetadataInt32(metadataJson, "frictionScore")
-                ?? 0,
+                ?? defaults.FrictionScore,
             ScoreTier: scoreTier,
             TotalSignalScore: ReadAnalyticsMetadataInt32(metadataJson, "TotalSignalScore")
                 ?? ReadAnalyticsMetadataInt32(metadataJson, "totalSignalScore"));
+    }
+
+    private BridgeMapping ResolveDefaultBridgeMapping(MetaSignalEventDefinition definition)
+    {
+        var weights = _options.Value.Weights ?? new MetaSignalScoreWeights();
+        return definition.Name switch
+        {
+            "SessionEngaged5s" => new BridgeMapping(
+                MetaEventName: definition.Name,
+                EventCategory: definition.Category,
+                FunnelStep: 1,
+                StepName: "session_engaged_5s",
+                IntentScore: 0,
+                EngagementScore: weights.Stay5Seconds,
+                QualificationScore: 0,
+                FrictionScore: 0,
+                ScoreTier: definition.Name),
+            "SessionEngaged15s" => new BridgeMapping(
+                MetaEventName: definition.Name,
+                EventCategory: definition.Category,
+                FunnelStep: 1,
+                StepName: "session_engaged_15s",
+                IntentScore: 0,
+                EngagementScore: weights.Stay15Seconds,
+                QualificationScore: 0,
+                FrictionScore: 0,
+                ScoreTier: definition.Name),
+            "MeaningfulScroll" => new BridgeMapping(
+                MetaEventName: definition.Name,
+                EventCategory: definition.Category,
+                FunnelStep: 1,
+                StepName: "meaningful_scroll",
+                IntentScore: 0,
+                EngagementScore: weights.MeaningfulScroll,
+                QualificationScore: 0,
+                FrictionScore: 0,
+                ScoreTier: definition.Name),
+            "RapidBounce" => new BridgeMapping(
+                MetaEventName: definition.Name,
+                EventCategory: definition.Category,
+                FunnelStep: 1,
+                StepName: "rapid_bounce",
+                IntentScore: 0,
+                EngagementScore: 0,
+                QualificationScore: 0,
+                FrictionScore: weights.RapidBounce,
+                ScoreTier: definition.Name),
+            "DeadClick" => new BridgeMapping(
+                MetaEventName: definition.Name,
+                EventCategory: definition.Category,
+                FunnelStep: 1,
+                StepName: "dead_click",
+                IntentScore: 0,
+                EngagementScore: 0,
+                QualificationScore: 0,
+                FrictionScore: weights.DeadClick,
+                ScoreTier: definition.Name),
+            "RageClick" => new BridgeMapping(
+                MetaEventName: definition.Name,
+                EventCategory: definition.Category,
+                FunnelStep: 1,
+                StepName: "rage_click",
+                IntentScore: 0,
+                EngagementScore: 0,
+                QualificationScore: 0,
+                FrictionScore: weights.RageClick,
+                ScoreTier: definition.Name),
+            _ => new BridgeMapping(
+                MetaEventName: definition.Name,
+                EventCategory: definition.Category,
+                FunnelStep: ResolveFallbackFunnelStep(definition.Name),
+                StepName: ResolveFallbackStepName(definition.Name),
+                IntentScore: 0,
+                EngagementScore: 0,
+                QualificationScore: 0,
+                FrictionScore: 0,
+                ScoreTier: definition.Name)
+        };
     }
 
     private static int ResolveFallbackFunnelStep(string eventName) =>
