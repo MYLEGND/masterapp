@@ -46,6 +46,16 @@ public sealed class AnalyticsQueryService : IAnalyticsQueryService
         return ApplyQualityFilterEvents(query, range.QualityMode);
     }
 
+    private IQueryable<AnalyticsEvent> BaseEventsWithoutQualityFilter(TimeRangeRequest range, ScopeContext scope, Guid[]? scopedAgentIds = null) =>
+        _db.AnalyticsEvents.AsNoTracking()
+            .Where(e => e.EventUtc >= range.FromUtc && e.EventUtc <= range.ToUtc)
+            .Where(ScopePredicateEvents(scope, scopedAgentIds));
+
+    private IQueryable<AnalyticsEvent> EventsInRangeWithoutQualityFilter(DateTime from, DateTime to, ScopeContext scope, Guid[]? scopedAgentIds = null) =>
+        _db.AnalyticsEvents.AsNoTracking()
+            .Where(e => e.EventUtc >= from && e.EventUtc <= to)
+            .Where(ScopePredicateEvents(scope, scopedAgentIds));
+
 
     public IQueryable<AnalyticsEvent> ScopedEvents(
         TimeRangeRequest range,
@@ -229,6 +239,113 @@ public sealed class AnalyticsQueryService : IAnalyticsQueryService
             ((e.SessionId == null || e.SessionId == string.Empty) &&
              (e.VisitorId == null || e.VisitorId == string.Empty) &&
              bucket.EventIds.Contains(e.EventId)));
+
+
+    private sealed record InMemoryEventBucketMembership(
+        HashSet<string> SessionIds,
+        HashSet<string> VisitorIds,
+        HashSet<Guid> EventIds);
+
+    private static List<AnalyticsEvent> ApplyQualityFilterEventsInMemory(
+        List<AnalyticsEvent> events,
+        TrafficQualityMode mode)
+    {
+        if (mode == TrafficQualityMode.AllTraffic || events.Count == 0)
+            return events;
+
+        var internalQaBucket = BuildEventBucketMembershipInMemory(
+            events.Where(QualityPredicateEvents(TrafficQualityMode.InternalQa).Compile()));
+        if (mode == TrafficQualityMode.InternalQa)
+            return ApplyEventBucketMembershipInMemory(events, internalQaBucket);
+
+        var botCandidates = ExcludeEventBucketMembershipInMemory(
+            events.Where(QualityPredicateEvents(TrafficQualityMode.LikelyBotsAutomation).Compile()),
+            internalQaBucket);
+        var botBucket = BuildEventBucketMembershipInMemory(botCandidates);
+        if (mode == TrafficQualityMode.LikelyBotsAutomation)
+            return ApplyEventBucketMembershipInMemory(events, botBucket);
+
+        var suspiciousCandidates = ExcludeEventBucketMembershipInMemory(
+            events.Where(QualityPredicateEvents(TrafficQualityMode.SuspiciousActivity).Compile()),
+            internalQaBucket,
+            botBucket);
+        var suspiciousBucket = BuildEventBucketMembershipInMemory(suspiciousCandidates);
+        if (mode == TrafficQualityMode.SuspiciousActivity)
+            return ApplyEventBucketMembershipInMemory(events, suspiciousBucket);
+
+        var realHumanCandidates = ExcludeEventBucketMembershipInMemory(
+            events.Where(QualityPredicateEvents(TrafficQualityMode.RealHumanTraffic).Compile()),
+            internalQaBucket,
+            botBucket,
+            suspiciousBucket);
+        var realHumanBucket = BuildEventBucketMembershipInMemory(realHumanCandidates);
+        if (mode == TrafficQualityMode.RealHumanTraffic)
+            return ApplyEventBucketMembershipInMemory(events, realHumanBucket);
+
+        var likelyHumanCandidates = ExcludeEventBucketMembershipInMemory(
+            events.Where(QualityPredicateEvents(TrafficQualityMode.LikelyHuman).Compile()),
+            internalQaBucket,
+            botBucket,
+            suspiciousBucket,
+            realHumanBucket);
+        var likelyHumanBucket = BuildEventBucketMembershipInMemory(likelyHumanCandidates);
+        if (mode == TrafficQualityMode.LikelyHuman)
+            return ApplyEventBucketMembershipInMemory(events, likelyHumanBucket);
+
+        var reviewedNeededCandidates = ExcludeEventBucketMembershipInMemory(
+            events,
+            internalQaBucket,
+            botBucket,
+            suspiciousBucket,
+            realHumanBucket,
+            likelyHumanBucket);
+
+        return ApplyEventBucketMembershipInMemory(
+            events,
+            BuildEventBucketMembershipInMemory(reviewedNeededCandidates));
+    }
+
+    private static InMemoryEventBucketMembership BuildEventBucketMembershipInMemory(IEnumerable<AnalyticsEvent> events)
+    {
+        var sessionIds = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var visitorIds = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var eventIds = new HashSet<Guid>();
+
+        foreach (var e in events)
+        {
+            if (!string.IsNullOrWhiteSpace(e.SessionId))
+                sessionIds.Add(e.SessionId!);
+            else if (!string.IsNullOrWhiteSpace(e.VisitorId))
+                visitorIds.Add(e.VisitorId!);
+            else
+                eventIds.Add(e.EventId);
+        }
+
+        return new InMemoryEventBucketMembership(sessionIds, visitorIds, eventIds);
+    }
+
+    private static IEnumerable<AnalyticsEvent> ExcludeEventBucketMembershipInMemory(
+        IEnumerable<AnalyticsEvent> events,
+        params InMemoryEventBucketMembership[] excludedBuckets)
+    {
+        return events.Where(e => !excludedBuckets.Any(bucket => IsEventInBucket(e, bucket)));
+    }
+
+    private static List<AnalyticsEvent> ApplyEventBucketMembershipInMemory(
+        IEnumerable<AnalyticsEvent> events,
+        InMemoryEventBucketMembership bucket)
+        => events.Where(e => IsEventInBucket(e, bucket)).ToList();
+
+    private static bool IsEventInBucket(AnalyticsEvent e, InMemoryEventBucketMembership bucket)
+    {
+        if (!string.IsNullOrWhiteSpace(e.SessionId))
+            return bucket.SessionIds.Contains(e.SessionId!);
+
+        if (!string.IsNullOrWhiteSpace(e.VisitorId))
+            return bucket.VisitorIds.Contains(e.VisitorId!);
+
+        return bucket.EventIds.Contains(e.EventId);
+    }
 
     // SCOPE SAFETY RULE:
     // Global scope must NEVER be passed directly into analytics queries.
@@ -1925,7 +2042,8 @@ public sealed class AnalyticsQueryService : IAnalyticsQueryService
     public async Task<SummaryKpiDto> GetSummaryAsync(TimeRangeRequest range, ScopeContext scope, TrafficType trafficType = TrafficType.All)
     {
         var scopedAgentIds = await ResolveScopedAgentIdsAsync(scope);
-        var allEvents = await BaseEvents(range, scope, scopedAgentIds).ToListAsync();
+        var rawEvents = await BaseEventsWithoutQualityFilter(range, scope, scopedAgentIds).ToListAsync();
+        var allEvents = ApplyQualityFilterEventsInMemory(rawEvents, range.QualityMode);
         var allLeads  = await BaseLeads(range, scope, scopedAgentIds).ToListAsync();
 
         List<AnalyticsEvent> events;
@@ -1946,7 +2064,8 @@ public sealed class AnalyticsQueryService : IAnalyticsQueryService
         var span = range.ToUtc - range.FromUtc;
         var prevFrom = range.FromUtc - span;
         var prevTo   = range.ToUtc - span;
-        var prevAllEvents = await EventsInRange(prevFrom, prevTo, scope, scopedAgentIds, range.QualityMode).ToListAsync();
+        var rawPrevEvents = await EventsInRangeWithoutQualityFilter(prevFrom, prevTo, scope, scopedAgentIds).ToListAsync();
+        var prevAllEvents = ApplyQualityFilterEventsInMemory(rawPrevEvents, range.QualityMode);
         var prevAllLeads  = await LeadsInRange(prevFrom, prevTo, scope, scopedAgentIds, range.QualityMode).ToListAsync();
 
         List<AnalyticsEvent> prevEvents;
