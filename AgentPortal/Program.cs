@@ -168,8 +168,8 @@ var signalRBuilder = builder.Services.AddSignalR(o =>
     o.MaximumReceiveMessageSize = 64 * 1024; // 64 KB per message — guard against oversized payloads
 });
 if (!string.IsNullOrWhiteSpace(redisConn))
-    signalRBuilder.AddStackExchangeRedis(redisConn);
-
+    // DISABLED: SignalR Redis backplane (LeadBridge PUBLISH timeout fix)
+    // signalRBuilder.AddStackExchangeRedis(redisConn);
 // Distributed cache: Redis when available; in-memory fallback for local dev
 if (!string.IsNullOrWhiteSpace(redisConn))
     builder.Services.AddStackExchangeRedisCache(o => o.Configuration = redisConn);
