@@ -10,6 +10,7 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.WebUtilities;
 using Microsoft.EntityFrameworkCore;
+using Shared.Analytics;
 
 namespace AgentPortal.Controllers.API;
 
@@ -474,22 +475,31 @@ public sealed class GraphCalendarWebhookController : ControllerBase
 
         var metaLeadId = intakeLink?.WebsiteLeadPublicId ?? workstationLeadGuid;
 
-        var metadataJson = JsonSerializer.Serialize(new
-        {
-            appointmentId = appointment.Id,
-            appointment.WorkstationLeadId,
-            WebsiteLeadPublicId = intakeLink?.WebsiteLeadPublicId,
-            appointment.OwnerAgentUserId,
-            appointment.CalendarEventId,
-            appointment.CalendarEventWebLink,
-            appointment.ScheduledStartUtc,
-            appointment.ScheduledEndUtc,
-            appointment.BookingSource,
-            appointment.ConfirmationSource,
-            appointment.LastSyncStatus,
-            source = "graph_calendar_webhook",
-            metaServerStatus = "pending"
-        }, JsonOptions);
+        var metadataJson = MetaSignalSingleTruthPolicy.BuildMetadataJson(
+            eventName: "AppointmentBooked",
+            leadId: metaLeadId,
+            sessionId: intakeLink?.SessionId,
+            payload: new
+            {
+                appointmentId = appointment.Id,
+                appointment.WorkstationLeadId,
+                WebsiteLeadPublicId = intakeLink?.WebsiteLeadPublicId,
+                appointment.OwnerAgentUserId,
+                appointment.CalendarEventId,
+                appointment.CalendarEventWebLink,
+                appointment.ScheduledStartUtc,
+                appointment.ScheduledEndUtc,
+                appointment.BookingSource,
+                appointment.ConfirmationSource,
+                appointment.LastSyncStatus,
+                source = "graph_calendar_webhook",
+                metaServerStatus = "pending"
+            },
+            isBrowserSignal: false,
+            isServerAuthority: true,
+            metaServerAuthorityEligible: true,
+            metaSingleTruthDispatchEligible: true,
+            metaPipelineOrigin: "graph_calendar_webhook");
 
         _db.MetaSignalEvents.Add(new MetaSignalEvent
         {

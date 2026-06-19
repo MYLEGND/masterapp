@@ -1,8 +1,10 @@
 using System.Text.Json;
+using System.Text.Json.Nodes;
 using Domain.Entities;
 using Domain.Enums;
 using Infrastructure.Data;
 using Microsoft.EntityFrameworkCore;
+using Shared.Analytics;
 
 namespace AgentPortal.Services;
 
@@ -247,6 +249,18 @@ public sealed class MetaSignalCrmOutcomeService
             Host = "AgentPortal",
             AgentTrackingProfileId = agentTrackingProfileId,
             AgentSlug = agentSlug,
-            MetadataJson = JsonSerializer.Serialize(metadata)
+            MetadataJson = BuildMetadataJson(eventName, websiteLeadId, metadata)
         };
+
+    private static string BuildMetadataJson(string eventName, Guid? websiteLeadId, object metadata)
+        => MetaSignalSingleTruthPolicy.BuildMetadataJson(
+            eventName,
+            websiteLeadId,
+            sessionId: null,
+            payload: metadata,
+            isBrowserSignal: false,
+            isServerAuthority: true,
+            metaServerAuthorityEligible: true,
+            metaSingleTruthDispatchEligible: true,
+            metaPipelineOrigin: "crm_outcome_service");
 }

@@ -324,6 +324,9 @@ public sealed class MetaSendAuthority : IMetaSendAuthority
     {
         var roundedMinute = RoundToMinute(eventUtc).ToString("yyyyMMddHHmm");
 
+        if (!string.IsNullOrWhiteSpace(explicitDedupeKey))
+            return explicitDedupeKey;
+
         if (leadId.HasValue && leadId.Value != Guid.Empty)
             return $"{eventType}:{leadId.Value:N}:{roundedMinute}";
 
@@ -332,9 +335,6 @@ public sealed class MetaSendAuthority : IMetaSendAuthority
 
         if (!string.IsNullOrWhiteSpace(visitorId))
             return $"{eventType}:{visitorId}:{roundedMinute}";
-
-        if (!string.IsNullOrWhiteSpace(explicitDedupeKey))
-            return $"{eventType}:{explicitDedupeKey}:{roundedMinute}";
 
         if (!string.IsNullOrWhiteSpace(eventId))
             return $"{eventType}:{eventId}:{roundedMinute}";

@@ -52,21 +52,41 @@ public class MetaSignalContractTests
     }
 
     [Fact]
-    public void MetaSignalServerWrites_OnlyCatalogedSignals()
+    public void MetaSignalFrontend_ContainsLearningEnrichmentFields()
     {
-        var file = Path.Combine(GetRepoRoot(), "Protect-Website", "Services", "MetaSignal", "MetaSignalIntelligenceService.cs");
+        var file = Path.Combine(GetRepoRoot(), "Protect-Website", "wwwroot", "js", "meta-signal-intelligence.js");
         var content = File.ReadAllText(file);
 
-        var emittedSignals = Regex.Matches(content, @"EventName\s*=\s*""([A-Za-z][A-Za-z0-9]+)""")
-            .Select(match => match.Groups[1].Value)
-            .Distinct(StringComparer.OrdinalIgnoreCase)
+        Assert.Contains("engagementIntensityScore", content, StringComparison.Ordinal);
+        Assert.Contains("sessionConfidenceScore", content, StringComparison.Ordinal);
+        Assert.Contains("funnelDepthIndex", content, StringComparison.Ordinal);
+        Assert.Contains("trafficQualityHint", content, StringComparison.Ordinal);
+        Assert.Contains("eventKey", content, StringComparison.Ordinal);
+        Assert.Contains("isBrowserSignal", content, StringComparison.Ordinal);
+        Assert.Contains("isServerAuthority", content, StringComparison.Ordinal);
+        Assert.Contains("serverAuthorityWinsConflictResolution", content, StringComparison.Ordinal);
+        Assert.Contains("browserPayloadCanOverrideServer", content, StringComparison.Ordinal);
+        Assert.Contains("metaSignalBoost", content, StringComparison.Ordinal);
+        Assert.Contains("sessionFingerprint", content, StringComparison.Ordinal);
+        Assert.Contains("midIntentCandidate", content, StringComparison.Ordinal);
+        Assert.Contains("highIntentCandidate", content, StringComparison.Ordinal);
+        Assert.Contains("ctaIntentBoost", content, StringComparison.Ordinal);
+        Assert.Contains("conversionIntentObserved", content, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void MetaSignalServerAuthorityCatalog_StaysCatalogAligned()
+    {
+        var emittedSignals = MetaSignalEventCatalog.ServerAuthorityEventNames
             .OrderBy(x => x, StringComparer.OrdinalIgnoreCase)
             .ToList();
 
         Assert.NotEmpty(emittedSignals);
         foreach (var signal in emittedSignals)
         {
-            Assert.True(MetaSignalEventCatalog.TryGet(signal, out _), $"Server Meta signal '{signal}' is not cataloged.");
+            Assert.True(MetaSignalEventCatalog.TryGet(signal, out var definition), $"Server Meta signal '{signal}' is not cataloged.");
+            Assert.True(definition.AllowServerForward, $"Server Meta signal '{signal}' must remain server-forwardable.");
+            Assert.True(MetaSignalEventCatalog.IsServerAuthorityEvent(signal), $"Server Meta signal '{signal}' must remain authority-classified.");
         }
     }
 

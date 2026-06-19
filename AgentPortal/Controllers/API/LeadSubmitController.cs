@@ -10,6 +10,7 @@ using Microsoft.AspNetCore.Cors;
 using Microsoft.EntityFrameworkCore;
 using AgentPortal.Services;
 using Microsoft.AspNetCore.RateLimiting;
+using Shared.Analytics;
 
 namespace AgentPortal.Controllers.Api;
 
@@ -211,11 +212,20 @@ public class LeadSubmitController : ControllerBase
                 Host       = lead.Host,
                 EventUtc   = now,
                 ReceivedUtc= now,
-                MetadataJson = JsonSerializer.Serialize(new
-                {
-                    LeadId        = lead.LeadId,
-                    CorrelationId = correlationId
-                })
+                MetadataJson = MetaSignalSingleTruthPolicy.BuildMetadataJson(
+                    eventName: "website_lead_submitted",
+                    leadId: lead.LeadId,
+                    sessionId: lead.SessionId,
+                    payload: new
+                    {
+                        LeadId = lead.LeadId,
+                        CorrelationId = correlationId
+                    },
+                    isBrowserSignal: false,
+                    isServerAuthority: false,
+                    metaServerAuthorityEligible: true,
+                    metaSingleTruthDispatchEligible: false,
+                    metaPipelineOrigin: "lead_submit_controller")
             };
             _db.AnalyticsEvents.Add(evt);
             await _db.SaveChangesAsync();

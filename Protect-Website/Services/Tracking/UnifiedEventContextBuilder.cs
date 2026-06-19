@@ -1,5 +1,6 @@
 using Microsoft.AspNetCore.Http;
 using ProtectWebsite.Services.Meta;
+using Shared.Analytics;
 
 namespace ProtectWebsite.Services.Tracking;
 
@@ -44,6 +45,9 @@ public static class UnifiedEventContextBuilder
         bool? isBounceCandidate = null,
         bool? isExitPage = null,
         bool? browserEventSent = null,
+        bool? isBrowserSignal = null,
+        bool? isServerAuthority = null,
+        bool? metaServerAuthorityEligible = null,
         object? metadata = null)
     {
         var clientContext = httpContext != null
@@ -51,6 +55,12 @@ public static class UnifiedEventContextBuilder
             : new ClientContextResolution();
 
         var request = httpContext?.Request;
+        var normalizedEventName = string.IsNullOrWhiteSpace(eventName) ? null : eventName.Trim();
+        var resolvedIsBrowserSignal = isBrowserSignal == true;
+        var resolvedMetaServerAuthorityEligible = metaServerAuthorityEligible ??
+            (!resolvedIsBrowserSignal &&
+             AnalyticsEventCatalog.IsServerAllowed(normalizedEventName) &&
+             !AnalyticsEventCatalog.IsBrowserAllowed(normalizedEventName));
 
         return new UnifiedEventContext
         {
@@ -121,6 +131,9 @@ public static class UnifiedEventContextBuilder
             StepName = stepName,
 
             BrowserEventSent = browserEventSent,
+            IsBrowserSignal = resolvedIsBrowserSignal,
+            IsServerAuthority = isServerAuthority == true,
+            MetaServerAuthorityEligible = resolvedMetaServerAuthorityEligible,
             Metadata = metadata
         };
     }

@@ -199,6 +199,9 @@ public sealed class MetaSignalAnalyticsBridge : BackgroundService
         if (!TryResolveMapping(analyticsEvent, out var mapping))
             return null;
 
+        if (!MetaSignalSingleTruthPolicy.CanBridgeToServerAuthority(mapping.MetaEventName, analyticsEvent.MetadataJson))
+            return null;
+
         var eventUtc = analyticsEvent.EventUtc == default ? analyticsEvent.ReceivedUtc : analyticsEvent.EventUtc;
         var pageVariant = ReadAnalyticsMetadataString(analyticsEvent.MetadataJson, "PageVariant")
             ?? ReadAnalyticsMetadataString(analyticsEvent.MetadataJson, "pageVariant");
@@ -500,7 +503,7 @@ public sealed class MetaSignalAnalyticsBridge : BackgroundService
 
         if (AnalyticsEventCatalog.TryGet(normalized, out var definition))
         {
-            if (definition.CountsAsConfirmedLead)
+            if (definition.CountsAsConfirmedLead && definition.AllowServer)
             {
                 mapping = LeadMapping;
                 return true;
@@ -530,7 +533,7 @@ public sealed class MetaSignalAnalyticsBridge : BackgroundService
     private static string[] BuildSourceEventTypes()
     {
         var leadAndViewContentSources = AnalyticsEventCatalog.Definitions
-            .Where(x => x.CountsAsConfirmedLead || (x.EligibleForMetaSignal && x.CountsAsLandingView))
+            .Where(x => (x.CountsAsConfirmedLead && x.AllowServer) || (x.EligibleForMetaSignal && x.CountsAsLandingView))
             .Select(x => x.Name);
 
         return leadAndViewContentSources

@@ -1,4 +1,5 @@
 using Domain.Entities;
+using Shared.Analytics;
 
 namespace ProtectWebsite.Services.Tracking;
 
@@ -71,7 +72,15 @@ public static class UnifiedEventMapper
             EventUtc = ctx.EventUtc ?? DateTime.UtcNow,
             ReceivedUtc = DateTime.UtcNow,
 
-            MetadataJson = ctx.Metadata == null ? null : System.Text.Json.JsonSerializer.Serialize(ctx.Metadata)
+            MetadataJson = MetaSignalSingleTruthPolicy.BuildMetadataJson(
+                ctx.EventName,
+                leadId: null,
+                ctx.SessionId,
+                ctx.Metadata,
+                isBrowserSignal: ctx.IsBrowserSignal == true,
+                isServerAuthority: ctx.IsServerAuthority == true,
+                metaServerAuthorityEligible: ctx.MetaServerAuthorityEligible == true,
+                metaSingleTruthDispatchEligible: false)
         };
     }
 

@@ -2,6 +2,7 @@ using System.Globalization;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using Domain.Entities;
+using Shared.Analytics;
 
 namespace ProtectWebsite.Services.MetaSignal;
 
@@ -22,6 +23,14 @@ internal static class MetaSignalAnalyticsBridgeMetadata
         string? upstreamMetaServerStatus = null,
         string? upstreamMetaServerNote = null)
     {
+        var isServerAuthority = MetaSignalEventCatalog.IsServerAuthorityEvent(mappedEventName);
+        var isBrowserSignal = MetaSignalEventCatalog.IsBrowserSignalEvent(mappedEventName);
+        var eventKey = MetaSignalEventCatalog.BuildEventKey(mappedEventName, resolvedLeadId, source.SessionId);
+        var metaServerAuthorityEligible =
+            isServerAuthority &&
+            MetaSignalSingleTruthPolicy.CanBridgeToServerAuthority(mappedEventName, source.MetadataJson);
+        var metaSingleTruthDispatchEligible = isServerAuthority && metaServerAuthorityEligible;
+
         var root = new JsonObject
         {
             ["bridgeSource"] = BridgeSource,
@@ -35,6 +44,17 @@ internal static class MetaSignalAnalyticsBridgeMetadata
             ["resolvedLeadId"] = resolvedLeadId?.ToString("D"),
             ["resolvedTrafficType"] = trafficType,
             ["metaDeduplicationKey"] = deduplicationKey,
+            ["eventKey"] = eventKey,
+            ["isBrowserSignal"] = isBrowserSignal,
+            ["isServerAuthority"] = isServerAuthority,
+            ["serverAuthorityWinsConflictResolution"] = true,
+            ["browserPayloadCanOverrideServer"] = false,
+            ["metaServerAuthorityEligible"] = metaServerAuthorityEligible,
+            ["metaSingleTruthDispatchEligible"] = metaSingleTruthDispatchEligible,
+            ["metaDispatchOwner"] = MetaSignalSingleTruthPolicy.DispatchOwner,
+            ["metaDecisionAuthority"] = MetaSignalSingleTruthPolicy.DecisionAuthority,
+            ["metaAuthoritativeSendPath"] = MetaSignalSingleTruthPolicy.AuthoritativeSendPath,
+            ["metaPipelineOrigin"] = BridgeSource,
             ["sourceUrl"] = source.Url,
             ["sourcePath"] = source.Path,
             ["sourceReferrer"] = source.Referrer,

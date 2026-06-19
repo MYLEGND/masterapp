@@ -13,7 +13,7 @@ public sealed class MetaSignalOutcomeDispatcherHostedService : BackgroundService
 {
     private static readonly TimeSpan PollInterval = TimeSpan.FromSeconds(30);
     private static readonly HashSet<string> DispatchableEvents =
-        new(MetaSignalEventCatalog.ServerForwardEventNames, StringComparer.OrdinalIgnoreCase);
+        new(MetaSignalEventCatalog.ServerAuthorityEventNames, StringComparer.OrdinalIgnoreCase);
 
     private readonly IServiceScopeFactory _scopeFactory;
     private readonly IOptions<MetaSignalIntelligenceOptions> _options;
@@ -61,7 +61,9 @@ public sealed class MetaSignalOutcomeDispatcherHostedService : BackgroundService
                 !x.MetaServerSent &&
                 (x.TrafficType == "crm" ||
                  (x.MetadataJson != null && x.MetadataJson.Contains(MetaSignalAnalyticsBridgeMetadata.BridgeSourceMarker))) &&
-                DispatchableEvents.Contains(x.EventName))
+                DispatchableEvents.Contains(x.EventName) &&
+                x.MetadataJson != null &&
+                x.MetadataJson.Contains(MetaSignalSingleTruthPolicy.DispatchEligibleMarker))
             .OrderBy(x => x.CreatedUtc)
             .Take(25)
             .ToListAsync(cancellationToken);
@@ -93,7 +95,10 @@ public sealed class MetaSignalOutcomeDispatcherHostedService : BackgroundService
 
         foreach (var row in rows)
         {
-            if (!MetaSignalEventCatalog.TryGet(row.EventName, out var definition) || !definition.AllowServerForward)
+            if (!MetaSignalEventCatalog.TryGet(row.EventName, out var definition) ||
+                !definition.AllowServerForward ||
+                !MetaSignalEventCatalog.IsServerAuthorityEvent(row.EventName) ||
+                !MetaSignalSingleTruthPolicy.CanDispatchServerAuthority(row.EventName, row.MetadataJson))
                 continue;
 
             var isBridgeOwned = MetaSignalAnalyticsBridgeMetadata.IsBridgeOwned(row.MetadataJson);
@@ -219,9 +224,7 @@ public sealed class MetaSignalOutcomeDispatcherHostedService : BackgroundService
                 AccessToken = pixelContext.AccessToken,
                 TestEventCode = pixelContext.TestEventCode,
                 PixelOwnerType = pixelContext.PixelOwnerType,
-                AuthoritySource = isBridgeOwned
-                    ? MetaSendAuthoritySources.MetaSignalAnalyticsBridge
-                    : MetaSendAuthoritySources.MetaSignalOutcomeDispatcherHostedService,
+                AuthoritySource = MetaSendAuthoritySources.MetaSignalOutcomeDispatcherHostedService,
                 AuthorityDeduplicationKey = row.MetaDeduplicationKey,
                 AuthoritySessionId = row.SessionId,
                 AuthorityVisitorId = row.VisitorId,
@@ -423,7 +426,15 @@ public sealed class MetaSignalOutcomeDispatcherHostedService : BackgroundService
             ["lead_utm_campaign"] = websiteLead?.UtmCampaign,
             ["agent_tracking_profile_id"] = pixelContext.AgentTrackingProfileId,
             ["agent_slug"] = pixelContext.AgentSlug,
-            ["pixel_owner_type"] = pixelContext.PixelOwnerType
+            ["pixel_owner_type"] = pixelContext.PixelOwnerType,
+            ["is_browser_signal"] = ReadMetadataBoolean(row.MetadataJson, "isBrowserSignal")
+                ?? MetaSignalEventCatalog.IsBrowserSignalEvent(row.EventName),
+            ["is_server_authority"] = ReadMetadataBoolean(row.MetadataJson, "isServerAuthority")
+                ?? MetaSignalEventCatalog.IsServerAuthorityEvent(row.EventName),
+            ["event_key"] = FirstNonBlank(
+                ReadMetadataString(row.MetadataJson, "eventKey"),
+                MetaSignalEventCatalog.BuildEventKey(row.EventName, row.LeadId, row.SessionId)),
+            ["conflict_resolution"] = "server_authority_wins"
         };
 
         if (isBridgeOwned)
@@ -508,6 +519,12 @@ public sealed class MetaSignalOutcomeDispatcherHostedService : BackgroundService
             : $"/Quote/{row.PageKey.Trim().TrimStart('/')}";
 
         return $"{fallbackScheme}://{fallbackHost}{fallbackPath}";
+    }
+
+    private static bool? ReadMetadataBoolean(string? metadataJson, string propertyName)
+    {
+        var raw = ReadMetadataString(metadataJson, propertyName);
+        return bool.TryParse(raw, out var value) ? value : null;
     }
 
     private static string MergeDispatchMetadata(string? existingJson, MetaConversionsApiResult result)

@@ -182,17 +182,6 @@ public class LifeQuoteControllerPublicBookingTests
                 AgentUserId: null,
                 Reason: "NoAgentOwner"));
 
-        var metaConversions = new Mock<IMetaConversionsApiService>();
-        metaConversions
-            .Setup(service => service.SendLeadAsync(It.IsAny<MetaLeadConversionRequest>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new MetaConversionsApiResult
-            {
-                Attempted = false,
-                Sent = false,
-                Status = "skipped_not_configured",
-                Note = "meta_config_missing"
-            });
-
         var metaPixelResolution = new Mock<IMetaPixelResolutionService>();
         metaPixelResolution
             .Setup(service => service.ResolveForLeadAsync(It.IsAny<Guid?>(), It.IsAny<string?>(), It.IsAny<bool>(), It.IsAny<CancellationToken>()))
@@ -201,10 +190,6 @@ public class LifeQuoteControllerPublicBookingTests
                 PixelOwnerType = MetaPixelOwnerTypes.None
             });
 
-        var metaSignal = new Mock<IMetaSignalIntelligenceService>();
-        metaSignal
-            .Setup(service => service.RecordConfirmedLeadAsync(It.IsAny<MetaSignalConfirmedLeadRequest>(), It.IsAny<HttpContext?>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync((MetaSignalProcessResult?)null);
         var publicBookingResolver = new Mock<IPublicBookingResolver>();
         publicBookingResolver
             .Setup(resolver => resolver.ResolveAsync(It.IsAny<PublicBookingResolveContext>(), It.IsAny<CancellationToken>()))
@@ -225,9 +210,7 @@ public class LifeQuoteControllerPublicBookingTests
 
         var controller = BuildController(
             db,
-            metaConversionsApi: metaConversions.Object,
             metaPixelResolutionService: metaPixelResolution.Object,
-            metaSignalIntelligenceService: metaSignal.Object,
             websiteLifeLeadCaptureService: captureService.Object,
             publicBookingResolver: publicBookingResolver.Object);
 
@@ -346,17 +329,6 @@ public class LifeQuoteControllerPublicBookingTests
         });
         await db.SaveChangesAsync();
 
-        var metaConversions = new Mock<IMetaConversionsApiService>();
-        metaConversions
-            .Setup(service => service.SendLeadAsync(It.IsAny<MetaLeadConversionRequest>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new MetaConversionsApiResult
-            {
-                Attempted = false,
-                Sent = false,
-                Status = "skipped_not_configured",
-                Note = "meta_config_missing"
-            });
-
         var metaPixelResolution = new Mock<IMetaPixelResolutionService>();
         metaPixelResolution
             .Setup(service => service.ResolveForLeadAsync(It.IsAny<Guid?>(), It.IsAny<string?>(), It.IsAny<bool>(), It.IsAny<CancellationToken>()))
@@ -366,11 +338,6 @@ public class LifeQuoteControllerPublicBookingTests
                 AgentTrackingProfileId = trackingProfile.Id,
                 AgentSlug = trackingProfile.Slug
             });
-
-        var metaSignal = new Mock<IMetaSignalIntelligenceService>();
-        metaSignal
-            .Setup(service => service.RecordConfirmedLeadAsync(It.IsAny<MetaSignalConfirmedLeadRequest>(), It.IsAny<HttpContext?>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync((MetaSignalProcessResult?)null);
 
         var publicBookingResolver = new Mock<IPublicBookingResolver>();
         publicBookingResolver
@@ -393,9 +360,7 @@ public class LifeQuoteControllerPublicBookingTests
         var captureService = new WebsiteLifeLeadCaptureService(db, NullLogger<WebsiteLifeLeadCaptureService>.Instance);
         var controller = BuildController(
             db,
-            metaConversionsApi: metaConversions.Object,
             metaPixelResolutionService: metaPixelResolution.Object,
-            metaSignalIntelligenceService: metaSignal.Object,
             websiteLifeLeadCaptureService: captureService,
             publicBookingResolver: publicBookingResolver.Object);
 
@@ -469,9 +434,7 @@ public class LifeQuoteControllerPublicBookingTests
 
     private static LifeQuoteController BuildController(
         Infrastructure.Data.MasterAppDbContext db,
-        IMetaConversionsApiService? metaConversionsApi = null,
         IMetaPixelResolutionService? metaPixelResolutionService = null,
-        IMetaSignalIntelligenceService? metaSignalIntelligenceService = null,
         IWebsiteLifeLeadCaptureService? websiteLifeLeadCaptureService = null,
         IPublicBookingResolver? publicBookingResolver = null,
         IPublicBookingConfirmationService? publicBookingConfirmationService = null,
@@ -483,9 +446,7 @@ public class LifeQuoteControllerPublicBookingTests
             BuildConfig(),
             resolver,
             db,
-            metaConversionsApi ?? Mock.Of<IMetaConversionsApiService>(),
             metaPixelResolutionService ?? Mock.Of<IMetaPixelResolutionService>(),
-            metaSignalIntelligenceService ?? Mock.Of<IMetaSignalIntelligenceService>(),
             websiteLifeLeadCaptureService ?? Mock.Of<IWebsiteLifeLeadCaptureService>(),
             publicBookingResolver ?? Mock.Of<IPublicBookingResolver>(),
             publicBookingConfirmationService ?? Mock.Of<IPublicBookingConfirmationService>(),

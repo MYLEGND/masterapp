@@ -3,6 +3,8 @@ using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
 using Microsoft.Extensions.Options;
+using ProtectWebsite.Services.MetaSignal;
+using Shared.Analytics;
 
 namespace ProtectWebsite.Services.Meta;
 
@@ -154,6 +156,9 @@ public sealed class MetaConversionsApiService : IMetaConversionsApiService
             AuthorityVisitorId = request.AuthorityVisitorId
         };
 
+        if (!MetaSignalSingleTruthPolicy.IsAuthorizedCapiSource(eventRequest.EventName, eventRequest.AuthoritySource))
+            return CreateInvalidSourceResult(eventRequest);
+
         var authorityDecision = await _metaSendAuthority.TrySendAsync(
             BuildAuthorityRequest(eventRequest),
             cancellationToken);
@@ -171,6 +176,9 @@ public sealed class MetaConversionsApiService : IMetaConversionsApiService
 
     public async Task<MetaConversionsApiResult> SendEventAsync(MetaConversionsApiEventRequest request, CancellationToken cancellationToken = default)
     {
+        if (!MetaSignalSingleTruthPolicy.IsAuthorizedCapiSource(request.EventName, request.AuthoritySource))
+            return CreateInvalidSourceResult(request);
+
         var authorityDecision = await _metaSendAuthority.TrySendAsync(
             BuildAuthorityRequest(request),
             cancellationToken);
@@ -343,6 +351,25 @@ public sealed class MetaConversionsApiService : IMetaConversionsApiService
             Sent = false,
             Status = "blocked_by_authority",
             Note = authorityDecision.Note ?? authorityDecision.Status ?? "blocked_duplicate",
+            PixelId = Normalize(request.PixelId) ?? Normalize(_options.Value.PixelId),
+            PixelOwnerType = Normalize(request.PixelOwnerType)
+        };
+    }
+
+    private MetaConversionsApiResult CreateInvalidSourceResult(MetaConversionsApiEventRequest request)
+    {
+        _logger.LogWarning(
+            "MetaCapi [{CorrelationId}]: blocked invalid authority source event={EventName} source={Source}",
+            request.CorrelationId,
+            request.EventName,
+            request.AuthoritySource);
+
+        return new MetaConversionsApiResult
+        {
+            Attempted = false,
+            Sent = false,
+            Status = "blocked_invalid_source",
+            Note = "single_truth_dispatcher_required",
             PixelId = Normalize(request.PixelId) ?? Normalize(_options.Value.PixelId),
             PixelOwnerType = Normalize(request.PixelOwnerType)
         };

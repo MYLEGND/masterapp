@@ -241,10 +241,14 @@ public class AnalyticsEventCatalogTests
         {
             Assert.True(MetaSignalEventCatalog.TryGet(eventName, out var definition), $"Meta signal catalog missing '{eventName}'.");
             Assert.True(definition.AllowBrowserPixel, $"Meta signal browser event '{eventName}' must remain browser-enabled.");
+            Assert.False(definition.AllowServerForward, $"Meta signal browser event '{eventName}' must not be server-forwarded.");
+            Assert.True(MetaSignalEventCatalog.IsBrowserSignalEvent(eventName), $"Meta signal browser event '{eventName}' must remain browser-classified.");
         }
 
         Assert.True(MetaSignalEventCatalog.TryGet("QualifiedLead", out var qualifiedLead));
         Assert.True(qualifiedLead.AllowServerForward);
+        Assert.True(MetaSignalEventCatalog.IsServerAuthorityEvent("QualifiedLead"));
+        Assert.True(MetaSignalEventCatalog.IsServerAuthorityEvent("PolicyPaid"));
     }
 
     [Fact]

@@ -12,7 +12,6 @@ using Protect_Website.Controllers;
 using ProtectWebsite.Services.Booking;
 using ProtectWebsite.Services.Communication;
 using ProtectWebsite.Services.Meta;
-using ProtectWebsite.Services.MetaSignal;
 using ProtectWebsite.Services.Tracking;
 using Xunit;
 
@@ -29,9 +28,7 @@ public class LifeQuoteControllerRouteTests
             BuildConfig(),
             resolver,
             db,
-            Mock.Of<IMetaConversionsApiService>(),
             Mock.Of<IMetaPixelResolutionService>(),
-            Mock.Of<IMetaSignalIntelligenceService>(),
             Mock.Of<IWebsiteLifeLeadCaptureService>(),
             Mock.Of<IPublicBookingResolver>(),
             Mock.Of<IPublicBookingConfirmationService>(),

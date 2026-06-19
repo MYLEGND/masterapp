@@ -286,6 +286,8 @@ public sealed class PublicBookingConfirmationService : IPublicBookingConfirmatio
             environment: websiteLead.Environment,
             host: websiteLead.Host,
             quoteType: websiteLead.InterestType,
+            isBrowserSignal: false,
+            metaServerAuthorityEligible: true,
             metadata: new
             {
                 LeadId = websiteLead.LeadId,

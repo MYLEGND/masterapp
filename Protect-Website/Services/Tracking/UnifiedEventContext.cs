@@ -94,5 +94,9 @@ public sealed record UnifiedEventContext
 
     public bool? BrowserEventSent { get; init; }
 
+    public bool? IsBrowserSignal { get; init; }
+    public bool? IsServerAuthority { get; init; }
+    public bool? MetaServerAuthorityEligible { get; init; }
+
     public object? Metadata { get; init; }
 }

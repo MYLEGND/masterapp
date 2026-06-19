@@ -1,5 +1,6 @@
 using System;
 using ProtectWebsite.Services.Tracking;
+using Shared.Analytics;
 using Xunit;
 
 namespace AgentPortal.Tests;
@@ -46,5 +47,29 @@ public class UnifiedEventMapperTests
         Assert.Equal("America/Phoenix", analyticsEvent.TimeZone);
         Assert.Equal(eventUtc, analyticsEvent.EventUtc);
         Assert.True(analyticsEvent.IsInternal);
+    }
+
+    [Fact]
+    public void ToAnalytics_StampsSingleTruthEligibilityForServerOnlyLeadEvents()
+    {
+        var leadId = Guid.Parse("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa");
+        var context = UnifiedEventContextBuilder.Build(
+            httpContext: null,
+            eventName: "website_lead_submitted",
+            sessionId: "session-1",
+            metadata: new
+            {
+                LeadId = leadId
+            });
+
+        var analyticsEvent = UnifiedEventMapper.ToAnalytics(context);
+
+        Assert.False(MetaSignalSingleTruthPolicy.ReadBoolean(analyticsEvent.MetadataJson, "isBrowserSignal"));
+        Assert.False(MetaSignalSingleTruthPolicy.ReadBoolean(analyticsEvent.MetadataJson, "isServerAuthority"));
+        Assert.True(MetaSignalSingleTruthPolicy.ReadBoolean(analyticsEvent.MetadataJson, "metaServerAuthorityEligible"));
+        Assert.False(MetaSignalSingleTruthPolicy.ReadBoolean(analyticsEvent.MetadataJson, "metaSingleTruthDispatchEligible"));
+        Assert.Equal(
+            $"website_lead_submitted:{leadId:N}:session-1",
+            MetaSignalSingleTruthPolicy.ReadString(analyticsEvent.MetadataJson, "eventKey"));
     }
 }

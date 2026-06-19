@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Text.Json;
 using System.Threading.Tasks;
 using AgentPortal.Controllers.Api;
 using AgentPortal.Models;
@@ -117,6 +118,38 @@ public class AnalyticsIngestControllerTests
     }
 
     [Fact]
+    public async Task Ingest_Stamps_BrowserSingleTruthMetadata()
+    {
+        using var db = ControllerTestHelpers.BuildDb();
+        var controller = BuildController(db);
+
+        var result = await controller.Ingest(new AnalyticsIngestController.AnalyticsEventRequest
+        {
+            ClientEventId = Guid.NewGuid(),
+            EventType = "lead_form_start",
+            Host = "test",
+            Path = "/quote/life",
+            SessionId = "session-123",
+            EventUtc = DateTime.UtcNow,
+            MetadataJson = "{\"custom\":\"value\"}"
+        });
+
+        var ok = Assert.IsType<OkObjectResult>(result);
+        Assert.Equal("ok", ReadStatus(ok.Value));
+
+        var ev = Assert.Single(db.AnalyticsEvents);
+        Assert.True(MetaSignalSingleTruthPolicy.ReadBoolean(ev.MetadataJson, "isBrowserSignal"));
+        Assert.False(MetaSignalSingleTruthPolicy.ReadBoolean(ev.MetadataJson, "isServerAuthority"));
+        Assert.False(MetaSignalSingleTruthPolicy.ReadBoolean(ev.MetadataJson, "metaServerAuthorityEligible"));
+        Assert.False(MetaSignalSingleTruthPolicy.ReadBoolean(ev.MetadataJson, "metaSingleTruthDispatchEligible"));
+        Assert.Equal("browser_analytics_ingest", MetaSignalSingleTruthPolicy.ReadString(ev.MetadataJson, "metaPipelineOrigin"));
+        Assert.Equal("lead_form_start:anonymous:session-123", MetaSignalSingleTruthPolicy.ReadString(ev.MetadataJson, "eventKey"));
+
+        using var metadata = JsonDocument.Parse(ev.MetadataJson!);
+        Assert.Equal("value", metadata.RootElement.GetProperty("custom").GetString());
+    }
+
+    [Fact]
     public async Task Ingest_Accepts_LifeCoverageSelect_And_Rejects_ServerOnlyEvents()
     {
         using var db = ControllerTestHelpers.BuildDb();
@@ -166,7 +199,6 @@ public class AnalyticsIngestControllerTests
     [InlineData("recommendation_viewed")]
     [InlineData("contact_step_viewed")]
     [InlineData("form_submit_attempt")]
-    [InlineData("form_submit_success")]
     [InlineData("lead_form_submit_success")]
     [InlineData("form_abandon")]
     public async Task Ingest_Accepts_CatalogedQuoteBrowserEvents(string eventType)

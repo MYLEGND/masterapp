@@ -7,7 +7,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging.Abstractions;
 using Moq;
 using ProtectWebsite.Services.Booking;
-using ProtectWebsite.Services.MetaSignal;
+using Shared.Analytics;
 using Xunit;
 
 namespace AgentPortal.Tests;
@@ -52,7 +52,6 @@ public class PublicBookingConfirmationServiceTests
             db,
             matcher.Object,
             resolver.Object,
-            Mock.Of<IMetaSignalIntelligenceService>(),
             NullLogger<PublicBookingConfirmationService>.Instance);
 
         var result = await service.TryConfirmAsync(new PublicBookingContext(
@@ -121,7 +120,6 @@ public class PublicBookingConfirmationServiceTests
             db,
             matcher.Object,
             resolver.Object,
-            Mock.Of<IMetaSignalIntelligenceService>(),
             NullLogger<PublicBookingConfirmationService>.Instance);
 
         var result = await service.TryConfirmAsync(new PublicBookingContext(
@@ -135,18 +133,28 @@ public class PublicBookingConfirmationServiceTests
         Assert.False(result.PendingConfirmation);
         Assert.True(result.LinkedToLead);
         Assert.Equal("Booked", result.AppointmentStatus);
-        Assert.Equal(LeadAppointmentBookingSources.MicrosoftGraphConfirmation, result.BookingSource);
-        Assert.Equal(LeadAppointmentBookingSources.MicrosoftGraphConfirmation, result.ConfirmationSource);
+        Assert.Equal(LeadAppointmentBookingSources.MicrosoftGraphFallbackMatch, result.BookingSource);
+        Assert.Equal(LeadAppointmentBookingSources.MicrosoftGraphFallbackMatch, result.ConfirmationSource);
         Assert.Equal("calendar_event_id", result.Reason);
 
         var appointment = await db.LeadAppointments.SingleAsync(x => x.Id == appointmentId);
         Assert.Equal(LeadAppointmentStatus.Booked, appointment.Status);
-        Assert.Equal(LeadAppointmentBookingSources.MicrosoftGraphConfirmation, appointment.BookingSource);
-        Assert.Equal(LeadAppointmentBookingSources.MicrosoftGraphConfirmation, appointment.ConfirmationSource);
+        Assert.Equal(LeadAppointmentBookingSources.MicrosoftGraphFallbackMatch, appointment.BookingSource);
+        Assert.Equal(LeadAppointmentBookingSources.MicrosoftGraphFallbackMatch, appointment.ConfirmationSource);
         Assert.Equal("evt-123", appointment.CalendarEventId);
         Assert.Equal("https://outlook.test/events/evt-123", appointment.CalendarEventWebLink);
         Assert.Equal("https://teams.example.com/join/evt-123", appointment.MeetingUrl);
         Assert.NotNull(appointment.BookedUtc);
+
+        var analyticsEvent = await db.AnalyticsEvents.SingleAsync();
+        Assert.Equal(AppointmentAnalyticsEventCatalog.Booked, analyticsEvent.EventType);
+        Assert.False(MetaSignalSingleTruthPolicy.ReadBoolean(analyticsEvent.MetadataJson, "isBrowserSignal"));
+        Assert.False(MetaSignalSingleTruthPolicy.ReadBoolean(analyticsEvent.MetadataJson, "isServerAuthority"));
+        Assert.True(MetaSignalSingleTruthPolicy.ReadBoolean(analyticsEvent.MetadataJson, "metaServerAuthorityEligible"));
+        Assert.False(MetaSignalSingleTruthPolicy.ReadBoolean(analyticsEvent.MetadataJson, "metaSingleTruthDispatchEligible"));
+        Assert.Equal(
+            MetaSignalEventCatalog.BuildEventKey(AppointmentAnalyticsEventCatalog.Booked, websiteLeadId, null),
+            MetaSignalSingleTruthPolicy.ReadString(analyticsEvent.MetadataJson, "eventKey"));
     }
 
     private static void SeedLinkedLead(

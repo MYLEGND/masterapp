@@ -3,9 +3,48 @@
   const STORAGE_SESSION = 'legend_session_id';
   const STORAGE_SESSION_TS = 'legend_session_ts';
   const STORAGE_ATTR_SESSION = 'legend_attr_session';
+  const STORAGE_SESSION_ENTRY_SOURCE = 'legend_meta_entry_source';
+  const STORAGE_SESSION_PAGE_CLUSTERS = 'legend_meta_page_clusters';
+  const STORAGE_PAGE_INIT_PREFIX = 'legend_meta_page_init';
+  const STORAGE_PAGE_VISIT_PREFIX = 'legend_meta_page_visits';
   const SESSION_TIMEOUT_MIN = 30;
   const MEANINGFUL_SCROLL_THRESHOLD = 35;
+  const MID_INTENT_SCROLL_THRESHOLD = 50;
+  const HIGH_INTENT_SCROLL_THRESHOLD = 75;
+  const CTA_HOVER_THRESHOLD = 2;
+  const TIMESTAMP_BUCKET_MINUTES = 5;
   const RAPID_BOUNCE_MS = 3000;
+  const CTA_SELECTOR = '[data-primary-cta], [data-cta], [data-life-funnel-start], button[type="submit"], a[href*="/Quote/"]';
+
+  const LEARNING_WEIGHT_BY_EVENT = Object.freeze({
+    ViewContent: 0.1,
+    MeaningfulScroll: 0.14,
+    DiscoveryComplete: 0.18,
+    RecommendationViewed: 0.22,
+    LeadFormStart: 0.24,
+    ContactStepReached: 0.26,
+    HighIntentLeadSignal: 0.3,
+    LeadReadySignal: 0.28,
+    AbandonedHighIntentLead: 0.18
+  });
+
+  const FUNNEL_DEPTH_BY_EVENT = Object.freeze({
+    ViewContent: 1,
+    MeaningfulScroll: 2,
+    SessionEngaged5s: 3,
+    SessionEngaged15s: 3,
+    DiscoveryComplete: 3,
+    RecommendationViewed: 3,
+    LeadFormStart: 4,
+    ContactStepReached: 5,
+    ContactInputStarted: 5,
+    PhoneFieldCompleted: 5,
+    RequiredContactFieldsCompleted: 5,
+    SubmitAttempt: 5,
+    HighIntentLeadSignal: 5,
+    LeadReadySignal: 5,
+    AbandonedHighIntentLead: 5
+  });
 
   const DEFAULT_WEIGHTS = Object.freeze({
     LandingViewed: 5,
@@ -96,8 +135,68 @@
     }
   }
 
+  function readInteger(value, fallback = 0) {
+    const parsed = Number.parseInt(String(value || ''), 10);
+    return Number.isFinite(parsed) ? parsed : fallback;
+  }
+
+  function clamp(value, min, max) {
+    const numeric = Number.isFinite(value) ? value : min;
+    return Math.min(max, Math.max(min, numeric));
+  }
+
+  function round(value, digits = 2) {
+    const factor = 10 ** digits;
+    return Math.round((Number(value) || 0) * factor) / factor;
+  }
+
   function asTrimmed(value) {
     return typeof value === 'string' ? value.trim() : '';
+  }
+
+  function resolvePageClusterId(value) {
+    const normalized = asTrimmed(value || window.location.pathname)
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, '_')
+      .replace(/^_+|_+$/g, '')
+      .replace(/_landing$/, '');
+    return normalized || 'page';
+  }
+
+  function resolveEntrySource(attribution) {
+    const source = asTrimmed(attribution?.utmSource).toLowerCase();
+    const medium = asTrimmed(attribution?.utmMedium).toLowerCase();
+    const fbclid = asTrimmed(attribution?.fbclid);
+    const hasMetaIds = Boolean(
+      asTrimmed(attribution?.metaCampaignId) ||
+      asTrimmed(attribution?.metaAdSetId) ||
+      asTrimmed(attribution?.metaAdId)
+    );
+
+    if (fbclid || hasMetaIds) return 'meta';
+    if (source && medium) return `${source}:${medium}`;
+    if (source) return source;
+    if (medium) return medium;
+    return 'direct';
+  }
+
+  function buildTimestampBucket(timestampMs = Date.now()) {
+    const bucket = new Date(timestampMs);
+    bucket.setUTCSeconds(0, 0);
+    bucket.setUTCMinutes(Math.floor(bucket.getUTCMinutes() / TIMESTAMP_BUCKET_MINUTES) * TIMESTAMP_BUCKET_MINUTES);
+    return bucket.toISOString();
+  }
+
+  function normalizeEventKeyPart(value, fallback) {
+    const normalized = asTrimmed(value);
+    return normalized || fallback;
+  }
+
+  function buildBrowserEventKey(eventName, leadId) {
+    const normalizedEventName = normalizeEventKeyPart(eventName, 'unknown');
+    const normalizedLeadId = normalizeEventKeyPart(leadId, 'anonymous');
+    const normalizedSessionId = normalizeEventKeyPart(getSessionId(), 'no_session');
+    return `${normalizedEventName}:${normalizedLeadId}:${normalizedSessionId}`;
   }
 
   function normalizeAttributionValue(value) {
@@ -362,10 +461,14 @@
       quoteType: resolveQuoteType(config.quoteType),
       pageKey: asTrimmed(config.pageKey),
       effectivePageKey: asTrimmed(config.effectivePageKey || config.pageKey),
+      pageClusterId: resolvePageClusterId(config.effectivePageKey || config.pageKey || window.location.pathname),
       pageVariant: asTrimmed(config.pageVariant),
       pageMode: asTrimmed(config.pageMode),
       agentTrackingProfileId: asTrimmed(config.agentTrackingProfileId),
       agentSlug: asTrimmed(config.agentSlug),
+      entrySource: 'direct',
+      repeatVisitCount: 1,
+      navigationDepth: 1,
       submitted: false,
       landingViewed: false,
       stayed5Seconds: false,
@@ -390,7 +493,19 @@
       backtrackCount: 0,
       deadClickCount: 0,
       rageClickCount: 0,
+      maxScrollPercent: 0,
+      interactionCount: 0,
+      formEngagementCount: 0,
+      ctaHoverCount: 0,
+      midIntentCandidate: false,
+      highIntentCandidate: false,
+      ctaIntentBoost: false,
+      conversionIntentObserved: false,
       fired: {},
+      engagedFields: {},
+      lastInteractionAt: 0,
+      lastCtaHoverKey: null,
+      lastCtaHoverAt: 0,
       lastDisabledClickKey: null,
       lastDisabledClickAt: 0,
       lastDisabledClickCount: 0
@@ -458,6 +573,7 @@
     state.quoteType = resolveQuoteType(config.quoteType);
     state.pageKey = config.pageKey;
     state.effectivePageKey = config.effectivePageKey;
+    state.pageClusterId = resolvePageClusterId(config.effectivePageKey || config.pageKey || window.location.pathname);
     state.pageVariant = config.pageVariant;
     state.pageMode = config.pageMode;
     state.agentTrackingProfileId = config.agentTrackingProfileId;
@@ -466,6 +582,7 @@
     state.visitorId = getVisitorId();
     state.completedSteps = state.completedSteps || {};
     state.fired = state.fired || {};
+    state.engagedFields = state.engagedFields || {};
 
     let abandonTracked = false;
 
@@ -486,6 +603,47 @@
       safeStorageSet(window.sessionStorage, storageKey, JSON.stringify(state));
     }
 
+    function initializeSessionProfile() {
+      const attribution = resolveAttribution();
+      const pageClusterId = resolvePageClusterId(state.effectivePageKey || state.pageKey || window.location.pathname);
+      const pageVisitKey = `${STORAGE_PAGE_VISIT_PREFIX}:${pageClusterId}`;
+      const pageInitKey = `${STORAGE_PAGE_INIT_PREFIX}:${state.sessionId}:${pageClusterId}:${window.location.pathname}`;
+      const sessionPagesKey = `${STORAGE_SESSION_PAGE_CLUSTERS}:${state.sessionId}`;
+      let sessionPages = safeJsonParse(safeStorageGet(window.sessionStorage, sessionPagesKey), []);
+
+      if (!Array.isArray(sessionPages)) {
+        sessionPages = [];
+      }
+
+      sessionPages = sessionPages
+        .map((value) => asTrimmed(value))
+        .filter(Boolean);
+
+      if (!safeStorageGet(window.sessionStorage, pageInitKey)) {
+        if (!sessionPages.includes(pageClusterId)) {
+          sessionPages.push(pageClusterId);
+        }
+
+        safeStorageSet(window.sessionStorage, sessionPagesKey, JSON.stringify(sessionPages));
+        safeStorageSet(window.sessionStorage, pageInitKey, '1');
+        safeStorageSet(
+          window.localStorage,
+          pageVisitKey,
+          String(readInteger(safeStorageGet(window.localStorage, pageVisitKey), 0) + 1)
+        );
+      }
+
+      state.pageClusterId = pageClusterId;
+      state.entrySource = resolveEntrySource(attribution);
+      state.repeatVisitCount = Math.max(1, readInteger(safeStorageGet(window.localStorage, pageVisitKey), 1));
+      state.navigationDepth = Math.max(1, sessionPages.length || 1);
+
+      safeStorageSet(window.sessionStorage, STORAGE_SESSION_ENTRY_SOURCE, state.entrySource);
+      saveState();
+    }
+
+    initializeSessionProfile();
+
     function normalizeMetadata(extra) {
       return Object.assign(
         {
@@ -495,7 +653,11 @@
           contactStepReached: state.contactStepReached,
           contactInputStarted: state.contactInputStarted,
           phoneCompleted: state.phoneCompleted,
-          requiredContactFieldsComplete: state.requiredContactFieldsCompleted
+          requiredContactFieldsComplete: state.requiredContactFieldsCompleted,
+          midIntentCandidate: state.midIntentCandidate,
+          highIntentCandidate: state.highIntentCandidate,
+          ctaIntentBoost: state.ctaIntentBoost,
+          conversionIntentObserved: state.conversionIntentObserved
         },
         extra || {}
       );
@@ -512,6 +674,212 @@
       if (normalized.requiredContactFieldsComplete) state.requiredContactFieldsCompleted = true;
       if (normalized.rapidBounce) state.rapidBounce = true;
       if (normalized.contactStepAbandon) state.contactStepAbandon = true;
+      if (normalized.midIntentCandidate) state.midIntentCandidate = true;
+      if (normalized.highIntentCandidate) state.highIntentCandidate = true;
+      if (normalized.ctaIntentBoost) state.ctaIntentBoost = true;
+      if (normalized.conversionIntentObserved) state.conversionIntentObserved = true;
+      if (Number.isFinite(normalized.scrollPercent)) {
+        state.maxScrollPercent = Math.max(state.maxScrollPercent || 0, Math.round(normalized.scrollPercent));
+      }
+    }
+
+    function getSessionDurationMs() {
+      return Math.max(0, Date.now() - Number(state.startedAt || Date.now()));
+    }
+
+    function registerInteraction() {
+      const now = Date.now();
+      if ((now - Number(state.lastInteractionAt || 0)) < 150) {
+        return;
+      }
+
+      state.lastInteractionAt = now;
+      state.interactionCount = Number(state.interactionCount || 0) + 1;
+      saveState();
+    }
+
+    function registerFormFieldEngagement(fieldName) {
+      const normalizedFieldName = asTrimmed(fieldName);
+      if (normalizedFieldName && !state.engagedFields[normalizedFieldName]) {
+        state.engagedFields[normalizedFieldName] = true;
+        state.formEngagementCount = Number(state.formEngagementCount || 0) + 1;
+      }
+
+      state.conversionIntentObserved = true;
+      saveState();
+    }
+
+    function updateScrollSignals(percent) {
+      const normalizedPercent = clamp(Math.round(Number(percent) || 0), 0, 100);
+      let changed = false;
+
+      if (normalizedPercent > Number(state.maxScrollPercent || 0)) {
+        state.maxScrollPercent = normalizedPercent;
+        changed = true;
+      }
+
+      if (normalizedPercent >= MID_INTENT_SCROLL_THRESHOLD && !state.midIntentCandidate) {
+        state.midIntentCandidate = true;
+        changed = true;
+      }
+
+      if (normalizedPercent >= HIGH_INTENT_SCROLL_THRESHOLD && !state.highIntentCandidate) {
+        state.highIntentCandidate = true;
+        changed = true;
+      }
+
+      if (changed) {
+        saveState();
+      }
+    }
+
+    function resolveFunnelDepthIndex(eventName) {
+      const explicit = FUNNEL_DEPTH_BY_EVENT[eventName];
+      if (Number.isFinite(explicit)) {
+        return explicit;
+      }
+
+      if (state.highIntentCandidate || state.contactStepReached || state.contactInputStarted) return 5;
+      if (state.firstQuestionAnswered) return 4;
+      if (state.recommendationViewed || state.stayed5Seconds || state.stayed15Seconds) return 3;
+      if (state.maxScrollPercent >= MEANINGFUL_SCROLL_THRESHOLD) return 2;
+      return 1;
+    }
+
+    function resolveLearningWeight(eventName, funnelDepthIndex) {
+      const explicit = LEARNING_WEIGHT_BY_EVENT[eventName];
+      if (Number.isFinite(explicit)) {
+        return explicit;
+      }
+
+      return round(clamp(0.08 + (funnelDepthIndex * 0.04), 0.1, 0.3), 2);
+    }
+
+    function computeEngagementIntensityScore() {
+      const scrollFactor = clamp(Number(state.maxScrollPercent || 0), 0, 100);
+      const timeFactor = clamp((getSessionDurationMs() / 90000) * 100, 0, 100);
+      const interactionFactor = clamp((Number(state.interactionCount || 0) / 12) * 100, 0, 100);
+      const formFactor = clamp(
+        (state.firstQuestionAnswered ? 12 : 0) +
+        (state.contactInputStarted ? 15 : 0) +
+        (state.contactStepReached ? 20 : 0) +
+        (state.phoneCompleted ? 10 : 0) +
+        (state.requiredContactFieldsCompleted ? 18 : 0) +
+        (state.submitAttempted ? 20 : 0) +
+        Math.min(Number(state.formEngagementCount || 0) * 5, 15),
+        0,
+        100
+      );
+
+      return Math.round(clamp(
+        (scrollFactor * 0.35) +
+        (timeFactor * 0.25) +
+        (interactionFactor * 0.2) +
+        (formFactor * 0.2),
+        0,
+        100
+      ));
+    }
+
+    function computeSessionConfidenceScore() {
+      const repeatVisitFactor = clamp((Math.max(1, Number(state.repeatVisitCount || 1)) - 1) / 3, 0, 1);
+      const durationFactor = clamp(getSessionDurationMs() / 120000, 0, 1);
+      const navigationFactor = clamp((Math.max(1, Number(state.navigationDepth || 1)) - 1) / 3, 0, 1);
+
+      return round(clamp(
+        (repeatVisitFactor * 0.4) +
+        (durationFactor * 0.35) +
+        (navigationFactor * 0.25),
+        0,
+        1
+      ), 2);
+    }
+
+    function buildPredictionMarkers() {
+      return {
+        midIntentCandidate: Boolean(state.midIntentCandidate),
+        highIntentCandidate: Boolean(state.highIntentCandidate),
+        ctaIntentBoost: Boolean(state.ctaIntentBoost),
+        conversionIntentObserved: Boolean(state.conversionIntentObserved)
+      };
+    }
+
+    function buildSessionFingerprint(attribution) {
+      return {
+        sessionId: state.sessionId,
+        visitorId: state.visitorId,
+        pageClusterId: state.pageClusterId,
+        entrySource: state.entrySource || resolveEntrySource(attribution),
+        timestampBucket: buildTimestampBucket()
+      };
+    }
+
+    function resolveTrafficQualityHint(eventName, score, engagementIntensityScore) {
+      if (
+        eventName === 'HighIntentLeadSignal' ||
+        score.totalSignalScore >= config.highIntentThreshold ||
+        state.highIntentCandidate ||
+        state.ctaIntentBoost ||
+        state.conversionIntentObserved ||
+        state.contactStepReached ||
+        state.requiredContactFieldsCompleted
+      ) {
+        return 'high-intent';
+      }
+
+      if (
+        engagementIntensityScore >= 40 ||
+        state.midIntentCandidate ||
+        state.repeatVisitCount > 1 ||
+        state.recommendationViewed ||
+        state.firstQuestionAnswered
+      ) {
+        return 'warm';
+      }
+
+      return 'cold';
+    }
+
+    function buildLearningEnrichment(eventName, score, clientContext, attribution, metadata) {
+      const funnelDepthIndex = resolveFunnelDepthIndex(eventName);
+      const engagementIntensityScore = computeEngagementIntensityScore();
+      const sessionConfidenceScore = computeSessionConfidenceScore();
+      const sessionFingerprint = buildSessionFingerprint(attribution);
+      const leadId =
+        asTrimmed(metadata?.leadId) ||
+        asTrimmed(metadata?.LeadId) ||
+        asTrimmed(metadata?.websiteLeadId) ||
+        asTrimmed(metadata?.WebsiteLeadId) ||
+        null;
+
+      return {
+        eventKey: buildBrowserEventKey(eventName, leadId),
+        isBrowserSignal: true,
+        isServerAuthority: false,
+        serverAuthorityWinsConflictResolution: true,
+        browserPayloadCanOverrideServer: false,
+        engagementIntensityScore,
+        sessionConfidenceScore,
+        funnelDepthIndex,
+        deviceContextTag: asTrimmed(clientContext?.deviceType) || 'desktop',
+        trafficQualityHint: resolveTrafficQualityHint(eventName, score, engagementIntensityScore),
+        metaSignalBoost: {
+          isBrowserLearningSignal: true,
+          learningWeight: resolveLearningWeight(eventName, funnelDepthIndex),
+          attributionAssist: true
+        },
+        predictionMarkers: buildPredictionMarkers(),
+        sessionFingerprint,
+        learningContext: {
+          repeatVisitCount: Math.max(1, Number(state.repeatVisitCount || 1)),
+          sessionDurationMs: getSessionDurationMs(),
+          navigationDepth: Math.max(1, Number(state.navigationDepth || 1)),
+          interactionCount: Number(state.interactionCount || 0),
+          formEngagementCount: Number(state.formEngagementCount || 0),
+          ctaHoverCount: Number(state.ctaHoverCount || 0),
+          maxScrollPercent: Number(state.maxScrollPercent || 0)
+        }
+      };
     }
 
     function backfillProgressState(eventName) {
@@ -778,8 +1146,10 @@
       };
     }
 
-    function buildPixelPayload(eventName, stepNumber, stepName, score) {
-      const attribution = resolveAttribution();
+    function buildPixelPayload(stepNumber, stepName, score, enrichment, attribution) {
+      const predictionMarkers = enrichment.predictionMarkers || {};
+      const sessionFingerprint = enrichment.sessionFingerprint || {};
+      const metaSignalBoost = enrichment.metaSignalBoost || {};
       const payload = {
         quote_type: state.quoteType,
         page_key: state.effectivePageKey || state.pageKey,
@@ -788,7 +1158,27 @@
         traffic_type: resolveTrafficType(attribution),
         campaign_key: attribution.utmCampaign || attribution.metaCampaignId || undefined,
         score_tier: score.scoreTier,
-        total_signal_score: score.totalSignalScore
+        total_signal_score: score.totalSignalScore,
+        event_key: enrichment.eventKey,
+        engagement_intensity_score: enrichment.engagementIntensityScore,
+        session_confidence_score: enrichment.sessionConfidenceScore,
+        funnel_depth_index: enrichment.funnelDepthIndex,
+        device_context_tag: enrichment.deviceContextTag,
+        traffic_quality_hint: enrichment.trafficQualityHint,
+        is_browser_signal: enrichment.isBrowserSignal === true,
+        is_server_authority: enrichment.isServerAuthority === true,
+        server_authority_wins_conflict_resolution: enrichment.serverAuthorityWinsConflictResolution === true,
+        browser_payload_can_override_server: enrichment.browserPayloadCanOverrideServer === true,
+        browser_learning_signal: metaSignalBoost.isBrowserLearningSignal === true,
+        learning_weight: metaSignalBoost.learningWeight,
+        attribution_assist: metaSignalBoost.attributionAssist === true,
+        mid_intent_candidate: predictionMarkers.midIntentCandidate === true,
+        high_intent_candidate: predictionMarkers.highIntentCandidate === true,
+        cta_intent_boost: predictionMarkers.ctaIntentBoost === true,
+        conversion_intent_observed: predictionMarkers.conversionIntentObserved === true,
+        page_cluster_id: sessionFingerprint.pageClusterId,
+        entry_source: sessionFingerprint.entrySource,
+        timestamp_bucket: sessionFingerprint.timestampBucket
       };
 
       if (Number.isFinite(stepNumber)) payload.funnel_step = stepNumber;
@@ -812,7 +1202,7 @@
       );
     }
 
-    function fireBrowserPixel(eventName, eventId, stepNumber, stepName, score) {
+    function fireBrowserPixel(eventName, eventId, pixelPayload) {
       if (!config.enabled || !config.sendBrowserEvents || !config.browserEventNames.has(eventName) || typeof window.fbq !== 'function') {
         return false;
       }
@@ -822,8 +1212,7 @@
       }
 
       try {
-        const payload = buildPixelPayload(eventName, stepNumber, stepName, score);
-        window.fbq('trackCustom', eventName, payload, { eventID: eventId });
+        window.fbq('trackCustom', eventName, pixelPayload, { eventID: eventId });
         return true;
       } catch {
         return false;
@@ -945,7 +1334,15 @@
 
       applyEventToState(eventName, stepNumber, metadata);
       const score = computeScore();
-      const browserEventSent = fireBrowserPixel(eventName, eventId, stepNumber, stepName, score);
+      const clientContext = resolveClientContext();
+      const attribution = resolveAttribution();
+      const enrichedMetadata = Object.assign(
+        {},
+        metadata,
+        buildLearningEnrichment(eventName, score, clientContext, attribution, metadata)
+      );
+      const browserPixelPayload = buildPixelPayload(stepNumber, stepName, score, enrichedMetadata, attribution);
+      const browserEventSent = fireBrowserPixel(eventName, eventId, browserPixelPayload);
       const payload = {
         eventName,
         eventId,
@@ -971,9 +1368,9 @@
           frictionScore: score.frictionScore,
           totalSignalScore: score.totalSignalScore
         },
-          clientContext: resolveClientContext(),
-        attribution: resolveAttribution(),
-        metadata
+        clientContext,
+        attribution,
+        metadata: enrichedMetadata
       };
 
       if (onceKey) {
@@ -1151,17 +1548,27 @@
           return;
         }
 
+        el.addEventListener('focus', () => {
+          registerInteraction();
+          registerFormFieldEngagement(fieldName);
+        });
+
         const eventName = el instanceof HTMLSelectElement ? 'change' : 'input';
         el.addEventListener(eventName, () => {
+          registerInteraction();
           const value = asTrimmed(el.value);
           if (value && !state.fired['contact-input-started']) {
+            registerFormFieldEngagement(fieldName);
             void emitSignal('ContactInputStarted', {
               onceKey: 'contact-input-started',
               metadata: {
                 contactInputStarted: true,
-                fieldName
+                fieldName,
+                conversionIntentObserved: true
               }
             });
+          } else if (value) {
+            registerFormFieldEngagement(fieldName);
           }
 
           if (fieldName === 'Phone') {
@@ -1202,8 +1609,6 @@
     }
 
     function wireScrollTracking() {
-      if (state.fired['meaningful-scroll']) return;
-
       const onScroll = () => {
         const doc = document.documentElement;
         const body = document.body;
@@ -1212,19 +1617,69 @@
         const maxScrollable = Math.max(1, fullHeight - viewport);
         const scrolled = Math.max(window.scrollY || window.pageYOffset || doc.scrollTop || 0, 0);
         const percent = Math.min(100, Math.round((scrolled / maxScrollable) * 100));
+        updateScrollSignals(percent);
 
-        if (percent >= MEANINGFUL_SCROLL_THRESHOLD) {
-          window.removeEventListener('scroll', onScroll);
+        if (percent >= MEANINGFUL_SCROLL_THRESHOLD && !state.fired['meaningful-scroll']) {
           void emitSignal('MeaningfulScroll', {
             onceKey: 'meaningful-scroll',
             metadata: {
-              scrollPercent: percent
+              scrollPercent: percent,
+              midIntentCandidate: percent >= MID_INTENT_SCROLL_THRESHOLD,
+              highIntentCandidate: percent >= HIGH_INTENT_SCROLL_THRESHOLD
             }
           });
+        }
+
+        if (percent >= HIGH_INTENT_SCROLL_THRESHOLD && state.fired['meaningful-scroll']) {
+          window.removeEventListener('scroll', onScroll);
         }
       };
 
       window.addEventListener('scroll', onScroll, { passive: true });
+    }
+
+    function wireGeneralInteractionTracking() {
+      document.addEventListener('pointerdown', registerInteraction, { passive: true });
+      document.addEventListener('touchstart', registerInteraction, { passive: true });
+      document.addEventListener('keydown', registerInteraction);
+    }
+
+    function wireCtaHoverTracking() {
+      document.addEventListener('mouseover', (event) => {
+        const target = event.target instanceof Element
+          ? event.target.closest(CTA_SELECTOR)
+          : null;
+        if (!(target instanceof HTMLElement)) return;
+
+        const hoverKey =
+          target.dataset.primaryCta ||
+          target.dataset.cta ||
+          target.dataset.lifeFunnelStart ||
+          target.id ||
+          target.getAttribute('name') ||
+          asTrimmed(target.textContent) ||
+          target.tagName.toLowerCase();
+
+        if (!hoverKey) return;
+
+        const now = Date.now();
+        if (
+          state.lastCtaHoverKey === hoverKey &&
+          (now - Number(state.lastCtaHoverAt || 0)) < 800
+        ) {
+          return;
+        }
+
+        state.lastCtaHoverKey = hoverKey;
+        state.lastCtaHoverAt = now;
+        state.ctaHoverCount = Number(state.ctaHoverCount || 0) + 1;
+        if (state.ctaHoverCount >= CTA_HOVER_THRESHOLD) {
+          state.ctaIntentBoost = true;
+        }
+
+        registerInteraction();
+        saveState();
+      }, { passive: true });
     }
 
     function wireDisabledClickTracking() {
@@ -1291,6 +1746,8 @@
     function init() {
       wireContactInputs();
       wireScrollTracking();
+      wireGeneralInteractionTracking();
+      wireCtaHoverTracking();
       wireDisabledClickTracking();
       scheduleEngagementTimers();
 
@@ -1402,11 +1859,17 @@
       },
       getState() {
         const score = computeScore();
+        const clientContext = resolveClientContext();
+        const attribution = resolveAttribution();
+        const enrichment = buildLearningEnrichment('ViewContent', score, clientContext, attribution, null);
         return {
           sessionId: state.sessionId,
           visitorId: state.visitorId,
           quoteType: state.quoteType,
-          score
+          pageClusterId: state.pageClusterId,
+          entrySource: state.entrySource,
+          score,
+          enrichment
         };
       }
     };

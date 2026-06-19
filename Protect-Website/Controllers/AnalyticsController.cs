@@ -138,6 +138,9 @@ public sealed class AnalyticsController : Controller
             StepNumber = request.StepNumber,
             StepName = Normalize(request.StepName),
             BrowserEventSent = request.BrowserEventSent,
+            IsBrowserSignal = true,
+            IsServerAuthority = false,
+            MetaServerAuthorityEligible = false,
             Metadata = new
             {
                 Source = "meta_signal_browser_ingest",

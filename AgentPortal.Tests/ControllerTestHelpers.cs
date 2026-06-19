@@ -49,7 +49,8 @@ internal static class ControllerTestHelpers
         var effCtx = new EffectiveAgentContext(accessor, tracking, NullLogger<EffectiveAgentContext>.Instance);
         var featureFlags = Options.Create(new AgentPortal.Models.AppFeatureFlags());
         var importValidator = new AgentPortal.Services.ImportValidation.LeadImportValidator();
-        var controller = new LeadsController(db, timeResolver, prod, effCtx, execution, commitments, NullLogger<LeadsController>.Instance, featureFlags, importValidator)
+        var metaSignalOutcomes = new MetaSignalCrmOutcomeService(db, NullLogger<MetaSignalCrmOutcomeService>.Instance);
+        var controller = new LeadsController(db, timeResolver, prod, effCtx, execution, commitments, NullLogger<LeadsController>.Instance, featureFlags, importValidator, metaSignalOutcomes)
         {
             ControllerContext = new ControllerContext { HttpContext = accessor.HttpContext! }
         };
@@ -157,7 +158,13 @@ internal static class ControllerTestHelpers
             .Setup(x => x.CreateClient(It.IsAny<string>()))
             .Returns(client);
 
-        return new CalendarController(tokenAcquisition.Object, NullLogger<CalendarController>.Instance, db, httpClientFactory.Object)
+        return new CalendarController(
+            tokenAcquisition.Object,
+            NullLogger<CalendarController>.Instance,
+            db,
+            httpClientFactory.Object,
+            Mock.Of<IAgentTimeZoneResolver>(),
+            null!)
         {
             ControllerContext = new ControllerContext { HttpContext = accessor.HttpContext! }
         };

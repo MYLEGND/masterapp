@@ -1,4 +1,5 @@
 using System.ComponentModel.DataAnnotations;
+using System.Text.Json;
 using AgentPortal.Security;
 using Domain.Entities;
 using Infrastructure.Data;
@@ -186,7 +187,16 @@ public class AnalyticsIngestController : ControllerBase
             EventUtc = req.EventUtc ?? DateTime.UtcNow,
             ReceivedUtc = DateTime.UtcNow,
             SubmitOutcome = TrimOrNull(req.SubmitOutcome),
-            MetadataJson = string.IsNullOrWhiteSpace(req.MetadataJson) ? null : req.MetadataJson,
+            MetadataJson = MetaSignalSingleTruthPolicy.BuildMetadataJson(
+                eventName: req.EventType.Trim(),
+                leadId: null,
+                sessionId: TrimOrNull(req.SessionId),
+                payload: ParseMetadataPayload(req.MetadataJson),
+                isBrowserSignal: true,
+                isServerAuthority: false,
+                metaServerAuthorityEligible: false,
+                metaSingleTruthDispatchEligible: false,
+                metaPipelineOrigin: "browser_analytics_ingest"),
             IsInternal = req.IsInternal || FounderGuard.IsFounder(User),
             AgentTrackingProfileId = resolved.Found ? resolved.Profile.Id : null,
             AgentSlug = resolved.Found ? resolved.CanonicalSlug : null,
@@ -267,6 +277,22 @@ public class AnalyticsIngestController : ControllerBase
 
     private static string? TrimOrNull(string? input) =>
         string.IsNullOrWhiteSpace(input) ? null : input.Trim();
+
+    private static object? ParseMetadataPayload(string? metadataJson)
+    {
+        if (string.IsNullOrWhiteSpace(metadataJson))
+            return null;
+
+        try
+        {
+            using var doc = JsonDocument.Parse(metadataJson);
+            return doc.RootElement.Clone();
+        }
+        catch
+        {
+            return new { rawMetadataJson = metadataJson };
+        }
+    }
 
     private string CurrentEnvironment() =>
         Environment.GetEnvironmentVariable("ASPNETCORE_ENVIRONMENT") ?? "Production";
