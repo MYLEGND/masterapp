@@ -211,6 +211,13 @@ public sealed class LeadSnapshotRow
     public string? Interest { get; set; }
     public string? LeadSource { get; set; }
     public TrafficType TrafficType { get; set; }
+    public string? SessionId { get; set; }
+    public string? VisitorId { get; set; }
+    public string? DeviceType { get; set; }
+    public string? Browser { get; set; }
+    public string? OperatingSystem { get; set; }
+    public int? ScrollPercent { get; set; }
+    public int? HumanInteractionCount { get; set; }
     public string? UtmSource { get; set; }
     public string? UtmMedium { get; set; }
     public string? UtmCampaign { get; set; }

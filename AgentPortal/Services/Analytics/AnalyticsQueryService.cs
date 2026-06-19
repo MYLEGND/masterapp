@@ -1109,6 +1109,13 @@ public sealed class AnalyticsQueryService : IAnalyticsQueryService
         string? PageMode,
         MetaLeadTrackingState? MetaTracking);
 
+    private sealed record LeadBehaviorSnapshot(
+        string? DeviceType,
+        string? Browser,
+        string? OperatingSystem,
+        int? ScrollPercent,
+        int? HumanInteractionCount);
+
     private static LeadMetadataSnapshot SnapshotFromLeadMetadata(WebsiteLead lead)
     {
         if (string.IsNullOrWhiteSpace(lead.MetadataJson))
@@ -1180,6 +1187,146 @@ public sealed class AnalyticsQueryService : IAnalyticsQueryService
         }
 
         return (direct, "unknown");
+    }
+
+    private static Dictionary<string, List<AnalyticsEvent>> BuildSessionEventMap(IEnumerable<AnalyticsEvent> events)
+    {
+        return events
+            .Where(e => !string.IsNullOrWhiteSpace(e.SessionId))
+            .GroupBy(e => e.SessionId!, StringComparer.OrdinalIgnoreCase)
+            .ToDictionary(
+                g => g.Key,
+                g => g.OrderBy(e => e.EventUtc).ToList(),
+                StringComparer.OrdinalIgnoreCase);
+    }
+
+    private static Dictionary<string, List<AnalyticsEvent>> BuildVisitorEventMap(IEnumerable<AnalyticsEvent> events)
+    {
+        return events
+            .Where(e => !string.IsNullOrWhiteSpace(e.VisitorId))
+            .GroupBy(e => e.VisitorId!, StringComparer.OrdinalIgnoreCase)
+            .ToDictionary(
+                g => g.Key,
+                g => g.OrderBy(e => e.EventUtc).ToList(),
+                StringComparer.OrdinalIgnoreCase);
+    }
+
+    private static string NormalizeDeviceContextLabel(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value)) return "Unknown";
+
+        var normalized = value.Trim();
+        if (normalized.Equals("unknown", StringComparison.OrdinalIgnoreCase)) return "Unknown";
+
+        var lower = normalized.ToLowerInvariant();
+        return lower switch
+        {
+            "ios" => "iOS",
+            "macos" => "macOS",
+            "chrome" => "Chrome",
+            "firefox" => "Firefox",
+            "safari" => "Safari",
+            "edge" => "Edge",
+            "android" => "Android",
+            "windows" => "Windows",
+            "desktop" => "Desktop",
+            "mobile" => "Mobile",
+            "tablet" => "Tablet",
+            _ => char.ToUpperInvariant(normalized[0]) + normalized[1..]
+        };
+    }
+
+    private static string ResolveDeviceTypeContext(AnalyticsEvent e)
+    {
+        var existing = NormalizeDeviceContextLabel(e.DeviceType);
+        if (!existing.Equals("Unknown", StringComparison.OrdinalIgnoreCase)) return existing;
+
+        var width = e.ViewportWidth ?? e.ScreenWidth ?? 0;
+        if (width <= 0) return "Unknown";
+        if (width < 768) return "Mobile";
+        if (width < 1024) return "Tablet";
+        return "Desktop";
+    }
+
+    private static string BucketWidthLabel(int? width)
+    {
+        if (!width.HasValue || width.Value <= 0) return "Unknown";
+        var w = width.Value;
+        if (w < 390) return "Small mobile (<390)";
+        if (w < 480) return "Large mobile (390-479)";
+        if (w < 768) return "Phablet (480-767)";
+        if (w < 1024) return "Tablet (768-1023)";
+        if (w < 1440) return "Laptop/Desktop (1024-1439)";
+        return "Wide desktop (1440+)";
+    }
+
+    private static string ResolveLatestContextLabel(IEnumerable<AnalyticsEvent> events, Func<AnalyticsEvent, string> selector)
+    {
+        var labels = events
+            .OrderBy(e => e.EventUtc)
+            .Select(selector)
+            .Where(x => !string.IsNullOrWhiteSpace(x))
+            .ToList();
+
+        var best = labels.LastOrDefault(x => !x.Equals("Unknown", StringComparison.OrdinalIgnoreCase));
+        return string.IsNullOrWhiteSpace(best) ? (labels.LastOrDefault() ?? "Unknown") : best;
+    }
+
+    private static string? BuildIdentityProfileKeyOrNull(AnalyticsEvent e)
+    {
+        if (!string.IsNullOrWhiteSpace(e.SessionId))
+            return $"sid:{e.SessionId.Trim()}";
+
+        if (!string.IsNullOrWhiteSpace(e.VisitorId))
+            return $"vid:{e.VisitorId.Trim()}";
+
+        return null;
+    }
+
+    private static bool IsVisitorFallbackIdentityKey(string identityKey) =>
+        identityKey.StartsWith("vid:", StringComparison.OrdinalIgnoreCase);
+
+    private static LeadBehaviorSnapshot ResolveLeadBehaviorSnapshot(
+        WebsiteLead lead,
+        IReadOnlyDictionary<string, List<AnalyticsEvent>> sessionEventMap,
+        IReadOnlyDictionary<string, List<AnalyticsEvent>> visitorEventMap)
+    {
+        var sessionId = FirstNonBlank(lead.SessionId);
+        if (!string.IsNullOrWhiteSpace(sessionId) && sessionEventMap.TryGetValue(sessionId, out var sessionEvents))
+        {
+            return BuildLeadBehaviorSnapshot(sessionEvents);
+        }
+
+        var visitorId = FirstNonBlank(lead.VisitorId);
+        if (!string.IsNullOrWhiteSpace(visitorId) && visitorEventMap.TryGetValue(visitorId, out var visitorEvents))
+        {
+            return BuildLeadBehaviorSnapshot(visitorEvents);
+        }
+
+        return new LeadBehaviorSnapshot(null, null, null, null, null);
+    }
+
+    private static LeadBehaviorSnapshot BuildLeadBehaviorSnapshot(IReadOnlyCollection<AnalyticsEvent> events)
+    {
+        if (events.Count == 0)
+            return new LeadBehaviorSnapshot(null, null, null, null, null);
+
+        var scrollSamples = events
+            .Where(e => e.ScrollPercent.HasValue)
+            .Select(e => e.ScrollPercent!.Value)
+            .ToList();
+
+        var humanInteractionSamples = events
+            .Where(e => e.HumanInteractionCount.HasValue)
+            .Select(e => e.HumanInteractionCount!.Value)
+            .ToList();
+
+        return new LeadBehaviorSnapshot(
+            DeviceType: ResolveLatestContextLabel(events, ResolveDeviceTypeContext),
+            Browser: ResolveLatestContextLabel(events, e => NormalizeDeviceContextLabel(e.Browser)),
+            OperatingSystem: ResolveLatestContextLabel(events, e => NormalizeDeviceContextLabel(e.OperatingSystem)),
+            ScrollPercent: scrollSamples.Count == 0 ? null : scrollSamples.Max(),
+            HumanInteractionCount: humanInteractionSamples.Count == 0 ? null : humanInteractionSamples.Max());
     }
 
 
@@ -2634,6 +2781,8 @@ public sealed class AnalyticsQueryService : IAnalyticsQueryService
         var contextEvents = await BaseEvents(range, scope, scopedAgentIds).ToListAsync();
         var sessionMap = BuildSessionAttributionMap(contextEvents);
         var visitorMap = BuildVisitorAttributionMap(contextEvents);
+        var sessionEventMap = BuildSessionEventMap(contextEvents);
+        var visitorEventMap = BuildVisitorEventMap(contextEvents);
 
         List<WebsiteLead> filteredLeads;
         if (trafficType == TrafficType.All)
@@ -2660,6 +2809,7 @@ public sealed class AnalyticsQueryService : IAnalyticsQueryService
                 var resolved = ResolveLeadAttribution(l, sessionMap, visitorMap);
                 var classified = Classify(resolved.Attribution);
                 var metadata = SnapshotFromLeadMetadata(l);
+                var behavior = ResolveLeadBehaviorSnapshot(l, sessionEventMap, visitorEventMap);
                 var metaTracking = metadata.MetaTracking;
                 var isMetaAttributedPaid = IsMetaAttributedPaid(resolved.Attribution);
                 var isPaidLandingExperience = string.Equals(metadata.PageMode, "paid_landing", StringComparison.OrdinalIgnoreCase);
@@ -2676,6 +2826,8 @@ public sealed class AnalyticsQueryService : IAnalyticsQueryService
                 var leadMetaCampaignId = NormalizeAttributionToken(l.MetaCampaignId) ?? metadata.MetaCampaignId;
                 var leadMetaAdSetId = NormalizeAttributionToken(l.MetaAdSetId) ?? metadata.MetaAdSetId;
                 var leadMetaAdId = NormalizeAttributionToken(l.MetaAdId) ?? metadata.MetaAdId;
+                var leadSessionId = FirstNonBlank(l.SessionId);
+                var leadVisitorId = FirstNonBlank(l.VisitorId);
                 return new LeadSnapshotRow
                 {
                     LeadId      = l.LeadId,
@@ -2685,11 +2837,18 @@ public sealed class AnalyticsQueryService : IAnalyticsQueryService
                     Phone       = l.Phone,
                     Interest    = l.InterestType,
                     LeadSource  = $"{l.SourcePageKey}/{l.SourceCtaKey}".Trim('/'),
+                    SessionId   = leadSessionId,
+                    VisitorId   = leadVisitorId,
+                    DeviceType  = behavior.DeviceType,
+                    Browser     = behavior.Browser,
+                    OperatingSystem = behavior.OperatingSystem,
+                    ScrollPercent = behavior.ScrollPercent,
+                    HumanInteractionCount = behavior.HumanInteractionCount,
                     UtmSource   = l.UtmSource,
                     UtmMedium   = l.UtmMedium,
                     UtmCampaign = l.UtmCampaign,
                     UtmId       = leadUtmId,
-                    Fbclid      = l.Fbclid,
+                    Fbclid      = NormalizeAttributionToken(l.Fbclid),
                     MetaCampaignId = leadMetaCampaignId,
                     MetaAdSetId = leadMetaAdSetId,
                     MetaAdId    = leadMetaAdId,
@@ -3672,75 +3831,15 @@ public sealed class AnalyticsQueryService : IAnalyticsQueryService
             .Select(r => r.Event)
             .ToList();
 
-        static string Clean(string? value)
-        {
-            if (string.IsNullOrWhiteSpace(value)) return "Unknown";
-
-            var normalized = value.Trim();
-            if (normalized.Equals("unknown", StringComparison.OrdinalIgnoreCase)) return "Unknown";
-
-            var lower = normalized.ToLowerInvariant();
-            return lower switch
-            {
-                "ios" => "iOS",
-                "macos" => "macOS",
-                "chrome" => "Chrome",
-                "firefox" => "Firefox",
-                "safari" => "Safari",
-                "edge" => "Edge",
-                "android" => "Android",
-                "windows" => "Windows",
-                "desktop" => "Desktop",
-                "mobile" => "Mobile",
-                "tablet" => "Tablet",
-                _ => char.ToUpperInvariant(normalized[0]) + normalized[1..]
-            };
-        }
-
-        static string ResolveDeviceType(AnalyticsEvent e)
-        {
-            var existing = Clean(e.DeviceType);
-            if (!existing.Equals("Unknown", StringComparison.OrdinalIgnoreCase)) return existing;
-
-            var width = e.ViewportWidth ?? e.ScreenWidth ?? 0;
-            if (width <= 0) return "Unknown";
-            if (width < 768) return "Mobile";
-            if (width < 1024) return "Tablet";
-            return "Desktop";
-        }
-
-        static string BucketWidth(int? width)
-        {
-            if (!width.HasValue || width.Value <= 0) return "Unknown";
-            var w = width.Value;
-            if (w < 390) return "Small mobile (<390)";
-            if (w < 480) return "Large mobile (390-479)";
-            if (w < 768) return "Phablet (480-767)";
-            if (w < 1024) return "Tablet (768-1023)";
-            if (w < 1440) return "Laptop/Desktop (1024-1439)";
-            return "Wide desktop (1440+)";
-        }
-
-        string ResolveSessionLabel(IEnumerable<AnalyticsEvent> sessionEvents, Func<AnalyticsEvent, string> selector)
-        {
-            var labels = sessionEvents
-                .OrderBy(e => e.EventUtc)
-                .Select(selector)
-                .Where(x => !string.IsNullOrWhiteSpace(x))
-                .ToList();
-
-            var best = labels.LastOrDefault(x => !x.Equals("Unknown", StringComparison.OrdinalIgnoreCase));
-            return string.IsNullOrWhiteSpace(best) ? "Unknown" : best;
-        }
-
         List<DeviceIntelligenceRowDto> BuildRows(Func<AnalyticsEvent, string> selector)
         {
             var sessionProfiles = rows
-                .Where(e => !string.IsNullOrWhiteSpace(e.SessionId))
-                .GroupBy(e => e.SessionId!, StringComparer.OrdinalIgnoreCase)
+                .Select(e => new { Event = e, IdentityKey = BuildIdentityProfileKeyOrNull(e) })
+                .Where(x => !string.IsNullOrWhiteSpace(x.IdentityKey))
+                .GroupBy(x => x.IdentityKey!, StringComparer.OrdinalIgnoreCase)
                 .Select(g =>
                 {
-                    var events = g.OrderBy(e => e.EventUtc).ToList();
+                    var events = g.Select(x => x.Event).OrderBy(e => e.EventUtc).ToList();
                     var ctas = events.Count(e => e.EventType == "cta_click" || e.EventType == "quote_click");
                     var starts = BuildQuoteFormStartedUnitKeys(events).Count > 0 ? 1 : 0;
                     var submits = events.Count(e =>
@@ -3757,8 +3856,8 @@ public sealed class AnalyticsQueryService : IAnalyticsQueryService
 
                     return new
                     {
-                        SessionId = g.Key,
-                        Label = ResolveSessionLabel(events, selector),
+                        IdentityKey = g.Key,
+                        Label = ResolveLatestContextLabel(events, selector),
                         Events = events.Count,
                         CtaClicks = ctas,
                         FormStarts = starts,
@@ -3796,22 +3895,31 @@ public sealed class AnalyticsQueryService : IAnalyticsQueryService
                 .ToList();
         }
 
+        var identityProfiles = rows
+            .Select(BuildIdentityProfileKeyOrNull)
+            .Where(x => !string.IsNullOrWhiteSpace(x))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
         return new DeviceIntelligenceDto
         {
             RangeLabel = range.Label,
             TrafficType = trafficType,
             Sessions = rows.Select(e => e.SessionId).Where(x => !string.IsNullOrWhiteSpace(x)).Distinct().Count(),
+            IdentityProfiles = identityProfiles.Count,
+            VisitorFallbackProfiles = identityProfiles.Count(identityKey => identityKey is not null && IsVisitorFallbackIdentityKey(identityKey)),
+            AnonymousEventsExcluded = rows.Count(e => string.IsNullOrWhiteSpace(BuildIdentityProfileKeyOrNull(e))),
             Events = rows.Count,
             FormStarts = BuildQuoteFormStartedUnitKeys(rows).Count,
             ConfirmedLeads = rows.Count(e =>
                 e.EventType == "lead_form_submit_success"),
-            Devices = BuildRows(ResolveDeviceType),
-            Browsers = BuildRows(e => Clean(e.Browser)),
-            OperatingSystems = BuildRows(e => Clean(e.OperatingSystem)),
-            Viewports = BuildRows(e => BucketWidth(e.ViewportWidth)),
-            Screens = BuildRows(e => BucketWidth(e.ScreenWidth)),
-            TimeZones = BuildRows(e => Clean(e.TimeZone)),
-            Languages = BuildRows(e => Clean(e.Language))
+            Devices = BuildRows(ResolveDeviceTypeContext),
+            Browsers = BuildRows(e => NormalizeDeviceContextLabel(e.Browser)),
+            OperatingSystems = BuildRows(e => NormalizeDeviceContextLabel(e.OperatingSystem)),
+            Viewports = BuildRows(e => BucketWidthLabel(e.ViewportWidth)),
+            Screens = BuildRows(e => BucketWidthLabel(e.ScreenWidth)),
+            TimeZones = BuildRows(e => NormalizeDeviceContextLabel(e.TimeZone)),
+            Languages = BuildRows(e => NormalizeDeviceContextLabel(e.Language))
         };
     }
 

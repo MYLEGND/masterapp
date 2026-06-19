@@ -1464,7 +1464,7 @@
     const body = document.getElementById('leads-body');
     if (!body) return;
     if (!data.leads || data.leads.length === 0) {
-      body.innerHTML = '<tr><td colspan="9" class="fa-empty">No data in range</td></tr>';
+      body.innerHTML = '<tr><td colspan="10" class="fa-empty">No data in range</td></tr>';
       closeLeadContextMenu();
       setText('leads-range-label', data.rangeLabel || '');
       return;
@@ -1488,6 +1488,7 @@
           <td>${escapeHtml(lead.interest || '—')}</td>
           <td>${escapeHtml(lead.leadSource || '—')}</td>
           <td>${escapeHtml(lead.resolvedSource || '—')}${leadAttributionIdSummary(lead)}</td>
+          <td>${renderLeadContextCell(lead)}</td>
           <td class="text-center">${trafficBadge(lead.attribution)} <span class="text-muted small">${escapeHtml(lead.attribution?.resolutionSource || 'unknown')}</span>${metaLearningBadge(lead.attribution)}</td>
           <td class="text-center">${metaTrackingBadge(lead.metaTracking)}</td>
         </tr>
@@ -1511,6 +1512,58 @@
 
     if (!parts.length) return '';
     return `<div class="text-muted small">${parts.join(' · ')}</div>`;
+  }
+
+  function shortenTrackingToken(value, visible = 12) {
+    const normalized = typeof value === 'string' ? value.trim() : '';
+    if (!normalized) return '';
+    return normalized.length <= visible ? normalized : `${normalized.slice(0, visible)}…`;
+  }
+
+  function renderLeadIdentityLine(label, value, visible = 12) {
+    if (!value) return '';
+    const display = shortenTrackingToken(value, visible);
+    return `
+      <div>
+        <span class="text-muted">${escapeHtml(label)}:</span>
+        <span class="font-monospace" title="${escapeHtml(value)}">${escapeHtml(display)}</span>
+      </div>
+    `;
+  }
+
+  function renderLeadContextCell(lead) {
+    if (!lead) return '<span class="text-muted small">No captured context</span>';
+
+    const deviceParts = [lead.deviceType, lead.browser, lead.operatingSystem]
+      .filter(value => value && String(value).trim());
+    const behaviorParts = [];
+
+    if (lead.scrollPercent !== null && lead.scrollPercent !== undefined) {
+      behaviorParts.push(`Scroll ${lead.scrollPercent}%`);
+    }
+
+    if (lead.humanInteractionCount !== null && lead.humanInteractionCount !== undefined) {
+      behaviorParts.push(`Human ${lead.humanInteractionCount}`);
+    }
+
+    const identityLines = [
+      renderLeadIdentityLine('Session', lead.sessionId),
+      renderLeadIdentityLine('Visitor', lead.visitorId),
+      renderLeadIdentityLine('Fbclid', lead.fbclid, 14)
+    ].filter(Boolean).join('');
+
+    const deviceSummary = deviceParts.length
+      ? escapeHtml(deviceParts.join(' · '))
+      : '<span class="text-muted small">No device context</span>';
+    const behaviorSummary = behaviorParts.length
+      ? escapeHtml(behaviorParts.join(' · '))
+      : '<span class="text-muted small">No engagement context</span>';
+
+    return `
+      <div>${deviceSummary}</div>
+      <div class="text-muted small mt-1">${behaviorSummary}</div>
+      ${identityLines ? `<details class="small mt-1"><summary>Inspect IDs</summary>${identityLines}</details>` : ''}
+    `;
   }
 
   function metaTrackingBadge(metaTracking) {
@@ -2910,7 +2963,7 @@ function escapeHtml(value) {
       setText('leads-range-label', 'Unavailable');
       setText('leads-total', '—');
       setText('leads-cap-note', message);
-      setTableMessage('leads-body', 9, message, 'text-danger');
+      setTableMessage('leads-body', 10, message, 'text-danger');
       console.error(err);
     }
   }
@@ -4209,12 +4262,20 @@ function escapeHtml(value) {
           { header: 'Name', selector: 'name' },
           { header: 'Email', selector: 'email' },
           { header: 'Phone', selector: 'phone' },
+          { header: 'SessionId', selector: r => r.sessionId || '' },
+          { header: 'VisitorId', selector: r => r.visitorId || '' },
+          { header: 'DeviceType', selector: r => r.deviceType || '' },
+          { header: 'Browser', selector: r => r.browser || '' },
+          { header: 'OperatingSystem', selector: r => r.operatingSystem || '' },
+          { header: 'ScrollPercent', selector: r => r.scrollPercent ?? '' },
+          { header: 'HumanInteractionCount', selector: r => r.humanInteractionCount ?? '' },
           { header: 'Interest', selector: 'interest' },
           { header: 'LeadSource', selector: r => r.leadSource || '' },
           { header: 'UtmSource', selector: r => r.utmSource || '' },
           { header: 'UtmMedium', selector: r => r.utmMedium || '' },
           { header: 'UtmCampaign', selector: r => r.utmCampaign || '' },
           { header: 'UtmId', selector: r => r.utmId || '' },
+          { header: 'Fbclid', selector: r => r.fbclid || '' },
           { header: 'MetaCampaignId', selector: r => r.metaCampaignId || '' },
           { header: 'MetaAdSetId', selector: r => r.metaAdSetId || '' },
           { header: 'MetaAdId', selector: r => r.metaAdId || '' },
@@ -4830,6 +4891,17 @@ function escapeHtml(value) {
     setText('deviceEvents', data.events ?? 0);
     setText('deviceFormStarts', data.formStarts ?? 0);
     setText('deviceConfirmedLeads', data.confirmedLeads ?? 0);
+    const identityCoverage = document.getElementById('deviceIdentityCoverage');
+    if (identityCoverage) {
+      const parts = [`Identity profiles ${Number(data.identityProfiles ?? data.sessions ?? 0).toLocaleString('en-US')}`];
+      if ((data.visitorFallbackProfiles ?? 0) > 0) {
+        parts.push(`${Number(data.visitorFallbackProfiles).toLocaleString('en-US')} visitor-only fallback`);
+      }
+      if ((data.anonymousEventsExcluded ?? 0) > 0) {
+        parts.push(`${Number(data.anonymousEventsExcluded).toLocaleString('en-US')} anonymous events excluded from grouped tables`);
+      }
+      identityCoverage.textContent = `Identity coverage: ${parts.join(' · ')}`;
+    }
 
     if (content) {
       content.innerHTML = [

@@ -7,6 +7,9 @@ public sealed class DeviceIntelligenceDto
     public string RangeLabel { get; set; } = "";
     public TrafficType TrafficType { get; set; } = TrafficType.All;
     public int Sessions { get; set; }
+    public int IdentityProfiles { get; set; }
+    public int VisitorFallbackProfiles { get; set; }
+    public int AnonymousEventsExcluded { get; set; }
     public int Events { get; set; }
     public int FormStarts { get; set; }
     public int ConfirmedLeads { get; set; }
