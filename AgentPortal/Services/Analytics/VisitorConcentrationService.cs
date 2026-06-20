@@ -63,28 +63,80 @@ public sealed class VisitorConcentrationService : IVisitorConcentrationService
     {
         var eventsQuery = _analytics.ScopedEvents(range, scope);
 
-        var events = await eventsQuery
-            .OrderBy(e => e.EventUtc)
+        // Critical performance fix:
+        // Do NOT materialize every analytics event for the full range before grouping.
+        // First aggregate visitor concentration in SQL, then hydrate event details only
+        // for the highest-concentration visitors shown in the modal.
+        const int visitorDetailLimit = 100;
+
+        if (trafficType != TrafficType.All)
+        {
+            // Traffic classification is not SQL-translatable because it depends on
+            // TrafficAttribution.Classify. Keep the existing path for filtered views.
+            var filteredEvents = await eventsQuery
+                .OrderBy(e => e.EventUtc)
+                .ToListAsync(ct);
+
+            filteredEvents = trafficType switch
+            {
+                TrafficType.PaidAds => filteredEvents
+                    .Where(e => Classify(e) == TrafficType.PaidAds)
+                    .ToList(),
+
+                TrafficType.NonPaid => filteredEvents
+                    .Where(e => Classify(e) != TrafficType.PaidAds)
+                    .ToList(),
+
+                _ => filteredEvents
+            };
+
+            var filteredVisitorIds = filteredEvents
+                .Select(e => e.VisitorId!)
+                .Where(x => !string.IsNullOrWhiteSpace(x))
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToList();
+
+            var filteredSessionIds = filteredEvents
+                .Select(e => e.SessionId!)
+                .Where(x => !string.IsNullOrWhiteSpace(x))
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToList();
+
+            var filteredMetaSignals = await LoadRelevantMetaSignalsAsync(range, filteredVisitorIds, filteredSessionIds, ct);
+
+            return BuildPayloadFromEvents(range, filteredEvents, filteredMetaSignals);
+        }
+
+        var visitorAggregates = await eventsQuery
+            .Where(e => !string.IsNullOrWhiteSpace(e.VisitorId))
+            .GroupBy(e => e.VisitorId!)
+            .Select(g => new
+            {
+                VisitorId = g.Key,
+                Events = g.Count(),
+                Sessions = g.Where(x => !string.IsNullOrWhiteSpace(x.SessionId))
+                    .Select(x => x.SessionId!)
+                    .Distinct()
+                    .Count(),
+                FirstUtc = g.Min(x => x.EventUtc),
+                LastUtc = g.Max(x => x.EventUtc),
+                InternalEvents = g.Count(x => x.IsInternal)
+            })
+            .OrderByDescending(x => x.Sessions)
+            .ThenByDescending(x => x.Events)
             .ToListAsync(ct);
 
-        events = trafficType switch
-        {
-            TrafficType.PaidAds => events
-                .Where(e => Classify(e) == TrafficType.PaidAds)
-                .ToList(),
-
-            TrafficType.NonPaid => events
-                .Where(e => Classify(e) != TrafficType.PaidAds)
-                .ToList(),
-
-            _ => events
-        };
-
-        var visitorIds = events
-            .Select(e => e.VisitorId!)
-            .Where(x => !string.IsNullOrWhiteSpace(x))
-            .Distinct(StringComparer.OrdinalIgnoreCase)
+        var visitorIds = visitorAggregates
+            .Take(visitorDetailLimit)
+            .Select(x => x.VisitorId)
             .ToList();
+
+        var events = visitorIds.Count == 0
+            ? new List<AnalyticsEvent>()
+            : await eventsQuery
+                .Where(e => !string.IsNullOrWhiteSpace(e.VisitorId) && visitorIds.Contains(e.VisitorId!))
+                .OrderBy(e => e.EventUtc)
+                .ToListAsync(ct);
 
         var sessionIds = events
             .Select(e => e.SessionId!)
@@ -92,8 +144,112 @@ public sealed class VisitorConcentrationService : IVisitorConcentrationService
             .Distinct(StringComparer.OrdinalIgnoreCase)
             .ToList();
 
+        var aggregateMap = visitorAggregates.ToDictionary(x => x.VisitorId, StringComparer.OrdinalIgnoreCase);
         var metaSignals = await LoadRelevantMetaSignalsAsync(range, visitorIds, sessionIds, ct);
 
+        var visitorGroups = events
+            .Where(e => !string.IsNullOrWhiteSpace(e.VisitorId))
+            .GroupBy(e => e.VisitorId!)
+            .Select(g =>
+            {
+                var groupEvents = g.OrderBy(x => x.EventUtc).ToList();
+
+                var groupSessionIds = groupEvents
+                    .Select(x => x.SessionId)
+                    .Where(x => !string.IsNullOrWhiteSpace(x))
+                    .Distinct(StringComparer.OrdinalIgnoreCase)
+                    .ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+                var groupSignals = metaSignals
+                    .Where(x =>
+                        string.Equals(x.VisitorId, g.Key, StringComparison.OrdinalIgnoreCase) ||
+                        (!string.IsNullOrWhiteSpace(x.SessionId) && groupSessionIds.Contains(x.SessionId!)))
+                    .ToList();
+
+                var trust = _trustScoring.Calculate(groupEvents, groupSignals);
+
+                var aggregate = aggregateMap[g.Key];
+                var sessions = aggregate.Sessions;
+                var totalEvents = aggregate.Events;
+                var internalEvents = aggregate.InternalEvents;
+
+                var topPage = groupEvents
+                    .Where(x => !string.IsNullOrWhiteSpace(x.PageKey))
+                    .GroupBy(x => x.PageKey!)
+                    .OrderByDescending(x => x.Count())
+                    .ThenBy(x => x.Key)
+                    .Select(x => x.Key)
+                    .FirstOrDefault() ?? "Unknown";
+
+                var source = ResolveTop(groupEvents.Select(x => x.UtmSource), "Direct");
+                var medium = ResolveTop(groupEvents.Select(x => x.UtmMedium), "");
+                var campaign = ResolveTop(groupEvents.Select(x => x.UtmCampaign), "");
+                var device = ResolveTop(groupEvents.Select(x => x.DeviceType), "Unknown");
+                var browser = ResolveTop(groupEvents.Select(x => x.Browser), "Unknown");
+                var os = ResolveTop(groupEvents.Select(x => x.OperatingSystem), "Unknown");
+                var tz = ResolveTop(groupEvents.Select(x => x.TimeZone), "Unknown");
+                var lang = ResolveTop(groupEvents.Select(x => x.Language), "Unknown");
+
+                var likelyInternal =
+                    internalEvents > 0 ||
+                    sessions >= 5 ||
+                    totalEvents >= 100 ||
+                    (source.Equals("Direct", StringComparison.OrdinalIgnoreCase) && totalEvents >= 75);
+
+                return new VisitorConcentrationRow(
+                    VisitorId: g.Key,
+                    VisitorShortId: ShortId(g.Key),
+                    Sessions: sessions,
+                    Events: totalEvents,
+                    FirstSeenLocal: ToLocalDisplay(aggregate.FirstUtc, range.ViewerTimeZone),
+                    LastSeenLocal: ToLocalDisplay(aggregate.LastUtc, range.ViewerTimeZone),
+                    TopPage: topPage,
+                    Source: source,
+                    Medium: medium,
+                    Campaign: campaign,
+                    Device: device,
+                    Browser: browser,
+                    OperatingSystem: os,
+                    TimeZone: tz,
+                    Language: lang,
+                    InternalEvents: internalEvents,
+                    LikelyInternal: likelyInternal,
+                    TrustScore: trust.TrustScore,
+                    TrustTier: trust.TrustTier,
+                    HumanConfidence: trust.HumanConfidence,
+                    TrustSignals: trust.Signals.Take(3).ToList()
+                );
+            })
+            .OrderByDescending(x => x.Sessions)
+            .ThenByDescending(x => x.Events)
+            .ToList();
+
+        var totalEventCount = visitorAggregates.Sum(x => x.Events);
+        var topVisitorEvents = visitorAggregates.FirstOrDefault()?.Events ?? 0;
+
+        return new VisitorConcentrationPayload(
+            TotalVisitors: visitorAggregates.Count,
+            TotalEvents: totalEventCount,
+            VisitorsOneSession: visitorAggregates.Count(x => x.Sessions == 1),
+            VisitorsTwoPlusSessions: visitorAggregates.Count(x => x.Sessions >= 2),
+            VisitorsFivePlusSessions: visitorAggregates.Count(x => x.Sessions >= 5),
+            LikelyInternalVisitors: visitorGroups.Count(x => x.LikelyInternal),
+            InternalEventShare: totalEventCount == 0
+                ? 0
+                : Math.Round(visitorGroups.Where(x => x.LikelyInternal).Sum(x => x.Events) * 100m / totalEventCount, 1),
+            TopVisitorEvents: topVisitorEvents,
+            TopVisitorShare: totalEventCount == 0
+                ? 0
+                : Math.Round(topVisitorEvents * 100m / totalEventCount, 1),
+            Rows: visitorGroups
+        );
+    }
+
+    private VisitorConcentrationPayload BuildPayloadFromEvents(
+        TimeRangeRequest range,
+        List<AnalyticsEvent> events,
+        List<MetaSignalEvent> metaSignals)
+    {
         var visitorGroups = events
             .Where(e => !string.IsNullOrWhiteSpace(e.VisitorId))
             .GroupBy(e => e.VisitorId!)
