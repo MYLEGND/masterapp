@@ -59,10 +59,11 @@ public sealed class MetaSignalOutcomeDispatcherHostedService : BackgroundService
         var rows = await db.MetaSignalEvents
             .Where(x =>
                 !x.MetaServerSent &&
-                (x.TrafficType == "crm" ||
-                 (x.MetadataJson != null && x.MetadataJson.Contains(MetaSignalAnalyticsBridgeMetadata.BridgeSourceMarker))) &&
-                DispatchableEvents.Contains(x.EventName) &&
                 x.MetadataJson != null &&
+                !x.MetadataJson.Contains("\"metaServerStatus\":") &&
+                (x.TrafficType == "crm" ||
+                 x.MetadataJson.Contains(MetaSignalAnalyticsBridgeMetadata.BridgeSourceMarker)) &&
+                DispatchableEvents.Contains(x.EventName) &&
                 x.MetadataJson.Contains(MetaSignalSingleTruthPolicy.DispatchEligibleMarker))
             .OrderBy(x => x.CreatedUtc)
             .Take(25)
@@ -95,11 +96,57 @@ public sealed class MetaSignalOutcomeDispatcherHostedService : BackgroundService
 
         foreach (var row in rows)
         {
-            if (!MetaSignalEventCatalog.TryGet(row.EventName, out var definition) ||
-                !definition.AllowServerForward ||
-                !MetaSignalEventCatalog.IsServerAuthorityEvent(row.EventName) ||
-                !MetaSignalSingleTruthPolicy.CanDispatchServerAuthority(row.EventName, row.MetadataJson))
+            if (!MetaSignalEventCatalog.TryGet(row.EventName, out var definition))
+            {
+                row.MetadataJson = MergeDispatchMetadata(row.MetadataJson, new MetaConversionsApiResult
+                {
+                    Attempted = false,
+                    Sent = false,
+                    Status = "skipped_catalog_missing",
+                    Note = "catalog_missing"
+                });
+                await db.SaveChangesAsync(cancellationToken);
                 continue;
+            }
+
+            if (!definition.AllowServerForward)
+            {
+                row.MetadataJson = MergeDispatchMetadata(row.MetadataJson, new MetaConversionsApiResult
+                {
+                    Attempted = false,
+                    Sent = false,
+                    Status = "skipped_server_forward_not_allowed",
+                    Note = "server_forward_not_allowed"
+                });
+                await db.SaveChangesAsync(cancellationToken);
+                continue;
+            }
+
+            if (!MetaSignalEventCatalog.IsServerAuthorityEvent(row.EventName))
+            {
+                row.MetadataJson = MergeDispatchMetadata(row.MetadataJson, new MetaConversionsApiResult
+                {
+                    Attempted = false,
+                    Sent = false,
+                    Status = "skipped_not_server_authority_event",
+                    Note = "not_server_authority_event"
+                });
+                await db.SaveChangesAsync(cancellationToken);
+                continue;
+            }
+
+            if (!MetaSignalSingleTruthPolicy.CanDispatchServerAuthority(row.EventName, row.MetadataJson))
+            {
+                row.MetadataJson = MergeDispatchMetadata(row.MetadataJson, new MetaConversionsApiResult
+                {
+                    Attempted = false,
+                    Sent = false,
+                    Status = "skipped_not_dispatch_eligible",
+                    Note = "not_dispatch_eligible"
+                });
+                await db.SaveChangesAsync(cancellationToken);
+                continue;
+            }
 
             var isBridgeOwned = MetaSignalAnalyticsBridgeMetadata.IsBridgeOwned(row.MetadataJson);
             var bridgeClientIp = isBridgeOwned
