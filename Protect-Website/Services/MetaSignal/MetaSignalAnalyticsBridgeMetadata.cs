@@ -61,6 +61,8 @@ internal static class MetaSignalAnalyticsBridgeMetadata
             ["sourceClientIpAddress"] = source.IpAddress,
             ["sourceClientUserAgent"] = source.UserAgent,
             ["sourceFbclid"] = source.Fbclid,
+            ["sourceFbc"] = ReadString(source.MetadataJson, "Fbc") ?? ReadString(source.MetadataJson, "fbc"),
+            ["sourceFbp"] = ReadString(source.MetadataJson, "Fbp") ?? ReadString(source.MetadataJson, "fbp"),
             ["sourcePageKey"] = source.PageKey,
             ["sourceQuoteType"] = source.QuoteType,
             ["sourceSessionId"] = source.SessionId,
