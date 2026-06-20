@@ -1345,6 +1345,11 @@
       const score = computeScore();
       const clientContext = resolveClientContext();
       const attribution = resolveAttribution();
+      const fbp = ensureFbpCookie();
+      const fbc = ensureFbcCookie(attribution);
+      attribution.fbp = attribution.fbp || fbp || '';
+      attribution.fbc = attribution.fbc || fbc || '';
+
       const enrichedMetadata = Object.assign(
         {},
         metadata,
