@@ -514,7 +514,10 @@ builder.Services.AddDbContext<MasterAppDbContext>(options =>
 
     if (useSqlServer)
     {
-        options.UseSqlServer(configuredDb!);
+        options.UseSqlServer(configuredDb!, sql =>
+        {
+            sql.CommandTimeout(120);
+        });
     }
     else
     {

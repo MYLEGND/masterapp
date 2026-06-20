@@ -32,18 +32,27 @@ public sealed class MasterAppDbContextFactory : IDesignTimeDbContextFactory<Mast
 
         if (forceSqlServer)
         {
-            opts.UseSqlServer(cs);
+            opts.UseSqlServer(cs, sql =>
+            {
+                sql.CommandTimeout(120);
+            });
         }
         else if (IsSqliteConnectionString(cs))
         {
             // SQLite remains supported for lightweight local runtime only.
             // EF migration authority and production lineage are SQL Server-first.
             opts.ConfigureWarnings(w => w.Ignore(RelationalEventId.PendingModelChangesWarning));
-            opts.UseSqlServer(cs);
+            opts.UseSqlServer(cs, sql =>
+            {
+                sql.CommandTimeout(120);
+            });
         }
         else
         {
-            opts.UseSqlServer(cs);
+            opts.UseSqlServer(cs, sql =>
+            {
+                sql.CommandTimeout(120);
+            });
         }
 
         return new MasterAppDbContext(opts.Options);
