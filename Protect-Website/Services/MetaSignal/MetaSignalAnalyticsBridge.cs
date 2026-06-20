@@ -271,8 +271,12 @@ public sealed class MetaSignalAnalyticsBridge : BackgroundService
             UtmId = Normalize(analyticsEvent.UtmId),
             UtmContent = Normalize(analyticsEvent.UtmContent),
             FbclidPresent = !string.IsNullOrWhiteSpace(analyticsEvent.Fbclid),
-            FbcPresent = !string.IsNullOrWhiteSpace(resolvedLead?.Fbc),
-            FbpPresent = !string.IsNullOrWhiteSpace(resolvedLead?.Fbp),
+            FbcPresent = !string.IsNullOrWhiteSpace(resolvedLead?.Fbc)
+                || !string.IsNullOrWhiteSpace(ReadAnalyticsMetadataString(analyticsEvent.MetadataJson, "Fbc"))
+                || !string.IsNullOrWhiteSpace(ReadAnalyticsMetadataString(analyticsEvent.MetadataJson, "fbc")),
+            FbpPresent = !string.IsNullOrWhiteSpace(resolvedLead?.Fbp)
+                || !string.IsNullOrWhiteSpace(ReadAnalyticsMetadataString(analyticsEvent.MetadataJson, "Fbp"))
+                || !string.IsNullOrWhiteSpace(ReadAnalyticsMetadataString(analyticsEvent.MetadataJson, "fbp")),
             Referrer = Normalize(analyticsEvent.Referrer),
             UserAgentHash = SafeHash(Normalize(analyticsEvent.UserAgent) ?? Normalize(resolvedLead?.ClientUserAgent)),
             IpHash = SafeHash(Normalize(analyticsEvent.IpAddress) ?? Normalize(resolvedLead?.ClientIpAddress)),
