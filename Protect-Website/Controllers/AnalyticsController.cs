@@ -151,6 +151,8 @@ public sealed class AnalyticsController : Controller
                 StepNumber = request.StepNumber,
                 StepName = Normalize(request.StepName),
                 BrowserEventSent = request.BrowserEventSent,
+                Fbc = Normalize(attribution?.Fbc),
+                Fbp = Normalize(attribution?.Fbp),
                 ScoreTier = Normalize(request.ScoreTier),
                 IntentScore = request.Score?.IntentScore,
                 EngagementScore = request.Score?.EngagementScore,

@@ -216,6 +216,8 @@
       utmId: normalizeAttributionValue(raw?.utmId),
       utmContent: normalizeAttributionValue(raw?.utmContent),
       fbclid: preserveFbclidValue(raw?.fbclid),
+      fbc: asTrimmed(raw?.fbc),
+      fbp: asTrimmed(raw?.fbp),
       metaCampaignId: normalizeAttributionValue(raw?.metaCampaignId),
       metaAdSetId: normalizeAttributionValue(raw?.metaAdSetId),
       metaAdId: normalizeAttributionValue(raw?.metaAdId)
@@ -301,8 +303,13 @@
 
   function ensureEarlyMetaCookies() {
     const attribution = resolveAttribution();
-    ensureFbpCookie();
-    ensureFbcCookie(attribution);
+    const fbp = ensureFbpCookie();
+    const fbc = ensureFbcCookie(attribution);
+
+    if (attribution) {
+      attribution.fbp = attribution.fbp || fbp || '';
+      attribution.fbc = attribution.fbc || fbc || '';
+    }
   }
 
   function writeAttributionToStorage(key, attribution) {
@@ -323,6 +330,8 @@
       utmId: params.get('utm_id'),
       utmContent: params.get('utm_content'),
       fbclid: params.get('fbclid'),
+      fbc: readCookieValue('_fbc'),
+      fbp: readCookieValue('_fbp'),
       metaCampaignId: params.get('meta_campaign_id'),
       metaAdSetId: params.get('meta_adset_id'),
       metaAdId: params.get('meta_ad_id')
