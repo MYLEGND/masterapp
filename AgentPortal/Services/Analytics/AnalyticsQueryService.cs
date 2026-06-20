@@ -136,14 +136,24 @@ public sealed class AnalyticsQueryService : IAnalyticsQueryService
         if (mode == TrafficQualityMode.SuspiciousActivity)
             return ApplyEventBucketMembership(query, suspiciousBucket);
 
+        if (mode == TrafficQualityMode.RealHumanTraffic)
+        {
+            // RealHumanTraffic is already a complete row-level predicate:
+            // it excludes internal/non-prod/local, automation, bot user agents,
+            // bounce-only/suspicious rows, and requires session + visitor + human signal.
+            //
+            // Avoid building identity bucket membership for this hot path. The previous
+            // implementation created several nested Contains() subqueries over session,
+            // visitor, and event IDs, which caused production analytics modal timeouts.
+            return query.Where(QualityPredicateEvents(TrafficQualityMode.RealHumanTraffic));
+        }
+
         var realHumanBucket = BuildEventBucketMembership(
             query,
             QualityPredicateEvents(TrafficQualityMode.RealHumanTraffic),
             internalQaBucket,
             botBucket,
             suspiciousBucket);
-        if (mode == TrafficQualityMode.RealHumanTraffic)
-            return ApplyEventBucketMembership(query, realHumanBucket);
 
         var likelyHumanBucket = BuildEventBucketMembership(
             query,
