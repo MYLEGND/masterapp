@@ -13,7 +13,7 @@ public sealed class MetaSignalOutcomeDispatcherHostedService : BackgroundService
 {
     private static readonly TimeSpan PollInterval = TimeSpan.FromSeconds(30);
     private static readonly HashSet<string> DispatchableEvents =
-        new(MetaSignalEventCatalog.ServerAuthorityEventNames, StringComparer.OrdinalIgnoreCase);
+        new(MetaSignalEventCatalog.ServerForwardEventNames, StringComparer.OrdinalIgnoreCase);
 
     private readonly IServiceScopeFactory _scopeFactory;
     private readonly IOptions<MetaSignalIntelligenceOptions> _options;
