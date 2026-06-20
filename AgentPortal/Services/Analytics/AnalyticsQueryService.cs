@@ -117,63 +117,12 @@ public sealed class AnalyticsQueryService : IAnalyticsQueryService
         if (mode == TrafficQualityMode.AllTraffic)
             return query;
 
-        var internalQaBucket = BuildEventBucketMembership(query, QualityPredicateEvents(TrafficQualityMode.InternalQa));
-        if (mode == TrafficQualityMode.InternalQa)
-            return ApplyEventBucketMembership(query, internalQaBucket);
-
-        var botBucket = BuildEventBucketMembership(
-            query,
-            QualityPredicateEvents(TrafficQualityMode.LikelyBotsAutomation),
-            internalQaBucket);
-        if (mode == TrafficQualityMode.LikelyBotsAutomation)
-            return ApplyEventBucketMembership(query, botBucket);
-
-        var suspiciousBucket = BuildEventBucketMembership(
-            query,
-            QualityPredicateEvents(TrafficQualityMode.SuspiciousActivity),
-            internalQaBucket,
-            botBucket);
-        if (mode == TrafficQualityMode.SuspiciousActivity)
-            return ApplyEventBucketMembership(query, suspiciousBucket);
-
-        if (mode == TrafficQualityMode.RealHumanTraffic)
-        {
-            // RealHumanTraffic is already a complete row-level predicate:
-            // it excludes internal/non-prod/local, automation, bot user agents,
-            // bounce-only/suspicious rows, and requires session + visitor + human signal.
-            //
-            // Avoid building identity bucket membership for this hot path. The previous
-            // implementation created several nested Contains() subqueries over session,
-            // visitor, and event IDs, which caused production analytics modal timeouts.
-            return query.Where(QualityPredicateEvents(TrafficQualityMode.RealHumanTraffic));
-        }
-
-        var realHumanBucket = BuildEventBucketMembership(
-            query,
-            QualityPredicateEvents(TrafficQualityMode.RealHumanTraffic),
-            internalQaBucket,
-            botBucket,
-            suspiciousBucket);
-
-        var likelyHumanBucket = BuildEventBucketMembership(
-            query,
-            QualityPredicateEvents(TrafficQualityMode.LikelyHuman),
-            internalQaBucket,
-            botBucket,
-            suspiciousBucket,
-            realHumanBucket);
-        if (mode == TrafficQualityMode.LikelyHuman)
-            return ApplyEventBucketMembership(query, likelyHumanBucket);
-
-        var reviewedNeededBucket = BuildRemainingEventBucketMembership(
-            query,
-            internalQaBucket,
-            botBucket,
-            suspiciousBucket,
-            realHumanBucket,
-            likelyHumanBucket);
-
-        return ApplyEventBucketMembership(query, reviewedNeededBucket);
+        // Performance-critical:
+        // Use direct row-level predicates for selectable analytics quality buckets.
+        // The previous identity-bucket implementation generated nested SessionId /
+        // VisitorId / EventId Contains() subqueries, which caused production modal
+        // timeouts under filtered modes.
+        return query.Where(QualityPredicateEvents(mode));
     }
 
     private static EventBucketMembership BuildEventBucketMembership(
