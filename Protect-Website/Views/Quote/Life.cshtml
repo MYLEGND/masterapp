@@ -6559,26 +6559,6 @@ input:checked + .lq-answer-card {
                                                 <div class="lq-trust-note" id="lifeSubmitTrustNote">@stepTwoSubmitNoteText</div>
                                                 <button type="submit" class="btn-gold btn-progress w-100" id="submitLife" data-default-label="@finalSubmitButtonText">@finalSubmitButtonText</button>
                                             </div>
-                                            <div class="lq-contact-value-row" aria-label="Review benefits">
-                                                <div class="lq-contact-value-item">
-                                                    <span class="lq-contact-value-icon" aria-hidden="true">
-                                                        <svg viewBox="0 0 24 24" focusable="false"><path d="M12 3l7 3v5c0 4.6-2.9 8.6-7 10-4.1-1.4-7-5.4-7-10V6l7-3z"/><path d="M8.8 12.1l2.1 2.1 4.6-4.8"/></svg>
-                                                    </span>
-                                                    <span><strong>Personalized review</strong><small>Based on your answers</small></span>
-                                                </div>
-                                                <div class="lq-contact-value-item">
-                                                    <span class="lq-contact-value-icon" aria-hidden="true">
-                                                        <svg viewBox="0 0 24 24" focusable="false"><path d="M16 11a4 4 0 1 0-8 0"/><path d="M4 20a8 8 0 0 1 16 0"/><path d="M18 8a3 3 0 0 1 3 3"/><path d="M21 20a5.5 5.5 0 0 0-3-4.9"/></svg>
-                                                    </span>
-                                                    <span><strong>Licensed guidance</strong><small>From a trusted expert</small></span>
-                                                </div>
-                                                <div class="lq-contact-value-item">
-                                                    <span class="lq-contact-value-icon" aria-hidden="true">
-                                                        <svg viewBox="0 0 24 24" focusable="false"><rect x="6" y="10" width="12" height="10" rx="2"/><path d="M9 10V7a3 3 0 0 1 6 0v3"/><path d="M12 14v2"/></svg>
-                                                    </span>
-                                                    <span><strong>100% secure</strong><small>Your information is safe</small></span>
-                                                </div>
-                                            </div>
                                             <div class="lq-error" id="lifeError"></div>
                                             <div class="lq-success" id="lifeSuccess">Thanks! We received your request.</div>
                                             <div class="lq-contact-grid">
@@ -12660,58 +12640,6 @@ body.life-final-step-active .lq-hero-shell {
     text-align: center !important;
 }
 
-#lifeContactCaptureWrap .lq-contact-value-row {
-    display: grid !important;
-    grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
-    gap: 18px !important;
-    width: 100% !important;
-    max-width: 780px !important;
-    margin: 0 auto !important;
-}
-
-#lifeContactCaptureWrap .lq-contact-value-item {
-    display: grid !important;
-    grid-template-columns: auto minmax(0, 1fr) !important;
-    gap: 12px !important;
-    align-items: center !important;
-    text-align: left !important;
-}
-
-#lifeContactCaptureWrap .lq-contact-value-icon {
-    width: 34px !important;
-    height: 34px !important;
-    display: grid !important;
-    place-items: center !important;
-    color: var(--lq-gold) !important;
-}
-
-#lifeContactCaptureWrap .lq-contact-value-icon svg {
-    width: 32px !important;
-    height: 32px !important;
-    fill: none !important;
-    stroke: currentColor !important;
-    stroke-width: 1.8 !important;
-    stroke-linecap: round !important;
-    stroke-linejoin: round !important;
-}
-
-#lifeContactCaptureWrap .lq-contact-value-item strong {
-    display: block !important;
-    color: var(--lq-cream) !important;
-    font-size: .9rem !important;
-    font-weight: 920 !important;
-    line-height: 1.15 !important;
-}
-
-#lifeContactCaptureWrap .lq-contact-value-item small {
-    display: block !important;
-    margin-top: 2px !important;
-    color: rgba(248, 250, 252, 0.74) !important;
-    font-size: .8rem !important;
-    font-weight: 700 !important;
-    line-height: 1.2 !important;
-}
-
 #lifeContactCaptureWrap .lq-field-row.two {
     display: grid !important;
     grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
@@ -13030,32 +12958,6 @@ body.life-final-step-active .lq-hero-shell {
         font-size: .84rem !important;
         line-height: 1.34 !important;
         max-width: 31ch !important;
-    }
-
-    #lifeContactCaptureWrap .lq-contact-value-row {
-        grid-template-columns: 1fr !important;
-        gap: 9px !important;
-        max-width: 310px !important;
-        margin-left: auto !important;
-        margin-right: auto !important;
-    }
-
-    #lifeContactCaptureWrap .lq-contact-value-item {
-        display: grid !important;
-        grid-template-columns: 30px minmax(0, 1fr) !important;
-        gap: 10px !important;
-        align-items: center !important;
-        text-align: left !important;
-    }
-
-    #lifeContactCaptureWrap .lq-contact-value-icon {
-        width: 30px !important;
-        height: 30px !important;
-    }
-
-    #lifeContactCaptureWrap .lq-contact-value-icon svg {
-        width: 28px !important;
-        height: 28px !important;
     }
 
     #lifeContactCaptureWrap input:not([type="checkbox"]):not([type="radio"]),
