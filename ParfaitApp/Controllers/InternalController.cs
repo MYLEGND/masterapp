@@ -8,6 +8,12 @@ namespace ParfaitApp.Controllers;
 [Route("internal")]
 public sealed class InternalController : Controller
 {
+    [HttpGet("")]
+    public IActionResult Index()
+    {
+        return RedirectToAction("Index", "Dashboard");
+    }
+
     [HttpGet("login")]
     public IActionResult Login(string? returnUrl = null)
     {

@@ -4,54 +4,97 @@
     Layout = "_InternalLayout";
 }
 
-<section class="pf-panel mb-4">
-    <div class="pf-kicker">Parfait Command Center</div>
-    <h1 class="pf-page-title">Business Profile First</h1>
-    <p class="pf-page-copy mb-0">
-        The Parfait internal system is organized around one business profile that owns ecommerce, Meta setup, analytics scope, visitor intelligence, team access, and reporting. AgentPortal remains insurance-only.
-    </p>
+<section class="pf-command-panel mb-4">
+    <div class="row g-4 align-items-center">
+        <div class="col-xl-7">
+            <div class="pf-kicker">Parfait Command Center</div>
+            <h1 class="pf-page-title">Business Profile First</h1>
+            <p class="pf-page-copy mb-4">
+                One profile owns ecommerce, Meta setup, analytics scope, visitor intelligence, team access, and reporting. ParfaitApp stays focused on Parfait. AgentPortal stays insurance-only.
+            </p>
+            <div class="d-flex gap-2 flex-wrap">
+                <a class="pf-primary-action" href="/internal/settings/business-profile">Open Business Profile</a>
+                <a class="pf-secondary-action" href="/internal/marketing">Review Marketing Setup</a>
+            </div>
+        </div>
+
+        <div class="col-xl-5">
+            <div class="row g-3">
+                <div class="col-6">
+                    <div class="pf-kpi-card">
+                        <div class="pf-kpi-label">Profile</div>
+                        <div class="pf-kpi-value">1</div>
+                        <div class="pf-kpi-note">Single business source of truth.</div>
+                    </div>
+                </div>
+                <div class="col-6">
+                    <div class="pf-kpi-card">
+                        <div class="pf-kpi-label">Store</div>
+                        <div class="pf-kpi-value">Ready</div>
+                        <div class="pf-kpi-note">Identity foundation exists.</div>
+                    </div>
+                </div>
+                <div class="col-6">
+                    <div class="pf-kpi-card">
+                        <div class="pf-kpi-label">Meta</div>
+                        <div class="pf-kpi-value">Pending</div>
+                        <div class="pf-kpi-note">Pixel/CAPI setup layer.</div>
+                    </div>
+                </div>
+                <div class="col-6">
+                    <div class="pf-kpi-card">
+                        <div class="pf-kpi-label">Analytics</div>
+                        <div class="pf-kpi-value">Pending</div>
+                        <div class="pf-kpi-note">Events and trust intelligence.</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
 </section>
 
 <section class="row g-4 mb-4">
     <div class="col-xl-8">
         <div class="pf-module-card">
-            <span class="pf-status"><span class="pf-dot"></span> Primary Setup</span>
-            <h2 class="pf-module-title">
-                <a href="/internal/settings/business-profile">Business Profile</a>
-            </h2>
-            <p class="text-muted">
-                Central profile for Parfait domain scope, Meta Pixel, secure CAPI connection, analytics readiness, trust scoring, and shared backend integration.
-            </p>
+            <div class="pf-section-head">
+                <div>
+                    <span class="pf-status"><span class="pf-dot"></span> Primary Setup</span>
+                    <h2 class="pf-section-title">Business Profile Control Layer</h2>
+                    <p class="pf-section-copy">
+                        This is the ownership record for Parfait’s ecommerce, Meta, analytics, and reporting infrastructure.
+                    </p>
+                </div>
+            </div>
 
-            <div class="row g-3 mt-2">
+            <div class="row g-3 mt-1">
                 <div class="col-md-6">
                     <div class="pf-mini-status">
-                        <div class="pf-mini-label">Store Identity</div>
-                        <div class="pf-mini-value">Ready</div>
+                        <div class="pf-mini-label">Frontend Owner</div>
+                        <div class="pf-mini-value">ParfaitApp</div>
                     </div>
                 </div>
                 <div class="col-md-6">
                     <div class="pf-mini-status">
-                        <div class="pf-mini-label">Meta Setup</div>
-                        <div class="pf-mini-value">Pending</div>
+                        <div class="pf-mini-label">Business Profile</div>
+                        <div class="pf-mini-value">Created</div>
+                    </div>
+                </div>
+                <div class="col-md-6">
+                    <div class="pf-mini-status">
+                        <div class="pf-mini-label">Meta CAPI</div>
+                        <div class="pf-mini-value">Not Connected</div>
                     </div>
                 </div>
                 <div class="col-md-6">
                     <div class="pf-mini-status">
                         <div class="pf-mini-label">Analytics Feed</div>
-                        <div class="pf-mini-value">Pending</div>
-                    </div>
-                </div>
-                <div class="col-md-6">
-                    <div class="pf-mini-status">
-                        <div class="pf-mini-label">Trust Intelligence</div>
-                        <div class="pf-mini-value">Pending</div>
+                        <div class="pf-mini-value">Not Feeding</div>
                     </div>
                 </div>
             </div>
 
             <div class="mt-4">
-                <a class="pf-action" href="/internal/settings/business-profile">Open Business Profile</a>
+                <a class="pf-action" href="/internal/settings/business-profile">Open Profile Settings</a>
             </div>
         </div>
     </div>
@@ -60,16 +103,25 @@
         <div class="pf-module-card">
             <span class="pf-status"><span class="pf-dot"></span> Protected Boundary</span>
             <h2 class="pf-module-title">Architecture Rule</h2>
-            <p class="text-muted mb-0">
-                ParfaitApp owns this frontend. Shared backend analytics and Meta infrastructure may be reused. AgentPortal and Protect Website must stay untouched.
+            <p class="text-muted mb-4">
+                ParfaitApp owns this frontend. Shared backend analytics and Meta infrastructure may be reused. AgentPortal and Protect Website stay untouched.
             </p>
+            <div class="pf-mini-status">
+                <div class="pf-mini-label">Separation</div>
+                <div class="pf-mini-value">Clean Boundary</div>
+            </div>
         </div>
     </div>
 </section>
 
 <section class="pf-panel mb-4">
-    <div class="pf-kicker">System Health</div>
-    <h2 class="pf-module-title mb-3">Connection Readiness</h2>
+    <div class="pf-section-head">
+        <div>
+            <div class="pf-kicker">System Health</div>
+            <h2 class="pf-section-title">Connection Readiness</h2>
+            <p class="pf-section-copy">High-level readiness for the internal system foundation.</p>
+        </div>
+    </div>
 
     <div class="row g-3">
         <div class="col-md-3">
@@ -99,44 +151,53 @@
     </div>
 </section>
 
-<section class="row g-4">
-    <div class="col-md-6 col-xl-3">
-        <a class="pf-module-link" href="/internal/commerce">
-            <div class="pf-module-card">
-                <span class="pf-status"><span class="pf-dot"></span> Operations</span>
-                <h2 class="pf-module-title">Commerce</h2>
-                <p class="text-muted mb-0">Products, inventory, orders, revenue, and fulfillment.</p>
-            </div>
-        </a>
+<section class="mb-2">
+    <div class="pf-section-head">
+        <div>
+            <div class="pf-kicker">Operating Modules</div>
+            <h2 class="pf-section-title">Parfait Internal Workspace</h2>
+        </div>
     </div>
 
-    <div class="col-md-6 col-xl-3">
-        <a class="pf-module-link" href="/internal/customers">
-            <div class="pf-module-card">
-                <span class="pf-status"><span class="pf-dot"></span> Customer Layer</span>
-                <h2 class="pf-module-title">Customers</h2>
-                <p class="text-muted mb-0">Client accounts, orders, support, and engagement.</p>
-            </div>
-        </a>
-    </div>
+    <div class="row g-4">
+        <div class="col-md-6 col-xl-3">
+            <a class="pf-module-link" href="/internal/commerce">
+                <div class="pf-module-card">
+                    <span class="pf-status"><span class="pf-dot"></span> Operations</span>
+                    <h2 class="pf-module-title">Commerce</h2>
+                    <p class="text-muted mb-0">Products, inventory, orders, revenue, and fulfillment.</p>
+                </div>
+            </a>
+        </div>
 
-    <div class="col-md-6 col-xl-3">
-        <a class="pf-module-link" href="/internal/marketing">
-            <div class="pf-module-card">
-                <span class="pf-status"><span class="pf-dot"></span> Acquisition</span>
-                <h2 class="pf-module-title">Marketing</h2>
-                <p class="text-muted mb-0">Campaigns, Meta, attribution, and creative performance.</p>
-            </div>
-        </a>
-    </div>
+        <div class="col-md-6 col-xl-3">
+            <a class="pf-module-link" href="/internal/customers">
+                <div class="pf-module-card">
+                    <span class="pf-status"><span class="pf-dot"></span> Customer Layer</span>
+                    <h2 class="pf-module-title">Customers</h2>
+                    <p class="text-muted mb-0">Client accounts, orders, support, and engagement.</p>
+                </div>
+            </a>
+        </div>
 
-    <div class="col-md-6 col-xl-3">
-        <a class="pf-module-link" href="/internal/analytics">
-            <div class="pf-module-card">
-                <span class="pf-status"><span class="pf-dot"></span> Intelligence</span>
-                <h2 class="pf-module-title">Analytics</h2>
-                <p class="text-muted mb-0">Visitor behavior, funnel events, trust, and Meta health.</p>
-            </div>
-        </a>
+        <div class="col-md-6 col-xl-3">
+            <a class="pf-module-link" href="/internal/marketing">
+                <div class="pf-module-card">
+                    <span class="pf-status"><span class="pf-dot"></span> Acquisition</span>
+                    <h2 class="pf-module-title">Marketing</h2>
+                    <p class="text-muted mb-0">Campaigns, Meta, attribution, and creative performance.</p>
+                </div>
+            </a>
+        </div>
+
+        <div class="col-md-6 col-xl-3">
+            <a class="pf-module-link" href="/internal/analytics">
+                <div class="pf-module-card">
+                    <span class="pf-status"><span class="pf-dot"></span> Intelligence</span>
+                    <h2 class="pf-module-title">Analytics</h2>
+                    <p class="text-muted mb-0">Visitor behavior, funnel events, trust, and Meta health.</p>
+                </div>
+            </a>
+        </div>
     </div>
 </section>

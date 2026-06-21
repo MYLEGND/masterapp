@@ -7,174 +7,270 @@
     <link rel="stylesheet" href="~/lib/bootstrap/dist/css/bootstrap.min.css" />
     <style>
         :root {
-            --pf-ink:#211b18;
-            --pf-muted:#756b65;
-            --pf-brown:#9a6a50;
-            --pf-brown-dark:#6f4634;
-            --pf-cream:#f8f3ef;
-            --pf-card:#ffffff;
-            --pf-line:rgba(154,106,80,.22);
-            --pf-shadow:0 26px 80px rgba(60,35,20,.10);
+            --pf-espresso:#2f211a;
+            --pf-espresso-2:#1f1511;
+            --pf-bronze:#a97155;
+            --pf-bronze-dark:#7d4f3e;
+            --pf-gold:#d6b06a;
+            --pf-ivory:#fcfaf8;
+            --pf-cream:#f6eee8;
+            --pf-surface:#ffffff;
+            --pf-muted:#746861;
+            --pf-line:rgba(169,113,85,.22);
+            --pf-line-strong:rgba(169,113,85,.42);
+            --pf-shadow:0 24px 70px rgba(47,33,26,.14);
+            --pf-shadow-soft:0 14px 34px rgba(47,33,26,.09);
+        }
+
+        html, body {
+            min-height: 100%;
         }
 
         body {
-            margin:0;
+            margin: 0;
+            font-family: Inter, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+            color: var(--pf-espresso);
             background:
-                radial-gradient(circle at 12% 0%, rgba(154,106,80,.15), transparent 34%),
-                linear-gradient(180deg,#fff 0%,var(--pf-cream) 100%);
-            color:var(--pf-ink);
-            min-height:100vh;
+                radial-gradient(circle at 10% 0%, rgba(214,176,106,.26), transparent 28%),
+                radial-gradient(circle at 95% 10%, rgba(169,113,85,.16), transparent 30%),
+                linear-gradient(180deg, #fffaf6 0%, var(--pf-cream) 100%);
         }
 
-        .pf-topbar {
-            max-width:1280px;
-            margin:0 auto;
-            padding:28px 28px 0;
-            display:flex;
-            align-items:center;
-            justify-content:space-between;
-            gap:20px;
+        a {
+            color: inherit;
+        }
+
+        .pf-app-shell {
+            min-height: 100vh;
+            display: grid;
+            grid-template-columns: 290px minmax(0, 1fr);
+        }
+
+        .pf-sidebar {
+            position: sticky;
+            top: 0;
+            height: 100vh;
+            padding: 24px 18px;
+            background:
+                radial-gradient(circle at 20% 0%, rgba(214,176,106,.18), transparent 34%),
+                linear-gradient(180deg, var(--pf-espresso) 0%, var(--pf-espresso-2) 100%);
+            border-right: 1px solid rgba(214,176,106,.22);
+            box-shadow: 18px 0 50px rgba(47,33,26,.14);
+            color: var(--pf-ivory);
+            display: flex;
+            flex-direction: column;
+            gap: 22px;
+        }
+
+        .pf-brand-block {
+            padding: 18px 16px 20px;
+            border: 1px solid rgba(214,176,106,.24);
+            border-radius: 26px;
+            background: rgba(255,255,255,.045);
+            box-shadow: inset 0 1px 0 rgba(255,255,255,.06);
         }
 
         .pf-logo {
-            font-size:2.1rem;
-            font-weight:900;
-            font-style:italic;
-            letter-spacing:.1em;
-            color:var(--pf-brown);
-            line-height:1;
+            font-size: 2.1rem;
+            font-weight: 950;
+            font-style: italic;
+            letter-spacing: .12em;
+            color: var(--pf-gold);
+            line-height: 1;
         }
 
         .pf-system-label {
-            margin-top:8px;
-            font-size:.72rem;
-            font-weight:900;
-            letter-spacing:.22em;
-            text-transform:uppercase;
-            color:var(--pf-brown-dark);
+            margin-top: 9px;
+            font-size: .7rem;
+            font-weight: 900;
+            letter-spacing: .22em;
+            text-transform: uppercase;
+            color: rgba(252,250,248,.72);
         }
 
-        .pf-actions {
-            display:flex;
-            align-items:center;
-            gap:10px;
-            flex-wrap:wrap;
+        .pf-nav {
+            display: grid;
+            gap: 9px;
         }
 
-        .pf-action {
-            border:1px solid var(--pf-line);
-            background:rgba(255,255,255,.75);
-            color:var(--pf-brown-dark);
-            border-radius:999px;
-            padding:10px 18px;
-            text-decoration:none;
-            font-weight:850;
+        .pf-nav-label {
+            padding: 0 12px;
+            margin: 2px 0 4px;
+            color: rgba(252,250,248,.52);
+            font-size: .68rem;
+            font-weight: 950;
+            letter-spacing: .18em;
+            text-transform: uppercase;
         }
 
-        .pf-action:hover {
-            background:var(--pf-brown);
-            color:white;
+        .pf-nav-link {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 12px;
+            min-height: 46px;
+            padding: 12px 14px;
+            border: 1px solid rgba(214,176,106,.13);
+            border-radius: 17px;
+            color: rgba(252,250,248,.78);
+            text-decoration: none;
+            font-weight: 850;
+            background: rgba(255,255,255,.035);
+            transition: transform .16s ease, border-color .16s ease, background .16s ease, color .16s ease;
         }
 
-        .pf-action-danger {
-            border-color:rgba(111,70,52,.35);
+        .pf-nav-link:hover,
+        .pf-nav-link.is-active {
+            transform: translateY(-1px);
+            color: var(--pf-gold);
+            border-color: rgba(214,176,106,.46);
+            background: rgba(214,176,106,.11);
+        }
+
+        .pf-nav-chip {
+            font-size: .66rem;
+            letter-spacing: .1em;
+            text-transform: uppercase;
+            color: rgba(252,250,248,.55);
+        }
+
+        .pf-sidebar-footer {
+            margin-top: auto;
+            display: grid;
+            gap: 10px;
+        }
+
+        .pf-side-action,
+        .pf-side-action button {
+            width: 100%;
+            border: 1px solid rgba(214,176,106,.26);
+            background: rgba(255,255,255,.055);
+            color: var(--pf-ivory);
+            border-radius: 999px;
+            min-height: 44px;
+            padding: 10px 14px;
+            text-decoration: none;
+            font-weight: 900;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .pf-side-action:hover,
+        .pf-side-action button:hover {
+            color: var(--pf-espresso);
+            background: var(--pf-gold);
+        }
+
+        .pf-main {
+            min-width: 0;
+            padding: 28px;
+        }
+
+        .pf-page-top {
+            max-width: 1320px;
+            margin: 0 auto 24px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 18px;
+            padding: 18px 22px;
+            border: 1px solid var(--pf-line);
+            border-radius: 26px;
+            background: rgba(255,255,255,.74);
+            box-shadow: var(--pf-shadow-soft);
+            backdrop-filter: blur(12px);
+        }
+
+        .pf-page-top-kicker {
+            font-size: .72rem;
+            font-weight: 950;
+            letter-spacing: .18em;
+            text-transform: uppercase;
+            color: var(--pf-bronze-dark);
+        }
+
+        .pf-page-top-title {
+            margin: 4px 0 0;
+            font-size: 1.22rem;
+            font-weight: 950;
+            letter-spacing: -.03em;
+        }
+
+        .pf-top-pill {
+            border: 1px solid var(--pf-line);
+            background: #fff;
+            border-radius: 999px;
+            padding: 10px 15px;
+            color: var(--pf-bronze-dark);
+            font-size: .78rem;
+            font-weight: 950;
+            letter-spacing: .08em;
+            text-transform: uppercase;
         }
 
         .pf-wrap {
-            max-width:1280px;
-            margin:0 auto;
-            padding:58px 28px 72px;
+            max-width: 1320px;
+            margin: 0 auto;
+            padding: 0 0 56px;
+        }
+
+        .pf-command-panel,
+        .pf-panel,
+        .pf-module-card {
+            background: rgba(255,255,255,.86);
+            border: 1px solid var(--pf-line);
+            box-shadow: var(--pf-shadow);
+        }
+
+        .pf-command-panel {
+            position: relative;
+            overflow: hidden;
+            border-radius: 34px;
+            padding: clamp(26px, 4vw, 44px);
+        }
+
+        .pf-command-panel::before {
+            content: "";
+            position: absolute;
+            inset: 0 0 auto;
+            height: 4px;
+            background: linear-gradient(90deg, transparent, var(--pf-gold), var(--pf-bronze), transparent);
         }
 
         .pf-panel {
-            background:rgba(255,255,255,.82);
-            border:1px solid var(--pf-line);
-            border-radius:34px;
-            box-shadow:var(--pf-shadow);
-            padding:42px;
+            border-radius: 30px;
+            padding: 32px;
         }
 
         .pf-kicker {
-            color:var(--pf-brown);
-            font-size:.76rem;
-            font-weight:950;
-            letter-spacing:.2em;
-            text-transform:uppercase;
+            color: var(--pf-bronze-dark);
+            font-size: .74rem;
+            font-weight: 950;
+            letter-spacing: .2em;
+            text-transform: uppercase;
         }
 
         .pf-page-title {
-            font-size:clamp(2.7rem,6vw,5.7rem);
-            font-weight:950;
-            letter-spacing:-.075em;
-            line-height:.95;
-            margin:12px 0 18px;
+            font-size: clamp(2.4rem, 5.2vw, 5.15rem);
+            font-weight: 950;
+            letter-spacing: -.075em;
+            line-height: .94;
+            margin: 10px 0 16px;
         }
 
         .pf-page-copy {
-            color:var(--pf-muted);
-            font-size:1.2rem;
-            max-width:820px;
-            line-height:1.55;
+            color: var(--pf-muted);
+            font-size: 1.08rem;
+            max-width: 790px;
+            line-height: 1.58;
         }
 
         .pf-module-card {
-            background:var(--pf-card);
-            border:1px solid var(--pf-line);
-            border-radius:28px;
-            padding:28px;
-            height:100%;
-            box-shadow:0 18px 50px rgba(60,35,20,.055);
-        }
-
-        .pf-module-title {
-            font-size:1.35rem;
-            font-weight:900;
-            margin:8px 0 8px;
-        }
-
-        .pf-status {
-            display:inline-flex;
-            align-items:center;
-            gap:8px;
-            border-radius:999px;
-            background:rgba(154,106,80,.09);
-            color:var(--pf-brown-dark);
-            padding:8px 13px;
-            font-size:.78rem;
-            font-weight:900;
-            letter-spacing:.08em;
-            text-transform:uppercase;
-        }
-        
-
-        .pf-dot {
-            width:8px;
-            height:8px;
-            border-radius:99px;
-            background:var(--pf-brown);
-        }
-
-
-        .pf-mini-status {
-            border: 1px solid var(--pf-line);
-            border-radius: 18px;
-            padding: 16px 18px;
-            background: rgba(255,255,255,.72);
-        }
-
-        .pf-mini-label {
-            color: var(--pf-muted);
-            font-size: .78rem;
-            font-weight: 850;
-            letter-spacing: .08em;
-            text-transform: uppercase;
-            margin-bottom: 4px;
-        }
-
-        .pf-mini-value {
-            color: var(--pf-brown-dark);
-            font-weight: 950;
-            font-size: 1.05rem;
+            border-radius: 26px;
+            padding: 26px;
+            height: 100%;
+            transition: transform .16s ease, border-color .16s ease, box-shadow .16s ease;
         }
 
         .pf-module-link {
@@ -184,56 +280,275 @@
             text-decoration: none;
         }
 
-        .pf-module-link:hover .pf-module-card {
+        .pf-module-link:hover .pf-module-card,
+        .pf-module-card:hover {
             transform: translateY(-3px);
-            border-color: rgba(154,106,80,.42);
-            box-shadow: 0 24px 70px rgba(60,35,20,.12);
+            border-color: var(--pf-line-strong);
+            box-shadow: 0 28px 80px rgba(47,33,26,.17);
         }
 
-        .pf-module-card {
-            transition: transform .16s ease, border-color .16s ease, box-shadow .16s ease;
+        .pf-module-title {
+            font-size: 1.35rem;
+            font-weight: 950;
+            letter-spacing: -.035em;
+            margin: 10px 0 8px;
         }
 
-        @@media (max-width:768px) {
-            .pf-topbar {
-                align-items:flex-start;
-                padding:22px 18px 0;
+        .pf-status {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            border-radius: 999px;
+            background: rgba(214,176,106,.16);
+            color: var(--pf-bronze-dark);
+            border: 1px solid rgba(169,113,85,.18);
+            padding: 8px 13px;
+            font-size: .72rem;
+            font-weight: 950;
+            letter-spacing: .1em;
+            text-transform: uppercase;
+        }
+
+        .pf-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 99px;
+            background: var(--pf-bronze);
+            box-shadow: 0 0 0 4px rgba(169,113,85,.14);
+        }
+
+        .pf-mini-status,
+        .pf-kpi-card {
+            border: 1px solid var(--pf-line);
+            border-radius: 20px;
+            padding: 18px;
+            background:
+                linear-gradient(180deg, rgba(255,255,255,.96), rgba(252,250,248,.86));
+            box-shadow: 0 12px 30px rgba(47,33,26,.06);
+        }
+
+        .pf-mini-label,
+        .pf-kpi-label {
+            color: var(--pf-muted);
+            font-size: .72rem;
+            font-weight: 950;
+            letter-spacing: .1em;
+            text-transform: uppercase;
+            margin-bottom: 5px;
+        }
+
+        .pf-mini-value,
+        .pf-kpi-value {
+            color: var(--pf-espresso);
+            font-weight: 950;
+            font-size: 1.08rem;
+            letter-spacing: -.03em;
+        }
+
+        .pf-kpi-value {
+            font-size: 2rem;
+            line-height: 1;
+        }
+
+        .pf-kpi-note {
+            color: var(--pf-muted);
+            margin-top: 8px;
+            font-size: .92rem;
+            line-height: 1.35;
+        }
+
+        .pf-action,
+        .pf-primary-action,
+        button.pf-action {
+            border: 1px solid rgba(169,113,85,.30);
+            background:
+                linear-gradient(180deg, rgba(214,176,106,.96), rgba(169,113,85,.96));
+            color: #fff;
+            border-radius: 999px;
+            padding: 11px 18px;
+            text-decoration: none;
+            font-weight: 950;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            min-height: 46px;
+            box-shadow: 0 14px 30px rgba(169,113,85,.20);
+        }
+
+        .pf-action:hover,
+        .pf-primary-action:hover,
+        button.pf-action:hover {
+            color: #fff;
+            transform: translateY(-1px);
+            box-shadow: 0 18px 40px rgba(169,113,85,.26);
+        }
+
+        .pf-secondary-action {
+            border: 1px solid var(--pf-line);
+            background: #fff;
+            color: var(--pf-bronze-dark);
+            border-radius: 999px;
+            padding: 11px 18px;
+            text-decoration: none;
+            font-weight: 950;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            min-height: 46px;
+        }
+
+        .pf-section-head {
+            display:flex;
+            align-items:flex-end;
+            justify-content:space-between;
+            gap:18px;
+            margin-bottom:18px;
+        }
+
+        .pf-section-title {
+            font-size:1.55rem;
+            font-weight:950;
+            letter-spacing:-.045em;
+            margin:6px 0 0;
+        }
+
+        .pf-section-copy {
+            color:var(--pf-muted);
+            margin:6px 0 0;
+            max-width:760px;
+        }
+
+        .pf-form-card label {
+            color: var(--pf-espresso);
+            font-size: .78rem;
+            font-weight: 950;
+            letter-spacing: .08em;
+            text-transform: uppercase;
+        }
+
+        .pf-form-card .form-control {
+            min-height: 48px;
+            border-radius: 16px;
+            border: 1px solid var(--pf-line);
+            background: rgba(255,255,255,.94);
+            color: var(--pf-espresso);
+            font-weight: 700;
+        }
+
+        .pf-form-card .form-control:focus {
+            border-color: var(--pf-bronze);
+            box-shadow: 0 0 0 .22rem rgba(169,113,85,.14);
+        }
+
+        .pf-alert-success {
+            border: 1px solid rgba(81,141,88,.25);
+            background: rgba(81,141,88,.10);
+            color: #315b36;
+            border-radius: 18px;
+            padding: 14px 18px;
+            font-weight: 850;
+        }
+
+        @@media (max-width: 980px) {
+            .pf-app-shell {
+                display: block;
             }
 
-            .pf-wrap {
-                padding:34px 18px 52px;
+            .pf-sidebar {
+                position: static;
+                height: auto;
             }
 
-            .pf-panel {
-                padding:28px 22px;
-                border-radius:28px;
+            .pf-nav {
+                grid-template-columns: repeat(2, minmax(0,1fr));
             }
 
-            .pf-actions {
-                justify-content:flex-end;
+            .pf-main {
+                padding: 18px;
+            }
+        }
+
+        @@media (max-width: 640px) {
+            .pf-nav {
+                grid-template-columns: 1fr;
+            }
+
+            .pf-page-top {
+                align-items: flex-start;
+                flex-direction: column;
+            }
+
+            .pf-command-panel,
+            .pf-panel,
+            .pf-module-card {
+                border-radius: 24px;
             }
         }
     </style>
 </head>
 <body>
-    <header class="pf-topbar">
-        <div>
-            <div class="pf-logo">PARFAIT</div>
-            <div class="pf-system-label">Internal System</div>
-        </div>
+    @{
+        var controller = (ViewContext.RouteData.Values["controller"]?.ToString() ?? "").ToLowerInvariant();
+        var action = (ViewContext.RouteData.Values["action"]?.ToString() ?? "").ToLowerInvariant();
+        Func<string, string, string> active = (c, a) =>
+            controller == c.ToLowerInvariant() && (string.IsNullOrWhiteSpace(a) || action == a.ToLowerInvariant())
+                ? "is-active"
+                : "";
+    }
 
-        <div class="pf-actions">
-            <a class="pf-action" href="/" target="_blank" rel="noopener">Public Site</a>
-            <form action="/internal/logout" method="post" class="m-0">
-                @Html.AntiForgeryToken()
-                <button type="submit" class="pf-action pf-action-danger">Logout</button>
-            </form>
-        </div>
-    </header>
+    <div class="pf-app-shell">
+        <aside class="pf-sidebar">
+            <div class="pf-brand-block">
+                <div class="pf-logo">PARFAIT</div>
+                <div class="pf-system-label">Internal Command System</div>
+            </div>
 
-    <main class="pf-wrap">
-        @RenderBody()
-    </main>
+            <nav class="pf-nav" aria-label="Parfait internal navigation">
+                <div class="pf-nav-label">Command</div>
+                <a class="pf-nav-link @active("Dashboard", "Index")" href="/internal"><span>Dashboard</span><span class="pf-nav-chip">Core</span>
+                </a>
+                <a class="pf-nav-link @active("InternalSettings", "BusinessProfile")" href="/internal/settings/business-profile">
+                    <span>Business Profile</span><span class="pf-nav-chip">Primary</span>
+                </a>
+
+                <div class="pf-nav-label mt-2">Modules</div>
+                <a class="pf-nav-link @active("InternalModules", "Commerce")" href="/internal/commerce">
+                    <span>Commerce</span><span class="pf-nav-chip">Ops</span>
+                </a>
+                <a class="pf-nav-link @active("InternalModules", "Customers")" href="/internal/customers">
+                    <span>Customers</span><span class="pf-nav-chip">CRM</span>
+                </a>
+                <a class="pf-nav-link @active("InternalModules", "Marketing")" href="/internal/marketing">
+                    <span>Marketing</span><span class="pf-nav-chip">Meta</span>
+                </a>
+                <a class="pf-nav-link @active("InternalModules", "Analytics")" href="/internal/analytics">
+                    <span>Analytics</span><span class="pf-nav-chip">Signal</span>
+                </a>
+            </nav>
+
+            <div class="pf-sidebar-footer">
+                <a class="pf-side-action" href="/" target="_blank" rel="noopener">Open Public Site</a>
+                <form action="/internal/logout" method="post" class="m-0">
+                    @Html.AntiForgeryToken()
+                    <button type="submit">Logout</button>
+                </form>
+            </div>
+        </aside>
+
+        <main class="pf-main">
+            <div class="pf-page-top">
+                <div>
+                    <div class="pf-page-top-kicker">Parfait Internal</div>
+                    <div class="pf-page-top-title">@ViewData["Title"]</div>
+                </div>
+                <div class="pf-top-pill">Business Profile First</div>
+            </div>
+
+            <div class="pf-wrap">
+                @RenderBody()
+            </div>
+        </main>
+    </div>
 
     <script src="~/lib/bootstrap/dist/js/bootstrap.bundle.min.js"></script>
     @await RenderSectionAsync("Scripts", required: false)
