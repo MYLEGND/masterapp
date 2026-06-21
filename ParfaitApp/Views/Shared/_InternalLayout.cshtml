@@ -22,7 +22,8 @@
             --pf-shadow-soft:0 14px 34px rgba(47,33,26,.09);
         }
 
-        html, body {
+        html,
+        body {
             min-height: 100%;
         }
 
@@ -40,26 +41,82 @@
             color: inherit;
         }
 
-        .pf-app-shell {
+        .pf-shell {
             min-height: 100vh;
-            display: grid;
-            grid-template-columns: 290px minmax(0, 1fr);
+        }
+
+        .pf-sidebar-toggle {
+            position: fixed;
+            top: 24px;
+            left: 24px;
+            z-index: 1120;
+            width: 54px;
+            height: 54px;
+            border: 1px solid rgba(214,176,106,.38);
+            border-radius: 18px;
+            background:
+                linear-gradient(180deg, rgba(255,255,255,.08), rgba(255,255,255,.03)),
+                var(--pf-espresso);
+            color: var(--pf-gold);
+            box-shadow: 0 18px 42px rgba(47,33,26,.22);
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            transition: transform .16s ease, border-color .16s ease, box-shadow .16s ease;
+        }
+
+        .pf-sidebar-toggle:hover {
+            transform: translateY(-1px);
+            border-color: rgba(214,176,106,.62);
+            box-shadow: 0 22px 52px rgba(47,33,26,.28);
+        }
+
+        .pf-sidebar-toggle-line {
+            width: 23px;
+            height: 2px;
+            border-radius: 999px;
+            background: currentColor;
+            box-shadow: 0 -7px 0 currentColor, 0 7px 0 currentColor;
+        }
+
+        .pf-sidebar-backdrop {
+            position: fixed;
+            inset: 0;
+            z-index: 1090;
+            background: rgba(31,21,17,.34);
+            backdrop-filter: blur(3px);
+            opacity: 0;
+            pointer-events: none;
+            transition: opacity .18s ease;
+        }
+
+        body.pf-sidebar-open .pf-sidebar-backdrop {
+            opacity: 1;
+            pointer-events: auto;
         }
 
         .pf-sidebar {
-            position: sticky;
-            top: 0;
-            height: 100vh;
-            padding: 24px 18px;
+            position: fixed;
+            z-index: 1100;
+            inset: 0 auto 0 0;
+            width: min(320px, 88vw);
+            padding: 94px 18px 22px;
             background:
                 radial-gradient(circle at 20% 0%, rgba(214,176,106,.18), transparent 34%),
                 linear-gradient(180deg, var(--pf-espresso) 0%, var(--pf-espresso-2) 100%);
             border-right: 1px solid rgba(214,176,106,.22);
-            box-shadow: 18px 0 50px rgba(47,33,26,.14);
+            box-shadow: 26px 0 70px rgba(47,33,26,.26);
             color: var(--pf-ivory);
             display: flex;
             flex-direction: column;
             gap: 22px;
+            transform: translateX(-100%);
+            transition: transform .22s ease;
+        }
+
+        body.pf-sidebar-open .pf-sidebar {
+            transform: translateX(0);
         }
 
         .pf-brand-block {
@@ -140,8 +197,7 @@
             gap: 10px;
         }
 
-        .pf-side-action,
-        .pf-side-action button {
+        .pf-side-action {
             width: 100%;
             border: 1px solid rgba(214,176,106,.26);
             background: rgba(255,255,255,.055);
@@ -156,15 +212,14 @@
             justify-content: center;
         }
 
-        .pf-side-action:hover,
-        .pf-side-action button:hover {
+        .pf-side-action:hover {
             color: var(--pf-espresso);
             background: var(--pf-gold);
         }
 
         .pf-main {
             min-width: 0;
-            padding: 28px;
+            padding: 28px 28px 28px 102px;
         }
 
         .pf-page-top {
@@ -450,38 +505,31 @@
         }
 
         @@media (max-width: 980px) {
-            .pf-app-shell {
-                display: block;
-            }
-
-            .pf-sidebar {
-                position: static;
-                height: auto;
-            }
-
-            .pf-nav {
-                grid-template-columns: repeat(2, minmax(0,1fr));
+            .pf-sidebar-toggle {
+                top: 16px;
+                left: 16px;
             }
 
             .pf-main {
-                padding: 18px;
-            }
-        }
-
-        @@media (max-width: 640px) {
-            .pf-nav {
-                grid-template-columns: 1fr;
+                padding: 86px 18px 18px;
             }
 
             .pf-page-top {
                 align-items: flex-start;
                 flex-direction: column;
             }
+        }
 
+        @@media (max-width: 640px) {
             .pf-command-panel,
             .pf-panel,
             .pf-module-card {
                 border-radius: 24px;
+            }
+
+            .pf-top-pill {
+                width: 100%;
+                text-align: center;
             }
         }
     </style>
@@ -496,8 +544,14 @@
                 : "";
     }
 
-    <div class="pf-app-shell">
-        <aside class="pf-sidebar">
+    <div class="pf-shell">
+        <button class="pf-sidebar-toggle" type="button" aria-label="Toggle navigation" aria-controls="pfSidebar" aria-expanded="false">
+            <span class="pf-sidebar-toggle-line"></span>
+        </button>
+
+        <div class="pf-sidebar-backdrop" data-pf-sidebar-close></div>
+
+        <aside class="pf-sidebar" id="pfSidebar">
             <div class="pf-brand-block">
                 <div class="pf-logo">PARFAIT</div>
                 <div class="pf-system-label">Internal Command System</div>
@@ -505,7 +559,8 @@
 
             <nav class="pf-nav" aria-label="Parfait internal navigation">
                 <div class="pf-nav-label">Command</div>
-                <a class="pf-nav-link @active("Dashboard", "Index")" href="/internal"><span>Dashboard</span><span class="pf-nav-chip">Core</span>
+                <a class="pf-nav-link @active("Dashboard", "Index")" href="/internal">
+                    <span>Dashboard</span><span class="pf-nav-chip">Core</span>
                 </a>
                 <a class="pf-nav-link @active("InternalSettings", "BusinessProfile")" href="/internal/settings/business-profile">
                     <span>Business Profile</span><span class="pf-nav-chip">Primary</span>
@@ -530,7 +585,7 @@
                 <a class="pf-side-action" href="/" target="_blank" rel="noopener">Open Public Site</a>
                 <form action="/internal/logout" method="post" class="m-0">
                     @Html.AntiForgeryToken()
-                    <button type="submit">Logout</button>
+                    <button type="submit" class="pf-side-action">Logout</button>
                 </form>
             </div>
         </aside>
@@ -551,6 +606,30 @@
     </div>
 
     <script src="~/lib/bootstrap/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+        (() => {
+            const body = document.body;
+            const toggle = document.querySelector(".pf-sidebar-toggle");
+            const backdrop = document.querySelector("[data-pf-sidebar-close]");
+
+            const setOpen = (open) => {
+                body.classList.toggle("pf-sidebar-open", open);
+                toggle?.setAttribute("aria-expanded", open ? "true" : "false");
+            };
+
+            toggle?.addEventListener("click", () => {
+                setOpen(!body.classList.contains("pf-sidebar-open"));
+            });
+
+            backdrop?.addEventListener("click", () => setOpen(false));
+
+            document.addEventListener("keydown", event => {
+                if (event.key === "Escape") {
+                    setOpen(false);
+                }
+            });
+        })();
+    </script>
     @await RenderSectionAsync("Scripts", required: false)
 </body>
 </html>
