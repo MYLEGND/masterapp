@@ -153,9 +153,18 @@ public sealed class MetaPixelResolutionService : IMetaPixelResolutionService
             if (string.IsNullOrWhiteSpace(agentPixelId))
                 return MergeWithAgentContext(agencyFallback, trackingProfile, agentSlug);
 
+            var encryptedTokenPresent = !string.IsNullOrWhiteSpace(agentProfile?.MetaCapiAccessToken);
             var decryptedAgentAccessToken = Normalize(
                 _metaCapiCredentialProtector.Unprotect(agentProfile?.MetaCapiAccessToken, _logger));
             var agentTestEventCode = Normalize(agentProfile?.MetaTestEventCode);
+
+            _logger.LogInformation(
+                "Meta pixel resolution token audit trackingProfileId={TrackingProfileId} agentProfileId={AgentProfileId} hasPixel={HasPixel} encryptedTokenPresent={EncryptedTokenPresent} decryptedTokenPresent={DecryptedTokenPresent}",
+                trackingProfile.Id,
+                agentProfile?.Id,
+                !string.IsNullOrWhiteSpace(agentPixelId),
+                encryptedTokenPresent,
+                !string.IsNullOrWhiteSpace(decryptedAgentAccessToken));
 
             return new ResolvedMetaPixelContext
             {
