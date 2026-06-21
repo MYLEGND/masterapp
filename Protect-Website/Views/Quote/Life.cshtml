@@ -6595,7 +6595,7 @@ input:checked + .lq-answer-card {
                                     <div id="lifeContactCaptureWrap">
                                         <div class="lq-contact-grid">
                                         <div class="full lq-contact-capture-head">
-                                            <div class="lq-agent-handoff" role="note" aria-label="Licensed guidance from @contactFirstTrustLabelName">
+                                            <div class="lq-agent-handoff lq-contact-agent-card" role="note" aria-label="Licensed guidance from @contactFirstTrustLabelName">
                                                 <div class="lq-contact-capture-kicker">Your licensed review</div>
                                                 <div class="lq-agent-handoff-head">
                                                     <div class="lq-agent-identity">
@@ -6618,9 +6618,34 @@ input:checked + .lq-answer-card {
                                                     </div>
                                                 </div>
                                             </div>
-                                            <div class="lq-contact-capture-kicker">@stepTwoContactKickerText</div>
-                                            <div class="lq-contact-capture-title" id="lifeStep2ContactTitle">@stepTwoContactTitleText</div>
-                                            <div class="lq-contact-capture-copy" id="lifeStep2ContactCopy">@stepTwoContactCopyText</div>
+
+                                            <div class="lq-contact-final-heading">
+                                                <div class="lq-contact-capture-kicker">@stepTwoContactKickerText</div>
+                                                <div class="lq-contact-capture-title" id="lifeStep2ContactTitle">@stepTwoContactTitleText</div>
+                                                <div class="lq-contact-heading-rule" aria-hidden="true"></div>
+                                                <div class="lq-contact-capture-copy" id="lifeStep2ContactCopy">@stepTwoContactCopyText</div>
+                                            </div>
+
+                                            <div class="lq-contact-value-row" aria-label="Review benefits">
+                                                <div class="lq-contact-value-item">
+                                                    <span class="lq-contact-value-icon" aria-hidden="true">
+                                                        <svg viewBox="0 0 24 24" focusable="false"><path d="M12 3l7 3v5c0 4.6-2.9 8.6-7 10-4.1-1.4-7-5.4-7-10V6l7-3z"/><path d="M8.8 12.1l2.1 2.1 4.6-4.8"/></svg>
+                                                    </span>
+                                                    <span><strong>Personalized review</strong><small>Based on your answers</small></span>
+                                                </div>
+                                                <div class="lq-contact-value-item">
+                                                    <span class="lq-contact-value-icon" aria-hidden="true">
+                                                        <svg viewBox="0 0 24 24" focusable="false"><path d="M16 11a4 4 0 1 0-8 0"/><path d="M4 20a8 8 0 0 1 16 0"/><path d="M18 8a3 3 0 0 1 3 3"/><path d="M21 20a5.5 5.5 0 0 0-3-4.9"/></svg>
+                                                    </span>
+                                                    <span><strong>Licensed guidance</strong><small>From a trusted expert</small></span>
+                                                </div>
+                                                <div class="lq-contact-value-item">
+                                                    <span class="lq-contact-value-icon" aria-hidden="true">
+                                                        <svg viewBox="0 0 24 24" focusable="false"><rect x="6" y="10" width="12" height="10" rx="2"/><path d="M9 10V7a3 3 0 0 1 6 0v3"/><path d="M12 14v2"/></svg>
+                                                    </span>
+                                                    <span><strong>100% secure</strong><small>Your information is safe</small></span>
+                                                </div>
+                                            </div>
                                         </div>
                                         @if (showCarrierReviewBeforeContact)
                                         {
@@ -10124,16 +10149,18 @@ const contactFieldProgress = new Map();
     }
 
     if (step2Progress) {
-      step2Progress.textContent = expanded ? 'Review ready' : 'Estimate preview';
+      step2Progress.textContent = expanded ? 'Review ready' : defaultStep2ProgressText;
+      step2Progress.hidden = !expanded;
     }
 
     if (step2Heading) {
-      step2Heading.textContent = expanded ? postSubmitSuccessHeadingText : 'Your starting range is ready';
+      step2Heading.textContent = expanded ? postSubmitSuccessHeadingText : defaultStep2HeadingText;
+      step2Heading.hidden = !expanded;
     }
 
     if (step2Helper) {
-      step2Helper.hidden = false;
-      step2Helper.textContent = expanded ? resolvePostSubmitSuccessHelperText(preview) : 'Unlock the full carrier fit, coverage direction, and next best step.';
+      step2Helper.textContent = expanded ? resolvePostSubmitSuccessHelperText(preview) : defaultStep2HelperText;
+      step2Helper.hidden = expanded ? false : true;
     }
 
     if (step2ContactTitle) {
@@ -12657,19 +12684,14 @@ body.life-final-step-active .lq-hero-shell {
 }
 
 #lifeEducationContactPanel .lq-contact-capture-head {
-    display: grid;
-    gap: 12px;
-    margin: 0 auto 18px !important;
-    padding: 0 !important;
-    max-width: 760px;
-}
-
-#lifeEducationContactPanel .lq-contact-capture-kicker,
-#lifeStep2EstimateSummary .lq-contact-estimate-kicker,
-#lifePostSubmitSlot .lq-final-review-kicker,
-#lifePostSubmitSlot .lq-final-review-next-kicker,
-#lifePostSubmitSlot .lq-final-review-booking-kicker {
-    color: var(--lq-gold) !important;
+    width: 100% !important;
+    max-width: 860px !important;
+    margin: 0 auto 20px !important;
+    padding: 0 0 20px !important;
+    display: grid !important;
+    gap: 24px !important;
+    text-align: center !important;
+    border-bottom: 1px solid rgba(244, 210, 124, 0.18) !important;
 }
 
 #lifeContactCaptureWrap .lq-contact-grid {
@@ -12682,6 +12704,145 @@ body.life-final-step-active .lq-hero-shell {
 
 #lifeContactCaptureWrap .full {
     grid-column: 1 / -1 !important;
+}
+
+#lifeContactCaptureWrap .lq-contact-agent-card {
+    width: 100% !important;
+    margin: 0 auto !important;
+    padding: 18px 22px !important;
+    border: 1px solid rgba(244, 210, 124, 0.48) !important;
+    border-radius: 18px !important;
+    background: rgba(5, 18, 39, 0.28) !important;
+}
+
+#lifeContactCaptureWrap .lq-contact-agent-card .lq-agent-handoff-head {
+    display: grid !important;
+    grid-template-columns: auto minmax(0, 1fr) !important;
+    gap: 20px !important;
+    align-items: center !important;
+    text-align: left !important;
+}
+
+#lifeContactCaptureWrap .lq-contact-agent-card .lq-agent-avatar {
+    width: 76px !important;
+    height: 76px !important;
+    border-radius: 999px !important;
+    border: 2px solid rgba(244, 210, 124, 0.92) !important;
+}
+
+#lifeContactCaptureWrap .lq-contact-agent-card .lq-agent-name {
+    font-size: 1.18rem !important;
+    font-weight: 940 !important;
+    color: var(--lq-cream) !important;
+}
+
+#lifeContactCaptureWrap .lq-contact-agent-card .lq-agent-bio {
+    color: rgba(248, 250, 252, 0.86) !important;
+    font-size: .96rem !important;
+    line-height: 1.45 !important;
+}
+
+#lifeContactCaptureWrap .lq-contact-agent-card .lq-agent-license {
+    color: var(--lq-gold) !important;
+    font-weight: 900 !important;
+}
+
+#lifeEducationContactPanel .lq-contact-capture-kicker,
+#lifeStep2EstimateSummary .lq-contact-estimate-kicker,
+#lifePostSubmitSlot .lq-final-review-kicker,
+#lifePostSubmitSlot .lq-final-review-next-kicker,
+#lifePostSubmitSlot .lq-final-review-booking-kicker {
+    color: var(--lq-gold) !important;
+    font-size: .78rem !important;
+    font-weight: 940 !important;
+    letter-spacing: .08em !important;
+    text-transform: uppercase !important;
+}
+
+#lifeContactCaptureWrap .lq-contact-final-heading {
+    display: grid !important;
+    gap: 10px !important;
+    justify-items: center !important;
+}
+
+#lifeContactCaptureWrap .lq-contact-capture-title {
+    max-width: 760px !important;
+    margin: 0 auto !important;
+    color: var(--lq-cream) !important;
+    font-size: clamp(1.65rem, 2.45vw, 2.35rem) !important;
+    font-weight: 950 !important;
+    line-height: 1.06 !important;
+    text-align: center !important;
+    text-wrap: balance !important;
+}
+
+#lifeContactCaptureWrap .lq-contact-heading-rule {
+    width: 44px !important;
+    height: 3px !important;
+    border-radius: 999px !important;
+    background: var(--lq-gold) !important;
+}
+
+#lifeContactCaptureWrap .lq-contact-capture-copy {
+    max-width: 620px !important;
+    margin: 0 auto !important;
+    color: rgba(248, 250, 252, 0.78) !important;
+    font-size: .94rem !important;
+    font-weight: 720 !important;
+    line-height: 1.38 !important;
+    text-align: center !important;
+}
+
+#lifeContactCaptureWrap .lq-contact-value-row {
+    display: grid !important;
+    grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
+    gap: 18px !important;
+    width: 100% !important;
+    max-width: 780px !important;
+    margin: 0 auto !important;
+}
+
+#lifeContactCaptureWrap .lq-contact-value-item {
+    display: grid !important;
+    grid-template-columns: auto minmax(0, 1fr) !important;
+    gap: 12px !important;
+    align-items: center !important;
+    text-align: left !important;
+}
+
+#lifeContactCaptureWrap .lq-contact-value-icon {
+    width: 34px !important;
+    height: 34px !important;
+    display: grid !important;
+    place-items: center !important;
+    color: var(--lq-gold) !important;
+}
+
+#lifeContactCaptureWrap .lq-contact-value-icon svg {
+    width: 32px !important;
+    height: 32px !important;
+    fill: none !important;
+    stroke: currentColor !important;
+    stroke-width: 1.8 !important;
+    stroke-linecap: round !important;
+    stroke-linejoin: round !important;
+}
+
+#lifeContactCaptureWrap .lq-contact-value-item strong {
+    display: block !important;
+    color: var(--lq-cream) !important;
+    font-size: .9rem !important;
+    font-weight: 920 !important;
+    line-height: 1.15 !important;
+}
+
+#lifeContactCaptureWrap .lq-contact-value-item small {
+    display: block !important;
+    margin-top: 2px !important;
+    color: rgba(248, 250, 252, 0.74) !important;
+    font-size: .8rem !important;
+    font-weight: 700 !important;
+    line-height: 1.2 !important;
 }
 
 #lifeContactCaptureWrap .lq-field-row.two {
