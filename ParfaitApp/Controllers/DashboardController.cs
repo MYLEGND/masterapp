@@ -1,12 +1,16 @@
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using ParfaitApp.Models;
 
-namespace ParfaitApp.Controllers
+namespace ParfaitApp.Controllers;
+
+[Authorize]
+[Route("internal/dashboard")]
+public sealed class DashboardController : Controller
 {
-    public class DashboardController : Controller
+    [HttpGet("")]
+    public IActionResult Index()
     {
-        public IActionResult Index()
-        {
-            return View(); // Will return Views/Dashboard/Index.cshtml
-        }
+        return View(new ParfaitInternalProfileViewModel());
     }
 }
