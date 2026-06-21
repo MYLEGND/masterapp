@@ -4656,134 +4656,6 @@ body.page-variant-contact-first-education-v1.life-landing .lq-trust-note {
         border-radius: 14px;
     }
 
-    /* Mobile shell cleanup: keep the Life funnel to one outer shell and one inner surface. */
-    body.life-landing #lifeEducationContactPanel,
-    body.life-landing .lq-contact-first-form-panel {
-        background: inherit !important;
-        /* REMOVED TRANSPARENT OVERRIDE */
-        border: 0 !important;
-        border-radius: 0 !important;
-        box-shadow: none !important;
-        padding: 0 !important;
-    }
-
-    body.life-landing .lq-contact-first-form-panel::before {
-        display: none !important;
-    }
-
-    body.life-landing .lq-contact-first-proof-row {
-        margin-bottom: 8px;
-        padding: 0 2px 8px;
-        border-bottom: 0 !important;
-    }
-
-    body.life-landing .lq-contact-first-proof-chips {
-        margin-bottom: 8px;
-    }
-
-    body.life-landing .lq-contact-first-form-surface,
-    body.life-final-step-active .lq-contact-first-form-surface {
-        padding: 14px 14px 13px !important;
-        border-radius: 16px !important;
-        box-shadow:
-            0 18px 28px rgba(0,0,0,0.24),
-            inset 0 1px 0 rgba(255,255,255,0.05),
-            0 0 18px rgba(224,177,74,0.06) !important;
-    }
-
-    body.life-landing .lq-results-summary,
-    body.life-final-step-active .lq-results-summary {
-        background: inherit !important;
-        border: 0 !important;
-        border-radius: 0 !important;
-        padding: 0 !important;
-        margin-bottom: 10px !important;
-        gap: 0 !important;
-    }
-
-    body.life-landing .lq-rs-item,
-    body.life-final-step-active .lq-rs-item {
-        min-width: 0;
-        flex: 1 1 100%;
-        align-items: center;
-        padding: 8px 0;
-        border-top: 1px solid rgba(224,177,74,0.16);
-    }
-
-    body.life-landing .lq-rs-item:first-child,
-    body.life-final-step-active .lq-rs-item:first-child {
-        border-top: 0;
-    }
-
-    body.life-landing .lq-contact-estimate-wrap,
-    body.life-final-step-active 
-
-    body.life-landing .lq-contact-estimate-copy,
-    body.life-final-step-active .lq-contact-estimate-copy {
-        max-width: none;
-    }
-
-    body.life-landing .lq-contact-review-grid,
-    body.life-final-step-active .lq-contact-review-grid {
-        grid-template-columns: 1fr !important;
-        gap: 10px !important;
-    }
-
-    body.life-landing .lq-contact-estimate-signal,
-    body.life-landing .lq-contact-estimate-personal,
-    body.life-final-step-active .lq-contact-estimate-signal,
-    body.life-final-step-active .lq-contact-estimate-personal {
-        padding: 10px 0 0 !important;
-        border: 0 !important;
-        border-radius: 0 !important;
-        background: inherit !important;
-        box-shadow: none !important;
-    }
-
-    body.life-landing .lq-contact-estimate-signal,
-    body.life-final-step-active .lq-contact-estimate-signal {
-        border-top: 1px solid rgba(224,177,74,0.16) !important;
-    }
-
-    body.life-landing .lq-contact-estimate-stats,
-    body.life-final-step-active .lq-contact-estimate-stats {
-        gap: 0 !important;
-        grid-template-columns: 1fr !important;
-    }
-
-    body.life-landing .lq-contact-estimate-stat,
-    body.life-final-step-active .lq-contact-estimate-stat {
-        padding: 10px 0 !important;
-        border: 0 !important;
-        border-top: 1px solid rgba(224,177,74,0.16) !important;
-        border-radius: 0 !important;
-        background: inherit !important;
-        box-shadow: none !important;
-    }
-
-    body.life-landing .lq-contact-estimate-card-wrap .lq-rec-card,
-    body.life-final-step-active .lq-contact-estimate-card-wrap .lq-rec-card {
-        border-radius: 16px;
-    }
-
-    body.life-landing .lq-contact-estimate-unlock,
-    body.life-final-step-active .lq-contact-estimate-unlock {
-        padding: 10px 0 0 !important;
-        border: 0 !important;
-        border-top: 1px solid rgba(224,177,74,0.16) !important;
-        border-radius: 0 !important;
-        background: inherit !important;
-        box-shadow: none !important;
-    }
-
-    body.life-landing .lq-estimate-price-wrap,
-    body.life-final-step-active .lq-estimate-price-wrap {
-        padding: 0 !important;
-        border: 0 !important;
-        border-radius: 0 !important;
-        background: inherit !important;
-        box-shadow: none !important;
-    }
 }
 
 .lq-carrier-disclosure {
@@ -6626,26 +6498,6 @@ input:checked + .lq-answer-card {
                                                 <div class="lq-contact-capture-copy" id="lifeStep2ContactCopy">@stepTwoContactCopyText</div>
                                             </div>
 
-                                            <div class="lq-contact-value-row" aria-label="Review benefits">
-                                                <div class="lq-contact-value-item">
-                                                    <span class="lq-contact-value-icon" aria-hidden="true">
-                                                        <svg viewBox="0 0 24 24" focusable="false"><path d="M12 3l7 3v5c0 4.6-2.9 8.6-7 10-4.1-1.4-7-5.4-7-10V6l7-3z"/><path d="M8.8 12.1l2.1 2.1 4.6-4.8"/></svg>
-                                                    </span>
-                                                    <span><strong>Personalized review</strong><small>Based on your answers</small></span>
-                                                </div>
-                                                <div class="lq-contact-value-item">
-                                                    <span class="lq-contact-value-icon" aria-hidden="true">
-                                                        <svg viewBox="0 0 24 24" focusable="false"><path d="M16 11a4 4 0 1 0-8 0"/><path d="M4 20a8 8 0 0 1 16 0"/><path d="M18 8a3 3 0 0 1 3 3"/><path d="M21 20a5.5 5.5 0 0 0-3-4.9"/></svg>
-                                                    </span>
-                                                    <span><strong>Licensed guidance</strong><small>From a trusted expert</small></span>
-                                                </div>
-                                                <div class="lq-contact-value-item">
-                                                    <span class="lq-contact-value-icon" aria-hidden="true">
-                                                        <svg viewBox="0 0 24 24" focusable="false"><rect x="6" y="10" width="12" height="10" rx="2"/><path d="M9 10V7a3 3 0 0 1 6 0v3"/><path d="M12 14v2"/></svg>
-                                                    </span>
-                                                    <span><strong>100% secure</strong><small>Your information is safe</small></span>
-                                                </div>
-                                            </div>
                                         </div>
                                         @if (showCarrierReviewBeforeContact)
                                         {
@@ -6706,6 +6558,26 @@ input:checked + .lq-answer-card {
                                             <div class="lq-submit-row">
                                                 <div class="lq-trust-note" id="lifeSubmitTrustNote">@stepTwoSubmitNoteText</div>
                                                 <button type="submit" class="btn-gold btn-progress w-100" id="submitLife" data-default-label="@finalSubmitButtonText">@finalSubmitButtonText</button>
+                                            </div>
+                                            <div class="lq-contact-value-row" aria-label="Review benefits">
+                                                <div class="lq-contact-value-item">
+                                                    <span class="lq-contact-value-icon" aria-hidden="true">
+                                                        <svg viewBox="0 0 24 24" focusable="false"><path d="M12 3l7 3v5c0 4.6-2.9 8.6-7 10-4.1-1.4-7-5.4-7-10V6l7-3z"/><path d="M8.8 12.1l2.1 2.1 4.6-4.8"/></svg>
+                                                    </span>
+                                                    <span><strong>Personalized review</strong><small>Based on your answers</small></span>
+                                                </div>
+                                                <div class="lq-contact-value-item">
+                                                    <span class="lq-contact-value-icon" aria-hidden="true">
+                                                        <svg viewBox="0 0 24 24" focusable="false"><path d="M16 11a4 4 0 1 0-8 0"/><path d="M4 20a8 8 0 0 1 16 0"/><path d="M18 8a3 3 0 0 1 3 3"/><path d="M21 20a5.5 5.5 0 0 0-3-4.9"/></svg>
+                                                    </span>
+                                                    <span><strong>Licensed guidance</strong><small>From a trusted expert</small></span>
+                                                </div>
+                                                <div class="lq-contact-value-item">
+                                                    <span class="lq-contact-value-icon" aria-hidden="true">
+                                                        <svg viewBox="0 0 24 24" focusable="false"><rect x="6" y="10" width="12" height="10" rx="2"/><path d="M9 10V7a3 3 0 0 1 6 0v3"/><path d="M12 14v2"/></svg>
+                                                    </span>
+                                                    <span><strong>100% secure</strong><small>Your information is safe</small></span>
+                                                </div>
                                             </div>
                                             <div class="lq-error" id="lifeError"></div>
                                             <div class="lq-success" id="lifeSuccess">Thanks! We received your request.</div>
@@ -13036,72 +12908,176 @@ body.life-final-step-active .lq-hero-shell {
 }
 
 @@media (max-width: 767.98px) {
+    main.layout-content,
     .lq-container {
+        width: 100% !important;
+        max-width: none !important;
         padding: 0 !important;
+        margin: 0 !important;
+        overflow-x: hidden !important;
     }
 
     body.life-landing .lq-hero-shell,
+    body.life-final-step-active .lq-hero-shell,
     .lq-hero-shell {
-        width: min(100%, calc(100vw - 24px)) !important;
-        max-width: calc(100vw - 24px) !important;
-        margin: 8px auto 18px !important;
-        padding: 16px !important;
-        border-radius: 24px !important;
+        width: calc(100vw - 12px) !important;
+        max-width: calc(100vw - 12px) !important;
+        margin: 6px auto 14px !important;
+        padding: 14px 12px 16px !important;
+        border-radius: 22px !important;
+    }
+
+    #lifeEducationContactPanel,
+    #lifeEducationContactPanel .lq-contact-first-form-surface,
+    #lifeEducationContactPanel .lq-contact-first-flow-surface,
+    #lifeEducationContactPanel #lifeStep1Panel,
+    #lifeEducationContactPanel #lifeStep2Panel,
+    #lifeEducationContactPanel .lq-step-panel,
+    #lifeEducationContactPanel .lq-step-panel-pad,
+    #lifeContactCaptureWrap,
+    #lifePostSubmitSlot {
+        width: 100% !important;
+        max-width: none !important;
+        margin: 0 !important;
+        padding: 0 !important;
+        border: 0 !important;
+        border-radius: 0 !important;
+        background: transparent !important;
+        box-shadow: none !important;
     }
 
     #lifeEducationContactPanel .lq-contact-first-form-surface,
     #lifeEducationContactPanel .lq-contact-first-flow-surface {
-        gap: 14px;
+        display: grid !important;
+        gap: 14px !important;
+        min-height: auto !important;
+        align-content: start !important;
+        justify-items: stretch !important;
     }
 
-    #lifeEducationContactPanel .lq-contact-first-proof-row,
-    .lq-agent-handoff,
-    #lifeStep2EstimateSummary,
-    #lifePostSubmitSlot .lq-post-submit-card,
-    #lifePostSubmitSlot .lq-final-review-next-step,
-    #lifePostSubmitSlot .lq-final-review-booking-card,
-    #lifePostSubmitSlot .lq-final-review-impact-card,
-    #lifePostSubmitSlot .lq-contact-estimate-signal,
-    #lifePostSubmitSlot .lq-contact-estimate-personal,
-    #lifePostSubmitSlot .lq-contact-estimate-stat,
-    #lifePostSubmitSlot .lq-contact-estimate-metric,
-    #lifeContactCaptureWrap .lq-consent,
-    #lifeContactCaptureWrap .lq-consent-box,
-    #lifeContactCaptureWrap .lq-contact-consent {
-        padding: 0 !important;
-        border-radius: 0 !important;
-    }
-
-    .lq-agent-handoff-head,
-    #lifeEducationContactPanel .lq-contact-first-proof-row {
-        flex-direction: column !important;
-        align-items: flex-start !important;
-        text-align: left !important;
+    #lifeEducationContactPanel .lq-step-progress-wrap {
+        margin-bottom: 10px !important;
     }
 
     #lifeEducationContactPanel .lq-step-question,
     #lifeContactCaptureWrap .lq-contact-capture-title {
         max-width: none !important;
-        font-size: 1.28rem !important;
-        margin-bottom: 10px !important;
+        margin: 0 auto 12px !important;
+        font-size: clamp(1.24rem, 6.2vw, 1.64rem) !important;
+        line-height: 1.08 !important;
+        text-align: center !important;
     }
 
-    #lifeContactCaptureWrap .lq-contact-grid,
-    #lifeContactCaptureWrap .lq-field-row.two,
     #lifeWizardForm .lq-choice-grid,
     #lifeWizardForm .lq-choice-grid.lq-step1-twoup,
-    #lifeStep2EstimateSummary .lq-contact-estimate-metrics,
+    #lifeWizardForm .lq-choice-grid.lq-grid-2,
+    #lifeContactCaptureWrap .lq-contact-grid,
+    #lifeContactCaptureWrap .lq-field-row.two,
+    #lifeStep2EstimateSummary .lq-contact-preview-mini-metrics,
     #lifePostSubmitSlot .lq-final-review-impact-grid,
     #lifePostSubmitSlot .lq-final-review-checklist,
     #lifePostSubmitSlot .lq-contact-estimate-metrics,
     #lifePostSubmitSlot .lq-contact-review-grid {
         grid-template-columns: 1fr !important;
+        width: 100% !important;
+        max-width: none !important;
+        gap: 10px !important;
     }
 
-    #lifeWizardForm .lq-choice-grid.lq-step1-twoup > .lq-card:last-child:nth-child(odd) {
-        grid-column: auto !important;
+    #lifeWizardForm .lq-card,
+    #lifeWizardForm label.lq-card {
+        min-height: 72px !important;
+        padding: 13px 14px !important;
+        border-radius: 16px !important;
+    }
+
+    #lifeStep2Panel > .lq-step-panel-pad > .lq-step-progress-wrap,
+    #lifeStep2Panel > .lq-step-panel-pad > #lifeStep2Heading,
+    #lifeStep2Panel > .lq-step-panel-pad > #lifeStep2Helper {
+        display: none !important;
+    }
+
+    #lifeContactCaptureWrap .lq-contact-capture-head {
+        gap: 14px !important;
+        margin: 0 auto 12px !important;
+        padding: 0 0 12px !important;
+    }
+
+    #lifeContactCaptureWrap .lq-agent-handoff {
+        padding: 0 0 12px !important;
+        margin: 0 !important;
+        border-radius: 0 !important;
+    }
+
+    #lifeContactCaptureWrap .lq-contact-agent-card .lq-agent-handoff-head {
+        display: grid !important;
+        grid-template-columns: 1fr !important;
+        justify-items: center !important;
+        align-items: center !important;
+        gap: 10px !important;
+        text-align: center !important;
+    }
+
+    #lifeContactCaptureWrap .lq-contact-agent-card .lq-agent-identity {
         width: 100% !important;
-        justify-self: stretch !important;
+        min-width: 0 !important;
+        display: grid !important;
+        justify-items: center !important;
+        justify-self: center !important;
+    }
+
+    #lifeContactCaptureWrap .lq-contact-agent-card .lq-agent-avatar {
+        width: 64px !important;
+        height: 64px !important;
+        margin: 0 auto !important;
+        justify-self: center !important;
+    }
+
+    #lifeContactCaptureWrap .lq-agent-name {
+        font-size: 1.06rem !important;
+        line-height: 1.12 !important;
+        text-align: center !important;
+    }
+
+    #lifeContactCaptureWrap .lq-agent-display-name,
+    #lifeContactCaptureWrap .lq-agent-bio,
+    #lifeContactCaptureWrap .lq-agent-license {
+        text-align: center !important;
+        margin-left: auto !important;
+        margin-right: auto !important;
+    }
+
+    #lifeContactCaptureWrap .lq-agent-bio,
+    #lifeContactCaptureWrap .lq-contact-capture-copy {
+        font-size: .84rem !important;
+        line-height: 1.34 !important;
+        max-width: 31ch !important;
+    }
+
+    #lifeContactCaptureWrap .lq-contact-value-row {
+        grid-template-columns: 1fr !important;
+        gap: 9px !important;
+        max-width: 310px !important;
+        margin-left: auto !important;
+        margin-right: auto !important;
+    }
+
+    #lifeContactCaptureWrap .lq-contact-value-item {
+        display: grid !important;
+        grid-template-columns: 30px minmax(0, 1fr) !important;
+        gap: 10px !important;
+        align-items: center !important;
+        text-align: left !important;
+    }
+
+    #lifeContactCaptureWrap .lq-contact-value-icon {
+        width: 30px !important;
+        height: 30px !important;
+    }
+
+    #lifeContactCaptureWrap .lq-contact-value-icon svg {
+        width: 28px !important;
+        height: 28px !important;
     }
 
     #lifeContactCaptureWrap input:not([type="checkbox"]):not([type="radio"]),
@@ -13109,12 +13085,52 @@ body.life-final-step-active .lq-hero-shell {
     .lq-contact-first-form-surface .form-control,
     .lq-contact-first-form-surface .form-select {
         min-height: 52px !important;
+        border-radius: 14px !important;
+        font-size: .96rem !important;
+    }
+
+    #lifeContactCaptureWrap .lq-consent,
+    #lifeContactCaptureWrap .lq-consent-box,
+    #lifeContactCaptureWrap .lq-contact-consent {
+        padding: 10px 0 !important;
+        border-radius: 0 !important;
+        background: transparent !important;
+    }
+
+    #lifeStep2Panel #submitLife {
+        min-height: 56px !important;
+        border-radius: 15px !important;
+    }
+
+    #lifeStep2EstimateSummary,
+    #lifeStep2EstimateSummary.lq-contact-preview-mini {
+        padding-top: 10px !important;
+        margin-top: 2px !important;
+    }
+
+    #lifePostSubmitSlot .lq-post-submit-card,
+    #lifePostSubmitSlot .lq-final-review-unified-card,
+    #lifePostSubmitSlot .lq-final-review-next-step,
+    #lifePostSubmitSlot .lq-final-review-booking-card {
+        width: 100% !important;
+        max-width: none !important;
+        padding: 0 !important;
+        border-radius: 0 !important;
+        background: transparent !important;
+        box-shadow: none !important;
     }
 
     #lifePostSubmitSlot .lq-booking-frame-only,
-    #lifePostSubmitSlot .lq-booking-embed-frame-wrap,
+    #lifePostSubmitSlot .lq-booking-embed-frame-wrap {
+        width: 100% !important;
+        min-height: 620px !important;
+        border-radius: 16px !important;
+    }
+
     #lifePostSubmitSlot .lq-booking-iframe {
-        min-height: 560px !important;
+        width: 100% !important;
+        min-height: 620px !important;
+        border-radius: 16px !important;
     }
 }
 </style>
