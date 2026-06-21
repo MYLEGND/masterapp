@@ -631,7 +631,6 @@
     }
     var contactFirstBannerImageUrl = "~/images/ads/life-top-banner.png";
     var contactFirstBannerAlt = "Legend Legacy Protection banner asking whether your family would struggle financially without you and inviting a quick life insurance estimate.";
-    var contactFirstProofKicker = "Private protection check";
     var contactFirstProofText = "A small plan today can protect your family from major financial stress later.";
     IReadOnlyList<string> contactFirstProofChips = normalizedOfferKey switch
     {
@@ -674,7 +673,6 @@
     {
         contactFirstBannerImageUrl = "~/images/ads/whole-life-top-banner.png";
         contactFirstBannerAlt = "Legend Legacy Protection whole life insurance banner about lifelong protection that stays with you and the people you love.";
-        contactFirstProofKicker = "Lifelong protection starts here";
         contactFirstProcessingHeading = "Getting your whole life estimate...";
         contactFirstProcessingHelper = "Your whole life estimate is being prepared around your age, goal, coverage amount, and tobacco status.";
         contactFirstProcessingNote = "Sizing your whole life range...";
@@ -693,7 +691,6 @@
     {
         contactFirstBannerImageUrl = "~/images/ads/term-life-top-banner.png";
         contactFirstBannerAlt = "Legend Legacy Protection term life insurance banner about affordable protection for the years your family needs it most.";
-        contactFirstProofKicker = "Protect the years that matter";
         contactFirstProcessingHeading = "Getting your term life estimate...";
         contactFirstProcessingHelper = "Your term life estimate is being prepared around your age, goal, coverage amount, and tobacco status.";
         contactFirstProcessingNote = "Sizing your term life range...";
@@ -712,7 +709,6 @@
     {
         contactFirstBannerImageUrl = "~/images/ads/final-expense-top-banner.png";
         contactFirstBannerAlt = "Legend Legacy Protection final expense insurance banner about easing the burden, honoring your wishes, and leaving peace of mind.";
-        contactFirstProofKicker = "Ease the burden before it lands";
         contactFirstProcessingHeading = "Getting your final expense estimate...";
         contactFirstProcessingHelper = "Your final expense estimate is being prepared around your age, goal, coverage amount, and tobacco status.";
         contactFirstProcessingNote = "Sizing your final expense range...";
@@ -731,7 +727,6 @@
     {
         contactFirstBannerImageUrl = "~/images/ads/mortgage-protection-top-banner.png";
         contactFirstBannerAlt = "Legend Legacy Protection mortgage protection insurance banner about helping protect your home and the people in it, even if you’re gone.";
-        contactFirstProofKicker = "Protect the home first";
         contactFirstProcessingHeading = "Getting your mortgage protection estimate...";
         contactFirstProcessingHelper = "Your mortgage protection estimate is being prepared around your mortgage balance, household goal, age, and tobacco status.";
         contactFirstProcessingNote = "Sizing your mortgage protection range...";
@@ -750,7 +745,6 @@
     {
         contactFirstBannerImageUrl = "~/images/ads/iul-top-banner.png";
         contactFirstBannerAlt = "Legend Legacy Protection indexed universal life banner about flexible long-term protection, future planning, and legacy support.";
-        contactFirstProofKicker = "Build for protection and flexibility";
         contactFirstProcessingHeading = "Getting your IUL estimate...";
         contactFirstProcessingHelper = "Your IUL estimate is being prepared around your age, goal, coverage amount, and tobacco status.";
         contactFirstProcessingNote = "Sizing your IUL range...";
@@ -774,7 +768,6 @@
         heroHeadline = lowFrictionHeroHeadline;
         heroSubheadline = lowFrictionHeroSubheadline;
         heroTrustNote = "25+ carriers • Protection that fits your life • No obligation";
-        contactFirstProofKicker = "25+ carrier comparison";
         contactFirstProofText = "A small plan today can protect your family from major financial stress later.";
         contactFirstProofChips = new List<string> { "25+ carriers", "Protection that fits your life", "No obligation" };
         contactFirstProcessingHeading = "Getting your estimate...";
@@ -6287,21 +6280,6 @@ input:checked + .lq-answer-card {
             <div class="lq-education-stack">
                 <div class="lq-contact-first-primary-grid">
                     <section class="lq-step-panel lq-education-panel lq-contact-first-form-panel" id="lifeEducationContactPanel">
-                        <div class="lq-contact-first-proof-row" aria-label="Personal guidance from @contactFirstTrustLabelName">
-                            <div class="lq-education-trust-avatar lq-contact-first-proof-avatar" aria-hidden="true">
-                                @if (!string.IsNullOrWhiteSpace(contactFirstTrustImageUrl))
-                                {
-                                    <img src="@contactFirstTrustImageUrl" alt="" loading="lazy" onerror="this.style.display='none'; this.nextElementSibling.hidden=false;" />
-                                }
-                                <span class="lq-education-trust-fallback" @(!string.IsNullOrWhiteSpace(contactFirstTrustImageUrl) ? "hidden" : null)>@contactFirstTrustInitials</span>
-                            </div>
-                            <div class="lq-contact-first-proof-copy">
-                                <div class="lq-contact-first-proof-kicker">@contactFirstProofKicker</div>
-                                <div class="lq-contact-first-proof-title">@contactFirstTrustIntroLine</div>
-                                <p class="lq-contact-first-proof-text">@contactFirstProofText</p>
-                            </div>
-                        </div>
-
                         <div class="lq-contact-first-proof-chips" aria-hidden="true">
                             @foreach (var chip in contactFirstProofChips)
                             {
