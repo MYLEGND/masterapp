@@ -168,13 +168,20 @@ var signalRBuilder = builder.Services.AddSignalR(o =>
     o.MaximumReceiveMessageSize = 64 * 1024; // 64 KB per message — guard against oversized payloads
 });
 if (!string.IsNullOrWhiteSpace(redisConn))
+{
     // DISABLED: SignalR Redis backplane (LeadBridge PUBLISH timeout fix)
     // signalRBuilder.AddStackExchangeRedis(redisConn);
+}
+
 // Distributed cache: Redis when available; in-memory fallback for local dev
 if (!string.IsNullOrWhiteSpace(redisConn))
+{
     builder.Services.AddStackExchangeRedisCache(o => o.Configuration = redisConn);
+}
 else
+{
     builder.Services.AddDistributedMemoryCache();
+}
 
 // CORS for ingest endpoints (allow local testing + portal host)
 var allowedOrigins = builder.Configuration.GetSection("Cors:AllowedOrigins").Get<string[]>() ?? Array.Empty<string>();
