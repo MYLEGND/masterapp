@@ -15,15 +15,19 @@
     <!-- MailKit for SMTP -->
     <PackageReference Include="MailKit" Version="4.17.0" />
     <PackageReference Include="Microsoft.AspNetCore.Authentication.OpenIdConnect" Version="10.0.9" />
+    <PackageReference Include="Microsoft.EntityFrameworkCore.Design" Version="10.0.2">
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+      <PrivateAssets>all</PrivateAssets>
+    </PackageReference>
 
     <!-- Microsoft Graph client library -->
-    <PackageReference Include="Microsoft.Graph" Version="5.101.0" />
+    <PackageReference Include="Microsoft.Graph" Version="5.105.0" />
 
     <!-- Microsoft Identity Client (MSAL) -->
     <PackageReference Include="Microsoft.Identity.Client" Version="4.81.0" />
 
     <!-- Azure Identity for ClientSecretCredential -->
-    <PackageReference Include="Azure.Identity" Version="1.17.1" />
+    <PackageReference Include="Azure.Identity" Version="1.18.0" />
     <PackageReference Include="Microsoft.Kiota.Abstractions" Version="2.0.0" />
     <PackageReference Include="Microsoft.Kiota.Http.HttpClientLibrary" Version="2.0.0" />
     <PackageReference Include="Microsoft.Kiota.Serialization.Json" Version="2.0.0" />

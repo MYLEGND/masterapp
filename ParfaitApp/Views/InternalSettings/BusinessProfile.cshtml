@@ -6,54 +6,110 @@
 
 <section class="pf-panel mb-4">
     <div class="pf-kicker">Parfait Business Profile</div>
-    <h1 class="pf-page-title">Business Profile</h1>
+    <h1 class="pf-page-title">Profile Command</h1>
     <p class="pf-page-copy">
-        This is the Parfait-owned profile layer for ecommerce, Meta, analytics, visitor intelligence, attribution, and future reporting. It mirrors the AgentPortal profile concept without making AgentPortal the frontend for Parfait.
+        The business profile is the control layer for Parfait’s domain, Meta setup, analytics scope, visitor intelligence, ecommerce funnel, and reporting ownership.
     </p>
 </section>
 
-<section class="row g-4">
-    <div class="col-lg-6">
-        <div class="pf-module-card">
-            <span class="pf-status"><span class="pf-dot"></span> Active</span>
-            <h2 class="pf-module-title">Store Identity</h2>
-            <p><strong>Store:</strong> @Model.StoreName</p>
-            <p><strong>Business Type:</strong> @Model.BusinessType</p>
-            <p class="mb-0"><strong>Domain Scope:</strong> @Model.DomainStatus</p>
-        </div>
-    </div>
+@if (TempData["ProfileStatus"] is string statusMessage)
+{
+    <div class="alert alert-success">@statusMessage</div>
+}
 
-    <div class="col-lg-6">
-        <div class="pf-module-card">
-            <span class="pf-status"><span class="pf-dot"></span> Meta Setup</span>
-            <h2 class="pf-module-title">Marketing Connections</h2>
-            <p><strong>Meta Pixel:</strong> @Model.MetaPixelStatus</p>
-            <p><strong>Meta CAPI:</strong> @Model.MetaCapiStatus</p>
-            <p class="text-muted mb-0">
-                Pixel ID should be manually stored on this Parfait business profile. CAPI should follow the existing secure Meta OAuth pattern.
-            </p>
-        </div>
-    </div>
+<form asp-action="BusinessProfile" asp-controller="InternalSettings" method="post">
+    @Html.AntiForgeryToken()
 
-    <div class="col-lg-6">
-        <div class="pf-module-card">
-            <span class="pf-status"><span class="pf-dot"></span> Shared Backend</span>
-            <h2 class="pf-module-title">Analytics Foundation</h2>
-            <p><strong>Analytics:</strong> @Model.AnalyticsStatus</p>
-            <p><strong>Trust Scoring:</strong> @Model.TrustStatus</p>
-            <p class="text-muted mb-0">
-                Parfait will feed the shared AnalyticsEvents and MetaSignalEvents backend while keeping reporting inside ParfaitApp.
-            </p>
-        </div>
-    </div>
+    <section class="row g-4 mb-4">
+        <div class="col-xl-8">
+            <div class="pf-module-card">
+                <span class="pf-status"><span class="pf-dot"></span> Active Profile</span>
+                <h2 class="pf-module-title">Store Identity</h2>
 
-    <div class="col-lg-6">
-        <div class="pf-module-card">
-            <span class="pf-status"><span class="pf-dot"></span> Protected Boundary</span>
-            <h2 class="pf-module-title">Architecture Rule</h2>
-            <p class="mb-0">
-                AgentPortal remains insurance-only. Protect Website remains untouched. ParfaitApp owns this ecommerce profile and reporting frontend.
-            </p>
+                <div class="row g-3">
+                    <div class="col-md-6">
+                        <label asp-for="StoreName" class="form-label fw-bold">Store Name</label>
+                        <input asp-for="StoreName" class="form-control" />
+                        <span asp-validation-for="StoreName" class="text-danger small"></span>
+                    </div>
+
+                    <div class="col-md-6">
+                        <label asp-for="BusinessType" class="form-label fw-bold">Business Type</label>
+                        <input asp-for="BusinessType" class="form-control" />
+                        <span asp-validation-for="BusinessType" class="text-danger small"></span>
+                    </div>
+
+                    <div class="col-md-6">
+                        <div class="pf-mini-status">
+                            <div class="pf-mini-label">Frontend Owner</div>
+                            <div class="pf-mini-value">ParfaitApp</div>
+                        </div>
+                    </div>
+
+                    <div class="col-md-6">
+                        <div class="pf-mini-status">
+                            <div class="pf-mini-label">Backend Strategy</div>
+                            <div class="pf-mini-value">Shared</div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="mt-4">
+                    <button type="submit" class="pf-action">Save Profile Settings</button>
+                </div>
+            </div>
         </div>
-    </div>
-</section>
+
+        <div class="col-xl-4">
+            <div class="pf-module-card">
+                <span class="pf-status"><span class="pf-dot"></span> Boundary</span>
+                <h2 class="pf-module-title">Ownership Rule</h2>
+                <p class="text-muted mb-0">
+                    ParfaitApp owns ecommerce reporting. AgentPortal remains insurance-only. Protect Website remains untouched.
+                </p>
+            </div>
+        </div>
+    </section>
+
+    <section class="row g-4">
+        <div class="col-lg-6">
+            <div class="pf-module-card">
+                <span class="pf-status"><span class="pf-dot"></span> Meta</span>
+                <h2 class="pf-module-title">Meta Connection</h2>
+
+                <div class="mb-3">
+                    <label asp-for="MetaPixelId" class="form-label fw-bold">Meta Pixel ID</label>
+                    <input asp-for="MetaPixelId" class="form-control" autocomplete="off" inputmode="numeric" placeholder="Manual Pixel ID" />
+                </div>
+
+                <div class="mb-3">
+                    <label asp-for="MetaTestEventCode" class="form-label fw-bold">Meta Test Event Code</label>
+                    <input asp-for="MetaTestEventCode" class="form-control" autocomplete="off" placeholder="Optional test event code" />
+                </div>
+
+                <p><strong>Pixel:</strong> @Model.MetaPixelStatus</p>
+                <p><strong>CAPI:</strong> @Model.MetaCapiStatus</p>
+
+                <p class="text-muted mb-0">
+                    CAPI will follow the existing secure Meta OAuth credential pattern. Do not store raw CAPI secrets manually here.
+                </p>
+            </div>
+        </div>
+
+        <div class="col-lg-6">
+            <div class="pf-module-card">
+                <span class="pf-status"><span class="pf-dot"></span> Analytics</span>
+                <h2 class="pf-module-title">Shared Intelligence</h2>
+                <p><strong>Analytics:</strong> @Model.AnalyticsStatus</p>
+                <p><strong>Trust:</strong> @Model.TrustStatus</p>
+                <p class="text-muted mb-0">
+                    Future Parfait events will feed AnalyticsEvents and MetaSignalEvents while reporting remains inside ParfaitApp.
+                </p>
+            </div>
+        </div>
+    </section>
+</form>
+
+@section Scripts {
+    <partial name="_ValidationScriptsPartial" />
+}
