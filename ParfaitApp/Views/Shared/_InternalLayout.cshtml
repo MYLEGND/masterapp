@@ -154,6 +154,46 @@
             background:var(--pf-brown);
         }
 
+
+        .pf-mini-status {
+            border: 1px solid var(--pf-line);
+            border-radius: 18px;
+            padding: 16px 18px;
+            background: rgba(255,255,255,.72);
+        }
+
+        .pf-mini-label {
+            color: var(--pf-muted);
+            font-size: .78rem;
+            font-weight: 850;
+            letter-spacing: .08em;
+            text-transform: uppercase;
+            margin-bottom: 4px;
+        }
+
+        .pf-mini-value {
+            color: var(--pf-brown-dark);
+            font-weight: 950;
+            font-size: 1.05rem;
+        }
+
+        .pf-module-link {
+            display: block;
+            height: 100%;
+            color: inherit;
+            text-decoration: none;
+        }
+
+        .pf-module-link:hover .pf-module-card {
+            transform: translateY(-3px);
+            border-color: rgba(154,106,80,.42);
+            box-shadow: 0 24px 70px rgba(60,35,20,.12);
+        }
+
+        .pf-module-card {
+            transition: transform .16s ease, border-color .16s ease, box-shadow .16s ease;
+        }
+
         @@media (max-width:768px) {
             .pf-topbar {
                 align-items:flex-start;

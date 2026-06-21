@@ -1,0 +1,59 @@
+@model ParfaitApp.Models.ParfaitBusinessProfileViewModel
+@{
+    ViewData["Title"] = "Business Profile";
+    Layout = "_InternalLayout";
+}
+
+<section class="pf-panel mb-4">
+    <div class="pf-kicker">Parfait Business Profile</div>
+    <h1 class="pf-page-title">Business Profile</h1>
+    <p class="pf-page-copy">
+        This is the Parfait-owned profile layer for ecommerce, Meta, analytics, visitor intelligence, attribution, and future reporting. It mirrors the AgentPortal profile concept without making AgentPortal the frontend for Parfait.
+    </p>
+</section>
+
+<section class="row g-4">
+    <div class="col-lg-6">
+        <div class="pf-module-card">
+            <span class="pf-status"><span class="pf-dot"></span> Active</span>
+            <h2 class="pf-module-title">Store Identity</h2>
+            <p><strong>Store:</strong> @Model.StoreName</p>
+            <p><strong>Business Type:</strong> @Model.BusinessType</p>
+            <p class="mb-0"><strong>Domain Scope:</strong> @Model.DomainStatus</p>
+        </div>
+    </div>
+
+    <div class="col-lg-6">
+        <div class="pf-module-card">
+            <span class="pf-status"><span class="pf-dot"></span> Meta Setup</span>
+            <h2 class="pf-module-title">Marketing Connections</h2>
+            <p><strong>Meta Pixel:</strong> @Model.MetaPixelStatus</p>
+            <p><strong>Meta CAPI:</strong> @Model.MetaCapiStatus</p>
+            <p class="text-muted mb-0">
+                Pixel ID should be manually stored on this Parfait business profile. CAPI should follow the existing secure Meta OAuth pattern.
+            </p>
+        </div>
+    </div>
+
+    <div class="col-lg-6">
+        <div class="pf-module-card">
+            <span class="pf-status"><span class="pf-dot"></span> Shared Backend</span>
+            <h2 class="pf-module-title">Analytics Foundation</h2>
+            <p><strong>Analytics:</strong> @Model.AnalyticsStatus</p>
+            <p><strong>Trust Scoring:</strong> @Model.TrustStatus</p>
+            <p class="text-muted mb-0">
+                Parfait will feed the shared AnalyticsEvents and MetaSignalEvents backend while keeping reporting inside ParfaitApp.
+            </p>
+        </div>
+    </div>
+
+    <div class="col-lg-6">
+        <div class="pf-module-card">
+            <span class="pf-status"><span class="pf-dot"></span> Protected Boundary</span>
+            <h2 class="pf-module-title">Architecture Rule</h2>
+            <p class="mb-0">
+                AgentPortal remains insurance-only. Protect Website remains untouched. ParfaitApp owns this ecommerce profile and reporting frontend.
+            </p>
+        </div>
+    </div>
+</section>
