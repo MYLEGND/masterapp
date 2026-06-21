@@ -9943,30 +9943,27 @@ const contactFieldProgress = new Map();
       || 'Calculated';
 
     return `
-      <section class="lq-contact-estimate-wrap is-preview-locked is-teaser-only lq-contact-teaser-final" id="lifeStep2EstimateSummary" aria-label="Locked estimate preview">
-        <div class="lq-contact-teaser-final-copy">
-          <div class="lq-contact-estimate-kicker">Your starting point is ready</div>
-          <h3 class="lq-contact-estimate-title">You’re one step from the full breakdown.</h3>
-          <p class="lq-contact-estimate-copy">Your answers created a personalized starting range. Unlock the full carrier fit, coverage direction, and next best step before leaving.</p>
+      <section class="lq-contact-preview-mini" id="lifeStep2EstimateSummary" aria-label="Starting estimate preview">
+        <div class="lq-contact-preview-mini-head">
+          <div class="lq-contact-estimate-kicker">Your starting range</div>
+          <div class="lq-contact-preview-mini-copy">Personalized from your answers. Submit to unlock the full carrier review.</div>
         </div>
 
-        <div class="lq-contact-teaser-final-metrics">
-          <div class="lq-contact-estimate-metric">
-            <div class="lq-contact-estimate-metric-label">Monthly starting range</div>
-            <div class="lq-contact-estimate-metric-value">${escapeHtml(monthlyRange)}</div>
+        <div class="lq-contact-preview-mini-metrics" aria-label="Estimate starting range">
+          <div class="lq-contact-preview-mini-metric">
+            <span>Monthly range</span>
+            <strong>${escapeHtml(monthlyRange)}</strong>
           </div>
-          <div class="lq-contact-estimate-metric">
-            <div class="lq-contact-estimate-metric-label">Coverage range</div>
-            <div class="lq-contact-estimate-metric-value">${escapeHtml(coverageRange)}</div>
+          <div class="lq-contact-preview-mini-metric">
+            <span>Coverage range</span>
+            <strong>${escapeHtml(coverageRange)}</strong>
           </div>
-          <div class="lq-contact-estimate-metric is-locked-detail">
-            <div class="lq-contact-estimate-metric-label">Carrier fit</div>
-            <div class="lq-contact-estimate-metric-value">Locked</div>
-          </div>
-          <div class="lq-contact-estimate-metric is-locked-detail">
-            <div class="lq-contact-estimate-metric-label">Next best step</div>
-            <div class="lq-contact-estimate-metric-value">Locked</div>
-          </div>
+        </div>
+
+        <div class="lq-contact-preview-mini-chips" aria-label="Review benefits">
+          <span>Personalized estimate</span>
+          <span>Carrier fit unlocked after submit</span>
+          <span>No obligation</span>
         </div>
       </section>`;
   }
@@ -12768,18 +12765,85 @@ body.life-final-step-active .lq-hero-shell {
     justify-self: stretch !important;
 }
 
-#lifeStep2EstimateSummary {
-    margin: 0 !important;
-    padding: 0 !important;
+#lifeStep2EstimateSummary,
+#lifeStep2EstimateSummary.lq-contact-preview-mini {
+    width: 100% !important;
+    max-width: 860px !important;
+    margin: 4px auto 0 !important;
+    padding: 14px 0 0 !important;
+    border-top: 1px solid rgba(244, 210, 124, 0.16) !important;
+    background: transparent !important;
+    box-shadow: none !important;
 }
 
-#lifeStep2EstimateSummary .lq-contact-estimate-metrics,
-#lifePostSubmitSlot .lq-final-review-impact-grid,
-#lifePostSubmitSlot .lq-final-review-checklist,
-#lifePostSubmitSlot .lq-contact-estimate-metrics,
-#lifePostSubmitSlot .lq-contact-review-grid {
+#lifeStep2EstimateSummary .lq-contact-preview-mini-head {
+    display: grid !important;
+    gap: 4px !important;
+    margin: 0 0 12px !important;
+    text-align: center !important;
+}
+
+#lifeStep2EstimateSummary .lq-contact-estimate-kicker {
+    color: var(--lq-gold) !important;
+    font-size: .76rem !important;
+    font-weight: 920 !important;
+    letter-spacing: .08em !important;
+    text-transform: uppercase !important;
+}
+
+#lifeStep2EstimateSummary .lq-contact-preview-mini-copy {
+    color: rgba(248, 250, 252, 0.74) !important;
+    font-size: .88rem !important;
+    font-weight: 720 !important;
+    line-height: 1.35 !important;
+}
+
+#lifeStep2EstimateSummary .lq-contact-preview-mini-metrics {
+    display: grid !important;
     grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
-    gap: 12px !important;
+    gap: 10px !important;
+    margin: 0 0 10px !important;
+}
+
+#lifeStep2EstimateSummary .lq-contact-preview-mini-metric {
+    display: grid !important;
+    gap: 4px !important;
+    padding: 10px 12px !important;
+    border: 1px solid rgba(244, 210, 124, 0.18) !important;
+    border-radius: 12px !important;
+    background: rgba(5, 16, 34, 0.24) !important;
+    text-align: center !important;
+}
+
+#lifeStep2EstimateSummary .lq-contact-preview-mini-metric span {
+    color: rgba(248, 250, 252, 0.58) !important;
+    font-size: .68rem !important;
+    font-weight: 860 !important;
+    letter-spacing: .06em !important;
+    text-transform: uppercase !important;
+}
+
+#lifeStep2EstimateSummary .lq-contact-preview-mini-metric strong {
+    color: var(--lq-cream) !important;
+    font-size: 1rem !important;
+    font-weight: 940 !important;
+}
+
+#lifeStep2EstimateSummary .lq-contact-preview-mini-chips {
+    display: flex !important;
+    flex-wrap: wrap !important;
+    justify-content: center !important;
+    gap: 8px !important;
+}
+
+#lifeStep2EstimateSummary .lq-contact-preview-mini-chips span {
+    padding: 6px 10px !important;
+    border-radius: 999px !important;
+    border: 1px solid rgba(244, 210, 124, 0.16) !important;
+    color: rgba(248, 250, 252, 0.76) !important;
+    font-size: .74rem !important;
+    font-weight: 780 !important;
+    background: rgba(5, 16, 34, 0.22) !important;
 }
 
 #lifePostSubmitSlot .lq-post-submit-card {
