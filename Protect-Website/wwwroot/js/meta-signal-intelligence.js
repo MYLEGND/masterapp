@@ -1196,7 +1196,9 @@
     }
 
     function hasHumanBehaviorForMetaBrowserEvent(eventName) {
-      if (eventName === 'ViewContent') return false;
+      if (eventName === 'ViewContent') {
+        return true;
+      }
 
       return Boolean(
         state.stayed5Seconds ||
