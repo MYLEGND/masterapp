@@ -9,14 +9,34 @@ var builder = WebApplication.CreateBuilder(args);
 
 builder.Services.AddControllersWithViews();
 
+static string? ResolveMasterDb(IConfiguration config)
+{
+    var cs = Environment.GetEnvironmentVariable("SQLCONNSTR_MasterAppDb");
+    if (!string.IsNullOrWhiteSpace(cs)) return cs.Trim();
+
+    cs = Environment.GetEnvironmentVariable("ConnectionStrings__MasterAppDb");
+    if (!string.IsNullOrWhiteSpace(cs)) return cs.Trim();
+
+    cs = Environment.GetEnvironmentVariable("MasterAppDb");
+    if (!string.IsNullOrWhiteSpace(cs)) return cs.Trim();
+
+    cs = config.GetConnectionString("MasterAppDb");
+    if (!string.IsNullOrWhiteSpace(cs)) return cs.Trim();
+
+    return null;
+}
+
+var configuredDb = ResolveMasterDb(builder.Configuration);
+
 builder.Services.AddDbContext<MasterAppDbContext>(options =>
 {
-    var cs = builder.Configuration.GetConnectionString("MasterAppDb")
-        ?? builder.Configuration["ConnectionStrings:MasterAppDb"]
-        ?? builder.Configuration["MasterAppDb"];
+    if (string.IsNullOrWhiteSpace(configuredDb))
+        throw new InvalidOperationException("Missing MasterAppDb connection string for Parfait analytics.");
 
-    if (!string.IsNullOrWhiteSpace(cs))
-        options.UseSqlServer(cs);
+    if (configuredDb.TrimStart().StartsWith("Data Source=", StringComparison.OrdinalIgnoreCase))
+        options.UseSqlite(configuredDb);
+    else
+        options.UseSqlServer(configuredDb);
 });
 
 builder.Services.AddSingleton<ParfaitProductService>();
