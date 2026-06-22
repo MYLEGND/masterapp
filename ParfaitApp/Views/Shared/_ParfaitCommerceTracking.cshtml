@@ -71,8 +71,14 @@
     if (location.pathname.toLowerCase() === "/store/checkout") {
         const cart = JSON.parse(localStorage.getItem("parfaitCart") || "[]");
         const total = cart.reduce((sum, item) => sum + ((Number(item.priceCents) || 0) * (Number(item.quantity) || 0)), 0);
+        const firstItem = cart.length ? cart[0] : null;
+        const totalQuantity = cart.reduce((sum, item) => sum + (Number(item.quantity) || 0), 0);
 
         send("CheckoutStarted", {
+            productId: firstItem?.id || null,
+            productName: firstItem?.name || null,
+            size: firstItem?.size || null,
+            quantity: totalQuantity,
             valueCents: total,
             metadata: {
                 pageType: "checkout",
