@@ -10,6 +10,9 @@ public sealed class ParfaitBusinessProfileViewModel
     [Required]
     public string BusinessType { get; set; } = "Apparel / Ecommerce";
 
+    [Url]
+    public string? GlobalStoreCheckoutUrl { get; set; }
+
     public string? MetaPixelId { get; set; }
     public string? MetaTestEventCode { get; set; }
 

@@ -7,6 +7,7 @@ var builder = WebApplication.CreateBuilder(args);
 
 builder.Services.AddControllersWithViews();
 builder.Services.AddSingleton<ParfaitProductService>();
+builder.Services.AddHttpClient<SquarePaymentService>();
 builder.Services.AddHttpContextAccessor();
 
 

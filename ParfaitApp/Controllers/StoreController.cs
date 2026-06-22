@@ -8,10 +8,14 @@ namespace ParfaitApp.Controllers;
 public sealed class StoreController : Controller
 {
     private readonly ParfaitProductService _products;
+    private readonly IParfaitBusinessProfileService _profileService;
 
-    public StoreController(ParfaitProductService products)
+    public StoreController(
+        ParfaitProductService products,
+        IParfaitBusinessProfileService profileService)
     {
         _products = products;
+        _profileService = profileService;
     }
 
     [HttpGet("")]
@@ -29,8 +33,10 @@ public sealed class StoreController : Controller
     }
 
     [HttpGet("cart")]
-    public IActionResult Cart()
+    public async Task<IActionResult> Cart(CancellationToken ct)
     {
+        var profile = await _profileService.GetProfileAsync(ct);
+        ViewBag.GlobalStoreCheckoutUrl = profile.GlobalStoreCheckoutUrl;
         return View();
     }
 

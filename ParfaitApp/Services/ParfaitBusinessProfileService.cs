@@ -23,6 +23,7 @@ public sealed class ParfaitBusinessProfileService : IParfaitBusinessProfileServi
         {
             StoreName = model.StoreName.Trim(),
             BusinessType = model.BusinessType.Trim(),
+            GlobalStoreCheckoutUrl = string.IsNullOrWhiteSpace(model.GlobalStoreCheckoutUrl) ? null : model.GlobalStoreCheckoutUrl.Trim(),
             MetaPixelId = string.IsNullOrWhiteSpace(model.MetaPixelId) ? null : model.MetaPixelId.Trim(),
             MetaTestEventCode = string.IsNullOrWhiteSpace(model.MetaTestEventCode) ? null : model.MetaTestEventCode.Trim()
         };

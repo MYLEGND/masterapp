@@ -84,6 +84,41 @@
             letter-spacing: 0.5px;
         }
 
+        .navbar-right .nav-icon-link {
+            width: 46px;
+            height: 46px;
+            padding: 0;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            border: 2px solid rgba(146,105,80,0.55);
+        }
+
+        .nav-icon {
+            width: 21px;
+            height: 21px;
+            stroke: currentColor;
+        }
+
+        .pf-cart-count {
+            position: absolute;
+            top: -7px;
+            right: -7px;
+            min-width: 19px;
+            height: 19px;
+            padding: 0 5px;
+            border-radius: 999px;
+            background: #926950;
+            color: #fff;
+            font-size: 0.72rem;
+            line-height: 19px;
+            text-align: center;
+        }
+
+        .pf-store-cart-link {
+            position: relative;
+        }
+
         /* ====================== LOGIN CTA ====================== */
         .navbar-right .login-link {
             border: 2px solid #926950;
@@ -265,14 +300,26 @@
                 }
 
                 <a class="nav-link @Active("Home")" asp-controller="Home" asp-action="Index">Home</a>
-                <a class="nav-link @Active("TrainingPackages")" asp-controller="TrainingPackages" asp-action="Index">Training Packages</a>
+                <a class="nav-link @Active("TrainingPackages")" asp-controller="TrainingPackages" asp-action="Index">Training</a>
                 <a class="nav-link" asp-controller="Contact" asp-action="Index">Contact</a>
                 <a class="nav-link @Active("About")" asp-controller="About" asp-action="About">About Us</a>
 
                 <!-- Store + Login (same right-side group) -->
-                <a class="nav-link" href="/store" >Store</a>
-                <a class="nav-link pf-store-cart-link" href="/store/cart" aria-label="Shopping cart">Cart <span id="pfStoreCartCount">0</span></a>
-                <a class="nav-link login-link" href="/internal/login"  rel="noopener">Team Login</a>
+                <a class="nav-link" href="/store">Shop</a>
+                <a class="nav-link nav-icon-link pf-store-cart-link" href="/store/cart" aria-label="Shopping cart">
+                    <svg class="nav-icon pf-cart-icon" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                        <path d="M6.5 6.5h15l-1.8 8.2a2 2 0 0 1-2 1.6H9.2a2 2 0 0 1-2-1.7L5.7 3.8H3" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                        <circle cx="9.8" cy="20" r="1.2" stroke-width="2"/>
+                        <circle cx="17.6" cy="20" r="1.2" stroke-width="2"/>
+                    </svg>
+                    <span class="pf-cart-count" id="pfStoreCartCount">0</span>
+                </a>
+                <a class="nav-link nav-icon-link login-link" href="/internal/login" rel="noopener" aria-label="Team login">
+                    <svg class="nav-icon pf-account-icon" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                        <circle cx="12" cy="8" r="4" stroke-width="2"/>
+                        <path d="M4.5 21a7.5 7.5 0 0 1 15 0" stroke-width="2" stroke-linecap="round"/>
+                    </svg>
+                </a>
             </div>
         </div>
 

@@ -39,6 +39,13 @@
                         <span asp-validation-for="BusinessType" class="text-danger small"></span>
                     </div>
 
+                    <div class="col-12">
+                        <label asp-for="GlobalStoreCheckoutUrl" class="form-label fw-bold">Global Store Checkout Link</label>
+                        <input asp-for="GlobalStoreCheckoutUrl" class="form-control" autocomplete="off" placeholder="https://square.link/u/..." />
+                        <span asp-validation-for="GlobalStoreCheckoutUrl" class="text-danger small"></span>
+                        <div class="form-text">Used by the public cart checkout button for all Parfait store products.</div>
+                    </div>
+
                     <div class="col-md-6">
                         <div class="pf-mini-status">
                             <div class="pf-mini-label">Frontend Owner</div>

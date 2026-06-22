@@ -1,72 +1,207 @@
 @{
     ViewData["Title"] = "Cart";
+    var checkoutUrl = ViewBag.GlobalStoreCheckoutUrl as string;
 }
 
 <section class="sp-cart-page">
-    <h1>Shopping Cart</h1>
-    <div id="spCartItems"></div>
+    <div class="sp-cart-shell">
+        <div class="sp-cart-header">
+            <p class="sp-cart-eyebrow">Parfait Shop</p>
+            <h1>Your Cart</h1>
+            <p class="sp-cart-subtitle">Review your selections before checkout.</p>
+        </div>
 
-    <div class="sp-cart-summary">
-        <div>Total</div>
-        <strong id="spCartTotal">$0.00</strong>
+        <div class="sp-cart-card">
+            <div id="spCartItems"></div>
+
+            <div class="sp-cart-summary">
+                <span>Total</span>
+                <strong id="spCartTotal">$0.00</strong>
+            </div>
+
+            <a class="sp-checkout-button" href="/store/checkout">
+                Continue to Secure Checkout
+            </a>
+        </div>
     </div>
-
-    <button type="button" class="sp-checkout-button">
-        Square Checkout Coming Soon
-    </button>
 </section>
 
 <style>
     .sp-cart-page {
-        max-width: 980px;
-        margin: 0 auto;
-        padding: 3rem 1.5rem 5rem;
+        background:
+            radial-gradient(circle at top left, rgba(146,105,80,.14), transparent 34%),
+            linear-gradient(180deg, #fff 0%, #fbf8f5 100%);
+        padding: 4.5rem 1.5rem 6rem;
+        min-height: 70vh;
     }
 
-    .sp-cart-page h1 {
-        font-size: clamp(2.5rem, 6vw, 5rem);
-        font-weight: 400;
-        font-style: italic;
-        letter-spacing: -.055em;
+    .sp-cart-shell {
+        max-width: 920px;
+        margin: 0 auto;
+    }
+
+    .sp-cart-header {
+        text-align: center;
         margin-bottom: 2rem;
+    }
+
+    .sp-cart-eyebrow {
+        margin: 0 0 .65rem;
+        color: #926950;
+        font-size: .78rem;
+        font-weight: 900;
+        letter-spacing: .22em;
+        text-transform: uppercase;
+    }
+
+    .sp-cart-header h1 {
+        margin: 0;
+        color: #1b1715;
+        font-size: clamp(2.6rem, 6vw, 5.4rem);
+        font-weight: 800;
+        font-style: italic;
+        letter-spacing: -.06em;
+        line-height: .92;
+    }
+
+    .sp-cart-subtitle {
+        margin: 1rem 0 0;
+        color: rgba(27,23,21,.68);
+        font-size: 1.05rem;
+    }
+
+    .sp-cart-card {
+        background: rgba(255,255,255,.92);
+        border: 1.5px solid rgba(146,105,80,.28);
+        border-radius: 32px;
+        box-shadow: 0 24px 70px rgba(53,37,28,.12);
+        padding: clamp(1.25rem, 3vw, 2rem);
     }
 
     .sp-cart-item {
         display: grid;
-        grid-template-columns: 110px minmax(0, 1fr) auto;
-        gap: 1rem;
+        grid-template-columns: 118px minmax(0, 1fr) auto;
+        gap: 1.25rem;
         align-items: center;
-        padding: 1rem 0;
-        border-bottom: 1px solid #9a6a50;
+        padding: 1rem;
+        border: 1px solid rgba(146,105,80,.18);
+        border-radius: 24px;
+        background: linear-gradient(180deg, #fff, #fffaf6);
+    }
+
+    .sp-cart-item + .sp-cart-item {
+        margin-top: 1rem;
     }
 
     .sp-cart-item img {
-        width: 110px;
-        height: 110px;
+        width: 118px;
+        height: 118px;
         object-fit: cover;
-        background: #f4f4f4;
+        border-radius: 18px;
+        background: #f4f0ec;
+    }
+
+    .sp-cart-item h2 {
+        margin: 0 0 .35rem;
+        color: #141414;
+        font-size: clamp(1.35rem, 3vw, 2rem);
+        font-weight: 800;
+        letter-spacing: -.04em;
+    }
+
+    .sp-cart-meta {
+        margin: 0 0 .75rem;
+        color: rgba(20,20,20,.68);
+        font-weight: 700;
+    }
+
+    .sp-cart-price {
+        color: #141414;
+        font-weight: 900;
+    }
+
+    .sp-cart-remove {
+        border: 2px solid rgba(189,130,0,.85);
+        border-radius: 999px;
+        background: #fff;
+        color: #bd8200;
+        padding: .78rem 1.25rem;
+        font-weight: 800;
+        transition: all .2s ease;
+    }
+
+    .sp-cart-remove:hover {
+        background: #bd8200;
+        color: #fff;
+        transform: translateY(-2px);
     }
 
     .sp-cart-summary {
         display: flex;
         justify-content: space-between;
         align-items: center;
-        margin: 2rem 0 1rem;
-        font-size: 1.25rem;
+        margin-top: 1.25rem;
+        padding: 1.35rem .25rem .75rem;
+        font-size: 1.2rem;
+        color: #1b1715;
     }
 
-    .sp-checkout-button,
-    .sp-cart-remove {
-        border: 3px solid #bd8200;
-        border-radius: 999px;
-        background: #fff;
-        color: #bd8200;
-        padding: .8rem 1.25rem;
+    .sp-cart-summary strong {
+        font-size: 1.45rem;
     }
 
     .sp-checkout-button {
         width: 100%;
-        min-height: 58px;
+        min-height: 60px;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        text-decoration: none;
+        border: 2px solid #bd8200;
+        border-radius: 999px;
+        background: linear-gradient(135deg, #fffaf1, #fff);
+        color: #bd8200;
+        font-weight: 900;
+        letter-spacing: .02em;
+        transition: all .2s ease;
+    }
+
+    .sp-checkout-button:hover {
+        background: #bd8200;
+        color: #fff;
+        transform: translateY(-2px);
+        box-shadow: 0 14px 30px rgba(189,130,0,.22);
+    }
+
+    .sp-cart-empty {
+        text-align: center;
+        padding: 3rem 1rem;
+        color: rgba(27,23,21,.65);
+        font-weight: 800;
+    }
+
+    @@media (max-width: 720px) {
+        .sp-cart-page {
+            padding: 3rem 1rem 5rem;
+        }
+
+        .sp-cart-card {
+            border-radius: 24px;
+        }
+
+        .sp-cart-item {
+            grid-template-columns: 92px 1fr;
+        }
+
+        .sp-cart-item img {
+            width: 92px;
+            height: 92px;
+        }
+
+        .sp-cart-remove {
+            grid-column: 1 / -1;
+            width: 100%;
+        }
     }
 </style>
 
@@ -84,7 +219,7 @@
             totalHost.textContent = money(total);
 
             if (cart.length === 0) {
-                itemsHost.innerHTML = "<p>Your cart is empty.</p>";
+                itemsHost.innerHTML = '<div class="sp-cart-empty">Your cart is empty.</div>';
                 return;
             }
 
@@ -93,8 +228,8 @@
                     <img src="${item.imageUrl}" alt="${item.name}" />
                     <div>
                         <h2>${item.name}</h2>
-                        <p>Size: ${item.size} · Qty: ${item.quantity}</p>
-                        <strong>${money(item.priceCents * item.quantity)}</strong>
+                        <p class="sp-cart-meta">Size: ${item.size} · Qty: ${item.quantity}</p>
+                        <div class="sp-cart-price">${money(item.priceCents * item.quantity)}</div>
                     </div>
                     <button class="sp-cart-remove" data-key="${item.key}">Remove</button>
                 </div>

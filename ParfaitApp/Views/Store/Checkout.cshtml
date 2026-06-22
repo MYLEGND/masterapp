@@ -1,0 +1,202 @@
+@{
+    ViewData["Title"] = "Checkout";
+    var appId = ViewBag.SquareApplicationId as string;
+    var locationId = ViewBag.SquareLocationId as string;
+    var environment = ViewBag.SquareEnvironment as string ?? "Sandbox";
+    var squareScript = environment.Equals("Production", StringComparison.OrdinalIgnoreCase)
+        ? "https://web.squarecdn.com/v1/square.js"
+        : "https://sandbox.web.squarecdn.com/v1/square.js";
+}
+
+<section class="sp-checkout-page">
+    <div class="sp-checkout-shell">
+        <div class="sp-checkout-card">
+            <p class="sp-checkout-eyebrow">Secure Checkout</p>
+            <h1>Complete Your Order</h1>
+            <p class="sp-checkout-copy">Payment is securely processed by Square.</p>
+
+            @Html.AntiForgeryToken()
+
+            <div id="spCheckoutSummary" class="sp-checkout-summary"></div>
+
+            <div id="card-container" class="sp-card-container"></div>
+
+            <button id="spPayButton" class="sp-pay-button" type="button">
+                Pay Now
+            </button>
+
+            <div id="spCheckoutError" class="sp-checkout-error"></div>
+        </div>
+    </div>
+</section>
+
+<style>
+    .sp-checkout-page {
+        min-height: 70vh;
+        padding: 4rem 1.25rem 6rem;
+        background: linear-gradient(180deg, #fff, #fbf8f5);
+    }
+
+    .sp-checkout-shell {
+        max-width: 760px;
+        margin: 0 auto;
+    }
+
+    .sp-checkout-card {
+        background: #fff;
+        border: 1.5px solid rgba(146,105,80,.25);
+        border-radius: 32px;
+        box-shadow: 0 24px 70px rgba(53,37,28,.12);
+        padding: clamp(1.5rem, 4vw, 2.5rem);
+    }
+
+    .sp-checkout-eyebrow {
+        color: #926950;
+        font-size: .78rem;
+        font-weight: 900;
+        letter-spacing: .22em;
+        text-transform: uppercase;
+    }
+
+    .sp-checkout-card h1 {
+        margin: 0 0 .75rem;
+        color: #1b1715;
+        font-size: clamp(2.4rem, 5vw, 4.5rem);
+        font-weight: 800;
+        font-style: italic;
+        letter-spacing: -.06em;
+        line-height: .95;
+    }
+
+    .sp-checkout-copy {
+        color: rgba(27,23,21,.68);
+        margin-bottom: 1.5rem;
+    }
+
+    .sp-checkout-summary {
+        border: 1px solid rgba(146,105,80,.18);
+        border-radius: 22px;
+        padding: 1rem;
+        margin-bottom: 1.25rem;
+        background: #fffaf6;
+    }
+
+    .sp-card-container {
+        margin: 1rem 0;
+    }
+
+    .sp-pay-button {
+        width: 100%;
+        min-height: 60px;
+        border: 2px solid #bd8200;
+        border-radius: 999px;
+        background: #bd8200;
+        color: #fff;
+        font-weight: 900;
+    }
+
+    .sp-pay-button:disabled {
+        opacity: .55;
+        cursor: not-allowed;
+    }
+
+    .sp-checkout-error {
+        color: #9b1c1c;
+        font-weight: 800;
+        margin-top: 1rem;
+        white-space: pre-wrap;
+    }
+</style>
+
+<script src="@squareScript"></script>
+
+<script>
+    (() => {
+        const appId = "@appId";
+        const locationId = "@locationId";
+        const payButton = document.getElementById("spPayButton");
+        const errorHost = document.getElementById("spCheckoutError");
+        const summaryHost = document.getElementById("spCheckoutSummary");
+        const tokenInput = document.querySelector('input[name="__RequestVerificationToken"]');
+
+        const money = cents => `$${(cents / 100).toFixed(2)}`;
+        const cart = JSON.parse(localStorage.getItem("parfaitCart") || "[]");
+
+        if (!cart.length) {
+            summaryHost.innerHTML = "<strong>Your cart is empty.</strong>";
+            payButton.disabled = true;
+            return;
+        }
+
+        const browserTotal = cart.reduce((sum, item) => sum + ((Number(item.priceCents) || 0) * (Number(item.quantity) || 0)), 0);
+
+        summaryHost.innerHTML = `
+            <strong>Order Summary</strong>
+            <div>${cart.length} item(s)</div>
+            <div>Estimated total: ${money(browserTotal)}</div>
+        `;
+
+        async function startSquare() {
+            if (!window.Square) {
+                throw new Error("Square.js failed to load.");
+            }
+
+            if (!appId || !locationId) {
+                throw new Error("Square Application ID or Location ID is missing.");
+            }
+
+            const payments = window.Square.payments(appId, locationId);
+            const card = await payments.card();
+            await card.attach("#card-container");
+
+            payButton.addEventListener("click", async () => {
+                payButton.disabled = true;
+                errorHost.textContent = "";
+
+                try {
+                    const result = await card.tokenize();
+
+                    if (result.status !== "OK") {
+                        throw new Error("Unable to tokenize payment card.");
+                    }
+
+                    const payload = {
+                        sourceId: result.token,
+                        items: cart.map(item => ({
+                            id: item.id,
+                            size: item.size,
+                            quantity: item.quantity
+                        }))
+                    };
+
+                    const response = await fetch("/store/checkout/pay", {
+                        method: "POST",
+                        headers: {
+                            "Content-Type": "application/json",
+                            "RequestVerificationToken": tokenInput?.value || ""
+                        },
+                        body: JSON.stringify(payload)
+                    });
+
+                    const data = await response.json();
+
+                    if (!response.ok || !data.success) {
+                        throw new Error(data.error || "Payment failed.");
+                    }
+
+                    localStorage.removeItem("parfaitCart");
+                    window.dispatchEvent(new Event("parfait-cart-updated"));
+                    window.location.href = data.redirectUrl || "/store/success";
+                } catch (error) {
+                    errorHost.textContent = error.message || "Payment failed.";
+                    payButton.disabled = false;
+                }
+            });
+        }
+
+        startSquare().catch(error => {
+            errorHost.textContent = error.message || "Square checkout failed to initialize.";
+            payButton.disabled = true;
+        });
+    })();
+</script>
