@@ -1,0 +1,183 @@
+@model ParfaitApp.Models.ParfaitStoreProductViewModel
+@{
+    ViewData["Title"] = Model.Name;
+    var images = Model.Images.OrderBy(i => i.DisplayOrder).ToList();
+}
+
+<section class="sp-product-detail">
+    <div class="sp-product-gallery">
+        <div class="sp-product-main-image">
+            <img src="@Model.PrimaryImageUrl" alt="@Model.Name" />
+        </div>
+
+        @if (images.Count > 1)
+        {
+            <div class="sp-product-thumbs">
+                @foreach (var image in images)
+                {
+                    <img src="@image.ImageUrl" alt="@image.AltText" />
+                }
+            </div>
+        }
+    </div>
+
+    <div class="sp-product-details">
+        <a class="sp-back-link" href="/store">← Back to collection</a>
+        <div class="sp-product-kicker">@Model.Badge</div>
+        <h1>@Model.Name</h1>
+        <div class="sp-product-price">@Model.PriceLabel</div>
+        <p>@Model.Description</p>
+
+        <label class="sp-size-label" for="productSize">Size</label>
+        <select id="productSize" class="sp-product-select">
+            <option>XS</option>
+            <option>S</option>
+            <option>M</option>
+            <option>L</option>
+            <option>XL</option>
+        </select>
+
+        <button type="button" class="sp-product-button">
+            Add to Cart Coming Soon
+        </button>
+    </div>
+</section>
+
+<style>
+    body {
+        background: #fff;
+    }
+
+    .sp-product-detail {
+        width: min(100%, 1480px);
+        margin: 0 auto;
+        padding: clamp(2rem, 5vw, 4.5rem) clamp(1.25rem, 4vw, 4rem) 5rem;
+        display: grid;
+        grid-template-columns: minmax(0, 1.1fr) minmax(360px, .75fr);
+        gap: clamp(2rem, 5vw, 5rem);
+        align-items: start;
+    }
+
+    .sp-product-main-image {
+        width: 100%;
+        aspect-ratio: 1 / 1;
+        background: #f4f4f4;
+        overflow: hidden;
+    }
+
+    .sp-product-main-image img {
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+        display: block;
+    }
+
+    .sp-product-thumbs {
+        display: grid;
+        grid-template-columns: repeat(5, minmax(0, 1fr));
+        gap: .65rem;
+        margin-top: .8rem;
+    }
+
+    .sp-product-thumbs img {
+        width: 100%;
+        aspect-ratio: 1 / 1;
+        object-fit: cover;
+        background: #f4f4f4;
+        display: block;
+    }
+
+    .sp-product-details {
+        position: sticky;
+        top: 2rem;
+    }
+
+    .sp-back-link {
+        color: #000;
+        text-decoration: none;
+        font-size: .95rem;
+        display: inline-block;
+        margin-bottom: 1.5rem;
+    }
+
+    .sp-product-kicker {
+        color: #bd8200;
+        font-size: .78rem;
+        font-weight: 700;
+        letter-spacing: .18em;
+        text-transform: uppercase;
+        margin-bottom: .85rem;
+    }
+
+    .sp-product-details h1 {
+        margin: 0 0 .75rem;
+        color: #000;
+        font-size: clamp(2.4rem, 5vw, 4.6rem);
+        font-weight: 400;
+        font-style: italic;
+        letter-spacing: -.055em;
+        line-height: .95;
+    }
+
+    .sp-product-price {
+        color: #000;
+        font-size: 1.1rem;
+        margin-bottom: 1.4rem;
+    }
+
+    .sp-product-details p {
+        color: #252525;
+        line-height: 1.65;
+        margin-bottom: 1.5rem;
+    }
+
+    .sp-size-label {
+        display: block;
+        margin-bottom: .45rem;
+        color: #000;
+        font-size: .9rem;
+    }
+
+    .sp-product-select {
+        width: 100%;
+        height: 56px;
+        margin: 0 0 .65rem;
+        padding: 0 1rem;
+        border: 0;
+        border-radius: 999px;
+        background: #f5f5f5;
+        color: #000;
+        font-size: 1rem;
+        outline: none;
+    }
+
+    .sp-product-button {
+        width: 100%;
+        min-height: 58px;
+        border: 4px solid #bd8200;
+        border-radius: 999px;
+        background: #fff;
+        color: #bd8200;
+        text-decoration: none;
+        font-size: 1rem;
+        font-weight: 400;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+    }
+
+    .sp-product-button:hover {
+        background: #bd8200;
+        color: #fff;
+    }
+
+    @@media (max-width: 900px) {
+        .sp-product-detail {
+            grid-template-columns: 1fr;
+        }
+
+        .sp-product-details {
+            position: static;
+        }
+    }
+</style>

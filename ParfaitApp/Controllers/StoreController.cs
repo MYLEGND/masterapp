@@ -1,11 +1,19 @@
 using Microsoft.AspNetCore.Mvc;
 using ParfaitApp.Models;
+using ParfaitApp.Services;
 
 namespace ParfaitApp.Controllers;
 
 [Route("store")]
 public sealed class StoreController : Controller
 {
+    private readonly ParfaitProductService _products;
+
+    public StoreController(ParfaitProductService products)
+    {
+        _products = products;
+    }
+
     [HttpGet("")]
     public IActionResult Index()
     {
@@ -13,40 +21,24 @@ public sealed class StoreController : Controller
         {
             StoreName = "ShopParfait",
             Headline = "Premium Parfait essentials, owned and operated by Parfait.",
-            Subheadline = "A clean storefront foundation ready to be managed from the internal Parfait business profile and commerce system.",
-            Products =
-            [
-                new()
-                {
-                    Name = "Parfait Signature Package",
-                    Slug = "parfait-signature-package",
-                    Description = "A premium starter package for the Parfait brand experience.",
-                    ImageUrl = "/images/favicon/parfait-logo.png",
-                    PriceLabel = "Coming Soon",
-                    Badge = "Featured",
-                    IsFeatured = true
-                },
-                new()
-                {
-                    Name = "Parfait Training Package",
-                    Slug = "parfait-training-package",
-                    Description = "Training-focused offer placeholder for the owned Parfait store.",
-                    ImageUrl = "/images/favicon/parfait-logo.png",
-                    PriceLabel = "Coming Soon",
-                    Badge = "Training"
-                },
-                new()
-                {
-                    Name = "Parfait Lifestyle Package",
-                    Slug = "parfait-lifestyle-package",
-                    Description = "Lifestyle product placeholder managed by Parfait internal commerce.",
-                    ImageUrl = "/images/favicon/parfait-logo.png",
-                    PriceLabel = "Coming Soon",
-                    Badge = "Lifestyle"
-                }
-            ]
+            Subheadline = "Products shown here are managed from the internal Parfait commerce system.",
+            Products = _products.GetActiveStoreProducts()
         };
 
         return View(model);
+    }
+
+    [HttpGet("product/{slug}")]
+    public IActionResult Product(string slug)
+    {
+        var product = _products.GetActiveStoreProducts()
+            .FirstOrDefault(p => string.Equals(p.Slug, slug, StringComparison.OrdinalIgnoreCase));
+
+        if (product is null)
+        {
+            return NotFound();
+        }
+
+        return View(product);
     }
 }

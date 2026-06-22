@@ -6,6 +6,7 @@ using ParfaitApp.Services;
 var builder = WebApplication.CreateBuilder(args);
 
 builder.Services.AddControllersWithViews();
+builder.Services.AddSingleton<ParfaitProductService>();
 builder.Services.AddHttpContextAccessor();
 
 

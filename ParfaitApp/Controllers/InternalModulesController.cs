@@ -1,5 +1,7 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using ParfaitApp.Models;
+using ParfaitApp.Services;
 
 namespace ParfaitApp.Controllers;
 
@@ -7,8 +9,92 @@ namespace ParfaitApp.Controllers;
 [Route("internal")]
 public sealed class InternalModulesController : Controller
 {
+    private readonly ParfaitProductService _products;
+
+    public InternalModulesController(ParfaitProductService products)
+    {
+        _products = products;
+    }
+
     [HttpGet("commerce")]
     public IActionResult Commerce() => View();
+
+    [HttpGet("commerce/products")]
+    public IActionResult Products()
+    {
+        return View(new ParfaitProductAdminViewModel
+        {
+            Products = _products.GetAllProducts().ToList()
+        });
+    }
+
+    [HttpPost("commerce/products")]
+    [ValidateAntiForgeryToken]
+    public IActionResult SaveProduct(ParfaitProductEditorViewModel product)
+    {
+        product.IsActive = Request.Form["IsActive"].Any(value => string.Equals(value, "true", StringComparison.OrdinalIgnoreCase));
+        product.IsFeatured = Request.Form["IsFeatured"].Any(value => string.Equals(value, "true", StringComparison.OrdinalIgnoreCase));
+
+        if (!ModelState.IsValid)
+        {
+            return View("Products", new ParfaitProductAdminViewModel
+            {
+                Products = _products.GetAllProducts().ToList(),
+                NewProduct = product
+            });
+        }
+
+        _products.SaveProduct(product);
+        TempData["ProductStatus"] = product.IsActive
+            ? "Product saved and visible."
+            : "Product saved and hidden.";
+        return RedirectToAction(nameof(Products));
+    }
+
+    [HttpPost("commerce/products/delete")]
+    [ValidateAntiForgeryToken]
+    public IActionResult DeleteProduct(string id)
+    {
+        _products.DeleteProduct(id);
+        TempData["ProductStatus"] = "Product deleted.";
+        return RedirectToAction(nameof(Products));
+    }
+
+    [HttpPost("commerce/products/images/upload")]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> UploadProductImages(string productId, List<IFormFile> images)
+    {
+        await _products.UploadImagesAsync(productId, images);
+        TempData["ProductStatus"] = "Images uploaded.";
+        return RedirectToAction(nameof(Products));
+    }
+
+    [HttpPost("commerce/products/images/delete")]
+    [ValidateAntiForgeryToken]
+    public IActionResult DeleteProductImage(string productId, string imageId)
+    {
+        _products.DeleteImage(productId, imageId);
+        TempData["ProductStatus"] = "Image deleted.";
+        return RedirectToAction(nameof(Products));
+    }
+
+    [HttpPost("commerce/products/images/primary")]
+    [ValidateAntiForgeryToken]
+    public IActionResult SetPrimaryProductImage(string productId, string imageId)
+    {
+        _products.SetPrimaryImage(productId, imageId);
+        TempData["ProductStatus"] = "Primary image updated.";
+        return RedirectToAction(nameof(Products));
+    }
+
+    [HttpPost("commerce/products/images/move")]
+    [ValidateAntiForgeryToken]
+    public IActionResult MoveProductImage(string productId, string imageId, string direction)
+    {
+        _products.MoveImage(productId, imageId, direction);
+        TempData["ProductStatus"] = "Image order updated.";
+        return RedirectToAction(nameof(Products));
+    }
 
     [HttpGet("customers")]
     public IActionResult Customers() => View();
