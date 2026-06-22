@@ -7,8 +7,10 @@ var builder = WebApplication.CreateBuilder(args);
 
 builder.Services.AddControllersWithViews();
 builder.Services.AddSingleton<ParfaitProductService>();
+builder.Services.AddSingleton<ParfaitOrderService>();
 builder.Services.AddHttpClient<SquarePaymentService>();
 builder.Services.AddHttpContextAccessor();
+builder.Services.AddScoped<IGraphMailService, GraphMailService>();
 
 
 builder.Services.AddScoped<IParfaitBusinessProfileService, ParfaitBusinessProfileService>();

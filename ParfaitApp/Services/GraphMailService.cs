@@ -3,6 +3,7 @@ using Microsoft.Graph;
 using Microsoft.Graph.Models;
 using Microsoft.Graph.Users.Item.SendMail;
 using System.Text.Encodings.Web;
+using ParfaitApp.Models;
 
 namespace ParfaitApp.Services;
 
@@ -15,6 +16,9 @@ public interface IGraphMailService
         string phone,
         string message,
         string requestIp);
+
+    Task SendOrderReceiptAsync(ParfaitOrderRecord order, CancellationToken ct = default);
+    Task SendOrderNotificationAsync(ParfaitOrderRecord order, CancellationToken ct = default);
 }
 
 public class GraphMailService : IGraphMailService
@@ -133,6 +137,112 @@ $@"
             // Don't fail the whole request if the client confirmation fails
             _logger.LogWarning(ex, "Client confirmation email failed to send. ClientEmail:{ClientEmail}", email);
         }
+    }
+
+
+    public async Task SendOrderReceiptAsync(ParfaitOrderRecord order, CancellationToken ct = default)
+    {
+        var senderUpn = (_config["GraphMail:SenderUpn"] ?? _config["Contact:SenderEmail"] ?? "").Trim();
+        var siteName = (_config["Contact:WebsiteName"] ?? "Shop Parfait").Trim();
+
+        if (string.IsNullOrWhiteSpace(senderUpn))
+            throw new InvalidOperationException("Missing SenderUpn/Contact:SenderEmail config.");
+
+        var graph = BuildClient();
+        var enc = HtmlEncoder.Default;
+
+        static string Money(int cents) => "$" + (cents / 100m).ToString("0.00");
+
+        var itemRows = string.Join("", order.Items.Select(item =>
+$@"
+<tr>
+  <td style='padding:10px 0;border-bottom:1px solid #eee;'>
+    <strong>{enc.Encode(item.Name)}</strong><br/>
+    <span style='color:#666;'>Size {enc.Encode(item.Size)} · Qty {item.Quantity}</span>
+  </td>
+  <td style='padding:10px 0;border-bottom:1px solid #eee;text-align:right;'>{Money(item.LineTotalCents)}</td>
+</tr>"));
+
+        var html =
+$@"
+<div style='font-family:Inter,Arial,sans-serif;line-height:1.6;color:#111;'>
+  <h2 style='margin:0 0 10px;'>Order Confirmed — {enc.Encode(siteName)}</h2>
+  <p style='margin:0 0 14px;'>Thank you for your order, {enc.Encode(order.FirstName)}.</p>
+
+  <div style='padding:14px 16px;border:1px solid #926950;border-radius:14px;background:#fff;'>
+    <p style='margin:0 0 8px;'><strong>Order Number:</strong> {enc.Encode(order.OrderNumber)}</p>
+    <p style='margin:0 0 8px;'><strong>Payment Status:</strong> {enc.Encode(order.PaymentStatus)}</p>
+    <p style='margin:0;'><strong>Total:</strong> {Money(order.TotalCents)}</p>
+  </div>
+
+  <h3 style='margin:18px 0 8px;'>Items Purchased</h3>
+  <table style='width:100%;border-collapse:collapse;'>{itemRows}</table>
+
+  <h3 style='margin:18px 0 8px;'>Shipping To</h3>
+  <p style='margin:0;color:#333;'>
+    {enc.Encode(order.FirstName)} {enc.Encode(order.LastName)}<br/>
+    {enc.Encode(order.AddressLine1)}<br/>
+    {(string.IsNullOrWhiteSpace(order.AddressLine2) ? "" : enc.Encode(order.AddressLine2) + "<br/>")}
+    {enc.Encode(order.City)}, {enc.Encode(order.State)} {enc.Encode(order.PostalCode)}
+  </p>
+
+  <p style='margin-top:18px;color:#666;font-size:13px;'>
+    Your payment was processed securely through Square.
+  </p>
+</div>";
+
+        await SendMailAsync(graph, senderUpn, order.Email, $"Your {siteName} order {order.OrderNumber}", html);
+    }
+
+    public async Task SendOrderNotificationAsync(ParfaitOrderRecord order, CancellationToken ct = default)
+    {
+        var senderUpn = (_config["GraphMail:SenderUpn"] ?? _config["Contact:SenderEmail"] ?? "").Trim();
+        var inbox = (_config["Commerce:OrdersInbox"] ?? _config["Contact:RecipientEmail"] ?? _config["GraphMail:NotifyInbox"] ?? "").Trim();
+        var siteName = (_config["Contact:WebsiteName"] ?? "Shop Parfait").Trim();
+
+        if (string.IsNullOrWhiteSpace(senderUpn))
+            throw new InvalidOperationException("Missing SenderUpn/Contact:SenderEmail config.");
+        if (string.IsNullOrWhiteSpace(inbox))
+            throw new InvalidOperationException("Missing Commerce:OrdersInbox/Contact:RecipientEmail/NotifyInbox config.");
+
+        var graph = BuildClient();
+        var enc = HtmlEncoder.Default;
+
+        static string Money(int cents) => "$" + (cents / 100m).ToString("0.00");
+
+        var items = string.Join("<br/>", order.Items.Select(item =>
+            $"{enc.Encode(item.Name)} — Size {enc.Encode(item.Size)} — Qty {item.Quantity} — {Money(item.LineTotalCents)}"));
+
+        var html =
+$@"
+<div style='font-family:Inter,Arial,sans-serif;line-height:1.6;color:#111;'>
+  <h2 style='margin:0 0 10px;'>New Paid Order — {enc.Encode(siteName)}</h2>
+
+  <div style='padding:14px 16px;border:1px solid #926950;border-radius:14px;background:#fff;'>
+    <p style='margin:0 0 8px;'><strong>Order:</strong> {enc.Encode(order.OrderNumber)}</p>
+    <p style='margin:0 0 8px;'><strong>Customer:</strong> {enc.Encode(order.FirstName)} {enc.Encode(order.LastName)}</p>
+    <p style='margin:0 0 8px;'><strong>Email:</strong> {enc.Encode(order.Email)}</p>
+    <p style='margin:0 0 8px;'><strong>Phone:</strong> {enc.Encode(order.Phone)}</p>
+    <p style='margin:0 0 8px;'><strong>Total:</strong> {Money(order.TotalCents)}</p>
+    <p style='margin:0;'><strong>Square Payment:</strong> {enc.Encode(order.SquarePaymentId ?? "")}</p>
+  </div>
+
+  <h3 style='margin:18px 0 8px;'>Items</h3>
+  <p>{items}</p>
+
+  <h3 style='margin:18px 0 8px;'>Shipping</h3>
+  <p>
+    {enc.Encode(order.AddressLine1)}<br/>
+    {(string.IsNullOrWhiteSpace(order.AddressLine2) ? "" : enc.Encode(order.AddressLine2) + "<br/>")}
+    {enc.Encode(order.City)}, {enc.Encode(order.State)} {enc.Encode(order.PostalCode)}
+  </p>
+
+  <p style='margin-top:18px;color:#666;font-size:13px;'>
+    View orders inside Parfait Internal → Commerce → Orders.
+  </p>
+</div>";
+
+        await SendMailAsync(graph, senderUpn, inbox, $"[{siteName}] New paid order {order.OrderNumber}", html);
     }
 
     private static async Task SendMailAsync(GraphServiceClient graph, string senderUpn, string to, string subject, string htmlBody)

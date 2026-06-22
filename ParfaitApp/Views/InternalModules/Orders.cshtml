@@ -1,0 +1,105 @@
+@model ParfaitApp.Models.ParfaitOrderAdminViewModel
+@{
+    ViewData["Title"] = "Orders";
+    Layout = "_InternalLayout";
+
+    static string Money(int cents) => "$" + (cents / 100m).ToString("0.00");
+}
+
+<section class="pf-commerce-shell">
+    <header class="pf-commerce-head">
+        <div>
+            <div class="pf-kicker">Commerce</div>
+            <h1>Orders</h1>
+            <p>Track public store purchases, payment status, fulfillment status, and customer order history.</p>
+        </div>
+
+        <div class="pf-commerce-head-actions">
+            <a class="pf-secondary-action" href="/internal/commerce">Commerce Home</a>
+            <a class="pf-secondary-action" href="/store" target="_blank" rel="noopener">View Store</a>
+        </div>
+    </header>
+
+    <section class="pf-commerce-panel">
+        <div class="pf-commerce-panel-head">
+            <div>
+                <div class="pf-kicker">Order Workspace</div>
+                <h2>Recent Orders</h2>
+            </div>
+            <span>@Model.Orders.Count orders</span>
+        </div>
+
+        @if (Model.Orders.Count == 0)
+        {
+            <div class="text-muted">No orders yet.</div>
+        }
+        else
+        {
+            <div class="pf-orders-table-wrap">
+                <table class="table align-middle pf-orders-table">
+                    <thead>
+                        <tr>
+                            <th>Order</th>
+                            <th>Date</th>
+                            <th>Customer</th>
+                            <th>Items</th>
+                            <th>Total</th>
+                            <th>Payment</th>
+                            <th>Fulfillment</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var order in Model.Orders)
+                        {
+                            <tr>
+                                <td>
+                                    <strong>@order.OrderNumber</strong>
+                                    <div class="text-muted small">@order.Source</div>
+                                </td>
+                                <td>@order.CreatedUtc.ToLocalTime().ToString("M/d/yyyy h:mm tt")</td>
+                                <td>
+                                    <strong>@order.FirstName @order.LastName</strong>
+                                    <div class="text-muted small">@order.Email</div>
+                                    <div class="text-muted small">@order.Phone</div>
+                                </td>
+                                <td>
+                                    @foreach (var item in order.Items)
+                                    {
+                                        <div><strong>@item.Name</strong></div>
+                                        <div class="text-muted small">Size @item.Size · Qty @item.Quantity · @Money(item.LineTotalCents)</div>
+                                    }
+                                </td>
+                                <td><strong>@Money(order.TotalCents)</strong></td>
+                                <td>
+                                    <span class="pf-status"><span class="pf-dot"></span> @order.PaymentStatus</span>
+                                    @if (!string.IsNullOrWhiteSpace(order.SquarePaymentId))
+                                    {
+                                        <div class="text-muted small">Square: @order.SquarePaymentId</div>
+                                    }
+                                </td>
+                                <td>@order.FulfillmentStatus</td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        }
+    </section>
+</section>
+
+<style>
+    .pf-orders-table-wrap {
+        overflow-x: auto;
+    }
+
+    .pf-orders-table {
+        min-width: 980px;
+    }
+
+    .pf-orders-table th {
+        color: #926950;
+        font-size: .78rem;
+        letter-spacing: .12em;
+        text-transform: uppercase;
+    }
+</style>

@@ -10,10 +10,14 @@ namespace ParfaitApp.Controllers;
 public sealed class InternalModulesController : Controller
 {
     private readonly ParfaitProductService _products;
+    private readonly ParfaitOrderService _orders;
 
-    public InternalModulesController(ParfaitProductService products)
+    public InternalModulesController(
+        ParfaitProductService products,
+        ParfaitOrderService orders)
     {
         _products = products;
+        _orders = orders;
     }
 
     [HttpGet("commerce")]
@@ -103,6 +107,15 @@ public sealed class InternalModulesController : Controller
         _products.SaveImageDisplaySettings(productId, imageId, objectFit, objectPositionX, objectPositionY, zoom);
         TempData["ProductStatus"] = "Image display settings saved.";
         return RedirectToAction(nameof(Products));
+    }
+
+    [HttpGet("commerce/orders")]
+    public IActionResult Orders()
+    {
+        return View(new ParfaitOrderAdminViewModel
+        {
+            Orders = _orders.GetAllOrders().ToList()
+        });
     }
 
     [HttpGet("customers")]

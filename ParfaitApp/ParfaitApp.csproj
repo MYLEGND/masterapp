@@ -1,4 +1,4 @@
-<Project>
+﻿<Project>
   <PropertyGroup>
     <BaseIntermediateOutputPath>/tmp/masterapp/obj/ParfaitApp/</BaseIntermediateOutputPath>
     <MSBuildProjectExtensionsPath>/tmp/masterapp/obj/ParfaitApp/</MSBuildProjectExtensionsPath>
@@ -7,6 +7,7 @@
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <DefaultItemExcludes>$(DefaultItemExcludes);bin/**;obj/**;</DefaultItemExcludes>
+    <UserSecretsId>b4ec2f48-a00d-4bab-b5dc-7defd3888ca8</UserSecretsId>
   </PropertyGroup>
 
   <Import Project="Sdk.props" Sdk="Microsoft.NET.Sdk.Web" />

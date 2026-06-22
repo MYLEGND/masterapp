@@ -1,12 +1,183 @@
+@model ParfaitApp.Models.ParfaitOrderSuccessViewModel
 @{
     ViewData["Title"] = "Order Confirmed";
+
+    static string Money(int cents) => "$" + (cents / 100m).ToString("0.00");
 }
 
-<section style="min-height:65vh;padding:5rem 1.5rem;text-align:center;background:linear-gradient(180deg,#fff,#fbf8f5);">
-    <div style="max-width:760px;margin:0 auto;background:#fff;border:1.5px solid rgba(146,105,80,.25);border-radius:32px;padding:3rem;box-shadow:0 24px 70px rgba(53,37,28,.12);">
-        <p style="color:#926950;font-weight:900;letter-spacing:.22em;text-transform:uppercase;">Parfait Order</p>
-        <h1 style="font-size:clamp(2.5rem,6vw,5rem);font-weight:800;font-style:italic;letter-spacing:-.06em;">Order Confirmed</h1>
-        <p>Your payment was processed securely through Square.</p>
-        <a href="/store" style="display:inline-flex;margin-top:1rem;padding:.9rem 1.4rem;border-radius:999px;background:#bd8200;color:#fff;text-decoration:none;font-weight:900;">Back to Shop</a>
+<section class="sp-success-page">
+    <div class="sp-success-card">
+        @if (Model.Order is null)
+        {
+            <p class="sp-kicker">Parfait Order</p>
+            <h1>Order Not Found</h1>
+            <p>We could not find the order details for this confirmation page.</p>
+            <a class="sp-success-link" href="/store">Back to Shop</a>
+        }
+        else
+        {
+            <p class="sp-kicker">Parfait Order</p>
+            <h1>Order Confirmed</h1>
+            <p>Your payment was processed securely through Square.</p>
+
+            <div class="sp-confirm-box">
+                <div>
+                    <span>Order Number</span>
+                    <strong>@Model.Order.OrderNumber</strong>
+                </div>
+                <div>
+                    <span>Payment Status</span>
+                    <strong>@Model.Order.PaymentStatus</strong>
+                </div>
+                <div>
+                    <span>Total Paid</span>
+                    <strong>@Money(Model.Order.TotalCents)</strong>
+                </div>
+                <div>
+                    <span>Receipt Sent To</span>
+                    <strong>@Model.Order.Email</strong>
+                </div>
+            </div>
+
+            <h2>Items Purchased</h2>
+
+            <div class="sp-success-items">
+                @foreach (var item in Model.Order.Items)
+                {
+                    <div class="sp-success-item">
+                        <img src="@(item.ImageUrl ?? "/images/favicon/parfait-logo.png")" alt="@item.Name" />
+                        <div>
+                            <h3>@item.Name</h3>
+                            <p>Size @item.Size · Qty @item.Quantity</p>
+                            <strong>@Money(item.LineTotalCents)</strong>
+                        </div>
+                    </div>
+                }
+            </div>
+
+            <h2>Shipping To</h2>
+            <p>
+                @Model.Order.FirstName @Model.Order.LastName<br />
+                @Model.Order.AddressLine1<br />
+                @if (!string.IsNullOrWhiteSpace(Model.Order.AddressLine2))
+                {
+                    @Model.Order.AddressLine2<br />
+                }
+                @Model.Order.City, @Model.Order.State @Model.Order.PostalCode
+            </p>
+
+            <a class="sp-success-link" href="/store">Back to Shop</a>
+        }
     </div>
 </section>
+
+<style>
+    .sp-success-page {
+        min-height: 70vh;
+        padding: 5rem 1.5rem;
+        background: linear-gradient(180deg,#fff,#fbf8f5);
+    }
+
+    .sp-success-card {
+        max-width: 860px;
+        margin: 0 auto;
+        background: #fff;
+        border: 1.5px solid rgba(146,105,80,.25);
+        border-radius: 32px;
+        padding: clamp(1.5rem,4vw,3rem);
+        box-shadow: 0 24px 70px rgba(53,37,28,.12);
+    }
+
+    .sp-kicker {
+        color: #926950;
+        font-weight: 900;
+        letter-spacing: .22em;
+        text-transform: uppercase;
+    }
+
+    .sp-success-card h1 {
+        font-size: clamp(2.5rem,6vw,5rem);
+        font-weight: 800;
+        font-style: italic;
+        letter-spacing: -.06em;
+        margin: 0 0 1rem;
+    }
+
+    .sp-success-card h2 {
+        margin-top: 2rem;
+        font-size: 1.25rem;
+        font-weight: 900;
+    }
+
+    .sp-confirm-box {
+        display: grid;
+        grid-template-columns: repeat(2,minmax(0,1fr));
+        gap: 1rem;
+        margin-top: 1.5rem;
+    }
+
+    .sp-confirm-box div {
+        border: 1px solid rgba(146,105,80,.18);
+        border-radius: 18px;
+        padding: 1rem;
+        background: #fffaf6;
+    }
+
+    .sp-confirm-box span {
+        display: block;
+        color: rgba(27,23,21,.62);
+        font-size: .8rem;
+        font-weight: 800;
+        text-transform: uppercase;
+        letter-spacing: .1em;
+    }
+
+    .sp-confirm-box strong {
+        display: block;
+        margin-top: .25rem;
+    }
+
+    .sp-success-item {
+        display: grid;
+        grid-template-columns: 82px 1fr;
+        gap: 1rem;
+        padding: 1rem 0;
+        border-bottom: 1px solid rgba(146,105,80,.15);
+    }
+
+    .sp-success-item img {
+        width: 82px;
+        height: 82px;
+        border-radius: 16px;
+        object-fit: cover;
+        background: #f4f0ec;
+    }
+
+    .sp-success-item h3 {
+        margin: 0 0 .3rem;
+        font-weight: 900;
+    }
+
+    .sp-success-item p {
+        margin: 0 0 .35rem;
+        color: rgba(27,23,21,.65);
+        font-weight: 700;
+    }
+
+    .sp-success-link {
+        display: inline-flex;
+        margin-top: 1.5rem;
+        padding: .9rem 1.4rem;
+        border-radius: 999px;
+        background: #bd8200;
+        color: #fff;
+        text-decoration: none;
+        font-weight: 900;
+    }
+
+    @@media (max-width: 640px) {
+        .sp-confirm-box {
+            grid-template-columns: 1fr;
+        }
+    }
+</style>

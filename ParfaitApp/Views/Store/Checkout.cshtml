@@ -6,26 +6,56 @@
     var squareScript = environment.Equals("Production", StringComparison.OrdinalIgnoreCase)
         ? "https://web.squarecdn.com/v1/square.js"
         : "https://sandbox.web.squarecdn.com/v1/square.js";
+
+    var appIdJson = System.Text.Json.JsonSerializer.Serialize(appId ?? "");
+    var locationIdJson = System.Text.Json.JsonSerializer.Serialize(locationId ?? "");
 }
 
 <section class="sp-checkout-page">
     <div class="sp-checkout-shell">
-        <div class="sp-checkout-card">
+        <div class="sp-checkout-head">
             <p class="sp-checkout-eyebrow">Secure Checkout</p>
             <h1>Complete Your Order</h1>
-            <p class="sp-checkout-copy">Payment is securely processed by Square.</p>
+            <p>Review your items, enter shipping details, and complete payment securely through Square.</p>
+        </div>
 
-            @Html.AntiForgeryToken()
+        @Html.AntiForgeryToken()
 
-            <div id="spCheckoutSummary" class="sp-checkout-summary"></div>
+        <div class="sp-checkout-grid">
+            <div class="sp-checkout-card">
+                <h2>Contact Information</h2>
 
-            <div id="card-container" class="sp-card-container"></div>
+                <div class="sp-field-grid">
+                    <label>First Name <input id="firstName" autocomplete="given-name" required /></label>
+                    <label>Last Name <input id="lastName" autocomplete="family-name" required /></label>
+                    <label>Email <input id="email" type="email" autocomplete="email" required /></label>
+                    <label>Phone <input id="phone" autocomplete="tel" required /></label>
+                </div>
 
-            <button id="spPayButton" class="sp-pay-button" type="button">
-                Pay Now
-            </button>
+                <h2>Shipping Address</h2>
 
-            <div id="spCheckoutError" class="sp-checkout-error"></div>
+                <div class="sp-field-grid">
+                    <label class="sp-full">Address Line 1 <input id="addressLine1" autocomplete="address-line1" required /></label>
+                    <label class="sp-full">Address Line 2 <input id="addressLine2" autocomplete="address-line2" /></label>
+                    <label>City <input id="city" autocomplete="address-level2" required /></label>
+                    <label>State <input id="state" autocomplete="address-level1" maxlength="2" required /></label>
+                    <label>ZIP <input id="postalCode" autocomplete="postal-code" required /></label>
+                </div>
+
+                <h2>Payment</h2>
+                <div id="card-container" class="sp-card-container"></div>
+
+                <button id="spPayButton" class="sp-pay-button" type="button">
+                    Complete Purchase
+                </button>
+
+                <div id="spCheckoutError" class="sp-checkout-error"></div>
+            </div>
+
+            <aside class="sp-checkout-card sp-order-review">
+                <h2>Order Review</h2>
+                <div id="spCheckoutSummary"></div>
+            </aside>
         </div>
     </div>
 </section>
@@ -38,16 +68,13 @@
     }
 
     .sp-checkout-shell {
-        max-width: 760px;
+        max-width: 1180px;
         margin: 0 auto;
     }
 
-    .sp-checkout-card {
-        background: #fff;
-        border: 1.5px solid rgba(146,105,80,.25);
-        border-radius: 32px;
-        box-shadow: 0 24px 70px rgba(53,37,28,.12);
-        padding: clamp(1.5rem, 4vw, 2.5rem);
+    .sp-checkout-head {
+        text-align: center;
+        margin-bottom: 2rem;
     }
 
     .sp-checkout-eyebrow {
@@ -58,31 +85,75 @@
         text-transform: uppercase;
     }
 
-    .sp-checkout-card h1 {
+    .sp-checkout-head h1 {
         margin: 0 0 .75rem;
         color: #1b1715;
-        font-size: clamp(2.4rem, 5vw, 4.5rem);
+        font-size: clamp(2.6rem, 6vw, 5.4rem);
         font-weight: 800;
         font-style: italic;
         letter-spacing: -.06em;
         line-height: .95;
     }
 
-    .sp-checkout-copy {
+    .sp-checkout-head p {
         color: rgba(27,23,21,.68);
-        margin-bottom: 1.5rem;
     }
 
-    .sp-checkout-summary {
-        border: 1px solid rgba(146,105,80,.18);
-        border-radius: 22px;
-        padding: 1rem;
-        margin-bottom: 1.25rem;
-        background: #fffaf6;
+    .sp-checkout-grid {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) 420px;
+        gap: 1.5rem;
+        align-items: start;
+    }
+
+    .sp-checkout-card {
+        background: #fff;
+        border: 1.5px solid rgba(146,105,80,.25);
+        border-radius: 32px;
+        box-shadow: 0 24px 70px rgba(53,37,28,.12);
+        padding: clamp(1.5rem, 4vw, 2.25rem);
+    }
+
+    .sp-checkout-card h2 {
+        color: #1b1715;
+        font-size: 1.25rem;
+        font-weight: 900;
+        margin: 0 0 1rem;
+    }
+
+    .sp-checkout-card h2:not(:first-child) {
+        margin-top: 2rem;
+    }
+
+    .sp-field-grid {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 1rem;
+    }
+
+    .sp-field-grid label {
+        color: #1b1715;
+        font-weight: 800;
+        font-size: .9rem;
+    }
+
+    .sp-field-grid input {
+        width: 100%;
+        height: 52px;
+        margin-top: .35rem;
+        padding: 0 1rem;
+        border: 1.5px solid rgba(146,105,80,.24);
+        border-radius: 16px;
+        outline: none;
+    }
+
+    .sp-full {
+        grid-column: 1 / -1;
     }
 
     .sp-card-container {
         margin: 1rem 0;
+        min-height: 90px;
     }
 
     .sp-pay-button {
@@ -106,14 +177,73 @@
         margin-top: 1rem;
         white-space: pre-wrap;
     }
+
+    .sp-review-item {
+        display: grid;
+        grid-template-columns: 72px 1fr;
+        gap: .85rem;
+        padding: 1rem 0;
+        border-bottom: 1px solid rgba(146,105,80,.15);
+    }
+
+    .sp-review-item img {
+        width: 72px;
+        height: 72px;
+        border-radius: 14px;
+        object-fit: cover;
+        background: #f4f0ec;
+    }
+
+    .sp-review-item h3 {
+        margin: 0 0 .25rem;
+        font-size: 1rem;
+        font-weight: 900;
+    }
+
+    .sp-review-item p {
+        margin: 0;
+        color: rgba(27,23,21,.65);
+        font-weight: 700;
+    }
+
+    .sp-review-line {
+        display: flex;
+        justify-content: space-between;
+        gap: 1rem;
+        padding: .65rem 0;
+        font-weight: 800;
+    }
+
+    .sp-review-total {
+        border-top: 1px solid rgba(146,105,80,.25);
+        margin-top: .5rem;
+        padding-top: 1rem;
+        font-size: 1.2rem;
+    }
+
+    @@media (max-width: 980px) {
+        .sp-checkout-grid {
+            grid-template-columns: 1fr;
+        }
+
+        .sp-order-review {
+            order: -1;
+        }
+    }
+
+    @@media (max-width: 640px) {
+        .sp-field-grid {
+            grid-template-columns: 1fr;
+        }
+    }
 </style>
 
 <script src="@squareScript"></script>
 
 <script>
     (() => {
-        const appId = "@appId";
-        const locationId = "@locationId";
+        const appId = @Html.Raw(appIdJson);
+        const locationId = @Html.Raw(locationIdJson);
         const payButton = document.getElementById("spPayButton");
         const errorHost = document.getElementById("spCheckoutError");
         const summaryHost = document.getElementById("spCheckoutSummary");
@@ -122,28 +252,93 @@
         const money = cents => `$${(cents / 100).toFixed(2)}`;
         const cart = JSON.parse(localStorage.getItem("parfaitCart") || "[]");
 
-        if (!cart.length) {
-            summaryHost.innerHTML = "<strong>Your cart is empty.</strong>";
-            payButton.disabled = true;
-            return;
+        const fields = {
+            firstName: document.getElementById("firstName"),
+            lastName: document.getElementById("lastName"),
+            email: document.getElementById("email"),
+            phone: document.getElementById("phone"),
+            addressLine1: document.getElementById("addressLine1"),
+            addressLine2: document.getElementById("addressLine2"),
+            city: document.getElementById("city"),
+            state: document.getElementById("state"),
+            postalCode: document.getElementById("postalCode")
+        };
+
+        const requiredFields = [
+            "firstName", "lastName", "email", "phone",
+            "addressLine1", "city", "state", "postalCode"
+        ];
+
+        function renderSummary() {
+            if (!cart.length) {
+                summaryHost.innerHTML = "<strong>Your cart is empty.</strong>";
+                payButton.disabled = true;
+                return;
+            }
+
+            const subtotal = cart.reduce((sum, item) => sum + ((Number(item.priceCents) || 0) * (Number(item.quantity) || 0)), 0);
+            const shipping = 0;
+            const tax = 0;
+            const total = subtotal + shipping + tax;
+
+            const itemsHtml = cart.map(item => `
+                <div class="sp-review-item">
+                    <img src="${item.imageUrl || "/images/favicon/parfait-logo.png"}" alt="${item.name || "Product"}" />
+                    <div>
+                        <h3>${item.name || "Product"}</h3>
+                        <p>Size ${item.size || "N/A"} · Qty ${item.quantity || 1}</p>
+                        <p>${money((Number(item.priceCents) || 0) * (Number(item.quantity) || 0))}</p>
+                    </div>
+                </div>
+            `).join("");
+
+            summaryHost.innerHTML = `
+                ${itemsHtml}
+                <div class="sp-review-line"><span>Subtotal</span><strong>${money(subtotal)}</strong></div>
+                <div class="sp-review-line"><span>Shipping</span><strong>${shipping === 0 ? "Included" : money(shipping)}</strong></div>
+                <div class="sp-review-line"><span>Tax</span><strong>${tax === 0 ? "Not charged" : money(tax)}</strong></div>
+                <div class="sp-review-line sp-review-total"><span>Total</span><strong>${money(total)}</strong></div>
+            `;
         }
 
-        const browserTotal = cart.reduce((sum, item) => sum + ((Number(item.priceCents) || 0) * (Number(item.quantity) || 0)), 0);
+        function getCustomer() {
+            return {
+                firstName: fields.firstName.value.trim(),
+                lastName: fields.lastName.value.trim(),
+                email: fields.email.value.trim(),
+                phone: fields.phone.value.trim(),
+                addressLine1: fields.addressLine1.value.trim(),
+                addressLine2: fields.addressLine2.value.trim(),
+                city: fields.city.value.trim(),
+                state: fields.state.value.trim(),
+                postalCode: fields.postalCode.value.trim()
+            };
+        }
 
-        summaryHost.innerHTML = `
-            <strong>Order Summary</strong>
-            <div>${cart.length} item(s)</div>
-            <div>Estimated total: ${money(browserTotal)}</div>
-        `;
+        function validateCustomer() {
+            for (const key of requiredFields) {
+                if (!fields[key].value.trim()) {
+                    fields[key].focus();
+                    return `${fields[key].closest("label").childNodes[0].textContent.trim()} is required.`;
+                }
+            }
+
+            const emailValue = fields.email.value;
+            if (emailValue.indexOf(String.fromCharCode(64)) < 0 || emailValue.indexOf(".") < 0) {
+                fields.email.focus();
+                return "Enter a valid email address.";
+            }
+
+            return "";
+        }
 
         async function startSquare() {
-            if (!window.Square) {
-                throw new Error("Square.js failed to load.");
-            }
+            renderSummary();
 
-            if (!appId || !locationId) {
-                throw new Error("Square Application ID or Location ID is missing.");
-            }
+            if (!cart.length) return;
+
+            if (!window.Square) throw new Error("Square.js failed to load.");
+            if (!appId || !locationId) throw new Error("Square Application ID or Location ID is missing.");
 
             const payments = window.Square.payments(appId, locationId);
             const card = await payments.card();
@@ -154,14 +349,15 @@
                 errorHost.textContent = "";
 
                 try {
-                    const result = await card.tokenize();
+                    const customerError = validateCustomer();
+                    if (customerError) throw new Error(customerError);
 
-                    if (result.status !== "OK") {
-                        throw new Error("Unable to tokenize payment card.");
-                    }
+                    const result = await card.tokenize();
+                    if (result.status !== "OK") throw new Error("Unable to tokenize payment card.");
 
                     const payload = {
                         sourceId: result.token,
+                        customer: getCustomer(),
                         items: cart.map(item => ({
                             id: item.id,
                             size: item.size,

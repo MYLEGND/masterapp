@@ -9,16 +9,22 @@ public sealed class StoreCheckoutController : Controller
 {
     private readonly IConfiguration _configuration;
     private readonly ParfaitProductService _products;
+    private readonly ParfaitOrderService _orders;
     private readonly SquarePaymentService _squarePayments;
+    private readonly IGraphMailService _mail;
 
     public StoreCheckoutController(
         IConfiguration configuration,
         ParfaitProductService products,
-        SquarePaymentService squarePayments)
+        ParfaitOrderService orders,
+        SquarePaymentService squarePayments,
+        IGraphMailService mail)
     {
         _configuration = configuration;
         _products = products;
+        _orders = orders;
         _squarePayments = squarePayments;
+        _mail = mail;
     }
 
     [HttpGet("checkout")]
@@ -27,9 +33,6 @@ public sealed class StoreCheckoutController : Controller
         ViewBag.SquareApplicationId = _configuration["Square:ApplicationId"];
         ViewBag.SquareLocationId = _configuration["Square:LocationId"];
         ViewBag.SquareEnvironment = _configuration["Square:Environment"] ?? "Sandbox";
-
-        Console.WriteLine($"Square checkout config loaded: AppId={(!string.IsNullOrWhiteSpace(_configuration["Square:ApplicationId"]))}, LocationId={(!string.IsNullOrWhiteSpace(_configuration["Square:LocationId"]))}, AccessToken={(!string.IsNullOrWhiteSpace(_configuration["Square:AccessToken"]))}");
-
         return View("~/Views/Store/Checkout.cshtml");
     }
 
@@ -37,20 +40,87 @@ public sealed class StoreCheckoutController : Controller
     [ValidateAntiForgeryToken]
     public async Task<IActionResult> Pay([FromBody] ParfaitCheckoutPayRequest request, CancellationToken ct)
     {
+        var validationError = ValidateCustomer(request.Customer);
+        if (!string.IsNullOrWhiteSpace(validationError))
+        {
+            return BadRequest(new ParfaitCheckoutPayResponse { Success = false, Error = validationError });
+        }
+
         if (string.IsNullOrWhiteSpace(request.SourceId))
         {
+            return BadRequest(new ParfaitCheckoutPayResponse { Success = false, Error = "Missing Square payment token." });
+        }
+
+        var validatedItems = ValidateCartItems(request.Items);
+
+        if (validatedItems.Count == 0)
+        {
+            return BadRequest(new ParfaitCheckoutPayResponse { Success = false, Error = "No valid cart items were found." });
+        }
+
+        var order = _orders.CreatePendingOrder(request.Customer, validatedItems, HttpContext);
+
+        var note = $"{order.OrderNumber}: " + string.Join(", ",
+            order.Items.Select(i => $"{i.Name} / {i.Size} x{i.Quantity}"));
+
+        var payment = await _squarePayments.CreatePaymentAsync(
+            request.SourceId,
+            order.TotalCents,
+            note,
+            ct);
+
+        if (!payment.Success)
+        {
+            _orders.MarkPaymentFailed(order.OrderNumber, payment.Error ?? "Square payment failed.");
+
             return BadRequest(new ParfaitCheckoutPayResponse
             {
                 Success = false,
-                Error = "Missing Square payment token."
+                OrderNumber = order.OrderNumber,
+                Error = payment.Error
             });
         }
 
-        var activeProducts = _products.GetActiveStoreProducts();
+        _orders.MarkPaid(order.OrderNumber, payment.PaymentId);
 
+        var paidOrder = _orders.GetOrder(order.OrderNumber) ?? order;
+        paidOrder.SquarePaymentId = payment.PaymentId;
+        paidOrder.PaymentStatus = "Paid";
+        paidOrder.Status = "Paid";
+
+        try
+        {
+            await _mail.SendOrderReceiptAsync(paidOrder, ct);
+            await _mail.SendOrderNotificationAsync(paidOrder, ct);
+        }
+        catch
+        {
+            // Payment succeeded. Email failure should not reverse the customer purchase.
+        }
+
+        return Ok(new ParfaitCheckoutPayResponse
+        {
+            Success = true,
+            OrderNumber = order.OrderNumber,
+            RedirectUrl = $"/store/success?orderNumber={Uri.EscapeDataString(order.OrderNumber)}"
+        });
+    }
+
+    [HttpGet("success")]
+    public IActionResult Success(string orderNumber)
+    {
+        return View("~/Views/Store/Success.cshtml", new ParfaitOrderSuccessViewModel
+        {
+            Order = string.IsNullOrWhiteSpace(orderNumber) ? null : _orders.GetOrder(orderNumber)
+        });
+    }
+
+    private List<ParfaitValidatedCartItem> ValidateCartItems(List<ParfaitCheckoutItemRequest> cartItems)
+    {
+        var activeProducts = _products.GetActiveStoreProducts();
         var validatedItems = new List<ParfaitValidatedCartItem>();
 
-        foreach (var item in request.Items)
+        foreach (var item in cartItems)
         {
             if (string.IsNullOrWhiteSpace(item.Id) || item.Quantity <= 0)
                 continue;
@@ -67,50 +137,28 @@ public sealed class StoreCheckoutController : Controller
                 Name = product.Name,
                 Size = string.IsNullOrWhiteSpace(item.Size) ? "N/A" : item.Size.Trim(),
                 Quantity = Math.Clamp(item.Quantity, 1, 20),
-                UnitPriceCents = product.PriceCents
+                UnitPriceCents = product.PriceCents,
+                ImageUrl = product.PrimaryImageUrl
             });
         }
 
-        if (validatedItems.Count == 0)
-        {
-            return BadRequest(new ParfaitCheckoutPayResponse
-            {
-                Success = false,
-                Error = "No valid cart items were found."
-            });
-        }
-
-        var totalCents = validatedItems.Sum(i => i.LineTotalCents);
-        var note = "Parfait Store Order: " + string.Join(", ",
-            validatedItems.Select(i => $"{i.Name} / {i.Size} x{i.Quantity}"));
-
-        var payment = await _squarePayments.CreatePaymentAsync(
-            request.SourceId,
-            totalCents,
-            note,
-            ct);
-
-        if (!payment.Success)
-        {
-            return BadRequest(new ParfaitCheckoutPayResponse
-            {
-                Success = false,
-                Error = payment.Error
-            });
-        }
-
-        TempData["ParfaitPaymentId"] = payment.PaymentId;
-
-        return Ok(new ParfaitCheckoutPayResponse
-        {
-            Success = true,
-            RedirectUrl = "/store/success"
-        });
+        return validatedItems;
     }
 
-    [HttpGet("success")]
-    public IActionResult Success()
+    private static string? ValidateCustomer(ParfaitCheckoutCustomerRequest customer)
     {
-        return View("~/Views/Store/Success.cshtml");
+        if (string.IsNullOrWhiteSpace(customer.FirstName)) return "First name is required.";
+        if (string.IsNullOrWhiteSpace(customer.LastName)) return "Last name is required.";
+        if (string.IsNullOrWhiteSpace(customer.Email)) return "Email is required.";
+        if (string.IsNullOrWhiteSpace(customer.Phone)) return "Phone is required.";
+        if (string.IsNullOrWhiteSpace(customer.AddressLine1)) return "Shipping address is required.";
+        if (string.IsNullOrWhiteSpace(customer.City)) return "City is required.";
+        if (string.IsNullOrWhiteSpace(customer.State)) return "State is required.";
+        if (string.IsNullOrWhiteSpace(customer.PostalCode)) return "ZIP code is required.";
+
+        if (!customer.Email.Contains('@') || !customer.Email.Contains('.'))
+            return "Enter a valid email address.";
+
+        return null;
     }
 }
