@@ -281,7 +281,7 @@ public sealed class ParfaitProductService
             Name = product.Name.Trim(),
             Slug = slug,
             Description = product.Description.Trim(),
-            PriceLabel = string.IsNullOrWhiteSpace(product.PriceLabel) ? "Coming Soon" : product.PriceLabel.Trim(),
+            PriceLabel = product.PriceCents > 0 ? $"${product.PriceCents / 100m:0.00}" : "Coming Soon",
             PriceCents = Math.Max(0, product.PriceCents),
             Badge = string.IsNullOrWhiteSpace(product.Badge) ? "Parfait" : product.Badge.Trim(),
             IsFeatured = product.IsFeatured,

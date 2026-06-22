@@ -2,14 +2,16 @@
 @{
     ViewData["Title"] = "Products";
     Layout = "_InternalLayout";
+
+    static string Money(int cents) => "$" + (cents / 100m).ToString("0.00");
 }
 
-<section class="pf-commerce-shell">
+<section class="pf-commerce-shell pf-products-admin">
     <header class="pf-commerce-head">
         <div>
             <div class="pf-kicker">Commerce</div>
             <h1>Products</h1>
-            <p>Manage the public ShopParfait catalog. Cards summarize products; full editing happens in a modal.</p>
+            <p>Compact product control for catalog visibility, pricing, photos, and public storefront presentation.</p>
         </div>
 
         <div class="pf-commerce-head-actions">
@@ -19,632 +21,697 @@
 
     @if (TempData["ProductStatus"] is string statusMessage)
     {
-        <div class="pf-alert-success mb-3">@statusMessage</div>
+        <div class="pf-alert-success">@statusMessage</div>
     }
 
-    <details class="pf-commerce-panel pf-add-panel">
-        <summary>+ Add Product</summary>
+    <details class="pf-commerce-panel pf-add-product">
+        <summary>Add Product</summary>
 
-        <form method="post" action="/internal/commerce/products" class="pf-add-form">
+        <form method="post" action="/internal/commerce/products" class="pf-product-create-form">
             @Html.AntiForgeryToken()
             <input type="hidden" name="Id" value="@Guid.NewGuid().ToString("N")" />
+            <input type="hidden" name="PriceLabel" value="Auto" />
 
-            <div class="pf-add-fields">
-                <input class="form-control" name="Name" placeholder="Product name" required />
-                <input class="form-control" name="Slug" placeholder="product-slug" required />
-                <input class="form-control" name="PriceLabel" value="Coming Soon" required />
-                <input class="form-control pf-price-dollars" type="number" min="0" step="0.01" placeholder="Price" />
-                <input type="hidden" name="PriceCents" class="pf-price-cents" />
-                <input class="form-control" name="Badge" value="Parfait" />
-                
-                <input class="form-control" name="DisplayOrder" type="number" value="100" />
-
-                <label class="pf-check"><input type="checkbox" name="IsActive" value="true" checked /> Active</label>
-
-                <label class="pf-check"><input type="checkbox" name="IsFeatured" value="true" /> Featured</label>
+            <div class="pf-product-create-grid">
+                <label>Name <input class="form-control" name="Name" required /></label>
+                <label>Slug <input class="form-control" name="Slug" required /></label>
+                <label>Price <input class="form-control pf-price-dollars" type="number" min="0" step="0.01" /><input type="hidden" name="PriceCents" class="pf-price-cents" /></label>
+                <label>Badge <input class="form-control" name="Badge" value="Parfait" /></label>
+                <label>Sort <input class="form-control" name="DisplayOrder" type="number" value="100" /></label>
             </div>
 
-            <textarea class="form-control" name="Description" rows="2" placeholder="Product description" required></textarea>
+            <label class="pf-full">Description <textarea class="form-control" name="Description" rows="2" required></textarea></label>
 
-            <button type="submit" class="pf-action">Create Product</button>
+            <div class="pf-product-create-actions">
+                <label class="pf-check"><input type="checkbox" name="IsActive" value="true" checked /> Active</label>
+                <label class="pf-check"><input type="checkbox" name="IsFeatured" value="true" /> Featured</label>
+                <button type="submit" class="pf-action">Create Product</button>
+            </div>
         </form>
     </details>
 
     <section class="pf-commerce-panel">
         <div class="pf-commerce-panel-head">
             <div>
-                <div class="pf-kicker">Product Workspace</div>
-                <h2>Active Catalog</h2>
+                <div class="pf-kicker">Catalog Workspace</div>
+                <h2>Product Inventory</h2>
             </div>
             <span>@Model.Products.Count products</span>
         </div>
 
-        <div class="pf-product-summary-grid">
-            @foreach (var product in Model.Products)
-            {
-                var orderedImages = product.Images.OrderBy(i => i.DisplayOrder).ToList();
-                var primaryImage = orderedImages.FirstOrDefault(i => i.IsPrimary) ?? orderedImages.FirstOrDefault();
-                var primaryUrl = primaryImage?.ImageUrl ?? "/images/favicon/parfait-logo.png";
-                var modalId = $"editProduct{product.Id}";
+        <div class="pf-product-table-wrap">
+            <table class="pf-product-table">
+                <thead>
+                    <tr>
+                        <th>Product</th>
+                        <th>Price</th>
+                        <th>Status</th>
+                        <th>Featured</th>
+                        <th>Photos</th>
+                        <th>Sort</th>
+                        <th></th>
+                    </tr>
+                </thead>
+                <tbody>
+                @foreach (var product in Model.Products)
+                {
+                    var orderedImages = product.Images.OrderBy(i => i.DisplayOrder).ToList();
+                    var primaryImage = orderedImages.FirstOrDefault(i => i.IsPrimary) ?? orderedImages.FirstOrDefault();
+                    var primaryUrl = primaryImage?.ImageUrl ?? "/images/favicon/parfait-logo.png";
+                    var modalId = $"editProduct{product.Id}";
 
-                <article class="pf-product-summary-card">
-                    <div class="pf-summary-image">
-                        <img src="@primaryUrl" alt="@product.Name" />
-                        <span>@((product.IsActive) ? "Live" : "Hidden")</span>
-                    </div>
-
-                    <div class="pf-summary-body">
-                        <div class="pf-summary-top">
-                            <span class="pf-product-state">@((product.IsActive) ? "● Active" : "○ Hidden")</span>
-                            <span class="pf-product-badge">@product.Badge</span>
-                        </div>
-
-                        <h3>@product.Name</h3>
-                        <p>@product.Description</p>
-
-                        <div class="pf-summary-meta">
-                            <div>
-                                <span>Price</span>
-                                <strong>@product.PriceLabel</strong>
-                            </div>
-                            <div>
-                                <span>Photos</span>
-                                <strong>@orderedImages.Count</strong>
-                            </div>
-                            <div>
-                                <span>Order</span>
-                                <strong>@product.DisplayOrder</strong>
-                            </div>
-                        </div>
-
-                        <button type="button" class="pf-action pf-edit-button" data-bs-toggle="modal" data-bs-target="#@modalId">
-                            Edit Product
-                        </button>
-                    </div>
-                </article>
-
-                <div class="modal fade pf-product-modal" id="@modalId" tabindex="-1" aria-labelledby="@modalId-title" aria-hidden="true">
-                    <div class="modal-dialog modal-xl modal-dialog-centered modal-dialog-scrollable">
-                        <div class="modal-content">
-                            <div class="modal-header">
+                    <tr>
+                        <td>
+                            <div class="pf-product-main-cell">
+                                <img src="@primaryUrl" alt="@product.Name" />
                                 <div>
-                                    <div class="pf-kicker">Edit Product</div>
-                                    <h2 class="modal-title" id="@modalId-title">@product.Name</h2>
-                                </div>
-                                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
-                            </div>
-
-                            <div class="modal-body">
-                                <div class="pf-modal-grid">
-                                    <div class="pf-modal-gallery">
-                                        <div class="pf-modal-main-image">
-                                            <img src="@primaryUrl" alt="@product.Name" />
-                                        </div>
-
-                                        <form method="post" action="/internal/commerce/products/images/upload" enctype="multipart/form-data" class="pf-modal-upload">
-                                            @Html.AntiForgeryToken()
-                                            <input type="hidden" name="productId" value="@product.Id" />
-                                            <label>
-                                                Upload Photos From Computer
-                                                <input type="file" name="images" accept="image/*" multiple onchange="this.form.submit()" />
-                                            </label>
-                                        </form>
-
-                                        <div class="pf-modal-photo-grid">
-                                            @foreach (var image in orderedImages)
-                                            {
-                                                <div class="pf-modal-photo-card">
-                                                    <div class="pf-modal-photo-preview">
-                                                        <img src="@image.ImageUrl" alt="@image.AltText" />
-                                                        @if (image.IsPrimary)
-                                                        {
-                                                            <span>Primary</span>
-                                                        }
-                                                    </div>
-
-                                                    <button type="button" class="pf-adjust-image-open" data-pf-adjust-open="@image.Id">
-                                                        Adjust Image
-                                                    </button>
-
-                                                    <form method="post" action="/internal/commerce/products/images/display" class="pf-image-adjust-panel" data-pf-adjust-panel="@image.Id">
-                                                        @Html.AntiForgeryToken()
-                                                        <input type="hidden" name="productId" value="@product.Id" />
-                                                        <input type="hidden" name="imageId" value="@image.Id" />
-                                                        <input type="hidden" name="objectFit" value="cover" />
-                                                        <input type="hidden" name="objectPositionX" value="@image.ObjectPositionX" data-pf-pos-x />
-                                                        <input type="hidden" name="objectPositionY" value="@image.ObjectPositionY" data-pf-pos-y />
-                                                        <input type="hidden" name="zoom" value="@image.Zoom" data-pf-zoom />
-
-                                                        <div class="pf-adjust-stage"
-                                                             data-pf-adjust-stage
-                                                             data-start-x="@image.ObjectPositionX"
-                                                             data-start-y="@image.ObjectPositionY"
-                                                             data-start-zoom="@image.Zoom">
-                                                            <img src="@image.ImageUrl"
-                                                                 alt="@image.AltText"
-                                                                 draggable="false"
-                                                                 data-pf-adjust-img
-                                                                 style="object-fit:cover; object-position:@image.ObjectPositionX% @image.ObjectPositionY%; transform:scale(@image.Zoom.ToString("0.##")); transform-origin:center;" />
-                                                            <span>Drag image to position</span>
-                                                        </div>
-
-                                                        <label class="pf-adjust-zoom-label">
-                                                            Zoom
-                                                            <input type="range" min="1" max="2.5" step="0.05" value="@image.Zoom" data-pf-adjust-zoom />
-                                                        </label>
-
-                                                        <button type="submit">Save Image Position</button>
-                                                    </form>
-
-                                                    <div class="pf-modal-photo-actions">
-                                                        <form method="post" action="/internal/commerce/products/images/move">
-                                                            @Html.AntiForgeryToken()
-                                                            <input type="hidden" name="productId" value="@product.Id" />
-                                                            <input type="hidden" name="imageId" value="@image.Id" />
-                                                            <input type="hidden" name="direction" value="up" />
-                                                            <button type="submit">↑</button>
-                                                        </form>
-
-                                                        <form method="post" action="/internal/commerce/products/images/move">
-                                                            @Html.AntiForgeryToken()
-                                                            <input type="hidden" name="productId" value="@product.Id" />
-                                                            <input type="hidden" name="imageId" value="@image.Id" />
-                                                            <input type="hidden" name="direction" value="down" />
-                                                            <button type="submit">↓</button>
-                                                        </form>
-
-                                                        <form method="post" action="/internal/commerce/products/images/primary">
-                                                            @Html.AntiForgeryToken()
-                                                            <input type="hidden" name="productId" value="@product.Id" />
-                                                            <input type="hidden" name="imageId" value="@image.Id" />
-                                                            <button type="submit">Primary</button>
-                                                        </form>
-
-                                                        <form method="post" action="/internal/commerce/products/images/delete">
-                                                            @Html.AntiForgeryToken()
-                                                            <input type="hidden" name="productId" value="@product.Id" />
-                                                            <input type="hidden" name="imageId" value="@image.Id" />
-                                                            <button type="submit">Delete</button>
-                                                        </form>
-                                                    </div>
-                                                </div>
-                                            }
-                                        </div>
-                                    </div>
-
-                                    <div class="pf-modal-editor">
-                                        <form method="post" action="/internal/commerce/products" class="pf-product-edit-form">
-                                            @Html.AntiForgeryToken()
-                                            <input type="hidden" name="Id" value="@product.Id" />
-
-                                            <div class="row g-3">
-                                                <div class="col-md-6">
-                                                    <label>Name</label>
-                                                    <input class="form-control" name="Name" value="@product.Name" required />
-                                                </div>
-
-                                                <div class="col-md-6">
-                                                    <label>Slug</label>
-                                                    <input class="form-control" name="Slug" value="@product.Slug" required />
-                                                </div>
-
-                                                <div class="col-md-12">
-                                                    <label>Description</label>
-                                                    <textarea class="form-control" name="Description" rows="5" required>@product.Description</textarea>
-                                                </div>
-
-                                                <div class="col-md-4">
-                                                    <label>Price Label</label>
-                                                    <input class="form-control" name="PriceLabel" value="@product.PriceLabel" required />
-                                                </div>
-
-                                                <div class="col-md-4">
-                                                    <label>Price</label>
-                                                    <input class="form-control pf-price-dollars" type="number" min="0" step="0.01" value="@((product.PriceCents / 100m).ToString("0.00"))" />
-                                                    <input type="hidden" name="PriceCents" value="@product.PriceCents" class="pf-price-cents" />
-                                                </div>
-
-                                                <div class="col-md-4">
-                                                    <label>Badge</label>
-                                                    <input class="form-control" name="Badge" value="@product.Badge" />
-                                                </div>
-
-                                                <div class="col-md-4">
-                                                    <label>Display Order</label>
-                                                    <input class="form-control" name="DisplayOrder" type="number" value="@product.DisplayOrder" />
-                                                </div>
-
-                                                <div class="col-md-12">
-                                                    <div class="pf-modal-checks">
-                                                        <label><input type="checkbox" name="IsActive" value="true" @(product.IsActive ? "checked" : "") /> Active</label>
-
-                                                        <label><input type="checkbox" name="IsFeatured" value="true" @(product.IsFeatured ? "checked" : "") /> Featured</label>
-                                                    </div>
-                                                </div>
-                                            </div>
-
-                                            <button type="submit" class="pf-action mt-3">Save Product</button>
-                                        </form>
-
-                                        <form method="post" action="/internal/commerce/products/delete" class="pf-modal-delete">
-                                            @Html.AntiForgeryToken()
-                                            <input type="hidden" name="id" value="@product.Id" />
-                                            <button type="submit">Delete Product</button>
-                                        </form>
-                                    </div>
+                                    <strong>@product.Name</strong>
+                                    <span>@product.Slug</span>
+                                    <p>@product.Description</p>
                                 </div>
                             </div>
-                        </div>
-                    </div>
-                </div>
-            }
+                        </td>
+                        <td><strong>@Money(product.PriceCents)</strong></td>
+                        <td><span class="pf-pill @(product.IsActive ? "is-live" : "is-muted")">@(product.IsActive ? "Live" : "Hidden")</span></td>
+                        <td><span class="pf-pill @(product.IsFeatured ? "is-live" : "is-muted")">@(product.IsFeatured ? "Yes" : "No")</span></td>
+                        <td>@orderedImages.Count</td>
+                        <td>@product.DisplayOrder</td>
+                        <td class="pf-table-actions">
+                            <button type="button" class="pf-secondary-action" data-pf-open="@modalId">Edit</button>
+                        </td>
+                    </tr>
+                }
+                </tbody>
+            </table>
         </div>
     </section>
 </section>
 
+@foreach (var product in Model.Products)
+{
+    var orderedImages = product.Images.OrderBy(i => i.DisplayOrder).ToList();
+    var primaryImage = orderedImages.FirstOrDefault(i => i.IsPrimary) ?? orderedImages.FirstOrDefault();
+    var primaryUrl = primaryImage?.ImageUrl ?? "/images/favicon/parfait-logo.png";
+    var modalId = $"editProduct{product.Id}";
+
+    <div class="pf-product-modal" id="@modalId" aria-hidden="true">
+        <div class="pf-modal-dialog pf-modal-xl">
+            <div class="pf-modal-content">
+                <div class="pf-modal-header">
+                    <div>
+                        <div class="pf-kicker">Edit Product</div>
+                        <h2 class="modal-title" id="@modalId-title">@product.Name</h2>
+                    </div>
+                    <button type="button" class="btn-close" data-pf-close aria-label="Close"></button>
+                </div>
+
+                <div class="pf-modal-body">
+                    <div class="pf-modal-grid">
+                        <section class="pf-media-panel">
+                            <div class="pf-primary-preview">
+                                <img src="@primaryUrl" alt="@product.Name" />
+                            </div>
+
+                            <form method="post" action="/internal/commerce/products/images/upload" enctype="multipart/form-data" class="pf-upload-box">
+                                @Html.AntiForgeryToken()
+                                <input type="hidden" name="productId" value="@product.Id" />
+                                <label>
+                                    Upload Photos
+                                    <input type="file" name="images" accept="image/*" multiple onchange="this.form.submit()" />
+                                </label>
+                            </form>
+
+                            <div class="pf-photo-grid">
+                                @foreach (var image in orderedImages)
+                                {
+                                    var editorId = $"imageEditor{image.Id}";
+
+                                    <article class="pf-photo-tile">
+                                        <img src="@image.ImageUrl" alt="@image.AltText" />
+                                        <div>
+                                            <strong>@(image.IsPrimary ? "Primary" : "Photo")</strong>
+                                            <span>Order @image.DisplayOrder</span>
+                                        </div>
+
+                                        <button type="button" class="pf-text-button" data-pf-open="@editorId">
+                                            Edit Image
+                                        </button>
+
+                                        <div class="pf-photo-actions">
+                                            <form method="post" action="/internal/commerce/products/images/move">
+                                                @Html.AntiForgeryToken()
+                                                <input type="hidden" name="productId" value="@product.Id" />
+                                                <input type="hidden" name="imageId" value="@image.Id" />
+                                                <input type="hidden" name="direction" value="up" />
+                                                <button type="submit">↑</button>
+                                            </form>
+
+                                            <form method="post" action="/internal/commerce/products/images/move">
+                                                @Html.AntiForgeryToken()
+                                                <input type="hidden" name="productId" value="@product.Id" />
+                                                <input type="hidden" name="imageId" value="@image.Id" />
+                                                <input type="hidden" name="direction" value="down" />
+                                                <button type="submit">↓</button>
+                                            </form>
+
+                                            <form method="post" action="/internal/commerce/products/images/primary">
+                                                @Html.AntiForgeryToken()
+                                                <input type="hidden" name="productId" value="@product.Id" />
+                                                <input type="hidden" name="imageId" value="@image.Id" />
+                                                <button type="submit">Primary</button>
+                                            </form>
+
+                                            <form method="post" action="/internal/commerce/products/images/delete">
+                                                @Html.AntiForgeryToken()
+                                                <input type="hidden" name="productId" value="@product.Id" />
+                                                <input type="hidden" name="imageId" value="@image.Id" />
+                                                <button type="submit">Delete</button>
+                                            </form>
+                                        </div>
+                                    </article>
+                                }
+                            </div>
+                        </section>
+
+                        <section class="pf-editor-panel">
+                            <form method="post" action="/internal/commerce/products" class="pf-product-edit-form">
+                                @Html.AntiForgeryToken()
+                                <input type="hidden" name="Id" value="@product.Id" />
+                                <input type="hidden" name="PriceLabel" value="Auto" />
+
+                                <div class="pf-editor-grid">
+                                    <label>Name <input class="form-control" name="Name" value="@product.Name" required /></label>
+                                    <label>Slug <input class="form-control" name="Slug" value="@product.Slug" required /></label>
+                                    <label class="pf-full">Description <textarea class="form-control" name="Description" rows="5" required>@product.Description</textarea></label>
+                                    <label>Price <input class="form-control pf-price-dollars" type="number" min="0" step="0.01" value="@((product.PriceCents / 100m).ToString("0.00"))" /><input type="hidden" name="PriceCents" value="@product.PriceCents" class="pf-price-cents" /></label>
+                                    <label>Badge <input class="form-control" name="Badge" value="@product.Badge" /></label>
+                                    <label>Sort <input class="form-control" name="DisplayOrder" type="number" value="@product.DisplayOrder" /></label>
+                                </div>
+
+                                <div class="pf-product-flags">
+                                    <label><input type="checkbox" name="IsActive" value="true" @(product.IsActive ? "checked" : "") /> Active</label>
+                                    <label><input type="checkbox" name="IsFeatured" value="true" @(product.IsFeatured ? "checked" : "") /> Featured</label>
+                                </div>
+
+                                <button type="submit" class="pf-action">Save Product</button>
+                            </form>
+
+                            <form method="post" action="/internal/commerce/products/delete" class="pf-danger-zone">
+                                @Html.AntiForgeryToken()
+                                <input type="hidden" name="id" value="@product.Id" />
+                                <button type="submit">Delete Product</button>
+                            </form>
+                        </section>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    @foreach (var image in orderedImages)
+    {
+        var editorId = $"imageEditor{image.Id}";
+
+        <div class="pf-image-editor-modal" id="@editorId" aria-hidden="true">
+            <div class="pf-modal-dialog pf-modal-lg">
+                <form method="post" action="/internal/commerce/products/images/display" class="modal-content pf-image-editor-form" data-pf-adjust-panel>
+                    @Html.AntiForgeryToken()
+                    <input type="hidden" name="productId" value="@product.Id" />
+                    <input type="hidden" name="imageId" value="@image.Id" />
+                    <input type="hidden" name="objectFit" value="cover" />
+                    <input type="hidden" name="objectPositionX" value="@image.ObjectPositionX" data-pf-pos-x />
+                    <input type="hidden" name="objectPositionY" value="@image.ObjectPositionY" data-pf-pos-y />
+                    <input type="hidden" name="zoom" value="@image.Zoom" data-pf-zoom />
+
+                    <div class="pf-modal-header">
+                        <div>
+                            <div class="pf-kicker">Image Editor</div>
+                            <h2 class="modal-title">@product.Name</h2>
+                        </div>
+                        <button type="button" class="btn-close" data-pf-close aria-label="Close"></button>
+                    </div>
+
+                    <div class="pf-modal-body">
+                        <div class="pf-adjust-stage"
+                             data-pf-adjust-stage
+                             data-start-x="@image.ObjectPositionX"
+                             data-start-y="@image.ObjectPositionY"
+                             data-start-zoom="@image.Zoom">
+                            <img src="@image.ImageUrl"
+                                 alt="@image.AltText"
+                                 draggable="false"
+                                 data-pf-adjust-img
+                                 style="object-fit:cover; object-position:@image.ObjectPositionX% @image.ObjectPositionY%; transform:scale(@image.Zoom.ToString("0.##")); transform-origin:center;" />
+                            <span>Drag Image To Position</span>
+                        </div>
+
+                        <label class="pf-adjust-zoom-label">
+                            Zoom
+                            <input type="range" min="1" max="2.5" step="0.05" value="@image.Zoom" data-pf-adjust-zoom />
+                        </label>
+                    </div>
+
+                    <div class="pf-modal-footer">
+                        <button type="button" class="pf-secondary-action" data-pf-close>Cancel</button>
+                        <button type="submit" class="pf-action">Save Image Position</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    }
+}
+
 <style>
-    .pf-commerce-shell {
-        display: grid;
-        gap: 18px;
+    .pf-products-admin {
+        --pf-products-line: rgba(146,105,80,.42);
+        --pf-products-strong: #926950;
+        --pf-products-soft: #faf7f4;
     }
 
-    .pf-commerce-head,
-    .pf-commerce-panel {
-        background: rgba(255,255,255,.86);
-        border: 1px solid var(--pf-line);
-        border-radius: 28px;
-        box-shadow: var(--pf-shadow-soft);
-    }
-
-    .pf-commerce-head {
-        display: flex;
-        justify-content: space-between;
-        align-items: flex-end;
-        gap: 18px;
-        padding: 22px 24px;
-    }
-
-    .pf-commerce-head h1 {
-        margin: 4px 0 4px;
-        font-size: clamp(2.15rem, 4vw, 3.55rem);
-        font-weight: 950;
-        letter-spacing: -.065em;
-        line-height: .95;
-    }
-
-    .pf-commerce-head p {
-        margin: 0;
-        color: var(--pf-muted);
-    }
-
-    .pf-commerce-panel {
-        padding: 18px;
-    }
-
-    .pf-commerce-panel-head {
-        display: flex;
-        justify-content: space-between;
-        align-items: flex-end;
-        gap: 14px;
-        padding: 4px 4px 16px;
-        border-bottom: 1px solid var(--pf-line);
-        margin-bottom: 16px;
-    }
-
-    .pf-commerce-panel-head h2 {
-        margin: 4px 0 0;
-        font-size: 1.45rem;
-        font-weight: 950;
-        letter-spacing: -.04em;
-    }
-
-    .pf-commerce-panel-head span {
-        color: var(--pf-muted);
-        font-size: .8rem;
-        font-weight: 900;
-        text-transform: uppercase;
-        letter-spacing: .08em;
-    }
-
-    .pf-add-panel summary {
+    .pf-add-product summary {
         cursor: pointer;
-        color: var(--pf-bronze-dark);
+        color: var(--pf-brown);
+        font-size: .76rem;
         font-weight: 950;
-        letter-spacing: .08em;
+        letter-spacing: .14em;
         text-transform: uppercase;
     }
 
-    .pf-add-form {
+    .pf-product-create-form,
+    .pf-product-edit-form {
         display: grid;
-        gap: 10px;
+        gap: 12px;
         margin-top: 14px;
     }
 
-    .pf-add-fields {
-        display: grid;
-        grid-template-columns: 1.15fr 1fr .7fr .7fr 1.2fr .5fr auto auto;
-        gap: 10px;
-        align-items: center;
-    }
-
-    .pf-check {
-        display: flex;
-        align-items: center;
-        gap: 5px;
-        white-space: nowrap;
-        margin: 0;
-        font-size: .74rem;
-        font-weight: 950;
-        letter-spacing: .08em;
-        text-transform: uppercase;
-    }
-
-    .pf-product-summary-grid {
+    .pf-product-create-grid,
+    .pf-editor-grid {
         display: grid;
         grid-template-columns: repeat(3, minmax(0, 1fr));
-        gap: 18px;
+        gap: 10px;
     }
 
-    .pf-product-summary-card {
-        overflow: hidden;
-        border: 1px solid var(--pf-line);
-        border-radius: 24px;
-        background: rgba(255,255,255,.94);
-        box-shadow: 0 14px 34px rgba(47,33,26,.07);
+    .pf-product-create-form label,
+    .pf-product-edit-form label {
+        color: var(--pf-black);
+        font-size: .72rem;
+        font-weight: 950;
+        letter-spacing: .1em;
+        text-transform: uppercase;
     }
 
-    .pf-summary-image {
-        position: relative;
-        aspect-ratio: 4 / 3;
-        background: #f7f1ed;
-        overflow: hidden;
+    .pf-full {
+        grid-column: 1 / -1;
     }
 
-    .pf-summary-image img {
+    .pf-product-create-actions,
+    .pf-product-flags {
+        display: flex;
+        align-items: center;
+        gap: 14px;
+        flex-wrap: wrap;
+    }
+
+    .pf-check,
+    .pf-product-flags label {
+        display: inline-flex;
+        align-items: center;
+        gap: 7px;
+        margin: 0;
+        color: var(--pf-black);
+        font-size: .72rem;
+        font-weight: 950;
+        letter-spacing: .1em;
+        text-transform: uppercase;
+    }
+
+    .pf-product-table-wrap {
+        overflow-x: auto;
+    }
+
+    .pf-product-table {
         width: 100%;
-        height: 100%;
-        object-fit: cover;
-        display: block;
+        min-width: 1040px;
+        border-collapse: separate;
+        border-spacing: 0 8px;
     }
 
-    .pf-summary-image span {
-        position: absolute;
-        top: 12px;
-        left: 12px;
-        border-radius: 999px;
-        background: rgba(214,176,106,.92);
-        color: #2f211a;
+    .pf-product-table th {
+        padding: 0 12px 6px;
+        color: var(--pf-brown);
+        font-size: .68rem;
+        font-weight: 950;
+        letter-spacing: .16em;
+        text-transform: uppercase;
+        white-space: nowrap;
+    }
+
+    .pf-product-table td {
+        background: #fff;
+        border-top: 1.5px solid var(--pf-products-line);
+        border-bottom: 1.5px solid var(--pf-products-line);
+        padding: 10px 12px;
+        vertical-align: middle;
+        color: var(--pf-black);
+        font-size: .9rem;
+        font-weight: 800;
+    }
+
+    .pf-product-table td:first-child {
+        border-left: 1.5px solid var(--pf-products-line);
+        border-radius: 16px 0 0 16px;
+    }
+
+    .pf-product-table td:last-child {
+        border-right: 1.5px solid var(--pf-products-line);
+        border-radius: 0 16px 16px 0;
+    }
+
+    .pf-product-main-cell {
+        display: grid;
+        grid-template-columns: 72px minmax(0, 1fr);
+        gap: 12px;
+        align-items: center;
+        min-width: 360px;
+    }
+
+    .pf-product-main-cell img {
+        width: 72px;
+        height: 72px;
+        border-radius: 14px;
+        object-fit: cover;
+        border: 1.5px solid var(--pf-products-line);
+        background: #fff;
+    }
+
+    .pf-product-main-cell strong {
+        display: block;
+        font-size: 1rem;
+        font-weight: 950;
+        letter-spacing: -.025em;
+    }
+
+    .pf-product-main-cell span,
+    .pf-product-table td span {
+        display: block;
+        color: var(--pf-muted);
+        font-size: .76rem;
+        font-weight: 750;
+    }
+
+    .pf-product-main-cell p {
+        max-width: 560px;
+        margin: 3px 0 0;
+        color: var(--pf-muted);
+        font-size: .82rem;
+        font-weight: 650;
+        line-height: 1.25;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+    }
+
+    .pf-pill {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        min-height: 30px;
         padding: 6px 10px;
+        border: 1.5px solid var(--pf-products-line);
+        border-radius: 999px;
+        color: var(--pf-brown);
+        background: #fff;
         font-size: .66rem;
         font-weight: 950;
-        letter-spacing: .08em;
+        letter-spacing: .12em;
         text-transform: uppercase;
     }
 
-    .pf-summary-body {
-        padding: 16px;
+    .pf-pill.is-live {
+        border-color: var(--pf-products-strong);
+        color: var(--pf-brown);
     }
 
-    .pf-summary-top {
-        display: flex;
-        justify-content: space-between;
-        gap: 10px;
-        margin-bottom: 10px;
-    }
-
-    .pf-product-state {
-        color: #168542;
-        font-size: .7rem;
-        font-weight: 950;
-        letter-spacing: .09em;
-        text-transform: uppercase;
-    }
-
-    .pf-product-badge {
-        border: 1px solid var(--pf-line);
-        background: rgba(214,176,106,.14);
-        color: var(--pf-bronze-dark);
-        border-radius: 999px;
-        padding: 5px 10px;
-        font-size: .64rem;
-        font-weight: 950;
-        letter-spacing: .08em;
-        text-transform: uppercase;
-    }
-
-    .pf-summary-body h3 {
-        margin: 0 0 6px;
-        font-size: 1.18rem;
-        font-weight: 950;
-        letter-spacing: -.03em;
-    }
-
-    .pf-summary-body p {
-        min-height: 48px;
-        margin: 0 0 14px;
+    .pf-pill.is-muted {
         color: var(--pf-muted);
-        font-size: .92rem;
-        line-height: 1.35;
     }
 
-    .pf-summary-meta {
-        display: grid;
-        grid-template-columns: repeat(3, 1fr);
-        gap: 8px;
-        margin-bottom: 14px;
+    .pf-table-actions {
+        text-align: right;
+        white-space: nowrap;
     }
 
-    .pf-summary-meta div {
-        border: 1px solid var(--pf-line);
-        border-radius: 14px;
-        padding: 9px;
-        background: rgba(252,250,248,.8);
-    }
+    .pf-product-modal {
+        position: fixed;
+        inset: 0;
+        z-index: 1900;
+        display: none;
 
-    .pf-summary-meta span {
-        display: block;
-        color: var(--pf-muted);
-        font-size: .62rem;
-        font-weight: 950;
-        letter-spacing: .08em;
-        text-transform: uppercase;
-    }
+        align-items: flex-start;
+        justify-content: center;
 
-    .pf-summary-meta strong {
-        display: block;
-        margin-top: 3px;
-        font-size: .86rem;
-    }
-
-    .pf-edit-button {
-        width: 100%;
-        min-height: 42px;
-    }
-
-    .pf-product-modal .modal-content {
-        border: 1px solid var(--pf-line);
-        border-radius: 28px;
-        overflow: hidden;
-        background: #fffaf6;
-        box-shadow: 0 34px 100px rgba(47,33,26,.28);
-    }
-
-    .pf-product-modal .modal-header {
-        border-bottom: 1px solid var(--pf-line);
-        padding: 20px 24px;
-    }
-
-    .pf-product-modal .modal-title {
-        margin: 4px 0 0;
-        font-size: 1.75rem;
-        font-weight: 950;
-        letter-spacing: -.04em;
-    }
-
-    .pf-product-modal .modal-body {
+        overflow-y: auto;
         padding: 24px;
+
+        background: rgba(17,17,17,.42);
+    }
+
+    .pf-image-editor-modal {
+        position: fixed;
+        inset: 0;
+        z-index: 2000;
+        display: none;
+
+        align-items: center;
+        justify-content: center;
+
+        padding: 24px;
+
+        background: rgba(17,17,17,.42);
+    }
+
+    .pf-product-modal.is-open,
+    .pf-image-editor-modal.is-open {
+        display: flex;
+    }
+
+    .pf-image-editor-modal {
+        z-index: 2000;
+    }
+
+    .pf-modal-dialog {
+        width: min(100%, 980px);
+        height: calc(100vh - 48px);
+        display: flex;
+    }
+
+    .pf-modal-xl {
+        width: min(100%, 1180px);
+    }
+
+    .pf-modal-lg {
+        width: min(100%, 780px);
+    }
+
+    .pf-modal-content {
+        width: 100%;
+        height: 100%;
+
+        display: flex;
+        flex-direction: column;
+
+        background: #fff;
+    }
+
+    .pf-product-modal .pf-modal-content,
+    .pf-image-editor-modal .pf-modal-content {
+        border: 1.5px solid var(--pf-products-strong);
+        border-radius: 24px;
+        background: #fff;
+        box-shadow: 0 24px 80px rgba(47,33,26,.2);
+    }
+
+    .pf-product-modal .pf-modal-header,
+    .pf-image-editor-modal .pf-modal-header {
+        border-bottom: 1.5px solid var(--pf-products-line);
+        padding: 16px 18px;
+    }
+
+    .pf-product-modal .modal-title,
+    .pf-image-editor-modal .modal-title {
+        margin: 3px 0 0;
+        color: var(--pf-black);
+        font-size: clamp(1.7rem, 3vw, 2.4rem);
+        font-weight: 950;
+        font-style: italic;
+        letter-spacing: -.06em;
+        line-height: .95;
+    }
+
+    .pf-product-modal .pf-modal-body,
+    .pf-image-editor-modal .pf-modal-body {
+        flex: 1 1 auto;
+        overflow-y: auto;
+        overflow-x: hidden;
+        padding: 16px;
     }
 
     .pf-modal-grid {
         display: grid;
         grid-template-columns: minmax(320px, .9fr) minmax(420px, 1.1fr);
-        gap: 24px;
+        gap: 16px;
         align-items: start;
     }
 
-    .pf-modal-main-image {
-        aspect-ratio: 1 / 1;
-        overflow: hidden;
-        border: 1px solid var(--pf-line);
-        border-radius: 22px;
-        background: #f7f1ed;
+    .pf-media-panel,
+    .pf-editor-panel {
+        border: 1.5px solid var(--pf-products-line);
+        border-radius: 20px;
+        padding: 12px;
+        background: #fff;
     }
 
-    .pf-modal-main-image img,
-    .pf-modal-photo-preview img {
+    .pf-primary-preview {
+        aspect-ratio: 1 / 1;
+        overflow: hidden;
+        border: 1.5px solid var(--pf-products-line);
+        border-radius: 18px;
+        background: #fff;
+    }
+
+    .pf-primary-preview img {
         width: 100%;
         height: 100%;
         object-fit: cover;
         display: block;
     }
 
-    .pf-modal-upload label {
-        margin-top: 12px;
+    .pf-upload-box label {
         width: 100%;
-        min-height: 54px;
-        border: 1px dashed var(--pf-line-strong);
-        border-radius: 18px;
-        display: flex;
-        align-items: center;
-        justify-content: center;
+        min-height: 46px;
+        margin: 10px 0;
+        border: 1.5px dashed var(--pf-products-strong);
+        border-radius: 16px;
+        display: grid;
+        place-items: center;
         cursor: pointer;
-        color: var(--pf-bronze-dark);
+        color: var(--pf-brown);
+        font-size: .74rem;
         font-weight: 950;
-        letter-spacing: .06em;
+        letter-spacing: .12em;
         text-transform: uppercase;
-        background: rgba(255,255,255,.72);
+        background: var(--pf-products-soft);
     }
 
-    .pf-modal-upload input {
+    .pf-upload-box input {
         display: none;
     }
 
-    .pf-modal-photo-grid {
+    .pf-photo-grid {
         display: grid;
-        grid-template-columns: repeat(3, minmax(0, 1fr));
+        grid-template-columns: repeat(2, minmax(0, 1fr));
         gap: 10px;
-        margin-top: 14px;
     }
 
-    .pf-modal-photo-card {
-        border: 1px solid var(--pf-line);
+    .pf-photo-tile {
+        border: 1.5px solid var(--pf-products-line);
         border-radius: 16px;
-        background: rgba(255,255,255,.74);
         padding: 8px;
+        background: #fff;
     }
 
-    .pf-modal-photo-preview {
-        position: relative;
+    .pf-photo-tile > img {
+        width: 100%;
         aspect-ratio: 1 / 1;
         border-radius: 12px;
-        overflow: hidden;
-        background: #f7f1ed;
+        object-fit: cover;
+        border: 1.5px solid var(--pf-products-line);
+        background: #fff;
     }
 
-    .pf-modal-photo-preview span {
-        position: absolute;
-        top: 8px;
-        left: 8px;
-        border-radius: 999px;
-        background: rgba(214,176,106,.92);
-        color: #2f211a;
-        padding: 5px 8px;
-        font-size: .56rem;
+    .pf-photo-tile strong {
+        display: block;
+        margin-top: 7px;
+        font-size: .82rem;
+        font-weight: 950;
+    }
+
+    .pf-photo-tile span {
+        color: var(--pf-muted);
+        font-size: .72rem;
+        font-weight: 750;
+    }
+
+    .pf-text-button {
+        width: 100%;
+        margin-top: 8px;
+        min-height: 34px;
+        border: 1.5px solid var(--pf-products-strong);
+        border-radius: 12px;
+        background: var(--pf-products-soft);
+        color: var(--pf-brown);
+        font-size: .68rem;
         font-weight: 950;
         letter-spacing: .08em;
         text-transform: uppercase;
     }
 
-    .pf-adjust-image-open {
+    .pf-photo-actions {
+        display: grid;
+        grid-template-columns: repeat(4, minmax(0, 1fr));
+        gap: 6px;
+        margin-top: 7px;
+    }
+
+    .pf-photo-actions button,
+    .pf-danger-zone button {
         width: 100%;
-        border: 1px solid var(--pf-line);
-        border-radius: 999px;
+        min-height: 32px;
+        border: 1.5px solid var(--pf-products-line);
+        border-radius: 12px;
         background: #fff;
-        color: var(--pf-bronze-dark);
-        min-height: 34px;
-        font-size: .72rem;
+        color: var(--pf-brown);
+        font-size: .66rem;
         font-weight: 950;
         letter-spacing: .06em;
         text-transform: uppercase;
-        margin-top: 8px;
     }
 
-    .pf-image-adjust-panel {
-        display: none;
-        margin-top: 8px;
-        padding-top: 8px;
-        border-top: 1px solid var(--pf-line);
+    .pf-danger-zone {
+        margin-top: 14px;
+        padding-top: 14px;
+        border-top: 1.5px solid var(--pf-products-line);
     }
 
-    .pf-image-adjust-panel.is-open {
-        display: grid;
-        gap: 8px;
+    .pf-danger-zone button {
+        border-color: #9b1c1c;
+        color: #9b1c1c;
+    }
+
+    .pf-editor-grid {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
+    .pf-image-editor-modal {
+        z-index: 2000;
     }
 
     .pf-adjust-stage {
         position: relative;
+        width: min(100%, 620px);
+        margin: 0 auto;
         aspect-ratio: 1 / 1;
         overflow: hidden;
-        border: 2px dashed var(--pf-line-strong);
-        border-radius: 14px;
-        background: #f7f1ed;
+        border: 1.5px solid var(--pf-products-strong);
+        border-radius: 20px;
+        background:
+            linear-gradient(90deg, rgba(146,105,80,.24) 1px, transparent 1px),
+            linear-gradient(180deg, rgba(146,105,80,.24) 1px, transparent 1px),
+            #fff;
+        background-size: 33.333% 33.333%;
         cursor: grab;
         user-select: none;
         touch-action: none;
-    }
-
-    .pf-adjust-stage:active {
-        cursor: grabbing;
     }
 
     .pf-adjust-stage img {
@@ -657,12 +724,13 @@
 
     .pf-adjust-stage span {
         position: absolute;
-        left: 10px;
-        bottom: 10px;
+        left: 12px;
+        bottom: 12px;
         border-radius: 999px;
-        background: rgba(255,255,255,.88);
-        color: var(--pf-bronze-dark);
-        padding: 5px 9px;
+        background: #fff;
+        border: 1.5px solid var(--pf-products-line);
+        color: var(--pf-brown);
+        padding: 6px 9px;
         font-size: .62rem;
         font-weight: 950;
         letter-spacing: .08em;
@@ -670,101 +738,88 @@
     }
 
     .pf-adjust-zoom-label {
-        color: var(--pf-muted);
-        font-size: .62rem;
+        width: min(100%, 620px);
+        margin: 12px auto 0;
+        color: var(--pf-brown);
+        font-size: .68rem;
         font-weight: 950;
-        letter-spacing: .08em;
+        letter-spacing: .1em;
         text-transform: uppercase;
         display: grid;
-        gap: 4px;
+        gap: 8px;
     }
 
     .pf-adjust-zoom-label input {
         width: 100%;
+        accent-color: var(--pf-products-strong);
     }
 
-    .pf-image-adjust-panel button {
-        width: 100%;
-        border: 1px solid var(--pf-line);
-        border-radius: 999px;
-        background: #fff;
-        color: var(--pf-bronze-dark);
-        min-height: 32px;
-        font-size: .7rem;
-        font-weight: 950;
+    .pf-image-editor-modal .pf-modal-footer {
+        border-top: 1.5px solid var(--pf-products-line);
+        padding: 12px 16px;
     }
 
-    .pf-modal-photo-actions {
-        display: grid;
-        grid-template-columns: repeat(2, 1fr);
-        gap: 5px;
-        margin-top: 7px;
-    }
-
-    .pf-modal-photo-actions button,
-    .pf-modal-delete button {
-        width: 100%;
-        border: 1px solid var(--pf-line);
-        border-radius: 999px;
-        background: #fff;
-        color: var(--pf-bronze-dark);
-        min-height: 30px;
-        font-size: .68rem;
-        font-weight: 900;
-    }
-
-    .pf-modal-editor label {
-        color: var(--pf-espresso);
-        font-size: .72rem;
-        font-weight: 950;
-        letter-spacing: .08em;
-        text-transform: uppercase;
-    }
-
-    .pf-modal-editor .form-control,
-    .pf-add-form .form-control {
-        min-height: 46px;
-        border-radius: 14px;
-        border: 1px solid var(--pf-line);
-        font-weight: 750;
-    }
-
-    .pf-modal-checks {
-        display: flex;
-        gap: 18px;
-        align-items: center;
-        font-weight: 850;
-    }
-
-    .pf-modal-delete {
-        margin-top: 18px;
-        padding-top: 18px;
-        border-top: 1px solid var(--pf-line);
-    }
-
-    @@media (max-width: 1500px) {
-        .pf-product-summary-grid {
-            grid-template-columns: repeat(2, minmax(0, 1fr));
-        }
-
-        .pf-add-fields {
-            grid-template-columns: repeat(3, minmax(0, 1fr));
-        }
-    }
-
-    @@media (max-width: 980px) {
-        .pf-product-summary-grid,
-        .pf-add-fields,
+    @@media (max-width: 1100px) {
+        .pf-product-create-grid,
+        .pf-editor-grid,
         .pf-modal-grid {
             grid-template-columns: 1fr;
         }
 
-        .pf-commerce-head {
-            flex-direction: column;
-            align-items: flex-start;
+        .pf-product-table {
+            min-width: 920px;
+        }
+    }
+
+    @@media (max-width: 720px) {
+        .pf-photo-grid {
+            grid-template-columns: 1fr;
         }
     }
 </style>
+
+
+<script>
+    (() => {
+        const openModal = id => {
+            const modal = document.getElementById(id);
+            if (!modal) return;
+            modal.classList.add("is-open");
+            modal.setAttribute("aria-hidden", "false");
+            document.body.style.overflow = "hidden";
+        };
+
+        const closeModal = modal => {
+            if (!modal) return;
+            modal.classList.remove("is-open");
+            modal.setAttribute("aria-hidden", "true");
+
+            if (!document.querySelector(".pf-product-modal.is-open, .pf-image-editor-modal.is-open")) {
+                document.body.style.overflow = "";
+            }
+        };
+
+        document.querySelectorAll("[data-pf-open]").forEach(button => {
+            button.addEventListener("click", () => openModal(button.getAttribute("data-pf-open")));
+        });
+
+        document.querySelectorAll("[data-pf-close]").forEach(button => {
+            button.addEventListener("click", () => closeModal(button.closest(".pf-product-modal, .pf-image-editor-modal")));
+        });
+
+        document.querySelectorAll(".pf-product-modal, .pf-image-editor-modal").forEach(modal => {
+            modal.addEventListener("click", event => {
+                if (event.target === modal) closeModal(modal);
+            });
+        });
+
+        document.addEventListener("keydown", event => {
+            if (event.key !== "Escape") return;
+            const modals = [...document.querySelectorAll(".pf-image-editor-modal.is-open, .pf-product-modal.is-open")];
+            closeModal(modals.at(-1));
+        });
+    })();
+</script>
 
 <script>
     (() => {
@@ -787,14 +842,6 @@
 <script>
     (() => {
         const clamp = (value, min, max) => Math.min(max, Math.max(min, value));
-
-        document.querySelectorAll("[data-pf-adjust-open]").forEach(button => {
-            button.addEventListener("click", () => {
-                const id = button.getAttribute("data-pf-adjust-open");
-                const panel = document.querySelector(`[data-pf-adjust-panel="${id}"]`);
-                panel?.classList.toggle("is-open");
-            });
-        });
 
         document.querySelectorAll("[data-pf-adjust-panel]").forEach(panel => {
             const stage = panel.querySelector("[data-pf-adjust-stage]");
@@ -858,4 +905,3 @@
         });
     })();
 </script>
-

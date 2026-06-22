@@ -1,331 +1,289 @@
+@{
+    var title = ViewData["Title"] as string ?? "Internal";
+}
+
 <!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>@ViewData["Title"] - Parfait Internal</title>
+    <title>@title - Parfait Internal</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
     <link rel="stylesheet" href="~/lib/bootstrap/dist/css/bootstrap.min.css" />
+
     <style>
         :root {
-            --pf-espresso:#2f211a;
-            --pf-espresso-2:#1f1511;
-            --pf-bronze:#a97155;
-            --pf-bronze-dark:#7d4f3e;
-            --pf-gold:#d6b06a;
-            --pf-ivory:#fcfaf8;
-            --pf-cream:#f6eee8;
-            --pf-surface:#ffffff;
-            --pf-muted:#746861;
-            --pf-line:rgba(169,113,85,.22);
-            --pf-line-strong:rgba(169,113,85,.42);
-            --pf-shadow:0 24px 70px rgba(47,33,26,.14);
-            --pf-shadow-soft:0 14px 34px rgba(47,33,26,.09);
+            --pf-brown: #926950;
+            --pf-brown-dark: #674532;
+            --pf-black: #111;
+            --pf-muted: #5d514a;
+            --pf-soft: #f8f5f2;
+            --pf-line: rgba(146,105,80,.48);
+            --pf-line-strong: #926950;
+            --pf-radius: 18px;
+            --pf-radius-lg: 24px;
         }
 
-        html,
-        body {
-            min-height: 100%;
-        }
+        * { box-sizing: border-box; }
 
         body {
             margin: 0;
-            font-family: Inter, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-            color: var(--pf-espresso);
-            background:
-                radial-gradient(circle at 10% 0%, rgba(214,176,106,.26), transparent 28%),
-                radial-gradient(circle at 95% 10%, rgba(169,113,85,.16), transparent 30%),
-                linear-gradient(180deg, #fffaf6 0%, var(--pf-cream) 100%);
+            background: #fff;
+            color: var(--pf-black);
+            font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
         }
 
-        a {
-            color: inherit;
+        .pf-topbar {
+            position: sticky;
+            top: 0;
+            z-index: 40;
+            height: 68px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 14px;
+            padding: 12px 18px;
+            background: rgba(255,255,255,.96);
+            border-bottom: 1.5px solid var(--pf-line);
+            backdrop-filter: blur(14px);
+        }
+
+        .pf-left {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            min-width: 0;
+        }
+
+        .pf-menu-button {
+            width: 44px;
+            height: 44px;
+            border: 1.5px solid var(--pf-line-strong);
+            border-radius: 14px;
+            background: #fff;
+            display: inline-grid;
+            place-items: center;
+            cursor: pointer;
+        }
+
+        .pf-menu-button span,
+        .pf-menu-button span::before,
+        .pf-menu-button span::after {
+            content: "";
+            display: block;
+            width: 18px;
+            height: 2px;
+            background: var(--pf-brown);
+            border-radius: 99px;
+        }
+
+        .pf-menu-button span::before { transform: translateY(-6px); }
+        .pf-menu-button span::after { transform: translateY(4px); }
+
+        .pf-brandline {
+            min-width: 0;
+        }
+
+        .pf-brand {
+            color: var(--pf-brown);
+            font-size: 1.05rem;
+            font-weight: 950;
+            font-style: italic;
+            letter-spacing: -.045em;
+            line-height: 1;
+        }
+
+        .pf-current {
+            color: var(--pf-black);
+            font-size: .72rem;
+            font-weight: 950;
+            letter-spacing: .16em;
+            text-transform: uppercase;
+            margin-top: 3px;
+        }
+
+        .pf-topbar-actions {
+            display: flex;
+            gap: 8px;
+            align-items: center;
         }
 
         .pf-shell {
-            min-height: 100vh;
+            width: min(100%, 1440px);
+            margin: 0 auto;
+            padding: 18px;
         }
 
-        .pf-sidebar-toggle {
-            position: fixed;
-            top: 24px;
-            left: 24px;
-            z-index: 1120;
-            width: 54px;
-            height: 54px;
-            border: 1px solid rgba(214,176,106,.38);
-            border-radius: 18px;
-            background:
-                linear-gradient(180deg, rgba(255,255,255,.08), rgba(255,255,255,.03)),
-                var(--pf-espresso);
-            color: var(--pf-gold);
-            box-shadow: 0 18px 42px rgba(47,33,26,.22);
-            display: inline-flex;
-            align-items: center;
-            justify-content: center;
-            cursor: pointer;
-            transition: transform .16s ease, border-color .16s ease, box-shadow .16s ease;
-        }
-
-        .pf-sidebar-toggle:hover {
-            transform: translateY(-1px);
-            border-color: rgba(214,176,106,.62);
-            box-shadow: 0 22px 52px rgba(47,33,26,.28);
-        }
-
-        .pf-sidebar-toggle-line {
-            width: 23px;
-            height: 2px;
-            border-radius: 999px;
-            background: currentColor;
-            box-shadow: 0 -7px 0 currentColor, 0 7px 0 currentColor;
-        }
-
-        .pf-sidebar-backdrop {
+        .pf-backdrop {
             position: fixed;
             inset: 0;
-            z-index: 1090;
-            background: rgba(31,21,17,.34);
-            backdrop-filter: blur(3px);
+            z-index: 80;
+            background: rgba(17,17,17,.36);
             opacity: 0;
             pointer-events: none;
-            transition: opacity .18s ease;
-        }
-
-        body.pf-sidebar-open .pf-sidebar-backdrop {
-            opacity: 1;
-            pointer-events: auto;
+            transition: opacity .16s ease;
         }
 
         .pf-sidebar {
             position: fixed;
-            z-index: 1100;
-            inset: 0 auto 0 0;
-            width: min(320px, 88vw);
-            padding: 94px 18px 22px;
-            background:
-                radial-gradient(circle at 20% 0%, rgba(214,176,106,.18), transparent 34%),
-                linear-gradient(180deg, var(--pf-espresso) 0%, var(--pf-espresso-2) 100%);
-            border-right: 1px solid rgba(214,176,106,.22);
-            box-shadow: 26px 0 70px rgba(47,33,26,.26);
-            color: var(--pf-ivory);
+            z-index: 90;
+            inset: 12px auto 12px 12px;
+            width: min(340px, calc(100vw - 24px));
+            background: #fff;
+            border: 1.5px solid var(--pf-line-strong);
+            border-radius: 24px;
+            transform: translateX(calc(-100% - 18px));
+            transition: transform .18s ease;
+            padding: 14px;
             display: flex;
             flex-direction: column;
-            gap: 22px;
-            transform: translateX(-100%);
-            transition: transform .22s ease;
+            box-shadow: 0 26px 80px rgba(47,33,26,.18);
         }
 
-        body.pf-sidebar-open .pf-sidebar {
+        body.pf-nav-open .pf-backdrop {
+            opacity: 1;
+            pointer-events: auto;
+        }
+
+        body.pf-nav-open .pf-sidebar {
             transform: translateX(0);
         }
 
-        .pf-brand-block {
-            padding: 18px 16px 20px;
-            border: 1px solid rgba(214,176,106,.24);
-            border-radius: 26px;
-            background: rgba(255,255,255,.045);
-            box-shadow: inset 0 1px 0 rgba(255,255,255,.06);
+        .pf-sidebar-head {
+            display: flex;
+            justify-content: space-between;
+            align-items: start;
+            gap: 12px;
+            padding: 8px 8px 14px;
+            border-bottom: 1.5px solid var(--pf-line);
         }
 
-        .pf-logo {
-            font-size: 2.1rem;
+        .pf-sidebar-title {
+            color: var(--pf-brown);
+            font-size: 1.45rem;
             font-weight: 950;
             font-style: italic;
-            letter-spacing: .12em;
-            color: var(--pf-gold);
-            line-height: 1;
+            letter-spacing: -.055em;
+            line-height: .95;
         }
 
-        .pf-system-label {
-            margin-top: 9px;
+        .pf-sidebar-sub {
+            margin-top: 4px;
+            color: var(--pf-black);
             font-size: .7rem;
-            font-weight: 900;
-            letter-spacing: .22em;
+            font-weight: 950;
+            letter-spacing: .16em;
             text-transform: uppercase;
-            color: rgba(252,250,248,.72);
+        }
+
+        .pf-close {
+            border: 1.5px solid var(--pf-line-strong);
+            border-radius: 12px;
+            background: #fff;
+            color: var(--pf-brown);
+            width: 38px;
+            height: 38px;
+            font-weight: 950;
         }
 
         .pf-nav {
-            display: grid;
-            gap: 9px;
+            padding: 14px 4px;
+            overflow: auto;
         }
 
-        .pf-nav-label {
-            padding: 0 12px;
-            margin: 2px 0 4px;
-            color: rgba(252,250,248,.52);
-            font-size: .68rem;
+        .pf-nav-section {
+            margin: 14px 8px 6px;
+            color: var(--pf-brown);
+            font-size: .66rem;
             font-weight: 950;
             letter-spacing: .18em;
             text-transform: uppercase;
         }
 
-        .pf-nav-link {
+        .pf-nav a {
             display: flex;
             align-items: center;
             justify-content: space-between;
-            gap: 12px;
-            min-height: 46px;
-            padding: 12px 14px;
-            border: 1px solid rgba(214,176,106,.13);
-            border-radius: 17px;
-            color: rgba(252,250,248,.78);
-            text-decoration: none;
+            min-height: 42px;
+            padding: 9px 10px;
+            border: 1.5px solid transparent;
+            border-radius: 14px;
+            color: var(--pf-black);
+            font-size: .92rem;
             font-weight: 850;
-            background: rgba(255,255,255,.035);
-            transition: transform .16s ease, border-color .16s ease, background .16s ease, color .16s ease;
+            text-decoration: none;
         }
 
-        .pf-nav-link:hover,
-        .pf-nav-link.is-active {
-            transform: translateY(-1px);
-            color: var(--pf-gold);
-            border-color: rgba(214,176,106,.46);
-            background: rgba(214,176,106,.11);
-        }
-
-        .pf-nav-chip {
-            font-size: .66rem;
-            letter-spacing: .1em;
-            text-transform: uppercase;
-            color: rgba(252,250,248,.55);
+        .pf-nav a:hover,
+        .pf-nav a.is-active {
+            border-color: var(--pf-line-strong);
+            color: var(--pf-brown);
+            background: var(--pf-soft);
         }
 
         .pf-sidebar-footer {
             margin-top: auto;
-            display: grid;
-            gap: 10px;
+            padding: 12px 8px 4px;
+            border-top: 1.5px solid var(--pf-line);
+            color: var(--pf-muted);
+            font-size: .76rem;
+            font-weight: 750;
+            line-height: 1.35;
         }
 
-        .pf-side-action {
-            width: 100%;
-            border: 1px solid rgba(214,176,106,.26);
-            background: rgba(255,255,255,.055);
-            color: var(--pf-ivory);
-            border-radius: 999px;
-            min-height: 44px;
-            padding: 10px 14px;
-            text-decoration: none;
-            font-weight: 900;
-            display: inline-flex;
-            align-items: center;
-            justify-content: center;
-        }
-
-        .pf-side-action:hover {
-            color: var(--pf-espresso);
-            background: var(--pf-gold);
-        }
-
-        .pf-main {
-            min-width: 0;
-            padding: 28px 28px 28px 102px;
-        }
-
-        .pf-page-top {
-            max-width: 1320px;
-            margin: 0 auto 24px;
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-            gap: 18px;
-            padding: 18px 22px;
-            border: 1px solid var(--pf-line);
-            border-radius: 26px;
-            background: rgba(255,255,255,.74);
-            box-shadow: var(--pf-shadow-soft);
-            backdrop-filter: blur(12px);
-        }
-
-        .pf-page-top-kicker {
-            font-size: .72rem;
-            font-weight: 950;
-            letter-spacing: .18em;
-            text-transform: uppercase;
-            color: var(--pf-bronze-dark);
-        }
-
-        .pf-page-top-title {
-            margin: 4px 0 0;
-            font-size: 1.22rem;
-            font-weight: 950;
-            letter-spacing: -.03em;
-        }
-
-        .pf-top-pill {
-            border: 1px solid var(--pf-line);
-            background: #fff;
-            border-radius: 999px;
-            padding: 10px 15px;
-            color: var(--pf-bronze-dark);
-            font-size: .78rem;
-            font-weight: 950;
-            letter-spacing: .08em;
-            text-transform: uppercase;
-        }
-
-        .pf-wrap {
-            max-width: 1320px;
-            margin: 0 auto;
-            padding: 0 0 56px;
-        }
-
-        .pf-command-panel,
         .pf-panel,
-        .pf-module-card {
-            background: rgba(255,255,255,.86);
-            border: 1px solid var(--pf-line);
-            box-shadow: var(--pf-shadow);
-        }
-
-        .pf-command-panel {
-            position: relative;
-            overflow: hidden;
-            border-radius: 34px;
-            padding: clamp(26px, 4vw, 44px);
-        }
-
-        .pf-command-panel::before {
-            content: "";
-            position: absolute;
-            inset: 0 0 auto;
-            height: 4px;
-            background: linear-gradient(90deg, transparent, var(--pf-gold), var(--pf-bronze), transparent);
+        .pf-module-card,
+        .pf-commerce-head,
+        .pf-commerce-panel,
+        .pf-mini-status,
+        .pf-kpi-card {
+            background: #fff;
+            border: 1.5px solid var(--pf-line);
+            border-radius: var(--pf-radius-lg);
+            box-shadow: none;
         }
 
         .pf-panel {
-            border-radius: 30px;
-            padding: 32px;
+            padding: 18px;
+            margin-bottom: 14px;
         }
 
         .pf-kicker {
-            color: var(--pf-bronze-dark);
-            font-size: .74rem;
+            color: var(--pf-brown);
+            font-size: .68rem;
             font-weight: 950;
             letter-spacing: .2em;
             text-transform: uppercase;
         }
 
         .pf-page-title {
-            font-size: clamp(2.4rem, 5.2vw, 5.15rem);
+            margin: 5px 0 8px;
+            color: var(--pf-black);
+            font-size: clamp(2.2rem, 4.5vw, 4.4rem);
             font-weight: 950;
+            font-style: italic;
             letter-spacing: -.075em;
-            line-height: .94;
-            margin: 10px 0 16px;
+            line-height: .9;
         }
 
         .pf-page-copy {
-            color: var(--pf-muted);
-            font-size: 1.08rem;
-            max-width: 790px;
-            line-height: 1.58;
+            max-width: 840px;
+            margin: 0;
+            color: var(--pf-black);
+            font-size: .98rem;
+            font-weight: 650;
+            line-height: 1.42;
         }
 
         .pf-module-card {
-            border-radius: 26px;
-            padding: 26px;
             height: 100%;
-            transition: transform .16s ease, border-color .16s ease, box-shadow .16s ease;
+            padding: 16px;
+            transition: transform .14s ease, border-color .14s ease, background .14s ease;
+        }
+
+        .pf-module-card:hover {
+            transform: translateY(-2px);
+            border-color: var(--pf-line-strong);
+            background: var(--pf-soft);
         }
 
         .pf-module-link {
@@ -335,301 +293,274 @@
             text-decoration: none;
         }
 
-        .pf-module-link:hover .pf-module-card,
-        .pf-module-card:hover {
-            transform: translateY(-3px);
-            border-color: var(--pf-line-strong);
-            box-shadow: 0 28px 80px rgba(47,33,26,.17);
-        }
-
         .pf-module-title {
-            font-size: 1.35rem;
+            margin: 9px 0 6px;
+            color: var(--pf-black);
+            font-size: 1.16rem;
             font-weight: 950;
-            letter-spacing: -.035em;
-            margin: 10px 0 8px;
+            letter-spacing: -.045em;
         }
 
         .pf-status {
             display: inline-flex;
             align-items: center;
-            gap: 8px;
+            gap: 7px;
+            border: 1.5px solid var(--pf-line);
             border-radius: 999px;
-            background: rgba(214,176,106,.16);
-            color: var(--pf-bronze-dark);
-            border: 1px solid rgba(169,113,85,.18);
-            padding: 8px 13px;
-            font-size: .72rem;
+            background: #fff;
+            color: var(--pf-brown);
+            padding: 5px 9px;
+            font-size: .64rem;
             font-weight: 950;
-            letter-spacing: .1em;
+            letter-spacing: .12em;
             text-transform: uppercase;
         }
 
         .pf-dot {
-            width: 8px;
-            height: 8px;
-            border-radius: 99px;
-            background: var(--pf-bronze);
-            box-shadow: 0 0 0 4px rgba(169,113,85,.14);
+            width: 7px;
+            height: 7px;
+            border-radius: 50%;
+            background: var(--pf-brown);
         }
 
         .pf-mini-status,
         .pf-kpi-card {
-            border: 1px solid var(--pf-line);
-            border-radius: 20px;
-            padding: 18px;
-            background:
-                linear-gradient(180deg, rgba(255,255,255,.96), rgba(252,250,248,.86));
-            box-shadow: 0 12px 30px rgba(47,33,26,.06);
+            padding: 12px;
+            border-radius: var(--pf-radius);
         }
 
         .pf-mini-label,
         .pf-kpi-label {
-            color: var(--pf-muted);
-            font-size: .72rem;
+            color: var(--pf-brown);
+            font-size: .64rem;
             font-weight: 950;
-            letter-spacing: .1em;
+            letter-spacing: .14em;
             text-transform: uppercase;
-            margin-bottom: 5px;
+            margin-bottom: 4px;
         }
 
         .pf-mini-value,
         .pf-kpi-value {
-            color: var(--pf-espresso);
+            color: var(--pf-black);
             font-weight: 950;
-            font-size: 1.08rem;
-            letter-spacing: -.03em;
+            letter-spacing: -.035em;
         }
 
         .pf-kpi-value {
-            font-size: 2rem;
+            font-size: 1.7rem;
             line-height: 1;
         }
 
         .pf-kpi-note {
             color: var(--pf-muted);
-            margin-top: 8px;
-            font-size: .92rem;
-            line-height: 1.35;
+            margin-top: 6px;
+            font-size: .82rem;
+            line-height: 1.3;
         }
 
         .pf-action,
         .pf-primary-action,
+        .pf-secondary-action,
         button.pf-action {
-            border: 1px solid rgba(169,113,85,.30);
-            background:
-                linear-gradient(180deg, rgba(214,176,106,.96), rgba(169,113,85,.96));
-            color: #fff;
-            border-radius: 999px;
-            padding: 11px 18px;
-            text-decoration: none;
-            font-weight: 950;
+            min-height: 40px;
             display: inline-flex;
             align-items: center;
             justify-content: center;
-            min-height: 46px;
-            box-shadow: 0 14px 30px rgba(169,113,85,.20);
+            border: 1.5px solid var(--pf-line-strong);
+            border-radius: 14px;
+            background: var(--pf-brown);
+            color: #fff;
+            padding: 8px 13px;
+            text-decoration: none;
+            font-size: .74rem;
+            font-weight: 950;
+            letter-spacing: .1em;
+            text-transform: uppercase;
+        }
+
+        .pf-secondary-action {
+            background: #fff;
+            color: var(--pf-brown);
         }
 
         .pf-action:hover,
         .pf-primary-action:hover,
+        .pf-secondary-action:hover,
         button.pf-action:hover {
-            color: #fff;
-            transform: translateY(-1px);
-            box-shadow: 0 18px 40px rgba(169,113,85,.26);
-        }
-
-        .pf-secondary-action {
-            border: 1px solid var(--pf-line);
             background: #fff;
-            color: var(--pf-bronze-dark);
-            border-radius: 999px;
-            padding: 11px 18px;
-            text-decoration: none;
-            font-weight: 950;
-            display: inline-flex;
-            align-items: center;
-            justify-content: center;
-            min-height: 46px;
+            color: var(--pf-brown);
         }
 
-        .pf-section-head {
-            display:flex;
-            align-items:flex-end;
-            justify-content:space-between;
-            gap:18px;
-            margin-bottom:18px;
-        }
-
-        .pf-section-title {
-            font-size:1.55rem;
-            font-weight:950;
-            letter-spacing:-.045em;
-            margin:6px 0 0;
-        }
-
-        .pf-section-copy {
-            color:var(--pf-muted);
-            margin:6px 0 0;
-            max-width:760px;
-        }
-
-        .pf-form-card label {
-            color: var(--pf-espresso);
-            font-size: .78rem;
-            font-weight: 950;
-            letter-spacing: .08em;
-            text-transform: uppercase;
-        }
-
-        .pf-form-card .form-control {
-            min-height: 48px;
-            border-radius: 16px;
-            border: 1px solid var(--pf-line);
-            background: rgba(255,255,255,.94);
-            color: var(--pf-espresso);
+        .form-control,
+        .form-select {
+            border: 1.5px solid var(--pf-line);
+            border-radius: 14px;
+            min-height: 40px;
+            color: var(--pf-black);
             font-weight: 700;
         }
 
-        .pf-form-card .form-control:focus {
-            border-color: var(--pf-bronze);
-            box-shadow: 0 0 0 .22rem rgba(169,113,85,.14);
+        .form-control:focus,
+        .form-select:focus {
+            border-color: var(--pf-line-strong);
+            box-shadow: none;
         }
 
+        .text-muted { color: var(--pf-muted) !important; }
+
+        .alert,
         .pf-alert-success {
-            border: 1px solid rgba(81,141,88,.25);
-            background: rgba(81,141,88,.10);
-            color: #315b36;
-            border-radius: 18px;
-            padding: 14px 18px;
+            border: 1.5px solid var(--pf-line);
+            border-radius: var(--pf-radius);
+            background: #fff;
+            color: var(--pf-black);
+            padding: 10px 12px;
             font-weight: 850;
         }
 
-        @@media (max-width: 980px) {
-            .pf-sidebar-toggle {
-                top: 16px;
-                left: 16px;
-            }
+        .pf-commerce-shell { display: grid; gap: 14px; }
 
-            .pf-main {
-                padding: 86px 18px 18px;
-            }
-
-            .pf-page-top {
-                align-items: flex-start;
-                flex-direction: column;
-            }
+        .pf-commerce-head {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-end;
+            gap: 14px;
+            padding: 16px;
         }
 
-        @@media (max-width: 640px) {
-            .pf-command-panel,
-            .pf-panel,
-            .pf-module-card {
-                border-radius: 24px;
-            }
+        .pf-commerce-head h1 {
+            margin: 3px 0 4px;
+            font-size: clamp(2rem, 4vw, 3.35rem);
+            font-weight: 950;
+            font-style: italic;
+            letter-spacing: -.07em;
+            line-height: .9;
+        }
 
-            .pf-top-pill {
-                width: 100%;
-                text-align: center;
-            }
+        .pf-commerce-head p {
+            margin: 0;
+            color: var(--pf-black);
+            font-weight: 650;
+        }
+
+        .pf-commerce-panel { padding: 14px; }
+
+        .pf-commerce-panel-head {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-end;
+            gap: 12px;
+            padding-bottom: 10px;
+            border-bottom: 1.5px solid var(--pf-line);
+            margin-bottom: 12px;
+        }
+
+        .pf-commerce-panel-head h2 {
+            margin: 3px 0 0;
+            font-size: 1.25rem;
+            font-weight: 950;
+            letter-spacing: -.04em;
+        }
+
+        .pf-commerce-panel-head span {
+            color: var(--pf-brown);
+            font-size: .7rem;
+            font-weight: 950;
+            text-transform: uppercase;
+            letter-spacing: .12em;
+        }
+
+        @@media (max-width: 720px) {
+            .pf-shell { padding: 12px; }
+            .pf-topbar { padding: 10px 12px; }
+            .pf-topbar-actions { display: none; }
+            .pf-commerce-head { display: grid; }
         }
     </style>
 </head>
+
 <body>
-    @{
-        var controller = (ViewContext.RouteData.Values["controller"]?.ToString() ?? "").ToLowerInvariant();
-        var action = (ViewContext.RouteData.Values["action"]?.ToString() ?? "").ToLowerInvariant();
-        Func<string, string, string> active = (c, a) =>
-            controller == c.ToLowerInvariant() && (string.IsNullOrWhiteSpace(a) || action == a.ToLowerInvariant())
-                ? "is-active"
-                : "";
-    }
+    <div class="pf-backdrop" data-pf-nav-close></div>
 
-    <div class="pf-shell">
-        <button class="pf-sidebar-toggle" type="button" aria-label="Toggle navigation" aria-controls="pfSidebar" aria-expanded="false">
-            <span class="pf-sidebar-toggle-line"></span>
-        </button>
-
-        <div class="pf-sidebar-backdrop" data-pf-sidebar-close></div>
-
-        <aside class="pf-sidebar" id="pfSidebar">
-            <div class="pf-brand-block">
-                <div class="pf-logo">PARFAIT</div>
-                <div class="pf-system-label">Internal Command System</div>
+    <aside class="pf-sidebar" id="pfSidebar">
+        <div class="pf-sidebar-head">
+            <div>
+                <div class="pf-sidebar-title">PARFAIT</div>
+                <div class="pf-sidebar-sub">Internal Command</div>
             </div>
+            <button class="pf-close" type="button" data-pf-nav-close>×</button>
+        </div>
 
-            <nav class="pf-nav" aria-label="Parfait internal navigation">
-                <div class="pf-nav-label">Command</div>
-                <a class="pf-nav-link @active("Dashboard", "Index")" href="/internal">
-                    <span>Dashboard</span><span class="pf-nav-chip">Core</span>
-                </a>
-                <a class="pf-nav-link @active("InternalSettings", "BusinessProfile")" href="/internal/settings/business-profile">
-                    <span>Business Profile</span><span class="pf-nav-chip">Primary</span>
-                </a>
+        <nav class="pf-nav" aria-label="Internal navigation">
+            <div class="pf-nav-section">Core</div>
+            <a href="/internal/dashboard">Dashboard</a>
+            <a href="/internal/settings/business-profile">Business Profile</a>
 
-                <div class="pf-nav-label mt-2">Modules</div>
-                <a class="pf-nav-link @active("InternalModules", "Commerce")" href="/internal/commerce">
-                    <span>Commerce</span><span class="pf-nav-chip">Ops</span>
-                </a>
-                <a class="pf-nav-link @active("InternalModules", "Customers")" href="/internal/customers">
-                    <span>Customers</span><span class="pf-nav-chip">CRM</span>
-                </a>
-                <a class="pf-nav-link @active("InternalModules", "Marketing")" href="/internal/marketing">
-                    <span>Marketing</span><span class="pf-nav-chip">Meta</span>
-                </a>
-                <a class="pf-nav-link @active("InternalModules", "Analytics")" href="/internal/analytics">
-                    <span>Analytics</span><span class="pf-nav-chip">Signal</span>
-                </a>
-            </nav>
+            <div class="pf-nav-section">Operations</div>
+            <a href="/internal/commerce">Commerce</a>
+            <a href="/internal/commerce/products">Products</a>
+            <a href="/internal/commerce/orders">Orders</a>
+            <a href="/internal/customers">Customers</a>
 
-            <div class="pf-sidebar-footer">
-                <a class="pf-side-action" href="/" target="_blank" rel="noopener">Open Public Site</a>
-                <form action="/internal/logout" method="post" class="m-0">
-                    @Html.AntiForgeryToken()
-                    <button type="submit" class="pf-side-action">Logout</button>
-                </form>
+            <div class="pf-nav-section">Growth</div>
+            <a href="/internal/marketing">Marketing</a>
+            <a href="/internal/analytics">Analytics</a>
+            <a href="/internal/content">Content</a>
+
+            <div class="pf-nav-section">Public</div>
+            <a href="/store" target="_blank" rel="noopener">View Store</a>
+            <a href="/" target="_blank" rel="noopener">Public Site</a>
+        </nav>
+
+        <div class="pf-sidebar-footer">
+            Public store, internal commerce, analytics, and Meta wiring stay connected through one Parfait system.
+        </div>
+    </aside>
+
+    <header class="pf-topbar">
+        <div class="pf-left">
+            <button class="pf-menu-button" type="button" aria-label="Open internal navigation" aria-controls="pfSidebar">
+                <span></span>
+            </button>
+
+            <div class="pf-brandline">
+                <div class="pf-brand">PARFAIT</div>
+                <div class="pf-current">@title</div>
             </div>
-        </aside>
+        </div>
 
-        <main class="pf-main">
-            <div class="pf-page-top">
-                <div>
-                    <div class="pf-page-top-kicker">Parfait Internal</div>
-                    <div class="pf-page-top-title">@ViewData["Title"]</div>
-                </div>
-                <div class="pf-top-pill">Business Profile First</div>
-            </div>
+        <div class="pf-topbar-actions">
+            <a class="pf-secondary-action" href="/store" target="_blank" rel="noopener">View Store</a>
+        </div>
+    </header>
 
-            <div class="pf-wrap">
-                @RenderBody()
-            </div>
-        </main>
-    </div>
+    <main class="pf-shell">
+        @RenderBody()
+    </main>
 
     <script src="~/lib/bootstrap/dist/js/bootstrap.bundle.min.js"></script>
+
     <script>
         (() => {
             const body = document.body;
-            const toggle = document.querySelector(".pf-sidebar-toggle");
-            const backdrop = document.querySelector("[data-pf-sidebar-close]");
+            const openButton = document.querySelector(".pf-menu-button");
+            const closers = document.querySelectorAll("[data-pf-nav-close]");
+            const links = document.querySelectorAll(".pf-nav a");
+            const path = window.location.pathname.toLowerCase();
 
-            const setOpen = (open) => {
-                body.classList.toggle("pf-sidebar-open", open);
-                toggle?.setAttribute("aria-expanded", open ? "true" : "false");
-            };
+            const setOpen = open => body.classList.toggle("pf-nav-open", open);
 
-            toggle?.addEventListener("click", () => {
-                setOpen(!body.classList.contains("pf-sidebar-open"));
-            });
+            openButton?.addEventListener("click", () => setOpen(true));
+            closers.forEach(item => item.addEventListener("click", () => setOpen(false)));
 
-            backdrop?.addEventListener("click", () => setOpen(false));
-
-            document.addEventListener("keydown", event => {
-                if (event.key === "Escape") {
-                    setOpen(false);
-                }
+            links.forEach(link => {
+                const href = link.getAttribute("href")?.toLowerCase();
+                if (href && path === href) link.classList.add("is-active");
+                link.addEventListener("click", () => setOpen(false));
             });
         })();
     </script>
+
     @await RenderSectionAsync("Scripts", required: false)
 </body>
 </html>
