@@ -11,13 +11,16 @@ public sealed class InternalModulesController : Controller
 {
     private readonly ParfaitProductService _products;
     private readonly ParfaitOrderService _orders;
+    private readonly ParfaitAnalyticsDashboardService _analyticsDashboard;
 
     public InternalModulesController(
         ParfaitProductService products,
-        ParfaitOrderService orders)
+        ParfaitOrderService orders,
+        ParfaitAnalyticsDashboardService analyticsDashboard)
     {
         _products = products;
         _orders = orders;
+        _analyticsDashboard = analyticsDashboard;
     }
 
     [HttpGet("commerce")]
@@ -128,5 +131,8 @@ public sealed class InternalModulesController : Controller
     public IActionResult Content() => View();
 
     [HttpGet("analytics")]
-    public IActionResult Analytics() => View();
+    public async Task<IActionResult> Analytics(CancellationToken ct)
+    {
+        return View(await _analyticsDashboard.GetDashboardAsync(ct));
+    }
 }

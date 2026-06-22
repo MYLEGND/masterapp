@@ -44,6 +44,7 @@ builder.Services.AddSingleton<ParfaitOrderService>();
 builder.Services.AddHttpClient<SquarePaymentService>();
 builder.Services.AddHttpContextAccessor();
 builder.Services.AddScoped<ParfaitAnalyticsService>();
+builder.Services.AddScoped<ParfaitAnalyticsDashboardService>();
 builder.Services.AddScoped<IGraphMailService, GraphMailService>();
 
 
