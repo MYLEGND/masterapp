@@ -1,0 +1,116 @@
+<script>
+(() => {
+    if (!location.pathname.toLowerCase().startsWith("/store")) return;
+
+    const getCookie = name => document.cookie
+        .split("; ")
+        .find(row => row.startsWith(name + "="))
+        ?.split("=")[1];
+
+    const setCookie = (name, value, maxAge) => {
+        document.cookie = `${name}=${value}; path=/; SameSite=Lax; max-age=${maxAge}`;
+    };
+
+    const uuid = prefix => `${prefix}_${crypto.randomUUID().replaceAll("-", "")}`;
+
+    let visitorId = getCookie("pf_vid");
+    if (!visitorId) {
+        visitorId = uuid("pfv");
+        setCookie("pf_vid", visitorId, 31536000);
+    }
+
+    let sessionId = sessionStorage.getItem("pf_sid") || getCookie("pf_sid");
+    if (!sessionId) {
+        sessionId = uuid("pfs");
+        sessionStorage.setItem("pf_sid", sessionId);
+        setCookie("pf_sid", sessionId, 1800);
+    }
+
+    const send = (eventName, payload = {}) => {
+        const body = {
+            eventName,
+            eventId: crypto.randomUUID(),
+            visitorId,
+            sessionId,
+            url: location.href,
+            referrer: document.referrer || "",
+            metadata: {},
+            ...payload
+        };
+
+        try {
+            navigator.sendBeacon(
+                "/parfait-analytics/track",
+                new Blob([JSON.stringify(body)], { type: "application/json" })
+            );
+        } catch {
+            fetch("/parfait-analytics/track", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify(body),
+                keepalive: true
+            }).catch(() => {});
+        }
+    };
+
+    window.parfaitTrackCommerce = send;
+
+    if (location.pathname.toLowerCase() === "/store") {
+        send("ViewContent", { metadata: { pageType: "store_index" } });
+    }
+
+    if (location.pathname.toLowerCase().includes("/store/product/")) {
+        const name = document.querySelector("h1")?.textContent?.trim() || "";
+        send("ProductViewed", {
+            productName: name,
+            productSlug: location.pathname.split("/").filter(Boolean).at(-1),
+            metadata: { pageType: "product_detail" }
+        });
+    }
+
+    if (location.pathname.toLowerCase() === "/store/checkout") {
+        const cart = JSON.parse(localStorage.getItem("parfaitCart") || "[]");
+        const total = cart.reduce((sum, item) => sum + ((Number(item.priceCents) || 0) * (Number(item.quantity) || 0)), 0);
+
+        send("CheckoutStarted", {
+            valueCents: total,
+            metadata: {
+                pageType: "checkout",
+                cartItems: JSON.stringify(cart.map(item => ({
+                    id: item.id,
+                    name: item.name,
+                    size: item.size,
+                    quantity: item.quantity,
+                    priceCents: item.priceCents
+                })))
+            }
+        });
+    }
+
+    document.addEventListener("click", event => {
+        const button = event.target.closest("button, a");
+        if (!button) return;
+
+        const text = (button.textContent || "").toLowerCase();
+        const looksLikeAddToCart =
+            text.includes("add to cart") ||
+            button.matches("[data-add-to-cart], [data-cart-add], .sp-add-to-cart, .pf-add-to-cart");
+
+        if (!looksLikeAddToCart) return;
+
+        setTimeout(() => {
+            const cart = JSON.parse(localStorage.getItem("parfaitCart") || "[]");
+            const item = cart.at(-1) || {};
+
+            send("AddToCart", {
+                productId: item.id,
+                productName: item.name,
+                size: item.size,
+                quantity: Number(item.quantity) || 1,
+                valueCents: (Number(item.priceCents) || 0) * (Number(item.quantity) || 1),
+                metadata: { pageType: "cart_action" }
+            });
+        }, 150);
+    }, true);
+})();
+</script>

@@ -2,14 +2,28 @@ using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.Authentication.OpenIdConnect;
 using Microsoft.IdentityModel.Protocols.OpenIdConnect;
 using ParfaitApp.Services;
+using Infrastructure.Data;
+using Microsoft.EntityFrameworkCore;
 
 var builder = WebApplication.CreateBuilder(args);
 
 builder.Services.AddControllersWithViews();
+
+builder.Services.AddDbContext<MasterAppDbContext>(options =>
+{
+    var cs = builder.Configuration.GetConnectionString("MasterAppDb")
+        ?? builder.Configuration["ConnectionStrings:MasterAppDb"]
+        ?? builder.Configuration["MasterAppDb"];
+
+    if (!string.IsNullOrWhiteSpace(cs))
+        options.UseSqlServer(cs);
+});
+
 builder.Services.AddSingleton<ParfaitProductService>();
 builder.Services.AddSingleton<ParfaitOrderService>();
 builder.Services.AddHttpClient<SquarePaymentService>();
 builder.Services.AddHttpContextAccessor();
+builder.Services.AddScoped<ParfaitAnalyticsService>();
 builder.Services.AddScoped<IGraphMailService, GraphMailService>();
 
 

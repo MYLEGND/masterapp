@@ -12,19 +12,22 @@ public sealed class StoreCheckoutController : Controller
     private readonly ParfaitOrderService _orders;
     private readonly SquarePaymentService _squarePayments;
     private readonly IGraphMailService _mail;
+    private readonly ParfaitAnalyticsService _analytics;
 
     public StoreCheckoutController(
         IConfiguration configuration,
         ParfaitProductService products,
         ParfaitOrderService orders,
         SquarePaymentService squarePayments,
-        IGraphMailService mail)
+        IGraphMailService mail,
+        ParfaitAnalyticsService analytics)
     {
         _configuration = configuration;
         _products = products;
         _orders = orders;
         _squarePayments = squarePayments;
         _mail = mail;
+        _analytics = analytics;
     }
 
     [HttpGet("checkout")]
@@ -87,6 +90,15 @@ public sealed class StoreCheckoutController : Controller
         paidOrder.SquarePaymentId = payment.PaymentId;
         paidOrder.PaymentStatus = "Paid";
         paidOrder.Status = "Paid";
+
+        try
+        {
+            await _analytics.TrackPurchaseAsync(paidOrder, HttpContext, ct);
+        }
+        catch
+        {
+            // Payment succeeded. Analytics failure should not reverse the customer purchase.
+        }
 
         try
         {
