@@ -100,7 +100,7 @@
         const text = (button.textContent || "").toLowerCase();
         const looksLikeAddToCart =
             text.includes("add to cart") ||
-            button.matches("[data-add-to-cart], [data-cart-add], .sp-add-to-cart, .pf-add-to-cart");
+            button.matches("#spAddToCart, [data-add-to-cart], [data-cart-add], .sp-product-button, .sp-add-to-cart, .pf-add-to-cart");
 
         if (!looksLikeAddToCart) return;
 
