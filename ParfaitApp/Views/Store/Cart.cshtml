@@ -1,0 +1,115 @@
+@{
+    ViewData["Title"] = "Cart";
+}
+
+<section class="sp-cart-page">
+    <h1>Shopping Cart</h1>
+    <div id="spCartItems"></div>
+
+    <div class="sp-cart-summary">
+        <div>Total</div>
+        <strong id="spCartTotal">$0.00</strong>
+    </div>
+
+    <button type="button" class="sp-checkout-button">
+        Square Checkout Coming Soon
+    </button>
+</section>
+
+<style>
+    .sp-cart-page {
+        max-width: 980px;
+        margin: 0 auto;
+        padding: 3rem 1.5rem 5rem;
+    }
+
+    .sp-cart-page h1 {
+        font-size: clamp(2.5rem, 6vw, 5rem);
+        font-weight: 400;
+        font-style: italic;
+        letter-spacing: -.055em;
+        margin-bottom: 2rem;
+    }
+
+    .sp-cart-item {
+        display: grid;
+        grid-template-columns: 110px minmax(0, 1fr) auto;
+        gap: 1rem;
+        align-items: center;
+        padding: 1rem 0;
+        border-bottom: 1px solid #9a6a50;
+    }
+
+    .sp-cart-item img {
+        width: 110px;
+        height: 110px;
+        object-fit: cover;
+        background: #f4f4f4;
+    }
+
+    .sp-cart-summary {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin: 2rem 0 1rem;
+        font-size: 1.25rem;
+    }
+
+    .sp-checkout-button,
+    .sp-cart-remove {
+        border: 3px solid #bd8200;
+        border-radius: 999px;
+        background: #fff;
+        color: #bd8200;
+        padding: .8rem 1.25rem;
+    }
+
+    .sp-checkout-button {
+        width: 100%;
+        min-height: 58px;
+    }
+</style>
+
+<script>
+    (() => {
+        const itemsHost = document.getElementById("spCartItems");
+        const totalHost = document.getElementById("spCartTotal");
+
+        const money = cents => `$${(cents / 100).toFixed(2)}`;
+
+        const render = () => {
+            const cart = JSON.parse(localStorage.getItem("parfaitCart") || "[]");
+            const total = cart.reduce((sum, item) => sum + (item.priceCents * item.quantity), 0);
+
+            totalHost.textContent = money(total);
+
+            if (cart.length === 0) {
+                itemsHost.innerHTML = "<p>Your cart is empty.</p>";
+                return;
+            }
+
+            itemsHost.innerHTML = cart.map(item => `
+                <div class="sp-cart-item">
+                    <img src="${item.imageUrl}" alt="${item.name}" />
+                    <div>
+                        <h2>${item.name}</h2>
+                        <p>Size: ${item.size} · Qty: ${item.quantity}</p>
+                        <strong>${money(item.priceCents * item.quantity)}</strong>
+                    </div>
+                    <button class="sp-cart-remove" data-key="${item.key}">Remove</button>
+                </div>
+            `).join("");
+
+            document.querySelectorAll(".sp-cart-remove").forEach(button => {
+                button.addEventListener("click", () => {
+                    const next = cart.filter(item => item.key !== button.dataset.key);
+                    localStorage.setItem("parfaitCart", JSON.stringify(next));
+                    window.dispatchEvent(new Event("parfait-cart-updated"));
+                    render();
+                });
+            });
+        };
+
+        render();
+    })();
+</script>

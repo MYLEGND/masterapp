@@ -9,6 +9,10 @@ public sealed class ParfaitStoreProductImageViewModel
     public string AltText { get; init; } = "";
     public bool IsPrimary { get; init; }
     public int DisplayOrder { get; init; }
+    public string ObjectFit { get; init; } = "cover";
+    public int ObjectPositionX { get; init; } = 50;
+    public int ObjectPositionY { get; init; } = 50;
+    public decimal Zoom { get; init; } = 1.0m;
 }
 
 public sealed class ParfaitStoreProductViewModel
@@ -18,12 +22,19 @@ public sealed class ParfaitStoreProductViewModel
     public required string Slug { get; init; }
     public required string Description { get; init; }
     public required string PriceLabel { get; init; }
+    public int PriceCents { get; init; }
     public string Badge { get; init; } = "Parfait";
     public bool IsFeatured { get; init; }
     public IReadOnlyList<ParfaitStoreProductImageViewModel> Images { get; init; } = [];
-    public string PrimaryImageUrl => Images.FirstOrDefault(i => i.IsPrimary)?.ImageUrl
-        ?? Images.OrderBy(i => i.DisplayOrder).FirstOrDefault()?.ImageUrl
-        ?? "/images/favicon/parfait-logo.png";
+
+    public ParfaitStoreProductImageViewModel? PrimaryImage => Images.FirstOrDefault(i => i.IsPrimary)
+        ?? Images.OrderBy(i => i.DisplayOrder).FirstOrDefault();
+
+    public string PrimaryImageUrl => PrimaryImage?.ImageUrl ?? "/images/favicon/parfait-logo.png";
+    public string PrimaryImageObjectFit => PrimaryImage?.ObjectFit ?? "cover";
+    public int PrimaryImageObjectPositionX => PrimaryImage?.ObjectPositionX ?? 50;
+    public int PrimaryImageObjectPositionY => PrimaryImage?.ObjectPositionY ?? 50;
+    public decimal PrimaryImageZoom => PrimaryImage?.Zoom ?? 1.0m;
 }
 
 public sealed class ParfaitStorefrontViewModel
@@ -48,6 +59,10 @@ public sealed class ParfaitProductImageEditorViewModel
     public string AltText { get; set; } = "";
     public bool IsPrimary { get; set; }
     public int DisplayOrder { get; set; }
+    public string ObjectFit { get; set; } = "cover";
+    public int ObjectPositionX { get; set; } = 50;
+    public int ObjectPositionY { get; set; } = 50;
+    public decimal Zoom { get; set; } = 1.0m;
 }
 
 public sealed class ParfaitProductEditorViewModel
@@ -67,6 +82,7 @@ public sealed class ParfaitProductEditorViewModel
     public string PriceLabel { get; set; } = "Coming Soon";
 
     public string Badge { get; set; } = "Parfait";
+    public int PriceCents { get; set; }
     public bool IsFeatured { get; set; }
     public bool IsActive { get; set; } = true;
     public int DisplayOrder { get; set; }

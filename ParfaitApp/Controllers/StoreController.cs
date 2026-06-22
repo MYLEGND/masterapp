@@ -28,6 +28,12 @@ public sealed class StoreController : Controller
         return View(model);
     }
 
+    [HttpGet("cart")]
+    public IActionResult Cart()
+    {
+        return View();
+    }
+
     [HttpGet("product/{slug}")]
     public IActionResult Product(string slug)
     {

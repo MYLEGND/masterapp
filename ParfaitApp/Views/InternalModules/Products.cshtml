@@ -33,7 +33,9 @@
                 <input class="form-control" name="Name" placeholder="Product name" required />
                 <input class="form-control" name="Slug" placeholder="product-slug" required />
                 <input class="form-control" name="PriceLabel" value="Coming Soon" required />
+                <input class="form-control" name="PriceCents" type="number" min="0" step="1" placeholder="Price cents" />
                 <input class="form-control" name="Badge" value="Parfait" />
+                
                 <input class="form-control" name="DisplayOrder" type="number" value="100" />
 
                 <label class="pf-check"><input type="checkbox" name="IsActive" value="true" checked /> Active</label>
@@ -139,6 +141,40 @@
                                                         }
                                                     </div>
 
+                                                    <button type="button" class="pf-adjust-image-open" data-pf-adjust-open="@image.Id">
+                                                        Adjust Image
+                                                    </button>
+
+                                                    <form method="post" action="/internal/commerce/products/images/display" class="pf-image-adjust-panel" data-pf-adjust-panel="@image.Id">
+                                                        @Html.AntiForgeryToken()
+                                                        <input type="hidden" name="productId" value="@product.Id" />
+                                                        <input type="hidden" name="imageId" value="@image.Id" />
+                                                        <input type="hidden" name="objectFit" value="cover" />
+                                                        <input type="hidden" name="objectPositionX" value="@image.ObjectPositionX" data-pf-pos-x />
+                                                        <input type="hidden" name="objectPositionY" value="@image.ObjectPositionY" data-pf-pos-y />
+                                                        <input type="hidden" name="zoom" value="@image.Zoom" data-pf-zoom />
+
+                                                        <div class="pf-adjust-stage"
+                                                             data-pf-adjust-stage
+                                                             data-start-x="@image.ObjectPositionX"
+                                                             data-start-y="@image.ObjectPositionY"
+                                                             data-start-zoom="@image.Zoom">
+                                                            <img src="@image.ImageUrl"
+                                                                 alt="@image.AltText"
+                                                                 draggable="false"
+                                                                 data-pf-adjust-img
+                                                                 style="object-fit:cover; object-position:@image.ObjectPositionX% @image.ObjectPositionY%; transform:scale(@image.Zoom.ToString("0.##")); transform-origin:center;" />
+                                                            <span>Drag image to position</span>
+                                                        </div>
+
+                                                        <label class="pf-adjust-zoom-label">
+                                                            Zoom
+                                                            <input type="range" min="1" max="2.5" step="0.05" value="@image.Zoom" data-pf-adjust-zoom />
+                                                        </label>
+
+                                                        <button type="submit">Save Image Position</button>
+                                                    </form>
+
                                                     <div class="pf-modal-photo-actions">
                                                         <form method="post" action="/internal/commerce/products/images/move">
                                                             @Html.AntiForgeryToken()
@@ -197,8 +233,13 @@
                                                 </div>
 
                                                 <div class="col-md-4">
-                                                    <label>Price</label>
+                                                    <label>Price Label</label>
                                                     <input class="form-control" name="PriceLabel" value="@product.PriceLabel" required />
+                                                </div>
+
+                                                <div class="col-md-4">
+                                                    <label>Price Cents</label>
+                                                    <input class="form-control" name="PriceCents" type="number" min="0" step="1" value="@product.PriceCents" />
                                                 </div>
 
                                                 <div class="col-md-4">
@@ -319,7 +360,7 @@
 
     .pf-add-fields {
         display: grid;
-        grid-template-columns: 1.25fr 1fr .75fr .75fr .55fr auto auto;
+        grid-template-columns: 1.15fr 1fr .7fr .7fr 1.2fr .5fr auto auto;
         gap: 10px;
         align-items: center;
     }
@@ -562,6 +603,95 @@
         text-transform: uppercase;
     }
 
+    .pf-adjust-image-open {
+        width: 100%;
+        border: 1px solid var(--pf-line);
+        border-radius: 999px;
+        background: #fff;
+        color: var(--pf-bronze-dark);
+        min-height: 34px;
+        font-size: .72rem;
+        font-weight: 950;
+        letter-spacing: .06em;
+        text-transform: uppercase;
+        margin-top: 8px;
+    }
+
+    .pf-image-adjust-panel {
+        display: none;
+        margin-top: 8px;
+        padding-top: 8px;
+        border-top: 1px solid var(--pf-line);
+    }
+
+    .pf-image-adjust-panel.is-open {
+        display: grid;
+        gap: 8px;
+    }
+
+    .pf-adjust-stage {
+        position: relative;
+        aspect-ratio: 1 / 1;
+        overflow: hidden;
+        border: 2px dashed var(--pf-line-strong);
+        border-radius: 14px;
+        background: #f7f1ed;
+        cursor: grab;
+        user-select: none;
+        touch-action: none;
+    }
+
+    .pf-adjust-stage:active {
+        cursor: grabbing;
+    }
+
+    .pf-adjust-stage img {
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+        display: block;
+        pointer-events: none;
+    }
+
+    .pf-adjust-stage span {
+        position: absolute;
+        left: 10px;
+        bottom: 10px;
+        border-radius: 999px;
+        background: rgba(255,255,255,.88);
+        color: var(--pf-bronze-dark);
+        padding: 5px 9px;
+        font-size: .62rem;
+        font-weight: 950;
+        letter-spacing: .08em;
+        text-transform: uppercase;
+    }
+
+    .pf-adjust-zoom-label {
+        color: var(--pf-muted);
+        font-size: .62rem;
+        font-weight: 950;
+        letter-spacing: .08em;
+        text-transform: uppercase;
+        display: grid;
+        gap: 4px;
+    }
+
+    .pf-adjust-zoom-label input {
+        width: 100%;
+    }
+
+    .pf-image-adjust-panel button {
+        width: 100%;
+        border: 1px solid var(--pf-line);
+        border-radius: 999px;
+        background: #fff;
+        color: var(--pf-bronze-dark);
+        min-height: 32px;
+        font-size: .7rem;
+        font-weight: 950;
+    }
+
     .pf-modal-photo-actions {
         display: grid;
         grid-template-columns: repeat(2, 1fr);
@@ -633,3 +763,79 @@
         }
     }
 </style>
+
+<script>
+    (() => {
+        const clamp = (value, min, max) => Math.min(max, Math.max(min, value));
+
+        document.querySelectorAll("[data-pf-adjust-open]").forEach(button => {
+            button.addEventListener("click", () => {
+                const id = button.getAttribute("data-pf-adjust-open");
+                const panel = document.querySelector(`[data-pf-adjust-panel="${id}"]`);
+                panel?.classList.toggle("is-open");
+            });
+        });
+
+        document.querySelectorAll("[data-pf-adjust-panel]").forEach(panel => {
+            const stage = panel.querySelector("[data-pf-adjust-stage]");
+            const img = panel.querySelector("[data-pf-adjust-img]");
+            const posX = panel.querySelector("[data-pf-pos-x]");
+            const posY = panel.querySelector("[data-pf-pos-y]");
+            const zoomInput = panel.querySelector("[data-pf-adjust-zoom]");
+            const zoomHidden = panel.querySelector("[data-pf-zoom]");
+
+            if (!stage || !img || !posX || !posY || !zoomInput || !zoomHidden) return;
+
+            let x = Number(stage.getAttribute("data-start-x") || 50);
+            let y = Number(stage.getAttribute("data-start-y") || 50);
+            let zoom = Number(stage.getAttribute("data-start-zoom") || 1);
+            let dragging = false;
+            let lastClientX = 0;
+            let lastClientY = 0;
+
+            const render = () => {
+                img.style.objectPosition = `${x}% ${y}%`;
+                img.style.transform = `scale(${zoom})`;
+                posX.value = Math.round(x).toString();
+                posY.value = Math.round(y).toString();
+                zoomHidden.value = zoom.toString();
+            };
+
+            stage.addEventListener("pointerdown", event => {
+                dragging = true;
+                lastClientX = event.clientX;
+                lastClientY = event.clientY;
+                stage.setPointerCapture(event.pointerId);
+            });
+
+            stage.addEventListener("pointermove", event => {
+                if (!dragging) return;
+
+                const rect = stage.getBoundingClientRect();
+                const deltaX = event.clientX - lastClientX;
+                const deltaY = event.clientY - lastClientY;
+
+                x = clamp(x - (deltaX / rect.width) * 100, 0, 100);
+                y = clamp(y - (deltaY / rect.height) * 100, 0, 100);
+
+                lastClientX = event.clientX;
+                lastClientY = event.clientY;
+
+                render();
+            });
+
+            stage.addEventListener("pointerup", event => {
+                dragging = false;
+                stage.releasePointerCapture(event.pointerId);
+            });
+
+            zoomInput.addEventListener("input", () => {
+                zoom = Number(zoomInput.value || 1);
+                render();
+            });
+
+            render();
+        });
+    })();
+</script>
+

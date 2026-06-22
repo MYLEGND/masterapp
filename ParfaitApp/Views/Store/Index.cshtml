@@ -12,7 +12,7 @@
     {
         <article class="sp-product">
             <a class="sp-product-image-link" href="/store/product/@product.Slug" aria-label="View @product.Name">
-                <img src="@product.PrimaryImageUrl" alt="@product.Name" class="sp-product-image" />
+                <img src="@product.PrimaryImageUrl" alt="@product.Name" class="sp-product-image" style="object-fit:@product.PrimaryImageObjectFit; object-position:@product.PrimaryImageObjectPositionX% @product.PrimaryImageObjectPositionY%; transform:scale(@product.PrimaryImageZoom.ToString("0.##")); transform-origin:center;" />
             </a>
 
             <div class="sp-product-info">
@@ -49,10 +49,9 @@
 
         width: 100vw;
 
-        padding: 1.45rem 1rem;
+        padding: 1.05rem 1rem .95rem;
 
-        border-top: 1.5px solid #bd8200;
-        border-bottom: 1.5px solid #bd8200;
+        border-bottom: 1.5px solid #9a6a50;
 
         background: #f7f7f7;
         text-align: center;
@@ -73,12 +72,13 @@
     }
 
     .sp-product-grid {
-        width: min(100%, 1760px);
-        margin: 0 auto;
-        padding: 2.15rem clamp(1.25rem, 4vw, 4.75rem) 5rem;
+        width: 100vw;
+        margin-left: calc(50% - 50vw);
+        margin-right: calc(50% - 50vw);
+        padding: 2.15rem clamp(1.5rem, 2.5vw, 3rem) 5rem;
         display: grid;
         grid-template-columns: repeat(3, minmax(0, 1fr));
-        column-gap: .55rem;
+        column-gap: .75rem;
         row-gap: 2.2rem;
     }
 

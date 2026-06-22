@@ -45,7 +45,8 @@ public sealed class ParfaitProductService
                 Name = p.Name,
                 Slug = p.Slug,
                 Description = p.Description,
-                PriceLabel = p.PriceLabel,
+                PriceLabel = p.PriceCents > 0 ? $"${p.PriceCents / 100m:0.00}" : p.PriceLabel,
+                PriceCents = p.PriceCents,
                 Badge = p.Badge,
                 IsFeatured = p.IsFeatured,
                 Images = p.Images
@@ -56,7 +57,11 @@ public sealed class ParfaitProductService
                         ImageUrl = i.ImageUrl,
                         AltText = i.AltText,
                         IsPrimary = i.IsPrimary,
-                        DisplayOrder = i.DisplayOrder
+                        DisplayOrder = i.DisplayOrder,
+                        ObjectFit = string.IsNullOrWhiteSpace(i.ObjectFit) ? "cover" : i.ObjectFit,
+                        ObjectPositionX = i.ObjectPositionX,
+                        ObjectPositionY = i.ObjectPositionY,
+                        Zoom = i.Zoom <= 0 ? 1.0m : i.Zoom
                     })
                     .ToList()
             })
@@ -145,7 +150,11 @@ public sealed class ParfaitProductService
                 ImageUrl = $"/uploads/parfait-products/{product.Id}/{safeFileName}",
                 AltText = product.Name,
                 IsPrimary = product.Images.Count == 0,
-                DisplayOrder = nextOrder
+                DisplayOrder = nextOrder,
+                ObjectFit = "cover",
+                ObjectPositionX = 50,
+                ObjectPositionY = 50,
+                Zoom = 1.0m
             });
 
             nextOrder += 10;
@@ -234,6 +243,31 @@ public sealed class ParfaitProductService
         SaveAll(products);
     }
 
+    public void SaveImageDisplaySettings(string productId, string imageId, string objectFit, int objectPositionX, int objectPositionY, decimal zoom)
+    {
+        var products = GetAllProducts().ToList();
+        var product = products.FirstOrDefault(p => string.Equals(p.Id, productId, StringComparison.OrdinalIgnoreCase));
+
+        if (product is null)
+        {
+            return;
+        }
+
+        var image = product.Images.FirstOrDefault(i => string.Equals(i.Id, imageId, StringComparison.OrdinalIgnoreCase));
+
+        if (image is null)
+        {
+            return;
+        }
+
+        image.ObjectFit = string.Equals(objectFit, "contain", StringComparison.OrdinalIgnoreCase) ? "contain" : "cover";
+        image.ObjectPositionX = Math.Clamp(objectPositionX, 0, 100);
+        image.ObjectPositionY = Math.Clamp(objectPositionY, 0, 100);
+        image.Zoom = Math.Clamp(zoom, 1.0m, 2.5m);
+
+        SaveAll(products);
+    }
+
     private static ParfaitProductEditorViewModel NormalizeProduct(
         ParfaitProductEditorViewModel product,
         IReadOnlyList<ParfaitProductImageEditorViewModel> existingImages)
@@ -248,6 +282,7 @@ public sealed class ParfaitProductService
             Slug = slug,
             Description = product.Description.Trim(),
             PriceLabel = string.IsNullOrWhiteSpace(product.PriceLabel) ? "Coming Soon" : product.PriceLabel.Trim(),
+            PriceCents = Math.Max(0, product.PriceCents),
             Badge = string.IsNullOrWhiteSpace(product.Badge) ? "Parfait" : product.Badge.Trim(),
             IsFeatured = product.IsFeatured,
             IsActive = product.IsActive,
@@ -261,7 +296,11 @@ public sealed class ParfaitProductService
                     FileName = i.FileName,
                     AltText = string.IsNullOrWhiteSpace(i.AltText) ? product.Name.Trim() : i.AltText.Trim(),
                     IsPrimary = i.IsPrimary,
-                    DisplayOrder = i.DisplayOrder
+                    DisplayOrder = i.DisplayOrder,
+                    ObjectFit = string.IsNullOrWhiteSpace(i.ObjectFit) ? "cover" : i.ObjectFit,
+                    ObjectPositionX = i.ObjectPositionX,
+                    ObjectPositionY = i.ObjectPositionY,
+                    Zoom = i.Zoom <= 0 ? 1.0m : i.Zoom
                 })
                 .ToList()
         };

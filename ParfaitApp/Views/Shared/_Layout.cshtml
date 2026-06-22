@@ -271,6 +271,7 @@
 
                 <!-- Store + Login (same right-side group) -->
                 <a class="nav-link" href="/store" >Store</a>
+                <a class="nav-link pf-store-cart-link" href="/store/cart" aria-label="Shopping cart">Cart <span id="pfStoreCartCount">0</span></a>
                 <a class="nav-link login-link" href="/internal/login"  rel="noopener">Team Login</a>
             </div>
         </div>
@@ -332,5 +333,21 @@
     }());
 </script>
 @await RenderSectionAsync("Scripts", required:false)
+<script>
+    (() => {
+        const updateCartCount = () => {
+            const countEl = document.getElementById("pfStoreCartCount");
+            if (!countEl) return;
+
+            const cart = JSON.parse(localStorage.getItem("parfaitCart") || "[]");
+            const count = cart.reduce((sum, item) => sum + Number(item.quantity || 0), 0);
+            countEl.textContent = count.toString();
+        };
+
+        updateCartCount();
+        window.addEventListener("storage", updateCartCount);
+        window.addEventListener("parfait-cart-updated", updateCartCount);
+    })();
+</script>
 </body>
 </html>

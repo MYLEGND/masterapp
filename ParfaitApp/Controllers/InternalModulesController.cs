@@ -96,6 +96,15 @@ public sealed class InternalModulesController : Controller
         return RedirectToAction(nameof(Products));
     }
 
+    [HttpPost("commerce/products/images/display")]
+    [ValidateAntiForgeryToken]
+    public IActionResult SaveProductImageDisplay(string productId, string imageId, string objectFit, int objectPositionX, int objectPositionY, decimal zoom)
+    {
+        _products.SaveImageDisplaySettings(productId, imageId, objectFit, objectPositionX, objectPositionY, zoom);
+        TempData["ProductStatus"] = "Image display settings saved.";
+        return RedirectToAction(nameof(Products));
+    }
+
     [HttpGet("customers")]
     public IActionResult Customers() => View();
 
