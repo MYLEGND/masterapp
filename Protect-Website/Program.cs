@@ -51,11 +51,10 @@ if (string.IsNullOrWhiteSpace(connString))
 
 
 if (builder.Environment.IsDevelopment() &&
-    connString.Contains("database.windows.net", StringComparison.OrdinalIgnoreCase) &&
-    !string.Equals(Environment.GetEnvironmentVariable("ALLOW_PROD_DB_LOCAL"), "true", StringComparison.OrdinalIgnoreCase))
+    IsSqlServerConn(connString))
 {
     throw new InvalidOperationException(
-        "Refusing to run Protect-Website locally against Azure SQL. Use local SQLite or set ALLOW_PROD_DB_LOCAL=true intentionally.");
+        "Refusing to run Protect-Website in Development against SQL Server. Configure ConnectionStrings:MasterAppDb to use local SQLite.");
 }
 
 if (IsSqlServerConn(connString))

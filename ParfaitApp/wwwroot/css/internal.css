@@ -900,6 +900,7 @@ button.pf-secondary-action:hover {
 }
 
 .pf-product-modal,
+.pf-team-modal,
 .pf-image-editor-modal {
     position: fixed;
     inset: 0;
@@ -917,6 +918,7 @@ button.pf-secondary-action:hover {
 }
 
 .pf-product-modal.is-open,
+.pf-team-modal.is-open,
 .pf-image-editor-modal.is-open {
     display: flex;
 }
@@ -1108,6 +1110,188 @@ button.pf-secondary-action:hover {
     margin-top: 14px;
     padding-top: 14px;
     border-top: 1px solid var(--pf-line);
+}
+
+.pf-team-card {
+    display: grid;
+    gap: 0.95rem;
+}
+
+.pf-role-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    align-self: flex-start;
+    padding: 0.42rem 0.82rem;
+    border: 1px solid rgba(134, 94, 73, 0.18);
+    border-radius: 999px;
+    background: rgba(134, 94, 73, 0.08);
+    color: var(--pf-cocoa);
+    font-size: 0.72rem;
+    font-weight: 900;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+}
+
+.pf-team-card-head {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 0.8rem;
+}
+
+.pf-team-card-title {
+    margin: 0.15rem 0 0;
+    color: var(--pf-text);
+    font-size: 1.25rem;
+    font-weight: 950;
+    letter-spacing: -0.045em;
+    line-height: 1.04;
+}
+
+.pf-team-card-copy,
+.pf-team-meta {
+    margin: 0;
+    color: var(--pf-text-muted);
+    font-size: 0.84rem;
+    font-weight: 650;
+    line-height: 1.5;
+}
+
+.pf-team-list {
+    display: grid;
+    gap: 0.55rem;
+}
+
+.pf-team-list strong {
+    color: var(--pf-text);
+    font-size: 0.8rem;
+    font-weight: 850;
+}
+
+.pf-team-list span {
+    color: var(--pf-text-muted);
+    font-size: 0.8rem;
+    font-weight: 650;
+}
+
+.pf-team-empty {
+    padding: 1.2rem 0.1rem 0.2rem;
+    color: var(--pf-text-muted);
+    font-size: 0.95rem;
+    font-weight: 650;
+}
+
+.pf-role-summary-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+    gap: 10px;
+}
+
+.pf-role-summary-card {
+    display: grid;
+    gap: 0.32rem;
+    padding: 0.95rem 1rem;
+    border: 1px solid var(--pf-line);
+    border-radius: 18px;
+    background: rgba(255, 255, 255, 0.8);
+}
+
+.pf-role-summary-card strong,
+.pf-access-toolbar strong {
+    color: var(--pf-text);
+    font-size: 0.82rem;
+    font-weight: 900;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+}
+
+.pf-role-summary-card span,
+.pf-role-hint {
+    color: var(--pf-text-muted);
+    font-size: 0.78rem;
+    font-weight: 650;
+    line-height: 1.45;
+}
+
+.pf-role-hint {
+    margin-top: 0.55rem;
+}
+
+.pf-access-toolbar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.8rem;
+    margin-bottom: 0.95rem;
+}
+
+.pf-access-grid {
+    display: grid;
+    gap: 12px;
+}
+
+.pf-access-group {
+    display: grid;
+    gap: 0.75rem;
+}
+
+.pf-access-group-title {
+    margin: 0;
+    color: var(--pf-text);
+    font-size: 0.88rem;
+    font-weight: 950;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+}
+
+.pf-access-check {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr);
+    gap: 0.8rem;
+    align-items: start;
+    padding: 0.9rem 0.95rem;
+    border: 1px solid var(--pf-line);
+    border-radius: 18px;
+    background: rgba(255, 255, 255, 0.78);
+}
+
+.pf-access-check input {
+    margin-top: 0.2rem;
+}
+
+.pf-access-check strong {
+    display: block;
+    color: var(--pf-text);
+    font-size: 0.88rem;
+    font-weight: 900;
+}
+
+.pf-access-check span {
+    display: block;
+    margin-top: 0.22rem;
+    color: var(--pf-text-muted);
+    font-size: 0.78rem;
+    font-weight: 650;
+    line-height: 1.45;
+}
+
+.pf-founder-lock {
+    display: grid;
+    gap: 0.65rem;
+}
+
+.pf-founder-lock strong {
+    color: var(--pf-text);
+    font-size: 0.84rem;
+    font-weight: 850;
+}
+
+.pf-founder-lock span {
+    color: var(--pf-text-muted);
+    font-size: 0.78rem;
+    font-weight: 650;
+    line-height: 1.45;
 }
 
 .pf-danger-zone button {
@@ -1394,6 +1578,11 @@ button.pf-secondary-action:hover {
         grid-template-columns: 1fr;
     }
 
+    .pf-access-toolbar {
+        align-items: flex-start;
+        flex-direction: column;
+    }
+
     .pf-product-table,
     .pf-orders-table,
     .pf-analytics-table {
@@ -1444,6 +1633,7 @@ button.pf-secondary-action:hover {
     }
 
     .pf-product-modal,
+    .pf-team-modal,
     .pf-image-editor-modal {
         padding: 12px;
     }

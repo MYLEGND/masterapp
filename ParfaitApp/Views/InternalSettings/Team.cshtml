@@ -1,0 +1,399 @@
+@model ParfaitApp.Models.ParfaitTeamManagementViewModel
+@using System.Text.Json
+@{
+    ViewData["Title"] = "Team";
+    Layout = "_InternalLayout";
+    var pageGroups = Model.AssignablePages
+        .GroupBy(assignablePage => new { assignablePage.Group, assignablePage.GroupOrder })
+        .OrderBy(group => group.Key.GroupOrder)
+        .ToList();
+    var roleDefaultsJson = JsonSerializer.Serialize(Model.RoleOptions.ToDictionary(role => role.Key, role => role.DefaultPageKeys));
+    var roleMetaJson = JsonSerializer.Serialize(Model.RoleOptions.ToDictionary(
+        role => role.Key,
+        role => new
+        {
+            label = role.Label,
+            description = role.Description,
+            canManageTeam = role.CanManageTeam
+        }));
+}
+
+<section class="pf-page-hero">
+    <div class="pf-page-hero-main">
+        <div class="pf-kicker">Founder Access Control</div>
+        <h1 class="pf-page-title">Team</h1>
+        <p class="pf-page-copy">
+            Add approved @@mylegnd.com accounts, assign a role that fits their job, and fine-tune which internal Parfait pages they can actually see.
+        </p>
+    </div>
+</section>
+
+@if (TempData["TeamStatus"] is string teamStatus)
+{
+    <div class="pf-alert-success">@teamStatus</div>
+}
+
+@if (TempData["TeamError"] is string teamError)
+{
+    <div class="alert alert-danger">@teamError</div>
+}
+
+<section class="row g-4 mb-4">
+    <div class="col-xl-4">
+        <div class="pf-module-card h-100">
+            <span class="pf-status"><span class="pf-dot"></span> Founder Lock</span>
+            <h2 class="pf-module-title">Primary Control</h2>
+            <p class="text-muted mb-4">
+                Founder identity stays pinned behind the same private control rule, while Full Control admins can help manage internal team access without exposing raw identity values.
+            </p>
+
+            <div class="pf-founder-lock">
+                <div>
+                    <strong>Email</strong>
+                    <span>@Model.FounderEmail</span>
+                </div>
+                <div>
+                    <strong>Identity Lock</strong>
+                    <span>@Model.FounderIdentityStatus</span>
+                </div>
+                <div>
+                    <strong>Founder-only pages</strong>
+                    <span>@(Model.FounderOnlyPages.Count == 0 ? "No founder-only pages are currently registered." : string.Join(", ", Model.FounderOnlyPages.Select(founderPage => founderPage.Title)))</span>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-xl-8">
+        <div class="pf-module-card h-100">
+            <span class="pf-status"><span class="pf-dot"></span> Add Team Member</span>
+            <h2 class="pf-module-title">Approve Access</h2>
+            <p class="text-muted mb-4">
+                New members must use a @@mylegnd.com account. A successful add now sends the internal invite email automatically and starts them on the role preset you choose here.
+            </p>
+
+            <form asp-action="AddTeamMember" asp-controller="InternalSettings" method="post" class="row g-3">
+                @Html.AntiForgeryToken()
+
+                <div class="col-md-5">
+                    <label asp-for="NewMember.Email" class="form-label fw-bold">Email</label>
+                    <input asp-for="NewMember.Email" class="form-control" autocomplete="email" placeholder="name@mylegnd.com" />
+                    <span asp-validation-for="NewMember.Email" class="text-danger small"></span>
+                </div>
+
+                <div class="col-md-4">
+                    <label asp-for="NewMember.DisplayName" class="form-label fw-bold">Display Name</label>
+                    <input asp-for="NewMember.DisplayName" class="form-control" autocomplete="name" placeholder="Team member name" />
+                    <span asp-validation-for="NewMember.DisplayName" class="text-danger small"></span>
+                </div>
+
+                <div class="col-md-3">
+                    <label asp-for="NewMember.RoleKey" class="form-label fw-bold">Role</label>
+                    <select asp-for="NewMember.RoleKey" class="form-select" data-pf-role-select>
+                        @foreach (var role in Model.RoleOptions)
+                        {
+                            <option value="@role.Key">@role.Label</option>
+                        }
+                    </select>
+                    <span asp-validation-for="NewMember.RoleKey" class="text-danger small"></span>
+                </div>
+
+                <div class="col-12">
+                    <div class="pf-role-summary-grid">
+                        @foreach (var role in Model.RoleOptions)
+                        {
+                            <div class="pf-role-summary-card">
+                                <strong>@role.Label</strong>
+                                <span>@role.Description</span>
+                            </div>
+                        }
+                    </div>
+                </div>
+
+                <div class="col-12 d-flex flex-wrap gap-2 align-items-center">
+                    <button type="submit" class="pf-action">Add Team Member</button>
+                    <span class="pf-team-meta" data-pf-role-copy>
+                        Support starts with customer and order coverage, while Full Control receives the complete internal system including Team management.
+                    </span>
+                </div>
+            </form>
+        </div>
+    </div>
+</section>
+
+<section class="pf-commerce-panel">
+    <div class="pf-commerce-panel-head">
+        <div>
+            <div class="pf-kicker">Internal Roster</div>
+            <h2>Approved Team Members</h2>
+        </div>
+        <span>@Model.Members.Count member@(Model.Members.Count == 1 ? string.Empty : "s")</span>
+    </div>
+
+    @if (Model.Members.Count == 0)
+    {
+        <div class="pf-team-empty">No team members have been added yet.</div>
+    }
+    else
+    {
+        <div class="row g-4">
+            @foreach (var member in Model.Members)
+            {
+                var modalId = $"teamMember{member.Id:N}";
+                var allowedSummary = member.AllowedPageTitles.Count == 0
+                    ? "No page access granted yet."
+                    : string.Join(", ", member.AllowedPageTitles);
+
+                <div class="col-md-6 col-xl-4">
+                    <div class="pf-module-card pf-team-card">
+                        <div class="pf-team-card-head">
+                            <div>
+                                <span class="pf-status"><span class="pf-dot"></span> @member.StatusLabel</span>
+                                <h3 class="pf-team-card-title">@member.DisplayName</h3>
+                            </div>
+                            <button type="button" class="pf-secondary-action" data-pf-open="@modalId">Open Access</button>
+                        </div>
+
+                        <div class="pf-role-pill">Role: @member.RoleLabel</div>
+                        <p class="pf-team-card-copy">@member.Email</p>
+
+                        <div class="pf-team-list">
+                            <div>
+                                <strong>Microsoft Sign-In</strong>
+                                <span>@member.IdentityStatusLabel</span>
+                            </div>
+                            <div>
+                                <strong>Allowed pages</strong>
+                                <span>@allowedSummary</span>
+                            </div>
+                            <div>
+                                <strong>Invite sent</strong>
+                                <span>@(member.InviteSentUtc.HasValue ? member.InviteSentUtc.Value.ToLocalTime().ToString("MMM d, yyyy h:mm tt") : "Not sent yet.")</span>
+                            </div>
+                            <div>
+                                <strong>Last sign-in</strong>
+                                <span>@(member.LastSignInUtc.HasValue ? member.LastSignInUtc.Value.ToLocalTime().ToString("MMM d, yyyy h:mm tt") : "Not signed in yet.")</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            }
+        </div>
+    }
+</section>
+
+@foreach (var member in Model.Members)
+{
+    var modalId = $"teamMember{member.Id:N}";
+
+    <div class="pf-team-modal" id="@modalId" aria-hidden="true">
+        <div class="pf-modal-dialog pf-modal-lg">
+            <div class="pf-modal-content">
+                <div class="pf-modal-header">
+                    <div>
+                        <div class="pf-kicker">Team Member Access</div>
+                        <h2 class="modal-title">@member.DisplayName</h2>
+                    </div>
+                    <button type="button" class="btn-close" data-pf-close aria-label="Close"></button>
+                </div>
+
+                <div class="pf-modal-body">
+                    <div class="pf-modal-grid">
+                        <section class="pf-media-panel">
+                            <span class="pf-status"><span class="pf-dot"></span> @member.StatusLabel</span>
+                            <h3 class="pf-module-title mt-3">@member.Email</h3>
+                            <div class="pf-role-pill mt-2">Role: @member.RoleLabel</div>
+                            <p class="text-muted mb-4">
+                                @member.RoleDescription
+                            </p>
+
+                            <div class="pf-team-list">
+                                <div>
+                                    <strong>Microsoft Sign-In</strong>
+                                    <span>@member.IdentityStatusLabel</span>
+                                </div>
+                                <div>
+                                    <strong>Team Controls</strong>
+                                    <span>@(member.CanManageTeam ? "Can manage Team access and permissions." : "Page access is limited to their assigned role and checklist.")</span>
+                                </div>
+                                <div>
+                                    <strong>Invite Sent</strong>
+                                    <span>@(member.InviteSentUtc.HasValue ? member.InviteSentUtc.Value.ToLocalTime().ToString("MMM d, yyyy h:mm tt") : "Not sent yet.")</span>
+                                </div>
+                                <div>
+                                    <strong>Created</strong>
+                                    <span>@member.CreatedUtc.ToLocalTime().ToString("MMM d, yyyy h:mm tt")</span>
+                                </div>
+                                <div>
+                                    <strong>Last Sign-In</strong>
+                                    <span>@(member.LastSignInUtc.HasValue ? member.LastSignInUtc.Value.ToLocalTime().ToString("MMM d, yyyy h:mm tt") : "Not signed in yet.")</span>
+                                </div>
+                            </div>
+                        </section>
+
+                        <section class="pf-editor-panel">
+                            <form asp-action="UpdateTeamMember" asp-controller="InternalSettings" asp-route-id="@member.Id" method="post">
+                                @Html.AntiForgeryToken()
+                                <input type="hidden" name="IsActive" value="false" />
+
+                                <div class="mb-3">
+                                    <label class="form-label fw-bold" for="display-@member.Id">Display Name</label>
+                                    <input id="display-@member.Id"
+                                           name="DisplayName"
+                                           class="form-control"
+                                           value="@member.DisplayName"
+                                           autocomplete="name" />
+                                </div>
+
+                                <div class="mb-3">
+                                    <label class="form-label fw-bold" for="role-@member.Id">Role</label>
+                                    <select id="role-@member.Id" name="RoleKey" class="form-select" data-pf-role-select>
+                                        @foreach (var role in Model.RoleOptions)
+                                        {
+                                            <option value="@role.Key" selected="@(member.RoleKey.Equals(role.Key, StringComparison.OrdinalIgnoreCase) ? "selected" : null)">@role.Label</option>
+                                        }
+                                    </select>
+                                    <div class="pf-role-hint" data-pf-role-copy>@member.RoleDescription</div>
+                                </div>
+
+                                <label class="pf-check mb-4">
+                                    <input type="checkbox" name="IsActive" value="true" @(member.IsActive ? "checked" : null) />
+                                    Active Team Member
+                                </label>
+
+                                <div class="pf-access-toolbar">
+                                    <strong>Page Access</strong>
+                                    <button type="button" class="pf-secondary-action" data-pf-apply-role>Apply Role Defaults</button>
+                                </div>
+
+                                <div class="pf-access-grid">
+                                    @foreach (var group in pageGroups)
+                                    {
+                                        <div class="pf-access-group">
+                                            <h3 class="pf-access-group-title">@group.Key.Group</h3>
+                                            @foreach (var accessPage in group.OrderBy(item => item.Order))
+                                            {
+                                                var isChecked = member.AllowedPageKeys.Any(key => key.Equals(accessPage.Key, StringComparison.OrdinalIgnoreCase));
+
+                                                <label class="pf-access-check">
+                                                    <input type="checkbox" name="AllowedPageKeys" value="@accessPage.Key" @(isChecked ? "checked" : null) />
+                                                    <span>
+                                                        <strong>@accessPage.Title</strong>
+                                                        <span>@accessPage.Description</span>
+                                                    </span>
+                                                </label>
+                                            }
+                                        </div>
+                                    }
+                                </div>
+
+                                <div class="pf-modal-footer mt-4 px-0 pb-0">
+                                    <button type="button" class="pf-secondary-action" data-pf-close>Cancel</button>
+                                    <button type="submit" class="pf-action">Save Access</button>
+                                </div>
+                            </form>
+
+                            <form asp-action="RemoveTeamMember"
+                                  asp-controller="InternalSettings"
+                                  asp-route-id="@member.Id"
+                                  method="post"
+                                  class="pf-danger-zone"
+                                  onsubmit="return confirm('Remove this team member from Parfait internal access?');">
+                                @Html.AntiForgeryToken()
+                                <button type="submit">Remove Team Member</button>
+                            </form>
+                        </section>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+}
+
+@section Scripts {
+    <partial name="_ValidationScriptsPartial" />
+    <script>
+        (() => {
+            const roleDefaults = @Html.Raw(roleDefaultsJson);
+            const roleMeta = @Html.Raw(roleMetaJson);
+
+            const openModal = id => {
+                const modal = document.getElementById(id);
+                if (!modal) return;
+                modal.classList.add("is-open");
+                modal.setAttribute("aria-hidden", "false");
+                document.body.style.overflow = "hidden";
+            };
+
+            const closeModal = modal => {
+                if (!modal) return;
+                modal.classList.remove("is-open");
+                modal.setAttribute("aria-hidden", "true");
+
+                if (!document.querySelector(".pf-team-modal.is-open")) {
+                    document.body.style.overflow = "";
+                }
+            };
+
+            const updateRoleCopy = select => {
+                const form = select.closest("form") ?? select.closest(".pf-module-card");
+                const copy = form?.querySelector("[data-pf-role-copy]");
+                const details = roleMeta[select.value];
+                if (!copy || !details) return;
+                copy.textContent = details.description;
+            };
+
+            const applyRoleDefaults = select => {
+                const form = select.closest("form");
+                if (!form) return;
+
+                const defaults = roleDefaults[select.value] ?? [];
+                const canManageTeam = roleMeta[select.value]?.canManageTeam === true;
+
+                form.querySelectorAll("input[name='AllowedPageKeys']").forEach(checkbox => {
+                    const shouldCheck = defaults.includes(checkbox.value);
+                    checkbox.checked = shouldCheck;
+
+                    if (checkbox.value === "/internal/settings/team" && !canManageTeam) {
+                        checkbox.checked = false;
+                    }
+                });
+
+                updateRoleCopy(select);
+            };
+
+            document.querySelectorAll("[data-pf-open]").forEach(button => {
+                button.addEventListener("click", () => openModal(button.getAttribute("data-pf-open")));
+            });
+
+            document.querySelectorAll("[data-pf-close]").forEach(button => {
+                button.addEventListener("click", () => closeModal(button.closest(".pf-team-modal")));
+            });
+
+            document.querySelectorAll(".pf-team-modal").forEach(modal => {
+                modal.addEventListener("click", event => {
+                    if (event.target === modal) closeModal(modal);
+                });
+            });
+
+            document.addEventListener("keydown", event => {
+                if (event.key !== "Escape") return;
+                const modals = [...document.querySelectorAll(".pf-team-modal.is-open")];
+                closeModal(modals.at(-1));
+            });
+
+            document.querySelectorAll("[data-pf-role-select]").forEach(select => {
+                updateRoleCopy(select);
+                select.addEventListener("change", () => updateRoleCopy(select));
+            });
+
+            document.querySelectorAll("[data-pf-apply-role]").forEach(button => {
+                button.addEventListener("click", () => {
+                    const form = button.closest("form");
+                    const select = form?.querySelector("[data-pf-role-select]");
+                    if (select) applyRoleDefaults(select);
+                });
+            });
+        })();
+    </script>
+}

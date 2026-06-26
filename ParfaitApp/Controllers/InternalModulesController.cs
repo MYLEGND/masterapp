@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using ParfaitApp.Models;
+using ParfaitApp.Security;
 using ParfaitApp.Services;
 
 namespace ParfaitApp.Controllers;
@@ -24,9 +25,21 @@ public sealed class InternalModulesController : Controller
     }
 
     [HttpGet("commerce")]
+    [ParfaitInternalPage(
+        "Commerce",
+        "Operations",
+        "Products, orders, inventory, and revenue controls for Parfait commerce operations.",
+        3,
+        1)]
     public IActionResult Commerce() => View();
 
     [HttpGet("commerce/products")]
+    [ParfaitInternalPage(
+        "Products",
+        "Operations",
+        "Catalog management for pricing, product visibility, and storefront presentation.",
+        3,
+        2)]
     public IActionResult Products()
     {
         return View(new ParfaitProductAdminViewModel
@@ -113,6 +126,12 @@ public sealed class InternalModulesController : Controller
     }
 
     [HttpGet("commerce/orders")]
+    [ParfaitInternalPage(
+        "Orders",
+        "Operations",
+        "Purchase, payment, and fulfillment tracking for the Parfait store.",
+        3,
+        3)]
     public IActionResult Orders()
     {
         return View(new ParfaitOrderAdminViewModel
@@ -122,15 +141,39 @@ public sealed class InternalModulesController : Controller
     }
 
     [HttpGet("customers")]
+    [ParfaitInternalPage(
+        "Customers",
+        "Operations",
+        "Customer accounts, order history, support, and engagement controls.",
+        3,
+        4)]
     public IActionResult Customers() => View();
 
     [HttpGet("marketing")]
+    [ParfaitInternalPage(
+        "Marketing",
+        "Growth",
+        "Campaign planning and attribution controls for Parfait growth.",
+        4,
+        1)]
     public IActionResult Marketing() => View();
 
     [HttpGet("content")]
+    [ParfaitInternalPage(
+        "Content",
+        "Growth",
+        "Products, creative assets, and storytelling management for the brand.",
+        4,
+        3)]
     public IActionResult Content() => View();
 
     [HttpGet("analytics")]
+    [ParfaitInternalPage(
+        "Analytics",
+        "Growth",
+        "Internal funnel reporting and ecommerce event intelligence.",
+        4,
+        2)]
     public async Task<IActionResult> Analytics(CancellationToken ct)
     {
         return View(await _analyticsDashboard.GetDashboardAsync(ct));

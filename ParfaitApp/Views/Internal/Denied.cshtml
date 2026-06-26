@@ -1,0 +1,26 @@
+@{
+    ViewData["Title"] = "Access Restricted";
+    Layout = "_InternalAuthLayout";
+}
+
+<section class="pf-auth-shell">
+    <div class="pf-auth-intro">
+        <div class="pf-auth-kicker">Parfait Internal</div>
+        <div class="pf-auth-brand">PARFAIT</div>
+        <h1 class="pf-auth-title">This internal page has not been opened for your account.</h1>
+        <p class="pf-auth-copy">
+            Parfait internal access is founder-managed. If you should see this workspace, ask the founder to add your @@mylegnd.com account and grant the correct page permissions.
+        </p>
+    </div>
+
+    <div class="pf-auth-card">
+        <div class="pf-kicker">Access Control</div>
+        <h2>Restricted</h2>
+        <p>Your login succeeded, but this route is not currently assigned to your account.</p>
+        <a class="pf-secondary-action pf-auth-action" href="/internal">Return To Internal Home</a>
+
+        <div class="pf-auth-note">
+            Founder access remains fixed to zac.owen@mylegnd.com and approved Parfait team members can be granted page-by-page visibility from the Team console.
+        </div>
+    </div>
+</section>

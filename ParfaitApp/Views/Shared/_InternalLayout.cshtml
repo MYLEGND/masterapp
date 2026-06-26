@@ -1,5 +1,13 @@
+@inject ParfaitApp.Services.IParfaitTeamAccessService TeamAccessService
 @{
     var title = ViewData["Title"] as string ?? "Internal";
+    var visiblePages = User.Identity?.IsAuthenticated == true
+        ? await TeamAccessService.GetVisiblePagesAsync(User, ViewContext.HttpContext.RequestAborted)
+        : Array.Empty<ParfaitApp.Models.ParfaitInternalPageDefinition>();
+    var navGroups = visiblePages
+        .GroupBy(navPage => new { navPage.Group, navPage.GroupOrder })
+        .OrderBy(group => group.Key.GroupOrder)
+        .ToList();
 }
 
 <!DOCTYPE html>
@@ -30,26 +38,16 @@
         </div>
 
         <nav class="pf-nav">
-            <div class="pf-nav-group">
-                <div class="pf-nav-section">Core</div>
-                <a class="pf-route-link" href="/internal/dashboard">Dashboard</a>
-                <a class="pf-route-link" href="/internal/settings/business-profile">Business Profile</a>
-            </div>
-
-            <div class="pf-nav-group">
-                <div class="pf-nav-section">Operations</div>
-                <a class="pf-route-link" href="/internal/commerce">Commerce</a>
-                <a class="pf-route-link" href="/internal/commerce/products">Products</a>
-                <a class="pf-route-link" href="/internal/commerce/orders">Orders</a>
-                <a class="pf-route-link" href="/internal/customers">Customers</a>
-            </div>
-
-            <div class="pf-nav-group">
-                <div class="pf-nav-section">Growth</div>
-                <a class="pf-route-link" href="/internal/marketing">Marketing</a>
-                <a class="pf-route-link" href="/internal/analytics">Analytics</a>
-                <a class="pf-route-link" href="/internal/content">Content</a>
-            </div>
+            @foreach (var group in navGroups)
+            {
+                <div class="pf-nav-group">
+                    <div class="pf-nav-section">@group.Key.Group</div>
+                    @foreach (var navPage in group.OrderBy(item => item.Order))
+                    {
+                        <a class="pf-route-link" href="@navPage.Route">@navPage.Title</a>
+                    }
+                </div>
+            }
 
             <div class="pf-nav-group">
                 <div class="pf-nav-section">Public</div>
@@ -59,7 +57,7 @@
         </nav>
 
         <div class="pf-sidebar-footer">
-            Internal commerce, growth, profile, and analytics now follow one Parfait operating system without touching the public site wiring.
+            Founder-managed internal access now controls which Parfait pages each approved @@mylegnd.com account can see without touching the public site wiring.
         </div>
     </aside>
 
@@ -68,7 +66,7 @@
             <div class="pf-header-inner">
                 <div class="pf-header-main">
                     <div class="pf-header-left">
-                        <a class="pf-brandmark" href="/internal/dashboard">
+                        <a class="pf-brandmark" href="/internal">
                             <span class="pf-brand-emblem">
                                 <img src="~/images/favicon/parfait-logo.png"
                                      asp-append-version="true"

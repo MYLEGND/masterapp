@@ -1,3 +1,4 @@
+using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.Authentication.OpenIdConnect;
 using Microsoft.IdentityModel.Protocols.OpenIdConnect;
@@ -8,6 +9,24 @@ using Microsoft.EntityFrameworkCore;
 var builder = WebApplication.CreateBuilder(args);
 
 builder.Services.AddControllersWithViews();
+
+{
+    var resolvedOwnerEmail =
+        Environment.GetEnvironmentVariable("OWNER_EMAIL")
+        ?? Environment.GetEnvironmentVariable("OwnerEmail")
+        ?? builder.Configuration["Founder:Email"]?.Trim();
+
+    if (!string.IsNullOrWhiteSpace(resolvedOwnerEmail))
+        Environment.SetEnvironmentVariable("OWNER_EMAIL", resolvedOwnerEmail);
+
+    var resolvedFounderOid =
+        Environment.GetEnvironmentVariable("FOUNDER_OID")
+        ?? Environment.GetEnvironmentVariable("FounderOid")
+        ?? builder.Configuration["Founder:Oid"]?.Trim();
+
+    if (!string.IsNullOrWhiteSpace(resolvedFounderOid))
+        Environment.SetEnvironmentVariable("FOUNDER_OID", resolvedFounderOid);
+}
 
 static string? ResolveMasterDb(IConfiguration config)
 {
@@ -41,6 +60,8 @@ builder.Services.AddDbContext<MasterAppDbContext>(options =>
 
 builder.Services.AddSingleton<ParfaitProductService>();
 builder.Services.AddSingleton<ParfaitOrderService>();
+builder.Services.AddSingleton<IParfaitInternalPageRegistry, ParfaitInternalPageRegistry>();
+builder.Services.AddScoped<IParfaitTeamAccessService, ParfaitTeamAccessService>();
 builder.Services.AddHttpClient<SquarePaymentService>();
 builder.Services.AddHttpContextAccessor();
 builder.Services.AddScoped<ParfaitAnalyticsService>();
@@ -65,6 +86,15 @@ builder.Services
         options.AccessDeniedPath = "/internal/denied";
         options.SlidingExpiration = true;
         options.ExpireTimeSpan = TimeSpan.FromHours(12);
+        options.Events.OnValidatePrincipal = async context =>
+        {
+            var teamAccess = context.HttpContext.RequestServices.GetRequiredService<IParfaitTeamAccessService>();
+            if (await teamAccess.ValidatePrincipalAsync(context.Principal!, context.HttpContext.RequestAborted))
+                return;
+
+            context.RejectPrincipal();
+            await context.HttpContext.SignOutAsync(CookieAuthenticationDefaults.AuthenticationScheme);
+        };
     })
     .AddOpenIdConnect(options =>
     {
@@ -84,19 +114,12 @@ builder.Services
         options.Scope.Add("profile");
         options.Scope.Add("email");
 
-        options.Events.OnTokenValidated = context =>
+        options.Events.OnTokenValidated = async context =>
         {
-            var email =
-                context.Principal?.FindFirst("preferred_username")?.Value ??
-                context.Principal?.FindFirst("email")?.Value ??
-                "";
-
-            if (!email.EndsWith("@mylegnd.com", StringComparison.OrdinalIgnoreCase))
-            {
-                context.Fail("Only @mylegnd.com accounts can access Parfait internal.");
-            }
-
-            return Task.CompletedTask;
+            var teamAccess = context.HttpContext.RequestServices.GetRequiredService<IParfaitTeamAccessService>();
+            var result = await teamAccess.AuthorizeSignInAsync(context.Principal!, context.HttpContext.RequestAborted);
+            if (!result.Allowed)
+                context.Fail(result.Message);
         };
     });
 
@@ -129,6 +152,7 @@ app.UseRouting();
 app.UseSession();
 
 app.UseAuthentication();
+app.UseMiddleware<ParfaitInternalAccessMiddleware>();
 app.UseAuthorization();
 
 app.Use(async (context, next) =>

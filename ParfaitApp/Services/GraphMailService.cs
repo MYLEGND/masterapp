@@ -19,6 +19,14 @@ public interface IGraphMailService
 
     Task SendOrderReceiptAsync(ParfaitOrderRecord order, CancellationToken ct = default);
     Task SendOrderNotificationAsync(ParfaitOrderRecord order, CancellationToken ct = default);
+    Task SendParfaitTeamInviteAsync(
+        string toEmail,
+        string displayName,
+        string roleLabel,
+        IReadOnlyCollection<string> allowedPageTitles,
+        string loginUrl,
+        string invitedBy,
+        CancellationToken ct = default);
 }
 
 public class GraphMailService : IGraphMailService
@@ -243,6 +251,66 @@ $@"
 </div>";
 
         await SendMailAsync(graph, senderUpn, inbox, $"[{siteName}] New paid order {order.OrderNumber}", html);
+    }
+
+    public async Task SendParfaitTeamInviteAsync(
+        string toEmail,
+        string displayName,
+        string roleLabel,
+        IReadOnlyCollection<string> allowedPageTitles,
+        string loginUrl,
+        string invitedBy,
+        CancellationToken ct = default)
+    {
+        var senderUpn = (_config["GraphMail:SenderUpn"] ?? _config["Contact:SenderEmail"] ?? "").Trim();
+        var siteName = (_config["Contact:WebsiteName"] ?? "Parfait App").Trim();
+
+        if (string.IsNullOrWhiteSpace(senderUpn))
+            throw new InvalidOperationException("Missing SenderUpn/Contact:SenderEmail config.");
+
+        var graph = BuildClient();
+        var enc = HtmlEncoder.Default;
+        var safeName = enc.Encode(string.IsNullOrWhiteSpace(displayName) ? toEmail.Trim() : displayName.Trim());
+        var safeRole = enc.Encode(roleLabel.Trim());
+        var safeInvitedBy = enc.Encode(string.IsNullOrWhiteSpace(invitedBy) ? "Parfait Admin" : invitedBy.Trim());
+        var safeUrl = enc.Encode(loginUrl.Trim());
+        var accessSummary = allowedPageTitles.Count == 0
+            ? "Dashboard"
+            : string.Join(", ", allowedPageTitles.Select(title => title.Trim()).Where(title => !string.IsNullOrWhiteSpace(title)));
+        var safeAccessSummary = enc.Encode(accessSummary);
+
+        var html =
+$@"
+<div style='font-family:Inter,Arial,sans-serif;line-height:1.65;color:#111;'>
+  <h2 style='margin:0 0 10px;'>You&apos;re invited to Parfait Internal</h2>
+  <p style='margin:0 0 12px;'>Hi {safeName},</p>
+  <p style='margin:0 0 12px;'>
+    {safeInvitedBy} approved your <strong>{enc.Encode(siteName)}</strong> internal access with the
+    <strong>{safeRole}</strong> role.
+  </p>
+
+  <div style='padding:14px 16px;border:1px solid #926950;border-radius:14px;background:#fff;'>
+    <p style='margin:0 0 8px;'><strong>Approved account:</strong> {enc.Encode(toEmail.Trim())}</p>
+    <p style='margin:0 0 8px;'><strong>Role:</strong> {safeRole}</p>
+    <p style='margin:0;'><strong>Starting access:</strong> {safeAccessSummary}</p>
+  </div>
+
+  <p style='margin:16px 0 12px;'>
+    Sign in with your <strong>@mylegnd.com</strong> Microsoft account to open your Parfait internal workspace.
+  </p>
+
+  <p style='margin:0 0 18px;'>
+    <a href='{safeUrl}' style='display:inline-block;padding:12px 18px;border-radius:999px;background:#4f3425;color:#fff;text-decoration:none;font-weight:700;'>
+      Open Parfait Internal
+    </a>
+  </p>
+
+  <p style='margin:0;color:#666;font-size:13px;'>
+    If your role or page access needs to change, the founder or a Full Control admin can update it from the Team console.
+  </p>
+</div>";
+
+        await SendMailAsync(graph, senderUpn, toEmail.Trim(), $"Your Parfait internal invite", html);
     }
 
     private static async Task SendMailAsync(GraphServiceClient graph, string senderUpn, string to, string subject, string htmlBody)
