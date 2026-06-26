@@ -13,15 +13,18 @@ public sealed class InternalModulesController : Controller
     private readonly ParfaitProductService _products;
     private readonly ParfaitOrderService _orders;
     private readonly ParfaitAnalyticsDashboardService _analyticsDashboard;
+    private readonly ParfaitInternalWorkspaceService _workspace;
 
     public InternalModulesController(
         ParfaitProductService products,
         ParfaitOrderService orders,
-        ParfaitAnalyticsDashboardService analyticsDashboard)
+        ParfaitAnalyticsDashboardService analyticsDashboard,
+        ParfaitInternalWorkspaceService workspace)
     {
         _products = products;
         _orders = orders;
         _analyticsDashboard = analyticsDashboard;
+        _workspace = workspace;
     }
 
     [HttpGet("commerce")]
@@ -31,7 +34,7 @@ public sealed class InternalModulesController : Controller
         "Products, orders, inventory, and revenue controls for Parfait commerce operations.",
         3,
         1)]
-    public IActionResult Commerce() => View();
+    public async Task<IActionResult> Commerce(CancellationToken ct) => View(await _workspace.GetSnapshotAsync(ct));
 
     [HttpGet("commerce/products")]
     [ParfaitInternalPage(
@@ -42,9 +45,13 @@ public sealed class InternalModulesController : Controller
         2)]
     public IActionResult Products()
     {
+        var products = _products.GetAllProducts().ToList();
         return View(new ParfaitProductAdminViewModel
         {
-            Products = _products.GetAllProducts().ToList()
+            Products = products,
+            ActiveProductCount = products.Count(product => product.IsActive),
+            FeaturedProductCount = products.Count(product => product.IsFeatured),
+            TotalImageCount = products.Sum(product => product.Images.Count)
         });
     }
 
@@ -57,10 +64,14 @@ public sealed class InternalModulesController : Controller
 
         if (!ModelState.IsValid)
         {
+            var products = _products.GetAllProducts().ToList();
             return View("Products", new ParfaitProductAdminViewModel
             {
-                Products = _products.GetAllProducts().ToList(),
-                NewProduct = product
+                Products = products,
+                NewProduct = product,
+                ActiveProductCount = products.Count(item => item.IsActive),
+                FeaturedProductCount = products.Count(item => item.IsFeatured),
+                TotalImageCount = products.Sum(item => item.Images.Count)
             });
         }
 
@@ -134,9 +145,20 @@ public sealed class InternalModulesController : Controller
         3)]
     public IActionResult Orders()
     {
+        var orders = _orders.GetAllOrders().ToList();
+        var paidOrders = orders
+            .Where(order => string.Equals(order.PaymentStatus, "Paid", StringComparison.OrdinalIgnoreCase))
+            .ToList();
+
         return View(new ParfaitOrderAdminViewModel
         {
-            Orders = _orders.GetAllOrders().ToList()
+            Orders = orders,
+            PaidOrderCount = paidOrders.Count,
+            PendingOrderCount = orders.Count(order => string.Equals(order.PaymentStatus, "Pending", StringComparison.OrdinalIgnoreCase)),
+            FailedOrderCount = orders.Count(order => string.Equals(order.PaymentStatus, "Failed", StringComparison.OrdinalIgnoreCase)),
+            OpenFulfillmentCount = orders.Count(order => !string.Equals(order.FulfillmentStatus, "Fulfilled", StringComparison.OrdinalIgnoreCase)),
+            RevenueCents = paidOrders.Sum(order => order.TotalCents),
+            AverageOrderValueCents = paidOrders.Count == 0 ? 0 : (int)Math.Round(paidOrders.Average(order => order.TotalCents))
         });
     }
 
@@ -147,7 +169,7 @@ public sealed class InternalModulesController : Controller
         "Customer accounts, order history, support, and engagement controls.",
         3,
         4)]
-    public IActionResult Customers() => View();
+    public async Task<IActionResult> Customers(CancellationToken ct) => View(await _workspace.GetSnapshotAsync(ct));
 
     [HttpGet("marketing")]
     [ParfaitInternalPage(
@@ -156,7 +178,7 @@ public sealed class InternalModulesController : Controller
         "Campaign planning and attribution controls for Parfait growth.",
         4,
         1)]
-    public IActionResult Marketing() => View();
+    public async Task<IActionResult> Marketing(CancellationToken ct) => View(await _workspace.GetSnapshotAsync(ct));
 
     [HttpGet("content")]
     [ParfaitInternalPage(
@@ -165,7 +187,7 @@ public sealed class InternalModulesController : Controller
         "Products, creative assets, and storytelling management for the brand.",
         4,
         3)]
-    public IActionResult Content() => View();
+    public async Task<IActionResult> Content(CancellationToken ct) => View(await _workspace.GetSnapshotAsync(ct));
 
     [HttpGet("analytics")]
     [ParfaitInternalPage(

@@ -16,35 +16,67 @@
             description = role.Description,
             canManageTeam = role.CanManageTeam
         }));
+    var activeMembers = Model.Members.Count(member => member.IsActive);
+    var teamManagers = Model.Members.Count(member => member.CanManageTeam);
+    var pendingSignIns = Model.Members.Count(member => !member.LastSignInUtc.HasValue);
 }
 
-<section class="pf-page-hero">
-    <div class="pf-page-hero-main">
-        <div class="pf-kicker">Founder Access Control</div>
-        <h1 class="pf-page-title">Team</h1>
-        <p class="pf-page-copy">
-            Add approved @@mylegnd.com accounts, assign a role that fits their job, and fine-tune which internal Parfait pages they can actually see.
-        </p>
-    </div>
-</section>
+<section class="pf-command-page">
+    <header class="pf-command-head">
+        <div class="pf-command-copy">
+            <div class="pf-kicker">Founder Access Control</div>
+            <h1 class="pf-command-title">Team</h1>
+            <p class="pf-command-text">Approve @@mylegnd.com accounts, assign the right role, and control page visibility from one clean roster instead of exposing raw identity details.</p>
+        </div>
+        <div class="pf-command-meta">
+            <span class="pf-command-badge is-success">@activeMembers active</span>
+            <span class="pf-command-badge is-info">@teamManagers with team controls</span>
+            <span class="pf-command-badge is-warning">@pendingSignIns pending sign-in</span>
+        </div>
+    </header>
 
-@if (TempData["TeamStatus"] is string teamStatus)
-{
-    <div class="pf-alert-success">@teamStatus</div>
-}
+    @if (TempData["TeamStatus"] is string teamStatus)
+    {
+        <div class="pf-alert-success">@teamStatus</div>
+    }
 
-@if (TempData["TeamError"] is string teamError)
-{
-    <div class="alert alert-danger">@teamError</div>
-}
+    @if (TempData["TeamError"] is string teamError)
+    {
+        <div class="alert alert-danger">@teamError</div>
+    }
 
-<section class="row g-4 mb-4">
-    <div class="col-xl-4">
-        <div class="pf-module-card h-100">
+    <section class="pf-command-rail">
+        <article class="pf-rail-card is-success pf-span-3">
+            <div class="pf-rail-label">Founder Lock</div>
+            <strong class="pf-rail-value">1</strong>
+            <p class="pf-rail-note">Founder identity remains pinned to the same protected control rule.</p>
+        </article>
+
+        <article class="pf-rail-card is-info pf-span-3">
+            <div class="pf-rail-label">Approved Members</div>
+            <strong class="pf-rail-value">@Model.Members.Count</strong>
+            <p class="pf-rail-note">@activeMembers active, @pendingSignIns pending first sign-in.</p>
+        </article>
+
+        <article class="pf-rail-card is-info pf-span-3">
+            <div class="pf-rail-label">Role Presets</div>
+            <strong class="pf-rail-value">@Model.RoleOptions.Count</strong>
+            <p class="pf-rail-note">Full Control, Manager, Support, and other limited roles stay consistent.</p>
+        </article>
+
+        <article class="pf-rail-card is-warning pf-span-3">
+            <div class="pf-rail-label">Team Controls</div>
+            <strong class="pf-rail-value">@teamManagers</strong>
+            <p class="pf-rail-note">Only approved managers can edit roster access and permissions.</p>
+        </article>
+    </section>
+
+    <section class="pf-workspace-grid">
+        <div class="pf-module-card pf-span-4">
             <span class="pf-status"><span class="pf-dot"></span> Founder Lock</span>
             <h2 class="pf-module-title">Primary Control</h2>
             <p class="text-muted mb-4">
-                Founder identity stays pinned behind the same private control rule, while Full Control admins can help manage internal team access without exposing raw identity values.
+                Founder identity stays pinned behind the same private rule, while Full Control admins can help manage access without exposing raw internal identity values.
             </p>
 
             <div class="pf-founder-lock">
@@ -58,21 +90,19 @@
                 </div>
                 <div>
                     <strong>Founder-only pages</strong>
-                    <span>@(Model.FounderOnlyPages.Count == 0 ? "No founder-only pages are currently registered." : string.Join(", ", Model.FounderOnlyPages.Select(founderPage => founderPage.Title)))</span>
+                    <span>@(Model.FounderOnlyPages.Count == 0 ? "No founder-only pages are currently registered." : $"{Model.FounderOnlyPages.Count} founder-only page(s) registered.")</span>
                 </div>
             </div>
         </div>
-    </div>
 
-    <div class="col-xl-8">
-        <div class="pf-module-card h-100">
+        <div class="pf-module-card pf-span-8">
             <span class="pf-status"><span class="pf-dot"></span> Add Team Member</span>
             <h2 class="pf-module-title">Approve Access</h2>
             <p class="text-muted mb-4">
-                New members must use a @@mylegnd.com account. A successful add now sends the internal invite email automatically and starts them on the role preset you choose here.
+                New members must use a @@mylegnd.com account. A successful add sends the internal invite automatically and starts them on the role preset you choose here.
             </p>
 
-            <form asp-action="AddTeamMember" asp-controller="InternalSettings" method="post" class="row g-3">
+            <form action="@Url.Content("~/internal/settings/team/add")" method="post" class="row g-3">
                 @Html.AntiForgeryToken()
 
                 <div class="col-md-5">
@@ -118,68 +148,68 @@
                 </div>
             </form>
         </div>
-    </div>
-</section>
+    </section>
 
-<section class="pf-commerce-panel">
-    <div class="pf-commerce-panel-head">
-        <div>
-            <div class="pf-kicker">Internal Roster</div>
-            <h2>Approved Team Members</h2>
+    <section class="pf-commerce-panel">
+        <div class="pf-commerce-panel-head">
+            <div>
+                <div class="pf-kicker">Internal Roster</div>
+                <h2>Approved Team Members</h2>
+            </div>
+            <span>@Model.Members.Count member@(Model.Members.Count == 1 ? string.Empty : "s")</span>
         </div>
-        <span>@Model.Members.Count member@(Model.Members.Count == 1 ? string.Empty : "s")</span>
-    </div>
 
-    @if (Model.Members.Count == 0)
-    {
-        <div class="pf-team-empty">No team members have been added yet.</div>
-    }
-    else
-    {
-        <div class="row g-4">
-            @foreach (var member in Model.Members)
-            {
-                var modalId = $"teamMember{member.Id:N}";
-                var allowedSummary = member.AllowedPageTitles.Count == 0
-                    ? "No page access granted yet."
-                    : string.Join(", ", member.AllowedPageTitles);
+        @if (Model.Members.Count == 0)
+        {
+            <div class="pf-team-empty">No team members have been added yet.</div>
+        }
+        else
+        {
+            <div class="row g-4">
+                @foreach (var member in Model.Members)
+                {
+                    var modalId = $"teamMember{member.Id:N}";
+                    var allowedSummary = member.AllowedPageTitles.Count == 0
+                        ? "No page access granted yet."
+                        : $"{member.AllowedPageTitles.Count} page(s) assigned";
 
-                <div class="col-md-6 col-xl-4">
-                    <div class="pf-module-card pf-team-card">
-                        <div class="pf-team-card-head">
-                            <div>
-                                <span class="pf-status"><span class="pf-dot"></span> @member.StatusLabel</span>
-                                <h3 class="pf-team-card-title">@member.DisplayName</h3>
+                    <div class="col-md-6 col-xl-4">
+                        <div class="pf-module-card pf-team-card">
+                            <div class="pf-team-card-head">
+                                <div>
+                                    <span class="pf-status"><span class="pf-dot"></span> @member.StatusLabel</span>
+                                    <h3 class="pf-team-card-title">@member.DisplayName</h3>
+                                </div>
+                                <button type="button" class="pf-secondary-action" data-pf-open="@modalId">Open Access</button>
                             </div>
-                            <button type="button" class="pf-secondary-action" data-pf-open="@modalId">Open Access</button>
-                        </div>
 
-                        <div class="pf-role-pill">Role: @member.RoleLabel</div>
-                        <p class="pf-team-card-copy">@member.Email</p>
+                            <div class="pf-role-pill">Role: @member.RoleLabel</div>
+                            <p class="pf-team-card-copy">@member.Email</p>
 
-                        <div class="pf-team-list">
-                            <div>
-                                <strong>Microsoft Sign-In</strong>
-                                <span>@member.IdentityStatusLabel</span>
-                            </div>
-                            <div>
-                                <strong>Allowed pages</strong>
-                                <span>@allowedSummary</span>
-                            </div>
-                            <div>
-                                <strong>Invite sent</strong>
-                                <span>@(member.InviteSentUtc.HasValue ? member.InviteSentUtc.Value.ToLocalTime().ToString("MMM d, yyyy h:mm tt") : "Not sent yet.")</span>
-                            </div>
-                            <div>
-                                <strong>Last sign-in</strong>
-                                <span>@(member.LastSignInUtc.HasValue ? member.LastSignInUtc.Value.ToLocalTime().ToString("MMM d, yyyy h:mm tt") : "Not signed in yet.")</span>
+                            <div class="pf-team-list">
+                                <div>
+                                    <strong>Microsoft Sign-In</strong>
+                                    <span>@member.IdentityStatusLabel</span>
+                                </div>
+                                <div>
+                                    <strong>Allowed pages</strong>
+                                    <span>@allowedSummary</span>
+                                </div>
+                                <div>
+                                    <strong>Invite sent</strong>
+                                    <span>@(member.InviteSentUtc.HasValue ? member.InviteSentUtc.Value.ToLocalTime().ToString("MMM d, yyyy h:mm tt") : "Not sent yet.")</span>
+                                </div>
+                                <div>
+                                    <strong>Last sign-in</strong>
+                                    <span>@(member.LastSignInUtc.HasValue ? member.LastSignInUtc.Value.ToLocalTime().ToString("MMM d, yyyy h:mm tt") : "Not signed in yet.")</span>
+                                </div>
                             </div>
                         </div>
                     </div>
-                </div>
-            }
-        </div>
-    }
+                }
+            </div>
+        }
+    </section>
 </section>
 
 @foreach (var member in Model.Members)
@@ -232,7 +262,7 @@
                         </section>
 
                         <section class="pf-editor-panel">
-                            <form asp-action="UpdateTeamMember" asp-controller="InternalSettings" asp-route-id="@member.Id" method="post">
+                            <form action="@Url.Content($"~/internal/settings/team/{member.Id}")" method="post">
                                 @Html.AntiForgeryToken()
                                 <input type="hidden" name="IsActive" value="false" />
 
@@ -293,9 +323,7 @@
                                 </div>
                             </form>
 
-                            <form asp-action="RemoveTeamMember"
-                                  asp-controller="InternalSettings"
-                                  asp-route-id="@member.Id"
+                            <form action="@Url.Content($"~/internal/settings/team/{member.Id}/remove")"
                                   method="post"
                                   class="pf-danger-zone"
                                   onsubmit="return confirm('Remove this team member from Parfait internal access?');">

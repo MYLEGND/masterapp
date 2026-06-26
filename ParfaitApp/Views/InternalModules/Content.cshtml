@@ -1,18 +1,135 @@
+@model ParfaitApp.Models.ParfaitInternalWorkspaceSnapshotViewModel
 @{
     ViewData["Title"] = "Content";
     Layout = "_InternalLayout";
+
+    var mediaTone = Model.ProductImageCount > 0 ? "info" : "warning";
 }
 
-<section class="pf-page-hero">
-    <div class="pf-page-hero-main">
-        <div class="pf-kicker">Brand Control</div>
-        <h1 class="pf-page-title">Content</h1>
-        <p class="pf-page-copy">Products, collections, creative assets, and brand storytelling all route through this workspace.</p>
-    </div>
-</section>
+<section class="pf-command-page">
+    <header class="pf-command-head">
+        <div class="pf-command-copy">
+            <div class="pf-kicker">Brand Surface</div>
+            <h1 class="pf-command-title">Content</h1>
+            <p class="pf-command-text">The content layer is cleaner when catalog depth, featured focus, and image coverage are shown in one neat surface.</p>
+        </div>
+        <div class="pf-command-meta">
+            <span class="pf-command-badge is-info">@Model.ProductCount products</span>
+            <span class="pf-command-badge is-success">@Model.FeaturedProductCount featured</span>
+            <span class="pf-command-badge is-@mediaTone">@Model.ProductImageCount images</span>
+        </div>
+    </header>
 
-<section class="row g-4">
-    <div class="col-md-6 col-xl-4"><div class="pf-module-card"><span class="pf-status"><span class="pf-dot"></span> Planned</span><h2 class="pf-module-title">Product Content</h2><p class="text-muted mb-0">Manage product names, descriptions, fit notes, care details, and brand copy.</p></div></div>
-    <div class="col-md-6 col-xl-4"><div class="pf-module-card"><span class="pf-status"><span class="pf-dot"></span> Planned</span><h2 class="pf-module-title">Creative Assets</h2><p class="text-muted mb-0">Organize photos, videos, banners, campaign visuals, and product media.</p></div></div>
-    <div class="col-md-6 col-xl-4"><div class="pf-module-card"><span class="pf-status"><span class="pf-dot"></span> Planned</span><h2 class="pf-module-title">Site Content</h2><p class="text-muted mb-0">Prepare future editable homepage, training, store, and brand sections.</p></div></div>
+    <section class="pf-command-rail">
+        <article class="pf-rail-card is-info pf-span-4">
+            <div class="pf-rail-label">Catalog Layer</div>
+            <strong class="pf-rail-value">@Model.ProductCount</strong>
+            <div class="pf-rail-grid">
+                <div>
+                    <span>Live Products</span>
+                    <strong>@Model.ActiveProductCount</strong>
+                </div>
+                <div>
+                    <span>Business Type</span>
+                    <strong>@Model.BusinessType</strong>
+                </div>
+            </div>
+        </article>
+
+        <article class="pf-rail-card is-success pf-span-4">
+            <div class="pf-rail-label">Featured Focus</div>
+            <strong class="pf-rail-value">@Model.FeaturedProductCount</strong>
+            <div class="pf-rail-grid">
+                <div>
+                    <span>Orders Backing Story</span>
+                    <strong>@Model.OrderCount</strong>
+                </div>
+                <div>
+                    <span>Store Views</span>
+                    <strong>@Model.StoreViews</strong>
+                </div>
+            </div>
+        </article>
+
+        <article class="pf-rail-card is-@mediaTone pf-span-4">
+            <div class="pf-rail-label">Media Coverage</div>
+            <strong class="pf-rail-value">@Model.ProductImageCount</strong>
+            <div class="pf-rail-grid">
+                <div>
+                    <span>Featured Items</span>
+                    <strong>@Model.FeaturedProductCount</strong>
+                </div>
+                <div>
+                    <span>Visitors</span>
+                    <strong>@Model.Visitors</strong>
+                </div>
+            </div>
+        </article>
+    </section>
+
+    <section class="pf-command-board">
+        <div class="pf-command-board-head">
+            <div>
+                <div class="pf-kicker">Content Command</div>
+                <h2>Catalog Storytelling</h2>
+                <p>Content should tell us whether the store looks polished right now, not create another bulky settings page.</p>
+            </div>
+            <div class="pf-command-board-actions">
+                <a class="pf-secondary-action" href="/internal/commerce/products">Products</a>
+            </div>
+        </div>
+
+        <div class="pf-focus-grid">
+            <article class="pf-focus-card is-info pf-span-4">
+                <div class="pf-focus-label">What Exists</div>
+                <h3 class="pf-focus-title">Product Library</h3>
+                <div class="pf-focus-value">@Model.ProductCount</div>
+                <p class="pf-focus-copy">The catalog should reflect the live storefront, not extra filler modules.</p>
+                <div class="pf-focus-list">
+                    <div>
+                        <span>Active Products</span>
+                        <strong>@Model.ActiveProductCount</strong>
+                    </div>
+                    <div>
+                        <span>Business Type</span>
+                        <strong>@Model.BusinessType</strong>
+                    </div>
+                </div>
+            </article>
+
+            <article class="pf-focus-card is-success pf-span-4">
+                <div class="pf-focus-label">What Leads</div>
+                <h3 class="pf-focus-title">Featured Mix</h3>
+                <div class="pf-focus-value">@Model.FeaturedProductCount</div>
+                <p class="pf-focus-copy">Featured density is a cleaner signal than a generic site-content checklist.</p>
+                <div class="pf-focus-list">
+                    <div>
+                        <span>Orders</span>
+                        <strong>@Model.OrderCount</strong>
+                    </div>
+                    <div>
+                        <span>Purchases</span>
+                        <strong>@Model.Purchases</strong>
+                    </div>
+                </div>
+            </article>
+
+            <article class="pf-focus-card is-@mediaTone pf-span-4">
+                <div class="pf-focus-label">What Shows</div>
+                <h3 class="pf-focus-title">Image Coverage</h3>
+                <div class="pf-focus-value">@Model.ProductImageCount</div>
+                <p class="pf-focus-copy">Media coverage should be visible immediately so weak product presentation is obvious.</p>
+                <div class="pf-focus-list">
+                    <div>
+                        <span>Store Views</span>
+                        <strong>@Model.StoreViews</strong>
+                    </div>
+                    <div>
+                        <span>Visitors</span>
+                        <strong>@Model.Visitors</strong>
+                    </div>
+                </div>
+            </article>
+        </div>
+    </section>
 </section>

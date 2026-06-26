@@ -1,19 +1,140 @@
+@model ParfaitApp.Models.ParfaitInternalWorkspaceSnapshotViewModel
 @{
     ViewData["Title"] = "Customers";
     Layout = "_InternalLayout";
+
+    var customerTone = Model.CustomerCount > 0 ? "info" : "warning";
+    var repeatTone = Model.RepeatCustomerCount > 0 ? "success" : "warning";
+    var queueTone = Model.OpenFulfillmentCount > 0 || Model.FailedOrderCount > 0 ? "warning" : "success";
 }
 
-<section class="pf-page-hero">
-    <div class="pf-page-hero-main">
-        <div class="pf-kicker">Customer System</div>
-        <h1 class="pf-page-title">Customers</h1>
-        <p class="pf-page-copy">Customer accounts, order history, support, segments, and engagement are managed from here.</p>
-    </div>
-</section>
+<section class="pf-command-page">
+    <header class="pf-command-head">
+        <div class="pf-command-copy">
+            <div class="pf-kicker">Customer Layer</div>
+            <h1 class="pf-command-title">Customers</h1>
+            <p class="pf-command-text">Real buyers, repeat momentum, and service pressure now read in one compact customer surface.</p>
+        </div>
+        <div class="pf-command-meta">
+            <span class="pf-command-badge is-@customerTone">@Model.CustomerCount buyer@(Model.CustomerCount == 1 ? string.Empty : "s")</span>
+            <span class="pf-command-badge is-@repeatTone">@Model.RepeatCustomerCount repeat</span>
+            <span class="pf-command-badge is-@queueTone">@Model.PendingOrderCount pending orders</span>
+        </div>
+    </header>
 
-<section class="row g-4">
-    <div class="col-md-6 col-xl-4"><div class="pf-module-card"><span class="pf-status"><span class="pf-dot"></span> Planned</span><h2 class="pf-module-title">Client Accounts</h2><p class="text-muted mb-0">Future customer login, account profile, saved info, and order access.</p></div></div>
-    <div class="col-md-6 col-xl-4"><div class="pf-module-card"><span class="pf-status"><span class="pf-dot"></span> Planned</span><h2 class="pf-module-title">Order History</h2><p class="text-muted mb-0">View customer purchase history, repeat buyers, and customer value.</p></div></div>
-    <div class="col-md-6 col-xl-4"><div class="pf-module-card"><span class="pf-status"><span class="pf-dot"></span> Planned</span><h2 class="pf-module-title">Support</h2><p class="text-muted mb-0">Handle questions, returns, requests, and customer service records.</p></div></div>
-    <div class="col-md-6 col-xl-4"><div class="pf-module-card"><span class="pf-status"><span class="pf-dot"></span> Later</span><h2 class="pf-module-title">Segments</h2><p class="text-muted mb-0">Group customers by behavior, purchases, campaign source, and engagement.</p></div></div>
+    <section class="pf-command-rail">
+        <article class="pf-rail-card is-@customerTone pf-span-4">
+            <div class="pf-rail-label">Buyer Base</div>
+            <strong class="pf-rail-value">@Model.CustomerCount</strong>
+            <div class="pf-rail-grid">
+                <div>
+                    <span>Paid Orders</span>
+                    <strong>@Model.PaidOrderCount</strong>
+                </div>
+                <div>
+                    <span>Average Order</span>
+                    <strong>$@(Model.AverageOrderValueCents / 100m).ToString("0.00")</strong>
+                </div>
+            </div>
+        </article>
+
+        <article class="pf-rail-card is-@repeatTone pf-span-4">
+            <div class="pf-rail-label">Retention</div>
+            <strong class="pf-rail-value">@Model.RepeatCustomerCount</strong>
+            <div class="pf-rail-grid">
+                <div>
+                    <span>Total Orders</span>
+                    <strong>@Model.OrderCount</strong>
+                </div>
+                <div>
+                    <span>Store Views</span>
+                    <strong>@Model.StoreViews</strong>
+                </div>
+            </div>
+        </article>
+
+        <article class="pf-rail-card is-@queueTone pf-span-4">
+            <div class="pf-rail-label">Attention Queue</div>
+            <strong class="pf-rail-value">@(Model.OpenFulfillmentCount + Model.FailedOrderCount)</strong>
+            <div class="pf-rail-grid">
+                <div>
+                    <span>Open Fulfillment</span>
+                    <strong>@Model.OpenFulfillmentCount</strong>
+                </div>
+                <div>
+                    <span>Failed Payments</span>
+                    <strong>@Model.FailedOrderCount</strong>
+                </div>
+            </div>
+        </article>
+    </section>
+
+    <section class="pf-command-board">
+        <div class="pf-command-board-head">
+            <div>
+                <div class="pf-kicker">Customer Command</div>
+                <h2>Momentum Snapshot</h2>
+                <p>The customer page should make the buyer story obvious without repeating the same broad commerce copy found elsewhere.</p>
+            </div>
+            <div class="pf-command-board-actions">
+                <a class="pf-secondary-action" href="/internal/commerce/orders">Orders</a>
+            </div>
+        </div>
+
+        <div class="pf-focus-grid">
+            <article class="pf-focus-card is-@customerTone pf-span-4">
+                <div class="pf-focus-label">Who Bought</div>
+                <h3 class="pf-focus-title">Buyer Count</h3>
+                <div class="pf-focus-value">@Model.CustomerCount</div>
+                <p class="pf-focus-copy">Unique buyers should always be visible without opening order history first.</p>
+                <div class="pf-focus-list">
+                    <div>
+                        <span>Paid Orders</span>
+                        <strong>@Model.PaidOrderCount</strong>
+                    </div>
+                    <div>
+                        <span>Business Type</span>
+                        <strong>@Model.BusinessType</strong>
+                    </div>
+                </div>
+            </article>
+
+            <article class="pf-focus-card is-@repeatTone pf-span-4">
+                <div class="pf-focus-label">Who Returned</div>
+                <h3 class="pf-focus-title">Repeat Momentum</h3>
+                <div class="pf-focus-value">@Model.RepeatCustomerCount</div>
+                <p class="pf-focus-copy">Repeat demand is a stronger signal than a generic segmentation block.</p>
+                <div class="pf-focus-list">
+                    <div>
+                        <span>Average Order</span>
+                        <strong>$@(Model.AverageOrderValueCents / 100m).ToString("0.00")</strong>
+                    </div>
+                    <div>
+                        <span>Purchases</span>
+                        <strong>@Model.Purchases</strong>
+                    </div>
+                </div>
+            </article>
+
+            <article class="pf-focus-card is-@queueTone pf-span-4">
+                <div class="pf-focus-label">Who Needs Help</div>
+                <h3 class="pf-focus-title">Service Pressure</h3>
+                <div class="pf-focus-value">@(Model.PendingOrderCount + Model.FailedOrderCount)</div>
+                <p class="pf-focus-copy">Support load reads cleaner when it points directly back to the live order queue.</p>
+                <div class="pf-focus-list">
+                    <div>
+                        <span>Pending Orders</span>
+                        <strong>@Model.PendingOrderCount</strong>
+                    </div>
+                    <div>
+                        <span>Failed Payments</span>
+                        <strong>@Model.FailedOrderCount</strong>
+                    </div>
+                </div>
+                <div class="pf-focus-actions">
+                    <a class="pf-action" href="/internal/commerce/orders">Open Orders</a>
+                </div>
+            </article>
+        </div>
+    </section>
 </section>

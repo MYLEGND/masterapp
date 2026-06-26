@@ -49,6 +49,9 @@ public sealed class ParfaitProductAdminViewModel
 {
     public List<ParfaitProductEditorViewModel> Products { get; init; } = [];
     public ParfaitProductEditorViewModel NewProduct { get; init; } = new();
+    public int ActiveProductCount { get; init; }
+    public int FeaturedProductCount { get; init; }
+    public int TotalImageCount { get; init; }
 }
 
 public sealed class ParfaitProductImageEditorViewModel

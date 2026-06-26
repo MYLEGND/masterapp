@@ -6,33 +6,58 @@
     {
         returnUrl = Url.Action("BusinessProfile", "InternalSettings")
     }) ?? "/internal/settings/meta-connect";
+    var checkoutTone = string.IsNullOrWhiteSpace(Model.GlobalStoreCheckoutUrl) ? "warning" : "success";
+    var metaTone = Model.HasActiveMetaAdsConnection ? "success" : string.IsNullOrWhiteSpace(Model.MetaPixelId) ? "danger" : "warning";
 }
 
-<section class="pf-page-hero">
-    <div class="pf-page-hero-main">
-        <div class="pf-kicker">Profile Settings</div>
-        <h1 class="pf-page-title">Business Profile</h1>
-        <p class="pf-page-copy">
-            Store identity, checkout ownership, Meta Pixel storage, and secure CAPI activation all live here.
-        </p>
-    </div>
-</section>
+<section class="pf-command-page">
+    <header class="pf-command-head">
+        <div class="pf-command-copy">
+            <div class="pf-kicker">Profile Settings</div>
+            <h1 class="pf-command-title">Business Profile</h1>
+            <p class="pf-command-text">Store identity, checkout ownership, Meta Pixel storage, and secure CAPI activation all stay here in one clean setup page.</p>
+        </div>
+        <div class="pf-command-meta">
+            <span class="pf-command-badge is-@checkoutTone">Checkout @(string.IsNullOrWhiteSpace(Model.GlobalStoreCheckoutUrl) ? "pending" : "ready")</span>
+            <span class="pf-command-badge is-@metaTone">Meta @(Model.HasActiveMetaAdsConnection ? "secure" : "pending")</span>
+            <span class="pf-command-badge is-info">Analytics live</span>
+        </div>
+    </header>
 
-@if (TempData["ProfileStatus"] is string statusMessage)
-{
-    <div class="pf-alert-success">@statusMessage</div>
-}
+    @if (TempData["ProfileStatus"] is string statusMessage)
+    {
+        <div class="pf-alert-success">@statusMessage</div>
+    }
 
-<form asp-action="BusinessProfile" asp-controller="InternalSettings" method="post" id="pfBusinessProfileForm">
-    @Html.AntiForgeryToken()
+    <section class="pf-command-rail">
+        <article class="pf-rail-card is-@checkoutTone pf-span-4">
+            <div class="pf-rail-label">Checkout Ownership</div>
+            <strong class="pf-rail-value">@(string.IsNullOrWhiteSpace(Model.GlobalStoreCheckoutUrl) ? "Pending" : "Ready")</strong>
+            <p class="pf-rail-note">The global checkout path should be obvious immediately.</p>
+        </article>
 
-    <section class="row g-4 mb-4">
-        <div class="col-xl-8">
-            <div class="pf-module-card">
-                <span class="pf-status"><span class="pf-dot"></span> Active Profile</span>
-                <h2 class="pf-module-title">Store Identity</h2>
+        <article class="pf-rail-card is-@metaTone pf-span-4">
+            <div class="pf-rail-label">Signal Setup</div>
+            <strong class="pf-rail-value">@(Model.HasActiveMetaAdsConnection ? "Secure" : "Pending")</strong>
+            <p class="pf-rail-note">@Model.MetaCapiStatus</p>
+        </article>
+
+        <article class="pf-rail-card is-info pf-span-4">
+            <div class="pf-rail-label">Shared Read</div>
+            <strong class="pf-rail-value">Live</strong>
+            <p class="pf-rail-note">@Model.DomainStatus. @Model.AnalyticsStatus</p>
+        </article>
+    </section>
+
+    <form asp-action="BusinessProfile" asp-controller="InternalSettings" method="post" id="pfBusinessProfileForm">
+        @Html.AntiForgeryToken()
+
+        <section class="pf-workspace-grid">
+            <div class="pf-module-card pf-span-7">
+                <span class="pf-status"><span class="pf-dot"></span> Store Identity</span>
+                <h2 class="pf-module-title">Core Business Details</h2>
                 <p class="text-muted mb-4">
-                    Parfait keeps one shared internal business profile. Save store-facing values here so checkout, reporting, and Meta setup stay aligned.
+                    Save the storefront values here so checkout, reporting, and signal routing stay aligned from one command surface.
                 </p>
 
                 <div class="row g-3">
@@ -54,39 +79,33 @@
                         <span asp-validation-for="GlobalStoreCheckoutUrl" class="text-danger small"></span>
                         <div class="form-text">Used by the public cart checkout button for all Parfait store products.</div>
                     </div>
-
-                    <div class="col-md-6">
-                        <div class="pf-mini-status">
-                            <div class="pf-mini-label">Frontend Owner</div>
-                            <div class="pf-mini-value">ParfaitApp</div>
-                        </div>
-                    </div>
-
-                    <div class="col-md-6">
-                        <div class="pf-mini-status">
-                            <div class="pf-mini-label">Domain Status</div>
-                            <div class="pf-mini-value">@Model.DomainStatus</div>
-                        </div>
-                    </div>
                 </div>
             </div>
-        </div>
 
-        <div class="col-xl-4">
-            <div class="pf-module-card h-100">
-                <span class="pf-status"><span class="pf-dot"></span> Boundary</span>
-                <h2 class="pf-module-title">Ownership Rule</h2>
-                <p class="text-muted mb-0">
-                    ParfaitApp owns the Parfait commerce profile. AgentPortal remains untouched. Meta Pixel is saved manually here, while Meta OAuth is the only path that secures CAPI.
+            <div class="pf-module-card pf-span-5">
+                <span class="pf-status pf-status--info"><span class="pf-dot"></span> Shared Intelligence</span>
+                <h2 class="pf-module-title">Analytics & Trust</h2>
+                <div class="pf-focus-list">
+                    <div>
+                        <span>Analytics</span>
+                        <strong>@Model.AnalyticsStatus</strong>
+                    </div>
+                    <div>
+                        <span>Trust</span>
+                        <strong>@Model.TrustStatus</strong>
+                    </div>
+                    <div>
+                        <span>Domain</span>
+                        <strong>@Model.DomainStatus</strong>
+                    </div>
+                </div>
+                <p class="text-muted mt-3 mb-0">
+                    Parfait reporting stays inside ParfaitApp while reusing the shared analytics and Meta signal infrastructure.
                 </p>
             </div>
-        </div>
-    </section>
 
-    <section class="row g-4 mb-4">
-        <div class="col-lg-7">
-            <div class="pf-module-card h-100">
-                <span class="pf-status"><span class="pf-dot"></span> Meta</span>
+            <div class="pf-module-card pf-span-8">
+                <span class="pf-status pf-status--@(metaTone == "danger" ? "danger" : metaTone == "warning" ? "warning" : "success")"><span class="pf-dot"></span> Meta</span>
                 <h2 class="pf-module-title">Meta Connection</h2>
                 <p class="text-muted mb-3">
                     This follows the AgentPortal rule set: save the Pixel ID manually, but never paste raw CAPI secrets. Secure CAPI is written only after a successful Meta login.
@@ -133,28 +152,16 @@
                     Pixel status: @Model.MetaPixelStatus. CAPI status: @Model.MetaCapiStatus.
                 </div>
             </div>
-        </div>
 
-        <div class="col-lg-5">
-            <div class="pf-module-card h-100">
-                <span class="pf-status"><span class="pf-dot"></span> Analytics</span>
-                <h2 class="pf-module-title">Shared Intelligence</h2>
-                <p><strong>Analytics:</strong> @Model.AnalyticsStatus</p>
-                <p><strong>Trust:</strong> @Model.TrustStatus</p>
-                <p class="text-muted mb-0">
-                    Parfait events continue to stay inside ParfaitApp reporting while reusing the shared backend analytics and Meta signal infrastructure.
-                </p>
+            <div class="pf-panel pf-span-4">
+                <span class="pf-status pf-status--success"><span class="pf-dot"></span> Save Rules</span>
+                <h2 class="pf-module-title">Publish Profile</h2>
+                <p class="text-muted mb-4">Save only the storefront values and approved Meta fields used by Parfait internal. No backend wiring changes are touched here.</p>
+                <button type="submit" class="pf-action">Save Business Profile</button>
             </div>
-        </div>
-    </section>
-
-    <section class="pf-panel">
-        <div class="d-flex flex-wrap gap-2">
-            <button type="submit" class="pf-action">Save Business Profile</button>
-            <a class="pf-secondary-action" href="/internal/dashboard">Back To Dashboard</a>
-        </div>
-    </section>
-</form>
+        </section>
+    </form>
+</section>
 
 @section Scripts {
     <partial name="_ValidationScriptsPartial" />

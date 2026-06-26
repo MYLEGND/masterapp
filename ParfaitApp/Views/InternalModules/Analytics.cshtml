@@ -7,33 +7,59 @@
     static string Percent(decimal value) => value.ToString("0.0") + "%";
 }
 
-<section class="pf-commerce-shell">
-    <section class="pf-page-hero">
-        <div class="pf-page-hero-main">
+<section class="pf-command-page">
+    <header class="pf-command-head">
+        <div class="pf-command-copy">
             <div class="pf-kicker">Parfait Intelligence</div>
-            <h1 class="pf-page-title">Analytics</h1>
-            <p class="pf-page-copy">Live Parfait-owned funnel reporting from AnalyticsEvents.</p>
+            <h1 class="pf-command-title">Analytics</h1>
+            <p class="pf-command-text">Live Parfait-owned funnel reporting now stays tight, readable, and useful instead of feeling like a second banner with more filler.</p>
         </div>
-
-        <div class="pf-page-hero-actions">
-            <a class="pf-secondary-action" href="/internal/commerce">Commerce Home</a>
-            <a class="pf-secondary-action" href="/store" target="_blank" rel="noopener">View Store</a>
+        <div class="pf-command-meta">
+            <span class="pf-command-badge is-info">@Model.Sessions sessions</span>
+            <span class="pf-command-badge is-success">@Model.Purchases purchases</span>
+            <span class="pf-command-badge is-@(Model.RevenueCents > 0 ? "success" : "warning")">@Money(Model.RevenueCents) tracked</span>
         </div>
+    </header>
+
+    <section class="pf-command-rail">
+        <article class="pf-rail-card is-info pf-span-2">
+            <div class="pf-rail-label">Visitors</div>
+            <strong class="pf-rail-value">@Model.Visitors</strong>
+            <p class="pf-rail-note">@Model.Sessions sessions</p>
+        </article>
+
+        <article class="pf-rail-card is-info pf-span-2">
+            <div class="pf-rail-label">Store Views</div>
+            <strong class="pf-rail-value">@Model.StoreViews</strong>
+            <p class="pf-rail-note">@Model.ProductViews product views</p>
+        </article>
+
+        <article class="pf-rail-card is-@(Model.AddToCarts > 0 ? "success" : "warning") pf-span-2">
+            <div class="pf-rail-label">Add To Cart</div>
+            <strong class="pf-rail-value">@Model.AddToCarts</strong>
+            <p class="pf-rail-note">@Percent(Model.ProductViewToCartRate) view to cart</p>
+        </article>
+
+        <article class="pf-rail-card is-@(Model.CheckoutStarts > 0 ? "success" : "warning") pf-span-2">
+            <div class="pf-rail-label">Started</div>
+            <strong class="pf-rail-value">@Model.CheckoutStarts</strong>
+            <p class="pf-rail-note">@Percent(Model.CartToCheckoutRate) cart to checkout</p>
+        </article>
+
+        <article class="pf-rail-card is-@(Model.Purchases > 0 ? "success" : "danger") pf-span-2">
+            <div class="pf-rail-label">Purchases</div>
+            <strong class="pf-rail-value">@Model.Purchases</strong>
+            <p class="pf-rail-note">@Percent(Model.CheckoutToPurchaseRate) checkout to purchase</p>
+        </article>
+
+        <article class="pf-rail-card is-@(Model.RevenueCents > 0 ? "success" : "danger") pf-span-2">
+            <div class="pf-rail-label">Revenue</div>
+            <strong class="pf-rail-value">@Money(Model.RevenueCents)</strong>
+            <p class="pf-rail-note">Tracked purchase value</p>
+        </article>
     </section>
 
-    <section class="row g-4 mb-4">
-        <div class="col-md-6 col-xl-3"><div class="pf-module-card"><span class="pf-status"><span class="pf-dot"></span> Visitors</span><h2 class="pf-module-title">@Model.Visitors</h2><p class="text-muted mb-0">@Model.Sessions sessions</p></div></div>
-        <div class="col-md-6 col-xl-3"><div class="pf-module-card"><span class="pf-status"><span class="pf-dot"></span> Store Views</span><h2 class="pf-module-title">@Model.StoreViews</h2><p class="text-muted mb-0">@Model.ProductViews product views</p></div></div>
-        <div class="col-md-6 col-xl-3"><div class="pf-module-card"><span class="pf-status"><span class="pf-dot"></span> Add To Cart</span><h2 class="pf-module-title">@Model.AddToCarts</h2><p class="text-muted mb-0">@Percent(Model.ProductViewToCartRate) product view → cart</p></div></div>
-        <div class="col-md-6 col-xl-3"><div class="pf-module-card"><span class="pf-status"><span class="pf-dot"></span> Checkout</span><h2 class="pf-module-title">@Model.CheckoutStarts</h2><p class="text-muted mb-0">@Percent(Model.CartToCheckoutRate) cart → checkout</p></div></div>
-    </section>
-
-    <section class="row g-4 mb-4">
-        <div class="col-md-6 col-xl-3"><div class="pf-module-card"><span class="pf-status"><span class="pf-dot"></span> Purchases</span><h2 class="pf-module-title">@Model.Purchases</h2><p class="text-muted mb-0">@Percent(Model.CheckoutToPurchaseRate) checkout → purchase</p></div></div>
-        <div class="col-md-6 col-xl-3"><div class="pf-module-card"><span class="pf-status"><span class="pf-dot"></span> Revenue</span><h2 class="pf-module-title">@Money(Model.RevenueCents)</h2><p class="text-muted mb-0">Tracked purchase value</p></div></div>
-    </section>
-
-    <section class="pf-commerce-panel mb-4">
+    <section class="pf-commerce-panel">
         <div class="pf-commerce-panel-head">
             <div>
                 <div class="pf-kicker">Commerce Funnel</div>
@@ -109,9 +135,16 @@
                     <tbody>
                         @foreach (var item in Model.RecentEvents)
                         {
+                            var eventTone = item.EventType.Contains("purchase", StringComparison.OrdinalIgnoreCase)
+                                ? "success"
+                                : item.EventType.Contains("checkout", StringComparison.OrdinalIgnoreCase)
+                                    ? "info"
+                                    : item.EventType.Contains("cart", StringComparison.OrdinalIgnoreCase)
+                                        ? "warning"
+                                        : "info";
                             <tr>
                                 <td>@item.EventUtc.ToLocalTime().ToString("M/d/yyyy h:mm tt")</td>
-                                <td><span class="pf-status"><span class="pf-dot"></span> @item.EventType</span></td>
+                                <td><span class="pf-status pf-status--@eventTone"><span class="pf-dot"></span> @item.EventType</span></td>
                                 <td>@(item.ProductName ?? "—")</td>
                                 <td>@(item.Size ?? "—")</td>
                                 <td>@(item.Quantity?.ToString() ?? "—")</td>

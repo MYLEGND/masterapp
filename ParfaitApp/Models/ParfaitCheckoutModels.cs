@@ -88,6 +88,12 @@ public sealed class ParfaitOrderRecord
 public sealed class ParfaitOrderAdminViewModel
 {
     public List<ParfaitOrderRecord> Orders { get; set; } = [];
+    public int PaidOrderCount { get; set; }
+    public int PendingOrderCount { get; set; }
+    public int FailedOrderCount { get; set; }
+    public int OpenFulfillmentCount { get; set; }
+    public int RevenueCents { get; set; }
+    public int AverageOrderValueCents { get; set; }
 }
 
 public sealed class ParfaitOrderSuccessViewModel

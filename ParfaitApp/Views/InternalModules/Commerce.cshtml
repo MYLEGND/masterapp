@@ -1,21 +1,207 @@
+@model ParfaitApp.Models.ParfaitInternalWorkspaceSnapshotViewModel
 @{
     ViewData["Title"] = "Commerce";
     Layout = "_InternalLayout";
+
+    static string Money(int cents) => "$" + (cents / 100m).ToString("0.00");
+    var readinessTone = Model.HasCheckoutUrl && Model.HasMetaConnection ? "success" : Model.HasCheckoutUrl || Model.HasMetaConnection ? "warning" : "danger";
+    var queueTone = Model.OpenFulfillmentCount > 0 || Model.FailedOrderCount > 0 ? "warning" : "success";
 }
 
-<section class="pf-page-hero">
-    <div class="pf-page-hero-main">
-        <div class="pf-kicker">Commerce Operations</div>
-        <h1 class="pf-page-title">Commerce</h1>
-        <p class="pf-page-copy">Products, orders, inventory, and revenue controls for Parfait&apos;s internal store operations.</p>
-    </div>
-</section>
+<section class="pf-command-page">
+    <header class="pf-command-head">
+        <div class="pf-command-copy">
+            <div class="pf-kicker">Commerce Operations</div>
+            <h1 class="pf-command-title">Commerce</h1>
+            <p class="pf-command-text">Products, orders, revenue, and fulfillment now sit in one denser command surface instead of a stack of oversized tiles.</p>
+        </div>
+        <div class="pf-command-meta">
+            <span class="pf-command-badge is-success">@Model.ActiveProductCount live products</span>
+            <span class="pf-command-badge is-info">@Model.OrderCount orders</span>
+            <span class="pf-command-badge is-@queueTone">@Model.OpenFulfillmentCount open fulfillment</span>
+            <span class="pf-command-badge is-@readinessTone">Checkout @(Model.HasCheckoutUrl ? "ready" : "missing")</span>
+        </div>
+    </header>
 
-<section class="row g-4">
-    <div class="col-md-6 col-xl-4"><a class="pf-module-link" href="/internal/commerce/products"><div class="pf-module-card"><span class="pf-status"><span class="pf-dot"></span> Live Manager</span><h2 class="pf-module-title">Products</h2><p class="text-muted mb-0">Create and manage product listings, pricing, descriptions, images, and availability.</p></div></a></div>
-    <div class="col-md-6 col-xl-4"><div class="pf-module-card"><span class="pf-status"><span class="pf-dot"></span> Planned</span><h2 class="pf-module-title">Collections</h2><p class="text-muted mb-0">Organize products into drops, categories, campaigns, and featured collections.</p></div></div>
-    <div class="col-md-6 col-xl-4"><div class="pf-module-card"><span class="pf-status"><span class="pf-dot"></span> Planned</span><h2 class="pf-module-title">Inventory</h2><p class="text-muted mb-0">Track stock levels, sizes, variants, reorder needs, and sold-out items.</p></div></div>
-    <div class="col-md-6 col-xl-4"><a class="pf-module-link" href="/internal/commerce/orders"><div class="pf-module-card"><span class="pf-status"><span class="pf-dot"></span> Live Manager</span><h2 class="pf-module-title">Orders</h2><p class="text-muted mb-0">View purchases, payment status, fulfillment status, and customer order history.</p></div></a></div>
-    <div class="col-md-6 col-xl-4"><div class="pf-module-card"><span class="pf-status"><span class="pf-dot"></span> Planned</span><h2 class="pf-module-title">Revenue</h2><p class="text-muted mb-0">Track sales, refunds, order value, revenue trends, and purchase performance.</p></div></div>
-    <div class="col-md-6 col-xl-4"><div class="pf-module-card"><span class="pf-status"><span class="pf-dot"></span> Later</span><h2 class="pf-module-title">Fulfillment</h2><p class="text-muted mb-0">Prepare future shipping, pickup, delivery, and order completion workflows.</p></div></div>
+    <section class="pf-command-rail">
+        <article class="pf-rail-card is-success pf-span-3">
+            <div class="pf-rail-label">Catalog</div>
+            <strong class="pf-rail-value">@Model.ProductCount</strong>
+            <div class="pf-rail-grid">
+                <div>
+                    <span>Active</span>
+                    <strong>@Model.ActiveProductCount</strong>
+                </div>
+                <div>
+                    <span>Featured</span>
+                    <strong>@Model.FeaturedProductCount</strong>
+                </div>
+            </div>
+        </article>
+
+        <article class="pf-rail-card is-info pf-span-3">
+            <div class="pf-rail-label">Order Feed</div>
+            <strong class="pf-rail-value">@Model.OrderCount</strong>
+            <div class="pf-rail-grid">
+                <div>
+                    <span>Paid</span>
+                    <strong>@Model.PaidOrderCount</strong>
+                </div>
+                <div>
+                    <span>Pending</span>
+                    <strong>@Model.PendingOrderCount</strong>
+                </div>
+            </div>
+        </article>
+
+        <article class="pf-rail-card is-success pf-span-3">
+            <div class="pf-rail-label">Revenue</div>
+            <strong class="pf-rail-value">@Money(Model.RevenueCents)</strong>
+            <div class="pf-rail-grid">
+                <div>
+                    <span>Average Order</span>
+                    <strong>@Money(Model.AverageOrderValueCents)</strong>
+                </div>
+                <div>
+                    <span>Customers</span>
+                    <strong>@Model.CustomerCount</strong>
+                </div>
+            </div>
+        </article>
+
+        <article class="pf-rail-card is-@readinessTone pf-span-3">
+            <div class="pf-rail-label">Store Readiness</div>
+            <strong class="pf-rail-value">@(Model.HasCheckoutUrl && Model.HasMetaConnection ? "Ready" : "Needs Love")</strong>
+            <div class="pf-rail-grid">
+                <div>
+                    <span>Checkout</span>
+                    <strong>@(Model.HasCheckoutUrl ? "Saved" : "Missing")</strong>
+                </div>
+                <div>
+                    <span>Meta</span>
+                    <strong>@(Model.HasMetaConnection ? "Secure" : "Pending")</strong>
+                </div>
+            </div>
+        </article>
+    </section>
+
+    <section class="pf-workspace-grid">
+        <section class="pf-commerce-panel pf-span-8">
+            <div class="pf-commerce-panel-head">
+                <div>
+                    <div class="pf-kicker">Commerce Command</div>
+                    <h2>Live Control</h2>
+                </div>
+                <div class="pf-command-board-actions">
+                    <a class="pf-secondary-action" href="/internal/commerce/products">Products</a>
+                    <a class="pf-secondary-action" href="/internal/commerce/orders">Orders</a>
+                </div>
+            </div>
+
+            <div class="pf-focus-grid">
+                <article class="pf-focus-card is-success pf-span-6">
+                    <div class="pf-focus-label">Catalog Workspace</div>
+                    <h3 class="pf-focus-title">Products</h3>
+                    <div class="pf-focus-value">@Model.ProductCount</div>
+                    <p class="pf-focus-copy">Catalog visibility, featured mix, and product media stay in one lane.</p>
+                    <div class="pf-focus-list">
+                        <div>
+                            <span>Active Products</span>
+                            <strong>@Model.ActiveProductCount</strong>
+                        </div>
+                        <div>
+                            <span>Product Images</span>
+                            <strong>@Model.ProductImageCount</strong>
+                        </div>
+                    </div>
+                    <div class="pf-focus-actions">
+                        <a class="pf-action" href="/internal/commerce/products">Open Products</a>
+                    </div>
+                </article>
+
+                <article class="pf-focus-card is-info pf-span-6">
+                    <div class="pf-focus-label">Order Workspace</div>
+                    <h3 class="pf-focus-title">Orders</h3>
+                    <div class="pf-focus-value">@Model.OrderCount</div>
+                    <p class="pf-focus-copy">Payment state and fulfillment read from one screen instead of hidden tables.</p>
+                    <div class="pf-focus-list">
+                        <div>
+                            <span>Paid Orders</span>
+                            <strong>@Model.PaidOrderCount</strong>
+                        </div>
+                        <div>
+                            <span>Open Fulfillment</span>
+                            <strong>@Model.OpenFulfillmentCount</strong>
+                        </div>
+                    </div>
+                    <div class="pf-focus-actions">
+                        <a class="pf-action" href="/internal/commerce/orders">Open Orders</a>
+                    </div>
+                </article>
+
+                <article class="pf-focus-card is-success pf-span-6">
+                    <div class="pf-focus-label">Sales Read</div>
+                    <h3 class="pf-focus-title">Revenue Quality</h3>
+                    <div class="pf-focus-value">@Money(Model.RevenueCents)</div>
+                    <p class="pf-focus-copy">The revenue story should be obvious without opening multiple screens.</p>
+                    <div class="pf-focus-list">
+                        <div>
+                            <span>Average Order</span>
+                            <strong>@Money(Model.AverageOrderValueCents)</strong>
+                        </div>
+                        <div>
+                            <span>Repeat Buyers</span>
+                            <strong>@Model.RepeatCustomerCount</strong>
+                        </div>
+                    </div>
+                </article>
+
+                <article class="pf-focus-card is-@queueTone pf-span-6">
+                    <div class="pf-focus-label">Exceptions</div>
+                    <h3 class="pf-focus-title">Queue & Attention</h3>
+                    <div class="pf-focus-value">@(Model.OpenFulfillmentCount + Model.FailedOrderCount)</div>
+                    <p class="pf-focus-copy">Open work and failed payments are grouped together so the queue feels actionable.</p>
+                    <div class="pf-focus-list">
+                        <div>
+                            <span>Failed Payments</span>
+                            <strong>@Model.FailedOrderCount</strong>
+                        </div>
+                        <div>
+                            <span>Pending Orders</span>
+                            <strong>@Model.PendingOrderCount</strong>
+                        </div>
+                    </div>
+                </article>
+            </div>
+        </section>
+
+        <section class="pf-module-card pf-span-4">
+            <span class="pf-status pf-status--@(readinessTone == "danger" ? "danger" : readinessTone == "warning" ? "warning" : "success")"><span class="pf-dot"></span> Readiness</span>
+            <h2 class="pf-module-title">Store Dependencies</h2>
+            <p class="text-muted mb-3">Commerce stays clean when checkout, Meta, and storefront identity are maintained in the same setup rule.</p>
+
+            <div class="pf-focus-list">
+                <div>
+                    <span>Checkout URL</span>
+                    <strong>@(Model.HasCheckoutUrl ? "Saved" : "Missing")</strong>
+                </div>
+                <div>
+                    <span>Meta CAPI</span>
+                    <strong>@(Model.HasMetaConnection ? "Secure" : "Pending")</strong>
+                </div>
+                <div>
+                    <span>Business Type</span>
+                    <strong>@Model.BusinessType</strong>
+                </div>
+                <div>
+                    <span>Latest Order</span>
+                    <strong>@(Model.LatestOrderUtc.HasValue ? Model.LatestOrderUtc.Value.ToLocalTime().ToString("MMM d") : "None yet")</strong>
+                </div>
+            </div>
+
+            <div class="pf-focus-actions mt-3">
+                <a class="pf-action" href="/internal/settings/business-profile">Business Profile</a>
+            </div>
+        </section>
+    </section>
 </section>

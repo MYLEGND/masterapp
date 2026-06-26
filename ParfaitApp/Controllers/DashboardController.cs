@@ -1,7 +1,7 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
-using ParfaitApp.Models;
 using ParfaitApp.Security;
+using ParfaitApp.Services;
 
 namespace ParfaitApp.Controllers;
 
@@ -9,6 +9,13 @@ namespace ParfaitApp.Controllers;
 [Route("internal/dashboard")]
 public sealed class DashboardController : Controller
 {
+    private readonly ParfaitInternalWorkspaceService _workspace;
+
+    public DashboardController(ParfaitInternalWorkspaceService workspace)
+    {
+        _workspace = workspace;
+    }
+
     [HttpGet("")]
     [ParfaitInternalPage(
         "Dashboard",
@@ -16,8 +23,8 @@ public sealed class DashboardController : Controller
         "Internal operating overview for Parfait commerce, growth, and analytics.",
         1,
         1)]
-    public IActionResult Index()
+    public async Task<IActionResult> Index(CancellationToken ct)
     {
-        return View(new ParfaitInternalProfileViewModel());
+        return View(await _workspace.GetSnapshotAsync(ct));
     }
 }
