@@ -76,7 +76,7 @@ html {
 .pf-header-card {
     position: relative;
     overflow: hidden;
-    padding: 1.05rem 1.15rem 3.35rem;
+    padding: 1rem 1.15rem;
     border-radius: var(--pf-radius-lg);
     border: 1.5px solid rgba(242, 223, 207, 0.16);
     background:
@@ -90,10 +90,17 @@ html {
 }
 
 .pf-header-main {
-    display: grid;
-    grid-template-columns: auto minmax(0, 1fr) auto;
-    gap: 1rem;
+    display: flex;
     align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+}
+
+.pf-header-left {
+    min-width: 0;
+    display: flex;
+    align-items: center;
+    gap: 0.9rem;
 }
 
 .pf-brandmark {
@@ -136,25 +143,12 @@ html {
     line-height: 1;
 }
 
-.pf-current {
+.pf-brand-subtitle {
     color: #ead3c2;
     font-size: 0.72rem;
     font-weight: 950;
     letter-spacing: 0.18em;
     text-transform: uppercase;
-}
-
-.pf-header-nav {
-    min-width: 0;
-    display: grid;
-    gap: 0.7rem;
-}
-
-.pf-nav-row {
-    display: flex;
-    flex-wrap: wrap;
-    align-items: center;
-    gap: 0.65rem;
 }
 
 .pf-menu-button {
@@ -201,84 +195,11 @@ html {
     top: 6px;
 }
 
-.pf-nav-link {
-    min-height: 46px;
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    padding: 0 1rem;
-    border-radius: 999px;
-    border: 1.3px solid rgba(242, 223, 207, 0.2);
-    background: rgba(255, 255, 255, 0.06);
-    color: #fff7f1;
-    text-decoration: none;
-    font-size: 0.92rem;
-    font-weight: 850;
-    letter-spacing: 0.015em;
-    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.05);
-    transition: transform 0.14s ease, box-shadow 0.18s ease, border-color 0.18s ease, background 0.18s ease;
-}
-
-.pf-nav-link:hover,
-.pf-nav-link.is-active {
-    transform: translateY(-1px);
-    border-color: rgba(255, 239, 228, 0.44);
-    background: linear-gradient(180deg, rgba(242, 223, 207, 0.18), rgba(242, 223, 207, 0.1));
-    box-shadow: 0 12px 24px rgba(27, 15, 11, 0.2);
-}
-
-.pf-command-pill {
-    display: inline-flex;
-    align-items: center;
-    width: fit-content;
-    min-height: 34px;
-    padding: 0 0.9rem;
-    border-radius: 999px;
-    border: 1px solid rgba(242, 223, 207, 0.24);
-    background: rgba(255, 255, 255, 0.08);
-    color: #f7e3d3;
-    font-size: 0.75rem;
-    font-weight: 900;
-    letter-spacing: 0.12em;
-    text-transform: uppercase;
-}
-
-.pf-command-note {
-    color: rgba(255, 239, 228, 0.86);
-    font-size: 0.92rem;
-    font-weight: 650;
-    line-height: 1.45;
-}
-
 .pf-header-actions {
     display: flex;
     flex-wrap: wrap;
     justify-content: flex-end;
     gap: 0.7rem;
-}
-
-.pf-header-ribbon {
-    position: absolute;
-    left: 50%;
-    bottom: 14px;
-    transform: translateX(-50%);
-    max-width: calc(100% - 42px);
-    min-height: 42px;
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    padding: 0 1.3rem;
-    border-radius: 999px;
-    border: 1.5px solid rgba(242, 223, 207, 0.24);
-    background: rgba(51, 30, 23, 0.68);
-    color: #f6e4d6;
-    text-align: center;
-    font-size: 0.86rem;
-    font-weight: 900;
-    letter-spacing: 0.12em;
-    text-transform: uppercase;
-    backdrop-filter: blur(8px);
-    box-shadow: 0 18px 32px rgba(24, 12, 8, 0.22);
 }
 
 .pf-backdrop {
@@ -1491,11 +1412,11 @@ button.pf-secondary-action:hover {
 
 @media (max-width: 1240px) {
     .pf-header-main {
-        grid-template-columns: auto minmax(0, 1fr);
+        flex-wrap: wrap;
+        align-items: flex-start;
     }
 
     .pf-header-actions {
-        grid-column: 1 / -1;
         justify-content: flex-start;
     }
 }
@@ -1518,12 +1439,15 @@ button.pf-secondary-action:hover {
     }
 
     .pf-header-card {
-        padding-bottom: 3.8rem;
+        padding: 1rem;
     }
 
     .pf-header-main {
-        grid-template-columns: 1fr;
         align-items: stretch;
+    }
+
+    .pf-header-left {
+        width: 100%;
     }
 
     .pf-header-actions {
@@ -1555,14 +1479,6 @@ button.pf-secondary-action:hover {
         border-radius: 24px;
     }
 
-    .pf-header-ribbon {
-        width: calc(100% - 28px);
-        max-width: none;
-        padding-inline: 0.8rem;
-        font-size: 0.72rem;
-        letter-spacing: 0.1em;
-    }
-
     .pf-section-head {
         align-items: flex-start;
     }
@@ -1586,7 +1502,7 @@ button.pf-secondary-action:hover {
 
 @media (max-width: 560px) {
     .pf-header-card {
-        padding: 1rem 0.95rem 4rem;
+        padding: 0.95rem;
     }
 
     .pf-brand-emblem {
@@ -1595,11 +1511,7 @@ button.pf-secondary-action:hover {
         border-radius: 16px;
     }
 
-    .pf-nav-row {
-        gap: 0.5rem;
-    }
-
-    .pf-nav-link,
+    .pf-header-left,
     .pf-action,
     .pf-primary-action,
     .pf-secondary-action,
