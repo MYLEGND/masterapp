@@ -72,6 +72,23 @@ public static class MetaSignalSingleTruthPolicy
         !MetaSignalEventCatalog.IsServerAuthorityEvent(eventName) ||
         string.Equals(Normalize(authoritySource), DispatchOwner, StringComparison.OrdinalIgnoreCase);
 
+    public static bool IsTrustedCommerceBridgeProducer(string? trafficType, string? metadataJson)
+    {
+        if (!string.Equals(Normalize(trafficType), "ecommerce", StringComparison.OrdinalIgnoreCase))
+            return false;
+
+        if (!string.Equals(ReadString(metadataJson, "businessType"), "Ecommerce", StringComparison.OrdinalIgnoreCase))
+            return false;
+
+        if (string.IsNullOrWhiteSpace(ReadString(metadataJson, "siteKey")))
+            return false;
+
+        var origin = Normalize(ReadString(metadataJson, "metaPipelineOrigin"));
+
+        return string.Equals(origin, "CommercePurchaseBridge", StringComparison.OrdinalIgnoreCase) ||
+               (origin?.EndsWith(">CommercePurchaseBridge", StringComparison.OrdinalIgnoreCase) == true);
+    }
+
     public static string? ReadString(string? metadataJson, string propertyName)
     {
         if (string.IsNullOrWhiteSpace(metadataJson) || string.IsNullOrWhiteSpace(propertyName))

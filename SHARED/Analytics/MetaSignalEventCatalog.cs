@@ -39,7 +39,8 @@ public static class MetaSignalEventCatalog
         new("AppointmentCompleted", "conversion", false, true),
         new("ApplicationSubmitted", "conversion", false, true),
         new("PolicyIssued", "conversion", false, true),
-        new("PolicyPaid", "conversion", false, true)
+        new("PolicyPaid", "conversion", false, true),
+        new("Purchase", "conversion", false, true)
     ];
 
     private static readonly ReadOnlyDictionary<string, MetaSignalEventDefinition> DefinitionsByNameInternal =

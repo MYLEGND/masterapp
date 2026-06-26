@@ -47,9 +47,9 @@ builder.Services.AddScoped<ParfaitAnalyticsService>();
 builder.Services.AddScoped<ParfaitMetaSignalBridgeService>();
 builder.Services.AddScoped<ParfaitAnalyticsDashboardService>();
 builder.Services.AddScoped<IGraphMailService, GraphMailService>();
-
-
+builder.Services.AddSingleton<ParfaitMetaCapiCredentialProtector>();
 builder.Services.AddScoped<IParfaitBusinessProfileService, ParfaitBusinessProfileService>();
+builder.Services.AddScoped<IParfaitMetaAdsOAuthService, ParfaitMetaAdsOAuthService>();
 
 builder.Services
     .AddAuthentication(options =>

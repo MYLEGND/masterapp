@@ -63,11 +63,23 @@
         </div>
     </aside>
 
-    <div class="pf-page-shell">
-        <header class="pf-header-shell">
-            <div class="pf-header-card">
+    <header class="pf-header-shell">
+        <div class="pf-header-card">
+            <div class="pf-header-inner">
                 <div class="pf-header-main">
                     <div class="pf-header-left">
+                        <a class="pf-brandmark" href="/internal/dashboard">
+                            <span class="pf-brand-emblem">
+                                <img src="~/images/favicon/parfait-logo.png"
+                                     asp-append-version="true"
+                                     alt="Parfait"
+                                     class="pf-brand-logo" />
+                            </span>
+                            <span class="pf-brandline">
+                                <span class="pf-brand">PARFAIT</span>
+                            </span>
+                        </a>
+
                         <button class="pf-menu-button"
                                 type="button"
                                 aria-label="Open internal navigation"
@@ -76,24 +88,13 @@
                                 data-pf-nav-toggle>
                             <span></span>
                         </button>
-
-                        <a class="pf-brandmark" href="/internal/dashboard">
-                            <span class="pf-brand-emblem">P</span>
-                            <span class="pf-brandline">
-                                <span class="pf-brand">PARFAIT</span>
-                                <span class="pf-brand-subtitle">Internal</span>
-                            </span>
-                        </a>
-                    </div>
-
-                    <div class="pf-header-actions">
-                        <a class="pf-secondary-action" href="/store" target="_blank" rel="noopener">View Store</a>
-                        <a class="pf-ghost-action" href="/" target="_blank" rel="noopener">Public Site</a>
                     </div>
                 </div>
             </div>
-        </header>
+        </div>
+    </header>
 
+    <div class="pf-page-shell">
         <main class="pf-shell">
             @RenderBody()
         </main>

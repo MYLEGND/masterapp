@@ -2,14 +2,20 @@
 @{
     ViewData["Title"] = "Business Profile";
     Layout = "_InternalLayout";
+    var metaConnectUrl = Url.Action("MetaConnect", "InternalSettings", new
+    {
+        returnUrl = Url.Action("BusinessProfile", "InternalSettings")
+    }) ?? "/internal/settings/meta-connect";
 }
 
-<section class="pf-panel mb-4">
-    <div class="pf-kicker">Parfait Business Profile</div>
-    <h1 class="pf-page-title">Profile Command</h1>
-    <p class="pf-page-copy">
-        The business profile is the control layer for Parfait’s domain, Meta setup, analytics scope, visitor intelligence, ecommerce funnel, and reporting ownership.
-    </p>
+<section class="pf-page-hero">
+    <div class="pf-page-hero-main">
+        <div class="pf-kicker">Profile Settings</div>
+        <h1 class="pf-page-title">Business Profile</h1>
+        <p class="pf-page-copy">
+            Store identity, checkout ownership, Meta Pixel storage, and secure CAPI activation all live here.
+        </p>
+    </div>
 </section>
 
 @if (TempData["ProfileStatus"] is string statusMessage)
@@ -17,7 +23,7 @@
     <div class="pf-alert-success">@statusMessage</div>
 }
 
-<form asp-action="BusinessProfile" asp-controller="InternalSettings" method="post">
+<form asp-action="BusinessProfile" asp-controller="InternalSettings" method="post" id="pfBusinessProfileForm">
     @Html.AntiForgeryToken()
 
     <section class="row g-4 mb-4">
@@ -25,22 +31,25 @@
             <div class="pf-module-card">
                 <span class="pf-status"><span class="pf-dot"></span> Active Profile</span>
                 <h2 class="pf-module-title">Store Identity</h2>
+                <p class="text-muted mb-4">
+                    Parfait keeps one shared internal business profile. Save store-facing values here so checkout, reporting, and Meta setup stay aligned.
+                </p>
 
                 <div class="row g-3">
                     <div class="col-md-6">
-                        <label asp-for="StoreName" class="form-label fw-bold">Store Name</label>
-                        <input asp-for="StoreName" class="form-control" />
+                        <label asp-for="StoreName" class="form-label fw-bold"></label>
+                        <input asp-for="StoreName" class="form-control" autocomplete="organization" />
                         <span asp-validation-for="StoreName" class="text-danger small"></span>
                     </div>
 
                     <div class="col-md-6">
-                        <label asp-for="BusinessType" class="form-label fw-bold">Business Type</label>
-                        <input asp-for="BusinessType" class="form-control" />
+                        <label asp-for="BusinessType" class="form-label fw-bold"></label>
+                        <input asp-for="BusinessType" class="form-control" autocomplete="off" />
                         <span asp-validation-for="BusinessType" class="text-danger small"></span>
                     </div>
 
                     <div class="col-12">
-                        <label asp-for="GlobalStoreCheckoutUrl" class="form-label fw-bold">Global Store Checkout Link</label>
+                        <label asp-for="GlobalStoreCheckoutUrl" class="form-label fw-bold"></label>
                         <input asp-for="GlobalStoreCheckoutUrl" class="form-control" autocomplete="off" placeholder="https://square.link/u/..." />
                         <span asp-validation-for="GlobalStoreCheckoutUrl" class="text-danger small"></span>
                         <div class="form-text">Used by the public cart checkout button for all Parfait store products.</div>
@@ -55,68 +64,216 @@
 
                     <div class="col-md-6">
                         <div class="pf-mini-status">
-                            <div class="pf-mini-label">Backend Strategy</div>
-                            <div class="pf-mini-value">Shared</div>
+                            <div class="pf-mini-label">Domain Status</div>
+                            <div class="pf-mini-value">@Model.DomainStatus</div>
                         </div>
                     </div>
-                </div>
-
-                <div class="mt-4">
-                    <button type="submit" class="pf-action">Save Profile Settings</button>
                 </div>
             </div>
         </div>
 
         <div class="col-xl-4">
-            <div class="pf-module-card">
+            <div class="pf-module-card h-100">
                 <span class="pf-status"><span class="pf-dot"></span> Boundary</span>
                 <h2 class="pf-module-title">Ownership Rule</h2>
                 <p class="text-muted mb-0">
-                    ParfaitApp owns ecommerce reporting. AgentPortal remains insurance-only. Protect Website remains untouched.
+                    ParfaitApp owns the Parfait commerce profile. AgentPortal remains untouched. Meta Pixel is saved manually here, while Meta OAuth is the only path that secures CAPI.
                 </p>
             </div>
         </div>
     </section>
 
-    <section class="row g-4">
-        <div class="col-lg-6">
-            <div class="pf-module-card">
+    <section class="row g-4 mb-4">
+        <div class="col-lg-7">
+            <div class="pf-module-card h-100">
                 <span class="pf-status"><span class="pf-dot"></span> Meta</span>
                 <h2 class="pf-module-title">Meta Connection</h2>
-
-                <div class="mb-3">
-                    <label asp-for="MetaPixelId" class="form-label fw-bold">Meta Pixel ID</label>
-                    <input asp-for="MetaPixelId" class="form-control" autocomplete="off" inputmode="numeric" placeholder="Manual Pixel ID" />
-                </div>
-
-                <div class="mb-3">
-                    <label asp-for="MetaTestEventCode" class="form-label fw-bold">Meta Test Event Code</label>
-                    <input asp-for="MetaTestEventCode" class="form-control" autocomplete="off" placeholder="Optional test event code" />
-                </div>
-
-                <p><strong>Pixel:</strong> @Model.MetaPixelStatus</p>
-                <p><strong>CAPI:</strong> @Model.MetaCapiStatus</p>
-
-                <p class="text-muted mb-0">
-                    CAPI will follow the existing secure Meta OAuth credential pattern. Do not store raw CAPI secrets manually here.
+                <p class="text-muted mb-3">
+                    This follows the AgentPortal rule set: save the Pixel ID manually, but never paste raw CAPI secrets. Secure CAPI is written only after a successful Meta login.
                 </p>
+
+                <div class="pf-mini-status mb-3">
+                    <div class="pf-mini-label">Meta CAPI</div>
+                    <div class="pf-mini-value">@Model.MetaCapiStatus</div>
+                </div>
+
+                <div id="pfMetaConnectionStatus" class="small fw-semibold @(Model.HasActiveMetaAdsConnection ? "text-success" : "text-muted")">
+                    @Model.MetaConnectionLabel
+                </div>
+
+                <div class="d-flex flex-wrap gap-2 mt-3 mb-4">
+                    <a id="pfMetaConnectButton"
+                       class="pf-action"
+                       href="@metaConnectUrl">
+                        @(Model.HasActiveMetaAdsConnection ? "Reconnect Meta Ads" : "Connect Meta Ads")
+                    </a>
+                    <button id="pfMetaDisconnectButton"
+                            type="button"
+                            class="pf-secondary-action"
+                            style="@(Model.HasActiveMetaAdsConnection ? null : "display:none;")">
+                        Disconnect Meta Ads
+                    </button>
+                </div>
+
+                <div class="row g-3">
+                    <div class="col-md-6">
+                        <label asp-for="MetaPixelId" class="form-label fw-bold"></label>
+                        <input asp-for="MetaPixelId" class="form-control" autocomplete="off" inputmode="numeric" placeholder="Numeric Meta Pixel ID" />
+                        <span asp-validation-for="MetaPixelId" class="text-danger small"></span>
+                    </div>
+
+                    <div class="col-md-6">
+                        <label asp-for="MetaTestEventCode" class="form-label fw-bold"></label>
+                        <input asp-for="MetaTestEventCode" class="form-control" autocomplete="off" placeholder="Optional Meta test event code" />
+                        <span asp-validation-for="MetaTestEventCode" class="text-danger small"></span>
+                    </div>
+                </div>
+
+                <div class="form-text mt-3">
+                    Pixel status: @Model.MetaPixelStatus. CAPI status: @Model.MetaCapiStatus.
+                </div>
             </div>
         </div>
 
-        <div class="col-lg-6">
-            <div class="pf-module-card">
+        <div class="col-lg-5">
+            <div class="pf-module-card h-100">
                 <span class="pf-status"><span class="pf-dot"></span> Analytics</span>
                 <h2 class="pf-module-title">Shared Intelligence</h2>
                 <p><strong>Analytics:</strong> @Model.AnalyticsStatus</p>
                 <p><strong>Trust:</strong> @Model.TrustStatus</p>
                 <p class="text-muted mb-0">
-                    Future Parfait events will feed AnalyticsEvents and MetaSignalEvents while reporting remains inside ParfaitApp.
+                    Parfait events continue to stay inside ParfaitApp reporting while reusing the shared backend analytics and Meta signal infrastructure.
                 </p>
             </div>
+        </div>
+    </section>
+
+    <section class="pf-panel">
+        <div class="d-flex flex-wrap gap-2">
+            <button type="submit" class="pf-action">Save Business Profile</button>
+            <a class="pf-secondary-action" href="/internal/dashboard">Back To Dashboard</a>
         </div>
     </section>
 </form>
 
 @section Scripts {
     <partial name="_ValidationScriptsPartial" />
+    <script>
+        (() => {
+            const statusEl = document.getElementById("pfMetaConnectionStatus");
+            const connectBtn = document.getElementById("pfMetaConnectButton");
+            const disconnectBtn = document.getElementById("pfMetaDisconnectButton");
+            const statusUrl = "@Url.Action("MetaConnectionStatus", "InternalSettings")";
+            const disconnectUrl = "@Url.Action("MetaDisconnect", "InternalSettings")";
+            const token = document.querySelector("#pfBusinessProfileForm input[name='__RequestVerificationToken']")?.value || "";
+
+            const formatDate = value => {
+                if (!value) return "";
+                try {
+                    return new Date(value).toLocaleString([], { dateStyle: "medium", timeStyle: "short" });
+                } catch {
+                    return "";
+                }
+            };
+
+            const setConnectedState = connected => {
+                if (!connectBtn || !disconnectBtn) return;
+                connectBtn.textContent = connected ? "Reconnect Meta Ads" : "Connect Meta Ads";
+                disconnectBtn.style.display = connected ? "" : "none";
+            };
+
+            const setStatus = (message, tone) => {
+                if (!statusEl) return;
+                statusEl.className = "small fw-semibold";
+                if (tone === "success") {
+                    statusEl.classList.add("text-success");
+                } else if (tone === "danger") {
+                    statusEl.classList.add("text-danger");
+                } else if (tone === "warning") {
+                    statusEl.classList.add("text-warning");
+                } else {
+                    statusEl.classList.add("text-muted");
+                }
+                statusEl.textContent = message;
+            };
+
+            const loadStatus = async () => {
+                if (!statusUrl) return;
+
+                try {
+                    const response = await fetch(statusUrl, {
+                        headers: { "X-Requested-With": "XMLHttpRequest" }
+                    });
+
+                    if (!response.ok) {
+                        throw new Error("Unable to read Meta Ads connection status.");
+                    }
+
+                    const data = await response.json();
+                    if (!data.connected) {
+                        setConnectedState(false);
+                        setStatus(data.message || "Meta Ads not connected for Parfait.", "warning");
+                        return;
+                    }
+
+                    const account = data.accountName || data.accountId || "Meta account connected";
+                    const user = data.metaUserName ? ` as ${data.metaUserName}` : "";
+                    const expiry = data.accessTokenExpiresUtc ? ` · expires ${formatDate(data.accessTokenExpiresUtc)}` : "";
+                    setConnectedState(true);
+                    setStatus(`Connected: ${account}${user}${expiry}`, "success");
+                } catch (error) {
+                    setConnectedState(false);
+                    setStatus("Unable to read Meta Ads connection status.", "danger");
+                    console.error(error);
+                }
+            };
+
+            const handleDisconnect = async () => {
+                if (!disconnectUrl) return;
+
+                try {
+                    const response = await fetch(disconnectUrl, {
+                        method: "POST",
+                        headers: {
+                            "RequestVerificationToken": token,
+                            "X-Requested-With": "XMLHttpRequest"
+                        }
+                    });
+
+                    if (!response.ok) {
+                        throw new Error("Failed to disconnect Meta Ads.");
+                    }
+
+                    await loadStatus();
+                } catch (error) {
+                    setStatus(error?.message || "Failed to disconnect Meta Ads.", "danger");
+                    console.error(error);
+                }
+            };
+
+            const showCallbackStatus = () => {
+                try {
+                    const url = new URL(window.location.href);
+                    const meta = url.searchParams.get("meta");
+                    if (!meta) return;
+
+                    if (meta === "connected") {
+                        setStatus("Meta Ads connected successfully.", "success");
+                    } else if (meta === "error") {
+                        setStatus(url.searchParams.get("message") || "Meta Ads connection failed.", "danger");
+                    }
+
+                    url.searchParams.delete("meta");
+                    url.searchParams.delete("message");
+                    window.history.replaceState({}, "", url.toString());
+                } catch {
+                    // Ignore URL parsing failures in older browsers.
+                }
+            };
+
+            disconnectBtn?.addEventListener("click", handleDisconnect);
+            showCallbackStatus();
+            loadStatus();
+        })();
+    </script>
 }

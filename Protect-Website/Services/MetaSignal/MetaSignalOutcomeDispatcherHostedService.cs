@@ -62,12 +62,21 @@ public sealed class MetaSignalOutcomeDispatcherHostedService : BackgroundService
                 x.MetadataJson != null &&
                 !x.MetadataJson.Contains("\"metaServerStatus\":") &&
                 (x.TrafficType == "crm" ||
+                 x.TrafficType == "ecommerce" ||
                  x.MetadataJson.Contains(MetaSignalAnalyticsBridgeMetadata.BridgeSourceMarker)) &&
                 DispatchableEvents.Contains(x.EventName) &&
                 x.MetadataJson.Contains(MetaSignalSingleTruthPolicy.DispatchEligibleMarker))
             .OrderBy(x => x.CreatedUtc)
             .Take(25)
             .ToListAsync(cancellationToken);
+
+        rows = rows
+            .Where(x =>
+                string.Equals(x.TrafficType, "crm", StringComparison.OrdinalIgnoreCase) ||
+                MetaSignalAnalyticsBridgeMetadata.IsBridgeOwned(x.MetadataJson) ||
+                MetaSignalSingleTruthPolicy.IsTrustedCommerceBridgeProducer(x.TrafficType, x.MetadataJson))
+            .Where(x => !IsBlockedAutomatedTraffic(x))
+            .ToList();
 
         var leadIds = rows
             .Where(x => x.LeadId.HasValue)
@@ -149,24 +158,25 @@ public sealed class MetaSignalOutcomeDispatcherHostedService : BackgroundService
             }
 
             var isBridgeOwned = MetaSignalAnalyticsBridgeMetadata.IsBridgeOwned(row.MetadataJson);
-            var bridgeClientIp = isBridgeOwned
-                ? FirstNonBlank(
-                    MetaSignalAnalyticsBridgeMetadata.ReadString(row.MetadataJson, "sourceClientIpAddress"))
-                : null;
-            var bridgeUserAgent = isBridgeOwned
-                ? FirstNonBlank(
-                    MetaSignalAnalyticsBridgeMetadata.ReadString(row.MetadataJson, "sourceClientUserAgent"),
-                    row.UserAgent)
-                : null;
-            var bridgeFbclid = isBridgeOwned
-                ? FirstNonBlank(MetaSignalAnalyticsBridgeMetadata.ReadString(row.MetadataJson, "sourceFbclid"))
-                : null;
-            var bridgeFbp = isBridgeOwned
-                ? FirstNonBlank(MetaSignalAnalyticsBridgeMetadata.ReadString(row.MetadataJson, "sourceFbp"))
-                : null;
-            var bridgeFbc = isBridgeOwned
-                ? FirstNonBlank(MetaSignalAnalyticsBridgeMetadata.ReadString(row.MetadataJson, "sourceFbc"))
-                : null;
+            var bridgeClientIp = FirstNonBlank(
+                MetaSignalAnalyticsBridgeMetadata.ReadString(row.MetadataJson, "sourceClientIpAddress"),
+                ReadMetadataString(row.MetadataJson, "sourceClientIpAddress"));
+            var bridgeUserAgent = FirstNonBlank(
+                MetaSignalAnalyticsBridgeMetadata.ReadString(row.MetadataJson, "sourceClientUserAgent"),
+                ReadMetadataString(row.MetadataJson, "sourceClientUserAgent"),
+                row.UserAgent);
+            var bridgeFbclid = FirstNonBlank(
+                MetaSignalAnalyticsBridgeMetadata.ReadString(row.MetadataJson, "sourceFbclid"),
+                ReadMetadataString(row.MetadataJson, "sourceFbclid"),
+                ReadMetadataString(row.MetadataJson, "fbclid"));
+            var bridgeFbp = FirstNonBlank(
+                MetaSignalAnalyticsBridgeMetadata.ReadString(row.MetadataJson, "sourceFbp"),
+                ReadMetadataString(row.MetadataJson, "sourceFbp"),
+                ReadMetadataString(row.MetadataJson, "fbp"));
+            var bridgeFbc = FirstNonBlank(
+                MetaSignalAnalyticsBridgeMetadata.ReadString(row.MetadataJson, "sourceFbc"),
+                ReadMetadataString(row.MetadataJson, "sourceFbc"),
+                ReadMetadataString(row.MetadataJson, "fbc"));
 
             WebsiteLead? websiteLead = null;
             if (row.LeadId.HasValue)
@@ -182,10 +192,23 @@ public sealed class MetaSignalOutcomeDispatcherHostedService : BackgroundService
 
             var crmContact = await ResolveCrmContactAsync(db, row, cancellationToken);
 
-            var email = FirstNonBlank(websiteLead?.Email, crmContact.Email);
-            var phone = FirstNonBlank(websiteLead?.Phone, crmContact.Phone);
-            var firstName = FirstNonBlank(websiteLead?.FirstName, crmContact.FirstName);
-            var lastName = FirstNonBlank(websiteLead?.LastName, crmContact.LastName);
+            var metadataEmail = ReadNestedMetadataString(row.MetadataJson, "customer", "email");
+            var metadataPhone = ReadNestedMetadataString(row.MetadataJson, "customer", "phone");
+            var metadataFirstName = ReadNestedMetadataString(row.MetadataJson, "customer", "firstName");
+            var metadataLastName = ReadNestedMetadataString(row.MetadataJson, "customer", "lastName");
+            var metadataCity = ReadNestedMetadataString(row.MetadataJson, "customer", "city");
+            var metadataState = ReadNestedMetadataString(row.MetadataJson, "customer", "state");
+            var metadataZipCode = FirstNonBlank(
+                ReadNestedMetadataString(row.MetadataJson, "customer", "zipCode"),
+                ReadNestedMetadataString(row.MetadataJson, "customer", "postalCode"));
+
+            var email = FirstNonBlank(websiteLead?.Email, crmContact.Email, metadataEmail);
+            var phone = FirstNonBlank(websiteLead?.Phone, crmContact.Phone, metadataPhone);
+            var firstName = FirstNonBlank(websiteLead?.FirstName, crmContact.FirstName, metadataFirstName);
+            var lastName = FirstNonBlank(websiteLead?.LastName, crmContact.LastName, metadataLastName);
+            var city = FirstNonBlank(crmContact.City, metadataCity);
+            var state = FirstNonBlank(crmContact.State, metadataState);
+            var zipCode = FirstNonBlank(crmContact.ZipCode, metadataZipCode);
 
             var hasContactData =
                 !string.IsNullOrWhiteSpace(email) ||
@@ -194,9 +217,9 @@ public sealed class MetaSignalOutcomeDispatcherHostedService : BackgroundService
                 !string.IsNullOrWhiteSpace(lastName) ||
                 crmContact.DateOfBirth.HasValue ||
                 !string.IsNullOrWhiteSpace(crmContact.Gender) ||
-                !string.IsNullOrWhiteSpace(crmContact.City) ||
-                !string.IsNullOrWhiteSpace(crmContact.State) ||
-                !string.IsNullOrWhiteSpace(crmContact.ZipCode);
+                !string.IsNullOrWhiteSpace(city) ||
+                !string.IsNullOrWhiteSpace(state) ||
+                !string.IsNullOrWhiteSpace(zipCode);
 
             var hasBridgeAttribution =
                 !string.IsNullOrWhiteSpace(bridgeFbp) ||
@@ -262,9 +285,9 @@ public sealed class MetaSignalOutcomeDispatcherHostedService : BackgroundService
                 LastName = lastName,
                 DateOfBirth = crmContact.DateOfBirth,
                 Gender = crmContact.Gender,
-                City = crmContact.City,
-                State = crmContact.State,
-                ZipCode = crmContact.ZipCode,
+                City = city,
+                State = state,
+                ZipCode = zipCode,
                 AllowHashedContactData = hasContactData,
                 EventUtc = row.CreatedUtc == default ? DateTime.UtcNow : row.CreatedUtc,
                 PixelId = pixelContext.PixelId,
@@ -313,6 +336,16 @@ public sealed class MetaSignalOutcomeDispatcherHostedService : BackgroundService
     private static string? FirstNonBlank(params string?[] values)
         => values.FirstOrDefault(x => !string.IsNullOrWhiteSpace(x))?.Trim();
 
+    private static bool IsBlockedAutomatedTraffic(MetaSignalEvent row)
+    {
+        return row.WebDriver == true ||
+               row.IsHeadless == true ||
+               ReadMetadataBoolean(row.MetadataJson, "sourceWebDriver") == true ||
+               ReadMetadataBoolean(row.MetadataJson, "sourceIsHeadless") == true ||
+               ReadMetadataBoolean(row.MetadataJson, "webDriver") == true ||
+               ReadMetadataBoolean(row.MetadataJson, "isHeadless") == true;
+    }
+
     private static string? ReadMetadataString(string? metadataJson, string propertyName)
     {
         if (string.IsNullOrWhiteSpace(metadataJson))
@@ -322,9 +355,34 @@ public sealed class MetaSignalOutcomeDispatcherHostedService : BackgroundService
         {
             using var doc = JsonDocument.Parse(metadataJson);
             return doc.RootElement.TryGetProperty(propertyName, out var element) &&
-                   element.ValueKind == JsonValueKind.String
-                ? element.GetString()
+                   element.ValueKind != JsonValueKind.Null
+                ? element.ToString()
                 : null;
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    private static string? ReadNestedMetadataString(string? metadataJson, string objectName, string propertyName)
+    {
+        if (string.IsNullOrWhiteSpace(metadataJson))
+            return null;
+
+        try
+        {
+            using var doc = JsonDocument.Parse(metadataJson);
+
+            if (!doc.RootElement.TryGetProperty(objectName, out var parent) ||
+                parent.ValueKind != JsonValueKind.Object ||
+                !parent.TryGetProperty(propertyName, out var value) ||
+                value.ValueKind == JsonValueKind.Null)
+            {
+                return null;
+            }
+
+            return value.ToString();
         }
         catch
         {
@@ -464,7 +522,11 @@ public sealed class MetaSignalOutcomeDispatcherHostedService : BackgroundService
             ["step_name"] = row.StepName,
             ["score_tier"] = row.ScoreTier,
             ["total_signal_score"] = row.TotalSignalScore,
-            ["source"] = isBridgeOwned ? "analytics_bridge" : "crm_outcome_dispatcher",
+            ["source"] = isBridgeOwned
+                ? "analytics_bridge"
+                : MetaSignalSingleTruthPolicy.IsTrustedCommerceBridgeProducer(row.TrafficType, row.MetadataJson)
+                    ? "commerce_bridge"
+                    : "crm_outcome_dispatcher",
             ["website_lead_id"] = row.LeadId,
             ["lead_interest_type"] = websiteLead?.InterestType,
             ["lead_source_page_key"] = websiteLead?.SourcePageKey,
@@ -495,6 +557,13 @@ public sealed class MetaSignalOutcomeDispatcherHostedService : BackgroundService
         {
             customData["value"] = decimal.Round(personalAmount, 2);
             customData["currency"] = "USD";
+        }
+
+        if (string.Equals(row.EventName, "Purchase", StringComparison.OrdinalIgnoreCase) &&
+            TryReadPositiveDecimal(row.MetadataJson, "valueCents", out var valueCents))
+        {
+            customData["value"] = decimal.Round(valueCents / 100m, 2);
+            customData["currency"] = FirstNonBlank(ReadMetadataString(row.MetadataJson, "currency"), "USD");
         }
 
         return customData;

@@ -7,17 +7,17 @@
 }
 
 <section class="pf-commerce-shell pf-products-admin">
-    <header class="pf-commerce-head">
-        <div>
+    <section class="pf-page-hero">
+        <div class="pf-page-hero-main">
             <div class="pf-kicker">Commerce</div>
-            <h1>Products</h1>
-            <p>Compact product control for catalog visibility, pricing, photos, and public storefront presentation.</p>
+            <h1 class="pf-page-title">Products</h1>
+            <p class="pf-page-copy">Compact catalog control for pricing, visibility, imagery, and storefront presentation.</p>
         </div>
 
-        <div class="pf-commerce-head-actions">
+        <div class="pf-page-hero-actions">
             <a class="pf-secondary-action" href="/store" target="_blank" rel="noopener">View Store</a>
         </div>
-    </header>
+    </section>
 
     @if (TempData["ProductStatus"] is string statusMessage)
     {
