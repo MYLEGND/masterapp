@@ -10,554 +10,151 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <link rel="icon" type="image/png" href="~/images/favicon/parfait-logo.png" />
     <link rel="stylesheet" href="~/lib/bootstrap/dist/css/bootstrap.min.css" />
-
-    <style>
-        :root {
-            --pf-brown: #926950;
-            --pf-brown-dark: #674532;
-            --pf-black: #111;
-            --pf-muted: #5d514a;
-            --pf-soft: #f8f5f2;
-            --pf-line: rgba(146,105,80,.48);
-            --pf-line-strong: #926950;
-            --pf-radius: 18px;
-            --pf-radius-lg: 24px;
-        }
-
-        * { box-sizing: border-box; }
-
-        body {
-            margin: 0;
-            background: #fff;
-            color: var(--pf-black);
-            font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-        }
-
-        .pf-topbar {
-            position: sticky;
-            top: 0;
-            z-index: 40;
-            height: 68px;
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-            gap: 14px;
-            padding: 12px 18px;
-            background: rgba(255,255,255,.96);
-            border-bottom: 1.5px solid var(--pf-line);
-            backdrop-filter: blur(14px);
-        }
-
-        .pf-left {
-            display: flex;
-            align-items: center;
-            gap: 12px;
-            min-width: 0;
-        }
-
-        .pf-menu-button {
-            width: 44px;
-            height: 44px;
-            border: 1.5px solid var(--pf-line-strong);
-            border-radius: 14px;
-            background: #fff;
-            display: inline-grid;
-            place-items: center;
-            cursor: pointer;
-        }
-
-        .pf-menu-button span,
-        .pf-menu-button span::before,
-        .pf-menu-button span::after {
-            content: "";
-            display: block;
-            width: 18px;
-            height: 2px;
-            background: var(--pf-brown);
-            border-radius: 99px;
-        }
-
-        .pf-menu-button span::before { transform: translateY(-6px); }
-        .pf-menu-button span::after { transform: translateY(4px); }
-
-        .pf-brandline {
-            min-width: 0;
-        }
-
-        .pf-brand {
-            color: var(--pf-brown);
-            font-size: 1.05rem;
-            font-weight: 950;
-            font-style: italic;
-            letter-spacing: -.045em;
-            line-height: 1;
-        }
-
-        .pf-current {
-            color: var(--pf-black);
-            font-size: .72rem;
-            font-weight: 950;
-            letter-spacing: .16em;
-            text-transform: uppercase;
-            margin-top: 3px;
-        }
-
-        .pf-topbar-actions {
-            display: flex;
-            gap: 8px;
-            align-items: center;
-        }
-
-        .pf-shell {
-            width: min(100%, 1440px);
-            margin: 0 auto;
-            padding: 18px;
-        }
-
-        .pf-backdrop {
-            position: fixed;
-            inset: 0;
-            z-index: 80;
-            background: rgba(17,17,17,.36);
-            opacity: 0;
-            pointer-events: none;
-            transition: opacity .16s ease;
-        }
-
-        .pf-sidebar {
-            position: fixed;
-            z-index: 90;
-            inset: 12px auto 12px 12px;
-            width: min(340px, calc(100vw - 24px));
-            background: #fff;
-            border: 1.5px solid var(--pf-line-strong);
-            border-radius: 24px;
-            transform: translateX(calc(-100% - 18px));
-            transition: transform .18s ease;
-            padding: 14px;
-            display: flex;
-            flex-direction: column;
-            box-shadow: 0 26px 80px rgba(47,33,26,.18);
-        }
-
-        body.pf-nav-open .pf-backdrop {
-            opacity: 1;
-            pointer-events: auto;
-        }
-
-        body.pf-nav-open .pf-sidebar {
-            transform: translateX(0);
-        }
-
-        .pf-sidebar-head {
-            display: flex;
-            justify-content: space-between;
-            align-items: start;
-            gap: 12px;
-            padding: 8px 8px 14px;
-            border-bottom: 1.5px solid var(--pf-line);
-        }
-
-        .pf-sidebar-title {
-            color: var(--pf-brown);
-            font-size: 1.45rem;
-            font-weight: 950;
-            font-style: italic;
-            letter-spacing: -.055em;
-            line-height: .95;
-        }
-
-        .pf-sidebar-sub {
-            margin-top: 4px;
-            color: var(--pf-black);
-            font-size: .7rem;
-            font-weight: 950;
-            letter-spacing: .16em;
-            text-transform: uppercase;
-        }
-
-        .pf-close {
-            border: 1.5px solid var(--pf-line-strong);
-            border-radius: 12px;
-            background: #fff;
-            color: var(--pf-brown);
-            width: 38px;
-            height: 38px;
-            font-weight: 950;
-        }
-
-        .pf-nav {
-            padding: 14px 4px;
-            overflow: auto;
-        }
-
-        .pf-nav-section {
-            margin: 14px 8px 6px;
-            color: var(--pf-brown);
-            font-size: .66rem;
-            font-weight: 950;
-            letter-spacing: .18em;
-            text-transform: uppercase;
-        }
-
-        .pf-nav a {
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-            min-height: 42px;
-            padding: 9px 10px;
-            border: 1.5px solid transparent;
-            border-radius: 14px;
-            color: var(--pf-black);
-            font-size: .92rem;
-            font-weight: 850;
-            text-decoration: none;
-        }
-
-        .pf-nav a:hover,
-        .pf-nav a.is-active {
-            border-color: var(--pf-line-strong);
-            color: var(--pf-brown);
-            background: var(--pf-soft);
-        }
-
-        .pf-sidebar-footer {
-            margin-top: auto;
-            padding: 12px 8px 4px;
-            border-top: 1.5px solid var(--pf-line);
-            color: var(--pf-muted);
-            font-size: .76rem;
-            font-weight: 750;
-            line-height: 1.35;
-        }
-
-        .pf-panel,
-        .pf-module-card,
-        .pf-commerce-head,
-        .pf-commerce-panel,
-        .pf-mini-status,
-        .pf-kpi-card {
-            background: #fff;
-            border: 1.5px solid var(--pf-line);
-            border-radius: var(--pf-radius-lg);
-            box-shadow: none;
-        }
-
-        .pf-panel {
-            padding: 18px;
-            margin-bottom: 14px;
-        }
-
-        .pf-kicker {
-            color: var(--pf-brown);
-            font-size: .68rem;
-            font-weight: 950;
-            letter-spacing: .2em;
-            text-transform: uppercase;
-        }
-
-        .pf-page-title {
-            margin: 5px 0 8px;
-            color: var(--pf-black);
-            font-size: clamp(2.2rem, 4.5vw, 4.4rem);
-            font-weight: 950;
-            font-style: italic;
-            letter-spacing: -.075em;
-            line-height: .9;
-        }
-
-        .pf-page-copy {
-            max-width: 840px;
-            margin: 0;
-            color: var(--pf-black);
-            font-size: .98rem;
-            font-weight: 650;
-            line-height: 1.42;
-        }
-
-        .pf-module-card {
-            height: 100%;
-            padding: 16px;
-            transition: transform .14s ease, border-color .14s ease, background .14s ease;
-        }
-
-        .pf-module-card:hover {
-            transform: translateY(-2px);
-            border-color: var(--pf-line-strong);
-            background: var(--pf-soft);
-        }
-
-        .pf-module-link {
-            display: block;
-            height: 100%;
-            color: inherit;
-            text-decoration: none;
-        }
-
-        .pf-module-title {
-            margin: 9px 0 6px;
-            color: var(--pf-black);
-            font-size: 1.16rem;
-            font-weight: 950;
-            letter-spacing: -.045em;
-        }
-
-        .pf-status {
-            display: inline-flex;
-            align-items: center;
-            gap: 7px;
-            border: 1.5px solid var(--pf-line);
-            border-radius: 999px;
-            background: #fff;
-            color: var(--pf-brown);
-            padding: 5px 9px;
-            font-size: .64rem;
-            font-weight: 950;
-            letter-spacing: .12em;
-            text-transform: uppercase;
-        }
-
-        .pf-dot {
-            width: 7px;
-            height: 7px;
-            border-radius: 50%;
-            background: var(--pf-brown);
-        }
-
-        .pf-mini-status,
-        .pf-kpi-card {
-            padding: 12px;
-            border-radius: var(--pf-radius);
-        }
-
-        .pf-mini-label,
-        .pf-kpi-label {
-            color: var(--pf-brown);
-            font-size: .64rem;
-            font-weight: 950;
-            letter-spacing: .14em;
-            text-transform: uppercase;
-            margin-bottom: 4px;
-        }
-
-        .pf-mini-value,
-        .pf-kpi-value {
-            color: var(--pf-black);
-            font-weight: 950;
-            letter-spacing: -.035em;
-        }
-
-        .pf-kpi-value {
-            font-size: 1.7rem;
-            line-height: 1;
-        }
-
-        .pf-kpi-note {
-            color: var(--pf-muted);
-            margin-top: 6px;
-            font-size: .82rem;
-            line-height: 1.3;
-        }
-
-        .pf-action,
-        .pf-primary-action,
-        .pf-secondary-action,
-        button.pf-action {
-            min-height: 40px;
-            display: inline-flex;
-            align-items: center;
-            justify-content: center;
-            border: 1.5px solid var(--pf-line-strong);
-            border-radius: 14px;
-            background: var(--pf-brown);
-            color: #fff;
-            padding: 8px 13px;
-            text-decoration: none;
-            font-size: .74rem;
-            font-weight: 950;
-            letter-spacing: .1em;
-            text-transform: uppercase;
-        }
-
-        .pf-secondary-action {
-            background: #fff;
-            color: var(--pf-brown);
-        }
-
-        .pf-action:hover,
-        .pf-primary-action:hover,
-        .pf-secondary-action:hover,
-        button.pf-action:hover {
-            background: #fff;
-            color: var(--pf-brown);
-        }
-
-        .form-control,
-        .form-select {
-            border: 1.5px solid var(--pf-line);
-            border-radius: 14px;
-            min-height: 40px;
-            color: var(--pf-black);
-            font-weight: 700;
-        }
-
-        .form-control:focus,
-        .form-select:focus {
-            border-color: var(--pf-line-strong);
-            box-shadow: none;
-        }
-
-        .text-muted { color: var(--pf-muted) !important; }
-
-        .alert,
-        .pf-alert-success {
-            border: 1.5px solid var(--pf-line);
-            border-radius: var(--pf-radius);
-            background: #fff;
-            color: var(--pf-black);
-            padding: 10px 12px;
-            font-weight: 850;
-        }
-
-        .pf-commerce-shell { display: grid; gap: 14px; }
-
-        .pf-commerce-head {
-            display: flex;
-            justify-content: space-between;
-            align-items: flex-end;
-            gap: 14px;
-            padding: 16px;
-        }
-
-        .pf-commerce-head h1 {
-            margin: 3px 0 4px;
-            font-size: clamp(2rem, 4vw, 3.35rem);
-            font-weight: 950;
-            font-style: italic;
-            letter-spacing: -.07em;
-            line-height: .9;
-        }
-
-        .pf-commerce-head p {
-            margin: 0;
-            color: var(--pf-black);
-            font-weight: 650;
-        }
-
-        .pf-commerce-panel { padding: 14px; }
-
-        .pf-commerce-panel-head {
-            display: flex;
-            justify-content: space-between;
-            align-items: flex-end;
-            gap: 12px;
-            padding-bottom: 10px;
-            border-bottom: 1.5px solid var(--pf-line);
-            margin-bottom: 12px;
-        }
-
-        .pf-commerce-panel-head h2 {
-            margin: 3px 0 0;
-            font-size: 1.25rem;
-            font-weight: 950;
-            letter-spacing: -.04em;
-        }
-
-        .pf-commerce-panel-head span {
-            color: var(--pf-brown);
-            font-size: .7rem;
-            font-weight: 950;
-            text-transform: uppercase;
-            letter-spacing: .12em;
-        }
-
-        @@media (max-width: 720px) {
-            .pf-shell { padding: 12px; }
-            .pf-topbar { padding: 10px 12px; }
-            .pf-topbar-actions { display: none; }
-            .pf-commerce-head { display: grid; }
-        }
-    </style>
+    <link rel="stylesheet" href="~/css/internal.css" asp-append-version="true" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800;900&display=swap" rel="stylesheet" />
+    @RenderSection("Styles", required: false)
 </head>
 
-<body>
+<body class="pf-internal-body">
     <div class="pf-backdrop" data-pf-nav-close></div>
 
-    <aside class="pf-sidebar" id="pfSidebar">
+    <aside class="pf-sidebar" id="pfSidebar" aria-label="Internal navigation">
         <div class="pf-sidebar-head">
             <div>
                 <div class="pf-sidebar-title">PARFAIT</div>
                 <div class="pf-sidebar-sub">Internal Command</div>
             </div>
-            <button class="pf-close" type="button" data-pf-nav-close>×</button>
+            <button class="pf-close" type="button" aria-label="Close navigation" data-pf-nav-close>x</button>
         </div>
 
-        <nav class="pf-nav" aria-label="Internal navigation">
-            <div class="pf-nav-section">Core</div>
-            <a href="/internal/dashboard">Dashboard</a>
-            <a href="/internal/settings/business-profile">Business Profile</a>
+        <nav class="pf-nav">
+            <div class="pf-nav-group">
+                <div class="pf-nav-section">Core</div>
+                <a class="pf-route-link" href="/internal/dashboard">Dashboard</a>
+                <a class="pf-route-link" href="/internal/settings/business-profile">Business Profile</a>
+            </div>
 
-            <div class="pf-nav-section">Operations</div>
-            <a href="/internal/commerce">Commerce</a>
-            <a href="/internal/commerce/products">Products</a>
-            <a href="/internal/commerce/orders">Orders</a>
-            <a href="/internal/customers">Customers</a>
+            <div class="pf-nav-group">
+                <div class="pf-nav-section">Operations</div>
+                <a class="pf-route-link" href="/internal/commerce">Commerce</a>
+                <a class="pf-route-link" href="/internal/commerce/products">Products</a>
+                <a class="pf-route-link" href="/internal/commerce/orders">Orders</a>
+                <a class="pf-route-link" href="/internal/customers">Customers</a>
+            </div>
 
-            <div class="pf-nav-section">Growth</div>
-            <a href="/internal/marketing">Marketing</a>
-            <a href="/internal/analytics">Analytics</a>
-            <a href="/internal/content">Content</a>
+            <div class="pf-nav-group">
+                <div class="pf-nav-section">Growth</div>
+                <a class="pf-route-link" href="/internal/marketing">Marketing</a>
+                <a class="pf-route-link" href="/internal/analytics">Analytics</a>
+                <a class="pf-route-link" href="/internal/content">Content</a>
+            </div>
 
-            <div class="pf-nav-section">Public</div>
-            <a href="/store" target="_blank" rel="noopener">View Store</a>
-            <a href="/" target="_blank" rel="noopener">Public Site</a>
+            <div class="pf-nav-group">
+                <div class="pf-nav-section">Public</div>
+                <a href="/store" target="_blank" rel="noopener">View Store</a>
+                <a href="/" target="_blank" rel="noopener">Public Site</a>
+            </div>
         </nav>
 
         <div class="pf-sidebar-footer">
-            Public store, internal commerce, analytics, and Meta wiring stay connected through one Parfait system.
+            Internal commerce, growth, profile, and analytics now follow one Parfait operating system without touching the public site wiring.
         </div>
     </aside>
 
-    <header class="pf-topbar">
-        <div class="pf-left">
-            <button class="pf-menu-button" type="button" aria-label="Open internal navigation" aria-controls="pfSidebar">
-                <span></span>
-            </button>
+    <div class="pf-page-shell">
+        <header class="pf-header-shell">
+            <div class="pf-header-card">
+                <div class="pf-header-main">
+                    <a class="pf-brandmark" href="/internal/dashboard">
+                        <span class="pf-brand-emblem">P</span>
+                        <span class="pf-brandline">
+                            <span class="pf-brand">PARFAIT</span>
+                            <span class="pf-current">@title</span>
+                        </span>
+                    </a>
 
-            <div class="pf-brandline">
-                <div class="pf-brand">PARFAIT</div>
-                <div class="pf-current">@title</div>
+                    <div class="pf-header-nav">
+                        <div class="pf-nav-row">
+                            <button class="pf-menu-button"
+                                    type="button"
+                                    aria-label="Open internal navigation"
+                                    aria-controls="pfSidebar"
+                                    aria-expanded="false"
+                                    data-pf-nav-toggle>
+                                <span></span>
+                            </button>
+                            <a class="pf-route-link pf-nav-link" href="/internal/dashboard">Dashboard</a>
+                            <a class="pf-route-link pf-nav-link" href="/internal/settings/business-profile">Business Profile</a>
+                            <a class="pf-route-link pf-nav-link" href="/internal/commerce">Commerce</a>
+                            <a class="pf-route-link pf-nav-link" href="/internal/customers">Customers</a>
+                            <a class="pf-route-link pf-nav-link" href="/internal/marketing">Marketing</a>
+                            <a class="pf-route-link pf-nav-link" href="/internal/analytics">Analytics</a>
+                        </div>
+                        <div class="pf-command-pill">Internal Command Surface</div>
+                        <div class="pf-command-note">
+                            Parfait keeps its own color system while matching AgentPortal's stronger layout rhythm, navigation structure, and visual hierarchy.
+                        </div>
+                    </div>
+
+                    <div class="pf-header-actions">
+                        <a class="pf-secondary-action" href="/store" target="_blank" rel="noopener">View Store</a>
+                        <a class="pf-ghost-action" href="/" target="_blank" rel="noopener">Public Site</a>
+                    </div>
+                </div>
+
+                <div class="pf-header-ribbon">Parfait Internal | Commerce, Growth, And Analytics</div>
             </div>
-        </div>
+        </header>
 
-        <div class="pf-topbar-actions">
-            <a class="pf-secondary-action" href="/store" target="_blank" rel="noopener">View Store</a>
-        </div>
-    </header>
-
-    <main class="pf-shell">
-        @RenderBody()
-    </main>
+        <main class="pf-shell">
+            @RenderBody()
+        </main>
+    </div>
 
     <script src="~/lib/bootstrap/dist/js/bootstrap.bundle.min.js"></script>
-
     <script>
         (() => {
             const body = document.body;
-            const openButton = document.querySelector(".pf-menu-button");
+            const toggleButtons = document.querySelectorAll("[data-pf-nav-toggle]");
             const closers = document.querySelectorAll("[data-pf-nav-close]");
-            const links = document.querySelectorAll(".pf-nav a");
-            const path = window.location.pathname.toLowerCase();
+            const routeLinks = document.querySelectorAll(".pf-route-link");
 
-            const setOpen = open => body.classList.toggle("pf-nav-open", open);
+            const normalizePath = value => {
+                if (!value) return "/";
+                return value.toLowerCase().replace(/\/+$/, "") || "/";
+            };
 
-            openButton?.addEventListener("click", () => setOpen(true));
-            closers.forEach(item => item.addEventListener("click", () => setOpen(false)));
+            const currentPath = normalizePath(window.location.pathname);
 
-            links.forEach(link => {
-                const href = link.getAttribute("href")?.toLowerCase();
-                if (href && path === href) link.classList.add("is-active");
+            const setOpen = open => {
+                body.classList.toggle("pf-nav-open", open);
+                toggleButtons.forEach(button => button.setAttribute("aria-expanded", open ? "true" : "false"));
+            };
+
+            toggleButtons.forEach(button => {
+                button.addEventListener("click", () => setOpen(!body.classList.contains("pf-nav-open")));
+            });
+
+            closers.forEach(button => {
+                button.addEventListener("click", () => setOpen(false));
+            });
+
+            routeLinks.forEach(link => {
+                const href = normalizePath(link.getAttribute("href"));
+                const isInternalRoute = href.startsWith("/internal");
+                if (isInternalRoute && (currentPath === href || currentPath.startsWith(href + "/"))) {
+                    link.classList.add("is-active");
+                }
+
                 link.addEventListener("click", () => setOpen(false));
+            });
+
+            document.addEventListener("keydown", event => {
+                if (event.key === "Escape") {
+                    setOpen(false);
+                }
             });
         })();
     </script>

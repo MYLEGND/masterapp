@@ -47,6 +47,11 @@ public sealed class ParfaitAnalyticsDashboardService
         var checkoutStarts = parsed.Count(e => e.EventType == "CheckoutStarted");
         var purchases = parsed.Count(e => e.EventType == "Purchase");
 
+        var productViewSessions = StepSessions(parsed, "ProductViewed");
+        var addToCartSessions = StepSessions(parsed, "AddToCart");
+        var checkoutStartSessions = StepSessions(parsed, "CheckoutStarted");
+        var purchaseSessions = StepSessions(parsed, "Purchase");
+
         return new ParfaitAnalyticsDashboardViewModel
         {
             Visitors = parsed.Where(e => !string.IsNullOrWhiteSpace(e.VisitorId)).Select(e => e.VisitorId).Distinct().Count(),
@@ -57,9 +62,9 @@ public sealed class ParfaitAnalyticsDashboardService
             CheckoutStarts = checkoutStarts,
             Purchases = purchases,
             RevenueCents = parsed.Where(e => e.EventType == "Purchase").Sum(e => e.ValueCents ?? 0),
-            ProductViewToCartRate = Rate(addToCarts, productViews),
-            CartToCheckoutRate = Rate(checkoutStarts, addToCarts),
-            CheckoutToPurchaseRate = Rate(purchases, checkoutStarts),
+            ProductViewToCartRate = Rate(addToCartSessions.Count, productViewSessions.Count),
+            CartToCheckoutRate = Rate(checkoutStartSessions.Count, addToCartSessions.Count),
+            CheckoutToPurchaseRate = Rate(purchaseSessions.Count, checkoutStartSessions.Count),
             TopProducts = parsed
                 .Where(e => !string.IsNullOrWhiteSpace(e.ProductName))
                 .GroupBy(e => e.ProductName!)
@@ -90,6 +95,15 @@ public sealed class ParfaitAnalyticsDashboardService
                 })
                 .ToList()
         };
+    }
+
+    private static HashSet<string> StepSessions(IEnumerable<ParsedEvent> events, string eventType)
+    {
+        return events
+            .Where(e => e.EventType == eventType && !string.IsNullOrWhiteSpace(e.SessionId))
+            .Select(e => e.SessionId!)
+            .Distinct()
+            .ToHashSet();
     }
 
     private static decimal Rate(int numerator, int denominator)

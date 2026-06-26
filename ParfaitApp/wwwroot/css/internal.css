@@ -1,0 +1,1637 @@
+:root {
+    --pf-cocoa: #5c3a2c;
+    --pf-cocoa-soft: #7a5240;
+    --pf-cream: #fbf6f1;
+    --pf-text: #251712;
+    --pf-text-soft: #5f4a3f;
+    --pf-text-muted: #7a6356;
+    --pf-line: rgba(134, 94, 73, 0.22);
+    --pf-line-strong: rgba(134, 94, 73, 0.55);
+    --pf-shadow-hero: 0 30px 60px rgba(53, 29, 20, 0.22);
+    --pf-shadow-card: 0 18px 34px rgba(60, 37, 25, 0.08);
+    --pf-shadow-card-strong: 0 26px 48px rgba(60, 37, 25, 0.12);
+    --pf-shadow-overlay: 0 36px 90px rgba(27, 15, 11, 0.38);
+    --pf-success-bg: rgba(61, 121, 82, 0.12);
+    --pf-success-line: rgba(61, 121, 82, 0.36);
+    --pf-success-text: #25533a;
+    --pf-danger-line: rgba(153, 40, 40, 0.28);
+    --pf-danger-text: #8c2020;
+    --pf-radius-sm: 16px;
+    --pf-radius-md: 22px;
+    --pf-radius-lg: 28px;
+}
+
+*,
+*::before,
+*::after {
+    box-sizing: border-box;
+}
+
+html {
+    min-height: 100%;
+}
+
+.pf-internal-body,
+.pf-internal-auth-body {
+    min-height: 100%;
+    margin: 0;
+    color: var(--pf-text);
+    font-family: "Inter", ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+}
+
+.pf-internal-body {
+    background:
+        radial-gradient(circle at top left, rgba(197, 150, 116, 0.18), transparent 28%),
+        radial-gradient(circle at top right, rgba(123, 82, 64, 0.12), transparent 26%),
+        linear-gradient(180deg, #fcf7f2 0%, #f4ece4 56%, #fbf6f1 100%);
+}
+
+.pf-internal-body.pf-nav-open {
+    overflow: hidden;
+}
+
+.pf-internal-auth-body {
+    background:
+        radial-gradient(circle at top, rgba(197, 150, 116, 0.18), transparent 30%),
+        linear-gradient(180deg, #fbf5ee 0%, #f2e7db 100%);
+}
+
+.pf-internal-body a,
+.pf-internal-auth-body a {
+    color: inherit;
+}
+
+.pf-page-shell {
+    width: 100%;
+    padding: 18px 18px 28px;
+}
+
+.pf-header-shell {
+    position: sticky;
+    top: 18px;
+    z-index: 60;
+    margin-bottom: 24px;
+}
+
+.pf-header-card {
+    position: relative;
+    overflow: hidden;
+    padding: 1.05rem 1.15rem 3.35rem;
+    border-radius: var(--pf-radius-lg);
+    border: 1.5px solid rgba(242, 223, 207, 0.16);
+    background:
+        radial-gradient(circle at top left, rgba(242, 223, 207, 0.18), transparent 30%),
+        radial-gradient(circle at top right, rgba(197, 150, 116, 0.2), transparent 34%),
+        linear-gradient(155deg, #6c4738 0%, #4c2f24 54%, #2e1b16 100%);
+    box-shadow:
+        var(--pf-shadow-hero),
+        inset 0 1px 0 rgba(255, 255, 255, 0.08);
+    color: #fff8f4;
+}
+
+.pf-header-main {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr) auto;
+    gap: 1rem;
+    align-items: center;
+}
+
+.pf-brandmark {
+    min-width: 0;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.9rem;
+    text-decoration: none;
+}
+
+.pf-brand-emblem {
+    width: 56px;
+    height: 56px;
+    flex: 0 0 auto;
+    display: grid;
+    place-items: center;
+    border-radius: 18px;
+    border: 1px solid rgba(255, 255, 255, 0.22);
+    background:
+        linear-gradient(180deg, rgba(255, 255, 255, 0.52), rgba(255, 255, 255, 0.14)),
+        linear-gradient(160deg, #f4e2d2 0%, #d4a17f 100%);
+    color: #4a2d22;
+    font-size: 1.25rem;
+    font-weight: 950;
+    box-shadow: 0 16px 30px rgba(20, 11, 8, 0.22);
+}
+
+.pf-brandline {
+    min-width: 0;
+    display: grid;
+    gap: 0.2rem;
+}
+
+.pf-brand {
+    color: #fff7f1;
+    font-size: 1.2rem;
+    font-weight: 950;
+    font-style: italic;
+    letter-spacing: -0.045em;
+    line-height: 1;
+}
+
+.pf-current {
+    color: #ead3c2;
+    font-size: 0.72rem;
+    font-weight: 950;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+}
+
+.pf-header-nav {
+    min-width: 0;
+    display: grid;
+    gap: 0.7rem;
+}
+
+.pf-nav-row {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.65rem;
+}
+
+.pf-menu-button {
+    width: 46px;
+    height: 46px;
+    flex: 0 0 auto;
+    display: inline-grid;
+    place-items: center;
+    border: 1.5px solid rgba(242, 223, 207, 0.3);
+    border-radius: 15px;
+    background: linear-gradient(180deg, rgba(255, 255, 255, 0.12), rgba(255, 255, 255, 0.04));
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08);
+    cursor: pointer;
+    transition: transform 0.14s ease, box-shadow 0.18s ease, border-color 0.18s ease;
+}
+
+.pf-menu-button:hover {
+    transform: translateY(-1px);
+    border-color: rgba(255, 255, 255, 0.44);
+    box-shadow: 0 14px 24px rgba(27, 15, 11, 0.2), inset 0 1px 0 rgba(255, 255, 255, 0.12);
+}
+
+.pf-menu-button span,
+.pf-menu-button span::before,
+.pf-menu-button span::after {
+    content: "";
+    display: block;
+    width: 18px;
+    height: 2px;
+    border-radius: 999px;
+    background: #fff8f4;
+    position: relative;
+}
+
+.pf-menu-button span::before {
+    position: absolute;
+    left: 0;
+    top: -6px;
+}
+
+.pf-menu-button span::after {
+    position: absolute;
+    left: 0;
+    top: 6px;
+}
+
+.pf-nav-link {
+    min-height: 46px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0 1rem;
+    border-radius: 999px;
+    border: 1.3px solid rgba(242, 223, 207, 0.2);
+    background: rgba(255, 255, 255, 0.06);
+    color: #fff7f1;
+    text-decoration: none;
+    font-size: 0.92rem;
+    font-weight: 850;
+    letter-spacing: 0.015em;
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.05);
+    transition: transform 0.14s ease, box-shadow 0.18s ease, border-color 0.18s ease, background 0.18s ease;
+}
+
+.pf-nav-link:hover,
+.pf-nav-link.is-active {
+    transform: translateY(-1px);
+    border-color: rgba(255, 239, 228, 0.44);
+    background: linear-gradient(180deg, rgba(242, 223, 207, 0.18), rgba(242, 223, 207, 0.1));
+    box-shadow: 0 12px 24px rgba(27, 15, 11, 0.2);
+}
+
+.pf-command-pill {
+    display: inline-flex;
+    align-items: center;
+    width: fit-content;
+    min-height: 34px;
+    padding: 0 0.9rem;
+    border-radius: 999px;
+    border: 1px solid rgba(242, 223, 207, 0.24);
+    background: rgba(255, 255, 255, 0.08);
+    color: #f7e3d3;
+    font-size: 0.75rem;
+    font-weight: 900;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+}
+
+.pf-command-note {
+    color: rgba(255, 239, 228, 0.86);
+    font-size: 0.92rem;
+    font-weight: 650;
+    line-height: 1.45;
+}
+
+.pf-header-actions {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+    gap: 0.7rem;
+}
+
+.pf-header-ribbon {
+    position: absolute;
+    left: 50%;
+    bottom: 14px;
+    transform: translateX(-50%);
+    max-width: calc(100% - 42px);
+    min-height: 42px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0 1.3rem;
+    border-radius: 999px;
+    border: 1.5px solid rgba(242, 223, 207, 0.24);
+    background: rgba(51, 30, 23, 0.68);
+    color: #f6e4d6;
+    text-align: center;
+    font-size: 0.86rem;
+    font-weight: 900;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    backdrop-filter: blur(8px);
+    box-shadow: 0 18px 32px rgba(24, 12, 8, 0.22);
+}
+
+.pf-backdrop {
+    position: fixed;
+    inset: 0;
+    z-index: 140;
+    background: rgba(30, 18, 14, 0.48);
+    backdrop-filter: blur(8px);
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.18s ease;
+}
+
+.pf-sidebar {
+    position: fixed;
+    inset: 22px auto 22px 22px;
+    z-index: 150;
+    width: min(360px, calc(100vw - 36px));
+    display: flex;
+    flex-direction: column;
+    padding: 0;
+    border-radius: 30px;
+    border: 1.5px solid rgba(242, 223, 207, 0.2);
+    background:
+        radial-gradient(circle at top left, rgba(242, 223, 207, 0.16), transparent 30%),
+        linear-gradient(180deg, #5b382b 0%, #3d251d 40%, #241511 100%);
+    box-shadow: var(--pf-shadow-overlay);
+    color: #fff7f1;
+    transform: translateX(calc(-100% - 32px));
+    transition: transform 0.2s ease;
+}
+
+.pf-nav-open .pf-backdrop {
+    opacity: 1;
+    pointer-events: auto;
+}
+
+.pf-nav-open .pf-sidebar {
+    transform: translateX(0);
+}
+
+.pf-sidebar-head {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 0.9rem;
+    padding: 1.35rem 1.35rem 1.1rem;
+    border-bottom: 1px solid rgba(242, 223, 207, 0.12);
+}
+
+.pf-sidebar-title {
+    color: #fff7f1;
+    font-size: 1.55rem;
+    font-weight: 950;
+    font-style: italic;
+    letter-spacing: -0.06em;
+    line-height: 0.95;
+}
+
+.pf-sidebar-sub {
+    margin-top: 0.35rem;
+    color: #ead5c6;
+    font-size: 0.72rem;
+    font-weight: 900;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+}
+
+.pf-close {
+    width: 40px;
+    height: 40px;
+    flex: 0 0 auto;
+    border: 1.5px solid rgba(242, 223, 207, 0.22);
+    border-radius: 14px;
+    background: rgba(255, 255, 255, 0.08);
+    color: #fff7f1;
+    font-size: 1.25rem;
+    font-weight: 900;
+    cursor: pointer;
+}
+
+.pf-nav {
+    display: grid;
+    gap: 1rem;
+    padding: 1.1rem 1rem 1rem;
+    overflow: auto;
+}
+
+.pf-nav-group {
+    display: grid;
+    gap: 0.45rem;
+}
+
+.pf-nav-section {
+    margin: 0 0.2rem 0.1rem;
+    color: #f0d8c9;
+    font-size: 0.68rem;
+    font-weight: 900;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+}
+
+.pf-nav a {
+    min-height: 48px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.9rem;
+    padding: 0.7rem 0.9rem;
+    border-radius: 16px;
+    border: 1.2px solid rgba(242, 223, 207, 0.1);
+    background: rgba(255, 255, 255, 0.04);
+    color: #fff7f1;
+    text-decoration: none;
+    font-size: 0.92rem;
+    font-weight: 800;
+    transition: transform 0.14s ease, border-color 0.18s ease, background 0.18s ease, box-shadow 0.18s ease;
+}
+
+.pf-nav a:hover,
+.pf-nav a.is-active {
+    transform: translateY(-1px);
+    border-color: rgba(242, 223, 207, 0.34);
+    background: rgba(255, 255, 255, 0.09);
+    box-shadow: 0 14px 26px rgba(23, 13, 9, 0.2);
+}
+
+.pf-sidebar-footer {
+    margin: auto 1rem 1rem;
+    padding: 1rem 1.05rem;
+    border-radius: 18px;
+    border: 1px solid rgba(242, 223, 207, 0.16);
+    background: rgba(255, 255, 255, 0.05);
+    color: #ead5c6;
+    font-size: 0.82rem;
+    font-weight: 650;
+    line-height: 1.5;
+}
+
+.pf-shell {
+    width: min(100%, 1480px);
+    margin: 0 auto;
+    display: grid;
+    gap: 22px;
+}
+
+.pf-command-panel,
+.pf-panel,
+.pf-module-card,
+.pf-commerce-panel,
+.pf-mini-status,
+.pf-kpi-card,
+.pf-alert-success {
+    border-radius: var(--pf-radius-md);
+}
+
+.pf-command-panel {
+    position: relative;
+    overflow: hidden;
+    padding: clamp(24px, 3vw, 34px);
+    border: 1.5px solid rgba(242, 223, 207, 0.18);
+    background:
+        radial-gradient(circle at top left, rgba(242, 223, 207, 0.14), transparent 28%),
+        radial-gradient(circle at right, rgba(197, 150, 116, 0.18), transparent 34%),
+        linear-gradient(160deg, #6b4436 0%, #4d3025 56%, #2b1a15 100%);
+    box-shadow: var(--pf-shadow-hero);
+    color: #fff7f1;
+}
+
+.pf-command-panel::after {
+    content: "";
+    position: absolute;
+    inset: auto -15% -40% auto;
+    width: 320px;
+    height: 320px;
+    border-radius: 50%;
+    background: radial-gradient(circle, rgba(242, 223, 207, 0.18), transparent 68%);
+    pointer-events: none;
+}
+
+.pf-panel,
+.pf-module-card,
+.pf-commerce-panel,
+.pf-mini-status,
+.pf-kpi-card,
+.pf-alert-success {
+    position: relative;
+    background:
+        linear-gradient(180deg, rgba(255, 255, 255, 0.98), rgba(250, 243, 236, 0.98));
+    border: 1px solid var(--pf-line);
+    box-shadow: var(--pf-shadow-card);
+}
+
+.pf-panel,
+.pf-module-card,
+.pf-commerce-panel {
+    padding: 20px 22px;
+}
+
+.pf-module-card {
+    height: 100%;
+}
+
+.pf-module-link {
+    display: block;
+    height: 100%;
+    color: inherit;
+    text-decoration: none;
+}
+
+.pf-module-link .pf-module-card {
+    transition: transform 0.16s ease, box-shadow 0.2s ease, border-color 0.2s ease;
+}
+
+.pf-module-link:hover .pf-module-card {
+    transform: translateY(-4px);
+    border-color: var(--pf-line-strong);
+    box-shadow: var(--pf-shadow-card-strong);
+}
+
+.pf-module-title {
+    margin: 0.9rem 0 0.45rem;
+    color: var(--pf-text);
+    font-size: 1.3rem;
+    font-weight: 950;
+    letter-spacing: -0.05em;
+    line-height: 1.05;
+}
+
+.pf-module-title a {
+    color: inherit;
+    text-decoration: none;
+}
+
+.pf-module-title a:hover {
+    color: var(--pf-cocoa);
+}
+
+.pf-kicker {
+    display: inline-flex;
+    align-items: center;
+    width: fit-content;
+    min-height: 32px;
+    padding: 0 0.85rem;
+    border-radius: 999px;
+    border: 1px solid rgba(134, 94, 73, 0.16);
+    background: rgba(134, 94, 73, 0.08);
+    color: var(--pf-cocoa);
+    font-size: 0.72rem;
+    font-weight: 950;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+}
+
+.pf-command-panel .pf-kicker {
+    border-color: rgba(255, 255, 255, 0.14);
+    background: rgba(255, 255, 255, 0.08);
+    color: #f5dfcf;
+}
+
+.pf-page-title {
+    margin: 0.8rem 0 0.55rem;
+    color: var(--pf-text);
+    font-size: clamp(2.45rem, 5vw, 4.2rem);
+    font-weight: 980;
+    font-style: italic;
+    letter-spacing: -0.075em;
+    line-height: 0.92;
+}
+
+.pf-command-panel .pf-page-title {
+    color: #fff8f3;
+}
+
+.pf-page-copy {
+    max-width: 62ch;
+    margin: 0;
+    color: var(--pf-text-soft);
+    font-size: 1rem;
+    font-weight: 620;
+    line-height: 1.58;
+}
+
+.pf-command-panel .pf-page-copy {
+    color: rgba(255, 240, 230, 0.88);
+}
+
+.pf-section-head {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 0.9rem;
+    margin-bottom: 1rem;
+}
+
+.pf-section-title {
+    margin: 0.85rem 0 0.3rem;
+    color: var(--pf-text);
+    font-size: clamp(1.55rem, 2.6vw, 2.15rem);
+    font-weight: 950;
+    letter-spacing: -0.05em;
+    line-height: 1.04;
+}
+
+.pf-section-copy {
+    margin: 0;
+    max-width: 58ch;
+    color: var(--pf-text-muted);
+    font-size: 0.96rem;
+    font-weight: 620;
+    line-height: 1.55;
+}
+
+.pf-status,
+.pf-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.45rem;
+    min-height: 34px;
+    padding: 0 0.85rem;
+    border-radius: 999px;
+    border: 1px solid rgba(134, 94, 73, 0.2);
+    background: rgba(134, 94, 73, 0.08);
+    color: var(--pf-cocoa);
+    font-size: 0.68rem;
+    font-weight: 950;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+}
+
+.pf-dot {
+    width: 8px;
+    height: 8px;
+    flex: 0 0 auto;
+    border-radius: 50%;
+    background: var(--pf-cocoa-soft);
+}
+
+.pf-mini-status,
+.pf-kpi-card {
+    padding: 1rem 1.05rem;
+}
+
+.pf-mini-label,
+.pf-kpi-label {
+    color: var(--pf-cocoa);
+    font-size: 0.68rem;
+    font-weight: 950;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+}
+
+.pf-mini-value,
+.pf-kpi-value {
+    margin-top: 0.4rem;
+    color: var(--pf-text);
+    font-weight: 950;
+    letter-spacing: -0.04em;
+}
+
+.pf-mini-value {
+    font-size: 1.02rem;
+}
+
+.pf-kpi-value {
+    font-size: clamp(1.7rem, 3.3vw, 2.25rem);
+    line-height: 1;
+}
+
+.pf-kpi-note {
+    margin-top: 0.45rem;
+    color: var(--pf-text-muted);
+    font-size: 0.84rem;
+    font-weight: 620;
+    line-height: 1.45;
+}
+
+.pf-command-panel .pf-kpi-card {
+    border-color: rgba(255, 255, 255, 0.1);
+    background: linear-gradient(180deg, rgba(255, 255, 255, 0.12), rgba(255, 255, 255, 0.06));
+    box-shadow: none;
+}
+
+.pf-command-panel .pf-kpi-label,
+.pf-command-panel .pf-kpi-value {
+    color: #fff8f3;
+}
+
+.pf-command-panel .pf-kpi-note {
+    color: rgba(255, 240, 230, 0.78);
+}
+
+.pf-action,
+.pf-primary-action,
+.pf-secondary-action,
+.pf-ghost-action,
+button.pf-action,
+button.pf-secondary-action {
+    min-height: 48px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.45rem;
+    padding: 0.75rem 1.15rem;
+    border-radius: 16px;
+    font-size: 0.82rem;
+    font-weight: 950;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    text-decoration: none;
+    cursor: pointer;
+    transition: transform 0.14s ease, box-shadow 0.18s ease, filter 0.18s ease, border-color 0.18s ease, background 0.18s ease;
+}
+
+.pf-action,
+.pf-primary-action,
+button.pf-action {
+    border: 1.5px solid rgba(106, 67, 50, 0.74);
+    background:
+        linear-gradient(180deg, rgba(255, 255, 255, 0.4), rgba(255, 255, 255, 0) 36%),
+        linear-gradient(160deg, #f0d2b8 0%, #d9ab87 44%, #b8835e 100%);
+    color: #42271d;
+    box-shadow: 0 18px 34px rgba(94, 57, 39, 0.14);
+}
+
+.pf-secondary-action,
+button.pf-secondary-action {
+    border: 1.5px solid rgba(106, 67, 50, 0.28);
+    background: rgba(255, 255, 255, 0.92);
+    color: var(--pf-cocoa);
+    box-shadow: 0 12px 24px rgba(60, 37, 25, 0.08);
+}
+
+.pf-ghost-action {
+    border: 1.4px solid rgba(242, 223, 207, 0.18);
+    background: rgba(255, 255, 255, 0.08);
+    color: #fff7f1;
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.06);
+}
+
+.pf-action:hover,
+.pf-primary-action:hover,
+.pf-secondary-action:hover,
+.pf-ghost-action:hover,
+button.pf-action:hover,
+button.pf-secondary-action:hover {
+    transform: translateY(-2px);
+}
+
+.pf-action:hover,
+.pf-primary-action:hover,
+button.pf-action:hover {
+    filter: brightness(1.03);
+    box-shadow: 0 22px 40px rgba(94, 57, 39, 0.18);
+}
+
+.pf-secondary-action:hover,
+button.pf-secondary-action:hover {
+    border-color: rgba(106, 67, 50, 0.46);
+    box-shadow: 0 16px 30px rgba(60, 37, 25, 0.12);
+}
+
+.pf-ghost-action:hover {
+    border-color: rgba(242, 223, 207, 0.3);
+    background: rgba(255, 255, 255, 0.12);
+    box-shadow: 0 16px 30px rgba(27, 15, 11, 0.2);
+}
+
+.pf-alert-success {
+    padding: 0.95rem 1rem;
+    border-color: rgba(61, 121, 82, 0.24);
+    background:
+        linear-gradient(180deg, rgba(61, 121, 82, 0.12), rgba(255, 255, 255, 0.94));
+    color: var(--pf-success-text);
+    font-weight: 800;
+}
+
+.pf-internal-body .alert {
+    border-radius: var(--pf-radius-sm);
+}
+
+.pf-internal-body .form-label,
+.pf-internal-body .fw-bold,
+.pf-product-create-form label,
+.pf-product-edit-form label {
+    color: var(--pf-text);
+    font-weight: 850;
+}
+
+.pf-internal-body .form-control,
+.pf-internal-body .form-select {
+    min-height: 48px;
+    border: 1.2px solid rgba(134, 94, 73, 0.26);
+    border-radius: 15px;
+    background: rgba(255, 255, 255, 0.94);
+    color: var(--pf-text);
+    font-weight: 700;
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.6);
+}
+
+.pf-internal-body textarea.form-control {
+    min-height: 132px;
+    resize: vertical;
+}
+
+.pf-internal-body .form-control:focus,
+.pf-internal-body .form-select:focus {
+    border-color: rgba(134, 94, 73, 0.62);
+    box-shadow: 0 0 0 3px rgba(197, 150, 116, 0.18);
+}
+
+.pf-internal-body .form-text,
+.pf-internal-body .text-muted {
+    color: var(--pf-text-muted) !important;
+}
+
+.pf-internal-body .text-danger {
+    font-weight: 700;
+}
+
+.pf-internal-body input[type="checkbox"] {
+    accent-color: var(--pf-cocoa);
+}
+
+.pf-command-panel .pf-action,
+.pf-command-panel .pf-primary-action {
+    box-shadow: 0 22px 42px rgba(18, 9, 6, 0.24);
+}
+
+.pf-commerce-shell {
+    display: grid;
+    gap: 18px;
+}
+
+.pf-commerce-head {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    justify-content: space-between;
+    gap: 1rem 1.2rem;
+    align-items: end;
+    padding: 0 4px 12px;
+    border-bottom: 1px solid var(--pf-line);
+}
+
+.pf-commerce-head h1 {
+    margin: 0.7rem 0 0.35rem;
+    color: var(--pf-text);
+    font-size: clamp(2rem, 3.8vw, 3rem);
+    font-weight: 950;
+    font-style: italic;
+    letter-spacing: -0.07em;
+    line-height: 0.94;
+}
+
+.pf-commerce-head p {
+    max-width: 58ch;
+    margin: 0;
+    color: var(--pf-text-muted);
+    font-size: 0.96rem;
+    font-weight: 620;
+    line-height: 1.55;
+}
+
+.pf-commerce-head-actions {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+    align-items: center;
+    gap: 0.7rem;
+}
+
+.pf-commerce-panel-head {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: flex-end;
+    justify-content: space-between;
+    gap: 0.8rem;
+    padding-bottom: 1rem;
+    margin-bottom: 1rem;
+    border-bottom: 1px solid var(--pf-line);
+}
+
+.pf-commerce-panel-head h2 {
+    margin: 0.8rem 0 0;
+    color: var(--pf-text);
+    font-size: 1.45rem;
+    font-weight: 950;
+    letter-spacing: -0.045em;
+    line-height: 1.05;
+}
+
+.pf-commerce-panel-head span {
+    color: var(--pf-cocoa);
+    font-size: 0.74rem;
+    font-weight: 900;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+}
+
+.pf-add-product summary {
+    list-style: none;
+    display: inline-flex;
+    align-items: center;
+    min-height: 42px;
+    padding: 0 0.95rem;
+    border-radius: 14px;
+    border: 1px solid rgba(134, 94, 73, 0.16);
+    background: rgba(134, 94, 73, 0.08);
+    color: var(--pf-cocoa);
+    cursor: pointer;
+    font-size: 0.76rem;
+    font-weight: 950;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+}
+
+.pf-add-product summary::-webkit-details-marker {
+    display: none;
+}
+
+.pf-product-create-form,
+.pf-product-edit-form {
+    display: grid;
+    gap: 12px;
+    margin-top: 14px;
+}
+
+.pf-product-create-grid,
+.pf-editor-grid {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 10px;
+}
+
+.pf-product-create-form label,
+.pf-product-edit-form label {
+    font-size: 0.72rem;
+    font-weight: 950;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+}
+
+.pf-full {
+    grid-column: 1 / -1;
+}
+
+.pf-product-create-actions,
+.pf-product-flags {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    flex-wrap: wrap;
+}
+
+.pf-check,
+.pf-product-flags label {
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+    margin: 0;
+    font-size: 0.72rem;
+    font-weight: 950;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+}
+
+.pf-product-table-wrap,
+.pf-orders-table-wrap,
+.pf-analytics-table-wrap {
+    overflow-x: auto;
+    padding-bottom: 2px;
+}
+
+.pf-product-table,
+.pf-orders-table,
+.pf-analytics-table {
+    width: 100%;
+    min-width: 980px;
+    border-collapse: separate;
+    border-spacing: 0 10px;
+}
+
+.pf-product-table th,
+.pf-orders-table th,
+.pf-analytics-table th {
+    padding: 0 12px 6px;
+    color: var(--pf-cocoa);
+    font-size: 0.68rem;
+    font-weight: 950;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+    white-space: nowrap;
+    border: none;
+}
+
+.pf-product-table td,
+.pf-orders-table td,
+.pf-analytics-table td {
+    padding: 12px 14px;
+    vertical-align: middle;
+    border-top: 1px solid var(--pf-line);
+    border-bottom: 1px solid var(--pf-line);
+    background: linear-gradient(180deg, #fffdfb, #faf3ec);
+    color: var(--pf-text);
+    font-size: 0.92rem;
+    font-weight: 750;
+}
+
+.pf-product-table td:first-child,
+.pf-orders-table td:first-child,
+.pf-analytics-table td:first-child {
+    border-left: 1px solid var(--pf-line);
+    border-radius: 18px 0 0 18px;
+}
+
+.pf-product-table td:last-child,
+.pf-orders-table td:last-child,
+.pf-analytics-table td:last-child {
+    border-right: 1px solid var(--pf-line);
+    border-radius: 0 18px 18px 0;
+}
+
+.pf-product-table strong,
+.pf-orders-table strong,
+.pf-analytics-table strong {
+    color: var(--pf-text);
+    font-weight: 900;
+}
+
+.pf-product-main-cell {
+    display: grid;
+    grid-template-columns: 72px minmax(0, 1fr);
+    gap: 12px;
+    align-items: center;
+    min-width: 340px;
+}
+
+.pf-product-main-cell img {
+    width: 72px;
+    height: 72px;
+    border-radius: 16px;
+    object-fit: cover;
+    border: 1px solid var(--pf-line);
+    background: #fff;
+}
+
+.pf-product-main-cell strong {
+    display: block;
+    font-size: 1rem;
+    letter-spacing: -0.03em;
+}
+
+.pf-product-main-cell span,
+.pf-product-table td span {
+    display: block;
+    color: var(--pf-text-muted);
+    font-size: 0.78rem;
+    font-weight: 700;
+}
+
+.pf-product-main-cell p {
+    max-width: 540px;
+    margin: 0.3rem 0 0;
+    color: var(--pf-text-muted);
+    font-size: 0.82rem;
+    font-weight: 620;
+    line-height: 1.45;
+}
+
+.pf-pill.is-live {
+    border-color: var(--pf-success-line);
+    background: var(--pf-success-bg);
+    color: var(--pf-success-text);
+}
+
+.pf-pill.is-muted {
+    border-color: rgba(134, 94, 73, 0.14);
+    background: rgba(134, 94, 73, 0.06);
+    color: var(--pf-text-muted);
+}
+
+.pf-table-actions {
+    text-align: right;
+    white-space: nowrap;
+}
+
+.pf-product-modal,
+.pf-image-editor-modal {
+    position: fixed;
+    inset: 0;
+    z-index: 1900;
+    display: none;
+    align-items: center;
+    justify-content: center;
+    padding: 24px;
+    background: rgba(29, 17, 13, 0.56);
+    backdrop-filter: blur(8px);
+}
+
+.pf-image-editor-modal {
+    z-index: 2000;
+}
+
+.pf-product-modal.is-open,
+.pf-image-editor-modal.is-open {
+    display: flex;
+}
+
+.pf-modal-dialog {
+    width: min(100%, 980px);
+    max-height: calc(100vh - 48px);
+    display: flex;
+}
+
+.pf-modal-xl {
+    width: min(100%, 1180px);
+}
+
+.pf-modal-lg {
+    width: min(100%, 780px);
+}
+
+.pf-modal-content,
+.pf-image-editor-form {
+    width: 100%;
+    max-height: 100%;
+    display: flex;
+    flex-direction: column;
+    border-radius: 28px;
+    border: 1px solid var(--pf-line-strong);
+    background: linear-gradient(180deg, #fffdfa, #f6ece3);
+    box-shadow: var(--pf-shadow-overlay);
+    overflow: hidden;
+}
+
+.pf-modal-header {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 1rem;
+    padding: 18px 20px;
+    border-bottom: 1px solid var(--pf-line);
+}
+
+.pf-modal-header .modal-title {
+    margin: 0.75rem 0 0;
+    color: var(--pf-text);
+    font-size: clamp(1.8rem, 3vw, 2.45rem);
+    font-weight: 980;
+    font-style: italic;
+    letter-spacing: -0.07em;
+    line-height: 0.95;
+}
+
+.pf-modal-body {
+    flex: 1 1 auto;
+    overflow: auto;
+    padding: 18px 20px;
+}
+
+.pf-modal-footer {
+    display: flex;
+    justify-content: flex-end;
+    gap: 0.7rem;
+    padding: 14px 18px 18px;
+    border-top: 1px solid var(--pf-line);
+}
+
+.pf-modal-grid {
+    display: grid;
+    grid-template-columns: minmax(320px, 0.9fr) minmax(420px, 1.1fr);
+    gap: 16px;
+    align-items: start;
+}
+
+.pf-media-panel,
+.pf-editor-panel {
+    border: 1px solid var(--pf-line);
+    border-radius: 22px;
+    padding: 14px;
+    background: rgba(255, 255, 255, 0.76);
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.6);
+}
+
+.pf-primary-preview {
+    aspect-ratio: 1 / 1;
+    overflow: hidden;
+    border: 1px solid var(--pf-line);
+    border-radius: 18px;
+    background: #fff;
+}
+
+.pf-primary-preview img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    display: block;
+}
+
+.pf-upload-box label {
+    width: 100%;
+    min-height: 52px;
+    margin: 12px 0;
+    display: grid;
+    place-items: center;
+    border: 1.5px dashed var(--pf-line-strong);
+    border-radius: 18px;
+    background: var(--pf-cream);
+    color: var(--pf-cocoa);
+    cursor: pointer;
+    font-size: 0.74rem;
+    font-weight: 950;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+}
+
+.pf-upload-box input {
+    display: none;
+}
+
+.pf-photo-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 10px;
+}
+
+.pf-photo-tile {
+    border: 1px solid var(--pf-line);
+    border-radius: 18px;
+    padding: 10px;
+    background: rgba(255, 255, 255, 0.88);
+}
+
+.pf-photo-tile > img {
+    width: 100%;
+    aspect-ratio: 1 / 1;
+    display: block;
+    object-fit: cover;
+    border-radius: 14px;
+    border: 1px solid var(--pf-line);
+    background: #fff;
+}
+
+.pf-photo-tile strong {
+    display: block;
+    margin-top: 8px;
+    font-size: 0.84rem;
+    font-weight: 950;
+}
+
+.pf-photo-tile span {
+    color: var(--pf-text-muted);
+    font-size: 0.74rem;
+    font-weight: 700;
+}
+
+.pf-text-button {
+    width: 100%;
+    margin-top: 8px;
+    min-height: 36px;
+    border: 1px solid rgba(134, 94, 73, 0.22);
+    border-radius: 13px;
+    background: rgba(134, 94, 73, 0.08);
+    color: var(--pf-cocoa);
+    font-size: 0.68rem;
+    font-weight: 950;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+}
+
+.pf-photo-actions {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 6px;
+    margin-top: 8px;
+}
+
+.pf-photo-actions button,
+.pf-danger-zone button {
+    width: 100%;
+    min-height: 34px;
+    border: 1px solid rgba(134, 94, 73, 0.2);
+    border-radius: 12px;
+    background: rgba(255, 255, 255, 0.94);
+    color: var(--pf-cocoa);
+    font-size: 0.66rem;
+    font-weight: 950;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+}
+
+.pf-danger-zone {
+    margin-top: 14px;
+    padding-top: 14px;
+    border-top: 1px solid var(--pf-line);
+}
+
+.pf-danger-zone button {
+    border-color: var(--pf-danger-line);
+    background: rgba(255, 255, 255, 0.9);
+    color: var(--pf-danger-text);
+}
+
+.pf-editor-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.pf-adjust-stage {
+    position: relative;
+    width: min(100%, 620px);
+    margin: 0 auto;
+    aspect-ratio: 1 / 1;
+    overflow: hidden;
+    border: 1.5px solid var(--pf-line-strong);
+    border-radius: 22px;
+    background:
+        linear-gradient(90deg, rgba(134, 94, 73, 0.16) 1px, transparent 1px),
+        linear-gradient(180deg, rgba(134, 94, 73, 0.16) 1px, transparent 1px),
+        #fff;
+    background-size: 33.333% 33.333%;
+    cursor: grab;
+    user-select: none;
+    touch-action: none;
+}
+
+.pf-adjust-stage img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    display: block;
+    pointer-events: none;
+}
+
+.pf-adjust-stage span {
+    position: absolute;
+    left: 12px;
+    bottom: 12px;
+    padding: 6px 9px;
+    border-radius: 999px;
+    border: 1px solid rgba(134, 94, 73, 0.2);
+    background: rgba(255, 255, 255, 0.92);
+    color: var(--pf-cocoa);
+    font-size: 0.62rem;
+    font-weight: 950;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+}
+
+.pf-adjust-zoom-label {
+    width: min(100%, 620px);
+    margin: 14px auto 0;
+    display: grid;
+    gap: 8px;
+    color: var(--pf-cocoa);
+    font-size: 0.68rem;
+    font-weight: 950;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+}
+
+.pf-adjust-zoom-label input {
+    width: 100%;
+    accent-color: var(--pf-cocoa);
+}
+
+.pf-auth-stage {
+    min-height: 100vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 28px 18px;
+}
+
+.pf-auth-shell {
+    width: min(100%, 1040px);
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(360px, 0.82fr);
+    gap: 24px;
+    align-items: stretch;
+}
+
+.pf-auth-intro {
+    position: relative;
+    overflow: hidden;
+    padding: clamp(28px, 4vw, 42px);
+    border-radius: 30px;
+    border: 1.5px solid rgba(242, 223, 207, 0.18);
+    background:
+        radial-gradient(circle at top left, rgba(242, 223, 207, 0.16), transparent 32%),
+        radial-gradient(circle at bottom right, rgba(197, 150, 116, 0.18), transparent 28%),
+        linear-gradient(155deg, #6c4738 0%, #4c2f24 54%, #2e1b16 100%);
+    box-shadow: var(--pf-shadow-hero);
+    color: #fff8f4;
+}
+
+.pf-auth-intro::after {
+    content: "";
+    position: absolute;
+    right: -70px;
+    bottom: -70px;
+    width: 220px;
+    height: 220px;
+    border-radius: 50%;
+    background: radial-gradient(circle, rgba(242, 223, 207, 0.14), transparent 68%);
+}
+
+.pf-auth-kicker {
+    display: inline-flex;
+    align-items: center;
+    min-height: 34px;
+    padding: 0 0.85rem;
+    border-radius: 999px;
+    border: 1px solid rgba(255, 255, 255, 0.16);
+    background: rgba(255, 255, 255, 0.08);
+    color: #f6e4d6;
+    font-size: 0.74rem;
+    font-weight: 950;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+}
+
+.pf-auth-brand {
+    margin-top: 1rem;
+    color: #fff8f4;
+    font-size: clamp(2.6rem, 5vw, 4.6rem);
+    font-weight: 980;
+    font-style: italic;
+    letter-spacing: -0.08em;
+    line-height: 0.9;
+}
+
+.pf-auth-title {
+    margin: 1rem 0 0.55rem;
+    color: #fff8f4;
+    font-size: clamp(1.7rem, 3vw, 2.35rem);
+    font-weight: 920;
+    letter-spacing: -0.05em;
+    line-height: 1.05;
+}
+
+.pf-auth-copy {
+    max-width: 42ch;
+    margin: 0;
+    color: rgba(255, 239, 228, 0.86);
+    font-size: 1rem;
+    font-weight: 620;
+    line-height: 1.6;
+}
+
+.pf-auth-points {
+    display: grid;
+    gap: 0.8rem;
+    margin-top: 1.5rem;
+}
+
+.pf-auth-point {
+    padding: 0.95rem 1rem;
+    border-radius: 18px;
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    background: rgba(255, 255, 255, 0.08);
+    color: #f3dfcf;
+    font-weight: 700;
+    line-height: 1.45;
+}
+
+.pf-auth-card {
+    padding: 28px 26px;
+    border-radius: 30px;
+    border: 1px solid var(--pf-line);
+    background: linear-gradient(180deg, rgba(255, 255, 255, 0.98), rgba(250, 243, 236, 0.98));
+    box-shadow: var(--pf-shadow-card-strong);
+}
+
+.pf-auth-card .pf-kicker {
+    margin-bottom: 1rem;
+}
+
+.pf-auth-card h2 {
+    margin: 0;
+    color: var(--pf-text);
+    font-size: 2rem;
+    font-weight: 950;
+    letter-spacing: -0.05em;
+    line-height: 1.02;
+}
+
+.pf-auth-card p {
+    margin: 0.8rem 0 0;
+    color: var(--pf-text-muted);
+    font-size: 0.98rem;
+    font-weight: 620;
+    line-height: 1.58;
+}
+
+.pf-auth-action {
+    width: 100%;
+    margin-top: 1.45rem;
+}
+
+.pf-auth-note {
+    margin-top: 1rem;
+    padding-top: 1rem;
+    border-top: 1px solid var(--pf-line);
+    color: var(--pf-text-muted);
+    font-size: 0.85rem;
+    font-weight: 700;
+    line-height: 1.5;
+}
+
+@media (max-width: 1240px) {
+    .pf-header-main {
+        grid-template-columns: auto minmax(0, 1fr);
+    }
+
+    .pf-header-actions {
+        grid-column: 1 / -1;
+        justify-content: flex-start;
+    }
+}
+
+@media (max-width: 1100px) {
+    .pf-product-create-grid,
+    .pf-editor-grid,
+    .pf-modal-grid {
+        grid-template-columns: 1fr;
+    }
+}
+
+@media (max-width: 980px) {
+    .pf-page-shell {
+        padding: 14px 14px 24px;
+    }
+
+    .pf-header-shell {
+        top: 14px;
+    }
+
+    .pf-header-card {
+        padding-bottom: 3.8rem;
+    }
+
+    .pf-header-main {
+        grid-template-columns: 1fr;
+        align-items: stretch;
+    }
+
+    .pf-header-actions {
+        justify-content: flex-start;
+    }
+
+    .pf-commerce-head {
+        grid-template-columns: 1fr;
+        align-items: flex-start;
+    }
+
+    .pf-auth-shell {
+        grid-template-columns: 1fr;
+    }
+}
+
+@media (max-width: 720px) {
+    .pf-page-shell {
+        padding-inline: 12px;
+    }
+
+    .pf-header-card,
+    .pf-command-panel,
+    .pf-panel,
+    .pf-module-card,
+    .pf-commerce-panel,
+    .pf-auth-intro,
+    .pf-auth-card {
+        border-radius: 24px;
+    }
+
+    .pf-header-ribbon {
+        width: calc(100% - 28px);
+        max-width: none;
+        padding-inline: 0.8rem;
+        font-size: 0.72rem;
+        letter-spacing: 0.1em;
+    }
+
+    .pf-section-head {
+        align-items: flex-start;
+    }
+
+    .pf-command-panel .row,
+    .pf-section-head,
+    .pf-commerce-head {
+        gap: 0.85rem;
+    }
+
+    .pf-photo-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .pf-product-table,
+    .pf-orders-table,
+    .pf-analytics-table {
+        min-width: 920px;
+    }
+}
+
+@media (max-width: 560px) {
+    .pf-header-card {
+        padding: 1rem 0.95rem 4rem;
+    }
+
+    .pf-brand-emblem {
+        width: 50px;
+        height: 50px;
+        border-radius: 16px;
+    }
+
+    .pf-nav-row {
+        gap: 0.5rem;
+    }
+
+    .pf-nav-link,
+    .pf-action,
+    .pf-primary-action,
+    .pf-secondary-action,
+    .pf-ghost-action,
+    button.pf-action,
+    button.pf-secondary-action {
+        width: 100%;
+    }
+
+    .pf-header-actions {
+        display: grid;
+        grid-template-columns: 1fr;
+    }
+
+    .pf-sidebar {
+        inset: 12px;
+        width: auto;
+    }
+
+    .pf-modal-dialog,
+    .pf-modal-xl,
+    .pf-modal-lg {
+        width: 100%;
+        max-height: calc(100vh - 24px);
+    }
+
+    .pf-product-modal,
+    .pf-image-editor-modal {
+        padding: 12px;
+    }
+
+    .pf-auth-card {
+        padding: 24px 20px;
+    }
+}

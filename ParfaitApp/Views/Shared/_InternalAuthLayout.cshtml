@@ -5,9 +5,14 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>@ViewData["Title"] - Parfait Internal</title>
     <link rel="stylesheet" href="~/lib/bootstrap/dist/css/bootstrap.min.css" />
+    <link rel="stylesheet" href="~/css/internal.css" asp-append-version="true" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800;900&display=swap" rel="stylesheet" />
+    @RenderSection("Styles", required: false)
 </head>
-<body style="background:#f7f4f1;">
-    <main class="min-vh-100 d-flex align-items-center justify-content-center px-3">
+<body class="pf-internal-auth-body">
+    <main class="pf-auth-stage">
         @RenderBody()
     </main>
 

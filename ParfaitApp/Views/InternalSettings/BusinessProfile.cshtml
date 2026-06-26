@@ -14,7 +14,7 @@
 
 @if (TempData["ProfileStatus"] is string statusMessage)
 {
-    <div class="alert alert-success">@statusMessage</div>
+    <div class="pf-alert-success">@statusMessage</div>
 }
 
 <form asp-action="BusinessProfile" asp-controller="InternalSettings" method="post">

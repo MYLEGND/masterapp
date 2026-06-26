@@ -13,6 +13,7 @@ public sealed class StoreCheckoutController : Controller
     private readonly SquarePaymentService _squarePayments;
     private readonly IGraphMailService _mail;
     private readonly ParfaitAnalyticsService _analytics;
+    private readonly ParfaitMetaSignalBridgeService _metaSignalBridge;
 
     public StoreCheckoutController(
         IConfiguration configuration,
@@ -20,7 +21,8 @@ public sealed class StoreCheckoutController : Controller
         ParfaitOrderService orders,
         SquarePaymentService squarePayments,
         IGraphMailService mail,
-        ParfaitAnalyticsService analytics)
+        ParfaitAnalyticsService analytics,
+        ParfaitMetaSignalBridgeService metaSignalBridge)
     {
         _configuration = configuration;
         _products = products;
@@ -28,6 +30,7 @@ public sealed class StoreCheckoutController : Controller
         _squarePayments = squarePayments;
         _mail = mail;
         _analytics = analytics;
+        _metaSignalBridge = metaSignalBridge;
     }
 
     [HttpGet("checkout")]
@@ -98,6 +101,15 @@ public sealed class StoreCheckoutController : Controller
         catch
         {
             // Payment succeeded. Analytics failure should not reverse the customer purchase.
+        }
+
+        try
+        {
+            await _metaSignalBridge.RecordPurchaseAsync(paidOrder, HttpContext, ct);
+        }
+        catch
+        {
+            // Payment succeeded. Meta signal bridge failure should not reverse the customer purchase.
         }
 
         try
