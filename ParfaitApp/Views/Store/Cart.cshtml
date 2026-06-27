@@ -1,323 +1,158 @@
 @{
     ViewData["Title"] = "Cart";
+    ViewData["BodyClass"] = "sp-body";
+    ViewData["ContentContainerClass"] = "container-fluid";
+    ViewData["LayoutContentClass"] = "sp-layout-content";
 }
 
-<section class="sp-cart-page">
-    <div class="sp-cart-shell">
-        <header class="sp-commerce-hero">
-            <p>Parfait Shop</p>
+@section Styles {
+    <link rel="stylesheet" href="~/css/storefront.css" asp-append-version="true" />
+}
+
+<section class="sp-store-page">
+    <div class="sp-shell">
+        <header class="sp-store-hero sp-store-hero--compact">
             <h1>Your Cart</h1>
-            <span>Review your selections before secure checkout.</span>
         </header>
 
         <div class="sp-cart-layout">
-            <section class="sp-cart-panel">
-                <div class="sp-panel-heading">
-                    <span>Items</span>
+            <section class="sp-surface sp-cart-panel">
+                <div class="sp-panel-heading sp-panel-heading--stacked">
+                    <span>Items In Cart</span>
                     <strong id="spCartItemCount">0</strong>
                 </div>
 
-                <div id="spCartItems"></div>
+                <div id="spCartItems" class="sp-cart-items"></div>
             </section>
 
-            <aside class="sp-cart-summary-panel">
+            <aside class="sp-surface sp-cart-summary-panel">
                 <div class="sp-panel-heading">
                     <span>Order Summary</span>
                 </div>
 
-                <div class="sp-summary-line">
-                    <span>Subtotal</span>
-                    <strong id="spCartSubtotal">$0.00</strong>
+                <div class="sp-summary-stack">
+                    <div class="sp-summary-line">
+                        <span>Subtotal</span>
+                        <strong id="spCartSubtotal">$0.00</strong>
+                    </div>
+
+                    <div class="sp-summary-line">
+                        <span>Shipping</span>
+                        <strong>Calculated later</strong>
+                    </div>
+
+                    <div class="sp-summary-line">
+                        <span>Tax</span>
+                        <strong>Calculated later</strong>
+                    </div>
+
+                    <div class="sp-summary-total">
+                        <span>Total</span>
+                        <strong id="spCartTotal">$0.00</strong>
+                    </div>
                 </div>
 
-                <div class="sp-summary-line">
-                    <span>Shipping</span>
-                    <strong>Calculated later</strong>
+                <div class="sp-cart-summary-actions">
+                    <a class="sp-button sp-button--primary" id="spCheckoutLink" href="/store/checkout">Secure Checkout</a>
+                    <a class="sp-button sp-button--ghost" href="/store">Back To Shop</a>
                 </div>
-
-                <div class="sp-summary-line">
-                    <span>Tax</span>
-                    <strong>Calculated later</strong>
-                </div>
-
-                <div class="sp-summary-total">
-                    <span>Total</span>
-                    <strong id="spCartTotal">$0.00</strong>
-                </div>
-
-                <a class="sp-primary-button" href="/store/checkout">Continue to Secure Checkout</a>
-                <a class="sp-secondary-link" href="/store">Continue Shopping</a>
             </aside>
         </div>
     </div>
 </section>
 
-<style>
-    .sp-cart-page {
-        background: #fff;
-        color: #111;
-        min-height: 72vh;
-        padding: 5rem 1.25rem 7rem;
-    }
+@section Scripts {
+    <script>
+        (() => {
+            const store = window.ParfaitStorefront;
+            const itemsHost = document.getElementById("spCartItems");
+            const subtotalHost = document.getElementById("spCartSubtotal");
+            const totalHost = document.getElementById("spCartTotal");
+            const countHost = document.getElementById("spCartItemCount");
+            const checkoutLink = document.getElementById("spCheckoutLink");
 
-    .sp-cart-shell {
-        width: min(100%, 1320px);
-        margin: 0 auto;
-    }
-
-    .sp-commerce-hero {
-        border: 2px solid #926950;
-        padding: clamp(2rem, 5vw, 4rem);
-        margin-bottom: 2rem;
-        background: #fff;
-    }
-
-    .sp-commerce-hero p {
-        margin: 0 0 .85rem;
-        color: #926950;
-        font-size: .8rem;
-        font-weight: 950;
-        letter-spacing: .28em;
-        text-transform: uppercase;
-    }
-
-    .sp-commerce-hero h1 {
-        margin: 0;
-        color: #111;
-        font-size: clamp(4rem, 10vw, 8.8rem);
-        font-weight: 950;
-        font-style: italic;
-        letter-spacing: -.085em;
-        line-height: .84;
-    }
-
-    .sp-commerce-hero span {
-        display: block;
-        margin-top: 1.25rem;
-        color: #111;
-        font-size: 1.05rem;
-        font-weight: 750;
-    }
-
-    .sp-cart-layout {
-        display: grid;
-        grid-template-columns: minmax(0, 1fr) 420px;
-        gap: 1.25rem;
-        align-items: start;
-    }
-
-    .sp-cart-panel,
-    .sp-cart-summary-panel {
-        border: 2px solid #926950;
-        background: #fff;
-        padding: clamp(1rem, 2vw, 1.5rem);
-    }
-
-    .sp-cart-summary-panel {
-        position: sticky;
-        top: 1.5rem;
-    }
-
-    .sp-panel-heading {
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-        border-bottom: 2px solid #926950;
-        padding-bottom: 1rem;
-        margin-bottom: 1rem;
-        color: #926950;
-        font-size: .8rem;
-        font-weight: 950;
-        letter-spacing: .2em;
-        text-transform: uppercase;
-    }
-
-    .sp-cart-item {
-        display: grid;
-        grid-template-columns: 128px minmax(0, 1fr) auto;
-        gap: 1.25rem;
-        align-items: center;
-        border: 2px solid #926950;
-        padding: 1rem;
-        background: #fff;
-    }
-
-    .sp-cart-item + .sp-cart-item {
-        margin-top: 1rem;
-    }
-
-    .sp-cart-item img {
-        width: 128px;
-        height: 128px;
-        object-fit: cover;
-        border: 2px solid #926950;
-        background: #fff;
-    }
-
-    .sp-cart-item h2 {
-        margin: 0 0 .4rem;
-        color: #111;
-        font-size: clamp(1.6rem, 3vw, 2.4rem);
-        font-weight: 950;
-        letter-spacing: -.055em;
-        line-height: .95;
-    }
-
-    .sp-cart-meta {
-        margin: 0 0 .75rem;
-        color: #111;
-        font-weight: 850;
-    }
-
-    .sp-cart-price {
-        color: #111;
-        font-size: 1.05rem;
-        font-weight: 950;
-    }
-
-    .sp-cart-remove {
-        min-width: 120px;
-        height: 52px;
-        border: 2px solid #926950;
-        background: #926950;
-        color: #fff;
-        font-weight: 950;
-        letter-spacing: .08em;
-        text-transform: uppercase;
-    }
-
-    .sp-cart-remove:hover {
-        background: #fff;
-        color: #926950;
-    }
-
-    .sp-summary-line,
-    .sp-summary-total {
-        display: flex;
-        justify-content: space-between;
-        gap: 1rem;
-        padding: 1rem 0;
-        border-bottom: 1px solid #926950;
-        color: #111;
-        font-weight: 850;
-    }
-
-    .sp-summary-total {
-        border-bottom: 2px solid #926950;
-        font-size: 1.3rem;
-        font-weight: 950;
-    }
-
-    .sp-primary-button {
-        display: inline-flex;
-        align-items: center;
-        justify-content: center;
-        width: 100%;
-        min-height: 60px;
-        margin-top: 1.25rem;
-        border: 2px solid #926950;
-        background: #926950;
-        color: #fff;
-        text-decoration: none;
-        font-weight: 950;
-        letter-spacing: .08em;
-        text-transform: uppercase;
-    }
-
-    .sp-primary-button:hover {
-        background: #fff;
-        color: #926950;
-    }
-
-    .sp-secondary-link {
-        display: block;
-        margin-top: 1rem;
-        color: #111;
-        text-align: center;
-        font-weight: 850;
-        text-decoration: none;
-    }
-
-    .sp-cart-empty {
-        border: 2px solid #926950;
-        padding: 3rem 1rem;
-        color: #111;
-        text-align: center;
-        font-weight: 950;
-    }
-
-    @@media (max-width: 980px) {
-        .sp-cart-layout {
-            grid-template-columns: 1fr;
-        }
-
-        .sp-cart-summary-panel {
-            position: static;
-        }
-    }
-
-    @@media (max-width: 680px) {
-        .sp-cart-item {
-            grid-template-columns: 96px 1fr;
-        }
-
-        .sp-cart-item img {
-            width: 96px;
-            height: 96px;
-        }
-
-        .sp-cart-remove {
-            grid-column: 1 / -1;
-            width: 100%;
-        }
-    }
-</style>
-
-<script>
-    (() => {
-        const itemsHost = document.getElementById("spCartItems");
-        const subtotalHost = document.getElementById("spCartSubtotal");
-        const totalHost = document.getElementById("spCartTotal");
-        const countHost = document.getElementById("spCartItemCount");
-
-        const money = cents => `$${(cents / 100).toFixed(2)}`;
-
-        const render = () => {
-            const cart = JSON.parse(localStorage.getItem("parfaitCart") || "[]");
-            const itemCount = cart.reduce((sum, item) => sum + (Number(item.quantity) || 0), 0);
-            const subtotal = cart.reduce((sum, item) => sum + ((Number(item.priceCents) || 0) * (Number(item.quantity) || 0)), 0);
-
-            countHost.textContent = itemCount;
-            subtotalHost.textContent = money(subtotal);
-            totalHost.textContent = money(subtotal);
-
-            if (cart.length === 0) {
-                itemsHost.innerHTML = '<div class="sp-cart-empty">Your cart is empty.</div>';
+            if (!store || !itemsHost || !subtotalHost || !totalHost || !countHost || !checkoutLink) {
                 return;
             }
 
-            itemsHost.innerHTML = cart.map(item => `
-                <div class="sp-cart-item">
-                    <img src="${item.imageUrl || "/images/favicon/parfait-logo.png"}" alt="${item.name || "Product"}" />
-                    <div>
-                        <h2>${item.name || "Product"}</h2>
-                        <p class="sp-cart-meta">Size: ${item.size || "N/A"} · Qty: ${item.quantity || 1}</p>
-                        <div class="sp-cart-price">${money((Number(item.priceCents) || 0) * (Number(item.quantity) || 0))}</div>
-                    </div>
-                    <button class="sp-cart-remove" data-key="${item.key}">Remove</button>
-                </div>
-            `).join("");
+            const productUrl = item => item.slug ? `/store/product/${item.slug}` : "/store";
 
-            document.querySelectorAll(".sp-cart-remove").forEach(button => {
-                button.addEventListener("click", () => {
-                    const next = cart.filter(item => item.key !== button.dataset.key);
-                    localStorage.setItem("parfaitCart", JSON.stringify(next));
-                    window.dispatchEvent(new Event("parfait-cart-updated"));
-                    render();
-                });
+            const render = () => {
+                const cart = store.readCart();
+                const itemCount = store.itemCount(cart);
+                const subtotal = store.subtotal(cart);
+
+                countHost.textContent = itemCount.toString();
+                subtotalHost.textContent = store.money(subtotal);
+                totalHost.textContent = store.money(subtotal);
+
+                if (!cart.length) {
+                    checkoutLink.classList.add("is-disabled");
+                    checkoutLink.setAttribute("aria-disabled", "true");
+                    itemsHost.innerHTML = `
+                        <div class="sp-cart-empty">
+                            <h2>Your cart is empty</h2>
+                            <div class="sp-empty-actions">
+                                <a class="sp-button sp-button--primary" href="/store">Back To Shop</a>
+                            </div>
+                        </div>
+                    `;
+                    return;
+                }
+
+                checkoutLink.classList.remove("is-disabled");
+                checkoutLink.removeAttribute("aria-disabled");
+
+                itemsHost.innerHTML = cart.map(item => `
+                    <article class="sp-cart-item">
+                        <a class="sp-cart-media" href="${productUrl(item)}" aria-label="View ${item.name || "product"}">
+                            <img src="${item.imageUrl || "/images/favicon/parfait-logo.png"}" alt="${item.name || "Product"}" />
+                        </a>
+                        <div class="sp-cart-body">
+                            <div class="sp-cart-top">
+                                <div>
+                                    <a class="sp-cart-title" href="${productUrl(item)}">${item.name || "Product"}</a>
+                                    <p class="sp-cart-meta">Size ${item.size || "N/A"} · ${store.money(Number(item.priceCents) || 0)} each</p>
+                                </div>
+                                <div class="sp-cart-line-total">${store.money((Number(item.priceCents) || 0) * (Number(item.quantity) || 0))}</div>
+                            </div>
+
+                            <div class="sp-cart-controls">
+                                <div class="sp-qty-control" aria-label="Quantity controls">
+                                    <button type="button" class="sp-qty-button" data-action="decrease" data-key="${item.key}" aria-label="Decrease quantity">−</button>
+                                    <span class="sp-qty-count">${Number(item.quantity) || 1}</span>
+                                    <button type="button" class="sp-qty-button" data-action="increase" data-key="${item.key}" aria-label="Increase quantity">+</button>
+                                </div>
+
+                                <button type="button" class="sp-text-button" data-action="remove" data-key="${item.key}">Remove</button>
+                            </div>
+                        </div>
+                    </article>
+                `).join("");
+            };
+
+            itemsHost.addEventListener("click", event => {
+                const button = event.target.closest("[data-action]");
+                if (!button) return;
+
+                const { action, key } = button.dataset;
+                const cart = store.readCart();
+                const item = cart.find(entry => entry.key === key);
+                if (!item) return;
+
+                if (action === "increase") {
+                    store.updateQuantity(key, Number(item.quantity || 0) + 1);
+                } else if (action === "decrease") {
+                    store.updateQuantity(key, Number(item.quantity || 0) - 1);
+                } else if (action === "remove") {
+                    store.removeItem(key);
+                }
+
+                render();
             });
-        };
 
-        render();
-    })();
-</script>
+            window.addEventListener("parfait-cart-updated", render);
+            render();
+        })();
+    </script>
+}

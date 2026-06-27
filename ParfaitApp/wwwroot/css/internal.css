@@ -1,28 +1,29 @@
 :root {
-    --pf-cocoa: #5c3a2c;
-    --pf-cocoa-soft: #7a5240;
-    --pf-cream: #fbf6f1;
-    --pf-text: #251712;
-    --pf-text-soft: #5f4a3f;
-    --pf-text-muted: #7a6356;
-    --pf-line: rgba(134, 94, 73, 0.22);
-    --pf-line-strong: rgba(134, 94, 73, 0.55);
-    --pf-shadow-hero: 0 30px 60px rgba(53, 29, 20, 0.22);
-    --pf-shadow-card: 0 18px 34px rgba(60, 37, 25, 0.08);
-    --pf-shadow-card-strong: 0 26px 48px rgba(60, 37, 25, 0.12);
+    --pf-cocoa: #6f4b3b;
+    --pf-cocoa-soft: #926950;
+    --pf-cream: #fffdfb;
+    --pf-text: #241813;
+    --pf-text-soft: #3f2c23;
+    --pf-text-muted: #5d473c;
+    --pf-line: rgba(111, 75, 59, 0.28);
+    --pf-line-strong: rgba(111, 75, 59, 0.48);
+    --pf-font-ui: "Nunito Sans", system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    --pf-shadow-hero: 0 30px 60px rgba(42, 24, 17, 0.24);
+    --pf-shadow-card: 0 18px 34px rgba(42, 24, 17, 0.11);
+    --pf-shadow-card-strong: 0 26px 48px rgba(42, 24, 17, 0.16);
     --pf-shadow-overlay: 0 36px 90px rgba(27, 15, 11, 0.38);
-    --pf-success-bg: rgba(61, 121, 82, 0.12);
-    --pf-success-line: rgba(61, 121, 82, 0.36);
-    --pf-success-text: #25533a;
-    --pf-info-bg: rgba(57, 101, 189, 0.12);
-    --pf-info-line: rgba(57, 101, 189, 0.28);
-    --pf-info-text: #20437f;
-    --pf-warning-bg: rgba(185, 122, 41, 0.14);
-    --pf-warning-line: rgba(185, 122, 41, 0.3);
-    --pf-warning-text: #87561a;
-    --pf-danger-bg: rgba(153, 40, 40, 0.1);
-    --pf-danger-line: rgba(153, 40, 40, 0.28);
-    --pf-danger-text: #8c2020;
+    --pf-success-bg: rgba(42, 123, 73, 0.16);
+    --pf-success-line: rgba(42, 123, 73, 0.42);
+    --pf-success-text: #1f5b38;
+    --pf-info-bg: rgba(44, 98, 193, 0.16);
+    --pf-info-line: rgba(44, 98, 193, 0.4);
+    --pf-info-text: #1c4c99;
+    --pf-warning-bg: rgba(180, 111, 22, 0.17);
+    --pf-warning-line: rgba(180, 111, 22, 0.42);
+    --pf-warning-text: #8e5612;
+    --pf-danger-bg: rgba(180, 47, 47, 0.14);
+    --pf-danger-line: rgba(180, 47, 47, 0.4);
+    --pf-danger-text: #942626;
     --pf-radius-sm: 16px;
     --pf-radius-md: 22px;
     --pf-radius-lg: 28px;
@@ -43,7 +44,7 @@ html {
     min-height: 100%;
     margin: 0;
     color: var(--pf-text);
-    font-family: "Inter", ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    font-family: var(--pf-font-ui);
 }
 
 .pf-internal-body {
@@ -70,7 +71,7 @@ html {
 
 .pf-page-shell {
     width: 100%;
-    padding: 24px 18px 32px;
+    padding: 22px 18px 32px;
 }
 
 .pf-header-shell {
@@ -82,24 +83,20 @@ html {
 .pf-header-card {
     position: relative;
     overflow: hidden;
-    padding: 0 18px;
-    border-bottom: 1px solid rgba(242, 223, 207, 0.14);
+    padding: 0 clamp(1rem, 2vw, 1.45rem);
+    border: 1px solid var(--pf-line);
+    border-top: 0;
     border-bottom-left-radius: 28px;
     border-bottom-right-radius: 28px;
-    background:
-        radial-gradient(circle at top left, rgba(242, 223, 207, 0.14), transparent 28%),
-        radial-gradient(circle at top right, rgba(197, 150, 116, 0.16), transparent 34%),
-        linear-gradient(155deg, #6a4637 0%, #4a2f24 54%, #2c1a15 100%);
-    box-shadow:
-        0 18px 40px rgba(40, 22, 16, 0.16),
-        inset 0 -1px 0 rgba(255, 255, 255, 0.06);
-    color: #fff8f4;
+    background: var(--pf-cream);
+    box-shadow: 0 16px 34px rgba(53, 37, 28, 0.08);
+    color: var(--pf-cocoa);
 }
 
 .pf-header-inner {
     width: min(100%, 1480px);
     margin: 0 auto;
-    padding: 12px 0 14px;
+    padding: 14px 0 16px;
 }
 
 .pf-header-main {
@@ -112,30 +109,28 @@ html {
     min-width: 0;
     display: flex;
     align-items: center;
-    gap: 0.8rem;
+    gap: 0.72rem;
 }
 
 .pf-brandmark {
     min-width: 0;
     display: inline-flex;
     align-items: center;
-    gap: 0.9rem;
+    gap: 0.72rem;
     text-decoration: none;
 }
 
 .pf-brand-emblem {
-    width: 48px;
-    height: 48px;
+    width: 44px;
+    height: 44px;
     flex: 0 0 auto;
     display: grid;
     place-items: center;
-    padding: 8px;
-    border-radius: 15px;
-    border: 1px solid rgba(255, 255, 255, 0.18);
-    background:
-        linear-gradient(180deg, rgba(255, 255, 255, 0.56), rgba(255, 255, 255, 0.12)),
-        linear-gradient(160deg, #f4e2d2 0%, #d8a684 100%);
-    box-shadow: 0 14px 28px rgba(20, 11, 8, 0.18);
+    padding: 9px;
+    border-radius: 14px;
+    border: 1px solid var(--pf-line-strong);
+    background: linear-gradient(180deg, #fffdfb 0%, #f3e8de 100%);
+    box-shadow: 0 10px 20px rgba(53, 37, 28, 0.08);
 }
 
 .pf-brand-logo {
@@ -152,12 +147,14 @@ html {
 }
 
 .pf-brand {
-    color: #fff7f1;
-    font-size: 1.12rem;
-    font-weight: 950;
+    color: var(--pf-cocoa);
+    font-size: clamp(1.34rem, 1.95vw, 1.68rem);
+    font-weight: 800;
     font-style: italic;
-    letter-spacing: -0.045em;
+    font-stretch: 112%;
+    letter-spacing: 0.16em;
     line-height: 1;
+    text-transform: uppercase;
 }
 
 .pf-menu-button {
@@ -166,18 +163,18 @@ html {
     flex: 0 0 auto;
     display: inline-grid;
     place-items: center;
-    border: 1.5px solid rgba(242, 223, 207, 0.3);
+    border: 1px solid var(--pf-line-strong);
     border-radius: 14px;
-    background: linear-gradient(180deg, rgba(255, 255, 255, 0.12), rgba(255, 255, 255, 0.04));
-    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08);
+    background: rgba(255, 255, 255, 0.88);
+    box-shadow: 0 10px 18px rgba(53, 37, 28, 0.08);
     cursor: pointer;
     transition: transform 0.14s ease, box-shadow 0.18s ease, border-color 0.18s ease;
 }
 
 .pf-menu-button:hover {
     transform: translateY(-1px);
-    border-color: rgba(255, 255, 255, 0.44);
-    box-shadow: 0 14px 24px rgba(27, 15, 11, 0.2), inset 0 1px 0 rgba(255, 255, 255, 0.12);
+    border-color: var(--pf-line-strong);
+    box-shadow: 0 12px 22px rgba(53, 37, 28, 0.12);
 }
 
 .pf-menu-button span,
@@ -188,7 +185,7 @@ html {
     width: 18px;
     height: 2px;
     border-radius: 999px;
-    background: #fff8f4;
+    background: var(--pf-text);
     position: relative;
 }
 
@@ -224,12 +221,12 @@ html {
     flex-direction: column;
     padding: 0;
     border-radius: 30px;
-    border: 1.5px solid rgba(242, 223, 207, 0.2);
+    border: 1px solid var(--pf-line-strong);
     background:
-        radial-gradient(circle at top left, rgba(242, 223, 207, 0.16), transparent 30%),
-        linear-gradient(180deg, #5b382b 0%, #3d251d 40%, #241511 100%);
+        radial-gradient(circle at top right, rgba(255, 255, 255, 0.52), transparent 28%),
+        linear-gradient(180deg, rgba(255, 255, 255, 0.99), rgba(247, 240, 233, 0.99));
     box-shadow: var(--pf-shadow-overlay);
-    color: #fff7f1;
+    color: var(--pf-text);
     transform: translateX(calc(-100% - 32px));
     transition: transform 0.2s ease;
 }
@@ -249,21 +246,23 @@ html {
     justify-content: space-between;
     gap: 0.9rem;
     padding: 1.35rem 1.35rem 1.1rem;
-    border-bottom: 1px solid rgba(242, 223, 207, 0.12);
+    border-bottom: 1px solid var(--pf-line);
 }
 
 .pf-sidebar-title {
-    color: #fff7f1;
-    font-size: 1.55rem;
-    font-weight: 950;
+    color: var(--pf-cocoa);
+    font-size: 1.42rem;
+    font-weight: 800;
     font-style: italic;
-    letter-spacing: -0.06em;
-    line-height: 0.95;
+    font-stretch: 112%;
+    letter-spacing: 0.16em;
+    line-height: 1;
+    text-transform: uppercase;
 }
 
 .pf-sidebar-sub {
     margin-top: 0.35rem;
-    color: #ead5c6;
+    color: var(--pf-text-muted);
     font-size: 0.72rem;
     font-weight: 900;
     letter-spacing: 0.18em;
@@ -274,10 +273,10 @@ html {
     width: 40px;
     height: 40px;
     flex: 0 0 auto;
-    border: 1.5px solid rgba(242, 223, 207, 0.22);
+    border: 1px solid var(--pf-line-strong);
     border-radius: 14px;
-    background: rgba(255, 255, 255, 0.08);
-    color: #fff7f1;
+    background: rgba(255, 255, 255, 0.88);
+    color: var(--pf-cocoa);
     font-size: 1.25rem;
     font-weight: 900;
     cursor: pointer;
@@ -297,7 +296,7 @@ html {
 
 .pf-nav-section {
     margin: 0 0.2rem 0.1rem;
-    color: #f0d8c9;
+    color: var(--pf-cocoa);
     font-size: 0.68rem;
     font-weight: 900;
     letter-spacing: 0.18em;
@@ -312,21 +311,22 @@ html {
     gap: 0.9rem;
     padding: 0.7rem 0.9rem;
     border-radius: 16px;
-    border: 1.2px solid rgba(242, 223, 207, 0.1);
-    background: rgba(255, 255, 255, 0.04);
-    color: #fff7f1;
+    border: 1px solid var(--pf-line);
+    background: rgba(255, 255, 255, 0.92);
+    color: var(--pf-text-soft);
     text-decoration: none;
     font-size: 0.92rem;
     font-weight: 800;
+    box-shadow: 0 8px 18px rgba(53, 37, 28, 0.05);
     transition: transform 0.14s ease, border-color 0.18s ease, background 0.18s ease, box-shadow 0.18s ease;
 }
 
 .pf-nav a:hover,
 .pf-nav a.is-active {
     transform: translateY(-1px);
-    border-color: rgba(242, 223, 207, 0.34);
-    background: rgba(255, 255, 255, 0.09);
-    box-shadow: 0 14px 26px rgba(23, 13, 9, 0.2);
+    border-color: var(--pf-line-strong);
+    background: var(--pf-cream);
+    box-shadow: 0 12px 22px rgba(53, 37, 28, 0.08);
 }
 
 .pf-sidebar-footer {
@@ -335,8 +335,8 @@ html {
     gap: 0.85rem;
     padding: 1rem 1.05rem;
     border-radius: 18px;
-    border: 1px solid rgba(242, 223, 207, 0.16);
-    background: rgba(255, 255, 255, 0.05);
+    border: 1px solid var(--pf-line);
+    background: rgba(255, 255, 255, 0.84);
 }
 
 .pf-sidebar-utility-grid {
@@ -352,9 +352,9 @@ html {
     justify-content: center;
     padding: 0.7rem 0.85rem;
     border-radius: 14px;
-    border: 1px solid rgba(242, 223, 207, 0.16);
-    background: rgba(255, 255, 255, 0.07);
-    color: #fff7f1;
+    border: 1px solid var(--pf-line);
+    background: rgba(255, 255, 255, 0.96);
+    color: var(--pf-text-soft);
     text-decoration: none;
     font-size: 0.78rem;
     font-weight: 900;
@@ -365,12 +365,12 @@ html {
 
 .pf-sidebar-utility:hover {
     transform: translateY(-1px);
-    border-color: rgba(242, 223, 207, 0.3);
-    background: rgba(255, 255, 255, 0.11);
+    border-color: var(--pf-line-strong);
+    background: var(--pf-cream);
 }
 
 .pf-sidebar-footnote {
-    color: #ead5c6;
+    color: var(--pf-text-muted);
     font-size: 0.78rem;
     font-weight: 650;
     line-height: 1.5;
@@ -391,9 +391,10 @@ html {
     border-radius: 24px;
     position: relative;
     background:
-        linear-gradient(180deg, rgba(255, 255, 255, 0.985), rgba(249, 242, 234, 0.985));
+        radial-gradient(circle at top right, rgba(255, 255, 255, 0.72), transparent 34%),
+        linear-gradient(180deg, rgba(255, 255, 255, 0.99), rgba(245, 235, 225, 0.99));
     border: 1px solid var(--pf-line);
-    box-shadow: 0 18px 34px rgba(60, 37, 25, 0.08);
+    box-shadow: var(--pf-shadow-card);
 }
 
 .pf-panel,
@@ -448,9 +449,9 @@ html {
     min-height: 30px;
     padding: 0 0.8rem;
     border-radius: 999px;
-    border: 1px solid rgba(134, 94, 73, 0.16);
-    background: rgba(134, 94, 73, 0.08);
-    color: var(--pf-cocoa);
+    border: 1px solid rgba(111, 75, 59, 0.24);
+    background: rgba(111, 75, 59, 0.11);
+    color: var(--pf-text-soft);
     font-size: 0.68rem;
     font-weight: 950;
     letter-spacing: 0.16em;
@@ -466,13 +467,14 @@ html {
     min-height: 32px;
     padding: 0 0.82rem;
     border-radius: 999px;
-    border: 1px solid rgba(134, 94, 73, 0.2);
-    background: rgba(134, 94, 73, 0.08);
-    color: var(--pf-cocoa);
+    border: 1px solid rgba(111, 75, 59, 0.28);
+    background: rgba(111, 75, 59, 0.11);
+    color: var(--pf-text-soft);
     font-size: 0.68rem;
-    font-weight: 950;
+    font-weight: 980;
     letter-spacing: 0.11em;
     text-transform: uppercase;
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.42);
 }
 
 .pf-status--success,
@@ -577,7 +579,7 @@ html {
     margin: 0;
     color: var(--pf-text-soft);
     font-size: 0.98rem;
-    font-weight: 620;
+    font-weight: 700;
     line-height: 1.58;
 }
 
@@ -611,49 +613,49 @@ html {
 .pf-rail-card,
 .pf-focus-card,
 .pf-module-row {
+    --pf-tone-surface: rgba(111, 75, 59, 0.06);
     position: relative;
     overflow: hidden;
     min-width: 0;
-    border: 1px solid var(--pf-line);
+    border: 1.6px solid var(--pf-line);
     border-radius: 20px;
     background:
-        radial-gradient(circle at top right, rgba(255, 255, 255, 0.58), transparent 34%),
-        linear-gradient(180deg, rgba(255, 255, 255, 0.98), rgba(249, 243, 236, 0.98));
-    box-shadow: 0 14px 28px rgba(60, 37, 25, 0.07);
+        linear-gradient(0deg, var(--pf-tone-surface), var(--pf-tone-surface)),
+        radial-gradient(circle at top right, rgba(255, 255, 255, 0.68), transparent 34%),
+        linear-gradient(180deg, rgba(255, 255, 255, 0.99), rgba(246, 236, 226, 0.99));
+    box-shadow: 0 16px 30px rgba(42, 24, 17, 0.1);
 }
 
-.pf-rail-card::before,
-.pf-focus-card::before,
-.pf-module-row::before {
-    content: "";
-    position: absolute;
-    inset: 0 0 auto;
-    height: 4px;
-    background: rgba(134, 94, 73, 0.22);
+.pf-rail-card.is-success,
+.pf-focus-card.is-success,
+.pf-module-row.is-success {
+    --pf-tone-surface: rgba(42, 123, 73, 0.11);
+    border-color: var(--pf-success-line);
+    box-shadow: 0 16px 30px rgba(31, 91, 56, 0.11);
 }
 
-.pf-rail-card.is-success::before,
-.pf-focus-card.is-success::before,
-.pf-module-row.is-success::before {
-    background: linear-gradient(90deg, #4ea86b 0%, #25533a 100%);
+.pf-rail-card.is-info,
+.pf-focus-card.is-info,
+.pf-module-row.is-info {
+    --pf-tone-surface: rgba(44, 98, 193, 0.1);
+    border-color: var(--pf-info-line);
+    box-shadow: 0 16px 30px rgba(28, 76, 153, 0.11);
 }
 
-.pf-rail-card.is-info::before,
-.pf-focus-card.is-info::before,
-.pf-module-row.is-info::before {
-    background: linear-gradient(90deg, #4f84df 0%, #20437f 100%);
+.pf-rail-card.is-warning,
+.pf-focus-card.is-warning,
+.pf-module-row.is-warning {
+    --pf-tone-surface: rgba(180, 111, 22, 0.11);
+    border-color: var(--pf-warning-line);
+    box-shadow: 0 16px 30px rgba(142, 86, 18, 0.11);
 }
 
-.pf-rail-card.is-warning::before,
-.pf-focus-card.is-warning::before,
-.pf-module-row.is-warning::before {
-    background: linear-gradient(90deg, #d59a48 0%, #87561a 100%);
-}
-
-.pf-rail-card.is-danger::before,
-.pf-focus-card.is-danger::before,
-.pf-module-row.is-danger::before {
-    background: linear-gradient(90deg, #d05c5c 0%, #8c2020 100%);
+.pf-rail-card.is-danger,
+.pf-focus-card.is-danger,
+.pf-module-row.is-danger {
+    --pf-tone-surface: rgba(180, 47, 47, 0.1);
+    border-color: var(--pf-danger-line);
+    box-shadow: 0 16px 30px rgba(148, 38, 38, 0.11);
 }
 
 .pf-rail-card,
@@ -665,7 +667,7 @@ html {
 
 .pf-rail-label,
 .pf-focus-label {
-    color: var(--pf-text-muted);
+    color: var(--pf-cocoa);
     font-size: 0.68rem;
     font-weight: 950;
     letter-spacing: 0.16em;
@@ -687,7 +689,7 @@ html {
     margin: 0;
     color: var(--pf-text-soft);
     font-size: 0.88rem;
-    font-weight: 620;
+    font-weight: 700;
     line-height: 1.52;
 }
 
@@ -702,9 +704,10 @@ html {
 .pf-module-row-metric,
 .pf-focus-list > div {
     padding: 0.8rem 0.85rem;
-    border: 1px solid var(--pf-line);
+    border: 1px solid rgba(111, 75, 59, 0.2);
     border-radius: 15px;
-    background: rgba(255, 255, 255, 0.8);
+    background: linear-gradient(180deg, rgba(255, 255, 255, 0.98), rgba(247, 239, 232, 0.94));
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.56);
 }
 
 .pf-rail-grid span,
@@ -736,9 +739,9 @@ html {
     border-radius: 28px;
     border: 1px solid var(--pf-line);
     background:
-        radial-gradient(circle at top right, rgba(255, 255, 255, 0.62), transparent 36%),
-        linear-gradient(180deg, rgba(255, 255, 255, 0.985), rgba(248, 241, 234, 0.985));
-    box-shadow: 0 18px 34px rgba(60, 37, 25, 0.08);
+        radial-gradient(circle at top right, rgba(255, 255, 255, 0.72), transparent 36%),
+        linear-gradient(180deg, rgba(255, 255, 255, 0.99), rgba(245, 235, 225, 0.99));
+    box-shadow: var(--pf-shadow-card);
 }
 
 .pf-command-board-head {
@@ -763,9 +766,9 @@ html {
 .pf-command-board-head p {
     max-width: 60ch;
     margin: 0.45rem 0 0;
-    color: var(--pf-text-muted);
+    color: var(--pf-text-soft);
     font-size: 0.9rem;
-    font-weight: 620;
+    font-weight: 700;
     line-height: 1.5;
 }
 
@@ -805,9 +808,9 @@ html {
 .pf-module-row-main p {
     max-width: 44ch;
     margin: 0;
-    color: var(--pf-text-muted);
+    color: var(--pf-text-soft);
     font-size: 0.88rem;
-    font-weight: 620;
+    font-weight: 700;
     line-height: 1.52;
 }
 
@@ -930,9 +933,9 @@ button.pf-secondary-action:hover {
 .pf-internal-body .form-control,
 .pf-internal-body .form-select {
     min-height: 48px;
-    border: 1.2px solid rgba(134, 94, 73, 0.26);
+    border: 1.2px solid rgba(111, 75, 59, 0.34);
     border-radius: 15px;
-    background: rgba(255, 255, 255, 0.94);
+    background: rgba(255, 255, 255, 0.97);
     color: var(--pf-text);
     font-weight: 700;
     box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.6);
@@ -945,8 +948,8 @@ button.pf-secondary-action:hover {
 
 .pf-internal-body .form-control:focus,
 .pf-internal-body .form-select:focus {
-    border-color: rgba(134, 94, 73, 0.62);
-    box-shadow: 0 0 0 3px rgba(197, 150, 116, 0.18);
+    border-color: rgba(111, 75, 59, 0.64);
+    box-shadow: 0 0 0 3px rgba(197, 150, 116, 0.24);
 }
 
 .pf-internal-body .form-text,
@@ -1002,9 +1005,9 @@ button.pf-secondary-action:hover {
     min-height: 42px;
     padding: 0 0.95rem;
     border-radius: 14px;
-    border: 1px solid rgba(134, 94, 73, 0.16);
-    background: rgba(134, 94, 73, 0.08);
-    color: var(--pf-cocoa);
+    border: 1px solid rgba(111, 75, 59, 0.24);
+    background: rgba(111, 75, 59, 0.11);
+    color: var(--pf-text-soft);
     cursor: pointer;
     font-size: 0.76rem;
     font-weight: 950;
@@ -1082,7 +1085,7 @@ button.pf-secondary-action:hover {
 .pf-orders-table th,
 .pf-analytics-table th {
     padding: 0 12px 6px;
-    color: var(--pf-cocoa);
+    color: var(--pf-text-soft);
     font-size: 0.68rem;
     font-weight: 950;
     letter-spacing: 0.16em;
@@ -1096,26 +1099,33 @@ button.pf-secondary-action:hover {
 .pf-analytics-table td {
     padding: 12px 14px;
     vertical-align: middle;
-    border-top: 1px solid var(--pf-line);
-    border-bottom: 1px solid var(--pf-line);
-    background: linear-gradient(180deg, #fffdfb, #faf3ec);
+    border-top: 1px solid rgba(111, 75, 59, 0.24);
+    border-bottom: 1px solid rgba(111, 75, 59, 0.24);
+    background: linear-gradient(180deg, rgba(255, 255, 255, 0.99), rgba(247, 238, 230, 0.99));
     color: var(--pf-text);
     font-size: 0.92rem;
-    font-weight: 750;
+    font-weight: 780;
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.56);
 }
 
 .pf-product-table td:first-child,
 .pf-orders-table td:first-child,
 .pf-analytics-table td:first-child {
-    border-left: 1px solid var(--pf-line);
+    border-left: 1px solid rgba(111, 75, 59, 0.24);
     border-radius: 18px 0 0 18px;
 }
 
 .pf-product-table td:last-child,
 .pf-orders-table td:last-child,
 .pf-analytics-table td:last-child {
-    border-right: 1px solid var(--pf-line);
+    border-right: 1px solid rgba(111, 75, 59, 0.24);
     border-radius: 0 18px 18px 0;
+}
+
+.pf-product-table tbody tr:hover td,
+.pf-orders-table tbody tr:hover td,
+.pf-analytics-table tbody tr:hover td {
+    background: linear-gradient(180deg, rgba(255, 255, 255, 1), rgba(244, 233, 223, 1));
 }
 
 .pf-product-table strong,
@@ -1153,7 +1163,7 @@ button.pf-secondary-action:hover {
     display: block;
     color: var(--pf-text-muted);
     font-size: 0.78rem;
-    font-weight: 700;
+    font-weight: 760;
 }
 
 .pf-product-main-cell p {
@@ -1161,13 +1171,13 @@ button.pf-secondary-action:hover {
     margin: 0.3rem 0 0;
     color: var(--pf-text-muted);
     font-size: 0.82rem;
-    font-weight: 620;
+    font-weight: 690;
     line-height: 1.45;
 }
 
 .pf-pill.is-muted {
-    border-color: rgba(134, 94, 73, 0.14);
-    background: rgba(134, 94, 73, 0.06);
+    border-color: rgba(111, 75, 59, 0.24);
+    background: rgba(111, 75, 59, 0.09);
     color: var(--pf-text-muted);
 }
 
@@ -1272,7 +1282,7 @@ button.pf-secondary-action:hover {
     border: 1px solid var(--pf-line);
     border-radius: 22px;
     padding: 14px;
-    background: rgba(255, 255, 255, 0.76);
+    background: rgba(255, 255, 255, 0.9);
     box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.6);
 }
 
@@ -1322,7 +1332,7 @@ button.pf-secondary-action:hover {
     border: 1px solid var(--pf-line);
     border-radius: 18px;
     padding: 10px;
-    background: rgba(255, 255, 255, 0.88);
+    background: rgba(255, 255, 255, 0.94);
 }
 
 .pf-photo-tile > img {
@@ -1352,10 +1362,10 @@ button.pf-secondary-action:hover {
     width: 100%;
     margin-top: 8px;
     min-height: 36px;
-    border: 1px solid rgba(134, 94, 73, 0.22);
+    border: 1px solid rgba(111, 75, 59, 0.28);
     border-radius: 13px;
-    background: rgba(134, 94, 73, 0.08);
-    color: var(--pf-cocoa);
+    background: rgba(111, 75, 59, 0.11);
+    color: var(--pf-text-soft);
     font-size: 0.68rem;
     font-weight: 950;
     letter-spacing: 0.08em;
@@ -1373,10 +1383,10 @@ button.pf-secondary-action:hover {
 .pf-danger-zone button {
     width: 100%;
     min-height: 34px;
-    border: 1px solid rgba(134, 94, 73, 0.2);
+    border: 1px solid rgba(111, 75, 59, 0.28);
     border-radius: 12px;
-    background: rgba(255, 255, 255, 0.94);
-    color: var(--pf-cocoa);
+    background: rgba(255, 255, 255, 0.97);
+    color: var(--pf-text-soft);
     font-size: 0.66rem;
     font-weight: 950;
     letter-spacing: 0.06em;
@@ -1400,10 +1410,10 @@ button.pf-secondary-action:hover {
     gap: 0.35rem;
     align-self: flex-start;
     padding: 0.42rem 0.82rem;
-    border: 1px solid rgba(134, 94, 73, 0.18);
+    border: 1px solid rgba(111, 75, 59, 0.24);
     border-radius: 999px;
-    background: rgba(134, 94, 73, 0.08);
-    color: var(--pf-cocoa);
+    background: rgba(111, 75, 59, 0.11);
+    color: var(--pf-text-soft);
     font-size: 0.72rem;
     font-weight: 900;
     letter-spacing: 0.08em;
@@ -1431,7 +1441,7 @@ button.pf-secondary-action:hover {
     margin: 0;
     color: var(--pf-text-muted);
     font-size: 0.84rem;
-    font-weight: 650;
+    font-weight: 700;
     line-height: 1.5;
 }
 
@@ -1921,8 +1931,8 @@ button.pf-secondary-action:hover {
     }
 
     .pf-brand-emblem {
-        width: 46px;
-        height: 46px;
+        width: 44px;
+        height: 44px;
         border-radius: 14px;
     }
 

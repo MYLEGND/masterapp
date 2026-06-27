@@ -1,235 +1,137 @@
 @model ParfaitApp.Models.ParfaitStoreProductViewModel
 @{
     ViewData["Title"] = Model.Name;
+    ViewData["BodyClass"] = "sp-body";
+    ViewData["ContentContainerClass"] = "container-fluid";
+    ViewData["LayoutContentClass"] = "sp-layout-content";
+
     var images = Model.Images.OrderBy(i => i.DisplayOrder).ToList();
     var selectedImage = Model.PrimaryImage ?? images.FirstOrDefault();
+    var galleryCount = Math.Max(images.Count, 1);
 }
 
-<section class="sp-product-detail">
-    <div class="sp-product-gallery">
-        <div class="sp-product-main-image">
-            <img
-                id="spMainProductImage"
-                src="@(selectedImage?.ImageUrl ?? Model.PrimaryImageUrl)"
-                alt="@Model.Name"
-                style="object-fit:@(selectedImage?.ObjectFit ?? Model.PrimaryImageObjectFit); object-position:@(selectedImage?.ObjectPositionX ?? Model.PrimaryImageObjectPositionX)% @(selectedImage?.ObjectPositionY ?? Model.PrimaryImageObjectPositionY)%; transform:scale(@((selectedImage?.Zoom ?? Model.PrimaryImageZoom).ToString("0.##"))); transform-origin:center;" />
-        </div>
+@section Styles {
+    <link rel="stylesheet" href="~/css/storefront.css" asp-append-version="true" />
+}
 
-        @if (images.Count > 1)
-        {
-            <div class="sp-product-thumbs" aria-label="Product images">
-                @foreach (var image in images)
+<section class="sp-store-page">
+    <div class="sp-shell sp-product-shell">
+        <section class="sp-gallery-panel sp-surface" aria-label="@Model.Name product gallery">
+            <div class="sp-gallery-stage">
+                @if (images.Count > 1)
                 {
-                    var isActive = image.Id == selectedImage?.Id;
+                    <button type="button" class="sp-gallery-arrow sp-gallery-arrow--prev" id="spGalleryPrev" aria-label="Previous product image">&lt;</button>
+                    <button type="button" class="sp-gallery-arrow sp-gallery-arrow--next" id="spGalleryNext" aria-label="Next product image">&gt;</button>
+                }
 
-                    <button
-                        type="button"
-                        class="sp-product-thumb-button @(isActive ? "is-active" : "")"
-                        aria-label="View image for @Model.Name"
-                        data-image-url="@image.ImageUrl"
-                        data-image-alt="@image.AltText"
-                        data-image-fit="@image.ObjectFit"
-                        data-image-x="@image.ObjectPositionX"
-                        data-image-y="@image.ObjectPositionY"
-                        data-image-zoom="@image.Zoom.ToString("0.##")">
-                        <img
-                            src="@image.ImageUrl"
-                            alt="@image.AltText"
-                            style="object-fit:@image.ObjectFit; object-position:@image.ObjectPositionX% @image.ObjectPositionY%; transform:scale(@image.Zoom.ToString("0.##")); transform-origin:center;" />
-                    </button>
+                <div class="sp-gallery-frame">
+                    <img id="spMainProductImage"
+                         class="sp-gallery-main-image"
+                         src="@(selectedImage?.ImageUrl ?? Model.PrimaryImageUrl)"
+                         alt="@(selectedImage?.AltText ?? Model.Name)"
+                         style="object-fit:@(selectedImage?.ObjectFit ?? Model.PrimaryImageObjectFit); object-position:@(selectedImage?.ObjectPositionX ?? Model.PrimaryImageObjectPositionX)% @(selectedImage?.ObjectPositionY ?? Model.PrimaryImageObjectPositionY)%; transform:scale(@((selectedImage?.Zoom ?? Model.PrimaryImageZoom).ToString("0.##"))); transform-origin:center;" />
+                </div>
+
+                @if (images.Count > 1)
+                {
+                    <div class="sp-gallery-toolbar">
+                        <span class="sp-gallery-counter" id="spGalleryCounter">1 / @galleryCount</span>
+                    </div>
                 }
             </div>
-        }
-    </div>
 
-    <div class="sp-product-details">
-        <a class="sp-back-link" href="/store">← Back to collection</a>
-        <div class="sp-product-kicker">@Model.Badge</div>
-        <h1>@Model.Name</h1>
-        <div class="sp-product-price">@Model.PriceLabel</div>
-        <p>@Model.Description</p>
+            @if (images.Count > 1)
+            {
+                <div class="sp-product-thumbs" aria-label="Product images">
+                    @for (var i = 0; i < images.Count; i++)
+                    {
+                        var image = images[i];
+                        var isActive = image.Id == selectedImage?.Id;
 
-        <label class="sp-size-label" for="productSize">Size</label>
-        <select id="productSize" class="sp-product-select">
-            <option>XS</option>
-            <option>S</option>
-            <option>M</option>
-            <option>L</option>
-            <option>XL</option>
-        </select>
+                        <button type="button"
+                                class="sp-product-thumb-button @(isActive ? "is-active" : "")"
+                                aria-label="View image @(i + 1) for @Model.Name"
+                                data-index="@i"
+                                data-image-url="@image.ImageUrl"
+                                data-image-alt="@(string.IsNullOrWhiteSpace(image.AltText) ? Model.Name : image.AltText)"
+                                data-image-fit="@image.ObjectFit"
+                                data-image-x="@image.ObjectPositionX"
+                                data-image-y="@image.ObjectPositionY"
+                                data-image-zoom="@image.Zoom.ToString("0.##")">
+                            <img src="@image.ImageUrl"
+                                 alt="@(string.IsNullOrWhiteSpace(image.AltText) ? Model.Name : image.AltText)"
+                                 style="object-fit:@image.ObjectFit; object-position:@image.ObjectPositionX% @image.ObjectPositionY%; transform:scale(@image.Zoom.ToString("0.##")); transform-origin:center;" />
+                        </button>
+                    }
+                </div>
+            }
+        </section>
 
-        @if (Model.PriceCents > 0)
-        {
-            <button
-                type="button"
-                class="sp-product-button"
-                id="spAddToCart"
-                data-product-id="@Model.Id"
-                data-product-name="@Model.Name"
-                data-product-slug="@Model.Slug"
-                data-product-price-cents="@Model.PriceCents"
-                data-product-price-label="@Model.PriceLabel"
-                data-product-image="@Model.PrimaryImageUrl">
-                Add to Cart
-            </button>
-        }
-        else
-        {
-            <button type="button" class="sp-product-button">
-                Coming Soon
-            </button>
-        }
+        <section class="sp-product-info-panel sp-surface">
+            <a class="sp-back-link" href="/store">← Back to collection</a>
+            @if (!string.IsNullOrWhiteSpace(Model.Badge))
+            {
+                <div class="sp-product-kicker">@Model.Badge</div>
+            }
+            <h1>@Model.Name</h1>
+            <div class="sp-product-price">@Model.PriceLabel</div>
+            <p class="sp-product-description">@Model.Description</p>
+
+            <div class="sp-product-size-row">
+                <label class="sp-size-label" for="productSize">Size</label>
+                <select id="productSize" class="sp-product-select">
+                    <option>XS</option>
+                    <option>S</option>
+                    <option>M</option>
+                    <option>L</option>
+                    <option>XL</option>
+                </select>
+            </div>
+
+            <div class="sp-product-actions">
+                @if (Model.PriceCents > 0)
+                {
+                    <button type="button"
+                            class="sp-button sp-button--primary sp-product-button"
+                            id="spAddToCart"
+                            data-product-id="@Model.Id"
+                            data-product-name="@Model.Name"
+                            data-product-slug="@Model.Slug"
+                            data-product-price-cents="@Model.PriceCents"
+                            data-product-price-label="@Model.PriceLabel"
+                            data-product-image="@(selectedImage?.ImageUrl ?? Model.PrimaryImageUrl)">
+                        Add to Cart
+                    </button>
+                    <a class="sp-button sp-button--ghost" href="/store/cart">View Cart</a>
+                }
+                else
+                {
+                    <button type="button" class="sp-button sp-button--ghost" disabled>Coming Soon</button>
+                }
+            </div>
+        </section>
     </div>
 </section>
 
-<style>
-    body { background: #fff; }
+@section Scripts {
+    <script>
+        (() => {
+            const store = window.ParfaitStorefront;
+            const mainImage = document.getElementById("spMainProductImage");
+            const buttons = [...document.querySelectorAll(".sp-product-thumb-button")];
+            const prevButton = document.getElementById("spGalleryPrev");
+            const nextButton = document.getElementById("spGalleryNext");
+            const counter = document.getElementById("spGalleryCounter");
+            const addButton = document.getElementById("spAddToCart");
 
-    .sp-product-detail {
-        width: min(100%, 1480px);
-        margin: 0 auto;
-        padding: clamp(2rem, 5vw, 4.5rem) clamp(1.25rem, 4vw, 4rem) 5rem;
-        display: grid;
-        grid-template-columns: minmax(0, 1.1fr) minmax(360px, .75fr);
-        gap: clamp(2rem, 5vw, 5rem);
-        align-items: start;
-    }
+            let activeIndex = Math.max(0, buttons.findIndex(button => button.classList.contains("is-active")));
 
-    .sp-product-main-image {
-        width: 100%;
-        aspect-ratio: 1 / 1;
-        background: #f4f4f4;
-        overflow: hidden;
-    }
+            const renderImage = index => {
+                if (!buttons.length || !mainImage) return;
 
-    .sp-product-main-image img {
-        width: 100%;
-        height: 100%;
-        display: block;
-    }
-
-    .sp-product-thumbs {
-        display: grid;
-        grid-template-columns: repeat(5, minmax(0, 1fr));
-        gap: .65rem;
-        margin-top: .8rem;
-    }
-
-    .sp-product-thumb-button {
-        padding: 0;
-        border: 2px solid transparent;
-        background: #f4f4f4;
-        cursor: pointer;
-        aspect-ratio: 1 / 1;
-        overflow: hidden;
-    }
-
-    .sp-product-thumb-button.is-active { border-color: #9a6a50; }
-
-    .sp-product-thumb-button img {
-        width: 100%;
-        height: 100%;
-        display: block;
-    }
-
-    .sp-product-details {
-        position: sticky;
-        top: 2rem;
-    }
-
-    .sp-back-link {
-        color: #000;
-        text-decoration: none;
-        font-size: .95rem;
-        display: inline-block;
-        margin-bottom: 1.5rem;
-    }
-
-    .sp-product-kicker {
-        color: #bd8200;
-        font-size: .78rem;
-        font-weight: 700;
-        letter-spacing: .18em;
-        text-transform: uppercase;
-        margin-bottom: .85rem;
-    }
-
-    .sp-product-details h1 {
-        margin: 0 0 .75rem;
-        color: #000;
-        font-size: clamp(2.4rem, 5vw, 4.6rem);
-        font-weight: 400;
-        font-style: italic;
-        letter-spacing: -.055em;
-        line-height: .95;
-    }
-
-    .sp-product-price {
-        color: #000;
-        font-size: 1.1rem;
-        margin-bottom: 1.4rem;
-    }
-
-    .sp-product-details p {
-        color: #252525;
-        line-height: 1.65;
-        margin-bottom: 1.5rem;
-    }
-
-    .sp-size-label {
-        display: block;
-        margin-bottom: .45rem;
-        color: #000;
-        font-size: .9rem;
-    }
-
-    .sp-product-select {
-        width: 100%;
-        height: 56px;
-        margin: 0 0 .65rem;
-        padding: 0 1rem;
-        border: 0;
-        border-radius: 999px;
-        background: #f5f5f5;
-        color: #000;
-        font-size: 1rem;
-        outline: none;
-    }
-
-    .sp-product-button {
-        width: 100%;
-        min-height: 58px;
-        border: 4px solid #bd8200;
-        border-radius: 999px;
-        background: #fff;
-        color: #bd8200;
-        text-decoration: none;
-        font-size: 1rem;
-        font-weight: 400;
-        display: inline-flex;
-        align-items: center;
-        justify-content: center;
-    }
-
-    .sp-product-button:hover {
-        background: #bd8200;
-        color: #fff;
-    }
-
-    @@media (max-width: 900px) {
-        .sp-product-detail { grid-template-columns: 1fr; }
-        .sp-product-details { position: static; }
-    }
-</style>
-
-<script>
-    (() => {
-        const mainImage = document.getElementById("spMainProductImage");
-        const buttons = document.querySelectorAll(".sp-product-thumb-button");
-
-        buttons.forEach(button => {
-            button.addEventListener("click", () => {
-                if (!mainImage) return;
+                const safeIndex = ((index % buttons.length) + buttons.length) % buttons.length;
+                const button = buttons[safeIndex];
+                activeIndex = safeIndex;
 
                 mainImage.src = button.dataset.imageUrl || "";
                 mainImage.alt = button.dataset.imageAlt || "@Model.Name";
@@ -237,23 +139,45 @@
                 mainImage.style.objectPosition = `${button.dataset.imageX || "50"}% ${button.dataset.imageY || "50"}%`;
                 mainImage.style.transform = `scale(${button.dataset.imageZoom || "1"})`;
 
+                if (addButton) {
+                    addButton.dataset.productImage = button.dataset.imageUrl || addButton.dataset.productImage || "";
+                }
+
                 buttons.forEach(item => item.classList.remove("is-active"));
                 button.classList.add("is-active");
+
+                if (counter) {
+                    counter.textContent = `${safeIndex + 1} / ${buttons.length}`;
+                }
+            };
+
+            buttons.forEach((button, index) => {
+                button.addEventListener("click", () => renderImage(Number(button.dataset.index || index)));
             });
-        });
 
-        const addButton = document.getElementById("spAddToCart");
+            prevButton?.addEventListener("click", () => renderImage(activeIndex - 1));
+            nextButton?.addEventListener("click", () => renderImage(activeIndex + 1));
 
-        addButton?.addEventListener("click", () => {
-            const size = document.getElementById("productSize")?.value || "XS";
-            const cart = JSON.parse(localStorage.getItem("parfaitCart") || "[]");
-            const key = `${addButton.dataset.productId}:${size}`;
-            const existing = cart.find(item => item.key === key);
+            document.addEventListener("keydown", event => {
+                if (!buttons.length) return;
+                if (event.key === "ArrowLeft") {
+                    renderImage(activeIndex - 1);
+                } else if (event.key === "ArrowRight") {
+                    renderImage(activeIndex + 1);
+                }
+            });
 
-            if (existing) {
-                existing.quantity += 1;
-            } else {
-                cart.push({
+            if (buttons.length) {
+                renderImage(activeIndex);
+            }
+
+            addButton?.addEventListener("click", () => {
+                if (!store) return;
+
+                const size = document.getElementById("productSize")?.value || "XS";
+                const key = `${addButton.dataset.productId}:${size}`;
+
+                store.addItem({
                     key,
                     id: addButton.dataset.productId,
                     name: addButton.dataset.productName,
@@ -264,12 +188,12 @@
                     size,
                     quantity: 1
                 });
-            }
 
-            localStorage.setItem("parfaitCart", JSON.stringify(cart));
-            window.dispatchEvent(new Event("parfait-cart-updated"));
-            addButton.textContent = "Added to Cart";
-            setTimeout(() => addButton.textContent = "Add to Cart", 1200);
-        });
-    })();
-</script>
+                addButton.textContent = "Added to Cart";
+                setTimeout(() => {
+                    addButton.textContent = "Add to Cart";
+                }, 1200);
+            });
+        })();
+    </script>
+}

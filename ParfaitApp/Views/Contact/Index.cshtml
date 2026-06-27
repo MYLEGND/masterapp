@@ -1,461 +1,304 @@
 @{
-    ViewData["Title"] = "Contact";
+    ViewData["Title"] = "Contact Us";
+    ViewData["PageKey"] = "contact";
     Layout = "~/Views/Shared/_Layout.cshtml";
+
+    var contactEmail = (ViewData["ContactEmail"] as string ?? "parfait@mylegnd.com").Trim();
+    var subject = Uri.EscapeDataString("Parfait Inquiry");
+    var body = Uri.EscapeDataString("Hi Parfait,\n\nName:\nBest number:\nQuestion:\n\nThank you!");
+    var mailto = $"mailto:{contactEmail}?subject={subject}&body={body}";
+    var serializedEmail = System.Text.Json.JsonSerializer.Serialize(contactEmail);
 }
 
-<div class="contact-wrap">
-
-    <!-- HERO -->
-    <div class="hero">
-        <h1 class="title">Contact Parfait</h1>
-        <p class="sub">
-            Questions about training packages, subscriptions, or the mission?
-            Tap below and send us an email — from <span class="accent">any provider you use</span>.
-        </p>
-        <hr class="hero-hr" />
-    </div>
-
-    <!-- CARD -->
-    <section class="card" aria-label="Contact card">
-        <div class="badge">Get in touch</div>
-
-        <div class="card-body">
-
-            <div class="identity">
-                <div class="logo-ring" aria-hidden="true">
-                    <div class="logo-dot"></div>
-                </div>
-
-                <div class="identity-text">
-                    <div class="brand">Parfait</div>
-                    <div class="tagline">Build your Parfait Body. Own your power.</div>
-                </div>
+<div class="contact-clarity">
+    <div class="contact-clarity__card" aria-label="Contact Parfait">
+        <div class="contact-clarity__header">
+            <div class="contact-clarity__brand-mark" aria-hidden="true">
+                <svg viewBox="0 0 24 24" focusable="false">
+                    <path d="M3.75 7.5 12 13.5l8.25-6" />
+                    <rect x="3.75" y="5.25" width="16.5" height="13.5" rx="2.5" />
+                </svg>
             </div>
 
-            <div class="divider"></div>
-
-            <div class="info">
-                <div class="row">
-                    <div class="label">Email</div>
-                    <div class="value">
-                        <a class="link" href="mailto:parfait@mylegnd.com?subject=Parfait%20Inquiry&body=Hi%20Parfait%2C%0A%0AName%3A%0AQuestion%3A%0A%0AThank%20you%21">
-                            parfait@mylegnd.com
-                        </a>
-                    </div>
-                </div>
-
-                <!-- Optional: if you want phone later, uncomment and set number -->
-                @*
-                <div class="row">
-                    <div class="label">Phone</div>
-                    <div class="value">
-                        <a class="link" href="tel:+16025551234">(602) 555-1234</a>
-                    </div>
-                </div>
-                *@
+            <div class="contact-clarity__header-copy">
+                <h1 class="contact-clarity__title">Contact Us</h1>
+                <p class="contact-clarity__subtitle">Questions, support, and next steps.</p>
             </div>
-
-            <div class="actions">
-                <a class="btn primary"
-                   href="mailto:parfait@mylegnd.com?subject=Parfait%20Inquiry&body=Hi%20Parfait%2C%0A%0AName%3A%0AQuestion%3A%0A%0AThank%20you%21">
-                    Email Parfait
-                </a>
-
-                <button class="btn ghost" type="button" id="copyEmailBtn" aria-label="Copy email address">
-                    Copy Email
-                </button>
-            </div>
-
-            <p class="fineprint">
-                This opens your email app (Gmail, Apple Mail, Outlook, etc.). No forms, no friction.
-            </p>
-
-            <div class="micro">
-                <span class="pill">Fast reply</span>
-                <span class="pill">Training questions</span>
-                <span class="pill">Subscriptions</span>
-            </div>
-
         </div>
-    </section>
 
+        <div class="contact-clarity__inbox">
+            <span class="contact-clarity__inbox-label">Email</span>
+            <a class="contact-clarity__email" href="@mailto">@contactEmail</a>
+        </div>
+
+        <div class="contact-clarity__actions">
+            <a class="contact-clarity__button contact-clarity__button--primary"
+               href="@mailto"
+               data-cta="contact_email">
+                <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+                    <path d="M4 6.75h16v10.5H4z" />
+                    <path d="m5 8 7 5 7-5" />
+                </svg>
+                <span>Email</span>
+            </a>
+
+            <button class="contact-clarity__button contact-clarity__button--secondary"
+                    type="button"
+                    id="copyEmailBtn"
+                    data-email="@contactEmail"
+                    data-cta="contact_copy_email"
+                    aria-label="Copy email address">
+                <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+                    <rect x="8" y="8" width="10" height="10" rx="2" />
+                    <path d="M6.5 15.5h-1a2 2 0 0 1-2-2v-8a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v1" />
+                </svg>
+                <span>Copy</span>
+            </button>
+        </div>
+    </div>
 </div>
-
-<style>
-:root{
-    --gold:#926950;
-    --gold-soft: rgba(146,105,80,0.18);
-    --gold-soft-2: rgba(146,105,80,0.10);
-    --ink:#0f0f10;
-    --muted:#6a6a6a;
-    --card:#ffffff;
-    --bg:#fbfaf9;
-
-    --radius: 22px;
-    --shadow: 0 18px 55px rgba(0,0,0,0.10);
-    --shadow-soft: 0 12px 26px rgba(0,0,0,0.08);
-}
-
-*{ -webkit-tap-highlight-color: transparent; }
-html{ scroll-behavior: smooth; }
-body{ -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale; }
-
-/* Wrapper */
-.contact-wrap{
-    padding: 2.25rem 1rem 3.25rem;
-    max-width: 1050px;
-    margin: 0 auto;
-    font-family: 'Inter', sans-serif;
-    color: var(--ink);
-}
-
-/* HERO */
-.hero{
-    text-align: center;
-    margin-bottom: 2.2rem;
-}
-
-.kicker{
-    display:inline-flex;
-    align-items:center;
-    gap: 8px;
-    padding: 7px 13px;
-    border-radius: 999px;
-    border: 1px solid rgba(146,105,80,0.28);
-    background: rgba(146,105,80,0.06);
-    color: var(--gold);
-    font-weight: 900;
-    letter-spacing: .9px;
-    text-transform: uppercase;
-    font-size: .82rem;
-}
-
-.title{
-    margin: .85rem 0 .4rem;
-    font-weight: 950;
-    font-size: clamp(2rem, 4vw, 3rem);
-    letter-spacing: -0.03em;
-}
-
-.sub{
-    max-width: 840px;
-    margin: 0 auto;
-    color: var(--muted);
-    font-size: 1.05rem;
-    line-height: 1.75;
-}
-
-.accent{ color: var(--gold); font-weight: 950; }
-
-.hero-hr{
-    border: none;
-    height: 2px;
-    width: min(860px, 92%);
-    margin: 1.1rem auto 0;
-    background: linear-gradient(90deg, transparent, var(--gold), transparent);
-    border-radius: 999px;
-    opacity: .95;
-}
-
-/* CARD */
-.card{
-    position: relative;
-    margin: 0 auto;
-    border-radius: var(--radius);
-    overflow: hidden;
-
-    /* keep it from becoming a football field on desktop */
-    max-width: 760px;
-
-    background:
-        radial-gradient(1200px 500px at 10% -10%, rgba(146,105,80,0.16), transparent 55%),
-        radial-gradient(900px 420px at 110% 0%, rgba(146,105,80,0.10), transparent 55%),
-        linear-gradient(180deg, #ffffff 0%, #ffffff 50%, var(--bg) 100%);
-
-    border: 1.5px solid rgba(146,105,80,0.35);
-    box-shadow: var(--shadow);
-}
-
-.card::before{
-    content:"";
-    position:absolute;
-    inset: 10px;
-    border-radius: calc(var(--radius) - 10px);
-    border: 1px solid rgba(15,15,16,0.06);
-    pointer-events:none;
-}
-
-.badge{
-    position: absolute;
-    top: 16px;
-    right: 16px;
-    padding: 8px 12px;
-    border-radius: 999px;
-    background: linear-gradient(180deg, rgba(146,105,80,1), rgba(146,105,80,0.92));
-    color: #fff;
-    font-weight: 950;
-    letter-spacing: .9px;
-    text-transform: uppercase;
-    font-size: .76rem;
-    box-shadow: 0 10px 22px rgba(146,105,80,0.25);
-}
-
-.card-body{
-    padding: clamp(22px, 4vw, 34px);
-}
-
-/* Identity */
-.identity{
-    display: flex;
-    gap: 14px;
-    align-items: center;
-}
-
-.logo-ring{
-    width: 56px;
-    height: 56px;
-    border-radius: 16px;
-    background: rgba(146,105,80,0.10);
-    border: 1px solid rgba(146,105,80,0.28);
-    display: grid;
-    place-items: center;
-    box-shadow: 0 10px 22px var(--gold-soft);
-}
-
-.logo-dot{
-    width: 18px;
-    height: 18px;
-    border-radius: 6px;
-    background: var(--gold);
-    box-shadow: 0 8px 18px rgba(146,105,80,0.30);
-}
-
-.identity-text .brand{
-    font-family: 'Georgia', serif;
-    font-size: 1.6rem;
-    font-weight: 950;
-    letter-spacing: .02em;
-}
-
-.tagline{
-    color: var(--muted);
-    margin-top: 3px;
-    font-size: 1rem;
-    line-height: 1.5;
-}
-
-.divider{
-    height: 1px;
-    background: rgba(15,15,16,0.08);
-    margin: 18px 0 18px;
-}
-
-/* Info rows */
-.info{
-    display: grid;
-    gap: 12px;
-    margin-bottom: 18px;
-}
-
-.row{
-    display: grid;
-    grid-template-columns: 110px 1fr;
-    gap: 12px;
-    align-items: center;
-    padding: 10px 12px;
-    border-radius: 14px;
-    background: rgba(255,255,255,0.7);
-    border: 1px solid rgba(15,15,16,0.06);
-}
-
-.label{
-    font-weight: 950;
-    color: rgba(15,15,16,0.72);
-    text-transform: uppercase;
-    letter-spacing: .95px;
-    font-size: .78rem;
-}
-
-.value{
-    font-size: 1.05rem;
-    font-weight: 900;
-    min-width: 0;
-}
-
-/* Email link (theme gold) */
-.link{
-    color: var(--gold);
-    text-decoration: none;
-    border-bottom: 2px solid rgba(146,105,80,0.28);
-    padding-bottom: 2px;
-    overflow-wrap: anywhere;
-    word-break: break-word;
-}
-.link:hover{
-    border-bottom-color: rgba(146,105,80,0.55);
-}
-
-/* Actions */
-.actions{
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 12px;
-}
-
-.btn{
-    appearance: none;
-    cursor: pointer;
-    text-decoration: none;
-    font-weight: 950;
-    border-radius: 16px;
-    padding: 14px 14px;
-    text-align: center;
-    transition: transform .16s ease, box-shadow .16s ease, background .16s ease, border-color .16s ease;
-    user-select: none;
-    line-height: 1.1;
-    border: none;
-}
-
-.btn:active{ transform: translateY(0px) scale(0.99); }
-
-.btn.primary{
-    background: linear-gradient(180deg, rgba(146,105,80,1), rgba(146,105,80,0.92));
-    color: #fff;
-    box-shadow: 0 12px 26px rgba(146,105,80,0.22);
-}
-
-.btn.primary:hover{
-    transform: translateY(-2px);
-    box-shadow: 0 18px 36px rgba(146,105,80,0.22);
-}
-
-.btn.ghost{
-    background: #fff;
-    color: var(--ink);
-    border: 2px solid rgba(146,105,80,0.40);
-    box-shadow: var(--shadow-soft);
-}
-
-.btn.ghost:hover{
-    transform: translateY(-2px);
-    border-color: rgba(146,105,80,0.55);
-    box-shadow: 0 16px 34px rgba(0,0,0,0.10);
-}
-
-/* Focus states (theme gold) */
-.btn:focus-visible,
-.link:focus-visible{
-    outline: 3px solid rgba(146,105,80,0.28);
-    outline-offset: 3px;
-    border-radius: 12px;
-}
-
-/* Fineprint + pills */
-.fineprint{
-    margin: 14px 0 0;
-    color: var(--muted);
-    font-size: .92rem;
-    line-height: 1.6;
-    text-align: center;
-}
-
-.micro{
-    margin-top: 16px;
-    display: flex;
-    flex-wrap: wrap;
-    gap: 8px;
-    justify-content: center;
-}
-
-.pill{
-    border: 1px solid rgba(146,105,80,0.25);
-    background: rgba(146,105,80,0.06);
-    color: rgba(15,15,16,0.82);
-    padding: 7px 10px;
-    border-radius: 999px;
-    font-weight: 850;
-    font-size: .82rem;
-}
-
-/* Copied flash (theme gold) */
-.btn.copied{
-    background: rgba(146,105,80,0.08);
-    border-color: rgba(146,105,80,0.45);
-}
-
-/* Mobile polish */
-@@media (max-width: 576px){
-    .contact-wrap{ padding: 1.9rem 1rem 3rem; }
-    .row{ grid-template-columns: 88px 1fr; }
-    .actions{ grid-template-columns: 1fr; }
-    .badge{ top: 12px; right: 12px; }
-    .logo-ring{ width: 52px; height: 52px; border-radius: 16px; }
-    .btn{ padding: 15px 14px; } /* slightly more thumb-friendly */
-}
-
-/* Reduce motion */
-@@media (prefers-reduced-motion: reduce){
-    *{ transition: none !important; scroll-behavior: auto !important; }
-}
-</style>
 
 <script>
 (() => {
-  const btn = document.getElementById('copyEmailBtn');
-  if (!btn) return;
+    const btn = document.getElementById('copyEmailBtn');
+    if (!btn) return;
 
-  const email = 'parfait@mylegnd.com';
+    const email = btn.dataset.email || @Html.Raw(serializedEmail);
+    const label = btn.querySelector('span');
+    const defaultLabel = label?.textContent || 'Copy';
 
-  const setCopiedUI = () => {
-    const original = btn.textContent;
-    btn.textContent = 'Copied ✓';
-    btn.classList.add('copied');
-    btn.setAttribute('aria-live', 'polite');
+    const setCopiedState = () => {
+        if (label) label.textContent = 'Copied';
+        btn.classList.add('is-copied');
 
-    setTimeout(() => {
-      btn.textContent = original;
-      btn.classList.remove('copied');
-    }, 1200);
-  };
+        window.setTimeout(() => {
+            if (label) label.textContent = defaultLabel;
+            btn.classList.remove('is-copied');
+        }, 1400);
+    };
 
-  const legacyCopy = (text) => {
-    const ta = document.createElement('textarea');
-    ta.value = text;
-    ta.setAttribute('readonly', '');
-    ta.style.position = 'fixed';
-    ta.style.top = '-9999px';
-    ta.style.left = '-9999px';
-    ta.style.opacity = '0';
+    const legacyCopy = (value) => {
+        const area = document.createElement('textarea');
+        area.value = value;
+        area.setAttribute('readonly', '');
+        area.style.position = 'fixed';
+        area.style.top = '-9999px';
+        area.style.left = '-9999px';
+        document.body.appendChild(area);
+        area.focus();
+        area.select();
+        area.setSelectionRange(0, area.value.length);
+        let copied = false;
+        try { copied = document.execCommand('copy'); } catch (err) { copied = false; }
+        document.body.removeChild(area);
+        return copied;
+    };
 
-    document.body.appendChild(ta);
-    ta.focus();
-    ta.select();
-    ta.setSelectionRange(0, ta.value.length); // iOS
+    btn.addEventListener('click', async () => {
+        if (!email) return;
 
-    let ok = false;
-    try { ok = document.execCommand('copy'); } catch (e) { ok = false; }
+        try {
+            if (navigator.clipboard && window.isSecureContext) {
+                await navigator.clipboard.writeText(email);
+                setCopiedState();
+                return;
+            }
+        } catch (err) {
+        }
 
-    document.body.removeChild(ta);
-    return ok;
-  };
+        if (legacyCopy(email)) {
+            setCopiedState();
+            return;
+        }
 
-  btn.addEventListener('click', async () => {
-    // Modern clipboard (best case: https + permission)
-    try {
-      if (navigator.clipboard && window.isSecureContext) {
-        await navigator.clipboard.writeText(email);
-        setCopiedUI();
-        return;
-      }
-    } catch (e) { /* fall through */ }
-
-    // Fallback for iOS/Safari/non-secure contexts
-    const ok = legacyCopy(email);
-    if (ok) {
-      setCopiedUI();
-    } else {
-      window.prompt('Copy email:', email);
-    }
-  });
+        window.prompt('Copy email address:', email);
+    });
 })();
 </script>
+
+<style>
+.contact-clarity{
+    --contact-cocoa:#6f4b3b;
+    --contact-cocoa-deep:#4d3429;
+    --contact-cocoa-ink:#2b1c16;
+    --contact-cream:#f6ede3;
+    --contact-border:rgba(179,131,97,.34);
+    --contact-text:#fff9f5;
+    --contact-muted:#e8d7ca;
+    max-width: 760px;
+    margin: 0 auto;
+    padding: 2.2rem 1rem 4rem;
+}
+
+.contact-clarity__card{
+    padding: clamp(1.25rem, 3vw, 1.9rem);
+    border-radius: 30px;
+    border: 1px solid var(--contact-border);
+    background:
+        radial-gradient(circle at top right, rgba(246,237,227,.12), transparent 20%),
+        linear-gradient(180deg, rgba(111,75,59,.98), rgba(77,52,41,1));
+    box-shadow:
+        0 30px 76px rgba(43, 28, 22, .2),
+        inset 0 1px 0 rgba(255,255,255,.04);
+    color: var(--contact-text);
+}
+
+.contact-clarity__header{
+    display:grid;
+    grid-template-columns:auto minmax(0, 1fr);
+    gap:1rem;
+    align-items:center;
+    margin-bottom:1.15rem;
+}
+
+.contact-clarity__brand-mark{
+    width:64px;
+    height:64px;
+    border-radius:20px;
+    border:1px solid var(--contact-border);
+    background:linear-gradient(180deg, rgba(246,237,227,.16), rgba(246,237,227,.06));
+    display:grid;
+    place-items:center;
+    box-shadow: inset 0 1px 0 rgba(255,255,255,.05);
+}
+
+.contact-clarity__brand-mark svg{
+    width:28px;
+    height:28px;
+    fill:none;
+    stroke:var(--contact-cream);
+    stroke-width:1.8;
+    stroke-linecap:round;
+    stroke-linejoin:round;
+}
+
+.contact-clarity__title{
+    margin:0;
+    color:var(--contact-text);
+    font-size:clamp(2.2rem, 4vw, 3.3rem);
+    line-height:1;
+    letter-spacing:-.05em;
+}
+
+.contact-clarity__subtitle{
+    margin:.38rem 0 0;
+    color:var(--contact-muted);
+    font-size:1rem;
+    line-height:1.5;
+}
+
+.contact-clarity__inbox{
+    margin-bottom:1rem;
+    padding:1.15rem 1.2rem;
+    border-radius:24px;
+    border:1px solid rgba(255,255,255,.08);
+    background:linear-gradient(180deg, rgba(43,28,22,.34), rgba(77,52,41,.48));
+}
+
+.contact-clarity__inbox-label{
+    display:block;
+    margin-bottom:.4rem;
+    color:var(--contact-cream);
+    font-size:.8rem;
+    font-weight:900;
+    letter-spacing:.18em;
+    text-transform:uppercase;
+}
+
+.contact-clarity__email{
+    color:var(--contact-text);
+    font-size:clamp(1.55rem, 3vw, 2.4rem);
+    font-weight:900;
+    letter-spacing:-.04em;
+    text-decoration:none;
+    word-break:break-word;
+}
+
+.contact-clarity__email:hover{
+    color:#ffffff;
+}
+
+.contact-clarity__actions{
+    display:grid;
+    grid-template-columns:repeat(2, minmax(0, 1fr));
+    gap:.85rem;
+}
+
+.contact-clarity__button{
+    display:inline-flex;
+    align-items:center;
+    justify-content:center;
+    gap:.7rem;
+    min-height:60px;
+    padding:0 1rem;
+    border-radius:18px;
+    border:1px solid var(--contact-border);
+    font-size:1rem;
+    font-weight:900;
+    letter-spacing:-.02em;
+    text-decoration:none;
+    transition:transform .16s ease, background-color .16s ease, color .16s ease, border-color .16s ease;
+    cursor:pointer;
+}
+
+.contact-clarity__button svg{
+    width:20px;
+    height:20px;
+    fill:none;
+    stroke:currentColor;
+    stroke-width:1.85;
+    stroke-linecap:round;
+    stroke-linejoin:round;
+}
+
+.contact-clarity__button:hover{
+    transform:translateY(-1px);
+}
+
+.contact-clarity__button--primary{
+    background:linear-gradient(180deg, #f6ede3, #e6cfbe);
+    color:var(--contact-cocoa-ink);
+}
+
+.contact-clarity__button--secondary{
+    background:rgba(255,255,255,.04);
+    color:var(--contact-text);
+}
+
+.contact-clarity__button--secondary.is-copied{
+    background:rgba(246,237,227,.16);
+    color:#fff9f5;
+    border-color:rgba(246,237,227,.42);
+}
+
+@@media (max-width: 640px){
+    .contact-clarity{
+        padding: 1.3rem .85rem 3rem;
+    }
+
+    .contact-clarity__card{
+        padding: 1rem;
+        border-radius: 24px;
+    }
+
+    .contact-clarity__header{
+        grid-template-columns:1fr;
+    }
+
+    .contact-clarity__brand-mark{
+        width:58px;
+        height:58px;
+        border-radius:18px;
+    }
+
+    .contact-clarity__actions{
+        grid-template-columns:1fr;
+    }
+}
+
+@@media (prefers-reduced-motion: reduce){
+    .contact-clarity__button{
+        transition:none;
+    }
+}
+</style>

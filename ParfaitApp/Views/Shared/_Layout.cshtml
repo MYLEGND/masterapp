@@ -1,6 +1,8 @@
-﻿@using Microsoft.AspNetCore.Http
-@using System.Security.Claims
-@inject IHttpContextAccessor HttpContextAccessor
+﻿@{
+    var bodyClass = ViewData["BodyClass"] as string ?? "";
+    var contentContainerClass = ViewData["ContentContainerClass"] as string ?? "container";
+    var layoutContentClass = ViewData["LayoutContentClass"] as string ?? "";
+}
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -14,278 +16,25 @@
     <link rel="stylesheet" href="~/LegendCorePlatform.styles.css" asp-append-version="true" />
 
     <!-- Google Fonts -->
-    <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@700&display=swap" rel="stylesheet">
-    <link href="https://fonts.googleapis.com/css2?family=Nunito+Sans:ital,wght@1,700&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Nunito+Sans:ital,wght@0,400;0,600;0,700;0,800;0,900;1,700&display=swap" rel="stylesheet">
 
     <link rel="icon" type="image/png" href="~/images/favicon/parfait-logo.png" />
-
-    <style>
-        body { background-color: #fff; color: #000; font-family: 'Inter', sans-serif; margin:0; }
-
-        /* ============================== NAVBAR ============================== */
-        .navbar {
-            background-color: #fff;
-            border: 1.5px solid #926950;
-            padding: 1.5rem 2rem;
-            display: flex;
-            flex-direction: column; /* vertical stacking */
-            align-items: stretch;
-            justify-content: flex-start;
-            box-shadow: 0 4px 15px rgba(0,0,0,0.05);
-            border-radius: 12px;
-            position: relative;
-        }
-
-        /* ====================== TOP ROW ====================== */
-        .navbar-top {
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-            width: 100%;
-        }
-
-        /* ====================== BRAND ====================== */
-        .navbar-brand {
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            height: 100px;
-            text-decoration: none;
-        }
-        .title-nunito-expanded {
-            font-family: "Nunito Sans", system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
-            font-size: 40px;
-            color: #926950;
-            font-weight: 700;
-            font-style: italic;
-            text-transform: uppercase;
-            font-stretch: expanded;
-            letter-spacing: 0.04em;
-            transform: skew(-8deg);
-            margin: 0;
-            padding: 0;
-            text-align: center;
-        }
-
-        /* ====================== NAV LINKS RIGHT ====================== */
-        .navbar-right {
-            display: flex;
-            gap: 1rem;
-            align-items: center;
-            white-space: nowrap;
-        }
-        .navbar-right .nav-link {
-            font-weight: 700;
-            color: #1a1a1a !important;
-            white-space: nowrap;
-            padding: 0.5rem 1.25rem;
-            border-radius: 50px;
-            transition: all 0.25s ease;
-            letter-spacing: 0.5px;
-        }
-
-        .navbar-right .nav-icon-link {
-            width: 46px;
-            height: 46px;
-            padding: 0;
-            display: inline-flex;
-            align-items: center;
-            justify-content: center;
-            border: 2px solid rgba(146,105,80,0.55);
-        }
-
-        .nav-icon {
-            width: 21px;
-            height: 21px;
-            stroke: currentColor;
-        }
-
-        .pf-cart-count {
-            position: absolute;
-            top: -7px;
-            right: -7px;
-            min-width: 19px;
-            height: 19px;
-            padding: 0 5px;
-            border-radius: 999px;
-            background: #926950;
-            color: #fff;
-            font-size: 0.72rem;
-            line-height: 19px;
-            text-align: center;
-        }
-
-        .pf-store-cart-link {
-            position: relative;
-        }
-
-        /* ====================== LOGIN CTA ====================== */
-        .navbar-right .login-link {
-            border: 2px solid #926950;
-            background-color: transparent;
-            color: #926950 !important;
-            font-weight: 800;
-        }
-
-        .navbar-right .login-link:hover {
-            background-color: #926950;
-            color: #ffffff !important;
-            transform: translateY(-3px);
-            box-shadow: 0 8px 18px rgba(146, 105, 80, 0.35);
-        }
-
-        .navbar-right .nav-link:hover,
-        .navbar-right .nav-link.active {
-            color: #926950 !important;
-            background-color: rgba(146, 105, 80, 0.18);
-            transform: translateY(-3px);
-            box-shadow: 0 6px 15px rgba(0,0,0,0.1);
-        }
-
-        /* ====================== BOTTOM ROW ====================== */
-        .navbar-bottom {
-            width: 100%;
-            text-align: center;
-            margin-top: 0.75rem;
-        }
-        .header-psalms {
-            font-size: clamp(0.9rem, 2.5vw, 1.4rem);
-            font-weight: 700;
-            color: #926950;
-            letter-spacing: 1.2px;
-        }
-
-        /* Nav toggle */
-        .nav-toggle {
-            display: none;
-            align-items: center;
-            justify-content: center;
-            width: 44px;
-            height: 44px;
-            border-radius: 12px;
-            border: 1.4px solid rgba(146,105,80,0.65);
-            background: linear-gradient(160deg, #f7f1eb, #efe2d7);
-            box-shadow: 0 10px 18px rgba(0,0,0,.18), inset 0 1px 0 rgba(255,255,255,.12);
-            cursor: pointer;
-            padding: 0;
-            transition: transform .12s ease, box-shadow .16s ease, background .16s ease;
-        }
-        .nav-toggle:focus-visible { outline: 2px solid #926950; outline-offset: 3px; }
-        .nav-toggle:hover { transform: translateY(-1px); box-shadow: 0 12px 22px rgba(0,0,0,.22); }
-        .nav-toggle-bars,
-        .nav-toggle-bars::before,
-        .nav-toggle-bars::after {
-            display: block;
-            width: 20px;
-            height: 2px;
-            background: #3b2a23;
-            border-radius: 4px;
-            position: relative;
-            transition: transform .18s ease, opacity .18s ease;
-        }
-        .nav-toggle-bars::before,
-        .nav-toggle-bars::after {
-            content: "";
-            position: absolute;
-            left: 0;
-        }
-        .nav-toggle-bars::before { top: -6px; }
-        .nav-toggle-bars::after { top: 6px; }
-        .navbar.mobile-open .nav-toggle-bars { transform: rotate(45deg); }
-        .navbar.mobile-open .nav-toggle-bars::before { transform: rotate(-90deg) translateX(-6px); }
-        .navbar.mobile-open .nav-toggle-bars::after { opacity: 0; }
-
-        /* ============================== FOOTER ============================== */
-        footer.footer {
-            background-color: #f8f8f8 !important;
-            color: #1a1a1a !important;
-            border-top: 1.5px solid #d0d0d0 !important;
-            font-weight: 500;
-            font-size: 0.95rem;
-            text-align: center;
-        }
-
-                /* ====================== FOOTER LINKS ====================== */
-        .footer-link{
-            color: #926950;              /* your theme color */
-            font-weight: 600;
-            text-decoration: none;
-            transition: all .2s ease;
-        }
-
-        .footer-link:hover{
-            color: #7f5742;              /* slightly darker on hover */
-            text-decoration: underline;
-        }
-
-
-        .layout-content { padding-top: 2rem; padding-bottom: 3rem; }
-
-        /* ============================== RESPONSIVE ============================== */
-        @@media (max-width: 900px) {
-            .navbar {
-                padding: 14px 14px 12px;
-                border-radius: 14px;
-            }
-            .navbar-top {
-                flex-wrap: nowrap;
-                align-items: center;
-                gap: 10px;
-            }
-            .title-nunito-expanded {
-                font-size: 30px;
-            }
-            .nav-toggle { display: inline-flex; }
-            .navbar-right,
-            .navbar-left {
-                display: none;
-                width: 100%;
-                margin-top: 10px;
-            }
-            .navbar.mobile-open .navbar-right,
-            .navbar.mobile-open .navbar-left { display: flex; }
-
-            header .navbar .navbar-left .nav-row {
-                flex-direction: column !important;
-                gap: .4rem;
-                align-items: stretch;
-            }
-
-            .navbar-right .nav-link,
-            .navbar-right .login-link,
-            .navbar-left .nav-link {
-                width: 100%;
-                text-align: left;
-                justify-content: flex-start;
-                border: 1.3px solid rgba(146,105,80,0.45);
-                background: rgba(146,105,80,0.08);
-                border-radius: 12px;
-                padding: 0.6rem 0.9rem;
-            }
-            .navbar-right .login-link {
-                background: linear-gradient(145deg, #fff5ed, #f7e7dc);
-                color: #7d5035 !important;
-                border-color: rgba(146,105,80,0.65);
-            }
-            .navbar-bottom {
-                margin-top: 10px;
-            }
-            .header-psalms {
-                font-size: 1.05rem;
-                white-space: normal;
-            }
-        }
-    </style>
+    @RenderSection("Styles", required: false)
 </head>
 
-<body class="d-flex flex-column min-vh-100">
+<body class="d-flex flex-column min-vh-100 @bodyClass">
 
-<header>
+<header class="site-header">
     <nav class="navbar">
         <!-- TOP ROW: LOGO LEFT, NAV LINKS RIGHT -->
         <div class="navbar-top">
-            <a class="navbar-brand" asp-controller="Home" asp-action="Index">
-                <h1 class="title-nunito-expanded">PARFAIT</h1>
+            <a class="navbar-brand" asp-controller="Home" asp-action="Index" aria-label="Parfait home">
+                <span class="navbar-brand-mark" aria-hidden="true">
+                    <img src="~/images/favicon/parfait-logo.png" alt="" />
+                </span>
+                <span class="navbar-brand-copy">
+                    <span class="title-nunito-expanded">Parfait</span>
+                </span>
             </a>
 
             <button class="nav-toggle" id="parfaitNavToggle" aria-label="Toggle navigation" aria-expanded="false">
@@ -301,11 +50,11 @@
 
                 <a class="nav-link @Active("Home")" asp-controller="Home" asp-action="Index">Home</a>
                 <a class="nav-link @Active("TrainingPackages")" asp-controller="TrainingPackages" asp-action="Index">Training</a>
-                <a class="nav-link" asp-controller="Contact" asp-action="Index">Contact</a>
+                <a class="nav-link @Active("Contact")" asp-controller="Contact" asp-action="Index">Contact</a>
                 <a class="nav-link @Active("About")" asp-controller="About" asp-action="About">About Us</a>
 
                 <!-- Store + Login (same right-side group) -->
-                <a class="nav-link" href="/store">Shop</a>
+                <a class="nav-link @Active("Store")" href="/store">Shop</a>
                 <a class="nav-link nav-icon-link pf-store-cart-link" href="/store/cart" aria-label="Shopping cart">
                     <svg class="nav-icon pf-cart-icon" viewBox="0 0 24 24" fill="none" aria-hidden="true">
                         <path d="M6.5 6.5h15l-1.8 8.2a2 2 0 0 1-2 1.6H9.2a2 2 0 0 1-2-1.7L5.7 3.8H3" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
@@ -322,15 +71,10 @@
                 </a>
             </div>
         </div>
-
-        <!-- BOTTOM ROW: CENTERED HEADER TEXT -->
-        <div class="navbar-bottom">
-            <div class="header-psalms">LIFE HAC | GOD ABOVE ALL</div>
-        </div>
     </nav>
 </header>
 
-<div class="container layout-content flex-grow-1">
+<div class="@contentContainerClass layout-content flex-grow-1 @layoutContentClass">
     <main role="main">
         @RenderBody()
     </main>
@@ -344,6 +88,7 @@
 </footer>
 
 <script src="~/lib/bootstrap/dist/js/bootstrap.bundle.min.js"></script>
+<script src="~/js/storefront.js" asp-append-version="true"></script>
 <script>
     (function () {
         const nav = document.querySelector('.navbar');
@@ -386,8 +131,9 @@
             const countEl = document.getElementById("pfStoreCartCount");
             if (!countEl) return;
 
-            const cart = JSON.parse(localStorage.getItem("parfaitCart") || "[]");
-            const count = cart.reduce((sum, item) => sum + Number(item.quantity || 0), 0);
+            const store = window.ParfaitStorefront;
+            const cart = store ? store.readCart() : [];
+            const count = store ? store.itemCount(cart) : cart.reduce((sum, item) => sum + Number(item.quantity || 0), 0);
             countEl.textContent = count.toString();
         };
 
