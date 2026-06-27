@@ -45,6 +45,10 @@ html {
     margin: 0;
     color: var(--pf-text);
     font-family: var(--pf-font-ui);
+    font-style: normal;
+    font-variant-numeric: lining-nums tabular-nums;
+    font-feature-settings: "lnum" 1, "tnum" 1;
+    text-rendering: optimizeLegibility;
 }
 
 .pf-internal-body {
@@ -369,13 +373,6 @@ html {
     background: var(--pf-cream);
 }
 
-.pf-sidebar-footnote {
-    color: var(--pf-text-muted);
-    font-size: 0.78rem;
-    font-weight: 650;
-    line-height: 1.5;
-}
-
 .pf-shell {
     width: min(100%, 1480px);
     margin: 0 auto;
@@ -429,8 +426,10 @@ html {
     color: var(--pf-text);
     font-size: 1.2rem;
     font-weight: 950;
-    letter-spacing: -0.05em;
-    line-height: 1.08;
+    letter-spacing: 0.05em;
+    line-height: 1.06;
+    text-transform: uppercase;
+    text-wrap: balance;
 }
 
 .pf-module-title a {
@@ -538,6 +537,7 @@ html {
     color: var(--pf-text);
     font-weight: 950;
     letter-spacing: -0.04em;
+    font-style: normal;
 }
 
 .pf-mini-value {
@@ -567,20 +567,24 @@ html {
 .pf-command-title {
     margin: 0.7rem 0 0.48rem;
     color: var(--pf-text);
-    font-size: clamp(2.3rem, 5vw, 4rem);
-    font-weight: 980;
+    font-size: clamp(2.15rem, 4.8vw, 3.75rem);
+    font-weight: 950;
     font-style: italic;
-    letter-spacing: -0.075em;
-    line-height: 0.92;
+    letter-spacing: 0.06em;
+    line-height: 0.96;
+    text-transform: uppercase;
+    text-wrap: balance;
 }
 
 .pf-command-text {
-    max-width: 64ch;
+    max-width: 56ch;
     margin: 0;
     color: var(--pf-text-soft);
-    font-size: 0.98rem;
-    font-weight: 700;
-    line-height: 1.58;
+    font-size: 1rem;
+    font-weight: 760;
+    font-style: normal;
+    letter-spacing: 0;
+    line-height: 1.48;
 }
 
 .pf-command-meta {
@@ -680,8 +684,9 @@ html {
     color: var(--pf-text);
     font-size: clamp(1.85rem, 3.2vw, 2.6rem);
     font-weight: 980;
-    letter-spacing: -0.08em;
-    line-height: 0.94;
+    font-style: normal;
+    letter-spacing: -0.04em;
+    line-height: 0.96;
 }
 
 .pf-rail-note,
@@ -690,7 +695,9 @@ html {
     color: var(--pf-text-soft);
     font-size: 0.88rem;
     font-weight: 700;
-    line-height: 1.52;
+    font-style: normal;
+    letter-spacing: 0;
+    line-height: 1.48;
 }
 
 .pf-rail-grid,
@@ -759,8 +766,10 @@ html {
     color: var(--pf-text);
     font-size: 1.5rem;
     font-weight: 950;
-    letter-spacing: -0.05em;
-    line-height: 1.02;
+    letter-spacing: 0.05em;
+    line-height: 1.04;
+    text-transform: uppercase;
+    text-wrap: balance;
 }
 
 .pf-command-board-head p {
@@ -769,7 +778,9 @@ html {
     color: var(--pf-text-soft);
     font-size: 0.9rem;
     font-weight: 700;
-    line-height: 1.5;
+    font-style: normal;
+    letter-spacing: 0;
+    line-height: 1.46;
 }
 
 .pf-command-board-actions,
@@ -801,8 +812,10 @@ html {
     color: var(--pf-text);
     font-size: 1.28rem;
     font-weight: 950;
-    letter-spacing: -0.05em;
-    line-height: 1.04;
+    letter-spacing: 0.05em;
+    line-height: 1.06;
+    text-transform: uppercase;
+    text-wrap: balance;
 }
 
 .pf-module-row-main p {
@@ -811,7 +824,9 @@ html {
     color: var(--pf-text-soft);
     font-size: 0.88rem;
     font-weight: 700;
-    line-height: 1.52;
+    font-style: normal;
+    letter-spacing: 0;
+    line-height: 1.46;
 }
 
 .pf-module-row-actions {
@@ -835,16 +850,19 @@ html {
     color: var(--pf-text);
     font-size: 1.26rem;
     font-weight: 950;
-    letter-spacing: -0.05em;
-    line-height: 1.05;
+    letter-spacing: 0.05em;
+    line-height: 1.06;
+    text-transform: uppercase;
+    text-wrap: balance;
 }
 
 .pf-focus-value {
     color: var(--pf-text);
     font-size: clamp(1.45rem, 2.6vw, 2rem);
     font-weight: 980;
-    letter-spacing: -0.06em;
-    line-height: 0.96;
+    font-style: normal;
+    letter-spacing: -0.04em;
+    line-height: 0.98;
 }
 
 .pf-focus-list {
@@ -986,8 +1004,10 @@ button.pf-secondary-action:hover {
     color: var(--pf-text);
     font-size: 1.45rem;
     font-weight: 950;
-    letter-spacing: -0.045em;
+    letter-spacing: 0.05em;
     line-height: 1.05;
+    text-transform: uppercase;
+    text-wrap: balance;
 }
 
 .pf-commerce-panel-head span {
@@ -1086,9 +1106,9 @@ button.pf-secondary-action:hover {
 .pf-analytics-table th {
     padding: 0 12px 6px;
     color: var(--pf-text-soft);
-    font-size: 0.68rem;
+    font-size: 0.7rem;
     font-weight: 950;
-    letter-spacing: 0.16em;
+    letter-spacing: 0.14em;
     text-transform: uppercase;
     white-space: nowrap;
     border: none;
@@ -1103,8 +1123,9 @@ button.pf-secondary-action:hover {
     border-bottom: 1px solid rgba(111, 75, 59, 0.24);
     background: linear-gradient(180deg, rgba(255, 255, 255, 0.99), rgba(247, 238, 230, 0.99));
     color: var(--pf-text);
-    font-size: 0.92rem;
-    font-weight: 780;
+    font-size: 0.94rem;
+    font-weight: 800;
+    line-height: 1.38;
     box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.56);
 }
 
@@ -1133,6 +1154,7 @@ button.pf-secondary-action:hover {
 .pf-analytics-table strong {
     color: var(--pf-text);
     font-weight: 900;
+    font-style: normal;
 }
 
 .pf-product-main-cell {
@@ -1155,7 +1177,8 @@ button.pf-secondary-action:hover {
 .pf-product-main-cell strong {
     display: block;
     font-size: 1rem;
-    letter-spacing: -0.03em;
+    letter-spacing: 0.02em;
+    text-transform: uppercase;
 }
 
 .pf-product-main-cell span,
@@ -1164,6 +1187,7 @@ button.pf-secondary-action:hover {
     color: var(--pf-text-muted);
     font-size: 0.78rem;
     font-weight: 760;
+    line-height: 1.38;
 }
 
 .pf-product-main-cell p {
@@ -1172,7 +1196,9 @@ button.pf-secondary-action:hover {
     color: var(--pf-text-muted);
     font-size: 0.82rem;
     font-weight: 690;
-    line-height: 1.45;
+    font-style: normal;
+    letter-spacing: 0;
+    line-height: 1.4;
 }
 
 .pf-pill.is-muted {
@@ -1251,9 +1277,11 @@ button.pf-secondary-action:hover {
     color: var(--pf-text);
     font-size: clamp(1.8rem, 3vw, 2.45rem);
     font-weight: 980;
-    font-style: italic;
-    letter-spacing: -0.07em;
-    line-height: 0.95;
+    font-style: normal;
+    letter-spacing: 0.05em;
+    line-height: 1.04;
+    text-transform: uppercase;
+    text-wrap: balance;
 }
 
 .pf-modal-body {
@@ -1432,8 +1460,10 @@ button.pf-secondary-action:hover {
     color: var(--pf-text);
     font-size: 1.25rem;
     font-weight: 950;
-    letter-spacing: -0.045em;
-    line-height: 1.04;
+    letter-spacing: 0.05em;
+    line-height: 1.06;
+    text-transform: uppercase;
+    text-wrap: balance;
 }
 
 .pf-team-card-copy,
@@ -1442,7 +1472,9 @@ button.pf-secondary-action:hover {
     color: var(--pf-text-muted);
     font-size: 0.84rem;
     font-weight: 700;
-    line-height: 1.5;
+    font-style: normal;
+    letter-spacing: 0;
+    line-height: 1.46;
 }
 
 .pf-team-list {
@@ -1498,6 +1530,8 @@ button.pf-secondary-action:hover {
     color: var(--pf-text-muted);
     font-size: 0.78rem;
     font-weight: 650;
+    font-style: normal;
+    letter-spacing: 0;
     line-height: 1.45;
 }
 
@@ -1552,6 +1586,8 @@ button.pf-secondary-action:hover {
     color: var(--pf-text);
     font-size: 0.88rem;
     font-weight: 900;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
 }
 
 .pf-access-check span {
@@ -1560,6 +1596,8 @@ button.pf-secondary-action:hover {
     color: var(--pf-text-muted);
     font-size: 0.78rem;
     font-weight: 650;
+    font-style: normal;
+    letter-spacing: 0;
     line-height: 1.45;
 }
 
@@ -1578,6 +1616,8 @@ button.pf-secondary-action:hover {
     color: var(--pf-text-muted);
     font-size: 0.78rem;
     font-weight: 650;
+    font-style: normal;
+    letter-spacing: 0;
     line-height: 1.45;
 }
 
@@ -1711,8 +1751,10 @@ button.pf-secondary-action:hover {
     font-size: clamp(2.6rem, 5vw, 4.6rem);
     font-weight: 980;
     font-style: italic;
-    letter-spacing: -0.08em;
-    line-height: 0.9;
+    letter-spacing: 0.08em;
+    line-height: 0.92;
+    text-transform: uppercase;
+    text-wrap: balance;
 }
 
 .pf-auth-title {
@@ -1720,8 +1762,10 @@ button.pf-secondary-action:hover {
     color: #fff8f4;
     font-size: clamp(1.7rem, 3vw, 2.35rem);
     font-weight: 920;
-    letter-spacing: -0.05em;
-    line-height: 1.05;
+    letter-spacing: 0.06em;
+    line-height: 1.06;
+    text-transform: uppercase;
+    text-wrap: balance;
 }
 
 .pf-auth-copy {
@@ -1729,24 +1773,10 @@ button.pf-secondary-action:hover {
     margin: 0;
     color: rgba(255, 239, 228, 0.86);
     font-size: 1rem;
-    font-weight: 620;
-    line-height: 1.6;
-}
-
-.pf-auth-points {
-    display: grid;
-    gap: 0.8rem;
-    margin-top: 1.5rem;
-}
-
-.pf-auth-point {
-    padding: 0.95rem 1rem;
-    border-radius: 18px;
-    border: 1px solid rgba(255, 255, 255, 0.12);
-    background: rgba(255, 255, 255, 0.08);
-    color: #f3dfcf;
     font-weight: 700;
-    line-height: 1.45;
+    font-style: normal;
+    letter-spacing: 0;
+    line-height: 1.56;
 }
 
 .pf-auth-card {
@@ -1766,31 +1796,25 @@ button.pf-secondary-action:hover {
     color: var(--pf-text);
     font-size: 2rem;
     font-weight: 950;
-    letter-spacing: -0.05em;
-    line-height: 1.02;
+    letter-spacing: 0.05em;
+    line-height: 1.04;
+    text-transform: uppercase;
+    text-wrap: balance;
 }
 
 .pf-auth-card p {
     margin: 0.8rem 0 0;
     color: var(--pf-text-muted);
     font-size: 0.98rem;
-    font-weight: 620;
-    line-height: 1.58;
+    font-weight: 700;
+    font-style: normal;
+    letter-spacing: 0;
+    line-height: 1.5;
 }
 
 .pf-auth-action {
     width: 100%;
     margin-top: 1.45rem;
-}
-
-.pf-auth-note {
-    margin-top: 1rem;
-    padding-top: 1rem;
-    border-top: 1px solid var(--pf-line);
-    color: var(--pf-text-muted);
-    font-size: 0.85rem;
-    font-weight: 700;
-    line-height: 1.5;
 }
 
 @media (min-width: 760px) {

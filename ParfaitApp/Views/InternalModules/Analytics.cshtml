@@ -12,7 +12,7 @@
         <div class="pf-command-copy">
             <div class="pf-kicker">Parfait Intelligence</div>
             <h1 class="pf-command-title">Analytics</h1>
-            <p class="pf-command-text">Live Parfait-owned funnel reporting now stays tight, readable, and useful instead of feeling like a second banner with more filler.</p>
+            <p class="pf-command-text">Sessions, product activity, checkout flow, and purchases.</p>
         </div>
         <div class="pf-command-meta">
             <span class="pf-command-badge is-info">@Model.Sessions sessions</span>
@@ -41,7 +41,7 @@
         </article>
 
         <article class="pf-rail-card is-@(Model.CheckoutStarts > 0 ? "success" : "warning") pf-span-2">
-            <div class="pf-rail-label">Started</div>
+            <div class="pf-rail-label">Checkout Starts</div>
             <strong class="pf-rail-value">@Model.CheckoutStarts</strong>
             <p class="pf-rail-note">@Percent(Model.CartToCheckoutRate) cart to checkout</p>
         </article>
@@ -55,7 +55,7 @@
         <article class="pf-rail-card is-@(Model.RevenueCents > 0 ? "success" : "danger") pf-span-2">
             <div class="pf-rail-label">Revenue</div>
             <strong class="pf-rail-value">@Money(Model.RevenueCents)</strong>
-            <p class="pf-rail-note">Tracked purchase value</p>
+            <p class="pf-rail-note">Purchase value</p>
         </article>
     </section>
 

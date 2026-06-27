@@ -26,7 +26,7 @@
         <div class="pf-command-copy">
             <div class="pf-kicker">Founder Access Control</div>
             <h1 class="pf-command-title">Team</h1>
-            <p class="pf-command-text">Approve @@mylegnd.com accounts, assign the right role, and control page visibility from one clean roster instead of exposing raw identity details.</p>
+            <p class="pf-command-text">Approve team accounts, assign roles, and control page access.</p>
         </div>
         <div class="pf-command-meta">
             <span class="pf-command-badge is-success">@activeMembers active</span>
@@ -49,25 +49,25 @@
         <article class="pf-rail-card is-success pf-span-3">
             <div class="pf-rail-label">Founder Lock</div>
             <strong class="pf-rail-value">1</strong>
-            <p class="pf-rail-note">Founder identity remains pinned to the same protected control rule.</p>
+            <p class="pf-rail-note">Founder access stays fixed.</p>
         </article>
 
         <article class="pf-rail-card is-info pf-span-3">
             <div class="pf-rail-label">Approved Members</div>
             <strong class="pf-rail-value">@Model.Members.Count</strong>
-            <p class="pf-rail-note">@activeMembers active, @pendingSignIns pending first sign-in.</p>
+            <p class="pf-rail-note">@activeMembers active.</p>
         </article>
 
         <article class="pf-rail-card is-info pf-span-3">
             <div class="pf-rail-label">Role Presets</div>
             <strong class="pf-rail-value">@Model.RoleOptions.Count</strong>
-            <p class="pf-rail-note">Full Control, Manager, Support, and other limited roles stay consistent.</p>
+            <p class="pf-rail-note">Role defaults stay consistent.</p>
         </article>
 
         <article class="pf-rail-card is-warning pf-span-3">
             <div class="pf-rail-label">Team Controls</div>
             <strong class="pf-rail-value">@teamManagers</strong>
-            <p class="pf-rail-note">Only approved managers can edit roster access and permissions.</p>
+            <p class="pf-rail-note">Members with roster access.</p>
         </article>
     </section>
 
@@ -75,9 +75,7 @@
         <div class="pf-module-card pf-span-4">
             <span class="pf-status"><span class="pf-dot"></span> Founder Lock</span>
             <h2 class="pf-module-title">Primary Control</h2>
-            <p class="text-muted mb-4">
-                Founder identity stays pinned behind the same private rule, while Full Control admins can help manage access without exposing raw internal identity values.
-            </p>
+            <p class="text-muted mb-4">Founder identity and reserved access rules.</p>
 
             <div class="pf-founder-lock">
                 <div>
@@ -90,7 +88,7 @@
                 </div>
                 <div>
                     <strong>Founder-only pages</strong>
-                    <span>@(Model.FounderOnlyPages.Count == 0 ? "No founder-only pages are currently registered." : $"{Model.FounderOnlyPages.Count} founder-only page(s) registered.")</span>
+                    <span>@(Model.FounderOnlyPages.Count == 0 ? "0 founder-only pages." : $"{Model.FounderOnlyPages.Count} founder-only page(s).")</span>
                 </div>
             </div>
         </div>
@@ -98,9 +96,7 @@
         <div class="pf-module-card pf-span-8">
             <span class="pf-status"><span class="pf-dot"></span> Add Team Member</span>
             <h2 class="pf-module-title">Approve Access</h2>
-            <p class="text-muted mb-4">
-                New members must use a @@mylegnd.com account. A successful add sends the internal invite automatically and starts them on the role preset you choose here.
-            </p>
+            <p class="text-muted mb-4">Invite a @@mylegnd.com account and assign a starting role.</p>
 
             <form action="@Url.Content("~/internal/settings/team/add")" method="post" class="row g-3">
                 @Html.AntiForgeryToken()
@@ -142,9 +138,7 @@
 
                 <div class="col-12 d-flex flex-wrap gap-2 align-items-center">
                     <button type="submit" class="pf-action">Add Team Member</button>
-                    <span class="pf-team-meta" data-pf-role-copy>
-                        Support starts with customer and order coverage, while Full Control receives the complete internal system including Team management.
-                    </span>
+                    <span class="pf-team-meta" data-pf-role-copy>Choose a role to apply page access.</span>
                 </div>
             </form>
         </div>
@@ -244,7 +238,7 @@
                                 </div>
                                 <div>
                                     <strong>Team Controls</strong>
-                                    <span>@(member.CanManageTeam ? "Can manage Team access and permissions." : "Page access is limited to their assigned role and checklist.")</span>
+                                    <span>@(member.CanManageTeam ? "Can manage Team access." : "Limited to assigned pages.")</span>
                                 </div>
                                 <div>
                                     <strong>Invite Sent</strong>

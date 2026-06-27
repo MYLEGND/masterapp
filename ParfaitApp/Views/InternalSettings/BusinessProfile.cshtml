@@ -15,7 +15,7 @@
         <div class="pf-command-copy">
             <div class="pf-kicker">Profile Settings</div>
             <h1 class="pf-command-title">Business Profile</h1>
-            <p class="pf-command-text">Store identity, checkout ownership, Meta Pixel storage, and secure CAPI activation all stay here in one clean setup page.</p>
+            <p class="pf-command-text">Store details, checkout URL, and Meta connection.</p>
         </div>
         <div class="pf-command-meta">
             <span class="pf-command-badge is-@checkoutTone">Checkout @(string.IsNullOrWhiteSpace(Model.GlobalStoreCheckoutUrl) ? "pending" : "ready")</span>
@@ -33,7 +33,7 @@
         <article class="pf-rail-card is-@checkoutTone pf-span-4">
             <div class="pf-rail-label">Checkout Ownership</div>
             <strong class="pf-rail-value">@(string.IsNullOrWhiteSpace(Model.GlobalStoreCheckoutUrl) ? "Pending" : "Ready")</strong>
-            <p class="pf-rail-note">The global checkout path should be obvious immediately.</p>
+            <p class="pf-rail-note">Global checkout link.</p>
         </article>
 
         <article class="pf-rail-card is-@metaTone pf-span-4">
@@ -56,9 +56,7 @@
             <div class="pf-module-card pf-span-7">
                 <span class="pf-status"><span class="pf-dot"></span> Store Identity</span>
                 <h2 class="pf-module-title">Core Business Details</h2>
-                <p class="text-muted mb-4">
-                    Save the storefront values here so checkout, reporting, and signal routing stay aligned from one command surface.
-                </p>
+                <p class="text-muted mb-4">Storefront values used across checkout and reporting.</p>
 
                 <div class="row g-3">
                     <div class="col-md-6">
@@ -77,7 +75,7 @@
                         <label asp-for="GlobalStoreCheckoutUrl" class="form-label fw-bold"></label>
                         <input asp-for="GlobalStoreCheckoutUrl" class="form-control" autocomplete="off" placeholder="https://square.link/u/..." />
                         <span asp-validation-for="GlobalStoreCheckoutUrl" class="text-danger small"></span>
-                        <div class="form-text">Used by the public cart checkout button for all Parfait store products.</div>
+                        <div class="form-text">Used by storefront checkout buttons.</div>
                     </div>
                 </div>
             </div>
@@ -99,17 +97,12 @@
                         <strong>@Model.DomainStatus</strong>
                     </div>
                 </div>
-                <p class="text-muted mt-3 mb-0">
-                    Parfait reporting stays inside ParfaitApp while reusing the shared analytics and Meta signal infrastructure.
-                </p>
             </div>
 
             <div class="pf-module-card pf-span-8">
                 <span class="pf-status pf-status--@(metaTone == "danger" ? "danger" : metaTone == "warning" ? "warning" : "success")"><span class="pf-dot"></span> Meta</span>
                 <h2 class="pf-module-title">Meta Connection</h2>
-                <p class="text-muted mb-3">
-                    This follows the AgentPortal rule set: save the Pixel ID manually, but never paste raw CAPI secrets. Secure CAPI is written only after a successful Meta login.
-                </p>
+                <p class="text-muted mb-3">Save the Pixel ID here. CAPI activates after a successful Meta login.</p>
 
                 <div class="pf-mini-status mb-3">
                     <div class="pf-mini-label">Meta CAPI</div>
@@ -156,7 +149,7 @@
             <div class="pf-panel pf-span-4">
                 <span class="pf-status pf-status--success"><span class="pf-dot"></span> Save Rules</span>
                 <h2 class="pf-module-title">Publish Profile</h2>
-                <p class="text-muted mb-4">Save only the storefront values and approved Meta fields used by Parfait internal. No backend wiring changes are touched here.</p>
+                <p class="text-muted mb-4">Save approved store and Meta fields.</p>
                 <button type="submit" class="pf-action">Save Business Profile</button>
             </div>
         </section>
