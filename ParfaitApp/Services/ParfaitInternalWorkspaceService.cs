@@ -57,7 +57,7 @@ public sealed class ParfaitInternalWorkspaceService
             HasCheckoutUrl = !string.IsNullOrWhiteSpace(profile.GlobalStoreCheckoutUrl),
             HasMetaPixel = !string.IsNullOrWhiteSpace(profile.MetaPixelId),
             HasMetaConnection = profile.HasActiveMetaAdsConnection,
-            HasAnalyticsTraffic = analytics.Sessions > 0 || analytics.Purchases > 0 || analytics.RecentEvents.Count > 0,
+            HasAnalyticsTraffic = analytics.Sessions > 0 || analytics.Purchases > 0 || analytics.HasTrackedEvents,
             MetaConnectionLabel = profile.MetaConnectionLabel,
             MetaCapiStatus = profile.MetaCapiStatus,
             AnalyticsStatus = profile.AnalyticsStatus,

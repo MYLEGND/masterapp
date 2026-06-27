@@ -972,7 +972,7 @@ button.pf-secondary-action:hover {
 
 .pf-internal-body .form-text,
 .pf-internal-body .text-muted {
-    color: var(--pf-text-muted) !important;
+    color: var(--pf-text-muted);
 }
 
 .pf-internal-body .text-danger {
@@ -1201,6 +1201,292 @@ button.pf-secondary-action:hover {
     line-height: 1.4;
 }
 
+.pf-analytics-trigger {
+    appearance: none;
+    font: inherit;
+    color: inherit;
+    width: 100%;
+    text-align: left;
+    cursor: pointer;
+    transition: transform 160ms ease, box-shadow 160ms ease, border-color 160ms ease;
+}
+
+.pf-analytics-trigger:hover,
+.pf-analytics-trigger:focus-visible {
+    transform: translateY(-2px);
+    box-shadow: 0 22px 38px rgba(42, 24, 17, 0.14);
+}
+
+.pf-analytics-trigger:focus-visible {
+    outline: 3px solid rgba(44, 98, 193, 0.2);
+    outline-offset: 2px;
+}
+
+.pf-analytics-trigger-meta {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.45rem;
+}
+
+.pf-analytics-trigger-meta span {
+    display: inline-flex;
+    align-items: center;
+    min-height: 30px;
+    padding: 0 0.75rem;
+    border: 1px solid rgba(111, 75, 59, 0.2);
+    border-radius: 999px;
+    background: rgba(255, 255, 255, 0.82);
+    color: var(--pf-text-soft);
+    font-size: 0.66rem;
+    font-weight: 920;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+}
+
+.pf-analytics-shell {
+    --pf-analytics-line: var(--pf-line-strong);
+    --pf-analytics-bg: rgba(111, 75, 59, 0.1);
+    --pf-analytics-text: var(--pf-cocoa);
+    --pf-analytics-strong: var(--pf-text);
+    border-color: var(--pf-analytics-line);
+    box-shadow:
+        0 42px 96px rgba(27, 15, 11, 0.42),
+        0 0 0 1px rgba(255, 255, 255, 0.3);
+}
+
+.pf-analytics-shell.is-success {
+    --pf-analytics-line: var(--pf-success-line);
+    --pf-analytics-bg: rgba(42, 123, 73, 0.12);
+    --pf-analytics-text: var(--pf-success-text);
+    --pf-analytics-strong: #123a24;
+}
+
+.pf-analytics-shell.is-info {
+    --pf-analytics-line: var(--pf-info-line);
+    --pf-analytics-bg: rgba(44, 98, 193, 0.12);
+    --pf-analytics-text: var(--pf-info-text);
+    --pf-analytics-strong: #173b77;
+}
+
+.pf-analytics-shell.is-warning {
+    --pf-analytics-line: var(--pf-warning-line);
+    --pf-analytics-bg: rgba(180, 111, 22, 0.13);
+    --pf-analytics-text: var(--pf-warning-text);
+    --pf-analytics-strong: #6f420d;
+}
+
+.pf-analytics-shell.is-danger {
+    --pf-analytics-line: var(--pf-danger-line);
+    --pf-analytics-bg: rgba(180, 47, 47, 0.11);
+    --pf-analytics-text: var(--pf-danger-text);
+    --pf-analytics-strong: #6e1c1c;
+}
+
+.pf-analytics-shell .pf-modal-header {
+    border-bottom-color: var(--pf-analytics-line);
+    background:
+        linear-gradient(0deg, var(--pf-analytics-bg), var(--pf-analytics-bg)),
+        radial-gradient(circle at top right, rgba(255, 255, 255, 0.82), transparent 34%),
+        linear-gradient(180deg, rgba(255, 255, 255, 0.99), rgba(247, 239, 232, 0.98));
+}
+
+.pf-analytics-shell .pf-modal-body {
+    background:
+        radial-gradient(circle at top right, rgba(255, 255, 255, 0.72), transparent 34%),
+        linear-gradient(180deg, rgba(255, 255, 255, 0.99), rgba(246, 236, 226, 0.99));
+}
+
+.pf-analytics-shell .pf-kicker {
+    border-color: var(--pf-analytics-line);
+    background: var(--pf-analytics-bg);
+    color: var(--pf-analytics-text);
+}
+
+.pf-analytics-shell .btn-close {
+    flex: 0 0 auto;
+    margin-top: 0.2rem;
+    border: 1px solid var(--pf-analytics-line);
+    border-radius: 14px;
+    background-color: rgba(255, 255, 255, 0.92);
+    box-shadow: 0 10px 18px rgba(42, 24, 17, 0.08);
+    opacity: 1;
+}
+
+.pf-analytics-modal-meta {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.55rem;
+    margin-top: 1rem;
+}
+
+.pf-analytics-shell .pf-command-badge {
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.48);
+}
+
+.pf-analytics-modal-section {
+    display: grid;
+    gap: 1rem;
+}
+
+.pf-analytics-stat-strip {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+    gap: 10px;
+}
+
+.pf-analytics-stat-strip article {
+    display: grid;
+    gap: 0.3rem;
+    padding: 1rem 1.05rem;
+    border: 1px solid var(--pf-analytics-line);
+    border-radius: 18px;
+    background:
+        linear-gradient(0deg, var(--pf-analytics-bg), var(--pf-analytics-bg)),
+        linear-gradient(180deg, rgba(255, 255, 255, 0.98), rgba(247, 239, 232, 0.94));
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.56);
+}
+
+.pf-analytics-stat-strip span {
+    color: var(--pf-analytics-text);
+    font-size: 0.66rem;
+    font-weight: 950;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+}
+
+.pf-analytics-stat-strip strong {
+    color: var(--pf-analytics-strong);
+    font-size: clamp(1.3rem, 2.4vw, 1.9rem);
+    font-weight: 980;
+    font-style: normal;
+    letter-spacing: -0.05em;
+    line-height: 1;
+}
+
+.pf-analytics-stat-strip small {
+    color: var(--pf-text-soft);
+    font-size: 0.78rem;
+    font-weight: 760;
+    font-style: normal;
+    line-height: 1.4;
+}
+
+.pf-analytics-product-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+    gap: 12px;
+}
+
+.pf-analytics-product-card {
+    display: grid;
+    gap: 0.55rem;
+    padding: 1rem 1.05rem;
+    border: 1px solid var(--pf-analytics-line);
+    border-radius: 18px;
+    background:
+        linear-gradient(0deg, var(--pf-analytics-bg), var(--pf-analytics-bg)),
+        linear-gradient(180deg, rgba(255, 255, 255, 0.98), rgba(247, 239, 232, 0.94));
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.56);
+}
+
+.pf-analytics-product-card strong {
+    color: var(--pf-analytics-strong);
+    font-size: 0.96rem;
+    font-weight: 920;
+    font-style: normal;
+    letter-spacing: 0.01em;
+    text-transform: uppercase;
+}
+
+.pf-analytics-product-metrics {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.45rem;
+}
+
+.pf-analytics-product-metrics span,
+.pf-analytics-code {
+    display: inline-flex;
+    align-items: center;
+    min-height: 28px;
+    padding: 0 0.72rem;
+    border: 1px solid var(--pf-analytics-line);
+    border-radius: 999px;
+    background: rgba(255, 255, 255, 0.92);
+    color: var(--pf-analytics-text);
+    font-size: 0.68rem;
+    font-weight: 840;
+    font-style: normal;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+}
+
+.pf-analytics-code {
+    justify-content: center;
+    font-family: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
+    letter-spacing: 0.06em;
+    text-transform: none;
+}
+
+.pf-analytics-detail-table {
+    min-width: 780px;
+}
+
+.pf-analytics-shell .pf-commerce-panel-head {
+    border-bottom-color: var(--pf-analytics-line);
+}
+
+.pf-analytics-shell .pf-commerce-panel-head span,
+.pf-analytics-shell .pf-commerce-panel-head h2 {
+    color: var(--pf-analytics-strong);
+}
+
+.pf-analytics-shell .pf-analytics-table th {
+    color: var(--pf-analytics-text);
+}
+
+.pf-analytics-shell .pf-analytics-table td {
+    border-top-color: var(--pf-analytics-line);
+    border-bottom-color: var(--pf-analytics-line);
+    background:
+        linear-gradient(0deg, rgba(255, 255, 255, 0.82), rgba(255, 255, 255, 0.82)),
+        linear-gradient(180deg, rgba(255, 255, 255, 0.99), rgba(247, 238, 230, 0.99));
+}
+
+.pf-analytics-shell .pf-analytics-table td:first-child {
+    border-left-color: var(--pf-analytics-line);
+}
+
+.pf-analytics-shell .pf-analytics-table td:last-child {
+    border-right-color: var(--pf-analytics-line);
+}
+
+.pf-analytics-shell .pf-analytics-table tbody tr:hover td {
+    background:
+        linear-gradient(0deg, var(--pf-analytics-bg), var(--pf-analytics-bg)),
+        linear-gradient(180deg, rgba(255, 255, 255, 1), rgba(244, 233, 223, 1));
+}
+
+.pf-analytics-shell .text-muted {
+    color: var(--pf-text-soft);
+}
+
+.pf-analytics-detail-table th:nth-child(4),
+.pf-analytics-detail-table td:nth-child(4),
+.pf-analytics-detail-table th:nth-child(5),
+.pf-analytics-detail-table td:nth-child(5) {
+    text-align: right;
+}
+
+.pf-analytics-detail-table th:nth-child(3),
+.pf-analytics-detail-table td:nth-child(3),
+.pf-analytics-detail-table th:nth-child(6),
+.pf-analytics-detail-table td:nth-child(6),
+.pf-analytics-detail-table th:nth-child(7),
+.pf-analytics-detail-table td:nth-child(7) {
+    text-align: center;
+}
+
 .pf-pill.is-muted {
     border-color: rgba(111, 75, 59, 0.24);
     background: rgba(111, 75, 59, 0.09);
@@ -1213,6 +1499,7 @@ button.pf-secondary-action:hover {
 }
 
 .pf-product-modal,
+.pf-analytics-modal,
 .pf-team-modal,
 .pf-image-editor-modal {
     position: fixed;
@@ -1231,6 +1518,7 @@ button.pf-secondary-action:hover {
 }
 
 .pf-product-modal.is-open,
+.pf-analytics-modal.is-open,
 .pf-team-modal.is-open,
 .pf-image-editor-modal.is-open {
     display: flex;
@@ -1943,6 +2231,10 @@ button.pf-secondary-action:hover {
     .pf-analytics-table {
         min-width: 920px;
     }
+
+    .pf-analytics-detail-table {
+        min-width: 780px;
+    }
 }
 
 @media (max-width: 560px) {
@@ -1985,6 +2277,7 @@ button.pf-secondary-action:hover {
     }
 
     .pf-product-modal,
+    .pf-analytics-modal,
     .pf-team-modal,
     .pf-image-editor-modal {
         padding: 12px;

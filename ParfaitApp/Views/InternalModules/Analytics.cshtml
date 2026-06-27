@@ -5,6 +5,18 @@
 
     static string Money(int cents) => "$" + (cents / 100m).ToString("0.00");
     static string Percent(decimal value) => value.ToString("0.0") + "%";
+    static string ShortId(string? value, int visible = 10)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            return "—";
+        }
+
+        var trimmed = value.Trim();
+        return trimmed.Length <= visible
+            ? trimmed
+            : trimmed[..visible] + "…";
+    }
 }
 
 <section class="pf-command-page">
@@ -12,7 +24,6 @@
         <div class="pf-command-copy">
             <div class="pf-kicker">Parfait Intelligence</div>
             <h1 class="pf-command-title">Analytics</h1>
-            <p class="pf-command-text">Sessions, product activity, checkout flow, and purchases.</p>
         </div>
         <div class="pf-command-meta">
             <span class="pf-command-badge is-info">@Model.Sessions sessions</span>
@@ -25,136 +36,236 @@
         <article class="pf-rail-card is-info pf-span-2">
             <div class="pf-rail-label">Visitors</div>
             <strong class="pf-rail-value">@Model.Visitors</strong>
-            <p class="pf-rail-note">@Model.Sessions sessions</p>
-        </article>
-
-        <article class="pf-rail-card is-info pf-span-2">
-            <div class="pf-rail-label">Store Views</div>
-            <strong class="pf-rail-value">@Model.StoreViews</strong>
-            <p class="pf-rail-note">@Model.ProductViews product views</p>
-        </article>
-
-        <article class="pf-rail-card is-@(Model.AddToCarts > 0 ? "success" : "warning") pf-span-2">
-            <div class="pf-rail-label">Add To Cart</div>
-            <strong class="pf-rail-value">@Model.AddToCarts</strong>
-            <p class="pf-rail-note">@Percent(Model.ProductViewToCartRate) view to cart</p>
-        </article>
-
-        <article class="pf-rail-card is-@(Model.CheckoutStarts > 0 ? "success" : "warning") pf-span-2">
-            <div class="pf-rail-label">Checkout Starts</div>
-            <strong class="pf-rail-value">@Model.CheckoutStarts</strong>
-            <p class="pf-rail-note">@Percent(Model.CartToCheckoutRate) cart to checkout</p>
-        </article>
-
-        <article class="pf-rail-card is-@(Model.Purchases > 0 ? "success" : "danger") pf-span-2">
-            <div class="pf-rail-label">Purchases</div>
-            <strong class="pf-rail-value">@Model.Purchases</strong>
-            <p class="pf-rail-note">@Percent(Model.CheckoutToPurchaseRate) checkout to purchase</p>
-        </article>
-
-        <article class="pf-rail-card is-@(Model.RevenueCents > 0 ? "success" : "danger") pf-span-2">
-            <div class="pf-rail-label">Revenue</div>
-            <strong class="pf-rail-value">@Money(Model.RevenueCents)</strong>
-            <p class="pf-rail-note">Purchase value</p>
-        </article>
-    </section>
-
-    <section class="pf-commerce-panel">
-        <div class="pf-commerce-panel-head">
-            <div>
-                <div class="pf-kicker">Commerce Funnel</div>
-                <h2>Top Products</h2>
+            <p class="pf-rail-note">@Model.Sessions sessions across the tracked Parfait storefront.</p>
+            <div class="pf-rail-grid">
+                <div>
+                    <span>Purchases</span>
+                    <strong>@Model.Purchases</strong>
+                </div>
+                <div>
+                    <span>Revenue</span>
+                    <strong>@Money(Model.RevenueCents)</strong>
+                </div>
             </div>
-            <span>@Model.TopProducts.Count products</span>
-        </div>
+        </article>
 
-        @if (Model.TopProducts.Count == 0)
+        @foreach (var action in Model.ActionBreakdowns)
         {
-            <div class="text-muted">No product-level analytics yet.</div>
-        }
-        else
-        {
-            <div class="pf-analytics-table-wrap">
-                <table class="table align-middle pf-analytics-table">
-                    <thead>
-                        <tr>
-                            <th>Product</th>
-                            <th>Views</th>
-                            <th>Add To Cart</th>
-                            <th>Checkout</th>
-                            <th>Purchases</th>
-                            <th>Revenue</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        @foreach (var product in Model.TopProducts)
-                        {
-                            <tr>
-                                <td><strong>@product.ProductName</strong></td>
-                                <td>@product.ProductViews</td>
-                                <td>@product.AddToCarts</td>
-                                <td>@product.CheckoutStarts</td>
-                                <td>@product.Purchases</td>
-                                <td><strong>@Money(product.RevenueCents)</strong></td>
-                            </tr>
-                        }
-                    </tbody>
-                </table>
-            </div>
-        }
-    </section>
+            var modalId = $"pfAnalyticsModal-{action.Key}";
 
-    <section class="pf-commerce-panel">
-        <div class="pf-commerce-panel-head">
-            <div>
-                <div class="pf-kicker">Live Feed</div>
-                <h2>Recent Funnel Activity</h2>
-            </div>
-            <span>@Model.RecentEvents.Count events</span>
-        </div>
-
-        @if (Model.RecentEvents.Count == 0)
-        {
-            <div class="text-muted">No Parfait analytics events yet.</div>
-        }
-        else
-        {
-            <div class="pf-analytics-table-wrap">
-                <table class="table align-middle pf-analytics-table">
-                    <thead>
-                        <tr>
-                            <th>Time</th>
-                            <th>Event</th>
-                            <th>Product</th>
-                            <th>Size</th>
-                            <th>Qty</th>
-                            <th>Value</th>
-                            <th>Session</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        @foreach (var item in Model.RecentEvents)
-                        {
-                            var eventTone = item.EventType.Contains("purchase", StringComparison.OrdinalIgnoreCase)
-                                ? "success"
-                                : item.EventType.Contains("checkout", StringComparison.OrdinalIgnoreCase)
-                                    ? "info"
-                                    : item.EventType.Contains("cart", StringComparison.OrdinalIgnoreCase)
-                                        ? "warning"
-                                        : "info";
-                            <tr>
-                                <td>@item.EventUtc.ToLocalTime().ToString("M/d/yyyy h:mm tt")</td>
-                                <td><span class="pf-status pf-status--@eventTone"><span class="pf-dot"></span> @item.EventType</span></td>
-                                <td>@(item.ProductName ?? "—")</td>
-                                <td>@(item.Size ?? "—")</td>
-                                <td>@(item.Quantity?.ToString() ?? "—")</td>
-                                <td>@(item.ValueCents.HasValue ? Money(item.ValueCents.Value) : "—")</td>
-                                <td><span class="text-muted small">@((item.SessionId?.Length ?? 0) > 12 ? item.SessionId![..12] + "…" : item.SessionId ?? "—")</span></td>
-                            </tr>
-                        }
-                    </tbody>
-                </table>
-            </div>
+            <button type="button"
+                    class="pf-rail-card pf-analytics-trigger is-@action.Tone pf-span-2"
+                    data-pf-open="@modalId"
+                    aria-haspopup="dialog"
+                    aria-controls="@modalId">
+                <div class="pf-rail-label">@action.Label</div>
+                <strong class="pf-rail-value">@action.Count</strong>
+                <p class="pf-rail-note">@action.TileNote</p>
+                <div class="pf-analytics-trigger-meta">
+                    <span>@action.UniqueSessions sessions</span>
+                    <span>@action.UniqueVisitors visitors</span>
+                    <span>Open breakdown</span>
+                </div>
+            </button>
         }
     </section>
 </section>
+
+@foreach (var action in Model.ActionBreakdowns)
+{
+    var modalId = $"pfAnalyticsModal-{action.Key}";
+
+    <div class="pf-analytics-modal" id="@modalId" aria-hidden="true">
+        <div class="pf-modal-dialog pf-modal-xl">
+            <div class="pf-modal-content pf-analytics-shell is-@action.Tone">
+                <div class="pf-modal-header">
+                    <div>
+                        <div class="pf-kicker">Analytics Drill-Down</div>
+                        <h2 class="modal-title">@action.Label</h2>
+                        <div class="pf-analytics-modal-meta">
+                            <span class="pf-command-badge is-@action.Tone">@action.Count event@(action.Count == 1 ? string.Empty : "s")</span>
+                            <span class="pf-command-badge is-info">@action.UniqueSessions session@(action.UniqueSessions == 1 ? string.Empty : "s")</span>
+                            <span class="pf-command-badge is-info">@action.UniqueVisitors visitor@(action.UniqueVisitors == 1 ? string.Empty : "s")</span>
+                            @if (action.TotalQuantity > 0)
+                            {
+                                <span class="pf-command-badge is-warning">@action.TotalQuantity unit@(action.TotalQuantity == 1 ? string.Empty : "s")</span>
+                            }
+                            @if (action.RevenueCents > 0)
+                            {
+                                <span class="pf-command-badge is-success">@Money(action.RevenueCents)</span>
+                            }
+                        </div>
+                    </div>
+                    <button type="button" class="btn-close" data-pf-close aria-label="Close"></button>
+                </div>
+
+                <div class="pf-modal-body">
+                    <section class="pf-analytics-modal-section">
+                        <div class="pf-analytics-stat-strip">
+                            <article>
+                                <span>Events</span>
+                                <strong>@action.Count</strong>
+                            </article>
+                            <article>
+                                <span>Sessions</span>
+                                <strong>@action.UniqueSessions</strong>
+                            </article>
+                            <article>
+                                <span>Visitors</span>
+                                <strong>@action.UniqueVisitors</strong>
+                            </article>
+                            @if (action.TotalQuantity > 0)
+                            {
+                                <article>
+                                    <span>Units</span>
+                                    <strong>@action.TotalQuantity</strong>
+                                </article>
+                            }
+                            <article>
+                                <span>Conversion</span>
+                                <strong>@Percent(action.ConversionRate)</strong>
+                                <small>@action.ConversionLabel</small>
+                            </article>
+                            @if (action.RevenueCents > 0)
+                            {
+                                <article>
+                                    <span>Revenue</span>
+                                    <strong>@Money(action.RevenueCents)</strong>
+                                </article>
+                            }
+                        </div>
+                    </section>
+
+                    <section class="pf-analytics-modal-section">
+                        <div class="pf-commerce-panel-head">
+                            <div>
+                                <div class="pf-kicker">Product Mix</div>
+                                <h2>Top Products</h2>
+                            </div>
+                            <span>@action.ProductRows.Count products</span>
+                        </div>
+
+                        @if (action.ProductRows.Count == 0)
+                        {
+                            <div class="text-muted">No product-linked @action.Label.ToLowerInvariant() activity is tracked yet.</div>
+                        }
+                        else
+                        {
+                            <div class="pf-analytics-product-grid">
+                                @foreach (var product in action.ProductRows)
+                                {
+                                    <article class="pf-analytics-product-card">
+                                        <strong>@product.ProductName</strong>
+                                        <div class="pf-analytics-product-metrics">
+                                            <span>@product.EventCount event@(product.EventCount == 1 ? string.Empty : "s")</span>
+                                            <span>@product.SessionCount session@(product.SessionCount == 1 ? string.Empty : "s")</span>
+                                            @if (product.TotalQuantity > 0)
+                                            {
+                                                <span>@product.TotalQuantity unit@(product.TotalQuantity == 1 ? string.Empty : "s")</span>
+                                            }
+                                            @if (product.RevenueCents > 0)
+                                            {
+                                                <span>@Money(product.RevenueCents)</span>
+                                            }
+                                        </div>
+                                    </article>
+                                }
+                            </div>
+                        }
+                    </section>
+
+                    <section class="pf-analytics-modal-section">
+                        <div class="pf-commerce-panel-head">
+                            <div>
+                                <div class="pf-kicker">Activity Timeline</div>
+                                <h2>Tracked Events</h2>
+                            </div>
+                            <span>@action.Events.Count events</span>
+                        </div>
+
+                        @if (action.Events.Count == 0)
+                        {
+                            <div class="text-muted">No @action.Label.ToLowerInvariant() activity has been captured yet.</div>
+                        }
+                        else
+                        {
+                            <div class="pf-analytics-table-wrap">
+                                <table class="table align-middle pf-analytics-table pf-analytics-detail-table">
+                                    <thead>
+                                        <tr>
+                                            <th>Time</th>
+                                            <th>Product</th>
+                                            <th>Size</th>
+                                            <th>Qty</th>
+                                            <th>Value</th>
+                                            <th>Session</th>
+                                            <th>Visitor</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        @foreach (var item in action.Events)
+                                        {
+                                            <tr>
+                                                <td>@item.EventUtc.ToLocalTime().ToString("M/d/yyyy h:mm tt")</td>
+                                                <td><strong>@(item.ProductName ?? "—")</strong></td>
+                                                <td>@(item.Size ?? "—")</td>
+                                                <td>@(item.Quantity?.ToString() ?? "—")</td>
+                                                <td>@(item.ValueCents.HasValue ? Money(item.ValueCents.Value) : "—")</td>
+                                                <td><span class="pf-analytics-code">@ShortId(item.SessionId)</span></td>
+                                                <td><span class="pf-analytics-code">@ShortId(item.VisitorId)</span></td>
+                                            </tr>
+                                        }
+                                    </tbody>
+                                </table>
+                            </div>
+                        }
+                    </section>
+                </div>
+            </div>
+        </div>
+    </div>
+}
+
+@section Scripts {
+    <script>
+        (() => {
+            const openModal = id => {
+                const modal = document.getElementById(id);
+                if (!modal) return;
+                modal.classList.add("is-open");
+                modal.setAttribute("aria-hidden", "false");
+                document.body.style.overflow = "hidden";
+            };
+
+            const closeModal = modal => {
+                if (!modal) return;
+                modal.classList.remove("is-open");
+                modal.setAttribute("aria-hidden", "true");
+
+                if (!document.querySelector(".pf-analytics-modal.is-open")) {
+                    document.body.style.overflow = "";
+                }
+            };
+
+            document.querySelectorAll("[data-pf-open]").forEach(button => {
+                button.addEventListener("click", () => openModal(button.getAttribute("data-pf-open")));
+            });
+
+            document.querySelectorAll("[data-pf-close]").forEach(button => {
+                button.addEventListener("click", () => closeModal(button.closest(".pf-analytics-modal")));
+            });
+
+            document.querySelectorAll(".pf-analytics-modal").forEach(modal => {
+                modal.addEventListener("click", event => {
+                    if (event.target === modal) closeModal(modal);
+                });
+            });
+
+            document.addEventListener("keydown", event => {
+                if (event.key !== "Escape") return;
+                const modals = [...document.querySelectorAll(".pf-analytics-modal.is-open")];
+                closeModal(modals.at(-1));
+            });
+        })();
+    </script>
+}

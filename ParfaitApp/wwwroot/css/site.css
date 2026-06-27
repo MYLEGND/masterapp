@@ -154,7 +154,7 @@ main {
     border-radius: 999px;
     background: rgba(255, 255, 255, 0.88);
     box-shadow: 0 8px 18px rgba(53, 37, 28, 0.05);
-    color: var(--pf-cocoa-800) !important;
+    color: var(--pf-cocoa-800);
     font-size: 0.68rem;
     font-weight: var(--pf-weight-bold);
     letter-spacing: 0.12em;
@@ -168,7 +168,7 @@ main {
     background: var(--pf-cream-100);
     border-color: var(--pf-line-strong);
     box-shadow: 0 12px 22px rgba(53, 37, 28, 0.08);
-    color: var(--pf-cocoa-900) !important;
+    color: var(--pf-cocoa-900);
     transform: translateY(-1px);
 }
 
@@ -182,13 +182,13 @@ main {
     border-color: rgba(43, 28, 22, 0.92);
     background: linear-gradient(145deg, #6f4b3b 0%, #2b1c16 100%);
     box-shadow: 0 12px 22px rgba(43, 28, 22, 0.16);
-    color: #fffdfb !important;
+    color: #fffdfb;
 }
 
 .navbar-right .login-link:hover,
 .navbar-right .login-link.active {
     background: linear-gradient(145deg, #5d3e30 0%, #241813 100%);
-    color: #fffdfb !important;
+    color: #fffdfb;
 }
 
 .nav-icon {
