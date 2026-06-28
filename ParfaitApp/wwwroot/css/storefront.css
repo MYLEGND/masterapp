@@ -329,6 +329,8 @@ body.sp-body {
     font-weight: var(--sp-weight-bold);
     letter-spacing: 0.1em;
     text-transform: uppercase;
+}
+
 .sp-stock-pill.is-success {
     border-color: rgba(42, 123, 73, 0.25);
     background: rgba(223, 242, 229, 0.92);

@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.Authentication.OpenIdConnect;
+using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.IdentityModel.Protocols.OpenIdConnect;
 using ParfaitApp.Services;
 using Infrastructure.Data;
@@ -9,6 +10,12 @@ using Microsoft.EntityFrameworkCore;
 var builder = WebApplication.CreateBuilder(args);
 
 builder.Services.AddControllersWithViews();
+builder.Services.Configure<ForwardedHeadersOptions>(options =>
+{
+    options.ForwardedHeaders = ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedProto;
+    options.KnownIPNetworks.Clear();
+    options.KnownProxies.Clear();
+});
 
 {
     var configuredOwnerEmails = builder.Configuration
@@ -143,6 +150,14 @@ builder.Services
         options.Scope.Add("profile");
         options.Scope.Add("email");
 
+        options.Events.OnRemoteFailure = context =>
+        {
+            var error = Uri.EscapeDataString(context.Failure?.Message ?? "Authentication failed.");
+            context.Response.Redirect($"/internal/denied?message={error}");
+            context.HandleResponse();
+            return Task.CompletedTask;
+        };
+
         options.Events.OnTokenValidated = async context =>
         {
             var teamAccess = context.HttpContext.RequestServices.GetRequiredService<IParfaitTeamAccessService>();
@@ -163,6 +178,8 @@ builder.Services.AddSession(options =>
 });
 
 var app = builder.Build();
+
+app.UseForwardedHeaders();
 
 if (app.Environment.IsDevelopment())
 {
