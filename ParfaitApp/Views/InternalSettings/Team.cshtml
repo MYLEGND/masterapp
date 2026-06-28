@@ -24,7 +24,6 @@
 <section class="pf-command-page">
     <header class="pf-command-head">
         <div class="pf-command-copy">
-            <div class="pf-kicker">Founder Access Control</div>
             <h1 class="pf-command-title">Team</h1>
             <p class="pf-command-text">Approve team accounts, assign roles, and control page access.</p>
         </div>
@@ -73,7 +72,6 @@
 
     <section class="pf-workspace-grid">
         <div class="pf-module-card pf-span-4">
-            <span class="pf-status"><span class="pf-dot"></span> Founder Lock</span>
             <h2 class="pf-module-title">Primary Control</h2>
             <p class="text-muted mb-4">Founder identity and reserved access rules.</p>
 
@@ -94,7 +92,6 @@
         </div>
 
         <div class="pf-module-card pf-span-8">
-            <span class="pf-status"><span class="pf-dot"></span> Add Team Member</span>
             <h2 class="pf-module-title">Approve Access</h2>
             <p class="text-muted mb-4">Invite a @@mylegnd.com account and assign a starting role.</p>
 
@@ -147,7 +144,6 @@
     <section class="pf-commerce-panel">
         <div class="pf-commerce-panel-head">
             <div>
-                <div class="pf-kicker">Internal Roster</div>
                 <h2>Approved Team Members</h2>
             </div>
             <span>@Model.Members.Count member@(Model.Members.Count == 1 ? string.Empty : "s")</span>
@@ -171,7 +167,6 @@
                         <div class="pf-module-card pf-team-card">
                             <div class="pf-team-card-head">
                                 <div>
-                                    <span class="pf-status"><span class="pf-dot"></span> @member.StatusLabel</span>
                                     <h3 class="pf-team-card-title">@member.DisplayName</h3>
                                 </div>
                                 <button type="button" class="pf-secondary-action" data-pf-open="@modalId">Open Access</button>
@@ -215,7 +210,6 @@
             <div class="pf-modal-content">
                 <div class="pf-modal-header">
                     <div>
-                        <div class="pf-kicker">Team Member Access</div>
                         <h2 class="modal-title">@member.DisplayName</h2>
                     </div>
                     <button type="button" class="btn-close" data-pf-close aria-label="Close"></button>
@@ -224,8 +218,7 @@
                 <div class="pf-modal-body">
                     <div class="pf-modal-grid">
                         <section class="pf-media-panel">
-                            <span class="pf-status"><span class="pf-dot"></span> @member.StatusLabel</span>
-                            <h3 class="pf-module-title mt-3">@member.Email</h3>
+                            <h3 class="pf-module-title">@member.Email</h3>
                             <div class="pf-role-pill mt-2">Role: @member.RoleLabel</div>
                             <p class="text-muted mb-4">
                                 @member.RoleDescription

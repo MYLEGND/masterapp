@@ -14,7 +14,6 @@ public static class ParfaitProductCatalogDefaults
                 Size = size,
                 DisplayOrder = (index + 1) * 10,
                 IsEnabled = true,
-                TrackInventory = false,
                 StockQuantity = 0,
                 LowStockThreshold = 3
             })
@@ -62,14 +61,13 @@ public sealed class ParfaitStoreProductSizeViewModel
     public required string Id { get; init; }
     public required string Size { get; init; }
     public bool IsEnabled { get; init; }
-    public bool TrackInventory { get; init; }
     public int StockQuantity { get; init; }
     public int LowStockThreshold { get; init; }
     public int DisplayOrder { get; init; }
 
-    public bool IsSoldOut => IsEnabled && TrackInventory && StockQuantity <= 0;
-    public bool IsLowStock => IsEnabled && TrackInventory && StockQuantity > 0 && StockQuantity <= Math.Max(1, LowStockThreshold);
-    public bool CanPurchase => IsEnabled && (!TrackInventory || StockQuantity > 0);
+    public bool IsSoldOut => IsEnabled && StockQuantity <= 0;
+    public bool IsLowStock => IsEnabled && StockQuantity > 0 && StockQuantity <= Math.Max(1, LowStockThreshold);
+    public bool CanPurchase => IsEnabled && StockQuantity > 0;
 
     public string StatusTone => !IsEnabled
         ? "muted"
@@ -81,13 +79,11 @@ public sealed class ParfaitStoreProductSizeViewModel
 
     public string StatusLabel => !IsEnabled
         ? "Hidden"
-        : !TrackInventory
-            ? "Available"
-            : IsSoldOut
-                ? "Sold Out"
-                : IsLowStock
-                    ? $"{StockQuantity} Left"
-                    : $"{StockQuantity} In Stock";
+        : IsSoldOut
+            ? "Sold Out"
+            : IsLowStock
+                ? $"{StockQuantity} Left"
+                : $"{StockQuantity} In Stock";
 }
 
 public sealed class ParfaitStoreProductViewModel
@@ -120,8 +116,8 @@ public sealed class ParfaitStoreProductViewModel
     public int SavingsCents => HasSalePrice ? CompareAtPriceCents - PriceCents : 0;
     public string CompareAtPriceLabel => HasSalePrice ? $"${CompareAtPriceCents / 100m:0.00}" : "";
     public string SavingsLabel => HasSalePrice ? $"Save ${SavingsCents / 100m:0.00}" : "";
-    public bool HasTrackedInventory => Sizes.Any(size => size.IsEnabled && size.TrackInventory);
-    public int TotalTrackedStock => Sizes.Where(size => size.IsEnabled && size.TrackInventory).Sum(size => Math.Max(size.StockQuantity, 0));
+    public bool HasTrackedInventory => Sizes.Any(size => size.IsEnabled);
+    public int TotalTrackedStock => Sizes.Where(size => size.IsEnabled).Sum(size => Math.Max(size.StockQuantity, 0));
     public bool IsSoldOut => Sizes.Count > 0 && Sizes.Where(size => size.IsEnabled).All(size => !size.CanPurchase);
     public bool IsLowStock => Sizes.Any(size => size.IsLowStock);
     public string AvailabilityTone => IsSoldOut ? "danger" : IsLowStock ? "warning" : "success";
@@ -129,9 +125,7 @@ public sealed class ParfaitStoreProductViewModel
         ? "Sold Out"
         : IsLowStock
             ? "Low Stock"
-            : HasTrackedInventory
-                ? $"{TotalTrackedStock} Units Ready"
-                : "Available";
+            : $"{TotalTrackedStock} Units Ready";
 }
 
 public sealed class ParfaitStorefrontViewModel
@@ -173,23 +167,20 @@ public sealed class ParfaitProductSizeInventoryEditorViewModel
     public string Size { get; set; } = "";
 
     public bool IsEnabled { get; set; } = true;
-    public bool TrackInventory { get; set; }
     public int StockQuantity { get; set; }
     public int LowStockThreshold { get; set; } = 3;
     public int DisplayOrder { get; set; }
 
-    public bool IsSoldOut => IsEnabled && TrackInventory && StockQuantity <= 0;
-    public bool IsLowStock => IsEnabled && TrackInventory && StockQuantity > 0 && StockQuantity <= Math.Max(1, LowStockThreshold);
+    public bool IsSoldOut => IsEnabled && StockQuantity <= 0;
+    public bool IsLowStock => IsEnabled && StockQuantity > 0 && StockQuantity <= Math.Max(1, LowStockThreshold);
     public string StatusTone => !IsEnabled ? "muted" : IsSoldOut ? "danger" : IsLowStock ? "warning" : "success";
     public string StatusLabel => !IsEnabled
         ? "Hidden"
-        : !TrackInventory
-            ? "Available"
-            : IsSoldOut
-                ? "Sold Out"
-                : IsLowStock
-                    ? $"{StockQuantity} Left"
-                    : $"{StockQuantity} Ready";
+        : IsSoldOut
+            ? "Sold Out"
+            : IsLowStock
+                ? $"{StockQuantity} Left"
+                : $"{StockQuantity} Ready";
 }
 
 public sealed class ParfaitProductDiscountCodeEditorViewModel
@@ -237,7 +228,7 @@ public sealed class ParfaitProductEditorViewModel
 
     public bool HasSalePrice => CompareAtPriceCents > PriceCents && PriceCents > 0;
     public int TotalTrackedStock => InventoryBySize
-        .Where(size => size.IsEnabled && size.TrackInventory)
+        .Where(size => size.IsEnabled)
         .Sum(size => Math.Max(size.StockQuantity, 0));
     public int LowStockSizeCount => InventoryBySize.Count(size => size.IsLowStock);
     public int SoldOutSizeCount => InventoryBySize.Count(size => size.IsSoldOut);
@@ -252,7 +243,5 @@ public sealed class ParfaitProductEditorViewModel
             : "success";
     public string InventoryLabel => TotalTrackedStock > 0
         ? $"{TotalTrackedStock} Units"
-        : InventoryBySize.Any(size => size.TrackInventory)
-            ? "Needs Stock"
-            : "Untracked";
+        : "Needs Stock";
 }

@@ -14,7 +14,6 @@
         .Select(size => new
         {
             size.Size,
-            size.TrackInventory,
             size.StockQuantity,
             size.CanPurchase,
             size.StatusTone,
@@ -115,7 +114,7 @@
                         <option value="@size.Size"
                                 selected="@(defaultSize?.Size == size.Size)"
                                 disabled="@(!size.CanPurchase)">
-                            @size.Size@(size.TrackInventory ? $" · {size.StatusLabel}" : "")
+                            @size.Size · @size.StatusLabel
                         </option>
                     }
                 </select>
@@ -203,9 +202,7 @@
                 availability.textContent = current.statusLabel;
 
                 if (stockCopy) {
-                    if (!current.trackInventory) {
-                        stockCopy.textContent = "This size is live without hard inventory tracking.";
-                    } else if (!current.canPurchase) {
+                    if (!current.canPurchase) {
                         stockCopy.textContent = "This size is sold out right now.";
                     } else if (current.statusTone === "warning") {
                         stockCopy.textContent = `Only ${current.stockQuantity} left in ${current.size}.`;

@@ -14,17 +14,20 @@ public sealed class InternalModulesController : Controller
     private readonly ParfaitOrderService _orders;
     private readonly ParfaitAnalyticsDashboardService _analyticsDashboard;
     private readonly ParfaitInternalWorkspaceService _workspace;
+    private readonly IGraphMailService _mail;
 
     public InternalModulesController(
         ParfaitProductService products,
         ParfaitOrderService orders,
         ParfaitAnalyticsDashboardService analyticsDashboard,
-        ParfaitInternalWorkspaceService workspace)
+        ParfaitInternalWorkspaceService workspace,
+        IGraphMailService mail)
     {
         _products = products;
         _orders = orders;
         _analyticsDashboard = analyticsDashboard;
         _workspace = workspace;
+        _mail = mail;
     }
 
     [HttpGet("commerce")]
@@ -147,19 +150,60 @@ public sealed class InternalModulesController : Controller
     {
         var orders = _orders.GetAllOrders().ToList();
         var paidOrders = orders
-            .Where(order => string.Equals(order.PaymentStatus, "Paid", StringComparison.OrdinalIgnoreCase))
+            .Where(order => string.Equals(order.PaymentStatus, "Paid", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(order.PaymentStatus, "Refunded", StringComparison.OrdinalIgnoreCase))
             .ToList();
 
         return View(new ParfaitOrderAdminViewModel
         {
             Orders = orders,
-            PaidOrderCount = paidOrders.Count,
+            PaidOrderCount = paidOrders.Count(order => string.Equals(order.PaymentStatus, "Paid", StringComparison.OrdinalIgnoreCase)),
             PendingOrderCount = orders.Count(order => string.Equals(order.PaymentStatus, "Pending", StringComparison.OrdinalIgnoreCase)),
             FailedOrderCount = orders.Count(order => string.Equals(order.PaymentStatus, "Failed", StringComparison.OrdinalIgnoreCase)),
-            OpenFulfillmentCount = orders.Count(order => !string.Equals(order.FulfillmentStatus, "Fulfilled", StringComparison.OrdinalIgnoreCase)),
-            RevenueCents = paidOrders.Sum(order => order.TotalCents),
-            AverageOrderValueCents = paidOrders.Count == 0 ? 0 : (int)Math.Round(paidOrders.Average(order => order.TotalCents))
+            RefundedOrderCount = _orders.CountRefunded(orders),
+            OpenFulfillmentCount = _orders.CountOpenFulfillment(orders),
+            ReturnQueueCount = _orders.CountReturnQueue(orders),
+            RevenueCents = _orders.SumNetRevenueCents(orders),
+            AverageOrderValueCents = _orders.CalculateAverageNetOrderValueCents(orders)
         });
+    }
+
+    [HttpPost("commerce/orders/update")]
+    [ValidateAntiForgeryToken]
+    public IActionResult UpdateOrder(ParfaitOrderAdminUpdateRequest request)
+    {
+        if (!_orders.UpdateOrder(request))
+        {
+            TempData["OrderStatus"] = "Order could not be updated.";
+            return RedirectToAction(nameof(Orders));
+        }
+
+        TempData["OrderStatus"] = $"Order {request.OrderNumber} updated.";
+        return RedirectToAction(nameof(Orders));
+    }
+
+    [HttpPost("commerce/orders/receipt")]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> ResendOrderReceipt(string orderNumber, CancellationToken ct)
+    {
+        var order = _orders.GetOrder(orderNumber);
+        if (order is null)
+        {
+            TempData["OrderStatus"] = "Order was not found.";
+            return RedirectToAction(nameof(Orders));
+        }
+
+        try
+        {
+            await _mail.SendOrderReceiptAsync(order, ct);
+            TempData["OrderStatus"] = $"Receipt resent for {order.OrderNumber}.";
+        }
+        catch
+        {
+            TempData["OrderStatus"] = $"Receipt resend failed for {order.OrderNumber}.";
+        }
+
+        return RedirectToAction(nameof(Orders));
     }
 
     [HttpGet("customers")]

@@ -1,35 +1,68 @@
 @model ParfaitApp.Models.ParfaitOrderAdminViewModel
+@using ParfaitApp.Models
 @{
     ViewData["Title"] = "Orders";
     Layout = "_InternalLayout";
 
     static string Money(int cents) => "$" + (cents / 100m).ToString("0.00");
-    var queueTone = Model.OpenFulfillmentCount > 0 ? "warning" : "success";
-    var exceptionTone = Model.FailedOrderCount > 0 ? "danger" : Model.PendingOrderCount > 0 ? "warning" : "info";
+    static string MoneyField(int cents) => cents <= 0 ? "" : (cents / 100m).ToString("0.00");
+    static string PaymentTone(ParfaitOrderRecord order) => order.IsFailedPayment
+        ? "danger"
+        : order.IsPendingPayment
+            ? "warning"
+            : order.IsRefundedPayment
+                ? "info"
+                : "success";
+    static string FulfillmentTone(ParfaitOrderRecord order) => string.Equals(order.FulfillmentStatus, "Fulfilled", StringComparison.OrdinalIgnoreCase)
+        ? "success"
+        : string.Equals(order.FulfillmentStatus, "Shipped", StringComparison.OrdinalIgnoreCase)
+            ? "info"
+            : string.Equals(order.FulfillmentStatus, "Cancelled", StringComparison.OrdinalIgnoreCase)
+                ? "danger"
+                : string.Equals(order.FulfillmentStatus, "On Hold", StringComparison.OrdinalIgnoreCase)
+                    ? "warning"
+                    : "warning";
+    static string ReturnTone(ParfaitOrderRecord order) => string.Equals(order.ReturnStatus, "None", StringComparison.OrdinalIgnoreCase)
+        ? "muted"
+        : string.Equals(order.ReturnStatus, "Refunded", StringComparison.OrdinalIgnoreCase)
+            ? "info"
+            : string.Equals(order.ReturnStatus, "Closed", StringComparison.OrdinalIgnoreCase)
+                ? "success"
+                : "warning";
+
+    var activeQueueTone = Model.OpenFulfillmentCount > 0 ? "warning" : "success";
+    var returnQueueTone = Model.ReturnQueueCount > 0 ? "warning" : "info";
+    var exceptionTone = Model.FailedOrderCount > 0 ? "danger" : Model.PendingOrderCount > 0 ? "warning" : "success";
+    var shippedCount = Model.Orders.Count(order => string.Equals(order.FulfillmentStatus, "Shipped", StringComparison.OrdinalIgnoreCase));
+    var fulfilledCount = Model.Orders.Count(order => string.Equals(order.FulfillmentStatus, "Fulfilled", StringComparison.OrdinalIgnoreCase));
 }
 
-<section class="pf-command-page">
+<section class="pf-command-page pf-orders-admin">
     <header class="pf-command-head">
         <div class="pf-command-copy">
-            <div class="pf-kicker">Commerce</div>
             <h1 class="pf-command-title">Orders</h1>
-            <p class="pf-command-text">Order volume, revenue, fulfillment, and exceptions.</p>
+            <p class="pf-command-text">Fulfillment, payment, returns, tracking, and receipts.</p>
         </div>
         <div class="pf-command-meta">
             <span class="pf-command-badge is-info">@Model.Orders.Count total</span>
-            <span class="pf-command-badge is-success">@Money(Model.RevenueCents) revenue</span>
-            <span class="pf-command-badge is-@queueTone">@Model.OpenFulfillmentCount open fulfillment</span>
-            <span class="pf-command-badge is-@exceptionTone">@(Model.PendingOrderCount + Model.FailedOrderCount) exceptions</span>
+            <span class="pf-command-badge is-success">@Money(Model.RevenueCents) net revenue</span>
+            <span class="pf-command-badge is-@activeQueueTone">@Model.OpenFulfillmentCount open fulfillment</span>
+            <span class="pf-command-badge is-@returnQueueTone">@Model.ReturnQueueCount return queue</span>
         </div>
     </header>
 
+    @if (TempData["OrderStatus"] is string orderStatus)
+    {
+        <div class="pf-alert-success">@orderStatus</div>
+    }
+
     <section class="pf-command-rail">
         <article class="pf-rail-card is-info pf-span-3">
-            <div class="pf-rail-label">Total Volume</div>
+            <div class="pf-rail-label">Order Flow</div>
             <strong class="pf-rail-value">@Model.Orders.Count</strong>
             <div class="pf-rail-grid">
                 <div>
-                    <span>Paid Orders</span>
+                    <span>Paid</span>
                     <strong>@Model.PaidOrderCount</strong>
                 </div>
                 <div>
@@ -48,38 +81,38 @@
                     <strong>@Money(Model.AverageOrderValueCents)</strong>
                 </div>
                 <div>
-                    <span>Paid Orders</span>
-                    <strong>@Model.PaidOrderCount</strong>
+                    <span>Refunded</span>
+                    <strong>@Model.RefundedOrderCount</strong>
                 </div>
             </div>
         </article>
 
-        <article class="pf-rail-card is-@queueTone pf-span-3">
+        <article class="pf-rail-card is-@activeQueueTone pf-span-3">
             <div class="pf-rail-label">Fulfillment Queue</div>
             <strong class="pf-rail-value">@Model.OpenFulfillmentCount</strong>
             <div class="pf-rail-grid">
                 <div>
-                    <span>Open Orders</span>
-                    <strong>@Model.OpenFulfillmentCount</strong>
+                    <span>Shipped</span>
+                    <strong>@shippedCount</strong>
                 </div>
                 <div>
-                    <span>Pending Payment</span>
-                    <strong>@Model.PendingOrderCount</strong>
+                    <span>Fulfilled</span>
+                    <strong>@fulfilledCount</strong>
                 </div>
             </div>
         </article>
 
-        <article class="pf-rail-card is-@exceptionTone pf-span-3">
-            <div class="pf-rail-label">Exceptions</div>
-            <strong class="pf-rail-value">@(Model.FailedOrderCount + Model.PendingOrderCount)</strong>
+        <article class="pf-rail-card is-@returnQueueTone pf-span-3">
+            <div class="pf-rail-label">Returns</div>
+            <strong class="pf-rail-value">@Model.ReturnQueueCount</strong>
             <div class="pf-rail-grid">
                 <div>
-                    <span>Failed</span>
-                    <strong>@Model.FailedOrderCount</strong>
+                    <span>Refunded</span>
+                    <strong>@Model.RefundedOrderCount</strong>
                 </div>
                 <div>
-                    <span>Pending</span>
-                    <strong>@Model.PendingOrderCount</strong>
+                    <span>Failed Pay</span>
+                    <strong>@Model.FailedOrderCount</strong>
                 </div>
             </div>
         </article>
@@ -88,8 +121,7 @@
     <section class="pf-commerce-panel">
         <div class="pf-commerce-panel-head">
             <div>
-                <div class="pf-kicker">Order Workspace</div>
-                <h2>Recent Orders</h2>
+                <h2>Order Operations</h2>
             </div>
             <span>@Model.Orders.Count orders</span>
         </div>
@@ -101,53 +133,85 @@
         else
         {
             <div class="pf-orders-table-wrap">
-                <table class="table align-middle pf-orders-table">
+                <table class="pf-orders-table">
                     <thead>
                         <tr>
                             <th>Order</th>
-                            <th>Date</th>
                             <th>Customer</th>
                             <th>Items</th>
-                            <th>Total</th>
-                            <th>Payment</th>
-                            <th>Fulfillment</th>
+                            <th>Financials</th>
+                            <th>Workflow</th>
+                            <th>Receipt</th>
+                            <th></th>
                         </tr>
                     </thead>
                     <tbody>
                         @foreach (var order in Model.Orders)
                         {
-                            var paymentTone = order.PaymentStatus.Contains("paid", StringComparison.OrdinalIgnoreCase)
-                                ? "success"
-                                : order.PaymentStatus.Contains("failed", StringComparison.OrdinalIgnoreCase)
-                                    ? "danger"
-                                    : "warning";
+                            var modalId = $"orderModal{order.OrderNumber}";
                             <tr>
                                 <td>
-                                    <strong>@order.OrderNumber</strong>
-                                    <div class="text-muted small">@order.Source</div>
-                                </td>
-                                <td>@order.CreatedUtc.ToLocalTime().ToString("M/d/yyyy h:mm tt")</td>
-                                <td>
-                                    <strong>@order.FirstName @order.LastName</strong>
-                                    <div class="text-muted small">@order.Email</div>
-                                    <div class="text-muted small">@order.Phone</div>
+                                    <div class="pf-product-table-stack">
+                                        <strong>@order.OrderNumber</strong>
+                                        <span>@order.Source</span>
+                                        <span>@order.CreatedUtc.ToLocalTime().ToString("M/d/yyyy h:mm tt")</span>
+                                    </div>
                                 </td>
                                 <td>
-                                    @foreach (var item in order.Items)
-                                    {
-                                        <div><strong>@item.Name</strong></div>
-                                        <div class="text-muted small">Size @item.Size · Qty @item.Quantity · @Money(item.LineTotalCents)</div>
-                                    }
+                                    <div class="pf-product-table-stack">
+                                        <strong>@order.CustomerName</strong>
+                                        <span>@order.Email</span>
+                                        <span>@order.Phone</span>
+                                    </div>
                                 </td>
-                                <td><strong>@Money(order.TotalCents)</strong></td>
                                 <td>
-                                    <span class="pf-status pf-status--@paymentTone"><span class="pf-dot"></span> @order.PaymentStatus</span>
-                                    @if (!string.IsNullOrWhiteSpace(order.SquarePaymentId))
-                                    {
-                                        <div class="text-muted small">Square: @order.SquarePaymentId</div>
-                                    }
+                                    <div class="pf-product-table-stack">
+                                        @foreach (var item in order.Items)
+                                        {
+                                            <div>
+                                                <strong>@item.Name</strong>
+                                                <span>Size @item.Size · Qty @item.Quantity · @Money(item.LineTotalCents)</span>
+                                            </div>
+                                        }
+                                    </div>
                                 </td>
-                                <td>@order.FulfillmentStatus</td>
+                                <td>
+                                    <div class="pf-product-table-stack">
+                                        <strong>@Money(order.TotalCents)</strong>
+                                        <span>Net @Money(order.NetRevenueCents)</span>
+                                        @if (order.DiscountCents > 0)
+                                        {
+                                            <span>Discount -@Money(order.DiscountCents)</span>
+                                        }
+                                        @if (order.RefundedCents > 0)
+                                        {
+                                            <span>Refunded -@Money(order.RefundedCents)</span>
+                                        }
+                                    </div>
+                                </td>
+                                <td>
+                                    <div class="pf-product-table-stack">
+                                        <span class="pf-status pf-status--@PaymentTone(order)"><span class="pf-dot"></span> @order.PaymentStatus</span>
+                                        <span class="pf-status pf-status--@FulfillmentTone(order)"><span class="pf-dot"></span> @order.FulfillmentStatus</span>
+                                        <span class="pf-status pf-status--@ReturnTone(order)"><span class="pf-dot"></span> Return @order.ReturnStatus</span>
+                                    </div>
+                                </td>
+                                <td>
+                                    <div class="pf-product-table-stack">
+                                        <a class="pf-text-link" href="@order.ReceiptUrl" target="_blank" rel="noreferrer">View Receipt</a>
+                                        @if (!string.IsNullOrWhiteSpace(order.SquarePaymentId))
+                                        {
+                                            <span>Square @order.SquarePaymentId</span>
+                                        }
+                                        @if (!string.IsNullOrWhiteSpace(order.TrackingNumber))
+                                        {
+                                            <span>@(string.IsNullOrWhiteSpace(order.TrackingCarrier) ? "Tracking" : order.TrackingCarrier) · @order.TrackingNumber</span>
+                                        }
+                                    </div>
+                                </td>
+                                <td class="pf-table-actions">
+                                    <button type="button" class="pf-secondary-action" data-pf-open="@modalId">Open</button>
+                                </td>
                             </tr>
                         }
                     </tbody>
@@ -156,3 +220,266 @@
         }
     </section>
 </section>
+
+@foreach (var order in Model.Orders)
+{
+    var modalId = $"orderModal{order.OrderNumber}";
+
+    <div class="pf-order-modal" id="@modalId" aria-hidden="true">
+        <div class="pf-modal-dialog pf-modal-xl">
+            <div class="pf-modal-content pf-order-shell">
+                <div class="pf-modal-header">
+                    <div>
+                        <h2 class="modal-title">@order.OrderNumber</h2>
+                    </div>
+                    <button type="button" class="btn-close" data-pf-close aria-label="Close"></button>
+                </div>
+
+                <div class="pf-modal-body">
+                    <div class="pf-order-head-grid">
+                        <article class="pf-order-summary-card">
+                            <span class="pf-command-badge is-info">@order.Status</span>
+                            <strong>@Money(order.TotalCents)</strong>
+                            <div class="pf-order-summary-list">
+                                <span>Created @order.CreatedUtc.ToLocalTime().ToString("M/d/yyyy h:mm tt")</span>
+                                @if (order.PaidUtc is not null)
+                                {
+                                    <span>Paid @order.PaidUtc.Value.ToLocalTime().ToString("M/d/yyyy h:mm tt")</span>
+                                }
+                                @if (order.ShippedUtc is not null)
+                                {
+                                    <span>Shipped @order.ShippedUtc.Value.ToLocalTime().ToString("M/d/yyyy h:mm tt")</span>
+                                }
+                                @if (order.FulfilledUtc is not null)
+                                {
+                                    <span>Fulfilled @order.FulfilledUtc.Value.ToLocalTime().ToString("M/d/yyyy h:mm tt")</span>
+                                }
+                            </div>
+                        </article>
+
+                        <article class="pf-order-summary-card">
+                            <div class="pf-order-chip-row">
+                                <span class="pf-status pf-status--@PaymentTone(order)"><span class="pf-dot"></span> @order.PaymentStatus</span>
+                                <span class="pf-status pf-status--@FulfillmentTone(order)"><span class="pf-dot"></span> @order.FulfillmentStatus</span>
+                                <span class="pf-status pf-status--@ReturnTone(order)"><span class="pf-dot"></span> Return @order.ReturnStatus</span>
+                            </div>
+                            <div class="pf-order-summary-list">
+                                <span>Net Revenue @Money(order.NetRevenueCents)</span>
+                                @if (order.DiscountCents > 0)
+                                {
+                                    <span>Discount -@Money(order.DiscountCents)</span>
+                                }
+                                @if (order.RefundedCents > 0)
+                                {
+                                    <span>Refunded -@Money(order.RefundedCents)</span>
+                                }
+                            </div>
+                        </article>
+                    </div>
+
+                    <div class="pf-order-modal-grid">
+                        <section class="pf-order-detail-card">
+                            <div class="pf-product-section-head">
+                                <div>
+                                    <strong>Customer + Shipping</strong>
+                                    <span>Everything needed to support, fulfill, and verify the order.</span>
+                                </div>
+                            </div>
+
+                            <div class="pf-order-detail-list">
+                                <div>
+                                    <span>Customer</span>
+                                    <strong>@order.CustomerName</strong>
+                                </div>
+                                <div>
+                                    <span>Email</span>
+                                    <strong>@order.Email</strong>
+                                </div>
+                                <div>
+                                    <span>Phone</span>
+                                    <strong>@order.Phone</strong>
+                                </div>
+                                <div class="pf-order-detail-address">
+                                    <span>Ship To</span>
+                                    <strong>
+                                        @order.AddressLine1
+                                        @if (!string.IsNullOrWhiteSpace(order.AddressLine2))
+                                        {
+                                            <text><br />@order.AddressLine2</text>
+                                        }
+                                        <br />@order.City, @order.State @order.PostalCode
+                                    </strong>
+                                </div>
+                            </div>
+
+                            <div class="pf-product-section-head">
+                                <div>
+                                    <strong>Items</strong>
+                                    <span>Line-level receipt details.</span>
+                                </div>
+                            </div>
+
+                            <div class="pf-order-item-list">
+                                @foreach (var item in order.Items)
+                                {
+                                    <article class="pf-order-item-row">
+                                        <img src="@(item.ImageUrl ?? "/images/favicon/parfait-logo.png")" alt="@item.Name" />
+                                        <div>
+                                            <strong>@item.Name</strong>
+                                            <span>@(string.IsNullOrWhiteSpace(item.Slug) ? "No slug saved" : item.Slug)</span>
+                                            <span>Size @item.Size · Qty @item.Quantity · @Money(item.UnitPriceCents) each</span>
+                                        </div>
+                                        <strong>@Money(item.LineTotalCents)</strong>
+                                    </article>
+                                }
+                            </div>
+                        </section>
+
+                        <section class="pf-order-detail-card">
+                            <div class="pf-product-section-head">
+                                <div>
+                                    <strong>Workflow Control</strong>
+                                    <span>Update payment, fulfillment, returns, tracking, and internal notes in one place.</span>
+                                </div>
+                            </div>
+
+                            <form method="post" action="/internal/commerce/orders/update" class="pf-product-edit-form" data-pf-order-form>
+                                @Html.AntiForgeryToken()
+                                <input type="hidden" name="OrderNumber" value="@order.OrderNumber" />
+
+                                <div class="pf-editor-grid">
+                                    <label>Payment
+                                        <select class="form-select" name="PaymentStatus">
+                                            <option value="Pending" selected="@string.Equals(order.PaymentStatus, "Pending", StringComparison.OrdinalIgnoreCase)">Pending</option>
+                                            <option value="Paid" selected="@string.Equals(order.PaymentStatus, "Paid", StringComparison.OrdinalIgnoreCase)">Paid</option>
+                                            <option value="Failed" selected="@string.Equals(order.PaymentStatus, "Failed", StringComparison.OrdinalIgnoreCase)">Failed</option>
+                                            <option value="Refunded" selected="@string.Equals(order.PaymentStatus, "Refunded", StringComparison.OrdinalIgnoreCase)">Refunded</option>
+                                        </select>
+                                    </label>
+
+                                    <label>Fulfillment
+                                        <select class="form-select" name="FulfillmentStatus">
+                                            <option value="Unfulfilled" selected="@string.Equals(order.FulfillmentStatus, "Unfulfilled", StringComparison.OrdinalIgnoreCase)">Unfulfilled</option>
+                                            <option value="Processing" selected="@string.Equals(order.FulfillmentStatus, "Processing", StringComparison.OrdinalIgnoreCase)">Processing</option>
+                                            <option value="Packed" selected="@string.Equals(order.FulfillmentStatus, "Packed", StringComparison.OrdinalIgnoreCase)">Packed</option>
+                                            <option value="Shipped" selected="@string.Equals(order.FulfillmentStatus, "Shipped", StringComparison.OrdinalIgnoreCase)">Shipped</option>
+                                            <option value="Fulfilled" selected="@string.Equals(order.FulfillmentStatus, "Fulfilled", StringComparison.OrdinalIgnoreCase)">Fulfilled</option>
+                                            <option value="On Hold" selected="@string.Equals(order.FulfillmentStatus, "On Hold", StringComparison.OrdinalIgnoreCase)">On Hold</option>
+                                            <option value="Cancelled" selected="@string.Equals(order.FulfillmentStatus, "Cancelled", StringComparison.OrdinalIgnoreCase)">Cancelled</option>
+                                            <option value="Returned" selected="@string.Equals(order.FulfillmentStatus, "Returned", StringComparison.OrdinalIgnoreCase)">Returned</option>
+                                        </select>
+                                    </label>
+
+                                    <label>Return
+                                        <select class="form-select" name="ReturnStatus">
+                                            <option value="None" selected="@string.Equals(order.ReturnStatus, "None", StringComparison.OrdinalIgnoreCase)">None</option>
+                                            <option value="Requested" selected="@string.Equals(order.ReturnStatus, "Requested", StringComparison.OrdinalIgnoreCase)">Requested</option>
+                                            <option value="Approved" selected="@string.Equals(order.ReturnStatus, "Approved", StringComparison.OrdinalIgnoreCase)">Approved</option>
+                                            <option value="Received" selected="@string.Equals(order.ReturnStatus, "Received", StringComparison.OrdinalIgnoreCase)">Received</option>
+                                            <option value="Refunded" selected="@string.Equals(order.ReturnStatus, "Refunded", StringComparison.OrdinalIgnoreCase)">Refunded</option>
+                                            <option value="Closed" selected="@string.Equals(order.ReturnStatus, "Closed", StringComparison.OrdinalIgnoreCase)">Closed</option>
+                                        </select>
+                                    </label>
+
+                                    <label>Refunded Amount
+                                        <input class="form-control pf-money-display" type="number" min="0" step="0.01" value="@MoneyField(order.RefundedCents)" />
+                                        <input type="hidden" name="RefundedCents" value="@order.RefundedCents" class="pf-money-hidden" />
+                                    </label>
+
+                                    <label>Carrier <input class="form-control" name="TrackingCarrier" value="@order.TrackingCarrier" /></label>
+                                    <label>Tracking <input class="form-control" name="TrackingNumber" value="@order.TrackingNumber" /></label>
+                                    <label class="pf-full">Admin Notes <textarea class="form-control" name="AdminNotes" rows="4">@order.AdminNotes</textarea></label>
+                                </div>
+
+                                <div class="pf-order-action-row">
+                                    <a class="pf-secondary-action" href="@order.ReceiptUrl" target="_blank" rel="noreferrer">View Receipt</a>
+                                    <button type="submit" class="pf-action">Save Order</button>
+                                </div>
+                            </form>
+
+                            <form method="post" action="/internal/commerce/orders/receipt" class="pf-order-inline-form">
+                                @Html.AntiForgeryToken()
+                                <input type="hidden" name="orderNumber" value="@order.OrderNumber" />
+                                <button type="submit" class="pf-secondary-action">Resend Receipt</button>
+                            </form>
+
+                            <div class="pf-order-detail-list">
+                                <div>
+                                    <span>Square Payment</span>
+                                    <strong>@(string.IsNullOrWhiteSpace(order.SquarePaymentId) ? "Not captured" : order.SquarePaymentId)</strong>
+                                </div>
+                                @if (!string.IsNullOrWhiteSpace(order.SquareError))
+                                {
+                                    <div>
+                                        <span>Square Error</span>
+                                        <strong>@order.SquareError</strong>
+                                    </div>
+                                }
+                            </div>
+                        </section>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+}
+
+<script>
+    (() => {
+        const openModal = id => {
+            const modal = document.getElementById(id);
+            if (!modal) return;
+            modal.classList.add("is-open");
+            modal.setAttribute("aria-hidden", "false");
+            document.body.style.overflow = "hidden";
+        };
+
+        const closeModal = modal => {
+            if (!modal) return;
+            modal.classList.remove("is-open");
+            modal.setAttribute("aria-hidden", "true");
+
+            if (!document.querySelector(".pf-order-modal.is-open")) {
+                document.body.style.overflow = "";
+            }
+        };
+
+        document.querySelectorAll("[data-pf-open]").forEach(button => {
+            button.addEventListener("click", () => openModal(button.getAttribute("data-pf-open")));
+        });
+
+        document.querySelectorAll("[data-pf-close]").forEach(button => {
+            button.addEventListener("click", () => closeModal(button.closest(".pf-order-modal")));
+        });
+
+        document.querySelectorAll(".pf-order-modal").forEach(modal => {
+            modal.addEventListener("click", event => {
+                if (event.target === modal) closeModal(modal);
+            });
+        });
+
+        document.addEventListener("keydown", event => {
+            if (event.key !== "Escape") return;
+            const modals = [...document.querySelectorAll(".pf-order-modal.is-open")];
+            closeModal(modals.at(-1));
+        });
+    })();
+</script>
+
+<script>
+    (() => {
+        const syncMoneyInput = input => {
+            const hidden = input.parentElement?.querySelector(".pf-money-hidden");
+            if (!hidden) return;
+
+            hidden.value = Math.round(Number(input.value || 0) * 100).toString();
+        };
+
+        document.querySelectorAll(".pf-money-display").forEach(input => {
+            const form = input.closest("form");
+            input.addEventListener("input", () => syncMoneyInput(input));
+            form?.addEventListener("submit", () => syncMoneyInput(input));
+            syncMoneyInput(input);
+        });
+    })();
+</script>

@@ -33,7 +33,8 @@ public sealed class ParfaitInternalWorkspaceService
         var analytics = await analyticsTask;
 
         var paidOrders = orders
-            .Where(order => string.Equals(order.PaymentStatus, "Paid", StringComparison.OrdinalIgnoreCase))
+            .Where(order => string.Equals(order.PaymentStatus, "Paid", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(order.PaymentStatus, "Refunded", StringComparison.OrdinalIgnoreCase))
             .ToList();
         var pendingOrders = orders
             .Where(order => string.Equals(order.PaymentStatus, "Pending", StringComparison.OrdinalIgnoreCase))
@@ -42,7 +43,7 @@ public sealed class ParfaitInternalWorkspaceService
             .Where(order => string.Equals(order.PaymentStatus, "Failed", StringComparison.OrdinalIgnoreCase))
             .ToList();
         var openFulfillmentOrders = orders
-            .Where(order => !string.Equals(order.FulfillmentStatus, "Fulfilled", StringComparison.OrdinalIgnoreCase))
+            .Where(order => order.IsFulfillmentOpen)
             .ToList();
 
         var customersByEmail = orders
@@ -67,14 +68,14 @@ public sealed class ParfaitInternalWorkspaceService
             FeaturedProductCount = products.Count(product => product.IsFeatured),
             ProductImageCount = products.Sum(product => product.Images.Count),
             OrderCount = orders.Count,
-            PaidOrderCount = paidOrders.Count,
+            PaidOrderCount = paidOrders.Count(order => string.Equals(order.PaymentStatus, "Paid", StringComparison.OrdinalIgnoreCase)),
             PendingOrderCount = pendingOrders.Count,
             FailedOrderCount = failedOrders.Count,
             OpenFulfillmentCount = openFulfillmentOrders.Count,
             CustomerCount = customersByEmail.Count,
             RepeatCustomerCount = customersByEmail.Count(group => group.Count() > 1),
-            RevenueCents = paidOrders.Sum(order => order.TotalCents),
-            AverageOrderValueCents = paidOrders.Count == 0 ? 0 : (int)Math.Round(paidOrders.Average(order => order.TotalCents)),
+            RevenueCents = _orders.SumNetRevenueCents(orders),
+            AverageOrderValueCents = _orders.CalculateAverageNetOrderValueCents(orders),
             LatestOrderUtc = orders.Count == 0 ? null : orders.Max(order => order.CreatedUtc),
             Visitors = analytics.Visitors,
             Sessions = analytics.Sessions,

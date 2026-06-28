@@ -122,7 +122,7 @@ public sealed class ParfaitProductService
                 availabilityLabel = "Hidden";
                 issue = $"{product.Name} {selectedSize.Size} is hidden.";
             }
-            else if (selectedSize.TrackInventory && selectedSize.StockQuantity <= 0)
+            else if (selectedSize.StockQuantity <= 0)
             {
                 effectiveQuantity = 0;
                 isAvailable = false;
@@ -130,7 +130,7 @@ public sealed class ParfaitProductService
                 availabilityLabel = "Sold Out";
                 issue = $"{product.Name} {selectedSize.Size} is sold out.";
             }
-            else if (selectedSize.TrackInventory && requestedQuantity > selectedSize.StockQuantity)
+            else if (requestedQuantity > selectedSize.StockQuantity)
             {
                 effectiveQuantity = selectedSize.StockQuantity;
                 isAvailable = effectiveQuantity > 0;
@@ -159,7 +159,7 @@ public sealed class ParfaitProductService
                     ?? product.Images.OrderBy(image => image.DisplayOrder).FirstOrDefault()?.ImageUrl
                     ?? "/images/favicon/parfait-logo.png",
                 IsAvailable = isAvailable,
-                IsLowStock = selectedSize.IsLowStock || (selectedSize.TrackInventory && effectiveQuantity > 0 && effectiveQuantity <= Math.Max(1, selectedSize.LowStockThreshold)),
+                IsLowStock = selectedSize.IsLowStock || (effectiveQuantity > 0 && effectiveQuantity <= Math.Max(1, selectedSize.LowStockThreshold)),
                 AvailabilityTone = availabilityTone,
                 AvailabilityLabel = availabilityLabel,
                 Issue = string.IsNullOrWhiteSpace(issue) ? null : issue
@@ -448,7 +448,7 @@ public sealed class ParfaitProductService
             var size = product.InventoryBySize.FirstOrDefault(existing =>
                 string.Equals(existing.Size, ParfaitProductCatalogDefaults.NormalizeSize(item.Size), StringComparison.OrdinalIgnoreCase));
 
-            if (size is null || !size.TrackInventory)
+            if (size is null)
             {
                 continue;
             }
@@ -534,7 +534,6 @@ public sealed class ParfaitProductService
                     Id = size.Id,
                     Size = size.Size,
                     IsEnabled = size.IsEnabled,
-                    TrackInventory = size.TrackInventory,
                     StockQuantity = Math.Max(size.StockQuantity, 0),
                     LowStockThreshold = Math.Max(1, size.LowStockThreshold),
                     DisplayOrder = size.DisplayOrder
@@ -608,7 +607,6 @@ public sealed class ParfaitProductService
                 Id = string.IsNullOrWhiteSpace(size.Id) ? Guid.NewGuid().ToString("N") : size.Id,
                 Size = ParfaitProductCatalogDefaults.NormalizeSize(size.Size),
                 IsEnabled = size.IsEnabled,
-                TrackInventory = size.TrackInventory,
                 StockQuantity = Math.Max(0, size.StockQuantity),
                 LowStockThreshold = Math.Max(1, size.LowStockThreshold),
                 DisplayOrder = size.DisplayOrder
@@ -628,7 +626,6 @@ public sealed class ParfaitProductService
                 Size = standard.Size,
                 DisplayOrder = (standard.Index + 1) * 10,
                 IsEnabled = true,
-                TrackInventory = false,
                 StockQuantity = 0,
                 LowStockThreshold = 3
             });
