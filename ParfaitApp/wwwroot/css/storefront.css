@@ -283,14 +283,13 @@ body.sp-body {
     display: flex;
     align-items: center;
     justify-content: center;
-    gap: 1rem;
     padding-top: 0;
 }
 
-.sp-shop-price-stack,
-.sp-product-price-stack {
+.sp-shop-price-stack {
     display: grid;
     gap: 0.2rem;
+    justify-items: center;
 }
 
 .sp-shop-price,
@@ -318,7 +317,6 @@ body.sp-body {
     text-transform: uppercase;
 }
 
-.sp-shop-stock-pill,
 .sp-stock-pill {
     display: inline-flex;
     align-items: center;
@@ -331,37 +329,30 @@ body.sp-body {
     font-weight: var(--sp-weight-bold);
     letter-spacing: 0.1em;
     text-transform: uppercase;
-}
-
-.sp-shop-stock-pill.is-success,
 .sp-stock-pill.is-success {
     border-color: rgba(42, 123, 73, 0.25);
     background: rgba(223, 242, 229, 0.92);
     color: #24583a;
 }
 
-.sp-shop-stock-pill.is-warning,
 .sp-stock-pill.is-warning {
     border-color: rgba(180, 111, 22, 0.25);
     background: rgba(255, 241, 221, 0.94);
     color: #885415;
 }
 
-.sp-shop-stock-pill.is-danger,
 .sp-stock-pill.is-danger {
     border-color: rgba(180, 47, 47, 0.24);
     background: rgba(255, 232, 232, 0.94);
     color: #8a2b2b;
 }
 
-.sp-shop-stock-pill.is-info,
 .sp-stock-pill.is-info {
     border-color: rgba(44, 98, 193, 0.22);
     background: rgba(231, 238, 252, 0.94);
     color: #294e96;
 }
 
-.sp-shop-stock-pill.is-muted,
 .sp-stock-pill.is-muted {
     border-color: rgba(146, 105, 80, 0.18);
     background: rgba(244, 237, 229, 0.94);
@@ -543,28 +534,112 @@ body.sp-body {
     text-transform: uppercase;
 }
 
-.sp-product-description {
-    margin: 0 0 0.9rem;
-    color: rgba(43, 28, 22, 0.72);
-    font-size: 0.95rem;
-    line-height: 1.55;
-    font-weight: var(--sp-weight-medium);
-    text-align: left;
+.sp-product-price-stack {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: flex-end;
+    justify-content: center;
+    gap: 0.35rem 0.9rem;
+    margin: 0.15rem 0 0.2rem;
 }
 
 .sp-product-price {
-    text-align: left;
+    color: var(--sp-cocoa-900);
+    font-family: var(--sp-font-display);
+    font-size: clamp(2.35rem, 4.4vw, 3.85rem);
+    font-weight: var(--sp-weight-black);
+    letter-spacing: -0.08em;
+    line-height: 0.9;
+    text-align: center;
+}
+
+.sp-product-compare-price {
+    align-self: center;
+    font-size: 1rem;
+    letter-spacing: 0.02em;
 }
 
 .sp-product-stock-strip {
     display: flex;
     flex-wrap: wrap;
     align-items: center;
+    justify-content: center;
     gap: 0.65rem;
-    margin: 0.4rem 0 0.85rem;
+    margin: 0.2rem 0 0.75rem;
 }
 
-.sp-product-stock-copy,
+.sp-product-story {
+    display: grid;
+    gap: 0.75rem;
+    margin: 0 0 0.95rem;
+}
+
+.sp-product-story-lead,
+.sp-product-story-copy,
+.sp-product-care-copy {
+    margin: 0;
+    text-align: left;
+}
+
+.sp-product-story-lead {
+    color: var(--sp-cocoa-900);
+    font-family: var(--sp-font-display);
+    font-size: 1.02rem;
+    font-style: italic;
+    font-weight: var(--sp-weight-bold);
+    letter-spacing: 0.01em;
+    line-height: 1.48;
+}
+
+.sp-product-story-copy,
+.sp-product-care-copy {
+    color: rgba(43, 28, 22, 0.76);
+    font-size: 0.9rem;
+    font-weight: var(--sp-weight-medium);
+    line-height: 1.6;
+}
+
+.sp-product-story-section {
+    display: grid;
+    gap: 0.45rem;
+    padding-top: 0.05rem;
+}
+
+.sp-product-story-section--care {
+    padding: 0.8rem 0.9rem;
+    border: 1px solid rgba(146, 105, 80, 0.18);
+    border-radius: 18px;
+    background: linear-gradient(180deg, rgba(255, 255, 255, 0.92), rgba(247, 240, 233, 0.82));
+}
+
+.sp-product-story-label {
+    color: var(--sp-cocoa-700);
+    font-size: 0.68rem;
+    font-weight: var(--sp-weight-bold);
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+}
+
+.sp-product-feature-grid {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.45rem;
+}
+
+.sp-product-feature-chip {
+    display: inline-flex;
+    align-items: center;
+    min-height: 34px;
+    padding: 0.5rem 0.8rem;
+    border: 1px solid rgba(146, 105, 80, 0.2);
+    border-radius: 999px;
+    background: linear-gradient(180deg, rgba(255, 255, 255, 0.92), rgba(247, 240, 233, 0.86));
+    color: var(--sp-cocoa-800);
+    font-size: 0.74rem;
+    font-weight: var(--sp-weight-semibold);
+    line-height: 1.25;
+}
+
 .sp-cart-issue {
     margin: 0;
     color: rgba(43, 28, 22, 0.66);
@@ -1019,6 +1094,104 @@ body.sp-body {
     gap: 0.55rem;
     justify-content: center;
     margin-top: 1rem;
+}
+
+@media (min-width: 1181px) {
+    .sp-store-page {
+        padding-top: 0.1rem;
+    }
+
+    .sp-product-shell {
+        grid-template-columns: minmax(0, 1.08fr) minmax(380px, 0.72fr);
+        gap: 0.85rem;
+        align-items: stretch;
+        min-height: calc(100vh - var(--pf-header-offset, 108px) - 1.35rem);
+    }
+
+    .sp-gallery-panel,
+    .sp-product-info-panel {
+        min-height: calc(100vh - var(--pf-header-offset, 108px) - 1.35rem);
+    }
+
+    .sp-gallery-panel {
+        grid-template-rows: minmax(0, 1fr) auto;
+        gap: 0.55rem;
+        padding: 0.9rem;
+    }
+
+    .sp-gallery-stage {
+        min-height: 0;
+        display: grid;
+    }
+
+    .sp-gallery-frame {
+        height: 100%;
+        min-height: 0;
+        aspect-ratio: auto;
+    }
+
+    .sp-product-thumbs {
+        gap: 0.4rem;
+    }
+
+    .sp-product-thumb-button {
+        aspect-ratio: 1 / 0.88;
+    }
+
+    .sp-product-info-panel {
+        display: grid;
+        align-content: center;
+        gap: 0;
+        padding: 1rem 1.05rem;
+    }
+
+    .sp-back-link {
+        margin-bottom: 0.45rem;
+    }
+
+    .sp-product-kicker {
+        margin-bottom: 0.05rem;
+    }
+
+    .sp-product-info-panel h1 {
+        margin: 0.2rem 0 0.18rem;
+        font-size: clamp(1.85rem, 3vw, 2.85rem);
+    }
+
+    .sp-product-story {
+        gap: 0.65rem;
+        margin-bottom: 0.75rem;
+    }
+
+    .sp-product-story-lead {
+        font-size: 0.98rem;
+        line-height: 1.4;
+    }
+
+    .sp-product-story-copy,
+    .sp-product-care-copy {
+        font-size: 0.85rem;
+        line-height: 1.5;
+    }
+
+    .sp-product-feature-grid {
+        gap: 0.4rem;
+    }
+
+    .sp-product-feature-chip {
+        min-height: 32px;
+        padding: 0.42rem 0.72rem;
+        font-size: 0.7rem;
+    }
+
+    .sp-product-size-row {
+        max-width: none;
+        margin-bottom: 0.65rem;
+    }
+
+    .sp-product-actions {
+        margin-top: 0.7rem;
+    }
 }
 
 @media (max-width: 1180px) {

@@ -9,6 +9,44 @@
     var selectedImage = Model.PrimaryImage ?? images.FirstOrDefault();
     var galleryCount = Math.Max(images.Count, 1);
     var defaultSize = Model.DefaultSize;
+    var description = Model.Description?.Trim() ?? "";
+    const string featuresMarker = "Features:";
+    const string careMarker = "Care Instructions:";
+    var featuresIndex = description.IndexOf(featuresMarker, StringComparison.OrdinalIgnoreCase);
+    var careIndex = description.IndexOf(careMarker, StringComparison.OrdinalIgnoreCase);
+    var narrativeEnd = featuresIndex >= 0
+        ? featuresIndex
+        : careIndex >= 0
+            ? careIndex
+            : description.Length;
+    var narrative = description[..Math.Max(narrativeEnd, 0)].Trim();
+    var firstSentenceBreak = narrative.IndexOf(". ", StringComparison.Ordinal);
+    var storyLead = firstSentenceBreak >= 0
+        ? narrative[..(firstSentenceBreak + 1)].Trim()
+        : narrative;
+    var storyCopy = firstSentenceBreak >= 0 && firstSentenceBreak + 2 < narrative.Length
+        ? narrative[(firstSentenceBreak + 2)..].Trim()
+        : "";
+    var featuresStart = featuresIndex >= 0 ? featuresIndex + featuresMarker.Length : -1;
+    var featuresEnd = careIndex > featuresIndex ? careIndex : description.Length;
+    var featuresBlock = featuresStart >= 0 && featuresEnd >= featuresStart
+        ? description[featuresStart..featuresEnd].Trim()
+        : "";
+    var featureItems = (featuresBlock.Contains('•') ? featuresBlock.Split('•') : [featuresBlock])
+        .Select(item => item.Trim().TrimStart('-', '*', ' '))
+        .Where(item => !string.IsNullOrWhiteSpace(item))
+        .ToList();
+    var careStart = careIndex >= 0 ? careIndex + careMarker.Length : -1;
+    var careCopy = careStart >= 0 && careStart <= description.Length
+        ? description[careStart..].Trim()
+        : "";
+    var defaultAvailabilityLabel = defaultSize is null
+        ? Model.AvailabilityLabel
+        : !defaultSize.CanPurchase
+            ? $"No {defaultSize.Size} In Stock"
+            : defaultSize.IsLowStock
+                ? $"{defaultSize.StockQuantity} {defaultSize.Size} Left"
+                : $"{defaultSize.StockQuantity} {defaultSize.Size} In Stock";
     var sizePayload = Model.Sizes
         .OrderBy(size => size.DisplayOrder)
         .Select(size => new
@@ -16,8 +54,7 @@
             size.Size,
             size.StockQuantity,
             size.CanPurchase,
-            size.StatusTone,
-            size.StatusLabel
+            size.StatusTone
         })
         .ToList();
 }
@@ -97,14 +134,41 @@
             </div>
 
             <div class="sp-product-stock-strip">
-                <span class="sp-stock-pill is-@Model.AvailabilityTone" id="spProductAvailability">@((defaultSize?.StatusLabel) ?? Model.AvailabilityLabel)</span>
-                @if (Model.HasTrackedInventory)
-                {
-                    <span class="sp-product-stock-copy" id="spProductStockCopy">Select the size that matches your stock view.</span>
-                }
+                <span class="sp-stock-pill is-@Model.AvailabilityTone" id="spProductAvailability">@defaultAvailabilityLabel</span>
             </div>
 
-            <p class="sp-product-description">@Model.Description</p>
+            <div class="sp-product-story" aria-label="Product details">
+                @if (!string.IsNullOrWhiteSpace(storyLead))
+                {
+                    <p class="sp-product-story-lead">@storyLead</p>
+                }
+
+                @if (!string.IsNullOrWhiteSpace(storyCopy))
+                {
+                    <p class="sp-product-story-copy">@storyCopy</p>
+                }
+
+                @if (featureItems.Count > 0)
+                {
+                    <section class="sp-product-story-section">
+                        <div class="sp-product-story-label">Features</div>
+                        <div class="sp-product-feature-grid">
+                            @foreach (var feature in featureItems)
+                            {
+                                <span class="sp-product-feature-chip">@feature</span>
+                            }
+                        </div>
+                    </section>
+                }
+
+                @if (!string.IsNullOrWhiteSpace(careCopy))
+                {
+                    <section class="sp-product-story-section sp-product-story-section--care">
+                        <div class="sp-product-story-label">Care</div>
+                        <p class="sp-product-care-copy">@careCopy</p>
+                    </section>
+                }
+            </div>
 
             <div class="sp-product-size-row">
                 <label class="sp-size-label" for="productSize">Size</label>
@@ -112,9 +176,8 @@
                     @foreach (var size in Model.Sizes.OrderBy(size => size.DisplayOrder))
                     {
                         <option value="@size.Size"
-                                selected="@(defaultSize?.Size == size.Size)"
-                                disabled="@(!size.CanPurchase)">
-                            @size.Size · @size.StatusLabel
+                                selected="@(defaultSize?.Size == size.Size)">
+                            @size.Size
                         </option>
                     }
                 </select>
@@ -161,7 +224,6 @@
             const addButton = document.getElementById("spAddToCart");
             const sizeSelect = document.getElementById("productSize");
             const availability = document.getElementById("spProductAvailability");
-            const stockCopy = document.getElementById("spProductStockCopy");
             const sizes = @Html.Raw(System.Text.Json.JsonSerializer.Serialize(
                 sizePayload,
                 new System.Text.Json.JsonSerializerOptions { PropertyNamingPolicy = System.Text.Json.JsonNamingPolicy.CamelCase }));
@@ -199,17 +261,11 @@
 
                 availability.classList.remove("is-success", "is-warning", "is-danger", "is-info", "is-muted");
                 availability.classList.add(`is-${current.statusTone}`);
-                availability.textContent = current.statusLabel;
-
-                if (stockCopy) {
-                    if (!current.canPurchase) {
-                        stockCopy.textContent = "This size is sold out right now.";
-                    } else if (current.statusTone === "warning") {
-                        stockCopy.textContent = `Only ${current.stockQuantity} left in ${current.size}.`;
-                    } else {
-                        stockCopy.textContent = `${current.stockQuantity} units ready in ${current.size}.`;
-                    }
-                }
+                availability.textContent = !current.canPurchase
+                    ? `No ${current.size} In Stock`
+                    : current.statusTone === "warning"
+                        ? `${current.stockQuantity} ${current.size} Left`
+                        : `${current.stockQuantity} ${current.size} In Stock`;
 
                 addButton.disabled = !current.canPurchase;
                 addButton.textContent = current.canPurchase
