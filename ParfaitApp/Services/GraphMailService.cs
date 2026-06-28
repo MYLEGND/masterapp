@@ -180,6 +180,7 @@ $@"
   <div style='padding:14px 16px;border:1px solid #926950;border-radius:14px;background:#fff;'>
     <p style='margin:0 0 8px;'><strong>Order Number:</strong> {enc.Encode(order.OrderNumber)}</p>
     <p style='margin:0 0 8px;'><strong>Payment Status:</strong> {enc.Encode(order.PaymentStatus)}</p>
+    {(order.DiscountCents > 0 ? $"<p style='margin:0 0 8px;'><strong>Discount:</strong> -{Money(order.DiscountCents)}{(string.IsNullOrWhiteSpace(order.DiscountCode) ? "" : $" ({enc.Encode(order.DiscountCode)})")}</p>" : "")}
     <p style='margin:0;'><strong>Total:</strong> {Money(order.TotalCents)}</p>
   </div>
 
@@ -231,6 +232,7 @@ $@"
     <p style='margin:0 0 8px;'><strong>Customer:</strong> {enc.Encode(order.FirstName)} {enc.Encode(order.LastName)}</p>
     <p style='margin:0 0 8px;'><strong>Email:</strong> {enc.Encode(order.Email)}</p>
     <p style='margin:0 0 8px;'><strong>Phone:</strong> {enc.Encode(order.Phone)}</p>
+    {(order.DiscountCents > 0 ? $"<p style='margin:0 0 8px;'><strong>Discount:</strong> -{Money(order.DiscountCents)}{(string.IsNullOrWhiteSpace(order.DiscountCode) ? "" : $" ({enc.Encode(order.DiscountCode)})")}</p>" : "")}
     <p style='margin:0 0 8px;'><strong>Total:</strong> {Money(order.TotalCents)}</p>
     <p style='margin:0;'><strong>Square Payment:</strong> {enc.Encode(order.SquarePaymentId ?? "")}</p>
   </div>

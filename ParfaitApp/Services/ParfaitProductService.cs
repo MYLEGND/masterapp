@@ -12,11 +12,13 @@ public sealed class ParfaitProductService
     };
 
     private readonly IWebHostEnvironment _environment;
+    private readonly ParfaitOrderService _orders;
     private readonly object _lock = new();
 
-    public ParfaitProductService(IWebHostEnvironment environment)
+    public ParfaitProductService(IWebHostEnvironment environment, ParfaitOrderService orders)
     {
         _environment = environment;
+        _orders = orders;
     }
 
     private string DataPath => Path.Combine(_environment.ContentRootPath, "App_Data", "parfait-products.json");
@@ -29,49 +31,207 @@ public sealed class ParfaitProductService
         lock (_lock)
         {
             var json = File.ReadAllText(DataPath);
-            return JsonSerializer.Deserialize<List<ParfaitProductEditorViewModel>>(json) ?? [];
+            var products = JsonSerializer.Deserialize<List<ParfaitProductEditorViewModel>>(json) ?? [];
+            return products
+                .Select(product => NormalizeProduct(product))
+                .OrderBy(product => product.DisplayOrder)
+                .ThenBy(product => product.Name)
+                .ToList();
         }
     }
 
     public IReadOnlyList<ParfaitStoreProductViewModel> GetActiveStoreProducts()
     {
         return GetAllProducts()
-            .Where(p => p.IsActive)
-            .OrderBy(p => p.DisplayOrder)
-            .ThenBy(p => p.Name)
-            .Select(p => new ParfaitStoreProductViewModel
-            {
-                Id = p.Id,
-                Name = p.Name,
-                Slug = p.Slug,
-                Description = p.Description,
-                PriceLabel = p.PriceCents > 0 ? $"${p.PriceCents / 100m:0.00}" : p.PriceLabel,
-                PriceCents = p.PriceCents,
-                Badge = p.Badge,
-                IsFeatured = p.IsFeatured,
-                Images = p.Images
-                    .OrderBy(i => i.DisplayOrder)
-                    .Select(i => new ParfaitStoreProductImageViewModel
-                    {
-                        Id = i.Id,
-                        ImageUrl = i.ImageUrl,
-                        AltText = i.AltText,
-                        IsPrimary = i.IsPrimary,
-                        DisplayOrder = i.DisplayOrder,
-                        ObjectFit = string.IsNullOrWhiteSpace(i.ObjectFit) ? "cover" : i.ObjectFit,
-                        ObjectPositionX = i.ObjectPositionX,
-                        ObjectPositionY = i.ObjectPositionY,
-                        Zoom = i.Zoom <= 0 ? 1.0m : i.Zoom
-                    })
-                    .ToList()
-            })
+            .Where(product => product.IsActive)
+            .OrderBy(product => product.DisplayOrder)
+            .ThenBy(product => product.Name)
+            .Select(MapStoreProduct)
             .ToList();
+    }
+
+    public ParfaitStoreProductViewModel? GetActiveStoreProductBySlug(string slug)
+    {
+        return GetActiveStoreProducts()
+            .FirstOrDefault(product => string.Equals(product.Slug, slug, StringComparison.OrdinalIgnoreCase));
+    }
+
+    public ParfaitStoreProductViewModel? GetActiveStoreProductById(string id)
+    {
+        return GetActiveStoreProducts()
+            .FirstOrDefault(product => string.Equals(product.Id, id, StringComparison.OrdinalIgnoreCase));
+    }
+
+    public ParfaitCartQuoteResponse QuoteCart(IReadOnlyList<ParfaitCheckoutItemRequest> cartItems, string? discountCode)
+    {
+        var products = GetAllProducts()
+            .Where(product => product.IsActive)
+            .ToDictionary(product => product.Id, StringComparer.OrdinalIgnoreCase);
+
+        var quote = new ParfaitCartQuoteResponse
+        {
+            Success = true,
+            IsValid = true,
+            DiscountCode = string.IsNullOrWhiteSpace(discountCode)
+                ? null
+                : ParfaitProductCatalogDefaults.NormalizeDiscountCode(discountCode)
+        };
+
+        foreach (var item in cartItems)
+        {
+            if (string.IsNullOrWhiteSpace(item.Id))
+            {
+                continue;
+            }
+
+            if (!products.TryGetValue(item.Id.Trim(), out var product) || product.PriceCents <= 0)
+            {
+                quote.Messages.Add("A product in the cart is no longer available.");
+                quote.IsValid = false;
+                continue;
+            }
+
+            var requestedQuantity = Math.Clamp(item.Quantity, 1, 20);
+            var normalizedSize = ParfaitProductCatalogDefaults.NormalizeSize(item.Size);
+            var selectedSize = string.IsNullOrWhiteSpace(normalizedSize)
+                ? product.InventoryBySize
+                    .OrderBy(size => size.DisplayOrder)
+                    .FirstOrDefault(size => size.IsEnabled)
+                : product.InventoryBySize
+                    .OrderBy(size => size.DisplayOrder)
+                    .FirstOrDefault(size => string.Equals(size.Size, normalizedSize, StringComparison.OrdinalIgnoreCase));
+
+            if (selectedSize is null)
+            {
+                quote.Messages.Add($"{product.Name} no longer offers the selected size.");
+                quote.IsValid = false;
+                continue;
+            }
+
+            var effectiveQuantity = requestedQuantity;
+            var issue = "";
+            var isAvailable = true;
+            var availabilityTone = selectedSize.StatusTone;
+            var availabilityLabel = selectedSize.StatusLabel;
+
+            if (!selectedSize.IsEnabled)
+            {
+                effectiveQuantity = 0;
+                isAvailable = false;
+                availabilityTone = "muted";
+                availabilityLabel = "Hidden";
+                issue = $"{product.Name} {selectedSize.Size} is hidden.";
+            }
+            else if (selectedSize.TrackInventory && selectedSize.StockQuantity <= 0)
+            {
+                effectiveQuantity = 0;
+                isAvailable = false;
+                availabilityTone = "danger";
+                availabilityLabel = "Sold Out";
+                issue = $"{product.Name} {selectedSize.Size} is sold out.";
+            }
+            else if (selectedSize.TrackInventory && requestedQuantity > selectedSize.StockQuantity)
+            {
+                effectiveQuantity = selectedSize.StockQuantity;
+                isAvailable = effectiveQuantity > 0;
+                availabilityTone = effectiveQuantity <= Math.Max(1, selectedSize.LowStockThreshold) ? "warning" : "success";
+                availabilityLabel = effectiveQuantity > 0 ? $"{effectiveQuantity} Left" : "Sold Out";
+                issue = effectiveQuantity > 0
+                    ? $"{product.Name} {selectedSize.Size} was adjusted to {effectiveQuantity} available."
+                    : $"{product.Name} {selectedSize.Size} is sold out.";
+            }
+
+            var line = new ParfaitCartLineQuote
+            {
+                Key = $"{product.Id}:{selectedSize.Size}",
+                Id = product.Id,
+                Name = product.Name,
+                Slug = product.Slug,
+                Size = selectedSize.Size,
+                Badge = product.Badge,
+                RequestedQuantity = requestedQuantity,
+                Quantity = effectiveQuantity,
+                UnitPriceCents = product.PriceCents,
+                CompareAtPriceCents = product.CompareAtPriceCents,
+                ImageUrl = product.Images
+                    .OrderBy(image => image.DisplayOrder)
+                    .FirstOrDefault(image => image.IsPrimary)?.ImageUrl
+                    ?? product.Images.OrderBy(image => image.DisplayOrder).FirstOrDefault()?.ImageUrl
+                    ?? "/images/favicon/parfait-logo.png",
+                IsAvailable = isAvailable,
+                IsLowStock = selectedSize.IsLowStock || (selectedSize.TrackInventory && effectiveQuantity > 0 && effectiveQuantity <= Math.Max(1, selectedSize.LowStockThreshold)),
+                AvailabilityTone = availabilityTone,
+                AvailabilityLabel = availabilityLabel,
+                Issue = string.IsNullOrWhiteSpace(issue) ? null : issue
+            };
+
+            quote.Items.Add(line);
+
+            if (!string.IsNullOrWhiteSpace(issue))
+            {
+                quote.Messages.Add(issue);
+                quote.IsValid = false;
+            }
+        }
+
+        if (quote.Items.Count == 0 || quote.Items.All(item => item.Quantity <= 0))
+        {
+            quote.IsValid = false;
+            quote.Error = "No valid cart items were found.";
+            quote.Messages.Add("No valid cart items were found.");
+            quote.Messages = quote.Messages.Distinct(StringComparer.OrdinalIgnoreCase).ToList();
+            return quote;
+        }
+
+        quote.SubtotalCents = quote.Items.Sum(item => item.LineTotalCents);
+        quote.ItemCount = quote.Items.Sum(item => item.Quantity);
+
+        if (!string.IsNullOrWhiteSpace(quote.DiscountCode))
+        {
+            var discountMatches = quote.Items
+                .Where(item => item.Quantity > 0)
+                .Select(item => new
+                {
+                    Item = item,
+                    Discount = FindActiveDiscount(products[item.Id], quote.DiscountCode!)
+                })
+                .Where(match => match.Discount is not null)
+                .ToList();
+
+            if (discountMatches.Count == 0)
+            {
+                quote.IsValid = false;
+                quote.Messages.Add("Discount code is not available for the current cart.");
+            }
+            else
+            {
+                var firstMatch = discountMatches[0].Discount!;
+                quote.DiscountLabel = firstMatch.SummaryLabel;
+                quote.DiscountCents = discountMatches.Sum(match => CalculateDiscountCents(match.Item.LineTotalCents, match.Discount!));
+                quote.DiscountCents = Math.Min(quote.DiscountCents, quote.SubtotalCents);
+            }
+        }
+
+        quote.ShippingCents = 0;
+        quote.TaxCents = 0;
+        quote.TotalCents = Math.Max(0, quote.SubtotalCents - quote.DiscountCents + quote.ShippingCents + quote.TaxCents);
+        quote.Messages = quote.Messages
+            .Where(message => !string.IsNullOrWhiteSpace(message))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
+        if (!quote.IsValid && string.IsNullOrWhiteSpace(quote.Error))
+        {
+            quote.Error = quote.Messages.FirstOrDefault() ?? "The cart needs attention before checkout.";
+        }
+
+        return quote;
     }
 
     public void SaveProduct(ParfaitProductEditorViewModel product)
     {
         var products = GetAllProducts().ToList();
-        var existingIndex = products.FindIndex(p => p.Id == product.Id);
+        var existingIndex = products.FindIndex(existing => existing.Id == product.Id);
         var existingImages = existingIndex >= 0 ? products[existingIndex].Images : [];
 
         var normalized = NormalizeProduct(product, existingImages);
@@ -91,7 +251,7 @@ public sealed class ParfaitProductService
     public void DeleteProduct(string id)
     {
         var products = GetAllProducts().ToList();
-        var product = products.FirstOrDefault(p => string.Equals(p.Id, id, StringComparison.OrdinalIgnoreCase));
+        var product = products.FirstOrDefault(existing => string.Equals(existing.Id, id, StringComparison.OrdinalIgnoreCase));
 
         if (product is not null)
         {
@@ -102,7 +262,7 @@ public sealed class ParfaitProductService
             }
         }
 
-        SaveAll(products.Where(p => !string.Equals(p.Id, id, StringComparison.OrdinalIgnoreCase)).ToList());
+        SaveAll(products.Where(product => !string.Equals(product.Id, id, StringComparison.OrdinalIgnoreCase)).ToList());
     }
 
     public async Task UploadImagesAsync(string productId, IReadOnlyList<IFormFile> files)
@@ -113,7 +273,7 @@ public sealed class ParfaitProductService
         }
 
         var products = GetAllProducts().ToList();
-        var product = products.FirstOrDefault(p => string.Equals(p.Id, productId, StringComparison.OrdinalIgnoreCase));
+        var product = products.FirstOrDefault(existing => string.Equals(existing.Id, productId, StringComparison.OrdinalIgnoreCase));
 
         if (product is null)
         {
@@ -123,9 +283,9 @@ public sealed class ParfaitProductService
         var productFolder = Path.Combine(UploadRoot, product.Id);
         Directory.CreateDirectory(productFolder);
 
-        var nextOrder = product.Images.Count == 0 ? 10 : product.Images.Max(i => i.DisplayOrder) + 10;
+        var nextOrder = product.Images.Count == 0 ? 10 : product.Images.Max(image => image.DisplayOrder) + 10;
 
-        foreach (var file in files.Where(f => f.Length > 0))
+        foreach (var file in files.Where(file => file.Length > 0))
         {
             var extension = Path.GetExtension(file.FileName);
 
@@ -167,14 +327,14 @@ public sealed class ParfaitProductService
     public void DeleteImage(string productId, string imageId)
     {
         var products = GetAllProducts().ToList();
-        var product = products.FirstOrDefault(p => string.Equals(p.Id, productId, StringComparison.OrdinalIgnoreCase));
+        var product = products.FirstOrDefault(existing => string.Equals(existing.Id, productId, StringComparison.OrdinalIgnoreCase));
 
         if (product is null)
         {
             return;
         }
 
-        var image = product.Images.FirstOrDefault(i => string.Equals(i.Id, imageId, StringComparison.OrdinalIgnoreCase));
+        var image = product.Images.FirstOrDefault(existing => string.Equals(existing.Id, imageId, StringComparison.OrdinalIgnoreCase));
 
         if (image is null)
         {
@@ -196,7 +356,7 @@ public sealed class ParfaitProductService
     public void SetPrimaryImage(string productId, string imageId)
     {
         var products = GetAllProducts().ToList();
-        var product = products.FirstOrDefault(p => string.Equals(p.Id, productId, StringComparison.OrdinalIgnoreCase));
+        var product = products.FirstOrDefault(existing => string.Equals(existing.Id, productId, StringComparison.OrdinalIgnoreCase));
 
         if (product is null)
         {
@@ -214,15 +374,15 @@ public sealed class ParfaitProductService
     public void MoveImage(string productId, string imageId, string direction)
     {
         var products = GetAllProducts().ToList();
-        var product = products.FirstOrDefault(p => string.Equals(p.Id, productId, StringComparison.OrdinalIgnoreCase));
+        var product = products.FirstOrDefault(existing => string.Equals(existing.Id, productId, StringComparison.OrdinalIgnoreCase));
 
         if (product is null)
         {
             return;
         }
 
-        var ordered = product.Images.OrderBy(i => i.DisplayOrder).ToList();
-        var index = ordered.FindIndex(i => string.Equals(i.Id, imageId, StringComparison.OrdinalIgnoreCase));
+        var ordered = product.Images.OrderBy(image => image.DisplayOrder).ToList();
+        var index = ordered.FindIndex(image => string.Equals(image.Id, imageId, StringComparison.OrdinalIgnoreCase));
 
         if (index < 0)
         {
@@ -239,21 +399,20 @@ public sealed class ParfaitProductService
         }
 
         (ordered[index].DisplayOrder, ordered[swapIndex].DisplayOrder) = (ordered[swapIndex].DisplayOrder, ordered[index].DisplayOrder);
-
         SaveAll(products);
     }
 
     public void SaveImageDisplaySettings(string productId, string imageId, string objectFit, int objectPositionX, int objectPositionY, decimal zoom)
     {
         var products = GetAllProducts().ToList();
-        var product = products.FirstOrDefault(p => string.Equals(p.Id, productId, StringComparison.OrdinalIgnoreCase));
+        var product = products.FirstOrDefault(existing => string.Equals(existing.Id, productId, StringComparison.OrdinalIgnoreCase));
 
         if (product is null)
         {
             return;
         }
 
-        var image = product.Images.FirstOrDefault(i => string.Equals(i.Id, imageId, StringComparison.OrdinalIgnoreCase));
+        var image = product.Images.FirstOrDefault(existing => string.Equals(existing.Id, imageId, StringComparison.OrdinalIgnoreCase));
 
         if (image is null)
         {
@@ -268,12 +427,133 @@ public sealed class ParfaitProductService
         SaveAll(products);
     }
 
+    public void CommitPaidInventory(IReadOnlyList<ParfaitValidatedCartItem> items)
+    {
+        if (items.Count == 0)
+        {
+            return;
+        }
+
+        var products = GetAllProducts().ToList();
+        var updated = false;
+
+        foreach (var item in items)
+        {
+            var product = products.FirstOrDefault(existing => string.Equals(existing.Id, item.Id, StringComparison.OrdinalIgnoreCase));
+            if (product is null)
+            {
+                continue;
+            }
+
+            var size = product.InventoryBySize.FirstOrDefault(existing =>
+                string.Equals(existing.Size, ParfaitProductCatalogDefaults.NormalizeSize(item.Size), StringComparison.OrdinalIgnoreCase));
+
+            if (size is null || !size.TrackInventory)
+            {
+                continue;
+            }
+
+            size.StockQuantity = Math.Max(0, size.StockQuantity - Math.Max(item.Quantity, 0));
+            updated = true;
+        }
+
+        if (updated)
+        {
+            SaveAll(products);
+        }
+    }
+
+    private ParfaitProductDiscountCodeEditorViewModel? FindActiveDiscount(ParfaitProductEditorViewModel product, string code)
+    {
+        return product.DiscountCodes
+            .Select(NormalizeDiscountCode)
+            .FirstOrDefault(discount =>
+                discount.IsActive
+                && string.Equals(discount.Code, code, StringComparison.OrdinalIgnoreCase)
+                && discount.Amount > 0
+                && (discount.UsageLimit <= 0 || GetDiscountUsageCount(discount.Code) < discount.UsageLimit));
+    }
+
+    private int GetDiscountUsageCount(string code)
+    {
+        return _orders.GetAllOrders()
+            .Count(order =>
+                string.Equals(order.PaymentStatus, "Paid", StringComparison.OrdinalIgnoreCase)
+                && string.Equals(order.DiscountCode, code, StringComparison.OrdinalIgnoreCase));
+    }
+
+    private static int CalculateDiscountCents(int subtotalCents, ParfaitProductDiscountCodeEditorViewModel discount)
+    {
+        if (subtotalCents <= 0)
+        {
+            return 0;
+        }
+
+        if (string.Equals(discount.DiscountType, "Fixed", StringComparison.OrdinalIgnoreCase))
+        {
+            return Math.Min(subtotalCents, (int)Math.Round(discount.Amount * 100m, MidpointRounding.AwayFromZero));
+        }
+
+        var percent = Math.Clamp(discount.Amount, 0m, 100m);
+        return Math.Min(subtotalCents, (int)Math.Round(subtotalCents * (percent / 100m), MidpointRounding.AwayFromZero));
+    }
+
+    private static ParfaitStoreProductViewModel MapStoreProduct(ParfaitProductEditorViewModel product)
+    {
+        return new ParfaitStoreProductViewModel
+        {
+            Id = product.Id,
+            Name = product.Name,
+            Slug = product.Slug,
+            Description = product.Description,
+            PriceLabel = product.PriceCents > 0 ? $"${product.PriceCents / 100m:0.00}" : product.PriceLabel,
+            PriceCents = product.PriceCents,
+            CompareAtPriceCents = product.CompareAtPriceCents,
+            Badge = product.Badge,
+            IsFeatured = product.IsFeatured,
+            Images = product.Images
+                .OrderBy(image => image.DisplayOrder)
+                .Select(image => new ParfaitStoreProductImageViewModel
+                {
+                    Id = image.Id,
+                    ImageUrl = image.ImageUrl,
+                    AltText = image.AltText,
+                    IsPrimary = image.IsPrimary,
+                    DisplayOrder = image.DisplayOrder,
+                    ObjectFit = string.IsNullOrWhiteSpace(image.ObjectFit) ? "cover" : image.ObjectFit,
+                    ObjectPositionX = image.ObjectPositionX,
+                    ObjectPositionY = image.ObjectPositionY,
+                    Zoom = image.Zoom <= 0 ? 1.0m : image.Zoom
+                })
+                .ToList(),
+            Sizes = product.InventoryBySize
+                .Where(size => size.IsEnabled)
+                .OrderBy(size => size.DisplayOrder)
+                .Select(size => new ParfaitStoreProductSizeViewModel
+                {
+                    Id = size.Id,
+                    Size = size.Size,
+                    IsEnabled = size.IsEnabled,
+                    TrackInventory = size.TrackInventory,
+                    StockQuantity = Math.Max(size.StockQuantity, 0),
+                    LowStockThreshold = Math.Max(1, size.LowStockThreshold),
+                    DisplayOrder = size.DisplayOrder
+                })
+                .ToList()
+        };
+    }
+
     private static ParfaitProductEditorViewModel NormalizeProduct(
         ParfaitProductEditorViewModel product,
-        IReadOnlyList<ParfaitProductImageEditorViewModel> existingImages)
+        IReadOnlyList<ParfaitProductImageEditorViewModel>? existingImages = null)
     {
         var slug = string.IsNullOrWhiteSpace(product.Slug) ? product.Name : product.Slug;
         slug = slug.Trim().ToLowerInvariant().Replace(" ", "-");
+
+        var normalizedPriceCents = Math.Max(0, product.PriceCents);
+        var normalizedCompareAtCents = product.CompareAtPriceCents > normalizedPriceCents
+            ? Math.Max(0, product.CompareAtPriceCents)
+            : 0;
 
         return new ParfaitProductEditorViewModel
         {
@@ -281,28 +561,133 @@ public sealed class ParfaitProductService
             Name = product.Name.Trim(),
             Slug = slug,
             Description = product.Description.Trim(),
-            PriceLabel = product.PriceCents > 0 ? $"${product.PriceCents / 100m:0.00}" : "Coming Soon",
-            PriceCents = Math.Max(0, product.PriceCents),
+            PriceLabel = normalizedPriceCents > 0 ? $"${normalizedPriceCents / 100m:0.00}" : "Coming Soon",
+            PriceCents = normalizedPriceCents,
+            CompareAtPriceCents = normalizedCompareAtCents,
             Badge = string.IsNullOrWhiteSpace(product.Badge) ? "Parfait" : product.Badge.Trim(),
             IsFeatured = product.IsFeatured,
             IsActive = product.IsActive,
             DisplayOrder = product.DisplayOrder,
-            Images = existingImages
-                .OrderBy(i => i.DisplayOrder)
-                .Select(i => new ParfaitProductImageEditorViewModel
-                {
-                    Id = i.Id,
-                    ImageUrl = i.ImageUrl,
-                    FileName = i.FileName,
-                    AltText = string.IsNullOrWhiteSpace(i.AltText) ? product.Name.Trim() : i.AltText.Trim(),
-                    IsPrimary = i.IsPrimary,
-                    DisplayOrder = i.DisplayOrder,
-                    ObjectFit = string.IsNullOrWhiteSpace(i.ObjectFit) ? "cover" : i.ObjectFit,
-                    ObjectPositionX = i.ObjectPositionX,
-                    ObjectPositionY = i.ObjectPositionY,
-                    Zoom = i.Zoom <= 0 ? 1.0m : i.Zoom
-                })
-                .ToList()
+            Images = NormalizeImages(existingImages ?? product.Images, product.Name),
+            InventoryBySize = NormalizeInventory(product.InventoryBySize),
+            DiscountCodes = NormalizeDiscountCodes(product.DiscountCodes)
+        };
+    }
+
+    private static List<ParfaitProductImageEditorViewModel> NormalizeImages(
+        IReadOnlyList<ParfaitProductImageEditorViewModel>? images,
+        string productName)
+    {
+        var normalized = (images ?? [])
+            .OrderBy(image => image.DisplayOrder)
+            .Select(image => new ParfaitProductImageEditorViewModel
+            {
+                Id = string.IsNullOrWhiteSpace(image.Id) ? Guid.NewGuid().ToString("N") : image.Id,
+                ImageUrl = image.ImageUrl,
+                FileName = image.FileName,
+                AltText = string.IsNullOrWhiteSpace(image.AltText) ? productName.Trim() : image.AltText.Trim(),
+                IsPrimary = image.IsPrimary,
+                DisplayOrder = image.DisplayOrder,
+                ObjectFit = string.IsNullOrWhiteSpace(image.ObjectFit) ? "cover" : image.ObjectFit,
+                ObjectPositionX = image.ObjectPositionX,
+                ObjectPositionY = image.ObjectPositionY,
+                Zoom = image.Zoom <= 0 ? 1.0m : image.Zoom
+            })
+            .ToList();
+
+        var wrapper = new ParfaitProductEditorViewModel { Images = normalized };
+        EnsureOnePrimaryImage(wrapper);
+        return wrapper.Images;
+    }
+
+    private static List<ParfaitProductSizeInventoryEditorViewModel> NormalizeInventory(List<ParfaitProductSizeInventoryEditorViewModel>? inventory)
+    {
+        var incoming = (inventory ?? [])
+            .Select(size => new ParfaitProductSizeInventoryEditorViewModel
+            {
+                Id = string.IsNullOrWhiteSpace(size.Id) ? Guid.NewGuid().ToString("N") : size.Id,
+                Size = ParfaitProductCatalogDefaults.NormalizeSize(size.Size),
+                IsEnabled = size.IsEnabled,
+                TrackInventory = size.TrackInventory,
+                StockQuantity = Math.Max(0, size.StockQuantity),
+                LowStockThreshold = Math.Max(1, size.LowStockThreshold),
+                DisplayOrder = size.DisplayOrder
+            })
+            .Where(size => !string.IsNullOrWhiteSpace(size.Size))
+            .GroupBy(size => size.Size, StringComparer.OrdinalIgnoreCase)
+            .Select(group => group.OrderBy(size => size.DisplayOrder).First())
+            .ToList();
+
+        var normalized = new List<ParfaitProductSizeInventoryEditorViewModel>();
+
+        foreach (var standard in ParfaitProductCatalogDefaults.StandardSizes.Select((size, index) => new { Size = size, Index = index }))
+        {
+            var existing = incoming.FirstOrDefault(size => string.Equals(size.Size, standard.Size, StringComparison.OrdinalIgnoreCase));
+            normalized.Add(existing ?? new ParfaitProductSizeInventoryEditorViewModel
+            {
+                Size = standard.Size,
+                DisplayOrder = (standard.Index + 1) * 10,
+                IsEnabled = true,
+                TrackInventory = false,
+                StockQuantity = 0,
+                LowStockThreshold = 3
+            });
+        }
+
+        var custom = incoming
+            .Where(size => !ParfaitProductCatalogDefaults.StandardSizes.Contains(size.Size, StringComparer.OrdinalIgnoreCase))
+            .OrderBy(size => size.DisplayOrder)
+            .ThenBy(size => size.Size)
+            .ToList();
+
+        var nextOrder = normalized.Count == 0 ? 10 : normalized.Max(size => size.DisplayOrder) + 10;
+        foreach (var size in custom)
+        {
+            size.DisplayOrder = size.DisplayOrder <= 0 ? nextOrder : size.DisplayOrder;
+            normalized.Add(size);
+            nextOrder = Math.Max(nextOrder, size.DisplayOrder) + 10;
+        }
+
+        for (var index = 0; index < normalized.Count; index++)
+        {
+            if (normalized[index].DisplayOrder <= 0)
+            {
+                normalized[index].DisplayOrder = (index + 1) * 10;
+            }
+        }
+
+        return normalized
+            .OrderBy(size => size.DisplayOrder)
+            .ThenBy(size => size.Size)
+            .ToList();
+    }
+
+    private static List<ParfaitProductDiscountCodeEditorViewModel> NormalizeDiscountCodes(List<ParfaitProductDiscountCodeEditorViewModel>? codes)
+    {
+        return (codes ?? [])
+            .Select(NormalizeDiscountCode)
+            .Where(code => !string.IsNullOrWhiteSpace(code.Code) && code.Amount > 0)
+            .GroupBy(code => code.Code, StringComparer.OrdinalIgnoreCase)
+            .Select(group => group.First())
+            .OrderBy(code => code.Code)
+            .ToList();
+    }
+
+    private static ParfaitProductDiscountCodeEditorViewModel NormalizeDiscountCode(ParfaitProductDiscountCodeEditorViewModel code)
+    {
+        var discountType = string.Equals(code.DiscountType, "Fixed", StringComparison.OrdinalIgnoreCase) ? "Fixed" : "Percent";
+        var amount = discountType == "Fixed"
+            ? Math.Round(Math.Max(0m, code.Amount), 2, MidpointRounding.AwayFromZero)
+            : Math.Clamp(Math.Round(code.Amount, 2, MidpointRounding.AwayFromZero), 0m, 100m);
+
+        return new ParfaitProductDiscountCodeEditorViewModel
+        {
+            Id = string.IsNullOrWhiteSpace(code.Id) ? Guid.NewGuid().ToString("N") : code.Id,
+            Code = ParfaitProductCatalogDefaults.NormalizeDiscountCode(code.Code),
+            DiscountType = discountType,
+            Amount = amount,
+            UsageLimit = Math.Max(0, code.UsageLimit),
+            IsActive = code.IsActive
         };
     }
 
@@ -313,7 +698,7 @@ public sealed class ParfaitProductService
             return;
         }
 
-        if (product.Images.Count(i => i.IsPrimary) == 1)
+        if (product.Images.Count(image => image.IsPrimary) == 1)
         {
             return;
         }
@@ -323,7 +708,7 @@ public sealed class ParfaitProductService
             image.IsPrimary = false;
         }
 
-        product.Images.OrderBy(i => i.DisplayOrder).First().IsPrimary = true;
+        product.Images.OrderBy(image => image.DisplayOrder).First().IsPrimary = true;
     }
 
     private void SaveAll(List<ParfaitProductEditorViewModel> products)
@@ -331,15 +716,16 @@ public sealed class ParfaitProductService
         Directory.CreateDirectory(Path.GetDirectoryName(DataPath)!);
         Directory.CreateDirectory(UploadRoot);
 
-        foreach (var product in products)
+        var ordered = products
+            .Select(product => NormalizeProduct(product))
+            .OrderBy(product => product.DisplayOrder)
+            .ThenBy(product => product.Name)
+            .ToList();
+
+        foreach (var product in ordered)
         {
             EnsureOnePrimaryImage(product);
         }
-
-        var ordered = products
-            .OrderBy(p => p.DisplayOrder)
-            .ThenBy(p => p.Name)
-            .ToList();
 
         lock (_lock)
         {

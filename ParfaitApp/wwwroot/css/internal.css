@@ -1073,6 +1073,123 @@ button.pf-secondary-action:hover {
     flex-wrap: wrap;
 }
 
+.pf-product-section {
+    display: grid;
+    gap: 0.85rem;
+    padding: 1rem;
+    border: 1px solid var(--pf-line);
+    border-radius: 22px;
+    background: linear-gradient(180deg, rgba(255, 255, 255, 0.96), rgba(247, 238, 230, 0.9));
+}
+
+.pf-product-section-head {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 0.9rem;
+}
+
+.pf-product-section-head strong {
+    display: block;
+    color: var(--pf-text);
+    font-size: 0.88rem;
+    font-weight: 950;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+}
+
+.pf-product-section-head span {
+    display: block;
+    max-width: 62ch;
+    margin-top: 0.28rem;
+    color: var(--pf-text-muted);
+    font-size: 0.78rem;
+    font-weight: 720;
+    line-height: 1.45;
+    text-transform: none;
+    letter-spacing: 0;
+}
+
+.pf-mini-action {
+    min-height: 40px;
+    padding-inline: 0.95rem;
+    white-space: nowrap;
+}
+
+.pf-variant-list,
+.pf-discount-list,
+.pf-product-table-stack {
+    display: grid;
+    gap: 0.8rem;
+}
+
+.pf-variant-row,
+.pf-discount-row {
+    display: grid;
+    grid-template-columns: repeat(6, minmax(0, 1fr));
+    gap: 0.8rem;
+    align-items: end;
+    padding: 0.95rem;
+    border: 1px solid rgba(111, 75, 59, 0.18);
+    border-radius: 20px;
+    background: rgba(255, 255, 255, 0.94);
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.58);
+}
+
+.pf-variant-row.is-success {
+    border-color: var(--pf-success-line);
+    background: linear-gradient(180deg, rgba(234, 247, 238, 0.94), rgba(255, 255, 255, 0.98));
+}
+
+.pf-variant-row.is-warning {
+    border-color: var(--pf-warning-line);
+    background: linear-gradient(180deg, rgba(255, 244, 231, 0.94), rgba(255, 255, 255, 0.98));
+}
+
+.pf-variant-row.is-danger {
+    border-color: var(--pf-danger-line);
+    background: linear-gradient(180deg, rgba(255, 236, 236, 0.94), rgba(255, 255, 255, 0.98));
+}
+
+.pf-variant-row.is-info {
+    border-color: var(--pf-info-line);
+    background: linear-gradient(180deg, rgba(235, 242, 255, 0.94), rgba(255, 255, 255, 0.98));
+}
+
+.pf-variant-row.is-muted {
+    border-color: rgba(111, 75, 59, 0.22);
+    background: linear-gradient(180deg, rgba(245, 239, 233, 0.92), rgba(255, 255, 255, 0.98));
+}
+
+.pf-variant-status {
+    display: grid;
+    gap: 0.35rem;
+}
+
+.pf-variant-status small {
+    color: var(--pf-text-muted);
+    font-size: 0.7rem;
+    font-weight: 760;
+    line-height: 1.35;
+}
+
+.pf-discount-actions {
+    display: grid;
+    gap: 0.45rem;
+}
+
+.pf-row-remove {
+    min-height: 40px;
+    border: 1px solid rgba(111, 75, 59, 0.26);
+    border-radius: 14px;
+    background: rgba(255, 255, 255, 0.96);
+    color: var(--pf-text-soft);
+    font-size: 0.68rem;
+    font-weight: 950;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+}
+
 .pf-check,
 .pf-product-flags label {
     display: inline-flex;
@@ -1199,6 +1316,17 @@ button.pf-secondary-action:hover {
     font-style: normal;
     letter-spacing: 0;
     line-height: 1.4;
+}
+
+.pf-product-table-stack {
+    gap: 0.35rem;
+}
+
+.pf-product-table-stack span {
+    color: var(--pf-text-muted);
+    font-size: 0.76rem;
+    font-weight: 760;
+    line-height: 1.35;
 }
 
 .pf-analytics-trigger {
@@ -2153,7 +2281,9 @@ button.pf-secondary-action:hover {
 @media (max-width: 1100px) {
     .pf-product-create-grid,
     .pf-editor-grid,
-    .pf-modal-grid {
+    .pf-modal-grid,
+    .pf-variant-row,
+    .pf-discount-row {
         grid-template-columns: 1fr;
     }
 

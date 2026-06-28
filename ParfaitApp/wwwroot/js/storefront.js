@@ -1,13 +1,13 @@
 window.ParfaitStorefront = (() => {
     const storageKey = "parfaitCart";
+    const discountStorageKey = "parfaitDiscountCode";
 
-    const readCart = () => {
+    const readJson = key => {
         try {
-            const raw = localStorage.getItem(storageKey);
-            const parsed = raw ? JSON.parse(raw) : [];
-            return Array.isArray(parsed) ? parsed : [];
+            const raw = localStorage.getItem(key);
+            return raw ? JSON.parse(raw) : null;
         } catch {
-            return [];
+            return null;
         }
     };
 
@@ -21,11 +21,46 @@ window.ParfaitStorefront = (() => {
         return cart;
     };
 
+    const readCart = () => {
+        const parsed = readJson(storageKey);
+        return Array.isArray(parsed) ? parsed : [];
+    };
+
+    const clearCart = () => {
+        localStorage.removeItem(storageKey);
+        emitCartUpdated();
+    };
+
     const money = cents => `$${(Number(cents || 0) / 100).toFixed(2)}`;
 
     const itemCount = cart => cart.reduce((sum, item) => sum + Number(item.quantity || 0), 0);
 
     const subtotal = cart => cart.reduce((sum, item) => sum + ((Number(item.priceCents) || 0) * (Number(item.quantity) || 0)), 0);
+
+    const normalizeDiscountCode = value => (value || "")
+        .trim()
+        .toUpperCase()
+        .replace(/[^A-Z0-9]+/g, "-")
+        .replace(/^-+|-+$/g, "");
+
+    const readDiscountCode = () => localStorage.getItem(discountStorageKey) || "";
+
+    const writeDiscountCode = value => {
+        const normalized = normalizeDiscountCode(value);
+        if (!normalized) {
+            localStorage.removeItem(discountStorageKey);
+        } else {
+            localStorage.setItem(discountStorageKey, normalized);
+        }
+
+        emitCartUpdated();
+        return normalized;
+    };
+
+    const clearDiscountCode = () => {
+        localStorage.removeItem(discountStorageKey);
+        emitCartUpdated();
+    };
 
     const addItem = item => {
         const cart = readCart();
@@ -41,8 +76,10 @@ window.ParfaitStorefront = (() => {
                 name: item.name,
                 slug: item.slug,
                 priceCents: Number(item.priceCents || 0),
+                compareAtPriceCents: Number(item.compareAtPriceCents || 0),
                 priceLabel: item.priceLabel,
                 imageUrl: item.imageUrl,
+                badge: item.badge || "Parfait",
                 size: item.size,
                 quantity
             });
@@ -75,12 +112,18 @@ window.ParfaitStorefront = (() => {
 
     return {
         storageKey,
+        discountStorageKey,
         readCart,
         writeCart,
+        clearCart,
         emitCartUpdated,
         money,
         itemCount,
         subtotal,
+        normalizeDiscountCode,
+        readDiscountCode,
+        writeDiscountCode,
+        clearDiscountCode,
         addItem,
         updateQuantity,
         removeItem

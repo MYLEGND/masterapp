@@ -35,10 +35,14 @@ public sealed class ParfaitOrderService
     public ParfaitOrderRecord CreatePendingOrder(
         ParfaitCheckoutCustomerRequest customer,
         IReadOnlyList<ParfaitValidatedCartItem> items,
+        string? discountCode,
+        string? discountLabel,
+        int discountCents,
         HttpContext httpContext)
     {
         var now = DateTime.UtcNow;
         var subtotal = items.Sum(i => i.LineTotalCents);
+        var normalizedDiscountCents = Math.Clamp(discountCents, 0, subtotal);
         var shipping = 0;
         var tax = 0;
 
@@ -67,9 +71,12 @@ public sealed class ParfaitOrderService
 
             Items = items.ToList(),
             SubtotalCents = subtotal,
+            DiscountCode = string.IsNullOrWhiteSpace(discountCode) ? null : discountCode.Trim().ToUpperInvariant(),
+            DiscountLabel = string.IsNullOrWhiteSpace(discountLabel) ? null : discountLabel.Trim(),
+            DiscountCents = normalizedDiscountCents,
             ShippingCents = shipping,
             TaxCents = tax,
-            TotalCents = subtotal + shipping + tax
+            TotalCents = Math.Max(0, subtotal - normalizedDiscountCents + shipping + tax)
         };
 
         Upsert(order);

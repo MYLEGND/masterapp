@@ -15,6 +15,8 @@
             <h1>Your Cart</h1>
         </header>
 
+        @Html.AntiForgeryToken()
+
         <div class="sp-cart-layout">
             <section class="sp-surface sp-cart-panel">
                 <div class="sp-panel-heading sp-panel-heading--stacked">
@@ -22,6 +24,18 @@
                     <strong id="spCartItemCount">0</strong>
                 </div>
 
+                <div class="sp-discount-panel">
+                    <label class="sp-field">
+                        <span>Discount Code</span>
+                        <div class="sp-discount-entry">
+                            <input id="spDiscountCode" autocomplete="off" placeholder="Enter code" />
+                            <button type="button" class="sp-button sp-button--secondary" id="spApplyDiscount">Apply</button>
+                            <button type="button" class="sp-button sp-button--ghost" id="spClearDiscount">Clear</button>
+                        </div>
+                    </label>
+                </div>
+
+                <div id="spCartStatus" class="sp-cart-status" hidden></div>
                 <div id="spCartItems" class="sp-cart-items"></div>
             </section>
 
@@ -34,6 +48,11 @@
                     <div class="sp-summary-line">
                         <span>Subtotal</span>
                         <strong id="spCartSubtotal">$0.00</strong>
+                    </div>
+
+                    <div class="sp-summary-line" id="spCartDiscountRow" hidden>
+                        <span id="spCartDiscountLabel">Discount</span>
+                        <strong id="spCartDiscountValue">$0.00</strong>
                     </div>
 
                     <div class="sp-summary-line">
@@ -70,23 +89,98 @@
             const totalHost = document.getElementById("spCartTotal");
             const countHost = document.getElementById("spCartItemCount");
             const checkoutLink = document.getElementById("spCheckoutLink");
+            const statusHost = document.getElementById("spCartStatus");
+            const discountInput = document.getElementById("spDiscountCode");
+            const applyDiscountButton = document.getElementById("spApplyDiscount");
+            const clearDiscountButton = document.getElementById("spClearDiscount");
+            const discountRow = document.getElementById("spCartDiscountRow");
+            const discountLabel = document.getElementById("spCartDiscountLabel");
+            const discountValue = document.getElementById("spCartDiscountValue");
+            const tokenInput = document.querySelector('input[name="__RequestVerificationToken"]');
 
-            if (!store || !itemsHost || !subtotalHost || !totalHost || !countHost || !checkoutLink) {
+            if (!store || !itemsHost || !subtotalHost || !totalHost || !countHost || !checkoutLink || !statusHost || !discountInput) {
                 return;
             }
 
+            let statusMessage = "";
+
             const productUrl = item => item.slug ? `/store/product/${item.slug}` : "/store";
+            const quoteItems = cart => cart.map(item => ({
+                id: item.id,
+                size: item.size,
+                quantity: item.quantity
+            }));
 
-            const render = () => {
-                const cart = store.readCart();
-                const itemCount = store.itemCount(cart);
-                const subtotal = store.subtotal(cart);
+            const setStatus = (message, tone = "warning") => {
+                if (!message) {
+                    statusHost.hidden = true;
+                    statusHost.textContent = "";
+                    statusHost.className = "sp-cart-status";
+                    return;
+                }
 
-                countHost.textContent = itemCount.toString();
-                subtotalHost.textContent = store.money(subtotal);
-                totalHost.textContent = store.money(subtotal);
+                statusHost.hidden = false;
+                statusHost.textContent = message;
+                statusHost.className = `sp-cart-status is-${tone}`;
+            };
 
-                if (!cart.length) {
+            const syncCartWithQuote = quote => {
+                const current = store.readCart();
+                const next = [];
+                let changed = false;
+
+                current.forEach(entry => {
+                    const quoted = quote.items.find(item => item.key === entry.key);
+                    if (!quoted || Number(quoted.quantity || 0) <= 0) {
+                        changed = true;
+                        return;
+                    }
+
+                    const nextQuantity = Number(quoted.quantity || 0);
+                    if (Number(entry.quantity || 0) !== nextQuantity) {
+                        changed = true;
+                    }
+
+                    next.push({
+                        ...entry,
+                        quantity: nextQuantity,
+                        priceCents: Number(quoted.unitPriceCents || entry.priceCents || 0),
+                        compareAtPriceCents: Number(quoted.compareAtPriceCents || entry.compareAtPriceCents || 0),
+                        imageUrl: quoted.imageUrl || entry.imageUrl,
+                        name: quoted.name || entry.name,
+                        slug: quoted.slug || entry.slug,
+                        badge: quoted.badge || entry.badge,
+                        size: quoted.size || entry.size
+                    });
+                });
+
+                if (changed) {
+                    store.writeCart(next);
+                }
+
+                return changed;
+            };
+
+            const renderQuote = quote => {
+                const visibleItems = (quote.items || []).filter(item => Number(item.quantity || 0) > 0);
+
+                countHost.textContent = String(quote.itemCount || 0);
+                subtotalHost.textContent = store.money(quote.subtotalCents || 0);
+                totalHost.textContent = store.money(quote.totalCents || 0);
+
+                if ((quote.discountCents || 0) > 0 && discountRow && discountLabel && discountValue) {
+                    discountRow.hidden = false;
+                    discountLabel.textContent = quote.discountLabel
+                        ? `${quote.discountCode} · ${quote.discountLabel}`
+                        : (quote.discountCode || "Discount");
+                    discountValue.textContent = `-${store.money(quote.discountCents || 0)}`;
+                } else if (discountRow) {
+                    discountRow.hidden = true;
+                }
+
+                discountInput.value = store.readDiscountCode();
+
+                if (!visibleItems.length) {
                     checkoutLink.classList.add("is-disabled");
                     checkoutLink.setAttribute("aria-disabled", "true");
                     itemsHost.innerHTML = `
@@ -100,10 +194,15 @@
                     return;
                 }
 
-                checkoutLink.classList.remove("is-disabled");
-                checkoutLink.removeAttribute("aria-disabled");
+                if (quote.isValid) {
+                    checkoutLink.classList.remove("is-disabled");
+                    checkoutLink.removeAttribute("aria-disabled");
+                } else {
+                    checkoutLink.classList.add("is-disabled");
+                    checkoutLink.setAttribute("aria-disabled", "true");
+                }
 
-                itemsHost.innerHTML = cart.map(item => `
+                itemsHost.innerHTML = visibleItems.map(item => `
                     <article class="sp-cart-item">
                         <a class="sp-cart-media" href="${productUrl(item)}" aria-label="View ${item.name || "product"}">
                             <img src="${item.imageUrl || "/images/favicon/parfait-logo.png"}" alt="${item.name || "Product"}" />
@@ -112,9 +211,14 @@
                             <div class="sp-cart-top">
                                 <div>
                                     <a class="sp-cart-title" href="${productUrl(item)}">${item.name || "Product"}</a>
-                                    <p class="sp-cart-meta">Size ${item.size || "N/A"} · ${store.money(Number(item.priceCents) || 0)} each</p>
+                                    <p class="sp-cart-meta">Size ${item.size || "N/A"} · ${store.money(Number(item.unitPriceCents) || 0)} each</p>
+                                    <div class="sp-cart-item-flags">
+                                        <span class="sp-stock-pill is-${item.availabilityTone || "success"}">${item.availabilityLabel || "Available"}</span>
+                                        ${item.compareAtPriceCents > item.unitPriceCents ? `<span class="sp-cart-compare-price">${store.money(Number(item.compareAtPriceCents) || 0)}</span>` : ""}
+                                    </div>
+                                    ${item.issue ? `<p class="sp-cart-issue">${item.issue}</p>` : ""}
                                 </div>
-                                <div class="sp-cart-line-total">${store.money((Number(item.priceCents) || 0) * (Number(item.quantity) || 0))}</div>
+                                <div class="sp-cart-line-total">${store.money(Number(item.lineTotalCents) || 0)}</div>
                             </div>
 
                             <div class="sp-cart-controls">
@@ -129,6 +233,65 @@
                         </div>
                     </article>
                 `).join("");
+            };
+
+            const renderEmpty = () => {
+                countHost.textContent = "0";
+                subtotalHost.textContent = store.money(0);
+                totalHost.textContent = store.money(0);
+                discountRow.hidden = true;
+                checkoutLink.classList.add("is-disabled");
+                checkoutLink.setAttribute("aria-disabled", "true");
+                itemsHost.innerHTML = `
+                    <div class="sp-cart-empty">
+                        <h2>Your cart is empty</h2>
+                        <div class="sp-empty-actions">
+                            <a class="sp-button sp-button--primary" href="/store">Back To Shop</a>
+                        </div>
+                    </div>
+                `;
+            };
+
+            const requestQuote = async () => {
+                const cart = store.readCart();
+
+                if (!cart.length) {
+                    setStatus("");
+                    renderEmpty();
+                    return;
+                }
+
+                try {
+                    const response = await fetch("/store/checkout/quote", {
+                        method: "POST",
+                        headers: {
+                            "Content-Type": "application/json",
+                            "RequestVerificationToken": tokenInput?.value || ""
+                        },
+                        body: JSON.stringify({
+                            discountCode: store.readDiscountCode(),
+                            items: quoteItems(cart)
+                        })
+                    });
+
+                    const text = await response.text();
+                    const quote = text ? JSON.parse(text) : {};
+                    const changed = quote?.items ? syncCartWithQuote(quote) : false;
+
+                    if (changed) {
+                        statusMessage = "Cart adjusted to available stock.";
+                        return;
+                    }
+
+                    renderQuote(quote);
+                    setStatus(
+                        statusMessage || quote.error || quote.messages?.[0] || "",
+                        quote.isValid ? "success" : "warning");
+                    statusMessage = "";
+                } catch {
+                    renderEmpty();
+                    setStatus("We could not refresh the cart right now.", "danger");
+                }
             };
 
             itemsHost.addEventListener("click", event => {
@@ -147,12 +310,26 @@
                 } else if (action === "remove") {
                     store.removeItem(key);
                 }
-
-                render();
             });
 
-            window.addEventListener("parfait-cart-updated", render);
-            render();
+            applyDiscountButton?.addEventListener("click", () => {
+                store.writeDiscountCode(discountInput.value);
+            });
+
+            clearDiscountButton?.addEventListener("click", () => {
+                discountInput.value = "";
+                store.clearDiscountCode();
+            });
+
+            discountInput.addEventListener("keydown", event => {
+                if (event.key === "Enter") {
+                    event.preventDefault();
+                    store.writeDiscountCode(discountInput.value);
+                }
+            });
+
+            window.addEventListener("parfait-cart-updated", requestQuote);
+            requestQuote();
         })();
     </script>
 }

@@ -91,6 +91,17 @@
                     <a class="sp-inline-link" href="/store/cart">Edit Cart</a>
                 </div>
 
+                <div class="sp-discount-panel">
+                    <label class="sp-field">
+                        <span>Discount Code</span>
+                        <div class="sp-discount-entry">
+                            <input id="spCheckoutDiscountCode" autocomplete="off" placeholder="Enter code" />
+                            <button type="button" class="sp-button sp-button--secondary" id="spCheckoutApplyDiscount">Apply</button>
+                            <button type="button" class="sp-button sp-button--ghost" id="spCheckoutClearDiscount">Clear</button>
+                        </div>
+                    </label>
+                </div>
+
                 <div id="spCheckoutSummary"></div>
             </aside>
         </div>
@@ -108,12 +119,17 @@
             const errorHost = document.getElementById("spCheckoutError");
             const summaryHost = document.getElementById("spCheckoutSummary");
             const tokenInput = document.querySelector('input[name="__RequestVerificationToken"]');
+            const discountInput = document.getElementById("spCheckoutDiscountCode");
+            const applyDiscountButton = document.getElementById("spCheckoutApplyDiscount");
+            const clearDiscountButton = document.getElementById("spCheckoutClearDiscount");
 
-            if (!store || !payButton || !errorHost || !summaryHost) {
+            if (!store || !payButton || !errorHost || !summaryHost || !discountInput) {
                 return;
             }
 
-            const cart = store.readCart();
+            let latestQuote = null;
+            let card = null;
+            let syncMessage = "";
 
             const fields = {
                 firstName: document.getElementById("firstName"),
@@ -132,8 +148,54 @@
                 "addressLine1", "city", "state", "postalCode"
             ];
 
-            function renderSummary() {
-                if (!cart.length) {
+            const quoteItems = cart => cart.map(item => ({
+                id: item.id,
+                size: item.size,
+                quantity: item.quantity
+            }));
+
+            const syncCartWithQuote = quote => {
+                const current = store.readCart();
+                const next = [];
+                let changed = false;
+
+                current.forEach(entry => {
+                    const quoted = quote.items.find(item => item.key === entry.key);
+                    if (!quoted || Number(quoted.quantity || 0) <= 0) {
+                        changed = true;
+                        return;
+                    }
+
+                    const nextQuantity = Number(quoted.quantity || 0);
+                    if (Number(entry.quantity || 0) !== nextQuantity) {
+                        changed = true;
+                    }
+
+                    next.push({
+                        ...entry,
+                        quantity: nextQuantity,
+                        priceCents: Number(quoted.unitPriceCents || entry.priceCents || 0),
+                        compareAtPriceCents: Number(quoted.compareAtPriceCents || entry.compareAtPriceCents || 0),
+                        imageUrl: quoted.imageUrl || entry.imageUrl,
+                        name: quoted.name || entry.name,
+                        slug: quoted.slug || entry.slug,
+                        badge: quoted.badge || entry.badge,
+                        size: quoted.size || entry.size
+                    });
+                });
+
+                if (changed) {
+                    store.writeCart(next);
+                }
+
+                return changed;
+            };
+
+            const renderSummary = quote => {
+                latestQuote = quote;
+                discountInput.value = store.readDiscountCode();
+
+                if (!quote?.items?.length || !quote.items.some(item => Number(item.quantity || 0) > 0)) {
                     summaryHost.innerHTML = `
                         <div class="sp-cart-empty">
                             <h2>Your cart is empty</h2>
@@ -147,46 +209,57 @@
                     return;
                 }
 
-                const subtotal = store.subtotal(cart);
-                const shipping = 0;
-                const tax = 0;
-                const total = subtotal + shipping + tax;
-
-                const itemsHtml = cart.map(item => `
-                    <div class="sp-review-item">
-                        <img src="${item.imageUrl || "/images/favicon/parfait-logo.png"}" alt="${item.name || "Product"}" />
-                        <div>
-                            <h3>${item.name || "Product"}</h3>
-                            <p>Size ${item.size || "N/A"} · Qty ${item.quantity || 1}</p>
-                            <strong>${store.money((Number(item.priceCents) || 0) * (Number(item.quantity) || 0))}</strong>
+                const itemsHtml = quote.items
+                    .filter(item => Number(item.quantity || 0) > 0)
+                    .map(item => `
+                        <div class="sp-review-item">
+                            <img src="${item.imageUrl || "/images/favicon/parfait-logo.png"}" alt="${item.name || "Product"}" />
+                            <div>
+                                <h3>${item.name || "Product"}</h3>
+                                <p>Size ${item.size || "N/A"} · Qty ${item.quantity || 1}</p>
+                                <div class="sp-cart-item-flags">
+                                    <span class="sp-stock-pill is-${item.availabilityTone || "success"}">${item.availabilityLabel || "Available"}</span>
+                                    ${item.compareAtPriceCents > item.unitPriceCents ? `<span class="sp-cart-compare-price">${store.money(Number(item.compareAtPriceCents) || 0)}</span>` : ""}
+                                </div>
+                                ${item.issue ? `<p class="sp-cart-issue">${item.issue}</p>` : ""}
+                                <strong>${store.money(Number(item.lineTotalCents) || 0)}</strong>
+                            </div>
                         </div>
-                    </div>
-                `).join("");
+                    `).join("");
 
                 summaryHost.innerHTML = `
                     <div class="sp-review-items">${itemsHtml}</div>
-                    <div class="sp-review-line"><span>Subtotal</span><strong>${store.money(subtotal)}</strong></div>
-                    <div class="sp-review-line"><span>Shipping</span><strong>${shipping === 0 ? "Calculated later" : store.money(shipping)}</strong></div>
-                    <div class="sp-review-line"><span>Tax</span><strong>${tax === 0 ? "Calculated later" : store.money(tax)}</strong></div>
-                    <div class="sp-review-line sp-review-total"><span>Total</span><strong>${store.money(total)}</strong></div>
+                    <div class="sp-review-line"><span>Subtotal</span><strong>${store.money(quote.subtotalCents || 0)}</strong></div>
+                    ${(quote.discountCents || 0) > 0
+                        ? `<div class="sp-review-line"><span>${quote.discountCode}${quote.discountLabel ? ` · ${quote.discountLabel}` : ""}</span><strong>-${store.money(quote.discountCents || 0)}</strong></div>`
+                        : ""}
+                    <div class="sp-review-line"><span>Shipping</span><strong>Calculated later</strong></div>
+                    <div class="sp-review-line"><span>Tax</span><strong>Calculated later</strong></div>
+                    <div class="sp-review-line sp-review-total"><span>Total</span><strong>${store.money(quote.totalCents || 0)}</strong></div>
                 `;
-            }
 
-            function getCustomer() {
-                return {
-                    firstName: fields.firstName.value.trim(),
-                    lastName: fields.lastName.value.trim(),
-                    email: fields.email.value.trim(),
-                    phone: fields.phone.value.trim(),
-                    addressLine1: fields.addressLine1.value.trim(),
-                    addressLine2: fields.addressLine2.value.trim(),
-                    city: fields.city.value.trim(),
-                    state: fields.state.value.trim(),
-                    postalCode: fields.postalCode.value.trim()
-                };
-            }
+                if (quote.isValid) {
+                    payButton.disabled = false;
+                    payButton.classList.remove("is-disabled");
+                } else {
+                    payButton.disabled = true;
+                    payButton.classList.add("is-disabled");
+                }
+            };
 
-            function validateCustomer() {
+            const getCustomer = () => ({
+                firstName: fields.firstName.value.trim(),
+                lastName: fields.lastName.value.trim(),
+                email: fields.email.value.trim(),
+                phone: fields.phone.value.trim(),
+                addressLine1: fields.addressLine1.value.trim(),
+                addressLine2: fields.addressLine2.value.trim(),
+                city: fields.city.value.trim(),
+                state: fields.state.value.trim(),
+                postalCode: fields.postalCode.value.trim()
+            });
+
+            const validateCustomer = () => {
                 for (const key of requiredFields) {
                     if (!fields[key] || !fields[key].value.trim()) {
                         fields[key]?.focus();
@@ -202,18 +275,51 @@
                 }
 
                 return "";
-            }
+            };
+
+            const requestQuote = async () => {
+                const cart = store.readCart();
+                if (!cart.length) {
+                    renderSummary({ items: [], isValid: false, subtotalCents: 0, totalCents: 0, discountCents: 0 });
+                    errorHost.textContent = "";
+                    return null;
+                }
+
+                const response = await fetch("/store/checkout/quote", {
+                    method: "POST",
+                    headers: {
+                        "Content-Type": "application/json",
+                        "RequestVerificationToken": tokenInput?.value || ""
+                    },
+                    body: JSON.stringify({
+                        discountCode: store.readDiscountCode(),
+                        items: quoteItems(cart)
+                    })
+                });
+
+                const text = await response.text();
+                const quote = text ? JSON.parse(text) : {};
+                const changed = quote?.items ? syncCartWithQuote(quote) : false;
+
+                if (changed) {
+                    syncMessage = "Checkout updated to current stock.";
+                    return null;
+                }
+
+                renderSummary(quote);
+                errorHost.textContent = syncMessage || quote.error || quote.messages?.[0] || "";
+                syncMessage = "";
+                return quote;
+            };
 
             async function startSquare() {
-                renderSummary();
-
-                if (!cart.length) return;
+                const firstQuote = await requestQuote();
 
                 if (!window.Square) throw new Error("Square.js failed to load.");
                 if (!appId || !locationId) throw new Error("Square Application ID or Location ID is missing.");
 
                 const payments = window.Square.payments(appId, locationId);
-                const card = await payments.card();
+                card = await payments.card();
                 await card.attach("#card-container");
 
                 payButton.addEventListener("click", async () => {
@@ -225,17 +331,25 @@
                         const customerError = validateCustomer();
                         if (customerError) throw new Error(customerError);
 
+                        const quote = await requestQuote();
+                        if (!quote || !quote.isValid) {
+                            throw new Error("Checkout totals changed. Review the updated cart before paying.");
+                        }
+
                         const result = await card.tokenize();
                         if (result.status !== "OK") throw new Error("Unable to tokenize payment card.");
 
                         const payload = {
                             sourceId: result.token,
+                            discountCode: store.readDiscountCode(),
                             customer: getCustomer(),
-                            items: cart.map(item => ({
-                                id: item.id,
-                                size: item.size,
-                                quantity: item.quantity
-                            }))
+                            items: quote.items
+                                .filter(item => Number(item.quantity || 0) > 0)
+                                .map(item => ({
+                                    id: item.id,
+                                    size: item.size,
+                                    quantity: item.quantity
+                                }))
                         };
 
                         const response = await fetch("/store/checkout/pay", {
@@ -254,16 +368,45 @@
                             throw new Error(data.error || "Payment failed.");
                         }
 
-                        localStorage.removeItem(store.storageKey);
-                        store.emitCartUpdated();
+                        store.clearCart();
+                        store.clearDiscountCode();
                         window.location.href = data.redirectUrl || "/store/success";
                     } catch (error) {
                         errorHost.textContent = error.message || "Payment failed.";
-                        payButton.disabled = false;
-                        payButton.classList.remove("is-disabled");
+                        if (latestQuote?.isValid) {
+                            payButton.disabled = false;
+                            payButton.classList.remove("is-disabled");
+                        }
                     }
                 });
+
+                if (!firstQuote?.isValid) {
+                    payButton.disabled = true;
+                    payButton.classList.add("is-disabled");
+                }
             }
+
+            applyDiscountButton?.addEventListener("click", () => {
+                store.writeDiscountCode(discountInput.value);
+            });
+
+            clearDiscountButton?.addEventListener("click", () => {
+                discountInput.value = "";
+                store.clearDiscountCode();
+            });
+
+            discountInput.addEventListener("keydown", event => {
+                if (event.key === "Enter") {
+                    event.preventDefault();
+                    store.writeDiscountCode(discountInput.value);
+                }
+            });
+
+            window.addEventListener("parfait-cart-updated", () => {
+                requestQuote().catch(error => {
+                    errorHost.textContent = error.message || "Checkout could not refresh.";
+                });
+            });
 
             startSquare().catch(error => {
                 errorHost.textContent = error.message || "Square checkout failed to initialize.";

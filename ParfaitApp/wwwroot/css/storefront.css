@@ -287,12 +287,85 @@ body.sp-body {
     padding-top: 0;
 }
 
+.sp-shop-price-stack,
+.sp-product-price-stack {
+    display: grid;
+    gap: 0.2rem;
+}
+
 .sp-shop-price,
 .sp-product-price {
     color: var(--sp-cocoa-900);
     font-size: 0.94rem;
     font-weight: var(--sp-weight-bold);
     letter-spacing: -0.03em;
+}
+
+.sp-shop-compare-price,
+.sp-product-compare-price,
+.sp-cart-compare-price {
+    color: rgba(43, 28, 22, 0.45);
+    font-size: 0.78rem;
+    font-weight: var(--sp-weight-semibold);
+    text-decoration: line-through;
+}
+
+.sp-product-savings {
+    color: #8f3e1f;
+    font-size: 0.72rem;
+    font-weight: var(--sp-weight-bold);
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+}
+
+.sp-shop-stock-pill,
+.sp-stock-pill {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 30px;
+    padding: 0 0.8rem;
+    border: 1px solid rgba(146, 105, 80, 0.16);
+    border-radius: 999px;
+    font-size: 0.66rem;
+    font-weight: var(--sp-weight-bold);
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+}
+
+.sp-shop-stock-pill.is-success,
+.sp-stock-pill.is-success {
+    border-color: rgba(42, 123, 73, 0.25);
+    background: rgba(223, 242, 229, 0.92);
+    color: #24583a;
+}
+
+.sp-shop-stock-pill.is-warning,
+.sp-stock-pill.is-warning {
+    border-color: rgba(180, 111, 22, 0.25);
+    background: rgba(255, 241, 221, 0.94);
+    color: #885415;
+}
+
+.sp-shop-stock-pill.is-danger,
+.sp-stock-pill.is-danger {
+    border-color: rgba(180, 47, 47, 0.24);
+    background: rgba(255, 232, 232, 0.94);
+    color: #8a2b2b;
+}
+
+.sp-shop-stock-pill.is-info,
+.sp-stock-pill.is-info {
+    border-color: rgba(44, 98, 193, 0.22);
+    background: rgba(231, 238, 252, 0.94);
+    color: #294e96;
+}
+
+.sp-shop-stock-pill.is-muted,
+.sp-stock-pill.is-muted {
+    border-color: rgba(146, 105, 80, 0.18);
+    background: rgba(244, 237, 229, 0.94);
+    color: rgba(43, 28, 22, 0.68);
 }
 
 .sp-shop-actions {
@@ -483,6 +556,23 @@ body.sp-body {
     text-align: left;
 }
 
+.sp-product-stock-strip {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.65rem;
+    margin: 0.4rem 0 0.85rem;
+}
+
+.sp-product-stock-copy,
+.sp-cart-issue {
+    margin: 0;
+    color: rgba(43, 28, 22, 0.66);
+    font-size: 0.8rem;
+    font-weight: var(--sp-weight-medium);
+    line-height: 1.45;
+}
+
 .sp-product-size-row {
     display: grid;
     gap: 0.45rem;
@@ -660,6 +750,71 @@ body.sp-body {
     font-size: 0.74rem;
     letter-spacing: 0.08em;
     text-transform: uppercase;
+}
+
+.sp-cart-item-flags {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.45rem;
+    margin-top: 0.42rem;
+}
+
+.sp-discount-panel {
+    margin-bottom: 0.95rem;
+}
+
+.sp-discount-entry {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto auto;
+    gap: 0.55rem;
+}
+
+.sp-discount-entry input {
+    width: 100%;
+    min-height: 48px;
+    padding: 0 1rem;
+    border: 1.5px solid rgba(146, 105, 80, 0.22);
+    border-radius: 15px;
+    background: rgba(255, 255, 255, 0.95);
+    color: var(--sp-cocoa-900);
+    font-size: 0.98rem;
+    font-weight: var(--sp-weight-semibold);
+    outline: none;
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.6);
+}
+
+.sp-discount-entry input:focus {
+    border-color: rgba(146, 105, 80, 0.58);
+    box-shadow: 0 0 0 3px rgba(146, 105, 80, 0.1);
+}
+
+.sp-cart-status {
+    margin-bottom: 0.85rem;
+    padding: 0.85rem 0.95rem;
+    border: 1px solid rgba(146, 105, 80, 0.18);
+    border-radius: 16px;
+    font-size: 0.82rem;
+    font-weight: var(--sp-weight-semibold);
+    line-height: 1.5;
+}
+
+.sp-cart-status.is-success {
+    border-color: rgba(42, 123, 73, 0.25);
+    background: rgba(223, 242, 229, 0.92);
+    color: #24583a;
+}
+
+.sp-cart-status.is-warning {
+    border-color: rgba(180, 111, 22, 0.24);
+    background: rgba(255, 241, 221, 0.94);
+    color: #885415;
+}
+
+.sp-cart-status.is-danger {
+    border-color: rgba(180, 47, 47, 0.22);
+    background: rgba(255, 232, 232, 0.94);
+    color: #8a2b2b;
 }
 
 .sp-summary-stack {
@@ -906,10 +1061,15 @@ body.sp-body {
 
     .sp-gallery-toolbar,
     .sp-shop-meta,
+    .sp-discount-entry,
     .sp-cart-top,
     .sp-cart-controls {
         align-items: flex-start;
         flex-direction: column;
+    }
+
+    .sp-discount-entry {
+        grid-template-columns: 1fr;
     }
 
     .sp-cart-item {

@@ -42,6 +42,16 @@ public sealed class StoreCheckoutController : Controller
         return View("~/Views/Store/Checkout.cshtml");
     }
 
+    [HttpPost("checkout/quote")]
+    [ValidateAntiForgeryToken]
+    public IActionResult Quote([FromBody] ParfaitCartQuoteRequest request)
+    {
+        request ??= new ParfaitCartQuoteRequest();
+        request.Items ??= [];
+
+        return Ok(_products.QuoteCart(request.Items, request.DiscountCode));
+    }
+
     [HttpPost("checkout/pay")]
     [ValidateAntiForgeryToken]
     public async Task<IActionResult> Pay([FromBody] ParfaitCheckoutPayRequest request, CancellationToken ct)
@@ -57,14 +67,30 @@ public sealed class StoreCheckoutController : Controller
             return BadRequest(new ParfaitCheckoutPayResponse { Success = false, Error = "Missing Square payment token." });
         }
 
-        var validatedItems = ValidateCartItems(request.Items);
+        var quote = _products.QuoteCart(request.Items ?? [], request.DiscountCode);
+        if (!quote.IsValid)
+        {
+            return BadRequest(new ParfaitCheckoutPayResponse
+            {
+                Success = false,
+                Error = quote.Error ?? quote.Messages.FirstOrDefault() ?? "The cart needs attention before checkout."
+            });
+        }
+
+        var validatedItems = BuildValidatedItems(quote);
 
         if (validatedItems.Count == 0)
         {
             return BadRequest(new ParfaitCheckoutPayResponse { Success = false, Error = "No valid cart items were found." });
         }
 
-        var order = _orders.CreatePendingOrder(request.Customer, validatedItems, HttpContext);
+        var order = _orders.CreatePendingOrder(
+            request.Customer,
+            validatedItems,
+            quote.DiscountCode,
+            quote.DiscountLabel,
+            quote.DiscountCents,
+            HttpContext);
 
         var note = $"{order.OrderNumber}: " + string.Join(", ",
             order.Items.Select(i => $"{i.Name} / {i.Size} x{i.Quantity}"));
@@ -88,6 +114,7 @@ public sealed class StoreCheckoutController : Controller
         }
 
         _orders.MarkPaid(order.OrderNumber, payment.PaymentId);
+        _products.CommitPaidInventory(validatedItems);
 
         var paidOrder = _orders.GetOrder(order.OrderNumber) ?? order;
         paidOrder.SquarePaymentId = payment.PaymentId;
@@ -139,34 +166,22 @@ public sealed class StoreCheckoutController : Controller
         });
     }
 
-    private List<ParfaitValidatedCartItem> ValidateCartItems(List<ParfaitCheckoutItemRequest> cartItems)
+    private static List<ParfaitValidatedCartItem> BuildValidatedItems(ParfaitCartQuoteResponse quote)
     {
-        var activeProducts = _products.GetActiveStoreProducts();
-        var validatedItems = new List<ParfaitValidatedCartItem>();
-
-        foreach (var item in cartItems)
-        {
-            if (string.IsNullOrWhiteSpace(item.Id) || item.Quantity <= 0)
-                continue;
-
-            var product = activeProducts.FirstOrDefault(p =>
-                string.Equals(p.Id, item.Id, StringComparison.OrdinalIgnoreCase));
-
-            if (product is null || product.PriceCents <= 0)
-                continue;
-
-            validatedItems.Add(new ParfaitValidatedCartItem
+        return quote.Items
+            .Where(item => item.Quantity > 0 && item.IsAvailable)
+            .Select(item => new ParfaitValidatedCartItem
             {
-                Id = product.Id,
-                Name = product.Name,
+                Id = item.Id,
+                Name = item.Name,
+                Slug = item.Slug,
                 Size = string.IsNullOrWhiteSpace(item.Size) ? "N/A" : item.Size.Trim(),
                 Quantity = Math.Clamp(item.Quantity, 1, 20),
-                UnitPriceCents = product.PriceCents,
-                ImageUrl = product.PrimaryImageUrl
-            });
-        }
-
-        return validatedItems;
+                UnitPriceCents = item.UnitPriceCents,
+                CompareAtPriceCents = item.CompareAtPriceCents,
+                ImageUrl = item.ImageUrl
+            })
+            .ToList();
     }
 
     private static string? ValidateCustomer(ParfaitCheckoutCustomerRequest customer)

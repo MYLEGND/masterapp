@@ -43,8 +43,7 @@ public sealed class StoreController : Controller
     [HttpGet("product/{slug}")]
     public IActionResult Product(string slug)
     {
-        var product = _products.GetActiveStoreProducts()
-            .FirstOrDefault(p => string.Equals(p.Slug, slug, StringComparison.OrdinalIgnoreCase));
+        var product = _products.GetActiveStoreProductBySlug(slug);
 
         if (product is null)
         {

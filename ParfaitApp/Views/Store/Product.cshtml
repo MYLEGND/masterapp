@@ -5,9 +5,22 @@
     ViewData["ContentContainerClass"] = "container-fluid";
     ViewData["LayoutContentClass"] = "sp-layout-content";
 
-    var images = Model.Images.OrderBy(i => i.DisplayOrder).ToList();
+    var images = Model.Images.OrderBy(image => image.DisplayOrder).ToList();
     var selectedImage = Model.PrimaryImage ?? images.FirstOrDefault();
     var galleryCount = Math.Max(images.Count, 1);
+    var defaultSize = Model.DefaultSize;
+    var sizePayload = Model.Sizes
+        .OrderBy(size => size.DisplayOrder)
+        .Select(size => new
+        {
+            size.Size,
+            size.TrackInventory,
+            size.StockQuantity,
+            size.CanPurchase,
+            size.StatusTone,
+            size.StatusLabel
+        })
+        .ToList();
 }
 
 @section Styles {
@@ -74,17 +87,37 @@
                 <div class="sp-product-kicker">@Model.Badge</div>
             }
             <h1>@Model.Name</h1>
-            <div class="sp-product-price">@Model.PriceLabel</div>
+
+            <div class="sp-product-price-stack">
+                <div class="sp-product-price">@Model.PriceLabel</div>
+                @if (Model.HasSalePrice)
+                {
+                    <div class="sp-product-compare-price">@Model.CompareAtPriceLabel</div>
+                    <div class="sp-product-savings">@Model.SavingsLabel</div>
+                }
+            </div>
+
+            <div class="sp-product-stock-strip">
+                <span class="sp-stock-pill is-@Model.AvailabilityTone" id="spProductAvailability">@((defaultSize?.StatusLabel) ?? Model.AvailabilityLabel)</span>
+                @if (Model.HasTrackedInventory)
+                {
+                    <span class="sp-product-stock-copy" id="spProductStockCopy">Select the size that matches your stock view.</span>
+                }
+            </div>
+
             <p class="sp-product-description">@Model.Description</p>
 
             <div class="sp-product-size-row">
                 <label class="sp-size-label" for="productSize">Size</label>
                 <select id="productSize" class="sp-product-select">
-                    <option>XS</option>
-                    <option>S</option>
-                    <option>M</option>
-                    <option>L</option>
-                    <option>XL</option>
+                    @foreach (var size in Model.Sizes.OrderBy(size => size.DisplayOrder))
+                    {
+                        <option value="@size.Size"
+                                selected="@(defaultSize?.Size == size.Size)"
+                                disabled="@(!size.CanPurchase)">
+                            @size.Size@(size.TrackInventory ? $" · {size.StatusLabel}" : "")
+                        </option>
+                    }
                 </select>
             </div>
 
@@ -94,13 +127,17 @@
                     <button type="button"
                             class="sp-button sp-button--primary sp-product-button"
                             id="spAddToCart"
+                            data-default-label="Add to Cart"
                             data-product-id="@Model.Id"
                             data-product-name="@Model.Name"
                             data-product-slug="@Model.Slug"
                             data-product-price-cents="@Model.PriceCents"
+                            data-product-compare-price-cents="@Model.CompareAtPriceCents"
                             data-product-price-label="@Model.PriceLabel"
-                            data-product-image="@(selectedImage?.ImageUrl ?? Model.PrimaryImageUrl)">
-                        Add to Cart
+                            data-product-badge="@Model.Badge"
+                            data-product-image="@(selectedImage?.ImageUrl ?? Model.PrimaryImageUrl)"
+                            @(defaultSize?.CanPurchase == true ? null : "disabled")>
+                        @(defaultSize?.CanPurchase == true ? "Add to Cart" : "Sold Out")
                     </button>
                     <a class="sp-button sp-button--ghost" href="/store/cart">View Cart</a>
                 }
@@ -123,6 +160,12 @@
             const nextButton = document.getElementById("spGalleryNext");
             const counter = document.getElementById("spGalleryCounter");
             const addButton = document.getElementById("spAddToCart");
+            const sizeSelect = document.getElementById("productSize");
+            const availability = document.getElementById("spProductAvailability");
+            const stockCopy = document.getElementById("spProductStockCopy");
+            const sizes = @Html.Raw(System.Text.Json.JsonSerializer.Serialize(
+                sizePayload,
+                new System.Text.Json.JsonSerializerOptions { PropertyNamingPolicy = System.Text.Json.JsonNamingPolicy.CamelCase }));
 
             let activeIndex = Math.max(0, buttons.findIndex(button => button.classList.contains("is-active")));
 
@@ -151,6 +194,32 @@
                 }
             };
 
+            const setAvailability = sizeValue => {
+                const current = sizes.find(size => size.size === sizeValue) || sizes[0];
+                if (!current || !availability || !addButton) return;
+
+                availability.classList.remove("is-success", "is-warning", "is-danger", "is-info", "is-muted");
+                availability.classList.add(`is-${current.statusTone}`);
+                availability.textContent = current.statusLabel;
+
+                if (stockCopy) {
+                    if (!current.trackInventory) {
+                        stockCopy.textContent = "This size is live without hard inventory tracking.";
+                    } else if (!current.canPurchase) {
+                        stockCopy.textContent = "This size is sold out right now.";
+                    } else if (current.statusTone === "warning") {
+                        stockCopy.textContent = `Only ${current.stockQuantity} left in ${current.size}.`;
+                    } else {
+                        stockCopy.textContent = `${current.stockQuantity} units ready in ${current.size}.`;
+                    }
+                }
+
+                addButton.disabled = !current.canPurchase;
+                addButton.textContent = current.canPurchase
+                    ? addButton.dataset.defaultLabel || "Add to Cart"
+                    : "Sold Out";
+            };
+
             buttons.forEach((button, index) => {
                 button.addEventListener("click", () => renderImage(Number(button.dataset.index || index)));
             });
@@ -171,10 +240,15 @@
                 renderImage(activeIndex);
             }
 
-            addButton?.addEventListener("click", () => {
-                if (!store) return;
+            sizeSelect?.addEventListener("change", () => setAvailability(sizeSelect.value));
+            if (sizeSelect) {
+                setAvailability(sizeSelect.value);
+            }
 
-                const size = document.getElementById("productSize")?.value || "XS";
+            addButton?.addEventListener("click", () => {
+                if (!store || !sizeSelect || addButton.disabled) return;
+
+                const size = sizeSelect.value || "@(defaultSize?.Size ?? "XS")";
                 const key = `${addButton.dataset.productId}:${size}`;
 
                 store.addItem({
@@ -183,15 +257,17 @@
                     name: addButton.dataset.productName,
                     slug: addButton.dataset.productSlug,
                     priceCents: Number(addButton.dataset.productPriceCents || 0),
+                    compareAtPriceCents: Number(addButton.dataset.productComparePriceCents || 0),
                     priceLabel: addButton.dataset.productPriceLabel,
                     imageUrl: addButton.dataset.productImage,
+                    badge: addButton.dataset.productBadge,
                     size,
                     quantity: 1
                 });
 
                 addButton.textContent = "Added to Cart";
                 setTimeout(() => {
-                    addButton.textContent = "Add to Cart";
+                    setAvailability(sizeSelect.value);
                 }, 1200);
             });
         })();

@@ -1,10 +1,18 @@
 @model ParfaitApp.Models.ParfaitProductAdminViewModel
+@using ParfaitApp.Models
 @{
     ViewData["Title"] = "Products";
     Layout = "_InternalLayout";
 
+    var newProduct = Model.NewProduct ?? new ParfaitProductEditorViewModel();
+    if (newProduct.InventoryBySize.Count == 0)
+    {
+        newProduct.InventoryBySize = ParfaitProductCatalogDefaults.CreateDefaultInventory();
+    }
+
     static string Money(int cents) => "$" + (cents / 100m).ToString("0.00");
-    static string Preview(string? value, int maxLength = 180)
+    static string MoneyField(int cents) => cents <= 0 ? "" : (cents / 100m).ToString("0.00");
+    static string Preview(string? value, int maxLength = 160)
     {
         if (string.IsNullOrWhiteSpace(value))
         {
@@ -16,6 +24,21 @@
             ? trimmed
             : trimmed[..(maxLength - 3)] + "...";
     }
+
+    static string ToneClass(string tone) => tone switch
+    {
+        "danger" => "is-danger",
+        "warning" => "is-warning",
+        "info" => "is-info",
+        "muted" => "is-muted",
+        _ => "is-success"
+    };
+
+    static bool IsStandardSize(string? size) =>
+        !string.IsNullOrWhiteSpace(size)
+        && ParfaitProductCatalogDefaults.StandardSizes.Contains(
+            ParfaitProductCatalogDefaults.NormalizeSize(size),
+            StringComparer.OrdinalIgnoreCase);
 }
 
 <section class="pf-command-page pf-products-admin">
@@ -23,12 +46,12 @@
         <div class="pf-command-copy">
             <div class="pf-kicker">Commerce</div>
             <h1 class="pf-command-title">Products</h1>
-            <p class="pf-command-text">Pricing, visibility, sorting, and media.</p>
+            <p class="pf-command-text">Catalog, stock, sale pricing, and promo control.</p>
         </div>
         <div class="pf-command-meta">
             <span class="pf-command-badge is-success">@Model.ActiveProductCount live</span>
-            <span class="pf-command-badge is-info">@Model.FeaturedProductCount featured</span>
-            <span class="pf-command-badge is-@(Model.TotalImageCount > 0 ? "info" : "warning")">@Model.TotalImageCount images</span>
+            <span class="pf-command-badge is-info">@Model.Products.Sum(product => product.TotalTrackedStock) tracked units</span>
+            <span class="pf-command-badge is-warning">@Model.Products.Sum(product => product.ActiveDiscountCount) active codes</span>
         </div>
     </header>
 
@@ -47,38 +70,38 @@
                     <strong>@Model.Products.Count</strong>
                 </div>
                 <div>
-                    <span>Hidden</span>
-                    <strong>@(Model.Products.Count - Model.ActiveProductCount)</strong>
+                    <span>Featured</span>
+                    <strong>@Model.FeaturedProductCount</strong>
                 </div>
             </div>
         </article>
 
         <article class="pf-rail-card is-info pf-span-4">
-            <div class="pf-rail-label">Spotlight Mix</div>
-            <strong class="pf-rail-value">@Model.FeaturedProductCount</strong>
+            <div class="pf-rail-label">Tracked Stock</div>
+            <strong class="pf-rail-value">@Model.Products.Sum(product => product.TotalTrackedStock)</strong>
             <div class="pf-rail-grid">
                 <div>
-                    <span>Featured</span>
-                    <strong>@Model.FeaturedProductCount</strong>
+                    <span>Low Stock Sizes</span>
+                    <strong>@Model.Products.Sum(product => product.LowStockSizeCount)</strong>
                 </div>
                 <div>
-                    <span>Standard</span>
-                    <strong>@(Model.Products.Count - Model.FeaturedProductCount)</strong>
+                    <span>Sold Out Sizes</span>
+                    <strong>@Model.Products.Sum(product => product.SoldOutSizeCount)</strong>
                 </div>
             </div>
         </article>
 
-        <article class="pf-rail-card is-@(Model.TotalImageCount > 0 ? "info" : "warning") pf-span-4">
-            <div class="pf-rail-label">Media Coverage</div>
-            <strong class="pf-rail-value">@Model.TotalImageCount</strong>
+        <article class="pf-rail-card is-warning pf-span-4">
+            <div class="pf-rail-label">Promo Codes</div>
+            <strong class="pf-rail-value">@Model.Products.Sum(product => product.ActiveDiscountCount)</strong>
             <div class="pf-rail-grid">
+                <div>
+                    <span>Sale Products</span>
+                    <strong>@Model.Products.Count(product => product.HasSalePrice)</strong>
+                </div>
                 <div>
                     <span>Images</span>
                     <strong>@Model.TotalImageCount</strong>
-                </div>
-                <div>
-                    <span>Products With Media</span>
-                    <strong>@Model.Products.Count(product => product.Images.Count > 0)</strong>
                 </div>
             </div>
         </article>
@@ -88,7 +111,7 @@
         <div class="pf-commerce-panel-head">
             <div>
                 <div class="pf-kicker">Catalog Workspace</div>
-                <h2>Product Inventory</h2>
+                <h2>Product Management</h2>
             </div>
             <span>@Model.Products.Count products</span>
         </div>
@@ -96,24 +119,98 @@
         <details class="pf-add-product">
             <summary>Add Product</summary>
 
-            <form method="post" action="/internal/commerce/products" class="pf-product-create-form">
+            <form method="post" action="/internal/commerce/products" class="pf-product-create-form" data-pf-product-form>
                 @Html.AntiForgeryToken()
-                <input type="hidden" name="Id" value="@Guid.NewGuid().ToString("N")" />
+                <input type="hidden" name="Id" value="@newProduct.Id" />
                 <input type="hidden" name="PriceLabel" value="Auto" />
 
                 <div class="pf-product-create-grid">
-                    <label>Name <input class="form-control" name="Name" required /></label>
-                    <label>Slug <input class="form-control" name="Slug" required /></label>
-                    <label>Price <input class="form-control pf-price-dollars" type="number" min="0" step="0.01" /><input type="hidden" name="PriceCents" class="pf-price-cents" /></label>
-                    <label>Badge <input class="form-control" name="Badge" value="Parfait" /></label>
-                    <label>Sort <input class="form-control" name="DisplayOrder" type="number" value="100" /></label>
+                    <label>Name <input class="form-control" name="Name" value="@newProduct.Name" required /></label>
+                    <label>Slug <input class="form-control" name="Slug" value="@newProduct.Slug" required /></label>
+                    <label>Price <input class="form-control pf-money-display" type="number" min="0" step="0.01" value="@MoneyField(newProduct.PriceCents)" /><input type="hidden" name="PriceCents" value="@newProduct.PriceCents" class="pf-money-hidden" /></label>
+                    <label>Compare At <input class="form-control pf-money-display" type="number" min="0" step="0.01" value="@MoneyField(newProduct.CompareAtPriceCents)" /><input type="hidden" name="CompareAtPriceCents" value="@newProduct.CompareAtPriceCents" class="pf-money-hidden" /></label>
+                    <label>Badge <input class="form-control" name="Badge" value="@newProduct.Badge" /></label>
+                    <label>Sort <input class="form-control" name="DisplayOrder" type="number" value="@(newProduct.DisplayOrder == 0 ? 100 : newProduct.DisplayOrder)" /></label>
                 </div>
 
-                <label class="pf-full">Description <textarea class="form-control" name="Description" rows="2" required></textarea></label>
+                <label class="pf-full">Description <textarea class="form-control" name="Description" rows="4" required>@newProduct.Description</textarea></label>
+
+                <section class="pf-product-section">
+                    <div class="pf-product-section-head">
+                        <div>
+                            <strong>Size Inventory</strong>
+                            <span>Enable a size, turn stock tracking on when you want hard quantity enforcement, and let low-stock color cues do the urgency work.</span>
+                        </div>
+                        <button type="button" class="pf-secondary-action pf-mini-action" data-pf-add-row="inventory" data-pf-target="createInventoryRows">Add Size</button>
+                    </div>
+
+                    <div class="pf-variant-list" id="createInventoryRows" data-pf-collection="InventoryBySize">
+                        @for (var index = 0; index < newProduct.InventoryBySize.Count; index++)
+                        {
+                            var size = newProduct.InventoryBySize[index];
+                            var isStandard = IsStandardSize(size.Size);
+                            <div class="pf-variant-row @ToneClass(size.StatusTone)" data-pf-repeat-item data-pf-inventory-row>
+                                <input type="hidden" data-field="Id" value="@size.Id" />
+                                <input type="hidden" data-field="DisplayOrder" value="@((index + 1) * 10)" data-pf-order />
+
+                                <label>Size <input class="form-control" data-field="Size" value="@size.Size" required /></label>
+                                <label>Units <input class="form-control" data-field="StockQuantity" type="number" min="0" value="@size.StockQuantity" data-pf-stock /></label>
+                                <label>Low Stock At <input class="form-control" data-field="LowStockThreshold" type="number" min="1" value="@size.LowStockThreshold" data-pf-low-stock /></label>
+                                <label class="pf-check"><input type="checkbox" data-field="IsEnabled" value="true" @(size.IsEnabled ? "checked" : "") data-pf-enabled /> Enabled</label>
+                                <label class="pf-check"><input type="checkbox" data-field="TrackInventory" value="true" @(size.TrackInventory ? "checked" : "") data-pf-track /> Track Stock</label>
+                                <div class="pf-variant-status">
+                                    <span class="pf-command-badge @ToneClass(size.StatusTone)" data-pf-inventory-status>@size.StatusLabel</span>
+                                    @if (isStandard)
+                                    {
+                                        <small>Core size</small>
+                                    }
+                                </div>
+                                @if (!isStandard)
+                                {
+                                    <button type="button" class="pf-row-remove" data-pf-remove-row>Remove</button>
+                                }
+                            </div>
+                        }
+                    </div>
+                </section>
+
+                <section class="pf-product-section">
+                    <div class="pf-product-section-head">
+                        <div>
+                            <strong>Discount Codes</strong>
+                            <span>Attach promo codes directly to the product and keep usage limits clean.</span>
+                        </div>
+                        <button type="button" class="pf-secondary-action pf-mini-action" data-pf-add-row="discount" data-pf-target="createDiscountRows">Add Code</button>
+                    </div>
+
+                    <div class="pf-discount-list" id="createDiscountRows" data-pf-collection="DiscountCodes">
+                        @for (var index = 0; index < newProduct.DiscountCodes.Count; index++)
+                        {
+                            var code = newProduct.DiscountCodes[index];
+                            <div class="pf-discount-row" data-pf-repeat-item>
+                                <input type="hidden" data-field="Id" value="@code.Id" />
+                                <label>Code <input class="form-control" data-field="Code" value="@code.Code" /></label>
+                                <label>Type
+                                    <select class="form-select" data-field="DiscountType">
+                                        <option value="Percent" selected="@string.Equals(code.DiscountType, "Percent", StringComparison.OrdinalIgnoreCase)">Percent</option>
+                                        <option value="Fixed" selected="@string.Equals(code.DiscountType, "Fixed", StringComparison.OrdinalIgnoreCase)">Fixed</option>
+                                    </select>
+                                </label>
+                                <label>Amount <input class="form-control" data-field="Amount" type="number" min="0" step="0.01" value="@(code.Amount > 0 ? code.Amount.ToString("0.##") : "")" /></label>
+                                <label>Usage Limit <input class="form-control" data-field="UsageLimit" type="number" min="0" value="@code.UsageLimit" /></label>
+                                <label class="pf-check"><input type="checkbox" data-field="IsActive" value="true" @(code.IsActive ? "checked" : "") /> Active</label>
+                                <div class="pf-discount-actions">
+                                    <button type="button" class="pf-text-button" data-pf-generate-code>Generate</button>
+                                    <button type="button" class="pf-row-remove" data-pf-remove-row>Remove</button>
+                                </div>
+                            </div>
+                        }
+                    </div>
+                </section>
 
                 <div class="pf-product-create-actions">
-                    <label class="pf-check"><input type="checkbox" name="IsActive" value="true" checked /> Active</label>
-                    <label class="pf-check"><input type="checkbox" name="IsFeatured" value="true" /> Featured</label>
+                    <label class="pf-check"><input type="checkbox" name="IsActive" value="true" @(newProduct.IsActive ? "checked" : "") /> Active</label>
+                    <label class="pf-check"><input type="checkbox" name="IsFeatured" value="true" @(newProduct.IsFeatured ? "checked" : "") /> Featured</label>
                     <button type="submit" class="pf-action">Create Product</button>
                 </div>
             </form>
@@ -124,9 +221,10 @@
                 <thead>
                     <tr>
                         <th>Product</th>
-                        <th>Price</th>
+                        <th>Pricing</th>
+                        <th>Inventory</th>
+                        <th>Promo</th>
                         <th>Status</th>
-                        <th>Featured</th>
                         <th>Photos</th>
                         <th>Sort</th>
                         <th></th>
@@ -135,8 +233,8 @@
                 <tbody>
                 @foreach (var product in Model.Products)
                 {
-                    var orderedImages = product.Images.OrderBy(i => i.DisplayOrder).ToList();
-                    var primaryImage = orderedImages.FirstOrDefault(i => i.IsPrimary) ?? orderedImages.FirstOrDefault();
+                    var orderedImages = product.Images.OrderBy(image => image.DisplayOrder).ToList();
+                    var primaryImage = orderedImages.FirstOrDefault(image => image.IsPrimary) ?? orderedImages.FirstOrDefault();
                     var primaryUrl = primaryImage?.ImageUrl ?? "/images/favicon/parfait-logo.png";
                     var modalId = $"editProduct{product.Id}";
 
@@ -151,9 +249,42 @@
                                 </div>
                             </div>
                         </td>
-                        <td><strong>@Money(product.PriceCents)</strong></td>
-                        <td><span class="pf-pill @(product.IsActive ? "is-live" : "is-muted")">@(product.IsActive ? "Live" : "Hidden")</span></td>
-                        <td><span class="pf-pill @(product.IsFeatured ? "is-live" : "is-muted")">@(product.IsFeatured ? "Yes" : "No")</span></td>
+                        <td>
+                            <div class="pf-product-table-stack">
+                                <strong>@Money(product.PriceCents)</strong>
+                                @if (product.HasSalePrice)
+                                {
+                                    <span>Compare at @Money(product.CompareAtPriceCents)</span>
+                                }
+                                <span>@product.Badge</span>
+                            </div>
+                        </td>
+                        <td>
+                            <div class="pf-product-table-stack">
+                                <span class="pf-command-badge @ToneClass(product.InventoryTone)">@product.InventoryLabel</span>
+                                <span>@product.InventoryBySize.Count(size => size.IsEnabled) live sizes</span>
+                                @if (product.LowStockSizeCount > 0)
+                                {
+                                    <span>@product.LowStockSizeCount low stock</span>
+                                }
+                                @if (product.SoldOutSizeCount > 0)
+                                {
+                                    <span>@product.SoldOutSizeCount sold out</span>
+                                }
+                            </div>
+                        </td>
+                        <td>
+                            <div class="pf-product-table-stack">
+                                <span class="pf-command-badge @(product.ActiveDiscountCount > 0 ? "is-warning" : "is-muted")">@product.ActiveDiscountCount active</span>
+                                <span>@(product.HasSalePrice ? "Sale pricing on" : "No sale pricing")</span>
+                            </div>
+                        </td>
+                        <td>
+                            <div class="pf-product-table-stack">
+                                <span class="pf-pill @(product.IsActive ? "is-live" : "is-muted")">@(product.IsActive ? "Live" : "Hidden")</span>
+                                <span class="pf-pill @(product.IsFeatured ? "is-live" : "is-muted")">@(product.IsFeatured ? "Featured" : "Standard")</span>
+                            </div>
+                        </td>
                         <td>@orderedImages.Count</td>
                         <td>@product.DisplayOrder</td>
                         <td class="pf-table-actions">
@@ -169,10 +300,12 @@
 
 @foreach (var product in Model.Products)
 {
-    var orderedImages = product.Images.OrderBy(i => i.DisplayOrder).ToList();
-    var primaryImage = orderedImages.FirstOrDefault(i => i.IsPrimary) ?? orderedImages.FirstOrDefault();
+    var orderedImages = product.Images.OrderBy(image => image.DisplayOrder).ToList();
+    var primaryImage = orderedImages.FirstOrDefault(image => image.IsPrimary) ?? orderedImages.FirstOrDefault();
     var primaryUrl = primaryImage?.ImageUrl ?? "/images/favicon/parfait-logo.png";
     var modalId = $"editProduct{product.Id}";
+    var inventoryTargetId = $"{modalId}InventoryRows";
+    var discountTargetId = $"{modalId}DiscountRows";
 
     <div class="pf-product-modal" id="@modalId" aria-hidden="true">
         <div class="pf-modal-dialog pf-modal-xl">
@@ -213,9 +346,7 @@
                                             <span>Order @image.DisplayOrder</span>
                                         </div>
 
-                                        <button type="button" class="pf-text-button" data-pf-open="@editorId">
-                                            Edit Image
-                                        </button>
+                                        <button type="button" class="pf-text-button" data-pf-open="@editorId">Edit Image</button>
 
                                         <div class="pf-photo-actions">
                                             <form method="post" action="/internal/commerce/products/images/move">
@@ -254,7 +385,7 @@
                         </section>
 
                         <section class="pf-editor-panel">
-                            <form method="post" action="/internal/commerce/products" class="pf-product-edit-form">
+                            <form method="post" action="/internal/commerce/products" class="pf-product-edit-form" data-pf-product-form>
                                 @Html.AntiForgeryToken()
                                 <input type="hidden" name="Id" value="@product.Id" />
                                 <input type="hidden" name="PriceLabel" value="Auto" />
@@ -262,11 +393,85 @@
                                 <div class="pf-editor-grid">
                                     <label>Name <input class="form-control" name="Name" value="@product.Name" required /></label>
                                     <label>Slug <input class="form-control" name="Slug" value="@product.Slug" required /></label>
-                                    <label class="pf-full">Description <textarea class="form-control" name="Description" rows="5" required>@product.Description</textarea></label>
-                                    <label>Price <input class="form-control pf-price-dollars" type="number" min="0" step="0.01" value="@((product.PriceCents / 100m).ToString("0.00"))" /><input type="hidden" name="PriceCents" value="@product.PriceCents" class="pf-price-cents" /></label>
+                                    <label>Price <input class="form-control pf-money-display" type="number" min="0" step="0.01" value="@MoneyField(product.PriceCents)" /><input type="hidden" name="PriceCents" value="@product.PriceCents" class="pf-money-hidden" /></label>
+                                    <label>Compare At <input class="form-control pf-money-display" type="number" min="0" step="0.01" value="@MoneyField(product.CompareAtPriceCents)" /><input type="hidden" name="CompareAtPriceCents" value="@product.CompareAtPriceCents" class="pf-money-hidden" /></label>
                                     <label>Badge <input class="form-control" name="Badge" value="@product.Badge" /></label>
                                     <label>Sort <input class="form-control" name="DisplayOrder" type="number" value="@product.DisplayOrder" /></label>
+                                    <label class="pf-full">Description <textarea class="form-control" name="Description" rows="5" required>@product.Description</textarea></label>
                                 </div>
+
+                                <section class="pf-product-section">
+                                    <div class="pf-product-section-head">
+                                        <div>
+                                            <strong>Size Inventory</strong>
+                                            <span>Keep every size aligned with the storefront so the selected option always reflects the real stock picture.</span>
+                                        </div>
+                                        <button type="button" class="pf-secondary-action pf-mini-action" data-pf-add-row="inventory" data-pf-target="@inventoryTargetId">Add Size</button>
+                                    </div>
+
+                                    <div class="pf-variant-list" id="@inventoryTargetId" data-pf-collection="InventoryBySize">
+                                        @for (var index = 0; index < product.InventoryBySize.Count; index++)
+                                        {
+                                            var size = product.InventoryBySize[index];
+                                            var isStandard = IsStandardSize(size.Size);
+                                            <div class="pf-variant-row @ToneClass(size.StatusTone)" data-pf-repeat-item data-pf-inventory-row>
+                                                <input type="hidden" data-field="Id" value="@size.Id" />
+                                                <input type="hidden" data-field="DisplayOrder" value="@((index + 1) * 10)" data-pf-order />
+
+                                                <label>Size <input class="form-control" data-field="Size" value="@size.Size" required /></label>
+                                                <label>Units <input class="form-control" data-field="StockQuantity" type="number" min="0" value="@size.StockQuantity" data-pf-stock /></label>
+                                                <label>Low Stock At <input class="form-control" data-field="LowStockThreshold" type="number" min="1" value="@size.LowStockThreshold" data-pf-low-stock /></label>
+                                                <label class="pf-check"><input type="checkbox" data-field="IsEnabled" value="true" @(size.IsEnabled ? "checked" : "") data-pf-enabled /> Enabled</label>
+                                                <label class="pf-check"><input type="checkbox" data-field="TrackInventory" value="true" @(size.TrackInventory ? "checked" : "") data-pf-track /> Track Stock</label>
+                                                <div class="pf-variant-status">
+                                                    <span class="pf-command-badge @ToneClass(size.StatusTone)" data-pf-inventory-status>@size.StatusLabel</span>
+                                                    @if (isStandard)
+                                                    {
+                                                        <small>Core size</small>
+                                                    }
+                                                </div>
+                                                @if (!isStandard)
+                                                {
+                                                    <button type="button" class="pf-row-remove" data-pf-remove-row>Remove</button>
+                                                }
+                                            </div>
+                                        }
+                                    </div>
+                                </section>
+
+                                <section class="pf-product-section">
+                                    <div class="pf-product-section-head">
+                                        <div>
+                                            <strong>Discount Codes</strong>
+                                            <span>Generate product-level codes and cap their usage before they hit the storefront.</span>
+                                        </div>
+                                        <button type="button" class="pf-secondary-action pf-mini-action" data-pf-add-row="discount" data-pf-target="@discountTargetId">Add Code</button>
+                                    </div>
+
+                                    <div class="pf-discount-list" id="@discountTargetId" data-pf-collection="DiscountCodes">
+                                        @for (var index = 0; index < product.DiscountCodes.Count; index++)
+                                        {
+                                            var code = product.DiscountCodes[index];
+                                            <div class="pf-discount-row" data-pf-repeat-item>
+                                                <input type="hidden" data-field="Id" value="@code.Id" />
+                                                <label>Code <input class="form-control" data-field="Code" value="@code.Code" /></label>
+                                                <label>Type
+                                                    <select class="form-select" data-field="DiscountType">
+                                                        <option value="Percent" selected="@string.Equals(code.DiscountType, "Percent", StringComparison.OrdinalIgnoreCase)">Percent</option>
+                                                        <option value="Fixed" selected="@string.Equals(code.DiscountType, "Fixed", StringComparison.OrdinalIgnoreCase)">Fixed</option>
+                                                    </select>
+                                                </label>
+                                                <label>Amount <input class="form-control" data-field="Amount" type="number" min="0" step="0.01" value="@(code.Amount > 0 ? code.Amount.ToString("0.##") : "")" /></label>
+                                                <label>Usage Limit <input class="form-control" data-field="UsageLimit" type="number" min="0" value="@code.UsageLimit" /></label>
+                                                <label class="pf-check"><input type="checkbox" data-field="IsActive" value="true" @(code.IsActive ? "checked" : "") /> Active</label>
+                                                <div class="pf-discount-actions">
+                                                    <button type="button" class="pf-text-button" data-pf-generate-code>Generate</button>
+                                                    <button type="button" class="pf-row-remove" data-pf-remove-row>Remove</button>
+                                                </div>
+                                            </div>
+                                        }
+                                    </div>
+                                </section>
 
                                 <div class="pf-product-flags">
                                     <label><input type="checkbox" name="IsActive" value="true" @(product.IsActive ? "checked" : "") /> Active</label>
@@ -341,6 +546,43 @@
     }
 }
 
+<template id="pfInventoryRowTemplate">
+    <div class="pf-variant-row is-muted" data-pf-repeat-item data-pf-inventory-row>
+        <input type="hidden" data-field="Id" value="" />
+        <input type="hidden" data-field="DisplayOrder" value="0" data-pf-order />
+        <label>Size <input class="form-control" data-field="Size" value="" required /></label>
+        <label>Units <input class="form-control" data-field="StockQuantity" type="number" min="0" value="0" data-pf-stock /></label>
+        <label>Low Stock At <input class="form-control" data-field="LowStockThreshold" type="number" min="1" value="3" data-pf-low-stock /></label>
+        <label class="pf-check"><input type="checkbox" data-field="IsEnabled" value="true" checked data-pf-enabled /> Enabled</label>
+        <label class="pf-check"><input type="checkbox" data-field="TrackInventory" value="true" data-pf-track /> Track Stock</label>
+        <div class="pf-variant-status">
+            <span class="pf-command-badge is-muted" data-pf-inventory-status>Available</span>
+            <small>Custom size</small>
+        </div>
+        <button type="button" class="pf-row-remove" data-pf-remove-row>Remove</button>
+    </div>
+</template>
+
+<template id="pfDiscountRowTemplate">
+    <div class="pf-discount-row" data-pf-repeat-item>
+        <input type="hidden" data-field="Id" value="" />
+        <label>Code <input class="form-control" data-field="Code" value="" /></label>
+        <label>Type
+            <select class="form-select" data-field="DiscountType">
+                <option value="Percent" selected>Percent</option>
+                <option value="Fixed">Fixed</option>
+            </select>
+        </label>
+        <label>Amount <input class="form-control" data-field="Amount" type="number" min="0" step="0.01" value="" /></label>
+        <label>Usage Limit <input class="form-control" data-field="UsageLimit" type="number" min="0" value="0" /></label>
+        <label class="pf-check"><input type="checkbox" data-field="IsActive" value="true" checked /> Active</label>
+        <div class="pf-discount-actions">
+            <button type="button" class="pf-text-button" data-pf-generate-code>Generate</button>
+            <button type="button" class="pf-row-remove" data-pf-remove-row>Remove</button>
+        </div>
+    </div>
+</template>
+
 <script>
     (() => {
         const openModal = id => {
@@ -385,18 +627,170 @@
 
 <script>
     (() => {
-        document.querySelectorAll(".pf-price-dollars").forEach(input => {
+        const syncMoneyInput = input => {
+            const hidden = input.parentElement?.querySelector(".pf-money-hidden");
+            if (!hidden) return;
+
+            hidden.value = Math.round(Number(input.value || 0) * 100).toString();
+        };
+
+        document.querySelectorAll(".pf-money-display").forEach(input => {
             const form = input.closest("form");
-            const cents = form?.querySelector(".pf-price-cents");
+            input.addEventListener("input", () => syncMoneyInput(input));
+            form?.addEventListener("submit", () => syncMoneyInput(input));
+            syncMoneyInput(input);
+        });
+    })();
+</script>
 
-            const sync = () => {
-                if (!cents) return;
-                cents.value = Math.round(Number(input.value || 0) * 100).toString();
-            };
+<script>
+    (() => {
+        const slugify = value => (value || "")
+            .trim()
+            .toUpperCase()
+            .replace(/[^A-Z0-9]+/g, "-")
+            .replace(/^-+|-+$/g, "")
+            .slice(0, 10) || "PARFAIT";
 
-            input.addEventListener("input", sync);
-            form?.addEventListener("submit", sync);
-            sync();
+        const inventoryTemplate = document.getElementById("pfInventoryRowTemplate");
+        const discountTemplate = document.getElementById("pfDiscountRowTemplate");
+
+        const updateInventoryRow = row => {
+            if (!row) return;
+
+            const enabled = row.querySelector("[data-pf-enabled]")?.checked ?? false;
+            const track = row.querySelector("[data-pf-track]")?.checked ?? false;
+            const stock = Number(row.querySelector("[data-pf-stock]")?.value || 0);
+            const threshold = Math.max(1, Number(row.querySelector("[data-pf-low-stock]")?.value || 1));
+            const status = row.querySelector("[data-pf-inventory-status]");
+
+            let tone = "is-success";
+            let label = "Available";
+
+            if (!enabled) {
+                tone = "is-muted";
+                label = "Hidden";
+            } else if (!track) {
+                tone = "is-info";
+                label = "Available";
+            } else if (stock <= 0) {
+                tone = "is-danger";
+                label = "Sold Out";
+            } else if (stock <= threshold) {
+                tone = "is-warning";
+                label = `${stock} Left`;
+            } else {
+                tone = "is-success";
+                label = `${stock} Ready`;
+            }
+
+            row.classList.remove("is-success", "is-warning", "is-danger", "is-info", "is-muted");
+            row.classList.add(tone);
+
+            if (status) {
+                status.classList.remove("is-success", "is-warning", "is-danger", "is-info", "is-muted");
+                status.classList.add(tone);
+                status.textContent = label;
+            }
+        };
+
+        const reindexCollection = container => {
+            if (!container) return;
+
+            const prefix = container.getAttribute("data-pf-collection");
+            const rows = [...container.querySelectorAll("[data-pf-repeat-item]")];
+
+            rows.forEach((row, index) => {
+                row.querySelectorAll("[data-field]").forEach(field => {
+                    const property = field.getAttribute("data-field");
+                    field.name = `${prefix}[${index}].${property}`;
+                });
+
+                const orderInput = row.querySelector("[data-pf-order]");
+                if (orderInput) {
+                    orderInput.value = ((index + 1) * 10).toString();
+                }
+
+                if (row.hasAttribute("data-pf-inventory-row")) {
+                    updateInventoryRow(row);
+                }
+            });
+        };
+
+        const addRow = (targetId, template) => {
+            const container = document.getElementById(targetId);
+            if (!container || !template) return;
+
+            const fragment = template.content.cloneNode(true);
+            container.appendChild(fragment);
+            reindexCollection(container);
+        };
+
+        const wireRowRemoval = root => {
+            root.addEventListener("click", event => {
+                const removeButton = event.target.closest("[data-pf-remove-row]");
+                if (!removeButton) return;
+
+                const row = removeButton.closest("[data-pf-repeat-item]");
+                const container = removeButton.closest("[data-pf-collection]");
+                if (!row || !container) return;
+
+                row.remove();
+                reindexCollection(container);
+            });
+        };
+
+        document.querySelectorAll("[data-pf-product-form]").forEach(form => {
+            const nameInput = form.querySelector('input[name="Name"]');
+            const slugInput = form.querySelector('input[name="Slug"]');
+
+            nameInput?.addEventListener("input", () => {
+                if (!slugInput || slugInput.value.trim().length > 0) return;
+                slugInput.value = (nameInput.value || "")
+                    .trim()
+                    .toLowerCase()
+                    .replace(/[^a-z0-9]+/g, "-")
+                    .replace(/^-+|-+$/g, "");
+            });
+
+            form.querySelectorAll("[data-pf-collection]").forEach(reindexCollection);
+
+            form.addEventListener("change", event => {
+                const row = event.target.closest("[data-pf-inventory-row]");
+                if (row) {
+                    updateInventoryRow(row);
+                }
+            });
+
+            form.addEventListener("input", event => {
+                const row = event.target.closest("[data-pf-inventory-row]");
+                if (row) {
+                    updateInventoryRow(row);
+                }
+            });
+
+            form.addEventListener("click", event => {
+                const addButton = event.target.closest("[data-pf-add-row]");
+                if (addButton) {
+                    const type = addButton.getAttribute("data-pf-add-row");
+                    const target = addButton.getAttribute("data-pf-target");
+                    addRow(target, type === "inventory" ? inventoryTemplate : discountTemplate);
+                    return;
+                }
+
+                const generateButton = event.target.closest("[data-pf-generate-code]");
+                if (!generateButton) return;
+
+                const row = generateButton.closest("[data-pf-repeat-item]");
+                const codeInput = row?.querySelector('[data-field="Code"]');
+                if (!codeInput) return;
+
+                const prefix = slugify(nameInput?.value || "PARFAIT");
+                const suffix = Math.random().toString(36).toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0, 6);
+                codeInput.value = `${prefix}-${suffix}`;
+            });
+
+            wireRowRemoval(form);
         });
     })();
 </script>

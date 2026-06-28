@@ -26,7 +26,14 @@ public sealed class ParfaitCheckoutCustomerRequest
 public sealed class ParfaitCheckoutPayRequest
 {
     public string? SourceId { get; set; }
+    public string? DiscountCode { get; set; }
     public ParfaitCheckoutCustomerRequest Customer { get; set; } = new();
+    public List<ParfaitCheckoutItemRequest> Items { get; set; } = [];
+}
+
+public sealed class ParfaitCartQuoteRequest
+{
+    public string? DiscountCode { get; set; }
     public List<ParfaitCheckoutItemRequest> Items { get; set; } = [];
 }
 
@@ -42,11 +49,51 @@ public sealed class ParfaitValidatedCartItem
 {
     public required string Id { get; set; }
     public required string Name { get; set; }
+    public required string Slug { get; set; }
     public required string Size { get; set; }
     public int Quantity { get; set; }
     public int UnitPriceCents { get; set; }
+    public int CompareAtPriceCents { get; set; }
     public string? ImageUrl { get; set; }
     public int LineTotalCents => UnitPriceCents * Quantity;
+}
+
+public sealed class ParfaitCartLineQuote
+{
+    public required string Key { get; set; }
+    public required string Id { get; set; }
+    public required string Name { get; set; }
+    public required string Slug { get; set; }
+    public required string Size { get; set; }
+    public string Badge { get; set; } = "Parfait";
+    public int RequestedQuantity { get; set; }
+    public int Quantity { get; set; }
+    public int UnitPriceCents { get; set; }
+    public int CompareAtPriceCents { get; set; }
+    public string? ImageUrl { get; set; }
+    public bool IsAvailable { get; set; }
+    public bool IsLowStock { get; set; }
+    public string AvailabilityTone { get; set; } = "success";
+    public string AvailabilityLabel { get; set; } = "Available";
+    public string? Issue { get; set; }
+    public int LineTotalCents => UnitPriceCents * Quantity;
+}
+
+public sealed class ParfaitCartQuoteResponse
+{
+    public bool Success { get; set; }
+    public bool IsValid { get; set; }
+    public string? Error { get; set; }
+    public string? DiscountCode { get; set; }
+    public string? DiscountLabel { get; set; }
+    public List<string> Messages { get; set; } = [];
+    public List<ParfaitCartLineQuote> Items { get; set; } = [];
+    public int ItemCount { get; set; }
+    public int SubtotalCents { get; set; }
+    public int DiscountCents { get; set; }
+    public int ShippingCents { get; set; }
+    public int TaxCents { get; set; }
+    public int TotalCents { get; set; }
 }
 
 public sealed class ParfaitOrderRecord
@@ -80,6 +127,9 @@ public sealed class ParfaitOrderRecord
     public List<ParfaitValidatedCartItem> Items { get; set; } = [];
 
     public int SubtotalCents { get; set; }
+    public string? DiscountCode { get; set; }
+    public string? DiscountLabel { get; set; }
+    public int DiscountCents { get; set; }
     public int ShippingCents { get; set; }
     public int TaxCents { get; set; }
     public int TotalCents { get; set; }

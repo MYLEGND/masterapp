@@ -41,6 +41,13 @@
                         <span>Total Paid</span>
                         <strong>@Money(Model.Order.TotalCents)</strong>
                     </div>
+                    @if (Model.Order.DiscountCents > 0)
+                    {
+                        <div>
+                            <span>Discount</span>
+                            <strong>-@Money(Model.Order.DiscountCents)</strong>
+                        </div>
+                    }
                     <div>
                         <span>Receipt Sent To</span>
                         <strong>@Model.Order.Email</strong>
