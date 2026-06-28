@@ -55,6 +55,14 @@
                 <a class="pf-sidebar-utility" href="/store" target="_blank" rel="noopener">View Store</a>
                 <a class="pf-sidebar-utility" href="/" target="_blank" rel="noopener">Public Site</a>
             </div>
+
+            @if (User.Identity?.IsAuthenticated == true)
+            {
+                <form action="@Url.Content("~/internal/logout")" method="post" class="pf-sidebar-logout-form">
+                    @Html.AntiForgeryToken()
+                    <button type="submit" class="pf-sidebar-utility pf-sidebar-logout">Sign Out</button>
+                </form>
+            }
         </div>
     </aside>
 

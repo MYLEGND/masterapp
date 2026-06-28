@@ -380,6 +380,10 @@ html {
     gap: 0.7rem;
 }
 
+.pf-sidebar-logout-form {
+    margin: 0;
+}
+
 .pf-sidebar-utility {
     min-height: 44px;
     display: inline-flex;
@@ -404,6 +408,11 @@ html {
     border-color: rgba(255, 245, 237, 0.76);
     background: linear-gradient(180deg, rgba(255, 252, 248, 1), rgba(237, 220, 205, 1));
     box-shadow: 0 16px 30px rgba(20, 10, 8, 0.22);
+}
+
+.pf-sidebar-logout {
+    width: 100%;
+    cursor: pointer;
 }
 
 .pf-shell {

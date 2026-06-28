@@ -66,7 +66,7 @@ public class GraphMailService : IGraphMailService
         string message,
         string requestIp)
     {
-        var senderUpn = (_config["GraphMail:SenderUpn"] ?? _config["Contact:SenderEmail"] ?? "").Trim();
+        var senderUpn = ResolveSenderUpn();
         var inbox = (_config["Contact:RecipientEmail"] ?? _config["GraphMail:NotifyInbox"] ?? "").Trim();
         var siteName = (_config["Contact:WebsiteName"] ?? "Shop Parfait").Trim();
 
@@ -150,7 +150,7 @@ $@"
 
     public async Task SendOrderReceiptAsync(ParfaitOrderRecord order, CancellationToken ct = default)
     {
-        var senderUpn = (_config["GraphMail:SenderUpn"] ?? _config["Contact:SenderEmail"] ?? "").Trim();
+        var senderUpn = ResolveSenderUpn();
         var siteName = (_config["Contact:WebsiteName"] ?? "Shop Parfait").Trim();
 
         if (string.IsNullOrWhiteSpace(senderUpn))
@@ -205,7 +205,7 @@ $@"
 
     public async Task SendOrderNotificationAsync(ParfaitOrderRecord order, CancellationToken ct = default)
     {
-        var senderUpn = (_config["GraphMail:SenderUpn"] ?? _config["Contact:SenderEmail"] ?? "").Trim();
+        var senderUpn = ResolveSenderUpn();
         var inbox = (_config["Commerce:OrdersInbox"] ?? _config["Contact:RecipientEmail"] ?? _config["GraphMail:NotifyInbox"] ?? "").Trim();
         var siteName = (_config["Contact:WebsiteName"] ?? "Shop Parfait").Trim();
 
@@ -264,7 +264,11 @@ $@"
         string invitedBy,
         CancellationToken ct = default)
     {
-        var senderUpn = (_config["GraphMail:SenderUpn"] ?? _config["Contact:SenderEmail"] ?? "").Trim();
+        var senderUpn = ResolveSenderUpn(
+            _config["GraphMail:ParfaitTeamSenderUpn"],
+            _config["GraphMail:SenderUpn"],
+            _config["Contact:RecipientEmail"],
+            _config["Contact:SenderEmail"]);
         var siteName = (_config["Contact:WebsiteName"] ?? "Parfait App").Trim();
 
         if (string.IsNullOrWhiteSpace(senderUpn))
@@ -313,6 +317,26 @@ $@"
 </div>";
 
         await SendMailAsync(graph, senderUpn, toEmail.Trim(), $"Your Parfait internal invite", html);
+    }
+
+    private string ResolveSenderUpn(params string?[] preferredValues)
+    {
+        var candidates = preferredValues.Length == 0
+            ? [
+                _config["GraphMail:SenderUpn"],
+                _config["Contact:RecipientEmail"],
+                _config["Contact:SenderEmail"]
+            ]
+            : preferredValues;
+
+        foreach (var candidate in candidates)
+        {
+            var cleaned = candidate?.Trim();
+            if (!string.IsNullOrWhiteSpace(cleaned))
+                return cleaned;
+        }
+
+        return string.Empty;
     }
 
     private static async Task SendMailAsync(GraphServiceClient graph, string senderUpn, string to, string subject, string htmlBody)

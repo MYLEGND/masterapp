@@ -36,6 +36,7 @@ public sealed class ParfaitTeamManagementViewModel
 {
     public string FounderEmail { get; set; } = string.Empty;
     public string FounderIdentityStatus { get; set; } = string.Empty;
+    public int FounderCount { get; set; }
     public List<ParfaitInternalPageDefinition> AssignablePages { get; set; } = [];
     public List<ParfaitInternalPageDefinition> FounderOnlyPages { get; set; } = [];
     public List<ParfaitTeamRoleDefinition> RoleOptions { get; set; } = [];

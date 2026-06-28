@@ -270,8 +270,9 @@ public sealed class ParfaitTeamAccessService : IParfaitTeamAccessService
 
         return Task.FromResult(new ParfaitTeamManagementViewModel
         {
-            FounderEmail = ParfaitFounderGuard.FounderEmail,
+            FounderEmail = ParfaitFounderGuard.OwnerEmailSummary(),
             FounderIdentityStatus = BuildFounderIdentityStatus(),
+            FounderCount = ParfaitFounderGuard.OwnerEmails.Count,
             AssignablePages = assignablePages,
             FounderOnlyPages = founderOnlyPages,
             RoleOptions = roleOptions,
@@ -285,8 +286,8 @@ public sealed class ParfaitTeamAccessService : IParfaitTeamAccessService
         if (!IsCompanyEmail(email))
             throw new InvalidOperationException("Team access is limited to @mylegnd.com accounts.");
 
-        if (email.Equals(ParfaitFounderGuard.FounderEmail, StringComparison.OrdinalIgnoreCase))
-            throw new InvalidOperationException("The founder account already has full access.");
+        if (ParfaitFounderGuard.IsOwnerEmail(email))
+            throw new InvalidOperationException("That owner account already has full access.");
 
         var roleKey = NormalizeRoleKey(input.RoleKey);
         var pages = _pages.GetAllPages();
@@ -542,8 +543,8 @@ public sealed class ParfaitTeamAccessService : IParfaitTeamAccessService
     private static string BuildFounderIdentityStatus()
     {
         return string.IsNullOrWhiteSpace(ParfaitFounderGuard.FounderOid)
-            ? "Founder access is locked to the configured @mylegnd.com identity."
-            : "Founder access is locked to the configured Microsoft identity and founder email.";
+            ? "Owner access is locked to the configured @mylegnd.com owner emails."
+            : "Owner access is locked to the configured Microsoft identity and approved owner emails.";
     }
 
     private static string BuildIdentityStatusLabel(TeamMemberRecord member)

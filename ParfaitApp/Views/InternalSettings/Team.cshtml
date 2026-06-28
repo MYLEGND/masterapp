@@ -46,9 +46,9 @@
 
     <section class="pf-command-rail">
         <article class="pf-rail-card is-success pf-span-3">
-            <div class="pf-rail-label">Founder Lock</div>
-            <strong class="pf-rail-value">1</strong>
-            <p class="pf-rail-note">Founder access stays fixed.</p>
+            <div class="pf-rail-label">Owner Lock</div>
+            <strong class="pf-rail-value">@Model.FounderCount</strong>
+            <p class="pf-rail-note">Owner access stays fixed.</p>
         </article>
 
         <article class="pf-rail-card is-info pf-span-3">
@@ -73,11 +73,11 @@
     <section class="pf-workspace-grid">
         <div class="pf-module-card pf-span-4">
             <h2 class="pf-module-title">Primary Control</h2>
-            <p class="text-muted mb-4">Founder identity and reserved access rules.</p>
+            <p class="text-muted mb-4">Owner identity and reserved access rules.</p>
 
             <div class="pf-founder-lock">
                 <div>
-                    <strong>Email</strong>
+                    <strong>Owner Emails</strong>
                     <span>@Model.FounderEmail</span>
                 </div>
                 <div>
@@ -85,8 +85,8 @@
                     <span>@Model.FounderIdentityStatus</span>
                 </div>
                 <div>
-                    <strong>Founder-only pages</strong>
-                    <span>@(Model.FounderOnlyPages.Count == 0 ? "0 founder-only pages." : $"{Model.FounderOnlyPages.Count} founder-only page(s).")</span>
+                    <strong>Owner-only pages</strong>
+                    <span>@(Model.FounderOnlyPages.Count == 0 ? "0 owner-only pages." : $"{Model.FounderOnlyPages.Count} owner-only page(s).")</span>
                 </div>
             </div>
         </div>

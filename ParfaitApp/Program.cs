@@ -11,10 +11,36 @@ var builder = WebApplication.CreateBuilder(args);
 builder.Services.AddControllersWithViews();
 
 {
+    var configuredOwnerEmails = builder.Configuration
+        .GetSection("Founder:OwnerEmails")
+        .Get<string[]>()?
+        .Select(value => value?.Trim())
+        .Where(value => !string.IsNullOrWhiteSpace(value))
+        .Cast<string>()
+        .ToList()
+        ?? [];
+
+    var configuredPrimaryOwnerEmail = builder.Configuration["Founder:Email"]?.Trim();
+    if (!string.IsNullOrWhiteSpace(configuredPrimaryOwnerEmail) &&
+        !configuredOwnerEmails.Any(value => value.Equals(configuredPrimaryOwnerEmail, StringComparison.OrdinalIgnoreCase)))
+    {
+        configuredOwnerEmails.Insert(0, configuredPrimaryOwnerEmail);
+    }
+
+    var resolvedOwnerEmails =
+        Environment.GetEnvironmentVariable("OWNER_EMAILS")
+        ?? Environment.GetEnvironmentVariable("OwnerEmails");
+
+    if (string.IsNullOrWhiteSpace(resolvedOwnerEmails) && configuredOwnerEmails.Count > 0)
+        resolvedOwnerEmails = string.Join(';', configuredOwnerEmails);
+
+    if (!string.IsNullOrWhiteSpace(resolvedOwnerEmails))
+        Environment.SetEnvironmentVariable("OWNER_EMAILS", resolvedOwnerEmails);
+
     var resolvedOwnerEmail =
         Environment.GetEnvironmentVariable("OWNER_EMAIL")
         ?? Environment.GetEnvironmentVariable("OwnerEmail")
-        ?? builder.Configuration["Founder:Email"]?.Trim();
+        ?? configuredOwnerEmails.FirstOrDefault();
 
     if (!string.IsNullOrWhiteSpace(resolvedOwnerEmail))
         Environment.SetEnvironmentVariable("OWNER_EMAIL", resolvedOwnerEmail);
@@ -109,6 +135,8 @@ builder.Services
         options.ResponseType = OpenIdConnectResponseType.Code;
         options.SaveTokens = true;
         options.CallbackPath = "/signin-oidc";
+        options.SignedOutCallbackPath = "/signout-callback-oidc";
+        options.SignedOutRedirectUri = "/";
 
         options.Scope.Clear();
         options.Scope.Add("openid");

@@ -150,12 +150,15 @@ public sealed class InternalSettingsController : Controller
 
         try
         {
+            var inviteScheme = Request.Host.Host.Contains("localhost", StringComparison.OrdinalIgnoreCase)
+                ? Request.Scheme
+                : Uri.UriSchemeHttps;
             var inviteUrl = Url.Action(
                                 nameof(InternalController.Login),
                                 "Internal",
                                 new { returnUrl = "/internal" },
-                                Request.Scheme)
-                            ?? $"{Request.Scheme}://{Request.Host}/internal/login";
+                                inviteScheme)
+                            ?? $"{inviteScheme}://{Request.Host}/internal/login";
             var invitedBy = User.FindFirst("name")?.Value
                             ?? User.Identity?.Name
                             ?? User.FindFirst("preferred_username")?.Value
