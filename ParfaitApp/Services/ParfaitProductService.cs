@@ -625,6 +625,9 @@ public sealed class ParfaitProductService
             CompareAtPriceCents = product.CompareAtPriceCents,
             DisplayPriceCents = displayPriceCents > 0 || displayDiscountCents > 0 ? displayPriceCents : product.PriceCents,
             DisplayCompareAtPriceCents = displayDiscountCents > 0 ? product.PriceCents : 0,
+            DisplayDiscountLabel = displayDiscount is not null && displayDiscountCents > 0
+                ? displayDiscount.SummaryLabel
+                : "",
             Badge = product.Badge,
             IsFeatured = product.IsFeatured,
             Images = product.Images

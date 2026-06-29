@@ -49,6 +49,10 @@
                                     <div class="sp-shop-compare-price">@product.DisplayCompareAtPriceLabel</div>
                                 }
                                 <div class="sp-shop-price">@product.DisplayPriceLabel</div>
+                                @if (product.HasDisplayDiscountLabel)
+                                {
+                                    <div class="sp-shop-discount">@product.DisplayDiscountLabel</div>
+                                }
                             </div>
                         </div>
 

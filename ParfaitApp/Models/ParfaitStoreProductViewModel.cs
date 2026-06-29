@@ -97,6 +97,7 @@ public sealed class ParfaitStoreProductViewModel
     public int CompareAtPriceCents { get; init; }
     public int DisplayPriceCents { get; init; }
     public int DisplayCompareAtPriceCents { get; init; }
+    public string DisplayDiscountLabel { get; init; } = "";
     public string Badge { get; init; } = "Parfait";
     public bool IsFeatured { get; init; }
     public IReadOnlyList<ParfaitStoreProductImageViewModel> Images { get; init; } = [];
@@ -119,6 +120,7 @@ public sealed class ParfaitStoreProductViewModel
     public string CompareAtPriceLabel => HasSalePrice ? $"${CompareAtPriceCents / 100m:0.00}" : "";
     public string SavingsLabel => HasSalePrice ? $"Save ${SavingsCents / 100m:0.00}" : "";
     public bool HasDisplaySalePrice => DisplayCompareAtPriceCents > DisplayPriceCents && DisplayPriceCents >= 0;
+    public bool HasDisplayDiscountLabel => !string.IsNullOrWhiteSpace(DisplayDiscountLabel);
     public int DisplaySavingsCents => HasDisplaySalePrice ? DisplayCompareAtPriceCents - DisplayPriceCents : 0;
     public string DisplayPriceLabel => DisplayPriceCents > 0 || PriceCents > 0
         ? $"${DisplayPriceCents / 100m:0.00}"

@@ -56,7 +56,7 @@ body.sp-body {
     position: relative;
     overflow: hidden;
     padding: clamp(1.02rem, 2vw, 1.36rem) clamp(1.05rem, 2vw, 1.48rem);
-    border: 2px solid rgba(43, 28, 22, 0.36);
+    border: 2px solid rgba(43, 28, 22, 0.72);
     border-radius: 22px;
     background:
         radial-gradient(circle at top right, rgba(255, 255, 255, 0.34), transparent 26%),
@@ -295,6 +295,7 @@ body.sp-body {
     justify-content: center;
     gap: 0.55rem;
     flex-wrap: wrap;
+    row-gap: 0.38rem;
 }
 
 .sp-shop-price {
@@ -321,6 +322,28 @@ body.sp-body {
     font-weight: var(--sp-weight-bold);
     letter-spacing: 0.08em;
     text-transform: uppercase;
+}
+
+.sp-shop-discount,
+.sp-product-discount {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 28px;
+    padding: 0 0.74rem;
+    border: 1px solid rgba(177, 59, 50, 0.3);
+    border-radius: 999px;
+    background: linear-gradient(180deg, rgba(255, 243, 242, 0.98), rgba(255, 232, 230, 0.96));
+    color: var(--sp-sale-red);
+    font-size: 0.66rem;
+    font-weight: var(--sp-weight-bold);
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.45);
+}
+
+.sp-shop-discount {
+    margin-left: 0.08rem;
 }
 
 .sp-stock-pill {
@@ -623,6 +646,11 @@ body.sp-body {
     background: var(--sp-sale-red-soft);
     font-size: 0.76rem;
     letter-spacing: 0.06em;
+}
+
+.sp-product-discount {
+    min-height: 30px;
+    padding-inline: 0.86rem;
 }
 
 .sp-product-stock-strip {
