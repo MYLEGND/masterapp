@@ -9,9 +9,9 @@
     <link rel="stylesheet" href="~/css/storefront.css" asp-append-version="true" />
 }
 
-<section class="sp-store-page">
+<section class="sp-store-page sp-store-page--cart">
     <div class="sp-shell">
-        <header class="sp-store-hero sp-store-hero--compact">
+        <header class="sp-store-hero sp-store-hero--compact sp-store-hero--transaction">
             <h1>Your Cart</h1>
         </header>
 
@@ -19,14 +19,26 @@
 
         <div class="sp-cart-layout">
             <section class="sp-surface sp-cart-panel">
-                <div class="sp-panel-heading sp-panel-heading--stacked">
-                    <span>Items In Cart</span>
-                    <strong id="spCartItemCount">0</strong>
+                <div class="sp-cart-panel-head">
+                    <h2>Items In Cart</h2>
+                    <span class="sp-count-chip">
+                        <strong id="spCartItemCount">0</strong>
+                        <small>Items</small>
+                    </span>
+                </div>
+
+                <div id="spCartStatus" class="sp-cart-status" hidden></div>
+                <div id="spCartItems" class="sp-cart-items"></div>
+            </section>
+
+            <aside class="sp-surface sp-cart-summary-panel">
+                <div class="sp-summary-head">
+                    <h2>Order Summary</h2>
                 </div>
 
                 <div class="sp-discount-panel">
                     <label class="sp-field">
-                        <span>Discount Code</span>
+                        <span>Promo Code</span>
                         <div class="sp-discount-entry">
                             <input id="spDiscountCode" autocomplete="off" placeholder="Enter code" />
                             <button type="button" class="sp-button sp-button--secondary" id="spApplyDiscount">Apply</button>
@@ -35,32 +47,23 @@
                     </label>
                 </div>
 
-                <div id="spCartStatus" class="sp-cart-status" hidden></div>
-                <div id="spCartItems" class="sp-cart-items"></div>
-            </section>
-
-            <aside class="sp-surface sp-cart-summary-panel">
-                <div class="sp-panel-heading">
-                    <span>Order Summary</span>
-                </div>
-
                 <div class="sp-summary-stack">
-                    <div class="sp-summary-line">
+                    <div class="sp-summary-line sp-summary-line--subtotal">
                         <span>Subtotal</span>
                         <strong id="spCartSubtotal">$0.00</strong>
                     </div>
 
-                    <div class="sp-summary-line" id="spCartDiscountRow" hidden>
+                    <div class="sp-summary-line sp-summary-line--discount" id="spCartDiscountRow" hidden>
                         <span id="spCartDiscountLabel">Discount</span>
                         <strong id="spCartDiscountValue">$0.00</strong>
                     </div>
 
-                    <div class="sp-summary-line">
+                    <div class="sp-summary-line sp-summary-line--shipping">
                         <span>Shipping</span>
                         <strong id="spCartShipping">$0.00</strong>
                     </div>
 
-                    <div class="sp-summary-line">
+                    <div class="sp-summary-line sp-summary-line--tax">
                         <span>Tax</span>
                         <strong id="spCartTax">$0.00</strong>
                     </div>
