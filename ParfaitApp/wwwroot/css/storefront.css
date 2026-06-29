@@ -316,14 +316,6 @@ body.sp-body {
     text-decoration-thickness: 2px;
 }
 
-.sp-product-savings {
-    color: var(--sp-cocoa-700);
-    font-size: 0.68rem;
-    font-weight: var(--sp-weight-bold);
-    letter-spacing: 0.08em;
-    text-transform: uppercase;
-}
-
 .sp-shop-discount,
 .sp-product-discount {
     display: inline-flex;

@@ -121,12 +121,10 @@ public sealed class ParfaitStoreProductViewModel
     public string SavingsLabel => HasSalePrice ? $"Save ${SavingsCents / 100m:0.00}" : "";
     public bool HasDisplaySalePrice => DisplayCompareAtPriceCents > DisplayPriceCents && DisplayPriceCents >= 0;
     public bool HasDisplayDiscountLabel => !string.IsNullOrWhiteSpace(DisplayDiscountLabel);
-    public int DisplaySavingsCents => HasDisplaySalePrice ? DisplayCompareAtPriceCents - DisplayPriceCents : 0;
     public string DisplayPriceLabel => DisplayPriceCents > 0 || PriceCents > 0
         ? $"${DisplayPriceCents / 100m:0.00}"
         : PriceLabel;
     public string DisplayCompareAtPriceLabel => HasDisplaySalePrice ? $"${DisplayCompareAtPriceCents / 100m:0.00}" : "";
-    public string DisplaySavingsLabel => HasDisplaySalePrice ? $"Save ${DisplaySavingsCents / 100m:0.00}" : "";
     public bool HasTrackedInventory => Sizes.Any(size => size.IsEnabled);
     public int TotalTrackedStock => Sizes.Where(size => size.IsEnabled).Sum(size => Math.Max(size.StockQuantity, 0));
     public bool IsSoldOut => Sizes.Count > 0 && Sizes.Where(size => size.IsEnabled).All(size => !size.CanPurchase);
