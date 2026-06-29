@@ -1,18 +1,40 @@
 @{
     ViewData["Title"] = "Access Restricted";
     Layout = "_InternalAuthLayout";
+
+    var message = Context.Request.Query["message"].ToString().Trim();
+    var hasMessage = !string.IsNullOrWhiteSpace(message);
+    var isCorrelationFailure = hasMessage &&
+        message.Contains("Correlation failed", StringComparison.OrdinalIgnoreCase);
+
+    var introTitle = isCorrelationFailure ? "Sign-In Needs A Fresh Retry" : "Access Restricted";
+    var introCopy = isCorrelationFailure
+        ? "The Microsoft sign-in handshake lost its secure browser match before Parfait could validate your founder or Team access."
+        : hasMessage
+            ? message
+            : "This page is not assigned to your account. Ask a Full Control admin to update your Team access.";
+
+    var cardTitle = isCorrelationFailure ? "Authentication Retry Required" : "Restricted";
+    var cardCopy = isCorrelationFailure
+        ? "Start the sign-in flow again from the clean retry button below so the secure callback can finish on the correct Parfait host."
+        : hasMessage
+            ? message
+            : "Your sign-in worked, but this route is not enabled for you.";
+
+    var primaryHref = isCorrelationFailure ? "/internal/login" : "/internal";
+    var primaryLabel = isCorrelationFailure ? "Retry Microsoft Sign-In" : "Return To Internal Home";
 }
 
 <section class="pf-auth-shell">
     <div class="pf-auth-intro">
         <div class="pf-auth-brand">PARFAIT</div>
-        <h1 class="pf-auth-title">Access Restricted</h1>
-        <p class="pf-auth-copy">This page is not assigned to your account. Ask a Full Control admin to update your Team access.</p>
+        <h1 class="pf-auth-title">@introTitle</h1>
+        <p class="pf-auth-copy">@introCopy</p>
     </div>
 
     <div class="pf-auth-card">
-        <h2>Restricted</h2>
-        <p>Your sign-in worked, but this route is not enabled for you.</p>
-        <a class="pf-secondary-action pf-auth-action" href="/internal">Return To Internal Home</a>
+        <h2>@cardTitle</h2>
+        <p>@cardCopy</p>
+        <a class="pf-secondary-action pf-auth-action" href="@primaryHref">@primaryLabel</a>
     </div>
 </section>
