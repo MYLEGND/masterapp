@@ -1,0 +1,179 @@
+.home-container {
+    padding: 2rem 1rem;
+    font-family: var(--pf-font-ui);
+}
+
+.home-cta-row {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 1rem;
+    flex-wrap: nowrap;
+}
+
+.hero-hr {
+    border-color: var(--pf-line-strong);
+    border-width: 2px;
+    max-width: 800px;
+    margin: 1rem auto 0;
+}
+
+.btn-legend-store,
+.btn-booking {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 58px;
+    min-width: 280px;
+    padding: 0.95rem 1.7rem;
+    border: 2px solid var(--pf-cocoa-600);
+    border-radius: 999px;
+    background: #ffffff;
+    box-shadow: 0 10px 26px rgba(146, 105, 80, 0.16);
+    color: var(--pf-cocoa-900);
+    font-family: var(--pf-font-ui);
+    font-size: 1rem;
+    font-weight: var(--pf-weight-black);
+    letter-spacing: 0.08em;
+    text-align: center;
+    text-decoration: none;
+    text-transform: uppercase;
+    transition: transform 0.18s ease, box-shadow 0.18s ease, background 0.18s ease, color 0.18s ease;
+}
+
+.btn-legend-store:hover,
+.btn-booking:hover {
+    background: var(--pf-cocoa-600);
+    box-shadow: 0 16px 36px rgba(146, 105, 80, 0.28);
+    color: #fffefb;
+    transform: translateY(-2px);
+}
+
+.tool-image {
+    width: min(100%, 860px);
+    height: auto;
+    object-fit: contain;
+}
+
+.section-card {
+    max-width: 800px;
+    margin: 50px auto;
+    padding: clamp(25px, 4vw, 40px);
+    border: 2px solid rgba(146, 105, 80, 0.3);
+    border-radius: 25px;
+    background: #ffffff;
+    box-shadow: 0 8px 25px rgba(0, 0, 0, 0.08);
+    color: var(--pf-cocoa-900);
+    font-family: var(--pf-font-ui);
+    line-height: 1.8;
+    text-align: center;
+    position: relative;
+}
+
+.section-badge {
+    position: absolute;
+    top: -18px;
+    left: 50%;
+    transform: translateX(-50%);
+    padding: 8px 22px;
+    border-radius: 40px;
+    background: var(--pf-cocoa-600);
+    color: #ffffff;
+    font-size: clamp(14px, 1.5vw, 20px);
+    font-weight: var(--pf-weight-bold);
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    white-space: nowrap;
+}
+
+.section-card > p:first-of-type {
+    margin-top: 50px;
+}
+
+.accent-text {
+    color: var(--pf-cocoa-600);
+    font-weight: var(--pf-weight-bold);
+}
+
+.section-divider {
+    width: 70%;
+    height: 2px;
+    margin: 25px auto;
+    border: none;
+    border-radius: 2px;
+    background: var(--pf-cocoa-600);
+}
+
+.italic-text {
+    color: rgba(36, 24, 19, 0.8);
+    font-style: italic;
+    font-weight: var(--pf-weight-medium);
+}
+
+.mission-vision h3 {
+    margin-bottom: 10px;
+    color: var(--pf-cocoa-600);
+    font-size: 22px;
+    font-weight: var(--pf-weight-bold);
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+}
+
+.mission-vision p {
+    font-size: 18px;
+    margin-bottom: 20px;
+}
+
+@media (max-width: 992px) {
+    .section-card {
+        padding: clamp(20px, 4vw, 30px);
+        margin: 40px auto;
+    }
+
+    .section-divider {
+        width: 80%;
+    }
+}
+
+@media (max-width: 640px) {
+    .home-cta-row {
+        flex-direction: column;
+        flex-wrap: wrap;
+    }
+
+    .btn-legend-store,
+    .btn-booking {
+        width: min(100%, 420px);
+        min-width: 0;
+    }
+}
+
+@media (max-width: 576px) {
+    .section-card {
+        padding: clamp(15px, 3vw, 25px);
+        margin: 30px 1rem;
+    }
+
+    .section-card > p:first-of-type {
+        margin-top: 60px;
+    }
+
+    .section-divider {
+        width: 90%;
+    }
+
+    .section-badge {
+        font-size: clamp(12px, 4vw, 16px);
+    }
+
+    .mission-vision h3 {
+        font-size: 20px;
+    }
+
+    .mission-vision p,
+    .italic-text,
+    .section-card p {
+        font-size: 16px;
+        line-height: 1.6;
+    }
+}

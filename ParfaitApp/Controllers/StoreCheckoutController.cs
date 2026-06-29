@@ -87,9 +87,12 @@ public sealed class StoreCheckoutController : Controller
         var order = _orders.CreatePendingOrder(
             request.Customer,
             validatedItems,
+            quote.SubtotalCents,
             quote.DiscountCode,
             quote.DiscountLabel,
             quote.DiscountCents,
+            quote.ShippingCents,
+            quote.TaxCents,
             HttpContext);
 
         var note = $"{order.OrderNumber}: " + string.Join(", ",

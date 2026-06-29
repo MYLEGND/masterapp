@@ -5,6 +5,8 @@
     Layout = "_InternalLayout";
 
     var newProduct = Model.NewProduct ?? new ParfaitProductEditorViewModel();
+    var settings = Model.CommerceSettings ?? new ParfaitCommerceSettingsViewModel();
+    var globalDiscount = settings.GlobalDiscount ?? new ParfaitProductDiscountCodeEditorViewModel();
     if (newProduct.InventoryBySize.Count == 0)
     {
         newProduct.InventoryBySize = ParfaitProductCatalogDefaults.CreateDefaultInventory();
@@ -127,6 +129,91 @@
             <span>@Model.Products.Count products</span>
         </div>
 
+        <section class="pf-commerce-settings-strip">
+            <form method="post"
+                  action="/internal/commerce/products/settings"
+                  class="pf-commerce-settings-form"
+                  data-pf-commerce-settings-form>
+                @Html.AntiForgeryToken()
+                <input type="hidden" name="GlobalDiscount.Id" value="@globalDiscount.Id" />
+
+                <div class="pf-commerce-settings-summary">
+                    <span class="pf-command-badge is-info">Shipping @Money(settings.ShippingFeeCents)</span>
+                    <span class="pf-command-badge is-warning">@settings.TaxPercent.ToString("0.##")% tax</span>
+                    <span class="pf-command-badge @(settings.HasActiveGlobalDiscount ? "is-success" : "is-muted")">
+                        @(settings.HasActiveGlobalDiscount ? globalDiscount.Code : "No global promo")
+                    </span>
+                </div>
+
+                <div class="pf-commerce-settings-grid">
+                    <label>
+                        Shipping Fee
+                        <input class="form-control pf-money-display"
+                               type="number"
+                               min="0"
+                               step="0.01"
+                               value="@MoneyField(settings.ShippingFeeCents)" />
+                        <input type="hidden"
+                               name="ShippingFeeCents"
+                               value="@settings.ShippingFeeCents"
+                               class="pf-money-hidden" />
+                    </label>
+                    <label>
+                        Tax Percent
+                        <input class="form-control"
+                               name="TaxPercent"
+                               type="number"
+                               min="0"
+                               max="100"
+                               step="0.01"
+                               value="@settings.TaxPercent.ToString("0.##")" />
+                    </label>
+                    <label>
+                        Global Code
+                        <input class="form-control"
+                               name="GlobalDiscount.Code"
+                               value="@globalDiscount.Code"
+                               autocomplete="off" />
+                    </label>
+                    <label>
+                        Type
+                        <select class="form-select" name="GlobalDiscount.DiscountType">
+                            <option value="Percent" selected="@string.Equals(globalDiscount.DiscountType, "Percent", StringComparison.OrdinalIgnoreCase)">Percent</option>
+                            <option value="Fixed" selected="@string.Equals(globalDiscount.DiscountType, "Fixed", StringComparison.OrdinalIgnoreCase)">Fixed</option>
+                        </select>
+                    </label>
+                    <label>
+                        Amount
+                        <input class="form-control"
+                               name="GlobalDiscount.Amount"
+                               type="number"
+                               min="0"
+                               step="0.01"
+                               value="@(globalDiscount.Amount > 0 ? globalDiscount.Amount.ToString("0.##") : "")" />
+                    </label>
+                    <label>
+                        Usage Limit
+                        <input class="form-control"
+                               name="GlobalDiscount.UsageLimit"
+                               type="number"
+                               min="0"
+                               value="@globalDiscount.UsageLimit" />
+                    </label>
+                </div>
+
+                <div class="pf-commerce-settings-actions">
+                    <label class="pf-check">
+                        <input type="checkbox"
+                               name="GlobalDiscount.IsActive"
+                               value="true"
+                               @(globalDiscount.IsActive ? "checked" : "") />
+                        Global Promo Active
+                    </label>
+                    <button type="submit" class="pf-secondary-action">Save Commerce Settings</button>
+                </div>
+            </form>
+        </section>
+
         <details class="pf-add-product">
             <summary>Add Product</summary>
 
@@ -139,7 +226,7 @@
                     <summary>
                         <div class="pf-product-accordion-copy">
                             <strong>Core Setup</strong>
-                            <span>6 fields</span>
+                            <span>5 fields</span>
                         </div>
                     </summary>
                     <div class="pf-product-accordion-body">
@@ -147,9 +234,7 @@
                             <label>Name <input class="form-control" name="Name" value="@newProduct.Name" required /></label>
                             <label>Slug <input class="form-control" name="Slug" value="@newProduct.Slug" required /></label>
                             <label>Price <input class="form-control pf-money-display" type="number" min="0" step="0.01" value="@MoneyField(newProduct.PriceCents)" /><input type="hidden" name="PriceCents" value="@newProduct.PriceCents" class="pf-money-hidden" /></label>
-                            <label>Compare At <input class="form-control pf-money-display" type="number" min="0" step="0.01" value="@MoneyField(newProduct.CompareAtPriceCents)" /><input type="hidden" name="CompareAtPriceCents" value="@newProduct.CompareAtPriceCents" class="pf-money-hidden" /></label>
                             <label>Badge <input class="form-control" name="Badge" value="@newProduct.Badge" /></label>
-                            <label>Sort <input class="form-control" name="DisplayOrder" type="number" value="@(newProduct.DisplayOrder == 0 ? 100 : newProduct.DisplayOrder)" /></label>
                         </div>
 
                         <label class="pf-full">Description <textarea class="form-control" name="Description" rows="4" required>@newProduct.Description</textarea></label>
@@ -250,9 +335,14 @@
             </form>
         </details>
 
-        <div class="pf-product-summary-list mt-3">
-            @foreach (var product in Model.Products)
+        <div class="pf-inline-save-status pf-product-order-status" data-pf-product-order-status aria-live="polite"></div>
+
+        <div class="pf-product-summary-list mt-3"
+             data-pf-product-list
+             data-pf-sort-url="/internal/commerce/products/reorder">
+            @for (var productIndex = 0; productIndex < Model.Products.Count; productIndex++)
             {
+                var product = Model.Products[productIndex];
                 var orderedImages = product.Images.OrderBy(image => image.DisplayOrder).ToList();
                 var primaryImage = orderedImages.FirstOrDefault(image => image.IsPrimary) ?? orderedImages.FirstOrDefault();
                 var primaryUrl = primaryImage?.ImageUrl ?? "/images/favicon/parfait-logo.png";
@@ -276,17 +366,20 @@
                     inventoryNotes.Add("All ready");
                 }
 
-                var priceNote = product.HasSalePrice
-                    ? $"Save {Money(product.CompareAtPriceCents - product.PriceCents)}"
-                    : string.IsNullOrWhiteSpace(product.Badge) ? "Core catalog" : product.Badge;
+                var priceNote = string.IsNullOrWhiteSpace(product.Badge) ? "Core catalog" : product.Badge;
                 var promoCountLabel = product.ActiveDiscountCount > 0
                     ? CountLabel(product.ActiveDiscountCount, "active code")
                     : "No active codes";
-                var promoDetail = product.HasSalePrice
-                    ? $"Compare at {Money(product.CompareAtPriceCents)}"
+                var promoDetail = product.ActiveDiscountCount > 0
+                    ? "Codes ready for checkout"
                     : "No sale pricing";
 
-                <article class="pf-product-summary-card @ToneClass(product.InventoryTone)" data-pf-product-summary="@product.Id">
+                <article class="pf-product-summary-card @ToneClass(product.InventoryTone)"
+                         draggable="true"
+                         title="Drag to reorder storefront placement"
+                         data-pf-product-summary="@product.Id"
+                         data-pf-product-card
+                         data-pf-product-id="@product.Id">
                     <div class="pf-product-summary-main">
                         <img src="@primaryUrl" alt="@product.Name" />
                         <div class="pf-product-summary-copy">
@@ -317,6 +410,11 @@
                     </div>
 
                     <div class="pf-product-summary-side">
+                        <div class="pf-product-summary-order">
+                            <span class="pf-product-rank">#@(productIndex + 1)</span>
+                            <span class="pf-product-drag-handle">Drag To Reorder</span>
+                        </div>
+
                         <div class="pf-product-summary-pills">
                             <span class="pf-command-badge @ToneClass(product.InventoryTone)">@product.InventoryLabel</span>
                             <span class="pf-pill @(product.IsActive ? "is-live" : "is-muted")">@(product.IsActive ? "Live" : "Hidden")</span>
@@ -325,7 +423,6 @@
 
                         <div class="pf-product-summary-meta">
                             <span>@CountLabel(orderedImages.Count, "photo")</span>
-                            <span>Sort @product.DisplayOrder</span>
                         </div>
 
                         <button type="button" class="pf-secondary-action" data-pf-open="@modalId">Edit Product</button>
@@ -406,18 +503,6 @@
 
                                             <div class="pf-photo-tile-actions">
                                                 <button type="button" class="pf-text-button pf-photo-action" data-pf-open="@editorId">Edit</button>
-                                                @if (image.IsPrimary)
-                                                {
-                                                    <span class="pf-photo-action is-current">Primary</span>
-                                                }
-                                                else
-                                                {
-                                                    <button type="button"
-                                                            class="pf-text-button pf-photo-action"
-                                                            data-pf-primary-image="@image.Id">
-                                                        Primary
-                                                    </button>
-                                                }
                                             </div>
                                         </article>
                                     }
@@ -439,7 +524,7 @@
                                     <summary>
                                         <div class="pf-product-accordion-copy">
                                             <strong>Core Setup</strong>
-                                            <span>6 fields</span>
+                                            <span>5 fields</span>
                                         </div>
                                     </summary>
                                     <div class="pf-product-accordion-body">
@@ -447,11 +532,10 @@
                                             <label>Name <input class="form-control" name="Name" value="@product.Name" required /></label>
                                             <label>Slug <input class="form-control" name="Slug" value="@product.Slug" required /></label>
                                             <label>Price <input class="form-control pf-money-display" type="number" min="0" step="0.01" value="@MoneyField(product.PriceCents)" /><input type="hidden" name="PriceCents" value="@product.PriceCents" class="pf-money-hidden" /></label>
-                                            <label>Compare At <input class="form-control pf-money-display" type="number" min="0" step="0.01" value="@MoneyField(product.CompareAtPriceCents)" /><input type="hidden" name="CompareAtPriceCents" value="@product.CompareAtPriceCents" class="pf-money-hidden" /></label>
                                             <label>Badge <input class="form-control" name="Badge" value="@product.Badge" /></label>
-                                            <label>Sort <input class="form-control" name="DisplayOrder" type="number" value="@product.DisplayOrder" /></label>
                                             <label class="pf-full">Description <textarea class="form-control" name="Description" rows="5" required>@product.Description</textarea></label>
                                         </div>
+
                                     </div>
                                 </details>
 
@@ -725,6 +809,7 @@
         const discountTemplate = document.getElementById("pfDiscountRowTemplate");
         const saveStates = new WeakMap();
         const liveFieldSelector = 'input[type="text"], input[type="number"], textarea';
+        let productOrderStatusTimer = 0;
 
         const getFormState = form => {
             let state = saveStates.get(form);
@@ -843,6 +928,29 @@
                 if (!document.body.contains(target)) return;
                 target.textContent = "";
                 target.className = "pf-inline-save-status";
+            }, 1800);
+        };
+
+        const renderProductOrderStatus = (message = "", tone = "") => {
+            const target = document.querySelector("[data-pf-product-order-status]");
+            if (!target) return;
+
+            window.clearTimeout(productOrderStatusTimer);
+            target.textContent = message;
+            target.className = "pf-inline-save-status pf-product-order-status";
+
+            if (tone) {
+                target.classList.add(`is-${tone}`);
+            }
+
+            if (!message) {
+                return;
+            }
+
+            productOrderStatusTimer = window.setTimeout(() => {
+                if (!document.body.contains(target)) return;
+                target.textContent = "";
+                target.className = "pf-inline-save-status pf-product-order-status";
             }, 1800);
         };
 
@@ -1099,8 +1207,15 @@
                 endOrder.split(",").forEach(id => formData.append("imageIds", id));
 
                 try {
-                    await submitRequest(sortUrl, formData);
-                    const form = grid.closest("[data-pf-product-stack]")?.querySelector("[data-pf-product-edit-form]");
+                    const html = await submitRequest(sortUrl, formData);
+                    const replaced = replaceProductUiFromHtml(productId, html, { openModalId: `editProduct${productId}` });
+
+                    if (!replaced) {
+                        window.location.reload();
+                        return;
+                    }
+
+                    const form = document.querySelector(`[data-pf-product-stack="${productId}"] [data-pf-product-edit-form]`);
                     renderSaveState(form, "Photo order saved", "success");
                 } catch (error) {
                     console.error(error);
@@ -1129,6 +1244,99 @@
             });
 
             grid.addEventListener("drop", event => {
+                event.preventDefault();
+                clearDropTargets();
+            });
+        };
+
+        const initProductList = list => {
+            if (list.dataset.pfBound === "true") return;
+            list.dataset.pfBound = "true";
+
+            let draggingCard = null;
+            let startOrder = "";
+
+            const currentOrder = () => [...list.querySelectorAll("[data-pf-product-card]")]
+                .map(card => card.getAttribute("data-pf-product-id"))
+                .filter(Boolean)
+                .join(",");
+
+            const clearDropTargets = () => {
+                list.querySelectorAll(".is-drop-target").forEach(card => card.classList.remove("is-drop-target"));
+            };
+
+            list.addEventListener("dragstart", event => {
+                const card = event.target.closest("[data-pf-product-card]");
+                if (!card) return;
+
+                draggingCard = card;
+                startOrder = currentOrder();
+                card.classList.add("is-dragging");
+
+                if (event.dataTransfer) {
+                    event.dataTransfer.effectAllowed = "move";
+                    event.dataTransfer.setData("text/plain", card.getAttribute("data-pf-product-id") || "");
+                }
+            });
+
+            list.addEventListener("dragend", async event => {
+                const card = event.target.closest("[data-pf-product-card]");
+                if (!card) return;
+
+                card.classList.remove("is-dragging");
+                clearDropTargets();
+
+                const endOrder = currentOrder();
+                draggingCard = null;
+
+                if (!endOrder || endOrder === startOrder) {
+                    return;
+                }
+
+                const sortUrl = list.getAttribute("data-pf-sort-url");
+                const token = list.closest(".pf-commerce-panel")?.querySelector('input[name="__RequestVerificationToken"]')?.value;
+
+                if (!sortUrl || !token) {
+                    window.location.reload();
+                    return;
+                }
+
+                const formData = new FormData();
+                formData.append("__RequestVerificationToken", token);
+                endOrder.split(",").forEach(id => formData.append("productIds", id));
+
+                renderProductOrderStatus("Saving order", "saving");
+
+                try {
+                    await submitRequest(sortUrl, formData);
+                    renderProductOrderStatus("Store order saved", "success");
+                } catch (error) {
+                    console.error(error);
+                    window.location.reload();
+                }
+            });
+
+            list.addEventListener("dragover", event => {
+                event.preventDefault();
+                if (!draggingCard) return;
+
+                const target = event.target.closest("[data-pf-product-card]");
+                if (!target || target === draggingCard) return;
+
+                clearDropTargets();
+                target.classList.add("is-drop-target");
+
+                const rect = target.getBoundingClientRect();
+                const insertAfter = event.clientY > rect.top + (rect.height / 2);
+
+                if (insertAfter) {
+                    target.after(draggingCard);
+                } else {
+                    target.before(draggingCard);
+                }
+            });
+
+            list.addEventListener("drop", event => {
                 event.preventDefault();
                 clearDropTargets();
             });
@@ -1214,6 +1422,7 @@
                 form.querySelectorAll("[data-pf-inventory-row]").forEach(updateInventoryRow);
             });
 
+            root.querySelectorAll("[data-pf-product-list]").forEach(initProductList);
             root.querySelectorAll("[data-pf-photo-grid]").forEach(initPhotoGrid);
             root.querySelectorAll("[data-pf-adjust-panel]").forEach(initAdjustPanel);
             root.querySelectorAll("[data-pf-accordion]").forEach(initAccordion);
@@ -1290,21 +1499,6 @@
                 return;
             }
 
-            const primaryImageButton = event.target.closest("[data-pf-primary-image]");
-            if (primaryImageButton) {
-                const productId = primaryImageButton.closest("[data-pf-product-modal]")?.getAttribute("data-pf-product-id");
-                const imageId = primaryImageButton.getAttribute("data-pf-primary-image");
-
-                if (!productId || !imageId) {
-                    return;
-                }
-
-                postProductAction(
-                    productId,
-                    "/internal/commerce/products/images/primary",
-                    { productId, imageId },
-                    `editProduct${productId}`);
-            }
         });
 
         document.addEventListener("input", event => {
@@ -1368,6 +1562,11 @@
 
         document.addEventListener("submit", event => {
             const form = event.target;
+
+            if (form.matches("[data-pf-commerce-settings-form]")) {
+                syncMoneyWithin(form);
+                return;
+            }
 
             if (form.matches("[data-pf-product-edit-form]")) {
                 event.preventDefault();

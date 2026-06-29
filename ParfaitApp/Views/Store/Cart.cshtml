@@ -57,12 +57,12 @@
 
                     <div class="sp-summary-line">
                         <span>Shipping</span>
-                        <strong>Calculated later</strong>
+                        <strong id="spCartShipping">$0.00</strong>
                     </div>
 
                     <div class="sp-summary-line">
                         <span>Tax</span>
-                        <strong>Calculated later</strong>
+                        <strong id="spCartTax">$0.00</strong>
                     </div>
 
                     <div class="sp-summary-total">
@@ -93,12 +93,14 @@
             const discountInput = document.getElementById("spDiscountCode");
             const applyDiscountButton = document.getElementById("spApplyDiscount");
             const clearDiscountButton = document.getElementById("spClearDiscount");
+            const shippingHost = document.getElementById("spCartShipping");
+            const taxHost = document.getElementById("spCartTax");
             const discountRow = document.getElementById("spCartDiscountRow");
             const discountLabel = document.getElementById("spCartDiscountLabel");
             const discountValue = document.getElementById("spCartDiscountValue");
             const tokenInput = document.querySelector('input[name="__RequestVerificationToken"]');
 
-            if (!store || !itemsHost || !subtotalHost || !totalHost || !countHost || !checkoutLink || !statusHost || !discountInput) {
+            if (!store || !itemsHost || !subtotalHost || !totalHost || !countHost || !checkoutLink || !statusHost || !discountInput || !shippingHost || !taxHost) {
                 return;
             }
 
@@ -166,13 +168,15 @@
 
                 countHost.textContent = String(quote.itemCount || 0);
                 subtotalHost.textContent = store.money(quote.subtotalCents || 0);
+                shippingHost.textContent = store.money(quote.shippingCents || 0);
+                taxHost.textContent = store.money(quote.taxCents || 0);
                 totalHost.textContent = store.money(quote.totalCents || 0);
 
                 if ((quote.discountCents || 0) > 0 && discountRow && discountLabel && discountValue) {
                     discountRow.hidden = false;
-                    discountLabel.textContent = quote.discountLabel
+                    discountLabel.textContent = quote.discountCode && quote.discountLabel
                         ? `${quote.discountCode} · ${quote.discountLabel}`
-                        : (quote.discountCode || "Discount");
+                        : (quote.discountLabel || quote.discountCode || "Discount");
                     discountValue.textContent = `-${store.money(quote.discountCents || 0)}`;
                 } else if (discountRow) {
                     discountRow.hidden = true;
@@ -238,6 +242,8 @@
             const renderEmpty = () => {
                 countHost.textContent = "0";
                 subtotalHost.textContent = store.money(0);
+                shippingHost.textContent = store.money(0);
+                taxHost.textContent = store.money(0);
                 totalHost.textContent = store.money(0);
                 discountRow.hidden = true;
                 checkoutLink.classList.add("is-disabled");

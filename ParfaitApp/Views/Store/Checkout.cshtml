@@ -231,10 +231,10 @@
                     <div class="sp-review-items">${itemsHtml}</div>
                     <div class="sp-review-line"><span>Subtotal</span><strong>${store.money(quote.subtotalCents || 0)}</strong></div>
                     ${(quote.discountCents || 0) > 0
-                        ? `<div class="sp-review-line"><span>${quote.discountCode}${quote.discountLabel ? ` · ${quote.discountLabel}` : ""}</span><strong>-${store.money(quote.discountCents || 0)}</strong></div>`
+                        ? `<div class="sp-review-line"><span>${quote.discountCode && quote.discountLabel ? `${quote.discountCode} · ${quote.discountLabel}` : (quote.discountLabel || quote.discountCode || "Discount")}</span><strong>-${store.money(quote.discountCents || 0)}</strong></div>`
                         : ""}
-                    <div class="sp-review-line"><span>Shipping</span><strong>Calculated later</strong></div>
-                    <div class="sp-review-line"><span>Tax</span><strong>Calculated later</strong></div>
+                    <div class="sp-review-line"><span>Shipping</span><strong>${store.money(quote.shippingCents || 0)}</strong></div>
+                    <div class="sp-review-line"><span>Tax</span><strong>${store.money(quote.taxCents || 0)}</strong></div>
                     <div class="sp-review-line sp-review-total"><span>Total</span><strong>${store.money(quote.totalCents || 0)}</strong></div>
                 `;
 

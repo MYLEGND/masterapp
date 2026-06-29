@@ -95,6 +95,8 @@ public sealed class ParfaitStoreProductViewModel
     public required string PriceLabel { get; init; }
     public int PriceCents { get; init; }
     public int CompareAtPriceCents { get; init; }
+    public int DisplayPriceCents { get; init; }
+    public int DisplayCompareAtPriceCents { get; init; }
     public string Badge { get; init; } = "Parfait";
     public bool IsFeatured { get; init; }
     public IReadOnlyList<ParfaitStoreProductImageViewModel> Images { get; init; } = [];
@@ -116,6 +118,13 @@ public sealed class ParfaitStoreProductViewModel
     public int SavingsCents => HasSalePrice ? CompareAtPriceCents - PriceCents : 0;
     public string CompareAtPriceLabel => HasSalePrice ? $"${CompareAtPriceCents / 100m:0.00}" : "";
     public string SavingsLabel => HasSalePrice ? $"Save ${SavingsCents / 100m:0.00}" : "";
+    public bool HasDisplaySalePrice => DisplayCompareAtPriceCents > DisplayPriceCents && DisplayPriceCents >= 0;
+    public int DisplaySavingsCents => HasDisplaySalePrice ? DisplayCompareAtPriceCents - DisplayPriceCents : 0;
+    public string DisplayPriceLabel => DisplayPriceCents > 0 || PriceCents > 0
+        ? $"${DisplayPriceCents / 100m:0.00}"
+        : PriceLabel;
+    public string DisplayCompareAtPriceLabel => HasDisplaySalePrice ? $"${DisplayCompareAtPriceCents / 100m:0.00}" : "";
+    public string DisplaySavingsLabel => HasDisplaySalePrice ? $"Save ${DisplaySavingsCents / 100m:0.00}" : "";
     public bool HasTrackedInventory => Sizes.Any(size => size.IsEnabled);
     public int TotalTrackedStock => Sizes.Where(size => size.IsEnabled).Sum(size => Math.Max(size.StockQuantity, 0));
     public bool IsSoldOut => Sizes.Count > 0 && Sizes.Where(size => size.IsEnabled).All(size => !size.CanPurchase);
@@ -140,9 +149,22 @@ public sealed class ParfaitProductAdminViewModel
 {
     public List<ParfaitProductEditorViewModel> Products { get; init; } = [];
     public ParfaitProductEditorViewModel NewProduct { get; init; } = new();
+    public ParfaitCommerceSettingsViewModel CommerceSettings { get; init; } = new();
     public int ActiveProductCount { get; init; }
     public int FeaturedProductCount { get; init; }
     public int TotalImageCount { get; init; }
+}
+
+public sealed class ParfaitCommerceSettingsViewModel
+{
+    public int ShippingFeeCents { get; set; }
+    public decimal TaxPercent { get; set; }
+    public ParfaitProductDiscountCodeEditorViewModel GlobalDiscount { get; set; } = new();
+
+    public bool HasActiveGlobalDiscount =>
+        GlobalDiscount.IsActive
+        && !string.IsNullOrWhiteSpace(GlobalDiscount.Code)
+        && GlobalDiscount.Amount > 0;
 }
 
 public sealed class ParfaitProductImageEditorViewModel

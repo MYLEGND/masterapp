@@ -22,6 +22,7 @@ public sealed class ParfaitProductService
     }
 
     private string DataPath => Path.Combine(_environment.ContentRootPath, "App_Data", "parfait-products.json");
+    private string CommerceSettingsPath => Path.Combine(_environment.ContentRootPath, "App_Data", "parfait-commerce-settings.json");
     private string UploadRoot => Path.Combine(_environment.WebRootPath, "uploads", "parfait-products");
 
     public IReadOnlyList<ParfaitProductEditorViewModel> GetAllProducts()
@@ -42,11 +43,13 @@ public sealed class ParfaitProductService
 
     public IReadOnlyList<ParfaitStoreProductViewModel> GetActiveStoreProducts()
     {
+        var settings = GetCommerceSettings();
+
         return GetAllProducts()
             .Where(product => product.IsActive)
             .OrderBy(product => product.DisplayOrder)
             .ThenBy(product => product.Name)
-            .Select(MapStoreProduct)
+            .Select(product => MapStoreProduct(product, settings))
             .ToList();
     }
 
@@ -64,6 +67,7 @@ public sealed class ParfaitProductService
 
     public ParfaitCartQuoteResponse QuoteCart(IReadOnlyList<ParfaitCheckoutItemRequest> cartItems, string? discountCode)
     {
+        var settings = GetCommerceSettings();
         var products = GetAllProducts()
             .Where(product => product.IsActive)
             .ToDictionary(product => product.Id, StringComparer.OrdinalIgnoreCase);
@@ -186,35 +190,48 @@ public sealed class ParfaitProductService
         quote.SubtotalCents = quote.Items.Sum(item => item.LineTotalCents);
         quote.ItemCount = quote.Items.Sum(item => item.Quantity);
 
-        if (!string.IsNullOrWhiteSpace(quote.DiscountCode))
-        {
-            var discountMatches = quote.Items
-                .Where(item => item.Quantity > 0)
-                .Select(item => new
-                {
-                    Item = item,
-                    Discount = FindActiveDiscount(products[item.Id], quote.DiscountCode!)
-                })
-                .Where(match => match.Discount is not null)
-                .ToList();
+        var normalizedDiscountCode = quote.DiscountCode;
+        var appliedDiscounts = quote.Items
+            .Where(item => item.Quantity > 0)
+            .Select(item => new
+            {
+                Item = item,
+                Discount = string.IsNullOrWhiteSpace(normalizedDiscountCode)
+                    ? FindPreferredDisplayDiscount(products[item.Id], settings)
+                    : FindMatchingDiscount(products[item.Id], normalizedDiscountCode!, settings)
+            })
+            .Where(match => match.Discount is not null)
+            .ToList();
 
-            if (discountMatches.Count == 0)
+        if (!string.IsNullOrWhiteSpace(normalizedDiscountCode))
+        {
+            if (appliedDiscounts.Count == 0)
             {
                 quote.IsValid = false;
                 quote.Messages.Add("Discount code is not available for the current cart.");
             }
             else
             {
-                var firstMatch = discountMatches[0].Discount!;
+                var firstMatch = appliedDiscounts[0].Discount!;
                 quote.DiscountLabel = firstMatch.SummaryLabel;
-                quote.DiscountCents = discountMatches.Sum(match => CalculateDiscountCents(match.Item.LineTotalCents, match.Discount!));
+                quote.DiscountCents = appliedDiscounts.Sum(match => CalculateDiscountCents(match.Item.LineTotalCents, match.Discount!));
                 quote.DiscountCents = Math.Min(quote.DiscountCents, quote.SubtotalCents);
             }
         }
+        else if (appliedDiscounts.Count > 0)
+        {
+            quote.DiscountLabel = "Automatic Savings";
+            quote.DiscountCents = appliedDiscounts.Sum(match => CalculateDiscountCents(match.Item.LineTotalCents, match.Discount!));
+            quote.DiscountCents = Math.Min(quote.DiscountCents, quote.SubtotalCents);
+        }
 
-        quote.ShippingCents = 0;
-        quote.TaxCents = 0;
-        quote.TotalCents = Math.Max(0, quote.SubtotalCents - quote.DiscountCents + quote.ShippingCents + quote.TaxCents);
+        var discountedSubtotal = Math.Max(0, quote.SubtotalCents - quote.DiscountCents);
+        quote.ShippingCents = discountedSubtotal > 0 ? settings.ShippingFeeCents : 0;
+        var taxableTotal = discountedSubtotal + quote.ShippingCents;
+        quote.TaxCents = taxableTotal > 0 && settings.TaxPercent > 0
+            ? (int)Math.Round(taxableTotal * (settings.TaxPercent / 100m), MidpointRounding.AwayFromZero)
+            : 0;
+        quote.TotalCents = Math.Max(0, discountedSubtotal + quote.ShippingCents + quote.TaxCents);
         quote.Messages = quote.Messages
             .Where(message => !string.IsNullOrWhiteSpace(message))
             .Distinct(StringComparer.OrdinalIgnoreCase)
@@ -228,6 +245,31 @@ public sealed class ParfaitProductService
         return quote;
     }
 
+    public ParfaitCommerceSettingsViewModel GetCommerceSettings()
+    {
+        EnsureCommerceSettingsData();
+
+        lock (_lock)
+        {
+            var json = File.ReadAllText(CommerceSettingsPath);
+            var settings = JsonSerializer.Deserialize<ParfaitCommerceSettingsViewModel>(json) ?? new ParfaitCommerceSettingsViewModel();
+            return NormalizeCommerceSettings(settings);
+        }
+    }
+
+    public void SaveCommerceSettings(ParfaitCommerceSettingsViewModel settings)
+    {
+        Directory.CreateDirectory(Path.GetDirectoryName(CommerceSettingsPath)!);
+        var normalized = NormalizeCommerceSettings(settings);
+
+        lock (_lock)
+        {
+            File.WriteAllText(
+                CommerceSettingsPath,
+                JsonSerializer.Serialize(normalized, new JsonSerializerOptions { WriteIndented = true }));
+        }
+    }
+
     public void SaveProduct(ParfaitProductEditorViewModel product)
     {
         var products = GetAllProducts().ToList();
@@ -235,6 +277,18 @@ public sealed class ParfaitProductService
         var existingImages = existingIndex >= 0 ? products[existingIndex].Images : [];
 
         var normalized = NormalizeProduct(product, existingImages);
+        if (existingIndex >= 0)
+        {
+            normalized.DisplayOrder = products[existingIndex].DisplayOrder > 0
+                ? products[existingIndex].DisplayOrder
+                : normalized.DisplayOrder;
+        }
+        else if (normalized.DisplayOrder <= 0)
+        {
+            normalized.DisplayOrder = products.Count == 0
+                ? 10
+                : products.Max(existing => Math.Max(existing.DisplayOrder, 0)) + 10;
+        }
 
         if (existingIndex >= 0)
         {
@@ -263,6 +317,35 @@ public sealed class ParfaitProductService
         }
 
         SaveAll(products.Where(product => !string.Equals(product.Id, id, StringComparison.OrdinalIgnoreCase)).ToList());
+    }
+
+    public void ReorderProducts(IReadOnlyList<string> productIds)
+    {
+        var products = GetAllProducts().ToList();
+        if (productIds.Count == 0 || products.Count == 0)
+        {
+            return;
+        }
+
+        var lookup = products.ToDictionary(product => product.Id, StringComparer.OrdinalIgnoreCase);
+        var ordered = new List<ParfaitProductEditorViewModel>();
+
+        foreach (var productId in productIds)
+        {
+            if (lookup.TryGetValue(productId, out var product) && !ordered.Contains(product))
+            {
+                ordered.Add(product);
+            }
+        }
+
+        ordered.AddRange(products.Where(product => !ordered.Contains(product)));
+
+        for (var index = 0; index < ordered.Count; index++)
+        {
+            ordered[index].DisplayOrder = (index + 1) * 10;
+        }
+
+        SaveAll(ordered);
     }
 
     public async Task UploadImagesAsync(string productId, IReadOnlyList<IFormFile> files)
@@ -350,24 +433,6 @@ public sealed class ParfaitProductService
 
         product.Images.Remove(image);
         EnsureOnePrimaryImage(product);
-        SaveAll(products);
-    }
-
-    public void SetPrimaryImage(string productId, string imageId)
-    {
-        var products = GetAllProducts().ToList();
-        var product = products.FirstOrDefault(existing => string.Equals(existing.Id, productId, StringComparison.OrdinalIgnoreCase));
-
-        if (product is null)
-        {
-            return;
-        }
-
-        foreach (var image in product.Images)
-        {
-            image.IsPrimary = string.Equals(image.Id, imageId, StringComparison.OrdinalIgnoreCase);
-        }
-
         SaveAll(products);
     }
 
@@ -463,15 +528,55 @@ public sealed class ParfaitProductService
         }
     }
 
+    private ParfaitProductDiscountCodeEditorViewModel? FindMatchingDiscount(
+        ParfaitProductEditorViewModel product,
+        string code,
+        ParfaitCommerceSettingsViewModel settings)
+    {
+        return FindActiveDiscount(product, code) ?? FindActiveGlobalDiscount(settings, code);
+    }
+
     private ParfaitProductDiscountCodeEditorViewModel? FindActiveDiscount(ParfaitProductEditorViewModel product, string code)
     {
         return product.DiscountCodes
             .Select(NormalizeDiscountCode)
-            .FirstOrDefault(discount =>
-                discount.IsActive
-                && string.Equals(discount.Code, code, StringComparison.OrdinalIgnoreCase)
-                && discount.Amount > 0
-                && (discount.UsageLimit <= 0 || GetDiscountUsageCount(discount.Code) < discount.UsageLimit));
+            .FirstOrDefault(discount => IsDiscountAvailable(discount)
+                && string.Equals(discount.Code, code, StringComparison.OrdinalIgnoreCase));
+    }
+
+    private ParfaitProductDiscountCodeEditorViewModel? FindActiveGlobalDiscount(ParfaitCommerceSettingsViewModel settings, string code)
+    {
+        var discount = NormalizeDiscountCode(settings.GlobalDiscount ?? new ParfaitProductDiscountCodeEditorViewModel());
+        return IsDiscountAvailable(discount) && string.Equals(discount.Code, code, StringComparison.OrdinalIgnoreCase)
+            ? discount
+            : null;
+    }
+
+    private ParfaitProductDiscountCodeEditorViewModel? FindPreferredDisplayDiscount(
+        ParfaitProductEditorViewModel product,
+        ParfaitCommerceSettingsViewModel settings)
+    {
+        if (product.PriceCents <= 0)
+        {
+            return null;
+        }
+
+        var productDiscount = product.DiscountCodes
+            .Select(NormalizeDiscountCode)
+            .Where(IsDiscountAvailable)
+            .OrderByDescending(discount => CalculateDiscountCents(product.PriceCents, discount))
+            .ThenBy(discount => discount.Code)
+            .FirstOrDefault();
+
+        if (productDiscount is not null && CalculateDiscountCents(product.PriceCents, productDiscount) > 0)
+        {
+            return productDiscount;
+        }
+
+        var globalDiscount = NormalizeDiscountCode(settings.GlobalDiscount ?? new ParfaitProductDiscountCodeEditorViewModel());
+        return IsDiscountAvailable(globalDiscount) && CalculateDiscountCents(product.PriceCents, globalDiscount) > 0
+            ? globalDiscount
+            : null;
     }
 
     private int GetDiscountUsageCount(string code)
@@ -498,8 +603,26 @@ public sealed class ParfaitProductService
         return Math.Min(subtotalCents, (int)Math.Round(subtotalCents * (percent / 100m), MidpointRounding.AwayFromZero));
     }
 
-    private static ParfaitStoreProductViewModel MapStoreProduct(ParfaitProductEditorViewModel product)
+    private bool IsDiscountAvailable(ParfaitProductDiscountCodeEditorViewModel discount)
     {
+        return discount.IsActive
+            && !string.IsNullOrWhiteSpace(discount.Code)
+            && discount.Amount > 0
+            && (discount.UsageLimit <= 0 || GetDiscountUsageCount(discount.Code) < discount.UsageLimit);
+    }
+
+    private ParfaitStoreProductViewModel MapStoreProduct(
+        ParfaitProductEditorViewModel product,
+        ParfaitCommerceSettingsViewModel settings)
+    {
+        var displayDiscount = FindPreferredDisplayDiscount(product, settings);
+        var displayDiscountCents = displayDiscount is null
+            ? 0
+            : CalculateDiscountCents(product.PriceCents, displayDiscount);
+        var displayPriceCents = product.PriceCents > 0
+            ? Math.Max(0, product.PriceCents - displayDiscountCents)
+            : 0;
+
         return new ParfaitStoreProductViewModel
         {
             Id = product.Id,
@@ -509,6 +632,8 @@ public sealed class ParfaitProductService
             PriceLabel = product.PriceCents > 0 ? $"${product.PriceCents / 100m:0.00}" : product.PriceLabel,
             PriceCents = product.PriceCents,
             CompareAtPriceCents = product.CompareAtPriceCents,
+            DisplayPriceCents = displayPriceCents > 0 || displayDiscountCents > 0 ? displayPriceCents : product.PriceCents,
+            DisplayCompareAtPriceCents = displayDiscountCents > 0 ? product.PriceCents : 0,
             Badge = product.Badge,
             IsFeatured = product.IsFeatured,
             Images = product.Images
@@ -688,14 +813,21 @@ public sealed class ParfaitProductService
         };
     }
 
+    private static ParfaitCommerceSettingsViewModel NormalizeCommerceSettings(ParfaitCommerceSettingsViewModel settings)
+    {
+        var normalizedDiscount = NormalizeDiscountCode(settings.GlobalDiscount ?? new ParfaitProductDiscountCodeEditorViewModel());
+
+        return new ParfaitCommerceSettingsViewModel
+        {
+            ShippingFeeCents = Math.Max(0, settings.ShippingFeeCents),
+            TaxPercent = Math.Clamp(Math.Round(settings.TaxPercent, 2, MidpointRounding.AwayFromZero), 0m, 100m),
+            GlobalDiscount = normalizedDiscount
+        };
+    }
+
     private static void EnsureOnePrimaryImage(ParfaitProductEditorViewModel product)
     {
         if (product.Images.Count == 0)
-        {
-            return;
-        }
-
-        if (product.Images.Count(image => image.IsPrimary) == 1)
         {
             return;
         }
@@ -736,6 +868,7 @@ public sealed class ParfaitProductService
     {
         if (File.Exists(DataPath))
         {
+            EnsureCommerceSettingsData();
             return;
         }
 
@@ -773,5 +906,17 @@ public sealed class ParfaitProductService
                 DisplayOrder = 30
             }
         ]);
+
+        EnsureCommerceSettingsData();
+    }
+
+    private void EnsureCommerceSettingsData()
+    {
+        if (File.Exists(CommerceSettingsPath))
+        {
+            return;
+        }
+
+        SaveCommerceSettings(new ParfaitCommerceSettingsViewModel());
     }
 }

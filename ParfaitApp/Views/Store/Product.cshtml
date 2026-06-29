@@ -64,8 +64,12 @@
             size.StatusTone
         })
         .ToList();
-    var priceMajor = Math.Abs(Model.PriceCents / 100).ToString();
-    var priceMinor = Math.Abs(Model.PriceCents % 100).ToString("00");
+    var displayPriceCents = Model.DisplayPriceCents > 0 || Model.HasDisplaySalePrice
+        ? Model.DisplayPriceCents
+        : Model.PriceCents;
+    var hasPrice = Model.PriceCents > 0;
+    var priceMajor = Math.Abs(displayPriceCents / 100).ToString();
+    var priceMinor = Math.Abs(displayPriceCents % 100).ToString("00");
 }
 
 @section Styles {
@@ -135,15 +139,25 @@
 
             <div class="sp-product-price-stack sp-product-price-row">
                 <div class="sp-product-price-caption">Price</div>
-                <div class="sp-product-price sp-product-price-value" aria-label="@Model.PriceLabel">
-                    <span class="sp-product-price-currency">$</span>
-                    <span class="sp-product-price-major">@priceMajor</span>
-                    <span class="sp-product-price-minor">.@priceMinor</span>
-                </div>
-                @if (Model.HasSalePrice)
+                @if (hasPrice && Model.HasDisplaySalePrice)
                 {
-                    <div class="sp-product-compare-price">@Model.CompareAtPriceLabel</div>
-                    <div class="sp-product-savings">@Model.SavingsLabel</div>
+                    <div class="sp-product-compare-price">@Model.DisplayCompareAtPriceLabel</div>
+                }
+                @if (hasPrice)
+                {
+                    <div class="sp-product-price sp-product-price-value" aria-label="@Model.DisplayPriceLabel">
+                        <span class="sp-product-price-currency">$</span>
+                        <span class="sp-product-price-major">@priceMajor</span>
+                        <span class="sp-product-price-minor">.@priceMinor</span>
+                    </div>
+                }
+                else
+                {
+                    <div class="sp-product-price-note">@Model.DisplayPriceLabel</div>
+                }
+                @if (hasPrice && Model.HasDisplaySalePrice)
+                {
+                    <div class="sp-product-savings">@Model.DisplaySavingsLabel</div>
                 }
             </div>
 
@@ -211,8 +225,8 @@
                             data-product-name="@Model.Name"
                             data-product-slug="@Model.Slug"
                             data-product-price-cents="@Model.PriceCents"
-                            data-product-compare-price-cents="@Model.CompareAtPriceCents"
-                            data-product-price-label="@Model.PriceLabel"
+                            data-product-compare-price-cents="@(Model.HasDisplaySalePrice ? Model.DisplayCompareAtPriceCents : 0)"
+                            data-product-price-label="@Model.DisplayPriceLabel"
                             data-product-badge="@Model.Badge"
                             data-product-image="@(selectedImage?.ImageUrl ?? Model.PrimaryImageUrl)"
                             @(defaultSize?.CanPurchase == true ? null : "disabled")>

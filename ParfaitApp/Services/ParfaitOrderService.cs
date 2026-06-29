@@ -56,16 +56,19 @@ public sealed class ParfaitOrderService
     public ParfaitOrderRecord CreatePendingOrder(
         ParfaitCheckoutCustomerRequest customer,
         IReadOnlyList<ParfaitValidatedCartItem> items,
+        int subtotalCents,
         string? discountCode,
         string? discountLabel,
         int discountCents,
+        int shippingCents,
+        int taxCents,
         HttpContext httpContext)
     {
         var now = DateTime.UtcNow;
-        var subtotal = items.Sum(item => item.LineTotalCents);
+        var subtotal = Math.Max(0, subtotalCents);
         var normalizedDiscountCents = Math.Clamp(discountCents, 0, subtotal);
-        var shipping = 0;
-        var tax = 0;
+        var shipping = Math.Max(0, shippingCents);
+        var tax = Math.Max(0, taxCents);
 
         var order = new ParfaitOrderRecord
         {

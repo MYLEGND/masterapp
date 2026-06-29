@@ -3,6 +3,10 @@
     Layout = "~/Views/Shared/_Layout.cshtml";
 }
 
+@section Styles {
+    <link rel="stylesheet" href="~/css/home.css" asp-append-version="true" />
+}
+
 <div class="home-container">
 
     <!-- HERO -->
@@ -15,23 +19,17 @@
     </div>
 
     <!-- LEGEND STORE CTA -->
-    <div class="text-center my-5">
+    <div class="home-cta-row my-5">
         <a href="/store"
-           
            class="btn-legend-store">
             Shop Parfait
         </a>
-
-        <!-- BOOKING CTA (NEW) -->
-        <div class="mt-3">
-            <a class="btn-booking"
-               href="https://outlook.office.com/book/Parfait1@mylegnd.com/"
-               
-               rel="noopener noreferrer"
-               aria-label="Book your weekly sessions">
-                BOOK YOUR TRAINING SESSIONS
-            </a>
-        </div>
+        <a class="btn-booking"
+           href="https://outlook.office.com/book/Parfait1@mylegnd.com/"
+           rel="noopener noreferrer"
+           aria-label="Book your weekly sessions">
+            Book Your Training Sessions
+        </a>
     </div>
 
     <!-- IMAGE SECTION -->
@@ -97,194 +95,3 @@
     </div>
 
 </div>
-
-<style>
-:root {
-    --gold-color: #926950;
-    --gold-color-light: rgba(146, 105, 80, 0.18);
-    --accent-font: 'Georgia', serif;
-}
-
-/* HOME CONTAINER */
-.home-container {
-    padding: 2rem 1rem;
-    font-family: 'Inter', sans-serif;
-}
-
-/* HERO */
-.hero-hr {
-    border-color: var(--gold-color);
-    border-width: 2px;
-    max-width: 800px;
-    margin: 1rem auto 0;
-}
-
-/* BUTTON */
-.btn-legend-store{
-    display: inline-block;
-    padding: 14px 26px;
-    border-radius: 999px;              /* ✅ makes it round like booking */
-    border: 2px solid var(--gold-color);
-    background: #fff;
-    color: #111;
-    font-family: 'Inter', sans-serif;
-    font-weight: 950;
-    letter-spacing: 0.4px;
-    text-transform: uppercase;
-    text-decoration: none;
-    box-shadow: 0 10px 26px rgba(146, 105, 80, 0.18);
-    transition: all 0.28s ease;
-    font-size: 1.15rem;               /* keeps it strong but not bulky */
-}
-
-.btn-legend-store:hover{
-    background: var(--gold-color);
-    color: #fff;
-    transform: translateY(-3px) scale(1.03);
-    box-shadow: 0 16px 36px rgba(146, 105, 80, 0.35);
-}
-
-/* BOOKING CTA (NEW) */
-.btn-booking{
-    display: inline-block;
-    padding: 14px 26px;
-    border-radius: 999px;
-    border: 2px solid var(--gold-color);
-    background: #fff;
-    color: #111;
-    font-family: 'Inter', sans-serif;
-    font-weight: 950;
-    letter-spacing: 0.4px;
-    text-transform: uppercase;
-    text-decoration: none;
-    box-shadow: 0 10px 26px rgba(146, 105, 80, 0.18);
-    transition: all 0.28s ease;
-}
-
-.btn-booking:hover{
-    background: var(--gold-color);
-    color: #fff;
-    transform: translateY(-3px) scale(1.03);
-    box-shadow: 0 16px 36px rgba(146, 105, 80, 0.35);
-}
-
-/* TOOL IMAGE */
-.tool-image {
-    max-width: 80%;
-    height: auto;
-    object-fit: contain;
-}
-
-/* ================= SECTION CARD ================= */
-.section-card {
-    max-width: 800px;
-    margin: 50px auto;
-    padding: clamp(25px, 4vw, 40px);
-    border: 3px solid var(--gold-color);
-    border-radius: 25px;
-    background: #fff;
-    box-shadow: 0 8px 25px rgba(0,0,0,0.08);
-    font-family: var(--accent-font);
-    line-height: 1.8;
-    color: #2b2b2b;
-    text-align: center;
-    position: relative;
-}
-
-/* BADGE - FLOATS ABOVE BORDER, STAYS SINGLE LINE, SHRINKS */
-.section-badge {
-    position: absolute;
-    top: -18px;
-    left: 50%;
-    transform: translateX(-50%);
-    background: var(--gold-color);
-    color: #fff;
-    padding: 8px 22px;
-    border-radius: 40px;
-    font-size: clamp(14px, 1.5vw, 20px);
-    font-weight: bold;
-    letter-spacing: 1px;
-    text-transform: uppercase;
-    white-space: nowrap;
-}
-
-/* ADD SPACE UNDER BADGE */
-.section-card > p:first-of-type {
-    margin-top: 50px;
-}
-
-@@media (max-width: 576px) {
-    .section-card > p:first-of-type {
-        margin-top: 60px;
-    }
-}
-
-/* ACCENT TEXT */
-.accent-text {
-    color: var(--gold-color);
-    font-weight: bold;
-}
-
-/* DIVIDER */
-.section-divider {
-    border: none;
-    height: 2px;
-    background: var(--gold-color);
-    width: 70%;
-    margin: 25px auto;
-    border-radius: 2px;
-}
-
-/* ITALIC TEXT */
-.italic-text {
-    font-style: italic;
-    font-weight: 500;
-    color: #444;
-}
-
-/* MISSION + VISION */
-.mission-vision h3 {
-    color: var(--gold-color);
-    margin-bottom: 10px;
-    font-size: 22px;
-    letter-spacing: 1px;
-}
-
-.mission-vision p {
-    font-size: 18px;
-    margin-bottom: 20px;
-}
-
-/* ================= RESPONSIVE ================= */
-@@media (max-width: 992px) {
-    .section-card {
-        padding: clamp(20px, 4vw, 30px);
-        margin: 40px auto;
-    }
-    .section-divider {
-        width: 80%;
-    }
-}
-
-@@media (max-width: 576px) {
-    .section-card {
-        padding: clamp(15px, 3vw, 25px);
-        margin: 30px 1rem;
-    }
-    .section-divider {
-        width: 90%;
-    }
-    .section-badge {
-        font-size: clamp(12px, 4vw, 16px);
-    }
-    .mission-vision h3 {
-        font-size: 20px;
-    }
-    .mission-vision p,
-    .italic-text,
-    p {
-        font-size: 16px;
-        line-height: 1.6;
-    }
-}
-</style>

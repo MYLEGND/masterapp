@@ -44,11 +44,11 @@
 
                         <div class="sp-shop-meta">
                             <div class="sp-shop-price-stack">
-                                <div class="sp-shop-price">@product.PriceLabel</div>
-                                @if (product.HasSalePrice)
+                                @if (product.HasDisplaySalePrice)
                                 {
-                                    <div class="sp-shop-compare-price">@product.CompareAtPriceLabel</div>
+                                    <div class="sp-shop-compare-price">@product.DisplayCompareAtPriceLabel</div>
                                 }
+                                <div class="sp-shop-price">@product.DisplayPriceLabel</div>
                             </div>
                         </div>
 

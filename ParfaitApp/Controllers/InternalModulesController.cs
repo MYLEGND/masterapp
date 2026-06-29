@@ -52,6 +52,7 @@ public sealed class InternalModulesController : Controller
         return View(new ParfaitProductAdminViewModel
         {
             Products = products,
+            CommerceSettings = _products.GetCommerceSettings(),
             ActiveProductCount = products.Count(product => product.IsActive),
             FeaturedProductCount = products.Count(product => product.IsFeatured),
             TotalImageCount = products.Sum(product => product.Images.Count)
@@ -72,6 +73,7 @@ public sealed class InternalModulesController : Controller
             {
                 Products = products,
                 NewProduct = product,
+                CommerceSettings = _products.GetCommerceSettings(),
                 ActiveProductCount = products.Count(item => item.IsActive),
                 FeaturedProductCount = products.Count(item => item.IsFeatured),
                 TotalImageCount = products.Sum(item => item.Images.Count)
@@ -82,6 +84,19 @@ public sealed class InternalModulesController : Controller
         TempData["ProductStatus"] = product.IsActive
             ? "Product saved and visible."
             : "Product saved and hidden.";
+        return RedirectToAction(nameof(Products));
+    }
+
+    [HttpPost("commerce/products/settings")]
+    [ValidateAntiForgeryToken]
+    public IActionResult SaveCommerceSettings(ParfaitCommerceSettingsViewModel settings)
+    {
+        settings.GlobalDiscount ??= new ParfaitProductDiscountCodeEditorViewModel();
+        settings.GlobalDiscount.IsActive = Request.Form["GlobalDiscount.IsActive"]
+            .Any(value => string.Equals(value, "true", StringComparison.OrdinalIgnoreCase));
+
+        _products.SaveCommerceSettings(settings);
+        TempData["ProductStatus"] = "Commerce settings saved.";
         return RedirectToAction(nameof(Products));
     }
 
@@ -112,27 +127,22 @@ public sealed class InternalModulesController : Controller
         return RedirectToAction(nameof(Products));
     }
 
-    [HttpPost("commerce/products/images/primary")]
-    [ValidateAntiForgeryToken]
-    public IActionResult SetPrimaryProductImage(string productId, string imageId)
-    {
-        _products.SetPrimaryImage(productId, imageId);
-        TempData["ProductStatus"] = "Primary image updated.";
-        return RedirectToAction(nameof(Products));
-    }
-
     [HttpPost("commerce/products/images/reorder")]
     [ValidateAntiForgeryToken]
     public IActionResult ReorderProductImages(string productId, List<string> imageIds)
     {
         _products.ReorderImages(productId, imageIds);
 
-        if (string.Equals(Request.Headers["X-Requested-With"], "XMLHttpRequest", StringComparison.OrdinalIgnoreCase))
-        {
-            return Ok(new { success = true });
-        }
-
         TempData["ProductStatus"] = "Image order updated.";
+        return RedirectToAction(nameof(Products));
+    }
+
+    [HttpPost("commerce/products/reorder")]
+    [ValidateAntiForgeryToken]
+    public IActionResult ReorderProducts(List<string> productIds)
+    {
+        _products.ReorderProducts(productIds);
+        TempData["ProductStatus"] = "Store order updated.";
         return RedirectToAction(nameof(Products));
     }
 
