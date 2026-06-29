@@ -63,8 +63,18 @@ public sealed class InternalModulesController : Controller
     [ValidateAntiForgeryToken]
     public IActionResult SaveProduct(ParfaitProductEditorViewModel product)
     {
-        product.IsActive = Request.Form["IsActive"].Any(value => string.Equals(value, "true", StringComparison.OrdinalIgnoreCase));
-        product.IsFeatured = Request.Form["IsFeatured"].Any(value => string.Equals(value, "true", StringComparison.OrdinalIgnoreCase));
+        product.IsActive = HasCheckedValue(Request.Form, "IsActive");
+        product.IsFeatured = HasCheckedValue(Request.Form, "IsFeatured");
+
+        for (var index = 0; index < product.InventoryBySize.Count; index++)
+        {
+            product.InventoryBySize[index].IsEnabled = HasCheckedValue(Request.Form, $"InventoryBySize[{index}].IsEnabled");
+        }
+
+        for (var index = 0; index < product.DiscountCodes.Count; index++)
+        {
+            product.DiscountCodes[index].IsActive = HasCheckedValue(Request.Form, $"DiscountCodes[{index}].IsActive");
+        }
 
         if (!ModelState.IsValid)
         {
@@ -92,8 +102,7 @@ public sealed class InternalModulesController : Controller
     public IActionResult SaveCommerceSettings(ParfaitCommerceSettingsViewModel settings)
     {
         settings.GlobalDiscount ??= new ParfaitProductDiscountCodeEditorViewModel();
-        settings.GlobalDiscount.IsActive = Request.Form["GlobalDiscount.IsActive"]
-            .Any(value => string.Equals(value, "true", StringComparison.OrdinalIgnoreCase));
+        settings.GlobalDiscount.IsActive = HasCheckedValue(Request.Form, "GlobalDiscount.IsActive");
 
         _products.SaveCommerceSettings(settings);
         TempData["ProductStatus"] = "Commerce settings saved.";
@@ -259,5 +268,10 @@ public sealed class InternalModulesController : Controller
     public async Task<IActionResult> Analytics(CancellationToken ct)
     {
         return View(await _analyticsDashboard.GetDashboardAsync(ct));
+    }
+
+    private static bool HasCheckedValue(IFormCollection form, string key)
+    {
+        return form[key].Any(value => string.Equals(value, "true", StringComparison.OrdinalIgnoreCase));
     }
 }

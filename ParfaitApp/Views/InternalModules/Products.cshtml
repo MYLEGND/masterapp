@@ -191,14 +191,6 @@
                                step="0.01"
                                value="@(globalDiscount.Amount > 0 ? globalDiscount.Amount.ToString("0.##") : "")" />
                     </label>
-                    <label>
-                        Usage Limit
-                        <input class="form-control"
-                               name="GlobalDiscount.UsageLimit"
-                               type="number"
-                               min="0"
-                               value="@globalDiscount.UsageLimit" />
-                    </label>
                 </div>
 
                 <div class="pf-commerce-settings-actions">
@@ -314,7 +306,6 @@
                                             </select>
                                         </label>
                                         <label>Amount <input class="form-control" name="DiscountCodes[@index].Amount" data-field="Amount" type="number" min="0" step="0.01" value="@(code.Amount > 0 ? code.Amount.ToString("0.##") : "10")" /></label>
-                                        <label>Usage Limit <input class="form-control" name="DiscountCodes[@index].UsageLimit" data-field="UsageLimit" type="number" min="0" value="@code.UsageLimit" /></label>
                                         <label class="pf-check"><input type="checkbox" name="DiscountCodes[@index].IsActive" data-field="IsActive" value="true" @(code.IsActive ? "checked" : "") /> Active</label>
                                         <div class="pf-discount-actions">
                                             <button type="button" class="pf-text-button" data-pf-generate-code>Generate</button>
@@ -376,10 +367,15 @@
 
                 <article class="pf-product-summary-card @ToneClass(product.InventoryTone)"
                          draggable="true"
-                         title="Drag to reorder storefront placement"
                          data-pf-product-summary="@product.Id"
+                         data-pf-product-modal-id="@modalId"
                          data-pf-product-card
-                         data-pf-product-id="@product.Id">
+                         data-pf-product-id="@product.Id"
+                         role="button"
+                         tabindex="0"
+                         aria-controls="@modalId"
+                         aria-haspopup="dialog"
+                         aria-label="Open @product.Name product editor">
                     <div class="pf-product-summary-main">
                         <img src="@primaryUrl" alt="@product.Name" />
                         <div class="pf-product-summary-copy">
@@ -411,8 +407,7 @@
 
                     <div class="pf-product-summary-side">
                         <div class="pf-product-summary-order">
-                            <span class="pf-product-rank">#@(productIndex + 1)</span>
-                            <span class="pf-product-drag-handle">Drag To Reorder</span>
+                            <span class="pf-product-rank" data-pf-product-rank>#@(productIndex + 1)</span>
                         </div>
 
                         <div class="pf-product-summary-pills">
@@ -424,8 +419,6 @@
                         <div class="pf-product-summary-meta">
                             <span>@CountLabel(orderedImages.Count, "photo")</span>
                         </div>
-
-                        <button type="button" class="pf-secondary-action" data-pf-open="@modalId">Edit Product</button>
                     </div>
                 </article>
             }
@@ -612,7 +605,6 @@
                                                             </select>
                                                         </label>
                                                         <label>Amount <input class="form-control" name="DiscountCodes[@index].Amount" data-field="Amount" type="number" min="0" step="0.01" value="@(code.Amount > 0 ? code.Amount.ToString("0.##") : "10")" /></label>
-                                                        <label>Usage Limit <input class="form-control" name="DiscountCodes[@index].UsageLimit" data-field="UsageLimit" type="number" min="0" value="@code.UsageLimit" /></label>
                                                         <label class="pf-check"><input type="checkbox" name="DiscountCodes[@index].IsActive" data-field="IsActive" value="true" @(code.IsActive ? "checked" : "") /> Active</label>
                                                         <div class="pf-discount-actions">
                                                             <button type="button" class="pf-text-button" data-pf-generate-code>Generate</button>
@@ -709,7 +701,7 @@
         <input type="hidden" data-field="DisplayOrder" value="0" data-pf-order />
         <label>Size <input class="form-control" data-field="Size" value="" required /></label>
         <label>Units <input class="form-control" data-field="StockQuantity" type="number" min="0" value="0" data-pf-stock /></label>
-        <label>Low Stock At <input class="form-control" data-field="LowStockThreshold" type="number" min="1" value="3" data-pf-low-stock /></label>
+        <label>Low Stock At <input class="form-control" data-field="LowStockThreshold" type="number" min="1" value="20" data-pf-low-stock /></label>
         <label class="pf-check"><input type="checkbox" data-field="IsEnabled" value="true" checked data-pf-enabled /> Enabled</label>
         <div class="pf-variant-status">
             <span class="pf-command-badge is-muted" data-pf-inventory-status>Sold Out</span>
@@ -730,7 +722,6 @@
             </select>
         </label>
         <label>Amount <input class="form-control" data-field="Amount" type="number" min="0" step="0.01" value="10" /></label>
-        <label>Usage Limit <input class="form-control" data-field="UsageLimit" type="number" min="0" value="0" /></label>
         <label class="pf-check"><input type="checkbox" data-field="IsActive" value="true" checked /> Active</label>
         <div class="pf-discount-actions">
             <button type="button" class="pf-text-button" data-pf-generate-code>Generate</button>
@@ -819,7 +810,8 @@
                     statusTimer: 0,
                     saving: false,
                     queued: false,
-                    queuedRefresh: false
+                    queuedRefresh: false,
+                    pendingRefresh: false
                 };
                 saveStates.set(form, state);
             }
@@ -1076,15 +1068,20 @@
             }
         };
 
-        const scheduleAutoSave = form => {
+        const scheduleAutoSave = (form, { refresh = false } = {}) => {
             if (!form?.matches("[data-pf-product-edit-form]") || !form.checkValidity()) {
                 return;
             }
 
             const state = getFormState(form);
             window.clearTimeout(state.timer);
+            state.pendingRefresh = state.pendingRefresh || refresh;
             renderSaveState(form, "Saving", "saving");
-            state.timer = window.setTimeout(() => submitProductForm(form), 850);
+            state.timer = window.setTimeout(() => {
+                const nextRefresh = state.pendingRefresh;
+                state.pendingRefresh = false;
+                submitProductForm(form, { refresh: nextRefresh });
+            }, 850);
         };
 
         const submitRefreshForm = async (form, productId, openModalId) => {
@@ -1255,6 +1252,7 @@
 
             let draggingCard = null;
             let startOrder = "";
+            let suppressOpenUntil = 0;
 
             const currentOrder = () => [...list.querySelectorAll("[data-pf-product-card]")]
                 .map(card => card.getAttribute("data-pf-product-id"))
@@ -1263,6 +1261,15 @@
 
             const clearDropTargets = () => {
                 list.querySelectorAll(".is-drop-target").forEach(card => card.classList.remove("is-drop-target"));
+            };
+
+            const syncProductRanks = () => {
+                [...list.querySelectorAll("[data-pf-product-card]")].forEach((card, index) => {
+                    const rank = card.querySelector("[data-pf-product-rank]");
+                    if (rank) {
+                        rank.textContent = `#${index + 1}`;
+                    }
+                });
             };
 
             list.addEventListener("dragstart", event => {
@@ -1285,6 +1292,7 @@
 
                 card.classList.remove("is-dragging");
                 clearDropTargets();
+                suppressOpenUntil = window.performance.now() + 260;
 
                 const endOrder = currentOrder();
                 draggingCard = null;
@@ -1309,6 +1317,7 @@
 
                 try {
                     await submitRequest(sortUrl, formData);
+                    syncProductRanks();
                     renderProductOrderStatus("Store order saved", "success");
                 } catch (error) {
                     console.error(error);
@@ -1334,11 +1343,43 @@
                 } else {
                     target.before(draggingCard);
                 }
+
+                syncProductRanks();
             });
 
             list.addEventListener("drop", event => {
                 event.preventDefault();
                 clearDropTargets();
+            });
+
+            list.addEventListener("click", event => {
+                const card = event.target.closest("[data-pf-product-card]");
+                if (!card || window.performance.now() < suppressOpenUntil) {
+                    return;
+                }
+
+                const modalId = card.getAttribute("data-pf-product-modal-id");
+                if (modalId) {
+                    window.pfModalUi?.openModal(modalId);
+                }
+            });
+
+            list.addEventListener("keydown", event => {
+                if (event.key !== "Enter" && event.key !== " ") {
+                    return;
+                }
+
+                const card = event.target.closest("[data-pf-product-card]");
+                if (!card) {
+                    return;
+                }
+
+                event.preventDefault();
+
+                const modalId = card.getAttribute("data-pf-product-modal-id");
+                if (modalId) {
+                    window.pfModalUi?.openModal(modalId);
+                }
             });
         };
 
@@ -1434,10 +1475,11 @@
                 const type = addButton.getAttribute("data-pf-add-row");
                 const target = addButton.getAttribute("data-pf-target");
                 const container = addRow(target, type === "inventory" ? inventoryTemplate : discountTemplate);
-                const form = addButton.closest("form");
+                const row = container?.querySelector("[data-pf-repeat-item]:last-child");
+                const firstField = row?.querySelector("input:not([type='hidden']), select, textarea");
 
-                if (container && form?.matches("[data-pf-product-edit-form]")) {
-                    scheduleAutoSave(form);
+                if (firstField instanceof HTMLElement) {
+                    firstField.focus();
                 }
                 return;
             }
@@ -1453,7 +1495,7 @@
                 reindexCollection(container);
 
                 if (form?.matches("[data-pf-product-edit-form]")) {
-                    scheduleAutoSave(form);
+                    submitProductForm(form, { refresh: true });
                 }
                 return;
             }
@@ -1477,7 +1519,7 @@
                 }
 
                 if (form?.matches("[data-pf-product-edit-form]")) {
-                    scheduleAutoSave(form);
+                    submitProductForm(form, { refresh: true });
                 }
                 return;
             }
@@ -1528,7 +1570,7 @@
                 return;
             }
 
-            scheduleAutoSave(form);
+            scheduleAutoSave(form, { refresh: Boolean(event.target.closest(".pf-discount-row")) });
         });
 
         document.addEventListener("change", event => {
@@ -1557,7 +1599,7 @@
                 return;
             }
 
-            scheduleAutoSave(form);
+            scheduleAutoSave(form, { refresh: Boolean(target.closest(".pf-discount-row")) });
         });
 
         document.addEventListener("submit", event => {

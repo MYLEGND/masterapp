@@ -579,14 +579,6 @@ public sealed class ParfaitProductService
             : null;
     }
 
-    private int GetDiscountUsageCount(string code)
-    {
-        return _orders.GetAllOrders()
-            .Count(order =>
-                string.Equals(order.PaymentStatus, "Paid", StringComparison.OrdinalIgnoreCase)
-                && string.Equals(order.DiscountCode, code, StringComparison.OrdinalIgnoreCase));
-    }
-
     private static int CalculateDiscountCents(int subtotalCents, ParfaitProductDiscountCodeEditorViewModel discount)
     {
         if (subtotalCents <= 0)
@@ -607,8 +599,7 @@ public sealed class ParfaitProductService
     {
         return discount.IsActive
             && !string.IsNullOrWhiteSpace(discount.Code)
-            && discount.Amount > 0
-            && (discount.UsageLimit <= 0 || GetDiscountUsageCount(discount.Code) < discount.UsageLimit);
+            && discount.Amount > 0;
     }
 
     private ParfaitStoreProductViewModel MapStoreProduct(
@@ -752,7 +743,7 @@ public sealed class ParfaitProductService
                 DisplayOrder = (standard.Index + 1) * 10,
                 IsEnabled = true,
                 StockQuantity = 0,
-                LowStockThreshold = 3
+                LowStockThreshold = 20
             });
         }
 
@@ -808,7 +799,6 @@ public sealed class ParfaitProductService
             Code = ParfaitProductCatalogDefaults.NormalizeDiscountCode(code.Code),
             DiscountType = discountType,
             Amount = amount,
-            UsageLimit = Math.Max(0, code.UsageLimit),
             IsActive = code.IsActive
         };
     }

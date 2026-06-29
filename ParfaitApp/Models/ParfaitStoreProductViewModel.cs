@@ -15,7 +15,7 @@ public static class ParfaitProductCatalogDefaults
                 DisplayOrder = (index + 1) * 10,
                 IsEnabled = true,
                 StockQuantity = 0,
-                LowStockThreshold = 3
+                LowStockThreshold = 20
             })
             .ToList();
     }
@@ -190,7 +190,7 @@ public sealed class ParfaitProductSizeInventoryEditorViewModel
 
     public bool IsEnabled { get; set; } = true;
     public int StockQuantity { get; set; }
-    public int LowStockThreshold { get; set; } = 3;
+    public int LowStockThreshold { get; set; } = 20;
     public int DisplayOrder { get; set; }
 
     public bool IsSoldOut => IsEnabled && StockQuantity <= 0;
@@ -209,12 +209,10 @@ public sealed class ParfaitProductDiscountCodeEditorViewModel
 {
     public string Id { get; set; } = Guid.NewGuid().ToString("N");
 
-    [Required]
     public string Code { get; set; } = "";
 
     public string DiscountType { get; set; } = "Percent";
     public decimal Amount { get; set; }
-    public int UsageLimit { get; set; }
     public bool IsActive { get; set; } = true;
 
     public string SummaryLabel => string.Equals(DiscountType, "Fixed", StringComparison.OrdinalIgnoreCase)
