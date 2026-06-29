@@ -311,6 +311,104 @@ footer.footer {
     color: var(--pf-cocoa-900);
 }
 
+.footer-divider {
+    margin: 0 0.4rem;
+    color: rgba(111, 75, 59, 0.6);
+}
+
+body.legal-theme {
+    background:
+        radial-gradient(circle at top, rgba(173, 123, 92, 0.12), transparent 36%),
+        var(--pf-cream-100);
+}
+
+.legal-layout-content {
+    width: 100%;
+}
+
+.legal-page-wrap {
+    width: 100%;
+    max-width: 960px;
+    margin: 0 auto;
+    padding: 0 8px 20px;
+}
+
+.legal-hero {
+    padding: 30px 26px;
+    border: 1.5px solid rgba(146, 105, 80, 0.5);
+    border-radius: 18px;
+    background: linear-gradient(155deg, #2b1c16 0%, #4d3429 56%, #241813 100%);
+    box-shadow:
+        0 20px 42px rgba(36, 24, 19, 0.22),
+        inset 0 1px 0 rgba(255, 250, 245, 0.08);
+}
+
+.legal-kicker {
+    margin: 0 0 10px;
+    color: rgba(255, 244, 236, 0.74);
+    font-size: 0.84rem;
+    font-weight: 800;
+    letter-spacing: 0.15em;
+    text-transform: uppercase;
+}
+
+.legal-title {
+    margin: 0;
+    color: #fffaf5;
+    font-size: clamp(1.9rem, 4vw, 2.45rem);
+    font-weight: 900;
+    letter-spacing: 0.02em;
+    line-height: 1.12;
+    text-transform: uppercase;
+}
+
+.legal-intro {
+    margin: 12px 0 0;
+    color: rgba(255, 248, 243, 0.92);
+    font-size: 1.03rem;
+    font-weight: 600;
+    line-height: 1.6;
+}
+
+.legal-card {
+    margin-top: 14px;
+    padding: 24px 24px 22px;
+    border: 1.2px solid rgba(146, 105, 80, 0.42);
+    border-radius: 16px;
+    background: linear-gradient(180deg, #3a271f 0%, #241813 100%);
+    box-shadow: 0 18px 38px rgba(36, 24, 19, 0.18);
+}
+
+.legal-prose p {
+    margin: 0 0 14px;
+    max-width: 72ch;
+    color: rgba(255, 246, 240, 0.92);
+    font-size: 1rem;
+    line-height: 1.75;
+}
+
+.legal-prose p:last-child {
+    margin-bottom: 0;
+}
+
+.legal-contact a {
+    color: #f4d6c1;
+    font-weight: 700;
+    text-decoration: none;
+}
+
+.legal-contact a:hover {
+    color: #fff7f1;
+    text-decoration: underline;
+}
+
+.legal-updated {
+    margin-top: 18px;
+    color: rgba(255, 242, 234, 0.66);
+    font-size: 0.84rem;
+    letter-spacing: 0.02em;
+}
+
 @media (max-width: 900px) {
     :root {
         --pf-header-offset: 90px;
@@ -354,5 +452,26 @@ footer.footer {
 @media (max-width: 560px) {
     .layout-content {
         padding-inline: 0.65rem;
+    }
+}
+
+@media (max-width: 768px) {
+    .legal-page-wrap {
+        padding: 0 2px 18px;
+    }
+
+    .legal-hero {
+        padding: 20px 16px;
+        border-radius: 14px;
+    }
+
+    .legal-card {
+        padding: 16px 14px;
+        border-radius: 12px;
+    }
+
+    .legal-prose p {
+        font-size: 0.95rem;
+        line-height: 1.65;
     }
 }

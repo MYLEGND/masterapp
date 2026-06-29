@@ -9,5 +9,19 @@ namespace ParfaitApp.Controllers
             ViewData["Title"] = "Home";  // Sets the page title
             return View();               // Looks for Views/Home/Index.cshtml automatically
         }
+
+        [HttpGet("Privacy")]
+        [HttpGet("Home/Privacy")]
+        public IActionResult Privacy()
+        {
+            return View();
+        }
+
+        [HttpGet("Terms")]
+        [HttpGet("Home/Terms")]
+        public IActionResult Terms()
+        {
+            return View();
+        }
     }
 }
