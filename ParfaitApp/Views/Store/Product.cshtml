@@ -5,6 +5,13 @@
     ViewData["ContentContainerClass"] = "container-fluid";
     ViewData["LayoutContentClass"] = "sp-layout-content";
 
+    static string ImageDisplayStyle(string? fit, int positionX, int positionY, decimal zoom)
+    {
+        var safeFit = string.Equals(fit, "contain", StringComparison.OrdinalIgnoreCase) ? "contain" : "cover";
+        var safeZoom = zoom <= 0 ? 1.0m : zoom;
+        return $"object-fit:{safeFit}; object-position:{positionX}% {positionY}%; transform-origin:{positionX}% {positionY}%; transform:scale({safeZoom.ToString("0.##", System.Globalization.CultureInfo.InvariantCulture)});";
+    }
+
     var images = Model.Images.OrderBy(image => image.DisplayOrder).ToList();
     var selectedImage = Model.PrimaryImage ?? images.FirstOrDefault();
     var galleryCount = Math.Max(images.Count, 1);
@@ -80,7 +87,7 @@
                          class="sp-gallery-main-image"
                          src="@(selectedImage?.ImageUrl ?? Model.PrimaryImageUrl)"
                          alt="@(selectedImage?.AltText ?? Model.Name)"
-                         style="object-fit:@(selectedImage?.ObjectFit ?? Model.PrimaryImageObjectFit); object-position:@(selectedImage?.ObjectPositionX ?? Model.PrimaryImageObjectPositionX)% @(selectedImage?.ObjectPositionY ?? Model.PrimaryImageObjectPositionY)%; transform:scale(@((selectedImage?.Zoom ?? Model.PrimaryImageZoom).ToString("0.##"))); transform-origin:center;" />
+                         style="@ImageDisplayStyle(selectedImage?.ObjectFit ?? Model.PrimaryImageObjectFit, selectedImage?.ObjectPositionX ?? Model.PrimaryImageObjectPositionX, selectedImage?.ObjectPositionY ?? Model.PrimaryImageObjectPositionY, selectedImage?.Zoom ?? Model.PrimaryImageZoom)" />
                 </div>
 
                 @if (images.Count > 1)
@@ -111,7 +118,7 @@
                                 data-image-zoom="@image.Zoom.ToString("0.##")">
                             <img src="@image.ImageUrl"
                                  alt="@(string.IsNullOrWhiteSpace(image.AltText) ? Model.Name : image.AltText)"
-                                 style="object-fit:@image.ObjectFit; object-position:@image.ObjectPositionX% @image.ObjectPositionY%; transform:scale(@image.Zoom.ToString("0.##")); transform-origin:center;" />
+                                 style="@ImageDisplayStyle(image.ObjectFit, image.ObjectPositionX, image.ObjectPositionY, image.Zoom)" />
                         </button>
                     }
                 </div>
@@ -251,6 +258,7 @@
                 mainImage.alt = button.dataset.imageAlt || "@Model.Name";
                 mainImage.style.objectFit = button.dataset.imageFit || "cover";
                 mainImage.style.objectPosition = `${button.dataset.imageX || "50"}% ${button.dataset.imageY || "50"}%`;
+                mainImage.style.transformOrigin = `${button.dataset.imageX || "50"}% ${button.dataset.imageY || "50"}%`;
                 mainImage.style.transform = `scale(${button.dataset.imageZoom || "1"})`;
 
                 if (addButton) {

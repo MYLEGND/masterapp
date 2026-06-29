@@ -402,6 +402,37 @@ public sealed class ParfaitProductService
         SaveAll(products);
     }
 
+    public void ReorderImages(string productId, IReadOnlyList<string> imageIds)
+    {
+        var products = GetAllProducts().ToList();
+        var product = products.FirstOrDefault(existing => string.Equals(existing.Id, productId, StringComparison.OrdinalIgnoreCase));
+
+        if (product is null || imageIds.Count == 0)
+        {
+            return;
+        }
+
+        var lookup = product.Images.ToDictionary(image => image.Id, StringComparer.OrdinalIgnoreCase);
+        var ordered = new List<ParfaitProductImageEditorViewModel>();
+
+        foreach (var imageId in imageIds)
+        {
+            if (lookup.TryGetValue(imageId, out var image) && !ordered.Contains(image))
+            {
+                ordered.Add(image);
+            }
+        }
+
+        ordered.AddRange(product.Images.Where(image => !ordered.Contains(image)));
+
+        for (var index = 0; index < ordered.Count; index++)
+        {
+            ordered[index].DisplayOrder = (index + 1) * 10;
+        }
+
+        SaveAll(products);
+    }
+
     public void SaveImageDisplaySettings(string productId, string imageId, string objectFit, int objectPositionX, int objectPositionY, decimal zoom)
     {
         var products = GetAllProducts().ToList();

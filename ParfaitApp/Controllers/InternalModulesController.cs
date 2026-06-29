@@ -121,11 +121,17 @@ public sealed class InternalModulesController : Controller
         return RedirectToAction(nameof(Products));
     }
 
-    [HttpPost("commerce/products/images/move")]
+    [HttpPost("commerce/products/images/reorder")]
     [ValidateAntiForgeryToken]
-    public IActionResult MoveProductImage(string productId, string imageId, string direction)
+    public IActionResult ReorderProductImages(string productId, List<string> imageIds)
     {
-        _products.MoveImage(productId, imageId, direction);
+        _products.ReorderImages(productId, imageIds);
+
+        if (string.Equals(Request.Headers["X-Requested-With"], "XMLHttpRequest", StringComparison.OrdinalIgnoreCase))
+        {
+            return Ok(new { success = true });
+        }
+
         TempData["ProductStatus"] = "Image order updated.";
         return RedirectToAction(nameof(Products));
     }

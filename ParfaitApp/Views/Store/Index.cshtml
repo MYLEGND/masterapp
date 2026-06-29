@@ -4,6 +4,13 @@
     ViewData["BodyClass"] = "sp-body";
     ViewData["ContentContainerClass"] = "container-fluid";
     ViewData["LayoutContentClass"] = "sp-layout-content";
+
+    static string ImageDisplayStyle(string? fit, int positionX, int positionY, decimal zoom)
+    {
+        var safeFit = string.Equals(fit, "contain", StringComparison.OrdinalIgnoreCase) ? "contain" : "cover";
+        var safeZoom = zoom <= 0 ? 1.0m : zoom;
+        return $"object-fit:{safeFit}; object-position:{positionX}% {positionY}%; transform-origin:{positionX}% {positionY}%; transform:scale({safeZoom.ToString("0.##", System.Globalization.CultureInfo.InvariantCulture)});";
+    }
 }
 
 @section Styles {
@@ -27,7 +34,7 @@
                         }
                         <img src="@product.PrimaryImageUrl"
                              alt="@product.Name"
-                             style="object-fit:@product.PrimaryImageObjectFit; object-position:@product.PrimaryImageObjectPositionX% @product.PrimaryImageObjectPositionY%; transform:scale(@product.PrimaryImageZoom.ToString("0.##")); transform-origin:center;" />
+                             style="@ImageDisplayStyle(product.PrimaryImageObjectFit, product.PrimaryImageObjectPositionX, product.PrimaryImageObjectPositionY, product.PrimaryImageZoom)" />
                     </a>
 
                     <div class="sp-shop-content">

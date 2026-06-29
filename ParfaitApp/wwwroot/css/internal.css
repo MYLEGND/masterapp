@@ -1242,10 +1242,10 @@ button.pf-secondary-action:hover {
 
 .pf-variant-row {
     display: grid;
-    grid-template-columns: minmax(0, 0.8fr) minmax(0, 0.9fr) minmax(0, 0.9fr) auto minmax(140px, auto) auto;
-    gap: 0.65rem;
-    align-items: end;
-    padding: 0.8rem;
+    grid-template-columns: minmax(82px, 0.78fr) minmax(90px, 0.82fr) minmax(96px, 0.9fr) auto minmax(126px, auto) auto;
+    gap: 0.55rem;
+    align-items: center;
+    padding: 0.72rem;
     border: 1px solid var(--pf-line-strong);
     border-radius: 18px;
     background: var(--pf-surface-panel);
@@ -1255,9 +1255,9 @@ button.pf-secondary-action:hover {
 .pf-discount-row {
     display: grid;
     grid-template-columns: minmax(0, 1.4fr) minmax(0, 0.85fr) minmax(0, 0.8fr) minmax(0, 0.9fr) auto auto;
-    gap: 0.65rem;
-    align-items: end;
-    padding: 0.8rem;
+    gap: 0.55rem;
+    align-items: center;
+    padding: 0.72rem;
     border: 1px solid var(--pf-line-strong);
     border-radius: 18px;
     background: var(--pf-surface-panel);
@@ -1343,14 +1343,12 @@ button.pf-secondary-action:hover {
     text-transform: uppercase;
 }
 
-.pf-product-table-wrap,
 .pf-orders-table-wrap,
 .pf-analytics-table-wrap {
     overflow-x: auto;
     padding-bottom: 2px;
 }
 
-.pf-product-table,
 .pf-orders-table,
 .pf-analytics-table {
     width: 100%;
@@ -1359,7 +1357,6 @@ button.pf-secondary-action:hover {
     border-spacing: 0 10px;
 }
 
-.pf-product-table th,
 .pf-orders-table th,
 .pf-analytics-table th {
     padding: 0 12px 6px;
@@ -1372,7 +1369,6 @@ button.pf-secondary-action:hover {
     border: none;
 }
 
-.pf-product-table td,
 .pf-orders-table td,
 .pf-analytics-table td {
     padding: 12px 14px;
@@ -1387,27 +1383,23 @@ button.pf-secondary-action:hover {
     box-shadow: 0 10px 24px rgba(31, 18, 13, 0.04);
 }
 
-.pf-product-table td:first-child,
 .pf-orders-table td:first-child,
 .pf-analytics-table td:first-child {
     border-left: 1px solid var(--pf-line-strong);
     border-radius: 18px 0 0 18px;
 }
 
-.pf-product-table td:last-child,
 .pf-orders-table td:last-child,
 .pf-analytics-table td:last-child {
     border-right: 1px solid var(--pf-line-strong);
     border-radius: 0 18px 18px 0;
 }
 
-.pf-product-table tbody tr:hover td,
 .pf-orders-table tbody tr:hover td,
 .pf-analytics-table tbody tr:hover td {
     background: var(--pf-surface-panel-strong);
 }
 
-.pf-product-table strong,
 .pf-orders-table strong,
 .pf-analytics-table strong {
     color: var(--pf-text);
@@ -1415,48 +1407,189 @@ button.pf-secondary-action:hover {
     font-style: normal;
 }
 
-.pf-product-main-cell {
+.pf-product-summary-list {
     display: grid;
-    grid-template-columns: 72px minmax(0, 1fr);
-    gap: 12px;
+    gap: 14px;
+}
+
+.pf-product-summary-card {
+    --pf-summary-surface: rgba(86, 49, 34, 0.24);
+    --pf-summary-line: var(--pf-neutral-line);
+    --pf-summary-shadow: rgba(67, 41, 29, 0.14);
+    display: grid;
+    grid-template-columns: minmax(0, 1.18fr) minmax(320px, 0.92fr) auto;
+    gap: 14px 16px;
     align-items: center;
-    min-width: 340px;
+    padding: 16px 18px;
+    border: 2px solid var(--pf-summary-line);
+    border-radius: 24px;
+    background:
+        linear-gradient(0deg, var(--pf-summary-surface), var(--pf-summary-surface)),
+        var(--pf-surface-panel);
+    box-shadow:
+        inset 0 1px 0 rgba(255, 255, 255, 0.58),
+        0 20px 34px var(--pf-summary-shadow);
 }
 
-.pf-product-main-cell img {
-    width: 72px;
-    height: 72px;
-    border-radius: 16px;
+.pf-product-summary-card.is-success {
+    --pf-summary-surface: rgba(22, 101, 52, 0.34);
+    --pf-summary-line: var(--pf-success-line);
+    --pf-summary-shadow: rgba(17, 71, 42, 0.12);
+}
+
+.pf-product-summary-card.is-info {
+    --pf-summary-surface: rgba(29, 78, 216, 0.3);
+    --pf-summary-line: var(--pf-info-line);
+    --pf-summary-shadow: rgba(26, 74, 167, 0.12);
+}
+
+.pf-product-summary-card.is-warning {
+    --pf-summary-surface: rgba(180, 83, 9, 0.34);
+    --pf-summary-line: var(--pf-warning-line);
+    --pf-summary-shadow: rgba(143, 74, 13, 0.12);
+}
+
+.pf-product-summary-card.is-danger {
+    --pf-summary-surface: rgba(185, 28, 28, 0.32);
+    --pf-summary-line: var(--pf-danger-line);
+    --pf-summary-shadow: rgba(154, 30, 30, 0.12);
+}
+
+.pf-product-summary-main {
+    display: grid;
+    grid-template-columns: 86px minmax(0, 1fr);
+    gap: 14px;
+    align-items: center;
+    min-width: 0;
+}
+
+.pf-product-summary-main img {
+    width: 86px;
+    height: 86px;
+    border-radius: 20px;
     object-fit: cover;
-    border: 1px solid var(--pf-line);
-    background: #fff;
+    border: 1.5px solid rgba(111, 75, 59, 0.2);
+    background: rgba(255, 255, 255, 0.94);
+    box-shadow: 0 16px 30px rgba(31, 18, 13, 0.08);
 }
 
-.pf-product-main-cell strong {
-    display: block;
-    font-size: 1rem;
-    letter-spacing: 0.02em;
+.pf-product-summary-copy {
+    min-width: 0;
+}
+
+.pf-product-summary-copy h3 {
+    margin: 0 0 0.2rem;
+    color: var(--pf-text);
+    font-size: 1.36rem;
+    font-weight: 950;
+    letter-spacing: 0.04em;
+    line-height: 1.02;
+    text-transform: uppercase;
+    text-wrap: balance;
+}
+
+.pf-product-summary-copy span {
+    display: inline-block;
+    margin-bottom: 0.42rem;
+    color: var(--pf-text-muted);
+    font-size: 0.72rem;
+    font-weight: 880;
+    letter-spacing: 0.12em;
+    line-height: 1.32;
     text-transform: uppercase;
 }
 
-.pf-product-main-cell span,
-.pf-product-table td span {
-    display: block;
-    color: var(--pf-text-muted);
-    font-size: 0.78rem;
-    font-weight: 760;
-    line-height: 1.38;
-}
-
-.pf-product-main-cell p {
-    max-width: 540px;
-    margin: 0.3rem 0 0;
+.pf-product-summary-copy p {
+    margin: 0;
     color: var(--pf-text-muted);
     font-size: 0.82rem;
-    font-weight: 690;
+    font-weight: 720;
     font-style: normal;
     letter-spacing: 0;
     line-height: 1.4;
+    overflow: hidden;
+    display: -webkit-box;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+}
+
+.pf-product-summary-metrics {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 10px;
+}
+
+.pf-product-summary-metric {
+    min-width: 0;
+    padding: 12px 14px;
+    border: 1.5px solid var(--pf-summary-line);
+    border-radius: 18px;
+    background: rgba(255, 255, 255, 0.88);
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.92);
+}
+
+.pf-product-summary-metric span {
+    display: block;
+    color: var(--pf-cocoa);
+    font-size: 0.68rem;
+    font-weight: 950;
+    letter-spacing: 0.12em;
+    line-height: 1.2;
+    text-transform: uppercase;
+}
+
+.pf-product-summary-metric strong {
+    display: block;
+    margin-top: 0.34rem;
+    color: var(--pf-text);
+    font-size: 1rem;
+    font-weight: 950;
+    letter-spacing: -0.04em;
+    line-height: 1.04;
+}
+
+.pf-product-summary-metric:first-child strong {
+    font-size: 1.5rem;
+}
+
+.pf-product-summary-metric small {
+    display: block;
+    margin-top: 0.38rem;
+    color: var(--pf-text-muted);
+    font-size: 0.74rem;
+    font-weight: 760;
+    line-height: 1.34;
+}
+
+.pf-product-summary-side {
+    min-width: 176px;
+    display: grid;
+    gap: 11px;
+    justify-items: end;
+}
+
+.pf-product-summary-pills {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+    gap: 8px;
+}
+
+.pf-product-summary-meta {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+    gap: 0.5rem 0.9rem;
+    color: var(--pf-text-muted);
+    font-size: 0.7rem;
+    font-weight: 820;
+    letter-spacing: 0.1em;
+    line-height: 1.32;
+    text-transform: uppercase;
+}
+
+.pf-product-summary-side .pf-secondary-action {
+    min-width: 156px;
 }
 
 .pf-product-table-stack {
@@ -1916,7 +2049,7 @@ button.pf-secondary-action:hover {
 }
 
 .pf-modal-xl {
-    width: min(100%, 1180px);
+    width: min(100%, 1240px);
 }
 
 .pf-modal-lg {
@@ -1941,14 +2074,14 @@ button.pf-secondary-action:hover {
     align-items: flex-start;
     justify-content: space-between;
     gap: 1rem;
-    padding: 18px 20px;
+    padding: 14px 16px;
     border-bottom: 1px solid var(--pf-line);
 }
 
 .pf-modal-header .modal-title {
     margin: 0;
     color: var(--pf-text);
-    font-size: clamp(1.8rem, 3vw, 2.45rem);
+    font-size: clamp(1.45rem, 2.6vw, 2rem);
     font-weight: 980;
     font-style: normal;
     letter-spacing: 0.05em;
@@ -1960,35 +2093,41 @@ button.pf-secondary-action:hover {
 .pf-modal-body {
     flex: 1 1 auto;
     overflow: auto;
-    padding: 18px 20px;
+    padding: 14px 16px;
 }
 
 .pf-modal-footer {
     display: flex;
     justify-content: flex-end;
     gap: 0.7rem;
-    padding: 14px 18px 18px;
+    padding: 12px 16px 16px;
     border-top: 1px solid var(--pf-line);
 }
 
 .pf-modal-grid {
     display: grid;
-    grid-template-columns: minmax(320px, 0.9fr) minmax(420px, 1.1fr);
-    gap: 16px;
+    grid-template-columns: minmax(420px, 0.94fr) minmax(460px, 1.06fr);
+    gap: 14px;
     align-items: start;
 }
 
 .pf-media-panel,
 .pf-editor-panel {
     border: 1px solid var(--pf-line-strong);
-    border-radius: 22px;
-    padding: 14px;
+    border-radius: 20px;
+    padding: 12px;
     background: var(--pf-surface-panel-strong);
     box-shadow: 0 12px 26px rgba(31, 18, 13, 0.05);
 }
 
+.pf-media-panel {
+    display: grid;
+    gap: 10px;
+    align-content: start;
+}
+
 .pf-primary-preview {
-    aspect-ratio: 1 / 1;
+    height: clamp(236px, 34vh, 340px);
     overflow: hidden;
     border: 1px solid var(--pf-line);
     border-radius: 18px;
@@ -2000,12 +2139,12 @@ button.pf-secondary-action:hover {
     height: 100%;
     object-fit: cover;
     display: block;
+    transform-origin: center;
 }
 
 .pf-upload-box label {
     width: 100%;
-    min-height: 52px;
-    margin: 12px 0;
+    min-height: 44px;
     display: grid;
     place-items: center;
     border: 1.5px dashed var(--pf-line-strong);
@@ -2025,45 +2164,88 @@ button.pf-secondary-action:hover {
 
 .pf-photo-grid {
     display: grid;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-    gap: 10px;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 8px;
+    max-height: 416px;
+    overflow: auto;
+    padding-right: 4px;
+    align-content: start;
 }
 
 .pf-photo-tile {
+    position: relative;
+    display: grid;
+    gap: 6px;
     border: 1px solid var(--pf-line-strong);
-    border-radius: 18px;
-    padding: 10px;
+    border-radius: 16px;
+    padding: 6px;
     background: var(--pf-surface-panel-strong);
     box-shadow: 0 10px 22px rgba(31, 18, 13, 0.05);
+    cursor: grab;
+    user-select: none;
 }
 
-.pf-photo-tile > img {
-    width: 100%;
-    aspect-ratio: 1 / 1;
-    display: block;
-    object-fit: cover;
+.pf-photo-thumb {
+    position: relative;
+    overflow: hidden;
     border-radius: 14px;
     border: 1px solid var(--pf-line);
     background: #fff;
 }
 
-.pf-photo-tile strong {
+.pf-photo-thumb > img {
+    width: 100%;
+    aspect-ratio: 4 / 5;
     display: block;
-    margin-top: 8px;
-    font-size: 0.84rem;
-    font-weight: 950;
+    object-fit: cover;
 }
 
-.pf-photo-tile span {
-    color: var(--pf-text-muted);
-    font-size: 0.74rem;
-    font-weight: 700;
+.pf-photo-chip {
+    position: absolute;
+    top: 8px;
+    left: 8px;
+    display: inline-flex;
+    align-items: center;
+    min-height: 24px;
+    padding: 0 0.55rem;
+    border-radius: 999px;
+    border: 1px solid rgba(40, 116, 78, 0.22);
+    background: rgba(246, 255, 250, 0.96);
+    color: var(--pf-success-text);
+    font-size: 0.58rem;
+    font-weight: 950;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+}
+
+.pf-photo-delete {
+    position: absolute;
+    top: 8px;
+    right: 8px;
+    width: 28px;
+    height: 28px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border: 1px solid rgba(172, 64, 48, 0.22);
+    border-radius: 999px;
+    background: rgba(255, 255, 255, 0.94);
+    color: var(--pf-danger-text);
+    font-size: 1rem;
+    font-weight: 950;
+    line-height: 1;
+}
+
+.pf-photo-delete:hover,
+.pf-photo-delete:focus-visible {
+    background: rgba(255, 243, 241, 0.98);
+    border-color: rgba(172, 64, 48, 0.38);
+    outline: none;
 }
 
 .pf-text-button {
     width: 100%;
-    margin-top: 8px;
-    min-height: 36px;
+    min-height: 34px;
     border: 1px solid var(--pf-line-strong);
     border-radius: 13px;
     background: var(--pf-surface);
@@ -2074,17 +2256,35 @@ button.pf-secondary-action:hover {
     text-transform: uppercase;
 }
 
-.pf-photo-actions {
+.pf-photo-tile-actions {
     display: grid;
-    grid-template-columns: repeat(4, minmax(0, 1fr));
+    grid-template-columns: repeat(2, minmax(0, 1fr));
     gap: 6px;
-    margin-top: 8px;
 }
 
-.pf-photo-actions button,
+.pf-photo-action {
+    min-height: 32px;
+    font-size: 0.62rem;
+}
+
+.pf-photo-action.is-current {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 32px;
+    border: 1px solid rgba(40, 116, 78, 0.2);
+    border-radius: 13px;
+    background: rgba(246, 255, 250, 0.96);
+    color: var(--pf-success-text);
+    font-size: 0.62rem;
+    font-weight: 950;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+}
+
 .pf-danger-zone button {
     width: 100%;
-    min-height: 34px;
+    min-height: 32px;
     border: 1px solid var(--pf-line-strong);
     border-radius: 12px;
     background: var(--pf-surface);
@@ -2095,10 +2295,44 @@ button.pf-secondary-action:hover {
     text-transform: uppercase;
 }
 
+.pf-photo-tile.is-dragging {
+    opacity: 0.56;
+    cursor: grabbing;
+}
+
+.pf-photo-tile.is-drop-target {
+    border-color: var(--pf-cocoa);
+    box-shadow:
+        inset 0 0 0 1px rgba(111, 75, 59, 0.22),
+        0 18px 30px rgba(60, 37, 25, 0.12);
+}
+
 .pf-danger-zone {
     margin-top: 14px;
     padding-top: 14px;
     border-top: 1px solid var(--pf-line);
+}
+
+.pf-inline-save-status {
+    min-height: 18px;
+    margin: 0.15rem 0 0.55rem;
+    color: var(--pf-text-muted);
+    font-size: 0.72rem;
+    font-weight: 800;
+    font-style: normal;
+    letter-spacing: 0.04em;
+}
+
+.pf-inline-save-status.is-saving {
+    color: var(--pf-info-text);
+}
+
+.pf-inline-save-status.is-success {
+    color: var(--pf-success-text);
+}
+
+.pf-inline-save-status.is-error {
+    color: var(--pf-danger-text);
 }
 
 .pf-team-card {
@@ -2305,6 +2539,7 @@ button.pf-secondary-action:hover {
 
 .pf-editor-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 0.7rem;
 }
 
 .pf-adjust-stage {
@@ -2325,12 +2560,17 @@ button.pf-secondary-action:hover {
     touch-action: none;
 }
 
+.pf-adjust-stage.is-dragging {
+    cursor: grabbing;
+}
+
 .pf-adjust-stage img {
     width: 100%;
     height: 100%;
     object-fit: cover;
     display: block;
     pointer-events: none;
+    will-change: transform, transform-origin;
 }
 
 .pf-adjust-stage span {
@@ -2537,6 +2777,25 @@ button.pf-secondary-action:hover {
     .pf-module-row-actions {
         justify-content: flex-start;
     }
+
+    .pf-product-summary-card {
+        grid-template-columns: minmax(0, 1fr);
+    }
+
+    .pf-product-summary-side {
+        grid-template-columns: minmax(0, 1fr) auto;
+        align-items: center;
+        justify-items: stretch;
+    }
+
+    .pf-product-summary-pills,
+    .pf-product-summary-meta {
+        justify-content: flex-start;
+    }
+
+    .pf-product-summary-side .pf-secondary-action {
+        justify-self: end;
+    }
 }
 
 @media (max-width: 980px) {
@@ -2591,7 +2850,7 @@ button.pf-secondary-action:hover {
     }
 
     .pf-photo-grid {
-        grid-template-columns: 1fr;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
     }
 
     .pf-order-item-row {
@@ -2603,7 +2862,6 @@ button.pf-secondary-action:hover {
         flex-direction: column;
     }
 
-    .pf-product-table,
     .pf-orders-table,
     .pf-analytics-table {
         min-width: 920px;
@@ -2611,6 +2869,28 @@ button.pf-secondary-action:hover {
 
     .pf-analytics-detail-table {
         min-width: 780px;
+    }
+
+    .pf-product-summary-main {
+        grid-template-columns: 74px minmax(0, 1fr);
+    }
+
+    .pf-product-summary-main img {
+        width: 74px;
+        height: 74px;
+    }
+
+    .pf-product-summary-metrics {
+        grid-template-columns: 1fr;
+    }
+
+    .pf-product-summary-side {
+        grid-template-columns: 1fr;
+    }
+
+    .pf-product-summary-side .pf-secondary-action {
+        width: 100%;
+        justify-self: stretch;
     }
 }
 

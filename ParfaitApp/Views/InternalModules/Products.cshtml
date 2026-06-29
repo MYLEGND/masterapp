@@ -12,6 +12,19 @@
 
     static string Money(int cents) => "$" + (cents / 100m).ToString("0.00");
     static string MoneyField(int cents) => cents <= 0 ? "" : (cents / 100m).ToString("0.00");
+    static string CountLabel(int count, string singular, string? plural = null)
+    {
+        plural ??= singular + "s";
+        return $"{count} {(count == 1 ? singular : plural)}";
+    }
+
+    static string ImageDisplayStyle(string? fit, int positionX, int positionY, decimal zoom)
+    {
+        var safeFit = string.Equals(fit, "contain", StringComparison.OrdinalIgnoreCase) ? "contain" : "cover";
+        var safeZoom = zoom <= 0 ? 1.0m : zoom;
+        return $"object-fit:{safeFit}; object-position:{positionX}% {positionY}%; transform-origin:{positionX}% {positionY}%; transform:scale({safeZoom.ToString("0.##", System.Globalization.CultureInfo.InvariantCulture)});";
+    }
+
     static string Preview(string? value, int maxLength = 160)
     {
         if (string.IsNullOrWhiteSpace(value))
@@ -237,84 +250,88 @@
             </form>
         </details>
 
-        <div class="pf-product-table-wrap mt-3">
-            <table class="pf-product-table">
-                <thead>
-                    <tr>
-                        <th>Product</th>
-                        <th>Pricing</th>
-                        <th>Inventory</th>
-                        <th>Promo</th>
-                        <th>Status</th>
-                        <th>Photos</th>
-                        <th>Sort</th>
-                        <th></th>
-                    </tr>
-                </thead>
-                <tbody>
-                @foreach (var product in Model.Products)
+        <div class="pf-product-summary-list mt-3">
+            @foreach (var product in Model.Products)
+            {
+                var orderedImages = product.Images.OrderBy(image => image.DisplayOrder).ToList();
+                var primaryImage = orderedImages.FirstOrDefault(image => image.IsPrimary) ?? orderedImages.FirstOrDefault();
+                var primaryUrl = primaryImage?.ImageUrl ?? "/images/favicon/parfait-logo.png";
+                var modalId = $"editProduct{product.Id}";
+                var liveSizeCount = product.InventoryBySize.Count(size => size.IsEnabled);
+                var inventoryNotes = new List<string>();
+                if (product.TotalTrackedStock > 0)
                 {
-                    var orderedImages = product.Images.OrderBy(image => image.DisplayOrder).ToList();
-                    var primaryImage = orderedImages.FirstOrDefault(image => image.IsPrimary) ?? orderedImages.FirstOrDefault();
-                    var primaryUrl = primaryImage?.ImageUrl ?? "/images/favicon/parfait-logo.png";
-                    var modalId = $"editProduct{product.Id}";
-
-                    <tr>
-                        <td>
-                            <div class="pf-product-main-cell">
-                                <img src="@primaryUrl" alt="@product.Name" />
-                                <div>
-                                    <strong>@product.Name</strong>
-                                    <span>@product.Slug</span>
-                                    <p>@Preview(product.Description)</p>
-                                </div>
-                            </div>
-                        </td>
-                        <td>
-                            <div class="pf-product-table-stack">
-                                <strong>@Money(product.PriceCents)</strong>
-                                @if (product.HasSalePrice)
-                                {
-                                    <span>Compare at @Money(product.CompareAtPriceCents)</span>
-                                }
-                                <span>@product.Badge</span>
-                            </div>
-                        </td>
-                        <td>
-                            <div class="pf-product-table-stack">
-                                <span class="pf-command-badge @ToneClass(product.InventoryTone)">@product.InventoryLabel</span>
-                                <span>@product.InventoryBySize.Count(size => size.IsEnabled) live sizes</span>
-                                @if (product.LowStockSizeCount > 0)
-                                {
-                                    <span>@product.LowStockSizeCount low stock</span>
-                                }
-                                @if (product.SoldOutSizeCount > 0)
-                                {
-                                    <span>@product.SoldOutSizeCount sold out</span>
-                                }
-                            </div>
-                        </td>
-                        <td>
-                            <div class="pf-product-table-stack">
-                                <span class="pf-command-badge @(product.ActiveDiscountCount > 0 ? "is-warning" : "is-muted")">@product.ActiveDiscountCount active</span>
-                                <span>@(product.HasSalePrice ? "Sale pricing on" : "No sale pricing")</span>
-                            </div>
-                        </td>
-                        <td>
-                            <div class="pf-product-table-stack">
-                                <span class="pf-pill @(product.IsActive ? "is-live" : "is-muted")">@(product.IsActive ? "Live" : "Hidden")</span>
-                                <span class="pf-pill @(product.IsFeatured ? "is-live" : "is-muted")">@(product.IsFeatured ? "Featured" : "Standard")</span>
-                            </div>
-                        </td>
-                        <td>@orderedImages.Count</td>
-                        <td>@product.DisplayOrder</td>
-                        <td class="pf-table-actions">
-                            <button type="button" class="pf-secondary-action" data-pf-open="@modalId">Edit</button>
-                        </td>
-                    </tr>
+                    inventoryNotes.Add($"{product.TotalTrackedStock} tracked");
                 }
-                </tbody>
-            </table>
+                if (product.LowStockSizeCount > 0)
+                {
+                    inventoryNotes.Add($"{product.LowStockSizeCount} low stock");
+                }
+                if (product.SoldOutSizeCount > 0)
+                {
+                    inventoryNotes.Add($"{product.SoldOutSizeCount} sold out");
+                }
+                if (inventoryNotes.Count == 0)
+                {
+                    inventoryNotes.Add("All ready");
+                }
+
+                var priceNote = product.HasSalePrice
+                    ? $"Save {Money(product.CompareAtPriceCents - product.PriceCents)}"
+                    : string.IsNullOrWhiteSpace(product.Badge) ? "Core catalog" : product.Badge;
+                var promoCountLabel = product.ActiveDiscountCount > 0
+                    ? CountLabel(product.ActiveDiscountCount, "active code")
+                    : "No active codes";
+                var promoDetail = product.HasSalePrice
+                    ? $"Compare at {Money(product.CompareAtPriceCents)}"
+                    : "No sale pricing";
+
+                <article class="pf-product-summary-card @ToneClass(product.InventoryTone)" data-pf-product-summary="@product.Id">
+                    <div class="pf-product-summary-main">
+                        <img src="@primaryUrl" alt="@product.Name" />
+                        <div class="pf-product-summary-copy">
+                            <h3>@product.Name</h3>
+                            <span>@product.Slug</span>
+                            <p>@Preview(product.Description, 128)</p>
+                        </div>
+                    </div>
+
+                    <div class="pf-product-summary-metrics">
+                        <div class="pf-product-summary-metric">
+                            <span>Price</span>
+                            <strong>@Money(product.PriceCents)</strong>
+                            <small>@priceNote</small>
+                        </div>
+
+                        <div class="pf-product-summary-metric">
+                            <span>Inventory</span>
+                            <strong>@CountLabel(liveSizeCount, "live size")</strong>
+                            <small>@string.Join(" • ", inventoryNotes)</small>
+                        </div>
+
+                        <div class="pf-product-summary-metric">
+                            <span>Promo</span>
+                            <strong>@promoCountLabel</strong>
+                            <small>@promoDetail</small>
+                        </div>
+                    </div>
+
+                    <div class="pf-product-summary-side">
+                        <div class="pf-product-summary-pills">
+                            <span class="pf-command-badge @ToneClass(product.InventoryTone)">@product.InventoryLabel</span>
+                            <span class="pf-pill @(product.IsActive ? "is-live" : "is-muted")">@(product.IsActive ? "Live" : "Hidden")</span>
+                            <span class="pf-pill @(product.IsFeatured ? "is-live" : "is-muted")">@(product.IsFeatured ? "Featured" : "Standard")</span>
+                        </div>
+
+                        <div class="pf-product-summary-meta">
+                            <span>@CountLabel(orderedImages.Count, "photo")</span>
+                            <span>Sort @product.DisplayOrder</span>
+                        </div>
+
+                        <button type="button" class="pf-secondary-action" data-pf-open="@modalId">Edit Product</button>
+                    </div>
+                </article>
+            }
         </div>
     </section>
 </section>
@@ -328,84 +345,92 @@
     var inventoryTargetId = $"{modalId}InventoryRows";
     var discountTargetId = $"{modalId}DiscountRows";
 
-    <div class="pf-product-modal" id="@modalId" aria-hidden="true">
-        <div class="pf-modal-dialog pf-modal-xl">
-            <div class="pf-modal-content">
-                <div class="pf-modal-header">
-                    <div>
-                        <h2 class="modal-title" id="@modalId-title">@product.Name</h2>
+    <div class="pf-product-modal-stack" data-pf-product-stack="@product.Id">
+        <div class="pf-product-modal" id="@modalId" aria-hidden="true" data-pf-product-modal data-pf-product-id="@product.Id">
+            <div class="pf-modal-dialog pf-modal-xl">
+                <div class="pf-modal-content">
+                    <div class="pf-modal-header">
+                        <div>
+                            <h2 class="modal-title" id="@modalId-title">@product.Name</h2>
+                        </div>
+                        <button type="button" class="btn-close" data-pf-close aria-label="Close"></button>
                     </div>
-                    <button type="button" class="btn-close" data-pf-close aria-label="Close"></button>
-                </div>
 
-                <div class="pf-modal-body">
-                    <div class="pf-modal-grid">
-                        <section class="pf-media-panel">
-                            <div class="pf-primary-preview">
-                                <img src="@primaryUrl" alt="@product.Name" />
-                            </div>
+                    <div class="pf-modal-body">
+                        <div class="pf-modal-grid">
+                            <section class="pf-media-panel">
+                                <div class="pf-primary-preview">
+                                    <img src="@primaryUrl" alt="@product.Name" style="@ImageDisplayStyle(primaryImage?.ObjectFit, primaryImage?.ObjectPositionX ?? 50, primaryImage?.ObjectPositionY ?? 50, primaryImage?.Zoom ?? 1.0m)" />
+                                </div>
 
-                            <form method="post" action="/internal/commerce/products/images/upload" enctype="multipart/form-data" class="pf-upload-box">
-                                @Html.AntiForgeryToken()
-                                <input type="hidden" name="productId" value="@product.Id" />
-                                <label>
-                                    Upload Photos
-                                    <input type="file" name="images" accept="image/*" multiple onchange="this.form.submit()" />
-                                </label>
-                            </form>
+                                <form method="post"
+                                      action="/internal/commerce/products/images/upload"
+                                      enctype="multipart/form-data"
+                                      class="pf-upload-box"
+                                      data-pf-upload-form
+                                      data-pf-product-id="@product.Id">
+                                    @Html.AntiForgeryToken()
+                                    <input type="hidden" name="productId" value="@product.Id" />
+                                    <label>
+                                        Upload Photos
+                                        <input type="file" name="images" accept="image/*" multiple data-pf-upload-input />
+                                    </label>
+                                </form>
 
-                            <div class="pf-photo-grid">
-                                @foreach (var image in orderedImages)
-                                {
-                                    var editorId = $"imageEditor{image.Id}";
+                                <div class="pf-photo-grid"
+                                     data-pf-photo-grid
+                                     data-pf-product-id="@product.Id"
+                                     data-pf-sort-url="/internal/commerce/products/images/reorder">
+                                    @foreach (var image in orderedImages)
+                                    {
+                                        var editorId = $"imageEditor{image.Id}";
 
-                                    <article class="pf-photo-tile">
-                                        <img src="@image.ImageUrl" alt="@image.AltText" />
-                                        <div>
-                                            <strong>@(image.IsPrimary ? "Primary" : "Photo")</strong>
-                                            <span>Order @image.DisplayOrder</span>
-                                        </div>
+                                        <article class="pf-photo-tile"
+                                                 draggable="true"
+                                                 title="Drag to reorder"
+                                                 data-pf-photo-tile
+                                                 data-pf-image-id="@image.Id">
+                                            <div class="pf-photo-thumb">
+                                                <img src="@image.ImageUrl" alt="@image.AltText" style="@ImageDisplayStyle(image.ObjectFit, image.ObjectPositionX, image.ObjectPositionY, image.Zoom)" />
+                                                @if (image.IsPrimary)
+                                                {
+                                                    <span class="pf-photo-chip">Primary</span>
+                                                }
+                                                <button type="button"
+                                                        class="pf-photo-delete"
+                                                        data-pf-delete-image="@image.Id"
+                                                        aria-label="Delete image">
+                                                    <span aria-hidden="true">&times;</span>
+                                                </button>
+                                            </div>
 
-                                        <button type="button" class="pf-text-button" data-pf-open="@editorId">Edit Image</button>
+                                            <div class="pf-photo-tile-actions">
+                                                <button type="button" class="pf-text-button pf-photo-action" data-pf-open="@editorId">Edit</button>
+                                                @if (image.IsPrimary)
+                                                {
+                                                    <span class="pf-photo-action is-current">Primary</span>
+                                                }
+                                                else
+                                                {
+                                                    <button type="button"
+                                                            class="pf-text-button pf-photo-action"
+                                                            data-pf-primary-image="@image.Id">
+                                                        Primary
+                                                    </button>
+                                                }
+                                            </div>
+                                        </article>
+                                    }
+                                </div>
+                            </section>
 
-                                        <div class="pf-photo-actions">
-                                            <form method="post" action="/internal/commerce/products/images/move">
-                                                @Html.AntiForgeryToken()
-                                                <input type="hidden" name="productId" value="@product.Id" />
-                                                <input type="hidden" name="imageId" value="@image.Id" />
-                                                <input type="hidden" name="direction" value="up" />
-                                                <button type="submit">↑</button>
-                                            </form>
-
-                                            <form method="post" action="/internal/commerce/products/images/move">
-                                                @Html.AntiForgeryToken()
-                                                <input type="hidden" name="productId" value="@product.Id" />
-                                                <input type="hidden" name="imageId" value="@image.Id" />
-                                                <input type="hidden" name="direction" value="down" />
-                                                <button type="submit">↓</button>
-                                            </form>
-
-                                            <form method="post" action="/internal/commerce/products/images/primary">
-                                                @Html.AntiForgeryToken()
-                                                <input type="hidden" name="productId" value="@product.Id" />
-                                                <input type="hidden" name="imageId" value="@image.Id" />
-                                                <button type="submit">Primary</button>
-                                            </form>
-
-                                            <form method="post" action="/internal/commerce/products/images/delete">
-                                                @Html.AntiForgeryToken()
-                                                <input type="hidden" name="productId" value="@product.Id" />
-                                                <input type="hidden" name="imageId" value="@image.Id" />
-                                                <button type="submit">Delete</button>
-                                            </form>
-                                        </div>
-                                    </article>
-                                }
-                            </div>
-                        </section>
-
-                        <section class="pf-editor-panel">
-                            <form method="post" action="/internal/commerce/products" class="pf-product-edit-form" data-pf-product-form>
+                            <section class="pf-editor-panel">
+                                <form method="post"
+                                      action="/internal/commerce/products"
+                                      class="pf-product-edit-form"
+                                      data-pf-product-form
+                                      data-pf-product-edit-form
+                                      data-pf-product-id="@product.Id">
                                 @Html.AntiForgeryToken()
                                 <input type="hidden" name="Id" value="@product.Id" />
                                 <input type="hidden" name="PriceLabel" value="Auto" />
@@ -516,76 +541,82 @@
                                     </div>
                                 </details>
 
-                                <div class="pf-product-flags">
-                                    <label><input type="checkbox" name="IsActive" value="true" @(product.IsActive ? "checked" : "") /> Active</label>
-                                    <label><input type="checkbox" name="IsFeatured" value="true" @(product.IsFeatured ? "checked" : "") /> Featured</label>
-                                </div>
+                                    <div class="pf-product-flags">
+                                        <label><input type="checkbox" name="IsActive" value="true" @(product.IsActive ? "checked" : "") /> Active</label>
+                                        <label><input type="checkbox" name="IsFeatured" value="true" @(product.IsFeatured ? "checked" : "") /> Featured</label>
+                                    </div>
 
-                                <button type="submit" class="pf-action">Save Product</button>
-                            </form>
+                                    <div class="pf-inline-save-status" data-pf-save-status aria-live="polite"></div>
+                                    <button type="submit" class="pf-action">Save Product</button>
+                                </form>
 
-                            <form method="post" action="/internal/commerce/products/delete" class="pf-danger-zone">
-                                @Html.AntiForgeryToken()
-                                <input type="hidden" name="id" value="@product.Id" />
-                                <button type="submit">Delete Product</button>
-                            </form>
-                        </section>
+                                <form method="post" action="/internal/commerce/products/delete" class="pf-danger-zone">
+                                    @Html.AntiForgeryToken()
+                                    <input type="hidden" name="id" value="@product.Id" />
+                                    <button type="submit">Delete Product</button>
+                                </form>
+                            </section>
+                        </div>
                     </div>
                 </div>
             </div>
         </div>
-    </div>
+        @foreach (var image in orderedImages)
+        {
+            var editorId = $"imageEditor{image.Id}";
 
-    @foreach (var image in orderedImages)
-    {
-        var editorId = $"imageEditor{image.Id}";
+            <div class="pf-image-editor-modal" id="@editorId" aria-hidden="true">
+                <div class="pf-modal-dialog pf-modal-lg">
+                    <form method="post"
+                          action="/internal/commerce/products/images/display"
+                          class="modal-content pf-image-editor-form"
+                          data-pf-adjust-panel
+                          data-pf-image-editor-form
+                          data-pf-product-id="@product.Id">
+                        @Html.AntiForgeryToken()
+                        <input type="hidden" name="productId" value="@product.Id" />
+                        <input type="hidden" name="imageId" value="@image.Id" />
+                        <input type="hidden" name="objectFit" value="cover" />
+                        <input type="hidden" name="objectPositionX" value="@image.ObjectPositionX" data-pf-pos-x />
+                        <input type="hidden" name="objectPositionY" value="@image.ObjectPositionY" data-pf-pos-y />
+                        <input type="hidden" name="zoom" value="@image.Zoom" data-pf-zoom />
 
-        <div class="pf-image-editor-modal" id="@editorId" aria-hidden="true">
-            <div class="pf-modal-dialog pf-modal-lg">
-                <form method="post" action="/internal/commerce/products/images/display" class="modal-content pf-image-editor-form" data-pf-adjust-panel>
-                    @Html.AntiForgeryToken()
-                    <input type="hidden" name="productId" value="@product.Id" />
-                    <input type="hidden" name="imageId" value="@image.Id" />
-                    <input type="hidden" name="objectFit" value="cover" />
-                    <input type="hidden" name="objectPositionX" value="@image.ObjectPositionX" data-pf-pos-x />
-                    <input type="hidden" name="objectPositionY" value="@image.ObjectPositionY" data-pf-pos-y />
-                    <input type="hidden" name="zoom" value="@image.Zoom" data-pf-zoom />
-
-                    <div class="pf-modal-header">
-                        <div>
-                            <h2 class="modal-title">@product.Name</h2>
-                        </div>
-                        <button type="button" class="btn-close" data-pf-close aria-label="Close"></button>
-                    </div>
-
-                    <div class="pf-modal-body">
-                        <div class="pf-adjust-stage"
-                             data-pf-adjust-stage
-                             data-start-x="@image.ObjectPositionX"
-                             data-start-y="@image.ObjectPositionY"
-                             data-start-zoom="@image.Zoom">
-                            <img src="@image.ImageUrl"
-                                 alt="@image.AltText"
-                                 draggable="false"
-                                 data-pf-adjust-img
-                                 style="object-fit:cover; object-position:@image.ObjectPositionX% @image.ObjectPositionY%; transform:scale(@image.Zoom.ToString("0.##")); transform-origin:center;" />
-                            <span>Drag Image To Position</span>
+                        <div class="pf-modal-header">
+                            <div>
+                                <h2 class="modal-title">@product.Name</h2>
+                            </div>
+                            <button type="button" class="btn-close" data-pf-close aria-label="Close"></button>
                         </div>
 
-                        <label class="pf-adjust-zoom-label">
-                            Zoom
-                            <input type="range" min="1" max="2.5" step="0.05" value="@image.Zoom" data-pf-adjust-zoom />
-                        </label>
-                    </div>
+                        <div class="pf-modal-body">
+                            <div class="pf-adjust-stage"
+                                 data-pf-adjust-stage
+                                 data-start-x="@image.ObjectPositionX"
+                                 data-start-y="@image.ObjectPositionY"
+                                 data-start-zoom="@image.Zoom">
+                                <img src="@image.ImageUrl"
+                                     alt="@image.AltText"
+                                     draggable="false"
+                                     data-pf-adjust-img
+                                     style="@ImageDisplayStyle(image.ObjectFit, image.ObjectPositionX, image.ObjectPositionY, image.Zoom)" />
+                                <span>Drag Image To Position</span>
+                            </div>
 
-                    <div class="pf-modal-footer">
-                        <button type="button" class="pf-secondary-action" data-pf-close>Cancel</button>
-                        <button type="submit" class="pf-action">Save Image Position</button>
-                    </div>
-                </form>
+                            <label class="pf-adjust-zoom-label">
+                                Zoom
+                                <input type="range" min="1" max="2.5" step="0.05" value="@image.Zoom" data-pf-adjust-zoom />
+                            </label>
+                        </div>
+
+                        <div class="pf-modal-footer">
+                            <button type="button" class="pf-secondary-action" data-pf-close>Cancel</button>
+                            <button type="submit" class="pf-action">Save Image Position</button>
+                        </div>
+                    </form>
+                </div>
             </div>
-        </div>
-    }
+        }
+    </div>
 }
 
 <template id="pfInventoryRowTemplate">
@@ -626,61 +657,57 @@
 
 <script>
     (() => {
+        const modalSelector = ".pf-product-modal, .pf-image-editor-modal";
+        const openModalSelector = ".pf-product-modal.is-open, .pf-image-editor-modal.is-open";
+
+        const syncBodyOverflow = () => {
+            document.body.style.overflow = document.querySelector(openModalSelector) ? "hidden" : "";
+        };
+
         const openModal = id => {
             const modal = document.getElementById(id);
             if (!modal) return;
             modal.classList.add("is-open");
             modal.setAttribute("aria-hidden", "false");
-            document.body.style.overflow = "hidden";
+            syncBodyOverflow();
         };
 
         const closeModal = modal => {
             if (!modal) return;
             modal.classList.remove("is-open");
             modal.setAttribute("aria-hidden", "true");
-
-            if (!document.querySelector(".pf-product-modal.is-open, .pf-image-editor-modal.is-open")) {
-                document.body.style.overflow = "";
-            }
+            syncBodyOverflow();
         };
 
-        document.querySelectorAll("[data-pf-open]").forEach(button => {
-            button.addEventListener("click", () => openModal(button.getAttribute("data-pf-open")));
-        });
+        document.addEventListener("click", event => {
+            const openTrigger = event.target.closest("[data-pf-open]");
+            if (openTrigger) {
+                openModal(openTrigger.getAttribute("data-pf-open"));
+                return;
+            }
 
-        document.querySelectorAll("[data-pf-close]").forEach(button => {
-            button.addEventListener("click", () => closeModal(button.closest(".pf-product-modal, .pf-image-editor-modal")));
-        });
+            const closeTrigger = event.target.closest("[data-pf-close]");
+            if (closeTrigger) {
+                closeModal(closeTrigger.closest(modalSelector));
+                return;
+            }
 
-        document.querySelectorAll(".pf-product-modal, .pf-image-editor-modal").forEach(modal => {
-            modal.addEventListener("click", event => {
-                if (event.target === modal) closeModal(modal);
-            });
+            if (event.target.matches(modalSelector)) {
+                closeModal(event.target);
+            }
         });
 
         document.addEventListener("keydown", event => {
             if (event.key !== "Escape") return;
-            const modals = [...document.querySelectorAll(".pf-image-editor-modal.is-open, .pf-product-modal.is-open")];
+            const modals = [...document.querySelectorAll(openModalSelector)];
             closeModal(modals.at(-1));
         });
-    })();
-</script>
 
-<script>
-    (() => {
-        const syncMoneyInput = input => {
-            const hidden = input.parentElement?.querySelector(".pf-money-hidden");
-            if (!hidden) return;
-
-            hidden.value = Math.round(Number(input.value || 0) * 100).toString();
+        window.pfModalUi = {
+            openModal,
+            closeModal,
+            syncBodyOverflow
         };
-
-        document.querySelectorAll(".pf-money-display").forEach(input => {
-            const form = input.closest("form");
-            input.addEventListener("input", () => syncMoneyInput(input));
-            form?.addEventListener("submit", () => syncMoneyInput(input));
-            syncMoneyInput(input);
-        });
     })();
 </script>
 
@@ -693,8 +720,38 @@
             .replace(/^-+|-+$/g, "")
             .slice(0, 10) || "PARFAIT";
 
+        const clamp = (value, min, max) => Math.min(max, Math.max(min, value));
         const inventoryTemplate = document.getElementById("pfInventoryRowTemplate");
         const discountTemplate = document.getElementById("pfDiscountRowTemplate");
+        const saveStates = new WeakMap();
+        const liveFieldSelector = 'input[type="text"], input[type="number"], textarea';
+
+        const getFormState = form => {
+            let state = saveStates.get(form);
+            if (!state) {
+                state = {
+                    timer: 0,
+                    statusTimer: 0,
+                    saving: false,
+                    queued: false,
+                    queuedRefresh: false
+                };
+                saveStates.set(form, state);
+            }
+
+            return state;
+        };
+
+        const syncMoneyInput = input => {
+            const hidden = input.parentElement?.querySelector(".pf-money-hidden");
+            if (!hidden) return;
+
+            hidden.value = Math.round(Number(input.value || 0) * 100).toString();
+        };
+
+        const syncMoneyWithin = root => {
+            root.querySelectorAll(".pf-money-display").forEach(syncMoneyInput);
+        };
 
         const updateInventoryRow = row => {
             if (!row) return;
@@ -756,88 +813,222 @@
 
         const addRow = (targetId, template) => {
             const container = document.getElementById(targetId);
-            if (!container || !template) return;
+            if (!container || !template) return null;
 
             const fragment = template.content.cloneNode(true);
             container.appendChild(fragment);
             reindexCollection(container);
+            return container;
         };
 
-        const wireRowRemoval = root => {
-            root.addEventListener("click", event => {
-                const removeButton = event.target.closest("[data-pf-remove-row]");
-                if (!removeButton) return;
+        const renderSaveState = (form, message = "", tone = "") => {
+            const target = form?.querySelector("[data-pf-save-status]");
+            if (!target) return;
 
-                const row = removeButton.closest("[data-pf-repeat-item]");
-                const container = removeButton.closest("[data-pf-collection]");
-                if (!row || !container) return;
+            const state = getFormState(form);
+            window.clearTimeout(state.statusTimer);
 
-                row.remove();
-                reindexCollection(container);
-            });
+            target.textContent = message;
+            target.className = "pf-inline-save-status";
+
+            if (tone) {
+                target.classList.add(`is-${tone}`);
+            }
+
+            if (!message) {
+                return;
+            }
+
+            state.statusTimer = window.setTimeout(() => {
+                if (!document.body.contains(target)) return;
+                target.textContent = "";
+                target.className = "pf-inline-save-status";
+            }, 1800);
         };
 
-        document.querySelectorAll("[data-pf-product-form]").forEach(form => {
-            const nameInput = form.querySelector('input[name="Name"]');
-            const slugInput = form.querySelector('input[name="Slug"]');
-
-            nameInput?.addEventListener("input", () => {
-                if (!slugInput || slugInput.value.trim().length > 0) return;
-                slugInput.value = (nameInput.value || "")
-                    .trim()
-                    .toLowerCase()
-                    .replace(/[^a-z0-9]+/g, "-")
-                    .replace(/^-+|-+$/g, "");
-            });
-
+        const normalizeFormBeforeSave = form => {
+            syncMoneyWithin(form);
             form.querySelectorAll("[data-pf-collection]").forEach(reindexCollection);
-            form.addEventListener("submit", () => {
-                form.querySelectorAll("[data-pf-collection]").forEach(reindexCollection);
+        };
+
+        const parseHtml = html => new DOMParser().parseFromString(html, "text/html");
+
+        const replaceProductSummaryFromHtml = (productId, html) => {
+            const doc = parseHtml(html);
+            const currentSummary = document.querySelector(`[data-pf-product-summary="${productId}"]`);
+            const nextSummary = doc.querySelector(`[data-pf-product-summary="${productId}"]`);
+
+            if (!currentSummary || !nextSummary) {
+                return false;
+            }
+
+            currentSummary.replaceWith(nextSummary);
+            return true;
+        };
+
+        const replaceProductUiFromHtml = (productId, html, { openModalId } = {}) => {
+            let replaced = false;
+            const doc = parseHtml(html);
+
+            if (replaceProductSummaryFromHtml(productId, html)) {
+                replaced = true;
+            }
+
+            const currentStack = document.querySelector(`[data-pf-product-stack="${productId}"]`);
+            const nextStack = doc.querySelector(`[data-pf-product-stack="${productId}"]`);
+            if (currentStack && nextStack) {
+                currentStack.replaceWith(nextStack);
+                initializeRoot(nextStack);
+                replaced = true;
+            }
+
+            if (replaced && openModalId) {
+                window.pfModalUi?.openModal(openModalId);
+            }
+
+            window.pfModalUi?.syncBodyOverflow();
+            return replaced;
+        };
+
+        const submitRequest = async (url, body) => {
+            const response = await fetch(url, {
+                method: "POST",
+                headers: {
+                    "X-Requested-With": "XMLHttpRequest"
+                },
+                credentials: "same-origin",
+                body
             });
 
-            form.addEventListener("change", event => {
-                const row = event.target.closest("[data-pf-inventory-row]");
-                if (row) {
-                    updateInventoryRow(row);
+            const payload = await response.text();
+            if (!response.ok) {
+                throw new Error(payload || "Request failed.");
+            }
+
+            return payload;
+        };
+
+        const submitFormRequest = form => submitRequest(form.action, new FormData(form));
+
+        const submitProductForm = async (form, { refresh = false } = {}) => {
+            if (!form.checkValidity()) {
+                renderSaveState(form);
+                return false;
+            }
+
+            const state = getFormState(form);
+            if (state.saving) {
+                state.queued = true;
+                state.queuedRefresh = state.queuedRefresh || refresh;
+                return false;
+            }
+
+            state.saving = true;
+            window.clearTimeout(state.timer);
+            normalizeFormBeforeSave(form);
+            renderSaveState(form, "Saving", "saving");
+
+            const productId = form.getAttribute("data-pf-product-id");
+
+            try {
+                const html = await submitFormRequest(form);
+
+                if (refresh && productId) {
+                    const replaced = replaceProductUiFromHtml(productId, html, { openModalId: `editProduct${productId}` });
+                    if (!replaced) {
+                        window.location.reload();
+                        return true;
+                    }
+
+                    const freshForm = document.querySelector(`[data-pf-product-stack="${productId}"] [data-pf-product-edit-form]`);
+                    renderSaveState(freshForm, "Saved", "success");
+                } else {
+                    if (productId) {
+                        replaceProductSummaryFromHtml(productId, html);
+                    }
+                    renderSaveState(form, "Saved", "success");
                 }
-            });
 
-            form.addEventListener("input", event => {
-                const row = event.target.closest("[data-pf-inventory-row]");
-                if (row) {
-                    updateInventoryRow(row);
+                return true;
+            } catch (error) {
+                console.error(error);
+                renderSaveState(form, "Save failed", "error");
+                return false;
+            } finally {
+                state.saving = false;
+
+                const queued = state.queued;
+                const queuedRefresh = state.queuedRefresh;
+                state.queued = false;
+                state.queuedRefresh = false;
+
+                if (queued && document.body.contains(form)) {
+                    submitProductForm(form, { refresh: queuedRefresh });
                 }
-            });
+            }
+        };
 
-            form.addEventListener("click", event => {
-                const addButton = event.target.closest("[data-pf-add-row]");
-                if (addButton) {
-                    const type = addButton.getAttribute("data-pf-add-row");
-                    const target = addButton.getAttribute("data-pf-target");
-                    addRow(target, type === "inventory" ? inventoryTemplate : discountTemplate);
+        const scheduleAutoSave = form => {
+            if (!form?.matches("[data-pf-product-edit-form]") || !form.checkValidity()) {
+                return;
+            }
+
+            const state = getFormState(form);
+            window.clearTimeout(state.timer);
+            renderSaveState(form, "Saving", "saving");
+            state.timer = window.setTimeout(() => submitProductForm(form), 850);
+        };
+
+        const submitRefreshForm = async (form, productId, openModalId) => {
+            try {
+                const html = await submitFormRequest(form);
+                const replaced = replaceProductUiFromHtml(productId, html, { openModalId });
+                if (!replaced) {
+                    window.location.reload();
+                }
+            } catch (error) {
+                console.error(error);
+                window.location.reload();
+            }
+        };
+
+        const postProductAction = async (productId, url, values, openModalId) => {
+            const stack = document.querySelector(`[data-pf-product-stack="${productId}"]`);
+            const token = stack?.querySelector('input[name="__RequestVerificationToken"]')?.value;
+
+            if (!token) {
+                window.location.reload();
+                return;
+            }
+
+            const formData = new FormData();
+            formData.append("__RequestVerificationToken", token);
+
+            Object.entries(values).forEach(([key, value]) => {
+                if (Array.isArray(value)) {
+                    value.forEach(item => formData.append(key, item));
                     return;
                 }
 
-                const generateButton = event.target.closest("[data-pf-generate-code]");
-                if (!generateButton) return;
-
-                const row = generateButton.closest("[data-pf-repeat-item]");
-                const codeInput = row?.querySelector('[data-field="Code"]');
-                const amountInput = row?.querySelector('[data-field="Amount"]');
-                if (!codeInput) return;
-
-                const prefix = slugify(nameInput?.value || "PARFAIT");
-                const suffix = Math.random().toString(36).toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0, 6);
-                codeInput.value = `${prefix}-${suffix}`;
-                if (amountInput && !amountInput.value.trim()) {
-                    amountInput.value = "10";
-                }
+                formData.append(key, value);
             });
 
-            wireRowRemoval(form);
-        });
+            try {
+                const html = await submitRequest(url, formData);
+                const replaced = replaceProductUiFromHtml(productId, html, { openModalId });
+                if (!replaced) {
+                    window.location.reload();
+                }
+            } catch (error) {
+                console.error(error);
+                window.location.reload();
+            }
+        };
 
-        document.querySelectorAll("[data-pf-accordion]").forEach(section => {
+        const initAccordion = section => {
+            if (section.dataset.pfAccordionBound === "true") return;
+            section.dataset.pfAccordionBound = "true";
+
             section.addEventListener("toggle", () => {
                 if (!section.open) return;
 
@@ -848,15 +1039,105 @@
                     }
                 });
             });
-        });
-    })();
-</script>
+        };
 
-<script>
-    (() => {
-        const clamp = (value, min, max) => Math.min(max, Math.max(min, value));
+        const initPhotoGrid = grid => {
+            if (grid.dataset.pfBound === "true") return;
+            grid.dataset.pfBound = "true";
 
-        document.querySelectorAll("[data-pf-adjust-panel]").forEach(panel => {
+            let draggingTile = null;
+            let startOrder = "";
+
+            const currentOrder = () => [...grid.querySelectorAll("[data-pf-photo-tile]")]
+                .map(tile => tile.getAttribute("data-pf-image-id"))
+                .filter(Boolean)
+                .join(",");
+
+            const clearDropTargets = () => {
+                grid.querySelectorAll(".is-drop-target").forEach(item => item.classList.remove("is-drop-target"));
+            };
+
+            grid.addEventListener("dragstart", event => {
+                const tile = event.target.closest("[data-pf-photo-tile]");
+                if (!tile) return;
+
+                draggingTile = tile;
+                startOrder = currentOrder();
+                tile.classList.add("is-dragging");
+
+                if (event.dataTransfer) {
+                    event.dataTransfer.effectAllowed = "move";
+                    event.dataTransfer.setData("text/plain", tile.getAttribute("data-pf-image-id") || "");
+                }
+            });
+
+            grid.addEventListener("dragend", async event => {
+                const tile = event.target.closest("[data-pf-photo-tile]");
+                if (!tile) return;
+
+                tile.classList.remove("is-dragging");
+                clearDropTargets();
+
+                const endOrder = currentOrder();
+                draggingTile = null;
+
+                if (!endOrder || endOrder === startOrder) {
+                    return;
+                }
+
+                const productId = grid.getAttribute("data-pf-product-id");
+                const sortUrl = grid.getAttribute("data-pf-sort-url");
+                const token = grid.closest("[data-pf-product-stack]")?.querySelector('input[name="__RequestVerificationToken"]')?.value;
+
+                if (!productId || !sortUrl || !token) {
+                    return;
+                }
+
+                const formData = new FormData();
+                formData.append("__RequestVerificationToken", token);
+                formData.append("productId", productId);
+                endOrder.split(",").forEach(id => formData.append("imageIds", id));
+
+                try {
+                    await submitRequest(sortUrl, formData);
+                    const form = grid.closest("[data-pf-product-stack]")?.querySelector("[data-pf-product-edit-form]");
+                    renderSaveState(form, "Photo order saved", "success");
+                } catch (error) {
+                    console.error(error);
+                    window.location.reload();
+                }
+            });
+
+            grid.addEventListener("dragover", event => {
+                event.preventDefault();
+                if (!draggingTile) return;
+
+                const target = event.target.closest("[data-pf-photo-tile]");
+                if (!target || target === draggingTile) return;
+
+                clearDropTargets();
+                target.classList.add("is-drop-target");
+
+                const rect = target.getBoundingClientRect();
+                const insertAfter = event.clientY > rect.top + (rect.height / 2);
+
+                if (insertAfter) {
+                    target.after(draggingTile);
+                } else {
+                    target.before(draggingTile);
+                }
+            });
+
+            grid.addEventListener("drop", event => {
+                event.preventDefault();
+                clearDropTargets();
+            });
+        };
+
+        const initAdjustPanel = panel => {
+            if (panel.dataset.pfBound === "true") return;
+            panel.dataset.pfBound = "true";
+
             const stage = panel.querySelector("[data-pf-adjust-stage]");
             const img = panel.querySelector("[data-pf-adjust-img]");
             const posX = panel.querySelector("[data-pf-pos-x]");
@@ -875,6 +1156,7 @@
 
             const render = () => {
                 img.style.objectPosition = `${x}% ${y}%`;
+                img.style.transformOrigin = `${x}% ${y}%`;
                 img.style.transform = `scale(${zoom})`;
                 posX.value = Math.round(x).toString();
                 posY.value = Math.round(y).toString();
@@ -885,6 +1167,7 @@
                 dragging = true;
                 lastClientX = event.clientX;
                 lastClientY = event.clientY;
+                stage.classList.add("is-dragging");
                 stage.setPointerCapture(event.pointerId);
             });
 
@@ -904,10 +1187,16 @@
                 render();
             });
 
-            stage.addEventListener("pointerup", event => {
+            const releasePointer = event => {
                 dragging = false;
-                stage.releasePointerCapture(event.pointerId);
-            });
+                stage.classList.remove("is-dragging");
+                if (stage.hasPointerCapture(event.pointerId)) {
+                    stage.releasePointerCapture(event.pointerId);
+                }
+            };
+
+            stage.addEventListener("pointerup", releasePointer);
+            stage.addEventListener("pointercancel", releasePointer);
 
             zoomInput.addEventListener("input", () => {
                 zoom = Number(zoomInput.value || 1);
@@ -915,6 +1204,193 @@
             });
 
             render();
+        };
+
+        function initializeRoot(root = document) {
+            syncMoneyWithin(root);
+
+            root.querySelectorAll("[data-pf-product-form]").forEach(form => {
+                form.querySelectorAll("[data-pf-collection]").forEach(reindexCollection);
+                form.querySelectorAll("[data-pf-inventory-row]").forEach(updateInventoryRow);
+            });
+
+            root.querySelectorAll("[data-pf-photo-grid]").forEach(initPhotoGrid);
+            root.querySelectorAll("[data-pf-adjust-panel]").forEach(initAdjustPanel);
+            root.querySelectorAll("[data-pf-accordion]").forEach(initAccordion);
+        }
+
+        document.addEventListener("click", event => {
+            const addButton = event.target.closest("[data-pf-add-row]");
+            if (addButton) {
+                const type = addButton.getAttribute("data-pf-add-row");
+                const target = addButton.getAttribute("data-pf-target");
+                const container = addRow(target, type === "inventory" ? inventoryTemplate : discountTemplate);
+                const form = addButton.closest("form");
+
+                if (container && form?.matches("[data-pf-product-edit-form]")) {
+                    scheduleAutoSave(form);
+                }
+                return;
+            }
+
+            const removeButton = event.target.closest("[data-pf-remove-row]");
+            if (removeButton) {
+                const row = removeButton.closest("[data-pf-repeat-item]");
+                const container = removeButton.closest("[data-pf-collection]");
+                const form = removeButton.closest("form");
+
+                if (!row || !container) return;
+                row.remove();
+                reindexCollection(container);
+
+                if (form?.matches("[data-pf-product-edit-form]")) {
+                    scheduleAutoSave(form);
+                }
+                return;
+            }
+
+            const generateButton = event.target.closest("[data-pf-generate-code]");
+            if (generateButton) {
+                const row = generateButton.closest("[data-pf-repeat-item]");
+                const form = generateButton.closest("form");
+                const nameInput = form?.querySelector('input[name="Name"]');
+                const codeInput = row?.querySelector('[data-field="Code"]');
+                const amountInput = row?.querySelector('[data-field="Amount"]');
+
+                if (!codeInput) return;
+
+                const prefix = slugify(nameInput?.value || "PARFAIT");
+                const suffix = Math.random().toString(36).toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0, 6);
+                codeInput.value = `${prefix}-${suffix}`;
+
+                if (amountInput && !amountInput.value.trim()) {
+                    amountInput.value = "10";
+                }
+
+                if (form?.matches("[data-pf-product-edit-form]")) {
+                    scheduleAutoSave(form);
+                }
+                return;
+            }
+
+            const deleteImageButton = event.target.closest("[data-pf-delete-image]");
+            if (deleteImageButton) {
+                const productId = deleteImageButton.closest("[data-pf-product-modal]")?.getAttribute("data-pf-product-id");
+                const imageId = deleteImageButton.getAttribute("data-pf-delete-image");
+
+                if (!productId || !imageId || !window.confirm("Delete this photo?")) {
+                    return;
+                }
+
+                postProductAction(
+                    productId,
+                    "/internal/commerce/products/images/delete",
+                    { productId, imageId },
+                    `editProduct${productId}`);
+                return;
+            }
+
+            const primaryImageButton = event.target.closest("[data-pf-primary-image]");
+            if (primaryImageButton) {
+                const productId = primaryImageButton.closest("[data-pf-product-modal]")?.getAttribute("data-pf-product-id");
+                const imageId = primaryImageButton.getAttribute("data-pf-primary-image");
+
+                if (!productId || !imageId) {
+                    return;
+                }
+
+                postProductAction(
+                    productId,
+                    "/internal/commerce/products/images/primary",
+                    { productId, imageId },
+                    `editProduct${productId}`);
+            }
         });
+
+        document.addEventListener("input", event => {
+            if (event.target.matches(".pf-money-display")) {
+                syncMoneyInput(event.target);
+            }
+
+            const productForm = event.target.closest("[data-pf-product-form]");
+            if (productForm && event.target.matches('input[name="Name"]')) {
+                const slugInput = productForm.querySelector('input[name="Slug"]');
+                if (slugInput && !slugInput.value.trim()) {
+                    slugInput.value = (event.target.value || "")
+                        .trim()
+                        .toLowerCase()
+                        .replace(/[^a-z0-9]+/g, "-")
+                        .replace(/^-+|-+$/g, "");
+                }
+            }
+
+            const inventoryRow = event.target.closest("[data-pf-inventory-row]");
+            if (inventoryRow) {
+                updateInventoryRow(inventoryRow);
+            }
+
+            const form = event.target.closest("[data-pf-product-edit-form]");
+            if (!form || !event.target.matches(liveFieldSelector)) {
+                return;
+            }
+
+            scheduleAutoSave(form);
+        });
+
+        document.addEventListener("change", event => {
+            const target = event.target;
+
+            if (target.matches("[data-pf-upload-input]")) {
+                const form = target.closest("[data-pf-upload-form]");
+                const productId = form?.getAttribute("data-pf-product-id");
+
+                if (!form || !productId || !target.files?.length) {
+                    return;
+                }
+
+                submitRefreshForm(form, productId, `editProduct${productId}`);
+                target.value = "";
+                return;
+            }
+
+            const inventoryRow = target.closest("[data-pf-inventory-row]");
+            if (inventoryRow) {
+                updateInventoryRow(inventoryRow);
+            }
+
+            const form = target.closest("[data-pf-product-edit-form]");
+            if (!form || target.matches(liveFieldSelector)) {
+                return;
+            }
+
+            scheduleAutoSave(form);
+        });
+
+        document.addEventListener("submit", event => {
+            const form = event.target;
+
+            if (form.matches("[data-pf-product-edit-form]")) {
+                event.preventDefault();
+
+                if (!form.reportValidity()) {
+                    return;
+                }
+
+                submitProductForm(form);
+                return;
+            }
+
+            if (form.matches("[data-pf-image-editor-form]")) {
+                event.preventDefault();
+                const productId = form.getAttribute("data-pf-product-id");
+                if (!productId) {
+                    return;
+                }
+
+                submitRefreshForm(form, productId, `editProduct${productId}`);
+            }
+        });
+
+        initializeRoot(document);
     })();
 </script>
