@@ -57,6 +57,8 @@
             size.StatusTone
         })
         .ToList();
+    var priceMajor = Math.Abs(Model.PriceCents / 100).ToString();
+    var priceMinor = Math.Abs(Model.PriceCents % 100).ToString("00");
 }
 
 @section Styles {
@@ -117,15 +119,20 @@
         </section>
 
         <section class="sp-product-info-panel sp-surface">
-            <a class="sp-back-link" href="/store">← Back to collection</a>
+            <a class="sp-back-link sp-product-back-link" href="/store">← Back to collection</a>
             @if (!string.IsNullOrWhiteSpace(Model.Badge))
             {
-                <div class="sp-product-kicker">@Model.Badge</div>
+                <div class="sp-product-kicker sp-product-badge">@Model.Badge</div>
             }
-            <h1>@Model.Name</h1>
+            <h1 class="sp-product-title">@Model.Name</h1>
 
-            <div class="sp-product-price-stack">
-                <div class="sp-product-price">@Model.PriceLabel</div>
+            <div class="sp-product-price-stack sp-product-price-row">
+                <div class="sp-product-price-caption">Price</div>
+                <div class="sp-product-price sp-product-price-value" aria-label="@Model.PriceLabel">
+                    <span class="sp-product-price-currency">$</span>
+                    <span class="sp-product-price-major">@priceMajor</span>
+                    <span class="sp-product-price-minor">.@priceMinor</span>
+                </div>
                 @if (Model.HasSalePrice)
                 {
                     <div class="sp-product-compare-price">@Model.CompareAtPriceLabel</div>
@@ -133,7 +140,7 @@
                 }
             </div>
 
-            <div class="sp-product-stock-strip">
+            <div class="sp-product-stock-strip sp-product-availability-row">
                 <span class="sp-stock-pill is-@Model.AvailabilityTone" id="spProductAvailability">@defaultAvailabilityLabel</span>
             </div>
 
@@ -150,14 +157,17 @@
 
                 @if (featureItems.Count > 0)
                 {
-                    <section class="sp-product-story-section">
+                    <section class="sp-product-story-section sp-product-story-section--features">
                         <div class="sp-product-story-label">Features</div>
-                        <div class="sp-product-feature-grid">
+                        <ul class="sp-product-feature-list" aria-label="Product feature highlights">
                             @foreach (var feature in featureItems)
                             {
-                                <span class="sp-product-feature-chip">@feature</span>
+                                <li class="sp-product-feature-item">
+                                    <span class="sp-product-feature-marker" aria-hidden="true"></span>
+                                    <span class="sp-product-feature-text">@feature</span>
+                                </li>
                             }
-                        </div>
+                        </ul>
                     </section>
                 }
 

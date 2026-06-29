@@ -4,6 +4,9 @@
     --sp-cocoa-700: #6f4b3b;
     --sp-cocoa-600: #926950;
     --sp-cocoa-500: #b38361;
+    --sp-money-800: #194934;
+    --sp-money-700: #236346;
+    --sp-money-100: rgba(219, 241, 229, 0.94);
     --sp-line: rgba(146, 105, 80, 0.22);
     --sp-line-strong: rgba(146, 105, 80, 0.4);
     --sp-font-display: "Nunito Sans", system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
@@ -260,7 +263,6 @@ body.sp-body {
 }
 
 .sp-shop-copy h2,
-.sp-product-info-panel h1,
 .sp-cart-title,
 .sp-success-item h3 {
     color: var(--sp-cocoa-900);
@@ -292,8 +294,7 @@ body.sp-body {
     justify-items: center;
 }
 
-.sp-shop-price,
-.sp-product-price {
+.sp-shop-price {
     color: var(--sp-cocoa-900);
     font-size: 0.94rem;
     font-weight: var(--sp-weight-bold);
@@ -372,7 +373,7 @@ body.sp-body {
 
 .sp-product-shell {
     display: grid;
-    grid-template-columns: minmax(0, 1.02fr) minmax(360px, 0.78fr);
+    grid-template-columns: minmax(0, 1fr) minmax(350px, 0.82fr);
     gap: 0.95rem;
     align-items: start;
 }
@@ -389,10 +390,15 @@ body.sp-body {
 .sp-gallery-panel {
     display: grid;
     gap: 0.7rem;
+    align-self: start;
+    min-width: 0;
 }
 
 .sp-gallery-stage {
     position: relative;
+    display: grid;
+    gap: 0.55rem;
+    min-width: 0;
 }
 
 .sp-gallery-frame {
@@ -400,9 +406,12 @@ body.sp-body {
     border-radius: 20px;
     background: linear-gradient(180deg, #f7f0e9, #efe4d8);
     aspect-ratio: 1 / 1.02;
+    max-height: clamp(520px, 68vh, 760px);
 }
 
 .sp-gallery-main-image {
+    width: 100%;
+    height: 100%;
     object-fit: cover;
 }
 
@@ -486,8 +495,10 @@ body.sp-body {
 }
 
 .sp-product-info-panel {
-    position: sticky;
-    top: var(--sp-sticky-top);
+    display: grid;
+    align-content: start;
+    gap: 0;
+    min-width: 0;
     text-align: left;
 }
 
@@ -508,8 +519,7 @@ body.sp-body {
 
 .sp-back-link {
     display: inline-flex;
-    justify-content: center;
-    margin-inline: auto;
+    justify-content: flex-start;
     margin-bottom: 0.65rem;
 }
 
@@ -523,15 +533,15 @@ body.sp-body {
     text-transform: uppercase;
 }
 
-.sp-product-info-panel h1 {
-    margin: 0.45rem 0 0.25rem;
+.sp-product-title {
+    margin: 0.4rem 0 0.18rem;
     font-family: var(--sp-font-display);
     font-size: clamp(1.7rem, 3vw, 2.5rem);
     font-style: normal;
     font-stretch: expanded;
     font-weight: var(--sp-weight-black);
-    letter-spacing: 0.12em;
-    line-height: 1.02;
+    letter-spacing: 0.1em;
+    line-height: 0.98;
     text-align: center;
     text-transform: uppercase;
 }
@@ -539,40 +549,80 @@ body.sp-body {
 .sp-product-price-stack {
     display: flex;
     flex-wrap: wrap;
-    align-items: flex-end;
-    justify-content: center;
-    gap: 0.35rem 0.9rem;
-    margin: 0.15rem 0 0.2rem;
+    align-items: center;
+    justify-content: flex-start;
+    gap: 0.25rem 0.9rem;
+    margin: 0.08rem 0 0.48rem;
+    padding-bottom: 0.58rem;
+    border-bottom: 1px solid rgba(146, 105, 80, 0.16);
+}
+
+.sp-product-price-caption {
+    flex: 0 0 100%;
+    color: var(--sp-money-700);
+    font-size: 0.63rem;
+    font-weight: var(--sp-weight-bold);
+    letter-spacing: 0.18em;
+    line-height: 1;
+    text-transform: uppercase;
 }
 
 .sp-product-price {
-    color: var(--sp-cocoa-900);
+    display: inline-flex;
+    align-items: baseline;
+    gap: 0.02rem;
+    color: var(--sp-money-700);
     font-family: var(--sp-font-display);
-    font-size: clamp(2.35rem, 4.4vw, 3.85rem);
     font-weight: var(--sp-weight-black);
-    letter-spacing: -0.08em;
-    line-height: 0.9;
-    text-align: center;
+    letter-spacing: 0;
+    line-height: 1;
+    text-align: left;
+}
+
+.sp-product-price-currency {
+    color: var(--sp-money-800);
+    font-size: clamp(1.08rem, 1.5vw, 1.28rem);
+    font-weight: var(--sp-weight-bold);
+    line-height: 1;
+    margin-right: 0.04rem;
+}
+
+.sp-product-price-major {
+    color: var(--sp-money-700);
+    font-size: clamp(2rem, 3.2vw, 2.75rem);
+    font-weight: var(--sp-weight-black);
+    letter-spacing: -0.06em;
+    line-height: 0.92;
+}
+
+.sp-product-price-minor {
+    color: rgba(35, 99, 70, 0.88);
+    font-size: clamp(0.98rem, 1.15vw, 1.08rem);
+    font-weight: var(--sp-weight-bold);
+    letter-spacing: 0.02em;
+    line-height: 1;
 }
 
 .sp-product-compare-price {
-    align-self: center;
-    font-size: 1rem;
+    align-self: flex-end;
+    color: rgba(43, 28, 22, 0.5);
+    font-size: 0.9rem;
     letter-spacing: 0.02em;
+    margin-bottom: 0.14rem;
 }
 
 .sp-product-stock-strip {
     display: flex;
     flex-wrap: wrap;
     align-items: center;
-    justify-content: center;
+    justify-content: flex-start;
     gap: 0.65rem;
     margin: 0.2rem 0 0.75rem;
 }
 
 .sp-product-story {
     display: grid;
-    gap: 0.75rem;
+    gap: 0.7rem;
     margin: 0 0 0.95rem;
 }
 
@@ -586,25 +636,32 @@ body.sp-body {
 .sp-product-story-lead {
     color: var(--sp-cocoa-900);
     font-family: var(--sp-font-display);
-    font-size: 1.02rem;
+    font-size: 1rem;
     font-style: italic;
     font-weight: var(--sp-weight-bold);
     letter-spacing: 0.01em;
-    line-height: 1.48;
+    line-height: 1.42;
 }
 
 .sp-product-story-copy,
 .sp-product-care-copy {
     color: rgba(43, 28, 22, 0.76);
-    font-size: 0.9rem;
+    font-size: 0.88rem;
     font-weight: var(--sp-weight-medium);
-    line-height: 1.6;
+    line-height: 1.58;
 }
 
 .sp-product-story-section {
     display: grid;
     gap: 0.45rem;
     padding-top: 0.05rem;
+}
+
+.sp-product-story-section--features {
+    padding: 0.82rem 0.9rem;
+    border: 1px solid rgba(146, 105, 80, 0.16);
+    border-radius: 18px;
+    background: linear-gradient(180deg, rgba(255, 255, 255, 0.96), rgba(248, 243, 237, 0.9));
 }
 
 .sp-product-story-section--care {
@@ -622,24 +679,38 @@ body.sp-body {
     text-transform: uppercase;
 }
 
-.sp-product-feature-grid {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 0.45rem;
+.sp-product-feature-list {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 0.35rem 0.9rem;
+    padding: 0;
+    margin: 0;
+    list-style: none;
 }
 
-.sp-product-feature-chip {
-    display: inline-flex;
-    align-items: center;
-    min-height: 34px;
-    padding: 0.5rem 0.8rem;
-    border: 1px solid rgba(146, 105, 80, 0.2);
-    border-radius: 999px;
-    background: linear-gradient(180deg, rgba(255, 255, 255, 0.92), rgba(247, 240, 233, 0.86));
+.sp-product-feature-item {
+    display: grid;
+    grid-template-columns: 10px minmax(0, 1fr);
+    align-items: start;
+    gap: 0.55rem;
+    padding: 0.24rem 0;
+}
+
+.sp-product-feature-marker {
+    width: 8px;
+    height: 8px;
+    display: inline-block;
+    border-radius: 50%;
+    background: linear-gradient(180deg, var(--sp-cocoa-700), var(--sp-cocoa-600));
+    box-shadow: 0 0 0 3px rgba(146, 105, 80, 0.08);
+    margin-top: 0.34rem;
+}
+
+.sp-product-feature-text {
     color: var(--sp-cocoa-800);
-    font-size: 0.74rem;
+    font-size: 0.8rem;
     font-weight: var(--sp-weight-semibold);
-    line-height: 1.25;
+    line-height: 1.42;
 }
 
 .sp-cart-issue {
@@ -1098,7 +1169,7 @@ body.sp-body {
     margin-top: 1rem;
 }
 
-@media (min-width: 1181px) {
+@media (min-width: 901px) {
     .sp-store-page {
         padding-top: 0.1rem;
     }
@@ -1107,28 +1178,15 @@ body.sp-body {
         grid-template-columns: minmax(0, 1.08fr) minmax(380px, 0.72fr);
         gap: 0.85rem;
         align-items: stretch;
-        min-height: calc(100vh - var(--pf-header-offset, 108px) - 1.35rem);
-    }
-
-    .sp-gallery-panel,
-    .sp-product-info-panel {
-        min-height: calc(100vh - var(--pf-header-offset, 108px) - 1.35rem);
     }
 
     .sp-gallery-panel {
-        grid-template-rows: minmax(0, 1fr) auto;
         gap: 0.55rem;
         padding: 0.9rem;
     }
 
-    .sp-gallery-stage {
-        min-height: 0;
-        display: grid;
-    }
-
     .sp-gallery-frame {
-        height: 100%;
-        min-height: 0;
+        height: clamp(560px, 68vh, 760px);
         aspect-ratio: auto;
     }
 
@@ -1141,23 +1199,34 @@ body.sp-body {
     }
 
     .sp-product-info-panel {
-        display: grid;
-        align-content: center;
-        gap: 0;
+        position: sticky;
+        top: var(--sp-sticky-top);
         padding: 1rem 1.05rem;
     }
 
-    .sp-back-link {
+    .sp-product-back-link {
         margin-bottom: 0.45rem;
     }
 
-    .sp-product-kicker {
+    .sp-product-badge {
         margin-bottom: 0.05rem;
     }
 
-    .sp-product-info-panel h1 {
+    .sp-product-title {
         margin: 0.2rem 0 0.18rem;
         font-size: clamp(1.85rem, 3vw, 2.85rem);
+    }
+
+    .sp-product-price-stack {
+        margin-bottom: 0.42rem;
+    }
+
+    .sp-product-price-caption {
+        font-size: 0.61rem;
+    }
+
+    .sp-product-price-major {
+        font-size: clamp(1.92rem, 3vw, 2.5rem);
     }
 
     .sp-product-story {
@@ -1176,14 +1245,12 @@ body.sp-body {
         line-height: 1.5;
     }
 
-    .sp-product-feature-grid {
-        gap: 0.4rem;
+    .sp-product-feature-list {
+        gap: 0.3rem 0.75rem;
     }
 
-    .sp-product-feature-chip {
-        min-height: 32px;
-        padding: 0.42rem 0.72rem;
-        font-size: 0.7rem;
+    .sp-product-feature-text {
+        font-size: 0.77rem;
     }
 
     .sp-product-size-row {
@@ -1201,16 +1268,31 @@ body.sp-body {
         grid-template-columns: repeat(2, minmax(0, 1fr));
     }
 
-    .sp-product-shell,
     .sp-cart-layout,
     .sp-checkout-grid {
         grid-template-columns: 1fr;
     }
 
-    .sp-product-info-panel,
     .sp-cart-summary-panel,
     .sp-order-review {
         position: static;
+    }
+}
+
+@media (max-width: 900px) {
+    .sp-product-shell {
+        grid-template-columns: 1fr;
+        gap: 0.85rem;
+    }
+
+    .sp-gallery-panel,
+    .sp-product-info-panel {
+        width: min(100%, 860px);
+        margin-inline: auto;
+    }
+
+    .sp-gallery-frame {
+        max-height: min(78vh, 820px);
     }
 }
 
@@ -1232,6 +1314,10 @@ body.sp-body {
 
     .sp-product-thumbs {
         grid-template-columns: repeat(4, minmax(0, 1fr));
+    }
+
+    .sp-product-feature-list {
+        grid-template-columns: 1fr;
     }
 
     .sp-gallery-toolbar,
@@ -1267,7 +1353,7 @@ body.sp-body {
 @media (max-width: 560px) {
     .sp-store-hero h1,
     .sp-success-card h1,
-    .sp-product-info-panel h1 {
+    .sp-product-title {
         letter-spacing: 0.08em;
     }
 
