@@ -371,37 +371,6 @@ public sealed class ParfaitProductService
         SaveAll(products);
     }
 
-    public void MoveImage(string productId, string imageId, string direction)
-    {
-        var products = GetAllProducts().ToList();
-        var product = products.FirstOrDefault(existing => string.Equals(existing.Id, productId, StringComparison.OrdinalIgnoreCase));
-
-        if (product is null)
-        {
-            return;
-        }
-
-        var ordered = product.Images.OrderBy(image => image.DisplayOrder).ToList();
-        var index = ordered.FindIndex(image => string.Equals(image.Id, imageId, StringComparison.OrdinalIgnoreCase));
-
-        if (index < 0)
-        {
-            return;
-        }
-
-        var swapIndex = string.Equals(direction, "up", StringComparison.OrdinalIgnoreCase)
-            ? index - 1
-            : index + 1;
-
-        if (swapIndex < 0 || swapIndex >= ordered.Count)
-        {
-            return;
-        }
-
-        (ordered[index].DisplayOrder, ordered[swapIndex].DisplayOrder) = (ordered[swapIndex].DisplayOrder, ordered[index].DisplayOrder);
-        SaveAll(products);
-    }
-
     public void ReorderImages(string productId, IReadOnlyList<string> imageIds)
     {
         var products = GetAllProducts().ToList();
