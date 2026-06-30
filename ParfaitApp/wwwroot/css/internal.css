@@ -3101,6 +3101,10 @@ button.pf-secondary-action.is-danger {
     .pf-product-create-grid,
     .pf-editor-grid,
     .pf-modal-grid,
+    .pf-automation-grid,
+    .pf-automation-customer-grid,
+    .pf-automation-form-grid,
+    .pf-automation-customer-modal-grid,
     .pf-order-head-grid,
     .pf-order-modal-grid,
     .pf-variant-row,
@@ -3198,6 +3202,11 @@ button.pf-secondary-action.is-danger {
         grid-template-columns: repeat(2, minmax(0, 1fr));
     }
 
+    .pf-automation-order-card,
+    .pf-automation-activity-card {
+        flex-direction: column;
+    }
+
     .pf-order-item-row {
         grid-template-columns: 1fr;
     }
@@ -3275,6 +3284,7 @@ button.pf-secondary-action.is-danger {
     }
 
     .pf-product-modal,
+    .pf-automation-modal,
     .pf-analytics-modal,
     .pf-order-modal,
     .pf-team-modal,
