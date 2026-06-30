@@ -1399,6 +1399,98 @@ body.sp-body {
     margin-top: 1rem;
 }
 
+.sp-store-page--success .sp-shell {
+    width: min(100%, 1240px);
+}
+
+.sp-success-hero {
+    margin-bottom: 0.95rem;
+}
+
+.sp-success-hero-top {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: 0.55rem;
+    margin-bottom: 0.7rem;
+}
+
+.sp-success-hero .sp-stock-pill {
+    min-height: 32px;
+    border-color: rgba(255, 247, 240, 0.22);
+    background: rgba(255, 250, 246, 0.12);
+    color: #fff8f1;
+    box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.06);
+}
+
+.sp-success-layout {
+    display: grid;
+    grid-template-columns: minmax(320px, 0.8fr) minmax(0, 1.2fr);
+    gap: 0.95rem;
+    align-items: start;
+}
+
+.sp-success-card--summary {
+    display: grid;
+    gap: 1rem;
+}
+
+.sp-confirm-grid--success {
+    margin-top: 0;
+}
+
+.sp-confirm-grid--success > div {
+    text-align: left;
+    border-color: rgba(43, 28, 22, 0.16);
+    background: linear-gradient(180deg, rgba(255, 255, 255, 0.98), rgba(247, 239, 232, 0.94));
+}
+
+.sp-success-negative {
+    color: var(--sp-sale-red);
+}
+
+.sp-success-ledger {
+    display: grid;
+    gap: 0.9rem;
+    padding-top: 0.95rem;
+    border-top: 1px solid var(--sp-line);
+}
+
+.sp-success-card--details {
+    display: grid;
+    gap: 1rem;
+}
+
+.sp-success-block-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 0.8rem;
+    padding-top: 0.2rem;
+}
+
+.sp-success-block {
+    display: grid;
+    gap: 0.35rem;
+    padding: 0.95rem 1rem;
+    border: 1px solid var(--sp-line);
+    border-radius: 18px;
+    background: linear-gradient(180deg, rgba(255, 255, 255, 0.96), rgba(247, 240, 233, 0.92));
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.65);
+}
+
+.sp-success-block-label {
+    color: rgba(43, 28, 22, 0.58);
+    font-size: 0.68rem;
+    font-weight: var(--sp-weight-bold);
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+}
+
+.sp-success-block strong {
+    color: var(--sp-cocoa-900);
+    font-weight: var(--sp-weight-black);
+}
+
 @media (min-width: 901px) {
     .sp-store-page {
         padding-top: 0.1rem;
@@ -1413,6 +1505,11 @@ body.sp-body {
     .sp-gallery-panel {
         gap: 0.55rem;
         padding: 0.9rem;
+    }
+
+    .sp-success-card--summary {
+        position: sticky;
+        top: var(--sp-sticky-top);
     }
 
     .sp-gallery-frame {
@@ -1527,7 +1624,9 @@ body.sp-body {
 
     .sp-shop-grid,
     .sp-field-grid,
-    .sp-confirm-grid {
+    .sp-confirm-grid,
+    .sp-success-layout,
+    .sp-success-block-grid {
         grid-template-columns: 1fr;
     }
 

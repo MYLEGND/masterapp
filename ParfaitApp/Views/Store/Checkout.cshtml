@@ -152,6 +152,8 @@
             let card = null;
             let syncMessage = "";
             let isSubmitting = false;
+            let leadCaptureTimer = 0;
+            let lastLeadSignature = "";
             const checkoutAttemptStorageKey = "parfaitCheckoutAttemptId";
 
             const fields = {
@@ -191,6 +193,7 @@
 
             const clearCheckoutAttemptId = () => {
                 window.sessionStorage.removeItem(checkoutAttemptStorageKey);
+                lastLeadSignature = "";
             };
 
             const setPayButtonAvailability = isAvailable => {
@@ -311,6 +314,8 @@
                 } else {
                     setPayButtonAvailability(false);
                 }
+
+                queueLeadCapture();
             };
 
             const getCustomer = () => ({
@@ -324,6 +329,57 @@
                 state: fields.state.value.trim(),
                 postalCode: fields.postalCode.value.trim()
             });
+
+            const buildLeadPayload = () => {
+                const cart = store.readCart();
+                const customer = getCustomer();
+                const email = customer.email;
+
+                if (!cart.length || email.indexOf(String.fromCharCode(64)) < 0 || email.indexOf(".") < 0) {
+                    return null;
+                }
+
+                return {
+                    checkoutAttemptId: ensureCheckoutAttemptId(),
+                    discountCode: store.readDiscountCode(),
+                    customer,
+                    items: quoteItems(cart)
+                };
+            };
+
+            const captureLead = async () => {
+                const payload = buildLeadPayload();
+                if (!payload) {
+                    return;
+                }
+
+                const signature = JSON.stringify(payload);
+                if (signature === lastLeadSignature) {
+                    return;
+                }
+
+                lastLeadSignature = signature;
+
+                try {
+                    await fetch("/store/checkout/lead", {
+                        method: "POST",
+                        headers: {
+                            "Content-Type": "application/json",
+                            "RequestVerificationToken": tokenInput?.value || ""
+                        },
+                        body: signature
+                    });
+                } catch {
+                    // Lead capture should never interrupt checkout.
+                }
+            };
+
+            const queueLeadCapture = () => {
+                window.clearTimeout(leadCaptureTimer);
+                leadCaptureTimer = window.setTimeout(() => {
+                    captureLead();
+                }, 520);
+            };
 
             const validateCustomer = () => {
                 for (const key of requiredFields) {
@@ -456,18 +512,27 @@
 
             applyDiscountButton?.addEventListener("click", () => {
                 store.writeDiscountCode(discountInput.value);
+                queueLeadCapture();
             });
 
             clearDiscountButton?.addEventListener("click", () => {
                 discountInput.value = "";
                 store.clearDiscountCode();
+                queueLeadCapture();
             });
 
             discountInput.addEventListener("keydown", event => {
                 if (event.key === "Enter") {
                     event.preventDefault();
                     store.writeDiscountCode(discountInput.value);
+                    queueLeadCapture();
                 }
+            });
+
+            Object.values(fields).forEach(field => {
+                field?.addEventListener("input", queueLeadCapture);
+                field?.addEventListener("change", queueLeadCapture);
+                field?.addEventListener("blur", queueLeadCapture);
             });
 
             window.addEventListener("parfait-cart-updated", () => {

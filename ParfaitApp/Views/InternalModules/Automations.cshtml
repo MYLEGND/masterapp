@@ -1,0 +1,600 @@
+@model ParfaitApp.Models.ParfaitAutomationWorkspaceViewModel
+@{
+    ViewData["Title"] = "Automations";
+    Layout = "_InternalLayout";
+
+    static string Money(int cents) => "$" + (cents / 100m).ToString("0.00");
+    static string ShortDate(DateTime? value) => value.HasValue
+        ? value.Value.ToLocalTime().ToString("MMM d, h:mm tt")
+        : "—";
+    static string DelayLabel(string triggerType) => triggerType == ParfaitApp.Models.ParfaitAutomationTriggerTypes.AbandonedCart
+        ? "Cart Recovery"
+        : "Post Purchase";
+    static string CustomerModalId(int index) => $"pfAutomationCustomer-{index}";
+    static string WorkflowModalId(Guid id) => $"pfAutomationWorkflow-{id:N}";
+}
+
+<section class="pf-command-page pf-automation-page">
+    <header class="pf-command-head">
+        <div class="pf-command-copy">
+            <h1 class="pf-command-title">Automations</h1>
+        </div>
+        <div class="pf-command-meta">
+            <span class="pf-command-badge is-success">@Model.ActiveWorkflowCount live workflows</span>
+            <span class="pf-command-badge is-info">@Model.AudienceCount customers</span>
+            <span class="pf-command-badge is-warning">@Model.OpenCartLeadCount open carts</span>
+            <span class="pf-command-badge is-success">@Model.SentLast7Days sent</span>
+        </div>
+    </header>
+
+    @if (TempData["AutomationStatus"] is string automationStatus)
+    {
+        var alertClass = string.Equals(TempData["AutomationStatusTone"] as string, "danger", StringComparison.OrdinalIgnoreCase)
+            ? "pf-alert-danger"
+            : "pf-alert-success";
+        <div class="@alertClass">@automationStatus</div>
+    }
+
+    <section class="pf-command-rail">
+        <article class="pf-rail-card is-success pf-span-3">
+            <div class="pf-rail-label">Live Workflows</div>
+            <strong class="pf-rail-value">@Model.ActiveWorkflowCount</strong>
+            <div class="pf-rail-grid">
+                <div>
+                    <span>Total</span>
+                    <strong>@Model.Workflows.Count</strong>
+                </div>
+                <div>
+                    <span>Sent 7 Days</span>
+                    <strong>@Model.SentLast7Days</strong>
+                </div>
+            </div>
+        </article>
+
+        <article class="pf-rail-card is-info pf-span-3">
+            <div class="pf-rail-label">Audience</div>
+            <strong class="pf-rail-value">@Model.AudienceCount</strong>
+            <div class="pf-rail-grid">
+                <div>
+                    <span>Customers</span>
+                    <strong>@Model.Customers.Count(customer => customer.OrderCount > 0)</strong>
+                </div>
+                <div>
+                    <span>Open Carts</span>
+                    <strong>@Model.OpenCartLeadCount</strong>
+                </div>
+            </div>
+        </article>
+
+        <article class="pf-rail-card is-warning pf-span-3">
+            <div class="pf-rail-label">Cart Recovery</div>
+            <strong class="pf-rail-value">@Model.Customers.Count(customer => customer.HasOpenCart)</strong>
+            <div class="pf-rail-grid">
+                <div>
+                    <span>Recovery Value</span>
+                    <strong>@Money(Model.Customers.Where(customer => customer.HasOpenCart).Sum(customer => customer.OpenCartValueCents))</strong>
+                </div>
+                <div>
+                    <span>Queued</span>
+                    <strong>@Model.Workflows.Sum(workflow => workflow.DueNowCount)</strong>
+                </div>
+            </div>
+        </article>
+
+        <article class="pf-rail-card is-danger pf-span-3">
+            <div class="pf-rail-label">Attention</div>
+            <strong class="pf-rail-value">@Model.Activity.Count(activity => string.Equals(activity.Status, "Failed", StringComparison.OrdinalIgnoreCase))</strong>
+            <div class="pf-rail-grid">
+                <div>
+                    <span>Failed Sends</span>
+                    <strong>@Model.Activity.Count(activity => string.Equals(activity.Status, "Failed", StringComparison.OrdinalIgnoreCase))</strong>
+                </div>
+                <div>
+                    <span>Last Activity</span>
+                    <strong>@ShortDate(Model.Activity.FirstOrDefault()?.OccurredUtc)</strong>
+                </div>
+            </div>
+        </article>
+    </section>
+
+    <section class="pf-command-board pf-automation-board">
+        <div class="pf-command-board-head">
+            <div>
+                <h2>Workflow Machine</h2>
+            </div>
+            <div class="pf-command-board-actions">
+                <button type="button" class="pf-secondary-action" data-pf-open="pfAutomationCreateModal">New Workflow</button>
+            </div>
+        </div>
+
+        @if (Model.Workflows.Count == 0)
+        {
+            <div class="pf-automation-empty">
+                <strong>No automations live yet.</strong>
+            </div>
+        }
+        else
+        {
+            <div class="pf-automation-grid">
+                @foreach (var workflow in Model.Workflows)
+                {
+                    var modalId = WorkflowModalId(workflow.Id);
+                    <button type="button"
+                            class="pf-automation-card is-@workflow.Tone"
+                            data-pf-open="@modalId"
+                            aria-controls="@modalId">
+                        <div class="pf-automation-card-top">
+                            <div>
+                                <div class="pf-automation-card-kicker">@DelayLabel(workflow.TriggerType)</div>
+                                <h3>@workflow.Name</h3>
+                            </div>
+                            <span class="pf-command-badge @(workflow.IsActive ? "is-success" : "is-muted")">@(workflow.IsActive ? "Live" : "Paused")</span>
+                        </div>
+
+                        <div class="pf-automation-card-copy">@workflow.Subject</div>
+
+                        <div class="pf-automation-stat-grid">
+                            <div>
+                                <span>Delay</span>
+                                <strong>@workflow.DelayLabel</strong>
+                            </div>
+                            <div>
+                                <span>Due Now</span>
+                                <strong>@workflow.DueNowCount</strong>
+                            </div>
+                            <div>
+                                <span>Sent</span>
+                                <strong>@workflow.SentLast7Days</strong>
+                            </div>
+                            <div>
+                                <span>Offer</span>
+                                <strong>@(string.IsNullOrWhiteSpace(workflow.DiscountCode) ? "—" : workflow.DiscountCode)</strong>
+                            </div>
+                        </div>
+                    </button>
+                }
+            </div>
+        }
+    </section>
+
+    <section class="pf-command-board pf-automation-board">
+        <div class="pf-command-board-head">
+            <div>
+                <h2>Customer Audience</h2>
+            </div>
+        </div>
+
+        @if (Model.Customers.Count == 0)
+        {
+            <div class="pf-automation-empty">
+                <strong>No customer records captured yet.</strong>
+            </div>
+        }
+        else
+        {
+            <div class="pf-automation-customer-grid">
+                @for (var index = 0; index < Model.Customers.Count; index++)
+                {
+                    var customer = Model.Customers[index];
+                    var modalId = CustomerModalId(index);
+                    <button type="button"
+                            class="pf-automation-customer-card is-@customer.Tone"
+                            data-pf-open="@modalId"
+                            aria-controls="@modalId">
+                        <div class="pf-automation-customer-top">
+                            <div>
+                                <h3>@customer.FirstName</h3>
+                                <div class="pf-automation-customer-email">@customer.Email</div>
+                            </div>
+                            @if (customer.HasOpenCart)
+                            {
+                                <span class="pf-command-badge is-warning">@Money(customer.OpenCartValueCents) cart</span>
+                            }
+                            else
+                            {
+                                <span class="pf-command-badge is-success">@Money(customer.LifetimeSpendCents)</span>
+                            }
+                        </div>
+
+                        <div class="pf-automation-customer-stats">
+                            <div>
+                                <span>Orders</span>
+                                <strong>@customer.OrderCount</strong>
+                            </div>
+                            <div>
+                                <span>Spend</span>
+                                <strong>@Money(customer.LifetimeSpendCents)</strong>
+                            </div>
+                            <div>
+                                <span>Last Purchase</span>
+                                <strong>@ShortDate(customer.LastPurchaseUtc)</strong>
+                            </div>
+                        </div>
+                    </button>
+                }
+            </div>
+        }
+    </section>
+
+    <section class="pf-command-board pf-automation-board">
+        <div class="pf-command-board-head">
+            <div>
+                <h2>Delivery Activity</h2>
+            </div>
+        </div>
+
+        @if (Model.Activity.Count == 0)
+        {
+            <div class="pf-automation-empty">
+                <strong>No automation activity recorded yet.</strong>
+            </div>
+        }
+        else
+        {
+            <div class="pf-automation-activity-list">
+                @foreach (var item in Model.Activity)
+                {
+                    <article class="pf-automation-activity-card is-@item.Tone">
+                        <div class="pf-automation-activity-top">
+                            <div>
+                                <h3>@item.WorkflowName</h3>
+                                <div class="pf-automation-activity-recipient">@item.RecipientLabel</div>
+                            </div>
+                            <span class="pf-command-badge is-@item.Tone">@item.Status</span>
+                        </div>
+                        <div class="pf-automation-activity-copy">@item.Subject</div>
+                        <div class="pf-automation-activity-meta">
+                            <span>@item.TriggerLabel</span>
+                            <span>@item.Detail</span>
+                            <span>@ShortDate(item.OccurredUtc)</span>
+                        </div>
+                    </article>
+                }
+            </div>
+        }
+    </section>
+</section>
+
+<div class="pf-automation-modal" id="pfAutomationCreateModal" aria-hidden="true">
+    <div class="pf-modal-dialog pf-modal-lg">
+        <div class="pf-modal-content pf-automation-modal-shell">
+            <form method="post" action="/internal/marketing/automations/workflows" class="pf-automation-form">
+                @Html.AntiForgeryToken()
+                <div class="pf-modal-header">
+                    <div>
+                        <h2 class="modal-title">New Workflow</h2>
+                    </div>
+                    <button type="button" class="btn-close" data-pf-close aria-label="Close"></button>
+                </div>
+
+                <div class="pf-modal-body">
+                    <div class="pf-automation-form-grid">
+                        <label>
+                            <span>Name</span>
+                            <input class="form-control" name="Name" value="@Model.NewWorkflow.Name" required />
+                        </label>
+                        <label>
+                            <span>Trigger</span>
+                            <select class="form-select" name="TriggerType">
+                                <option value="post-purchase">Post Purchase</option>
+                                <option value="abandoned-cart">Abandoned Cart</option>
+                            </select>
+                        </label>
+                        <label>
+                            <span>Delay</span>
+                            <input class="form-control" name="DelayAmount" type="number" min="1" max="30" value="@Model.NewWorkflow.DelayAmount" required />
+                        </label>
+                        <label>
+                            <span>Unit</span>
+                            <select class="form-select" name="DelayUnit">
+                                <option value="Days">Days</option>
+                                <option value="Hours">Hours</option>
+                            </select>
+                        </label>
+                        <label class="pf-span-2">
+                            <span>Subject</span>
+                            <input class="form-control" name="Subject" value="@Model.NewWorkflow.Subject" required />
+                        </label>
+                        <label class="pf-span-2">
+                            <span>Headline</span>
+                            <input class="form-control" name="Headline" value="@Model.NewWorkflow.Headline" required />
+                        </label>
+                        <label class="pf-span-2">
+                            <span>Body</span>
+                            <textarea class="form-control" name="Body" rows="5" required>@Model.NewWorkflow.Body</textarea>
+                        </label>
+                        <label>
+                            <span>Button</span>
+                            <input class="form-control" name="CtaLabel" value="@Model.NewWorkflow.CtaLabel" />
+                        </label>
+                        <label>
+                            <span>Destination</span>
+                            <input class="form-control" name="CtaUrl" value="@Model.NewWorkflow.CtaUrl" />
+                        </label>
+                        <label class="pf-span-2">
+                            <span>Offer Code</span>
+                            <select class="form-select" name="DiscountCode">
+                                <option value="">No offer</option>
+                                @foreach (var discount in Model.DiscountOptions)
+                                {
+                                    <option value="@discount.Code">@discount.Label</option>
+                                }
+                            </select>
+                        </label>
+                    </div>
+
+                    <label class="pf-check">
+                        <input type="checkbox" name="IsActive" value="true" checked />
+                        Live
+                    </label>
+                </div>
+
+                <div class="pf-modal-footer">
+                    <button type="submit" class="pf-action">Save Workflow</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+@foreach (var workflow in Model.Workflows)
+{
+    var modalId = WorkflowModalId(workflow.Id);
+
+    <div class="pf-automation-modal" id="@modalId" aria-hidden="true">
+        <div class="pf-modal-dialog pf-modal-lg">
+            <div class="pf-modal-content pf-automation-modal-shell">
+                <form method="post" action="/internal/marketing/automations/workflows" class="pf-automation-form">
+                    @Html.AntiForgeryToken()
+                    <input type="hidden" name="Id" value="@workflow.Id" />
+
+                    <div class="pf-modal-header">
+                        <div>
+                            <h2 class="modal-title">@workflow.Name</h2>
+                        </div>
+                        <button type="button" class="btn-close" data-pf-close aria-label="Close"></button>
+                    </div>
+
+                    <div class="pf-modal-body">
+                        <div class="pf-automation-form-grid">
+                            <label>
+                                <span>Name</span>
+                                <input class="form-control" name="Name" value="@workflow.Name" required />
+                            </label>
+                            <label>
+                                <span>Trigger</span>
+                                <select class="form-select" name="TriggerType">
+                                    @if (workflow.TriggerType == "abandoned-cart")
+                                    {
+                                        <option value="post-purchase">Post Purchase</option>
+                                        <option value="abandoned-cart" selected>Abandoned Cart</option>
+                                    }
+                                    else
+                                    {
+                                        <option value="post-purchase" selected>Post Purchase</option>
+                                        <option value="abandoned-cart">Abandoned Cart</option>
+                                    }
+                                </select>
+                            </label>
+                            <label>
+                                <span>Delay</span>
+                                <input class="form-control" name="DelayAmount" type="number" min="1" max="30" value="@workflow.DelayAmount" required />
+                            </label>
+                            <label>
+                                <span>Unit</span>
+                                <select class="form-select" name="DelayUnit">
+                                    @if (workflow.DelayUnit == "Hours")
+                                    {
+                                        <option value="Days">Days</option>
+                                        <option value="Hours" selected>Hours</option>
+                                    }
+                                    else
+                                    {
+                                        <option value="Days" selected>Days</option>
+                                        <option value="Hours">Hours</option>
+                                    }
+                                </select>
+                            </label>
+                            <label class="pf-span-2">
+                                <span>Subject</span>
+                                <input class="form-control" name="Subject" value="@workflow.Subject" required />
+                            </label>
+                            <label class="pf-span-2">
+                                <span>Headline</span>
+                                <input class="form-control" name="Headline" value="@workflow.Headline" required />
+                            </label>
+                            <label class="pf-span-2">
+                                <span>Body</span>
+                                <textarea class="form-control" name="Body" rows="5" required>@workflow.Body</textarea>
+                            </label>
+                            <label>
+                                <span>Button</span>
+                                <input class="form-control" name="CtaLabel" value="@workflow.CtaLabel" />
+                            </label>
+                            <label>
+                                <span>Destination</span>
+                                <input class="form-control" name="CtaUrl" value="@workflow.CtaUrl" />
+                            </label>
+                            <label class="pf-span-2">
+                                <span>Offer Code</span>
+                                <select class="form-select" name="DiscountCode">
+                                    <option value="">No offer</option>
+                                    @foreach (var discount in Model.DiscountOptions)
+                                    {
+                                        if (workflow.DiscountCode == discount.Code)
+                                        {
+                                            <option value="@discount.Code" selected>@discount.Label</option>
+                                        }
+                                        else
+                                        {
+                                            <option value="@discount.Code">@discount.Label</option>
+                                        }
+                                    }
+                                </select>
+                            </label>
+                        </div>
+
+                        <div class="pf-automation-form-meta">
+                            <span class="pf-command-badge is-info">@workflow.DelayLabel</span>
+                            <span class="pf-command-badge is-warning">@workflow.DueNowCount due</span>
+                            <span class="pf-command-badge is-success">@workflow.SentLast7Days sent</span>
+                        </div>
+
+                        <label class="pf-check">
+                            <input type="checkbox" name="IsActive" value="true" @(workflow.IsActive ? "checked" : "") />
+                            Live
+                        </label>
+                    </div>
+
+                    <div class="pf-modal-footer pf-modal-footer--spread">
+                        <button type="submit" class="pf-action">Save Workflow</button>
+                        <button type="submit"
+                                class="pf-secondary-action is-danger"
+                                formaction="/internal/marketing/automations/workflows/delete"
+                                formmethod="post"
+                                name="id"
+                                value="@workflow.Id">
+                            Delete
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+}
+
+@for (var index = 0; index < Model.Customers.Count; index++)
+{
+    var customer = Model.Customers[index];
+    var modalId = CustomerModalId(index);
+
+    <div class="pf-automation-modal" id="@modalId" aria-hidden="true">
+        <div class="pf-modal-dialog pf-modal-lg">
+            <div class="pf-modal-content pf-automation-modal-shell">
+                <div class="pf-modal-header">
+                    <div>
+                        <h2 class="modal-title">@customer.FirstName</h2>
+                    </div>
+                    <button type="button" class="btn-close" data-pf-close aria-label="Close"></button>
+                </div>
+
+                <div class="pf-modal-body">
+                    <div class="pf-automation-customer-modal-grid">
+                        <article class="pf-automation-detail-card">
+                            <span>Email</span>
+                            <strong>@customer.Email</strong>
+                        </article>
+                        <article class="pf-automation-detail-card">
+                            <span>Phone</span>
+                            <strong>@(string.IsNullOrWhiteSpace(customer.Phone) ? "—" : customer.Phone)</strong>
+                        </article>
+                        <article class="pf-automation-detail-card">
+                            <span>Lifetime Spend</span>
+                            <strong>@Money(customer.LifetimeSpendCents)</strong>
+                        </article>
+                        <article class="pf-automation-detail-card">
+                            <span>Orders</span>
+                            <strong>@customer.OrderCount</strong>
+                        </article>
+                    </div>
+
+                    @if (customer.HasOpenCart)
+                    {
+                        <section class="pf-automation-customer-section">
+                            <div class="pf-automation-section-head">
+                                <h3>Open Cart</h3>
+                                <span class="pf-command-badge is-warning">@Money(customer.OpenCartValueCents)</span>
+                            </div>
+                            <div class="pf-automation-order-list">
+                                @foreach (var item in customer.CartItems)
+                                {
+                                    <article class="pf-automation-order-card">
+                                        <div>
+                                            <strong>@item.Name</strong>
+                                            <span>Size @item.Size · Qty @item.Quantity</span>
+                                        </div>
+                                        <strong>@Money(item.LineTotalCents)</strong>
+                                    </article>
+                                }
+                            </div>
+                        </section>
+                    }
+
+                    <section class="pf-automation-customer-section">
+                        <div class="pf-automation-section-head">
+                            <h3>Order History</h3>
+                        </div>
+                        <div class="pf-automation-order-list">
+                            @if (customer.Orders.Count == 0)
+                            {
+                                <div class="pf-automation-empty">
+                                    <strong>No orders yet.</strong>
+                                </div>
+                            }
+                            else
+                            {
+                                @foreach (var order in customer.Orders)
+                                {
+                                    <article class="pf-automation-order-card">
+                                        <div>
+                                            <strong>@order.OrderNumber</strong>
+                                            <span>@ShortDate(order.CreatedUtc) · @order.ItemCount items · @order.PaymentStatus</span>
+                                        </div>
+                                        <strong>@Money(order.TotalCents)</strong>
+                                    </article>
+                                }
+                            }
+                        </div>
+                    </section>
+                </div>
+            </div>
+        </div>
+    </div>
+}
+
+@section Scripts {
+    <script>
+        (() => {
+            const modalSelector = ".pf-automation-modal";
+            const openSelector = `${modalSelector}.is-open`;
+
+            const openModal = id => {
+                const modal = document.getElementById(id);
+                if (!modal) return;
+                modal.classList.add("is-open");
+                modal.setAttribute("aria-hidden", "false");
+                document.body.style.overflow = "hidden";
+            };
+
+            const closeModal = modal => {
+                if (!modal) return;
+                modal.classList.remove("is-open");
+                modal.setAttribute("aria-hidden", "true");
+
+                if (!document.querySelector(openSelector)) {
+                    document.body.style.overflow = "";
+                }
+            };
+
+            document.querySelectorAll("[data-pf-open]").forEach(button => {
+                button.addEventListener("click", () => openModal(button.getAttribute("data-pf-open")));
+            });
+
+            document.querySelectorAll("[data-pf-close]").forEach(button => {
+                button.addEventListener("click", () => closeModal(button.closest(modalSelector)));
+            });
+
+            document.querySelectorAll(modalSelector).forEach(modal => {
+                modal.addEventListener("click", event => {
+                    if (event.target === modal) closeModal(modal);
+                });
+            });
+
+            document.addEventListener("keydown", event => {
+                if (event.key !== "Escape") return;
+                const modals = [...document.querySelectorAll(openSelector)];
+                closeModal(modals.at(-1));
+            });
+        })();
+    </script>
+}

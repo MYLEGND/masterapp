@@ -986,6 +986,263 @@ button.pf-secondary-action:hover {
     font-weight: 800;
 }
 
+.pf-alert-danger {
+    padding: 0.95rem 1rem;
+    border-radius: 24px;
+    border: 1px solid var(--pf-danger-line);
+    background: linear-gradient(180deg, rgba(255, 255, 255, 0.82), rgba(185, 28, 28, 0.24));
+    color: var(--pf-danger-text);
+    font-weight: 800;
+    box-shadow:
+        inset 0 1px 0 rgba(255, 255, 255, 0.78),
+        var(--pf-shadow-card);
+}
+
+.pf-secondary-action.is-danger,
+button.pf-secondary-action.is-danger {
+    border-color: var(--pf-danger-line);
+    color: var(--pf-danger-text);
+    background: linear-gradient(180deg, rgba(255, 255, 255, 0.96), rgba(255, 233, 233, 0.94));
+}
+
+.pf-automation-board {
+    background: linear-gradient(180deg, rgba(255, 250, 245, 1), rgba(233, 214, 198, 0.98));
+}
+
+.pf-automation-grid,
+.pf-automation-customer-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 14px;
+}
+
+.pf-automation-card,
+.pf-automation-customer-card {
+    width: 100%;
+    display: grid;
+    gap: 0.9rem;
+    padding: 18px 18px 16px;
+    border-radius: 24px;
+    border: 1px solid var(--pf-line-bold);
+    background: var(--pf-tile-bg);
+    color: inherit;
+    text-align: left;
+    box-shadow: var(--pf-tile-shadow);
+    cursor: pointer;
+    transition: transform 0.14s ease, box-shadow 0.18s ease, border-color 0.18s ease;
+}
+
+.pf-automation-card:hover,
+.pf-automation-customer-card:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 18px 34px rgba(31, 18, 13, 0.12);
+}
+
+.pf-automation-card.is-success,
+.pf-automation-customer-card.is-success {
+    border-color: var(--pf-success-line);
+    background: linear-gradient(180deg, rgba(255, 255, 255, 0.98), rgba(219, 241, 227, 0.94));
+}
+
+.pf-automation-card.is-warning,
+.pf-automation-customer-card.is-warning {
+    border-color: var(--pf-warning-line);
+    background: linear-gradient(180deg, rgba(255, 255, 255, 0.98), rgba(250, 232, 209, 0.94));
+}
+
+.pf-automation-card.is-info,
+.pf-automation-customer-card.is-info {
+    border-color: var(--pf-info-line);
+    background: linear-gradient(180deg, rgba(255, 255, 255, 0.98), rgba(224, 233, 251, 0.94));
+}
+
+.pf-automation-card.is-danger,
+.pf-automation-customer-card.is-danger {
+    border-color: var(--pf-danger-line);
+    background: linear-gradient(180deg, rgba(255, 255, 255, 0.98), rgba(251, 226, 226, 0.94));
+}
+
+.pf-automation-card-top,
+.pf-automation-customer-top,
+.pf-automation-activity-top,
+.pf-automation-section-head {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 0.8rem;
+}
+
+.pf-automation-card-kicker,
+.pf-automation-section-head h3,
+.pf-automation-form-grid label span,
+.pf-automation-detail-card span,
+.pf-automation-activity-meta span {
+    color: var(--pf-cocoa);
+    font-size: 0.7rem;
+    font-weight: 950;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+}
+
+.pf-automation-card h3,
+.pf-automation-customer-card h3,
+.pf-automation-activity-card h3,
+.pf-automation-section-head h3 {
+    margin: 0;
+    color: var(--pf-text);
+    font-size: 1.08rem;
+    font-weight: 950;
+    letter-spacing: 0.05em;
+    line-height: 1.04;
+    text-transform: uppercase;
+}
+
+.pf-automation-card-copy,
+.pf-automation-customer-email,
+.pf-automation-activity-copy {
+    color: var(--pf-text-soft);
+    font-size: 0.88rem;
+    font-weight: 700;
+    line-height: 1.45;
+}
+
+.pf-automation-stat-grid,
+.pf-automation-customer-stats,
+.pf-automation-customer-modal-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 10px;
+}
+
+.pf-automation-stat-grid > div,
+.pf-automation-customer-stats > div,
+.pf-automation-detail-card,
+.pf-automation-order-card,
+.pf-automation-activity-card {
+    padding: 12px 13px;
+    border-radius: 18px;
+    border: 1px solid var(--pf-tile-border);
+    background: linear-gradient(180deg, rgba(255, 255, 255, 0.98), rgba(247, 238, 230, 0.96));
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.88);
+}
+
+.pf-automation-stat-grid span,
+.pf-automation-customer-stats span,
+.pf-automation-order-card span {
+    color: var(--pf-text-muted);
+    font-size: 0.74rem;
+    font-weight: 800;
+    line-height: 1.35;
+}
+
+.pf-automation-stat-grid strong,
+.pf-automation-customer-stats strong,
+.pf-automation-detail-card strong,
+.pf-automation-order-card strong,
+.pf-automation-activity-card strong {
+    display: block;
+    margin-top: 0.28rem;
+    color: var(--pf-text);
+    font-size: 0.95rem;
+    font-weight: 950;
+    line-height: 1.2;
+}
+
+.pf-automation-empty {
+    padding: 1.05rem 1.15rem;
+    border-radius: 20px;
+    border: 1px dashed var(--pf-line-strong);
+    background: linear-gradient(180deg, rgba(255, 255, 255, 0.9), rgba(244, 233, 223, 0.92));
+    color: var(--pf-text-soft);
+}
+
+.pf-automation-activity-list,
+.pf-automation-order-list {
+    display: grid;
+    gap: 10px;
+}
+
+.pf-automation-order-card,
+.pf-automation-activity-card {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 0.9rem;
+}
+
+.pf-automation-activity-card.is-success {
+    border-color: var(--pf-success-line);
+}
+
+.pf-automation-activity-card.is-warning {
+    border-color: var(--pf-warning-line);
+}
+
+.pf-automation-activity-card.is-danger {
+    border-color: var(--pf-danger-line);
+}
+
+.pf-automation-activity-card.is-info {
+    border-color: var(--pf-info-line);
+}
+
+.pf-automation-activity-meta {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.55rem 0.8rem;
+}
+
+.pf-automation-modal {
+    position: fixed;
+    inset: 0;
+    z-index: 170;
+    display: none;
+    align-items: center;
+    justify-content: center;
+    padding: 24px;
+    background: rgba(18, 9, 8, 0.54);
+    backdrop-filter: blur(10px);
+}
+
+.pf-automation-modal.is-open {
+    display: flex;
+}
+
+.pf-automation-modal-shell {
+    background: linear-gradient(180deg, rgba(255, 250, 246, 1), rgba(228, 205, 186, 0.99));
+}
+
+.pf-automation-form,
+.pf-automation-customer-section {
+    display: grid;
+    gap: 14px;
+}
+
+.pf-automation-form-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 12px;
+}
+
+.pf-automation-form-grid label {
+    display: grid;
+    gap: 0.42rem;
+}
+
+.pf-automation-form-grid textarea.form-control {
+    min-height: 148px;
+}
+
+.pf-automation-form-meta {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.55rem;
+}
+
+.pf-modal-footer--spread {
+    justify-content: space-between;
+}
+
 .pf-internal-body .alert {
     border-radius: var(--pf-radius-sm);
 }

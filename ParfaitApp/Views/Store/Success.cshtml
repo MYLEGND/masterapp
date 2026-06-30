@@ -12,79 +12,138 @@
     <link rel="stylesheet" href="~/css/storefront.css" asp-append-version="true" />
 }
 
-<section class="sp-store-page">
-    <div class="sp-shell sp-shell--compact">
-        <div class="sp-surface sp-success-card">
+<section class="sp-store-page sp-store-page--success">
+    <div class="sp-shell">
+        @if (Model.Order is not null)
+        {
+            <header class="sp-store-hero sp-store-hero--compact sp-store-hero--transaction sp-success-hero">
+                <div class="sp-success-hero-top">
+                    <span class="sp-stock-pill is-success">@Model.Order.PaymentStatus</span>
+                    <span class="sp-stock-pill is-info">@Model.Order.OrderNumber</span>
+                </div>
+                <h1>Order Confirmed</h1>
+            </header>
+        }
+
+        <div class="sp-success-layout">
             @if (Model.Order is null)
             {
-                <h1>Order Not Found</h1>
-                <p>We could not find the order details for this confirmation page.</p>
+                <div class="sp-surface sp-success-card sp-success-card--summary">
+                    <h1>Order Not Found</h1>
+                    <p>We could not find the order details for this confirmation page.</p>
 
-                <div class="sp-success-actions">
-                    <a class="sp-button sp-button--primary" href="/store">Back to Shop</a>
+                    <div class="sp-success-actions">
+                        <a class="sp-button sp-button--primary" href="/store">Back to Shop</a>
+                    </div>
                 </div>
             }
             else
             {
-                <h1>Order Confirmed</h1>
+                var order = Model.Order;
 
-                <div class="sp-confirm-grid">
-                    <div>
-                        <span>Order Number</span>
-                        <strong>@Model.Order.OrderNumber</strong>
-                    </div>
-                    <div>
-                        <span>Payment Status</span>
-                        <strong>@Model.Order.PaymentStatus</strong>
-                    </div>
-                    <div>
-                        <span>Total Paid</span>
-                        <strong>@Money(Model.Order.TotalCents)</strong>
-                    </div>
-                    @if (Model.Order.DiscountCents > 0)
-                    {
+                <section class="sp-surface sp-success-card sp-success-card--summary">
+                    <div class="sp-confirm-grid sp-confirm-grid--success">
                         <div>
-                            <span>Discount</span>
-                            <strong>-@Money(Model.Order.DiscountCents)</strong>
+                            <span>Total Paid</span>
+                            <strong>@Money(order.TotalCents)</strong>
                         </div>
-                    }
-                    <div>
-                        <span>Receipt Sent To</span>
-                        <strong>@Model.Order.Email</strong>
-                    </div>
-                </div>
-
-                <h2>Items Purchased</h2>
-
-                <div class="sp-success-items">
-                    @foreach (var item in Model.Order.Items)
-                    {
-                        <div class="sp-success-item">
-                            <img src="@(item.ImageUrl ?? "/images/favicon/parfait-logo.png")" alt="@item.Name" />
+                        <div>
+                            <span>Subtotal</span>
+                            <strong>@Money(order.SubtotalCents)</strong>
+                        </div>
+                        <div>
+                            <span>Shipping</span>
+                            <strong>@Money(order.ShippingCents)</strong>
+                        </div>
+                        <div>
+                            <span>Tax</span>
+                            <strong>@Money(order.TaxCents)</strong>
+                        </div>
+                        @if (order.DiscountCents > 0)
+                        {
                             <div>
-                                <h3>@item.Name</h3>
-                                <p>Size @item.Size · Qty @item.Quantity</p>
-                                <strong>@Money(item.LineTotalCents)</strong>
+                                <span>Discount</span>
+                                <strong class="sp-success-negative">-@Money(order.DiscountCents)</strong>
                             </div>
+                        }
+                        <div>
+                            <span>Receipt</span>
+                            <strong>@order.Email</strong>
                         </div>
-                    }
-                </div>
+                    </div>
 
-                <h2>Shipping To</h2>
-                <p class="sp-shipping-block">
-                    @Model.Order.FirstName @Model.Order.LastName<br />
-                    @Model.Order.AddressLine1<br />
-                    @if (!string.IsNullOrWhiteSpace(Model.Order.AddressLine2))
-                    {
-                        @Model.Order.AddressLine2<br />
-                    }
-                    @Model.Order.City, @Model.Order.State @Model.Order.PostalCode
-                </p>
+                    <div class="sp-success-ledger">
+                        <div class="sp-review-totals">
+                            <div class="sp-review-line sp-review-line--subtotal">
+                                <span>Order Number</span>
+                                <strong>@order.OrderNumber</strong>
+                            </div>
+                            <div class="sp-review-line sp-review-line--shipping">
+                                <span>Payment</span>
+                                <strong>@order.PaymentStatus</strong>
+                            </div>
+                            <div class="sp-review-line sp-review-line--tax">
+                                <span>Fulfillment</span>
+                                <strong>@order.FulfillmentStatus</strong>
+                            </div>
+                            @if (!string.IsNullOrWhiteSpace(order.DiscountCode))
+                            {
+                                <div class="sp-review-line sp-review-line--discount">
+                                    <span>Offer</span>
+                                    <strong>@order.DiscountCode</strong>
+                                </div>
+                            }
+                        </div>
 
-                <div class="sp-success-actions">
-                    <a class="sp-button sp-button--primary" href="/store">Back to Shop</a>
-                    <a class="sp-button sp-button--ghost" href="/">Public Site</a>
-                </div>
+                        <div class="sp-success-actions">
+                            <a class="sp-button sp-button--primary" href="/store">Back to Shop</a>
+                            <a class="sp-button sp-button--ghost" href="/">Public Site</a>
+                        </div>
+                    </div>
+                </section>
+
+                <section class="sp-surface sp-success-card sp-success-card--details">
+                    <div class="sp-summary-head">
+                        <h2>Items Purchased</h2>
+                    </div>
+
+                    <div class="sp-success-items">
+                        @foreach (var item in order.Items)
+                        {
+                            <div class="sp-success-item">
+                                <img src="@(item.ImageUrl ?? "/images/favicon/parfait-logo.png")" alt="@item.Name" />
+                                <div>
+                                    <h3>@item.Name</h3>
+                                    <p>Size @item.Size · Qty @item.Quantity</p>
+                                    <strong>@Money(item.LineTotalCents)</strong>
+                                </div>
+                            </div>
+                        }
+                    </div>
+
+                    <div class="sp-success-block-grid">
+                        <article class="sp-success-block">
+                            <span class="sp-success-block-label">Shipping To</span>
+                            <strong>@order.FirstName @order.LastName</strong>
+                            <p class="sp-shipping-block">
+                                @order.AddressLine1<br />
+                                @if (!string.IsNullOrWhiteSpace(order.AddressLine2))
+                                {
+                                    @order.AddressLine2<br />
+                                }
+                                @order.City, @order.State @order.PostalCode
+                            </p>
+                        </article>
+
+                        <article class="sp-success-block">
+                            <span class="sp-success-block-label">Order Contact</span>
+                            <strong>@order.Email</strong>
+                            <p class="sp-shipping-block">
+                                @order.Phone
+                            </p>
+                        </article>
+                    </div>
+                </section>
             }
         </div>
     </div>

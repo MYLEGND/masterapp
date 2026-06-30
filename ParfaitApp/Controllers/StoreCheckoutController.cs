@@ -10,6 +10,7 @@ public sealed class StoreCheckoutController : Controller
     private readonly IConfiguration _configuration;
     private readonly ParfaitProductService _products;
     private readonly ParfaitOrderService _orders;
+    private readonly ParfaitCustomerAutomationService _automations;
     private readonly SquarePaymentService _squarePayments;
     private readonly IGraphMailService _mail;
     private readonly ParfaitAnalyticsService _analytics;
@@ -19,6 +20,7 @@ public sealed class StoreCheckoutController : Controller
         IConfiguration configuration,
         ParfaitProductService products,
         ParfaitOrderService orders,
+        ParfaitCustomerAutomationService automations,
         SquarePaymentService squarePayments,
         IGraphMailService mail,
         ParfaitAnalyticsService analytics,
@@ -27,6 +29,7 @@ public sealed class StoreCheckoutController : Controller
         _configuration = configuration;
         _products = products;
         _orders = orders;
+        _automations = automations;
         _squarePayments = squarePayments;
         _mail = mail;
         _analytics = analytics;
@@ -50,6 +53,18 @@ public sealed class StoreCheckoutController : Controller
         request.Items ??= [];
 
         return Ok(_products.QuoteCart(request.Items, request.DiscountCode));
+    }
+
+    [HttpPost("checkout/lead")]
+    [ValidateAntiForgeryToken]
+    public IActionResult CaptureLead([FromBody] ParfaitAutomationCheckoutLeadCaptureRequest request)
+    {
+        request ??= new ParfaitAutomationCheckoutLeadCaptureRequest();
+        request.Items ??= [];
+
+        var quote = _products.QuoteCart(request.Items, request.DiscountCode);
+        _automations.CaptureCheckoutLead(request, quote);
+        return NoContent();
     }
 
     [HttpPost("checkout/pay")]
@@ -167,6 +182,7 @@ public sealed class StoreCheckoutController : Controller
         paidOrder.SquarePaymentId = payment.PaymentId;
         paidOrder.PaymentStatus = "Paid";
         paidOrder.Status = "Paid";
+        _automations.MarkOrderConverted(paidOrder);
 
         try
         {
@@ -189,11 +205,19 @@ public sealed class StoreCheckoutController : Controller
         try
         {
             await _mail.SendOrderReceiptAsync(paidOrder, ct);
+        }
+        catch
+        {
+            // Payment succeeded. Receipt failure should not reverse the customer purchase.
+        }
+
+        try
+        {
             await _mail.SendOrderNotificationAsync(paidOrder, ct);
         }
         catch
         {
-            // Payment succeeded. Email failure should not reverse the customer purchase.
+            // Payment succeeded. Internal notification failure should not reverse the customer purchase.
         }
 
         return Ok(new ParfaitCheckoutPayResponse

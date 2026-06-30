@@ -95,7 +95,7 @@ public sealed class ParfaitCustomerAutomationService
                                 dispatch.WorkflowId == workflow.Id &&
                                 string.Equals(dispatch.Status, "Sent", StringComparison.OrdinalIgnoreCase))
                             .OrderByDescending(dispatch => dispatch.OccurredUtc)
-                            .Select(dispatch => dispatch.OccurredUtc)
+                            .Select(dispatch => (DateTime?)dispatch.OccurredUtc)
                             .FirstOrDefault(),
                         Tone = workflow.IsActive
                             ? workflow.TriggerType == ParfaitAutomationTriggerTypes.AbandonedCart ? "warning" : "success"

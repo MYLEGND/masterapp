@@ -97,6 +97,7 @@ builder.Services.AddDbContext<MasterAppDbContext>(options =>
 
 builder.Services.AddSingleton<ParfaitProductService>();
 builder.Services.AddSingleton<ParfaitOrderService>();
+builder.Services.AddSingleton<ParfaitCustomerAutomationService>();
 builder.Services.AddSingleton<IParfaitInternalPageRegistry, ParfaitInternalPageRegistry>();
 builder.Services.AddScoped<IParfaitTeamAccessService, ParfaitTeamAccessService>();
 builder.Services.AddHttpClient<SquarePaymentService>();
@@ -109,6 +110,7 @@ builder.Services.AddScoped<IGraphMailService, GraphMailService>();
 builder.Services.AddSingleton<ParfaitMetaCapiCredentialProtector>();
 builder.Services.AddScoped<IParfaitBusinessProfileService, ParfaitBusinessProfileService>();
 builder.Services.AddScoped<IParfaitMetaAdsOAuthService, ParfaitMetaAdsOAuthService>();
+builder.Services.AddHostedService<ParfaitCustomerAutomationHostedService>();
 
 static bool TryResolveCanonicalHost(HttpRequest request, out HostString host)
 {

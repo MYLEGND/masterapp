@@ -442,6 +442,7 @@ public sealed class ParfaitTeamAccessService : IParfaitTeamAccessService
             ParfaitTeamRoles.Analyst => ResolveExistingKeys(assignablePages,
                 "/internal/dashboard",
                 "/internal/marketing",
+                "/internal/marketing/automations",
                 "/internal/content",
                 "/internal/analytics"),
             _ => ResolveExistingKeys(assignablePages, "/internal/dashboard")

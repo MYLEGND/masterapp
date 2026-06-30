@@ -13,6 +13,7 @@ public sealed class InternalModulesController : Controller
     private readonly ParfaitProductService _products;
     private readonly ParfaitOrderService _orders;
     private readonly ParfaitAnalyticsDashboardService _analyticsDashboard;
+    private readonly ParfaitCustomerAutomationService _automations;
     private readonly ParfaitInternalWorkspaceService _workspace;
     private readonly IGraphMailService _mail;
 
@@ -20,12 +21,14 @@ public sealed class InternalModulesController : Controller
         ParfaitProductService products,
         ParfaitOrderService orders,
         ParfaitAnalyticsDashboardService analyticsDashboard,
+        ParfaitCustomerAutomationService automations,
         ParfaitInternalWorkspaceService workspace,
         IGraphMailService mail)
     {
         _products = products;
         _orders = orders;
         _analyticsDashboard = analyticsDashboard;
+        _automations = automations;
         _workspace = workspace;
         _mail = mail;
     }
@@ -249,6 +252,45 @@ public sealed class InternalModulesController : Controller
         1)]
     public async Task<IActionResult> Marketing(CancellationToken ct) => View(await _workspace.GetSnapshotAsync(ct));
 
+    [HttpGet("marketing/automations")]
+    [ParfaitInternalPage(
+        "Automations",
+        "Growth",
+        "Customer automation, cart recovery, and lifecycle messaging controls.",
+        4,
+        2)]
+    public IActionResult Automations()
+    {
+        return View(_automations.GetWorkspaceViewModel());
+    }
+
+    [HttpPost("marketing/automations/workflows")]
+    [ValidateAntiForgeryToken]
+    public IActionResult SaveAutomationWorkflow(ParfaitAutomationWorkflowEditorInput input)
+    {
+        if (!ModelState.IsValid)
+        {
+            TempData["AutomationStatus"] = "Workflow needs the required details before it can be saved.";
+            TempData["AutomationStatusTone"] = "danger";
+            return RedirectToAction(nameof(Automations));
+        }
+
+        _automations.SaveWorkflow(input);
+        TempData["AutomationStatus"] = "Automation saved.";
+        TempData["AutomationStatusTone"] = "success";
+        return RedirectToAction(nameof(Automations));
+    }
+
+    [HttpPost("marketing/automations/workflows/delete")]
+    [ValidateAntiForgeryToken]
+    public IActionResult DeleteAutomationWorkflow(Guid id)
+    {
+        _automations.DeleteWorkflow(id);
+        TempData["AutomationStatus"] = "Automation deleted.";
+        TempData["AutomationStatusTone"] = "success";
+        return RedirectToAction(nameof(Automations));
+    }
+
     [HttpGet("content")]
     [ParfaitInternalPage(
         "Content",
@@ -264,7 +306,7 @@ public sealed class InternalModulesController : Controller
         "Growth",
         "Internal funnel reporting and ecommerce event intelligence.",
         4,
-        2)]
+        3)]
     public async Task<IActionResult> Analytics(CancellationToken ct)
     {
         return View(await _analyticsDashboard.GetDashboardAsync(ct));
