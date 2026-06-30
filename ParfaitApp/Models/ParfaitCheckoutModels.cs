@@ -26,6 +26,7 @@ public sealed class ParfaitCheckoutCustomerRequest
 public sealed class ParfaitCheckoutPayRequest
 {
     public string? SourceId { get; set; }
+    public string? CheckoutAttemptId { get; set; }
     public string? DiscountCode { get; set; }
     public ParfaitCheckoutCustomerRequest Customer { get; set; } = new();
     public List<ParfaitCheckoutItemRequest> Items { get; set; } = [];
@@ -109,6 +110,9 @@ public sealed class ParfaitOrderRecord
     public string PaymentStatus { get; set; } = "Pending";
     public string FulfillmentStatus { get; set; } = "Unfulfilled";
     public string ReturnStatus { get; set; } = "None";
+    public string? CheckoutAttemptId { get; set; }
+    public bool IsPaymentProcessing { get; set; }
+    public DateTime? PaymentProcessingStartedUtc { get; set; }
 
     public string? SquarePaymentId { get; set; }
     public string? SquareError { get; set; }
@@ -146,6 +150,7 @@ public sealed class ParfaitOrderRecord
     public bool IsPaid => string.Equals(PaymentStatus, "Paid", StringComparison.OrdinalIgnoreCase);
     public bool IsPendingPayment => string.Equals(PaymentStatus, "Pending", StringComparison.OrdinalIgnoreCase);
     public bool IsFailedPayment => string.Equals(PaymentStatus, "Failed", StringComparison.OrdinalIgnoreCase);
+    public bool HasActivePaymentProcessing => IsPaymentProcessing && !IsPaid;
     public bool IsRefundedPayment => string.Equals(PaymentStatus, "Refunded", StringComparison.OrdinalIgnoreCase) || RefundedCents > 0;
     public bool HasReturnWork => !string.Equals(ReturnStatus, "None", StringComparison.OrdinalIgnoreCase)
         && !string.Equals(ReturnStatus, "Closed", StringComparison.OrdinalIgnoreCase);

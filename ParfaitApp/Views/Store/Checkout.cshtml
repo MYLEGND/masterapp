@@ -96,7 +96,8 @@
 
                 <div class="sp-checkout-submit-row">
                     <button id="spPayButton" class="sp-button sp-button--primary" type="button">
-                        Complete Purchase
+                        <span id="spPaySpinner" class="spinner-border spinner-border-sm" role="status" aria-hidden="true" hidden></span>
+                        <span id="spPayButtonLabel">Complete Purchase</span>
                     </button>
                 </div>
 
@@ -134,6 +135,8 @@
             const appId = @Html.Raw(appIdJson);
             const locationId = @Html.Raw(locationIdJson);
             const payButton = document.getElementById("spPayButton");
+            const paySpinner = document.getElementById("spPaySpinner");
+            const payButtonLabel = document.getElementById("spPayButtonLabel");
             const errorHost = document.getElementById("spCheckoutError");
             const summaryHost = document.getElementById("spCheckoutSummary");
             const tokenInput = document.querySelector('input[name="__RequestVerificationToken"]');
@@ -141,13 +144,15 @@
             const applyDiscountButton = document.getElementById("spCheckoutApplyDiscount");
             const clearDiscountButton = document.getElementById("spCheckoutClearDiscount");
 
-            if (!store || !payButton || !errorHost || !summaryHost || !discountInput) {
+            if (!store || !payButton || !paySpinner || !payButtonLabel || !errorHost || !summaryHost || !discountInput) {
                 return;
             }
 
             let latestQuote = null;
             let card = null;
             let syncMessage = "";
+            let isSubmitting = false;
+            const checkoutAttemptStorageKey = "parfaitCheckoutAttemptId";
 
             const fields = {
                 firstName: document.getElementById("firstName"),
@@ -165,6 +170,45 @@
                 "firstName", "lastName", "email", "phone",
                 "addressLine1", "city", "state", "postalCode"
             ];
+
+            const createCheckoutAttemptId = () => {
+                if (window.crypto?.randomUUID) {
+                    return window.crypto.randomUUID();
+                }
+
+                return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 12)}`;
+            };
+
+            const ensureCheckoutAttemptId = () => {
+                let current = window.sessionStorage.getItem(checkoutAttemptStorageKey);
+                if (!current) {
+                    current = createCheckoutAttemptId();
+                    window.sessionStorage.setItem(checkoutAttemptStorageKey, current);
+                }
+
+                return current;
+            };
+
+            const clearCheckoutAttemptId = () => {
+                window.sessionStorage.removeItem(checkoutAttemptStorageKey);
+            };
+
+            const setPayButtonAvailability = isAvailable => {
+                if (isSubmitting) {
+                    return;
+                }
+
+                payButton.disabled = !isAvailable;
+                payButton.classList.toggle("is-disabled", !isAvailable);
+            };
+
+            const setSubmittingState = (submitting, label) => {
+                isSubmitting = submitting;
+                payButton.disabled = submitting || !latestQuote?.isValid;
+                payButton.classList.toggle("is-disabled", payButton.disabled);
+                paySpinner.hidden = !submitting;
+                payButtonLabel.textContent = label;
+            };
 
             const quoteItems = cart => cart.map(item => ({
                 id: item.id,
@@ -214,6 +258,7 @@
                 discountInput.value = store.readDiscountCode();
 
                 if (!quote?.items?.length || !quote.items.some(item => Number(item.quantity || 0) > 0)) {
+                    clearCheckoutAttemptId();
                     summaryHost.innerHTML = `
                         <div class="sp-cart-empty">
                             <h2>Your cart is empty</h2>
@@ -222,8 +267,7 @@
                             </div>
                         </div>
                     `;
-                    payButton.disabled = true;
-                    payButton.classList.add("is-disabled");
+                    setPayButtonAvailability(false);
                     return;
                 }
 
@@ -263,11 +307,9 @@
                 `;
 
                 if (quote.isValid) {
-                    payButton.disabled = false;
-                    payButton.classList.remove("is-disabled");
+                    setPayButtonAvailability(true);
                 } else {
-                    payButton.disabled = true;
-                    payButton.classList.add("is-disabled");
+                    setPayButtonAvailability(false);
                 }
             };
 
@@ -345,10 +387,14 @@
                 const payments = window.Square.payments(appId, locationId);
                 card = await payments.card();
                 await card.attach("#card-container");
+                ensureCheckoutAttemptId();
 
                 payButton.addEventListener("click", async () => {
-                    payButton.disabled = true;
-                    payButton.classList.add("is-disabled");
+                    if (isSubmitting) {
+                        return;
+                    }
+
+                    setSubmittingState(true, "Processing payment...");
                     errorHost.textContent = "";
 
                     try {
@@ -365,6 +411,7 @@
 
                         const payload = {
                             sourceId: result.token,
+                            checkoutAttemptId: ensureCheckoutAttemptId(),
                             discountCode: store.readDiscountCode(),
                             customer: getCustomer(),
                             items: quote.items
@@ -392,21 +439,18 @@
                             throw new Error(data.error || "Payment failed.");
                         }
 
+                        clearCheckoutAttemptId();
                         store.clearCart();
                         store.clearDiscountCode();
                         window.location.href = data.redirectUrl || "/store/success";
                     } catch (error) {
                         errorHost.textContent = error.message || "Payment failed.";
-                        if (latestQuote?.isValid) {
-                            payButton.disabled = false;
-                            payButton.classList.remove("is-disabled");
-                        }
+                        setSubmittingState(false, "Complete Purchase");
                     }
                 });
 
                 if (!firstQuote?.isValid) {
-                    payButton.disabled = true;
-                    payButton.classList.add("is-disabled");
+                    setPayButtonAvailability(false);
                 }
             }
 
@@ -434,8 +478,7 @@
 
             startSquare().catch(error => {
                 errorHost.textContent = error.message || "Square checkout failed to initialize.";
-                payButton.disabled = true;
-                payButton.classList.add("is-disabled");
+                setPayButtonAvailability(false);
             });
         })();
     </script>

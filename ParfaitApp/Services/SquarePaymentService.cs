@@ -19,6 +19,7 @@ public sealed class SquarePaymentService
         string sourceId,
         int amountCents,
         string note,
+        string idempotencyKey,
         CancellationToken ct = default)
     {
         var accessToken = _configuration["Square:AccessToken"];
@@ -34,6 +35,9 @@ public sealed class SquarePaymentService
         if (amountCents <= 0)
             return (false, null, "Cart total must be greater than zero.");
 
+        if (string.IsNullOrWhiteSpace(idempotencyKey))
+            return (false, null, "Square payment idempotency key is missing.");
+
         var baseUrl = environment.Equals("Production", StringComparison.OrdinalIgnoreCase)
             ? "https://connect.squareup.com"
             : "https://connect.squareupsandbox.com";
@@ -45,7 +49,7 @@ public sealed class SquarePaymentService
 
         var body = new
         {
-            idempotency_key = Guid.NewGuid().ToString("N"),
+            idempotency_key = idempotencyKey,
             source_id = sourceId,
             location_id = locationId,
             amount_money = new

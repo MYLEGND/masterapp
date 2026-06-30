@@ -56,6 +56,11 @@ public sealed class StoreCheckoutController : Controller
     [ValidateAntiForgeryToken]
     public async Task<IActionResult> Pay([FromBody] ParfaitCheckoutPayRequest request, CancellationToken ct)
     {
+        if (string.IsNullOrWhiteSpace(request.CheckoutAttemptId))
+        {
+            return BadRequest(new ParfaitCheckoutPayResponse { Success = false, Error = "Checkout session expired. Refresh and try again." });
+        }
+
         var validationError = ValidateCustomer(request.Customer);
         if (!string.IsNullOrWhiteSpace(validationError))
         {
@@ -84,7 +89,8 @@ public sealed class StoreCheckoutController : Controller
             return BadRequest(new ParfaitCheckoutPayResponse { Success = false, Error = "No valid cart items were found." });
         }
 
-        var order = _orders.CreatePendingOrder(
+        var paymentStart = _orders.BeginCheckoutPayment(
+            request.CheckoutAttemptId,
             request.Customer,
             validatedItems,
             quote.SubtotalCents,
@@ -95,14 +101,52 @@ public sealed class StoreCheckoutController : Controller
             quote.TaxCents,
             HttpContext);
 
+        if (paymentStart.State == CheckoutPaymentStartState.AlreadyPaid)
+        {
+            return Ok(new ParfaitCheckoutPayResponse
+            {
+                Success = true,
+                OrderNumber = paymentStart.Order.OrderNumber,
+                RedirectUrl = $"/store/success?orderNumber={Uri.EscapeDataString(paymentStart.Order.OrderNumber)}"
+            });
+        }
+
+        if (paymentStart.State == CheckoutPaymentStartState.AlreadyProcessing)
+        {
+            return Conflict(new ParfaitCheckoutPayResponse
+            {
+                Success = false,
+                OrderNumber = paymentStart.Order.OrderNumber,
+                Error = "Payment is already processing for this order. Please wait."
+            });
+        }
+
+        var order = paymentStart.Order;
+
         var note = $"{order.OrderNumber}: " + string.Join(", ",
             order.Items.Select(i => $"{i.Name} / {i.Size} x{i.Quantity}"));
 
-        var payment = await _squarePayments.CreatePaymentAsync(
-            request.SourceId,
-            order.TotalCents,
-            note,
-            ct);
+        (bool Success, string? PaymentId, string? Error) payment;
+        try
+        {
+            payment = await _squarePayments.CreatePaymentAsync(
+                request.SourceId,
+                order.TotalCents,
+                note,
+                order.OrderNumber,
+                ct);
+        }
+        catch (Exception)
+        {
+            _orders.MarkPaymentFailed(order.OrderNumber, "Square payment request could not be completed.");
+
+            return StatusCode(StatusCodes.Status503ServiceUnavailable, new ParfaitCheckoutPayResponse
+            {
+                Success = false,
+                OrderNumber = order.OrderNumber,
+                Error = "Payment could not be completed right now. Please try again."
+            });
+        }
 
         if (!payment.Success)
         {
