@@ -19,6 +19,7 @@ public interface IGraphMailService
 
     Task SendOrderReceiptAsync(ParfaitOrderRecord order, CancellationToken ct = default);
     Task SendOrderNotificationAsync(ParfaitOrderRecord order, CancellationToken ct = default);
+    Task SendAutomationEmailAsync(string toEmail, string subject, string htmlBody, CancellationToken ct = default);
     Task SendParfaitTeamInviteAsync(
         string toEmail,
         string displayName,
@@ -31,6 +32,7 @@ public interface IGraphMailService
 
 public class GraphMailService : IGraphMailService
 {
+    private const string DefaultParfaitOrdersInbox = "parfait@mylegnd.com";
     private readonly IConfiguration _config;
     private readonly ILogger<GraphMailService> _logger;
 
@@ -108,7 +110,7 @@ $@"
 </div>
 ";
 
-        await SendMailAsync(graph, senderUpn, inbox, internalSubject, internalHtml);
+        await SendMailAsync(graph, senderUpn, [inbox], internalSubject, internalHtml);
 
         // 2) Confirmation to the client (optional but recommended)
         var clientSubject = $"We received your message — {siteName}";
@@ -138,7 +140,7 @@ $@"
 
         try
         {
-            await SendMailAsync(graph, senderUpn, email.Trim(), clientSubject, clientHtml);
+            await SendMailAsync(graph, senderUpn, [email.Trim()], clientSubject, clientHtml);
         }
         catch (Exception ex)
         {
@@ -200,18 +202,22 @@ $@"
   </p>
 </div>";
 
-        await SendMailAsync(graph, senderUpn, order.Email, $"Your {siteName} order {order.OrderNumber}", html);
+        await SendMailAsync(graph, senderUpn, [order.Email], $"Your {siteName} order {order.OrderNumber}", html, ct);
     }
 
     public async Task SendOrderNotificationAsync(ParfaitOrderRecord order, CancellationToken ct = default)
     {
         var senderUpn = ResolveSenderUpn();
-        var inbox = (_config["Commerce:OrdersInbox"] ?? _config["Contact:RecipientEmail"] ?? _config["GraphMail:NotifyInbox"] ?? "").Trim();
         var siteName = (_config["Contact:WebsiteName"] ?? "Shop Parfait").Trim();
+        var inboxes = ResolveRecipients(
+            DefaultParfaitOrdersInbox,
+            _config["Commerce:OrdersInbox"],
+            _config["Contact:RecipientEmail"],
+            _config["GraphMail:NotifyInbox"]);
 
         if (string.IsNullOrWhiteSpace(senderUpn))
             throw new InvalidOperationException("Missing SenderUpn/Contact:SenderEmail config.");
-        if (string.IsNullOrWhiteSpace(inbox))
+        if (inboxes.Count == 0)
             throw new InvalidOperationException("Missing Commerce:OrdersInbox/Contact:RecipientEmail/NotifyInbox config.");
 
         var graph = BuildClient();
@@ -252,7 +258,17 @@ $@"
   </p>
 </div>";
 
-        await SendMailAsync(graph, senderUpn, inbox, $"[{siteName}] New paid order {order.OrderNumber}", html);
+        await SendMailAsync(graph, senderUpn, inboxes, $"[{siteName}] New paid order {order.OrderNumber}", html, ct);
+    }
+
+    public async Task SendAutomationEmailAsync(string toEmail, string subject, string htmlBody, CancellationToken ct = default)
+    {
+        var senderUpn = ResolveSenderUpn();
+        if (string.IsNullOrWhiteSpace(senderUpn))
+            throw new InvalidOperationException("Missing SenderUpn/Contact:SenderEmail config.");
+
+        var graph = BuildClient();
+        await SendMailAsync(graph, senderUpn, [toEmail.Trim()], subject.Trim(), htmlBody, ct);
     }
 
     public async Task SendParfaitTeamInviteAsync(
@@ -316,7 +332,27 @@ $@"
   </p>
 </div>";
 
-        await SendMailAsync(graph, senderUpn, toEmail.Trim(), $"Your Parfait internal invite", html);
+        await SendMailAsync(graph, senderUpn, [toEmail.Trim()], $"Your Parfait internal invite", html, ct);
+    }
+
+    private static IReadOnlyList<string> ResolveRecipients(params string?[] rawValues)
+    {
+        var recipients = new List<string>();
+        foreach (var rawValue in rawValues)
+        {
+            if (string.IsNullOrWhiteSpace(rawValue))
+                continue;
+
+            foreach (var candidate in rawValue.Split([';', ','], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+            {
+                if (!recipients.Contains(candidate, StringComparer.OrdinalIgnoreCase))
+                {
+                    recipients.Add(candidate);
+                }
+            }
+        }
+
+        return recipients;
     }
 
     private string ResolveSenderUpn(params string?[] preferredValues)
@@ -339,7 +375,13 @@ $@"
         return string.Empty;
     }
 
-    private static async Task SendMailAsync(GraphServiceClient graph, string senderUpn, string to, string subject, string htmlBody)
+    private static async Task SendMailAsync(
+        GraphServiceClient graph,
+        string senderUpn,
+        IReadOnlyCollection<string> recipients,
+        string subject,
+        string htmlBody,
+        CancellationToken ct = default)
     {
         var msg = new Message
         {
@@ -349,13 +391,13 @@ $@"
                 ContentType = BodyType.Html,
                 Content = htmlBody
             },
-            ToRecipients = new List<Recipient>
-            {
-                new Recipient
+            ToRecipients = recipients
+                .Where(value => !string.IsNullOrWhiteSpace(value))
+                .Select(value => new Recipient
                 {
-                    EmailAddress = new EmailAddress { Address = to }
-                }
-            }
+                    EmailAddress = new EmailAddress { Address = value.Trim() }
+                })
+                .ToList()
         };
 
         var body = new SendMailPostRequestBody
@@ -364,6 +406,6 @@ $@"
             SaveToSentItems = true
         };
 
-        await graph.Users[senderUpn].SendMail.PostAsync(body);
+        await graph.Users[senderUpn].SendMail.PostAsync(body, cancellationToken: ct);
     }
 }

@@ -21,7 +21,9 @@ public static class MetaSignalAnalyticsAliasCatalog
         new("scroll_depth_100", "MeaningfulScroll"),
         new("page_exit", "RapidBounce"),
         new("dead_click", "DeadClick"),
-        new("rage_click", "RageClick")
+        new("rage_click", "RageClick"),
+        new("AddToCart", "AddToCart"),
+        new("CheckoutStarted", "InitiateCheckout")
     ];
 
     private static readonly ReadOnlyDictionary<string, MetaSignalAnalyticsAliasDefinition> DefinitionsByNameInternal =

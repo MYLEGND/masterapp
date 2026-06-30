@@ -40,6 +40,8 @@ public static class MetaSignalEventCatalog
         new("ApplicationSubmitted", "conversion", false, true),
         new("PolicyIssued", "conversion", false, true),
         new("PolicyPaid", "conversion", false, true),
+        new("AddToCart", "conversion", false, true),
+        new("InitiateCheckout", "conversion", false, true),
         new("Purchase", "conversion", false, true)
     ];
 
