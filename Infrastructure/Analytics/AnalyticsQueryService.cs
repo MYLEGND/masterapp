@@ -23,18 +23,16 @@ public sealed class AnalyticsQueryService : IAnalyticsQueryService
     private const double TrimFractionPerSide = 0.025;               // 2.5% each tail
     private const int TrimMinimumSampleSize = 20;
     private readonly string? _envFilter; // normalized ("prod","dev") or null for legacy fallback
-    private readonly AgentPortal.Services.Tracking.AgentTrackingResolver _resolver;
 
     private readonly MasterAppDbContext _db;
 
-    public AnalyticsQueryService(MasterAppDbContext db, IConfiguration config, AgentPortal.Services.Tracking.AgentTrackingResolver resolver)
+    public AnalyticsQueryService(MasterAppDbContext db, IConfiguration config)
     {
         _db = db;
         var configuredFilter = NormalizeEnv(config["Analytics:EnvironmentFilter"] ?? config["Analytics__EnvironmentFilter"]);
         var runtimeEnvironment = NormalizeEnv(Environment.GetEnvironmentVariable("ASPNETCORE_ENVIRONMENT"));
         // In production, default to strict production filtering if no explicit filter is configured.
         _envFilter = configuredFilter ?? (runtimeEnvironment == "prod" ? "prod" : null);
-        _resolver = resolver;
     }
 
     private IQueryable<AnalyticsEvent> BaseEvents(TimeRangeRequest range, ScopeContext scope, Guid[]? scopedAgentIds = null)

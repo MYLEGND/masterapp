@@ -90,8 +90,7 @@ public class WebsiteAnalyticsInitialQualityModeTests
         landingRoutes.Setup(x => x.GetBaseUrl()).Returns("https://example.com");
         landingRoutes.Setup(x => x.GetAllRoutes()).Returns(Array.Empty<LandingRouteDefinition>());
 
-        var resolver = new AgentTrackingResolver(db, NullLogger<AgentTrackingResolver>.Instance);
-        var analytics = new AnalyticsQueryService(db, analyticsConfig, resolver);
+        var analytics = new AnalyticsQueryService(db, analyticsConfig);
         var metaAds = Mock.Of<IMetaAdsService>();
         var metaSignalAnalytics = Mock.Of<IMetaSignalAnalyticsService>();
         var aiDataBuilder = new WebsiteAnalyticsAiDataBuilder(

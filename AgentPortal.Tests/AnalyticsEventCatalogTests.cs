@@ -195,7 +195,7 @@ public class AnalyticsEventCatalogTests
             Path.Combine(GetRepoRoot(), "Protect-Website", "Controllers", "CommercialQuoteController.cs"),
             Path.Combine(GetRepoRoot(), "Protect-Website", "Controllers", "LifeQuoteController.cs"),
             Path.Combine(GetRepoRoot(), "Protect-Website", "Controllers", "ThankYouController.cs"),
-            Path.Combine(GetRepoRoot(), "AgentPortal", "Services", "Analytics", "AnalyticsQueryService.cs")
+            Path.Combine(GetRepoRoot(), "Infrastructure", "Analytics", "AnalyticsQueryService.cs")
         };
 
         var unknownEvents = new HashSet<string>(StringComparer.OrdinalIgnoreCase);

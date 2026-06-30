@@ -6,7 +6,7 @@ using Domain.Entities;
 
 namespace AgentPortal.Services.Analytics;
 
-internal static class TrafficQualityBucketFilters
+public static class TrafficQualityBucketFilters
 {
     public const string RealHumanTrafficClientValue = "real_human_traffic";
     public const string LikelyHumanClientValue = "likely_human";

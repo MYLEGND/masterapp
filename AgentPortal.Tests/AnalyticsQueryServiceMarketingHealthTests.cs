@@ -5,7 +5,6 @@ using System.Text.Json;
 using System.Threading.Tasks;
 using AgentPortal.Models.Analytics;
 using AgentPortal.Services.Analytics;
-using AgentPortal.Services.Tracking;
 using Domain.Entities;
 using Infrastructure.Data;
 using Microsoft.Extensions.Configuration;
@@ -26,8 +25,7 @@ public class AnalyticsQueryServiceMarketingHealthTests
             })
             .Build();
 
-        var resolver = new AgentTrackingResolver(db, NullLogger<AgentTrackingResolver>.Instance);
-        return new AnalyticsQueryService(db, config, resolver);
+        return new AnalyticsQueryService(db, config);
     }
 
     private static TimeRangeRequest BuildRange(DateTime nowUtc) => new()
