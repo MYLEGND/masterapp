@@ -358,8 +358,6 @@
                     return;
                 }
 
-                lastLeadSignature = signature;
-
                 try {
                     await fetch("/store/checkout/lead", {
                         method: "POST",
@@ -369,6 +367,7 @@
                         },
                         body: signature
                     });
+                    lastLeadSignature = signature;
                 } catch {
                     // Lead capture should never interrupt checkout.
                 }
