@@ -443,6 +443,7 @@
                 card = await payments.card();
                 await card.attach("#card-container");
                 ensureCheckoutAttemptId();
+                window.setTimeout(queueLeadCapture, 650);
 
                 payButton.addEventListener("click", async () => {
                     if (isSubmitting) {
