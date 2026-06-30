@@ -49,13 +49,13 @@
                 }
 
                 <a class="nav-link @Active("Home")" asp-controller="Home" asp-action="Index">Home</a>
-                <a class="nav-link @Active("TrainingPackages")" asp-controller="TrainingPackages" asp-action="Index">Training</a>
-                <a class="nav-link @Active("Contact")" asp-controller="Contact" asp-action="Index">Contact</a>
-                <a class="nav-link @Active("About")" asp-controller="About" asp-action="About">About Us</a>
+                <a class="nav-link @Active("TrainingPackages")" asp-controller="TrainingPackages" asp-action="Index" target="_blank" rel="noopener">Training</a>
+                <a class="nav-link @Active("Contact")" asp-controller="Contact" asp-action="Index" target="_blank" rel="noopener">Contact</a>
+                <a class="nav-link @Active("About")" asp-controller="About" asp-action="About" target="_blank" rel="noopener">About Us</a>
 
                 <!-- Store + Login (same right-side group) -->
-                <a class="nav-link @Active("Store")" href="/store">Shop</a>
-                <a class="nav-link nav-icon-link pf-store-cart-link" href="/store/cart" aria-label="Shopping cart">
+                <a class="nav-link @Active("Store")" href="/store" target="_blank" rel="noopener">Shop</a>
+                <a class="nav-link nav-icon-link pf-store-cart-link" href="/store/cart" target="_blank" rel="noopener" aria-label="Shopping cart">
                     <svg class="nav-icon pf-cart-icon" viewBox="0 0 24 24" fill="none" aria-hidden="true">
                         <path d="M6.5 6.5h15l-1.8 8.2a2 2 0 0 1-2 1.6H9.2a2 2 0 0 1-2-1.7L5.7 3.8H3" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
                         <circle cx="9.8" cy="20" r="1.2" stroke-width="2"/>
@@ -63,7 +63,7 @@
                     </svg>
                     <span class="pf-cart-count" id="pfStoreCartCount">0</span>
                 </a>
-                <a class="nav-link nav-icon-link login-link" href="/internal/login" rel="noopener" aria-label="Team login">
+                <a class="nav-link nav-icon-link login-link" href="/internal/login" target="_blank" rel="noopener" aria-label="Team login">
                     <svg class="nav-icon pf-account-icon" viewBox="0 0 24 24" fill="none" aria-hidden="true">
                         <circle cx="12" cy="8" r="4" stroke-width="2"/>
                         <path d="M4.5 21a7.5 7.5 0 0 1 15 0" stroke-width="2" stroke-linecap="round"/>
