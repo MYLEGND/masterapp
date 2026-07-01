@@ -1,49 +1,409 @@
-@model ParfaitApp.Models.ParfaitAnalyticsDashboardViewModel
+@model ParfaitApp.Models.ParfaitInternalAnalyticsViewModel
 @{
     ViewData["Title"] = "Analytics";
     Layout = "_InternalLayout";
 
     static string Money(int cents) => "$" + (cents / 100m).ToString("0.00");
-    static string Percent(decimal value) => value.ToString("0.0") + "%";
+    static string Rate(decimal value) => value.ToString("0.0") + "%";
     static string ShortId(string? value, int visible = 10)
     {
         if (string.IsNullOrWhiteSpace(value))
-        {
             return "—";
-        }
 
         var trimmed = value.Trim();
-        return trimmed.Length <= visible
-            ? trimmed
-            : trimmed[..visible] + "…";
+        return trimmed.Length <= visible ? trimmed : trimmed[..visible] + "…";
     }
+
+    static string LocalTime(DateTime utc) => utc.ToLocalTime().ToString("M/d/yyyy h:mm tt");
+
+    static string DwellLabel(double milliseconds)
+    {
+        if (milliseconds <= 0)
+            return "0 sec";
+
+        if (milliseconds >= 60000)
+            return (milliseconds / 60000d).ToString("0.0") + " min";
+
+        return (milliseconds / 1000d).ToString("0.0") + " sec";
+    }
+
+    var metaConnectUrl = Url.Action("MetaConnect", "InternalModules", new
+    {
+        returnUrl = Url.Action("Analytics", "InternalModules", new { preset = Model.SelectedPreset })
+    }) ?? "/internal/analytics/meta-connect";
+    var metaTone = Model.MetaSettings.HasActiveMetaAdsConnection
+        ? "success"
+        : string.IsNullOrWhiteSpace(Model.MetaSettings.MetaPixelId) ? "danger" : "warning";
+    var revenueTone = Model.RevenueCents > 0 ? "success" : "warning";
+    var healthIssues = Model.MetaHealth.FailureDetection.Where(issue => issue.Count > 0).Take(4).ToList();
+    var purchaseBreakdown = Model.ActionBreakdowns.FirstOrDefault(action => action.Key == "purchase");
+    var checkoutBreakdown = Model.ActionBreakdowns.FirstOrDefault(action => action.Key == "checkout-started");
 }
 
 <section class="pf-command-page">
     <header class="pf-command-head">
         <div class="pf-command-copy">
             <h1 class="pf-command-title">Analytics</h1>
+            <p class="pf-command-text">@Model.RangeLabel</p>
         </div>
         <div class="pf-command-meta">
             <span class="pf-command-badge is-info">@Model.Sessions sessions</span>
             <span class="pf-command-badge is-success">@Model.Purchases purchases</span>
-            <span class="pf-command-badge is-@(Model.RevenueCents > 0 ? "success" : "warning")">@Money(Model.RevenueCents) tracked</span>
+            <span class="pf-command-badge is-@revenueTone">@Money(Model.RevenueCents) revenue</span>
+            <span class="pf-command-badge is-@metaTone">Meta @(Model.MetaSettings.HasActiveMetaAdsConnection ? "connected" : "pending")</span>
         </div>
     </header>
+
+    <div class="pf-command-board-actions">
+        <a class="@(Model.SelectedPreset == "today" ? "pf-action" : "pf-secondary-action")" href="@Url.Action("Analytics", "InternalModules", new { preset = "today" })">Today</a>
+        <a class="@(Model.SelectedPreset == "7d" ? "pf-action" : "pf-secondary-action")" href="@Url.Action("Analytics", "InternalModules", new { preset = "7d" })">7 Days</a>
+        <a class="@(Model.SelectedPreset == "30d" ? "pf-action" : "pf-secondary-action")" href="@Url.Action("Analytics", "InternalModules", new { preset = "30d" })">30 Days</a>
+        <a class="@(Model.SelectedPreset == "month" ? "pf-action" : "pf-secondary-action")" href="@Url.Action("Analytics", "InternalModules", new { preset = "month" })">Month</a>
+        <a class="@(Model.SelectedPreset == "year" ? "pf-action" : "pf-secondary-action")" href="@Url.Action("Analytics", "InternalModules", new { preset = "year" })">Year</a>
+    </div>
+
+    @if (TempData["AnalyticsStatus"] is string analyticsStatus)
+    {
+        <div class="pf-alert-success">@analyticsStatus</div>
+    }
+
+    <section class="pf-command-board">
+        <div class="pf-command-board-head">
+            <div>
+                <h2>Performance Command Deck</h2>
+            </div>
+        </div>
+
+        <div class="pf-focus-grid">
+            <article class="pf-focus-card is-info pf-span-3">
+                <div class="pf-focus-label">Traffic Pulse</div>
+                <h3 class="pf-focus-title">Sessions</h3>
+                <div class="pf-focus-value">@Model.Summary.Sessions</div>
+                <div class="pf-focus-list">
+                    <div>
+                        <span>Page Views</span>
+                        <strong>@Model.Summary.PageViews</strong>
+                    </div>
+                    <div>
+                        <span>Visitors</span>
+                        <strong>@Model.Visitors</strong>
+                    </div>
+                </div>
+            </article>
+
+            <article class="pf-focus-card is-success pf-span-3">
+                <div class="pf-focus-label">Revenue</div>
+                <h3 class="pf-focus-title">Commerce</h3>
+                <div class="pf-focus-value">@Money(Model.RevenueCents)</div>
+                <div class="pf-focus-list">
+                    <div>
+                        <span>Orders</span>
+                        <strong>@Model.Orders</strong>
+                    </div>
+                    <div>
+                        <span>AOV</span>
+                        <strong>@Money(Model.AverageOrderValueCents)</strong>
+                    </div>
+                </div>
+            </article>
+
+            <article class="pf-focus-card is-warning pf-span-3">
+                <div class="pf-focus-label">Commerce Funnel</div>
+                <h3 class="pf-focus-title">Checkout</h3>
+                <div class="pf-focus-value">@Rate(checkoutBreakdown?.ConversionRate ?? 0m)</div>
+                <div class="pf-focus-list">
+                    <div>
+                        <span>Cart Abandonment</span>
+                        <strong>@Model.CartAbandonmentSessions</strong>
+                    </div>
+                    <div>
+                        <span>Purchases</span>
+                        <strong>@Model.Purchases</strong>
+                    </div>
+                </div>
+            </article>
+
+            <article class="pf-focus-card is-@metaTone pf-span-3">
+                <div class="pf-focus-label">Meta Signal</div>
+                <h3 class="pf-focus-title">Pipeline</h3>
+                <div class="pf-focus-value">@Model.MetaSignal.TotalSignalEvents</div>
+                <div class="pf-focus-list">
+                    <div>
+                        <span>Server Sent</span>
+                        <strong>@Model.MetaHealth.PipelineHealth.MetaServerSentCount</strong>
+                    </div>
+                    <div>
+                        <span>Browser Sent</span>
+                        <strong>@Model.MetaHealth.PipelineHealth.MetaBrowserSentCount</strong>
+                    </div>
+                </div>
+            </article>
+        </div>
+    </section>
+
+    <section class="pf-command-board">
+        <div class="pf-command-board-head">
+            <div>
+                <h2>Analysis Modules</h2>
+            </div>
+        </div>
+
+        <div class="pf-module-list">
+            <button type="button" class="pf-module-row pf-analytics-trigger is-info" data-pf-open="pfAnalyticsTrafficModal">
+                <div class="pf-module-row-main">
+                    <h3>Traffic Overview</h3>
+                    <p>Top pages, entry pages, live activity, and source volume for the Parfait storefront.</p>
+                </div>
+                <div class="pf-module-row-metrics">
+                    <div class="pf-module-row-metric">
+                        <span>Top Pages</span>
+                        <strong>@Model.Traffic.TopPages.Count</strong>
+                    </div>
+                    <div class="pf-module-row-metric">
+                        <span>Recent Activity</span>
+                        <strong>@Model.Traffic.RecentActivity.Count</strong>
+                    </div>
+                </div>
+                <div class="pf-module-row-actions">
+                    <span class="pf-secondary-action">Open Module</span>
+                </div>
+            </button>
+
+            <button type="button" class="pf-module-row pf-analytics-trigger is-info" data-pf-open="pfAnalyticsPageModal">
+                <div class="pf-module-row-main">
+                    <h3>Page Performance</h3>
+                    <p>View counts, CTA movement, and page-level conversion pace across the public site.</p>
+                </div>
+                <div class="pf-module-row-metrics">
+                    <div class="pf-module-row-metric">
+                        <span>Tracked Pages</span>
+                        <strong>@Model.PagePerformance.Rows.Count</strong>
+                    </div>
+                    <div class="pf-module-row-metric">
+                        <span>CTA Rows</span>
+                        <strong>@Model.CtaPerformance.Rows.Count</strong>
+                    </div>
+                </div>
+                <div class="pf-module-row-actions">
+                    <span class="pf-secondary-action">Open Module</span>
+                </div>
+            </button>
+
+            <button type="button" class="pf-module-row pf-analytics-trigger is-info" data-pf-open="pfAnalyticsSourceModal">
+                <div class="pf-module-row-main">
+                    <h3>Source Attribution</h3>
+                    <p>Session source, campaign, dwell, and conversion readiness without duplicating attribution logic.</p>
+                </div>
+                <div class="pf-module-row-metrics">
+                    <div class="pf-module-row-metric">
+                        <span>Source Rows</span>
+                        <strong>@Model.Sources.Rows.Count</strong>
+                    </div>
+                    <div class="pf-module-row-metric">
+                        <span>Campaigns</span>
+                        <strong>@Model.Traffic.TopCampaigns.Count</strong>
+                    </div>
+                </div>
+                <div class="pf-module-row-actions">
+                    <span class="pf-secondary-action">Open Module</span>
+                </div>
+            </button>
+
+            <button type="button" class="pf-module-row pf-analytics-trigger is-warning" data-pf-open="pfAnalyticsJourneyModal">
+                <div class="pf-module-row-main">
+                    <h3>Journey</h3>
+                    <p>Entry flow, drop-off pressure, and conversion-adjacent pages using the shared path analysis engine.</p>
+                </div>
+                <div class="pf-module-row-metrics">
+                    <div class="pf-module-row-metric">
+                        <span>Landing Pages</span>
+                        <strong>@Model.Journey.TopLandingPages.Count</strong>
+                    </div>
+                    <div class="pf-module-row-metric">
+                        <span>Drop-Off Pages</span>
+                        <strong>@Model.Journey.CommonDropOffPages.Count</strong>
+                    </div>
+                </div>
+                <div class="pf-module-row-actions">
+                    <span class="pf-secondary-action">Open Module</span>
+                </div>
+            </button>
+
+            <button type="button" class="pf-module-row pf-analytics-trigger is-warning" data-pf-open="pfAnalyticsTimeModal">
+                <div class="pf-module-row-main">
+                    <h3>Time On Page</h3>
+                    <p>Longest dwell, shortest visits, and the pages that hold or lose attention fastest.</p>
+                </div>
+                <div class="pf-module-row-metrics">
+                    <div class="pf-module-row-metric">
+                        <span>Page Views</span>
+                        <strong>@Model.TimeOnPage.TotalPageViews</strong>
+                    </div>
+                    <div class="pf-module-row-metric">
+                        <span>Timing Samples</span>
+                        <strong>@Model.TimeOnPage.TotalTimingSamples</strong>
+                    </div>
+                </div>
+                <div class="pf-module-row-actions">
+                    <span class="pf-secondary-action">Open Module</span>
+                </div>
+            </button>
+
+            <button type="button" class="pf-module-row pf-analytics-trigger is-danger" data-pf-open="pfAnalyticsExitModal">
+                <div class="pf-module-row-main">
+                    <h3>Exit Analysis</h3>
+                    <p>Identify the exit-heavy pages and the quickest abandonment points across tracked sessions.</p>
+                </div>
+                <div class="pf-module-row-metrics">
+                    <div class="pf-module-row-metric">
+                        <span>Exit Pages</span>
+                        <strong>@Model.ExitAnalysis.TopExitPages.Count</strong>
+                    </div>
+                    <div class="pf-module-row-metric">
+                        <span>Quick Exits</span>
+                        <strong>@Model.ExitAnalysis.QuickExitPages.Count</strong>
+                    </div>
+                </div>
+                <div class="pf-module-row-actions">
+                    <span class="pf-secondary-action">Open Module</span>
+                </div>
+            </button>
+
+            <button type="button" class="pf-module-row pf-analytics-trigger is-info" data-pf-open="pfAnalyticsScrollModal">
+                <div class="pf-module-row-main">
+                    <h3>Scroll Depth</h3>
+                    <p>Review how far visitors move down each page before they stall or finish the content.</p>
+                </div>
+                <div class="pf-module-row-metrics">
+                    <div class="pf-module-row-metric">
+                        <span>Tracked Pages</span>
+                        <strong>@Model.ScrollAnalysis.Rows.Count</strong>
+                    </div>
+                    <div class="pf-module-row-metric">
+                        <span>Total Sessions</span>
+                        <strong>@Model.Sessions</strong>
+                    </div>
+                </div>
+                <div class="pf-module-row-actions">
+                    <span class="pf-secondary-action">Open Module</span>
+                </div>
+            </button>
+
+            <button type="button" class="pf-module-row pf-analytics-trigger is-success" data-pf-open="pfAnalyticsLandingModal">
+                <div class="pf-module-row-main">
+                    <h3>Landing Pages</h3>
+                    <p>See which entry pages attract, engage, and convert best inside the Parfait storefront.</p>
+                </div>
+                <div class="pf-module-row-metrics">
+                    <div class="pf-module-row-metric">
+                        <span>Entry Rows</span>
+                        <strong>@Model.LandingPages.Rows.Count</strong>
+                    </div>
+                    <div class="pf-module-row-metric">
+                        <span>Top Entry</span>
+                        <strong>@(Model.LandingPages.Rows.FirstOrDefault()?.PageKey ?? "—")</strong>
+                    </div>
+                </div>
+                <div class="pf-module-row-actions">
+                    <span class="pf-secondary-action">Open Module</span>
+                </div>
+            </button>
+
+            <button type="button" class="pf-module-row pf-analytics-trigger is-info" data-pf-open="pfAnalyticsDeviceModal">
+                <div class="pf-module-row-main">
+                    <h3>Device Intelligence</h3>
+                    <p>Device, browser, operating system, language, and timezone behavior in one inspection layer.</p>
+                </div>
+                <div class="pf-module-row-metrics">
+                    <div class="pf-module-row-metric">
+                        <span>Devices</span>
+                        <strong>@Model.Devices.Devices.Count</strong>
+                    </div>
+                    <div class="pf-module-row-metric">
+                        <span>Browsers</span>
+                        <strong>@Model.Devices.Browsers.Count</strong>
+                    </div>
+                </div>
+                <div class="pf-module-row-actions">
+                    <span class="pf-secondary-action">Open Module</span>
+                </div>
+            </button>
+
+            <button type="button" class="pf-module-row pf-analytics-trigger is-@metaTone" data-pf-open="pfAnalyticsMetaModal">
+                <div class="pf-module-row-main">
+                    <h3>Meta Signal Intelligence</h3>
+                    <p>Bridge coverage, deduplication, event ladder, friction hotspots, and recent Meta diagnostics.</p>
+                </div>
+                <div class="pf-module-row-metrics">
+                    <div class="pf-module-row-metric">
+                        <span>Signal Events</span>
+                        <strong>@Model.MetaSignal.TotalSignalEvents</strong>
+                    </div>
+                    <div class="pf-module-row-metric">
+                        <span>Recent Diagnostics</span>
+                        <strong>@Model.MetaSignal.RecentDiagnostics.Count</strong>
+                    </div>
+                </div>
+                <div class="pf-module-row-actions">
+                    <span class="pf-secondary-action">Open Module</span>
+                </div>
+            </button>
+
+            <button type="button" class="pf-module-row pf-analytics-trigger is-@metaTone" data-pf-open="pfAnalyticsMetaCampaignsModal">
+                <div class="pf-module-row-main">
+                    <h3>Meta Campaigns</h3>
+                    <p>Shared Meta Ads campaign reporting for spend, clicks, CTR, CPC, CPM, purchases, revenue, and ROAS.</p>
+                </div>
+                <div class="pf-module-row-metrics">
+                    <div class="pf-module-row-metric">
+                        <span>Connection</span>
+                        <strong>@(Model.MetaSettings.HasActiveMetaAdsConnection ? "Live" : "Pending")</strong>
+                    </div>
+                    <div class="pf-module-row-metric">
+                        <span>Account</span>
+                        <strong>@(Model.MetaSettings.AccountName ?? Model.MetaSettings.AccountId ?? "—")</strong>
+                    </div>
+                </div>
+                <div class="pf-module-row-actions">
+                    <span class="pf-secondary-action">Open Module</span>
+                </div>
+            </button>
+
+            <button type="button" class="pf-module-row pf-analytics-trigger is-warning" data-pf-open="pfAnalyticsRawModal">
+                <div class="pf-module-row-main">
+                    <h3>Raw Event Inspector</h3>
+                    <p>Review normalized event rows, order ties, attribution values, and raw JSON from the tracked funnel.</p>
+                </div>
+                <div class="pf-module-row-metrics">
+                    <div class="pf-module-row-metric">
+                        <span>Recent Events</span>
+                        <strong>@Model.RecentEvents.Count</strong>
+                    </div>
+                    <div class="pf-module-row-metric">
+                        <span>Recent Orders</span>
+                        <strong>@Model.RecentOrders.Count</strong>
+                    </div>
+                </div>
+                <div class="pf-module-row-actions">
+                    <span class="pf-secondary-action">Open Module</span>
+                </div>
+            </button>
+        </div>
+    </section>
 
     <section class="pf-command-rail">
         <article class="pf-rail-card is-info pf-span-2">
             <div class="pf-rail-label">Visitors</div>
             <strong class="pf-rail-value">@Model.Visitors</strong>
-            <p class="pf-rail-note">@Model.Sessions sessions across the tracked Parfait storefront.</p>
+            <p class="pf-rail-note">@Model.NewCustomers new · @Model.ReturningCustomers returning</p>
             <div class="pf-rail-grid">
                 <div>
-                    <span>Purchases</span>
-                    <strong>@Model.Purchases</strong>
+                    <span>Revenue / Visitor</span>
+                    <strong>@Model.RevenuePerVisitor.ToString("C")</strong>
                 </div>
                 <div>
-                    <span>Revenue</span>
-                    <strong>@Money(Model.RevenueCents)</strong>
+                    <span>Revenue / Session</span>
+                    <strong>@Model.RevenuePerSession.ToString("C")</strong>
                 </div>
             </div>
         </article>
@@ -67,6 +427,375 @@
                 </div>
             </button>
         }
+    </section>
+
+    <section class="pf-workspace-grid">
+        <article class="pf-module-card pf-span-6">
+            <div class="pf-commerce-panel-head">
+                <h2>Top Pages</h2>
+                <span>@Model.PagePerformance.Rows.Count rows</span>
+            </div>
+            @if (Model.PagePerformance.Rows.Count == 0)
+            {
+                <div class="text-muted">No tracked page performance rows yet.</div>
+            }
+            else
+            {
+                <div class="pf-analytics-table-wrap">
+                    <table class="table align-middle pf-analytics-table">
+                        <thead>
+                            <tr>
+                                <th>Page</th>
+                                <th>Views</th>
+                                <th>CTA</th>
+                                <th>Conv.</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                        @foreach (var row in Model.PagePerformance.Rows.Take(8))
+                        {
+                            <tr>
+                                <td><strong>@row.PageKey</strong></td>
+                                <td>@row.Views</td>
+                                <td>@row.CtaClicks</td>
+                                <td>@Rate(row.ConversionRate)</td>
+                            </tr>
+                        }
+                        </tbody>
+                    </table>
+                </div>
+            }
+        </article>
+
+        <article class="pf-module-card pf-span-6">
+            <div class="pf-commerce-panel-head">
+                <h2>Top Products</h2>
+                <span>@Model.TopProducts.Count products</span>
+            </div>
+            @if (Model.TopProducts.Count == 0)
+            {
+                <div class="text-muted">No product-linked purchase activity yet.</div>
+            }
+            else
+            {
+                <div class="pf-analytics-table-wrap">
+                    <table class="table align-middle pf-analytics-table">
+                        <thead>
+                            <tr>
+                                <th>Product</th>
+                                <th>Revenue</th>
+                                <th>Units</th>
+                                <th>Views</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                        @foreach (var row in Model.TopProducts)
+                        {
+                            <tr>
+                                <td><strong>@row.ProductName</strong></td>
+                                <td>@Money(row.RevenueCents)</td>
+                                <td>@row.UnitsSold</td>
+                                <td>@row.ProductViews</td>
+                            </tr>
+                        }
+                        </tbody>
+                    </table>
+                </div>
+            }
+        </article>
+
+        <article class="pf-module-card pf-span-6">
+            <div class="pf-commerce-panel-head">
+                <h2>Source Attribution</h2>
+                <span>@Model.Sources.Rows.Count rows</span>
+            </div>
+            @if (Model.Sources.Rows.Count == 0)
+            {
+                <div class="text-muted">No attributed traffic rows yet.</div>
+            }
+            else
+            {
+                <div class="pf-analytics-table-wrap">
+                    <table class="table align-middle pf-analytics-table">
+                        <thead>
+                            <tr>
+                                <th>Source</th>
+                                <th>Campaign</th>
+                                <th>Sessions</th>
+                                <th>Conv.</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                        @foreach (var row in Model.Sources.Rows.Take(8))
+                        {
+                            <tr>
+                                <td><strong>@row.Source</strong></td>
+                                <td>@(string.IsNullOrWhiteSpace(row.Campaign) ? "—" : row.Campaign)</td>
+                                <td>@row.Sessions</td>
+                                <td>@Rate(row.SessionConversionRate)</td>
+                            </tr>
+                        }
+                        </tbody>
+                    </table>
+                </div>
+            }
+        </article>
+
+        <article class="pf-module-card pf-span-6">
+            <div class="pf-commerce-panel-head">
+                <h2>Recent Orders</h2>
+                <span>@Model.RecentOrders.Count orders</span>
+            </div>
+            @if (Model.RecentOrders.Count == 0)
+            {
+                <div class="text-muted">No tracked orders in this window.</div>
+            }
+            else
+            {
+                <div class="pf-analytics-table-wrap">
+                    <table class="table align-middle pf-analytics-table">
+                        <thead>
+                            <tr>
+                                <th>Order</th>
+                                <th>Customer</th>
+                                <th>Net</th>
+                                <th>Status</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                        @foreach (var row in Model.RecentOrders)
+                        {
+                            <tr>
+                                <td>
+                                    <strong>@row.OrderNumber</strong>
+                                    <div class="text-muted">@LocalTime(row.CreatedUtc)</div>
+                                </td>
+                                <td>
+                                    <strong>@row.CustomerName</strong>
+                                    <div class="text-muted">@row.Email</div>
+                                </td>
+                                <td>@Money(row.NetRevenueCents)</td>
+                                <td>@row.PaymentStatus / @row.FulfillmentStatus</td>
+                            </tr>
+                        }
+                        </tbody>
+                    </table>
+                </div>
+            }
+        </article>
+
+        <article class="pf-module-card pf-span-6">
+            <div class="pf-commerce-panel-head">
+                <h2>Live Activity</h2>
+                <span>@Model.Traffic.RecentActivity.Count rows</span>
+            </div>
+            @if (Model.Traffic.RecentActivity.Count == 0)
+            {
+                <div class="text-muted">No recent storefront activity yet.</div>
+            }
+            else
+            {
+                <div class="pf-analytics-table-wrap">
+                    <table class="table align-middle pf-analytics-table">
+                        <thead>
+                            <tr>
+                                <th>Time</th>
+                                <th>Event</th>
+                                <th>Page</th>
+                                <th>Outcome</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                        @foreach (var row in Model.Traffic.RecentActivity.Take(10))
+                        {
+                            <tr>
+                                <td>@LocalTime(row.EventUtc)</td>
+                                <td><strong>@row.EventType</strong></td>
+                                <td>@(row.PageKey ?? "—")</td>
+                                <td>@(row.OutcomeSummary ?? "—")</td>
+                            </tr>
+                        }
+                        </tbody>
+                    </table>
+                </div>
+            }
+        </article>
+
+        <article class="pf-module-card pf-span-6">
+            <div class="pf-commerce-panel-head">
+                <h2>Meta Command</h2>
+                <span>@Model.MetaSettings.DatasetStatus</span>
+            </div>
+
+            <form id="pfAnalyticsMetaForm"
+                  asp-action="SaveAnalyticsMetaSettings"
+                  asp-controller="InternalModules"
+                  asp-route-preset="@Model.SelectedPreset"
+                  method="post">
+                @Html.AntiForgeryToken()
+
+                <div class="row g-3">
+                    <div class="col-md-6">
+                        <label asp-for="MetaSettings.MetaPixelId" class="form-label fw-bold"></label>
+                        <input asp-for="MetaSettings.MetaPixelId" class="form-control" autocomplete="off" inputmode="numeric" />
+                        <span asp-validation-for="MetaSettings.MetaPixelId" class="text-danger small"></span>
+                    </div>
+                    <div class="col-md-6">
+                        <label asp-for="MetaSettings.MetaTestEventCode" class="form-label fw-bold"></label>
+                        <input asp-for="MetaSettings.MetaTestEventCode" class="form-control" autocomplete="off" />
+                        <span asp-validation-for="MetaSettings.MetaTestEventCode" class="text-danger small"></span>
+                    </div>
+                </div>
+
+                <div class="pf-focus-list mt-3">
+                    <div>
+                        <span>Connection</span>
+                        <strong>@Model.MetaSettings.MetaConnectionLabel</strong>
+                    </div>
+                    <div>
+                        <span>Pixel</span>
+                        <strong>@Model.MetaSettings.MetaPixelStatus</strong>
+                    </div>
+                    <div>
+                        <span>Dataset</span>
+                        <strong>@Model.MetaSettings.DatasetStatus</strong>
+                    </div>
+                    <div>
+                        <span>CAPI</span>
+                        <strong>@Model.MetaSettings.MetaCapiStatus</strong>
+                    </div>
+                    <div>
+                        <span>Account</span>
+                        <strong>@(Model.MetaSettings.AccountName ?? Model.MetaSettings.AccountId ?? "—")</strong>
+                    </div>
+                    <div>
+                        <span>Last Sync</span>
+                        <strong>@Model.MetaSettings.LastSyncLabel</strong>
+                    </div>
+                </div>
+
+                <div id="pfMetaConnectionStatus" class="small fw-semibold mt-3 @(Model.MetaSettings.HasActiveMetaAdsConnection ? "text-success" : "text-muted")">
+                    @Model.MetaSettings.MetaConnectionLabel
+                </div>
+
+                <div class="pf-focus-actions mt-3">
+                    <button type="submit" class="pf-action">Save Meta</button>
+                    <a class="pf-secondary-action" id="pfMetaConnectButton" href="@metaConnectUrl">@(Model.MetaSettings.HasActiveMetaAdsConnection ? "Reconnect Meta" : "Connect Meta")</a>
+                    <button id="pfMetaDisconnectButton"
+                            type="button"
+                            class="pf-secondary-action"
+                            style="@(Model.MetaSettings.HasActiveMetaAdsConnection ? null : "display:none;")">
+                        Disconnect
+                    </button>
+                </div>
+            </form>
+        </article>
+
+        <article class="pf-module-card pf-span-12">
+            <div class="pf-commerce-panel-head">
+                <h2>Meta Diagnostics</h2>
+                <span>@Model.MetaHealth.RangeLabel</span>
+            </div>
+
+            <div class="pf-focus-grid">
+                <article class="pf-focus-card is-info pf-span-3">
+                    <div class="pf-focus-label">Signal</div>
+                    <h3 class="pf-focus-title">Recent Sends</h3>
+                    <div class="pf-focus-value">@Model.MetaSignal.TotalSignalEvents</div>
+                    <div class="pf-focus-list">
+                        <div>
+                            <span>Visitors</span>
+                            <strong>@Model.MetaSignal.TotalVisitors</strong>
+                        </div>
+                        <div>
+                            <span>High Intent</span>
+                            <strong>@Model.MetaSignal.LeadReadyVisitors</strong>
+                        </div>
+                    </div>
+                </article>
+
+                <article class="pf-focus-card is-@(healthIssues.Count > 0 ? "warning" : "success") pf-span-3">
+                    <div class="pf-focus-label">Pipeline</div>
+                    <h3 class="pf-focus-title">Server Sends</h3>
+                    <div class="pf-focus-value">@Model.MetaHealth.PipelineHealth.MetaServerSentCount</div>
+                    <div class="pf-focus-list">
+                        <div>
+                            <span>Browser Events</span>
+                            <strong>@Model.MetaHealth.PipelineHealth.MetaBrowserSentCount</strong>
+                        </div>
+                        <div>
+                            <span>Dispatcher Window</span>
+                            <strong>@Model.MetaHealth.DispatcherGraceMinutes min</strong>
+                        </div>
+                    </div>
+                </article>
+
+                <article class="pf-focus-card is-success pf-span-3">
+                    <div class="pf-focus-label">Bridge</div>
+                    <h3 class="pf-focus-title">Owned Rows</h3>
+                    <div class="pf-focus-value">@Model.MetaHealth.PipelineHealth.BridgeOwnedMetaSignalEventsLast24Hours</div>
+                    <div class="pf-focus-list">
+                        <div>
+                            <span>Analytics 24h</span>
+                            <strong>@Model.MetaHealth.PipelineHealth.AnalyticsEventsLast24Hours</strong>
+                        </div>
+                        <div>
+                            <span>Eligible 24h</span>
+                            <strong>@Model.MetaHealth.PipelineHealth.BridgeEligibleAnalyticsEventsLast24Hours</strong>
+                        </div>
+                    </div>
+                </article>
+
+                <article class="pf-focus-card is-warning pf-span-3">
+                    <div class="pf-focus-label">Failures</div>
+                    <h3 class="pf-focus-title">Watchlist</h3>
+                    <div class="pf-focus-value">@healthIssues.Sum(issue => issue.Count)</div>
+                    <div class="pf-focus-list">
+                        @if (healthIssues.Count == 0)
+                        {
+                            <div>
+                                <span>Status</span>
+                                <strong>Healthy</strong>
+                            </div>
+                        }
+                        else
+                        {
+                            @foreach (var issue in healthIssues.Take(2))
+                            {
+                                <div>
+                                    <span>@issue.Label</span>
+                                    <strong>@issue.Count</strong>
+                                </div>
+                            }
+                        }
+                    </div>
+                </article>
+            </div>
+
+            <div class="pf-analytics-table-wrap mt-3">
+                <table class="table align-middle pf-analytics-table">
+                    <thead>
+                        <tr>
+                            <th>Time</th>
+                            <th>Event</th>
+                            <th>Source</th>
+                            <th>Status</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                    @foreach (var row in Model.MetaHealth.RecentEvents.Take(8))
+                    {
+                        <tr>
+                            <td>@LocalTime(row.CreatedUtc)</td>
+                            <td><strong>@row.EventName</strong></td>
+                            <td>@row.SourceLabel</td>
+                            <td>@row.DispatcherStatus / @row.MetaServerStatus</td>
+                        </tr>
+                    }
+                    </tbody>
+                </table>
+            </div>
+        </article>
     </section>
 </section>
 
@@ -121,7 +850,7 @@
                             }
                             <article>
                                 <span>Conversion</span>
-                                <strong>@Percent(action.ConversionRate)</strong>
+                                <strong>@Rate(action.ConversionRate)</strong>
                                 <small>@action.ConversionLabel</small>
                             </article>
                             @if (action.RevenueCents > 0)
@@ -144,7 +873,7 @@
 
                         @if (action.ProductRows.Count == 0)
                         {
-                            <div class="text-muted">No product-linked @action.Label.ToLowerInvariant() activity is tracked yet.</div>
+                            <div class="text-muted">No product-linked activity yet.</div>
                         }
                         else
                         {
@@ -181,7 +910,7 @@
 
                         @if (action.Events.Count == 0)
                         {
-                            <div class="text-muted">No @action.Label.ToLowerInvariant() activity has been captured yet.</div>
+                            <div class="text-muted">No tracked events yet.</div>
                         }
                         else
                         {
@@ -202,8 +931,14 @@
                                         @foreach (var item in action.Events)
                                         {
                                             <tr>
-                                                <td>@item.EventUtc.ToLocalTime().ToString("M/d/yyyy h:mm tt")</td>
-                                                <td><strong>@(item.ProductName ?? "—")</strong></td>
+                                                <td>@LocalTime(item.EventUtc)</td>
+                                                <td>
+                                                    <strong>@(item.ProductName ?? "—")</strong>
+                                                    @if (!string.IsNullOrWhiteSpace(item.OrderNumber))
+                                                    {
+                                                        <div class="text-muted">@item.OrderNumber</div>
+                                                    }
+                                                </td>
                                                 <td>@(item.Size ?? "—")</td>
                                                 <td>@(item.Quantity?.ToString() ?? "—")</td>
                                                 <td>@(item.ValueCents.HasValue ? Money(item.ValueCents.Value) : "—")</td>
@@ -222,9 +957,1099 @@
     </div>
 }
 
+<div class="pf-analytics-modal" id="pfAnalyticsTrafficModal" aria-hidden="true">
+    <div class="pf-modal-dialog pf-modal-xl">
+        <div class="pf-modal-content pf-analytics-shell is-info">
+            <div class="pf-modal-header">
+                <div>
+                    <h2 class="modal-title">Traffic Overview</h2>
+                    <div class="pf-analytics-modal-meta">
+                        <span class="pf-command-badge is-info">@Model.Sessions sessions</span>
+                        <span class="pf-command-badge is-info">@Model.Summary.PageViews page views</span>
+                        <span class="pf-command-badge is-success">@Model.Visitors visitors</span>
+                    </div>
+                </div>
+                <button type="button" class="btn-close" data-pf-close aria-label="Close"></button>
+            </div>
+            <div class="pf-modal-body">
+                <section class="pf-analytics-modal-section">
+                    <div class="pf-analytics-stat-strip">
+                        <article>
+                            <span>Paid Sessions</span>
+                            <strong>@Model.Traffic.PaidSessionCount</strong>
+                        </article>
+                        <article>
+                            <span>Non-Paid Sessions</span>
+                            <strong>@Model.Traffic.NonPaidSessionCount</strong>
+                        </article>
+                        <article>
+                            <span>Unknown Sessions</span>
+                            <strong>@Model.Traffic.UnknownSessionCount</strong>
+                        </article>
+                    </div>
+                </section>
+
+                <section class="pf-analytics-modal-section">
+                    <div class="pf-analytics-product-grid">
+                        <article class="pf-analytics-product-card">
+                            <strong>Top Pages</strong>
+                            <div class="pf-focus-list">
+                                @foreach (var row in Model.Traffic.TopPages.Take(6))
+                                {
+                                    <div>
+                                        <span>@row.Key</span>
+                                        <strong>@row.Count</strong>
+                                    </div>
+                                }
+                            </div>
+                        </article>
+
+                        <article class="pf-analytics-product-card">
+                            <strong>Entry Pages</strong>
+                            <div class="pf-focus-list">
+                                @foreach (var row in Model.Traffic.EntryPages.Take(6))
+                                {
+                                    <div>
+                                        <span>@row.Key</span>
+                                        <strong>@row.Count</strong>
+                                    </div>
+                                }
+                            </div>
+                        </article>
+
+                        <article class="pf-analytics-product-card">
+                            <strong>Top Sources</strong>
+                            <div class="pf-focus-list">
+                                @foreach (var row in Model.Traffic.TopSources.Take(6))
+                                {
+                                    <div>
+                                        <span>@row.Key</span>
+                                        <strong>@row.Count</strong>
+                                    </div>
+                                }
+                            </div>
+                        </article>
+
+                        <article class="pf-analytics-product-card">
+                            <strong>Top Campaigns</strong>
+                            <div class="pf-focus-list">
+                                @if (Model.Traffic.TopCampaigns.Count == 0)
+                                {
+                                    <div>
+                                        <span>Status</span>
+                                        <strong>None</strong>
+                                    </div>
+                                }
+                                else
+                                {
+                                    @foreach (var row in Model.Traffic.TopCampaigns.Take(6))
+                                    {
+                                        <div>
+                                            <span>@row.Key</span>
+                                            <strong>@row.Count</strong>
+                                        </div>
+                                    }
+                                }
+                            </div>
+                        </article>
+                    </div>
+                </section>
+
+                <section class="pf-analytics-modal-section">
+                    <div class="pf-commerce-panel-head">
+                        <h2>Recent Activity</h2>
+                        <span>@Model.Traffic.RecentActivity.Count rows</span>
+                    </div>
+                    <div class="pf-analytics-table-wrap">
+                        <table class="table align-middle pf-analytics-table">
+                            <thead>
+                                <tr>
+                                    <th>Time</th>
+                                    <th>Event</th>
+                                    <th>Page</th>
+                                    <th>Summary</th>
+                                    <th>Outcome</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                            @foreach (var row in Model.Traffic.RecentActivity.Take(12))
+                            {
+                                <tr>
+                                    <td>@LocalTime(row.EventUtc)</td>
+                                    <td><strong>@row.EventType</strong></td>
+                                    <td>@(row.PageKey ?? "—")</td>
+                                    <td>@(row.ActivitySummary ?? "—")</td>
+                                    <td>@(row.OutcomeSummary ?? "—")</td>
+                                </tr>
+                            }
+                            </tbody>
+                        </table>
+                    </div>
+                </section>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="pf-analytics-modal" id="pfAnalyticsPageModal" aria-hidden="true">
+    <div class="pf-modal-dialog pf-modal-xl">
+        <div class="pf-modal-content pf-analytics-shell is-info">
+            <div class="pf-modal-header">
+                <div>
+                    <h2 class="modal-title">Page Performance</h2>
+                    <div class="pf-analytics-modal-meta">
+                        <span class="pf-command-badge is-info">@Model.PagePerformance.Rows.Count pages</span>
+                        <span class="pf-command-badge is-info">@Model.CtaPerformance.Rows.Count CTA rows</span>
+                    </div>
+                </div>
+                <button type="button" class="btn-close" data-pf-close aria-label="Close"></button>
+            </div>
+            <div class="pf-modal-body">
+                <section class="pf-analytics-modal-section">
+                    <div class="pf-commerce-panel-head">
+                        <h2>Page Performance</h2>
+                        <span>@Model.PagePerformance.Rows.Count rows</span>
+                    </div>
+                    <div class="pf-analytics-table-wrap">
+                        <table class="table align-middle pf-analytics-table">
+                            <thead>
+                                <tr>
+                                    <th>Page</th>
+                                    <th>Views</th>
+                                    <th>CTA Clicks</th>
+                                    <th>Conversions</th>
+                                    <th>Conversion</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                            @foreach (var row in Model.PagePerformance.Rows)
+                            {
+                                <tr>
+                                    <td><strong>@row.PageKey</strong></td>
+                                    <td>@row.Views</td>
+                                    <td>@row.CtaClicks</td>
+                                    <td>@row.Leads</td>
+                                    <td>@Rate(row.ConversionRate)</td>
+                                </tr>
+                            }
+                            </tbody>
+                        </table>
+                    </div>
+                </section>
+
+                <section class="pf-analytics-modal-section">
+                    <div class="pf-commerce-panel-head">
+                        <h2>CTA Performance</h2>
+                        <span>@Model.CtaPerformance.Rows.Count rows</span>
+                    </div>
+                    <div class="pf-analytics-table-wrap">
+                        <table class="table align-middle pf-analytics-table">
+                            <thead>
+                                <tr>
+                                    <th>Page</th>
+                                    <th>CTA</th>
+                                    <th>Clicks</th>
+                                    <th>Unique Sessions</th>
+                                    <th>Click-To-Conversion</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                            @foreach (var row in Model.CtaPerformance.Rows.Take(18))
+                            {
+                                <tr>
+                                    <td>@row.PageKey</td>
+                                    <td><strong>@row.ElementKey</strong></td>
+                                    <td>@row.Clicks</td>
+                                    <td>@row.UniqueClickSessions</td>
+                                    <td>@(row.ClickToLeadRate.HasValue ? Rate(row.ClickToLeadRate.Value) : "—")</td>
+                                </tr>
+                            }
+                            </tbody>
+                        </table>
+                    </div>
+                </section>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="pf-analytics-modal" id="pfAnalyticsSourceModal" aria-hidden="true">
+    <div class="pf-modal-dialog pf-modal-xl">
+        <div class="pf-modal-content pf-analytics-shell is-info">
+            <div class="pf-modal-header">
+                <div>
+                    <h2 class="modal-title">Source Attribution</h2>
+                    <div class="pf-analytics-modal-meta">
+                        <span class="pf-command-badge is-info">@Model.Sources.Rows.Count source rows</span>
+                        <span class="pf-command-badge is-info">@Model.Traffic.TopCampaigns.Count campaigns</span>
+                    </div>
+                </div>
+                <button type="button" class="btn-close" data-pf-close aria-label="Close"></button>
+            </div>
+            <div class="pf-modal-body">
+                <div class="pf-analytics-table-wrap">
+                    <table class="table align-middle pf-analytics-table">
+                        <thead>
+                            <tr>
+                                <th>Source</th>
+                                <th>Medium</th>
+                                <th>Campaign</th>
+                                <th>Landing</th>
+                                <th>Sessions</th>
+                                <th>Engaged</th>
+                                <th>Conversion</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                        @foreach (var row in Model.Sources.Rows.Take(24))
+                        {
+                            <tr>
+                                <td><strong>@row.Source</strong></td>
+                                <td>@(string.IsNullOrWhiteSpace(row.Medium) ? "—" : row.Medium)</td>
+                                <td>@(string.IsNullOrWhiteSpace(row.Campaign) ? "—" : row.Campaign)</td>
+                                <td>@(string.IsNullOrWhiteSpace(row.LandingPage) ? "—" : row.LandingPage)</td>
+                                <td>@row.Sessions</td>
+                                <td>@row.EngagedSessions</td>
+                                <td>@Rate(row.SessionConversionRate)</td>
+                            </tr>
+                        }
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="pf-analytics-modal" id="pfAnalyticsJourneyModal" aria-hidden="true">
+    <div class="pf-modal-dialog pf-modal-xl">
+        <div class="pf-modal-content pf-analytics-shell is-warning">
+            <div class="pf-modal-header">
+                <div>
+                    <h2 class="modal-title">Journey</h2>
+                    <div class="pf-analytics-modal-meta">
+                        <span class="pf-command-badge is-warning">@Model.Journey.TopLandingPages.Count landing pages</span>
+                        <span class="pf-command-badge is-danger">@Model.Journey.CommonDropOffPages.Count drop-off pages</span>
+                    </div>
+                </div>
+                <button type="button" class="btn-close" data-pf-close aria-label="Close"></button>
+            </div>
+            <div class="pf-modal-body">
+                <div class="pf-analytics-product-grid">
+                    <article class="pf-analytics-product-card">
+                        <strong>Top Landing Pages</strong>
+                        <div class="pf-focus-list">
+                            @foreach (var row in Model.Journey.TopLandingPages.Take(8))
+                            {
+                                <div>
+                                    <span>@row.Key</span>
+                                    <strong>@row.Count</strong>
+                                </div>
+                            }
+                        </div>
+                    </article>
+
+                    <article class="pf-analytics-product-card">
+                        <strong>Common Drop-Off Pages</strong>
+                        <div class="pf-focus-list">
+                            @foreach (var row in Model.Journey.CommonDropOffPages.Take(8))
+                            {
+                                <div>
+                                    <span>@row.Key</span>
+                                    <strong>@row.Count</strong>
+                                </div>
+                            }
+                        </div>
+                    </article>
+
+                    <article class="pf-analytics-product-card">
+                        <strong>Pages Before Conversion</strong>
+                        <div class="pf-focus-list">
+                            @if (Model.Journey.PagesBeforeLead.Count == 0)
+                            {
+                                <div>
+                                    <span>Status</span>
+                                    <strong>No rows</strong>
+                                </div>
+                            }
+                            else
+                            {
+                                @foreach (var row in Model.Journey.PagesBeforeLead.Take(8))
+                                {
+                                    <div>
+                                        <span>@row.Key</span>
+                                        <strong>@row.Count</strong>
+                                    </div>
+                                }
+                            }
+                        </div>
+                    </article>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="pf-analytics-modal" id="pfAnalyticsTimeModal" aria-hidden="true">
+    <div class="pf-modal-dialog pf-modal-xl">
+        <div class="pf-modal-content pf-analytics-shell is-warning">
+            <div class="pf-modal-header">
+                <div>
+                    <h2 class="modal-title">Time On Page</h2>
+                    <div class="pf-analytics-modal-meta">
+                        <span class="pf-command-badge is-warning">@Model.TimeOnPage.TotalTimingSamples timing samples</span>
+                    </div>
+                </div>
+                <button type="button" class="btn-close" data-pf-close aria-label="Close"></button>
+            </div>
+            <div class="pf-modal-body">
+                <div class="pf-analytics-product-grid">
+                    <article class="pf-analytics-product-card">
+                        <strong>Longest Avg Dwell</strong>
+                        <div class="pf-focus-list">
+                            @foreach (var row in Model.TimeOnPage.LongestAvgDwell.Take(8))
+                            {
+                                <div>
+                                    <span>@row.PageKey</span>
+                                    <strong>@DwellLabel(row.AvgDwellMs)</strong>
+                                </div>
+                            }
+                        </div>
+                    </article>
+
+                    <article class="pf-analytics-product-card">
+                        <strong>Longest Median Dwell</strong>
+                        <div class="pf-focus-list">
+                            @foreach (var row in Model.TimeOnPage.LongestMedianDwell.Take(8))
+                            {
+                                <div>
+                                    <span>@row.PageKey</span>
+                                    <strong>@DwellLabel(row.MedianDwellMs)</strong>
+                                </div>
+                            }
+                        </div>
+                    </article>
+
+                    <article class="pf-analytics-product-card">
+                        <strong>Short Visit Problem Pages</strong>
+                        <div class="pf-focus-list">
+                            @foreach (var row in Model.TimeOnPage.ShortVisitProblemPages.Take(8))
+                            {
+                                <div>
+                                    <span>@row.PageKey</span>
+                                    <strong>@DwellLabel(row.AvgDwellMs)</strong>
+                                </div>
+                            }
+                        </div>
+                    </article>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="pf-analytics-modal" id="pfAnalyticsExitModal" aria-hidden="true">
+    <div class="pf-modal-dialog pf-modal-xl">
+        <div class="pf-modal-content pf-analytics-shell is-danger">
+            <div class="pf-modal-header">
+                <div>
+                    <h2 class="modal-title">Exit Analysis</h2>
+                    <div class="pf-analytics-modal-meta">
+                        <span class="pf-command-badge is-danger">@Model.ExitAnalysis.TopExitPages.Count exit pages</span>
+                        <span class="pf-command-badge is-warning">@Model.ExitAnalysis.QuickExitPages.Count quick exits</span>
+                    </div>
+                </div>
+                <button type="button" class="btn-close" data-pf-close aria-label="Close"></button>
+            </div>
+            <div class="pf-modal-body">
+                <section class="pf-analytics-modal-section">
+                    <div class="pf-commerce-panel-head">
+                        <h2>Top Exit Pages</h2>
+                        <span>@Model.ExitAnalysis.TopExitPages.Count rows</span>
+                    </div>
+                    <div class="pf-analytics-table-wrap">
+                        <table class="table align-middle pf-analytics-table">
+                            <thead>
+                                <tr>
+                                    <th>Page</th>
+                                    <th>Views</th>
+                                    <th>Exits</th>
+                                    <th>Exit Rate</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                            @foreach (var row in Model.ExitAnalysis.TopExitPages)
+                            {
+                                <tr>
+                                    <td><strong>@row.PageKey</strong></td>
+                                    <td>@row.Views</td>
+                                    <td>@row.Exits</td>
+                                    <td>@Rate(row.ExitRate)</td>
+                                </tr>
+                            }
+                            </tbody>
+                        </table>
+                    </div>
+                </section>
+
+                <section class="pf-analytics-modal-section">
+                    <div class="pf-commerce-panel-head">
+                        <h2>Quick Exit Pages</h2>
+                        <span>@Model.ExitAnalysis.QuickExitPages.Count rows</span>
+                    </div>
+                    <div class="pf-analytics-table-wrap">
+                        <table class="table align-middle pf-analytics-table">
+                            <thead>
+                                <tr>
+                                    <th>Page</th>
+                                    <th>Quick Exits</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                            @foreach (var row in Model.ExitAnalysis.QuickExitPages)
+                            {
+                                <tr>
+                                    <td><strong>@row.Key</strong></td>
+                                    <td>@row.Count</td>
+                                </tr>
+                            }
+                            </tbody>
+                        </table>
+                    </div>
+                </section>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="pf-analytics-modal" id="pfAnalyticsScrollModal" aria-hidden="true">
+    <div class="pf-modal-dialog pf-modal-xl">
+        <div class="pf-modal-content pf-analytics-shell is-info">
+            <div class="pf-modal-header">
+                <div>
+                    <h2 class="modal-title">Scroll Depth</h2>
+                    <div class="pf-analytics-modal-meta">
+                        <span class="pf-command-badge is-info">@Model.ScrollAnalysis.Rows.Count tracked pages</span>
+                    </div>
+                </div>
+                <button type="button" class="btn-close" data-pf-close aria-label="Close"></button>
+            </div>
+            <div class="pf-modal-body">
+                <div class="pf-analytics-table-wrap">
+                    <table class="table align-middle pf-analytics-table">
+                        <thead>
+                            <tr>
+                                <th>Page</th>
+                                <th>Views</th>
+                                <th>50%</th>
+                                <th>75%</th>
+                                <th>90%</th>
+                                <th>100%</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                        @foreach (var row in Model.ScrollAnalysis.Rows.Take(24))
+                        {
+                            <tr>
+                                <td><strong>@row.PageKey</strong></td>
+                                <td>@row.Views</td>
+                                <td>@Rate(row.Scroll50Rate)</td>
+                                <td>@Rate(row.Scroll75Rate)</td>
+                                <td>@Rate(row.Scroll90Rate)</td>
+                                <td>@Rate(row.Scroll100Rate)</td>
+                            </tr>
+                        }
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="pf-analytics-modal" id="pfAnalyticsLandingModal" aria-hidden="true">
+    <div class="pf-modal-dialog pf-modal-xl">
+        <div class="pf-modal-content pf-analytics-shell is-success">
+            <div class="pf-modal-header">
+                <div>
+                    <h2 class="modal-title">Landing Pages</h2>
+                    <div class="pf-analytics-modal-meta">
+                        <span class="pf-command-badge is-success">@Model.LandingPages.Rows.Count landing rows</span>
+                    </div>
+                </div>
+                <button type="button" class="btn-close" data-pf-close aria-label="Close"></button>
+            </div>
+            <div class="pf-modal-body">
+                <div class="pf-analytics-table-wrap">
+                    <table class="table align-middle pf-analytics-table">
+                        <thead>
+                            <tr>
+                                <th>Page</th>
+                                <th>Sessions</th>
+                                <th>Engaged</th>
+                                <th>Avg Dwell</th>
+                                <th>Conversions</th>
+                                <th>Conv.</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                        @foreach (var row in Model.LandingPages.Rows.Take(24))
+                        {
+                            <tr>
+                                <td>
+                                    <strong>@row.PageKey</strong>
+                                    <div class="text-muted">@((row.TopSource ?? "—")) / @((row.TopCampaign ?? "—"))</div>
+                                </td>
+                                <td>@row.Sessions</td>
+                                <td>@row.EngagedSessions</td>
+                                <td>@DwellLabel(row.AvgDwellMs)</td>
+                                <td>@row.VerifiedLeads</td>
+                                <td>@Rate(row.ConversionRate)</td>
+                            </tr>
+                        }
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="pf-analytics-modal" id="pfAnalyticsDeviceModal" aria-hidden="true">
+    <div class="pf-modal-dialog pf-modal-xl">
+        <div class="pf-modal-content pf-analytics-shell is-info">
+            <div class="pf-modal-header">
+                <div>
+                    <h2 class="modal-title">Device Intelligence</h2>
+                    <div class="pf-analytics-modal-meta">
+                        <span class="pf-command-badge is-info">@Model.Devices.Sessions sessions</span>
+                        <span class="pf-command-badge is-info">@Model.Devices.Events events</span>
+                    </div>
+                </div>
+                <button type="button" class="btn-close" data-pf-close aria-label="Close"></button>
+            </div>
+            <div class="pf-modal-body">
+                <div class="pf-analytics-product-grid">
+                    <article class="pf-analytics-product-card">
+                        <strong>Devices</strong>
+                        <div class="pf-focus-list">
+                            @foreach (var row in Model.Devices.Devices.Take(8))
+                            {
+                                <div>
+                                    <span>@row.Label</span>
+                                    <strong>@row.Sessions sessions</strong>
+                                </div>
+                            }
+                        </div>
+                    </article>
+
+                    <article class="pf-analytics-product-card">
+                        <strong>Browsers</strong>
+                        <div class="pf-focus-list">
+                            @foreach (var row in Model.Devices.Browsers.Take(8))
+                            {
+                                <div>
+                                    <span>@row.Label</span>
+                                    <strong>@row.Events events</strong>
+                                </div>
+                            }
+                        </div>
+                    </article>
+
+                    <article class="pf-analytics-product-card">
+                        <strong>Operating Systems</strong>
+                        <div class="pf-focus-list">
+                            @foreach (var row in Model.Devices.OperatingSystems.Take(8))
+                            {
+                                <div>
+                                    <span>@row.Label</span>
+                                    <strong>@row.Sessions sessions</strong>
+                                </div>
+                            }
+                        </div>
+                    </article>
+
+                    <article class="pf-analytics-product-card">
+                        <strong>Languages</strong>
+                        <div class="pf-focus-list">
+                            @foreach (var row in Model.Devices.Languages.Take(8))
+                            {
+                                <div>
+                                    <span>@row.Label</span>
+                                    <strong>@row.Events events</strong>
+                                </div>
+                            }
+                        </div>
+                    </article>
+
+                    <article class="pf-analytics-product-card">
+                        <strong>Time Zones</strong>
+                        <div class="pf-focus-list">
+                            @foreach (var row in Model.Devices.TimeZones.Take(8))
+                            {
+                                <div>
+                                    <span>@row.Label</span>
+                                    <strong>@row.Sessions sessions</strong>
+                                </div>
+                            }
+                        </div>
+                    </article>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="pf-analytics-modal" id="pfAnalyticsMetaModal" aria-hidden="true">
+    <div class="pf-modal-dialog pf-modal-xl">
+        <div class="pf-modal-content pf-analytics-shell is-@metaTone">
+            <div class="pf-modal-header">
+                <div>
+                    <h2 class="modal-title">Meta Signal Intelligence</h2>
+                    <div class="pf-analytics-modal-meta">
+                        <span class="pf-command-badge is-success">@Model.MetaSignal.TotalSignalEvents signal events</span>
+                        <span class="pf-command-badge is-info">@Model.MetaSignal.TotalVisitors visitors</span>
+                        <span class="pf-command-badge is-warning">@Model.MetaSignal.HighIntentAbandons abandons</span>
+                    </div>
+                </div>
+                <button type="button" class="btn-close" data-pf-close aria-label="Close"></button>
+            </div>
+            <div class="pf-modal-body">
+                <section class="pf-analytics-modal-section">
+                    <div class="pf-analytics-stat-strip">
+                        <article>
+                            <span>High Intent</span>
+                            <strong>@Model.MetaSignal.LeadReadyVisitors</strong>
+                        </article>
+                        <article>
+                            <span>Tracked Outcomes</span>
+                            <strong>@Model.MetaSignal.SubmittedLeads</strong>
+                        </article>
+                        <article>
+                            <span>Browser Sent</span>
+                            <strong>@Model.MetaHealth.PipelineHealth.MetaBrowserSentCount</strong>
+                        </article>
+                        <article>
+                            <span>Server Sent</span>
+                            <strong>@Model.MetaHealth.PipelineHealth.MetaServerSentCount</strong>
+                        </article>
+                        <article>
+                            <span>Signal-To-Outcome</span>
+                            <strong>@Rate(Model.MetaSignal.SignalToLeadConversionRate)</strong>
+                        </article>
+                    </div>
+                </section>
+
+                <section class="pf-analytics-modal-section">
+                    <div class="pf-analytics-product-grid">
+                        <article class="pf-analytics-product-card">
+                            <strong>Event Ladder</strong>
+                            <div class="pf-focus-list">
+                                @foreach (var row in Model.MetaSignal.EventLadder.Take(8))
+                                {
+                                    <div>
+                                        <span>@row.StepLabel</span>
+                                        <strong>@row.Visitors</strong>
+                                    </div>
+                                }
+                            </div>
+                        </article>
+
+                        <article class="pf-analytics-product-card">
+                            <strong>Friction Hotspots</strong>
+                            <div class="pf-focus-list">
+                                @foreach (var row in Model.MetaSignal.FrictionHotspots.Take(8))
+                                {
+                                    <div>
+                                        <span>@row.Label</span>
+                                        <strong>@row.Count</strong>
+                                    </div>
+                                }
+                            </div>
+                        </article>
+
+                        <article class="pf-analytics-product-card">
+                            <strong>Failure Watch</strong>
+                            <div class="pf-focus-list">
+                                @if (healthIssues.Count == 0)
+                                {
+                                    <div>
+                                        <span>Status</span>
+                                        <strong>Healthy</strong>
+                                    </div>
+                                }
+                                else
+                                {
+                                    @foreach (var row in healthIssues)
+                                    {
+                                        <div>
+                                            <span>@row.Label</span>
+                                            <strong>@row.Count</strong>
+                                        </div>
+                                    }
+                                }
+                            </div>
+                        </article>
+                    </div>
+                </section>
+
+                <section class="pf-analytics-modal-section">
+                    <div class="pf-commerce-panel-head">
+                        <h2>Recent Diagnostics</h2>
+                        <span>@Model.MetaSignal.RecentDiagnostics.Count rows</span>
+                    </div>
+                    <div class="pf-analytics-table-wrap">
+                        <table class="table align-middle pf-analytics-table">
+                            <thead>
+                                <tr>
+                                    <th>Time</th>
+                                    <th>Event</th>
+                                    <th>Campaign</th>
+                                    <th>Traffic</th>
+                                    <th>Send State</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                            @foreach (var row in Model.MetaSignal.RecentDiagnostics.Take(12))
+                            {
+                                <tr>
+                                    <td>@LocalTime(row.CreatedUtc)</td>
+                                    <td><strong>@row.EventName</strong></td>
+                                    <td>@(row.CampaignLabel ?? "—")</td>
+                                    <td>@row.TrafficType</td>
+                                    <td>@(row.BrowserPixelSent ? "Browser" : "—") / @(row.ServerCapiSent ? "Server" : "—")</td>
+                                </tr>
+                            }
+                            </tbody>
+                        </table>
+                    </div>
+                </section>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="pf-analytics-modal" id="pfAnalyticsMetaCampaignsModal" aria-hidden="true">
+    <div class="pf-modal-dialog pf-modal-xl">
+        <div class="pf-modal-content pf-analytics-shell is-success">
+            <div class="pf-modal-header">
+                <div>
+                    <h2 class="modal-title">Meta Campaigns</h2>
+                    <div class="pf-analytics-modal-meta">
+                        <span class="pf-command-badge is-@metaTone">@(Model.MetaSettings.HasActiveMetaAdsConnection ? "Meta connected" : "Meta pending")</span>
+                        <span class="pf-command-badge is-info">@Model.SelectedPreset</span>
+                    </div>
+                </div>
+                <button type="button" class="btn-close" data-pf-close aria-label="Close"></button>
+            </div>
+            <div class="pf-modal-body">
+                <section class="pf-analytics-modal-section">
+                    <div class="pf-analytics-stat-strip">
+                        <article>
+                            <span>Account</span>
+                            <strong id="pfMetaCampaignsAccount">@((Model.MetaSettings.AccountName ?? Model.MetaSettings.AccountId) ?? "Not connected")</strong>
+                        </article>
+                        <article>
+                            <span>Business</span>
+                            <strong id="pfMetaCampaignsBusiness">@((Model.MetaSettings.BusinessName ?? Model.MetaSettings.BusinessId) ?? "—")</strong>
+                        </article>
+                        <article>
+                            <span>Last Sync</span>
+                            <strong id="pfMetaCampaignsSynced">@Model.MetaSettings.LastSyncLabel</strong>
+                        </article>
+                        <article>
+                            <span>Rows</span>
+                            <strong id="pfMetaCampaignsCount">Waiting</strong>
+                        </article>
+                    </div>
+                </section>
+
+                <section class="pf-analytics-modal-section">
+                    <div class="pf-commerce-panel-head">
+                        <h2>Campaign Performance</h2>
+                        <span id="pfMetaCampaignsRange">@Model.RangeLabel</span>
+                    </div>
+                    <div id="pfMetaCampaignsState" class="pf-analytics-fetch-state">Open the module to load shared Meta campaign reporting.</div>
+                    <div class="pf-analytics-table-wrap" id="pfMetaCampaignsTableWrap" hidden>
+                        <table class="table align-middle pf-analytics-table">
+                            <thead>
+                                <tr>
+                                    <th>Campaign</th>
+                                    <th>Status</th>
+                                    <th>Objective</th>
+                                    <th>Spend</th>
+                                    <th>Impr.</th>
+                                    <th>Reach</th>
+                                    <th>Clicks</th>
+                                    <th>CTR</th>
+                                    <th>CPC</th>
+                                    <th>CPM</th>
+                                    <th>Freq.</th>
+                                    <th>Purchases</th>
+                                    <th>Revenue</th>
+                                    <th>ROAS</th>
+                                </tr>
+                            </thead>
+                            <tbody id="pfMetaCampaignsBody"></tbody>
+                        </table>
+                    </div>
+                </section>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="pf-analytics-modal" id="pfAnalyticsRawModal" aria-hidden="true">
+    <div class="pf-modal-dialog pf-modal-xl">
+        <div class="pf-modal-content pf-analytics-shell is-warning">
+            <div class="pf-modal-header">
+                <div>
+                    <h2 class="modal-title">Raw Event Inspector</h2>
+                    <div class="pf-analytics-modal-meta">
+                        <span class="pf-command-badge is-warning">@Model.RecentEvents.Count recent events</span>
+                        <span class="pf-command-badge is-info">@Model.RecentOrders.Count recent orders</span>
+                    </div>
+                </div>
+                <button type="button" class="btn-close" data-pf-close aria-label="Close"></button>
+            </div>
+            <div class="pf-modal-body">
+                <div class="pf-analytics-product-grid">
+                    @foreach (var row in Model.RecentEvents.Take(16))
+                    {
+                        <article class="pf-analytics-product-card">
+                            <strong>@row.EventType</strong>
+                            <div class="pf-analytics-product-metrics">
+                                <span>@LocalTime(row.EventUtc)</span>
+                                <span>@(row.ProductName ?? "No product")</span>
+                                @if (!string.IsNullOrWhiteSpace(row.OrderNumber))
+                                {
+                                    <span>@row.OrderNumber</span>
+                                }
+                                <span>@ShortId(row.SessionId)</span>
+                                <span>@ShortId(row.VisitorId)</span>
+                            </div>
+                            <div class="pf-focus-list">
+                                <div>
+                                    <span>Source</span>
+                                    <strong>@(row.Source ?? "—")</strong>
+                                </div>
+                                <div>
+                                    <span>Campaign</span>
+                                    <strong>@(row.Campaign ?? "—")</strong>
+                                </div>
+                            </div>
+                            @if (!string.IsNullOrWhiteSpace(row.MetadataJson))
+                            {
+                                <pre class="pf-analytics-raw-json">@row.MetadataJson</pre>
+                            }
+                        </article>
+                    }
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
 @section Scripts {
+    <partial name="_ValidationScriptsPartial" />
     <script>
         (() => {
+            const statusEl = document.getElementById("pfMetaConnectionStatus");
+            const connectBtn = document.getElementById("pfMetaConnectButton");
+            const disconnectBtn = document.getElementById("pfMetaDisconnectButton");
+            const statusUrl = "@Url.Action("MetaConnectionStatus", "InternalModules")";
+            const metaCampaignsUrl = "@Url.Action("MetaCampaigns", "InternalModules")";
+            const disconnectUrl = "@Url.Action("MetaDisconnect", "InternalModules")";
+            const token = document.querySelector("#pfAnalyticsMetaForm input[name='__RequestVerificationToken']")?.value || "";
+            const metaCampaignsState = document.getElementById("pfMetaCampaignsState");
+            const metaCampaignsTableWrap = document.getElementById("pfMetaCampaignsTableWrap");
+            const metaCampaignsBody = document.getElementById("pfMetaCampaignsBody");
+            const metaCampaignsAccount = document.getElementById("pfMetaCampaignsAccount");
+            const metaCampaignsSynced = document.getElementById("pfMetaCampaignsSynced");
+            const metaCampaignsCount = document.getElementById("pfMetaCampaignsCount");
+            const metaCampaignsRange = document.getElementById("pfMetaCampaignsRange");
+
+            const setStatus = (message, tone) => {
+                if (!statusEl) return;
+                statusEl.className = "small fw-semibold mt-3";
+                statusEl.classList.add(tone === "success" ? "text-success" : tone === "danger" ? "text-danger" : "text-muted");
+                statusEl.textContent = message;
+            };
+
+            const escapeHtml = value => String(value ?? "")
+                .replaceAll("&", "&amp;")
+                .replaceAll("<", "&lt;")
+                .replaceAll(">", "&gt;")
+                .replaceAll("\"", "&quot;")
+                .replaceAll("'", "&#39;");
+
+            const money = value => {
+                const numeric = Number(value || 0);
+                return new Intl.NumberFormat(undefined, {
+                    style: "currency",
+                    currency: "USD",
+                    minimumFractionDigits: 2,
+                    maximumFractionDigits: 2
+                }).format(Number.isFinite(numeric) ? numeric : 0);
+            };
+
+            const integer = value => new Intl.NumberFormat().format(Number(value || 0));
+            const percent = value => `${Number(value || 0).toFixed(2)}%`;
+
+            const setMetaCampaignsState = (message, tone = "info") => {
+                if (!metaCampaignsState) return;
+                metaCampaignsState.className = `pf-analytics-fetch-state is-${tone}`;
+                metaCampaignsState.textContent = message;
+            };
+
+            const setConnectedState = connected => {
+                if (connectBtn) connectBtn.textContent = connected ? "Reconnect Meta" : "Connect Meta";
+                if (disconnectBtn) disconnectBtn.style.display = connected ? "" : "none";
+            };
+
+            const formatDate = value => {
+                if (!value) return "";
+                try {
+                    return new Date(value).toLocaleString([], { dateStyle: "medium", timeStyle: "short" });
+                } catch {
+                    return "";
+                }
+            };
+
+            const loadStatus = async () => {
+                if (!statusUrl) return;
+
+                try {
+                    const response = await fetch(statusUrl, {
+                        headers: { "X-Requested-With": "XMLHttpRequest" }
+                    });
+
+                    if (!response.ok) throw new Error("Unable to read Meta connection.");
+
+                    const data = await response.json();
+                    if (!data.connected) {
+                        setConnectedState(false);
+                        setStatus(data.message || "Meta Ads not connected for Parfait.", "warning");
+                        return;
+                    }
+
+                    const account = data.accountName || data.accountId || "Meta account connected";
+                    const user = data.metaUserName ? ` as ${data.metaUserName}` : "";
+                    const expiry = data.accessTokenExpiresUtc ? ` · expires ${formatDate(data.accessTokenExpiresUtc)}` : "";
+                    setConnectedState(true);
+                    setStatus(`Connected: ${account}${user}${expiry}`, "success");
+                } catch (error) {
+                    console.error(error);
+                    setConnectedState(false);
+                    setStatus("Unable to read Meta connection.", "danger");
+                }
+            };
+
+            const renderMetaCampaigns = data => {
+                if (!metaCampaignsBody || !metaCampaignsTableWrap) return;
+
+                metaCampaignsAccount && (metaCampaignsAccount.textContent = data.accountName || data.accountId || "Meta account connected");
+                metaCampaignsSynced && (metaCampaignsSynced.textContent = data.syncedUtc ? formatDate(data.syncedUtc) : "—");
+                metaCampaignsRange && (metaCampaignsRange.textContent = data.rangeLabel || "@Model.RangeLabel");
+                metaCampaignsCount && (metaCampaignsCount.textContent = `${(data.rows || []).length} campaigns`);
+
+                const rows = Array.isArray(data.rows) ? data.rows : [];
+                if (!rows.length) {
+                    metaCampaignsBody.innerHTML = "";
+                    metaCampaignsTableWrap.hidden = true;
+                    setMetaCampaignsState("No Meta campaign rows were returned for this range.", "warning");
+                    return;
+                }
+
+                metaCampaignsBody.innerHTML = rows.map(row => `
+                    <tr>
+                        <td>
+                            <strong>${escapeHtml(row.campaignName || "Unnamed campaign")}</strong>
+                            <div class="text-muted">${escapeHtml(row.campaignId || "—")}</div>
+                        </td>
+                        <td>${escapeHtml(row.status || "—")}</td>
+                        <td>${escapeHtml(row.objective || "—")}</td>
+                        <td>${money(row.spend)}</td>
+                        <td>${integer(row.impressions)}</td>
+                        <td>${integer(row.reach)}</td>
+                        <td>${integer(row.clicks)}</td>
+                        <td>${percent(row.ctr)}</td>
+                        <td>${money(row.cpc)}</td>
+                        <td>${money(row.cpm)}</td>
+                        <td>${Number(row.frequency || 0).toFixed(2)}</td>
+                        <td>${integer(row.policiesPaid)}</td>
+                        <td>${money(row.paidPremium)}</td>
+                        <td>${Number(row.premiumRoas || 0).toFixed(2)}x</td>
+                    </tr>
+                `).join("");
+
+                metaCampaignsTableWrap.hidden = false;
+                setMetaCampaignsState("Shared Meta campaign reporting loaded.", "success");
+            };
+
+            const loadMetaCampaigns = async () => {
+                if (!metaCampaignsUrl) return;
+
+                try {
+                    metaCampaignsTableWrap && (metaCampaignsTableWrap.hidden = true);
+                    metaCampaignsBody && (metaCampaignsBody.innerHTML = "");
+                    metaCampaignsCount && (metaCampaignsCount.textContent = "Loading");
+                    setMetaCampaignsState("Loading Meta campaign reporting...", "info");
+
+                    const response = await fetch(`${metaCampaignsUrl}?preset=@Model.SelectedPreset`, {
+                        headers: { "X-Requested-With": "XMLHttpRequest" }
+                    });
+
+                    const payload = await response.json();
+                    if (!response.ok) {
+                        throw new Error(payload?.message || "Unable to load Meta campaigns.");
+                    }
+
+                    renderMetaCampaigns(payload);
+                } catch (error) {
+                    console.error(error);
+                    metaCampaignsCount && (metaCampaignsCount.textContent = "Unavailable");
+                    setMetaCampaignsState(error?.message || "Unable to load Meta campaigns.", "danger");
+                }
+            };
+
+            const handleDisconnect = async () => {
+                try {
+                    const response = await fetch(disconnectUrl, {
+                        method: "POST",
+                        headers: {
+                            "RequestVerificationToken": token,
+                            "X-Requested-With": "XMLHttpRequest"
+                        }
+                    });
+
+                    if (!response.ok) throw new Error("Failed to disconnect Meta Ads.");
+                    await loadStatus();
+                } catch (error) {
+                    console.error(error);
+                    setStatus(error?.message || "Failed to disconnect Meta Ads.", "danger");
+                }
+            };
+
+            const showCallbackStatus = () => {
+                try {
+                    const url = new URL(window.location.href);
+                    const meta = url.searchParams.get("meta");
+                    if (!meta) return;
+
+                    if (meta === "connected") {
+                        setStatus("Meta Ads connected successfully.", "success");
+                    } else if (meta === "error") {
+                        setStatus(url.searchParams.get("message") || "Meta Ads connection failed.", "danger");
+                    }
+
+                    url.searchParams.delete("meta");
+                    url.searchParams.delete("message");
+                    window.history.replaceState({}, "", url.toString());
+                } catch {
+                }
+            };
+
             const openModal = id => {
                 const modal = document.getElementById(id);
                 if (!modal) return;
@@ -244,7 +2069,13 @@
             };
 
             document.querySelectorAll("[data-pf-open]").forEach(button => {
-                button.addEventListener("click", () => openModal(button.getAttribute("data-pf-open")));
+                button.addEventListener("click", () => {
+                    const modalId = button.getAttribute("data-pf-open");
+                    openModal(modalId);
+                    if (modalId === "pfAnalyticsMetaCampaignsModal") {
+                        void loadMetaCampaigns();
+                    }
+                });
             });
 
             document.querySelectorAll("[data-pf-close]").forEach(button => {
@@ -262,6 +2093,10 @@
                 const modals = [...document.querySelectorAll(".pf-analytics-modal.is-open")];
                 closeModal(modals.at(-1));
             });
+
+            disconnectBtn?.addEventListener("click", handleDisconnect);
+            showCallbackStatus();
+            loadStatus();
         })();
     </script>
 }

@@ -7,7 +7,10 @@ public interface IParfaitBusinessProfileService
 {
     Task<ParfaitBusinessProfileViewModel> GetProfileAsync(CancellationToken ct = default);
     Task SaveProfileAsync(ParfaitBusinessProfileViewModel model, CancellationToken ct = default);
+    Task<ParfaitMetaAnalyticsSettingsViewModel> GetMetaSettingsAsync(CancellationToken ct = default);
+    Task SaveMetaSettingsAsync(ParfaitMetaAnalyticsSettingsViewModel model, CancellationToken ct = default);
     Task<ParfaitMetaAdsConnectionStatusDto> GetMetaConnectionStatusAsync(CancellationToken ct = default);
+    Task<ParfaitMetaAdsConnectionRecord?> GetMetaConnectionRecordAsync(CancellationToken ct = default);
     Task SaveMetaConnectionAsync(ParfaitMetaAdsConnectionRecord record, CancellationToken ct = default);
     Task DisconnectMetaAsync(CancellationToken ct = default);
 }
@@ -31,20 +34,15 @@ public sealed class ParfaitBusinessProfileService : IParfaitBusinessProfileServi
     public Task<ParfaitBusinessProfileViewModel> GetProfileAsync(CancellationToken ct = default)
     {
         var store = LoadStore();
-        var connection = BuildConnectionStatus(store);
 
         return Task.FromResult(new ParfaitBusinessProfileViewModel
         {
             StoreName = store.StoreName,
             BusinessType = store.BusinessType,
             GlobalStoreCheckoutUrl = store.GlobalStoreCheckoutUrl,
-            MetaPixelId = store.MetaPixelId,
-            MetaTestEventCode = store.MetaTestEventCode,
-            HasSecureMetaCapiAccessToken = !string.IsNullOrWhiteSpace(store.MetaCapiAccessTokenCiphertext),
-            HasActiveMetaAdsConnection = connection.Connected,
-            MetaConnectionLabel = connection.Connected
-                ? FormatConnectionLabel(connection)
-                : connection.Message ?? "Meta Ads not connected for Parfait."
+            DomainStatus = "Parfait production profile active",
+            AnalyticsStatus = "Managed in Analytics",
+            TrustStatus = "Managed in Analytics"
         });
     }
 
@@ -55,6 +53,40 @@ public sealed class ParfaitBusinessProfileService : IParfaitBusinessProfileServi
         store.StoreName = CleanRequired(model.StoreName, "Parfait");
         store.BusinessType = CleanRequired(model.BusinessType, "Apparel / Ecommerce");
         store.GlobalStoreCheckoutUrl = CleanOptional(model.GlobalStoreCheckoutUrl);
+        store.UpdatedUtc = DateTime.UtcNow;
+
+        SaveStore(store);
+        return Task.CompletedTask;
+    }
+
+    public Task<ParfaitMetaAnalyticsSettingsViewModel> GetMetaSettingsAsync(CancellationToken ct = default)
+    {
+        var store = LoadStore();
+        var connection = BuildConnectionStatus(store);
+
+        return Task.FromResult(new ParfaitMetaAnalyticsSettingsViewModel
+        {
+            MetaPixelId = store.MetaPixelId,
+            MetaTestEventCode = store.MetaTestEventCode,
+            HasSecureMetaCapiAccessToken = !string.IsNullOrWhiteSpace(store.MetaCapiAccessTokenCiphertext),
+            HasActiveMetaAdsConnection = connection.Connected,
+            MetaConnectionLabel = connection.Connected
+                ? FormatConnectionLabel(connection)
+                : connection.Message ?? "Meta Ads not connected for Parfait.",
+            AccountId = connection.AccountId,
+            AccountName = connection.AccountName,
+            BusinessId = connection.BusinessId,
+            BusinessName = connection.BusinessName,
+            MetaUserName = connection.MetaUserName,
+            ConnectedUtc = connection.ConnectedUtc,
+            AccessTokenExpiresUtc = connection.AccessTokenExpiresUtc
+        });
+    }
+
+    public Task SaveMetaSettingsAsync(ParfaitMetaAnalyticsSettingsViewModel model, CancellationToken ct = default)
+    {
+        var store = LoadStore();
+
         store.MetaPixelId = CleanOptional(model.MetaPixelId);
         store.MetaTestEventCode = CleanOptional(model.MetaTestEventCode);
         store.UpdatedUtc = DateTime.UtcNow;
@@ -66,6 +98,11 @@ public sealed class ParfaitBusinessProfileService : IParfaitBusinessProfileServi
     public Task<ParfaitMetaAdsConnectionStatusDto> GetMetaConnectionStatusAsync(CancellationToken ct = default)
     {
         return Task.FromResult(BuildConnectionStatus(LoadStore()));
+    }
+
+    public Task<ParfaitMetaAdsConnectionRecord?> GetMetaConnectionRecordAsync(CancellationToken ct = default)
+    {
+        return Task.FromResult(BuildConnectionRecord(LoadStore()));
     }
 
     public Task SaveMetaConnectionAsync(ParfaitMetaAdsConnectionRecord record, CancellationToken ct = default)
@@ -94,6 +131,7 @@ public sealed class ParfaitBusinessProfileService : IParfaitBusinessProfileServi
     {
         var store = LoadStore();
 
+        store.MetaCapiAccessTokenCiphertext = null;
         store.MetaConnectedUtc = null;
         store.MetaAccessTokenExpiresUtc = null;
         store.MetaAccountId = null;
@@ -149,6 +187,33 @@ public sealed class ParfaitBusinessProfileService : IParfaitBusinessProfileServi
             : string.Empty;
 
         return $"Connected: {account}{user}{expiry}";
+    }
+
+    private ParfaitMetaAdsConnectionRecord? BuildConnectionRecord(ParfaitBusinessProfileStore store)
+    {
+        if (!HasActiveConnection(store) || string.IsNullOrWhiteSpace(store.MetaCapiAccessTokenCiphertext))
+            return null;
+
+        try
+        {
+            return new ParfaitMetaAdsConnectionRecord
+            {
+                AccessToken = _metaCredentialProtector.Unprotect(store.MetaCapiAccessTokenCiphertext) ?? string.Empty,
+                AccessTokenExpiresUtc = store.MetaAccessTokenExpiresUtc,
+                AccountId = store.MetaAccountId,
+                AccountName = store.MetaAccountName,
+                BusinessId = store.MetaBusinessId,
+                BusinessName = store.MetaBusinessName,
+                MetaUserId = store.MetaUserId,
+                MetaUserName = store.MetaUserName,
+                ConnectedUtc = store.MetaConnectedUtc ?? DateTime.UtcNow,
+                UpdatedUtc = store.UpdatedUtc
+            };
+        }
+        catch
+        {
+            return null;
+        }
     }
 
     private ParfaitBusinessProfileStore LoadStore()

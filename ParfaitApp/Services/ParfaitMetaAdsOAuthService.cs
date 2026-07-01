@@ -41,7 +41,7 @@ public sealed class ParfaitMetaAdsOAuthService : IParfaitMetaAdsOAuthService
 
         var redirectUri = ResolveRedirectUri(explicitRedirectUri);
         var safeReturnUrl = string.IsNullOrWhiteSpace(returnUrl)
-            ? "/internal/settings/business-profile"
+            ? "/internal/analytics"
             : returnUrl.Trim();
 
         var statePayload = new OAuthState

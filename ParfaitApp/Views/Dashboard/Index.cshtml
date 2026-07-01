@@ -106,7 +106,7 @@
             <article class="pf-module-row is-@foundationTone">
                 <div class="pf-module-row-main">
                     <h3>Business Profile</h3>
-                    <p>Store details, checkout, and Meta settings.</p>
+                    <p>Store details and checkout ownership.</p>
                 </div>
                 <div class="pf-module-row-metrics">
                     <div class="pf-module-row-metric">
@@ -118,8 +118,8 @@
                         <strong>@(Model.HasMetaPixel ? "Stored" : "Missing")</strong>
                     </div>
                     <div class="pf-module-row-metric">
-                        <span>CAPI</span>
-                        <strong>@(Model.HasMetaConnection ? "Secure" : "Pending")</strong>
+                        <span>Meta</span>
+                        <strong>@(Model.HasMetaConnection ? "Live in Analytics" : "Pending in Analytics")</strong>
                     </div>
                     <div class="pf-module-row-metric">
                         <span>Business Type</span>
@@ -192,7 +192,7 @@
             <article class="pf-module-row is-@marketingTone">
                 <div class="pf-module-row-main">
                     <h3>Marketing</h3>
-                    <p>Meta connection, traffic, and content readiness.</p>
+                    <p>Meta command, traffic, and content readiness.</p>
                 </div>
                 <div class="pf-module-row-metrics">
                     <div class="pf-module-row-metric">

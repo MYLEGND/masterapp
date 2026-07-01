@@ -1,3 +1,5 @@
+using AgentPortal.Models.Analytics;
+using AgentPortal.Services.Analytics;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using ParfaitApp.Models;
@@ -12,25 +14,34 @@ public sealed class InternalModulesController : Controller
 {
     private readonly ParfaitProductService _products;
     private readonly ParfaitOrderService _orders;
-    private readonly ParfaitAnalyticsDashboardService _analyticsDashboard;
+    private readonly ParfaitInternalAnalyticsService _internalAnalytics;
     private readonly ParfaitCustomerAutomationService _automations;
     private readonly ParfaitInternalWorkspaceService _workspace;
     private readonly IGraphMailService _mail;
+    private readonly IParfaitBusinessProfileService _businessProfile;
+    private readonly IParfaitMetaAdsOAuthService _metaAdsOAuth;
+    private readonly IMetaAdsService _metaAds;
 
     public InternalModulesController(
         ParfaitProductService products,
         ParfaitOrderService orders,
-        ParfaitAnalyticsDashboardService analyticsDashboard,
+        ParfaitInternalAnalyticsService internalAnalytics,
         ParfaitCustomerAutomationService automations,
         ParfaitInternalWorkspaceService workspace,
-        IGraphMailService mail)
+        IGraphMailService mail,
+        IParfaitBusinessProfileService businessProfile,
+        IParfaitMetaAdsOAuthService metaAdsOAuth,
+        IMetaAdsService metaAds)
     {
         _products = products;
         _orders = orders;
-        _analyticsDashboard = analyticsDashboard;
+        _internalAnalytics = internalAnalytics;
         _automations = automations;
         _workspace = workspace;
         _mail = mail;
+        _businessProfile = businessProfile;
+        _metaAdsOAuth = metaAdsOAuth;
+        _metaAds = metaAds;
     }
 
     [HttpGet("commerce")]
@@ -304,16 +315,139 @@ public sealed class InternalModulesController : Controller
     [ParfaitInternalPage(
         "Analytics",
         "Growth",
-        "Internal funnel reporting and ecommerce event intelligence.",
+        "Shared ecommerce analytics, Meta diagnostics, and funnel intelligence.",
         4,
-        3)]
-    public async Task<IActionResult> Analytics(CancellationToken ct)
+        4)]
+    public async Task<IActionResult> Analytics([FromQuery] string? preset = "30d", CancellationToken ct = default)
     {
-        return View(await _analyticsDashboard.GetDashboardAsync(ct));
+        return View(await _internalAnalytics.GetDashboardAsync(preset, ct));
+    }
+
+    [HttpPost("analytics/meta-settings")]
+    [ParfaitInternalPageAccess("/internal/analytics")]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> SaveAnalyticsMetaSettings(
+        ParfaitMetaAnalyticsSettingsViewModel model,
+        [FromQuery] string? preset = "30d",
+        CancellationToken ct = default)
+    {
+        if (!ModelState.IsValid)
+        {
+            var dashboard = await _internalAnalytics.GetDashboardAsync(preset, ct);
+            dashboard.MetaSettings.MetaPixelId = model.MetaPixelId;
+            dashboard.MetaSettings.MetaTestEventCode = model.MetaTestEventCode;
+            return View("Analytics", dashboard);
+        }
+
+        await _businessProfile.SaveMetaSettingsAsync(model, ct);
+        TempData["AnalyticsStatus"] = "Meta settings saved.";
+        return RedirectToAction(nameof(Analytics), new { preset });
+    }
+
+    [HttpGet("analytics/meta-connect")]
+    [ParfaitInternalPageAccess("/internal/analytics")]
+    public IActionResult MetaConnect([FromQuery] string? returnUrl = null)
+    {
+        var target = ResolveAnalyticsReturnUrl(returnUrl);
+
+        try
+        {
+            return Redirect(_metaAdsOAuth.BuildConnectUrl(target));
+        }
+        catch (InvalidOperationException ex)
+        {
+            return Redirect(AppendMetaStatus(target, "error", ex.Message));
+        }
+    }
+
+    [HttpGet("analytics/meta-callback")]
+    [ParfaitInternalPageAccess("/internal/analytics")]
+    public async Task<IActionResult> MetaCallback(
+        [FromQuery] string? code = null,
+        [FromQuery] string? state = null,
+        [FromQuery] string? error = null,
+        [FromQuery(Name = "error_description")] string? errorDescription = null)
+    {
+        var target = Url.Action(nameof(Analytics), "InternalModules") ?? "/internal/analytics";
+
+        if (!string.IsNullOrWhiteSpace(error))
+        {
+            var message = string.IsNullOrWhiteSpace(errorDescription) ? error : errorDescription;
+            return Redirect(AppendMetaStatus(target, "error", message));
+        }
+
+        try
+        {
+            var record = await _metaAdsOAuth.CompleteCallbackAsync(code ?? string.Empty, state ?? string.Empty, HttpContext.RequestAborted);
+            await _businessProfile.SaveMetaConnectionAsync(record, HttpContext.RequestAborted);
+            return Redirect(AppendMetaStatus(target, "connected"));
+        }
+        catch (InvalidOperationException ex)
+        {
+            return Redirect(AppendMetaStatus(target, "error", ex.Message));
+        }
+        catch
+        {
+            return Redirect(AppendMetaStatus(target, "error", "Meta connection failed unexpectedly. Please try again."));
+        }
+    }
+
+    [HttpGet("analytics/meta-connection-status")]
+    [ParfaitInternalPageAccess("/internal/analytics")]
+    public async Task<IActionResult> MetaConnectionStatus(CancellationToken ct)
+    {
+        return Json(await _businessProfile.GetMetaConnectionStatusAsync(ct));
+    }
+
+    [HttpGet("analytics/meta-campaigns")]
+    [ParfaitInternalPageAccess("/internal/analytics")]
+    public async Task<IActionResult> MetaCampaigns([FromQuery] string? preset = "30d", CancellationToken ct = default)
+    {
+        try
+        {
+            var range = TimeRangeRequest.FromPreset(
+                string.IsNullOrWhiteSpace(preset) ? "30d" : preset,
+                viewerTz: TimeZoneInfo.Utc);
+            var scope = ScopeContext.ForSite(ParfaitMetaAdsConnectionStoreAdapter.SiteKey, ParfaitMetaAdsConnectionStoreAdapter.SiteKey);
+            var result = await _metaAds.GetCampaignsAsync(range, scope, ct);
+            return Json(result);
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(new { message = ex.Message });
+        }
+    }
+
+    [HttpPost("analytics/meta-disconnect")]
+    [ParfaitInternalPageAccess("/internal/analytics")]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> MetaDisconnect(CancellationToken ct)
+    {
+        await _businessProfile.DisconnectMetaAsync(ct);
+        return Json(new { ok = true });
     }
 
     private static bool HasCheckedValue(IFormCollection form, string key)
     {
         return form[key].Any(value => string.Equals(value, "true", StringComparison.OrdinalIgnoreCase));
+    }
+
+    private string ResolveAnalyticsReturnUrl(string? returnUrl)
+    {
+        if (!string.IsNullOrWhiteSpace(returnUrl) && Url.IsLocalUrl(returnUrl))
+            return returnUrl;
+
+        return Url.Action(nameof(Analytics), "InternalModules") ?? "/internal/analytics";
+    }
+
+    private static string AppendMetaStatus(string target, string meta, string? message = null)
+    {
+        var separator = target.Contains('?', StringComparison.Ordinal) ? "&" : "?";
+        var url = $"{target}{separator}meta={Uri.EscapeDataString(meta)}";
+
+        if (!string.IsNullOrWhiteSpace(message))
+            url += $"&message={Uri.EscapeDataString(message)}";
+
+        return url;
     }
 }

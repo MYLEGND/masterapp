@@ -20,17 +20,18 @@ public sealed class ParfaitInternalPageRegistry : IParfaitInternalPageRegistry
         "/internal",
         "/internal/login",
         "/internal/denied",
-        "/internal/settings/meta-connect",
-        "/internal/settings/meta-callback",
-        "/internal/settings/meta-connection-status"
+        "/internal/analytics/meta-connect",
+        "/internal/analytics/meta-callback",
+        "/internal/analytics/meta-connection-status"
     ];
 
     private static readonly Dictionary<string, string> RouteAliases = new(StringComparer.OrdinalIgnoreCase)
     {
-        ["/internal/settings/meta-connect"] = "/internal/settings/business-profile",
-        ["/internal/settings/meta-callback"] = "/internal/settings/business-profile",
-        ["/internal/settings/meta-connection-status"] = "/internal/settings/business-profile",
-        ["/internal/settings/meta-disconnect"] = "/internal/settings/business-profile"
+        ["/internal/analytics/meta-connect"] = "/internal/analytics",
+        ["/internal/analytics/meta-callback"] = "/internal/analytics",
+        ["/internal/analytics/meta-connection-status"] = "/internal/analytics",
+        ["/internal/analytics/meta-disconnect"] = "/internal/analytics",
+        ["/internal/analytics/meta-settings"] = "/internal/analytics"
     };
 
     private readonly IActionDescriptorCollectionProvider _actions;

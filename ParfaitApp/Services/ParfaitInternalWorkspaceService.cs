@@ -7,13 +7,13 @@ public sealed class ParfaitInternalWorkspaceService
     private readonly ParfaitProductService _products;
     private readonly ParfaitOrderService _orders;
     private readonly IParfaitBusinessProfileService _businessProfile;
-    private readonly ParfaitAnalyticsDashboardService _analytics;
+    private readonly ParfaitInternalAnalyticsService _analytics;
 
     public ParfaitInternalWorkspaceService(
         ParfaitProductService products,
         ParfaitOrderService orders,
         IParfaitBusinessProfileService businessProfile,
-        ParfaitAnalyticsDashboardService analytics)
+        ParfaitInternalAnalyticsService analytics)
     {
         _products = products;
         _orders = orders;
@@ -23,14 +23,12 @@ public sealed class ParfaitInternalWorkspaceService
 
     public async Task<ParfaitInternalWorkspaceSnapshotViewModel> GetSnapshotAsync(CancellationToken ct = default)
     {
-        var profileTask = _businessProfile.GetProfileAsync(ct);
-        var analyticsTask = _analytics.GetDashboardAsync(ct);
-
         var products = _products.GetAllProducts().ToList();
         var orders = _orders.GetAllOrders().ToList();
-
-        var profile = await profileTask;
-        var analytics = await analyticsTask;
+        var profile = await _businessProfile.GetProfileAsync(ct);
+        var analytics = await _analytics.GetDashboardAsync("30d", ct);
+        var meta = analytics.MetaSettings;
+        var actionMap = analytics.ActionBreakdowns.ToDictionary(action => action.Key, StringComparer.OrdinalIgnoreCase);
 
         var paidOrders = orders
             .Where(order => string.Equals(order.PaymentStatus, "Paid", StringComparison.OrdinalIgnoreCase)
@@ -56,13 +54,15 @@ public sealed class ParfaitInternalWorkspaceService
             StoreName = profile.StoreName,
             BusinessType = profile.BusinessType,
             HasCheckoutUrl = !string.IsNullOrWhiteSpace(profile.GlobalStoreCheckoutUrl),
-            HasMetaPixel = !string.IsNullOrWhiteSpace(profile.MetaPixelId),
-            HasMetaConnection = profile.HasActiveMetaAdsConnection,
+            HasMetaPixel = !string.IsNullOrWhiteSpace(meta.MetaPixelId),
+            HasMetaConnection = meta.HasActiveMetaAdsConnection,
             HasAnalyticsTraffic = analytics.Sessions > 0 || analytics.Purchases > 0 || analytics.HasTrackedEvents,
-            MetaConnectionLabel = profile.MetaConnectionLabel,
-            MetaCapiStatus = profile.MetaCapiStatus,
-            AnalyticsStatus = profile.AnalyticsStatus,
-            TrustStatus = profile.TrustStatus,
+            MetaConnectionLabel = meta.MetaConnectionLabel,
+            MetaCapiStatus = meta.MetaCapiStatus,
+            AnalyticsStatus = analytics.HasTrackedEvents ? $"{analytics.RangeLabel} synced" : "Awaiting storefront activity",
+            TrustStatus = analytics.Devices.Sessions > 0
+                ? $"{analytics.Devices.IdentityProfiles + analytics.Devices.VisitorFallbackProfiles} visitor identities mapped"
+                : "Awaiting visitor intelligence",
             ProductCount = products.Count,
             ActiveProductCount = products.Count(product => product.IsActive),
             FeaturedProductCount = products.Count(product => product.IsFeatured),
@@ -79,12 +79,19 @@ public sealed class ParfaitInternalWorkspaceService
             LatestOrderUtc = orders.Count == 0 ? null : orders.Max(order => order.CreatedUtc),
             Visitors = analytics.Visitors,
             Sessions = analytics.Sessions,
-            StoreViews = analytics.StoreViews,
-            ProductViews = analytics.ProductViews,
-            AddToCarts = analytics.AddToCarts,
-            CheckoutStarts = analytics.CheckoutStarts,
+            StoreViews = GetActionCount(actionMap, "view-content"),
+            ProductViews = GetActionCount(actionMap, "product-viewed"),
+            AddToCarts = GetActionCount(actionMap, "add-to-cart"),
+            CheckoutStarts = GetActionCount(actionMap, "checkout-started"),
             Purchases = analytics.Purchases,
-            CheckoutToPurchaseRate = analytics.CheckoutToPurchaseRate
+            CheckoutToPurchaseRate = analytics.ActionBreakdowns
+                .FirstOrDefault(action => string.Equals(action.Key, "checkout-started", StringComparison.OrdinalIgnoreCase))
+                ?.ConversionRate ?? 0m
         };
     }
+
+    private static int GetActionCount(
+        IReadOnlyDictionary<string, ParfaitAnalyticsActionBreakdownViewModel> actionMap,
+        string key)
+        => actionMap.TryGetValue(key, out var action) ? action.Count : 0;
 }

@@ -39,6 +39,7 @@ public sealed class AnalyticsQueryService : IAnalyticsQueryService
     {
         var query = _db.AnalyticsEvents.AsNoTracking()
             .Where(e => e.EventUtc >= range.FromUtc && e.EventUtc <= range.ToUtc)
+            .ApplySiteScope(scope)
             .Where(ScopePredicateEvents(scope, scopedAgentIds));
 
         return ApplyQualityFilterEvents(query, range.QualityMode);
@@ -47,11 +48,13 @@ public sealed class AnalyticsQueryService : IAnalyticsQueryService
     private IQueryable<AnalyticsEvent> BaseEventsWithoutQualityFilter(TimeRangeRequest range, ScopeContext scope, Guid[]? scopedAgentIds = null) =>
         _db.AnalyticsEvents.AsNoTracking()
             .Where(e => e.EventUtc >= range.FromUtc && e.EventUtc <= range.ToUtc)
+            .ApplySiteScope(scope)
             .Where(ScopePredicateEvents(scope, scopedAgentIds));
 
     private IQueryable<AnalyticsEvent> EventsInRangeWithoutQualityFilter(DateTime from, DateTime to, ScopeContext scope, Guid[]? scopedAgentIds = null) =>
         _db.AnalyticsEvents.AsNoTracking()
             .Where(e => e.EventUtc >= from && e.EventUtc <= to)
+            .ApplySiteScope(scope)
             .Where(ScopePredicateEvents(scope, scopedAgentIds));
 
 
@@ -72,6 +75,7 @@ public sealed class AnalyticsQueryService : IAnalyticsQueryService
     {
         var query = _db.AnalyticsEvents.AsNoTracking()
             .Where(e => e.EventUtc >= from && e.EventUtc <= to)
+            .ApplySiteScope(scope)
             .Where(ScopePredicateEvents(scope, scopedAgentIds));
 
         return ApplyQualityFilterEvents(query, qualityMode);
@@ -309,6 +313,9 @@ public sealed class AnalyticsQueryService : IAnalyticsQueryService
     // Always resolve scope through ResolveScopeAsync before query execution.
     private static Expression<Func<AnalyticsEvent, bool>> ScopePredicateEvents(ScopeContext scope, Guid[]? scopedAgentIds)
     {
+        if (scope.HasSiteScope)
+            return e => true;
+
         if (scope.ScopeType == ScopeType.Agent && scope.AgentTrackingProfileId.HasValue)
         {
             if (scopedAgentIds != null && scopedAgentIds.Length > 0)
@@ -324,6 +331,9 @@ public sealed class AnalyticsQueryService : IAnalyticsQueryService
 
     private static Expression<Func<WebsiteLead, bool>> ScopePredicateLeads(ScopeContext scope, Guid[]? scopedAgentIds)
     {
+        if (scope.HasSiteScope)
+            return l => false;
+
         if (scope.ScopeType == ScopeType.Agent && scope.AgentTrackingProfileId.HasValue)
         {
             if (scopedAgentIds != null && scopedAgentIds.Length > 0)

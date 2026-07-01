@@ -494,6 +494,17 @@ public sealed class MetaAdsService : IMetaAdsService
             }
         }
 
+        if (scope.HasSiteScope && !string.IsNullOrWhiteSpace(scope.SiteKey))
+        {
+            var siteScopeId = MetaAdsScopeKey.ForSite(scope.SiteKey);
+            var siteConnection = await _connectionStore.GetAsync(siteScopeId, ct);
+            if (siteConnection != null && !string.IsNullOrWhiteSpace(siteConnection.AccessToken))
+            {
+                var account = NormalizeAccountId(siteConnection.AccountId);
+                return (siteConnection.AccessToken.Trim(), account ?? string.Empty);
+            }
+        }
+
         var token = (_config["MetaAds:AccessToken"] ?? string.Empty).Trim();
         var accountId = await ResolveAccountIdAsync(scope, ct);
         return (token, accountId);

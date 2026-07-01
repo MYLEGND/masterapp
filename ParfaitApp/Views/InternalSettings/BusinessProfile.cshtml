@@ -2,24 +2,20 @@
 @{
     ViewData["Title"] = "Business Profile";
     Layout = "_InternalLayout";
-    var metaConnectUrl = Url.Action("MetaConnect", "InternalSettings", new
-    {
-        returnUrl = Url.Action("BusinessProfile", "InternalSettings")
-    }) ?? "/internal/settings/meta-connect";
+
     var checkoutTone = string.IsNullOrWhiteSpace(Model.GlobalStoreCheckoutUrl) ? "warning" : "success";
-    var metaTone = Model.HasActiveMetaAdsConnection ? "success" : string.IsNullOrWhiteSpace(Model.MetaPixelId) ? "danger" : "warning";
 }
 
 <section class="pf-command-page">
     <header class="pf-command-head">
         <div class="pf-command-copy">
             <h1 class="pf-command-title">Business Profile</h1>
-            <p class="pf-command-text">Store details, checkout URL, and Meta connection.</p>
+            <p class="pf-command-text">@Model.StoreName</p>
         </div>
         <div class="pf-command-meta">
-            <span class="pf-command-badge is-@checkoutTone">Checkout @(string.IsNullOrWhiteSpace(Model.GlobalStoreCheckoutUrl) ? "pending" : "ready")</span>
-            <span class="pf-command-badge is-@metaTone">Meta @(Model.HasActiveMetaAdsConnection ? "secure" : "pending")</span>
-            <span class="pf-command-badge is-info">Analytics live</span>
+            <span class="pf-command-badge is-@checkoutTone">Checkout @(string.IsNullOrWhiteSpace(Model.GlobalStoreCheckoutUrl) ? "missing" : "ready")</span>
+            <span class="pf-command-badge is-info">@Model.BusinessType</span>
+            <span class="pf-command-badge is-info">Meta in Analytics</span>
         </div>
     </header>
 
@@ -30,31 +26,30 @@
 
     <section class="pf-command-rail">
         <article class="pf-rail-card is-@checkoutTone pf-span-4">
-            <div class="pf-rail-label">Checkout Ownership</div>
+            <div class="pf-rail-label">Checkout</div>
             <strong class="pf-rail-value">@(string.IsNullOrWhiteSpace(Model.GlobalStoreCheckoutUrl) ? "Pending" : "Ready")</strong>
-            <p class="pf-rail-note">Global checkout link.</p>
-        </article>
-
-        <article class="pf-rail-card is-@metaTone pf-span-4">
-            <div class="pf-rail-label">Signal Setup</div>
-            <strong class="pf-rail-value">@(Model.HasActiveMetaAdsConnection ? "Secure" : "Pending")</strong>
-            <p class="pf-rail-note">@Model.MetaCapiStatus</p>
+            <p class="pf-rail-note">Global storefront checkout link.</p>
         </article>
 
         <article class="pf-rail-card is-info pf-span-4">
-            <div class="pf-rail-label">Shared Read</div>
-            <strong class="pf-rail-value">Live</strong>
-            <p class="pf-rail-note">@Model.DomainStatus. @Model.AnalyticsStatus</p>
+            <div class="pf-rail-label">Analytics</div>
+            <strong class="pf-rail-value">Managed</strong>
+            <p class="pf-rail-note">@Model.AnalyticsStatus</p>
+        </article>
+
+        <article class="pf-rail-card is-info pf-span-4">
+            <div class="pf-rail-label">Domain</div>
+            <strong class="pf-rail-value">Active</strong>
+            <p class="pf-rail-note">@Model.DomainStatus</p>
         </article>
     </section>
 
-    <form asp-action="BusinessProfile" asp-controller="InternalSettings" method="post" id="pfBusinessProfileForm">
+    <form asp-action="BusinessProfile" asp-controller="InternalSettings" method="post">
         @Html.AntiForgeryToken()
 
         <section class="pf-workspace-grid">
-            <div class="pf-module-card pf-span-7">
-                <h2 class="pf-module-title">Core Business Details</h2>
-                <p class="text-muted mb-4">Storefront values used across checkout and reporting.</p>
+            <section class="pf-module-card pf-span-8">
+                <h2 class="pf-module-title">Store Identity</h2>
 
                 <div class="row g-3">
                     <div class="col-md-6">
@@ -73,13 +68,12 @@
                         <label asp-for="GlobalStoreCheckoutUrl" class="form-label fw-bold"></label>
                         <input asp-for="GlobalStoreCheckoutUrl" class="form-control" autocomplete="off" placeholder="https://square.link/u/..." />
                         <span asp-validation-for="GlobalStoreCheckoutUrl" class="text-danger small"></span>
-                        <div class="form-text">Used by storefront checkout buttons.</div>
                     </div>
                 </div>
-            </div>
+            </section>
 
-            <div class="pf-module-card pf-span-5">
-                <h2 class="pf-module-title">Analytics & Trust</h2>
+            <aside class="pf-module-card pf-span-4">
+                <h2 class="pf-module-title">Connected Surfaces</h2>
                 <div class="pf-focus-list">
                     <div>
                         <span>Analytics</span>
@@ -94,181 +88,16 @@
                         <strong>@Model.DomainStatus</strong>
                     </div>
                 </div>
-            </div>
 
-            <div class="pf-module-card pf-span-8">
-                <h2 class="pf-module-title">Meta Connection</h2>
-                <p class="text-muted mb-3">Save the Pixel ID here. CAPI activates after a successful Meta login.</p>
-
-                <div class="pf-mini-status mb-3">
-                    <div class="pf-mini-label">Meta CAPI</div>
-                    <div class="pf-mini-value">@Model.MetaCapiStatus</div>
+                <div class="pf-focus-actions mt-3">
+                    <button type="submit" class="pf-action">Save Profile</button>
+                    <a class="pf-secondary-action" href="/internal/analytics">Open Analytics</a>
                 </div>
-
-                <div id="pfMetaConnectionStatus" class="small fw-semibold @(Model.HasActiveMetaAdsConnection ? "text-success" : "text-muted")">
-                    @Model.MetaConnectionLabel
-                </div>
-
-                <div class="d-flex flex-wrap gap-2 mt-3 mb-4">
-                    <a id="pfMetaConnectButton"
-                       class="pf-action"
-                       href="@metaConnectUrl">
-                        @(Model.HasActiveMetaAdsConnection ? "Reconnect Meta Ads" : "Connect Meta Ads")
-                    </a>
-                    <button id="pfMetaDisconnectButton"
-                            type="button"
-                            class="pf-secondary-action"
-                            style="@(Model.HasActiveMetaAdsConnection ? null : "display:none;")">
-                        Disconnect Meta Ads
-                    </button>
-                </div>
-
-                <div class="row g-3">
-                    <div class="col-md-6">
-                        <label asp-for="MetaPixelId" class="form-label fw-bold"></label>
-                        <input asp-for="MetaPixelId" class="form-control" autocomplete="off" inputmode="numeric" placeholder="Numeric Meta Pixel ID" />
-                        <span asp-validation-for="MetaPixelId" class="text-danger small"></span>
-                    </div>
-
-                    <div class="col-md-6">
-                        <label asp-for="MetaTestEventCode" class="form-label fw-bold"></label>
-                        <input asp-for="MetaTestEventCode" class="form-control" autocomplete="off" placeholder="Optional Meta test event code" />
-                        <span asp-validation-for="MetaTestEventCode" class="text-danger small"></span>
-                    </div>
-                </div>
-
-                <div class="form-text mt-3">
-                    Pixel status: @Model.MetaPixelStatus. CAPI status: @Model.MetaCapiStatus.
-                </div>
-            </div>
-
-            <div class="pf-panel pf-span-4">
-                <h2 class="pf-module-title">Publish Profile</h2>
-                <p class="text-muted mb-4">Save approved store and Meta fields.</p>
-                <button type="submit" class="pf-action">Save Business Profile</button>
-            </div>
+            </aside>
         </section>
     </form>
 </section>
 
 @section Scripts {
     <partial name="_ValidationScriptsPartial" />
-    <script>
-        (() => {
-            const statusEl = document.getElementById("pfMetaConnectionStatus");
-            const connectBtn = document.getElementById("pfMetaConnectButton");
-            const disconnectBtn = document.getElementById("pfMetaDisconnectButton");
-            const statusUrl = "@Url.Action("MetaConnectionStatus", "InternalSettings")";
-            const disconnectUrl = "@Url.Action("MetaDisconnect", "InternalSettings")";
-            const token = document.querySelector("#pfBusinessProfileForm input[name='__RequestVerificationToken']")?.value || "";
-
-            const formatDate = value => {
-                if (!value) return "";
-                try {
-                    return new Date(value).toLocaleString([], { dateStyle: "medium", timeStyle: "short" });
-                } catch {
-                    return "";
-                }
-            };
-
-            const setConnectedState = connected => {
-                if (!connectBtn || !disconnectBtn) return;
-                connectBtn.textContent = connected ? "Reconnect Meta Ads" : "Connect Meta Ads";
-                disconnectBtn.style.display = connected ? "" : "none";
-            };
-
-            const setStatus = (message, tone) => {
-                if (!statusEl) return;
-                statusEl.className = "small fw-semibold";
-                if (tone === "success") {
-                    statusEl.classList.add("text-success");
-                } else if (tone === "danger") {
-                    statusEl.classList.add("text-danger");
-                } else if (tone === "warning") {
-                    statusEl.classList.add("text-warning");
-                } else {
-                    statusEl.classList.add("text-muted");
-                }
-                statusEl.textContent = message;
-            };
-
-            const loadStatus = async () => {
-                if (!statusUrl) return;
-
-                try {
-                    const response = await fetch(statusUrl, {
-                        headers: { "X-Requested-With": "XMLHttpRequest" }
-                    });
-
-                    if (!response.ok) {
-                        throw new Error("Unable to read Meta Ads connection status.");
-                    }
-
-                    const data = await response.json();
-                    if (!data.connected) {
-                        setConnectedState(false);
-                        setStatus(data.message || "Meta Ads not connected for Parfait.", "warning");
-                        return;
-                    }
-
-                    const account = data.accountName || data.accountId || "Meta account connected";
-                    const user = data.metaUserName ? ` as ${data.metaUserName}` : "";
-                    const expiry = data.accessTokenExpiresUtc ? ` · expires ${formatDate(data.accessTokenExpiresUtc)}` : "";
-                    setConnectedState(true);
-                    setStatus(`Connected: ${account}${user}${expiry}`, "success");
-                } catch (error) {
-                    setConnectedState(false);
-                    setStatus("Unable to read Meta Ads connection status.", "danger");
-                    console.error(error);
-                }
-            };
-
-            const handleDisconnect = async () => {
-                if (!disconnectUrl) return;
-
-                try {
-                    const response = await fetch(disconnectUrl, {
-                        method: "POST",
-                        headers: {
-                            "RequestVerificationToken": token,
-                            "X-Requested-With": "XMLHttpRequest"
-                        }
-                    });
-
-                    if (!response.ok) {
-                        throw new Error("Failed to disconnect Meta Ads.");
-                    }
-
-                    await loadStatus();
-                } catch (error) {
-                    setStatus(error?.message || "Failed to disconnect Meta Ads.", "danger");
-                    console.error(error);
-                }
-            };
-
-            const showCallbackStatus = () => {
-                try {
-                    const url = new URL(window.location.href);
-                    const meta = url.searchParams.get("meta");
-                    if (!meta) return;
-
-                    if (meta === "connected") {
-                        setStatus("Meta Ads connected successfully.", "success");
-                    } else if (meta === "error") {
-                        setStatus(url.searchParams.get("message") || "Meta Ads connection failed.", "danger");
-                    }
-
-                    url.searchParams.delete("meta");
-                    url.searchParams.delete("message");
-                    window.history.replaceState({}, "", url.toString());
-                } catch {
-                    // Ignore URL parsing failures in older browsers.
-                }
-            };
-
-            disconnectBtn?.addEventListener("click", handleDisconnect);
-            showCallbackStatus();
-            loadStatus();
-        })();
-    </script>
 }

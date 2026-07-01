@@ -175,7 +175,7 @@
 
         <section class="pf-module-card pf-span-4">
             <h2 class="pf-module-title">Store Dependencies</h2>
-            <p class="text-muted mb-3">Checkout, Meta, and shared store settings.</p>
+            <p class="text-muted mb-3">Checkout, store identity, and analytics ownership.</p>
 
             <div class="pf-focus-list">
                 <div>
@@ -183,8 +183,8 @@
                     <strong>@(Model.HasCheckoutUrl ? "Saved" : "Missing")</strong>
                 </div>
                 <div>
-                    <span>Meta CAPI</span>
-                    <strong>@(Model.HasMetaConnection ? "Secure" : "Pending")</strong>
+                    <span>Meta Command</span>
+                    <strong>@(Model.HasMetaConnection ? "Live in Analytics" : "Pending in Analytics")</strong>
                 </div>
                 <div>
                     <span>Business Type</span>
@@ -198,6 +198,7 @@
 
             <div class="pf-focus-actions mt-3">
                 <a class="pf-action" href="/internal/settings/business-profile">Business Profile</a>
+                <a class="pf-secondary-action" href="/internal/analytics">Analytics</a>
             </div>
         </section>
     </section>

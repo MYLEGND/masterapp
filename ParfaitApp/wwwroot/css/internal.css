@@ -1705,6 +1705,34 @@ button.pf-secondary-action.is-danger {
     font-style: normal;
 }
 
+.pf-analytics-fetch-state {
+    margin-bottom: 14px;
+    padding: 14px 16px;
+    border: 1px solid var(--pf-line-strong);
+    border-radius: 18px;
+    background: var(--pf-surface-panel);
+    color: var(--pf-muted);
+    font-size: 0.86rem;
+    font-weight: 850;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+}
+
+.pf-analytics-fetch-state.is-success {
+    border-color: rgba(39, 119, 73, 0.32);
+    color: #245f3b;
+}
+
+.pf-analytics-fetch-state.is-warning {
+    border-color: rgba(176, 91, 26, 0.28);
+    color: #8b541f;
+}
+
+.pf-analytics-fetch-state.is-danger {
+    border-color: rgba(181, 61, 46, 0.28);
+    color: #962e23;
+}
+
 .pf-product-summary-list {
     display: grid;
     gap: 14px;
@@ -2339,6 +2367,21 @@ button.pf-secondary-action.is-danger {
 
 .pf-analytics-shell .text-muted {
     color: var(--pf-text-soft);
+}
+
+.pf-analytics-raw-json {
+    margin: 0;
+    padding: 0.9rem 0.95rem;
+    border: 1px solid var(--pf-analytics-line);
+    border-radius: 16px;
+    background: rgba(255, 255, 255, 0.94);
+    color: var(--pf-analytics-strong);
+    font-family: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
+    font-size: 0.74rem;
+    font-weight: 700;
+    line-height: 1.45;
+    white-space: pre-wrap;
+    word-break: break-word;
 }
 
 .pf-analytics-detail-table th:nth-child(4),

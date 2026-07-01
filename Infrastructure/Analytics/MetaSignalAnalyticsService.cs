@@ -83,7 +83,8 @@ public sealed class MetaSignalAnalyticsService : IMetaSignalAnalyticsService
         CancellationToken ct = default)
     {
         var baseQuery = _db.MetaSignalEvents.AsNoTracking()
-            .Where(x => x.CreatedUtc >= range.FromUtc && x.CreatedUtc <= range.ToUtc);
+            .Where(x => x.CreatedUtc >= range.FromUtc && x.CreatedUtc <= range.ToUtc)
+            .ApplySiteScope(scope);
 
         var scopedAgentIds = await ResolveScopedAgentIdsAsync(scope, ct);
         if (scope.ScopeType == ScopeType.Agent && scope.AgentTrackingProfileId.HasValue)
@@ -735,7 +736,8 @@ public sealed class MetaSignalAnalyticsService : IMetaSignalAnalyticsService
         IReadOnlyCollection<HealthAnalyticsEventRow> analyticsRows)
     {
         var query = _db.MetaSignalEvents.AsNoTracking()
-            .Where(x => x.CreatedUtc >= range.FromUtc && x.CreatedUtc <= range.ToUtc);
+            .Where(x => x.CreatedUtc >= range.FromUtc && x.CreatedUtc <= range.ToUtc)
+            .ApplySiteScope(scope);
 
         if (scope.ScopeType == ScopeType.Agent && scope.AgentTrackingProfileId.HasValue)
         {
@@ -793,6 +795,9 @@ public sealed class MetaSignalAnalyticsService : IMetaSignalAnalyticsService
         var query = _db.WebsiteLeads.AsNoTracking()
             .Where(x => !x.IsDeleted)
             .Where(x => x.CreatedUtc >= range.FromUtc && x.CreatedUtc <= range.ToUtc);
+
+        if (scope.HasSiteScope)
+            return query.Where(x => false);
 
         if (scope.ScopeType == ScopeType.Agent && scope.AgentTrackingProfileId.HasValue)
         {
