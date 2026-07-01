@@ -423,28 +423,9 @@ html {
 }
 
 .pf-panel,
-.pf-module-card,
-.pf-commerce-panel,
-.pf-mini-status,
-.pf-alert-success {
-    border-radius: 24px;
-    position: relative;
-    background: var(--pf-surface-panel);
-    border: 1px solid var(--pf-line-bold);
-    box-shadow:
-        inset 0 1px 0 rgba(255, 255, 255, 0.78),
-        var(--pf-shadow-card);
-}
 
 .pf-panel,
-.pf-module-card,
-.pf-commerce-panel {
-    padding: 18px 20px;
-}
 
-.pf-module-card {
-    height: 100%;
-}
 
 .pf-module-link {
     display: block;
@@ -453,15 +434,7 @@ html {
     text-decoration: none;
 }
 
-.pf-module-link .pf-module-card {
-    transition: transform 0.16s ease, box-shadow 0.2s ease, border-color 0.2s ease;
-}
 
-.pf-module-link:hover .pf-module-card {
-    transform: translateY(-4px);
-    border-color: var(--pf-line-bold);
-    box-shadow: var(--pf-shadow-card-strong);
-}
 
 .pf-module-title {
     margin: 0 0 0.3rem;
@@ -581,10 +554,6 @@ html {
     font-size: 1.02rem;
 }
 
-.pf-command-page {
-    display: grid;
-    gap: 18px;
-}
 
 .pf-command-head {
     display: flex;
@@ -632,87 +601,12 @@ html {
     flex: 0 1 460px;
 }
 
-.pf-command-rail,
-.pf-workspace-grid,
-.pf-focus-grid {
-    display: grid;
-    grid-template-columns: repeat(12, minmax(0, 1fr));
-    gap: 14px;
-}
 
-.pf-span-2,
-.pf-span-3,
-.pf-span-4,
-.pf-span-5,
-.pf-span-6,
-.pf-span-7,
-.pf-span-8,
-.pf-span-12 {
-    grid-column: span 12;
-}
 
-.pf-rail-card,
-.pf-focus-card,
-.pf-module-row {
-    --pf-tone-surface: rgba(86, 49, 34, 0.24);
-    --pf-tone-line: var(--pf-neutral-line);
-    --pf-tone-ink: var(--pf-cocoa);
-    --pf-tone-shadow: rgba(67, 41, 29, 0.18);
-    position: relative;
-    overflow: hidden;
-    min-width: 0;
-    border: 2px solid var(--pf-tone-line);
-    border-radius: 20px;
-    background:
-        linear-gradient(0deg, var(--pf-tone-surface), var(--pf-tone-surface)),
-        var(--pf-surface-panel);
-    box-shadow:
-        inset 0 1px 0 rgba(255, 255, 255, 0.54),
-        0 20px 40px var(--pf-tone-shadow);
-}
 
-.pf-rail-card.is-success,
-.pf-focus-card.is-success,
-.pf-module-row.is-success {
-    --pf-tone-surface: rgba(22, 101, 52, 0.38);
-    --pf-tone-line: var(--pf-success-line);
-    --pf-tone-ink: var(--pf-success-text);
-    --pf-tone-shadow: rgba(17, 71, 42, 0.12);
-}
 
-.pf-rail-card.is-info,
-.pf-focus-card.is-info,
-.pf-module-row.is-info {
-    --pf-tone-surface: rgba(29, 78, 216, 0.34);
-    --pf-tone-line: var(--pf-info-line);
-    --pf-tone-ink: var(--pf-info-text);
-    --pf-tone-shadow: rgba(26, 74, 167, 0.12);
-}
 
-.pf-rail-card.is-warning,
-.pf-focus-card.is-warning,
-.pf-module-row.is-warning {
-    --pf-tone-surface: rgba(180, 83, 9, 0.36);
-    --pf-tone-line: var(--pf-warning-line);
-    --pf-tone-ink: var(--pf-warning-text);
-    --pf-tone-shadow: rgba(143, 74, 13, 0.12);
-}
 
-.pf-rail-card.is-danger,
-.pf-focus-card.is-danger,
-.pf-module-row.is-danger {
-    --pf-tone-surface: rgba(185, 28, 28, 0.34);
-    --pf-tone-line: var(--pf-danger-line);
-    --pf-tone-ink: var(--pf-danger-text);
-    --pf-tone-shadow: rgba(154, 30, 30, 0.12);
-}
-
-.pf-rail-card,
-.pf-focus-card {
-    display: grid;
-    gap: 0.9rem;
-    padding: 18px 18px 16px;
-}
 
 .pf-rail-label,
 .pf-focus-label {
@@ -746,155 +640,234 @@ html {
 }
 
 .pf-rail-grid,
-.pf-module-row-metrics {
-    display: grid;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-    gap: 8px;
-}
 
 .pf-rail-grid > div,
-.pf-module-row-metric,
-.pf-focus-list > div {
-    padding: 0.8rem 0.85rem;
-    border: 1.6px solid var(--pf-tile-border);
-    border-radius: 15px;
-    background: var(--pf-tile-bg);
-    box-shadow: var(--pf-tile-shadow);
-}
 
-.pf-rail-card .pf-rail-grid > div,
-.pf-focus-card .pf-focus-list > div,
-.pf-module-row .pf-module-row-metric {
-    border-color: var(--pf-tile-border-strong);
-}
 
 .pf-rail-grid span,
-.pf-module-row-metric span,
-.pf-focus-list span {
-    display: block;
-    color: var(--pf-tone-ink);
-    font-size: 0.68rem;
-    font-weight: 950;
-    letter-spacing: 0.12em;
-    text-transform: uppercase;
-}
 
 .pf-rail-grid strong,
-.pf-module-row-metric strong,
-.pf-focus-list strong {
-    display: block;
-    margin-top: 0.22rem;
-    color: var(--pf-text);
-    font-size: 0.96rem;
-    font-weight: 900;
-    letter-spacing: -0.04em;
-}
 
-.pf-command-board {
-    display: grid;
-    gap: 16px;
-    padding: 20px 22px;
-    border-radius: 28px;
-    border: 1px solid var(--pf-line-bold);
-    background: var(--pf-surface-panel-strong);
-    box-shadow:
-        inset 0 1px 0 rgba(255, 255, 255, 0.8),
-        var(--pf-shadow-card);
-}
 
-.pf-command-board-head {
+
+
+
+
+.pf-analytics-command-shell {
     display: flex;
     flex-wrap: wrap;
-    align-items: flex-end;
+    align-items: flex-start;
     justify-content: space-between;
-    gap: 0.7rem;
-    padding-bottom: 14px;
-    border-bottom: 1px solid var(--pf-line);
+    gap: 1rem 1.25rem;
 }
 
-.pf-command-board-head h2 {
-    margin: 0;
+.pf-analytics-command-copy {
+    min-width: 0;
+    flex: 1 1 420px;
+}
+
+.pf-analytics-section-kicker,
+.pf-analytics-module-kicker,
+.pf-analytics-band-label {
+    color: var(--pf-cocoa);
+    font-size: 0.7rem;
+    font-weight: 950;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+}
+
+.pf-analytics-command-copy h2 {
+    margin: 0.42rem 0 0;
     color: var(--pf-text);
-    font-size: 1.5rem;
+    font-size: clamp(1.52rem, 2.7vw, 2rem);
     font-weight: 950;
     letter-spacing: 0.05em;
-    line-height: 1.04;
+    line-height: 1.03;
     text-transform: uppercase;
-    text-wrap: balance;
 }
 
-.pf-command-board-head p {
-    max-width: 60ch;
+.pf-analytics-command-copy p,
+.pf-analytics-band-copy {
     margin: 0.45rem 0 0;
     color: var(--pf-text-soft);
     font-size: 0.9rem;
     font-weight: 700;
-    font-style: normal;
-    letter-spacing: 0;
     line-height: 1.46;
 }
 
-.pf-command-board-actions,
-.pf-focus-actions {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 0.65rem;
+.pf-analytics-command-actions {
+    flex: 0 1 520px;
+    justify-content: flex-end;
 }
 
-.pf-module-list {
+.pf-analytics-quality-grid {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 12px;
+}
+
+.pf-analytics-quality-card,
+.pf-analytics-board-chip {
+    display: grid;
+    gap: 0.35rem;
+    padding: 0.95rem 1rem;
+    border: 1.6px solid var(--pf-line-strong);
+    border-radius: 18px;
+    background: var(--pf-tile-bg);
+    box-shadow: var(--pf-tile-shadow);
+}
+
+.pf-analytics-quality-card span,
+.pf-analytics-board-chip {
+    color: var(--pf-cocoa);
+    font-size: 0.7rem;
+    font-weight: 950;
+    letter-spacing: 0.14em;
+    line-height: 1.3;
+    text-transform: uppercase;
+}
+
+.pf-analytics-quality-card strong {
+    color: var(--pf-text);
+    font-size: 0.94rem;
+    font-weight: 900;
+    letter-spacing: -0.03em;
+    line-height: 1.25;
+}
+
+.pf-analytics-toolbar-actions {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: stretch;
+    justify-content: flex-end;
+    gap: 0.65rem;
+    grid-column: span 1;
+}
+
+.pf-analytics-kpi-surface,
+.pf-analytics-workbench {
+    gap: 18px;
+}
+
+.pf-analytics-band,
+.pf-analytics-module-band {
     display: grid;
     gap: 12px;
 }
 
-.pf-module-row {
-    display: grid;
-    grid-template-columns: minmax(0, 1fr) minmax(260px, 0.92fr) auto;
-    align-items: center;
-    gap: 14px;
-    padding: 16px 18px;
-}
-
-.pf-module-row-main {
-    min-width: 0;
-}
-
-.pf-module-row-main h3 {
-    margin: 0 0 0.3rem;
-    color: var(--pf-text);
-    font-size: 1.28rem;
-    font-weight: 950;
-    letter-spacing: 0.05em;
-    line-height: 1.06;
-    text-transform: uppercase;
-    text-wrap: balance;
-}
-
-.pf-module-row-main p {
-    max-width: 44ch;
-    margin: 0;
-    color: var(--pf-text-soft);
-    font-size: 0.88rem;
-    font-weight: 700;
-    font-style: normal;
-    letter-spacing: 0;
-    line-height: 1.46;
-}
-
-.pf-module-row-actions {
+.pf-analytics-band-head {
     display: flex;
     flex-wrap: wrap;
-    justify-content: flex-end;
-    gap: 0.65rem;
+    align-items: flex-end;
+    justify-content: space-between;
+    gap: 0.55rem 0.9rem;
 }
 
-.pf-module-row-actions .pf-action,
-.pf-module-row-actions .pf-secondary-action {
-    min-width: 126px;
+.pf-analytics-module-grid {
+    display: grid;
+    grid-template-columns: repeat(12, minmax(0, 1fr));
+    gap: 12px;
 }
 
-.pf-focus-card {
-    height: 100%;
+.pf-analytics-module-card {
+    --pf-module-surface: rgba(86, 49, 34, 0.26);
+    --pf-module-line: var(--pf-neutral-line);
+    --pf-module-text: var(--pf-neutral-text);
+    --pf-module-shadow: rgba(67, 41, 29, 0.16);
+    grid-column: span 12;
+    display: grid;
+    gap: 0.75rem;
+    padding: 1.1rem 1.15rem;
+    border: 2px solid var(--pf-module-line);
+    border-radius: 22px;
+    background:
+        linear-gradient(0deg, var(--pf-module-surface), var(--pf-module-surface)),
+        var(--pf-surface-panel);
+    box-shadow:
+        inset 0 1px 0 rgba(255, 255, 255, 0.56),
+        0 18px 34px var(--pf-module-shadow);
 }
+
+.pf-analytics-module-card.is-success {
+    --pf-module-surface: rgba(22, 101, 52, 0.38);
+    --pf-module-line: var(--pf-success-line);
+    --pf-module-text: var(--pf-success-text);
+    --pf-module-shadow: rgba(17, 71, 42, 0.12);
+}
+
+.pf-analytics-module-card.is-info {
+    --pf-module-surface: rgba(29, 78, 216, 0.34);
+    --pf-module-line: var(--pf-info-line);
+    --pf-module-text: var(--pf-info-text);
+    --pf-module-shadow: rgba(26, 74, 167, 0.12);
+}
+
+.pf-analytics-module-card.is-warning {
+    --pf-module-surface: rgba(180, 83, 9, 0.38);
+    --pf-module-line: var(--pf-warning-line);
+    --pf-module-text: var(--pf-warning-text);
+    --pf-module-shadow: rgba(143, 74, 13, 0.12);
+}
+
+.pf-analytics-module-card.is-danger {
+    --pf-module-surface: rgba(185, 28, 28, 0.34);
+    --pf-module-line: var(--pf-danger-line);
+    --pf-module-text: var(--pf-danger-text);
+    --pf-module-shadow: rgba(154, 30, 30, 0.12);
+}
+
+.pf-analytics-module-card h3 {
+    margin: 0;
+    color: var(--pf-text);
+    font-size: 1.18rem;
+    font-weight: 950;
+    letter-spacing: 0.05em;
+    line-height: 1.05;
+    text-transform: uppercase;
+}
+
+.pf-analytics-module-card p {
+    margin: 0;
+    color: var(--pf-text-soft);
+    font-size: 0.86rem;
+    font-weight: 700;
+    line-height: 1.45;
+}
+
+.pf-analytics-module-card .pf-analytics-module-kicker {
+    color: var(--pf-module-text);
+}
+
+.pf-analytics-module-chips,
+
+.pf-analytics-module-chips span {
+    display: inline-flex;
+    align-items: center;
+    min-height: 30px;
+    padding: 0 0.76rem;
+    border: 1px solid var(--pf-module-line);
+    border-radius: 999px;
+    background: rgba(255, 255, 255, 0.9);
+    color: var(--pf-module-text);
+    font-size: 0.68rem;
+    font-weight: 900;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+}
+
+
+.pf-analytics-module-grid.is-primary .pf-analytics-module-card,
+.pf-analytics-module-grid .pf-analytics-module-card {
+    grid-column: span 4;
+}
+
+
+
+
+
+
+
+
 
 .pf-focus-title {
     margin: 0;
@@ -921,62 +894,11 @@ html {
     gap: 8px;
 }
 
-.pf-action,
-.pf-secondary-action,
-button.pf-action,
-button.pf-secondary-action {
-    min-height: 44px;
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    gap: 0.45rem;
-    padding: 0.7rem 1rem;
-    border-radius: 14px;
-    font-size: 0.74rem;
-    font-weight: 950;
-    letter-spacing: 0.11em;
-    text-transform: uppercase;
-    text-decoration: none;
-    cursor: pointer;
-    transition: transform 0.14s ease, box-shadow 0.18s ease, filter 0.18s ease, border-color 0.18s ease, background 0.18s ease;
-}
 
-.pf-action,
-button.pf-action {
-    border: 1.5px solid rgba(106, 67, 50, 0.74);
-    background:
-        linear-gradient(180deg, rgba(255, 255, 255, 0.16), rgba(255, 255, 255, 0) 36%),
-        linear-gradient(160deg, #8a5a44 0%, #6f4331 48%, #4b2b1f 100%);
-    color: #fff8f3;
-    box-shadow: 0 18px 34px rgba(75, 43, 31, 0.16);
-}
 
-.pf-secondary-action,
-button.pf-secondary-action {
-    border: 1.5px solid var(--pf-line-strong);
-    background: var(--pf-surface);
-    color: var(--pf-cocoa);
-    box-shadow: 0 12px 24px rgba(31, 18, 13, 0.07);
-}
 
-.pf-action:hover,
-.pf-secondary-action:hover,
-button.pf-action:hover,
-button.pf-secondary-action:hover {
-    transform: translateY(-2px);
-}
 
-.pf-action:hover,
-button.pf-action:hover {
-    filter: brightness(1.03);
-    box-shadow: 0 22px 40px rgba(94, 57, 39, 0.18);
-}
 
-.pf-secondary-action:hover,
-button.pf-secondary-action:hover {
-    border-color: rgba(106, 67, 50, 0.46);
-    box-shadow: 0 16px 30px rgba(60, 37, 25, 0.12);
-}
 
 .pf-alert-success {
     padding: 0.95rem 1rem;
@@ -998,12 +920,6 @@ button.pf-secondary-action:hover {
         var(--pf-shadow-card);
 }
 
-.pf-secondary-action.is-danger,
-button.pf-secondary-action.is-danger {
-    border-color: var(--pf-danger-line);
-    color: var(--pf-danger-text);
-    background: linear-gradient(180deg, rgba(255, 255, 255, 0.96), rgba(255, 233, 233, 0.94));
-}
 
 .pf-automation-board {
     background: linear-gradient(180deg, rgba(255, 250, 245, 1), rgba(233, 214, 198, 0.98));
@@ -1295,35 +1211,8 @@ button.pf-secondary-action.is-danger {
     gap: 18px;
 }
 
-.pf-commerce-panel-head {
-    display: flex;
-    flex-wrap: wrap;
-    align-items: flex-end;
-    justify-content: space-between;
-    gap: 0.8rem;
-    padding-bottom: 1rem;
-    margin-bottom: 1rem;
-    border-bottom: 1px solid var(--pf-line);
-}
 
-.pf-commerce-panel-head h2 {
-    margin: 0;
-    color: var(--pf-text);
-    font-size: 1.45rem;
-    font-weight: 950;
-    letter-spacing: 0.05em;
-    line-height: 1.05;
-    text-transform: uppercase;
-    text-wrap: balance;
-}
 
-.pf-commerce-panel-head span {
-    color: var(--pf-cocoa);
-    font-size: 0.74rem;
-    font-weight: 900;
-    letter-spacing: 0.14em;
-    text-transform: uppercase;
-}
 
 .pf-commerce-settings-strip {
     margin-bottom: 16px;
@@ -2107,124 +1996,7 @@ button.pf-secondary-action.is-danger {
     justify-content: flex-start;
 }
 
-.pf-analytics-trigger {
-    appearance: none;
-    font: inherit;
-    color: inherit;
-    width: 100%;
-    text-align: left;
-    cursor: pointer;
-    transition: transform 160ms ease, box-shadow 160ms ease, border-color 160ms ease;
-}
 
-.pf-analytics-trigger:hover,
-.pf-analytics-trigger:focus-visible {
-    transform: translateY(-2px);
-    box-shadow: 0 22px 38px rgba(42, 24, 17, 0.14);
-}
-
-.pf-analytics-trigger:focus-visible {
-    outline: 3px solid rgba(44, 98, 193, 0.2);
-    outline-offset: 2px;
-}
-
-.pf-analytics-trigger-meta {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 0.45rem;
-}
-
-.pf-analytics-trigger-meta span {
-    display: inline-flex;
-    align-items: center;
-    min-height: 30px;
-    padding: 0 0.75rem;
-    border: 1px solid var(--pf-line);
-    border-radius: 999px;
-    background: rgba(255, 255, 255, 0.82);
-    color: var(--pf-text-soft);
-    font-size: 0.66rem;
-    font-weight: 920;
-    letter-spacing: 0.12em;
-    text-transform: uppercase;
-}
-
-.pf-analytics-shell {
-    --pf-analytics-line: var(--pf-neutral-line);
-    --pf-analytics-bg: var(--pf-neutral-bg);
-    --pf-analytics-text: var(--pf-neutral-text);
-    --pf-analytics-strong: var(--pf-text);
-    border-color: var(--pf-analytics-line);
-    box-shadow:
-        0 42px 96px rgba(27, 15, 11, 0.42),
-        0 0 0 1px rgba(255, 255, 255, 0.3);
-}
-
-.pf-analytics-shell.is-success {
-    --pf-analytics-line: var(--pf-success-line);
-    --pf-analytics-bg: var(--pf-success-bg);
-    --pf-analytics-text: var(--pf-success-text);
-    --pf-analytics-strong: #123a24;
-}
-
-.pf-analytics-shell.is-info {
-    --pf-analytics-line: var(--pf-info-line);
-    --pf-analytics-bg: var(--pf-info-bg);
-    --pf-analytics-text: var(--pf-info-text);
-    --pf-analytics-strong: #173b77;
-}
-
-.pf-analytics-shell.is-warning {
-    --pf-analytics-line: var(--pf-warning-line);
-    --pf-analytics-bg: var(--pf-warning-bg);
-    --pf-analytics-text: var(--pf-warning-text);
-    --pf-analytics-strong: #6f420d;
-}
-
-.pf-analytics-shell.is-danger {
-    --pf-analytics-line: var(--pf-danger-line);
-    --pf-analytics-bg: var(--pf-danger-bg);
-    --pf-analytics-text: var(--pf-danger-text);
-    --pf-analytics-strong: #6e1c1c;
-}
-
-.pf-analytics-shell .pf-modal-header {
-    border-bottom-color: var(--pf-analytics-line);
-    background:
-        linear-gradient(0deg, var(--pf-analytics-bg), var(--pf-analytics-bg)),
-        linear-gradient(180deg, var(--pf-surface), var(--pf-surface));
-}
-
-.pf-analytics-shell .pf-modal-body {
-    background:
-        linear-gradient(180deg, var(--pf-surface), var(--pf-surface));
-}
-
-.pf-analytics-shell .btn-close {
-    flex: 0 0 auto;
-    margin-top: 0.2rem;
-    border: 1px solid var(--pf-analytics-line);
-    border-radius: 14px;
-    background-color: rgba(255, 255, 255, 0.92);
-    box-shadow: 0 10px 18px rgba(42, 24, 17, 0.08);
-    opacity: 1;
-}
-
-.pf-analytics-modal-meta {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 0.55rem;
-    margin-top: 1rem;
-}
-
-.pf-analytics-shell .pf-command-badge {
-    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.48);
-}
-
-.pf-analytics-modal-section {
-    display: grid;
-    gap: 1rem;
-}
 
 .pf-analytics-stat-strip {
     display: grid;
@@ -2330,45 +2102,6 @@ button.pf-secondary-action.is-danger {
     min-width: 780px;
 }
 
-.pf-analytics-shell .pf-commerce-panel-head {
-    border-bottom-color: var(--pf-analytics-line);
-}
-
-.pf-analytics-shell .pf-commerce-panel-head span,
-.pf-analytics-shell .pf-commerce-panel-head h2 {
-    color: var(--pf-analytics-strong);
-}
-
-.pf-analytics-shell .pf-analytics-table th {
-    color: var(--pf-analytics-text);
-}
-
-.pf-analytics-shell .pf-analytics-table td {
-    border-top-color: var(--pf-analytics-line);
-    border-bottom-color: var(--pf-analytics-line);
-    background:
-        linear-gradient(0deg, rgba(255, 255, 255, 0.92), rgba(255, 255, 255, 0.92)),
-        linear-gradient(180deg, var(--pf-surface), var(--pf-surface));
-}
-
-.pf-analytics-shell .pf-analytics-table td:first-child {
-    border-left-color: var(--pf-analytics-line);
-}
-
-.pf-analytics-shell .pf-analytics-table td:last-child {
-    border-right-color: var(--pf-analytics-line);
-}
-
-.pf-analytics-shell .pf-analytics-table tbody tr:hover td {
-    background:
-        linear-gradient(0deg, var(--pf-analytics-bg), var(--pf-analytics-bg)),
-        linear-gradient(180deg, rgba(255, 255, 255, 1), rgba(247, 243, 239, 1));
-}
-
-.pf-analytics-shell .text-muted {
-    color: var(--pf-text-soft);
-}
-
 .pf-analytics-raw-json {
     margin: 0;
     padding: 0.9rem 0.95rem;
@@ -2382,6 +2115,28 @@ button.pf-secondary-action.is-danger {
     line-height: 1.45;
     white-space: pre-wrap;
     word-break: break-word;
+}
+
+.pf-analytics-inspector-toolbar {
+    display: grid;
+    gap: 0.55rem;
+}
+
+.pf-analytics-inspector-label {
+    color: var(--pf-text);
+    font-size: 0.72rem;
+    font-weight: 920;
+    font-style: normal;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+}
+
+.pf-analytics-inspector-card {
+    align-content: start;
+}
+
+.pf-analytics-inspector-card .pf-focus-list {
+    grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
 }
 
 .pf-analytics-detail-table th:nth-child(4),
@@ -2405,32 +2160,8 @@ button.pf-secondary-action.is-danger {
     white-space: nowrap;
 }
 
-.pf-product-modal,
-.pf-analytics-modal,
-.pf-order-modal,
-.pf-team-modal,
-.pf-image-editor-modal {
-    position: fixed;
-    inset: 0;
-    z-index: 1900;
-    display: none;
-    align-items: center;
-    justify-content: center;
-    padding: 24px;
-    background: rgba(29, 17, 13, 0.56);
-    backdrop-filter: blur(8px);
-}
-
 .pf-image-editor-modal {
     z-index: 2000;
-}
-
-.pf-product-modal.is-open,
-.pf-analytics-modal.is-open,
-.pf-order-modal.is-open,
-.pf-team-modal.is-open,
-.pf-image-editor-modal.is-open {
-    display: flex;
 }
 
 .pf-modal-dialog {
@@ -3155,13 +2886,7 @@ button.pf-secondary-action.is-danger {
         grid-template-columns: 1fr;
     }
 
-    .pf-module-row {
-        grid-template-columns: 1fr;
-    }
 
-    .pf-module-row-actions {
-        justify-content: flex-start;
-    }
 
     .pf-product-summary-card {
         grid-template-columns: minmax(0, 1fr);
@@ -3202,6 +2927,20 @@ button.pf-secondary-action.is-danger {
         justify-content: flex-start;
     }
 
+    .pf-analytics-command-actions,
+    .pf-analytics-toolbar-actions {
+        justify-content: flex-start;
+    }
+
+    .pf-analytics-quality-grid {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
+    .pf-analytics-module-grid.is-primary .pf-analytics-module-card,
+    .pf-analytics-module-grid .pf-analytics-module-card {
+        grid-column: span 6;
+    }
+
     .pf-auth-shell {
         grid-template-columns: 1fr;
     }
@@ -3227,18 +2966,21 @@ button.pf-secondary-action.is-danger {
     }
 
     .pf-panel,
-    .pf-module-card,
-    .pf-commerce-panel,
-    .pf-command-board,
-    .pf-auth-intro,
-    .pf-auth-card {
-        border-radius: 24px;
-    }
 
     .pf-rail-grid,
-    .pf-module-row-metrics,
-    .pf-focus-list {
+
+    .pf-analytics-command-shell,
+    .pf-analytics-band-head {
+        align-items: flex-start;
+    }
+
+    .pf-analytics-quality-grid {
         grid-template-columns: 1fr;
+    }
+
+    .pf-analytics-module-grid.is-primary .pf-analytics-module-card,
+    .pf-analytics-module-grid .pf-analytics-module-card {
+        grid-column: span 12;
     }
 
     .pf-photo-grid {
@@ -3303,12 +3045,6 @@ button.pf-secondary-action.is-danger {
     }
 
     .pf-header-left,
-    .pf-action,
-    .pf-secondary-action,
-    button.pf-action,
-    button.pf-secondary-action {
-        width: 100%;
-    }
 
     .pf-sidebar {
         inset: 12px;
@@ -3328,14 +3064,401 @@ button.pf-secondary-action.is-danger {
 
     .pf-product-modal,
     .pf-automation-modal,
-    .pf-analytics-modal,
-    .pf-order-modal,
-    .pf-team-modal,
-    .pf-image-editor-modal {
-        padding: 12px;
-    }
 
     .pf-auth-card {
         padding: 24px 20px;
     }
 }
+
+
+/* === PARFAIT CLEAN GLOBAL INTERNAL UI SYSTEM START === */
+/* Single active global internal UI system. Analytics remains isolated in parfait-agentportal-analytics.css. */
+
+:root {
+    --pf-page: #f8f5ef;
+    --pf-ink: #140d09;
+    --pf-espresso: #170d08;
+    --pf-panel: #2a1810;
+    --pf-panel-soft: #3b2418;
+    --pf-card: #fff8ef;
+    --pf-card-2: #f2e4d6;
+    --pf-line: rgba(146, 105, 80, .34);
+    --pf-line-strong: rgba(146, 105, 80, .58);
+    --pf-gold: #c99a66;
+    --pf-cream: #fff8ef;
+    --pf-muted-dark: rgba(20, 13, 9, .68);
+    --pf-muted-light: rgba(255, 248, 239, .76);
+}
+
+.pf-internal-main,
+main.pf-internal-main {
+    background: radial-gradient(circle at 50% 0%, rgba(146,105,80,.10), transparent 34rem), var(--pf-page);
+}
+
+/* Smart grids */
+.pf-command-rail,
+.pf-workspace-grid,
+.pf-settings-grid,
+.pf-commerce-grid,
+.pf-dashboard-grid,
+.pf-focus-grid {
+    display: grid;
+    grid-template-columns: repeat(12, minmax(0, 1fr));
+    gap: 18px;
+    align-items: stretch;
+    margin-bottom: 24px;
+}
+
+.pf-span-2 { grid-column: span 2; }
+.pf-span-3 { grid-column: span 3; }
+.pf-span-4 { grid-column: span 4; }
+.pf-span-5 { grid-column: span 5; }
+.pf-span-6 { grid-column: span 6; }
+.pf-span-7 { grid-column: span 7; }
+.pf-span-8 { grid-column: span 8; }
+.pf-span-9 { grid-column: span 9; }
+.pf-span-10 { grid-column: span 10; }
+.pf-span-11 { grid-column: span 11; }
+.pf-span-12 { grid-column: span 12; }
+
+/* Dark premium section shells */
+.pf-commerce-panel,
+.pf-module-card,
+.pf-command-board {
+    background: linear-gradient(180deg, var(--pf-panel), var(--pf-espresso));
+    border: 1px solid var(--pf-line);
+    border-radius: 24px;
+    color: var(--pf-cream);
+    padding: 24px;
+    box-shadow: 0 22px 54px rgba(43,25,17,.18);
+    margin-bottom: 24px;
+}
+
+.pf-commerce-panel-head,
+.pf-command-board-head {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    gap: 18px;
+    padding-bottom: 16px;
+    margin-bottom: 20px;
+    border-bottom: 1px solid rgba(255,248,239,.16);
+}
+
+.pf-commerce-panel-head h2,
+.pf-command-board-head h2,
+.pf-module-card h2,
+.pf-module-card h3 {
+    color: var(--pf-cream);
+    font-weight: 900;
+}
+
+/* KPI cards */
+.pf-rail-card,
+.pf-focus-card {
+    background: linear-gradient(180deg, #4a2f20, #24140d);
+    border: 1px solid var(--pf-line);
+    border-radius: 20px;
+    color: var(--pf-cream);
+    padding: 18px;
+    min-height: 118px;
+    display: grid;
+    align-content: space-between;
+}
+
+.pf-rail-card span,
+.pf-focus-card span {
+    color: #e0bd91;
+    font-size: .72rem;
+    font-weight: 900;
+    letter-spacing: .12em;
+    text-transform: uppercase;
+}
+
+.pf-rail-card strong,
+.pf-focus-card strong {
+    color: #fffaf5;
+}
+
+/* Products / Orders: clean light cards inside dark operations panels */
+.pf-product-card,
+.pf-product-row,
+.pf-order-card,
+.pf-team-card,
+.pf-automation-card,
+.pf-image-card,
+.pf-settings-card,
+.pf-editor-card,
+.pf-list-card,
+.pf-commerce-panel form,
+.pf-module-card form {
+    background: linear-gradient(180deg, #fffaf4, #f1e3d4);
+    border: 1px solid rgba(146,105,80,.30);
+    border-radius: 18px;
+    color: var(--pf-ink);
+    padding: 16px;
+    box-shadow: 0 12px 28px rgba(43,25,17,.10);
+}
+
+.pf-product-card,
+.pf-product-row,
+.pf-order-card {
+    margin-bottom: 14px;
+}
+
+.pf-product-card h3,
+.pf-product-row h3,
+.pf-order-card h3,
+.pf-team-card h3 {
+    color: var(--pf-ink);
+    font-weight: 900;
+}
+
+.pf-product-card p,
+.pf-product-row p,
+.pf-order-card p,
+.pf-team-card p {
+    color: var(--pf-muted-dark);
+}
+
+/* Compact product/order metric cells */
+.pf-product-card article,
+.pf-product-card .pf-mini-card,
+.pf-product-row article,
+.pf-order-card article,
+.pf-team-card article {
+    background: rgba(255,255,255,.72);
+    border: 1px solid rgba(146,105,80,.24);
+    border-radius: 14px;
+    color: var(--pf-ink);
+    padding: 12px;
+}
+
+/* Forms */
+.pf-commerce-panel form,
+.pf-module-card form {
+    display: grid;
+    gap: 16px;
+}
+
+.pf-commerce-panel .row,
+.pf-module-card .row {
+    row-gap: 14px;
+}
+
+.pf-commerce-panel label,
+.pf-module-card label,
+.pf-product-card label,
+.pf-order-card label {
+    color: #8a5a3d;
+    font-size: .72rem;
+    font-weight: 900;
+    letter-spacing: .11em;
+    text-transform: uppercase;
+    margin-bottom: 6px;
+}
+
+.pf-commerce-panel input,
+.pf-commerce-panel select,
+.pf-commerce-panel textarea,
+.pf-module-card input,
+.pf-module-card select,
+.pf-module-card textarea,
+.pf-product-card input,
+.pf-product-card select,
+.pf-product-card textarea,
+.pf-order-card input,
+.pf-order-card select,
+.pf-order-card textarea {
+    background: rgba(255,255,255,.86);
+    border: 1px solid rgba(146,105,80,.30);
+    border-radius: 12px;
+    color: var(--pf-ink);
+    min-height: 40px;
+}
+
+/* Buttons: compact, visible, row-smart */
+.pf-command-board-actions,
+.pf-commerce-panel-head > div:last-child,
+.pf-module-card-actions,
+.pf-card-actions,
+.pf-actions,
+.pf-inline-actions,
+.pf-form-actions,
+.pf-modal-footer,
+.modal-footer {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+    row-gap: 10px;
+    align-items: center;
+    justify-content: flex-end;
+}
+
+.pf-action,
+button.pf-action,
+.pf-secondary-action,
+button.pf-secondary-action,
+.pf-mini-action {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 38px;
+    width: auto;
+    white-space: nowrap;
+    border-radius: 999px;
+    padding: 9px 15px;
+    font-weight: 900;
+    line-height: 1;
+    text-decoration: none;
+    margin: 0;
+}
+
+.pf-action,
+button.pf-action {
+    background: linear-gradient(180deg, #fff4e5, #c9965f);
+    border: 1px solid rgba(146,105,80,.58);
+    color: var(--pf-ink);
+}
+
+.pf-secondary-action,
+button.pf-secondary-action,
+.pf-mini-action {
+    background: rgba(255,248,239,.08);
+    border: 1px solid rgba(255,248,239,.32);
+    color: var(--pf-cream);
+}
+
+.pf-product-card .pf-secondary-action,
+.pf-product-row .pf-secondary-action,
+.pf-order-card .pf-secondary-action,
+.pf-team-card .pf-secondary-action,
+.pf-product-card .pf-mini-action,
+.pf-product-row .pf-mini-action,
+.pf-order-card .pf-mini-action {
+    background: rgba(43,25,17,.06);
+    border-color: rgba(146,105,80,.30);
+    color: var(--pf-ink);
+}
+
+/* Orders page: make rows and modals less bulky */
+.pf-order-card {
+    display: grid;
+    grid-template-columns: minmax(180px, 1.1fr) minmax(180px, 1fr) minmax(260px, 1.6fr) minmax(110px, .7fr) minmax(150px, .8fr) minmax(180px, 1fr) auto;
+    gap: 14px;
+    align-items: center;
+}
+
+.pf-modal-dialog {
+    max-width: min(1120px, calc(100vw - 56px));
+}
+
+.pf-modal-content {
+    border-radius: 22px;
+    overflow: hidden;
+}
+
+.pf-modal-header {
+    padding: 18px 22px;
+}
+
+.pf-modal-body {
+    padding: 20px 22px;
+}
+
+.pf-modal-grid {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    gap: 16px;
+}
+
+.pf-modal-grid > *,
+.pf-modal-body section,
+.pf-modal-body article {
+    border-radius: 16px;
+}
+
+.pf-modal-body textarea {
+    min-height: 110px;
+}
+
+/* Tables */
+.pf-commerce-panel .table-responsive,
+.pf-module-card .table-responsive {
+    background: rgba(255,250,244,.96);
+    border: 1px solid rgba(146,105,80,.22);
+    border-radius: 16px;
+    overflow-x: auto;
+}
+
+.pf-commerce-panel th,
+.pf-module-card th {
+    color: #8a5a3d;
+    background: rgba(146,105,80,.09);
+}
+
+.pf-commerce-panel td,
+.pf-module-card td {
+    color: var(--pf-ink);
+}
+
+/* Responsive */
+@media (max-width: 1200px) {
+    .pf-order-card {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+}
+
+@media (max-width: 1100px) {
+    .pf-span-2,
+    .pf-span-3,
+    .pf-span-4 { grid-column: span 6; }
+
+    .pf-span-5,
+    .pf-span-6,
+    .pf-span-7,
+    .pf-span-8,
+    .pf-span-9,
+    .pf-span-10,
+    .pf-span-11 { grid-column: span 12; }
+}
+
+@media (max-width: 680px) {
+    .pf-command-rail,
+    .pf-workspace-grid,
+    .pf-settings-grid,
+    .pf-commerce-grid,
+    .pf-dashboard-grid,
+    .pf-focus-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .pf-span-2,
+    .pf-span-3,
+    .pf-span-4,
+    .pf-span-5,
+    .pf-span-6,
+    .pf-span-7,
+    .pf-span-8,
+    .pf-span-9,
+    .pf-span-10,
+    .pf-span-11,
+    .pf-span-12 {
+        grid-column: span 1;
+    }
+
+    .pf-order-card,
+    .pf-modal-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .pf-action,
+    .pf-secondary-action,
+    button.pf-action,
+    button.pf-secondary-action {
+        width: 100%;
+    }
+}
+
+/* === PARFAIT CLEAN GLOBAL INTERNAL UI SYSTEM END === */
+

@@ -318,7 +318,12 @@ public sealed class InternalModulesController : Controller
         "Shared ecommerce analytics, Meta diagnostics, and funnel intelligence.",
         4,
         4)]
-    public async Task<IActionResult> Analytics([FromQuery] string? preset = "30d", CancellationToken ct = default)
+    public async Task<IActionResult> Analytics(
+        [FromQuery] string? preset = "30d",
+        [FromQuery] string? from = null,
+        [FromQuery] string? to = null,
+        [FromQuery] string? qualityMode = null,
+        CancellationToken ct = default)
     {
         return View(await _internalAnalytics.GetDashboardAsync(preset, ct));
     }

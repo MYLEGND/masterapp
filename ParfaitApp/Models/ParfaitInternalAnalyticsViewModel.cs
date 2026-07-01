@@ -5,6 +5,9 @@ namespace ParfaitApp.Models;
 public sealed class ParfaitInternalAnalyticsViewModel
 {
     public string SelectedPreset { get; set; } = "30d";
+    public string RangeFrom { get; set; } = "";
+    public string RangeTo { get; set; } = "";
+    public string SelectedQualityMode { get; set; } = "real_human_traffic";
     public string RangeLabel { get; set; } = "";
 
     public SummaryKpiDto Summary { get; set; } = new();
@@ -103,6 +106,8 @@ public sealed class ParfaitAnalyticsInspectorEventViewModel
 {
     public DateTime EventUtc { get; set; }
     public string EventType { get; set; } = "";
+    public string? PageKey { get; set; }
+    public string? Path { get; set; }
     public string? ProductName { get; set; }
     public string? ProductSlug { get; set; }
     public string? Size { get; set; }
@@ -113,5 +118,15 @@ public sealed class ParfaitAnalyticsInspectorEventViewModel
     public string? VisitorId { get; set; }
     public string? Source { get; set; }
     public string? Campaign { get; set; }
+    public string? UtmSource { get; set; }
+    public string? UtmCampaign { get; set; }
+    public string? TrafficClassification { get; set; }
+    public string? Fbclid { get; set; }
+    public string? Fbc { get; set; }
+    public string? Fbp { get; set; }
+    public string? Device { get; set; }
+    public string? Browser { get; set; }
+    public string? OperatingSystem { get; set; }
+    public string? Viewport { get; set; }
     public string? MetadataJson { get; set; }
 }

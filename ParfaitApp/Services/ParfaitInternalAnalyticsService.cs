@@ -396,6 +396,8 @@ public sealed class ParfaitInternalAnalyticsService
         {
             EventUtc = item.EventUtc,
             EventType = item.EventType,
+            PageKey = item.PageKey,
+            Path = item.Path,
             ProductName = item.ProductName,
             ProductSlug = item.ProductSlug,
             Size = item.Size,
@@ -406,6 +408,16 @@ public sealed class ParfaitInternalAnalyticsService
             VisitorId = item.VisitorId,
             Source = item.Source,
             Campaign = item.Campaign,
+            UtmSource = item.UtmSource,
+            UtmCampaign = item.UtmCampaign,
+            TrafficClassification = item.TrafficClassification,
+            Fbclid = item.Fbclid,
+            Fbc = item.Fbc,
+            Fbp = item.Fbp,
+            Device = item.Device,
+            Browser = item.Browser,
+            OperatingSystem = item.OperatingSystem,
+            Viewport = item.Viewport,
             MetadataJson = item.MetadataJson
         };
     }
@@ -424,7 +436,21 @@ public sealed class ParfaitInternalAnalyticsService
             ValueCents = raw.ValueCents ?? ReadInt(raw.MetadataJson, "valueCents"),
             OrderNumber = raw.OrderNumber ?? ReadString(raw.MetadataJson, "orderNumber"),
             Source = raw.Source ?? raw.UtmSource ?? ReadString(raw.MetadataJson, "source"),
-            Campaign = raw.Campaign ?? raw.UtmCampaign ?? ReadString(raw.MetadataJson, "campaign")
+            Campaign = raw.Campaign ?? raw.UtmCampaign ?? ReadString(raw.MetadataJson, "campaign"),
+            UtmSource = raw.UtmSource ?? ReadString(raw.MetadataJson, "utmSource"),
+            UtmCampaign = raw.UtmCampaign ?? ReadString(raw.MetadataJson, "utmCampaign"),
+            TrafficClassification = raw.TrafficClassification
+                ?? ReadString(raw.MetadataJson, "trafficClassification")
+                ?? ReadString(raw.MetadataJson, "trafficClass"),
+            Fbclid = raw.Fbclid ?? ReadString(raw.MetadataJson, "fbclid"),
+            Fbc = raw.Fbc ?? ReadString(raw.MetadataJson, "fbc"),
+            Fbp = raw.Fbp ?? ReadString(raw.MetadataJson, "fbp"),
+            Device = raw.Device ?? ReadString(raw.MetadataJson, "device"),
+            Browser = raw.Browser ?? ReadString(raw.MetadataJson, "browser"),
+            OperatingSystem = raw.OperatingSystem
+                ?? ReadString(raw.MetadataJson, "operatingSystem")
+                ?? ReadString(raw.MetadataJson, "os"),
+            Viewport = raw.Viewport ?? ReadViewport(raw.MetadataJson)
         };
     }
 
@@ -516,6 +542,20 @@ public sealed class ParfaitInternalAnalyticsService
         return int.TryParse(value, out var parsed) ? parsed : null;
     }
 
+    private static string? ReadViewport(string? json)
+    {
+        var explicitViewport = ReadString(json, "viewport");
+        if (!string.IsNullOrWhiteSpace(explicitViewport))
+            return explicitViewport;
+
+        var width = ReadInt(json, "viewportWidth");
+        var height = ReadInt(json, "viewportHeight");
+        if (width.HasValue && height.HasValue)
+            return $"{width.Value} x {height.Value}";
+
+        return null;
+    }
+
     private sealed record AnalyticsEventSnapshot
     {
         public DateTime EventUtc { get; init; }
@@ -535,5 +575,13 @@ public sealed class ParfaitInternalAnalyticsService
         public string? OrderNumber { get; init; }
         public string? Source { get; init; }
         public string? Campaign { get; init; }
+        public string? TrafficClassification { get; init; }
+        public string? Fbclid { get; init; }
+        public string? Fbc { get; init; }
+        public string? Fbp { get; init; }
+        public string? Device { get; init; }
+        public string? Browser { get; init; }
+        public string? OperatingSystem { get; init; }
+        public string? Viewport { get; init; }
     }
 }
