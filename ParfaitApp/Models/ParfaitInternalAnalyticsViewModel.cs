@@ -9,6 +9,8 @@ public sealed class ParfaitInternalAnalyticsViewModel
     public string RangeTo { get; set; } = "";
     public string SelectedQualityMode { get; set; } = "real_human_traffic";
     public string RangeLabel { get; set; } = "";
+    public string ViewerTimeZoneId { get; set; } = "";
+    public int? ViewerTimeZoneOffsetMinutes { get; set; }
 
     public SummaryKpiDto Summary { get; set; } = new();
     public TrafficOverviewDto Traffic { get; set; } = new();

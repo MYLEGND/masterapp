@@ -291,10 +291,21 @@ public sealed class InternalModulesController : Controller
         [FromQuery] DateTime? fromUtc = null,
         [FromQuery] DateTime? toUtc = null,
         [FromQuery] string? qualityMode = null,
+        [FromQuery] string? timezoneId = null,
+        [FromQuery] int? timezoneOffsetMinutes = null,
         CancellationToken ct = default)
     {
         var resolvedQualityMode = TrafficQualityBucketFilters.ParseClientOrEnumValue(qualityMode);
-        return View(await _internalAnalytics.GetDashboardAsync(preset, fromUtc, toUtc, resolvedQualityMode, ct));
+        var viewerTimeZone = ResolveViewerTimeZone(timezoneId, timezoneOffsetMinutes);
+        return View(await _internalAnalytics.GetDashboardAsync(
+            preset,
+            fromUtc,
+            toUtc,
+            resolvedQualityMode,
+            viewerTimeZone,
+            timezoneId,
+            timezoneOffsetMinutes,
+            ct));
     }
 
     [HttpPost("analytics/meta-settings")]
@@ -306,12 +317,23 @@ public sealed class InternalModulesController : Controller
         [FromQuery] DateTime? fromUtc = null,
         [FromQuery] DateTime? toUtc = null,
         [FromQuery] string? qualityMode = null,
+        [FromQuery] string? timezoneId = null,
+        [FromQuery] int? timezoneOffsetMinutes = null,
         CancellationToken ct = default)
     {
         var resolvedQualityMode = TrafficQualityBucketFilters.ParseClientOrEnumValue(qualityMode);
+        var viewerTimeZone = ResolveViewerTimeZone(timezoneId, timezoneOffsetMinutes);
         if (!ModelState.IsValid)
         {
-            var dashboard = await _internalAnalytics.GetDashboardAsync(preset, fromUtc, toUtc, resolvedQualityMode, ct);
+            var dashboard = await _internalAnalytics.GetDashboardAsync(
+                preset,
+                fromUtc,
+                toUtc,
+                resolvedQualityMode,
+                viewerTimeZone,
+                timezoneId,
+                timezoneOffsetMinutes,
+                ct);
             dashboard.MetaSettings.MetaPixelId = model.MetaPixelId;
             dashboard.MetaSettings.MetaTestEventCode = model.MetaTestEventCode;
             return View("Analytics", dashboard);
@@ -319,7 +341,7 @@ public sealed class InternalModulesController : Controller
 
         await _businessProfile.SaveMetaSettingsAsync(model, ct);
         TempData["AnalyticsStatus"] = "Meta settings saved.";
-        return RedirectToAction(nameof(Analytics), new { preset, fromUtc, toUtc, qualityMode });
+        return RedirectToAction(nameof(Analytics), new { preset, fromUtc, toUtc, qualityMode, timezoneId, timezoneOffsetMinutes });
     }
 
     [HttpGet("analytics/meta-connect")]
@@ -384,16 +406,19 @@ public sealed class InternalModulesController : Controller
         [FromQuery] DateTime? fromUtc = null,
         [FromQuery] DateTime? toUtc = null,
         [FromQuery] string? qualityMode = null,
+        [FromQuery] string? timezoneId = null,
+        [FromQuery] int? timezoneOffsetMinutes = null,
         CancellationToken ct = default)
     {
         try
         {
             var resolvedQualityMode = TrafficQualityBucketFilters.ParseClientOrEnumValue(qualityMode);
+            var viewerTimeZone = ResolveViewerTimeZone(timezoneId, timezoneOffsetMinutes);
             var range = TimeRangeRequest.FromPreset(
                 string.IsNullOrWhiteSpace(preset) ? "30d" : preset,
                 fromUtc,
                 toUtc,
-                viewerTz: TimeZoneInfo.Utc,
+                viewerTz: viewerTimeZone,
                 qualityMode: resolvedQualityMode);
             var scope = ScopeContext.ForSite(ParfaitMetaAdsConnectionStoreAdapter.SiteKey, ParfaitMetaAdsConnectionStoreAdapter.SiteKey);
             var result = await _metaAds.GetCampaignsAsync(range, scope, ct);
@@ -425,6 +450,40 @@ public sealed class InternalModulesController : Controller
             return returnUrl;
 
         return Url.Action(nameof(Analytics), "InternalModules") ?? "/internal/analytics";
+    }
+
+    private static TimeZoneInfo ResolveViewerTimeZone(string? timezoneId, int? timezoneOffsetMinutes)
+    {
+        if (!string.IsNullOrWhiteSpace(timezoneId))
+        {
+            try
+            {
+                return TimeZoneInfo.FindSystemTimeZoneById(timezoneId.Trim());
+            }
+            catch (TimeZoneNotFoundException)
+            {
+            }
+            catch (InvalidTimeZoneException)
+            {
+            }
+        }
+
+        if (timezoneOffsetMinutes is >= -840 and <= 840)
+        {
+            try
+            {
+                return TimeZoneInfo.CreateCustomTimeZone(
+                    $"viewer-offset-{timezoneOffsetMinutes.Value}",
+                    TimeSpan.FromMinutes(-timezoneOffsetMinutes.Value),
+                    "Viewer Local",
+                    "Viewer Local");
+            }
+            catch
+            {
+            }
+        }
+
+        return TimeZoneInfo.Utc;
     }
 
     private static string AppendMetaStatus(string target, string meta, string? message = null)

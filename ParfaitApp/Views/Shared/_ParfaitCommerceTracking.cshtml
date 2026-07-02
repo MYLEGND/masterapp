@@ -2,6 +2,19 @@
 (() => {
     if (!location.pathname.toLowerCase().startsWith("/store")) return;
 
+    const trackingVersion = "parfait-commerce-tracking-v2";
+    const pageStartMs = Date.now();
+    const scrollThresholds = [25, 50, 75, 90, 100];
+    const firedScrollThresholds = new Set();
+    const firedEngagementEvents = new Set();
+
+    let lastVisibleAt = document.visibilityState === "visible" ? Date.now() : 0;
+    let engagedMilliseconds = 0;
+    let visibilityChangeCount = 0;
+    let mouseMoveCount = 0;
+    let humanInteractionCount = 0;
+    let pageExitSent = false;
+
     const getCookie = name => document.cookie
         .split("; ")
         .find(row => row.startsWith(name + "="))
@@ -11,49 +24,276 @@
         document.cookie = `${name}=${value}; path=/; SameSite=Lax; max-age=${maxAge}`;
     };
 
-    const uuid = prefix => `${prefix}_${crypto.randomUUID().replaceAll("-", "")}`;
+    const createUuid = prefix => {
+        const raw = typeof crypto !== "undefined" && typeof crypto.randomUUID === "function"
+            ? crypto.randomUUID().replaceAll("-", "")
+            : `${Date.now().toString(16)}${Math.random().toString(16).slice(2)}`;
+        return `${prefix}_${raw}`;
+    };
+
+    const normalizeKey = value => String(value || "")
+        .trim()
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, "_")
+        .replace(/^_+|_+$/g, "") || "unknown";
+
+    const currentPath = () => location.pathname || "/store";
+    const currentProductSlug = () => {
+        const parts = currentPath().split("/").filter(Boolean);
+        return parts.length >= 3 && parts[1] === "product" ? parts.at(-1) : "";
+    };
+
+    const currentPageKey = () => {
+        const path = currentPath().toLowerCase().replace(/\/+$/, "");
+        if (path === "/store") return "parfait_store_home";
+        if (path === "/store/cart") return "parfait_cart";
+        if (path === "/store/checkout") return "parfait_checkout";
+        if (path === "/store/success") return "parfait_checkout_success";
+        if (path.startsWith("/store/product/")) return `parfait_product_${normalizeKey(currentProductSlug())}`;
+        return `parfait_${normalizeKey(path.replaceAll("/", "_"))}`;
+    };
+
+    const currentPageType = () => {
+        const path = currentPath().toLowerCase();
+        if (path === "/store") return "store_index";
+        if (path === "/store/cart") return "cart";
+        if (path === "/store/checkout") return "checkout";
+        if (path === "/store/success") return "success";
+        if (path.startsWith("/store/product/")) return "product_detail";
+        return "store_page";
+    };
+
+    const detectDeviceType = () => {
+        const width = Math.max(window.innerWidth || 0, screen.width || 0);
+        const ua = navigator.userAgent || "";
+        if (/ipad|tablet/i.test(ua) || (width >= 768 && width <= 1024 && /mobile/i.test(ua))) return "tablet";
+        if (/mobi|android|iphone|ipod/i.test(ua) || width < 768) return "mobile";
+        return "desktop";
+    };
+
+    const detectBrowser = () => {
+        const ua = navigator.userAgent || "";
+        if (/edg\//i.test(ua)) return "Edge";
+        if (/opr\//i.test(ua) || /opera/i.test(ua)) return "Opera";
+        if (/chrome\//i.test(ua) && !/edg\//i.test(ua) && !/opr\//i.test(ua)) return "Chrome";
+        if (/safari\//i.test(ua) && !/chrome\//i.test(ua)) return "Safari";
+        if (/firefox\//i.test(ua)) return "Firefox";
+        return "Other";
+    };
+
+    const detectOperatingSystem = () => {
+        const ua = navigator.userAgent || "";
+        if (/windows/i.test(ua)) return "Windows";
+        if (/android/i.test(ua)) return "Android";
+        if (/iphone|ipad|ipod/i.test(ua)) return "iOS";
+        if (/mac os x|macintosh/i.test(ua)) return "macOS";
+        if (/linux/i.test(ua)) return "Linux";
+        return "Other";
+    };
+
+    const currentScrollPercent = () => {
+        const doc = document.documentElement;
+        const maxScrollable = Math.max(0, (doc.scrollHeight || 0) - (window.innerHeight || 0));
+        if (maxScrollable <= 0) return 0;
+        const current = Math.max(window.scrollY || 0, window.pageYOffset || 0);
+        return Math.max(0, Math.min(100, Math.round((current / maxScrollable) * 100)));
+    };
+
+    const elapsedMilliseconds = () => Math.max(0, Date.now() - pageStartMs);
+
+    const syncVisibleTime = () => {
+        if (lastVisibleAt > 0) {
+            engagedMilliseconds += Math.max(0, Date.now() - lastVisibleAt);
+            lastVisibleAt = document.visibilityState === "visible" ? Date.now() : 0;
+        }
+    };
 
     let visitorId = getCookie("pf_vid");
     if (!visitorId) {
-        visitorId = uuid("pfv");
+        visitorId = createUuid("pfv");
         setCookie("pf_vid", visitorId, 31536000);
     }
 
     let sessionId = sessionStorage.getItem("pf_sid") || getCookie("pf_sid");
     if (!sessionId) {
-        sessionId = uuid("pfs");
+        sessionId = createUuid("pfs");
         sessionStorage.setItem("pf_sid", sessionId);
-        setCookie("pf_sid", sessionId, 1800);
     }
+    setCookie("pf_sid", sessionId, 1800);
 
-    const send = (eventName, payload = {}) => {
-        const body = {
-            eventName,
-            eventId: crypto.randomUUID(),
-            visitorId,
-            sessionId,
-            url: location.href,
-            referrer: document.referrer || "",
-            metadata: {},
-            ...payload
-        };
-
+    const readCart = () => {
         try {
-            navigator.sendBeacon(
-                "/parfait-analytics/track",
-                new Blob([JSON.stringify(body)], { type: "application/json" })
-            );
+            return JSON.parse(localStorage.getItem("parfaitCart") || "[]");
         } catch {
-            fetch("/parfait-analytics/track", {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify(body),
-                keepalive: true
-            }).catch(() => {});
+            return [];
         }
     };
 
+    const baseMetadata = () => ({
+        pageType: currentPageType(),
+        pageKey: currentPageKey(),
+        pageTitle: document.title || "",
+        productSlug: currentProductSlug() || "",
+        trackingVersion
+    });
+
+    const baseEventContext = () => ({
+        pageKey: currentPageKey(),
+        url: location.href,
+        referrer: document.referrer || "",
+        deviceType: detectDeviceType(),
+        browser: detectBrowser(),
+        operatingSystem: detectOperatingSystem(),
+        timeZone: Intl?.DateTimeFormat?.().resolvedOptions?.().timeZone || "",
+        language: navigator.language || "",
+        screenWidth: Number(window.screen?.width) || null,
+        screenHeight: Number(window.screen?.height) || null,
+        viewportWidth: Number(window.innerWidth) || null,
+        viewportHeight: Number(window.innerHeight) || null,
+        scrollPercent: currentScrollPercent(),
+        dwellMilliseconds: elapsedMilliseconds(),
+        engagedMilliseconds,
+        isBounceCandidate: elapsedMilliseconds() < 10000,
+        isExitPage: false,
+        webDriver: !!navigator.webdriver,
+        isHeadless: /HeadlessChrome/i.test(navigator.userAgent || ""),
+        mouseMoveCount,
+        humanInteractionCount,
+        visibilityChangeCount,
+        trackingVersion,
+        metadata: baseMetadata()
+    });
+
+    const send = (eventName, payload = {}) => {
+        syncVisibleTime();
+        setCookie("pf_sid", sessionId, 1800);
+
+        const eventId = typeof crypto !== "undefined" && typeof crypto.randomUUID === "function"
+            ? crypto.randomUUID()
+            : createUuid("evt");
+        const context = baseEventContext();
+        const payloadMetadata = payload.metadata || {};
+        const body = {
+            eventName,
+            eventId,
+            visitorId,
+            sessionId,
+            ...context,
+            ...payload,
+            metadata: {
+                ...context.metadata,
+                ...payloadMetadata
+            }
+        };
+
+        try {
+            const sent = navigator.sendBeacon(
+                "/parfait-analytics/track",
+                new Blob([JSON.stringify(body)], { type: "application/json" })
+            );
+            if (sent) {
+                return;
+            }
+        } catch {
+        }
+
+        fetch("/parfait-analytics/track", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(body),
+            keepalive: true
+        }).catch(() => {});
+    };
+
+    const sendEngagementEvent = (eventName, minimumMs) => {
+        if (firedEngagementEvents.has(eventName)) return;
+        if (elapsedMilliseconds() < minimumMs) return;
+
+        firedEngagementEvents.add(eventName);
+        send(eventName, {
+            metadata: {
+                milestoneSeconds: Math.round(minimumMs / 1000)
+            }
+        });
+    };
+
+    const maybeFireScrollDepthEvents = () => {
+        const percent = currentScrollPercent();
+        scrollThresholds.forEach(threshold => {
+            if (percent >= threshold && !firedScrollThresholds.has(threshold)) {
+                firedScrollThresholds.add(threshold);
+                send(`scroll_depth_${threshold}`, {
+                    scrollPercent: threshold,
+                    metadata: {
+                        threshold
+                    }
+                });
+            }
+        });
+    };
+
+    const elementKeyFor = element => {
+        if (!element) return "unknown_cta";
+        if (element.dataset.analyticsKey) return normalizeKey(element.dataset.analyticsKey);
+        if (element.id) return normalizeKey(element.id);
+        if (element.dataset.action) return normalizeKey(`cart_${element.dataset.action}`);
+
+        const href = element.getAttribute("href");
+        if (href && href.startsWith("/")) {
+            return normalizeKey(href.replaceAll("/", "_"));
+        }
+
+        return normalizeKey(element.getAttribute("aria-label") || element.textContent || "cta");
+    };
+
+    const buttonLabelFor = element => {
+        return (element.getAttribute("aria-label") || element.textContent || "")
+            .replace(/\s+/g, " ")
+            .trim();
+    };
+
+    const ctaTypeFor = element => {
+        const href = (element.getAttribute("href") || "").toLowerCase();
+        const id = (element.id || "").toLowerCase();
+        const text = buttonLabelFor(element).toLowerCase();
+        const action = (element.dataset.action || "").toLowerCase();
+
+        if (id === "spaddtocart" || text.includes("add to cart")) return "add_to_cart";
+        if (id === "spcheckoutlink" || id === "sppaybutton" || href.includes("/store/checkout") || text.includes("checkout")) return "checkout";
+        if (action) return `cart_${action}`;
+        if (href.includes("/store/product/") || element.classList.contains("sp-shop-link") || element.classList.contains("sp-shop-media")) return "product_navigation";
+        if (href.includes("/store/cart")) return "cart_navigation";
+        if (text.includes("discount")) return "discount_action";
+        return "store_cta";
+    };
+
+    const isTrackedCta = element => {
+        if (!(element instanceof HTMLElement)) return false;
+        return element.matches(
+            "#spAddToCart, #spCheckoutLink, #spPayButton, #spApplyDiscount, #spClearDiscount, #spCheckoutApplyDiscount, #spCheckoutClearDiscount, a.sp-button, button.sp-button, a.sp-shop-link, a.sp-shop-media, a.sp-back-link, [data-action]"
+        );
+    };
+
+    const sendPageExit = () => {
+        if (pageExitSent) return;
+        pageExitSent = true;
+        syncVisibleTime();
+
+        send("page_exit", {
+            scrollPercent: currentScrollPercent(),
+            dwellMilliseconds: elapsedMilliseconds(),
+            engagedMilliseconds,
+            isBounceCandidate: elapsedMilliseconds() < 10000,
+            isExitPage: true,
+            metadata: {
+                exitReason: "pagehide"
+            }
+        });
+    };
+
     window.parfaitTrackCommerce = send;
+
+    send("page_view");
 
     if (location.pathname.toLowerCase() === "/store") {
         send("ViewContent", { metadata: { pageType: "store_index" } });
@@ -63,13 +303,13 @@
         const name = document.querySelector("h1")?.textContent?.trim() || "";
         send("ProductViewed", {
             productName: name,
-            productSlug: location.pathname.split("/").filter(Boolean).at(-1),
+            productSlug: currentProductSlug(),
             metadata: { pageType: "product_detail" }
         });
     }
 
     if (location.pathname.toLowerCase() === "/store/checkout") {
-        const cart = JSON.parse(localStorage.getItem("parfaitCart") || "[]");
+        const cart = readCart();
         const total = cart.reduce((sum, item) => sum + ((Number(item.priceCents) || 0) * (Number(item.quantity) || 0)), 0);
         const firstItem = cart.length ? cart[0] : null;
         const totalQuantity = cart.reduce((sum, item) => sum + (Number(item.quantity) || 0), 0);
@@ -77,6 +317,7 @@
         send("CheckoutStarted", {
             productId: firstItem?.id || null,
             productName: firstItem?.name || null,
+            productSlug: firstItem?.slug || null,
             size: firstItem?.size || null,
             quantity: totalQuantity,
             valueCents: total,
@@ -85,6 +326,7 @@
                 cartItems: JSON.stringify(cart.map(item => ({
                     id: item.id,
                     name: item.name,
+                    slug: item.slug,
                     size: item.size,
                     quantity: item.quantity,
                     priceCents: item.priceCents
@@ -93,24 +335,75 @@
         });
     }
 
-    document.addEventListener("click", event => {
-        const button = event.target.closest("button, a");
-        if (!button) return;
+    window.setTimeout(() => sendEngagementEvent("page_engaged_5s", 5000), 5000);
+    window.setTimeout(() => sendEngagementEvent("page_engaged_10s", 10000), 10000);
+    window.setTimeout(() => sendEngagementEvent("page_engaged_15s", 15000), 15000);
+    window.setTimeout(() => sendEngagementEvent("page_engaged_30s", 30000), 30000);
+    window.setTimeout(() => sendEngagementEvent("page_engaged_60s", 60000), 60000);
 
-        const text = (button.textContent || "").toLowerCase();
+    document.addEventListener("mousemove", () => {
+        mouseMoveCount += 1;
+    }, { passive: true });
+
+    ["click", "keydown", "touchstart", "scroll"].forEach(eventName => {
+        window.addEventListener(eventName, () => {
+            humanInteractionCount += 1;
+        }, { passive: true });
+    });
+
+    window.addEventListener("scroll", maybeFireScrollDepthEvents, { passive: true });
+
+    document.addEventListener("visibilitychange", () => {
+        visibilityChangeCount += 1;
+
+        if (document.visibilityState === "hidden") {
+            syncVisibleTime();
+            send("page_visibility_hidden", {
+                metadata: {
+                    visibilityState: "hidden"
+                }
+            });
+            return;
+        }
+
+        lastVisibleAt = Date.now();
+        send("page_visibility_return", {
+            metadata: {
+                visibilityState: "visible"
+            }
+        });
+    });
+
+    document.addEventListener("click", event => {
+        const element = event.target.closest("button, a");
+        if (!element) return;
+
+        if (isTrackedCta(element)) {
+            send("cta_click", {
+                elementKey: elementKeyFor(element),
+                buttonLabel: buttonLabelFor(element),
+                metadata: {
+                    ctaType: ctaTypeFor(element),
+                    targetUrl: element.getAttribute("href") || ""
+                }
+            });
+        }
+
+        const text = buttonLabelFor(element).toLowerCase();
         const looksLikeAddToCart =
             text.includes("add to cart") ||
-            button.matches("#spAddToCart, [data-add-to-cart], [data-cart-add], .sp-product-button, .sp-add-to-cart, .pf-add-to-cart");
+            element.matches("#spAddToCart, [data-add-to-cart], [data-cart-add], .sp-product-button, .sp-add-to-cart, .pf-add-to-cart");
 
         if (!looksLikeAddToCart) return;
 
         setTimeout(() => {
-            const cart = JSON.parse(localStorage.getItem("parfaitCart") || "[]");
+            const cart = readCart();
             const item = cart.at(-1) || {};
 
             send("AddToCart", {
                 productId: item.id,
                 productName: item.name,
+                productSlug: item.slug || currentProductSlug() || null,
                 size: item.size,
                 quantity: Number(item.quantity) || 1,
                 valueCents: (Number(item.priceCents) || 0) * (Number(item.quantity) || 1),
@@ -118,5 +411,8 @@
             });
         }, 150);
     }, true);
+
+    window.addEventListener("pagehide", sendPageExit);
+    window.addEventListener("beforeunload", sendPageExit);
 })();
 </script>

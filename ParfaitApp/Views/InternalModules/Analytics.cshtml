@@ -5,8 +5,51 @@
 
     static string Money(int cents) => "$" + (cents / 100m).ToString("0.00");
     static string Rate(decimal value) => value.ToString("0.0") + "%";
-    static string LocalTime(DateTime utc) => utc.ToLocalTime().ToString("M/d/yyyy h:mm tt");
-    var analyticsReturnUrl = Url.Action("Analytics", "InternalModules", new { preset = Model.SelectedPreset }) ?? "/internal/analytics";
+    var viewerTimeZone = TimeZoneInfo.Utc;
+    if (!string.IsNullOrWhiteSpace(Model.ViewerTimeZoneId))
+    {
+        try
+        {
+            viewerTimeZone = TimeZoneInfo.FindSystemTimeZoneById(Model.ViewerTimeZoneId);
+        }
+        catch
+        {
+        }
+    }
+
+    if (viewerTimeZone == TimeZoneInfo.Utc && Model.ViewerTimeZoneOffsetMinutes.HasValue)
+    {
+        try
+        {
+            viewerTimeZone = TimeZoneInfo.CreateCustomTimeZone(
+                $"viewer-offset-{Model.ViewerTimeZoneOffsetMinutes.Value}",
+                TimeSpan.FromMinutes(-Model.ViewerTimeZoneOffsetMinutes.Value),
+                "Viewer Local",
+                "Viewer Local");
+        }
+        catch
+        {
+        }
+    }
+
+    string LocalTime(DateTime utc) => TimeZoneInfo.ConvertTimeFromUtc(utc, viewerTimeZone).ToString("M/d/yyyy h:mm tt");
+    object AnalyticsPresetRouteValues(string preset) => new
+    {
+        preset,
+        qualityMode = Model.SelectedQualityMode,
+        timezoneId = Model.ViewerTimeZoneId,
+        timezoneOffsetMinutes = Model.ViewerTimeZoneOffsetMinutes
+    };
+    object CurrentAnalyticsRouteValues() => new
+    {
+        preset = Model.SelectedPreset,
+        fromUtc = string.IsNullOrWhiteSpace(Model.RangeFrom) ? null : Model.RangeFrom,
+        toUtc = string.IsNullOrWhiteSpace(Model.RangeTo) ? null : Model.RangeTo,
+        qualityMode = Model.SelectedQualityMode,
+        timezoneId = Model.ViewerTimeZoneId,
+        timezoneOffsetMinutes = Model.ViewerTimeZoneOffsetMinutes
+    };
+    var analyticsReturnUrl = Url.Action("Analytics", "InternalModules", CurrentAnalyticsRouteValues()) ?? "/internal/analytics";
     var metaConnectUrl = Url.Action("MetaConnect", "InternalModules", new
     {
         returnUrl = analyticsReturnUrl
@@ -22,7 +65,14 @@
     <link rel="stylesheet" href="~/css/parfait-agentportal-analytics.css" asp-append-version="true" />
 }
 
-<div class="container mt-4 mb-5 fa-shell parfait-analytics-shell">
+<div class="container mt-4 mb-5 fa-shell parfait-analytics-shell"
+     id="parfaitAnalyticsPage"
+     data-preset="@Model.SelectedPreset"
+     data-from-utc="@Model.RangeFrom"
+     data-to-utc="@Model.RangeTo"
+     data-quality-mode="@Model.SelectedQualityMode"
+     data-timezone-id="@Model.ViewerTimeZoneId"
+     data-timezone-offset-minutes="@Model.ViewerTimeZoneOffsetMinutes">
     <section class="wa-command-surface mb-3">
         <div class="wa-command-dashboard">
             <div class="wa-page-header">
@@ -45,11 +95,11 @@
                 <div class="control-bar-group control-bar-presets">
                     <div class="control-bar-label">Quick Range</div>
                     <div class="btn-group btn-group-sm flex-shrink-0" role="group">
-                        <a class="btn btn-range @(Model.SelectedPreset=="today"?"active":"")" href="@Url.Action("Analytics", "InternalModules", new { preset = "today" })">Today</a>
-                        <a class="btn btn-range @(Model.SelectedPreset=="7d"?"active":"")" href="@Url.Action("Analytics", "InternalModules", new { preset = "7d" })">7 Days</a>
-                        <a class="btn btn-range @(Model.SelectedPreset=="30d"?"active":"")" href="@Url.Action("Analytics", "InternalModules", new { preset = "30d" })">30 Days</a>
-                        <a class="btn btn-range @(Model.SelectedPreset=="month"?"active":"")" href="@Url.Action("Analytics", "InternalModules", new { preset = "month" })">Month</a>
-                        <a class="btn btn-range @(Model.SelectedPreset=="year"?"active":"")" href="@Url.Action("Analytics", "InternalModules", new { preset = "year" })">Year</a>
+                        <a class="btn btn-range @(Model.SelectedPreset=="today"?"active":"")" href="@Url.Action("Analytics", "InternalModules", AnalyticsPresetRouteValues("today"))">Today</a>
+                        <a class="btn btn-range @(Model.SelectedPreset=="7d"?"active":"")" href="@Url.Action("Analytics", "InternalModules", AnalyticsPresetRouteValues("7d"))">7 Days</a>
+                        <a class="btn btn-range @(Model.SelectedPreset=="30d"?"active":"")" href="@Url.Action("Analytics", "InternalModules", AnalyticsPresetRouteValues("30d"))">30 Days</a>
+                        <a class="btn btn-range @(Model.SelectedPreset=="month"?"active":"")" href="@Url.Action("Analytics", "InternalModules", AnalyticsPresetRouteValues("month"))">Month</a>
+                        <a class="btn btn-range @(Model.SelectedPreset=="year"?"active":"")" href="@Url.Action("Analytics", "InternalModules", AnalyticsPresetRouteValues("year"))">Year</a>
                     </div>
                 </div>
                 <div class="control-bar-group control-bar-status">
@@ -350,13 +400,47 @@
 </div>
 
 <div class="modal fade fa-modal parfait-analytics-modal" id="pfMetaCampaignsModal" tabindex="-1" aria-hidden="true">
-  <div class="modal-dialog modal-xl modal-dialog-centered modal-dialog-scrollable wa-modal-dialog">
+  <div class="modal-dialog modal-xl modal-dialog-centered modal-dialog-scrollable wa-modal-dialog meta-campaigns-dialog">
     <div class="modal-content wa-modal-shell">
-      <div class="modal-header wa-modal-header"><div class="wa-modal-header-main"><div class="wa-modal-header-copy"><div class="wa-modal-kicker">Meta Ads</div><h5 class="modal-title mb-0">Meta Campaigns</h5><div class="wa-modal-subtitle">Spend, clicks, CTR, CPC, CPM, purchases, revenue, and ROAS.</div></div><div class="wa-modal-header-actions"><div class="wa-modal-range-chip d-none" id="meta-campaigns-account-chip">Not connected</div></div></div><button type="button" class="btn-close btn-close-white wa-modal-close" data-bs-dismiss="modal"></button></div>
+      <div class="modal-header wa-modal-header"><div class="wa-modal-header-main"><div class="wa-modal-header-copy"><div class="wa-modal-kicker">Meta Ads</div><h5 class="modal-title mb-0">Meta Campaigns</h5><div class="wa-modal-subtitle">Spend, clicks, CTR, CPC, CPM, purchases, revenue, and ROAS.</div></div><div class="wa-modal-header-actions"><div class="wa-modal-range-chip d-none" id="meta-campaigns-account-chip">Not connected</div><div class="wa-modal-range-chip"><span class="wa-modal-range-label">Range</span><span class="wa-modal-range-value" id="meta-campaigns-range-label">@Model.RangeLabel</span></div></div></div><button type="button" class="btn-close btn-close-white wa-modal-close" data-bs-dismiss="modal"></button></div>
       <div class="modal-body wa-modal-body"><section class="wa-modal-section"><div class="row row-cols-1 row-cols-lg-3 g-2 mb-3">
         <div class="col"><div class="kpi-card"><div class="fa-kpi-title">Account</div><div class="fa-kpi-value" id="pf-meta-campaign-account-value" style="font-size:1.1rem;">@((Model.MetaSettings.AccountName ?? Model.MetaSettings.AccountId) ?? "Not connected")</div></div></div>
         <div class="col"><div class="kpi-card"><div class="fa-kpi-title">Business</div><div class="fa-kpi-value" id="pf-meta-campaign-business-value" style="font-size:1.1rem;">@((Model.MetaSettings.BusinessName ?? Model.MetaSettings.BusinessId) ?? "—")</div></div></div>
-        <div class="col"><div class="kpi-card"><div class="fa-kpi-title">Last Sync</div><div class="fa-kpi-value" id="pf-meta-campaign-sync-value" style="font-size:1.1rem;">@Model.MetaSettings.LastSyncLabel</div></div></div>
+        <div class="col"><div class="kpi-card"><div class="fa-kpi-title">Last Sync</div><div class="fa-kpi-value" id="pf-meta-campaign-sync-value" style="font-size:1.1rem;">@(Model.MetaSettings.ConnectedUtc.HasValue ? LocalTime(Model.MetaSettings.ConnectedUtc.Value) : "Not synced yet")</div></div></div>
+      </div>
+      <div class="fa-muted small mb-3" id="meta-campaigns-note">Meta Leads = Meta Ads API lead reporting. Website Leads = tracked website conversions captured in Parfait analytics.</div>
+      <div class="table-responsive">
+        <table class="table table-sm meta-campaigns-table">
+          <thead>
+            <tr>
+              <th>Campaign</th>
+              <th>Status</th>
+              <th>Objective</th>
+              <th class="text-end">Spend</th>
+              <th class="text-end">Impressions</th>
+              <th class="text-end">Reach</th>
+              <th class="text-end">Clicks</th>
+              <th class="text-end">CTR</th>
+              <th class="text-end">CPC</th>
+              <th class="text-end">CPM</th>
+              <th class="text-end">Meta Leads</th>
+              <th class="text-end">Website Leads</th>
+              <th class="text-end">Lead Gap</th>
+              <th class="text-end">Qualified</th>
+              <th class="text-end">Appointments</th>
+              <th class="text-end">Applications</th>
+              <th class="text-end">Issued</th>
+              <th class="text-end">Paid</th>
+              <th class="text-end">Paid Premium</th>
+              <th class="text-end">ROAS</th>
+            </tr>
+          </thead>
+          <tbody id="meta-campaigns-body">
+            <tr>
+              <td colspan="20" class="fa-empty">Open the modal to load Meta campaign performance.</td>
+            </tr>
+          </tbody>
+        </table>
       </div></section></div>
     </div>
   </div>

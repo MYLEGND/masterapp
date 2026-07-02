@@ -26,7 +26,15 @@ public sealed class ParfaitInternalWorkspaceService
         var products = _products.GetAllProducts().ToList();
         var orders = _orders.GetAllOrders().ToList();
         var profile = await _businessProfile.GetProfileAsync(ct);
-        var analytics = await _analytics.GetDashboardAsync("30d", null, null, AgentPortal.Models.Analytics.TrafficQualityMode.RealHumanTraffic, ct);
+        var analytics = await _analytics.GetDashboardAsync(
+            "30d",
+            null,
+            null,
+            AgentPortal.Models.Analytics.TrafficQualityMode.RealHumanTraffic,
+            TimeZoneInfo.Utc,
+            null,
+            null,
+            ct);
         var meta = analytics.MetaSettings;
         var actionMap = analytics.ActionBreakdowns.ToDictionary(action => action.Key, StringComparer.OrdinalIgnoreCase);
 

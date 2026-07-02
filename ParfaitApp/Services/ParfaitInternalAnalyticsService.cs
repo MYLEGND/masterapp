@@ -40,13 +40,16 @@ public sealed class ParfaitInternalAnalyticsService
         DateTime? fromUtc = null,
         DateTime? toUtc = null,
         TrafficQualityMode qualityMode = TrafficQualityMode.RealHumanTraffic,
+        TimeZoneInfo? viewerTimeZone = null,
+        string? viewerTimeZoneId = null,
+        int? viewerTimeZoneOffsetMinutes = null,
         CancellationToken ct = default)
     {
         var range = TimeRangeRequest.FromPreset(
             string.IsNullOrWhiteSpace(preset) ? "30d" : preset,
             fromUtc,
             toUtc,
-            viewerTz: TimeZoneInfo.Utc,
+            viewerTz: viewerTimeZone ?? TimeZoneInfo.Utc,
             qualityMode: qualityMode);
         var scope = ScopeContext.ForSite(SiteKey, SiteKey);
 
@@ -113,8 +116,8 @@ public sealed class ParfaitInternalAnalyticsService
 
         var revenueCents = _orders.SumNetRevenueCents(paidOrdersInRange);
         var averageOrderValueCents = _orders.CalculateAverageNetOrderValueCents(paidOrdersInRange);
-        var visitors = DistinctVisitors(parsedEvents);
-        var sessions = DistinctSessions(parsedEvents).Count;
+        var visitors = summary.UniqueVisitors;
+        var sessions = summary.Sessions;
         var cartAbandonmentSessions = addToCartSessions.Except(purchaseSessions, StringComparer.OrdinalIgnoreCase).Count();
 
         var actionBreakdowns = new List<ParfaitAnalyticsActionBreakdownViewModel>
@@ -220,6 +223,8 @@ public sealed class ParfaitInternalAnalyticsService
             RangeTo = toUtc?.ToString("O") ?? "",
             SelectedQualityMode = TrafficQualityBucketFilters.ToClientValue(range.QualityMode),
             RangeLabel = range.Label,
+            ViewerTimeZoneId = viewerTimeZoneId ?? "",
+            ViewerTimeZoneOffsetMinutes = viewerTimeZoneOffsetMinutes,
             Summary = summary,
             Traffic = traffic,
             PagePerformance = pagePerformance,

@@ -2,6 +2,8 @@ using System.Reflection;
 using System.Text.Json;
 using Domain.Entities;
 using Infrastructure.Data;
+using Microsoft.AspNetCore.WebUtilities;
+using Shared.Analytics;
 using ParfaitApp.Models;
 
 namespace ParfaitApp.Services;
@@ -11,6 +13,14 @@ public sealed class ParfaitAnalyticsService
     private const string SiteKey = "ParfaitApp";
     private const string BusinessType = "Ecommerce";
     private const string ReportingOwner = "ParfaitApp";
+    private static readonly IReadOnlyDictionary<string, string> CommerceEventNames = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+    {
+        ["ViewContent"] = "ViewContent",
+        ["ProductViewed"] = "ProductViewed",
+        ["AddToCart"] = "AddToCart",
+        ["CheckoutStarted"] = "CheckoutStarted",
+        ["Purchase"] = "Purchase"
+    };
 
     private readonly MasterAppDbContext _db;
 
@@ -36,8 +46,14 @@ public sealed class ParfaitAnalyticsService
         var referrer = Clean(request.Referrer) ?? httpContext.Request.Headers.Referer.ToString();
         var userAgent = httpContext.Request.Headers.UserAgent.ToString();
         var ip = httpContext.Connection.RemoteIpAddress?.ToString();
+        var sourceUri = TryParseAbsoluteUri(url);
+        var sourcePath = Clean(sourceUri?.AbsolutePath) ?? httpContext.Request.Path.ToString();
+        var sourceHost = Clean(sourceUri?.Host) ?? httpContext.Request.Host.Host;
+        var sourceQuery = ParseQueryParameters(sourceUri);
+        var pageKey = ResolvePageKey(sourcePath, request.PageKey, request.ProductSlug);
+        var referrerHost = ResolveHost(referrer);
 
-        var metadata = BuildMetadata(request, httpContext, eventName, eventId, visitorId, sessionId, url, referrer);
+        var metadata = BuildMetadata(request, httpContext, eventName, eventId, visitorId, sessionId, url, referrer, sourceHost, sourcePath, sourceQuery);
 
         var analyticsEvent = new AnalyticsEvent();
         Set(analyticsEvent, "EventId", Guid.TryParse(eventId, out var parsedEventId) ? parsedEventId : Guid.NewGuid());
@@ -45,21 +61,47 @@ public sealed class ParfaitAnalyticsService
         Set(analyticsEvent, "EventType", eventName);
         Set(analyticsEvent, "EventName", eventName);
         Set(analyticsEvent, "EventUtc", now);
-        Set(analyticsEvent, "CreatedUtc", now);
+        Set(analyticsEvent, "ReceivedUtc", now);
         Set(analyticsEvent, "VisitorId", visitorId);
         Set(analyticsEvent, "SessionId", sessionId);
         Set(analyticsEvent, "Url", url);
         Set(analyticsEvent, "PageUrl", url);
-        Set(analyticsEvent, "Path", httpContext.Request.Path.ToString());
-        Set(analyticsEvent, "Host", httpContext.Request.Host.Host);
+        Set(analyticsEvent, "Path", sourcePath);
+        Set(analyticsEvent, "Host", sourceHost);
+        Set(analyticsEvent, "PageKey", pageKey);
+        Set(analyticsEvent, "SectionKey", request.SectionKey);
+        Set(analyticsEvent, "ElementKey", request.ElementKey);
+        Set(analyticsEvent, "ButtonLabel", request.ButtonLabel);
         Set(analyticsEvent, "Referrer", referrer);
+        Set(analyticsEvent, "ReferrerHost", referrerHost);
         Set(analyticsEvent, "UserAgent", userAgent);
         Set(analyticsEvent, "IpAddress", ip);
         Set(analyticsEvent, "Environment", "ParfaitApp");
         Set(analyticsEvent, "SourceApp", "ParfaitApp");
+        Set(analyticsEvent, "DeviceType", request.DeviceType);
+        Set(analyticsEvent, "Browser", request.Browser);
+        Set(analyticsEvent, "OperatingSystem", request.OperatingSystem);
+        Set(analyticsEvent, "TimeZone", request.TimeZone);
+        Set(analyticsEvent, "Language", request.Language);
+        Set(analyticsEvent, "ScreenWidth", request.ScreenWidth);
+        Set(analyticsEvent, "ScreenHeight", request.ScreenHeight);
+        Set(analyticsEvent, "ViewportWidth", request.ViewportWidth);
+        Set(analyticsEvent, "ViewportHeight", request.ViewportHeight);
+        Set(analyticsEvent, "ScrollPercent", request.ScrollPercent);
+        Set(analyticsEvent, "DwellMilliseconds", request.DwellMilliseconds);
+        Set(analyticsEvent, "EngagedMilliseconds", request.EngagedMilliseconds);
+        Set(analyticsEvent, "IsBounceCandidate", request.IsBounceCandidate);
+        Set(analyticsEvent, "IsExitPage", request.IsExitPage);
+        Set(analyticsEvent, "WebDriver", request.WebDriver);
+        Set(analyticsEvent, "IsHeadless", request.IsHeadless);
+        Set(analyticsEvent, "MouseMoveCount", request.MouseMoveCount);
+        Set(analyticsEvent, "HumanInteractionCount", request.HumanInteractionCount);
+        Set(analyticsEvent, "VisibilityChangeCount", request.VisibilityChangeCount);
+        Set(analyticsEvent, "TrackingVersion", Clean(request.TrackingVersion) ?? "parfait-commerce-tracking-v2");
+        Set(analyticsEvent, "SchemaVersion", 2);
         Set(analyticsEvent, "MetadataJson", JsonSerializer.Serialize(metadata));
         Set(analyticsEvent, "PipelineStamp", "ParfaitApp>CommerceAnalytics");
-        SetUtmAndMetaFields(analyticsEvent, httpContext);
+        SetUtmAndMetaFields(analyticsEvent, httpContext, sourceQuery);
 
         _db.AnalyticsEvents.Add(analyticsEvent);
 
@@ -76,6 +118,8 @@ public sealed class ParfaitAnalyticsService
             EventName = "Purchase",
             OrderNumber = order.OrderNumber,
             ValueCents = order.TotalCents,
+            Url = $"{httpContext.Request.Scheme}://{httpContext.Request.Host}/store/checkout",
+            PageKey = "parfait_checkout",
             Metadata = new Dictionary<string, string?>
             {
                 ["paymentStatus"] = order.PaymentStatus,
@@ -101,10 +145,11 @@ public sealed class ParfaitAnalyticsService
         string visitorId,
         string sessionId,
         string url,
-        string referrer)
+        string referrer,
+        string sourceHost,
+        string sourcePath,
+        IReadOnlyDictionary<string, string?> sourceQuery)
     {
-        var query = httpContext.Request.Query;
-
         var metadata = new Dictionary<string, object?>
         {
             ["siteKey"] = SiteKey,
@@ -115,9 +160,13 @@ public sealed class ParfaitAnalyticsService
             ["visitorId"] = visitorId,
             ["sessionId"] = sessionId,
             ["sourceUrl"] = url,
-            ["sourceHost"] = httpContext.Request.Host.Host,
-            ["sourcePath"] = httpContext.Request.Path.ToString(),
+            ["sourceHost"] = sourceHost,
+            ["sourcePath"] = sourcePath,
             ["referrer"] = referrer,
+            ["pageKey"] = ResolvePageKey(sourcePath, request.PageKey, request.ProductSlug),
+            ["sectionKey"] = request.SectionKey,
+            ["elementKey"] = request.ElementKey,
+            ["buttonLabel"] = request.ButtonLabel,
             ["productId"] = request.ProductId,
             ["productName"] = request.ProductName,
             ["productSlug"] = request.ProductSlug,
@@ -125,12 +174,33 @@ public sealed class ParfaitAnalyticsService
             ["quantity"] = request.Quantity,
             ["valueCents"] = request.ValueCents,
             ["orderNumber"] = request.OrderNumber,
-            ["utm_source"] = Read(query, "utm_source"),
-            ["utm_medium"] = Read(query, "utm_medium"),
-            ["utm_campaign"] = Read(query, "utm_campaign"),
-            ["utm_content"] = Read(query, "utm_content"),
-            ["utm_term"] = Read(query, "utm_term"),
-            ["fbclid"] = Read(query, "fbclid"),
+            ["deviceType"] = request.DeviceType,
+            ["browser"] = request.Browser,
+            ["operatingSystem"] = request.OperatingSystem,
+            ["timezone"] = request.TimeZone,
+            ["language"] = request.Language,
+            ["screenWidth"] = request.ScreenWidth,
+            ["screenHeight"] = request.ScreenHeight,
+            ["viewportWidth"] = request.ViewportWidth,
+            ["viewportHeight"] = request.ViewportHeight,
+            ["scrollPercent"] = request.ScrollPercent,
+            ["dwellMilliseconds"] = request.DwellMilliseconds,
+            ["engagedMilliseconds"] = request.EngagedMilliseconds,
+            ["isBounceCandidate"] = request.IsBounceCandidate,
+            ["isExitPage"] = request.IsExitPage,
+            ["webDriver"] = request.WebDriver,
+            ["isHeadless"] = request.IsHeadless,
+            ["mouseMoveCount"] = request.MouseMoveCount,
+            ["humanInteractionCount"] = request.HumanInteractionCount,
+            ["visibilityChangeCount"] = request.VisibilityChangeCount,
+            ["trackingVersion"] = request.TrackingVersion,
+            ["utm_source"] = Read(sourceQuery, "utm_source"),
+            ["utm_medium"] = Read(sourceQuery, "utm_medium"),
+            ["utm_campaign"] = Read(sourceQuery, "utm_campaign"),
+            ["utm_content"] = Read(sourceQuery, "utm_content"),
+            ["utm_term"] = Read(sourceQuery, "utm_term"),
+            ["utm_id"] = Read(sourceQuery, "utm_id"),
+            ["fbclid"] = Read(sourceQuery, "fbclid"),
             ["fbc"] = httpContext.Request.Cookies["_fbc"],
             ["fbp"] = httpContext.Request.Cookies["_fbp"]
         };
@@ -146,34 +216,123 @@ public sealed class ParfaitAnalyticsService
         var clean = Clean(value);
         if (clean is null) return null;
 
-        return clean switch
+        if (CommerceEventNames.TryGetValue(clean, out var commerceEventName))
         {
-            "ViewContent" => "ViewContent",
-            "ProductViewed" => "ProductViewed",
-            "AddToCart" => "AddToCart",
-            "CheckoutStarted" => "CheckoutStarted",
-            "Purchase" => "Purchase",
-            _ => null
-        };
+            return commerceEventName;
+        }
+
+        return AnalyticsEventCatalog.IsBrowserAllowed(clean)
+            ? clean
+            : null;
     }
 
-    private static void SetUtmAndMetaFields(object entity, HttpContext httpContext)
+    private static void SetUtmAndMetaFields(object entity, HttpContext httpContext, IReadOnlyDictionary<string, string?> sourceQuery)
     {
-        var q = httpContext.Request.Query;
-
-        Set(entity, "UtmSource", Read(q, "utm_source"));
-        Set(entity, "UtmMedium", Read(q, "utm_medium"));
-        Set(entity, "UtmCampaign", Read(q, "utm_campaign"));
-        Set(entity, "UtmContent", Read(q, "utm_content"));
-        Set(entity, "UtmTerm", Read(q, "utm_term"));
-        Set(entity, "Fbclid", Read(q, "fbclid"));
+        Set(entity, "UtmSource", Read(sourceQuery, "utm_source"));
+        Set(entity, "UtmMedium", Read(sourceQuery, "utm_medium"));
+        Set(entity, "UtmCampaign", Read(sourceQuery, "utm_campaign"));
+        Set(entity, "UtmContent", Read(sourceQuery, "utm_content"));
+        Set(entity, "UtmTerm", Read(sourceQuery, "utm_term"));
+        Set(entity, "UtmId", Read(sourceQuery, "utm_id"));
+        Set(entity, "Fbclid", Read(sourceQuery, "fbclid"));
         Set(entity, "Fbc", httpContext.Request.Cookies["_fbc"]);
         Set(entity, "Fbp", httpContext.Request.Cookies["_fbp"]);
     }
 
-    private static string? Read(IQueryCollection query, string key)
+    private static Uri? TryParseAbsoluteUri(string? value)
     {
-        return query.TryGetValue(key, out var value) ? Clean(value.ToString()) : null;
+        return Uri.TryCreate(value, UriKind.Absolute, out var uri) ? uri : null;
+    }
+
+    private static Dictionary<string, string?> ParseQueryParameters(Uri? sourceUri)
+    {
+        if (sourceUri is null || string.IsNullOrWhiteSpace(sourceUri.Query))
+        {
+            return new Dictionary<string, string?>(StringComparer.OrdinalIgnoreCase);
+        }
+
+        return QueryHelpers.ParseQuery(sourceUri.Query)
+            .ToDictionary(
+                pair => pair.Key,
+                pair => Clean(pair.Value.ToString()),
+                StringComparer.OrdinalIgnoreCase);
+    }
+
+    private static string ResolvePageKey(string? sourcePath, string? explicitPageKey, string? productSlug)
+    {
+        var pageKey = Clean(explicitPageKey);
+        if (pageKey is not null)
+        {
+            return pageKey;
+        }
+
+        var path = (sourcePath ?? string.Empty).Trim();
+        if (string.IsNullOrWhiteSpace(path))
+        {
+            return "parfait_store_unknown";
+        }
+
+        var normalizedPath = path.TrimEnd('/');
+        if (string.Equals(normalizedPath, "/store", StringComparison.OrdinalIgnoreCase))
+        {
+            return "parfait_store_home";
+        }
+
+        if (string.Equals(normalizedPath, "/store/cart", StringComparison.OrdinalIgnoreCase))
+        {
+            return "parfait_cart";
+        }
+
+        if (string.Equals(normalizedPath, "/store/checkout", StringComparison.OrdinalIgnoreCase))
+        {
+            return "parfait_checkout";
+        }
+
+        if (string.Equals(normalizedPath, "/store/success", StringComparison.OrdinalIgnoreCase))
+        {
+            return "parfait_checkout_success";
+        }
+
+        if (normalizedPath.StartsWith("/store/product/", StringComparison.OrdinalIgnoreCase))
+        {
+            var slug = Clean(productSlug) ?? normalizedPath.Split('/', StringSplitOptions.RemoveEmptyEntries).LastOrDefault();
+            return $"parfait_product_{NormalizeKey(slug)}";
+        }
+
+        return $"parfait_{NormalizeKey(normalizedPath.Trim('/').Replace('/', '_'))}";
+    }
+
+    private static string NormalizeKey(string? value)
+    {
+        var cleaned = Clean(value);
+        if (cleaned is null)
+        {
+            return "unknown";
+        }
+
+        var chars = cleaned
+            .ToLowerInvariant()
+            .Select(ch => char.IsLetterOrDigit(ch) ? ch : '_')
+            .ToArray();
+        var normalized = new string(chars);
+
+        while (normalized.Contains("__", StringComparison.Ordinal))
+        {
+            normalized = normalized.Replace("__", "_", StringComparison.Ordinal);
+        }
+
+        var result = normalized.Trim('_');
+        return string.IsNullOrWhiteSpace(result) ? "unknown" : result;
+    }
+
+    private static string? ResolveHost(string? value)
+    {
+        return Clean(TryParseAbsoluteUri(value)?.Host);
+    }
+
+    private static string? Read(IReadOnlyDictionary<string, string?> query, string key)
+    {
+        return query.TryGetValue(key, out var value) ? Clean(value) : null;
     }
 
     private static string? Clean(string? value)
