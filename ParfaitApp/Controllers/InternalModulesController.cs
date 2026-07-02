@@ -303,11 +303,15 @@ public sealed class InternalModulesController : Controller
     public async Task<IActionResult> SaveAnalyticsMetaSettings(
         ParfaitMetaAnalyticsSettingsViewModel model,
         [FromQuery] string? preset = "30d",
+        [FromQuery] DateTime? fromUtc = null,
+        [FromQuery] DateTime? toUtc = null,
+        [FromQuery] string? qualityMode = null,
         CancellationToken ct = default)
     {
+        var resolvedQualityMode = TrafficQualityBucketFilters.ParseClientOrEnumValue(qualityMode);
         if (!ModelState.IsValid)
         {
-            var dashboard = await _internalAnalytics.GetDashboardAsync(preset, null, null, TrafficQualityMode.RealHumanTraffic, ct);
+            var dashboard = await _internalAnalytics.GetDashboardAsync(preset, fromUtc, toUtc, resolvedQualityMode, ct);
             dashboard.MetaSettings.MetaPixelId = model.MetaPixelId;
             dashboard.MetaSettings.MetaTestEventCode = model.MetaTestEventCode;
             return View("Analytics", dashboard);
@@ -315,7 +319,7 @@ public sealed class InternalModulesController : Controller
 
         await _businessProfile.SaveMetaSettingsAsync(model, ct);
         TempData["AnalyticsStatus"] = "Meta settings saved.";
-        return RedirectToAction(nameof(Analytics), new { preset });
+        return RedirectToAction(nameof(Analytics), new { preset, fromUtc, toUtc, qualityMode });
     }
 
     [HttpGet("analytics/meta-connect")]
