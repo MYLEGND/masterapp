@@ -2514,7 +2514,8 @@ html {
 }
 
 .pf-modal-dialog {
-    width: min(100%, 980px);
+    width: 100%;
+    max-width: min(1340px, calc(100vw - 40px));
     max-height: calc(100vh - 48px);
     display: flex;
 }
@@ -2533,7 +2534,7 @@ html {
     max-height: 100%;
     display: flex;
     flex-direction: column;
-    border-radius: 28px;
+    border-radius: 22px;
     border: 1px solid var(--pf-line-strong);
     background: linear-gradient(180deg, rgba(255, 250, 246, 1), rgba(225, 200, 180, 0.98));
     box-shadow: var(--pf-shadow-overlay);
@@ -2545,7 +2546,7 @@ html {
     align-items: flex-start;
     justify-content: space-between;
     gap: 1rem;
-    padding: 14px 16px;
+    padding: 18px 22px;
     border-bottom: 1px solid var(--pf-line);
 }
 
@@ -2564,7 +2565,7 @@ html {
 .pf-modal-body {
     flex: 1 1 auto;
     overflow: auto;
-    padding: 14px 16px;
+    padding: 20px 22px;
 }
 
 .pf-modal-footer {
@@ -2577,9 +2578,19 @@ html {
 
 .pf-modal-grid {
     display: grid;
-    grid-template-columns: minmax(420px, 0.94fr) minmax(460px, 1.06fr);
-    gap: 14px;
+    grid-template-columns: minmax(400px, 0.88fr) minmax(540px, 1.12fr);
+    gap: 18px;
     align-items: start;
+}
+
+.pf-modal-grid > *,
+.pf-modal-body section,
+.pf-modal-body article {
+    border-radius: 16px;
+}
+
+.pf-modal-body textarea {
+    min-height: 110px;
 }
 
 .pf-media-panel,
@@ -3572,39 +3583,6 @@ button.pf-secondary-action,
     background: rgba(43,25,17,.06);
     border-color: rgba(146,105,80,.30);
     color: var(--pf-ink);
-}
-
-.pf-modal-dialog {
-    max-width: min(1340px, calc(100vw - 40px));
-}
-
-.pf-modal-content {
-    border-radius: 22px;
-    overflow: hidden;
-}
-
-.pf-modal-header {
-    padding: 18px 22px;
-}
-
-.pf-modal-body {
-    padding: 20px 22px;
-}
-
-.pf-modal-grid {
-    display: grid;
-    grid-template-columns: minmax(400px, 0.88fr) minmax(540px, 1.12fr);
-    gap: 18px;
-}
-
-.pf-modal-grid > *,
-.pf-modal-body section,
-.pf-modal-body article {
-    border-radius: 16px;
-}
-
-.pf-modal-body textarea {
-    min-height: 110px;
 }
 
 /* Tables */
