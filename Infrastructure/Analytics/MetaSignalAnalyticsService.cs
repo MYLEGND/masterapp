@@ -4,13 +4,12 @@ using System.Linq;
 using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
-using AgentPortal.Models.Analytics;
 using Domain.Entities;
 using Infrastructure.Data;
 using Microsoft.EntityFrameworkCore;
 using Shared.Analytics;
 
-namespace AgentPortal.Services.Analytics;
+namespace Infrastructure.Analytics;
 
 public interface IMetaSignalAnalyticsService
 {

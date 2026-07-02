@@ -2,17 +2,16 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
-using AgentPortal.Models.Analytics;
 using Domain.Entities;
 using Infrastructure.Data;
 using Microsoft.EntityFrameworkCore;
 using System.Globalization;
 using Microsoft.Extensions.Configuration;
 using System.Linq.Expressions;
-using Shared.Meta;
 using Shared.Analytics;
+using Shared.Meta;
 
-namespace AgentPortal.Services.Analytics;
+namespace Infrastructure.Analytics;
 
 public sealed class AnalyticsQueryService : IAnalyticsQueryService
 {

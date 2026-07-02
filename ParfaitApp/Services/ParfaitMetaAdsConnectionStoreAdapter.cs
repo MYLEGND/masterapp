@@ -1,6 +1,6 @@
-using AgentPortal.Models.Analytics;
-using AgentPortal.Services.Analytics;
 using ParfaitApp.Models;
+using Infrastructure.Analytics;
+using Shared.Analytics;
 
 namespace ParfaitApp.Services;
 

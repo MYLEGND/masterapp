@@ -1,6 +1,6 @@
 using System.Collections.Generic;
 
-namespace AgentPortal.Services.Analytics
+namespace Shared.Analytics
 {
     public enum TrafficType
     {

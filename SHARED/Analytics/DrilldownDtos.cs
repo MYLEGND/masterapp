@@ -1,8 +1,7 @@
 using System;
 using System.Collections.Generic;
-using AgentPortal.Services.Analytics;
 
-namespace AgentPortal.Models.Analytics;
+namespace Shared.Analytics;
 
 public sealed class TrafficOverviewDto
 {

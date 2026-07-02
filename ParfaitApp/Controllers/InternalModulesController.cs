@@ -1,10 +1,10 @@
-using AgentPortal.Models.Analytics;
-using AgentPortal.Services.Analytics;
+using Infrastructure.Analytics;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using ParfaitApp.Models;
 using ParfaitApp.Security;
 using ParfaitApp.Services;
+using Shared.Analytics;
 
 namespace ParfaitApp.Controllers;
 

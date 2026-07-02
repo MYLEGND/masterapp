@@ -6,14 +6,14 @@ using System.Net.Http;
 using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
-using AgentPortal.Models.Analytics;
 using Domain.Entities;
 using Infrastructure.Data;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
+using Shared.Analytics;
 
-namespace AgentPortal.Services.Analytics;
+namespace Infrastructure.Analytics;
 
 public sealed class MetaAdsService : IMetaAdsService
 {

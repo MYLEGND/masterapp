@@ -1,4 +1,4 @@
-using AgentPortal.Models.Analytics;
+using Shared.Analytics;
 
 namespace ParfaitApp.Models;
 

@@ -1,6 +1,6 @@
 using System;
 
-namespace AgentPortal.Models.Analytics;
+namespace Shared.Analytics;
 
 public enum TimeGrouping
 {

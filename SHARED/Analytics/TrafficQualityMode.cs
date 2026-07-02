@@ -1,4 +1,4 @@
-namespace AgentPortal.Models.Analytics;
+namespace Shared.Analytics;
 
 public enum TrafficQualityMode
 {

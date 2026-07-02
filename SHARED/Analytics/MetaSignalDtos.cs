@@ -1,7 +1,7 @@
 using System;
 using System.Collections.Generic;
 
-namespace AgentPortal.Models.Analytics;
+namespace Shared.Analytics;
 
 public sealed class MetaSignalDashboardDto
 {

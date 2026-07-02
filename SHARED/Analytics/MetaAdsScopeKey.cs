@@ -1,7 +1,7 @@
 using System.Security.Cryptography;
 using System.Text;
 
-namespace AgentPortal.Models.Analytics;
+namespace Shared.Analytics;
 
 public static class MetaAdsScopeKey
 {

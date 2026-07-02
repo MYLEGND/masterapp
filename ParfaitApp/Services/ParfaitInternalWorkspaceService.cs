@@ -1,4 +1,5 @@
 using ParfaitApp.Models;
+using Shared.Analytics;
 
 namespace ParfaitApp.Services;
 
@@ -30,7 +31,7 @@ public sealed class ParfaitInternalWorkspaceService
             "30d",
             null,
             null,
-            AgentPortal.Models.Analytics.TrafficQualityMode.RealHumanTraffic,
+            TrafficQualityMode.RealHumanTraffic,
             TimeZoneInfo.Utc,
             null,
             null,

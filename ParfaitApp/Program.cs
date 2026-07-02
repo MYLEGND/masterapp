@@ -4,7 +4,7 @@ using Microsoft.AspNetCore.Authentication.OpenIdConnect;
 using Microsoft.AspNetCore.Http.Extensions;
 using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.IdentityModel.Protocols.OpenIdConnect;
-using AgentPortal.Services.Analytics;
+using Infrastructure.Analytics;
 using ParfaitApp.Services;
 using Infrastructure.Data;
 using Microsoft.EntityFrameworkCore;

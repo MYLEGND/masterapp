@@ -1,10 +1,10 @@
 using System;
 using System.Linq;
 using System.Linq.Expressions;
-using AgentPortal.Models.Analytics;
 using Domain.Entities;
+using Shared.Analytics;
 
-namespace AgentPortal.Services.Analytics;
+namespace Infrastructure.Analytics;
 
 public static class TrafficQualityBucketFilters
 {

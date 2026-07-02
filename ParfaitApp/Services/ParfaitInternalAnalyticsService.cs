@@ -1,8 +1,8 @@
 using System.Text.Json;
-using AgentPortal.Models.Analytics;
-using AgentPortal.Services.Analytics;
+using Infrastructure.Analytics;
 using Microsoft.EntityFrameworkCore;
 using ParfaitApp.Models;
+using Shared.Analytics;
 
 namespace ParfaitApp.Services;
 

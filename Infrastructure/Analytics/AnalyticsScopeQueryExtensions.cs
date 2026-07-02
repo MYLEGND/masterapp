@@ -1,7 +1,7 @@
-using AgentPortal.Models.Analytics;
 using Domain.Entities;
+using Shared.Analytics;
 
-namespace AgentPortal.Services.Analytics;
+namespace Infrastructure.Analytics;
 
 internal static class AnalyticsScopeQueryExtensions
 {
