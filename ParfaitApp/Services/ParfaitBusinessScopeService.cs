@@ -45,8 +45,14 @@ public sealed class ParfaitBusinessScopeService
         return business;
     }
 
-    public Task SaveChangesAsync(CancellationToken ct = default)
+    public async Task UpdateParfaitIdentityAsync(string displayName, string businessType, CancellationToken ct = default)
     {
-        return _db.SaveChangesAsync(ct);
+        var business = await GetParfaitAsync(ct);
+
+        business.DisplayName = displayName;
+        business.BusinessType = businessType;
+        business.UpdatedUtc = DateTime.UtcNow;
+
+        await _db.SaveChangesAsync(ct);
     }
 }

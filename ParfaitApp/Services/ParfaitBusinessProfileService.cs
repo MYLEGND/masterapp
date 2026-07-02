@@ -52,17 +52,16 @@ public sealed class ParfaitBusinessProfileService : IParfaitBusinessProfileServi
 
     public async Task SaveProfileAsync(ParfaitBusinessProfileViewModel model, CancellationToken ct = default)
     {
-        var business = await _businessScope.GetParfaitAsync(ct);
         var store = LoadStore();
 
-        business.DisplayName = CleanRequired(model.StoreName, "Parfait");
-        business.BusinessType = CleanRequired(model.BusinessType, "Apparel / Ecommerce");
-        business.UpdatedUtc = DateTime.UtcNow;
+        await _businessScope.UpdateParfaitIdentityAsync(
+            CleanRequired(model.StoreName, "Parfait"),
+            CleanRequired(model.BusinessType, "Apparel / Ecommerce"),
+            ct);
 
         store.GlobalStoreCheckoutUrl = CleanOptional(model.GlobalStoreCheckoutUrl);
         store.UpdatedUtc = DateTime.UtcNow;
 
-        await _businessScope.SaveChangesAsync(ct);
         SaveStore(store);
     }
 
