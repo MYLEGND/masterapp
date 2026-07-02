@@ -44,14 +44,6 @@ public sealed class InternalModulesController : Controller
         _metaAds = metaAds;
     }
 
-    [HttpGet("commerce")]
-    [ParfaitInternalPage(
-        "Commerce",
-        "Operations",
-        "Products, orders, inventory, and revenue controls for Parfait commerce operations.",
-        3,
-        1)]
-    public async Task<IActionResult> Commerce(CancellationToken ct) => View(await _workspace.GetSnapshotAsync(ct));
 
     [HttpGet("commerce/products")]
     [ParfaitInternalPage(
@@ -245,25 +237,9 @@ public sealed class InternalModulesController : Controller
         return RedirectToAction(nameof(Orders));
     }
 
-    [HttpGet("customers")]
-    [ParfaitInternalPage(
-        "Customers",
-        "Operations",
-        "Customer accounts, order history, support, and engagement controls.",
-        3,
-        4)]
-    public async Task<IActionResult> Customers(CancellationToken ct) => View(await _workspace.GetSnapshotAsync(ct));
 
-    [HttpGet("marketing")]
-    [ParfaitInternalPage(
-        "Marketing",
-        "Growth",
-        "Campaign planning and attribution controls for Parfait growth.",
-        4,
-        1)]
-    public async Task<IActionResult> Marketing(CancellationToken ct) => View(await _workspace.GetSnapshotAsync(ct));
 
-    [HttpGet("marketing/automations")]
+    [HttpGet("automations")]
     [ParfaitInternalPage(
         "Automations",
         "Growth",
@@ -275,7 +251,7 @@ public sealed class InternalModulesController : Controller
         return View(_automations.GetWorkspaceViewModel());
     }
 
-    [HttpPost("marketing/automations/workflows")]
+    [HttpPost("automations/workflows")]
     [ValidateAntiForgeryToken]
     public IActionResult SaveAutomationWorkflow(ParfaitAutomationWorkflowEditorInput input)
     {
@@ -292,7 +268,7 @@ public sealed class InternalModulesController : Controller
         return RedirectToAction(nameof(Automations));
     }
 
-    [HttpPost("marketing/automations/workflows/delete")]
+    [HttpPost("automations/workflows/delete")]
     [ValidateAntiForgeryToken]
     public IActionResult DeleteAutomationWorkflow(Guid id)
     {
@@ -302,14 +278,6 @@ public sealed class InternalModulesController : Controller
         return RedirectToAction(nameof(Automations));
     }
 
-    [HttpGet("content")]
-    [ParfaitInternalPage(
-        "Content",
-        "Growth",
-        "Products, creative assets, and storytelling management for the brand.",
-        4,
-        3)]
-    public async Task<IActionResult> Content(CancellationToken ct) => View(await _workspace.GetSnapshotAsync(ct));
 
     [HttpGet("analytics")]
     [ParfaitInternalPage(

@@ -254,7 +254,7 @@ $@"
   </p>
 
   <p style='margin-top:18px;color:#666;font-size:13px;'>
-    View orders inside Parfait Internal → Commerce → Orders.
+    View orders inside Parfait Internal → Orders.
   </p>
 </div>";
 

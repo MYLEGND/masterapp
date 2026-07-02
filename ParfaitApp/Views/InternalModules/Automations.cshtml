@@ -258,7 +258,7 @@
 <div class="pf-automation-modal" id="pfAutomationCreateModal" aria-hidden="true">
     <div class="pf-modal-dialog pf-modal-lg">
         <div class="pf-modal-content pf-automation-modal-shell">
-            <form method="post" action="/internal/marketing/automations/workflows" class="pf-automation-form">
+            <form method="post" action="/internal/automations/workflows" class="pf-automation-form">
                 @Html.AntiForgeryToken()
                 <div class="pf-modal-header">
                     <div>
@@ -344,7 +344,7 @@
     <div class="pf-automation-modal" id="@modalId" aria-hidden="true">
         <div class="pf-modal-dialog pf-modal-lg">
             <div class="pf-modal-content pf-automation-modal-shell">
-                <form method="post" action="/internal/marketing/automations/workflows" class="pf-automation-form">
+                <form method="post" action="/internal/automations/workflows" class="pf-automation-form">
                     @Html.AntiForgeryToken()
                     <input type="hidden" name="Id" value="@workflow.Id" />
 
@@ -450,7 +450,7 @@
                         <button type="submit" class="pf-action">Save Workflow</button>
                         <button type="submit"
                                 class="pf-secondary-action is-danger"
-                                formaction="/internal/marketing/automations/workflows/delete"
+                                formaction="/internal/automations/workflows/delete"
                                 formmethod="post"
                                 name="id"
                                 value="@workflow.Id">

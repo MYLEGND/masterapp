@@ -5,275 +5,121 @@
 
     static string Money(int cents) => "$" + (cents / 100m).ToString("0.00");
 
-    var foundationTone = Model.HasCheckoutUrl && Model.HasMetaPixel ? "success" : Model.HasCheckoutUrl || Model.HasMetaPixel ? "warning" : "danger";
-    var commerceTone = Model.OrderCount > 0 ? "success" : "info";
-    var analyticsTone = Model.HasAnalyticsTraffic ? "success" : "warning";
-    var customerTone = Model.CustomerCount > 0 ? "info" : "warning";
-    var marketingTone = Model.HasMetaConnection ? "success" : Model.HasMetaPixel ? "warning" : "danger";
-    var contentTone = Model.ProductImageCount > 0 ? "info" : "warning";
-    var openAttention = Model.OpenFulfillmentCount + Model.PendingOrderCount + (Model.HasMetaConnection ? 0 : 1) + (Model.HasCheckoutUrl ? 0 : 1);
+    var storeReady = Model.HasCheckoutUrl && Model.HasMetaPixel && Model.HasMetaConnection;
+    var orderAttention = Model.OpenFulfillmentCount > 0 || Model.PendingOrderCount > 0;
 }
 
-<section class="pf-command-page">
-    <header class="pf-command-head">
-        <div class="pf-command-copy">
-            <h1 class="pf-command-title">@Model.StoreName</h1>
-            <p class="pf-command-text">Store readiness, commerce, customers, marketing, and analytics in one view.</p>
+<section class="pf-command-page pf-dashboard-command">
+    <header class="pf-dashboard-head">
+        <div class="pf-dashboard-head-copy">
+            <p class="pf-dashboard-eyebrow">Parfait Internal</p>
+            <h1>Command Center</h1>
+            <p class="pf-dashboard-intro">Store operations, order execution, and growth intelligence in one focused workspace.</p>
         </div>
-        <div class="pf-command-meta">
-            <span class="pf-command-badge is-@foundationTone">Checkout @(Model.HasCheckoutUrl ? "Saved" : "Missing")</span>
-            <span class="pf-command-badge is-@marketingTone">Meta @(Model.HasMetaConnection ? "Secure" : "Pending")</span>
-            <span class="pf-command-badge is-@commerceTone">@Model.OrderCount order@(Model.OrderCount == 1 ? string.Empty : "s")</span>
-            <span class="pf-command-badge is-@analyticsTone">@Money(Model.RevenueCents) tracked</span>
+        <div class="pf-dashboard-head-actions">
+            <a class="pf-secondary-action" href="/store" target="_blank" rel="noopener">View Store</a>
+            <a class="pf-secondary-action" href="/internal/analytics">Analytics</a>
+            <a class="pf-secondary-action" href="/internal/settings/business-profile">Business Profile</a>
         </div>
     </header>
 
-    <section class="pf-command-rail">
-        <article class="pf-rail-card is-@foundationTone pf-span-3">
-            <div class="pf-rail-label">Store Foundation</div>
-            <strong class="pf-rail-value">@(Model.HasCheckoutUrl && Model.HasMetaPixel ? "Ready" : Model.HasCheckoutUrl || Model.HasMetaPixel ? "In Progress" : "Missing")</strong>
-            <div class="pf-rail-grid">
-                <div>
-                    <span>Checkout</span>
-                    <strong>@(Model.HasCheckoutUrl ? "Saved" : "Missing")</strong>
-                </div>
-                <div>
-                    <span>Meta Pixel</span>
-                    <strong>@(Model.HasMetaPixel ? "Stored" : "Missing")</strong>
-                </div>
-            </div>
+    <section class="pf-dashboard-kpis" aria-label="Store overview">
+        <article class="pf-dashboard-kpi">
+            <span>Store status</span>
+            <strong>@(storeReady ? "Ready" : "Review")</strong>
+            <small>@Model.BusinessType</small>
         </article>
-
-        <article class="pf-rail-card is-@commerceTone pf-span-3">
-            <div class="pf-rail-label">Orders & Revenue</div>
-            <strong class="pf-rail-value">@Money(Model.RevenueCents)</strong>
-            <div class="pf-rail-grid">
-                <div>
-                    <span>Paid Orders</span>
-                    <strong>@Model.PaidOrderCount</strong>
-                </div>
-                <div>
-                    <span>Average Order</span>
-                    <strong>@Money(Model.AverageOrderValueCents)</strong>
-                </div>
-            </div>
+        <article class="pf-dashboard-kpi">
+            <span>Revenue</span>
+            <strong>@Money(Model.RevenueCents)</strong>
+            <small>@Model.PaidOrderCount paid · @Money(Model.AverageOrderValueCents) average</small>
         </article>
-
-        <article class="pf-rail-card is-@analyticsTone pf-span-3">
-            <div class="pf-rail-label">Funnel Read</div>
-            <strong class="pf-rail-value">@Model.Purchases</strong>
-            <div class="pf-rail-grid">
-                <div>
-                    <span>Sessions</span>
-                    <strong>@Model.Sessions</strong>
-                </div>
-                <div>
-                    <span>Checkout Rate</span>
-                    <strong>@Model.CheckoutToPurchaseRate.ToString("0.0")%</strong>
-                </div>
-            </div>
+        <article class="pf-dashboard-kpi">
+            <span>Orders</span>
+            <strong>@Model.OrderCount</strong>
+            <small>@Model.OpenFulfillmentCount fulfillment · @Model.PendingOrderCount pending</small>
         </article>
-
-        <article class="pf-rail-card is-@(openAttention > 0 ? "warning" : "success") pf-span-3">
-            <div class="pf-rail-label">Open Items</div>
-            <strong class="pf-rail-value">@openAttention</strong>
-            <div class="pf-rail-grid">
-                <div>
-                    <span>Fulfillment</span>
-                    <strong>@Model.OpenFulfillmentCount</strong>
-                </div>
-                <div>
-                    <span>Meta OAuth</span>
-                    <strong>@(Model.HasMetaConnection ? "Live" : "Pending")</strong>
-                </div>
-            </div>
+        <article class="pf-dashboard-kpi">
+            <span>Sessions</span>
+            <strong>@Model.Sessions</strong>
+            <small>@Model.Purchases purchases · @Model.CheckoutToPurchaseRate.ToString("0.0")% conversion</small>
         </article>
     </section>
 
-    <section class="pf-command-board">
-        <div class="pf-command-board-head">
-            <div>
-                <h2>Internal Modules</h2>
-                <p>Open the right workspace fast with live counts and clear next actions.</p>
-            </div>
-            <div class="pf-command-board-actions">
-                <a class="pf-secondary-action" href="/internal/settings/business-profile">Business Profile</a>
-                <a class="pf-secondary-action" href="/store" target="_blank" rel="noopener">View Store</a>
-            </div>
-        </div>
-
-        <div class="pf-module-list">
-            <article class="pf-module-row is-@foundationTone">
-                <div class="pf-module-row-main">
-                    <h3>Business Profile</h3>
-                    <p>Store details and checkout ownership.</p>
+    <section class="pf-dashboard-workspace" aria-label="Operations">
+        <div class="pf-dashboard-primary-grid">
+            <article class="pf-dashboard-primary-card">
+                <div class="pf-dashboard-card-topline">
+                    <span>Catalog</span>
+                    <strong>@Model.ActiveProductCount / @Model.ProductCount live</strong>
                 </div>
-                <div class="pf-module-row-metrics">
-                    <div class="pf-module-row-metric">
-                        <span>Checkout</span>
-                        <strong>@(Model.HasCheckoutUrl ? "Saved" : "Missing")</strong>
-                    </div>
-                    <div class="pf-module-row-metric">
-                        <span>Meta Pixel</span>
-                        <strong>@(Model.HasMetaPixel ? "Stored" : "Missing")</strong>
-                    </div>
-                    <div class="pf-module-row-metric">
-                        <span>Meta</span>
-                        <strong>@(Model.HasMetaConnection ? "Live in Analytics" : "Pending in Analytics")</strong>
-                    </div>
-                    <div class="pf-module-row-metric">
-                        <span>Business Type</span>
-                        <strong>@Model.BusinessType</strong>
-                    </div>
+                <h2>Products</h2>
+                <p>Manage catalog, inventory, pricing, shipping, tax, product images, and merchandising.</p>
+                <div class="pf-dashboard-card-stat">
+                    <b>@Model.FeaturedProductCount</b>
+                    <span>Featured products</span>
                 </div>
-                <div class="pf-module-row-actions">
-                    <a class="pf-action" href="/internal/settings/business-profile">Open Profile</a>
-                </div>
+                <a class="pf-action" href="/internal/commerce/products">Manage Products</a>
             </article>
 
-            <article class="pf-module-row is-@commerceTone">
-                <div class="pf-module-row-main">
-                    <h3>Commerce</h3>
-                    <p>Products, orders, revenue, and fulfillment.</p>
+            <article class="pf-dashboard-primary-card">
+                <div class="pf-dashboard-card-topline">
+                    <span>Order execution</span>
+                    <strong class="@(orderAttention ? "is-attention" : "")">@Model.OpenFulfillmentCount open</strong>
                 </div>
-                <div class="pf-module-row-metrics">
-                    <div class="pf-module-row-metric">
-                        <span>Live Products</span>
-                        <strong>@Model.ActiveProductCount / @Model.ProductCount</strong>
-                    </div>
-                    <div class="pf-module-row-metric">
-                        <span>Orders</span>
-                        <strong>@Model.OrderCount</strong>
-                    </div>
-                    <div class="pf-module-row-metric">
-                        <span>Paid Revenue</span>
-                        <strong>@Money(Model.RevenueCents)</strong>
-                    </div>
-                    <div class="pf-module-row-metric">
-                        <span>Open Fulfillment</span>
-                        <strong>@Model.OpenFulfillmentCount</strong>
-                    </div>
+                <h2>Orders</h2>
+                <p>Manage fulfillment, payments, receipts, returns, shipping details, and customer order history.</p>
+                <div class="pf-dashboard-card-stat">
+                    <b>@Model.PaidOrderCount</b>
+                    <span>Paid orders</span>
                 </div>
-                <div class="pf-module-row-actions">
-                    <a class="pf-action" href="/internal/commerce">Open Commerce</a>
-                    <a class="pf-secondary-action" href="/internal/commerce/products">Products</a>
-                    <a class="pf-secondary-action" href="/internal/commerce/orders">Orders</a>
-                </div>
-            </article>
-
-            <article class="pf-module-row is-@customerTone">
-                <div class="pf-module-row-main">
-                    <h3>Customers</h3>
-                    <p>Buyer count, repeat customers, and order pressure.</p>
-                </div>
-                <div class="pf-module-row-metrics">
-                    <div class="pf-module-row-metric">
-                        <span>Buyers</span>
-                        <strong>@Model.CustomerCount</strong>
-                    </div>
-                    <div class="pf-module-row-metric">
-                        <span>Repeat Buyers</span>
-                        <strong>@Model.RepeatCustomerCount</strong>
-                    </div>
-                    <div class="pf-module-row-metric">
-                        <span>Pending Orders</span>
-                        <strong>@Model.PendingOrderCount</strong>
-                    </div>
-                    <div class="pf-module-row-metric">
-                        <span>Failed Payments</span>
-                        <strong>@Model.FailedOrderCount</strong>
-                    </div>
-                </div>
-                <div class="pf-module-row-actions">
-                    <a class="pf-action" href="/internal/customers">Open Customers</a>
-                </div>
-            </article>
-
-            <article class="pf-module-row is-@marketingTone">
-                <div class="pf-module-row-main">
-                    <h3>Marketing</h3>
-                    <p>Meta command, traffic, and content readiness.</p>
-                </div>
-                <div class="pf-module-row-metrics">
-                    <div class="pf-module-row-metric">
-                        <span>Meta CAPI</span>
-                        <strong>@(Model.HasMetaConnection ? "Secure" : "Pending")</strong>
-                    </div>
-                    <div class="pf-module-row-metric">
-                        <span>Store Views</span>
-                        <strong>@Model.StoreViews</strong>
-                    </div>
-                    <div class="pf-module-row-metric">
-                        <span>Visitors</span>
-                        <strong>@Model.Visitors</strong>
-                    </div>
-                    <div class="pf-module-row-metric">
-                        <span>Purchases</span>
-                        <strong>@Model.Purchases</strong>
-                    </div>
-                </div>
-                <div class="pf-module-row-actions">
-                    <a class="pf-action" href="/internal/marketing">Open Marketing</a>
-                    <a class="pf-secondary-action" href="/internal/analytics">Analytics</a>
-                </div>
-            </article>
-
-            <article class="pf-module-row is-@analyticsTone">
-                <div class="pf-module-row-main">
-                    <h3>Analytics</h3>
-                    <p>Sessions, cart activity, checkout starts, and purchases.</p>
-                </div>
-                <div class="pf-module-row-metrics">
-                    <div class="pf-module-row-metric">
-                        <span>Sessions</span>
-                        <strong>@Model.Sessions</strong>
-                    </div>
-                    <div class="pf-module-row-metric">
-                        <span>Add To Cart</span>
-                        <strong>@Model.AddToCarts</strong>
-                    </div>
-                    <div class="pf-module-row-metric">
-                        <span>Checkout Starts</span>
-                        <strong>@Model.CheckoutStarts</strong>
-                    </div>
-                    <div class="pf-module-row-metric">
-                        <span>Purchase Rate</span>
-                        <strong>@Model.CheckoutToPurchaseRate.ToString("0.0")%</strong>
-                    </div>
-                </div>
-                <div class="pf-module-row-actions">
-                    <a class="pf-action" href="/internal/analytics">Open Analytics</a>
-                </div>
-            </article>
-
-            <article class="pf-module-row is-@contentTone">
-                <div class="pf-module-row-main">
-                    <h3>Content</h3>
-                    <p>Featured assortment, product count, and image coverage.</p>
-                </div>
-                <div class="pf-module-row-metrics">
-                    <div class="pf-module-row-metric">
-                        <span>Featured</span>
-                        <strong>@Model.FeaturedProductCount</strong>
-                    </div>
-                    <div class="pf-module-row-metric">
-                        <span>Images</span>
-                        <strong>@Model.ProductImageCount</strong>
-                    </div>
-                    <div class="pf-module-row-metric">
-                        <span>Products</span>
-                        <strong>@Model.ProductCount</strong>
-                    </div>
-                    <div class="pf-module-row-metric">
-                        <span>Store Views</span>
-                        <strong>@Model.StoreViews</strong>
-                    </div>
-                </div>
-                <div class="pf-module-row-actions">
-                    <a class="pf-action" href="/internal/content">Open Content</a>
-                    <a class="pf-secondary-action" href="/internal/commerce/products">Products</a>
-                </div>
+                <a class="pf-action" href="/internal/commerce/orders">Manage Orders</a>
             </article>
         </div>
+
+        <aside class="pf-dashboard-operations">
+            <article class="pf-dashboard-operation">
+                <div>
+                    <span>Analytics</span>
+                    <h3>@Model.Sessions sessions</h3>
+                    <p>@Model.CheckoutStarts checkout starts · @Model.Purchases purchases</p>
+                </div>
+                <a class="pf-secondary-action" href="/internal/analytics">Open</a>
+            </article>
+
+            <article class="pf-dashboard-operation">
+                <div>
+                    <span>Automations</span>
+                    <h3>@Model.CustomerCount customers</h3>
+                    <p>@Model.RepeatCustomerCount repeat buyers</p>
+                </div>
+                <a class="pf-secondary-action" href="/internal/automations">Open</a>
+            </article>
+
+            <article class="pf-dashboard-operation">
+                <div>
+                    <span>Business profile</span>
+                    <h3>@(Model.HasMetaConnection ? "Connected" : "Needs review")</h3>
+                    <p>Checkout @(Model.HasCheckoutUrl ? "saved" : "missing") · Meta @(Model.HasMetaPixel ? "configured" : "missing")</p>
+                </div>
+                <a class="pf-secondary-action" href="/internal/settings/business-profile">Open</a>
+            </article>
+
+            <article class="pf-dashboard-operation">
+                <div>
+                    <span>Team</span>
+                    <h3>Protected access</h3>
+                    <p>Internal roles, approvals, and access governance.</p>
+                </div>
+                <a class="pf-secondary-action" href="/internal/settings/team">Open</a>
+            </article>
+        </aside>
+    </section>
+
+    <section class="pf-dashboard-activity" aria-label="Store activity">
+        <article><span>Store views</span><strong>@Model.StoreViews</strong></article>
+        <article><span>Product views</span><strong>@Model.ProductViews</strong></article>
+        <article><span>Add to cart</span><strong>@Model.AddToCarts</strong></article>
+        <article><span>Product images</span><strong>@Model.ProductImageCount</strong></article>
     </section>
 </section>
