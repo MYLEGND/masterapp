@@ -97,6 +97,10 @@ builder.Services.AddDbContext<MasterAppDbContext>(options =>
 });
 
 builder.Services.AddScoped<ParfaitBusinessScopeService>();
+builder.Services.Configure<ParfaitCommerceJsonImportOptions>(
+    builder.Configuration.GetSection("ParfaitCommerce:JsonImport"));
+builder.Services.AddScoped<ParfaitCommerceJsonImportService>();
+builder.Services.AddHostedService<ParfaitCommerceJsonImportHostedService>();
 builder.Services.AddSingleton<ParfaitProductService>();
 builder.Services.AddSingleton<ParfaitOrderService>();
 builder.Services.AddSingleton<ParfaitCustomerAutomationService>();
