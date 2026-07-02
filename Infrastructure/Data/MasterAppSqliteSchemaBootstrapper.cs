@@ -9,6 +9,7 @@ public static class MasterAppSqliteSchemaBootstrapper
 {
     private const string LegacyBootstrapBaselineMigrationId = "20260618104500_AddAnalyticsDriftAlerts";
     private const string CommerceBusinessScopeMigrationId = "20260702160000_AddCommerceBusinessScope";
+    private const string CommerceCoreSchemaMigrationId = "20260702164641_AddCommerceCoreSchema";
 
     private static readonly ColumnPatch[] AdditiveColumnPatches =
     {
@@ -54,6 +55,24 @@ public static class MasterAppSqliteSchemaBootstrapper
         new("IX_CommerceBusinesses_Key", "CREATE UNIQUE INDEX \"IX_CommerceBusinesses_Key\" ON \"CommerceBusinesses\" (\"Key\")")
     };
 
+    private static readonly IndexPatch[] CommerceCoreIndexes =
+    {
+        new("IX_CommerceBusinessSettings_CommerceBusinessId", "CREATE UNIQUE INDEX \"IX_CommerceBusinessSettings_CommerceBusinessId\" ON \"CommerceBusinessSettings\" (\"CommerceBusinessId\")"),
+        new("IX_CommerceOrderLines_CommerceOrderId", "CREATE INDEX \"IX_CommerceOrderLines_CommerceOrderId\" ON \"CommerceOrderLines\" (\"CommerceOrderId\")"),
+        new("IX_CommerceOrders_CheckoutAttemptId", "CREATE INDEX \"IX_CommerceOrders_CheckoutAttemptId\" ON \"CommerceOrders\" (\"CheckoutAttemptId\")"),
+        new("IX_CommerceOrders_CommerceBusinessId_CreatedUtc", "CREATE INDEX \"IX_CommerceOrders_CommerceBusinessId_CreatedUtc\" ON \"CommerceOrders\" (\"CommerceBusinessId\", \"CreatedUtc\")"),
+        new("IX_CommerceOrders_CommerceBusinessId_OrderNumber", "CREATE UNIQUE INDEX \"IX_CommerceOrders_CommerceBusinessId_OrderNumber\" ON \"CommerceOrders\" (\"CommerceBusinessId\", \"OrderNumber\")"),
+        new("IX_CommerceOrders_CommerceBusinessId_PaymentStatus_FulfillmentStatus", "CREATE INDEX \"IX_CommerceOrders_CommerceBusinessId_PaymentStatus_FulfillmentStatus\" ON \"CommerceOrders\" (\"CommerceBusinessId\", \"PaymentStatus\", \"FulfillmentStatus\")"),
+        new("IX_CommerceProductDiscounts_CommerceProductId_Code", "CREATE INDEX \"IX_CommerceProductDiscounts_CommerceProductId_Code\" ON \"CommerceProductDiscounts\" (\"CommerceProductId\", \"Code\")"),
+        new("IX_CommerceProductDiscounts_CommerceProductId_ExternalDiscountKey", "CREATE UNIQUE INDEX \"IX_CommerceProductDiscounts_CommerceProductId_ExternalDiscountKey\" ON \"CommerceProductDiscounts\" (\"CommerceProductId\", \"ExternalDiscountKey\")"),
+        new("IX_CommerceProductImages_CommerceProductId_DisplayOrder", "CREATE INDEX \"IX_CommerceProductImages_CommerceProductId_DisplayOrder\" ON \"CommerceProductImages\" (\"CommerceProductId\", \"DisplayOrder\")"),
+        new("IX_CommerceProductImages_CommerceProductId_ExternalImageKey", "CREATE UNIQUE INDEX \"IX_CommerceProductImages_CommerceProductId_ExternalImageKey\" ON \"CommerceProductImages\" (\"CommerceProductId\", \"ExternalImageKey\")"),
+        new("IX_CommerceProductInventoryItems_CommerceProductId_Size", "CREATE UNIQUE INDEX \"IX_CommerceProductInventoryItems_CommerceProductId_Size\" ON \"CommerceProductInventoryItems\" (\"CommerceProductId\", \"Size\")"),
+        new("IX_CommerceProducts_CommerceBusinessId_ExternalProductKey", "CREATE UNIQUE INDEX \"IX_CommerceProducts_CommerceBusinessId_ExternalProductKey\" ON \"CommerceProducts\" (\"CommerceBusinessId\", \"ExternalProductKey\")"),
+        new("IX_CommerceProducts_CommerceBusinessId_IsActive_DisplayOrder", "CREATE INDEX \"IX_CommerceProducts_CommerceBusinessId_IsActive_DisplayOrder\" ON \"CommerceProducts\" (\"CommerceBusinessId\", \"IsActive\", \"DisplayOrder\")"),
+        new("IX_CommerceProducts_CommerceBusinessId_Slug", "CREATE UNIQUE INDEX \"IX_CommerceProducts_CommerceBusinessId_Slug\" ON \"CommerceProducts\" (\"CommerceBusinessId\", \"Slug\")")
+    };
+
     public static async Task InitializeAsync(
         MasterAppDbContext db,
         ILogger logger,
@@ -76,6 +95,8 @@ public static class MasterAppSqliteSchemaBootstrapper
 
         try
         {
+            await ExecuteNonQueryAsync(connection, "PRAGMA foreign_keys = ON", cancellationToken);
+
             var repairs = new List<string>();
 
             await ExecuteNonQueryAsync(connection, """
@@ -119,8 +140,22 @@ public static class MasterAppSqliteSchemaBootstrapper
                 }
             }
 
+            foreach (var table in await CreateCommerceCoreTablesIfMissingAsync(connection, cancellationToken))
+            {
+                repairs.Add(table);
+            }
+
+            foreach (var index in CommerceCoreIndexes)
+            {
+                if (await CreateIndexIfMissingAsync(connection, index, cancellationToken))
+                {
+                    repairs.Add(index.Name);
+                }
+            }
+
             await StampMigrationHistoryAsync(db, connection, createdFromModel, logger, cancellationToken);
             await StampMigrationIfMissingAsync(db, connection, CommerceBusinessScopeMigrationId, cancellationToken);
+            await StampMigrationIfMissingAsync(db, connection, CommerceCoreSchemaMigrationId, cancellationToken);
             await db.Database.MigrateAsync(cancellationToken);
 
             if (createdFromModel)
@@ -231,6 +266,174 @@ public static class MasterAppSqliteSchemaBootstrapper
             """, cancellationToken);
 
         return true;
+    }
+
+    private static async Task<IReadOnlyList<string>> CreateCommerceCoreTablesIfMissingAsync(
+        DbConnection connection,
+        CancellationToken cancellationToken)
+    {
+        var created = new List<string>();
+
+        async Task CreateAsync(string tableName, string sql)
+        {
+            if (await TableExistsAsync(connection, tableName, cancellationToken))
+                return;
+
+            await ExecuteNonQueryAsync(connection, sql, cancellationToken);
+            created.Add(tableName);
+        }
+
+        await CreateAsync("CommerceBusinessSettings", """
+            CREATE TABLE "CommerceBusinessSettings" (
+                "Id" TEXT NOT NULL CONSTRAINT "PK_CommerceBusinessSettings" PRIMARY KEY,
+                "CommerceBusinessId" TEXT NOT NULL,
+                "ShippingFeeCents" INTEGER NOT NULL,
+                "TaxPercent" decimal(9,4) NOT NULL,
+                "GlobalDiscountCode" TEXT NOT NULL,
+                "GlobalDiscountType" TEXT NOT NULL,
+                "GlobalDiscountAmount" decimal(9,4) NOT NULL,
+                "GlobalDiscountIsActive" INTEGER NOT NULL,
+                "UpdatedUtc" TEXT NOT NULL,
+                CONSTRAINT "FK_CommerceBusinessSettings_CommerceBusinesses_CommerceBusinessId"
+                    FOREIGN KEY ("CommerceBusinessId") REFERENCES "CommerceBusinesses" ("Id") ON DELETE CASCADE
+            )
+            """);
+
+        await CreateAsync("CommerceOrders", """
+            CREATE TABLE "CommerceOrders" (
+                "Id" TEXT NOT NULL CONSTRAINT "PK_CommerceOrders" PRIMARY KEY,
+                "CommerceBusinessId" TEXT NOT NULL,
+                "OrderNumber" TEXT NOT NULL,
+                "CreatedUtc" TEXT NOT NULL,
+                "UpdatedUtc" TEXT NULL,
+                "PaidUtc" TEXT NULL,
+                "ShippedUtc" TEXT NULL,
+                "FulfilledUtc" TEXT NULL,
+                "Status" TEXT NOT NULL,
+                "PaymentStatus" TEXT NOT NULL,
+                "FulfillmentStatus" TEXT NOT NULL,
+                "ReturnStatus" TEXT NOT NULL,
+                "CheckoutAttemptId" TEXT NULL,
+                "IsPaymentProcessing" INTEGER NOT NULL,
+                "PaymentProcessingStartedUtc" TEXT NULL,
+                "SquarePaymentId" TEXT NULL,
+                "SquareError" TEXT NULL,
+                "TrackingCarrier" TEXT NULL,
+                "TrackingNumber" TEXT NULL,
+                "AdminNotes" TEXT NULL,
+                "FirstName" TEXT NOT NULL,
+                "LastName" TEXT NOT NULL,
+                "Email" TEXT NOT NULL,
+                "Phone" TEXT NOT NULL,
+                "AddressLine1" TEXT NOT NULL,
+                "AddressLine2" TEXT NULL,
+                "City" TEXT NOT NULL,
+                "State" TEXT NOT NULL,
+                "PostalCode" TEXT NOT NULL,
+                "Source" TEXT NOT NULL,
+                "UserAgent" TEXT NULL,
+                "RequestIp" TEXT NULL,
+                "SubtotalCents" INTEGER NOT NULL,
+                "DiscountCode" TEXT NULL,
+                "DiscountLabel" TEXT NULL,
+                "DiscountCents" INTEGER NOT NULL,
+                "RefundedCents" INTEGER NOT NULL,
+                "ShippingCents" INTEGER NOT NULL,
+                "TaxCents" INTEGER NOT NULL,
+                "TotalCents" INTEGER NOT NULL,
+                CONSTRAINT "FK_CommerceOrders_CommerceBusinesses_CommerceBusinessId"
+                    FOREIGN KEY ("CommerceBusinessId") REFERENCES "CommerceBusinesses" ("Id") ON DELETE CASCADE
+            )
+            """);
+
+        await CreateAsync("CommerceProducts", """
+            CREATE TABLE "CommerceProducts" (
+                "Id" TEXT NOT NULL CONSTRAINT "PK_CommerceProducts" PRIMARY KEY,
+                "CommerceBusinessId" TEXT NOT NULL,
+                "ExternalProductKey" TEXT NOT NULL,
+                "Name" TEXT NOT NULL,
+                "Slug" TEXT NOT NULL,
+                "Description" TEXT NOT NULL,
+                "PriceLabel" TEXT NOT NULL,
+                "Badge" TEXT NOT NULL,
+                "PriceCents" INTEGER NOT NULL,
+                "CompareAtPriceCents" INTEGER NOT NULL,
+                "IsFeatured" INTEGER NOT NULL,
+                "IsActive" INTEGER NOT NULL,
+                "DisplayOrder" INTEGER NOT NULL,
+                "CreatedUtc" TEXT NOT NULL,
+                "UpdatedUtc" TEXT NOT NULL,
+                CONSTRAINT "FK_CommerceProducts_CommerceBusinesses_CommerceBusinessId"
+                    FOREIGN KEY ("CommerceBusinessId") REFERENCES "CommerceBusinesses" ("Id") ON DELETE CASCADE
+            )
+            """);
+
+        await CreateAsync("CommerceOrderLines", """
+            CREATE TABLE "CommerceOrderLines" (
+                "Id" TEXT NOT NULL CONSTRAINT "PK_CommerceOrderLines" PRIMARY KEY,
+                "CommerceOrderId" TEXT NOT NULL,
+                "ProductExternalKey" TEXT NOT NULL,
+                "ProductName" TEXT NOT NULL,
+                "ProductSlug" TEXT NOT NULL,
+                "Size" TEXT NOT NULL,
+                "Quantity" INTEGER NOT NULL,
+                "UnitPriceCents" INTEGER NOT NULL,
+                "CompareAtPriceCents" INTEGER NOT NULL,
+                "ImageUrl" TEXT NULL,
+                CONSTRAINT "FK_CommerceOrderLines_CommerceOrders_CommerceOrderId"
+                    FOREIGN KEY ("CommerceOrderId") REFERENCES "CommerceOrders" ("Id") ON DELETE CASCADE
+            )
+            """);
+
+        await CreateAsync("CommerceProductDiscounts", """
+            CREATE TABLE "CommerceProductDiscounts" (
+                "Id" TEXT NOT NULL CONSTRAINT "PK_CommerceProductDiscounts" PRIMARY KEY,
+                "CommerceProductId" TEXT NOT NULL,
+                "ExternalDiscountKey" TEXT NOT NULL,
+                "Code" TEXT NOT NULL,
+                "DiscountType" TEXT NOT NULL,
+                "Amount" decimal(9,4) NOT NULL,
+                "IsActive" INTEGER NOT NULL,
+                CONSTRAINT "FK_CommerceProductDiscounts_CommerceProducts_CommerceProductId"
+                    FOREIGN KEY ("CommerceProductId") REFERENCES "CommerceProducts" ("Id") ON DELETE CASCADE
+            )
+            """);
+
+        await CreateAsync("CommerceProductImages", """
+            CREATE TABLE "CommerceProductImages" (
+                "Id" TEXT NOT NULL CONSTRAINT "PK_CommerceProductImages" PRIMARY KEY,
+                "CommerceProductId" TEXT NOT NULL,
+                "ExternalImageKey" TEXT NOT NULL,
+                "ImageUrl" TEXT NOT NULL,
+                "FileName" TEXT NOT NULL,
+                "AltText" TEXT NOT NULL,
+                "IsPrimary" INTEGER NOT NULL,
+                "DisplayOrder" INTEGER NOT NULL,
+                "ObjectFit" TEXT NOT NULL,
+                "ObjectPositionX" INTEGER NOT NULL,
+                "ObjectPositionY" INTEGER NOT NULL,
+                "Zoom" decimal(9,4) NOT NULL,
+                CONSTRAINT "FK_CommerceProductImages_CommerceProducts_CommerceProductId"
+                    FOREIGN KEY ("CommerceProductId") REFERENCES "CommerceProducts" ("Id") ON DELETE CASCADE
+            )
+            """);
+
+        await CreateAsync("CommerceProductInventoryItems", """
+            CREATE TABLE "CommerceProductInventoryItems" (
+                "Id" TEXT NOT NULL CONSTRAINT "PK_CommerceProductInventoryItems" PRIMARY KEY,
+                "CommerceProductId" TEXT NOT NULL,
+                "ExternalInventoryKey" TEXT NOT NULL,
+                "Size" TEXT NOT NULL,
+                "IsEnabled" INTEGER NOT NULL,
+                "StockQuantity" INTEGER NOT NULL,
+                "LowStockThreshold" INTEGER NOT NULL,
+                "DisplayOrder" INTEGER NOT NULL,
+                CONSTRAINT "FK_CommerceProductInventoryItems_CommerceProducts_CommerceProductId"
+                    FOREIGN KEY ("CommerceProductId") REFERENCES "CommerceProducts" ("Id") ON DELETE CASCADE
+            )
+            """);
+
+        return created;
     }
 
     private static async Task<bool> CreateIndexIfMissingAsync(

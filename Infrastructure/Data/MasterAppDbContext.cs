@@ -43,6 +43,13 @@ public class MasterAppDbContext : DbContext
     public DbSet<ClientFinancialPlan> ClientFinancialPlans => Set<ClientFinancialPlan>();
     public DbSet<AgentZoomLink> AgentZoomLinks => Set<AgentZoomLink>();
     public DbSet<CommerceBusiness> CommerceBusinesses => Set<CommerceBusiness>();
+    public DbSet<CommerceBusinessSettings> CommerceBusinessSettings => Set<CommerceBusinessSettings>();
+    public DbSet<CommerceProduct> CommerceProducts => Set<CommerceProduct>();
+    public DbSet<CommerceProductImage> CommerceProductImages => Set<CommerceProductImage>();
+    public DbSet<CommerceProductInventoryItem> CommerceProductInventoryItems => Set<CommerceProductInventoryItem>();
+    public DbSet<CommerceProductDiscount> CommerceProductDiscounts => Set<CommerceProductDiscount>();
+    public DbSet<CommerceOrder> CommerceOrders => Set<CommerceOrder>();
+    public DbSet<CommerceOrderLine> CommerceOrderLines => Set<CommerceOrderLine>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -61,6 +68,135 @@ public class MasterAppDbContext : DbContext
             e.Property(x => x.OwnerEmail).IsRequired().HasMaxLength(320);
             e.HasIndex(x => x.Key).IsUnique();
             e.HasIndex(x => x.IsActive);
+        });
+
+        modelBuilder.Entity<CommerceBusinessSettings>(e =>
+        {
+            e.HasKey(x => x.Id);
+            e.Property(x => x.GlobalDiscountCode).HasMaxLength(80);
+            e.Property(x => x.GlobalDiscountType).IsRequired().HasMaxLength(40);
+            e.Property(x => x.TaxPercent).HasPrecision(9, 4);
+            e.Property(x => x.GlobalDiscountAmount).HasPrecision(9, 4);
+            e.HasIndex(x => x.CommerceBusinessId).IsUnique();
+            e.HasOne(x => x.CommerceBusiness)
+                .WithMany()
+                .HasForeignKey(x => x.CommerceBusinessId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        modelBuilder.Entity<CommerceProduct>(e =>
+        {
+            e.HasKey(x => x.Id);
+            e.Property(x => x.ExternalProductKey).IsRequired().HasMaxLength(120);
+            e.Property(x => x.Name).IsRequired().HasMaxLength(180);
+            e.Property(x => x.Slug).IsRequired().HasMaxLength(180);
+            e.Property(x => x.Description).IsRequired();
+            e.Property(x => x.PriceLabel).IsRequired().HasMaxLength(80);
+            e.Property(x => x.Badge).IsRequired().HasMaxLength(80);
+            e.HasIndex(x => new { x.CommerceBusinessId, x.ExternalProductKey }).IsUnique();
+            e.HasIndex(x => new { x.CommerceBusinessId, x.Slug }).IsUnique();
+            e.HasIndex(x => new { x.CommerceBusinessId, x.IsActive, x.DisplayOrder });
+            e.HasOne(x => x.CommerceBusiness)
+                .WithMany()
+                .HasForeignKey(x => x.CommerceBusinessId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        modelBuilder.Entity<CommerceProductImage>(e =>
+        {
+            e.HasKey(x => x.Id);
+            e.Property(x => x.ExternalImageKey).IsRequired().HasMaxLength(120);
+            e.Property(x => x.ImageUrl).IsRequired().HasMaxLength(2048);
+            e.Property(x => x.FileName).IsRequired().HasMaxLength(255);
+            e.Property(x => x.AltText).IsRequired().HasMaxLength(300);
+            e.Property(x => x.ObjectFit).IsRequired().HasMaxLength(40);
+            e.Property(x => x.Zoom).HasPrecision(9, 4);
+            e.HasIndex(x => new { x.CommerceProductId, x.ExternalImageKey }).IsUnique();
+            e.HasIndex(x => new { x.CommerceProductId, x.DisplayOrder });
+            e.HasOne(x => x.CommerceProduct)
+                .WithMany(x => x.Images)
+                .HasForeignKey(x => x.CommerceProductId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        modelBuilder.Entity<CommerceProductInventoryItem>(e =>
+        {
+            e.HasKey(x => x.Id);
+            e.Property(x => x.ExternalInventoryKey).IsRequired().HasMaxLength(120);
+            e.Property(x => x.Size).IsRequired().HasMaxLength(40);
+            e.HasIndex(x => new { x.CommerceProductId, x.Size }).IsUnique();
+            e.HasOne(x => x.CommerceProduct)
+                .WithMany(x => x.InventoryItems)
+                .HasForeignKey(x => x.CommerceProductId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        modelBuilder.Entity<CommerceProductDiscount>(e =>
+        {
+            e.HasKey(x => x.Id);
+            e.Property(x => x.ExternalDiscountKey).IsRequired().HasMaxLength(120);
+            e.Property(x => x.Code).IsRequired().HasMaxLength(80);
+            e.Property(x => x.DiscountType).IsRequired().HasMaxLength(40);
+            e.Property(x => x.Amount).HasPrecision(9, 4);
+            e.HasIndex(x => new { x.CommerceProductId, x.ExternalDiscountKey }).IsUnique();
+            e.HasIndex(x => new { x.CommerceProductId, x.Code });
+            e.HasOne(x => x.CommerceProduct)
+                .WithMany(x => x.Discounts)
+                .HasForeignKey(x => x.CommerceProductId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        modelBuilder.Entity<CommerceOrder>(e =>
+        {
+            e.HasKey(x => x.Id);
+            e.Property(x => x.OrderNumber).IsRequired().HasMaxLength(80);
+            e.Property(x => x.Status).IsRequired().HasMaxLength(40);
+            e.Property(x => x.PaymentStatus).IsRequired().HasMaxLength(40);
+            e.Property(x => x.FulfillmentStatus).IsRequired().HasMaxLength(40);
+            e.Property(x => x.ReturnStatus).IsRequired().HasMaxLength(40);
+            e.Property(x => x.CheckoutAttemptId).HasMaxLength(120);
+            e.Property(x => x.SquarePaymentId).HasMaxLength(160);
+            e.Property(x => x.SquareError).HasMaxLength(1000);
+            e.Property(x => x.TrackingCarrier).HasMaxLength(120);
+            e.Property(x => x.TrackingNumber).HasMaxLength(160);
+            e.Property(x => x.AdminNotes).HasMaxLength(2000);
+            e.Property(x => x.FirstName).IsRequired().HasMaxLength(120);
+            e.Property(x => x.LastName).IsRequired().HasMaxLength(120);
+            e.Property(x => x.Email).IsRequired().HasMaxLength(320);
+            e.Property(x => x.Phone).IsRequired().HasMaxLength(80);
+            e.Property(x => x.AddressLine1).IsRequired().HasMaxLength(240);
+            e.Property(x => x.AddressLine2).HasMaxLength(240);
+            e.Property(x => x.City).IsRequired().HasMaxLength(120);
+            e.Property(x => x.State).IsRequired().HasMaxLength(80);
+            e.Property(x => x.PostalCode).IsRequired().HasMaxLength(40);
+            e.Property(x => x.Source).IsRequired().HasMaxLength(120);
+            e.Property(x => x.UserAgent).HasMaxLength(1000);
+            e.Property(x => x.RequestIp).HasMaxLength(80);
+            e.Property(x => x.DiscountCode).HasMaxLength(80);
+            e.Property(x => x.DiscountLabel).HasMaxLength(160);
+            e.HasIndex(x => new { x.CommerceBusinessId, x.OrderNumber }).IsUnique();
+            e.HasIndex(x => new { x.CommerceBusinessId, x.CreatedUtc });
+            e.HasIndex(x => new { x.CommerceBusinessId, x.PaymentStatus, x.FulfillmentStatus });
+            e.HasIndex(x => x.CheckoutAttemptId);
+            e.HasOne(x => x.CommerceBusiness)
+                .WithMany()
+                .HasForeignKey(x => x.CommerceBusinessId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        modelBuilder.Entity<CommerceOrderLine>(e =>
+        {
+            e.HasKey(x => x.Id);
+            e.Property(x => x.ProductExternalKey).IsRequired().HasMaxLength(120);
+            e.Property(x => x.ProductName).IsRequired().HasMaxLength(180);
+            e.Property(x => x.ProductSlug).IsRequired().HasMaxLength(180);
+            e.Property(x => x.Size).IsRequired().HasMaxLength(40);
+            e.Property(x => x.ImageUrl).HasMaxLength(2048);
+            e.HasIndex(x => x.CommerceOrderId);
+            e.HasOne(x => x.CommerceOrder)
+                .WithMany(x => x.Lines)
+                .HasForeignKey(x => x.CommerceOrderId)
+                .OnDelete(DeleteBehavior.Cascade);
         });
 
         modelBuilder.Entity<OnboardingInvite>(e =>
