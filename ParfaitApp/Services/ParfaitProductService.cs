@@ -1,5 +1,7 @@
-using System.Text.Json;
+using Domain.Entities;
+using Infrastructure.Data;
 using Microsoft.AspNetCore.Http;
+using Microsoft.EntityFrameworkCore;
 using ParfaitApp.Models;
 
 namespace ParfaitApp.Services;
@@ -11,34 +13,37 @@ public sealed class ParfaitProductService
         ".jpg", ".jpeg", ".png", ".webp", ".gif"
     };
 
-    private readonly IWebHostEnvironment _environment;
-    private readonly ParfaitOrderService _orders;
-    private readonly object _lock = new();
+    private static readonly object Lock = new();
 
-    public ParfaitProductService(IWebHostEnvironment environment, ParfaitOrderService orders)
+    private readonly IWebHostEnvironment _environment;
+    private readonly MasterAppDbContext _db;
+
+    public ParfaitProductService(IWebHostEnvironment environment, MasterAppDbContext db)
     {
         _environment = environment;
-        _orders = orders;
+        _db = db;
     }
 
-    private string DataPath => Path.Combine(_environment.ContentRootPath, "App_Data", "parfait-products.json");
-    private string CommerceSettingsPath => Path.Combine(_environment.ContentRootPath, "App_Data", "parfait-commerce-settings.json");
     private string UploadRoot => Path.Combine(_environment.WebRootPath, "uploads", "parfait-products");
 
     public IReadOnlyList<ParfaitProductEditorViewModel> GetAllProducts()
     {
-        EnsureSeedData();
+        var businessId = GetBusinessId();
 
-        lock (_lock)
-        {
-            var json = File.ReadAllText(DataPath);
-            var products = JsonSerializer.Deserialize<List<ParfaitProductEditorViewModel>>(json) ?? [];
-            return products
-                .Select(product => NormalizeProduct(product))
-                .OrderBy(product => product.DisplayOrder)
-                .ThenBy(product => product.Name)
-                .ToList();
-        }
+        return _db.CommerceProducts
+            .AsNoTracking()
+            .Include(x => x.Images)
+            .Include(x => x.InventoryItems)
+            .Include(x => x.Discounts)
+            .Where(x => x.CommerceBusinessId == businessId)
+            .OrderBy(x => x.DisplayOrder)
+            .ThenBy(x => x.Name)
+            .ToList()
+            .Select(MapEditorProduct)
+            .Select(product => NormalizeProduct(product))
+            .OrderBy(product => product.DisplayOrder)
+            .ThenBy(product => product.Name)
+            .ToList();
     }
 
     public IReadOnlyList<ParfaitStoreProductViewModel> GetActiveStoreProducts()
@@ -84,9 +89,7 @@ public sealed class ParfaitProductService
         foreach (var item in cartItems)
         {
             if (string.IsNullOrWhiteSpace(item.Id))
-            {
                 continue;
-            }
 
             if (!products.TryGetValue(item.Id.Trim(), out var product) || product.PriceCents <= 0)
             {
@@ -98,12 +101,8 @@ public sealed class ParfaitProductService
             var requestedQuantity = Math.Clamp(item.Quantity, 1, 20);
             var normalizedSize = ParfaitProductCatalogDefaults.NormalizeSize(item.Size);
             var selectedSize = string.IsNullOrWhiteSpace(normalizedSize)
-                ? product.InventoryBySize
-                    .OrderBy(size => size.DisplayOrder)
-                    .FirstOrDefault(size => size.IsEnabled)
-                : product.InventoryBySize
-                    .OrderBy(size => size.DisplayOrder)
-                    .FirstOrDefault(size => string.Equals(size.Size, normalizedSize, StringComparison.OrdinalIgnoreCase));
+                ? product.InventoryBySize.OrderBy(size => size.DisplayOrder).FirstOrDefault(size => size.IsEnabled)
+                : product.InventoryBySize.OrderBy(size => size.DisplayOrder).FirstOrDefault(size => string.Equals(size.Size, normalizedSize, StringComparison.OrdinalIgnoreCase));
 
             if (selectedSize is null)
             {
@@ -157,9 +156,7 @@ public sealed class ParfaitProductService
                 Quantity = effectiveQuantity,
                 UnitPriceCents = product.PriceCents,
                 CompareAtPriceCents = product.CompareAtPriceCents,
-                ImageUrl = product.Images
-                    .OrderBy(image => image.DisplayOrder)
-                    .FirstOrDefault(image => image.IsPrimary)?.ImageUrl
+                ImageUrl = product.Images.OrderBy(image => image.DisplayOrder).FirstOrDefault(image => image.IsPrimary)?.ImageUrl
                     ?? product.Images.OrderBy(image => image.DisplayOrder).FirstOrDefault()?.ImageUrl
                     ?? "/images/favicon/parfait-logo.png",
                 IsAvailable = isAvailable,
@@ -232,150 +229,192 @@ public sealed class ParfaitProductService
             ? (int)Math.Round(taxableTotal * (settings.TaxPercent / 100m), MidpointRounding.AwayFromZero)
             : 0;
         quote.TotalCents = Math.Max(0, discountedSubtotal + quote.ShippingCents + quote.TaxCents);
-        quote.Messages = quote.Messages
-            .Where(message => !string.IsNullOrWhiteSpace(message))
-            .Distinct(StringComparer.OrdinalIgnoreCase)
-            .ToList();
+        quote.Messages = quote.Messages.Where(message => !string.IsNullOrWhiteSpace(message)).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
 
         if (!quote.IsValid && string.IsNullOrWhiteSpace(quote.Error))
-        {
             quote.Error = quote.Messages.FirstOrDefault() ?? "The cart needs attention before checkout.";
-        }
 
         return quote;
     }
 
     public ParfaitCommerceSettingsViewModel GetCommerceSettings()
     {
-        EnsureCommerceSettingsData();
+        var businessId = GetBusinessId();
+        var settings = _db.CommerceBusinessSettings.AsNoTracking().SingleOrDefault(x => x.CommerceBusinessId == businessId);
 
-        lock (_lock)
-        {
-            var json = File.ReadAllText(CommerceSettingsPath);
-            var settings = JsonSerializer.Deserialize<ParfaitCommerceSettingsViewModel>(json) ?? new ParfaitCommerceSettingsViewModel();
-            return NormalizeCommerceSettings(settings);
-        }
+        return NormalizeCommerceSettings(settings is null
+            ? new ParfaitCommerceSettingsViewModel()
+            : new ParfaitCommerceSettingsViewModel
+            {
+                ShippingFeeCents = settings.ShippingFeeCents,
+                TaxPercent = settings.TaxPercent,
+                GlobalDiscount = new ParfaitProductDiscountCodeEditorViewModel
+                {
+                    Code = settings.GlobalDiscountCode,
+                    DiscountType = settings.GlobalDiscountType,
+                    Amount = settings.GlobalDiscountAmount,
+                    IsActive = settings.GlobalDiscountIsActive
+                }
+            });
     }
 
     public void SaveCommerceSettings(ParfaitCommerceSettingsViewModel settings)
     {
-        Directory.CreateDirectory(Path.GetDirectoryName(CommerceSettingsPath)!);
-        var normalized = NormalizeCommerceSettings(settings);
-
-        lock (_lock)
+        lock (Lock)
         {
-            File.WriteAllText(
-                CommerceSettingsPath,
-                JsonSerializer.Serialize(normalized, new JsonSerializerOptions { WriteIndented = true }));
+            var businessId = GetBusinessId();
+            var normalized = NormalizeCommerceSettings(settings);
+
+            var entity = _db.CommerceBusinessSettings.SingleOrDefault(x => x.CommerceBusinessId == businessId);
+            if (entity is null)
+            {
+                entity = new CommerceBusinessSettings { CommerceBusinessId = businessId };
+                _db.CommerceBusinessSettings.Add(entity);
+            }
+
+            entity.ShippingFeeCents = normalized.ShippingFeeCents;
+            entity.TaxPercent = normalized.TaxPercent;
+            entity.GlobalDiscountCode = normalized.GlobalDiscount.Code;
+            entity.GlobalDiscountType = normalized.GlobalDiscount.DiscountType;
+            entity.GlobalDiscountAmount = normalized.GlobalDiscount.Amount;
+            entity.GlobalDiscountIsActive = normalized.GlobalDiscount.IsActive;
+            entity.UpdatedUtc = DateTime.UtcNow;
+
+            _db.SaveChanges();
         }
     }
 
     public void SaveProduct(ParfaitProductEditorViewModel product)
     {
-        var products = GetAllProducts().ToList();
-        var existingIndex = products.FindIndex(existing => existing.Id == product.Id);
-        var existingImages = existingIndex >= 0 ? products[existingIndex].Images : [];
+        lock (Lock)
+        {
+            var businessId = GetBusinessId();
 
-        var normalized = NormalizeProduct(product, existingImages);
-        if (existingIndex >= 0)
-        {
-            normalized.DisplayOrder = products[existingIndex].DisplayOrder > 0
-                ? products[existingIndex].DisplayOrder
-                : normalized.DisplayOrder;
-        }
-        else if (normalized.DisplayOrder <= 0)
-        {
-            normalized.DisplayOrder = products.Count == 0
-                ? 10
-                : products.Max(existing => Math.Max(existing.DisplayOrder, 0)) + 10;
-        }
+            var existing = _db.CommerceProducts
+                .Include(x => x.Images)
+                .Include(x => x.InventoryItems)
+                .Include(x => x.Discounts)
+                .SingleOrDefault(x => x.CommerceBusinessId == businessId && x.ExternalProductKey == product.Id);
 
-        if (existingIndex >= 0)
-        {
-            products[existingIndex] = normalized;
-        }
-        else
-        {
-            products.Add(normalized);
-        }
+            var existingImages = existing is null
+                ? []
+                : existing.Images
+                    .OrderBy(x => x.DisplayOrder)
+                    .Select(MapImage)
+                    .ToList();
 
-        SaveAll(products);
+            var normalized = NormalizeProduct(product, existingImages);
+
+            if (existing is null)
+            {
+                if (normalized.DisplayOrder <= 0)
+                {
+                    var maxOrder = _db.CommerceProducts
+                        .Where(x => x.CommerceBusinessId == businessId)
+                        .Select(x => (int?)x.DisplayOrder)
+                        .Max() ?? 0;
+
+                    normalized.DisplayOrder = maxOrder <= 0 ? 10 : maxOrder + 10;
+                }
+
+                existing = new CommerceProduct
+                {
+                    CommerceBusinessId = businessId,
+                    ExternalProductKey = normalized.Id,
+                    CreatedUtc = DateTime.UtcNow
+                };
+                _db.CommerceProducts.Add(existing);
+            }
+            else if (existing.DisplayOrder > 0)
+            {
+                normalized.DisplayOrder = existing.DisplayOrder;
+            }
+
+            ApplyProduct(existing, normalized);
+            _db.SaveChanges();
+        }
     }
 
     public void DeleteProduct(string id)
     {
-        var products = GetAllProducts().ToList();
-        var product = products.FirstOrDefault(existing => string.Equals(existing.Id, id, StringComparison.OrdinalIgnoreCase));
-
-        if (product is not null)
+        lock (Lock)
         {
-            var productFolder = Path.Combine(UploadRoot, product.Id);
-            if (Directory.Exists(productFolder))
-            {
-                Directory.Delete(productFolder, recursive: true);
-            }
-        }
+            var businessId = GetBusinessId();
+            var product = _db.CommerceProducts
+                .Include(x => x.Images)
+                .Include(x => x.InventoryItems)
+                .Include(x => x.Discounts)
+                .SingleOrDefault(x => x.CommerceBusinessId == businessId && x.ExternalProductKey == id);
 
-        SaveAll(products.Where(product => !string.Equals(product.Id, id, StringComparison.OrdinalIgnoreCase)).ToList());
+            if (product is null)
+                return;
+
+            var productFolder = Path.Combine(UploadRoot, product.ExternalProductKey);
+            if (Directory.Exists(productFolder))
+                Directory.Delete(productFolder, recursive: true);
+
+            _db.CommerceProducts.Remove(product);
+            _db.SaveChanges();
+        }
     }
 
     public void ReorderProducts(IReadOnlyList<string> productIds)
     {
-        var products = GetAllProducts().ToList();
-        if (productIds.Count == 0 || products.Count == 0)
+        lock (Lock)
         {
-            return;
-        }
+            var businessId = GetBusinessId();
+            var products = _db.CommerceProducts
+                .Where(x => x.CommerceBusinessId == businessId)
+                .ToList();
 
-        var lookup = products.ToDictionary(product => product.Id, StringComparer.OrdinalIgnoreCase);
-        var ordered = new List<ParfaitProductEditorViewModel>();
+            if (productIds.Count == 0 || products.Count == 0)
+                return;
 
-        foreach (var productId in productIds)
-        {
-            if (lookup.TryGetValue(productId, out var product) && !ordered.Contains(product))
+            var lookup = products.ToDictionary(x => x.ExternalProductKey, StringComparer.OrdinalIgnoreCase);
+            var ordered = new List<CommerceProduct>();
+
+            foreach (var productId in productIds)
             {
-                ordered.Add(product);
+                if (lookup.TryGetValue(productId, out var product) && !ordered.Contains(product))
+                    ordered.Add(product);
             }
+
+            ordered.AddRange(products.Where(product => !ordered.Contains(product)).OrderBy(x => x.DisplayOrder).ThenBy(x => x.Name));
+
+            for (var index = 0; index < ordered.Count; index++)
+            {
+                ordered[index].DisplayOrder = (index + 1) * 10;
+                ordered[index].UpdatedUtc = DateTime.UtcNow;
+            }
+
+            _db.SaveChanges();
         }
-
-        ordered.AddRange(products.Where(product => !ordered.Contains(product)));
-
-        for (var index = 0; index < ordered.Count; index++)
-        {
-            ordered[index].DisplayOrder = (index + 1) * 10;
-        }
-
-        SaveAll(ordered);
     }
 
     public async Task UploadImagesAsync(string productId, IReadOnlyList<IFormFile> files)
     {
         if (files.Count == 0)
-        {
             return;
-        }
 
-        var products = GetAllProducts().ToList();
-        var product = products.FirstOrDefault(existing => string.Equals(existing.Id, productId, StringComparison.OrdinalIgnoreCase));
+        var businessId = GetBusinessId();
+        var product = _db.CommerceProducts
+            .Include(x => x.Images)
+            .SingleOrDefault(x => x.CommerceBusinessId == businessId && x.ExternalProductKey == productId);
 
         if (product is null)
-        {
             return;
-        }
 
-        var productFolder = Path.Combine(UploadRoot, product.Id);
+        var productFolder = Path.Combine(UploadRoot, product.ExternalProductKey);
         Directory.CreateDirectory(productFolder);
 
         var nextOrder = product.Images.Count == 0 ? 10 : product.Images.Max(image => image.DisplayOrder) + 10;
+        var added = false;
 
         foreach (var file in files.Where(file => file.Length > 0))
         {
             var extension = Path.GetExtension(file.FileName);
-
             if (!AllowedImageExtensions.Contains(extension))
-            {
                 continue;
-            }
 
             var imageId = Guid.NewGuid().ToString("N");
             var safeFileName = $"{imageId}{extension.ToLowerInvariant()}";
@@ -386,11 +425,11 @@ public sealed class ParfaitProductService
                 await file.CopyToAsync(stream);
             }
 
-            product.Images.Add(new ParfaitProductImageEditorViewModel
+            product.Images.Add(new CommerceProductImage
             {
-                Id = imageId,
+                ExternalImageKey = imageId,
                 FileName = safeFileName,
-                ImageUrl = $"/uploads/parfait-products/{product.Id}/{safeFileName}",
+                ImageUrl = $"/uploads/parfait-products/{product.ExternalProductKey}/{safeFileName}",
                 AltText = product.Name,
                 IsPrimary = product.Images.Count == 0,
                 DisplayOrder = nextOrder,
@@ -401,165 +440,334 @@ public sealed class ParfaitProductService
             });
 
             nextOrder += 10;
+            added = true;
         }
 
-        EnsureOnePrimaryImage(product);
-        SaveAll(products);
+        if (added)
+        {
+            EnsureOnePrimaryImage(product);
+            product.UpdatedUtc = DateTime.UtcNow;
+            _db.SaveChanges();
+        }
     }
 
     public void DeleteImage(string productId, string imageId)
     {
-        var products = GetAllProducts().ToList();
-        var product = products.FirstOrDefault(existing => string.Equals(existing.Id, productId, StringComparison.OrdinalIgnoreCase));
-
-        if (product is null)
+        lock (Lock)
         {
-            return;
+            var businessId = GetBusinessId();
+            var product = _db.CommerceProducts
+                .Include(x => x.Images)
+                .SingleOrDefault(x => x.CommerceBusinessId == businessId && x.ExternalProductKey == productId);
+
+            if (product is null)
+                return;
+
+            var image = product.Images.FirstOrDefault(x => string.Equals(x.ExternalImageKey, imageId, StringComparison.OrdinalIgnoreCase));
+            if (image is null)
+                return;
+
+            var physicalPath = Path.Combine(_environment.WebRootPath, image.ImageUrl.TrimStart('/').Replace('/', Path.DirectorySeparatorChar));
+            if (File.Exists(physicalPath))
+                File.Delete(physicalPath);
+
+            product.Images.Remove(image);
+            EnsureOnePrimaryImage(product);
+            product.UpdatedUtc = DateTime.UtcNow;
+            _db.SaveChanges();
         }
-
-        var image = product.Images.FirstOrDefault(existing => string.Equals(existing.Id, imageId, StringComparison.OrdinalIgnoreCase));
-
-        if (image is null)
-        {
-            return;
-        }
-
-        var physicalPath = Path.Combine(_environment.WebRootPath, image.ImageUrl.TrimStart('/').Replace('/', Path.DirectorySeparatorChar));
-
-        if (File.Exists(physicalPath))
-        {
-            File.Delete(physicalPath);
-        }
-
-        product.Images.Remove(image);
-        EnsureOnePrimaryImage(product);
-        SaveAll(products);
     }
 
     public void ReorderImages(string productId, IReadOnlyList<string> imageIds)
     {
-        var products = GetAllProducts().ToList();
-        var product = products.FirstOrDefault(existing => string.Equals(existing.Id, productId, StringComparison.OrdinalIgnoreCase));
-
-        if (product is null || imageIds.Count == 0)
+        lock (Lock)
         {
-            return;
-        }
+            var businessId = GetBusinessId();
+            var product = _db.CommerceProducts
+                .Include(x => x.Images)
+                .SingleOrDefault(x => x.CommerceBusinessId == businessId && x.ExternalProductKey == productId);
 
-        var lookup = product.Images.ToDictionary(image => image.Id, StringComparer.OrdinalIgnoreCase);
-        var ordered = new List<ParfaitProductImageEditorViewModel>();
+            if (product is null || imageIds.Count == 0)
+                return;
 
-        foreach (var imageId in imageIds)
-        {
-            if (lookup.TryGetValue(imageId, out var image) && !ordered.Contains(image))
+            var lookup = product.Images.ToDictionary(x => x.ExternalImageKey, StringComparer.OrdinalIgnoreCase);
+            var ordered = new List<CommerceProductImage>();
+
+            foreach (var imageId in imageIds)
             {
-                ordered.Add(image);
+                if (lookup.TryGetValue(imageId, out var image) && !ordered.Contains(image))
+                    ordered.Add(image);
             }
+
+            ordered.AddRange(product.Images.Where(image => !ordered.Contains(image)).OrderBy(x => x.DisplayOrder));
+
+            for (var index = 0; index < ordered.Count; index++)
+                ordered[index].DisplayOrder = (index + 1) * 10;
+
+            EnsureOnePrimaryImage(product);
+            product.UpdatedUtc = DateTime.UtcNow;
+            _db.SaveChanges();
         }
-
-        ordered.AddRange(product.Images.Where(image => !ordered.Contains(image)));
-
-        for (var index = 0; index < ordered.Count; index++)
-        {
-            ordered[index].DisplayOrder = (index + 1) * 10;
-        }
-
-        SaveAll(products);
     }
 
     public void SaveImageDisplaySettings(string productId, string imageId, string objectFit, int objectPositionX, int objectPositionY, decimal zoom)
     {
-        var products = GetAllProducts().ToList();
-        var product = products.FirstOrDefault(existing => string.Equals(existing.Id, productId, StringComparison.OrdinalIgnoreCase));
-
-        if (product is null)
+        lock (Lock)
         {
-            return;
+            var businessId = GetBusinessId();
+            var image = _db.CommerceProductImages
+                .Include(x => x.CommerceProduct)
+                .SingleOrDefault(x =>
+                    x.CommerceProduct != null
+                    && x.CommerceProduct.CommerceBusinessId == businessId
+                    && x.CommerceProduct.ExternalProductKey == productId
+                    && x.ExternalImageKey == imageId);
+
+            if (image is null)
+                return;
+
+            image.ObjectFit = string.Equals(objectFit, "contain", StringComparison.OrdinalIgnoreCase) ? "contain" : "cover";
+            image.ObjectPositionX = Math.Clamp(objectPositionX, 0, 100);
+            image.ObjectPositionY = Math.Clamp(objectPositionY, 0, 100);
+            image.Zoom = Math.Clamp(zoom, 1.0m, 2.5m);
+
+            if (image.CommerceProduct is not null)
+                image.CommerceProduct.UpdatedUtc = DateTime.UtcNow;
+
+            _db.SaveChanges();
         }
-
-        var image = product.Images.FirstOrDefault(existing => string.Equals(existing.Id, imageId, StringComparison.OrdinalIgnoreCase));
-
-        if (image is null)
-        {
-            return;
-        }
-
-        image.ObjectFit = string.Equals(objectFit, "contain", StringComparison.OrdinalIgnoreCase) ? "contain" : "cover";
-        image.ObjectPositionX = Math.Clamp(objectPositionX, 0, 100);
-        image.ObjectPositionY = Math.Clamp(objectPositionY, 0, 100);
-        image.Zoom = Math.Clamp(zoom, 1.0m, 2.5m);
-
-        SaveAll(products);
     }
 
     public void CommitPaidInventory(IReadOnlyList<ParfaitValidatedCartItem> items)
     {
         if (items.Count == 0)
-        {
             return;
-        }
 
-        var products = GetAllProducts().ToList();
-        var updated = false;
-
-        foreach (var item in items)
+        lock (Lock)
         {
-            var product = products.FirstOrDefault(existing => string.Equals(existing.Id, item.Id, StringComparison.OrdinalIgnoreCase));
-            if (product is null)
+            var businessId = GetBusinessId();
+            var updated = false;
+
+            foreach (var item in items)
             {
-                continue;
+                var normalizedSize = ParfaitProductCatalogDefaults.NormalizeSize(item.Size);
+                var inventory = _db.CommerceProductInventoryItems
+                    .Include(x => x.CommerceProduct)
+                    .FirstOrDefault(x =>
+                        x.CommerceProduct != null
+                        && x.CommerceProduct.CommerceBusinessId == businessId
+                        && x.CommerceProduct.ExternalProductKey == item.Id
+                        && x.Size == normalizedSize);
+
+                if (inventory is null)
+                    continue;
+
+                inventory.StockQuantity = Math.Max(0, inventory.StockQuantity - Math.Max(item.Quantity, 0));
+                if (inventory.CommerceProduct is not null)
+                    inventory.CommerceProduct.UpdatedUtc = DateTime.UtcNow;
+                updated = true;
             }
 
-            var size = product.InventoryBySize.FirstOrDefault(existing =>
-                string.Equals(existing.Size, ParfaitProductCatalogDefaults.NormalizeSize(item.Size), StringComparison.OrdinalIgnoreCase));
-
-            if (size is null)
-            {
-                continue;
-            }
-
-            size.StockQuantity = Math.Max(0, size.StockQuantity - Math.Max(item.Quantity, 0));
-            updated = true;
-        }
-
-        if (updated)
-        {
-            SaveAll(products);
+            if (updated)
+                _db.SaveChanges();
         }
     }
 
-    private ParfaitProductDiscountCodeEditorViewModel? FindMatchingDiscount(
-        ParfaitProductEditorViewModel product,
-        string code,
-        ParfaitCommerceSettingsViewModel settings)
+    private Guid GetBusinessId()
     {
-        return FindActiveDiscount(product, code) ?? FindActiveGlobalDiscount(settings, code);
+        var business = _db.CommerceBusinesses.SingleOrDefault(x => x.Key == ParfaitBusinessScopeService.ParfaitBusinessKey);
+
+        if (business is not null)
+            return business.Id;
+
+        business = new CommerceBusiness
+        {
+            Key = ParfaitBusinessScopeService.ParfaitBusinessKey,
+            DisplayName = "Parfait",
+            LegalName = "MyLegnd LLC",
+            BusinessType = "Apparel / Ecommerce",
+            PrimaryDomain = "shopparfait.com",
+            Status = "Active",
+            IsActive = true,
+            OwnerEmail = "parfait@mylegnd.com",
+            CreatedUtc = DateTime.UtcNow,
+            UpdatedUtc = DateTime.UtcNow
+        };
+
+        _db.CommerceBusinesses.Add(business);
+        _db.SaveChanges();
+
+        return business.Id;
     }
+
+    private static ParfaitProductEditorViewModel MapEditorProduct(CommerceProduct product)
+    {
+        return new ParfaitProductEditorViewModel
+        {
+            Id = product.ExternalProductKey,
+            Name = product.Name,
+            Slug = product.Slug,
+            Description = product.Description,
+            PriceLabel = product.PriceLabel,
+            Badge = product.Badge,
+            PriceCents = product.PriceCents,
+            CompareAtPriceCents = product.CompareAtPriceCents,
+            IsFeatured = product.IsFeatured,
+            IsActive = product.IsActive,
+            DisplayOrder = product.DisplayOrder,
+            Images = product.Images.OrderBy(x => x.DisplayOrder).Select(MapImage).ToList(),
+            InventoryBySize = product.InventoryItems.OrderBy(x => x.DisplayOrder).Select(MapInventory).ToList(),
+            DiscountCodes = product.Discounts.OrderBy(x => x.Code).Select(MapDiscount).ToList()
+        };
+    }
+
+    private static ParfaitProductImageEditorViewModel MapImage(CommerceProductImage image)
+    {
+        return new ParfaitProductImageEditorViewModel
+        {
+            Id = image.ExternalImageKey,
+            ImageUrl = image.ImageUrl,
+            FileName = image.FileName,
+            AltText = image.AltText,
+            IsPrimary = image.IsPrimary,
+            DisplayOrder = image.DisplayOrder,
+            ObjectFit = image.ObjectFit,
+            ObjectPositionX = image.ObjectPositionX,
+            ObjectPositionY = image.ObjectPositionY,
+            Zoom = image.Zoom
+        };
+    }
+
+    private static ParfaitProductSizeInventoryEditorViewModel MapInventory(CommerceProductInventoryItem item)
+    {
+        return new ParfaitProductSizeInventoryEditorViewModel
+        {
+            Id = item.ExternalInventoryKey,
+            Size = item.Size,
+            IsEnabled = item.IsEnabled,
+            StockQuantity = item.StockQuantity,
+            LowStockThreshold = item.LowStockThreshold,
+            DisplayOrder = item.DisplayOrder
+        };
+    }
+
+    private static ParfaitProductDiscountCodeEditorViewModel MapDiscount(CommerceProductDiscount discount)
+    {
+        return new ParfaitProductDiscountCodeEditorViewModel
+        {
+            Id = discount.ExternalDiscountKey,
+            Code = discount.Code,
+            DiscountType = discount.DiscountType,
+            Amount = discount.Amount,
+            IsActive = discount.IsActive
+        };
+    }
+
+    private static void ApplyProduct(CommerceProduct entity, ParfaitProductEditorViewModel product)
+    {
+        entity.ExternalProductKey = product.Id;
+        entity.Name = product.Name;
+        entity.Slug = product.Slug;
+        entity.Description = product.Description;
+        entity.PriceLabel = product.PriceLabel;
+        entity.Badge = product.Badge;
+        entity.PriceCents = product.PriceCents;
+        entity.CompareAtPriceCents = product.CompareAtPriceCents;
+        entity.IsFeatured = product.IsFeatured;
+        entity.IsActive = product.IsActive;
+        entity.DisplayOrder = product.DisplayOrder;
+        entity.UpdatedUtc = DateTime.UtcNow;
+
+        SyncImages(entity, product.Images);
+        SyncInventory(entity, product.InventoryBySize);
+        SyncDiscounts(entity, product.DiscountCodes);
+    }
+
+    private static void SyncImages(CommerceProduct entity, IReadOnlyList<ParfaitProductImageEditorViewModel> images)
+    {
+        var normalized = NormalizeImages(images, entity.Name);
+        entity.Images.Clear();
+
+        foreach (var image in normalized)
+        {
+            entity.Images.Add(new CommerceProductImage
+            {
+                ExternalImageKey = image.Id,
+                ImageUrl = image.ImageUrl,
+                FileName = image.FileName,
+                AltText = image.AltText,
+                IsPrimary = image.IsPrimary,
+                DisplayOrder = image.DisplayOrder,
+                ObjectFit = image.ObjectFit,
+                ObjectPositionX = image.ObjectPositionX,
+                ObjectPositionY = image.ObjectPositionY,
+                Zoom = image.Zoom
+            });
+        }
+    }
+
+    private static void SyncInventory(CommerceProduct entity, List<ParfaitProductSizeInventoryEditorViewModel> inventory)
+    {
+        entity.InventoryItems.Clear();
+
+        foreach (var item in NormalizeInventory(inventory))
+        {
+            entity.InventoryItems.Add(new CommerceProductInventoryItem
+            {
+                ExternalInventoryKey = item.Id,
+                Size = item.Size,
+                IsEnabled = item.IsEnabled,
+                StockQuantity = item.StockQuantity,
+                LowStockThreshold = item.LowStockThreshold,
+                DisplayOrder = item.DisplayOrder
+            });
+        }
+    }
+
+    private static void SyncDiscounts(CommerceProduct entity, List<ParfaitProductDiscountCodeEditorViewModel> discounts)
+    {
+        entity.Discounts.Clear();
+
+        foreach (var discount in NormalizeDiscountCodes(discounts))
+        {
+            entity.Discounts.Add(new CommerceProductDiscount
+            {
+                ExternalDiscountKey = discount.Id,
+                Code = discount.Code,
+                DiscountType = discount.DiscountType,
+                Amount = discount.Amount,
+                IsActive = discount.IsActive
+            });
+        }
+    }
+
+    private static void EnsureOnePrimaryImage(CommerceProduct product)
+    {
+        if (product.Images.Count == 0)
+            return;
+
+        foreach (var image in product.Images)
+            image.IsPrimary = false;
+
+        product.Images.OrderBy(image => image.DisplayOrder).First().IsPrimary = true;
+    }
+
+    private ParfaitProductDiscountCodeEditorViewModel? FindMatchingDiscount(ParfaitProductEditorViewModel product, string code, ParfaitCommerceSettingsViewModel settings)
+        => FindActiveDiscount(product, code) ?? FindActiveGlobalDiscount(settings, code);
 
     private ParfaitProductDiscountCodeEditorViewModel? FindActiveDiscount(ParfaitProductEditorViewModel product, string code)
-    {
-        return product.DiscountCodes
-            .Select(NormalizeDiscountCode)
-            .FirstOrDefault(discount => IsDiscountAvailable(discount)
-                && string.Equals(discount.Code, code, StringComparison.OrdinalIgnoreCase));
-    }
+        => product.DiscountCodes.Select(NormalizeDiscountCode).FirstOrDefault(discount => IsDiscountAvailable(discount) && string.Equals(discount.Code, code, StringComparison.OrdinalIgnoreCase));
 
     private ParfaitProductDiscountCodeEditorViewModel? FindActiveGlobalDiscount(ParfaitCommerceSettingsViewModel settings, string code)
     {
         var discount = NormalizeDiscountCode(settings.GlobalDiscount ?? new ParfaitProductDiscountCodeEditorViewModel());
-        return IsDiscountAvailable(discount) && string.Equals(discount.Code, code, StringComparison.OrdinalIgnoreCase)
-            ? discount
-            : null;
+        return IsDiscountAvailable(discount) && string.Equals(discount.Code, code, StringComparison.OrdinalIgnoreCase) ? discount : null;
     }
 
-    private ParfaitProductDiscountCodeEditorViewModel? FindPreferredDisplayDiscount(
-        ParfaitProductEditorViewModel product,
-        ParfaitCommerceSettingsViewModel settings)
+    private ParfaitProductDiscountCodeEditorViewModel? FindPreferredDisplayDiscount(ParfaitProductEditorViewModel product, ParfaitCommerceSettingsViewModel settings)
     {
         if (product.PriceCents <= 0)
-        {
             return null;
-        }
 
         var productDiscount = product.DiscountCodes
             .Select(NormalizeDiscountCode)
@@ -569,50 +777,32 @@ public sealed class ParfaitProductService
             .FirstOrDefault();
 
         if (productDiscount is not null && CalculateDiscountCents(product.PriceCents, productDiscount) > 0)
-        {
             return productDiscount;
-        }
 
         var globalDiscount = NormalizeDiscountCode(settings.GlobalDiscount ?? new ParfaitProductDiscountCodeEditorViewModel());
-        return IsDiscountAvailable(globalDiscount) && CalculateDiscountCents(product.PriceCents, globalDiscount) > 0
-            ? globalDiscount
-            : null;
+        return IsDiscountAvailable(globalDiscount) && CalculateDiscountCents(product.PriceCents, globalDiscount) > 0 ? globalDiscount : null;
     }
 
     private static int CalculateDiscountCents(int subtotalCents, ParfaitProductDiscountCodeEditorViewModel discount)
     {
         if (subtotalCents <= 0)
-        {
             return 0;
-        }
 
         if (string.Equals(discount.DiscountType, "Fixed", StringComparison.OrdinalIgnoreCase))
-        {
             return Math.Min(subtotalCents, (int)Math.Round(discount.Amount * 100m, MidpointRounding.AwayFromZero));
-        }
 
         var percent = Math.Clamp(discount.Amount, 0m, 100m);
         return Math.Min(subtotalCents, (int)Math.Round(subtotalCents * (percent / 100m), MidpointRounding.AwayFromZero));
     }
 
     private bool IsDiscountAvailable(ParfaitProductDiscountCodeEditorViewModel discount)
-    {
-        return discount.IsActive
-            && !string.IsNullOrWhiteSpace(discount.Code)
-            && discount.Amount > 0;
-    }
+        => discount.IsActive && !string.IsNullOrWhiteSpace(discount.Code) && discount.Amount > 0;
 
-    private ParfaitStoreProductViewModel MapStoreProduct(
-        ParfaitProductEditorViewModel product,
-        ParfaitCommerceSettingsViewModel settings)
+    private ParfaitStoreProductViewModel MapStoreProduct(ParfaitProductEditorViewModel product, ParfaitCommerceSettingsViewModel settings)
     {
         var displayDiscount = FindPreferredDisplayDiscount(product, settings);
-        var displayDiscountCents = displayDiscount is null
-            ? 0
-            : CalculateDiscountCents(product.PriceCents, displayDiscount);
-        var displayPriceCents = product.PriceCents > 0
-            ? Math.Max(0, product.PriceCents - displayDiscountCents)
-            : 0;
+        var displayDiscountCents = displayDiscount is null ? 0 : CalculateDiscountCents(product.PriceCents, displayDiscount);
+        var displayPriceCents = product.PriceCents > 0 ? Math.Max(0, product.PriceCents - displayDiscountCents) : 0;
 
         return new ParfaitStoreProductViewModel
         {
@@ -625,53 +815,40 @@ public sealed class ParfaitProductService
             CompareAtPriceCents = product.CompareAtPriceCents,
             DisplayPriceCents = displayPriceCents > 0 || displayDiscountCents > 0 ? displayPriceCents : product.PriceCents,
             DisplayCompareAtPriceCents = displayDiscountCents > 0 ? product.PriceCents : 0,
-            DisplayDiscountLabel = displayDiscount is not null && displayDiscountCents > 0
-                ? displayDiscount.SummaryLabel
-                : "",
+            DisplayDiscountLabel = displayDiscount is not null && displayDiscountCents > 0 ? displayDiscount.SummaryLabel : "",
             Badge = product.Badge,
             IsFeatured = product.IsFeatured,
-            Images = product.Images
-                .OrderBy(image => image.DisplayOrder)
-                .Select(image => new ParfaitStoreProductImageViewModel
-                {
-                    Id = image.Id,
-                    ImageUrl = image.ImageUrl,
-                    AltText = image.AltText,
-                    IsPrimary = image.IsPrimary,
-                    DisplayOrder = image.DisplayOrder,
-                    ObjectFit = string.IsNullOrWhiteSpace(image.ObjectFit) ? "cover" : image.ObjectFit,
-                    ObjectPositionX = image.ObjectPositionX,
-                    ObjectPositionY = image.ObjectPositionY,
-                    Zoom = image.Zoom <= 0 ? 1.0m : image.Zoom
-                })
-                .ToList(),
-            Sizes = product.InventoryBySize
-                .Where(size => size.IsEnabled)
-                .OrderBy(size => size.DisplayOrder)
-                .Select(size => new ParfaitStoreProductSizeViewModel
-                {
-                    Id = size.Id,
-                    Size = size.Size,
-                    IsEnabled = size.IsEnabled,
-                    StockQuantity = Math.Max(size.StockQuantity, 0),
-                    LowStockThreshold = Math.Max(1, size.LowStockThreshold),
-                    DisplayOrder = size.DisplayOrder
-                })
-                .ToList()
+            Images = product.Images.OrderBy(image => image.DisplayOrder).Select(image => new ParfaitStoreProductImageViewModel
+            {
+                Id = image.Id,
+                ImageUrl = image.ImageUrl,
+                AltText = image.AltText,
+                IsPrimary = image.IsPrimary,
+                DisplayOrder = image.DisplayOrder,
+                ObjectFit = string.IsNullOrWhiteSpace(image.ObjectFit) ? "cover" : image.ObjectFit,
+                ObjectPositionX = image.ObjectPositionX,
+                ObjectPositionY = image.ObjectPositionY,
+                Zoom = image.Zoom <= 0 ? 1.0m : image.Zoom
+            }).ToList(),
+            Sizes = product.InventoryBySize.Where(size => size.IsEnabled).OrderBy(size => size.DisplayOrder).Select(size => new ParfaitStoreProductSizeViewModel
+            {
+                Id = size.Id,
+                Size = size.Size,
+                IsEnabled = size.IsEnabled,
+                StockQuantity = Math.Max(size.StockQuantity, 0),
+                LowStockThreshold = Math.Max(1, size.LowStockThreshold),
+                DisplayOrder = size.DisplayOrder
+            }).ToList()
         };
     }
 
-    private static ParfaitProductEditorViewModel NormalizeProduct(
-        ParfaitProductEditorViewModel product,
-        IReadOnlyList<ParfaitProductImageEditorViewModel>? existingImages = null)
+    private static ParfaitProductEditorViewModel NormalizeProduct(ParfaitProductEditorViewModel product, IReadOnlyList<ParfaitProductImageEditorViewModel>? existingImages = null)
     {
         var slug = string.IsNullOrWhiteSpace(product.Slug) ? product.Name : product.Slug;
         slug = slug.Trim().ToLowerInvariant().Replace(" ", "-");
 
         var normalizedPriceCents = Math.Max(0, product.PriceCents);
-        var normalizedCompareAtCents = product.CompareAtPriceCents > normalizedPriceCents
-            ? Math.Max(0, product.CompareAtPriceCents)
-            : 0;
+        var normalizedCompareAtCents = product.CompareAtPriceCents > normalizedPriceCents ? Math.Max(0, product.CompareAtPriceCents) : 0;
 
         return new ParfaitProductEditorViewModel
         {
@@ -692,9 +869,7 @@ public sealed class ParfaitProductService
         };
     }
 
-    private static List<ParfaitProductImageEditorViewModel> NormalizeImages(
-        IReadOnlyList<ParfaitProductImageEditorViewModel>? images,
-        string productName)
+    private static List<ParfaitProductImageEditorViewModel> NormalizeImages(IReadOnlyList<ParfaitProductImageEditorViewModel>? images, string productName)
     {
         var normalized = (images ?? [])
             .OrderBy(image => image.DisplayOrder)
@@ -767,15 +942,10 @@ public sealed class ParfaitProductService
         for (var index = 0; index < normalized.Count; index++)
         {
             if (normalized[index].DisplayOrder <= 0)
-            {
                 normalized[index].DisplayOrder = (index + 1) * 10;
-            }
         }
 
-        return normalized
-            .OrderBy(size => size.DisplayOrder)
-            .ThenBy(size => size.Size)
-            .ToList();
+        return normalized.OrderBy(size => size.DisplayOrder).ThenBy(size => size.Size).ToList();
     }
 
     private static List<ParfaitProductDiscountCodeEditorViewModel> NormalizeDiscountCodes(List<ParfaitProductDiscountCodeEditorViewModel>? codes)
@@ -821,95 +991,11 @@ public sealed class ParfaitProductService
     private static void EnsureOnePrimaryImage(ParfaitProductEditorViewModel product)
     {
         if (product.Images.Count == 0)
-        {
             return;
-        }
 
         foreach (var image in product.Images)
-        {
             image.IsPrimary = false;
-        }
 
         product.Images.OrderBy(image => image.DisplayOrder).First().IsPrimary = true;
-    }
-
-    private void SaveAll(List<ParfaitProductEditorViewModel> products)
-    {
-        Directory.CreateDirectory(Path.GetDirectoryName(DataPath)!);
-        Directory.CreateDirectory(UploadRoot);
-
-        var ordered = products
-            .Select(product => NormalizeProduct(product))
-            .OrderBy(product => product.DisplayOrder)
-            .ThenBy(product => product.Name)
-            .ToList();
-
-        foreach (var product in ordered)
-        {
-            EnsureOnePrimaryImage(product);
-        }
-
-        lock (_lock)
-        {
-            File.WriteAllText(
-                DataPath,
-                JsonSerializer.Serialize(ordered, new JsonSerializerOptions { WriteIndented = true }));
-        }
-    }
-
-    private void EnsureSeedData()
-    {
-        if (File.Exists(DataPath))
-        {
-            EnsureCommerceSettingsData();
-            return;
-        }
-
-        SaveAll(
-        [
-            new()
-            {
-                Name = "Parfait Signature Package",
-                Slug = "parfait-signature-package",
-                Description = "A premium starter package for the Parfait brand experience.",
-                PriceLabel = "Coming Soon",
-                Badge = "Featured",
-                IsFeatured = true,
-                IsActive = true,
-                DisplayOrder = 10
-            },
-            new()
-            {
-                Name = "Parfait Training Package",
-                Slug = "parfait-training-package",
-                Description = "Training-focused offer placeholder for the owned Parfait store.",
-                PriceLabel = "Coming Soon",
-                Badge = "Training",
-                IsActive = true,
-                DisplayOrder = 20
-            },
-            new()
-            {
-                Name = "Parfait Lifestyle Package",
-                Slug = "parfait-lifestyle-package",
-                Description = "Lifestyle product placeholder managed by Parfait internal commerce.",
-                PriceLabel = "Coming Soon",
-                Badge = "Lifestyle",
-                IsActive = true,
-                DisplayOrder = 30
-            }
-        ]);
-
-        EnsureCommerceSettingsData();
-    }
-
-    private void EnsureCommerceSettingsData()
-    {
-        if (File.Exists(CommerceSettingsPath))
-        {
-            return;
-        }
-
-        SaveCommerceSettings(new ParfaitCommerceSettingsViewModel());
     }
 }

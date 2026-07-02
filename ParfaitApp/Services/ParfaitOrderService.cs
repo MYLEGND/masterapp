@@ -1,5 +1,7 @@
 using System.Text;
-using System.Text.Json;
+using Domain.Entities;
+using Infrastructure.Data;
+using Microsoft.EntityFrameworkCore;
 using ParfaitApp.Models;
 
 namespace ParfaitApp.Services;
@@ -15,35 +17,43 @@ public sealed record CheckoutPaymentStartResult(CheckoutPaymentStartState State,
 
 public sealed class ParfaitOrderService
 {
-    private static readonly HashSet<string> PaidStatuses = new(StringComparer.OrdinalIgnoreCase)
-    {
-        "Paid",
-        "Refunded"
-    };
+    private static readonly HashSet<string> PaidStatuses = new(StringComparer.OrdinalIgnoreCase) { "Paid", "Refunded" };
     private static readonly TimeSpan PaymentProcessingTimeout = TimeSpan.FromMinutes(10);
+    private static readonly object Lock = new();
 
-    private readonly IWebHostEnvironment _environment;
-    private readonly object _lock = new();
+    private readonly MasterAppDbContext _db;
 
-    public ParfaitOrderService(IWebHostEnvironment environment)
+    public ParfaitOrderService(MasterAppDbContext db)
     {
-        _environment = environment;
+        _db = db;
     }
-
-    private string DataPath => Path.Combine(_environment.ContentRootPath, "App_Data", "parfait-orders.json");
 
     public IReadOnlyList<ParfaitOrderRecord> GetAllOrders()
     {
-        lock (_lock)
-        {
-            return ReadAllNormalizedUnsafe();
-        }
+        var businessId = GetBusinessId();
+        return _db.CommerceOrders
+            .AsNoTracking()
+            .Include(x => x.Lines)
+            .Where(x => x.CommerceBusinessId == businessId)
+            .OrderByDescending(x => x.CreatedUtc)
+            .ToList()
+            .Select(MapOrder)
+            .Select(NormalizeOrder)
+            .OrderByDescending(x => x.CreatedUtc)
+            .ToList();
     }
 
     public ParfaitOrderRecord? GetOrder(string orderNumber)
     {
-        return GetAllOrders()
-            .FirstOrDefault(order => string.Equals(order.OrderNumber, orderNumber, StringComparison.OrdinalIgnoreCase));
+        var businessId = GetBusinessId();
+        var cleaned = Clean(orderNumber);
+
+        var order = _db.CommerceOrders
+            .AsNoTracking()
+            .Include(x => x.Lines)
+            .FirstOrDefault(x => x.CommerceBusinessId == businessId && x.OrderNumber == cleaned);
+
+        return order is null ? null : NormalizeOrder(MapOrder(order));
     }
 
     public ParfaitOrderRecord CreatePendingOrder(
@@ -57,11 +67,12 @@ public sealed class ParfaitOrderService
         int taxCents,
         HttpContext httpContext)
     {
-        lock (_lock)
+        lock (Lock)
         {
-            var orders = ReadAllNormalizedUnsafe();
-            var order = CreatePendingOrderRecord(
-                GenerateOrderNumber(DateTime.UtcNow),
+            var businessId = GetBusinessId();
+            var now = DateTime.UtcNow;
+            var record = CreatePendingOrderRecord(
+                GenerateOrderNumber(now),
                 null,
                 customer,
                 items,
@@ -72,10 +83,14 @@ public sealed class ParfaitOrderService
                 shippingCents,
                 taxCents,
                 httpContext,
-                DateTime.UtcNow);
+                now);
 
-            UpsertUnsafe(orders, order);
-            return order;
+            var entity = new CommerceOrder { CommerceBusinessId = businessId };
+            ApplyRecordToEntity(entity, NormalizeOrder(record));
+            _db.CommerceOrders.Add(entity);
+            _db.SaveChanges();
+
+            return NormalizeOrder(MapOrder(entity));
         }
     }
 
@@ -93,30 +108,35 @@ public sealed class ParfaitOrderService
     {
         var normalizedAttemptId = Clean(checkoutAttemptId);
         if (string.IsNullOrWhiteSpace(normalizedAttemptId))
-        {
             throw new ArgumentException("Checkout attempt ID is required.", nameof(checkoutAttemptId));
-        }
 
-        lock (_lock)
+        lock (Lock)
         {
+            var businessId = GetBusinessId();
             var now = DateTime.UtcNow;
-            var orders = ReadAllNormalizedUnsafe();
-            var order = orders.FirstOrDefault(existing =>
-                string.Equals(existing.CheckoutAttemptId, normalizedAttemptId, StringComparison.OrdinalIgnoreCase));
 
-            if (order is not null && order.IsPaid)
+            var order = _db.CommerceOrders
+                .Include(x => x.Lines)
+                .Where(x => x.CommerceBusinessId == businessId && x.CheckoutAttemptId == normalizedAttemptId)
+                .OrderByDescending(x => x.CreatedUtc)
+                .FirstOrDefault();
+
+            if (order is not null)
             {
-                return new CheckoutPaymentStartResult(CheckoutPaymentStartState.AlreadyPaid, order);
+                var existing = NormalizeOrder(MapOrder(order));
+
+                if (existing.IsPaid)
+                    return new CheckoutPaymentStartResult(CheckoutPaymentStartState.AlreadyPaid, existing);
+
+                if (IsPaymentProcessingActive(existing, now))
+                    return new CheckoutPaymentStartResult(CheckoutPaymentStartState.AlreadyProcessing, existing);
             }
 
-            if (order is not null && IsPaymentProcessingActive(order, now))
-            {
-                return new CheckoutPaymentStartResult(CheckoutPaymentStartState.AlreadyProcessing, order);
-            }
+            ParfaitOrderRecord record;
 
             if (order is null)
             {
-                order = CreatePendingOrderRecord(
+                record = CreatePendingOrderRecord(
                     GenerateOrderNumber(now),
                     normalizedAttemptId,
                     customer,
@@ -129,12 +149,15 @@ public sealed class ParfaitOrderService
                     taxCents,
                     httpContext,
                     now);
-                orders.Add(order);
+
+                order = new CommerceOrder { CommerceBusinessId = businessId };
+                _db.CommerceOrders.Add(order);
             }
             else
             {
+                record = MapOrder(order);
                 ApplyCheckoutSnapshot(
-                    order,
+                    record,
                     normalizedAttemptId,
                     customer,
                     items,
@@ -148,27 +171,31 @@ public sealed class ParfaitOrderService
                     now);
             }
 
-            order.IsPaymentProcessing = true;
-            order.PaymentProcessingStartedUtc = now;
-            order.SquareError = null;
-            StampOrder(order);
+            record.IsPaymentProcessing = true;
+            record.PaymentProcessingStartedUtc = now;
+            record.SquareError = null;
+            StampOrder(record);
 
-            SaveAllUnsafe(orders);
-            return new CheckoutPaymentStartResult(CheckoutPaymentStartState.Ready, order);
+            ApplyRecordToEntity(order, NormalizeOrder(record));
+            _db.SaveChanges();
+
+            return new CheckoutPaymentStartResult(CheckoutPaymentStartState.Ready, NormalizeOrder(MapOrder(order)));
         }
     }
 
     public void MarkPaid(string orderNumber, string? squarePaymentId)
     {
-        lock (_lock)
+        lock (Lock)
         {
-            var orders = ReadAllNormalizedUnsafe();
-            var order = orders.FirstOrDefault(existing => string.Equals(existing.OrderNumber, orderNumber, StringComparison.OrdinalIgnoreCase));
+            var businessId = GetBusinessId();
+            var cleaned = Clean(orderNumber);
+
+            var order = _db.CommerceOrders
+                .Include(x => x.Lines)
+                .FirstOrDefault(x => x.CommerceBusinessId == businessId && x.OrderNumber == cleaned);
 
             if (order is null)
-            {
                 return;
-            }
 
             order.PaymentStatus = "Paid";
             order.PaidUtc = DateTime.UtcNow;
@@ -176,45 +203,51 @@ public sealed class ParfaitOrderService
             order.IsPaymentProcessing = false;
             order.PaymentProcessingStartedUtc = null;
             order.SquareError = null;
-            StampOrder(order);
+            order.UpdatedUtc = DateTime.UtcNow;
+            order.Status = BuildStatus(MapOrder(order));
 
-            SaveAllUnsafe(orders);
+            _db.SaveChanges();
         }
     }
 
     public void MarkPaymentFailed(string orderNumber, string error)
     {
-        lock (_lock)
+        lock (Lock)
         {
-            var orders = ReadAllNormalizedUnsafe();
-            var order = orders.FirstOrDefault(existing => string.Equals(existing.OrderNumber, orderNumber, StringComparison.OrdinalIgnoreCase));
+            var businessId = GetBusinessId();
+            var cleaned = Clean(orderNumber);
+
+            var order = _db.CommerceOrders
+                .Include(x => x.Lines)
+                .FirstOrDefault(x => x.CommerceBusinessId == businessId && x.OrderNumber == cleaned);
 
             if (order is null)
-            {
                 return;
-            }
 
             order.PaymentStatus = "Failed";
             order.IsPaymentProcessing = false;
             order.PaymentProcessingStartedUtc = null;
             order.SquareError = error;
-            StampOrder(order);
+            order.UpdatedUtc = DateTime.UtcNow;
+            order.Status = BuildStatus(MapOrder(order));
 
-            SaveAllUnsafe(orders);
+            _db.SaveChanges();
         }
     }
 
     public bool UpdateOrder(ParfaitOrderAdminUpdateRequest request)
     {
-        lock (_lock)
+        lock (Lock)
         {
-            var orders = ReadAllNormalizedUnsafe();
-            var order = orders.FirstOrDefault(existing => string.Equals(existing.OrderNumber, request.OrderNumber, StringComparison.OrdinalIgnoreCase));
+            var businessId = GetBusinessId();
+            var cleaned = Clean(request.OrderNumber);
+
+            var order = _db.CommerceOrders
+                .Include(x => x.Lines)
+                .FirstOrDefault(x => x.CommerceBusinessId == businessId && x.OrderNumber == cleaned);
 
             if (order is null)
-            {
                 return false;
-            }
 
             var now = DateTime.UtcNow;
 
@@ -227,9 +260,7 @@ public sealed class ParfaitOrderService
             order.RefundedCents = Math.Clamp(request.RefundedCents, 0, order.TotalCents);
 
             if (string.Equals(order.PaymentStatus, "Paid", StringComparison.OrdinalIgnoreCase) && order.PaidUtc is null)
-            {
                 order.PaidUtc = now;
-            }
 
             if (!string.Equals(order.PaymentStatus, "Pending", StringComparison.OrdinalIgnoreCase))
             {
@@ -238,9 +269,7 @@ public sealed class ParfaitOrderService
             }
 
             if (string.Equals(order.FulfillmentStatus, "Shipped", StringComparison.OrdinalIgnoreCase))
-            {
                 order.ShippedUtc ??= now;
-            }
 
             if (string.Equals(order.FulfillmentStatus, "Fulfilled", StringComparison.OrdinalIgnoreCase))
             {
@@ -249,123 +278,168 @@ public sealed class ParfaitOrderService
             }
 
             if (string.Equals(order.PaymentStatus, "Refunded", StringComparison.OrdinalIgnoreCase) && order.RefundedCents == 0)
-            {
                 order.RefundedCents = order.TotalCents;
-            }
 
-            StampOrder(order);
-            SaveAllUnsafe(orders);
+            order.UpdatedUtc = now;
+            order.Status = BuildStatus(MapOrder(order));
+
+            _db.SaveChanges();
             return true;
         }
     }
 
-    public int CountOpenFulfillment(IEnumerable<ParfaitOrderRecord> orders)
-    {
-        return orders.Count(order => order.IsFulfillmentOpen);
-    }
-
-    public int CountReturnQueue(IEnumerable<ParfaitOrderRecord> orders)
-    {
-        return orders.Count(order => order.HasReturnWork);
-    }
-
-    public int CountRefunded(IEnumerable<ParfaitOrderRecord> orders)
-    {
-        return orders.Count(order => order.IsRefundedPayment);
-    }
-
-    public int SumNetRevenueCents(IEnumerable<ParfaitOrderRecord> orders)
-    {
-        return orders
-            .Where(order => PaidStatuses.Contains(order.PaymentStatus))
-            .Sum(order => order.NetRevenueCents);
-    }
+    public int CountOpenFulfillment(IEnumerable<ParfaitOrderRecord> orders) => orders.Count(order => order.IsFulfillmentOpen);
+    public int CountReturnQueue(IEnumerable<ParfaitOrderRecord> orders) => orders.Count(order => order.HasReturnWork);
+    public int CountRefunded(IEnumerable<ParfaitOrderRecord> orders) => orders.Count(order => order.IsRefundedPayment);
+    public int SumNetRevenueCents(IEnumerable<ParfaitOrderRecord> orders) => orders.Where(order => PaidStatuses.Contains(order.PaymentStatus)).Sum(order => order.NetRevenueCents);
 
     public int CalculateAverageNetOrderValueCents(IEnumerable<ParfaitOrderRecord> orders)
     {
-        var paidOrders = orders
-            .Where(order => PaidStatuses.Contains(order.PaymentStatus))
-            .ToList();
-
-        return paidOrders.Count == 0
-            ? 0
-            : (int)Math.Round(paidOrders.Average(order => order.NetRevenueCents));
+        var paidOrders = orders.Where(order => PaidStatuses.Contains(order.PaymentStatus)).ToList();
+        return paidOrders.Count == 0 ? 0 : (int)Math.Round(paidOrders.Average(order => order.NetRevenueCents));
     }
 
-    private void Upsert(ParfaitOrderRecord order)
+    private Guid GetBusinessId()
     {
-        lock (_lock)
+        var business = _db.CommerceBusinesses.SingleOrDefault(x => x.Key == ParfaitBusinessScopeService.ParfaitBusinessKey);
+
+        if (business is not null)
+            return business.Id;
+
+        business = new CommerceBusiness
         {
-            var orders = ReadAllNormalizedUnsafe();
-            UpsertUnsafe(orders, order);
-        }
+            Key = ParfaitBusinessScopeService.ParfaitBusinessKey,
+            DisplayName = "Parfait",
+            LegalName = "MyLegnd LLC",
+            BusinessType = "Apparel / Ecommerce",
+            PrimaryDomain = "shopparfait.com",
+            Status = "Active",
+            IsActive = true,
+            OwnerEmail = "parfait@mylegnd.com",
+            CreatedUtc = DateTime.UtcNow,
+            UpdatedUtc = DateTime.UtcNow
+        };
+
+        _db.CommerceBusinesses.Add(business);
+        _db.SaveChanges();
+
+        return business.Id;
     }
 
-    private void SaveAll(List<ParfaitOrderRecord> orders)
+    private static ParfaitOrderRecord MapOrder(CommerceOrder order)
     {
-        lock (_lock)
+        return new ParfaitOrderRecord
         {
-            SaveAllUnsafe(orders);
-        }
+            OrderNumber = Clean(order.OrderNumber),
+            CreatedUtc = order.CreatedUtc,
+            UpdatedUtc = order.UpdatedUtc,
+            PaidUtc = order.PaidUtc,
+            ShippedUtc = order.ShippedUtc,
+            FulfilledUtc = order.FulfilledUtc,
+            Status = order.Status,
+            PaymentStatus = order.PaymentStatus,
+            FulfillmentStatus = order.FulfillmentStatus,
+            ReturnStatus = order.ReturnStatus,
+            CheckoutAttemptId = order.CheckoutAttemptId,
+            IsPaymentProcessing = order.IsPaymentProcessing,
+            PaymentProcessingStartedUtc = order.PaymentProcessingStartedUtc,
+            SquarePaymentId = order.SquarePaymentId,
+            SquareError = order.SquareError,
+            TrackingCarrier = order.TrackingCarrier,
+            TrackingNumber = order.TrackingNumber,
+            AdminNotes = order.AdminNotes,
+            FirstName = order.FirstName,
+            LastName = order.LastName,
+            Email = order.Email,
+            Phone = order.Phone,
+            AddressLine1 = order.AddressLine1,
+            AddressLine2 = order.AddressLine2,
+            City = order.City,
+            State = order.State,
+            PostalCode = order.PostalCode,
+            Source = order.Source,
+            UserAgent = order.UserAgent,
+            RequestIp = order.RequestIp,
+            Items = order.Lines
+                .OrderBy(x => x.Id)
+                .Select(line => new ParfaitValidatedCartItem
+                {
+                    Id = line.ProductExternalKey,
+                    Name = line.ProductName,
+                    Slug = line.ProductSlug,
+                    Size = line.Size,
+                    Quantity = line.Quantity,
+                    UnitPriceCents = line.UnitPriceCents,
+                    CompareAtPriceCents = line.CompareAtPriceCents,
+                    ImageUrl = line.ImageUrl
+                })
+                .ToList(),
+            SubtotalCents = order.SubtotalCents,
+            DiscountCode = order.DiscountCode,
+            DiscountLabel = order.DiscountLabel,
+            DiscountCents = order.DiscountCents,
+            RefundedCents = order.RefundedCents,
+            ShippingCents = order.ShippingCents,
+            TaxCents = order.TaxCents,
+            TotalCents = order.TotalCents
+        };
     }
 
-    private List<ParfaitOrderRecord> ReadAllNormalizedUnsafe()
+    private static void ApplyRecordToEntity(CommerceOrder entity, ParfaitOrderRecord record)
     {
-        EnsureDataFile();
+        entity.OrderNumber = record.OrderNumber;
+        entity.CreatedUtc = record.CreatedUtc;
+        entity.UpdatedUtc = record.UpdatedUtc;
+        entity.PaidUtc = record.PaidUtc;
+        entity.ShippedUtc = record.ShippedUtc;
+        entity.FulfilledUtc = record.FulfilledUtc;
+        entity.Status = record.Status;
+        entity.PaymentStatus = record.PaymentStatus;
+        entity.FulfillmentStatus = record.FulfillmentStatus;
+        entity.ReturnStatus = record.ReturnStatus;
+        entity.CheckoutAttemptId = record.CheckoutAttemptId;
+        entity.IsPaymentProcessing = record.IsPaymentProcessing;
+        entity.PaymentProcessingStartedUtc = record.PaymentProcessingStartedUtc;
+        entity.SquarePaymentId = record.SquarePaymentId;
+        entity.SquareError = record.SquareError;
+        entity.TrackingCarrier = record.TrackingCarrier;
+        entity.TrackingNumber = record.TrackingNumber;
+        entity.AdminNotes = record.AdminNotes;
+        entity.FirstName = record.FirstName;
+        entity.LastName = record.LastName;
+        entity.Email = record.Email;
+        entity.Phone = record.Phone;
+        entity.AddressLine1 = record.AddressLine1;
+        entity.AddressLine2 = record.AddressLine2;
+        entity.City = record.City;
+        entity.State = record.State;
+        entity.PostalCode = record.PostalCode;
+        entity.Source = record.Source;
+        entity.UserAgent = record.UserAgent;
+        entity.RequestIp = record.RequestIp;
+        entity.SubtotalCents = record.SubtotalCents;
+        entity.DiscountCode = record.DiscountCode;
+        entity.DiscountLabel = record.DiscountLabel;
+        entity.DiscountCents = record.DiscountCents;
+        entity.RefundedCents = record.RefundedCents;
+        entity.ShippingCents = record.ShippingCents;
+        entity.TaxCents = record.TaxCents;
+        entity.TotalCents = record.TotalCents;
 
-        var json = File.ReadAllText(DataPath);
-        var orders = JsonSerializer.Deserialize<List<ParfaitOrderRecord>>(json) ?? [];
-        var requiresRewrite = false;
-        var normalized = orders
-            .Select(order => NormalizeOrder(order, ref requiresRewrite))
-            .OrderByDescending(order => order.CreatedUtc)
-            .ToList();
-
-        if (requiresRewrite)
+        entity.Lines.Clear();
+        foreach (var item in record.Items.Select(NormalizeItem))
         {
-            SaveAllUnsafe(normalized);
-        }
-
-        return normalized;
-    }
-
-    private void UpsertUnsafe(List<ParfaitOrderRecord> orders, ParfaitOrderRecord order)
-    {
-        var index = orders.FindIndex(existing => string.Equals(existing.OrderNumber, order.OrderNumber, StringComparison.OrdinalIgnoreCase));
-
-        if (index >= 0)
-        {
-            orders[index] = NormalizeOrder(order);
-        }
-        else
-        {
-            orders.Add(NormalizeOrder(order));
-        }
-
-        SaveAllUnsafe(orders);
-    }
-
-    private void SaveAllUnsafe(List<ParfaitOrderRecord> orders)
-    {
-        Directory.CreateDirectory(Path.GetDirectoryName(DataPath)!);
-
-        var ordered = orders
-            .Select(NormalizeOrder)
-            .OrderByDescending(order => order.CreatedUtc)
-            .ToList();
-
-        File.WriteAllText(
-            DataPath,
-            JsonSerializer.Serialize(ordered, new JsonSerializerOptions { WriteIndented = true }));
-    }
-
-    private void EnsureDataFile()
-    {
-        Directory.CreateDirectory(Path.GetDirectoryName(DataPath)!);
-
-        if (!File.Exists(DataPath))
-        {
-            File.WriteAllText(DataPath, "[]");
+            entity.Lines.Add(new CommerceOrderLine
+            {
+                ProductExternalKey = item.Id,
+                ProductName = item.Name,
+                ProductSlug = item.Slug,
+                Size = item.Size,
+                Quantity = item.Quantity,
+                UnitPriceCents = item.UnitPriceCents,
+                CompareAtPriceCents = item.CompareAtPriceCents,
+                ImageUrl = item.ImageUrl
+            });
         }
     }
 
@@ -408,20 +482,7 @@ public sealed class ParfaitOrderService
             PostalCode = ""
         };
 
-        ApplyCheckoutSnapshot(
-            order,
-            checkoutAttemptId,
-            customer,
-            items,
-            subtotalCents,
-            discountCode,
-            discountLabel,
-            discountCents,
-            shippingCents,
-            taxCents,
-            httpContext,
-            now);
-
+        ApplyCheckoutSnapshot(order, checkoutAttemptId, customer, items, subtotalCents, discountCode, discountLabel, discountCents, shippingCents, taxCents, httpContext, now);
         return order;
     }
 
@@ -446,18 +507,13 @@ public sealed class ParfaitOrderService
 
         order.UpdatedUtc = now;
         order.PaymentStatus = "Pending";
-        order.FulfillmentStatus = string.IsNullOrWhiteSpace(order.FulfillmentStatus)
-            ? "Unfulfilled"
-            : NormalizeFulfillmentStatus(order.FulfillmentStatus);
-        order.ReturnStatus = string.IsNullOrWhiteSpace(order.ReturnStatus)
-            ? "None"
-            : NormalizeReturnStatus(order.ReturnStatus);
+        order.FulfillmentStatus = string.IsNullOrWhiteSpace(order.FulfillmentStatus) ? "Unfulfilled" : NormalizeFulfillmentStatus(order.FulfillmentStatus);
+        order.ReturnStatus = string.IsNullOrWhiteSpace(order.ReturnStatus) ? "None" : NormalizeReturnStatus(order.ReturnStatus);
         order.CheckoutAttemptId = NullIfEmpty(checkoutAttemptId);
         order.IsPaymentProcessing = false;
         order.PaymentProcessingStartedUtc = null;
         order.SquarePaymentId = null;
         order.SquareError = null;
-
         order.FirstName = Clean(customer.FirstName);
         order.LastName = Clean(customer.LastName);
         order.Email = Clean(customer.Email).ToLowerInvariant();
@@ -470,7 +526,6 @@ public sealed class ParfaitOrderService
         order.Source = "Public Store";
         order.UserAgent = httpContext.Request.Headers.UserAgent.ToString();
         order.RequestIp = httpContext.Connection.RemoteIpAddress?.ToString();
-
         order.Items = items.Select(NormalizeItem).ToList();
         order.SubtotalCents = subtotal;
         order.DiscountCode = string.IsNullOrWhiteSpace(discountCode) ? null : discountCode.Trim().ToUpperInvariant();
@@ -485,26 +540,8 @@ public sealed class ParfaitOrderService
 
     private static ParfaitOrderRecord NormalizeOrder(ParfaitOrderRecord order)
     {
-        var requiresRewrite = false;
-        return NormalizeOrder(order, ref requiresRewrite);
-    }
-
-    private static ParfaitOrderRecord NormalizeOrder(ParfaitOrderRecord order, ref bool requiresRewrite)
-    {
         var createdUtc = order.CreatedUtc == default ? DateTime.UtcNow : order.CreatedUtc;
-        var normalizedItems = new List<ParfaitValidatedCartItem>();
-        foreach (var item in order.Items ?? [])
-        {
-            var normalizedItem = NormalizeItem(item);
-            if (!string.Equals(normalizedItem.Slug, item.Slug, StringComparison.Ordinal)
-                || !string.Equals(normalizedItem.Name, item.Name, StringComparison.Ordinal)
-                || !string.Equals(normalizedItem.Size, item.Size, StringComparison.Ordinal))
-            {
-                requiresRewrite = true;
-            }
-
-            normalizedItems.Add(normalizedItem);
-        }
+        var normalizedItems = (order.Items ?? []).Select(NormalizeItem).ToList();
 
         var normalized = new ParfaitOrderRecord
         {
@@ -563,31 +600,13 @@ public sealed class ParfaitOrderService
         };
 
         normalized.Status = BuildStatus(normalized);
-
-        if (!string.Equals(normalized.OrderNumber, order.OrderNumber, StringComparison.Ordinal)
-            || !string.Equals(normalized.PaymentStatus, order.PaymentStatus, StringComparison.Ordinal)
-            || !string.Equals(normalized.FulfillmentStatus, order.FulfillmentStatus, StringComparison.Ordinal)
-            || !string.Equals(normalized.ReturnStatus, order.ReturnStatus, StringComparison.Ordinal)
-            || !string.Equals(normalized.CheckoutAttemptId, order.CheckoutAttemptId, StringComparison.Ordinal)
-            || normalized.IsPaymentProcessing != order.IsPaymentProcessing
-            || normalized.SubtotalCents != order.SubtotalCents
-            || normalized.TotalCents != order.TotalCents
-            || normalized.RefundedCents != order.RefundedCents
-            || normalized.UpdatedUtc != order.UpdatedUtc
-            || !string.Equals(normalized.Status, order.Status, StringComparison.Ordinal))
-        {
-            requiresRewrite = true;
-        }
-
         return normalized;
     }
 
     private static ParfaitValidatedCartItem NormalizeItem(ParfaitValidatedCartItem item)
     {
         var name = Clean(item.Name);
-        var slug = string.IsNullOrWhiteSpace(item.Slug)
-            ? Slugify(name)
-            : Slugify(item.Slug);
+        var slug = string.IsNullOrWhiteSpace(item.Slug) ? Slugify(name) : Slugify(item.Slug);
 
         return new ParfaitValidatedCartItem
         {
@@ -604,8 +623,7 @@ public sealed class ParfaitOrderService
 
     private static string NormalizePaymentStatus(string? value)
     {
-        var normalized = Clean(value).ToLowerInvariant();
-        return normalized switch
+        return Clean(value).ToLowerInvariant() switch
         {
             "paid" => "Paid",
             "failed" => "Failed",
@@ -616,8 +634,7 @@ public sealed class ParfaitOrderService
 
     private static string NormalizeFulfillmentStatus(string? value)
     {
-        var normalized = Clean(value).ToLowerInvariant();
-        return normalized switch
+        return Clean(value).ToLowerInvariant() switch
         {
             "processing" => "Processing",
             "packed" => "Packed",
@@ -632,8 +649,7 @@ public sealed class ParfaitOrderService
 
     private static string NormalizeReturnStatus(string? value)
     {
-        var normalized = Clean(value).ToLowerInvariant();
-        return normalized switch
+        return Clean(value).ToLowerInvariant() switch
         {
             "requested" => "Requested",
             "approved" => "Approved",
@@ -646,72 +662,28 @@ public sealed class ParfaitOrderService
 
     private static string BuildStatus(ParfaitOrderRecord order)
     {
-        if (order.IsPaymentProcessing)
-        {
-            return "Payment Processing";
-        }
-
-        if (string.Equals(order.PaymentStatus, "Failed", StringComparison.OrdinalIgnoreCase))
-        {
-            return "Payment Failed";
-        }
-
-        if (string.Equals(order.PaymentStatus, "Pending", StringComparison.OrdinalIgnoreCase))
-        {
-            return "Payment Pending";
-        }
-
-        if (string.Equals(order.PaymentStatus, "Refunded", StringComparison.OrdinalIgnoreCase))
-        {
-            return "Refunded";
-        }
-
-        if (!string.Equals(order.ReturnStatus, "None", StringComparison.OrdinalIgnoreCase)
-            && !string.Equals(order.ReturnStatus, "Closed", StringComparison.OrdinalIgnoreCase))
-        {
-            return $"Return {order.ReturnStatus}";
-        }
-
-        if (string.Equals(order.FulfillmentStatus, "Fulfilled", StringComparison.OrdinalIgnoreCase))
-        {
-            return "Fulfilled";
-        }
-
-        if (string.Equals(order.FulfillmentStatus, "Shipped", StringComparison.OrdinalIgnoreCase))
-        {
-            return "Shipped";
-        }
-
+        if (order.IsPaymentProcessing) return "Payment Processing";
+        if (string.Equals(order.PaymentStatus, "Failed", StringComparison.OrdinalIgnoreCase)) return "Payment Failed";
+        if (string.Equals(order.PaymentStatus, "Pending", StringComparison.OrdinalIgnoreCase)) return "Payment Pending";
+        if (string.Equals(order.PaymentStatus, "Refunded", StringComparison.OrdinalIgnoreCase)) return "Refunded";
+        if (!string.Equals(order.ReturnStatus, "None", StringComparison.OrdinalIgnoreCase) && !string.Equals(order.ReturnStatus, "Closed", StringComparison.OrdinalIgnoreCase)) return $"Return {order.ReturnStatus}";
+        if (string.Equals(order.FulfillmentStatus, "Fulfilled", StringComparison.OrdinalIgnoreCase)) return "Fulfilled";
+        if (string.Equals(order.FulfillmentStatus, "Shipped", StringComparison.OrdinalIgnoreCase)) return "Shipped";
         return "Paid";
     }
 
     private static bool IsPaymentProcessingActive(ParfaitOrderRecord order, DateTime now)
     {
-        if (!order.IsPaymentProcessing)
-        {
-            return false;
-        }
-
-        if (order.PaymentProcessingStartedUtc is null)
-        {
-            return false;
-        }
-
-        return order.PaymentProcessingStartedUtc.Value >= now - PaymentProcessingTimeout;
+        return order.IsPaymentProcessing
+            && order.PaymentProcessingStartedUtc is not null
+            && order.PaymentProcessingStartedUtc.Value >= now - PaymentProcessingTimeout;
     }
 
-    private static string GenerateOrderNumber(DateTime utc)
-    {
-        var suffix = Guid.NewGuid().ToString("N")[..6].ToUpperInvariant();
-        return $"PF-{utc:yyyyMMdd}-{suffix}";
-    }
+    private static string GenerateOrderNumber(DateTime utc) => $"PF-{utc:yyyyMMdd}-{Guid.NewGuid().ToString("N")[..6].ToUpperInvariant()}";
 
     private static string Slugify(string? value)
     {
-        if (string.IsNullOrWhiteSpace(value))
-        {
-            return "";
-        }
+        if (string.IsNullOrWhiteSpace(value)) return "";
 
         var builder = new StringBuilder();
         var lastDash = false;
@@ -733,10 +705,7 @@ public sealed class ParfaitOrderService
         return builder.ToString().Trim('-');
     }
 
-    private static string Clean(string? value)
-    {
-        return (value ?? "").Trim();
-    }
+    private static string Clean(string? value) => (value ?? "").Trim();
 
     private static string? NullIfEmpty(string? value)
     {

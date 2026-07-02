@@ -97,13 +97,9 @@ builder.Services.AddDbContext<MasterAppDbContext>(options =>
 });
 
 builder.Services.AddScoped<ParfaitBusinessScopeService>();
-builder.Services.Configure<ParfaitCommerceJsonImportOptions>(
-    builder.Configuration.GetSection("ParfaitCommerce:JsonImport"));
-builder.Services.AddScoped<ParfaitCommerceJsonImportService>();
-builder.Services.AddHostedService<ParfaitCommerceJsonImportHostedService>();
-builder.Services.AddSingleton<ParfaitProductService>();
-builder.Services.AddSingleton<ParfaitOrderService>();
-builder.Services.AddSingleton<ParfaitCustomerAutomationService>();
+builder.Services.AddScoped<ParfaitProductService>();
+builder.Services.AddScoped<ParfaitOrderService>();
+builder.Services.AddScoped<ParfaitCustomerAutomationService>();
 builder.Services.AddSingleton<IParfaitInternalPageRegistry, ParfaitInternalPageRegistry>();
 builder.Services.AddScoped<IParfaitTeamAccessService, ParfaitTeamAccessService>();
 builder.Services.AddHttpClient<SquarePaymentService>();
