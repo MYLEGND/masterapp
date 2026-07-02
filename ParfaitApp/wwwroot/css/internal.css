@@ -93,57 +93,74 @@ html {
 
 
 /* === PARFAIT TEAM COMPACT SYSTEM START === */
+.pf-team-page .pf-workspace-grid {
+    align-items: stretch;
+}
+
+.pf-team-page .pf-module-card {
+    background:
+        radial-gradient(circle at 0% 0%, rgba(190,132,84,.18), transparent 22rem),
+        linear-gradient(145deg, #3a2015 0%, #1b0e08 100%);
+    border: 1px solid rgba(218,183,151,.20);
+    color: #fff7ee;
+}
+
+.pf-team-page .pf-module-title,
+.pf-team-page .pf-commerce-panel h2 {
+    color: #fff7ee;
+}
+
+.pf-team-page .text-muted,
+.pf-team-page .pf-rail-note {
+    color: rgba(255,239,225,.68) !important;
+}
+
 .pf-team-invite-form {
     display: grid;
-    gap: 14px;
+    gap: 12px;
+    padding: 14px;
+    border: 1px solid rgba(218,183,151,.20);
+    border-radius: 18px;
+    background:
+        linear-gradient(135deg, rgba(255,248,240,.10), rgba(255,248,240,.035));
 }
 
 .pf-team-invite-fields {
     display: grid;
-    grid-template-columns: minmax(220px, 1.25fr) minmax(180px, 1fr) minmax(160px, .78fr) auto;
+    grid-template-columns: minmax(210px,1.15fr) minmax(180px,1fr) minmax(160px,.78fr) auto;
     align-items: end;
-    gap: 12px;
+    gap: 10px;
 }
 
 .pf-team-field {
     display: grid;
-    gap: 6px;
+    gap: 5px;
     min-width: 0;
 }
 
 .pf-team-field label {
-    color: #6f442d;
-    font-size: .68rem;
-    font-weight: 800;
-    letter-spacing: .11em;
+    color: #e7bf8b;
+    font-size: .66rem;
+    font-weight: 900;
+    letter-spacing: .13em;
     text-transform: uppercase;
 }
 
 .pf-team-field input,
 .pf-team-field select {
     width: 100%;
-    min-height: 42px;
-    border: 1px solid rgba(218,183,151,.38);
-    border-radius: 11px;
-    background: #fffaf4;
+    min-height: 40px;
+    border: 1px solid rgba(218,183,151,.34);
+    border-radius: 12px;
+    background: rgba(255,250,245,.96);
     color: #1d100a;
     font: inherit;
-    font-weight: 650;
+    font-weight: 750;
     padding: 0 12px;
 }
 
-.pf-team-field span {
-    color: #ffb6a0;
-    font-size: .74rem;
-}
-
-.pf-team-submit-field {
-    display: flex;
-    align-items: end;
-}
-
 .pf-team-submit-field .pf-action {
-    min-height: 42px;
+    min-height: 40px;
     padding: 0 16px;
     white-space: nowrap;
 }
@@ -151,16 +168,16 @@ html {
 .pf-team-role-strip {
     display: grid;
     grid-template-columns: repeat(4, minmax(0, 1fr));
-    border: 1px solid rgba(146,105,80,.28);
-    border-radius: 12px;
-    background: linear-gradient(180deg, #fff6ed, #ead5c2);
     overflow: hidden;
+    border: 1px solid rgba(218,183,151,.18);
+    border-radius: 14px;
+    background: rgba(8,4,2,.18);
 }
 
 .pf-team-role-option {
     min-width: 0;
-    padding: 10px 12px;
-    border-right: 1px solid rgba(218,183,151,.2);
+    padding: 9px 10px;
+    border-right: 1px solid rgba(218,183,151,.14);
 }
 
 .pf-team-role-option:last-child {
@@ -169,103 +186,82 @@ html {
 
 .pf-team-role-option strong {
     display: block;
-    color: #4b2b1b;
-    font-size: .71rem;
-    font-weight: 850;
-    letter-spacing: .08em;
+    color: #f7d3a7;
+    font-size: .68rem;
+    font-weight: 900;
+    letter-spacing: .10em;
     text-transform: uppercase;
 }
 
 .pf-team-role-option span {
     display: block;
-    margin-top: 4px;
-    color: rgba(58,34,22,.72);
-    font-size: .75rem;
-    line-height: 1.35;
+    margin-top: 3px;
+    color: rgba(255,243,232,.72);
+    font-size: .72rem;
+    line-height: 1.28;
 }
 
 .pf-team-meta {
     margin: 0;
-    color: rgba(58,34,22,.72);
-    font-size: .78rem;
-    line-height: 1.35;
+    color: rgba(255,243,232,.74);
+    font-size: .76rem;
 }
 
 .pf-founder-lock {
     display: grid;
-    gap: 12px;
+    gap: 10px;
 }
 
 .pf-founder-lock > div {
     display: grid;
-    grid-template-columns: 132px minmax(0, 1fr);
+    grid-template-columns: 130px minmax(0, 1fr);
     gap: 10px;
-    align-items: baseline;
 }
 
-.pf-founder-lock strong {
-    color: #4b2b1b;
-    font-size: .73rem;
-    font-weight: 800;
+.pf-founder-lock strong,
+.pf-team-list strong {
+    color: #f7d3a7;
+    font-size: .74rem;
+    font-weight: 850;
 }
 
 .pf-founder-lock span,
 .pf-team-list span,
 .pf-team-card-copy {
-    color: rgba(255,244,234,.72);
+    color: rgba(255,243,232,.72);
     font-size: .82rem;
-    line-height: 1.4;
+    line-height: 1.38;
 }
 
-.pf-team-card {
-    padding: 18px;
-}
-
-.pf-team-card-head {
+.pf-team-card-head,
+.pf-team-list > div {
     display: flex;
-    align-items: center;
     justify-content: space-between;
     gap: 12px;
 }
 
 .pf-team-card-title {
     margin: 0;
-    color: #fff8f1;
+    color: #fff7ee;
     font-size: 1rem;
-    font-weight: 800;
+    font-weight: 900;
 }
 
 .pf-role-pill {
     display: inline-flex;
     margin-top: 10px;
     padding: 4px 8px;
-    border: 1px solid rgba(218,183,151,.3);
+    border: 1px solid rgba(218,183,151,.25);
     border-radius: 999px;
-    color: #f1c99f;
+    color: #f7d3a7;
     font-size: .7rem;
-    font-weight: 800;
-}
-
-.pf-team-card-copy {
-    margin: 9px 0 0;
+    font-weight: 850;
 }
 
 .pf-team-list {
     display: grid;
     gap: 8px;
-    margin-top: 14px;
-}
-
-.pf-team-list > div {
-    display: flex;
-    justify-content: space-between;
-    gap: 14px;
-}
-
-.pf-team-list strong {
-    color: rgba(255,244,234,.82);
-    font-size: .76rem;
-    font-weight: 750;
+    margin-top: 12px;
 }
 
 .pf-team-list span {
@@ -273,31 +269,28 @@ html {
 }
 
 .pf-team-empty {
-    padding: 18px;
-    border: 1px dashed rgba(218,183,151,.28);
-    border-radius: 12px;
-    color: rgba(255,244,234,.72);
+    padding: 16px;
+    border: 1px dashed rgba(218,183,151,.25);
+    border-radius: 14px;
+    color: rgba(255,243,232,.72);
 }
 
 @media (max-width: 1100px) {
     .pf-team-invite-fields {
         grid-template-columns: repeat(2, minmax(0, 1fr));
     }
-
-    .pf-team-submit-field {
-        align-items: end;
-    }
 }
 
 @media (max-width: 700px) {
     .pf-team-invite-fields,
-    .pf-team-role-strip {
+    .pf-team-role-strip,
+    .pf-founder-lock > div {
         grid-template-columns: 1fr;
     }
 
     .pf-team-role-option {
         border-right: 0;
-        border-bottom: 1px solid rgba(218,183,151,.2);
+        border-bottom: 1px solid rgba(218,183,151,.14);
     }
 
     .pf-team-role-option:last-child {
@@ -306,20 +299,6 @@ html {
 
     .pf-team-submit-field .pf-action {
         width: 100%;
-    }
-
-    .pf-founder-lock > div {
-        grid-template-columns: 1fr;
-        gap: 3px;
-    }
-
-    .pf-team-list > div {
-        display: grid;
-        gap: 3px;
-    }
-
-    .pf-team-list span {
-        text-align: left;
     }
 }
 /* === PARFAIT TEAM COMPACT SYSTEM END === */
@@ -1448,10 +1427,10 @@ html {
 
 .pf-variant-row {
     display: grid;
-    grid-template-columns: minmax(82px, 0.78fr) minmax(90px, 0.82fr) minmax(96px, 0.9fr) auto minmax(126px, auto) auto;
-    gap: 0.55rem;
+    grid-template-columns: minmax(76px, 0.72fr) minmax(84px, 0.76fr) minmax(98px, 0.84fr) auto minmax(104px, auto) auto;
+    gap: 0.45rem;
     align-items: center;
-    padding: 0.72rem;
+    padding: 0.68rem;
     border: 1px solid var(--pf-line-strong);
     border-radius: 18px;
     background: var(--pf-surface-panel);
@@ -1498,13 +1477,17 @@ html {
 .pf-variant-status {
     display: grid;
     gap: 0.35rem;
+    min-width: 0;
+    justify-items: end;
+    text-align: right;
 }
 
 .pf-variant-status small {
     color: var(--pf-text-muted);
-    font-size: 0.7rem;
+    font-size: 0.66rem;
     font-weight: 760;
     line-height: 1.35;
+    white-space: nowrap;
 }
 
 .pf-discount-actions {
@@ -1547,6 +1530,18 @@ html {
     font-weight: 950;
     letter-spacing: 0.1em;
     text-transform: uppercase;
+}
+
+.pf-variant-row > label,
+.pf-discount-row > label {
+    min-width: 0;
+}
+
+.pf-variant-row > .pf-check {
+    justify-self: start;
+    white-space: nowrap;
+    font-size: 0.66rem;
+    letter-spacing: 0.08em;
 }
 
 .pf-analytics-table-wrap {
@@ -2495,6 +2490,25 @@ html {
 /* === PARFAIT ORDERS COMPACT SYSTEM END === */
 
 
+.pf-product-modal,
+.pf-image-editor-modal {
+    position: fixed;
+    inset: 0;
+    z-index: 1800;
+    display: none;
+    align-items: flex-start;
+    justify-content: center;
+    padding: 28px;
+    overflow: auto;
+    background: rgba(9, 6, 4, 0.62);
+    backdrop-filter: blur(10px);
+}
+
+.pf-product-modal.is-open,
+.pf-image-editor-modal.is-open {
+    display: flex;
+}
+
 .pf-image-editor-modal {
     z-index: 2000;
 }
@@ -2506,7 +2520,7 @@ html {
 }
 
 .pf-modal-xl {
-    width: min(100%, 1240px);
+    width: min(100%, 1340px);
 }
 
 .pf-modal-lg {
@@ -3432,8 +3446,7 @@ main.pf-internal-main {
 .pf-settings-card,
 .pf-editor-card,
 .pf-list-card,
-.pf-commerce-panel form,
-.pf-module-card form {
+.pf-commerce-panel form {
     background: linear-gradient(180deg, #fffaf4, #f1e3d4);
     border: 1px solid rgba(146,105,80,.30);
     border-radius: 18px;
@@ -3462,8 +3475,7 @@ main.pf-internal-main {
 
 
 /* Forms */
-.pf-commerce-panel form,
-.pf-module-card form {
+.pf-commerce-panel form {
     display: grid;
     gap: 16px;
 }
@@ -3563,7 +3575,7 @@ button.pf-secondary-action,
 }
 
 .pf-modal-dialog {
-    max-width: min(1120px, calc(100vw - 56px));
+    max-width: min(1340px, calc(100vw - 40px));
 }
 
 .pf-modal-content {
@@ -3581,8 +3593,8 @@ button.pf-secondary-action,
 
 .pf-modal-grid {
     display: grid;
-    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
-    gap: 16px;
+    grid-template-columns: minmax(400px, 0.88fr) minmax(540px, 1.12fr);
+    gap: 18px;
 }
 
 .pf-modal-grid > *,
@@ -4299,4 +4311,3 @@ button.pf-secondary-action,
 }
 
 /* === PARFAIT DASHBOARD EXECUTIVE GRID END === */
-
