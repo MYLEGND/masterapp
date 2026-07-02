@@ -18,7 +18,9 @@
     var healthIssues = Model.MetaHealth.FailureDetection.Where(issue => issue.Count > 0).Take(6).ToList();
 }
 
-<link rel="stylesheet" href="~/css/parfait-agentportal-analytics.css" asp-append-version="true" />
+@section Styles {
+    <link rel="stylesheet" href="~/css/parfait-agentportal-analytics.css" asp-append-version="true" />
+}
 
 <div class="container mt-4 mb-5 fa-shell parfait-analytics-shell">
     <section class="wa-command-surface mb-3">

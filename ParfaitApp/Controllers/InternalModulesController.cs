@@ -288,12 +288,13 @@ public sealed class InternalModulesController : Controller
         4)]
     public async Task<IActionResult> Analytics(
         [FromQuery] string? preset = "30d",
-        [FromQuery] string? from = null,
-        [FromQuery] string? to = null,
+        [FromQuery] DateTime? fromUtc = null,
+        [FromQuery] DateTime? toUtc = null,
         [FromQuery] string? qualityMode = null,
         CancellationToken ct = default)
     {
-        return View(await _internalAnalytics.GetDashboardAsync(preset, ct));
+        var resolvedQualityMode = TrafficQualityBucketFilters.ParseClientOrEnumValue(qualityMode);
+        return View(await _internalAnalytics.GetDashboardAsync(preset, fromUtc, toUtc, resolvedQualityMode, ct));
     }
 
     [HttpPost("analytics/meta-settings")]
@@ -306,7 +307,7 @@ public sealed class InternalModulesController : Controller
     {
         if (!ModelState.IsValid)
         {
-            var dashboard = await _internalAnalytics.GetDashboardAsync(preset, ct);
+            var dashboard = await _internalAnalytics.GetDashboardAsync(preset, null, null, TrafficQualityMode.RealHumanTraffic, ct);
             dashboard.MetaSettings.MetaPixelId = model.MetaPixelId;
             dashboard.MetaSettings.MetaTestEventCode = model.MetaTestEventCode;
             return View("Analytics", dashboard);
@@ -374,13 +375,22 @@ public sealed class InternalModulesController : Controller
 
     [HttpGet("analytics/meta-campaigns")]
     [ParfaitInternalPageAccess("/internal/analytics")]
-    public async Task<IActionResult> MetaCampaigns([FromQuery] string? preset = "30d", CancellationToken ct = default)
+    public async Task<IActionResult> MetaCampaigns(
+        [FromQuery] string? preset = "30d",
+        [FromQuery] DateTime? fromUtc = null,
+        [FromQuery] DateTime? toUtc = null,
+        [FromQuery] string? qualityMode = null,
+        CancellationToken ct = default)
     {
         try
         {
+            var resolvedQualityMode = TrafficQualityBucketFilters.ParseClientOrEnumValue(qualityMode);
             var range = TimeRangeRequest.FromPreset(
                 string.IsNullOrWhiteSpace(preset) ? "30d" : preset,
-                viewerTz: TimeZoneInfo.Utc);
+                fromUtc,
+                toUtc,
+                viewerTz: TimeZoneInfo.Utc,
+                qualityMode: resolvedQualityMode);
             var scope = ScopeContext.ForSite(ParfaitMetaAdsConnectionStoreAdapter.SiteKey, ParfaitMetaAdsConnectionStoreAdapter.SiteKey);
             var result = await _metaAds.GetCampaignsAsync(range, scope, ct);
             return Json(result);

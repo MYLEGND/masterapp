@@ -35,9 +35,19 @@ public sealed class ParfaitInternalAnalyticsService
         _orders = orders;
     }
 
-    public async Task<ParfaitInternalAnalyticsViewModel> GetDashboardAsync(string? preset = "30d", CancellationToken ct = default)
+    public async Task<ParfaitInternalAnalyticsViewModel> GetDashboardAsync(
+        string? preset = "30d",
+        DateTime? fromUtc = null,
+        DateTime? toUtc = null,
+        TrafficQualityMode qualityMode = TrafficQualityMode.RealHumanTraffic,
+        CancellationToken ct = default)
     {
-        var range = TimeRangeRequest.FromPreset(string.IsNullOrWhiteSpace(preset) ? "30d" : preset, viewerTz: TimeZoneInfo.Utc);
+        var range = TimeRangeRequest.FromPreset(
+            string.IsNullOrWhiteSpace(preset) ? "30d" : preset,
+            fromUtc,
+            toUtc,
+            viewerTz: TimeZoneInfo.Utc,
+            qualityMode: qualityMode);
         var scope = ScopeContext.ForSite(SiteKey, SiteKey);
 
         var summary = await _analytics.GetSummaryAsync(range, scope, TrafficType.All);
@@ -206,6 +216,9 @@ public sealed class ParfaitInternalAnalyticsService
         return new ParfaitInternalAnalyticsViewModel
         {
             SelectedPreset = range.Preset,
+            RangeFrom = fromUtc?.ToString("O") ?? "",
+            RangeTo = toUtc?.ToString("O") ?? "",
+            SelectedQualityMode = TrafficQualityBucketFilters.ToClientValue(range.QualityMode),
             RangeLabel = range.Label,
             Summary = summary,
             Traffic = traffic,
