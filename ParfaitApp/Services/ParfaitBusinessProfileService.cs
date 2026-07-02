@@ -19,44 +19,51 @@ public sealed class ParfaitBusinessProfileService : IParfaitBusinessProfileServi
 {
     private readonly IWebHostEnvironment _environment;
     private readonly ParfaitMetaCapiCredentialProtector _metaCredentialProtector;
+    private readonly ParfaitBusinessScopeService _businessScope;
     private readonly object _lock = new();
 
     public ParfaitBusinessProfileService(
         IWebHostEnvironment environment,
-        ParfaitMetaCapiCredentialProtector metaCredentialProtector)
+        ParfaitMetaCapiCredentialProtector metaCredentialProtector,
+        ParfaitBusinessScopeService businessScope)
     {
         _environment = environment;
         _metaCredentialProtector = metaCredentialProtector;
+        _businessScope = businessScope;
     }
 
     private string DataPath => Path.Combine(_environment.ContentRootPath, "App_Data", "parfait-business-profile.json");
 
-    public Task<ParfaitBusinessProfileViewModel> GetProfileAsync(CancellationToken ct = default)
+    public async Task<ParfaitBusinessProfileViewModel> GetProfileAsync(CancellationToken ct = default)
     {
         var store = LoadStore();
+        var business = await _businessScope.GetParfaitAsync(ct);
 
-        return Task.FromResult(new ParfaitBusinessProfileViewModel
+        return new ParfaitBusinessProfileViewModel
         {
-            StoreName = store.StoreName,
-            BusinessType = store.BusinessType,
+            StoreName = business.DisplayName,
+            BusinessType = business.BusinessType,
             GlobalStoreCheckoutUrl = store.GlobalStoreCheckoutUrl,
             DomainStatus = "Parfait production profile active",
             AnalyticsStatus = "Managed in Analytics",
             TrustStatus = "Managed in Analytics"
-        });
+        };
     }
 
-    public Task SaveProfileAsync(ParfaitBusinessProfileViewModel model, CancellationToken ct = default)
+    public async Task SaveProfileAsync(ParfaitBusinessProfileViewModel model, CancellationToken ct = default)
     {
+        var business = await _businessScope.GetParfaitAsync(ct);
         var store = LoadStore();
 
-        store.StoreName = CleanRequired(model.StoreName, "Parfait");
-        store.BusinessType = CleanRequired(model.BusinessType, "Apparel / Ecommerce");
+        business.DisplayName = CleanRequired(model.StoreName, "Parfait");
+        business.BusinessType = CleanRequired(model.BusinessType, "Apparel / Ecommerce");
+        business.UpdatedUtc = DateTime.UtcNow;
+
         store.GlobalStoreCheckoutUrl = CleanOptional(model.GlobalStoreCheckoutUrl);
         store.UpdatedUtc = DateTime.UtcNow;
 
+        await _businessScope.SaveChangesAsync(ct);
         SaveStore(store);
-        return Task.CompletedTask;
     }
 
     public Task<ParfaitMetaAnalyticsSettingsViewModel> GetMetaSettingsAsync(CancellationToken ct = default)
@@ -251,11 +258,7 @@ public sealed class ParfaitBusinessProfileService : IParfaitBusinessProfileServi
 
     private static ParfaitBusinessProfileStore CreateDefaultStore()
     {
-        return new ParfaitBusinessProfileStore
-        {
-            StoreName = "Parfait",
-            BusinessType = "Apparel / Ecommerce"
-        };
+        return new ParfaitBusinessProfileStore();
     }
 
     private static string CleanRequired(string? value, string fallback)
@@ -272,8 +275,6 @@ public sealed class ParfaitBusinessProfileService : IParfaitBusinessProfileServi
 
     private sealed class ParfaitBusinessProfileStore
     {
-        public string StoreName { get; set; } = "Parfait";
-        public string BusinessType { get; set; } = "Apparel / Ecommerce";
         public string? GlobalStoreCheckoutUrl { get; set; }
         public string? MetaPixelId { get; set; }
         public string? MetaTestEventCode { get; set; }

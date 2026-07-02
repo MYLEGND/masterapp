@@ -44,4 +44,9 @@ public sealed class ParfaitBusinessScopeService
 
         return business;
     }
+
+    public Task SaveChangesAsync(CancellationToken ct = default)
+    {
+        return _db.SaveChangesAsync(ct);
+    }
 }
