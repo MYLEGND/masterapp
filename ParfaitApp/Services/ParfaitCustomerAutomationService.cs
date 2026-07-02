@@ -9,25 +9,25 @@ public sealed class ParfaitCustomerAutomationService
     private static readonly TimeSpan CartLeadRetentionWindow = TimeSpan.FromDays(45);
     private static readonly TimeSpan DispatchRetentionWindow = TimeSpan.FromDays(180);
 
-    private readonly IWebHostEnvironment _environment;
+    private readonly ParfaitStoragePaths _storagePaths;
     private readonly IConfiguration _configuration;
     private readonly ParfaitOrderService _orders;
     private readonly ParfaitProductService _products;
     private readonly object _lock = new();
 
     public ParfaitCustomerAutomationService(
-        IWebHostEnvironment environment,
+        ParfaitStoragePaths storagePaths,
         IConfiguration configuration,
         ParfaitOrderService orders,
         ParfaitProductService products)
     {
-        _environment = environment;
+        _storagePaths = storagePaths;
         _configuration = configuration;
         _orders = orders;
         _products = products;
     }
 
-    private string DataPath => Path.Combine(_environment.ContentRootPath, "App_Data", "parfait-customer-automations.json");
+    private string DataPath => _storagePaths.CustomerAutomationsPath;
 
     public ParfaitAutomationWorkspaceViewModel GetWorkspaceViewModel()
     {

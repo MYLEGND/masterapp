@@ -23,21 +23,21 @@ public sealed class ParfaitTeamAccessService : IParfaitTeamAccessService
     private const string TeamPageKey = "/internal/settings/team";
     private static readonly object FileLock = new();
 
-    private readonly IWebHostEnvironment _environment;
+    private readonly ParfaitStoragePaths _storagePaths;
     private readonly IParfaitInternalPageRegistry _pages;
     private readonly IGraphMailService _graphMail;
 
     public ParfaitTeamAccessService(
-        IWebHostEnvironment environment,
+        ParfaitStoragePaths storagePaths,
         IParfaitInternalPageRegistry pages,
         IGraphMailService graphMail)
     {
-        _environment = environment;
+        _storagePaths = storagePaths;
         _pages = pages;
         _graphMail = graphMail;
     }
 
-    private string DataPath => Path.Combine(_environment.ContentRootPath, "App_Data", "parfait-team-access.json");
+    private string DataPath => _storagePaths.TeamAccessPath;
 
     public Task<ParfaitTeamSignInResult> AuthorizeSignInAsync(ClaimsPrincipal user, CancellationToken ct = default)
     {

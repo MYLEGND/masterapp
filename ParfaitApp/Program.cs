@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.Authentication.OpenIdConnect;
 using Microsoft.AspNetCore.Http.Extensions;
 using Microsoft.AspNetCore.HttpOverrides;
+using Microsoft.Extensions.FileProviders;
 using Microsoft.IdentityModel.Protocols.OpenIdConnect;
 using Infrastructure.Analytics;
 using ParfaitApp.Services;
@@ -107,6 +108,7 @@ builder.Services.AddHttpClient<SquarePaymentService>();
 builder.Services.AddHttpClient("ResilientDefault")
     .SetHandlerLifetime(TimeSpan.FromMinutes(5));
 builder.Services.AddHttpContextAccessor();
+builder.Services.AddSingleton<ParfaitStoragePaths>();
 builder.Services.AddScoped<ParfaitAnalyticsService>();
 builder.Services.AddScoped<ParfaitMetaSignalBridgeService>();
 builder.Services.AddScoped<IAnalyticsQueryService, AnalyticsQueryService>();
@@ -251,6 +253,11 @@ builder.Services.AddSession(options =>
 var app = builder.Build();
 
 {
+    var storagePaths = app.Services.GetRequiredService<ParfaitStoragePaths>();
+    storagePaths.EnsureInitialized();
+}
+
+{
     using var scope = app.Services.CreateScope();
     var startupLogger = scope.ServiceProvider
         .GetRequiredService<ILoggerFactory>()
@@ -299,6 +306,11 @@ app.Use(async (context, next) =>
     }
 
     await next();
+});
+app.UseStaticFiles(new StaticFileOptions
+{
+    RequestPath = "/uploads/parfait-products",
+    FileProvider = app.Services.GetRequiredService<ParfaitStoragePaths>().BuildUploadFileProvider()
 });
 app.UseStaticFiles();
 app.UseRouting();

@@ -1,6 +1,7 @@
 <script>
 (() => {
-    if (!location.pathname.toLowerCase().startsWith("/store")) return;
+    const pathLower = location.pathname.toLowerCase();
+    if (pathLower.startsWith("/internal") || pathLower.startsWith("/signin-oidc") || pathLower.startsWith("/signout-callback-oidc")) return;
 
     const trackingVersion = "parfait-commerce-tracking-v2";
     const pageStartMs = Date.now();
@@ -45,6 +46,7 @@
 
     const currentPageKey = () => {
         const path = currentPath().toLowerCase().replace(/\/+$/, "");
+        if (!path || path === "/") return "parfait_home";
         if (path === "/store") return "parfait_store_home";
         if (path === "/store/cart") return "parfait_cart";
         if (path === "/store/checkout") return "parfait_checkout";
@@ -55,12 +57,13 @@
 
     const currentPageType = () => {
         const path = currentPath().toLowerCase();
+        if (path === "/") return "marketing_home";
         if (path === "/store") return "store_index";
         if (path === "/store/cart") return "cart";
         if (path === "/store/checkout") return "checkout";
         if (path === "/store/success") return "success";
         if (path.startsWith("/store/product/")) return "product_detail";
-        return "store_page";
+        return "marketing_page";
     };
 
     const detectDeviceType = () => {

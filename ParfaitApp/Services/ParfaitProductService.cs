@@ -15,16 +15,16 @@ public sealed class ParfaitProductService
 
     private static readonly object Lock = new();
 
-    private readonly IWebHostEnvironment _environment;
+    private readonly ParfaitStoragePaths _storagePaths;
     private readonly MasterAppDbContext _db;
 
-    public ParfaitProductService(IWebHostEnvironment environment, MasterAppDbContext db)
+    public ParfaitProductService(ParfaitStoragePaths storagePaths, MasterAppDbContext db)
     {
-        _environment = environment;
+        _storagePaths = storagePaths;
         _db = db;
     }
 
-    private string UploadRoot => Path.Combine(_environment.WebRootPath, "uploads", "parfait-products");
+    private string UploadRoot => _storagePaths.UploadRoot;
 
     public IReadOnlyList<ParfaitProductEditorViewModel> GetAllProducts()
     {
@@ -405,6 +405,7 @@ public sealed class ParfaitProductService
             return;
 
         var productFolder = Path.Combine(UploadRoot, product.ExternalProductKey);
+        _storagePaths.EnsureInitialized();
         Directory.CreateDirectory(productFolder);
 
         var nextOrder = product.Images.Count == 0 ? 10 : product.Images.Max(image => image.DisplayOrder) + 10;
@@ -429,7 +430,7 @@ public sealed class ParfaitProductService
             {
                 ExternalImageKey = imageId,
                 FileName = safeFileName,
-                ImageUrl = $"/uploads/parfait-products/{product.ExternalProductKey}/{safeFileName}",
+                ImageUrl = _storagePaths.GetImageUrl(product.ExternalProductKey, safeFileName),
                 AltText = product.Name,
                 IsPrimary = product.Images.Count == 0,
                 DisplayOrder = nextOrder,
@@ -467,9 +468,11 @@ public sealed class ParfaitProductService
             if (image is null)
                 return;
 
-            var physicalPath = Path.Combine(_environment.WebRootPath, image.ImageUrl.TrimStart('/').Replace('/', Path.DirectorySeparatorChar));
-            if (File.Exists(physicalPath))
-                File.Delete(physicalPath);
+            foreach (var physicalPath in _storagePaths.ResolveImagePhysicalPaths(image.ImageUrl))
+            {
+                if (File.Exists(physicalPath))
+                    File.Delete(physicalPath);
+            }
 
             product.Images.Remove(image);
             EnsureOnePrimaryImage(product);

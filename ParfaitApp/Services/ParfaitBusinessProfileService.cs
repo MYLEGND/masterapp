@@ -17,22 +17,22 @@ public interface IParfaitBusinessProfileService
 
 public sealed class ParfaitBusinessProfileService : IParfaitBusinessProfileService
 {
-    private readonly IWebHostEnvironment _environment;
+    private readonly ParfaitStoragePaths _storagePaths;
     private readonly ParfaitMetaCapiCredentialProtector _metaCredentialProtector;
     private readonly ParfaitBusinessScopeService _businessScope;
     private readonly object _lock = new();
 
     public ParfaitBusinessProfileService(
-        IWebHostEnvironment environment,
+        ParfaitStoragePaths storagePaths,
         ParfaitMetaCapiCredentialProtector metaCredentialProtector,
         ParfaitBusinessScopeService businessScope)
     {
-        _environment = environment;
+        _storagePaths = storagePaths;
         _metaCredentialProtector = metaCredentialProtector;
         _businessScope = businessScope;
     }
 
-    private string DataPath => Path.Combine(_environment.ContentRootPath, "App_Data", "parfait-business-profile.json");
+    private string DataPath => _storagePaths.BusinessProfilePath;
 
     public async Task<ParfaitBusinessProfileViewModel> GetProfileAsync(CancellationToken ct = default)
     {
@@ -247,6 +247,7 @@ public sealed class ParfaitBusinessProfileService : IParfaitBusinessProfileServi
 
     private void EnsureDataFile()
     {
+        _storagePaths.EnsureInitialized();
         Directory.CreateDirectory(Path.GetDirectoryName(DataPath)!);
 
         if (File.Exists(DataPath))

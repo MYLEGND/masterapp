@@ -76,7 +76,7 @@ public sealed class ParfaitAnalyticsService
         Set(analyticsEvent, "ReferrerHost", referrerHost);
         Set(analyticsEvent, "UserAgent", userAgent);
         Set(analyticsEvent, "IpAddress", ip);
-        Set(analyticsEvent, "Environment", "ParfaitApp");
+        Set(analyticsEvent, "Environment", ResolveEnvironment(httpContext));
         Set(analyticsEvent, "SourceApp", "ParfaitApp");
         Set(analyticsEvent, "DeviceType", request.DeviceType);
         Set(analyticsEvent, "Browser", request.Browser);
@@ -269,10 +269,15 @@ public sealed class ParfaitAnalyticsService
         var path = (sourcePath ?? string.Empty).Trim();
         if (string.IsNullOrWhiteSpace(path))
         {
-            return "parfait_store_unknown";
+            return "parfait_home";
         }
 
         var normalizedPath = path.TrimEnd('/');
+        if (string.IsNullOrWhiteSpace(normalizedPath))
+        {
+            return "parfait_home";
+        }
+
         if (string.Equals(normalizedPath, "/store", StringComparison.OrdinalIgnoreCase))
         {
             return "parfait_store_home";
@@ -300,6 +305,29 @@ public sealed class ParfaitAnalyticsService
         }
 
         return $"parfait_{NormalizeKey(normalizedPath.Trim('/').Replace('/', '_'))}";
+    }
+
+    private static string ResolveEnvironment(HttpContext httpContext)
+    {
+        var current = Environment.GetEnvironmentVariable("ASPNETCORE_ENVIRONMENT");
+        if (!string.IsNullOrWhiteSpace(current))
+        {
+            var normalized = current.Trim();
+            if (normalized.StartsWith("prod", StringComparison.OrdinalIgnoreCase)) return "production";
+            if (normalized.StartsWith("dev", StringComparison.OrdinalIgnoreCase)) return "development";
+            return normalized;
+        }
+
+        var host = httpContext.Request.Host.Host?.Trim() ?? string.Empty;
+        if (host.Contains("localhost", StringComparison.OrdinalIgnoreCase) ||
+            host.StartsWith("127.", StringComparison.OrdinalIgnoreCase) ||
+            host.StartsWith("::1", StringComparison.OrdinalIgnoreCase) ||
+            host.StartsWith("[::1]", StringComparison.OrdinalIgnoreCase))
+        {
+            return "development";
+        }
+
+        return "production";
     }
 
     private static string NormalizeKey(string? value)
