@@ -44,6 +44,9 @@ public class MasterAppDbContext : DbContext
     public DbSet<AgentZoomLink> AgentZoomLinks => Set<AgentZoomLink>();
     public DbSet<CommerceBusiness> CommerceBusinesses => Set<CommerceBusiness>();
     public DbSet<CommerceBusinessSettings> CommerceBusinessSettings => Set<CommerceBusinessSettings>();
+    public DbSet<CommerceBusinessMember> CommerceBusinessMembers => Set<CommerceBusinessMember>();
+    public DbSet<CommerceBusinessSubscription> CommerceBusinessSubscriptions => Set<CommerceBusinessSubscription>();
+    public DbSet<CommerceBusinessStorefrontSettings> CommerceBusinessStorefrontSettings => Set<CommerceBusinessStorefrontSettings>();
     public DbSet<CommerceProduct> CommerceProducts => Set<CommerceProduct>();
     public DbSet<CommerceProductImage> CommerceProductImages => Set<CommerceProductImage>();
     public DbSet<CommerceProductInventoryItem> CommerceProductInventoryItems => Set<CommerceProductInventoryItem>();
@@ -77,6 +80,54 @@ public class MasterAppDbContext : DbContext
             e.Property(x => x.GlobalDiscountType).IsRequired().HasMaxLength(40);
             e.Property(x => x.TaxPercent).HasPrecision(9, 4);
             e.Property(x => x.GlobalDiscountAmount).HasPrecision(9, 4);
+            e.HasIndex(x => x.CommerceBusinessId).IsUnique();
+            e.HasOne(x => x.CommerceBusiness)
+                .WithMany()
+                .HasForeignKey(x => x.CommerceBusinessId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        modelBuilder.Entity<CommerceBusinessMember>(e =>
+        {
+            e.HasKey(x => x.Id);
+            e.Property(x => x.Email).IsRequired().HasMaxLength(320);
+            e.Property(x => x.NormalizedEmail).IsRequired().HasMaxLength(320);
+            e.Property(x => x.DisplayName).IsRequired().HasMaxLength(160);
+            e.Property(x => x.RoleKey).IsRequired().HasMaxLength(80);
+            e.Property(x => x.Status).IsRequired().HasMaxLength(40);
+            e.HasIndex(x => new { x.CommerceBusinessId, x.NormalizedEmail }).IsUnique();
+            e.HasIndex(x => x.NormalizedEmail);
+            e.HasOne(x => x.CommerceBusiness)
+                .WithMany()
+                .HasForeignKey(x => x.CommerceBusinessId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        modelBuilder.Entity<CommerceBusinessSubscription>(e =>
+        {
+            e.HasKey(x => x.Id);
+            e.Property(x => x.PlanKey).IsRequired().HasMaxLength(80);
+            e.Property(x => x.PlanName).IsRequired().HasMaxLength(120);
+            e.Property(x => x.Status).IsRequired().HasMaxLength(40);
+            e.Property(x => x.BillingProvider).IsRequired().HasMaxLength(80);
+            e.Property(x => x.BillingCustomerId).HasMaxLength(160);
+            e.Property(x => x.BillingSubscriptionId).HasMaxLength(160);
+            e.HasIndex(x => x.CommerceBusinessId).IsUnique();
+            e.HasIndex(x => x.Status);
+            e.HasOne(x => x.CommerceBusiness)
+                .WithMany()
+                .HasForeignKey(x => x.CommerceBusinessId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        modelBuilder.Entity<CommerceBusinessStorefrontSettings>(e =>
+        {
+            e.HasKey(x => x.Id);
+            e.Property(x => x.BrandHeadline).IsRequired().HasMaxLength(180);
+            e.Property(x => x.BrandSubheadline).IsRequired().HasMaxLength(300);
+            e.Property(x => x.AccentColor).IsRequired().HasMaxLength(40);
+            e.Property(x => x.LogoUrl).IsRequired().HasMaxLength(2048);
+            e.Property(x => x.StorefrontStatus).IsRequired().HasMaxLength(40);
             e.HasIndex(x => x.CommerceBusinessId).IsUnique();
             e.HasOne(x => x.CommerceBusiness)
                 .WithMany()

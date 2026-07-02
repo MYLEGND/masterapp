@@ -97,6 +97,7 @@ builder.Services.AddDbContext<MasterAppDbContext>(options =>
 });
 
 builder.Services.AddScoped<ParfaitBusinessScopeService>();
+builder.Services.AddScoped<IParfaitBusinessPlatformService, ParfaitBusinessPlatformService>();
 builder.Services.AddScoped<ParfaitProductService>();
 builder.Services.AddScoped<ParfaitOrderService>();
 builder.Services.AddScoped<ParfaitCustomerAutomationService>();

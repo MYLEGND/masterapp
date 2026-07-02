@@ -1,0 +1,143 @@
+@model ParfaitApp.Models.ParfaitBusinessPlatformConsoleViewModel
+@{
+    ViewData["Title"] = "Businesses";
+    Layout = "_InternalLayout";
+}
+
+<section class="pf-command-page pf-business-platform-page">
+    <header class="pf-command-head">
+        <div class="pf-command-copy">
+            <p class="pf-business-platform-eyebrow">Platform owner console</p>
+            <h1 class="pf-command-title">Business Accounts</h1>
+            <p class="pf-command-text">Create business tenants, assign owners, control subscription state, and enter each scoped store workspace.</p>
+        </div>
+        <div class="pf-command-meta">
+            <span class="pf-command-badge is-info">Platform owners only</span>
+            <span class="pf-command-badge is-success">@Model.Businesses.Count businesses</span>
+        </div>
+    </header>
+
+    @if (TempData["BusinessStatus"] is string status)
+    {
+        <div class="pf-alert-success">@status</div>
+    }
+
+    @if (TempData["BusinessError"] is string error)
+    {
+        <div class="pf-alert-danger">@error</div>
+    }
+
+    <section class="pf-command-rail" aria-label="Platform business summary">
+        <article class="pf-rail-card is-info pf-span-4">
+            <div class="pf-rail-label">Authority</div>
+            <strong class="pf-rail-value">Owner gated</strong>
+            <p class="pf-rail-note">@Model.OwnerEmailSummary</p>
+        </article>
+        <article class="pf-rail-card is-success pf-span-4">
+            <div class="pf-rail-label">Subscriptions</div>
+            <strong class="pf-rail-value">@Model.Businesses.Count(x => x.SubscriptionStatus.Equals("Active", StringComparison.OrdinalIgnoreCase)) active</strong>
+            <p class="pf-rail-note">Plan and billing state belong to each business account.</p>
+        </article>
+        <article class="pf-rail-card is-info pf-span-4">
+            <div class="pf-rail-label">Scope</div>
+            <strong class="pf-rail-value">Tenant-safe</strong>
+            <p class="pf-rail-note">Catalog, orders, members, settings, and storefront records resolve through the business.</p>
+        </article>
+    </section>
+
+    <section class="pf-workspace-grid">
+        <section class="pf-module-card pf-span-8">
+            <div class="pf-business-platform-section-head">
+                <div>
+                    <p class="pf-business-platform-eyebrow">Managed tenants</p>
+                    <h2 class="pf-module-title">Business scopes</h2>
+                </div>
+                <p class="pf-business-platform-note">Parfait is the first tenant. New businesses should be created here before their store, team, subscription, and storefront settings are configured.</p>
+            </div>
+
+            <div class="pf-business-account-list">
+                @foreach (var business in Model.Businesses)
+                {
+                    <article class="pf-business-account-card">
+                        <div class="pf-business-account-main">
+                            <div>
+                                <p class="pf-business-account-key">@business.Key</p>
+                                <h3>@business.DisplayName</h3>
+                                <p>@business.BusinessType · @business.LegalName</p>
+                            </div>
+                            <div class="pf-business-account-badges">
+                                <span class="pf-command-badge is-success">@business.BusinessStatus</span>
+                                <span class="pf-command-badge is-info">@business.SubscriptionPlan · @business.SubscriptionStatus</span>
+                            </div>
+                        </div>
+
+                        <div class="pf-business-account-metrics">
+                            <div><span>Owner</span><strong>@business.OwnerEmail</strong></div>
+                            <div><span>Domain</span><strong>@(string.IsNullOrWhiteSpace(business.PrimaryDomain) ? "Not set" : business.PrimaryDomain)</strong></div>
+                            <div><span>Products</span><strong>@business.Products</strong></div>
+                            <div><span>Orders</span><strong>@business.Orders</strong></div>
+                            <div><span>Members</span><strong>@business.Members</strong></div>
+                        </div>
+
+                        <div class="pf-business-account-actions">
+                            <a class="pf-secondary-action" href="/internal/commerce/products">Catalog</a>
+                            <a class="pf-secondary-action" href="/internal/commerce/orders">Orders</a>
+                            <a class="pf-secondary-action" href="/internal/analytics">Analytics</a>
+                        </div>
+                    </article>
+                }
+            </div>
+        </section>
+
+        <aside class="pf-module-card pf-span-4">
+            <div class="pf-business-platform-section-head is-stacked">
+                <div>
+                    <p class="pf-business-platform-eyebrow">Create tenant</p>
+                    <h2 class="pf-module-title">New business</h2>
+                </div>
+                <p class="pf-business-platform-note">Only platform owners can create business accounts and assign subscription plans.</p>
+            </div>
+
+            <form method="post" action="/internal/businesses" class="pf-business-create-form">
+                @Html.AntiForgeryToken()
+
+                <label class="form-label fw-bold" asp-for="NewBusiness.Key"></label>
+                <input class="form-control" asp-for="NewBusiness.Key" name="Key" placeholder="example-store" />
+                <span class="text-danger small" asp-validation-for="NewBusiness.Key"></span>
+
+                <label class="form-label fw-bold" asp-for="NewBusiness.DisplayName"></label>
+                <input class="form-control" asp-for="NewBusiness.DisplayName" name="DisplayName" placeholder="Example Store" />
+                <span class="text-danger small" asp-validation-for="NewBusiness.DisplayName"></span>
+
+                <label class="form-label fw-bold" asp-for="NewBusiness.LegalName"></label>
+                <input class="form-control" asp-for="NewBusiness.LegalName" name="LegalName" placeholder="Example LLC" />
+                <span class="text-danger small" asp-validation-for="NewBusiness.LegalName"></span>
+
+                <label class="form-label fw-bold" asp-for="NewBusiness.BusinessType"></label>
+                <input class="form-control" asp-for="NewBusiness.BusinessType" name="BusinessType" placeholder="Ecommerce" />
+                <span class="text-danger small" asp-validation-for="NewBusiness.BusinessType"></span>
+
+                <label class="form-label fw-bold" asp-for="NewBusiness.OwnerEmail"></label>
+                <input class="form-control" asp-for="NewBusiness.OwnerEmail" name="OwnerEmail" placeholder="owner@example.com" />
+                <span class="text-danger small" asp-validation-for="NewBusiness.OwnerEmail"></span>
+
+                <label class="form-label fw-bold" asp-for="NewBusiness.PrimaryDomain"></label>
+                <input class="form-control" asp-for="NewBusiness.PrimaryDomain" name="PrimaryDomain" placeholder="store.example.com" />
+                <span class="text-danger small" asp-validation-for="NewBusiness.PrimaryDomain"></span>
+
+                <label class="form-label fw-bold" asp-for="NewBusiness.PlanKey"></label>
+                <select class="form-select" asp-for="NewBusiness.PlanKey" name="PlanKey">
+                    <option value="starter">Starter · $49/mo</option>
+                    <option value="growth">Growth · $99/mo</option>
+                    <option value="scale">Scale · $199/mo</option>
+                </select>
+
+                <button type="submit" class="pf-action">Create business account</button>
+            </form>
+        </aside>
+    </section>
+</section>
+
+@section Scripts {
+    <partial name="_ValidationScriptsPartial" />
+}

@@ -4289,3 +4289,201 @@ button.pf-secondary-action,
 }
 
 /* === PARFAIT DASHBOARD EXECUTIVE GRID END === */
+
+/* === PARFAIT BUSINESS PLATFORM CONSOLE START === */
+.pf-business-platform-page {
+    gap: 18px;
+}
+
+.pf-business-platform-page .pf-command-head,
+.pf-business-platform-page .pf-command-rail .pf-rail-card {
+    color: #fff;
+}
+
+.pf-business-platform-page .pf-command-text,
+.pf-business-platform-page .pf-rail-note {
+    color: rgba(255, 255, 255, .82);
+}
+
+.pf-business-platform-page > .pf-workspace-grid > .pf-module-card {
+    background: #fffaf6;
+    color: var(--pf-text);
+}
+
+.pf-business-platform-eyebrow {
+    margin: 0 0 6px;
+    color: #b98968;
+    font-size: .68rem;
+    font-weight: 950;
+    letter-spacing: .14em;
+    text-transform: uppercase;
+}
+
+.pf-business-platform-page > .pf-workspace-grid .pf-business-platform-eyebrow {
+    color: var(--pf-cocoa);
+}
+
+.pf-business-platform-section-head {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 18px;
+    margin-bottom: 16px;
+}
+
+.pf-business-platform-section-head.is-stacked {
+    display: block;
+}
+
+.pf-business-platform-note {
+    max-width: 390px;
+    margin: 0;
+    color: var(--pf-text-muted);
+    font-size: .8rem;
+    font-weight: 720;
+    line-height: 1.45;
+}
+
+.pf-business-account-list {
+    display: grid;
+    gap: 12px;
+}
+
+.pf-business-account-card {
+    border: 1px solid rgba(86, 49, 34, .18);
+    border-radius: 22px;
+    padding: 16px;
+    background: #fff;
+    box-shadow: 0 14px 30px rgba(31, 18, 13, .08);
+}
+
+.pf-business-account-main {
+    display: flex;
+    justify-content: space-between;
+    gap: 16px;
+}
+
+.pf-business-account-key {
+    margin: 0 0 4px;
+    color: var(--pf-cocoa);
+    font-size: .68rem;
+    font-weight: 950;
+    letter-spacing: .12em;
+    text-transform: uppercase;
+}
+
+.pf-business-account-card h3 {
+    margin: 0;
+    color: var(--pf-text);
+    font-size: 1.18rem;
+    font-weight: 950;
+    letter-spacing: -.03em;
+}
+
+.pf-business-account-card p {
+    margin: 4px 0 0;
+    color: var(--pf-text-muted);
+    font-size: .82rem;
+    font-weight: 750;
+}
+
+.pf-business-account-badges {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+    gap: 7px;
+}
+
+.pf-business-account-metrics {
+    display: grid;
+    grid-template-columns: 1.4fr 1.2fr repeat(3, .7fr);
+    gap: 8px;
+    margin-top: 14px;
+}
+
+.pf-business-account-metrics div {
+    min-width: 0;
+    border: 1px solid rgba(86, 49, 34, .14);
+    border-radius: 16px;
+    padding: 10px 11px;
+    background: #fffaf6;
+}
+
+.pf-business-account-metrics span {
+    display: block;
+    color: var(--pf-cocoa);
+    font-size: .66rem;
+    font-weight: 950;
+    letter-spacing: .1em;
+    text-transform: uppercase;
+}
+
+.pf-business-account-metrics strong {
+    display: block;
+    overflow: hidden;
+    margin-top: 4px;
+    color: var(--pf-text);
+    font-size: .84rem;
+    font-weight: 950;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.pf-business-account-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-top: 14px;
+}
+
+.pf-business-create-form {
+    display: grid;
+    gap: 9px;
+}
+
+.pf-business-create-form .form-label {
+    margin: 4px 0 -4px;
+    color: var(--pf-cocoa);
+    font-size: .72rem;
+    font-weight: 950;
+    letter-spacing: .08em;
+    text-transform: uppercase;
+}
+
+.pf-business-create-form .form-control,
+.pf-business-create-form .form-select {
+    min-height: 44px;
+    border-radius: 15px;
+    border-color: rgba(86, 49, 34, .22);
+    background: #fff;
+    color: var(--pf-text);
+    font-weight: 800;
+}
+
+.pf-business-create-form .pf-action {
+    justify-content: center;
+    width: 100%;
+    margin-top: 8px;
+}
+
+@media (max-width: 980px) {
+    .pf-business-account-main,
+    .pf-business-platform-section-head {
+        display: grid;
+    }
+
+    .pf-business-account-badges {
+        justify-content: flex-start;
+    }
+
+    .pf-business-account-metrics {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+}
+
+@media (max-width: 620px) {
+    .pf-business-account-metrics {
+        grid-template-columns: 1fr;
+    }
+}
+/* === PARFAIT BUSINESS PLATFORM CONSOLE END === */
