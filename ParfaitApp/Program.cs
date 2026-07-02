@@ -249,6 +249,25 @@ builder.Services.AddSession(options =>
 
 var app = builder.Build();
 
+{
+    using var scope = app.Services.CreateScope();
+    var startupLogger = scope.ServiceProvider
+        .GetRequiredService<ILoggerFactory>()
+        .CreateLogger("ParfaitStartup");
+
+    var db = scope.ServiceProvider.GetRequiredService<MasterAppDbContext>();
+
+    if (db.Database.IsSqlite())
+    {
+        await MasterAppSqliteSchemaBootstrapper.InitializeAsync(db, startupLogger, app.Lifetime.ApplicationStopping);
+        startupLogger.LogInformation("Parfait SQLite startup schema bootstrap completed successfully.");
+    }
+    else
+    {
+        startupLogger.LogInformation("Parfait SQL Server detected — startup auto-migration is disabled.");
+    }
+}
+
 app.UseForwardedHeaders();
 
 if (app.Environment.IsDevelopment())

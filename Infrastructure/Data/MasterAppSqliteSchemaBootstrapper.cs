@@ -8,6 +8,7 @@ namespace Infrastructure.Data;
 public static class MasterAppSqliteSchemaBootstrapper
 {
     private const string LegacyBootstrapBaselineMigrationId = "20260618104500_AddAnalyticsDriftAlerts";
+    private const string CommerceBusinessScopeMigrationId = "20260702160000_AddCommerceBusinessScope";
 
     private static readonly ColumnPatch[] AdditiveColumnPatches =
     {
@@ -45,6 +46,12 @@ public static class MasterAppSqliteSchemaBootstrapper
         new("IX_AnalyticsDriftAlerts_ObservedUtc", "CREATE INDEX \"IX_AnalyticsDriftAlerts_ObservedUtc\" ON \"AnalyticsDriftAlerts\" (\"ObservedUtc\")"),
         new("IX_AnalyticsDriftAlerts_ScopeKey_ObservedUtc", "CREATE INDEX \"IX_AnalyticsDriftAlerts_ScopeKey_ObservedUtc\" ON \"AnalyticsDriftAlerts\" (\"ScopeKey\", \"ObservedUtc\")"),
         new("IX_AnalyticsDriftAlerts_Severity", "CREATE INDEX \"IX_AnalyticsDriftAlerts_Severity\" ON \"AnalyticsDriftAlerts\" (\"Severity\")")
+    };
+
+    private static readonly IndexPatch[] CommerceBusinessIndexes =
+    {
+        new("IX_CommerceBusinesses_IsActive", "CREATE INDEX \"IX_CommerceBusinesses_IsActive\" ON \"CommerceBusinesses\" (\"IsActive\")"),
+        new("IX_CommerceBusinesses_Key", "CREATE UNIQUE INDEX \"IX_CommerceBusinesses_Key\" ON \"CommerceBusinesses\" (\"Key\")")
     };
 
     public static async Task InitializeAsync(
@@ -99,7 +106,21 @@ public static class MasterAppSqliteSchemaBootstrapper
                 }
             }
 
+            if (await CreateCommerceBusinessesTableIfMissingAsync(connection, cancellationToken))
+            {
+                repairs.Add("CommerceBusinesses");
+            }
+
+            foreach (var index in CommerceBusinessIndexes)
+            {
+                if (await CreateIndexIfMissingAsync(connection, index, cancellationToken))
+                {
+                    repairs.Add(index.Name);
+                }
+            }
+
             await StampMigrationHistoryAsync(db, connection, createdFromModel, logger, cancellationToken);
+            await StampMigrationIfMissingAsync(db, connection, CommerceBusinessScopeMigrationId, cancellationToken);
             await db.Database.MigrateAsync(cancellationToken);
 
             if (createdFromModel)
@@ -183,6 +204,35 @@ public static class MasterAppSqliteSchemaBootstrapper
         return true;
     }
 
+
+    private static async Task<bool> CreateCommerceBusinessesTableIfMissingAsync(
+        DbConnection connection,
+        CancellationToken cancellationToken)
+    {
+        if (await TableExistsAsync(connection, "CommerceBusinesses", cancellationToken))
+        {
+            return false;
+        }
+
+        await ExecuteNonQueryAsync(connection, """
+            CREATE TABLE "CommerceBusinesses" (
+                "Id" TEXT NOT NULL CONSTRAINT "PK_CommerceBusinesses" PRIMARY KEY,
+                "Key" TEXT NOT NULL,
+                "DisplayName" TEXT NOT NULL,
+                "LegalName" TEXT NOT NULL,
+                "BusinessType" TEXT NOT NULL,
+                "OwnerEmail" TEXT NOT NULL,
+                "PrimaryDomain" TEXT NULL,
+                "Status" TEXT NOT NULL,
+                "IsActive" INTEGER NOT NULL,
+                "CreatedUtc" TEXT NOT NULL,
+                "UpdatedUtc" TEXT NOT NULL
+            )
+            """, cancellationToken);
+
+        return true;
+    }
+
     private static async Task<bool> CreateIndexIfMissingAsync(
         DbConnection connection,
         IndexPatch patch,
@@ -257,6 +307,50 @@ public static class MasterAppSqliteSchemaBootstrapper
             "Legacy SQLite database had no EF migration history. Stamped {Count} migrations through {BaselineMigrationId}.",
             migrationsToStamp.Count,
             migrationsToStamp.LastOrDefault() ?? LegacyBootstrapBaselineMigrationId);
+    }
+
+    private static async Task StampMigrationIfMissingAsync(
+        MasterAppDbContext db,
+        DbConnection connection,
+        string migrationId,
+        CancellationToken cancellationToken)
+    {
+        await using var existsCommand = connection.CreateCommand();
+        existsCommand.CommandText = """
+            SELECT COUNT(1)
+            FROM "__EFMigrationsHistory"
+            WHERE "MigrationId" = $migrationId
+            """;
+
+        var existsParam = existsCommand.CreateParameter();
+        existsParam.ParameterName = "$migrationId";
+        existsParam.Value = migrationId;
+        existsCommand.Parameters.Add(existsParam);
+
+        if (await ExecuteScalarIntAsync(existsCommand, cancellationToken) > 0)
+        {
+            return;
+        }
+
+        var productVersion = db.Model.FindAnnotation("ProductVersion")?.Value?.ToString() ?? "10.0.9";
+
+        await using var insertCommand = connection.CreateCommand();
+        insertCommand.CommandText = """
+            INSERT INTO "__EFMigrationsHistory" ("MigrationId", "ProductVersion")
+            VALUES ($migrationId, $productVersion)
+            """;
+
+        var migrationParam = insertCommand.CreateParameter();
+        migrationParam.ParameterName = "$migrationId";
+        migrationParam.Value = migrationId;
+        insertCommand.Parameters.Add(migrationParam);
+
+        var versionParam = insertCommand.CreateParameter();
+        versionParam.ParameterName = "$productVersion";
+        versionParam.Value = productVersion;
+        insertCommand.Parameters.Add(versionParam);
+
+        await insertCommand.ExecuteNonQueryAsync(cancellationToken);
     }
 
     private static async Task<bool> TableExistsAsync(
