@@ -42,11 +42,26 @@ public class MasterAppDbContext : DbContext
     public DbSet<Commitment> Commitments => Set<Commitment>();
     public DbSet<ClientFinancialPlan> ClientFinancialPlans => Set<ClientFinancialPlan>();
     public DbSet<AgentZoomLink> AgentZoomLinks => Set<AgentZoomLink>();
+    public DbSet<CommerceBusiness> CommerceBusinesses => Set<CommerceBusiness>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         base.OnModelCreating(modelBuilder);
         var isSqlServer = Database.ProviderName?.Contains("SqlServer", StringComparison.OrdinalIgnoreCase) == true;
+
+        modelBuilder.Entity<CommerceBusiness>(e =>
+        {
+            e.HasKey(x => x.Id);
+            e.Property(x => x.Key).IsRequired().HasMaxLength(80);
+            e.Property(x => x.DisplayName).IsRequired().HasMaxLength(160);
+            e.Property(x => x.LegalName).IsRequired().HasMaxLength(200);
+            e.Property(x => x.BusinessType).IsRequired().HasMaxLength(120);
+            e.Property(x => x.PrimaryDomain).HasMaxLength(255);
+            e.Property(x => x.Status).IsRequired().HasMaxLength(40);
+            e.Property(x => x.OwnerEmail).IsRequired().HasMaxLength(320);
+            e.HasIndex(x => x.Key).IsUnique();
+            e.HasIndex(x => x.IsActive);
+        });
 
         modelBuilder.Entity<OnboardingInvite>(e =>
         {

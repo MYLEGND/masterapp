@@ -96,6 +96,7 @@ builder.Services.AddDbContext<MasterAppDbContext>(options =>
         options.UseSqlServer(configuredDb);
 });
 
+builder.Services.AddScoped<ParfaitBusinessScopeService>();
 builder.Services.AddSingleton<ParfaitProductService>();
 builder.Services.AddSingleton<ParfaitOrderService>();
 builder.Services.AddSingleton<ParfaitCustomerAutomationService>();
