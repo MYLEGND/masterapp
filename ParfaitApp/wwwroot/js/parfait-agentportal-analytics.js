@@ -216,31 +216,42 @@
         }
     }
 
-    function showMetaCallbackBanner() {
+    function readMetaCallbackState() {
         let url;
         try {
             url = new URL(window.location.href);
         } catch {
-            return;
+            return null;
         }
 
         const meta = url.searchParams.get("meta");
         if (!meta) {
-            return;
+            return null;
         }
 
-        if (meta === "connected") {
-            statusEl.className = `${statusBaseClass} text-success`;
-            statusEl.textContent = "Meta Ads connected successfully.";
-        } else if (meta === "error") {
-            const message = url.searchParams.get("message") || "Meta Ads connection failed.";
-            statusEl.className = `${statusBaseClass} text-danger`;
-            statusEl.textContent = message;
-        }
+        const state = {
+            meta,
+            message: url.searchParams.get("message") || ""
+        };
 
         url.searchParams.delete("meta");
         url.searchParams.delete("message");
         window.history.replaceState({}, "", url.toString());
+        return state;
+    }
+
+    function applyMetaCallbackState(state) {
+        if (!state) {
+            return;
+        }
+
+        if (state.meta === "connected") {
+            statusEl.className = `${statusBaseClass} text-success`;
+            statusEl.textContent = "Meta Ads connected successfully.";
+        } else if (state.meta === "error") {
+            statusEl.className = `${statusBaseClass} text-danger`;
+            statusEl.textContent = state.message || "Meta Ads connection failed.";
+        }
     }
 
     connectBtn.addEventListener("click", event => {
@@ -253,6 +264,8 @@
         void handleMetaDisconnect();
     });
 
-    showMetaCallbackBanner();
-    void loadMetaConnectionStatus();
+    const metaCallbackState = readMetaCallbackState();
+    void loadMetaConnectionStatus().finally(() => {
+        applyMetaCallbackState(metaCallbackState);
+    });
 })();

@@ -333,8 +333,8 @@ public sealed class InternalModulesController : Controller
         }
     }
 
+    [AllowAnonymous]
     [HttpGet("analytics/meta-callback")]
-    [ParfaitInternalPageAccess("/internal/analytics")]
     public async Task<IActionResult> MetaCallback(
         [FromQuery] string? code = null,
         [FromQuery] string? state = null,

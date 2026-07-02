@@ -15,15 +15,14 @@
 }
 
 <section class="pf-command-page pf-automation-page">
-    <header class="pf-command-head">
-        <div class="pf-command-copy">
-            <h1 class="pf-command-title">Automations</h1>
+    <header class="pf-automation-head">
+        <div>
+            <p class="pf-automation-eyebrow">Parfait Growth</p>
+            <h1>Automations</h1>
+            <p>Customer lifecycle, cart recovery, and post-purchase workflows in one compact command surface.</p>
         </div>
-        <div class="pf-command-meta">
-            <span class="pf-command-badge is-success">@Model.ActiveWorkflowCount live workflows</span>
-            <span class="pf-command-badge is-info">@Model.AudienceCount customers</span>
-            <span class="pf-command-badge is-warning">@Model.OpenCartLeadCount open carts</span>
-            <span class="pf-command-badge is-success">@Model.SentLast7Days sent</span>
+        <div class="pf-automation-head-actions">
+            <button type="button" class="pf-action" data-pf-open="pfAutomationCreateModal">New Workflow</button>
         </div>
     </header>
 
@@ -97,14 +96,13 @@
         </article>
     </section>
 
-    <section class="pf-command-board pf-automation-board">
-        <div class="pf-command-board-head">
+    <section class="pf-automation-surface">
+        <div class="pf-automation-surface-head">
             <div>
                 <h2>Workflow Machine</h2>
+                <p>Click a workflow to edit timing, messaging, offer, and active status.</p>
             </div>
-            <div class="pf-command-board-actions">
-                <button type="button" class="pf-secondary-action" data-pf-open="pfAutomationCreateModal">New Workflow</button>
-            </div>
+            <span>@Model.Workflows.Count workflows</span>
         </div>
 
         @if (Model.Workflows.Count == 0)
@@ -157,11 +155,13 @@
         }
     </section>
 
-    <section class="pf-command-board pf-automation-board">
-        <div class="pf-command-board-head">
+    <section class="pf-automation-surface">
+        <div class="pf-automation-surface-head">
             <div>
                 <h2>Customer Audience</h2>
+                <p>Compact customer cards with buyer value, order history, and open-cart pressure.</p>
             </div>
+            <span>@Model.Customers.Count customers</span>
         </div>
 
         @if (Model.Customers.Count == 0)
@@ -186,14 +186,6 @@
                                 <h3>@customer.FirstName</h3>
                                 <div class="pf-automation-customer-email">@customer.Email</div>
                             </div>
-                            @if (customer.HasOpenCart)
-                            {
-                                <span class="pf-command-badge is-warning">@Money(customer.OpenCartValueCents) cart</span>
-                            }
-                            else
-                            {
-                                <span class="pf-command-badge is-success">@Money(customer.LifetimeSpendCents)</span>
-                            }
                         </div>
 
                         <div class="pf-automation-customer-stats">
@@ -216,11 +208,13 @@
         }
     </section>
 
-    <section class="pf-command-board pf-automation-board">
-        <div class="pf-command-board-head">
+    <section class="pf-automation-surface">
+        <div class="pf-automation-surface-head">
             <div>
                 <h2>Delivery Activity</h2>
+                <p>Recent automation delivery events and failed-send visibility.</p>
             </div>
+            <span>@Model.Activity.Count events</span>
         </div>
 
         @if (Model.Activity.Count == 0)

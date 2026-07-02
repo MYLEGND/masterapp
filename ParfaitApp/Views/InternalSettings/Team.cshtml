@@ -95,48 +95,49 @@
             <h2 class="pf-module-title">Approve Access</h2>
             <p class="text-muted mb-4">Invite a @@mylegnd.com account and assign a starting role.</p>
 
-            <form action="@Url.Content("~/internal/settings/team/add")" method="post" class="row g-3">
+            <form action="@Url.Content("~/internal/settings/team/add")" method="post" class="pf-team-invite-form">
                 @Html.AntiForgeryToken()
 
-                <div class="col-md-5">
-                    <label asp-for="NewMember.Email" class="form-label fw-bold">Email</label>
-                    <input asp-for="NewMember.Email" class="form-control" autocomplete="email" placeholder="name@mylegnd.com" />
-                    <span asp-validation-for="NewMember.Email" class="text-danger small"></span>
-                </div>
+                <div class="pf-team-invite-fields">
+                    <div class="pf-team-field">
+                        <label asp-for="NewMember.Email">Email</label>
+                        <input asp-for="NewMember.Email" autocomplete="email" placeholder="name@mylegnd.com" />
+                        <span asp-validation-for="NewMember.Email"></span>
+                    </div>
 
-                <div class="col-md-4">
-                    <label asp-for="NewMember.DisplayName" class="form-label fw-bold">Display Name</label>
-                    <input asp-for="NewMember.DisplayName" class="form-control" autocomplete="name" placeholder="Team member name" />
-                    <span asp-validation-for="NewMember.DisplayName" class="text-danger small"></span>
-                </div>
+                    <div class="pf-team-field">
+                        <label asp-for="NewMember.DisplayName">Display name</label>
+                        <input asp-for="NewMember.DisplayName" autocomplete="name" placeholder="Team member name" />
+                        <span asp-validation-for="NewMember.DisplayName"></span>
+                    </div>
 
-                <div class="col-md-3">
-                    <label asp-for="NewMember.RoleKey" class="form-label fw-bold">Role</label>
-                    <select asp-for="NewMember.RoleKey" class="form-select" data-pf-role-select>
-                        @foreach (var role in Model.RoleOptions)
-                        {
-                            <option value="@role.Key">@role.Label</option>
-                        }
-                    </select>
-                    <span asp-validation-for="NewMember.RoleKey" class="text-danger small"></span>
-                </div>
+                    <div class="pf-team-field pf-team-role-field">
+                        <label asp-for="NewMember.RoleKey">Starting role</label>
+                        <select asp-for="NewMember.RoleKey" data-pf-role-select>
+                            @foreach (var role in Model.RoleOptions)
+                            {
+                                <option value="@role.Key">@role.Label</option>
+                            }
+                        </select>
+                        <span asp-validation-for="NewMember.RoleKey"></span>
+                    </div>
 
-                <div class="col-12">
-                    <div class="pf-role-summary-grid">
-                        @foreach (var role in Model.RoleOptions)
-                        {
-                            <div class="pf-role-summary-card">
-                                <strong>@role.Label</strong>
-                                <span>@role.Description</span>
-                            </div>
-                        }
+                    <div class="pf-team-submit-field">
+                        <button type="submit" class="pf-action">Add member</button>
                     </div>
                 </div>
 
-                <div class="col-12 d-flex flex-wrap gap-2 align-items-center">
-                    <button type="submit" class="pf-action">Add Team Member</button>
-                    <span class="pf-team-meta" data-pf-role-copy>Choose a role to apply page access.</span>
+                <div class="pf-team-role-strip" aria-label="Role preset reference">
+                    @foreach (var role in Model.RoleOptions)
+                    {
+                        <div class="pf-team-role-option">
+                            <strong>@role.Label</strong>
+                            <span>@role.Description</span>
+                        </div>
+                    }
                 </div>
+
+                <p class="pf-team-meta" data-pf-role-copy>Choose a role to apply page access.</p>
             </form>
         </div>
     </section>

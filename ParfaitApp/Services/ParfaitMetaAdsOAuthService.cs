@@ -1,6 +1,7 @@
 using System.Text;
 using System.Text.Json;
 using Microsoft.AspNetCore.DataProtection;
+using Microsoft.AspNetCore.Http.Extensions;
 using ParfaitApp.Models;
 
 namespace ParfaitApp.Services;
@@ -17,17 +18,20 @@ public sealed class ParfaitMetaAdsOAuthService : IParfaitMetaAdsOAuthService
 
     private readonly IConfiguration _config;
     private readonly IHttpClientFactory _httpClientFactory;
+    private readonly IHttpContextAccessor _httpContextAccessor;
     private readonly IDataProtector _stateProtector;
     private readonly ILogger<ParfaitMetaAdsOAuthService> _logger;
 
     public ParfaitMetaAdsOAuthService(
         IConfiguration config,
         IHttpClientFactory httpClientFactory,
+        IHttpContextAccessor httpContextAccessor,
         IDataProtectionProvider dataProtectionProvider,
         ILogger<ParfaitMetaAdsOAuthService> logger)
     {
         _config = config;
         _httpClientFactory = httpClientFactory;
+        _httpContextAccessor = httpContextAccessor;
         _stateProtector = dataProtectionProvider.CreateProtector("Parfait.MetaAds.OAuthState.v1");
         _logger = logger;
     }
@@ -48,6 +52,7 @@ public sealed class ParfaitMetaAdsOAuthService : IParfaitMetaAdsOAuthService
         {
             ProfileKey = ProfileKey,
             ReturnUrl = safeReturnUrl,
+            RedirectUri = redirectUri,
             IssuedUtc = DateTime.UtcNow,
             Nonce = Guid.NewGuid().ToString("N")
         };
@@ -79,7 +84,7 @@ public sealed class ParfaitMetaAdsOAuthService : IParfaitMetaAdsOAuthService
         if (string.IsNullOrWhiteSpace(apiVersion))
             apiVersion = "v21.0";
 
-        var redirectUri = ResolveRedirectUri(null);
+        var redirectUri = ResolveRedirectUri(state.RedirectUri);
         var client = _httpClientFactory.CreateClient();
 
         var shortToken = await ExchangeCodeForTokenAsync(client, apiVersion, appId, appSecret, code, redirectUri, ct);
@@ -305,6 +310,24 @@ public sealed class ParfaitMetaAdsOAuthService : IParfaitMetaAdsOAuthService
         if (!string.IsNullOrWhiteSpace(fromConfig))
             return fromConfig;
 
+        var callbackPath = (_config["MetaAds:CallbackPath"] ?? "/internal/analytics/meta-callback").Trim();
+        if (string.IsNullOrWhiteSpace(callbackPath))
+            callbackPath = "/internal/analytics/meta-callback";
+
+        if (!callbackPath.StartsWith("/", StringComparison.Ordinal))
+            callbackPath = "/" + callbackPath;
+
+        var request = _httpContextAccessor.HttpContext?.Request;
+        if (request is not null)
+        {
+            var host = NormalizeCanonicalHost(request.Host);
+            return UriHelper.BuildAbsolute(
+                request.Scheme,
+                host,
+                request.PathBase,
+                callbackPath);
+        }
+
         throw new InvalidOperationException("MetaAds:RedirectUri is required.");
     }
 
@@ -325,10 +348,21 @@ public sealed class ParfaitMetaAdsOAuthService : IParfaitMetaAdsOAuthService
         return text.Length <= 600 ? text : text[..600];
     }
 
+    private static HostString NormalizeCanonicalHost(HostString host)
+    {
+        if (!string.Equals(host.Host, "www.shopparfait.com", StringComparison.OrdinalIgnoreCase))
+            return host;
+
+        return host.Port.HasValue
+            ? new HostString("shopparfait.com", host.Port.Value)
+            : new HostString("shopparfait.com");
+    }
+
     private sealed class OAuthState
     {
         public string ProfileKey { get; set; } = "parfait-business-profile";
-        public string ReturnUrl { get; set; } = "/internal/settings/business-profile";
+        public string ReturnUrl { get; set; } = "/internal/analytics";
+        public string RedirectUri { get; set; } = "/internal/analytics/meta-callback";
         public DateTime IssuedUtc { get; set; }
         public string Nonce { get; set; } = "";
     }

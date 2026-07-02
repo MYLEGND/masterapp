@@ -91,10 +91,273 @@ html {
     color: inherit;
 }
 
+
+/* === PARFAIT TEAM COMPACT SYSTEM START === */
+.pf-team-invite-form {
+    display: grid;
+    gap: 14px;
+}
+
+.pf-team-invite-fields {
+    display: grid;
+    grid-template-columns: minmax(220px, 1.25fr) minmax(180px, 1fr) minmax(160px, .78fr) auto;
+    align-items: end;
+    gap: 12px;
+}
+
+.pf-team-field {
+    display: grid;
+    gap: 6px;
+    min-width: 0;
+}
+
+.pf-team-field label {
+    color: #6f442d;
+    font-size: .68rem;
+    font-weight: 800;
+    letter-spacing: .11em;
+    text-transform: uppercase;
+}
+
+.pf-team-field input,
+.pf-team-field select {
+    width: 100%;
+    min-height: 42px;
+    border: 1px solid rgba(218,183,151,.38);
+    border-radius: 11px;
+    background: #fffaf4;
+    color: #1d100a;
+    font: inherit;
+    font-weight: 650;
+    padding: 0 12px;
+}
+
+.pf-team-field span {
+    color: #ffb6a0;
+    font-size: .74rem;
+}
+
+.pf-team-submit-field {
+    display: flex;
+    align-items: end;
+}
+
+.pf-team-submit-field .pf-action {
+    min-height: 42px;
+    padding: 0 16px;
+    white-space: nowrap;
+}
+
+.pf-team-role-strip {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    border: 1px solid rgba(146,105,80,.28);
+    border-radius: 12px;
+    background: linear-gradient(180deg, #fff6ed, #ead5c2);
+    overflow: hidden;
+}
+
+.pf-team-role-option {
+    min-width: 0;
+    padding: 10px 12px;
+    border-right: 1px solid rgba(218,183,151,.2);
+}
+
+.pf-team-role-option:last-child {
+    border-right: 0;
+}
+
+.pf-team-role-option strong {
+    display: block;
+    color: #4b2b1b;
+    font-size: .71rem;
+    font-weight: 850;
+    letter-spacing: .08em;
+    text-transform: uppercase;
+}
+
+.pf-team-role-option span {
+    display: block;
+    margin-top: 4px;
+    color: rgba(58,34,22,.72);
+    font-size: .75rem;
+    line-height: 1.35;
+}
+
+.pf-team-meta {
+    margin: 0;
+    color: rgba(58,34,22,.72);
+    font-size: .78rem;
+    line-height: 1.35;
+}
+
+.pf-founder-lock {
+    display: grid;
+    gap: 12px;
+}
+
+.pf-founder-lock > div {
+    display: grid;
+    grid-template-columns: 132px minmax(0, 1fr);
+    gap: 10px;
+    align-items: baseline;
+}
+
+.pf-founder-lock strong {
+    color: #4b2b1b;
+    font-size: .73rem;
+    font-weight: 800;
+}
+
+.pf-founder-lock span,
+.pf-team-list span,
+.pf-team-card-copy {
+    color: rgba(255,244,234,.72);
+    font-size: .82rem;
+    line-height: 1.4;
+}
+
+.pf-team-card {
+    padding: 18px;
+}
+
+.pf-team-card-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+}
+
+.pf-team-card-title {
+    margin: 0;
+    color: #fff8f1;
+    font-size: 1rem;
+    font-weight: 800;
+}
+
+.pf-role-pill {
+    display: inline-flex;
+    margin-top: 10px;
+    padding: 4px 8px;
+    border: 1px solid rgba(218,183,151,.3);
+    border-radius: 999px;
+    color: #f1c99f;
+    font-size: .7rem;
+    font-weight: 800;
+}
+
+.pf-team-card-copy {
+    margin: 9px 0 0;
+}
+
+.pf-team-list {
+    display: grid;
+    gap: 8px;
+    margin-top: 14px;
+}
+
+.pf-team-list > div {
+    display: flex;
+    justify-content: space-between;
+    gap: 14px;
+}
+
+.pf-team-list strong {
+    color: rgba(255,244,234,.82);
+    font-size: .76rem;
+    font-weight: 750;
+}
+
+.pf-team-list span {
+    text-align: right;
+}
+
+.pf-team-empty {
+    padding: 18px;
+    border: 1px dashed rgba(218,183,151,.28);
+    border-radius: 12px;
+    color: rgba(255,244,234,.72);
+}
+
+@media (max-width: 1100px) {
+    .pf-team-invite-fields {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
+    .pf-team-submit-field {
+        align-items: end;
+    }
+}
+
+@media (max-width: 700px) {
+    .pf-team-invite-fields,
+    .pf-team-role-strip {
+        grid-template-columns: 1fr;
+    }
+
+    .pf-team-role-option {
+        border-right: 0;
+        border-bottom: 1px solid rgba(218,183,151,.2);
+    }
+
+    .pf-team-role-option:last-child {
+        border-bottom: 0;
+    }
+
+    .pf-team-submit-field .pf-action {
+        width: 100%;
+    }
+
+    .pf-founder-lock > div {
+        grid-template-columns: 1fr;
+        gap: 3px;
+    }
+
+    .pf-team-list > div {
+        display: grid;
+        gap: 3px;
+    }
+
+    .pf-team-list span {
+        text-align: left;
+    }
+}
+/* === PARFAIT TEAM COMPACT SYSTEM END === */
+
+
+/* === PARFAIT ACTIVE INTERNAL PAGE SHELL START === */
 .pf-page-shell {
     width: 100%;
-    padding: 22px 18px 32px;
+    padding: 22px 18px 48px;
 }
+
+.pf-shell {
+    width: min(100%, 1480px);
+    margin: 0 auto;
+    display: grid;
+    gap: 22px;
+}
+
+.pf-shell > .pf-command-page {
+    display: grid;
+    gap: 22px;
+}
+
+.pf-shell > .pf-command-page > header {
+    margin: 0;
+}
+
+@media (max-width: 900px) {
+    .pf-page-shell {
+        padding: 18px 14px 36px;
+    }
+
+    .pf-shell,
+    .pf-shell > .pf-command-page {
+        gap: 16px;
+    }
+}
+/* === PARFAIT ACTIVE INTERNAL PAGE SHELL END === */
 
 .pf-header-shell {
     position: sticky;
@@ -353,51 +616,10 @@ html {
 }
 
 
-.pf-command-head {
-    display: flex;
-    flex-wrap: wrap;
-    align-items: flex-end;
-    justify-content: space-between;
-    gap: 0.95rem 1.25rem;
-    padding: 2px 0 18px;
-    border-bottom: 1px solid var(--pf-line);
-}
 
-.pf-command-copy {
-    min-width: 0;
-    flex: 1 1 520px;
-}
 
-.pf-command-title {
-    margin: 0 0 0.48rem;
-    color: var(--pf-text);
-    font-size: clamp(2.15rem, 4.8vw, 3.75rem);
-    font-weight: 950;
-    font-style: italic;
-    letter-spacing: 0.06em;
-    line-height: 0.96;
-    text-transform: uppercase;
-    text-wrap: balance;
-}
 
-.pf-command-text {
-    max-width: 56ch;
-    margin: 0;
-    color: var(--pf-text-soft);
-    font-size: 1rem;
-    font-weight: 760;
-    font-style: normal;
-    letter-spacing: 0;
-    line-height: 1.48;
-}
 
-.pf-command-meta {
-    display: flex;
-    flex-wrap: wrap;
-    justify-content: flex-end;
-    gap: 0.6rem;
-    flex: 0 1 460px;
-}
 
 
 
@@ -1879,46 +2101,10 @@ html {
     gap: 18px;
 }
 
-.pf-orders-head {
-    display: flex;
-    align-items: end;
-    justify-content: space-between;
-    gap: 20px;
-    padding-bottom: 16px;
-    border-bottom: 1px solid rgba(146,105,80,.20);
-}
 
-.pf-orders-eyebrow {
-    margin: 0 0 7px;
-    color: #8a6045;
-    font-size: .69rem;
-    font-weight: 900;
-    letter-spacing: .13em;
-    text-transform: uppercase;
-}
 
-.pf-orders-head h1 {
-    margin: 0;
-    color: #21140e;
-    font-size: clamp(2.2rem, 4vw, 3.5rem);
-    font-weight: 900;
-    letter-spacing: -.055em;
-    line-height: .94;
-}
 
-.pf-orders-head p {
-    max-width: 720px;
-    margin: 10px 0 0;
-    color: #5d473b;
-    font-size: .98rem;
-    line-height: 1.45;
-}
 
-.pf-orders-head-actions {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 8px;
-}
 
 .pf-orders-kpis {
     display: grid;
@@ -2279,10 +2465,6 @@ html {
 }
 
 @media (max-width: 980px) {
-    .pf-orders-head {
-        align-items: start;
-        flex-direction: column;
-    }
 
     .pf-orders-kpis,
     .pf-order-modal-summary,
@@ -2596,95 +2778,28 @@ html {
     color: var(--pf-danger-text);
 }
 
-.pf-team-card {
-    display: grid;
-    gap: 0.95rem;
-}
 
-.pf-role-pill {
-    display: inline-flex;
-    align-items: center;
-    gap: 0.35rem;
-    align-self: flex-start;
-    padding: 0.42rem 0.82rem;
-    border: 1px solid var(--pf-neutral-line);
-    border-radius: 999px;
-    background: linear-gradient(180deg, rgba(255, 255, 255, 0.92), var(--pf-neutral-bg));
-    color: var(--pf-neutral-text);
-    font-size: 0.72rem;
-    font-weight: 900;
-    letter-spacing: 0.08em;
-    text-transform: uppercase;
-}
 
-.pf-team-card-head {
-    display: flex;
-    align-items: flex-start;
-    justify-content: space-between;
-    gap: 0.8rem;
-}
 
-.pf-team-card-title {
-    margin: 0;
-    color: var(--pf-text);
-    font-size: 1.25rem;
-    font-weight: 950;
-    letter-spacing: 0.05em;
-    line-height: 1.06;
-    text-transform: uppercase;
-    text-wrap: balance;
-}
+
+
+
+
 
 .pf-team-card-copy,
-.pf-team-meta {
-    margin: 0;
-    color: var(--pf-text-muted);
-    font-size: 0.84rem;
-    font-weight: 700;
-    font-style: normal;
-    letter-spacing: 0;
-    line-height: 1.46;
-}
 
-.pf-team-list {
-    display: grid;
-    gap: 0.55rem;
-}
 
-.pf-team-list strong {
-    color: var(--pf-text);
-    font-size: 0.8rem;
-    font-weight: 850;
-}
 
-.pf-team-list span {
-    color: var(--pf-text-muted);
-    font-size: 0.8rem;
-    font-weight: 650;
-}
 
-.pf-team-empty {
-    padding: 1.2rem 0.1rem 0.2rem;
-    color: var(--pf-text-muted);
-    font-size: 0.95rem;
-    font-weight: 650;
-}
 
-.pf-role-summary-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
-    gap: 10px;
-}
 
-.pf-role-summary-card {
-    display: grid;
-    gap: 0.32rem;
-    padding: 0.95rem 1rem;
-    border: 1px solid var(--pf-line-strong);
-    border-radius: 18px;
-    background: var(--pf-surface-panel-strong);
-    box-shadow: 0 10px 22px rgba(31, 18, 13, 0.04);
-}
+
+
+
+
+
+
+
 
 .pf-role-summary-card strong,
 .pf-access-toolbar strong {
@@ -2696,18 +2811,9 @@ html {
 }
 
 .pf-role-summary-card span,
-.pf-role-hint {
-    color: var(--pf-text-muted);
-    font-size: 0.78rem;
-    font-weight: 650;
-    font-style: normal;
-    letter-spacing: 0;
-    line-height: 1.45;
-}
 
-.pf-role-hint {
-    margin-top: 0.55rem;
-}
+
+
 
 .pf-access-toolbar {
     display: flex;
@@ -3069,13 +3175,7 @@ html {
         padding: 14px 0 16px;
     }
 
-    .pf-command-head {
-        align-items: flex-start;
-    }
 
-    .pf-command-meta {
-        justify-content: flex-start;
-    }
 
     .pf-analytics-command-actions,
     .pf-analytics-toolbar-actions {
@@ -3349,28 +3449,17 @@ main.pf-internal-main {
 
 .pf-product-card h3,
 .pf-product-row h3,
-.pf-team-card h3 {
-    color: var(--pf-ink);
-    font-weight: 900;
-}
+
 
 .pf-product-card p,
 .pf-product-row p,
-.pf-team-card p {
-    color: var(--pf-muted-dark);
-}
+
 
 /* Compact product/order metric cells */
 .pf-product-card article,
 .pf-product-card .pf-mini-card,
 .pf-product-row article,
-.pf-team-card article {
-    background: rgba(255,255,255,.72);
-    border: 1px solid rgba(146,105,80,.24);
-    border-radius: 14px;
-    color: var(--pf-ink);
-    padding: 12px;
-}
+
 
 /* Forms */
 .pf-commerce-panel form,
@@ -3619,6 +3708,109 @@ button.pf-secondary-action,
 .pf-menu-button span::before { top: -6px; }
 .pf-menu-button span::after { top: 6px; }
 
+/* === PARFAIT SHARED PREMIUM PAGE HEADER SYSTEM START === */
+
+.pf-command-head,
+.pf-orders-head,
+.pf-automation-head,
+.pf-dashboard-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1.25rem;
+    min-width: 0;
+    padding: 1.3rem 1.45rem;
+    border: 1px solid rgba(122, 83, 58, .30);
+    border-radius: 22px;
+    background: linear-gradient(135deg, rgba(84, 50, 35, .98), rgba(42, 23, 16, .98));
+    box-shadow: inset 0 1px 0 rgba(255,255,255,.08), 0 16px 34px rgba(44,25,17,.14);
+    color: #fff8ef;
+}
+
+.pf-command-copy,
+.pf-dashboard-head-copy,
+.pf-orders-head > div:first-child,
+.pf-automation-head > div:first-child {
+    min-width: 0;
+    flex: 1 1 auto;
+}
+
+.pf-command-title,
+.pf-orders-head h1,
+.pf-automation-head h1,
+.pf-dashboard-head h1 {
+    margin: 0;
+    color: #fff9f4;
+    font-size: clamp(1.85rem, 3vw, 2.7rem);
+    font-weight: 900;
+    letter-spacing: -.045em;
+    line-height: 1;
+}
+
+.pf-command-text,
+.pf-orders-head p,
+.pf-automation-head p,
+.pf-dashboard-intro {
+    max-width: 68ch;
+    margin: .45rem 0 0;
+    color: rgba(255,242,232,.76);
+    font-size: .94rem;
+    font-weight: 600;
+    line-height: 1.45;
+}
+
+.pf-orders-eyebrow,
+.pf-automation-eyebrow,
+.pf-dashboard-eyebrow {
+    margin: 0 0 .38rem;
+    color: #e7bf8b;
+    font-size: .67rem;
+    font-weight: 900;
+    letter-spacing: .14em;
+    text-transform: uppercase;
+}
+
+.pf-command-meta,
+.pf-orders-head-actions,
+.pf-automation-head-actions,
+.pf-dashboard-head-actions {
+    display: flex;
+    flex: 0 0 auto;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: flex-end;
+    gap: .55rem;
+}
+
+.pf-command-head .pf-action,
+.pf-command-head .pf-secondary-action,
+.pf-orders-head .pf-action,
+.pf-orders-head .pf-secondary-action,
+.pf-automation-head .pf-action,
+.pf-automation-head .pf-secondary-action,
+.pf-dashboard-head .pf-action,
+.pf-dashboard-head .pf-secondary-action {
+    min-height: 34px;
+    padding: .45rem .8rem;
+    border: 1px solid rgba(255,237,219,.34);
+    border-radius: 10px;
+    background: rgba(255,248,241,.10);
+    color: #fffaf6;
+    box-shadow: none;
+}
+
+@media (max-width: 760px) {
+    .pf-command-head,
+    .pf-orders-head,
+    .pf-automation-head,
+    .pf-dashboard-head {
+        align-items: flex-start;
+        flex-direction: column;
+    }
+}
+
+/* === PARFAIT SHARED PREMIUM PAGE HEADER SYSTEM END === */
+
 .pf-backdrop {
     position: fixed;
     inset: 0;
@@ -3828,57 +4020,11 @@ button.pf-secondary-action,
     gap: 22px;
 }
 
-.pf-dashboard-head {
-    display: flex;
-    align-items: end;
-    justify-content: space-between;
-    gap: 24px;
-    padding: 4px 0 18px;
-    border-bottom: 1px solid rgba(94, 60, 40, .16);
-}
 
-.pf-dashboard-head-copy {
-    min-width: 0;
-}
 
-.pf-dashboard-eyebrow,
-.pf-dashboard-kpi span,
-.pf-dashboard-card-topline span,
-.pf-dashboard-operation span,
-.pf-dashboard-activity span {
-    margin: 0 0 7px;
-    color: #8a6045;
-    font-size: .69rem;
-    font-weight: 900;
-    letter-spacing: .13em;
-    line-height: 1.1;
-    text-transform: uppercase;
-}
 
-.pf-dashboard-head h1 {
-    margin: 0;
-    color: #21140e;
-    font-size: clamp(2.2rem, 4vw, 3.45rem);
-    font-weight: 900;
-    letter-spacing: -.055em;
-    line-height: .94;
-}
 
-.pf-dashboard-intro {
-    max-width: 680px;
-    margin: 10px 0 0;
-    color: #5d473b;
-    font-size: .98rem;
-    line-height: 1.5;
-}
 
-.pf-dashboard-head-actions {
-    display: flex;
-    flex-wrap: wrap;
-    justify-content: flex-end;
-    gap: 8px;
-    padding-bottom: 1px;
-}
 
 .pf-dashboard-command .pf-secondary-action {
     min-height: 36px;
@@ -4114,14 +4260,7 @@ button.pf-secondary-action,
 }
 
 @media (max-width: 1100px) {
-    .pf-dashboard-head {
-        align-items: start;
-        flex-direction: column;
-    }
 
-    .pf-dashboard-head-actions {
-        justify-content: flex-start;
-    }
 
     .pf-dashboard-workspace {
         grid-template-columns: 1fr;
@@ -4140,19 +4279,8 @@ button.pf-secondary-action,
         gap: 16px;
     }
 
-    .pf-dashboard-head {
-        gap: 16px;
-        padding-bottom: 16px;
-    }
 
-    .pf-dashboard-head-actions {
-        width: 100%;
-    }
 
-    .pf-dashboard-head-actions .pf-secondary-action {
-        flex: 1 1 auto;
-        justify-content: center;
-    }
 
     .pf-dashboard-kpis,
     .pf-dashboard-primary-grid,
