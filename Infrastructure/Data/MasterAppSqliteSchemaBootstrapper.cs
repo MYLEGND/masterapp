@@ -156,7 +156,6 @@ public static class MasterAppSqliteSchemaBootstrapper
             await StampMigrationHistoryAsync(db, connection, createdFromModel, logger, cancellationToken);
             await StampMigrationIfMissingAsync(db, connection, CommerceBusinessScopeMigrationId, cancellationToken);
             await StampMigrationIfMissingAsync(db, connection, CommerceCoreSchemaMigrationId, cancellationToken);
-            await db.Database.MigrateAsync(cancellationToken);
 
             if (createdFromModel)
             {
