@@ -26,18 +26,20 @@ public sealed class ParfaitInternalWorkspaceService
     {
         var products = _products.GetAllProducts().ToList();
         var orders = _orders.GetAllOrders().ToList();
-        var profile = await _businessProfile.GetProfileAsync(ct);
-        var analytics = await _analytics.GetDashboardAsync(
+        var profileTask = _businessProfile.GetProfileAsync(ct);
+        var analyticsTask = _analytics.GetWorkspaceSummaryAsync(
             "30d",
             null,
             null,
             TrafficQualityMode.RealHumanTraffic,
             TimeZoneInfo.Utc,
-            null,
-            null,
             ct);
+
+        await Task.WhenAll(profileTask, analyticsTask);
+
+        var profile = await profileTask;
+        var analytics = await analyticsTask;
         var meta = analytics.MetaSettings;
-        var actionMap = analytics.ActionBreakdowns.ToDictionary(action => action.Key, StringComparer.OrdinalIgnoreCase);
 
         var paidOrders = orders
             .Where(order => string.Equals(order.PaymentStatus, "Paid", StringComparison.OrdinalIgnoreCase)
@@ -57,6 +59,19 @@ public sealed class ParfaitInternalWorkspaceService
             .Where(order => !string.IsNullOrWhiteSpace(order.Email))
             .GroupBy(order => order.Email.Trim(), StringComparer.OrdinalIgnoreCase)
             .ToList();
+        var trackedPurchases = analytics.GetEventCount("Purchase");
+        var trackedPurchaseSessions = analytics.GetUniqueSessions("Purchase");
+        if (trackedPurchases == 0)
+        {
+            trackedPurchases = paidOrders.Count;
+            trackedPurchaseSessions = paidOrders
+                .Where(order => !string.IsNullOrWhiteSpace(order.CheckoutAttemptId))
+                .Select(order => order.CheckoutAttemptId!.Trim())
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .Count();
+        }
+
+        var trackedCheckoutSessions = analytics.GetUniqueSessions("CheckoutStarted");
 
         return new ParfaitInternalWorkspaceSnapshotViewModel
         {
@@ -65,12 +80,12 @@ public sealed class ParfaitInternalWorkspaceService
             HasCheckoutUrl = !string.IsNullOrWhiteSpace(profile.GlobalStoreCheckoutUrl),
             HasMetaPixel = !string.IsNullOrWhiteSpace(meta.MetaPixelId),
             HasMetaConnection = meta.HasActiveMetaAdsConnection,
-            HasAnalyticsTraffic = analytics.Sessions > 0 || analytics.Purchases > 0 || analytics.HasTrackedEvents,
+            HasAnalyticsTraffic = analytics.Sessions > 0 || trackedPurchases > 0 || analytics.HasTrackedEvents,
             MetaConnectionLabel = meta.MetaConnectionLabel,
             MetaCapiStatus = meta.MetaCapiStatus,
             AnalyticsStatus = analytics.HasTrackedEvents ? $"{analytics.RangeLabel} synced" : "Awaiting storefront activity",
-            TrustStatus = analytics.Devices.Sessions > 0
-                ? $"{analytics.Devices.IdentityProfiles + analytics.Devices.VisitorFallbackProfiles} visitor identities mapped"
+            TrustStatus = analytics.DevicesSessions > 0
+                ? $"{analytics.IdentityProfiles + analytics.VisitorFallbackProfiles} visitor identities mapped"
                 : "Awaiting visitor intelligence",
             ProductCount = products.Count,
             ActiveProductCount = products.Count(product => product.IsActive),
@@ -88,19 +103,14 @@ public sealed class ParfaitInternalWorkspaceService
             LatestOrderUtc = orders.Count == 0 ? null : orders.Max(order => order.CreatedUtc),
             Visitors = analytics.Visitors,
             Sessions = analytics.Sessions,
-            StoreViews = GetActionCount(actionMap, "view-content"),
-            ProductViews = GetActionCount(actionMap, "product-viewed"),
-            AddToCarts = GetActionCount(actionMap, "add-to-cart"),
-            CheckoutStarts = GetActionCount(actionMap, "checkout-started"),
-            Purchases = analytics.Purchases,
-            CheckoutToPurchaseRate = analytics.ActionBreakdowns
-                .FirstOrDefault(action => string.Equals(action.Key, "checkout-started", StringComparison.OrdinalIgnoreCase))
-                ?.ConversionRate ?? 0m
+            StoreViews = analytics.GetEventCount("ViewContent"),
+            ProductViews = analytics.GetEventCount("ProductViewed"),
+            AddToCarts = analytics.GetEventCount("AddToCart"),
+            CheckoutStarts = analytics.GetEventCount("CheckoutStarted"),
+            Purchases = trackedPurchases,
+            CheckoutToPurchaseRate = trackedCheckoutSessions <= 0
+                ? 0m
+                : Math.Round((decimal)trackedPurchaseSessions / trackedCheckoutSessions * 100m, 1)
         };
     }
-
-    private static int GetActionCount(
-        IReadOnlyDictionary<string, ParfaitAnalyticsActionBreakdownViewModel> actionMap,
-        string key)
-        => actionMap.TryGetValue(key, out var action) ? action.Count : 0;
 }

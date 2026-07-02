@@ -21,6 +21,8 @@ public sealed class ParfaitBusinessProfileService : IParfaitBusinessProfileServi
     private readonly ParfaitMetaCapiCredentialProtector _metaCredentialProtector;
     private readonly ParfaitBusinessScopeService _businessScope;
     private readonly object _lock = new();
+    private ParfaitBusinessProfileStore? _cachedStore;
+    private bool _storeLoaded;
 
     public ParfaitBusinessProfileService(
         ParfaitStoragePaths storagePaths,
@@ -226,10 +228,15 @@ public sealed class ParfaitBusinessProfileService : IParfaitBusinessProfileServi
     {
         EnsureDataFile();
 
+        if (_storeLoaded && _cachedStore is not null)
+            return _cachedStore;
+
         lock (_lock)
         {
             var json = File.ReadAllText(DataPath);
-            return JsonSerializer.Deserialize<ParfaitBusinessProfileStore>(json) ?? CreateDefaultStore();
+            _cachedStore = JsonSerializer.Deserialize<ParfaitBusinessProfileStore>(json) ?? CreateDefaultStore();
+            _storeLoaded = true;
+            return _cachedStore;
         }
     }
 
@@ -243,6 +250,9 @@ public sealed class ParfaitBusinessProfileService : IParfaitBusinessProfileServi
                 DataPath,
                 JsonSerializer.Serialize(store, new JsonSerializerOptions { WriteIndented = true }));
         }
+
+        _cachedStore = store;
+        _storeLoaded = true;
     }
 
     private void EnsureDataFile()

@@ -26,6 +26,8 @@ public sealed class ParfaitTeamAccessService : IParfaitTeamAccessService
     private readonly ParfaitStoragePaths _storagePaths;
     private readonly IParfaitInternalPageRegistry _pages;
     private readonly IGraphMailService _graphMail;
+    private TeamStore? _cachedStore;
+    private bool _storeLoaded;
 
     public ParfaitTeamAccessService(
         ParfaitStoragePaths storagePaths,
@@ -502,10 +504,15 @@ public sealed class ParfaitTeamAccessService : IParfaitTeamAccessService
     {
         EnsureDataFile();
 
+        if (_storeLoaded && _cachedStore is not null)
+            return _cachedStore;
+
         lock (FileLock)
         {
             var json = File.ReadAllText(DataPath);
-            return JsonSerializer.Deserialize<TeamStore>(json) ?? new TeamStore();
+            _cachedStore = JsonSerializer.Deserialize<TeamStore>(json) ?? new TeamStore();
+            _storeLoaded = true;
+            return _cachedStore;
         }
     }
 
@@ -520,6 +527,9 @@ public sealed class ParfaitTeamAccessService : IParfaitTeamAccessService
                 DataPath,
                 JsonSerializer.Serialize(store, new JsonSerializerOptions { WriteIndented = true }));
         }
+
+        _cachedStore = store;
+        _storeLoaded = true;
     }
 
     private void EnsureDataFile()

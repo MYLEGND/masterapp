@@ -35,6 +35,64 @@ public sealed class ParfaitInternalAnalyticsService
         _orders = orders;
     }
 
+    public async Task<ParfaitInternalWorkspaceAnalyticsSnapshot> GetWorkspaceSummaryAsync(
+        string? preset = "30d",
+        DateTime? fromUtc = null,
+        DateTime? toUtc = null,
+        TrafficQualityMode qualityMode = TrafficQualityMode.RealHumanTraffic,
+        TimeZoneInfo? viewerTimeZone = null,
+        CancellationToken ct = default)
+    {
+        var range = TimeRangeRequest.FromPreset(
+            string.IsNullOrWhiteSpace(preset) ? "30d" : preset,
+            fromUtc,
+            toUtc,
+            viewerTz: viewerTimeZone ?? TimeZoneInfo.Utc,
+            qualityMode: qualityMode);
+        var scope = ScopeContext.ForSite(SiteKey, SiteKey);
+
+        var summaryTask = _analytics.GetSummaryAsync(range, scope, TrafficType.All);
+        var devicesTask = _analytics.GetDeviceIntelligenceAsync(range, scope, TrafficType.All);
+        var metaSettingsTask = _businessProfile.GetMetaSettingsAsync(ct);
+        var actionCountsTask = _analytics
+            .ScopedEvents(range, scope)
+            .AsNoTracking()
+            .Where(x => FunnelEventTypes.Contains(x.EventType))
+            .GroupBy(x => x.EventType)
+            .Select(group => new WorkspaceActionCountRow
+            {
+                EventType = group.Key,
+                Count = group.Count(),
+                UniqueSessions = group
+                    .Where(x => x.SessionId != null && x.SessionId != string.Empty)
+                    .Select(x => x.SessionId!)
+                    .Distinct()
+                    .Count()
+            })
+            .ToListAsync(ct);
+
+        await Task.WhenAll(summaryTask, devicesTask, metaSettingsTask, actionCountsTask);
+
+        var summary = await summaryTask;
+        var devices = await devicesTask;
+        var metaSettings = await metaSettingsTask;
+        var actionCounts = (await actionCountsTask)
+            .ToDictionary(item => item.EventType, item => item, StringComparer.OrdinalIgnoreCase);
+
+        return new ParfaitInternalWorkspaceAnalyticsSnapshot
+        {
+            RangeLabel = summary.RangeLabel,
+            Visitors = summary.UniqueVisitors,
+            Sessions = summary.Sessions,
+            DevicesSessions = devices.Sessions,
+            IdentityProfiles = devices.IdentityProfiles,
+            VisitorFallbackProfiles = devices.VisitorFallbackProfiles,
+            HasTrackedEvents = actionCounts.Values.Any(item => item.Count > 0),
+            MetaSettings = metaSettings,
+            ActionCounts = actionCounts
+        };
+    }
+
     public async Task<ParfaitInternalAnalyticsViewModel> GetDashboardAsync(
         string? preset = "30d",
         DateTime? fromUtc = null,
@@ -601,5 +659,36 @@ public sealed class ParfaitInternalAnalyticsService
         public string? Browser { get; init; }
         public string? OperatingSystem { get; init; }
         public string? Viewport { get; init; }
+    }
+
+    public sealed class ParfaitInternalWorkspaceAnalyticsSnapshot
+    {
+        public string RangeLabel { get; init; } = "";
+        public int Visitors { get; init; }
+        public int Sessions { get; init; }
+        public int DevicesSessions { get; init; }
+        public int IdentityProfiles { get; init; }
+        public int VisitorFallbackProfiles { get; init; }
+        public bool HasTrackedEvents { get; init; }
+        public ParfaitMetaAnalyticsSettingsViewModel MetaSettings { get; init; } = new();
+        public IReadOnlyDictionary<string, WorkspaceActionCountRow> ActionCounts { get; init; }
+            = new Dictionary<string, WorkspaceActionCountRow>(StringComparer.OrdinalIgnoreCase);
+
+        public int GetEventCount(string eventType)
+        {
+            return ActionCounts.TryGetValue(eventType, out var action) ? action.Count : 0;
+        }
+
+        public int GetUniqueSessions(string eventType)
+        {
+            return ActionCounts.TryGetValue(eventType, out var action) ? action.UniqueSessions : 0;
+        }
+    }
+
+    public sealed class WorkspaceActionCountRow
+    {
+        public string EventType { get; init; } = "";
+        public int Count { get; init; }
+        public int UniqueSessions { get; init; }
     }
 }
