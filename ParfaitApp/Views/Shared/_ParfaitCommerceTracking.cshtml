@@ -1,9 +1,32 @@
+@inject ParfaitApp.Services.IParfaitBusinessProfileService BusinessProfileService
+@{
+    var metaSettings = await BusinessProfileService.GetMetaSettingsAsync(Context.RequestAborted);
+    var metaPixelId = (metaSettings.MetaPixelId ?? string.Empty).Trim();
+    var hasMetaPixel = !string.IsNullOrWhiteSpace(metaPixelId);
+}
+@if (hasMetaPixel)
+{
+<script>
+    !function(f,b,e,v,n,t,s){
+        if(f.fbq)return;n=f.fbq=function(){n.callMethod?
+        n.callMethod.apply(n,arguments):n.queue.push(arguments)};
+        if(!f._fbq)f._fbq=n;n.push=n;n.loaded=!0;n.version='2.0';
+        n.queue=[];t=b.createElement(e);t.async=!0;
+        t.src=v;s=b.getElementsByTagName(e)[0];
+        s.parentNode.insertBefore(t,s)
+    }(window, document,'script','https://connect.facebook.net/en_US/fbevents.js');
+
+    window.PARFAIT_META_PIXEL_ID = @Html.Raw(System.Text.Json.JsonSerializer.Serialize(metaPixelId));
+    fbq('init', window.PARFAIT_META_PIXEL_ID);
+    fbq('track', 'PageView');
+</script>
+}
 <script>
 (() => {
     const pathLower = location.pathname.toLowerCase();
     if (pathLower.startsWith("/internal") || pathLower.startsWith("/signin-oidc") || pathLower.startsWith("/signout-callback-oidc")) return;
 
-    const trackingVersion = "parfait-commerce-tracking-v2";
+    const trackingVersion = "parfait-commerce-tracking-v3";
     const sessionTtlMs = 30 * 60 * 1000;
     const pageStartMs = Date.now();
     const scrollThresholds = [25, 50, 75, 90, 100];
@@ -16,6 +39,8 @@
     let mouseMoveCount = 0;
     let humanInteractionCount = 0;
     let pageExitSent = false;
+
+    const hasMetaPixel = typeof window.fbq === "function" && !!window.PARFAIT_META_PIXEL_ID;
 
     const getCookie = name => document.cookie
         .split("; ")
@@ -150,11 +175,20 @@
         }
     };
 
+    const cartValueCents = cart => cart.reduce((sum, item) => sum + ((Number(item.priceCents) || 0) * (Number(item.quantity) || 0)), 0);
+    const cartQuantity = cart => cart.reduce((sum, item) => sum + (Number(item.quantity) || 0), 0);
+
     const baseMetadata = () => ({
+        siteKey: "ParfaitApp",
+        businessType: "Ecommerce",
+        reportingOwner: "ParfaitApp",
         pageType: currentPageType(),
         pageKey: currentPageKey(),
         pageTitle: document.title || "",
         productSlug: currentProductSlug() || "",
+        fbclid: new URLSearchParams(location.search).get("fbclid") || "",
+        fbc: getCookie("_fbc") || "",
+        fbp: getCookie("_fbp") || "",
         trackingVersion
     });
 
@@ -185,6 +219,30 @@
         metadata: baseMetadata()
     });
 
+    const sendBrowserMeta = (eventName, payload = {}) => {
+        if (!hasMetaPixel) return;
+
+        const valueCents = Number(payload.valueCents || 0);
+        const value = valueCents > 0 ? Number((valueCents / 100).toFixed(2)) : undefined;
+
+        const metaPayload = {
+            content_name: payload.productName || document.title || "Parfait",
+            content_ids: [payload.productId || payload.productSlug || currentProductSlug() || currentPageKey()].filter(Boolean),
+            content_type: currentPageType() === "product_detail" ? "product" : "product_group",
+            currency: "USD"
+        };
+
+        if (value !== undefined) metaPayload.value = value;
+        if (payload.quantity) metaPayload.num_items = Number(payload.quantity) || undefined;
+
+        const eventId = payload.eventId || createUuid(`pfmeta_${normalizeKey(eventName)}`);
+
+        try {
+            window.fbq("track", eventName, metaPayload, { eventID: eventId });
+        } catch {
+        }
+    };
+
     const send = (eventName, payload = {}) => {
         syncVisibleTime();
         touchSession();
@@ -212,9 +270,7 @@
                 "/parfait-analytics/track",
                 new Blob([JSON.stringify(body)], { type: "application/json" })
             );
-            if (sent) {
-                return;
-            }
+            if (sent) return;
         } catch {
         }
 
@@ -226,98 +282,13 @@
         }).catch(() => {});
     };
 
-    const sendEngagementEvent = (eventName, minimumMs) => {
-        if (firedEngagementEvents.has(eventName)) return;
-        if (elapsedMilliseconds() < minimumMs) return;
-
-        firedEngagementEvents.add(eventName);
-        send(eventName, {
-            metadata: {
-                milestoneSeconds: Math.round(minimumMs / 1000)
-            }
-        });
-    };
-
-    const maybeFireScrollDepthEvents = () => {
-        const percent = currentScrollPercent();
-        scrollThresholds.forEach(threshold => {
-            if (percent >= threshold && !firedScrollThresholds.has(threshold)) {
-                firedScrollThresholds.add(threshold);
-                send(`scroll_depth_${threshold}`, {
-                    scrollPercent: threshold,
-                    metadata: {
-                        threshold
-                    }
-                });
-            }
-        });
-    };
-
-    const elementKeyFor = element => {
-        if (!element) return "unknown_cta";
-        if (element.dataset.analyticsKey) return normalizeKey(element.dataset.analyticsKey);
-        if (element.id) return normalizeKey(element.id);
-        if (element.dataset.action) return normalizeKey(`cart_${element.dataset.action}`);
-
-        const href = element.getAttribute("href");
-        if (href && href.startsWith("/")) {
-            return normalizeKey(href.replaceAll("/", "_"));
-        }
-
-        return normalizeKey(element.getAttribute("aria-label") || element.textContent || "cta");
-    };
-
-    const buttonLabelFor = element => {
-        return (element.getAttribute("aria-label") || element.textContent || "")
-            .replace(/\s+/g, " ")
-            .trim();
-    };
-
-    const ctaTypeFor = element => {
-        const href = (element.getAttribute("href") || "").toLowerCase();
-        const id = (element.id || "").toLowerCase();
-        const text = buttonLabelFor(element).toLowerCase();
-        const action = (element.dataset.action || "").toLowerCase();
-
-        if (id === "spaddtocart" || text.includes("add to cart")) return "add_to_cart";
-        if (id === "spcheckoutlink" || id === "sppaybutton" || href.includes("/store/checkout") || text.includes("checkout")) return "checkout";
-        if (action) return `cart_${action}`;
-        if (href.includes("/store/product/") || element.classList.contains("sp-shop-link") || element.classList.contains("sp-shop-media")) return "product_navigation";
-        if (href.includes("/store/cart")) return "cart_navigation";
-        if (text.includes("discount")) return "discount_action";
-        return "store_cta";
-    };
-
-    const isTrackedCta = element => {
-        if (!(element instanceof HTMLElement)) return false;
-        return element.matches(
-            "#spAddToCart, #spCheckoutLink, #spPayButton, #spApplyDiscount, #spClearDiscount, #spCheckoutApplyDiscount, #spCheckoutClearDiscount, a.sp-button, button.sp-button, a.sp-shop-link, a.sp-shop-media, a.sp-back-link, [data-action]"
-        );
-    };
-
-    const sendPageExit = () => {
-        if (pageExitSent) return;
-        pageExitSent = true;
-        syncVisibleTime();
-
-        send("page_exit", {
-            scrollPercent: currentScrollPercent(),
-            dwellMilliseconds: elapsedMilliseconds(),
-            engagedMilliseconds,
-            isBounceCandidate: elapsedMilliseconds() < 10000,
-            isExitPage: true,
-            metadata: {
-                exitReason: "pagehide"
-            }
-        });
-    };
-
     window.parfaitTrackCommerce = send;
 
     send("page_view");
 
     if (location.pathname.toLowerCase() === "/store") {
         send("ViewContent", { metadata: { pageType: "store_index" } });
+        sendBrowserMeta("ViewContent", { productName: "Parfait Store" });
     }
 
     if (location.pathname.toLowerCase().includes("/store/product/")) {
@@ -327,13 +298,17 @@
             productSlug: currentProductSlug(),
             metadata: { pageType: "product_detail" }
         });
+        sendBrowserMeta("ViewContent", {
+            productName: name,
+            productSlug: currentProductSlug()
+        });
     }
 
     if (location.pathname.toLowerCase() === "/store/checkout") {
         const cart = readCart();
-        const total = cart.reduce((sum, item) => sum + ((Number(item.priceCents) || 0) * (Number(item.quantity) || 0)), 0);
         const firstItem = cart.length ? cart[0] : null;
-        const totalQuantity = cart.reduce((sum, item) => sum + (Number(item.quantity) || 0), 0);
+        const totalQuantity = cartQuantity(cart);
+        const total = cartValueCents(cart);
 
         send("CheckoutStarted", {
             productId: firstItem?.id || null,
@@ -354,63 +329,38 @@
                 })))
             }
         });
-    }
 
-    window.setTimeout(() => sendEngagementEvent("page_engaged_5s", 5000), 5000);
-    window.setTimeout(() => sendEngagementEvent("page_engaged_10s", 10000), 10000);
-    window.setTimeout(() => sendEngagementEvent("page_engaged_15s", 15000), 15000);
-    window.setTimeout(() => sendEngagementEvent("page_engaged_30s", 30000), 30000);
-    window.setTimeout(() => sendEngagementEvent("page_engaged_60s", 60000), 60000);
-
-    document.addEventListener("mousemove", () => {
-        mouseMoveCount += 1;
-    }, { passive: true });
-
-    ["click", "keydown", "touchstart", "scroll"].forEach(eventName => {
-        window.addEventListener(eventName, () => {
-            humanInteractionCount += 1;
-        }, { passive: true });
-    });
-
-    window.addEventListener("scroll", maybeFireScrollDepthEvents, { passive: true });
-
-    document.addEventListener("visibilitychange", () => {
-        visibilityChangeCount += 1;
-
-        if (document.visibilityState === "hidden") {
-            syncVisibleTime();
-            send("page_visibility_hidden", {
-                metadata: {
-                    visibilityState: "hidden"
-                }
-            });
-            return;
-        }
-
-        lastVisibleAt = Date.now();
-        send("page_visibility_return", {
-            metadata: {
-                visibilityState: "visible"
-            }
+        sendBrowserMeta("InitiateCheckout", {
+            productId: firstItem?.id || null,
+            productName: firstItem?.name || "Parfait Checkout",
+            productSlug: firstItem?.slug || null,
+            quantity: totalQuantity,
+            valueCents: total
         });
-    });
+    }
 
     document.addEventListener("click", event => {
         const element = event.target.closest("button, a");
         if (!element) return;
 
-        if (isTrackedCta(element)) {
+        const label = (element.getAttribute("aria-label") || element.textContent || "").replace(/\s+/g, " ").trim();
+        const text = label.toLowerCase();
+
+        const isTrackedCta = element.matches(
+            "#spAddToCart, #spCheckoutLink, #spPayButton, #spApplyDiscount, #spClearDiscount, #spCheckoutApplyDiscount, #spCheckoutClearDiscount, a.sp-button, button.sp-button, a.sp-shop-link, a.sp-shop-media, a.sp-back-link, [data-action]"
+        );
+
+        if (isTrackedCta) {
             send("cta_click", {
-                elementKey: elementKeyFor(element),
-                buttonLabel: buttonLabelFor(element),
+                elementKey: normalizeKey(element.dataset.analyticsKey || element.id || element.dataset.action || element.getAttribute("href") || label || "cta"),
+                buttonLabel: label,
                 metadata: {
-                    ctaType: ctaTypeFor(element),
+                    ctaType: text.includes("add to cart") ? "add_to_cart" : text.includes("checkout") ? "checkout" : "store_cta",
                     targetUrl: element.getAttribute("href") || ""
                 }
             });
         }
 
-        const text = buttonLabelFor(element).toLowerCase();
         const looksLikeAddToCart =
             text.includes("add to cart") ||
             element.matches("#spAddToCart, [data-add-to-cart], [data-cart-add], .sp-product-button, .sp-add-to-cart, .pf-add-to-cart");
@@ -420,18 +370,84 @@
         setTimeout(() => {
             const cart = readCart();
             const item = cart.at(-1) || {};
+            const valueCents = (Number(item.priceCents) || 0) * (Number(item.quantity) || 1);
 
-            send("AddToCart", {
+            const payload = {
                 productId: item.id,
                 productName: item.name,
                 productSlug: item.slug || currentProductSlug() || null,
                 size: item.size,
                 quantity: Number(item.quantity) || 1,
-                valueCents: (Number(item.priceCents) || 0) * (Number(item.quantity) || 1),
+                valueCents,
                 metadata: { pageType: "cart_action" }
-            });
+            };
+
+            send("AddToCart", payload);
+            sendBrowserMeta("AddToCart", payload);
         }, 150);
     }, true);
+
+    const sendEngagementEvent = (eventName, minimumMs) => {
+        if (firedEngagementEvents.has(eventName)) return;
+        if (elapsedMilliseconds() < minimumMs) return;
+        firedEngagementEvents.add(eventName);
+        send(eventName, { metadata: { milestoneSeconds: Math.round(minimumMs / 1000) } });
+    };
+
+    const maybeFireScrollDepthEvents = () => {
+        const percent = currentScrollPercent();
+        scrollThresholds.forEach(threshold => {
+            if (percent >= threshold && !firedScrollThresholds.has(threshold)) {
+                firedScrollThresholds.add(threshold);
+                send(`scroll_depth_${threshold}`, {
+                    scrollPercent: threshold,
+                    metadata: { threshold }
+                });
+            }
+        });
+    };
+
+    const sendPageExit = () => {
+        if (pageExitSent) return;
+        pageExitSent = true;
+        syncVisibleTime();
+
+        send("page_exit", {
+            scrollPercent: currentScrollPercent(),
+            dwellMilliseconds: elapsedMilliseconds(),
+            engagedMilliseconds,
+            isBounceCandidate: elapsedMilliseconds() < 10000,
+            isExitPage: true,
+            metadata: { exitReason: "pagehide" }
+        });
+    };
+
+    window.setTimeout(() => sendEngagementEvent("page_engaged_5s", 5000), 5000);
+    window.setTimeout(() => sendEngagementEvent("page_engaged_10s", 10000), 10000);
+    window.setTimeout(() => sendEngagementEvent("page_engaged_15s", 15000), 15000);
+    window.setTimeout(() => sendEngagementEvent("page_engaged_30s", 30000), 30000);
+    window.setTimeout(() => sendEngagementEvent("page_engaged_60s", 60000), 60000);
+
+    document.addEventListener("mousemove", () => { mouseMoveCount += 1; }, { passive: true });
+
+    ["click", "keydown", "touchstart", "scroll"].forEach(eventName => {
+        window.addEventListener(eventName, () => { humanInteractionCount += 1; }, { passive: true });
+    });
+
+    window.addEventListener("scroll", maybeFireScrollDepthEvents, { passive: true });
+
+    document.addEventListener("visibilitychange", () => {
+        visibilityChangeCount += 1;
+
+        if (document.visibilityState === "hidden") {
+            syncVisibleTime();
+            send("page_visibility_hidden", { metadata: { visibilityState: "hidden" } });
+            return;
+        }
+
+        lastVisibleAt = Date.now();
+        send("page_visibility_return", { metadata: { visibilityState: "visible" } });
+    });
 
     window.addEventListener("pagehide", sendPageExit);
     window.addEventListener("beforeunload", sendPageExit);

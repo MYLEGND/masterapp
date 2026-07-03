@@ -26,19 +26,14 @@ public sealed class ParfaitInternalWorkspaceService
     {
         var products = _products.GetAllProducts().ToList();
         var orders = _orders.GetAllOrders().ToList();
-        var profileTask = _businessProfile.GetProfileAsync(ct);
-        var analyticsTask = _analytics.GetWorkspaceSummaryAsync(
+        var profile = await _businessProfile.GetProfileAsync(ct);
+        var analytics = await _analytics.GetWorkspaceSummaryAsync(
             "30d",
             null,
             null,
             TrafficQualityMode.RealHumanTraffic,
             TimeZoneInfo.Utc,
             ct);
-
-        await Task.WhenAll(profileTask, analyticsTask);
-
-        var profile = await profileTask;
-        var analytics = await analyticsTask;
         var meta = analytics.MetaSettings;
 
         var paidOrders = orders

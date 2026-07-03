@@ -51,18 +51,13 @@ public sealed class ParfaitInternalAnalyticsService
             viewerTz: viewerTimeZone ?? TimeZoneInfo.Utc,
             qualityMode: qualityMode);
         var scope = ScopeContext.ForSite(SiteKey, SiteKey);
-        var scopedEventsTask = LoadScopedEventsAsync(range, scope, ct);
-
-        var summaryTask = _analytics.GetSummaryAsync(range, scope, TrafficType.All);
-        var devicesTask = _analytics.GetDeviceIntelligenceAsync(range, scope, TrafficType.All);
-        var metaSettingsTask = _businessProfile.GetMetaSettingsAsync(ct);
-
-        await Task.WhenAll(summaryTask, devicesTask, metaSettingsTask, scopedEventsTask);
-
-        var summary = await summaryTask;
-        var devices = await devicesTask;
-        var metaSettings = await metaSettingsTask;
-        var bucketEvents = TrafficQualityBucketFilters.ApplyEventBucketMembershipInMemory(await scopedEventsTask, range.QualityMode);
+        // Shared analytics services run through a single scoped DbContext, so
+        // these calls must stay sequential to avoid overlapping EF operations.
+        var scopedEvents = await LoadScopedEventsAsync(range, scope, ct);
+        var summary = await _analytics.GetSummaryAsync(range, scope, TrafficType.All);
+        var devices = await _analytics.GetDeviceIntelligenceAsync(range, scope, TrafficType.All);
+        var metaSettings = await _businessProfile.GetMetaSettingsAsync(ct);
+        var bucketEvents = TrafficQualityBucketFilters.ApplyEventBucketMembershipInMemory(scopedEvents, range.QualityMode);
         var bucketSummary = BuildBucketSummary(bucketEvents);
         summary.Sessions = bucketSummary.Sessions;
         summary.UniqueVisitors = bucketSummary.UniqueVisitors;
@@ -113,8 +108,6 @@ public sealed class ParfaitInternalAnalyticsService
             viewerTz: viewerTimeZone ?? TimeZoneInfo.Utc,
             qualityMode: qualityMode);
         var scope = ScopeContext.ForSite(SiteKey, SiteKey);
-        var scopedEventsTask = LoadScopedEventsAsync(range, scope, ct);
-
         var summary = await _analytics.GetSummaryAsync(range, scope, TrafficType.All);
         var traffic = await _analytics.GetTrafficAsync(range, scope, TrafficType.All);
         var pagePerformance = await _analytics.GetPagePerformanceAsync(range, scope, TrafficType.All);
@@ -130,7 +123,7 @@ public sealed class ParfaitInternalAnalyticsService
         var metaSignal = await _metaSignal.GetDashboardAsync(range, scope, TrafficType.All, ct: ct);
         var metaHealth = await _metaSignal.GetHealthDashboardAsync(range, scope, ct);
         var metaSettings = await _businessProfile.GetMetaSettingsAsync(ct);
-        var scopedEvents = await scopedEventsTask;
+        var scopedEvents = await LoadScopedEventsAsync(range, scope, ct);
         var bucketEvents = TrafficQualityBucketFilters.ApplyEventBucketMembershipInMemory(scopedEvents, range.QualityMode);
         var selectedBucketSummary = BuildBucketSummary(bucketEvents);
         var qualityBuckets = BuildQualityBuckets(scopedEvents, range.QualityMode);

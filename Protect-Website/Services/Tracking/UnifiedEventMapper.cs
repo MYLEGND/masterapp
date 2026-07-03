@@ -9,6 +9,10 @@ namespace ProtectWebsite.Services.Tracking;
 /// </summary>
 public static class UnifiedEventMapper
 {
+    private const string SiteKey = "ProtectWebsite";
+    private const string BusinessType = "Insurance";
+    private const string ReportingOwner = "AgentPortal";
+
     public static AnalyticsEvent ToAnalytics(UnifiedEventContext ctx)
     {
         return new AnalyticsEvent
@@ -76,7 +80,7 @@ public static class UnifiedEventMapper
                 ctx.EventName,
                 leadId: null,
                 ctx.SessionId,
-                ctx.Metadata,
+                BuildAnalyticsMetadata(ctx.Metadata),
                 isBrowserSignal: ctx.IsBrowserSignal == true,
                 isServerAuthority: ctx.IsServerAuthority == true,
                 metaServerAuthorityEligible: ctx.MetaServerAuthorityEligible == true,
@@ -142,4 +146,12 @@ public static class UnifiedEventMapper
             Host = null
         };
     }
+
+    private static object BuildAnalyticsMetadata(object? metadata) => new
+    {
+        siteKey = SiteKey,
+        businessType = BusinessType,
+        reportingOwner = ReportingOwner,
+        payload = metadata
+    };
 }
