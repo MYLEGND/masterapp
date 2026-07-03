@@ -31,7 +31,7 @@ public sealed class ParfaitInternalWorkspaceService
             "30d",
             null,
             null,
-            TrafficQualityMode.AllTraffic,
+            TrafficQualityMode.RealHumanTraffic,
             TimeZoneInfo.Utc,
             ct);
 

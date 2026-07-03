@@ -39,7 +39,7 @@ public sealed class ParfaitInternalAnalyticsService
         string? preset = "30d",
         DateTime? fromUtc = null,
         DateTime? toUtc = null,
-        TrafficQualityMode qualityMode = TrafficQualityMode.AllTraffic,
+        TrafficQualityMode qualityMode = TrafficQualityMode.RealHumanTraffic,
         TimeZoneInfo? viewerTimeZone = null,
         CancellationToken ct = default)
     {
@@ -97,7 +97,7 @@ public sealed class ParfaitInternalAnalyticsService
         string? preset = "30d",
         DateTime? fromUtc = null,
         DateTime? toUtc = null,
-        TrafficQualityMode qualityMode = TrafficQualityMode.AllTraffic,
+        TrafficQualityMode qualityMode = TrafficQualityMode.RealHumanTraffic,
         TimeZoneInfo? viewerTimeZone = null,
         string? viewerTimeZoneId = null,
         int? viewerTimeZoneOffsetMinutes = null,

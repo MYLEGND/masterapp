@@ -98,9 +98,71 @@
                 return "internal_qa";
             case "all_traffic":
             case "all":
-            default:
                 return "all_traffic";
+            default:
+                return "real_human_traffic";
         }
+    }
+
+    function currentAnalyticsParams() {
+        const url = new URL(window.location.href);
+        return {
+            preset: url.searchParams.get("preset") || pageRoot.dataset.preset || "30d",
+            fromUtc: url.searchParams.get("fromUtc") || pageRoot.dataset.fromUtc || "",
+            toUtc: url.searchParams.get("toUtc") || pageRoot.dataset.toUtc || "",
+            qualityMode: normalizeQualityMode(url.searchParams.get("qualityMode") || pageRoot.dataset.qualityMode || "real_human_traffic"),
+            timezoneId: url.searchParams.get("timezoneId") || pageRoot.dataset.timezoneId || "",
+            timezoneOffsetMinutes: url.searchParams.get("timezoneOffsetMinutes") || pageRoot.dataset.timezoneOffsetMinutes || ""
+        };
+    }
+
+    function navigateWithQualityMode(qualityMode) {
+        let url;
+        try {
+            url = new URL(window.location.href);
+        } catch {
+            return;
+        }
+
+        url.searchParams.set("qualityMode", normalizeQualityMode(qualityMode));
+        window.location.assign(url.toString());
+    }
+
+    function updateTrafficQualityEmptyState() {
+        if (!trafficQualityEmptyState) {
+            return;
+        }
+
+        const hasRows =
+            Number(pageRoot.dataset.summaryPageViews || 0) > 0 ||
+            Number(pageRoot.dataset.summarySessions || 0) > 0 ||
+            Number(pageRoot.dataset.summaryVisitors || 0) > 0 ||
+            Number(pageRoot.dataset.summaryVerifiedLeads || 0) > 0;
+
+        if (hasRows) {
+            trafficQualityEmptyState.hidden = true;
+            trafficQualityEmptyState.textContent = "";
+            return;
+        }
+
+        const messages = {
+            real_human_traffic: "No real human traffic detected",
+            likely_human: "No likely human traffic detected",
+            reviewed_needed: "No reviewed-needed traffic detected",
+            suspicious_activity: "No suspicious activity detected",
+            likely_bots_automation: "No likely bot or automation traffic detected",
+            internal_qa: "No internal / QA traffic detected",
+            all_traffic: "No traffic detected"
+        };
+
+        const mode = normalizeQualityMode(
+            trafficQualityModeSelect?.value ||
+            currentAnalyticsParams().qualityMode ||
+            pageRoot.dataset.qualityMode ||
+            "real_human_traffic");
+
+        trafficQualityEmptyState.textContent = messages[mode] || "No traffic detected";
+        trafficQualityEmptyState.hidden = false;
     }
 
     function formatShortDate(iso) {
@@ -158,7 +220,7 @@
             : tone === "warning"
                 ? "text-warning"
                 : "fa-empty";
-        campaignsBody.innerHTML = `<tr><td colspan="20" class="${className}">${escapeHtml(message)}</td></tr>`;
+        campaignsBody.innerHTML = `<tr><td colspan="13" class="${className}">${escapeHtml(message)}</td></tr>`;
     }
 
     function pill(text, cls) {
@@ -286,20 +348,15 @@
                 <td class="text-end">${pill(formatInt(row.leads), metaLeadsClass(row.leads))}</td>
                 <td class="text-end">${pill(formatInt(row.websiteLeads), metaLeadsClass(row.websiteLeads))}</td>
                 <td class="text-end">${pill(formatInt(row.websiteLeadGap), metaLeadGapClass(row.websiteLeadGap))}</td>
-                <td class="text-end">${pill(formatInt(row.qualifiedLeads), metaLeadsClass(row.qualifiedLeads))}</td>
-                <td class="text-end">${pill(formatInt(row.appointments), metaLeadsClass(row.appointments))}</td>
-                <td class="text-end">${pill(formatInt(row.applications), metaLeadsClass(row.applications))}</td>
-                <td class="text-end">${pill(formatInt(row.policiesIssued), metaLeadsClass(row.policiesIssued))}</td>
-                <td class="text-end">${pill(formatInt(row.policiesPaid), metaLeadsClass(row.policiesPaid))}</td>
-                <td class="text-end">${pill(formatMoney(row.paidPremium), row.paidPremium > 0 ? "meta-good" : "meta-neutral")}</td>
-                <td class="text-end">${pill(`${toNumber(row.premiumRoas).toFixed(2)}x`, row.premiumRoas > 0 ? "meta-good" : "meta-neutral")}</td>
+                <td class="text-end">${pill(formatInt(row.purchases || row.purchaseCount || 0), (row.purchases || row.purchaseCount) > 0 ? "meta-good" : "meta-neutral")}</td>
+                <td class="text-end">${pill(formatMoney(row.revenue || row.purchaseValue || 0), (row.revenue || row.purchaseValue) > 0 ? "meta-good" : "meta-neutral")}</td>
+                <td class="text-end">${pill(`${toNumber(row.roas || 0).toFixed(2)}x`, toNumber(row.roas) > 0 ? "meta-good" : "meta-neutral")}</td>
             </tr>`;
     }
 
     function renderMetaCampaigns(data) {
         setText(rangeValue, data?.rangeLabel || pageRoot.dataset.preset || "30d");
-        setText(accountValue, data?.accountName || data?.accountId || "Not connected");
-        setText(syncValue, formatShortDate(data?.syncedUtc));
+        setMetaCampaignFields(data);
 
         if (accountChip) {
             accountChip.classList.remove("d-none");
@@ -308,8 +365,7 @@
         }
 
         if (noteValue) {
-            noteValue.textContent = data?.comparisonNote
-                || "Meta Leads = Meta Ads API lead reporting. Website Leads = tracked website conversions captured in Parfait analytics.";
+            noteValue.textContent = "Purchases and revenue are Parfait ecommerce outcomes. ROAS is ecommerce revenue divided by Meta spend.";
         }
 
         if (!campaignsBody) {
@@ -322,112 +378,24 @@
             return;
         }
 
-        campaignsBody.innerHTML = rows.map(renderCampaignRow).join("");
+        campaignsBody.innerHTML = rows.map(row => `
+            <tr>
+                <td>${pill(row.campaignName || row.name || "—", `${metaCampaignNameClass(row)} meta-campaign-name-pill`)}<div class="fa-muted small mt-1">${escapeHtml(row.campaignId || "")}</div></td>
+                <td>${pill(row.status || "—", metaStatusClass(row.status))}</td>
+                <td>${pill(row.objective || "—", metaObjectiveClass(row.objective))}</td>
+                <td class="text-end">${pill(formatMoney(row.spend), metaSpendClass(row))}</td>
+                <td class="text-end">${pill(formatInt(row.impressions), metaImpressionsClass(row.impressions))}</td>
+                <td class="text-end">${pill(formatInt(row.reach), metaReachClass(row.reach))}</td>
+                <td class="text-end">${pill(formatInt(row.clicks), metaClicksClass(row.clicks))}</td>
+                <td class="text-end">${pill(formatPercent(row.ctr), metaCtrClass(row.ctr))}</td>
+                <td class="text-end">${pill(formatMoney(row.cpc), metaCpcClass(row.cpc))}</td>
+                <td class="text-end">${pill(formatMoney(row.cpm), metaCpmClass(row.cpm))}</td>
+                <td class="text-end">${pill(formatInt(row.purchases || row.purchaseCount || 0), (row.purchases || row.purchaseCount) > 0 ? "meta-good" : "meta-neutral")}</td>
+                <td class="text-end">${pill(formatMoney(row.revenue || row.purchaseValue || 0), (row.revenue || row.purchaseValue) > 0 ? "meta-good" : "meta-neutral")}</td>
+                <td class="text-end">${pill(`${toNumber(row.roas || 0).toFixed(2)}x`, toNumber(row.roas) > 0 ? "meta-good" : "meta-neutral")}</td>
+            </tr>`).join("");
     }
 
-    function currentAnalyticsParams() {
-        const url = new URL(window.location.href);
-        return {
-            preset: url.searchParams.get("preset") || pageRoot.dataset.preset || "30d",
-            fromUtc: url.searchParams.get("fromUtc") || pageRoot.dataset.fromUtc || "",
-            toUtc: url.searchParams.get("toUtc") || pageRoot.dataset.toUtc || "",
-            qualityMode: normalizeQualityMode(url.searchParams.get("qualityMode") || pageRoot.dataset.qualityMode || "all_traffic"),
-            timezoneId: url.searchParams.get("timezoneId") || pageRoot.dataset.timezoneId || "",
-            timezoneOffsetMinutes: url.searchParams.get("timezoneOffsetMinutes") || pageRoot.dataset.timezoneOffsetMinutes || ""
-        };
-    }
-
-    function updateTrafficQualityEmptyState() {
-        if (!trafficQualityEmptyState) {
-            return;
-        }
-
-        const hasRows =
-            Number(pageRoot.dataset.summaryPageViews || 0) > 0 ||
-            Number(pageRoot.dataset.summarySessions || 0) > 0 ||
-            Number(pageRoot.dataset.summaryVisitors || 0) > 0 ||
-            Number(pageRoot.dataset.summaryVerifiedLeads || 0) > 0;
-
-        if (hasRows) {
-            trafficQualityEmptyState.hidden = true;
-            trafficQualityEmptyState.textContent = "";
-            return;
-        }
-
-        const messages = {
-            real_human_traffic: "No real human traffic detected",
-            likely_human: "No likely human traffic detected",
-            reviewed_needed: "No reviewed-needed traffic detected",
-            suspicious_activity: "No suspicious activity detected",
-            likely_bots_automation: "No likely bot or automation traffic detected",
-            internal_qa: "No internal / QA traffic detected",
-            all_traffic: "No traffic detected"
-        };
-
-        const mode = normalizeQualityMode(
-            trafficQualityModeSelect?.value ||
-            currentAnalyticsParams().qualityMode ||
-            pageRoot.dataset.qualityMode ||
-            "all_traffic");
-
-        trafficQualityEmptyState.textContent = messages[mode] || "No traffic detected";
-        trafficQualityEmptyState.hidden = false;
-    }
-
-    function navigateWithQualityMode(qualityMode) {
-        let url;
-        try {
-            url = new URL(window.location.href);
-        } catch {
-            return;
-        }
-
-        url.searchParams.set("qualityMode", normalizeQualityMode(qualityMode));
-        window.location.assign(url.toString());
-    }
-
-    function updateMetaConnectHref() {
-        const params = {
-            returnUrl: `${window.location.pathname}${window.location.search}`
-        };
-
-        connectBtn.href = buildUrlWithParams(endpoints.metaConnect, params);
-    }
-
-    function setMetaConnectState(enabled, label, title = "") {
-        connectBtn.textContent = label;
-        connectBtn.classList.toggle("disabled", !enabled);
-        connectBtn.setAttribute("aria-disabled", enabled ? "false" : "true");
-        connectBtn.tabIndex = enabled ? 0 : -1;
-        connectBtn.title = title;
-
-        if (enabled) {
-            updateMetaConnectHref();
-        } else {
-            connectBtn.href = "#";
-        }
-    }
-
-    function setMetaCampaignsEnabled(enabled) {
-        if (!(campaignsBtn instanceof HTMLButtonElement)) {
-            return;
-        }
-
-        campaignsBtn.disabled = !enabled;
-        campaignsBtn.classList.toggle("disabled", !enabled);
-        campaignsBtn.setAttribute("aria-disabled", enabled ? "false" : "true");
-        campaignsBtn.title = enabled ? "View Meta campaigns" : "Connect Meta Ads to view campaigns";
-    }
-
-    function setMetaAccountChip(text, connected = true) {
-        if (!accountChip) {
-            return;
-        }
-
-        accountChip.classList.remove("d-none");
-        accountChip.textContent = text || (connected ? "Connected" : "Not connected");
-        accountChip.style.opacity = connected ? "1" : ".75";
-    }
 
     function setMetaCampaignFields(data) {
         setText(accountValue, data?.accountName || data?.accountId || "Not connected");
@@ -611,7 +579,7 @@
             trafficQualityModeSelect.value ||
             currentAnalyticsParams().qualityMode ||
             pageRoot.dataset.qualityMode ||
-            "all_traffic");
+            "real_human_traffic");
         trafficQualityModeSelect.addEventListener("change", () => {
             navigateWithQualityMode(trafficQualityModeSelect.value);
         });

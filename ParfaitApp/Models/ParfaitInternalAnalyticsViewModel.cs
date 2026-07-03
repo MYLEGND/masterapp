@@ -7,7 +7,7 @@ public sealed class ParfaitInternalAnalyticsViewModel
     public string SelectedPreset { get; set; } = "30d";
     public string RangeFrom { get; set; } = "";
     public string RangeTo { get; set; } = "";
-    public string SelectedQualityMode { get; set; } = "all_traffic";
+    public string SelectedQualityMode { get; set; } = "real_human_traffic";
     public string RangeLabel { get; set; } = "";
     public string ViewerTimeZoneId { get; set; } = "";
     public int? ViewerTimeZoneOffsetMinutes { get; set; }

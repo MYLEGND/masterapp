@@ -14,7 +14,7 @@
         "likely_bots_automation" => "Likely Bots / Automation",
         "internal_qa" => "Internal / QA",
         "all_traffic" => "All Traffic",
-        _ => "All Traffic"
+        _ => "Real Human Traffic"
     };
     var viewerTimeZone = TimeZoneInfo.Utc;
     if (!string.IsNullOrWhiteSpace(Model.ViewerTimeZoneId))
@@ -437,7 +437,7 @@
         <div class="col"><div class="kpi-card"><div class="fa-kpi-title">Business</div><div class="fa-kpi-value" id="pf-meta-campaign-business-value" style="font-size:1.1rem;">@((Model.MetaSettings.BusinessName ?? Model.MetaSettings.BusinessId) ?? "—")</div></div></div>
         <div class="col"><div class="kpi-card"><div class="fa-kpi-title">Last Sync</div><div class="fa-kpi-value" id="pf-meta-campaign-sync-value" style="font-size:1.1rem;">@(Model.MetaSettings.ConnectedUtc.HasValue ? LocalTime(Model.MetaSettings.ConnectedUtc.Value) : "Not synced yet")</div></div></div>
       </div>
-      <div class="fa-muted small mb-3" id="meta-campaigns-note">Meta Leads = Meta Ads API lead reporting. Website Leads = tracked website conversions captured in Parfait analytics.</div>
+      <div class="fa-muted small mb-3" id="meta-campaigns-note">Purchases and revenue are Parfait ecommerce outcomes. ROAS is ecommerce revenue divided by Meta spend.</div>
       <div class="table-responsive">
         <table class="table table-sm meta-campaigns-table">
           <thead>
@@ -452,21 +452,14 @@
               <th class="text-end">CTR</th>
               <th class="text-end">CPC</th>
               <th class="text-end">CPM</th>
-              <th class="text-end">Meta Leads</th>
-              <th class="text-end">Website Leads</th>
-              <th class="text-end">Lead Gap</th>
-              <th class="text-end">Qualified</th>
-              <th class="text-end">Appointments</th>
-              <th class="text-end">Applications</th>
-              <th class="text-end">Issued</th>
-              <th class="text-end">Paid</th>
-              <th class="text-end">Paid Premium</th>
+              <th class="text-end">Purchases</th>
+              <th class="text-end">Revenue</th>
               <th class="text-end">ROAS</th>
             </tr>
           </thead>
           <tbody id="meta-campaigns-body">
             <tr>
-              <td colspan="20" class="fa-empty">Open the modal to load Meta campaign performance.</td>
+              <td colspan="13" class="fa-empty">Open the modal to load Meta campaign performance.</td>
             </tr>
           </tbody>
         </table>
@@ -478,10 +471,51 @@
 <div class="modal fade fa-modal parfait-analytics-modal" id="pfMetaHealthModal" tabindex="-1" aria-hidden="true">
   <div class="modal-dialog modal-xl modal-dialog-centered modal-dialog-scrollable wa-modal-dialog">
     <div class="modal-content wa-modal-shell">
-      <div class="modal-header wa-modal-header"><div class="wa-modal-header-main"><div class="wa-modal-header-copy"><div class="wa-modal-kicker">Diagnostic Layer</div><h5 class="modal-title mb-0">Meta Signal Health Dashboard</h5><div class="wa-modal-subtitle">Read-only visibility into bridge coverage, dispatcher execution, and authority outcomes.</div></div></div><button type="button" class="btn-close btn-close-white wa-modal-close" data-bs-dismiss="modal"></button></div>
-      <div class="modal-body wa-modal-body"><section class="wa-modal-section"><div class="table-responsive"><table class="table table-sm"><thead><tr><th>When</th><th>Event</th><th>Source</th><th>Status</th></tr></thead><tbody>
-      @foreach (var row in Model.MetaHealth.RecentEvents.Take(20)) { <tr><td>@LocalTime(row.CreatedUtc)</td><td><strong>@row.EventName</strong></td><td>@row.SourceLabel</td><td>@row.DispatcherStatus / @row.MetaServerStatus</td></tr> }
-      </tbody></table></div></section></div>
+      <div class="modal-header wa-modal-header">
+        <div class="wa-modal-header-main">
+          <div class="wa-modal-header-copy">
+            <div class="wa-modal-kicker">Ecommerce Health Monitor</div>
+            <h5 class="modal-title mb-0">Signal & Commerce Health</h5>
+            <div class="wa-modal-subtitle">Live Parfait storefront, checkout, purchase, and Meta attribution diagnostics.</div>
+          </div>
+          <div class="wa-modal-header-actions">
+            <div class="wa-modal-range-chip">
+              <span class="wa-modal-range-label">Range</span>
+              <span class="wa-modal-range-value" id="pf-health-range-label">@Model.RangeLabel</span>
+            </div>
+          </div>
+        </div>
+        <button type="button" class="btn-close btn-close-white wa-modal-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body wa-modal-body">
+        <div id="pf-health-status" class="wa-incident-status">Loading ecommerce health snapshot…</div>
+        <section class="wa-modal-section">
+          <div class="row row-cols-1 row-cols-lg-4 g-2" id="pf-health-focus-grid"></div>
+        </section>
+        <section class="wa-modal-section">
+          <div class="row row-cols-1 row-cols-lg-3 g-2">
+            <div class="col"><div class="kpi-card"><div class="fa-kpi-title">Browser / Server Match</div><div class="fa-kpi-value" id="pf-health-match-rate">—</div><div class="fa-kpi-sub" id="pf-health-match-sub">—</div></div></div>
+            <div class="col"><div class="kpi-card"><div class="fa-kpi-title">Missing Attribution</div><div class="fa-kpi-value" id="pf-health-missing-rate">—</div><div class="fa-kpi-sub" id="pf-health-missing-sub">—</div></div></div>
+            <div class="col"><div class="kpi-card"><div class="fa-kpi-title">Order Reconciliation</div><div class="fa-kpi-value" id="pf-health-reconciliation">—</div><div class="fa-kpi-sub" id="pf-health-reconciliation-sub">—</div></div></div>
+          </div>
+        </section>
+        <section class="wa-modal-section">
+          <div class="table-responsive">
+            <table class="table table-sm">
+              <thead><tr><th>Step</th><th class="text-end">Sessions</th><th class="text-end">Conversion</th></tr></thead>
+              <tbody id="pf-health-funnel-body"></tbody>
+            </table>
+          </div>
+        </section>
+        <section class="wa-modal-section">
+          <div class="table-responsive">
+            <table class="table table-sm">
+              <thead><tr><th>When</th><th>Severity</th><th>Signal</th><th>Summary</th></tr></thead>
+              <tbody id="pf-health-events-body"></tbody>
+            </table>
+          </div>
+        </section>
+      </div>
     </div>
   </div>
 </div>

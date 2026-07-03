@@ -455,7 +455,7 @@ public sealed class InternalModulesController : Controller
     private static TrafficQualityMode ResolveParfaitAnalyticsQualityMode(string? qualityMode)
     {
         if (string.IsNullOrWhiteSpace(qualityMode))
-            return TrafficQualityMode.AllTraffic;
+            return TrafficQualityMode.RealHumanTraffic;
 
         return TrafficQualityBucketFilters.ParseClientOrEnumValue(qualityMode);
     }
