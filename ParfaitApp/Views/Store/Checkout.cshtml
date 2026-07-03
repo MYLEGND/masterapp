@@ -20,17 +20,25 @@
 }
 
 <section class="sp-store-page sp-store-page--checkout">
-    <div class="sp-shell">
-        <header class="sp-store-hero sp-store-hero--compact sp-store-hero--transaction">
-            <h1>Complete Your Order</h1>
+    <div class="sp-shell sp-transaction-page">
+        <header class="sp-transaction-header">
+            <div>
+                <p class="sp-transaction-kicker">Secure Payment</p>
+                <h1>Checkout</h1>
+                <p class="sp-transaction-copy">Enter contact, shipping, and payment details in one clean secure flow.</p>
+            </div>
+            <div class="sp-transaction-actions">
+                <a class="sp-button sp-button--ghost" href="/store/cart">Edit Cart</a>
+            </div>
         </header>
 
         @Html.AntiForgeryToken()
 
-        <div class="sp-checkout-grid">
-            <section class="sp-surface sp-checkout-card sp-checkout-form-card">
+        <div class="sp-flow-layout sp-checkout-grid">
+            <section class="sp-flow-card sp-checkout-card sp-checkout-form-card">
                 <div class="sp-checkout-section">
                     <div class="sp-checkout-section-head">
+                        <span class="sp-flow-step">Step 01</span>
                         <h2>Contact Information</h2>
                     </div>
 
@@ -56,6 +64,7 @@
 
                 <div class="sp-checkout-section">
                     <div class="sp-checkout-section-head">
+                        <span class="sp-flow-step">Step 02</span>
                         <h2>Shipping Address</h2>
                     </div>
 
@@ -88,6 +97,7 @@
 
                 <div class="sp-checkout-section sp-checkout-section--payment">
                     <div class="sp-checkout-section-head">
+                        <span class="sp-flow-step">Step 03</span>
                         <h2>Payment</h2>
                     </div>
 
@@ -104,10 +114,13 @@
                 <div id="spCheckoutError" class="sp-checkout-error"></div>
             </section>
 
-            <aside class="sp-surface sp-checkout-card sp-order-review">
+            <aside class="sp-flow-card sp-flow-rail sp-checkout-card sp-order-review">
                 <div class="sp-summary-head">
-                    <h2>Order Review</h2>
-                    <a class="sp-inline-link" href="/store/cart">Edit Cart</a>
+                    <div>
+                        <span class="sp-flow-label">Review</span>
+                        <h2>Your Order</h2>
+                    </div>
+                    <a class="sp-inline-link" href="/store/cart">Edit</a>
                 </div>
 
                 <div class="sp-discount-panel">

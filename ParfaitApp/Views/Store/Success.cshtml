@@ -13,22 +13,29 @@
 }
 
 <section class="sp-store-page sp-store-page--success">
-    <div class="sp-shell">
+    <div class="sp-shell sp-transaction-page">
         @if (Model.Order is not null)
         {
-            <header class="sp-store-hero sp-store-hero--compact sp-store-hero--transaction sp-success-hero">
-                <div class="sp-success-hero-top">
-                    <span class="sp-stock-pill is-success">@Model.Order.PaymentStatus</span>
-                    <span class="sp-stock-pill is-info">@Model.Order.OrderNumber</span>
+            <header class="sp-transaction-header sp-success-hero">
+                <div>
+                    <div class="sp-success-hero-top">
+                        <span class="sp-stock-pill is-success">@Model.Order.PaymentStatus</span>
+                        <span class="sp-stock-pill is-info">@Model.Order.OrderNumber</span>
+                    </div>
+                    <p class="sp-transaction-kicker">Parfait Receipt</p>
+                    <h1>Order Confirmed</h1>
+                    <p class="sp-transaction-copy">Your order has been received. A receipt will be sent to the email below.</p>
                 </div>
-                <h1>Order Confirmed</h1>
+                <div class="sp-transaction-actions">
+                    <a class="sp-button sp-button--ghost" href="/store">Back To Shop</a>
+                </div>
             </header>
         }
 
-        <div class="sp-success-layout">
+        <div class="sp-flow-layout sp-success-layout">
             @if (Model.Order is null)
             {
-                <div class="sp-surface sp-success-card sp-success-card--summary">
+                <div class="sp-flow-card sp-success-card sp-success-card--summary">
                     <h1>Order Not Found</h1>
                     <p>We could not find the order details for this confirmation page.</p>
 
@@ -41,7 +48,14 @@
             {
                 var order = Model.Order;
 
-                <section class="sp-surface sp-success-card sp-success-card--summary">
+                <section class="sp-flow-card sp-flow-rail sp-success-card sp-success-card--summary">
+                    <div class="sp-summary-head">
+                        <div>
+                            <span class="sp-flow-label">Paid</span>
+                            <h2>Order Summary</h2>
+                        </div>
+                    </div>
+
                     <div class="sp-confirm-grid sp-confirm-grid--success">
                         <div>
                             <span>Total Paid</span>
@@ -102,9 +116,12 @@
                     </div>
                 </section>
 
-                <section class="sp-surface sp-success-card sp-success-card--details">
+                <section class="sp-flow-card sp-success-card sp-success-card--details">
                     <div class="sp-summary-head">
-                        <h2>Items Purchased</h2>
+                        <div>
+                            <span class="sp-flow-label">Receipt Details</span>
+                            <h2>Items Purchased</h2>
+                        </div>
                     </div>
 
                     <div class="sp-success-items">

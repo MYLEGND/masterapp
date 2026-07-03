@@ -10,17 +10,27 @@
 }
 
 <section class="sp-store-page sp-store-page--cart">
-    <div class="sp-shell">
-        <header class="sp-store-hero sp-store-hero--compact sp-store-hero--transaction">
-            <h1>Your Cart</h1>
+    <div class="sp-shell sp-transaction-page">
+        <header class="sp-transaction-header">
+            <div>
+                <p class="sp-transaction-kicker">Parfait Checkout</p>
+                <h1>Your Cart</h1>
+                <p class="sp-transaction-copy">Review your pieces, confirm quantity, and continue into secure checkout.</p>
+            </div>
+            <div class="sp-transaction-actions">
+                <a class="sp-button sp-button--ghost" href="/store">Continue Shopping</a>
+            </div>
         </header>
 
         @Html.AntiForgeryToken()
 
-        <div class="sp-cart-layout">
-            <section class="sp-surface sp-cart-panel">
-                <div class="sp-cart-panel-head">
-                    <h2>Items In Cart</h2>
+        <div class="sp-flow-layout sp-cart-layout">
+            <section class="sp-flow-card sp-cart-panel">
+                <div class="sp-flow-head sp-cart-panel-head">
+                    <div>
+                        <span class="sp-flow-label">Cart Details</span>
+                        <h2>Selected Items</h2>
+                    </div>
                     <span class="sp-count-chip">
                         <strong id="spCartItemCount">0</strong>
                         <small>Items</small>
@@ -31,9 +41,12 @@
                 <div id="spCartItems" class="sp-cart-items"></div>
             </section>
 
-            <aside class="sp-surface sp-cart-summary-panel">
+            <aside class="sp-flow-card sp-flow-rail sp-cart-summary-panel">
                 <div class="sp-summary-head">
-                    <h2>Order Summary</h2>
+                    <div>
+                        <span class="sp-flow-label">Summary</span>
+                        <h2>Order Total</h2>
+                    </div>
                 </div>
 
                 <div class="sp-discount-panel">
@@ -52,22 +65,18 @@
                         <span>Subtotal</span>
                         <strong id="spCartSubtotal">$0.00</strong>
                     </div>
-
                     <div class="sp-summary-line sp-summary-line--discount" id="spCartDiscountRow" hidden>
                         <span id="spCartDiscountLabel">Discount</span>
                         <strong id="spCartDiscountValue">$0.00</strong>
                     </div>
-
                     <div class="sp-summary-line sp-summary-line--shipping">
                         <span>Shipping</span>
                         <strong id="spCartShipping">$0.00</strong>
                     </div>
-
                     <div class="sp-summary-line sp-summary-line--tax">
                         <span>Tax</span>
                         <strong id="spCartTax">$0.00</strong>
                     </div>
-
                     <div class="sp-summary-total">
                         <span>Total</span>
                         <strong id="spCartTotal">$0.00</strong>
