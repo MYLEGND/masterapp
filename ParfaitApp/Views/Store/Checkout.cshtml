@@ -33,8 +33,8 @@
 
         @Html.AntiForgeryToken()
 
-        <div class="sp-flow-layout sp-checkout-grid">
-            <section class="sp-flow-card sp-checkout-card sp-checkout-form-card">
+        <section class="sp-flow-card sp-transaction-stack-card sp-transaction-stack-card--checkout">
+            <div class="sp-checkout-shell">
                 <div class="sp-checkout-section">
                     <div class="sp-checkout-section-head">
                         <span class="sp-flow-step">Step 01</span>
@@ -94,9 +94,21 @@
                     </div>
                 </div>
 
+                <div class="sp-checkout-section sp-checkout-section--review">
+                    <div class="sp-checkout-section-head">
+                        <div>
+                            <span class="sp-flow-step">Step 03</span>
+                            <h2>Final Order Total</h2>
+                        </div>
+                        <a class="sp-inline-link" href="/store/cart">Edit Cart</a>
+                    </div>
+
+                    <div id="spCheckoutSummary" class="sp-checkout-summary-host"></div>
+                </div>
+
                 <div class="sp-checkout-section sp-checkout-section--payment">
                     <div class="sp-checkout-section-head">
-                        <span class="sp-flow-step">Step 03</span>
+                        <span class="sp-flow-step">Step 04</span>
                         <h2>Payment</h2>
                     </div>
 
@@ -104,38 +116,19 @@
                 </div>
 
                 <div class="sp-checkout-submit-row">
-                    <button id="spPayButton" class="sp-button sp-button--primary" type="button">
-                        <span id="spPaySpinner" class="spinner-border spinner-border-sm" role="status" aria-hidden="true" hidden></span>
-                        <span id="spPayButtonLabel">Complete Purchase</span>
+                    <button id="spPayButton" class="sp-button sp-button--primary sp-button--checkout sp-button--purchase" type="button">
+                        <span class="sp-button-main">
+                            <span id="spPaySpinner" class="spinner-border spinner-border-sm" role="status" aria-hidden="true" hidden></span>
+                            <span id="spPayButtonLabel">Complete Purchase</span>
+                        </span>
+                        <small class="sp-button-note">Secure encrypted Square checkout</small>
                     </button>
+                    <p class="sp-checkout-submit-note">Your order is processed through Square over encrypted payment rails.</p>
                 </div>
 
                 <div id="spCheckoutError" class="sp-checkout-error"></div>
-            </section>
-
-            <aside class="sp-flow-card sp-flow-rail sp-checkout-card sp-order-review">
-                <div class="sp-summary-head">
-                    <div>
-                        <span class="sp-flow-label">Review</span>
-                        <h2>Your Order</h2>
-                    </div>
-                    <a class="sp-inline-link" href="/store/cart">Edit</a>
-                </div>
-
-                <div class="sp-discount-panel">
-                    <label class="sp-field">
-                        <span>Promo Code</span>
-                        <div class="sp-discount-entry">
-                            <input id="spCheckoutDiscountCode" autocomplete="off" placeholder="Enter code" />
-                            <button type="button" class="sp-button sp-button--secondary" id="spCheckoutApplyDiscount">Apply</button>
-                            <button type="button" class="sp-button sp-button--ghost" id="spCheckoutClearDiscount">Clear</button>
-                        </div>
-                    </label>
-                </div>
-
-                <div id="spCheckoutSummary"></div>
-            </aside>
-        </div>
+            </div>
+        </section>
     </div>
 </section>
 
@@ -152,11 +145,8 @@
             const errorHost = document.getElementById("spCheckoutError");
             const summaryHost = document.getElementById("spCheckoutSummary");
             const tokenInput = document.querySelector('input[name="__RequestVerificationToken"]');
-            const discountInput = document.getElementById("spCheckoutDiscountCode");
-            const applyDiscountButton = document.getElementById("spCheckoutApplyDiscount");
-            const clearDiscountButton = document.getElementById("spCheckoutClearDiscount");
 
-            if (!store || !payButton || !paySpinner || !payButtonLabel || !errorHost || !summaryHost || !discountInput) {
+            if (!store || !payButton || !paySpinner || !payButtonLabel || !errorHost || !summaryHost) {
                 return;
             }
 
@@ -167,6 +157,7 @@
             let leadCaptureTimer = 0;
             let lastLeadSignature = "";
             const checkoutAttemptStorageKey = "parfaitCheckoutAttemptId";
+            const emailPattern = /^[^\s@@]+@@[^\s@@]+\.[^\s@@]+$/;
 
             const fields = {
                 firstName: document.getElementById("firstName"),
@@ -208,6 +199,8 @@
                 lastLeadSignature = "";
             };
 
+            const isValidEmail = value => emailPattern.test((value || "").trim());
+
             const setPayButtonAvailability = isAvailable => {
                 if (isSubmitting) {
                     return;
@@ -223,6 +216,10 @@
                 payButton.classList.toggle("is-disabled", payButton.disabled);
                 paySpinner.hidden = !submitting;
                 payButtonLabel.textContent = label;
+            };
+
+            const setError = message => {
+                errorHost.textContent = message || "";
             };
 
             const quoteItems = cart => cart.map(item => ({
@@ -268,65 +265,72 @@
                 return changed;
             };
 
-            const renderSummary = quote => {
-                latestQuote = quote;
-                discountInput.value = store.readDiscountCode();
-
-                if (!quote?.items?.length || !quote.items.some(item => Number(item.quantity || 0) > 0)) {
-                    clearCheckoutAttemptId();
-                    summaryHost.innerHTML = `
-                        <div class="sp-cart-empty">
-                            <h2>Your cart is empty</h2>
-                            <div class="sp-checkout-review-actions">
-                                <a class="sp-button sp-button--primary" href="/store">Back to Shop</a>
-                            </div>
+            const renderEmptySummary = () => {
+                clearCheckoutAttemptId();
+                latestQuote = null;
+                summaryHost.innerHTML = `
+                    <div class="sp-cart-empty">
+                        <h2>Your cart is empty</h2>
+                        <div class="sp-checkout-review-actions">
+                            <a class="sp-button sp-button--primary" href="/store">Back to Shop</a>
                         </div>
-                    `;
-                    setPayButtonAvailability(false);
+                    </div>
+                `;
+                setPayButtonAvailability(false);
+            };
+
+            const orderItemCount = items => items.reduce(
+                (count, item) => count + (Number(item.quantity || 0) || 0),
+                0
+            );
+
+            const renderFinalTotal = (summary, itemCount, isPending) => `
+                <div class="sp-checkout-final-total">
+                    <div class="sp-checkout-final-total-copy">
+                        <span>${itemCount} ${itemCount === 1 ? "item" : "items"} secured</span>
+                        <small>${isPending ? "Final amount will refresh before payment." : "Shipping and tax are included."}</small>
+                    </div>
+                    <div class="sp-checkout-final-total-amount">
+                        <span>Due today</span>
+                        <strong>${summary.totalLabel || store.money(summary.totalCents || 0)}</strong>
+                    </div>
+                </div>
+            `;
+
+            const renderFallbackSummary = cart => {
+                const visibleItems = cart.filter(item => Number(item.quantity || 0) > 0);
+
+                if (!visibleItems.length) {
+                    renderEmptySummary();
                     return;
                 }
 
-                const itemsHtml = quote.items
-                    .filter(item => Number(item.quantity || 0) > 0)
-                    .map(item => `
-                        <div class="sp-review-item">
-                            <img src="${item.imageUrl || "/images/favicon/parfait-logo.png"}" alt="${item.name || "Product"}" />
-                            <div class="sp-review-item-body">
-                                <div class="sp-review-item-top">
-                                    <div>
-                                        <h3>${item.name || "Product"}</h3>
-                                        <p>Size ${item.size || "N/A"} · Qty ${item.quantity || 1}</p>
-                                    </div>
-                                    <strong class="sp-review-item-total">${store.money(Number(item.lineTotalCents) || 0)}</strong>
-                                </div>
-                                <div class="sp-cart-item-flags">
-                                    <span class="sp-stock-pill is-${item.availabilityTone || "success"}">${item.availabilityLabel || "Available"}</span>
-                                    ${item.compareAtPriceCents > item.unitPriceCents ? `<span class="sp-cart-compare-price">${store.money(Number(item.compareAtPriceCents) || 0)}</span>` : ""}
-                                </div>
-                                ${item.issue ? `<p class="sp-cart-issue">${item.issue}</p>` : ""}
-                            </div>
-                        </div>
-                    `).join("");
+                latestQuote = null;
+                summaryHost.innerHTML = renderFinalTotal(
+                    { totalLabel: "Pending quote" },
+                    orderItemCount(visibleItems),
+                    true
+                );
+                setPayButtonAvailability(false);
+            };
 
-                summaryHost.innerHTML = `
-                    <div class="sp-review-items">${itemsHtml}</div>
-                    <div class="sp-review-totals">
-                    <div class="sp-review-line sp-review-line--subtotal"><span>Subtotal</span><strong>${store.money(quote.subtotalCents || 0)}</strong></div>
-                    ${(quote.discountCents || 0) > 0
-                        ? `<div class="sp-review-line sp-review-line--discount"><span>${quote.discountCode && quote.discountLabel ? `${quote.discountCode} · ${quote.discountLabel}` : (quote.discountLabel || quote.discountCode || "Discount")}</span><strong>-${store.money(quote.discountCents || 0)}</strong></div>`
-                        : ""}
-                    <div class="sp-review-line sp-review-line--shipping"><span>Shipping</span><strong>${store.money(quote.shippingCents || 0)}</strong></div>
-                    <div class="sp-review-line sp-review-line--tax"><span>Tax</span><strong>${store.money(quote.taxCents || 0)}</strong></div>
-                    <div class="sp-review-line sp-review-line--total sp-review-total"><span>Total</span><strong>${store.money(quote.totalCents || 0)}</strong></div>
-                    </div>
-                `;
+            const renderSummary = quote => {
+                latestQuote = quote;
 
-                if (quote.isValid) {
-                    setPayButtonAvailability(true);
-                } else {
-                    setPayButtonAvailability(false);
+                if (!quote?.items?.length || !quote.items.some(item => Number(item.quantity || 0) > 0)) {
+                    renderEmptySummary();
+                    return;
                 }
 
+                const visibleItems = quote.items.filter(item => Number(item.quantity || 0) > 0);
+
+                summaryHost.innerHTML = renderFinalTotal(
+                    quote,
+                    orderItemCount(visibleItems),
+                    !quote.isValid
+                );
+
+                setPayButtonAvailability(Boolean(quote.isValid));
                 queueLeadCapture();
             };
 
@@ -347,7 +351,7 @@
                 const customer = getCustomer();
                 const email = customer.email;
 
-                if (!cart.length || email.indexOf(String.fromCharCode(64)) < 0 || email.indexOf(".") < 0) {
+                if (!cart.length || !isValidEmail(email)) {
                     return null;
                 }
 
@@ -402,7 +406,7 @@
                 }
 
                 const emailValue = fields.email.value;
-                if (emailValue.indexOf(String.fromCharCode(64)) < 0 || emailValue.indexOf(".") < 0) {
+                if (!isValidEmail(emailValue)) {
                     fields.email.focus();
                     return "Enter a valid email address.";
                 }
@@ -414,35 +418,41 @@
                 const cart = store.readCart();
                 if (!cart.length) {
                     renderSummary({ items: [], isValid: false, subtotalCents: 0, totalCents: 0, discountCents: 0 });
-                    errorHost.textContent = "";
+                    setError("");
                     return null;
                 }
 
-                const response = await fetch("/store/checkout/quote", {
-                    method: "POST",
-                    headers: {
-                        "Content-Type": "application/json",
-                        "RequestVerificationToken": tokenInput?.value || ""
-                    },
-                    body: JSON.stringify({
-                        discountCode: store.readDiscountCode(),
-                        items: quoteItems(cart)
-                    })
-                });
+                try {
+                    const response = await fetch("/store/checkout/quote", {
+                        method: "POST",
+                        headers: {
+                            "Content-Type": "application/json",
+                            "RequestVerificationToken": tokenInput?.value || ""
+                        },
+                        body: JSON.stringify({
+                            discountCode: store.readDiscountCode(),
+                            items: quoteItems(cart)
+                        })
+                    });
 
-                const text = await response.text();
-                const quote = text ? JSON.parse(text) : {};
-                const changed = quote?.items ? syncCartWithQuote(quote) : false;
+                    const text = await response.text();
+                    const quote = text ? JSON.parse(text) : {};
+                    const changed = quote?.items ? syncCartWithQuote(quote) : false;
 
-                if (changed) {
-                    syncMessage = "Checkout updated to current stock.";
+                    if (changed) {
+                        syncMessage = "Checkout updated to current stock.";
+                        return null;
+                    }
+
+                    renderSummary(quote);
+                    setError(syncMessage || quote.error || quote.messages?.[0] || "");
+                    syncMessage = "";
+                    return quote;
+                } catch {
+                    renderFallbackSummary(cart);
+                    setError("We could not refresh checkout right now.");
                     return null;
                 }
-
-                renderSummary(quote);
-                errorHost.textContent = syncMessage || quote.error || quote.messages?.[0] || "";
-                syncMessage = "";
-                return quote;
             };
 
             async function startSquare() {
@@ -463,15 +473,19 @@
                     }
 
                     setSubmittingState(true, "Processing payment...");
-                    errorHost.textContent = "";
+                    setError("");
 
                     try {
                         const customerError = validateCustomer();
                         if (customerError) throw new Error(customerError);
 
                         const quote = await requestQuote();
-                        if (!quote || !quote.isValid) {
-                            throw new Error("Checkout totals changed. Review the updated cart before paying.");
+                        if (!quote) {
+                            throw new Error(errorHost.textContent || "Checkout could not refresh right now.");
+                        }
+
+                        if (!quote.isValid) {
+                            throw new Error(errorHost.textContent || "Checkout totals changed. Review the updated order before paying.");
                         }
 
                         const result = await card.tokenize();
@@ -512,7 +526,7 @@
                         store.clearDiscountCode();
                         window.location.href = data.redirectUrl || "/store/success";
                     } catch (error) {
-                        errorHost.textContent = error.message || "Payment failed.";
+                        setError(error.message || "Payment failed.");
                         setSubmittingState(false, "Complete Purchase");
                     }
                 });
@@ -522,25 +536,6 @@
                 }
             }
 
-            applyDiscountButton?.addEventListener("click", () => {
-                store.writeDiscountCode(discountInput.value);
-                queueLeadCapture();
-            });
-
-            clearDiscountButton?.addEventListener("click", () => {
-                discountInput.value = "";
-                store.clearDiscountCode();
-                queueLeadCapture();
-            });
-
-            discountInput.addEventListener("keydown", event => {
-                if (event.key === "Enter") {
-                    event.preventDefault();
-                    store.writeDiscountCode(discountInput.value);
-                    queueLeadCapture();
-                }
-            });
-
             Object.values(fields).forEach(field => {
                 field?.addEventListener("input", queueLeadCapture);
                 field?.addEventListener("change", queueLeadCapture);
@@ -548,13 +543,11 @@
             });
 
             window.addEventListener("parfait-cart-updated", () => {
-                requestQuote().catch(error => {
-                    errorHost.textContent = error.message || "Checkout could not refresh.";
-                });
+                requestQuote();
             });
 
             startSquare().catch(error => {
-                errorHost.textContent = error.message || "Square checkout failed to initialize.";
+                setError(error.message || "Square checkout failed to initialize.");
                 setPayButtonAvailability(false);
             });
         })();

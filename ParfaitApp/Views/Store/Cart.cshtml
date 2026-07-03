@@ -23,32 +23,30 @@
 
         @Html.AntiForgeryToken()
 
-        <div class="sp-flow-layout sp-cart-layout">
-            <section class="sp-flow-card sp-cart-panel">
-                <div class="sp-flow-head sp-cart-panel-head">
-                    <div>
-                        <span class="sp-flow-label">Cart Details</span>
-                        <h2>Selected Items</h2>
-                    </div>
-                    <span class="sp-count-chip">
-                        <strong id="spCartItemCount">0</strong>
-                        <small>Items</small>
-                    </span>
+        <section class="sp-flow-card sp-transaction-stack-card sp-transaction-stack-card--cart">
+            <div class="sp-flow-head sp-cart-panel-head">
+                <div>
+                    <span class="sp-flow-label">Cart Details</span>
+                    <h2>Selected Items</h2>
                 </div>
+                <span class="sp-count-chip">
+                    <strong id="spCartItemCount">0</strong>
+                    <small>Items</small>
+                </span>
+            </div>
 
-                <div id="spCartStatus" class="sp-cart-status" hidden></div>
-                <div id="spCartItems" class="sp-cart-items"></div>
-            </section>
+            <div id="spCartStatus" class="sp-cart-status" hidden></div>
+            <div id="spCartItems" class="sp-cart-items"></div>
 
-            <aside class="sp-flow-card sp-flow-rail sp-cart-summary-panel">
-                <div class="sp-summary-head">
+            <div class="sp-transaction-summary-block sp-transaction-summary-block--cart">
+                <div class="sp-summary-head sp-summary-head--compact">
                     <div>
-                        <span class="sp-flow-label">Summary</span>
-                        <h2>Order Total</h2>
+                        <span class="sp-flow-label">Checkout Ready</span>
+                        <h2>Totals & Promo</h2>
                     </div>
                 </div>
 
-                <div class="sp-discount-panel">
+                <div class="sp-discount-panel sp-discount-panel--compact">
                     <label class="sp-field">
                         <span>Promo Code</span>
                         <div class="sp-discount-entry">
@@ -59,35 +57,38 @@
                     </label>
                 </div>
 
-                <div class="sp-summary-stack">
-                    <div class="sp-summary-line sp-summary-line--subtotal">
+                <div class="sp-summary-matrix">
+                    <div class="sp-summary-tile">
                         <span>Subtotal</span>
                         <strong id="spCartSubtotal">$0.00</strong>
                     </div>
-                    <div class="sp-summary-line sp-summary-line--discount" id="spCartDiscountRow" hidden>
+                    <div class="sp-summary-tile sp-summary-tile--discount" id="spCartDiscountRow" hidden>
                         <span id="spCartDiscountLabel">Discount</span>
                         <strong id="spCartDiscountValue">$0.00</strong>
                     </div>
-                    <div class="sp-summary-line sp-summary-line--shipping">
+                    <div class="sp-summary-tile">
                         <span>Shipping</span>
                         <strong id="spCartShipping">$0.00</strong>
                     </div>
-                    <div class="sp-summary-line sp-summary-line--tax">
+                    <div class="sp-summary-tile">
                         <span>Tax</span>
                         <strong id="spCartTax">$0.00</strong>
                     </div>
-                    <div class="sp-summary-total">
+                    <div class="sp-summary-total-bar">
                         <span>Total</span>
                         <strong id="spCartTotal">$0.00</strong>
                     </div>
                 </div>
 
-                <div class="sp-cart-summary-actions">
-                    <a class="sp-button sp-button--primary" id="spCheckoutLink" href="/store/checkout">Secure Checkout</a>
+                <div class="sp-cart-summary-actions sp-cart-summary-actions--inline">
+                    <a class="sp-button sp-button--primary sp-button--checkout" id="spCheckoutLink" href="/store/checkout">
+                        <span class="sp-button-main">Secure Checkout</span>
+                        <small class="sp-button-note">Encrypted payment</small>
+                    </a>
                     <a class="sp-button sp-button--ghost" href="/store">Back To Shop</a>
                 </div>
-            </aside>
-        </div>
+            </div>
+        </section>
     </div>
 </section>
 
@@ -123,6 +124,17 @@
                 size: item.size,
                 quantity: item.quantity
             }));
+
+            const setCheckoutLinkState = isEnabled => {
+                checkoutLink.classList.toggle("is-disabled", !isEnabled);
+
+                if (isEnabled) {
+                    checkoutLink.removeAttribute("aria-disabled");
+                    return;
+                }
+
+                checkoutLink.setAttribute("aria-disabled", "true");
+            };
 
             const setStatus = (message, tone = "warning") => {
                 if (!message) {
@@ -174,6 +186,78 @@
                 return changed;
             };
 
+            const renderEmptyState = () => {
+                itemsHost.innerHTML = `
+                    <div class="sp-cart-empty">
+                        <h2>Your cart is empty</h2>
+                        <div class="sp-empty-actions">
+                            <a class="sp-button sp-button--primary" href="/store">Back To Shop</a>
+                        </div>
+                    </div>
+                `;
+            };
+
+            const renderItems = items => {
+                itemsHost.innerHTML = items.map(item => `
+                    <article class="sp-cart-item">
+                        <a class="sp-cart-media" href="${productUrl(item)}" aria-label="View ${item.name || "product"}">
+                            <img src="${item.imageUrl || "/images/favicon/parfait-logo.png"}" alt="${item.name || "Product"}" />
+                        </a>
+                        <div class="sp-cart-body">
+                            <div class="sp-cart-top">
+                                <div class="sp-cart-copy">
+                                    <a class="sp-cart-title" href="${productUrl(item)}">${item.name || "Product"}</a>
+                                    <div class="sp-cart-detail-row">
+                                        <p class="sp-cart-meta">Size ${item.size || "N/A"}</p>
+                                        <span class="sp-cart-unit-price">${store.money(Number(item.unitPriceCents ?? item.priceCents) || 0)} each</span>
+                                    </div>
+                                    <div class="sp-cart-item-flags">
+                                        <span class="sp-stock-pill is-${item.availabilityTone || "success"}">${item.availabilityLabel || "Available"}</span>
+                                        ${item.compareAtPriceCents > item.unitPriceCents ? `<span class="sp-cart-compare-price">${store.money(Number(item.compareAtPriceCents) || 0)}</span>` : ""}
+                                    </div>
+                                    ${item.issue ? `<p class="sp-cart-issue">${item.issue}</p>` : ""}
+                                </div>
+                                <div class="sp-cart-line-total">${store.money(Number(item.lineTotalCents) || 0)}</div>
+                            </div>
+
+                            <div class="sp-cart-controls">
+                                <div class="sp-qty-control" aria-label="Quantity controls">
+                                    <button type="button" class="sp-qty-button" data-action="decrease" data-key="${item.key}" aria-label="Decrease quantity">-</button>
+                                    <span class="sp-qty-count">${Number(item.quantity) || 1}</span>
+                                    <button type="button" class="sp-qty-button" data-action="increase" data-key="${item.key}" aria-label="Increase quantity">+</button>
+                                </div>
+
+                                <button type="button" class="sp-text-button" data-action="remove" data-key="${item.key}">Remove</button>
+                            </div>
+                        </div>
+                    </article>
+                `).join("");
+            };
+
+            const renderFallbackCart = cart => {
+                const visibleItems = cart.filter(item => Number(item.quantity || 0) > 0).map(item => ({
+                    ...item,
+                    unitPriceCents: Number(item.priceCents || 0),
+                    lineTotalCents: (Number(item.priceCents || 0) * (Number(item.quantity) || 0)),
+                    availabilityTone: "warning",
+                    availabilityLabel: "Pending quote"
+                }));
+
+                if (!visibleItems.length) {
+                    renderEmpty();
+                    return;
+                }
+
+                countHost.textContent = String(store.itemCount(cart));
+                subtotalHost.textContent = store.money(store.subtotal(cart));
+                shippingHost.textContent = "Pending quote";
+                taxHost.textContent = "Pending quote";
+                totalHost.textContent = "Pending quote";
+                discountRow.hidden = true;
+                setCheckoutLinkState(false);
+                renderItems(visibleItems);
+            };
+
             const renderQuote = quote => {
                 const visibleItems = (quote.items || []).filter(item => Number(item.quantity || 0) > 0);
 
@@ -196,58 +280,13 @@
                 discountInput.value = store.readDiscountCode();
 
                 if (!visibleItems.length) {
-                    checkoutLink.classList.add("is-disabled");
-                    checkoutLink.setAttribute("aria-disabled", "true");
-                    itemsHost.innerHTML = `
-                        <div class="sp-cart-empty">
-                            <h2>Your cart is empty</h2>
-                            <div class="sp-empty-actions">
-                                <a class="sp-button sp-button--primary" href="/store">Back To Shop</a>
-                            </div>
-                        </div>
-                    `;
+                    setCheckoutLinkState(false);
+                    renderEmptyState();
                     return;
                 }
 
-                if (quote.isValid) {
-                    checkoutLink.classList.remove("is-disabled");
-                    checkoutLink.removeAttribute("aria-disabled");
-                } else {
-                    checkoutLink.classList.add("is-disabled");
-                    checkoutLink.setAttribute("aria-disabled", "true");
-                }
-
-                itemsHost.innerHTML = visibleItems.map(item => `
-                    <article class="sp-cart-item">
-                        <a class="sp-cart-media" href="${productUrl(item)}" aria-label="View ${item.name || "product"}">
-                            <img src="${item.imageUrl || "/images/favicon/parfait-logo.png"}" alt="${item.name || "Product"}" />
-                        </a>
-                        <div class="sp-cart-body">
-                            <div class="sp-cart-top">
-                                <div>
-                                    <a class="sp-cart-title" href="${productUrl(item)}">${item.name || "Product"}</a>
-                                    <p class="sp-cart-meta">Size ${item.size || "N/A"} · ${store.money(Number(item.unitPriceCents) || 0)} each</p>
-                                    <div class="sp-cart-item-flags">
-                                        <span class="sp-stock-pill is-${item.availabilityTone || "success"}">${item.availabilityLabel || "Available"}</span>
-                                        ${item.compareAtPriceCents > item.unitPriceCents ? `<span class="sp-cart-compare-price">${store.money(Number(item.compareAtPriceCents) || 0)}</span>` : ""}
-                                    </div>
-                                    ${item.issue ? `<p class="sp-cart-issue">${item.issue}</p>` : ""}
-                                </div>
-                                <div class="sp-cart-line-total">${store.money(Number(item.lineTotalCents) || 0)}</div>
-                            </div>
-
-                            <div class="sp-cart-controls">
-                                <div class="sp-qty-control" aria-label="Quantity controls">
-                                    <button type="button" class="sp-qty-button" data-action="decrease" data-key="${item.key}" aria-label="Decrease quantity">−</button>
-                                    <span class="sp-qty-count">${Number(item.quantity) || 1}</span>
-                                    <button type="button" class="sp-qty-button" data-action="increase" data-key="${item.key}" aria-label="Increase quantity">+</button>
-                                </div>
-
-                                <button type="button" class="sp-text-button" data-action="remove" data-key="${item.key}">Remove</button>
-                            </div>
-                        </div>
-                    </article>
-                `).join("");
+                setCheckoutLinkState(quote.isValid);
+                renderItems(visibleItems);
             };
 
             const renderEmpty = () => {
@@ -257,16 +296,8 @@
                 taxHost.textContent = store.money(0);
                 totalHost.textContent = store.money(0);
                 discountRow.hidden = true;
-                checkoutLink.classList.add("is-disabled");
-                checkoutLink.setAttribute("aria-disabled", "true");
-                itemsHost.innerHTML = `
-                    <div class="sp-cart-empty">
-                        <h2>Your cart is empty</h2>
-                        <div class="sp-empty-actions">
-                            <a class="sp-button sp-button--primary" href="/store">Back To Shop</a>
-                        </div>
-                    </div>
-                `;
+                setCheckoutLinkState(false);
+                renderEmptyState();
             };
 
             const requestQuote = async () => {
@@ -306,7 +337,7 @@
                         quote.isValid ? "success" : "warning");
                     statusMessage = "";
                 } catch {
-                    renderEmpty();
+                    renderFallbackCart(cart);
                     setStatus("We could not refresh the cart right now.", "danger");
                 }
             };

@@ -48,14 +48,14 @@
                     string Active(string c) => c == currentController ? "active" : "";
                 }
 
-                <a class="nav-link @Active("Home")" asp-controller="Home" asp-action="Index">Home</a>
-                <a class="nav-link @Active("TrainingPackages")" asp-controller="TrainingPackages" asp-action="Index" target="_blank" rel="noopener">Training</a>
-                <a class="nav-link @Active("Contact")" asp-controller="Contact" asp-action="Index" target="_blank" rel="noopener">Contact</a>
-                <a class="nav-link @Active("About")" asp-controller="About" asp-action="About" target="_blank" rel="noopener">About Us</a>
+                <a class="nav-link @Active("Home")" asp-controller="Home" asp-action="Index" data-parfait-nav-tab="true">Home</a>
+                <a class="nav-link @Active("TrainingPackages")" asp-controller="TrainingPackages" asp-action="Index" target="_blank" rel="noopener" data-parfait-nav-tab="true">Training</a>
+                <a class="nav-link @Active("Contact")" asp-controller="Contact" asp-action="Index" target="_blank" rel="noopener" data-parfait-nav-tab="true">Contact</a>
+                <a class="nav-link @Active("About")" asp-controller="About" asp-action="About" target="_blank" rel="noopener" data-parfait-nav-tab="true">About Us</a>
 
                 <!-- Store + Login (same right-side group) -->
-                <a class="nav-link @Active("Store")" href="/store" target="_blank" rel="noopener">Shop</a>
-                <a class="nav-link nav-icon-link pf-store-cart-link" href="/store/cart" target="_blank" rel="noopener" aria-label="Shopping cart">
+                <a class="nav-link @Active("Store")" href="/store" target="_blank" rel="noopener" data-parfait-nav-tab="true">Shop</a>
+                <a class="nav-link nav-icon-link pf-store-cart-link" href="/store/cart" target="_blank" rel="noopener" aria-label="Shopping cart" data-parfait-nav-tab="true">
                     <svg class="nav-icon pf-cart-icon" viewBox="0 0 24 24" fill="none" aria-hidden="true">
                         <path d="M6.5 6.5h15l-1.8 8.2a2 2 0 0 1-2 1.6H9.2a2 2 0 0 1-2-1.7L5.7 3.8H3" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
                         <circle cx="9.8" cy="20" r="1.2" stroke-width="2"/>
@@ -63,7 +63,7 @@
                     </svg>
                     <span class="pf-cart-count" id="pfStoreCartCount">0</span>
                 </a>
-                <a class="nav-link nav-icon-link login-link" href="/internal/login" target="_blank" rel="noopener" aria-label="Team login">
+                <a class="nav-link nav-icon-link login-link" href="/internal/login" target="_blank" rel="noopener" aria-label="Team login" data-parfait-nav-tab="true">
                     <svg class="nav-icon pf-account-icon" viewBox="0 0 24 24" fill="none" aria-hidden="true">
                         <circle cx="12" cy="8" r="4" stroke-width="2"/>
                         <path d="M4.5 21a7.5 7.5 0 0 1 15 0" stroke-width="2" stroke-linecap="round"/>
@@ -124,6 +124,41 @@
 
         window.addEventListener('resize', function () {
             if (window.innerWidth > 900) closeNav();
+        });
+
+        const normalizePath = pathname => {
+            const trimmed = (pathname || '').replace(/\/+$/, '');
+            return trimmed || '/';
+        };
+
+        const currentUrl = new URL(window.location.href);
+        const currentPath = normalizePath(currentUrl.pathname);
+        const currentSearch = currentUrl.search || '';
+
+        document.querySelectorAll('[data-parfait-nav-tab="true"]').forEach(link => {
+            link.addEventListener('click', function (event) {
+                if (event.defaultPrevented || event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) {
+                    return;
+                }
+
+                const destination = new URL(link.href, window.location.href);
+                const destinationPath = normalizePath(destination.pathname);
+                const isSameOrigin = destination.origin === currentUrl.origin;
+                const isCurrentPage = isSameOrigin &&
+                    destinationPath === currentPath &&
+                    (destination.search || '') === currentSearch;
+
+                if (isCurrentPage) {
+                    event.preventDefault();
+                    window.location.reload();
+                    return;
+                }
+
+                if (isSameOrigin) {
+                    event.preventDefault();
+                    window.open(destination.href, '_blank', 'noopener');
+                }
+            });
         });
     }());
 </script>
