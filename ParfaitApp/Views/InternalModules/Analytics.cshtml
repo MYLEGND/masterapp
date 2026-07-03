@@ -5,6 +5,17 @@
 
     static string Money(int cents) => "$" + (cents / 100m).ToString("0.00");
     static string Rate(decimal value) => value.ToString("0.0") + "%";
+    static string QualityModeLabel(string value) => (value ?? string.Empty).Trim().ToLowerInvariant() switch
+    {
+        "real_human_traffic" => "Real Human Traffic",
+        "likely_human" => "Likely Human",
+        "reviewed_needed" => "Reviewed Needed",
+        "suspicious_activity" => "Suspicious Activity",
+        "likely_bots_automation" => "Likely Bots / Automation",
+        "internal_qa" => "Internal / QA",
+        "all_traffic" => "All Traffic",
+        _ => "All Traffic"
+    };
     var viewerTimeZone = TimeZoneInfo.Utc;
     if (!string.IsNullOrWhiteSpace(Model.ViewerTimeZoneId))
     {
@@ -59,6 +70,7 @@
     var checkoutBreakdown = Model.ActionBreakdowns.FirstOrDefault(action => action.Key == "checkout-started");
     var purchaseBreakdown = Model.ActionBreakdowns.FirstOrDefault(action => action.Key == "purchase");
     var healthIssues = Model.MetaHealth.FailureDetection.Where(issue => issue.Count > 0).Take(6).ToList();
+    var selectedQualityModeLabel = QualityModeLabel(Model.SelectedQualityMode);
 }
 
 @section Styles {
@@ -71,6 +83,10 @@
      data-from-utc="@Model.RangeFrom"
      data-to-utc="@Model.RangeTo"
      data-quality-mode="@Model.SelectedQualityMode"
+     data-summary-page-views="@Model.Summary.PageViews"
+     data-summary-sessions="@Model.Summary.Sessions"
+     data-summary-visitors="@Model.Visitors"
+     data-summary-verified-leads="@Model.Summary.VerifiedLeads"
      data-timezone-id="@Model.ViewerTimeZoneId"
      data-timezone-offset-minutes="@Model.ViewerTimeZoneOffsetMinutes">
     <section class="wa-command-surface mb-3">
@@ -104,7 +120,7 @@
                 </div>
                 <div class="control-bar-group control-bar-status">
                     <div class="control-bar-label">Status</div>
-                    <div class="control-bar-status-text">Shared analytics backend · ecommerce scoped</div>
+                    <div class="control-bar-status-text">Shared analytics backend · ecommerce scoped · @selectedQualityModeLabel</div>
                 </div>
             </div>
         </div>
@@ -124,6 +140,19 @@
             </div>
 
             <div class="wa-kpi-stage-meta">
+                <div class="wa-quality-filter">
+                    <label for="traffic-quality-mode" class="wa-quality-label">Traffic Quality</label>
+                    <select id="traffic-quality-mode" class="wa-quality-select">
+                        <option value="real_human_traffic" selected="@(Model.SelectedQualityMode == "real_human_traffic" ? "selected" : null)">Real Human Traffic</option>
+                        <option value="likely_human" selected="@(Model.SelectedQualityMode == "likely_human" ? "selected" : null)">Likely Human</option>
+                        <option value="reviewed_needed" selected="@(Model.SelectedQualityMode == "reviewed_needed" ? "selected" : null)">Reviewed Needed</option>
+                        <option value="suspicious_activity" selected="@(Model.SelectedQualityMode == "suspicious_activity" ? "selected" : null)">Suspicious Activity</option>
+                        <option value="likely_bots_automation" selected="@(Model.SelectedQualityMode == "likely_bots_automation" ? "selected" : null)">Likely Bots / Automation</option>
+                        <option value="internal_qa" selected="@(Model.SelectedQualityMode == "internal_qa" ? "selected" : null)">Internal / QA</option>
+                        <option value="all_traffic" selected="@(Model.SelectedQualityMode == "all_traffic" ? "selected" : null)">All Traffic</option>
+                    </select>
+                    <div id="traffic-quality-empty-state" class="small text-warning mt-2" role="status" aria-live="polite" hidden>No traffic detected</div>
+                </div>
                 <div class="wa-kpi-meta-dock">
                     <div class="wa-kpi-meta-copy">
                         <div class="wa-kpi-meta-kicker">Meta Ads</div>

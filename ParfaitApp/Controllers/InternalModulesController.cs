@@ -295,7 +295,7 @@ public sealed class InternalModulesController : Controller
         [FromQuery] int? timezoneOffsetMinutes = null,
         CancellationToken ct = default)
     {
-        var resolvedQualityMode = TrafficQualityBucketFilters.ParseClientOrEnumValue(qualityMode);
+        var resolvedQualityMode = ResolveParfaitAnalyticsQualityMode(qualityMode);
         var viewerTimeZone = ResolveViewerTimeZone(timezoneId, timezoneOffsetMinutes);
         return View(await _internalAnalytics.GetDashboardAsync(
             preset,
@@ -321,7 +321,7 @@ public sealed class InternalModulesController : Controller
         [FromQuery] int? timezoneOffsetMinutes = null,
         CancellationToken ct = default)
     {
-        var resolvedQualityMode = TrafficQualityBucketFilters.ParseClientOrEnumValue(qualityMode);
+        var resolvedQualityMode = ResolveParfaitAnalyticsQualityMode(qualityMode);
         var viewerTimeZone = ResolveViewerTimeZone(timezoneId, timezoneOffsetMinutes);
         if (!ModelState.IsValid)
         {
@@ -412,7 +412,7 @@ public sealed class InternalModulesController : Controller
     {
         try
         {
-            var resolvedQualityMode = TrafficQualityBucketFilters.ParseClientOrEnumValue(qualityMode);
+            var resolvedQualityMode = ResolveParfaitAnalyticsQualityMode(qualityMode);
             var viewerTimeZone = ResolveViewerTimeZone(timezoneId, timezoneOffsetMinutes);
             var range = TimeRangeRequest.FromPreset(
                 string.IsNullOrWhiteSpace(preset) ? "30d" : preset,
@@ -450,6 +450,14 @@ public sealed class InternalModulesController : Controller
             return returnUrl;
 
         return Url.Action(nameof(Analytics), "InternalModules") ?? "/internal/analytics";
+    }
+
+    private static TrafficQualityMode ResolveParfaitAnalyticsQualityMode(string? qualityMode)
+    {
+        if (string.IsNullOrWhiteSpace(qualityMode))
+            return TrafficQualityMode.AllTraffic;
+
+        return TrafficQualityBucketFilters.ParseClientOrEnumValue(qualityMode);
     }
 
     private static TimeZoneInfo ResolveViewerTimeZone(string? timezoneId, int? timezoneOffsetMinutes)

@@ -47,6 +47,8 @@
     const statusEl = document.getElementById("meta-connection-status");
     const campaignsBtn = document.getElementById("meta-campaigns-open");
     const campaignsModal = document.getElementById("pfMetaCampaignsModal");
+    const trafficQualityModeSelect = document.getElementById("traffic-quality-mode");
+    const trafficQualityEmptyState = document.getElementById("traffic-quality-empty-state");
     const disconnectForm = document.getElementById("meta-disconnect-form");
     const openAdsLink = document.getElementById("openMetaAdsManagerLink");
     const accountChip = document.getElementById("meta-campaigns-account-chip");
@@ -73,6 +75,32 @@
         });
 
         return `${url.pathname}${url.search}`;
+    }
+
+    function normalizeQualityMode(value) {
+        switch (String(value || "").trim().toLowerCase()) {
+            case "real_human_traffic":
+            case "real_human":
+                return "real_human_traffic";
+            case "likely_human":
+                return "likely_human";
+            case "reviewed_needed":
+            case "review":
+                return "reviewed_needed";
+            case "suspicious_activity":
+            case "suspicious":
+                return "suspicious_activity";
+            case "likely_bots_automation":
+            case "likely_bot":
+                return "likely_bots_automation";
+            case "internal_qa":
+            case "internal":
+                return "internal_qa";
+            case "all_traffic":
+            case "all":
+            default:
+                return "all_traffic";
+        }
     }
 
     function formatShortDate(iso) {
@@ -303,10 +331,59 @@
             preset: url.searchParams.get("preset") || pageRoot.dataset.preset || "30d",
             fromUtc: url.searchParams.get("fromUtc") || pageRoot.dataset.fromUtc || "",
             toUtc: url.searchParams.get("toUtc") || pageRoot.dataset.toUtc || "",
-            qualityMode: url.searchParams.get("qualityMode") || pageRoot.dataset.qualityMode || "",
+            qualityMode: normalizeQualityMode(url.searchParams.get("qualityMode") || pageRoot.dataset.qualityMode || "all_traffic"),
             timezoneId: url.searchParams.get("timezoneId") || pageRoot.dataset.timezoneId || "",
             timezoneOffsetMinutes: url.searchParams.get("timezoneOffsetMinutes") || pageRoot.dataset.timezoneOffsetMinutes || ""
         };
+    }
+
+    function updateTrafficQualityEmptyState() {
+        if (!trafficQualityEmptyState) {
+            return;
+        }
+
+        const hasRows =
+            Number(pageRoot.dataset.summaryPageViews || 0) > 0 ||
+            Number(pageRoot.dataset.summarySessions || 0) > 0 ||
+            Number(pageRoot.dataset.summaryVisitors || 0) > 0 ||
+            Number(pageRoot.dataset.summaryVerifiedLeads || 0) > 0;
+
+        if (hasRows) {
+            trafficQualityEmptyState.hidden = true;
+            trafficQualityEmptyState.textContent = "";
+            return;
+        }
+
+        const messages = {
+            real_human_traffic: "No real human traffic detected",
+            likely_human: "No likely human traffic detected",
+            reviewed_needed: "No reviewed-needed traffic detected",
+            suspicious_activity: "No suspicious activity detected",
+            likely_bots_automation: "No likely bot or automation traffic detected",
+            internal_qa: "No internal / QA traffic detected",
+            all_traffic: "No traffic detected"
+        };
+
+        const mode = normalizeQualityMode(
+            trafficQualityModeSelect?.value ||
+            currentAnalyticsParams().qualityMode ||
+            pageRoot.dataset.qualityMode ||
+            "all_traffic");
+
+        trafficQualityEmptyState.textContent = messages[mode] || "No traffic detected";
+        trafficQualityEmptyState.hidden = false;
+    }
+
+    function navigateWithQualityMode(qualityMode) {
+        let url;
+        try {
+            url = new URL(window.location.href);
+        } catch {
+            return;
+        }
+
+        url.searchParams.set("qualityMode", normalizeQualityMode(qualityMode));
+        window.location.assign(url.toString());
     }
 
     function updateMetaConnectHref() {
@@ -529,6 +606,17 @@
         }
     });
 
+    if (trafficQualityModeSelect instanceof HTMLSelectElement) {
+        trafficQualityModeSelect.value = normalizeQualityMode(
+            trafficQualityModeSelect.value ||
+            currentAnalyticsParams().qualityMode ||
+            pageRoot.dataset.qualityMode ||
+            "all_traffic");
+        trafficQualityModeSelect.addEventListener("change", () => {
+            navigateWithQualityMode(trafficQualityModeSelect.value);
+        });
+    }
+
     disconnectBtn?.addEventListener("click", () => {
         void handleMetaDisconnect();
     });
@@ -546,4 +634,6 @@
     void loadMetaConnectionStatus().finally(() => {
         applyMetaCallbackState(metaCallbackState);
     });
+
+    updateTrafficQualityEmptyState();
 })();
