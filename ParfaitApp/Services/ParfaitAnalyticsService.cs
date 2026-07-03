@@ -13,6 +13,19 @@ public sealed class ParfaitAnalyticsService
     private const string SiteKey = "ParfaitApp";
     private const string BusinessType = "Ecommerce";
     private const string ReportingOwner = "ParfaitApp";
+    private static readonly string[] NonProductionHostHints =
+    [
+        "localhost",
+        "127.0.0.1",
+        "::1",
+        ".local",
+        "dev",
+        "staging",
+        "preview",
+        "sandbox",
+        "ngrok",
+        "azurewebsites.net"
+    ];
     private static readonly IReadOnlyDictionary<string, string> CommerceEventNames = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
     {
         ["ViewContent"] = "ViewContent",
@@ -23,10 +36,12 @@ public sealed class ParfaitAnalyticsService
     };
 
     private readonly MasterAppDbContext _db;
+    private readonly HashSet<string> _publicHosts;
 
-    public ParfaitAnalyticsService(MasterAppDbContext db)
+    public ParfaitAnalyticsService(MasterAppDbContext db, IConfiguration configuration)
     {
         _db = db;
+        _publicHosts = BuildPublicHosts(configuration);
     }
 
     public async Task TrackAsync(
@@ -52,6 +67,8 @@ public sealed class ParfaitAnalyticsService
         var sourceQuery = ParseQueryParameters(sourceUri);
         var pageKey = ResolvePageKey(sourcePath, request.PageKey, request.ProductSlug);
         var referrerHost = ResolveHost(referrer);
+        var isInternalTraffic = IsInternalTrafficSource(httpContext, sourceHost, sourcePath);
+        var environment = ResolveEnvironment(httpContext, sourceHost, isInternalTraffic);
 
         var metadata = BuildMetadata(request, httpContext, eventName, eventId, visitorId, sessionId, url, referrer, sourceHost, sourcePath, sourceQuery);
 
@@ -76,7 +93,8 @@ public sealed class ParfaitAnalyticsService
         Set(analyticsEvent, "ReferrerHost", referrerHost);
         Set(analyticsEvent, "UserAgent", userAgent);
         Set(analyticsEvent, "IpAddress", ip);
-        Set(analyticsEvent, "Environment", ResolveEnvironment(httpContext));
+        Set(analyticsEvent, "IsInternal", isInternalTraffic);
+        Set(analyticsEvent, "Environment", environment);
         Set(analyticsEvent, "SourceApp", "ParfaitApp");
         Set(analyticsEvent, "DeviceType", request.DeviceType);
         Set(analyticsEvent, "Browser", request.Browser);
@@ -307,27 +325,98 @@ public sealed class ParfaitAnalyticsService
         return $"parfait_{NormalizeKey(normalizedPath.Trim('/').Replace('/', '_'))}";
     }
 
-    private static string ResolveEnvironment(HttpContext httpContext)
+    private bool IsInternalTrafficSource(HttpContext httpContext, string? sourceHost, string? sourcePath)
     {
+        if (!string.IsNullOrWhiteSpace(sourcePath) &&
+            sourcePath.StartsWith("/internal", StringComparison.OrdinalIgnoreCase))
+        {
+            return true;
+        }
+
+        if (IsCanonicalPublicHost(sourceHost) || IsCanonicalPublicHost(httpContext.Request.Host.Host))
+            return false;
+
+        return IsKnownNonProductionHost(sourceHost) || IsKnownNonProductionHost(httpContext.Request.Host.Host);
+    }
+
+    private string ResolveEnvironment(HttpContext httpContext, string? sourceHost, bool isInternalTraffic)
+    {
+        if (IsCanonicalPublicHost(sourceHost) || IsCanonicalPublicHost(httpContext.Request.Host.Host))
+            return "production";
+
+        if (isInternalTraffic)
+            return "development";
+
         var current = Environment.GetEnvironmentVariable("ASPNETCORE_ENVIRONMENT");
         if (!string.IsNullOrWhiteSpace(current))
         {
             var normalized = current.Trim();
             if (normalized.StartsWith("prod", StringComparison.OrdinalIgnoreCase)) return "production";
             if (normalized.StartsWith("dev", StringComparison.OrdinalIgnoreCase)) return "development";
+            if (normalized.StartsWith("stag", StringComparison.OrdinalIgnoreCase) ||
+                normalized.StartsWith("preview", StringComparison.OrdinalIgnoreCase) ||
+                normalized.StartsWith("sandbox", StringComparison.OrdinalIgnoreCase))
+            {
+                return "development";
+            }
+
             return normalized;
         }
 
-        var host = httpContext.Request.Host.Host?.Trim() ?? string.Empty;
-        if (host.Contains("localhost", StringComparison.OrdinalIgnoreCase) ||
-            host.StartsWith("127.", StringComparison.OrdinalIgnoreCase) ||
-            host.StartsWith("::1", StringComparison.OrdinalIgnoreCase) ||
-            host.StartsWith("[::1]", StringComparison.OrdinalIgnoreCase))
-        {
+        if (IsKnownNonProductionHost(sourceHost) || IsKnownNonProductionHost(httpContext.Request.Host.Host))
             return "development";
-        }
 
         return "production";
+    }
+
+    private static HashSet<string> BuildPublicHosts(IConfiguration configuration)
+    {
+        var hosts = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+        {
+            "shopparfait.com",
+            "www.shopparfait.com"
+        };
+
+        AddConfiguredHost(hosts, configuration["Store:PublicBaseUrl"]);
+        AddConfiguredHost(hosts, configuration["PublicSite:BaseUrl"]);
+        return hosts;
+    }
+
+    private static void AddConfiguredHost(HashSet<string> hosts, string? configuredValue)
+    {
+        var normalizedHost = NormalizeHost(configuredValue);
+        if (!string.IsNullOrWhiteSpace(normalizedHost))
+            hosts.Add(normalizedHost);
+    }
+
+    private bool IsCanonicalPublicHost(string? host)
+    {
+        var normalizedHost = NormalizeHost(host);
+        return !string.IsNullOrWhiteSpace(normalizedHost) && _publicHosts.Contains(normalizedHost);
+    }
+
+    private static bool IsKnownNonProductionHost(string? host)
+    {
+        var normalizedHost = NormalizeHost(host);
+        if (string.IsNullOrWhiteSpace(normalizedHost))
+            return false;
+
+        return NonProductionHostHints.Any(hint =>
+            normalizedHost.Contains(hint, StringComparison.OrdinalIgnoreCase));
+    }
+
+    private static string? NormalizeHost(string? value)
+    {
+        var cleaned = Clean(value);
+        if (cleaned is null)
+            return null;
+
+        if (Uri.TryCreate(cleaned, UriKind.Absolute, out var absoluteUri))
+            return absoluteUri.Host.Trim().ToLowerInvariant();
+
+        var slashIndex = cleaned.IndexOf('/');
+        var hostOnly = slashIndex >= 0 ? cleaned[..slashIndex] : cleaned;
+        return hostOnly.Trim().TrimEnd('.').ToLowerInvariant();
     }
 
     private static string NormalizeKey(string? value)
