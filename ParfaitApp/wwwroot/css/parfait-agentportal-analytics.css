@@ -3891,7 +3891,7 @@ body {
 
 .wa-kpi-stage-intro {
     display: grid;
-    grid-template-columns: 1fr 2fr;
+    grid-template-columns: minmax(0, 1fr) minmax(320px, 460px);
     align-items: start;
     gap: 1rem;
     padding-bottom: .95rem;
@@ -3954,69 +3954,57 @@ body {
 
 .wa-quality-filter {
     width: max-content;
-    min-width: 14.5rem;
+    min-width: 0;
     max-width: 100%;
     margin-left: 0;
     margin-right: auto;
     display: flex;
     flex-direction: column;
     align-items: flex-start;
-    gap: .35rem;
-    padding: .6rem .8rem .7rem;
-    border: 1px solid rgba(214,176,97,.42);
-    border-radius: 18px;
-    background: linear-gradient(180deg, rgba(92,55,37,.92) 0%, rgba(34,20,14,.96) 100%);
-    box-shadow: 0 16px 28px rgba(0,0,0,.2), inset 0 1px 0 rgba(255,244,220,.08);
+    gap: .2rem;
+    padding: .45rem .75rem;
+    border: 1px solid rgba(199,153,49,.24);
+    border-radius: 14px;
+    background: rgba(8,15,34,.26);
+    box-shadow: inset 0 1px 0 rgba(255,255,255,.04);
 }
 
 .wa-quality-label {
     display: block;
     margin: 0;
-    color: rgba(244,210,152,.92);
-    font-size: .64rem;
+    color: #7a5a14;
+    font-size: .62rem;
     font-weight: 900;
-    letter-spacing: .14em;
+    letter-spacing: .08em;
     text-transform: uppercase;
     white-space: nowrap;
     line-height: 1;
 }
 
 .wa-quality-select {
-    width: 100%;
+    width: auto;
     min-width: 0;
     flex: 1 1 auto;
-    min-height: 2.55rem;
-    padding: 0 .9rem;
-    border: 1px solid rgba(236,204,139,.46);
-    border-radius: 12px;
-    background:
-        linear-gradient(180deg, rgba(76,48,33,.96) 0%, rgba(50,29,20,.98) 100%);
-    color: #f8edd6 !important;
-    font-size: .82rem;
-    font-weight: 800;
-    letter-spacing: .01em;
+    min-height: 28px;
+    padding: 0 .55rem;
+    border: 1px solid rgba(231,196,103,.3);
+    border-radius: 8px;
+    background: #ffffff;
+    color: #7a5a14 !important;
+    font-size: .76rem;
+    font-weight: 900;
     outline: none;
-    appearance: none;
-    -webkit-appearance: none;
-    -webkit-text-fill-color: #f8edd6;
-    box-shadow: inset 0 1px 0 rgba(255,255,255,.05);
+    -webkit-text-fill-color: #7a5a14;
 }
 
 .wa-quality-select option {
-    background: #2f1d15;
-    color: #f8edd6;
+    background: #ffffff;
+    color: #7a5a14;
 }
 
 .wa-quality-select:focus {
     border-color: rgba(244,205,104,.95);
-    box-shadow: 0 0 0 3px rgba(244,205,104,.18), inset 0 1px 0 rgba(255,255,255,.05);
-}
-
-#traffic-quality-empty-state {
-    color: rgba(255,206,137,.92) !important;
-    font-size: .74rem;
-    font-weight: 700;
-    line-height: 1.35;
+    box-shadow: 0 0 0 3px rgba(244,205,104,.18);
 }
 
 .wa-kpi-meta-dock {
@@ -5032,6 +5020,10 @@ body {
         flex-direction: column;
     }
 
+    .wa-kpi-stage-intro {
+        grid-template-columns: 1fr;
+    }
+
     .wa-kpi-stage-meta {
         display: flex;
         width: 100%;
@@ -5077,7 +5069,6 @@ body {
         padding-bottom: .8rem;
     }
 
-    .wa-kpi-stage-meta,
     .wa-kpi-meta-dock {
         width: 100%;
     }
@@ -8232,6 +8223,31 @@ body {
     border-color: rgba(215, 177, 122, .30) !important;
 }
 
+.parfait-analytics-shell .wa-quality-filter {
+    background: rgba(215, 177, 122, .10) !important;
+    border-color: rgba(215, 177, 122, .42) !important;
+}
+
+.parfait-analytics-shell .wa-quality-label {
+    color: #d7b17a !important;
+}
+
+.parfait-analytics-shell .wa-quality-select {
+    background: linear-gradient(180deg, #f6ead8 0%, #ead6bb 100%) !important;
+    border-color: rgba(215, 177, 122, .6) !important;
+    color: #352014 !important;
+    -webkit-text-fill-color: #352014;
+}
+
+.parfait-analytics-shell .wa-quality-select option {
+    color: #352014 !important;
+    background: #f6ead8 !important;
+}
+
+.parfait-analytics-shell #traffic-quality-empty-state {
+    color: #f1d27c !important;
+}
+
 /* === PARFAIT BRAND THEME OVERRIDE END === */
 
 
@@ -8301,6 +8317,11 @@ body {
     border-color: rgba(215, 177, 122, .18) !important;
 }
 
+.parfait-analytics-modal .table tbody tr,
+.parfait-analytics-modal .table tbody td {
+    background: linear-gradient(180deg, #352117 0%, #21130d 100%) !important;
+}
+
 .parfait-analytics-modal .table thead th {
     background: rgba(215, 177, 122, .10) !important;
     color: #d7b17a !important;
@@ -8308,7 +8329,7 @@ body {
 }
 
 .parfait-analytics-modal .table tbody tr:hover td {
-    background: rgba(215, 177, 122, .07) !important;
+    background: linear-gradient(180deg, #4a2f20 0%, #2a1a12 100%) !important;
 }
 
 .parfait-analytics-modal .btn-gold,

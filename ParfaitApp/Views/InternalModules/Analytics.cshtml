@@ -51,26 +51,33 @@
         timezoneId = Model.ViewerTimeZoneId,
         timezoneOffsetMinutes = Model.ViewerTimeZoneOffsetMinutes
     };
-    object CurrentAnalyticsRouteValues() => new
+    object CurrentAnalyticsRouteValues(string? overrideQualityMode = null) => new
     {
         preset = Model.SelectedPreset,
         fromUtc = string.IsNullOrWhiteSpace(Model.RangeFrom) ? null : Model.RangeFrom,
         toUtc = string.IsNullOrWhiteSpace(Model.RangeTo) ? null : Model.RangeTo,
-        qualityMode = Model.SelectedQualityMode,
+        qualityMode = overrideQualityMode ?? Model.SelectedQualityMode,
         timezoneId = Model.ViewerTimeZoneId,
         timezoneOffsetMinutes = Model.ViewerTimeZoneOffsetMinutes
     };
     var analyticsReturnUrl = Url.Action("Analytics", "InternalModules", CurrentAnalyticsRouteValues()) ?? "/internal/analytics";
+    var analyticsActionUrl = Url.Action("Analytics", "InternalModules") ?? "/internal/analytics";
     var metaConnectUrl = Url.Action("MetaConnect", "InternalModules", new
     {
         returnUrl = analyticsReturnUrl
     }) ?? "/internal/analytics/meta-connect";
 
-    var metaTone = Model.MetaSettings.HasActiveMetaAdsConnection ? "success" : "warning";
     var checkoutBreakdown = Model.ActionBreakdowns.FirstOrDefault(action => action.Key == "checkout-started");
     var purchaseBreakdown = Model.ActionBreakdowns.FirstOrDefault(action => action.Key == "purchase");
     var healthIssues = Model.MetaHealth.FailureDetection.Where(issue => issue.Count > 0).Take(6).ToList();
     var selectedQualityModeLabel = QualityModeLabel(Model.SelectedQualityMode);
+    var selectedQualityHasRows =
+        Model.Summary.PageViews > 0 ||
+        Model.Summary.Sessions > 0 ||
+        Model.Visitors > 0 ||
+        Model.Summary.VerifiedLeads > 0 ||
+        Model.Purchases > 0;
+    var zeroQualityMessage = $"No {selectedQualityModeLabel.ToLowerInvariant()} detected in this range.";
 }
 
 @section Styles {
@@ -83,10 +90,6 @@
      data-from-utc="@Model.RangeFrom"
      data-to-utc="@Model.RangeTo"
      data-quality-mode="@Model.SelectedQualityMode"
-     data-summary-page-views="@Model.Summary.PageViews"
-     data-summary-sessions="@Model.Summary.Sessions"
-     data-summary-visitors="@Model.Visitors"
-     data-summary-verified-leads="@Model.Summary.VerifiedLeads"
      data-timezone-id="@Model.ViewerTimeZoneId"
      data-timezone-offset-minutes="@Model.ViewerTimeZoneOffsetMinutes">
     <section class="wa-command-surface mb-3">
@@ -120,7 +123,7 @@
                 </div>
                 <div class="control-bar-group control-bar-status">
                     <div class="control-bar-label">Status</div>
-                    <div class="control-bar-status-text">Shared analytics backend · ecommerce scoped · @selectedQualityModeLabel</div>
+                    <div class="control-bar-status-text">Shared analytics backend · ecommerce scoped</div>
                 </div>
             </div>
         </div>
@@ -138,53 +141,62 @@
                 <h3 class="wa-kpi-stage-title" id="wa-kpi-title">Core Metrics</h3>
                 <p class="wa-kpi-stage-sub">Traffic, revenue, checkout movement, and Meta signal coverage.</p>
             </div>
+        </div>
+        <div class="wa-kpi-stage-meta" aria-label="Traffic quality and Meta Ads command access">
+            <form class="wa-quality-filter" method="get" action="@analyticsActionUrl">
+                <input type="hidden" name="preset" value="@Model.SelectedPreset" />
+                @if (!string.IsNullOrWhiteSpace(Model.RangeFrom))
+                {
+                    <input type="hidden" name="fromUtc" value="@Model.RangeFrom" />
+                }
+                @if (!string.IsNullOrWhiteSpace(Model.RangeTo))
+                {
+                    <input type="hidden" name="toUtc" value="@Model.RangeTo" />
+                }
+                @if (!string.IsNullOrWhiteSpace(Model.ViewerTimeZoneId))
+                {
+                    <input type="hidden" name="timezoneId" value="@Model.ViewerTimeZoneId" />
+                }
+                @if (Model.ViewerTimeZoneOffsetMinutes.HasValue)
+                {
+                    <input type="hidden" name="timezoneOffsetMinutes" value="@Model.ViewerTimeZoneOffsetMinutes.Value" />
+                }
 
-            <div class="wa-kpi-stage-meta">
-                <div class="wa-quality-filter">
-                    <label for="traffic-quality-mode" class="wa-quality-label">Traffic Quality</label>
-                    <select id="traffic-quality-mode" class="wa-quality-select">
-                        <option value="real_human_traffic" selected="@(Model.SelectedQualityMode == "real_human_traffic" ? "selected" : null)">Real Human Traffic</option>
-                        <option value="likely_human" selected="@(Model.SelectedQualityMode == "likely_human" ? "selected" : null)">Likely Human</option>
-                        <option value="reviewed_needed" selected="@(Model.SelectedQualityMode == "reviewed_needed" ? "selected" : null)">Reviewed Needed</option>
-                        <option value="suspicious_activity" selected="@(Model.SelectedQualityMode == "suspicious_activity" ? "selected" : null)">Suspicious Activity</option>
-                        <option value="likely_bots_automation" selected="@(Model.SelectedQualityMode == "likely_bots_automation" ? "selected" : null)">Likely Bots / Automation</option>
-                        <option value="internal_qa" selected="@(Model.SelectedQualityMode == "internal_qa" ? "selected" : null)">Internal / QA</option>
-                        <option value="all_traffic" selected="@(Model.SelectedQualityMode == "all_traffic" ? "selected" : null)">All Traffic</option>
-                    </select>
-                    <div id="traffic-quality-empty-state" class="small text-warning mt-2" role="status" aria-live="polite" hidden>No traffic detected</div>
+                <label for="traffic-quality-mode" class="wa-quality-label">Traffic Quality</label>
+                <select id="traffic-quality-mode" name="qualityMode" class="wa-quality-select" onchange="this.form.submit()">
+                    @foreach (var bucket in Model.QualityBuckets)
+                    {
+                        <option value="@bucket.Key" selected="@(bucket.IsSelected ? "selected" : null)">@bucket.Label</option>
+                    }
+                </select>
+                @if (!selectedQualityHasRows)
+                {
+                    <div id="traffic-quality-empty-state" class="small text-warning mt-2" role="status" aria-live="polite">@zeroQualityMessage</div>
+                }
+            </form>
+            <div class="wa-kpi-meta-dock">
+                <div class="wa-kpi-meta-copy">
+                    <div class="wa-kpi-meta-kicker">Meta Ads</div>
+                    <div class="wa-kpi-meta-status" id="meta-connection-status">Checking connection…</div>
                 </div>
-                <div class="wa-kpi-meta-dock">
-                    <div class="wa-kpi-meta-copy">
-                        <div class="wa-kpi-meta-kicker">Meta Ads</div>
-                        <div class="wa-kpi-meta-status" id="meta-connection-status">Checking connection…</div>
-                    </div>
-                    <div class="wa-kpi-meta-actions hero-link-meta-actions">
-                        <a class="btn btn-gold hero-link-meta-btn wa-kpi-meta-btn"
-                           href="https://adsmanager.facebook.com/adsmanager/manage/campaigns"
-                           id="openMetaAdsManagerLink"
-                           target="_blank"
-                           rel="noopener">
-                            Ads Manager
-                        </a>
-                        <button type="button"
-                                class="btn btn-outline-light hero-link-meta-btn wa-kpi-meta-btn"
-                                id="meta-campaigns-open"
-                                data-bs-toggle="modal"
-                                data-bs-target="#pfMetaCampaignsModal">
-                            Campaigns
-                        </button>
-                        <a class="btn btn-outline-light hero-link-meta-btn wa-kpi-meta-btn"
-                           id="meta-connect-btn"
-                           href="@metaConnectUrl">
-                            @(Model.MetaSettings.HasActiveMetaAdsConnection ? "Reconnect Meta Ads" : "Connect Meta Ads")
-                        </a>
-                        <button type="button"
-                                class="btn btn-outline-light hero-link-meta-btn wa-kpi-meta-btn"
-                                id="meta-disconnect-btn"
-                                style="display:none;">
-                            Disconnect
-                        </button>
-                    </div>
+                <div class="wa-kpi-meta-actions hero-link-meta-actions">
+                    <a class="btn btn-gold hero-link-meta-btn wa-kpi-meta-btn"
+                       href="https://adsmanager.facebook.com/adsmanager/manage/campaigns"
+                       id="openMetaAdsManagerLink"
+                       target="_blank"
+                       rel="noopener">Ads Manager</a>
+                    <button type="button"
+                            class="btn btn-outline-light hero-link-meta-btn wa-kpi-meta-btn"
+                            id="meta-campaigns-open"
+                            data-bs-toggle="modal"
+                            data-bs-target="#pfMetaCampaignsModal">Campaigns</button>
+                    <a class="btn btn-outline-light hero-link-meta-btn wa-kpi-meta-btn"
+                       id="meta-connect-btn"
+                       href="@metaConnectUrl">@(Model.MetaSettings.HasActiveMetaAdsConnection ? "Reconnect Meta Ads" : "Connect Meta Ads")</a>
+                    <button type="button"
+                            class="btn btn-outline-light hero-link-meta-btn wa-kpi-meta-btn"
+                            id="meta-disconnect-btn"
+                            style="display:none;">Disconnect</button>
                 </div>
             </div>
         </div>
@@ -407,12 +419,154 @@
 <div class="modal fade fa-modal parfait-analytics-modal" id="pfDeviceModal" tabindex="-1" aria-hidden="true">
   <div class="modal-dialog modal-xl modal-dialog-centered modal-dialog-scrollable wa-modal-dialog">
     <div class="modal-content wa-modal-shell">
-      <div class="modal-header wa-modal-header"><div class="wa-modal-header-main"><div class="wa-modal-header-copy"><div class="wa-modal-kicker">Device Layer</div><h5 class="modal-title mb-0">Device Intelligence</h5><div class="wa-modal-subtitle">Device, browser, operating system, language, and timezone behavior.</div></div></div><button type="button" class="btn-close btn-close-white wa-modal-close" data-bs-dismiss="modal"></button></div>
-      <div class="modal-body wa-modal-body"><section class="wa-modal-section"><div class="row row-cols-1 row-cols-lg-3 g-3">
-        <div class="col"><div class="kpi-card"><div class="fa-kpi-title">Devices</div>@foreach (var row in Model.Devices.Devices.Take(8)) { <div>@row.Label · <strong>@row.Sessions</strong></div> }</div></div>
-        <div class="col"><div class="kpi-card"><div class="fa-kpi-title">Browsers</div>@foreach (var row in Model.Devices.Browsers.Take(8)) { <div>@row.Label · <strong>@row.Events</strong></div> }</div></div>
-        <div class="col"><div class="kpi-card"><div class="fa-kpi-title">Operating Systems</div>@foreach (var row in Model.Devices.OperatingSystems.Take(8)) { <div>@row.Label · <strong>@row.Sessions</strong></div> }</div></div>
-      </div></section></div>
+      <div class="modal-header wa-modal-header">
+        <div class="wa-modal-header-main">
+          <div class="wa-modal-header-copy">
+            <div class="wa-modal-kicker">Device Layer</div>
+            <h5 class="modal-title mb-0">Device Intelligence</h5>
+            <div class="wa-modal-subtitle">Device, browser, operating system, language, timezone, viewport, and mobile behavior across the selected traffic bucket.</div>
+          </div>
+          <div class="wa-modal-header-actions">
+            <div class="wa-modal-range-chip">
+              <span class="wa-modal-range-label">Range</span>
+              <span class="wa-modal-range-value">@Model.RangeLabel</span>
+            </div>
+          </div>
+        </div>
+        <button type="button" class="btn-close btn-close-white wa-modal-close" data-bs-dismiss="modal"></button>
+      </div>
+
+      <div class="modal-body wa-modal-body">
+        <section class="wa-modal-section">
+          <div class="row row-cols-1 row-cols-md-2 row-cols-xl-3 g-3">
+            <div class="col">
+              <div class="kpi-card">
+                <div class="fa-kpi-title">Devices</div>
+                <div class="table-responsive mt-2">
+                  <table class="table table-sm mb-0">
+                    <thead><tr><th>Device</th><th class="text-end">Sessions</th><th class="text-end">Events</th></tr></thead>
+                    <tbody>
+                    @foreach (var row in Model.Devices.Devices.Take(12))
+                    {
+                      <tr><td><strong>@row.Label</strong></td><td class="text-end">@row.Sessions</td><td class="text-end">@row.Events</td></tr>
+                    }
+                    @if (!Model.Devices.Devices.Any())
+                    {
+                      <tr><td colspan="3" class="fa-empty">No device data for this range.</td></tr>
+                    }
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </div>
+
+            <div class="col">
+              <div class="kpi-card">
+                <div class="fa-kpi-title">Browsers</div>
+                <div class="table-responsive mt-2">
+                  <table class="table table-sm mb-0">
+                    <thead><tr><th>Browser</th><th class="text-end">Sessions</th><th class="text-end">Events</th></tr></thead>
+                    <tbody>
+                    @foreach (var row in Model.Devices.Browsers.Take(12))
+                    {
+                      <tr><td><strong>@row.Label</strong></td><td class="text-end">@row.Sessions</td><td class="text-end">@row.Events</td></tr>
+                    }
+                    @if (!Model.Devices.Browsers.Any())
+                    {
+                      <tr><td colspan="3" class="fa-empty">No browser data for this range.</td></tr>
+                    }
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </div>
+
+            <div class="col">
+              <div class="kpi-card">
+                <div class="fa-kpi-title">Operating Systems</div>
+                <div class="table-responsive mt-2">
+                  <table class="table table-sm mb-0">
+                    <thead><tr><th>Operating System</th><th class="text-end">Sessions</th><th class="text-end">Events</th></tr></thead>
+                    <tbody>
+                    @foreach (var row in Model.Devices.OperatingSystems.Take(12))
+                    {
+                      <tr><td><strong>@row.Label</strong></td><td class="text-end">@row.Sessions</td><td class="text-end">@row.Events</td></tr>
+                    }
+                    @if (!Model.Devices.OperatingSystems.Any())
+                    {
+                      <tr><td colspan="3" class="fa-empty">No operating-system data for this range.</td></tr>
+                    }
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </div>
+
+            <div class="col">
+              <div class="kpi-card">
+                <div class="fa-kpi-title">Languages</div>
+                <div class="table-responsive mt-2">
+                  <table class="table table-sm mb-0">
+                    <thead><tr><th>Language</th><th class="text-end">Sessions</th><th class="text-end">Events</th></tr></thead>
+                    <tbody>
+                    @foreach (var row in Model.Devices.Languages.Take(12))
+                    {
+                      <tr><td><strong>@row.Label</strong></td><td class="text-end">@row.Sessions</td><td class="text-end">@row.Events</td></tr>
+                    }
+                    @if (!Model.Devices.Languages.Any())
+                    {
+                      <tr><td colspan="3" class="fa-empty">No language data for this range.</td></tr>
+                    }
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </div>
+
+            <div class="col">
+              <div class="kpi-card">
+                <div class="fa-kpi-title">Timezones</div>
+                <div class="table-responsive mt-2">
+                  <table class="table table-sm mb-0">
+                    <thead><tr><th>Timezone</th><th class="text-end">Sessions</th><th class="text-end">Events</th></tr></thead>
+                    <tbody>
+                    @foreach (var row in Model.Devices.TimeZones.Take(12))
+                    {
+                      <tr><td><strong>@row.Label</strong></td><td class="text-end">@row.Sessions</td><td class="text-end">@row.Events</td></tr>
+                    }
+                    @if (!Model.Devices.TimeZones.Any())
+                    {
+                      <tr><td colspan="3" class="fa-empty">No timezone data for this range.</td></tr>
+                    }
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </div>
+
+            <div class="col">
+              <div class="kpi-card">
+                <div class="fa-kpi-title">Viewports</div>
+                <div class="table-responsive mt-2">
+                  <table class="table table-sm mb-0">
+                    <thead><tr><th>Viewport</th><th class="text-end">Sessions</th><th class="text-end">Events</th></tr></thead>
+                    <tbody>
+                    @foreach (var row in Model.Devices.Viewports.Take(12))
+                    {
+                      <tr><td><strong>@row.Label</strong></td><td class="text-end">@row.Sessions</td><td class="text-end">@row.Events</td></tr>
+                    }
+                    @if (!Model.Devices.Viewports.Any())
+                    {
+                      <tr><td colspan="3" class="fa-empty">No viewport data for this range.</td></tr>
+                    }
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </div>
+          </div>
+        </section>
+      </div>
     </div>
   </div>
 </div>

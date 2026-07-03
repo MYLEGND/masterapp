@@ -56,6 +56,26 @@ public sealed class AnalyticsQueryService : IAnalyticsQueryService
             .ApplySiteScope(scope)
             .Where(ScopePredicateEvents(scope, scopedAgentIds));
 
+    private async Task<List<AnalyticsEvent>> LoadFilteredEventsAsync(
+        TimeRangeRequest range,
+        ScopeContext scope,
+        Guid[]? scopedAgentIds = null)
+    {
+        var rawEvents = await BaseEventsWithoutQualityFilter(range, scope, scopedAgentIds).ToListAsync();
+        return TrafficQualityBucketFilters.ApplyEventBucketMembershipInMemory(rawEvents, range.QualityMode);
+    }
+
+    private async Task<List<AnalyticsEvent>> LoadFilteredEventsInRangeAsync(
+        DateTime from,
+        DateTime to,
+        ScopeContext scope,
+        TrafficQualityMode qualityMode,
+        Guid[]? scopedAgentIds = null)
+    {
+        var rawEvents = await EventsInRangeWithoutQualityFilter(from, to, scope, scopedAgentIds).ToListAsync();
+        return TrafficQualityBucketFilters.ApplyEventBucketMembershipInMemory(rawEvents, qualityMode);
+    }
+
 
     public IQueryable<AnalyticsEvent> ScopedEvents(
         TimeRangeRequest range,
@@ -200,112 +220,6 @@ public sealed class AnalyticsQueryService : IAnalyticsQueryService
              (e.VisitorId == null || e.VisitorId == string.Empty) &&
              bucket.EventIds.Contains(e.EventId)));
 
-
-    private sealed record InMemoryEventBucketMembership(
-        HashSet<string> SessionIds,
-        HashSet<string> VisitorIds,
-        HashSet<Guid> EventIds);
-
-    private static List<AnalyticsEvent> ApplyQualityFilterEventsInMemory(
-        List<AnalyticsEvent> events,
-        TrafficQualityMode mode)
-    {
-        if (mode == TrafficQualityMode.AllTraffic || events.Count == 0)
-            return events;
-
-        var internalQaBucket = BuildEventBucketMembershipInMemory(
-            events.Where(QualityPredicateEvents(TrafficQualityMode.InternalQa).Compile()));
-        if (mode == TrafficQualityMode.InternalQa)
-            return ApplyEventBucketMembershipInMemory(events, internalQaBucket);
-
-        var botCandidates = ExcludeEventBucketMembershipInMemory(
-            events.Where(QualityPredicateEvents(TrafficQualityMode.LikelyBotsAutomation).Compile()),
-            internalQaBucket);
-        var botBucket = BuildEventBucketMembershipInMemory(botCandidates);
-        if (mode == TrafficQualityMode.LikelyBotsAutomation)
-            return ApplyEventBucketMembershipInMemory(events, botBucket);
-
-        var suspiciousCandidates = ExcludeEventBucketMembershipInMemory(
-            events.Where(QualityPredicateEvents(TrafficQualityMode.SuspiciousActivity).Compile()),
-            internalQaBucket,
-            botBucket);
-        var suspiciousBucket = BuildEventBucketMembershipInMemory(suspiciousCandidates);
-        if (mode == TrafficQualityMode.SuspiciousActivity)
-            return ApplyEventBucketMembershipInMemory(events, suspiciousBucket);
-
-        var realHumanCandidates = ExcludeEventBucketMembershipInMemory(
-            events.Where(QualityPredicateEvents(TrafficQualityMode.RealHumanTraffic).Compile()),
-            internalQaBucket,
-            botBucket,
-            suspiciousBucket);
-        var realHumanBucket = BuildEventBucketMembershipInMemory(realHumanCandidates);
-        if (mode == TrafficQualityMode.RealHumanTraffic)
-            return ApplyEventBucketMembershipInMemory(events, realHumanBucket);
-
-        var likelyHumanCandidates = ExcludeEventBucketMembershipInMemory(
-            events.Where(QualityPredicateEvents(TrafficQualityMode.LikelyHuman).Compile()),
-            internalQaBucket,
-            botBucket,
-            suspiciousBucket,
-            realHumanBucket);
-        var likelyHumanBucket = BuildEventBucketMembershipInMemory(likelyHumanCandidates);
-        if (mode == TrafficQualityMode.LikelyHuman)
-            return ApplyEventBucketMembershipInMemory(events, likelyHumanBucket);
-
-        var reviewedNeededCandidates = ExcludeEventBucketMembershipInMemory(
-            events,
-            internalQaBucket,
-            botBucket,
-            suspiciousBucket,
-            realHumanBucket,
-            likelyHumanBucket);
-
-        return ApplyEventBucketMembershipInMemory(
-            events,
-            BuildEventBucketMembershipInMemory(reviewedNeededCandidates));
-    }
-
-    private static InMemoryEventBucketMembership BuildEventBucketMembershipInMemory(IEnumerable<AnalyticsEvent> events)
-    {
-        var sessionIds = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-        var visitorIds = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-        var eventIds = new HashSet<Guid>();
-
-        foreach (var e in events)
-        {
-            if (!string.IsNullOrWhiteSpace(e.SessionId))
-                sessionIds.Add(e.SessionId!);
-            else if (!string.IsNullOrWhiteSpace(e.VisitorId))
-                visitorIds.Add(e.VisitorId!);
-            else
-                eventIds.Add(e.EventId);
-        }
-
-        return new InMemoryEventBucketMembership(sessionIds, visitorIds, eventIds);
-    }
-
-    private static IEnumerable<AnalyticsEvent> ExcludeEventBucketMembershipInMemory(
-        IEnumerable<AnalyticsEvent> events,
-        params InMemoryEventBucketMembership[] excludedBuckets)
-    {
-        return events.Where(e => !excludedBuckets.Any(bucket => IsEventInBucket(e, bucket)));
-    }
-
-    private static List<AnalyticsEvent> ApplyEventBucketMembershipInMemory(
-        IEnumerable<AnalyticsEvent> events,
-        InMemoryEventBucketMembership bucket)
-        => events.Where(e => IsEventInBucket(e, bucket)).ToList();
-
-    private static bool IsEventInBucket(AnalyticsEvent e, InMemoryEventBucketMembership bucket)
-    {
-        if (!string.IsNullOrWhiteSpace(e.SessionId))
-            return bucket.SessionIds.Contains(e.SessionId!);
-
-        if (!string.IsNullOrWhiteSpace(e.VisitorId))
-            return bucket.VisitorIds.Contains(e.VisitorId!);
-
-        return bucket.EventIds.Contains(e.EventId);
-    }
 
     // SCOPE SAFETY RULE:
     // Global scope must NEVER be passed directly into analytics queries.
@@ -2008,8 +1922,7 @@ public sealed class AnalyticsQueryService : IAnalyticsQueryService
     public async Task<SummaryKpiDto> GetSummaryAsync(TimeRangeRequest range, ScopeContext scope, TrafficType trafficType = TrafficType.All)
     {
         var scopedAgentIds = await ResolveScopedAgentIdsAsync(scope);
-        var rawEvents = await BaseEventsWithoutQualityFilter(range, scope, scopedAgentIds).ToListAsync();
-        var allEvents = ApplyQualityFilterEventsInMemory(rawEvents, range.QualityMode);
+        var allEvents = await LoadFilteredEventsAsync(range, scope, scopedAgentIds);
         var allLeads  = await BaseLeads(range, scope, scopedAgentIds).ToListAsync();
 
         List<AnalyticsEvent> events;
@@ -2030,8 +1943,7 @@ public sealed class AnalyticsQueryService : IAnalyticsQueryService
         var span = range.ToUtc - range.FromUtc;
         var prevFrom = range.FromUtc - span;
         var prevTo   = range.ToUtc - span;
-        var rawPrevEvents = await EventsInRangeWithoutQualityFilter(prevFrom, prevTo, scope, scopedAgentIds).ToListAsync();
-        var prevAllEvents = ApplyQualityFilterEventsInMemory(rawPrevEvents, range.QualityMode);
+        var prevAllEvents = await LoadFilteredEventsInRangeAsync(prevFrom, prevTo, scope, range.QualityMode, scopedAgentIds);
         var prevAllLeads  = await LeadsInRange(prevFrom, prevTo, scope, scopedAgentIds, range.QualityMode).ToListAsync();
 
         List<AnalyticsEvent> prevEvents;
@@ -2131,7 +2043,7 @@ public sealed class AnalyticsQueryService : IAnalyticsQueryService
     public async Task<TrafficOverviewDto> GetTrafficAsync(TimeRangeRequest range, ScopeContext scope, TrafficType trafficType = TrafficType.All)
     {
         var scopedAgentIds = await ResolveScopedAgentIdsAsync(scope);
-        var allEvents = await BaseEvents(range, scope, scopedAgentIds).ToListAsync();
+        var allEvents = await LoadFilteredEventsAsync(range, scope, scopedAgentIds);
         var allAttributedRows = BuildAttributedEventRows(allEvents);
         var attributedRows = FilterAttributedRowsByTraffic(allAttributedRows, trafficType);
         var events = attributedRows.Select(r => r.Event).ToList();
@@ -2365,7 +2277,7 @@ public sealed class AnalyticsQueryService : IAnalyticsQueryService
     public async Task<PagePerformanceDto> GetPagePerformanceAsync(TimeRangeRequest range, ScopeContext scope, TrafficType trafficType = TrafficType.All)
     {
         var scopedAgentIds = await ResolveScopedAgentIdsAsync(scope);
-        var allEvents = await BaseEvents(range, scope, scopedAgentIds).ToListAsync();
+        var allEvents = await LoadFilteredEventsAsync(range, scope, scopedAgentIds);
         var allLeads  = await BaseLeads(range, scope, scopedAgentIds).ToListAsync();
 
         List<AnalyticsEvent> events;
@@ -2420,7 +2332,7 @@ public sealed class AnalyticsQueryService : IAnalyticsQueryService
     {
         var scopedAgentIds = await ResolveScopedAgentIdsAsync(scope);
         // Load ALL events for proper session attribution (same reason as GetConversionsAsync).
-        var allEvents = await BaseEvents(range, scope, scopedAgentIds).ToListAsync();
+        var allEvents = await LoadFilteredEventsAsync(range, scope, scopedAgentIds);
         var allLeads = await BaseLeads(range, scope, scopedAgentIds).ToListAsync();
         var attributedRows = FilterAttributedRowsByTraffic(BuildAttributedEventRows(allEvents), trafficType);
         var events = attributedRows
@@ -2462,7 +2374,7 @@ public sealed class AnalyticsQueryService : IAnalyticsQueryService
     public async Task<QuoteFunnelDto> GetQuoteFunnelAsync(TimeRangeRequest range, ScopeContext scope, TrafficType trafficType = TrafficType.All)
     {
         var scopedAgentIds = await ResolveScopedAgentIdsAsync(scope);
-        var allEvents = await BaseEvents(range, scope, scopedAgentIds).ToListAsync();
+        var allEvents = await LoadFilteredEventsAsync(range, scope, scopedAgentIds);
         var allLeads = await BaseLeads(range, scope, scopedAgentIds).ToListAsync();
         var allAttributedRows = BuildAttributedEventRows(allEvents);
         var attributedRows = FilterAttributedRowsByTraffic(allAttributedRows, trafficType);
@@ -2568,7 +2480,7 @@ public sealed class AnalyticsQueryService : IAnalyticsQueryService
     public async Task<MarketingHealthDto> GetMarketingHealthAsync(TimeRangeRequest range, ScopeContext scope, TrafficType trafficType = TrafficType.All)
     {
         var scopedAgentIds = await ResolveScopedAgentIdsAsync(scope);
-        var allEvents = await BaseEvents(range, scope, scopedAgentIds).ToListAsync();
+        var allEvents = await LoadFilteredEventsAsync(range, scope, scopedAgentIds);
         var allLeads = await BaseLeads(range, scope, scopedAgentIds).ToListAsync();
         var attributedRows = FilterAttributedRowsByTraffic(BuildAttributedEventRows(allEvents), trafficType);
         var events = attributedRows.Select(r => r.Event).ToList();
@@ -2842,7 +2754,7 @@ public sealed class AnalyticsQueryService : IAnalyticsQueryService
     public async Task<ConversionCenterDto> GetConversionsAsync(TimeRangeRequest range, ScopeContext scope, TrafficType trafficType = TrafficType.All, int recentTake = 100)
     {
         var scopedAgentIds = await ResolveScopedAgentIdsAsync(scope);
-        var allEvents = await BaseEvents(range, scope, scopedAgentIds).ToListAsync();
+        var allEvents = await LoadFilteredEventsAsync(range, scope, scopedAgentIds);
         var allLeads = await BaseLeads(range, scope, scopedAgentIds).ToListAsync();
         var leads = trafficType == TrafficType.All
             ? allLeads
@@ -2888,7 +2800,7 @@ public sealed class AnalyticsQueryService : IAnalyticsQueryService
         var allLeads = await BaseLeads(range, scope, scopedAgentIds)
             .OrderByDescending(l => l.CreatedUtc)
             .ToListAsync();
-        var contextEvents = await BaseEvents(range, scope, scopedAgentIds).ToListAsync();
+        var contextEvents = await LoadFilteredEventsAsync(range, scope, scopedAgentIds);
         var sessionMap = BuildSessionAttributionMap(contextEvents);
         var visitorMap = BuildVisitorAttributionMap(contextEvents);
         var sessionEventMap = BuildSessionEventMap(contextEvents);
@@ -3019,7 +2931,7 @@ public sealed class AnalyticsQueryService : IAnalyticsQueryService
 
         var scopedAgentIds = await ResolveScopedAgentIdsAsync(scope);
 
-        var allEvents = await BaseEvents(range, scope, scopedAgentIds).ToListAsync();
+        var allEvents = await LoadFilteredEventsAsync(range, scope, scopedAgentIds);
         var allLeads = await BaseLeads(range, scope, scopedAgentIds).ToListAsync();
         var attributedRows = BuildAttributedEventRows(allEvents);
         var events = allEvents;
@@ -3138,7 +3050,7 @@ public sealed class AnalyticsQueryService : IAnalyticsQueryService
     public async Task<EngagementSummaryDto> GetEngagementSummaryAsync(TimeRangeRequest range, ScopeContext scope, TrafficType trafficType = TrafficType.All)
     {
         var scopedAgentIds = await ResolveScopedAgentIdsAsync(scope);
-        var events = await BaseEvents(range, scope, scopedAgentIds).ToListAsync();
+        var events = await LoadFilteredEventsAsync(range, scope, scopedAgentIds);
         if (trafficType != TrafficType.All)
         {
             events = FilterAttributedRowsByTraffic(BuildAttributedEventRows(events), trafficType)
@@ -3261,7 +3173,7 @@ public sealed class AnalyticsQueryService : IAnalyticsQueryService
     public async Task<PageEngagementDto> GetPageEngagementAsync(TimeRangeRequest range, ScopeContext scope)
     {
         var scopedAgentIds = await ResolveScopedAgentIdsAsync(scope);
-        var events = await BaseEvents(range, scope, scopedAgentIds).ToListAsync();
+        var events = await LoadFilteredEventsAsync(range, scope, scopedAgentIds);
         var leads = await BaseLeads(range, scope, scopedAgentIds).ToListAsync();
 
         var pvList = events.Where(e => AnalyticsEventCatalog.MatchesDashboardMetric(e.EventType, "page_view")).ToList();
@@ -3311,7 +3223,7 @@ public sealed class AnalyticsQueryService : IAnalyticsQueryService
     public async Task<TimeOnPageDto> GetTimeOnPageAsync(TimeRangeRequest range, ScopeContext scope, TrafficType trafficType = TrafficType.All)
     {
         var scopedAgentIds = await ResolveScopedAgentIdsAsync(scope);
-        var allEvents = await BaseEvents(range, scope, scopedAgentIds).ToListAsync();
+        var allEvents = await LoadFilteredEventsAsync(range, scope, scopedAgentIds);
         var filteredEvents = FilterAttributedRowsByTraffic(BuildAttributedEventRows(allEvents), trafficType)
             .Select(r => r.Event)
             .ToList();
@@ -3358,7 +3270,7 @@ public sealed class AnalyticsQueryService : IAnalyticsQueryService
     public async Task<ExitAnalysisDto> GetExitAnalysisAsync(TimeRangeRequest range, ScopeContext scope, TrafficType trafficType = TrafficType.All)
     {
         var scopedAgentIds = await ResolveScopedAgentIdsAsync(scope);
-        var allEvents = await BaseEvents(range, scope, scopedAgentIds).ToListAsync();
+        var allEvents = await LoadFilteredEventsAsync(range, scope, scopedAgentIds);
         var filteredEvents = FilterAttributedRowsByTraffic(BuildAttributedEventRows(allEvents), trafficType)
             .Select(r => r.Event)
             .ToList();
@@ -3395,8 +3307,9 @@ public sealed class AnalyticsQueryService : IAnalyticsQueryService
     {
         var scopedAgentIds = await ResolveScopedAgentIdsAsync(scope);
         var scrollTypes = new[] { "page_view", "scroll_depth_25", "scroll_depth_50", "scroll_depth_75", "scroll_depth_90", "scroll_depth_100" };
-        var events = await BaseEvents(range, scope, scopedAgentIds)
-            .Where(e => scrollTypes.Contains(e.EventType)).ToListAsync();
+        var events = (await LoadFilteredEventsAsync(range, scope, scopedAgentIds))
+            .Where(e => scrollTypes.Contains(e.EventType))
+            .ToList();
         var pvByPage = events.Where(e => AnalyticsEventCatalog.MatchesDashboardMetric(e.EventType, "page_view"))
             .GroupBy(e => e.PageKey ?? "unknown").ToDictionary(g => g.Key, g => g.Count());
         int SC(string t, string p) => events.Count(e => e.EventType == t && (e.PageKey ?? "unknown") == p);
@@ -3419,7 +3332,7 @@ public sealed class AnalyticsQueryService : IAnalyticsQueryService
     public async Task<JourneyAnalysisDto> GetJourneyAnalysisAsync(TimeRangeRequest range, ScopeContext scope, TrafficType trafficType = TrafficType.All)
     {
         var scopedAgentIds = await ResolveScopedAgentIdsAsync(scope);
-        var allEvents = await BaseEvents(range, scope, scopedAgentIds).ToListAsync();
+        var allEvents = await LoadFilteredEventsAsync(range, scope, scopedAgentIds);
         var leads = await BaseLeads(range, scope, scopedAgentIds).ToListAsync();
         var filteredEvents = FilterAttributedRowsByTraffic(BuildAttributedEventRows(allEvents), trafficType)
             .Select(r => r.Event)
@@ -3447,7 +3360,7 @@ public sealed class AnalyticsQueryService : IAnalyticsQueryService
     public async Task<SourcePerformanceDto> GetSourcePerformanceAsync(TimeRangeRequest range, ScopeContext scope, TrafficType trafficType = TrafficType.All)
     {
         var scopedAgentIds = await ResolveScopedAgentIdsAsync(scope);
-        var allEvents = await BaseEvents(range, scope, scopedAgentIds).ToListAsync();
+        var allEvents = await LoadFilteredEventsAsync(range, scope, scopedAgentIds);
         var allLeads = await BaseLeads(range, scope, scopedAgentIds).ToListAsync();
         var attributedRows = FilterAttributedRowsByTraffic(BuildAttributedEventRows(allEvents), trafficType);
         var filteredEvents = attributedRows.Select(r => r.Event).ToList();
@@ -3520,7 +3433,7 @@ public sealed class AnalyticsQueryService : IAnalyticsQueryService
     public async Task<LandingPagePerformanceDto> GetLandingPagePerformanceAsync(TimeRangeRequest range, ScopeContext scope)
     {
         var scopedAgentIds = await ResolveScopedAgentIdsAsync(scope);
-        var allEvents = await BaseEvents(range, scope, scopedAgentIds).ToListAsync();
+        var allEvents = await LoadFilteredEventsAsync(range, scope, scopedAgentIds);
         var pageViewRows = BuildAttributedEventRows(allEvents)
             .Where(r => r.Event.EventType == "page_view")
             .ToList();
@@ -3573,7 +3486,7 @@ public sealed class AnalyticsQueryService : IAnalyticsQueryService
     public async Task<FormFrictionDto> GetFormFrictionAsync(TimeRangeRequest range, ScopeContext scope)
     {
         var scopedAgentIds = await ResolveScopedAgentIdsAsync(scope);
-        var events = await BaseEvents(range, scope, scopedAgentIds)
+        var events = (await LoadFilteredEventsAsync(range, scope, scopedAgentIds))
             .Where(e => e.EventType == "form_start" ||
                         IsSubmitAttemptMetricEvent(e) ||
                         IsSubmitSuccessMetricEvent(e) ||
@@ -3583,7 +3496,8 @@ public sealed class AnalyticsQueryService : IAnalyticsQueryService
                         e.EventType == "contact_field_focus" ||
                         e.EventType == "contact_field_complete" ||
                         e.EventType == "contact_progress_snapshot" ||
-                        e.EventType == "form_field_error").ToListAsync();
+                        e.EventType == "form_field_error")
+            .ToList();
         Func<AnalyticsEvent, string> fKey = e => e.FormKey ?? e.FormId ?? "unknown";
         var starts = events.Where(e => e.EventType == "form_start").GroupBy(fKey).ToDictionary(g => g.Key, g => g.Count());
         var submits = events
@@ -3647,7 +3561,7 @@ public sealed class AnalyticsQueryService : IAnalyticsQueryService
     public async Task<FormAbandonmentDto> GetFormAbandonmentAsync(TimeRangeRequest range, ScopeContext scope, TrafficType trafficType = TrafficType.All)
     {
         var scopedAgentIds = await ResolveScopedAgentIdsAsync(scope);
-        var allEvents = await BaseEvents(range, scope, scopedAgentIds).ToListAsync();
+        var allEvents = await LoadFilteredEventsAsync(range, scope, scopedAgentIds);
         var events = FilterAttributedRowsByTraffic(BuildAttributedEventRows(allEvents), trafficType)
             .Select(r => r.Event)
             .Where(IsQuoteScopeEvent)
@@ -3936,7 +3850,7 @@ public sealed class AnalyticsQueryService : IAnalyticsQueryService
     public async Task<DeviceIntelligenceDto> GetDeviceIntelligenceAsync(TimeRangeRequest range, ScopeContext scope, TrafficType trafficType = TrafficType.All)
     {
         var scopedAgentIds = await ResolveScopedAgentIdsAsync(scope);
-        var allEvents = await BaseEvents(range, scope, scopedAgentIds).ToListAsync();
+        var allEvents = await LoadFilteredEventsAsync(range, scope, scopedAgentIds);
         var rows = FilterAttributedRowsByTraffic(BuildAttributedEventRows(allEvents), trafficType)
             .Select(r => r.Event)
             .ToList();

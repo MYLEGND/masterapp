@@ -4,6 +4,7 @@
     if (pathLower.startsWith("/internal") || pathLower.startsWith("/signin-oidc") || pathLower.startsWith("/signout-callback-oidc")) return;
 
     const trackingVersion = "parfait-commerce-tracking-v2";
+    const sessionTtlMs = 30 * 60 * 1000;
     const pageStartMs = Date.now();
     const scrollThresholds = [25, 50, 75, 90, 100];
     const firedScrollThresholds = new Set();
@@ -30,6 +31,11 @@
             ? crypto.randomUUID().replaceAll("-", "")
             : `${Date.now().toString(16)}${Math.random().toString(16).slice(2)}`;
         return `${prefix}_${raw}`;
+    };
+
+    const readNumber = value => {
+        const parsed = Number(value);
+        return Number.isFinite(parsed) ? parsed : 0;
     };
 
     const normalizeKey = value => String(value || "")
@@ -117,12 +123,24 @@
         setCookie("pf_vid", visitorId, 31536000);
     }
 
-    let sessionId = sessionStorage.getItem("pf_sid") || getCookie("pf_sid");
-    if (!sessionId) {
+    const persistedSessionId = sessionStorage.getItem("pf_sid") || getCookie("pf_sid");
+    const persistedLastTouch = readNumber(sessionStorage.getItem("pf_sid_last_touch") || getCookie("pf_sid_last_touch"));
+    const sessionExpired = !persistedSessionId || !persistedLastTouch || (Date.now() - persistedLastTouch) > sessionTtlMs;
+
+    let sessionId = persistedSessionId;
+    if (sessionExpired) {
         sessionId = createUuid("pfs");
-        sessionStorage.setItem("pf_sid", sessionId);
     }
-    setCookie("pf_sid", sessionId, 1800);
+
+    const touchSession = () => {
+        const now = String(Date.now());
+        sessionStorage.setItem("pf_sid", sessionId);
+        sessionStorage.setItem("pf_sid_last_touch", now);
+        setCookie("pf_sid", sessionId, 1800);
+        setCookie("pf_sid_last_touch", now, 1800);
+    };
+
+    touchSession();
 
     const readCart = () => {
         try {
@@ -169,7 +187,7 @@
 
     const send = (eventName, payload = {}) => {
         syncVisibleTime();
-        setCookie("pf_sid", sessionId, 1800);
+        touchSession();
 
         const eventId = typeof crypto !== "undefined" && typeof crypto.randomUUID === "function"
             ? crypto.randomUUID()

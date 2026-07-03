@@ -1,4 +1,5 @@
 using System.Text.Json;
+using Domain.Entities;
 using Infrastructure.Analytics;
 using Microsoft.EntityFrameworkCore;
 using ParfaitApp.Models;
@@ -50,13 +51,23 @@ public sealed class ParfaitInternalAnalyticsService
             viewerTz: viewerTimeZone ?? TimeZoneInfo.Utc,
             qualityMode: qualityMode);
         var scope = ScopeContext.ForSite(SiteKey, SiteKey);
+        var scopedEventsTask = LoadScopedEventsAsync(range, scope, ct);
 
         var summaryTask = _analytics.GetSummaryAsync(range, scope, TrafficType.All);
         var devicesTask = _analytics.GetDeviceIntelligenceAsync(range, scope, TrafficType.All);
         var metaSettingsTask = _businessProfile.GetMetaSettingsAsync(ct);
-        var actionCountsTask = _analytics
-            .ScopedEvents(range, scope)
-            .AsNoTracking()
+
+        await Task.WhenAll(summaryTask, devicesTask, metaSettingsTask, scopedEventsTask);
+
+        var summary = await summaryTask;
+        var devices = await devicesTask;
+        var metaSettings = await metaSettingsTask;
+        var bucketEvents = TrafficQualityBucketFilters.ApplyEventBucketMembershipInMemory(await scopedEventsTask, range.QualityMode);
+        var bucketSummary = BuildBucketSummary(bucketEvents);
+        summary.Sessions = bucketSummary.Sessions;
+        summary.UniqueVisitors = bucketSummary.UniqueVisitors;
+
+        var actionCounts = bucketEvents
             .Where(x => FunnelEventTypes.Contains(x.EventType))
             .GroupBy(x => x.EventType)
             .Select(group => new WorkspaceActionCountRow
@@ -64,19 +75,11 @@ public sealed class ParfaitInternalAnalyticsService
                 EventType = group.Key,
                 Count = group.Count(),
                 UniqueSessions = group
-                    .Where(x => x.SessionId != null && x.SessionId != string.Empty)
-                    .Select(x => x.SessionId!)
-                    .Distinct()
+                    .Where(x => !string.IsNullOrWhiteSpace(x.SessionId))
+                    .Select(x => x.SessionId!.Trim())
+                    .Distinct(StringComparer.OrdinalIgnoreCase)
                     .Count()
             })
-            .ToListAsync(ct);
-
-        await Task.WhenAll(summaryTask, devicesTask, metaSettingsTask, actionCountsTask);
-
-        var summary = await summaryTask;
-        var devices = await devicesTask;
-        var metaSettings = await metaSettingsTask;
-        var actionCounts = (await actionCountsTask)
             .ToDictionary(item => item.EventType, item => item, StringComparer.OrdinalIgnoreCase);
 
         return new ParfaitInternalWorkspaceAnalyticsSnapshot
@@ -110,6 +113,7 @@ public sealed class ParfaitInternalAnalyticsService
             viewerTz: viewerTimeZone ?? TimeZoneInfo.Utc,
             qualityMode: qualityMode);
         var scope = ScopeContext.ForSite(SiteKey, SiteKey);
+        var scopedEventsTask = LoadScopedEventsAsync(range, scope, ct);
 
         var summary = await _analytics.GetSummaryAsync(range, scope, TrafficType.All);
         var traffic = await _analytics.GetTrafficAsync(range, scope, TrafficType.All);
@@ -126,26 +130,22 @@ public sealed class ParfaitInternalAnalyticsService
         var metaSignal = await _metaSignal.GetDashboardAsync(range, scope, TrafficType.All, ct: ct);
         var metaHealth = await _metaSignal.GetHealthDashboardAsync(range, scope, ct);
         var metaSettings = await _businessProfile.GetMetaSettingsAsync(ct);
+        var scopedEvents = await scopedEventsTask;
+        var bucketEvents = TrafficQualityBucketFilters.ApplyEventBucketMembershipInMemory(scopedEvents, range.QualityMode);
+        var selectedBucketSummary = BuildBucketSummary(bucketEvents);
+        var qualityBuckets = BuildQualityBuckets(scopedEvents, range.QualityMode);
 
-        var rawEvents = await _analytics
-            .ScopedEvents(range, scope)
-            .AsNoTracking()
+        summary.PageViews = selectedBucketSummary.PageViews;
+        summary.Sessions = selectedBucketSummary.Sessions;
+        summary.UniqueVisitors = selectedBucketSummary.UniqueVisitors;
+        summary.TopPage = selectedBucketSummary.TopPage ?? summary.TopPage;
+
+        var rawEvents = bucketEvents
             .Where(x => FunnelEventTypes.Contains(x.EventType))
             .OrderByDescending(x => x.EventUtc)
             .Take(2500)
-            .Select(x => new AnalyticsEventSnapshot
-            {
-                EventUtc = x.EventUtc,
-                EventType = x.EventType,
-                PageKey = x.PageKey,
-                Path = x.Path,
-                SessionId = x.SessionId,
-                VisitorId = x.VisitorId,
-                UtmSource = x.UtmSource,
-                UtmCampaign = x.UtmCampaign,
-                MetadataJson = x.MetadataJson
-            })
-            .ToListAsync(ct);
+            .Select(MapAnalyticsSnapshot)
+            .ToList();
 
         var parsedEvents = rawEvents
             .Select(ParseEvent)
@@ -160,7 +160,13 @@ public sealed class ParfaitInternalAnalyticsService
         var paidOrdersInRange = ordersInRange
             .Where(order => IsPaidStatus(order.PaymentStatus))
             .ToList();
-        var purchaseEvents = ResolvePurchaseEvents(parsedEvents, paidOrdersInRange);
+        var selectedOrdersInRange = range.QualityMode == TrafficQualityMode.AllTraffic
+            ? ordersInRange
+            : FilterOrdersToBucket(ordersInRange, parsedEvents);
+        var selectedPaidOrdersInRange = range.QualityMode == TrafficQualityMode.AllTraffic
+            ? paidOrdersInRange
+            : FilterOrdersToBucket(paidOrdersInRange, parsedEvents);
+        var purchaseEvents = ResolvePurchaseEvents(parsedEvents, selectedPaidOrdersInRange);
         var storeViewEvents = EventsFor(parsedEvents, "ViewContent");
         var productViewedEvents = EventsFor(parsedEvents, "ProductViewed");
         var addToCartEvents = EventsFor(parsedEvents, "AddToCart");
@@ -172,8 +178,14 @@ public sealed class ParfaitInternalAnalyticsService
         var checkoutSessions = DistinctSessions(checkoutEvents);
         var purchaseSessions = DistinctSessions(purchaseEvents);
 
-        var revenueCents = _orders.SumNetRevenueCents(paidOrdersInRange);
-        var averageOrderValueCents = _orders.CalculateAverageNetOrderValueCents(paidOrdersInRange);
+        var revenueCents = selectedPaidOrdersInRange.Count > 0
+            ? _orders.SumNetRevenueCents(selectedPaidOrdersInRange)
+            : purchaseEvents.Sum(item => item.ValueCents ?? 0);
+        var averageOrderValueCents = selectedPaidOrdersInRange.Count > 0
+            ? _orders.CalculateAverageNetOrderValueCents(selectedPaidOrdersInRange)
+            : purchaseEvents.Count > 0
+                ? revenueCents / purchaseEvents.Count
+                : 0;
         var visitors = summary.UniqueVisitors;
         var sessions = summary.Sessions;
         var cartAbandonmentSessions = addToCartSessions.Except(purchaseSessions, StringComparer.OrdinalIgnoreCase).Count();
@@ -233,8 +245,8 @@ public sealed class ParfaitInternalAnalyticsService
                 revenueOverrideCents: revenueCents)
         };
 
-        var topProducts = BuildTopProducts(paidOrdersInRange, parsedEvents);
-        var recentOrders = ordersInRange
+        var topProducts = BuildTopProducts(selectedPaidOrdersInRange, parsedEvents);
+        var recentOrders = selectedOrdersInRange
             .Take(8)
             .Select(order => new ParfaitAnalyticsOrderInspectorViewModel
             {
@@ -259,15 +271,23 @@ public sealed class ParfaitInternalAnalyticsService
             .Select(MapInspectorEvent)
             .ToList();
 
+        var selectedCustomerEmails = selectedOrdersInRange
+            .Where(order => !string.IsNullOrWhiteSpace(order.Email))
+            .Select(order => order.Email.Trim())
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
         var customersByEmail = allOrders
             .Where(order => !string.IsNullOrWhiteSpace(order.Email))
             .GroupBy(order => order.Email.Trim(), StringComparer.OrdinalIgnoreCase)
             .ToList();
         var returningCustomers = customersByEmail.Count(group =>
-            group.Any(order => order.CreatedUtc >= range.FromUtc && order.CreatedUtc <= range.ToUtc) &&
+            selectedCustomerEmails.Contains(group.Key) &&
             group.Count() > 1);
         var newCustomers = customersByEmail.Count(group =>
         {
+            if (!selectedCustomerEmails.Contains(group.Key))
+                return false;
+
             var firstOrder = group.MinBy(order => order.CreatedUtc);
             return firstOrder is not null &&
                    firstOrder.CreatedUtc >= range.FromUtc &&
@@ -300,7 +320,7 @@ public sealed class ParfaitInternalAnalyticsService
             MetaSettings = metaSettings,
             Visitors = visitors,
             Sessions = sessions,
-            Orders = ordersInRange.Count,
+            Orders = selectedPaidOrdersInRange.Count > 0 ? selectedPaidOrdersInRange.Count : purchaseEvents.Count,
             Purchases = purchaseEvents.Count,
             RevenueCents = revenueCents,
             AverageOrderValueCents = averageOrderValueCents,
@@ -309,6 +329,7 @@ public sealed class ParfaitInternalAnalyticsService
             ReturningCustomers = returningCustomers,
             NewCustomers = newCustomers,
             CartAbandonmentSessions = cartAbandonmentSessions,
+            QualityBuckets = qualityBuckets,
             ActionBreakdowns = actionBreakdowns,
             TopProducts = topProducts,
             RecentOrders = recentOrders,
@@ -343,6 +364,37 @@ public sealed class ParfaitInternalAnalyticsService
                     Source = order.Source
                 };
             })
+            .ToList();
+    }
+
+    private static List<ParfaitOrderRecord> FilterOrdersToBucket(
+        IReadOnlyList<ParfaitOrderRecord> orders,
+        IReadOnlyList<AnalyticsEventSnapshot> parsedEvents)
+    {
+        if (orders.Count == 0 || parsedEvents.Count == 0)
+            return [];
+
+        var orderNumbers = parsedEvents
+            .Where(item => !string.IsNullOrWhiteSpace(item.OrderNumber))
+            .Select(item => item.OrderNumber)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var sessionIds = parsedEvents
+            .Where(item => !string.IsNullOrWhiteSpace(item.SessionId))
+            .Select(item => item.SessionId)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var visitorIds = parsedEvents
+            .Where(item => !string.IsNullOrWhiteSpace(item.VisitorId))
+            .Select(item => item.VisitorId)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+        return orders
+            .Where(order =>
+                orderNumbers.Contains(order.OrderNumber) ||
+                sessionIds.Contains(order.CheckoutAttemptId) ||
+                visitorIds.Contains(order.Email))
             .ToList();
     }
 
@@ -414,6 +466,122 @@ public sealed class ParfaitInternalAnalyticsService
             .OrderByDescending(item => item.ProductViews)
             .Take(8)
             .ToList();
+    }
+
+    private Task<List<AnalyticsEvent>> LoadScopedEventsAsync(
+        TimeRangeRequest range,
+        ScopeContext scope,
+        CancellationToken ct)
+    {
+        return _analytics
+            .ScopedEvents(WithQualityMode(range, TrafficQualityMode.AllTraffic), scope)
+            .ToListAsync(ct);
+    }
+
+    private static List<ParfaitAnalyticsQualityBucketViewModel> BuildQualityBuckets(
+        IReadOnlyList<AnalyticsEvent> scopedEvents,
+        TrafficQualityMode selectedMode)
+    {
+        var modes =
+        new[]
+        {
+            TrafficQualityMode.RealHumanTraffic,
+            TrafficQualityMode.LikelyHuman,
+            TrafficQualityMode.ReviewedNeeded,
+            TrafficQualityMode.SuspiciousActivity,
+            TrafficQualityMode.LikelyBotsAutomation,
+            TrafficQualityMode.InternalQa,
+            TrafficQualityMode.AllTraffic
+        };
+
+        return modes
+            .Select(mode =>
+            {
+                var summary = BuildBucketSummary(TrafficQualityBucketFilters.ApplyEventBucketMembershipInMemory(scopedEvents, mode));
+
+                return new ParfaitAnalyticsQualityBucketViewModel
+                {
+                    Key = TrafficQualityBucketFilters.ToClientValue(mode),
+                    Label = QualityModeLabel(mode),
+                    PageViews = summary.PageViews,
+                    Sessions = summary.Sessions,
+                    Visitors = summary.UniqueVisitors,
+                    IsSelected = mode == selectedMode
+                };
+            })
+            .ToList();
+    }
+
+    private static BucketSummary BuildBucketSummary(IEnumerable<AnalyticsEvent> events)
+    {
+        var eventList = events as IList<AnalyticsEvent> ?? events.ToList();
+        var pageViews = eventList.Count(x => AnalyticsEventCatalog.MatchesDashboardMetric(x.EventType, "page_view"));
+        var sessions = eventList
+            .Where(x => !string.IsNullOrWhiteSpace(x.SessionId))
+            .Select(x => x.SessionId!.Trim())
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .Count();
+        var visitors = eventList
+            .Where(x => !string.IsNullOrWhiteSpace(x.VisitorId))
+            .Select(x => x.VisitorId!.Trim())
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .Count();
+        var topPage = eventList
+            .Where(x => AnalyticsEventCatalog.MatchesDashboardMetric(x.EventType, "page_view"))
+            .GroupBy(x => x.PageKey ?? "unknown")
+            .OrderByDescending(group => group.Count())
+            .Select(group => group.Key)
+            .FirstOrDefault();
+
+        return new BucketSummary(pageViews, sessions, visitors, topPage);
+    }
+
+    private static TimeRangeRequest WithQualityMode(TimeRangeRequest range, TrafficQualityMode qualityMode) => new()
+    {
+        FromUtc = range.FromUtc,
+        ToUtc = range.ToUtc,
+        Grouping = range.Grouping,
+        Label = range.Label,
+        Preset = range.Preset,
+        ViewerTimeZone = range.ViewerTimeZone,
+        QualityMode = qualityMode
+    };
+
+    private static AnalyticsEventSnapshot MapAnalyticsSnapshot(AnalyticsEvent item)
+    {
+        return new AnalyticsEventSnapshot
+        {
+            EventUtc = item.EventUtc,
+            EventType = item.EventType,
+            PageKey = item.PageKey,
+            Path = item.Path,
+            SessionId = item.SessionId,
+            VisitorId = item.VisitorId,
+            UtmSource = item.UtmSource,
+            UtmCampaign = item.UtmCampaign,
+            MetadataJson = item.MetadataJson,
+            Fbclid = item.Fbclid,
+            Browser = item.Browser,
+            OperatingSystem = item.OperatingSystem,
+            Device = item.DeviceType,
+            Viewport = item.ViewportWidth.HasValue && item.ViewportHeight.HasValue
+                ? $"{item.ViewportWidth.Value} x {item.ViewportHeight.Value}"
+                : null
+        };
+    }
+
+    private static string QualityModeLabel(TrafficQualityMode mode)
+    {
+        return mode switch
+        {
+            TrafficQualityMode.RealHumanTraffic => "Real Human Traffic",
+            TrafficQualityMode.LikelyHuman => "Likely Human",
+            TrafficQualityMode.ReviewedNeeded => "Reviewed Needed",
+            TrafficQualityMode.SuspiciousActivity => "Suspicious Activity",
+            TrafficQualityMode.LikelyBotsAutomation => "Likely Bots / Automation",
+            TrafficQualityMode.InternalQa => "Internal / QA",
+            _ => "All Traffic"
+        };
     }
 
     private static ParfaitAnalyticsActionBreakdownViewModel BuildActionBreakdown(
@@ -631,6 +799,12 @@ public sealed class ParfaitInternalAnalyticsService
 
         return null;
     }
+
+    private sealed record BucketSummary(
+        int PageViews,
+        int Sessions,
+        int UniqueVisitors,
+        string? TopPage);
 
     private sealed record AnalyticsEventSnapshot
     {

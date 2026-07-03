@@ -40,12 +40,23 @@ public sealed class ParfaitInternalAnalyticsViewModel
     public int NewCustomers { get; set; }
     public int CartAbandonmentSessions { get; set; }
 
+    public List<ParfaitAnalyticsQualityBucketViewModel> QualityBuckets { get; set; } = new();
     public List<ParfaitAnalyticsActionBreakdownViewModel> ActionBreakdowns { get; set; } = new();
     public List<ParfaitAnalyticsTopProductViewModel> TopProducts { get; set; } = new();
     public List<ParfaitAnalyticsOrderInspectorViewModel> RecentOrders { get; set; } = new();
     public List<ParfaitAnalyticsInspectorEventViewModel> RecentEvents { get; set; } = new();
 
     public bool HasTrackedEvents => ActionBreakdowns.Any(action => action.Count > 0);
+}
+
+public sealed class ParfaitAnalyticsQualityBucketViewModel
+{
+    public string Key { get; set; } = "";
+    public string Label { get; set; } = "";
+    public int PageViews { get; set; }
+    public int Sessions { get; set; }
+    public int Visitors { get; set; }
+    public bool IsSelected { get; set; }
 }
 
 public sealed class ParfaitAnalyticsActionBreakdownViewModel

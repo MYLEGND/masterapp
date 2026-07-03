@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Linq;
 using System.Linq.Expressions;
 using Domain.Entities;
@@ -53,6 +54,11 @@ public static class TrafficQualityBucketFilters
         "quote_contact_step_view",
         "life_contact_first_start"
     ];
+
+    private sealed record InMemoryEventBucketMembership(
+        HashSet<string> SessionIds,
+        HashSet<string> VisitorIds,
+        HashSet<Guid> EventIds);
 
     public static Expression<Func<AnalyticsEvent, bool>> BuildEventPredicate(TrafficQualityMode mode)
     {
@@ -287,6 +293,110 @@ public static class TrafficQualityBucketFilters
 
             _ => BuildEventPredicate(TrafficQualityMode.RealHumanTraffic)
         };
+    }
+
+    public static List<AnalyticsEvent> ApplyEventBucketMembershipInMemory(
+        IEnumerable<AnalyticsEvent> events,
+        TrafficQualityMode mode)
+    {
+        var eventList = events.ToList();
+        if (mode == TrafficQualityMode.AllTraffic || eventList.Count == 0)
+            return eventList;
+
+        var internalQaBucket = BuildEventBucketMembership(
+            eventList.Where(BuildEventPredicate(TrafficQualityMode.InternalQa).Compile()));
+        if (mode == TrafficQualityMode.InternalQa)
+            return ApplyEventBucketMembership(eventList, internalQaBucket);
+
+        var botCandidates = ExcludeEventBucketMembership(
+            eventList.Where(BuildEventPredicate(TrafficQualityMode.LikelyBotsAutomation).Compile()),
+            internalQaBucket);
+        var botBucket = BuildEventBucketMembership(botCandidates);
+        if (mode == TrafficQualityMode.LikelyBotsAutomation)
+            return ApplyEventBucketMembership(eventList, botBucket);
+
+        var suspiciousCandidates = ExcludeEventBucketMembership(
+            eventList.Where(BuildEventPredicate(TrafficQualityMode.SuspiciousActivity).Compile()),
+            internalQaBucket,
+            botBucket);
+        var suspiciousBucket = BuildEventBucketMembership(suspiciousCandidates);
+        if (mode == TrafficQualityMode.SuspiciousActivity)
+            return ApplyEventBucketMembership(eventList, suspiciousBucket);
+
+        var realHumanCandidates = ExcludeEventBucketMembership(
+            eventList.Where(BuildEventPredicate(TrafficQualityMode.RealHumanTraffic).Compile()),
+            internalQaBucket,
+            botBucket,
+            suspiciousBucket);
+        var realHumanBucket = BuildEventBucketMembership(realHumanCandidates);
+        if (mode == TrafficQualityMode.RealHumanTraffic)
+            return ApplyEventBucketMembership(eventList, realHumanBucket);
+
+        var likelyHumanCandidates = ExcludeEventBucketMembership(
+            eventList.Where(BuildEventPredicate(TrafficQualityMode.LikelyHuman).Compile()),
+            internalQaBucket,
+            botBucket,
+            suspiciousBucket,
+            realHumanBucket);
+        var likelyHumanBucket = BuildEventBucketMembership(likelyHumanCandidates);
+        if (mode == TrafficQualityMode.LikelyHuman)
+            return ApplyEventBucketMembership(eventList, likelyHumanBucket);
+
+        var reviewedNeededCandidates = ExcludeEventBucketMembership(
+            eventList,
+            internalQaBucket,
+            botBucket,
+            suspiciousBucket,
+            realHumanBucket,
+            likelyHumanBucket);
+
+        return ApplyEventBucketMembership(
+            eventList,
+            BuildEventBucketMembership(reviewedNeededCandidates));
+    }
+
+    private static InMemoryEventBucketMembership BuildEventBucketMembership(IEnumerable<AnalyticsEvent> events)
+    {
+        var sessionIds = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var visitorIds = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var eventIds = new HashSet<Guid>();
+
+        foreach (var analyticsEvent in events)
+        {
+            if (!string.IsNullOrWhiteSpace(analyticsEvent.SessionId))
+                sessionIds.Add(analyticsEvent.SessionId!);
+            else if (!string.IsNullOrWhiteSpace(analyticsEvent.VisitorId))
+                visitorIds.Add(analyticsEvent.VisitorId!);
+            else
+                eventIds.Add(analyticsEvent.EventId);
+        }
+
+        return new InMemoryEventBucketMembership(sessionIds, visitorIds, eventIds);
+    }
+
+    private static IEnumerable<AnalyticsEvent> ExcludeEventBucketMembership(
+        IEnumerable<AnalyticsEvent> events,
+        params InMemoryEventBucketMembership[] excludedBuckets)
+    {
+        return events.Where(analyticsEvent => !excludedBuckets.Any(bucket => IsEventInBucket(analyticsEvent, bucket)));
+    }
+
+    private static List<AnalyticsEvent> ApplyEventBucketMembership(
+        IEnumerable<AnalyticsEvent> events,
+        InMemoryEventBucketMembership bucket)
+    {
+        return events.Where(analyticsEvent => IsEventInBucket(analyticsEvent, bucket)).ToList();
+    }
+
+    private static bool IsEventInBucket(AnalyticsEvent analyticsEvent, InMemoryEventBucketMembership bucket)
+    {
+        if (!string.IsNullOrWhiteSpace(analyticsEvent.SessionId))
+            return bucket.SessionIds.Contains(analyticsEvent.SessionId!);
+
+        if (!string.IsNullOrWhiteSpace(analyticsEvent.VisitorId))
+            return bucket.VisitorIds.Contains(analyticsEvent.VisitorId!);
+
+        return bucket.EventIds.Contains(analyticsEvent.EventId);
     }
 
     public static Expression<Func<WebsiteLead, bool>> BuildLeadPredicate(TrafficQualityMode mode)
