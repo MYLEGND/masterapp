@@ -31,6 +31,7 @@ public sealed class ParfaitInternalAnalyticsViewModel
     public int Visitors { get; set; }
     public int Sessions { get; set; }
     public int Orders { get; set; }
+    public int PaidOrders { get; set; }
     public int Purchases { get; set; }
     public int RevenueCents { get; set; }
     public int AverageOrderValueCents { get; set; }

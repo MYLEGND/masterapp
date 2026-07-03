@@ -17,23 +17,27 @@ namespace Infrastructure.Analytics;
 
 public sealed class MetaAdsService : IMetaAdsService
 {
-    private readonly string? _envFilter;
-    private readonly bool _excludeLocalHosts;
+    private readonly IAnalyticsQueryService _analytics;
     private readonly IConfiguration _config;
     private readonly MasterAppDbContext _db;
     private readonly IHttpClientFactory _httpClientFactory;
     private readonly IMetaAdsConnectionStore _connectionStore;
     private readonly ILogger<MetaAdsService> _logger;
 
-    public MetaAdsService(IConfiguration config, MasterAppDbContext db, IHttpClientFactory httpClientFactory, IMetaAdsConnectionStore connectionStore, ILogger<MetaAdsService> logger)
+    public MetaAdsService(
+        IConfiguration config,
+        MasterAppDbContext db,
+        IHttpClientFactory httpClientFactory,
+        IMetaAdsConnectionStore connectionStore,
+        IAnalyticsQueryService analytics,
+        ILogger<MetaAdsService> logger)
     {
         _config = config;
         _db = db;
         _httpClientFactory = httpClientFactory;
         _connectionStore = connectionStore;
+        _analytics = analytics;
         _logger = logger;
-        _envFilter = NormalizeEnv(config["Analytics:EnvironmentFilter"] ?? config["Analytics__EnvironmentFilter"]);
-        _excludeLocalHosts = ParseBool(config["Analytics:ExcludeLocalHosts"] ?? config["Analytics__ExcludeLocalHosts"]);
     }
 
     public async Task<MetaCampaignsDto> GetCampaignsAsync(TimeRangeRequest range, ScopeContext scope, CancellationToken ct = default)
@@ -238,7 +242,14 @@ public sealed class MetaAdsService : IMetaAdsService
             .GroupBy(x => x.Name!, StringComparer.OrdinalIgnoreCase)
             .ToDictionary(g => g.Key, g => g.First().Id!, StringComparer.OrdinalIgnoreCase);
 
-        var events = await BaseMetaSignalEvents(range, scope, scopedAgentIds)
+        var filteredMetaSignals = await ApplyMetaSignalQualityFilterAsync(
+            BaseMetaSignalEvents(range, scope, scopedAgentIds),
+            range,
+            scope,
+            scopedAgentIds,
+            ct);
+
+        var events = await filteredMetaSignals
             .Where(e =>
                 e.EventName == "QualifiedLead" ||
                 e.EventName == "AppointmentBooked" ||
@@ -315,19 +326,7 @@ public sealed class MetaAdsService : IMetaAdsService
     private IQueryable<MetaSignalEvent> BaseMetaSignalEvents(TimeRangeRequest range, ScopeContext scope, Guid[]? scopedAgentIds) =>
         _db.MetaSignalEvents.AsNoTracking()
             .Where(e => e.CreatedUtc >= range.FromUtc && e.CreatedUtc <= range.ToUtc)
-            .Where(e => _envFilter == "prod"
-                ? e.Environment == "prod" || e.Environment == "production" || e.Environment == "Prod" || e.Environment == "Production"
-                : _envFilter == "dev"
-                    ? e.Environment == "dev" || e.Environment == "development" || e.Environment == "Dev" || e.Environment == "Development"
-                    : e.Environment == null || e.Environment == "" ||
-                      e.Environment == "prod" || e.Environment == "production" || e.Environment == "Prod" || e.Environment == "Production" ||
-                      e.Environment == "dev" || e.Environment == "development" || e.Environment == "Dev" || e.Environment == "Development")
-            .Where(e => !_excludeLocalHosts ||
-                e.Host == null || e.Host == "" ||
-                (!e.Host.StartsWith("localhost") &&
-                 !e.Host.StartsWith("127.0.0.1") &&
-                 !e.Host.StartsWith("::1") &&
-                 !e.Host.StartsWith("[::1]")))
+            .ApplySiteScope(scope)
             .Where(e => scope.ScopeType != ScopeType.Agent || !scope.AgentTrackingProfileId.HasValue
                 ? true
                 : scopedAgentIds != null
@@ -336,41 +335,61 @@ public sealed class MetaAdsService : IMetaAdsService
 
     private IQueryable<WebsiteLead> BaseWebsiteLeads(TimeRangeRequest range, ScopeContext scope, Guid[]? scopedAgentIds) =>
         _db.WebsiteLeads.AsNoTracking()
-            .Where(l => !l.IsInternal)
             .Where(l => !l.IsDeleted)
             .Where(l => l.CreatedUtc >= range.FromUtc && l.CreatedUtc <= range.ToUtc)
-            .Where(LeadEnvironmentPredicate())
-            .Where(LeadHostPredicate())
-            .Where(LeadScopePredicate(scope, scopedAgentIds));
+            .Where(LeadScopePredicate(scope, scopedAgentIds))
+            .Where(TrafficQualityBucketFilters.BuildLeadPredicate(range.QualityMode));
 
-    private System.Linq.Expressions.Expression<Func<WebsiteLead, bool>> LeadEnvironmentPredicate()
+    private async Task<IQueryable<MetaSignalEvent>> ApplyMetaSignalQualityFilterAsync(
+        IQueryable<MetaSignalEvent> query,
+        TimeRangeRequest range,
+        ScopeContext scope,
+        Guid[]? scopedAgentIds,
+        CancellationToken ct)
     {
-        if (_envFilter == "prod")
-            return l => l.Environment == "prod" || l.Environment == "production" || l.Environment == "Prod" || l.Environment == "Production";
-        if (_envFilter == "dev")
-            return l => l.Environment == "dev" || l.Environment == "development" || l.Environment == "Dev" || l.Environment == "Development";
+        if (range.QualityMode == TrafficQualityMode.AllTraffic)
+            return query;
 
-        return l =>
-            l.Environment == null || l.Environment == "" ||
-            l.Environment == "prod" || l.Environment == "production" || l.Environment == "Prod" || l.Environment == "Production" ||
-            l.Environment == "dev" || l.Environment == "development" || l.Environment == "Dev" || l.Environment == "Development";
+        var rawAnalyticsEvents = await _analytics
+            .ScopedEvents(WithQualityMode(range, TrafficQualityMode.AllTraffic), scope, scopedAgentIds)
+            .ToListAsync(ct);
+        var filteredAnalyticsEvents = TrafficQualityBucketFilters.ApplyEventBucketMembershipInMemory(rawAnalyticsEvents, range.QualityMode);
+
+        var visitorIds = filteredAnalyticsEvents
+            .Select(x => x.VisitorId)
+            .Where(x => !string.IsNullOrWhiteSpace(x))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+        var sessionIds = filteredAnalyticsEvents
+            .Select(x => x.SessionId)
+            .Where(x => !string.IsNullOrWhiteSpace(x))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
+        if (visitorIds.Count == 0 && sessionIds.Count == 0)
+            return query.Where(x => false);
+
+        return query.Where(x =>
+            (!string.IsNullOrWhiteSpace(x.VisitorId) && visitorIds.Contains(x.VisitorId!)) ||
+            (!string.IsNullOrWhiteSpace(x.SessionId) && sessionIds.Contains(x.SessionId!)));
     }
 
-    private System.Linq.Expressions.Expression<Func<WebsiteLead, bool>> LeadHostPredicate()
+    private static TimeRangeRequest WithQualityMode(TimeRangeRequest range, TrafficQualityMode qualityMode) => new()
     {
-        if (!_excludeLocalHosts)
-            return l => true;
-
-        return l =>
-            l.Host == null || l.Host == "" ||
-            (!l.Host.StartsWith("localhost") &&
-             !l.Host.StartsWith("127.0.0.1") &&
-             !l.Host.StartsWith("::1") &&
-             !l.Host.StartsWith("[::1]"));
-    }
+        FromUtc = range.FromUtc,
+        ToUtc = range.ToUtc,
+        Grouping = range.Grouping,
+        Label = range.Label,
+        Preset = range.Preset,
+        ViewerTimeZone = range.ViewerTimeZone,
+        QualityMode = qualityMode
+    };
 
     private static System.Linq.Expressions.Expression<Func<WebsiteLead, bool>> LeadScopePredicate(ScopeContext scope, Guid[]? scopedAgentIds)
     {
+        if (scope.HasSiteScope)
+            return l => false;
+
         if (scope.ScopeType == ScopeType.Agent && scope.AgentTrackingProfileId.HasValue)
         {
             if (scopedAgentIds != null && scopedAgentIds.Length > 0)
@@ -383,18 +402,6 @@ public sealed class MetaAdsService : IMetaAdsService
         }
 
         return l => true;
-    }
-
-    private static bool ParseBool(string? value) =>
-        !string.IsNullOrWhiteSpace(value) && bool.TryParse(value, out var parsed) && parsed;
-
-    private static string? NormalizeEnv(string? env)
-    {
-        if (string.IsNullOrWhiteSpace(env)) return null;
-        var value = env.Trim().ToLowerInvariant();
-        if (value.StartsWith("prod")) return "prod";
-        if (value.StartsWith("dev")) return "dev";
-        return null;
     }
 
     private static string? NormalizeCampaignKey(string? value) =>

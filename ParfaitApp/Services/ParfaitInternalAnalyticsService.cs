@@ -133,16 +133,11 @@ public sealed class ParfaitInternalAnalyticsService
         summary.UniqueVisitors = selectedBucketSummary.UniqueVisitors;
         summary.TopPage = selectedBucketSummary.TopPage ?? summary.TopPage;
 
-        var rawEvents = bucketEvents
+        var parsedFunnelEvents = bucketEvents
             .Where(x => FunnelEventTypes.Contains(x.EventType))
             .OrderByDescending(x => x.EventUtc)
-            .Take(2500)
             .Select(MapAnalyticsSnapshot)
-            .ToList();
-
-        var parsedEvents = rawEvents
             .Select(ParseEvent)
-            .OrderByDescending(x => x.EventUtc)
             .ToList();
 
         var allOrders = _orders.GetAllOrders().ToList();
@@ -155,15 +150,15 @@ public sealed class ParfaitInternalAnalyticsService
             .ToList();
         var selectedOrdersInRange = range.QualityMode == TrafficQualityMode.AllTraffic
             ? ordersInRange
-            : FilterOrdersToBucket(ordersInRange, parsedEvents);
+            : FilterOrdersToBucket(ordersInRange, parsedFunnelEvents);
         var selectedPaidOrdersInRange = range.QualityMode == TrafficQualityMode.AllTraffic
             ? paidOrdersInRange
-            : FilterOrdersToBucket(paidOrdersInRange, parsedEvents);
-        var purchaseEvents = ResolvePurchaseEvents(parsedEvents, selectedPaidOrdersInRange);
-        var storeViewEvents = EventsFor(parsedEvents, "ViewContent");
-        var productViewedEvents = EventsFor(parsedEvents, "ProductViewed");
-        var addToCartEvents = EventsFor(parsedEvents, "AddToCart");
-        var checkoutEvents = EventsFor(parsedEvents, "CheckoutStarted");
+            : FilterOrdersToBucket(paidOrdersInRange, parsedFunnelEvents);
+        var purchaseEvents = ResolvePurchaseEvents(parsedFunnelEvents, selectedPaidOrdersInRange);
+        var storeViewEvents = EventsFor(parsedFunnelEvents, "ViewContent");
+        var productViewedEvents = EventsFor(parsedFunnelEvents, "ProductViewed");
+        var addToCartEvents = EventsFor(parsedFunnelEvents, "AddToCart");
+        var checkoutEvents = EventsFor(parsedFunnelEvents, "CheckoutStarted");
 
         var storeViewSessions = DistinctSessions(storeViewEvents);
         var productViewSessions = DistinctSessions(productViewedEvents);
@@ -238,7 +233,7 @@ public sealed class ParfaitInternalAnalyticsService
                 revenueOverrideCents: revenueCents)
         };
 
-        var topProducts = BuildTopProducts(selectedPaidOrdersInRange, parsedEvents);
+        var topProducts = BuildTopProducts(selectedPaidOrdersInRange, parsedFunnelEvents);
         var recentOrders = selectedOrdersInRange
             .Take(8)
             .Select(order => new ParfaitAnalyticsOrderInspectorViewModel
@@ -258,7 +253,7 @@ public sealed class ParfaitInternalAnalyticsService
             })
             .ToList();
 
-        var recentEvents = parsedEvents
+        var recentEvents = parsedFunnelEvents
             .OrderByDescending(x => x.EventUtc)
             .Take(20)
             .Select(MapInspectorEvent)
@@ -314,6 +309,7 @@ public sealed class ParfaitInternalAnalyticsService
             Visitors = visitors,
             Sessions = sessions,
             Orders = selectedPaidOrdersInRange.Count > 0 ? selectedPaidOrdersInRange.Count : purchaseEvents.Count,
+            PaidOrders = selectedPaidOrdersInRange.Count,
             Purchases = purchaseEvents.Count,
             RevenueCents = revenueCents,
             AverageOrderValueCents = averageOrderValueCents,

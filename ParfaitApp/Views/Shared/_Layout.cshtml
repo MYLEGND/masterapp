@@ -80,13 +80,17 @@
     </main>
 </div>
 
-<footer class="footer mt-auto py-3">
-    <div class="container text-center">
-        &copy; 2025 - MYLEGND, LLC. All rights reserved.
-    <br />
-    <a asp-controller="Home" asp-action="Terms" class="footer-link">Terms</a>
-    <span class="footer-divider">&bull;</span>
-    <a asp-controller="Home" asp-action="Privacy" class="footer-link">Privacy</a>
+<footer class="footer mt-auto">
+    <div class="footer-inner">
+        <div class="footer-copy">
+            <span class="footer-brand">&copy; 2025 MYLEGND, LLC</span>
+            <span class="footer-rights">All rights reserved.</span>
+        </div>
+        <nav class="footer-links" aria-label="Footer links">
+            <a asp-controller="Home" asp-action="Terms" class="footer-link">Terms</a>
+            <span class="footer-divider">&bull;</span>
+            <a asp-controller="Home" asp-action="Privacy" class="footer-link">Privacy</a>
+        </nav>
     </div>
 </footer>
 
@@ -126,40 +130,6 @@
             if (window.innerWidth > 900) closeNav();
         });
 
-        const normalizePath = pathname => {
-            const trimmed = (pathname || '').replace(/\/+$/, '');
-            return trimmed || '/';
-        };
-
-        const currentUrl = new URL(window.location.href);
-        const currentPath = normalizePath(currentUrl.pathname);
-        const currentSearch = currentUrl.search || '';
-
-        document.querySelectorAll('[data-parfait-nav-tab="true"]').forEach(link => {
-            link.addEventListener('click', function (event) {
-                if (event.defaultPrevented || event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) {
-                    return;
-                }
-
-                const destination = new URL(link.href, window.location.href);
-                const destinationPath = normalizePath(destination.pathname);
-                const isSameOrigin = destination.origin === currentUrl.origin;
-                const isCurrentPage = isSameOrigin &&
-                    destinationPath === currentPath &&
-                    (destination.search || '') === currentSearch;
-
-                if (isCurrentPage) {
-                    event.preventDefault();
-                    window.location.reload();
-                    return;
-                }
-
-                if (isSameOrigin) {
-                    event.preventDefault();
-                    window.open(destination.href, '_blank', 'noopener');
-                }
-            });
-        });
     }());
 </script>
 @await RenderSectionAsync("Scripts", required:false)

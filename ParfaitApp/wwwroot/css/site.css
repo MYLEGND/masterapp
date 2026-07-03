@@ -69,13 +69,11 @@ main {
     position: relative;
     z-index: 1050;
     padding: 1rem clamp(1rem, 2vw, 1.45rem);
-    border: 1.5px solid rgba(43, 28, 22, 0.42);
+    border: 2px solid #6f4b3b;
     border-top: 0;
     border-radius: 0 0 26px 26px;
     background: #ffffff;
-    box-shadow:
-        inset 0 0 0 1px rgba(43, 28, 22, 0.08),
-        0 18px 38px rgba(53, 37, 28, 0.12);
+    box-shadow: 0 12px 24px rgba(43, 28, 22, 0.12);
 }
 
 .navbar-top {
@@ -106,10 +104,10 @@ main {
     justify-content: center;
     width: 46px;
     height: 46px;
-    border: 1.5px solid rgba(43, 28, 22, 0.52);
+    border: 2px solid #926950;
     border-radius: 14px;
     background: #ffffff;
-    box-shadow: 0 10px 20px rgba(53, 37, 28, 0.08);
+    box-shadow: none;
     overflow: hidden;
 }
 
@@ -153,11 +151,11 @@ main {
     justify-content: center;
     min-height: 42px;
     padding: 0.62rem 0.92rem;
-    border: 1.5px solid rgba(43, 28, 22, 0.46);
+    border: 2px solid #926950;
     border-radius: 999px;
     background: #ffffff;
-    box-shadow: 0 10px 20px rgba(53, 37, 28, 0.08);
-    color: var(--pf-cocoa-900);
+    box-shadow: none;
+    color: #4d3429;
     font-size: 0.68rem;
     font-weight: var(--pf-weight-bold);
     letter-spacing: 0.12em;
@@ -168,10 +166,10 @@ main {
 
 .navbar-right .nav-link:hover,
 .navbar-right .nav-link.active {
-    background: var(--pf-cream-100);
-    border-color: rgba(43, 28, 22, 0.82);
-    box-shadow: 0 14px 24px rgba(53, 37, 28, 0.12);
-    color: var(--pf-cocoa-900);
+    background: #f7f1eb;
+    border-color: #6f4b3b;
+    box-shadow: none;
+    color: #4d3429;
     transform: translateY(-1px);
 }
 
@@ -182,16 +180,16 @@ main {
 }
 
 .navbar-right .login-link {
-    border-color: rgba(43, 28, 22, 0.92);
-    background: linear-gradient(145deg, #6f4b3b 0%, #2b1c16 100%);
-    box-shadow: 0 12px 22px rgba(43, 28, 22, 0.16);
-    color: #fffdfb;
+    border-color: #6f4b3b;
+    background: #6f4b3b;
+    box-shadow: none;
+    color: #ffffff;
 }
 
 .navbar-right .login-link:hover,
 .navbar-right .login-link.active {
-    background: linear-gradient(145deg, #5d3e30 0%, #241813 100%);
-    color: #fffdfb;
+    background: #5d3e30;
+    color: #ffffff;
 }
 
 .nav-icon {
@@ -227,17 +225,17 @@ main {
     width: 42px;
     height: 42px;
     padding: 0;
-    border: 1.5px solid rgba(43, 28, 22, 0.52);
+    border: 2px solid #926950;
     border-radius: 14px;
     background: #ffffff;
-    box-shadow: 0 12px 22px rgba(53, 37, 28, 0.1);
+    box-shadow: none;
     cursor: pointer;
     transition: transform 0.16s ease, box-shadow 0.18s ease, background 0.18s ease;
 }
 
 .nav-toggle:hover {
     transform: translateY(-1px);
-    box-shadow: 0 14px 26px rgba(53, 37, 28, 0.14);
+    box-shadow: none;
 }
 
 .nav-toggle:focus-visible {
@@ -291,29 +289,62 @@ main {
 footer.footer {
     flex-shrink: 0;
     width: 100%;
-    padding: 1rem 0 1.25rem;
-    border-top: 1px solid var(--pf-line);
-    background: transparent;
-    color: var(--pf-cocoa-700);
-    font-size: 0.88rem;
-    font-weight: var(--pf-weight-medium);
+    margin: 0;
+    padding: 0.78rem clamp(1rem, 2vw, 1.45rem) 0.9rem;
+    border-top: 2px solid #926950;
+    background: #ffffff;
+    color: #4d3429;
+    font-size: 0.74rem;
+    font-weight: var(--pf-weight-bold);
+    letter-spacing: 0.08em;
     text-align: center;
+    text-transform: uppercase;
+}
+
+.footer-inner {
+    display: grid;
+    justify-items: center;
+    gap: 0.22rem;
+}
+
+.footer-copy {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.42rem;
+    flex-wrap: wrap;
+}
+
+.footer-brand {
+    color: #4d3429;
+    font-weight: var(--pf-weight-bold);
+}
+
+.footer-rights {
+    color: #926950;
+}
+
+.footer-links {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.42rem;
 }
 
 .footer-link {
-    color: var(--pf-cocoa-700);
-    font-weight: var(--pf-weight-semibold);
+    color: #6f4b3b;
+    font-weight: var(--pf-weight-bold);
     text-decoration: none;
-    transition: color 0.18s ease;
 }
 
 .footer-link:hover {
-    color: var(--pf-cocoa-900);
+    color: #4d3429;
+    text-decoration: underline;
+    text-underline-offset: 3px;
 }
 
 .footer-divider {
-    margin: 0 0.4rem;
-    color: rgba(111, 75, 59, 0.6);
+    color: #926950;
 }
 
 body.legal-theme {

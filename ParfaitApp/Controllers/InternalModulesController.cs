@@ -495,9 +495,9 @@ public sealed class InternalModulesController : Controller
             },
             reconciliation = new
             {
-                paidOrders = dashboard.Purchases,
+                paidOrders = dashboard.PaidOrders,
                 purchaseEvents = Count("purchase"),
-                unmatchedPaidOrders = Math.Max(0, dashboard.Purchases - Count("purchase")),
+                unmatchedPaidOrders = Math.Max(0, dashboard.PaidOrders - Count("purchase")),
                 revenueCents = dashboard.RevenueCents
             },
             funnel = new[]

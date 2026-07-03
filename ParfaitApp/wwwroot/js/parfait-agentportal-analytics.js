@@ -232,20 +232,6 @@
         return "meta-good";
     }
 
-    function metaLeadsClass(value) {
-        const total = toNumber(value);
-        if (total <= 0) return "meta-bad";
-        if (total < 3) return "meta-warn";
-        return "meta-good";
-    }
-
-    function metaLeadGapClass(value) {
-        const gap = Math.abs(toNumber(value));
-        if (gap === 0) return "meta-good";
-        if (gap <= 2) return "meta-warn";
-        return "meta-bad";
-    }
-
     function metaSpendClass(row) {
         const spend = toNumber(row?.spend);
         const leads = toNumber(row?.leads);
@@ -282,31 +268,9 @@
         return "meta-bad";
     }
 
-    function renderCampaignRow(row) {
-        return `
-            <tr>
-                <td>${pill(row.campaignName || "—", `${metaCampaignNameClass(row)} meta-campaign-name-pill`)}<div class="fa-muted small mt-1">${escapeHtml(row.campaignId || "")}</div></td>
-                <td>${pill(row.status || "—", metaStatusClass(row.status))}</td>
-                <td>${pill(row.objective || "—", metaObjectiveClass(row.objective))}</td>
-                <td class="text-end">${pill(formatMoney(row.spend), metaSpendClass(row))}</td>
-                <td class="text-end">${pill(formatInt(row.impressions), metaImpressionsClass(row.impressions))}</td>
-                <td class="text-end">${pill(formatInt(row.reach), metaReachClass(row.reach))}</td>
-                <td class="text-end">${pill(formatInt(row.clicks), metaClicksClass(row.clicks))}</td>
-                <td class="text-end">${pill(formatPercent(row.ctr), metaCtrClass(row.ctr))}</td>
-                <td class="text-end">${pill(formatMoney(row.cpc), metaCpcClass(row.cpc))}</td>
-                <td class="text-end">${pill(formatMoney(row.cpm), metaCpmClass(row.cpm))}</td>
-                <td class="text-end">${pill(formatInt(row.leads), metaLeadsClass(row.leads))}</td>
-                <td class="text-end">${pill(formatInt(row.websiteLeads), metaLeadsClass(row.websiteLeads))}</td>
-                <td class="text-end">${pill(formatInt(row.websiteLeadGap), metaLeadGapClass(row.websiteLeadGap))}</td>
-                <td class="text-end">${pill(formatInt(row.purchases || row.purchaseCount || 0), (row.purchases || row.purchaseCount) > 0 ? "meta-good" : "meta-neutral")}</td>
-                <td class="text-end">${pill(formatMoney(row.revenue || row.purchaseValue || 0), (row.revenue || row.purchaseValue) > 0 ? "meta-good" : "meta-neutral")}</td>
-                <td class="text-end">${pill(`${toNumber(row.roas || 0).toFixed(2)}x`, toNumber(row.roas) > 0 ? "meta-good" : "meta-neutral")}</td>
-            </tr>`;
-    }
-
     function renderMetaCampaigns(data) {
         setText(rangeValue, data?.rangeLabel || pageRoot.dataset.preset || "30d");
-        setMetaCampaignFields(data);
+        setMetaCampaignFields(data, true);
 
         if (accountChip) {
             accountChip.classList.remove("d-none");
@@ -340,17 +304,21 @@
                 <td class="text-end">${pill(formatPercent(row.ctr), metaCtrClass(row.ctr))}</td>
                 <td class="text-end">${pill(formatMoney(row.cpc), metaCpcClass(row.cpc))}</td>
                 <td class="text-end">${pill(formatMoney(row.cpm), metaCpmClass(row.cpm))}</td>
-                <td class="text-end">${pill(formatInt(row.purchases || row.purchaseCount || 0), (row.purchases || row.purchaseCount) > 0 ? "meta-good" : "meta-neutral")}</td>
-                <td class="text-end">${pill(formatMoney(row.revenue || row.purchaseValue || 0), (row.revenue || row.purchaseValue) > 0 ? "meta-good" : "meta-neutral")}</td>
-                <td class="text-end">${pill(`${toNumber(row.roas || 0).toFixed(2)}x`, toNumber(row.roas) > 0 ? "meta-good" : "meta-neutral")}</td>
+                <td class="text-end">${pill(formatInt(row.policiesPaid || row.purchases || row.purchaseCount || 0), (row.policiesPaid || row.purchases || row.purchaseCount) > 0 ? "meta-good" : "meta-neutral")}</td>
+                <td class="text-end">${pill(formatMoney(row.paidPremium || row.revenue || row.purchaseValue || 0), (row.paidPremium || row.revenue || row.purchaseValue) > 0 ? "meta-good" : "meta-neutral")}</td>
+                <td class="text-end">${pill(`${toNumber(row.premiumRoas || row.roas || 0).toFixed(2)}x`, toNumber(row.premiumRoas || row.roas || 0) > 0 ? "meta-good" : "meta-neutral")}</td>
             </tr>`).join("");
     }
 
 
-    function setMetaCampaignFields(data) {
-        setText(accountValue, data?.accountName || data?.accountId || "Not connected");
-        setText(businessValue, data?.businessName || data?.businessId || "—");
-        setText(syncValue, formatShortDate(data?.connectedUtc));
+    function setMetaCampaignFields(data, preserveExisting = false) {
+        const account = data?.accountName || data?.accountId;
+        const business = data?.businessName || data?.businessId;
+        const syncStamp = data?.syncedUtc || data?.connectedUtc;
+
+        setText(accountValue, account || (preserveExisting ? (accountValue?.textContent || "Not connected") : "Not connected"));
+        setText(businessValue, business || (preserveExisting ? (businessValue?.textContent || "—") : "—"));
+        setText(syncValue, syncStamp ? formatShortDate(syncStamp) : (preserveExisting ? (syncValue?.textContent || "Not synced yet") : "Not synced yet"));
     }
 
     async function fetchJson(url) {
