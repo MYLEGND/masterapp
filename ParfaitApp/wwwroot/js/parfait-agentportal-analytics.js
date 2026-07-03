@@ -39,7 +39,8 @@
         metaConnect: "/internal/analytics/meta-connect",
         metaConnectionStatus: "/internal/analytics/meta-connection-status",
         metaCampaigns: "/internal/analytics/meta-campaigns",
-        metaDisconnect: "/internal/analytics/meta-disconnect"
+        metaDisconnect: "/internal/analytics/meta-disconnect",
+        healthMonitor: "/internal/analytics/health-monitor"
     };
 
     const connectBtn = document.getElementById("meta-connect-btn");
@@ -439,6 +440,75 @@
         return data;
     }
 
+    function setHealthText(id, value) {
+        const element = document.getElementById(id);
+        if (element) {
+            element.textContent = value;
+        }
+    }
+
+    function healthPercent(value) {
+        return `${Number(value || 0).toFixed(1)}%`;
+    }
+
+    async function loadHealthMonitor() {
+        setHealthText("pf-health-status", "Loading ecommerce health snapshot…");
+
+        try {
+            const data = await fetchJson(buildUrlWithParams(endpoints.healthMonitor, currentAnalyticsParams()));
+
+            setHealthText("pf-health-range-label", data?.rangeLabel || "Selected range");
+            setHealthText("pf-health-status", data?.summary || "Parfait ecommerce health snapshot loaded.");
+
+            const focusGrid = document.getElementById("pf-health-focus-grid");
+            const focus = Array.isArray(data?.focusMetrics) ? data.focusMetrics : [];
+            if (focusGrid) {
+                focusGrid.innerHTML = focus.map(metric => `
+                    <div class="col"><div class="kpi-card">
+                        <div class="fa-kpi-title">${escapeHtml(metric.label || "Metric")}</div>
+                        <div class="fa-kpi-value">${formatInt(metric.currentValue)}</div>
+                        <div class="fa-kpi-sub">${healthPercent(metric.deltaPercent)} conversion context</div>
+                    </div></div>`).join("");
+            }
+
+            const attribution = data?.attributionHealth || {};
+            setHealthText("pf-health-match-rate", healthPercent(attribution.serverBrowserMatchRate));
+            setHealthText("pf-health-match-sub", `${formatInt(attribution.matchedEvents)} matched / ${formatInt(attribution.eligibleEvents)} eligible`);
+            setHealthText("pf-health-missing-rate", healthPercent(attribution.missingAttributionRate));
+            setHealthText("pf-health-missing-sub", `${formatInt(attribution.missingAttributionEvents)} issues / ${formatInt(attribution.eligibleEvents)} eligible`);
+
+            const reconciliation = data?.reconciliation || {};
+            setHealthText("pf-health-reconciliation", `${formatInt(reconciliation.paidOrders)} paid / ${formatInt(reconciliation.purchaseEvents)} purchase events`);
+            setHealthText("pf-health-reconciliation-sub", `${formatInt(reconciliation.unmatchedPaidOrders)} paid orders without matching purchase event`);
+
+            const funnelBody = document.getElementById("pf-health-funnel-body");
+            const funnel = Array.isArray(data?.funnel) ? data.funnel : [];
+            if (funnelBody) {
+                funnelBody.innerHTML = funnel.map(row => `
+                    <tr>
+                        <td><strong>${escapeHtml(row.label || "—")}</strong></td>
+                        <td class="text-end">${formatInt(row.sessions)}</td>
+                        <td class="text-end">${healthPercent(row.conversionRate)}</td>
+                    </tr>`).join("") || '<tr><td colspan="3" class="fa-empty">No ecommerce funnel activity exists for this range.</td></tr>';
+            }
+
+            const eventsBody = document.getElementById("pf-health-events-body");
+            const events = Array.isArray(data?.recentEvents) ? data.recentEvents : [];
+            if (eventsBody) {
+                eventsBody.innerHTML = events.map(row => `
+                    <tr>
+                        <td>${formatShortDate(row.createdUtc)}</td>
+                        <td>${escapeHtml(row.severity || "Info")}</td>
+                        <td><strong>${escapeHtml(row.eventName || "—")}</strong></td>
+                        <td>${escapeHtml(row.summary || "—")}</td>
+                    </tr>`).join("") || '<tr><td colspan="4" class="fa-empty">No recent health events exist for this range.</td></tr>';
+            }
+        } catch (error) {
+            setHealthText("pf-health-status", error?.message || "Unable to load ecommerce health.");
+            console.error(error);
+        }
+    }
+
     async function loadMetaCampaigns() {
         setMetaCampaignsBodyMessage("Loading Meta campaign performance…");
 
@@ -587,6 +657,10 @@
 
     disconnectBtn?.addEventListener("click", () => {
         void handleMetaDisconnect();
+    });
+
+    document.getElementById("pfMetaHealthModal")?.addEventListener("show.bs.modal", () => {
+        void loadHealthMonitor();
     });
 
     campaignsModal?.addEventListener("show.bs.modal", () => {

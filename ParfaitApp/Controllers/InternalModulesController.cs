@@ -430,6 +430,94 @@ public sealed class InternalModulesController : Controller
         }
     }
 
+
+    [HttpGet("analytics/health-monitor")]
+    [ParfaitInternalPageAccess("/internal/analytics")]
+    public async Task<IActionResult> AnalyticsHealthMonitor(
+        [FromQuery] string? preset = "30d",
+        [FromQuery] DateTime? fromUtc = null,
+        [FromQuery] DateTime? toUtc = null,
+        [FromQuery] string? qualityMode = null,
+        [FromQuery] string? timezoneId = null,
+        [FromQuery] int? timezoneOffsetMinutes = null,
+        CancellationToken ct = default)
+    {
+        var resolvedQualityMode = ResolveParfaitAnalyticsQualityMode(qualityMode);
+        var viewerTimeZone = ResolveViewerTimeZone(timezoneId, timezoneOffsetMinutes);
+
+        var dashboard = await _internalAnalytics.GetDashboardAsync(
+            preset,
+            fromUtc,
+            toUtc,
+            resolvedQualityMode,
+            viewerTimeZone,
+            timezoneId,
+            timezoneOffsetMinutes,
+            ct);
+
+        var actions = dashboard.ActionBreakdowns.ToDictionary(x => x.Key, StringComparer.OrdinalIgnoreCase);
+        int Sessions(string key) => actions.TryGetValue(key, out var action) ? action.UniqueSessions : 0;
+        int Count(string key) => actions.TryGetValue(key, out var action) ? action.Count : 0;
+        decimal Rate(int value, int total) => total <= 0 ? 0m : Math.Round(value * 100m / total, 1);
+
+        var viewSessions = Sessions("view-content");
+        var productSessions = Sessions("product-viewed");
+        var cartSessions = Sessions("add-to-cart");
+        var checkoutSessions = Sessions("checkout-started");
+        var purchaseSessions = Sessions("purchase");
+
+        var browser = dashboard.MetaHealth.PipelineHealth.MetaBrowserSentCount;
+        var server = dashboard.MetaHealth.PipelineHealth.MetaServerSentCount;
+        var eligible = browser + server;
+        var matched = Math.Min(browser, server);
+        var missingFailures = dashboard.MetaHealth.FailureDetection.Sum(x => x.Count);
+
+        return Json(new
+        {
+            rangeLabel = dashboard.RangeLabel,
+            summary = "Parfait ecommerce health snapshot loaded.",
+            focusMetrics = new[]
+            {
+                new { key = "product-viewed", label = "Product Viewed", currentValue = Count("product-viewed"), deltaPercent = Rate(productSessions, viewSessions) },
+                new { key = "add-to-cart", label = "Add To Cart", currentValue = Count("add-to-cart"), deltaPercent = Rate(cartSessions, productSessions) },
+                new { key = "checkout-started", label = "Checkout Started", currentValue = Count("checkout-started"), deltaPercent = Rate(checkoutSessions, cartSessions) },
+                new { key = "purchase", label = "Purchase", currentValue = Count("purchase"), deltaPercent = Rate(purchaseSessions, checkoutSessions) }
+            },
+            attributionHealth = new
+            {
+                eligibleEvents = eligible,
+                browserSentEvents = browser,
+                serverSentEvents = server,
+                matchedEvents = matched,
+                serverBrowserMatchRate = Rate(matched, eligible),
+                missingAttributionEvents = missingFailures,
+                missingAttributionRate = Rate(missingFailures, eligible)
+            },
+            reconciliation = new
+            {
+                paidOrders = dashboard.Purchases,
+                purchaseEvents = Count("purchase"),
+                unmatchedPaidOrders = Math.Max(0, dashboard.Purchases - Count("purchase")),
+                revenueCents = dashboard.RevenueCents
+            },
+            funnel = new[]
+            {
+                new { label = "View Content", sessions = viewSessions, conversionRate = 100m },
+                new { label = "Product Viewed", sessions = productSessions, conversionRate = Rate(productSessions, viewSessions) },
+                new { label = "Add To Cart", sessions = cartSessions, conversionRate = Rate(cartSessions, productSessions) },
+                new { label = "Checkout Started", sessions = checkoutSessions, conversionRate = Rate(checkoutSessions, cartSessions) },
+                new { label = "Purchase", sessions = purchaseSessions, conversionRate = Rate(purchaseSessions, checkoutSessions) }
+            },
+            recentEvents = dashboard.MetaHealth.RecentEvents.Take(20).Select(row => new
+            {
+                createdUtc = row.CreatedUtc,
+                severity = string.Equals(row.MetaServerStatus, "Failed", StringComparison.OrdinalIgnoreCase) ? "Warning" : "Info",
+                eventName = row.EventName,
+                summary = $"{row.SourceLabel} · {row.DispatcherStatus} / {row.MetaServerStatus}"
+            })
+        });
+    }
+
     [HttpPost("analytics/meta-disconnect")]
     [ParfaitInternalPageAccess("/internal/analytics")]
     [ValidateAntiForgeryToken]
