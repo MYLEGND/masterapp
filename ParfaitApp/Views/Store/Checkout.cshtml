@@ -108,11 +108,15 @@
 
                 <div class="sp-checkout-section sp-checkout-section--payment">
                     <div class="sp-checkout-section-head">
-                        <span class="sp-flow-step">Step 04</span>
-                        <h2>Payment</h2>
+                        <div>
+                            <span class="sp-flow-step">Step 04</span>
+                            <h2>Payment</h2>
+                        </div>
                     </div>
 
-                    <div id="card-container" class="sp-card-container"></div>
+                    <div class="sp-payment-panel">
+                        <div id="card-container" class="sp-card-container"></div>
+                    </div>
                 </div>
 
                 <div class="sp-checkout-submit-row">
@@ -123,7 +127,6 @@
                         </span>
                         <small class="sp-button-note">Secure encrypted Square checkout</small>
                     </button>
-                    <p class="sp-checkout-submit-note">Your order is processed through Square over encrypted payment rails.</p>
                 </div>
 
                 <div id="spCheckoutError" class="sp-checkout-error"></div>

@@ -46,12 +46,12 @@
                             <div class="sp-shop-price-stack">
                                 @if (product.HasDisplaySalePrice)
                                 {
-                                    <div class="sp-shop-compare-price">@product.DisplayCompareAtPriceLabel</div>
+                                    <span class="sp-shop-compare-price">@product.DisplayCompareAtPriceLabel</span>
                                 }
-                                <div class="sp-shop-price">@product.DisplayPriceLabel</div>
+                                <span class="sp-shop-price">@product.DisplayPriceLabel</span>
                                 @if (product.HasDisplayDiscountLabel)
                                 {
-                                    <div class="sp-shop-discount">@product.DisplayDiscountLabel</div>
+                                    <span class="sp-shop-discount">@product.DisplayDiscountLabel</span>
                                 }
                             </div>
                         </div>
