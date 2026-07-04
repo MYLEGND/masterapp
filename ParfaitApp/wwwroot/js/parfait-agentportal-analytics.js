@@ -640,6 +640,23 @@
         void loadMetaCampaigns();
     });
 
+    pageRoot.addEventListener("keydown", event => {
+        if (event.defaultPrevented || (event.key !== "Enter" && event.key !== " ")) {
+            return;
+        }
+
+        const trigger = event.target instanceof Element
+            ? event.target.closest('[role="button"][data-bs-toggle="modal"]')
+            : null;
+
+        if (!trigger || !pageRoot.contains(trigger)) {
+            return;
+        }
+
+        event.preventDefault();
+        trigger.click();
+    });
+
     const metaCallbackState = readMetaCallbackState();
     void loadMetaConnectionStatus().finally(() => {
         applyMetaCallbackState(metaCallbackState);

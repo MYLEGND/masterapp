@@ -207,10 +207,58 @@
                 <div class="wa-kpi-band-copy">High-signal ecommerce readouts</div>
             </div>
             <div class="fa-kpi-grid fa-kpi-grid-primary">
-                <div><div class="kpi-card kpi-card-primary"><div class="fa-kpi-title">Page Views</div><div class="fa-kpi-value">@Model.Summary.PageViews</div><div class="fa-kpi-sub">Store traffic</div></div></div>
-                <div><div class="kpi-card kpi-card-primary"><div class="fa-kpi-title">Visitors</div><div class="fa-kpi-value">@Model.Visitors</div><div class="fa-kpi-sub">@Model.NewCustomers new · @Model.ReturningCustomers returning</div></div></div>
-                <div><div class="kpi-card kpi-card-primary"><div class="fa-kpi-title">Sessions</div><div class="fa-kpi-value">@Model.Summary.Sessions</div><div class="fa-kpi-sub">Storefront journeys</div></div></div>
-                <div><div class="kpi-card kpi-card-primary"><div class="fa-kpi-title">Purchases</div><div class="fa-kpi-value">@Model.Purchases</div><div class="fa-kpi-sub">Completed orders</div></div></div>
+                <div>
+                    <div class="kpi-card kpi-card-primary fa-kpi-modal-trigger"
+                         role="button"
+                         tabindex="0"
+                         data-bs-toggle="modal"
+                         data-bs-target="#pfTrafficModal"
+                         aria-label="Page Views. Open Traffic Overview breakdown."
+                         title="Open Traffic Overview breakdown">
+                        <div class="fa-kpi-title">Page Views</div>
+                        <div class="fa-kpi-value">@Model.Summary.PageViews</div>
+                        <div class="fa-kpi-sub">Store traffic</div>
+                    </div>
+                </div>
+                <div>
+                    <div class="kpi-card kpi-card-primary fa-kpi-modal-trigger"
+                         role="button"
+                         tabindex="0"
+                         data-bs-toggle="modal"
+                         data-bs-target="#pfTrafficModal"
+                         aria-label="Visitors. Open Traffic Overview breakdown."
+                         title="Open Traffic Overview breakdown">
+                        <div class="fa-kpi-title">Visitors</div>
+                        <div class="fa-kpi-value">@Model.Visitors</div>
+                        <div class="fa-kpi-sub">@Model.NewCustomers new · @Model.ReturningCustomers returning</div>
+                    </div>
+                </div>
+                <div>
+                    <div class="kpi-card kpi-card-primary fa-kpi-modal-trigger"
+                         role="button"
+                         tabindex="0"
+                         data-bs-toggle="modal"
+                         data-bs-target="#pfTrafficModal"
+                         aria-label="Sessions. Open Traffic Overview breakdown."
+                         title="Open Traffic Overview breakdown">
+                        <div class="fa-kpi-title">Sessions</div>
+                        <div class="fa-kpi-value">@Model.Summary.Sessions</div>
+                        <div class="fa-kpi-sub">Storefront journeys</div>
+                    </div>
+                </div>
+                <div>
+                    <div class="kpi-card kpi-card-primary fa-kpi-modal-trigger"
+                         role="button"
+                         tabindex="0"
+                         data-bs-toggle="modal"
+                         data-bs-target="#pfRecentOrdersModal"
+                         aria-label="Purchases. Open Recent Orders breakdown."
+                         title="Open Recent Orders breakdown">
+                        <div class="fa-kpi-title">Purchases</div>
+                        <div class="fa-kpi-value">@Model.Purchases</div>
+                        <div class="fa-kpi-sub">Completed orders</div>
+                    </div>
+                </div>
             </div>
         </div>
 
@@ -220,10 +268,58 @@
                 <div class="wa-kpi-band-copy">Commerce context and checkout health</div>
             </div>
             <div class="fa-kpi-grid fa-kpi-grid-secondary">
-                <div><div class="kpi-card kpi-card-secondary kpi-card-conversion"><div class="fa-kpi-title">Revenue</div><div class="fa-kpi-value">@Money(Model.RevenueCents)</div><div class="fa-kpi-sub">Net tracked revenue</div></div></div>
-                <div><div class="kpi-card kpi-card-secondary kpi-card-conversion"><div class="fa-kpi-title">Checkout Conversion</div><div class="fa-kpi-value">@Rate(checkoutBreakdown?.ConversionRate ?? 0m)</div><div class="fa-kpi-sub">Checkout started → purchase</div></div></div>
-                <div><div class="kpi-card kpi-card-secondary kpi-card-context"><div class="fa-kpi-title">Average Order Value</div><div class="fa-kpi-value">@Money(Model.AverageOrderValueCents)</div><div class="fa-kpi-sub">@Model.Orders orders</div></div></div>
-                <div><div class="kpi-card kpi-card-secondary kpi-card-context"><div class="fa-kpi-title">Cart Abandonment</div><div class="fa-kpi-value">@Model.CartAbandonmentSessions</div><div class="fa-kpi-sub">Sessions with checkout friction</div></div></div>
+                <div>
+                    <div class="kpi-card kpi-card-secondary kpi-card-conversion fa-kpi-modal-trigger"
+                         role="button"
+                         tabindex="0"
+                         data-bs-toggle="modal"
+                         data-bs-target="#pfProductsModal"
+                         aria-label="Revenue. Open Products Snapshot breakdown."
+                         title="Open Products Snapshot breakdown">
+                        <div class="fa-kpi-title">Revenue</div>
+                        <div class="fa-kpi-value">@Money(Model.RevenueCents)</div>
+                        <div class="fa-kpi-sub">Net tracked revenue</div>
+                    </div>
+                </div>
+                <div>
+                    <div class="kpi-card kpi-card-secondary kpi-card-conversion fa-kpi-modal-trigger"
+                         role="button"
+                         tabindex="0"
+                         data-bs-toggle="modal"
+                         data-bs-target="#pfCommerceFunnelModal"
+                         aria-label="Checkout Conversion. Open Commerce Funnel breakdown."
+                         title="Open Commerce Funnel breakdown">
+                        <div class="fa-kpi-title">Checkout Conversion</div>
+                        <div class="fa-kpi-value">@Rate(checkoutBreakdown?.ConversionRate ?? 0m)</div>
+                        <div class="fa-kpi-sub">Checkout started → purchase</div>
+                    </div>
+                </div>
+                <div>
+                    <div class="kpi-card kpi-card-secondary kpi-card-context fa-kpi-modal-trigger"
+                         role="button"
+                         tabindex="0"
+                         data-bs-toggle="modal"
+                         data-bs-target="#pfRecentOrdersModal"
+                         aria-label="Average Order Value. Open Recent Orders breakdown."
+                         title="Open Recent Orders breakdown">
+                        <div class="fa-kpi-title">Average Order Value</div>
+                        <div class="fa-kpi-value">@Money(Model.AverageOrderValueCents)</div>
+                        <div class="fa-kpi-sub">@Model.Orders orders</div>
+                    </div>
+                </div>
+                <div>
+                    <div class="kpi-card kpi-card-secondary kpi-card-context fa-kpi-modal-trigger"
+                         role="button"
+                         tabindex="0"
+                         data-bs-toggle="modal"
+                         data-bs-target="#pfCommerceFunnelModal"
+                         aria-label="Cart Abandonment. Open Commerce Funnel breakdown."
+                         title="Open Commerce Funnel breakdown">
+                        <div class="fa-kpi-title">Cart Abandonment</div>
+                        <div class="fa-kpi-value">@Model.CartAbandonmentSessions</div>
+                        <div class="fa-kpi-sub">Sessions with checkout friction</div>
+                    </div>
+                </div>
             </div>
         </div>
     </section>
