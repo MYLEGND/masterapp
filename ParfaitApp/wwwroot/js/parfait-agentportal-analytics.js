@@ -4,36 +4,48 @@
         return;
     }
 
-    function ensureBrowserTimezoneInUrl() {
-        let url;
+    const viewerTimezoneCookieName = "ParfaitAnalyticsViewerTimeZone";
+    const viewerTimezoneOffsetCookieName = "ParfaitAnalyticsViewerOffsetMinutes";
+
+    function getBrowserTimezone() {
+        return {
+            id: Intl?.DateTimeFormat?.().resolvedOptions?.().timeZone || "",
+            offsetMinutes: new Date().getTimezoneOffset()
+        };
+    }
+
+    function persistBrowserTimezone() {
+        const viewerTimezone = getBrowserTimezone();
+        const cookieAttributes = "path=/; max-age=31536000; samesite=lax";
+
+        if (viewerTimezone.id) {
+            document.cookie = `${viewerTimezoneCookieName}=${encodeURIComponent(viewerTimezone.id)}; ${cookieAttributes}`;
+        }
+
+        document.cookie = `${viewerTimezoneOffsetCookieName}=${encodeURIComponent(String(viewerTimezone.offsetMinutes))}; ${cookieAttributes}`;
+
         try {
-            url = new URL(window.location.href);
+            const url = new URL(window.location.href);
+            if (viewerTimezone.id) {
+                url.searchParams.set("timezoneId", viewerTimezone.id);
+            } else {
+                url.searchParams.delete("timezoneId");
+            }
+
+            url.searchParams.set("timezoneOffsetMinutes", String(viewerTimezone.offsetMinutes));
+            window.history.replaceState({}, "", url.toString());
         } catch {
-            return false;
         }
 
-        if (url.searchParams.has("timezoneId") && url.searchParams.has("timezoneOffsetMinutes")) {
-            return false;
+        if (viewerTimezone.id) {
+            pageRoot.dataset.timezoneId = viewerTimezone.id;
         }
 
-        const timezoneId = Intl?.DateTimeFormat?.().resolvedOptions?.().timeZone || "";
-        const timezoneOffsetMinutes = String(new Date().getTimezoneOffset());
-        if (!timezoneId && !timezoneOffsetMinutes) {
-            return false;
-        }
-
-        if (timezoneId) {
-            url.searchParams.set("timezoneId", timezoneId);
-        }
-
-        url.searchParams.set("timezoneOffsetMinutes", timezoneOffsetMinutes);
-        window.location.replace(url.toString());
-        return true;
+        pageRoot.dataset.timezoneOffsetMinutes = String(viewerTimezone.offsetMinutes);
+        return viewerTimezone;
     }
 
-    if (ensureBrowserTimezoneInUrl()) {
-        return;
-    }
+    const viewerTimezone = persistBrowserTimezone();
 
     const endpoints = {
         metaConnect: "/internal/analytics/meta-connect",
@@ -110,9 +122,59 @@
             fromUtc: url.searchParams.get("fromUtc") || pageRoot.dataset.fromUtc || "",
             toUtc: url.searchParams.get("toUtc") || pageRoot.dataset.toUtc || "",
             qualityMode: normalizeQualityMode(url.searchParams.get("qualityMode") || pageRoot.dataset.qualityMode || "real_human_traffic"),
-            timezoneId: url.searchParams.get("timezoneId") || pageRoot.dataset.timezoneId || "",
-            timezoneOffsetMinutes: url.searchParams.get("timezoneOffsetMinutes") || pageRoot.dataset.timezoneOffsetMinutes || ""
+            timezoneId: url.searchParams.get("timezoneId") || pageRoot.dataset.timezoneId || viewerTimezone.id || "",
+            timezoneOffsetMinutes: url.searchParams.get("timezoneOffsetMinutes") || pageRoot.dataset.timezoneOffsetMinutes || String(viewerTimezone.offsetMinutes)
         };
+    }
+
+    function setMetaCampaignsEnabled(enabled) {
+        if (!campaignsBtn) {
+            return;
+        }
+
+        campaignsBtn.disabled = !enabled;
+        campaignsBtn.setAttribute("aria-disabled", enabled ? "false" : "true");
+        campaignsBtn.title = enabled ? "View Meta campaigns" : "Connect Meta Ads to view campaigns";
+    }
+
+    function updateMetaConnectHref() {
+        if (!connectBtn) {
+            return;
+        }
+
+        const params = {
+            returnUrl: `${window.location.pathname}${window.location.search}`
+        };
+
+        connectBtn.href = buildUrlWithParams(endpoints.metaConnect, params);
+    }
+
+    function setMetaConnectState(enabled, label, title = "") {
+        if (!connectBtn) {
+            return;
+        }
+
+        connectBtn.textContent = label;
+        connectBtn.classList.toggle("disabled", !enabled);
+        connectBtn.setAttribute("aria-disabled", enabled ? "false" : "true");
+        connectBtn.tabIndex = enabled ? 0 : -1;
+        connectBtn.title = title;
+
+        if (enabled) {
+            updateMetaConnectHref();
+        } else {
+            connectBtn.href = "#";
+        }
+    }
+
+    function setMetaAccountChip(text, connected = true) {
+        if (!accountChip) {
+            return;
+        }
+
+        accountChip.classList.remove("d-none");
+        accountChip.textContent = text || (connected ? "Connected" : "Not connected");
+        accountChip.style.opacity = connected ? "1" : ".75";
     }
 
     function formatShortDate(iso) {

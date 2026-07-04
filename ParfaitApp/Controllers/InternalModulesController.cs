@@ -1,3 +1,4 @@
+using System.Globalization;
 using Infrastructure.Analytics;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -12,6 +13,9 @@ namespace ParfaitApp.Controllers;
 [Route("internal")]
 public sealed class InternalModulesController : Controller
 {
+    private const string ViewerTimezoneIdCookieName = "ParfaitAnalyticsViewerTimeZone";
+    private const string ViewerTimezoneOffsetCookieName = "ParfaitAnalyticsViewerOffsetMinutes";
+
     private readonly ParfaitProductService _products;
     private readonly ParfaitOrderService _orders;
     private readonly ParfaitInternalAnalyticsService _internalAnalytics;
@@ -296,15 +300,15 @@ public sealed class InternalModulesController : Controller
         CancellationToken ct = default)
     {
         var resolvedQualityMode = ResolveParfaitAnalyticsQualityMode(qualityMode);
-        var viewerTimeZone = ResolveViewerTimeZone(timezoneId, timezoneOffsetMinutes);
+        var timezoneContext = ResolveViewerTimeZoneContext(timezoneId, timezoneOffsetMinutes);
         return View(await _internalAnalytics.GetDashboardAsync(
             preset,
             fromUtc,
             toUtc,
             resolvedQualityMode,
-            viewerTimeZone,
-            timezoneId,
-            timezoneOffsetMinutes,
+            timezoneContext.ViewerTimeZone,
+            timezoneContext.TimezoneId,
+            timezoneContext.TimezoneOffsetMinutes,
             ct));
     }
 
@@ -322,7 +326,7 @@ public sealed class InternalModulesController : Controller
         CancellationToken ct = default)
     {
         var resolvedQualityMode = ResolveParfaitAnalyticsQualityMode(qualityMode);
-        var viewerTimeZone = ResolveViewerTimeZone(timezoneId, timezoneOffsetMinutes);
+        var timezoneContext = ResolveViewerTimeZoneContext(timezoneId, timezoneOffsetMinutes);
         if (!ModelState.IsValid)
         {
             var dashboard = await _internalAnalytics.GetDashboardAsync(
@@ -330,9 +334,9 @@ public sealed class InternalModulesController : Controller
                 fromUtc,
                 toUtc,
                 resolvedQualityMode,
-                viewerTimeZone,
-                timezoneId,
-                timezoneOffsetMinutes,
+                timezoneContext.ViewerTimeZone,
+                timezoneContext.TimezoneId,
+                timezoneContext.TimezoneOffsetMinutes,
                 ct);
             dashboard.MetaSettings.MetaPixelId = model.MetaPixelId;
             dashboard.MetaSettings.MetaTestEventCode = model.MetaTestEventCode;
@@ -415,12 +419,12 @@ public sealed class InternalModulesController : Controller
         try
         {
             var resolvedQualityMode = ResolveParfaitAnalyticsQualityMode(qualityMode);
-            var viewerTimeZone = ResolveViewerTimeZone(timezoneId, timezoneOffsetMinutes);
+            var timezoneContext = ResolveViewerTimeZoneContext(timezoneId, timezoneOffsetMinutes);
             var range = TimeRangeRequest.FromPreset(
                 string.IsNullOrWhiteSpace(preset) ? "30d" : preset,
                 fromUtc,
                 toUtc,
-                viewerTz: viewerTimeZone,
+                viewerTz: timezoneContext.ViewerTimeZone,
                 qualityMode: resolvedQualityMode);
             var scope = ScopeContext.ForSite(ParfaitMetaAdsConnectionStoreAdapter.SiteKey, ParfaitMetaAdsConnectionStoreAdapter.SiteKey);
             var result = await _metaAds.GetCampaignsAsync(range, scope, ct);
@@ -445,16 +449,16 @@ public sealed class InternalModulesController : Controller
         CancellationToken ct = default)
     {
         var resolvedQualityMode = ResolveParfaitAnalyticsQualityMode(qualityMode);
-        var viewerTimeZone = ResolveViewerTimeZone(timezoneId, timezoneOffsetMinutes);
+        var timezoneContext = ResolveViewerTimeZoneContext(timezoneId, timezoneOffsetMinutes);
 
         var dashboard = await _internalAnalytics.GetDashboardAsync(
             preset,
             fromUtc,
             toUtc,
             resolvedQualityMode,
-            viewerTimeZone,
-            timezoneId,
-            timezoneOffsetMinutes,
+            timezoneContext.ViewerTimeZone,
+            timezoneContext.TimezoneId,
+            timezoneContext.TimezoneOffsetMinutes,
             ct);
 
         var actions = dashboard.ActionBreakdowns.ToDictionary(x => x.Key, StringComparer.OrdinalIgnoreCase);
@@ -549,6 +553,27 @@ public sealed class InternalModulesController : Controller
             return TrafficQualityMode.RealHumanTraffic;
 
         return TrafficQualityBucketFilters.ParseClientOrEnumValue(qualityMode);
+    }
+
+    private (string? TimezoneId, int? TimezoneOffsetMinutes, TimeZoneInfo ViewerTimeZone) ResolveViewerTimeZoneContext(
+        string? timezoneId,
+        int? timezoneOffsetMinutes)
+    {
+        var resolvedTimezoneId = !string.IsNullOrWhiteSpace(timezoneId)
+            ? timezoneId.Trim()
+            : Request.Cookies[ViewerTimezoneIdCookieName]?.Trim();
+
+        var resolvedTimezoneOffsetMinutes = timezoneOffsetMinutes;
+        if (!resolvedTimezoneOffsetMinutes.HasValue &&
+            int.TryParse(Request.Cookies[ViewerTimezoneOffsetCookieName], NumberStyles.Integer, CultureInfo.InvariantCulture, out var cookieOffsetMinutes))
+        {
+            resolvedTimezoneOffsetMinutes = cookieOffsetMinutes;
+        }
+
+        return (
+            string.IsNullOrWhiteSpace(resolvedTimezoneId) ? null : resolvedTimezoneId,
+            resolvedTimezoneOffsetMinutes,
+            ResolveViewerTimeZone(resolvedTimezoneId, resolvedTimezoneOffsetMinutes));
     }
 
     private static TimeZoneInfo ResolveViewerTimeZone(string? timezoneId, int? timezoneOffsetMinutes)
