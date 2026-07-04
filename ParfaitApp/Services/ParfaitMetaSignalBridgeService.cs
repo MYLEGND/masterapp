@@ -233,9 +233,6 @@ public sealed class ParfaitMetaSignalBridgeService
                 return "development";
             }
 
-            if (string.Equals(normalized, "ParfaitApp", StringComparison.OrdinalIgnoreCase))
-                return "production";
-
             return normalized;
         }
 
