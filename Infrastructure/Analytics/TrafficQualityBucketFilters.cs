@@ -356,19 +356,10 @@ public static class TrafficQualityBucketFilters
         if (mode == TrafficQualityMode.LikelyBotsAutomation)
             return ApplyEventBucketMembership(eventList, botBucket);
 
-        var suspiciousCandidates = ExcludeEventBucketMembership(
-            eventList.Where(BuildEventPredicate(TrafficQualityMode.SuspiciousActivity).Compile()),
-            internalQaBucket,
-            botBucket);
-        var suspiciousBucket = BuildEventBucketMembership(suspiciousCandidates);
-        if (mode == TrafficQualityMode.SuspiciousActivity)
-            return ApplyEventBucketMembership(eventList, suspiciousBucket);
-
         var realHumanCandidates = ExcludeEventBucketMembership(
             eventList.Where(BuildEventPredicate(TrafficQualityMode.RealHumanTraffic).Compile()),
             internalQaBucket,
-            botBucket,
-            suspiciousBucket);
+            botBucket);
         var realHumanBucket = BuildEventBucketMembership(realHumanCandidates);
         if (mode == TrafficQualityMode.RealHumanTraffic)
             return ApplyEventBucketMembership(eventList, realHumanBucket);
@@ -377,19 +368,30 @@ public static class TrafficQualityBucketFilters
             eventList.Where(BuildEventPredicate(TrafficQualityMode.LikelyHuman).Compile()),
             internalQaBucket,
             botBucket,
-            suspiciousBucket,
             realHumanBucket);
         var likelyHumanBucket = BuildEventBucketMembership(likelyHumanCandidates);
         if (mode == TrafficQualityMode.LikelyHuman)
             return ApplyEventBucketMembership(eventList, likelyHumanBucket);
 
+        // Bucket membership is session-oriented, so a later strong-human action
+        // should outrank an early starter row that briefly looks bounce-like.
+        var suspiciousCandidates = ExcludeEventBucketMembership(
+            eventList.Where(BuildEventPredicate(TrafficQualityMode.SuspiciousActivity).Compile()),
+            internalQaBucket,
+            botBucket,
+            realHumanBucket,
+            likelyHumanBucket);
+        var suspiciousBucket = BuildEventBucketMembership(suspiciousCandidates);
+        if (mode == TrafficQualityMode.SuspiciousActivity)
+            return ApplyEventBucketMembership(eventList, suspiciousBucket);
+
         var reviewedNeededCandidates = ExcludeEventBucketMembership(
             eventList,
             internalQaBucket,
             botBucket,
-            suspiciousBucket,
             realHumanBucket,
-            likelyHumanBucket);
+            likelyHumanBucket,
+            suspiciousBucket);
 
         return ApplyEventBucketMembership(
             eventList,
