@@ -55,6 +55,11 @@ public static class TrafficQualityBucketFilters
         "life_contact_first_start"
     ];
 
+    // Shared analytics buckets should treat only explicit dev/test-like environment
+    // labels as non-production. App/site names such as "ParfaitApp" are runtime
+    // identifiers, not traffic-quality signals, and should not be auto-classified
+    // as internal QA.
+
     private sealed record InMemoryEventBucketMembership(
         HashSet<string> SessionIds,
         HashSet<string> VisitorIds,
@@ -70,7 +75,13 @@ public static class TrafficQualityBucketFilters
                 e.IsInternal ||
                 (e.Environment != null &&
                  e.Environment != "" &&
-                 !e.Environment.ToLower().StartsWith("prod")) ||
+                 (e.Environment.ToLower().StartsWith("dev") ||
+                  e.Environment.ToLower().StartsWith("stag") ||
+                  e.Environment.ToLower().StartsWith("preview") ||
+                  e.Environment.ToLower().StartsWith("sandbox") ||
+                  e.Environment.ToLower().StartsWith("qa") ||
+                  e.Environment.ToLower().StartsWith("test") ||
+                  e.Environment.ToLower().StartsWith("local"))) ||
                 (e.Host != null &&
                  e.Host != "" &&
                  (e.Host.ToLower().Contains("localhost") ||
@@ -82,7 +93,13 @@ public static class TrafficQualityBucketFilters
                 !(e.IsInternal ||
                   (e.Environment != null &&
                    e.Environment != "" &&
-                   !e.Environment.ToLower().StartsWith("prod")) ||
+                   (e.Environment.ToLower().StartsWith("dev") ||
+                    e.Environment.ToLower().StartsWith("stag") ||
+                    e.Environment.ToLower().StartsWith("preview") ||
+                    e.Environment.ToLower().StartsWith("sandbox") ||
+                    e.Environment.ToLower().StartsWith("qa") ||
+                    e.Environment.ToLower().StartsWith("test") ||
+                    e.Environment.ToLower().StartsWith("local"))) ||
                   (e.Host != null &&
                    e.Host != "" &&
                    (e.Host.ToLower().Contains("localhost") ||
@@ -107,7 +124,13 @@ public static class TrafficQualityBucketFilters
                 !(e.IsInternal ||
                   (e.Environment != null &&
                    e.Environment != "" &&
-                   !e.Environment.ToLower().StartsWith("prod")) ||
+                   (e.Environment.ToLower().StartsWith("dev") ||
+                    e.Environment.ToLower().StartsWith("stag") ||
+                    e.Environment.ToLower().StartsWith("preview") ||
+                    e.Environment.ToLower().StartsWith("sandbox") ||
+                    e.Environment.ToLower().StartsWith("qa") ||
+                    e.Environment.ToLower().StartsWith("test") ||
+                    e.Environment.ToLower().StartsWith("local"))) ||
                   (e.Host != null &&
                    e.Host != "" &&
                    (e.Host.ToLower().Contains("localhost") ||
@@ -138,7 +161,13 @@ public static class TrafficQualityBucketFilters
                 !(e.IsInternal ||
                   (e.Environment != null &&
                    e.Environment != "" &&
-                   !e.Environment.ToLower().StartsWith("prod")) ||
+                   (e.Environment.ToLower().StartsWith("dev") ||
+                    e.Environment.ToLower().StartsWith("stag") ||
+                    e.Environment.ToLower().StartsWith("preview") ||
+                    e.Environment.ToLower().StartsWith("sandbox") ||
+                    e.Environment.ToLower().StartsWith("qa") ||
+                    e.Environment.ToLower().StartsWith("test") ||
+                    e.Environment.ToLower().StartsWith("local"))) ||
                   (e.Host != null &&
                    e.Host != "" &&
                    (e.Host.ToLower().Contains("localhost") ||
@@ -179,7 +208,13 @@ public static class TrafficQualityBucketFilters
                 !(e.IsInternal ||
                   (e.Environment != null &&
                    e.Environment != "" &&
-                   !e.Environment.ToLower().StartsWith("prod")) ||
+                   (e.Environment.ToLower().StartsWith("dev") ||
+                    e.Environment.ToLower().StartsWith("stag") ||
+                    e.Environment.ToLower().StartsWith("preview") ||
+                    e.Environment.ToLower().StartsWith("sandbox") ||
+                    e.Environment.ToLower().StartsWith("qa") ||
+                    e.Environment.ToLower().StartsWith("test") ||
+                    e.Environment.ToLower().StartsWith("local"))) ||
                   (e.Host != null &&
                    e.Host != "" &&
                    (e.Host.ToLower().Contains("localhost") ||
@@ -237,7 +272,13 @@ public static class TrafficQualityBucketFilters
                 !(e.IsInternal ||
                   (e.Environment != null &&
                    e.Environment != "" &&
-                   !e.Environment.ToLower().StartsWith("prod")) ||
+                   (e.Environment.ToLower().StartsWith("dev") ||
+                    e.Environment.ToLower().StartsWith("stag") ||
+                    e.Environment.ToLower().StartsWith("preview") ||
+                    e.Environment.ToLower().StartsWith("sandbox") ||
+                    e.Environment.ToLower().StartsWith("qa") ||
+                    e.Environment.ToLower().StartsWith("test") ||
+                    e.Environment.ToLower().StartsWith("local"))) ||
                   (e.Host != null &&
                    e.Host != "" &&
                    (e.Host.ToLower().Contains("localhost") ||
@@ -409,7 +450,13 @@ public static class TrafficQualityBucketFilters
                 l.IsInternal ||
                 (l.Environment != null &&
                  l.Environment != "" &&
-                 !l.Environment.ToLower().StartsWith("prod")) ||
+                 (l.Environment.ToLower().StartsWith("dev") ||
+                  l.Environment.ToLower().StartsWith("stag") ||
+                  l.Environment.ToLower().StartsWith("preview") ||
+                  l.Environment.ToLower().StartsWith("sandbox") ||
+                  l.Environment.ToLower().StartsWith("qa") ||
+                  l.Environment.ToLower().StartsWith("test") ||
+                  l.Environment.ToLower().StartsWith("local"))) ||
                 (l.Host != null &&
                  l.Host != "" &&
                  (l.Host.ToLower().Contains("localhost") ||
@@ -421,7 +468,13 @@ public static class TrafficQualityBucketFilters
                 !(l.IsInternal ||
                   (l.Environment != null &&
                    l.Environment != "" &&
-                   !l.Environment.ToLower().StartsWith("prod")) ||
+                   (l.Environment.ToLower().StartsWith("dev") ||
+                    l.Environment.ToLower().StartsWith("stag") ||
+                    l.Environment.ToLower().StartsWith("preview") ||
+                    l.Environment.ToLower().StartsWith("sandbox") ||
+                    l.Environment.ToLower().StartsWith("qa") ||
+                    l.Environment.ToLower().StartsWith("test") ||
+                    l.Environment.ToLower().StartsWith("local"))) ||
                   (l.Host != null &&
                    l.Host != "" &&
                    (l.Host.ToLower().Contains("localhost") ||
@@ -444,7 +497,13 @@ public static class TrafficQualityBucketFilters
                 !(l.IsInternal ||
                   (l.Environment != null &&
                    l.Environment != "" &&
-                   !l.Environment.ToLower().StartsWith("prod")) ||
+                   (l.Environment.ToLower().StartsWith("dev") ||
+                    l.Environment.ToLower().StartsWith("stag") ||
+                    l.Environment.ToLower().StartsWith("preview") ||
+                    l.Environment.ToLower().StartsWith("sandbox") ||
+                    l.Environment.ToLower().StartsWith("qa") ||
+                    l.Environment.ToLower().StartsWith("test") ||
+                    l.Environment.ToLower().StartsWith("local"))) ||
                   (l.Host != null &&
                    l.Host != "" &&
                    (l.Host.ToLower().Contains("localhost") ||
@@ -479,7 +538,13 @@ public static class TrafficQualityBucketFilters
                 !(l.IsInternal ||
                   (l.Environment != null &&
                    l.Environment != "" &&
-                   !l.Environment.ToLower().StartsWith("prod")) ||
+                   (l.Environment.ToLower().StartsWith("dev") ||
+                    l.Environment.ToLower().StartsWith("stag") ||
+                    l.Environment.ToLower().StartsWith("preview") ||
+                    l.Environment.ToLower().StartsWith("sandbox") ||
+                    l.Environment.ToLower().StartsWith("qa") ||
+                    l.Environment.ToLower().StartsWith("test") ||
+                    l.Environment.ToLower().StartsWith("local"))) ||
                   (l.Host != null &&
                    l.Host != "" &&
                    (l.Host.ToLower().Contains("localhost") ||
@@ -530,7 +595,13 @@ public static class TrafficQualityBucketFilters
                 !(l.IsInternal ||
                   (l.Environment != null &&
                    l.Environment != "" &&
-                   !l.Environment.ToLower().StartsWith("prod")) ||
+                   (l.Environment.ToLower().StartsWith("dev") ||
+                    l.Environment.ToLower().StartsWith("stag") ||
+                    l.Environment.ToLower().StartsWith("preview") ||
+                    l.Environment.ToLower().StartsWith("sandbox") ||
+                    l.Environment.ToLower().StartsWith("qa") ||
+                    l.Environment.ToLower().StartsWith("test") ||
+                    l.Environment.ToLower().StartsWith("local"))) ||
                   (l.Host != null &&
                    l.Host != "" &&
                    (l.Host.ToLower().Contains("localhost") ||
@@ -595,7 +666,13 @@ public static class TrafficQualityBucketFilters
                 !(l.IsInternal ||
                   (l.Environment != null &&
                    l.Environment != "" &&
-                   !l.Environment.ToLower().StartsWith("prod")) ||
+                   (l.Environment.ToLower().StartsWith("dev") ||
+                    l.Environment.ToLower().StartsWith("stag") ||
+                    l.Environment.ToLower().StartsWith("preview") ||
+                    l.Environment.ToLower().StartsWith("sandbox") ||
+                    l.Environment.ToLower().StartsWith("qa") ||
+                    l.Environment.ToLower().StartsWith("test") ||
+                    l.Environment.ToLower().StartsWith("local"))) ||
                   (l.Host != null &&
                    l.Host != "" &&
                    (l.Host.ToLower().Contains("localhost") ||

@@ -6,6 +6,7 @@ using Infrastructure.Analytics;
 using Infrastructure.Data;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Configuration;
+using Domain.Entities;
 using ParfaitApp.Models;
 using ParfaitApp.Services;
 using Shared.Analytics;
@@ -104,6 +105,36 @@ public class ParfaitAnalyticsTrafficQualityTests
         {
             Environment.SetEnvironmentVariable("ASPNETCORE_ENVIRONMENT", originalEnvironment);
         }
+    }
+
+    [Fact]
+    public void LegacyAppNamedEnvironment_PublicHost_IsNotAutoClassifiedAsInternalQa()
+    {
+        var analyticsEvent = new AnalyticsEvent
+        {
+            EventId = Guid.NewGuid(),
+            EventType = "page_engaged_15s",
+            SessionId = "pfs_legacy_session",
+            VisitorId = "pfv_legacy_visitor",
+            Environment = "ParfaitApp",
+            Host = "shopparfait.com",
+            UserAgent = "Mozilla/5.0",
+            EngagedMilliseconds = 15000,
+            DwellMilliseconds = 20000,
+            ScrollPercent = 80,
+            HumanInteractionCount = 4,
+            MouseMoveCount = 12,
+            IsBounceCandidate = false,
+            IsExitPage = false,
+            IsInternal = false,
+            WebDriver = false,
+            IsHeadless = false
+        };
+
+        var allEvents = new List<AnalyticsEvent> { analyticsEvent };
+
+        Assert.Empty(TrafficQualityBucketFilters.ApplyEventBucketMembershipInMemory(allEvents, TrafficQualityMode.InternalQa));
+        Assert.Single(TrafficQualityBucketFilters.ApplyEventBucketMembershipInMemory(allEvents, TrafficQualityMode.RealHumanTraffic));
     }
 
     private static ParfaitAnalyticsService BuildService(MasterAppDbContext db)

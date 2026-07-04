@@ -124,7 +124,7 @@ public sealed class ParfaitMetaSignalBridgeService
             MouseMoveCount = sourceAnalytics?.MouseMoveCount,
             HumanInteractionCount = sourceAnalytics?.HumanInteractionCount,
             VisibilityChangeCount = sourceAnalytics?.VisibilityChangeCount,
-            Environment = Environment.GetEnvironmentVariable("ASPNETCORE_ENVIRONMENT") ?? "Production",
+            Environment = ResolveEnvironment(httpContext),
             Host = httpContext.Request.Host.Value,
             MetadataJson = MetaSignalSingleTruthPolicy.BuildMetadataJson(
                 "Purchase",
@@ -208,6 +208,59 @@ public sealed class ParfaitMetaSignalBridgeService
         var scheme = httpContext.Request.Scheme;
         var host = httpContext.Request.Host.Value;
         return $"{scheme}://{host}/store/success?orderNumber={Uri.EscapeDataString(orderNumber)}";
+    }
+
+    private static string ResolveEnvironment(HttpContext httpContext)
+    {
+        if (IsCanonicalPublicHost(httpContext.Request.Host.Host))
+            return "production";
+
+        var current = Environment.GetEnvironmentVariable("ASPNETCORE_ENVIRONMENT");
+        if (!string.IsNullOrWhiteSpace(current))
+        {
+            var normalized = current.Trim();
+            if (normalized.StartsWith("prod", StringComparison.OrdinalIgnoreCase))
+                return "production";
+
+            if (normalized.StartsWith("dev", StringComparison.OrdinalIgnoreCase) ||
+                normalized.StartsWith("stag", StringComparison.OrdinalIgnoreCase) ||
+                normalized.StartsWith("preview", StringComparison.OrdinalIgnoreCase) ||
+                normalized.StartsWith("sandbox", StringComparison.OrdinalIgnoreCase) ||
+                normalized.StartsWith("qa", StringComparison.OrdinalIgnoreCase) ||
+                normalized.StartsWith("test", StringComparison.OrdinalIgnoreCase) ||
+                normalized.StartsWith("local", StringComparison.OrdinalIgnoreCase))
+            {
+                return "development";
+            }
+
+            if (string.Equals(normalized, "ParfaitApp", StringComparison.OrdinalIgnoreCase))
+                return "production";
+
+            return normalized;
+        }
+
+        return IsLocalHost(httpContext.Request.Host.Host) ? "development" : "production";
+    }
+
+    private static bool IsCanonicalPublicHost(string? host)
+    {
+        if (string.IsNullOrWhiteSpace(host))
+            return false;
+
+        return string.Equals(host.Trim(), "shopparfait.com", StringComparison.OrdinalIgnoreCase) ||
+               string.Equals(host.Trim(), "www.shopparfait.com", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static bool IsLocalHost(string? host)
+    {
+        if (string.IsNullOrWhiteSpace(host))
+            return false;
+
+        var value = host.Trim();
+        return value.StartsWith("localhost", StringComparison.OrdinalIgnoreCase) ||
+               value.StartsWith("127.0.0.1", StringComparison.OrdinalIgnoreCase) ||
+               value.StartsWith("::1", StringComparison.OrdinalIgnoreCase) ||
+               value.StartsWith("[::1]", StringComparison.OrdinalIgnoreCase);
     }
 
     private static string? ReadMetadataString(string? json, string key)
