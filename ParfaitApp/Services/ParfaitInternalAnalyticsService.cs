@@ -1,6 +1,7 @@
 using System.Text.Json;
 using Domain.Entities;
 using Infrastructure.Analytics;
+using Microsoft.Extensions.Caching.Memory;
 using Microsoft.EntityFrameworkCore;
 using ParfaitApp.Models;
 using Shared.Analytics;
@@ -10,6 +11,8 @@ namespace ParfaitApp.Services;
 public sealed class ParfaitInternalAnalyticsService
 {
     private const string SiteKey = "ParfaitApp";
+    private static readonly TimeSpan DashboardCacheDuration = TimeSpan.FromSeconds(45);
+    private static readonly TimeSpan WorkspaceCacheDuration = TimeSpan.FromSeconds(45);
     private static readonly string[] FunnelEventTypes =
     [
         "ViewContent",
@@ -23,18 +26,26 @@ public sealed class ParfaitInternalAnalyticsService
     private readonly IMetaSignalAnalyticsService _metaSignal;
     private readonly IParfaitBusinessProfileService _businessProfile;
     private readonly ParfaitOrderService _orders;
+    private readonly IMemoryCache _cache;
+    private readonly ParfaitInternalAnalyticsCacheStamp _cacheStamp;
 
     public ParfaitInternalAnalyticsService(
         IAnalyticsQueryService analytics,
         IMetaSignalAnalyticsService metaSignal,
         IParfaitBusinessProfileService businessProfile,
-        ParfaitOrderService orders)
+        ParfaitOrderService orders,
+        IMemoryCache cache,
+        ParfaitInternalAnalyticsCacheStamp cacheStamp)
     {
         _analytics = analytics;
         _metaSignal = metaSignal;
         _businessProfile = businessProfile;
         _orders = orders;
+        _cache = cache;
+        _cacheStamp = cacheStamp;
     }
+
+    public void InvalidateCache() => _cacheStamp.Bump();
 
     public async Task<ParfaitInternalWorkspaceAnalyticsSnapshot> GetWorkspaceSummaryAsync(
         string? preset = "30d",
@@ -51,6 +62,22 @@ public sealed class ParfaitInternalAnalyticsService
             viewerTz: viewerTimeZone ?? TimeZoneInfo.Utc,
             qualityMode: qualityMode);
         var scope = ScopeContext.ForSite(SiteKey, SiteKey);
+        var cacheKey = BuildWorkspaceCacheKey(range);
+
+        var cachedSnapshot = await _cache.GetOrCreateAsync(cacheKey, async entry =>
+        {
+            entry.AbsoluteExpirationRelativeToNow = WorkspaceCacheDuration;
+            return await BuildWorkspaceSummaryAsync(range, scope, ct);
+        });
+
+        return cachedSnapshot ?? new ParfaitInternalWorkspaceAnalyticsSnapshot();
+    }
+
+    private async Task<ParfaitInternalWorkspaceAnalyticsSnapshot> BuildWorkspaceSummaryAsync(
+        TimeRangeRequest range,
+        ScopeContext scope,
+        CancellationToken ct)
+    {
         // Shared analytics services run through a single scoped DbContext, so
         // these calls must stay sequential to avoid overlapping EF operations.
         var scopedEvents = await LoadScopedEventsAsync(range, scope, ct);
@@ -108,17 +135,48 @@ public sealed class ParfaitInternalAnalyticsService
             viewerTz: viewerTimeZone ?? TimeZoneInfo.Utc,
             qualityMode: qualityMode);
         var scope = ScopeContext.ForSite(SiteKey, SiteKey);
+        var cacheKey = BuildDashboardCacheKey(
+            range,
+            viewerTimeZoneId,
+            viewerTimeZoneOffsetMinutes,
+            fromUtc,
+            toUtc);
+
+        var cachedJson = await _cache.GetOrCreateAsync(cacheKey, async entry =>
+        {
+            entry.AbsoluteExpirationRelativeToNow = DashboardCacheDuration;
+            var dashboard = await BuildDashboardAsync(
+                range,
+                scope,
+                fromUtc,
+                toUtc,
+                viewerTimeZoneId,
+                viewerTimeZoneOffsetMinutes,
+                ct);
+            return JsonSerializer.Serialize(dashboard);
+        });
+
+        return string.IsNullOrWhiteSpace(cachedJson)
+            ? new ParfaitInternalAnalyticsViewModel()
+            : JsonSerializer.Deserialize<ParfaitInternalAnalyticsViewModel>(cachedJson)
+                ?? new ParfaitInternalAnalyticsViewModel();
+    }
+
+    private async Task<ParfaitInternalAnalyticsViewModel> BuildDashboardAsync(
+        TimeRangeRequest range,
+        ScopeContext scope,
+        DateTime? fromUtc,
+        DateTime? toUtc,
+        string? viewerTimeZoneId,
+        int? viewerTimeZoneOffsetMinutes,
+        CancellationToken ct)
+    {
         var summary = await _analytics.GetSummaryAsync(range, scope, TrafficType.All);
         var traffic = await _analytics.GetTrafficAsync(range, scope, TrafficType.All);
         var pagePerformance = await _analytics.GetPagePerformanceAsync(range, scope, TrafficType.All);
         var ctaPerformance = await _analytics.GetCtaPerformanceAsync(range, scope, TrafficType.All);
-        var engagement = await _analytics.GetEngagementSummaryAsync(range, scope, TrafficType.All);
-        var journey = await _analytics.GetJourneyAnalysisAsync(range, scope, TrafficType.All);
         var sources = await _analytics.GetSourcePerformanceAsync(range, scope, TrafficType.All);
-        var timeOnPage = await _analytics.GetTimeOnPageAsync(range, scope, TrafficType.All);
         var exitAnalysis = await _analytics.GetExitAnalysisAsync(range, scope, TrafficType.All);
-        var scrollAnalysis = await _analytics.GetScrollAnalysisAsync(range, scope);
-        var landingPages = await _analytics.GetLandingPagePerformanceAsync(range, scope);
         var devices = await _analytics.GetDeviceIntelligenceAsync(range, scope, TrafficType.All);
         var metaSignal = await _metaSignal.GetDashboardAsync(range, scope, TrafficType.All, ct: ct);
         var metaHealth = await _metaSignal.GetHealthDashboardAsync(range, scope, ct);
@@ -295,13 +353,8 @@ public sealed class ParfaitInternalAnalyticsService
             Traffic = traffic,
             PagePerformance = pagePerformance,
             CtaPerformance = ctaPerformance,
-            Engagement = engagement,
-            Journey = journey,
             Sources = sources,
-            TimeOnPage = timeOnPage,
             ExitAnalysis = exitAnalysis,
-            ScrollAnalysis = scrollAnalysis,
-            LandingPages = landingPages,
             Devices = devices,
             MetaSignal = metaSignal,
             MetaHealth = metaHealth,
@@ -324,6 +377,37 @@ public sealed class ParfaitInternalAnalyticsService
             RecentOrders = recentOrders,
             RecentEvents = recentEvents
         };
+    }
+
+    private string BuildWorkspaceCacheKey(TimeRangeRequest range)
+    {
+        return string.Join('|',
+            "parfait-workspace",
+            _cacheStamp.Version,
+            range.Preset,
+            range.FromUtc.Ticks,
+            range.ToUtc.Ticks,
+            (int)range.QualityMode);
+    }
+
+    private string BuildDashboardCacheKey(
+        TimeRangeRequest range,
+        string? viewerTimeZoneId,
+        int? viewerTimeZoneOffsetMinutes,
+        DateTime? fromUtc,
+        DateTime? toUtc)
+    {
+        return string.Join('|',
+            "parfait-dashboard",
+            _cacheStamp.Version,
+            range.Preset,
+            range.FromUtc.Ticks,
+            range.ToUtc.Ticks,
+            (int)range.QualityMode,
+            viewerTimeZoneId ?? string.Empty,
+            viewerTimeZoneOffsetMinutes?.ToString() ?? string.Empty,
+            fromUtc?.Ticks.ToString() ?? string.Empty,
+            toUtc?.Ticks.ToString() ?? string.Empty);
     }
 
     private static List<AnalyticsEventSnapshot> ResolvePurchaseEvents(
@@ -391,6 +475,10 @@ public sealed class ParfaitInternalAnalyticsService
         IReadOnlyList<ParfaitOrderRecord> paidOrdersInRange,
         IReadOnlyList<AnalyticsEventSnapshot> parsedEvents)
     {
+        var productViewCounts = CountEventsByProduct(parsedEvents, "ProductViewed");
+        var addToCartCounts = CountEventsByProduct(parsedEvents, "AddToCart");
+        var checkoutCounts = CountEventsByProduct(parsedEvents, "CheckoutStarted");
+
         var purchasedProducts = paidOrdersInRange
             .SelectMany(order => order.Items.Select(item => new
             {
@@ -404,16 +492,6 @@ public sealed class ParfaitInternalAnalyticsService
             .Select(group =>
             {
                 var slug = group.Select(item => item.Slug).FirstOrDefault(value => !string.IsNullOrWhiteSpace(value));
-                var productViewCount = parsedEvents.Count(item =>
-                    item.EventType == "ProductViewed" &&
-                    KeysMatch(item.ProductSlug, item.ProductName, group.Key));
-                var addToCartCount = parsedEvents.Count(item =>
-                    item.EventType == "AddToCart" &&
-                    KeysMatch(item.ProductSlug, item.ProductName, group.Key));
-                var checkoutCount = parsedEvents.Count(item =>
-                    item.EventType == "CheckoutStarted" &&
-                    KeysMatch(item.ProductSlug, item.ProductName, group.Key));
-
                 return new ParfaitAnalyticsTopProductViewModel
                 {
                     ProductName = group.Select(item => item.Name).FirstOrDefault(value => !string.IsNullOrWhiteSpace(value)) ?? "Parfait Product",
@@ -421,9 +499,9 @@ public sealed class ParfaitInternalAnalyticsService
                     PurchaseCount = group.Count(),
                     UnitsSold = group.Sum(item => item.Quantity),
                     RevenueCents = group.Sum(item => item.RevenueCents),
-                    ProductViews = productViewCount,
-                    AddToCarts = addToCartCount,
-                    CheckoutStarts = checkoutCount
+                    ProductViews = productViewCounts.TryGetValue(group.Key, out var productViewCount) ? productViewCount : 0,
+                    AddToCarts = addToCartCounts.TryGetValue(group.Key, out var addToCartCount) ? addToCartCount : 0,
+                    CheckoutStarts = checkoutCounts.TryGetValue(group.Key, out var checkoutCount) ? checkoutCount : 0
                 };
             })
             .OrderByDescending(item => item.RevenueCents)
@@ -445,16 +523,24 @@ public sealed class ParfaitInternalAnalyticsService
                 UnitsSold = 0,
                 RevenueCents = 0,
                 ProductViews = group.Count(),
-                AddToCarts = parsedEvents.Count(item =>
-                    item.EventType == "AddToCart" &&
-                    KeysMatch(item.ProductSlug, item.ProductName, group.Key)),
-                CheckoutStarts = parsedEvents.Count(item =>
-                    item.EventType == "CheckoutStarted" &&
-                    KeysMatch(item.ProductSlug, item.ProductName, group.Key))
+                AddToCarts = addToCartCounts.TryGetValue(group.Key, out var addToCartCount) ? addToCartCount : 0,
+                CheckoutStarts = checkoutCounts.TryGetValue(group.Key, out var checkoutCount) ? checkoutCount : 0
             })
             .OrderByDescending(item => item.ProductViews)
             .Take(8)
             .ToList();
+    }
+
+    private static Dictionary<string, int> CountEventsByProduct(
+        IEnumerable<AnalyticsEventSnapshot> parsedEvents,
+        string eventType)
+    {
+        return parsedEvents
+            .Where(item =>
+                string.Equals(item.EventType, eventType, StringComparison.OrdinalIgnoreCase) &&
+                (!string.IsNullOrWhiteSpace(item.ProductSlug) || !string.IsNullOrWhiteSpace(item.ProductName)))
+            .GroupBy(item => NormalizeKey(item.ProductSlug, item.ProductName), StringComparer.OrdinalIgnoreCase)
+            .ToDictionary(group => group.Key, group => group.Count(), StringComparer.OrdinalIgnoreCase);
     }
 
     private Task<List<AnalyticsEvent>> LoadScopedEventsAsync(
@@ -660,31 +746,41 @@ public sealed class ParfaitInternalAnalyticsService
         if (string.IsNullOrWhiteSpace(raw.MetadataJson))
             return raw;
 
-        return raw with
+        try
         {
-            ProductName = raw.ProductName ?? ReadString(raw.MetadataJson, "productName") ?? ReadString(raw.MetadataJson, "name"),
-            ProductSlug = raw.ProductSlug ?? ReadString(raw.MetadataJson, "productSlug") ?? ReadString(raw.MetadataJson, "slug"),
-            Size = raw.Size ?? ReadString(raw.MetadataJson, "size"),
-            Quantity = raw.Quantity ?? ReadInt(raw.MetadataJson, "quantity"),
-            ValueCents = raw.ValueCents ?? ReadInt(raw.MetadataJson, "valueCents"),
-            OrderNumber = raw.OrderNumber ?? ReadString(raw.MetadataJson, "orderNumber"),
-            Source = raw.Source ?? raw.UtmSource ?? ReadString(raw.MetadataJson, "source"),
-            Campaign = raw.Campaign ?? raw.UtmCampaign ?? ReadString(raw.MetadataJson, "campaign"),
-            UtmSource = raw.UtmSource ?? ReadString(raw.MetadataJson, "utmSource"),
-            UtmCampaign = raw.UtmCampaign ?? ReadString(raw.MetadataJson, "utmCampaign"),
-            TrafficClassification = raw.TrafficClassification
-                ?? ReadString(raw.MetadataJson, "trafficClassification")
-                ?? ReadString(raw.MetadataJson, "trafficClass"),
-            Fbclid = raw.Fbclid ?? ReadString(raw.MetadataJson, "fbclid"),
-            Fbc = raw.Fbc ?? ReadString(raw.MetadataJson, "fbc"),
-            Fbp = raw.Fbp ?? ReadString(raw.MetadataJson, "fbp"),
-            Device = raw.Device ?? ReadString(raw.MetadataJson, "device"),
-            Browser = raw.Browser ?? ReadString(raw.MetadataJson, "browser"),
-            OperatingSystem = raw.OperatingSystem
-                ?? ReadString(raw.MetadataJson, "operatingSystem")
-                ?? ReadString(raw.MetadataJson, "os"),
-            Viewport = raw.Viewport ?? ReadViewport(raw.MetadataJson)
-        };
+            using var doc = JsonDocument.Parse(raw.MetadataJson);
+            var root = doc.RootElement;
+
+            return raw with
+            {
+                ProductName = raw.ProductName ?? ReadString(root, "productName") ?? ReadString(root, "name"),
+                ProductSlug = raw.ProductSlug ?? ReadString(root, "productSlug") ?? ReadString(root, "slug"),
+                Size = raw.Size ?? ReadString(root, "size"),
+                Quantity = raw.Quantity ?? ReadInt(root, "quantity"),
+                ValueCents = raw.ValueCents ?? ReadInt(root, "valueCents"),
+                OrderNumber = raw.OrderNumber ?? ReadString(root, "orderNumber"),
+                Source = raw.Source ?? raw.UtmSource ?? ReadString(root, "source"),
+                Campaign = raw.Campaign ?? raw.UtmCampaign ?? ReadString(root, "campaign"),
+                UtmSource = raw.UtmSource ?? ReadString(root, "utmSource"),
+                UtmCampaign = raw.UtmCampaign ?? ReadString(root, "utmCampaign"),
+                TrafficClassification = raw.TrafficClassification
+                    ?? ReadString(root, "trafficClassification")
+                    ?? ReadString(root, "trafficClass"),
+                Fbclid = raw.Fbclid ?? ReadString(root, "fbclid"),
+                Fbc = raw.Fbc ?? ReadString(root, "fbc"),
+                Fbp = raw.Fbp ?? ReadString(root, "fbp"),
+                Device = raw.Device ?? ReadString(root, "device"),
+                Browser = raw.Browser ?? ReadString(root, "browser"),
+                OperatingSystem = raw.OperatingSystem
+                    ?? ReadString(root, "operatingSystem")
+                    ?? ReadString(root, "os"),
+                Viewport = raw.Viewport ?? ReadViewport(root)
+            };
+        }
+        catch
+        {
+            return raw;
+        }
     }
 
     private static List<AnalyticsEventSnapshot> EventsFor(IEnumerable<AnalyticsEventSnapshot> events, string eventType)
@@ -751,38 +847,32 @@ public sealed class ParfaitInternalAnalyticsService
         return NormalizeKey(slug, name).Equals(key, StringComparison.OrdinalIgnoreCase);
     }
 
-    private static string? ReadString(string? json, string key)
+    private static string? ReadString(JsonElement root, string key)
     {
-        if (string.IsNullOrWhiteSpace(json))
-            return null;
-
-        try
-        {
-            using var doc = JsonDocument.Parse(json);
-            return doc.RootElement.TryGetProperty(key, out var value) && value.ValueKind != JsonValueKind.Null
-                ? value.ToString()
-                : null;
-        }
-        catch
-        {
-            return null;
-        }
+        return root.TryGetProperty(key, out var value) && value.ValueKind != JsonValueKind.Null
+            ? value.ToString()
+            : null;
     }
 
-    private static int? ReadInt(string? json, string key)
+    private static int? ReadInt(JsonElement root, string key)
     {
-        var value = ReadString(json, key);
-        return int.TryParse(value, out var parsed) ? parsed : null;
+        if (!root.TryGetProperty(key, out var value) || value.ValueKind == JsonValueKind.Null)
+            return null;
+
+        if (value.ValueKind == JsonValueKind.Number && value.TryGetInt32(out var numeric))
+            return numeric;
+
+        return int.TryParse(value.ToString(), out var parsed) ? parsed : null;
     }
 
-    private static string? ReadViewport(string? json)
+    private static string? ReadViewport(JsonElement root)
     {
-        var explicitViewport = ReadString(json, "viewport");
+        var explicitViewport = ReadString(root, "viewport");
         if (!string.IsNullOrWhiteSpace(explicitViewport))
             return explicitViewport;
 
-        var width = ReadInt(json, "viewportWidth");
-        var height = ReadInt(json, "viewportHeight");
+        var width = ReadInt(root, "viewportWidth");
+        var height = ReadInt(root, "viewportHeight");
         if (width.HasValue && height.HasValue)
             return $"{width.Value} x {height.Value}";
 

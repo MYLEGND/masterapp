@@ -16,13 +16,8 @@ public sealed class ParfaitInternalAnalyticsViewModel
     public TrafficOverviewDto Traffic { get; set; } = new();
     public PagePerformanceDto PagePerformance { get; set; } = new();
     public CtaPerformanceDto CtaPerformance { get; set; } = new();
-    public EngagementSummaryDto Engagement { get; set; } = new();
-    public JourneyAnalysisDto Journey { get; set; } = new();
     public SourcePerformanceDto Sources { get; set; } = new();
-    public TimeOnPageDto TimeOnPage { get; set; } = new();
     public ExitAnalysisDto ExitAnalysis { get; set; } = new();
-    public ScrollAnalysisDto ScrollAnalysis { get; set; } = new();
-    public LandingPagePerformanceDto LandingPages { get; set; } = new();
     public DeviceIntelligenceDto Devices { get; set; } = new();
     public MetaSignalDashboardDto MetaSignal { get; set; } = new();
     public MetaSignalHealthDashboardDto MetaHealth { get; set; } = new();

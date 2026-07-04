@@ -340,6 +340,7 @@ public sealed class InternalModulesController : Controller
         }
 
         await _businessProfile.SaveMetaSettingsAsync(model, ct);
+        _internalAnalytics.InvalidateCache();
         TempData["AnalyticsStatus"] = "Meta settings saved.";
         return RedirectToAction(nameof(Analytics), new { preset, fromUtc, toUtc, qualityMode, timezoneId, timezoneOffsetMinutes });
     }
@@ -380,6 +381,7 @@ public sealed class InternalModulesController : Controller
         {
             var record = await _metaAdsOAuth.CompleteCallbackAsync(code ?? string.Empty, state ?? string.Empty, HttpContext.RequestAborted);
             await _businessProfile.SaveMetaConnectionAsync(record, HttpContext.RequestAborted);
+            _internalAnalytics.InvalidateCache();
             return Redirect(AppendMetaStatus(target, "connected"));
         }
         catch (InvalidOperationException ex)
@@ -524,6 +526,7 @@ public sealed class InternalModulesController : Controller
     public async Task<IActionResult> MetaDisconnect(CancellationToken ct)
     {
         await _businessProfile.DisconnectMetaAsync(ct);
+        _internalAnalytics.InvalidateCache();
         return Json(new { ok = true });
     }
 

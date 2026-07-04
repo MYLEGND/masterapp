@@ -115,6 +115,7 @@ builder.Services.AddScoped<IAnalyticsQueryService, AnalyticsQueryService>();
 builder.Services.AddScoped<IMetaSignalAnalyticsService, MetaSignalAnalyticsService>();
 builder.Services.AddScoped<IMetaAdsConnectionStore, ParfaitMetaAdsConnectionStoreAdapter>();
 builder.Services.AddScoped<IMetaAdsService, MetaAdsService>();
+builder.Services.AddSingleton<ParfaitInternalAnalyticsCacheStamp>();
 builder.Services.AddScoped<ParfaitInternalAnalyticsService>();
 builder.Services.AddScoped<ParfaitInternalWorkspaceService>();
 builder.Services.AddScoped<IGraphMailService, GraphMailService>();
@@ -242,6 +243,7 @@ builder.Services
 
 builder.Services.AddAuthorization();
 
+builder.Services.AddMemoryCache();
 builder.Services.AddDistributedMemoryCache();
 builder.Services.AddSession(options =>
 {
