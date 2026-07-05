@@ -7617,9 +7617,92 @@ if (t.id === "ExpenseLens" || t.id === "BusinessExpenseLens") {
             return '';
         };
 
-        const elPaymentMethodLabel = (value) => {
+        const EL_PAYMENT_METHOD_META = {
+            debit: {
+                label: 'Debit',
+                text: '#F0FDF4',
+                muted: '#A7F3D0',
+                bg: 'linear-gradient(145deg, rgba(8,145,112,0.90) 0%, rgba(6,78,59,0.98) 100%)',
+                border: 'rgba(110,231,183,0.56)',
+                shadow: '0 14px 30px rgba(16,185,129,0.26), inset 0 1px 0 rgba(255,255,255,0.08)'
+            },
+            credit: {
+                label: 'Credit',
+                text: '#FFF1F2',
+                muted: '#FBCFE8',
+                bg: 'linear-gradient(145deg, rgba(190,24,93,0.90) 0%, rgba(131,24,67,0.98) 100%)',
+                border: 'rgba(251,113,133,0.56)',
+                shadow: '0 14px 30px rgba(244,63,94,0.24), inset 0 1px 0 rgba(255,255,255,0.08)'
+            },
+            unassigned: {
+                label: 'Open',
+                text: '#F8FAFC',
+                muted: '#CBD5E1',
+                bg: 'linear-gradient(145deg, rgba(71,85,105,0.78) 0%, rgba(30,41,59,0.92) 100%)',
+                border: 'rgba(148,163,184,0.42)',
+                shadow: '0 10px 24px rgba(15,23,42,0.22), inset 0 1px 0 rgba(255,255,255,0.06)'
+            },
+            total: {
+                label: 'Total',
+                text: '#F0F9FF',
+                muted: '#7DD3FC',
+                bg: 'linear-gradient(145deg, rgba(14,116,144,0.92) 0%, rgba(12,74,110,0.98) 100%)',
+                border: 'rgba(56,189,248,0.58)',
+                shadow: '0 14px 30px rgba(14,165,233,0.24), inset 0 1px 0 rgba(255,255,255,0.08)'
+            }
+        };
+
+        const elGetPaymentMethodMeta = (value) => {
             const normalized = normalizeBillPaymentMethod(value);
-            return EL_PAYMENT_METHODS.find(option => option.value === normalized)?.label || '';
+            return EL_PAYMENT_METHOD_META[normalized || 'unassigned'];
+        };
+
+        const elCreateWeekMetricChip = (label, amount, meta, note = '') => {
+            const hasValue = amount > 0;
+            const chip = document.createElement('div');
+            chip.style.cssText = [
+                'display:flex;flex-direction:column;align-items:flex-end;justify-content:center;gap:1px;',
+                'min-width:112px;padding:8px 12px;border-radius:12px;box-sizing:border-box;overflow:hidden;',
+                `border:1px solid ${hasValue ? meta.border : 'rgba(100,116,139,0.22)'};`,
+                `background:${hasValue ? meta.bg : 'linear-gradient(145deg, rgba(30,41,59,0.62) 0%, rgba(15,23,42,0.88) 100%)'};`,
+                `box-shadow:${hasValue ? meta.shadow : 'inset 0 1px 0 rgba(255,255,255,0.04)'};`
+            ].join('');
+
+            const labelEl = document.createElement('span');
+            labelEl.textContent = label.toUpperCase();
+            labelEl.style.cssText = `font-size:0.62rem;font-weight:800;letter-spacing:0.08em;color:${hasValue ? meta.muted : '#64748B'};`;
+
+            const valueEl = document.createElement('span');
+            valueEl.textContent = hasValue ? `$${amount.toLocaleString()}` : '—';
+            valueEl.style.cssText = `font-size:0.84rem;font-weight:800;line-height:1.1;color:${hasValue ? meta.text : '#94A3B8'};`;
+
+            chip.appendChild(labelEl);
+            chip.appendChild(valueEl);
+
+            if (note) {
+                const noteEl = document.createElement('span');
+                noteEl.textContent = note;
+                noteEl.style.cssText = `font-size:0.62rem;font-weight:700;line-height:1.1;color:${hasValue ? meta.muted : '#64748B'};`;
+                chip.appendChild(noteEl);
+            }
+
+            return chip;
+        };
+
+        const elCreatePaymentBadge = (value) => {
+            const meta = elGetPaymentMethodMeta(value);
+            const badge = document.createElement('span');
+            badge.textContent = meta.label;
+            badge.style.cssText = [
+                'display:inline-flex;align-items:center;justify-content:center;',
+                'min-width:84px;padding:5px 12px;border-radius:999px;box-sizing:border-box;',
+                `border:1px solid ${meta.border};`,
+                `background:${meta.bg};`,
+                `color:${meta.text};`,
+                `box-shadow:${meta.shadow};`,
+                'font-size:0.68rem;font-weight:800;letter-spacing:0.05em;text-transform:uppercase;'
+            ].join('');
+            return badge;
         };
 
         const elPaymentFilterLabel = (value) => {
@@ -8431,12 +8514,12 @@ if (t.id === "ExpenseLens" || t.id === "BusinessExpenseLens") {
 
         weekPanel = document.createElement('div');
         weekPanel.className = 'expense-lens-week-panel';
-        weekPanel.style.cssText = 'display:none;position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);z-index:9999;background:#0b1529;border:1.5px solid #38BDF8;border-radius:14px;padding:16px 18px;width:520px;max-width:calc(100vw - 48px);max-height:min(560px, calc(100vh - 40px));overflow-y:auto;overflow-x:hidden;box-shadow:0 24px 64px rgba(30,58,138,0.48);box-sizing:border-box;';
+        weekPanel.style.cssText = 'display:none;position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);z-index:9999;background:#0b1529;border:1.5px solid #38BDF8;border-radius:16px;padding:18px 22px;width:860px;max-width:calc(100vw - 40px);max-height:min(680px, calc(100vh - 32px));overflow-y:auto;overflow-x:hidden;box-shadow:0 24px 64px rgba(30,58,138,0.48);box-sizing:border-box;';
         document.body.appendChild(weekPanel);
 
         const positionWeekPanel = () => {
-            const horizontalPad = window.innerWidth < 560 ? 24 : 48;
-            const panelWidth = Math.max(300, Math.min(520, window.innerWidth - horizontalPad));
+            const horizontalPad = window.innerWidth < 720 ? 20 : 40;
+            const panelWidth = Math.max(window.innerWidth < 720 ? 320 : 620, Math.min(920, window.innerWidth - horizontalPad));
             weekPanel.style.setProperty('position', 'fixed', 'important');
             weekPanel.style.setProperty('top', '50%', 'important');
             weekPanel.style.setProperty('left', '50%', 'important');
@@ -8446,7 +8529,7 @@ if (t.id === "ExpenseLens" || t.id === "BusinessExpenseLens") {
             weekPanel.style.setProperty('width', `${panelWidth}px`, 'important');
             weekPanel.style.setProperty('min-width', '0', 'important');
             weekPanel.style.setProperty('max-width', `${panelWidth}px`, 'important');
-            weekPanel.style.setProperty('max-height', 'min(560px, calc(100vh - 40px))', 'important');
+            weekPanel.style.setProperty('max-height', 'min(680px, calc(100vh - 32px))', 'important');
             weekPanel.style.setProperty('box-sizing', 'border-box', 'important');
         };
 
@@ -8461,16 +8544,74 @@ if (t.id === "ExpenseLens" || t.id === "BusinessExpenseLens") {
             const weeks = elBuildCalendarWeeks();
             weekPanel.innerHTML = '';
 
-            // Header with close button
+            const formatBillCount = (count) => `${count} bill${count !== 1 ? 's' : ''}`;
+
+            const collectWeekBills = (week = null) => {
+                const bills = [];
+                categoriesContainer.querySelectorAll(`[id^="${elId('CatRow')}"]`).forEach(row => {
+                    const idx = row.id.replace(elId('CatRow'), '');
+                    const paymentMethod = elGetBillPaymentMethod(idx);
+                    if (!elMatchesPaymentFilter(paymentMethod)) return;
+
+                    const amtEl = elById(`CatAmount${idx}`);
+                    const nameEl = elById(`CatName${idx}`);
+                    const frequency = elGetBillFrequency(idx);
+                    const amt = +(amtEl?.value || '').replace(/,/g, '') || 0;
+                    if (amt <= 0) return;
+
+                    const occurrences = elGetBillOccurrenceDays(idx, week);
+                    occurrences.forEach(date => {
+                        bills.push({
+                            name: nameEl?.value?.trim() || '(Unnamed)',
+                            amount: amt,
+                            date,
+                            frequency,
+                            paymentMethod
+                        });
+                    });
+                });
+
+                bills.sort((a, b) => (a.date - b.date) || a.name.localeCompare(b.name));
+                return bills;
+            };
+
+            const summarizeBills = (bills) => {
+                let total = 0;
+                let debitTotal = 0;
+                let creditTotal = 0;
+
+                bills.forEach(bill => {
+                    total += bill.amount;
+                    if (bill.paymentMethod === 'debit') debitTotal += bill.amount;
+                    if (bill.paymentMethod === 'credit') creditTotal += bill.amount;
+                });
+
+                return {
+                    total,
+                    debitTotal,
+                    creditTotal,
+                    count: bills.length
+                };
+            };
+
+            const createSummaryMetrics = (totals) => {
+                const metricsWrap = document.createElement('div');
+                metricsWrap.style.cssText = 'display:flex;align-items:stretch;justify-content:flex-end;gap:8px;flex-wrap:wrap;';
+                metricsWrap.appendChild(elCreateWeekMetricChip(EL_PAYMENT_METHOD_META.debit.label, totals.debitTotal, EL_PAYMENT_METHOD_META.debit));
+                metricsWrap.appendChild(elCreateWeekMetricChip(EL_PAYMENT_METHOD_META.credit.label, totals.creditTotal, EL_PAYMENT_METHOD_META.credit));
+                metricsWrap.appendChild(elCreateWeekMetricChip(EL_PAYMENT_METHOD_META.total.label, totals.total, EL_PAYMENT_METHOD_META.total, totals.count > 0 ? formatBillCount(totals.count) : ''));
+                return metricsWrap;
+            };
+
             const header = document.createElement('div');
-            header.style.cssText = 'display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;padding-bottom:8px;border-bottom:1px solid rgba(56,189,248,0.25);';
+            header.style.cssText = 'display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:12px;padding-bottom:10px;border-bottom:1px solid rgba(56,189,248,0.25);gap:10px;';
             const titleWrap = document.createElement('div');
             titleWrap.style.cssText = 'display:flex;flex-direction:column;gap:2px;';
             const title = document.createElement('span');
-            title.style.cssText = 'color:#38BDF8;font-weight:800;font-size:0.86rem;letter-spacing:0.05em;';
+            title.style.cssText = 'color:#38BDF8;font-weight:800;font-size:0.92rem;letter-spacing:0.05em;';
             title.textContent = 'WEEKLY BILL TRACKER';
             const subtitle = document.createElement('span');
-            subtitle.style.cssText = 'color:#94A3B8;font-size:0.68rem;font-weight:700;';
+            subtitle.style.cssText = 'color:#94A3B8;font-size:0.70rem;font-weight:700;';
             subtitle.textContent = elActivePaymentFilter === 'all'
                 ? `Calendar weeks for ${monthYearLabel}`
                 : `Calendar weeks for ${monthYearLabel} · ${elPaymentFilterLabel(elActivePaymentFilter)} only`;
@@ -8484,146 +8625,123 @@ if (t.id === "ExpenseLens" || t.id === "BusinessExpenseLens") {
             header.appendChild(closeX);
             weekPanel.appendChild(header);
 
-            // Pre-compute grand total for "Show All" row — reads live DOM so it always reflects current bills
-            let grandTotal = 0;
-            let grandCount = 0;
-            categoriesContainer.querySelectorAll(`[id^="${elId('CatRow')}"]`).forEach(row => {
-                const idx = row.id.replace(elId('CatRow'), '');
-                if (!elMatchesPaymentFilter(elGetBillPaymentMethod(idx))) return;
-                const amtEl = elById(`CatAmount${idx}`);
-                const amt = +(amtEl?.value || '').replace(/,/g, '') || 0;
-                const occurrences = elGetBillOccurrenceDays(idx);
-                if (amt > 0 && occurrences.length > 0) {
-                    grandTotal += amt * occurrences.length;
-                    grandCount += occurrences.length;
-                }
-            });
+            const allBills = collectWeekBills();
+            const allTotals = summarizeBills(allBills);
 
-            // Show All row
             const allRow = document.createElement('div');
-            allRow.style.cssText = `cursor:pointer;padding:8px 10px;border-radius:8px;font-weight:700;font-size:0.79rem;margin-bottom:8px;display:flex;justify-content:space-between;align-items:center;gap:10px;${!elActiveWeek ? 'background:#38BDF8;color:#0b1529;' : 'color:#38BDF8;'}`;
+            allRow.style.cssText = [
+                'cursor:pointer;padding:10px 12px;border-radius:12px;margin-bottom:10px;',
+                'display:flex;justify-content:space-between;align-items:flex-start;gap:12px;flex-wrap:wrap;',
+                `background:${!elActiveWeek ? 'linear-gradient(135deg, rgba(21,94,117,0.44) 0%, rgba(30,64,175,0.46) 100%)' : 'linear-gradient(145deg, rgba(30,41,59,0.92) 0%, rgba(15,23,42,0.94) 100%)'};`,
+                `border:1px solid ${!elActiveWeek ? 'rgba(56,189,248,0.38)' : 'rgba(56,189,248,0.14)'};`,
+                `box-shadow:${!elActiveWeek ? '0 16px 34px rgba(37,99,235,0.16), inset 0 1px 0 rgba(255,255,255,0.05)' : 'inset 0 1px 0 rgba(255,255,255,0.03)'};`
+            ].join('');
 
-            const allRowLeft = document.createElement('span');
-            allRowLeft.style.cssText = 'font-weight:700;font-size:0.82rem;';
-            allRowLeft.textContent = elActivePaymentFilter === 'all'
+            const allRowLeft = document.createElement('div');
+            allRowLeft.style.cssText = 'display:flex;flex-direction:column;gap:3px;min-width:220px;flex:1;';
+            const allRowLabel = document.createElement('span');
+            allRowLabel.style.cssText = `font-weight:800;font-size:0.84rem;color:${!elActiveWeek ? '#E0F2FE' : '#38BDF8'};`;
+            allRowLabel.textContent = elActivePaymentFilter === 'all'
                 ? 'Show All Bills'
                 : `${elPaymentFilterLabel(elActivePaymentFilter)} Bills`;
-
-            const allRowRight = document.createElement('span');
-            allRowRight.style.cssText = `font-weight:800;font-size:0.85rem;color:${!elActiveWeek ? '#0b1529' : (grandCount > 0 ? '#38BDF8' : '#64748B')};`;
-            allRowRight.textContent = grandCount > 0 ? `$${grandTotal.toLocaleString()}  (${grandCount} bill${grandCount !== 1 ? 's' : ''})` : '—';
-
+            const allRowSub = document.createElement('span');
+            allRowSub.style.cssText = `font-size:0.68rem;font-weight:700;color:${!elActiveWeek ? '#7DD3FC' : '#64748B'};`;
+            allRowSub.textContent = allTotals.count > 0
+                ? `Entire ${monthYearLabel} payment map`
+                : 'No payments scheduled in the current month';
+            allRowLeft.appendChild(allRowLabel);
+            allRowLeft.appendChild(allRowSub);
             allRow.appendChild(allRowLeft);
-            allRow.appendChild(allRowRight);
+            allRow.appendChild(createSummaryMetrics(allTotals));
             allRow.addEventListener('click', (e) => { e.stopPropagation(); elExpandedWeek = null; elApplyWeekFilter(null); });
             weekPanel.appendChild(allRow);
 
             weeks.forEach(week => {
-                let weekTotal = 0;
-                const bills = [];
-                categoriesContainer.querySelectorAll(`[id^="${elId('CatRow')}"]`).forEach(row => {
-                    const idx = row.id.replace(elId('CatRow'), '');
-                    const paymentMethod = elGetBillPaymentMethod(idx);
-                    if (!elMatchesPaymentFilter(paymentMethod)) return;
-                    const amtEl  = elById(`CatAmount${idx}`);
-                    const nameEl = elById(`CatName${idx}`);
-                    const frequency = elGetBillFrequency(idx);
-                    const occurrences = elGetBillOccurrenceDays(idx, week);
-                    occurrences.forEach(date => {
-                        const amt = +(amtEl?.value || '').replace(/,/g, '') || 0;
-                        if (amt <= 0) return;
-                        weekTotal += amt;
-                        bills.push({
-                            name: nameEl?.value?.trim() || '(Unnamed)',
-                            amount: amt,
-                            date,
-                            day: date.getDate(),
-                            frequency,
-                            paymentMethod
-                        });
-                    });
-                });
-                bills.sort((a, b) => a.date - b.date);
-                const billCount = bills.length;
-                const isActive   = elSameCalendarWeek(elActiveWeek, week);
+                const bills = collectWeekBills(week);
+                const totals = summarizeBills(bills);
+                const isActive = elSameCalendarWeek(elActiveWeek, week);
                 const isExpanded = elSameCalendarWeek(elExpandedWeek, week);
 
                 const weekBlock = document.createElement('div');
-                weekBlock.style.cssText = 'border-radius:10px;margin-bottom:6px;overflow:hidden;border:1px solid rgba(56,189,248,0.1);';
+                weekBlock.style.cssText = 'border-radius:12px;margin-bottom:8px;overflow:hidden;border:1px solid rgba(56,189,248,0.12);background:linear-gradient(145deg, rgba(30,41,59,0.92) 0%, rgba(15,23,42,0.96) 100%);box-shadow:inset 0 1px 0 rgba(255,255,255,0.03);';
 
-                // Summary row
                 const summaryRow = document.createElement('div');
-                summaryRow.style.cssText = `display:flex;justify-content:space-between;align-items:center;padding:8px 10px;cursor:pointer;gap:10px;${isActive ? 'background:#1E3A8A;' : 'background:rgba(255,255,255,0.04);'}`;
+                summaryRow.style.cssText = [
+                    'display:flex;justify-content:space-between;align-items:flex-start;padding:10px 12px;cursor:pointer;gap:12px;flex-wrap:wrap;',
+                    `background:${isActive ? 'linear-gradient(135deg, rgba(37,99,235,0.94) 0%, rgba(29,78,216,0.98) 100%)' : 'linear-gradient(145deg, rgba(30,41,59,0.70) 0%, rgba(15,23,42,0.78) 100%)'};`,
+                    `box-shadow:${isActive ? 'inset 0 1px 0 rgba(255,255,255,0.08)' : 'none'};`
+                ].join('');
 
+                const wLabelWrap = document.createElement('div');
+                wLabelWrap.style.cssText = 'display:flex;flex-direction:column;gap:3px;min-width:220px;flex:1;';
                 const wLabel = document.createElement('span');
-                wLabel.style.cssText = `font-weight:700;font-size:0.78rem;color:${isActive ? '#fff' : '#E0F2FE'};flex:1;min-width:0;`;
-                wLabel.textContent = `${week.label}  (${week.rangeLabel})`;
+                wLabel.style.cssText = `font-weight:800;font-size:0.82rem;color:${isActive ? '#fff' : '#E0F2FE'};`;
+                wLabel.textContent = week.label;
+                const wRange = document.createElement('span');
+                wRange.style.cssText = `font-size:0.68rem;font-weight:700;color:${isActive ? '#BFDBFE' : '#7DD3FC'};`;
+                wRange.textContent = week.rangeLabel;
+                wLabelWrap.appendChild(wLabel);
+                wLabelWrap.appendChild(wRange);
 
                 const rightGroup = document.createElement('div');
-                rightGroup.style.cssText = 'display:flex;align-items:center;gap:8px;flex-shrink:0;';
+                rightGroup.style.cssText = 'display:flex;align-items:center;justify-content:flex-end;gap:8px;flex-wrap:wrap;flex:1 1 360px;';
+                rightGroup.appendChild(createSummaryMetrics(totals));
 
-                const amtSpan = document.createElement('span');
-                amtSpan.style.cssText = `font-weight:800;font-size:0.78rem;color:${billCount > 0 ? '#38BDF8' : '#64748B'};white-space:nowrap;`;
-                amtSpan.textContent = billCount > 0 ? `$${weekTotal.toLocaleString()}  (${billCount} bill${billCount !== 1 ? 's' : ''})` : '—';
-                rightGroup.appendChild(amtSpan);
-
-                // Chevron always shown so every row is clearly clickable
                 const chevron = document.createElement('span');
                 chevron.textContent = isExpanded ? '▴' : '▾';
-                chevron.style.cssText = 'color:#38BDF8;font-size:0.75rem;user-select:none;';
+                chevron.style.cssText = 'color:#38BDF8;font-size:0.82rem;font-weight:800;user-select:none;align-self:center;padding:0 2px;';
                 rightGroup.appendChild(chevron);
 
-                summaryRow.appendChild(wLabel);
+                summaryRow.appendChild(wLabelWrap);
                 summaryRow.appendChild(rightGroup);
 
-                // Detail container — always built and appended
                 const detailWrap = document.createElement('div');
-                detailWrap.style.cssText = `display:${isExpanded ? 'block' : 'none'};`;
+                detailWrap.style.cssText = `display:${isExpanded ? 'block' : 'none'};background:rgba(2,6,23,0.22);`;
 
-                if (billCount > 0) {
-                    // Column header
+                if (totals.count > 0) {
                     const colHeader = document.createElement('div');
-                    colHeader.style.cssText = 'display:flex;padding:5px 10px 4px 12px;border-bottom:1px solid rgba(56,189,248,0.12);';
-                    colHeader.innerHTML = '<span style="flex:1;font-size:0.7rem;color:#475569;font-weight:700;text-transform:uppercase;letter-spacing:0.06em;">Bill</span><span style="min-width:60px;text-align:center;font-size:0.7rem;color:#475569;font-weight:700;text-transform:uppercase;letter-spacing:0.06em;">Due</span><span style="min-width:80px;text-align:right;font-size:0.7rem;color:#475569;font-weight:700;text-transform:uppercase;letter-spacing:0.06em;">Amount</span>';
+                    colHeader.style.cssText = 'display:flex;align-items:center;gap:10px;padding:6px 12px 5px 12px;border-bottom:1px solid rgba(56,189,248,0.12);';
+                    colHeader.innerHTML = '<span style="flex:1;font-size:0.7rem;color:#475569;font-weight:700;text-transform:uppercase;letter-spacing:0.06em;">Bill</span><span style="min-width:68px;text-align:center;font-size:0.7rem;color:#475569;font-weight:700;text-transform:uppercase;letter-spacing:0.06em;">Due</span><span style="min-width:96px;text-align:center;font-size:0.7rem;color:#475569;font-weight:700;text-transform:uppercase;letter-spacing:0.06em;">Pay Type</span><span style="min-width:84px;text-align:right;font-size:0.7rem;color:#475569;font-weight:700;text-transform:uppercase;letter-spacing:0.06em;">Amount</span>';
                     detailWrap.appendChild(colHeader);
 
                     bills.forEach((bill, i) => {
+                        const paymentMeta = elGetPaymentMethodMeta(bill.paymentMethod);
                         const billRow = document.createElement('div');
-                        billRow.style.cssText = `display:flex;align-items:center;padding:7px 10px 7px 12px;${i < bills.length - 1 ? 'border-bottom:1px solid rgba(56,189,248,0.07);' : ''}`;
+                        billRow.style.cssText = `display:flex;align-items:center;gap:10px;padding:8px 12px;${i < bills.length - 1 ? 'border-bottom:1px solid rgba(56,189,248,0.07);' : ''}`;
 
                         const bName = document.createElement('span');
                         bName.style.cssText = 'flex:1;font-size:0.76rem;color:#CBD5E1;font-weight:600;min-width:0;';
-                        const paymentSuffix = bill.paymentMethod ? ` · ${elPaymentMethodLabel(bill.paymentMethod)}` : '';
                         bName.textContent = bill.frequency === 'monthly'
-                            ? `${bill.name}${paymentSuffix}`
-                            : `${bill.name} (${elFrequencyLabel(bill.frequency)})${paymentSuffix}`;
+                            ? bill.name
+                            : `${bill.name} (${elFrequencyLabel(bill.frequency)})`;
 
                         const bDue = document.createElement('span');
-                        bDue.style.cssText = 'min-width:52px;text-align:center;font-size:0.74rem;color:#94A3B8;font-weight:500;';
+                        bDue.style.cssText = 'min-width:68px;text-align:center;font-size:0.74rem;color:#94A3B8;font-weight:500;';
                         bDue.textContent = bill.date.toLocaleString('default', { month: 'short', day: 'numeric' });
 
+                        const paymentCell = document.createElement('span');
+                        paymentCell.style.cssText = 'min-width:96px;display:flex;justify-content:center;';
+                        paymentCell.appendChild(elCreatePaymentBadge(bill.paymentMethod));
+
                         const bAmt = document.createElement('span');
-                        bAmt.style.cssText = 'min-width:72px;text-align:right;font-size:0.76rem;color:#38BDF8;font-weight:700;';
+                        bAmt.style.cssText = `min-width:84px;text-align:right;font-size:0.78rem;font-weight:800;color:${paymentMeta.muted};`;
                         bAmt.textContent = `$${bill.amount.toLocaleString()}`;
 
                         billRow.appendChild(bName);
                         billRow.appendChild(bDue);
+                        billRow.appendChild(paymentCell);
                         billRow.appendChild(bAmt);
                         detailWrap.appendChild(billRow);
                     });
                 } else {
-                    // Empty state — shown when no bills have a due date in this range
                     const empty = document.createElement('div');
-                    empty.style.cssText = 'padding:10px 20px;color:#64748B;font-size:0.78rem;font-style:italic;';
+                    empty.style.cssText = 'padding:12px 20px;color:#64748B;font-size:0.78rem;font-style:italic;';
                     empty.textContent = elActivePaymentFilter === 'all'
                         ? 'No bills with due dates set for this week.'
                         : `No ${elPaymentFilterLabel(elActivePaymentFilter).toLowerCase()} bills with due dates set for this week.`;
                     detailWrap.appendChild(empty);
                 }
 
-                // Click: toggle this week's detail + apply as the active week filter.
-                // elApplyWeekFilter re-renders the panel; elExpandedWeek set here is
-                // read at render time to decide which detail block is expanded.
                 summaryRow.addEventListener('click', (e) => {
                     e.stopPropagation();
                     elExpandedWeek = elSameCalendarWeek(elExpandedWeek, week) ? null : week;
