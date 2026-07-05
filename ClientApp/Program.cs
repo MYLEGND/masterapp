@@ -1,6 +1,7 @@
 using Infrastructure.Data;
 using Infrastructure.Identity;
 using ClientApp.Services;
+using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.Authentication.OpenIdConnect;
 using Microsoft.AspNetCore.Authorization;
@@ -32,6 +33,11 @@ builder.Services.AddScoped<EffectiveClientContextService>();
 builder.Services.AddScoped<IAzureClientEmailSyncService, AzureClientEmailSyncService>();
 builder.Services.AddScoped<IAzureUserUpdater, AzureUserUpdaterAdapter>();
 builder.Services.AddDataProtection().SetApplicationName("MasterApp.ClientApp");
+builder.Services.Configure<CookiePolicyOptions>(options =>
+{
+    options.MinimumSameSitePolicy = SameSiteMode.Unspecified;
+    options.Secure = CookieSecurePolicy.Always;
+});
 
 // ------------------------------------------------------------
 // DB CONNECTION RESOLUTION
@@ -173,7 +179,54 @@ builder.Services.AddDbContext<MasterAppDbContext>(options =>
 var tenantId = builder.Configuration["AzureAd:TenantId"] ?? "3fd90b17-12b1-4572-8cab-b0ceee317a30";
 var clientId = builder.Configuration["AzureAd:ClientId"] ?? "96aab50e-61c5-4cb0-a79a-032dc8c1cb6c";
 var callbackPath = builder.Configuration["AzureAd:CallbackPath"] ?? "/signin-oidc";
-var clientSecret = builder.Configuration["AzureAd:ClientSecret"]; // may be null
+var clientSecret = (
+    builder.Configuration["AzureAd:ClientSecret"]
+    ?? builder.Configuration["AzureAd__ClientSecret"]
+    ?? Environment.GetEnvironmentVariable("AzureAd__ClientSecret")
+    ?? Environment.GetEnvironmentVariable("AzureAd:ClientSecret")
+)?.Trim();
+
+if (string.IsNullOrWhiteSpace(clientSecret))
+{
+    var localSecretCommand = "dotnet user-secrets set \"AzureAd:ClientSecret\" \"<CLIENTAPP_SECRET_VALUE>\" --project ClientApp/ClientApp.csproj";
+    throw new InvalidOperationException(
+        builder.Environment.IsDevelopment()
+            ? "ClientApp AzureAd:ClientSecret is missing for Azure AD app client id 96aab50e-61c5-4cb0-a79a-032dc8c1cb6c. " +
+              $"Set the secret locally with: {localSecretCommand}"
+            : "ClientApp AzureAd:ClientSecret is missing. Set AzureAd__ClientSecret in App Service configuration."
+    );
+}
+
+static string NormalizeOidcReturnUrl(string? value)
+{
+    return !string.IsNullOrWhiteSpace(value) &&
+           value.StartsWith("/", StringComparison.Ordinal) &&
+           Uri.IsWellFormedUriString(value, UriKind.Relative)
+        ? value
+        : "/";
+}
+
+static bool IsExpiredOidcGrant(string? error, string? description)
+{
+    if (string.Equals(error, "invalid_grant", StringComparison.OrdinalIgnoreCase))
+        return true;
+
+    if (string.IsNullOrWhiteSpace(description))
+        return false;
+
+    return description.Contains("AADSTS70008", StringComparison.OrdinalIgnoreCase) ||
+           description.Contains("expired due to inactivity", StringComparison.OrdinalIgnoreCase) ||
+           description.Contains("authorization code", StringComparison.OrdinalIgnoreCase) && description.Contains("expired", StringComparison.OrdinalIgnoreCase) ||
+           description.Contains("refresh token", StringComparison.OrdinalIgnoreCase) && description.Contains("expired", StringComparison.OrdinalIgnoreCase);
+}
+
+static bool IsCorrelationFailure(string? description)
+{
+    if (string.IsNullOrWhiteSpace(description))
+        return false;
+
+    return description.Contains("Correlation failed", StringComparison.OrdinalIgnoreCase);
+}
 
 builder.Services.AddAuthentication(options =>
 {
@@ -199,6 +252,10 @@ builder.Services.AddAuthentication(options =>
     if (!string.IsNullOrWhiteSpace(clientSecret))
         options.ClientSecret = clientSecret;
     options.CallbackPath = callbackPath;
+    options.CorrelationCookie.SameSite = SameSiteMode.None;
+    options.CorrelationCookie.SecurePolicy = CookieSecurePolicy.Always;
+    options.NonceCookie.SameSite = SameSiteMode.None;
+    options.NonceCookie.SecurePolicy = CookieSecurePolicy.Always;
 
     options.ResponseType = "code";
     options.UsePkce = true;
@@ -244,6 +301,30 @@ builder.Services.AddAuthentication(options =>
                 return Task.CompletedTask;
             }
             return Task.CompletedTask;
+        },
+
+        OnRemoteFailure = async ctx =>
+        {
+            var logger = ctx.HttpContext.RequestServices.GetRequiredService<ILoggerFactory>().CreateLogger("OpenIdConnect");
+            var description = ctx.Failure?.InnerException?.Message ?? ctx.Failure?.Message ?? string.Empty;
+            var error = description.Contains("invalid_grant", StringComparison.OrdinalIgnoreCase)
+                ? "invalid_grant"
+                : string.Empty;
+
+            logger.LogWarning(ctx.Failure,
+                "OIDC remote failure. Error={Error} Description={Description}",
+                error,
+                description);
+
+            if (!IsExpiredOidcGrant(error, description) && !IsCorrelationFailure(description))
+                return;
+
+            var returnUrl = NormalizeOidcReturnUrl(ctx.Properties?.RedirectUri);
+            var loginUrl = $"{ctx.Request.PathBase}/Account/AzureLogin?returnUrl={Uri.EscapeDataString(returnUrl)}";
+
+            await ctx.HttpContext.SignOutAsync(CookieAuthenticationDefaults.AuthenticationScheme);
+            ctx.HandleResponse();
+            ctx.Response.Redirect(loginUrl);
         }
     };
 });
@@ -345,6 +426,7 @@ app.UseStaticFiles();
 
 app.UseRouting();
 
+app.UseCookiePolicy();
 app.UseAuthentication();
 app.UseAuthorization();
 
@@ -362,9 +444,6 @@ app.Use(async (context, next) =>
 // ------------------------------------------------------------
 {
     var logger = app.Services.GetRequiredService<ILoggerFactory>().CreateLogger("StartupChecks");
-
-    if (string.IsNullOrWhiteSpace(clientSecret))
-        logger.LogError("AzureAd:ClientSecret is missing. Set AzureAd__ClientSecret in Azure App Settings.");
 
     try
     {

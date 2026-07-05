@@ -7597,6 +7597,36 @@ if (t.id === "ExpenseLens" || t.id === "BusinessExpenseLens") {
             return EL_BILL_FREQUENCIES.find(f => f.value === normalized)?.label || 'Monthly';
         };
 
+        const EL_PAYMENT_METHODS = [
+            { value: '', label: '--Select--' },
+            { value: 'debit', label: 'Debit' },
+            { value: 'credit', label: 'Credit' },
+        ];
+
+        const EL_PAYMENT_FILTERS = [
+            { value: 'all', label: 'All Bills' },
+            { value: 'debit', label: 'Debit / Cash' },
+            { value: 'credit', label: 'Credit' },
+        ];
+
+        const normalizeBillPaymentMethod = (value) => {
+            const normalized = (value || '').toString().trim().toLowerCase().replace(/[^a-z]/g, '');
+            if (normalized === 'credit') return 'credit';
+            if (normalized === 'debit' || normalized === 'cash' || normalized === 'cashdebit' || normalized === 'debitcash')
+                return 'debit';
+            return '';
+        };
+
+        const elPaymentMethodLabel = (value) => {
+            const normalized = normalizeBillPaymentMethod(value);
+            return EL_PAYMENT_METHODS.find(option => option.value === normalized)?.label || '';
+        };
+
+        const elPaymentFilterLabel = (value) => {
+            const normalized = EL_PAYMENT_FILTERS.some(option => option.value === value) ? value : 'all';
+            return EL_PAYMENT_FILTERS.find(option => option.value === normalized)?.label || 'All Bills';
+        };
+
         // -----------------------------
         // Default Expense Templates
         // -----------------------------
@@ -7629,7 +7659,7 @@ if (t.id === "ExpenseLens" || t.id === "BusinessExpenseLens") {
         const injectDefaultExpenseRows = () => {
             const defaults = isBusinessExpenseLens ? getDefaultBusinessExpenseRows() : getDefaultPersonalExpenseRows();
             defaults.forEach(row => {
-                createCategoryRow(++categoryCount, row.name, row.due, row.amount, row.frequency, row.isTemplate);
+                createCategoryRow(++categoryCount, row.name, row.due, row.amount, row.frequency, '', row.isTemplate);
             });
         };
 
@@ -7647,14 +7677,16 @@ if (t.id === "ExpenseLens" || t.id === "BusinessExpenseLens") {
                     const nameEl = elById(`CatName${index}`);
                     const dueEl = elById(`CatDue${index}`);
                     const frequencyEl = elById(`CatFrequency${index}`);
+                    const paymentMethodEl = elById(`CatPaymentMethod${index}`);
                     const amountEl = elById(`CatAmount${index}`);
                     const name = nameEl ? nameEl.value || '' : '';
                     const due = dueEl ? dueEl.value || '' : '';
                     const frequency = normalizeBillFrequency(frequencyEl ? frequencyEl.value : 'monthly');
+                    const paymentMethod = normalizeBillPaymentMethod(paymentMethodEl ? paymentMethodEl.value : '');
                     const amount = amountEl ? amountEl.value || '' : '';
                     const isTemplate = row.dataset.isTemplate === 'true';
                     const isPinned = row.dataset.isPinned === 'true';
-                    categories.push({ index, name, due, frequency, amount, isTemplate, isPinned });
+                    categories.push({ index, name, due, frequency, paymentMethod, amount, isTemplate, isPinned });
                 });
                 const state = { income, primaryIncome, spouseIncome, categories, ...extraState };
                 savePersistedState(expenseLensToolStateId, state);
@@ -7682,7 +7714,7 @@ if (t.id === "ExpenseLens" || t.id === "BusinessExpenseLens") {
 
                     if (state.categories && state.categories.length > 0) {
                         state.categories.forEach(cat => {
-                            createCategoryRow(++categoryCount, cat.name, cat.due || '', cat.amount, cat.frequency || cat.recurrence, cat.isTemplate === true, cat.isPinned === true);
+                            createCategoryRow(++categoryCount, cat.name, cat.due || '', cat.amount, cat.frequency || cat.recurrence, cat.paymentMethod || '', cat.isTemplate === true, cat.isPinned === true);
                             categoriesCreated++;
                         });
                     }
@@ -7698,7 +7730,7 @@ if (t.id === "ExpenseLens" || t.id === "BusinessExpenseLens") {
                         if (Array.isArray(prof.expenses) && prof.expenses.length > 0) {
                             prof.expenses.forEach(exp => {
                                 const amt = exp?.occurrenceAmount ?? exp?.amount ?? '';
-                                createCategoryRow(++categoryCount, exp?.name || `Expense ${categoryCount}`, '', amt, exp?.frequency || exp?.recurrence, false, exp?.isPinned === true);
+                                createCategoryRow(++categoryCount, exp?.name || `Expense ${categoryCount}`, '', amt, exp?.frequency || exp?.recurrence, exp?.paymentMethod || '', false, exp?.isPinned === true);
                                 categoriesCreated++;
                             });
                         }
@@ -7718,6 +7750,10 @@ if (t.id === "ExpenseLens" || t.id === "BusinessExpenseLens") {
         let elExpandedWeek = null;
         // Drag-and-drop state
         let elDragSrc = null;
+        let elActivePaymentFilter = 'all';
+        let weeklyBtn = null;
+        let paymentFilterSelect = null;
+        let weekPanel = null;
 
         // -----------------------------
         // Due Date Helper — always current month, user picks the day
@@ -7734,12 +7770,40 @@ if (t.id === "ExpenseLens" || t.id === "BusinessExpenseLens") {
             return `${y}-${m}-${day}`;
         };
 
+        const elGetBillPaymentMethod = (index) => {
+            const paymentMethodEl = elById(`CatPaymentMethod${index}`);
+            return normalizeBillPaymentMethod(paymentMethodEl?.value || '');
+        };
+
+        const elMatchesPaymentFilter = (paymentMethod) => {
+            return elActivePaymentFilter === 'all' || paymentMethod === elActivePaymentFilter;
+        };
+
+        const syncExpenseLensViewControls = () => {
+            if (weeklyBtn) weeklyBtn.textContent = elActiveWeek ? `${elActiveWeek.label} ▾` : 'Weekly ▾';
+            const topBtn = elById('WeeklyBtnTop');
+            if (topBtn) topBtn.textContent = elActiveWeek ? `${elActiveWeek.label} ▾` : 'Weekly ▾';
+            if (paymentFilterSelect) paymentFilterSelect.value = elActivePaymentFilter;
+        };
+
+        const applyExpenseLensRowVisibility = () => {
+            categoriesContainer.querySelectorAll(`[id^="${elId('CatRow')}"]`).forEach(row => {
+                const idx = row.id.replace(elId('CatRow'), '');
+                const matchesWeek = !elActiveWeek || elGetBillOccurrenceDays(idx, elActiveWeek).length > 0;
+                const matchesPayment = elMatchesPaymentFilter(elGetBillPaymentMethod(idx));
+                const show = matchesWeek && matchesPayment;
+                if (show) {
+                    row.style.removeProperty('display');
+                } else {
+                    row.style.setProperty('display', 'none', 'important');
+                }
+            });
+        };
+
         const refreshExpenseLensViews = (options = {}) => {
             const shouldSortRows = !!options.sortRows;
-            if (elActiveWeek) {
-                elApplyWeekFilter(elActiveWeek, { sortRows: shouldSortRows });
-                return;
-            }
+            applyExpenseLensRowVisibility();
+            syncExpenseLensViewControls();
             refreshExpenseLens({ sortRows: shouldSortRows });
             if (weekPanel?.style.display !== 'none') renderWeekPanel();
         };
@@ -7793,7 +7857,7 @@ if (t.id === "ExpenseLens" || t.id === "BusinessExpenseLens") {
         // -----------------------------
         // Create Category Row
         // -----------------------------
-        const createCategoryRow = (index, preName = '', preDue = '', preAmount = '', preFrequency = 'monthly', isTemplate = false, isPinned = false) => {
+        const createCategoryRow = (index, preName = '', preDue = '', preAmount = '', preFrequency = 'monthly', prePaymentMethod = '', isTemplate = false, isPinned = false) => {
             const div = document.createElement("div");
             div.className = "d-flex align-items-center";
             div.id = `${elId('CatRow')}${index}`;
@@ -7828,8 +7892,8 @@ if (t.id === "ExpenseLens" || t.id === "BusinessExpenseLens") {
             // Premium blue due date field
             const dueWrapper = document.createElement("div");
             dueWrapper.style.position = "relative";
-            dueWrapper.style.flex = isDualPanel ? "0 1 118px" : "1 1 140px";
-            dueWrapper.style.minWidth = isDualPanel ? "104px" : "130px";
+            dueWrapper.style.flex = isDualPanel ? "0 1 108px" : "0 1 128px";
+            dueWrapper.style.minWidth = isDualPanel ? "96px" : "116px";
             const dueInput = document.createElement("input");
             dueInput.type = "date";
             dueInput.id = `${elId('CatDue')}${index}`;
@@ -7857,8 +7921,8 @@ if (t.id === "ExpenseLens" || t.id === "BusinessExpenseLens") {
             frequencySelect.style.setProperty("box-shadow", "inset 0 1px 0 rgba(255,255,255,.05)", "important");
             frequencySelect.style.setProperty("color", "#1E3A8A", "important");
             frequencySelect.style.setProperty("font-weight", "700", "important");
-            frequencySelect.style.flex = isDualPanel ? "0 1 104px" : "0 1 132px";
-            frequencySelect.style.minWidth = isDualPanel ? "92px" : "124px";
+            frequencySelect.style.flex = isDualPanel ? "0 1 96px" : "0 1 118px";
+            frequencySelect.style.minWidth = isDualPanel ? "84px" : "106px";
             frequencySelect.style.boxSizing = "border-box";
             EL_BILL_FREQUENCIES.forEach(option => {
                 const opt = document.createElement("option");
@@ -7869,10 +7933,32 @@ if (t.id === "ExpenseLens" || t.id === "BusinessExpenseLens") {
             frequencySelect.value = resolvedPreFrequency;
             frequencySelect.addEventListener("change", () => refreshExpenseLensViews({ sortRows: true }));
 
+            const paymentMethodSelect = document.createElement("select");
+            paymentMethodSelect.id = `${elId('CatPaymentMethod')}${index}`;
+            paymentMethodSelect.className = "form-select";
+            paymentMethodSelect.setAttribute("aria-label", "Payment method");
+            paymentMethodSelect.style.setProperty("background-color", "rgba(255,255,255,.92)", "important");
+            paymentMethodSelect.style.setProperty("border", "1.5px solid rgba(166,128,35,.38)", "important");
+            paymentMethodSelect.style.setProperty("border-radius", "10px", "important");
+            paymentMethodSelect.style.setProperty("box-shadow", "inset 0 1px 0 rgba(255,255,255,.05)", "important");
+            paymentMethodSelect.style.setProperty("color", "#1E3A8A", "important");
+            paymentMethodSelect.style.setProperty("font-weight", "700", "important");
+            paymentMethodSelect.style.flex = isDualPanel ? "0 1 96px" : "0 1 118px";
+            paymentMethodSelect.style.minWidth = isDualPanel ? "84px" : "106px";
+            paymentMethodSelect.style.boxSizing = "border-box";
+            EL_PAYMENT_METHODS.forEach(option => {
+                const opt = document.createElement("option");
+                opt.value = option.value;
+                opt.textContent = option.label;
+                paymentMethodSelect.appendChild(opt);
+            });
+            paymentMethodSelect.value = normalizeBillPaymentMethod(prePaymentMethod);
+            paymentMethodSelect.addEventListener("change", () => refreshExpenseLensViews({ sortRows: true }));
+
             const amountWrapper = document.createElement("div");
             amountWrapper.style.position = "relative";
-            amountWrapper.style.flex = isDualPanel ? "0 1 110px" : "1 1 150px";
-            amountWrapper.style.minWidth = isDualPanel ? "88px" : "140px";
+            amountWrapper.style.flex = isDualPanel ? "0 1 100px" : "0 1 132px";
+            amountWrapper.style.minWidth = isDualPanel ? "82px" : "120px";
 
             const amountInput = document.createElement("input");
             amountInput.type = "text";
@@ -8019,6 +8105,7 @@ if (t.id === "ExpenseLens" || t.id === "BusinessExpenseLens") {
             div.appendChild(nameInput);
             div.appendChild(dueWrapper);
             div.appendChild(frequencySelect);
+            div.appendChild(paymentMethodSelect);
             div.appendChild(amountWrapper);
             div.appendChild(percentSpan);
             div.appendChild(deleteBtn);
@@ -8028,6 +8115,7 @@ if (t.id === "ExpenseLens" || t.id === "BusinessExpenseLens") {
                 fitSingleLineControlText(nameInput, { minSize: 10, maxSize: 14 });
                 fitSingleLineControlText(dueInput, { minSize: 10, maxSize: 13 });
                 fitSingleLineControlText(frequencySelect, { minSize: 10, maxSize: 13, reserve: 18 });
+                fitSingleLineControlText(paymentMethodSelect, { minSize: 10, maxSize: 13, reserve: 18 });
                 fitSingleLineControlText(amountInput, { minSize: 10, maxSize: 14, reserve: 24 });
             }
 
@@ -8043,6 +8131,7 @@ if (t.id === "ExpenseLens" || t.id === "BusinessExpenseLens") {
             let totalSpent = 0;
             let monthlyTotalSpent = 0;
             const categoriesData = [];
+            const hasPaymentFilter = elActivePaymentFilter !== 'all';
 
             categoriesContainer.querySelectorAll(`[id^="${elId('CatAmount')}"]`).forEach(input => {
                 const val = +input.value.replace(/,/g,'') || 0;
@@ -8069,11 +8158,13 @@ if (t.id === "ExpenseLens" || t.id === "BusinessExpenseLens") {
                 const name = (elById(`CatName${index}`).value || `Category ${index}`).trim();
                 const due = elById(`CatDue${index}`)?.value || '';
                 const frequency = elGetBillFrequency(index);
+                const paymentMethod = elGetBillPaymentMethod(index);
                 categoriesData.push({
                     name,
                     amount: monthlyTotal,
                     due,
                     frequency,
+                    paymentMethod,
                     isPinned,
                     occurrenceAmount: val,
                     _isPinned: isPinned,
@@ -8081,21 +8172,29 @@ if (t.id === "ExpenseLens" || t.id === "BusinessExpenseLens") {
                     _sortOrder: categoriesData.length
                 });
 
+                if (!elMatchesPaymentFilter(paymentMethod)) return;
                 if (elActiveWeek && occurrenceCount === 0) return;
                 totalSpent += rowTotal;
             });
 
-            const remaining = income - totalSpent;
             const pct = income > 0 ? (totalSpent / income * 100) : 0;
+            const monthlyRemaining = income - monthlyTotalSpent;
 
             if (elActiveWeek) {
-                elMargin.textContent = `${elActiveWeek.label} Due: $${totalSpent.toLocaleString()}`;
-                elMargin.style.background = 'rgba(239,68,68,0.12)';
-                elMargin.style.color = '#ef4444';
-                elMargin.style.borderColor = 'rgba(239,68,68,0.45)';
+                elMargin.textContent = hasPaymentFilter
+                    ? `${elActiveWeek.label} ${elPaymentFilterLabel(elActivePaymentFilter)}: $${totalSpent.toLocaleString()}`
+                    : `${elActiveWeek.label} Due: $${totalSpent.toLocaleString()}`;
+                elMargin.style.background = hasPaymentFilter ? 'rgba(56,189,248,0.12)' : 'rgba(239,68,68,0.12)';
+                elMargin.style.color = hasPaymentFilter ? '#38BDF8' : '#ef4444';
+                elMargin.style.borderColor = hasPaymentFilter ? 'rgba(56,189,248,0.45)' : 'rgba(239,68,68,0.45)';
+            } else if (hasPaymentFilter) {
+                elMargin.textContent = `${elPaymentFilterLabel(elActivePaymentFilter)} Bills: $${totalSpent.toLocaleString()}`;
+                elMargin.style.background = 'rgba(56,189,248,0.12)';
+                elMargin.style.color = '#38BDF8';
+                elMargin.style.borderColor = 'rgba(56,189,248,0.45)';
             } else {
-                elMargin.textContent = `Remaining Balance: $${remaining.toLocaleString()}`;
-                if (remaining >= 0) {
+                elMargin.textContent = `Remaining Balance: $${monthlyRemaining.toLocaleString()}`;
+                if (monthlyRemaining >= 0) {
                     elMargin.style.background = 'rgba(34,197,94,0.12)';
                     elMargin.style.color = '#22c55e';
                     elMargin.style.borderColor = 'rgba(34,197,94,0.45)';
@@ -8107,7 +8206,6 @@ if (t.id === "ExpenseLens" || t.id === "BusinessExpenseLens") {
             }
 
             // Top remaining balance badge — always reflects full-month income vs all monthly bills
-            const monthlyRemaining = income - monthlyTotalSpent;
             const badge = elById('RemainingBadge');
             if (badge) {
                 if (monthlyRemaining >= 0) {
@@ -8327,26 +8425,11 @@ if (t.id === "ExpenseLens" || t.id === "BusinessExpenseLens") {
         };
 
         const elApplyWeekFilter = (week, options = {}) => {
-            const shouldSortRows = options.sortRows !== false;
             elActiveWeek = week ? (elBuildCalendarWeeks().find(candidate => candidate.id === week.id) || week) : null;
-            categoriesContainer.querySelectorAll(`[id^="${elId('CatRow')}"]`).forEach(row => {
-                const idx = row.id.replace(elId('CatRow'), '');
-                const show = !elActiveWeek || elGetBillOccurrenceDays(idx, elActiveWeek).length > 0;
-                // Use setProperty with 'important' so the rule beats Bootstrap's d-flex !important
-                if (show) {
-                    row.style.removeProperty('display');
-                } else {
-                    row.style.setProperty('display', 'none', 'important');
-                }
-            });
-            weeklyBtn.textContent = elActiveWeek ? `${elActiveWeek.label} ▾` : 'Weekly ▾';
-            const _topBtn = elById('WeeklyBtnTop');
-            if (_topBtn) _topBtn.textContent = elActiveWeek ? `${elActiveWeek.label} ▾` : 'Weekly ▾';
-            refreshExpenseLens({ sortRows: shouldSortRows });
-            renderWeekPanel();
+            refreshExpenseLensViews({ sortRows: options.sortRows !== false });
         };
 
-        const weekPanel = document.createElement('div');
+        weekPanel = document.createElement('div');
         weekPanel.className = 'expense-lens-week-panel';
         weekPanel.style.cssText = 'display:none;position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);z-index:9999;background:#0b1529;border:1.5px solid #38BDF8;border-radius:14px;padding:16px 18px;width:520px;max-width:calc(100vw - 48px);max-height:min(560px, calc(100vh - 40px));overflow-y:auto;overflow-x:hidden;box-shadow:0 24px 64px rgba(30,58,138,0.48);box-sizing:border-box;';
         document.body.appendChild(weekPanel);
@@ -8388,7 +8471,9 @@ if (t.id === "ExpenseLens" || t.id === "BusinessExpenseLens") {
             title.textContent = 'WEEKLY BILL TRACKER';
             const subtitle = document.createElement('span');
             subtitle.style.cssText = 'color:#94A3B8;font-size:0.68rem;font-weight:700;';
-            subtitle.textContent = `Calendar weeks for ${monthYearLabel}`;
+            subtitle.textContent = elActivePaymentFilter === 'all'
+                ? `Calendar weeks for ${monthYearLabel}`
+                : `Calendar weeks for ${monthYearLabel} · ${elPaymentFilterLabel(elActivePaymentFilter)} only`;
             const closeX = document.createElement('span');
             closeX.textContent = '✕';
             closeX.style.cssText = 'cursor:pointer;color:#64748B;font-size:1rem;font-weight:700;line-height:1;padding:2px 4px;';
@@ -8404,6 +8489,7 @@ if (t.id === "ExpenseLens" || t.id === "BusinessExpenseLens") {
             let grandCount = 0;
             categoriesContainer.querySelectorAll(`[id^="${elId('CatRow')}"]`).forEach(row => {
                 const idx = row.id.replace(elId('CatRow'), '');
+                if (!elMatchesPaymentFilter(elGetBillPaymentMethod(idx))) return;
                 const amtEl = elById(`CatAmount${idx}`);
                 const amt = +(amtEl?.value || '').replace(/,/g, '') || 0;
                 const occurrences = elGetBillOccurrenceDays(idx);
@@ -8419,7 +8505,9 @@ if (t.id === "ExpenseLens" || t.id === "BusinessExpenseLens") {
 
             const allRowLeft = document.createElement('span');
             allRowLeft.style.cssText = 'font-weight:700;font-size:0.82rem;';
-            allRowLeft.textContent = 'Show All Bills';
+            allRowLeft.textContent = elActivePaymentFilter === 'all'
+                ? 'Show All Bills'
+                : `${elPaymentFilterLabel(elActivePaymentFilter)} Bills`;
 
             const allRowRight = document.createElement('span');
             allRowRight.style.cssText = `font-weight:800;font-size:0.85rem;color:${!elActiveWeek ? '#0b1529' : (grandCount > 0 ? '#38BDF8' : '#64748B')};`;
@@ -8435,6 +8523,8 @@ if (t.id === "ExpenseLens" || t.id === "BusinessExpenseLens") {
                 const bills = [];
                 categoriesContainer.querySelectorAll(`[id^="${elId('CatRow')}"]`).forEach(row => {
                     const idx = row.id.replace(elId('CatRow'), '');
+                    const paymentMethod = elGetBillPaymentMethod(idx);
+                    if (!elMatchesPaymentFilter(paymentMethod)) return;
                     const amtEl  = elById(`CatAmount${idx}`);
                     const nameEl = elById(`CatName${idx}`);
                     const frequency = elGetBillFrequency(idx);
@@ -8448,7 +8538,8 @@ if (t.id === "ExpenseLens" || t.id === "BusinessExpenseLens") {
                             amount: amt,
                             date,
                             day: date.getDate(),
-                            frequency
+                            frequency,
+                            paymentMethod
                         });
                     });
                 });
@@ -8502,7 +8593,10 @@ if (t.id === "ExpenseLens" || t.id === "BusinessExpenseLens") {
 
                         const bName = document.createElement('span');
                         bName.style.cssText = 'flex:1;font-size:0.76rem;color:#CBD5E1;font-weight:600;min-width:0;';
-                        bName.textContent = bill.frequency === 'monthly' ? bill.name : `${bill.name} (${elFrequencyLabel(bill.frequency)})`;
+                        const paymentSuffix = bill.paymentMethod ? ` · ${elPaymentMethodLabel(bill.paymentMethod)}` : '';
+                        bName.textContent = bill.frequency === 'monthly'
+                            ? `${bill.name}${paymentSuffix}`
+                            : `${bill.name} (${elFrequencyLabel(bill.frequency)})${paymentSuffix}`;
 
                         const bDue = document.createElement('span');
                         bDue.style.cssText = 'min-width:52px;text-align:center;font-size:0.74rem;color:#94A3B8;font-weight:500;';
@@ -8521,7 +8615,9 @@ if (t.id === "ExpenseLens" || t.id === "BusinessExpenseLens") {
                     // Empty state — shown when no bills have a due date in this range
                     const empty = document.createElement('div');
                     empty.style.cssText = 'padding:10px 20px;color:#64748B;font-size:0.78rem;font-style:italic;';
-                    empty.textContent = 'No bills with due dates set for this week.';
+                    empty.textContent = elActivePaymentFilter === 'all'
+                        ? 'No bills with due dates set for this week.'
+                        : `No ${elPaymentFilterLabel(elActivePaymentFilter).toLowerCase()} bills with due dates set for this week.`;
                     detailWrap.appendChild(empty);
                 }
 
@@ -8541,7 +8637,7 @@ if (t.id === "ExpenseLens" || t.id === "BusinessExpenseLens") {
         };
 
         // Weekly button — sits in the category action row
-        const weeklyBtn = document.createElement('button');
+        weeklyBtn = document.createElement('button');
         weeklyBtn.type = 'button';
         weeklyBtn.textContent = 'Weekly ▾';
         weeklyBtn.className = 'btn';
@@ -8557,6 +8653,28 @@ if (t.id === "ExpenseLens" || t.id === "BusinessExpenseLens") {
         });
         document.addEventListener('click', () => { weekPanel.style.display = 'none'; });
         weekPanel.addEventListener('click', e => e.stopPropagation());
+
+        paymentFilterSelect = document.createElement('select');
+        paymentFilterSelect.id = elId('PaymentFilter');
+        paymentFilterSelect.className = 'form-select';
+        paymentFilterSelect.title = 'Filter bills by payment method';
+        paymentFilterSelect.style.cssText = 'background:rgba(255,255,255,.92);border:1.5px solid rgba(166,128,35,.38);border-radius:10px;box-shadow:inset 0 1px 0 rgba(255,255,255,.05);color:#1E3A8A;font-weight:700;height:38px;min-width:148px;max-width:148px;flex:0 0 148px;padding-right:34px;';
+        EL_PAYMENT_FILTERS.forEach(option => {
+            const opt = document.createElement('option');
+            opt.value = option.value;
+            opt.textContent = option.label;
+            paymentFilterSelect.appendChild(opt);
+        });
+        paymentFilterSelect.value = elActivePaymentFilter;
+        paymentFilterSelect.addEventListener('change', () => {
+            elActivePaymentFilter = EL_PAYMENT_FILTERS.some(option => option.value === paymentFilterSelect.value)
+                ? paymentFilterSelect.value
+                : 'all';
+            elExpandedWeek = null;
+            refreshExpenseLensViews({ sortRows: true });
+        });
+
+        (elActionMeta || addBtn.parentElement).appendChild(paymentFilterSelect);
         (elActionMeta || addBtn.parentElement).appendChild(weeklyBtn);
 
         // Second Weekly button — placed to the right of the Total Monthly Income input for quick top-of-page access
@@ -8738,7 +8856,7 @@ if (t.id === "ExpenseLens" || t.id === "BusinessExpenseLens") {
                 if (Array.isArray(prof.expenses) && prof.expenses.length) {
                     prof.expenses.forEach(exp => {
                         const amt = exp?.occurrenceAmount ?? exp?.amount ?? '';
-                        createCategoryRow(++categoryCount, exp?.name || `Expense ${categoryCount}`, exp?.due || '', amt, exp?.frequency || exp?.recurrence, false, exp?.isPinned === true);
+                        createCategoryRow(++categoryCount, exp?.name || `Expense ${categoryCount}`, exp?.due || '', amt, exp?.frequency || exp?.recurrence, exp?.paymentMethod || '', false, exp?.isPinned === true);
                     });
                 } else {
                     createCategoryRow(++categoryCount);
@@ -8759,33 +8877,9 @@ if (t.id === "ExpenseLens" || t.id === "BusinessExpenseLens") {
             // Rows (dynamic)
             categoriesContainer.querySelectorAll(`[id^="${elId('CatName')}"]`).forEach(n => markNeutral(n));     // labels
             categoriesContainer.querySelectorAll(`[id^="${elId('CatFrequency')}"]`).forEach(f => markNeutral(f)); // frequency
+            categoriesContainer.querySelectorAll(`[id^="${elId('CatPaymentMethod')}"]`).forEach(p => markNeutral(p)); // payment method
             categoriesContainer.querySelectorAll(`[id^="${elId('CatAmount')}"]`).forEach(a => markExpense(a));  // spending
             categoriesContainer.querySelectorAll(`[id^="${elId('Out')}"]`).forEach(p => markExpense(p));        // % outputs
-
-            // Remaining Balance (based on current computed values)
-            if (elActiveWeek) {
-                elMargin.style.background = 'rgba(239,68,68,0.12)';
-                elMargin.style.color = '#ef4444';
-                elMargin.style.borderColor = 'rgba(239,68,68,0.45)';
-            } else {
-                const income = +elIncome.value.replace(/,/g, '') || 0;
-                let totalSpent = 0;
-                categoriesContainer.querySelectorAll(`[id^="${elId('CatAmount')}"]`).forEach(input => {
-                    const idx = input.id.replace(elId('CatAmount'), '');
-                    const occurrenceCount = elGetBillOccurrenceDays(idx).length;
-                    totalSpent += (+input.value.replace(/,/g, '') || 0) * occurrenceCount;
-                });
-                const remaining = income - totalSpent;
-                if (remaining >= 0) {
-                    elMargin.style.background = 'rgba(34,197,94,0.12)';
-                    elMargin.style.color = '#22c55e';
-                    elMargin.style.borderColor = 'rgba(34,197,94,0.45)';
-                } else {
-                    elMargin.style.background = 'rgba(239,68,68,0.12)';
-                    elMargin.style.color = '#ef4444';
-                    elMargin.style.borderColor = 'rgba(239,68,68,0.45)';
-                }
-            }
         };
 
         // ✅ Force style application after DOM paint (this is what kills the "refresh page" issue)
