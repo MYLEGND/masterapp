@@ -309,6 +309,226 @@ document.addEventListener("DOMContentLoaded", async function () {
         requestAnimationFrame(update);
     };
 
+    const parseSavingsMoney = (value) => +(String(value || '').replace(/[,$\s]/g, '')) || 0;
+
+    const normalizeScheduledFrequency = (value) => {
+        const normalized = (value || '').toString().toLowerCase().replace(/[^a-z]/g, '');
+        if (normalized === 'weekly') return 'weekly';
+        if (normalized === 'biweekly') return 'biweekly';
+        return 'monthly';
+    };
+
+    const parseScheduledAnchorDate = (value) => {
+        const parts = (value || '').split('-').map(part => parseInt(part, 10));
+        if (parts.length < 3 || parts.some(part => !Number.isFinite(part))) return null;
+        return new Date(parts[0], parts[1] - 1, parts[2]);
+    };
+
+    const getScheduledMonthContext = (options = {}) => {
+        const now = options.now instanceof Date ? new Date(options.now) : new Date();
+        const year = Number.isInteger(options.year) ? options.year : now.getFullYear();
+        const month = Number.isInteger(options.month) ? options.month : now.getMonth();
+        const days = Number.isInteger(options.days) ? options.days : new Date(year, month + 1, 0).getDate();
+        return { now, year, month, days };
+    };
+
+    const getDefaultScheduledAnchorDate = (options = {}) => {
+        const { year, month } = getScheduledMonthContext(options);
+        return `${year}-${String(month + 1).padStart(2, '0')}-01`;
+    };
+
+    const getScheduledOccurrenceDays = (anchorValue, frequencyValue, options = {}) => {
+        const anchorDate = parseScheduledAnchorDate(anchorValue);
+        if (!anchorDate) return [];
+
+        const { year, month, days } = getScheduledMonthContext(options);
+        const frequency = normalizeScheduledFrequency(frequencyValue);
+        const week = options.week || null;
+        const occurrences = [];
+        const rangeStart = week ? new Date(week.startDate) : new Date(year, month, 1);
+        const rangeEnd = week ? new Date(week.endDate) : new Date(year, month, days, 23, 59, 59, 999);
+
+        rangeStart.setHours(0, 0, 0, 0);
+        rangeEnd.setHours(23, 59, 59, 999);
+
+        if (frequency === 'monthly') {
+            const dayNum = anchorDate.getDate();
+            const currentMonthDate = new Date(year, month, Math.min(dayNum, days));
+            if (currentMonthDate >= rangeStart && currentMonthDate <= rangeEnd) {
+                occurrences.push(currentMonthDate);
+            }
+
+            if (week) {
+                const weekStartMonth = rangeStart.getFullYear() * 12 + rangeStart.getMonth();
+                const weekEndMonth = rangeEnd.getFullYear() * 12 + rangeEnd.getMonth();
+                const currentMonthIndex = year * 12 + month;
+
+                if (weekStartMonth < currentMonthIndex) {
+                    const prevDays = new Date(year, month, 0).getDate();
+                    const previousDate = new Date(year, month - 1, Math.min(dayNum, prevDays));
+                    if (previousDate >= rangeStart && previousDate <= rangeEnd) {
+                        occurrences.push(previousDate);
+                    }
+                }
+
+                if (weekEndMonth > currentMonthIndex) {
+                    const nextDays = new Date(year, month + 2, 0).getDate();
+                    const nextDate = new Date(year, month + 1, Math.min(dayNum, nextDays));
+                    if (nextDate >= rangeStart && nextDate <= rangeEnd) {
+                        occurrences.push(nextDate);
+                    }
+                }
+            }
+
+            return occurrences;
+        }
+
+        if (frequency === 'weekly') {
+            const targetWeekday = anchorDate.getDay();
+            const cursor = new Date(rangeStart);
+            const daysUntil = (targetWeekday - cursor.getDay() + 7) % 7;
+            cursor.setDate(cursor.getDate() + daysUntil);
+
+            while (cursor <= rangeEnd) {
+                occurrences.push(new Date(cursor));
+                cursor.setDate(cursor.getDate() + 7);
+            }
+
+            return occurrences;
+        }
+
+        const msPerDay = 86400000;
+        const diffToStart = Math.round((rangeStart - anchorDate) / msPerDay);
+        const mod = ((diffToStart % 14) + 14) % 14;
+        const cursor = new Date(rangeStart);
+        cursor.setDate(cursor.getDate() + (mod === 0 ? 0 : 14 - mod));
+
+        while (cursor <= rangeEnd) {
+            occurrences.push(new Date(cursor));
+            cursor.setDate(cursor.getDate() + 14);
+        }
+
+        return occurrences;
+    };
+
+    const getSavingsExpenseOccurrences = (category) => getScheduledOccurrenceDays(
+        category?.due || '',
+        category?.frequency || category?.recurrence,
+    ).length;
+
+    const sanitizeExpenseLensIncomeStream = (stream) => ({
+        label: String(stream?.label || '').trim(),
+        amount: String(stream?.amount || '').trim(),
+        frequency: normalizeScheduledFrequency(stream?.frequency || stream?.recurrence),
+        anchorDate: String(stream?.anchorDate || stream?.date || '').trim()
+    });
+
+    const getExpenseLensIncomeStreamGroupsFromState = (state) => {
+        const rawGroups = state?.incomeStreams;
+        const normalizeGroup = (value) => Array.isArray(value)
+            ? value.map(sanitizeExpenseLensIncomeStream)
+            : [];
+
+        if (rawGroups && typeof rawGroups === 'object') {
+            return {
+                primary: normalizeGroup(rawGroups.primary),
+                secondary: normalizeGroup(rawGroups.secondary)
+            };
+        }
+
+        const primary = [];
+        const secondary = [];
+        const primaryIncome = String(state?.primaryIncome ?? '').trim();
+        const spouseIncome = String(state?.spouseIncome ?? '').trim();
+        const legacyIncome = String(state?.income ?? '').trim();
+
+        if (primaryIncome) {
+            primary.push({
+                label: '',
+                amount: primaryIncome,
+                frequency: 'monthly',
+                anchorDate: getDefaultScheduledAnchorDate()
+            });
+        } else if (legacyIncome) {
+            primary.push({
+                label: '',
+                amount: legacyIncome,
+                frequency: 'monthly',
+                anchorDate: getDefaultScheduledAnchorDate()
+            });
+        }
+
+        if (spouseIncome) {
+            secondary.push({
+                label: '',
+                amount: spouseIncome,
+                frequency: 'monthly',
+                anchorDate: getDefaultScheduledAnchorDate()
+            });
+        }
+
+        return { primary, secondary };
+    };
+
+    const summarizeExpenseLensIncomeGroups = (groups, options = {}) => {
+        const groupLabelMap = options.groupLabelMap || {};
+        const groupTotals = { primary: 0, secondary: 0 };
+        const hits = [];
+
+        ['primary', 'secondary'].forEach((groupKey) => {
+            const streams = Array.isArray(groups?.[groupKey]) ? groups[groupKey] : [];
+            streams.forEach((stream, index) => {
+                const amount = parseSavingsMoney(stream?.amount);
+                if (amount <= 0) return;
+
+                const frequency = normalizeScheduledFrequency(stream?.frequency);
+                const anchorDate = String(stream?.anchorDate || '').trim() || getDefaultScheduledAnchorDate(options);
+                const dates = getScheduledOccurrenceDays(anchorDate, frequency, options);
+                if (dates.length === 0) return;
+
+                const label = String(stream?.label || '').trim()
+                    || groupLabelMap[groupKey]
+                    || (groupKey === 'secondary' ? `Partner Income ${index + 1}` : `Income ${index + 1}`);
+
+                groupTotals[groupKey] += amount * dates.length;
+                dates.forEach((date) => {
+                    hits.push({
+                        groupKey,
+                        label,
+                        amount,
+                        date,
+                        frequency,
+                        anchorDate
+                    });
+                });
+            });
+        });
+
+        hits.sort((a, b) => (a.date - b.date) || a.label.localeCompare(b.label));
+
+        return {
+            monthlyTotal: groupTotals.primary + groupTotals.secondary,
+            groupTotals,
+            hits,
+            count: hits.length
+        };
+    };
+
+    const calculateExpenseLensMonthlyTotal = (state) => {
+        const savedTotal = parseSavingsMoney(state?.monthlyExpenseTotal);
+        if (savedTotal > 0) return savedTotal;
+        return (state?.categories || []).reduce((sum, category) => {
+            const amount = parseSavingsMoney(category?.amount);
+            const occurrences = getSavingsExpenseOccurrences(category);
+            return sum + (amount * occurrences);
+        }, 0);
+    };
+
+    const getExpenseLensIncomeTotal = (state) => {
+        const incomeGroups = getExpenseLensIncomeStreamGroupsFromState(state);
+        return summarizeExpenseLensIncomeGroups(incomeGroups).monthlyTotal;
+    };
+
     const getAntiForgeryToken = () =>
         document.querySelector('#__af input[name="__RequestVerificationToken"]')?.value
         || document.querySelector('input[name="__RequestVerificationToken"]')?.value
@@ -6264,8 +6484,6 @@ if (t.id === "SavingsAccelerator") {
         });
     });
 
-    const parseSavingsMoney = (value) => +(String(value || '').replace(/[,$\s]/g, '')) || 0;
-
     const formatSavingsMoneyText = (value) => {
         const rounded = Math.round(Number(value) || 0);
         const sign = rounded < 0 ? '-' : '';
@@ -6485,63 +6703,6 @@ if (t.id === "SavingsAccelerator") {
             months,
             projectedValue: openingBalance + (monthlyContribution * months)
         };
-    };
-
-    const normalizeSavingsBillFrequency = (value) => {
-        const normalized = (value || '').toString().toLowerCase().replace(/[^a-z]/g, '');
-        if (normalized === 'weekly') return 'weekly';
-        if (normalized === 'biweekly') return 'biweekly';
-        return 'monthly';
-    };
-
-    const getSavingsExpenseOccurrences = (category) => {
-        const frequency = normalizeSavingsBillFrequency(category?.frequency || category?.recurrence);
-        if (frequency === 'monthly') return 1;
-
-        const due = category?.due || '';
-        const parts = due.split('-').map(part => parseInt(part, 10));
-        if (parts.length < 3 || parts.some(part => !Number.isFinite(part))) return 0;
-
-        const now = new Date();
-        const year = now.getFullYear();
-        const month = now.getMonth();
-        const days = new Date(year, month + 1, 0).getDate();
-        const dueDate = new Date(parts[0], parts[1] - 1, parts[2]);
-        let occurrences = 0;
-
-        if (frequency === 'weekly') {
-            const targetWeekday = dueDate.getDay();
-            for (let day = 1; day <= days; day++) {
-                if (new Date(year, month, day).getDay() === targetWeekday) occurrences++;
-            }
-            return occurrences;
-        }
-
-        for (let day = 1; day <= days; day++) {
-            const diffDays = Math.round((new Date(year, month, day) - dueDate) / 86400000);
-            if (diffDays % 14 === 0) occurrences++;
-        }
-        return occurrences;
-    };
-
-    const calculateExpenseLensMonthlyTotal = (state) => {
-        const savedTotal = parseSavingsMoney(state?.monthlyExpenseTotal);
-        if (savedTotal > 0) return savedTotal;
-        return (state?.categories || []).reduce((sum, category) => {
-            const amount = parseSavingsMoney(category?.amount);
-            const occurrences = getSavingsExpenseOccurrences(category);
-            return sum + (amount * occurrences);
-        }, 0);
-    };
-
-    const getExpenseLensIncomeTotal = (state) => {
-        const hasSplitIncome =
-            String(state?.primaryIncome ?? '').trim() !== ''
-            || String(state?.spouseIncome ?? '').trim() !== '';
-        if (hasSplitIncome) {
-            return parseSavingsMoney(state?.primaryIncome) + parseSavingsMoney(state?.spouseIncome);
-        }
-        return parseSavingsMoney(state?.income);
     };
 
     const buildSavingsIllustrationData = () => {
@@ -7579,18 +7740,126 @@ if (t.id === "ExpenseLens" || t.id === "BusinessExpenseLens") {
             return !isNaN(val) && val !== '' ? Number(val).toLocaleString() : '';
         };
 
+        const EL_MAX_INCOME_STREAMS_PER_GROUP = 4;
+        const EL_INCOME_METRIC_META = {
+            label: 'Income',
+            text: '#FFF7ED',
+            muted: '#FDE68A',
+            bg: 'linear-gradient(145deg, rgba(180,83,9,0.94) 0%, rgba(120,53,15,0.98) 100%)',
+            border: 'rgba(245,158,11,0.56)',
+            shadow: '0 14px 30px rgba(245,158,11,0.22), inset 0 1px 0 rgba(255,255,255,0.08)'
+        };
+        const EL_AFTER_DEBIT_META = {
+            label: 'After Debit',
+            text: '#ECFDF5',
+            muted: '#6EE7B7',
+            bg: 'linear-gradient(145deg, rgba(5,150,105,0.90) 0%, rgba(4,120,87,0.98) 100%)',
+            border: 'rgba(52,211,153,0.56)',
+            shadow: '0 14px 30px rgba(16,185,129,0.22), inset 0 1px 0 rgba(255,255,255,0.08)'
+        };
+        const EL_AFTER_CREDIT_META = {
+            label: 'After Credit',
+            text: '#EFF6FF',
+            muted: '#93C5FD',
+            bg: 'linear-gradient(145deg, rgba(30,64,175,0.92) 0%, rgba(30,58,138,0.98) 100%)',
+            border: 'rgba(96,165,250,0.54)',
+            shadow: '0 14px 30px rgba(59,130,246,0.22), inset 0 1px 0 rgba(255,255,255,0.08)'
+        };
+        const EL_NEGATIVE_METRIC_META = {
+            label: 'Negative',
+            text: '#FFF1F2',
+            muted: '#FCA5A5',
+            bg: 'linear-gradient(145deg, rgba(220,38,38,0.92) 0%, rgba(127,29,29,0.98) 100%)',
+            border: 'rgba(248,113,113,0.56)',
+            shadow: '0 14px 30px rgba(239,68,68,0.22), inset 0 1px 0 rgba(255,255,255,0.08)'
+        };
+
+        const makePossessiveIncomeLabel = (name) => name
+            ? `${name}${name.endsWith('s') ? "'" : "'s"} Income`
+            : 'Client Income';
+
+        const buildIncomeGroupDefinitions = () => {
+            if (isBusinessExpenseLens) return [];
+
+            const definitions = [
+                {
+                    key: 'primary',
+                    label: makePossessiveIncomeLabel(clientFirstName),
+                    fallbackStreamLabel: clientFirstName ? `${clientFirstName}${clientFirstName.endsWith('s') ? "'" : "'s"} Pay` : 'Primary Pay'
+                }
+            ];
+
+            if (expenseLensHasPartner) {
+                const partnerName = spouseFirstName || 'Partner';
+                definitions.push({
+                    key: 'secondary',
+                    label: makePossessiveIncomeLabel(partnerName),
+                    fallbackStreamLabel: `${partnerName}${partnerName.endsWith('s') ? "'" : "'s"} Pay`
+                });
+            }
+
+            return definitions;
+        };
+
+        const incomeGroupDefinitions = buildIncomeGroupDefinitions();
+        const incomeGroupLabelMap = incomeGroupDefinitions.reduce((acc, definition) => {
+            acc[definition.key] = definition.label;
+            return acc;
+        }, {});
+
+        let incomeStreamSeed = 0;
+        const createIncomeStreamId = (groupKey) => {
+            incomeStreamSeed += 1;
+            return `${groupKey}-${Date.now().toString(36)}-${incomeStreamSeed.toString(36)}`;
+        };
+
+        const normalizeIncomeAnchorDate = (value) => {
+            const parsed = parseScheduledAnchorDate(value);
+            if (!parsed) return getDefaultScheduledAnchorDate();
+            return `${parsed.getFullYear()}-${String(parsed.getMonth() + 1).padStart(2, '0')}-${String(parsed.getDate()).padStart(2, '0')}`;
+        };
+
+        const createIncomeStream = (groupKey, overrides = {}) => ({
+            id: String(overrides.id || '').trim() || createIncomeStreamId(groupKey),
+            label: String(overrides.label || '').trim(),
+            amount: String(overrides.amount || '').trim(),
+            frequency: normalizeScheduledFrequency(overrides.frequency || 'monthly'),
+            anchorDate: normalizeIncomeAnchorDate(overrides.anchorDate || getDefaultScheduledAnchorDate())
+        });
+
+        const sanitizeIncomeStreamList = (groupKey, streams = []) => {
+            const normalized = Array.isArray(streams)
+                ? streams.slice(0, EL_MAX_INCOME_STREAMS_PER_GROUP).map(stream => createIncomeStream(groupKey, stream))
+                : [];
+            return normalized.length > 0 ? normalized : [createIncomeStream(groupKey)];
+        };
+
+        const summarizePersonalIncomeGroups = (groups, options = {}) => summarizeExpenseLensIncomeGroups(groups, {
+            ...options,
+            groupLabelMap: incomeGroupLabelMap
+        });
+
+        const serializeIncomeStreamsForSave = (groups) => {
+            const serialized = {};
+            incomeGroupDefinitions.forEach((definition) => {
+                serialized[definition.key] = sanitizeIncomeStreamList(definition.key, groups?.[definition.key]).map(stream => ({
+                    id: stream.id,
+                    label: stream.label,
+                    amount: stream.amount,
+                    frequency: stream.frequency,
+                    anchorDate: stream.anchorDate
+                }));
+            });
+            return serialized;
+        };
+
         const EL_BILL_FREQUENCIES = [
             { value: 'monthly', label: 'Monthly' },
             { value: 'weekly', label: 'Weekly' },
             { value: 'biweekly', label: 'Bi-weekly' },
         ];
 
-        const normalizeBillFrequency = (value) => {
-            const normalized = (value || '').toString().toLowerCase().replace(/[^a-z]/g, '');
-            if (normalized === 'weekly') return 'weekly';
-            if (normalized === 'biweekly') return 'biweekly';
-            return 'monthly';
-        };
+        const normalizeBillFrequency = (value) => normalizeScheduledFrequency(value);
 
         const elFrequencyLabel = (value) => {
             const normalized = normalizeBillFrequency(value);
@@ -7657,24 +7926,25 @@ if (t.id === "ExpenseLens" || t.id === "BusinessExpenseLens") {
             return EL_PAYMENT_METHOD_META[normalized || 'unassigned'];
         };
 
-        const elCreateWeekMetricChip = (label, amount, meta, note = '') => {
-            const hasValue = amount > 0;
+        const elCreateWeekMetricChip = (label, amount, meta, note = '', options = {}) => {
+            const hasValue = amount !== 0;
+            const toneMeta = amount < 0 && options.negativeMeta ? options.negativeMeta : meta;
             const chip = document.createElement('div');
             chip.style.cssText = [
                 'display:flex;flex-direction:column;align-items:flex-end;justify-content:center;gap:1px;',
                 'min-width:112px;padding:8px 12px;border-radius:12px;box-sizing:border-box;overflow:hidden;',
-                `border:1px solid ${hasValue ? meta.border : 'rgba(100,116,139,0.22)'};`,
-                `background:${hasValue ? meta.bg : 'linear-gradient(145deg, rgba(30,41,59,0.62) 0%, rgba(15,23,42,0.88) 100%)'};`,
-                `box-shadow:${hasValue ? meta.shadow : 'inset 0 1px 0 rgba(255,255,255,0.04)'};`
+                `border:1px solid ${hasValue ? toneMeta.border : 'rgba(100,116,139,0.22)'};`,
+                `background:${hasValue ? toneMeta.bg : 'linear-gradient(145deg, rgba(30,41,59,0.62) 0%, rgba(15,23,42,0.88) 100%)'};`,
+                `box-shadow:${hasValue ? toneMeta.shadow : 'inset 0 1px 0 rgba(255,255,255,0.04)'};`
             ].join('');
 
             const labelEl = document.createElement('span');
             labelEl.textContent = label.toUpperCase();
-            labelEl.style.cssText = `font-size:0.62rem;font-weight:800;letter-spacing:0.08em;color:${hasValue ? meta.muted : '#64748B'};`;
+            labelEl.style.cssText = `font-size:0.62rem;font-weight:800;letter-spacing:0.08em;color:${hasValue ? toneMeta.muted : '#64748B'};`;
 
             const valueEl = document.createElement('span');
-            valueEl.textContent = hasValue ? `$${amount.toLocaleString()}` : '—';
-            valueEl.style.cssText = `font-size:0.84rem;font-weight:800;line-height:1.1;color:${hasValue ? meta.text : '#94A3B8'};`;
+            valueEl.textContent = hasValue ? `${amount < 0 ? '-$' : '$'}${Math.abs(amount).toLocaleString()}` : '—';
+            valueEl.style.cssText = `font-size:0.84rem;font-weight:800;line-height:1.1;color:${hasValue ? toneMeta.text : '#94A3B8'};`;
 
             chip.appendChild(labelEl);
             chip.appendChild(valueEl);
@@ -7682,17 +7952,16 @@ if (t.id === "ExpenseLens" || t.id === "BusinessExpenseLens") {
             if (note) {
                 const noteEl = document.createElement('span');
                 noteEl.textContent = note;
-                noteEl.style.cssText = `font-size:0.62rem;font-weight:700;line-height:1.1;color:${hasValue ? meta.muted : '#64748B'};`;
+                noteEl.style.cssText = `font-size:0.62rem;font-weight:700;line-height:1.1;color:${hasValue ? toneMeta.muted : '#64748B'};`;
                 chip.appendChild(noteEl);
             }
 
             return chip;
         };
 
-        const elCreatePaymentBadge = (value) => {
-            const meta = elGetPaymentMethodMeta(value);
+        const elCreateToneBadge = (label, meta) => {
             const badge = document.createElement('span');
-            badge.textContent = meta.label;
+            badge.textContent = label;
             badge.style.cssText = [
                 'display:inline-flex;align-items:center;justify-content:center;',
                 'min-width:84px;padding:5px 12px;border-radius:999px;box-sizing:border-box;',
@@ -7703,6 +7972,11 @@ if (t.id === "ExpenseLens" || t.id === "BusinessExpenseLens") {
                 'font-size:0.68rem;font-weight:800;letter-spacing:0.05em;text-transform:uppercase;'
             ].join('');
             return badge;
+        };
+
+        const elCreatePaymentBadge = (value) => {
+            const meta = elGetPaymentMethodMeta(value);
+            return elCreateToneBadge(meta.label, meta);
         };
 
         const elPaymentFilterLabel = (value) => {
@@ -7749,11 +8023,250 @@ if (t.id === "ExpenseLens" || t.id === "BusinessExpenseLens") {
         // -----------------------------
         // State Handling
         // -----------------------------
+        let incomeGroupsState = {};
+        let incomeGroupsHost = null;
+        let incomeGroupRefs = new Map();
+
+        const buildPersonalIncomeGroupsState = (state = null) => {
+            if (isBusinessExpenseLens) return {};
+
+            const persistedGroups = getExpenseLensIncomeStreamGroupsFromState(state);
+            const nextState = {};
+
+            incomeGroupDefinitions.forEach((definition) => {
+                nextState[definition.key] = sanitizeIncomeStreamList(definition.key, persistedGroups[definition.key]);
+            });
+
+            if (!(state?.incomeStreams && typeof state.incomeStreams === 'object')) {
+                incomeGroupDefinitions.forEach((definition) => {
+                    const firstStream = nextState[definition.key]?.[0];
+                    if (firstStream && !firstStream.label && parseSavingsMoney(firstStream.amount) > 0) {
+                        firstStream.label = definition.fallbackStreamLabel;
+                    }
+                });
+            }
+
+            return nextState;
+        };
+
+        incomeGroupsState = buildPersonalIncomeGroupsState();
+
+        const buildIncomeCompatibilityState = () => {
+            if (isBusinessExpenseLens) {
+                return { income: elIncome.value || '' };
+            }
+
+            const summary = summarizePersonalIncomeGroups(incomeGroupsState);
+            const primaryTotal = summary.groupTotals.primary || 0;
+            const secondaryTotal = summary.groupTotals.secondary || 0;
+
+            return {
+                income: summary.monthlyTotal > 0 ? formatNumber(summary.monthlyTotal) : '',
+                primaryIncome: primaryTotal > 0 ? formatNumber(primaryTotal) : '',
+                spouseIncome: secondaryTotal > 0 ? formatNumber(secondaryTotal) : '',
+                incomeStreams: serializeIncomeStreamsForSave(incomeGroupsState)
+            };
+        };
+
+        const syncPersonalIncomeDisplay = () => {
+            if (isBusinessExpenseLens) {
+                return {
+                    monthlyTotal: parseSavingsMoney(elIncome.value),
+                    groupTotals: { primary: 0, secondary: 0 },
+                    hits: [],
+                    count: 0
+                };
+            }
+
+            const summary = summarizePersonalIncomeGroups(incomeGroupsState);
+            elIncome.value = summary.monthlyTotal > 0 ? formatNumber(summary.monthlyTotal) : '';
+
+            incomeGroupDefinitions.forEach((definition) => {
+                const refs = incomeGroupRefs.get(definition.key);
+                if (!refs) return;
+
+                const groupTotal = summary.groupTotals[definition.key] || 0;
+                refs.total.textContent = `$ ${groupTotal.toLocaleString()}`;
+                refs.share.textContent = summary.monthlyTotal > 0
+                    ? `${((groupTotal / summary.monthlyTotal) * 100).toFixed(1)}%`
+                    : '0%';
+                refs.addBtn.disabled = incomeGroupsState[definition.key].length >= EL_MAX_INCOME_STREAMS_PER_GROUP;
+                refs.addBtn.style.opacity = refs.addBtn.disabled ? '0.45' : '1';
+                refs.addBtn.style.cursor = refs.addBtn.disabled ? 'not-allowed' : 'pointer';
+            });
+
+            return summary;
+        };
+
+        const renderPersonalIncomeGroups = () => {
+            if (isBusinessExpenseLens || !incomeGroupsHost) return;
+
+            incomeGroupsHost.innerHTML = '';
+            incomeGroupRefs = new Map();
+
+            incomeGroupDefinitions.forEach((definition) => {
+                const groupStreams = sanitizeIncomeStreamList(definition.key, incomeGroupsState[definition.key]);
+                incomeGroupsState[definition.key] = groupStreams;
+
+                const groupRow = document.createElement('div');
+                groupRow.style.cssText = 'display:flex;flex-direction:column;gap:10px;min-width:0;';
+
+                const summaryCard = document.createElement('div');
+                summaryCard.style.cssText = 'display:flex;align-items:center;gap:10px;flex-wrap:wrap;min-width:0;padding:10px 12px;border-radius:15px;border:1.5px solid rgba(166,128,35,.22);background:linear-gradient(180deg, rgba(255,255,255,.06), rgba(255,255,255,.025));box-shadow:inset 0 1px 0 rgba(255,255,255,.03);';
+
+                const summaryTop = document.createElement('div');
+                summaryTop.style.cssText = 'display:flex;align-items:flex-start;justify-content:space-between;gap:8px;min-width:128px;flex:1 1 128px;';
+
+                const labelEl = document.createElement('div');
+                labelEl.style.cssText = 'font-size:0.74rem;font-weight:800;color:#c79931;letter-spacing:0.05em;text-transform:uppercase;line-height:1.25;';
+                labelEl.textContent = definition.label;
+
+                const totalEl = document.createElement('div');
+                totalEl.style.cssText = 'display:flex;align-items:center;justify-content:center;min-width:136px;height:40px;padding:0 14px;border-radius:12px;border:1.5px solid rgba(166,128,35,.38);background:rgba(255,255,255,.92);box-shadow:inset 0 1px 0 rgba(255,255,255,.05);font-weight:800;font-size:0.95rem;color:#1E3A8A;';
+                totalEl.textContent = '$ 0';
+
+                const shareEl = document.createElement('span');
+                shareEl.style.cssText = 'display:inline-flex;align-items:center;justify-content:center;min-width:62px;height:28px;padding:0 10px;border-radius:999px;border:1px solid rgba(96,165,250,.26);background:rgba(30,58,138,.18);font-size:0.72rem;font-weight:800;color:#D6E4FF;';
+                shareEl.textContent = '0%';
+
+                const addBtn = document.createElement('button');
+                addBtn.type = 'button';
+                addBtn.className = 'btn btn-outline-gold';
+                addBtn.textContent = '+ Add Stream';
+                addBtn.style.cssText = 'height:34px;min-width:132px;padding:0 14px;border-radius:10px;font-size:0.76rem;font-weight:800;white-space:nowrap;margin-left:auto;';
+                addBtn.addEventListener('click', () => {
+                    if (incomeGroupsState[definition.key].length >= EL_MAX_INCOME_STREAMS_PER_GROUP) return;
+                    incomeGroupsState[definition.key].push(createIncomeStream(definition.key));
+                    renderPersonalIncomeGroups();
+                    refreshExpenseLensViews({ sortRows: false });
+                });
+
+                summaryTop.appendChild(labelEl);
+                summaryTop.appendChild(shareEl);
+                summaryCard.appendChild(summaryTop);
+                summaryCard.appendChild(totalEl);
+                summaryCard.appendChild(addBtn);
+
+                const streamsWrap = document.createElement('div');
+                streamsWrap.style.cssText = 'display:flex;flex-direction:column;gap:8px;min-width:0;';
+
+                groupStreams.forEach((stream, streamIndex) => {
+                    const streamCard = document.createElement('div');
+                    streamCard.style.cssText = 'display:flex;align-items:center;gap:8px;flex-wrap:wrap;min-width:0;padding:9px 12px;border-radius:14px;border:1.5px solid rgba(166,128,35,.22);background:linear-gradient(180deg, rgba(255,255,255,.055), rgba(255,255,255,.02));box-shadow:inset 0 1px 0 rgba(255,255,255,.03);';
+
+                    const streamHead = document.createElement('div');
+                    streamHead.style.cssText = 'display:flex;align-items:center;min-width:0;flex:0 0 auto;';
+
+                    const streamTitle = document.createElement('span');
+                    streamTitle.style.cssText = 'display:inline-flex;align-items:center;justify-content:center;min-width:76px;height:34px;padding:0 10px;border-radius:10px;border:1px solid rgba(96,165,250,.18);background:rgba(30,58,138,.12);font-size:0.66rem;font-weight:800;letter-spacing:0.08em;color:#BFDBFE;text-transform:uppercase;';
+                    streamTitle.textContent = `Stream ${streamIndex + 1}`;
+
+                    streamHead.appendChild(streamTitle);
+
+                    let removeBtn = null;
+                    if (groupStreams.length > 1) {
+                        removeBtn = document.createElement('button');
+                        removeBtn.type = 'button';
+                        removeBtn.textContent = '×';
+                        removeBtn.style.cssText = 'border:none;background:transparent;color:#64748B;font-size:1rem;font-weight:800;line-height:1;padding:0 2px;margin-left:auto;flex:0 0 auto;';
+                        removeBtn.addEventListener('click', () => {
+                            incomeGroupsState[definition.key].splice(streamIndex, 1);
+                            renderPersonalIncomeGroups();
+                            refreshExpenseLensViews({ sortRows: false });
+                        });
+                    }
+
+                    const nameInput = document.createElement('input');
+                    nameInput.type = 'text';
+                    nameInput.className = 'form-control';
+                    nameInput.placeholder = 'Income label';
+                    nameInput.value = stream.label;
+                    nameInput.style.cssText = 'height:38px;flex:1 1 220px;min-width:160px;padding:6px 12px;font-size:0.78rem;font-weight:700;color:#1E3A8A;';
+                    nameInput.addEventListener('input', () => {
+                        incomeGroupsState[definition.key][streamIndex].label = nameInput.value;
+                        refreshExpenseLensViews({ sortRows: false });
+                    });
+                    nameInput.addEventListener('blur', () => {
+                        nameInput.value = nameInput.value.trim();
+                        incomeGroupsState[definition.key][streamIndex].label = nameInput.value;
+                        refreshExpenseLensViews({ sortRows: false });
+                    });
+
+                    const amountWrap = document.createElement('div');
+                    amountWrap.style.cssText = 'position:relative;flex:0 0 108px;min-width:108px;';
+
+                    const amountInput = document.createElement('input');
+                    amountInput.type = 'text';
+                    amountInput.className = 'form-control';
+                    amountInput.placeholder = '0';
+                    amountInput.value = stream.amount;
+                    amountInput.style.cssText = 'height:38px;padding:6px 10px 6px 24px;font-size:0.78rem;font-weight:800;color:#1E3A8A;text-align:right;';
+                    amountInput.addEventListener('input', () => {
+                        incomeGroupsState[definition.key][streamIndex].amount = amountInput.value;
+                        refreshExpenseLensViews({ sortRows: false });
+                    });
+                    amountInput.addEventListener('blur', () => {
+                        amountInput.value = formatNumber(amountInput.value);
+                        incomeGroupsState[definition.key][streamIndex].amount = amountInput.value;
+                        refreshExpenseLensViews({ sortRows: false });
+                    });
+
+                    const amountSuffix = document.createElement('span');
+                    amountSuffix.textContent = '$';
+                    amountSuffix.style.cssText = 'position:absolute;left:10px;top:50%;transform:translateY(-50%);font-weight:800;color:#1E3A8A;pointer-events:none;';
+                    amountWrap.appendChild(amountInput);
+                    amountWrap.appendChild(amountSuffix);
+
+                    const frequencySelect = document.createElement('select');
+                    frequencySelect.className = 'form-select';
+                    frequencySelect.style.cssText = 'height:38px;flex:0 0 118px;min-width:118px;padding:4px 24px 4px 8px;font-size:0.74rem;font-weight:800;color:#1E3A8A;';
+                    EL_BILL_FREQUENCIES.forEach((option) => {
+                        const opt = document.createElement('option');
+                        opt.value = option.value;
+                        opt.textContent = option.label;
+                        frequencySelect.appendChild(opt);
+                    });
+                    frequencySelect.value = normalizeBillFrequency(stream.frequency);
+                    frequencySelect.addEventListener('change', () => {
+                        incomeGroupsState[definition.key][streamIndex].frequency = normalizeBillFrequency(frequencySelect.value);
+                        refreshExpenseLensViews({ sortRows: false });
+                    });
+                    fitSingleLineControlText(frequencySelect, { minSize: 9.5, maxSize: 11, reserve: 22 });
+
+                    const dateInput = document.createElement('input');
+                    dateInput.type = 'date';
+                    dateInput.className = 'form-control';
+                    dateInput.value = normalizeIncomeAnchorDate(stream.anchorDate);
+                    dateInput.style.cssText = 'height:38px;flex:0 0 140px;min-width:140px;padding:4px 8px;font-size:0.74rem;font-weight:800;color:#1E3A8A;';
+                    dateInput.addEventListener('change', () => {
+                        incomeGroupsState[definition.key][streamIndex].anchorDate = normalizeIncomeAnchorDate(dateInput.value);
+                        dateInput.value = incomeGroupsState[definition.key][streamIndex].anchorDate;
+                        refreshExpenseLensViews({ sortRows: false });
+                    });
+
+                    streamCard.appendChild(streamHead);
+                    streamCard.appendChild(nameInput);
+                    streamCard.appendChild(amountWrap);
+                    streamCard.appendChild(frequencySelect);
+                    streamCard.appendChild(dateInput);
+                    if (removeBtn) {
+                        streamCard.appendChild(removeBtn);
+                    }
+                    streamsWrap.appendChild(streamCard);
+                });
+
+                groupRow.appendChild(summaryCard);
+                groupRow.appendChild(streamsWrap);
+                incomeGroupsHost.appendChild(groupRow);
+                incomeGroupRefs.set(definition.key, { total: totalEl, share: shareEl, addBtn });
+            });
+
+            syncPersonalIncomeDisplay();
+        };
+
         const saveExpenseLensState = (extraState = {}) => {
             try {
-                const income = elIncome.value || '';
-                const primaryIncome = elPrimaryIncome?.value || '';
-                const spouseIncome = elSpouseIncome?.value || '';
+                const compatibilityState = buildIncomeCompatibilityState();
                 const categories = [];
                 categoriesContainer.querySelectorAll(`[id^="${elId('CatRow')}"]`).forEach(row => {
                     const index = row.id.replace(elId('CatRow'), '');
@@ -7771,7 +8284,7 @@ if (t.id === "ExpenseLens" || t.id === "BusinessExpenseLens") {
                     const isPinned = row.dataset.isPinned === 'true';
                     categories.push({ index, name, due, frequency, paymentMethod, amount, isTemplate, isPinned });
                 });
-                const state = { income, primaryIncome, spouseIncome, categories, ...extraState };
+                const state = { ...compatibilityState, categories, ...extraState };
                 savePersistedState(expenseLensToolStateId, state);
             } catch (e) { console.error(e); }
         };
@@ -7783,37 +8296,41 @@ if (t.id === "ExpenseLens" || t.id === "BusinessExpenseLens") {
                 categoryCount = 0;
                 let categoriesCreated = 0;
 
-                if (state) {
-                    if (elPrimaryIncome && state.primaryIncome) {
-                        elPrimaryIncome.value = state.primaryIncome;
-                        if (elSpouseIncome && state.spouseIncome) elSpouseIncome.value = state.spouseIncome;
-                        const pri = parseFloat((state.primaryIncome || '').replace(/,/g, '')) || 0;
-                        const spo = parseFloat((state.spouseIncome || '').replace(/,/g, '')) || 0;
-                        const total = pri + spo;
-                        elIncome.value = total > 0 ? total.toLocaleString() : '';
-                    } else {
-                        elIncome.value = state.income || '';
-                    }
-
-                    if (state.categories && state.categories.length > 0) {
-                        state.categories.forEach(cat => {
-                            createCategoryRow(++categoryCount, cat.name, cat.due || '', cat.amount, cat.frequency || cat.recurrence, cat.paymentMethod || '', cat.isTemplate === true, cat.isPinned === true);
-                            categoriesCreated++;
-                        });
-                    }
+                if (!isBusinessExpenseLens) {
+                    incomeGroupsState = buildPersonalIncomeGroupsState(state);
+                    renderPersonalIncomeGroups();
+                } else {
+                    elIncome.value = state?.income || '';
                 }
 
-                // Fallback to shared Finance Profile if nothing saved
+                if (state?.categories && state.categories.length > 0) {
+                    state.categories.forEach(cat => {
+                        createCategoryRow(++categoryCount, cat.name, cat.due || '', cat.amount, cat.frequency || cat.recurrence, cat.paymentMethod || '', cat.isTemplate === true, cat.isPinned === true);
+                        categoriesCreated++;
+                    });
+                }
+
                 if (categoriesCreated === 0) {
                     const prof = window.LegendFinanceProfile?.get?.();
                     if (prof) {
-                        if (!elIncome.value) {
+                        if (!isBusinessExpenseLens) {
+                            const summary = syncPersonalIncomeDisplay();
+                            const profileIncome = prof.monthlyNet || prof.monthlyGross || '';
+                            if (summary.monthlyTotal <= 0 && parseSavingsMoney(profileIncome) > 0 && incomeGroupDefinitions[0]) {
+                                incomeGroupsState[incomeGroupDefinitions[0].key][0].amount = profileIncome;
+                                if (!incomeGroupsState[incomeGroupDefinitions[0].key][0].label) {
+                                    incomeGroupsState[incomeGroupDefinitions[0].key][0].label = incomeGroupDefinitions[0].fallbackStreamLabel;
+                                }
+                                renderPersonalIncomeGroups();
+                            }
+                        } else if (!elIncome.value) {
                             elIncome.value = prof.monthlyNet || prof.monthlyGross || '';
                         }
+
                         if (Array.isArray(prof.expenses) && prof.expenses.length > 0) {
                             prof.expenses.forEach(exp => {
                                 const amt = exp?.occurrenceAmount ?? exp?.amount ?? '';
-                                createCategoryRow(++categoryCount, exp?.name || `Expense ${categoryCount}`, '', amt, exp?.frequency || exp?.recurrence, exp?.paymentMethod || '', false, exp?.isPinned === true);
+                                createCategoryRow(++categoryCount, exp?.name || `Expense ${categoryCount}`, exp?.due || '', amt, exp?.frequency || exp?.recurrence, exp?.paymentMethod || '', false, exp?.isPinned === true);
                                 categoriesCreated++;
                             });
                         }
@@ -7821,6 +8338,7 @@ if (t.id === "ExpenseLens" || t.id === "BusinessExpenseLens") {
                 }
 
                 if (categoriesCreated === 0) injectDefaultExpenseRows();
+                if (!isBusinessExpenseLens) syncPersonalIncomeDisplay();
                 refreshExpenseLens({ sortRows: true });
             } catch (e) { console.error(e); }
         };
@@ -7888,7 +8406,7 @@ if (t.id === "ExpenseLens" || t.id === "BusinessExpenseLens") {
             applyExpenseLensRowVisibility();
             syncExpenseLensViewControls();
             refreshExpenseLens({ sortRows: shouldSortRows });
-            if (weekPanel?.style.display !== 'none') renderWeekPanel();
+            if (weekPanel && weekPanel.style.display !== 'none') renderWeekPanel();
         };
 
         const isExpenseRowPinned = (row) => row?.dataset?.isPinned === 'true';
@@ -8210,7 +8728,8 @@ if (t.id === "ExpenseLens" || t.id === "BusinessExpenseLens") {
         // -----------------------------
         const refreshExpenseLens = (options = {}) => {
             const shouldSortRows = !!options.sortRows;
-            const income = +elIncome.value.replace(/,/g,'') || 0;
+            const incomeSummary = !isBusinessExpenseLens ? syncPersonalIncomeDisplay() : null;
+            const income = incomeSummary?.monthlyTotal ?? (+elIncome.value.replace(/,/g,'') || 0);
             let totalSpent = 0;
             let monthlyTotalSpent = 0;
             const categoriesData = [];
@@ -8329,7 +8848,6 @@ if (t.id === "ExpenseLens" || t.id === "BusinessExpenseLens") {
 
             saveExpenseLensState({ monthlyExpenseTotal: monthlyTotalSpent, monthlyRemaining });
 
-            // Push expenses + income into shared Finance Profile
             if (!isBusinessExpenseLens && window.LegendFinanceProfile?.update) {
                 window.LegendFinanceProfile.update({
                     monthlyNet: income || undefined,
@@ -8339,7 +8857,9 @@ if (t.id === "ExpenseLens" || t.id === "BusinessExpenseLens") {
             }
             window.dispatchEvent(new CustomEvent(expenseLensUpdatedEvent, {
                 detail: {
+                    ...(isBusinessExpenseLens ? {} : buildIncomeCompatibilityState()),
                     income,
+                    incomeStreams: isBusinessExpenseLens ? undefined : serializeIncomeStreamsForSave(incomeGroupsState),
                     monthlyExpenseTotal: monthlyTotalSpent,
                     monthlyRemaining,
                     expenses: categoriesData
@@ -8350,11 +8870,13 @@ if (t.id === "ExpenseLens" || t.id === "BusinessExpenseLens") {
         // -----------------------------
         // Event Listeners
         // -----------------------------
-        elIncome.addEventListener("input", refreshExpenseLens);
-        elIncome.addEventListener("blur", () => {
-            elIncome.value = formatNumber(elIncome.value);
-            refreshExpenseLens({ sortRows: true });
-        });
+        if (isBusinessExpenseLens) {
+            elIncome.addEventListener("input", refreshExpenseLens);
+            elIncome.addEventListener("blur", () => {
+                elIncome.value = formatNumber(elIncome.value);
+                refreshExpenseLens({ sortRows: true });
+            });
+        }
 
         addBtn.addEventListener("click", () => {
             createCategoryRow(++categoryCount);
@@ -8427,13 +8949,6 @@ if (t.id === "ExpenseLens" || t.id === "BusinessExpenseLens") {
         const elGetCurrentCalendarWeek = () => elBuildCalendarWeeks().find(week => week.isCurrent) || null;
         const elSameCalendarWeek = (a, b) => Boolean(a && b && a.id === b.id);
 
-        const elParseDueDate = (val) => {
-            if (!val) return null;
-            const parts = val.split('-').map(part => parseInt(part, 10));
-            if (parts.length < 3 || parts.some(part => !Number.isFinite(part))) return null;
-            return new Date(parts[0], parts[1] - 1, parts[2]);
-        };
-
         const elGetBillFrequency = (index) => {
             const frequencyEl = elById(`CatFrequency${index}`);
             return normalizeBillFrequency(frequencyEl?.value || 'monthly');
@@ -8441,70 +8956,11 @@ if (t.id === "ExpenseLens" || t.id === "BusinessExpenseLens") {
 
         const elGetBillOccurrenceDays = (index, week = null) => {
             const dueEl = elById(`CatDue${index}`);
-            const dueDate = elParseDueDate(dueEl?.value);
-            if (!dueDate) return [];
-
-            const { year: y, month: m, days } = elMonthContext();
             const frequency = elGetBillFrequency(index);
-            const occurrences = []; // Array of Date objects
-
-            const rangeStart = week ? week.startDate : new Date(y, m, 1);
-            const rangeEnd   = week ? week.endDate   : new Date(y, m, days);
-
-            if (frequency === 'monthly') {
-                const dayNum = dueDate.getDate();
-
-                // Current month occurrence
-                const d = new Date(y, m, Math.min(dayNum, days));
-                if (d >= rangeStart && d <= rangeEnd) occurrences.push(d);
-
-                // When a week filter crosses a month boundary, also check adjacent months
-                // so bills due on e.g. May 1 appear in the Apr 26–May 2 week
-                if (week) {
-                    const wStartMonth = rangeStart.getFullYear() * 12 + rangeStart.getMonth();
-                    const wEndMonth   = rangeEnd.getFullYear()   * 12 + rangeEnd.getMonth();
-                    const curMonth    = y * 12 + m;
-
-                    if (wStartMonth < curMonth) {
-                        // Week starts in previous month
-                        const prevDays = new Date(y, m, 0).getDate();
-                        const dp = new Date(y, m - 1, Math.min(dayNum, prevDays));
-                        if (dp >= rangeStart && dp <= rangeEnd) occurrences.push(dp);
-                    }
-                    if (wEndMonth > curMonth) {
-                        // Week ends in next month
-                        const nextDays = new Date(y, m + 2, 0).getDate();
-                        const dn = new Date(y, m + 1, Math.min(dayNum, nextDays));
-                        if (dn >= rangeStart && dn <= rangeEnd) occurrences.push(dn);
-                    }
-                }
-
-                return occurrences;
-            }
-
-            if (frequency === 'weekly') {
-                const targetWeekday = dueDate.getDay();
-                const cursor = new Date(rangeStart);
-                const daysUntil = (targetWeekday - cursor.getDay() + 7) % 7;
-                cursor.setDate(cursor.getDate() + daysUntil);
-                while (cursor <= rangeEnd) {
-                    occurrences.push(new Date(cursor));
-                    cursor.setDate(cursor.getDate() + 7);
-                }
-                return occurrences;
-            }
-
-            // Bi-weekly: jump directly to the first occurrence >= rangeStart
-            const msPerDay = 86400000;
-            const diffToStart = Math.round((rangeStart - dueDate) / msPerDay);
-            const mod = ((diffToStart % 14) + 14) % 14;
-            const cursor = new Date(rangeStart);
-            cursor.setDate(cursor.getDate() + (mod === 0 ? 0 : 14 - mod));
-            while (cursor <= rangeEnd) {
-                occurrences.push(new Date(cursor));
-                cursor.setDate(cursor.getDate() + 14);
-            }
-            return occurrences;
+            return getScheduledOccurrenceDays(dueEl?.value || '', frequency, {
+                ...elMonthContext(),
+                week
+            });
         };
 
         const elApplyWeekFilter = (week, options = {}) => {
@@ -8543,8 +8999,11 @@ if (t.id === "ExpenseLens" || t.id === "BusinessExpenseLens") {
             const { monthYearLabel } = elMonthContext();
             const weeks = elBuildCalendarWeeks();
             weekPanel.innerHTML = '';
+            const personalCashflowMode = !isBusinessExpenseLens;
 
             const formatBillCount = (count) => `${count} bill${count !== 1 ? 's' : ''}`;
+            const formatIncomeHitCount = (count) => `${count} pay hit${count !== 1 ? 's' : ''}`;
+            const debitCashLabel = EL_PAYMENT_FILTERS.find(option => option.value === 'debit')?.label || 'Debit / Cash';
 
             const collectWeekBills = (week = null) => {
                 const bills = [];
@@ -8575,6 +9034,10 @@ if (t.id === "ExpenseLens" || t.id === "BusinessExpenseLens") {
                 return bills;
             };
 
+            const collectWeekIncomeHits = (week = null) => personalCashflowMode
+                ? summarizePersonalIncomeGroups(incomeGroupsState, { week }).hits
+                : [];
+
             const summarizeBills = (bills) => {
                 let total = 0;
                 let debitTotal = 0;
@@ -8594,12 +9057,73 @@ if (t.id === "ExpenseLens" || t.id === "BusinessExpenseLens") {
                 };
             };
 
-            const createSummaryMetrics = (totals) => {
+            const buildCashflowSummary = (incomeHits, bills, carry = { afterDebit: 0, afterCredit: 0 }) => {
+                const incomeTotal = incomeHits.reduce((sum, hit) => sum + hit.amount, 0);
+                const debitCashBills = bills.filter(bill => bill.paymentMethod !== 'credit');
+                const creditBills = bills.filter(bill => bill.paymentMethod === 'credit');
+                const debitCashTotal = debitCashBills.reduce((sum, bill) => sum + bill.amount, 0);
+                const creditTotal = creditBills.reduce((sum, bill) => sum + bill.amount, 0);
+                const endingAfterDebit = carry.afterDebit + incomeTotal - debitCashTotal;
+                const endingAfterCredit = carry.afterCredit + incomeTotal - debitCashTotal - creditTotal;
+
+                const events = [
+                    ...incomeHits.map((hit) => ({
+                        kind: 'income',
+                        label: hit.label,
+                        date: hit.date,
+                        frequency: hit.frequency,
+                        amount: hit.amount
+                    })),
+                    ...bills.map((bill) => ({
+                        kind: bill.paymentMethod === 'credit' ? 'credit' : bill.paymentMethod === 'debit' ? 'debit' : 'open',
+                        label: bill.frequency === 'monthly' ? bill.name : `${bill.name} (${elFrequencyLabel(bill.frequency)})`,
+                        date: bill.date,
+                        amount: bill.amount,
+                        paymentMethod: bill.paymentMethod
+                    }))
+                ].sort((a, b) => {
+                    const aDay = a.date.getTime();
+                    const bDay = b.date.getTime();
+                    if (aDay !== bDay) return aDay - bDay;
+                    const order = { income: 0, debit: 1, open: 2, credit: 3 };
+                    if ((order[a.kind] ?? 9) !== (order[b.kind] ?? 9)) {
+                        return (order[a.kind] ?? 9) - (order[b.kind] ?? 9);
+                    }
+                    return a.label.localeCompare(b.label);
+                });
+
+                return {
+                    incomeTotal,
+                    incomeCount: incomeHits.length,
+                    debitCashTotal,
+                    debitCashCount: debitCashBills.length,
+                    creditTotal,
+                    creditCount: creditBills.length,
+                    totalBills: bills.reduce((sum, bill) => sum + bill.amount, 0),
+                    billCount: bills.length,
+                    endingAfterDebit,
+                    endingAfterCredit,
+                    events
+                };
+            };
+
+            const createBillSummaryMetrics = (totals) => {
                 const metricsWrap = document.createElement('div');
                 metricsWrap.style.cssText = 'display:flex;align-items:stretch;justify-content:flex-end;gap:8px;flex-wrap:wrap;';
                 metricsWrap.appendChild(elCreateWeekMetricChip(EL_PAYMENT_METHOD_META.debit.label, totals.debitTotal, EL_PAYMENT_METHOD_META.debit));
                 metricsWrap.appendChild(elCreateWeekMetricChip(EL_PAYMENT_METHOD_META.credit.label, totals.creditTotal, EL_PAYMENT_METHOD_META.credit));
                 metricsWrap.appendChild(elCreateWeekMetricChip(EL_PAYMENT_METHOD_META.total.label, totals.total, EL_PAYMENT_METHOD_META.total, totals.count > 0 ? formatBillCount(totals.count) : ''));
+                return metricsWrap;
+            };
+
+            const createCashflowSummaryMetrics = (summary) => {
+                const metricsWrap = document.createElement('div');
+                metricsWrap.style.cssText = 'display:flex;align-items:stretch;justify-content:flex-end;gap:8px;flex-wrap:wrap;';
+                metricsWrap.appendChild(elCreateWeekMetricChip(EL_INCOME_METRIC_META.label, summary.incomeTotal, EL_INCOME_METRIC_META, summary.incomeCount > 0 ? formatIncomeHitCount(summary.incomeCount) : ''));
+                metricsWrap.appendChild(elCreateWeekMetricChip(debitCashLabel, summary.debitCashTotal, EL_PAYMENT_METHOD_META.debit, summary.debitCashCount > 0 ? formatBillCount(summary.debitCashCount) : ''));
+                metricsWrap.appendChild(elCreateWeekMetricChip(EL_PAYMENT_METHOD_META.credit.label, summary.creditTotal, EL_PAYMENT_METHOD_META.credit, summary.creditCount > 0 ? formatBillCount(summary.creditCount) : ''));
+                metricsWrap.appendChild(elCreateWeekMetricChip(EL_AFTER_DEBIT_META.label, summary.endingAfterDebit, EL_AFTER_DEBIT_META, '', { negativeMeta: EL_NEGATIVE_METRIC_META }));
+                metricsWrap.appendChild(elCreateWeekMetricChip(EL_AFTER_CREDIT_META.label, summary.endingAfterCredit, EL_AFTER_CREDIT_META, '', { negativeMeta: EL_NEGATIVE_METRIC_META }));
                 return metricsWrap;
             };
 
@@ -8609,7 +9133,7 @@ if (t.id === "ExpenseLens" || t.id === "BusinessExpenseLens") {
             titleWrap.style.cssText = 'display:flex;flex-direction:column;gap:2px;';
             const title = document.createElement('span');
             title.style.cssText = 'color:#38BDF8;font-weight:800;font-size:0.92rem;letter-spacing:0.05em;';
-            title.textContent = 'WEEKLY BILL TRACKER';
+            title.textContent = personalCashflowMode ? 'WEEKLY CASHFLOW TRACKER' : 'WEEKLY BILL TRACKER';
             const subtitle = document.createElement('span');
             subtitle.style.cssText = 'color:#94A3B8;font-size:0.70rem;font-weight:700;';
             subtitle.textContent = elActivePaymentFilter === 'all'
@@ -8626,7 +9150,9 @@ if (t.id === "ExpenseLens" || t.id === "BusinessExpenseLens") {
             weekPanel.appendChild(header);
 
             const allBills = collectWeekBills();
+            const allIncomeHits = collectWeekIncomeHits();
             const allTotals = summarizeBills(allBills);
+            const allCashflow = buildCashflowSummary(allIncomeHits, allBills);
 
             const allRow = document.createElement('div');
             allRow.style.cssText = [
@@ -8641,24 +9167,35 @@ if (t.id === "ExpenseLens" || t.id === "BusinessExpenseLens") {
             allRowLeft.style.cssText = 'display:flex;flex-direction:column;gap:3px;min-width:220px;flex:1;';
             const allRowLabel = document.createElement('span');
             allRowLabel.style.cssText = `font-weight:800;font-size:0.84rem;color:${!elActiveWeek ? '#E0F2FE' : '#38BDF8'};`;
-            allRowLabel.textContent = elActivePaymentFilter === 'all'
-                ? 'Show All Bills'
-                : `${elPaymentFilterLabel(elActivePaymentFilter)} Bills`;
+            allRowLabel.textContent = personalCashflowMode
+                ? (elActivePaymentFilter === 'all' ? 'Show Full Cashflow' : `${elPaymentFilterLabel(elActivePaymentFilter)} Cashflow`)
+                : (elActivePaymentFilter === 'all' ? 'Show All Bills' : `${elPaymentFilterLabel(elActivePaymentFilter)} Bills`);
             const allRowSub = document.createElement('span');
             allRowSub.style.cssText = `font-size:0.68rem;font-weight:700;color:${!elActiveWeek ? '#7DD3FC' : '#64748B'};`;
-            allRowSub.textContent = allTotals.count > 0
-                ? `Entire ${monthYearLabel} payment map`
-                : 'No payments scheduled in the current month';
+            allRowSub.textContent = personalCashflowMode
+                ? ((allCashflow.incomeCount > 0 || allCashflow.billCount > 0)
+                    ? `Entire ${monthYearLabel} income + bill map`
+                    : 'No income or bill events scheduled in the current month')
+                : (allTotals.count > 0
+                    ? `Entire ${monthYearLabel} payment map`
+                    : 'No payments scheduled in the current month');
             allRowLeft.appendChild(allRowLabel);
             allRowLeft.appendChild(allRowSub);
             allRow.appendChild(allRowLeft);
-            allRow.appendChild(createSummaryMetrics(allTotals));
+            allRow.appendChild(personalCashflowMode ? createCashflowSummaryMetrics(allCashflow) : createBillSummaryMetrics(allTotals));
             allRow.addEventListener('click', (e) => { e.stopPropagation(); elExpandedWeek = null; elApplyWeekFilter(null); });
             weekPanel.appendChild(allRow);
 
+            let runningCashflow = { afterDebit: 0, afterCredit: 0 };
             weeks.forEach(week => {
                 const bills = collectWeekBills(week);
                 const totals = summarizeBills(bills);
+                const incomeHits = collectWeekIncomeHits(week);
+                const cashflowSummary = buildCashflowSummary(incomeHits, bills, runningCashflow);
+                runningCashflow = {
+                    afterDebit: cashflowSummary.endingAfterDebit,
+                    afterCredit: cashflowSummary.endingAfterCredit
+                };
                 const isActive = elSameCalendarWeek(elActiveWeek, week);
                 const isExpanded = elSameCalendarWeek(elExpandedWeek, week);
 
@@ -8685,7 +9222,7 @@ if (t.id === "ExpenseLens" || t.id === "BusinessExpenseLens") {
 
                 const rightGroup = document.createElement('div');
                 rightGroup.style.cssText = 'display:flex;align-items:center;justify-content:flex-end;gap:8px;flex-wrap:wrap;flex:1 1 360px;';
-                rightGroup.appendChild(createSummaryMetrics(totals));
+                rightGroup.appendChild(personalCashflowMode ? createCashflowSummaryMetrics(cashflowSummary) : createBillSummaryMetrics(totals));
 
                 const chevron = document.createElement('span');
                 chevron.textContent = isExpanded ? '▴' : '▾';
@@ -8698,7 +9235,54 @@ if (t.id === "ExpenseLens" || t.id === "BusinessExpenseLens") {
                 const detailWrap = document.createElement('div');
                 detailWrap.style.cssText = `display:${isExpanded ? 'block' : 'none'};background:rgba(2,6,23,0.22);`;
 
-                if (totals.count > 0) {
+                if (personalCashflowMode && cashflowSummary.events.length > 0) {
+                    const colHeader = document.createElement('div');
+                    colHeader.style.cssText = 'display:flex;align-items:center;gap:10px;padding:6px 12px 5px 12px;border-bottom:1px solid rgba(56,189,248,0.12);';
+                    colHeader.innerHTML = '<span style="flex:1;font-size:0.7rem;color:#475569;font-weight:700;text-transform:uppercase;letter-spacing:0.06em;">Event</span><span style="min-width:68px;text-align:center;font-size:0.7rem;color:#475569;font-weight:700;text-transform:uppercase;letter-spacing:0.06em;">Date</span><span style="min-width:112px;text-align:center;font-size:0.7rem;color:#475569;font-weight:700;text-transform:uppercase;letter-spacing:0.06em;">Type</span><span style="min-width:92px;text-align:right;font-size:0.7rem;color:#475569;font-weight:700;text-transform:uppercase;letter-spacing:0.06em;">Amount</span>';
+                    detailWrap.appendChild(colHeader);
+
+                    cashflowSummary.events.forEach((eventItem, i) => {
+                        const eventRow = document.createElement('div');
+                        eventRow.style.cssText = `display:flex;align-items:center;gap:10px;padding:8px 12px;${i < cashflowSummary.events.length - 1 ? 'border-bottom:1px solid rgba(56,189,248,0.07);' : ''}`;
+
+                        const eventName = document.createElement('span');
+                        eventName.style.cssText = 'flex:1;font-size:0.76rem;color:#CBD5E1;font-weight:600;min-width:0;';
+                        eventName.textContent = eventItem.label;
+
+                        const eventDate = document.createElement('span');
+                        eventDate.style.cssText = 'min-width:68px;text-align:center;font-size:0.74rem;color:#94A3B8;font-weight:500;';
+                        eventDate.textContent = eventItem.date.toLocaleString('default', { month: 'short', day: 'numeric' });
+
+                        const eventType = document.createElement('span');
+                        eventType.style.cssText = 'min-width:112px;display:flex;justify-content:center;';
+                        if (eventItem.kind === 'income') {
+                            eventType.appendChild(elCreateToneBadge(EL_INCOME_METRIC_META.label, EL_INCOME_METRIC_META));
+                        } else if (eventItem.kind === 'credit') {
+                            eventType.appendChild(elCreatePaymentBadge('credit'));
+                        } else if (eventItem.kind === 'debit') {
+                            eventType.appendChild(elCreatePaymentBadge('debit'));
+                        } else {
+                            eventType.appendChild(elCreatePaymentBadge(''));
+                        }
+
+                        const amountMeta = eventItem.kind === 'income'
+                            ? EL_INCOME_METRIC_META
+                            : eventItem.kind === 'credit'
+                                ? EL_PAYMENT_METHOD_META.credit
+                                : eventItem.kind === 'debit'
+                                    ? EL_PAYMENT_METHOD_META.debit
+                                    : EL_PAYMENT_METHOD_META.unassigned;
+                        const eventAmount = document.createElement('span');
+                        eventAmount.style.cssText = `min-width:92px;text-align:right;font-size:0.78rem;font-weight:800;color:${amountMeta.muted};`;
+                        eventAmount.textContent = `${eventItem.kind === 'income' ? '+$' : '-$'}${eventItem.amount.toLocaleString()}`;
+
+                        eventRow.appendChild(eventName);
+                        eventRow.appendChild(eventDate);
+                        eventRow.appendChild(eventType);
+                        eventRow.appendChild(eventAmount);
+                        detailWrap.appendChild(eventRow);
+                    });
+                } else if (totals.count > 0) {
                     const colHeader = document.createElement('div');
                     colHeader.style.cssText = 'display:flex;align-items:center;gap:10px;padding:6px 12px 5px 12px;border-bottom:1px solid rgba(56,189,248,0.12);';
                     colHeader.innerHTML = '<span style="flex:1;font-size:0.7rem;color:#475569;font-weight:700;text-transform:uppercase;letter-spacing:0.06em;">Bill</span><span style="min-width:68px;text-align:center;font-size:0.7rem;color:#475569;font-weight:700;text-transform:uppercase;letter-spacing:0.06em;">Due</span><span style="min-width:96px;text-align:center;font-size:0.7rem;color:#475569;font-weight:700;text-transform:uppercase;letter-spacing:0.06em;">Pay Type</span><span style="min-width:84px;text-align:right;font-size:0.7rem;color:#475569;font-weight:700;text-transform:uppercase;letter-spacing:0.06em;">Amount</span>';
@@ -8736,9 +9320,13 @@ if (t.id === "ExpenseLens" || t.id === "BusinessExpenseLens") {
                 } else {
                     const empty = document.createElement('div');
                     empty.style.cssText = 'padding:12px 20px;color:#64748B;font-size:0.78rem;font-style:italic;';
-                    empty.textContent = elActivePaymentFilter === 'all'
-                        ? 'No bills with due dates set for this week.'
-                        : `No ${elPaymentFilterLabel(elActivePaymentFilter).toLowerCase()} bills with due dates set for this week.`;
+                    empty.textContent = personalCashflowMode
+                        ? (elActivePaymentFilter === 'all'
+                            ? 'No income or bill events scheduled in this week.'
+                            : `No ${elPaymentFilterLabel(elActivePaymentFilter).toLowerCase()} bill events scheduled in this week.`)
+                        : (elActivePaymentFilter === 'all'
+                            ? 'No bills with due dates set for this week.'
+                            : `No ${elPaymentFilterLabel(elActivePaymentFilter).toLowerCase()} bills with due dates set for this week.`);
                     detailWrap.appendChild(empty);
                 }
 
@@ -8836,103 +9424,16 @@ if (t.id === "ExpenseLens" || t.id === "BusinessExpenseLens") {
         incomeFlexWrap.appendChild(elRemainingBadge);
         incomeFlexWrap.appendChild(weeklyBtnTop);
 
-        // ── Split income row (personal lens only) ────────────────────────────
-        let elPrimaryIncome = null;
-        let elSpouseIncome = null;
-
         if (!isBusinessExpenseLens) {
-            const splitRow = document.createElement('div');
-            splitRow.id = elId('SplitIncomeRow');
-            splitRow.style.cssText = 'display:flex;align-items:flex-end;gap:12px;margin-bottom:10px;flex-wrap:wrap;';
+            incomeGroupsHost = document.createElement('div');
+            incomeGroupsHost.id = elId('IncomeGroups');
+            incomeGroupsHost.style.cssText = 'display:flex;flex-direction:column;gap:14px;margin-bottom:14px;';
+            incomeFlexWrap.parentElement.insertBefore(incomeGroupsHost, incomeFlexWrap.nextSibling);
 
-            const makeSplitField = (inputId, labelText) => {
-                const wrap = document.createElement('div');
-                wrap.style.cssText = 'display:flex;flex-direction:column;gap:3px;min-width:160px;';
-                const lbl = document.createElement('label');
-                lbl.htmlFor = inputId;
-                lbl.style.cssText = 'font-size:0.72rem;font-weight:800;color:#c79931;letter-spacing:0.04em;text-transform:uppercase;';
-                lbl.textContent = labelText;
-                const inputWrap = document.createElement('div');
-                inputWrap.style.cssText = 'position:relative;';
-                const inp = document.createElement('input');
-                inp.type = 'text';
-                inp.id = inputId;
-                inp.placeholder = '0';
-                inp.style.cssText = 'border:1px solid #d6c48a;border-radius:6px;padding:5px 28px 5px 8px;font-weight:700;font-size:0.875rem;color:#1E3A8A;width:100%;height:36px;box-sizing:border-box;';
-                const dollar = document.createElement('span');
-                dollar.textContent = '$';
-                dollar.style.cssText = 'position:absolute;right:8px;top:50%;transform:translateY(-50%);font-weight:700;color:#1E3A8A;pointer-events:none;';
-                const pct = document.createElement('span');
-                pct.id = inputId + 'Pct';
-                pct.style.cssText = 'font-size:0.72rem;font-weight:800;color:#64748B;margin-top:2px;display:block;';
-                pct.textContent = '0%';
-                inputWrap.appendChild(inp);
-                inputWrap.appendChild(dollar);
-                wrap.appendChild(lbl);
-                wrap.appendChild(inputWrap);
-                wrap.appendChild(pct);
-                return { wrap, inp, pct };
-            };
-
-            const makePossessive = (name) => name ? name + (name.endsWith('s') ? "' Income" : "'s Income") : 'Client Income';
-            const primaryLabel = makePossessive(clientFirstName);
-            const { wrap: primaryWrap, inp: priInp, pct: priPct } = makeSplitField(elId('PrimaryIncome'), primaryLabel);
-            elPrimaryIncome = priInp;
-            splitRow.appendChild(primaryWrap);
-
-            let spoInp = null;
-            let spoPct = null;
-            if (hasSpouse) {
-                const spouseLabel = makePossessive(spouseFirstName || 'Spouse');
-                const { wrap: spouseWrap, inp, pct } = makeSplitField(elId('SpouseIncome'), spouseLabel);
-                elSpouseIncome = inp;
-                spoInp = inp;
-                spoPct = pct;
-                splitRow.appendChild(spouseWrap);
-            }
-
-            const updateSplitIncome = () => {
-                const pri = parseFloat((priInp.value || '').replace(/,/g, '')) || 0;
-                const spo = spoInp ? (parseFloat((spoInp.value || '').replace(/,/g, '')) || 0) : 0;
-                const total = pri + spo;
-                elIncome.value = total > 0 ? total.toLocaleString() : '';
-                if (total > 0) {
-                    priPct.textContent = ((pri / total) * 100).toFixed(1) + '%';
-                    if (spoPct) spoPct.textContent = ((spo / total) * 100).toFixed(1) + '%';
-                } else {
-                    priPct.textContent = '0%';
-                    if (spoPct) spoPct.textContent = '0%';
-                }
-                refreshExpenseLens();
-            };
-
-            priInp.addEventListener('input', updateSplitIncome);
-            priInp.addEventListener('blur', () => {
-                const v = parseFloat((priInp.value || '').replace(/,/g, '')) || 0;
-                priInp.value = v > 0 ? v.toLocaleString() : '';
-                updateSplitIncome();
-            });
-            if (spoInp) {
-                spoInp.addEventListener('input', updateSplitIncome);
-                spoInp.addEventListener('blur', () => {
-                    const v = parseFloat((spoInp.value || '').replace(/,/g, '')) || 0;
-                    spoInp.value = v > 0 ? v.toLocaleString() : '';
-                    updateSplitIncome();
-                });
-            }
-
-            incomeFlexWrap.parentElement.insertBefore(splitRow, incomeFlexWrap.nextSibling);
-
-            // Total Income is now computed from split fields — lock it
             elIncome.readOnly = true;
-            const incomeMoneyWrap = elIncome.closest('.legend-money-input');
-            if (incomeMoneyWrap) {
-                incomeMoneyWrap.style.background = 'rgba(255,255,255,.82)';
-                incomeMoneyWrap.style.borderColor = 'rgba(166,128,35,.45)';
-            }
-            elIncome.style.background = 'transparent';
             elIncome.style.cursor = 'default';
-            elIncome.style.color = '#64748B';
+            elIncome.style.color = '#16a34a';
+            renderPersonalIncomeGroups();
         }
 
         await loadExpenseLensState();
@@ -8956,12 +9457,22 @@ if (t.id === "ExpenseLens" || t.id === "BusinessExpenseLens") {
             const prof = window.LegendFinanceProfile?.get?.();
             if (!prof) return;
 
-            // Only fill income if empty
-            if (elIncome && !elIncome.value) {
-                elIncome.value = prof.monthlyNet || prof.monthlyGross || '';
+            let didMutate = false;
+            const profileIncome = prof.monthlyNet || prof.monthlyGross || '';
+            const summary = syncPersonalIncomeDisplay();
+            if (summary.monthlyTotal <= 0 && parseSavingsMoney(profileIncome) > 0 && incomeGroupDefinitions[0]) {
+                const primaryGroupKey = incomeGroupDefinitions[0].key;
+                const primaryStream = incomeGroupsState[primaryGroupKey]?.[0];
+                if (primaryStream) {
+                    primaryStream.amount = profileIncome;
+                    if (!primaryStream.label) {
+                        primaryStream.label = incomeGroupDefinitions[0].fallbackStreamLabel;
+                    }
+                    renderPersonalIncomeGroups();
+                    didMutate = true;
+                }
             }
 
-            // If categories are empty or all blank, fill from profile
             const rows = Array.from(categoriesContainer.querySelectorAll(`[id^="${elId('CatRow')}"]`));
             const allBlank = rows.length === 0 || rows.every(r => {
                 const n = r.querySelector(`[id^="${elId('CatName')}"]`)?.value?.trim() || '';
@@ -8979,6 +9490,10 @@ if (t.id === "ExpenseLens" || t.id === "BusinessExpenseLens") {
                 } else {
                     createCategoryRow(++categoryCount);
                 }
+                didMutate = true;
+            }
+
+            if (didMutate) {
                 refreshExpenseLens({ sortRows: true });
             }
         };

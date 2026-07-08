@@ -1138,13 +1138,16 @@
         }
 
         function getExpenseLensIncome(source) {
+            if (String(source?.income ?? "").trim() !== "") {
+                return parseNumber(source?.income ?? 0);
+            }
             const hasSplitIncome =
                 String(source?.primaryIncome ?? "").trim() !== ""
                 || String(source?.spouseIncome ?? "").trim() !== "";
             if (hasSplitIncome) {
                 return parseNumber(source?.primaryIncome ?? 0) + parseNumber(source?.spouseIncome ?? 0);
             }
-            return parseNumber(source?.income ?? 0);
+            return 0;
         }
 
         const shouldSeedDefault = !loadedState || Object.keys(loadedState).length === 0;
