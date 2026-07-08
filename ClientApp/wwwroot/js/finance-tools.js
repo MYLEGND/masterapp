@@ -464,21 +464,26 @@ document.addEventListener("DOMContentLoaded", async function () {
 
         ['primary', 'secondary'].forEach((groupKey) => {
             const streams = Array.isArray(groups?.[groupKey]) ? groups[groupKey] : [];
+
             streams.forEach((stream, index) => {
                 const amount = parseSavingsMoney(stream?.amount);
                 if (amount <= 0) return;
 
                 const frequency = normalizeScheduledFrequency(stream?.frequency);
                 const anchorDate = String(stream?.anchorDate || '').trim() || getDefaultScheduledAnchorDate(options);
-                const dates = getScheduledOccurrenceDays(anchorDate, frequency, options);
-                if (dates.length === 0) return;
-
                 const label = String(stream?.label || '').trim()
                     || groupLabelMap[groupKey]
                     || (groupKey === 'secondary' ? `Partner Income ${index + 1}` : `Income ${index + 1}`);
 
-                groupTotals[groupKey] += amount * dates.length;
-                dates.forEach((date) => {
+                const normalizedMonthlyAmount = frequency === 'weekly'
+                    ? amount * 52 / 12
+                    : frequency === 'biweekly'
+                        ? amount * 26 / 12
+                        : amount;
+
+                groupTotals[groupKey] += normalizedMonthlyAmount;
+
+                getScheduledOccurrenceDays(anchorDate, frequency, options).forEach((date) => {
                     hits.push({
                         groupKey,
                         label,
