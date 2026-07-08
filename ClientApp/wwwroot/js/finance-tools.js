@@ -4323,7 +4323,7 @@ if (t.id === "ExpenseLens" || t.id === "BusinessExpenseLens") {
         // -----------------------------
         // Create Category Row
         // -----------------------------
-        const createCategoryRow = (index, preName = '', preAmount = '', preDue = '', preFrequency = 'monthly', prePaymentMethod = '', isTemplate = false, isPinned = false) => {
+        const createCategoryRow = (index, preName = '', preDue = '', preAmount = '', preFrequency = 'monthly', prePaymentMethod = '', isTemplate = false, isPinned = false) => {
             const div = document.createElement("div");
             div.className = "d-flex align-items-center";
             div.id = `${elId('CatRow')}${index}`;
