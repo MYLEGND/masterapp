@@ -341,71 +341,65 @@ document.addEventListener("DOMContentLoaded", async function () {
         const anchorDate = parseScheduledAnchorDate(anchorValue);
         if (!anchorDate) return [];
 
+        anchorDate.setHours(0, 0, 0, 0);
+
         const { year, month, days } = getScheduledMonthContext(options);
         const frequency = normalizeScheduledFrequency(frequencyValue);
         const week = options.week || null;
-        const occurrences = [];
         const rangeStart = week ? new Date(week.startDate) : new Date(year, month, 1);
         const rangeEnd = week ? new Date(week.endDate) : new Date(year, month, days, 23, 59, 59, 999);
 
         rangeStart.setHours(0, 0, 0, 0);
         rangeEnd.setHours(23, 59, 59, 999);
 
+        const occurrences = [];
+        const cursor = new Date(anchorDate);
+
         if (frequency === 'monthly') {
-            const dayNum = anchorDate.getDate();
-            const currentMonthDate = new Date(year, month, Math.min(dayNum, days));
-            if (currentMonthDate >= rangeStart && currentMonthDate <= rangeEnd) {
-                occurrences.push(currentMonthDate);
+            const anchorDay = anchorDate.getDate();
+
+            cursor.setDate(1);
+            while (cursor < rangeStart) {
+                cursor.setMonth(cursor.getMonth() + 1);
             }
 
-            if (week) {
-                const weekStartMonth = rangeStart.getFullYear() * 12 + rangeStart.getMonth();
-                const weekEndMonth = rangeEnd.getFullYear() * 12 + rangeEnd.getMonth();
-                const currentMonthIndex = year * 12 + month;
+            const firstMonthDays = new Date(cursor.getFullYear(), cursor.getMonth() + 1, 0).getDate();
+            cursor.setDate(Math.min(anchorDay, firstMonthDays));
 
-                if (weekStartMonth < currentMonthIndex) {
-                    const prevDays = new Date(year, month, 0).getDate();
-                    const previousDate = new Date(year, month - 1, Math.min(dayNum, prevDays));
-                    if (previousDate >= rangeStart && previousDate <= rangeEnd) {
-                        occurrences.push(previousDate);
-                    }
-                }
-
-                if (weekEndMonth > currentMonthIndex) {
-                    const nextDays = new Date(year, month + 2, 0).getDate();
-                    const nextDate = new Date(year, month + 1, Math.min(dayNum, nextDays));
-                    if (nextDate >= rangeStart && nextDate <= rangeEnd) {
-                        occurrences.push(nextDate);
-                    }
-                }
+            if (cursor < rangeStart) {
+                cursor.setMonth(cursor.getMonth() + 1, 1);
+                const nextMonthDays = new Date(cursor.getFullYear(), cursor.getMonth() + 1, 0).getDate();
+                cursor.setDate(Math.min(anchorDay, nextMonthDays));
             }
-
-            return occurrences;
-        }
-
-        if (frequency === 'weekly') {
-            const targetWeekday = anchorDate.getDay();
-            const cursor = new Date(rangeStart);
-            const daysUntil = (targetWeekday - cursor.getDay() + 7) % 7;
-            cursor.setDate(cursor.getDate() + daysUntil);
 
             while (cursor <= rangeEnd) {
-                occurrences.push(new Date(cursor));
-                cursor.setDate(cursor.getDate() + 7);
+                if (cursor >= anchorDate) occurrences.push(new Date(cursor));
+
+                cursor.setMonth(cursor.getMonth() + 1, 1);
+                const monthDays = new Date(cursor.getFullYear(), cursor.getMonth() + 1, 0).getDate();
+                cursor.setDate(Math.min(anchorDay, monthDays));
             }
 
             return occurrences;
         }
 
+        const intervalDays = frequency === 'biweekly' ? 14 : 7;
         const msPerDay = 86400000;
-        const diffToStart = Math.round((rangeStart - anchorDate) / msPerDay);
-        const mod = ((diffToStart % 14) + 14) % 14;
-        const cursor = new Date(rangeStart);
-        cursor.setDate(cursor.getDate() + (mod === 0 ? 0 : 14 - mod));
+        const daysFromAnchorToRangeStart = Math.floor(
+            (Date.UTC(rangeStart.getFullYear(), rangeStart.getMonth(), rangeStart.getDate()) -
+             Date.UTC(anchorDate.getFullYear(), anchorDate.getMonth(), anchorDate.getDate())) / msPerDay
+        );
+
+        if (daysFromAnchorToRangeStart > 0) {
+            const intervalsToAdvance = Math.ceil(daysFromAnchorToRangeStart / intervalDays);
+            cursor.setDate(cursor.getDate() + intervalsToAdvance * intervalDays);
+        }
 
         while (cursor <= rangeEnd) {
-            occurrences.push(new Date(cursor));
-            cursor.setDate(cursor.getDate() + 14);
+            if (cursor >= rangeStart && cursor >= anchorDate) {
+                occurrences.push(new Date(cursor));
+            }
+            cursor.setDate(cursor.getDate() + intervalDays);
         }
 
         return occurrences;
