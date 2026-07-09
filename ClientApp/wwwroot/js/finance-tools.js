@@ -177,7 +177,6 @@ document.addEventListener("DOMContentLoaded", async function () {
         "client";
     const scopeKey = (key) => `legend-finance:${workspaceScope}:${key}`;
     const selectedToolStateId = "__workspace__";
-    const storageGet = (key) => localStorage.getItem(scopeKey(key));
     const storageSet = (key, value) => localStorage.setItem(scopeKey(key), value);
     const storageRemove = (key) => localStorage.removeItem(scopeKey(key));
     const canUseServerState = clientUserId.length > 0 || clientProfileId.length > 0;
@@ -464,6 +463,8 @@ document.addEventListener("DOMContentLoaded", async function () {
 
         ['primary', 'secondary'].forEach((groupKey) => {
             const streams = Array.isArray(groups?.[groupKey]) ? groups[groupKey] : [];
+            const baseLabel = groupLabelMap[groupKey]
+                || (groupKey === 'secondary' ? 'Partner Income' : 'Income');
 
             streams.forEach((stream, index) => {
                 const amount = parseSavingsMoney(stream?.amount);
@@ -472,8 +473,7 @@ document.addEventListener("DOMContentLoaded", async function () {
                 const frequency = normalizeScheduledFrequency(stream?.frequency);
                 const anchorDate = String(stream?.anchorDate || '').trim() || getDefaultScheduledAnchorDate(options);
                 const label = String(stream?.label || '').trim()
-                    || groupLabelMap[groupKey]
-                    || (groupKey === 'secondary' ? `Partner Income ${index + 1}` : `Income ${index + 1}`);
+                    || (streams.length > 1 ? `${baseLabel} Stream ${index + 1}` : baseLabel);
 
                 const normalizedMonthlyAmount = frequency === 'weekly'
                     ? amount * 52 / 12
@@ -616,9 +616,9 @@ document.addEventListener("DOMContentLoaded", async function () {
 
     async function loadPersistedState(key) {
         const keys = getStateKeys(key);
-        const preferLocalState = rawStateFirstToolIds.has(key);
+        const allowLegacyLocalFirst = !canUseServerState && rawStateFirstToolIds.has(key);
 
-        if (preferLocalState) {
+        if (allowLegacyLocalFirst) {
             for (const candidateKey of keys) {
                 const localState = readLocalPersistedState(candidateKey);
                 if (localState !== null) {
@@ -654,6 +654,9 @@ document.addEventListener("DOMContentLoaded", async function () {
             }
         }
 
+        // Server-backed finance pages use the database as the source of truth.
+        // Local storage is only a cache/fallback so old blank browser state cannot
+        // overwrite valid saved rows after reloads, deploys, or app restarts.
         for (const candidateKey of keys) {
             const state = readLocalPersistedState(candidateKey);
             if (state !== null) {
@@ -861,12 +864,6 @@ document.addEventListener("DOMContentLoaded", async function () {
         btn.addEventListener('click', onClear);
     }
 
-    // ------------------- Tool Box Sizing -------------------
-    // ⚡ Adjust these values if you want a different default size
-    const TOOL_WIDTH = 700;   // width in pixels
-    const TOOL_HEIGHT = 550;  // height in pixels
-    const TOOL_PADDING = 100; // padding inside the box
-
     function applyToolBoxStyles(container) {
         if (!container) return;
 
@@ -935,11 +932,6 @@ document.addEventListener("DOMContentLoaded", async function () {
         option.textContent = tool.name;
         dropdown.appendChild(option);
     });
-
-
-    function parsePercent(value) {
-        return parseFloat(value.replace('%', '')) / 100 || 0;
-    }
     function formatDollar(value) {
         return `$${(+value || 0).toLocaleString()}`;
     }
@@ -3496,7 +3488,6 @@ if (t.id === "ExpenseLens" || t.id === "BusinessExpenseLens") {
         const addBtn = elById("AddCat");
         const elTips = elById("Tips");
         const elMargin = elById("Margin");
-        const elMarginWrap = elById("MarginWrap");
         const elActionMeta = elById("ActionMeta");
         const elIncome = elById("Income");
        
@@ -3649,8 +3640,7 @@ if (t.id === "ExpenseLens" || t.id === "BusinessExpenseLens") {
             const definitions = [
                 {
                     key: 'primary',
-                    label: makePossessiveIncomeLabel(clientFirstName),
-                    fallbackStreamLabel: clientFirstName ? `${clientFirstName}${clientFirstName.endsWith('s') ? "'" : "'s"} Pay` : 'Primary Pay'
+                    label: makePossessiveIncomeLabel(clientFirstName)
                 }
             ];
 
@@ -3658,8 +3648,7 @@ if (t.id === "ExpenseLens" || t.id === "BusinessExpenseLens") {
                 const partnerName = spouseFirstName || 'Partner';
                 definitions.push({
                     key: 'secondary',
-                    label: makePossessiveIncomeLabel(partnerName),
-                    fallbackStreamLabel: `${partnerName}${partnerName.endsWith('s') ? "'" : "'s"} Pay`
+                    label: makePossessiveIncomeLabel(partnerName)
                 });
             }
 
@@ -3678,6 +3667,22 @@ if (t.id === "ExpenseLens" || t.id === "BusinessExpenseLens") {
             return `${groupKey}-${Date.now().toString(36)}-${incomeStreamSeed.toString(36)}`;
         };
 
+        const getLegacyIncomeStreamAutoLabel = (groupKey) => {
+            if (groupKey === 'secondary') {
+                const partnerName = spouseFirstName || 'Partner';
+                return `${partnerName}${partnerName.endsWith('s') ? "'" : "'s"} Pay`;
+            }
+
+            return clientFirstName
+                ? `${clientFirstName}${clientFirstName.endsWith('s') ? "'" : "'s"} Pay`
+                : 'Primary Pay';
+        };
+
+        const normalizeIncomeStreamLabel = (groupKey, value) => {
+            const label = String(value || '').trim();
+            return label === getLegacyIncomeStreamAutoLabel(groupKey) ? '' : label;
+        };
+
         const normalizeIncomeAnchorDate = (value) => {
             const parsed = parseScheduledAnchorDate(value);
             if (!parsed) return getDefaultScheduledAnchorDate();
@@ -3686,7 +3691,7 @@ if (t.id === "ExpenseLens" || t.id === "BusinessExpenseLens") {
 
         const createIncomeStream = (groupKey, overrides = {}) => ({
             id: String(overrides.id || '').trim() || createIncomeStreamId(groupKey),
-            label: String(overrides.label || '').trim(),
+            label: normalizeIncomeStreamLabel(groupKey, overrides.label),
             amount: String(overrides.amount || '').trim(),
             frequency: normalizeScheduledFrequency(overrides.frequency || 'monthly'),
             anchorDate: normalizeIncomeAnchorDate(overrides.anchorDate || getDefaultScheduledAnchorDate())
@@ -3902,15 +3907,6 @@ if (t.id === "ExpenseLens" || t.id === "BusinessExpenseLens") {
                 nextState[definition.key] = sanitizeIncomeStreamList(definition.key, persistedGroups[definition.key]);
             });
 
-            if (!(state?.incomeStreams && typeof state.incomeStreams === 'object')) {
-                incomeGroupDefinitions.forEach((definition) => {
-                    const firstStream = nextState[definition.key]?.[0];
-                    if (firstStream && !firstStream.label && parseSavingsMoney(firstStream.amount) > 0) {
-                        firstStream.label = definition.fallbackStreamLabel;
-                    }
-                });
-            }
-
             return nextState;
         };
 
@@ -3968,6 +3964,8 @@ if (t.id === "ExpenseLens" || t.id === "BusinessExpenseLens") {
 
             incomeGroupsHost.innerHTML = '';
             incomeGroupRefs = new Map();
+            const hostWidth = incomeGroupsHost.getBoundingClientRect().width || window.innerWidth || 0;
+            const useTwoColumnStreamRows = hostWidth >= 760;
 
             incomeGroupDefinitions.forEach((definition) => {
                 const groupStreams = sanitizeIncomeStreamList(definition.key, incomeGroupsState[definition.key]);
@@ -4013,27 +4011,22 @@ if (t.id === "ExpenseLens" || t.id === "BusinessExpenseLens") {
                 summaryCard.appendChild(addBtn);
 
                 const streamsWrap = document.createElement('div');
-                streamsWrap.style.cssText = 'display:flex;flex-direction:column;gap:8px;min-width:0;';
+                streamsWrap.style.cssText = `display:grid;grid-template-columns:${useTwoColumnStreamRows ? 'repeat(2, minmax(0, 1fr))' : 'minmax(0, 1fr)'};gap:10px;min-width:0;`;
 
                 groupStreams.forEach((stream, streamIndex) => {
                     const streamCard = document.createElement('div');
-                    streamCard.style.cssText = 'display:flex;align-items:center;gap:8px;flex-wrap:wrap;min-width:0;padding:9px 12px;border-radius:14px;border:1.5px solid rgba(166,128,35,.22);background:linear-gradient(180deg, rgba(255,255,255,.055), rgba(255,255,255,.02));box-shadow:inset 0 1px 0 rgba(255,255,255,.03);';
-
-                    const streamHead = document.createElement('div');
-                    streamHead.style.cssText = 'display:flex;align-items:center;min-width:0;flex:0 0 auto;';
+                    streamCard.style.cssText = 'display:grid;grid-template-columns:auto minmax(0,.98fr) minmax(0,.98fr) minmax(0,1.08fr) auto;align-items:center;gap:8px;min-width:0;padding:10px 12px;border-radius:14px;border:1.5px solid rgba(166,128,35,.22);background:linear-gradient(180deg, rgba(255,255,255,.055), rgba(255,255,255,.02));box-shadow:inset 0 1px 0 rgba(255,255,255,.03);';
 
                     const streamTitle = document.createElement('span');
-                    streamTitle.style.cssText = 'display:inline-flex;align-items:center;justify-content:center;min-width:76px;height:34px;padding:0 10px;border-radius:10px;border:1px solid rgba(96,165,250,.18);background:rgba(30,58,138,.12);font-size:0.66rem;font-weight:800;letter-spacing:0.08em;color:#BFDBFE;text-transform:uppercase;';
+                    streamTitle.style.cssText = 'display:inline-flex;align-items:center;justify-content:center;min-width:92px;height:38px;padding:0 10px;border-radius:10px;border:1px solid rgba(96,165,250,.18);background:rgba(30,58,138,.12);font-size:0.66rem;font-weight:800;letter-spacing:0.08em;color:#BFDBFE;text-transform:uppercase;';
                     streamTitle.textContent = `Stream ${streamIndex + 1}`;
-
-                    streamHead.appendChild(streamTitle);
 
                     let removeBtn = null;
                     if (groupStreams.length > 1) {
                         removeBtn = document.createElement('button');
                         removeBtn.type = 'button';
                         removeBtn.textContent = '×';
-                        removeBtn.style.cssText = 'border:none;background:transparent;color:#64748B;font-size:1rem;font-weight:800;line-height:1;padding:0 2px;margin-left:auto;flex:0 0 auto;';
+                        removeBtn.style.cssText = 'border:none;background:transparent;color:#64748B;font-size:1rem;font-weight:800;line-height:1;padding:0 2px;justify-self:end;';
                         removeBtn.addEventListener('click', () => {
                             incomeGroupsState[definition.key].splice(streamIndex, 1);
                             renderPersonalIncomeGroups();
@@ -4041,31 +4034,15 @@ if (t.id === "ExpenseLens" || t.id === "BusinessExpenseLens") {
                         });
                     }
 
-                    const nameInput = document.createElement('input');
-                    nameInput.type = 'text';
-                    nameInput.className = 'form-control';
-                    nameInput.placeholder = 'Income label';
-                    nameInput.value = stream.label;
-                    nameInput.style.cssText = 'height:38px;flex:1 1 220px;min-width:160px;padding:6px 12px;font-size:0.78rem;font-weight:700;color:#1E3A8A;';
-                    nameInput.addEventListener('input', () => {
-                        incomeGroupsState[definition.key][streamIndex].label = nameInput.value;
-                        refreshExpenseLensViews({ sortRows: false });
-                    });
-                    nameInput.addEventListener('blur', () => {
-                        nameInput.value = nameInput.value.trim();
-                        incomeGroupsState[definition.key][streamIndex].label = nameInput.value;
-                        refreshExpenseLensViews({ sortRows: false });
-                    });
-
                     const amountWrap = document.createElement('div');
-                    amountWrap.style.cssText = 'position:relative;flex:0 0 108px;min-width:108px;';
+                    amountWrap.style.cssText = 'position:relative;min-width:0;';
 
                     const amountInput = document.createElement('input');
                     amountInput.type = 'text';
                     amountInput.className = 'form-control';
                     amountInput.placeholder = '0';
                     amountInput.value = stream.amount;
-                    amountInput.style.cssText = 'height:38px;padding:6px 10px 6px 24px;font-size:0.78rem;font-weight:800;color:#1E3A8A;text-align:right;';
+                    amountInput.style.cssText = 'height:38px;width:100%;padding:6px 10px 6px 24px;font-size:0.78rem;font-weight:800;color:#1E3A8A;text-align:right;';
                     amountInput.addEventListener('input', () => {
                         incomeGroupsState[definition.key][streamIndex].amount = amountInput.value;
                         refreshExpenseLensViews({ sortRows: false });
@@ -4084,7 +4061,7 @@ if (t.id === "ExpenseLens" || t.id === "BusinessExpenseLens") {
 
                     const frequencySelect = document.createElement('select');
                     frequencySelect.className = 'form-select';
-                    frequencySelect.style.cssText = 'height:38px;flex:0 0 118px;min-width:118px;padding:4px 24px 4px 8px;font-size:0.74rem;font-weight:800;color:#1E3A8A;';
+                    frequencySelect.style.cssText = 'height:38px;min-width:0;padding:4px 24px 4px 8px;font-size:0.74rem;font-weight:800;color:#1E3A8A;';
                     EL_BILL_FREQUENCIES.forEach((option) => {
                         const opt = document.createElement('option');
                         opt.value = option.value;
@@ -4102,20 +4079,23 @@ if (t.id === "ExpenseLens" || t.id === "BusinessExpenseLens") {
                     dateInput.type = 'date';
                     dateInput.className = 'form-control';
                     dateInput.value = normalizeIncomeAnchorDate(stream.anchorDate);
-                    dateInput.style.cssText = 'height:38px;flex:0 0 140px;min-width:140px;padding:4px 8px;font-size:0.74rem;font-weight:800;color:#1E3A8A;';
+                    dateInput.style.cssText = 'height:38px;min-width:0;padding:4px 8px;font-size:0.74rem;font-weight:800;color:#1E3A8A;';
                     dateInput.addEventListener('change', () => {
                         incomeGroupsState[definition.key][streamIndex].anchorDate = normalizeIncomeAnchorDate(dateInput.value);
                         dateInput.value = incomeGroupsState[definition.key][streamIndex].anchorDate;
                         refreshExpenseLensViews({ sortRows: false });
                     });
 
-                    streamCard.appendChild(streamHead);
-                    streamCard.appendChild(nameInput);
+                    streamCard.appendChild(streamTitle);
                     streamCard.appendChild(amountWrap);
                     streamCard.appendChild(frequencySelect);
                     streamCard.appendChild(dateInput);
                     if (removeBtn) {
                         streamCard.appendChild(removeBtn);
+                    } else {
+                        const streamSpacer = document.createElement('span');
+                        streamSpacer.style.cssText = 'display:block;width:18px;height:18px;';
+                        streamCard.appendChild(streamSpacer);
                     }
                     streamsWrap.appendChild(streamCard);
                 });
@@ -4183,9 +4163,6 @@ if (t.id === "ExpenseLens" || t.id === "BusinessExpenseLens") {
                             const profileIncome = prof.monthlyNet || prof.monthlyGross || '';
                             if (summary.monthlyTotal <= 0 && parseSavingsMoney(profileIncome) > 0 && incomeGroupDefinitions[0]) {
                                 incomeGroupsState[incomeGroupDefinitions[0].key][0].amount = profileIncome;
-                                if (!incomeGroupsState[incomeGroupDefinitions[0].key][0].label) {
-                                    incomeGroupsState[incomeGroupDefinitions[0].key][0].label = incomeGroupDefinitions[0].fallbackStreamLabel;
-                                }
                                 renderPersonalIncomeGroups();
                             }
                         } else if (!elIncome.value) {
@@ -4207,8 +4184,6 @@ if (t.id === "ExpenseLens" || t.id === "BusinessExpenseLens") {
                 refreshExpenseLens({ sortRows: true });
             } catch (e) { console.error(e); }
         };
-
-        const clearExpenseLensState = () => clearPersistedState(expenseLensToolStateId);
 
         // Active week filter (null = show all)
         let elActiveWeek = null;
@@ -4765,8 +4740,6 @@ if (t.id === "ExpenseLens" || t.id === "BusinessExpenseLens") {
                 monthYearLabel: now.toLocaleString('default', { month: 'long', year: 'numeric' })
             };
         };
-
-        const elDaysInMonth = () => elMonthContext().days;
 
         const elBuildCalendarWeeks = () => {
             const ctx = elMonthContext();
@@ -5329,9 +5302,6 @@ if (t.id === "ExpenseLens" || t.id === "BusinessExpenseLens") {
                 const primaryStream = incomeGroupsState[primaryGroupKey]?.[0];
                 if (primaryStream) {
                     primaryStream.amount = profileIncome;
-                    if (!primaryStream.label) {
-                        primaryStream.label = incomeGroupDefinitions[0].fallbackStreamLabel;
-                    }
                     renderPersonalIncomeGroups();
                     didMutate = true;
                 }

@@ -52,36 +52,6 @@
         "cashFlow.debtsAndTaxCosts"
     ]);
 
-    const ACTIONS = [
-        {
-            key: "protect-income",
-            label: "Protect Income",
-            detail: "Review the protection plan",
-            section: ".llbs-protection",
-            routeOption: "protectionRoute"
-        },
-        {
-            key: "debt-pressure",
-            label: "Eliminate Debt Pressure",
-            detail: "Open Debt Clarity",
-            toolId: "DebtClarity",
-            section: ".llbs-gaps-panel"
-        },
-        {
-            key: "optimize-taxes",
-            label: "Optimize Taxes",
-            detail: "Review the tax burden",
-            section: "#llbsTaxProfile"
-        },
-        {
-            key: "asset-growth",
-            label: "Build Asset Growth Plan",
-            detail: "Open Wealth Forecast",
-            toolId: "WealthForecast",
-            section: ".llbs-card-section[data-tone='assets']"
-        }
-    ];
-
     const ADVISOR_SCRIPTS = {
         overview: {
             title: "Open the Meeting",
@@ -768,33 +738,6 @@
         `;
     }
 
-    function renderActionStrip(options = {}) {
-        return `
-            <section class="llbs-action-strip" aria-label="Recommended next actions">
-                <div class="llbs-action-copy">
-                    <div class="llbs-section-title">Based on your current position</div>
-                    <p>Choose the next strategy path while the numbers are fresh.</p>
-                </div>
-                <div class="llbs-action-buttons">
-                    ${ACTIONS.map(action => {
-                        const route = action.routeOption ? (options[action.routeOption] || "") : "";
-                        return `
-                            <button type="button"
-                                    class="llbs-action-btn"
-                                    data-llbs-action="${action.key}"
-                                    data-tool-id="${action.toolId || ""}"
-                                    data-section="${action.section || ""}"
-                                    data-route="${route}">
-                                <span>${action.label}</span>
-                                <small>${action.detail}</small>
-                            </button>
-                        `;
-                    }).join("")}
-                </div>
-            </section>
-        `;
-    }
-
     function renderAdvisorPanel() {
         return `
             <section class="llbs-advisor-panel" data-llbs-advisor-panel hidden>
@@ -1301,17 +1244,6 @@
             if (button) button.hidden = false;
         }
 
-        function focusSection(selector) {
-            const section = selector ? root.querySelector(selector) : null;
-            if (!section) return false;
-            window.clearTimeout(focusPulseTimer);
-            root.querySelectorAll(".llbs-focus-pulse").forEach(el => el.classList.remove("llbs-focus-pulse"));
-            section.classList.add("llbs-focus-pulse");
-            section.scrollIntoView({ behavior: "smooth", block: "center" });
-            focusPulseTimer = window.setTimeout(() => section.classList.remove("llbs-focus-pulse"), 1800);
-            return true;
-        }
-
         function setAdvisorView(mode) {
             const isAdvisor = mode === "advisor";
             root.dataset.advisorMode = isAdvisor ? "advisor" : "client";
@@ -1333,30 +1265,6 @@
             if (talkEl) talkEl.textContent = script.talk;
             if (questionEl) questionEl.textContent = script.question;
             if (objectionEl) objectionEl.textContent = script.objection;
-        }
-
-        function runAction(button) {
-            persistNow();
-
-            const route = button.dataset.route || "";
-            if (route) {
-                window.location.href = route;
-                return;
-            }
-
-            const toolId = button.dataset.toolId || "";
-            const dropdown = document.getElementById("budgetDropdown");
-            if (toolId && dropdown && Array.from(dropdown.options).some(option => option.value === toolId)) {
-                dropdown.value = toolId;
-                dropdown.dispatchEvent(new Event("change", { bubbles: true }));
-                return;
-            }
-
-            if (button.dataset.section === "#llbsTaxProfile") {
-                setTaxProfileExpanded(true);
-            }
-
-            focusSection(button.dataset.section || "");
         }
 
         function setTaxProfileExpanded(expanded) {
@@ -1394,12 +1302,6 @@
                     });
                 }
                 scheduleSave();
-                return;
-            }
-
-            const actionButton = event.target.closest("[data-llbs-action]");
-            if (actionButton) {
-                runAction(actionButton);
                 return;
             }
 
