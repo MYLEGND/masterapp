@@ -300,79 +300,6 @@ footer.footer {
 }
 input[type="number"] { -moz-appearance: textfield; -webkit-appearance: none; appearance: none; margin: 0; }
 
-/* ------------------------------ Finance Tools — all tools theme ------------------------------ */
-#budget-embed .networth-tool:not(.el-shell) input,
-#budget-embed .networth-tool:not(.el-shell) select,
-#budget-embed .networth-tool:not(.el-shell) textarea,
-#budget-embed .networth-tool:not(.el-shell) input.form-control,
-#budget-embed .networth-tool:not(.el-shell) select.form-control,
-#budget-embed .networth-tool:not(.el-shell) .form-control,
-#budget-embed .networth-tool:not(.el-shell) .form-select,
-.networth-tool:not(.el-shell) input,
-.networth-tool:not(.el-shell) select,
-.networth-tool:not(.el-shell) textarea,
-.networth-tool:not(.el-shell) input.form-control,
-.networth-tool:not(.el-shell) select.form-control,
-.networth-tool:not(.el-shell) .form-control,
-.networth-tool:not(.el-shell) .form-select {
-    border: 1.5px solid rgba(166,128,35,.38) !important;
-    border-radius: 10px !important;
-    background: rgba(255,255,255,.92) !important;
-    box-shadow: inset 0 1px 0 rgba(255,255,255,.05) !important;
-    transition: border-color .15s ease, box-shadow .15s ease;
-}
-#budget-embed .networth-tool:not(.el-shell) input::placeholder,
-#budget-embed .networth-tool:not(.el-shell) textarea::placeholder,
-.networth-tool:not(.el-shell) input::placeholder,
-.networth-tool:not(.el-shell) textarea::placeholder {
-    color: #64748b !important;
-    font-weight: 600;
-}
-#budget-embed .networth-tool:not(.el-shell) input:focus,
-#budget-embed .networth-tool:not(.el-shell) select:focus,
-#budget-embed .networth-tool:not(.el-shell) textarea:focus,
-#budget-embed .networth-tool:not(.el-shell) .form-control:focus,
-#budget-embed .networth-tool:not(.el-shell) .form-select:focus,
-.networth-tool:not(.el-shell) input:focus,
-.networth-tool:not(.el-shell) select:focus,
-.networth-tool:not(.el-shell) textarea:focus,
-.networth-tool:not(.el-shell) .form-control:focus,
-.networth-tool:not(.el-shell) .form-select:focus {
-    outline: none !important;
-    border-color: #ddb457 !important;
-    box-shadow: 0 0 0 3px rgba(221,180,87,.16) !important;
-}
-
-/* ------------------------------ Gold Themed Buttons ------------------------------ */
-.btn-outline-gold {
-    color: #f4d890;
-    background: linear-gradient(155deg, #0d1f42 0%, #0a1630 100%);
-    border: 1.5px solid rgba(199,153,49,.55);
-    border-radius: 10px;
-    box-shadow: 0 4px 12px rgba(0,0,0,.22);
-    transition: all 0.2s ease;
-}
-.btn-outline-gold:hover {
-    border-color: #ddb457;
-    box-shadow: 0 6px 18px rgba(0,0,0,.32);
-    color: #f4dc98;
-}
-
-/* ------------------------------ Budget Dropdown ------------------------------ */
-#budgetDropdown {
-    transition: all 0.2s ease;
-    border: 1.5px solid rgba(199,153,49,.55);
-    border-radius: 10px;
-    padding: 0.35rem 0.75rem;
-    font-weight: 600;
-    background: linear-gradient(155deg, #0d1f42 0%, #0a1630 100%);
-    color: #f4d890;
-    cursor: pointer;
-}
-#budgetDropdown:hover { border-color: #ddb457; box-shadow: 0 4px 12px rgba(0,0,0,.22); }
-#budgetDropdown option { background: #0f1d38; color: #f8fafc; padding: 6px 10px; }
-#budgetDropdown option:last-child { border-bottom: none; }
-
 /* ------------------------------ Output Spans / Highlights ------------------------------ */
 span[id^="elOut"],
 #wpEarnings, #wpSavings, #aVal, #lVal, #nVal, #cfResult, #dcResult, #saOut,
@@ -407,9 +334,6 @@ input.form-control:focus {
 }
 
 
-/* ------------------------------ Expense Lens Buttons ------------------------------ */
-#elDelCat { margin-left: 20px; }
-
 /* ===============================
    CLEAR BUTTON – FINAL OVERRIDE
    =============================== */
@@ -427,20 +351,6 @@ input.form-control:focus {
 /* Kill Bootstrap btn-sm shrinkage */
 .clear-btn.btn-sm {
     padding: 6px 14px !important;
-}
-
-/* Finance tool clear buttons: gentler hover motion */
-.finance-shell .clear-btn {
-    transform: translateY(0) !important;
-    top: 12px !important;
-    right: 12px !important;
-    transition: transform 0.08s ease, box-shadow 0.12s ease,
-                background-color 0.14s ease, color 0.14s ease;
-}
-
-.finance-shell .clear-btn:hover {
-    transform: translateY(-1px) !important;
-    box-shadow: 0 6px 12px rgba(0,0,0,0.16) !important;
 }
 
 /* ============================== CLIENT PORTAL WHITE PREMIUM THEME ============================== */
@@ -672,7 +582,6 @@ body .btn-warning:hover {
     color: #2a1b05 !important;
 }
 
-body .btn-outline-gold,
 body .legend-btn-outline,
 body .btn-edit,
 body .preview-open,

@@ -3813,12 +3813,6 @@ body.finance-dual-tools-open .layout-content {
     max-width:380px;
 }
 
-.lf-ui-015 {
-    font-size:1.1rem;
-    color:#d4a820;
-    cursor:default;
-}
-
 .lf-ui-016 {
     font-size:0.72rem;
     color:#94A3B8;
@@ -3960,26 +3954,6 @@ body.finance-dual-tools-open .layout-content {
     min-width:200px;
 }
 
-.lf-ui-034 {
-    border:2px solid rgba(166,128,35,0.45);
-    background:rgba(166,128,35,0.06);
-    font-weight:800;
-    font-size:1.1rem;
-    color:#d4a820;
-    padding-right:30px;
-    cursor:default;
-}
-
-.lf-ui-035 {
-    background:linear-gradient(180deg,rgba(255,255,255,.055),rgba(255,255,255,.02));
-    border-radius:12px;
-    overflow:hidden;
-    border:1px solid rgba(166,128,35,.22);
-    font-weight:700;
-    font-size:1.1rem;
-    color:#f8fafc;
-}
-
 .lf-ui-036 {
     background:rgba(166,128,35,.15);
 }
@@ -4018,9 +3992,11 @@ body.finance-dual-tools-open .layout-content {
 }
 
 .lf-ui-043 {
-    font-style:italic;
-    color:#555;
     margin-bottom:18px;
+    color:#a8bddb;
+    font-size:1.04rem;
+    font-style:italic;
+    line-height:1.5;
 }
 
 .lf-ui-044 {
@@ -4028,40 +4004,27 @@ body.finance-dual-tools-open .layout-content {
     margin-bottom:15px;
 }
 
-.lf-ui-045 {
-    border:2px solid rgba(166,128,35,0.45);
-    background:rgba(166,128,35,0.06);
-    font-weight:800;
-    color:#d4a820;
-    padding-right:30px;
-    cursor:default;
-}
-
 .lf-ui-046 {
     margin-bottom:6px;
 }
 
 .lf-ui-047 {
-    border:1px solid #d6c48a;
-    box-shadow:inset 0 0 6px rgba(166,128,35,0.15);
-    font-weight:700;
-    color:#1E3A8A;
-    background:rgba(255,255,255,.94);
+    font-weight:800;
+    color:#1e3a8a;
     cursor:default;
 }
 
 .lf-ui-048 {
-    border:1px solid #d6c48a;
-    box-shadow:inset 0 0 6px rgba(166,128,35,0.15);
-    font-weight:700;
-    color:#1E3A8A;
+    font-weight:800;
+    color:#1e3a8a;
 }
 
 .lf-ui-049 {
-    background:linear-gradient(180deg,rgba(255,255,255,.055),rgba(255,255,255,.02));
-    border-radius:12px;
-    padding:14px;
-    border:1px solid rgba(166,128,35,.22);
+    padding:16px 18px;
+    border:1px solid rgba(56,189,248,.18);
+    border-radius:18px;
+    background:linear-gradient(180deg,rgba(15,29,58,.96),rgba(9,20,38,.98));
+    box-shadow:0 18px 30px rgba(2,8,23,.22), inset 0 1px 0 rgba(255,255,255,.04);
     margin-bottom:10px;
     color:#f8fafc;
 }
@@ -4080,15 +4043,13 @@ body.finance-dual-tools-open .layout-content {
 }
 
 .lf-ui-053 {
-    color:#a68023;
-    font-weight:700;
+    color:#f2c45d;
+    font-weight:800;
 }
 
 .lf-ui-054 {
-    border:2px solid rgba(166,128,35,0.45);
-    background:rgba(166,128,35,0.06);
     font-weight:800;
-    color:#d4a820;
+    color:#1e3a8a;
     cursor:default;
 }
 
@@ -4098,26 +4059,17 @@ body.finance-dual-tools-open .layout-content {
 }
 
 .lf-ui-056 {
-    background:linear-gradient(180deg,rgba(255,255,255,.055),rgba(255,255,255,.02));
-    border-radius:12px;
-    overflow:hidden;
-    border:1px solid rgba(166,128,35,.22);
-    color:#f8fafc;
+    margin-top:18px;
 }
 
 .lf-ui-057 {
     width:45%;
-    background:rgba(0,0,0,.2);
-    color:#a68023;
 }
 
-.lf-ui-058 {
-    background:rgba(0,0,0,.2);
-    color:#a68023;
-}
+.lf-ui-058 {}
 
 .lf-ui-059 {
-    color:#1E3A8A;
+    color:#1e3a8a;
     font-weight:800;
 }
 
@@ -4873,220 +4825,10 @@ body.finance-dual-tools-open .layout-content {
     font-weight:700;
 }
 
-.lf-ui-184 {
-    background:rgba(255,255,255,.08);
-    border-radius:12px;
-    overflow:hidden;
-    border:1px solid rgba(166,128,35,.22);
-    font-weight:700;
-    font-size:1.1rem;
-    color:#f8fafc;
-}
-
-.lf-ui-185 {
-    color:#f4d890;
-    width:50%;
-}
-
-.lf-ui-186 {
-    font-weight:700;
-    margin-top:8px;
-    color:#f8fafc;
-}
-
-.lf-ui-187 {
-    color:#f4d890;
-    width:40%;
-}
-
-.lf-ui-188 {
-    margin-top:0;
-    padding:12px 16px;
-    border-radius:6px;
-    border:2px solid rgba(166,128,35,0.45);
-    background:rgba(166,128,35,0.10);
-    font-weight:700;
-    font-size:0.875rem;
-    color:#d4a820;
-    letter-spacing:0.01em;
-    font-style:italic;
-    transition:background .2s,color .2s,border-color .2s;
-}
-
-.lf-ui-189 {
-    margin-bottom:6px;
-    color:#f8fafc;
-}
-
 .legend-finance-tool-shell {
     box-sizing: border-box;
     margin: 0 auto 50px auto;
     overflow: visible;
-}
-
-#budget-embed .networth-tool:not(.el-shell) input,
-#budget-embed .networth-tool:not(.el-shell) select,
-#budget-embed .networth-tool:not(.el-shell) textarea,
-#budget-embed .networth-tool:not(.el-shell) input.form-control,
-#budget-embed .networth-tool:not(.el-shell) select.form-control,
-#budget-embed .networth-tool:not(.el-shell) .form-control,
-#budget-embed .networth-tool:not(.el-shell) .form-select,
-.networth-tool:not(.el-shell) input,
-.networth-tool:not(.el-shell) select,
-.networth-tool:not(.el-shell) textarea,
-.networth-tool:not(.el-shell) input.form-control,
-.networth-tool:not(.el-shell) select.form-control,
-.networth-tool:not(.el-shell) .form-control,
-.networth-tool:not(.el-shell) .form-select {
-    background-color: rgba(255, 255, 255, .92);
-    border: 1.5px solid rgba(166, 128, 35, .38);
-    border-radius: 10px;
-    box-shadow: inset 0 1px 0 rgba(255, 255, 255, .05);
-    transition: border-color .15s ease, box-shadow .15s ease;
-}
-
-#budget-embed .networth-tool:not(.el-shell) input:focus,
-#budget-embed .networth-tool:not(.el-shell) select:focus,
-#budget-embed .networth-tool:not(.el-shell) textarea:focus,
-#budget-embed .networth-tool:not(.el-shell) .form-control:focus,
-#budget-embed .networth-tool:not(.el-shell) .form-select:focus,
-.networth-tool:not(.el-shell) input:focus,
-.networth-tool:not(.el-shell) select:focus,
-.networth-tool:not(.el-shell) textarea:focus,
-.networth-tool:not(.el-shell) .form-control:focus,
-.networth-tool:not(.el-shell) .form-select:focus {
-    border-color: #ddb457;
-    box-shadow: 0 0 0 3px rgba(221, 180, 87, .16);
-    outline: none;
-}
-
-#budget-embed .networth-tool:not(.el-shell) input[type="date"],
-.networth-tool:not(.el-shell) input[type="date"] {
-    color-scheme: light;
-}
-
-#budget-embed .networth-tool:not(.el-shell) .btn-outline-gold,
-.networth-tool:not(.el-shell) .btn-outline-gold {
-    background: linear-gradient(155deg, #0d1f42 0%, #0a1630 100%);
-    border: 1.5px solid rgba(199, 153, 49, .55);
-    border-radius: 10px;
-    box-shadow: 0 4px 12px rgba(0, 0, 0, .22);
-}
-
-#budget-embed .networth-tool:not(.el-shell) .legend-money-input,
-.networth-tool:not(.el-shell) .legend-money-input {
-    display: flex;
-    align-items: center;
-    width: 100%;
-    min-width: 180px;
-    min-height: 42px;
-    border: 1px solid rgba(198, 151, 45, .75);
-    border-radius: 10px;
-    background: #f4f4f2;
-    box-shadow: inset 0 1px 0 rgba(255, 255, 255, .4);
-    overflow: hidden;
-}
-
-#budget-embed .networth-tool:not(.el-shell) .legend-money-input[hidden],
-.networth-tool:not(.el-shell) .legend-money-input[hidden] {
-    display: none;
-}
-
-#budget-embed .networth-tool:not(.el-shell) .legend-money-prefix,
-.networth-tool:not(.el-shell) .legend-money-prefix {
-    flex: 0 0 auto;
-    padding-left: 12px;
-    padding-right: 8px;
-    color: #0b2a66;
-    font-weight: 800;
-    line-height: 1;
-    pointer-events: none;
-    user-select: none;
-}
-
-#budget-embed .networth-tool:not(.el-shell) .legend-money-field,
-.networth-tool:not(.el-shell) .legend-money-field {
-    flex: 1 1 auto;
-    min-width: 0;
-    width: 100%;
-    height: 100%;
-    padding: 0 12px 0 0;
-    border: 0;
-    border-radius: 0;
-    outline: 0;
-    background: transparent;
-    box-shadow: none;
-    color: #0b2a66;
-    font-weight: 800;
-}
-
-#budget-embed .networth-tool:not(.el-shell) .legend-money-field:focus,
-.networth-tool:not(.el-shell) .legend-money-field:focus {
-    border: 0;
-    outline: 0;
-    box-shadow: none;
-}
-
-#budget-embed .networth-tool:not(.el-shell) .legend-money-input:focus-within,
-.networth-tool:not(.el-shell) .legend-money-input:focus-within {
-    border-color: #d4af37;
-    box-shadow: 0 0 0 3px rgba(212, 175, 55, .18);
-}
-
-#budget-embed .networth-tool:not(.el-shell) .legend-percent-input,
-.networth-tool:not(.el-shell) .legend-percent-input {
-    display: flex;
-    align-items: center;
-    width: 100%;
-    min-width: 90px;
-    min-height: 42px;
-    border: 1px solid rgba(198, 151, 45, .75);
-    border-radius: 10px;
-    background: #f4f4f2;
-    box-shadow: inset 0 1px 0 rgba(255, 255, 255, .4);
-    overflow: hidden;
-}
-
-#budget-embed .networth-tool:not(.el-shell) .legend-percent-suffix,
-.networth-tool:not(.el-shell) .legend-percent-suffix {
-    flex: 0 0 auto;
-    padding: 0 10px 0 4px;
-    color: #0b2a66;
-    font-weight: 800;
-    line-height: 1;
-    pointer-events: none;
-    user-select: none;
-}
-
-#budget-embed .networth-tool:not(.el-shell) .legend-percent-field,
-.networth-tool:not(.el-shell) .legend-percent-field {
-    flex: 1 1 auto;
-    min-width: 0;
-    width: 100%;
-    height: 100%;
-    margin: 0;
-    padding: 0 4px 0 10px;
-    border: 0;
-    border-radius: 0;
-    outline: 0;
-    appearance: none;
-    background: transparent;
-    box-shadow: none;
-    color: #0b2a66;
-    font-weight: 800;
-}
-
-#budget-embed .networth-tool:not(.el-shell) .legend-percent-field:focus,
-.networth-tool:not(.el-shell) .legend-percent-field:focus {
-    border: 0;
-    outline: 0;
-    box-shadow: none;
-}
-
-#budget-embed .networth-tool:not(.el-shell) .legend-percent-input:focus-within,
-.networth-tool:not(.el-shell) .legend-percent-input:focus-within {
-    border-color: #ddb457;
-    box-shadow: 0 0 0 3px rgba(221, 180, 87, .16);
 }
 
 .el-shell .el-label {
@@ -5349,6 +5091,7 @@ body.finance-dual-tools-open .layout-content {
     background: linear-gradient(180deg, rgba(248, 250, 252, .985), rgba(231, 238, 249, .97));
     box-shadow: inset 0 1px 0 rgba(255, 255, 255, .72), 0 10px 24px rgba(8, 15, 32, .12);
     overflow: hidden;
+    padding: 0;
     transition: border-color .16s ease, box-shadow .16s ease, transform .16s ease;
 }
 
@@ -5373,18 +5116,28 @@ body.finance-dual-tools-open .layout-content {
 
 .networth-tool.el-shell .legend-money-field,
 .networth-tool.el-shell .legend-percent-field {
+    display: block;
     flex: 1 1 auto;
     min-width: 0;
     width: 100%;
     height: 100%;
     margin: 0;
+    padding-top: 0 !important;
+    padding-bottom: 0 !important;
     border: 0 !important;
+    border-style: none !important;
+    border-width: 0 !important;
+    border-image: none !important;
     border-radius: 0 !important;
     outline: 0 !important;
-    appearance: none;
-    -webkit-appearance: none;
+    appearance: none !important;
+    -webkit-appearance: none !important;
     background: transparent !important;
+    background-color: transparent !important;
+    background-image: none !important;
     box-shadow: none !important;
+    -webkit-box-shadow: none !important;
+    font-variant-numeric: tabular-nums;
     color: #1e3a8a;
     font-weight: 800;
 }
