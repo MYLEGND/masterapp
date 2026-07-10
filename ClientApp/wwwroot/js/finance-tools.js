@@ -3357,46 +3357,39 @@ if (t.id === "ExpenseLens" || t.id === "BusinessExpenseLens") {
         const expenseLensHasPartner = !isBusinessExpenseLens && (hasSpouse === true || (hasSpouse !== false && spouseFirstName.length > 0));
 
         hostElement.innerHTML = `
-        <div class="networth-tool p-4"
-             style="background: radial-gradient(900px 320px at 0% 0%, rgba(166,128,35,.12), transparent 55%), linear-gradient(180deg, rgba(11,21,41,.99), rgba(15,29,56,.99));
-                    border-radius:20px;
-                    box-shadow:0 40px 100px rgba(0,0,0,.58);
-                    border:1.8px solid rgba(166,128,35,.52);
-                    max-width:1200px; margin:0 auto;
-                    color:#f8fafc;
-                    font-family: 'Inter', sans-serif;">
+        <div class="networth-tool p-4 el-shell">
 
             <!-- Tooltip styles (safe + isolated) -->
             <style>
-                .el-label{
+                .el-shell .el-label{
                     display:inline-flex;
                     align-items:center;
                     gap:8px;
                     margin-bottom:6px;
                     font-weight:800;
-                    color:#a68023;
+                    color:#f4c766;
                 }
-                .el-i{
+                .el-shell .el-i{
                     display:inline-flex;
                     align-items:center;
                     justify-content:center;
                     width:18px;
                     height:18px;
                     border-radius:999px;
-                    background:#fff;
-                    border:1px solid rgba(210,31,43,.9);
-                    color:#d21f2b;
+                    background:rgba(255,255,255,.96);
+                    border:1px solid rgba(248,113,113,.85);
+                    color:#dc2626;
                     font-weight:900;
                     font-size:12px;
                     line-height:1;
                     cursor:pointer;
                     user-select:none;
                     transform: translateY(-1px);
-                    box-shadow:0 6px 18px rgba(0,0,0,.08);
+                    box-shadow:0 10px 24px rgba(2,8,23,.22);
                 }
-                .el-i:focus{
+                .el-shell .el-i:focus{
                     outline:none;
-                    box-shadow:0 0 0 3px rgba(210,31,43,.18), 0 10px 25px rgba(0,0,0,.10);
+                    box-shadow:0 0 0 3px rgba(248,113,113,.22), 0 10px 25px rgba(2,8,23,.16);
                 }
                 #${elId('TipLayer')}{
                     position:fixed;
@@ -3431,48 +3424,38 @@ if (t.id === "ExpenseLens" || t.id === "BusinessExpenseLens") {
 
             <div id="${elId('TipLayer')}"></div>
 
-            <h3 style="color:#a68023; font-weight:900; letter-spacing:0.5px; font-size:2rem;">
-                ${expenseLensTitle}
-            </h3>
-
-            <p style="font-style:italic; color:#b9c5d8; margin-bottom:20px;">
-                ${expenseLensSubtitle}
-            </p>
+            <div class="el-header">
+                <h3 class="el-title">${expenseLensTitle}</h3>
+                <p class="el-subtitle">${expenseLensSubtitle}</p>
+            </div>
 
             <div class="el-label">
                 ${isBusinessExpenseLens ? "Business Total Income" : "Total Income"}
                 <span class="el-i" tabindex="0"
                       data-tip="<b>Examples:</b> 4,500 • 6,200 (total monthly income before allocating categories)">i</span>
             </div>
-            <div style="position:relative; margin-bottom:15px;">
+            <div class="el-income-input-wrap">
+                <span class="el-currency-prefix">$</span>
                 <input id="${elId('Income')}" type="text" 
                        class="form-control mb-3"
-                       placeholder="Enter total monthly income"
-                       style="border:1.5px solid rgba(166,128,35,.38); background-color:rgba(255,255,255,.92); box-shadow:inset 0 1px 0 rgba(255,255,255,.05); border-radius:10px; font-weight:700; color:#1E3A8A; padding-right:30px;" />
-                <span style="position:absolute; right:10px; top:50%; transform:translateY(-50%); font-weight:700; color:#1E3A8A;">$</span>
+                       placeholder="Enter total monthly income" />
             </div>
 
-            <div id="${elId('Categories')}" style="margin-top:10px; display:flex; flex-direction:column; gap:12px;"></div>
+            <div id="${elId('Categories')}" class="el-category-stack"></div>
 
-            <div id="${elId('MarginWrap')}" class="d-flex gap-2 mt-3" style="margin-top:18px; gap:12px; align-items:center; flex-wrap:wrap;">
+            <div id="${elId('MarginWrap')}" class="el-toolbar">
                 <button id="${elId('AddCat')}"
-                        class="btn btn-outline-gold"
-                        style="background:linear-gradient(155deg,#0d1f42,#0a1630); border:1.5px solid rgba(199,153,49,.55); border-radius:10px; box-shadow:0 4px 12px rgba(0,0,0,.22); color:#1E3A8A; font-weight:600;">
+                        class="btn el-toolbar-btn">
                     + Add Category
                 </button>
-                <div id="${elId('ActionMeta')}" style="display:flex; align-items:center; gap:12px; flex-wrap:wrap;">
-                    <div id="${elId('Margin')}"
-                         style="display:inline-flex;align-items:center;height:38px;padding:0 16px;
-                                border-radius:6px;border:2px solid rgba(100,116,139,0.35);background:rgba(255,255,255,0.04);
-                                font-weight:800;font-size:0.875rem;white-space:nowrap;color:#64748B;letter-spacing:0.01em;
-                                transition:background .2s,color .2s,border-color .2s;">
+                <div id="${elId('ActionMeta')}" class="el-toolbar-actions">
+                    <div id="${elId('Margin')}" class="el-balance-chip el-balance-chip-muted">
                         Remaining Balance: $0
                     </div>
                 </div>
             </div>
 
-            <div id="${elId('Tips')}"
-                 style="margin-top:18px;padding:12px 16px;border-radius:6px;border:2px solid rgba(166,128,35,0.45);background:rgba(166,128,35,0.10);font-weight:700;font-size:0.875rem;color:#d4a820;letter-spacing:0.01em;font-style:italic;transition:background .2s,color .2s,border-color .2s;">
+            <div id="${elId('Tips')}" class="el-tip-strip">
                 ${expenseLensDefaultTip}
             </div>
         </div>`;
@@ -3484,51 +3467,375 @@ if (t.id === "ExpenseLens" || t.id === "BusinessExpenseLens") {
         const elMargin = elById("Margin");
         const elActionMeta = elById("ActionMeta");
         const elIncome = elById("Income");
+        const expenseLensRowBorder = '1px solid rgba(56,189,248,.18)';
+        const expenseLensRowBorderStrong = '2px solid rgba(56,189,248,.78)';
+        const expenseLensPinnedBorder = '1px solid rgba(245,158,11,.42)';
+        const expenseLensCardShadow = '0 18px 38px rgba(2,8,23,.26), inset 0 1px 0 rgba(255,255,255,.03)';
        
 
        
 
-        // Apply visual styles (matches the rest)
-        applyToolBoxStyles(container);
-
-        // Inject stylesheet into <head> — guaranteed to apply before any CSS rule
+        // Inject stylesheet into <head> — scoped to Expense Lens only
         (function injectExpenseLensStyles() {
-            if (document.getElementById('el-dark-theme')) return;
+            if (document.getElementById('expense-lens-premium-theme')) return;
             const s = document.createElement('style');
-            s.id = 'el-dark-theme';
+            s.id = 'expense-lens-premium-theme';
             s.textContent = `
-                .networth-tool input,
-                .networth-tool select,
-                .networth-tool input.form-control,
-                .networth-tool select.form-control,
-                .networth-tool .form-control,
-                #budget-embed input,
-                #budget-embed select,
-                #budget-embed input.form-control,
-                #budget-embed select.form-control,
-                #budget-embed .form-control {
-                    background-color: rgba(255,255,255,.92) !important;
-                    border: 1.5px solid rgba(166,128,35,.38) !important;
-                    border-radius: 10px !important;
-                    box-shadow: inset 0 1px 0 rgba(255,255,255,.05) !important;
-                    transition: border-color .15s ease, box-shadow .15s ease !important;
+                .networth-tool.el-shell {
+                    background:
+                        radial-gradient(1180px 460px at 0% 0%, rgba(245,158,11,.10), transparent 52%),
+                        radial-gradient(920px 420px at 100% 0%, rgba(34,211,238,.11), transparent 46%),
+                        linear-gradient(180deg, rgba(8,18,38,.985) 0%, rgba(11,24,47,.985) 100%);
+                    border-radius: 26px;
+                    border: 1.6px solid rgba(56,189,248,.52);
+                    box-shadow: 0 40px 100px rgba(2,8,23,.62), inset 0 1px 0 rgba(255,255,255,.04);
+                    max-width: 1220px;
+                    margin: 0 auto;
+                    color: #e8f1ff;
+                    font-family: 'Inter', sans-serif;
                 }
-                .networth-tool input:focus,
-                .networth-tool select:focus,
-                #budget-embed input:focus,
-                #budget-embed select:focus {
-                    border-color: #ddb457 !important;
-                    box-shadow: 0 0 0 3px rgba(221,180,87,.16) !important;
-                    outline: none !important;
+                .networth-tool.el-shell .el-header {
+                    margin-bottom: 22px;
                 }
-                .networth-tool input[type="date"],
-                #budget-embed input[type="date"] { color-scheme: dark; }
-                .networth-tool .btn-outline-gold,
-                #budget-embed .btn-outline-gold {
-                    background: linear-gradient(155deg, #0d1f42 0%, #0a1630 100%) !important;
-                    border: 1.5px solid rgba(199,153,49,.55) !important;
-                    border-radius: 10px !important;
-                    box-shadow: 0 4px 12px rgba(0,0,0,.22) !important;
+                .networth-tool.el-shell .el-title {
+                    margin: 0 0 10px;
+                    color: #c79931;
+                    font-weight: 900;
+                    letter-spacing: 0.03em;
+                    font-size: clamp(1.95rem, 3vw, 2.45rem);
+                }
+                .networth-tool.el-shell .el-subtitle {
+                    margin: 0;
+                    max-width: 940px;
+                    color: #a8bddb;
+                    font-style: italic;
+                    font-size: 1.08rem;
+                    line-height: 1.5;
+                }
+                .networth-tool.el-shell .el-category-stack,
+                .networth-tool.el-shell .el-income-groups {
+                    display: flex;
+                    flex-direction: column;
+                    gap: 14px;
+                }
+                .networth-tool.el-shell .el-toolbar,
+                .networth-tool.el-shell .el-toolbar-actions,
+                .networth-tool.el-shell .el-income-flex {
+                    display: flex;
+                    align-items: center;
+                    gap: 12px;
+                    flex-wrap: wrap;
+                }
+                .networth-tool.el-shell .el-toolbar {
+                    margin-top: 20px;
+                }
+                .networth-tool.el-shell .el-income-input-wrap {
+                    position: relative;
+                    margin-bottom: 15px;
+                }
+                .networth-tool.el-shell .el-income-input-wrap input.form-control {
+                    padding-left: 36px;
+                }
+                .networth-tool.el-shell .el-income-input-inline {
+                    margin-bottom: 0;
+                    width: 260px;
+                    max-width: 260px;
+                    flex: 0 0 260px;
+                }
+                .networth-tool.el-shell .el-currency-prefix {
+                    position: absolute;
+                    left: 16px;
+                    top: 50%;
+                    transform: translateY(-50%);
+                    font-weight: 900;
+                    font-size: 1.08rem;
+                    color: #1d4ed8;
+                    pointer-events: none;
+                    z-index: 1;
+                }
+                .networth-tool.el-shell input.form-control,
+                .networth-tool.el-shell select.form-select {
+                    height: 46px;
+                    background: linear-gradient(180deg, rgba(248,250,252,.985), rgba(231,238,249,.97));
+                    border: 1px solid rgba(125,211,252,.36);
+                    border-radius: 14px;
+                    box-shadow: inset 0 1px 0 rgba(255,255,255,.72), 0 10px 24px rgba(8,15,32,.12);
+                    transition: border-color .16s ease, box-shadow .16s ease, transform .16s ease;
+                    color: #1e3a8a;
+                    font-weight: 800;
+                }
+                .networth-tool.el-shell input.form-control::placeholder,
+                .networth-tool.el-shell select.form-select::placeholder {
+                    color: #6b7f9d;
+                }
+                .networth-tool.el-shell input.form-control:focus,
+                .networth-tool.el-shell select.form-select:focus {
+                    border-color: rgba(56,189,248,.82);
+                    box-shadow: 0 0 0 3px rgba(56,189,248,.16), 0 18px 30px rgba(8,15,32,.18);
+                    outline: none;
+                }
+                .networth-tool.el-shell input[type="date"] {
+                    color-scheme: dark;
+                }
+                .networth-tool.el-shell .el-toolbar-btn,
+                .networth-tool.el-shell .el-week-btn {
+                    display: inline-flex;
+                    align-items: center;
+                    justify-content: center;
+                    height: 42px;
+                    padding: 0 18px;
+                    border-radius: 14px;
+                    font-size: 0.875rem;
+                    font-weight: 800;
+                    white-space: nowrap;
+                    box-shadow: 0 20px 32px rgba(9,17,36,.28), inset 0 1px 0 rgba(255,255,255,.08);
+                    transition: transform .16s ease, box-shadow .16s ease, border-color .16s ease;
+                }
+                .networth-tool.el-shell .el-toolbar-btn {
+                    background: linear-gradient(180deg, rgba(25,41,70,.96), rgba(13,23,42,.98));
+                    border: 1px solid rgba(245,158,11,.34);
+                    color: #f6c453;
+                }
+                .networth-tool.el-shell .el-week-btn {
+                    background: linear-gradient(180deg, rgba(43,87,220,.95), rgba(27,67,183,.98));
+                    border: 1px solid rgba(125,211,252,.38);
+                    color: #eff6ff;
+                }
+                .networth-tool.el-shell .el-toolbar-btn:hover,
+                .networth-tool.el-shell .el-week-btn:hover {
+                    transform: translateY(-1px);
+                    box-shadow: 0 24px 36px rgba(9,17,36,.34), inset 0 1px 0 rgba(255,255,255,.1);
+                }
+                .networth-tool.el-shell select.el-filter-select {
+                    min-width: 156px;
+                    max-width: 156px;
+                    flex: 0 0 156px;
+                    background: linear-gradient(180deg, rgba(16,31,60,.97), rgba(10,22,42,.98));
+                    border: 1px solid rgba(56,189,248,.28);
+                    color: #d9ecff;
+                    box-shadow: inset 0 1px 0 rgba(255,255,255,.04), 0 16px 28px rgba(2,8,23,.18);
+                }
+                .networth-tool.el-shell .el-balance-chip {
+                    display: inline-flex;
+                    align-items: center;
+                    justify-content: center;
+                    min-height: 42px;
+                    padding: 0 18px;
+                    border-radius: 14px;
+                    border: 1px solid rgba(56,189,248,.18);
+                    background: linear-gradient(180deg, rgba(17,31,60,.95), rgba(10,22,43,.96));
+                    box-shadow: 0 18px 30px rgba(2,8,23,.22), inset 0 1px 0 rgba(255,255,255,.04);
+                    font-size: 0.9rem;
+                    font-weight: 800;
+                    white-space: nowrap;
+                    letter-spacing: 0.01em;
+                }
+                .networth-tool.el-shell .el-balance-chip-muted {
+                    color: #90a8c9;
+                    border-color: rgba(148,163,184,.24);
+                }
+                .networth-tool.el-shell .el-tip-strip {
+                    margin-top: 20px;
+                    padding: 15px 18px;
+                    border-radius: 16px;
+                    border: 1px solid rgba(245,158,11,.24);
+                    background: linear-gradient(180deg, rgba(38,29,10,.30), rgba(18,27,43,.55));
+                    box-shadow: inset 0 1px 0 rgba(255,255,255,.03);
+                    font-weight: 700;
+                    font-size: 0.9rem;
+                    color: #f2c45d;
+                    letter-spacing: 0.01em;
+                    font-style: italic;
+                }
+                .networth-tool.el-shell .el-income-group {
+                    display: flex;
+                    flex-direction: column;
+                    gap: 12px;
+                    min-width: 0;
+                }
+                .networth-tool.el-shell .el-income-summary,
+                .networth-tool.el-shell .el-stream-card,
+                .networth-tool.el-shell .el-category-row {
+                    background: linear-gradient(180deg, rgba(17,30,54,.94), rgba(10,20,38,.985));
+                    border: ${expenseLensRowBorder};
+                    box-shadow: ${expenseLensCardShadow};
+                }
+                .networth-tool.el-shell .el-income-summary {
+                    display: flex;
+                    align-items: center;
+                    gap: 12px;
+                    flex-wrap: wrap;
+                    min-width: 0;
+                    padding: 14px 16px;
+                    border-radius: 18px;
+                }
+                .networth-tool.el-shell .el-income-summary-main {
+                    display: flex;
+                    align-items: flex-start;
+                    justify-content: space-between;
+                    gap: 10px;
+                    min-width: 168px;
+                    flex: 1 1 168px;
+                }
+                .networth-tool.el-shell .el-income-group-label {
+                    font-size: 0.74rem;
+                    font-weight: 900;
+                    color: #d4a83c;
+                    letter-spacing: 0.08em;
+                    text-transform: uppercase;
+                    line-height: 1.2;
+                }
+                .networth-tool.el-shell .el-income-total {
+                    display: inline-flex;
+                    align-items: center;
+                    justify-content: center;
+                    min-width: 150px;
+                    height: 42px;
+                    padding: 0 16px;
+                    border-radius: 14px;
+                    border: 1px solid rgba(125,211,252,.32);
+                    background: linear-gradient(180deg, rgba(248,250,252,.985), rgba(231,238,249,.97));
+                    box-shadow: inset 0 1px 0 rgba(255,255,255,.75), 0 12px 24px rgba(8,15,32,.12);
+                    color: #1e3a8a;
+                    font-size: 1rem;
+                    font-weight: 900;
+                }
+                .networth-tool.el-shell .el-income-share {
+                    display: inline-flex;
+                    align-items: center;
+                    justify-content: center;
+                    min-width: 74px;
+                    height: 34px;
+                    padding: 0 12px;
+                    border-radius: 999px;
+                    border: 1px solid rgba(96,165,250,.24);
+                    background: rgba(30,58,138,.24);
+                    color: #d8e7ff;
+                    font-size: 0.75rem;
+                    font-weight: 800;
+                }
+                .networth-tool.el-shell .el-stream-grid {
+                    display: grid;
+                    gap: 12px;
+                    min-width: 0;
+                }
+                .networth-tool.el-shell .el-stream-card {
+                    display: grid;
+                    align-items: center;
+                    gap: 10px;
+                    min-width: 0;
+                    padding: 12px 14px;
+                    border-radius: 18px;
+                }
+                .networth-tool.el-shell .el-stream-tag {
+                    display: inline-flex;
+                    align-items: center;
+                    justify-content: center;
+                    min-width: 94px;
+                    height: 38px;
+                    padding: 0 12px;
+                    border-radius: 12px;
+                    border: 1px solid rgba(96,165,250,.22);
+                    background: linear-gradient(180deg, rgba(24,48,98,.78), rgba(16,33,73,.82));
+                    color: #bfdbfe;
+                    font-size: 0.68rem;
+                    font-weight: 800;
+                    letter-spacing: 0.08em;
+                    text-transform: uppercase;
+                }
+                .networth-tool.el-shell .el-stream-remove,
+                .networth-tool.el-shell .el-delete-btn {
+                    border: none;
+                    background: transparent;
+                    color: #7e93b6;
+                    font-weight: 900;
+                    line-height: 1;
+                }
+                .networth-tool.el-shell .el-stream-remove {
+                    font-size: 1.05rem;
+                    padding: 0 4px;
+                    justify-self: end;
+                }
+                .networth-tool.el-shell .el-stream-spacer {
+                    display: block;
+                    width: 20px;
+                    height: 20px;
+                }
+                .networth-tool.el-shell .el-currency-field {
+                    position: relative;
+                    min-width: 0;
+                }
+                .networth-tool.el-shell .el-currency-field input {
+                    padding-left: 28px;
+                    text-align: right;
+                }
+                .networth-tool.el-shell .el-currency-field .el-currency-prefix {
+                    left: 12px;
+                    font-size: 1rem;
+                }
+                .networth-tool.el-shell .el-category-row {
+                    display: flex;
+                    align-items: center;
+                    column-gap: 12px;
+                    row-gap: 8px;
+                    flex-wrap: nowrap;
+                    min-width: 0;
+                    padding: 10px 12px;
+                    border-radius: 18px;
+                }
+                .networth-tool.el-shell .el-left-controls {
+                    display: flex;
+                    align-items: center;
+                    justify-content: flex-start;
+                }
+                .networth-tool.el-shell .el-drag-handle {
+                    color: #38bdf8;
+                    opacity: .58;
+                }
+                .networth-tool.el-shell .el-pin-btn {
+                    display: inline-flex;
+                    align-items: center;
+                    justify-content: center;
+                    border-radius: 10px;
+                    border: 1px solid rgba(56,189,248,.18);
+                    background: rgba(13,29,59,.82);
+                    color: #90d8ff;
+                    line-height: 1;
+                    cursor: pointer;
+                    padding: 0;
+                }
+                .networth-tool.el-shell .el-percentage {
+                    font-weight: 800;
+                    text-align: right;
+                }
+                .networth-tool.el-shell .el-row-name {
+                    min-width: 0;
+                }
+                @media (max-width: 1080px) {
+                    .networth-tool.el-shell .el-income-input-inline {
+                        flex-basis: 100%;
+                        max-width: none;
+                        width: 100%;
+                    }
+                    .networth-tool.el-shell .el-income-flex {
+                        align-items: stretch;
+                    }
+                }
+                @media (max-width: 760px) {
+                    .networth-tool.el-shell {
+                        padding: 22px;
+                    }
+                    .networth-tool.el-shell .el-title {
+                        font-size: 1.8rem;
+                    }
+                    .networth-tool.el-shell .el-toolbar,
+                    .networth-tool.el-shell .el-toolbar-actions,
+                    .networth-tool.el-shell .el-income-flex {
+                        gap: 10px;
+                    }
+                    .networth-tool.el-shell .el-category-row {
+                        overflow-x: auto;
+                    }
                 }
             `;
             document.head.appendChild(s);
@@ -3989,31 +4296,31 @@ if (t.id === "ExpenseLens" || t.id === "BusinessExpenseLens") {
                 incomeGroupsState[definition.key] = groupStreams;
 
                 const groupRow = document.createElement('div');
-                groupRow.style.cssText = 'display:flex;flex-direction:column;gap:10px;min-width:0;';
+                groupRow.className = 'el-income-group';
 
                 const summaryCard = document.createElement('div');
-                summaryCard.style.cssText = 'display:flex;align-items:center;gap:10px;flex-wrap:wrap;min-width:0;padding:10px 12px;border-radius:15px;border:1.5px solid rgba(166,128,35,.22);background:linear-gradient(180deg, rgba(255,255,255,.06), rgba(255,255,255,.025));box-shadow:inset 0 1px 0 rgba(255,255,255,.03);';
+                summaryCard.className = 'el-income-summary';
 
                 const summaryTop = document.createElement('div');
-                summaryTop.style.cssText = 'display:flex;align-items:flex-start;justify-content:space-between;gap:8px;min-width:128px;flex:1 1 128px;';
+                summaryTop.className = 'el-income-summary-main';
 
                 const labelEl = document.createElement('div');
-                labelEl.style.cssText = 'font-size:0.74rem;font-weight:800;color:#c79931;letter-spacing:0.05em;text-transform:uppercase;line-height:1.25;';
+                labelEl.className = 'el-income-group-label';
                 labelEl.textContent = definition.label;
 
                 const totalEl = document.createElement('div');
-                totalEl.style.cssText = 'display:flex;align-items:center;justify-content:center;min-width:136px;height:40px;padding:0 14px;border-radius:12px;border:1.5px solid rgba(166,128,35,.38);background:rgba(255,255,255,.92);box-shadow:inset 0 1px 0 rgba(255,255,255,.05);font-weight:800;font-size:0.95rem;color:#1E3A8A;';
+                totalEl.className = 'el-income-total';
                 totalEl.textContent = '$ 0';
 
                 const shareEl = document.createElement('span');
-                shareEl.style.cssText = 'display:inline-flex;align-items:center;justify-content:center;min-width:62px;height:28px;padding:0 10px;border-radius:999px;border:1px solid rgba(96,165,250,.26);background:rgba(30,58,138,.18);font-size:0.72rem;font-weight:800;color:#D6E4FF;';
+                shareEl.className = 'el-income-share';
                 shareEl.textContent = '0%';
 
                 const addBtn = document.createElement('button');
                 addBtn.type = 'button';
-                addBtn.className = 'btn btn-outline-gold';
+                addBtn.className = 'btn el-toolbar-btn';
                 addBtn.textContent = '+ Add Stream';
-                addBtn.style.cssText = 'height:34px;min-width:132px;padding:0 14px;border-radius:10px;font-size:0.76rem;font-weight:800;white-space:nowrap;margin-left:auto;';
+                addBtn.style.cssText = 'min-width:138px;margin-left:auto;';
                 addBtn.addEventListener('click', () => {
                     if (incomeGroupsState[definition.key].length >= EL_MAX_INCOME_STREAMS_PER_GROUP) return;
                     incomeGroupsState[definition.key].push(createIncomeStream(definition.key));
@@ -4028,14 +4335,16 @@ if (t.id === "ExpenseLens" || t.id === "BusinessExpenseLens") {
                 summaryCard.appendChild(addBtn);
 
                 const streamsWrap = document.createElement('div');
-                streamsWrap.style.cssText = `display:grid;grid-template-columns:${useTwoColumnStreamRows ? 'repeat(2, minmax(0, 1fr))' : 'minmax(0, 1fr)'};gap:10px;min-width:0;`;
+                streamsWrap.className = 'el-stream-grid';
+                streamsWrap.style.gridTemplateColumns = useTwoColumnStreamRows ? 'repeat(2, minmax(0, 1fr))' : 'minmax(0, 1fr)';
 
                 groupStreams.forEach((stream, streamIndex) => {
                     const streamCard = document.createElement('div');
-                    streamCard.style.cssText = 'display:grid;grid-template-columns:auto minmax(0,.98fr) minmax(0,.98fr) minmax(0,1.08fr) auto;align-items:center;gap:8px;min-width:0;padding:10px 12px;border-radius:14px;border:1.5px solid rgba(166,128,35,.22);background:linear-gradient(180deg, rgba(255,255,255,.055), rgba(255,255,255,.02));box-shadow:inset 0 1px 0 rgba(255,255,255,.03);';
+                    streamCard.className = 'el-stream-card';
+                    streamCard.style.gridTemplateColumns = 'auto minmax(0,.98fr) minmax(0,.98fr) minmax(0,1.08fr) auto';
 
                     const streamTitle = document.createElement('span');
-                    streamTitle.style.cssText = 'display:inline-flex;align-items:center;justify-content:center;min-width:92px;height:38px;padding:0 10px;border-radius:10px;border:1px solid rgba(96,165,250,.18);background:rgba(30,58,138,.12);font-size:0.66rem;font-weight:800;letter-spacing:0.08em;color:#BFDBFE;text-transform:uppercase;';
+                    streamTitle.className = 'el-stream-tag';
                     streamTitle.textContent = `Stream ${streamIndex + 1}`;
 
                     let removeBtn = null;
@@ -4043,7 +4352,7 @@ if (t.id === "ExpenseLens" || t.id === "BusinessExpenseLens") {
                         removeBtn = document.createElement('button');
                         removeBtn.type = 'button';
                         removeBtn.textContent = '×';
-                        removeBtn.style.cssText = 'border:none;background:transparent;color:#64748B;font-size:1rem;font-weight:800;line-height:1;padding:0 2px;justify-self:end;';
+                        removeBtn.className = 'el-stream-remove';
                         removeBtn.addEventListener('click', () => {
                             incomeGroupsState[definition.key].splice(streamIndex, 1);
                             renderPersonalIncomeGroups();
@@ -4052,14 +4361,14 @@ if (t.id === "ExpenseLens" || t.id === "BusinessExpenseLens") {
                     }
 
                     const amountWrap = document.createElement('div');
-                    amountWrap.style.cssText = 'position:relative;min-width:0;';
+                    amountWrap.className = 'el-currency-field';
 
                     const amountInput = document.createElement('input');
                     amountInput.type = 'text';
                     amountInput.className = 'form-control';
                     amountInput.placeholder = '0';
                     amountInput.value = stream.amount;
-                    amountInput.style.cssText = 'height:38px;width:100%;padding:6px 10px 6px 24px;font-size:0.78rem;font-weight:800;color:#1E3A8A;text-align:right;';
+                    amountInput.style.cssText = 'width:100%;font-size:0.82rem;';
                     amountInput.addEventListener('input', () => {
                         incomeGroupsState[definition.key][streamIndex].amount = amountInput.value;
                         refreshExpenseLensViews({ sortRows: false });
@@ -4072,13 +4381,13 @@ if (t.id === "ExpenseLens" || t.id === "BusinessExpenseLens") {
 
                     const amountSuffix = document.createElement('span');
                     amountSuffix.textContent = '$';
-                    amountSuffix.style.cssText = 'position:absolute;left:10px;top:50%;transform:translateY(-50%);font-weight:800;color:#1E3A8A;pointer-events:none;';
+                    amountSuffix.className = 'el-currency-prefix';
                     amountWrap.appendChild(amountInput);
                     amountWrap.appendChild(amountSuffix);
 
                     const frequencySelect = document.createElement('select');
                     frequencySelect.className = 'form-select';
-                    frequencySelect.style.cssText = 'height:38px;min-width:0;padding:4px 24px 4px 8px;font-size:0.74rem;font-weight:800;color:#1E3A8A;';
+                    frequencySelect.style.cssText = 'min-width:0;padding:4px 24px 4px 10px;font-size:0.78rem;';
                     EL_BILL_FREQUENCIES.forEach((option) => {
                         const opt = document.createElement('option');
                         opt.value = option.value;
@@ -4096,7 +4405,7 @@ if (t.id === "ExpenseLens" || t.id === "BusinessExpenseLens") {
                     dateInput.type = 'date';
                     dateInput.className = 'form-control';
                     dateInput.value = normalizeIncomeAnchorDate(stream.anchorDate);
-                    dateInput.style.cssText = 'height:38px;min-width:0;padding:4px 8px;font-size:0.74rem;font-weight:800;color:#1E3A8A;';
+                    dateInput.style.cssText = 'min-width:0;padding:4px 10px;font-size:0.78rem;color:#0284C7;';
                     dateInput.addEventListener('change', () => {
                         incomeGroupsState[definition.key][streamIndex].anchorDate = normalizeIncomeAnchorDate(dateInput.value);
                         dateInput.value = incomeGroupsState[definition.key][streamIndex].anchorDate;
@@ -4111,7 +4420,7 @@ if (t.id === "ExpenseLens" || t.id === "BusinessExpenseLens") {
                         streamCard.appendChild(removeBtn);
                     } else {
                         const streamSpacer = document.createElement('span');
-                        streamSpacer.style.cssText = 'display:block;width:18px;height:18px;';
+                        streamSpacer.className = 'el-stream-spacer';
                         streamCard.appendChild(streamSpacer);
                     }
                     streamsWrap.appendChild(streamCard);
@@ -4319,29 +4628,25 @@ if (t.id === "ExpenseLens" || t.id === "BusinessExpenseLens") {
         // -----------------------------
         const createCategoryRow = (index, preName = '', preDue = '', preAmount = '', preFrequency = 'monthly', prePaymentMethod = '', isTemplate = false, isPinned = false) => {
             const div = document.createElement("div");
-            div.className = "d-flex align-items-center";
+            div.className = "d-flex align-items-center el-category-row";
             div.id = `${elId('CatRow')}${index}`;
             div.dataset.isTemplate = isTemplate ? 'true' : 'false';
             div.dataset.isPinned = isPinned ? 'true' : 'false';
-            div.style.background = "linear-gradient(180deg, rgba(255,255,255,.055), rgba(255,255,255,.02))";
             div.style.padding = isDualPanel ? "7px" : "10px";
-            div.style.borderRadius = "10px";
-            div.style.border = "1.5px solid rgba(166,128,35,.24)";
+            div.style.borderRadius = "18px";
+            div.style.border = expenseLensRowBorder;
             div.style.columnGap = isDualPanel ? "7px" : "12px";
             div.style.rowGap = "8px";
             div.style.flexWrap = "nowrap";
             div.style.minWidth = "0";
             div.style.overflow = isDualPanel ? "hidden" : "";
+            div.style.boxShadow = expenseLensCardShadow;
 
             const nameInput = document.createElement("input");
             nameInput.type = "text";
             nameInput.id = `${elId('CatName')}${index}`;
-            nameInput.className = "form-control flex-grow-1";
+            nameInput.className = "form-control flex-grow-1 el-row-name";
             nameInput.placeholder = `Category ${index} Name`;
-            nameInput.style.setProperty("background-color", "rgba(255,255,255,.92)", "important");
-            nameInput.style.setProperty("border", "1.5px solid rgba(166,128,35,.38)", "important");
-            nameInput.style.setProperty("border-radius", "10px", "important");
-            nameInput.style.setProperty("box-shadow", "inset 0 1px 0 rgba(255,255,255,.05)", "important");
             nameInput.style.color = "#1E3A8A";
             nameInput.style.flex = isDualPanel ? "1 1 240px" : "1 1 220px";
             nameInput.style.minWidth = isDualPanel ? "112px" : "";
@@ -4359,12 +4664,8 @@ if (t.id === "ExpenseLens" || t.id === "BusinessExpenseLens") {
             dueInput.id = `${elId('CatDue')}${index}`;
             dueInput.className = "form-control";
             dueInput.placeholder = "Due";
-            dueInput.style.setProperty("background-color", "rgba(255,255,255,.92)", "important");
-            dueInput.style.setProperty("border", "1.5px solid rgba(166,128,35,.38)", "important");
-            dueInput.style.setProperty("border-radius", "10px", "important");
-            dueInput.style.setProperty("box-shadow", "inset 0 1px 0 rgba(255,255,255,.05)", "important");
-            dueInput.style.setProperty("color", "#0284C7", "important");
-            dueInput.style.setProperty("font-weight", "700", "important");
+            dueInput.style.color = "#0284C7";
+            dueInput.style.fontWeight = "800";
             const resolvedPreFrequency = normalizeBillFrequency(preFrequency);
             const shouldPreserveDueDate = resolvedPreFrequency === 'weekly' || resolvedPreFrequency === 'biweekly';
             dueInput.value = shouldPreserveDueDate && preDue ? preDue : toCurrentMonthDue(preDue);
@@ -4375,12 +4676,8 @@ if (t.id === "ExpenseLens" || t.id === "BusinessExpenseLens") {
             const frequencySelect = document.createElement("select");
             frequencySelect.id = `${elId('CatFrequency')}${index}`;
             frequencySelect.className = "form-select";
-            frequencySelect.style.setProperty("background-color", "rgba(255,255,255,.92)", "important");
-            frequencySelect.style.setProperty("border", "1.5px solid rgba(166,128,35,.38)", "important");
-            frequencySelect.style.setProperty("border-radius", "10px", "important");
-            frequencySelect.style.setProperty("box-shadow", "inset 0 1px 0 rgba(255,255,255,.05)", "important");
-            frequencySelect.style.setProperty("color", "#1E3A8A", "important");
-            frequencySelect.style.setProperty("font-weight", "700", "important");
+            frequencySelect.style.color = "#1E3A8A";
+            frequencySelect.style.fontWeight = "800";
             frequencySelect.style.flex = isDualPanel ? "0 1 96px" : "0 1 118px";
             frequencySelect.style.minWidth = isDualPanel ? "84px" : "106px";
             frequencySelect.style.boxSizing = "border-box";
@@ -4397,12 +4694,8 @@ if (t.id === "ExpenseLens" || t.id === "BusinessExpenseLens") {
             paymentMethodSelect.id = `${elId('CatPaymentMethod')}${index}`;
             paymentMethodSelect.className = "form-select";
             paymentMethodSelect.setAttribute("aria-label", "Payment method");
-            paymentMethodSelect.style.setProperty("background-color", "rgba(255,255,255,.92)", "important");
-            paymentMethodSelect.style.setProperty("border", "1.5px solid rgba(166,128,35,.38)", "important");
-            paymentMethodSelect.style.setProperty("border-radius", "10px", "important");
-            paymentMethodSelect.style.setProperty("box-shadow", "inset 0 1px 0 rgba(255,255,255,.05)", "important");
-            paymentMethodSelect.style.setProperty("color", "#1E3A8A", "important");
-            paymentMethodSelect.style.setProperty("font-weight", "700", "important");
+            paymentMethodSelect.style.color = "#1E3A8A";
+            paymentMethodSelect.style.fontWeight = "800";
             paymentMethodSelect.style.flex = isDualPanel ? "0 1 96px" : "0 1 118px";
             paymentMethodSelect.style.minWidth = isDualPanel ? "84px" : "106px";
             paymentMethodSelect.style.boxSizing = "border-box";
@@ -4416,7 +4709,7 @@ if (t.id === "ExpenseLens" || t.id === "BusinessExpenseLens") {
             paymentMethodSelect.addEventListener("change", () => refreshExpenseLensViews({ sortRows: true }));
 
             const amountWrapper = document.createElement("div");
-            amountWrapper.style.position = "relative";
+            amountWrapper.className = "el-currency-field";
             amountWrapper.style.flex = isDualPanel ? "0 1 100px" : "0 1 132px";
             amountWrapper.style.minWidth = isDualPanel ? "82px" : "120px";
 
@@ -4426,39 +4719,28 @@ if (t.id === "ExpenseLens" || t.id === "BusinessExpenseLens") {
             amountInput.className = "form-control";
             amountInput.placeholder = "Amount";
             amountInput.style.width = "100%";
-            amountInput.style.setProperty("background-color", "rgba(255,255,255,.92)", "important");
-            amountInput.style.setProperty("border", "1.5px solid rgba(166,128,35,.38)", "important");
-            amountInput.style.setProperty("border-radius", "10px", "important");
-            amountInput.style.setProperty("box-shadow", "inset 0 1px 0 rgba(255,255,255,.05)", "important");
             amountInput.style.fontWeight = "700";
             amountInput.style.color = "#1E3A8A";
             amountInput.value = preAmount;
+            amountInput.style.paddingLeft = "28px";
 
             const dollarSpan = document.createElement("span");
             dollarSpan.textContent = "$";
-            dollarSpan.style.position = "absolute";
-            dollarSpan.style.right = "10px";
-            dollarSpan.style.top = "50%";
-            dollarSpan.style.transform = "translateY(-50%)";
-            dollarSpan.style.fontWeight = "700";
-            dollarSpan.style.color = "#1E3A8A";
+            dollarSpan.className = "el-currency-prefix";
 
             amountWrapper.appendChild(amountInput);
             amountWrapper.appendChild(dollarSpan);
 
             const percentSpan = document.createElement("span");
             percentSpan.id = `${elId('Out')}${index}`;
+            percentSpan.className = "el-percentage";
             percentSpan.style.minWidth = isDualPanel ? "38px" : "80px";
             percentSpan.style.flex = isDualPanel ? "0 0 42px" : "0 0 90px";
-            percentSpan.style.textAlign = "right";
-            percentSpan.style.fontWeight = "700";
             percentSpan.style.color = "#1E3A8A";
 
             const deleteBtn = document.createElement("button");
             deleteBtn.textContent = "✕";
-            deleteBtn.style.border = "none";
-            deleteBtn.style.background = "transparent";
-            deleteBtn.style.fontWeight = "900";
+            deleteBtn.className = "el-delete-btn";
             deleteBtn.style.flex = isDualPanel ? "0 0 16px" : "";
             deleteBtn.style.padding = isDualPanel ? "0" : "";
             const isInsuranceRow = isTemplate && preName.toLowerCase().includes("insurance");
@@ -4487,20 +4769,23 @@ if (t.id === "ExpenseLens" || t.id === "BusinessExpenseLens") {
             amountInput.addEventListener("input", refreshExpenseLensViews);
 
             const leftControls = document.createElement("div");
-            leftControls.style.cssText = `display:flex;align-items:center;justify-content:flex-start;gap:${isDualPanel ? "3px" : "5px"};flex:0 0 ${isDualPanel ? "38px" : "54px"};min-width:${isDualPanel ? "38px" : "54px"};`;
+            leftControls.className = "el-left-controls";
+            leftControls.style.cssText = `gap:${isDualPanel ? "3px" : "5px"};flex:0 0 ${isDualPanel ? "38px" : "54px"};min-width:${isDualPanel ? "38px" : "54px"};`;
 
             // Drag handle — drag only activates from this grip, never from inputs
             const dragHandle = document.createElement("span");
             dragHandle.textContent = "⠿";
             dragHandle.title = "Drag to reorder";
-            dragHandle.style.cssText = `cursor:grab;color:#1E3A8A;font-size:${isDualPanel ? "1rem" : "1.2rem"};display:inline-flex;align-items:center;justify-content:center;width:${isDualPanel ? "14px" : "18px"};height:${isDualPanel ? "26px" : "30px"};user-select:none;opacity:0.55;touch-action:none;`;
+            dragHandle.className = "el-drag-handle";
+            dragHandle.style.cssText = `cursor:grab;font-size:${isDualPanel ? "1rem" : "1.2rem"};display:inline-flex;align-items:center;justify-content:center;width:${isDualPanel ? "14px" : "18px"};height:${isDualPanel ? "26px" : "30px"};user-select:none;touch-action:none;`;
             dragHandle.addEventListener("pointerdown", () => { div.draggable = true; });
             dragHandle.addEventListener("pointerup",   () => { div.draggable = false; });
             dragHandle.addEventListener("pointercancel", () => { div.draggable = false; });
 
             const pinBtn = document.createElement("button");
             pinBtn.type = "button";
-            pinBtn.style.cssText = `display:inline-flex;align-items:center;justify-content:center;width:${isDualPanel ? "20px" : "28px"};height:${isDualPanel ? "24px" : "30px"};border-radius:7px;border:1px solid rgba(30,58,138,.18);background:rgba(255,255,255,.04);color:#1E3A8A;font-size:${isDualPanel ? ".78rem" : ".9rem"};font-weight:900;line-height:1;cursor:pointer;padding:0;flex:0 0 ${isDualPanel ? "20px" : "28px"};`;
+            pinBtn.className = "el-pin-btn";
+            pinBtn.style.cssText = `width:${isDualPanel ? "20px" : "28px"};height:${isDualPanel ? "24px" : "30px"};font-size:${isDualPanel ? ".78rem" : ".9rem"};font-weight:900;flex:0 0 ${isDualPanel ? "20px" : "28px"};`;
 
             const syncPinButton = () => {
                 const pinned = isExpenseRowPinned(div);
@@ -4508,11 +4793,14 @@ if (t.id === "ExpenseLens" || t.id === "BusinessExpenseLens") {
                 pinBtn.title = pinned ? "Pinned to top" : "Pin to top";
                 pinBtn.setAttribute("aria-label", pinned ? "Unpin category from top" : "Pin category to top");
                 pinBtn.setAttribute("aria-pressed", pinned ? "true" : "false");
-                pinBtn.style.background = pinned ? "rgba(166,128,35,.22)" : "rgba(255,255,255,.04)";
-                pinBtn.style.borderColor = pinned ? "rgba(166,128,35,.65)" : "rgba(30,58,138,.18)";
-                pinBtn.style.color = pinned ? "#A68023" : "#1E3A8A";
+                pinBtn.style.background = pinned ? "linear-gradient(180deg, rgba(245,158,11,.26), rgba(180,83,9,.20))" : "rgba(13,29,59,.82)";
+                pinBtn.style.borderColor = pinned ? "rgba(245,158,11,.58)" : "rgba(56,189,248,.18)";
+                pinBtn.style.color = pinned ? "#fbbf24" : "#90d8ff";
                 pinBtn.style.opacity = pinned ? "1" : ".62";
-                div.style.boxShadow = pinned ? "inset 4px 0 0 rgba(166,128,35,.86)" : "";
+                div.style.border = pinned ? expenseLensPinnedBorder : expenseLensRowBorder;
+                div.style.boxShadow = pinned
+                    ? `inset 4px 0 0 rgba(245,158,11,.86), ${expenseLensCardShadow}`
+                    : expenseLensCardShadow;
             };
 
             pinBtn.addEventListener("click", (e) => {
@@ -4539,15 +4827,15 @@ if (t.id === "ExpenseLens" || t.id === "BusinessExpenseLens") {
                 div.draggable = false;
                 elDragSrc = null;
                 categoriesContainer.querySelectorAll(`[id^="${elId('CatRow')}"]`).forEach(r => {
-                    r.style.border = "1.5px solid rgba(166,128,35,.24)";
+                    r.style.border = isExpenseRowPinned(r) ? expenseLensPinnedBorder : expenseLensRowBorder;
                 });
             });
             div.addEventListener("dragover", (e) => {
                 e.preventDefault();
-                if (div !== elDragSrc) div.style.border = "2px solid #38BDF8";
+                if (div !== elDragSrc) div.style.border = expenseLensRowBorderStrong;
             });
             div.addEventListener("dragleave", () => {
-                div.style.border = "1.5px solid rgba(166,128,35,.24)";
+                div.style.border = isExpenseRowPinned(div) ? expenseLensPinnedBorder : expenseLensRowBorder;
             });
             div.addEventListener("drop", (e) => {
                 e.preventDefault();
@@ -4556,7 +4844,7 @@ if (t.id === "ExpenseLens" || t.id === "BusinessExpenseLens") {
                     const after = e.clientY > rect.top + rect.height / 2;
                     categoriesContainer.insertBefore(elDragSrc, after ? div.nextSibling : div);
                     keepPinnedExpenseRowsAtTop();
-                    div.style.border = "1.5px solid rgba(166,128,35,.24)";
+                    div.style.border = isExpenseRowPinned(div) ? expenseLensPinnedBorder : expenseLensRowBorder;
                     refreshExpenseLensViews();
                 }
             });
@@ -5253,8 +5541,8 @@ if (t.id === "ExpenseLens" || t.id === "BusinessExpenseLens") {
         weeklyBtn = document.createElement('button');
         weeklyBtn.type = 'button';
         weeklyBtn.textContent = 'Weekly ▾';
-        weeklyBtn.className = 'btn';
-        weeklyBtn.style.cssText = 'background:#1E3A8A;color:#fff;font-weight:700;border:none;white-space:nowrap;flex-shrink:0;padding:0 16px;height:38px;line-height:1;border-radius:6px;font-size:0.875rem;';
+        weeklyBtn.className = 'btn el-week-btn';
+        weeklyBtn.style.cssText = 'flex-shrink:0;';
         weeklyBtn.addEventListener('click', (e) => {
             e.stopPropagation();
             const isOpen = weekPanelBackdrop.style.display !== 'none';
@@ -5266,9 +5554,9 @@ if (t.id === "ExpenseLens" || t.id === "BusinessExpenseLens") {
 
         paymentFilterSelect = document.createElement('select');
         paymentFilterSelect.id = elId('PaymentFilter');
-        paymentFilterSelect.className = 'form-select';
+        paymentFilterSelect.className = 'form-select el-filter-select';
         paymentFilterSelect.title = 'Filter bills by payment method';
-        paymentFilterSelect.style.cssText = 'background:rgba(255,255,255,.92);border:1.5px solid rgba(166,128,35,.38);border-radius:10px;box-shadow:inset 0 1px 0 rgba(255,255,255,.05);color:#1E3A8A;font-weight:700;height:38px;min-width:148px;max-width:148px;flex:0 0 148px;padding-right:34px;';
+        paymentFilterSelect.style.cssText = 'padding-right:34px;';
         EL_PAYMENT_FILTERS.forEach(option => {
             const opt = document.createElement('option');
             opt.value = option.value;
@@ -5292,8 +5580,8 @@ if (t.id === "ExpenseLens" || t.id === "BusinessExpenseLens") {
         weeklyBtnTop.id = elId('WeeklyBtnTop');
         weeklyBtnTop.type = 'button';
         weeklyBtnTop.textContent = 'Weekly ▾';
-        weeklyBtnTop.className = 'btn';
-        weeklyBtnTop.style.cssText = 'background:#1E3A8A;color:#fff;font-weight:700;border:none;white-space:nowrap;flex-shrink:0;padding:0 16px;height:38px;line-height:1;border-radius:6px;font-size:0.875rem;';
+        weeklyBtnTop.className = 'btn el-week-btn';
+        weeklyBtnTop.style.cssText = 'flex-shrink:0;';
         weeklyBtnTop.addEventListener('click', (e) => {
             e.stopPropagation();
             const isOpen = weekPanelBackdrop.style.display !== 'none';
@@ -5305,22 +5593,17 @@ if (t.id === "ExpenseLens" || t.id === "BusinessExpenseLens") {
         elIncome.classList.remove('mb-3');
         const incomeInputRow = elIncome.parentElement;
         const incomeFlexWrap = document.createElement('div');
-        incomeFlexWrap.style.cssText = 'display:flex;align-items:center;gap:10px;margin-bottom:15px;';
-        incomeInputRow.style.cssText = 'position:relative;margin-bottom:0;width:240px;max-width:240px;flex:0 0 240px;';
+        incomeFlexWrap.className = 'el-income-flex';
+        incomeFlexWrap.style.marginBottom = '16px';
+        incomeInputRow.classList.add('el-income-input-inline');
+        incomeInputRow.style.marginBottom = '0';
         incomeInputRow.parentElement.insertBefore(incomeFlexWrap, incomeInputRow);
         incomeFlexWrap.appendChild(incomeInputRow);
 
         // Remaining balance badge — live read of monthly income minus all monthly bills
         const elRemainingBadge = document.createElement('div');
         elRemainingBadge.id = elId('RemainingBadge');
-        elRemainingBadge.style.cssText = [
-            'display:flex;align-items:center;height:38px;padding:0 16px;',
-            'border-radius:6px;border:2px solid rgba(100,116,139,0.35);',
-            'background:rgba(255,255,255,0.04);',
-            'font-weight:800;font-size:0.875rem;white-space:nowrap;',
-            'color:#64748B;letter-spacing:0.01em;',
-            'transition:background .2s,color .2s,border-color .2s;'
-        ].join('');
+        elRemainingBadge.className = 'el-balance-chip el-balance-chip-muted';
         elRemainingBadge.textContent = 'Remaining: $0';
         incomeFlexWrap.appendChild(elRemainingBadge);
         incomeFlexWrap.appendChild(weeklyBtnTop);
@@ -5328,7 +5611,8 @@ if (t.id === "ExpenseLens" || t.id === "BusinessExpenseLens") {
         if (!isBusinessExpenseLens) {
             incomeGroupsHost = document.createElement('div');
             incomeGroupsHost.id = elId('IncomeGroups');
-            incomeGroupsHost.style.cssText = 'display:flex;flex-direction:column;gap:14px;margin-bottom:14px;';
+            incomeGroupsHost.className = 'el-income-groups';
+            incomeGroupsHost.style.marginBottom = '14px';
             incomeFlexWrap.parentElement.insertBefore(incomeGroupsHost, incomeFlexWrap.nextSibling);
 
             elIncome.readOnly = true;
