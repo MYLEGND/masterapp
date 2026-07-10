@@ -1,161 +1,3 @@
-// ── Global Finance Tools Theme ── injected once on load, covers every tool ──
-(function injectFinanceToolsTheme() {
-    if (document.getElementById('ft-dark-theme')) return;
-    const s = document.createElement('style');
-    s.id = 'ft-dark-theme';
-    s.textContent = `
-        #budget-embed input,
-        #budget-embed select,
-        #budget-embed textarea,
-        #budget-embed input.form-control,
-        #budget-embed select.form-control,
-        #budget-embed .form-control,
-        #budget-embed .form-select,
-        .networth-tool input,
-        .networth-tool select,
-        .networth-tool textarea,
-        .networth-tool input.form-control,
-        .networth-tool select.form-control,
-        .networth-tool .form-control,
-        .networth-tool .form-select {
-            background-color: rgba(255,255,255,.92) !important;
-            border: 1.5px solid rgba(166,128,35,.38) !important;
-            border-radius: 10px !important;
-            box-shadow: inset 0 1px 0 rgba(255,255,255,.05) !important;
-            transition: border-color .15s ease, box-shadow .15s ease !important;
-        }
-        #budget-embed input:focus,
-        #budget-embed select:focus,
-        #budget-embed textarea:focus,
-        #budget-embed .form-control:focus,
-        #budget-embed .form-select:focus,
-        .networth-tool input:focus,
-        .networth-tool select:focus,
-        .networth-tool textarea:focus,
-        .networth-tool .form-control:focus,
-        .networth-tool .form-select:focus {
-            border-color: #ddb457 !important;
-            box-shadow: 0 0 0 3px rgba(221,180,87,.16) !important;
-            outline: none !important;
-        }
-        #budget-embed input[type="date"],
-        .networth-tool input[type="date"] { color-scheme: light; }
-        #budget-embed .btn-outline-gold,
-        .networth-tool .btn-outline-gold {
-            background: linear-gradient(155deg, #0d1f42 0%, #0a1630 100%) !important;
-            border: 1.5px solid rgba(199,153,49,.55) !important;
-            border-radius: 10px !important;
-            box-shadow: 0 4px 12px rgba(0,0,0,.22) !important;
-        }
-        #budget-embed .legend-money-input,
-        .networth-tool .legend-money-input {
-            display: flex;
-            align-items: center;
-            width: 100%;
-            min-width: 180px;
-            min-height: 42px;
-            background: #f4f4f2;
-            border: 1px solid rgba(198, 151, 45, 0.75);
-            border-radius: 10px;
-            overflow: hidden;
-            box-shadow: inset 0 1px 0 rgba(255,255,255,.4);
-        }
-        #budget-embed .legend-money-input[hidden],
-        .networth-tool .legend-money-input[hidden] {
-            display: none !important;
-        }
-        #budget-embed .legend-money-prefix,
-        .networth-tool .legend-money-prefix {
-            flex: 0 0 auto;
-            padding-left: 12px;
-            padding-right: 8px;
-            color: #0b2a66;
-            font-weight: 800;
-            line-height: 1;
-            pointer-events: none;
-            user-select: none;
-        }
-        #budget-embed .legend-money-field,
-        .networth-tool .legend-money-field {
-            flex: 1 1 auto;
-            min-width: 0;
-            width: 100%;
-            height: 100%;
-            border: 0 !important;
-            outline: 0 !important;
-            background: transparent !important;
-            box-shadow: none !important;
-            border-radius: 0 !important;
-            padding: 0 12px 0 0 !important;
-            color: #0b2a66 !important;
-            font-weight: 800 !important;
-        }
-        #budget-embed .legend-money-field:focus,
-        .networth-tool .legend-money-field:focus {
-            border: 0 !important;
-            outline: 0 !important;
-            box-shadow: none !important;
-        }
-        #budget-embed .legend-money-input:focus-within,
-        .networth-tool .legend-money-input:focus-within {
-            border-color: #d4af37;
-            box-shadow: 0 0 0 3px rgba(212, 175, 55, 0.18);
-        }
-        #budget-embed .legend-percent-input,
-        .networth-tool .legend-percent-input {
-            display: flex;
-            align-items: center;
-            width: 100%;
-            min-width: 90px;
-            min-height: 42px;
-            background: #f4f4f2;
-            border: 1px solid rgba(198, 151, 45, 0.75);
-            border-radius: 10px;
-            overflow: hidden;
-            box-shadow: inset 0 1px 0 rgba(255,255,255,.4);
-        }
-        #budget-embed .legend-percent-suffix,
-        .networth-tool .legend-percent-suffix {
-            flex: 0 0 auto;
-            padding: 0 10px 0 4px;
-            color: #0b2a66;
-            font-weight: 800;
-            line-height: 1;
-            pointer-events: none;
-            user-select: none;
-        }
-        #budget-embed .legend-percent-field,
-        .networth-tool .legend-percent-field {
-            flex: 1 1 auto;
-            min-width: 0;
-            width: 100%;
-            height: 100%;
-            border: 0 !important;
-            outline: 0 !important;
-            background: transparent !important;
-            box-shadow: none !important;
-            border-radius: 0 !important;
-            padding: 0 4px 0 10px !important;
-            margin: 0 !important;
-            color: #0b2a66 !important;
-            font-weight: 800 !important;
-            appearance: none !important;
-        }
-        #budget-embed .legend-percent-field:focus,
-        .networth-tool .legend-percent-field:focus {
-            border: 0 !important;
-            outline: 0 !important;
-            box-shadow: none !important;
-        }
-        #budget-embed .legend-percent-input:focus-within,
-        .networth-tool .legend-percent-input:focus-within {
-            border-color: #ddb457;
-            box-shadow: 0 0 0 3px rgba(221,180,87,.16);
-        }
-    `;
-    document.head.appendChild(s);
-})();
-
 document.addEventListener("DOMContentLoaded", async function () {
     const dropdown = document.getElementById("budgetDropdown");
     const financialHealthButton = document.getElementById("btnFinancialHealthSnapshot");
@@ -890,15 +732,7 @@ document.addEventListener("DOMContentLoaded", async function () {
 
     function applyToolBoxStyles(container) {
         if (!container) return;
-
-        // Visual styling only, no width/height
-        container.style.boxSizing = 'border-box';
-        container.style.overflow = 'visible';
-        container.style.border = '1.8px solid rgba(166,128,35,.52)';
-        container.style.borderRadius = '16px';
-        container.style.background = 'radial-gradient(900px 320px at 0% 0%, rgba(166,128,35,.12), transparent 55%), linear-gradient(180deg, rgba(11,21,41,.99), rgba(15,29,56,.99))';
-        container.style.boxShadow = '0 40px 100px rgba(0,0,0,.58)';
-        container.style.margin = '0 auto 50px auto';
+        container.classList.add('legend-finance-tool-shell');
         upgradeMoneyInputs(container);
     }
 
@@ -961,31 +795,28 @@ document.addEventListener("DOMContentLoaded", async function () {
     }
 
 // ------------------- Financial Meaning Colors -------------------
-const COLOR_INCOME  = "#1f9d55";  // green
-const COLOR_EXPENSE = "#d64545";  // red
-const COLOR_NEUTRAL = "#1E3A8A";     // gold (for neutral inputs and tips)
+const FINANCE_TONE_CLASSES = ["finance-tone-income", "finance-tone-expense", "finance-tone-neutral", "finance-tone-gold"];
 
-function paint(el, color, weight = "800") {
+function paint(el, toneClass) {
   if (!el) return;
-  el.style.setProperty("color", color, "important");
-  el.style.setProperty("font-weight", weight, "important");
+  el.classList.remove(...FINANCE_TONE_CLASSES);
+  el.classList.add(toneClass);
   const affixGroups = [
     el.closest?.(".legend-money-input"),
     el.closest?.(".legend-percent-input")
   ].filter(Boolean);
   affixGroups.forEach((group) => {
     group.querySelectorAll(".legend-money-prefix, .legend-percent-suffix").forEach((node) => {
-      node.style.setProperty("color", color, "important");
-      node.style.setProperty("font-weight", weight, "important");
+      node.classList.remove(...FINANCE_TONE_CLASSES);
+      node.classList.add(toneClass);
     });
   });
 }
 
-const COLOR_GOLD = "#a68023";
-function markIncome(el)  { paint(el, COLOR_INCOME); }
-function markExpense(el) { paint(el, COLOR_EXPENSE); }
-function markNeutral(el) { paint(el, COLOR_NEUTRAL, "700"); }
-function markGold(el)    { paint(el, COLOR_GOLD, "900"); }
+function markIncome(el)  { paint(el, "finance-tone-income"); }
+function markExpense(el) { paint(el, "finance-tone-expense"); }
+function markNeutral(el) { paint(el, "finance-tone-neutral"); }
+function markGold(el)    { paint(el, "finance-tone-gold"); }
 // Paint an element AND its adjacent suffix span ($ / %) the same color
 function markWithSuffix(markFn, el) {
     if (!el) return;
@@ -1147,18 +978,6 @@ function upgradeMoneyInput(input) {
     if (/^\$/.test(input.placeholder || "")) {
         input.placeholder = (input.placeholder || "").replace(/^\$\s*/, "");
     }
-    input.style.setProperty("border", "0", "important");
-    input.style.setProperty("outline", "0", "important");
-    input.style.setProperty("background", "transparent", "important");
-    input.style.setProperty("box-shadow", "none", "important");
-    input.style.setProperty("border-radius", "0", "important");
-    input.style.setProperty("padding", "0 12px 0 0", "important");
-    input.style.setProperty("margin", "0", "important");
-    input.style.setProperty("height", "100%", "important");
-    input.style.setProperty("width", "100%", "important");
-    input.style.setProperty("min-width", "0", "important");
-    input.style.setProperty("appearance", "none", "important");
-
     if (input.dataset.moneyInputBound !== "true") {
         input.addEventListener("focus", () => {
             input.value = stripFormattedNumericValue(input.value);
@@ -1283,7 +1102,10 @@ const toast = typeof window.toast === "function" ? window.toast : (msg => consol
                 const statusEl = document.getElementById("wfPlanStatus");
                 if (statusEl) statusEl.textContent = "Type to search.";
                 const resultsEl = document.getElementById("wfClientResults");
-                if (resultsEl) { resultsEl.style.display = "none"; resultsEl.innerHTML = ""; }
+                if (resultsEl) {
+                    resultsEl.classList.add("d-none");
+                    resultsEl.innerHTML = "";
+                }
                 const inputEl = document.getElementById("wfClientSearch");
                 if (inputEl) inputEl.value = "";
             }
@@ -1295,9 +1117,9 @@ const toast = typeof window.toast === "function" ? window.toast : (msg => consol
             const tool = window.LegendLivingBalanceSheetTool;
             if (!tool?.render) {
                 embedContainer.innerHTML = `
-<div class="networth-tool" style="max-width:1100px;margin:0 auto;padding:32px;border-radius:18px;background:#0d1b34;color:#f8fafc;border:1px solid rgba(166,128,35,.35);">
-    <h3 style="margin:0 0 8px;">Financial Health Snapshot</h3>
-    <p style="margin:0;color:rgba(248,250,252,.72);">This tool could not load. Please refresh and try again.</p>
+<div class="networth-tool legend-finance-tool-card legend-finance-tool-card--fallback el-shell">
+    <h3 class="lf-ui-001">Financial Health Snapshot</h3>
+    <p class="lf-ui-002">This tool could not load. Please refresh and try again.</p>
 </div>`;
                 return;
             }
@@ -1342,396 +1164,20 @@ const toast = typeof window.toast === "function" ? window.toast : (msg => consol
         if (t.id === "WealthForecast") {
             await ensureChartJs();
             embedContainer.innerHTML = `
-<div class="networth-tool" style="
-    background: radial-gradient(900px 320px at 0% 0%, rgba(166,128,35,.12), transparent 55%), linear-gradient(180deg, rgba(11,21,41,.99), rgba(15,29,56,.99));
-    padding:40px;
-    border-radius:20px;
-    box-shadow:0 40px 100px rgba(0,0,0,.58);
-    border:1.8px solid rgba(166,128,35,.52);
-    max-width:1200px;
-    margin:0 auto;
-    color:#f8fafc;
-    font-family: 'Inter', sans-serif;
-">
-    <!-- Tooltip styles (safe + isolated) -->
-    <style>
-        .wb-label{
-            display:inline-flex;
-            align-items:center;
-            gap:8px;
-            margin-top:15px;
-            font-weight:500;
-            font-size:1rem;
-        }
-        .wb-i{
-            display:inline-flex;
-            align-items:center;
-            justify-content:center;
-            width:18px;
-            height:18px;
-            border-radius:999px;
-            background:#fff;
-            border:1px solid rgba(210,31,43,.9);
-            color:#d21f2b;
-            font-weight:900;
-            font-size:12px;
-            line-height:1;
-            cursor:pointer;
-            user-select:none;
-            transform: translateY(-1px);
-            box-shadow:0 6px 18px rgba(0,0,0,.08);
-        }
-        .wb-i:focus{
-            outline:none;
-            box-shadow:0 0 0 3px rgba(210,31,43,.18), 0 10px 25px rgba(0,0,0,.10);
-        }
-        #wbTipLayer{
-            position:fixed;
-            inset:0;
-            pointer-events:none;
-            z-index:2147483647;
-        }
-        .wb-tipbox{
-            position:absolute;
-            max-width:min(360px, 86vw);
-            background:#fff;
-            color:#111;
-            border:1px solid rgba(0,0,0,.12);
-            border-left:4px solid #d21f2b;
-            padding:12px 12px;
-            border-radius:14px;
-            font-size:12.8px;
-            font-weight:650;
-            line-height:1.35;
-            box-shadow:0 18px 45px rgba(0,0,0,.18);
-            opacity:0;
-            transform:translateY(6px);
-            transition:opacity .12s ease, transform .12s ease;
-            pointer-events:none;
-            white-space:normal;
-        }
-        .wb-tipbox b{ font-weight:900; }
-        .wb-tipbox.show{ opacity:1; transform:translateY(0); }
-        .wf-chart-wrap{
-            width:min(440px, 100%);
-            min-height:270px;
-            padding:2px 0 0;
-            align-self:center;
-        }
-        .wf-chart-wrap canvas{
-            width:100% !important;
-            height:290px !important;
-        }
-        .wf-output-col{
-            display:flex;
-            flex-direction:column;
-            gap:10px;
-            align-items:center;
-        }
-        .wf-toggle-row{
-            display:flex;
-            gap:18px;
-            align-items:center;
-            justify-content:center;
-            min-height:28px;
-            width:min(440px, 100%);
-            margin:0;
-            flex-wrap:wrap;
-            align-self:center;
-        }
-        .wf-toggle-label{
-            display:inline-flex;
-            align-items:center;
-            gap:7px;
-            font-weight:800;
-            font-size:.88rem;
-            line-height:1;
-            margin:0;
-            white-space:nowrap;
-        }
-        .wf-toggle-label input[type="checkbox"]{
-            width:16px !important;
-            height:16px !important;
-            flex:0 0 16px;
-            margin:0 !important;
-            padding:0 !important;
-            border-radius:3px !important;
-        }
-        .wf-summary-box{
-            width: min(440px, 100%);
-            align-self:center;
-            background: rgba(15,23,42,.92);
-            border:1.5px solid #d1a034;
-            border-radius:14px;
-            box-shadow:0 12px 28px rgba(0,0,0,.25);
-            padding:14px 16px;
-            display:flex;
-            flex-direction:column;
-            gap:8px;
-        }
-        .wf-output-actions{
-            width:min(440px, 100%);
-            display:flex;
-            justify-content:center;
-            align-items:center;
-            align-self:center;
-            margin-top:0;
-        }
-        .wf-output-actions .wf-dist-launch-btn{
-            width:100%;
-            justify-content:center;
-        }
-        .wf-stat-row{
-            display:flex;
-            justify-content:space-between;
-            align-items:center;
-            padding:9px 14px;
-            border-radius:6px;
-            background:rgba(255,255,255,0.04);
-            border:1px solid rgba(148,163,184,0.12);
-        }
-        .wf-stat-label{
-            color:#94A3B8;
-            font-weight:700;
-            font-size:0.8rem;
-            letter-spacing:0.04em;
-            text-transform:uppercase;
-        }
-        .wf-stat-value{
-            color:#38BDF8;
-            font-weight:900;
-            font-size:0.92rem;
-        }
-        .wf-tip-text{
-            color:#d4a820 !important;
-            font-style:italic;
-        }
-        .wfd-pos{color:#22c55e;}
-        .wfd-neg{color:#ef4444;}
-        .wfd-grow{color:#38bdf8;}
-        .wf-header-row{
-            display:grid;
-            grid-template-columns:1fr auto;
-            align-items:center;
-            gap:12px;
-            width:100%;
-            margin-bottom:20px;
-            position:relative;
-            z-index:6;
-        }
-        .wf-title-stack h3{
-            margin:0;
-        }
-        .wf-title-stack{flex:1;}
-        .wf-actions{
-            display:flex;
-            align-items:center;
-            gap:12px;
-            flex-wrap:nowrap;
-            justify-content:flex-end;
-            flex-shrink:0;
-            position:relative;
-            z-index:7;
-        }
-        .wf-actions > button{
-            flex:0 0 auto;
-            margin:0;
-            border-radius:12px !important;
-            height:40px;
-            display:inline-flex;
-            align-items:center;
-            justify-content:center;
-            line-height:1;
-        }
-        .wf-actions .clear-btn{
-            display:inline-flex;
-            align-items:center;
-            justify-content:center;
-            height:40px;
-            min-width:78px;
-            padding:0 14px;
-            border-radius:12px !important;
-            font-weight:700;
-            font-size:.82rem;
-            margin:0;
-        }
-        .wf-action-btn{
-            background:linear-gradient(135deg,#0f172a 0%,#1e293b 100%);
-            color:#d9b35a;
-            border:1.5px solid #a68023;
-            font-weight:700;
-            letter-spacing:.3px;
-            border-radius:8px;
-            padding:6px 14px;
-            box-shadow:0 4px 12px rgba(166,128,35,.18);
-            cursor:pointer;
-            font-family:Inter,sans-serif;
-            font-size:.82rem;
-            transition:background .15s;
-            min-width:110px;
-            pointer-events:auto;
-            position:relative;
-            z-index:5;
-        }
-        .wf-action-btn:hover{background:linear-gradient(135deg,#1e293b 0%,#2d3f5c 100%);}
-
-        /* ── Distribution Planner Launch Button ── */
-        @keyframes wfd-launch-pulse {
-            0%,100% { box-shadow: 0 4px 18px rgba(166,128,35,.35), 0 0 0 0 rgba(217,179,90,.45); }
-            60%      { box-shadow: 0 6px 28px rgba(166,128,35,.55), 0 0 0 8px rgba(217,179,90,0); }
-        }
-        .wf-dist-launch-btn {
-            background: linear-gradient(135deg, #c08a1f 0%, #d9b35a 50%, #a87820 100%);
-            color: #0f172a;
-            border: none;
-            font-weight: 900;
-            letter-spacing: .4px;
-            border-radius: 12px;
-            height: 40px;
-            padding: 0 18px;
-            cursor: pointer;
-            font-family: Inter, sans-serif;
-            font-size: .92rem;
-            min-width: 190px;
-            pointer-events: auto;
-            position: relative;
-            z-index: 5;
-            display: inline-flex;
-            align-items: center;
-            gap: 8px;
-            animation: wfd-launch-pulse 2.8s ease-in-out infinite;
-            transition: transform .15s, filter .15s;
-            text-shadow: 0 1px 2px rgba(0,0,0,.18);
-        }
-        .wf-dist-launch-btn:hover {
-            filter: brightness(1.10);
-            transform: translateY(-1px);
-            animation: none;
-            box-shadow: 0 8px 32px rgba(166,128,35,.65);
-        }
-        .wf-dist-launch-btn:active { transform: translateY(0); filter: brightness(.95); }
-        .wf-dist-launch-btn .wfd-btn-icon { font-size: 1rem; line-height: 1; }
-        /* ── WF chart popout ── */
-        .wf-chart-modal-backdrop{
-            position:fixed;
-            inset:0;
-            background:rgba(0,0,0,0.55);
-            z-index:2147480000;
-            display:none;
-            align-items:center;
-            justify-content:center;
-            padding:20px;
-        }
-        .wf-chart-modal{
-            background:#0f172a;
-            border:1.5px solid #a68023;
-            border-radius:18px;
-            box-shadow:0 18px 55px rgba(0,0,0,0.35);
-            width:min(1200px, 96vw);
-            height:min(760px, 88vh);
-            display:flex;
-            flex-direction:column;
-            overflow:hidden;
-            position:relative;
-        }
-        .wf-chart-modal-head{
-            display:flex;
-            align-items:center;
-            justify-content:space-between;
-            padding:14px 16px;
-            border-bottom:1px solid rgba(255,255,255,0.08);
-            color:#eaf2ff;
-        }
-        .wf-chart-modal-head h4{
-            margin:0;
-            font-weight:900;
-            letter-spacing:.4px;
-            color:#d9b35a;
-        }
-        .wf-chart-modal-body{
-            flex:1;
-            padding:12px 16px 18px;
-        }
-        .wf-chart-modal canvas{
-            width:100% !important;
-            height:100% !important;
-        }
-        .wf-chart-close{
-            background:transparent;
-            border:1px solid rgba(255,255,255,.25);
-            color:#eaf2ff;
-            border-radius:10px;
-            padding:6px 10px;
-            font-weight:700;
-            cursor:pointer;
-        }
-        /* ── Wealth Forecast input grid (left side only) ── */
-        .wf-input-grid{
-            display:flex;
-            flex-direction:column;
-            gap:13px;
-            width:100%;
-        }
-        .wf-row{
-            display:grid;
-            column-gap:14px;
-            row-gap:6px;
-            align-items:end;
-        }
-        .wf-row .wb-label{ margin-bottom:4px; }
-        .wf-row.row-primary{ grid-template-columns: 1.5fr 1.5fr 1fr; }
-        .wf-row.row-duo{ grid-template-columns: 1fr 1fr; }
-        .wf-row.row-trio{ grid-template-columns: 1fr 1fr 1fr; }
-        .wf-disrupt-card{
-            border:1px solid rgba(166,128,35,0.35);
-            border-radius:14px;
-            padding:18px 18px 16px;
-            background:rgba(166,128,35,0.06);
-            box-shadow:0 8px 18px rgba(0,0,0,0.06);
-            margin-top:30px;
-        }
-        .wf-disrupt-head{
-            display:flex;
-            flex-direction:column;
-            gap:2px;
-            margin-bottom:10px;
-        }
-        .wf-disrupt-title{
-            font-weight:800;
-            color:#a68023;
-            text-transform:uppercase;
-            letter-spacing:0.5px;
-            font-size:.9rem;
-        }
-        .wf-disrupt-sub{
-            color:#b9c5d8;
-            font-size:.82rem;
-            line-height:1.25;
-        }
-        .wf-disrupt-row{
-            display:grid;
-            grid-template-columns: 1fr 1fr;
-            column-gap:14px;
-            row-gap:12px;
-        }
-        @media (max-width: 980px){
-            .wf-actions{justify-content:flex-start;}
-            .wf-output-col{min-width:0;}
-        }
-    </style>
+<div class="networth-tool legend-finance-tool-card legend-finance-tool-card--wide legend-finance-tool-card--spacious el-shell">
 
     <div id="wbTipLayer"></div>
     <div class="wf-header-row">
       <div class="wf-title-stack">
-        <h3 style="color:#a68023; font-weight:900; font-size:2.2rem; letter-spacing:0.5px;">
+        <h3 class="lf-ui-060">
             ${t.name}
         </h3>
       </div>
       <div id="wfActions" class="wf-actions"></div>
     </div>
-    <div style="display:flex; flex-wrap:wrap; gap:44px; align-items:flex-start;">
+    <div class="lf-ui-061">
         <!-- Inputs Column -->
-        <div style="flex:1 1 400px; min-width:400px;">
+        <div class="lf-ui-062">
             <div class="wf-input-grid">
                 <div class="wf-row row-primary">
                     <div>
@@ -1739,9 +1185,9 @@ const toast = typeof window.toast === "function" ? window.toast : (msg => consol
                             Starting Balance
                             <span class="wb-i" tabindex="0" data-tip="<b>Examples:</b> 25,000 • 100,000 • 250,000 (existing investable assets at start)">i</span>
                         </label>
-                        <div style="position:relative;">
-                            <input id="wbStartingBalance" type="text" class="form-control" style="font-weight:700; font-size:1.1rem; color:#1E3A8A; padding-right:30px;" />
-                            <span style="position:absolute; right:10px; top:50%; transform:translateY(-50%); font-weight:700; color:#1E3A8A;">$</span>
+                        <div class="lf-ui-006">
+                            <input id="wbStartingBalance" type="text" class="form-control lf-ui-007" />
+                            <span class="lf-ui-008">$</span>
                         </div>
                     </div>
                     <div>
@@ -1749,9 +1195,9 @@ const toast = typeof window.toast === "function" ? window.toast : (msg => consol
                             Annual Income
                             <span class="wb-i" tabindex="0" data-tip="<b>Examples:</b> 60,000 • 85,500 • 120,000 (gross annual pay)">i</span>
                         </label>
-                        <div style="position:relative;">
-                            <input id="wbIncome" type="text" class="form-control" style="font-weight:700; font-size:1.1rem; color:#1E3A8A; padding-right:30px;" />
-                            <span style="position:absolute; right:10px; top:50%; transform:translateY(-50%); font-weight:700; color:#1E3A8A;">$</span>
+                        <div class="lf-ui-006">
+                            <input id="wbIncome" type="text" class="form-control lf-ui-007" />
+                            <span class="lf-ui-008">$</span>
                         </div>
                     </div>
                     <div>
@@ -1759,7 +1205,7 @@ const toast = typeof window.toast === "function" ? window.toast : (msg => consol
                             Work Period
                             <span class="wb-i" tabindex="0" data-tip="<b>Examples:</b> 10 • 20 • 30 (years you plan to keep earning/saving)">i</span>
                         </label>
-                        <input id="wbYears" type="text" class="form-control" style="font-weight:700; font-size:1.1rem; color:#1E3A8A;" />
+                        <input id="wbYears" type="text" class="form-control lf-ui-009" />
                     </div>
                 </div>
 
@@ -1769,9 +1215,9 @@ const toast = typeof window.toast === "function" ? window.toast : (msg => consol
                             Inflation
                             <span class="wb-i" tabindex="0" data-tip="<b>Examples:</b> 2.5 • 3 • 4 (average annual inflation %)">i</span>
                         </label>
-                        <div style="position:relative;">
-                            <input id="wbInflation" type="text" class="form-control" style="font-weight:700; font-size:1.1rem; color:#1E3A8A; padding-right:30px;" />
-                            <span style="position:absolute; right:10px; top:50%; transform:translateY(-50%); font-weight:700; color:#1E3A8A;">%</span>
+                        <div class="lf-ui-006">
+                            <input id="wbInflation" type="text" class="form-control lf-ui-007" />
+                            <span class="lf-ui-008">%</span>
                         </div>
                     </div>
                     <div>
@@ -1779,9 +1225,9 @@ const toast = typeof window.toast === "function" ? window.toast : (msg => consol
                             After-Tax Rate of Return
                             <span class="wb-i" tabindex="0" data-tip="<b>Examples:</b> 5 • 7 • 9 (after-tax investment return %)">i</span>
                         </label>
-                        <div style="position:relative;">
-                            <input id="wbReturn" type="text" class="form-control" style="font-weight:700; font-size:1.1rem; color:#1E3A8A; padding-right:30px;" />
-                            <span style="position:absolute; right:10px; top:50%; transform:translateY(-50%); font-weight:700; color:#1E3A8A;">%</span>
+                        <div class="lf-ui-006">
+                            <input id="wbReturn" type="text" class="form-control lf-ui-007" />
+                            <span class="lf-ui-008">%</span>
                         </div>
                     </div>
                 </div>
@@ -1792,9 +1238,9 @@ const toast = typeof window.toast === "function" ? window.toast : (msg => consol
                             Tax Bracket
                             <span class="wb-i" tabindex="0" data-tip="<b>Examples:</b> 12 • 22 • 24 (effective/estimated rate %)">i</span>
                         </label>
-                        <div style="position:relative;">
-                            <input id="wbTax" type="text" class="form-control" style="font-weight:700; font-size:1.1rem; color:#1E3A8A; padding-right:30px;" />
-                            <span style="position:absolute; right:10px; top:50%; transform:translateY(-50%); font-weight:700; color:#1E3A8A;">%</span>
+                        <div class="lf-ui-006">
+                            <input id="wbTax" type="text" class="form-control lf-ui-007" />
+                            <span class="lf-ui-008">%</span>
                         </div>
                     </div>
                     <div>
@@ -1802,9 +1248,9 @@ const toast = typeof window.toast === "function" ? window.toast : (msg => consol
                             Fixed Liabilities
                             <span class="wb-i" tabindex="0" data-tip="<b>Examples:</b> 10 • 18 • 25 (debt payments as % of income)">i</span>
                         </label>
-                        <div style="position:relative;">
-                            <input id="wbLiabilities" type="text" class="form-control" style="font-weight:700; font-size:1.1rem; color:#1E3A8A; padding-right:30px;" />
-                            <span style="position:absolute; right:10px; top:50%; transform:translateY(-50%); font-weight:700; color:#1E3A8A;">%</span>
+                        <div class="lf-ui-006">
+                            <input id="wbLiabilities" type="text" class="form-control lf-ui-007" />
+                            <span class="lf-ui-008">%</span>
                         </div>
                     </div>
                     <div>
@@ -1812,9 +1258,9 @@ const toast = typeof window.toast === "function" ? window.toast : (msg => consol
                             Lifestyle Spending
                             <span class="wb-i" tabindex="0" data-tip="<b>Examples:</b> 35 • 45 • 55 (living costs + wants as % of income)">i</span>
                         </label>
-                        <div style="position:relative;">
-                            <input id="wbLifestyle" type="text" class="form-control" style="font-weight:700; font-size:1.1rem; color:#1E3A8A; padding-right:30px;" />
-                            <span style="position:absolute; right:10px; top:50%; transform:translateY(-50%); font-weight:700; color:#1E3A8A;">%</span>
+                        <div class="lf-ui-006">
+                            <input id="wbLifestyle" type="text" class="form-control lf-ui-007" />
+                            <span class="lf-ui-008">%</span>
                         </div>
                     </div>
                 </div>
@@ -1824,26 +1270,26 @@ const toast = typeof window.toast === "function" ? window.toast : (msg => consol
                         <div class="wf-disrupt-title">Income Disruption / Disability Income</div>
                         <div class="wf-disrupt-sub">Model a temporary income loss and disability income replacement during accumulation.</div>
                     </div>
-                    <div class="wf-disrupt-row" style="margin-bottom:12px;">
+                    <div class="wf-disrupt-row lf-ui-063">
                         <div>
                             <label class="wb-label">Disruption Start Year</label>
-                            <input id="wbDisruptStartYear" type="text" class="form-control" style="font-weight:700; font-size:1.05rem; color:#0f172a;" placeholder="1" />
+                            <input id="wbDisruptStartYear" type="text" class="form-control lf-ui-064" placeholder="1" />
                         </div>
                         <div>
                             <label class="wb-label">Years of Income Disruption</label>
-                            <input id="wbDisruptYears" type="text" class="form-control" style="font-weight:700; font-size:1.05rem; color:#0f172a;" placeholder="0" />
+                            <input id="wbDisruptYears" type="text" class="form-control lf-ui-064" placeholder="0" />
                         </div>
                     </div>
                     <div class="wf-disrupt-row">
                         <div>
                             <label class="wb-label">Months of Income Disruption</label>
-                            <input id="wbDisruptMonths" type="text" class="form-control" style="font-weight:700; font-size:1.05rem; color:#0f172a;" placeholder="0" />
+                            <input id="wbDisruptMonths" type="text" class="form-control lf-ui-064" placeholder="0" />
                         </div>
                         <div>
                             <label class="wb-label">Income Replacement %</label>
-                            <div style="position:relative;">
-                                <input id="wbDisabilityPct" type="text" class="form-control" style="font-weight:700; font-size:1.05rem; color:#1E3A8A; padding-right:30px;" placeholder="0" />
-                                <span style="position:absolute; right:10px; top:50%; transform:translateY(-50%); font-weight:700; color:#1E3A8A;">%</span>
+                            <div class="lf-ui-006">
+                                <input id="wbDisabilityPct" type="text" class="form-control lf-ui-065" placeholder="0" />
+                                <span class="lf-ui-008">%</span>
                             </div>
                         </div>
                     </div>
@@ -1853,12 +1299,12 @@ const toast = typeof window.toast === "function" ? window.toast : (msg => consol
         </div>
 
         <!-- Outputs + Chart -->
-        <div style="flex:1 1 420px; min-width:420px;" class="wf-output-col">
+        <div class="wf-output-col lf-ui-066">
             <div class="wf-toggle-row">
-                <label class="wf-toggle-label" style="color:#22c55e;">
+                <label class="wf-toggle-label lf-ui-067">
                     <input id="wf_toggleWealth" type="checkbox" checked> Projected Wealth
                 </label>
-                <label class="wf-toggle-label" style="color:#f87171;">
+                <label class="wf-toggle-label lf-ui-068">
                     <input id="wf_toggleSpend" type="checkbox"> Cumulative Spending
                 </label>
             </div>
@@ -1878,12 +1324,12 @@ const toast = typeof window.toast === "function" ? window.toast : (msg => consol
                     <span class="wf-stat-label">Avg Annual Savings</span>
                     <span id="wbActualSavings" class="wf-stat-value">$0</span>
                 </div>
-                <div id="wbSavingsTips" class="wf-tip-text" style="padding:10px 14px;border-radius:6px;border:2px solid rgba(166,128,35,0.45);background:rgba(166,128,35,0.10);font-weight:700;font-size:0.875rem;color:#d4a820;letter-spacing:0.01em;font-style:italic;transition:background .2s,color .2s,border-color .2s;">
+                <div id="wbSavingsTips" class="wf-tip-text lf-ui-011">
                     Enter your profile above to calculate savings.
                 </div>
                 <!-- hidden holders to keep IDs for logic -->
-                <span id="wbEarnings" style="display:none">$0</span>
-                <span id="wbWealth" style="display:none">$0</span>
+                <span class="lf-ui-012" id="wbEarnings">$0</span>
+                <span class="lf-ui-012" id="wbWealth">$0</span>
             </div>
             <div id="wfOutputActions" class="wf-output-actions"></div>
         </div>
@@ -2144,6 +1590,10 @@ const toast = typeof window.toast === "function" ? window.toast : (msg => consol
 
             const wfSearchInput = document.getElementById("wfClientSearch");
             let wfResultsEl = document.getElementById("wfClientResults");
+            const setSearchResultsVisible = (element, isVisible) => {
+                if (!element) return;
+                element.classList.toggle("d-none", !isVisible);
+            };
 
             let wfSearchAbort = null;
             let wfSearchToken = 0;
@@ -2155,8 +1605,14 @@ const toast = typeof window.toast === "function" ? window.toast : (msg => consol
                 const name = item.displayName || item.clientUserId;
                 if (wfSearchInput) wfSearchInput.value = name;
                 if (dpSearchInputRef) dpSearchInputRef.value = name;
-                if (wfResultsEl){ wfResultsEl.style.display = "none"; wfResultsEl.innerHTML = ""; }
-                if (dpResultsRef){ dpResultsRef.style.display = "none"; dpResultsRef.innerHTML = ""; }
+                if (wfResultsEl){
+                    setSearchResultsVisible(wfResultsEl, false);
+                    wfResultsEl.innerHTML = "";
+                }
+                if (dpResultsRef){
+                    setSearchResultsVisible(dpResultsRef, false);
+                    dpResultsRef.innerHTML = "";
+                }
                 const statusEl = document.getElementById("wfPlanStatus");
                 if (statusEl){ statusEl.textContent = "Loading plan…"; statusEl.classList.remove("text-danger"); }
                 wfActiveClientId = item.clientUserId;
@@ -2176,7 +1632,10 @@ const toast = typeof window.toast === "function" ? window.toast : (msg => consol
 
                 if (qTrim.length === 0){
                     if (statusEl){ statusEl.textContent = "Type to search."; statusEl.classList.remove("text-danger"); }
-                    if (wfResultsEl){ wfResultsEl.style.display = "none"; wfResultsEl.innerHTML = ""; }
+                    if (wfResultsEl){
+                        setSearchResultsVisible(wfResultsEl, false);
+                        wfResultsEl.innerHTML = "";
+                    }
                     wfActiveClientId = null;
                     dpActiveClientId = null;
                     saveDpUiSession({ activeClientId: null, activeClientName: null });
@@ -2209,20 +1668,17 @@ const toast = typeof window.toast === "function" ? window.toast : (msg => consol
                         list.forEach(item => {
                             const div = document.createElement("button");
                             div.type = "button";
-                            div.className = "list-group-item list-group-item-action";
-                            div.style.display = "flex";
-                            div.style.flexDirection = "column";
-                            div.style.alignItems = "flex-start";
+                            div.className = "list-group-item list-group-item-action finance-search-result";
                             div.innerHTML = `
-                                <span style="font-weight:800;">${item.displayName || "Client"}</span>
-                                <span style="font-size:12px;color:#6b7280;">${item.email || "—"}${item.phone ? " · " + item.phone : ""}</span>
-                                <span style="font-size:11px;color:${item.hasSavedPlan ? '#16a34a' : '#9ca3af'};">${item.hasSavedPlan ? 'Plan saved' : 'No plan yet'}</span>
+                                <span class="lf-ui-069">${item.displayName || "Client"}</span>
+                                <span class="lf-ui-070">${item.email || "—"}${item.phone ? " · " + item.phone : ""}</span>
+                                <span class="finance-search-result__note ${item.hasSavedPlan ? 'finance-search-result__note--saved' : 'finance-search-result__note--empty'}">${item.hasSavedPlan ? 'Plan saved' : 'No plan yet'}</span>
                             `;
                             div.addEventListener("click", async () => { await selectActiveClient(item); });
                             frag.appendChild(div);
                         });
                         wfResultsEl.replaceChildren(frag);
-                        wfResultsEl.style.display = "block";
+                        setSearchResultsVisible(wfResultsEl, true);
                     }
                     if (statusEl){ statusEl.textContent = `Found ${list.length}. Select to load.`; statusEl.classList.remove("text-danger"); }
                 } catch(err){
@@ -2712,240 +2168,21 @@ markGold(savingsTipsOut);
                 document.body.appendChild(ovr);
 
                 ovr.innerHTML = `
-<style>
-#wfDist_overlay{
-    display:none;position:fixed;inset:0;z-index:99999;
-    background:rgba(5,10,20,.80);
-    align-items:flex-start;justify-content:center;
-    padding:20px 16px 48px;overflow-y:auto;
-}
-#wfDist_overlay.wfd-open{display:flex;}
-#wfDist_panel{
-    background:linear-gradient(145deg,#0b1529 0%,#0d1c36 100%);
-    color:#e2e8f0;
-    border-radius:20px;
-    box-shadow:0 28px 70px rgba(0,0,0,.55);
-    border:1.5px solid rgba(166,128,35,.55);
-    width:100%;max-width:980px;
-    font-family:'Inter',sans-serif;
-    position:relative;margin:auto;
-    overflow:hidden;
-}
-.wfd-hdr{
-    background:linear-gradient(135deg,#0b1529 0%,#0f2040 100%);
-    border-bottom:1.5px solid #a68023;
-    border-radius:20px 20px 0 0;
-    padding:22px 22px 18px;
-}
-.wfd-steps{
-    display:flex;gap:8px;margin-top:14px;flex-wrap:wrap;
-}
-.wfd-step-chip{
-    padding:9px 12px;border-radius:10px;
-    background:rgba(255,255,255,.06);color:#cbd5e1;
-    font-weight:800;font-size:.83rem;border:1px solid rgba(166,128,35,.35);
-    cursor:pointer;display:flex;align-items:center;gap:8px;
-}
-.wfd-step-chip.active{background:#d9b35a;color:#0f172a;border-color:#d9b35a;}
-.wfd-step-chip .step-num{width:22px;height:22px;display:inline-flex;align-items:center;justify-content:center;border-radius:50%;background:rgba(0,0,0,.25);font-weight:900;}
-.wfd-step-chip.active .step-num{background:#0f172a;color:#d9b35a;}
-.wfd-body{padding:18px 22px 22px;}
-.wfd-step-wrap{display:none;min-height:320px;}
-.wfd-step-wrap.active{display:block;}
-.wfd-step-clear{
-    margin-left:auto;
-    background:transparent;
-    border:1px solid #b08d2f;
-    color:#d9b35a;
-    font-weight:700;
-    font-size:.8rem;
-    padding:6px 10px;
-    border-radius:8px;
-    cursor:pointer;
-}
-.wfd-step-clear:hover{background:rgba(185,141,47,.1);}
-.wfd-footer{
-    position:sticky;bottom:0;left:0;right:0;
-    padding:12px 18px;
-    background:linear-gradient(180deg, rgba(11,21,41,.94) 0%, rgba(11,21,41,1) 100%);
-    border-top:1px solid rgba(166,128,35,.35);
-    display:flex;gap:10px;flex-wrap:wrap;justify-content:flex-end;
-    box-shadow:0 -10px 30px rgba(0,0,0,.25);
-}
-.wfd-footer .wfd-calc-btn{margin-top:0;flex:1 1 160px;max-width:240px;}
-.wfd-footer .wfd-secondary{background:#0f172a;border-color:rgba(166,128,35,.6);color:#d9b35a;}
-.wfd-sec{
-    margin-bottom:28px;
-    padding-bottom:24px;
-    border-bottom:1px solid rgba(166,128,35,.25);
-    background:rgba(255,255,255,.02);
-    border-radius:12px;
-    padding:20px;
-}
-.wfd-sec:last-child{border-bottom:none;margin-bottom:0;}
-.wfd-sec-title{color:#d9b35a;font-weight:900;font-size:1.1rem;margin:0 0 16px;letter-spacing:.4px;}
-.wfd-lbl{display:block;font-weight:650;font-size:.82rem;color:#e2e8f0;margin:12px 0 3px;}
-        .wfd-inp{
-    width:100%;padding:8px 11px;
-    border:1.5px solid rgba(217,179,90,.7);border-radius:8px;
-    font-size:.92rem;font-weight:700;color:#d9b35a;
-    background:#0f172a;box-sizing:border-box;
-    transition:border-color .15s, box-shadow .15s;
-}
-.wfd-inp::placeholder{color:#94a3b8;}
-.wfd-inp[readonly]{color:#d9b35a;}
-.wfd-inp:focus{outline:none;border-color:#d9b35a;background:#111e3a;box-shadow:0 0 0 2px rgba(217,179,90,.22);}
-.wfd-inp[readonly]{background:#0d1a30;color:#94a3b8;cursor:default;}
-.wfd-inp.wfd-good{border-color:#16a34a;color:#4ade80;}
-.wfd-inp.wfd-bad{border-color:#dc2626;color:#f87171;}
-.wfd-row{display:flex;gap:14px;flex-wrap:wrap;}
-.wfd-col{flex:1;min-width:130px;}
-.wfd-half{flex:0 0 calc(50% - 7px);min-width:130px;}
-.wfd-bkt-grid{display:flex;gap:14px;flex-wrap:wrap;margin-top:8px;}
-.wfd-bkt{flex:1;min-width:230px;background:#0f172a;border:1.5px solid rgba(166,128,35,.45);border-radius:14px;padding:16px 14px;box-shadow:0 8px 24px rgba(0,0,0,.22);}
-.wfd-bkt-title{font-weight:800;font-size:.97rem;color:#e2e8f0;margin:0 0 2px;}
-.wfd-bkt-sub{font-size:.73rem;color:#cbd5e1;margin:0 0 8px;line-height:1.4;}
-.wfd-tog-wrap{display:flex;align-items:center;gap:10px;margin-top:12px;}
-.wfd-tog{position:relative;width:38px;height:20px;display:inline-block;flex-shrink:0;}
-.wfd-tog input{opacity:0;width:0;height:0;}
-        .wfd-tog-sl{position:absolute;inset:0;background:#1f2937;border-radius:99px;cursor:pointer;transition:background .2s;border:1px solid rgba(217,179,90,.5);}
-        .wfd-tog input:checked + .wfd-tog-sl{background:#d9b35a;}
-.wfd-tog-sl:before{content:'';position:absolute;width:14px;height:14px;background:#fff;border-radius:50%;left:3px;top:3px;transition:transform .2s;box-shadow:0 1px 4px rgba(0,0,0,.2);}
-.wfd-tog input:checked + .wfd-tog-sl:before{transform:translateX(18px);}
-.wfd-tog-lbl{font-size:.8rem;font-weight:600;color:#475569;}
-.wfd-alloc-row{display:flex;align-items:center;gap:10px;margin-top:10px;flex-wrap:wrap;}
-.wfd-alloc-good{color:#16a34a;font-weight:800;}
-.wfd-alloc-bad{color:#dc2626;font-weight:800;}
-        .wfd-bkt-vis{display:flex;gap:10px;align-items:flex-end;height:110px;margin:12px 0 0;justify-content:center;color:#e5e7eb;}
-.wfd-bkt-bar-wrap{flex:1;display:flex;flex-direction:column;align-items:center;gap:4px;height:100%;justify-content:flex-end;}
-.wfd-bkt-bar{width:100%;border-radius:6px 6px 0 0;min-height:3px;transition:height .3s ease;}
-        .wfd-bkt-bar-lbl{font-size:.7rem;font-weight:700;text-align:center;color:#e5e7eb;line-height:1.3;}
-.wfd-calc-btn{
-    display:block;width:100%;padding:13px;
-    background:linear-gradient(135deg,#0b1529 0%,#1e3a5f 100%);
-    color:#d9b35a;border:1.5px solid #a68023;
-    border-radius:12px;font-weight:800;font-size:1rem;
-    cursor:pointer;letter-spacing:.4px;
-    box-shadow:0 6px 20px rgba(166,128,35,.18);
-    transition:background .15s;margin-top:6px;
-}
-.wfd-calc-btn:hover{background:linear-gradient(135deg,#162540 0%,#264a75 100%);}
-.wfd-calc-btn:disabled{background:#e2e8f0;color:#94a3b8;border-color:#cbd5e1;box-shadow:none;cursor:not-allowed;}
-.wfd-res-grid{display:flex;gap:12px;flex-wrap:wrap;margin-bottom:20px;}
-.wfd-res-card{flex:1;min-width:140px;background:linear-gradient(145deg,#0f172a 0%,#111f38 100%);border:1px solid rgba(166,128,35,.5);border-radius:11px;padding:12px 14px;box-shadow:0 10px 30px rgba(0,0,0,.18);}
-.wfd-res-lbl{font-size:.7rem;font-weight:700;color:#cbd5e1;margin:0 0 3px;text-transform:uppercase;letter-spacing:.5px;}
-.wfd-res-val{font-size:1.08rem;font-weight:900;color:#f8fafc;margin:0;}
-.wfd-res-val.green{color:#4ade80;}
-.wfd-res-val.gold{color:#d9b35a;}
-.wfd-res-val.red{color:#f87171;}
-.wfd-res-val.blue{color:#60a5fa;}
-.wfd-res-val.orange{color:#fb923c;}
-.wfd-return-pos{color:#22c55e;font-weight:800;}
-.wfd-return-flat{color:#94a3b8;font-weight:700;}
-.wfd-return-neg{color:#ef4444;font-weight:800;}
-.wfd-badge{
-    display:inline-flex;
-    align-items:center;
-    justify-content:center;
-    gap:6px;
-    padding:5px 12px;
-    border-radius:999px;
-    font-size:.85rem;
-    font-weight:800;
-    letter-spacing:.3px;
-    line-height:1.1;
-    white-space:nowrap;
-    border:1.25px solid rgba(217,179,90,.5);
-    box-shadow:0 4px 12px rgba(0,0,0,.12);
-}
-.wfd-hlthy{background:#dcfce7;color:#15803d;}
-.wfd-tight{background:#fef9c3;color:#a16207;}
-.wfd-risk{
-    background:rgba(239,68,68,.12);
-    color:#f87171;
-    border-color:rgba(248,113,113,.45);
-}
-.wfd-warn-box{background:#fff7ed;border:1px solid #fdba74;border-left:4px solid #f97316;border-radius:8px;padding:9px 13px;font-size:.82rem;color:#7c2d12;font-weight:600;margin-top:8px;}
-.wfd-info-box{background:#eff6ff;border:1px solid #93c5fd;border-left:4px solid #3b82f6;border-radius:8px;padding:9px 13px;font-size:.82rem;color:#1e3a5f;font-weight:600;margin-top:8px;}
-.wfd-chart-wrap{width:100%;height:240px;margin-top:6px;}
-.wfd-chart-wrap canvas{width:100%!important;height:240px!important;}
-        .wfd-priority-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:10px;margin-top:10px;}
-        .wfd-pri-label{font-size:.8rem;font-weight:700;color:#334155;margin-bottom:4px;}
-.wfd-mini-note{font-size:.75rem;color:#e2e8f0;font-weight:600;margin-top:6px;}
-.wfd-inline-note{font-size:.76rem;color:#d9b35a;font-weight:700;margin-top:4px;}
-        /* Summary strip */
-        .wfd-summary{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px;background:#0b1529;border:1px solid rgba(166,128,35,.55);border-radius:12px;padding:12px 14px;box-shadow:0 10px 26px rgba(0,0,0,.2);}
-        .wfd-sum-card{background:rgba(255,255,255,.04);border:1px solid rgba(166,128,35,.45);border-radius:10px;padding:10px 12px;min-height:78px;display:flex;flex-direction:column;justify-content:center;}
-        .wfd-sum-label{margin:0;color:#e5e7eb;font-size:.78rem;font-weight:700;letter-spacing:.4px;}
-        .wfd-sum-value{margin:2px 0 0;color:#d9b35a;font-size:1.15rem;font-weight:900;}
-        .wfd-sum-good{color:#4ade80 !important;}
-        .wfd-sum-warn{color:#fbbf24 !important;}
-        .wfd-sum-bad{color:#f87171 !important;}
-        /* Down-market state */
-        .wfd-dm-badge{padding:5px 10px;border-radius:999px;font-size:.72rem;font-weight:800;border:1px solid rgba(217,179,90,.35);background:#ecfdf3;color:#166534;}
-        .wfd-dm-badge.off{background:#fef2f2;color:#b91c1c;border-color:#fecaca;}
-        .wfd-bkt.wfd-dm-off{opacity:.8;border-style:dashed;}
-        /* Emergency reserve card */
-        .wfd-em-card{display:flex;align-items:center;gap:12px;flex-wrap:wrap;background:#0b1529;border:1px solid rgba(166,128,35,.55);border-radius:12px;padding:10px 12px;box-shadow:0 6px 18px rgba(0,0,0,.18);}
-.wfd-em-card .wfd-res-val{color:#eaf2ff;}
-.wfd-em-card .wfd-sum-value{color:#d9b35a;}
-/* Inputs de-emphasis */
-.wfd-sec input.wfd-inp, .wfd-sec select.wfd-inp{background:#0f172a;border-color:rgba(217,179,90,.55);color:#f8fafc;}
-.wfd-sec input.wfd-inp:focus, .wfd-sec select.wfd-inp:focus{background:#111e3a;border-color:#d9b35a;}
-.wfd-acc{border:1px solid rgba(217,179,90,.35);border-radius:12px;overflow:hidden;background:rgba(255,255,255,.02);}
-.wfd-acc-btn{width:100%;text-align:left;padding:12px 14px;border:none;background:linear-gradient(135deg,#0f172a 0%,#111f2f 100%);color:#e2e8f0;font-weight:800;font-size:.9rem;display:flex;align-items:center;justify-content:space-between;cursor:pointer;}
-.wfd-acc-btn:after{content:'▾';font-size:.9rem;color:#d9b35a;}
-.wfd-acc-body{padding:12px 14px;display:block;}
-.wfd-acc.collapsed .wfd-acc-body{display:none;}
-.wfd-acc.collapsed .wfd-acc-btn:after{content:'▸';}
-.wfd-step-wrap{display:none;min-height:320px;}
-.wfd-step-wrap.active{display:block;}
-/* Dark gold border standardization (scoped to planner) */
-#wfDist_panel .wfd-inp,
-#wfDist_panel .wfd-bkt,
-#wfDist_panel .wfd-res-card,
-#wfDist_panel .wfd-bkt-tile,
-#wfDist_panel .wfd-acc,
-#wfDist_panel .wfd-acc-body,
-#wfDist_panel .wfd-sec,
-#wfDist_panel .wfd-alloc-row,
-#wfDist_panel .wfd-warn-box,
-#wfDist_panel .wfd-info-box,
-#wfDist_panel #wfd_tipsWrap > div,
-#wfDist_panel #wfd_chartWrapAcc,
-#wfDist_panel #wfd_sourceBreak,
-#wfDist_panel #wfd_bktDrill_panel,
-#wfDist_panel #wfd_warnWrap,
-#wfDist_panel .wfd-bkt-bar-wrap{
-    border-color:#b08d2f !important;
-}
-#wfDist_panel .wfd-step-chip,
-#wfDist_panel .wfd-footer,
-#wfDist_panel .wfd-acc-btn{
-    border-color:#b08d2f !important;
-}
-@media(max-width:640px){
-    #wfDist_panel{border-radius:16px;}
-    .wfd-hdr{padding:18px 18px 16px;border-radius:16px 16px 0 0;}
-    .wfd-body{padding:18px;}
-    .wfd-bkt-grid,.wfd-res-grid{flex-direction:column;}
-}
-</style>
 
 <div id="wfDist_panel">
   <!-- HEADER -->
     <div class="wfd-hdr">
-      <button id="wfd_close" type="button" aria-label="Close"
-        style="position:absolute;top:14px;right:14px;background:transparent;border:1.5px solid rgba(166,128,35,.5);color:#d9b35a;font-size:1.2rem;font-weight:900;width:34px;height:34px;border-radius:50%;cursor:pointer;display:flex;align-items:center;justify-content:center;z-index:2;">×</button>
-      <h2 style="color:#d9b35a;font-weight:900;font-size:1.75rem;margin:0 0 4px;">Distribution Planner</h2>
-      <p style="color:#94a3b8;margin:0;font-size:.88rem;">Retirement income strategy — coming down the mountain</p>
-      <p style="color:#64748b;margin:5px 0 0;font-size:.76rem;">Auto-populated from your Wealth Forecast final projected balance.</p>
-      <div id="dpClientSearchRow" style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:10px;">
-        <input id="dpClientSearch" class="form-control form-control-sm" style="width:220px;" placeholder="Search client" />
+      <button class="lf-ui-071" id="wfd_close" type="button" aria-label="Close"
+       >×</button>
+      <h2 class="lf-ui-072">Distribution Planner</h2>
+      <p class="lf-ui-073">Retirement income strategy — coming down the mountain</p>
+      <p class="lf-ui-074">Auto-populated from your Wealth Forecast final projected balance.</p>
+      <div class="lf-ui-075" id="dpClientSearchRow">
+        <input id="dpClientSearch" class="form-control form-control-sm lf-ui-076" placeholder="Search client" />
         <button id="dpClientSearchBtn" class="btn btn-ghost btn-sm" type="button">Search</button>
         <span id="dpPlanStatus" class="text-muted small">No client selected.</span>
       </div>
-      <div id="dpClientResults" class="list-group" style="display:none;margin-top:8px;"></div>
+      <div id="dpClientResults" class="list-group lf-ui-077"></div>
       <div class="wfd-steps" id="wfd_stepsNav">
         <div class="wfd-step-chip active" data-step="1"><span class="step-num">1</span> Foundation</div>
                 <div class="wfd-step-chip" data-step="2"><span class="step-num">2</span> Strategy</div>
@@ -2955,31 +2192,31 @@ markGold(savingsTipsOut);
 
   <!-- BODY -->
   <div class="wfd-body">
-    <div id="wfd_block" class="wfd-warn-box" style="display:none;margin-bottom:12px;"></div>
+    <div id="wfd_block" class="wfd-warn-box lf-ui-078"></div>
 
     <!-- STEP 1: Foundation -->
     <div class="wfd-step-wrap active" data-step="1">
-      <div id="wfd_block_top" class="wfd-warn-box" style="display:none;margin-bottom:12px;"></div>
-    <div id="wfd_noBaseWarn" class="wfd-warn-box" style="display:none;margin-bottom:16px;">
+      <div id="wfd_block_top" class="wfd-warn-box lf-ui-078"></div>
+    <div id="wfd_noBaseWarn" class="wfd-warn-box lf-ui-079">
       ⚠️ Wealth Forecast has no valid result yet. Complete the Wealth Forecast inputs above first, or enable <strong>Manual Override</strong> below to enter a base manually.
     </div>
 
     <!-- No-base warning -->
     <!-- SECTION 1: Retirement Foundation -->
     <div class="wfd-sec">
-      <div style="display:flex;align-items:center;gap:10px;">
-        <p class="wfd-sec-title" style="margin:0;">1 — Retirement Foundation</p>
+      <div class="lf-ui-080">
+        <p class="wfd-sec-title lf-ui-081">1 — Retirement Foundation</p>
         <button type="button" class="wfd-step-clear" id="wfd_clearStep1">Clear Step</button>
       </div>
       <div class="wfd-row">
         <div class="wfd-col">
-          <label class="wfd-lbl" for="wfd_base">Retirement Base (from Wealth Forecast) <span style="color:#94a3b8;font-weight:400;font-size:.75rem;">read-only</span></label>
+          <label class="wfd-lbl" for="wfd_base">Retirement Base (from Wealth Forecast) <span class="lf-ui-082">read-only</span></label>
           <input id="wfd_base" class="wfd-inp" type="text" readonly placeholder="Run Wealth Forecast above" />
         </div>
-        <div class="wfd-col" style="display:flex;flex-direction:column;justify-content:flex-end;padding-bottom:2px;">
-          <div class="wfd-tog-wrap" style="margin-top:20px;">
+        <div class="wfd-col lf-ui-083">
+          <div class="wfd-tog-wrap lf-ui-084">
             <label class="wfd-tog"><input type="checkbox" id="wfd_manualOverride" /><span class="wfd-tog-sl"></span></label>
-            <span class="wfd-tog-lbl" style="font-size:.82rem;">Manual Override (what-if)</span>
+            <span class="wfd-tog-lbl lf-ui-085">Manual Override (what-if)</span>
           </div>
         </div>
       </div>
@@ -2995,7 +2232,7 @@ markGold(savingsTipsOut);
       </div>
       <div class="wfd-row">
         <div class="wfd-half">
-          <label class="wfd-lbl" for="wfd_yrsInDist">Years in Distribution <span style="color:#94a3b8;font-weight:400;font-size:.75rem;">auto-calc</span></label>
+          <label class="wfd-lbl" for="wfd_yrsInDist">Years in Distribution <span class="lf-ui-082">auto-calc</span></label>
           <input id="wfd_yrsInDist" class="wfd-inp" type="text" readonly placeholder="—" />
         </div>
         <div class="wfd-half">
@@ -3009,11 +2246,11 @@ markGold(savingsTipsOut);
           <input id="wfd_desiredIncome" class="wfd-inp" type="text" placeholder="80,000" />
         </div>
         <div class="wfd-col">
-          <label class="wfd-lbl" for="wfd_guaranteedIncome">Other Guaranteed Income ($, after-tax) <span style="color:#94a3b8;font-weight:400;font-size:.72rem;">Social Security, pension, rental</span></label>
+          <label class="wfd-lbl" for="wfd_guaranteedIncome">Other Guaranteed Income ($, after-tax) <span class="lf-ui-086">Social Security, pension, rental</span></label>
           <input id="wfd_guaranteedIncome" class="wfd-inp" type="text" placeholder="20,000" />
         </div>
         <div class="wfd-col">
-          <label class="wfd-lbl" for="wfd_incomeGap">Net Income Gap to Fund From Assets <span style="color:#94a3b8;font-weight:400;font-size:.72rem;">auto-calc</span></label>
+          <label class="wfd-lbl" for="wfd_incomeGap">Net Income Gap to Fund From Assets <span class="lf-ui-086">auto-calc</span></label>
           <input id="wfd_incomeGap" class="wfd-inp" type="text" readonly placeholder="$0" />
         </div>
       </div>
@@ -3024,30 +2261,30 @@ markGold(savingsTipsOut);
     <!-- STEP 2: Three Bucket Allocation -->
     <div class="wfd-step-wrap" data-step="2">
       <div class="wfd-sec">
-      <div style="display:flex;align-items:center;gap:10px;">
-        <p class="wfd-sec-title" style="margin:0;">2 — Three Bucket Allocation</p>
+      <div class="lf-ui-080">
+        <p class="wfd-sec-title lf-ui-081">2 — Three Bucket Allocation</p>
         <button type="button" class="wfd-step-clear" id="wfd_clearStep2">Clear Step</button>
       </div>
-      <p style="font-size:.8rem;color:#64748b;margin:0 0 10px;">Allocations must total exactly 100%. Dollar amounts are auto-calculated from the Retirement Base.</p>
+      <p class="lf-ui-087">Allocations must total exactly 100%. Dollar amounts are auto-calculated from the Retirement Base.</p>
 
       <div class="wfd-alloc-row">
-        <span style="font-size:.85rem;font-weight:600;color:#475569;">Total Allocated:</span>
+        <span class="lf-ui-088">Total Allocated:</span>
         <span id="wfd_allocTotal" class="wfd-alloc-bad">0%</span>
-        <span id="wfd_allocStatus" style="font-size:.78rem;font-weight:600;color:#dc2626;">— must equal 100%</span>
+        <span class="lf-ui-089" id="wfd_allocStatus">— must equal 100%</span>
       </div>
 
       <!-- Allocation bar visual -->
       <div class="wfd-bkt-vis" id="wfd_allocVis">
         <div class="wfd-bkt-bar-wrap">
-          <div id="wfd_invBar" class="wfd-bkt-bar" style="height:3px;background:#3b82f6;"></div>
+          <div id="wfd_invBar" class="wfd-bkt-bar lf-ui-090"></div>
           <div class="wfd-bkt-bar-lbl">Investments</div>
         </div>
         <div class="wfd-bkt-bar-wrap">
-          <div id="wfd_liBar" class="wfd-bkt-bar" style="height:3px;background:#a68023;"></div>
+          <div id="wfd_liBar" class="wfd-bkt-bar lf-ui-091"></div>
           <div class="wfd-bkt-bar-lbl">Life Ins</div>
         </div>
         <div class="wfd-bkt-bar-wrap">
-          <div id="wfd_annBar" class="wfd-bkt-bar" style="height:3px;background:#16a34a;"></div>
+          <div id="wfd_annBar" class="wfd-bkt-bar lf-ui-092"></div>
           <div class="wfd-bkt-bar-lbl">Annuities</div>
         </div>
       </div>
@@ -3055,10 +2292,10 @@ markGold(savingsTipsOut);
       <div class="wfd-bkt-grid">
 
         <!-- A: Investments -->
-        <div id="wfd_invCard" class="wfd-bkt" style="border-color:rgba(59,130,246,.4);">
-          <p class="wfd-bkt-title" style="color:#1d4ed8;">A — Investments</p>
+        <div id="wfd_invCard" class="wfd-bkt lf-ui-093">
+          <p class="wfd-bkt-title lf-ui-094">A — Investments</p>
           <p class="wfd-bkt-sub">Growth Engine — Stocks, bonds, ETFs, mutual funds, brokerage, retirement accounts</p>
-          <div class="wfd-tog-wrap" style="margin-top:4px;margin-bottom:6px;">
+          <div class="wfd-tog-wrap lf-ui-095">
             <span id="wfd_invDmBadge" class="wfd-dm-badge">Down-Market: Off</span>
           </div>
           <label class="wfd-lbl" for="wfd_invAlloc">Allocation %</label>
@@ -3076,21 +2313,21 @@ markGold(savingsTipsOut);
         </div>
 
         <!-- B: Life Insurance -->
-        <div id="wfd_liCard" class="wfd-bkt" style="border-color:rgba(166,128,35,.45);">
-          <p class="wfd-bkt-title" style="color:#a68023;">B — Life Insurance / Equivalent</p>
+        <div id="wfd_liCard" class="wfd-bkt lf-ui-096">
+          <p class="wfd-bkt-title lf-ui-097">B — Life Insurance / Equivalent</p>
           <p class="wfd-bkt-sub">Stability Buffer — Cash value life insurance, overfunded permanent insurance, protected strategies</p>
-          <div class="wfd-tog-wrap" style="margin-top:4px;margin-bottom:6px;">
+          <div class="wfd-tog-wrap lf-ui-095">
             <span id="wfd_liDmBadge" class="wfd-dm-badge">Down-Market: On</span>
           </div>
           <label class="wfd-lbl" for="wfd_liType">Policy Type</label>
-          <select id="wfd_liType" class="wfd-inp" style="cursor:pointer;">
+          <select id="wfd_liType" class="wfd-inp lf-ui-098">
             <option value="whole">Whole Life</option>
             <option value="iul">Indexed UL</option>
             <option value="vul">Variable UL</option>
             <option value="legacy_rpu">Legacy / Reduced Paid-Up</option>
           </select>
           <label class="wfd-lbl" for="wfd_liAccess">Access Method</label>
-          <select id="wfd_liAccess" class="wfd-inp" style="cursor:pointer;">
+          <select id="wfd_liAccess" class="wfd-inp lf-ui-098">
             <option value="withdrawal">Withdrawals</option>
             <option value="loan">Policy Loans</option>
             <option value="none">No Distributions</option>
@@ -3105,7 +2342,7 @@ markGold(savingsTipsOut);
           <input id="wfd_liGrowth" class="wfd-inp" type="number" step="0.1" placeholder="5.0" />
           <label class="wfd-lbl" for="wfd_liTax">Tax Rate %</label>
           <input id="wfd_liTax" class="wfd-inp" type="number" step="0.1" placeholder="0" />
-          <label class="wfd-lbl" for="wfd_liEfficiency">Access / Efficiency Factor % <span style="color:#94a3b8;font-weight:400;font-size:.72rem;">optional, default 100</span></label>
+          <label class="wfd-lbl" for="wfd_liEfficiency">Access / Efficiency Factor % <span class="lf-ui-086">optional, default 100</span></label>
           <input id="wfd_liEfficiency" class="wfd-inp" type="number" step="0.1" placeholder="100" />
           <div class="wfd-tog-wrap">
             <label class="wfd-tog"><input type="checkbox" id="wfd_liDownMkt" checked /><span class="wfd-tog-sl"></span></label>
@@ -3114,14 +2351,14 @@ markGold(savingsTipsOut);
         </div>
 
         <!-- C: Annuities -->
-        <div id="wfd_annCard" class="wfd-bkt" style="border-color:rgba(22,163,74,.4);">
-          <p class="wfd-bkt-title" style="color:#15803d;">C — Annuities</p>
+        <div id="wfd_annCard" class="wfd-bkt lf-ui-099">
+          <p class="wfd-bkt-title lf-ui-100">C — Annuities</p>
           <p class="wfd-bkt-sub">Income Floor — Protected income / accumulation hybrid</p>
-          <div class="wfd-tog-wrap" style="margin-top:4px;margin-bottom:6px;">
+          <div class="wfd-tog-wrap lf-ui-095">
             <span id="wfd_annDmBadge" class="wfd-dm-badge">Down-Market: On</span>
           </div>
           <label class="wfd-lbl" for="wfd_annDesign">Annuity Design</label>
-          <select id="wfd_annDesign" class="wfd-inp" style="cursor:pointer;">
+          <select id="wfd_annDesign" class="wfd-inp lf-ui-098">
             <option value="fixed">Fixed Annuity</option>
             <option value="fixedIndexed">Fixed Indexed Annuity</option>
             <option value="variable">Variable Annuity</option>
@@ -3133,15 +2370,15 @@ markGold(savingsTipsOut);
           <label class="wfd-lbl" for="wfd_annAmt">Starting Annuity Value</label>
           <input id="wfd_annAmt" class="wfd-inp" type="text" readonly placeholder="auto-calc from allocation" />
           <!-- Removed legacy fixed/variable toggle; dropdown is source of truth -->
-          <div class="wfd-tog-wrap" style="margin-top:4px;">
+          <div class="wfd-tog-wrap lf-ui-101">
             <label class="wfd-tog"><input type="checkbox" id="wfd_annIncomeRider" /><span class="wfd-tog-sl"></span></label>
             <span class="wfd-tog-lbl">Income Rider</span>
           </div>
-          <div id="wfd_annRollupWrap" style="display:none;">
+          <div class="lf-ui-012" id="wfd_annRollupWrap">
             <label class="wfd-lbl" for="wfd_annRollup">Income Rider Rollup Rate (%)</label>
             <input id="wfd_annRollup" class="wfd-inp" type="number" step="0.1" placeholder="5.0" value="5.0" />
           </div>
-          <div class="wfd-tog-wrap" style="margin-top:4px;">
+          <div class="wfd-tog-wrap lf-ui-101">
             <label class="wfd-tog"><input type="checkbox" id="wfd_annDbRider" /><span class="wfd-tog-sl"></span></label>
             <span class="wfd-tog-lbl">Death Benefit Rider</span>
           </div>
@@ -3156,19 +2393,19 @@ markGold(savingsTipsOut);
         </div>
 
             </div>
-            <div style="height:1px;margin:18px 0 16px;background:linear-gradient(90deg,rgba(176,141,47,0),rgba(176,141,47,.95),rgba(176,141,47,0));"></div>
-            <div style="display:flex;align-items:center;gap:10px;">
-                <p class="wfd-sec-title" style="margin:0;">3 — Strategy Controls</p>
+            <div class="lf-ui-102"></div>
+            <div class="lf-ui-080">
+                <p class="wfd-sec-title lf-ui-081">3 — Strategy Controls</p>
             </div>
-      <div class="wfd-row" style="gap:10px;flex-wrap:wrap;">
-        <button type="button" class="wfd-calc-btn" id="wfd_strat_prop" style="flex:1;max-width:220px;background:#0f172a;border-color:rgba(217,179,90,.6);">Proportional</button>
-        <button type="button" class="wfd-calc-btn" id="wfd_strat_pri" style="flex:1;max-width:220px;background:#0f172a;border-color:rgba(217,179,90,.6);">Priority Order</button>
-        <button type="button" class="wfd-calc-btn" id="wfd_strat_guard" style="flex:1;max-width:220px;background:#0f172a;border-color:rgba(217,179,90,.6);">Protect Investments</button>
+      <div class="wfd-row lf-ui-103">
+        <button type="button" class="wfd-calc-btn lf-ui-104" id="wfd_strat_prop">Proportional</button>
+        <button type="button" class="wfd-calc-btn lf-ui-104" id="wfd_strat_pri">Priority Order</button>
+        <button type="button" class="wfd-calc-btn lf-ui-104" id="wfd_strat_guard">Protect Investments</button>
       </div>
       <input type="hidden" id="wfd_strategy" value="proportional" />
-      <div id="wfd_priorityRow" class="wfd-row" style="margin-top:12px;display:none;">
-        <div class="wfd-col" style="flex:1 1 100%;">
-          <label class="wfd-lbl" for="wfd_pri1" style="margin-bottom:6px;">Withdrawal Priority (1 = first)</label>
+      <div id="wfd_priorityRow" class="wfd-row lf-ui-105">
+        <div class="wfd-col lf-ui-106">
+          <label class="wfd-lbl lf-ui-046" for="wfd_pri1">Withdrawal Priority (1 = first)</label>
           <div class="wfd-priority-grid">
             <div>
               <div class="wfd-pri-label">1st</div>
@@ -3189,24 +2426,24 @@ markGold(savingsTipsOut);
           </div>
         </div>
       </div>
-      <div class="wfd-row" style="margin-top:14px;gap:14px;flex-wrap:wrap;align-items:flex-end;">
+      <div class="wfd-row lf-ui-107">
         <div class="wfd-col">
-          <div class="wfd-tog-wrap" style="margin-top:0;">
+          <div class="wfd-tog-wrap lf-ui-108">
             <label class="wfd-tog"><input type="checkbox" id="wfd_protectInvest" checked /><span class="wfd-tog-sl"></span></label>
-            <span class="wfd-tog-lbl" style="font-size:.88rem;font-weight:700;color:#fff;">Protect Investments During Down Markets</span>
+            <span class="wfd-tog-lbl lf-ui-109">Protect Investments During Down Markets</span>
           </div>
-          <p class="wfd-mini-note" style="margin-top:6px;">When on, investments pause in down years unless fallback is required.</p>
+          <p class="wfd-mini-note lf-ui-110">When on, investments pause in down years unless fallback is required.</p>
         </div>
         <div class="wfd-col">
-          <label class="wfd-lbl" for="wfd_downThreshold" style="margin-top:0;">Down-Market Threshold % <span style="color:#94a3b8;font-weight:400;font-size:.72rem;">e.g. 0 = negative years only</span></label>
+          <label class="wfd-lbl lf-ui-108" for="wfd_downThreshold">Down-Market Threshold % <span class="lf-ui-086">e.g. 0 = negative years only</span></label>
           <input id="wfd_downThreshold" class="wfd-inp" type="number" step="0.1" placeholder="0" value="0" />
         </div>
       </div>
 
-      <div class="wfd-row" style="margin-top:10px;gap:14px;flex-wrap:wrap;align-items:flex-end;">
+      <div class="wfd-row lf-ui-111">
         <div class="wfd-col">
           <label class="wfd-lbl" for="wfd_gapSource">Gap Funding Source (Down Years)</label>
-          <select id="wfd_gapSource" class="wfd-inp" style="cursor:pointer;">
+          <select id="wfd_gapSource" class="wfd-inp lf-ui-098">
             <option value="life">Life Insurance first</option>
             <option value="annuities">Annuities first</option>
             <option value="lifeThenAnnuities">Life then Annuities</option>
@@ -3217,7 +2454,7 @@ markGold(savingsTipsOut);
         </div>
         <div class="wfd-col">
           <label class="wfd-lbl" for="wfd_scenarioMode">Market Scenario Mode</label>
-          <select id="wfd_scenarioMode" class="wfd-inp" style="cursor:pointer;">
+          <select id="wfd_scenarioMode" class="wfd-inp lf-ui-098">
             <option value="fixed">Fixed return each year</option>
             <option value="random">Randomized yearly path</option>
             <option value="manual">Manual yearly returns</option>
@@ -3225,7 +2462,7 @@ markGold(savingsTipsOut);
         </div>
                 <div class="wfd-col">
                     <label class="wfd-lbl" for="wfd_stressProfile">Historical Stress Profile</label>
-                    <select id="wfd_stressProfile" class="wfd-inp" style="cursor:pointer;">
+                    <select id="wfd_stressProfile" class="wfd-inp lf-ui-098">
                         <option value="conservative">Conservative</option>
                         <option value="balanced" selected>Balanced</option>
                         <option value="aggressive">Aggressive</option>
@@ -3233,14 +2470,14 @@ markGold(savingsTipsOut);
                 </div>
       </div>
 
-      <div class="wfd-row" style="margin-top:10px;gap:12px;flex-wrap:wrap;">
-        <div class="wfd-col" style="flex:2 1 340px;">
-          <label class="wfd-lbl" for="wfd_manualReturns" style="margin-top:0;">Manual / Scenario Returns (% per year, comma or line separated)</label>
-          <textarea id="wfd_manualReturns" class="wfd-inp" style="height:86px;resize:vertical;" placeholder="7, 6.5, -12, 8, 5, ..."></textarea>
-          <p class="wfd-mini-note" style="margin-top:4px;">Illustration only — randomized paths are not predictions or guarantees.</p>
+      <div class="wfd-row lf-ui-112">
+        <div class="wfd-col lf-ui-113">
+          <label class="wfd-lbl lf-ui-108" for="wfd_manualReturns">Manual / Scenario Returns (% per year, comma or line separated)</label>
+          <textarea id="wfd_manualReturns" class="wfd-inp lf-ui-114" placeholder="7, 6.5, -12, 8, 5, ..."></textarea>
+          <p class="wfd-mini-note lf-ui-101">Illustration only — randomized paths are not predictions or guarantees.</p>
         </div>
-        <div class="wfd-col" style="flex:1 1 200px;display:flex;align-items:flex-end;">
-          <button id="wfd_genScenario" class="wfd-calc-btn" type="button" style="margin-top:0;">Generate Market Scenario</button>
+        <div class="wfd-col lf-ui-115">
+          <button id="wfd_genScenario" class="wfd-calc-btn lf-ui-108" type="button">Generate Market Scenario</button>
         </div>
       </div>
             </div><!-- end sec -->
@@ -3248,22 +2485,22 @@ markGold(savingsTipsOut);
 
         <!-- STEP 3: RESULTS -->
         <div class="wfd-step-wrap" data-step="3" id="wfd_results">
-      <div class="wfd-sec" style="border-bottom:none;margin-bottom:12px;padding-bottom:0;">
-        <div style="display:flex;flex-wrap:wrap;gap:10px;align-items:center;margin-bottom:12px;">
-          <button class="wfd-calc-btn" id="wfd_editFoundation" type="button" style="flex:1;min-width:140px;max-width:200px;background:#0f172a;border-color:rgba(217,179,90,.55);">Edit Foundation</button>
-                    <button class="wfd-calc-btn" id="wfd_editBuckets" type="button" style="flex:1;min-width:140px;max-width:220px;background:#0f172a;border-color:rgba(217,179,90,.55);">Edit Strategy</button>
-          <button class="wfd-calc-btn" id="wfd_recalcBtn" type="button" style="flex:1;min-width:140px;max-width:200px;">Recalculate</button>
+      <div class="wfd-sec lf-ui-116">
+        <div class="lf-ui-117">
+          <button class="wfd-calc-btn lf-ui-118" id="wfd_editFoundation" type="button">Edit Foundation</button>
+                    <button class="wfd-calc-btn lf-ui-119" id="wfd_editBuckets" type="button">Edit Strategy</button>
+          <button class="wfd-calc-btn lf-ui-120" id="wfd_recalcBtn" type="button">Recalculate</button>
         </div>
-        <div style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:12px;">
-          <button class="wfd-calc-btn" type="button" id="wfd_runBase" style="flex:1;min-width:150px;background:#0f172a;border-color:rgba(217,179,90,.5);">Run Base Case</button>
-          <button class="wfd-calc-btn" type="button" id="wfd_runDown" style="flex:1;min-width:150px;background:#0f172a;border-color:rgba(217,179,90,.5);">Simulate Down Market</button>
-          <button class="wfd-calc-btn" type="button" id="wfd_runScenario" style="flex:1;min-width:150px;background:#0f172a;border-color:rgba(217,179,90,.5);">Generate Market Scenario</button>
+        <div class="lf-ui-121">
+          <button class="wfd-calc-btn lf-ui-122" type="button" id="wfd_runBase">Run Base Case</button>
+          <button class="wfd-calc-btn lf-ui-122" type="button" id="wfd_runDown">Simulate Down Market</button>
+          <button class="wfd-calc-btn lf-ui-122" type="button" id="wfd_runScenario">Generate Market Scenario</button>
         </div>
-        <div class="accordion" style="display:grid;gap:10px;">
+        <div class="accordion lf-ui-123">
           <div class="wfd-acc">
             <button class="wfd-acc-btn" data-target="wfd_summaryWrap">Summary</button>
             <div id="wfd_summaryWrap" class="wfd-acc-body">
-              <div id="wfd_summary" class="wfd-summary" style="margin-bottom:12px;">
+              <div id="wfd_summary" class="wfd-summary lf-ui-063">
                     <div class="wfd-sum-card">
                       <p class="wfd-sum-label">After-Tax Annual Income</p>
                       <p id="wfd_sumIncome" class="wfd-sum-value">—</p>
@@ -3281,8 +2518,8 @@ markGold(savingsTipsOut);
                   <p id="wfd_sumIncomeSuff" class="wfd-sum-value">—</p>
                 </div>
               </div>
-              <div style="display:flex;align-items:center;gap:12px;margin-bottom:14px;flex-wrap:wrap;">
-                <span style="font-size:.88rem;font-weight:700;color:#475569;">Plan Health:</span>
+              <div class="lf-ui-124">
+                <span class="lf-ui-125">Plan Health:</span>
                 <span id="wfd_healthBadge" class="wfd-badge">—</span>
               </div>
             </div>
@@ -3291,63 +2528,63 @@ markGold(savingsTipsOut);
             <button class="wfd-acc-btn" data-target="wfd_fundingWrap">Funding Breakdown</button>
             <div id="wfd_fundingWrap" class="wfd-acc-body">
               <div class="wfd-res-grid" id="wfd_resGrid"></div>
-              <div id="wfd_sourceBreak" class="wfd-mini-note" style="margin-top:6px;"></div>
-              <div class="wfd-bkt-vis" id="wfd_wdrlVis" style="height:90px;margin:12px 0 10px;">
+              <div id="wfd_sourceBreak" class="wfd-mini-note lf-ui-110"></div>
+              <div class="wfd-bkt-vis lf-ui-126" id="wfd_wdrlVis">
                 <div class="wfd-bkt-bar-wrap">
-                  <div id="wfd_emWBar" class="wfd-bkt-bar" style="background:#0f172a;height:3px;"></div>
+                  <div id="wfd_emWBar" class="wfd-bkt-bar lf-ui-127"></div>
                   <div id="wfd_emWLbl" class="wfd-bkt-bar-lbl">Emergency<br>$0</div>
                 </div>
                 <div class="wfd-bkt-bar-wrap">
-                  <div id="wfd_invWBar" class="wfd-bkt-bar" style="background:#3b82f6;height:3px;"></div>
+                  <div id="wfd_invWBar" class="wfd-bkt-bar lf-ui-128"></div>
                   <div id="wfd_invWLbl" class="wfd-bkt-bar-lbl">Investments<br>$0</div>
                 </div>
                 <div class="wfd-bkt-bar-wrap">
-                  <div id="wfd_liWBar" class="wfd-bkt-bar" style="background:#a68023;height:3px;"></div>
+                  <div id="wfd_liWBar" class="wfd-bkt-bar lf-ui-129"></div>
                   <div id="wfd_liWLbl" class="wfd-bkt-bar-lbl">Life Ins<br>$0</div>
                 </div>
                 <div class="wfd-bkt-bar-wrap">
-                  <div id="wfd_annWBar" class="wfd-bkt-bar" style="background:#16a34a;height:3px;"></div>
+                  <div id="wfd_annWBar" class="wfd-bkt-bar lf-ui-130"></div>
                   <div id="wfd_annWLbl" class="wfd-bkt-bar-lbl">Annuities<br>$0</div>
                 </div>
               </div>
-              <div id="wfd_emCard" class="wfd-em-card" style="margin-bottom:10px;">
+              <div id="wfd_emCard" class="wfd-em-card lf-ui-131">
                 <div>
-                  <p class="wfd-res-lbl" style="margin:0;">Emergency Reserve</p>
-                  <p id="wfd_emNow" class="wfd-sum-value" style="font-size:1rem;margin:0;">—</p>
+                  <p class="wfd-res-lbl lf-ui-081">Emergency Reserve</p>
+                  <p id="wfd_emNow" class="wfd-sum-value lf-ui-132">—</p>
                 </div>
                 <div>
-                  <p class="wfd-mini-note" style="margin:0;">Year 1 Used</p>
-                  <p id="wfd_emUsed" class="wfd-res-val" style="margin:0;">—</p>
+                  <p class="wfd-mini-note lf-ui-081">Year 1 Used</p>
+                  <p id="wfd_emUsed" class="wfd-res-val lf-ui-081">—</p>
                 </div>
                 <div>
-                  <p class="wfd-mini-note" style="margin:0;">Total Used (Plan)</p>
-                  <p id="wfd_emTotal" class="wfd-res-val" style="margin:0;">—</p>
+                  <p class="wfd-mini-note lf-ui-081">Total Used (Plan)</p>
+                  <p id="wfd_emTotal" class="wfd-res-val lf-ui-081">—</p>
                 </div>
                 <div>
-                  <p class="wfd-mini-note" style="margin:0;">Remaining</p>
-                  <p id="wfd_emRemain" class="wfd-res-val" style="margin:0;">—</p>
+                  <p class="wfd-mini-note lf-ui-081">Remaining</p>
+                  <p id="wfd_emRemain" class="wfd-res-val lf-ui-081">—</p>
                 </div>
                 <div>
-                  <p class="wfd-mini-note" style="margin:0;">Depletion</p>
-                  <p id="wfd_emDeplete" class="wfd-res-val" style="margin:0;">—</p>
+                  <p class="wfd-mini-note lf-ui-081">Depletion</p>
+                  <p id="wfd_emDeplete" class="wfd-res-val lf-ui-081">—</p>
                 </div>
-                <div id="wfd_emStatus" class="wfd-badge" style="margin-left:auto;">—</div>
+                <div id="wfd_emStatus" class="wfd-badge lf-ui-133">—</div>
               </div>
             </div>
           </div>
           <div class="wfd-acc">
             <button class="wfd-acc-btn" data-target="wfd_chartWrapAcc">Longevity Chart</button>
             <div id="wfd_chartWrapAcc" class="wfd-acc-body">
-              <p style="font-weight:700;color:#334155;font-size:.86rem;margin:0 0 6px;">Asset Longevity Over Distribution Period</p>
+              <p class="lf-ui-134">Asset Longevity Over Distribution Period</p>
               <div class="wfd-chart-wrap"><canvas id="wfd_chart"></canvas></div>
             </div>
           </div>
           <div class="wfd-acc collapsed">
             <button class="wfd-acc-btn" data-target="wfd_tipsWrap">Year-by-Year Audit</button>
             <div id="wfd_tipsWrap" class="wfd-acc-body">
-                              <div id="wfd_legacyTiles" style="display:block;margin:0 0 10px;"></div>
-              <div id="wfd_bktTiles" style="display:none;margin-bottom:14px;"></div>
-              <div id="wfd_tips" style="margin-top:0;"></div>
+                              <div class="lf-ui-135" id="wfd_legacyTiles"></div>
+              <div class="lf-ui-136" id="wfd_bktTiles"></div>
+              <div class="lf-ui-108" id="wfd_tips"></div>
             </div>
           </div>
           <div class="wfd-acc collapsed">
@@ -3361,16 +2598,16 @@ markGold(savingsTipsOut);
     </div><!-- end results -->
 
     <!-- HIDDEN legacy calc button -->
-    <button id="wfd_calcBtn" type="button" style="display:none;">Calculate</button>
+    <button class="lf-ui-012" id="wfd_calcBtn" type="button">Calculate</button>
 
   </div><!-- end body -->
 
   <!-- STICKY FOOTER NAV -->
   <div class="wfd-footer">
-    <button id="wfd_clearBtn" class="wfd-calc-btn wfd-secondary" type="button" style="max-width:120px;">Clear</button>
-    <button id="wfd_prev" class="wfd-calc-btn wfd-secondary" type="button" style="max-width:160px;">Back</button>
-    <button id="wfd_next" class="wfd-calc-btn" type="button" style="max-width:200px;">Continue</button>
-    <button id="wfd_run" class="wfd-calc-btn" type="button" style="max-width:220px;">Run Plan</button>
+    <button id="wfd_clearBtn" class="wfd-calc-btn wfd-secondary lf-ui-137" type="button">Clear</button>
+    <button id="wfd_prev" class="wfd-calc-btn wfd-secondary lf-ui-138" type="button">Back</button>
+    <button id="wfd_next" class="wfd-calc-btn lf-ui-139" type="button">Continue</button>
+    <button id="wfd_run" class="wfd-calc-btn lf-ui-140" type="button">Run Plan</button>
   </div>
 </div><!-- end panel -->`;
 
@@ -3986,10 +3223,12 @@ markGold(savingsTipsOut);
                     totEl.textContent = total.toFixed(1) + '%';
                     if (Math.abs(total - 100) < 0.11) {
                         totEl.className = 'wfd-alloc-good';
-                        stEl.textContent = '✓ Ready'; stEl.style.color = '#16a34a';
+                        stEl.textContent = '✓ Ready';
+                        stEl.className = 'wfd-alloc-status wfd-alloc-status--ready';
                     } else {
                         totEl.className = 'wfd-alloc-bad';
-                        stEl.textContent = '— must equal 100%'; stEl.style.color = '#dc2626';
+                        stEl.textContent = '— must equal 100%';
+                        stEl.className = 'wfd-alloc-status wfd-alloc-status--bad';
                     }
 
                     if (base > 0) {
@@ -4034,7 +3273,10 @@ markGold(savingsTipsOut);
                     const token = dpSearchToken;
                     if (qTrim.length === 0){
                         if (statusEl){ statusEl.textContent = "Type to search."; statusEl.classList.remove('text-danger'); }
-                        if (dpResultsRef){ dpResultsRef.style.display = "none"; dpResultsRef.innerHTML = ""; }
+                        if (dpResultsRef){
+                            setSearchResultsVisible(dpResultsRef, false);
+                            dpResultsRef.innerHTML = "";
+                        }
                         return;
                     }
                     if (statusEl){ statusEl.textContent = "Searching…"; statusEl.classList.remove('text-danger'); }
@@ -4051,7 +3293,10 @@ markGold(savingsTipsOut);
                         if (token !== dpSearchToken) return; // stale
                         if (!list || list.length === 0){
                             if (statusEl){ statusEl.textContent = "No results."; statusEl.classList.add('text-danger'); }
-                            if (dpResultsRef){ dpResultsRef.style.display = "none"; dpResultsRef.innerHTML = ""; }
+                            if (dpResultsRef){
+                                setSearchResultsVisible(dpResultsRef, false);
+                                dpResultsRef.innerHTML = "";
+                            }
                             return;
                         }
                         if (dpResultsRef){
@@ -4059,27 +3304,26 @@ markGold(savingsTipsOut);
                             list.forEach(item => {
                                 const btn = document.createElement('button');
                                 btn.type = "button";
-                                btn.className = "list-group-item list-group-item-action";
-                                btn.style.display = "flex";
-                                btn.style.flexDirection = "column";
-                                btn.style.alignItems = "flex-start";
+                                btn.className = "list-group-item list-group-item-action finance-search-result";
                                 btn.innerHTML = `
-                                    <span style="font-weight:800;">${item.displayName || "Client"}</span>
-                                    <span style="font-size:12px;color:#6b7280;">${item.email || "—"}${item.phone ? " · " + item.phone : ""}</span>
-                                    <span style="font-size:11px;color:${item.hasSavedPlan ? '#16a34a' : '#9ca3af'};">${item.hasSavedPlan ? 'Plan saved' : 'No plan yet'}</span>
+                                    <span class="lf-ui-069">${item.displayName || "Client"}</span>
+                                    <span class="lf-ui-070">${item.email || "—"}${item.phone ? " · " + item.phone : ""}</span>
+                                    <span class="finance-search-result__note ${item.hasSavedPlan ? 'finance-search-result__note--saved' : 'finance-search-result__note--empty'}">${item.hasSavedPlan ? 'Plan saved' : 'No plan yet'}</span>
                                 `;
                                 btn.addEventListener('click', async ()=>{ await selectActiveClient(item); });
                                 frag.appendChild(btn);
                             });
                             dpResultsRef.replaceChildren(frag);
-                            dpResultsRef.style.display = "block";
+                            setSearchResultsVisible(dpResultsRef, true);
                         }
                         if (statusEl){ statusEl.textContent = `Found ${list.length}. Select to load.`; statusEl.classList.remove('text-danger'); }
                     }catch(err){
                         // AbortError is expected when the user keeps typing; suppress noise.
                         if (err?.name === 'AbortError') return;
                         if (statusEl){ statusEl.textContent = err?.message || "Search failed."; statusEl.classList.add('text-danger'); }
-                        if (dpResultsRef){ dpResultsRef.style.display = "none"; }
+                        if (dpResultsRef){
+                            setSearchResultsVisible(dpResultsRef, false);
+                        }
                         toast(err?.message || "Search failed.");
                     }
                 }
@@ -4384,8 +3628,7 @@ markGold(savingsTipsOut);
                     [['wfd_strat_prop','proportional'],['wfd_strat_pri','priority'],['wfd_strat_guard','guardrail']].forEach(([id,val])=>{
                         const btn = gid(id);
                         if (!btn) return;
-                        btn.style.background = strat===val ? 'linear-gradient(135deg,#d9b35a 0%,#c08a1f 100%)' : '#0f172a';
-                        btn.style.color = strat===val ? '#0f172a' : '#d9b35a';
+                        btn.classList.toggle('is-selected', strat === val);
                     });
                 };
                 ['wfd_strat_prop','wfd_strat_pri','wfd_strat_guard'].forEach(id=>{
@@ -4561,11 +3804,11 @@ markGold(savingsTipsOut);
 
                 function renderEmptyResults(){
                     const ctaHtml = `
-                        <div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:10px;">
-                          <button id="wfd_emptyRun" class="wfd-calc-btn" type="button" style="flex:1;min-width:140px;max-width:200px;">Run Plan</button>
-                          <button id="wfd_emptyStrategy" class="wfd-calc-btn wfd-secondary" type="button" style="flex:1;min-width:140px;max-width:200px;">Go to Strategy</button>
+                        <div class="lf-ui-141">
+                          <button id="wfd_emptyRun" class="wfd-calc-btn lf-ui-120" type="button">Run Plan</button>
+                          <button id="wfd_emptyStrategy" class="wfd-calc-btn wfd-secondary lf-ui-120" type="button">Go to Strategy</button>
                         </div>`;
-                    const msg = `<div style="padding:12px;border:1px dashed rgba(217,179,90,.6);border-radius:10px;background:rgba(255,255,255,.03);color:#cbd5e1;font-weight:700;">Run the plan to view results, funding analysis, and stress-test outputs.${ctaHtml}</div>`;
+                    const msg = `<div class="lf-ui-142">Run the plan to view results, funding analysis, and stress-test outputs.${ctaHtml}</div>`;
                     const resGrid = gid('wfd_resGrid'); if (resGrid) resGrid.innerHTML = msg;
                     const src = gid('wfd_sourceBreak'); if (src) src.innerHTML = '';
                     const legacyTiles = gid('wfd_legacyTiles');
@@ -4641,21 +3884,21 @@ markGold(savingsTipsOut);
                     const totalLegacyLeft = invLeft + lifeDeathBenefitLeft + annuityDeathBenefitLeft;
                     const legacyTiles = gid('wfd_legacyTiles');
                     if (legacyTiles) {
-                        const tile = (label, value, color = '#f8fafc') => `
-                            <div style="flex:1 1 180px;min-width:170px;background:rgba(15,23,42,.72);border:1px solid rgba(217,179,90,.35);border-radius:10px;padding:10px 12px;min-height:72px;display:flex;flex-direction:column;justify-content:center;">
-                                <div style="font-size:.69rem;font-weight:700;letter-spacing:.15px;color:#94a3b8;line-height:1.2;">${label}</div>
-                                <div style="font-size:1.03rem;font-weight:900;color:${color};margin-top:5px;">${fmtD(value)}</div>
+                        const tile = (label, value, toneClass = 'wfd-tone-white') => `
+                            <div class="lf-ui-143">
+                                <div class="lf-ui-144">${label}</div>
+                                <div class="wfd-legacy-value ${toneClass}">${fmtD(value)}</div>
                             </div>`;
-                        const op = (symbol) => `<div style="display:flex;align-items:center;justify-content:center;min-width:20px;font-size:1.25rem;font-weight:900;color:#ef4444;line-height:1;">${symbol}</div>`;
+                        const op = (symbol) => `<div class="lf-ui-145">${symbol}</div>`;
                         legacyTiles.innerHTML = `
-                            <div style="display:flex;align-items:stretch;gap:8px;flex-wrap:nowrap;overflow-x:auto;padding-bottom:2px;">
-                                ${tile('Investments Left (End of Plan)', invLeft, '#60a5fa')}
+                            <div class="lf-ui-146">
+                                ${tile('Investments Left (End of Plan)', invLeft, 'wfd-tone-blue')}
                                 ${op('+')}
-                                ${tile('Life Insurance Death Benefit Left', lifeDeathBenefitLeft, '#d9b35a')}
+                                ${tile('Life Insurance Death Benefit Left', lifeDeathBenefitLeft, 'wfd-tone-gold')}
                                 ${op('+')}
-                                ${tile('Annuities Death Benefit Left', annuityDeathBenefitLeft, '#34d399')}
+                                ${tile('Annuities Death Benefit Left', annuityDeathBenefitLeft, 'wfd-tone-green')}
                                 ${op('=')}
-                                ${tile('Total Legacy Left (Combined)', totalLegacyLeft, '#4ade80')}
+                                ${tile('Total Legacy Left (Combined)', totalLegacyLeft, 'wfd-tone-green')}
                             </div>`;
                     }
 
@@ -4749,23 +3992,11 @@ markGold(savingsTipsOut);
                             </tr>${detail ? `<tr class="wfd-audit-detail"><td colspan="9"><div class="wfd-bkt-chips">${detail}</div></td></tr>` : ''}`;
                         }).join('');
                         auditEl.innerHTML = `
-                          <style>
-                            .wfd-audit-main td { padding: 5px 7px; border-bottom: 1px solid rgba(217,179,90,.12); vertical-align: middle; }
-                            .wfd-audit-main th { padding: 6px 7px; }
-                            .wfd-audit-detail td { padding: 0 7px 7px; border-bottom: 1px solid rgba(217,179,90,.18); }
-                            .wfd-bkt-chips { display: flex; flex-wrap: wrap; gap: 6px; padding: 4px 0 2px; }
-                            .wfd-bkt-chip { font-size: .7rem; font-weight: 600; padding: 3px 8px; border-radius: 6px; white-space: nowrap; }
-                            .wfd-bkt-inv  { background: rgba(59,130,246,.15); border: 1px solid rgba(59,130,246,.4); color: #93c5fd; }
-                            .wfd-bkt-li   { background: rgba(166,128,35,.15); border: 1px solid rgba(166,128,35,.4); color: #d9b35a; }
-                            .wfd-bkt-ann  { background: rgba(22,163,74,.15);  border: 1px solid rgba(22,163,74,.4);  color: #86efac; }
-                            .wfd-bkt-em   { background: rgba(148,163,184,.12);border: 1px solid rgba(148,163,184,.3);color: #cbd5e1; }
-                            .wfd-bkt-chip .wfd-neg { color: #f87171; }
-                          </style>
-                          <div style="max-height:380px; overflow:auto; border:1px solid rgba(217,179,90,.4); border-radius:10px; background:#0f172a;">
-                            <table style="width:100%; min-width:820px; font-size:.75rem; color:#e2e8f0; border-collapse:collapse;">
-                              <thead style="position:sticky;top:0;background:#0b1529;z-index:1;">
+                          <div class="lf-ui-147">
+                            <table class="lf-ui-148">
+                              <thead class="lf-ui-149">
                                 <tr>
-                                  <th style="padding:6px 7px;">Age</th>
+                                  <th class="lf-ui-150">Age</th>
                                   <th>Start Bal</th>
                                   <th>Inv Return</th>
                                   <th>Market</th>
@@ -4776,7 +4007,7 @@ markGold(savingsTipsOut);
                                   <th>End Bal</th>
                                 </tr>
                               </thead>
-                              <tbody>${rows || `<tr><td colspan="9" style="text-align:center;padding:8px;">No data</td></tr>`}</tbody>
+                              <tbody>${rows || `<tr><td class="lf-ui-151" colspan="9">No data</td></tr>`}</tbody>
                             </table>
                           </div>`;
                     }
@@ -4871,64 +4102,63 @@ markGold(savingsTipsOut);
                         if (activeDefs.length) {
                             tilesEl.style.display = '';
                             tilesEl.innerHTML = `
-                              <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:6px;">
+                              <div class="lf-ui-152">
                                 ${activeDefs.map(def => {
                                     const st = bktStats[def.key];
                                       const longevity = st.depAge ? `Depletes Age ${st.depAge}` : `Lasts to Age ${summary.endAge}`;
-                                      const longevityColor = st.depAge ? '#f87171' : '#4ade80';
+                                      const toneClass = def.key === 'inv' ? 'wfd-tone-blue' : def.key === 'li' ? 'wfd-tone-gold' : 'wfd-tone-green';
+                                      const tileClass = def.key === 'inv' ? 'wfd-bkt-tile--inv' : def.key === 'li' ? 'wfd-bkt-tile--li' : 'wfd-bkt-tile--ann';
+                                      const statusToneClass = st.lastStatus === 'Lapsed' ? 'wfd-tone-red' : st.lastStatus === 'At Risk' ? 'wfd-tone-amber' : 'wfd-tone-green';
+                                      const longevityToneClass = st.depAge ? 'wfd-tone-red' : 'wfd-tone-green';
                                       return `<button
-                                    class="wfd-bkt-tile"
-                                    data-bkt="${def.key}"
-                                    style="flex:1;min-width:200px;max-width:280px;
-                                           background:${def.bg};border:1.5px solid ${def.border};
-                                           border-radius:12px;padding:12px 14px;cursor:pointer;
-                                           text-align:left;color:#e2e8f0;font-family:inherit;">
-                                    <div style="font-weight:800;font-size:.82rem;color:${def.color};margin-bottom:6px;letter-spacing:.3px;">${def.label}</div>
-                                    ${def.key === 'li' && result.liType === 'legacy_rpu' ? `<div style="font-size:.68rem;font-weight:700;color:#94a3b8;background:rgba(148,163,184,.1);border:1px solid rgba(148,163,184,.25);border-radius:4px;padding:2px 7px;margin-bottom:6px;display:inline-block;">Legacy only — not used for income</div>` : ''}
-                                    ${def.key === 'li' ? `<div style="font-size:.7rem;font-weight:700;color:${st.lastStatus === 'Lapsed' ? '#f87171' : st.lastStatus === 'At Risk' ? '#fbbf24' : '#4ade80'};margin-bottom:6px;">Status: ${st.lastStatus || 'Active'}</div>` : ''}
-                                    ${def.key === 'ann' ? `<div style="font-size:.7rem;font-weight:700;color:#fbbf24;margin-bottom:6px;">Design: ${annDesignDisplay}${hasIncRider && annRollupPct !== null ? ` · Rollup ${annRollupPct.toFixed(1)}%` : ''}</div>` : ''}
-                                      <div style="font-size:.72rem;color:#94a3b8;font-weight:600;">Start</div>
-                                      <div style="font-size:.97rem;font-weight:900;color:#f8fafc;">${fmtD(st.firstStart)}</div>
+                                    class="wfd-bkt-tile ${tileClass}"
+                                    data-bkt="${def.key}">
+                                    <div class="wfd-bkt-tile__heading ${toneClass}">${def.label}</div>
+                                    ${def.key === 'li' && result.liType === 'legacy_rpu' ? `<div class="lf-ui-153">Legacy only — not used for income</div>` : ''}
+                                    ${def.key === 'li' ? `<div class="wfd-bkt-tile__status ${statusToneClass}">Status: ${st.lastStatus || 'Active'}</div>` : ''}
+                                    ${def.key === 'ann' ? `<div class="lf-ui-154">Design: ${annDesignDisplay}${hasIncRider && annRollupPct !== null ? ` · Rollup ${annRollupPct.toFixed(1)}%` : ''}</div>` : ''}
+                                      <div class="lf-ui-155">Start</div>
+                                      <div class="lf-ui-156">${fmtD(st.firstStart)}</div>
                                       ${(def.key === 'li' || def.key === 'ann') && ((st.firstDeath ?? 0) > 0 || (st.lastDeath ?? 0) > 0) ? `
-                                      <div style="display:flex;gap:12px;flex-wrap:wrap;margin-top:6px;">
+                                      <div class="lf-ui-157">
                                         <div>
-                                          <div style="font-size:.68rem;color:#94a3b8;font-weight:600;">Death Benefit Start</div>
-                                          <div style="font-size:.85rem;font-weight:800;color:${def.color};">${fmtD(st.firstDeath)}</div>
+                                          <div class="lf-ui-158">Death Benefit Start</div>
+                                          <div class="wfd-bkt-tile__value ${toneClass}">${fmtD(st.firstDeath)}</div>
                                         </div>
                                         <div>
-                                          <div style="font-size:.68rem;color:#94a3b8;font-weight:600;">Death Benefit End</div>
-                                          <div style="font-size:.85rem;font-weight:800;color:${def.color};">${fmtD(st.lastDeath)}</div>
+                                          <div class="lf-ui-158">Death Benefit End</div>
+                                          <div class="wfd-bkt-tile__value ${toneClass}">${fmtD(st.lastDeath)}</div>
                                         </div>
                                       </div>` : ''}
-                                      <div style="display:flex;gap:14px;margin-top:6px;flex-wrap:wrap;">
+                                      <div class="lf-ui-159">
                                         <div>
-                                          <div style="font-size:.68rem;color:#94a3b8;font-weight:600;">Total Gross W/D</div>
-                                          <div style="font-size:.85rem;font-weight:800;color:#f87171;">${fmtD(st.totalW)}</div>
+                                          <div class="lf-ui-158">Total Gross W/D</div>
+                                          <div class="lf-ui-160">${fmtD(st.totalW)}</div>
                                         </div>
                                         <div>
-                                          <div style="font-size:.68rem;color:#94a3b8;font-weight:600;">Remaining</div>
-                                          <div style="font-size:.85rem;font-weight:800;color:#4ade80;">${fmtD(st.lastEnd)}</div>
+                                          <div class="lf-ui-158">Remaining</div>
+                                          <div class="lf-ui-161">${fmtD(st.lastEnd)}</div>
                                         </div>
                                         <div>
-                                          <div style="font-size:.68rem;color:#94a3b8;font-weight:600;">Yrs Used</div>
-                                          <div style="font-size:.85rem;font-weight:800;color:#e2e8f0;">${st.yearsUsed}</div>
+                                          <div class="lf-ui-158">Yrs Used</div>
+                                          <div class="lf-ui-162">${st.yearsUsed}</div>
                                         </div>
                                         ${def.key === 'li' ? `
                                         <div>
-                                          <div style="font-size:.68rem;color:#94a3b8;font-weight:600;">Gross DB</div>
-                                          <div style="font-size:.85rem;font-weight:800;color:#d9b35a;">${fmtD(st.lastDeath)}</div>
+                                          <div class="lf-ui-158">Gross DB</div>
+                                          <div class="lf-ui-163">${fmtD(st.lastDeath)}</div>
                                         </div>
                                         <div>
-                                          <div style="font-size:.68rem;color:#94a3b8;font-weight:600;">Loan Balance</div>
-                                          <div style="font-size:.85rem;font-weight:800;color:#fbbf24;">${fmtD(st.lastLoan)}</div>
+                                          <div class="lf-ui-158">Loan Balance</div>
+                                          <div class="lf-ui-164">${fmtD(st.lastLoan)}</div>
                                         </div>
                                         <div>
-                                          <div style="font-size:.68rem;color:#94a3b8;font-weight:600;">Net DB</div>
-                                          <div style="font-size:.85rem;font-weight:800;color:#4ade80;">${fmtD(st.lastNetDeath)}</div>
+                                          <div class="lf-ui-158">Net DB</div>
+                                          <div class="lf-ui-161">${fmtD(st.lastNetDeath)}</div>
                                         </div>` : ''}
                                       </div>
-                                      <div style="margin-top:7px;font-size:.7rem;font-weight:700;color:${longevityColor};">${longevity}</div>
-                                      <div style="margin-top:5px;font-size:.68rem;color:${def.color};font-weight:600;">View Breakdown →</div>
+                                      <div class="wfd-bkt-tile__longevity ${longevityToneClass}">${longevity}</div>
+                                      <div class="wfd-bkt-tile__subnote ${toneClass}">View Breakdown →</div>
                                     </button>`;
                                 }).join('')}
                               </div>`;
@@ -4938,17 +4168,17 @@ markGold(savingsTipsOut);
                             if (!document.getElementById(DRILL_ID)) {
                                 const drillEl = document.createElement('div');
                                 drillEl.id = DRILL_ID;
-                                drillEl.style.cssText = 'display:none;position:fixed;inset:0;z-index:999999;background:rgba(5,10,20,.88);align-items:flex-start;justify-content:center;padding:20px 16px 48px;overflow-y:auto;';
+                                drillEl.classList.add('lf-js-038');
                                 drillEl.innerHTML = `
-                                  <div id="wfd_bktDrill_panel" style="background:linear-gradient(145deg,#0b1529,#0d1c36);color:#e2e8f0;border-radius:20px;box-shadow:0 28px 70px rgba(0,0,0,.6);border:1.5px solid rgba(166,128,35,.5);width:100%;max-width:900px;font-family:'Inter',sans-serif;position:relative;margin:auto;overflow:hidden;">
-                                    <div id="wfd_bktDrill_hdr" style="padding:20px 22px 16px;border-bottom:1.5px solid rgba(166,128,35,.35);">
-                                      <button id="wfd_bktDrill_close" style="position:absolute;top:14px;right:14px;background:transparent;border:1.5px solid rgba(166,128,35,.5);color:#d9b35a;font-size:1.2rem;font-weight:900;width:32px;height:32px;border-radius:50%;cursor:pointer;">×</button>
-                                      <div id="wfd_bktDrill_title" style="font-size:1.4rem;font-weight:900;color:#d9b35a;"></div>
-                                      <div id="wfd_bktDrill_sub"   style="font-size:.82rem;color:#64748b;margin-top:2px;"></div>
+                                  <div class="lf-ui-165" id="wfd_bktDrill_panel">
+                                    <div class="lf-ui-166" id="wfd_bktDrill_hdr">
+                                      <button class="lf-ui-167" id="wfd_bktDrill_close">×</button>
+                                      <div class="lf-ui-168" id="wfd_bktDrill_title"></div>
+                                      <div class="lf-ui-169" id="wfd_bktDrill_sub"  ></div>
                                     </div>
-                                    <div style="padding:18px 22px 22px;">
-                                      <div id="wfd_bktDrill_stats" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:10px;margin-bottom:18px;"></div>
-                                      <div id="wfd_bktDrill_chartWrap" style="width:100%;height:200px;margin-bottom:18px;"></div>
+                                    <div class="lf-ui-170">
+                                      <div class="lf-ui-171" id="wfd_bktDrill_stats"></div>
+                                      <div class="lf-ui-172" id="wfd_bktDrill_chartWrap"></div>
                                       <div id="wfd_bktDrill_table"></div>
                                     </div>
                                   </div>`;
@@ -4975,20 +4205,20 @@ markGold(savingsTipsOut);
                                 const longevityTxt = st.depAge ? `Depletes Age ${st.depAge}` : `Lasts to Age ${summary.endAge}`;
                                 const statCards = [
                                     { l: def.key === 'ann' ? 'Starting Annuity Value' : def.key === 'li' ? 'Starting Cash Value' : 'Starting Balance',  v: fmtD(st.firstStart) },
-                                    { l: 'Total Withdrawn',   v: fmtD(st.totalW), cls: 'color:#f87171' },
-                                    { l: def.key === 'ann' ? 'Remaining Annuity' : def.key === 'li' ? 'Remaining Cash Value' : 'Remaining Balance', v: fmtD(st.lastEnd), cls: 'color:#4ade80' }
+                                    { l: 'Total Withdrawn',   v: fmtD(st.totalW), cls: 'wfd-tone-red' },
+                                    { l: def.key === 'ann' ? 'Remaining Annuity' : def.key === 'li' ? 'Remaining Cash Value' : 'Remaining Balance', v: fmtD(st.lastEnd), cls: 'wfd-tone-green' }
                                 ];
                                 if ((def.key === 'li' || def.key === 'ann') && ((st.firstDeath ?? 0) > 0 || (st.lastDeath ?? 0) > 0)) {
                                     statCards.splice(1, 0,
                                         { l: 'Death Benefit Start', v: fmtD(st.firstDeath) },
-                                        { l: 'Death Benefit End (Gross)',   v: fmtD(st.lastDeath), cls: 'color:#d9b35a' }
+                                        { l: 'Death Benefit End (Gross)',   v: fmtD(st.lastDeath), cls: 'wfd-tone-gold' }
                                     );
                                 }
                                 if (def.key === 'li') {
-                                    statCards.push({ l: 'Outstanding Loan', v: fmtD(st.lastLoan || 0), cls:'color:#fbbf24' });
-                                    statCards.push({ l: 'Death Benefit Net', v: fmtD(st.lastNetDeath || st.lastDeath || 0), cls:'color:#4ade80' });
+                                    statCards.push({ l: 'Outstanding Loan', v: fmtD(st.lastLoan || 0), cls:'wfd-tone-amber' });
+                                    statCards.push({ l: 'Death Benefit Net', v: fmtD(st.lastNetDeath || st.lastDeath || 0), cls:'wfd-tone-green' });
                                     statCards.push({ l: 'Loan Mechanics', v: 'Loans reduce net DB; cash value keeps growing.' });
-                                    statCards.push({ l: 'Policy Status', v: st.lastStatus || 'Active', cls: st.lastStatus === 'Lapsed' ? 'color:#f87171' : st.lastStatus === 'At Risk' ? 'color:#fbbf24' : 'color:#4ade80' });
+                                    statCards.push({ l: 'Policy Status', v: st.lastStatus || 'Active', cls: st.lastStatus === 'Lapsed' ? 'wfd-tone-red' : st.lastStatus === 'At Risk' ? 'wfd-tone-amber' : 'wfd-tone-green' });
                                 }
                                 if (def.key === 'ann') {
                                     statCards.push({ l: 'Annuity Design', v: annDesignDisplay });
@@ -4998,21 +4228,21 @@ markGold(savingsTipsOut);
                                 }
                                 statCards.push(
                                     { l: 'Years Used',        v: `${st.yearsUsed} / ${rows.length}` },
-                                    { l: 'Longevity',         v: longevityTxt, cls: st.depAge ? 'color:#f87171' : 'color:#4ade80' }
+                                    { l: 'Longevity',         v: longevityTxt, cls: st.depAge ? 'wfd-tone-red' : 'wfd-tone-green' }
                                 );
                                 if (def.key === 'li') {
                                     statCards.push({ l: 'Policy Design', v: lifeDesignLabel });
                                 }
                                 document.getElementById('wfd_bktDrill_stats').innerHTML = statCards.map(c =>
-                                    `<div style="background:rgba(255,255,255,.04);border:1px solid rgba(166,128,35,.35);border-radius:10px;padding:10px 12px;">
-                                       <div style="font-size:.68rem;font-weight:700;color:#94a3b8;letter-spacing:.4px;text-transform:uppercase;">${c.l}</div>
-                                       <div style="font-size:1rem;font-weight:900;margin-top:2px;${c.cls || 'color:#f8fafc'}">${c.v}</div>
+                                    `<div class="lf-ui-173">
+                                       <div class="lf-ui-174">${c.l}</div>
+                                       <div class="wfd-kpi-value ${c.cls || 'wfd-tone-white'}">${c.v}</div>
                                      </div>`
                                 ).join('');
 
                                 // Mini chart
                                 const chartWrap = document.getElementById('wfd_bktDrill_chartWrap');
-                                chartWrap.innerHTML = '<canvas id="wfd_bktDrill_canvas" style="width:100%;height:200px;"></canvas>';
+                                chartWrap.innerHTML = '<canvas class="lf-ui-175" id="wfd_bktDrill_canvas"></canvas>';
                                 try { await ensureChartJs(); } catch(_) {}
                                 if (typeof Chart !== 'undefined') {
                                     if (drillChart) { drillChart.destroy(); drillChart = null; }
@@ -5092,35 +4322,37 @@ markGold(savingsTipsOut);
                                     const rate = def.rateOf(r);
                                     const growth = def.growthOf ? def.growthOf(r) : null;
                                     const used = def.usedOf ? def.usedOf(r) : (w > 0);
-                                    const growthStyle = growth !== null ? (growth < -0.001 ? 'color:#f87171' : 'color:#4ade80') : 'color:#94a3b8';
+                                    const rateToneClass = rate !== null && rate < -0.001 ? 'wfd-audit-cell--negative' : rate !== null && rate > 0.001 ? 'wfd-audit-cell--positive' : 'wfd-audit-cell--neutral';
+                                    const withdrawalToneClass = used ? 'wfd-audit-cell--used' : 'wfd-audit-cell--inactive';
+                                    const growthToneClass = growth !== null ? (growth < -0.001 ? 'wfd-audit-cell--negative' : 'wfd-audit-cell--positive') : 'wfd-audit-cell--neutral';
                                     const riderIncome = r.ann?.riderIncome ?? null;
                                     const riderCharge = r.ann?.charges ?? null;
                                     const annNetToPlan = r.ann?.fundedNet ?? null;
-                                    return `<tr style="opacity:${used ? '1' : '.55'};">
-                                      <td style="padding:4px 7px;">${r.age}</td>
-                                      <td style="padding:4px 7px;">${st0 !== null ? fmtD(st0) : '—'}</td>
-                                      ${isLife || isAnn ? `<td style="padding:4px 7px;">${deathStart !== null ? fmtD(deathStart) : '—'}</td>` : ''}
-                                      ${isLife ? `<td style="padding:4px 7px;">${loanBal !== null ? fmtD(loanBal) : '—'}</td>` : ''}
-                                      <td style="padding:4px 7px;${rate !== null && rate < -0.001 ? 'color:#f87171' : rate !== null && rate > 0.001 ? 'color:#4ade80' : 'color:#94a3b8'}">${rate !== null ? rate.toFixed(1) + '%' : '—'}</td>
-                                      <td style="padding:4px 7px;${used ? 'color:#f87171;font-weight:700;' : 'color:#475569;'}">${used ? fmtD(w) : '—'}</td>
-                                      ${isLife || isAnn ? `<td style="padding:4px 7px;${growthStyle}">${growth !== null ? fmtD(growth) : '—'}</td>` : ''}
-                                      ${isLife ? `<td style="padding:4px 7px;">${r.life?.charges ? fmtD(r.life.charges) : (used ? '$0' : '—')}</td>` : ''}
-                                      ${isAnn ? `<td style="padding:4px 7px;">${riderIncome !== null && riderIncome !== 0 ? fmtD(riderIncome) : (used ? '$0' : '—')}</td>` : ''}
-                                      ${isAnn ? `<td style="padding:4px 7px;">${riderCharge !== null && Math.abs(riderCharge) > 1e-6 ? fmtD(riderCharge) : (used ? '$0' : '—')}</td>` : ''}
-                                      <td style="padding:4px 7px;">${end !== null ? fmtD(end) : '—'}</td>
-                                      ${isLife || isAnn ? `<td style="padding:4px 7px;">${deathEnd !== null ? fmtD(deathEnd) : '—'}</td>` : ''}
-                                      ${isLife ? `<td style="padding:4px 7px;">${netDeath !== null ? fmtD(netDeath) : '—'}</td>` : ''}
-                                      ${isLife ? `<td style="padding:4px 7px;">${r.life?.status || '—'}</td>` : ''}
-                                      ${isAnn ? `<td style="padding:4px 7px;">${annNetToPlan !== null ? fmtD(annNetToPlan) : '—'}</td>` : ''}
-                                      <td style="padding:4px 7px;">${used ? '<span style="color:#4ade80;font-weight:700;">Yes</span>' : '<span style="color:#475569;">—</span>'}</td>
+                                    return `<tr class="wfd-audit-row${used ? '' : ' is-dim'}">
+                                      <td class="lf-ui-176">${r.age}</td>
+                                      <td class="lf-ui-176">${st0 !== null ? fmtD(st0) : '—'}</td>
+                                      ${isLife || isAnn ? `<td class="lf-ui-176">${deathStart !== null ? fmtD(deathStart) : '—'}</td>` : ''}
+                                      ${isLife ? `<td class="lf-ui-176">${loanBal !== null ? fmtD(loanBal) : '—'}</td>` : ''}
+                                      <td class="wfd-audit-cell ${rateToneClass}">${rate !== null ? rate.toFixed(1) + '%' : '—'}</td>
+                                      <td class="wfd-audit-cell ${withdrawalToneClass}">${used ? fmtD(w) : '—'}</td>
+                                      ${isLife || isAnn ? `<td class="wfd-audit-cell ${growthToneClass}">${growth !== null ? fmtD(growth) : '—'}</td>` : ''}
+                                      ${isLife ? `<td class="lf-ui-176">${r.life?.charges ? fmtD(r.life.charges) : (used ? '$0' : '—')}</td>` : ''}
+                                      ${isAnn ? `<td class="lf-ui-176">${riderIncome !== null && riderIncome !== 0 ? fmtD(riderIncome) : (used ? '$0' : '—')}</td>` : ''}
+                                      ${isAnn ? `<td class="lf-ui-176">${riderCharge !== null && Math.abs(riderCharge) > 1e-6 ? fmtD(riderCharge) : (used ? '$0' : '—')}</td>` : ''}
+                                      <td class="lf-ui-176">${end !== null ? fmtD(end) : '—'}</td>
+                                      ${isLife || isAnn ? `<td class="lf-ui-176">${deathEnd !== null ? fmtD(deathEnd) : '—'}</td>` : ''}
+                                      ${isLife ? `<td class="lf-ui-176">${netDeath !== null ? fmtD(netDeath) : '—'}</td>` : ''}
+                                      ${isLife ? `<td class="lf-ui-176">${r.life?.status || '—'}</td>` : ''}
+                                      ${isAnn ? `<td class="lf-ui-176">${annNetToPlan !== null ? fmtD(annNetToPlan) : '—'}</td>` : ''}
+                                      <td class="lf-ui-176">${used ? '<span class="lf-ui-177">Yes</span>' : '<span class="lf-ui-178">—</span>'}</td>
                                     </tr>`;
                                 }).join('');
                                 document.getElementById('wfd_bktDrill_table').innerHTML = `
-                                  <div style="max-height:300px;overflow:auto;border:1px solid rgba(217,179,90,.3);border-radius:10px;background:#0f172a;">
-                                    <table style="width:100%;font-size:.73rem;color:#e2e8f0;border-collapse:collapse;">
-                                      <thead style="position:sticky;top:0;background:#0b1529;">
+                                  <div class="lf-ui-179">
+                                    <table class="lf-ui-180">
+                                      <thead class="lf-ui-181">
                                         <tr>
-                                          ${hdrCells.map(h => `<th style="padding:5px 7px;">${h}</th>`).join('')}
+                                          ${hdrCells.map(h => `<th class="lf-ui-182">${h}</th>`).join('')}
                                         </tr>
                                       </thead>
                                       <tbody>${tableRows}</tbody>
@@ -5150,7 +4382,7 @@ markGold(savingsTipsOut);
                         let ready = true;
                         try { await ensureChartJs(); } catch(_) { ready = false; }
                         if (!ready || !chartCanvas || typeof Chart === 'undefined') {
-                            if (chartCanvas) chartCanvas.outerHTML = '<div style="padding:14px;border:1px solid #e2e8f0;border-radius:10px;color:#475569;font-weight:700;">Chart unavailable. Please retry or check your connection.</div>';
+                            if (chartCanvas) chartCanvas.outerHTML = '<div class="lf-ui-183">Chart unavailable. Please retry or check your connection.</div>';
                             return;
                         }
                         if (distChart) { distChart.destroy(); distChart = null; }
@@ -6004,312 +5236,7 @@ if (t.id === "SavingsAccelerator") {
     });
 
     hostElement.innerHTML = `
-<div class="networth-tool p-4"
-     style="background:radial-gradient(900px 320px at 0% 0%,rgba(166,128,35,.12),transparent 55%),linear-gradient(180deg,rgba(11,21,41,.99),rgba(15,29,56,.99));
-            border-radius:20px;box-shadow:0 40px 100px rgba(0,0,0,.58);
-            border:1.8px solid rgba(166,128,35,.52);width:min(96vw,1460px);max-width:1460px;margin:0 auto;
-            color:#f8fafc;font-family:'Inter',sans-serif;">
-    <style>
-        .${prefix}-label{display:inline-flex;align-items:center;gap:8px;margin-bottom:6px;font-weight:800;color:#a68023;}
-        .${prefix}-i{display:inline-flex;align-items:center;justify-content:center;width:18px;height:18px;border-radius:999px;background:#fff;border:1px solid rgba(210,31,43,.9);color:#d21f2b;font-weight:900;font-size:12px;line-height:1;cursor:pointer;user-select:none;transform:translateY(-1px);box-shadow:0 6px 18px rgba(0,0,0,.08);}
-        .${prefix}-i:focus{outline:none;box-shadow:0 0 0 3px rgba(210,31,43,.18),0 10px 25px rgba(0,0,0,.10);}
-        #${pid('TipLayer')}{position:fixed;inset:0;pointer-events:none;z-index:2147483647;}
-        .${prefix}-tipbox{position:absolute;max-width:min(360px,86vw);background:#fff;color:#111;border:1px solid rgba(0,0,0,.12);border-left:4px solid #d21f2b;padding:12px;border-radius:14px;font-size:12.8px;font-weight:650;line-height:1.35;box-shadow:0 18px 45px rgba(0,0,0,.18);opacity:0;transform:translateY(6px);transition:opacity .12s ease,transform .12s ease;pointer-events:none;white-space:normal;}
-        .${prefix}-tipbox b{font-weight:900;}
-        .${prefix}-tipbox.show{opacity:1;transform:translateY(0);}
-        .savings-accelerator-header{display:flex;align-items:flex-start;justify-content:space-between;gap:16px;flex-wrap:wrap;margin-bottom:18px;}
-        .savings-accelerator-title{flex:1 1 320px;min-width:0;}
-        .savings-accelerator-title h3{margin:0;color:#a68023;font-weight:900;letter-spacing:.5px;font-size:2rem;}
-        .savings-accelerator-title p{margin:8px 0 0;color:#b9c5d8;font-style:italic;}
-        .savings-accelerator-actions{display:flex;align-items:center;justify-content:flex-end;gap:10px;flex:0 0 auto;flex-wrap:wrap;}
-        .savings-illustration-btn,
-        .savings-accelerator-actions .clear-btn{
-            min-height:40px!important;
-            height:40px!important;
-            padding:0 16px!important;
-            border-radius:12px!important;
-            border:1.5px solid rgba(214,176,90,.88)!important;
-            background:linear-gradient(180deg,rgba(9,19,38,.98),rgba(16,31,58,.98))!important;
-            color:#f7e7be!important;
-            font-weight:800!important;
-            font-size:.86rem!important;
-            letter-spacing:.01em;
-            line-height:1!important;
-            display:inline-flex!important;
-            align-items:center!important;
-            justify-content:center!important;
-            gap:8px;
-            box-shadow:0 14px 34px rgba(3,8,20,.32),inset 0 1px 0 rgba(255,255,255,.06)!important;
-            position:static!important;
-            transform:none!important;
-            top:auto!important;
-            right:auto!important;
-            width:auto!important;
-            min-width:108px!important;
-            margin:0!important;
-            text-decoration:none!important;
-        }
-        .savings-illustration-btn:hover,
-        .savings-accelerator-actions .clear-btn:hover{
-            background:linear-gradient(180deg,rgba(17,35,66,.99),rgba(24,46,80,.99))!important;
-            color:#fff4d4!important;
-            border-color:#f1cf82!important;
-            box-shadow:0 18px 40px rgba(3,8,20,.42),0 0 0 1px rgba(214,176,90,.14) inset!important;
-        }
-        .savings-illustration-btn:focus,
-        .savings-accelerator-actions .clear-btn:focus{
-            outline:none!important;
-            box-shadow:0 0 0 3px rgba(214,176,90,.28),0 14px 34px rgba(3,8,20,.32)!important;
-        }
-        .savings-illustration-btn__icon{display:inline-flex;align-items:center;justify-content:center;flex:0 0 auto;}
-        .savings-illustration-btn__icon svg{width:16px;height:16px;display:block;}
-        .savings-illustration-backdrop{position:fixed;inset:0;display:none;align-items:center;justify-content:center;padding:16px;background:rgba(3,7,18,.8);backdrop-filter:blur(10px);z-index:2147483000;}
-        .savings-illustration-backdrop.is-open{display:flex;}
-        .savings-illustration-modal{width:min(1460px,96vw);height:min(92vh,940px);max-height:min(92vh,940px);overflow:hidden;display:grid;grid-template-rows:auto minmax(0,1fr) auto;border-radius:28px;border:1px solid rgba(214,176,90,.34);background:radial-gradient(1400px 520px at 0% 0%,rgba(166,128,35,.14),transparent 52%),linear-gradient(180deg,rgba(5,13,28,.995),rgba(10,22,44,.99));box-shadow:0 46px 120px rgba(0,0,0,.58);padding:14px 14px 12px;}
-        .savings-illustration-modal-head{display:grid;grid-template-columns:minmax(300px,.92fr) minmax(420px,1.2fr) auto;align-items:start;gap:12px;padding-bottom:10px;border-bottom:1px solid rgba(214,176,90,.18);}
-        .savings-illustration-modal-copy{min-width:0;}
-        .savings-illustration-modal-copy h4{margin:0;color:#f8fafc;font-size:1.05rem;font-weight:900;letter-spacing:.08em;text-transform:uppercase;}
-        .savings-illustration-modal-copy p{margin:8px 0 0;color:#d2d7e1;font-size:.82rem;line-height:1.32;max-width:460px;}
-        .savings-illustration-step-counter{display:inline-flex;align-items:center;gap:8px;padding:5px 11px;border-radius:999px;background:rgba(166,128,35,.12);border:1px solid rgba(214,176,90,.34);color:#f4d06f;font-size:.52rem;font-weight:900;letter-spacing:.14em;text-transform:uppercase;margin-bottom:10px;box-shadow:inset 0 1px 0 rgba(255,255,255,.05);}
-        .savings-illustration-summary-bar{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:0;min-height:82px;border-radius:20px;border:1px solid rgba(148,163,184,.16);background:linear-gradient(180deg,rgba(14,25,45,.92),rgba(9,18,36,.94));overflow:hidden;align-self:start;}
-        .savings-illustration-summary-metric{display:flex;flex-direction:column;justify-content:center;gap:5px;padding:11px 13px;min-width:0;border-left:1px solid rgba(148,163,184,.14);}
-        .savings-illustration-summary-metric:first-child{border-left:none;}
-        .savings-illustration-summary-metric-label{display:block;color:#94a3b8;font-size:.64rem;font-weight:900;letter-spacing:.08em;text-transform:uppercase;line-height:1.15;}
-        .savings-illustration-summary-metric-value{display:block;color:#f8fafc;font-size:.92rem;font-weight:900;line-height:1.1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
-        .savings-illustration-summary-metric--income .savings-illustration-summary-metric-value{color:#f8fafc;}
-        .savings-illustration-summary-metric--expense .savings-illustration-summary-metric-value{color:#ff6f72;}
-        .savings-illustration-summary-metric--available .savings-illustration-summary-metric-value,
-        .savings-illustration-summary-metric--allocated .savings-illustration-summary-metric-value{color:#54df7c;}
-        .savings-illustration-summary-metric--remaining .savings-illustration-summary-metric-value{color:#f8fafc;}
-        .savings-illustration-summary-metric.is-active{background:linear-gradient(180deg,rgba(255,255,255,.04),rgba(255,255,255,.02));box-shadow:inset 0 0 0 1px rgba(255,255,255,.04);}
-        .savings-illustration-close{width:42px;height:42px;border-radius:15px;border:1px solid rgba(214,176,90,.56);background:rgba(11,22,43,.94);color:#f8fafc;display:inline-flex;align-items:center;justify-content:center;font-size:1.2rem;font-weight:800;cursor:pointer;box-shadow:inset 0 1px 0 rgba(255,255,255,.05);}
-        .savings-illustration-close:hover{background:rgba(18,34,62,.98);border-color:#f1cf82;}
-        .savings-illustration-close:focus{outline:none;box-shadow:0 0 0 3px rgba(214,176,90,.22);}
-        .savings-illustration-content{padding-top:10px;min-height:0;display:flex;overflow:hidden;}
-        .savings-illustration-board{position:relative;flex:1 1 auto;display:grid;grid-template-columns:minmax(320px,.9fr) minmax(520px,1.4fr);gap:28px;min-height:0;height:100%;padding:14px 18px;border-radius:24px;border:1px solid rgba(214,176,90,.14);background:linear-gradient(180deg,rgba(6,14,30,.62),rgba(7,16,32,.38));overflow:hidden;}
-        .savings-illustration-left{display:flex;flex-direction:column;justify-content:flex-start;min-height:0;}
-        .savings-illustration-rail{display:flex;flex-direction:column;align-items:flex-start;gap:12px;min-height:100%;}
-        .savings-illustration-account-flow{position:relative;width:min(100%,430px);}
-        .savings-illustration-rail-link{display:flex;align-items:center;justify-content:center;width:min(100%,430px);height:54px;}
-        .savings-illustration-rail-link--expense{height:62px;}
-        .savings-illustration-rail-link-line{position:relative;width:4px;height:100%;border-radius:999px;background:linear-gradient(180deg,rgba(214,176,90,.95),rgba(214,176,90,.35));}
-        .savings-illustration-rail-link--expense .savings-illustration-rail-link-line{background:linear-gradient(180deg,rgba(255,107,107,.98),rgba(255,107,107,.34));}
-        .savings-illustration-rail-link-line::after{content:"";position:absolute;left:50%;bottom:-1px;transform:translateX(-50%);border-left:10px solid transparent;border-right:10px solid transparent;border-top:15px solid rgba(214,176,90,.98);}
-        .savings-illustration-rail-link--expense .savings-illustration-rail-link-line::after{border-top-color:rgba(255,107,107,.98);}
-        .savings-illustration-transfer-arrow{position:absolute;left:calc(100% + 16px);top:50%;width:82px;height:18px;transform:translateY(-50%);display:flex;align-items:center;pointer-events:none;}
-        .savings-illustration-transfer-arrow-line{position:relative;width:100%;height:3px;border-radius:999px;background:linear-gradient(90deg,rgba(82,224,130,.98),rgba(82,224,130,.62));}
-        .savings-illustration-transfer-arrow-line::after{content:"";position:absolute;right:-1px;top:50%;transform:translateY(-50%);border-top:11px solid transparent;border-bottom:11px solid transparent;border-left:17px solid rgba(82,224,130,.98);}
-        .savings-illustration-transfer-arrow-mobile{display:none;}
-        .savings-illustration-transfer-arrow-mobile-line{position:relative;width:4px;height:34px;border-radius:999px;background:linear-gradient(180deg,rgba(82,224,130,.98),rgba(82,224,130,.54));}
-        .savings-illustration-transfer-arrow-mobile-line::after{content:"";position:absolute;left:50%;bottom:-1px;transform:translateX(-50%);border-left:9px solid transparent;border-right:9px solid transparent;border-top:13px solid rgba(82,224,130,.98);}
-        .savings-illustration-node-stack{display:flex;flex-direction:column;gap:8px;width:100%;}
-        .savings-illustration-kicker{display:block;color:#f4c95f;font-size:.62rem;font-weight:900;letter-spacing:.07em;text-transform:uppercase;}
-        .savings-illustration-kicker--expense{color:#ff5f67;}
-        .savings-illustration-card{width:min(100%,430px);padding:15px 17px;border-radius:20px;border:1px solid rgba(214,176,90,.88);background:linear-gradient(180deg,rgba(17,29,52,.96),rgba(12,22,40,.94));box-shadow:0 22px 46px rgba(0,0,0,.22);}
-        .savings-illustration-card--account{margin-top:2px;}
-        .savings-illustration-card--expense{border-color:rgba(255,95,103,.84);}
-        .savings-illustration-card.is-active{box-shadow:0 24px 52px rgba(0,0,0,.24),0 0 0 1px rgba(255,255,255,.05) inset;}
-        .savings-illustration-card__body{display:grid;grid-template-columns:66px minmax(0,1fr);gap:14px;align-items:center;}
-        .savings-illustration-card__icon{width:66px;height:66px;border-radius:18px;display:inline-flex;align-items:center;justify-content:center;border:1px solid rgba(255,255,255,.06);background:radial-gradient(circle at 30% 30%,rgba(255,255,255,.08),rgba(255,255,255,.02));}
-        .savings-illustration-card__icon svg{width:32px;height:32px;display:block;}
-        .savings-illustration-card--source .savings-illustration-card__icon,
-        .savings-illustration-card--account .savings-illustration-card__icon{color:#f4c95f;background:radial-gradient(circle at 30% 30%,rgba(244,201,95,.14),rgba(244,201,95,.04));}
-        .savings-illustration-card--expense .savings-illustration-card__icon{color:#ff6f72;background:radial-gradient(circle at 30% 30%,rgba(255,111,114,.16),rgba(255,111,114,.05));}
-        .savings-illustration-card__copy{display:flex;flex-direction:column;gap:3px;min-width:0;}
-        .savings-illustration-card__title{display:block;color:#f8fafc;font-size:.94rem;font-weight:900;line-height:1.2;}
-        .savings-illustration-card__sub{display:block;color:#d4d9e2;font-size:.75rem;font-weight:700;line-height:1.24;}
-        .savings-illustration-card__value{display:block;color:#55dd7c;font-size:.98rem;font-weight:900;line-height:1.1;}
-        .savings-illustration-card--expense .savings-illustration-card__value{color:#ff6f72;}
-        .savings-illustration-right{display:flex;flex-direction:column;gap:10px;min-width:0;padding-left:18px;min-height:0;align-self:stretch;}
-        .savings-illustration-surplus-head{display:grid;grid-template-columns:minmax(0,1fr) minmax(228px,260px);gap:14px;align-items:end;padding-top:0;}
-        .savings-illustration-surplus-copy{display:flex;flex-direction:column;gap:4px;min-width:0;}
-        .savings-illustration-surplus-label{display:block;color:#55dd7c;font-size:.78rem;font-weight:900;letter-spacing:.03em;text-transform:uppercase;}
-        .savings-illustration-surplus-value{display:block;color:#f8fafc;font-size:.86rem;font-weight:900;}
-        .savings-illustration-projection-box{display:flex;flex-direction:column;justify-content:center;gap:4px;min-height:70px;padding:12px 14px;border-radius:18px;border:1px solid rgba(82,224,130,.28);background:linear-gradient(180deg,rgba(14,30,49,.95),rgba(10,22,39,.94));box-shadow:inset 0 1px 0 rgba(255,255,255,.04),0 16px 30px rgba(0,0,0,.14);}
-        .savings-illustration-projection-box__label{display:block;color:#9fb0c8;font-size:.62rem;font-weight:900;letter-spacing:.08em;line-height:1.08;text-transform:uppercase;}
-        .savings-illustration-projection-box__value{display:block;color:#55dd7c;font-size:1rem;font-weight:900;line-height:1.08;}
-        .savings-illustration-projection-box__meta{display:block;color:#d4d9e2;font-size:.68rem;font-weight:700;line-height:1.12;}
-        .savings-illustration-surplus-shell{--surplus-spine-left:14px;--surplus-hook-width:48px;--surplus-branch-width:36px;--surplus-stroke:4px;position:relative;display:flex;flex-direction:column;flex:1 1 auto;min-height:0;height:100%;padding-top:2px;}
-        .savings-illustration-bucket-list{position:relative;display:flex;flex:0 0 auto;align-self:flex-start;width:100%;min-height:0;flex-direction:column;justify-content:flex-start;gap:14px;padding:24px 0 2px;overflow:visible;}
-        .savings-illustration-bucket-list.has-buckets::before{content:"";position:absolute;left:var(--surplus-spine-left);top:0;width:var(--surplus-hook-width);height:var(--surplus-stroke);border-radius:999px;background:linear-gradient(90deg,rgba(82,224,130,.96),rgba(82,224,130,.58));box-shadow:0 0 0 1px rgba(82,224,130,.08);}
-        .savings-illustration-bucket-list.has-buckets::after{content:"";position:absolute;left:var(--surplus-spine-left);top:2px;bottom:42px;width:var(--surplus-stroke);border-radius:999px;background:linear-gradient(180deg,rgba(82,224,130,.94),rgba(82,224,130,.5));box-shadow:0 0 0 1px rgba(82,224,130,.08);}
-        .savings-illustration-bucket-list.is-empty{min-height:72px;padding-top:0;}
-        .savings-illustration-surplus-shell.is-complete-flow .savings-illustration-bucket-list{flex:1 1 auto;justify-content:space-between;min-height:0;}
-        .savings-illustration-bucket-row{position:relative;min-width:0;padding-left:calc(var(--surplus-spine-left) + var(--surplus-branch-width) + 14px);}
-        .savings-illustration-bucket-row::before{content:"";position:absolute;left:var(--surplus-spine-left);top:50%;width:var(--surplus-branch-width);height:var(--surplus-stroke);border-radius:999px;background:linear-gradient(90deg,rgba(82,224,130,.96),rgba(82,224,130,.66));transform:translateY(-50%);}
-        .savings-illustration-bucket-row::after{content:"";position:absolute;left:calc(var(--surplus-spine-left) + var(--surplus-branch-width) - 1px);top:50%;transform:translateY(-50%);border-top:9px solid transparent;border-bottom:9px solid transparent;border-left:14px solid rgba(82,224,130,.94);}
-        .savings-illustration-bucket-card{position:relative;min-height:84px;padding:12px 16px 11px;border-radius:18px;border:1px solid rgba(82,224,130,.34);border-left:4px solid rgba(82,224,130,.94);background:linear-gradient(180deg,rgba(16,31,54,.96),rgba(11,22,41,.94));box-shadow:0 18px 36px rgba(0,0,0,.18);overflow:hidden;}
-        .savings-illustration-bucket-card::before{content:"";position:absolute;inset:0 auto 0 0;width:78px;background:linear-gradient(90deg,rgba(82,224,130,.1),rgba(82,224,130,0));pointer-events:none;}
-        .savings-illustration-bucket-row.is-active .savings-illustration-bucket-card{border-color:rgba(111,241,155,.42);box-shadow:0 22px 44px rgba(0,0,0,.22),0 0 0 1px rgba(255,255,255,.05) inset;}
-        .savings-illustration-bucket-card__grid{position:relative;z-index:1;display:grid;grid-template-columns:58px minmax(220px,1.95fr) minmax(104px,.58fr) minmax(72px,.34fr) minmax(138px,.74fr);gap:12px;align-items:center;min-width:0;}
-        .savings-illustration-bucket-card__icon{width:56px;height:56px;border-radius:16px;display:inline-flex;align-items:center;justify-content:center;color:#55dd7c;background:radial-gradient(circle at 30% 30%,rgba(82,224,130,.18),rgba(82,224,130,.06));border:1px solid rgba(82,224,130,.18);}
-        .savings-illustration-bucket-card__icon svg{width:29px;height:29px;display:block;}
-        .savings-illustration-bucket-card__main{display:flex;flex-direction:column;gap:2px;min-width:0;}
-        .savings-illustration-bucket-card__title{display:block;color:#f8fafc;font-size:.92rem;font-weight:900;line-height:1.14;word-break:break-word;}
-        .savings-illustration-bucket-card__meta{display:block;color:#d4d9e2;font-size:.68rem;font-weight:700;line-height:1.14;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
-        .savings-illustration-bucket-card__amount,
-        .savings-illustration-bucket-card__stat{display:flex;flex-direction:column;gap:3px;min-width:0;padding-left:12px;border-left:1px solid rgba(148,163,184,.14);}
-        .savings-illustration-bucket-card__amount-label,
-        .savings-illustration-bucket-card__stat-label{display:block;color:#d4d9e2;font-size:.62rem;font-weight:900;line-height:1.06;}
-        .savings-illustration-bucket-card__amount-value{display:block;color:#55dd7c;font-size:.9rem;font-weight:900;line-height:1.05;}
-        .savings-illustration-bucket-card__amount-share{display:block;color:#f8fafc;font-size:.78rem;font-weight:900;line-height:1.05;}
-        .savings-illustration-bucket-card__stat-value{display:block;color:#f8fafc;font-size:.86rem;font-weight:900;line-height:1.05;}
-        .savings-illustration-bucket-card__stat--projection .savings-illustration-bucket-card__stat-value{color:#55dd7c;}
-        .savings-illustration-board.is-compact .savings-illustration-surplus-shell{--surplus-hook-width:44px;--surplus-branch-width:34px;}
-        .savings-illustration-board.is-compact .savings-illustration-bucket-list{gap:12px;padding-top:22px;}
-        .savings-illustration-board.is-compact .savings-illustration-bucket-card{min-height:80px;padding:11px 14px 10px;}
-        .savings-illustration-board.is-compact .savings-illustration-bucket-card__grid{grid-template-columns:54px minmax(208px,1.95fr) minmax(96px,.56fr) minmax(66px,.32fr) minmax(128px,.7fr);gap:10px;}
-        .savings-illustration-board.is-compact .savings-illustration-bucket-card__icon{width:52px;height:52px;}
-        .savings-illustration-board.is-compact .savings-illustration-bucket-card__icon svg{width:27px;height:27px;}
-        .savings-illustration-board.is-compact .savings-illustration-bucket-card__title{font-size:.88rem;}
-        .savings-illustration-board.is-dense .savings-illustration-surplus-shell{--surplus-spine-left:12px;--surplus-hook-width:38px;--surplus-branch-width:30px;}
-        .savings-illustration-board.is-dense .savings-illustration-bucket-list{gap:10px;padding-top:18px;}
-        .savings-illustration-board.is-dense .savings-illustration-bucket-list.has-buckets::after{bottom:34px;}
-        .savings-illustration-board.is-dense .savings-illustration-bucket-row{padding-left:calc(var(--surplus-spine-left) + var(--surplus-branch-width) + 10px);}
-        .savings-illustration-board.is-dense .savings-illustration-bucket-row::after{border-top-width:8px;border-bottom-width:8px;border-left-width:13px;}
-        .savings-illustration-board.is-dense .savings-illustration-bucket-card{min-height:74px;padding:10px 13px 9px;}
-        .savings-illustration-board.is-dense .savings-illustration-bucket-card::before{width:70px;}
-        .savings-illustration-board.is-dense .savings-illustration-bucket-card__grid{grid-template-columns:50px minmax(190px,2fr) minmax(90px,.54fr) minmax(60px,.3fr) minmax(116px,.64fr);gap:9px;}
-        .savings-illustration-board.is-dense .savings-illustration-bucket-card__icon{width:48px;height:48px;border-radius:14px;}
-        .savings-illustration-board.is-dense .savings-illustration-bucket-card__icon svg{width:24px;height:24px;}
-        .savings-illustration-board.is-dense .savings-illustration-bucket-card__title{font-size:.84rem;line-height:1.1;}
-        .savings-illustration-board.is-dense .savings-illustration-bucket-card__meta{font-size:.64rem;}
-        .savings-illustration-board.is-dense .savings-illustration-bucket-card__amount,
-        .savings-illustration-board.is-dense .savings-illustration-bucket-card__stat{padding-left:10px;gap:2px;}
-        .savings-illustration-board.is-dense .savings-illustration-bucket-card__amount-label,
-        .savings-illustration-board.is-dense .savings-illustration-bucket-card__stat-label{font-size:.58rem;}
-        .savings-illustration-board.is-dense .savings-illustration-bucket-card__amount-value,
-        .savings-illustration-board.is-dense .savings-illustration-bucket-card__stat-value{font-size:.8rem;}
-        .savings-illustration-board.is-dense .savings-illustration-bucket-card__amount-share{font-size:.72rem;}
-        .savings-illustration-footer{display:grid;grid-template-columns:auto 1fr auto;align-items:center;gap:14px;margin-top:10px;padding-top:12px;border-top:1px solid rgba(214,176,90,.18);}
-        .savings-illustration-progress{display:flex;align-items:center;justify-content:center;gap:8px;min-width:0;flex-wrap:nowrap;}
-        .savings-illustration-progress-dot{width:11px;height:11px;border-radius:999px;background:rgba(148,163,184,.26);border:1px solid rgba(148,163,184,.08);box-shadow:inset 0 1px 0 rgba(255,255,255,.05);}
-        .savings-illustration-progress-dot.is-active{background:#f4c95f;box-shadow:0 0 0 2px rgba(244,201,95,.12),0 0 14px rgba(244,201,95,.35);}
-        .savings-illustration-nav-btn{min-width:108px;min-height:42px;width:auto;padding:0 20px;border-radius:16px;border:1.5px solid rgba(214,176,90,.58);background:linear-gradient(180deg,rgba(16,29,52,.98),rgba(11,22,40,.96));color:#f8fafc;font-size:.82rem;font-weight:900;display:inline-flex;align-items:center;justify-content:center;cursor:pointer;box-shadow:inset 0 1px 0 rgba(255,255,255,.05);}
-        .savings-illustration-nav-btn:hover:not(:disabled){background:linear-gradient(180deg,rgba(23,41,70,.99),rgba(15,28,50,.98));border-color:#f1cf82;}
-        .savings-illustration-nav-btn:focus{outline:none;box-shadow:0 0 0 3px rgba(214,176,90,.22);}
-        .savings-illustration-nav-btn:disabled{opacity:.45;cursor:not-allowed;}
-        .savings-illustration-footer .savings-illustration-nav-btn:first-child{justify-self:start;}
-        .savings-illustration-footer .savings-illustration-nav-btn:last-child{justify-self:end;}
-        .sa-alloc-row{display:grid;gap:8px;margin-bottom:10px;padding:12px 14px;border-radius:14px;border:1.5px solid rgba(166,128,35,.24);background:linear-gradient(180deg,rgba(255,255,255,.055),rgba(255,255,255,.02));box-sizing:border-box;overflow:hidden;}
-        .savings-row-header{display:grid;grid-template-columns:minmax(248px,2.25fr) 136px 74px 64px 136px 136px 196px;gap:10px;align-items:end;width:100%;max-width:100%;margin:0 0 12px;padding:0 14px;box-sizing:border-box;color:#c9a448;font-size:.64rem;font-weight:900;letter-spacing:.08em;line-height:1.08;text-transform:uppercase;}
-        .savings-row-header.compact{grid-template-columns:minmax(190px,1.8fr) 66px 108px 64px 148px 34px;}
-        .savings-row-header span{display:flex;align-items:flex-end;min-width:0;min-height:2.1em;white-space:nowrap;overflow:visible;word-break:normal;}
-        .savings-row-header .savings-row-header__multiline{display:block;white-space:normal;line-height:1.02;}
-        .savings-row-header .savings-row-header__projection{letter-spacing:.05em;}
-        .savings-row-header .savings-row-header__action{justify-self:center;white-space:nowrap;}
-        .savings-row{display:grid;grid-template-columns:minmax(248px,2.25fr) 136px 74px 64px 136px 136px 196px;gap:10px;align-items:center;width:100%;max-width:100%;box-sizing:border-box;overflow:hidden;}
-        .savings-row>*{min-width:0;}
-        .savings-row.compact{grid-template-columns:minmax(190px,1.8fr) 66px 108px 64px 148px 34px;}
-        .savings-row .legend-money-input,
-        .savings-row .legend-percent-input,
-        .savings-row .projected-year-end{
-            min-width:0!important;
-            width:100%;
-            max-width:100%;
-        }
-        .savings-row .projected-year-end{justify-self:stretch;}
-        .savings-row .legend-percent-input{justify-self:stretch;}
-        .savings-row .legend-percent-field{
-            padding:0 1px 0 6px!important;
-            text-align:center;
-        }
-        .savings-row .legend-percent-suffix{
-            padding:0 6px 0 1px;
-        }
-        .savings-row .legend-money-field{
-            padding:0 10px 0 0!important;
-        }
-        .savings-name,.savings-start-date{width:100%;max-width:100%;box-sizing:border-box;background:rgba(255,255,255,.92)!important;color:#1a2540!important;border:1.2px solid rgba(166,128,35,.4)!important;border-radius:8px;font-weight:700;padding:8px 10px;outline:none;}
-        .savings-name{text-overflow:ellipsis;}
-        .savings-name[readonly]{background:linear-gradient(180deg,rgba(17,29,52,.96),rgba(12,22,40,.94))!important;color:#f8fafc!important;border-color:rgba(166,128,35,.3)!important;cursor:default;pointer-events:none;box-shadow:inset 0 1px 0 rgba(255,255,255,.04);}
-        .savings-start-date{padding-right:12px;}
-        .savings-name:focus,.savings-start-date:focus{border-color:#ddb457!important;box-shadow:0 0 0 2px rgba(166,128,35,.2)!important;}
-        .legend-money-input{display:flex;align-items:center;width:100%;max-width:100%;min-height:42px;box-sizing:border-box;background:#f4f4f2;border:1px solid rgba(198,151,45,.75);border-radius:10px;overflow:hidden;box-shadow:inset 0 1px 0 rgba(255,255,255,.4);}
-        .legend-money-prefix{flex:0 0 auto;padding:0 8px 0 12px;font-weight:800;color:#0b2a66;line-height:1;pointer-events:none;user-select:none;}
-        .legend-money-field{flex:1 1 auto;min-width:0;height:100%;border:none!important;background:transparent!important;box-shadow:none!important;border-radius:0!important;padding:0 12px 0 0!important;color:#0b2a66!important;font-weight:800!important;outline:none!important;}
-        .legend-money-input:focus-within{border-color:#d4af37;box-shadow:0 0 0 3px rgba(212,175,55,.18);}
-        .legend-percent-input{display:flex;align-items:center;width:100%;max-width:100%;min-height:42px;box-sizing:border-box;background:#f4f4f2;border:1px solid rgba(198,151,45,.75);border-radius:10px;overflow:hidden;box-shadow:inset 0 1px 0 rgba(255,255,255,.4);}
-        .legend-percent-field{flex:1 1 auto;min-width:0;width:100%;height:100%;margin:0!important;border:none!important;background:transparent!important;box-shadow:none!important;border-radius:0!important;padding:0 4px 0 10px!important;color:#0b2a66!important;font-weight:800!important;outline:none!important;appearance:none!important;}
-        .legend-percent-suffix{flex:0 0 auto;padding:0 10px 0 4px;font-weight:800;color:#0b2a66;pointer-events:none;user-select:none;line-height:1;}
-        .legend-percent-input:focus-within{border-color:#ddb457;box-shadow:0 0 0 2px rgba(166,128,35,.2);}
-        .projected-year-end{justify-self:stretch;}
-        .projected-year-end .projected-prefix{flex:0 0 auto;padding:0 8px 0 12px;font-weight:800;line-height:1;pointer-events:none;user-select:none;color:#2f8f55;}
-        .projected-year-end .projected-value{flex:1 1 auto;min-width:0;padding:0 12px 0 0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:#2f8f55;font-weight:900;font-size:1rem;letter-spacing:.01em;}
-        .projected-year-end.is-neutral .projected-prefix,
-        .projected-year-end.is-neutral .projected-value{color:#0b2a66;}
-        .sa-alloc-toggle{min-width:40px;border:1px solid rgba(166,128,35,.42);border-radius:8px;padding:5px 8px;background:rgba(166,128,35,.10);color:#f8fafc;font-weight:800;cursor:pointer;font-size:.78rem;white-space:nowrap;}
-        .sa-alloc-drawer{display:none;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;padding-top:8px;margin-top:6px;border-top:1px solid rgba(166,128,35,.15);}
-        .sa-alloc-drawer.is-open{display:grid;}
-        .sa-alloc-note{grid-column:1 / -1;color:#b9c5d8;font-size:.74rem;font-style:italic;line-height:1.35;}
-        @media (max-width: 1260px){
-            .savings-illustration-modal-head{grid-template-columns:minmax(260px,.95fr) minmax(320px,1.2fr) auto;}
-            .savings-illustration-summary-bar{grid-template-columns:repeat(3,minmax(0,1fr));}
-            .savings-illustration-board{grid-template-columns:minmax(300px,.88fr) minmax(440px,1.18fr);gap:22px;}
-            .savings-illustration-right{padding-left:12px;}
-            .savings-illustration-surplus-shell{--surplus-spine-left:12px;--surplus-hook-width:42px;--surplus-branch-width:32px;}
-            .savings-illustration-transfer-arrow{left:calc(100% + 12px);width:70px;}
-            .savings-illustration-bucket-card__grid{grid-template-columns:54px minmax(176px,1.52fr) minmax(88px,.52fr) minmax(64px,.32fr) minmax(118px,.64fr);}
-        }
-        @media (max-width: 980px){
-            .savings-illustration-modal{height:auto;max-height:90vh;overflow:auto;display:block;}
-            .savings-illustration-content{display:block;overflow:visible;}
-            .savings-illustration-modal-head{grid-template-columns:1fr auto;}
-            .savings-illustration-summary-bar{grid-column:1 / -1;grid-template-columns:repeat(5,minmax(0,1fr));min-height:auto;}
-            .savings-illustration-board{grid-template-columns:1fr;gap:16px;min-height:0;}
-            .savings-illustration-right{padding-left:0;}
-            .savings-illustration-surplus-head{grid-template-columns:1fr;}
-            .savings-illustration-surplus-shell{--surplus-spine-left:14px;--surplus-hook-width:40px;--surplus-branch-width:32px;}
-            .savings-illustration-surplus-shell{display:block;height:auto;}
-            .savings-illustration-transfer-arrow{display:none;}
-            .savings-illustration-transfer-arrow-mobile{display:flex;align-items:center;justify-content:center;height:42px;}
-            .savings-illustration-bucket-list{min-height:0;justify-content:flex-start;gap:10px;padding-top:22px;}
-            .savings-illustration-bucket-list.has-buckets::after{bottom:40px;}
-            .savings-illustration-bucket-card__grid{grid-template-columns:68px minmax(0,1.34fr) minmax(92px,.52fr) minmax(70px,.34fr) minmax(120px,.62fr);}
-        }
-        @media (max-width: 760px){
-            .savings-accelerator-actions{width:100%;justify-content:flex-start;}
-            .savings-illustration-btn,
-            .savings-accelerator-actions .clear-btn{flex:1 1 calc(50% - 5px);}
-            .savings-row-header,.savings-row-header.compact{display:none;}
-            .savings-row,.savings-row.compact{grid-template-columns:1fr 1fr;}
-            .savings-name{grid-column:1 / -1;}
-            .savings-start-date{grid-column:span 1;}
-            .projected-year-end{grid-column:span 1;}
-            .sa-alloc-drawer{grid-template-columns:1fr;}
-            .savings-illustration-backdrop{padding:10px;}
-            .savings-illustration-modal{padding:14px 12px 12px;max-height:90vh;}
-            .savings-illustration-modal-head{grid-template-columns:1fr auto;gap:12px;}
-            .savings-illustration-modal-copy h4{font-size:1.3rem;}
-            .savings-illustration-modal-copy p{display:block;font-size:.92rem;}
-            .savings-illustration-step-counter{margin-bottom:12px;}
-            .savings-illustration-summary-bar{grid-template-columns:repeat(2,minmax(0,1fr));}
-            .savings-illustration-summary-metric{min-height:76px;padding:14px 12px;border-left:none;border-top:1px solid rgba(148,163,184,.14);}
-            .savings-illustration-summary-metric:nth-child(-n+2){border-top:none;}
-            .savings-illustration-board{padding:12px;}
-            .savings-illustration-card{width:100%;padding:16px;}
-            .savings-illustration-card__body{grid-template-columns:64px minmax(0,1fr);gap:14px;}
-            .savings-illustration-card__icon{width:64px;height:64px;border-radius:18px;}
-            .savings-illustration-card__icon svg{width:34px;height:34px;}
-            .savings-illustration-account-flow{width:100%;}
-            .savings-illustration-rail-link{width:100%;}
-            .savings-illustration-transfer-arrow-mobile{height:38px;}
-            .savings-illustration-surplus-shell{--surplus-spine-left:10px;--surplus-hook-width:30px;--surplus-branch-width:24px;}
-            .savings-illustration-bucket-list{padding-top:18px;}
-            .savings-illustration-bucket-list.has-buckets::after{bottom:38px;}
-            .savings-illustration-bucket-row::after{border-top-width:8px;border-bottom-width:8px;border-left-width:13px;}
-            .savings-illustration-bucket-card{min-height:90px;padding:14px 14px 12px;}
-            .savings-illustration-bucket-card__grid{grid-template-columns:1fr;gap:12px;}
-            .savings-illustration-bucket-card__icon{width:64px;height:64px;border-radius:18px;}
-            .savings-illustration-bucket-card__icon svg{width:32px;height:32px;}
-            .savings-illustration-bucket-card__amount,
-            .savings-illustration-bucket-card__stat{padding-left:0;border-left:none;border-top:1px solid rgba(148,163,184,.14);padding-top:10px;}
-            .savings-illustration-bucket-list{gap:12px;}
-            .savings-illustration-footer{grid-template-columns:1fr;gap:14px;}
-            .savings-illustration-progress{order:3;}
-            .savings-illustration-nav-btn{width:100%;}
-        }
-    </style>
+<div class="networth-tool p-4 legend-finance-tool-card legend-finance-tool-card--xl el-shell">
     <div id="${pid('TipLayer')}"></div>
     <div class="savings-accelerator-header">
         <div class="savings-accelerator-title">
@@ -6318,32 +5245,34 @@ if (t.id === "SavingsAccelerator") {
         </div>
         <div id="${pid('ActionRow')}" class="savings-accelerator-actions" aria-label="Savings Accelerator actions"></div>
     </div>
-    <div class="row mb-3" style="display:flex;gap:20px;flex-wrap:wrap;">
-        <div style="flex:1;min-width:200px;max-width:380px;">
-            <div class="${prefix}-label">Savings Allocation</div>
+    <div class="ft-sync-grid ft-sync-grid--single">
+        <div class="ft-sync-card">
+            <div class="el-label">${isBusinessSA ? "Business " : ""}Savings Allocation</div>
             <div class="legend-money-input sa-source-money">
                 <span class="legend-money-prefix">$</span>
                 <input id="${pid('Allocation')}" type="text" class="legend-money-field" readonly data-money-input="true"
                        placeholder="Sync from Expense Lens…"
-                       style="font-size:1.1rem;color:#d4a820;cursor:default;"/>
+                      />
             </div>
-            <div style="font-size:0.72rem;color:#94A3B8;margin-top:5px;font-style:italic;">
+            <div class="ft-field-note">
                 Auto-synced · ${isBusinessSA ? "Business " : ""}Expense Lens remaining balance
             </div>
         </div>
     </div>
     <div class="mt-4">
-        <h5 style="color:#a68023;font-weight:700;border-bottom:1px solid rgba(166,128,35,0.35);padding-bottom:6px;">Savings Allocation Plan</h5>
-        <div style="margin-top:8px;color:#b9c5d8;font-size:.78rem;font-style:italic;">
+        <h5 class="mb-0">Savings Allocation Plan</h5>
+        <div class="ft-field-note">
             ${DEFAULT_SAVINGS_HELPER_TEXT}
         </div>
-        <div class="d-flex align-items-center mb-3" style="gap:8px;">
-            <div style="flex:2;font-weight:700;color:#fff;text-align:left;">
-                Remaining Allocation: <span id="${pid('Remaining')}" style="color:#a68023;font-weight:900;">$0</span>
-            </div>
-            <div style="flex:1;text-align:right;font-weight:700;color:#fff;">
-                Total Allocated: <span id="${pid('PctTotal')}" style="color:#a68023;font-weight:900;">0%</span>
-            </div>
+        <div class="ft-kpi-grid ft-kpi-grid--two">
+            <dl class="ft-kpi-card">
+                <dt>Remaining Allocation</dt>
+                <dd id="${pid('Remaining')}">$0</dd>
+            </dl>
+            <dl class="ft-kpi-card">
+                <dt>Total Allocated</dt>
+                <dd id="${pid('PctTotal')}">0%</dd>
+            </dl>
         </div>
         <div class="savings-row-header${isDualPanel ? ' compact' : ''}" aria-hidden="true">
             ${isDualPanel
@@ -6367,8 +5296,7 @@ if (t.id === "SavingsAccelerator") {
         </div>
         <div id="${pid('AllocContainer')}" class="mt-3"></div>
     </div>
-    <div id="${pid('Tips')}"
-         style="margin-top:18px;padding:12px 16px;border-radius:6px;border:2px solid rgba(166,128,35,0.45);background:rgba(166,128,35,0.10);font-weight:700;font-size:0.875rem;color:#d4a820;letter-spacing:0.01em;font-style:italic;transition:background .2s,color .2s,border-color .2s;">
+    <div class="el-tip-strip" id="${pid('Tips')}">
         Direct extra cash strategically across savings, debt reduction, and key priorities.
     </div>
     <div id="${pid('IllustrationBackdrop')}" class="savings-illustration-backdrop" hidden aria-hidden="true">
@@ -7465,68 +6393,7 @@ if (t.id === "ExpenseLens" || t.id === "BusinessExpenseLens") {
         hostElement.innerHTML = `
         <div class="networth-tool p-4 el-shell">
 
-            <!-- Tooltip styles (safe + isolated) -->
-            <style>
-                .el-shell .el-label{
-                    display:inline-flex;
-                    align-items:center;
-                    gap:8px;
-                    margin-bottom:6px;
-                    font-weight:800;
-                    color:#f4c766;
-                }
-                .el-shell .el-i{
-                    display:inline-flex;
-                    align-items:center;
-                    justify-content:center;
-                    width:18px;
-                    height:18px;
-                    border-radius:999px;
-                    background:rgba(255,255,255,.96);
-                    border:1px solid rgba(248,113,113,.85);
-                    color:#dc2626;
-                    font-weight:900;
-                    font-size:12px;
-                    line-height:1;
-                    cursor:pointer;
-                    user-select:none;
-                    transform: translateY(-1px);
-                    box-shadow:0 10px 24px rgba(2,8,23,.22);
-                }
-                .el-shell .el-i:focus{
-                    outline:none;
-                    box-shadow:0 0 0 3px rgba(248,113,113,.22), 0 10px 25px rgba(2,8,23,.16);
-                }
-                #${elId('TipLayer')}{
-                    position:fixed;
-                    inset:0;
-                    pointer-events:none;
-                    z-index:2147483647;
-                }
-                .el-tipbox{
-                    position:absolute;
-                    max-width:min(360px, 86vw);
-                    background:#fff;
-                    color:#111;
-                    border:1px solid rgba(0,0,0,.12);
-                    border-left:4px solid #d21f2b;
-                    padding:12px 12px;
-                    border-radius:14px;
-                    font-size:12.8px;
-                    font-weight:650;
-                    line-height:1.35;
-                    box-shadow:0 18px 45px rgba(0,0,0,.18);
-                    opacity:0;
-                    transform:translateY(6px);
-                    transition:opacity .12s ease, transform .12s ease;
-                    pointer-events:none;
-                    white-space:normal;
-                }
-                .el-tipbox b{ font-weight:900; }
-                .el-tipbox.show{ opacity:1; transform:translateY(0); }
-            </style>
-
-            <div id="${elId('TipLayer')}"></div>
+            <div id="${elId('TipLayer')}" class="el-tip-layer"></div>
 
             <div class="el-header">
                 <h3 class="el-title">${expenseLensTitle}</h3>
@@ -7571,379 +6438,9 @@ if (t.id === "ExpenseLens" || t.id === "BusinessExpenseLens") {
         const elMargin = elById("Margin");
         const elActionMeta = elById("ActionMeta");
         const elIncome = elById("Income");
-        const expenseLensRowBorder = '1px solid rgba(56,189,248,.18)';
-        const expenseLensRowBorderStrong = '2px solid rgba(56,189,248,.78)';
-        const expenseLensPinnedBorder = '1px solid rgba(245,158,11,.42)';
-        const expenseLensCardShadow = '0 18px 38px rgba(2,8,23,.26), inset 0 1px 0 rgba(255,255,255,.03)';
         
 
 
-
-        // Inject stylesheet into <head> — scoped to Expense Lens only
-        (function injectExpenseLensStyles() {
-            if (document.getElementById('expense-lens-premium-theme')) return;
-            const s = document.createElement('style');
-            s.id = 'expense-lens-premium-theme';
-            s.textContent = `
-                .networth-tool.el-shell {
-                    background:
-                        radial-gradient(1180px 460px at 0% 0%, rgba(245,158,11,.10), transparent 52%),
-                        radial-gradient(920px 420px at 100% 0%, rgba(34,211,238,.11), transparent 46%),
-                        linear-gradient(180deg, rgba(8,18,38,.985) 0%, rgba(11,24,47,.985) 100%);
-                    border-radius: 26px;
-                    border: 1.6px solid rgba(56,189,248,.52);
-                    box-shadow: 0 40px 100px rgba(2,8,23,.62), inset 0 1px 0 rgba(255,255,255,.04);
-                    max-width: 1220px;
-                    margin: 0 auto;
-                    color: #e8f1ff;
-                    font-family: 'Inter', sans-serif;
-                }
-                .networth-tool.el-shell .el-header {
-                    margin-bottom: 22px;
-                }
-                .networth-tool.el-shell .el-title {
-                    margin: 0 0 10px;
-                    color: #c79931;
-                    font-weight: 900;
-                    letter-spacing: 0.03em;
-                    font-size: clamp(1.95rem, 3vw, 2.45rem);
-                }
-                .networth-tool.el-shell .el-subtitle {
-                    margin: 0;
-                    max-width: 940px;
-                    color: #a8bddb;
-                    font-style: italic;
-                    font-size: 1.08rem;
-                    line-height: 1.5;
-                }
-                .networth-tool.el-shell .el-category-stack,
-                .networth-tool.el-shell .el-income-groups {
-                    display: flex;
-                    flex-direction: column;
-                    gap: 14px;
-                }
-                .networth-tool.el-shell .el-toolbar,
-                .networth-tool.el-shell .el-toolbar-actions,
-                .networth-tool.el-shell .el-income-flex {
-                    display: flex;
-                    align-items: center;
-                    gap: 12px;
-                    flex-wrap: wrap;
-                }
-                .networth-tool.el-shell .el-toolbar {
-                    margin-top: 20px;
-                }
-                .networth-tool.el-shell .el-income-input-wrap {
-                    position: relative;
-                    margin-bottom: 15px;
-                }
-                .networth-tool.el-shell .el-income-input-wrap input.form-control {
-                    padding-left: 36px;
-                }
-                .networth-tool.el-shell .el-income-input-inline {
-                    margin-bottom: 0;
-                    width: 260px;
-                    max-width: 260px;
-                    flex: 0 0 260px;
-                }
-                .networth-tool.el-shell .el-currency-prefix {
-                    position: absolute;
-                    left: 16px;
-                    top: 50%;
-                    transform: translateY(-50%);
-                    font-weight: 900;
-                    font-size: 1.08rem;
-                    color: #1d4ed8;
-                    pointer-events: none;
-                    z-index: 1;
-                }
-                .networth-tool.el-shell input.form-control,
-                .networth-tool.el-shell select.form-select {
-                    height: 46px;
-                    background: linear-gradient(180deg, rgba(248,250,252,.985), rgba(231,238,249,.97));
-                    border: 1px solid rgba(125,211,252,.36);
-                    border-radius: 14px;
-                    box-shadow: inset 0 1px 0 rgba(255,255,255,.72), 0 10px 24px rgba(8,15,32,.12);
-                    transition: border-color .16s ease, box-shadow .16s ease, transform .16s ease;
-                    color: #1e3a8a;
-                    font-weight: 800;
-                }
-                .networth-tool.el-shell input.form-control::placeholder,
-                .networth-tool.el-shell select.form-select::placeholder {
-                    color: #6b7f9d;
-                }
-                .networth-tool.el-shell input.form-control:focus,
-                .networth-tool.el-shell select.form-select:focus {
-                    border-color: rgba(56,189,248,.82);
-                    box-shadow: 0 0 0 3px rgba(56,189,248,.16), 0 18px 30px rgba(8,15,32,.18);
-                    outline: none;
-                }
-                .networth-tool.el-shell input[type="date"] {
-                    color-scheme: dark;
-                }
-                .networth-tool.el-shell .el-toolbar-btn,
-                .networth-tool.el-shell .el-week-btn {
-                    display: inline-flex;
-                    align-items: center;
-                    justify-content: center;
-                    height: 42px;
-                    padding: 0 18px;
-                    border-radius: 14px;
-                    font-size: 0.875rem;
-                    font-weight: 800;
-                    white-space: nowrap;
-                    box-shadow: 0 20px 32px rgba(9,17,36,.28), inset 0 1px 0 rgba(255,255,255,.08);
-                    transition: transform .16s ease, box-shadow .16s ease, border-color .16s ease;
-                }
-                .networth-tool.el-shell .el-toolbar-btn {
-                    background: linear-gradient(180deg, rgba(25,41,70,.96), rgba(13,23,42,.98));
-                    border: 1px solid rgba(245,158,11,.34);
-                    color: #f6c453;
-                }
-                .networth-tool.el-shell .el-week-btn {
-                    background: linear-gradient(180deg, rgba(43,87,220,.95), rgba(27,67,183,.98));
-                    border: 1px solid rgba(125,211,252,.38);
-                    color: #eff6ff;
-                }
-                .networth-tool.el-shell .el-toolbar-btn:hover,
-                .networth-tool.el-shell .el-week-btn:hover {
-                    transform: translateY(-1px);
-                    box-shadow: 0 24px 36px rgba(9,17,36,.34), inset 0 1px 0 rgba(255,255,255,.1);
-                }
-                .networth-tool.el-shell select.el-filter-select {
-                    min-width: 156px;
-                    max-width: 156px;
-                    flex: 0 0 156px;
-                    background: linear-gradient(180deg, rgba(16,31,60,.97), rgba(10,22,42,.98));
-                    border: 1px solid rgba(56,189,248,.28);
-                    color: #d9ecff;
-                    box-shadow: inset 0 1px 0 rgba(255,255,255,.04), 0 16px 28px rgba(2,8,23,.18);
-                }
-                .networth-tool.el-shell .el-balance-chip {
-                    display: inline-flex;
-                    align-items: center;
-                    justify-content: center;
-                    min-height: 42px;
-                    padding: 0 18px;
-                    border-radius: 14px;
-                    border: 1px solid rgba(56,189,248,.18);
-                    background: linear-gradient(180deg, rgba(17,31,60,.95), rgba(10,22,43,.96));
-                    box-shadow: 0 18px 30px rgba(2,8,23,.22), inset 0 1px 0 rgba(255,255,255,.04);
-                    font-size: 0.9rem;
-                    font-weight: 800;
-                    white-space: nowrap;
-                    letter-spacing: 0.01em;
-                }
-                .networth-tool.el-shell .el-balance-chip-muted {
-                    color: #90a8c9;
-                    border-color: rgba(148,163,184,.24);
-                }
-                .networth-tool.el-shell .el-tip-strip {
-                    margin-top: 20px;
-                    padding: 15px 18px;
-                    border-radius: 16px;
-                    border: 1px solid rgba(245,158,11,.24);
-                    background: linear-gradient(180deg, rgba(38,29,10,.30), rgba(18,27,43,.55));
-                    box-shadow: inset 0 1px 0 rgba(255,255,255,.03);
-                    font-weight: 700;
-                    font-size: 0.9rem;
-                    color: #f2c45d;
-                    letter-spacing: 0.01em;
-                    font-style: italic;
-                }
-                .networth-tool.el-shell .el-income-group {
-                    display: flex;
-                    flex-direction: column;
-                    gap: 12px;
-                    min-width: 0;
-                }
-                .networth-tool.el-shell .el-income-summary,
-                .networth-tool.el-shell .el-stream-card,
-                .networth-tool.el-shell .el-category-row {
-                    background: linear-gradient(180deg, rgba(17,30,54,.94), rgba(10,20,38,.985));
-                    border: ${expenseLensRowBorder};
-                    box-shadow: ${expenseLensCardShadow};
-                }
-                .networth-tool.el-shell .el-income-summary {
-                    display: flex;
-                    align-items: center;
-                    gap: 12px;
-                    flex-wrap: wrap;
-                    min-width: 0;
-                    padding: 14px 16px;
-                    border-radius: 18px;
-                }
-                .networth-tool.el-shell .el-income-summary-main {
-                    display: flex;
-                    align-items: flex-start;
-                    justify-content: space-between;
-                    gap: 10px;
-                    min-width: 168px;
-                    flex: 1 1 168px;
-                }
-                .networth-tool.el-shell .el-income-group-label {
-                    font-size: 0.74rem;
-                    font-weight: 900;
-                    color: #d4a83c;
-                    letter-spacing: 0.08em;
-                    text-transform: uppercase;
-                    line-height: 1.2;
-                }
-                .networth-tool.el-shell .el-income-total {
-                    display: inline-flex;
-                    align-items: center;
-                    justify-content: center;
-                    min-width: 150px;
-                    height: 42px;
-                    padding: 0 16px;
-                    border-radius: 14px;
-                    border: 1px solid rgba(125,211,252,.32);
-                    background: linear-gradient(180deg, rgba(248,250,252,.985), rgba(231,238,249,.97));
-                    box-shadow: inset 0 1px 0 rgba(255,255,255,.75), 0 12px 24px rgba(8,15,32,.12);
-                    color: #1e3a8a;
-                    font-size: 1rem;
-                    font-weight: 900;
-                }
-                .networth-tool.el-shell .el-income-share {
-                    display: inline-flex;
-                    align-items: center;
-                    justify-content: center;
-                    min-width: 74px;
-                    height: 34px;
-                    padding: 0 12px;
-                    border-radius: 999px;
-                    border: 1px solid rgba(96,165,250,.24);
-                    background: rgba(30,58,138,.24);
-                    color: #d8e7ff;
-                    font-size: 0.75rem;
-                    font-weight: 800;
-                }
-                .networth-tool.el-shell .el-stream-grid {
-                    display: grid;
-                    gap: 12px;
-                    min-width: 0;
-                }
-                .networth-tool.el-shell .el-stream-card {
-                    display: grid;
-                    align-items: center;
-                    gap: 10px;
-                    min-width: 0;
-                    padding: 12px 14px;
-                    border-radius: 18px;
-                }
-                .networth-tool.el-shell .el-stream-tag {
-                    display: inline-flex;
-                    align-items: center;
-                    justify-content: center;
-                    min-width: 94px;
-                    height: 38px;
-                    padding: 0 12px;
-                    border-radius: 12px;
-                    border: 1px solid rgba(96,165,250,.22);
-                    background: linear-gradient(180deg, rgba(24,48,98,.78), rgba(16,33,73,.82));
-                    color: #bfdbfe;
-                    font-size: 0.68rem;
-                    font-weight: 800;
-                    letter-spacing: 0.08em;
-                    text-transform: uppercase;
-                }
-                .networth-tool.el-shell .el-stream-remove,
-                .networth-tool.el-shell .el-delete-btn {
-                    border: none;
-                    background: transparent;
-                    color: #7e93b6;
-                    font-weight: 900;
-                    line-height: 1;
-                }
-                .networth-tool.el-shell .el-stream-remove {
-                    font-size: 1.05rem;
-                    padding: 0 4px;
-                    justify-self: end;
-                }
-                .networth-tool.el-shell .el-stream-spacer {
-                    display: block;
-                    width: 20px;
-                    height: 20px;
-                }
-                .networth-tool.el-shell .el-currency-field {
-                    position: relative;
-                    min-width: 0;
-                }
-                .networth-tool.el-shell .el-currency-field input {
-                    padding-left: 28px;
-                    text-align: right;
-                }
-                .networth-tool.el-shell .el-currency-field .el-currency-prefix {
-                    left: 12px;
-                    font-size: 1rem;
-                }
-                .networth-tool.el-shell .el-category-row {
-                    display: flex;
-                    align-items: center;
-                    column-gap: 12px;
-                    row-gap: 8px;
-                    flex-wrap: nowrap;
-                    min-width: 0;
-                    padding: 10px 12px;
-                    border-radius: 18px;
-                }
-                .networth-tool.el-shell .el-left-controls {
-                    display: flex;
-                    align-items: center;
-                    justify-content: flex-start;
-                }
-                .networth-tool.el-shell .el-drag-handle {
-                    color: #38bdf8;
-                    opacity: .58;
-                }
-                .networth-tool.el-shell .el-pin-btn {
-                    display: inline-flex;
-                    align-items: center;
-                    justify-content: center;
-                    border-radius: 10px;
-                    border: 1px solid rgba(56,189,248,.18);
-                    background: rgba(13,29,59,.82);
-                    color: #90d8ff;
-                    line-height: 1;
-                    cursor: pointer;
-                    padding: 0;
-                }
-                .networth-tool.el-shell .el-percentage {
-                    font-weight: 800;
-                    text-align: right;
-                }
-                .networth-tool.el-shell .el-row-name {
-                    min-width: 0;
-                }
-                @media (max-width: 1080px) {
-                    .networth-tool.el-shell .el-income-input-inline {
-                        flex-basis: 100%;
-                        max-width: none;
-                        width: 100%;
-                    }
-                    .networth-tool.el-shell .el-income-flex {
-                        align-items: stretch;
-                    }
-                }
-                @media (max-width: 760px) {
-                    .networth-tool.el-shell {
-                        padding: 22px;
-                    }
-                    .networth-tool.el-shell .el-title {
-                        font-size: 1.8rem;
-                    }
-                    .networth-tool.el-shell .el-toolbar,
-                    .networth-tool.el-shell .el-toolbar-actions,
-                    .networth-tool.el-shell .el-income-flex {
-                        gap: 10px;
-                    }
-                    .networth-tool.el-shell .el-category-row {
-                        overflow-x: auto;
-                    }
-                }
-            `;
-            document.head.appendChild(s);
-        })();
 
         // ✅ TOOLTIP ENGINE (overlay)
         const tipLayer = elById('TipLayer');
@@ -8029,16 +6526,6 @@ if (t.id === "ExpenseLens" || t.id === "BusinessExpenseLens") {
             bg: 'linear-gradient(145deg, rgba(220,38,38,0.92) 0%, rgba(127,29,29,0.98) 100%)',
             border: 'rgba(248,113,113,0.56)',
             shadow: '0 14px 30px rgba(239,68,68,0.22), inset 0 1px 0 rgba(255,255,255,0.08)'
-        };
-        const EL_POSITIVE_BALANCE_TONE = {
-            text: '#22C55E',
-            bg: 'rgba(6,95,70,0.16)',
-            border: 'rgba(52,211,153,0.42)'
-        };
-        const EL_NEGATIVE_BALANCE_TONE = {
-            text: '#EF4444',
-            bg: 'rgba(127,29,29,0.16)',
-            border: 'rgba(248,113,113,0.42)'
         };
 
         const makePossessiveIncomeLabel = (name) => name
@@ -8207,25 +6694,36 @@ if (t.id === "ExpenseLens" || t.id === "BusinessExpenseLens") {
             return EL_PAYMENT_METHOD_META[normalized || 'unassigned'];
         };
 
+        const EL_METRIC_TONE_CLASS_NAMES = ['el-tone-income', 'el-tone-debit', 'el-tone-credit', 'el-tone-open', 'el-tone-total', 'el-tone-ending', 'el-tone-negative', 'el-tone-empty'];
+        const elResolveMetricToneClass = (meta) => {
+            if (meta === EL_INCOME_METRIC_META) return 'el-tone-income';
+            if (meta === EL_PAYMENT_METHOD_META.debit) return 'el-tone-debit';
+            if (meta === EL_PAYMENT_METHOD_META.credit) return 'el-tone-credit';
+            if (meta === EL_PAYMENT_METHOD_META.total) return 'el-tone-total';
+            if (meta === EL_ENDING_BALANCE_META || meta === EL_MONTH_END_BALANCE_META) return 'el-tone-ending';
+            if (meta === EL_NEGATIVE_METRIC_META) return 'el-tone-negative';
+            return 'el-tone-open';
+        };
+        const elApplyMetricToneClass = (element, toneClass) => {
+            if (!element) return;
+            element.classList.remove(...EL_METRIC_TONE_CLASS_NAMES);
+            if (toneClass) element.classList.add(toneClass);
+        };
+
         const elCreateWeekMetricChip = (label, amount, meta, note = '', options = {}) => {
             const hasValue = amount !== 0;
             const toneMeta = amount < 0 && options.negativeMeta ? options.negativeMeta : meta;
             const chip = document.createElement('div');
-            chip.style.cssText = [
-                'display:flex;flex-direction:column;align-items:flex-end;justify-content:center;gap:1px;',
-                'width:100%;min-width:0;padding:8px 10px;border-radius:12px;box-sizing:border-box;overflow:hidden;',
-                `border:1px solid ${hasValue ? toneMeta.border : 'rgba(100,116,139,0.22)'};`,
-                `background:${hasValue ? toneMeta.bg : 'linear-gradient(145deg, rgba(30,41,59,0.62) 0%, rgba(15,23,42,0.88) 100%)'};`,
-                `box-shadow:${hasValue ? toneMeta.shadow : 'inset 0 1px 0 rgba(255,255,255,0.04)'};`
-            ].join('');
+            chip.className = 'el-week-metric-chip';
+            elApplyMetricToneClass(chip, hasValue ? elResolveMetricToneClass(toneMeta) : 'el-tone-empty');
 
             const labelEl = document.createElement('span');
             labelEl.textContent = label.toUpperCase();
-            labelEl.style.cssText = `font-size:0.62rem;font-weight:800;letter-spacing:0.08em;color:${hasValue ? toneMeta.muted : '#64748B'};white-space:nowrap;`;
+            labelEl.className = 'el-week-metric-chip__label';
 
             const valueEl = document.createElement('span');
             valueEl.textContent = hasValue ? `${amount < 0 ? '-$' : '$'}${Math.abs(amount).toLocaleString()}` : '—';
-            valueEl.style.cssText = `font-size:0.84rem;font-weight:800;line-height:1.1;color:${hasValue ? toneMeta.text : '#94A3B8'};white-space:nowrap;`;
+            valueEl.className = 'el-week-metric-chip__value';
 
             chip.appendChild(labelEl);
             chip.appendChild(valueEl);
@@ -8233,7 +6731,7 @@ if (t.id === "ExpenseLens" || t.id === "BusinessExpenseLens") {
             if (note) {
                 const noteEl = document.createElement('span');
                 noteEl.textContent = note;
-                noteEl.style.cssText = `font-size:0.62rem;font-weight:700;line-height:1.1;color:${hasValue ? toneMeta.muted : '#64748B'};white-space:nowrap;`;
+                noteEl.className = 'el-week-metric-chip__note';
                 chip.appendChild(noteEl);
             }
 
@@ -8241,34 +6739,26 @@ if (t.id === "ExpenseLens" || t.id === "BusinessExpenseLens") {
         };
 
         const elFormatCashflowCurrency = (amount) => `${amount < 0 ? '-$' : '$'}${Math.abs(amount).toLocaleString()}`;
-        const elGetBalanceTone = (amount) => amount >= 0 ? EL_POSITIVE_BALANCE_TONE : EL_NEGATIVE_BALANCE_TONE;
         const elApplyBalanceTone = (element, amount) => {
             if (!element) return;
-            const tone = elGetBalanceTone(amount);
-            element.style.background = tone.bg;
-            element.style.color = tone.text;
-            element.style.borderColor = tone.border;
+            element.classList.add('el-balance-surface');
+            element.classList.remove('el-balance-chip-info', 'el-balance-chip-alert');
+            element.classList.toggle('is-positive', amount >= 0);
+            element.classList.toggle('is-negative', amount < 0);
         };
         const elCreateBalanceValue = (amount, fontSize = '0.78rem') => {
-            const tone = elGetBalanceTone(amount);
             const value = document.createElement('span');
             value.textContent = elFormatCashflowCurrency(amount);
-            value.style.cssText = `font-size:${fontSize};font-weight:800;color:${tone.text};white-space:nowrap;`;
+            value.className = `el-balance-value${fontSize === '0.74rem' ? ' el-balance-value--compact' : ''}`;
+            value.classList.add(amount >= 0 ? 'is-positive' : 'is-negative');
             return value;
         };
 
         const elCreateToneBadge = (label, meta) => {
             const badge = document.createElement('span');
             badge.textContent = label;
-            badge.style.cssText = [
-                'display:inline-flex;align-items:center;justify-content:center;',
-                'min-width:84px;padding:5px 12px;border-radius:999px;box-sizing:border-box;',
-                `border:1px solid ${meta.border};`,
-                `background:${meta.bg};`,
-                `color:${meta.text};`,
-                `box-shadow:${meta.shadow};`,
-                'font-size:0.68rem;font-weight:800;letter-spacing:0.05em;text-transform:uppercase;'
-            ].join('');
+            badge.className = 'el-tone-badge';
+            elApplyMetricToneClass(badge, elResolveMetricToneClass(meta));
             return badge;
         };
 
@@ -8380,8 +6870,7 @@ if (t.id === "ExpenseLens" || t.id === "BusinessExpenseLens") {
                     ? `${((groupTotal / summary.monthlyTotal) * 100).toFixed(1)}%`
                     : '0%';
                 refs.addBtn.disabled = incomeGroupsState[definition.key].length >= EL_MAX_INCOME_STREAMS_PER_GROUP;
-                refs.addBtn.style.opacity = refs.addBtn.disabled ? '0.45' : '1';
-                refs.addBtn.style.cursor = refs.addBtn.disabled ? 'not-allowed' : 'pointer';
+                refs.addBtn.classList.toggle('is-disabled', refs.addBtn.disabled);
             });
 
             return summary;
@@ -8424,7 +6913,7 @@ if (t.id === "ExpenseLens" || t.id === "BusinessExpenseLens") {
                 addBtn.type = 'button';
                 addBtn.className = 'btn el-toolbar-btn';
                 addBtn.textContent = '+ Add Stream';
-                addBtn.style.cssText = 'min-width:138px;margin-left:auto;';
+                addBtn.classList.add('lf-js-001');
                 addBtn.addEventListener('click', () => {
                     if (incomeGroupsState[definition.key].length >= EL_MAX_INCOME_STREAMS_PER_GROUP) return;
                     incomeGroupsState[definition.key].push(createIncomeStream(definition.key));
@@ -8440,12 +6929,11 @@ if (t.id === "ExpenseLens" || t.id === "BusinessExpenseLens") {
 
                 const streamsWrap = document.createElement('div');
                 streamsWrap.className = 'el-stream-grid';
-                streamsWrap.style.gridTemplateColumns = useTwoColumnStreamRows ? 'repeat(2, minmax(0, 1fr))' : 'minmax(0, 1fr)';
+                streamsWrap.classList.add(useTwoColumnStreamRows ? 'el-stream-grid--double' : 'el-stream-grid--single');
 
                 groupStreams.forEach((stream, streamIndex) => {
                     const streamCard = document.createElement('div');
-                    streamCard.className = 'el-stream-card';
-                    streamCard.style.gridTemplateColumns = 'auto minmax(0,.98fr) minmax(0,.98fr) minmax(0,1.08fr) auto';
+                    streamCard.className = 'el-stream-card el-stream-card--income';
 
                     const streamTitle = document.createElement('span');
                     streamTitle.className = 'el-stream-tag';
@@ -8472,7 +6960,7 @@ if (t.id === "ExpenseLens" || t.id === "BusinessExpenseLens") {
                     amountInput.className = 'form-control';
                     amountInput.placeholder = '0';
                     amountInput.value = stream.amount;
-                    amountInput.style.cssText = 'width:100%;font-size:0.82rem;';
+                    amountInput.classList.add('lf-js-002');
                     amountInput.addEventListener('input', () => {
                         incomeGroupsState[definition.key][streamIndex].amount = amountInput.value;
                         refreshExpenseLensViews({ sortRows: false });
@@ -8491,7 +6979,7 @@ if (t.id === "ExpenseLens" || t.id === "BusinessExpenseLens") {
 
                     const frequencySelect = document.createElement('select');
                     frequencySelect.className = 'form-select';
-                    frequencySelect.style.cssText = 'min-width:0;padding:4px 24px 4px 10px;font-size:0.78rem;';
+                    frequencySelect.classList.add('lf-js-003');
                     EL_BILL_FREQUENCIES.forEach((option) => {
                         const opt = document.createElement('option');
                         opt.value = option.value;
@@ -8509,7 +6997,7 @@ if (t.id === "ExpenseLens" || t.id === "BusinessExpenseLens") {
                     dateInput.type = 'date';
                     dateInput.className = 'form-control';
                     dateInput.value = normalizeIncomeAnchorDate(stream.anchorDate);
-                    dateInput.style.cssText = 'min-width:0;padding:4px 10px;font-size:0.78rem;color:#0284C7;';
+                    dateInput.classList.add('lf-js-004');
                     dateInput.addEventListener('change', () => {
                         incomeGroupsState[definition.key][streamIndex].anchorDate = normalizeIncomeAnchorDate(dateInput.value);
                         dateInput.value = incomeGroupsState[definition.key][streamIndex].anchorDate;
@@ -8665,11 +7153,7 @@ if (t.id === "ExpenseLens" || t.id === "BusinessExpenseLens") {
                 const matchesWeek = !elActiveWeek || elGetBillOccurrenceDays(idx, elActiveWeek).length > 0;
                 const matchesPayment = elMatchesPaymentFilter(elGetBillPaymentMethod(idx));
                 const show = matchesWeek && matchesPayment;
-                if (show) {
-                    row.style.removeProperty('display');
-                } else {
-                    row.style.setProperty('display', 'none', 'important');
-                }
+                row.classList.toggle('is-filter-hidden', !show);
             });
         };
 
@@ -8732,44 +7216,27 @@ if (t.id === "ExpenseLens" || t.id === "BusinessExpenseLens") {
         // -----------------------------
         const createCategoryRow = (index, preName = '', preDue = '', preAmount = '', preFrequency = 'monthly', prePaymentMethod = '', isTemplate = false, isPinned = false) => {
             const div = document.createElement("div");
-            div.className = "d-flex align-items-center el-category-row";
+            div.className = `d-flex align-items-center el-category-row ${isDualPanel ? 'el-category-row--compact' : 'el-category-row--standard'}`;
             div.id = `${elId('CatRow')}${index}`;
             div.dataset.isTemplate = isTemplate ? 'true' : 'false';
             div.dataset.isPinned = isPinned ? 'true' : 'false';
-            div.style.padding = isDualPanel ? "7px" : "10px";
-            div.style.borderRadius = "18px";
-            div.style.border = expenseLensRowBorder;
-            div.style.columnGap = isDualPanel ? "7px" : "12px";
-            div.style.rowGap = "8px";
-            div.style.flexWrap = "nowrap";
-            div.style.minWidth = "0";
-            div.style.overflow = isDualPanel ? "hidden" : "";
-            div.style.boxShadow = expenseLensCardShadow;
 
             const nameInput = document.createElement("input");
             nameInput.type = "text";
             nameInput.id = `${elId('CatName')}${index}`;
-            nameInput.className = "form-control flex-grow-1 el-row-name";
+            nameInput.className = `form-control flex-grow-1 el-row-name ${isDualPanel ? 'el-row-name--compact' : 'el-row-name--standard'}`;
             nameInput.placeholder = `Category ${index} Name`;
-            nameInput.style.color = "#1E3A8A";
-            nameInput.style.flex = isDualPanel ? "1 1 240px" : "1 1 220px";
-            nameInput.style.minWidth = isDualPanel ? "112px" : "";
-            nameInput.style.boxSizing = "border-box";
             nameInput.value = preName;
             nameInput.addEventListener("input", refreshExpenseLensViews);
 
             // Premium blue due date field
             const dueWrapper = document.createElement("div");
-            dueWrapper.style.position = "relative";
-            dueWrapper.style.flex = isDualPanel ? "0 1 108px" : "0 1 128px";
-            dueWrapper.style.minWidth = isDualPanel ? "96px" : "116px";
+            dueWrapper.className = `el-row-date-wrap ${isDualPanel ? 'el-row-date-wrap--compact' : 'el-row-date-wrap--standard'}`;
             const dueInput = document.createElement("input");
             dueInput.type = "date";
             dueInput.id = `${elId('CatDue')}${index}`;
-            dueInput.className = "form-control";
+            dueInput.className = "form-control el-row-date-input";
             dueInput.placeholder = "Due";
-            dueInput.style.color = "#0284C7";
-            dueInput.style.fontWeight = "800";
             const resolvedPreFrequency = normalizeBillFrequency(preFrequency);
             const shouldPreserveDueDate = resolvedPreFrequency === 'weekly' || resolvedPreFrequency === 'biweekly';
             dueInput.value = shouldPreserveDueDate && preDue ? preDue : toCurrentMonthDue(preDue);
@@ -8779,12 +7246,7 @@ if (t.id === "ExpenseLens" || t.id === "BusinessExpenseLens") {
 
             const frequencySelect = document.createElement("select");
             frequencySelect.id = `${elId('CatFrequency')}${index}`;
-            frequencySelect.className = "form-select";
-            frequencySelect.style.color = "#1E3A8A";
-            frequencySelect.style.fontWeight = "800";
-            frequencySelect.style.flex = isDualPanel ? "0 1 96px" : "0 1 118px";
-            frequencySelect.style.minWidth = isDualPanel ? "84px" : "106px";
-            frequencySelect.style.boxSizing = "border-box";
+            frequencySelect.className = `form-select el-row-select ${isDualPanel ? 'el-row-select--compact' : 'el-row-select--standard'}`;
             EL_BILL_FREQUENCIES.forEach(option => {
                 const opt = document.createElement("option");
                 opt.value = option.value;
@@ -8796,13 +7258,8 @@ if (t.id === "ExpenseLens" || t.id === "BusinessExpenseLens") {
 
             const paymentMethodSelect = document.createElement("select");
             paymentMethodSelect.id = `${elId('CatPaymentMethod')}${index}`;
-            paymentMethodSelect.className = "form-select";
+            paymentMethodSelect.className = `form-select el-row-select ${isDualPanel ? 'el-row-select--compact' : 'el-row-select--standard'}`;
             paymentMethodSelect.setAttribute("aria-label", "Payment method");
-            paymentMethodSelect.style.color = "#1E3A8A";
-            paymentMethodSelect.style.fontWeight = "800";
-            paymentMethodSelect.style.flex = isDualPanel ? "0 1 96px" : "0 1 118px";
-            paymentMethodSelect.style.minWidth = isDualPanel ? "84px" : "106px";
-            paymentMethodSelect.style.boxSizing = "border-box";
             EL_PAYMENT_METHODS.forEach(option => {
                 const opt = document.createElement("option");
                 opt.value = option.value;
@@ -8813,20 +7270,14 @@ if (t.id === "ExpenseLens" || t.id === "BusinessExpenseLens") {
             paymentMethodSelect.addEventListener("change", () => refreshExpenseLensViews({ sortRows: true }));
 
             const amountWrapper = document.createElement("div");
-            amountWrapper.className = "el-currency-field";
-            amountWrapper.style.flex = isDualPanel ? "0 1 100px" : "0 1 132px";
-            amountWrapper.style.minWidth = isDualPanel ? "82px" : "120px";
+            amountWrapper.className = `el-currency-field ${isDualPanel ? 'el-row-amount-wrap--compact' : 'el-row-amount-wrap--standard'}`;
 
             const amountInput = document.createElement("input");
             amountInput.type = "text";
             amountInput.id = `${elId('CatAmount')}${index}`;
-            amountInput.className = "form-control";
+            amountInput.className = "form-control el-row-amount-input";
             amountInput.placeholder = "Amount";
-            amountInput.style.width = "100%";
-            amountInput.style.fontWeight = "700";
-            amountInput.style.color = "#1E3A8A";
             amountInput.value = preAmount;
-            amountInput.style.paddingLeft = "28px";
 
             const dollarSpan = document.createElement("span");
             dollarSpan.textContent = "$";
@@ -8837,27 +7288,18 @@ if (t.id === "ExpenseLens" || t.id === "BusinessExpenseLens") {
 
             const percentSpan = document.createElement("span");
             percentSpan.id = `${elId('Out')}${index}`;
-            percentSpan.className = "el-percentage";
-            percentSpan.style.minWidth = isDualPanel ? "38px" : "80px";
-            percentSpan.style.flex = isDualPanel ? "0 0 42px" : "0 0 90px";
-            percentSpan.style.color = "#1E3A8A";
+            percentSpan.className = `el-percentage ${isDualPanel ? 'el-percentage--compact' : 'el-percentage--standard'}`;
 
             const deleteBtn = document.createElement("button");
             deleteBtn.textContent = "✕";
-            deleteBtn.className = "el-delete-btn";
-            deleteBtn.style.flex = isDualPanel ? "0 0 16px" : "";
-            deleteBtn.style.padding = isDualPanel ? "0" : "";
+            deleteBtn.className = `el-delete-btn ${isDualPanel ? 'el-delete-btn--compact' : 'el-delete-btn--standard'}`;
             const isInsuranceRow = isTemplate && preName.toLowerCase().includes("insurance");
             if (isInsuranceRow) {
-                deleteBtn.style.opacity = "0.2";
-                deleteBtn.style.cursor = "not-allowed";
-                deleteBtn.style.color = "#94a3b8";
+                deleteBtn.classList.add('is-locked');
                 deleteBtn.setAttribute("disabled", "true");
                 deleteBtn.setAttribute("aria-disabled", "true");
                 deleteBtn.title = "Insurance rows cannot be removed";
             } else {
-                deleteBtn.style.color = "#1E3A8A";
-                deleteBtn.style.cursor = "pointer";
                 deleteBtn.addEventListener("click", () => {
                     categoriesContainer.removeChild(div);
                     refreshExpenseLensViews();
@@ -8873,23 +7315,20 @@ if (t.id === "ExpenseLens" || t.id === "BusinessExpenseLens") {
             amountInput.addEventListener("input", refreshExpenseLensViews);
 
             const leftControls = document.createElement("div");
-            leftControls.className = "el-left-controls";
-            leftControls.style.cssText = `gap:${isDualPanel ? "3px" : "5px"};flex:0 0 ${isDualPanel ? "38px" : "54px"};min-width:${isDualPanel ? "38px" : "54px"};`;
+            leftControls.className = `el-left-controls ${isDualPanel ? 'el-left-controls--compact' : 'el-left-controls--standard'}`;
 
             // Drag handle — drag only activates from this grip, never from inputs
             const dragHandle = document.createElement("span");
             dragHandle.textContent = "⠿";
             dragHandle.title = "Drag to reorder";
-            dragHandle.className = "el-drag-handle";
-            dragHandle.style.cssText = `cursor:grab;font-size:${isDualPanel ? "1rem" : "1.2rem"};display:inline-flex;align-items:center;justify-content:center;width:${isDualPanel ? "14px" : "18px"};height:${isDualPanel ? "26px" : "30px"};user-select:none;touch-action:none;`;
+            dragHandle.className = `el-drag-handle ${isDualPanel ? 'el-drag-handle--compact' : 'el-drag-handle--standard'}`;
             dragHandle.addEventListener("pointerdown", () => { div.draggable = true; });
             dragHandle.addEventListener("pointerup",   () => { div.draggable = false; });
             dragHandle.addEventListener("pointercancel", () => { div.draggable = false; });
 
             const pinBtn = document.createElement("button");
             pinBtn.type = "button";
-            pinBtn.className = "el-pin-btn";
-            pinBtn.style.cssText = `width:${isDualPanel ? "20px" : "28px"};height:${isDualPanel ? "24px" : "30px"};font-size:${isDualPanel ? ".78rem" : ".9rem"};font-weight:900;flex:0 0 ${isDualPanel ? "20px" : "28px"};`;
+            pinBtn.className = `el-pin-btn ${isDualPanel ? 'el-pin-btn--compact' : 'el-pin-btn--standard'}`;
 
             const syncPinButton = () => {
                 const pinned = isExpenseRowPinned(div);
@@ -8897,14 +7336,8 @@ if (t.id === "ExpenseLens" || t.id === "BusinessExpenseLens") {
                 pinBtn.title = pinned ? "Pinned to top" : "Pin to top";
                 pinBtn.setAttribute("aria-label", pinned ? "Unpin category from top" : "Pin category to top");
                 pinBtn.setAttribute("aria-pressed", pinned ? "true" : "false");
-                pinBtn.style.background = pinned ? "linear-gradient(180deg, rgba(245,158,11,.26), rgba(180,83,9,.20))" : "rgba(13,29,59,.82)";
-                pinBtn.style.borderColor = pinned ? "rgba(245,158,11,.58)" : "rgba(56,189,248,.18)";
-                pinBtn.style.color = pinned ? "#fbbf24" : "#90d8ff";
-                pinBtn.style.opacity = pinned ? "1" : ".62";
-                div.style.border = pinned ? expenseLensPinnedBorder : expenseLensRowBorder;
-                div.style.boxShadow = pinned
-                    ? `inset 4px 0 0 rgba(245,158,11,.86), ${expenseLensCardShadow}`
-                    : expenseLensCardShadow;
+                pinBtn.classList.toggle('is-pinned', pinned);
+                div.classList.toggle('is-pinned', pinned);
             };
 
             pinBtn.addEventListener("click", (e) => {
@@ -8924,22 +7357,22 @@ if (t.id === "ExpenseLens" || t.id === "BusinessExpenseLens") {
             div.addEventListener("dragstart", (e) => {
                 elDragSrc = div;
                 e.dataTransfer.effectAllowed = "move";
-                setTimeout(() => { div.style.opacity = "0.4"; }, 0);
+                setTimeout(() => { div.classList.add('is-drag-source'); }, 0);
             });
             div.addEventListener("dragend", () => {
-                div.style.opacity = "1";
+                div.classList.remove('is-drag-source');
                 div.draggable = false;
                 elDragSrc = null;
                 categoriesContainer.querySelectorAll(`[id^="${elId('CatRow')}"]`).forEach(r => {
-                    r.style.border = isExpenseRowPinned(r) ? expenseLensPinnedBorder : expenseLensRowBorder;
+                    r.classList.remove('is-drag-over');
                 });
             });
             div.addEventListener("dragover", (e) => {
                 e.preventDefault();
-                if (div !== elDragSrc) div.style.border = expenseLensRowBorderStrong;
+                if (div !== elDragSrc) div.classList.add('is-drag-over');
             });
             div.addEventListener("dragleave", () => {
-                div.style.border = isExpenseRowPinned(div) ? expenseLensPinnedBorder : expenseLensRowBorder;
+                div.classList.remove('is-drag-over');
             });
             div.addEventListener("drop", (e) => {
                 e.preventDefault();
@@ -8948,7 +7381,7 @@ if (t.id === "ExpenseLens" || t.id === "BusinessExpenseLens") {
                     const after = e.clientY > rect.top + rect.height / 2;
                     categoriesContainer.insertBefore(elDragSrc, after ? div.nextSibling : div);
                     keepPinnedExpenseRowsAtTop();
-                    div.style.border = isExpenseRowPinned(div) ? expenseLensPinnedBorder : expenseLensRowBorder;
+                    div.classList.remove('is-drag-over');
                     refreshExpenseLensViews();
                 }
             });
@@ -9037,14 +7470,13 @@ if (t.id === "ExpenseLens" || t.id === "BusinessExpenseLens") {
                 elMargin.textContent = hasPaymentFilter
                     ? `${elActiveWeek.label} ${elPaymentFilterLabel(elActivePaymentFilter)}: $${totalSpent.toLocaleString()}`
                     : `${elActiveWeek.label} Due: $${totalSpent.toLocaleString()}`;
-                elMargin.style.background = hasPaymentFilter ? 'rgba(56,189,248,0.12)' : 'rgba(239,68,68,0.12)';
-                elMargin.style.color = hasPaymentFilter ? '#38BDF8' : '#ef4444';
-                elMargin.style.borderColor = hasPaymentFilter ? 'rgba(56,189,248,0.45)' : 'rgba(239,68,68,0.45)';
+                elMargin.classList.remove('is-positive', 'is-negative');
+                elMargin.classList.toggle('el-balance-chip-info', hasPaymentFilter);
+                elMargin.classList.toggle('el-balance-chip-alert', !hasPaymentFilter);
             } else if (hasPaymentFilter) {
                 elMargin.textContent = `${elPaymentFilterLabel(elActivePaymentFilter)} Bills: $${totalSpent.toLocaleString()}`;
-                elMargin.style.background = 'rgba(56,189,248,0.12)';
-                elMargin.style.color = '#38BDF8';
-                elMargin.style.borderColor = 'rgba(56,189,248,0.45)';
+                elMargin.classList.remove('is-positive', 'is-negative', 'el-balance-chip-alert');
+                elMargin.classList.add('el-balance-chip-info');
             } else {
                 elMargin.textContent = `Remaining Balance: $${monthlyRemaining.toLocaleString()}`;
                 elApplyBalanceTone(elMargin, monthlyRemaining);
@@ -9206,11 +7638,11 @@ if (t.id === "ExpenseLens" || t.id === "BusinessExpenseLens") {
 
         weekPanelBackdrop = document.createElement('div');
         weekPanelBackdrop.className = 'expense-lens-week-panel-backdrop';
-        weekPanelBackdrop.style.cssText = 'display:none;position:fixed;inset:0;z-index:99998;align-items:center;justify-content:center;padding:16px;background:linear-gradient(180deg, rgba(2,6,23,0.992) 0%, rgba(6,14,28,0.988) 100%);';
+        weekPanelBackdrop.classList.add('lf-js-005');
 
         weekPanel = document.createElement('div');
         weekPanel.className = 'expense-lens-week-panel';
-        weekPanel.style.cssText = 'position:relative;background:radial-gradient(1100px 420px at 0% 0%, rgba(14,165,233,0.12), transparent 48%),linear-gradient(180deg, rgba(5,13,28,.998), rgba(9,21,42,.995));border:1.5px solid rgba(56,189,248,0.58);border-radius:22px;padding:20px 24px 22px;width:min(1120px, calc(100vw - 32px));max-height:min(820px, calc(100vh - 32px));overflow-y:auto;overflow-x:hidden;box-shadow:0 54px 140px rgba(2,6,23,0.84);box-sizing:border-box;';
+        weekPanel.classList.add('lf-js-006');
         weekPanelBackdrop.appendChild(weekPanel);
         document.body.appendChild(weekPanelBackdrop);
 
@@ -9358,7 +7790,7 @@ if (t.id === "ExpenseLens" || t.id === "BusinessExpenseLens") {
 
             const createBillSummaryMetrics = (totals) => {
                 const metricsWrap = document.createElement('div');
-                metricsWrap.style.cssText = 'display:grid;grid-template-columns:repeat(3, minmax(0, 1fr));align-items:stretch;gap:8px;min-width:0;';
+                metricsWrap.classList.add('lf-js-007');
                 metricsWrap.appendChild(elCreateWeekMetricChip(EL_PAYMENT_METHOD_META.debit.label, totals.debitTotal, EL_PAYMENT_METHOD_META.debit));
                 metricsWrap.appendChild(elCreateWeekMetricChip(EL_PAYMENT_METHOD_META.credit.label, totals.creditTotal, EL_PAYMENT_METHOD_META.credit));
                 metricsWrap.appendChild(elCreateWeekMetricChip(EL_PAYMENT_METHOD_META.total.label, totals.total, EL_PAYMENT_METHOD_META.total, totals.count > 0 ? formatBillCount(totals.count) : ''));
@@ -9368,7 +7800,7 @@ if (t.id === "ExpenseLens" || t.id === "BusinessExpenseLens") {
             const createCashflowSummaryMetrics = (summary, options = {}) => {
                 const endingMeta = options.endingMeta || EL_ENDING_BALANCE_META;
                 const metricsWrap = document.createElement('div');
-                metricsWrap.style.cssText = 'display:grid;grid-template-columns:repeat(4, minmax(0, 1fr));align-items:stretch;gap:8px;min-width:0;';
+                metricsWrap.classList.add('lf-js-008');
                 metricsWrap.appendChild(elCreateWeekMetricChip(EL_INCOME_METRIC_META.label, summary.incomeTotal, EL_INCOME_METRIC_META, summary.incomeCount > 0 ? formatIncomeHitCount(summary.incomeCount) : ''));
                 metricsWrap.appendChild(elCreateWeekMetricChip(debitCashLabel, summary.debitCashTotal, EL_PAYMENT_METHOD_META.debit, summary.debitCashCount > 0 ? formatBillCount(summary.debitCashCount) : ''));
                 metricsWrap.appendChild(elCreateWeekMetricChip(EL_PAYMENT_METHOD_META.credit.label, summary.creditTotal, EL_PAYMENT_METHOD_META.credit, summary.creditCount > 0 ? formatBillCount(summary.creditCount) : ''));
@@ -9377,20 +7809,20 @@ if (t.id === "ExpenseLens" || t.id === "BusinessExpenseLens") {
             };
 
             const header = document.createElement('div');
-            header.style.cssText = 'display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:12px;padding-bottom:10px;border-bottom:1px solid rgba(56,189,248,0.25);gap:10px;';
+            header.classList.add('lf-js-009');
             const titleWrap = document.createElement('div');
-            titleWrap.style.cssText = 'display:flex;flex-direction:column;gap:2px;';
+            titleWrap.classList.add('lf-js-010');
             const title = document.createElement('span');
-            title.style.cssText = 'color:#38BDF8;font-weight:800;font-size:0.92rem;letter-spacing:0.05em;';
+            title.classList.add('lf-js-011');
             title.textContent = personalCashflowMode ? 'WEEKLY CASHFLOW TRACKER' : 'WEEKLY BILL TRACKER';
             const subtitle = document.createElement('span');
-            subtitle.style.cssText = 'color:#94A3B8;font-size:0.70rem;font-weight:700;';
+            subtitle.classList.add('lf-js-012');
             subtitle.textContent = elActivePaymentFilter === 'all'
                 ? `Calendar weeks for ${monthYearLabel}`
                 : `Calendar weeks for ${monthYearLabel} · ${elPaymentFilterLabel(elActivePaymentFilter)} only`;
             const closeX = document.createElement('span');
             closeX.textContent = '✕';
-            closeX.style.cssText = 'cursor:pointer;color:#64748B;font-size:1rem;font-weight:700;line-height:1;padding:2px 4px;';
+            closeX.classList.add('lf-js-013');
             closeX.addEventListener('click', (e) => { e.stopPropagation(); closeWeekPanel(); });
             titleWrap.appendChild(title);
             titleWrap.appendChild(subtitle);
@@ -9404,23 +7836,20 @@ if (t.id === "ExpenseLens" || t.id === "BusinessExpenseLens") {
             const allCashflow = buildCashflowSummary(allIncomeHits, allBills);
 
             const allRow = document.createElement('div');
-            allRow.style.cssText = [
-                'cursor:pointer;padding:10px 12px;border-radius:12px;margin-bottom:10px;',
-                'display:grid;grid-template-columns:minmax(176px,.48fr) minmax(0,1fr);align-items:center;gap:12px;',
-                `background:${!elActiveWeek ? 'linear-gradient(135deg, rgba(21,94,117,0.44) 0%, rgba(30,64,175,0.46) 100%)' : 'linear-gradient(145deg, rgba(30,41,59,0.92) 0%, rgba(15,23,42,0.94) 100%)'};`,
-                `border:1px solid ${!elActiveWeek ? 'rgba(56,189,248,0.38)' : 'rgba(56,189,248,0.14)'};`,
-                `box-shadow:${!elActiveWeek ? '0 16px 34px rgba(37,99,235,0.16), inset 0 1px 0 rgba(255,255,255,0.05)' : 'inset 0 1px 0 rgba(255,255,255,0.03)'};`
-            ].join('');
+            allRow.className = 'el-week-summary-row el-week-summary-row--month';
+            allRow.classList.toggle('is-selected', !elActiveWeek);
 
             const allRowLeft = document.createElement('div');
-            allRowLeft.style.cssText = 'display:flex;flex-direction:column;justify-content:center;gap:3px;min-width:0;';
+            allRowLeft.classList.add('lf-js-014');
             const allRowLabel = document.createElement('span');
-            allRowLabel.style.cssText = `font-weight:800;font-size:0.84rem;color:${!elActiveWeek ? '#E0F2FE' : '#38BDF8'};`;
+            allRowLabel.className = 'el-week-summary-title';
+            allRowLabel.classList.toggle('is-selected', !elActiveWeek);
             allRowLabel.textContent = personalCashflowMode
                 ? (elActivePaymentFilter === 'all' ? 'Show Full Cashflow' : `${elPaymentFilterLabel(elActivePaymentFilter)} Cashflow`)
                 : (elActivePaymentFilter === 'all' ? 'Show All Bills' : `${elPaymentFilterLabel(elActivePaymentFilter)} Bills`);
             const allRowSub = document.createElement('span');
-            allRowSub.style.cssText = `font-size:0.68rem;font-weight:700;color:${!elActiveWeek ? '#7DD3FC' : '#64748B'};`;
+            allRowSub.className = 'el-week-summary-subtitle el-week-summary-subtitle--month';
+            allRowSub.classList.toggle('is-selected', !elActiveWeek);
             allRowSub.textContent = personalCashflowMode
                 ? ((allCashflow.incomeCount > 0 || allCashflow.billCount > 0)
                     ? `Entire ${monthYearLabel} income + bill map`
@@ -9446,63 +7875,63 @@ if (t.id === "ExpenseLens" || t.id === "BusinessExpenseLens") {
                 const isExpanded = elSameCalendarWeek(elExpandedWeek, week);
 
                 const weekBlock = document.createElement('div');
-                weekBlock.style.cssText = 'border-radius:12px;margin-bottom:8px;overflow:hidden;border:1px solid rgba(56,189,248,0.12);background:linear-gradient(145deg, rgba(30,41,59,0.92) 0%, rgba(15,23,42,0.96) 100%);box-shadow:inset 0 1px 0 rgba(255,255,255,0.03);';
+                weekBlock.classList.add('lf-js-015');
 
                 const summaryRow = document.createElement('div');
-                summaryRow.style.cssText = [
-                    'display:grid;grid-template-columns:132px minmax(0,1fr);align-items:center;padding:10px 12px;cursor:pointer;gap:12px;',
-                    `background:${isActive ? 'linear-gradient(135deg, rgba(37,99,235,0.94) 0%, rgba(29,78,216,0.98) 100%)' : 'linear-gradient(145deg, rgba(30,41,59,0.70) 0%, rgba(15,23,42,0.78) 100%)'};`,
-                    `box-shadow:${isActive ? 'inset 0 1px 0 rgba(255,255,255,0.08)' : 'none'};`
-                ].join('');
+                summaryRow.className = 'el-week-summary-row el-week-summary-row--week';
+                summaryRow.classList.toggle('is-selected', isActive);
 
                 const wLabelWrap = document.createElement('div');
-                wLabelWrap.style.cssText = 'display:flex;flex-direction:column;justify-content:center;gap:3px;min-width:0;';
+                wLabelWrap.classList.add('lf-js-014');
                 const wLabel = document.createElement('span');
-                wLabel.style.cssText = `font-weight:800;font-size:0.82rem;color:${isActive ? '#fff' : '#E0F2FE'};`;
+                wLabel.className = 'el-week-summary-title el-week-summary-title--week';
+                wLabel.classList.toggle('is-selected', isActive);
                 wLabel.textContent = week.label;
                 const wRange = document.createElement('span');
-                wRange.style.cssText = `font-size:0.68rem;font-weight:700;color:${isActive ? '#BFDBFE' : '#7DD3FC'};`;
+                wRange.className = 'el-week-summary-subtitle el-week-summary-subtitle--week';
+                wRange.classList.toggle('is-selected', isActive);
                 wRange.textContent = week.rangeLabel;
                 wLabelWrap.appendChild(wLabel);
                 wLabelWrap.appendChild(wRange);
 
                 const rightGroup = document.createElement('div');
-                rightGroup.style.cssText = 'display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:center;gap:10px;min-width:0;';
+                rightGroup.classList.add('lf-js-016');
                 rightGroup.appendChild(personalCashflowMode ? createCashflowSummaryMetrics(cashflowSummary) : createBillSummaryMetrics(totals));
 
                 const chevron = document.createElement('span');
                 chevron.textContent = isExpanded ? '▴' : '▾';
-                chevron.style.cssText = 'color:#38BDF8;font-size:0.82rem;font-weight:800;user-select:none;align-self:center;padding:0 2px;';
+                chevron.classList.add('lf-js-017');
                 rightGroup.appendChild(chevron);
 
                 summaryRow.appendChild(wLabelWrap);
                 summaryRow.appendChild(rightGroup);
 
                 const detailWrap = document.createElement('div');
-                detailWrap.style.cssText = `display:${isExpanded ? 'block' : 'none'};background:rgba(2,6,23,0.22);`;
+                detailWrap.className = 'el-week-detail';
+                detailWrap.classList.toggle('is-open', isExpanded);
 
                 if (personalCashflowMode && cashflowSummary.events.length > 0) {
                     const detailBanner = document.createElement('div');
-                    detailBanner.style.cssText = 'display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:center;gap:12px;padding:9px 12px;border-bottom:1px solid rgba(56,189,248,0.12);background:rgba(8,15,32,0.42);';
+                    detailBanner.classList.add('lf-js-018');
 
                     const detailHint = document.createElement('span');
-                    detailHint.style.cssText = 'font-size:0.72rem;color:#94A3B8;font-weight:600;';
+                    detailHint.classList.add('lf-js-019');
                     detailHint.textContent = 'Running order: pay hits post first, then debit / cash obligations, then credit due in that week.';
 
                     const detailCarry = document.createElement('div');
-                    detailCarry.style.cssText = 'display:flex;align-items:center;gap:10px;flex-wrap:wrap;justify-content:flex-end;';
+                    detailCarry.classList.add('lf-js-020');
 
                     const startGroup = document.createElement('span');
-                    startGroup.style.cssText = 'display:inline-flex;align-items:center;gap:6px;font-size:0.74rem;font-weight:700;color:#CBD5E1;white-space:nowrap;';
+                    startGroup.classList.add('lf-js-021');
                     startGroup.appendChild(document.createTextNode('Start'));
                     startGroup.appendChild(elCreateBalanceValue(cashflowSummary.startingBalance, '0.74rem'));
 
                     const divider = document.createElement('span');
-                    divider.style.cssText = 'font-size:0.72rem;font-weight:700;color:#475569;';
+                    divider.classList.add('lf-js-022');
                     divider.textContent = '•';
 
                     const endGroup = document.createElement('span');
-                    endGroup.style.cssText = 'display:inline-flex;align-items:center;gap:6px;font-size:0.74rem;font-weight:700;color:#E2E8F0;white-space:nowrap;';
+                    endGroup.classList.add('lf-js-023');
                     endGroup.appendChild(document.createTextNode('Week End'));
                     endGroup.appendChild(elCreateBalanceValue(cashflowSummary.endingBalance, '0.74rem'));
 
@@ -9515,26 +7944,27 @@ if (t.id === "ExpenseLens" || t.id === "BusinessExpenseLens") {
                     detailWrap.appendChild(detailBanner);
 
                     const colHeader = document.createElement('div');
-                    colHeader.style.cssText = 'display:grid;grid-template-columns:minmax(0,1fr) 72px 112px 92px 112px;align-items:center;gap:10px;padding:6px 12px 5px 12px;border-bottom:1px solid rgba(56,189,248,0.12);';
-                    colHeader.innerHTML = '<span style="font-size:0.7rem;color:#475569;font-weight:700;text-transform:uppercase;letter-spacing:0.06em;">Event</span><span style="text-align:center;font-size:0.7rem;color:#475569;font-weight:700;text-transform:uppercase;letter-spacing:0.06em;">Date</span><span style="text-align:center;font-size:0.7rem;color:#475569;font-weight:700;text-transform:uppercase;letter-spacing:0.06em;">Type</span><span style="text-align:right;font-size:0.7rem;color:#475569;font-weight:700;text-transform:uppercase;letter-spacing:0.06em;">Impact</span><span style="text-align:right;font-size:0.7rem;color:#475569;font-weight:700;text-transform:uppercase;letter-spacing:0.06em;">Running Bal</span>';
+                    colHeader.classList.add('lf-js-024');
+                    colHeader.innerHTML = '<span class="lf-ui-024">Event</span><span class="lf-ui-025">Date</span><span class="lf-ui-025">Type</span><span class="lf-ui-026">Impact</span><span class="lf-ui-026">Running Bal</span>';
                     detailWrap.appendChild(colHeader);
 
                     cashflowSummary.events.forEach((eventItem, i) => {
                         const eventRow = document.createElement('div');
-                        eventRow.style.cssText = `display:grid;grid-template-columns:minmax(0,1fr) 72px 112px 92px 112px;align-items:center;gap:10px;padding:8px 12px;${i < cashflowSummary.events.length - 1 ? 'border-bottom:1px solid rgba(56,189,248,0.07);' : ''}`;
+                        eventRow.className = 'el-week-event-row';
+                        eventRow.classList.toggle('is-last', i === cashflowSummary.events.length - 1);
 
                         const eventName = document.createElement('span');
-                        eventName.style.cssText = 'font-size:0.76rem;color:#CBD5E1;font-weight:600;min-width:0;';
+                        eventName.classList.add('lf-js-025');
                         eventName.textContent = eventItem.kind === 'income' && eventItem.frequency
                             ? `${eventItem.label} (${elFrequencyLabel(eventItem.frequency)})`
                             : eventItem.label;
 
                         const eventDate = document.createElement('span');
-                        eventDate.style.cssText = 'text-align:center;font-size:0.74rem;color:#94A3B8;font-weight:500;';
+                        eventDate.classList.add('lf-js-026');
                         eventDate.textContent = eventItem.date.toLocaleString('default', { month: 'short', day: 'numeric' });
 
                         const eventType = document.createElement('span');
-                        eventType.style.cssText = 'display:flex;justify-content:center;';
+                        eventType.classList.add('lf-js-027');
                         if (eventItem.kind === 'income') {
                             eventType.appendChild(elCreateToneBadge(EL_INCOME_METRIC_META.label, EL_INCOME_METRIC_META));
                         } else if (eventItem.kind === 'credit') {
@@ -9553,12 +7983,12 @@ if (t.id === "ExpenseLens" || t.id === "BusinessExpenseLens") {
                                     ? EL_PAYMENT_METHOD_META.debit
                                     : EL_PAYMENT_METHOD_META.unassigned;
                         const eventAmount = document.createElement('span');
-                        eventAmount.style.cssText = `text-align:right;font-size:0.78rem;font-weight:800;color:${amountMeta.muted};white-space:nowrap;`;
+                        eventAmount.className = `el-week-amount ${elResolveMetricToneClass(amountMeta)}`;
                         eventAmount.textContent = `${eventItem.impact < 0 ? '-$' : '+$'}${Math.abs(eventItem.impact).toLocaleString()}`;
 
-                        const balanceMeta = eventItem.balanceAfter < 0 ? EL_NEGATIVE_METRIC_META : EL_ENDING_BALANCE_META;
                         const eventBalance = document.createElement('span');
-                        eventBalance.style.cssText = `text-align:right;font-size:0.78rem;font-weight:800;color:${balanceMeta.text};white-space:nowrap;`;
+                        eventBalance.className = 'el-week-balance';
+                        eventBalance.classList.add(eventItem.balanceAfter < 0 ? 'is-negative' : 'is-positive');
                         eventBalance.textContent = elFormatCashflowCurrency(eventItem.balanceAfter);
 
                         eventRow.appendChild(eventName);
@@ -9570,31 +8000,32 @@ if (t.id === "ExpenseLens" || t.id === "BusinessExpenseLens") {
                     });
                 } else if (totals.count > 0) {
                     const colHeader = document.createElement('div');
-                    colHeader.style.cssText = 'display:flex;align-items:center;gap:10px;padding:6px 12px 5px 12px;border-bottom:1px solid rgba(56,189,248,0.12);';
-                    colHeader.innerHTML = '<span style="flex:1;font-size:0.7rem;color:#475569;font-weight:700;text-transform:uppercase;letter-spacing:0.06em;">Bill</span><span style="min-width:68px;text-align:center;font-size:0.7rem;color:#475569;font-weight:700;text-transform:uppercase;letter-spacing:0.06em;">Due</span><span style="min-width:96px;text-align:center;font-size:0.7rem;color:#475569;font-weight:700;text-transform:uppercase;letter-spacing:0.06em;">Pay Type</span><span style="min-width:84px;text-align:right;font-size:0.7rem;color:#475569;font-weight:700;text-transform:uppercase;letter-spacing:0.06em;">Amount</span>';
+                    colHeader.classList.add('lf-js-028');
+                    colHeader.innerHTML = '<span class="lf-ui-027">Bill</span><span class="lf-ui-028">Due</span><span class="lf-ui-029">Pay Type</span><span class="lf-ui-030">Amount</span>';
                     detailWrap.appendChild(colHeader);
 
                     bills.forEach((bill, i) => {
                         const paymentMeta = elGetPaymentMethodMeta(bill.paymentMethod);
                         const billRow = document.createElement('div');
-                        billRow.style.cssText = `display:flex;align-items:center;gap:10px;padding:8px 12px;${i < bills.length - 1 ? 'border-bottom:1px solid rgba(56,189,248,0.07);' : ''}`;
+                        billRow.className = 'el-week-bill-row';
+                        billRow.classList.toggle('is-last', i === bills.length - 1);
 
                         const bName = document.createElement('span');
-                        bName.style.cssText = 'flex:1;font-size:0.76rem;color:#CBD5E1;font-weight:600;min-width:0;';
+                        bName.classList.add('lf-js-029');
                         bName.textContent = bill.frequency === 'monthly'
                             ? bill.name
                             : `${bill.name} (${elFrequencyLabel(bill.frequency)})`;
 
                         const bDue = document.createElement('span');
-                        bDue.style.cssText = 'min-width:68px;text-align:center;font-size:0.74rem;color:#94A3B8;font-weight:500;';
+                        bDue.classList.add('lf-js-030');
                         bDue.textContent = bill.date.toLocaleString('default', { month: 'short', day: 'numeric' });
 
                         const paymentCell = document.createElement('span');
-                        paymentCell.style.cssText = 'min-width:96px;display:flex;justify-content:center;';
+                        paymentCell.classList.add('lf-js-031');
                         paymentCell.appendChild(elCreatePaymentBadge(bill.paymentMethod));
 
                         const bAmt = document.createElement('span');
-                        bAmt.style.cssText = `min-width:84px;text-align:right;font-size:0.78rem;font-weight:800;color:${paymentMeta.muted};`;
+                        bAmt.className = `el-week-amount ${elResolveMetricToneClass(paymentMeta)}`;
                         bAmt.textContent = `$${bill.amount.toLocaleString()}`;
 
                         billRow.appendChild(bName);
@@ -9606,21 +8037,21 @@ if (t.id === "ExpenseLens" || t.id === "BusinessExpenseLens") {
                 } else {
                     const empty = document.createElement('div');
                     if (personalCashflowMode && elActivePaymentFilter === 'all') {
-                        empty.style.cssText = 'display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:center;gap:12px;padding:14px 16px;background:rgba(8,15,32,0.42);';
+                        empty.classList.add('lf-js-032');
 
                         const emptyCopy = document.createElement('span');
-                        emptyCopy.style.cssText = 'font-size:0.79rem;color:#CBD5E1;font-weight:600;line-height:1.45;';
+                        emptyCopy.classList.add('lf-js-033');
                         emptyCopy.textContent = 'No income or bill events scheduled in this week. Ending balance carries at';
 
                         const emptyBalance = document.createElement('span');
-                        emptyBalance.style.cssText = 'display:inline-flex;align-items:center;justify-content:center;min-width:122px;padding:8px 12px;border-radius:12px;border:1px solid transparent;font-size:0.84rem;font-weight:800;white-space:nowrap;box-shadow:inset 0 1px 0 rgba(255,255,255,0.05);';
+                        emptyBalance.classList.add('lf-js-034');
                         emptyBalance.textContent = elFormatCashflowCurrency(cashflowSummary.endingBalance);
                         elApplyBalanceTone(emptyBalance, cashflowSummary.endingBalance);
 
                         empty.appendChild(emptyCopy);
                         empty.appendChild(emptyBalance);
                     } else {
-                        empty.style.cssText = 'padding:12px 20px;color:#94A3B8;font-size:0.78rem;font-style:italic;';
+                        empty.classList.add('lf-js-035');
                         empty.textContent = personalCashflowMode
                             ? `No ${elPaymentFilterLabel(elActivePaymentFilter).toLowerCase()} bill events scheduled in this week.`
                             : (elActivePaymentFilter === 'all'
@@ -9647,7 +8078,7 @@ if (t.id === "ExpenseLens" || t.id === "BusinessExpenseLens") {
         weeklyBtn.type = 'button';
         weeklyBtn.textContent = 'Weekly ▾';
         weeklyBtn.className = 'btn el-week-btn';
-        weeklyBtn.style.cssText = 'flex-shrink:0;';
+        weeklyBtn.classList.add('lf-js-036');
         weeklyBtn.addEventListener('click', (e) => {
             e.stopPropagation();
             const isOpen = weekPanelBackdrop.style.display !== 'none';
@@ -9661,7 +8092,7 @@ if (t.id === "ExpenseLens" || t.id === "BusinessExpenseLens") {
         paymentFilterSelect.id = elId('PaymentFilter');
         paymentFilterSelect.className = 'form-select el-filter-select';
         paymentFilterSelect.title = 'Filter bills by payment method';
-        paymentFilterSelect.style.cssText = 'padding-right:34px;';
+        paymentFilterSelect.classList.add('lf-js-037');
         EL_PAYMENT_FILTERS.forEach(option => {
             const opt = document.createElement('option');
             opt.value = option.value;
@@ -9686,7 +8117,7 @@ if (t.id === "ExpenseLens" || t.id === "BusinessExpenseLens") {
         weeklyBtnTop.type = 'button';
         weeklyBtnTop.textContent = 'Weekly ▾';
         weeklyBtnTop.className = 'btn el-week-btn';
-        weeklyBtnTop.style.cssText = 'flex-shrink:0;';
+        weeklyBtnTop.classList.add('lf-js-036');
         weeklyBtnTop.addEventListener('click', (e) => {
             e.stopPropagation();
             const isOpen = weekPanelBackdrop.style.display !== 'none';
@@ -9699,9 +8130,7 @@ if (t.id === "ExpenseLens" || t.id === "BusinessExpenseLens") {
         const incomeInputRow = elIncome.parentElement;
         const incomeFlexWrap = document.createElement('div');
         incomeFlexWrap.className = 'el-income-flex';
-        incomeFlexWrap.style.marginBottom = '16px';
         incomeInputRow.classList.add('el-income-input-inline');
-        incomeInputRow.style.marginBottom = '0';
         incomeInputRow.parentElement.insertBefore(incomeFlexWrap, incomeInputRow);
         incomeFlexWrap.appendChild(incomeInputRow);
 
@@ -9717,12 +8146,10 @@ if (t.id === "ExpenseLens" || t.id === "BusinessExpenseLens") {
             incomeGroupsHost = document.createElement('div');
             incomeGroupsHost.id = elId('IncomeGroups');
             incomeGroupsHost.className = 'el-income-groups';
-            incomeGroupsHost.style.marginBottom = '14px';
             incomeFlexWrap.parentElement.insertBefore(incomeGroupsHost, incomeFlexWrap.nextSibling);
 
             elIncome.readOnly = true;
-            elIncome.style.cursor = 'default';
-            elIncome.style.color = '#16a34a';
+            elIncome.classList.add('el-income-total-input--locked');
             renderPersonalIncomeGroups();
         }
 
@@ -9841,152 +8268,74 @@ if (t.id === "ExpenseLens" || t.id === "BusinessExpenseLens") {
 --------------------------------*/
 if (t.id === "NetWorth") {
     embedContainer.innerHTML = `
-  <div class="networth-tool p-4"
-       style="background: radial-gradient(900px 320px at 0% 0%, rgba(166,128,35,.12), transparent 55%), linear-gradient(180deg, rgba(11,21,41,.99), rgba(15,29,56,.99));
-              border-radius:20px;
-              box-shadow:0 40px 100px rgba(0,0,0,.58);
-              border:1.8px solid rgba(166,128,35,.52);
-              max-width:1200px;
-              margin:0 auto;
-              color:#f8fafc;
-              font-family: 'Inter', sans-serif;">
-
-        <!-- Tooltip styles (safe + isolated) -->
-        <style>
-            .nw-label{
-                display:inline-flex;
-                align-items:center;
-                gap:8px;
-                margin-bottom:6px;
-                font-weight:800;
-                color:#a68023;
-            }
-            .nw-i{
-                display:inline-flex;
-                align-items:center;
-                justify-content:center;
-                width:18px;
-                height:18px;
-                border-radius:999px;
-                background:#fff;
-                border:1px solid rgba(210,31,43,.9);
-                color:#d21f2b;
-                font-weight:900;
-                font-size:12px;
-                line-height:1;
-                cursor:pointer;
-                user-select:none;
-                transform: translateY(-1px);
-                box-shadow:0 6px 18px rgba(0,0,0,.08);
-            }
-            .nw-i:focus{
-                outline:none;
-                box-shadow:0 0 0 3px rgba(210,31,43,.18), 0 10px 25px rgba(0,0,0,.10);
-            }
-            #nwTipLayer{
-                position:fixed;
-                inset:0;
-                pointer-events:none;
-                z-index:2147483647;
-            }
-            .nw-tipbox{
-                position:absolute;
-                max-width:min(360px, 86vw);
-                background:#fff;
-                color:#111;
-                border:1px solid rgba(0,0,0,.12);
-                border-left:4px solid #d21f2b;
-                padding:12px 12px;
-                border-radius:14px;
-                font-size:12.8px;
-                font-weight:650;
-                line-height:1.35;
-                box-shadow:0 18px 45px rgba(0,0,0,.18);
-                opacity:0;
-                transform:translateY(6px);
-                transition:opacity .12s ease, transform .12s ease;
-                pointer-events:none;
-                white-space:normal;
-            }
-            .nw-tipbox b{ font-weight:900; }
-            .nw-tipbox.show{ opacity:1; transform:translateY(0); }
-        </style>
+  <div class="networth-tool p-4 legend-finance-tool-card legend-finance-tool-card--wide el-shell">
 
         <div id="nwTipLayer"></div>
       
-        <h3 class="fw-bold mb-3" style="color:#a68023; font-weight:900; letter-spacing:0.5px; font-size:2rem;">
+        <h3>
             ${t.name}
         </h3>
 
-        <p style="font-style:italic; color:#b9c5d8; margin-bottom:18px;">
+        <p>
             Track your total assets, liabilities, and net worth. See insights to grow your wealth.
         </p>
 
-        <div class="row mb-3" style="display:flex; gap:20px; flex-wrap:wrap;">
-            <div style="flex:1; min-width:200px;">
-                <div class="nw-label">
+        <div class="ft-sync-grid">
+            <div class="ft-sync-card">
+                <div class="el-label">
                     Total Assets
-                    <span class="nw-i" tabindex="0"
+                    <span class="el-i nw-i" tabindex="0"
                           data-tip="<b>Examples:</b> cash, investments, retirement accounts, property value (total value)">i</span>
                 </div>
-                <div style="position:relative;">
-                    <input id="assets" type="text" class="form-control" readonly placeholder="Sync from Financial Health Snapshot…"
-                           style="border:2px solid rgba(166,128,35,0.45); background:rgba(166,128,35,0.06); font-weight:800; font-size:1.1rem; color:#d4a820; padding-right:30px; cursor:default;" />
-                    <span style="position:absolute; right:10px; top:50%; transform:translateY(-50%); font-weight:700; color:#1E3A8A;">$</span>
+                <div class="legend-money-input">
+                    <span class="legend-money-prefix">$</span>
+                    <input id="assets" type="text" class="legend-money-field" readonly placeholder="Sync from Financial Health Snapshot…" />
                 </div>
             </div>
-            <div style="flex:1; min-width:200px;">
-                <div class="nw-label">
+            <div class="ft-sync-card">
+                <div class="el-label">
                     Total Liabilities
-                    <span class="nw-i" tabindex="0"
+                    <span class="el-i nw-i" tabindex="0"
                           data-tip="<b>Examples:</b> credit cards, loans, mortgage balance, any debts owed (total)">i</span>
                 </div>
-                <div style="position:relative;">
-                    <input id="liabs" type="text" class="form-control" readonly placeholder="Sync from Financial Health Snapshot…"
-                           style="border:2px solid rgba(166,128,35,0.45); background:rgba(166,128,35,0.06); font-weight:800; font-size:1.1rem; color:#d4a820; padding-right:30px; cursor:default;" />
-                    <span style="position:absolute; right:10px; top:50%; transform:translateY(-50%); font-weight:700; color:#1E3A8A;">$</span>
+                <div class="legend-money-input">
+                    <span class="legend-money-prefix">$</span>
+                    <input id="liabs" type="text" class="legend-money-field" readonly placeholder="Sync from Financial Health Snapshot…" />
                 </div>
             </div>
         </div>
 
-        <table class="table mt-3"
-               style="background:rgba(255,255,255,.08);
-                      border-radius:12px;
-                      overflow:hidden;
-                      border:1px solid rgba(166,128,35,.22); font-weight:700; font-size:1.1rem; color:#f8fafc;">
-            <tr style="background:rgba(166,128,35,.15);">
-                <th style="color:#f4d890;">Assets</th>
-                <th style="color:#f4d890;">Liabilities</th>
-                <th style="color:#f4d890;">Net Worth</th>
-            </tr>
-            <tr>
-                <td id="aVal">$0</td>
-                <td id="lVal">$0</td>
-                <td id="nVal">$0</td>
-            </tr>
-        </table>
+        <div class="ft-kpi-grid">
+            <dl class="ft-kpi-card">
+                <dt>Assets</dt>
+                <dd id="aVal">$0</dd>
+            </dl>
+            <dl class="ft-kpi-card">
+                <dt>Liabilities</dt>
+                <dd id="lVal">$0</dd>
+            </dl>
+            <dl class="ft-kpi-card">
+                <dt>Net Worth</dt>
+                <dd id="nVal">$0</dd>
+            </dl>
+        </div>
 
-        <table class="table mt-3"
-               style="background:rgba(255,255,255,.08);
-                      border-radius:12px;
-                      overflow:hidden;
-                      border:1px solid rgba(166,128,35,.22); font-weight:700; font-size:1.1rem; color:#f8fafc;">
-            <tr style="background:rgba(166,128,35,.15);">
-                <th style="color:#f4d890; width:50%;">Net Worth to Assets Ratio</th>
-                <td id="nwRatio">0%</td>
-            </tr>
-            <tr>
-                <th style="color:#f4d890;">Liabilities to Assets Ratio</th>
-                <td id="liabRatio">0%</td>
-            </tr>
-            <tr>
-                <th style="color:#f4d890;">Wealth Status</th>
-                <td id="wealthStatus">—</td>
-            </tr>
-        </table>
+        <div class="ft-panel-stack">
+            <div class="ft-panel-row">
+                <div class="ft-panel-label">Net Worth to Assets Ratio</div>
+                <div class="ft-panel-value" id="nwRatio">0%</div>
+            </div>
+            <div class="ft-panel-row">
+                <div class="ft-panel-label">Liabilities to Assets Ratio</div>
+                <div class="ft-panel-value" id="liabRatio">0%</div>
+            </div>
+            <div class="ft-panel-row">
+                <div class="ft-panel-label">Wealth Status</div>
+                <div class="ft-panel-value" id="wealthStatus">—</div>
+            </div>
+        </div>
 
-        <div id="nwTips"
-             style="margin-top:18px;padding:12px 16px;border-radius:6px;border:2px solid rgba(166,128,35,0.45);background:rgba(166,128,35,0.10);font-weight:700;font-size:0.875rem;color:#d4a820;letter-spacing:0.01em;font-style:italic;transition:background .2s,color .2s,border-color .2s;">
+        <div class="el-tip-strip" id="nwTips">
             Enter your assets and liabilities to get personalized insights.
         </div>
 
@@ -10158,138 +8507,59 @@ if (t.id === "NetWorth") {
 --------------------------------*/
 if (t.id === "CashFlow") {
     embedContainer.innerHTML = `
-   <div class="networth-tool p-4"
-        style="background: radial-gradient(900px 320px at 0% 0%, rgba(166,128,35,.12), transparent 55%), linear-gradient(180deg, rgba(11,21,41,.99), rgba(15,29,56,.99));
-               border-radius:20px;
-               box-shadow:0 40px 100px rgba(0,0,0,.58);
-               border:1.8px solid rgba(166,128,35,.52);
-               max-width:1200px;
-               margin:0 auto;
-               color:#f8fafc;
-               font-family: 'Inter', sans-serif;">
-
-        <!-- Tooltip styles (safe + isolated) -->
-        <style>
-            .cf-label{
-                display:inline-flex;
-                align-items:center;
-                gap:8px;
-                margin-bottom:6px;
-                font-weight:800;
-                color:#a68023;
-            }
-            .cf-i{
-                display:inline-flex;
-                align-items:center;
-                justify-content:center;
-                width:18px;
-                height:18px;
-                border-radius:999px;
-                background:#fff;
-                border:1px solid rgba(210,31,43,.9);
-                color:#d21f2b;
-                font-weight:900;
-                font-size:12px;
-                line-height:1;
-                cursor:pointer;
-                user-select:none;
-                transform: translateY(-1px);
-                box-shadow:0 6px 18px rgba(0,0,0,.08);
-            }
-            .cf-i:focus{
-                outline:none;
-                box-shadow:0 0 0 3px rgba(210,31,43,.18), 0 10px 25px rgba(0,0,0,.10);
-            }
-            #cfTipLayer{
-                position:fixed;
-                inset:0;
-                pointer-events:none;
-                z-index:2147483647;
-            }
-            .cf-tipbox{
-                position:absolute;
-                max-width:min(360px, 86vw);
-                background:#fff;
-                color:#111;
-                border:1px solid rgba(0,0,0,.12);
-                border-left:4px solid #d21f2b;
-                padding:12px 12px;
-                border-radius:14px;
-                font-size:12.8px;
-                font-weight:650;
-                line-height:1.35;
-                box-shadow:0 18px 45px rgba(0,0,0,.18);
-                opacity:0;
-                transform:translateY(6px);
-                transition:opacity .12s ease, transform .12s ease;
-                pointer-events:none;
-                white-space:normal;
-            }
-            .cf-tipbox b{ font-weight:900; }
-            .cf-tipbox.show{ opacity:1; transform:translateY(0); }
-        </style>
+   <div class="networth-tool p-4 legend-finance-tool-card legend-finance-tool-card--wide el-shell">
 
         <div id="cfTipLayer"></div>
        
-        <h3 style="color:#a68023; font-weight:900; letter-spacing:0.5px; font-size:2rem;">
+        <h3>
             ${t.name}
         </h3>
 
-        <p style="font-style:italic; color:#b9c5d8; margin-bottom:18px;">
+        <p>
             Understand your monthly cash flow and uncover opportunities to save or invest.
         </p>
 
-        <div class="row mb-3" style="display:flex; gap:20px; flex-wrap:wrap;">
-            <div style="flex:1; min-width:200px;">
-                <div class="cf-label">
+        <div class="ft-sync-grid">
+            <div class="ft-sync-card">
+                <div class="el-label">
                     Monthly Income
-                    <span class="cf-i" tabindex="0"
+                    <span class="el-i cf-i" tabindex="0"
                           data-tip="<b>Examples:</b> 5,000 • 7,200 (total monthly take-home or reliable monthly income)">i</span>
                 </div>
-                <div style="position:relative;">
-                    <input id="cfIncome" type="text" class="form-control" readonly
-                           placeholder="Sync from Expense Lens…"
-                           style="border:2px solid rgba(166,128,35,0.45); background:rgba(166,128,35,0.06); font-weight:800; font-size:1.1rem; color:#d4a820; padding-right:30px; cursor:default;" />
-                    <span style="position:absolute; right:10px; top:50%; transform:translateY(-50%); font-weight:700; color:#1E3A8A;">$</span>
+                <div class="legend-money-input">
+                    <span class="legend-money-prefix">$</span>
+                    <input id="cfIncome" type="text" class="legend-money-field" readonly placeholder="Sync from Expense Lens…" />
                 </div>
             </div>
-            <div style="flex:1; min-width:200px;">
-                <div class="cf-label">
+            <div class="ft-sync-card">
+                <div class="el-label">
                     Monthly Bills
-                    <span class="cf-i" tabindex="0"
+                    <span class="el-i cf-i" tabindex="0"
                           data-tip="<b>Examples:</b> 2,500 • 3,900 (fixed bills + minimum payments + essentials)">i</span>
                 </div>
-                <div style="position:relative;">
-                    <input id="cfBills" type="text" class="form-control" readonly
-                           placeholder="Sync from Expense Lens…"
-                           style="border:2px solid rgba(166,128,35,0.45); background:rgba(166,128,35,0.06); font-weight:800; font-size:1.1rem; color:#d4a820; padding-right:30px; cursor:default;" />
-                    <span style="position:absolute; right:10px; top:50%; transform:translateY(-50%); font-weight:700; color:#1E3A8A;">$</span>
+                <div class="legend-money-input">
+                    <span class="legend-money-prefix">$</span>
+                    <input id="cfBills" type="text" class="legend-money-field" readonly placeholder="Sync from Expense Lens…" />
                 </div>
             </div>
         </div>
 
-        <h5 style="font-weight:700; margin-top:6px; color:#fff;">
-            Net Cash Flow:
-            <span id="cfResult" style="color:#a68023; font-weight:900;">$0</span>
-        </h5>
+        <div class="ft-kpi-grid">
+            <dl class="ft-kpi-card">
+                <dt>Net Cash Flow</dt>
+                <dd id="cfResult">$0</dd>
+            </dl>
+            <dl class="ft-kpi-card">
+                <dt>Savings Potential</dt>
+                <dd id="cfSavingsPotential">$0</dd>
+            </dl>
+            <dl class="ft-kpi-card">
+                <dt>Suggested Allocation</dt>
+                <dd id="cfInvestPct">0%</dd>
+            </dl>
+        </div>
 
-        <table class="table mt-3"
-               style="background:rgba(255,255,255,.08);
-                      border-radius:12px;
-                      overflow:hidden;
-                      border:1px solid rgba(166,128,35,.22); font-weight:700; font-size:1.1rem; color:#f8fafc;">
-            <tr style="background:rgba(166,128,35,.15);">
-                <th style="color:#f4d890; width:50%;">Savings Potential</th>
-                <td id="cfSavingsPotential">$0</td>
-            </tr>
-            <tr>
-                <th style="color:#f4d890;">Suggested Allocation</th>
-                <td id="cfInvestPct">0%</td>
-            </tr>
-        </table>
-
-        <div id="cfTips"
-             style="margin-top:18px;padding:12px 16px;border-radius:6px;border:2px solid rgba(166,128,35,0.45);background:rgba(166,128,35,0.10);font-weight:700;font-size:0.875rem;color:#d4a820;letter-spacing:0.01em;font-style:italic;transition:background .2s,color .2s,border-color .2s;">
+        <div class="el-tip-strip" id="cfTips">
             Enter your monthly income and bills to get personalized tips.
         </div>
     </div>`;
@@ -10445,135 +8715,60 @@ if (t.id === "CashFlow") {
 --------------------------------*/
 if (t.id === "DebtClarity") {
     embedContainer.innerHTML = `
-   <div class="networth-tool p-4"
-        style="background: radial-gradient(900px 320px at 0% 0%, rgba(166,128,35,.12), transparent 55%), linear-gradient(180deg, rgba(11,21,41,.99), rgba(15,29,56,.99));
-               border-radius:20px;
-               box-shadow:0 40px 100px rgba(0,0,0,.58);
-               border:1.8px solid rgba(166,128,35,.52);
-               max-width:1200px;
-               margin:0 auto;
-               color:#f8fafc;
-               font-family: 'Inter', sans-serif;">
-
-        <!-- Tooltip styles (safe + isolated) -->
-        <style>
-            .dc-label{
-                display:inline-flex;
-                align-items:center;
-                gap:8px;
-                margin-bottom:6px;
-                font-weight:800;
-                color:#a68023;
-            }
-            .dc-i{
-                display:inline-flex;
-                align-items:center;
-                justify-content:center;
-                width:18px;
-                height:18px;
-                border-radius:999px;
-                background:#fff;
-                border:1px solid rgba(210,31,43,.9);
-                color:#d21f2b;
-                font-weight:900;
-                font-size:12px;
-                line-height:1;
-                cursor:pointer;
-                user-select:none;
-                transform: translateY(-1px);
-                box-shadow:0 6px 18px rgba(0,0,0,.08);
-            }
-            .dc-i:focus{
-                outline:none;
-                box-shadow:0 0 0 3px rgba(210,31,43,.18), 0 10px 25px rgba(0,0,0,.10);
-            }
-            #dcTipLayer{
-                position:fixed;
-                inset:0;
-                pointer-events:none;
-                z-index:2147483647;
-            }
-            .dc-tipbox{
-                position:absolute;
-                max-width:min(360px, 86vw);
-                background:#fff;
-                color:#111;
-                border:1px solid rgba(0,0,0,.12);
-                border-left:4px solid #d21f2b;
-                padding:12px 12px;
-                border-radius:14px;
-                font-size:12.8px;
-                font-weight:650;
-                line-height:1.35;
-                box-shadow:0 18px 45px rgba(0,0,0,.18);
-                opacity:0;
-                transform:translateY(6px);
-                transition:opacity .12s ease, transform .12s ease;
-                pointer-events:none;
-                white-space:normal;
-            }
-            .dc-tipbox b{ font-weight:900; }
-            .dc-tipbox.show{ opacity:1; transform:translateY(0); }
-        </style>
+   <div class="networth-tool p-4 legend-finance-tool-card legend-finance-tool-card--wide el-shell">
 
         <div id="dcTipLayer"></div>
        
-        <h3 style="color:#a68023; font-weight:900; letter-spacing:0.5px; font-size:2rem;">
+        <h3>
             ${t.name}
         </h3>
 
-        <p style="font-style:italic; color:#b9c5d8; margin-bottom:18px;">
+        <p>
             Quickly calculate your Debt-to-Income (DTI) ratio and get actionable guidance.
         </p>
 
-        <div class="row mb-3" style="display:flex; gap:20px; flex-wrap:wrap;">
-            <div style="flex:1; min-width:200px;">
-                <div class="dc-label">
+        <div class="ft-sync-grid">
+            <div class="ft-sync-card">
+                <div class="el-label">
                     Total Liabilities
-                    <span class="dc-i" tabindex="0"
+                    <span class="el-i dc-i" tabindex="0"
                           data-tip="<b>Examples:</b> 40,000 • 75,000 (total debts owed: loans, cards, etc.)">i</span>
                 </div>
-                <div style="position:relative;">
-                    <input id="dcDebt" type="text" class="form-control" readonly
-                           placeholder="Sync from Financial Health Snapshot…"
-                           style="border:2px solid rgba(166,128,35,0.45); background:rgba(166,128,35,0.06); font-weight:800; font-size:1.1rem; color:#d4a820; padding-right:30px; cursor:default;" />
-                    <span style="position:absolute; right:10px; top:50%; transform:translateY(-50%); font-weight:700; color:#1E3A8A;">$</span>
+                <div class="legend-money-input">
+                    <span class="legend-money-prefix">$</span>
+                    <input id="dcDebt" type="text" class="legend-money-field" readonly placeholder="Sync from Financial Health Snapshot…" />
                 </div>
             </div>
-            <div style="flex:1; min-width:200px;">
-                <div class="dc-label">
+            <div class="ft-sync-card">
+                <div class="el-label">
                     Annual Income
-                    <span class="dc-i" tabindex="0"
+                    <span class="el-i dc-i" tabindex="0"
                           data-tip="<b>Examples:</b> 60,000 • 80,000 (gross annual income)">i</span>
                 </div>
-                <div style="position:relative;">
-                    <input id="dcIncome" type="text" class="form-control" readonly
-                           placeholder="Sync from Expense Lens…"
-                           style="border:2px solid rgba(166,128,35,0.45); background:rgba(166,128,35,0.06); font-weight:800; font-size:1.1rem; color:#d4a820; padding-right:30px; cursor:default;" />
-                    <span style="position:absolute; right:10px; top:50%; transform:translateY(-50%); font-weight:700; color:#1E3A8A;">$</span>
+                <div class="legend-money-input">
+                    <span class="legend-money-prefix">$</span>
+                    <input id="dcIncome" type="text" class="legend-money-field" readonly placeholder="Sync from Expense Lens…" />
                 </div>
             </div>
         </div>
 
-        <h5 style="font-weight:700; margin-top:8px; color:#f8fafc;">
-            DTI Ratio:
-            <span id="dcResult" style="color:#a68023; font-weight:900;">0%</span>
-        </h5>
+        <div class="ft-kpi-grid ft-kpi-grid--two">
+            <dl class="ft-kpi-card">
+                <dt>DTI Ratio</dt>
+                <dd id="dcResult">0%</dd>
+            </dl>
+            <dl class="ft-kpi-card">
+                <dt>Status</dt>
+                <dd id="dcStatus">—</dd>
+            </dl>
+        </div>
 
-        <table class="table mt-3"
-               style="background:rgba(255,255,255,.08);
-                      border-radius:12px;
-                      overflow:hidden;
-                      border:1px solid rgba(166,128,35,.22); font-weight:700; font-size:1.1rem; color:#f8fafc;">
-            <tr style="background:rgba(166,128,35,.15);">
-                <th style="color:#f4d890; width:40%;">DTI Status</th>
-                <td id="dcStatus">—</td>
-            </tr>
-            <tr>
-                <th style="color:#f4d890;">Recommendation</th>
-                <td id="dcTips" style="margin-top:0;padding:12px 16px;border-radius:6px;border:2px solid rgba(166,128,35,0.45);background:rgba(166,128,35,0.10);font-weight:700;font-size:0.875rem;color:#d4a820;letter-spacing:0.01em;font-style:italic;transition:background .2s,color .2s,border-color .2s;">Enter your liabilities and income to receive guidance.</td>
-            </tr>
-        </table>
+        <div class="ft-panel-stack">
+            <div class="ft-panel-row">
+                <div class="ft-panel-label">Recommendation</div>
+                <div class="ft-panel-value ft-panel-value--tip" id="dcTips">Enter your liabilities and income to receive guidance.</div>
+            </div>
+        </div>
     </div>`;
 
     const container = embedContainer.querySelector('.networth-tool');
@@ -10751,106 +8946,48 @@ if (t.id === "DebtClarity") {
 --------------------------------*/
 if (t.id === "FinancialBuffer") {
     embedContainer.innerHTML = `
-    <div class="networth-tool p-4"
-         style="background: radial-gradient(900px 320px at 0% 0%, rgba(166,128,35,.12), transparent 55%), linear-gradient(180deg, rgba(11,21,41,.99), rgba(15,29,56,.99));
-                border-radius:20px;
-                box-shadow:0 40px 100px rgba(0,0,0,.58);
-                border:1.8px solid rgba(166,128,35,.52);
-                max-width:600px;
-                margin:0 auto;
-                color:#f8fafc;
-                font-family:'Inter',sans-serif;">
-
-        <!-- Tooltip styles (safe + isolated) -->
-        <style>
-            .fb-label{
-                display:inline-flex;
-                align-items:center;
-                gap:8px;
-                margin-bottom:6px;
-                font-weight:800;
-                color:#a68023;
-            }
-            .fb-i{
-                display:inline-flex;
-                align-items:center;
-                justify-content:center;
-                width:18px;
-                height:18px;
-                border-radius:999px;
-                background:#fff;
-                border:1px solid rgba(210,31,43,.9);
-                color:#d21f2b;
-                font-weight:900;
-                font-size:12px;
-                line-height:1;
-                cursor:pointer;
-                user-select:none;
-                transform: translateY(-1px);
-                box-shadow:0 6px 18px rgba(0,0,0,.08);
-            }
-            .fb-i:focus{
-                outline:none;
-                box-shadow:0 0 0 3px rgba(210,31,43,.18), 0 10px 25px rgba(0,0,0,.10);
-            }
-            #fbTipLayer{
-                position:fixed;
-                inset:0;
-                pointer-events:none;
-                z-index:2147483647;
-            }
-            .fb-tipbox{
-                position:absolute;
-                max-width:min(360px, 86vw);
-                background:#fff;
-                color:#111;
-                border:1px solid rgba(0,0,0,.12);
-                border-left:4px solid #d21f2b;
-                padding:12px 12px;
-                border-radius:14px;
-                font-size:12.8px;
-                font-weight:650;
-                line-height:1.35;
-                box-shadow:0 18px 45px rgba(0,0,0,.18);
-                opacity:0;
-                transform:translateY(6px);
-                transition:opacity .12s ease, transform .12s ease;
-                pointer-events:none;
-                white-space:normal;
-            }
-            .fb-tipbox b{ font-weight:900; }
-            .fb-tipbox.show{ opacity:1; transform:translateY(0); }
-        </style>
+    <div class="networth-tool p-4 legend-finance-tool-card legend-finance-tool-card--narrow el-shell">
 
         <div id="fbTipLayer"></div>
 
-        <h3 style="color:#a68023; font-weight:900; letter-spacing:0.5px; margin-bottom:12px; font-size:1.8rem;">
+        <h3>
             ${t.name}
         </h3>
 
-        <p style="font-style:italic; color:#b9c5d8; margin-bottom:18px;">
+        <p>
             Build a financial safety net to protect yourself from unexpected expenses.
         </p>
 
-        <div class="fb-label">
-            Monthly Bills
-            <span class="fb-i" tabindex="0"
-                  data-tip="<b>Examples:</b> 2,500 • 3,800 (rent/mortgage, utilities, insurance, minimum debt payments, essentials)">i</span>
-        </div>
-        <div style="position:relative; margin-bottom:15px;">
-            <input id="fbBills" type="text" class="form-control mb-3" readonly placeholder="Sync from Expense Lens…"
-                   style="border:2px solid rgba(166,128,35,0.45); background:rgba(166,128,35,0.06); font-weight:800; color:#d4a820; padding-right:30px; cursor:default;" />
-            <span style="position:absolute; right:10px; top:50%; transform:translateY(-50%); font-weight:700; color:#1E3A8A;">$</span>
-        </div>
-
-        <div class="mb-3">
-            <h5 style="margin-bottom:6px; color:#f8fafc;">1 Month Goal: <span id="fb1">$0</span></h5>
-            <h5 style="margin-bottom:6px; color:#f8fafc;">3–6 Month Goal: <span id="fb3">$0</span></h5>
-            <h5 style="margin-bottom:6px; color:#f8fafc;">12 Month Goal: <span id="fb12">$0</span></h5>
+        <div class="ft-sync-grid ft-sync-grid--single">
+            <div class="ft-sync-card">
+                <div class="el-label">
+                    Monthly Bills
+                    <span class="el-i fb-i" tabindex="0"
+                          data-tip="<b>Examples:</b> 2,500 • 3,800 (rent/mortgage, utilities, insurance, minimum debt payments, essentials)">i</span>
+                </div>
+                <div class="legend-money-input">
+                    <span class="legend-money-prefix">$</span>
+                    <input id="fbBills" type="text" class="legend-money-field" readonly placeholder="Sync from Expense Lens…" />
+                </div>
+            </div>
         </div>
 
-        <div id="fbTips"
-             style="margin-top:18px;padding:12px 16px;border-radius:6px;border:2px solid rgba(166,128,35,0.45);background:rgba(166,128,35,0.10);font-weight:700;font-size:0.875rem;color:#d4a820;letter-spacing:0.01em;font-style:italic;transition:background .2s,color .2s,border-color .2s;">
+        <div class="ft-goal-stack">
+            <div class="ft-goal-row">
+                <div class="ft-goal-label">1 Month Goal</div>
+                <div class="ft-goal-value" id="fb1">$0</div>
+            </div>
+            <div class="ft-goal-row">
+                <div class="ft-goal-label">3–6 Month Goal</div>
+                <div class="ft-goal-value" id="fb3">$0</div>
+            </div>
+            <div class="ft-goal-row">
+                <div class="ft-goal-label">12 Month Goal</div>
+                <div class="ft-goal-value" id="fb12">$0</div>
+            </div>
+        </div>
+
+        <div class="el-tip-strip" id="fbTips">
             Tip: Save consistently each month to build your buffer. Consider automating transfers to a separate emergency account.
         </div>
     </div>`;
@@ -10998,84 +9135,15 @@ if (t.id === "FinancialBuffer") {
 --------------------------------*/
 if (t.id === "WealthProjection") {
     embedContainer.innerHTML = `
-    <div class="networth-tool p-4"
-         style="background: radial-gradient(900px 320px at 0% 0%, rgba(166,128,35,.12), transparent 55%), linear-gradient(180deg, rgba(11,21,41,.99), rgba(15,29,56,.99));
-                border-radius:20px;
-                box-shadow:0 40px 100px rgba(0,0,0,.58);
-                border:1.8px solid rgba(166,128,35,.52);
-                max-width:600px;
-                margin:0 auto;
-                color:#f8fafc;
-                font-family:'Inter',sans-serif;">
-
-        <!-- Tooltip styles (safe + isolated) -->
-        <style>
-            .wp-label{
-                display:inline-flex;
-                align-items:center;
-                gap:8px;
-                margin-bottom:6px;
-                font-weight:800;
-                color:#a68023;
-            }
-            .wp-i{
-                display:inline-flex;
-                align-items:center;
-                justify-content:center;
-                width:18px;
-                height:18px;
-                border-radius:999px;
-                background:#fff;
-                border:1px solid rgba(210,31,43,.9);
-                color:#d21f2b;
-                font-weight:900;
-                font-size:12px;
-                line-height:1;
-                cursor:pointer;
-                user-select:none;
-                transform: translateY(-1px);
-                box-shadow:0 6px 18px rgba(0,0,0,.08);
-            }
-            .wp-i:focus{
-                outline:none;
-                box-shadow:0 0 0 3px rgba(210,31,43,.18), 0 10px 25px rgba(0,0,0,.10);
-            }
-            #wpTipLayer{
-                position:fixed;
-                inset:0;
-                pointer-events:none;
-                z-index:2147483647;
-            }
-            .wp-tipbox{
-                position:absolute;
-                max-width:min(360px, 86vw);
-                background:#fff;
-                color:#111;
-                border:1px solid rgba(0,0,0,.12);
-                border-left:4px solid #d21f2b;
-                padding:12px 12px;
-                border-radius:14px;
-                font-size:12.8px;
-                font-weight:650;
-                line-height:1.35;
-                box-shadow:0 18px 45px rgba(0,0,0,.18);
-                opacity:0;
-                transform:translateY(6px);
-                transition:opacity .12s ease, transform .12s ease;
-                pointer-events:none;
-                white-space:normal;
-            }
-            .wp-tipbox b{ font-weight:900; }
-            .wp-tipbox.show{ opacity:1; transform:translateY(0); }
-        </style>
+    <div class="networth-tool p-4 legend-finance-tool-card legend-finance-tool-card--narrow el-shell">
 
         <div id="wpTipLayer"></div>
 
-        <h3 style="color:#a68023; font-weight:900; letter-spacing:0.5px; margin-bottom:12px; font-size:1.8rem;">
+        <h3 class="lf-ui-042">
             ${t.name}
         </h3>
 
-        <p style="font-style:italic; color:#555; margin-bottom:18px;">
+        <p class="lf-ui-043">
             Project your net worth growth based on current savings and surplus. Visualize both short and long-term potential.
         </p>
 
@@ -11084,44 +9152,44 @@ if (t.id === "WealthProjection") {
             <span class="wp-i" tabindex="0"
                   data-tip="<b>Auto-synced:</b> Pulls your live net worth from Financial Health Snapshot.">i</span>
         </div>
-        <input id="wpNet" type="text" class="form-control mb-2" placeholder="Syncs from Financial Health Snapshot..."
+        <input id="wpNet" type="text" class="form-control mb-2 lf-ui-047" placeholder="Syncs from Financial Health Snapshot..."
                readonly aria-readonly="true"
-               style="border:1px solid #d6c48a; box-shadow:inset 0 0 6px rgba(166,128,35,0.15); font-weight:700; color:#1E3A8A; background:rgba(255,255,255,.94); cursor:default;" />
+               />
 
         <div class="wp-label">
             Monthly Surplus
             <span class="wp-i" tabindex="0"
                   data-tip="<b>Auto-synced:</b> Pulls the Remaining Balance from the top of Expense Lens.">i</span>
         </div>
-        <input id="wpSurplus" type="text" class="form-control mb-2" placeholder="Syncs from Expense Lens Remaining Balance..."
+        <input id="wpSurplus" type="text" class="form-control mb-2 lf-ui-047" placeholder="Syncs from Expense Lens Remaining Balance..."
                readonly aria-readonly="true"
-               style="border:1px solid #d6c48a; box-shadow:inset 0 0 6px rgba(166,128,35,0.15); font-weight:700; color:#1E3A8A; background:rgba(255,255,255,.94); cursor:default;" />
+               />
 
         <div class="wp-label">
             Custom Months
             <span class="wp-i" tabindex="0"
                   data-tip="<b>Examples:</b> 18 • 24 • 60 (how far out you want to project)">i</span>
         </div>
-        <input id="wpMonths" type="number" class="form-control mb-3" placeholder="e.g., 18"
-               style="border:1px solid #d6c48a; box-shadow:inset 0 0 6px rgba(166,128,35,0.15); font-weight:700; color:#1E3A8A;" />
+        <input id="wpMonths" type="number" class="form-control mb-3 lf-ui-048" placeholder="e.g., 18"
+               />
 
-        <div style="background:linear-gradient(180deg,rgba(255,255,255,.055),rgba(255,255,255,.02)); border-radius:12px; padding:14px; border:1px solid rgba(166,128,35,.22); margin-bottom:10px; color:#f8fafc;">
-            <h5 style="font-weight:700;">
+        <div class="lf-ui-049">
+            <h5 class="lf-ui-050">
                 Projected Net Worth (Custom Months):
-                <span id="wpOut" style="color:#a68023; font-weight:800;">$0</span>
+                <span class="lf-ui-051" id="wpOut">$0</span>
             </h5>
-            <h6 style="margin-top:8px;">
+            <h6 class="lf-ui-052">
                 Projection in 6 Months:
-                <span id="wp6" style="color:#a68023; font-weight:700;">$0</span>
+                <span class="lf-ui-053" id="wp6">$0</span>
             </h6>
             <h6>
                 Projection in 12 Months:
-                <span id="wp12" style="color:#a68023; font-weight:700;">$0</span>
+                <span class="lf-ui-053" id="wp12">$0</span>
             </h6>
         </div>
 
-        <div id="wpTips"
-             style="margin-top:18px;padding:12px 16px;border-radius:6px;border:2px solid rgba(166,128,35,0.45);background:rgba(166,128,35,0.10);font-weight:700;font-size:0.875rem;color:#d4a820;letter-spacing:0.01em;font-style:italic;transition:background .2s,color .2s,border-color .2s;">
+        <div class="lf-ui-023" id="wpTips"
+            >
             Tip: Regularly increase your monthly surplus to accelerate your wealth growth.
         </div>
     </div>`;
@@ -11304,84 +9372,15 @@ if (t.id === "WealthProjection") {
 --------------------------------*/
 if (t.id === "FreedomIndex") {
     embedContainer.innerHTML = `
-    <div class="networth-tool p-4"
-         style="background: radial-gradient(900px 320px at 0% 0%, rgba(166,128,35,.12), transparent 55%), linear-gradient(180deg, rgba(11,21,41,.99), rgba(15,29,56,.99));
-                border-radius:20px;
-                box-shadow:0 40px 100px rgba(0,0,0,.58);
-                border:1.8px solid rgba(166,128,35,.52);
-                max-width:600px;
-                margin:0 auto;
-                color:#f8fafc;
-                font-family:'Inter',sans-serif;">
-
-        <!-- Tooltip styles (safe + isolated) -->
-        <style>
-            .fi-label{
-                display:inline-flex;
-                align-items:center;
-                gap:8px;
-                margin-bottom:6px;
-                font-weight:800;
-                color:#a68023;
-            }
-            .fi-i{
-                display:inline-flex;
-                align-items:center;
-                justify-content:center;
-                width:18px;
-                height:18px;
-                border-radius:999px;
-                background:#fff;
-                border:1px solid rgba(210,31,43,.9);
-                color:#d21f2b;
-                font-weight:900;
-                font-size:12px;
-                line-height:1;
-                cursor:pointer;
-                user-select:none;
-                transform: translateY(-1px);
-                box-shadow:0 6px 18px rgba(0,0,0,.08);
-            }
-            .fi-i:focus{
-                outline:none;
-                box-shadow:0 0 0 3px rgba(210,31,43,.18), 0 10px 25px rgba(0,0,0,.10);
-            }
-            #fiTipLayer{
-                position:fixed;
-                inset:0;
-                pointer-events:none;
-                z-index:2147483647;
-            }
-            .fi-tipbox{
-                position:absolute;
-                max-width:min(360px, 86vw);
-                background:#fff;
-                color:#111;
-                border:1px solid rgba(0,0,0,.12);
-                border-left:4px solid #d21f2b;
-                padding:12px 12px;
-                border-radius:14px;
-                font-size:12.8px;
-                font-weight:650;
-                line-height:1.35;
-                box-shadow:0 18px 45px rgba(0,0,0,.18);
-                opacity:0;
-                transform:translateY(6px);
-                transition:opacity .12s ease, transform .12s ease;
-                pointer-events:none;
-                white-space:normal;
-            }
-            .fi-tipbox b{ font-weight:900; }
-            .fi-tipbox.show{ opacity:1; transform:translateY(0); }
-        </style>
+    <div class="networth-tool p-4 legend-finance-tool-card legend-finance-tool-card--narrow el-shell">
 
         <div id="fiTipLayer"></div>
 
-        <h3 style="color:#a68023; font-weight:900; letter-spacing:0.5px; margin-bottom:12px; font-size:1.8rem;">
+        <h3 class="lf-ui-042">
             ${t.name}
         </h3>
 
-        <p style="font-style:italic; color:#555; margin-bottom:18px;">
+        <p class="lf-ui-043">
             Measure your financial freedom: how long you could live off your net worth and passive income.
         </p>
 
@@ -11390,38 +9389,38 @@ if (t.id === "FreedomIndex") {
             <span class="fi-i" tabindex="0"
                   data-tip="<b>What to enter:</b> Assets minus liabilities today. <b>Example:</b> 150,000">i</span>
         </div>
-        <input id="fiNet" type="text" class="form-control mb-2" readonly placeholder="Sync from Financial Health Snapshot…"
-               style="border:2px solid rgba(166,128,35,0.45); background:rgba(166,128,35,0.06); font-weight:800; color:#d4a820; cursor:default;" />
+        <input id="fiNet" type="text" class="form-control mb-2 lf-ui-054" readonly placeholder="Sync from Financial Health Snapshot…"
+               />
 
         <div class="fi-label">
             Annual Expenses
             <span class="fi-i" tabindex="0"
                   data-tip="<b>What to enter:</b> Your yearly cost of living. <b>Example:</b> 50,000 (≈ 4,167/mo)">i</span>
         </div>
-        <input id="fiExp" type="text" class="form-control mb-2" readonly placeholder="Sync from Expense Lens…"
-               style="border:2px solid rgba(166,128,35,0.45); background:rgba(166,128,35,0.06); font-weight:800; color:#d4a820; cursor:default;" />
+        <input id="fiExp" type="text" class="form-control mb-2 lf-ui-054" readonly placeholder="Sync from Expense Lens…"
+               />
 
         <div class="fi-label">
             Passive Income
             <span class="fi-i" tabindex="0"
                   data-tip="<b>Optional:</b> Annual passive income (rent, dividends, etc.). <b>Example:</b> 10,000">i</span>
         </div>
-        <input id="fiPassive" type="text" class="form-control mb-3" placeholder="e.g., 10,000"
-               style="border:1px solid #d6c48a; box-shadow:inset 0 0 6px rgba(166,128,35,0.15); font-weight:700; color:#1E3A8A;" />
+        <input id="fiPassive" type="text" class="form-control mb-3 lf-ui-048" placeholder="e.g., 10,000"
+               />
 
-        <h5 style="font-weight:700; margin-top:10px;">
-            Freedom Index: <span id="fiOut" style="color:#a68023; font-weight:800;">0</span>
+        <h5 class="lf-ui-055">
+            Freedom Index: <span class="lf-ui-051" id="fiOut">0</span>
         </h5>
 
-        <table class="table mt-3" style="background:linear-gradient(180deg,rgba(255,255,255,.055),rgba(255,255,255,.02)); border-radius:12px; overflow:hidden; border:1px solid rgba(166,128,35,.22); color:#f8fafc;">
-            <tr><th style="width:45%; background:rgba(0,0,0,.2); color:#a68023;">Net Worth</th><td id="fiNetOut">$0</td></tr>
-            <tr><th style="background:rgba(0,0,0,.2); color:#a68023;">Annual Expenses</th><td id="fiExpOut">$0</td></tr>
-            <tr><th style="background:rgba(0,0,0,.2); color:#a68023;">Passive Income</th><td id="fiPassiveOut">$0</td></tr>
-            <tr><th style="background:rgba(0,0,0,.2); color:#a68023;">Months of Freedom</th><td id="fiMonths">0</td></tr>
+        <table class="table mt-3 lf-ui-056">
+            <tr><th class="lf-ui-057">Net Worth</th><td id="fiNetOut">$0</td></tr>
+            <tr><th class="lf-ui-058">Annual Expenses</th><td id="fiExpOut">$0</td></tr>
+            <tr><th class="lf-ui-058">Passive Income</th><td id="fiPassiveOut">$0</td></tr>
+            <tr><th class="lf-ui-058">Months of Freedom</th><td id="fiMonths">0</td></tr>
         </table>
 
-        <div id="fiAdvice"
-             style="margin-top:18px;padding:12px 16px;border-radius:6px;border:2px solid rgba(166,128,35,0.45);background:rgba(166,128,35,0.10);font-weight:700;font-size:0.875rem;color:#d4a820;letter-spacing:0.01em;font-style:italic;transition:background .2s,color .2s,border-color .2s;">
+        <div class="lf-ui-023" id="fiAdvice"
+            >
             Enter your values to see recommendations.
         </div>
     </div>`;
@@ -11615,84 +9614,15 @@ if (t.id === "FreedomIndex") {
 --------------------------------*/
 if (t.id === "DebtAssetPulse") {
     embedContainer.innerHTML = `
-    <div class="networth-tool p-4"
-         style="background: radial-gradient(900px 320px at 0% 0%, rgba(166,128,35,.12), transparent 55%), linear-gradient(180deg, rgba(11,21,41,.99), rgba(15,29,56,.99));
-                border-radius:20px;
-                box-shadow:0 40px 100px rgba(0,0,0,.58);
-                border:1.8px solid rgba(166,128,35,.52);
-                max-width:600px;
-                margin:0 auto;
-                color:#f8fafc;
-                font-family:'Inter',sans-serif;">
-
-        <!-- Tooltip styles (safe + isolated) -->
-        <style>
-            .dap-label{
-                display:inline-flex;
-                align-items:center;
-                gap:8px;
-                margin-bottom:6px;
-                font-weight:800;
-                color:#a68023;
-            }
-            .dap-i{
-                display:inline-flex;
-                align-items:center;
-                justify-content:center;
-                width:18px;
-                height:18px;
-                border-radius:999px;
-                background:#fff;
-                border:1px solid rgba(210,31,43,.9);
-                color:#d21f2b;
-                font-weight:900;
-                font-size:12px;
-                line-height:1;
-                cursor:pointer;
-                user-select:none;
-                transform: translateY(-1px);
-                box-shadow:0 6px 18px rgba(0,0,0,.08);
-            }
-            .dap-i:focus{
-                outline:none;
-                box-shadow:0 0 0 3px rgba(210,31,43,.18), 0 10px 25px rgba(0,0,0,.10);
-            }
-            #dapTipLayer{
-                position:fixed;
-                inset:0;
-                pointer-events:none;
-                z-index:2147483647;
-            }
-            .dap-tipbox{
-                position:absolute;
-                max-width:min(360px, 86vw);
-                background:#fff;
-                color:#111;
-                border:1px solid rgba(0,0,0,.12);
-                border-left:4px solid #d21f2b;
-                padding:12px 12px;
-                border-radius:14px;
-                font-size:12.8px;
-                font-weight:650;
-                line-height:1.35;
-                box-shadow:0 18px 45px rgba(0,0,0,.18);
-                opacity:0;
-                transform:translateY(6px);
-                transition:opacity .12s ease, transform .12s ease;
-                pointer-events:none;
-                white-space:normal;
-            }
-            .dap-tipbox b{ font-weight:900; }
-            .dap-tipbox.show{ opacity:1; transform:translateY(0); }
-        </style>
+    <div class="networth-tool p-4 legend-finance-tool-card legend-finance-tool-card--narrow el-shell">
 
         <div id="dapTipLayer"></div>
 
-        <h3 style="color:#a68023; font-weight:900; letter-spacing:0.5px; margin-bottom:12px; font-size:1.8rem;">
+        <h3 class="lf-ui-042">
             ${t.name}
         </h3>
 
-        <p style="font-style:italic; color:#555; margin-bottom:18px;">
+        <p class="lf-ui-043">
             Evaluate your financial health by comparing assets to liabilities and assess your risk.
         </p>
 
@@ -11701,39 +9631,39 @@ if (t.id === "DebtAssetPulse") {
             <span class="dap-i" tabindex="0"
                   data-tip="<b>Examples:</b> 100,000 • 250,000 (cash, investments, retirement, property, etc.)">i</span>
         </div>
-        <input id="dapA" type="text" class="form-control mb-2" readonly placeholder="Sync from Financial Health Snapshot…"
-               style="border:2px solid rgba(166,128,35,0.45); background:rgba(166,128,35,0.06); font-weight:800; color:#d4a820; cursor:default;" />
+        <input id="dapA" type="text" class="form-control mb-2 lf-ui-054" readonly placeholder="Sync from Financial Health Snapshot…"
+               />
 
         <div class="dap-label">
             Total Liabilities
             <span class="dap-i" tabindex="0"
                   data-tip="<b>Examples:</b> 50,000 • 180,000 (credit cards, loans, mortgage balance, etc.)">i</span>
         </div>
-        <input id="dapL" type="text" class="form-control mb-2" readonly placeholder="Sync from Financial Health Snapshot…"
-               style="border:2px solid rgba(166,128,35,0.45); background:rgba(166,128,35,0.06); font-weight:800; color:#d4a820; cursor:default;" />
+        <input id="dapL" type="text" class="form-control mb-2 lf-ui-054" readonly placeholder="Sync from Financial Health Snapshot…"
+               />
 
         <div class="dap-label">
             Monthly Income
             <span class="dap-i" tabindex="0"
                   data-tip="<b>Optional:</b> Monthly income helps estimate how fast you could crush liabilities. <b>Example:</b> 6,000">i</span>
         </div>
-        <input id="dapIncome" type="text" class="form-control mb-3" readonly placeholder="Sync from Expense Lens…"
-               style="border:2px solid rgba(166,128,35,0.45); background:rgba(166,128,35,0.06); font-weight:800; color:#d4a820; cursor:default;" />
+        <input id="dapIncome" type="text" class="form-control mb-3 lf-ui-054" readonly placeholder="Sync from Expense Lens…"
+               />
 
-        <h5 style="font-weight:700; margin-top:10px;">
+        <h5 class="lf-ui-055">
             Debt-to-Asset Ratio:
-            <span id="dapOut" style="color:#1E3A8A; font-weight:800;">0</span>
+            <span class="lf-ui-059" id="dapOut">0</span>
         </h5>
 
-        <table class="table mt-3" style="background:linear-gradient(180deg,rgba(255,255,255,.055),rgba(255,255,255,.02)); border-radius:12px; overflow:hidden; border:1px solid rgba(166,128,35,.22); color:#f8fafc;">
-            <tr><th style="width:45%; background:rgba(0,0,0,.2); color:#a68023;">Assets</th><td id="dapAssets">$0</td></tr>
-            <tr><th style="background:rgba(0,0,0,.2); color:#a68023;">Liabilities</th><td id="dapLiabilities">$0</td></tr>
-            <tr><th style="background:rgba(0,0,0,.2); color:#a68023;">Net Worth</th><td id="dapNetWorth">$0</td></tr>
-            <tr><th style="background:rgba(0,0,0,.2); color:#a68023;">Monthly Income</th><td id="dapMonthlyIncome">$0</td></tr>
+        <table class="table mt-3 lf-ui-056">
+            <tr><th class="lf-ui-057">Assets</th><td id="dapAssets">$0</td></tr>
+            <tr><th class="lf-ui-058">Liabilities</th><td id="dapLiabilities">$0</td></tr>
+            <tr><th class="lf-ui-058">Net Worth</th><td id="dapNetWorth">$0</td></tr>
+            <tr><th class="lf-ui-058">Monthly Income</th><td id="dapMonthlyIncome">$0</td></tr>
         </table>
 
-        <div id="dapAdvice"
-             style="margin-top:18px;padding:12px 16px;border-radius:6px;border:2px solid rgba(166,128,35,0.45);background:rgba(166,128,35,0.10);font-weight:700;font-size:0.875rem;color:#d4a820;letter-spacing:0.01em;font-style:italic;transition:background .2s,color .2s,border-color .2s;">
+        <div class="lf-ui-023" id="dapAdvice"
+            >
             Enter values to get guidance on your financial health.
         </div>
     </div>`;

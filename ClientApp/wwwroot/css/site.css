@@ -301,43 +301,43 @@ footer.footer {
 input[type="number"] { -moz-appearance: textfield; -webkit-appearance: none; appearance: none; margin: 0; }
 
 /* ------------------------------ Finance Tools — all tools theme ------------------------------ */
-#budget-embed input,
-#budget-embed select,
-#budget-embed textarea,
-#budget-embed input.form-control,
-#budget-embed select.form-control,
-#budget-embed .form-control,
-#budget-embed .form-select,
-.networth-tool input,
-.networth-tool select,
-.networth-tool textarea,
-.networth-tool input.form-control,
-.networth-tool select.form-control,
-.networth-tool .form-control,
-.networth-tool .form-select {
+#budget-embed .networth-tool:not(.el-shell) input,
+#budget-embed .networth-tool:not(.el-shell) select,
+#budget-embed .networth-tool:not(.el-shell) textarea,
+#budget-embed .networth-tool:not(.el-shell) input.form-control,
+#budget-embed .networth-tool:not(.el-shell) select.form-control,
+#budget-embed .networth-tool:not(.el-shell) .form-control,
+#budget-embed .networth-tool:not(.el-shell) .form-select,
+.networth-tool:not(.el-shell) input,
+.networth-tool:not(.el-shell) select,
+.networth-tool:not(.el-shell) textarea,
+.networth-tool:not(.el-shell) input.form-control,
+.networth-tool:not(.el-shell) select.form-control,
+.networth-tool:not(.el-shell) .form-control,
+.networth-tool:not(.el-shell) .form-select {
     border: 1.5px solid rgba(166,128,35,.38) !important;
     border-radius: 10px !important;
     background: rgba(255,255,255,.92) !important;
     box-shadow: inset 0 1px 0 rgba(255,255,255,.05) !important;
     transition: border-color .15s ease, box-shadow .15s ease;
 }
-#budget-embed input::placeholder,
-#budget-embed textarea::placeholder,
-.networth-tool input::placeholder,
-.networth-tool textarea::placeholder {
+#budget-embed .networth-tool:not(.el-shell) input::placeholder,
+#budget-embed .networth-tool:not(.el-shell) textarea::placeholder,
+.networth-tool:not(.el-shell) input::placeholder,
+.networth-tool:not(.el-shell) textarea::placeholder {
     color: #64748b !important;
     font-weight: 600;
 }
-#budget-embed input:focus,
-#budget-embed select:focus,
-#budget-embed textarea:focus,
-#budget-embed .form-control:focus,
-#budget-embed .form-select:focus,
-.networth-tool input:focus,
-.networth-tool select:focus,
-.networth-tool textarea:focus,
-.networth-tool .form-control:focus,
-.networth-tool .form-select:focus {
+#budget-embed .networth-tool:not(.el-shell) input:focus,
+#budget-embed .networth-tool:not(.el-shell) select:focus,
+#budget-embed .networth-tool:not(.el-shell) textarea:focus,
+#budget-embed .networth-tool:not(.el-shell) .form-control:focus,
+#budget-embed .networth-tool:not(.el-shell) .form-select:focus,
+.networth-tool:not(.el-shell) input:focus,
+.networth-tool:not(.el-shell) select:focus,
+.networth-tool:not(.el-shell) textarea:focus,
+.networth-tool:not(.el-shell) .form-control:focus,
+.networth-tool:not(.el-shell) .form-select:focus {
     outline: none !important;
     border-color: #ddb457 !important;
     box-shadow: 0 0 0 3px rgba(221,180,87,.16) !important;
@@ -409,48 +409,6 @@ input.form-control:focus {
 
 /* ------------------------------ Expense Lens Buttons ------------------------------ */
 #elDelCat { margin-left: 20px; }
-
-/* ------------------------------ 🔹 FINANCE TOOLS SPACING (Adjust here) ------------------------------ */
-.finance-tools-container .networth-tool {
-    margin-bottom: 25px; /* default spacing between finance tools */
-    padding: 25px;       /* inner padding for tools */
-}
-/* ↑ Increase or decrease margin-bottom here to add space between finance tab tools */
-
-/* FINANCE (CLIENT-FACING) OVERRIDE PATCH — NO MEDIA QUERIES */
-
-.finance-page .finance-action-container,
-.finance-page .finance-goals-container,
-.finance-page .finance-left-container {
-  width: 100% !important;
-  min-width: 0 !important;
-  max-width: none !important;
-  flex-shrink: 1 !important;
-  margin-left: 0 !important;
-  margin-right: 0 !important;
-}
-
-.finance-page .finance-side-card {
-  min-height: 520px;
-}
-
-.finance-page #budget-embed input.form-control,
-.finance-page #budget-embed .form-control {
-  border-color: rgba(166,128,35,0.65) !important;
-}
-
-.finance-page #finance .d-flex {
-  gap: initial !important;
-  flex-wrap: initial !important;
-  align-items: initial !important;
-}
-
-.finance-page #finance-embed .allocation-row {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 10px;
-}
 
 /* ===============================
    CLEAR BUTTON – FINAL OVERRIDE
@@ -549,8 +507,6 @@ main .resources-hero,
 main .panel,
 main .bk-card,
 main .modalx-card,
-main .finance-header,
-main .finance-side-card,
 main .home-tools,
 main .ff-home-card,
 main .category-container,
@@ -574,8 +530,6 @@ main .resources-hero,
 main .panel,
 main .bk-card,
 main .modalx-card,
-main .finance-header,
-main .finance-side-card,
 main .home-tools,
 main .ff-home-card,
 main .category-container,
