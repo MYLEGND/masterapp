@@ -3599,21 +3599,13 @@ if (t.id === "ExpenseLens" || t.id === "BusinessExpenseLens") {
             border: 'rgba(245,158,11,0.56)',
             shadow: '0 14px 30px rgba(245,158,11,0.22), inset 0 1px 0 rgba(255,255,255,0.08)'
         };
-        const EL_AFTER_DEBIT_META = {
-            label: 'After Debit',
+        const EL_ENDING_BALANCE_META = {
+            label: 'Week End',
             text: '#ECFDF5',
-            muted: '#6EE7B7',
-            bg: 'linear-gradient(145deg, rgba(5,150,105,0.90) 0%, rgba(4,120,87,0.98) 100%)',
-            border: 'rgba(52,211,153,0.56)',
-            shadow: '0 14px 30px rgba(16,185,129,0.22), inset 0 1px 0 rgba(255,255,255,0.08)'
-        };
-        const EL_AFTER_CREDIT_META = {
-            label: 'After Credit',
-            text: '#EFF6FF',
-            muted: '#93C5FD',
-            bg: 'linear-gradient(145deg, rgba(30,64,175,0.92) 0%, rgba(30,58,138,0.98) 100%)',
-            border: 'rgba(96,165,250,0.54)',
-            shadow: '0 14px 30px rgba(59,130,246,0.22), inset 0 1px 0 rgba(255,255,255,0.08)'
+            muted: '#A7F3D0',
+            bg: 'linear-gradient(145deg, rgba(6,95,70,0.96) 0%, rgba(5,150,105,0.99) 100%)',
+            border: 'rgba(110,231,183,0.58)',
+            shadow: '0 18px 36px rgba(16,185,129,0.24), inset 0 1px 0 rgba(255,255,255,0.10)'
         };
         const EL_NEGATIVE_METRIC_META = {
             label: 'Negative',
@@ -3622,6 +3614,16 @@ if (t.id === "ExpenseLens" || t.id === "BusinessExpenseLens") {
             bg: 'linear-gradient(145deg, rgba(220,38,38,0.92) 0%, rgba(127,29,29,0.98) 100%)',
             border: 'rgba(248,113,113,0.56)',
             shadow: '0 14px 30px rgba(239,68,68,0.22), inset 0 1px 0 rgba(255,255,255,0.08)'
+        };
+        const EL_POSITIVE_BALANCE_TONE = {
+            text: '#22C55E',
+            bg: 'rgba(6,95,70,0.16)',
+            border: 'rgba(52,211,153,0.42)'
+        };
+        const EL_NEGATIVE_BALANCE_TONE = {
+            text: '#EF4444',
+            bg: 'rgba(127,29,29,0.16)',
+            border: 'rgba(248,113,113,0.42)'
         };
 
         const makePossessiveIncomeLabel = (name) => name
@@ -3796,7 +3798,7 @@ if (t.id === "ExpenseLens" || t.id === "BusinessExpenseLens") {
             const chip = document.createElement('div');
             chip.style.cssText = [
                 'display:flex;flex-direction:column;align-items:flex-end;justify-content:center;gap:1px;',
-                'min-width:112px;padding:8px 12px;border-radius:12px;box-sizing:border-box;overflow:hidden;',
+                'width:100%;min-width:0;padding:8px 10px;border-radius:12px;box-sizing:border-box;overflow:hidden;',
                 `border:1px solid ${hasValue ? toneMeta.border : 'rgba(100,116,139,0.22)'};`,
                 `background:${hasValue ? toneMeta.bg : 'linear-gradient(145deg, rgba(30,41,59,0.62) 0%, rgba(15,23,42,0.88) 100%)'};`,
                 `box-shadow:${hasValue ? toneMeta.shadow : 'inset 0 1px 0 rgba(255,255,255,0.04)'};`
@@ -3804,11 +3806,11 @@ if (t.id === "ExpenseLens" || t.id === "BusinessExpenseLens") {
 
             const labelEl = document.createElement('span');
             labelEl.textContent = label.toUpperCase();
-            labelEl.style.cssText = `font-size:0.62rem;font-weight:800;letter-spacing:0.08em;color:${hasValue ? toneMeta.muted : '#64748B'};`;
+            labelEl.style.cssText = `font-size:0.62rem;font-weight:800;letter-spacing:0.08em;color:${hasValue ? toneMeta.muted : '#64748B'};white-space:nowrap;`;
 
             const valueEl = document.createElement('span');
             valueEl.textContent = hasValue ? `${amount < 0 ? '-$' : '$'}${Math.abs(amount).toLocaleString()}` : '—';
-            valueEl.style.cssText = `font-size:0.84rem;font-weight:800;line-height:1.1;color:${hasValue ? toneMeta.text : '#94A3B8'};`;
+            valueEl.style.cssText = `font-size:0.84rem;font-weight:800;line-height:1.1;color:${hasValue ? toneMeta.text : '#94A3B8'};white-space:nowrap;`;
 
             chip.appendChild(labelEl);
             chip.appendChild(valueEl);
@@ -3816,11 +3818,28 @@ if (t.id === "ExpenseLens" || t.id === "BusinessExpenseLens") {
             if (note) {
                 const noteEl = document.createElement('span');
                 noteEl.textContent = note;
-                noteEl.style.cssText = `font-size:0.62rem;font-weight:700;line-height:1.1;color:${hasValue ? toneMeta.muted : '#64748B'};`;
+                noteEl.style.cssText = `font-size:0.62rem;font-weight:700;line-height:1.1;color:${hasValue ? toneMeta.muted : '#64748B'};white-space:nowrap;`;
                 chip.appendChild(noteEl);
             }
 
             return chip;
+        };
+
+        const elFormatCashflowCurrency = (amount) => `${amount < 0 ? '-$' : '$'}${Math.abs(amount).toLocaleString()}`;
+        const elGetBalanceTone = (amount) => amount >= 0 ? EL_POSITIVE_BALANCE_TONE : EL_NEGATIVE_BALANCE_TONE;
+        const elApplyBalanceTone = (element, amount) => {
+            if (!element) return;
+            const tone = elGetBalanceTone(amount);
+            element.style.background = tone.bg;
+            element.style.color = tone.text;
+            element.style.borderColor = tone.border;
+        };
+        const elCreateBalanceValue = (amount, fontSize = '0.78rem') => {
+            const tone = elGetBalanceTone(amount);
+            const value = document.createElement('span');
+            value.textContent = elFormatCashflowCurrency(amount);
+            value.style.cssText = `font-size:${fontSize};font-weight:800;color:${tone.text};white-space:nowrap;`;
+            return value;
         };
 
         const elCreateToneBadge = (label, meta) => {
@@ -4188,7 +4207,9 @@ if (t.id === "ExpenseLens" || t.id === "BusinessExpenseLens") {
         let elActivePaymentFilter = 'all';
         let weeklyBtn = null;
         let paymentFilterSelect = null;
+        let weekPanelBackdrop = null;
         let weekPanel = null;
+        let elWeekPanelBodyOverflow = '';
 
         // -----------------------------
         // Due Date Helper — always current month, user picks the day
@@ -4240,7 +4261,7 @@ if (t.id === "ExpenseLens" || t.id === "BusinessExpenseLens") {
             applyExpenseLensRowVisibility();
             syncExpenseLensViewControls();
             refreshExpenseLens({ sortRows: shouldSortRows });
-            if (weekPanel && weekPanel.style.display !== 'none') renderWeekPanel();
+            if (weekPanelBackdrop && weekPanelBackdrop.style.display !== 'none') renderWeekPanel();
         };
 
         const isExpenseRowPinned = (row) => row?.dataset?.isPinned === 'true';
@@ -4630,15 +4651,7 @@ if (t.id === "ExpenseLens" || t.id === "BusinessExpenseLens") {
                 elMargin.style.borderColor = 'rgba(56,189,248,0.45)';
             } else {
                 elMargin.textContent = `Remaining Balance: $${monthlyRemaining.toLocaleString()}`;
-                if (monthlyRemaining >= 0) {
-                    elMargin.style.background = 'rgba(34,197,94,0.12)';
-                    elMargin.style.color = '#22c55e';
-                    elMargin.style.borderColor = 'rgba(34,197,94,0.45)';
-                } else {
-                    elMargin.style.background = 'rgba(239,68,68,0.12)';
-                    elMargin.style.color = '#ef4444';
-                    elMargin.style.borderColor = 'rgba(239,68,68,0.45)';
-                }
+                elApplyBalanceTone(elMargin, monthlyRemaining);
             }
 
             // Top remaining balance badge — always reflects full-month income vs all monthly bills
@@ -4646,15 +4659,10 @@ if (t.id === "ExpenseLens" || t.id === "BusinessExpenseLens") {
             if (badge) {
                 if (monthlyRemaining >= 0) {
                     badge.textContent = `Remaining: $${monthlyRemaining.toLocaleString()}`;
-                    badge.style.background = 'rgba(34,197,94,0.12)';
-                    badge.style.color = '#22c55e';
-                    badge.style.borderColor = 'rgba(34,197,94,0.45)';
                 } else {
                     badge.textContent = `Remaining: -$${Math.abs(monthlyRemaining).toLocaleString()}`;
-                    badge.style.background = 'rgba(239,68,68,0.12)';
-                    badge.style.color = '#ef4444';
-                    badge.style.borderColor = 'rgba(239,68,68,0.45)';
                 }
+                elApplyBalanceTone(badge, monthlyRemaining);
             }
 
             if(pct > 1) {
@@ -4799,31 +4807,33 @@ if (t.id === "ExpenseLens" || t.id === "BusinessExpenseLens") {
             refreshExpenseLensViews({ sortRows: options.sortRows !== false });
         };
 
+        weekPanelBackdrop = document.createElement('div');
+        weekPanelBackdrop.className = 'expense-lens-week-panel-backdrop';
+        weekPanelBackdrop.style.cssText = 'display:none;position:fixed;inset:0;z-index:99998;align-items:center;justify-content:center;padding:16px;background:linear-gradient(180deg, rgba(2,6,23,0.992) 0%, rgba(6,14,28,0.988) 100%);';
+
         weekPanel = document.createElement('div');
         weekPanel.className = 'expense-lens-week-panel';
-        weekPanel.style.cssText = 'display:none;position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);z-index:9999;background:#0b1529;border:1.5px solid #38BDF8;border-radius:16px;padding:18px 22px;width:860px;max-width:calc(100vw - 40px);max-height:min(680px, calc(100vh - 32px));overflow-y:auto;overflow-x:hidden;box-shadow:0 24px 64px rgba(30,58,138,0.48);box-sizing:border-box;';
-        document.body.appendChild(weekPanel);
-
-        const positionWeekPanel = () => {
-            const horizontalPad = window.innerWidth < 720 ? 20 : 40;
-            const panelWidth = Math.max(window.innerWidth < 720 ? 320 : 620, Math.min(920, window.innerWidth - horizontalPad));
-            weekPanel.style.setProperty('position', 'fixed', 'important');
-            weekPanel.style.setProperty('top', '50%', 'important');
-            weekPanel.style.setProperty('left', '50%', 'important');
-            weekPanel.style.setProperty('right', 'auto', 'important');
-            weekPanel.style.setProperty('bottom', 'auto', 'important');
-            weekPanel.style.setProperty('transform', 'translate(-50%,-50%)', 'important');
-            weekPanel.style.setProperty('width', `${panelWidth}px`, 'important');
-            weekPanel.style.setProperty('min-width', '0', 'important');
-            weekPanel.style.setProperty('max-width', `${panelWidth}px`, 'important');
-            weekPanel.style.setProperty('max-height', 'min(680px, calc(100vh - 32px))', 'important');
-            weekPanel.style.setProperty('box-sizing', 'border-box', 'important');
-        };
+        weekPanel.style.cssText = 'position:relative;background:radial-gradient(1100px 420px at 0% 0%, rgba(14,165,233,0.12), transparent 48%),linear-gradient(180deg, rgba(5,13,28,.998), rgba(9,21,42,.995));border:1.5px solid rgba(56,189,248,0.58);border-radius:22px;padding:20px 24px 22px;width:min(1120px, calc(100vw - 32px));max-height:min(820px, calc(100vh - 32px));overflow-y:auto;overflow-x:hidden;box-shadow:0 54px 140px rgba(2,6,23,0.84);box-sizing:border-box;';
+        weekPanelBackdrop.appendChild(weekPanel);
+        document.body.appendChild(weekPanelBackdrop);
 
         const hideOtherWeekPanels = () => {
-            document.querySelectorAll('.expense-lens-week-panel').forEach(panel => {
-                if (panel !== weekPanel) panel.style.display = 'none';
+            document.querySelectorAll('.expense-lens-week-panel-backdrop').forEach(panel => {
+                if (panel !== weekPanelBackdrop) panel.style.display = 'none';
             });
+        };
+
+        const openWeekPanel = () => {
+            renderWeekPanel();
+            hideOtherWeekPanels();
+            elWeekPanelBodyOverflow = document.body.style.overflow || '';
+            weekPanelBackdrop.style.display = 'flex';
+            document.body.style.overflow = 'hidden';
+        };
+
+        const closeWeekPanel = () => {
+            weekPanelBackdrop.style.display = 'none';
+            document.body.style.overflow = elWeekPanelBodyOverflow;
         };
 
         const renderWeekPanel = () => {
@@ -4888,16 +4898,13 @@ if (t.id === "ExpenseLens" || t.id === "BusinessExpenseLens") {
                 };
             };
 
-            const buildCashflowSummary = (incomeHits, bills, carry = { afterDebit: 0, afterCredit: 0 }) => {
+            const buildCashflowSummary = (incomeHits, bills, startingBalance = 0) => {
                 const incomeTotal = incomeHits.reduce((sum, hit) => sum + hit.amount, 0);
                 const debitCashBills = bills.filter(bill => bill.paymentMethod !== 'credit');
                 const creditBills = bills.filter(bill => bill.paymentMethod === 'credit');
                 const debitCashTotal = debitCashBills.reduce((sum, bill) => sum + bill.amount, 0);
                 const creditTotal = creditBills.reduce((sum, bill) => sum + bill.amount, 0);
-                const endingAfterDebit = carry.afterDebit + incomeTotal - debitCashTotal;
-                const endingAfterCredit = carry.afterCredit + incomeTotal - debitCashTotal - creditTotal;
-
-                const events = [
+                const rawEvents = [
                     ...incomeHits.map((hit) => ({
                         kind: 'income',
                         label: hit.label,
@@ -4923,6 +4930,19 @@ if (t.id === "ExpenseLens" || t.id === "BusinessExpenseLens") {
                     return a.label.localeCompare(b.label);
                 });
 
+                let runningBalance = startingBalance;
+                const events = rawEvents.map((eventItem) => {
+                    const impact = eventItem.kind === 'income' ? eventItem.amount : -eventItem.amount;
+                    const balanceBefore = runningBalance;
+                    runningBalance += impact;
+                    return {
+                        ...eventItem,
+                        impact,
+                        balanceBefore,
+                        balanceAfter: runningBalance
+                    };
+                });
+
                 return {
                     incomeTotal,
                     incomeCount: incomeHits.length,
@@ -4932,15 +4952,16 @@ if (t.id === "ExpenseLens" || t.id === "BusinessExpenseLens") {
                     creditCount: creditBills.length,
                     totalBills: bills.reduce((sum, bill) => sum + bill.amount, 0),
                     billCount: bills.length,
-                    endingAfterDebit,
-                    endingAfterCredit,
+                    startingBalance,
+                    endingBalance: runningBalance,
+                    netChange: incomeTotal - bills.reduce((sum, bill) => sum + bill.amount, 0),
                     events
                 };
             };
 
             const createBillSummaryMetrics = (totals) => {
                 const metricsWrap = document.createElement('div');
-                metricsWrap.style.cssText = 'display:flex;align-items:stretch;justify-content:flex-end;gap:8px;flex-wrap:wrap;';
+                metricsWrap.style.cssText = 'display:grid;grid-template-columns:repeat(3, minmax(0, 1fr));align-items:stretch;gap:8px;min-width:0;';
                 metricsWrap.appendChild(elCreateWeekMetricChip(EL_PAYMENT_METHOD_META.debit.label, totals.debitTotal, EL_PAYMENT_METHOD_META.debit));
                 metricsWrap.appendChild(elCreateWeekMetricChip(EL_PAYMENT_METHOD_META.credit.label, totals.creditTotal, EL_PAYMENT_METHOD_META.credit));
                 metricsWrap.appendChild(elCreateWeekMetricChip(EL_PAYMENT_METHOD_META.total.label, totals.total, EL_PAYMENT_METHOD_META.total, totals.count > 0 ? formatBillCount(totals.count) : ''));
@@ -4949,12 +4970,11 @@ if (t.id === "ExpenseLens" || t.id === "BusinessExpenseLens") {
 
             const createCashflowSummaryMetrics = (summary) => {
                 const metricsWrap = document.createElement('div');
-                metricsWrap.style.cssText = 'display:flex;align-items:stretch;justify-content:flex-end;gap:8px;flex-wrap:wrap;';
+                metricsWrap.style.cssText = 'display:grid;grid-template-columns:repeat(4, minmax(0, 1fr));align-items:stretch;gap:8px;min-width:0;';
                 metricsWrap.appendChild(elCreateWeekMetricChip(EL_INCOME_METRIC_META.label, summary.incomeTotal, EL_INCOME_METRIC_META, summary.incomeCount > 0 ? formatIncomeHitCount(summary.incomeCount) : ''));
                 metricsWrap.appendChild(elCreateWeekMetricChip(debitCashLabel, summary.debitCashTotal, EL_PAYMENT_METHOD_META.debit, summary.debitCashCount > 0 ? formatBillCount(summary.debitCashCount) : ''));
                 metricsWrap.appendChild(elCreateWeekMetricChip(EL_PAYMENT_METHOD_META.credit.label, summary.creditTotal, EL_PAYMENT_METHOD_META.credit, summary.creditCount > 0 ? formatBillCount(summary.creditCount) : ''));
-                metricsWrap.appendChild(elCreateWeekMetricChip(EL_AFTER_DEBIT_META.label, summary.endingAfterDebit, EL_AFTER_DEBIT_META, '', { negativeMeta: EL_NEGATIVE_METRIC_META }));
-                metricsWrap.appendChild(elCreateWeekMetricChip(EL_AFTER_CREDIT_META.label, summary.endingAfterCredit, EL_AFTER_CREDIT_META, '', { negativeMeta: EL_NEGATIVE_METRIC_META }));
+                metricsWrap.appendChild(elCreateWeekMetricChip(EL_ENDING_BALANCE_META.label, summary.endingBalance, EL_ENDING_BALANCE_META, '', { negativeMeta: EL_NEGATIVE_METRIC_META }));
                 return metricsWrap;
             };
 
@@ -4973,7 +4993,7 @@ if (t.id === "ExpenseLens" || t.id === "BusinessExpenseLens") {
             const closeX = document.createElement('span');
             closeX.textContent = '✕';
             closeX.style.cssText = 'cursor:pointer;color:#64748B;font-size:1rem;font-weight:700;line-height:1;padding:2px 4px;';
-            closeX.addEventListener('click', (e) => { e.stopPropagation(); weekPanel.style.display = 'none'; });
+            closeX.addEventListener('click', (e) => { e.stopPropagation(); closeWeekPanel(); });
             titleWrap.appendChild(title);
             titleWrap.appendChild(subtitle);
             header.appendChild(titleWrap);
@@ -4988,14 +5008,14 @@ if (t.id === "ExpenseLens" || t.id === "BusinessExpenseLens") {
             const allRow = document.createElement('div');
             allRow.style.cssText = [
                 'cursor:pointer;padding:10px 12px;border-radius:12px;margin-bottom:10px;',
-                'display:flex;justify-content:space-between;align-items:flex-start;gap:12px;flex-wrap:wrap;',
+                'display:grid;grid-template-columns:minmax(176px,.48fr) minmax(0,1fr);align-items:center;gap:12px;',
                 `background:${!elActiveWeek ? 'linear-gradient(135deg, rgba(21,94,117,0.44) 0%, rgba(30,64,175,0.46) 100%)' : 'linear-gradient(145deg, rgba(30,41,59,0.92) 0%, rgba(15,23,42,0.94) 100%)'};`,
                 `border:1px solid ${!elActiveWeek ? 'rgba(56,189,248,0.38)' : 'rgba(56,189,248,0.14)'};`,
                 `box-shadow:${!elActiveWeek ? '0 16px 34px rgba(37,99,235,0.16), inset 0 1px 0 rgba(255,255,255,0.05)' : 'inset 0 1px 0 rgba(255,255,255,0.03)'};`
             ].join('');
 
             const allRowLeft = document.createElement('div');
-            allRowLeft.style.cssText = 'display:flex;flex-direction:column;gap:3px;min-width:220px;flex:1;';
+            allRowLeft.style.cssText = 'display:flex;flex-direction:column;justify-content:center;gap:3px;min-width:0;';
             const allRowLabel = document.createElement('span');
             allRowLabel.style.cssText = `font-weight:800;font-size:0.84rem;color:${!elActiveWeek ? '#E0F2FE' : '#38BDF8'};`;
             allRowLabel.textContent = personalCashflowMode
@@ -5017,16 +5037,13 @@ if (t.id === "ExpenseLens" || t.id === "BusinessExpenseLens") {
             allRow.addEventListener('click', (e) => { e.stopPropagation(); elExpandedWeek = null; elApplyWeekFilter(null); });
             weekPanel.appendChild(allRow);
 
-            let runningCashflow = { afterDebit: 0, afterCredit: 0 };
+            let runningBalance = 0;
             weeks.forEach(week => {
                 const bills = collectWeekBills(week);
                 const totals = summarizeBills(bills);
                 const incomeHits = collectWeekIncomeHits(week);
-                const cashflowSummary = buildCashflowSummary(incomeHits, bills, runningCashflow);
-                runningCashflow = {
-                    afterDebit: cashflowSummary.endingAfterDebit,
-                    afterCredit: cashflowSummary.endingAfterCredit
-                };
+                const cashflowSummary = buildCashflowSummary(incomeHits, bills, runningBalance);
+                runningBalance = cashflowSummary.endingBalance;
                 const isActive = elSameCalendarWeek(elActiveWeek, week);
                 const isExpanded = elSameCalendarWeek(elExpandedWeek, week);
 
@@ -5035,13 +5052,13 @@ if (t.id === "ExpenseLens" || t.id === "BusinessExpenseLens") {
 
                 const summaryRow = document.createElement('div');
                 summaryRow.style.cssText = [
-                    'display:flex;justify-content:space-between;align-items:flex-start;padding:10px 12px;cursor:pointer;gap:12px;flex-wrap:wrap;',
+                    'display:grid;grid-template-columns:132px minmax(0,1fr);align-items:center;padding:10px 12px;cursor:pointer;gap:12px;',
                     `background:${isActive ? 'linear-gradient(135deg, rgba(37,99,235,0.94) 0%, rgba(29,78,216,0.98) 100%)' : 'linear-gradient(145deg, rgba(30,41,59,0.70) 0%, rgba(15,23,42,0.78) 100%)'};`,
                     `box-shadow:${isActive ? 'inset 0 1px 0 rgba(255,255,255,0.08)' : 'none'};`
                 ].join('');
 
                 const wLabelWrap = document.createElement('div');
-                wLabelWrap.style.cssText = 'display:flex;flex-direction:column;gap:3px;min-width:220px;flex:1;';
+                wLabelWrap.style.cssText = 'display:flex;flex-direction:column;justify-content:center;gap:3px;min-width:0;';
                 const wLabel = document.createElement('span');
                 wLabel.style.cssText = `font-weight:800;font-size:0.82rem;color:${isActive ? '#fff' : '#E0F2FE'};`;
                 wLabel.textContent = week.label;
@@ -5052,7 +5069,7 @@ if (t.id === "ExpenseLens" || t.id === "BusinessExpenseLens") {
                 wLabelWrap.appendChild(wRange);
 
                 const rightGroup = document.createElement('div');
-                rightGroup.style.cssText = 'display:flex;align-items:center;justify-content:flex-end;gap:8px;flex-wrap:wrap;flex:1 1 360px;';
+                rightGroup.style.cssText = 'display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:center;gap:10px;min-width:0;';
                 rightGroup.appendChild(personalCashflowMode ? createCashflowSummaryMetrics(cashflowSummary) : createBillSummaryMetrics(totals));
 
                 const chevron = document.createElement('span');
@@ -5067,25 +5084,59 @@ if (t.id === "ExpenseLens" || t.id === "BusinessExpenseLens") {
                 detailWrap.style.cssText = `display:${isExpanded ? 'block' : 'none'};background:rgba(2,6,23,0.22);`;
 
                 if (personalCashflowMode && cashflowSummary.events.length > 0) {
+                    const detailBanner = document.createElement('div');
+                    detailBanner.style.cssText = 'display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:center;gap:12px;padding:9px 12px;border-bottom:1px solid rgba(56,189,248,0.12);background:rgba(8,15,32,0.42);';
+
+                    const detailHint = document.createElement('span');
+                    detailHint.style.cssText = 'font-size:0.72rem;color:#94A3B8;font-weight:600;';
+                    detailHint.textContent = 'Running order: pay hits post first, then debit / cash obligations, then credit due in that week.';
+
+                    const detailCarry = document.createElement('div');
+                    detailCarry.style.cssText = 'display:flex;align-items:center;gap:10px;flex-wrap:wrap;justify-content:flex-end;';
+
+                    const startGroup = document.createElement('span');
+                    startGroup.style.cssText = 'display:inline-flex;align-items:center;gap:6px;font-size:0.74rem;font-weight:700;color:#CBD5E1;white-space:nowrap;';
+                    startGroup.appendChild(document.createTextNode('Start'));
+                    startGroup.appendChild(elCreateBalanceValue(cashflowSummary.startingBalance, '0.74rem'));
+
+                    const divider = document.createElement('span');
+                    divider.style.cssText = 'font-size:0.72rem;font-weight:700;color:#475569;';
+                    divider.textContent = '•';
+
+                    const endGroup = document.createElement('span');
+                    endGroup.style.cssText = 'display:inline-flex;align-items:center;gap:6px;font-size:0.74rem;font-weight:700;color:#E2E8F0;white-space:nowrap;';
+                    endGroup.appendChild(document.createTextNode('Week End'));
+                    endGroup.appendChild(elCreateBalanceValue(cashflowSummary.endingBalance, '0.74rem'));
+
+                    detailCarry.appendChild(startGroup);
+                    detailCarry.appendChild(divider);
+                    detailCarry.appendChild(endGroup);
+
+                    detailBanner.appendChild(detailHint);
+                    detailBanner.appendChild(detailCarry);
+                    detailWrap.appendChild(detailBanner);
+
                     const colHeader = document.createElement('div');
-                    colHeader.style.cssText = 'display:flex;align-items:center;gap:10px;padding:6px 12px 5px 12px;border-bottom:1px solid rgba(56,189,248,0.12);';
-                    colHeader.innerHTML = '<span style="flex:1;font-size:0.7rem;color:#475569;font-weight:700;text-transform:uppercase;letter-spacing:0.06em;">Event</span><span style="min-width:68px;text-align:center;font-size:0.7rem;color:#475569;font-weight:700;text-transform:uppercase;letter-spacing:0.06em;">Date</span><span style="min-width:112px;text-align:center;font-size:0.7rem;color:#475569;font-weight:700;text-transform:uppercase;letter-spacing:0.06em;">Type</span><span style="min-width:92px;text-align:right;font-size:0.7rem;color:#475569;font-weight:700;text-transform:uppercase;letter-spacing:0.06em;">Amount</span>';
+                    colHeader.style.cssText = 'display:grid;grid-template-columns:minmax(0,1fr) 72px 112px 92px 112px;align-items:center;gap:10px;padding:6px 12px 5px 12px;border-bottom:1px solid rgba(56,189,248,0.12);';
+                    colHeader.innerHTML = '<span style="font-size:0.7rem;color:#475569;font-weight:700;text-transform:uppercase;letter-spacing:0.06em;">Event</span><span style="text-align:center;font-size:0.7rem;color:#475569;font-weight:700;text-transform:uppercase;letter-spacing:0.06em;">Date</span><span style="text-align:center;font-size:0.7rem;color:#475569;font-weight:700;text-transform:uppercase;letter-spacing:0.06em;">Type</span><span style="text-align:right;font-size:0.7rem;color:#475569;font-weight:700;text-transform:uppercase;letter-spacing:0.06em;">Impact</span><span style="text-align:right;font-size:0.7rem;color:#475569;font-weight:700;text-transform:uppercase;letter-spacing:0.06em;">Running Bal</span>';
                     detailWrap.appendChild(colHeader);
 
                     cashflowSummary.events.forEach((eventItem, i) => {
                         const eventRow = document.createElement('div');
-                        eventRow.style.cssText = `display:flex;align-items:center;gap:10px;padding:8px 12px;${i < cashflowSummary.events.length - 1 ? 'border-bottom:1px solid rgba(56,189,248,0.07);' : ''}`;
+                        eventRow.style.cssText = `display:grid;grid-template-columns:minmax(0,1fr) 72px 112px 92px 112px;align-items:center;gap:10px;padding:8px 12px;${i < cashflowSummary.events.length - 1 ? 'border-bottom:1px solid rgba(56,189,248,0.07);' : ''}`;
 
                         const eventName = document.createElement('span');
-                        eventName.style.cssText = 'flex:1;font-size:0.76rem;color:#CBD5E1;font-weight:600;min-width:0;';
-                        eventName.textContent = eventItem.label;
+                        eventName.style.cssText = 'font-size:0.76rem;color:#CBD5E1;font-weight:600;min-width:0;';
+                        eventName.textContent = eventItem.kind === 'income' && eventItem.frequency
+                            ? `${eventItem.label} (${elFrequencyLabel(eventItem.frequency)})`
+                            : eventItem.label;
 
                         const eventDate = document.createElement('span');
-                        eventDate.style.cssText = 'min-width:68px;text-align:center;font-size:0.74rem;color:#94A3B8;font-weight:500;';
+                        eventDate.style.cssText = 'text-align:center;font-size:0.74rem;color:#94A3B8;font-weight:500;';
                         eventDate.textContent = eventItem.date.toLocaleString('default', { month: 'short', day: 'numeric' });
 
                         const eventType = document.createElement('span');
-                        eventType.style.cssText = 'min-width:112px;display:flex;justify-content:center;';
+                        eventType.style.cssText = 'display:flex;justify-content:center;';
                         if (eventItem.kind === 'income') {
                             eventType.appendChild(elCreateToneBadge(EL_INCOME_METRIC_META.label, EL_INCOME_METRIC_META));
                         } else if (eventItem.kind === 'credit') {
@@ -5104,13 +5155,19 @@ if (t.id === "ExpenseLens" || t.id === "BusinessExpenseLens") {
                                     ? EL_PAYMENT_METHOD_META.debit
                                     : EL_PAYMENT_METHOD_META.unassigned;
                         const eventAmount = document.createElement('span');
-                        eventAmount.style.cssText = `min-width:92px;text-align:right;font-size:0.78rem;font-weight:800;color:${amountMeta.muted};`;
-                        eventAmount.textContent = `${eventItem.kind === 'income' ? '+$' : '-$'}${eventItem.amount.toLocaleString()}`;
+                        eventAmount.style.cssText = `text-align:right;font-size:0.78rem;font-weight:800;color:${amountMeta.muted};white-space:nowrap;`;
+                        eventAmount.textContent = `${eventItem.impact < 0 ? '-$' : '+$'}${Math.abs(eventItem.impact).toLocaleString()}`;
+
+                        const balanceMeta = eventItem.balanceAfter < 0 ? EL_NEGATIVE_METRIC_META : EL_ENDING_BALANCE_META;
+                        const eventBalance = document.createElement('span');
+                        eventBalance.style.cssText = `text-align:right;font-size:0.78rem;font-weight:800;color:${balanceMeta.text};white-space:nowrap;`;
+                        eventBalance.textContent = elFormatCashflowCurrency(eventItem.balanceAfter);
 
                         eventRow.appendChild(eventName);
                         eventRow.appendChild(eventDate);
                         eventRow.appendChild(eventType);
                         eventRow.appendChild(eventAmount);
+                        eventRow.appendChild(eventBalance);
                         detailWrap.appendChild(eventRow);
                     });
                 } else if (totals.count > 0) {
@@ -5150,14 +5207,28 @@ if (t.id === "ExpenseLens" || t.id === "BusinessExpenseLens") {
                     });
                 } else {
                     const empty = document.createElement('div');
-                    empty.style.cssText = 'padding:12px 20px;color:#64748B;font-size:0.78rem;font-style:italic;';
-                    empty.textContent = personalCashflowMode
-                        ? (elActivePaymentFilter === 'all'
-                            ? 'No income or bill events scheduled in this week.'
-                            : `No ${elPaymentFilterLabel(elActivePaymentFilter).toLowerCase()} bill events scheduled in this week.`)
-                        : (elActivePaymentFilter === 'all'
-                            ? 'No bills with due dates set for this week.'
-                            : `No ${elPaymentFilterLabel(elActivePaymentFilter).toLowerCase()} bills with due dates set for this week.`);
+                    if (personalCashflowMode && elActivePaymentFilter === 'all') {
+                        empty.style.cssText = 'display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:center;gap:12px;padding:14px 16px;background:rgba(8,15,32,0.42);';
+
+                        const emptyCopy = document.createElement('span');
+                        emptyCopy.style.cssText = 'font-size:0.79rem;color:#CBD5E1;font-weight:600;line-height:1.45;';
+                        emptyCopy.textContent = 'No income or bill events scheduled in this week. Ending balance carries at';
+
+                        const emptyBalance = document.createElement('span');
+                        emptyBalance.style.cssText = 'display:inline-flex;align-items:center;justify-content:center;min-width:122px;padding:8px 12px;border-radius:12px;border:1px solid transparent;font-size:0.84rem;font-weight:800;white-space:nowrap;box-shadow:inset 0 1px 0 rgba(255,255,255,0.05);';
+                        emptyBalance.textContent = elFormatCashflowCurrency(cashflowSummary.endingBalance);
+                        elApplyBalanceTone(emptyBalance, cashflowSummary.endingBalance);
+
+                        empty.appendChild(emptyCopy);
+                        empty.appendChild(emptyBalance);
+                    } else {
+                        empty.style.cssText = 'padding:12px 20px;color:#94A3B8;font-size:0.78rem;font-style:italic;';
+                        empty.textContent = personalCashflowMode
+                            ? `No ${elPaymentFilterLabel(elActivePaymentFilter).toLowerCase()} bill events scheduled in this week.`
+                            : (elActivePaymentFilter === 'all'
+                                ? 'No bills with due dates set for this week.'
+                                : `No ${elPaymentFilterLabel(elActivePaymentFilter).toLowerCase()} bills with due dates set for this week.`);
+                    }
                     detailWrap.appendChild(empty);
                 }
 
@@ -5181,15 +5252,12 @@ if (t.id === "ExpenseLens" || t.id === "BusinessExpenseLens") {
         weeklyBtn.style.cssText = 'background:#1E3A8A;color:#fff;font-weight:700;border:none;white-space:nowrap;flex-shrink:0;padding:0 16px;height:38px;line-height:1;border-radius:6px;font-size:0.875rem;';
         weeklyBtn.addEventListener('click', (e) => {
             e.stopPropagation();
-            const isOpen = weekPanel.style.display !== 'none';
-            if (isOpen) { weekPanel.style.display = 'none'; return; }
-            renderWeekPanel();
-            positionWeekPanel(weeklyBtn);
-            hideOtherWeekPanels();
-            weekPanel.style.display = 'block';
+            const isOpen = weekPanelBackdrop.style.display !== 'none';
+            if (isOpen) { closeWeekPanel(); return; }
+            openWeekPanel();
         });
-        document.addEventListener('click', () => { weekPanel.style.display = 'none'; });
         weekPanel.addEventListener('click', e => e.stopPropagation());
+        weekPanelBackdrop.addEventListener('click', e => e.stopPropagation());
 
         paymentFilterSelect = document.createElement('select');
         paymentFilterSelect.id = elId('PaymentFilter');
@@ -5223,12 +5291,9 @@ if (t.id === "ExpenseLens" || t.id === "BusinessExpenseLens") {
         weeklyBtnTop.style.cssText = 'background:#1E3A8A;color:#fff;font-weight:700;border:none;white-space:nowrap;flex-shrink:0;padding:0 16px;height:38px;line-height:1;border-radius:6px;font-size:0.875rem;';
         weeklyBtnTop.addEventListener('click', (e) => {
             e.stopPropagation();
-            const isOpen = weekPanel.style.display !== 'none';
-            if (isOpen) { weekPanel.style.display = 'none'; return; }
-            renderWeekPanel();
-            positionWeekPanel(weeklyBtnTop);
-            hideOtherWeekPanels();
-            weekPanel.style.display = 'block';
+            const isOpen = weekPanelBackdrop.style.display !== 'none';
+            if (isOpen) { closeWeekPanel(); return; }
+            openWeekPanel();
         });
         // Wrap the income input row in a flex container so the button sits cleanly to the right.
         // Remove mb-3 from the input (it adds margin-bottom inside the wrapper causing height mismatch).
