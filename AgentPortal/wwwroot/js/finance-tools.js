@@ -7749,6 +7749,10 @@ if (t.id === "ExpenseLens" || t.id === "BusinessExpenseLens") {
             border: 'rgba(110,231,183,0.58)',
             shadow: '0 18px 36px rgba(16,185,129,0.24), inset 0 1px 0 rgba(255,255,255,0.10)'
         };
+        const EL_MONTH_END_BALANCE_META = {
+            ...EL_ENDING_BALANCE_META,
+            label: 'Month End'
+        };
         const EL_NEGATIVE_METRIC_META = {
             label: 'Negative',
             text: '#FFF1F2',
@@ -9111,13 +9115,14 @@ if (t.id === "ExpenseLens" || t.id === "BusinessExpenseLens") {
                 return metricsWrap;
             };
 
-            const createCashflowSummaryMetrics = (summary) => {
+            const createCashflowSummaryMetrics = (summary, options = {}) => {
+                const endingMeta = options.endingMeta || EL_ENDING_BALANCE_META;
                 const metricsWrap = document.createElement('div');
                 metricsWrap.style.cssText = 'display:grid;grid-template-columns:repeat(4, minmax(0, 1fr));align-items:stretch;gap:8px;min-width:0;';
                 metricsWrap.appendChild(elCreateWeekMetricChip(EL_INCOME_METRIC_META.label, summary.incomeTotal, EL_INCOME_METRIC_META, summary.incomeCount > 0 ? formatIncomeHitCount(summary.incomeCount) : ''));
                 metricsWrap.appendChild(elCreateWeekMetricChip(debitCashLabel, summary.debitCashTotal, EL_PAYMENT_METHOD_META.debit, summary.debitCashCount > 0 ? formatBillCount(summary.debitCashCount) : ''));
                 metricsWrap.appendChild(elCreateWeekMetricChip(EL_PAYMENT_METHOD_META.credit.label, summary.creditTotal, EL_PAYMENT_METHOD_META.credit, summary.creditCount > 0 ? formatBillCount(summary.creditCount) : ''));
-                metricsWrap.appendChild(elCreateWeekMetricChip(EL_ENDING_BALANCE_META.label, summary.endingBalance, EL_ENDING_BALANCE_META, '', { negativeMeta: EL_NEGATIVE_METRIC_META }));
+                metricsWrap.appendChild(elCreateWeekMetricChip(endingMeta.label, summary.endingBalance, endingMeta, '', { negativeMeta: EL_NEGATIVE_METRIC_META }));
                 return metricsWrap;
             };
 
@@ -9176,7 +9181,7 @@ if (t.id === "ExpenseLens" || t.id === "BusinessExpenseLens") {
             allRowLeft.appendChild(allRowLabel);
             allRowLeft.appendChild(allRowSub);
             allRow.appendChild(allRowLeft);
-            allRow.appendChild(personalCashflowMode ? createCashflowSummaryMetrics(allCashflow) : createBillSummaryMetrics(allTotals));
+            allRow.appendChild(personalCashflowMode ? createCashflowSummaryMetrics(allCashflow, { endingMeta: EL_MONTH_END_BALANCE_META }) : createBillSummaryMetrics(allTotals));
             allRow.addEventListener('click', (e) => { e.stopPropagation(); elExpandedWeek = null; elApplyWeekFilter(null); });
             weekPanel.appendChild(allRow);
 
