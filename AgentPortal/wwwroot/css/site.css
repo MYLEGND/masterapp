@@ -368,31 +368,6 @@ footer.footer {
     box-shadow: 0 0 0 3px rgba(217,179,90,0.28), 0 10px 24px rgba(0,0,0,0.24);
 }
 
-.clear-btn {
-    position: absolute;
-    right: 0.5rem;
-    top: 50%;
-    transform: translateY(-50%);
-    border: 1px solid var(--legend-gold);
-    background: linear-gradient(180deg,#f7e8c9,#e7d5a4);
-    color: #2a1b05;
-    border-radius: 50%;
-    width: 2.2rem;
-    height: 2.2rem;
-    font-weight: bold;
-    cursor: pointer;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    transition: all 0.2s ease;
-}
-
-.clear-btn:hover {
-    background: linear-gradient(180deg,#e7d099,#d1b46f);
-    color: #1a1203;
-    box-shadow: 0 0 12px rgba(217,179,90,0.45);
-}
-
 /* ------------------------------ Tool Dropdowns / Display ------------------------------ */
 .tool-dropdown {
     display: inline-block;
@@ -512,45 +487,6 @@ footer.footer {
 
 
 
-
-
-/* ============================== FINANCE PAGE (RESTORED THEME ONLY) ============================== */
-
-.finance-dashboard {
-    max-width: 1600px;
-    margin: 0 auto 3rem auto;
-}
-
-.finance-card {
-    background: #fff;
-    border-radius: 16px;
-    border: 1.5px solid rgba(166,128,35,0.35);
-    box-shadow: 0 12px 32px rgba(0,0,0,0.1);
-    display: flex;
-    flex-direction: column;
-}
-
-.finance-card-title {
-    padding: 1.1rem 1.4rem;
-    font-weight: 800;
-    font-size: 0.9rem;
-    letter-spacing: 0.6px;
-    text-transform: uppercase;
-    color: #5a3b00;
-    border-bottom: 1px solid rgba(166,128,35,0.25);
-    background: linear-gradient(90deg, rgba(166,128,35,0.18), #fff);
-}
-
-.finance-card-body {
-    padding: 1.2rem;
-}
-
-.finance-main-tool {
-    max-width: 760px;
-    margin: 0 auto;
-}
-
-
 /* ==============================
    MOBILE CORE / SUPPLEMENT VIEW (≤ 720px)
    Keep only essential controls visible and reduce chrome on small screens.
@@ -668,90 +604,16 @@ footer.footer {
     /* Lead bridge quick actions already filtered elsewhere; keep spacing tight */
     .lb-row-actions{ gap: 6px; }
 }
-#budget-embed .networth-tool {
-    border: 2px solid #a68023;
-    border-radius: 18px;
-    padding: 26px;
-    background-color: #fff;
-    box-shadow: 0 18px 50px rgba(0,0,0,0.14);
-}
-
 /* ============================== RESPONSIVE ============================== */
 
 @media (max-width: 576px) {
     .search-input { width: 90%; }
-}
-
-
-
-
-/* ============================== FINANCE / BUDGET TAB STYLES ============================== */
-
-/* ------------------------------ Inputs & Percent Inputs ------------------------------ */
-.percent-input { position: relative; display: inline-block; width: 100%; }
-.percent-input input { padding-right: 25px; width: 100%; box-sizing: border-box; }
-.percent-input::after {
-    content: '%';
-    position: absolute;
-    right: 10px;
-    top: 50%;
-    transform: translateY(-50%);
-    color: #000;
-    pointer-events: none;
-}
-input[type="number"] { -moz-appearance: textfield; -webkit-appearance: none; appearance: none; margin: 0; }
-
-/* ------------------------------ Output Spans / Highlights ------------------------------ */
-span[id^="elOut"],
-#wpEarnings, #wpSavings, #aVal, #lVal, #nVal, #cfResult, #dcResult, #saOut,
-#fbOut, #wpOut, #fiOut, #dapOut {
-    color: #000;
-    transition: all 0.2s ease;
-}
-span[id^="elOut"]:hover,
-#wpEarnings:hover, #wpSavings:hover, #aVal:hover, #lVal:hover, #nVal:hover,
-#cfResult:hover, #dcResult:hover, #saOut:hover, #fbOut:hover, #wpOut:hover,
-#fiOut:hover, #dapOut:hover {
-    color: #cc9c24;
-    cursor: pointer;
-}
-
-/* ------------------------------ General Form Control Overrides ------------------------------ */
-input.form-control {
-    border: 2px solid #000 !important;
-    transition: all 0.2s ease;
-}
-input.form-control:hover,
-input.form-control:focus {
-    border-color: #cc9c24 !important;
-    box-shadow: 0 2px 8px rgba(230, 230, 230, 0);
-    outline: none;
 }
 .hero-hr {
     border-color: #555555; /* Home tab grey */
     border-width: 2px;
     max-width: 1500px;
     margin: 1rem auto 1.5rem;
-}
-
-
-/* ===============================
-   CLEAR BUTTON – FINAL OVERRIDE
-   =============================== */
-
-.clear-btn {
-    min-width: 88px !important;      /* makes it a proper rectangle */
-    height: 36px !important;         /* locks height */
-    padding: 6px 14px !important;    /* real breathing room */
-    font-size: 0.85rem !important;
-    font-weight: 700;
-    border-radius: 10px !important;  /* rounded square, not pill */
-    line-height: 1 !important;
-}
-
-/* Kill Bootstrap btn-sm shrinkage */
-.clear-btn.btn-sm {
-    padding: 6px 14px !important;
 }
 
 /* ============================== LEGEND PREMIUM PORTAL THEME ============================== */
@@ -808,7 +670,6 @@ main .controls-card,
 main .preview-shell,
 main .empty-state,
 main .tool-display,
-main .finance-card,
 main #training-embed,
 main .category-container,
 main .tools-container,
@@ -823,7 +684,6 @@ main .controls-card,
 main .preview-shell,
 main .empty-state,
 main .tool-display,
-main .finance-card,
 main #training-embed,
 main .tools-container,
 main .training-page {
@@ -907,7 +767,6 @@ body .btn-outline-primary,
 body .btn-outline-secondary,
 body .btn-light,
 body .btn-clear-search,
-body .clear-btn,
 body .preview-open,
 body .preview-open:visited {
     background: #ffffff;
@@ -919,7 +778,6 @@ body .btn-outline-primary:hover,
 body .btn-outline-secondary:hover,
 body .btn-light:hover,
 body .btn-clear-search:hover,
-body .clear-btn:hover,
 body .preview-open:hover {
     background: #fffdf8 !important;
     color: var(--legend-gold-deep) !important;

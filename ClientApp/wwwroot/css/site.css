@@ -86,31 +86,6 @@ footer.footer {
     box-shadow: 0 0 10px rgba(166,128,35,0.4);
 }
 
-.clear-btn {
-    position: absolute;
-    right: 0.5rem;
-    top: 50%;
-    transform: translateY(-50%);
-    border: none;
-    background-color: #a68023;
-    color: #000;
-    border-radius: 50%;
-    width: 2.2rem;
-    height: 2.2rem;
-    font-weight: bold;
-    cursor: pointer;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    transition: all 0.2s ease;
-}
-
-.clear-btn:hover {
-    background-color: #b2882b;
-    color: #fff;
-    box-shadow: 0 0 12px rgba(166,128,35,0.45);
-}
-
 /* ------------------------------ Tool Dropdowns / Display ------------------------------ */
 .tool-dropdown {
     display: inline-block;
@@ -225,132 +200,16 @@ footer.footer {
     border-color: #b2882b;
     box-shadow: 0 0 10px rgba(166,128,35,0.4);
 }
-
-
-
-
-
-/* ============================== FINANCE PAGE (RESTORED THEME ONLY) ============================== */
-
-.finance-dashboard {
-    max-width: 1600px;
-    margin: 0 auto 3rem auto;
-}
-
-.finance-card {
-    background: #fff;
-    border-radius: 16px;
-    border: 1.5px solid rgba(166,128,35,0.35);
-    box-shadow: 0 12px 32px rgba(0,0,0,0.1);
-    display: flex;
-    flex-direction: column;
-}
-
-.finance-card-title {
-    padding: 1.1rem 1.4rem;
-    font-weight: 800;
-    font-size: 0.9rem;
-    letter-spacing: 0.6px;
-    text-transform: uppercase;
-    color: #5a3b00;
-    border-bottom: 1px solid rgba(166,128,35,0.25);
-    background: linear-gradient(90deg, rgba(166,128,35,0.18), #fff);
-}
-
-.finance-card-body {
-    padding: 1.2rem;
-}
-
-.finance-main-tool {
-    max-width: 760px;
-    margin: 0 auto;
-}
-
-#budget-embed .networth-tool {
-    border: 1.8px solid rgba(166,128,35,.52);
-    border-radius: 16px;
-    padding: 26px;
-    background: radial-gradient(900px 320px at 0% 0%, rgba(166,128,35,.12), transparent 55%), linear-gradient(180deg, rgba(11,21,41,.99), rgba(15,29,56,.99));
-    box-shadow: 0 40px 100px rgba(0,0,0,.58);
-    color: #f8fafc;
-}
-
 /* ============================== RESPONSIVE ============================== */
 
 @media (max-width: 576px) {
     .search-input { width: 90%; }
-}
-
-
-
-
-/* ============================== FINANCE / BUDGET TAB STYLES ============================== */
-
-/* ------------------------------ Inputs & Percent Inputs ------------------------------ */
-.percent-input { position: relative; display: inline-block; width: 100%; }
-.percent-input input { padding-right: 25px; width: 100%; box-sizing: border-box; }
-.percent-input::after {
-    content: '%';
-    position: absolute;
-    right: 10px;
-    top: 50%;
-    transform: translateY(-50%);
-    color: #000;
-    pointer-events: none;
-}
-input[type="number"] { -moz-appearance: textfield; -webkit-appearance: none; appearance: none; margin: 0; }
-
-/* ------------------------------ Output Spans / Highlights ------------------------------ */
-span[id^="elOut"],
-#wpEarnings, #wpSavings, #aVal, #lVal, #nVal, #cfResult, #dcResult, #saOut,
-#fbOut, #wpOut, #fiOut, #dapOut {
-    color: #000;
-    transition: all 0.2s ease;
-}
-span[id^="elOut"]:hover,
-#wpEarnings:hover, #wpSavings:hover, #aVal:hover, #lVal:hover, #nVal:hover,
-#cfResult:hover, #dcResult:hover, #saOut:hover, #fbOut:hover, #wpOut:hover,
-#fiOut:hover, #dapOut:hover {
-    color: #cc9c24;
-    cursor: pointer;
-}
-
-/* ------------------------------ General Form Control Overrides ------------------------------ */
-input.form-control {
-    border: 2px solid #000 !important;
-    transition: all 0.2s ease;
-}
-input.form-control:hover,
-input.form-control:focus {
-    border-color: #cc9c24 !important;
-    box-shadow: 0 2px 8px rgba(230, 230, 230, 0);
-    outline: none;
 }
 .hero-hr {
     border-color: #555555; /* Home tab grey */
     border-width: 2px;
     max-width: 1500px;
     margin: 1rem auto 1.5rem;
-}
-
-
-/* ===============================
-   CLEAR BUTTON – FINAL OVERRIDE
-   =============================== */
-
-.clear-btn {
-    min-width: 88px !important;      /* makes it a proper rectangle */
-    height: 36px !important;         /* locks height */
-    padding: 6px 14px !important;    /* real breathing room */
-    font-size: 0.85rem !important;
-    font-weight: 700;
-    border-radius: 10px !important;  /* rounded square, not pill */
-    line-height: 1 !important;
-}
-
-/* Kill Bootstrap btn-sm shrinkage */
-.clear-btn.btn-sm {
-    padding: 6px 14px !important;
 }
 
 /* ============================== CLIENT PORTAL WHITE PREMIUM THEME ============================== */
@@ -484,7 +343,6 @@ main .explore-item small {
     border-color: var(--client-line-strong) !important;
 }
 
-main .finance-card-title,
 main .panel-h,
 main .legend-card-header,
 main .preview-head,
@@ -495,7 +353,6 @@ main .explore-header {
 }
 
 main .hero-kicker,
-main .finance-kicker,
 main .legend-badge,
 main .pill,
 main .empty-chip,

@@ -711,7 +711,7 @@ document.addEventListener("DOMContentLoaded", async function () {
         const btn = document.createElement('button');
         btn.type = 'button';
         btn.textContent = 'Clear';
-        btn.className = 'btn btn-outline-secondary btn-sm clear-btn';
+        btn.className = 'btn btn-outline-secondary btn-sm finance-clear-btn';
         if (host) {
             btn.classList.add('wf-action-btn');
             btn.style.position = '';
@@ -6149,11 +6149,14 @@ if (t.id === "SavingsAccelerator") {
         const projectedDiv = document.createElement('div');
         projectedDiv.className = 'legend-money-input projected-year-end sa-alloc-projected';
         const projectedPrefix = document.createElement('span');
-        projectedPrefix.className = 'projected-prefix';
+        projectedPrefix.className = 'legend-money-prefix projected-prefix';
         projectedPrefix.textContent = '$';
-        const projectedValue = document.createElement('strong');
-        projectedValue.className = 'projected-value';
-        projectedValue.textContent = '0';
+        const projectedValue = document.createElement('input');
+        projectedValue.type = 'text';
+        projectedValue.className = 'projected-value legend-money-field';
+        projectedValue.readOnly = true;
+        projectedValue.tabIndex = -1;
+        projectedValue.value = '0';
         projectedDiv.append(projectedPrefix, projectedValue);
 
         const drawer = document.createElement('div');
@@ -6222,8 +6225,8 @@ if (t.id === "SavingsAccelerator") {
             const projectedEl = row.querySelector('.sa-alloc-projected');
             if (projectedEl) {
                 const roundedProjection = Math.round(projection.projectedValue);
-                const strong = projectedEl.querySelector('.projected-value');
-                if (strong) strong.textContent = Math.abs(roundedProjection).toLocaleString();
+                const projectedField = projectedEl.querySelector('.projected-value');
+                if (projectedField) projectedField.value = Math.abs(roundedProjection).toLocaleString();
                 const projectionSummary = projection.months > 0
                     ? `${projection.months} monthly period${projection.months === 1 ? '' : 's'} through year end`
                     : 'No remaining monthly periods in the current year';
@@ -6253,8 +6256,10 @@ if (t.id === "SavingsAccelerator") {
         else if (surplus < 0) markWithSuffix(markExpense, saAllocationInput);
         else markWithSuffix(markNeutral, saAllocationInput);
 
-        if (usedPct >= 100) markExpense(saPctTotal); else markGold(saPctTotal);
-        markGold(saRemaining);
+        markGold(saPctTotal);
+        if (remaining > 0) markIncome(saRemaining);
+        else if (remaining < 0) markExpense(saRemaining);
+        else markNeutral(saRemaining);
 
         // Rows — percent input + % suffix, name, amount + $ suffix
         allocationContainer.querySelectorAll('.sa-alloc-percent').forEach(p => markWithSuffix(markNeutral, p));
@@ -6267,9 +6272,16 @@ if (t.id === "SavingsAccelerator") {
             else markWithSuffix(markNeutral, a);
         });
         allocationContainer.querySelectorAll('.sa-alloc-projected').forEach(el => {
-            const strong = el.querySelector('.projected-value');
-            const val = strong ? parseSavingsMoney(strong.textContent) : 0;
-            el.classList.toggle('is-neutral', val <= 0);
+            const field = el.querySelector('.projected-value');
+            const val = field ? parseSavingsMoney(field.value || field.textContent || '') : 0;
+            el.classList.toggle('is-neutral', val === 0);
+            if (val > 0) {
+                field && markWithSuffix(markIncome, field);
+            } else if (val < 0) {
+                field && markWithSuffix(markExpense, field);
+            } else {
+                field && markWithSuffix(markNeutral, field);
+            }
         });
 
         saveAllocationState();
@@ -6432,6 +6444,8 @@ if (t.id === "ExpenseLens" || t.id === "BusinessExpenseLens") {
         </div>`;
 
         const container = hostElement.querySelector('.networth-tool');
+        applyToolBoxStyles(container);
+
         const categoriesContainer = elById("Categories");
         const addBtn = elById("AddCat");
         const elTips = elById("Tips");
@@ -6869,6 +6883,9 @@ if (t.id === "ExpenseLens" || t.id === "BusinessExpenseLens") {
                 refs.share.textContent = summary.monthlyTotal > 0
                     ? `${((groupTotal / summary.monthlyTotal) * 100).toFixed(1)}%`
                     : '0%';
+                if (groupTotal > 0) markIncome(refs.total);
+                else markNeutral(refs.total);
+                markNeutral(refs.share);
                 refs.addBtn.disabled = incomeGroupsState[definition.key].length >= EL_MAX_INCOME_STREAMS_PER_GROUP;
                 refs.addBtn.classList.toggle('is-disabled', refs.addBtn.disabled);
             });
@@ -6976,6 +6993,7 @@ if (t.id === "ExpenseLens" || t.id === "BusinessExpenseLens") {
                     amountSuffix.className = 'el-currency-prefix';
                     amountWrap.appendChild(amountInput);
                     amountWrap.appendChild(amountSuffix);
+                    upgradeMoneyInput(amountInput);
 
                     const frequencySelect = document.createElement('select');
                     frequencySelect.className = 'form-select';
@@ -7285,6 +7303,7 @@ if (t.id === "ExpenseLens" || t.id === "BusinessExpenseLens") {
 
             amountWrapper.appendChild(amountInput);
             amountWrapper.appendChild(dollarSpan);
+            upgradeMoneyInput(amountInput);
 
             const percentSpan = document.createElement("span");
             percentSpan.id = `${elId('Out')}${index}`;
@@ -7437,9 +7456,8 @@ if (t.id === "ExpenseLens" || t.id === "BusinessExpenseLens") {
                     rowEl.dataset.expenseSortAmount = String(rowTotal);
                 }
                 const isPinned = isExpenseRowPinned(rowEl);
-                const dollarSign = input.nextElementSibling;
-                if (val > 0) { markExpense(input); markExpense(pctEl); if (dollarSign) markExpense(dollarSign); }
-                else { markNeutral(input); markNeutral(pctEl); if (dollarSign) markNeutral(dollarSign); }
+                if (val > 0) { markWithSuffix(markExpense, input); markExpense(pctEl); }
+                else { markWithSuffix(markNeutral, input); markNeutral(pctEl); }
 
                 const name = (elById(`CatName${index}`).value || `Category ${index}`).trim();
                 const due = elById(`CatDue${index}`)?.value || '';
@@ -8219,13 +8237,33 @@ if (t.id === "ExpenseLens" || t.id === "BusinessExpenseLens") {
         // ✅ Color engine (no refresh needed)
         const applyExpenseLensColors = () => {
             // Inputs
-            markIncome(elIncome);
+            markWithSuffix(markIncome, elIncome);
+
+            container.querySelectorAll('.el-income-group-label').forEach(markGold);
+            container.querySelectorAll('.el-income-total').forEach((node) => {
+                const value = parseSavingsMoney(node.textContent || '');
+                if (value > 0) markIncome(node);
+                else markNeutral(node);
+            });
+            container.querySelectorAll('.el-income-share').forEach(markNeutral);
+            container.querySelectorAll('.el-stream-tag').forEach(markNeutral);
+            container.querySelectorAll('.el-stream-card .legend-money-field').forEach((field) => {
+                const value = parseSavingsMoney(field.value || field.textContent || '');
+                if (value > 0) markWithSuffix(markIncome, field);
+                else markWithSuffix(markNeutral, field);
+            });
+            container.querySelectorAll('.el-stream-card select').forEach(markNeutral);
+            container.querySelectorAll('.el-stream-card input[type="date"]').forEach(markNeutral);
 
             // Rows (dynamic)
             categoriesContainer.querySelectorAll(`[id^="${elId('CatName')}"]`).forEach(n => markNeutral(n));     // labels
             categoriesContainer.querySelectorAll(`[id^="${elId('CatFrequency')}"]`).forEach(f => markNeutral(f)); // frequency
             categoriesContainer.querySelectorAll(`[id^="${elId('CatPaymentMethod')}"]`).forEach(p => markNeutral(p)); // payment method
-            categoriesContainer.querySelectorAll(`[id^="${elId('CatAmount')}"]`).forEach(a => markExpense(a));  // spending
+            categoriesContainer.querySelectorAll(`[id^="${elId('CatAmount')}"]`).forEach(a => {
+                const value = parseSavingsMoney(a.value || '');
+                if (value > 0) markWithSuffix(markExpense, a);
+                else markWithSuffix(markNeutral, a);
+            });
             categoriesContainer.querySelectorAll(`[id^="${elId('Out')}"]`).forEach(p => markExpense(p));        // % outputs
         };
 
