@@ -13,6 +13,7 @@ document.addEventListener("DOMContentLoaded", async function () {
     const spouseFirstName = financeRoot?.dataset.spouseFirstName?.trim() || "";
     const hasSpouseAttr = financeRoot?.dataset.hasSpouse;
     const hasSpouse = hasSpouseAttr === "true" ? true : hasSpouseAttr === "false" ? false : undefined;
+    const hasClientFinanceContext = clientUserId.length > 0 || clientProfileId.length > 0;
     const workspaceScope =
         clientUserId ||
         clientProfileId ||
@@ -35,7 +36,10 @@ document.addEventListener("DOMContentLoaded", async function () {
     const disableLocalForDP = true; // Phase 2C: Distribution Planner server-only
     const storageSet = (key, value) => localStorage.setItem(scopeKey(key), value);
     const storageRemove = (key) => localStorage.removeItem(scopeKey(key));
-    const canUseServerState = true;
+    // Standalone AgentPortal /Finance should not revive agent-scoped finance tool rows.
+    // Those snapshots drift from the shared client finance state and can surface stale
+    // Expense Lens bills, income hits, and percentages after the calculation fixes.
+    const canUseServerState = hasClientFinanceContext;
     const toolStateIds = new Set([
         "WealthForecast",
         "SavingsAccelerator",
