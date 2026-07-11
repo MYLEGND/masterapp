@@ -356,14 +356,51 @@ document.addEventListener("DOMContentLoaded", async function () {
         };
     };
 
+    const hasExpenseLensExpenseRows = (state) => {
+        const categories = Array.isArray(state?.categories) ? state.categories : [];
+        if (categories.some(category => parseSavingsMoney(category?.amount || category?.occurrenceAmount) > 0)) {
+            return true;
+        }
+
+        const expenses = Array.isArray(state?.expenses) ? state.expenses : [];
+        return expenses.some(expense => parseSavingsMoney(expense?.occurrenceAmount || expense?.amount) > 0);
+    };
+
     const calculateExpenseLensMonthlyTotal = (state) => {
-        const savedTotal = parseSavingsMoney(state?.monthlyExpenseTotal);
-        if (savedTotal > 0) return savedTotal;
-        return (state?.categories || []).reduce((sum, category) => {
-            const amount = parseSavingsMoney(category?.amount);
-            const occurrences = getSavingsExpenseOccurrences(category);
-            return sum + (amount * occurrences);
-        }, 0);
+        const categories = Array.isArray(state?.categories) ? state.categories : [];
+        if (categories.length > 0) {
+            return categories.reduce((sum, category) => {
+                const amount = parseSavingsMoney(category?.amount || category?.occurrenceAmount);
+                const occurrences = getSavingsExpenseOccurrences(category);
+                return sum + (amount * occurrences);
+            }, 0);
+        }
+
+        const expenses = Array.isArray(state?.expenses) ? state.expenses : [];
+        if (expenses.length > 0) {
+            return expenses.reduce((sum, expense) => {
+                const occurrenceAmount = parseSavingsMoney(expense?.occurrenceAmount);
+                const monthlyAmount = parseSavingsMoney(expense?.amount);
+                const hasRecurringShape = occurrenceAmount > 0 && String(expense?.due || '').trim().length > 0;
+                if (hasRecurringShape) {
+                    return sum + (occurrenceAmount * getSavingsExpenseOccurrences(expense));
+                }
+                return sum + monthlyAmount;
+            }, 0);
+        }
+
+        return parseSavingsMoney(state?.monthlyExpenseTotal);
+    };
+
+    const calculateExpenseLensMonthlyRemaining = (state) => {
+        const income = getExpenseLensIncomeTotal(state);
+        const monthlyExpenses = calculateExpenseLensMonthlyTotal(state);
+        const hasRecomputableSources = income !== 0 || monthlyExpenses !== 0 || hasExpenseLensExpenseRows(state);
+        if (hasRecomputableSources) {
+            return income - monthlyExpenses;
+        }
+
+        return parseSavingsMoney(state?.monthlyRemaining);
     };
 
     const getExpenseLensIncomeTotal = (state) => {
@@ -5944,12 +5981,12 @@ if (t.id === "SavingsAccelerator") {
         latestExpenseLensState = state || {};
         const income = getExpenseLensIncomeTotal(state);
         const monthlyExpenses = calculateExpenseLensMonthlyTotal(state);
-        const hasSavedRemaining = state && Object.prototype.hasOwnProperty.call(state, 'monthlyRemaining');
-        const savingsAllocation = hasSavedRemaining ? parseSavingsMoney(state.monthlyRemaining) : income - monthlyExpenses;
-        const hasCategoryData = Array.isArray(state?.categories)
-            && state.categories.some(category => parseSavingsMoney(category?.amount || category?.occurrenceAmount));
+        const savingsAllocation = calculateExpenseLensMonthlyRemaining(state);
         const hasSourceData = !!state
-            && (income !== 0 || monthlyExpenses !== 0 || hasCategoryData);
+            && (income !== 0
+                || monthlyExpenses !== 0
+                || hasExpenseLensExpenseRows(state)
+                || Object.prototype.hasOwnProperty.call(state, 'monthlyRemaining'));
 
         saAllocationInput.value = hasSourceData ? formatNumber(savingsAllocation) : '';
         refreshSurplus();
@@ -9376,9 +9413,12 @@ if (t.id === "WealthProjection") {
 
     const applyExpenseLensToWealthProjection = async (event) => {
         const state = event?.detail || await loadPersistedState('ExpenseLens');
-        const rawRemaining = state?.monthlyRemaining;
-        const remaining = +(String(rawRemaining ?? 0).replace(/[,$\s]/g, '')) || 0;
-        hasSyncedSurplus = hasLinkedMoneyValue(rawRemaining);
+        const remaining = calculateExpenseLensMonthlyRemaining(state);
+        hasSyncedSurplus = !!state
+            && (getExpenseLensIncomeTotal(state) !== 0
+                || calculateExpenseLensMonthlyTotal(state) !== 0
+                || hasExpenseLensExpenseRows(state)
+                || Object.prototype.hasOwnProperty.call(state, 'monthlyRemaining'));
         wpSurplus.value = hasSyncedSurplus ? remaining.toLocaleString() : '';
         updateWealthProjection();
     };
