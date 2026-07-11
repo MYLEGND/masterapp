@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.Authentication.OpenIdConnect;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using ClientApp.Infrastructure;
 
 namespace ClientApp.Controllers;
 
@@ -21,6 +22,7 @@ public class AccountController : Controller
         var target = NormalizeReturnUrl(returnUrl);
 
         // Start from a clean local session before sending the browser to Microsoft login.
+        OidcTransientCookieCleanup.Clear(HttpContext);
         Response.Cookies.Delete("impClientProfileId");
         Response.Cookies.Delete("selfClientProfileId");
         await HttpContext.SignOutAsync(CookieAuthenticationDefaults.AuthenticationScheme);
@@ -47,6 +49,7 @@ public class AccountController : Controller
             return LocalRedirect(target);
         }
 
+        OidcTransientCookieCleanup.Clear(HttpContext);
         return Challenge(
             new AuthenticationProperties { RedirectUri = target },
             OpenIdConnectDefaults.AuthenticationScheme
@@ -59,6 +62,7 @@ public class AccountController : Controller
     {
         var target = NormalizeReturnUrl(returnUrl);
 
+        OidcTransientCookieCleanup.Clear(HttpContext);
         return Challenge(
             new AuthenticationProperties { RedirectUri = target },
             OpenIdConnectDefaults.AuthenticationScheme

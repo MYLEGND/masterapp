@@ -5004,15 +5004,26 @@ body.finance-dual-tools-open .layout-content {
     letter-spacing: .01em;
 }
 
-.networth-tool.el-shell .el-category-stack,
-.networth-tool.el-shell .el-income-groups {
+.networth-tool.el-shell .el-category-stack {
     display: flex;
     flex-direction: column;
     gap: 14px;
 }
 
 .networth-tool.el-shell .el-income-groups {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    align-items: start;
+    gap: 14px;
     margin-bottom: 14px;
+}
+
+.networth-tool.el-shell .el-income-groups.el-income-groups--paired {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.networth-tool.el-shell .el-income-groups.el-income-groups--solo {
+    grid-template-columns: minmax(0, 1fr);
 }
 
 .networth-tool.el-shell .el-toolbar,
@@ -5030,6 +5041,7 @@ body.finance-dual-tools-open .layout-content {
 
 .networth-tool.el-shell .el-income-flex {
     margin-bottom: 16px;
+    align-items: stretch;
 }
 
 .networth-tool.el-shell .el-income-input-wrap {
@@ -5186,7 +5198,7 @@ body.finance-dual-tools-open .layout-content {
     justify-content: center;
     position: static;
     inset: auto;
-    height: 42px;
+    height: 46px;
     width: auto;
     padding: 0 18px;
     border-radius: 14px;
@@ -5242,7 +5254,7 @@ body.finance-dual-tools-open .layout-content {
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    min-height: 42px;
+    min-height: 46px;
     padding: 0 18px;
     border: 1px solid rgba(56, 189, 248, .18);
     border-radius: 14px;
@@ -5252,6 +5264,10 @@ body.finance-dual-tools-open .layout-content {
     font-weight: 800;
     white-space: nowrap;
     letter-spacing: .01em;
+}
+
+.networth-tool.el-shell .el-income-flex > * {
+    align-self: stretch;
 }
 
 .networth-tool.el-shell .el-balance-chip .finance-tone-income,
@@ -5611,18 +5627,29 @@ body.finance-dual-tools-open .layout-content {
 }
 
 .networth-tool.el-shell .el-income-group {
-    display: flex;
-    flex-direction: column;
+    display: grid;
+    align-content: start;
     gap: 12px;
     min-width: 0;
 }
 
-.networth-tool.el-shell .el-income-summary,
 .networth-tool.el-shell .el-stream-card,
 .networth-tool.el-shell .el-category-row {
     border: var(--el-row-border);
     background: linear-gradient(180deg, rgba(17, 30, 54, .94), rgba(10, 20, 38, .985));
     box-shadow: var(--el-card-shadow);
+}
+
+.networth-tool.el-shell .el-income-summary,
+.networth-tool.el-shell .el-stream-card.el-stream-card--income {
+    border: 1px solid rgba(45, 212, 191, .20);
+    background:
+        linear-gradient(180deg, rgba(13, 34, 58, .98), rgba(8, 23, 42, .995)),
+        radial-gradient(circle at top left, rgba(45, 212, 191, .10), transparent 56%);
+    box-shadow:
+        0 22px 38px rgba(3, 10, 22, .34),
+        inset 0 1px 0 rgba(186, 230, 253, .07),
+        inset 0 0 0 1px rgba(15, 118, 110, .08);
 }
 
 .networth-tool.el-shell .el-income-summary {
@@ -5645,12 +5672,13 @@ body.finance-dual-tools-open .layout-content {
 }
 
 .networth-tool.el-shell .el-income-group-label {
-    color: #d4a83c;
+    color: #79f2d0;
     font-size: .74rem;
     font-weight: 900;
     letter-spacing: .08em;
     text-transform: uppercase;
     line-height: 1.2;
+    text-shadow: 0 0 18px rgba(45, 212, 191, .16);
 }
 
 .networth-tool.el-shell .el-income-total {
@@ -5660,10 +5688,13 @@ body.finance-dual-tools-open .layout-content {
     min-width: 150px;
     height: 42px;
     padding: 0 16px;
-    border: 1px solid rgba(125, 211, 252, .32);
+    border: 1px solid rgba(110, 231, 183, .34);
     border-radius: 14px;
-    background: linear-gradient(180deg, rgba(248, 250, 252, .985), rgba(231, 238, 249, .97));
-    box-shadow: inset 0 1px 0 rgba(255, 255, 255, .75), 0 12px 24px rgba(8, 15, 32, .12);
+    background: linear-gradient(180deg, rgba(243, 253, 249, .995), rgba(224, 244, 237, .975));
+    box-shadow:
+        inset 0 1px 0 rgba(255, 255, 255, .82),
+        0 14px 26px rgba(8, 15, 32, .16),
+        0 0 0 1px rgba(52, 211, 153, .05);
     color: var(--finance-tone-neutral);
     font-size: 1rem;
     font-weight: 900;
@@ -5676,12 +5707,13 @@ body.finance-dual-tools-open .layout-content {
     min-width: 74px;
     height: 34px;
     padding: 0 12px;
-    border: 1px solid rgba(96, 165, 250, .24);
+    border: 1px solid rgba(52, 211, 153, .28);
     border-radius: 999px;
-    background: rgba(30, 58, 138, .24);
-    color: #d8e7ff;
+    background: linear-gradient(180deg, rgba(16, 185, 129, .16), rgba(5, 150, 105, .20));
+    color: #c6fff0;
     font-size: .75rem;
     font-weight: 800;
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, .05);
 }
 
 .networth-tool.el-shell .el-stream-grid {
@@ -5692,10 +5724,6 @@ body.finance-dual-tools-open .layout-content {
 
 .networth-tool.el-shell .el-stream-grid.el-stream-grid--single {
     grid-template-columns: minmax(0, 1fr);
-}
-
-.networth-tool.el-shell .el-stream-grid.el-stream-grid--double {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 
 .networth-tool.el-shell .el-stream-card {
@@ -5718,14 +5746,15 @@ body.finance-dual-tools-open .layout-content {
     min-width: 94px;
     height: 38px;
     padding: 0 12px;
-    border: 1px solid rgba(96, 165, 250, .22);
+    border: 1px solid rgba(74, 222, 128, .22);
     border-radius: 12px;
-    background: linear-gradient(180deg, rgba(24, 48, 98, .78), rgba(16, 33, 73, .82));
-    color: #bfdbfe;
+    background: linear-gradient(180deg, rgba(12, 72, 61, .78), rgba(12, 54, 49, .84));
+    color: #b8ffeb;
     font-size: .68rem;
     font-weight: 800;
     letter-spacing: .08em;
     text-transform: uppercase;
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, .04);
 }
 
 .networth-tool.el-shell .el-stream-remove,
@@ -9075,6 +9104,10 @@ body.finance-dual-tools-open .layout-content {
 }
 
 @media (max-width: 991.98px) {
+    .networth-tool.el-shell .el-income-groups.el-income-groups--paired {
+        grid-template-columns: 1fr;
+    }
+
     .finance-toolbar-shell {
         padding: 12px;
     }

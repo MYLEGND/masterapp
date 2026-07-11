@@ -595,7 +595,9 @@ builder.Services.AddSingleton<GraphServiceClient>(sp =>
 // instead of redirecting to Azure AD — same reason as the cookie handler below.
 builder.Services.Configure<OpenIdConnectOptions>(OpenIdConnectDefaults.AuthenticationScheme, oidcOptions =>
 {
+    var callbackPath = oidcOptions.CallbackPath.HasValue ? oidcOptions.CallbackPath.Value : "/signin-oidc";
     var original = oidcOptions.Events?.OnRedirectToIdentityProvider;
+    var originalRemoteFailure = oidcOptions.Events?.OnRemoteFailure;
     oidcOptions.Events ??= new Microsoft.AspNetCore.Authentication.OpenIdConnect.OpenIdConnectEvents();
     oidcOptions.Events.OnRedirectToIdentityProvider = async ctx =>
     {
@@ -605,7 +607,16 @@ builder.Services.Configure<OpenIdConnectOptions>(OpenIdConnectDefaults.Authentic
             ctx.HandleResponse();
             return;
         }
+        OidcTransientCookieCleanup.Clear(ctx.HttpContext, callbackPath);
         if (original != null) await original(ctx);
+    };
+    oidcOptions.Events.OnRemoteFailure = async ctx =>
+    {
+        OidcTransientCookieCleanup.Clear(ctx.HttpContext, callbackPath);
+        if (originalRemoteFailure != null)
+        {
+            await originalRemoteFailure(ctx);
+        }
     };
 });
 

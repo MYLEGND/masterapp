@@ -6893,8 +6893,9 @@ if (t.id === "ExpenseLens" || t.id === "BusinessExpenseLens") {
 
             incomeGroupsHost.innerHTML = '';
             incomeGroupRefs = new Map();
-            const hostWidth = incomeGroupsHost.getBoundingClientRect().width || window.innerWidth || 0;
-            const useTwoColumnStreamRows = hostWidth >= 760;
+            const useSplitPersonLayout = incomeGroupDefinitions.length > 1;
+            incomeGroupsHost.classList.toggle('el-income-groups--paired', useSplitPersonLayout);
+            incomeGroupsHost.classList.toggle('el-income-groups--solo', !useSplitPersonLayout);
 
             incomeGroupDefinitions.forEach((definition) => {
                 const groupStreams = sanitizeIncomeStreamList(definition.key, incomeGroupsState[definition.key]);
@@ -6902,6 +6903,7 @@ if (t.id === "ExpenseLens" || t.id === "BusinessExpenseLens") {
 
                 const groupRow = document.createElement('div');
                 groupRow.className = 'el-income-group';
+                groupRow.classList.add(useSplitPersonLayout ? 'el-income-group--paired' : 'el-income-group--solo');
 
                 const summaryCard = document.createElement('div');
                 summaryCard.className = 'el-income-summary';
@@ -6941,7 +6943,7 @@ if (t.id === "ExpenseLens" || t.id === "BusinessExpenseLens") {
 
                 const streamsWrap = document.createElement('div');
                 streamsWrap.className = 'el-stream-grid';
-                streamsWrap.classList.add(useTwoColumnStreamRows ? 'el-stream-grid--double' : 'el-stream-grid--single');
+                streamsWrap.classList.add('el-stream-grid--single');
 
                 groupStreams.forEach((stream, streamIndex) => {
                     const streamCard = document.createElement('div');

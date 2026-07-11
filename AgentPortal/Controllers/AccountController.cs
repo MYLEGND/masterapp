@@ -7,6 +7,7 @@ using Infrastructure.Data;
 using Microsoft.EntityFrameworkCore;
 using System.Security.Claims;
 using AgentPortal.Models;
+using AgentPortal.Security;
 using Domain.Entities;
 
 public class AccountController : Controller
@@ -89,6 +90,7 @@ public class AccountController : Controller
     public IActionResult LoginSubmit(string returnUrl = "/")
     {
         // 🔹 Trigger Azure AD login
+        OidcTransientCookieCleanup.Clear(HttpContext);
         return Challenge(
             new AuthenticationProperties
             {

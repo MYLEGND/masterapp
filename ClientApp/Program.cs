@@ -1,5 +1,6 @@
 using Infrastructure.Data;
 using Infrastructure.Identity;
+using ClientApp.Infrastructure;
 using ClientApp.Services;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.Cookies;
@@ -259,7 +260,7 @@ builder.Services.AddAuthentication(options =>
 
     options.ResponseType = "code";
     options.UsePkce = true;
-    options.SaveTokens = true;
+    options.SaveTokens = false;
     options.GetClaimsFromUserInfoEndpoint = true;
 
     options.TokenValidationParameters = new TokenValidationParameters
@@ -300,6 +301,8 @@ builder.Services.AddAuthentication(options =>
                 ctx.HandleResponse();
                 return Task.CompletedTask;
             }
+
+            OidcTransientCookieCleanup.Clear(ctx.HttpContext, callbackPath);
             return Task.CompletedTask;
         },
 
@@ -322,6 +325,7 @@ builder.Services.AddAuthentication(options =>
             var returnUrl = NormalizeOidcReturnUrl(ctx.Properties?.RedirectUri);
             var loginUrl = $"{ctx.Request.PathBase}/Account/AzureLogin?returnUrl={Uri.EscapeDataString(returnUrl)}";
 
+            OidcTransientCookieCleanup.Clear(ctx.HttpContext, callbackPath);
             await ctx.HttpContext.SignOutAsync(CookieAuthenticationDefaults.AuthenticationScheme);
             ctx.HandleResponse();
             ctx.Response.Redirect(loginUrl);
