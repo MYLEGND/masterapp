@@ -56,6 +56,10 @@
     <!-- Bootstrap -->
     <link rel="stylesheet" href="~/lib/bootstrap/dist/css/bootstrap.min.css" />
     <link rel="stylesheet" href="~/css/site.css" asp-append-version="true" />
+    @if (string.Equals(currentController, "Finance", StringComparison.OrdinalIgnoreCase))
+    {
+        <link rel="stylesheet" href="~/_content/Shared/css/legend-finance-shared.css" asp-append-version="true" />
+    }
 
     <!-- Google Fonts -->
     <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@700&display=swap" rel="stylesheet">
