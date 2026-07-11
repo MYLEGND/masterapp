@@ -1999,7 +1999,7 @@ if (t.id === "SavingsAccelerator") {
         const totalExpenses = calculateExpenseLensMonthlyTotal(expenseState);
         const savingsAllocation = parseSavingsMoney(saAllocationInput.value);
         const rows = Array.from(allocationContainer.querySelectorAll('.sa-alloc-row')).map((row, index) => {
-            const projectedValue = parseSavingsMoney(row.querySelector('.projected-value')?.textContent || '');
+            const projectedValue = parseSavingsMoney(row.querySelector('.sa-alloc-projected-field')?.value || row.querySelector('.sa-alloc-projected-field')?.textContent || '');
             const allocationAmount = parseSavingsMoney(row.querySelector('.sa-alloc-amount')?.value || '');
             const allocationPercent = row.querySelector('.sa-alloc-percent')?.value || '';
             const aprPercent = row.querySelector('.sa-alloc-apr')?.value || '';
@@ -2512,17 +2512,14 @@ if (t.id === "SavingsAccelerator") {
         const startingWrap = makeSaMoney(startingBalanceInput);
 
         const projectedDiv = document.createElement('div');
-        projectedDiv.className = 'legend-money-input projected-year-end sa-alloc-projected';
-        const projectedPrefix = document.createElement('span');
-        projectedPrefix.className = 'legend-money-prefix projected-prefix';
-        projectedPrefix.textContent = '$';
         const projectedValue = document.createElement('input');
         projectedValue.type = 'text';
-        projectedValue.className = 'projected-value legend-money-field';
+        projectedValue.className = 'sa-alloc-projected-field legend-money-field';
         projectedValue.readOnly = true;
         projectedValue.tabIndex = -1;
         projectedValue.value = '0';
-        projectedDiv.append(projectedPrefix, projectedValue);
+        const projectedWrap = makeSaMoney(projectedValue);
+        projectedWrap.classList.add('sa-alloc-projected');
 
         const drawer = document.createElement('div');
         drawer.className = 'sa-alloc-drawer';
@@ -2537,14 +2534,14 @@ if (t.id === "SavingsAccelerator") {
             const syncLabel = () => { editBtn.textContent = drawer.classList.contains('is-open') ? 'Hide' : 'Details'; };
             editBtn.addEventListener('click', () => { drawer.classList.toggle('is-open'); syncLabel(); });
             syncLabel();
-            grid.append(name, pctWrap, amtWrap, aprWrap, projectedDiv, editBtn);
+            grid.append(name, pctWrap, amtWrap, aprWrap, projectedWrap, editBtn);
             drawer.append(startDate, startingWrap, note);
             fitSingleLineControlText(name, { minSize: 10, maxSize: 14 });
             fitSingleLineControlText(amt, { minSize: 10, maxSize: 14, reserve: 18 });
             fitSingleLineControlText(pct, { minSize: 10, maxSize: 14, reserve: 18 });
             fitSingleLineControlText(apr, { minSize: 10, maxSize: 14, reserve: 18 });
         } else {
-            grid.append(name, amtWrap, pctWrap, aprWrap, startDate, startingWrap, projectedDiv);
+            grid.append(name, amtWrap, pctWrap, aprWrap, startDate, startingWrap, projectedWrap);
             drawer.append(note);
         }
 
@@ -2589,13 +2586,12 @@ if (t.id === "SavingsAccelerator") {
             const projectedEl = row.querySelector('.sa-alloc-projected');
             if (projectedEl) {
                 const roundedProjection = Math.round(projection.projectedValue);
-                const projectedField = projectedEl.querySelector('.projected-value');
+                const projectedField = projectedEl.querySelector('.sa-alloc-projected-field');
                 if (projectedField) projectedField.value = Math.abs(roundedProjection).toLocaleString();
                 const projectionSummary = projection.months > 0
                     ? `${projection.months} monthly period${projection.months === 1 ? '' : 's'} through year end`
                     : 'No remaining monthly periods in the current year';
                 projectedEl.removeAttribute('title');
-                projectedEl.classList.toggle('is-neutral', roundedProjection <= 0);
                 projectedEl.setAttribute('aria-label', `$${Math.abs(roundedProjection).toLocaleString()} projected year-end value. ${projectionSummary}.`);
             }
         });
@@ -2631,9 +2627,8 @@ if (t.id === "SavingsAccelerator") {
             else markWithSuffix(markNeutral, a);
         });
         allocationContainer.querySelectorAll('.sa-alloc-projected').forEach(el => {
-            const field = el.querySelector('.projected-value');
+            const field = el.querySelector('.sa-alloc-projected-field');
             const val = field ? parseSavingsMoney(field.value || field.textContent || '') : 0;
-            el.classList.toggle('is-neutral', val === 0);
             if (val > 0) {
                 field && markWithSuffix(markIncome, field);
             } else if (val < 0) {
