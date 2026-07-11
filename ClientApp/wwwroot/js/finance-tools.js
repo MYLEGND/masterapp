@@ -138,6 +138,7 @@ document.addEventListener("DOMContentLoaded", async function () {
     };
 
     const parseSavingsMoney = (value) => +(String(value || '').replace(/[,$\s]/g, '')) || 0;
+    const hasNonBlankValue = (value) => value !== undefined && value !== null && String(value).trim() !== '';
 
     const normalizeScheduledFrequency = (value) => {
         const normalized = (value || '').toString().toLowerCase().replace(/[^a-z]/g, '');
@@ -393,6 +394,12 @@ document.addEventListener("DOMContentLoaded", async function () {
         const incomeGroups = getExpenseLensIncomeStreamGroupsFromState(state);
         return summarizeExpenseLensIncomeGroups(incomeGroups).monthlyTotal;
     };
+
+    const hasExpenseLensFinancialData = (state) =>
+        getExpenseLensIncomeTotal(state) !== 0
+        || calculateExpenseLensMonthlyTotal(state) !== 0
+        || hasExpenseLensExpenseRows(state)
+        || parseSavingsMoney(state?.monthlyRemaining) !== 0;
 
     function getStateKeys(key) {
         if (!key) return [];
@@ -2347,11 +2354,7 @@ if (t.id === "SavingsAccelerator") {
         const income = getExpenseLensIncomeTotal(state);
         const monthlyExpenses = calculateExpenseLensMonthlyTotal(state);
         const savingsAllocation = calculateExpenseLensMonthlyRemaining(state);
-        const hasSourceData = !!state
-            && (income !== 0
-                || monthlyExpenses !== 0
-                || hasExpenseLensExpenseRows(state)
-                || Object.prototype.hasOwnProperty.call(state, 'monthlyRemaining'));
+        const hasSourceData = !!state && hasExpenseLensFinancialData(state);
 
         saAllocationInput.value = hasSourceData ? formatNumber(savingsAllocation) : '';
         refreshSurplus();
@@ -4882,6 +4885,23 @@ if (t.id === "NetWorth") {
     };
 
     function calc() {
+        const hasSourceData = hasNonBlankValue(assets.value) || hasNonBlankValue(liabs.value);
+        if (!hasSourceData) {
+            aVal.textContent = lVal.textContent = nVal.textContent = '$0';
+            nwRatio.textContent = liabRatio.textContent = '0%';
+            wealthStatus.textContent = '—';
+            nwTips.textContent = 'Enter your assets and liabilities to get personalized insights.';
+            markGold(aVal);
+            markGold(lVal);
+            markGold(nVal);
+            markGold(nwRatio);
+            markGold(liabRatio);
+            markGold(wealthStatus);
+            markGold(nwTips);
+            saveToolState('NetWorth');
+            return;
+        }
+
         const a = +assets.value.replace(/,/g,'') || 0;
         const l = +liabs.value.replace(/,/g,'') || 0;
         const net = a - l;
@@ -5097,6 +5117,20 @@ if (t.id === "CashFlow") {
     };
 
     function calcCashFlow() {
+        const hasSourceData = hasNonBlankValue(cfIncome.value) || hasNonBlankValue(cfBills.value);
+        if (!hasSourceData) {
+            cfResult.textContent = '$0';
+            cfSavingsPotential.textContent = '$0';
+            cfInvestPct.textContent = '0%';
+            cfTips.textContent = 'Enter your monthly income and bills to get personalized tips.';
+            markGold(cfResult);
+            markGold(cfSavingsPotential);
+            markGold(cfInvestPct);
+            markGold(cfTips);
+            saveToolState('CashFlow');
+            return;
+        }
+
         const income = +cfIncome.value.replace(/,/g,'') || 0;
         const bills = +cfBills.value.replace(/,/g,'') || 0;
         const net = income - bills;
@@ -5282,7 +5316,7 @@ if (t.id === "DebtClarity") {
     };
 
     addClearButton(container, () => {
-        dcResult.textContent = '0%';
+        dcResult.textContent = '—';
         dcStatus.textContent = '—';
         dcTips.textContent = 'Enter your liabilities and income to receive guidance.';
         clearToolState('DebtClarity');
@@ -5292,8 +5326,43 @@ if (t.id === "DebtClarity") {
     });
 
     function calcDebtClarity() {
+        const hasDebt = hasNonBlankValue(dcDebt.value);
+        const hasIncome = hasNonBlankValue(dcIncome.value);
+        if (!hasDebt && !hasIncome) {
+            dcResult.textContent = '—';
+            dcStatus.textContent = '—';
+            dcTips.textContent = 'Enter your liabilities and income to receive guidance.';
+            markGold(dcResult);
+            markGold(dcStatus);
+            markGold(dcTips);
+            saveToolState('DebtClarity');
+            return;
+        }
+
+        if (!hasIncome) {
+            dcResult.textContent = '—';
+            dcStatus.textContent = '⚠️ Missing Income';
+            dcTips.textContent = 'Complete Expense Lens so Debt Clarity can compare liabilities against annual income accurately.';
+            markGold(dcResult);
+            markGold(dcStatus);
+            markGold(dcTips);
+            saveToolState('DebtClarity');
+            return;
+        }
+
+        if (!hasDebt) {
+            dcResult.textContent = '—';
+            dcStatus.textContent = '⚠️ Missing Liabilities';
+            dcTips.textContent = 'Complete Financial Health Snapshot so Debt Clarity can compare your liabilities against income.';
+            markGold(dcResult);
+            markGold(dcStatus);
+            markGold(dcTips);
+            saveToolState('DebtClarity');
+            return;
+        }
+
         const debt = +dcDebt.value.replace(/,/g,'') || 0;
-        const income = +dcIncome.value.replace(/,/g,'') || 1;
+        const income = +dcIncome.value.replace(/,/g,'') || 0;
         const dtiNum = (debt / income) * 100;
         const dti = dtiNum.toFixed(1);
 
@@ -5634,7 +5703,6 @@ if (t.id === "WealthProjection") {
 
     const formatWithCommas = (val) => val ? (+val).toLocaleString() : '0';
     const parseNumber = (val) => +val.toString().replace(/,/g,'') || 0;
-    const hasLinkedMoneyValue = (value) => value !== undefined && value !== null && String(value).trim() !== '';
     let hasSyncedNetWorth = false;
     let hasSyncedSurplus = false;
 
@@ -5715,7 +5783,7 @@ if (t.id === "WealthProjection") {
         const src = event?.detail || (await loadPersistedState('LegendLivingBalanceSheet'))?.summary || {};
         const rawNetWorth = src?.netWorth;
         const netWorth = +(String(rawNetWorth ?? 0).replace(/[,$\s]/g, '')) || 0;
-        hasSyncedNetWorth = hasLinkedMoneyValue(rawNetWorth);
+        hasSyncedNetWorth = hasNonBlankValue(rawNetWorth);
         wpNet.value = hasSyncedNetWorth ? netWorth.toLocaleString() : '';
         updateWealthProjection();
     };
@@ -5723,11 +5791,7 @@ if (t.id === "WealthProjection") {
     const applyExpenseLensToWealthProjection = async (event) => {
         const state = event?.detail || await loadPersistedState('ExpenseLens');
         const remaining = calculateExpenseLensMonthlyRemaining(state);
-        hasSyncedSurplus = !!state
-            && (getExpenseLensIncomeTotal(state) !== 0
-                || calculateExpenseLensMonthlyTotal(state) !== 0
-                || hasExpenseLensExpenseRows(state)
-                || Object.prototype.hasOwnProperty.call(state, 'monthlyRemaining'));
+        hasSyncedSurplus = !!state && hasExpenseLensFinancialData(state);
         wpSurplus.value = hasSyncedSurplus ? remaining.toLocaleString() : '';
         updateWealthProjection();
     };
@@ -5925,9 +5989,9 @@ if (t.id === "FreedomIndex") {
 
     addClearButton(container, () => {
         fiPassive.value = '';
-        fiOut.textContent = '0';
+        fiOut.textContent = '—';
         fiNetOut.textContent = fiExpOut.textContent = fiPassiveOut.textContent = '$0';
-        fiMonths.textContent = '0';
+        fiMonths.textContent = '—';
         fiAdvice.textContent = 'Enter your values to see recommendations.';
         clearPersistedState('FreedomIndex');
         hideTip();
@@ -5938,18 +6002,47 @@ if (t.id === "FreedomIndex") {
     const updateFreedom = () => {
         const net = parseNumber(fiNet.value);
         const expRaw = parseNumber(fiExp.value);
-        const exp = expRaw || 0; // for display
-        const expDiv = expRaw || 1; // for division safety (keeps your logic stable)
         const passive = parseNumber(fiPassive.value);
+        const hasNetValue = hasNonBlankValue(fiNet.value);
+        const hasExpenseValue = hasNonBlankValue(fiExp.value);
 
         fiNetOut.textContent = `$${formatWithCommas(net)}`;
-        fiExpOut.textContent = `$${formatWithCommas(exp)}`;
+        fiExpOut.textContent = `$${formatWithCommas(expRaw)}`;
         fiPassiveOut.textContent = `$${formatWithCommas(passive)}`;
 
-        const fi = (net / expDiv);
+        if (!hasNetValue || !hasExpenseValue) {
+            fiOut.textContent = '—';
+            fiMonths.textContent = '—';
+
+            if (!hasNetValue && !hasExpenseValue) {
+                fiAdvice.textContent = '⚠️ Complete Financial Health Snapshot and Expense Lens to calculate your Freedom Index.';
+            } else if (!hasNetValue) {
+                fiAdvice.textContent = '⚠️ Complete Financial Health Snapshot to sync your net worth here.';
+            } else {
+                fiAdvice.textContent = '⚠️ Complete Expense Lens to sync your annual expenses here.';
+            }
+
+            if (hasNetValue) markIncome(fiNetOut);
+            else markGold(fiNetOut);
+            if (hasExpenseValue) markExpense(fiExpOut);
+            else markGold(fiExpOut);
+            if (passive > 0) markIncome(fiPassiveOut);
+            else if (passive < 0) markExpense(fiPassiveOut);
+            else markGold(fiPassiveOut);
+            if (passive > 0) markIncome(fiPassive);
+            else if (passive < 0) markExpense(fiPassive);
+            else markNeutral(fiPassive);
+            markGold(fiOut);
+            markGold(fiMonths);
+            markGold(fiAdvice);
+            saveFI();
+            return;
+        }
+
+        const fi = (net / expRaw);
         fiOut.textContent = fi.toFixed(1);
 
-        const months = Math.floor(((net + passive * 12) / expDiv) * 12);
+        const months = Math.floor(((net + passive * 12) / expRaw) * 12);
         fiMonths.textContent = months;
 
         let advice = '';
@@ -5960,7 +6053,7 @@ if (t.id === "FreedomIndex") {
 
         fiAdvice.textContent = advice;
 
-        applyFreedomColors(net, expDiv, passive, fi, months);
+        applyFreedomColors(net, expRaw, passive, fi, months);
         saveFI();
     };
 
@@ -6168,7 +6261,7 @@ if (t.id === "DebtAssetPulse") {
     };
 
     addClearButton(container, () => {
-        dapOut.textContent = '0';
+        dapOut.textContent = '—';
         dapAssets.textContent = dapLiabilities.textContent =
         dapNetWorth.textContent = dapMonthlyIncome.textContent = '$0';
         dapAdvice.textContent = 'Enter values to get guidance on your financial health.';
@@ -6179,6 +6272,8 @@ if (t.id === "DebtAssetPulse") {
     });
 
     const updateDAP = () => {
+        const hasBalanceSheetSource = hasNonBlankValue(dapA.value) || hasNonBlankValue(dapL.value);
+        const hasIncomeSource = hasNonBlankValue(dapIncome.value);
         const assets = parseNumber(dapA.value);
         const liabilities = parseNumber(dapL.value);
         const income = parseNumber(dapIncome.value);
@@ -6187,6 +6282,22 @@ if (t.id === "DebtAssetPulse") {
         dapLiabilities.textContent = `$${formatWithCommas(liabilities)}`;
         dapNetWorth.textContent = `$${formatWithCommas(assets - liabilities)}`;
         dapMonthlyIncome.textContent = `$${formatWithCommas(income)}`;
+
+        if (!hasBalanceSheetSource) {
+            dapOut.textContent = '—';
+            dapAdvice.textContent = hasIncomeSource
+                ? '⚠️ Complete Financial Health Snapshot to compare your assets and liabilities here.'
+                : 'Enter values to get guidance on your financial health.';
+            markGold(dapAssets);
+            markGold(dapLiabilities);
+            markGold(dapNetWorth);
+            if (hasIncomeSource && income > 0) markIncome(dapMonthlyIncome);
+            else markGold(dapMonthlyIncome);
+            markGold(dapOut);
+            markGold(dapAdvice);
+            saveDAP();
+            return;
+        }
 
         // Keep your existing "ratio" meaning (assets/liabilities)
         const ratioNum = (liabilities > 0) ? (assets / liabilities) : (assets > 0 ? Infinity : 0);
