@@ -11,6 +11,7 @@ document.addEventListener("DOMContentLoaded", async function () {
         financeRoot?.dataset.financeScopeFallback?.trim() ||
         (financeApp === "agent" ? "agent" : "client");
     const enableGrowthCalculator = (financeRoot?.dataset.enableGrowthCalculator || "").toLowerCase() === "true";
+    const enableWealthForecast = financeApp === "agent";
     const wantsAdvancedWealthForecast = (financeRoot?.dataset.enableAdvancedWealthForecast || "").toLowerCase() === "true";
     const enableClientPlanSearch = (financeRoot?.dataset.enableClientPlanSearch || "").toLowerCase() === "true";
     const wantsDistributionPlanner = (financeRoot?.dataset.enableDistributionPlanner || "").toLowerCase() === "true";
@@ -815,23 +816,30 @@ document.addEventListener("DOMContentLoaded", async function () {
         { id: "WealthProjection", name: "Wealth Projection" },
         { id: "FreedomIndex", name: "Freedom Index" },
         { id: "DebtAssetPulse", name: "Debt vs Asset Pulse" }
-    ];
+    ].filter(tool => enableWealthForecast || tool.id !== "WealthForecast");
     const dropdownTools = tools.filter(tool => tool.id !== DEFAULT_TOOL_ID);
     let requestedToolOverrideId = "";
+    const resolveToolSelection = (toolId) => {
+        const resolvedToolId = (toolId || "").trim();
+        return tools.some(tool => tool.id === resolvedToolId)
+            ? resolvedToolId
+            : DEFAULT_TOOL_ID;
+    };
 
     function syncToolSelectorState(toolId) {
-        const isDefaultTool = toolId === DEFAULT_TOOL_ID;
+        const resolvedToolId = resolveToolSelection(toolId);
+        const isDefaultTool = resolvedToolId === DEFAULT_TOOL_ID;
         financialHealthButton?.setAttribute("aria-pressed", isDefaultTool ? "true" : "false");
         if (!dropdown) return;
         if (isDefaultTool) {
             dropdown.selectedIndex = 0;
-        } else if (dropdown.value !== toolId) {
-            dropdown.value = toolId || "";
+        } else if (dropdown.value !== resolvedToolId) {
+            dropdown.value = resolvedToolId;
         }
     }
 
     function requestToolSelection(toolId) {
-        requestedToolOverrideId = toolId || "";
+        requestedToolOverrideId = resolveToolSelection(toolId);
         dropdown?.dispatchEvent(new Event("change"));
     }
 
@@ -1129,7 +1137,7 @@ const toast = typeof window.toast === "function" ? window.toast : (msg => consol
     const wfSearchHost = enableClientPlanSearch ? document.getElementById("wfClientSearchHost") : null;
 
     dropdown.addEventListener("change", async function () {
-        const selectedToolId = requestedToolOverrideId || this.value;
+        const selectedToolId = resolveToolSelection(requestedToolOverrideId || this.value);
         requestedToolOverrideId = "";
         this.blur();
         if (!selectedToolId) return;
