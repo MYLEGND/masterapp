@@ -422,6 +422,28 @@
         }
     }
 
+    function buildGrowthPlanSourcePhrase(config) {
+        const segments = [];
+
+        if (config.startingBalance > 0) {
+            segments.push(`a ${formatCurrency(config.startingBalance)} starting balance`);
+        }
+
+        if (config.contributionAmount > 0) {
+            let contributionText = `saving ${contributionCadenceSavingsPhrase(config.contributionCadence, formatCurrency(config.contributionAmount))}`;
+            if (config.annualContributionIncrease > 0) {
+                contributionText += ` with a ${formatPercent(config.annualContributionIncrease)} annual step-up`;
+            }
+            segments.push(contributionText);
+        }
+
+        if (segments.length === 0) {
+            return "the values entered so far";
+        }
+
+        return segments.join(" + ");
+    }
+
     function optionalNonNegative(value) {
         return isBlankValue(value) ? "" : nonNegative(value);
     }
@@ -1168,12 +1190,18 @@
                                 <div class="wfd-mini-note">Watch how time, discipline, and yield stack on top of each other.</div>
                                 <div class="wfd-audit-table-wrap">
                                     <table class="wfd-audit-table">
+                                        <colgroup>
+                                            <col class="wfd-audit-col wfd-audit-col--horizon" />
+                                            <col class="wfd-audit-col wfd-audit-col--projected" />
+                                            <col class="wfd-audit-col wfd-audit-col--saved" />
+                                            <col class="wfd-audit-col wfd-audit-col--interest" />
+                                        </colgroup>
                                         <thead class="wfd-audit-head">
                                             <tr>
-                                                <th class="wfd-audit-cell">Horizon</th>
-                                                <th class="wfd-audit-cell">Projected Value</th>
-                                                <th class="wfd-audit-cell">Saved</th>
-                                                <th class="wfd-audit-cell">Interest</th>
+                                                <th scope="col" class="wfd-audit-cell wfd-tone-muted">Horizon</th>
+                                                <th scope="col" class="wfd-audit-cell wfd-tone-gold">Projected Value</th>
+                                                <th scope="col" class="wfd-audit-cell wfd-tone-blue">Saved</th>
+                                                <th scope="col" class="wfd-audit-cell wfd-tone-green">Interest</th>
                                             </tr>
                                         </thead>
                                         <tbody data-llbs-compound-milestones></tbody>
@@ -1720,20 +1748,13 @@
             const annualizedContribution = projectionConfig.contributionAmount > 0
                 ? projectionConfig.contributionAmount * projectionConfig.periodsPerYear
                 : 0;
-            const unitProjection = projectionConfig.contributionAmount > 0 && projectionConfig.years > 0
-                ? simulateCompoundProjection(buildCompoundScenarioState(projectionConfig, {
-                    startingBalance: 0,
-                    contributionAmount: 1,
-                    annualContributionIncrease: 0,
-                    inflationRate: 0
-                }))
-                : null;
             const hasProjection = !!projection;
             const effectiveAnnualYield = projectionConfig.effectiveAnnualYield;
             const hasExplicitYears = !projectionConfig.assumptions.usedDefaultYears;
             const horizonLabel = hasExplicitYears
                 ? (projectionConfig.years > 0 ? formatYearsCompact(projectionConfig.years) : "0 yrs")
                 : "--";
+            const planSourcePhrase = buildGrowthPlanSourcePhrase(projectionConfig);
             const assumptionNotes = [];
 
             if (compoundContributionLabelEl) {
@@ -1823,9 +1844,7 @@
                         : "No recurring savings amount is entered yet, so the projection is currently showing starting-balance growth only."}</div>
                     <div class="wfd-mini-note">${formatCurrency(projectionConfig.startingBalance)} starts at ${formatPercent(projectionConfig.apr)} APR with ${compoundingLabel.toLowerCase()} compounding for ${projectionConfig.years > 0 ? formatYearsCompact(projectionConfig.years) : "0 yrs"}. Deposits are applied at the ${projectionConfig.contributionTiming === "beginning" ? "beginning" : "end"} of each ${resolvedCadenceLabel} period${projectionConfig.annualContributionIncrease > 0 ? `, and contributions step up ${formatPercent(projectionConfig.annualContributionIncrease)} each year` : ""}.</div>
                     ${assumptionNotes.map((note) => `<div class="wfd-mini-note">${note}</div>`).join("")}
-                    <div class="wfd-mini-note">${projectionConfig.contributionAmount > 0 && unitProjection
-                        ? `Reality check: saving ${contributionCadenceSavingsPhrase(projectionConfig.contributionCadence, formatCurrency(1))} grows to approximately ${formatCurrency(unitProjection.futureValue)} over ${projectionConfig.years > 0 ? formatYearsCompact(projectionConfig.years) : "0 yrs"} at the current settings.`
-                        : `Current projection reflects ${formatCurrency(projection.futureValue)} from the values entered so far.`}</div>
+                    <div class="wfd-mini-note">Reality check: ${formatCurrency(projection.futureValue)} comes from ${planSourcePhrase} over ${projectionConfig.years > 0 ? formatYearsCompact(projectionConfig.years) : "0 yrs"} at the current settings.</div>
                 `;
             }
 
@@ -1844,9 +1863,7 @@
                 realValueNote: projectionConfig.inflationRate === 0
                     ? "No inflation adjustment applied."
                     : `Inflation-adjusted at ${formatPercent(projectionConfig.inflationRate)}.`,
-                unitGrowth: projectionConfig.contributionAmount > 0 && unitProjection
-                    ? `${formatCurrency(unitProjection.futureValue)} from saving ${contributionCadenceSavingsPhrase(projectionConfig.contributionCadence, formatCurrency(1))}`
-                    : "--",
+                unitGrowth: `${formatCurrency(projection.futureValue)} from ${planSourcePhrase}`,
                 totalDeposited: formatCurrency(projection.totalDeposited),
                 yearsHorizon: horizonLabel
             };
@@ -1876,8 +1893,8 @@
                     return `
                         <tr>
                             <td class="wfd-audit-cell wfd-tone-muted">${formatYearsCompact(years)}</td>
-                            <td class="wfd-audit-cell wfd-tone-white">${formatCurrency(point.futureValue)}</td>
-                            <td class="wfd-audit-cell wfd-tone-gold">${formatCurrency(point.totalDeposited)}</td>
+                            <td class="wfd-audit-cell wfd-tone-gold">${formatCurrency(point.futureValue)}</td>
+                            <td class="wfd-audit-cell wfd-tone-blue">${formatCurrency(point.totalDeposited)}</td>
                             <td class="wfd-audit-cell wfd-tone-green">${formatCurrency(point.interestEarned)}</td>
                         </tr>
                     `;
