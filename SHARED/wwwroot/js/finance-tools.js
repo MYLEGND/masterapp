@@ -452,6 +452,14 @@ document.addEventListener("DOMContentLoaded", async function () {
     }
 
     function normalizePersistedState(key, value) {
+        if (key === DEFAULT_TOOL_ID) {
+            try {
+                return window.LegendLivingBalanceSheetTool?.calculate?.(value ?? {}) ?? (value ?? {});
+            } catch (_) {
+                return value ?? {};
+            }
+        }
+
         if (key !== "ActionTracker") return value ?? {};
 
         if (Array.isArray(value)) {

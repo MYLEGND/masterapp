@@ -1066,7 +1066,7 @@
         return `
             <div class="finance-support-overlay finance-support-overlay--dense" data-llbs-compound-overlay hidden>
                 <div class="finance-support-backdrop" data-llbs-compound-close></div>
-                <section class="finance-support-modal finance-support-modal--dense networth-tool legend-finance-tool-card legend-finance-tool-card--xl el-shell"
+                <section class="finance-support-modal finance-support-modal--dense networth-tool legend-finance-tool-card legend-finance-tool-card--xl el-shell lgc-shell"
                          id="llbsGrowthCalculatorModal"
                          role="dialog"
                          aria-modal="true"
@@ -1083,131 +1083,131 @@
                     </div>
                     <div class="finance-support-grid finance-support-grid--tool">
                         <section class="finance-support-stack" aria-label="Growth calculator inputs">
-                            <div class="wfd-sec">
-                                <h4 class="wfd-sec-title">Capital Base</h4>
-                                <div class="wfd-row">
-                                    <div class="wfd-half">
-                                        <label class="wfd-lbl">Starting Balance</label>
+                            <div class="lgc-section">
+                                <h4 class="lgc-section-title">Capital Base</h4>
+                                <div class="lgc-grid">
+                                    <div class="lgc-half">
+                                        <label class="lgc-label">Starting Balance</label>
                                         <input type="number" min="0" step="0.01" class="form-control" data-llbs-compound-field="startingBalance" inputmode="decimal" autocomplete="off" />
                                     </div>
-                                    <div class="wfd-half">
-                                        <label class="wfd-lbl" data-llbs-compound-contribution-label>Save Each Period</label>
+                                    <div class="lgc-half">
+                                        <label class="lgc-label" data-llbs-compound-contribution-label>Save Each Period</label>
                                         <input type="number" min="0" step="0.01" class="form-control" data-llbs-compound-field="contributionAmount" inputmode="decimal" autocomplete="off" />
-                                        <div class="wfd-inline-note" data-llbs-compound-contribution-note>Enter an amount to see the pace of the habit.</div>
+                                        <div class="lgc-inline-note" data-llbs-compound-contribution-note>Enter an amount to see the pace of the habit.</div>
                                     </div>
                                 </div>
                             </div>
-                            <div class="wfd-sec">
-                                <h4 class="wfd-sec-title">Contribution Rhythm</h4>
-                                <div class="wfd-row">
-                                    <div class="wfd-half">
-                                        <label class="wfd-lbl">Savings Cadence</label>
+                            <div class="lgc-section">
+                                <h4 class="lgc-section-title">Contribution Rhythm</h4>
+                                <div class="lgc-grid">
+                                    <div class="lgc-half">
+                                        <label class="lgc-label">Savings Cadence</label>
                                         <div class="finance-select-wrap">
                                             <select class="form-select" data-llbs-compound-field="contributionCadence">
                                                 ${renderOptionList(COMPOUND_CONTRIBUTION_CADENCES)}
                                             </select>
                                         </div>
                                     </div>
-                                    <div class="wfd-half">
-                                        <label class="wfd-lbl">Contribution Timing</label>
+                                    <div class="lgc-half">
+                                        <label class="lgc-label">Contribution Timing</label>
                                         <div class="finance-select-wrap">
                                             <select class="form-select" data-llbs-compound-field="contributionTiming">
                                                 ${renderOptionList(COMPOUND_TIMINGS)}
                                             </select>
                                         </div>
                                     </div>
-                                    <div class="wfd-half">
-                                        <label class="wfd-lbl">Years</label>
+                                    <div class="lgc-half">
+                                        <label class="lgc-label">Years</label>
                                         <input type="number" min="0" step="0.25" class="form-control" data-llbs-compound-field="years" inputmode="decimal" autocomplete="off" />
                                     </div>
-                                    <div class="wfd-half">
-                                        <label class="wfd-lbl">Annual Step-Up %</label>
+                                    <div class="lgc-half">
+                                        <label class="lgc-label">Annual Step-Up %</label>
                                         <input type="number" min="0" step="0.01" class="form-control" data-llbs-compound-field="annualContributionIncrease" data-kind="percent" inputmode="decimal" autocomplete="off" />
                                     </div>
                                 </div>
                             </div>
-                            <div class="wfd-sec">
-                                <h4 class="wfd-sec-title">Growth Assumptions</h4>
-                                <div class="wfd-row">
-                                    <div class="wfd-half">
-                                        <label class="wfd-lbl">APR %</label>
+                            <div class="lgc-section">
+                                <h4 class="lgc-section-title">Growth Assumptions</h4>
+                                <div class="lgc-grid">
+                                    <div class="lgc-half">
+                                        <label class="lgc-label">APR %</label>
                                         <input type="number" min="0" step="0.01" class="form-control" data-llbs-compound-field="apr" data-kind="percent" inputmode="decimal" autocomplete="off" />
                                     </div>
-                                    <div class="wfd-half">
-                                        <label class="wfd-lbl">Compounding</label>
+                                    <div class="lgc-half">
+                                        <label class="lgc-label">Compounding</label>
                                         <div class="finance-select-wrap">
                                             <select class="form-select" data-llbs-compound-field="compoundingCadence">
                                                 ${renderOptionList(COMPOUNDING_CADENCES)}
                                             </select>
                                         </div>
                                     </div>
-                                    <div class="wfd-col">
-                                        <label class="wfd-lbl">Inflation %</label>
+                                    <div class="lgc-col">
+                                        <label class="lgc-label">Inflation %</label>
                                         <input type="number" min="0" step="0.01" class="form-control" data-llbs-compound-field="inflationRate" data-kind="percent" inputmode="decimal" autocomplete="off" />
                                     </div>
                                 </div>
                             </div>
-                            <div class="wfd-sec wfd-sec--note" data-llbs-compound-note></div>
+                            <div class="lgc-section lgc-section--note" data-llbs-compound-note></div>
                         </section>
                         <section class="finance-support-stack" aria-label="Growth calculator results">
-                            <div class="wfd-res-grid wfd-res-grid--quad">
-                                <article class="wfd-res-card">
-                                    <p class="wfd-res-lbl">Projected Value</p>
-                                    <p class="wfd-res-val gold" data-llbs-compound-output="futureValue">--</p>
-                                    <div class="wfd-mini-note" data-llbs-compound-output="projectionNote">Enter inputs to project growth.</div>
+                            <div class="lgc-results lgc-results--quad">
+                                <article class="lgc-metric-card">
+                                    <p class="lgc-metric-label">Projected Value</p>
+                                    <p class="lgc-metric-value lgc-metric-value--gold" data-llbs-compound-output="futureValue">--</p>
+                                    <div class="lgc-note" data-llbs-compound-output="projectionNote">Enter inputs to project growth.</div>
                                 </article>
-                                <article class="wfd-res-card">
-                                    <p class="wfd-res-lbl">New Contributions</p>
-                                    <p class="wfd-res-val blue" data-llbs-compound-output="contributionTotal">--</p>
-                                    <div class="wfd-mini-note" data-llbs-compound-output="annualizedContribution">Choose amount and cadence.</div>
+                                <article class="lgc-metric-card">
+                                    <p class="lgc-metric-label">New Contributions</p>
+                                    <p class="lgc-metric-value lgc-metric-value--blue" data-llbs-compound-output="contributionTotal">--</p>
+                                    <div class="lgc-note" data-llbs-compound-output="annualizedContribution">Choose amount and cadence.</div>
                                 </article>
-                                <article class="wfd-res-card">
-                                    <p class="wfd-res-lbl">Interest Earned</p>
-                                    <p class="wfd-res-val green" data-llbs-compound-output="interestEarned">--</p>
-                                    <div class="wfd-mini-note" data-llbs-compound-output="effectiveAnnualYield">Choose APR and compounding.</div>
+                                <article class="lgc-metric-card">
+                                    <p class="lgc-metric-label">Interest Earned</p>
+                                    <p class="lgc-metric-value lgc-metric-value--green" data-llbs-compound-output="interestEarned">--</p>
+                                    <div class="lgc-note" data-llbs-compound-output="effectiveAnnualYield">Choose APR and compounding.</div>
                                 </article>
-                                <article class="wfd-res-card">
-                                    <p class="wfd-res-lbl">Real Purchasing Power</p>
-                                    <p class="wfd-res-val orange" data-llbs-compound-output="realValue">--</p>
-                                    <div class="wfd-mini-note" data-llbs-compound-output="realValueNote">Inflation-adjusted when provided.</div>
-                                </article>
-                            </div>
-                            <div class="wfd-summary wfd-summary--triple">
-                                <article class="wfd-sum-card">
-                                    <p class="wfd-sum-label">Power Per Habit</p>
-                                    <div class="wfd-inline-note" data-llbs-compound-output="unitGrowth">--</div>
-                                </article>
-                                <article class="wfd-sum-card">
-                                    <p class="wfd-sum-label">Total Deposited</p>
-                                    <p class="wfd-sum-value" data-llbs-compound-output="totalDeposited">--</p>
-                                </article>
-                                <article class="wfd-sum-card">
-                                    <p class="wfd-sum-label">Runway</p>
-                                    <p class="wfd-sum-value" data-llbs-compound-output="yearsHorizon">--</p>
+                                <article class="lgc-metric-card">
+                                    <p class="lgc-metric-label">Real Purchasing Power</p>
+                                    <p class="lgc-metric-value lgc-metric-value--orange" data-llbs-compound-output="realValue">--</p>
+                                    <div class="lgc-note" data-llbs-compound-output="realValueNote">Inflation-adjusted when provided.</div>
                                 </article>
                             </div>
-                            <div class="wfd-sec">
-                                <h4 class="wfd-sec-title">Scenario Stretch</h4>
-                                <div class="wfd-mini-note">Show the lift from a better savings, rate, or time move.</div>
-                                <div class="wfd-res-grid wfd-res-grid--triple" data-llbs-compound-compare></div>
+                            <div class="lgc-summary lgc-summary--triple">
+                                <article class="lgc-summary-card">
+                                    <p class="lgc-summary-label">Power Per Habit</p>
+                                    <div class="lgc-inline-note" data-llbs-compound-output="unitGrowth">--</div>
+                                </article>
+                                <article class="lgc-summary-card">
+                                    <p class="lgc-summary-label">Total Deposited</p>
+                                    <p class="lgc-summary-value" data-llbs-compound-output="totalDeposited">--</p>
+                                </article>
+                                <article class="lgc-summary-card">
+                                    <p class="lgc-summary-label">Runway</p>
+                                    <p class="lgc-summary-value" data-llbs-compound-output="yearsHorizon">--</p>
+                                </article>
                             </div>
-                            <div class="wfd-sec">
-                                <h4 class="wfd-sec-title">Growth Checkpoints</h4>
-                                <div class="wfd-mini-note">Watch how time, discipline, and yield stack on top of each other.</div>
-                                <div class="wfd-audit-table-wrap">
-                                    <table class="wfd-audit-table">
+                            <div class="lgc-section">
+                                <h4 class="lgc-section-title">Scenario Stretch</h4>
+                                <div class="lgc-note">Show the lift from a better savings, rate, or time move.</div>
+                                <div class="lgc-results lgc-results--triple" data-llbs-compound-compare></div>
+                            </div>
+                            <div class="lgc-section">
+                                <h4 class="lgc-section-title">Growth Checkpoints</h4>
+                                <div class="lgc-note">Watch how time, discipline, and yield stack on top of each other.</div>
+                                <div class="lgc-audit-wrap">
+                                    <table class="lgc-audit-table">
                                         <colgroup>
-                                            <col class="wfd-audit-col wfd-audit-col--horizon" />
-                                            <col class="wfd-audit-col wfd-audit-col--projected" />
-                                            <col class="wfd-audit-col wfd-audit-col--saved" />
-                                            <col class="wfd-audit-col wfd-audit-col--interest" />
+                                            <col class="lgc-audit-col lgc-audit-col--horizon" />
+                                            <col class="lgc-audit-col lgc-audit-col--projected" />
+                                            <col class="lgc-audit-col lgc-audit-col--saved" />
+                                            <col class="lgc-audit-col lgc-audit-col--interest" />
                                         </colgroup>
-                                        <thead class="wfd-audit-head">
+                                        <thead class="lgc-audit-head">
                                             <tr>
-                                                <th scope="col" class="wfd-audit-cell wfd-tone-muted">Horizon</th>
-                                                <th scope="col" class="wfd-audit-cell wfd-tone-gold">Projected Value</th>
-                                                <th scope="col" class="wfd-audit-cell wfd-tone-blue">Saved</th>
-                                                <th scope="col" class="wfd-audit-cell wfd-tone-green">Interest</th>
+                                                <th scope="col" class="lgc-audit-cell lgc-tone-muted">Horizon</th>
+                                                <th scope="col" class="lgc-audit-cell lgc-tone-gold">Projected Value</th>
+                                                <th scope="col" class="lgc-audit-cell lgc-tone-blue">Saved</th>
+                                                <th scope="col" class="lgc-audit-cell lgc-tone-green">Interest</th>
                                             </tr>
                                         </thead>
                                         <tbody data-llbs-compound-milestones></tbody>
@@ -1746,11 +1746,11 @@
                 if (!scenario.projection) return "";
                 const uplift = scenario.projection.futureValue - projection.futureValue;
                 return `
-                    <article class="wfd-res-card">
-                        <p class="wfd-res-lbl">${scenario.label}</p>
-                        <p class="wfd-res-val gold">${formatCurrency(scenario.projection.futureValue)}</p>
-                        <div class="wfd-mini-note">${scenario.detail}</div>
-                        <div class="${uplift >= 0 ? "wfd-return-pos" : "wfd-return-neg"}">
+                    <article class="lgc-metric-card">
+                        <p class="lgc-metric-label">${scenario.label}</p>
+                        <p class="lgc-metric-value lgc-metric-value--gold">${formatCurrency(scenario.projection.futureValue)}</p>
+                        <div class="lgc-note">${scenario.detail}</div>
+                        <div class="${uplift >= 0 ? "lgc-delta lgc-delta--positive" : "lgc-delta lgc-delta--negative"}">
                             ${uplift >= 0 ? "+" : "-"}${formatCurrency(Math.abs(uplift))} vs base
                         </div>
                     </article>
@@ -1805,8 +1805,8 @@
             if (!hasProjection) {
                 if (compoundNoteEl) {
                     compoundNoteEl.innerHTML = `
-                        <h4 class="wfd-sec-title">Enter Inputs</h4>
-                        <div class="wfd-mini-note">Enter a starting balance and/or recurring savings to start the projection. The rest of the assumptions will layer in live as you answer them.</div>
+                        <h4 class="lgc-section-title">Enter Inputs</h4>
+                        <div class="lgc-note">Enter a starting balance and/or recurring savings to start the projection. The rest of the assumptions will layer in live as you answer them.</div>
                     `;
                 }
 
@@ -1840,7 +1840,7 @@
                 if (compoundMilestonesEl) {
                     compoundMilestonesEl.innerHTML = `
                         <tr>
-                            <td colspan="4" class="wfd-audit-empty wfd-tone-muted">Enter a starting balance or savings amount, plus cadence, timing, APR, compounding, and years to see checkpoints.</td>
+                            <td colspan="4" class="lgc-audit-empty lgc-tone-muted">Enter a starting balance or savings amount, plus cadence, timing, APR, compounding, and years to see checkpoints.</td>
                         </tr>
                     `;
                 }
@@ -1865,13 +1865,13 @@
 
             if (compoundNoteEl) {
                 compoundNoteEl.innerHTML = `
-                    <h4 class="wfd-sec-title">Current Math Basis</h4>
-                    <div class="wfd-mini-note">${projectionConfig.contributionAmount > 0
+                    <h4 class="lgc-section-title">Current Math Basis</h4>
+                    <div class="lgc-note">${projectionConfig.contributionAmount > 0
                         ? `Saving ${contributionCadenceSavingsPhrase(projectionConfig.contributionCadence, formatCurrency(projectionConfig.contributionAmount))} means ${formatCurrency(projection.annualizedContribution)} contributed in year 1.`
                         : "No recurring savings amount is entered yet, so the projection is currently showing starting-balance growth only."}</div>
-                    <div class="wfd-mini-note">${formatCurrency(projectionConfig.startingBalance)} starts at ${formatPercent(projectionConfig.apr)} APR with ${compoundingLabel.toLowerCase()} compounding for ${projectionConfig.years > 0 ? formatYearsCompact(projectionConfig.years) : "0 yrs"}. Deposits are applied at the ${projectionConfig.contributionTiming === "beginning" ? "beginning" : "end"} of each ${resolvedCadenceLabel} period${projectionConfig.annualContributionIncrease > 0 ? `, and contributions step up ${formatPercent(projectionConfig.annualContributionIncrease)} each year` : ""}.</div>
-                    ${assumptionNotes.map((note) => `<div class="wfd-mini-note">${note}</div>`).join("")}
-                    <div class="wfd-mini-note">Reality check: ${formatCurrency(projection.futureValue)} comes from ${planSourcePhrase} over ${projectionConfig.years > 0 ? formatYearsCompact(projectionConfig.years) : "0 yrs"} at the current settings.</div>
+                    <div class="lgc-note">${formatCurrency(projectionConfig.startingBalance)} starts at ${formatPercent(projectionConfig.apr)} APR with ${compoundingLabel.toLowerCase()} compounding for ${projectionConfig.years > 0 ? formatYearsCompact(projectionConfig.years) : "0 yrs"}. Deposits are applied at the ${projectionConfig.contributionTiming === "beginning" ? "beginning" : "end"} of each ${resolvedCadenceLabel} period${projectionConfig.annualContributionIncrease > 0 ? `, and contributions step up ${formatPercent(projectionConfig.annualContributionIncrease)} each year` : ""}.</div>
+                    ${assumptionNotes.map((note) => `<div class="lgc-note">${note}</div>`).join("")}
+                    <div class="lgc-note">Reality check: ${formatCurrency(projection.futureValue)} comes from ${planSourcePhrase} over ${projectionConfig.years > 0 ? formatYearsCompact(projectionConfig.years) : "0 yrs"} at the current settings.</div>
                 `;
             }
 
@@ -1910,7 +1910,7 @@
                 if (!hasExplicitYears) {
                     compoundMilestonesEl.innerHTML = `
                         <tr>
-                            <td colspan="4" class="wfd-audit-empty wfd-tone-muted">Enter years to see growth checkpoints.</td>
+                            <td colspan="4" class="lgc-audit-empty lgc-tone-muted">Enter years to see growth checkpoints.</td>
                         </tr>
                     `;
                     return;
@@ -1919,10 +1919,10 @@
                     const point = simulateCompoundProjection(labState, years);
                     return `
                         <tr>
-                            <td class="wfd-audit-cell wfd-tone-muted">${formatYearsCompact(years)}</td>
-                            <td class="wfd-audit-cell wfd-tone-gold">${formatCurrency(point.futureValue)}</td>
-                            <td class="wfd-audit-cell wfd-tone-blue">${formatCurrency(point.totalDeposited)}</td>
-                            <td class="wfd-audit-cell wfd-tone-green">${formatCurrency(point.interestEarned)}</td>
+                            <td class="lgc-audit-cell lgc-tone-muted">${formatYearsCompact(years)}</td>
+                            <td class="lgc-audit-cell lgc-tone-gold">${formatCurrency(point.futureValue)}</td>
+                            <td class="lgc-audit-cell lgc-tone-blue">${formatCurrency(point.totalDeposited)}</td>
+                            <td class="lgc-audit-cell lgc-tone-green">${formatCurrency(point.interestEarned)}</td>
                         </tr>
                     `;
                 }).join("");

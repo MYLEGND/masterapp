@@ -1,4 +1,3 @@
-using System.Text.Json.Serialization;
 using System.Text.Json.Nodes;
 
 namespace Shared.Finance;
@@ -14,6 +13,20 @@ public static class LegendProtectionStatuses
     public const string Exposed = "Exposed";
     public const string Partial = "Partial";
     public const string Protected = "Protected";
+}
+
+public static class LegendEstatePlanStatuses
+{
+    public const string NotSetUp = "NotSetUp";
+    public const string BasicWill = "BasicWill";
+    public const string FullEstatePlan = "FullEstatePlan";
+}
+
+public static class LegendEstateRiskLevels
+{
+    public const string High = "High";
+    public const string Moderate = "Moderate";
+    public const string Low = "Low";
 }
 
 public sealed class LegendLivingBalanceSheetState
@@ -77,7 +90,7 @@ public sealed class LegendBalanceSheetProtection
 {
     public LegendDualProtectionItem IfSued { get; set; } = new();
     public LegendDualProtectionItem IfSick { get; set; } = new();
-    public LegendProtectionItem WillsTrusts { get; set; } = LegendProtectionItem.Exposed();
+    public LegendEstatePlanningItem WillsTrusts { get; set; } = LegendEstatePlanningItem.NotSetUp();
     public LegendDualProtectionItem IfDie { get; set; } = new();
 }
 
@@ -103,12 +116,25 @@ public sealed class LegendProtectionItem
     };
 }
 
+public sealed class LegendEstatePlanningItem
+{
+    public string Status { get; set; } = LegendEstatePlanStatuses.NotSetUp;
+    public string RiskLevel { get; set; } = LegendEstateRiskLevels.High;
+
+    public static LegendEstatePlanningItem NotSetUp() => new()
+    {
+        Status = LegendEstatePlanStatuses.NotSetUp,
+        RiskLevel = LegendEstateRiskLevels.High
+    };
+}
+
 public sealed class LegendBalanceSheetSummary
 {
     public decimal AssetsTotal { get; set; }
     public decimal LiabilitiesTotal { get; set; }
     public decimal NetWorth { get; set; }
     public decimal Taxes { get; set; }
+    public decimal TaxDrag { get; set; }
     public decimal DebtsAndTaxCosts { get; set; }
     public decimal LifestyleRemaining { get; set; }
     public decimal ProtectionCoverageTotal { get; set; }
@@ -116,4 +142,23 @@ public sealed class LegendBalanceSheetSummary
     public int ProtectedCount { get; set; }
     public int PartialCount { get; set; }
     public int ExposedCount { get; set; }
+    public decimal CashFlowLeakage { get; set; }
+    public decimal DebtPressureRatio { get; set; }
+    public string EstatePlanningStatus { get; set; } = LegendEstatePlanStatuses.NotSetUp;
+    public string EstatePlanningRiskLevel { get; set; } = LegendEstateRiskLevels.High;
+    public string PositionStatus { get; set; } = LegendProtectionStatuses.Exposed;
+    public string PositionSummary { get; set; } = string.Empty;
+    public string PositionStatement { get; set; } = string.Empty;
+    public string TaxBurdenStatement { get; set; } = string.Empty;
+    public int HealthScore { get; set; }
+    public LegendBalanceSheetSectionCompletion SectionCompletion { get; set; } = new();
+}
+
+public sealed class LegendBalanceSheetSectionCompletion
+{
+    public bool Protection { get; set; }
+    public bool Assets { get; set; }
+    public bool Liabilities { get; set; }
+    public bool Cash { get; set; }
+    public bool Tax { get; set; }
 }
