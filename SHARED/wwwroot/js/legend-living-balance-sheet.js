@@ -857,6 +857,7 @@
         const primaryLabel = cardOpts.primaryLabel || "You";
         const spouseLabel = cardOpts.spouseLabel || "Spouse";
         const hideSpouseToggle = cardOpts.hideSpouseToggle === true;
+        const hasSpouse = !hideSpouseToggle;
 
         const personFields = (person) => `
             <div data-llbs-person-fields="${person}">
@@ -887,7 +888,7 @@
         `;
 
         return `
-            <article class="llbs-protection-card" data-active-person="primary" data-card-path="${path}">
+            <article class="llbs-protection-card" data-active-person="primary" data-card-path="${path}" data-has-spouse="${hasSpouse ? "true" : "false"}">
                 <div class="llbs-protection-card-title">${title}</div>
                 ${toggle}
                 ${personFields("primary")}
@@ -1204,10 +1205,10 @@
                                         </colgroup>
                                         <thead class="lgc-audit-head">
                                             <tr>
-                                                <th scope="col" class="lgc-audit-cell lgc-tone-muted">Horizon</th>
-                                                <th scope="col" class="lgc-audit-cell lgc-tone-gold">Projected Value</th>
-                                                <th scope="col" class="lgc-audit-cell lgc-tone-blue">Saved</th>
-                                                <th scope="col" class="lgc-audit-cell lgc-tone-green">Interest</th>
+                                                <th scope="col" class="lgc-audit-cell lgc-audit-cell--horizon">Horizon</th>
+                                                <th scope="col" class="lgc-audit-cell lgc-audit-cell--projected">Projected Value</th>
+                                                <th scope="col" class="lgc-audit-cell lgc-audit-cell--saved">Saved</th>
+                                                <th scope="col" class="lgc-audit-cell lgc-audit-cell--interest">Interest</th>
                                             </tr>
                                         </thead>
                                         <tbody data-llbs-compound-milestones></tbody>
@@ -1449,7 +1450,9 @@
         root.querySelectorAll("article[data-card-path]").forEach(card => {
             const basePath = card.dataset.cardPath;
             if (!basePath) return;
-            const activePerson = getPath(state, `${basePath}.activePerson`) || "primary";
+            const hasSpouse = card.dataset.hasSpouse === "true";
+            const savedActivePerson = getPath(state, `${basePath}.activePerson`) || "primary";
+            const activePerson = hasSpouse && savedActivePerson === "spouse" ? "spouse" : "primary";
             card.dataset.activePerson = activePerson;
             card.querySelectorAll("[data-llbs-person-toggle]").forEach(btn => {
                 const isActive = btn.dataset.person === activePerson;
@@ -1840,7 +1843,7 @@
                 if (compoundMilestonesEl) {
                     compoundMilestonesEl.innerHTML = `
                         <tr>
-                            <td colspan="4" class="lgc-audit-empty lgc-tone-muted">Enter a starting balance or savings amount, plus cadence, timing, APR, compounding, and years to see checkpoints.</td>
+                            <td colspan="4" class="lgc-audit-empty">Enter a starting balance or savings amount, plus cadence, timing, APR, compounding, and years to see checkpoints.</td>
                         </tr>
                     `;
                 }
@@ -1910,7 +1913,7 @@
                 if (!hasExplicitYears) {
                     compoundMilestonesEl.innerHTML = `
                         <tr>
-                            <td colspan="4" class="lgc-audit-empty lgc-tone-muted">Enter years to see growth checkpoints.</td>
+                            <td colspan="4" class="lgc-audit-empty">Enter years to see growth checkpoints.</td>
                         </tr>
                     `;
                     return;
@@ -1919,10 +1922,10 @@
                     const point = simulateCompoundProjection(labState, years);
                     return `
                         <tr>
-                            <td class="lgc-audit-cell lgc-tone-muted">${formatYearsCompact(years)}</td>
-                            <td class="lgc-audit-cell lgc-tone-gold">${formatCurrency(point.futureValue)}</td>
-                            <td class="lgc-audit-cell lgc-tone-blue">${formatCurrency(point.totalDeposited)}</td>
-                            <td class="lgc-audit-cell lgc-tone-green">${formatCurrency(point.interestEarned)}</td>
+                            <td class="lgc-audit-cell lgc-audit-cell--horizon">${formatYearsCompact(years)}</td>
+                            <td class="lgc-audit-cell lgc-audit-cell--projected">${formatCurrency(point.futureValue)}</td>
+                            <td class="lgc-audit-cell lgc-audit-cell--saved">${formatCurrency(point.totalDeposited)}</td>
+                            <td class="lgc-audit-cell lgc-audit-cell--interest">${formatCurrency(point.interestEarned)}</td>
                         </tr>
                     `;
                 }).join("");

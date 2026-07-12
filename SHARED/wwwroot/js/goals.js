@@ -19,33 +19,17 @@ document.addEventListener("DOMContentLoaded", function () {
 
     // Build main structure
     container.innerHTML = `
-        <h3 style="color:#000000; font-weight:900; font-size:1.8rem; margin-bottom:15px; text-align:center;">Goals</h3>
-        <p style="font-style:italic; color:#555; margin-bottom:15px; text-align:center;">Track your goals & habits to hit them.</p>
+        <div class="finance-support-panel-head">
+            <h3 class="finance-support-panel-title">Goals</h3>
+            <p class="finance-support-panel-subtitle">Track your goals & habits to hit them.</p>
+        </div>
 
-        <div id="actionContainer" class="d-flex flex-column gap-2" style="flex:1; overflow-y:auto; padding-right:4px;"></div>
+        <div id="actionContainer" class="finance-support-list d-flex flex-column gap-2"></div>
 
-        <div id="actionControls" class="d-flex justify-content-center gap-2 mt-3">
-            <button id="atAddAction" class="btn" style="
-                border:1px solid #b28f35; 
-                color:#b28f35; 
-                font-weight:700; 
-                padding:6px 14px; 
-                border-radius:8px; 
-                cursor:pointer;
-                transition: all 0.2s ease;
-                background:linear-gradient(135deg,#fff8e6,#f9f0d9);
-            ">+ Add Goal</button>
+        <div id="actionControls" class="finance-support-controls d-flex justify-content-center gap-2 mt-3">
+            <button id="atAddAction" class="btn finance-support-action-btn">+ Add Goal</button>
 
-            <button id="atDelAction" class="btn" style="
-                border:1px solid #b28f35; 
-                color:#b28f35; 
-                font-weight:700; 
-                padding:6px 14px; 
-                border-radius:8px; 
-                cursor:pointer;
-                transition: all 0.2s ease;
-                background:linear-gradient(135deg,#fff8e6,#f9f0d9);
-            ">- Delete Last</button>
+            <button id="atDelAction" class="btn finance-support-action-btn">- Delete Last</button>
         </div>
     `;
 
@@ -109,27 +93,11 @@ document.addEventListener("DOMContentLoaded", function () {
     // Create a single goal row
     const createGoalRow = (index, nameVal = '', doneVal = false) => {
         const row = document.createElement('div');
-        row.className = 'action-row d-flex align-items-center gap-2';
-        row.style.cssText = `
-            padding:10px; 
-            border-radius:10px; 
-            border:1px solid #d6c48a; 
-            background:linear-gradient(135deg,#fffdf2,#f8f2e3);
-            box-shadow: 0 2px 6px rgba(0,0,0,0.08);
-            transition: all 0.2s ease;
-        `;
-
-        // Hover effect
-        row.onmouseover = () => row.style.boxShadow = '0 4px 12px rgba(0,0,0,0.15)';
-        row.onmouseout = () => row.style.boxShadow = '0 2px 6px rgba(0,0,0,0.08)';
+        row.className = 'action-row finance-goal-row d-flex align-items-center gap-2';
 
         // Goal Name Input
         const nameInput = document.createElement('input');
-        nameInput.className = 'form-control action-name';
-        nameInput.style.flex = '2';
-        nameInput.style.borderRadius = '6px';
-        nameInput.style.border = '1px solid #d6c48a';
-        nameInput.style.padding = '6px 8px';
+        nameInput.className = 'form-control action-name finance-goal-input';
         nameInput.placeholder = `Goal ${index}`;
         nameInput.value = nameVal;
         nameInput.addEventListener('input', saveState);
@@ -137,26 +105,15 @@ document.addEventListener("DOMContentLoaded", function () {
         // Done Checkbox (gold when checked)
         const doneInput = document.createElement('input');
         doneInput.type = 'checkbox';
-        doneInput.className = 'action-done';
+        doneInput.className = 'action-done finance-goal-check';
         doneInput.checked = doneVal;
-        doneInput.style.width = '22px';
-        doneInput.style.height = '22px';
-        doneInput.style.accentColor = '#b28f35'; // gold check
         doneInput.addEventListener('change', saveState);
 
         // Delete button
         const delBtnRow = document.createElement('button');
         delBtnRow.textContent = '✕';
-        delBtnRow.style.cssText = `
-            border:none;
-            background:transparent;
-            color:#d6c48a;
-            font-weight:900;
-            cursor:pointer;
-            transition: color 0.2s;
-        `;
-        delBtnRow.onmouseover = () => delBtnRow.style.color = '#922c0f';
-        delBtnRow.onmouseout = () => delBtnRow.style.color = '#b28f35';
+        delBtnRow.type = 'button';
+        delBtnRow.className = 'finance-goal-delete';
         delBtnRow.onclick = () => { actionContainer.removeChild(row); saveState(); };
 
         row.append(nameInput, doneInput, delBtnRow);

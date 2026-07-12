@@ -20,9 +20,11 @@ document.addEventListener("DOMContentLoaded", function() {
 
     // Build panel
     container.innerHTML = `
-        <h3 style="color:#000000; font-weight:900; font-size:1.8rem; margin-bottom:10px; text-align:center;">Alerts</h3>
-        <p style="font-style:italic; color:#555; margin-bottom:15px; text-align:center;">Top recommendations based on your goals.</p>
-        <div id="alertsList" class="d-flex flex-column gap-2" style="flex:1; overflow-y:auto;"></div>
+        <div class="finance-support-panel-head">
+            <h3 class="finance-support-panel-title">Alerts</h3>
+            <p class="finance-support-panel-subtitle">Top recommendations based on your goals.</p>
+        </div>
+        <div id="alertsList" class="finance-support-list d-flex flex-column gap-2"></div>
     `;
 
     const alertsList = document.getElementById('alertsList');
@@ -92,17 +94,8 @@ document.addEventListener("DOMContentLoaded", function() {
         // Render alerts
         alerts.forEach(alert => {
             const div = document.createElement('div');
+            div.className = 'alert-row finance-alert-card';
             div.textContent = alert;
-            div.style.cssText = `
-                padding:10px; 
-                border-radius:10px; 
-                background:linear-gradient(135deg,#fffdf2,#f8f2e3);
-                border:1px solid #d6c48a; 
-                color:#333; 
-                font-weight:600;
-                box-shadow: 0 2px 6px rgba(0,0,0,0.08);
-                transition: all 0.2s ease;
-            `;
             alertsList.appendChild(div);
         });
     };
