@@ -409,6 +409,19 @@
         }
     }
 
+    function contributionCadenceSavingsPhrase(cadence, amountText = "") {
+        const prefix = amountText ? `${amountText} ` : "";
+        switch (cadence) {
+            case "daily": return `${prefix}per day`;
+            case "weekly": return `${prefix}per week`;
+            case "biweekly": return `${prefix}every 2 weeks`;
+            case "monthly": return `${prefix}per month`;
+            case "quarterly": return `${prefix}per quarter`;
+            case "yearly": return `${prefix}per year`;
+            default: return `${prefix}per period`;
+        }
+    }
+
     function optionalNonNegative(value) {
         return isBlankValue(value) ? "" : nonNegative(value);
     }
@@ -1021,27 +1034,27 @@
         return placeholderHtml + options.map(([value, label]) => `<option value="${value}">${label}</option>`).join("");
     }
 
-    function renderCompoundLabModal() {
+    function renderGrowthCalculatorModal() {
         return `
             <div class="finance-support-overlay finance-support-overlay--dense" data-llbs-compound-overlay hidden>
                 <div class="finance-support-backdrop" data-llbs-compound-close></div>
                 <section class="finance-support-modal finance-support-modal--dense networth-tool legend-finance-tool-card legend-finance-tool-card--xl el-shell"
-                         id="llbsCompoundLabModal"
+                         id="llbsGrowthCalculatorModal"
                          role="dialog"
                          aria-modal="true"
-                         aria-labelledby="llbsCompoundLabTitle">
+                         aria-labelledby="llbsGrowthCalculatorTitle">
                     <div class="wf-header-row">
                         <div class="wf-title-stack">
-                            <h3 class="lf-ui-060" id="llbsCompoundLabTitle">Compound Lab</h3>
+                            <h3 class="lf-ui-060" id="llbsGrowthCalculatorTitle">Growth Calculator</h3>
                             <p class="lf-ui-002">Design how steady deposits, growth rate, and time build real wealth.</p>
                         </div>
                         <div class="wf-actions">
-                            <button type="button" class="finance-clear-btn" data-llbs-compound-reset>Reset Lab</button>
-                            <button type="button" class="finance-support-close" data-llbs-compound-close aria-label="Close compound interest designer">Close</button>
+                            <button type="button" class="finance-clear-btn" data-llbs-compound-reset>Reset Calculator</button>
+                            <button type="button" class="finance-support-close" data-llbs-compound-close aria-label="Close growth calculator">Close</button>
                         </div>
                     </div>
                     <div class="finance-support-grid finance-support-grid--tool">
-                        <section class="finance-support-stack" aria-label="Compound interest inputs">
+                        <section class="finance-support-stack" aria-label="Growth calculator inputs">
                             <div class="wfd-sec">
                                 <h4 class="wfd-sec-title">Capital Base</h4>
                                 <div class="wfd-row">
@@ -1061,15 +1074,19 @@
                                 <div class="wfd-row">
                                     <div class="wfd-half">
                                         <label class="wfd-lbl">Savings Cadence</label>
-                                        <select class="form-select" data-llbs-compound-field="contributionCadence">
-                                            ${renderOptionList(COMPOUND_CONTRIBUTION_CADENCES)}
-                                        </select>
+                                        <div class="finance-select-wrap">
+                                            <select class="form-select" data-llbs-compound-field="contributionCadence">
+                                                ${renderOptionList(COMPOUND_CONTRIBUTION_CADENCES)}
+                                            </select>
+                                        </div>
                                     </div>
                                     <div class="wfd-half">
                                         <label class="wfd-lbl">Contribution Timing</label>
-                                        <select class="form-select" data-llbs-compound-field="contributionTiming">
-                                            ${renderOptionList(COMPOUND_TIMINGS)}
-                                        </select>
+                                        <div class="finance-select-wrap">
+                                            <select class="form-select" data-llbs-compound-field="contributionTiming">
+                                                ${renderOptionList(COMPOUND_TIMINGS)}
+                                            </select>
+                                        </div>
                                     </div>
                                     <div class="wfd-half">
                                         <label class="wfd-lbl">Years</label>
@@ -1090,9 +1107,11 @@
                                     </div>
                                     <div class="wfd-half">
                                         <label class="wfd-lbl">Compounding</label>
-                                        <select class="form-select" data-llbs-compound-field="compoundingCadence">
-                                            ${renderOptionList(COMPOUNDING_CADENCES)}
-                                        </select>
+                                        <div class="finance-select-wrap">
+                                            <select class="form-select" data-llbs-compound-field="compoundingCadence">
+                                                ${renderOptionList(COMPOUNDING_CADENCES)}
+                                            </select>
+                                        </div>
                                     </div>
                                     <div class="wfd-col">
                                         <label class="wfd-lbl">Inflation %</label>
@@ -1102,7 +1121,7 @@
                             </div>
                             <div class="wfd-sec wfd-sec--note" data-llbs-compound-note></div>
                         </section>
-                        <section class="finance-support-stack" aria-label="Compound interest results">
+                        <section class="finance-support-stack" aria-label="Growth calculator results">
                             <div class="wfd-res-grid wfd-res-grid--quad">
                                 <article class="wfd-res-card">
                                     <p class="wfd-res-lbl">Projected Value</p>
@@ -1180,7 +1199,7 @@
                         </div>
                         <div class="llbs-status">
                             <span class="llbs-save-state" data-llbs-save-state>Ready</span>
-                            <button type="button" class="llbs-compound-btn" data-llbs-compound-open aria-controls="llbsCompoundLabModal" aria-expanded="false">Compound Lab</button>
+                            <button type="button" class="llbs-growth-calculator-btn" data-llbs-compound-open aria-controls="llbsGrowthCalculatorModal" aria-expanded="false">Growth Calculator</button>
                             <button type="button" class="llbs-print-btn" data-llbs-print>Print</button>
                             <button type="button" class="llbs-clear" data-llbs-reset>Reset Tool</button>
                         </div>
@@ -1279,7 +1298,7 @@
                         <div class="llbs-save-error" data-llbs-error hidden></div>
                     </div>
                 </div>
-                ${renderCompoundLabModal()}
+                ${renderGrowthCalculatorModal()}
             </section>
         `;
     }
@@ -1644,11 +1663,10 @@
         }
 
         function renderCompoundComparisons(projection, config) {
-            const cadenceLabel = optionLabel(COMPOUND_CONTRIBUTION_CADENCES, config.contributionCadence, "period").toLowerCase();
             const scenarios = [
                 {
                     label: "+10% Saved",
-                    detail: `${formatCurrency(config.contributionAmount * 1.1)} each ${cadenceLabel}`,
+                    detail: `Saving ${contributionCadenceSavingsPhrase(config.contributionCadence, formatCurrency(config.contributionAmount * 1.1))}`,
                     projection: simulateCompoundProjection(buildCompoundScenarioState(config, {
                         contributionAmount: config.contributionAmount * 1.1
                     }))
@@ -1728,11 +1746,11 @@
                 } else if (projectionConfig.contributionAmount <= 0) {
                     compoundContributionNoteEl.textContent = `Enter an amount to see the ${cadenceUnitLabel.toLowerCase()} pace.`;
                 } else if (!labState.contributionCadence) {
-                    compoundContributionNoteEl.textContent = `${formatCurrency(projectionConfig.contributionAmount)} entered. Until cadence is chosen, the lab is assuming monthly savings.`;
+                    compoundContributionNoteEl.textContent = `${formatCurrency(projectionConfig.contributionAmount)} entered. Until a cadence is chosen, the calculator is assuming monthly savings.`;
                 } else if (projectionConfig.contributionCadence === "yearly") {
                     compoundContributionNoteEl.textContent = `${formatCurrency(projectionConfig.contributionAmount)} annual contribution`;
                 } else {
-                    compoundContributionNoteEl.textContent = `${formatCurrency(labState.contributionAmount)} per ${cadenceUnitLabel.toLowerCase()} = ${formatCurrency(annualizedContribution)} in year 1`;
+                    compoundContributionNoteEl.textContent = `${contributionCadenceSavingsPhrase(projectionConfig.contributionCadence, formatCurrency(labState.contributionAmount))} = ${formatCurrency(annualizedContribution)} in year 1`;
                 }
             }
 
@@ -1801,12 +1819,12 @@
                 compoundNoteEl.innerHTML = `
                     <h4 class="wfd-sec-title">Current Math Basis</h4>
                     <div class="wfd-mini-note">${projectionConfig.contributionAmount > 0
-                        ? `${formatCurrency(projectionConfig.contributionAmount)} saved each ${cadenceUnitLabel.toLowerCase()} means ${formatCurrency(projection.annualizedContribution)} contributed in year 1.`
+                        ? `Saving ${contributionCadenceSavingsPhrase(projectionConfig.contributionCadence, formatCurrency(projectionConfig.contributionAmount))} means ${formatCurrency(projection.annualizedContribution)} contributed in year 1.`
                         : "No recurring savings amount is entered yet, so the projection is currently showing starting-balance growth only."}</div>
                     <div class="wfd-mini-note">${formatCurrency(projectionConfig.startingBalance)} starts at ${formatPercent(projectionConfig.apr)} APR with ${compoundingLabel.toLowerCase()} compounding for ${projectionConfig.years > 0 ? formatYearsCompact(projectionConfig.years) : "0 yrs"}. Deposits are applied at the ${projectionConfig.contributionTiming === "beginning" ? "beginning" : "end"} of each ${resolvedCadenceLabel} period${projectionConfig.annualContributionIncrease > 0 ? `, and contributions step up ${formatPercent(projectionConfig.annualContributionIncrease)} each year` : ""}.</div>
                     ${assumptionNotes.map((note) => `<div class="wfd-mini-note">${note}</div>`).join("")}
                     <div class="wfd-mini-note">${projectionConfig.contributionAmount > 0 && unitProjection
-                        ? `Reality check: every ${formatCurrency(1)} saved each ${resolvedCadenceLabel} grows to ${formatCurrency(unitProjection.futureValue)} over ${projectionConfig.years > 0 ? formatYearsCompact(projectionConfig.years) : "0 yrs"} at the current settings.`
+                        ? `Reality check: saving ${contributionCadenceSavingsPhrase(projectionConfig.contributionCadence, formatCurrency(1))} grows to approximately ${formatCurrency(unitProjection.futureValue)} over ${projectionConfig.years > 0 ? formatYearsCompact(projectionConfig.years) : "0 yrs"} at the current settings.`
                         : `Current projection reflects ${formatCurrency(projection.futureValue)} from the values entered so far.`}</div>
                 `;
             }
@@ -1827,7 +1845,7 @@
                     ? "No inflation adjustment applied."
                     : `Inflation-adjusted at ${formatPercent(projectionConfig.inflationRate)}.`,
                 unitGrowth: projectionConfig.contributionAmount > 0 && unitProjection
-                    ? `${formatCurrency(unitProjection.futureValue)} from each ${formatCurrency(1)} ${resolvedCadenceLabel} save`
+                    ? `${formatCurrency(unitProjection.futureValue)} from saving ${contributionCadenceSavingsPhrase(projectionConfig.contributionCadence, formatCurrency(1))}`
                     : "--",
                 totalDeposited: formatCurrency(projection.totalDeposited),
                 yearsHorizon: horizonLabel
