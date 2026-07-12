@@ -7,6 +7,7 @@ document.addEventListener("DOMContentLoaded", async function () {
     const financeRoot = document.getElementById("financeRoot");
     const DEFAULT_TOOL_ID = "LegendLivingBalanceSheet";
     const financeApp = (financeRoot?.dataset.financeApp || "").trim().toLowerCase();
+    const enableCoachingTools = financeApp === "agent";
     const financeScopeFallback =
         financeRoot?.dataset.financeScopeFallback?.trim() ||
         (financeApp === "agent" ? "agent" : "client");
@@ -838,6 +839,7 @@ document.addEventListener("DOMContentLoaded", async function () {
         const resolvedToolId = resolveToolSelection(toolId);
         const isDefaultTool = resolvedToolId === DEFAULT_TOOL_ID;
         financialHealthButton?.setAttribute("aria-pressed", isDefaultTool ? "true" : "false");
+        syncCoachingToolSelectorState("");
         if (!dropdown) return;
         if (isDefaultTool) {
             dropdown.selectedIndex = 0;
@@ -1143,6 +1145,133 @@ const toast = typeof window.toast === "function" ? window.toast : (msg => consol
 
     // ------------------- Tool Renderer -------------------
     const wfSearchHost = enableClientPlanSearch ? document.getElementById("wfClientSearchHost") : null;
+    const coachingToolDropdown = document.getElementById("coachingToolDropdown");
+    const coachingToolSelectWrap = document.getElementById("coachingToolSelectWrap");
+    const financeSelectorRow = document.querySelector(".finance-selector-row");
+    const financeHeader = document.querySelector(".finance-header");
+    const financeToolbarShell = document.querySelector(".finance-toolbar-shell");
+    const coachingToolsDataNode = document.getElementById("financeCoachingToolsData");
+    const parseCoachingTools = () => {
+        if (!coachingToolsDataNode?.textContent) return [];
+
+        try {
+            const parsed = JSON.parse(coachingToolsDataNode.textContent);
+            return Array.isArray(parsed)
+                ? parsed.filter(tool =>
+                    tool &&
+                    typeof tool.file === "string" &&
+                    typeof tool.label === "string" &&
+                    typeof tool.imageUrl === "string")
+                : [];
+        } catch (_) {
+            return [];
+        }
+    };
+    const coachingTools = enableCoachingTools ? parseCoachingTools() : [];
+    const coachingToolLookup = new Map(
+        coachingTools.map(tool => [tool.file.trim(), tool])
+    );
+    const escapeHtml = (value) =>
+        String(value ?? "")
+            .replace(/&/g, "&amp;")
+            .replace(/</g, "&lt;")
+            .replace(/>/g, "&gt;")
+            .replace(/"/g, "&quot;")
+            .replace(/'/g, "&#39;");
+
+    function syncCoachingToolSelectorState(file) {
+        if (!coachingToolDropdown) return;
+
+        const nextValue = String(file || "").trim();
+        if (!nextValue) {
+            coachingToolDropdown.selectedIndex = 0;
+            return;
+        }
+
+        if (coachingToolDropdown.value !== nextValue) {
+            coachingToolDropdown.value = nextValue;
+        }
+    }
+
+    const clearWealthForecastSearchHost = () => {
+        if (!wfSearchHost) return;
+
+        wfSearchHost.classList.add("d-none");
+        const statusEl = document.getElementById("wfPlanStatus");
+        if (statusEl) statusEl.textContent = "Type to search.";
+        const resultsEl = document.getElementById("wfClientResults");
+        if (resultsEl) {
+            resultsEl.classList.add("d-none");
+            resultsEl.innerHTML = "";
+        }
+        const inputEl = document.getElementById("wfClientSearch");
+        if (inputEl) inputEl.value = "";
+    };
+
+    const renderCoachingTool = (tool) => {
+        if (!tool || !embedContainer) return;
+
+        embedContainer.innerHTML = `
+            <section class="finance-coaching-shell" aria-labelledby="financeCoachingToolTitle">
+                <div class="finance-coaching-shell__header">
+                    <div class="finance-coaching-shell__kicker">Coaching Tool</div>
+                    <h2 id="financeCoachingToolTitle" class="finance-coaching-shell__title">${escapeHtml(tool.label)}</h2>
+                </div>
+                <div class="finance-coaching-shell__frame">
+                    <div class="finance-coaching-shell__canvas">
+                        <img class="finance-coaching-shell__image" src="${escapeHtml(tool.imageUrl)}" alt="${escapeHtml(tool.label)}" />
+                    </div>
+                </div>
+            </section>
+        `;
+    };
+
+    const requestCoachingToolSelection = (file) => {
+        const nextFile = String(file || "").trim();
+        const tool = coachingToolLookup.get(nextFile);
+        if (!tool || !embedContainer) return;
+
+        clearActiveToolWindowBindings();
+        embedContainer.dataset.activeToolId = "CoachingToolLibrary";
+        embedContainer.innerHTML = "";
+        embedContainer.classList.add("finance-main--coaching");
+        embedContainer.classList.remove("finance-main--dual");
+        setDualToolMode(false);
+        if (typeof window.__LegendHideActiveTip === "function") window.__LegendHideActiveTip();
+        clearWealthForecastSearchHost();
+
+        financialHealthButton?.setAttribute("aria-pressed", "false");
+        if (dropdown) dropdown.selectedIndex = 0;
+        syncCoachingToolSelectorState(tool.file);
+        renderCoachingTool(tool);
+    };
+
+    if (coachingToolDropdown && coachingToolSelectWrap && coachingTools.length > 0) {
+        coachingTools.forEach(tool => {
+            const option = document.createElement("option");
+            option.value = tool.file;
+            option.textContent = tool.label;
+            coachingToolDropdown.appendChild(option);
+        });
+
+        coachingToolSelectWrap.classList.remove("d-none");
+        financeSelectorRow?.classList.add("finance-selector-row--with-coaching");
+        financeHeader?.classList.add("finance-header--with-coaching");
+        financeToolbarShell?.classList.add("finance-toolbar-shell--with-coaching");
+
+        coachingToolDropdown.addEventListener("change", function () {
+            const selectedFile = String(this.value || "").trim();
+            if (!selectedFile) return;
+            this.blur();
+            requestCoachingToolSelection(selectedFile);
+        });
+
+        coachingToolDropdown.addEventListener("keydown", function (event) {
+            if (isDropdownTypeaheadKey(event)) {
+                event.preventDefault();
+            }
+        });
+    }
 
     dropdown.addEventListener("change", async function () {
         const selectedToolId = resolveToolSelection(requestedToolOverrideId || this.value);
@@ -1156,6 +1285,7 @@ const toast = typeof window.toast === "function" ? window.toast : (msg => consol
 
         // clear UI
         embedContainer.innerHTML = '';
+        embedContainer.classList.remove('finance-main--coaching');
         embedContainer.classList.remove('finance-main--dual');
         setDualToolMode(false);
 
@@ -1167,15 +1297,7 @@ const toast = typeof window.toast === "function" ? window.toast : (msg => consol
             const show = !!t && t.id === "WealthForecast" && enableAdvancedWealthForecast && enableClientPlanSearch;
             wfSearchHost.classList.toggle("d-none", !show);
             if (!show) {
-                const statusEl = document.getElementById("wfPlanStatus");
-                if (statusEl) statusEl.textContent = "Type to search.";
-                const resultsEl = document.getElementById("wfClientResults");
-                if (resultsEl) {
-                    resultsEl.classList.add("d-none");
-                    resultsEl.innerHTML = "";
-                }
-                const inputEl = document.getElementById("wfClientSearch");
-                if (inputEl) inputEl.value = "";
+                clearWealthForecastSearchHost();
             }
         }
 

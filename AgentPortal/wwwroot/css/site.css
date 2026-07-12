@@ -783,10 +783,10 @@ body .preview-open:hover {
     color: var(--legend-gold-deep) !important;
 }
 
-body .form-control,
-body .form-select,
-body select,
-body textarea {
+body:not(.finance-page) .form-control,
+body:not(.finance-page) .form-select,
+body:not(.finance-page) select,
+body:not(.finance-page) textarea {
     border: 1.5px solid var(--legend-line) !important;
     border-radius: 14px !important;
     background: #ffffff !important;
@@ -794,15 +794,15 @@ body textarea {
     box-shadow: var(--legend-inset);
 }
 
-body .form-control::placeholder,
-body textarea::placeholder {
+body:not(.finance-page) .form-control::placeholder,
+body:not(.finance-page) textarea::placeholder {
     color: rgba(22,17,9,.50);
 }
 
-body .form-control:focus,
-body .form-select:focus,
-body select:focus,
-body textarea:focus {
+body:not(.finance-page) .form-control:focus,
+body:not(.finance-page) .form-select:focus,
+body:not(.finance-page) select:focus,
+body:not(.finance-page) textarea:focus {
     border-color: var(--legend-line-strong) !important;
     box-shadow: var(--legend-ring), var(--legend-inset) !important;
     outline: none !important;

@@ -46,6 +46,11 @@
                     Financial Health Snapshot
                 </button>
                 <button type="button" class="btn finance-toolbar-btn" id="btnToggleSupportPanels">Goals + Alerts</button>
+                <div class="finance-select-wrap d-none" id="coachingToolSelectWrap">
+                    <select id="coachingToolDropdown" class="form-select finance-select shadow-sm" aria-label="Select coaching tool">
+                        <option value="" selected>Select Coaching Tool</option>
+                    </select>
+                </div>
             </div>
         </div>
 
@@ -85,6 +90,8 @@
     </div>
 
 </div>
+
+<script id="financeCoachingToolsData" type="application/json">@Html.Raw(ViewBag.CoachingToolsJson ?? "[]")</script>
 
 <script src="~/js/dp-constants.js" asp-append-version="true"></script>
 <script src="~/js/dp-validators.js" asp-append-version="true"></script>

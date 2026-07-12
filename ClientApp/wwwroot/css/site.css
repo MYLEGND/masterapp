@@ -363,10 +363,10 @@ main .result-tag {
     color: var(--client-gold-deep) !important;
 }
 
-body .form-control,
-body .form-select,
-body select,
-body textarea {
+body:not(.finance-page) .form-control,
+body:not(.finance-page) .form-select,
+body:not(.finance-page) select,
+body:not(.finance-page) textarea {
     background: #ffffff !important;
     color: var(--client-ink) !important;
     border: 1.5px solid var(--client-line) !important;
@@ -374,10 +374,10 @@ body textarea {
     box-shadow: var(--client-inset);
 }
 
-body .form-control:focus,
-body .form-select:focus,
-body select:focus,
-body textarea:focus {
+body:not(.finance-page) .form-control:focus,
+body:not(.finance-page) .form-select:focus,
+body:not(.finance-page) select:focus,
+body:not(.finance-page) textarea:focus {
     border-color: var(--client-line-strong) !important;
     box-shadow: var(--client-ring), var(--client-inset) !important;
 }
