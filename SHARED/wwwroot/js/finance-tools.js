@@ -9498,19 +9498,24 @@ if (t.id === "DebtClarity") {
 --------------------------------*/
 if (t.id === "FinancialBuffer") {
     embedContainer.innerHTML = `
-    <div class="networth-tool p-4 legend-finance-tool-card legend-finance-tool-card--narrow el-shell">
+    <div class="networth-tool p-4 legend-finance-tool-card legend-finance-tool-card--wide el-shell">
 
         <div id="fbTipLayer"></div>
 
-        <h3>
-            ${t.name}
-        </h3>
+        <div class="wf-header-row">
+            <div class="wf-title-stack">
+                <h3 class="lf-ui-042">
+                    ${t.name}
+                </h3>
 
-        <p>
-            Build a financial safety net to protect yourself from unexpected expenses.
-        </p>
+                <p class="lf-ui-043">
+                    Build a financial safety net to protect yourself from unexpected expenses.
+                </p>
+            </div>
+            <div class="wf-actions" id="fbActions"></div>
+        </div>
 
-        <div class="ft-sync-grid ft-sync-grid--single">
+        <div class="ft-sync-grid">
             <div class="ft-sync-card">
                 <div class="el-label">
                     Monthly Bills
@@ -9521,26 +9526,34 @@ if (t.id === "FinancialBuffer") {
                     <span class="legend-money-prefix">$</span>
                     <input id="fbBills" type="text" class="legend-money-field" readonly placeholder="Sync from Expense Lens…" />
                 </div>
+                <div class="ft-field-note">Synced from Expense Lens so your buffer targets stay grounded in your actual monthly burn.</div>
             </div>
+
+            <dl class="ft-kpi-card">
+                <dt>Core Buffer Goal</dt>
+                <dd id="fb3">$0</dd>
+                <dd class="ft-kpi-sub">6 months of bills for a stronger protection cushion.</dd>
+            </dl>
         </div>
 
-        <div class="ft-goal-stack">
-            <div class="ft-goal-row">
-                <div class="ft-goal-label">1 Month Goal</div>
-                <div class="ft-goal-value" id="fb1">$0</div>
-            </div>
-            <div class="ft-goal-row">
-                <div class="ft-goal-label">3–6 Month Goal</div>
-                <div class="ft-goal-value" id="fb3">$0</div>
-            </div>
-            <div class="ft-goal-row">
-                <div class="ft-goal-label">12 Month Goal</div>
-                <div class="ft-goal-value" id="fb12">$0</div>
-            </div>
+        <div class="ft-kpi-grid ft-kpi-grid--two">
+            <dl class="ft-kpi-card">
+                <dt>1 Month Goal</dt>
+                <dd id="fb1">$0</dd>
+            </dl>
+            <dl class="ft-kpi-card">
+                <dt>12 Month Goal</dt>
+                <dd id="fb12">$0</dd>
+            </dl>
         </div>
 
-        <div class="el-tip-strip" id="fbTips">
-            Tip: Save consistently each month to build your buffer. Consider automating transfers to a separate emergency account.
+        <div class="ft-panel-stack">
+            <div class="ft-panel-row">
+                <div class="ft-panel-label">Guidance</div>
+                <div class="ft-panel-value ft-panel-value--tip" id="fbTips">
+                    Tip: Save consistently each month to build your buffer. Consider automating transfers to a separate emergency account.
+                </div>
+            </div>
         </div>
     </div>`;
 
@@ -9639,7 +9652,7 @@ if (t.id === "FinancialBuffer") {
         clearToolState('FinancialBuffer');
         hideTip();
         applyExpenseLensToFinancialBuffer();
-    });
+    }, document.getElementById('fbActions'));
 
     const updateBuffer = () => {
         let bills = +fbBillsInput.value.toString().replace(/,/g,'') || 0;
@@ -9687,62 +9700,79 @@ if (t.id === "FinancialBuffer") {
 --------------------------------*/
 if (t.id === "WealthProjection") {
     embedContainer.innerHTML = `
-    <div class="networth-tool p-4 legend-finance-tool-card legend-finance-tool-card--narrow el-shell">
+    <div class="networth-tool p-4 legend-finance-tool-card legend-finance-tool-card--wide el-shell">
 
         <div id="wpTipLayer"></div>
 
-        <h3 class="lf-ui-042">
-            ${t.name}
-        </h3>
+        <div class="wf-header-row">
+            <div class="wf-title-stack">
+                <h3 class="lf-ui-042">
+                    ${t.name}
+                </h3>
 
-        <p class="lf-ui-043">
-            Project your net worth growth based on current savings and surplus. Visualize both short and long-term potential.
-        </p>
-
-        <div class="wp-label">
-            Current Net Worth
-            <span class="wp-i" tabindex="0"
-                  data-tip="<b>Auto-synced:</b> Pulls your live net worth from Financial Health Snapshot.">i</span>
-        </div>
-        <input id="wpNet" type="text" class="form-control mb-2 lf-ui-047" placeholder="Syncs from Financial Health Snapshot..."
-               readonly aria-readonly="true"
-               />
-
-        <div class="wp-label">
-            Monthly Surplus
-            <span class="wp-i" tabindex="0"
-                  data-tip="<b>Auto-synced:</b> Pulls the Remaining Balance from the top of Expense Lens.">i</span>
-        </div>
-        <input id="wpSurplus" type="text" class="form-control mb-2 lf-ui-047" placeholder="Syncs from Expense Lens Remaining Balance..."
-               readonly aria-readonly="true"
-               />
-
-        <div class="wp-label">
-            Custom Months
-            <span class="wp-i" tabindex="0"
-                  data-tip="<b>Examples:</b> 18 • 24 • 60 (how far out you want to project)">i</span>
-        </div>
-        <input id="wpMonths" type="number" class="form-control mb-3 lf-ui-048" placeholder="e.g., 18"
-               />
-
-        <div class="lf-ui-049">
-            <h5 class="lf-ui-050">
-                Projected Net Worth (Custom Months):
-                <span class="lf-ui-051" id="wpOut">$0</span>
-            </h5>
-            <h6 class="lf-ui-052">
-                Projection in 6 Months:
-                <span class="lf-ui-053" id="wp6">$0</span>
-            </h6>
-            <h6>
-                Projection in 12 Months:
-                <span class="lf-ui-053" id="wp12">$0</span>
-            </h6>
+                <p class="lf-ui-043">
+                    Project your net worth growth based on current savings and surplus. Visualize both short and long-term potential.
+                </p>
+            </div>
+            <div class="wf-actions" id="wpActions"></div>
         </div>
 
-        <div class="lf-ui-023" id="wpTips"
-            >
-            Tip: Regularly increase your monthly surplus to accelerate your wealth growth.
+        <div class="ft-sync-grid">
+            <div class="ft-sync-card">
+                <div class="wp-label">
+                    Current Net Worth
+                    <span class="wp-i" tabindex="0"
+                          data-tip="<b>Auto-synced:</b> Pulls your live net worth from Financial Health Snapshot.">i</span>
+                </div>
+                <input id="wpNet" type="text" class="form-control lf-ui-047" placeholder="Syncs from Financial Health Snapshot..."
+                       readonly aria-readonly="true" />
+            </div>
+
+            <div class="ft-sync-card">
+                <div class="wp-label">
+                    Monthly Surplus
+                    <span class="wp-i" tabindex="0"
+                          data-tip="<b>Auto-synced:</b> Pulls the Remaining Balance from the top of Expense Lens.">i</span>
+                </div>
+                <input id="wpSurplus" type="text" class="form-control lf-ui-047" placeholder="Syncs from Expense Lens Remaining Balance..."
+                       readonly aria-readonly="true" />
+            </div>
+
+            <div class="ft-sync-card">
+                <div class="wp-label">
+                    Custom Months
+                    <span class="wp-i" tabindex="0"
+                          data-tip="<b>Examples:</b> 18 • 24 • 60 (how far out you want to project)">i</span>
+                </div>
+                <input id="wpMonths" type="number" class="form-control lf-ui-048" placeholder="e.g., 18" />
+                <div class="ft-field-note">Use your own horizon without forcing every projection to live in its own stacked row.</div>
+            </div>
+
+            <dl class="ft-kpi-card">
+                <dt>Projected Net Worth</dt>
+                <dd id="wpOut" class="lf-ui-051">$0</dd>
+                <dd class="ft-kpi-sub">Using your custom months horizon.</dd>
+            </dl>
+        </div>
+
+        <div class="ft-kpi-grid ft-kpi-grid--two">
+            <dl class="ft-kpi-card">
+                <dt>6 Month Projection</dt>
+                <dd id="wp6" class="lf-ui-053">$0</dd>
+            </dl>
+            <dl class="ft-kpi-card">
+                <dt>12 Month Projection</dt>
+                <dd id="wp12" class="lf-ui-053">$0</dd>
+            </dl>
+        </div>
+
+        <div class="ft-panel-stack">
+            <div class="ft-panel-row">
+                <div class="ft-panel-label">Guidance</div>
+                <div class="ft-panel-value ft-panel-value--tip" id="wpTips">
+                    Tip: Regularly increase your monthly surplus to accelerate your wealth growth.
+                </div>
+            </div>
         </div>
     </div>`;
 
@@ -9914,7 +9944,7 @@ if (t.id === "WealthProjection") {
         clearPersistedState('WealthProjection');
         hideTip();
         updateWealthProjection({ skipSave: true });
-    });
+    }, document.getElementById('wpActions'));
 }
 
 /* -------------------------------
@@ -9922,56 +9952,84 @@ if (t.id === "WealthProjection") {
 --------------------------------*/
 if (t.id === "FreedomIndex") {
     embedContainer.innerHTML = `
-    <div class="networth-tool p-4 legend-finance-tool-card legend-finance-tool-card--narrow el-shell">
+    <div class="networth-tool p-4 legend-finance-tool-card legend-finance-tool-card--wide el-shell">
 
         <div id="fiTipLayer"></div>
 
-        <h3 class="lf-ui-042">
-            ${t.name}
-        </h3>
+        <div class="wf-header-row">
+            <div class="wf-title-stack">
+                <h3 class="lf-ui-042">
+                    ${t.name}
+                </h3>
 
-        <p class="lf-ui-043">
-            Measure your financial freedom: how long you could live off your net worth and passive income.
-        </p>
-
-        <div class="fi-label">
-            Net Worth
-            <span class="fi-i" tabindex="0"
-                  data-tip="<b>What to enter:</b> Assets minus liabilities today. <b>Example:</b> 150,000">i</span>
+                <p class="lf-ui-043">
+                    Measure your financial freedom: how long you could live off your net worth and passive income.
+                </p>
+            </div>
+            <div class="wf-actions" id="fiActions"></div>
         </div>
-        <input id="fiNet" type="text" class="form-control mb-2 lf-ui-054" readonly placeholder="Sync from Financial Health Snapshot…"
-               />
 
-        <div class="fi-label">
-            Annual Expenses
-            <span class="fi-i" tabindex="0"
-                  data-tip="<b>What to enter:</b> Your yearly cost of living. <b>Example:</b> 50,000 (≈ 4,167/mo)">i</span>
+        <div class="ft-sync-grid">
+            <div class="ft-sync-card">
+                <div class="fi-label">
+                    Net Worth
+                    <span class="fi-i" tabindex="0"
+                          data-tip="<b>What to enter:</b> Assets minus liabilities today. <b>Example:</b> 150,000">i</span>
+                </div>
+                <input id="fiNet" type="text" class="form-control lf-ui-054" readonly placeholder="Sync from Financial Health Snapshot…" />
+            </div>
+
+            <div class="ft-sync-card">
+                <div class="fi-label">
+                    Annual Expenses
+                    <span class="fi-i" tabindex="0"
+                          data-tip="<b>What to enter:</b> Your yearly cost of living. <b>Example:</b> 50,000 (≈ 4,167/mo)">i</span>
+                </div>
+                <input id="fiExp" type="text" class="form-control lf-ui-054" readonly placeholder="Sync from Expense Lens…" />
+            </div>
+
+            <div class="ft-sync-card">
+                <div class="fi-label">
+                    Passive Income
+                    <span class="fi-i" tabindex="0"
+                          data-tip="<b>Optional:</b> Annual passive income (rent, dividends, etc.). <b>Example:</b> 10,000">i</span>
+                </div>
+                <input id="fiPassive" type="text" class="form-control lf-ui-048" placeholder="e.g., 10,000" />
+            </div>
+
+            <dl class="ft-kpi-card">
+                <dt>Freedom Index</dt>
+                <dd id="fiOut" class="lf-ui-051">0</dd>
+                <dd class="ft-kpi-sub">Net worth divided by annual expenses.</dd>
+            </dl>
         </div>
-        <input id="fiExp" type="text" class="form-control mb-2 lf-ui-054" readonly placeholder="Sync from Expense Lens…"
-               />
 
-        <div class="fi-label">
-            Passive Income
-            <span class="fi-i" tabindex="0"
-                  data-tip="<b>Optional:</b> Annual passive income (rent, dividends, etc.). <b>Example:</b> 10,000">i</span>
+        <div class="ft-kpi-grid ft-kpi-grid--four">
+            <dl class="ft-kpi-card">
+                <dt>Net Worth</dt>
+                <dd id="fiNetOut">$0</dd>
+            </dl>
+            <dl class="ft-kpi-card">
+                <dt>Annual Expenses</dt>
+                <dd id="fiExpOut">$0</dd>
+            </dl>
+            <dl class="ft-kpi-card">
+                <dt>Passive Income</dt>
+                <dd id="fiPassiveOut">$0</dd>
+            </dl>
+            <dl class="ft-kpi-card">
+                <dt>Months of Freedom</dt>
+                <dd id="fiMonths">0</dd>
+            </dl>
         </div>
-        <input id="fiPassive" type="text" class="form-control mb-3 lf-ui-048" placeholder="e.g., 10,000"
-               />
 
-        <h5 class="lf-ui-055">
-            Freedom Index: <span class="lf-ui-051" id="fiOut">0</span>
-        </h5>
-
-        <table class="table mt-3 lf-ui-056">
-            <tr><th class="lf-ui-057">Net Worth</th><td id="fiNetOut">$0</td></tr>
-            <tr><th class="lf-ui-058">Annual Expenses</th><td id="fiExpOut">$0</td></tr>
-            <tr><th class="lf-ui-058">Passive Income</th><td id="fiPassiveOut">$0</td></tr>
-            <tr><th class="lf-ui-058">Months of Freedom</th><td id="fiMonths">0</td></tr>
-        </table>
-
-        <div class="lf-ui-023" id="fiAdvice"
-            >
-            Enter your values to see recommendations.
+        <div class="ft-panel-stack">
+            <div class="ft-panel-row">
+                <div class="ft-panel-label">Guidance</div>
+                <div class="ft-panel-value ft-panel-value--tip" id="fiAdvice">
+                    Enter your values to see recommendations.
+                </div>
+            </div>
         </div>
     </div>`;
 
@@ -10099,7 +10157,7 @@ if (t.id === "FreedomIndex") {
         hideTip();
         applyLLBSToFreedomIndex();
         applyExpenseLensToFreedomIndex();
-    });
+    }, document.getElementById('fiActions'));
 
     const updateFreedom = () => {
         const net = parseNumber(fiNet.value);
@@ -10193,57 +10251,84 @@ if (t.id === "FreedomIndex") {
 --------------------------------*/
 if (t.id === "DebtAssetPulse") {
     embedContainer.innerHTML = `
-    <div class="networth-tool p-4 legend-finance-tool-card legend-finance-tool-card--narrow el-shell">
+    <div class="networth-tool p-4 legend-finance-tool-card legend-finance-tool-card--wide el-shell">
 
         <div id="dapTipLayer"></div>
 
-        <h3 class="lf-ui-042">
-            ${t.name}
-        </h3>
+        <div class="wf-header-row">
+            <div class="wf-title-stack">
+                <h3 class="lf-ui-042">
+                    ${t.name}
+                </h3>
 
-        <p class="lf-ui-043">
-            Evaluate your financial health by comparing assets to liabilities and assess your risk.
-        </p>
-
-        <div class="dap-label">
-            Total Assets
-            <span class="dap-i" tabindex="0"
-                  data-tip="<b>Examples:</b> 100,000 • 250,000 (cash, investments, retirement, property, etc.)">i</span>
+                <p class="lf-ui-043">
+                    Evaluate your financial health by comparing assets to liabilities and assess your risk.
+                </p>
+            </div>
+            <div class="wf-actions" id="dapActions"></div>
         </div>
-        <input id="dapA" type="text" class="form-control mb-2 lf-ui-054" readonly placeholder="Sync from Financial Health Snapshot…"
-               />
 
-        <div class="dap-label">
-            Total Liabilities
-            <span class="dap-i" tabindex="0"
-                  data-tip="<b>Examples:</b> 50,000 • 180,000 (credit cards, loans, mortgage balance, etc.)">i</span>
+        <div class="ft-sync-grid">
+            <div class="ft-sync-card">
+                <div class="dap-label">
+                    Total Assets
+                    <span class="dap-i" tabindex="0"
+                          data-tip="<b>Examples:</b> 100,000 • 250,000 (cash, investments, retirement, property, etc.)">i</span>
+                </div>
+                <input id="dapA" type="text" class="form-control lf-ui-054" readonly placeholder="Sync from Financial Health Snapshot…" />
+            </div>
+
+            <div class="ft-sync-card">
+                <div class="dap-label">
+                    Total Liabilities
+                    <span class="dap-i" tabindex="0"
+                          data-tip="<b>Examples:</b> 50,000 • 180,000 (credit cards, loans, mortgage balance, etc.)">i</span>
+                </div>
+                <input id="dapL" type="text" class="form-control lf-ui-054" readonly placeholder="Sync from Financial Health Snapshot…" />
+            </div>
+
+            <div class="ft-sync-card">
+                <div class="dap-label">
+                    Monthly Income
+                    <span class="dap-i" tabindex="0"
+                          data-tip="<b>Optional:</b> Monthly income helps estimate how fast you could crush liabilities. <b>Example:</b> 6,000">i</span>
+                </div>
+                <input id="dapIncome" type="text" class="form-control lf-ui-054" readonly placeholder="Sync from Expense Lens…" />
+            </div>
+
+            <dl class="ft-kpi-card">
+                <dt>Debt-to-Asset Ratio</dt>
+                <dd id="dapOut" class="lf-ui-059">0</dd>
+                <dd class="ft-kpi-sub">Assets divided by liabilities.</dd>
+            </dl>
         </div>
-        <input id="dapL" type="text" class="form-control mb-2 lf-ui-054" readonly placeholder="Sync from Financial Health Snapshot…"
-               />
 
-        <div class="dap-label">
-            Monthly Income
-            <span class="dap-i" tabindex="0"
-                  data-tip="<b>Optional:</b> Monthly income helps estimate how fast you could crush liabilities. <b>Example:</b> 6,000">i</span>
+        <div class="ft-kpi-grid ft-kpi-grid--four">
+            <dl class="ft-kpi-card">
+                <dt>Assets</dt>
+                <dd id="dapAssets">$0</dd>
+            </dl>
+            <dl class="ft-kpi-card">
+                <dt>Liabilities</dt>
+                <dd id="dapLiabilities">$0</dd>
+            </dl>
+            <dl class="ft-kpi-card">
+                <dt>Net Worth</dt>
+                <dd id="dapNetWorth">$0</dd>
+            </dl>
+            <dl class="ft-kpi-card">
+                <dt>Monthly Income</dt>
+                <dd id="dapMonthlyIncome">$0</dd>
+            </dl>
         </div>
-        <input id="dapIncome" type="text" class="form-control mb-3 lf-ui-054" readonly placeholder="Sync from Expense Lens…"
-               />
 
-        <h5 class="lf-ui-055">
-            Debt-to-Asset Ratio:
-            <span class="lf-ui-059" id="dapOut">0</span>
-        </h5>
-
-        <table class="table mt-3 lf-ui-056">
-            <tr><th class="lf-ui-057">Assets</th><td id="dapAssets">$0</td></tr>
-            <tr><th class="lf-ui-058">Liabilities</th><td id="dapLiabilities">$0</td></tr>
-            <tr><th class="lf-ui-058">Net Worth</th><td id="dapNetWorth">$0</td></tr>
-            <tr><th class="lf-ui-058">Monthly Income</th><td id="dapMonthlyIncome">$0</td></tr>
-        </table>
-
-        <div class="lf-ui-023" id="dapAdvice"
-            >
-            Enter values to get guidance on your financial health.
+        <div class="ft-panel-stack">
+            <div class="ft-panel-row">
+                <div class="ft-panel-label">Guidance</div>
+                <div class="ft-panel-value ft-panel-value--tip" id="dapAdvice">
+                    Enter values to get guidance on your financial health.
+                </div>
+            </div>
         </div>
     </div>`;
 
@@ -10371,7 +10456,7 @@ if (t.id === "DebtAssetPulse") {
         hideTip();
         applyLLBSToDebtAssetPulse();
         applyExpenseLensToDebtAssetPulse();
-    });
+    }, document.getElementById('dapActions'));
 
     const updateDAP = () => {
         const hasBalanceSheetSource = hasNonBlankValue(dapA.value) || hasNonBlankValue(dapL.value);
