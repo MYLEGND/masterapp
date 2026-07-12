@@ -201,6 +201,71 @@
     white-space: nowrap;
 }
 
+.llbs-philosophy {
+    border-color: rgba(243, 216, 139, .34);
+    background:
+        radial-gradient(460px 160px at 12% 0%, rgba(243, 216, 139, .16), transparent 72%),
+        linear-gradient(180deg, rgba(20, 41, 77, .94), rgba(7, 13, 24, .98));
+}
+
+.llbs-philosophy .llbs-section-head {
+    background:
+        linear-gradient(90deg, rgba(243, 216, 139, .22), rgba(243, 216, 139, .04)),
+        linear-gradient(180deg, #141d32, #0b1529);
+    border-bottom-color: rgba(243, 216, 139, .22);
+}
+
+.llbs-philosophy-grid {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 7px;
+    padding: 8px;
+}
+
+.llbs-philosophy-card {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr);
+    align-items: center;
+    gap: 10px;
+    min-height: 60px;
+    padding: 10px 12px;
+    border: 1px solid rgba(243, 216, 139, .24);
+    border-radius: 12px;
+    background:
+        linear-gradient(180deg, rgba(255, 255, 255, .04), rgba(0, 0, 0, .10)),
+        #0b1324;
+    box-shadow:
+        inset 0 1px 0 rgba(255, 255, 255, .05),
+        0 12px 24px rgba(0, 0, 0, .18);
+}
+
+.llbs-philosophy-step {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 32px;
+    height: 32px;
+    border: 1px solid rgba(243, 216, 139, .42);
+    border-radius: 999px;
+    color: #241700;
+    background: linear-gradient(180deg, var(--llbs-gold-3), var(--llbs-gold));
+    font-size: .8rem;
+    font-weight: 950;
+    line-height: 1;
+    box-shadow:
+        inset 0 1px 0 rgba(255, 255, 255, .34),
+        0 8px 18px rgba(0, 0, 0, .18);
+}
+
+.llbs-philosophy-title {
+    color: #fff7dd;
+    font-size: .78rem;
+    font-weight: 950;
+    letter-spacing: .08em;
+    line-height: 1.15;
+    text-transform: uppercase;
+}
+
 .llbs-protection .llbs-section-head {
     background:
         linear-gradient(90deg, rgba(199, 153, 49, .35), rgba(199, 153, 49, .08)),
@@ -1589,6 +1654,7 @@
         justify-content: flex-start;
     }
 
+    .llbs-philosophy-grid,
     .llbs-protection-grid,
     .llbs-gap-grid,
     .llbs-cash-grid,
@@ -1627,6 +1693,7 @@
         grid-template-columns: 1fr 1fr;
     }
 
+    .llbs-philosophy-grid,
     .llbs-protection-grid,
     .llbs-gap-grid,
     .llbs-cash-grid,
@@ -7080,6 +7147,103 @@ body.finance-dual-tools-open .layout-content {
 
 .wfd-tone-slate {
     color: #475569;
+}
+
+#llbsGrowthCalculatorModal .wfd-audit-table-wrap {
+    overflow: hidden;
+    border: none;
+    border-radius: 18px;
+    background: transparent;
+}
+
+#llbsGrowthCalculatorModal .wfd-audit-table {
+    min-width: 0;
+    margin: 0;
+    table-layout: fixed;
+    border-collapse: separate;
+    border-spacing: 0 8px;
+    background: transparent;
+}
+
+#llbsGrowthCalculatorModal .wfd-audit-table col.wfd-audit-col--horizon {
+    width: 18%;
+}
+
+#llbsGrowthCalculatorModal .wfd-audit-table col.wfd-audit-col--projected,
+#llbsGrowthCalculatorModal .wfd-audit-table col.wfd-audit-col--saved,
+#llbsGrowthCalculatorModal .wfd-audit-table col.wfd-audit-col--interest {
+    width: 27.333%;
+}
+
+#llbsGrowthCalculatorModal .wfd-audit-head {
+    position: static;
+    background: transparent;
+}
+
+#llbsGrowthCalculatorModal .wfd-audit-table thead .wfd-audit-cell {
+    padding: 10px 12px;
+    text-align: center;
+    vertical-align: middle;
+    font-size: .74rem;
+    font-weight: 900;
+    letter-spacing: .08em;
+    text-transform: uppercase;
+    background: rgba(13, 20, 37, .92);
+    border-top: 1px solid rgba(221, 180, 87, .24);
+    border-bottom: 1px solid rgba(221, 180, 87, .2);
+}
+
+#llbsGrowthCalculatorModal .wfd-audit-table thead .wfd-audit-cell:first-child {
+    border-left: 1px solid rgba(221, 180, 87, .2);
+    border-top-left-radius: 12px;
+    border-bottom-left-radius: 12px;
+}
+
+#llbsGrowthCalculatorModal .wfd-audit-table thead .wfd-audit-cell:last-child {
+    border-right: 1px solid rgba(221, 180, 87, .2);
+    border-top-right-radius: 12px;
+    border-bottom-right-radius: 12px;
+}
+
+#llbsGrowthCalculatorModal .wfd-audit-table tbody .wfd-audit-cell {
+    padding: 12px 14px;
+    text-align: center;
+    vertical-align: middle;
+    white-space: nowrap;
+    font-weight: 800;
+    font-variant-numeric: tabular-nums;
+    background: rgba(13, 24, 43, .92);
+    border-top: 1px solid rgba(255, 255, 255, .03);
+    border-bottom: 1px solid rgba(221, 180, 87, .08);
+}
+
+#llbsGrowthCalculatorModal .wfd-audit-table tbody .wfd-audit-cell:first-child {
+    border-left: 1px solid rgba(221, 180, 87, .15);
+    border-top-left-radius: 12px;
+    border-bottom-left-radius: 12px;
+}
+
+#llbsGrowthCalculatorModal .wfd-audit-table tbody .wfd-audit-cell:last-child {
+    border-right: 1px solid rgba(221, 180, 87, .15);
+    border-top-right-radius: 12px;
+    border-bottom-right-radius: 12px;
+}
+
+#llbsGrowthCalculatorModal .wfd-audit-table tbody tr:nth-child(even) .wfd-audit-cell {
+    background: rgba(16, 29, 51, .96);
+}
+
+#llbsGrowthCalculatorModal .wfd-audit-table tbody tr:hover .wfd-audit-cell {
+    background: rgba(29, 45, 73, .98);
+}
+
+#llbsGrowthCalculatorModal .wfd-audit-empty {
+    padding: 16px 18px;
+    text-align: center;
+    font-weight: 700;
+    background: rgba(13, 24, 43, .92);
+    border: 1px dashed rgba(221, 180, 87, .18);
+    border-radius: 14px;
 }
 
 .wfd-legacy-value {

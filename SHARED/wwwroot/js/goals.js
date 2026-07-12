@@ -3,11 +3,17 @@
 --------------------------------*/
 document.addEventListener("DOMContentLoaded", function () {
     const container = document.querySelector('.finance-action-container');
+    if (!container) return;
+
     const financeRoot = document.getElementById("financeRoot");
+    const financeApp = (financeRoot?.dataset.financeApp || "").trim().toLowerCase();
+    const fallbackScope =
+        financeRoot?.dataset.financeScopeFallback?.trim() ||
+        (financeApp === "agent" ? "agent" : "client");
     const workspaceScope =
         financeRoot?.dataset.clientUserId?.trim() ||
         financeRoot?.dataset.clientProfileId?.trim() ||
-        "agent";
+        fallbackScope;
     const actionTrackerKey = `legend-finance:${workspaceScope}:ActionTracker`;
     const persistence = window.LegendFinancePersistence;
 
@@ -49,6 +55,21 @@ document.addEventListener("DOMContentLoaded", function () {
 
     let actionCount = 0;
 
+    const normalizeGoals = (value) => {
+        const rawGoals = Array.isArray(value)
+            ? value
+            : Array.isArray(value?.goals)
+                ? value.goals
+                : Array.isArray(value?.items)
+                    ? value.items
+                    : [];
+
+        return rawGoals.map(goal => ({
+            name: typeof goal?.name === 'string' ? goal.name : '',
+            done: Boolean(goal?.done)
+        }));
+    };
+
     // Save all goals to localStorage
     const saveState = () => {
         const goals = [];
@@ -60,6 +81,12 @@ document.addEventListener("DOMContentLoaded", function () {
         });
         if (persistence) persistence.saveState('ActionTracker', goals);
         else localStorage.setItem(actionTrackerKey, JSON.stringify(goals));
+        window.dispatchEvent(new CustomEvent('legend:actiontracker:changed', {
+            detail: {
+                scope: workspaceScope,
+                goals
+            }
+        }));
     };
 
     // Load goals from localStorage
@@ -67,9 +94,10 @@ document.addEventListener("DOMContentLoaded", function () {
         actionContainer.innerHTML = '';
         actionCount = 0;
 
-        const goals = persistence
+        const persistedGoals = persistence
             ? await persistence.loadState('ActionTracker')
             : JSON.parse(localStorage.getItem(actionTrackerKey) || '[]');
+        const goals = normalizeGoals(persistedGoals);
         goals.forEach(g => createGoalRow(++actionCount, g.name, g.done));
 
         // If nothing saved, initialize with 3 empty goals

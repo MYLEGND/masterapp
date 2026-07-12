@@ -13,6 +13,12 @@
         FullEstatePlan: "Low"
     });
     const FILING_STATUSES = ["Single", "Married Filing Jointly", "Married Filing Separately", "Head of Household", "Business Owner"];
+    const LEGEND_PHILOSOPHY_STEPS = [
+        "Spiritual Health",
+        "Mental Health",
+        "Physical Health",
+        "Financial Health"
+    ];
     const COMPOUND_CONTRIBUTION_CADENCES = [
         ["daily", "Daily"],
         ["weekly", "Weekly"],
@@ -1215,8 +1221,28 @@
         `;
     }
 
+    function renderLegendPhilosophySection() {
+        return `
+            <section class="llbs-section llbs-philosophy" data-llbs-script-key="overview" aria-label="Legend philosophy">
+                <div class="llbs-section-head">
+                    <h3 class="llbs-section-title">Legend Philosophy</h3>
+                    <span class="llbs-section-note">Steps 1-4</span>
+                </div>
+                <div class="llbs-philosophy-grid" role="list" aria-label="Foundational health steps">
+                    ${LEGEND_PHILOSOPHY_STEPS.map((title, index) => `
+                        <article class="llbs-philosophy-card" role="listitem">
+                            <span class="llbs-philosophy-step">${index + 1}</span>
+                            <strong class="llbs-philosophy-title">${title}</strong>
+                        </article>
+                    `).join("")}
+                </div>
+            </section>
+        `;
+    }
+
     function renderShell(options = {}) {
         const advisorEnabled = !!options.advisorModeEnabled;
+        const compoundLabEnabled = !!options.compoundLabEnabled;
         return `
             <section class="llbs-tool" aria-label="Financial Health Snapshot">
                 <div class="llbs-shell">
@@ -1227,19 +1253,20 @@
                         </div>
                         <div class="llbs-status">
                             <span class="llbs-save-state" data-llbs-save-state>Ready</span>
-                            <button type="button" class="llbs-growth-calculator-btn" data-llbs-compound-open aria-controls="llbsGrowthCalculatorModal" aria-expanded="false">Growth Calculator</button>
+                            ${compoundLabEnabled ? `<button type="button" class="llbs-growth-calculator-btn" data-llbs-compound-open aria-controls="llbsGrowthCalculatorModal" aria-expanded="false">Growth Calculator</button>` : ""}
                             <button type="button" class="llbs-print-btn" data-llbs-print>Print</button>
                             <button type="button" class="llbs-clear" data-llbs-reset>Reset Tool</button>
                         </div>
                     </header>
-                    ${advisorEnabled ? `
-                        <div class="llbs-advisor-toggle" role="group" aria-label="View mode">
-                            <button type="button" class="is-active" data-llbs-view="client">Client View</button>
-                            <button type="button" data-llbs-view="advisor">Advisor View</button>
-                        </div>
-                        ${renderAdvisorPanel()}
-                    ` : ""}
+                        ${advisorEnabled ? `
+                            <div class="llbs-advisor-toggle" role="group" aria-label="View mode">
+                                <button type="button" class="is-active" data-llbs-view="client">Client View</button>
+                                <button type="button" data-llbs-view="advisor">Advisor View</button>
+                            </div>
+                            ${renderAdvisorPanel()}
+                        ` : ""}
                     <div class="llbs-body">
+                        ${renderLegendPhilosophySection()}
                         <section class="llbs-section llbs-protection" data-llbs-script-key="protection">
                             <div class="llbs-section-head">
                                 <h3 class="llbs-section-title">Protection</h3>
@@ -1326,7 +1353,7 @@
                         <div class="llbs-save-error" data-llbs-error hidden></div>
                     </div>
                 </div>
-                ${renderGrowthCalculatorModal()}
+                ${compoundLabEnabled ? renderGrowthCalculatorModal() : ""}
             </section>
         `;
     }

@@ -7,10 +7,14 @@ document.addEventListener("DOMContentLoaded", function() {
     if (!container) return;
 
     const financeRoot = document.getElementById("financeRoot");
+    const financeApp = (financeRoot?.dataset.financeApp || "").trim().toLowerCase();
+    const fallbackScope =
+        financeRoot?.dataset.financeScopeFallback?.trim() ||
+        (financeApp === "agent" ? "agent" : "client");
     const workspaceScope =
         financeRoot?.dataset.clientUserId?.trim() ||
         financeRoot?.dataset.clientProfileId?.trim() ||
-        "agent";
+        fallbackScope;
     const actionTrackerKey = `legend-finance:${workspaceScope}:ActionTracker`;
     const persistence = window.LegendFinancePersistence;
 
@@ -23,16 +27,31 @@ document.addEventListener("DOMContentLoaded", function() {
 
     const alertsList = document.getElementById('alertsList');
 
+    const normalizeActions = (value) => {
+        const rawActions = Array.isArray(value)
+            ? value
+            : Array.isArray(value?.goals)
+                ? value.goals
+                : Array.isArray(value?.items)
+                    ? value.items
+                    : [];
+
+        return rawActions.map(action => ({
+            name: typeof action?.name === 'string' ? action.name : '',
+            done: Boolean(action?.done)
+        }));
+    };
+
     const readActions = async () => {
         if (persistence) {
             const state = await persistence.loadState('ActionTracker');
-            return Array.isArray(state) ? state : [];
+            return normalizeActions(state);
         }
 
         const raw = localStorage.getItem(actionTrackerKey) || '[]';
         try {
             const parsed = JSON.parse(raw);
-            return Array.isArray(parsed) ? parsed : [];
+            return normalizeActions(parsed);
         } catch {
             return [];
         }

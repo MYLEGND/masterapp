@@ -1,6 +1,12 @@
 <div id="financeRoot"
      data-client-profile-id="@ViewBag.ClientProfileId"
      data-client-user-id="@ViewBag.ClientUserId"
+     data-finance-app="client"
+     data-finance-scope-fallback="client"
+     data-enable-growth-calculator="false"
+     data-enable-advanced-wealth-forecast="false"
+     data-enable-client-plan-search="false"
+     data-enable-distribution-planner="false"
      data-is-business-client="@(((bool?)ViewBag.IsBusinessClient == true).ToString().ToLowerInvariant())"
      data-client-first-name="@(ViewBag.ClientFirstName ?? "")"
      data-spouse-first-name="@(ViewBag.SpouseFirstName ?? "")"
@@ -60,42 +66,8 @@
 
 </div>
 
-<script src="~/js/legend-living-balance-sheet.js" asp-append-version="true"></script>
-<script src="~/js/finance-tools.js" asp-append-version="true"></script>
-<script src="~/js/goals.js" asp-append-version="true"></script>
-<script src="~/js/alerts.js" asp-append-version="true"></script>
-<script>
-document.addEventListener("DOMContentLoaded", () => {
-    const supportPanels = document.getElementById("financeSupportPanels");
-    const toggleButton = document.getElementById("btnToggleSupportPanels");
-    const closeSupport = document.getElementById("btnCloseSupportPanels");
-    if (!supportPanels) return;
-
-    const setButtonState = (isOpen) => {
-        const label = isOpen ? "Hide Goals + Alerts" : "Goals + Alerts";
-        if (!toggleButton) return;
-        toggleButton.textContent = label;
-        toggleButton.setAttribute("aria-pressed", isOpen ? "true" : "false");
-    };
-
-    const setOpenState = (isOpen) => {
-        supportPanels.classList.toggle("d-none", !isOpen);
-        supportPanels.setAttribute("aria-hidden", isOpen ? "false" : "true");
-        document.body.classList.toggle("finance-support-open", isOpen);
-        setButtonState(isOpen);
-    };
-
-    const togglePanels = () => {
-        const isOpen = !supportPanels.classList.contains("d-none");
-        setOpenState(!isOpen);
-    };
-
-    toggleButton?.addEventListener("click", togglePanels);
-    closeSupport?.addEventListener("click", () => setOpenState(false));
-    supportPanels.querySelector("[data-support-close='true']")?.addEventListener("click", () => setOpenState(false));
-    document.addEventListener("keydown", (event) => {
-        if (event.key === "Escape") setOpenState(false);
-    });
-    setButtonState(false);
-});
-</script>
+<script src="~/_content/Shared/js/legend-living-balance-sheet.js" asp-append-version="true"></script>
+<script src="~/_content/Shared/js/finance-tools.js" asp-append-version="true"></script>
+<script src="~/_content/Shared/js/goals.js" asp-append-version="true"></script>
+<script src="~/_content/Shared/js/alerts.js" asp-append-version="true"></script>
+<script src="~/_content/Shared/js/finance-shell.js" asp-append-version="true"></script>

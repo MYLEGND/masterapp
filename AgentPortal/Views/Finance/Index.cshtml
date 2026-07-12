@@ -13,6 +13,12 @@
 <div id="financeRoot"
      data-client-profile-id="@ViewBag.ClientProfileId"
      data-client-user-id="@clientUserId"
+     data-finance-app="agent"
+     data-finance-scope-fallback="agent"
+     data-enable-growth-calculator="true"
+     data-enable-advanced-wealth-forecast="true"
+     data-enable-client-plan-search="true"
+     data-enable-distribution-planner="true"
      data-is-business-client="@(((bool?)ViewBag.IsBusinessClient == true).ToString().ToLowerInvariant())"
      data-client-first-name="@(ViewBag.ClientFirstName ?? "")"
      data-spouse-first-name="@(ViewBag.SpouseFirstName ?? "")"
@@ -83,51 +89,8 @@
 <script src="~/js/dp-constants.js" asp-append-version="true"></script>
 <script src="~/js/dp-validators.js" asp-append-version="true"></script>
 <script src="~/js/dp-engine.js" asp-append-version="true"></script>
-<script src="~/js/legend-living-balance-sheet.js" asp-append-version="true"></script>
-<script src="~/js/finance-tools.js" asp-append-version="true"></script>
-<script>
-window.LegendFinancePersistence = window.LegendFinancePersistence || {
-    loadState: async (key) => {
-        const raw = localStorage.getItem(key);
-        return raw ? JSON.parse(raw) : {};
-    },
-    saveState: (key, state) => {
-        localStorage.setItem(key, JSON.stringify(state || {}));
-        return { ok: true };
-    },
-    clearState: (key) => {
-        localStorage.removeItem(key);
-    }
-};
-</script>
-<script src="~/js/goals.js" asp-append-version="true"></script>
-<script src="~/js/alerts.js" asp-append-version="true"></script>
-<script>
-document.addEventListener("DOMContentLoaded", () => {
-    const supportPanels = document.getElementById("financeSupportPanels");
-    const toggleButton = document.getElementById("btnToggleSupportPanels");
-    const closeSupport = document.getElementById("btnCloseSupportPanels");
-    if (!supportPanels) return;
-
-    const setButtonState = (isOpen) => {
-        if (!toggleButton) return;
-        toggleButton.textContent = isOpen ? "Hide Goals + Alerts" : "Goals + Alerts";
-        toggleButton.setAttribute("aria-pressed", isOpen ? "true" : "false");
-    };
-
-    const setOpenState = (isOpen) => {
-        supportPanels.classList.toggle("d-none", !isOpen);
-        supportPanels.setAttribute("aria-hidden", isOpen ? "false" : "true");
-        document.body.classList.toggle("finance-support-open", isOpen);
-        setButtonState(isOpen);
-    };
-
-    toggleButton?.addEventListener("click", () => setOpenState(supportPanels.classList.contains("d-none")));
-    closeSupport?.addEventListener("click", () => setOpenState(false));
-    supportPanels.querySelector("[data-support-close='true']")?.addEventListener("click", () => setOpenState(false));
-    document.addEventListener("keydown", (event) => {
-        if (event.key === "Escape") setOpenState(false);
-    });
-    setButtonState(false);
-});
-</script>
+<script src="~/_content/Shared/js/legend-living-balance-sheet.js" asp-append-version="true"></script>
+<script src="~/_content/Shared/js/finance-tools.js" asp-append-version="true"></script>
+<script src="~/_content/Shared/js/goals.js" asp-append-version="true"></script>
+<script src="~/_content/Shared/js/alerts.js" asp-append-version="true"></script>
+<script src="~/_content/Shared/js/finance-shell.js" asp-append-version="true"></script>
