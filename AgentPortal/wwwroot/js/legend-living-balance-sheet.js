@@ -1023,145 +1023,143 @@
 
     function renderCompoundLabModal() {
         return `
-            <div class="llbs-compound-overlay" data-llbs-compound-overlay hidden>
-                <div class="llbs-compound-backdrop" data-llbs-compound-close></div>
-                <section class="llbs-compound-modal" id="llbsCompoundLabModal" role="dialog" aria-modal="true" aria-labelledby="llbsCompoundLabTitle">
-                    <div class="llbs-compound-head">
-                        <div class="llbs-compound-head-copy">
-                            <h3 class="llbs-compound-title" id="llbsCompoundLabTitle">Compound Lab</h3>
-                            <p class="llbs-compound-subtitle">Design how steady deposits, growth rate, and time build real wealth.</p>
+            <div class="finance-support-overlay finance-support-overlay--dense" data-llbs-compound-overlay hidden>
+                <div class="finance-support-backdrop" data-llbs-compound-close></div>
+                <section class="finance-support-modal finance-support-modal--dense networth-tool legend-finance-tool-card legend-finance-tool-card--xl el-shell"
+                         id="llbsCompoundLabModal"
+                         role="dialog"
+                         aria-modal="true"
+                         aria-labelledby="llbsCompoundLabTitle">
+                    <div class="wf-header-row">
+                        <div class="wf-title-stack">
+                            <h3 class="lf-ui-060" id="llbsCompoundLabTitle">Compound Lab</h3>
+                            <p class="lf-ui-002">Design how steady deposits, growth rate, and time build real wealth.</p>
                         </div>
-                        <div class="llbs-compound-head-actions">
-                            <button type="button" class="llbs-clear" data-llbs-compound-reset>Reset Lab</button>
-                            <button type="button" class="llbs-compound-close" data-llbs-compound-close aria-label="Close compound interest designer">Close</button>
+                        <div class="wf-actions">
+                            <button type="button" class="finance-clear-btn" data-llbs-compound-reset>Reset Lab</button>
+                            <button type="button" class="finance-support-close" data-llbs-compound-close aria-label="Close compound interest designer">Close</button>
                         </div>
                     </div>
-                    <div class="llbs-compound-grid">
-                        <section class="llbs-compound-panel llbs-compound-panel-inputs" aria-label="Compound interest inputs">
-                            <div class="llbs-compound-cluster">
-                                <div class="llbs-compound-cluster-title">Capital Base</div>
-                                <div class="llbs-compound-field-grid">
-                                    <label class="llbs-compound-field">
-                                        <span>Starting Balance</span>
-                                        <input type="number" min="0" step="0.01" class="llbs-compound-input" data-llbs-compound-field="startingBalance" inputmode="decimal" autocomplete="off" />
-                                    </label>
-                                    <label class="llbs-compound-field">
-                                        <span data-llbs-compound-contribution-label>Save Each Period</span>
-                                        <input type="number" min="0" step="0.01" class="llbs-compound-input" data-llbs-compound-field="contributionAmount" inputmode="decimal" autocomplete="off" />
-                                        <small class="llbs-compound-field-note" data-llbs-compound-contribution-note>Enter an amount to see the pace of the habit.</small>
-                                    </label>
+                    <div class="finance-support-grid finance-support-grid--tool">
+                        <section class="finance-support-stack" aria-label="Compound interest inputs">
+                            <div class="wfd-sec">
+                                <h4 class="wfd-sec-title">Capital Base</h4>
+                                <div class="wfd-row">
+                                    <div class="wfd-half">
+                                        <label class="wfd-lbl">Starting Balance</label>
+                                        <input type="number" min="0" step="0.01" class="form-control" data-llbs-compound-field="startingBalance" inputmode="decimal" autocomplete="off" />
+                                    </div>
+                                    <div class="wfd-half">
+                                        <label class="wfd-lbl" data-llbs-compound-contribution-label>Save Each Period</label>
+                                        <input type="number" min="0" step="0.01" class="form-control" data-llbs-compound-field="contributionAmount" inputmode="decimal" autocomplete="off" />
+                                        <div class="wfd-inline-note" data-llbs-compound-contribution-note>Enter an amount to see the pace of the habit.</div>
+                                    </div>
                                 </div>
                             </div>
-                            <div class="llbs-compound-cluster">
-                                <div class="llbs-compound-cluster-title">Contribution Rhythm</div>
-                                <div class="llbs-compound-field-grid">
-                                    <label class="llbs-compound-field">
-                                        <span>Savings Cadence</span>
-                                        <select class="llbs-compound-select" data-llbs-compound-field="contributionCadence">
+                            <div class="wfd-sec">
+                                <h4 class="wfd-sec-title">Contribution Rhythm</h4>
+                                <div class="wfd-row">
+                                    <div class="wfd-half">
+                                        <label class="wfd-lbl">Savings Cadence</label>
+                                        <select class="form-select" data-llbs-compound-field="contributionCadence">
                                             ${renderOptionList(COMPOUND_CONTRIBUTION_CADENCES)}
                                         </select>
-                                    </label>
-                                    <label class="llbs-compound-field">
-                                        <span>Contribution Timing</span>
-                                        <select class="llbs-compound-select" data-llbs-compound-field="contributionTiming">
+                                    </div>
+                                    <div class="wfd-half">
+                                        <label class="wfd-lbl">Contribution Timing</label>
+                                        <select class="form-select" data-llbs-compound-field="contributionTiming">
                                             ${renderOptionList(COMPOUND_TIMINGS)}
                                         </select>
-                                    </label>
-                                    <label class="llbs-compound-field">
-                                        <span>Years</span>
-                                        <input type="number" min="0" step="0.25" class="llbs-compound-input" data-llbs-compound-field="years" inputmode="decimal" autocomplete="off" />
-                                    </label>
-                                    <label class="llbs-compound-field">
-                                        <span>Annual Step-Up %</span>
-                                        <input type="number" min="0" step="0.01" class="llbs-compound-input" data-llbs-compound-field="annualContributionIncrease" data-kind="percent" inputmode="decimal" autocomplete="off" />
-                                    </label>
+                                    </div>
+                                    <div class="wfd-half">
+                                        <label class="wfd-lbl">Years</label>
+                                        <input type="number" min="0" step="0.25" class="form-control" data-llbs-compound-field="years" inputmode="decimal" autocomplete="off" />
+                                    </div>
+                                    <div class="wfd-half">
+                                        <label class="wfd-lbl">Annual Step-Up %</label>
+                                        <input type="number" min="0" step="0.01" class="form-control" data-llbs-compound-field="annualContributionIncrease" data-kind="percent" inputmode="decimal" autocomplete="off" />
+                                    </div>
                                 </div>
                             </div>
-                            <div class="llbs-compound-cluster">
-                                <div class="llbs-compound-cluster-title">Growth Assumptions</div>
-                                <div class="llbs-compound-field-grid">
-                                    <label class="llbs-compound-field">
-                                        <span>APR %</span>
-                                        <input type="number" min="0" step="0.01" class="llbs-compound-input" data-llbs-compound-field="apr" data-kind="percent" inputmode="decimal" autocomplete="off" />
-                                    </label>
-                                    <label class="llbs-compound-field">
-                                        <span>Compounding</span>
-                                        <select class="llbs-compound-select" data-llbs-compound-field="compoundingCadence">
+                            <div class="wfd-sec">
+                                <h4 class="wfd-sec-title">Growth Assumptions</h4>
+                                <div class="wfd-row">
+                                    <div class="wfd-half">
+                                        <label class="wfd-lbl">APR %</label>
+                                        <input type="number" min="0" step="0.01" class="form-control" data-llbs-compound-field="apr" data-kind="percent" inputmode="decimal" autocomplete="off" />
+                                    </div>
+                                    <div class="wfd-half">
+                                        <label class="wfd-lbl">Compounding</label>
+                                        <select class="form-select" data-llbs-compound-field="compoundingCadence">
                                             ${renderOptionList(COMPOUNDING_CADENCES)}
                                         </select>
-                                    </label>
-                                    <label class="llbs-compound-field llbs-compound-field-wide">
-                                        <span>Inflation %</span>
-                                        <input type="number" min="0" step="0.01" class="llbs-compound-input" data-llbs-compound-field="inflationRate" data-kind="percent" inputmode="decimal" autocomplete="off" />
-                                    </label>
+                                    </div>
+                                    <div class="wfd-col">
+                                        <label class="wfd-lbl">Inflation %</label>
+                                        <input type="number" min="0" step="0.01" class="form-control" data-llbs-compound-field="inflationRate" data-kind="percent" inputmode="decimal" autocomplete="off" />
+                                    </div>
                                 </div>
                             </div>
-                            <div class="llbs-compound-explainer" data-llbs-compound-note></div>
+                            <div class="wfd-sec wfd-sec--note" data-llbs-compound-note></div>
                         </section>
-                        <section class="llbs-compound-panel llbs-compound-panel-results" aria-label="Compound interest results">
-                            <div class="llbs-compound-summary-grid">
-                                <article class="llbs-compound-card llbs-compound-card-primary">
-                                    <span>Projected Value</span>
-                                    <strong data-llbs-compound-output="futureValue">--</strong>
-                                    <small data-llbs-compound-output="projectionNote">Enter inputs to project growth.</small>
+                        <section class="finance-support-stack" aria-label="Compound interest results">
+                            <div class="wfd-res-grid wfd-res-grid--quad">
+                                <article class="wfd-res-card">
+                                    <p class="wfd-res-lbl">Projected Value</p>
+                                    <p class="wfd-res-val gold" data-llbs-compound-output="futureValue">--</p>
+                                    <div class="wfd-mini-note" data-llbs-compound-output="projectionNote">Enter inputs to project growth.</div>
                                 </article>
-                                <article class="llbs-compound-card">
-                                    <span>New Contributions</span>
-                                    <strong data-llbs-compound-output="contributionTotal">--</strong>
-                                    <small data-llbs-compound-output="annualizedContribution">Choose amount and cadence.</small>
+                                <article class="wfd-res-card">
+                                    <p class="wfd-res-lbl">New Contributions</p>
+                                    <p class="wfd-res-val blue" data-llbs-compound-output="contributionTotal">--</p>
+                                    <div class="wfd-mini-note" data-llbs-compound-output="annualizedContribution">Choose amount and cadence.</div>
                                 </article>
-                                <article class="llbs-compound-card">
-                                    <span>Interest Earned</span>
-                                    <strong data-llbs-compound-output="interestEarned">--</strong>
-                                    <small data-llbs-compound-output="effectiveAnnualYield">Choose APR and compounding.</small>
+                                <article class="wfd-res-card">
+                                    <p class="wfd-res-lbl">Interest Earned</p>
+                                    <p class="wfd-res-val green" data-llbs-compound-output="interestEarned">--</p>
+                                    <div class="wfd-mini-note" data-llbs-compound-output="effectiveAnnualYield">Choose APR and compounding.</div>
                                 </article>
-                                <article class="llbs-compound-card">
-                                    <span>Real Purchasing Power</span>
-                                    <strong data-llbs-compound-output="realValue">--</strong>
-                                    <small data-llbs-compound-output="realValueNote">Inflation-adjusted when provided.</small>
-                                </article>
-                            </div>
-                            <div class="llbs-compound-insight-strip">
-                                <article>
-                                    <span>Power Per Habit</span>
-                                    <strong data-llbs-compound-output="unitGrowth">--</strong>
-                                </article>
-                                <article>
-                                    <span>Total Deposited</span>
-                                    <strong data-llbs-compound-output="totalDeposited">--</strong>
-                                </article>
-                                <article>
-                                    <span>Runway</span>
-                                    <strong data-llbs-compound-output="yearsHorizon">--</strong>
+                                <article class="wfd-res-card">
+                                    <p class="wfd-res-lbl">Real Purchasing Power</p>
+                                    <p class="wfd-res-val orange" data-llbs-compound-output="realValue">--</p>
+                                    <div class="wfd-mini-note" data-llbs-compound-output="realValueNote">Inflation-adjusted when provided.</div>
                                 </article>
                             </div>
-                            <div class="llbs-compound-compare-wrap">
-                                <div class="llbs-compound-table-head llbs-compound-table-head-compact">
-                                    <div>
-                                        <h4>Scenario Stretch</h4>
-                                        <p>Show the lift from a better savings, rate, or time move.</p>
-                                    </div>
+                            <div class="wfd-summary wfd-summary--triple">
+                                <article class="wfd-sum-card">
+                                    <p class="wfd-sum-label">Power Per Habit</p>
+                                    <div class="wfd-inline-note" data-llbs-compound-output="unitGrowth">--</div>
+                                </article>
+                                <article class="wfd-sum-card">
+                                    <p class="wfd-sum-label">Total Deposited</p>
+                                    <p class="wfd-sum-value" data-llbs-compound-output="totalDeposited">--</p>
+                                </article>
+                                <article class="wfd-sum-card">
+                                    <p class="wfd-sum-label">Runway</p>
+                                    <p class="wfd-sum-value" data-llbs-compound-output="yearsHorizon">--</p>
+                                </article>
+                            </div>
+                            <div class="wfd-sec">
+                                <h4 class="wfd-sec-title">Scenario Stretch</h4>
+                                <div class="wfd-mini-note">Show the lift from a better savings, rate, or time move.</div>
+                                <div class="wfd-res-grid wfd-res-grid--triple" data-llbs-compound-compare></div>
+                            </div>
+                            <div class="wfd-sec">
+                                <h4 class="wfd-sec-title">Growth Checkpoints</h4>
+                                <div class="wfd-mini-note">Watch how time, discipline, and yield stack on top of each other.</div>
+                                <div class="wfd-audit-table-wrap">
+                                    <table class="wfd-audit-table">
+                                        <thead class="wfd-audit-head">
+                                            <tr>
+                                                <th class="wfd-audit-cell">Horizon</th>
+                                                <th class="wfd-audit-cell">Projected Value</th>
+                                                <th class="wfd-audit-cell">Saved</th>
+                                                <th class="wfd-audit-cell">Interest</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody data-llbs-compound-milestones></tbody>
+                                    </table>
                                 </div>
-                                <div class="llbs-compound-compare-grid" data-llbs-compound-compare></div>
-                            </div>
-                            <div class="llbs-compound-table-wrap">
-                                <div class="llbs-compound-table-head">
-                                    <div>
-                                        <h4>Growth Checkpoints</h4>
-                                        <p>Watch how time, discipline, and yield stack on top of each other.</p>
-                                    </div>
-                                </div>
-                                <table class="llbs-compound-table">
-                                    <thead>
-                                        <tr>
-                                            <th>Horizon</th>
-                                            <th>Projected Value</th>
-                                            <th>Saved</th>
-                                            <th>Interest</th>
-                                        </tr>
-                                    </thead>
-                                    <tbody data-llbs-compound-milestones></tbody>
-                                </table>
                             </div>
                         </section>
                     </div>
@@ -1471,7 +1469,7 @@
                 try { dispose(); } catch (_) { }
             });
             windowCleanupFns.length = 0;
-            document.body.classList.remove("llbs-modal-open");
+            document.body.classList.remove("finance-support-open");
         };
         let loadedState = {};
         try {
@@ -1675,11 +1673,13 @@
                 if (!scenario.projection) return "";
                 const uplift = scenario.projection.futureValue - projection.futureValue;
                 return `
-                    <article class="llbs-compound-compare-card">
-                        <span>${scenario.label}</span>
-                        <strong>${formatCurrency(scenario.projection.futureValue)}</strong>
-                        <small>${scenario.detail}</small>
-                        <em>${uplift >= 0 ? "+" : "-"}${formatCurrency(Math.abs(uplift))} vs base</em>
+                    <article class="wfd-res-card">
+                        <p class="wfd-res-lbl">${scenario.label}</p>
+                        <p class="wfd-res-val gold">${formatCurrency(scenario.projection.futureValue)}</p>
+                        <div class="wfd-mini-note">${scenario.detail}</div>
+                        <div class="${uplift >= 0 ? "wfd-return-pos" : "wfd-return-neg"}">
+                            ${uplift >= 0 ? "+" : "-"}${formatCurrency(Math.abs(uplift))} vs base
+                        </div>
                     </article>
                 `;
             }).join("");
@@ -1739,8 +1739,8 @@
             if (!hasProjection) {
                 if (compoundNoteEl) {
                     compoundNoteEl.innerHTML = `
-                        <strong>Enter Inputs</strong>
-                        <span>Enter a starting balance and/or recurring savings to start the projection. The rest of the assumptions will layer in live as you answer them.</span>
+                        <h4 class="wfd-sec-title">Enter Inputs</h4>
+                        <div class="wfd-mini-note">Enter a starting balance and/or recurring savings to start the projection. The rest of the assumptions will layer in live as you answer them.</div>
                     `;
                 }
 
@@ -1774,7 +1774,7 @@
                 if (compoundMilestonesEl) {
                     compoundMilestonesEl.innerHTML = `
                         <tr>
-                            <td colspan="4">Enter a starting balance or savings amount, plus cadence, timing, APR, compounding, and years to see checkpoints.</td>
+                            <td colspan="4" class="wfd-audit-empty wfd-tone-muted">Enter a starting balance or savings amount, plus cadence, timing, APR, compounding, and years to see checkpoints.</td>
                         </tr>
                     `;
                 }
@@ -1799,15 +1799,15 @@
 
             if (compoundNoteEl) {
                 compoundNoteEl.innerHTML = `
-                    <strong>Current Math Basis</strong>
-                    <span>${projectionConfig.contributionAmount > 0
+                    <h4 class="wfd-sec-title">Current Math Basis</h4>
+                    <div class="wfd-mini-note">${projectionConfig.contributionAmount > 0
                         ? `${formatCurrency(projectionConfig.contributionAmount)} saved each ${cadenceUnitLabel.toLowerCase()} means ${formatCurrency(projection.annualizedContribution)} contributed in year 1.`
-                        : "No recurring savings amount is entered yet, so the projection is currently showing starting-balance growth only."}</span>
-                    <span>${formatCurrency(projectionConfig.startingBalance)} starts at ${formatPercent(projectionConfig.apr)} APR with ${compoundingLabel.toLowerCase()} compounding for ${projectionConfig.years > 0 ? formatYearsCompact(projectionConfig.years) : "0 yrs"}. Deposits are applied at the ${projectionConfig.contributionTiming === "beginning" ? "beginning" : "end"} of each ${resolvedCadenceLabel} period${projectionConfig.annualContributionIncrease > 0 ? `, and contributions step up ${formatPercent(projectionConfig.annualContributionIncrease)} each year` : ""}.</span>
-                    ${assumptionNotes.length > 0 ? `<span>${assumptionNotes.join(" ")}</span>` : ""}
-                    <span>${projectionConfig.contributionAmount > 0 && unitProjection
+                        : "No recurring savings amount is entered yet, so the projection is currently showing starting-balance growth only."}</div>
+                    <div class="wfd-mini-note">${formatCurrency(projectionConfig.startingBalance)} starts at ${formatPercent(projectionConfig.apr)} APR with ${compoundingLabel.toLowerCase()} compounding for ${projectionConfig.years > 0 ? formatYearsCompact(projectionConfig.years) : "0 yrs"}. Deposits are applied at the ${projectionConfig.contributionTiming === "beginning" ? "beginning" : "end"} of each ${resolvedCadenceLabel} period${projectionConfig.annualContributionIncrease > 0 ? `, and contributions step up ${formatPercent(projectionConfig.annualContributionIncrease)} each year` : ""}.</div>
+                    ${assumptionNotes.map((note) => `<div class="wfd-mini-note">${note}</div>`).join("")}
+                    <div class="wfd-mini-note">${projectionConfig.contributionAmount > 0 && unitProjection
                         ? `Reality check: every ${formatCurrency(1)} saved each ${resolvedCadenceLabel} grows to ${formatCurrency(unitProjection.futureValue)} over ${projectionConfig.years > 0 ? formatYearsCompact(projectionConfig.years) : "0 yrs"} at the current settings.`
-                        : `Current projection reflects ${formatCurrency(projection.futureValue)} from the values entered so far.`}</span>
+                        : `Current projection reflects ${formatCurrency(projection.futureValue)} from the values entered so far.`}</div>
                 `;
             }
 
@@ -1848,7 +1848,7 @@
                 if (!hasExplicitYears) {
                     compoundMilestonesEl.innerHTML = `
                         <tr>
-                            <td colspan="4">Enter years to see growth checkpoints.</td>
+                            <td colspan="4" class="wfd-audit-empty wfd-tone-muted">Enter years to see growth checkpoints.</td>
                         </tr>
                     `;
                     return;
@@ -1857,10 +1857,10 @@
                     const point = simulateCompoundProjection(labState, years);
                     return `
                         <tr>
-                            <td class="is-horizon">${formatYearsCompact(years)}</td>
-                            <td class="is-projected">${formatCurrency(point.futureValue)}</td>
-                            <td class="is-saved">${formatCurrency(point.totalDeposited)}</td>
-                            <td class="is-interest">${formatCurrency(point.interestEarned)}</td>
+                            <td class="wfd-audit-cell wfd-tone-muted">${formatYearsCompact(years)}</td>
+                            <td class="wfd-audit-cell wfd-tone-white">${formatCurrency(point.futureValue)}</td>
+                            <td class="wfd-audit-cell wfd-tone-gold">${formatCurrency(point.totalDeposited)}</td>
+                            <td class="wfd-audit-cell wfd-tone-green">${formatCurrency(point.interestEarned)}</td>
                         </tr>
                     `;
                 }).join("");
@@ -1871,7 +1871,7 @@
             if (!compoundOverlay) return;
             compoundOverlay.hidden = !isOpen;
             compoundTrigger?.setAttribute("aria-expanded", isOpen ? "true" : "false");
-            document.body.classList.toggle("llbs-modal-open", !!isOpen);
+            document.body.classList.toggle("finance-support-open", !!isOpen);
             if (isOpen) {
                 syncCompoundLabForm();
                 refreshCompoundLab(true);
