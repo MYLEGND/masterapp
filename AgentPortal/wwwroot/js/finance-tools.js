@@ -204,27 +204,11 @@ document.addEventListener("DOMContentLoaded", async function () {
 
         if (frequency === 'monthly') {
             const anchorDay = anchorDate.getDate();
+            const monthDays = new Date(year, month + 1, 0).getDate();
+            cursor.setFullYear(year, month, Math.min(anchorDay, monthDays));
 
-            cursor.setDate(1);
-            while (cursor < rangeStart) {
-                cursor.setMonth(cursor.getMonth() + 1);
-            }
-
-            const firstMonthDays = new Date(cursor.getFullYear(), cursor.getMonth() + 1, 0).getDate();
-            cursor.setDate(Math.min(anchorDay, firstMonthDays));
-
-            if (cursor < rangeStart) {
-                cursor.setMonth(cursor.getMonth() + 1, 1);
-                const nextMonthDays = new Date(cursor.getFullYear(), cursor.getMonth() + 1, 0).getDate();
-                cursor.setDate(Math.min(anchorDay, nextMonthDays));
-            }
-
-            while (cursor <= rangeEnd) {
-                if (cursor >= anchorDate) occurrences.push(new Date(cursor));
-
-                cursor.setMonth(cursor.getMonth() + 1, 1);
-                const monthDays = new Date(cursor.getFullYear(), cursor.getMonth() + 1, 0).getDate();
-                cursor.setDate(Math.min(anchorDay, monthDays));
+            if (cursor >= anchorDate && cursor >= rangeStart && cursor <= rangeEnd) {
+                occurrences.push(new Date(cursor));
             }
 
             return occurrences;
