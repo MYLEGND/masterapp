@@ -1410,6 +1410,45 @@ const toast = typeof window.toast === "function" ? window.toast : (msg => consol
         `;
     };
 
+    const buildCallout = ({
+        x,
+        y,
+        width,
+        height = null,
+        tone,
+        title,
+        lines
+    }) => {
+        const safeLines = Array.isArray(lines) ? lines : [];
+        const resolvedHeight = height ?? 62 + safeLines.length * 20;
+
+        return `
+            <g transform="translate(${x} ${y})"
+               class="fcg-callout fcg-callout--${tone}">
+                <rect x="0"
+                      y="0"
+                      width="${width}"
+                      height="${resolvedHeight}"
+                      rx="22"
+                      class="fcg-callout__bg"></rect>
+
+                <text x="${width / 2}"
+                      y="27"
+                      class="fcg-callout__title">
+                    ${escapeHtml(title)}
+                </text>
+
+                ${buildSvgTextLines({
+                    x: width / 2,
+                    y: 52,
+                    lines: safeLines,
+                    className: "fcg-callout__body",
+                    lineHeight: 20
+                })}
+            </g>
+        `;
+    };
+
     const buildChartCaption = ({
         x,
         y,
