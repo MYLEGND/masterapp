@@ -2689,218 +2689,215 @@ body.finance-support-open {
     letter-spacing: .01em;
 }
 
+.finance-coaching-shell__summary {
+    margin: 0 auto;
+    max-width: 780px;
+    color: var(--muted);
+    font-size: .98rem;
+    line-height: 1.6;
+    font-weight: 700;
+}
+
 .finance-coaching-shell__canvas {
     display: flex;
     align-items: center;
     justify-content: center;
     width: 100%;
-    min-height: min(64vh, 820px);
-    padding: clamp(4px, 1vw, 10px) 0 0;
+    min-height: min(68vh, 860px);
+    padding: clamp(8px, 1.4vw, 18px) 0 0;
 }
 
 .finance-coaching-graphic {
     display: block;
-    width: min(100%, 1020px);
+    width: min(100%, 1080px);
     height: auto;
-    overflow: visible;
+    overflow: hidden;
+    isolation: isolate;
+    filter: drop-shadow(0 22px 40px rgba(2, 8, 20, .18));
 }
 
 .finance-coaching-graphic text {
-    font-family: Inter, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    font-family:
+        Inter,
+        system-ui,
+        -apple-system,
+        BlinkMacSystemFont,
+        "Segoe UI",
+        sans-serif;
+    font-kerning: normal;
+    text-rendering: geometricPrecision;
 }
 
 .finance-coaching-graphic .fcg-frame {
     fill: none;
-    stroke: rgba(243, 216, 139, .52);
-    stroke-width: 2.5;
+    stroke: rgba(243, 216, 139, .58);
+    stroke-width: 2.2;
 }
 
-.finance-coaching-graphic .fcg-brand,
-.finance-coaching-graphic .fcg-chip__label,
+.finance-coaching-graphic .fcg-brand {
+    fill: #d9ad45;
+    font-size: 16px;
+    font-weight: 900;
+    letter-spacing: .18em;
+    text-anchor: middle;
+    text-transform: uppercase;
+}
+
+.finance-coaching-graphic .fcg-chip__bg {
+    fill: rgba(7, 16, 31, .88);
+    stroke: rgba(255, 255, 255, .12);
+    stroke-width: 1.4;
+}
+
+.finance-coaching-graphic .fcg-chip__label {
+    fill: rgba(248, 250, 252, .94);
+    font-size: 12px;
+    font-weight: 900;
+    letter-spacing: .075em;
+    text-anchor: start;
+    text-transform: uppercase;
+}
+
+.finance-coaching-graphic .fcg-chip--gold .fcg-chip__bg {
+    fill: rgba(209, 160, 52, .14);
+    stroke: rgba(226, 184, 79, .52);
+}
+
+.finance-coaching-graphic .fcg-chip--red .fcg-chip__bg {
+    fill: rgba(255, 91, 111, .11);
+    stroke: rgba(255, 105, 124, .44);
+}
+
+.finance-coaching-graphic .fcg-chip--blue .fcg-chip__bg {
+    fill: rgba(56, 168, 255, .11);
+    stroke: rgba(74, 180, 255, .44);
+}
+
+.finance-coaching-graphic .fcg-chip__dot {
+    fill: #edf4ff;
+}
+
+.finance-coaching-graphic .fcg-chip--gold .fcg-chip__dot {
+    fill: #ddb457;
+}
+
+.finance-coaching-graphic .fcg-chip--red .fcg-chip__dot {
+    fill: #ff6375;
+}
+
+.finance-coaching-graphic .fcg-chip--blue .fcg-chip__dot {
+    fill: #42b2ff;
+}
+
+.finance-coaching-graphic .fcg-card__bg,
+.finance-coaching-graphic .fcg-note__bg {
+    fill: rgba(8, 18, 35, .92);
+    stroke: rgba(255, 255, 255, .11);
+    stroke-width: 1.6;
+}
+
+.finance-coaching-graphic .fcg-card__bg {
+    filter: drop-shadow(0 10px 18px rgba(0, 0, 0, .2));
+}
+
+.finance-coaching-graphic .fcg-card--red .fcg-card__bg {
+    fill: rgba(76, 16, 29, .78);
+    stroke: rgba(255, 99, 117, .48);
+}
+
+.finance-coaching-graphic .fcg-card--green .fcg-card__bg {
+    fill: rgba(9, 61, 43, .74);
+    stroke: rgba(84, 221, 160, .46);
+}
+
+.finance-coaching-graphic .fcg-card__accent {
+    fill: rgba(255, 255, 255, .22);
+}
+
+.finance-coaching-graphic .fcg-card--red .fcg-card__accent {
+    fill: #ff6375;
+}
+
+.finance-coaching-graphic .fcg-card--green .fcg-card__accent {
+    fill: #54dda0;
+}
+
 .finance-coaching-graphic .fcg-card__eyebrow,
 .finance-coaching-graphic .fcg-card__title,
 .finance-coaching-graphic .fcg-card__amount,
 .finance-coaching-graphic .fcg-card__caption,
 .finance-coaching-graphic .fcg-note__title,
 .finance-coaching-graphic .fcg-note__copy,
-.finance-coaching-graphic .fcg-callout__title,
-.finance-coaching-graphic .fcg-callout__body {
+.finance-coaching-graphic .fcg-note__accent {
     text-anchor: middle;
 }
 
-.finance-coaching-graphic .fcg-brand {
-    fill: var(--gold);
-    font-size: 18px;
-    font-weight: 900;
-    letter-spacing: .14em;
-    text-transform: uppercase;
-}
-
-.finance-coaching-graphic .fcg-chip__bg {
-    fill: rgba(8, 16, 29, .8);
-    stroke: rgba(255, 255, 255, .10);
-    stroke-width: 1.4;
-}
-
-.finance-coaching-graphic .fcg-chip__label {
-    fill: rgba(248, 250, 252, .92);
-    font-size: 13px;
-    font-weight: 900;
-    letter-spacing: .08em;
-    text-transform: uppercase;
-}
-
-.finance-coaching-graphic .fcg-chip--gold .fcg-chip__bg {
-    fill: rgba(209, 160, 52, .12);
-    stroke: rgba(209, 160, 52, .38);
-}
-
-.finance-coaching-graphic .fcg-chip--red .fcg-chip__bg {
-    fill: rgba(255, 91, 111, .10);
-    stroke: rgba(255, 91, 111, .34);
-}
-
-.finance-coaching-graphic .fcg-chip--blue .fcg-chip__bg {
-    fill: rgba(56, 168, 255, .10);
-    stroke: rgba(56, 168, 255, .32);
-}
-
-.finance-coaching-graphic .fcg-chip__dot {
-    fill: #eef4ff;
-}
-
-.finance-coaching-graphic .fcg-chip--gold .fcg-chip__dot {
-    fill: var(--gold);
-}
-
-.finance-coaching-graphic .fcg-chip--red .fcg-chip__dot {
-    fill: #ff5b6f;
-}
-
-.finance-coaching-graphic .fcg-chip--blue .fcg-chip__dot {
-    fill: #38a8ff;
-}
-
-.finance-coaching-graphic .fcg-card__bg,
-.finance-coaching-graphic .fcg-note__bg,
-.finance-coaching-graphic .fcg-callout__bg {
-    fill: rgba(10, 18, 34, .82);
-    stroke: rgba(255, 255, 255, .08);
-    stroke-width: 1.6;
-}
-
-.finance-coaching-graphic .fcg-card--red .fcg-card__bg {
-    fill: rgba(255, 91, 111, .08);
-    stroke: rgba(255, 91, 111, .34);
-}
-
-.finance-coaching-graphic .fcg-card--green .fcg-card__bg {
-    fill: rgba(77, 217, 143, .08);
-    stroke: rgba(77, 217, 143, .32);
-}
-
-.finance-coaching-graphic .fcg-card__accent {
-    fill: rgba(255, 255, 255, .20);
-}
-
-.finance-coaching-graphic .fcg-card--red .fcg-card__accent {
-    fill: #ff5b6f;
-}
-
-.finance-coaching-graphic .fcg-card--green .fcg-card__accent {
-    fill: #4dd98f;
-}
-
 .finance-coaching-graphic .fcg-card__eyebrow {
-    fill: rgba(248, 250, 252, .62);
-    font-size: 11px;
+    fill: rgba(248, 250, 252, .68);
+    font-size: 10.5px;
     font-weight: 900;
-    letter-spacing: .18em;
+    letter-spacing: .13em;
     text-transform: uppercase;
 }
 
 .finance-coaching-graphic .fcg-card__title {
     fill: #f8fafc;
-    font-size: 18px;
-    font-weight: 900;
-    letter-spacing: .04em;
+    font-size: 17px;
+    font-weight: 950;
+    letter-spacing: .035em;
     text-transform: uppercase;
 }
 
 .finance-coaching-graphic .fcg-card--red .fcg-card__title,
 .finance-coaching-graphic .fcg-card--red .fcg-card__amount {
-    fill: #ff7080;
+    fill: #ff8592;
 }
 
 .finance-coaching-graphic .fcg-card--green .fcg-card__title,
 .finance-coaching-graphic .fcg-card--green .fcg-card__amount {
-    fill: #63e1a1;
+    fill: #77ebb3;
 }
 
 .finance-coaching-graphic .fcg-card__amount {
-    fill: #fff7dd;
-    font-size: 40px;
+    fill: #fff4cf;
+    font-size: 38px;
     font-weight: 950;
-    letter-spacing: .02em;
+    letter-spacing: .01em;
 }
 
 .finance-coaching-graphic .fcg-card__caption {
-    fill: rgba(248, 250, 252, .74);
-    font-size: 13px;
-    font-weight: 800;
-    letter-spacing: .04em;
+    fill: rgba(248, 250, 252, .78);
+    font-size: 12px;
+    font-weight: 750;
+    letter-spacing: .025em;
 }
 
 .finance-coaching-graphic .fcg-note__bg {
-    fill: rgba(248, 250, 252, .05);
-    stroke: rgba(243, 216, 139, .26);
+    fill: rgba(248, 250, 252, .055);
+    stroke: rgba(226, 184, 79, .34);
 }
 
 .finance-coaching-graphic .fcg-note__title {
-    fill: #fff7dd;
-    font-size: 14px;
-    font-weight: 900;
-    letter-spacing: .18em;
+    fill: #fff1bd;
+    font-size: 13px;
+    font-weight: 950;
+    letter-spacing: .14em;
     text-transform: uppercase;
 }
 
 .finance-coaching-graphic .fcg-note__copy {
-    fill: rgba(248, 250, 252, .88);
-    font-size: 18px;
-    font-weight: 800;
-    letter-spacing: .04em;
-    text-transform: uppercase;
-}
-
-.finance-coaching-graphic .fcg-callout__bg {
-    fill: rgba(8, 16, 29, .92);
-}
-
-.finance-coaching-graphic .fcg-callout--gold .fcg-callout__bg {
-    stroke: rgba(209, 160, 52, .40);
-}
-
-.finance-coaching-graphic .fcg-callout--red .fcg-callout__bg {
-    stroke: rgba(255, 91, 111, .34);
-}
-
-.finance-coaching-graphic .fcg-callout--blue .fcg-callout__bg {
-    stroke: rgba(56, 168, 255, .34);
-}
-
-.finance-coaching-graphic .fcg-callout__title {
-    fill: #fff7dd;
-    font-size: 12px;
-    font-weight: 900;
-    letter-spacing: .16em;
-    text-transform: uppercase;
-}
-
-.finance-coaching-graphic .fcg-callout__body {
-    fill: rgba(248, 250, 252, .80);
+    fill: rgba(248, 250, 252, .9);
     font-size: 14px;
     font-weight: 800;
-    letter-spacing: .04em;
+    letter-spacing: .025em;
+}
+
+.finance-coaching-graphic .fcg-note__accent {
+    fill: #f1d27a;
+    font-size: 11px;
+    font-weight: 950;
+    letter-spacing: .12em;
+    text-transform: uppercase;
 }
 
 .finance-coaching-graphic .fcg-axis,
@@ -2908,7 +2905,8 @@ body.finance-support-open {
 .finance-coaching-graphic .fcg-gold-line,
 .finance-coaching-graphic .fcg-red-line,
 .finance-coaching-graphic .fcg-green-line,
-.finance-coaching-graphic .fcg-blue-line {
+.finance-coaching-graphic .fcg-blue-line,
+.finance-coaching-graphic .fcg-link {
     fill: none;
     stroke-linecap: round;
     stroke-linejoin: round;
@@ -2916,21 +2914,21 @@ body.finance-support-open {
 }
 
 .finance-coaching-graphic .fcg-axis {
-    stroke: rgba(248, 250, 252, .20);
+    stroke: rgba(248, 250, 252, .24);
     stroke-width: 2;
 }
 
 .finance-coaching-graphic .fcg-guide {
-    stroke: rgba(248, 250, 252, .10);
-    stroke-width: 1.5;
-    stroke-dasharray: 8 14;
+    stroke: rgba(248, 250, 252, .11);
+    stroke-width: 1.4;
+    stroke-dasharray: 7 13;
 }
 
 .finance-coaching-graphic .fcg-axis-label {
-    fill: rgba(248, 250, 252, .50);
-    font-size: 12px;
-    font-weight: 800;
-    letter-spacing: .14em;
+    fill: rgba(248, 250, 252, .58);
+    font-size: 11px;
+    font-weight: 850;
+    letter-spacing: .12em;
     text-transform: uppercase;
 }
 
@@ -2943,45 +2941,61 @@ body.finance-support-open {
 }
 
 .finance-coaching-graphic .fcg-gold-line {
-    stroke: #d1a034;
-    stroke-width: 10;
+    stroke: #d9ad45;
+    stroke-width: 8;
 }
 
 .finance-coaching-graphic .fcg-red-line {
-    stroke: #ff4f61;
-    stroke-width: 10;
+    stroke: #ff596d;
+    stroke-width: 8;
 }
 
 .finance-coaching-graphic .fcg-green-line {
-    stroke: #45c786;
-    stroke-width: 10;
+    stroke: #4fd397;
+    stroke-width: 8;
 }
 
 .finance-coaching-graphic .fcg-blue-line {
-    stroke: #2ea8ff;
-    stroke-width: 10;
+    stroke: #38adff;
+    stroke-width: 8;
+}
+
+.finance-coaching-graphic .fcg-link {
+    stroke-width: 5;
+}
+
+.finance-coaching-graphic .fcg-link--red {
+    stroke: #ff6375;
+}
+
+.finance-coaching-graphic .fcg-link--green {
+    stroke: #54dda0;
+}
+
+.finance-coaching-graphic .fcg-link--blue {
+    stroke: #42b2ff;
 }
 
 .finance-coaching-graphic .fcg-node {
-    stroke: rgba(8, 16, 29, .86);
+    stroke: rgba(5, 13, 27, .94);
     stroke-width: 3;
 }
 
 .finance-coaching-graphic .fcg-node--gold {
-    fill: #d1a034;
+    fill: #d9ad45;
 }
 
 .finance-coaching-graphic .fcg-node--red {
-    fill: #ff5b6f;
+    fill: #ff6375;
 }
 
 .finance-coaching-graphic .fcg-node--blue {
-    fill: #2ea8ff;
+    fill: #42b2ff;
 }
 
 .finance-coaching-graphic .fcg-node-ring {
     fill: none;
-    stroke: rgba(255, 255, 255, .18);
+    stroke: rgba(255, 255, 255, .24);
     stroke-width: 2;
 }
 
@@ -3479,7 +3493,7 @@ body.finance-dual-tools-open .layout-content {
     margin: 0;
 }
 
-./* Finance runtime classes centralized from finance-tools.js */
+/* Finance runtime classes centralized from finance-tools.js */
 
 .lf-js-001 {
     min-width:138px;

@@ -1160,10 +1160,30 @@ const toast = typeof window.toast === "function" ? window.toast : (msg => consol
 
     const coachingTools = enableCoachingTools
         ? [
-            { id: "disability-insurance", label: "Disability Insurance", type: "disability" },
-            { id: "term-insurance", label: "Term Insurance", type: "term" },
-            { id: "whole-life-insurance", label: "Whole Life Insurance", type: "whole-life" },
-            { id: "universal-life-insurance", label: "Universal Life Insurance", type: "universal-life" }
+            {
+                id: "disability-insurance",
+                label: "Disability Insurance",
+                type: "disability",
+                summary: "Compare two identical job offers where income protection changes the real long-term value."
+            },
+            {
+                id: "term-insurance",
+                label: "Term Insurance",
+                type: "term",
+                summary: "A level death benefit can hide renewal costs that accelerate hard in later years."
+            },
+            {
+                id: "whole-life-insurance",
+                label: "Whole Life Insurance",
+                type: "whole-life",
+                summary: "Whole life combines a stable benefit, comparatively level cost, and cash value growth over time."
+            },
+            {
+                id: "universal-life-insurance",
+                label: "Universal Life Insurance",
+                type: "universal-life",
+                summary: "Universal life offers flexibility, but surrender value can compress when policy drag outpaces performance."
+            }
         ]
         : [];
     const coachingToolLookup = new Map(
@@ -1199,72 +1219,230 @@ const toast = typeof window.toast === "function" ? window.toast : (msg => consol
         if (inputEl) inputEl.value = "";
     };
 
-    const buildLegendChip = (x, y, label, tone) => {
-        const width = Math.max(150, 42 + String(label || "").length * 8.1);
+    const buildSvgTextLines = ({
+        x,
+        y,
+        lines,
+        className,
+        lineHeight = 20,
+        anchor = "middle"
+    }) => {
+        const safeLines = (Array.isArray(lines) ? lines : [lines])
+            .map(line => String(line ?? "").trim())
+            .filter(Boolean);
+
+        if (!safeLines.length) return "";
+
         return `
-            <g transform="translate(${x} ${y})" class="fcg-chip fcg-chip--${tone}">
-                <rect x="0" y="0" width="${width}" height="36" rx="18" class="fcg-chip__bg"></rect>
-                <circle cx="18" cy="18" r="5" class="fcg-chip__dot"></circle>
-                <text x="32" y="23" class="fcg-chip__label">${escapeHtml(label)}</text>
-            </g>
+            <text x="${x}"
+                  y="${y}"
+                  class="${className}"
+                  text-anchor="${anchor}">
+                ${safeLines.map((line, index) => `
+                    <tspan x="${x}" dy="${index === 0 ? 0 : lineHeight}">
+                        ${escapeHtml(line)}
+                    </tspan>
+                `).join("")}
+            </text>
         `;
     };
 
-    const buildInfoCard = ({ x, y, width, height, tone, eyebrow, title, amount, caption }) => {
-        const titleY = eyebrow ? 50 : 42;
-        const amountY = eyebrow ? 94 : 88;
-        const captionY = height - 20;
+    const buildLegendChip = (x, y, label, tone, width = null) => {
+        const resolvedWidth = width ?? Math.max(
+            164,
+            Math.min(294, 52 + String(label || "").length * 7.4)
+        );
 
         return `
-            <g transform="translate(${x} ${y})" class="fcg-card fcg-card--${tone}">
-                <rect x="0" y="0" width="${width}" height="${height}" rx="24" class="fcg-card__bg"></rect>
-                <rect x="0" y="0" width="${width}" height="6" rx="6" class="fcg-card__accent"></rect>
-                ${eyebrow ? `<text x="${width / 2}" y="26" class="fcg-card__eyebrow">${escapeHtml(eyebrow)}</text>` : ""}
-                <text x="${width / 2}" y="${titleY}" class="fcg-card__title">${escapeHtml(title)}</text>
-                ${amount ? `<text x="${width / 2}" y="${amountY}" class="fcg-card__amount">${escapeHtml(amount)}</text>` : ""}
-                ${caption ? `<text x="${width / 2}" y="${captionY}" class="fcg-card__caption">${escapeHtml(caption)}</text>` : ""}
-            </g>
-        `;
-    };
-
-    const buildNoteCard = ({ x, y, width, title, lines }) => {
-        const safeLines = Array.isArray(lines) ? lines : [];
-        return `
-            <g transform="translate(${x} ${y})" class="fcg-note">
-                <rect x="0" y="0" width="${width}" height="112" rx="22" class="fcg-note__bg"></rect>
-                <text x="${width / 2}" y="28" class="fcg-note__title">${escapeHtml(title)}</text>
-                <text x="${width / 2}" y="54" class="fcg-note__copy">
-                    ${safeLines.map((line, index) => `
-                        <tspan x="${width / 2}" dy="${index === 0 ? 0 : 22}">${escapeHtml(line)}</tspan>
-                    `).join("")}
+            <g transform="translate(${x} ${y})"
+               class="fcg-chip fcg-chip--${tone}">
+                <rect x="0"
+                      y="0"
+                      width="${resolvedWidth}"
+                      height="38"
+                      rx="19"
+                      class="fcg-chip__bg"></rect>
+                <circle cx="19"
+                        cy="19"
+                        r="5"
+                        class="fcg-chip__dot"></circle>
+                <text x="34"
+                      y="24"
+                      class="fcg-chip__label">
+                    ${escapeHtml(label)}
                 </text>
             </g>
         `;
     };
 
-    const buildCallout = ({ x, y, width, tone, title, lines }) => {
-        const safeLines = Array.isArray(lines) ? lines : [];
-        const height = 54 + safeLines.length * 18;
+    const buildInfoCard = ({
+        x,
+        y,
+        width,
+        height,
+        tone,
+        eyebrow,
+        title,
+        titleLines,
+        amount,
+        caption,
+        captionLines
+    }) => {
+        const resolvedTitleLines = Array.isArray(titleLines)
+            ? titleLines
+            : [title];
+
+        const resolvedCaptionLines = Array.isArray(captionLines)
+            ? captionLines
+            : caption
+                ? [caption]
+                : [];
+
+        const titleY = eyebrow ? 54 : 42;
+        const titleLineHeight = 22;
+        const amountY = eyebrow
+            ? titleY + resolvedTitleLines.length * titleLineHeight + 28
+            : titleY + resolvedTitleLines.length * titleLineHeight + 26;
+        const captionStartY = height - 22 -
+            Math.max(0, resolvedCaptionLines.length - 1) * 17;
 
         return `
-            <g transform="translate(${x} ${y})" class="fcg-callout fcg-callout--${tone}">
-                <rect x="0" y="0" width="${width}" height="${height}" rx="20" class="fcg-callout__bg"></rect>
-                <text x="${width / 2}" y="24" class="fcg-callout__title">${escapeHtml(title)}</text>
-                <text x="${width / 2}" y="46" class="fcg-callout__body">
-                    ${safeLines.map((line, index) => `
-                        <tspan x="${width / 2}" dy="${index === 0 ? 0 : 18}">${escapeHtml(line)}</tspan>
-                    `).join("")}
-                </text>
+            <g transform="translate(${x} ${y})"
+               class="fcg-card fcg-card--${tone}">
+                <rect x="0"
+                      y="0"
+                      width="${width}"
+                      height="${height}"
+                      rx="24"
+                      class="fcg-card__bg"></rect>
+                <rect x="0"
+                      y="0"
+                      width="${width}"
+                      height="7"
+                      rx="7"
+                      class="fcg-card__accent"></rect>
+
+                ${eyebrow ? `
+                    <text x="${width / 2}"
+                          y="29"
+                          class="fcg-card__eyebrow">
+                        ${escapeHtml(eyebrow)}
+                    </text>
+                ` : ""}
+
+                ${buildSvgTextLines({
+                    x: width / 2,
+                    y: titleY,
+                    lines: resolvedTitleLines,
+                    className: "fcg-card__title",
+                    lineHeight: titleLineHeight
+                })}
+
+                ${amount ? `
+                    <text x="${width / 2}"
+                          y="${amountY}"
+                          class="fcg-card__amount">
+                        ${escapeHtml(amount)}
+                    </text>
+                ` : ""}
+
+                ${resolvedCaptionLines.length
+                    ? buildSvgTextLines({
+                        x: width / 2,
+                        y: captionStartY,
+                        lines: resolvedCaptionLines,
+                        className: "fcg-card__caption",
+                        lineHeight: 17
+                    })
+                    : ""}
             </g>
         `;
     };
+
+    const buildNoteCard = ({
+        x,
+        y,
+        width,
+        height = 124,
+        title,
+        lines,
+        accentLines
+    }) => {
+        const safeLines = Array.isArray(lines) ? lines : [];
+        const safeAccentLines = Array.isArray(accentLines) ? accentLines : [];
+        const accentStartY = height - 18 -
+            Math.max(0, safeAccentLines.length - 1) * 17;
+
+        return `
+            <g transform="translate(${x} ${y})"
+               class="fcg-note">
+                <rect x="0"
+                      y="0"
+                      width="${width}"
+                      height="${height}"
+                      rx="22"
+                      class="fcg-note__bg"></rect>
+
+                <text x="${width / 2}"
+                      y="30"
+                      class="fcg-note__title">
+                    ${escapeHtml(title)}
+                </text>
+
+                ${buildSvgTextLines({
+                    x: width / 2,
+                    y: 58,
+                    lines: safeLines,
+                    className: "fcg-note__copy",
+                    lineHeight: 21
+                })}
+
+                ${safeAccentLines.length
+                    ? buildSvgTextLines({
+                        x: width / 2,
+                        y: accentStartY,
+                        lines: safeAccentLines,
+                        className: "fcg-note__accent",
+                        lineHeight: 17
+                    })
+                    : ""}
+            </g>
+        `;
+    };
+
+    const buildChartCaption = ({
+        x,
+        y,
+        width,
+        tone,
+        title,
+        lines
+    }) => buildCallout({
+        x,
+        y,
+        width,
+        height: 92,
+        tone,
+        title,
+        lines
+    });
 
     const buildCoachingGraphicShell = (
         tool,
         bodyBuilder,
-        { viewBox = "0 0 1200 760", frameX = 82, frameY = 74, frameWidth = 1036, frameHeight = 568 } = {}
+        {
+            viewBox = "0 0 1200 800",
+            frameX = 72,
+            frameY = 72,
+            frameWidth = 1056,
+            frameHeight = 646,
+            brandY = 766
+        } = {}
     ) => {
-        const graphicKey = String(tool.id || "coaching-tool").replace(/[^a-z0-9]+/gi, "-").toLowerCase();
+        const graphicKey = String(tool.id || "coaching-tool")
+            .replace(/[^a-z0-9]+/gi, "-")
+            .toLowerCase();
+
         const panelGradientId = `${graphicKey}-panel-gradient`;
         const glowGradientId = `${graphicKey}-glow-gradient`;
         const gridPatternId = `${graphicKey}-grid-pattern`;
@@ -1272,227 +1450,527 @@ const toast = typeof window.toast === "function" ? window.toast : (msg => consol
         const arrowRedId = `${graphicKey}-arrow-red`;
         const arrowGreenId = `${graphicKey}-arrow-green`;
         const arrowBlueId = `${graphicKey}-arrow-blue`;
-        const ids = { arrowRedId, arrowGreenId, arrowBlueId };
+
+        const ids = {
+            arrowRedId,
+            arrowGreenId,
+            arrowBlueId
+        };
 
         return `
             <svg class="finance-coaching-graphic finance-coaching-graphic--${graphicKey}"
                  viewBox="${viewBox}"
+                 preserveAspectRatio="xMidYMid meet"
                  role="img"
                  aria-labelledby="${graphicKey}-title ${graphicKey}-desc">
-                <title id="${graphicKey}-title">${escapeHtml(tool.label)}</title>
-                <desc id="${graphicKey}-desc">Coaching diagram for ${escapeHtml(tool.label)} rendered inside the finance workspace.</desc>
+                <title id="${graphicKey}-title">
+                    ${escapeHtml(tool.label)}
+                </title>
+                <desc id="${graphicKey}-desc">
+                    Coaching diagram for ${escapeHtml(tool.label)} rendered inside the finance workspace.
+                </desc>
+
                 <defs>
-                    <linearGradient id="${panelGradientId}" x1="0%" y1="0%" x2="100%" y2="100%">
-                        <stop offset="0%" stop-color="#08101d" />
-                        <stop offset="52%" stop-color="#101a2d" />
-                        <stop offset="100%" stop-color="#15233a" />
+                    <linearGradient id="${panelGradientId}"
+                                    x1="0%"
+                                    y1="0%"
+                                    x2="100%"
+                                    y2="100%">
+                        <stop offset="0%" stop-color="#07101f"></stop>
+                        <stop offset="48%" stop-color="#0d192d"></stop>
+                        <stop offset="100%" stop-color="#142640"></stop>
                     </linearGradient>
-                    <radialGradient id="${glowGradientId}" cx="16%" cy="10%" r="86%">
-                        <stop offset="0%" stop-color="#d1a034" stop-opacity=".18" />
-                        <stop offset="48%" stop-color="#d1a034" stop-opacity=".05" />
-                        <stop offset="100%" stop-color="#d1a034" stop-opacity="0" />
+
+                    <radialGradient id="${glowGradientId}"
+                                    cx="14%"
+                                    cy="8%"
+                                    r="92%">
+                        <stop offset="0%"
+                              stop-color="#e2b84f"
+                              stop-opacity=".22"></stop>
+                        <stop offset="45%"
+                              stop-color="#d1a034"
+                              stop-opacity=".06"></stop>
+                        <stop offset="100%"
+                              stop-color="#d1a034"
+                              stop-opacity="0"></stop>
                     </radialGradient>
-                    <pattern id="${gridPatternId}" width="40" height="40" patternUnits="userSpaceOnUse">
-                        <path d="M 40 0 L 0 0 0 40" fill="none" stroke="#ffffff12" stroke-width="1"></path>
+
+                    <pattern id="${gridPatternId}"
+                             width="42"
+                             height="42"
+                             patternUnits="userSpaceOnUse">
+                        <path d="M42 0H0V42"
+                              fill="none"
+                              stroke="#ffffff10"
+                              stroke-width="1"></path>
                     </pattern>
-                    <filter id="${shadowId}" x="-20%" y="-20%" width="140%" height="140%">
-                        <feDropShadow dx="0" dy="20" stdDeviation="24" flood-color="#000000" flood-opacity=".26"></feDropShadow>
+
+                    <filter id="${shadowId}"
+                            x="-20%"
+                            y="-20%"
+                            width="140%"
+                            height="150%">
+                        <feDropShadow dx="0"
+                                      dy="18"
+                                      stdDeviation="22"
+                                      flood-color="#000000"
+                                      flood-opacity=".32"></feDropShadow>
                     </filter>
-                    <marker id="${arrowRedId}" markerWidth="12" markerHeight="12" refX="10" refY="6" orient="auto">
-                        <path d="M0 0 L12 6 L0 12 Z" fill="#ff5b6f"></path>
+
+                    <marker id="${arrowRedId}"
+                            markerWidth="10"
+                            markerHeight="10"
+                            refX="8"
+                            refY="5"
+                            orient="auto"
+                            markerUnits="userSpaceOnUse">
+                        <path d="M0 0L10 5L0 10Z"
+                              fill="#ff6375"></path>
                     </marker>
-                    <marker id="${arrowGreenId}" markerWidth="12" markerHeight="12" refX="10" refY="6" orient="auto">
-                        <path d="M0 0 L12 6 L0 12 Z" fill="#4dd98f"></path>
+
+                    <marker id="${arrowGreenId}"
+                            markerWidth="10"
+                            markerHeight="10"
+                            refX="8"
+                            refY="5"
+                            orient="auto"
+                            markerUnits="userSpaceOnUse">
+                        <path d="M0 0L10 5L0 10Z"
+                              fill="#54dda0"></path>
                     </marker>
-                    <marker id="${arrowBlueId}" markerWidth="12" markerHeight="12" refX="10" refY="6" orient="auto">
-                        <path d="M0 0 L12 6 L0 12 Z" fill="#38a8ff"></path>
+
+                    <marker id="${arrowBlueId}"
+                            markerWidth="10"
+                            markerHeight="10"
+                            refX="8"
+                            refY="5"
+                            orient="auto"
+                            markerUnits="userSpaceOnUse">
+                        <path d="M0 0L10 5L0 10Z"
+                              fill="#42b2ff"></path>
                     </marker>
                 </defs>
-                <rect x="${frameX}" y="${frameY}" width="${frameWidth}" height="${frameHeight}" rx="34" fill="url(#${panelGradientId})" filter="url(#${shadowId})"></rect>
-                <rect x="${frameX}" y="${frameY}" width="${frameWidth}" height="${frameHeight}" rx="34" fill="url(#${glowGradientId})"></rect>
-                <rect x="${frameX}" y="${frameY}" width="${frameWidth}" height="${frameHeight}" rx="34" fill="url(#${gridPatternId})" opacity=".22"></rect>
-                <rect x="${frameX}" y="${frameY}" width="${frameWidth}" height="${frameHeight}" rx="34" class="fcg-frame"></rect>
+
+                <rect x="${frameX}"
+                      y="${frameY}"
+                      width="${frameWidth}"
+                      height="${frameHeight}"
+                      rx="36"
+                      fill="url(#${panelGradientId})"
+                      filter="url(#${shadowId})"></rect>
+
+                <rect x="${frameX}"
+                      y="${frameY}"
+                      width="${frameWidth}"
+                      height="${frameHeight}"
+                      rx="36"
+                      fill="url(#${glowGradientId})"></rect>
+
+                <rect x="${frameX}"
+                      y="${frameY}"
+                      width="${frameWidth}"
+                      height="${frameHeight}"
+                      rx="36"
+                      fill="url(#${gridPatternId})"
+                      opacity=".2"></rect>
+
+                <rect x="${frameX}"
+                      y="${frameY}"
+                      width="${frameWidth}"
+                      height="${frameHeight}"
+                      rx="36"
+                      class="fcg-frame"></rect>
+
                 ${bodyBuilder(ids)}
-                <text x="600" y="708" class="fcg-brand">Legend Legacy Protection</text>
+
+                <text x="600"
+                      y="${brandY}"
+                      class="fcg-brand">
+                    Legend Legacy Protection
+                </text>
             </svg>
         `;
     };
 
-    const buildDisabilityCoachingGraphic = (tool) => buildCoachingGraphicShell(tool, ({ arrowRedId, arrowGreenId }) => `
-        ${buildLegendChip(130, 108, "Offer Value Beyond Salary", "gold")}
-        ${buildLegendChip(346, 108, "Disability Outcome", "blue")}
+    const buildDisabilityCoachingGraphic = (tool) =>
+        buildCoachingGraphicShell(
+            tool,
+            ({ arrowRedId, arrowGreenId }) => `
+                ${buildLegendChip(
+                    116,
+                    104,
+                    "Headline Salary",
+                    "gold",
+                    196
+                )}
 
-        ${buildInfoCard({
-            x: 132,
-            y: 170,
-            width: 320,
-            height: 150,
-            tone: "red",
-            eyebrow: "Offer A",
-            title: "ABC Company",
-            amount: "$100,000",
-            caption: "Higher paycheck at first glance"
-        })}
-        ${buildInfoCard({
-            x: 748,
-            y: 170,
-            width: 320,
-            height: 150,
-            tone: "green",
-            eyebrow: "Offer B",
-            title: "XYZ Company",
-            amount: "$97,000",
-            caption: "Income continuity becomes visible"
-        })}
-        ${buildNoteCard({
-            x: 390,
-            y: 344,
-            width: 420,
-            title: "Everything Else Matches",
-            lines: [
-                "Job duties: identical",
-                "Hours worked: identical",
-                "Skills required: identical"
-            ]
-        })}
-        ${buildInfoCard({
-            x: 160,
-            y: 474,
-            width: 270,
-            height: 128,
-            tone: "red",
-            eyebrow: "If Work Stops",
-            title: "Without Coverage",
-            amount: "$0",
-            caption: "Out due to injury or illness"
-        })}
-        ${buildInfoCard({
-            x: 770,
-            y: 474,
-            width: 270,
-            height: 128,
-            tone: "green",
-            eyebrow: "If Work Stops",
-            title: "With Protection",
-            amount: "$60,000",
-            caption: "Out due to injury or illness"
-        })}
+                ${buildLegendChip(
+                    836,
+                    104,
+                    "Lifestyle Protection",
+                    "blue",
+                    238
+                )}
 
-        <path d="M292 320 C 292 378, 248 414, 248 474" class="fcg-red-line" marker-end="url(#${arrowRedId})"></path>
-        <path d="M908 320 C 908 378, 952 414, 952 474" class="fcg-green-line" marker-end="url(#${arrowGreenId})"></path>
+                ${buildInfoCard({
+                    x: 116,
+                    y: 164,
+                    width: 340,
+                    height: 170,
+                    tone: "red",
+                    eyebrow: "Offer A",
+                    titleLines: ["ABC Company"],
+                    amount: "$100,000",
+                    captionLines: [
+                        "Higher salary",
+                        "No disability income coverage"
+                    ]
+                })}
 
-        ${buildCallout({
-            x: 392,
-            y: 490,
-            width: 416,
-            tone: "gold",
-            title: "Coaching Question",
-            lines: [
-                "Looking at these two offers,",
-                "which one actually protects your life better?"
-            ]
-        })}
-    `);
+                ${buildInfoCard({
+                    x: 744,
+                    y: 164,
+                    width: 340,
+                    height: 170,
+                    tone: "green",
+                    eyebrow: "Offer B",
+                    titleLines: ["XYZ Company"],
+                    amount: "$97,000",
+                    captionLines: [
+                        "Slightly lower salary",
+                        "Income protection included"
+                    ]
+                })}
 
-    const buildTermCoachingGraphic = (tool) => buildCoachingGraphicShell(tool, () => `
-        ${buildLegendChip(134, 108, "Death Benefit", "gold")}
-        ${buildLegendChip(320, 108, "Cost", "red")}
+                ${buildNoteCard({
+                    x: 388,
+                    y: 356,
+                    width: 424,
+                    height: 144,
+                    title: "The Job Is The Same",
+                    lines: [
+                        "Same responsibilities and performance",
+                        "Same hours, workload, and expectations",
+                        "Same required experience"
+                    ],
+                    accentLines: [
+                        "Protection changes the real outcome"
+                    ]
+                })}
 
-        <line x1="170" y1="552" x2="980" y2="552" class="fcg-axis"></line>
-        <line x1="170" y1="552" x2="170" y2="180" class="fcg-axis"></line>
-        <line x1="170" y1="248" x2="980" y2="248" class="fcg-guide"></line>
-        <line x1="170" y1="372" x2="980" y2="372" class="fcg-guide"></line>
+                <path d="M286 334C286 394 254 428 254 486"
+                      class="fcg-link fcg-link--red"
+                      marker-end="url(#${arrowRedId})"></path>
 
-        <text x="172" y="582" class="fcg-axis-label fcg-axis-label--left">Early years</text>
-        <text x="980" y="582" class="fcg-axis-label fcg-axis-label--right">Later years</text>
-        <text x="170" y="162" class="fcg-axis-label fcg-axis-label--left">Protection value</text>
+                <path d="M914 334C914 394 946 428 946 486"
+                      class="fcg-link fcg-link--green"
+                      marker-end="url(#${arrowGreenId})"></path>
 
-        <line x1="212" y1="232" x2="842" y2="232" class="fcg-gold-line"></line>
-        <circle cx="212" cy="232" r="8" class="fcg-node fcg-node--gold"></circle>
-        <circle cx="842" cy="232" r="8" class="fcg-node fcg-node--gold"></circle>
+                ${buildInfoCard({
+                    x: 116,
+                    y: 516,
+                    width: 340,
+                    height: 154,
+                    tone: "red",
+                    eyebrow: "If Illness or Injury Stops Work",
+                    titleLines: ["Income Exposed"],
+                    amount: "$0",
+                    captionLines: [
+                        "Paycheck stops when work stops",
+                        "Savings absorb the lifestyle shock"
+                    ]
+                })}
 
-        <path d="M204 506 C 330 560, 518 562, 674 498 C 806 444, 888 346, 938 206" class="fcg-red-line"></path>
-        <circle cx="938" cy="206" r="8" class="fcg-node fcg-node--red"></circle>
+                ${buildInfoCard({
+                    x: 744,
+                    y: 516,
+                    width: 340,
+                    height: 154,
+                    tone: "green",
+                    eyebrow: "If Illness or Injury Stops Work",
+                    titleLines: ["Income Protected"],
+                    amount: "$60,000",
+                    captionLines: [
+                        "Illustrative annual benefit",
+                        "Cash flow continues during recovery"
+                    ]
+                })}
+            `,
+            {
+                viewBox: "0 0 1200 820",
+                frameX: 72,
+                frameY: 72,
+                frameWidth: 1056,
+                frameHeight: 654,
+                brandY: 786
+            }
+        );
 
-        ${buildCallout({
-            x: 762,
-            y: 128,
-            width: 276,
-            tone: "red",
-            title: "Term Life Pattern",
-            lines: [
-                "Benefit stays level,",
-                "but renewal cost can surge later."
-            ]
-        })}
-    `);
+    const buildTermCoachingGraphic = (tool) =>
+        buildCoachingGraphicShell(tool, () => `
+            ${buildLegendChip(116, 104, "Level Death Benefit", "gold", 222)}
+            ${buildLegendChip(354, 104, "Renewal Cost", "red", 190)}
 
-    const buildWholeLifeCoachingGraphic = (tool) => buildCoachingGraphicShell(tool, () => `
-        ${buildLegendChip(134, 108, "Death Benefit", "gold")}
-        ${buildLegendChip(320, 108, "Cost", "red")}
-        ${buildLegendChip(468, 108, "Cash Value", "blue")}
+            <line x1="156"
+                  y1="584"
+                  x2="1040"
+                  y2="584"
+                  class="fcg-axis"></line>
 
-        <line x1="170" y1="552" x2="980" y2="552" class="fcg-axis"></line>
-        <line x1="170" y1="552" x2="170" y2="180" class="fcg-axis"></line>
-        <line x1="170" y1="248" x2="980" y2="248" class="fcg-guide"></line>
-        <line x1="170" y1="372" x2="980" y2="372" class="fcg-guide"></line>
+            <line x1="156"
+                  y1="584"
+                  x2="156"
+                  y2="184"
+                  class="fcg-axis"></line>
 
-        <text x="172" y="582" class="fcg-axis-label fcg-axis-label--left">Early years</text>
-        <text x="980" y="582" class="fcg-axis-label fcg-axis-label--right">Later years</text>
+            <line x1="156"
+                  y1="260"
+                  x2="1040"
+                  y2="260"
+                  class="fcg-guide"></line>
 
-        <line x1="212" y1="228" x2="922" y2="228" class="fcg-gold-line"></line>
-        <line x1="212" y1="474" x2="922" y2="474" class="fcg-red-line"></line>
-        <path d="M204 528 C 332 588, 490 590, 642 506 C 782 430, 870 324, 936 184" class="fcg-blue-line"></path>
+            <line x1="156"
+                  y1="404"
+                  x2="1040"
+                  y2="404"
+                  class="fcg-guide"></line>
 
-        <circle cx="736" cy="474" r="8" class="fcg-node fcg-node--blue"></circle>
+            <text x="156"
+                  y="620"
+                  class="fcg-axis-label fcg-axis-label--left">
+                Early years
+            </text>
 
-        ${buildCallout({
-            x: 750,
-            y: 408,
-            width: 288,
-            tone: "blue",
-            title: "Whole Life Pattern",
-            lines: [
-                "Cash value can compound",
-                "while cost stays comparatively level."
-            ]
-        })}
-    `);
+            <text x="1040"
+                  y="620"
+                  class="fcg-axis-label fcg-axis-label--right">
+                Later years
+            </text>
 
-    const buildUniversalLifeCoachingGraphic = (tool) => buildCoachingGraphicShell(tool, ({ arrowBlueId }) => `
-        ${buildLegendChip(134, 108, "Death Benefit", "gold")}
-        ${buildLegendChip(320, 108, "Cost", "red")}
-        ${buildLegendChip(468, 108, "Surrender Cash Value", "blue")}
+            <text x="156"
+                  y="164"
+                  class="fcg-axis-label fcg-axis-label--left">
+                Relative policy value
+            </text>
 
-        <line x1="170" y1="552" x2="980" y2="552" class="fcg-axis"></line>
-        <line x1="170" y1="552" x2="170" y2="180" class="fcg-axis"></line>
-        <line x1="170" y1="232" x2="980" y2="232" class="fcg-guide"></line>
-        <line x1="170" y1="372" x2="980" y2="372" class="fcg-guide"></line>
+            <line x1="204"
+                  y1="238"
+                  x2="970"
+                  y2="238"
+                  class="fcg-gold-line"></line>
 
-        <text x="172" y="582" class="fcg-axis-label fcg-axis-label--left">Early years</text>
-        <text x="980" y="582" class="fcg-axis-label fcg-axis-label--right">Later years</text>
+            <circle cx="204"
+                    cy="238"
+                    r="8"
+                    class="fcg-node fcg-node--gold"></circle>
 
-        <line x1="212" y1="214" x2="924" y2="214" class="fcg-gold-line"></line>
-        <path d="M206 520 C 344 560, 526 564, 698 508 C 818 468, 896 374, 954 150" class="fcg-red-line"></path>
-        <path d="M262 462 C 344 300, 510 256, 652 310 C 756 350, 822 454, 862 500 C 906 546, 946 548, 978 516" class="fcg-blue-line" marker-end="url(#${arrowBlueId})"></path>
+            <circle cx="970"
+                    cy="238"
+                    r="8"
+                    class="fcg-node fcg-node--gold"></circle>
 
-        <circle cx="822" cy="412" r="8" class="fcg-node fcg-node--blue"></circle>
-        <circle cx="822" cy="412" r="16" class="fcg-node-ring"></circle>
+            <path d="M204 534
+                     C354 570 516 568 662 524
+                     C804 482 902 370 978 188"
+                  class="fcg-red-line"></path>
 
-        ${buildCallout({
-            x: 724,
-            y: 398,
-            width: 314,
-            tone: "gold",
-            title: "Universal Life Pattern",
-            lines: [
-                "Cash value can peak and later compress",
-                "if policy drag outpaces performance."
-            ]
-        })}
-    `);
+            <circle cx="978"
+                    cy="188"
+                    r="8"
+                    class="fcg-node fcg-node--red"></circle>
+
+            ${buildChartCaption({
+                x: 748,
+                y: 456,
+                width: 280,
+                tone: "red",
+                title: "Renewal Pressure",
+                lines: [
+                    "Coverage can stay level",
+                    "while later cost accelerates"
+                ]
+            })}
+        `);
+
+    const buildWholeLifeCoachingGraphic = (tool) =>
+        buildCoachingGraphicShell(tool, () => `
+            ${buildLegendChip(116, 104, "Death Benefit", "gold", 190)}
+            ${buildLegendChip(322, 104, "Level Premium", "red", 186)}
+            ${buildLegendChip(524, 104, "Cash Value", "blue", 180)}
+
+            <line x1="156"
+                  y1="584"
+                  x2="1040"
+                  y2="584"
+                  class="fcg-axis"></line>
+
+            <line x1="156"
+                  y1="584"
+                  x2="156"
+                  y2="184"
+                  class="fcg-axis"></line>
+
+            <line x1="156"
+                  y1="260"
+                  x2="1040"
+                  y2="260"
+                  class="fcg-guide"></line>
+
+            <line x1="156"
+                  y1="404"
+                  x2="1040"
+                  y2="404"
+                  class="fcg-guide"></line>
+
+            <text x="156"
+                  y="620"
+                  class="fcg-axis-label fcg-axis-label--left">
+                Early years
+            </text>
+
+            <text x="1040"
+                  y="620"
+                  class="fcg-axis-label fcg-axis-label--right">
+                Later years
+            </text>
+
+            <text x="156"
+                  y="164"
+                  class="fcg-axis-label fcg-axis-label--left">
+                Relative policy value
+            </text>
+
+            <line x1="204"
+                  y1="236"
+                  x2="974"
+                  y2="236"
+                  class="fcg-gold-line"></line>
+
+            <line x1="204"
+                  y1="500"
+                  x2="974"
+                  y2="500"
+                  class="fcg-red-line"></line>
+
+            <path d="M204 548
+                     C342 560 480 532 602 470
+                     C730 406 850 302 970 190"
+                  class="fcg-blue-line"></path>
+
+            <circle cx="664"
+                    cy="438"
+                    r="8"
+                    class="fcg-node fcg-node--blue"></circle>
+
+            <circle cx="664"
+                    cy="438"
+                    r="17"
+                    class="fcg-node-ring"></circle>
+
+            ${buildChartCaption({
+                x: 714,
+                y: 390,
+                width: 310,
+                tone: "blue",
+                title: "Value Builds Over Time",
+                lines: [
+                    "Cash value compounds gradually",
+                    "inside permanent protection"
+                ]
+            })}
+        `);
+
+    const buildUniversalLifeCoachingGraphic = (tool) =>
+        buildCoachingGraphicShell(tool, () => `
+            ${buildLegendChip(116, 104, "Death Benefit", "gold", 190)}
+            ${buildLegendChip(322, 104, "Policy Cost", "red", 170)}
+            ${buildLegendChip(508, 104, "Surrender Value", "blue", 214)}
+
+            <line x1="156"
+                  y1="584"
+                  x2="1040"
+                  y2="584"
+                  class="fcg-axis"></line>
+
+            <line x1="156"
+                  y1="584"
+                  x2="156"
+                  y2="184"
+                  class="fcg-axis"></line>
+
+            <line x1="156"
+                  y1="252"
+                  x2="1040"
+                  y2="252"
+                  class="fcg-guide"></line>
+
+            <line x1="156"
+                  y1="404"
+                  x2="1040"
+                  y2="404"
+                  class="fcg-guide"></line>
+
+            <text x="156"
+                  y="620"
+                  class="fcg-axis-label fcg-axis-label--left">
+                Early years
+            </text>
+
+            <text x="1040"
+                  y="620"
+                  class="fcg-axis-label fcg-axis-label--right">
+                Later years
+            </text>
+
+            <text x="156"
+                  y="164"
+                  class="fcg-axis-label fcg-axis-label--left">
+                Relative policy value
+            </text>
+
+            <line x1="204"
+                  y1="226"
+                  x2="974"
+                  y2="226"
+                  class="fcg-gold-line"></line>
+
+            <path d="M204 540
+                     C344 568 516 558 670 512
+                     C814 470 912 350 976 184"
+                  class="fcg-red-line"></path>
+
+            <path d="M226 514
+                     C320 330 462 276 606 314
+                     C746 350 816 454 862 504
+                     C904 548 944 552 986 522"
+                  class="fcg-blue-line"></path>
+
+            <circle cx="862"
+                    cy="504"
+                    r="8"
+                    class="fcg-node fcg-node--blue"></circle>
+
+            <circle cx="862"
+                    cy="504"
+                    r="17"
+                    class="fcg-node-ring"></circle>
+
+            ${buildChartCaption({
+                x: 698,
+                y: 326,
+                width: 326,
+                tone: "blue",
+                title: "Value Compression",
+                lines: [
+                    "Policy drag can narrow",
+                    "accessible surrender value"
+                ]
+            })}
+        `);
 
     const buildCoachingGraphicMarkup = (tool) => {
+
         switch (tool?.type) {
             case "disability":
                 return buildDisabilityCoachingGraphic(tool);
@@ -1515,6 +1993,7 @@ const toast = typeof window.toast === "function" ? window.toast : (msg => consol
                 <div class="finance-coaching-shell__header">
                     <div class="finance-coaching-shell__kicker">Coaching Tool</div>
                     <h2 id="financeCoachingToolTitle" class="finance-coaching-shell__title">${escapeHtml(tool.label)}</h2>
+                    <p class="finance-coaching-shell__summary">${escapeHtml(tool.summary || "")}</p>
                 </div>
                 <div class="finance-coaching-shell__canvas">
                     ${buildCoachingGraphicMarkup(tool)}
