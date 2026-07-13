@@ -1740,7 +1740,8 @@ article[data-has-spouse="true"][data-active-person="spouse"] [data-llbs-person-f
     --border-soft: rgba(159, 176, 205, .22);
     --navy-panel: #111827;
     --navy-field: #121a2b;
-    --finance-main-width: 840px;
+    --finance-main-width: 900px;
+    --finance-main-width-wide: 1120px;
     --shadow-a: 0 18px 55px rgba(0, 0, 0, .45);
     --shadow-b: 0 22px 70px rgba(0, 0, 0, .52);
     --radius: 20px;
@@ -1768,9 +1769,15 @@ body {
 }
 
 .finance-tools-row {
+    --bs-gutter-x: 0;
     max-width: 1200px;
     margin-left: auto;
     margin-right: auto;
+}
+
+.finance-tools-row > .col-12 {
+    padding-left: 0;
+    padding-right: 0;
 }
 
 .finance-selector-row {
@@ -1803,7 +1810,7 @@ body {
 }
 
 .finance-header.finance-header--with-coaching {
-    width: min(100%, 1180px);
+    width: min(100%, var(--finance-main-width-wide));
 }
 
 .finance-header::before {
@@ -2645,8 +2652,12 @@ body.finance-support-open {
     overflow: hidden;
 }
 
+.finance-header.finance-header--with-coaching + .finance-tools-row .finance-main {
+    width: min(100%, var(--finance-main-width-wide));
+}
+
 .finance-main.finance-main--coaching {
-    width: min(100%, 1120px);
+    width: min(100%, var(--finance-main-width-wide));
 }
 
 .finance-main::before {
