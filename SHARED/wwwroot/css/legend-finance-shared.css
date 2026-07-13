@@ -2663,13 +2663,13 @@ body.finance-support-open {
     z-index: 1;
     display: grid;
     grid-template-rows: auto minmax(0, 1fr);
-    gap: 18px;
+    gap: 10px;
     min-height: 100%;
 }
 
 .finance-coaching-shell__header {
     display: grid;
-    gap: 8px;
+    gap: 6px;
     text-align: center;
 }
 
@@ -2694,17 +2694,17 @@ body.finance-support-open {
     max-width: 780px;
     color: var(--muted);
     font-size: .98rem;
-    line-height: 1.6;
+    line-height: 1.45;
     font-weight: 700;
 }
 
 .finance-coaching-shell__canvas {
     display: flex;
-    align-items: center;
+    align-items: flex-start;
     justify-content: center;
     width: 100%;
-    min-height: min(68vh, 860px);
-    padding: clamp(8px, 1.4vw, 18px) 0 0;
+    min-height: 0;
+    padding: 0;
 }
 
 .finance-coaching-graphic {
@@ -2809,18 +2809,6 @@ body.finance-support-open {
 .finance-coaching-graphic .fcg-card--green .fcg-card__bg {
     fill: rgba(9, 61, 43, .74);
     stroke: rgba(84, 221, 160, .46);
-}
-
-.finance-coaching-graphic .fcg-card__accent {
-    fill: rgba(255, 255, 255, .22);
-}
-
-.finance-coaching-graphic .fcg-card--red .fcg-card__accent {
-    fill: #ff6375;
-}
-
-.finance-coaching-graphic .fcg-card--green .fcg-card__accent {
-    fill: #54dda0;
 }
 
 .finance-coaching-graphic .fcg-card__eyebrow,

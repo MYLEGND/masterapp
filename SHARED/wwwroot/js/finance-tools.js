@@ -1315,12 +1315,6 @@ const toast = typeof window.toast === "function" ? window.toast : (msg => consol
                       height="${height}"
                       rx="24"
                       class="fcg-card__bg"></rect>
-                <rect x="0"
-                      y="0"
-                      width="${width}"
-                      height="7"
-                      rx="7"
-                      class="fcg-card__accent"></rect>
 
                 ${eyebrow ? `
                     <text x="${width / 2}"
