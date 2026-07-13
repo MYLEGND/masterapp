@@ -1481,13 +1481,9 @@ const toast = typeof window.toast === "function" ? window.toast : (msg => consol
         const glowGradientId = `${graphicKey}-glow-gradient`;
         const gridPatternId = `${graphicKey}-grid-pattern`;
         const shadowId = `${graphicKey}-shadow`;
-        const arrowRedId = `${graphicKey}-arrow-red`;
-        const arrowGreenId = `${graphicKey}-arrow-green`;
         const arrowBlueId = `${graphicKey}-arrow-blue`;
 
         const ids = {
-            arrowRedId,
-            arrowGreenId,
             arrowBlueId
         };
 
@@ -1551,28 +1547,6 @@ const toast = typeof window.toast === "function" ? window.toast : (msg => consol
                                       flood-color="#000000"
                                       flood-opacity=".32"></feDropShadow>
                     </filter>
-
-                    <marker id="${arrowRedId}"
-                            markerWidth="10"
-                            markerHeight="10"
-                            refX="8"
-                            refY="5"
-                            orient="auto"
-                            markerUnits="userSpaceOnUse">
-                        <path d="M0 0L10 5L0 10Z"
-                              fill="#ff6375"></path>
-                    </marker>
-
-                    <marker id="${arrowGreenId}"
-                            markerWidth="10"
-                            markerHeight="10"
-                            refX="8"
-                            refY="5"
-                            orient="auto"
-                            markerUnits="userSpaceOnUse">
-                        <path d="M0 0L10 5L0 10Z"
-                              fill="#54dda0"></path>
-                    </marker>
 
                     <marker id="${arrowBlueId}"
                             markerWidth="10"

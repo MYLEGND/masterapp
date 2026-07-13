@@ -2987,14 +2987,6 @@ body.finance-support-open {
     stroke-width: 5;
 }
 
-.finance-coaching-graphic .fcg-link--red {
-    stroke: #ff6375;
-}
-
-.finance-coaching-graphic .fcg-link--green {
-    stroke: #54dda0;
-}
-
 .finance-coaching-graphic .fcg-link--blue {
     stroke: #42b2ff;
 }
