@@ -1466,10 +1466,11 @@ const toast = typeof window.toast === "function" ? window.toast : (msg => consol
         {
             viewBox = "0 0 1200 800",
             frameX = 72,
-            frameY = 72,
+            frameY = 52,
             frameWidth = 1056,
             frameHeight = 646,
-            brandY = 766
+            brandY = 748,
+            bodyOffsetY = -20
         } = {}
     ) => {
         const graphicKey = String(tool.id || "coaching-tool")
@@ -1615,7 +1616,9 @@ const toast = typeof window.toast === "function" ? window.toast : (msg => consol
                       rx="36"
                       class="fcg-frame"></rect>
 
-                ${bodyBuilder(ids)}
+                <g transform="translate(0 ${bodyOffsetY})">
+                    ${bodyBuilder(ids)}
+                </g>
 
                 <text x="600"
                       y="${brandY}"
@@ -1629,7 +1632,7 @@ const toast = typeof window.toast === "function" ? window.toast : (msg => consol
     const buildDisabilityCoachingGraphic = (tool) =>
         buildCoachingGraphicShell(
             tool,
-            ({ arrowRedId, arrowGreenId }) => `
+            () => `
                 ${buildLegendChip(
                     116,
                     104,
@@ -1692,14 +1695,6 @@ const toast = typeof window.toast === "function" ? window.toast : (msg => consol
                     ]
                 })}
 
-                <path d="M286 334C286 394 254 428 254 486"
-                      class="fcg-link fcg-link--red"
-                      marker-end="url(#${arrowRedId})"></path>
-
-                <path d="M914 334C914 394 946 428 946 486"
-                      class="fcg-link fcg-link--green"
-                      marker-end="url(#${arrowGreenId})"></path>
-
                 ${buildInfoCard({
                     x: 116,
                     y: 516,
@@ -1733,10 +1728,11 @@ const toast = typeof window.toast === "function" ? window.toast : (msg => consol
             {
                 viewBox: "0 0 1200 820",
                 frameX: 72,
-                frameY: 72,
+                frameY: 50,
                 frameWidth: 1056,
                 frameHeight: 654,
-                brandY: 786
+                brandY: 760,
+                bodyOffsetY: -22
             }
         );
 
