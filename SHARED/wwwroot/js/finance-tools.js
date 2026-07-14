@@ -9317,169 +9317,61 @@ if (t.id === "ExpenseLens" || t.id === "BusinessExpenseLens") {
                         ? 'Manual debt balance adjustment'
                         : 'Remaining-cash debt payoff';
 
-            const amountCents = eventItem.kind === 'income'
-                ? Math.max(0, Math.round(eventItem.amountCents || 0))
-                : Math.abs(
-                    Math.round(
-                        eventItem.impactCashCents
-                        || eventItem.amountCents
-                        || 0
-                    )
-                );
-
-            const showDebtAfter = type === 'debt';
+            const signedImpactCents = eventItem.kind === 'income'
+                ? Math.abs(Math.round(eventItem.amountCents || eventItem.impactCashCents || 0))
+                : eventItem.kind === 'debtAdjustment' && Math.round(eventItem.impactCashCents || 0) === 0
+                    ? Math.round(eventItem.amountCents || 0)
+                    : Math.round(eventItem.impactCashCents || 0);
+            const impactText = signedImpactCents > 0
+                ? `+${expenseLensFormatCurrency(signedImpactCents)}`
+                : expenseLensFormatCurrency(signedImpactCents);
 
             return `
                 <article class="el-projection-event el-projection-event--${type}">
-                    <div class="el-projection-event-main">
-                        <div class="el-projection-event-title-row">
-                            <span class="el-projection-type-badge el-projection-type-badge--${type}">
-                                ${expenseLensEscapeHtml(typeLabel)}
-                            </span>
-
-                            <strong>
-                                ${expenseLensEscapeHtml(eventItem.label)}
-                            </strong>
-                        </div>
-
+                    <div class="el-projection-ledger-cell el-projection-ledger-cell--event">
+                        <strong>${expenseLensEscapeHtml(eventItem.label)}</strong>
                         <div class="el-projection-event-meta">
-                            <span>
-                                ${expenseLensEscapeHtml(
-                                    expenseLensFormatShortDateLabel(eventItem.date)
-                                )}
-                            </span>
-
+                            <span>${expenseLensEscapeHtml(eventMeta)}</span>
                             <span>•</span>
-
-                            <span>
-                                ${expenseLensEscapeHtml(eventMeta)}
-                            </span>
-
-                            <span>•</span>
-
-                            <span>
-                                ${expenseLensEscapeHtml(
-                                    expenseLensFormatTemporalStatus(eventItem.status)
-                                )}
-                            </span>
+                            <span>${expenseLensEscapeHtml(expenseLensFormatTemporalStatus(eventItem.status))}</span>
                         </div>
                     </div>
 
-                    <div class="el-projection-event-stats ${showDebtAfter ? '' : 'el-projection-event-stats--cash-only'}">
-                        <span>
-                            <small>
-                                ${
-                                    eventItem.kind === 'income'
-                                        ? 'Income'
-                                        : type === 'debt'
-                                            ? 'Debt Applied'
-                                            : 'Bill Amount'
-                                }
-                            </small>
+                    <div class="el-projection-ledger-cell el-projection-ledger-cell--date">
+                        ${expenseLensEscapeHtml(expenseLensFormatShortDateLabel(eventItem.date))}
+                    </div>
 
-                            <strong class="el-projection-amount el-projection-amount--${type}">
-                                ${expenseLensEscapeHtml(
-                                    expenseLensFormatCurrency(amountCents)
-                                )}
-                            </strong>
+                    <div class="el-projection-ledger-cell el-projection-ledger-cell--type">
+                        <span class="el-projection-type-badge el-projection-type-badge--${type}">
+                            ${expenseLensEscapeHtml(typeLabel)}
                         </span>
+                    </div>
 
-                        <span>
-                            <small>Cash After</small>
+                    <div class="el-projection-ledger-cell el-projection-ledger-cell--impact">
+                        <strong class="el-projection-amount el-projection-amount--${type}">
+                            ${expenseLensEscapeHtml(impactText)}
+                        </strong>
+                    </div>
 
-                            <strong class="${
-                                (eventItem.cashAfterCents || 0) < 0
-                                    ? 'finance-tone-expense'
-                                    : 'finance-tone-income'
-                            }">
-                                ${expenseLensEscapeHtml(
-                                    expenseLensFormatCurrency(
-                                        eventItem.cashAfterCents || 0
-                                    )
-                                )}
-                            </strong>
-                        </span>
-
-                        ${
-                            showDebtAfter
-                                ? `
-                                    <span>
-                                        <small>Debt After</small>
-
-                                        <strong class="${
-                                            (eventItem.debtAfterCents || 0) > 0
-                                                ? 'finance-tone-expense'
-                                                : 'finance-tone-income'
-                                        }">
-                                            ${expenseLensEscapeHtml(
-                                                expenseLensFormatCurrency(
-                                                    eventItem.debtAfterCents || 0
-                                                )
-                                            )}
-                                        </strong>
-                                    </span>
-                                `
-                                : ''
-                        }
+                    <div class="el-projection-ledger-cell el-projection-ledger-cell--balance">
+                        <strong class="${
+                            (eventItem.cashAfterCents || 0) < 0
+                                ? 'finance-tone-expense'
+                                : 'finance-tone-income'
+                        }">
+                            ${expenseLensEscapeHtml(
+                                expenseLensFormatCurrency(
+                                    eventItem.cashAfterCents || 0
+                                )
+                            )}
+                        </strong>
                     </div>
                 </article>
             `;
         };
 
-        const buildProjectionWeekGroupHtml = (
-            label,
-            type,
-            events
-        ) => {
-            if (!events.length) return '';
-
-            const totalCents = events.reduce(
-                (sum, eventItem) =>
-                    sum
-                    + Math.abs(
-                        Math.round(
-                            eventItem.impactCashCents
-                            || eventItem.amountCents
-                            || 0
-                        )
-                    ),
-                0
-            );
-
-            return `
-                <section class="el-projection-event-group el-projection-event-group--${type}">
-                    <div class="el-projection-event-group__heading">
-                        <span>${expenseLensEscapeHtml(label)}</span>
-
-                        <strong>
-                            ${expenseLensEscapeHtml(
-                                expenseLensFormatCurrency(totalCents)
-                            )}
-                        </strong>
-                    </div>
-
-                    ${events.map(buildProjectionEventHtml).join('')}
-                </section>
-            `;
-        };
-
         const buildProjectionWeekHtml = (week) => {
             const isOpen = elExpandedWeekId === week.id;
-
-            const groups = {
-                income: [],
-                debit: [],
-                credit: [],
-                debt: []
-            };
-
-            week.events.forEach((eventItem) => {
-                const type = getProjectionEventType(eventItem);
-
-                if (groups[type]) {
-                    groups[type].push(eventItem);
-                }
-            });
 
             return `
                 <section class="el-projection-week ${isOpen ? 'is-open' : ''}">
@@ -9508,7 +9400,7 @@ if (t.id === "ExpenseLens" || t.id === "BusinessExpenseLens") {
                         </div>
 
                         <div class="el-projection-week-values">
-                            <span class="el-projection-week-value">
+                            <span class="el-projection-week-value el-projection-week-value--opening">
                                 <small>Opening Cash</small>
 
                                 <strong class="${
@@ -9524,7 +9416,7 @@ if (t.id === "ExpenseLens" || t.id === "BusinessExpenseLens") {
                                 </strong>
                             </span>
 
-                            <span class="el-projection-week-value">
+                            <span class="el-projection-week-value el-projection-week-value--ending ${week.closingCashCents < 0 ? 'el-projection-week-value--negative' : 'el-projection-week-value--positive'}">
                                 <small>Ending Cash</small>
 
                                 <strong class="${
@@ -9543,7 +9435,7 @@ if (t.id === "ExpenseLens" || t.id === "BusinessExpenseLens") {
                             ${
                                 !isBusinessExpenseLens
                                     ? `
-                                        <span class="el-projection-week-value">
+                                        <span class="el-projection-week-value el-projection-week-value--debt ${week.closingDebtCents > 0 ? 'el-projection-week-value--debt-active' : 'el-projection-week-value--debt-clear'}">
                                             <small>Ending Debt</small>
 
                                             <strong class="${
@@ -9572,29 +9464,28 @@ if (t.id === "ExpenseLens" || t.id === "BusinessExpenseLens") {
                         ${
                             week.events.length
                                 ? `
-                                    ${buildProjectionWeekGroupHtml(
-                                        'Income',
-                                        'income',
-                                        groups.income
-                                    )}
+                                    <div class="el-projection-ledger">
+                                        <div class="el-projection-ledger-bar">
+                                            <span class="el-projection-ledger-note">Running order: pay hits post first, then debit / cash obligations, then credit due in that week.</span>
+                                            <span class="el-projection-ledger-summary">
+                                                <span>Start <strong>${expenseLensEscapeHtml(expenseLensFormatCurrency(week.openingCashCents))}</strong></span>
+                                                <span>•</span>
+                                                <span>Week End <strong class="${week.closingCashCents < 0 ? 'finance-tone-expense' : 'finance-tone-income'}">${expenseLensEscapeHtml(expenseLensFormatCurrency(week.closingCashCents))}</strong></span>
+                                            </span>
+                                        </div>
 
-                                    ${buildProjectionWeekGroupHtml(
-                                        'Debit Bills — First Priority',
-                                        'debit',
-                                        groups.debit
-                                    )}
+                                        <div class="el-projection-ledger-head">
+                                            <span>Event</span>
+                                            <span>Date</span>
+                                            <span>Type</span>
+                                            <span>Impact</span>
+                                            <span>Running Bal</span>
+                                        </div>
 
-                                    ${buildProjectionWeekGroupHtml(
-                                        'Credit Bills — Second Priority',
-                                        'credit',
-                                        groups.credit
-                                    )}
-
-                                    ${buildProjectionWeekGroupHtml(
-                                        'Debt Payoff — Remaining Cash',
-                                        'debt',
-                                        groups.debt
-                                    )}
+                                        <div class="el-projection-ledger-body">
+                                            ${week.events.map(buildProjectionEventHtml).join('')}
+                                        </div>
+                                    </div>
                                 `
                                 : `
                                     <div class="el-projection-empty">
