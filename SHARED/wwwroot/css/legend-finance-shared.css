@@ -18,6 +18,7 @@
     --llbs-muted: rgba(248, 250, 252, .56);
     --llbs-line: rgba(199, 153, 49, .28);
     --llbs-line-strong: rgba(243, 216, 139, .48);
+    --llbs-shell-radius: 24px;
     width: 100%;
     max-width: 100%;
     margin: 0 auto 28px;
@@ -40,15 +41,16 @@
 .llbs-shell {
     position: relative;
     overflow: hidden;
-    border: 1.5px solid var(--llbs-line-strong);
-    border-radius: 16px;
+    border: 2px solid var(--llbs-line-strong);
+    border-radius: var(--llbs-shell-radius);
     background:
         radial-gradient(820px 280px at 12% -8%, rgba(221, 180, 87, .24), transparent 60%),
         radial-gradient(640px 240px at 92% 6%, rgba(20, 108, 67, .18), transparent 62%),
         linear-gradient(180deg, #0a1224 0%, var(--llbs-navy) 45%, #07101f 100%);
     box-shadow:
-        0 28px 70px rgba(0, 0, 0, .38),
-        inset 0 1px 0 rgba(243, 216, 139, .18);
+        0 30px 76px rgba(0, 0, 0, .38),
+        inset 0 1px 0 rgba(243, 216, 139, .18),
+        inset 0 0 0 1px rgba(124, 88, 18, .18);
 }
 
 .llbs-shell::before {
@@ -56,6 +58,7 @@
     position: absolute;
     inset: 0;
     pointer-events: none;
+    border-radius: inherit;
     background:
         linear-gradient(90deg, transparent, rgba(243, 216, 139, .12), transparent) top / 100% 1px no-repeat,
         linear-gradient(180deg, rgba(255, 255, 255, .035), transparent 30%);
@@ -71,6 +74,8 @@
     padding: 14px 18px;
     color: var(--llbs-text);
     border-bottom: 1px solid var(--llbs-line);
+    border-top-left-radius: calc(var(--llbs-shell-radius) - 2px);
+    border-top-right-radius: calc(var(--llbs-shell-radius) - 2px);
     background:
         radial-gradient(620px 170px at 16% 0%, rgba(243, 216, 139, .18), transparent 66%),
         linear-gradient(135deg, rgba(6, 11, 22, .76), rgba(15, 29, 56, .92));
@@ -159,6 +164,8 @@
     display: grid;
     gap: 7px;
     padding: 9px;
+    border-bottom-left-radius: calc(var(--llbs-shell-radius) - 2px);
+    border-bottom-right-radius: calc(var(--llbs-shell-radius) - 2px);
 }
 
 .llbs-section,
@@ -1671,11 +1678,8 @@ article[data-has-spouse="true"][data-active-person="spouse"] [data-llbs-person-f
 
 @media (max-width: 620px) {
     .llbs-tool {
+        --llbs-shell-radius: 18px;
         margin-bottom: 18px;
-    }
-
-    .llbs-shell {
-        border-radius: 13px;
     }
 
     .llbs-hero,
@@ -3053,7 +3057,6 @@ body.finance-support-open {
 .finance-goals-container .card,
 .finance-action-container .list-group-item,
 .finance-goals-container .list-group-item,
-#budget-embed,
 #budget-embed .networth-tool,
 #budget-embed .tool-shell,
 #budget-embed .tool-card,
