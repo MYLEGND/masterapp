@@ -8537,6 +8537,8 @@ if (t.id === "ExpenseLens" || t.id === "BusinessExpenseLens") {
         };
 
         let elExpandedWeekId = '';
+        let projectionMonthSetupExpanded = false;
+        let projectionAdjustmentsExpanded = false;
         let latestExpenseLensProjection = null;
         // Drag-and-drop state
         let elDragSrc = null;
@@ -9498,6 +9500,39 @@ if (t.id === "ExpenseLens" || t.id === "BusinessExpenseLens") {
             `;
         };
 
+        const buildProjectionCollapsibleSection = ({
+            sectionId,
+            kicker,
+            title,
+            note = '',
+            isOpen = false,
+            content = ''
+        }) => `
+            <section class="el-projection-section el-projection-section--collapsible ${isOpen ? 'is-open' : 'is-collapsed'}" data-section-id="${expenseLensEscapeAttr(sectionId)}">
+                <button
+                    type="button"
+                    class="el-projection-collapse-toggle"
+                    data-action="toggle-projection-section"
+                    data-section-id="${expenseLensEscapeAttr(sectionId)}"
+                    aria-expanded="${isOpen ? 'true' : 'false'}"
+                >
+                    <span class="el-projection-collapse-copy">
+                        <span class="el-projection-section-kicker">${expenseLensEscapeHtml(kicker)}</span>
+                        <span class="el-projection-collapse-title">${expenseLensEscapeHtml(title)}</span>
+                    </span>
+
+                    <span class="el-projection-collapse-meta">
+                        ${note ? `<span class="el-projection-section-note">${expenseLensEscapeHtml(note)}</span>` : ''}
+                        <span class="el-projection-collapse-chevron">${isOpen ? '▴' : '▾'}</span>
+                    </span>
+                </button>
+
+                <div class="el-projection-collapse-body ${isOpen ? 'is-open' : ''}">
+                    ${content}
+                </div>
+            </section>
+        `;
+
         const renderWeekPanel = () => {
             const projection = getExpenseLensProjection({ force: true });
             if (!projection?.selectedMonth) {
@@ -9573,6 +9608,10 @@ if (t.id === "ExpenseLens" || t.id === "BusinessExpenseLens") {
             const canGoNext = expenseLensProjectionApi?.compareMonthKeys
                 ? expenseLensProjectionApi.compareMonthKeys(selectedMonth.monthKey, maxFutureMonthKey) < 0
                 : true;
+            const monthSetupSummary = expenseLensFormatStartingSource(selectedMonth.startingBalanceSource);
+            const debtAdjustmentSummary = selectedMonthAdjustments.length > 0
+                ? `${selectedMonthAdjustments.length} saved this month`
+                : 'No adjustments saved';
 
             const notices = [
                 ...(Array.isArray(selectedMonth.warnings) ? selectedMonth.warnings : []),
@@ -9611,79 +9650,78 @@ if (t.id === "ExpenseLens" || t.id === "BusinessExpenseLens") {
                         </div>
                     </section>
 
-                    <section class="el-projection-section">
-                        <div class="el-projection-section-head">
-                            <div>
-                                <span class="el-projection-section-kicker">Month Setup</span>
-                                <h5>Starting balance and reconciliation</h5>
-                            </div>
-                            <span class="el-projection-section-note">${expenseLensEscapeHtml(expenseLensFormatStartingSource(selectedMonth.startingBalanceSource))}</span>
-                        </div>
-                        <div class="el-projection-setup-grid">
-                            <div class="el-projection-setup-card">
-                                <div class="el-projection-setup-metrics">
-                                    ${buildProjectionMetricHtml({
-                                        label: 'Calculated Opening Cash',
-                                        value: expenseLensFormatCurrency(calculatedOpeningCashCents),
-                                        note: previousMonth ? `Prior month ended ${expenseLensFormatCurrency(previousMonth.endingCashCents)}` : 'Baseline month opening balance',
-                                        tone: calculatedOpeningCashCents < 0 ? 'negative' : 'positive'
-                                    })}
-                                    ${buildProjectionMetricHtml({
-                                        label: 'Effective Opening Cash',
-                                        value: expenseLensFormatCurrency(selectedMonth.openingCashCents),
-                                        note: override ? 'Manual override is active for this month.' : 'Rolling balance is active for this month.',
-                                        tone: selectedMonth.openingCashCents < 0 ? 'negative' : 'neutral'
-                                    })}
-                                    ${buildProjectionMetricHtml({
-                                        label: 'Starting Source',
-                                        value: expenseLensFormatStartingSource(selectedMonth.startingBalanceSource),
-                                        note: override?.note || 'No override note saved.',
-                                        tone: override ? 'warning' : 'neutral'
-                                    })}
-                                </div>
-                                <div class="el-projection-form-grid">
-                                    <label class="el-projection-field">
-                                        <span>Starting Balance Override</span>
-                                        <div class="legend-money-input">
-                                            <span class="legend-money-prefix">$</span>
+                    ${buildProjectionCollapsibleSection({
+                        sectionId: 'month-setup',
+                        kicker: 'Month Setup',
+                        title: 'Starting balance and reconciliation',
+                        note: monthSetupSummary,
+                        isOpen: projectionMonthSetupExpanded,
+                        content: `
+                            <div class="el-projection-setup-grid">
+                                <div class="el-projection-setup-card">
+                                    <div class="el-projection-setup-metrics">
+                                        ${buildProjectionMetricHtml({
+                                            label: 'Calculated Opening Cash',
+                                            value: expenseLensFormatCurrency(calculatedOpeningCashCents),
+                                            note: previousMonth ? `Prior month ended ${expenseLensFormatCurrency(previousMonth.endingCashCents)}` : 'Baseline month opening balance',
+                                            tone: calculatedOpeningCashCents < 0 ? 'negative' : 'positive'
+                                        })}
+                                        ${buildProjectionMetricHtml({
+                                            label: 'Effective Opening Cash',
+                                            value: expenseLensFormatCurrency(selectedMonth.openingCashCents),
+                                            note: override ? 'Manual override is active for this month.' : 'Rolling balance is active for this month.',
+                                            tone: selectedMonth.openingCashCents < 0 ? 'negative' : 'neutral'
+                                        })}
+                                        ${buildProjectionMetricHtml({
+                                            label: 'Starting Source',
+                                            value: expenseLensFormatStartingSource(selectedMonth.startingBalanceSource),
+                                            note: override?.note || 'No override note saved.',
+                                            tone: override ? 'warning' : 'neutral'
+                                        })}
+                                    </div>
+                                    <div class="el-projection-form-grid">
+                                        <label class="el-projection-field">
+                                            <span>Starting Balance Override</span>
+                                            <div class="legend-money-input">
+                                                <span class="legend-money-prefix">$</span>
+                                                <input type="text"
+                                                       class="legend-money-field"
+                                                       data-field="override-amount"
+                                                       value="${expenseLensEscapeAttr(expenseLensFormatInputValue(override?.amountCents ?? selectedMonth.openingCashCents, { allowZero: true }))}" />
+                                            </div>
+                                        </label>
+                                        <label class="el-projection-field">
+                                            <span>Override Note</span>
                                             <input type="text"
-                                                   class="legend-money-field"
-                                                   data-field="override-amount"
-                                                   value="${expenseLensEscapeAttr(expenseLensFormatInputValue(override?.amountCents ?? selectedMonth.openingCashCents, { allowZero: true }))}" />
+                                                   class="form-control"
+                                                   data-field="override-note"
+                                                   value="${expenseLensEscapeAttr(override?.note || '')}"
+                                                   placeholder="Bank reality, external transfer, untracked spend…" />
+                                        </label>
+                                        <label class="el-projection-field">
+                                            <span>${isBusinessExpenseLens ? 'Projection as of' : 'Debt as of date'}</span>
+                                            <input type="date"
+                                                   class="form-control"
+                                                   data-field="debt-as-of"
+                                                   value="${expenseLensEscapeAttr(debtState.asOfDate || getDefaultScheduledAnchorDate())}" />
+                                        </label>
+                                        <div class="el-projection-form-actions">
+                                            <button type="button" class="btn el-toolbar-btn el-toolbar-btn--compact" data-action="save-override">Save Starting Balance</button>
+                                            <button type="button" class="btn finance-clear-btn el-toolbar-btn--compact" data-action="clear-override" ${override ? '' : 'disabled'}>Use calculated rolling balance</button>
                                         </div>
-                                    </label>
-                                    <label class="el-projection-field">
-                                        <span>Override Note</span>
-                                        <input type="text"
-                                               class="form-control"
-                                               data-field="override-note"
-                                               value="${expenseLensEscapeAttr(override?.note || '')}"
-                                               placeholder="Bank reality, external transfer, untracked spend…" />
-                                    </label>
-                                    <label class="el-projection-field">
-                                        <span>${isBusinessExpenseLens ? 'Projection as of' : 'Debt as of date'}</span>
-                                        <input type="date"
-                                               class="form-control"
-                                               data-field="debt-as-of"
-                                               value="${expenseLensEscapeAttr(debtState.asOfDate || getDefaultScheduledAnchorDate())}" />
-                                    </label>
-                                    <div class="el-projection-form-actions">
-                                        <button type="button" class="btn el-toolbar-btn el-toolbar-btn--compact" data-action="save-override">Save Starting Balance</button>
-                                        <button type="button" class="btn finance-clear-btn el-toolbar-btn--compact" data-action="clear-override" ${override ? '' : 'disabled'}>Use calculated rolling balance</button>
                                     </div>
                                 </div>
                             </div>
-                        </div>
-                    </section>
+                        `
+                    })}
 
-                    ${!isBusinessExpenseLens ? `
-                        <section class="el-projection-section">
-                            <div class="el-projection-section-head">
-                                <div>
-                                    <span class="el-projection-section-kicker">Debt Adjustments</span>
-                                    <h5>Interest, fees, corrections, and balance transfers</h5>
-                                </div>
-                            </div>
+                    ${!isBusinessExpenseLens ? buildProjectionCollapsibleSection({
+                        sectionId: 'debt-adjustments',
+                        kicker: 'Debt Adjustments',
+                        title: 'Interest, fees, corrections, and balance transfers',
+                        note: debtAdjustmentSummary,
+                        isOpen: projectionAdjustmentsExpanded,
+                        content: `
                             <div class="el-projection-adjustments">
                                 <div class="el-projection-adjustment-form">
                                     <label class="el-projection-field">
@@ -9727,8 +9765,8 @@ if (t.id === "ExpenseLens" || t.id === "BusinessExpenseLens") {
                                         : `<div class="el-projection-empty">No debt adjustments are saved for this month.</div>`}
                                 </div>
                             </div>
-                        </section>
-                    ` : ''}
+                        `
+                    }) : ''}
 
                     <section class="el-projection-section">
                         <div class="el-projection-section-head">
@@ -9828,6 +9866,8 @@ if (t.id === "ExpenseLens" || t.id === "BusinessExpenseLens") {
                 </div>
             `;
 
+            upgradeMoneyInputs(weekPanel);
+
             weekPanel.querySelector('[data-action="close-panel"]')?.addEventListener('click', closeWeekPanel);
             weekPanel.querySelector('[data-action="month-prev"]')?.addEventListener('click', () => {
                 projectionSelectedMonthKey = expenseLensProjectionApi?.addMonths?.(selectedMonth.monthKey, -1) || selectedMonth.monthKey;
@@ -9865,6 +9905,18 @@ if (t.id === "ExpenseLens" || t.id === "BusinessExpenseLens") {
 
             weekPanel.querySelector('[data-field="debt-as-of"]')?.addEventListener('change', (event) => {
                 setDebtAsOfDate(event.target.value);
+            });
+
+            weekPanel.querySelectorAll('[data-action="toggle-projection-section"]').forEach((button) => {
+                button.addEventListener('click', () => {
+                    const sectionId = button.getAttribute('data-section-id') || '';
+                    if (sectionId === 'month-setup') {
+                        projectionMonthSetupExpanded = !projectionMonthSetupExpanded;
+                    } else if (sectionId === 'debt-adjustments') {
+                        projectionAdjustmentsExpanded = !projectionAdjustmentsExpanded;
+                    }
+                    renderWeekPanel();
+                });
             });
 
             weekPanel.querySelectorAll('[data-action="toggle-week"]').forEach((button) => {
