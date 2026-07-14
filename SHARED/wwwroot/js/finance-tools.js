@@ -9470,7 +9470,7 @@ if (t.id === "ExpenseLens" || t.id === "BusinessExpenseLens") {
                                         <div class="el-projection-ledger-bar">
                                             <span class="el-projection-ledger-note">Running order: pay hits post first, then debit / cash obligations, then credit due in that week.</span>
                                             <span class="el-projection-ledger-summary">
-                                                <span>Start <strong>${expenseLensEscapeHtml(expenseLensFormatCurrency(week.openingCashCents))}</strong></span>
+                                                <span>Start <strong class="${week.openingCashCents < 0 ? 'finance-tone-expense' : 'finance-tone-income'}">${expenseLensEscapeHtml(expenseLensFormatCurrency(week.openingCashCents))}</strong></span>
                                                 <span>•</span>
                                                 <span>Week End <strong class="${week.closingCashCents < 0 ? 'finance-tone-expense' : 'finance-tone-income'}">${expenseLensEscapeHtml(expenseLensFormatCurrency(week.closingCashCents))}</strong></span>
                                             </span>
