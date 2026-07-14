@@ -177,21 +177,26 @@ document.addEventListener("DOMContentLoaded", async function () {
         requestAnimationFrame(update);
     };
 
+    const expenseLensProjectionApi = window.LegendExpenseLensProjection || null;
     const parseSavingsMoney = (value) => +(String(value || '').replace(/[,$\s]/g, '')) || 0;
     const hasNonBlankValue = (value) => value !== undefined && value !== null && String(value).trim() !== '';
 
-    const normalizeScheduledFrequency = (value) => {
-        const normalized = (value || '').toString().toLowerCase().replace(/[^a-z]/g, '');
-        if (normalized === 'weekly') return 'weekly';
-        if (normalized === 'biweekly') return 'biweekly';
-        return 'monthly';
-    };
+    const normalizeScheduledFrequency = (value) => expenseLensProjectionApi?.normalizeFrequency
+        ? expenseLensProjectionApi.normalizeFrequency(value)
+        : (() => {
+            const normalized = (value || '').toString().toLowerCase().replace(/[^a-z]/g, '');
+            if (normalized === 'weekly') return 'weekly';
+            if (normalized === 'biweekly') return 'biweekly';
+            return 'monthly';
+        })();
 
-    const parseScheduledAnchorDate = (value) => {
-        const parts = (value || '').split('-').map(part => parseInt(part, 10));
-        if (parts.length < 3 || parts.some(part => !Number.isFinite(part))) return null;
-        return new Date(parts[0], parts[1] - 1, parts[2]);
-    };
+    const parseScheduledAnchorDate = (value) => expenseLensProjectionApi?.parseDate
+        ? expenseLensProjectionApi.parseDate(value)
+        : (() => {
+            const parts = (value || '').split('-').map(part => parseInt(part, 10));
+            if (parts.length < 3 || parts.some(part => !Number.isFinite(part))) return null;
+            return new Date(parts[0], parts[1] - 1, parts[2]);
+        })();
 
     const getScheduledMonthContext = (options = {}) => {
         const now = options.now instanceof Date ? new Date(options.now) : new Date();
@@ -202,11 +207,25 @@ document.addEventListener("DOMContentLoaded", async function () {
     };
 
     const getDefaultScheduledAnchorDate = (options = {}) => {
+        if (expenseLensProjectionApi?.getDefaultAnchorDate) {
+            const monthKey = `${options.year ?? new Date().getFullYear()}-${String((options.month ?? new Date().getMonth()) + 1).padStart(2, '0')}`;
+            return expenseLensProjectionApi.getDefaultAnchorDate({ monthKey, now: options.now });
+        }
         const { year, month } = getScheduledMonthContext(options);
         return `${year}-${String(month + 1).padStart(2, '0')}-01`;
     };
 
     const getScheduledOccurrenceDays = (anchorValue, frequencyValue, options = {}) => {
+        if (expenseLensProjectionApi?.getScheduledOccurrenceDays) {
+            const monthKey = options.monthKey
+                || `${options.year ?? new Date().getFullYear()}-${String((options.month ?? new Date().getMonth()) + 1).padStart(2, '0')}`;
+            return expenseLensProjectionApi.getScheduledOccurrenceDays(anchorValue, frequencyValue, {
+                monthKey,
+                week: options.week,
+                now: options.now
+            });
+        }
+
         const anchorDate = parseScheduledAnchorDate(anchorValue);
         if (!anchorDate) return [];
 
@@ -317,9 +336,19 @@ document.addEventListener("DOMContentLoaded", async function () {
         return { primary, secondary };
     };
 
+    const parseExpenseLensMoneyToCents = (value) => expenseLensProjectionApi?.parseMoneyToCents
+        ? expenseLensProjectionApi.parseMoneyToCents(value)
+        : Math.round(parseSavingsMoney(value) * 100);
+
+    const centsToExpenseLensDollars = (value) => Math.round(Number(value) || 0) / 100;
+
     const summarizeExpenseLensIncomeGroups = (groups, options = {}) => {
+        if (expenseLensProjectionApi?.summarizeIncomeGroups) {
+            return expenseLensProjectionApi.summarizeIncomeGroups(groups, options);
+        }
+
         const groupLabelMap = options.groupLabelMap || {};
-        const groupTotals = { primary: 0, secondary: 0 };
+        const groupTotalsCents = { primary: 0, secondary: 0 };
         const hits = [];
 
         ['primary', 'secondary'].forEach((groupKey) => {
@@ -328,27 +357,27 @@ document.addEventListener("DOMContentLoaded", async function () {
                 || (groupKey === 'secondary' ? 'Partner Income' : 'Income');
 
             streams.forEach((stream, index) => {
-                const amount = parseSavingsMoney(stream?.amount);
-                if (amount <= 0) return;
+                const amountCents = parseExpenseLensMoneyToCents(stream?.amount);
+                if (amountCents <= 0) return;
 
                 const frequency = normalizeScheduledFrequency(stream?.frequency);
                 const anchorDate = String(stream?.anchorDate || '').trim() || getDefaultScheduledAnchorDate(options);
                 const label = String(stream?.label || '').trim()
                     || (streams.length > 1 ? `${baseLabel} Stream ${index + 1}` : baseLabel);
 
-                const normalizedMonthlyAmount = frequency === 'weekly'
-                    ? amount * 52 / 12
+                const normalizedMonthlyAmountCents = frequency === 'weekly'
+                    ? Math.round((amountCents * 52) / 12)
                     : frequency === 'biweekly'
-                        ? amount * 26 / 12
-                        : amount;
+                        ? Math.round((amountCents * 26) / 12)
+                        : amountCents;
 
-                groupTotals[groupKey] += normalizedMonthlyAmount;
+                groupTotalsCents[groupKey] += normalizedMonthlyAmountCents;
 
                 getScheduledOccurrenceDays(anchorDate, frequency, options).forEach((date) => {
                     hits.push({
                         groupKey,
                         label,
-                        amount,
+                        amount: centsToExpenseLensDollars(amountCents),
                         date,
                         frequency,
                         anchorDate
@@ -360,8 +389,13 @@ document.addEventListener("DOMContentLoaded", async function () {
         hits.sort((a, b) => (a.date - b.date) || a.label.localeCompare(b.label));
 
         return {
-            monthlyTotal: groupTotals.primary + groupTotals.secondary,
-            groupTotals,
+            monthlyTotalCents: groupTotalsCents.primary + groupTotalsCents.secondary,
+            monthlyTotal: centsToExpenseLensDollars(groupTotalsCents.primary + groupTotalsCents.secondary),
+            groupTotalsCents,
+            groupTotals: {
+                primary: centsToExpenseLensDollars(groupTotalsCents.primary),
+                secondary: centsToExpenseLensDollars(groupTotalsCents.secondary)
+            },
             hits,
             count: hits.length
         };
@@ -380,27 +414,29 @@ document.addEventListener("DOMContentLoaded", async function () {
     const calculateExpenseLensMonthlyTotal = (state) => {
         const categories = Array.isArray(state?.categories) ? state.categories : [];
         if (categories.length > 0) {
-            return categories.reduce((sum, category) => {
-                const amount = parseSavingsMoney(category?.amount || category?.occurrenceAmount);
+            const totalCents = categories.reduce((sum, category) => {
+                const amountCents = parseExpenseLensMoneyToCents(category?.occurrenceAmount || category?.amount);
                 const occurrences = getSavingsExpenseOccurrences(category);
-                return sum + (amount * occurrences);
+                return sum + (amountCents * occurrences);
             }, 0);
+            return centsToExpenseLensDollars(totalCents);
         }
 
         const expenses = Array.isArray(state?.expenses) ? state.expenses : [];
         if (expenses.length > 0) {
-            return expenses.reduce((sum, expense) => {
-                const occurrenceAmount = parseSavingsMoney(expense?.occurrenceAmount);
-                const monthlyAmount = parseSavingsMoney(expense?.amount);
-                const hasRecurringShape = occurrenceAmount > 0 && String(expense?.due || '').trim().length > 0;
+            const totalCents = expenses.reduce((sum, expense) => {
+                const occurrenceAmountCents = parseExpenseLensMoneyToCents(expense?.occurrenceAmount);
+                const monthlyAmountCents = parseExpenseLensMoneyToCents(expense?.amount);
+                const hasRecurringShape = occurrenceAmountCents > 0 && String(expense?.due || '').trim().length > 0;
                 if (hasRecurringShape) {
-                    return sum + (occurrenceAmount * getSavingsExpenseOccurrences(expense));
+                    return sum + (occurrenceAmountCents * getSavingsExpenseOccurrences(expense));
                 }
-                return sum + monthlyAmount;
+                return sum + monthlyAmountCents;
             }, 0);
+            return centsToExpenseLensDollars(totalCents);
         }
 
-        return parseSavingsMoney(state?.monthlyExpenseTotal);
+        return centsToExpenseLensDollars(parseExpenseLensMoneyToCents(state?.monthlyExpenseTotal));
     };
 
     const calculateExpenseLensMonthlyRemaining = (state) => {
@@ -411,7 +447,7 @@ document.addEventListener("DOMContentLoaded", async function () {
             return income - monthlyExpenses;
         }
 
-        return parseSavingsMoney(state?.monthlyRemaining);
+        return centsToExpenseLensDollars(parseExpenseLensMoneyToCents(state?.monthlyRemaining));
     };
 
     const getExpenseLensIncomeTotal = (state) => {
@@ -456,6 +492,14 @@ document.addEventListener("DOMContentLoaded", async function () {
         if (key === DEFAULT_TOOL_ID) {
             try {
                 return window.LegendLivingBalanceSheetTool?.calculate?.(value ?? {}) ?? (value ?? {});
+            } catch (_) {
+                return value ?? {};
+            }
+        }
+
+        if ((key === "ExpenseLens" || key === "BusinessExpenseLens") && expenseLensProjectionApi?.normalizeState) {
+            try {
+                return expenseLensProjectionApi.normalizeState(value ?? {});
             } catch (_) {
                 return value ?? {};
             }
@@ -1148,8 +1192,6 @@ const toast = typeof window.toast === "function" ? window.toast : (msg => consol
     const coachingToolDropdown = document.getElementById("coachingToolDropdown");
     const coachingToolSelectWrap = document.getElementById("coachingToolSelectWrap");
     const financeSelectorRow = document.querySelector(".finance-selector-row");
-    const financeHeader = document.querySelector(".finance-header");
-    const financeToolbarShell = document.querySelector(".finance-toolbar-shell");
     const escapeHtml = (value) =>
         String(value ?? "")
             .replace(/&/g, "&amp;")
@@ -2013,7 +2055,6 @@ const toast = typeof window.toast === "function" ? window.toast : (msg => consol
         clearActiveToolWindowBindings();
         embedContainer.dataset.activeToolId = "CoachingToolLibrary";
         embedContainer.innerHTML = "";
-        embedContainer.classList.add("finance-main--coaching");
         embedContainer.classList.remove("finance-main--dual");
         setDualToolMode(false);
         if (typeof window.__LegendHideActiveTip === "function") window.__LegendHideActiveTip();
@@ -2035,8 +2076,6 @@ const toast = typeof window.toast === "function" ? window.toast : (msg => consol
 
         coachingToolSelectWrap.classList.remove("d-none");
         financeSelectorRow?.classList.add("finance-selector-row--with-coaching");
-        financeHeader?.classList.add("finance-header--with-coaching");
-        financeToolbarShell?.classList.add("finance-toolbar-shell--with-coaching");
 
         coachingToolDropdown.addEventListener("change", function () {
             const selectedToolId = String(this.value || "").trim();
@@ -2064,7 +2103,6 @@ const toast = typeof window.toast === "function" ? window.toast : (msg => consol
 
         // clear UI
         embedContainer.innerHTML = '';
-        embedContainer.classList.remove('finance-main--coaching');
         embedContainer.classList.remove('finance-main--dual');
         setDualToolMode(false);
 
@@ -7771,16 +7809,22 @@ if (t.id === "ExpenseLens" || t.id === "BusinessExpenseLens") {
                 <p class="el-subtitle">${expenseLensSubtitle}</p>
             </div>
 
-            <div class="el-label">
-                ${isBusinessExpenseLens ? "Business Total Income" : "Total Income"}
-                <span class="el-i" tabindex="0"
-                      data-tip="<b>Examples:</b> 4,500 • 6,200 (total monthly income before allocating categories)">i</span>
-            </div>
-            <div class="el-income-input-wrap">
-                <span class="el-currency-prefix">$</span>
-                <input id="${elId('Income')}" type="text" 
-                       class="form-control mb-3"
-                       placeholder="Enter total monthly income" />
+            <div id="${elId('TopControls')}" class="el-top-controls ${isBusinessExpenseLens ? 'el-top-controls--business' : 'el-top-controls--personal'}">
+                <div class="el-top-field el-top-field--income">
+                    <div class="el-top-field__label-slot">
+                        <div class="el-label">
+                            ${isBusinessExpenseLens ? "Business Total Income" : "Total Income"}
+                            <span class="el-i" tabindex="0"
+                                  data-tip="<b>Examples:</b> 4,500 • 6,200 (total monthly income before allocating categories)">i</span>
+                        </div>
+                    </div>
+                    <div class="el-income-input-wrap el-top-field__control">
+                        <span class="el-currency-prefix">$</span>
+                        <input id="${elId('Income')}" type="text" 
+                               class="form-control"
+                               placeholder="Enter total monthly income" />
+                    </div>
+                </div>
             </div>
 
             <div id="${elId('Categories')}" class="el-category-stack"></div>
@@ -7811,6 +7855,8 @@ if (t.id === "ExpenseLens" || t.id === "BusinessExpenseLens") {
         const elMargin = elById("Margin");
         const elActionMeta = elById("ActionMeta");
         const elIncome = elById("Income");
+        const elTopControls = elById("TopControls");
+        let elDebtInput = null;
         
 
 
@@ -7866,41 +7912,10 @@ if (t.id === "ExpenseLens" || t.id === "BusinessExpenseLens") {
         // -----------------------------
         // Format numbers with commas
         // -----------------------------
-        const formatNumber = (val) => {
-            val = val.toString().replace(/,/g,'');
-            return !isNaN(val) && val !== '' ? Number(val).toLocaleString() : '';
-        };
+        const formatNumber = (val, maxFractionDigits = 2) =>
+            formatNumericDisplayValue(String(val ?? '').replace(/,/g, ''), maxFractionDigits);
 
         const EL_MAX_INCOME_STREAMS_PER_GROUP = 4;
-        const EL_INCOME_METRIC_META = {
-            label: 'Income',
-            text: '#FFF7ED',
-            muted: '#FDE68A',
-            bg: 'linear-gradient(145deg, rgba(180,83,9,0.94) 0%, rgba(120,53,15,0.98) 100%)',
-            border: 'rgba(245,158,11,0.56)',
-            shadow: '0 14px 30px rgba(245,158,11,0.22), inset 0 1px 0 rgba(255,255,255,0.08)'
-        };
-        const EL_ENDING_BALANCE_META = {
-            label: 'Week End',
-            text: '#ECFDF5',
-            muted: '#A7F3D0',
-            bg: 'linear-gradient(145deg, rgba(6,95,70,0.96) 0%, rgba(5,150,105,0.99) 100%)',
-            border: 'rgba(110,231,183,0.58)',
-            shadow: '0 18px 36px rgba(16,185,129,0.24), inset 0 1px 0 rgba(255,255,255,0.10)'
-        };
-        const EL_MONTH_END_BALANCE_META = {
-            ...EL_ENDING_BALANCE_META,
-            label: 'Month End'
-        };
-        const EL_NEGATIVE_METRIC_META = {
-            label: 'Negative',
-            text: '#FFF1F2',
-            muted: '#FCA5A5',
-            bg: 'linear-gradient(145deg, rgba(220,38,38,0.92) 0%, rgba(127,29,29,0.98) 100%)',
-            border: 'rgba(248,113,113,0.56)',
-            shadow: '0 14px 30px rgba(239,68,68,0.22), inset 0 1px 0 rgba(255,255,255,0.08)'
-        };
-
         const makePossessiveIncomeLabel = (name) => name
             ? `${name}${name.endsWith('s') ? "'" : "'s"} Income`
             : 'Client Income';
@@ -8066,78 +8081,12 @@ if (t.id === "ExpenseLens" || t.id === "BusinessExpenseLens") {
             const normalized = normalizeBillPaymentMethod(value);
             return EL_PAYMENT_METHOD_META[normalized || 'unassigned'];
         };
-
-        const EL_METRIC_TONE_CLASS_NAMES = ['el-tone-income', 'el-tone-debit', 'el-tone-credit', 'el-tone-open', 'el-tone-total', 'el-tone-ending', 'el-tone-negative', 'el-tone-empty'];
-        const elResolveMetricToneClass = (meta) => {
-            if (meta === EL_INCOME_METRIC_META) return 'el-tone-income';
-            if (meta === EL_PAYMENT_METHOD_META.debit) return 'el-tone-debit';
-            if (meta === EL_PAYMENT_METHOD_META.credit) return 'el-tone-credit';
-            if (meta === EL_PAYMENT_METHOD_META.total) return 'el-tone-total';
-            if (meta === EL_ENDING_BALANCE_META || meta === EL_MONTH_END_BALANCE_META) return 'el-tone-ending';
-            if (meta === EL_NEGATIVE_METRIC_META) return 'el-tone-negative';
-            return 'el-tone-open';
-        };
-        const elApplyMetricToneClass = (element, toneClass) => {
-            if (!element) return;
-            element.classList.remove(...EL_METRIC_TONE_CLASS_NAMES);
-            if (toneClass) element.classList.add(toneClass);
-        };
-
-        const elCreateWeekMetricChip = (label, amount, meta, note = '', options = {}) => {
-            const hasValue = amount !== 0;
-            const toneMeta = amount < 0 && options.negativeMeta ? options.negativeMeta : meta;
-            const chip = document.createElement('div');
-            chip.className = 'el-week-metric-chip';
-            elApplyMetricToneClass(chip, hasValue ? elResolveMetricToneClass(toneMeta) : 'el-tone-empty');
-
-            const labelEl = document.createElement('span');
-            labelEl.textContent = label.toUpperCase();
-            labelEl.className = 'el-week-metric-chip__label';
-
-            const valueEl = document.createElement('span');
-            valueEl.textContent = hasValue ? `${amount < 0 ? '-$' : '$'}${Math.abs(amount).toLocaleString()}` : '—';
-            valueEl.className = 'el-week-metric-chip__value';
-
-            chip.appendChild(labelEl);
-            chip.appendChild(valueEl);
-
-            if (note) {
-                const noteEl = document.createElement('span');
-                noteEl.textContent = note;
-                noteEl.className = 'el-week-metric-chip__note';
-                chip.appendChild(noteEl);
-            }
-
-            return chip;
-        };
-
-        const elFormatCashflowCurrency = (amount) => `${amount < 0 ? '-$' : '$'}${Math.abs(amount).toLocaleString()}`;
         const elApplyBalanceTone = (element, amount) => {
             if (!element) return;
             element.classList.add('el-balance-surface');
             element.classList.remove('el-balance-chip-info', 'el-balance-chip-alert');
             element.classList.toggle('is-positive', amount >= 0);
             element.classList.toggle('is-negative', amount < 0);
-        };
-        const elCreateBalanceValue = (amount, fontSize = '0.78rem') => {
-            const value = document.createElement('span');
-            value.textContent = elFormatCashflowCurrency(amount);
-            value.className = `el-balance-value${fontSize === '0.74rem' ? ' el-balance-value--compact' : ''}`;
-            value.classList.add(amount >= 0 ? 'is-positive' : 'is-negative');
-            return value;
-        };
-
-        const elCreateToneBadge = (label, meta) => {
-            const badge = document.createElement('span');
-            badge.textContent = label;
-            badge.className = 'el-tone-badge';
-            elApplyMetricToneClass(badge, elResolveMetricToneClass(meta));
-            return badge;
-        };
-
-        const elCreatePaymentBadge = (value) => {
-            const meta = elGetPaymentMethodMeta(value);
-            return elCreateToneBadge(meta.label, meta);
         };
 
         const elPaymentFilterLabel = (value) => {
@@ -8184,9 +8133,56 @@ if (t.id === "ExpenseLens" || t.id === "BusinessExpenseLens") {
         // -----------------------------
         // State Handling
         // -----------------------------
+        const expenseLensStateVersion = expenseLensProjectionApi?.CURRENT_VERSION || 2;
         let incomeGroupsState = {};
         let incomeGroupsHost = null;
         let incomeGroupRefs = new Map();
+        const getEmptyOccurrenceHistory = () => ({
+            incomes: {},
+            expenses: {},
+            debtPayments: {}
+        });
+        const getDefaultDebtState = () => {
+            if (expenseLensProjectionApi?.normalizeState) {
+                return expenseLensProjectionApi.normalizeState({}).debt;
+            }
+
+            return {
+                openingBalanceCents: 0,
+                currentBalanceCents: 0,
+                asOfDate: getDefaultScheduledAnchorDate(),
+                monthlyMinimumPaymentsCents: 0,
+                projectedPayoffDate: null,
+                projectedInterestExcluded: true,
+                extraPaymentStrategy: 'remaining-cash',
+                paymentHistory: [],
+                adjustments: []
+            };
+        };
+        const cloneDebtState = (value) => ({
+            ...getDefaultDebtState(),
+            ...(value || {}),
+            adjustments: Array.isArray(value?.adjustments)
+                ? value.adjustments.map(adjustment => ({
+                    id: String(adjustment?.id || '').trim(),
+                    date: String(adjustment?.date || '').trim(),
+                    amountCents: Number.isFinite(adjustment?.amountCents) ? Math.round(adjustment.amountCents) : 0,
+                    note: String(adjustment?.note || '').trim()
+                }))
+                : []
+        });
+        const cloneOccurrenceHistory = (value) => ({
+            incomes: { ...(value?.incomes || {}) },
+            expenses: { ...(value?.expenses || {}) },
+            debtPayments: { ...(value?.debtPayments || {}) }
+        });
+        const getTodayMonthKey = () => expenseLensProjectionApi?.formatMonthKey
+            ? expenseLensProjectionApi.formatMonthKey(new Date())
+            : getDefaultScheduledAnchorDate().slice(0, 7);
+        let debtState = cloneDebtState(getDefaultDebtState());
+        let monthBalanceOverrides = {};
+        let occurrenceHistoryState = getEmptyOccurrenceHistory();
+        let projectionSelectedMonthKey = getTodayMonthKey();
 
         const buildPersonalIncomeGroupsState = (state = null) => {
             if (isBusinessExpenseLens) return {};
@@ -8202,6 +8198,64 @@ if (t.id === "ExpenseLens" || t.id === "BusinessExpenseLens") {
         };
 
         incomeGroupsState = buildPersonalIncomeGroupsState();
+
+        const normalizeExpenseLensState = (rawState = {}) => {
+            if (!expenseLensProjectionApi?.normalizeState) return rawState || {};
+            return expenseLensProjectionApi.normalizeState(rawState || {});
+        };
+
+        const applyNormalizedExpenseLensMemory = (state) => {
+            const normalizedState = normalizeExpenseLensState(state);
+            debtState = cloneDebtState(normalizedState?.debt);
+            monthBalanceOverrides = { ...(normalizedState?.monthlyStartingBalanceOverrides || {}) };
+            occurrenceHistoryState = cloneOccurrenceHistory(normalizedState?.occurrenceHistory || getEmptyOccurrenceHistory());
+            return normalizedState;
+        };
+
+        const collectExpenseLensCategories = () => {
+            const categories = [];
+            categoriesContainer.querySelectorAll(`[id^="${elId('CatRow')}"]`).forEach(row => {
+                const index = row.id.replace(elId('CatRow'), '');
+                const nameEl = elById(`CatName${index}`);
+                const dueEl = elById(`CatDue${index}`);
+                const frequencyEl = elById(`CatFrequency${index}`);
+                const paymentMethodEl = elById(`CatPaymentMethod${index}`);
+                const amountEl = elById(`CatAmount${index}`);
+                const name = nameEl ? nameEl.value || '' : '';
+                const due = dueEl ? dueEl.value || '' : '';
+                const frequency = normalizeBillFrequency(frequencyEl ? frequencyEl.value : 'monthly');
+                const paymentMethod = normalizeBillPaymentMethod(paymentMethodEl ? paymentMethodEl.value : 'debit') || 'debit';
+                const amount = amountEl ? amountEl.value || '' : '';
+                const isTemplate = row.dataset.isTemplate === 'true';
+                const isPinned = row.dataset.isPinned === 'true';
+                categories.push({
+                    id: String(row.dataset.categoryId || '').trim(),
+                    index,
+                    name,
+                    due,
+                    frequency,
+                    paymentMethod,
+                    amount,
+                    isTemplate,
+                    isPinned,
+                    debtCategory: String(row.dataset.debtCategory || '').trim()
+                });
+            });
+            return categories;
+        };
+
+        const buildRawExpenseLensState = (extraState = {}) => {
+            const compatibilityState = buildIncomeCompatibilityState();
+            return {
+                ...compatibilityState,
+                stateVersion: expenseLensStateVersion,
+                categories: collectExpenseLensCategories(),
+                debt: cloneDebtState(debtState),
+                monthlyStartingBalanceOverrides: { ...monthBalanceOverrides },
+                occurrenceHistory: cloneOccurrenceHistory(occurrenceHistoryState),
+                ...extraState
+            };
+        };
 
         const buildIncomeCompatibilityState = () => {
             if (isBusinessExpenseLens) {
@@ -8238,7 +8292,7 @@ if (t.id === "ExpenseLens" || t.id === "BusinessExpenseLens") {
                 if (!refs) return;
 
                 const groupTotal = summary.groupTotals[definition.key] || 0;
-                refs.total.textContent = `$ ${groupTotal.toLocaleString()}`;
+                refs.total.textContent = `$ ${formatNumber(groupTotal)}`;
                 refs.share.textContent = summary.monthlyTotal > 0
                     ? `${((groupTotal / summary.monthlyTotal) * 100).toFixed(1)}%`
                     : '0%';
@@ -8408,35 +8462,20 @@ if (t.id === "ExpenseLens" || t.id === "BusinessExpenseLens") {
 
         const saveExpenseLensState = (extraState = {}) => {
             try {
-                const compatibilityState = buildIncomeCompatibilityState();
-                const categories = [];
-                categoriesContainer.querySelectorAll(`[id^="${elId('CatRow')}"]`).forEach(row => {
-                    const index = row.id.replace(elId('CatRow'), '');
-                    const nameEl = elById(`CatName${index}`);
-                    const dueEl = elById(`CatDue${index}`);
-                    const frequencyEl = elById(`CatFrequency${index}`);
-                    const paymentMethodEl = elById(`CatPaymentMethod${index}`);
-                    const amountEl = elById(`CatAmount${index}`);
-                    const name = nameEl ? nameEl.value || '' : '';
-                    const due = dueEl ? dueEl.value || '' : '';
-                    const frequency = normalizeBillFrequency(frequencyEl ? frequencyEl.value : 'monthly');
-                    const paymentMethod = normalizeBillPaymentMethod(paymentMethodEl ? paymentMethodEl.value : '');
-                    const amount = amountEl ? amountEl.value || '' : '';
-                    const isTemplate = row.dataset.isTemplate === 'true';
-                    const isPinned = row.dataset.isPinned === 'true';
-                    categories.push({ index, name, due, frequency, paymentMethod, amount, isTemplate, isPinned });
-                });
-                const state = { ...compatibilityState, categories, ...extraState };
-                savePersistedState(expenseLensToolStateId, state);
+                const normalizedState = applyNormalizedExpenseLensMemory(buildRawExpenseLensState(extraState));
+                savePersistedState(expenseLensToolStateId, normalizedState);
+                return normalizedState;
             } catch (e) { console.error(e); }
+            return null;
         };
 
         const loadExpenseLensState = async () => {
             try {
-                const state = await loadPersistedState(expenseLensToolStateId);
+                const state = applyNormalizedExpenseLensMemory(await loadPersistedState(expenseLensToolStateId));
                 categoriesContainer.innerHTML = '';
                 categoryCount = 0;
                 let categoriesCreated = 0;
+                projectionSelectedMonthKey = getTodayMonthKey();
 
                 if (!isBusinessExpenseLens) {
                     incomeGroupsState = buildPersonalIncomeGroupsState(state);
@@ -8447,7 +8486,17 @@ if (t.id === "ExpenseLens" || t.id === "BusinessExpenseLens") {
 
                 if (state?.categories && state.categories.length > 0) {
                     state.categories.forEach(cat => {
-                        createCategoryRow(++categoryCount, cat.name, cat.due || '', cat.amount, cat.frequency || cat.recurrence, cat.paymentMethod || '', cat.isTemplate === true, cat.isPinned === true);
+                        createCategoryRow(
+                            ++categoryCount,
+                            cat.name,
+                            cat.due || '',
+                            cat.amount,
+                            cat.frequency || cat.recurrence,
+                            cat.paymentMethod || '',
+                            cat.isTemplate === true,
+                            cat.isPinned === true,
+                            { id: cat.id, debtCategory: cat.debtCategory }
+                        );
                         categoriesCreated++;
                     });
                 }
@@ -8478,14 +8527,17 @@ if (t.id === "ExpenseLens" || t.id === "BusinessExpenseLens") {
 
                 if (categoriesCreated === 0) injectDefaultExpenseRows();
                 if (!isBusinessExpenseLens) syncPersonalIncomeDisplay();
+                if (elDebtInput) {
+                    elDebtInput.value = debtState.openingBalanceCents > 0
+                        ? formatNumber((debtState.openingBalanceCents / 100).toFixed(2).replace(/\.00$/, ''))
+                        : '';
+                }
                 refreshExpenseLens({ sortRows: true });
             } catch (e) { console.error(e); }
         };
 
-        // Active week filter (null = show all)
-        let elActiveWeek = null;
-        // Which week's detail is expanded in the panel (independent of filter)
-        let elExpandedWeek = null;
+        let elExpandedWeekId = '';
+        let latestExpenseLensProjection = null;
         // Drag-and-drop state
         let elDragSrc = null;
         let elActivePaymentFilter = 'all';
@@ -8520,18 +8572,17 @@ if (t.id === "ExpenseLens" || t.id === "BusinessExpenseLens") {
         };
 
         const syncExpenseLensViewControls = () => {
-            if (weeklyBtn) weeklyBtn.textContent = elActiveWeek ? `${elActiveWeek.label} ▾` : 'Weekly ▾';
+            if (weeklyBtn) weeklyBtn.textContent = 'Weekly Tracker ▾';
             const topBtn = elById('WeeklyBtnTop');
-            if (topBtn) topBtn.textContent = elActiveWeek ? `${elActiveWeek.label} ▾` : 'Weekly ▾';
+            if (topBtn) topBtn.textContent = 'Weekly Tracker ▾';
             if (paymentFilterSelect) paymentFilterSelect.value = elActivePaymentFilter;
         };
 
         const applyExpenseLensRowVisibility = () => {
             categoriesContainer.querySelectorAll(`[id^="${elId('CatRow')}"]`).forEach(row => {
                 const idx = row.id.replace(elId('CatRow'), '');
-                const matchesWeek = !elActiveWeek || elGetBillOccurrenceDays(idx, elActiveWeek).length > 0;
                 const matchesPayment = elMatchesPaymentFilter(elGetBillPaymentMethod(idx));
-                const show = matchesWeek && matchesPayment;
+                const show = matchesPayment;
                 row.classList.toggle('is-filter-hidden', !show);
             });
         };
@@ -8593,12 +8644,27 @@ if (t.id === "ExpenseLens" || t.id === "BusinessExpenseLens") {
         // -----------------------------
         // Create Category Row
         // -----------------------------
-        const createCategoryRow = (index, preName = '', preDue = '', preAmount = '', preFrequency = 'monthly', prePaymentMethod = '', isTemplate = false, isPinned = false) => {
+        const createExpenseCategoryId = (index, name = '') =>
+            `${expenseLensIdPrefix}-cat-${Date.now().toString(36)}-${index.toString(36)}-${String(name || '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 18) || 'expense'}`;
+
+        const createCategoryRow = (
+            index,
+            preName = '',
+            preDue = '',
+            preAmount = '',
+            preFrequency = 'monthly',
+            prePaymentMethod = '',
+            isTemplate = false,
+            isPinned = false,
+            options = {}
+        ) => {
             const div = document.createElement("div");
             div.className = `d-flex align-items-center el-category-row ${isDualPanel ? 'el-category-row--compact' : 'el-category-row--standard'}`;
             div.id = `${elId('CatRow')}${index}`;
             div.dataset.isTemplate = isTemplate ? 'true' : 'false';
             div.dataset.isPinned = isPinned ? 'true' : 'false';
+            div.dataset.categoryId = String(options.id || '').trim() || createExpenseCategoryId(index, preName);
+            div.dataset.debtCategory = String(options.debtCategory || '').trim() || '';
 
             const nameInput = document.createElement("input");
             nameInput.type = "text";
@@ -8793,21 +8859,26 @@ if (t.id === "ExpenseLens" || t.id === "BusinessExpenseLens") {
         const refreshExpenseLens = (options = {}) => {
             const shouldSortRows = !!options.sortRows;
             const incomeSummary = !isBusinessExpenseLens ? syncPersonalIncomeDisplay() : null;
-            const income = incomeSummary?.monthlyTotal ?? (+elIncome.value.replace(/,/g,'') || 0);
-            let totalSpent = 0;
-            let monthlyTotalSpent = 0;
+            const incomeCents = !isBusinessExpenseLens
+                ? Math.max(0, Math.round((incomeSummary?.monthlyTotal || 0) * 100))
+                : Math.max(0, parseExpenseLensMoneyToCents(elIncome.value));
+            const income = centsToExpenseLensDollars(incomeCents);
+            let totalSpentCents = 0;
+            let monthlyTotalSpentCents = 0;
             const categoriesData = [];
             const hasPaymentFilter = elActivePaymentFilter !== 'all';
 
             categoriesContainer.querySelectorAll(`[id^="${elId('CatAmount')}"]`).forEach(input => {
-                const val = +input.value.replace(/,/g,'') || 0;
+                const valCents = Math.max(0, parseExpenseLensMoneyToCents(input.value));
+                const val = centsToExpenseLensDollars(valCents);
                 const index = input.id.replace(elId('CatAmount'),'');
                 const monthOccurrences = elGetBillOccurrenceDays(index);
-                const activeOccurrences = elActiveWeek ? elGetBillOccurrenceDays(index, elActiveWeek) : monthOccurrences;
-                const occurrenceCount = elActiveWeek ? activeOccurrences.length : monthOccurrences.length;
-                const rowTotal = val * occurrenceCount;
-                const monthlyTotal = val * monthOccurrences.length;
-                monthlyTotalSpent += monthlyTotal;
+                const occurrenceCount = monthOccurrences.length;
+                const rowTotalCents = valCents * occurrenceCount;
+                const monthlyTotalCents = valCents * monthOccurrences.length;
+                const rowTotal = centsToExpenseLensDollars(rowTotalCents);
+                const monthlyTotal = centsToExpenseLensDollars(monthlyTotalCents);
+                monthlyTotalSpentCents += monthlyTotalCents;
                 const pct = income > 0 ? ((rowTotal/income)*100).toFixed(1)+'%' : '0%';
                 const pctEl = elById(`Out${index}`);
                 pctEl.textContent = pct;
@@ -8838,26 +8909,24 @@ if (t.id === "ExpenseLens" || t.id === "BusinessExpenseLens") {
                 });
 
                 if (!elMatchesPaymentFilter(paymentMethod)) return;
-                if (elActiveWeek && occurrenceCount === 0) return;
-                totalSpent += rowTotal;
+                totalSpentCents += rowTotalCents;
             });
 
+            const totalSpent = centsToExpenseLensDollars(totalSpentCents);
+            const monthlyTotalSpent = centsToExpenseLensDollars(monthlyTotalSpentCents);
             const pct = income > 0 ? (totalSpent / income * 100) : 0;
             const monthlyRemaining = income - monthlyTotalSpent;
+            const totalSpentText = formatNumber(totalSpent);
+            const monthlyRemainingText = formatNumber(monthlyRemaining);
 
-            if (elActiveWeek) {
-                elMargin.textContent = hasPaymentFilter
-                    ? `${elActiveWeek.label} ${elPaymentFilterLabel(elActivePaymentFilter)}: $${totalSpent.toLocaleString()}`
-                    : `${elActiveWeek.label} Due: $${totalSpent.toLocaleString()}`;
-                elMargin.classList.remove('is-positive', 'is-negative');
-                elMargin.classList.toggle('el-balance-chip-info', hasPaymentFilter);
-                elMargin.classList.toggle('el-balance-chip-alert', !hasPaymentFilter);
-            } else if (hasPaymentFilter) {
-                elMargin.textContent = `${elPaymentFilterLabel(elActivePaymentFilter)} Bills: $${totalSpent.toLocaleString()}`;
+            if (hasPaymentFilter) {
+                elMargin.textContent = `${elPaymentFilterLabel(elActivePaymentFilter)} Bills: $${totalSpentText}`;
                 elMargin.classList.remove('is-positive', 'is-negative', 'el-balance-chip-alert');
                 elMargin.classList.add('el-balance-chip-info');
             } else {
-                elMargin.textContent = `Remaining Balance: $${monthlyRemaining.toLocaleString()}`;
+                elMargin.textContent = monthlyRemaining >= 0
+                    ? `Remaining Balance: $${monthlyRemainingText}`
+                    : `Remaining Balance: -$${formatNumber(Math.abs(monthlyRemaining))}`;
                 elApplyBalanceTone(elMargin, monthlyRemaining);
             }
 
@@ -8865,9 +8934,9 @@ if (t.id === "ExpenseLens" || t.id === "BusinessExpenseLens") {
             const badge = elById('RemainingBadge');
             if (badge) {
                 if (monthlyRemaining >= 0) {
-                    badge.textContent = `Remaining: $${monthlyRemaining.toLocaleString()}`;
+                    badge.textContent = `Remaining: $${monthlyRemainingText}`;
                 } else {
-                    badge.textContent = `Remaining: -$${Math.abs(monthlyRemaining).toLocaleString()}`;
+                    badge.textContent = `Remaining: -$${formatNumber(Math.abs(monthlyRemaining))}`;
                 }
                 elApplyBalanceTone(badge, monthlyRemaining);
             }
@@ -8894,6 +8963,15 @@ if (t.id === "ExpenseLens" || t.id === "BusinessExpenseLens") {
                 delete category._sortValue;
                 delete category._sortOrder;
             });
+
+            if (expenseLensProjectionApi?.projectExpenseLensTimeline) {
+                latestExpenseLensProjection = getExpenseLensProjection({ force: true });
+                const projectedCurrentMonth = latestExpenseLensProjection?.months?.find?.((month) => month.monthKey === latestExpenseLensProjection.currentMonthKey) || null;
+                debtState.projectedPayoffDate = latestExpenseLensProjection?.summary?.debtPayoffDate || null;
+                if (projectedCurrentMonth && !isBusinessExpenseLens) {
+                    debtState.currentBalanceCents = Math.max(0, Math.round(projectedCurrentMonth.endingDebtCents || 0));
+                }
+            }
 
             saveExpenseLensState({ monthlyExpenseTotal: monthlyTotalSpent, monthlyRemaining });
 
@@ -8933,86 +9011,219 @@ if (t.id === "ExpenseLens" || t.id === "BusinessExpenseLens") {
         });
 
         // -----------------------------------------
-        // Weekly Bill Tracker
+        // Shared Projection Tracker
         // -----------------------------------------
-        const EL_WEEK_START_DAY = 0; // Sunday, matching the standard US calendar grid.
-
-        const elMonthContext = () => {
-            const now = new Date();
-            const year = now.getFullYear();
-            const month = now.getMonth();
-            return {
-                now,
-                year,
-                month,
-                days: new Date(year, month + 1, 0).getDate(),
-                monthLabel: now.toLocaleString('default', { month: 'short' }),
-                monthYearLabel: now.toLocaleString('default', { month: 'long', year: 'numeric' })
-            };
-        };
-
-        const elBuildCalendarWeeks = () => {
-            const ctx = elMonthContext();
-            const weeks = [];
-
-            // Anchor to the Sunday on or before the 1st — every week is exactly 7 days
-            const firstOfMonth = new Date(ctx.year, ctx.month, 1);
-            const startOffset = (firstOfMonth.getDay() - EL_WEEK_START_DAY + 7) % 7;
-            const cursor = new Date(ctx.year, ctx.month, 1 - startOffset);
-            const lastOfMonth = new Date(ctx.year, ctx.month, ctx.days);
-
-            let weekNumber = 1;
-            while (cursor <= lastOfMonth) {
-                const weekStart = new Date(cursor);
-                const weekEnd = new Date(cursor);
-                weekEnd.setDate(weekEnd.getDate() + 6);
-                weekEnd.setHours(23, 59, 59, 999);
-
-                const isCurrent = ctx.now >= weekStart && ctx.now <= weekEnd;
-
-                const fmt = (d) => d.toLocaleString('default', { month: 'short', day: 'numeric' });
-                const rangeLabel = weekStart.getMonth() === weekEnd.getMonth()
-                    ? `${weekStart.toLocaleString('default', { month: 'short' })} ${weekStart.getDate()}–${weekEnd.getDate()}`
-                    : `${fmt(weekStart)} – ${fmt(weekEnd)}`;
-
-                weeks.push({
-                    id: `${weekStart.getFullYear()}-${String(weekStart.getMonth() + 1).padStart(2, '0')}-${String(weekStart.getDate()).padStart(2, '0')}`,
-                    label: `Week ${weekNumber}`,
-                    startDate: new Date(weekStart),
-                    endDate: new Date(weekEnd),
-                    year: ctx.year,
-                    month: ctx.month,
-                    rangeLabel,
-                    isCurrent
-                });
-
-                cursor.setDate(cursor.getDate() + 7);
-                weekNumber++;
-            }
-
-            return weeks;
-        };
-
-        const elGetCurrentCalendarWeek = () => elBuildCalendarWeeks().find(week => week.isCurrent) || null;
-        const elSameCalendarWeek = (a, b) => Boolean(a && b && a.id === b.id);
+        const EL_TRACKER_MAX_FUTURE_MONTHS = expenseLensProjectionApi?.MAX_PROJECTION_MONTHS || 120;
+        const EL_WEEK_START_DAY = 0;
 
         const elGetBillFrequency = (index) => {
             const frequencyEl = elById(`CatFrequency${index}`);
             return normalizeBillFrequency(frequencyEl?.value || 'monthly');
         };
 
-        const elGetBillOccurrenceDays = (index, week = null) => {
+        const elGetBillOccurrenceDays = (index, week = null, monthKey = null) => {
             const dueEl = elById(`CatDue${index}`);
             const frequency = elGetBillFrequency(index);
             return getScheduledOccurrenceDays(dueEl?.value || '', frequency, {
-                ...elMonthContext(),
-                week
+                monthKey: monthKey || getTodayMonthKey(),
+                week,
+                weekStartDay: EL_WEEK_START_DAY
             });
         };
 
-        const elApplyWeekFilter = (week, options = {}) => {
-            elActiveWeek = week ? (elBuildCalendarWeeks().find(candidate => candidate.id === week.id) || week) : null;
-            refreshExpenseLensViews({ sortRows: options.sortRows !== false });
+        const expenseLensEscapeHtml = (value) => String(value ?? '')
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;')
+            .replace(/'/g, '&#39;');
+
+        const expenseLensEscapeAttr = (value) => expenseLensEscapeHtml(value).replace(/\n/g, '&#10;');
+
+        const expenseLensFormatMonthLabel = (monthKey) => {
+            const date = expenseLensProjectionApi?.parseMonthKey?.(monthKey);
+            return date
+                ? date.toLocaleString('default', { month: 'long', year: 'numeric' })
+                : String(monthKey || '');
+        };
+
+        const expenseLensFormatDateLabel = (dateValue, fallback = '—') => {
+            const date = dateValue instanceof Date
+                ? dateValue
+                : expenseLensProjectionApi?.parseDate?.(dateValue);
+            return date
+                ? date.toLocaleString('default', { month: 'short', day: 'numeric', year: 'numeric' })
+                : fallback;
+        };
+
+        const expenseLensFormatShortDateLabel = (dateValue, fallback = '—') => {
+            const date = dateValue instanceof Date
+                ? dateValue
+                : expenseLensProjectionApi?.parseDate?.(dateValue);
+            return date
+                ? date.toLocaleString('default', { month: 'short', day: 'numeric' })
+                : fallback;
+        };
+
+        const expenseLensFormatCurrency = (centsValue, options = {}) => {
+            const cents = Math.round(Number(centsValue) || 0);
+            const absolute = Math.abs(cents / 100);
+            const useWholeDollars = options.wholeDollars !== false;
+            const rendered = useWholeDollars && Math.abs(absolute - Math.round(absolute)) < 0.0001
+                ? Math.round(absolute).toLocaleString()
+                : absolute.toLocaleString(undefined, {
+                    minimumFractionDigits: 2,
+                    maximumFractionDigits: 2
+                });
+            if (cents < 0) return `-$${rendered}`;
+            return `$${rendered}`;
+        };
+
+        const expenseLensFormatInputValue = (centsValue, options = {}) => {
+            const cents = Math.round(Number(centsValue) || 0);
+            if (!options.allowZero && cents === 0) return '';
+            const dollars = cents / 100;
+            const normalized = Math.abs(dollars % 1) < 0.0001
+                ? String(Math.trunc(dollars))
+                : dollars.toFixed(2).replace(/0+$/, '').replace(/\.$/, '');
+            return formatNumber(normalized);
+        };
+
+        const expenseLensFormatStartingSource = (source) => {
+            switch (String(source || '').trim()) {
+                case 'manual-override': return 'Manual starting balance';
+                case 'rolling-balance': return 'Calculated from prior month';
+                case 'baseline': return 'Baseline month';
+                default: return 'Calculated';
+            }
+        };
+
+        const expenseLensFormatTemporalStatus = (status) => {
+            switch (String(status || '').trim()) {
+                case 'historical-reconciled': return 'Historical · Reconciled';
+                case 'historical-unreconciled': return 'Historical · Needs Review';
+                case 'historical': return 'Historical';
+                case 'current': return 'Current Month';
+                case 'future': return 'Future Projection';
+                default: return 'Projected';
+            }
+        };
+
+        const expenseLensStatusTone = (status) => {
+            switch (String(status || '').trim()) {
+                case 'historical-reconciled':
+                case 'actual':
+                    return 'positive';
+                case 'historical-unreconciled':
+                case 'needs-review':
+                    return 'warning';
+                case 'current':
+                    return 'info';
+                case 'future':
+                case 'projected':
+                    return 'neutral';
+                default:
+                    return 'neutral';
+            }
+        };
+
+        const expenseLensGetProjectionBounds = () => {
+            const currentMonthKey = getTodayMonthKey();
+            const maxFutureMonthKey = expenseLensProjectionApi?.addMonths
+                ? expenseLensProjectionApi.addMonths(currentMonthKey, EL_TRACKER_MAX_FUTURE_MONTHS - 1)
+                : currentMonthKey;
+            return { currentMonthKey, maxFutureMonthKey };
+        };
+
+        const invalidateExpenseLensProjection = () => {
+            latestExpenseLensProjection = null;
+        };
+
+        const getExpenseLensProjection = (options = {}) => {
+            if (!expenseLensProjectionApi?.projectExpenseLensTimeline) return null;
+
+            const requestedMonthKey = expenseLensProjectionApi.formatMonthKey?.(
+                options.selectedMonthKey || projectionSelectedMonthKey || getTodayMonthKey()
+            ) || projectionSelectedMonthKey || getTodayMonthKey();
+
+            if (!options.force && latestExpenseLensProjection?.selectedMonthKey === requestedMonthKey) {
+                return latestExpenseLensProjection;
+            }
+
+            const projection = expenseLensProjectionApi.projectExpenseLensTimeline({
+                state: buildRawExpenseLensState(),
+                selectedMonthKey: requestedMonthKey,
+                asOfDate: debtState.asOfDate || new Date(),
+                horizonMonths: EL_TRACKER_MAX_FUTURE_MONTHS
+            });
+
+            projectionSelectedMonthKey = projection?.selectedMonthKey || requestedMonthKey;
+            latestExpenseLensProjection = projection;
+            return projection;
+        };
+
+        const setStartingBalanceOverride = (monthKey, amountValue, noteValue) => {
+            const normalizedMonthKey = expenseLensProjectionApi?.formatMonthKey?.(monthKey) || monthKey;
+            if (!normalizedMonthKey) return;
+
+            monthBalanceOverrides[normalizedMonthKey] = {
+                amountCents: Math.round(parseSavingsMoney(amountValue) * 100),
+                note: String(noteValue || '').trim(),
+                updatedAt: new Date().toISOString()
+            };
+
+            invalidateExpenseLensProjection();
+            refreshExpenseLensViews({ sortRows: false });
+        };
+
+        const clearStartingBalanceOverride = (monthKey) => {
+            const normalizedMonthKey = expenseLensProjectionApi?.formatMonthKey?.(monthKey) || monthKey;
+            if (!normalizedMonthKey) return;
+            delete monthBalanceOverrides[normalizedMonthKey];
+            invalidateExpenseLensProjection();
+            refreshExpenseLensViews({ sortRows: false });
+        };
+
+        const setDebtAsOfDate = (value) => {
+            const parsed = parseScheduledAnchorDate(value);
+            debtState.asOfDate = parsed
+                ? `${parsed.getFullYear()}-${String(parsed.getMonth() + 1).padStart(2, '0')}-${String(parsed.getDate()).padStart(2, '0')}`
+                : getDefaultScheduledAnchorDate();
+            invalidateExpenseLensProjection();
+            refreshExpenseLensViews({ sortRows: false });
+        };
+
+        const addDebtAdjustment = (dateValue, amountValue, noteValue) => {
+            const parsed = parseScheduledAnchorDate(dateValue);
+            if (!parsed) return false;
+
+            const amountCents = Math.round(parseSavingsMoney(amountValue) * 100);
+            if (!amountCents) return false;
+
+            const id = `debt-adjustment-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
+            debtState.adjustments = [
+                ...(Array.isArray(debtState.adjustments) ? debtState.adjustments : []),
+                {
+                    id,
+                    date: `${parsed.getFullYear()}-${String(parsed.getMonth() + 1).padStart(2, '0')}-${String(parsed.getDate()).padStart(2, '0')}`,
+                    amountCents,
+                    note: String(noteValue || '').trim()
+                }
+            ].sort((left, right) => {
+                if (left.date !== right.date) return left.date.localeCompare(right.date);
+                return left.id.localeCompare(right.id);
+            });
+
+            invalidateExpenseLensProjection();
+            refreshExpenseLensViews({ sortRows: false });
+            return true;
+        };
+
+        const removeDebtAdjustment = (id) => {
+            debtState.adjustments = (Array.isArray(debtState.adjustments) ? debtState.adjustments : [])
+                .filter((adjustment) => adjustment.id !== id);
+            invalidateExpenseLensProjection();
+            refreshExpenseLensViews({ sortRows: false });
         };
 
         weekPanelBackdrop = document.createElement('div');
@@ -9026,17 +9237,9 @@ if (t.id === "ExpenseLens" || t.id === "BusinessExpenseLens") {
         document.body.appendChild(weekPanelBackdrop);
 
         const hideOtherWeekPanels = () => {
-            document.querySelectorAll('.expense-lens-week-panel-backdrop').forEach(panel => {
+            document.querySelectorAll('.expense-lens-week-panel-backdrop').forEach((panel) => {
                 if (panel !== weekPanelBackdrop) panel.style.display = 'none';
             });
-        };
-
-        const openWeekPanel = () => {
-            renderWeekPanel();
-            hideOtherWeekPanels();
-            elWeekPanelBodyOverflow = document.body.style.overflow || '';
-            weekPanelBackdrop.style.display = 'flex';
-            document.body.style.overflow = 'hidden';
         };
 
         const closeWeekPanel = () => {
@@ -9044,418 +9247,774 @@ if (t.id === "ExpenseLens" || t.id === "BusinessExpenseLens") {
             document.body.style.overflow = elWeekPanelBodyOverflow;
         };
 
-        const renderWeekPanel = () => {
-            const { monthYearLabel } = elMonthContext();
-            const weeks = elBuildCalendarWeeks();
-            weekPanel.innerHTML = '';
-            const personalCashflowMode = !isBusinessExpenseLens;
+        const buildProjectionMetricHtml = ({ label, value, note = '', tone = 'neutral' }) => `
+            <article class="el-projection-metric el-projection-metric--${tone}">
+                <dt>${expenseLensEscapeHtml(label)}</dt>
+                <dd>${expenseLensEscapeHtml(value)}</dd>
+                ${note ? `<p>${expenseLensEscapeHtml(note)}</p>` : ''}
+            </article>
+        `;
 
-            const formatBillCount = (count) => `${count} bill${count !== 1 ? 's' : ''}`;
-            const formatIncomeHitCount = (count) => `${count} pay hit${count !== 1 ? 's' : ''}`;
-            const debitCashLabel = EL_PAYMENT_FILTERS.find(option => option.value === 'debit')?.label || 'Debit / Cash';
+        const buildProjectionNoticeHtml = (message, tone = 'neutral') => `
+            <div class="el-projection-notice el-projection-notice--${tone}">
+                ${expenseLensEscapeHtml(message)}
+            </div>
+        `;
 
-            const collectWeekBills = (week = null) => {
-                const bills = [];
-                categoriesContainer.querySelectorAll(`[id^="${elId('CatRow')}"]`).forEach(row => {
-                    const idx = row.id.replace(elId('CatRow'), '');
-                    const paymentMethod = elGetBillPaymentMethod(idx);
-                    if (!elMatchesPaymentFilter(paymentMethod)) return;
+        const getProjectionEventType = (eventItem) => {
+            if (eventItem?.kind === 'income') return 'income';
 
-                    const amtEl = elById(`CatAmount${idx}`);
-                    const nameEl = elById(`CatName${idx}`);
-                    const frequency = elGetBillFrequency(idx);
-                    const amt = +(amtEl?.value || '').replace(/,/g, '') || 0;
-                    if (amt <= 0) return;
+            if (
+                eventItem?.kind === 'extraDebt'
+                || eventItem?.kind === 'debtAdjustment'
+            ) {
+                return 'debt';
+            }
 
-                    const occurrences = elGetBillOccurrenceDays(idx, week);
-                    occurrences.forEach(date => {
-                        bills.push({
-                            name: nameEl?.value?.trim() || '(Unnamed)',
-                            amount: amt,
-                            date,
-                            frequency,
-                            paymentMethod
-                        });
-                    });
-                });
-
-                bills.sort((a, b) => (a.date - b.date) || a.name.localeCompare(b.name));
-                return bills;
-            };
-
-            const collectWeekIncomeHits = (week = null) => personalCashflowMode
-                ? summarizePersonalIncomeGroups(incomeGroupsState, { week }).hits
-                : [];
-
-            const summarizeBills = (bills) => {
-                let total = 0;
-                let debitTotal = 0;
-                let creditTotal = 0;
-
-                bills.forEach(bill => {
-                    total += bill.amount;
-                    if (bill.paymentMethod === 'debit') debitTotal += bill.amount;
-                    if (bill.paymentMethod === 'credit') creditTotal += bill.amount;
-                });
-
-                return {
-                    total,
-                    debitTotal,
-                    creditTotal,
-                    count: bills.length
-                };
-            };
-
-            const buildCashflowSummary = (incomeHits, bills, startingBalance = 0) => {
-                const incomeTotal = incomeHits.reduce((sum, hit) => sum + hit.amount, 0);
-                const debitCashBills = bills.filter(bill => bill.paymentMethod !== 'credit');
-                const creditBills = bills.filter(bill => bill.paymentMethod === 'credit');
-                const debitCashTotal = debitCashBills.reduce((sum, bill) => sum + bill.amount, 0);
-                const creditTotal = creditBills.reduce((sum, bill) => sum + bill.amount, 0);
-                const rawEvents = [
-                    ...incomeHits.map((hit) => ({
-                        kind: 'income',
-                        label: hit.label,
-                        date: hit.date,
-                        frequency: hit.frequency,
-                        amount: hit.amount
-                    })),
-                    ...bills.map((bill) => ({
-                        kind: bill.paymentMethod === 'credit' ? 'credit' : bill.paymentMethod === 'debit' ? 'debit' : 'open',
-                        label: bill.frequency === 'monthly' ? bill.name : `${bill.name} (${elFrequencyLabel(bill.frequency)})`,
-                        date: bill.date,
-                        amount: bill.amount,
-                        paymentMethod: bill.paymentMethod
-                    }))
-                ].sort((a, b) => {
-                    const aDay = a.date.getTime();
-                    const bDay = b.date.getTime();
-                    if (aDay !== bDay) return aDay - bDay;
-                    const order = { income: 0, debit: 1, open: 2, credit: 3 };
-                    if ((order[a.kind] ?? 9) !== (order[b.kind] ?? 9)) {
-                        return (order[a.kind] ?? 9) - (order[b.kind] ?? 9);
-                    }
-                    return a.label.localeCompare(b.label);
-                });
-
-                let runningBalance = startingBalance;
-                const events = rawEvents.map((eventItem) => {
-                    const impact = eventItem.kind === 'income' ? eventItem.amount : -eventItem.amount;
-                    const balanceBefore = runningBalance;
-                    runningBalance += impact;
-                    return {
-                        ...eventItem,
-                        impact,
-                        balanceBefore,
-                        balanceAfter: runningBalance
-                    };
-                });
-
-                return {
-                    incomeTotal,
-                    incomeCount: incomeHits.length,
-                    debitCashTotal,
-                    debitCashCount: debitCashBills.length,
-                    creditTotal,
-                    creditCount: creditBills.length,
-                    totalBills: bills.reduce((sum, bill) => sum + bill.amount, 0),
-                    billCount: bills.length,
-                    startingBalance,
-                    endingBalance: runningBalance,
-                    netChange: incomeTotal - bills.reduce((sum, bill) => sum + bill.amount, 0),
-                    events
-                };
-            };
-
-            const createBillSummaryMetrics = (totals) => {
-                const metricsWrap = document.createElement('div');
-                metricsWrap.classList.add('lf-js-007');
-                metricsWrap.appendChild(elCreateWeekMetricChip(EL_PAYMENT_METHOD_META.debit.label, totals.debitTotal, EL_PAYMENT_METHOD_META.debit));
-                metricsWrap.appendChild(elCreateWeekMetricChip(EL_PAYMENT_METHOD_META.credit.label, totals.creditTotal, EL_PAYMENT_METHOD_META.credit));
-                metricsWrap.appendChild(elCreateWeekMetricChip(EL_PAYMENT_METHOD_META.total.label, totals.total, EL_PAYMENT_METHOD_META.total, totals.count > 0 ? formatBillCount(totals.count) : ''));
-                return metricsWrap;
-            };
-
-            const createCashflowSummaryMetrics = (summary, options = {}) => {
-                const endingMeta = options.endingMeta || EL_ENDING_BALANCE_META;
-                const metricsWrap = document.createElement('div');
-                metricsWrap.classList.add('lf-js-008');
-                metricsWrap.appendChild(elCreateWeekMetricChip(EL_INCOME_METRIC_META.label, summary.incomeTotal, EL_INCOME_METRIC_META, summary.incomeCount > 0 ? formatIncomeHitCount(summary.incomeCount) : ''));
-                metricsWrap.appendChild(elCreateWeekMetricChip(debitCashLabel, summary.debitCashTotal, EL_PAYMENT_METHOD_META.debit, summary.debitCashCount > 0 ? formatBillCount(summary.debitCashCount) : ''));
-                metricsWrap.appendChild(elCreateWeekMetricChip(EL_PAYMENT_METHOD_META.credit.label, summary.creditTotal, EL_PAYMENT_METHOD_META.credit, summary.creditCount > 0 ? formatBillCount(summary.creditCount) : ''));
-                metricsWrap.appendChild(elCreateWeekMetricChip(endingMeta.label, summary.endingBalance, endingMeta, '', { negativeMeta: EL_NEGATIVE_METRIC_META }));
-                return metricsWrap;
-            };
-
-            const header = document.createElement('div');
-            header.classList.add('lf-js-009');
-            const titleWrap = document.createElement('div');
-            titleWrap.classList.add('lf-js-010');
-            const title = document.createElement('span');
-            title.classList.add('lf-js-011');
-            title.textContent = personalCashflowMode ? 'WEEKLY CASHFLOW TRACKER' : 'WEEKLY BILL TRACKER';
-            const subtitle = document.createElement('span');
-            subtitle.classList.add('lf-js-012');
-            subtitle.textContent = elActivePaymentFilter === 'all'
-                ? `Calendar weeks for ${monthYearLabel}`
-                : `Calendar weeks for ${monthYearLabel} · ${elPaymentFilterLabel(elActivePaymentFilter)} only`;
-            const closeX = document.createElement('span');
-            closeX.textContent = '✕';
-            closeX.classList.add('lf-js-013');
-            closeX.addEventListener('click', (e) => { e.stopPropagation(); closeWeekPanel(); });
-            titleWrap.appendChild(title);
-            titleWrap.appendChild(subtitle);
-            header.appendChild(titleWrap);
-            header.appendChild(closeX);
-            weekPanel.appendChild(header);
-
-            const allBills = collectWeekBills();
-            const allIncomeHits = collectWeekIncomeHits();
-            const allTotals = summarizeBills(allBills);
-            const allCashflow = buildCashflowSummary(allIncomeHits, allBills);
-
-            const allRow = document.createElement('div');
-            allRow.className = 'el-week-summary-row el-week-summary-row--month';
-            allRow.classList.toggle('is-selected', !elActiveWeek);
-
-            const allRowLeft = document.createElement('div');
-            allRowLeft.classList.add('lf-js-014');
-            const allRowLabel = document.createElement('span');
-            allRowLabel.className = 'el-week-summary-title';
-            allRowLabel.classList.toggle('is-selected', !elActiveWeek);
-            allRowLabel.textContent = personalCashflowMode
-                ? (elActivePaymentFilter === 'all' ? 'Show Full Cashflow' : `${elPaymentFilterLabel(elActivePaymentFilter)} Cashflow`)
-                : (elActivePaymentFilter === 'all' ? 'Show All Bills' : `${elPaymentFilterLabel(elActivePaymentFilter)} Bills`);
-            const allRowSub = document.createElement('span');
-            allRowSub.className = 'el-week-summary-subtitle el-week-summary-subtitle--month';
-            allRowSub.classList.toggle('is-selected', !elActiveWeek);
-            allRowSub.textContent = personalCashflowMode
-                ? ((allCashflow.incomeCount > 0 || allCashflow.billCount > 0)
-                    ? `Entire ${monthYearLabel} income + bill map`
-                    : 'No income or bill events scheduled in the current month')
-                : (allTotals.count > 0
-                    ? `Entire ${monthYearLabel} payment map`
-                    : 'No payments scheduled in the current month');
-            allRowLeft.appendChild(allRowLabel);
-            allRowLeft.appendChild(allRowSub);
-            allRow.appendChild(allRowLeft);
-            allRow.appendChild(personalCashflowMode ? createCashflowSummaryMetrics(allCashflow, { endingMeta: EL_MONTH_END_BALANCE_META }) : createBillSummaryMetrics(allTotals));
-            allRow.addEventListener('click', (e) => { e.stopPropagation(); elExpandedWeek = null; elApplyWeekFilter(null); });
-            weekPanel.appendChild(allRow);
-
-            let runningBalance = 0;
-            weeks.forEach(week => {
-                const bills = collectWeekBills(week);
-                const totals = summarizeBills(bills);
-                const incomeHits = collectWeekIncomeHits(week);
-                const cashflowSummary = buildCashflowSummary(incomeHits, bills, runningBalance);
-                runningBalance = cashflowSummary.endingBalance;
-                const isActive = elSameCalendarWeek(elActiveWeek, week);
-                const isExpanded = elSameCalendarWeek(elExpandedWeek, week);
-
-                const weekBlock = document.createElement('div');
-                weekBlock.classList.add('lf-js-015');
-
-                const summaryRow = document.createElement('div');
-                summaryRow.className = 'el-week-summary-row el-week-summary-row--week';
-                summaryRow.classList.toggle('is-selected', isActive);
-
-                const wLabelWrap = document.createElement('div');
-                wLabelWrap.classList.add('lf-js-014');
-                const wLabel = document.createElement('span');
-                wLabel.className = 'el-week-summary-title el-week-summary-title--week';
-                wLabel.classList.toggle('is-selected', isActive);
-                wLabel.textContent = week.label;
-                const wRange = document.createElement('span');
-                wRange.className = 'el-week-summary-subtitle el-week-summary-subtitle--week';
-                wRange.classList.toggle('is-selected', isActive);
-                wRange.textContent = week.rangeLabel;
-                wLabelWrap.appendChild(wLabel);
-                wLabelWrap.appendChild(wRange);
-
-                const rightGroup = document.createElement('div');
-                rightGroup.classList.add('lf-js-016');
-                rightGroup.appendChild(personalCashflowMode ? createCashflowSummaryMetrics(cashflowSummary) : createBillSummaryMetrics(totals));
-
-                const chevron = document.createElement('span');
-                chevron.textContent = isExpanded ? '▴' : '▾';
-                chevron.classList.add('lf-js-017');
-                rightGroup.appendChild(chevron);
-
-                summaryRow.appendChild(wLabelWrap);
-                summaryRow.appendChild(rightGroup);
-
-                const detailWrap = document.createElement('div');
-                detailWrap.className = 'el-week-detail';
-                detailWrap.classList.toggle('is-open', isExpanded);
-
-                if (personalCashflowMode && cashflowSummary.events.length > 0) {
-                    const detailBanner = document.createElement('div');
-                    detailBanner.classList.add('lf-js-018');
-
-                    const detailHint = document.createElement('span');
-                    detailHint.classList.add('lf-js-019');
-                    detailHint.textContent = 'Running order: pay hits post first, then debit / cash obligations, then credit due in that week.';
-
-                    const detailCarry = document.createElement('div');
-                    detailCarry.classList.add('lf-js-020');
-
-                    const startGroup = document.createElement('span');
-                    startGroup.classList.add('lf-js-021');
-                    startGroup.appendChild(document.createTextNode('Start'));
-                    startGroup.appendChild(elCreateBalanceValue(cashflowSummary.startingBalance, '0.74rem'));
-
-                    const divider = document.createElement('span');
-                    divider.classList.add('lf-js-022');
-                    divider.textContent = '•';
-
-                    const endGroup = document.createElement('span');
-                    endGroup.classList.add('lf-js-023');
-                    endGroup.appendChild(document.createTextNode('Week End'));
-                    endGroup.appendChild(elCreateBalanceValue(cashflowSummary.endingBalance, '0.74rem'));
-
-                    detailCarry.appendChild(startGroup);
-                    detailCarry.appendChild(divider);
-                    detailCarry.appendChild(endGroup);
-
-                    detailBanner.appendChild(detailHint);
-                    detailBanner.appendChild(detailCarry);
-                    detailWrap.appendChild(detailBanner);
-
-                    const colHeader = document.createElement('div');
-                    colHeader.classList.add('lf-js-024');
-                    colHeader.innerHTML = '<span class="lf-ui-024">Event</span><span class="lf-ui-025">Date</span><span class="lf-ui-025">Type</span><span class="lf-ui-026">Impact</span><span class="lf-ui-026">Running Bal</span>';
-                    detailWrap.appendChild(colHeader);
-
-                    cashflowSummary.events.forEach((eventItem, i) => {
-                        const eventRow = document.createElement('div');
-                        eventRow.className = 'el-week-event-row';
-                        eventRow.classList.toggle('is-last', i === cashflowSummary.events.length - 1);
-
-                        const eventName = document.createElement('span');
-                        eventName.classList.add('lf-js-025');
-                        eventName.textContent = eventItem.kind === 'income' && eventItem.frequency
-                            ? `${eventItem.label} (${elFrequencyLabel(eventItem.frequency)})`
-                            : eventItem.label;
-
-                        const eventDate = document.createElement('span');
-                        eventDate.classList.add('lf-js-026');
-                        eventDate.textContent = eventItem.date.toLocaleString('default', { month: 'short', day: 'numeric' });
-
-                        const eventType = document.createElement('span');
-                        eventType.classList.add('lf-js-027');
-                        if (eventItem.kind === 'income') {
-                            eventType.appendChild(elCreateToneBadge(EL_INCOME_METRIC_META.label, EL_INCOME_METRIC_META));
-                        } else if (eventItem.kind === 'credit') {
-                            eventType.appendChild(elCreatePaymentBadge('credit'));
-                        } else if (eventItem.kind === 'debit') {
-                            eventType.appendChild(elCreatePaymentBadge('debit'));
-                        } else {
-                            eventType.appendChild(elCreatePaymentBadge(''));
-                        }
-
-                        const amountMeta = eventItem.kind === 'income'
-                            ? EL_INCOME_METRIC_META
-                            : eventItem.kind === 'credit'
-                                ? EL_PAYMENT_METHOD_META.credit
-                                : eventItem.kind === 'debit'
-                                    ? EL_PAYMENT_METHOD_META.debit
-                                    : EL_PAYMENT_METHOD_META.unassigned;
-                        const eventAmount = document.createElement('span');
-                        eventAmount.className = `el-week-amount ${elResolveMetricToneClass(amountMeta)}`;
-                        eventAmount.textContent = `${eventItem.impact < 0 ? '-$' : '+$'}${Math.abs(eventItem.impact).toLocaleString()}`;
-
-                        const eventBalance = document.createElement('span');
-                        eventBalance.className = 'el-week-balance';
-                        eventBalance.classList.add(eventItem.balanceAfter < 0 ? 'is-negative' : 'is-positive');
-                        eventBalance.textContent = elFormatCashflowCurrency(eventItem.balanceAfter);
-
-                        eventRow.appendChild(eventName);
-                        eventRow.appendChild(eventDate);
-                        eventRow.appendChild(eventType);
-                        eventRow.appendChild(eventAmount);
-                        eventRow.appendChild(eventBalance);
-                        detailWrap.appendChild(eventRow);
-                    });
-                } else if (totals.count > 0) {
-                    const colHeader = document.createElement('div');
-                    colHeader.classList.add('lf-js-028');
-                    colHeader.innerHTML = '<span class="lf-ui-027">Bill</span><span class="lf-ui-028">Due</span><span class="lf-ui-029">Pay Type</span><span class="lf-ui-030">Amount</span>';
-                    detailWrap.appendChild(colHeader);
-
-                    bills.forEach((bill, i) => {
-                        const paymentMeta = elGetPaymentMethodMeta(bill.paymentMethod);
-                        const billRow = document.createElement('div');
-                        billRow.className = 'el-week-bill-row';
-                        billRow.classList.toggle('is-last', i === bills.length - 1);
-
-                        const bName = document.createElement('span');
-                        bName.classList.add('lf-js-029');
-                        bName.textContent = bill.frequency === 'monthly'
-                            ? bill.name
-                            : `${bill.name} (${elFrequencyLabel(bill.frequency)})`;
-
-                        const bDue = document.createElement('span');
-                        bDue.classList.add('lf-js-030');
-                        bDue.textContent = bill.date.toLocaleString('default', { month: 'short', day: 'numeric' });
-
-                        const paymentCell = document.createElement('span');
-                        paymentCell.classList.add('lf-js-031');
-                        paymentCell.appendChild(elCreatePaymentBadge(bill.paymentMethod));
-
-                        const bAmt = document.createElement('span');
-                        bAmt.className = `el-week-amount ${elResolveMetricToneClass(paymentMeta)}`;
-                        bAmt.textContent = `$${bill.amount.toLocaleString()}`;
-
-                        billRow.appendChild(bName);
-                        billRow.appendChild(bDue);
-                        billRow.appendChild(paymentCell);
-                        billRow.appendChild(bAmt);
-                        detailWrap.appendChild(billRow);
-                    });
-                } else {
-                    const empty = document.createElement('div');
-                    if (personalCashflowMode && elActivePaymentFilter === 'all') {
-                        empty.classList.add('lf-js-032');
-
-                        const emptyCopy = document.createElement('span');
-                        emptyCopy.classList.add('lf-js-033');
-                        emptyCopy.textContent = 'No income or bill events scheduled in this week. Ending balance carries at';
-
-                        const emptyBalance = document.createElement('span');
-                        emptyBalance.classList.add('lf-js-034');
-                        emptyBalance.textContent = elFormatCashflowCurrency(cashflowSummary.endingBalance);
-                        elApplyBalanceTone(emptyBalance, cashflowSummary.endingBalance);
-
-                        empty.appendChild(emptyCopy);
-                        empty.appendChild(emptyBalance);
-                    } else {
-                        empty.classList.add('lf-js-035');
-                        empty.textContent = personalCashflowMode
-                            ? `No ${elPaymentFilterLabel(elActivePaymentFilter).toLowerCase()} bill events scheduled in this week.`
-                            : (elActivePaymentFilter === 'all'
-                                ? 'No bills with due dates set for this week.'
-                                : `No ${elPaymentFilterLabel(elActivePaymentFilter).toLowerCase()} bills with due dates set for this week.`);
-                    }
-                    detailWrap.appendChild(empty);
+            if (eventItem?.kind === 'expense') {
+                if (eventItem.debtCategory === 'tracked-unsecured-minimum') {
+                    return 'debt';
                 }
 
-                summaryRow.addEventListener('click', (e) => {
-                    e.stopPropagation();
-                    elExpandedWeek = elSameCalendarWeek(elExpandedWeek, week) ? null : week;
-                    elApplyWeekFilter(week);
-                });
+                return normalizeBillPaymentMethod(eventItem.paymentMethod) === 'credit'
+                    ? 'credit'
+                    : 'debit';
+            }
 
-                weekBlock.appendChild(summaryRow);
-                weekBlock.appendChild(detailWrap);
-                weekPanel.appendChild(weekBlock);
+            return 'neutral';
+        };
+
+        const getProjectionEventTypeLabel = (eventItem) => {
+            switch (getProjectionEventType(eventItem)) {
+                case 'income':
+                    return 'Income';
+
+                case 'debit':
+                    return 'Debit Bill';
+
+                case 'credit':
+                    return 'Credit Bill';
+
+                case 'debt':
+                    return eventItem?.kind === 'debtAdjustment'
+                        ? 'Debt Adjustment'
+                        : 'Debt Payment';
+
+                default:
+                    return 'Activity';
+            }
+        };
+
+        const buildProjectionEventHtml = (eventItem) => {
+            const type = getProjectionEventType(eventItem);
+            const typeLabel = getProjectionEventTypeLabel(eventItem);
+
+            const eventMeta = eventItem.kind === 'income'
+                ? `${elFrequencyLabel(eventItem.frequency)} pay hit`
+                : eventItem.kind === 'expense'
+                    ? `${elFrequencyLabel(eventItem.frequency)} · ${elGetPaymentMethodMeta(eventItem.paymentMethod).label}`
+                    : eventItem.kind === 'debtAdjustment'
+                        ? 'Manual debt balance adjustment'
+                        : 'Remaining-cash debt payoff';
+
+            const amountCents = eventItem.kind === 'income'
+                ? Math.max(0, Math.round(eventItem.amountCents || 0))
+                : Math.abs(
+                    Math.round(
+                        eventItem.impactCashCents
+                        || eventItem.amountCents
+                        || 0
+                    )
+                );
+
+            const showDebtAfter = type === 'debt';
+
+            return `
+                <article class="el-projection-event el-projection-event--${type}">
+                    <div class="el-projection-event-main">
+                        <div class="el-projection-event-title-row">
+                            <span class="el-projection-type-badge el-projection-type-badge--${type}">
+                                ${expenseLensEscapeHtml(typeLabel)}
+                            </span>
+
+                            <strong>
+                                ${expenseLensEscapeHtml(eventItem.label)}
+                            </strong>
+                        </div>
+
+                        <div class="el-projection-event-meta">
+                            <span>
+                                ${expenseLensEscapeHtml(
+                                    expenseLensFormatShortDateLabel(eventItem.date)
+                                )}
+                            </span>
+
+                            <span>•</span>
+
+                            <span>
+                                ${expenseLensEscapeHtml(eventMeta)}
+                            </span>
+
+                            <span>•</span>
+
+                            <span>
+                                ${expenseLensEscapeHtml(
+                                    expenseLensFormatTemporalStatus(eventItem.status)
+                                )}
+                            </span>
+                        </div>
+                    </div>
+
+                    <div class="el-projection-event-stats ${showDebtAfter ? '' : 'el-projection-event-stats--cash-only'}">
+                        <span>
+                            <small>
+                                ${
+                                    eventItem.kind === 'income'
+                                        ? 'Income'
+                                        : type === 'debt'
+                                            ? 'Debt Applied'
+                                            : 'Bill Amount'
+                                }
+                            </small>
+
+                            <strong class="el-projection-amount el-projection-amount--${type}">
+                                ${expenseLensEscapeHtml(
+                                    expenseLensFormatCurrency(amountCents)
+                                )}
+                            </strong>
+                        </span>
+
+                        <span>
+                            <small>Cash After</small>
+
+                            <strong class="${
+                                (eventItem.cashAfterCents || 0) < 0
+                                    ? 'finance-tone-expense'
+                                    : 'finance-tone-income'
+                            }">
+                                ${expenseLensEscapeHtml(
+                                    expenseLensFormatCurrency(
+                                        eventItem.cashAfterCents || 0
+                                    )
+                                )}
+                            </strong>
+                        </span>
+
+                        ${
+                            showDebtAfter
+                                ? `
+                                    <span>
+                                        <small>Debt After</small>
+
+                                        <strong class="${
+                                            (eventItem.debtAfterCents || 0) > 0
+                                                ? 'finance-tone-expense'
+                                                : 'finance-tone-income'
+                                        }">
+                                            ${expenseLensEscapeHtml(
+                                                expenseLensFormatCurrency(
+                                                    eventItem.debtAfterCents || 0
+                                                )
+                                            )}
+                                        </strong>
+                                    </span>
+                                `
+                                : ''
+                        }
+                    </div>
+                </article>
+            `;
+        };
+
+        const buildProjectionWeekGroupHtml = (
+            label,
+            type,
+            events
+        ) => {
+            if (!events.length) return '';
+
+            const totalCents = events.reduce(
+                (sum, eventItem) =>
+                    sum
+                    + Math.abs(
+                        Math.round(
+                            eventItem.impactCashCents
+                            || eventItem.amountCents
+                            || 0
+                        )
+                    ),
+                0
+            );
+
+            return `
+                <section class="el-projection-event-group el-projection-event-group--${type}">
+                    <div class="el-projection-event-group__heading">
+                        <span>${expenseLensEscapeHtml(label)}</span>
+
+                        <strong>
+                            ${expenseLensEscapeHtml(
+                                expenseLensFormatCurrency(totalCents)
+                            )}
+                        </strong>
+                    </div>
+
+                    ${events.map(buildProjectionEventHtml).join('')}
+                </section>
+            `;
+        };
+
+        const buildProjectionWeekHtml = (week) => {
+            const isOpen = elExpandedWeekId === week.id;
+
+            const groups = {
+                income: [],
+                debit: [],
+                credit: [],
+                debt: []
+            };
+
+            week.events.forEach((eventItem) => {
+                const type = getProjectionEventType(eventItem);
+
+                if (groups[type]) {
+                    groups[type].push(eventItem);
+                }
             });
+
+            return `
+                <section class="el-projection-week ${isOpen ? 'is-open' : ''}">
+                    <button
+                        type="button"
+                        class="el-projection-week-summary"
+                        data-action="toggle-week"
+                        data-week-id="${expenseLensEscapeAttr(week.id)}"
+                    >
+                        <div class="el-projection-week-copy">
+                            <div class="el-projection-week-title-row">
+                                <span class="el-projection-week-title">
+                                    ${expenseLensEscapeHtml(week.label)}
+                                </span>
+
+                                <span class="el-projection-pill el-projection-pill--${expenseLensStatusTone(week.status)}">
+                                    ${expenseLensEscapeHtml(
+                                        expenseLensFormatTemporalStatus(week.status)
+                                    )}
+                                </span>
+                            </div>
+
+                            <span class="el-projection-week-range">
+                                ${expenseLensEscapeHtml(week.rangeLabel || '')}
+                            </span>
+                        </div>
+
+                        <div class="el-projection-week-values">
+                            <span class="el-projection-week-value">
+                                <small>Opening Cash</small>
+
+                                <strong class="${
+                                    week.openingCashCents < 0
+                                        ? 'finance-tone-expense'
+                                        : 'finance-tone-income'
+                                }">
+                                    ${expenseLensEscapeHtml(
+                                        expenseLensFormatCurrency(
+                                            week.openingCashCents
+                                        )
+                                    )}
+                                </strong>
+                            </span>
+
+                            <span class="el-projection-week-value">
+                                <small>Ending Cash</small>
+
+                                <strong class="${
+                                    week.closingCashCents < 0
+                                        ? 'finance-tone-expense'
+                                        : 'finance-tone-income'
+                                }">
+                                    ${expenseLensEscapeHtml(
+                                        expenseLensFormatCurrency(
+                                            week.closingCashCents
+                                        )
+                                    )}
+                                </strong>
+                            </span>
+
+                            ${
+                                !isBusinessExpenseLens
+                                    ? `
+                                        <span class="el-projection-week-value">
+                                            <small>Ending Debt</small>
+
+                                            <strong class="${
+                                                week.closingDebtCents > 0
+                                                    ? 'finance-tone-expense'
+                                                    : 'finance-tone-income'
+                                            }">
+                                                ${expenseLensEscapeHtml(
+                                                    expenseLensFormatCurrency(
+                                                        week.closingDebtCents
+                                                    )
+                                                )}
+                                            </strong>
+                                        </span>
+                                    `
+                                    : ''
+                            }
+                        </div>
+
+                        <span class="el-projection-week-chevron">
+                            ${isOpen ? '▴' : '▾'}
+                        </span>
+                    </button>
+
+                    <div class="el-projection-week-detail ${isOpen ? 'is-open' : ''}">
+                        ${
+                            week.events.length
+                                ? `
+                                    ${buildProjectionWeekGroupHtml(
+                                        'Income',
+                                        'income',
+                                        groups.income
+                                    )}
+
+                                    ${buildProjectionWeekGroupHtml(
+                                        'Debit Bills — First Priority',
+                                        'debit',
+                                        groups.debit
+                                    )}
+
+                                    ${buildProjectionWeekGroupHtml(
+                                        'Credit Bills — Second Priority',
+                                        'credit',
+                                        groups.credit
+                                    )}
+
+                                    ${buildProjectionWeekGroupHtml(
+                                        'Debt Payoff — Remaining Cash',
+                                        'debt',
+                                        groups.debt
+                                    )}
+                                `
+                                : `
+                                    <div class="el-projection-empty">
+                                        No scheduled activity lands in this week.
+                                    </div>
+                                `
+                        }
+                    </div>
+                </section>
+            `;
+        };
+
+        const renderWeekPanel = () => {
+            const projection = getExpenseLensProjection({ force: true });
+            if (!projection?.selectedMonth) {
+                weekPanel.innerHTML = `
+                    <div class="el-projection-shell">
+                        <div class="el-projection-header">
+                            <div>
+                                <span class="el-projection-kicker">Expense Lens Tracker</span>
+                                <h4>Projection unavailable</h4>
+                            </div>
+                            <button type="button" class="el-projection-close" data-action="close-panel">✕</button>
+                        </div>
+                        ${buildProjectionNoticeHtml('The shared projection engine is not available for this Expense Lens instance.', 'warning')}
+                    </div>`;
+                weekPanel.querySelector('[data-action="close-panel"]')?.addEventListener('click', closeWeekPanel);
+                return;
+            }
+
+            const { currentMonthKey, maxFutureMonthKey } = expenseLensGetProjectionBounds();
+            const selectedMonth = projection.selectedMonth;
+
+            const selectedMonthExpenseEvents = selectedMonth.weeks
+                .flatMap((week) => week.events)
+                .filter((eventItem) => eventItem.kind === 'expense');
+
+            const selectedMonthDebitBillsCents = selectedMonthExpenseEvents
+                .filter(
+                    (eventItem) =>
+                        eventItem.debtCategory !== 'tracked-unsecured-minimum'
+                        && normalizeBillPaymentMethod(eventItem.paymentMethod) !== 'credit'
+                )
+                .reduce(
+                    (sum, eventItem) =>
+                        sum
+                        + Math.abs(
+                            Math.round(
+                                eventItem.impactCashCents
+                                || eventItem.amountCents
+                                || 0
+                            )
+                        ),
+                    0
+                );
+
+            const selectedMonthCreditBillsCents = selectedMonthExpenseEvents
+                .filter(
+                    (eventItem) =>
+                        eventItem.debtCategory !== 'tracked-unsecured-minimum'
+                        && normalizeBillPaymentMethod(eventItem.paymentMethod) === 'credit'
+                )
+                .reduce(
+                    (sum, eventItem) =>
+                        sum
+                        + Math.abs(
+                            Math.round(
+                                eventItem.impactCashCents
+                                || eventItem.amountCents
+                                || 0
+                            )
+                        ),
+                    0
+                );
+            const selectedMonthIndex = projection.months.findIndex((month) => month.monthKey === selectedMonth.monthKey);
+            const previousMonth = selectedMonthIndex > 0 ? projection.months[selectedMonthIndex - 1] : null;
+            const calculatedOpeningCashCents = previousMonth ? previousMonth.endingCashCents : selectedMonth.openingCashCents;
+            const override = monthBalanceOverrides[selectedMonth.monthKey] || null;
+            const firstPositiveMonth = projection.summary?.firstPositiveMonthAfterDebtPayoff || null;
+            const debtFreeMonth = projection.summary?.debtFreeMonth || null;
+            const selectedMonthAdjustments = !isBusinessExpenseLens
+                ? (Array.isArray(debtState.adjustments) ? debtState.adjustments : []).filter((adjustment) =>
+                    (expenseLensProjectionApi?.formatMonthKey?.(adjustment.date) || '').trim() === selectedMonth.monthKey)
+                : [];
+            const canGoNext = expenseLensProjectionApi?.compareMonthKeys
+                ? expenseLensProjectionApi.compareMonthKeys(selectedMonth.monthKey, maxFutureMonthKey) < 0
+                : true;
+
+            const notices = [
+                ...(Array.isArray(selectedMonth.warnings) ? selectedMonth.warnings : []),
+                projection.summary?.projectionAssumption || '',
+                projection.summary?.unpayableWithinHorizon
+                    ? 'Debt is not projected to be fully paid within the current projection horizon.'
+                    : ''
+            ].filter(Boolean);
+
+            weekPanel.innerHTML = `
+                <div class="el-projection-shell">
+                    <div class="el-projection-header">
+                        <div class="el-projection-title-wrap">
+                            <span class="el-projection-kicker">${isBusinessExpenseLens ? 'Business Expense Lens' : 'Expense Lens'}</span>
+                            <h4>${isBusinessExpenseLens ? 'Cashflow Tracker' : 'Weekly Cashflow Tracker'}</h4>
+                            <p>${expenseLensEscapeHtml(expenseLensFormatMonthLabel(selectedMonth.monthKey))}</p>
+                        </div>
+                        <button type="button" class="el-projection-close" data-action="close-panel" aria-label="Close tracker">✕</button>
+                    </div>
+
+                    <section class="el-projection-section">
+                        <div class="el-projection-nav">
+                            <div class="el-projection-nav-actions">
+                                <button type="button" class="btn el-toolbar-btn el-toolbar-btn--compact" data-action="month-prev">Previous Month</button>
+                                <button type="button" class="btn el-toolbar-btn el-toolbar-btn--compact" data-action="month-current">Current Month</button>
+                                <button type="button" class="btn el-toolbar-btn el-toolbar-btn--compact" data-action="month-next" ${canGoNext ? '' : 'disabled'}>Next Month</button>
+                            </div>
+                            <div class="el-projection-nav-center">
+                                <span class="el-projection-month">${expenseLensEscapeHtml(expenseLensFormatMonthLabel(selectedMonth.monthKey))}</span>
+                                <span class="el-projection-pill el-projection-pill--${expenseLensStatusTone(selectedMonth.status)}">${expenseLensEscapeHtml(expenseLensFormatTemporalStatus(selectedMonth.status))}</span>
+                            </div>
+                            <label class="el-projection-month-picker">
+                                <span>Jump to month</span>
+                                <input type="month" class="form-control" data-field="selected-month" value="${expenseLensEscapeAttr(selectedMonth.monthKey)}" max="${expenseLensEscapeAttr(maxFutureMonthKey)}" />
+                            </label>
+                        </div>
+                    </section>
+
+                    <section class="el-projection-section">
+                        <div class="el-projection-section-head">
+                            <div>
+                                <span class="el-projection-section-kicker">Month Setup</span>
+                                <h5>Starting balance and reconciliation</h5>
+                            </div>
+                            <span class="el-projection-section-note">${expenseLensEscapeHtml(expenseLensFormatStartingSource(selectedMonth.startingBalanceSource))}</span>
+                        </div>
+                        <div class="el-projection-setup-grid">
+                            <div class="el-projection-setup-card">
+                                <div class="el-projection-setup-metrics">
+                                    ${buildProjectionMetricHtml({
+                                        label: 'Calculated Opening Cash',
+                                        value: expenseLensFormatCurrency(calculatedOpeningCashCents),
+                                        note: previousMonth ? `Prior month ended ${expenseLensFormatCurrency(previousMonth.endingCashCents)}` : 'Baseline month opening balance',
+                                        tone: calculatedOpeningCashCents < 0 ? 'negative' : 'positive'
+                                    })}
+                                    ${buildProjectionMetricHtml({
+                                        label: 'Effective Opening Cash',
+                                        value: expenseLensFormatCurrency(selectedMonth.openingCashCents),
+                                        note: override ? 'Manual override is active for this month.' : 'Rolling balance is active for this month.',
+                                        tone: selectedMonth.openingCashCents < 0 ? 'negative' : 'neutral'
+                                    })}
+                                    ${buildProjectionMetricHtml({
+                                        label: 'Starting Source',
+                                        value: expenseLensFormatStartingSource(selectedMonth.startingBalanceSource),
+                                        note: override?.note || 'No override note saved.',
+                                        tone: override ? 'warning' : 'neutral'
+                                    })}
+                                </div>
+                                <div class="el-projection-form-grid">
+                                    <label class="el-projection-field">
+                                        <span>Starting Balance Override</span>
+                                        <div class="legend-money-input">
+                                            <span class="legend-money-prefix">$</span>
+                                            <input type="text"
+                                                   class="legend-money-field"
+                                                   data-field="override-amount"
+                                                   value="${expenseLensEscapeAttr(expenseLensFormatInputValue(override?.amountCents ?? selectedMonth.openingCashCents, { allowZero: true }))}" />
+                                        </div>
+                                    </label>
+                                    <label class="el-projection-field">
+                                        <span>Override Note</span>
+                                        <input type="text"
+                                               class="form-control"
+                                               data-field="override-note"
+                                               value="${expenseLensEscapeAttr(override?.note || '')}"
+                                               placeholder="Bank reality, external transfer, untracked spend…" />
+                                    </label>
+                                    <label class="el-projection-field">
+                                        <span>${isBusinessExpenseLens ? 'Projection as of' : 'Debt as of date'}</span>
+                                        <input type="date"
+                                               class="form-control"
+                                               data-field="debt-as-of"
+                                               value="${expenseLensEscapeAttr(debtState.asOfDate || getDefaultScheduledAnchorDate())}" />
+                                    </label>
+                                    <div class="el-projection-form-actions">
+                                        <button type="button" class="btn el-toolbar-btn el-toolbar-btn--compact" data-action="save-override">Save Starting Balance</button>
+                                        <button type="button" class="btn finance-clear-btn el-toolbar-btn--compact" data-action="clear-override" ${override ? '' : 'disabled'}>Use calculated rolling balance</button>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </section>
+
+                    ${!isBusinessExpenseLens ? `
+                        <section class="el-projection-section">
+                            <div class="el-projection-section-head">
+                                <div>
+                                    <span class="el-projection-section-kicker">Debt Adjustments</span>
+                                    <h5>Interest, fees, corrections, and balance transfers</h5>
+                                </div>
+                            </div>
+                            <div class="el-projection-adjustments">
+                                <div class="el-projection-adjustment-form">
+                                    <label class="el-projection-field">
+                                        <span>Date</span>
+                                        <input type="date" class="form-control" data-field="adjustment-date" value="${expenseLensEscapeAttr(`${selectedMonth.monthKey}-01`)}" />
+                                    </label>
+                                    <label class="el-projection-field">
+                                        <span>Amount</span>
+                                        <div class="legend-money-input">
+                                            <span class="legend-money-prefix">$</span>
+                                            <input type="text" class="legend-money-field" data-field="adjustment-amount" placeholder="Use negative to reduce debt" />
+                                        </div>
+                                    </label>
+                                    <label class="el-projection-field">
+                                        <span>Note</span>
+                                        <input type="text" class="form-control" data-field="adjustment-note" placeholder="Interest, fee, transfer, correction…" />
+                                    </label>
+                                    <div class="el-projection-form-actions">
+                                        <button type="button" class="btn el-toolbar-btn el-toolbar-btn--compact" data-action="add-adjustment">Add Adjustment</button>
+                                    </div>
+                                </div>
+                                <div class="el-projection-adjustment-list">
+                                    ${selectedMonthAdjustments.length > 0
+                                        ? selectedMonthAdjustments.map((adjustment) => `
+                                            <article class="el-projection-adjustment-item">
+                                                <div>
+                                                    <strong>${expenseLensEscapeHtml(expenseLensFormatDateLabel(adjustment.date))}</strong>
+                                                    <p>${expenseLensEscapeHtml(adjustment.note || 'Manual debt adjustment')}</p>
+                                                </div>
+                                                <div class="el-projection-adjustment-meta">
+                                                    <span class="${adjustment.amountCents > 0 ? 'finance-tone-expense' : 'finance-tone-income'}">${expenseLensEscapeHtml(expenseLensFormatCurrency(adjustment.amountCents))}</span>
+                                                    <button type="button"
+                                                            class="btn finance-clear-btn el-toolbar-btn--compact"
+                                                            data-action="delete-adjustment"
+                                                            data-adjustment-id="${expenseLensEscapeAttr(adjustment.id)}">
+                                                        Remove
+                                                    </button>
+                                                </div>
+                                            </article>
+                                        `).join('')
+                                        : `<div class="el-projection-empty">No debt adjustments are saved for this month.</div>`}
+                                </div>
+                            </div>
+                        </section>
+                    ` : ''}
+
+                    <section class="el-projection-section">
+                        <div class="el-projection-section-head">
+                            <div>
+                                <span class="el-projection-section-kicker">Weekly Timeline</span>
+                                <h5>Chronological income, bills, and debt activity</h5>
+                            </div>
+                        </div>
+                        ${notices.length > 0
+                            ? `<div class="el-projection-notices">${notices.map((notice, index) => buildProjectionNoticeHtml(notice, index === 0 && selectedMonth.status === 'historical-unreconciled' ? 'warning' : 'neutral')).join('')}</div>`
+                            : ''}
+                        <div class="el-projection-week-list">
+                            ${selectedMonth.weeks.map(buildProjectionWeekHtml).join('')}
+                        </div>
+                    </section>
+
+                    <section class="el-projection-section">
+                        <div class="el-projection-section-head">
+                            <div>
+                                <span class="el-projection-section-kicker">Cashflow Summary</span>
+                                <h5>What lands in ${expenseLensEscapeHtml(expenseLensFormatMonthLabel(selectedMonth.monthKey))}</h5>
+                            </div>
+                        </div>
+                        <div class="el-projection-metric-grid">
+                            ${buildProjectionMetricHtml({ label: 'Starting Cash', value: expenseLensFormatCurrency(selectedMonth.openingCashCents), tone: selectedMonth.openingCashCents < 0 ? 'negative' : 'neutral' })}
+                            ${buildProjectionMetricHtml({ label: 'Scheduled Income', value: expenseLensFormatCurrency(selectedMonth.scheduledIncomeCents), tone: 'positive' })}
+                            ${buildProjectionMetricHtml({
+                                label: 'Debit Bills · Priority 1',
+                                value: expenseLensFormatCurrency(
+                                    selectedMonthDebitBillsCents
+                                ),
+                                tone: selectedMonthDebitBillsCents > 0
+                                    ? 'debit'
+                                    : 'neutral'
+                            })}
+
+                            ${buildProjectionMetricHtml({
+                                label: 'Credit Bills · Priority 2',
+                                value: expenseLensFormatCurrency(
+                                    selectedMonthCreditBillsCents
+                                ),
+                                tone: selectedMonthCreditBillsCents > 0
+                                    ? 'credit'
+                                    : 'neutral'
+                            })}
+
+                            ${!isBusinessExpenseLens
+                                ? buildProjectionMetricHtml({
+                                    label: 'Required Debt Payments',
+                                    value: expenseLensFormatCurrency(
+                                        selectedMonth.requiredDebtMinimumCents
+                                    ),
+                                    tone: selectedMonth.requiredDebtMinimumCents > 0
+                                        ? 'debt'
+                                        : 'neutral'
+                                })
+                                : ''
+                            }
+
+                            ${!isBusinessExpenseLens
+                                ? buildProjectionMetricHtml({
+                                    label: 'Extra Debt Payoff · Remaining Cash',
+                                    value: expenseLensFormatCurrency(
+                                        selectedMonth.extraDebtPaymentsCents
+                                    ),
+                                    note: debtState.projectedInterestExcluded === false
+                                        ? 'Using configured debt assumptions.'
+                                        : 'Applied only after debit and credit bills.',
+                                    tone: selectedMonth.extraDebtPaymentsCents > 0
+                                        ? 'debt'
+                                        : 'neutral'
+                                })
+                                : ''
+                            }
+                            ${buildProjectionMetricHtml({ label: 'Ending Cash', value: expenseLensFormatCurrency(selectedMonth.endingCashCents), tone: selectedMonth.endingCashCents < 0 ? 'negative' : 'positive' })}
+                        </div>
+                    </section>
+
+                    ${!isBusinessExpenseLens ? `
+                        <section class="el-projection-section">
+                            <div class="el-projection-section-head">
+                                <div>
+                                    <span class="el-projection-section-kicker">Debt Summary</span>
+                                    <h5>Combined unsecured debt payoff tracking</h5>
+                                </div>
+                            </div>
+                            <div class="el-projection-metric-grid el-projection-metric-grid--wide">
+                                ${buildProjectionMetricHtml({ label: 'Beginning Debt Balance', value: expenseLensFormatCurrency(selectedMonth.openingDebtCents), tone: selectedMonth.openingDebtCents > 0 ? 'negative' : 'positive' })}
+                                ${buildProjectionMetricHtml({ label: 'Ending Projected Debt', value: expenseLensFormatCurrency(selectedMonth.endingDebtCents), tone: selectedMonth.endingDebtCents > 0 ? 'negative' : 'positive' })}
+                                ${buildProjectionMetricHtml({ label: 'Projected Payoff Date', value: projection.summary?.debtPayoffDate ? expenseLensFormatDateLabel(projection.summary.debtPayoffDate) : 'Not paid off yet', note: debtState.projectedInterestExcluded === false ? 'Interest assumptions are active.' : 'Future interest and fees are excluded.', tone: projection.summary?.debtPayoffDate ? 'positive' : 'warning' })}
+                                ${buildProjectionMetricHtml({ label: 'First Debt-Free Month', value: debtFreeMonth ? expenseLensFormatMonthLabel(debtFreeMonth) : 'Not within horizon', tone: debtFreeMonth ? 'positive' : 'warning' })}
+                                ${buildProjectionMetricHtml({ label: 'First Positive Month After Payoff', value: firstPositiveMonth ? expenseLensFormatMonthLabel(firstPositiveMonth) : 'Not within horizon', tone: firstPositiveMonth ? 'positive' : 'warning' })}
+                                ${buildProjectionMetricHtml({ label: 'Max Projected Cash Deficit', value: expenseLensFormatCurrency(-(projection.summary?.maximumProjectedCashDeficitCents || 0)), tone: (projection.summary?.maximumProjectedCashDeficitCents || 0) > 0 ? 'negative' : 'neutral' })}
+                            </div>
+                        </section>
+                    ` : ''}
+                </div>
+            `;
+
+            weekPanel.querySelector('[data-action="close-panel"]')?.addEventListener('click', closeWeekPanel);
+            weekPanel.querySelector('[data-action="month-prev"]')?.addEventListener('click', () => {
+                projectionSelectedMonthKey = expenseLensProjectionApi?.addMonths?.(selectedMonth.monthKey, -1) || selectedMonth.monthKey;
+                elExpandedWeekId = '';
+                renderWeekPanel();
+            });
+            weekPanel.querySelector('[data-action="month-current"]')?.addEventListener('click', () => {
+                projectionSelectedMonthKey = currentMonthKey;
+                elExpandedWeekId = '';
+                renderWeekPanel();
+            });
+            weekPanel.querySelector('[data-action="month-next"]')?.addEventListener('click', () => {
+                if (!canGoNext) return;
+                projectionSelectedMonthKey = expenseLensProjectionApi?.addMonths?.(selectedMonth.monthKey, 1) || selectedMonth.monthKey;
+                elExpandedWeekId = '';
+                renderWeekPanel();
+            });
+
+            weekPanel.querySelector('[data-field="selected-month"]')?.addEventListener('change', (event) => {
+                const nextMonthKey = expenseLensProjectionApi?.formatMonthKey?.(event.target.value) || currentMonthKey;
+                projectionSelectedMonthKey = nextMonthKey;
+                elExpandedWeekId = '';
+                renderWeekPanel();
+            });
+
+            weekPanel.querySelector('[data-action="save-override"]')?.addEventListener('click', () => {
+                const amountField = weekPanel.querySelector('[data-field="override-amount"]');
+                const noteField = weekPanel.querySelector('[data-field="override-note"]');
+                setStartingBalanceOverride(selectedMonth.monthKey, amountField?.value || '0', noteField?.value || '');
+            });
+
+            weekPanel.querySelector('[data-action="clear-override"]')?.addEventListener('click', () => {
+                clearStartingBalanceOverride(selectedMonth.monthKey);
+            });
+
+            weekPanel.querySelector('[data-field="debt-as-of"]')?.addEventListener('change', (event) => {
+                setDebtAsOfDate(event.target.value);
+            });
+
+            weekPanel.querySelectorAll('[data-action="toggle-week"]').forEach((button) => {
+                button.addEventListener('click', () => {
+                    const weekId = button.getAttribute('data-week-id') || '';
+                    elExpandedWeekId = elExpandedWeekId === weekId ? '' : weekId;
+                    renderWeekPanel();
+                });
+            });
+
+            weekPanel.querySelector('[data-action="add-adjustment"]')?.addEventListener('click', () => {
+                const dateField = weekPanel.querySelector('[data-field="adjustment-date"]');
+                const amountField = weekPanel.querySelector('[data-field="adjustment-amount"]');
+                const noteField = weekPanel.querySelector('[data-field="adjustment-note"]');
+                const added = addDebtAdjustment(dateField?.value || '', amountField?.value || '', noteField?.value || '');
+                if (added && amountField) amountField.value = '';
+                if (added && noteField) noteField.value = '';
+            });
+
+            weekPanel.querySelectorAll('[data-action="delete-adjustment"]').forEach((button) => {
+                button.addEventListener('click', () => {
+                    const id = button.getAttribute('data-adjustment-id') || '';
+                    if (!id) return;
+                    removeDebtAdjustment(id);
+                });
+            });
+        };
+
+        const openWeekPanel = () => {
+            projectionSelectedMonthKey = projectionSelectedMonthKey || getTodayMonthKey();
+            renderWeekPanel();
+            hideOtherWeekPanels();
+            elWeekPanelBodyOverflow = document.body.style.overflow || '';
+            weekPanelBackdrop.style.display = 'flex';
+            document.body.style.overflow = 'hidden';
         };
 
         // Weekly button — sits in the category action row
         weeklyBtn = document.createElement('button');
         weeklyBtn.type = 'button';
-        weeklyBtn.textContent = 'Weekly ▾';
+        weeklyBtn.textContent = 'Weekly Tracker ▾';
         weeklyBtn.className = 'btn el-week-btn';
         weeklyBtn.classList.add('lf-js-036');
         weeklyBtn.addEventListener('click', (e) => {
@@ -9465,7 +10024,9 @@ if (t.id === "ExpenseLens" || t.id === "BusinessExpenseLens") {
             openWeekPanel();
         });
         weekPanel.addEventListener('click', e => e.stopPropagation());
-        weekPanelBackdrop.addEventListener('click', e => e.stopPropagation());
+        weekPanelBackdrop.addEventListener('click', (e) => {
+            if (e.target === weekPanelBackdrop) closeWeekPanel();
+        });
 
         paymentFilterSelect = document.createElement('select');
         paymentFilterSelect.id = elId('PaymentFilter');
@@ -9483,19 +10044,19 @@ if (t.id === "ExpenseLens" || t.id === "BusinessExpenseLens") {
             elActivePaymentFilter = EL_PAYMENT_FILTERS.some(option => option.value === paymentFilterSelect.value)
                 ? paymentFilterSelect.value
                 : 'all';
-            elExpandedWeek = null;
+            elExpandedWeekId = '';
             refreshExpenseLensViews({ sortRows: true });
         });
 
         (elActionMeta || addBtn.parentElement).appendChild(paymentFilterSelect);
         (elActionMeta || addBtn.parentElement).appendChild(weeklyBtn);
 
-        // Second Weekly button — placed to the right of the Total Monthly Income input for quick top-of-page access
+        // Second Weekly button — lives in the shared top control grid for quick access
         const weeklyBtnTop = document.createElement('button');
         weeklyBtnTop.id = elId('WeeklyBtnTop');
         weeklyBtnTop.type = 'button';
-        weeklyBtnTop.textContent = 'Weekly ▾';
-        weeklyBtnTop.className = 'btn el-week-btn';
+        weeklyBtnTop.textContent = 'Weekly Tracker ▾';
+        weeklyBtnTop.className = 'btn el-week-btn el-top-field__control';
         weeklyBtnTop.classList.add('lf-js-036');
         weeklyBtnTop.addEventListener('click', (e) => {
             e.stopPropagation();
@@ -9503,29 +10064,97 @@ if (t.id === "ExpenseLens" || t.id === "BusinessExpenseLens") {
             if (isOpen) { closeWeekPanel(); return; }
             openWeekPanel();
         });
-        // Wrap the income input row in a flex container so the button sits cleanly to the right.
-        // Remove mb-3 from the input (it adds margin-bottom inside the wrapper causing height mismatch).
-        elIncome.classList.remove('mb-3');
-        const incomeInputRow = elIncome.parentElement;
-        const incomeFlexWrap = document.createElement('div');
-        incomeFlexWrap.className = 'el-income-flex';
-        incomeInputRow.classList.add('el-income-input-inline');
-        incomeInputRow.parentElement.insertBefore(incomeFlexWrap, incomeInputRow);
-        incomeFlexWrap.appendChild(incomeInputRow);
+
+        const createTopControlSpacer = () => {
+            const spacer = document.createElement('div');
+            spacer.className = 'el-top-field__label-slot el-top-field__label-slot--empty';
+            spacer.setAttribute('aria-hidden', 'true');
+            return spacer;
+        };
 
         // Remaining balance badge — live read of monthly income minus all monthly bills
+        const remainingWrap = document.createElement('div');
+        remainingWrap.className = 'el-top-field el-top-field--summary';
+
         const elRemainingBadge = document.createElement('div');
         elRemainingBadge.id = elId('RemainingBadge');
-        elRemainingBadge.className = 'el-balance-chip el-balance-chip-muted';
+        elRemainingBadge.className = 'el-balance-chip el-balance-chip-muted el-top-field__control';
         elRemainingBadge.textContent = 'Remaining: $0';
-        incomeFlexWrap.appendChild(elRemainingBadge);
-        incomeFlexWrap.appendChild(weeklyBtnTop);
+        remainingWrap.appendChild(createTopControlSpacer());
+        remainingWrap.appendChild(elRemainingBadge);
+        elTopControls.appendChild(remainingWrap);
+
+        if (!isBusinessExpenseLens) {
+            const debtWrap = document.createElement('div');
+            debtWrap.className = 'el-top-field el-top-field--debt';
+
+            const debtLabelSlot = document.createElement('div');
+            debtLabelSlot.className = 'el-top-field__label-slot';
+
+            const debtLabel = document.createElement('label');
+            debtLabel.className = 'el-top-field__label el-top-field__label--debt';
+            debtLabel.setAttribute('for', elId('DebtOpeningBalance'));
+            debtLabel.textContent = 'Credit Card & Personal Loan Debt';
+
+            const debtInputShell = document.createElement('div');
+            debtInputShell.className = 'legend-money-input el-top-field__control';
+
+            const debtPrefix = document.createElement('span');
+            debtPrefix.className = 'legend-money-prefix';
+            debtPrefix.textContent = '$';
+
+            elDebtInput = document.createElement('input');
+            elDebtInput.type = 'text';
+            elDebtInput.id = elId('DebtOpeningBalance');
+            elDebtInput.className = 'legend-money-field';
+            elDebtInput.placeholder = '0';
+            elDebtInput.setAttribute('inputmode', 'decimal');
+            elDebtInput.setAttribute('aria-label', 'Credit card and personal loan debt');
+            const readDebtInputCents = () => {
+                const normalized = String(elDebtInput.value || '').replace(/[,$\s]/g, '').trim();
+                if (!normalized) return { valid: true, cents: 0 };
+                if (!/^\d*(?:\.\d{0,2})?$/.test(normalized)) return { valid: false, cents: debtState.openingBalanceCents };
+                return { valid: true, cents: Math.max(0, Math.round(Number(normalized) * 100)) };
+            };
+            elDebtInput.addEventListener('input', () => {
+                const next = readDebtInputCents();
+                if (!next.valid) return;
+                debtState.openingBalanceCents = next.cents;
+                debtState.currentBalanceCents = next.cents;
+                debtState.projectedPayoffDate = null;
+                invalidateExpenseLensProjection();
+                refreshExpenseLensViews({ sortRows: true });
+            });
+            elDebtInput.addEventListener('blur', () => {
+                const next = readDebtInputCents();
+                debtState.openingBalanceCents = next.valid ? next.cents : debtState.openingBalanceCents;
+                debtState.currentBalanceCents = debtState.openingBalanceCents;
+                debtState.projectedPayoffDate = null;
+                elDebtInput.value = expenseLensFormatInputValue(debtState.openingBalanceCents, { allowZero: false });
+                invalidateExpenseLensProjection();
+                refreshExpenseLensViews({ sortRows: true });
+            });
+            upgradeMoneyInput(elDebtInput);
+
+            debtInputShell.appendChild(debtPrefix);
+            debtInputShell.appendChild(elDebtInput);
+            debtLabelSlot.appendChild(debtLabel);
+            debtWrap.appendChild(debtLabelSlot);
+            debtWrap.appendChild(debtInputShell);
+            elTopControls.appendChild(debtWrap);
+        }
+
+        const trackerWrap = document.createElement('div');
+        trackerWrap.className = 'el-top-field el-top-field--tracker';
+        trackerWrap.appendChild(createTopControlSpacer());
+        trackerWrap.appendChild(weeklyBtnTop);
+        elTopControls.appendChild(trackerWrap);
 
         if (!isBusinessExpenseLens) {
             incomeGroupsHost = document.createElement('div');
             incomeGroupsHost.id = elId('IncomeGroups');
             incomeGroupsHost.className = 'el-income-groups';
-            incomeFlexWrap.parentElement.insertBefore(incomeGroupsHost, incomeFlexWrap.nextSibling);
+            elTopControls.parentElement.insertBefore(incomeGroupsHost, elTopControls.nextSibling);
 
             elIncome.readOnly = true;
             elIncome.classList.add('el-income-total-input--locked');
@@ -9533,19 +10162,6 @@ if (t.id === "ExpenseLens" || t.id === "BusinessExpenseLens") {
         }
 
         await loadExpenseLensState();
-
-        // Auto-apply current week filter on load if any bills are due this week.
-        // This makes the tool time-aware: the user sees only today's relevant bills
-        // by default rather than every bill. "Show All Bills" in the weekly panel resets it.
-        (() => {
-            const currentWeek = elGetCurrentCalendarWeek();
-            if (!currentWeek) return;
-            const hasThisWeek = [...categoriesContainer.querySelectorAll(`[id^="${elId('CatRow')}"]`)].some(row => {
-                const idx = row.id.replace(elId('CatRow'), '');
-                return elGetBillOccurrenceDays(idx, currentWeek).length > 0;
-            });
-            if (hasThisWeek) elApplyWeekFilter(currentWeek);
-        })();
 
         // Apply shared profile updates when fields are empty
         const applyProfileToExpenseLens = () => {
