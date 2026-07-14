@@ -6407,14 +6407,6 @@ body.finance-dual-tools-open .layout-content {
     color: #f87171;
 }
 
-.el-projection-empty {
-    padding: 12px 14px;
-    border-top: 1px dashed rgba(125, 211, 252, .16);
-    color: #90a9c9;
-    font-size: .8rem;
-    font-weight: 700;
-}
-
 .el-projection-metric--debit {
     border-color: var(--el-projection-debit-border);
     background: var(--el-projection-debit-fill);
