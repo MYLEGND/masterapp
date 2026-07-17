@@ -311,11 +311,11 @@
     };
 
     const sortProjectedEvents = (left, right) => {
-        const orderDiff = getEventExecutionOrder(left) - getEventExecutionOrder(right);
-        if (orderDiff !== 0) return orderDiff;
-
         const dateDiff = left.date.getTime() - right.date.getTime();
         if (dateDiff !== 0) return dateDiff;
+
+        const orderDiff = getEventExecutionOrder(left) - getEventExecutionOrder(right);
+        if (orderDiff !== 0) return orderDiff;
 
         return left.label.localeCompare(right.label);
     };

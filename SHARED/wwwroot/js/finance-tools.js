@@ -6561,6 +6561,7 @@ if (t.id === "SavingsAccelerator") {
     const savingsToolStateId = saStateId; // alias
     const linkedELStateId = isBusinessSA ? "BusinessExpenseLens" : "ExpenseLens";
     const linkedELEvent = `${linkedELStateId}:updated`;
+    const savingsAcceleratorUpdatedEvent = `${savingsToolStateId}:updated`;
     const saTitle = isBusinessSA
         ? "Business Savings Accelerator"
         : (isBusinessClient ? "Personal Savings Accelerator" : "Savings Accelerator");
@@ -7682,6 +7683,17 @@ if (t.id === "SavingsAccelerator") {
         });
 
         saveAllocationState();
+        window.dispatchEvent(new CustomEvent(savingsAcceleratorUpdatedEvent, {
+            detail: {
+                toolId: savingsToolStateId,
+                isBusiness: isBusinessSA,
+                monthlyAvailable: Math.round(surplus),
+                monthlyAllocated: Math.round(totalAllocatedAmt),
+                monthlyRemaining: Math.round(remaining),
+                annualSavings: Math.max(0, Math.round(totalAllocatedAmt * 12)),
+                allocationPercentTotal: Math.max(0, Math.min(100, Math.round(usedPct * 10) / 10))
+            }
+        }));
         refreshSavingsIllustrationData();
     };
 
@@ -9566,7 +9578,7 @@ if (t.id === "ExpenseLens" || t.id === "BusinessExpenseLens") {
                                 ? `
                                     <div class="el-projection-ledger">
                                         <div class="el-projection-ledger-bar">
-                                            <span class="el-projection-ledger-note">Running order: income lands first, debit / cash obligations post next, grouped credit payments follow the monthly card date, and debt lands last.</span>
+                                            <span class="el-projection-ledger-note">Running order: events post in calendar order. On the same day, income lands first, debit / cash obligations post next, grouped credit payments follow, and debt lands last.</span>
                                             <span class="el-projection-ledger-summary">
                                                 <span>Start <strong class="${week.openingCashCents < 0 ? 'finance-tone-expense' : 'finance-tone-opening'}">${expenseLensEscapeHtml(expenseLensFormatCurrency(week.openingCashCents))}</strong></span>
                                                 <span>•</span>
@@ -10553,7 +10565,6 @@ if (t.id === "NetWorth") {
 
     const container = embedContainer.querySelector('.networth-tool');
     applyToolBoxStyles(container);
-    await loadToolState('NetWorth');
 
     // ✅ TOOLTIP ENGINE (overlay)
     const tipLayer = document.getElementById('nwTipLayer');
@@ -10629,7 +10640,6 @@ if (t.id === "NetWorth") {
         nwRatio.textContent = liabRatio.textContent = '0%';
         wealthStatus.textContent = '—';
         nwTips.textContent = 'Enter your assets and liabilities to get personalized insights.';
-        clearToolState('NetWorth');
         hideTip();
         applyLLBSToNetWorth();
     });
@@ -10675,7 +10685,6 @@ if (t.id === "NetWorth") {
             markGold(liabRatio);
             markGold(wealthStatus);
             markGold(nwTips);
-            saveToolState('NetWorth');
             return;
         }
 
@@ -10707,8 +10716,6 @@ if (t.id === "NetWorth") {
 
         if (liabR > 50) tips += '⚠️ High liabilities relative to assets; consider risk mitigation planning.\n';
         nwTips.textContent = tips.trim();
-
-        saveToolState('NetWorth');
 
         // ✅ apply colors immediately after compute
         applyNetWorthColors(a, l, net, ratio, liabR);
@@ -10793,7 +10800,6 @@ if (t.id === "CashFlow") {
 
     const container = embedContainer.querySelector('.networth-tool');
     applyToolBoxStyles(container);
-    await loadToolState('CashFlow');
 
     // ✅ TOOLTIP ENGINE (overlay)
     const tipLayer = document.getElementById('cfTipLayer');
@@ -10864,7 +10870,6 @@ if (t.id === "CashFlow") {
         cfSavingsPotential.textContent = '$0';
         cfInvestPct.textContent = '0%';
         cfTips.textContent = 'Enter your monthly income and bills to get personalized tips.';
-        clearToolState('CashFlow');
         hideTip();
         applyExpenseLensToCashFlow();
     });
@@ -10904,7 +10909,6 @@ if (t.id === "CashFlow") {
             markGold(cfSavingsPotential);
             markGold(cfInvestPct);
             markGold(cfTips);
-            saveToolState('CashFlow');
             return;
         }
 
@@ -10929,8 +10933,6 @@ if (t.id === "CashFlow") {
             tips = '✅ Strong cash flow. Use surplus funds strategically for savings and financial goals.';
 
         cfTips.textContent = tips;
-
-        saveToolState('CashFlow');
 
         // ✅ apply colors immediately after compute
         applyCashFlowColors(income, bills, net, savingsPotential, investPct);
@@ -11014,7 +11016,6 @@ if (t.id === "DebtClarity") {
 
     const container = embedContainer.querySelector('.networth-tool');
     applyToolBoxStyles(container);
-    await loadToolState('DebtClarity');
 
     // ✅ TOOLTIP ENGINE (overlay)
     const tipLayer = document.getElementById('dcTipLayer');
@@ -11068,16 +11069,6 @@ if (t.id === "DebtClarity") {
     const dcStatus = document.getElementById('dcStatus');
     const dcTips = document.getElementById('dcTips');
 
-    const applyProfileToDebtClarity = () => {
-        const prof = window.LegendFinanceProfile?.get?.();
-        if (!prof) return;
-        if (dcIncome && !dcIncome.value) {
-            const monthly = prof.monthlyGross || prof.monthlyNet;
-            dcIncome.value = monthly ? (monthly * 12).toLocaleString() : '';
-        }
-        calcDebtClarity();
-    };
-
     // Format inputs with commas on blur
     [dcDebt, dcIncome].forEach(el => {
         el.addEventListener("blur", () => {
@@ -11106,7 +11097,6 @@ if (t.id === "DebtClarity") {
         dcResult.textContent = '—';
         dcStatus.textContent = '—';
         dcTips.textContent = 'Enter your liabilities and income to receive guidance.';
-        clearToolState('DebtClarity');
         hideTip();
         applyLLBSToDebtClarity();
         applyExpenseLensToDebtClarity();
@@ -11122,7 +11112,6 @@ if (t.id === "DebtClarity") {
             markGold(dcResult);
             markGold(dcStatus);
             markGold(dcTips);
-            saveToolState('DebtClarity');
             return;
         }
 
@@ -11133,7 +11122,6 @@ if (t.id === "DebtClarity") {
             markGold(dcResult);
             markGold(dcStatus);
             markGold(dcTips);
-            saveToolState('DebtClarity');
             return;
         }
 
@@ -11144,7 +11132,6 @@ if (t.id === "DebtClarity") {
             markGold(dcResult);
             markGold(dcStatus);
             markGold(dcTips);
-            saveToolState('DebtClarity');
             return;
         }
 
@@ -11172,8 +11159,6 @@ if (t.id === "DebtClarity") {
         dcStatus.textContent = status;
         dcTips.textContent = tips;
 
-        saveToolState('DebtClarity');
-
         // ✅ apply colors immediately after compute
         applyDebtClarityColors(dtiNum);
     }
@@ -11195,9 +11180,6 @@ if (t.id === "DebtClarity") {
     };
 
     calcDebtClarity();
-    applyProfileToDebtClarity();
-    toolContext.onWindow("FinanceProfile:updated", applyProfileToDebtClarity);
-    toolContext.onWindow("FinanceProfile:ready", applyProfileToDebtClarity);
     await applyLLBSToDebtClarity();
     await applyExpenseLensToDebtClarity();
     toolContext.onWindow('LegendLivingBalanceSheet:updated', applyLLBSToDebtClarity);
@@ -11271,7 +11253,6 @@ if (t.id === "FinancialBuffer") {
 
     const container = embedContainer.querySelector('.networth-tool');
     applyToolBoxStyles(container);
-    await loadToolState('FinancialBuffer');
 
     // ✅ TOOLTIP ENGINE (overlay)
     const tipLayer = document.getElementById('fbTipLayer');
@@ -11325,19 +11306,6 @@ if (t.id === "FinancialBuffer") {
     const fb12 = document.getElementById('fb12');
     const fbTips = document.getElementById('fbTips');
 
-    const applyProfileToFinancialBuffer = () => {
-        const prof = window.LegendFinanceProfile?.get?.();
-        if (!prof) return;
-        if (fbBillsInput && !fbBillsInput.value) {
-            const base =
-                (prof.fixedExpenses || 0) +
-                (prof.variableBudget || 0) +
-                (prof.debtMinimums || 0);
-            if (base > 0) fbBillsInput.value = base.toLocaleString();
-        }
-        updateBuffer();
-    };
-
     const formatWithCommas = (val) => val ? (+val).toLocaleString() : '0';
 
     // Format input with commas on blur (consistent with other sections)
@@ -11361,7 +11329,6 @@ if (t.id === "FinancialBuffer") {
         fb3.textContent = '$0';
         fb12.textContent = '$0';
         fbTips.textContent = 'Tip: Save consistently each month to build your buffer. Consider automating transfers to a separate emergency account.';
-        clearToolState('FinancialBuffer');
         hideTip();
         applyExpenseLensToFinancialBuffer();
     }, document.getElementById('fbActions'));
@@ -11376,8 +11343,6 @@ if (t.id === "FinancialBuffer") {
         if(bills <= 0) fbTips.textContent = '⚠️ Enter your monthly bills to calculate your buffer goals.';
         else if(bills < 1000) fbTips.textContent = 'Your bills are low; consider using this buffer to accelerate growth.';
         else fbTips.textContent = '✅ Your buffer goals are ready. Automate savings to reach these targets efficiently.';
-
-        saveToolState('FinancialBuffer');
 
         if (window.LegendFinanceProfile?.update) {
             window.LegendFinanceProfile.update({
@@ -11399,9 +11364,6 @@ if (t.id === "FinancialBuffer") {
     };
 
     updateBuffer();
-    applyProfileToFinancialBuffer();
-    toolContext.onWindow("FinanceProfile:updated", applyProfileToFinancialBuffer);
-    toolContext.onWindow("FinanceProfile:ready", applyProfileToFinancialBuffer);
     await applyExpenseLensToFinancialBuffer();
     toolContext.onWindow('ExpenseLens:updated', applyExpenseLensToFinancialBuffer);
 }
@@ -11557,13 +11519,7 @@ if (t.id === "WealthProjection") {
     };
     const saveWP = () => {
         savePersistedState('WealthProjection', {
-            wpNet: wpNet.value,
-            wpSurplus: wpSurplus.value,
-            wpMonths: wpMonths.value,
-            wpOut: wpOut.textContent,
-            wp6: wp6.textContent,
-            wp12: wp12.textContent,
-            wpTips: wpTips.textContent
+            wpMonths: wpMonths.value
         });
     };
     await loadWP();
@@ -11810,27 +11766,11 @@ if (t.id === "FreedomIndex") {
     // --- PERSISTENCE ---
     const loadFI = async () => {
         const state = await loadPersistedState('FreedomIndex');
-        if(state.fiNet) fiNet.value = state.fiNet;
-        if(state.fiExp) fiExp.value = state.fiExp;
         if(state.fiPassive) fiPassive.value = state.fiPassive;
-        if(state.fiOut) fiOut.textContent = state.fiOut;
-        if(state.fiNetOut) fiNetOut.textContent = state.fiNetOut;
-        if(state.fiExpOut) fiExpOut.textContent = state.fiExpOut;
-        if(state.fiPassiveOut) fiPassiveOut.textContent = state.fiPassiveOut;
-        if(state.fiMonths) fiMonths.textContent = state.fiMonths;
-        if(state.fiAdvice) fiAdvice.textContent = state.fiAdvice;
     };
     const saveFI = () => {
         savePersistedState('FreedomIndex', {
-            fiNet: fiNet.value,
-            fiExp: fiExp.value,
-            fiPassive: fiPassive.value,
-            fiOut: fiOut.textContent,
-            fiNetOut: fiNetOut.textContent,
-            fiExpOut: fiExpOut.textContent,
-            fiPassiveOut: fiPassiveOut.textContent,
-            fiMonths: fiMonths.textContent,
-            fiAdvice: fiAdvice.textContent
+            fiPassive: fiPassive.value
         });
     };
     await loadFI();
@@ -12106,36 +12046,6 @@ if (t.id === "DebtAssetPulse") {
     const parseNumber = (v) => +v.toString().replace(/,/g,'') || 0;
     const formatWithCommas = (v) => v ? (+v).toLocaleString() : '0';
 
-    /* ---------- PERSISTENCE ---------- */
-    const loadDAP = async () => {
-        const s = await loadPersistedState('DebtAssetPulse');
-        if(s.dapA) dapA.value = s.dapA;
-        if(s.dapL) dapL.value = s.dapL;
-        if(s.dapIncome) dapIncome.value = s.dapIncome;
-        if(s.dapOut) dapOut.textContent = s.dapOut;
-        if(s.dapAssets) dapAssets.textContent = s.dapAssets;
-        if(s.dapLiabilities) dapLiabilities.textContent = s.dapLiabilities;
-        if(s.dapNetWorth) dapNetWorth.textContent = s.dapNetWorth;
-        if(s.dapMonthlyIncome) dapMonthlyIncome.textContent = s.dapMonthlyIncome;
-        if(s.dapAdvice) dapAdvice.textContent = s.dapAdvice;
-    };
-
-    const saveDAP = () => {
-        savePersistedState('DebtAssetPulse', {
-            dapA: dapA.value,
-            dapL: dapL.value,
-            dapIncome: dapIncome.value,
-            dapOut: dapOut.textContent,
-            dapAssets: dapAssets.textContent,
-            dapLiabilities: dapLiabilities.textContent,
-            dapNetWorth: dapNetWorth.textContent,
-            dapMonthlyIncome: dapMonthlyIncome.textContent,
-            dapAdvice: dapAdvice.textContent
-        });
-    };
-
-    await loadDAP();
-
     // ✅ Color painter (no refresh needed)
     const applyDAPColors = (assetsNum, liabilitiesNum, incomeNum, ratioNum) => {
         // Outputs (money)
@@ -12164,7 +12074,6 @@ if (t.id === "DebtAssetPulse") {
         dapAssets.textContent = dapLiabilities.textContent =
         dapNetWorth.textContent = dapMonthlyIncome.textContent = '$0';
         dapAdvice.textContent = 'Enter values to get guidance on your financial health.';
-        clearPersistedState('DebtAssetPulse');
         hideTip();
         applyLLBSToDebtAssetPulse();
         applyExpenseLensToDebtAssetPulse();
@@ -12194,7 +12103,6 @@ if (t.id === "DebtAssetPulse") {
             else markGold(dapMonthlyIncome);
             markGold(dapOut);
             markGold(dapAdvice);
-            saveDAP();
             return;
         }
 
@@ -12217,7 +12125,6 @@ if (t.id === "DebtAssetPulse") {
         dapAdvice.textContent = advice;
 
         applyDAPColors(assets, liabilities, income, ratioNum);
-        saveDAP();
     };
 
     [dapA, dapL].forEach(input => {
