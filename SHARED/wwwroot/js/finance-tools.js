@@ -751,14 +751,80 @@ document.addEventListener("DOMContentLoaded", async function () {
         usesServerState: canUseServerState
     };
 
-    function saveSelectedToolId(toolId) {
+    const normalizeSelectedToolSelection = (value = {}) => {
+        if (typeof value === "string") {
+            return {
+                selectedToolType: "tool",
+                selectedToolId: resolveToolSelection(value),
+                selectedCoachingToolId: ""
+            };
+        }
+
+        const selectedToolType = String(value?.selectedToolType || "").trim() === "coaching"
+            ? "coaching"
+            : "tool";
+        const selectedToolId = resolveToolSelection(
+            String(value?.selectedToolId || DEFAULT_TOOL_ID).trim() || DEFAULT_TOOL_ID
+        );
+        const selectedCoachingToolId = String(value?.selectedCoachingToolId || "").trim();
+
+        if (selectedToolType === "coaching" && !selectedCoachingToolId) {
+            return {
+                selectedToolType: "tool",
+                selectedToolId,
+                selectedCoachingToolId: ""
+            };
+        }
+
+        return {
+            selectedToolType,
+            selectedToolId,
+            selectedCoachingToolId
+        };
+    };
+
+    async function loadSelectedToolSelection() {
         if (!canUseServerState) {
-            if (toolId) storageSet("selected-tool", toolId);
-            else storageRemove("selected-tool");
+            const savedValue = localStorage.getItem(scopeKey("selected-tool"));
+            if (!savedValue) {
+                return normalizeSelectedToolSelection({});
+            }
+
+            try {
+                return normalizeSelectedToolSelection(JSON.parse(savedValue));
+            } catch (_) {
+                return normalizeSelectedToolSelection(savedValue);
+            }
+        }
+
+        return normalizeSelectedToolSelection(await loadPersistedState(selectedToolStateId));
+    }
+
+    function saveSelectedToolSelection(selection) {
+        const normalizedSelection = normalizeSelectedToolSelection(selection);
+
+        if (!canUseServerState) {
+            storageSet("selected-tool", JSON.stringify(normalizedSelection));
             return;
         }
 
-        savePersistedState(selectedToolStateId, { selectedToolId: toolId || "" });
+        savePersistedState(selectedToolStateId, normalizedSelection);
+    }
+
+    function saveSelectedToolId(toolId) {
+        saveSelectedToolSelection({
+            selectedToolType: "tool",
+            selectedToolId: toolId || DEFAULT_TOOL_ID,
+            selectedCoachingToolId: ""
+        });
+    }
+
+    function saveSelectedCoachingToolId(toolId) {
+        saveSelectedToolSelection({
+            selectedToolType: "coaching",
+            selectedToolId: DEFAULT_TOOL_ID,
+            selectedCoachingToolId: toolId || ""
+        });
     }
 
     // ------------------- Persistence Helpers (UPDATED) -------------------
@@ -896,6 +962,40 @@ document.addEventListener("DOMContentLoaded", async function () {
         requestedToolOverrideId = resolveToolSelection(toolId);
         dropdown?.dispatchEvent(new Event("change"));
     }
+
+    const isFinanceReloadNavigation = () => {
+        try {
+            const navigationEntry = performance.getEntriesByType?.("navigation")?.[0];
+            if (navigationEntry?.type) {
+                return navigationEntry.type === "reload";
+            }
+        } catch (_) { }
+
+        try {
+            return Number(performance?.navigation?.type) === 1;
+        } catch (_) {
+            return false;
+        }
+    };
+
+    const restoreFinanceToolSelection = async () => {
+        if (!isFinanceReloadNavigation()) {
+            requestToolSelection(DEFAULT_TOOL_ID);
+            return;
+        }
+
+        const persistedSelection = await loadSelectedToolSelection();
+        if (
+            enableCoachingTools
+            && persistedSelection.selectedToolType === "coaching"
+            && coachingToolLookup.has(persistedSelection.selectedCoachingToolId)
+        ) {
+            requestCoachingToolSelection(persistedSelection.selectedCoachingToolId);
+            return;
+        }
+
+        requestToolSelection(persistedSelection.selectedToolId || DEFAULT_TOOL_ID);
+    };
 
     // Populate dropdown
     dropdownTools.forEach(tool => {
@@ -2063,6 +2163,7 @@ const toast = typeof window.toast === "function" ? window.toast : (msg => consol
         financialHealthButton?.setAttribute("aria-pressed", "false");
         if (dropdown) dropdown.selectedIndex = 0;
         syncCoachingToolSelectorState(tool.id);
+        saveSelectedCoachingToolId(tool.id);
         renderCoachingTool(tool);
     };
 
@@ -8039,10 +8140,12 @@ if (t.id === "ExpenseLens" || t.id === "BusinessExpenseLens") {
             { value: 'credit', label: 'Credit' },
         ];
 
+        const EL_BILL_FILTER_DEFAULT_VALUE = '';
         const EL_PAYMENT_FILTERS = [
-            { value: 'all', label: 'All Bills' },
-            { value: 'debit', label: 'Debit' },
-            { value: 'credit', label: 'Credit' },
+            { value: EL_BILL_FILTER_DEFAULT_VALUE, label: '--SELECT BILL--' },
+            { value: 'all', label: 'All Bills This Week' },
+            { value: 'debit', label: 'Debit Bills This Week' },
+            { value: 'credit', label: 'Credit Bills This Week' },
         ];
 
         const normalizeBillPaymentMethod = (value) => {
@@ -8101,8 +8204,10 @@ if (t.id === "ExpenseLens" || t.id === "BusinessExpenseLens") {
         };
 
         const elPaymentFilterLabel = (value) => {
-            const normalized = EL_PAYMENT_FILTERS.some(option => option.value === value) ? value : 'all';
-            return EL_PAYMENT_FILTERS.find(option => option.value === normalized)?.label || 'All Bills';
+            const normalized = EL_PAYMENT_FILTERS.some(option => option.value === value)
+                ? value
+                : EL_BILL_FILTER_DEFAULT_VALUE;
+            return EL_PAYMENT_FILTERS.find(option => option.value === normalized)?.label || '--SELECT BILL--';
         };
 
         // -----------------------------
@@ -8253,6 +8358,17 @@ if (t.id === "ExpenseLens" || t.id === "BusinessExpenseLens") {
             return normalizedState;
         };
 
+        const shouldPersistExpensePaymentMethod = (name, amount) => {
+            const hasName = String(name || '').trim().length > 0;
+            const amountCents = Math.max(0, parseExpenseLensMoneyToCents(amount || '0'));
+            return hasName && amountCents > 0;
+        };
+
+        const sanitizeExpensePaymentMethod = (paymentMethod, name, amount) => {
+            const normalized = normalizeBillPaymentMethod(paymentMethod);
+            return shouldPersistExpensePaymentMethod(name, amount) ? normalized : '';
+        };
+
         const collectExpenseLensCategories = () => {
             const categories = [];
             categoriesContainer.querySelectorAll(`[id^="${elId('CatRow')}"]`).forEach(row => {
@@ -8265,8 +8381,12 @@ if (t.id === "ExpenseLens" || t.id === "BusinessExpenseLens") {
                 const name = nameEl ? nameEl.value || '' : '';
                 const due = dueEl ? dueEl.value || '' : '';
                 const frequency = normalizeBillFrequency(frequencyEl ? frequencyEl.value : 'monthly');
-                const paymentMethod = normalizeBillPaymentMethod(paymentMethodEl ? paymentMethodEl.value : 'debit') || 'debit';
                 const amount = amountEl ? amountEl.value || '' : '';
+                const paymentMethod = sanitizeExpensePaymentMethod(
+                    paymentMethodEl ? paymentMethodEl.value : '',
+                    name,
+                    amount
+                );
                 const isTemplate = row.dataset.isTemplate === 'true';
                 const isPinned = row.dataset.isPinned === 'true';
                 categories.push({
@@ -8534,7 +8654,7 @@ if (t.id === "ExpenseLens" || t.id === "BusinessExpenseLens") {
                             cat.due || '',
                             cat.amount,
                             cat.frequency || cat.recurrence,
-                            cat.paymentMethod || '',
+                            sanitizeExpensePaymentMethod(cat.paymentMethod || '', cat.name, cat.amount),
                             cat.isTemplate === true,
                             cat.isPinned === true,
                             { id: cat.id, debtCategory: cat.debtCategory }
@@ -8560,7 +8680,16 @@ if (t.id === "ExpenseLens" || t.id === "BusinessExpenseLens") {
                         if (Array.isArray(prof.expenses) && prof.expenses.length > 0) {
                             prof.expenses.forEach(exp => {
                                 const amt = exp?.occurrenceAmount ?? exp?.amount ?? '';
-                                createCategoryRow(++categoryCount, exp?.name || `Expense ${categoryCount}`, exp?.due || '', amt, exp?.frequency || exp?.recurrence, exp?.paymentMethod || '', false, exp?.isPinned === true);
+                                createCategoryRow(
+                                    ++categoryCount,
+                                    exp?.name || `Expense ${categoryCount}`,
+                                    exp?.due || '',
+                                    amt,
+                                    exp?.frequency || exp?.recurrence,
+                                    sanitizeExpensePaymentMethod(exp?.paymentMethod || '', exp?.name || '', amt),
+                                    false,
+                                    exp?.isPinned === true
+                                );
                                 categoriesCreated++;
                             });
                         }
@@ -8585,8 +8714,9 @@ if (t.id === "ExpenseLens" || t.id === "BusinessExpenseLens") {
         let latestExpenseLensProjection = null;
         // Drag-and-drop state
         let elDragSrc = null;
-        let elActivePaymentFilter = 'all';
+        let elActivePaymentFilter = EL_BILL_FILTER_DEFAULT_VALUE;
         let elActiveWeekFilter = EL_WEEK_FILTER_ALL_VALUE;
+        let elWeekFilterWasAutoSelected = false;
         let paymentFilterSelect = null;
         let weekFilterSelect = null;
         let weekPanelBackdrop = null;
@@ -8633,7 +8763,72 @@ if (t.id === "ExpenseLens" || t.id === "BusinessExpenseLens") {
             return getExpenseLensWeekFilterOptions().find((option) => option.value === elActiveWeekFilter)?.week || null;
         };
 
-        const getProjectedWeekExpenseCategoryTotals = (monthKey, weekId) => {
+        const getDefaultExpenseLensBillFilterWeek = () => {
+            const weekOptions = getExpenseLensWeekFilterOptions();
+            if (!weekOptions.length) return null;
+
+            const today = new Date();
+            const todayMonthKey = expenseLensProjectionApi?.formatMonthKey
+                ? expenseLensProjectionApi.formatMonthKey(today)
+                : getTodayMonthKey();
+            const selectedMonthKey = getExpenseLensFilterMonthKey();
+
+            if (selectedMonthKey === todayMonthKey) {
+                const nowTime = today.getTime();
+                const currentWeek = weekOptions.find(({ week }) => {
+                    const startDate = week?.startDate instanceof Date
+                        ? week.startDate
+                        : expenseLensProjectionApi?.parseDate?.(week?.startDate);
+                    const endDate = week?.endDate instanceof Date
+                        ? week.endDate
+                        : expenseLensProjectionApi?.parseDate?.(week?.endDate);
+                    if (!startDate || !endDate) return false;
+
+                    const weekStartTime = new Date(
+                        startDate.getFullYear(),
+                        startDate.getMonth(),
+                        startDate.getDate()
+                    ).getTime();
+                    const weekEndTime = new Date(
+                        endDate.getFullYear(),
+                        endDate.getMonth(),
+                        endDate.getDate(),
+                        23,
+                        59,
+                        59,
+                        999
+                    ).getTime();
+
+                    return nowTime >= weekStartTime && nowTime <= weekEndTime;
+                });
+
+                if (currentWeek?.week) {
+                    return currentWeek.week;
+                }
+            }
+
+            return weekOptions[0]?.week || null;
+        };
+
+        const syncExpenseLensBillFilterWeekSelection = () => {
+            const hasPaymentFilter = elActivePaymentFilter !== EL_BILL_FILTER_DEFAULT_VALUE;
+
+            if (hasPaymentFilter && elActiveWeekFilter === EL_WEEK_FILTER_ALL_VALUE) {
+                const defaultWeek = getDefaultExpenseLensBillFilterWeek();
+                if (defaultWeek?.id) {
+                    elActiveWeekFilter = defaultWeek.id;
+                    elWeekFilterWasAutoSelected = true;
+                }
+                return;
+            }
+
+            if (!hasPaymentFilter && elWeekFilterWasAutoSelected) {
+                elActiveWeekFilter = EL_WEEK_FILTER_ALL_VALUE;
+                elWeekFilterWasAutoSelected = false;
+            }
+        };
+
+        const getProjectedWeekExpenseCategoryTotals = (monthKey, weekId, paymentFilter = EL_BILL_FILTER_DEFAULT_VALUE) => {
             if (!expenseLensProjectionApi?.projectExpenseLensTimeline || !weekId) return null;
 
             const projection = getExpenseLensProjection({ selectedMonthKey: monthKey });
@@ -8641,10 +8836,17 @@ if (t.id === "ExpenseLens" || t.id === "BusinessExpenseLens") {
             const selectedWeek = selectedMonth?.weeks?.find?.((week) => week.id === weekId) || null;
             if (!selectedWeek) return null;
 
+            const normalizedPaymentFilter = normalizeBillPaymentMethod(paymentFilter);
             const totals = new Map();
             (selectedWeek.events || []).forEach((eventItem) => {
                 if (eventItem?.kind !== 'expense') return;
                 if (String(eventItem?.debtCategory || '').trim() === 'tracked-unsecured-minimum') return;
+                if (
+                    normalizedPaymentFilter
+                    && normalizeBillPaymentMethod(eventItem?.paymentMethod) !== normalizedPaymentFilter
+                ) {
+                    return;
+                }
 
                 const sourceId = String(eventItem?.sourceId || '').trim();
                 if (!sourceId) return;
@@ -8657,7 +8859,14 @@ if (t.id === "ExpenseLens" || t.id === "BusinessExpenseLens") {
         };
 
         const elMatchesPaymentFilter = (paymentMethod) => {
-            return elActivePaymentFilter === 'all' || paymentMethod === elActivePaymentFilter;
+            if (
+                elActivePaymentFilter === EL_BILL_FILTER_DEFAULT_VALUE
+                || elActivePaymentFilter === 'all'
+            ) {
+                return true;
+            }
+
+            return paymentMethod === elActivePaymentFilter;
         };
 
         const syncExpenseLensWeekFilterOptions = () => {
@@ -8697,6 +8906,7 @@ if (t.id === "ExpenseLens" || t.id === "BusinessExpenseLens") {
 
         const syncExpenseLensProjectionViews = (options = {}) => {
             const shouldSortRows = !!options.sortRows;
+            syncExpenseLensBillFilterWeekSelection();
             applyExpenseLensRowVisibility();
             syncExpenseLensViewControls();
             refreshExpenseLens({ sortRows: shouldSortRows });
@@ -8713,9 +8923,9 @@ if (t.id === "ExpenseLens" || t.id === "BusinessExpenseLens") {
             const selectedMonthKey = getExpenseLensFilterMonthKey();
             const activeWeek = getActiveExpenseLensWeekFilter();
             const weekCategoryTotals = activeWeek
-                ? getProjectedWeekExpenseCategoryTotals(selectedMonthKey, activeWeek.id)
+                ? getProjectedWeekExpenseCategoryTotals(selectedMonthKey, activeWeek.id, elActivePaymentFilter)
                 : null;
-            const hasActiveFilter = elActivePaymentFilter !== 'all' || !!activeWeek;
+            const hasActiveFilter = elActivePaymentFilter !== EL_BILL_FILTER_DEFAULT_VALUE || !!activeWeek;
 
             categoriesContainer.querySelectorAll(`[id^="${elId('CatRow')}"]`).forEach(row => {
                 const idx = row.id.replace(elId('CatRow'), '');
@@ -9010,12 +9220,12 @@ if (t.id === "ExpenseLens" || t.id === "BusinessExpenseLens") {
             const selectedMonthKey = getExpenseLensFilterMonthKey();
             const activeWeek = getActiveExpenseLensWeekFilter();
             const weekCategoryTotals = activeWeek
-                ? getProjectedWeekExpenseCategoryTotals(selectedMonthKey, activeWeek.id)
+                ? getProjectedWeekExpenseCategoryTotals(selectedMonthKey, activeWeek.id, elActivePaymentFilter)
                 : null;
             let totalSpentCents = 0;
             let monthlyTotalSpentCents = 0;
             const categoriesData = [];
-            const hasPaymentFilter = elActivePaymentFilter !== 'all';
+            const hasPaymentFilter = elActivePaymentFilter !== EL_BILL_FILTER_DEFAULT_VALUE;
             const hasWeekFilter = !!activeWeek;
 
             categoriesContainer.querySelectorAll(`[id^="${elId('CatAmount')}"]`).forEach(input => {
@@ -10369,7 +10579,7 @@ if (t.id === "ExpenseLens" || t.id === "BusinessExpenseLens") {
         paymentFilterSelect = document.createElement('select');
         paymentFilterSelect.id = elId('PaymentFilter');
         paymentFilterSelect.className = 'form-select el-filter-select';
-        paymentFilterSelect.title = 'Filter bills by payment method';
+        paymentFilterSelect.title = 'Filter the current week by bill type';
         paymentFilterSelect.classList.add('lf-js-037');
         EL_PAYMENT_FILTERS.forEach(option => {
             const opt = document.createElement('option');
@@ -10381,7 +10591,7 @@ if (t.id === "ExpenseLens" || t.id === "BusinessExpenseLens") {
         paymentFilterSelect.addEventListener('change', () => {
             elActivePaymentFilter = EL_PAYMENT_FILTERS.some(option => option.value === paymentFilterSelect.value)
                 ? paymentFilterSelect.value
-                : 'all';
+                : EL_BILL_FILTER_DEFAULT_VALUE;
             elExpandedWeekId = '';
             refreshExpenseLensViews({ sortRows: true });
         });
@@ -10399,6 +10609,7 @@ if (t.id === "ExpenseLens" || t.id === "BusinessExpenseLens") {
                 || availableOptions.some((option) => option.value === nextValue)
                 ? nextValue
                 : EL_WEEK_FILTER_ALL_VALUE;
+            elWeekFilterWasAutoSelected = false;
             elExpandedWeekId = '';
             refreshExpenseLensViews({ sortRows: true });
         });
@@ -10552,7 +10763,16 @@ if (t.id === "ExpenseLens" || t.id === "BusinessExpenseLens") {
                 if (Array.isArray(prof.expenses) && prof.expenses.length) {
                     prof.expenses.forEach(exp => {
                         const amt = exp?.occurrenceAmount ?? exp?.amount ?? '';
-                        createCategoryRow(++categoryCount, exp?.name || `Expense ${categoryCount}`, exp?.due || '', amt, exp?.frequency || exp?.recurrence, exp?.paymentMethod || '', false, exp?.isPinned === true);
+                        createCategoryRow(
+                            ++categoryCount,
+                            exp?.name || `Expense ${categoryCount}`,
+                            exp?.due || '',
+                            amt,
+                            exp?.frequency || exp?.recurrence,
+                            sanitizeExpensePaymentMethod(exp?.paymentMethod || '', exp?.name || '', amt),
+                            false,
+                            exp?.isPinned === true
+                        );
                     });
                 } else {
                     createCategoryRow(++categoryCount);
@@ -12310,7 +12530,6 @@ if (t.id === "DebtAssetPulse") {
 
 }); // ✅ closes dropdown.addEventListener("change", ...)
 
-    // Financial Health Snapshot is always the entry point — every load, refresh, and login.
-    requestToolSelection(DEFAULT_TOOL_ID);
+    await restoreFinanceToolSelection();
 
 }); // ✅ closes document.addEventListener("DOMContentLoaded", ...)
