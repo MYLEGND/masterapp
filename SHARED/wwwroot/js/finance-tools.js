@@ -7865,7 +7865,6 @@ if (t.id === "ExpenseLens" || t.id === "BusinessExpenseLens") {
         const addBtn = elById("AddCat");
         const elTips = elById("Tips");
         const elMargin = elById("Margin");
-        const elActionMeta = elById("ActionMeta");
         const elIncome = elById("Income");
         const elTopControls = elById("TopControls");
         let elDebtInput = null;
@@ -8042,7 +8041,7 @@ if (t.id === "ExpenseLens" || t.id === "BusinessExpenseLens") {
 
         const EL_PAYMENT_FILTERS = [
             { value: 'all', label: 'All Bills' },
-            { value: 'debit', label: 'Debit / Cash' },
+            { value: 'debit', label: 'Debit' },
             { value: 'credit', label: 'Credit' },
         ];
 
@@ -8579,6 +8578,7 @@ if (t.id === "ExpenseLens" || t.id === "BusinessExpenseLens") {
             } catch (e) { console.error(e); }
         };
 
+        const EL_WEEK_FILTER_ALL_VALUE = 'all';
         let elExpandedWeekId = '';
         let projectionMonthSetupExpanded = false;
         let projectionAdjustmentsExpanded = false;
@@ -8586,8 +8586,9 @@ if (t.id === "ExpenseLens" || t.id === "BusinessExpenseLens") {
         // Drag-and-drop state
         let elDragSrc = null;
         let elActivePaymentFilter = 'all';
-        let weeklyBtn = null;
+        let elActiveWeekFilter = EL_WEEK_FILTER_ALL_VALUE;
         let paymentFilterSelect = null;
+        let weekFilterSelect = null;
         let weekPanelBackdrop = null;
         let weekPanel = null;
         let elWeekPanelBodyOverflow = '';
@@ -8612,31 +8613,129 @@ if (t.id === "ExpenseLens" || t.id === "BusinessExpenseLens") {
             return normalizeBillPaymentMethod(paymentMethodEl?.value || '');
         };
 
+        const getExpenseLensFilterMonthKey = () => projectionSelectedMonthKey || getTodayMonthKey();
+
+        const getExpenseLensWeekFilterOptions = () => {
+            const monthKey = getExpenseLensFilterMonthKey();
+            const weeks = expenseLensProjectionApi?.getCalendarWeeksForMonth
+                ? expenseLensProjectionApi.getCalendarWeeksForMonth(monthKey)
+                : [];
+
+            return weeks.map((week) => ({
+                value: week.id,
+                label: expenseLensFormatWeekRangeLabel(week),
+                week
+            }));
+        };
+
+        const getActiveExpenseLensWeekFilter = () => {
+            if (elActiveWeekFilter === EL_WEEK_FILTER_ALL_VALUE) return null;
+            return getExpenseLensWeekFilterOptions().find((option) => option.value === elActiveWeekFilter)?.week || null;
+        };
+
+        const getProjectedWeekExpenseCategoryTotals = (monthKey, weekId) => {
+            if (!expenseLensProjectionApi?.projectExpenseLensTimeline || !weekId) return null;
+
+            const projection = getExpenseLensProjection({ selectedMonthKey: monthKey });
+            const selectedMonth = projection?.months?.find?.((month) => month.monthKey === monthKey) || null;
+            const selectedWeek = selectedMonth?.weeks?.find?.((week) => week.id === weekId) || null;
+            if (!selectedWeek) return null;
+
+            const totals = new Map();
+            (selectedWeek.events || []).forEach((eventItem) => {
+                if (eventItem?.kind !== 'expense') return;
+                if (String(eventItem?.debtCategory || '').trim() === 'tracked-unsecured-minimum') return;
+
+                const sourceId = String(eventItem?.sourceId || '').trim();
+                if (!sourceId) return;
+
+                const runningTotal = totals.get(sourceId) || 0;
+                totals.set(sourceId, runningTotal + Math.max(0, Math.round(eventItem.amountCents || 0)));
+            });
+
+            return totals;
+        };
+
         const elMatchesPaymentFilter = (paymentMethod) => {
             return elActivePaymentFilter === 'all' || paymentMethod === elActivePaymentFilter;
         };
 
+        const syncExpenseLensWeekFilterOptions = () => {
+            if (!weekFilterSelect) return;
+
+            const weekOptions = getExpenseLensWeekFilterOptions();
+            const hasActiveWeekOption = elActiveWeekFilter === EL_WEEK_FILTER_ALL_VALUE
+                || weekOptions.some((option) => option.value === elActiveWeekFilter);
+
+            if (!hasActiveWeekOption) {
+                elActiveWeekFilter = EL_WEEK_FILTER_ALL_VALUE;
+            }
+
+            weekFilterSelect.innerHTML = '';
+
+            const allOption = document.createElement('option');
+            allOption.value = EL_WEEK_FILTER_ALL_VALUE;
+            allOption.textContent = 'All Weeks';
+            weekFilterSelect.appendChild(allOption);
+
+            weekOptions.forEach((option) => {
+                const opt = document.createElement('option');
+                opt.value = option.value;
+                opt.textContent = option.label;
+                weekFilterSelect.appendChild(opt);
+            });
+
+            weekFilterSelect.value = elActiveWeekFilter;
+        };
+
         const syncExpenseLensViewControls = () => {
-            if (weeklyBtn) weeklyBtn.textContent = 'Weekly Tracker ▾';
             const topBtn = elById('WeeklyBtnTop');
             if (topBtn) topBtn.textContent = 'Weekly Tracker ▾';
             if (paymentFilterSelect) paymentFilterSelect.value = elActivePaymentFilter;
+            syncExpenseLensWeekFilterOptions();
+        };
+
+        const syncExpenseLensProjectionViews = (options = {}) => {
+            const shouldSortRows = !!options.sortRows;
+            applyExpenseLensRowVisibility();
+            syncExpenseLensViewControls();
+            refreshExpenseLens({ sortRows: shouldSortRows });
+        };
+
+        const elRowHasConfiguredBill = (index) => {
+            const name = String(elById(`CatName${index}`)?.value || '').trim();
+            const paymentMethod = elGetBillPaymentMethod(index);
+            const amountCents = Math.max(0, parseExpenseLensMoneyToCents(elById(`CatAmount${index}`)?.value || '0'));
+            return name.length > 0 && paymentMethod.length > 0 && amountCents > 0;
         };
 
         const applyExpenseLensRowVisibility = () => {
+            const selectedMonthKey = getExpenseLensFilterMonthKey();
+            const activeWeek = getActiveExpenseLensWeekFilter();
+            const weekCategoryTotals = activeWeek
+                ? getProjectedWeekExpenseCategoryTotals(selectedMonthKey, activeWeek.id)
+                : null;
+            const hasActiveFilter = elActivePaymentFilter !== 'all' || !!activeWeek;
+
             categoriesContainer.querySelectorAll(`[id^="${elId('CatRow')}"]`).forEach(row => {
                 const idx = row.id.replace(elId('CatRow'), '');
+                const hasConfiguredBill = elRowHasConfiguredBill(idx);
                 const matchesPayment = elMatchesPaymentFilter(elGetBillPaymentMethod(idx));
-                const show = matchesPayment;
+                const categoryId = String(row.dataset.categoryId || '').trim();
+                const matchesWeek = !activeWeek
+                    ? true
+                    : weekCategoryTotals instanceof Map
+                        ? weekCategoryTotals.has(categoryId)
+                        : elGetBillOccurrenceDays(idx, activeWeek, selectedMonthKey).length > 0;
+                const show = hasActiveFilter
+                    ? hasConfiguredBill && matchesPayment && matchesWeek
+                    : true;
                 row.classList.toggle('is-filter-hidden', !show);
             });
         };
 
         const refreshExpenseLensViews = (options = {}) => {
-            const shouldSortRows = !!options.sortRows;
-            applyExpenseLensRowVisibility();
-            syncExpenseLensViewControls();
-            refreshExpenseLens({ sortRows: shouldSortRows });
+            syncExpenseLensProjectionViews({ sortRows: options.sortRows });
             if (weekPanelBackdrop && weekPanelBackdrop.style.display !== 'none') renderWeekPanel();
         };
 
@@ -8704,7 +8803,7 @@ if (t.id === "ExpenseLens" || t.id === "BusinessExpenseLens") {
             options = {}
         ) => {
             const div = document.createElement("div");
-            div.className = `d-flex align-items-center el-category-row ${isDualPanel ? 'el-category-row--compact' : 'el-category-row--standard'}`;
+            div.className = `el-category-row ${isDualPanel ? 'el-category-row--compact' : 'el-category-row--standard'}`;
             div.id = `${elId('CatRow')}${index}`;
             div.dataset.isTemplate = isTemplate ? 'true' : 'false';
             div.dataset.isPinned = isPinned ? 'true' : 'false';
@@ -8908,16 +9007,22 @@ if (t.id === "ExpenseLens" || t.id === "BusinessExpenseLens") {
                 ? Math.max(0, Math.round((incomeSummary?.monthlyTotal || 0) * 100))
                 : Math.max(0, parseExpenseLensMoneyToCents(elIncome.value));
             const income = centsToExpenseLensDollars(incomeCents);
+            const selectedMonthKey = getExpenseLensFilterMonthKey();
+            const activeWeek = getActiveExpenseLensWeekFilter();
+            const weekCategoryTotals = activeWeek
+                ? getProjectedWeekExpenseCategoryTotals(selectedMonthKey, activeWeek.id)
+                : null;
             let totalSpentCents = 0;
             let monthlyTotalSpentCents = 0;
             const categoriesData = [];
             const hasPaymentFilter = elActivePaymentFilter !== 'all';
+            const hasWeekFilter = !!activeWeek;
 
             categoriesContainer.querySelectorAll(`[id^="${elId('CatAmount')}"]`).forEach(input => {
                 const valCents = Math.max(0, parseExpenseLensMoneyToCents(input.value));
                 const val = centsToExpenseLensDollars(valCents);
                 const index = input.id.replace(elId('CatAmount'),'');
-                const monthOccurrences = elGetBillOccurrenceDays(index);
+                const monthOccurrences = elGetBillOccurrenceDays(index, null, selectedMonthKey);
                 const occurrenceCount = monthOccurrences.length;
                 const rowTotalCents = valCents * occurrenceCount;
                 const monthlyTotalCents = valCents * monthOccurrences.length;
@@ -8928,6 +9033,7 @@ if (t.id === "ExpenseLens" || t.id === "BusinessExpenseLens") {
                 const pctEl = elById(`Out${index}`);
                 pctEl.textContent = pct;
                 const rowEl = input.closest(`[id^="${elId('CatRow')}"]`);
+                const categoryId = String(rowEl?.dataset?.categoryId || '').trim();
                 if (rowEl) {
                     rowEl.dataset.expenseSortValue = String(income > 0 ? (rowTotal / income) * 100 : rowTotal);
                     rowEl.dataset.expenseSortAmount = String(rowTotal);
@@ -8953,8 +9059,15 @@ if (t.id === "ExpenseLens" || t.id === "BusinessExpenseLens") {
                     _sortOrder: categoriesData.length
                 });
 
+                const filteredRowTotalCents = !activeWeek
+                    ? rowTotalCents
+                    : weekCategoryTotals instanceof Map
+                        ? (weekCategoryTotals.get(categoryId) || 0)
+                        : valCents * elGetBillOccurrenceDays(index, activeWeek, selectedMonthKey).length;
+
                 if (!elMatchesPaymentFilter(paymentMethod)) return;
-                totalSpentCents += rowTotalCents;
+                if (activeWeek && filteredRowTotalCents <= 0) return;
+                totalSpentCents += filteredRowTotalCents;
             });
 
             const totalSpent = centsToExpenseLensDollars(totalSpentCents);
@@ -8964,8 +9077,18 @@ if (t.id === "ExpenseLens" || t.id === "BusinessExpenseLens") {
             const totalSpentText = formatNumber(totalSpent);
             const monthlyRemainingText = formatNumber(monthlyRemaining);
 
-            if (hasPaymentFilter) {
-                elMargin.textContent = `${elPaymentFilterLabel(elActivePaymentFilter)} Bills: $${totalSpentText}`;
+            if (hasPaymentFilter || hasWeekFilter) {
+                const filterSegments = [];
+                if (activeWeek) {
+                    filterSegments.push(expenseLensFormatWeekRangeLabel(activeWeek));
+                }
+                if (hasPaymentFilter) {
+                    filterSegments.push(elPaymentFilterLabel(elActivePaymentFilter));
+                }
+                const filterLabel = filterSegments.length > 0
+                    ? filterSegments.join(' • ')
+                    : 'Filtered Bills';
+                elMargin.textContent = `${filterLabel}: $${totalSpentText}`;
                 elMargin.classList.remove('is-positive', 'is-negative', 'el-balance-chip-alert');
                 elMargin.classList.add('el-balance-chip-info');
             } else {
@@ -10151,28 +10274,26 @@ if (t.id === "ExpenseLens" || t.id === "BusinessExpenseLens") {
             upgradeMoneyInputs(weekPanel);
 
             weekPanel.querySelector('[data-action="close-panel"]')?.addEventListener('click', closeWeekPanel);
-            weekPanel.querySelector('[data-action="month-prev"]')?.addEventListener('click', () => {
-                projectionSelectedMonthKey = expenseLensProjectionApi?.addMonths?.(selectedMonth.monthKey, -1) || selectedMonth.monthKey;
+            const setProjectionSelectedMonth = (nextMonthKey) => {
+                projectionSelectedMonthKey = nextMonthKey;
                 elExpandedWeekId = '';
+                syncExpenseLensProjectionViews({ sortRows: true });
                 renderWeekPanel();
+            };
+            weekPanel.querySelector('[data-action="month-prev"]')?.addEventListener('click', () => {
+                setProjectionSelectedMonth(expenseLensProjectionApi?.addMonths?.(selectedMonth.monthKey, -1) || selectedMonth.monthKey);
             });
             weekPanel.querySelector('[data-action="month-current"]')?.addEventListener('click', () => {
-                projectionSelectedMonthKey = currentMonthKey;
-                elExpandedWeekId = '';
-                renderWeekPanel();
+                setProjectionSelectedMonth(currentMonthKey);
             });
             weekPanel.querySelector('[data-action="month-next"]')?.addEventListener('click', () => {
                 if (!canGoNext) return;
-                projectionSelectedMonthKey = expenseLensProjectionApi?.addMonths?.(selectedMonth.monthKey, 1) || selectedMonth.monthKey;
-                elExpandedWeekId = '';
-                renderWeekPanel();
+                setProjectionSelectedMonth(expenseLensProjectionApi?.addMonths?.(selectedMonth.monthKey, 1) || selectedMonth.monthKey);
             });
 
             weekPanel.querySelector('[data-field="selected-month"]')?.addEventListener('change', (event) => {
                 const nextMonthKey = expenseLensProjectionApi?.formatMonthKey?.(event.target.value) || currentMonthKey;
-                projectionSelectedMonthKey = nextMonthKey;
-                elExpandedWeekId = '';
-                renderWeekPanel();
+                setProjectionSelectedMonth(nextMonthKey);
             });
 
             weekPanel.querySelector('[data-action="save-override"]')?.addEventListener('click', () => {
@@ -10240,18 +10361,6 @@ if (t.id === "ExpenseLens" || t.id === "BusinessExpenseLens") {
             document.body.style.overflow = 'hidden';
         };
 
-        // Weekly button — sits in the category action row
-        weeklyBtn = document.createElement('button');
-        weeklyBtn.type = 'button';
-        weeklyBtn.textContent = 'Weekly Tracker ▾';
-        weeklyBtn.className = 'btn el-week-btn';
-        weeklyBtn.classList.add('lf-js-036');
-        weeklyBtn.addEventListener('click', (e) => {
-            e.stopPropagation();
-            const isOpen = weekPanelBackdrop.style.display !== 'none';
-            if (isOpen) { closeWeekPanel(); return; }
-            openWeekPanel();
-        });
         weekPanel.addEventListener('click', e => e.stopPropagation());
         weekPanelBackdrop.addEventListener('click', (e) => {
             if (e.target === weekPanelBackdrop) closeWeekPanel();
@@ -10277,15 +10386,29 @@ if (t.id === "ExpenseLens" || t.id === "BusinessExpenseLens") {
             refreshExpenseLensViews({ sortRows: true });
         });
 
-        (elActionMeta || addBtn.parentElement).appendChild(paymentFilterSelect);
-        (elActionMeta || addBtn.parentElement).appendChild(weeklyBtn);
+        weekFilterSelect = document.createElement('select');
+        weekFilterSelect.id = elId('WeekFilter');
+        weekFilterSelect.className = 'form-select el-filter-select el-filter-select--week';
+        weekFilterSelect.title = 'Filter bills by week';
+        weekFilterSelect.classList.add('lf-js-038');
+        syncExpenseLensWeekFilterOptions();
+        weekFilterSelect.addEventListener('change', () => {
+            const nextValue = String(weekFilterSelect.value || '').trim();
+            const availableOptions = getExpenseLensWeekFilterOptions();
+            elActiveWeekFilter = nextValue === EL_WEEK_FILTER_ALL_VALUE
+                || availableOptions.some((option) => option.value === nextValue)
+                ? nextValue
+                : EL_WEEK_FILTER_ALL_VALUE;
+            elExpandedWeekId = '';
+            refreshExpenseLensViews({ sortRows: true });
+        });
 
         // Second Weekly button — lives in the shared top control grid for quick access
         const weeklyBtnTop = document.createElement('button');
         weeklyBtnTop.id = elId('WeeklyBtnTop');
         weeklyBtnTop.type = 'button';
         weeklyBtnTop.textContent = 'Weekly Tracker ▾';
-        weeklyBtnTop.className = 'btn el-week-btn el-top-field__control';
+        weeklyBtnTop.className = 'btn el-week-btn';
         weeklyBtnTop.classList.add('lf-js-036');
         weeklyBtnTop.addEventListener('click', (e) => {
             e.stopPropagation();
@@ -10376,7 +10499,13 @@ if (t.id === "ExpenseLens" || t.id === "BusinessExpenseLens") {
         const trackerWrap = document.createElement('div');
         trackerWrap.className = 'el-top-field el-top-field--tracker';
         trackerWrap.appendChild(createTopControlSpacer());
-        trackerWrap.appendChild(weeklyBtnTop);
+
+        const trackerControls = document.createElement('div');
+        trackerControls.className = 'el-top-field__tracker-controls';
+        trackerControls.appendChild(weeklyBtnTop);
+        trackerControls.appendChild(paymentFilterSelect);
+        trackerControls.appendChild(weekFilterSelect);
+        trackerWrap.appendChild(trackerControls);
         elTopControls.appendChild(trackerWrap);
 
         if (!isBusinessExpenseLens) {

@@ -5200,14 +5200,14 @@ body.finance-dual-tools-open .layout-content {
 .networth-tool.el-shell .el-top-controls {
     --el-top-control-height: 46px;
     display: grid;
-    grid-template-columns: minmax(190px, 1.15fr) minmax(160px, .85fr) minmax(230px, .95fr) max-content;
+    grid-template-columns: minmax(190px, 1.05fr) minmax(160px, .8fr) minmax(230px, .95fr) minmax(420px, 1.2fr);
     gap: 14px;
     align-items: end;
     margin-bottom: 16px;
 }
 
 .networth-tool.el-shell .el-top-controls--business {
-    grid-template-columns: minmax(190px, 1.15fr) minmax(160px, .85fr) max-content;
+    grid-template-columns: minmax(190px, 1.05fr) minmax(160px, .8fr) minmax(420px, 1.15fr);
 }
 
 .networth-tool.el-shell .el-top-controls > * {
@@ -5432,8 +5432,8 @@ body.finance-dual-tools-open .layout-content {
 
 .networth-tool.el-shell select.el-filter-select {
     min-width: 156px;
-    max-width: 156px;
-    flex: 0 0 156px;
+    max-width: 220px;
+    flex: 1 1 170px;
     border: 1px solid rgba(56, 189, 248, .28);
     background: linear-gradient(180deg, rgba(16, 31, 60, .97), rgba(10, 22, 42, .98));
     box-shadow: inset 0 1px 0 rgba(255, 255, 255, .04), 0 16px 28px rgba(2, 8, 23, .18);
@@ -5511,11 +5511,27 @@ body.finance-dual-tools-open .layout-content {
 }
 
 .networth-tool.el-shell .el-top-field--tracker {
-    justify-self: start;
+    justify-self: stretch;
 }
 
-.networth-tool.el-shell .el-top-field--tracker .el-top-field__control {
-    width: auto;
+.networth-tool.el-shell .el-top-field__tracker-controls {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 10px;
+    flex-wrap: wrap;
+    width: 100%;
+    min-height: var(--el-top-control-height);
+}
+
+.networth-tool.el-shell .el-top-field__tracker-controls .el-week-btn {
+    flex: 0 0 auto;
+    min-width: 180px;
+}
+
+.networth-tool.el-shell .el-top-field__tracker-controls > select.el-filter-select {
+    min-width: 170px;
+    max-width: 220px;
 }
 
 .networth-tool.el-shell .el-top-field--debt .legend-money-input {
@@ -10749,6 +10765,10 @@ body.finance-dual-tools-open .layout-content {
         grid-template-columns: repeat(2, minmax(0, 1fr));
     }
 
+    .networth-tool.el-shell .el-top-field--tracker {
+        grid-column: 1 / -1;
+    }
+
     .el-projection-nav {
         grid-template-columns: 1fr;
     }
@@ -10828,7 +10848,14 @@ body.finance-dual-tools-open .layout-content {
         gap: 10px;
     }
 
-    .networth-tool.el-shell .el-top-field--tracker .el-top-field__control {
+    .networth-tool.el-shell .el-top-field__tracker-controls {
+        justify-content: stretch;
+    }
+
+    .networth-tool.el-shell .el-top-field__tracker-controls .el-week-btn,
+    .networth-tool.el-shell .el-top-field__tracker-controls > select.el-filter-select {
+        flex: 1 1 100%;
+        max-width: none;
         width: 100%;
     }
 
