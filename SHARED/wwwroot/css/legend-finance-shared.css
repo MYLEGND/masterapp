@@ -5699,14 +5699,18 @@ body.finance-dual-tools-open .layout-content {
     --el-projection-income-fill: linear-gradient(180deg, rgba(9, 73, 58, .88), rgba(5, 34, 29, .98));
     --el-projection-income-label: #80ffd2;
     --el-projection-income-glow: rgba(52, 211, 153, .20);
-    --el-projection-debit-border: rgba(56, 189, 248, .40);
-    --el-projection-debit-fill: linear-gradient(180deg, rgba(9, 66, 104, .88), rgba(7, 31, 52, .98));
-    --el-projection-debit-label: #79e6ff;
-    --el-projection-debit-glow: rgba(56, 189, 248, .18);
-    --el-projection-credit-border: rgba(217, 70, 239, .34);
-    --el-projection-credit-fill: linear-gradient(180deg, rgba(78, 28, 102, .88), rgba(35, 15, 52, .98));
-    --el-projection-credit-label: #f0b4ff;
-    --el-projection-credit-glow: rgba(217, 70, 239, .16);
+    --el-projection-opening-border: rgba(96, 165, 250, .42);
+    --el-projection-opening-fill: linear-gradient(180deg, rgba(16, 53, 96, .90), rgba(8, 24, 49, .985));
+    --el-projection-opening-label: #8fd3ff;
+    --el-projection-opening-glow: rgba(96, 165, 250, .20);
+    --el-projection-debit-border: rgba(34, 211, 238, .42);
+    --el-projection-debit-fill: linear-gradient(180deg, rgba(7, 68, 82, .90), rgba(5, 29, 39, .985));
+    --el-projection-debit-label: #74f2ff;
+    --el-projection-debit-glow: rgba(34, 211, 238, .18);
+    --el-projection-credit-border: rgba(251, 146, 60, .36);
+    --el-projection-credit-fill: linear-gradient(180deg, rgba(108, 50, 16, .90), rgba(52, 24, 8, .985));
+    --el-projection-credit-label: #ffc58d;
+    --el-projection-credit-glow: rgba(249, 115, 22, .17);
     --el-projection-danger-border: rgba(239, 68, 68, .42);
     --el-projection-danger-fill: linear-gradient(180deg, rgba(98, 18, 29, .90), rgba(46, 8, 16, .985));
     --el-projection-danger-label: #ff8a98;
@@ -5936,11 +5940,52 @@ body.finance-dual-tools-open .layout-content {
 .el-projection-metric-grid {
     display: grid;
     gap: 12px;
+}
+
+.el-projection-setup-metrics {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.el-projection-metric-grid {
     grid-template-columns: repeat(3, minmax(0, 1fr));
 }
 
-.el-projection-metric-grid--wide {
+.el-projection-metric-grid--cashflow {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.el-projection-metric-grid--cashflow-business,
+.el-projection-metric-grid--debt-summary {
     grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.el-projection-metric-grid--cashflow,
+.el-projection-metric-grid--cashflow-business,
+.el-projection-metric-grid--debt-summary {
+    gap: 10px;
+}
+
+.el-projection-metric-grid--cashflow .el-projection-metric,
+.el-projection-metric-grid--cashflow-business .el-projection-metric,
+.el-projection-metric-grid--debt-summary .el-projection-metric {
+    padding: 11px 13px;
+    gap: 4px;
+}
+
+.el-projection-metric-grid--cashflow .el-projection-metric dd,
+.el-projection-metric-grid--cashflow-business .el-projection-metric dd,
+.el-projection-metric-grid--debt-summary .el-projection-metric dd {
+    font-size: 1.06rem;
+}
+
+.el-projection-metric-grid--cashflow .el-projection-metric p,
+.el-projection-metric-grid--cashflow-business .el-projection-metric p,
+.el-projection-metric-grid--debt-summary .el-projection-metric p {
+    font-size: .74rem;
+}
+
+.el-projection-metric--summary-emphasis {
+    grid-column: span 2;
 }
 
 .el-projection-metric {
@@ -6012,7 +6057,12 @@ body.finance-dual-tools-open .layout-content {
 .el-projection-form-grid,
 .el-projection-adjustment-form {
     display: grid;
-    grid-template-columns: minmax(220px, 1.05fr) minmax(250px, 1.1fr) minmax(210px, .9fr) auto;
+    grid-template-columns:
+        minmax(220px, 1.05fr)
+        minmax(240px, 1.05fr)
+        minmax(170px, .65fr)
+        minmax(210px, .88fr)
+        auto;
     gap: 12px;
     align-items: end;
 }
@@ -6098,7 +6148,7 @@ body.finance-dual-tools-open .layout-content {
 
 .el-projection-week-summary {
     display: grid;
-    grid-template-columns: minmax(0, 1.08fr) minmax(320px, .92fr) auto;
+    grid-template-columns: minmax(0, .8fr) minmax(0, 1.45fr) auto;
     align-items: center;
     gap: 10px;
     width: 100%;
@@ -6148,7 +6198,7 @@ body.finance-dual-tools-open .layout-content {
 
 .el-projection-week-values {
     display: grid;
-    grid-template-columns: repeat(3, minmax(0, 1fr));
+    grid-template-columns: repeat(5, minmax(0, 1fr));
     gap: 8px;
 }
 
@@ -6178,13 +6228,33 @@ body.finance-dual-tools-open .layout-content {
 }
 
 .el-projection-week-value--opening {
+    border-color: var(--el-projection-opening-border);
+    background: var(--el-projection-opening-fill);
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, .04), 0 0 0 1px rgba(96, 165, 250, .08), 0 18px 28px var(--el-projection-opening-glow);
+}
+
+.el-projection-week-value--opening small {
+    color: var(--el-projection-opening-label);
+}
+
+.el-projection-week-value--debit-total {
     border-color: var(--el-projection-debit-border);
     background: var(--el-projection-debit-fill);
     box-shadow: inset 0 1px 0 rgba(255, 255, 255, .04), 0 0 0 1px rgba(56, 189, 248, .08), 0 18px 28px var(--el-projection-debit-glow);
 }
 
-.el-projection-week-value--opening small {
+.el-projection-week-value--debit-total small {
     color: var(--el-projection-debit-label);
+}
+
+.el-projection-week-value--credit-total {
+    border-color: var(--el-projection-credit-border);
+    background: var(--el-projection-credit-fill);
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, .04), 0 0 0 1px rgba(251, 146, 60, .08), 0 18px 28px var(--el-projection-credit-glow);
+}
+
+.el-projection-week-value--credit-total small {
+    color: var(--el-projection-credit-label);
 }
 
 .el-projection-week-value--ending.el-projection-week-value--positive {
@@ -6387,12 +6457,12 @@ body.finance-dual-tools-open .layout-content {
 }
 
 .el-projection-event--credit {
-    background: linear-gradient(90deg, rgba(217, 70, 239, .10), rgba(217, 70, 239, .02) 20%, transparent 44%);
+    background: linear-gradient(90deg, rgba(251, 146, 60, .10), rgba(251, 146, 60, .02) 20%, transparent 44%);
 }
 
 .el-projection-event--credit::before {
-    background: #eb93ff;
-    box-shadow: 0 0 14px rgba(217, 70, 239, .22);
+    background: #ffbe7c;
+    box-shadow: 0 0 14px rgba(249, 115, 22, .22);
 }
 
 .el-projection-event--debt {
@@ -6448,11 +6518,11 @@ body.finance-dual-tools-open .layout-content {
 
 .el-projection-event--credit .el-projection-ledger-cell--event strong,
 .el-projection-event--credit .el-projection-ledger-cell--date {
-    color: #f6deff;
+    color: #ffe0bf;
 }
 
 .el-projection-event--credit .el-projection-event-meta {
-    color: rgba(240, 180, 255, .82);
+    color: rgba(255, 194, 138, .82);
 }
 
 .el-projection-event--debt .el-projection-ledger-cell--event strong,
@@ -6489,8 +6559,24 @@ body.finance-dual-tools-open .layout-content {
     color: #70ffbf;
 }
 
+.el-projection-shell .finance-tone-opening {
+    color: #9cd8ff;
+}
+
+.el-projection-shell .finance-tone-debit {
+    color: #7cf4ff;
+}
+
+.el-projection-shell .finance-tone-credit {
+    color: #ffc58d;
+}
+
 .el-projection-shell .finance-tone-expense {
     color: #ff7484;
+}
+
+.el-projection-shell .finance-tone-neutral {
+    color: #f8fbff;
 }
 
 .el-projection-type-badge {
@@ -6520,7 +6606,7 @@ body.finance-dual-tools-open .layout-content {
 
 .el-projection-type-badge--credit {
     color: var(--el-projection-credit-label);
-    background: rgba(168, 85, 247, .16);
+    background: rgba(251, 146, 60, .15);
 }
 
 .el-projection-type-badge--debt {
@@ -6537,11 +6623,22 @@ body.finance-dual-tools-open .layout-content {
 }
 
 .el-projection-amount--credit {
-    color: #f0b4ff;
+    color: #ffc58d;
 }
 
 .el-projection-amount--debt {
     color: #ff7484;
+}
+
+.el-projection-metric--opening {
+    border-color: var(--el-projection-opening-border);
+    background: var(--el-projection-opening-fill);
+    box-shadow: 0 18px 30px var(--el-projection-opening-glow);
+}
+
+.el-projection-metric--opening dt,
+.el-projection-metric--opening p {
+    color: var(--el-projection-opening-label);
 }
 
 .el-projection-metric--debit {
@@ -10601,7 +10698,9 @@ body.finance-dual-tools-open .layout-content {
 
     .el-projection-setup-metrics,
     .el-projection-metric-grid,
-    .el-projection-metric-grid--wide,
+    .el-projection-metric-grid--cashflow,
+    .el-projection-metric-grid--cashflow-business,
+    .el-projection-metric-grid--debt-summary,
     .el-projection-week-values {
         grid-template-columns: repeat(2, minmax(0, 1fr));
     }
@@ -10694,9 +10793,15 @@ body.finance-dual-tools-open .layout-content {
 
     .el-projection-setup-metrics,
     .el-projection-metric-grid,
-    .el-projection-metric-grid--wide,
+    .el-projection-metric-grid--cashflow,
+    .el-projection-metric-grid--cashflow-business,
+    .el-projection-metric-grid--debt-summary,
     .el-projection-week-values {
         grid-template-columns: 1fr;
+    }
+
+    .el-projection-metric--summary-emphasis {
+        grid-column: span 1;
     }
 
     .el-projection-form-grid,

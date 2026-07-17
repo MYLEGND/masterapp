@@ -309,6 +309,185 @@ function run(argv) {
     }
 
     [Fact]
+    public void ProjectExpenseLensTimeline_GroupsCreditBillsOntoConfiguredMonthlyPaymentDay()
+    {
+        using var result = InvokeProjectionApi("projectExpenseLensTimeline", new
+        {
+            selectedMonthKey = "2026-08",
+            asOfDate = "2026-08-01",
+            horizonMonths = 24,
+            state = new
+            {
+                incomeStreams = new
+                {
+                    primary = new[]
+                    {
+                        new { id = "pay", amount = "4000", frequency = "monthly", anchorDate = "2026-08-01" }
+                    },
+                    secondary = Array.Empty<object>()
+                },
+                categories = new object[]
+                {
+                    new { id = "rent", name = "Rent", amount = "1000", due = "2026-08-02", frequency = "monthly", paymentMethod = "debit" },
+                    new { id = "groceries", name = "Groceries", amount = "200", due = "2026-08-03", frequency = "monthly", paymentMethod = "credit" },
+                    new { id = "utilities", name = "Utilities", amount = "300", due = "2026-08-19", frequency = "monthly", paymentMethod = "credit" }
+                },
+                projectionSettings = new
+                {
+                    creditPaymentDayOfMonth = 25
+                },
+                debt = new
+                {
+                    openingBalance = 0,
+                    asOfDate = "2026-08-01"
+                },
+                monthlyStartingBalanceOverrides = new Dictionary<string, object?>
+                {
+                    ["2026-08"] = new { amount = 0 }
+                }
+            }
+        });
+
+        var selectedMonth = result.RootElement.GetProperty("selectedMonth");
+        var weeks = selectedMonth.GetProperty("weeks").EnumerateArray().ToList();
+
+        var creditEvents = weeks
+            .SelectMany(week => week.GetProperty("events").EnumerateArray())
+            .Where(eventItem =>
+                eventItem.GetProperty("kind").GetString() == "expense"
+                && eventItem.GetProperty("paymentMethod").GetString() == "credit")
+            .ToList();
+
+        Assert.Equal(2, creditEvents.Count);
+        Assert.All(creditEvents, eventItem => Assert.Equal("2026-08-25", eventItem.GetProperty("dateKey").GetString()));
+
+        var paymentWeek = weeks.Single(week =>
+            week.GetProperty("events").EnumerateArray().Any(eventItem =>
+                eventItem.GetProperty("dateKey").GetString() == "2026-08-25"));
+
+        Assert.Equal(50000, paymentWeek.GetProperty("creditBillsCents").GetInt32());
+        Assert.Equal(
+            weeks.Count - 1,
+            weeks.Count(week => week.GetProperty("creditBillsCents").GetInt32() == 0));
+    }
+
+    [Fact]
+    public void ProjectExpenseLensTimeline_PreservesLegacyCompletedCreditHistoryWhenPaymentDayGroupingChangesKeys()
+    {
+        using var result = InvokeProjectionApi("projectExpenseLensTimeline", new
+        {
+            selectedMonthKey = "2026-08",
+            asOfDate = "2026-08-10",
+            horizonMonths = 24,
+            state = new
+            {
+                incomeStreams = new
+                {
+                    primary = Array.Empty<object>(),
+                    secondary = Array.Empty<object>()
+                },
+                categories = new object[]
+                {
+                    new { id = "card-bill", name = "Card Bill", amount = "120", due = "2026-08-03", frequency = "monthly", paymentMethod = "credit" }
+                },
+                projectionSettings = new
+                {
+                    creditPaymentDayOfMonth = 25
+                },
+                occurrenceHistory = new
+                {
+                    expenses = new Dictionary<string, object?>
+                    {
+                        ["expense:card-bill:2026-08-03"] = new
+                        {
+                            status = "completed",
+                            dateKey = "2026-08-03",
+                            actualAmountCents = 12000,
+                            paymentMethod = "credit",
+                            frequency = "monthly",
+                            label = "Card Bill",
+                            sourceType = "expense",
+                            sourceId = "card-bill"
+                        }
+                    }
+                },
+                debt = new
+                {
+                    openingBalance = 0,
+                    asOfDate = "2026-08-01"
+                }
+            }
+        });
+
+        var expenseEvents = result.RootElement
+            .GetProperty("selectedMonth")
+            .GetProperty("weeks")
+            .EnumerateArray()
+            .SelectMany(week => week.GetProperty("events").EnumerateArray())
+            .Where(eventItem => eventItem.GetProperty("kind").GetString() == "expense")
+            .ToList();
+
+        Assert.Single(expenseEvents);
+        Assert.Equal("2026-08-25", expenseEvents[0].GetProperty("dateKey").GetString());
+        Assert.Equal("actual", expenseEvents[0].GetProperty("status").GetString());
+    }
+
+    [Fact]
+    public void ProjectExpenseLensTimeline_PlacesTrackedDebtMinimumInFinalWeekAfterBills()
+    {
+        using var result = InvokeProjectionApi("projectExpenseLensTimeline", new
+        {
+            selectedMonthKey = "2026-08",
+            asOfDate = "2026-08-01",
+            horizonMonths = 24,
+            state = new
+            {
+                incomeStreams = new
+                {
+                    primary = new[]
+                    {
+                        new { id = "pay", amount = "3000", frequency = "monthly", anchorDate = "2026-08-01" }
+                    },
+                    secondary = Array.Empty<object>()
+                },
+                categories = new object[]
+                {
+                    new { id = "insurance", name = "Insurance", amount = "500", due = "2026-08-15", frequency = "monthly", paymentMethod = "debit" },
+                    new { id = "cc-min", name = "Debt Payment - Credit Cards", amount = "200", due = "2026-08-03", frequency = "monthly", paymentMethod = "debit", debtCategory = "tracked-unsecured-minimum" }
+                },
+                debt = new
+                {
+                    openingBalance = 1000,
+                    asOfDate = "2026-08-01"
+                },
+                monthlyStartingBalanceOverrides = new Dictionary<string, object?>
+                {
+                    ["2026-08"] = new { amount = 0 }
+                }
+            }
+        });
+
+        var selectedMonth = result.RootElement.GetProperty("selectedMonth");
+        var weeks = selectedMonth.GetProperty("weeks").EnumerateArray().ToList();
+        var finalWeek = weeks.Last();
+
+        var debtMinimumWeeks = weeks
+            .Where(week => week.GetProperty("events").EnumerateArray().Any(eventItem =>
+                eventItem.GetProperty("kind").GetString() == "expense"
+                && eventItem.TryGetProperty("debtCategory", out var debtCategory)
+                && debtCategory.GetString() == "tracked-unsecured-minimum"))
+            .ToList();
+
+        Assert.Single(debtMinimumWeeks);
+        Assert.Equal(finalWeek.GetProperty("id").GetString(), debtMinimumWeeks[0].GetProperty("id").GetString());
+
+        var finalWeekEvents = finalWeek.GetProperty("events").EnumerateArray().ToList();
+        Assert.True(finalWeekEvents.Count >= 2);
+        Assert.Equal("tracked-unsecured-minimum", finalWeekEvents[^2].GetProperty("debtCategory").GetString());
+        Assert.Equal("extraDebt", finalWeekEvents[^1].GetProperty("kind").GetString());
+    }
+
+    [Fact]
     public void GetScheduledOccurrenceDays_PreservesFourteenDayBiWeeklyAnchorCadence()
     {
         using var july = InvokeProjectionApi("getScheduledOccurrenceDays", new

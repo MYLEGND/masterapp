@@ -8142,6 +8142,16 @@ if (t.id === "ExpenseLens" || t.id === "BusinessExpenseLens") {
             expenses: {},
             debtPayments: {}
         });
+        const getDefaultProjectionSettings = () => {
+            if (expenseLensProjectionApi?.normalizeState) {
+                return expenseLensProjectionApi.normalizeState({}).projectionSettings;
+            }
+
+            return {
+                protectedCashReserveCents: 0,
+                creditPaymentDayOfMonth: null
+            };
+        };
         const getDefaultDebtState = () => {
             if (expenseLensProjectionApi?.normalizeState) {
                 return expenseLensProjectionApi.normalizeState({}).debt;
@@ -8159,6 +8169,24 @@ if (t.id === "ExpenseLens" || t.id === "BusinessExpenseLens") {
                 adjustments: []
             };
         };
+        const cloneProjectionSettings = (value) => ({
+            ...getDefaultProjectionSettings(),
+            ...(value || {}),
+            protectedCashReserveCents: Math.max(
+                0,
+                Math.round(value?.protectedCashReserveCents || 0)
+            ),
+            creditPaymentDayOfMonth: (() => {
+                const rawValue = value?.creditPaymentDayOfMonth;
+                if (rawValue === '' || rawValue === null || rawValue === undefined) {
+                    return null;
+                }
+
+                const parsedValue = Number.parseInt(String(rawValue).trim(), 10);
+                if (!Number.isFinite(parsedValue)) return null;
+                return Math.min(31, Math.max(1, parsedValue));
+            })()
+        });
         const cloneDebtState = (value) => ({
             ...getDefaultDebtState(),
             ...(value || {}),
@@ -8180,6 +8208,7 @@ if (t.id === "ExpenseLens" || t.id === "BusinessExpenseLens") {
             ? expenseLensProjectionApi.formatMonthKey(new Date())
             : getDefaultScheduledAnchorDate().slice(0, 7);
         let debtState = cloneDebtState(getDefaultDebtState());
+        let projectionSettingsState = cloneProjectionSettings(getDefaultProjectionSettings());
         let monthBalanceOverrides = {};
         let occurrenceHistoryState = getEmptyOccurrenceHistory();
         let projectionSelectedMonthKey = getTodayMonthKey();
@@ -8207,6 +8236,7 @@ if (t.id === "ExpenseLens" || t.id === "BusinessExpenseLens") {
         const applyNormalizedExpenseLensMemory = (state) => {
             const normalizedState = normalizeExpenseLensState(state);
             debtState = cloneDebtState(normalizedState?.debt);
+            projectionSettingsState = cloneProjectionSettings(normalizedState?.projectionSettings);
             monthBalanceOverrides = { ...(normalizedState?.monthlyStartingBalanceOverrides || {}) };
             occurrenceHistoryState = cloneOccurrenceHistory(normalizedState?.occurrenceHistory || getEmptyOccurrenceHistory());
             return normalizedState;
@@ -8251,6 +8281,7 @@ if (t.id === "ExpenseLens" || t.id === "BusinessExpenseLens") {
                 stateVersion: expenseLensStateVersion,
                 categories: collectExpenseLensCategories(),
                 debt: cloneDebtState(debtState),
+                projectionSettings: cloneProjectionSettings(projectionSettingsState),
                 monthlyStartingBalanceOverrides: { ...monthBalanceOverrides },
                 occurrenceHistory: cloneOccurrenceHistory(occurrenceHistoryState),
                 ...extraState
@@ -9067,6 +9098,24 @@ if (t.id === "ExpenseLens" || t.id === "BusinessExpenseLens") {
                 : fallback;
         };
 
+        const expenseLensFormatDayOfMonthLabel = (dayOfMonth, fallback = 'Not set') => {
+            const numericDay = Number.parseInt(String(dayOfMonth ?? '').trim(), 10);
+            if (!Number.isFinite(numericDay) || numericDay < 1) return fallback;
+
+            const suffix = (() => {
+                const mod100 = numericDay % 100;
+                if (mod100 >= 11 && mod100 <= 13) return 'th';
+                switch (numericDay % 10) {
+                    case 1: return 'st';
+                    case 2: return 'nd';
+                    case 3: return 'rd';
+                    default: return 'th';
+                }
+            })();
+
+            return `${numericDay}${suffix} of each month`;
+        };
+
         const expenseLensFormatCurrency = (centsValue, options = {}) => {
             const cents = Math.round(Number(centsValue) || 0);
             const absolute = Math.abs(cents / 100);
@@ -9195,6 +9244,23 @@ if (t.id === "ExpenseLens" || t.id === "BusinessExpenseLens") {
             refreshExpenseLensViews({ sortRows: false });
         };
 
+        const setCreditPaymentDay = (value) => {
+            const rawValue = String(value ?? '').trim();
+            if (!rawValue) {
+                projectionSettingsState.creditPaymentDayOfMonth = null;
+                invalidateExpenseLensProjection();
+                refreshExpenseLensViews({ sortRows: false });
+                return;
+            }
+
+            const parsedValue = Number.parseInt(rawValue, 10);
+            if (!Number.isFinite(parsedValue)) return;
+
+            projectionSettingsState.creditPaymentDayOfMonth = Math.min(31, Math.max(1, parsedValue));
+            invalidateExpenseLensProjection();
+            refreshExpenseLensViews({ sortRows: false });
+        };
+
         const addDebtAdjustment = (dateValue, amountValue, noteValue) => {
             const parsed = parseScheduledAnchorDate(dateValue);
             if (!parsed) return false;
@@ -9249,8 +9315,8 @@ if (t.id === "ExpenseLens" || t.id === "BusinessExpenseLens") {
             document.body.style.overflow = elWeekPanelBodyOverflow;
         };
 
-        const buildProjectionMetricHtml = ({ label, value, note = '', tone = 'neutral' }) => `
-            <article class="el-projection-metric el-projection-metric--${tone}">
+        const buildProjectionMetricHtml = ({ label, value, note = '', tone = 'neutral', className = '' }) => `
+            <article class="el-projection-metric el-projection-metric--${tone}${className ? ` ${className}` : ''}">
                 <dt>${expenseLensEscapeHtml(label)}</dt>
                 <dd>${expenseLensEscapeHtml(value)}</dd>
                 ${note ? `<p>${expenseLensEscapeHtml(note)}</p>` : ''}
@@ -9408,11 +9474,43 @@ if (t.id === "ExpenseLens" || t.id === "BusinessExpenseLens") {
                                 <strong class="${
                                     week.openingCashCents < 0
                                         ? 'finance-tone-expense'
-                                        : 'finance-tone-income'
+                                        : 'finance-tone-opening'
                                 }">
                                     ${expenseLensEscapeHtml(
                                         expenseLensFormatCurrency(
                                             week.openingCashCents
+                                        )
+                                    )}
+                                </strong>
+                            </span>
+
+                            <span class="el-projection-week-value el-projection-week-value--debit-total">
+                                <small>Total Debit</small>
+
+                                <strong class="${
+                                    week.debitBillsCents > 0
+                                        ? 'finance-tone-debit'
+                                        : 'finance-tone-neutral'
+                                }">
+                                    ${expenseLensEscapeHtml(
+                                        expenseLensFormatCurrency(
+                                            week.debitBillsCents || 0
+                                        )
+                                    )}
+                                </strong>
+                            </span>
+
+                            <span class="el-projection-week-value el-projection-week-value--credit-total">
+                                <small>Total Credit</small>
+
+                                <strong class="${
+                                    week.creditBillsCents > 0
+                                        ? 'finance-tone-credit'
+                                        : 'finance-tone-neutral'
+                                }">
+                                    ${expenseLensEscapeHtml(
+                                        expenseLensFormatCurrency(
+                                            week.creditBillsCents || 0
                                         )
                                     )}
                                 </strong>
@@ -9468,9 +9566,9 @@ if (t.id === "ExpenseLens" || t.id === "BusinessExpenseLens") {
                                 ? `
                                     <div class="el-projection-ledger">
                                         <div class="el-projection-ledger-bar">
-                                            <span class="el-projection-ledger-note">Running order: pay hits post first, then debit / cash obligations, then credit due in that week.</span>
+                                            <span class="el-projection-ledger-note">Running order: income lands first, debit / cash obligations post next, grouped credit payments follow the monthly card date, and debt lands last.</span>
                                             <span class="el-projection-ledger-summary">
-                                                <span>Start <strong class="${week.openingCashCents < 0 ? 'finance-tone-expense' : 'finance-tone-income'}">${expenseLensEscapeHtml(expenseLensFormatCurrency(week.openingCashCents))}</strong></span>
+                                                <span>Start <strong class="${week.openingCashCents < 0 ? 'finance-tone-expense' : 'finance-tone-opening'}">${expenseLensEscapeHtml(expenseLensFormatCurrency(week.openingCashCents))}</strong></span>
                                                 <span>•</span>
                                                 <span>Week End <strong class="${week.closingCashCents < 0 ? 'finance-tone-expense' : 'finance-tone-income'}">${expenseLensEscapeHtml(expenseLensFormatCurrency(week.closingCashCents))}</strong></span>
                                             </span>
@@ -9599,6 +9697,11 @@ if (t.id === "ExpenseLens" || t.id === "BusinessExpenseLens") {
             const previousMonth = selectedMonthIndex > 0 ? projection.months[selectedMonthIndex - 1] : null;
             const calculatedOpeningCashCents = previousMonth ? previousMonth.endingCashCents : selectedMonth.openingCashCents;
             const override = monthBalanceOverrides[selectedMonth.monthKey] || null;
+            const creditPaymentDayRaw = projectionSettingsState.creditPaymentDayOfMonth;
+            const creditPaymentDayParsed = Number.parseInt(String(creditPaymentDayRaw ?? '').trim(), 10);
+            const creditPaymentDayOfMonth = Number.isFinite(creditPaymentDayParsed)
+                ? Math.min(31, Math.max(1, creditPaymentDayParsed))
+                : null;
             const firstPositiveMonth = projection.summary?.firstPositiveMonthAfterDebtPayoff || null;
             const debtFreeMonth = projection.summary?.debtFreeMonth || null;
             const selectedMonthAdjustments = !isBusinessExpenseLens
@@ -9664,19 +9767,27 @@ if (t.id === "ExpenseLens" || t.id === "BusinessExpenseLens") {
                                             label: 'Calculated Opening Cash',
                                             value: expenseLensFormatCurrency(calculatedOpeningCashCents),
                                             note: previousMonth ? `Prior month ended ${expenseLensFormatCurrency(previousMonth.endingCashCents)}` : 'Baseline month opening balance',
-                                            tone: calculatedOpeningCashCents < 0 ? 'negative' : 'positive'
+                                            tone: calculatedOpeningCashCents < 0 ? 'negative' : 'opening'
                                         })}
                                         ${buildProjectionMetricHtml({
                                             label: 'Effective Opening Cash',
                                             value: expenseLensFormatCurrency(selectedMonth.openingCashCents),
                                             note: override ? 'Manual override is active for this month.' : 'Rolling balance is active for this month.',
-                                            tone: selectedMonth.openingCashCents < 0 ? 'negative' : 'neutral'
+                                            tone: selectedMonth.openingCashCents < 0 ? 'negative' : 'opening'
                                         })}
                                         ${buildProjectionMetricHtml({
                                             label: 'Starting Source',
                                             value: expenseLensFormatStartingSource(selectedMonth.startingBalanceSource),
                                             note: override?.note || 'No override note saved.',
                                             tone: override ? 'warning' : 'neutral'
+                                        })}
+                                        ${buildProjectionMetricHtml({
+                                            label: 'Credit Bill Payment Day',
+                                            value: expenseLensFormatDayOfMonthLabel(creditPaymentDayOfMonth),
+                                            note: creditPaymentDayOfMonth
+                                                ? 'All credit bills group onto this monthly payment date.'
+                                                : 'Blank keeps each credit bill on its own scheduled date.',
+                                            tone: creditPaymentDayOfMonth ? 'credit' : 'neutral'
                                         })}
                                     </div>
                                     <div class="el-projection-form-grid">
@@ -9697,6 +9808,17 @@ if (t.id === "ExpenseLens" || t.id === "BusinessExpenseLens") {
                                                    data-field="override-note"
                                                    value="${expenseLensEscapeAttr(override?.note || '')}"
                                                    placeholder="Bank reality, external transfer, untracked spend…" />
+                                        </label>
+                                        <label class="el-projection-field">
+                                            <span>Credit Bill Payment Day</span>
+                                            <input type="number"
+                                                   class="form-control"
+                                                   data-field="credit-payment-day"
+                                                   value="${expenseLensEscapeAttr(creditPaymentDayOfMonth || '')}"
+                                                   min="1"
+                                                   max="31"
+                                                   step="1"
+                                                   placeholder="Leave blank for each bill date" />
                                         </label>
                                         <label class="el-projection-field">
                                             <span>${isBusinessExpenseLens ? 'Projection as of' : 'Debt as of date'}</span>
@@ -9790,8 +9912,8 @@ if (t.id === "ExpenseLens" || t.id === "BusinessExpenseLens") {
                                 <h5>What lands in ${expenseLensEscapeHtml(expenseLensFormatMonthLabel(selectedMonth.monthKey))}</h5>
                             </div>
                         </div>
-                        <div class="el-projection-metric-grid">
-                            ${buildProjectionMetricHtml({ label: 'Starting Cash', value: expenseLensFormatCurrency(selectedMonth.openingCashCents), tone: selectedMonth.openingCashCents < 0 ? 'negative' : 'neutral' })}
+                        <div class="el-projection-metric-grid ${isBusinessExpenseLens ? 'el-projection-metric-grid--cashflow-business' : 'el-projection-metric-grid--cashflow'}">
+                            ${buildProjectionMetricHtml({ label: 'Starting Cash', value: expenseLensFormatCurrency(selectedMonth.openingCashCents), tone: selectedMonth.openingCashCents < 0 ? 'negative' : 'opening' })}
                             ${buildProjectionMetricHtml({ label: 'Scheduled Income', value: expenseLensFormatCurrency(selectedMonth.scheduledIncomeCents), tone: 'positive' })}
                             ${buildProjectionMetricHtml({
                                 label: 'Debit Bills · Priority 1',
@@ -9837,7 +9959,8 @@ if (t.id === "ExpenseLens" || t.id === "BusinessExpenseLens") {
                                         : 'Applied only after debit and credit bills.',
                                     tone: selectedMonth.extraDebtPaymentsCents > 0
                                         ? 'debt'
-                                        : 'neutral'
+                                        : 'neutral',
+                                    className: 'el-projection-metric--summary-emphasis'
                                 })
                                 : ''
                             }
@@ -9853,7 +9976,7 @@ if (t.id === "ExpenseLens" || t.id === "BusinessExpenseLens") {
                                     <h5>Combined unsecured debt payoff tracking</h5>
                                 </div>
                             </div>
-                            <div class="el-projection-metric-grid el-projection-metric-grid--wide">
+                            <div class="el-projection-metric-grid el-projection-metric-grid--debt-summary">
                                 ${buildProjectionMetricHtml({ label: 'Beginning Debt Balance', value: expenseLensFormatCurrency(selectedMonth.openingDebtCents), tone: selectedMonth.openingDebtCents > 0 ? 'negative' : 'positive' })}
                                 ${buildProjectionMetricHtml({ label: 'Ending Projected Debt', value: expenseLensFormatCurrency(selectedMonth.endingDebtCents), tone: selectedMonth.endingDebtCents > 0 ? 'negative' : 'positive' })}
                                 ${buildProjectionMetricHtml({ label: 'Projected Payoff Date', value: projection.summary?.debtPayoffDate ? expenseLensFormatDateLabel(projection.summary.debtPayoffDate) : 'Not paid off yet', note: debtState.projectedInterestExcluded === false ? 'Interest assumptions are active.' : 'Future interest and fees are excluded.', tone: projection.summary?.debtPayoffDate ? 'positive' : 'warning' })}
@@ -9905,6 +10028,10 @@ if (t.id === "ExpenseLens" || t.id === "BusinessExpenseLens") {
 
             weekPanel.querySelector('[data-field="debt-as-of"]')?.addEventListener('change', (event) => {
                 setDebtAsOfDate(event.target.value);
+            });
+
+            weekPanel.querySelector('[data-field="credit-payment-day"]')?.addEventListener('change', (event) => {
+                setCreditPaymentDay(event.target.value);
             });
 
             weekPanel.querySelectorAll('[data-action="toggle-projection-section"]').forEach((button) => {

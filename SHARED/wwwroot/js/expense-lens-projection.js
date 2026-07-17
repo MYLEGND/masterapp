@@ -10,12 +10,6 @@
     const CURRENT_VERSION = 2;
     const MAX_PROJECTION_MONTHS = 120;
     const WEEK_START_DAY = 0;
-    const DEBT_EVENT_ORDER = {
-        income: 0,
-        expense: 1,
-        debtAdjustment: 2,
-        extraDebt: 3
-    };
 
     const normalizeFrequency = (value) => {
         const normalized = (value || "").toString().toLowerCase().replace(/[^a-z]/g, "");
@@ -159,6 +153,24 @@
         return `${monthContext.year}-${pad2(monthContext.month + 1)}-01`;
     };
 
+    const normalizeDayOfMonth = (value, fallback = null) => {
+        if (value === undefined || value === null || value === "") return fallback;
+        const parsed = Number.parseInt(String(value).trim(), 10);
+        if (!Number.isFinite(parsed)) return fallback;
+        return Math.min(31, Math.max(1, parsed));
+    };
+
+    const buildMonthDayDate = (monthKey, dayOfMonth) => {
+        const monthContext = getMonthContext(monthKey);
+        const clampedDay = Math.min(
+            monthContext.days,
+            Math.max(1, normalizeDayOfMonth(dayOfMonth, 1))
+        );
+        const date = new Date(monthContext.year, monthContext.month, clampedDay);
+        date.setHours(0, 0, 0, 0);
+        return date;
+    };
+
     const getScheduledOccurrenceDays = (anchorValue, frequencyValue, options = {}) => {
         const anchorDate = parseDate(anchorValue);
         if (!anchorDate) return [];
@@ -249,6 +261,12 @@
         return [kind, escapeKeyPart(sourceId), dateKey, escapeKeyPart(extra)].filter(Boolean).join(":");
     };
 
+    const isTrackedDebtMinimumCategory = (value) =>
+        String(value || "").trim().toLowerCase() === "tracked-unsecured-minimum";
+
+    const isCreditPaymentMethod = (value) =>
+        String(value || "").trim().toLowerCase() === "credit";
+
     const normalizeDebtCategory = (name, explicitValue) => {
         const explicit = String(explicitValue || "").trim().toLowerCase();
         if (explicit === "tracked-unsecured-minimum" || explicit === "external-debt-obligation" || explicit === "none") {
@@ -277,6 +295,66 @@
         }
 
         return "none";
+    };
+
+    const getEventExecutionOrder = (eventItem) => {
+        if (eventItem?.kind === "income") return 0;
+
+        if (eventItem?.kind === "expense") {
+            if (isTrackedDebtMinimumCategory(eventItem.debtCategory)) return 3;
+            return isCreditPaymentMethod(eventItem.paymentMethod) ? 2 : 1;
+        }
+
+        if (eventItem?.kind === "debtAdjustment") return 4;
+        if (eventItem?.kind === "extraDebt") return 5;
+        return 9;
+    };
+
+    const sortProjectedEvents = (left, right) => {
+        const orderDiff = getEventExecutionOrder(left) - getEventExecutionOrder(right);
+        if (orderDiff !== 0) return orderDiff;
+
+        const dateDiff = left.date.getTime() - right.date.getTime();
+        if (dateDiff !== 0) return dateDiff;
+
+        return left.label.localeCompare(right.label);
+    };
+
+    const inferCreditPaymentDayOfMonth = (categories = []) => {
+        const uniqueDays = new Set();
+
+        categories.forEach((category) => {
+            if (!isCreditPaymentMethod(category?.paymentMethod)) return;
+            const parsedDueDate = parseDate(category?.due);
+            if (!parsedDueDate) return;
+            uniqueDays.add(parsedDueDate.getDate());
+        });
+
+        return uniqueDays.size === 1
+            ? Array.from(uniqueDays)[0]
+            : null;
+    };
+
+    const normalizeProjectionSettings = (rawProjectionSettings = {}, categories = []) => {
+        const source = rawProjectionSettings && typeof rawProjectionSettings === "object"
+            ? rawProjectionSettings
+            : {};
+        const hasExplicitCreditPaymentDay = Object.prototype.hasOwnProperty.call(
+            source,
+            "creditPaymentDayOfMonth"
+        );
+
+        return {
+            protectedCashReserveCents: clampCurrencyFloor(
+                parseStoredCentsOrMoney(
+                    source?.protectedCashReserveCents,
+                    source?.protectedCashReserve ?? 0
+                )
+            ),
+            creditPaymentDayOfMonth: hasExplicitCreditPaymentDay
+                ? normalizeDayOfMonth(source.creditPaymentDayOfMonth, null)
+                : inferCreditPaymentDayOfMonth(categories)
+        };
     };
 
     const normalizeIncomeStream = (groupKey, stream, index) => ({
@@ -456,6 +534,11 @@
 
     const normalizeState = (rawState, options = {}) => {
         const state = rawState && typeof rawState === "object" ? rawState : {};
+        const normalizedCategories = Array.isArray(state.categories)
+            ? state.categories.map((category, index) => normalizeCategory(category, index))
+            : Array.isArray(state.expenses)
+                ? state.expenses.map((category, index) => normalizeCategory(category, index))
+                : [];
         const normalizedDebt = normalizeDebtState(state.debt || {
             openingBalance: state.creditCardAndPersonalLoanDebt || 0
         });
@@ -463,11 +546,7 @@
             ...state,
             stateVersion: CURRENT_VERSION,
             incomeStreams: normalizeIncomeStreams(state),
-            categories: Array.isArray(state.categories)
-                ? state.categories.map((category, index) => normalizeCategory(category, index))
-                : Array.isArray(state.expenses)
-                    ? state.expenses.map((category, index) => normalizeCategory(category, index))
-                    : [],
+            categories: normalizedCategories,
             debt: normalizedDebt,
             monthlyStartingBalanceOverrides: normalizeMonthlyOverrides(
                 state.monthlyStartingBalanceOverrides ||
@@ -479,19 +558,11 @@
                 expenses: normalizeHistoryMap(state?.occurrenceHistory?.expenses || state?.history?.expenses, "expense"),
                 debtPayments: normalizeHistoryMap(state?.occurrenceHistory?.debtPayments || state?.history?.debtPayments, "debt")
             },
-            projectionSettings: {
-                protectedCashReserveCents: clampCurrencyFloor(
-                    parseStoredCentsOrMoney(
-                        state?.projectionSettings?.protectedCashReserveCents,
-                        state?.projectionSettings?.protectedCashReserve ?? 0
-                    )
-                )
-            }
+            projectionSettings: normalizeProjectionSettings(
+                state?.projectionSettings,
+                normalizedCategories
+            )
         };
-
-        if (!normalizedState.categories.length && Array.isArray(state.expenses)) {
-            normalizedState.categories = state.expenses.map((category, index) => normalizeCategory(category, index));
-        }
 
         if (options.includeComputedDebtBalance !== false) {
             normalizedState.debt.currentBalanceCents = clampCurrencyFloor(normalizedState.debt.currentBalanceCents || normalizedState.debt.openingBalanceCents);
@@ -581,23 +652,47 @@
 
     const buildScheduledExpenseOccurrences = (state, monthKey) => {
         const occurrences = [];
+        const monthContext = getMonthContext(monthKey);
+        const creditPaymentDayOfMonth = normalizeDayOfMonth(
+            state?.projectionSettings?.creditPaymentDayOfMonth,
+            null
+        );
+        const creditPaymentDate = creditPaymentDayOfMonth
+            ? buildMonthDayDate(monthKey, creditPaymentDayOfMonth)
+            : null;
+        const monthEndDate = buildMonthDayDate(monthKey, monthContext.days);
+
         state.categories.forEach((category) => {
             const amountCents = parseMoneyToCents(category.amount);
             if (amountCents <= 0) return;
             const due = String(category.due || "").trim();
             if (!due) return;
 
-            getScheduledOccurrenceDays(due, category.frequency, { monthKey }).forEach((date) => {
-                const dateKey = formatDateKey(date);
+            getScheduledOccurrenceDays(due, category.frequency, { monthKey }).forEach((sourceDate) => {
+                const sourceDateKey = formatDateKey(sourceDate);
+                const tracksDebtMinimum = isTrackedDebtMinimumCategory(category.debtCategory);
+                const scheduledDate = tracksDebtMinimum
+                    ? monthEndDate
+                    : isCreditPaymentMethod(category.paymentMethod) && creditPaymentDate
+                        ? creditPaymentDate
+                        : sourceDate;
+                const scheduledDateKey = formatDateKey(scheduledDate);
+                const legacyKey = buildOccurrenceKey("expense", category.id, sourceDateKey);
+                const occurrenceKey = scheduledDateKey === sourceDateKey
+                    ? legacyKey
+                    : buildOccurrenceKey("expense", category.id, scheduledDateKey, sourceDateKey);
                 occurrences.push({
-                    key: buildOccurrenceKey("expense", category.id, dateKey),
+                    key: occurrenceKey,
+                    legacyKeys: legacyKey === occurrenceKey ? [] : [legacyKey],
                     kind: "expense",
                     sourceType: "expense",
                     sourceId: category.id,
                     label: category.name || "Expense",
                     amountCents,
-                    date,
-                    dateKey,
+                    date: new Date(scheduledDate),
+                    dateKey: scheduledDateKey,
+                    originalDate: new Date(sourceDate),
+                    originalDateKey: sourceDateKey,
                     frequency: category.frequency,
                     paymentMethod: category.paymentMethod || "debit",
                     debtCategory: category.debtCategory || "none"
@@ -647,13 +742,25 @@
 
     const mergeHistoryOccurrences = (generated, historyMap, monthKey, fallbackKind) => {
         const generatedMap = new Map(generated.map((eventItem) => [eventItem.key, eventItem]));
+        const aliasKeyMap = new Map();
         const orphans = [];
+
+        generated.forEach((eventItem) => {
+            (Array.isArray(eventItem.legacyKeys) ? eventItem.legacyKeys : []).forEach((legacyKey) => {
+                if (!legacyKey || generatedMap.has(legacyKey) || aliasKeyMap.has(legacyKey)) return;
+                aliasKeyMap.set(legacyKey, eventItem.key);
+            });
+        });
 
         Object.entries(historyMap || {}).forEach(([key, record]) => {
             const dateKey = parseHistoryDateKey(key, record);
             if (!dateKey || formatMonthKey(dateKey) !== monthKey) return;
-            if (generatedMap.has(key)) {
-                const existing = generatedMap.get(key);
+            const matchedKey = generatedMap.has(key)
+                ? key
+                : aliasKeyMap.get(key);
+
+            if (matchedKey && generatedMap.has(matchedKey)) {
+                const existing = generatedMap.get(matchedKey);
                 existing.history = {
                     status: record.status || "pending",
                     actualAmountCents: record.actualAmountCents,
@@ -697,14 +804,7 @@
             });
         });
 
-        return generated.concat(orphans).sort((left, right) => {
-            const dateDiff = left.date.getTime() - right.date.getTime();
-            if (dateDiff !== 0) return dateDiff;
-            if ((DEBT_EVENT_ORDER[left.kind] ?? 9) !== (DEBT_EVENT_ORDER[right.kind] ?? 9)) {
-                return (DEBT_EVENT_ORDER[left.kind] ?? 9) - (DEBT_EVENT_ORDER[right.kind] ?? 9);
-            }
-            return left.label.localeCompare(right.label);
-        });
+        return generated.concat(orphans).sort(sortProjectedEvents);
     };
 
     const resolveEventStatus = (eventItem, today) => {
@@ -787,18 +887,13 @@
             const weekRows = [];
 
             weeks.forEach((week) => {
-                const weekEvents = (eventMapByWeek.get(week.id) || []).slice().sort((left, right) => {
-                    const dateDiff = left.date.getTime() - right.date.getTime();
-                    if (dateDiff !== 0) return dateDiff;
-                    if ((DEBT_EVENT_ORDER[left.kind] ?? 9) !== (DEBT_EVENT_ORDER[right.kind] ?? 9)) {
-                        return (DEBT_EVENT_ORDER[left.kind] ?? 9) - (DEBT_EVENT_ORDER[right.kind] ?? 9);
-                    }
-                    return left.label.localeCompare(right.label);
-                });
+                const weekEvents = (eventMapByWeek.get(week.id) || []).slice().sort(sortProjectedEvents);
 
                 const weekOpeningCashCents = runningCashCents;
                 const weekOpeningDebtCents = runningDebtCents;
                 let weekIncomeCents = 0;
+                let weekDebitBillsCents = 0;
+                let weekCreditBillsCents = 0;
                 let weekRequiredExpenseCents = 0;
                 let weekRequiredDebtMinimumCents = 0;
                 let extraDebtPaymentCents = 0;
@@ -830,13 +925,22 @@
                         const scheduledCents = eventItem.history?.status === "completed" && Number.isFinite(eventItem.history.actualAmountCents)
                             ? Math.max(0, Math.round(eventItem.history.actualAmountCents))
                             : eventItem.amountCents;
-                        const tracksDebt = eventItem.debtCategory === "tracked-unsecured-minimum";
+                        const tracksDebt = isTrackedDebtMinimumCategory(eventItem.debtCategory);
+                        const isCreditBill = !tracksDebt && isCreditPaymentMethod(eventItem.paymentMethod);
                         const appliedCashCents = tracksDebt && runningDebtCents <= 0 && !eventItem.history?.status
                             ? 0
                             : scheduledCents;
                         runningCashCents -= appliedCashCents;
                         requiredExpensesCents += appliedCashCents;
                         weekRequiredExpenseCents += appliedCashCents;
+
+                        if (!tracksDebt) {
+                            if (isCreditBill) {
+                                weekCreditBillsCents += appliedCashCents;
+                            } else {
+                                weekDebitBillsCents += appliedCashCents;
+                            }
+                        }
 
                         let appliedDebtCents = 0;
                         if (tracksDebt && appliedCashCents > 0 && runningDebtCents > 0) {
@@ -904,6 +1008,8 @@
                     openingDebtCents: weekOpeningDebtCents,
                     closingDebtCents: runningDebtCents,
                     incomeCents: weekIncomeCents,
+                    debitBillsCents: weekDebitBillsCents,
+                    creditBillsCents: weekCreditBillsCents,
                     requiredExpensesCents: weekRequiredExpenseCents,
                     requiredDebtMinimumCents: weekRequiredDebtMinimumCents,
                     extraDebtPaymentCents,
@@ -996,6 +1102,7 @@
                 extraDebtPaymentsCents,
                 endingCashCents: runningCashCents,
                 endingDebtCents: runningDebtCents,
+                creditPaymentDayOfMonth: state.projectionSettings?.creditPaymentDayOfMonth || null,
                 isReconciled: !hasHistoricalGaps,
                 warnings: [],
                 weeks: weekRows
