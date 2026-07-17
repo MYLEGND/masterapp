@@ -5200,14 +5200,24 @@ body.finance-dual-tools-open .layout-content {
 .networth-tool.el-shell .el-top-controls {
     --el-top-control-height: 46px;
     display: grid;
-    grid-template-columns: minmax(0, 1.02fr) minmax(0, .78fr) minmax(0, .9fr) minmax(0, 1.34fr);
-    gap: 14px;
+    gap: 12px;
     align-items: end;
     margin-bottom: 16px;
 }
 
+.networth-tool.el-shell .el-top-controls--personal {
+    grid-template-columns:
+        minmax(220px, 1.02fr)
+        minmax(190px, .82fr)
+        minmax(240px, .92fr)
+        minmax(500px, 1.42fr);
+}
+
 .networth-tool.el-shell .el-top-controls--business {
-    grid-template-columns: minmax(0, 1.02fr) minmax(0, .78fr) minmax(0, 1.28fr);
+    grid-template-columns:
+        minmax(220px, 1.02fr)
+        minmax(220px, .88fr)
+        minmax(500px, 1.42fr);
 }
 
 .networth-tool.el-shell .el-top-controls > * {
@@ -5512,28 +5522,51 @@ body.finance-dual-tools-open .layout-content {
 
 .networth-tool.el-shell .el-top-field--tracker {
     justify-self: stretch;
+    min-width: 0;
+}
+
+.networth-tool.el-shell .el-top-controls--personal > .el-top-field--tracker {
+    grid-column: 4;
+    grid-row: 1;
+}
+
+.networth-tool.el-shell .el-top-controls--business > .el-top-field--tracker {
+    grid-column: 3;
+    grid-row: 1;
 }
 
 .networth-tool.el-shell .el-top-field__tracker-controls {
     display: grid;
-    grid-template-columns: minmax(0, 1.08fr) repeat(2, minmax(0, .96fr));
+    grid-template-columns:
+        minmax(132px, .82fr)
+        minmax(164px, 1fr)
+        minmax(164px, 1fr);
     align-items: stretch;
     justify-content: stretch;
-    gap: 10px;
+    gap: 8px;
     width: 100%;
+    max-width: 100%;
     min-width: 0;
     min-height: var(--el-top-control-height);
+}
+
+.networth-tool.el-shell .el-top-field__tracker-controls > * {
+    min-width: 0;
 }
 
 .networth-tool.el-shell .el-top-field__tracker-controls .el-week-btn {
     min-width: 0;
     width: 100%;
+    font-size: 1rem;
 }
 
 .networth-tool.el-shell .el-top-field__tracker-controls > select.el-filter-select {
     min-width: 0;
     max-width: none;
     width: 100%;
+    font-size: 1rem;
+    padding-left: 16px;
+    padding-right: 34px;
 }
 
 .networth-tool.el-shell .el-top-field--debt .legend-money-input {
