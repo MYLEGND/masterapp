@@ -9110,6 +9110,29 @@ if (t.id === "ExpenseLens" || t.id === "BusinessExpenseLens") {
                 : fallback;
         };
 
+        const expenseLensFormatWeekRangeLabel = (week) => {
+            const startDate = week?.startDate instanceof Date
+                ? week.startDate
+                : expenseLensProjectionApi?.parseDate?.(week?.startDate);
+            const endDate = week?.endDate instanceof Date
+                ? week.endDate
+                : expenseLensProjectionApi?.parseDate?.(week?.endDate);
+
+            if (!startDate || !endDate) {
+                return String(week?.label || 'Week');
+            }
+
+            const startMonth = startDate.toLocaleString('default', { month: 'short' });
+            const endMonth = endDate.toLocaleString('default', { month: 'short' });
+            const startDay = startDate.getDate();
+            const endDay = endDate.getDate();
+            const rangeText = startMonth === endMonth
+                ? `${startMonth} ${startDay}-${endDay}`
+                : `${startMonth} ${startDay}-${endMonth} ${endDay}`;
+
+            return `${String(week?.label || 'Week')}: ${rangeText}`;
+        };
+
         const expenseLensFormatDayOfMonthLabel = (dayOfMonth, fallback = 'Not set') => {
             const numericDay = Number.parseInt(String(dayOfMonth ?? '').trim(), 10);
             if (!Number.isFinite(numericDay) || numericDay < 1) return fallback;
@@ -9452,6 +9475,7 @@ if (t.id === "ExpenseLens" || t.id === "BusinessExpenseLens") {
 
         const buildProjectionWeekHtml = (week) => {
             const isOpen = elExpandedWeekId === week.id;
+            const weekDisplayLabel = expenseLensFormatWeekRangeLabel(week);
 
             return `
                 <section class="el-projection-week ${isOpen ? 'is-open' : ''}">
@@ -9464,7 +9488,7 @@ if (t.id === "ExpenseLens" || t.id === "BusinessExpenseLens") {
                         <div class="el-projection-week-copy">
                             <div class="el-projection-week-title-row">
                                 <span class="el-projection-week-title">
-                                    ${expenseLensEscapeHtml(week.label)}
+                                    ${expenseLensEscapeHtml(weekDisplayLabel)}
                                 </span>
 
                                 <span class="el-projection-pill el-projection-pill--${expenseLensStatusTone(week.status)}">
