@@ -9598,6 +9598,123 @@ if (t.id === "ExpenseLens" || t.id === "BusinessExpenseLens") {
             `;
         };
 
+        const buildProjectionMonthRollupHtml = ({
+            monthLabel,
+            openingCashCents,
+            scheduledIncomeCents,
+            debitBillsCents,
+            creditBillsCents,
+            endingCashCents,
+            endingDebtCents
+        }) => `
+            <section class="el-projection-month-rollup">
+                <div class="el-projection-month-rollup-copy">
+                    <div class="el-projection-month-rollup-title-row">
+                        <span class="el-projection-month-rollup-title">Full Month</span>
+                        <span class="el-projection-pill el-projection-pill--info">
+                            ${expenseLensEscapeHtml(monthLabel)}
+                        </span>
+                    </div>
+
+                    <span class="el-projection-month-rollup-subtitle">
+                        Entire ${expenseLensEscapeHtml(monthLabel)} totals at a glance.
+                    </span>
+                </div>
+
+                <div class="el-projection-month-rollup-values ${isBusinessExpenseLens ? 'is-business' : ''}">
+                    <span class="el-projection-week-value el-projection-week-value--opening">
+                        <small>Starting Cash</small>
+
+                        <strong class="${
+                            openingCashCents < 0
+                                ? 'finance-tone-expense'
+                                : 'finance-tone-opening'
+                        }">
+                            ${expenseLensEscapeHtml(
+                                expenseLensFormatCurrency(openingCashCents)
+                            )}
+                        </strong>
+                    </span>
+
+                    <span class="el-projection-week-value el-projection-week-value--income-total">
+                        <small>Total Income</small>
+
+                        <strong class="${
+                            scheduledIncomeCents > 0
+                                ? 'finance-tone-income'
+                                : 'finance-tone-neutral'
+                        }">
+                            ${expenseLensEscapeHtml(
+                                expenseLensFormatCurrency(scheduledIncomeCents)
+                            )}
+                        </strong>
+                    </span>
+
+                    <span class="el-projection-week-value el-projection-week-value--debit-total">
+                        <small>Total Debit</small>
+
+                        <strong class="${
+                            debitBillsCents > 0
+                                ? 'finance-tone-debit'
+                                : 'finance-tone-neutral'
+                        }">
+                            ${expenseLensEscapeHtml(
+                                expenseLensFormatCurrency(debitBillsCents)
+                            )}
+                        </strong>
+                    </span>
+
+                    <span class="el-projection-week-value el-projection-week-value--credit-total">
+                        <small>Total Credit</small>
+
+                        <strong class="${
+                            creditBillsCents > 0
+                                ? 'finance-tone-credit'
+                                : 'finance-tone-neutral'
+                        }">
+                            ${expenseLensEscapeHtml(
+                                expenseLensFormatCurrency(creditBillsCents)
+                            )}
+                        </strong>
+                    </span>
+
+                    <span class="el-projection-week-value el-projection-week-value--ending ${endingCashCents < 0 ? 'el-projection-week-value--negative' : 'el-projection-week-value--positive'}">
+                        <small>Month End Cash</small>
+
+                        <strong class="${
+                            endingCashCents < 0
+                                ? 'finance-tone-expense'
+                                : 'finance-tone-income'
+                        }">
+                            ${expenseLensEscapeHtml(
+                                expenseLensFormatCurrency(endingCashCents)
+                            )}
+                        </strong>
+                    </span>
+
+                    ${
+                        !isBusinessExpenseLens
+                            ? `
+                                <span class="el-projection-week-value el-projection-week-value--debt ${endingDebtCents > 0 ? 'el-projection-week-value--debt-active' : 'el-projection-week-value--debt-clear'}">
+                                    <small>Month End Debt</small>
+
+                                    <strong class="${
+                                        endingDebtCents > 0
+                                            ? 'finance-tone-expense'
+                                            : 'finance-tone-income'
+                                    }">
+                                        ${expenseLensEscapeHtml(
+                                            expenseLensFormatCurrency(endingDebtCents)
+                                        )}
+                                    </strong>
+                                </span>
+                            `
+                            : ''
+                    }
+                </div>
+            </section>
+        `;
+
         const buildProjectionCollapsibleSection = ({
             sectionId,
             kicker,
@@ -9718,7 +9835,6 @@ if (t.id === "ExpenseLens" || t.id === "BusinessExpenseLens") {
 
             const notices = [
                 ...(Array.isArray(selectedMonth.warnings) ? selectedMonth.warnings : []),
-                projection.summary?.projectionAssumption || '',
                 projection.summary?.unpayableWithinHorizon
                     ? 'Debt is not projected to be fully paid within the current projection horizon.'
                     : ''
@@ -9900,6 +10016,15 @@ if (t.id === "ExpenseLens" || t.id === "BusinessExpenseLens") {
                         ${notices.length > 0
                             ? `<div class="el-projection-notices">${notices.map((notice, index) => buildProjectionNoticeHtml(notice, index === 0 && selectedMonth.status === 'historical-unreconciled' ? 'warning' : 'neutral')).join('')}</div>`
                             : ''}
+                        ${buildProjectionMonthRollupHtml({
+                            monthLabel: expenseLensFormatMonthLabel(selectedMonth.monthKey),
+                            openingCashCents: selectedMonth.openingCashCents,
+                            scheduledIncomeCents: selectedMonth.scheduledIncomeCents,
+                            debitBillsCents: selectedMonthDebitBillsCents,
+                            creditBillsCents: selectedMonthCreditBillsCents,
+                            endingCashCents: selectedMonth.endingCashCents,
+                            endingDebtCents: selectedMonth.endingDebtCents
+                        })}
                         <div class="el-projection-week-list">
                             ${selectedMonth.weeks.map(buildProjectionWeekHtml).join('')}
                         </div>

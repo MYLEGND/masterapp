@@ -1154,10 +1154,7 @@
                 firstPositiveMonthAfterDebtPayoff: firstPositiveMonthAfterPayoff,
                 maximumProjectedCashDeficitCents: Math.abs(Math.min(0, maxCashDeficitCents)),
                 maximumProjectedDebtBalanceCents: maxDebtBalanceCents,
-                unpayableWithinHorizon: !debtPaidWithinHorizon,
-                projectionAssumption: state.debt.projectedInterestExcluded !== false
-                    ? "Projected payoff excludes future interest and fees unless manual debt adjustments are entered."
-                    : "Projected payoff includes the currently configured debt assumptions."
+                unpayableWithinHorizon: !debtPaidWithinHorizon
             }
         };
     };

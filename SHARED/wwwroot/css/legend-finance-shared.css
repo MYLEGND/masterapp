@@ -6109,6 +6109,58 @@ body.finance-dual-tools-open .layout-content {
     gap: 8px;
 }
 
+.el-projection-month-rollup {
+    display: grid;
+    grid-template-columns: minmax(220px, .9fr) minmax(0, 1.9fr);
+    align-items: center;
+    gap: 12px;
+    margin-bottom: 10px;
+    padding: 12px 14px;
+    border: 1px solid rgba(147, 197, 253, .30);
+    border-radius: 16px;
+    background:
+        linear-gradient(180deg, rgba(28, 53, 112, .96), rgba(14, 28, 62, .992)),
+        radial-gradient(circle at top left, rgba(96, 165, 250, .12), transparent 58%),
+        radial-gradient(circle at top right, rgba(125, 211, 252, .07), transparent 52%);
+    box-shadow: 0 20px 34px rgba(2, 8, 23, .20), inset 0 1px 0 rgba(255, 255, 255, .05);
+}
+
+.el-projection-month-rollup-copy {
+    display: grid;
+    gap: 5px;
+    min-width: 0;
+}
+
+.el-projection-month-rollup-title-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+}
+
+.el-projection-month-rollup-title {
+    color: #fff7dd;
+    font-size: .92rem;
+    font-weight: 950;
+}
+
+.el-projection-month-rollup-subtitle {
+    color: #b7d3f5;
+    font-size: .76rem;
+    font-weight: 700;
+    line-height: 1.35;
+}
+
+.el-projection-month-rollup-values {
+    display: grid;
+    grid-template-columns: repeat(6, minmax(0, 1fr));
+    gap: 8px;
+}
+
+.el-projection-month-rollup-values.is-business {
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+}
+
 .el-projection-adjustment-item,
 .el-projection-week {
     border: 1px solid rgba(125, 211, 252, .18);
@@ -6235,6 +6287,16 @@ body.finance-dual-tools-open .layout-content {
 
 .el-projection-week-value--opening small {
     color: var(--el-projection-opening-label);
+}
+
+.el-projection-week-value--income-total {
+    border-color: var(--el-projection-income-border);
+    background: var(--el-projection-income-fill);
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, .04), 0 0 0 1px rgba(52, 211, 153, .08), 0 18px 28px var(--el-projection-income-glow);
+}
+
+.el-projection-week-value--income-total small {
+    color: var(--el-projection-income-label);
 }
 
 .el-projection-week-value--debit-total {
@@ -10701,8 +10763,13 @@ body.finance-dual-tools-open .layout-content {
     .el-projection-metric-grid--cashflow,
     .el-projection-metric-grid--cashflow-business,
     .el-projection-metric-grid--debt-summary,
-    .el-projection-week-values {
+    .el-projection-week-values,
+    .el-projection-month-rollup-values {
         grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
+    .el-projection-month-rollup {
+        grid-template-columns: 1fr;
     }
 
     .el-projection-week-summary {
@@ -10796,7 +10863,8 @@ body.finance-dual-tools-open .layout-content {
     .el-projection-metric-grid--cashflow,
     .el-projection-metric-grid--cashflow-business,
     .el-projection-metric-grid--debt-summary,
-    .el-projection-week-values {
+    .el-projection-week-values,
+    .el-projection-month-rollup-values {
         grid-template-columns: 1fr;
     }
 
