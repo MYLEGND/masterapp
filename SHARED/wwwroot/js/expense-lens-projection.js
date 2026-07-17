@@ -9,7 +9,6 @@
 
     const CURRENT_VERSION = 2;
     const MAX_PROJECTION_MONTHS = 120;
-    const WEEK_START_DAY = 0;
 
     const normalizeFrequency = (value) => {
         const normalized = (value || "").toString().toLowerCase().replace(/[^a-z]/g, "");
@@ -221,34 +220,29 @@
         return occurrences;
     };
 
-    const getCalendarWeeksForMonth = (monthKey, options = {}) => {
+    const getCalendarWeeksForMonth = (monthKey) => {
         const monthContext = getMonthContext(monthKey);
-        const startDay = Number.isInteger(options.weekStartDay) ? options.weekStartDay : WEEK_START_DAY;
         const weeks = [];
-        const firstOfMonth = new Date(monthContext.year, monthContext.month, 1);
-        const startOffset = (firstOfMonth.getDay() - startDay + 7) % 7;
-        const cursor = new Date(monthContext.year, monthContext.month, 1 - startOffset);
+        let startDayOfMonth = 1;
         let weekNumber = 1;
 
-        while (cursor <= monthContext.endDate) {
-            const weekStart = new Date(cursor);
+        while (startDayOfMonth <= monthContext.days) {
+            const weekStart = new Date(monthContext.year, monthContext.month, startDayOfMonth);
             weekStart.setHours(0, 0, 0, 0);
-            const weekEnd = new Date(cursor);
-            weekEnd.setDate(weekEnd.getDate() + 6);
+            const endDayOfMonth = Math.min(startDayOfMonth + 6, monthContext.days);
+            const weekEnd = new Date(monthContext.year, monthContext.month, endDayOfMonth);
             weekEnd.setHours(23, 59, 59, 999);
 
             weeks.push({
-                id: formatDateKey(weekStart),
+                id: `${monthContext.monthKey}-week-${weekNumber}`,
                 label: `Week ${weekNumber}`,
                 startDate: weekStart,
                 endDate: weekEnd,
                 monthKey,
-                isCurrentMonthWeek:
-                    weekStart.getMonth() === monthContext.month ||
-                    weekEnd.getMonth() === monthContext.month
+                isCurrentMonthWeek: true
             });
 
-            cursor.setDate(cursor.getDate() + 7);
+            startDayOfMonth = endDayOfMonth + 1;
             weekNumber += 1;
         }
 

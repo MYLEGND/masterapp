@@ -9059,7 +9059,6 @@ if (t.id === "ExpenseLens" || t.id === "BusinessExpenseLens") {
         // Shared Projection Tracker
         // -----------------------------------------
         const EL_TRACKER_MAX_FUTURE_MONTHS = expenseLensProjectionApi?.MAX_PROJECTION_MONTHS || 120;
-        const EL_WEEK_START_DAY = 0;
 
         const elGetBillFrequency = (index) => {
             const frequencyEl = elById(`CatFrequency${index}`);
@@ -9071,8 +9070,7 @@ if (t.id === "ExpenseLens" || t.id === "BusinessExpenseLens") {
             const frequency = elGetBillFrequency(index);
             return getScheduledOccurrenceDays(dueEl?.value || '', frequency, {
                 monthKey: monthKey || getTodayMonthKey(),
-                week,
-                weekStartDay: EL_WEEK_START_DAY
+                week
             });
         };
 
