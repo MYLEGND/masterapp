@@ -5207,17 +5207,17 @@ body.finance-dual-tools-open .layout-content {
 
 .networth-tool.el-shell .el-top-controls--personal {
     grid-template-columns:
-        minmax(220px, 1.02fr)
-        minmax(190px, .82fr)
-        minmax(240px, .92fr)
-        minmax(500px, 1.42fr);
+        minmax(0, 1.02fr)
+        minmax(0, .82fr)
+        minmax(0, .92fr)
+        minmax(0, 1.08fr);
 }
 
 .networth-tool.el-shell .el-top-controls--business {
     grid-template-columns:
-        minmax(220px, 1.02fr)
-        minmax(220px, .88fr)
-        minmax(500px, 1.42fr);
+        minmax(0, 1.02fr)
+        minmax(0, .88fr)
+        minmax(0, 1.08fr);
 }
 
 .networth-tool.el-shell .el-top-controls > * {
@@ -5523,6 +5523,7 @@ body.finance-dual-tools-open .layout-content {
 .networth-tool.el-shell .el-top-field--tracker {
     justify-self: stretch;
     min-width: 0;
+    overflow: hidden;
 }
 
 .networth-tool.el-shell .el-top-controls--personal > .el-top-field--tracker {
@@ -5538,9 +5539,8 @@ body.finance-dual-tools-open .layout-content {
 .networth-tool.el-shell .el-top-field__tracker-controls {
     display: grid;
     grid-template-columns:
-        minmax(132px, .82fr)
-        minmax(164px, 1fr)
-        minmax(164px, 1fr);
+        minmax(0, .94fr)
+        minmax(0, 1.06fr);
     align-items: stretch;
     justify-content: stretch;
     gap: 8px;
@@ -5548,6 +5548,7 @@ body.finance-dual-tools-open .layout-content {
     max-width: 100%;
     min-width: 0;
     min-height: var(--el-top-control-height);
+    overflow: hidden;
 }
 
 .networth-tool.el-shell .el-top-field__tracker-controls > * {
@@ -5564,9 +5565,9 @@ body.finance-dual-tools-open .layout-content {
     min-width: 0;
     max-width: none;
     width: 100%;
-    font-size: 1rem;
-    padding-left: 16px;
-    padding-right: 34px;
+    font-size: .96rem;
+    padding-left: 14px;
+    padding-right: 30px;
 }
 
 .networth-tool.el-shell .el-top-field--debt .legend-money-input {

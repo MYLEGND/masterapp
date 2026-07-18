@@ -8716,7 +8716,6 @@ if (t.id === "ExpenseLens" || t.id === "BusinessExpenseLens") {
         let elDragSrc = null;
         let elActivePaymentFilter = EL_BILL_FILTER_DEFAULT_VALUE;
         let elActiveWeekFilter = EL_WEEK_FILTER_ALL_VALUE;
-        let elWeekFilterWasAutoSelected = false;
         let paymentFilterSelect = null;
         let weekFilterSelect = null;
         let weekPanelBackdrop = null;
@@ -8745,6 +8744,8 @@ if (t.id === "ExpenseLens" || t.id === "BusinessExpenseLens") {
 
         const getExpenseLensFilterMonthKey = () => projectionSelectedMonthKey || getTodayMonthKey();
 
+        const getExpenseLensLandingMonthKey = () => getTodayMonthKey();
+
         const getExpenseLensWeekFilterOptions = () => {
             const monthKey = getExpenseLensFilterMonthKey();
             const weeks = expenseLensProjectionApi?.getCalendarWeeksForMonth
@@ -8763,69 +8764,63 @@ if (t.id === "ExpenseLens" || t.id === "BusinessExpenseLens") {
             return getExpenseLensWeekFilterOptions().find((option) => option.value === elActiveWeekFilter)?.week || null;
         };
 
-        const getDefaultExpenseLensBillFilterWeek = () => {
-            const weekOptions = getExpenseLensWeekFilterOptions();
-            if (!weekOptions.length) return null;
+        const getCurrentExpenseLensBillFilterWeek = () => {
+            if (!expenseLensProjectionApi?.getCalendarWeeksForMonth) return null;
 
             const today = new Date();
-            const todayMonthKey = expenseLensProjectionApi?.formatMonthKey
-                ? expenseLensProjectionApi.formatMonthKey(today)
-                : getTodayMonthKey();
-            const selectedMonthKey = getExpenseLensFilterMonthKey();
+            const currentMonthKey = getExpenseLensLandingMonthKey();
+            const weekOptions = expenseLensProjectionApi.getCalendarWeeksForMonth(currentMonthKey) || [];
+            if (!weekOptions.length) return null;
 
-            if (selectedMonthKey === todayMonthKey) {
-                const nowTime = today.getTime();
-                const currentWeek = weekOptions.find(({ week }) => {
-                    const startDate = week?.startDate instanceof Date
-                        ? week.startDate
-                        : expenseLensProjectionApi?.parseDate?.(week?.startDate);
-                    const endDate = week?.endDate instanceof Date
-                        ? week.endDate
-                        : expenseLensProjectionApi?.parseDate?.(week?.endDate);
-                    if (!startDate || !endDate) return false;
+            const nowTime = new Date(
+                today.getFullYear(),
+                today.getMonth(),
+                today.getDate(),
+                12,
+                0,
+                0,
+                0
+            ).getTime();
 
-                    const weekStartTime = new Date(
-                        startDate.getFullYear(),
-                        startDate.getMonth(),
-                        startDate.getDate()
-                    ).getTime();
-                    const weekEndTime = new Date(
-                        endDate.getFullYear(),
-                        endDate.getMonth(),
-                        endDate.getDate(),
-                        23,
-                        59,
-                        59,
-                        999
-                    ).getTime();
+            const currentWeek = weekOptions.find((week) => {
+                const startDate = week?.startDate instanceof Date
+                    ? week.startDate
+                    : expenseLensProjectionApi?.parseDate?.(week?.startDate);
+                const endDate = week?.endDate instanceof Date
+                    ? week.endDate
+                    : expenseLensProjectionApi?.parseDate?.(week?.endDate);
+                if (!startDate || !endDate) return false;
 
-                    return nowTime >= weekStartTime && nowTime <= weekEndTime;
-                });
+                const weekStartTime = new Date(
+                    startDate.getFullYear(),
+                    startDate.getMonth(),
+                    startDate.getDate(),
+                    0,
+                    0,
+                    0,
+                    0
+                ).getTime();
+                const weekEndTime = new Date(
+                    endDate.getFullYear(),
+                    endDate.getMonth(),
+                    endDate.getDate(),
+                    23,
+                    59,
+                    59,
+                    999
+                ).getTime();
 
-                if (currentWeek?.week) {
-                    return currentWeek.week;
-                }
-            }
+                return nowTime >= weekStartTime && nowTime <= weekEndTime;
+            });
 
-            return weekOptions[0]?.week || null;
+            return currentWeek || weekOptions[0] || null;
         };
 
-        const syncExpenseLensBillFilterWeekSelection = () => {
-            const hasPaymentFilter = elActivePaymentFilter !== EL_BILL_FILTER_DEFAULT_VALUE;
-
-            if (hasPaymentFilter && elActiveWeekFilter === EL_WEEK_FILTER_ALL_VALUE) {
-                const defaultWeek = getDefaultExpenseLensBillFilterWeek();
-                if (defaultWeek?.id) {
-                    elActiveWeekFilter = defaultWeek.id;
-                    elWeekFilterWasAutoSelected = true;
-                }
-                return;
-            }
-
-            if (!hasPaymentFilter && elWeekFilterWasAutoSelected) {
-                elActiveWeekFilter = EL_WEEK_FILTER_ALL_VALUE;
-                elWeekFilterWasAutoSelected = false;
-            }
+        const getEffectiveExpenseLensWeekFilter = () => {
+            const selectedWeek = getActiveExpenseLensWeekFilter();
+            if (selectedWeek) return selectedWeek;
+            if (elActivePaymentFilter === EL_BILL_FILTER_DEFAULT_VALUE) return null;
+            return getCurrentExpenseLensBillFilterWeek();
         };
 
         const getProjectedWeekExpenseCategoryTotals = (monthKey, weekId, paymentFilter = EL_BILL_FILTER_DEFAULT_VALUE) => {
@@ -8906,7 +8901,6 @@ if (t.id === "ExpenseLens" || t.id === "BusinessExpenseLens") {
 
         const syncExpenseLensProjectionViews = (options = {}) => {
             const shouldSortRows = !!options.sortRows;
-            syncExpenseLensBillFilterWeekSelection();
             applyExpenseLensRowVisibility();
             syncExpenseLensViewControls();
             refreshExpenseLens({ sortRows: shouldSortRows });
@@ -8920,8 +8914,8 @@ if (t.id === "ExpenseLens" || t.id === "BusinessExpenseLens") {
         };
 
         const applyExpenseLensRowVisibility = () => {
-            const selectedMonthKey = getExpenseLensFilterMonthKey();
-            const activeWeek = getActiveExpenseLensWeekFilter();
+            const selectedMonthKey = getExpenseLensLandingMonthKey();
+            const activeWeek = getEffectiveExpenseLensWeekFilter();
             const weekCategoryTotals = activeWeek
                 ? getProjectedWeekExpenseCategoryTotals(selectedMonthKey, activeWeek.id, elActivePaymentFilter)
                 : null;
@@ -9217,8 +9211,8 @@ if (t.id === "ExpenseLens" || t.id === "BusinessExpenseLens") {
                 ? Math.max(0, Math.round((incomeSummary?.monthlyTotal || 0) * 100))
                 : Math.max(0, parseExpenseLensMoneyToCents(elIncome.value));
             const income = centsToExpenseLensDollars(incomeCents);
-            const selectedMonthKey = getExpenseLensFilterMonthKey();
-            const activeWeek = getActiveExpenseLensWeekFilter();
+            const selectedMonthKey = getExpenseLensLandingMonthKey();
+            const activeWeek = getEffectiveExpenseLensWeekFilter();
             const weekCategoryTotals = activeWeek
                 ? getProjectedWeekExpenseCategoryTotals(selectedMonthKey, activeWeek.id, elActivePaymentFilter)
                 : null;
@@ -10609,7 +10603,6 @@ if (t.id === "ExpenseLens" || t.id === "BusinessExpenseLens") {
                 || availableOptions.some((option) => option.value === nextValue)
                 ? nextValue
                 : EL_WEEK_FILTER_ALL_VALUE;
-            elWeekFilterWasAutoSelected = false;
             elExpandedWeekId = '';
             refreshExpenseLensViews({ sortRows: true });
         });
@@ -10715,7 +10708,6 @@ if (t.id === "ExpenseLens" || t.id === "BusinessExpenseLens") {
         trackerControls.className = 'el-top-field__tracker-controls';
         trackerControls.appendChild(weeklyBtnTop);
         trackerControls.appendChild(paymentFilterSelect);
-        trackerControls.appendChild(weekFilterSelect);
         trackerWrap.appendChild(trackerControls);
         elTopControls.appendChild(trackerWrap);
 
