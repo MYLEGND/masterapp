@@ -207,32 +207,6 @@ footer.footer {
     display: block;
 }
 
-/* ------------------------------ Dashboard / Tool Cards ------------------------------ */
-.dashboard-tool {
-    border: 1.6px solid var(--legend-line-strong);
-    border-radius: 16px;
-    padding: 1rem;
-    text-decoration: none;
-    color: var(--legend-ink);
-    transition: transform .2s ease, box-shadow .22s ease, border-color .22s ease;
-    font-weight: 700;
-    background-color: var(--legend-surface);
-    box-shadow: var(--legend-shadow);
-}
-.dashboard-tool:hover {
-    transform: translateY(-6px);
-    box-shadow: var(--legend-shadow-strong);
-    border-color: rgba(166,128,35,.92);
-    color: var(--legend-gold-deep);
-}
-.centered-tools {
-    display: flex;
-    flex-wrap: wrap;
-    justify-content: center;   
-    align-content: center;     
-    gap: 1rem;
-}
-
 /* ------------------------------ Explore Drawer ------------------------------ */
 .explore-trigger{
     position: fixed;
@@ -340,119 +314,7 @@ footer.footer {
     color:var(--legend-gold);
 }
 
-/* ------------------------------ Search Input with Clear Button ------------------------------ */
-.search-container {
-    display: flex;
-    justify-content: center; /* center search bar */
-    position: relative;
-    width: 100%;
-    margin-bottom: 2rem;
-}
-
-.search-input {
-    width: 400px;
-    max-width: 90%;
-    padding: 0.6rem 2.5rem 0.6rem 1rem; /* padding-right for clear button */
-    border-radius: 50px;
-    border: 2px solid var(--legend-gold);
-    font-size: 1rem;
-    box-shadow: 0 10px 22px rgba(0,0,0,0.24);
-    transition: all 0.3s ease;
-    background: linear-gradient(180deg,#0f172a,#0b111f);
-    color:var(--legend-text);
-}
-
-.search-input:focus {
-    outline: none;
-    border-color: var(--legend-gold);
-    box-shadow: 0 0 0 3px rgba(217,179,90,0.28), 0 10px 24px rgba(0,0,0,0.24);
-}
-
-/* ------------------------------ Tool Dropdowns / Display ------------------------------ */
-.tool-dropdown {
-    display: inline-block;
-    padding: 5px 12px;
-    border: 1px solid var(--legend-gold);
-    border-radius: 12px;
-    background: linear-gradient(180deg,#111827,#0b111f);
-    color: var(--legend-text);
-    font-weight: 700;
-    transition: all .25s ease;
-    box-shadow: 0 10px 22px rgba(0,0,0,.22);
-}
-.tool-dropdown:hover { border-color: var(--legend-gold); color: var(--legend-gold); box-shadow: 0 12px 26px rgba(0,0,0,.28); }
-
-.tool-display {
-    margin-top: 30px;
-    min-height: 60vh;
-    border: 1.6px solid var(--legend-gold);
-    border-radius: 16px;
-    padding: 20px;
-    background: linear-gradient(180deg,#0f172a,#0b111f);
-    box-shadow: 0 18px 36px rgba(0,0,0,0.30);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-}
-.tool-display img { max-width: 100%; max-height: 500px; object-fit: contain; filter: drop-shadow(0 10px 18px rgba(0,0,0,.35)); }
-
-/* ------------------------------ Responsive adjustments ------------------------------ */
-@media (max-width: 992px) {
-    body:not(.finance-page) .container,
-    body:not(.finance-page) .container-fluid { padding-left: 1rem; padding-right: 1rem; }
-    .navbar-left, .navbar-right { flex-wrap: wrap; justify-content: flex-start; }
-}
-@media (max-width: 576px) {
-    h1, h2 { font-size: 1.35rem; }
-    h3 { font-size: 1.15rem; }
-    .nav-link { padding: 0.5rem; }
-    img { max-width: 100%; height: auto; }
-    .search-input { width: 90%; }
-}
-
-
-/* ============================== DASHBOARD / TOOLS (ORIGINAL – FIXED) ============================== */
-
-.dashboard-tool {
-    border: 1.6px solid var(--legend-gold);
-    border-radius: 12px;
-    padding: 1rem;
-    text-decoration: none;
-    color: var(--legend-text);
-    transition: all .25s ease, box-shadow .25s ease;
-    font-weight: 700;
-    background: linear-gradient(180deg,#111827,#0b111f);
-    position: relative;
-    box-shadow: 0 16px 32px rgba(0,0,0,.26);
-}
-
-.dashboard-tool:hover {
-    transform: translateY(-5px);
-    box-shadow: 0 0 20px 6px rgba(217,179,90,0.28);
-    color: var(--legend-gold);
-}
-
-.dashboard-tool .tool-desc {
-    position: absolute;
-    inset: 0;
-    background: linear-gradient(180deg,#0f172a,#0b111f);
-    color: var(--legend-gold);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    text-align: center;
-    font-size: 0.9rem;
-    padding: 0.5rem;
-    opacity: 0;
-    border-radius: 12px;
-    transition: opacity 0.25s ease-in-out;
-    font-weight: 750;
-}
-
-.dashboard-tool:hover .tool-desc { opacity: 1; }
-.dashboard-tool:hover img,
-.dashboard-tool:hover .tool-name { opacity: 0.2; }
-
+/* ------------------------------ Shared tool grid utilities ------------------------------ */
 .centered-tools {
     display: flex;
     flex-wrap: wrap;
@@ -460,9 +322,8 @@ footer.footer {
     gap: 1rem;
 }
 
-/* ============================== SEARCH (ORIGINAL) ============================== */
-
-.search-container {
+/* ------------------------------ Search Input with Clear Button ------------------------------ */
+.search-container:not(.dashboard-search-panel) {
     display: flex;
     justify-content: center;
     position: relative;
@@ -484,6 +345,39 @@ footer.footer {
     outline: none;
     border-color: #b2882b;
     box-shadow: 0 0 10px rgba(166,128,35,0.4);
+}
+
+/* ------------------------------ Tool Dropdowns ------------------------------ */
+.tool-dropdown {
+    display: inline-block;
+    padding: 5px 12px;
+    border: 1px solid var(--legend-gold);
+    border-radius: 12px;
+    background: linear-gradient(180deg,#111827,#0b111f);
+    color: var(--legend-text);
+    font-weight: 700;
+    transition: all .25s ease;
+    box-shadow: 0 10px 22px rgba(0,0,0,.22);
+}
+
+.tool-dropdown:hover {
+    border-color: var(--legend-gold);
+    color: var(--legend-gold);
+    box-shadow: 0 12px 26px rgba(0,0,0,.28);
+}
+
+/* ------------------------------ Responsive adjustments ------------------------------ */
+@media (max-width: 992px) {
+    body:not(.finance-page) .container,
+    body:not(.finance-page) .container-fluid { padding-left: 1rem; padding-right: 1rem; }
+    .navbar-left, .navbar-right { flex-wrap: wrap; justify-content: flex-start; }
+}
+@media (max-width: 576px) {
+    h1, h2 { font-size: 1.35rem; }
+    h3 { font-size: 1.15rem; }
+    .nav-link { padding: 0.5rem; }
+    img { max-width: 100%; height: auto; }
+    .search-input { width: 90%; }
 }
 
 
@@ -544,7 +438,7 @@ footer.footer {
     .hero-hr{ display: none !important; }
 
     /* Search bars */
-    .search-container{
+    .search-container:not(.dashboard-search-panel){
         flex-direction: column;
         align-items: stretch;
         gap: 0.5rem;
@@ -553,7 +447,7 @@ footer.footer {
     .btn-clear-search{ width: 100%; }
 
     /* Category collapsible cards */
-    .category-container{
+    .home-container:not(.dashboard-page-shell) .category-container{
         margin-bottom: 1rem;
         border: 1px solid rgba(0,0,0,.06);
         border-radius: 12px;
@@ -561,7 +455,7 @@ footer.footer {
         background: #fff;
         box-shadow: 0 8px 18px rgba(0,0,0,.04);
     }
-    .category-container h3{
+    .home-container:not(.dashboard-page-shell) .category-container h3{
         display: flex;
         align-items: center;
         justify-content: space-between;
@@ -569,27 +463,27 @@ footer.footer {
         font-size: 1.05rem;
         cursor: pointer;
     }
-    .category-container h3::after{
+    .home-container:not(.dashboard-page-shell) .category-container h3::after{
         content: attr(data-mobile-state);
         font-weight: 900;
         color: #a68023;
         padding-left: 8px;
     }
-    .category-container .centered-tools{
+    .home-container:not(.dashboard-page-shell) .category-container .centered-tools{
         display: none;
         gap: 0.65rem;
         justify-content: flex-start;
     }
-    .category-container.is-open .centered-tools{ display: flex; }
+    .home-container:not(.dashboard-page-shell) .category-container.is-open .centered-tools{ display: flex; }
 
     /* Tool tiles */
-    .dashboard-tool,
+    .home-container:not(.dashboard-page-shell) .dashboard-tool,
     .trusted-partners-tool{
         width: 46vw;
         min-width: 150px;
         height: 120px;
     }
-    .dashboard-tool .tool-desc,
+    .home-container:not(.dashboard-page-shell) .dashboard-tool .tool-desc,
     .trusted-partners-tool .tool-desc{
         display: none;
     }
@@ -670,11 +564,10 @@ body:not(.finance-page) main .card,
 body:not(.finance-page) main .controls-card,
 body:not(.finance-page) main .preview-shell,
 body:not(.finance-page) main .empty-state,
-body:not(.finance-page) main .tool-display,
 body:not(.finance-page) main #training-embed,
-body:not(.finance-page) main .category-container,
 body:not(.finance-page) main .tools-container,
-body:not(.finance-page) main .training-page {
+body:not(.finance-page) main .training-page,
+body:not(.finance-page) main .home-container:not(.dashboard-page-shell) .category-container {
     background: #ffffff;
     border: 1.5px solid var(--legend-line);
     box-shadow: var(--legend-shadow);
@@ -684,26 +577,25 @@ body:not(.finance-page) main .card,
 body:not(.finance-page) main .controls-card,
 body:not(.finance-page) main .preview-shell,
 body:not(.finance-page) main .empty-state,
-body:not(.finance-page) main .tool-display,
 body:not(.finance-page) main #training-embed,
 body:not(.finance-page) main .tools-container,
 body:not(.finance-page) main .training-page {
     border-radius: 18px;
 }
 
-body:not(.finance-page) main .category-container,
+body:not(.finance-page) main .home-container:not(.dashboard-page-shell) .category-container,
 body:not(.finance-page) main .tools-container,
 body:not(.finance-page) main .training-page {
     position: relative;
     overflow: hidden;
 }
 
-body:not(.finance-page) main .category-container,
+body:not(.finance-page) main .home-container:not(.dashboard-page-shell) .category-container,
 body:not(.finance-page) main .training-page {
     padding: 1.4rem 1.25rem;
 }
 
-body:not(.finance-page) main .category-container::before,
+body:not(.finance-page) main .home-container:not(.dashboard-page-shell) .category-container::before,
 body:not(.finance-page) main .tools-container::before,
 body:not(.finance-page) main .training-page::before {
     content: "";
@@ -715,7 +607,7 @@ body:not(.finance-page) main .training-page::before {
     background: linear-gradient(90deg, #a68023, #c79931 24%, var(--legend-gold-bright) 52%, #c79931 80%, #a68023);
 }
 
-body:not(.finance-page) main .category-container > h3,
+body:not(.finance-page) main .home-container:not(.dashboard-page-shell) .category-container > h3,
 body:not(.finance-page) main .tools-container h1,
 body:not(.finance-page) main .training-page h1 {
     color: var(--legend-gold-deep);

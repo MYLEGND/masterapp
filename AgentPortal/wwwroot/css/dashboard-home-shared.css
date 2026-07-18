@@ -25,7 +25,7 @@
 
 .dashboard-command-center-panel,
 .dashboard-analytics-panel,
-body:not(.finance-page) main .dashboard-page-shell .category-container {
+.dashboard-page-shell .category-container {
     width: min(1480px, 100%);
     margin: 0 auto 1.4rem;
     position: relative;
@@ -42,7 +42,7 @@ body:not(.finance-page) main .dashboard-page-shell .category-container {
 
 .dashboard-command-center-panel::before,
 .dashboard-analytics-panel::before,
-body:not(.finance-page) main .dashboard-page-shell .category-container::before {
+.dashboard-page-shell .category-container::before {
     content: "";
     position: absolute;
     inset: 0 auto auto 32px;
@@ -188,6 +188,30 @@ body:not(.finance-page) main .dashboard-page-shell .category-container::before {
     opacity: 0.9;
 }
 
+.dashboard-command-center-middle {
+    display: grid;
+    grid-template-columns: minmax(260px, 0.42fr) minmax(0, 1fr);
+    gap: 0.58rem 0.9rem;
+    align-items: center;
+    position: relative;
+}
+
+.dashboard-command-center-bottom {
+    display: grid;
+    gap: 0.35rem;
+}
+
+.dashboard-command-center-head {
+    display: grid;
+    gap: 0.1rem;
+}
+
+.dashboard-command-center-head .dashboard-section-title {
+    margin-top: 0.08rem;
+    font-size: clamp(0.92rem, 1.35vw, 1.08rem);
+    line-height: 1.1;
+}
+
 .dashboard-section-head {
     display: flex;
     align-items: start;
@@ -214,6 +238,31 @@ body:not(.finance-page) main .dashboard-page-shell .category-container::before {
     font-size: 0.93rem;
     line-height: 1.52;
     max-width: 72ch;
+}
+
+.dashboard-search-panel {
+    margin: 0;
+    width: 100%;
+}
+
+.search-container {
+    display: block;
+    width: 100%;
+}
+
+.dashboard-search-shell {
+    display: flex;
+    gap: 0.7rem;
+    align-items: center;
+    width: 100%;
+}
+
+.search-actions {
+    display: flex;
+    flex: 0 0 auto;
+    gap: 0.48rem;
+    align-items: center;
+    justify-content: flex-end;
 }
 
 .dashboard-focus-grid {
@@ -398,6 +447,83 @@ body:not(.finance-page) main .dashboard-page-shell .category-container::before {
     text-overflow: ellipsis;
 }
 
+.legend-exec-btn {
+    position: relative;
+    display: grid;
+    gap: 0.42rem;
+    width: 100%;
+    min-height: 108px;
+    padding: 0.72rem 0.78rem 0.72rem;
+    text-align: left;
+    border: 1px solid rgba(212, 170, 71, 0.3);
+    border-radius: 18px;
+    background:
+        radial-gradient(circle at top right, rgba(77, 111, 255, 0.14), transparent 42%),
+        linear-gradient(180deg, rgba(11, 23, 49, 0.98), rgba(8, 16, 34, 0.995));
+    color: var(--dash-text);
+    box-shadow:
+        var(--dash-shadow),
+        inset 0 1px 0 rgba(255, 255, 255, 0.04);
+    transition: transform 0.16s ease, box-shadow 0.16s ease, border-color 0.16s ease;
+}
+
+.legend-exec-btn:hover {
+    transform: translateY(-4px);
+    border-color: rgba(244, 220, 147, 0.56);
+    box-shadow:
+        0 34px 70px rgba(4, 10, 28, 0.34),
+        inset 0 1px 0 rgba(255, 255, 255, 0.05);
+}
+
+.legend-exec-btn:focus-visible {
+    outline: 2px solid rgba(255, 235, 183, 0.92);
+    outline-offset: 3px;
+}
+
+.legend-exec-title-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.85rem;
+}
+
+.legend-exec-title {
+    color: #ffffff;
+    font-size: 1.18rem;
+    font-weight: 940;
+    line-height: 1.05;
+    letter-spacing: -0.03em;
+}
+
+.legend-exec-sub {
+    display: none;
+}
+
+.legend-exec-btn .chevron {
+    margin-top: auto;
+    color: #f0d991;
+    font-size: 0.72rem;
+    font-weight: 900;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+}
+
+.legend-badge {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 32px;
+    min-height: 32px;
+    padding: 0 0.62rem;
+    border-radius: 999px;
+    border: 1px solid rgba(244, 220, 147, 0.34);
+    background: linear-gradient(180deg, #f5da96 0%, #d4aa47 100%);
+    color: #1d1202;
+    font-size: 0.82rem;
+    font-weight: 950;
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.45);
+}
+
 .hero-hr {
     width: min(240px, 44%);
     height: 1px;
@@ -407,7 +533,7 @@ body:not(.finance-page) main .dashboard-page-shell .category-container::before {
     opacity: 0.75;
 }
 
-body:not(.finance-page) main .dashboard-page-shell .category-container {
+.dashboard-page-shell .category-container {
     padding: 0.98rem 1.02rem 1rem;
     background:
         radial-gradient(560px 210px at 50% 0%, rgba(62, 108, 219, 0.18), transparent 56%),
@@ -705,6 +831,10 @@ body:not(.finance-page) main .dashboard-page-shell .category-container {
     .dashboard-analytics-grid {
         grid-template-columns: repeat(2, minmax(0, 1fr));
     }
+
+    .dashboard-command-center-middle {
+        grid-template-columns: 1fr;
+    }
 }
 
 @media (max-width: 920px) {
@@ -714,7 +844,7 @@ body:not(.finance-page) main .dashboard-page-shell .category-container {
 
     .dashboard-command-center-panel,
     .dashboard-analytics-panel,
-    body:not(.finance-page) main .dashboard-page-shell .category-container {
+    .dashboard-page-shell .category-container {
         border-radius: 24px;
         padding-left: 1rem;
         padding-right: 1rem;
@@ -750,9 +880,25 @@ body:not(.finance-page) main .dashboard-page-shell .category-container {
         line-height: 1.42;
     }
 
+    .dashboard-search-shell {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.75rem;
+    }
+
+    .search-actions,
+    .dashboard-search-shell .btn-clear-search,
+    .dashboard-search-shell .btn-carrier-settings {
+        width: 100%;
+    }
+
     .dashboard-page-shell .search-input-wrap {
         flex-basis: 100%;
         min-width: 0;
+    }
+
+    .legend-exec-btn {
+        min-height: 102px;
     }
 
     .dashboard-page-shell .centered-tools {
@@ -797,7 +943,7 @@ body:not(.finance-page) main .dashboard-page-shell .category-container {
 
     .dashboard-command-center-panel,
     .dashboard-analytics-panel,
-    body:not(.finance-page) main .dashboard-page-shell .category-container {
+    .dashboard-page-shell .category-container {
         width: 100%;
         border-radius: 20px;
         margin-bottom: 1rem;
