@@ -8716,6 +8716,7 @@ if (t.id === "ExpenseLens" || t.id === "BusinessExpenseLens") {
         let elDragSrc = null;
         let elActivePaymentFilter = EL_BILL_FILTER_DEFAULT_VALUE;
         let elActiveWeekFilter = EL_WEEK_FILTER_ALL_VALUE;
+        let elWeekFilterWasAutoSelected = false;
         let paymentFilterSelect = null;
         let weekFilterSelect = null;
         let weekPanelBackdrop = null;
@@ -8760,6 +8761,71 @@ if (t.id === "ExpenseLens" || t.id === "BusinessExpenseLens") {
         const getActiveExpenseLensWeekFilter = () => {
             if (elActiveWeekFilter === EL_WEEK_FILTER_ALL_VALUE) return null;
             return getExpenseLensWeekFilterOptions().find((option) => option.value === elActiveWeekFilter)?.week || null;
+        };
+
+        const getDefaultExpenseLensBillFilterWeek = () => {
+            const weekOptions = getExpenseLensWeekFilterOptions();
+            if (!weekOptions.length) return null;
+
+            const today = new Date();
+            const todayMonthKey = expenseLensProjectionApi?.formatMonthKey
+                ? expenseLensProjectionApi.formatMonthKey(today)
+                : getTodayMonthKey();
+            const selectedMonthKey = getExpenseLensFilterMonthKey();
+
+            if (selectedMonthKey === todayMonthKey) {
+                const nowTime = today.getTime();
+                const currentWeek = weekOptions.find(({ week }) => {
+                    const startDate = week?.startDate instanceof Date
+                        ? week.startDate
+                        : expenseLensProjectionApi?.parseDate?.(week?.startDate);
+                    const endDate = week?.endDate instanceof Date
+                        ? week.endDate
+                        : expenseLensProjectionApi?.parseDate?.(week?.endDate);
+                    if (!startDate || !endDate) return false;
+
+                    const weekStartTime = new Date(
+                        startDate.getFullYear(),
+                        startDate.getMonth(),
+                        startDate.getDate()
+                    ).getTime();
+                    const weekEndTime = new Date(
+                        endDate.getFullYear(),
+                        endDate.getMonth(),
+                        endDate.getDate(),
+                        23,
+                        59,
+                        59,
+                        999
+                    ).getTime();
+
+                    return nowTime >= weekStartTime && nowTime <= weekEndTime;
+                });
+
+                if (currentWeek?.week) {
+                    return currentWeek.week;
+                }
+            }
+
+            return weekOptions[0]?.week || null;
+        };
+
+        const syncExpenseLensBillFilterWeekSelection = () => {
+            const hasPaymentFilter = elActivePaymentFilter !== EL_BILL_FILTER_DEFAULT_VALUE;
+
+            if (hasPaymentFilter && elActiveWeekFilter === EL_WEEK_FILTER_ALL_VALUE) {
+                const defaultWeek = getDefaultExpenseLensBillFilterWeek();
+                if (defaultWeek?.id) {
+                    elActiveWeekFilter = defaultWeek.id;
+                    elWeekFilterWasAutoSelected = true;
+                }
+                return;
+            }
+
+            if (!hasPaymentFilter && elWeekFilterWasAutoSelected) {
+                elActiveWeekFilter = EL_WEEK_FILTER_ALL_VALUE;
+                elWeekFilterWasAutoSelected = false;
+            }
         };
 
         const getProjectedWeekExpenseCategoryTotals = (monthKey, weekId, paymentFilter = EL_BILL_FILTER_DEFAULT_VALUE) => {
@@ -8840,6 +8906,7 @@ if (t.id === "ExpenseLens" || t.id === "BusinessExpenseLens") {
 
         const syncExpenseLensProjectionViews = (options = {}) => {
             const shouldSortRows = !!options.sortRows;
+            syncExpenseLensBillFilterWeekSelection();
             applyExpenseLensRowVisibility();
             syncExpenseLensViewControls();
             refreshExpenseLens({ sortRows: shouldSortRows });
@@ -10525,9 +10592,6 @@ if (t.id === "ExpenseLens" || t.id === "BusinessExpenseLens") {
             elActivePaymentFilter = EL_PAYMENT_FILTERS.some(option => option.value === paymentFilterSelect.value)
                 ? paymentFilterSelect.value
                 : EL_BILL_FILTER_DEFAULT_VALUE;
-            if (elActivePaymentFilter === EL_BILL_FILTER_DEFAULT_VALUE) {
-                elActiveWeekFilter = EL_WEEK_FILTER_ALL_VALUE;
-            }
             elExpandedWeekId = '';
             refreshExpenseLensViews({ sortRows: true });
         });
@@ -10545,6 +10609,7 @@ if (t.id === "ExpenseLens" || t.id === "BusinessExpenseLens") {
                 || availableOptions.some((option) => option.value === nextValue)
                 ? nextValue
                 : EL_WEEK_FILTER_ALL_VALUE;
+            elWeekFilterWasAutoSelected = false;
             elExpandedWeekId = '';
             refreshExpenseLensViews({ sortRows: true });
         });
