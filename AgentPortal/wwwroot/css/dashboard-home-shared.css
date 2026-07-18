@@ -25,7 +25,7 @@
 
 .dashboard-command-center-panel,
 .dashboard-analytics-panel,
-.dashboard-page-shell .category-container {
+body:not(.finance-page) main .dashboard-page-shell .category-container {
     width: min(1480px, 100%);
     margin: 0 auto 1.4rem;
     position: relative;
@@ -42,7 +42,7 @@
 
 .dashboard-command-center-panel::before,
 .dashboard-analytics-panel::before,
-.dashboard-page-shell .category-container::before {
+body:not(.finance-page) main .dashboard-page-shell .category-container::before {
     content: "";
     position: absolute;
     inset: 0 auto auto 32px;
@@ -407,7 +407,7 @@
     opacity: 0.75;
 }
 
-.dashboard-page-shell .category-container {
+body:not(.finance-page) main .dashboard-page-shell .category-container {
     padding: 0.98rem 1.02rem 1rem;
     background:
         radial-gradient(560px 210px at 50% 0%, rgba(62, 108, 219, 0.18), transparent 56%),
@@ -714,7 +714,7 @@
 
     .dashboard-command-center-panel,
     .dashboard-analytics-panel,
-    .dashboard-page-shell .category-container {
+    body:not(.finance-page) main .dashboard-page-shell .category-container {
         border-radius: 24px;
         padding-left: 1rem;
         padding-right: 1rem;
@@ -797,7 +797,7 @@
 
     .dashboard-command-center-panel,
     .dashboard-analytics-panel,
-    .dashboard-page-shell .category-container {
+    body:not(.finance-page) main .dashboard-page-shell .category-container {
         width: 100%;
         border-radius: 20px;
         margin-bottom: 1rem;
