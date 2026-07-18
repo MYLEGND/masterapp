@@ -5,195 +5,179 @@
     bool isAgent = User?.IsInRole("Agent") == true || User?.IsInRole("Admin") == true;
     bool showBookings = isAgent || isBusinessClient;
     var homeClientHubFlash = TempData["Created"]?.ToString();
+    var homeQuickLaunches = new[]
+    {
+        new { Name = "Term Life Quote", Url = "https://quote.ipipeline.com/LTsearch.aspx?GAID=5889", Icon = "ipipeline.png", Folder = "company-icons", Desc = "Life quote engine for fast case starts." },
+        new { Name = "Integrity Marketing", Url = "https://connect.integrity.com/agent/dashboard", Icon = "integrity.png", Folder = "company-icons", Desc = "Primary L&H CRM and distribution hub." },
+        new { Name = "Exlynx AMS", Url = "https://app.ezlynx.com/auth/account/login", Icon = "ezlynx.png", Folder = "company-icons", Desc = "P&C CRM access for policies and service." },
+        new { Name = "SureLC", Url = "https://accounts.surancebay.com/oauth/authorize?redirect_uri=https:%2F%2Fsurelc.surancebay.com%2Fproducer%2Foauth%3FreturnUrl%3D%252F%253FgaId%253D239&gaId=239&client_id=surecrmweb&response_type=code", Icon = "surelc.png", Folder = "company-icons", Desc = "Contracting and licensing workbench." },
+        new { Name = "Final Expense Quote", Url = "https://fexquotes.com/wqt/v1/webrate.pl?id=126&fn=1&vrt=m&tgt=1&style=blue", Icon = "fex.png", Folder = "company-icons", Desc = "Final expense quoting without extra clicks." },
+        new { Name = "Smart Choice", Url = "https://commissions.smartchoiceagents.com/", Icon = "smartchoice.png", Folder = "company-icons", Desc = "P&C partner stack and commission access." },
+        new { Name = "Carrier Website", Url = "https://www.wmacorp.com/CarrierWebsites", Icon = "carrierweb.png", Folder = "company-icons", Desc = "Direct L&H carrier portal jump point." },
+        new { Name = "Western Marketing", Url = "https://www.wmacorp.com/", Icon = "westernmarketing.png", Folder = "company-icons", Desc = "General agency access and resources." }
+    };
 }
 
 @section Styles {
+    <link rel="stylesheet" href="~/css/dashboard-home-shared.css" asp-append-version="true" />
+    <link rel="stylesheet" href="~/css/home-command-page.css" asp-append-version="true" />
     <link rel="stylesheet" href="~/css/workstation-home-proposal.css" asp-append-version="true" />
 }
 
-<div class="home-container home-command-page">
+<div class="home-container dashboard-page-shell home-command-page">
 
-    <section class="home-hero">
-        <div class="home-hero-copy">
-            <div class="home-hero-eyebrow">Home Base</div>
-            <h1 class="home-hero-title">Legend™ Legacy Protection</h1>
-            <p class="home-hero-lead">
-                Launch tools, open client access, and move through intake work from one clean command surface.
-            </p>
-        </div>
-        <div class="home-hero-tags" aria-label="Home page highlights">
-            <span>Launch</span>
-            <span>Search</span>
-            <span>Support</span>
+    <section class="dashboard-command-center-panel home-hero-panel">
+        <div class="dashboard-command-center-top home-hero-top">
+            <div class="dashboard-hero-copy">
+                <div class="dashboard-eyebrow">Home Base</div>
+                <h1 class="dashboard-hero-title">Legend™ Legacy Protection</h1>
+                <p class="dashboard-hero-lead">
+                    Launch tools, open client access, and move through intake work from one clean command surface.
+                </p>
+                <div class="dashboard-hero-tags" aria-label="Home page highlights">
+                    <span>Launch</span>
+                    <span>Search</span>
+                    <span>Support</span>
+                </div>
+            </div>
+            <div class="home-hero-summary" aria-label="Home page focus areas">
+                <div class="dashboard-stat-card is-primary">
+                    <div class="dashboard-stat-label">Command</div>
+                    <div class="home-hero-stat-title">Launch fast</div>
+                    <div class="home-hero-stat-copy">Daily systems are one click away.</div>
+                </div>
+                <div class="dashboard-stat-card">
+                    <div class="dashboard-stat-label">Access</div>
+                    <div class="home-hero-stat-title">Open clients</div>
+                    <div class="home-hero-stat-copy">Jump into search, CRM, and proposals.</div>
+                </div>
+                <div class="dashboard-stat-card">
+                    <div class="dashboard-stat-label">Support</div>
+                    <div class="home-hero-stat-title">Stay moving</div>
+                    <div class="home-hero-stat-copy">Keep intake, meetings, and carrier work tight.</div>
+                </div>
+            </div>
         </div>
     </section>
 
     @if (!string.IsNullOrWhiteSpace(homeClientHubFlash))
     {
-        <div class="home-flash" role="status">@homeClientHubFlash</div>
+        <div class="home-flash-banner" role="status">@homeClientHubFlash</div>
     }
 
-    <!-- FREQUENTLY USED TOOLS -->
-    <section class="home-tools mb-5">
-        <div class="home-tools-head">
-            <div class="home-tools-copy">
-                <div class="home-section-kicker">Frequently Used Tools</div>
-                <h2 class="home-section-title">Core launches that keep the day moving.</h2>
-                <p class="home-section-sub">Jump into the systems you touch most without burying the important paths.</p>
+    <section class="category-container home-tools-panel mb-5">
+        <div class="category-head">
+            <div class="category-head-copy">
+                <div class="category-kicker">Frequently Used Tools</div>
+                <h2 class="category-toggle">Core launches that keep the day moving.</h2>
+                <p class="category-copy">Jump into the systems you touch most without burying the important paths.</p>
             </div>
             <div class="home-tools-head-actions">
+                <div class="category-count-pill" aria-label="Quick launch count">
+                    <span class="category-count-number">@homeQuickLaunches.Length</span>
+                    <span class="category-count-label">Tools</span>
+                </div>
                 <button type="button" class="home-clients-trigger home-clients-trigger-inline" id="homeClientsTrigger">Clients</button>
             </div>
         </div>
 
-        <div class="home-mini-tools-wrap">
-            <div class="home-mini-tools">
-                <a href="https://outlook.office.com" target="_blank" rel="noopener">
-                    <img class="outlook-link" src="~/images/tools-icons/outlook2.png" alt="Outlook" />
-                </a>
-                <button type="button" class="zoom-hub-trigger" id="homeZoomTrigger" aria-label="Open Zoom Links">
-                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 36 36" width="36" height="36" fill="none" aria-hidden="true">
-                        <rect width="36" height="36" rx="8" fill="#2D8CFF"/>
-                        <path d="M6 13a3 3 0 0 1 3-3h13a3 3 0 0 1 3 3v10a3 3 0 0 1-3 3H9a3 3 0 0 1-3-3V13z" fill="white"/>
-                        <path d="M25 15.5l5-3v11l-5-3V15.5z" fill="white"/>
-                    </svg>
-                </button>
-                <a href="https://outlook.office.com/calendar/view/workweek" target="_blank" rel="noopener">
-                    <img class="outlook-link" src="~/images/tools-icons/calendar.png" alt="Outlook Calendar" />
-                </a>
-                @if (showBookings)
-                {
-                    <a href="https://outlook.office.com/bookings" target="_blank" rel="noopener">
-                        <img class="outlook-link" src="~/images/tools-icons/bookings.png" alt="Bookings" />
+        <div class="dashboard-command-center-divider" aria-hidden="true"></div>
+
+        <div class="home-tools-utility">
+            <div class="home-mini-tools-wrap">
+                <div class="home-mini-tools">
+                    <a href="https://outlook.office.com" target="_blank" rel="noopener">
+                        <img class="outlook-link" src="~/images/tools-icons/outlook2.png" alt="Outlook" />
                     </a>
-                }
-                <a href="https://teams.microsoft.com" target="_blank" rel="noopener">
-                    <img class="outlook-link" src="~/images/tools-icons/teams.png" alt="Teams" />
-                </a>
-                <a href="https://m365.cloud.microsoft/chat/" target="_blank" rel="noopener">
-                    <img class="outlook-link" src="~/images/tools-icons/copilot.png" alt="Copilot" />
-                </a>
+                    <button type="button" class="zoom-hub-trigger" id="homeZoomTrigger" aria-label="Open Zoom Links">
+                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 36 36" width="36" height="36" fill="none" aria-hidden="true">
+                            <rect width="36" height="36" rx="8" fill="#2D8CFF"/>
+                            <path d="M6 13a3 3 0 0 1 3-3h13a3 3 0 0 1 3 3v10a3 3 0 0 1-3 3H9a3 3 0 0 1-3-3V13z" fill="white"/>
+                            <path d="M25 15.5l5-3v11l-5-3V15.5z" fill="white"/>
+                        </svg>
+                    </button>
+                    <a href="https://outlook.office.com/calendar/view/workweek" target="_blank" rel="noopener">
+                        <img class="outlook-link" src="~/images/tools-icons/calendar.png" alt="Outlook Calendar" />
+                    </a>
+                    @if (showBookings)
+                    {
+                        <a href="https://outlook.office.com/bookings" target="_blank" rel="noopener">
+                            <img class="outlook-link" src="~/images/tools-icons/bookings.png" alt="Bookings" />
+                        </a>
+                    }
+                    <a href="https://teams.microsoft.com" target="_blank" rel="noopener">
+                        <img class="outlook-link" src="~/images/tools-icons/teams.png" alt="Teams" />
+                    </a>
+                    <a href="https://m365.cloud.microsoft/chat/" target="_blank" rel="noopener">
+                        <img class="outlook-link" src="~/images/tools-icons/copilot.png" alt="Copilot" />
+                    </a>
+                </div>
             </div>
         </div>
 
-        <div class="d-flex flex-wrap justify-content-center home-tools-row frequent-tools-grid">
-
-            @{
-                var tools = new[]
-                {
-                    new { Name = "Term Life Quote", Url = "https://quote.ipipeline.com/LTsearch.aspx?GAID=5889", Icon = "ipipeline.png", Folder = "company-icons" },
-                    new { Name = "Integrity Marketing (L&H CRM)", Url = "https://connect.integrity.com/agent/dashboard", Icon = "integrity.png", Folder = "company-icons" },
-                    new { Name = "Exlynx AMS (P&C CRM)", Url = "https://app.ezlynx.com/auth/account/login", Icon = "ezlynx.png", Folder = "company-icons" },
-                    new { Name = "SureLC (L&H Contracting)", Url = "https://accounts.surancebay.com/oauth/authorize?redirect_uri=https:%2F%2Fsurelc.surancebay.com%2Fproducer%2Foauth%3FreturnUrl%3D%252F%253FgaId%253D239&gaId=239&client_id=surecrmweb&response_type=code", Icon = "surelc.png", Folder = "company-icons" }
-                };
-            }
-
-            @foreach (var tool in tools)
+        <div class="centered-tools home-tools-grid">
+            @foreach (var tool in homeQuickLaunches)
             {
                 <a href="@tool.Url"
                    target="_blank"
                    rel="noopener"
-                   class="dashboard-tool d-flex flex-column align-items-center justify-content-center">
-
+                   class="dashboard-tool">
                     <img src="@Url.Content($"~/images/{tool.Folder}/{tool.Icon}")"
-                         alt="@tool.Name"
-                         width="60"
-                         height="60"
-                         class="mb-2" />
-
-                    <div class="fw-bold text-center mt-1">@tool.Name</div>
-                </a>
-            }
-        </div>
-
-        <div class="d-flex flex-wrap justify-content-center home-tools-row">
-
-            @{
-                var secondRowTools = new[]
-                {
-                    new { Name = "Final Expense Quote", Url = "https://fexquotes.com/wqt/v1/webrate.pl?id=126&fn=1&vrt=m&tgt=1&style=blue", Icon = "fex.png" },
-                    new { Name = "Smart Choice (P&C)", Url = "https://commissions.smartchoiceagents.com/", Icon = "smartchoice.png" },
-                    new { Name = "Carrier Website (L&H)", Url = "https://www.wmacorp.com/CarrierWebsites", Icon = "carrierweb.png" },
-                    new { Name = "Western Marketing", Url = "https://www.wmacorp.com/", Icon = "westernmarketing.png" },
-                };
-            }
-
-            @foreach (var tool in secondRowTools)
-            {
-                <a href="@tool.Url"
-                   target="_blank"
-                   rel="noopener"
-                   class="dashboard-tool d-flex flex-column align-items-center justify-content-center">
-
-                    <img src="@Url.Content($"~/images/company-icons/{tool.Icon}")"
-                         alt="@tool.Name"
-                         width="60"
-                         height="60"
-                         class="mb-2" />
-
-                    <div class="fw-bold text-center mt-1">@tool.Name</div>
+                         alt="@tool.Name" />
+                    <div class="tool-name">@tool.Name</div>
+                    <div class="tool-desc">@tool.Desc</div>
                 </a>
             }
         </div>
     </section>
 
-    <!-- ================================
-         FACT FINDER QUICK ACCESS (NEW)
-         Place UNDER all tools
-    ================================= -->
-    <section class="home-factfinder mt-5">
-        <div class="ff-home-card">
-            <div class="ff-home-top">
-                <div class="ff-home-kicker">
-                    <span class="ff-home-dot"></span>
-                    Legend™ Intake
+    <section class="category-container home-factfinder-panel mt-5">
+        <div class="category-head">
+            <div class="category-head-copy">
+                <div class="category-kicker">Legend™ Intake</div>
+                <h2 class="category-toggle">Fact Finder — Quick Access</h2>
+                <p class="category-copy">Choose the intake that matches the client’s stage. Answer what applies. Generate a clean PDF.</p>
+            </div>
+            <div class="home-factfinder-actions">
+                <a class="home-factfinder-open" href="@Url.Action("Index", "FactFinder")">Open Fact Finder Hub →</a>
+            </div>
+        </div>
+
+        <div class="dashboard-command-center-divider" aria-hidden="true"></div>
+
+        <div class="home-factfinder-grid">
+            <a class="home-factfinder-tile" href="@Url.Action("Senior", "FactFinder")" aria-label="Open Senior Fact Finder">
+                <div class="home-factfinder-tile-top">
+                    <div class="home-factfinder-tile-title">Senior</div>
+                    <div class="home-factfinder-pill">Protection + Retirement</div>
                 </div>
-                <h2 class="ff-home-title">Fact Finder — Quick Access</h2>
-                <p class="ff-home-sub">
-                    Choose the intake that matches the client’s stage. Answer what applies. Generate a clean PDF.
-                </p>
-            </div>
+                <div class="home-factfinder-tile-desc">
+                    Income planning, Medicare risk, legacy decisions, protecting what they built.
+                </div>
+                <div class="home-factfinder-tile-cta">Start Senior →</div>
+            </a>
 
-            <div class="ff-home-actions">
-                <a class="ff-home-btn ff-home-btn-primary" href="@Url.Action("Index", "FactFinder")">
-                    Open Fact Finder Hub →
-                </a>
-            </div>
+            <a class="home-factfinder-tile" href="@Url.Action("MiddleAged", "FactFinder")" aria-label="Open Middle-Aged Fact Finder">
+                <div class="home-factfinder-tile-top">
+                    <div class="home-factfinder-tile-title">Middle-Aged</div>
+                    <div class="home-factfinder-pill">Family + Wealth Build</div>
+                </div>
+                <div class="home-factfinder-tile-desc">
+                    Kids + mortgage + peak earning years. Structure, protection, and growth.
+                </div>
+                <div class="home-factfinder-tile-cta">Start Middle-Aged →</div>
+            </a>
 
-            <div class="ff-home-grid">
-                <a class="ff-home-tile" href="@Url.Action("Senior", "FactFinder")" aria-label="Open Senior Fact Finder">
-                    <div class="ff-home-tile-top">
-                        <div class="ff-home-tile-title">Senior</div>
-                        <div class="ff-home-pill">Protection + Retirement</div>
-                    </div>
-                    <div class="ff-home-tile-desc ff-home-text-strong">
-                        Income planning, Medicare risk, legacy decisions, protecting what they built.
-                    </div>
-                    <div class="ff-home-tile-cta">Start Senior →</div>
-                </a>
-
-                <a class="ff-home-tile" href="@Url.Action("MiddleAged", "FactFinder")" aria-label="Open Middle-Aged Fact Finder">
-                    <div class="ff-home-tile-top">
-                        <div class="ff-home-tile-title">Middle-Aged</div>
-                        <div class="ff-home-pill">Family + Wealth Build</div>
-                    </div>
-                    <div class="ff-home-tile-desc ff-home-text-strong">
-                        Kids + mortgage + peak earning years. Structure, protection, and growth.
-                    </div>
-                    <div class="ff-home-tile-cta">Start Middle-Aged →</div>
-                </a>
-
-                <a class="ff-home-tile" href="@Url.Action("Younger", "FactFinder")" aria-label="Open Younger Fact Finder">
-                    <div class="ff-home-tile-top">
-                        <div class="ff-home-tile-title">Younger</div>
-                        <div class="ff-home-pill">Foundation + Direction</div>
-                    </div>
-                    <div class="ff-home-tile-desc ff-home-text-strong">
-                        Cash flow, debt cleanup, habits, momentum, and a real plan.
-                    </div>
-                    <div class="ff-home-tile-cta">Start Younger →</div>
-                </a>
-            </div>
+            <a class="home-factfinder-tile" href="@Url.Action("Younger", "FactFinder")" aria-label="Open Younger Fact Finder">
+                <div class="home-factfinder-tile-top">
+                    <div class="home-factfinder-tile-title">Younger</div>
+                    <div class="home-factfinder-pill">Foundation + Direction</div>
+                </div>
+                <div class="home-factfinder-tile-desc">
+                    Cash flow, debt cleanup, habits, momentum, and a real plan.
+                </div>
+                <div class="home-factfinder-tile-cta">Start Younger →</div>
+            </a>
         </div>
     </section>
 
@@ -301,1391 +285,6 @@
         { "ProposalIncludeScratch", true }
     })
 @await Html.PartialAsync("~/Views/Proposals/_DecisionModal.cshtml")
-
-<style>
-:root {
-    --gold-color: #a68023;
-    --gold-color-light: rgba(166,128,35,0.28);
-    --navy-900: #0b1529;
-    --navy-800: #0f1d38;
-    --navy-700: #162445;
-    --text-strong: #f8fafc;
-    --text-muted: #cbd5e1;
-}
-
-.home-container {
-    width: min(1320px, calc(100% - 1.5rem));
-    margin: 0 auto;
-    padding-top: 1.5rem;
-    padding-bottom: 3.25rem;
-    font-family: 'Inter', sans-serif;
-    color: #0f172a;
-    background:
-        radial-gradient(circle at top, rgba(45, 83, 154, 0.12), transparent 28%),
-        linear-gradient(180deg, #eef4ff 0%, #f7faff 48%, #edf2fb 100%);
-}
-
-.home-hero {
-    display: grid;
-    grid-template-columns: minmax(0, 1fr) auto;
-    gap: 1.4rem;
-    align-items: end;
-    margin: 0 auto 1.5rem;
-    padding: 1.65rem 1.75rem;
-    border-radius: 28px;
-    border: 1px solid rgba(198, 159, 55, 0.42);
-    background:
-        radial-gradient(circle at top left, rgba(228, 190, 92, 0.10), transparent 32%),
-        radial-gradient(circle at top right, rgba(73, 108, 184, 0.18), transparent 36%),
-        linear-gradient(180deg, #172b56 0%, #132447 56%, #0f1d38 100%);
-    box-shadow:
-        0 30px 54px rgba(6, 15, 34, 0.22),
-        inset 0 1px 0 rgba(255, 255, 255, 0.06);
-    color: var(--text-strong);
-}
-
-.home-hero-copy {
-    display: grid;
-    gap: 0.55rem;
-}
-
-.home-hero-eyebrow,
-.home-section-kicker {
-    display: inline-flex;
-    align-items: center;
-    width: fit-content;
-    min-height: 34px;
-    padding: 0 0.95rem;
-    border-radius: 999px;
-    border: 1px solid rgba(214, 188, 128, 0.30);
-    background: rgba(10, 19, 38, 0.34);
-    color: #e7c06d;
-    font-size: 0.82rem;
-    font-weight: 900;
-    letter-spacing: 0.08em;
-    text-transform: uppercase;
-}
-
-.home-hero-title {
-    margin: 0;
-    color: #f8fafc;
-    font-size: clamp(2.3rem, 4.4vw, 3.6rem);
-    line-height: 0.98;
-    font-weight: 980;
-    letter-spacing: -0.04em;
-}
-
-.home-hero-lead {
-    margin: 0;
-    max-width: 56ch;
-    color: #d7e2f4;
-    font-size: 1.08rem;
-    font-weight: 620;
-    line-height: 1.55;
-}
-
-.home-hero-tags {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 0.75rem;
-    justify-content: flex-end;
-}
-
-.home-hero-tags span {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    min-height: 46px;
-    padding: 0 1.1rem;
-    border-radius: 16px;
-    border: 1px solid rgba(127, 151, 204, 0.26);
-    background: linear-gradient(180deg, rgba(24, 40, 74, 0.94), rgba(14, 27, 52, 0.98));
-    color: #f8fafc;
-    font-size: 0.96rem;
-    font-weight: 820;
-    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.05);
-}
-
-.home-flash{
-    margin: 0 auto 1.25rem;
-    padding: 12px 16px;
-    border-radius: 14px;
-    border: 1.5px solid rgba(214, 188, 128, .34);
-    background: linear-gradient(180deg, rgba(27, 47, 88, .95), rgba(15, 29, 56, .98));
-    color: #f8fafc;
-    font-weight: 800;
-    box-shadow: 0 16px 30px rgba(7, 16, 35, .18);
-}
-
-.home-clients-trigger{
-    display:inline-flex;
-    align-items:center;
-    justify-content:center;
-    min-width: 200px;
-    min-height: 60px;
-    padding: 0 1.6rem;
-    border-radius: 18px;
-    border: 1.8px solid rgba(245,214,141,.9);
-    background:
-        linear-gradient(180deg, rgba(255,255,255,.46), rgba(255,255,255,.08) 36%, rgba(255,255,255,0) 37%),
-        linear-gradient(160deg, #f8e2a6 0%, #e2bb64 52%, #c99534 100%);
-    color: #0a1730;
-    font-size: 1.02rem;
-    font-weight: 950;
-    letter-spacing: .03em;
-    text-shadow: 0 1px 0 rgba(255,255,255,.35);
-    box-shadow:
-        0 20px 38px rgba(0,0,0,.36),
-        0 12px 24px rgba(221,180,87,.28),
-        inset 0 1px 0 rgba(255,255,255,.62);
-    transition: transform .15s ease, box-shadow .15s ease, filter .15s ease;
-}
-
-.home-clients-trigger-inline{
-    min-width: 148px;
-    min-height: 48px;
-    padding: 0 1.05rem;
-    border-radius: 14px;
-    font-size: .92rem;
-}
-
-.home-clients-trigger:hover{
-    transform: translateY(-3px);
-    filter: brightness(1.06) saturate(1.02);
-    box-shadow:
-        0 26px 54px rgba(0,0,0,.42),
-        0 16px 30px rgba(221,180,87,.34),
-        inset 0 1px 0 rgba(255,255,255,.68);
-}
-
-.home-clients-trigger:focus-visible{
-    outline: none;
-    box-shadow: 0 0 0 3px rgba(221,180,87,.30), 0 22px 46px rgba(0,0,0,.34), inset 0 1px 0 rgba(255,255,255,.62);
-}
-
-.home-clients-hub{
-    position: fixed;
-    inset: 0;
-    z-index: 2100;
-    opacity: 0;
-    pointer-events: none;
-    transition: opacity .18s ease;
-}
-
-.home-clients-hub.open{
-    opacity: 1;
-    pointer-events: auto;
-}
-
-.home-clients-backdrop{
-    position: absolute;
-    inset: 0;
-    background: rgba(7, 12, 23, .68);
-    backdrop-filter: blur(7px);
-}
-
-.home-clients-dialog{
-    position: relative;
-    z-index: 1;
-    min-height: 100%;
-    display:flex;
-    align-items:center;
-    justify-content:center;
-    padding: 2rem 1rem;
-}
-
-.home-clients-shell{
-    width: min(1160px, 100%);
-    max-height: min(88vh, 980px);
-    overflow: auto;
-    border-radius: 26px;
-    border: 1px solid rgba(214, 188, 128, .34);
-    background:
-        radial-gradient(860px 360px at -6% -10%, rgba(88, 121, 190, .16), transparent 56%),
-        radial-gradient(760px 340px at 102% -4%, rgba(214, 188, 128, .08), transparent 60%),
-        linear-gradient(180deg, rgba(11,22,44,.995), rgba(17,33,63,.995) 56%, rgba(19,39,72,.995));
-    color: var(--text-strong);
-    box-shadow:
-        0 34px 80px rgba(0,0,0,.5),
-        0 0 0 1px rgba(255,255,255,.06) inset,
-        0 20px 40px rgba(13, 24, 49, .34);
-    padding: 1.7rem 1.75rem 1.85rem;
-}
-
-.home-clients-head{
-    display:flex;
-    align-items:flex-start;
-    justify-content:space-between;
-    gap: 1.25rem;
-    padding-bottom: 1rem;
-    border-bottom: 1px solid rgba(214, 188, 128, .16);
-}
-
-.home-clients-kicker{
-    display:inline-flex;
-    align-items:center;
-    font-size:.8rem;
-    font-weight:900;
-    letter-spacing:.1em;
-    text-transform:uppercase;
-    color:#dcc38a;
-}
-
-.home-clients-title{
-    margin:.45rem 0 .4rem;
-    font-size:2rem;
-    font-weight:950;
-    line-height:1.15;
-}
-
-.home-clients-sub{
-    margin:0;
-    color:#c2cee3;
-    font-weight:600;
-    line-height:1.55;
-    max-width: 820px;
-}
-
-.home-clients-close{
-    display:inline-flex;
-    align-items:center;
-    justify-content:center;
-    width: 50px;
-    height: 50px;
-    border-radius: 16px;
-    border: 1px solid rgba(214, 188, 128, .34);
-    background: linear-gradient(180deg, rgba(35,53,92,.96), rgba(24,39,70,.96));
-    color:#f6f8fd;
-    font-size:1.55rem;
-    line-height:1;
-    box-shadow: 0 14px 30px rgba(0,0,0,.22), inset 0 1px 0 rgba(255,255,255,.06);
-    transition: transform .14s ease, background .14s ease, border-color .14s ease, box-shadow .14s ease;
-}
-
-.home-clients-close:hover{
-    transform: translateY(-1px);
-    border-color: rgba(214, 188, 128, .54);
-    background: linear-gradient(180deg, rgba(42,62,104,.96), rgba(27,44,78,.96));
-    box-shadow: 0 18px 34px rgba(0,0,0,.26), inset 0 1px 0 rgba(255,255,255,.08);
-}
-
-.home-clients-banner{
-    margin-top: 1.2rem;
-    padding: 1rem 1.1rem;
-    border-radius: 14px;
-    border: 1.5px solid rgba(166,128,35,.42);
-    background: rgba(166,128,35,.12);
-    color: #f8fafc;
-    font-weight: 800;
-}
-
-.home-clients-toolbar{
-    margin-top: 1.35rem;
-    display:grid;
-    grid-template-columns: minmax(0, 1fr) auto;
-    gap: .9rem;
-    align-items:center;
-}
-
-.home-clients-search-wrap{
-    position:relative;
-    border-radius: 16px;
-    border: 1px solid rgba(214, 188, 128, .26);
-    background: linear-gradient(180deg, rgba(255,255,255,.08), rgba(255,255,255,.03));
-    box-shadow:
-        inset 0 1px 0 rgba(255,255,255,.05),
-        0 12px 26px rgba(0,0,0,.2);
-    transition: border-color .15s ease, box-shadow .15s ease, background .15s ease;
-}
-
-.home-clients-search-wrap:focus-within{
-    border-color: rgba(212, 189, 127, .5);
-    box-shadow: 0 0 0 3px rgba(110, 140, 205, .18), 0 18px 32px rgba(0,0,0,.26);
-    background: linear-gradient(180deg, rgba(255,255,255,.11), rgba(255,255,255,.045));
-}
-
-.home-clients-search-icon{
-    position:absolute;
-    left: 14px;
-    top: 50%;
-    transform: translateY(-50%);
-    color:#c9d6ee;
-    font-weight:900;
-    pointer-events:none;
-}
-
-.home-clients-search{
-    width:100%;
-    min-height:56px;
-    border-radius:16px;
-    border:1px solid transparent;
-    background: transparent;
-    color:#f8fafc;
-    padding: 0 1.1rem 0 2.95rem;
-    font-size:1rem;
-    font-weight:600;
-    box-shadow: none;
-}
-
-.home-clients-search::placeholder{ color:#93a4bf; }
-
-.home-clients-search:focus{
-    outline:none;
-    border-color: transparent;
-    box-shadow: none;
-}
-
-.home-clients-toolbar-actions{
-    display:flex;
-    gap:.65rem;
-    flex-wrap:wrap;
-    justify-content:flex-end;
-    align-items:center;
-}
-
-.home-clients-action{
-    display:inline-flex;
-    align-items:center;
-    justify-content:center;
-    min-height:54px;
-    padding: 0 1rem;
-    border-radius: 15px;
-    border: 1px solid rgba(214, 188, 128, .3);
-    font-weight: 900;
-    letter-spacing:.015em;
-    box-shadow:
-        0 12px 24px rgba(0,0,0,.2),
-        inset 0 1px 0 rgba(255,255,255,.06);
-    transition: transform .14s ease, box-shadow .14s ease, filter .14s ease, background .14s ease, border-color .14s ease;
-}
-
-.home-clients-action-gold{
-    background: linear-gradient(180deg, #efd489, #ddb35a);
-    color: #10213e;
-    border-color: rgba(236, 205, 130, .82);
-}
-
-.home-clients-action-ghost{
-    background: linear-gradient(180deg, rgba(40,59,99,.92), rgba(24,40,72,.92));
-    color:#eef4ff;
-    border-color: rgba(137, 159, 206, .28);
-}
-
-#btnProposal.home-clients-action{
-    min-width: 156px;
-    background: linear-gradient(180deg, rgba(36,54,93,.98), rgba(22,37,67,.98));
-    color: #f0d694;
-    border-color: rgba(214, 188, 128, .38);
-}
-
-#btnProposal.home-clients-action:hover{
-    background: linear-gradient(180deg, rgba(45,66,110,.98), rgba(26,43,76,.98));
-}
-
-#homeClientsAdd.home-clients-action{
-    padding-inline: 1.25rem;
-    min-width: 332px;
-}
-
-.home-clients-action:hover{
-    transform: translateY(-1px);
-    box-shadow: 0 16px 28px rgba(0,0,0,.24), inset 0 1px 0 rgba(255,255,255,.08);
-}
-
-.home-clients-action-gold:hover{
-    filter: brightness(1.04);
-}
-
-.home-clients-action-ghost:hover{
-    border-color: rgba(154, 177, 228, .38);
-    background: linear-gradient(180deg, rgba(48,70,116,.94), rgba(27,45,79,.94));
-}
-
-.home-clients-action:focus-visible{
-    outline: none;
-    box-shadow: 0 0 0 3px rgba(123, 150, 210, .2), 0 14px 28px rgba(0,0,0,.22), inset 0 1px 0 rgba(255,255,255,.06);
-}
-
-.home-clients-result-status{
-    margin-top:1rem;
-    min-height: 1.5rem;
-    color:#d8e0ec;
-    font-weight:600;
-}
-
-.home-clients-result-status[data-state="error"]{
-    color:#f7c2bc;
-}
-
-.home-clients-results{
-    position:absolute;
-    top: calc(100% + .45rem);
-    left: 0;
-    right: 0;
-    z-index: 4;
-    display:flex;
-    flex-direction:column;
-    gap:.45rem;
-    padding:.6rem;
-    border-radius: 20px;
-    border: 1.5px solid rgba(166,128,35,.38);
-    background: linear-gradient(180deg, rgba(11,21,41,.995), rgba(15,29,56,.995));
-    box-shadow: 0 24px 54px rgba(0,0,0,.34);
-    max-height: 360px;
-    overflow:auto;
-}
-
-.home-clients-recent-head{
-    margin-top: 1.6rem;
-    padding-top: 1.15rem;
-    border-top: 1px solid rgba(214, 188, 128, .16);
-}
-
-.home-clients-recent-title{
-    font-size:1.06rem;
-    font-weight: 900;
-    color:#f8fafc;
-}
-
-.home-clients-recent-sub{
-    margin-top:.2rem;
-    color:#b9c5d8;
-    font-weight:600;
-}
-
-.home-clients-recent-grid{
-    margin-top:1rem;
-    display:grid;
-    grid-template-columns: repeat(3, minmax(0, 1fr));
-    gap:.9rem;
-}
-
-.home-clients-card{
-    text-align:left;
-    width:100%;
-    border-radius: 18px;
-    border: 1px solid rgba(214, 188, 128, .2);
-    background: linear-gradient(180deg, rgba(38,57,98,.74), rgba(28,44,78,.78));
-    color:#f8fafc;
-    padding: 1rem;
-    box-shadow: 0 14px 28px rgba(0,0,0,.18);
-    display:flex;
-    flex-direction:column;
-    transition: transform .14s ease, box-shadow .14s ease, border-color .14s ease;
-}
-
-.home-clients-card.is-result{
-    padding: .85rem .95rem;
-    border-radius: 16px;
-    background: linear-gradient(180deg, rgba(31,48,84,.82), rgba(22,36,65,.82));
-    box-shadow: 0 10px 20px rgba(0,0,0,.14);
-}
-
-.home-clients-card:hover{
-    transform: translateY(-1px);
-    border-color: rgba(155, 178, 225, .28);
-    box-shadow: 0 18px 32px rgba(0,0,0,.24);
-}
-
-.home-clients-card.is-result:hover{
-    transform:none;
-    box-shadow: 0 12px 24px rgba(0,0,0,.16);
-    background: linear-gradient(180deg, rgba(37,56,97,.86), rgba(24,39,69,.86));
-}
-
-.home-clients-card-top{
-    display:flex;
-    align-items:flex-start;
-    justify-content:space-between;
-    gap:.75rem;
-    margin-bottom:.65rem;
-}
-
-.home-clients-card-title{
-    font-size:1.02rem;
-    font-weight:900;
-    line-height:1.25;
-}
-
-.home-clients-card-badge{
-    display:inline-flex;
-    align-items:center;
-    justify-content:center;
-    padding:.3rem .55rem;
-    border-radius:999px;
-    border:1px solid rgba(214, 188, 128, .26);
-    background: rgba(244, 222, 169, .1);
-    color:#f1d798;
-    font-size:.72rem;
-    font-weight:900;
-    text-transform:uppercase;
-    white-space:nowrap;
-}
-
-.home-clients-card-meta{
-    color:#c9d6ea;
-    font-weight:600;
-    line-height:1.5;
-    word-break: break-word;
-}
-
-.home-clients-card.is-result .home-clients-card-meta{
-    font-size: .9rem;
-}
-
-.home-clients-card-cta{
-    margin-top:1rem;
-    color:#d8e5fb;
-    font-weight:900;
-}
-
-.home-clients-card.is-result .home-clients-card-cta{
-    margin-top:.55rem;
-    font-size: .88rem;
-}
-
-.home-clients-card-actions{
-    display:flex;
-    flex-wrap:wrap;
-    gap:.6rem;
-    margin-top: .85rem;
-}
-
-.home-clients-card-action{
-    display:inline-flex;
-    align-items:center;
-    justify-content:center;
-    min-height: 38px;
-    padding: 0 .9rem;
-    border-radius: 999px;
-    border: 1px solid rgba(145, 169, 219, .24);
-    background: rgba(255,255,255,.045);
-    color:#edf4ff;
-    font-weight:800;
-    box-shadow: none;
-    transition: border-color .14s ease, background .14s ease, transform .14s ease;
-}
-
-.home-clients-card-action:hover{
-    transform: translateY(-1px);
-    border-color: rgba(163, 187, 235, .34);
-    background: rgba(255,255,255,.08);
-}
-
-.home-clients-card-action.is-primary{
-    background: linear-gradient(180deg, #edd187, #ddb059);
-    color:#10213e;
-    border-color: rgba(236, 205, 130, .72);
-}
-
-.home-clients-card-action.is-primary:hover{
-    background: linear-gradient(180deg, #f1d68f, #dfb966);
-    border-color: rgba(241, 214, 143, .86);
-}
-
-.home-clients-empty{
-    padding: 1.05rem 1.15rem;
-    border-radius: 18px;
-    border: 1px dashed rgba(166,128,35,.35);
-    color:#d4dde9;
-    font-weight:600;
-    background: rgba(255,255,255,.03);
-}
-
-.home-clients-empty-block{
-    grid-column: 1 / -1;
-}
-
-.home-tools{
-    padding: 1.55rem 1.4rem 1.65rem;
-    background:
-        radial-gradient(circle at top left, rgba(229, 192, 96, .08), transparent 32%),
-        radial-gradient(circle at top right, rgba(76, 112, 191, .16), transparent 36%),
-        linear-gradient(180deg, #172b56 0%, #132447 54%, #0f1d38 100%);
-    border: 1px solid rgba(198, 159, 55, .38);
-    border-radius: 26px;
-    box-shadow:
-        0 28px 50px rgba(6, 15, 34, .20),
-        inset 0 1px 0 rgba(255,255,255,.06);
-    color: var(--text-strong);
-}
-
-.home-tools,
-.home-mini-tools,
-.ff-home-card{
-    border: 1px solid rgba(198, 159, 55, .38) !important;
-    color: var(--text-strong) !important;
-    box-shadow: 0 24px 44px rgba(6, 15, 34, .18), inset 0 1px 0 rgba(255,255,255,.05);
-}
-
-.ff-home-text-strong{
-    color: #e6eefb !important;
-    font-weight: 700;
-}
-
-.home-tools-row {
-    gap: 1rem;
-}
-
-.home-tools-row + .home-tools-row{
-    margin-top: 1.2rem;
-}
-
-.home-mini-tools-wrap{
-    width: 100%;
-    display: flex;
-    justify-content: center;
-    margin-bottom: 1.35rem;
-}
-
-.home-mini-tools{
-    border-radius: 20px;
-    padding: 1rem 1.15rem;
-    width: min(100%, 660px);
-    background: linear-gradient(180deg, rgba(15,29,56,.92), rgba(12,24,45,.98));
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    flex-wrap: wrap;
-    gap: .85rem;
-    box-shadow: inset 0 1px 0 rgba(255,255,255,.06);
-    color: var(--text-strong);
-}
-
-.home-mini-tools a,
-.home-mini-tools .zoom-hub-trigger{
-    width: 54px;
-    height: 54px;
-    border-radius: 16px;
-    border: 1px solid rgba(127, 151, 204, 0.22);
-    background: rgba(255,255,255,.05);
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    box-shadow: inset 0 1px 0 rgba(255,255,255,.04);
-}
-
-.home-mini-tools img.outlook-link{
-    height: 28px;
-    width: 28px;
-    object-fit: contain;
-    flex-shrink: 0;
-    transition: transform .2s ease, opacity .2s ease;
-}
-
-.home-mini-tools img.outlook-link:hover{
-    transform: translateY(-2px) scale(1.05);
-    opacity: 0.9;
-}
-
-.home-tools-head{
-    width: 100%;
-    display: flex;
-    align-items: flex-start;
-    justify-content: space-between;
-    gap: 1.25rem;
-    margin-bottom: 1.35rem;
-}
-
-.home-tools-head-actions{
-    flex: 0 0 auto;
-}
-
-.home-tools-copy{
-    display: grid;
-    gap: 0.35rem;
-    max-width: 680px;
-}
-
-.home-section-title{
-    margin: 0;
-    color: #f8fafc;
-    font-size: clamp(1.55rem, 2.6vw, 2rem);
-    line-height: 1.08;
-    font-weight: 940;
-    letter-spacing: -0.03em;
-}
-
-.home-section-sub{
-    margin: 0;
-    color: #c9d7ee;
-    font-size: 0.98rem;
-    font-weight: 620;
-    line-height: 1.55;
-}
-
-.home-tools-sub{
-    color: var(--text-muted);
-    font-weight: 600;
-    line-height: 1.45;
-}
-
-.frequent-tools-grid{
-    align-items: stretch;
-}
-
-.dashboard-tool {
-    width: 214px;
-    min-height: 184px;
-    border: 1px solid rgba(112, 140, 201, .24);
-    border-radius: 24px;
-    padding: 1.35rem 1rem 1.1rem;
-    text-decoration: none;
-    color: #f8fafc;
-    font-weight: 700;
-    background:
-        radial-gradient(circle at top, rgba(227, 188, 87, .08), transparent 34%),
-        linear-gradient(180deg, rgba(26, 45, 84, .97), rgba(14, 28, 53, .99));
-    box-shadow:
-        0 18px 34px rgba(6, 15, 34, .18),
-        inset 0 1px 0 rgba(255,255,255,.06);
-    transition: transform 0.24s ease, box-shadow 0.24s ease, background 0.24s ease, border-color 0.24s ease;
-}
-
-.dashboard-tool img{
-    width: 78px !important;
-    height: 78px !important;
-    padding: 12px;
-    border-radius: 22px;
-    object-fit: contain;
-    background: rgba(250, 252, 255, .96);
-    box-shadow: 0 16px 28px rgba(5, 12, 28, .20);
-    margin-bottom: 0.95rem !important;
-}
-
-.dashboard-tool .fw-bold{
-    color: #f8fafc;
-    font-size: 1rem;
-    font-weight: 900 !important;
-    line-height: 1.38;
-    max-width: 16ch;
-}
-
-.dashboard-tool:hover {
-    transform: translateY(-4px);
-    box-shadow:
-        0 24px 40px rgba(6, 15, 34, .24),
-        0 0 0 1px rgba(214,188,128,.18),
-        inset 0 1px 0 rgba(255,255,255,.08);
-    border-color: rgba(214, 188, 128, .56);
-    color: #f8fafc;
-}
-.dashboard-tool:focus-visible {
-    outline: 2px solid #ddb457;
-    outline-offset: 3px;
-    box-shadow: 0 18px 34px rgba(6,15,34,.22), 0 0 0 3px rgba(221,180,87,.20);
-}
-.dashboard-tool:active{
-    transform: translateY(-2px);
-    box-shadow: 0 14px 28px rgba(6,15,34,.18), 0 0 0 2px rgba(166,128,35,.18);
-}
-
-.btn-legend-store {
-    grid-column: 3;
-    justify-self: end;
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    font-size: 1rem;
-    font-weight: 700;
-    padding: 0.95rem 1.35rem;
-    border: 2px solid var(--gold-color);
-    border-radius: 16px;
-    background: transparent;
-    color: var(--text-strong);
-    text-decoration: none;
-    box-shadow: 0 8px 22px rgba(0,0,0,.22);
-    transition: all 0.3s ease;
-}
-
-.btn-legend-store:hover {
-    transform: translateY(-3px) scale(1.04);
-    box-shadow: 0 12px 28px rgba(0,0,0,.28);
-    background: linear-gradient(135deg, rgba(166,128,35,.14), transparent);
-}
-
-@@media (max-width: 992px) {
-    .home-clients-toolbar,
-    .home-clients-results,
-    .home-clients-recent-grid{
-        grid-template-columns: 1fr;
-    }
-
-    .home-clients-toolbar-actions{
-        justify-content:stretch;
-    }
-
-    .home-clients-action{
-        flex:1 1 auto;
-    }
-
-    .home-tools{
-        padding: 1.2rem 1rem 1.35rem;
-    }
-
-    .home-hero{
-        grid-template-columns: 1fr;
-        align-items: start;
-    }
-
-    .home-hero-tags{
-        justify-content: flex-start;
-    }
-
-    .dashboard-tool { width: 200px; min-height: 170px; }
-    .home-tools-head{
-        flex-direction: column;
-        align-items: stretch;
-    }
-
-    .home-tools-copy,
-    .home-tools-head-actions,
-    .btn-legend-store{
-        grid-column: auto;
-    }
-
-    .home-tools-head-actions,
-    .btn-legend-store{
-        justify-self: center;
-    }
-
-    .home-tools-row{
-        gap: 1rem;
-    }
-
-    .home-tools-row + .home-tools-row{
-        margin-top: 1.5rem;
-    }
-}
-
-@@media (max-width: 576px) {
-    .home-clients-shell{
-        padding: 1.2rem;
-    }
-
-    .home-clients-title{
-        font-size: 1.55rem;
-    }
-
-    .home-tools{
-        padding: 1rem .85rem 1.2rem;
-    }
-
-    .home-container{
-        width: min(100%, calc(100% - 1rem));
-        padding-top: 1rem;
-    }
-
-    .home-hero{
-        padding: 1.25rem 1rem;
-        gap: 1rem;
-    }
-
-    .home-hero-title{
-        font-size: 2.1rem;
-    }
-
-    .home-tools-row{
-        gap: .9rem;
-    }
-
-    .home-tools-row + .home-tools-row{
-        margin-top: 1.2rem;
-    }
-
-    .dashboard-tool { width: 100%; min-height: 150px; }
-    .home-mini-tools{
-        width: 100%;
-        max-width: 420px;
-        padding: .9rem 1rem;
-        gap: .75rem;
-    }
-    .btn-legend-store{
-        width: 100%;
-        text-align: center;
-        justify-content: center;
-    }
-}
-
-/* =========================================
-   FACT FINDER HOME SECTION (SCOPED)
-========================================= */
-.home-factfinder{
-    display:flex;
-    justify-content:center;
-}
-
-.ff-home-card{
-    width: 100%;
-    max-width: 1180px;
-    background: var(--navy-800);
-    border-radius: 18px;
-    border: 1.6px solid var(--gold-color);
-    box-shadow: 0 20px 46px rgba(0,0,0,.32), inset 0 1px 0 rgba(255,255,255,.08);
-    overflow:hidden;
-    padding: 22px;
-    background:
-        radial-gradient(900px 350px at 15% 10%, rgba(166,128,35,.16), transparent 60%),
-        radial-gradient(800px 320px at 85% 20%, rgba(166,128,35,.12), transparent 60%),
-        linear-gradient(180deg, var(--navy-800) 0%, var(--navy-900) 100%);
-    color: var(--text-strong);
-}
-
-.ff-home-kicker{
-    display:inline-flex;
-    align-items:center;
-    gap:10px;
-    font-weight: 950;
-    color: #e7c06d;
-    letter-spacing:.25px;
-    text-transform: uppercase;
-    font-size: .85rem;
-}
-
-.ff-home-dot{
-    width:10px; height:10px; border-radius:50%;
-    background: var(--gold-color);
-    box-shadow: 0 0 0 4px rgba(166,128,35,.15);
-    flex: 0 0 auto;
-}
-
-.ff-home-title{
-    margin: 10px 0 6px 0;
-    font-weight: 950;
-    letter-spacing:.2px;
-    color: var(--text-strong);
-}
-
-.ff-home-sub{
-    margin: 0;
-    color: #e2e8f0;
-    font-weight: 600;
-    max-width: 900px;
-    line-height: 1.45;
-}
-
-.ff-home-actions{
-    margin-top: 14px;
-    margin-bottom: 16px;
-}
-
-.ff-home-btn{
-    display:inline-flex;
-    align-items:center;
-    justify-content:center;
-    padding: 10px 14px;
-    border-radius: 14px;
-    text-decoration:none;
-    font-weight: 950;
-    border: 2px solid rgba(166,128,35,.65);
-    transition: transform .15s ease, box-shadow .15s ease, border-color .15s ease, background .15s ease;
-}
-
-.ff-home-btn-primary{
-    background: var(--gold-color);
-    color:#0b1529;
-    border-color: var(--gold-color);
-    box-shadow: 0 12px 26px rgba(0,0,0,.26);
-}
-
-.ff-home-btn-primary:hover{
-    background: #8f6f1e;
-    border-color: #8f6f1e;
-    transform: translateY(-1px);
-}
-.ff-home-btn-primary:focus-visible{
-    outline: 2px solid #ddb457;
-    outline-offset: 3px;
-    box-shadow: 0 14px 28px rgba(0,0,0,.30);
-}
-
-.ff-home-grid{
-    display:grid;
-    grid-template-columns: repeat(3, 1fr);
-    gap: 14px;
-    margin-top: 6px;
-}
-
-@@media (max-width: 992px){
-    .ff-home-grid{ grid-template-columns: 1fr; }
-}
-
-.ff-home-tile{
-    display:block;
-    text-decoration:none;
-    color: var(--text-strong);
-    border-radius: 16px;
-    border: 1.6px solid rgba(166,128,35,.60);
-    background: linear-gradient(160deg, var(--navy-900), var(--navy-800));
-    padding: 16px;
-    box-shadow: 0 14px 32px rgba(0,0,0,.32), inset 0 1px 0 rgba(255,255,255,.06);
-    transition: transform .12s ease, box-shadow .12s ease, border-color .12s ease;
-}
-
-.ff-home-tile:hover{
-    transform: translateY(-2px);
-    border-color: rgba(166,128,35,.78);
-    box-shadow: 0 18px 45px rgba(0,0,0,.38);
-}
-
-.ff-home-tile-top{
-    display:flex;
-    align-items:flex-start;
-    justify-content: space-between;
-    gap: 10px;
-    margin-bottom: 10px;
-}
-
-.ff-home-tile-title{
-    font-weight: 950;
-    font-size: 1.1rem;
-    letter-spacing:.2px;
-}
-
-.ff-home-pill{
-    display:inline-flex;
-    align-items:center;
-    border-radius: 999px;
-    padding: 7px 10px;
-    font-weight: 950;
-    font-size: .86rem;
-    border: 1px solid rgba(166,128,35,.45);
-    background: rgba(166,128,35,.12);
-    color: #f6e6b4;
-    white-space: nowrap;
-}
-
-.ff-home-tile-desc{
-    color: #e2e8f0;
-    font-weight: 650;
-    line-height: 1.45;
-    min-height: 54px;
-}
-
-.ff-home-tile-cta{
-    margin-top: 14px;
-    display:flex;
-    align-items:center;
-    justify-content:center;
-    border-radius: 12px;
-    padding: 10px 12px;
-    font-weight: 950;
-    border: 2px solid var(--gold-color);
-    color: #fff;
-    background: var(--gold-color);
-}
-
-.ff-home-tile:hover .ff-home-tile-cta{
-    background: #8f6f1e;
-    border-color: #8f6f1e;
-}
-
-.ff-home-footer{
-    margin-top: 16px;
-    text-align:center;
-    color: #e2e8f0;
-    font-weight: 650;
-}
-.ff-home-footer strong{ color: var(--text-strong); }
-
-/* =========================================
-   ZOOM HUB TRIGGER BUTTON (mini tools)
-========================================= */
-.zoom-hub-trigger{
-    display:inline-flex;
-    align-items:center;
-    justify-content:center;
-    width:36px;
-    height:36px;
-    padding:0;
-    border:none;
-    background:transparent;
-    cursor:pointer;
-    border-radius:8px;
-    transition: transform .2s ease, opacity .2s ease;
-    flex-shrink:0;
-}
-.zoom-hub-trigger:hover{
-    transform: translateY(-2px) scale(1.05);
-    opacity: 0.9;
-}
-.zoom-hub-trigger svg{
-    display:block;
-    border-radius:7px;
-    box-shadow: 0 2px 8px rgba(0,0,0,.35);
-}
-
-/* =========================================
-   ZOOM LINKS HUB OVERLAY
-========================================= */
-.home-zoom-hub{
-    position: fixed;
-    inset: 0;
-    z-index: 2100;
-    opacity: 0;
-    pointer-events: none;
-    transition: opacity .18s ease;
-}
-.home-zoom-hub.open{
-    opacity: 1;
-    pointer-events: auto;
-}
-.home-zoom-backdrop{
-    position: absolute;
-    inset: 0;
-    background: rgba(7, 12, 23, .68);
-    backdrop-filter: blur(7px);
-}
-.home-zoom-dialog{
-    position: relative;
-    z-index: 1;
-    min-height: 100%;
-    display:flex;
-    align-items:center;
-    justify-content:center;
-    padding: 2rem 1rem;
-}
-.home-zoom-shell{
-    width: min(680px, 100%);
-    max-height: min(88vh, 820px);
-    overflow: auto;
-    border-radius: 28px;
-    border: 1.8px solid rgba(221,180,87,.5);
-    background:
-        radial-gradient(860px 360px at -6% -10%, rgba(221,180,87,.22), transparent 56%),
-        radial-gradient(760px 340px at 102% -4%, rgba(84,120,176,.16), transparent 60%),
-        linear-gradient(168deg, rgba(8,18,36,.995), rgba(14,29,56,.995) 56%, rgba(16,34,64,.995));
-    color: var(--text-strong);
-    box-shadow:
-        0 38px 96px rgba(0,0,0,.54),
-        0 0 0 1px rgba(255,255,255,.06) inset,
-        0 24px 42px rgba(221,180,87,.12);
-    padding: 2rem;
-}
-.home-zoom-head{
-    display:flex;
-    align-items:flex-start;
-    justify-content:space-between;
-    gap: 1.25rem;
-    padding-bottom: 1.2rem;
-    border-bottom: 1px solid rgba(221,180,87,.24);
-    margin-bottom: 1.5rem;
-}
-.home-zoom-kicker{
-    display:inline-flex;
-    align-items:center;
-    font-size:.8rem;
-    font-weight:900;
-    letter-spacing:.1em;
-    text-transform:uppercase;
-    color:#e7c06d;
-}
-.home-zoom-title{
-    margin:.45rem 0 .4rem;
-    font-size:1.9rem;
-    font-weight:950;
-    line-height:1.15;
-}
-.home-zoom-sub{
-    margin:0;
-    color:#d4dde9;
-    font-weight:600;
-    line-height:1.6;
-}
-.home-zoom-close{
-    display:inline-flex;
-    align-items:center;
-    justify-content:center;
-    width: 44px;
-    height: 44px;
-    border-radius: 12px;
-    border: 1.5px solid rgba(166,128,35,.44);
-    background: rgba(255,255,255,.05);
-    color:#f8fafc;
-    font-size:1.6rem;
-    line-height:1;
-    cursor:pointer;
-    flex-shrink:0;
-    transition: background .15s ease, border-color .15s ease;
-}
-.home-zoom-close:hover{
-    background: rgba(255,255,255,.1);
-    border-color: rgba(166,128,35,.7);
-}
-
-/* Add Form */
-.home-zoom-add-form{
-    margin-bottom: 1.75rem;
-}
-.home-zoom-add-fields{
-    display:flex;
-    gap:.75rem;
-    flex-wrap:wrap;
-    margin-bottom:.75rem;
-}
-.home-zoom-input{
-    flex:1 1 200px;
-    padding: .6rem .85rem;
-    border-radius: 10px;
-    border: 1.5px solid rgba(221,180,87,.4);
-    background: rgba(255,255,255,.06);
-    color: var(--text-strong);
-    font-size: .95rem;
-    font-weight:600;
-    outline:none;
-    transition: border-color .15s ease, background .15s ease;
-}
-.home-zoom-input:focus{
-    border-color: rgba(221,180,87,.8);
-    background: rgba(255,255,255,.1);
-}
-.home-zoom-input::placeholder{ color: rgba(255,255,255,.38); }
-.home-zoom-save-btn{
-    display:inline-flex;
-    align-items:center;
-    justify-content:center;
-    padding: .6rem 1.35rem;
-    border-radius:10px;
-    border: 1.8px solid var(--gold-color);
-    background: var(--gold-color);
-    color: #0b1529;
-    font-size:.95rem;
-    font-weight:900;
-    cursor:pointer;
-    transition: background .15s ease, transform .12s ease, box-shadow .15s ease;
-    box-shadow: 0 6px 18px rgba(0,0,0,.26);
-}
-.home-zoom-save-btn:hover{
-    background: #c79931;
-    border-color: #c79931;
-    transform: translateY(-1px);
-    box-shadow: 0 10px 24px rgba(0,0,0,.3);
-}
-.home-zoom-save-btn:disabled{
-    opacity:.6;
-    cursor:default;
-    transform:none;
-}
-.home-zoom-error{
-    margin-top:.6rem;
-    padding:.55rem .85rem;
-    border-radius:8px;
-    background: rgba(220,53,69,.18);
-    border: 1px solid rgba(220,53,69,.45);
-    color: #f8b4bc;
-    font-size:.9rem;
-    font-weight:600;
-}
-
-/* Links List */
-.home-zoom-list-head{
-    font-size:.8rem;
-    font-weight:900;
-    letter-spacing:.08em;
-    text-transform:uppercase;
-    color:#e7c06d;
-    margin-bottom:.75rem;
-}
-.home-zoom-empty{
-    color:#d4dde9;
-    font-weight:600;
-    font-size:.95rem;
-    padding: 1rem 0;
-}
-.home-zoom-list{
-    display:flex;
-    flex-direction:column;
-    gap:.6rem;
-}
-.zoom-link-row{
-    display:flex;
-    align-items:center;
-    justify-content:space-between;
-    gap:1rem;
-    padding:.85rem 1rem;
-    border-radius:14px;
-    border: 1.5px solid rgba(221,180,87,.28);
-    background: rgba(255,255,255,.04);
-    transition: border-color .15s ease, background .15s ease;
-}
-.zoom-link-row:hover{
-    border-color: rgba(221,180,87,.5);
-    background: rgba(255,255,255,.07);
-}
-.zoom-link-info{
-    display:flex;
-    flex-direction:column;
-    gap:.2rem;
-    min-width:0;
-}
-.zoom-link-name{
-    font-weight:800;
-    font-size:.95rem;
-    color: var(--text-strong);
-    white-space:nowrap;
-    overflow:hidden;
-    text-overflow:ellipsis;
-}
-.zoom-link-url{
-    font-size:.8rem;
-    font-weight:600;
-    color:#94a3b8;
-    white-space:nowrap;
-    overflow:hidden;
-    text-overflow:ellipsis;
-}
-.zoom-link-actions{
-    display:flex;
-    gap:.5rem;
-    flex-shrink:0;
-}
-.zoom-link-btn{
-    display:inline-flex;
-    align-items:center;
-    justify-content:center;
-    padding:.4rem .85rem;
-    border-radius:8px;
-    font-size:.82rem;
-    font-weight:800;
-    cursor:pointer;
-    transition: background .15s ease, transform .1s ease, border-color .15s ease;
-}
-.zoom-link-btn-open{
-    border: 1.5px solid rgba(100,180,120,.5);
-    background: rgba(100,180,120,.12);
-    color: #a8e6bb;
-    text-decoration: none;
-}
-.zoom-link-btn-open:hover{
-    background: rgba(100,180,120,.26);
-    border-color: rgba(100,180,120,.75);
-    color: #a8e6bb;
-}
-.zoom-link-btn-copy{
-    border: 1.5px solid rgba(221,180,87,.5);
-    background: rgba(221,180,87,.12);
-    color: #f6e6b4;
-}
-.zoom-link-btn-copy:hover,
-.zoom-link-btn-copy.copied{
-    background: rgba(221,180,87,.26);
-    border-color: rgba(221,180,87,.75);
-}
-.zoom-link-btn-delete{
-    border: 1.5px solid rgba(220,53,69,.35);
-    background: rgba(220,53,69,.1);
-    color: #f8b4bc;
-}
-.zoom-link-btn-delete:hover{
-    background: rgba(220,53,69,.22);
-    border-color: rgba(220,53,69,.6);
-}
-@@media (max-width: 576px){
-    .home-zoom-add-fields{ flex-direction:column; }
-    .zoom-link-row{ flex-direction:column; align-items:flex-start; }
-    .zoom-link-actions{ align-self:flex-end; }
-}
-</style>
 
 @section Scripts {
     <script src="~/js/legend-modal.js" asp-append-version="true"></script>
