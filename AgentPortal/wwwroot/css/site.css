@@ -331,7 +331,7 @@ footer.footer {
     margin-bottom: 2rem;
 }
 
-.search-input {
+.search-container:not(.dashboard-search-panel) .search-input {
     width: 400px;
     max-width: 90%;
     padding: 0.6rem 2.5rem 0.6rem 1rem;
@@ -341,7 +341,7 @@ footer.footer {
     box-shadow: 0 4px 12px rgba(0,0,0,0.1);
 }
 
-.search-input:focus {
+.search-container:not(.dashboard-search-panel) .search-input:focus {
     outline: none;
     border-color: #b2882b;
     box-shadow: 0 0 10px rgba(166,128,35,0.4);
@@ -377,7 +377,7 @@ footer.footer {
     h3 { font-size: 1.15rem; }
     .nav-link { padding: 0.5rem; }
     img { max-width: 100%; height: auto; }
-    .search-input { width: 90%; }
+    .search-container:not(.dashboard-search-panel) .search-input { width: 90%; }
 }
 
 
@@ -443,7 +443,7 @@ footer.footer {
         align-items: stretch;
         gap: 0.5rem;
     }
-    .search-input{ width: 100% !important; max-width: none !important; }
+    .search-container:not(.dashboard-search-panel) .search-input{ width: 100% !important; max-width: none !important; }
     .btn-clear-search{ width: 100%; }
 
     /* Category collapsible cards */
@@ -502,7 +502,7 @@ footer.footer {
 /* ============================== RESPONSIVE ============================== */
 
 @media (max-width: 576px) {
-    .search-input { width: 90%; }
+    .search-container:not(.dashboard-search-panel) .search-input { width: 90%; }
 }
 .hero-hr {
     border-color: #555555; /* Home tab grey */
@@ -792,7 +792,7 @@ body:not(.finance-page) .pagination .page-link.active {
     color: #2a1b05;
 }
 
-body:not(.finance-page) .search-container .search-input,
+body:not(.finance-page) .search-container:not(.dashboard-search-panel) .search-input,
 body:not(.finance-page) .search-wrap .premium-input,
 body:not(.finance-page) #training-search,
 body:not(.finance-page) #resourceSearch {
@@ -801,7 +801,7 @@ body:not(.finance-page) #resourceSearch {
     box-shadow: 0 12px 28px rgba(64,47,11,.08), var(--legend-inset) !important;
 }
 
-body:not(.finance-page) .search-container .search-input:focus,
+body:not(.finance-page) .search-container:not(.dashboard-search-panel) .search-input:focus,
 body:not(.finance-page) .search-wrap .premium-input:focus,
 body:not(.finance-page) #training-search:focus,
 body:not(.finance-page) #resourceSearch:focus {
