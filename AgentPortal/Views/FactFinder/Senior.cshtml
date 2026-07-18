@@ -22,13 +22,17 @@
         <div class="success-message">@ViewBag.Success</div>
     }
 
-    <div class="ff-title">
-        <h1>Fact Finder - Seniors (62+)</h1>
-    </div>
+    <div class="ff-hero">
+        <div class="ff-hero-inner">
+            <div class="ff-title">
+                <h1>Fact Finder - Seniors (62+)</h1>
+            </div>
 
-    <p class="required-note">
-        <strong><span class="text-danger">*</span> Fields marked with a red asterisk are required.</strong>
-    </p>
+            <p class="required-note">
+                <strong><span class="text-danger">*</span> Fields marked with a red asterisk are required.</strong>
+            </p>
+        </div>
+    </div>
 
     <div class="ff-progress-wrap">
         <div class="ff-progress-top">
@@ -206,7 +210,7 @@
 
                             <div class="field">
                                 <label>Why?</label>
-                                <textarea asp-for="Senior.ExtendedCare.BiggestConcernWhy" class="form-control" style="min-height:72px;"></textarea>
+                                <textarea asp-for="Senior.ExtendedCare.BiggestConcernWhy" class="form-control ff-textarea-sm"></textarea>
                             </div>
 
                             <div class="field">
@@ -594,7 +598,7 @@
                                 <div class="checkline"><input asp-for="Senior.Medical.ApplicantCoverage.Add_CriticalIllness" type="checkbox" id="acCiSenior" /><label for="acCiSenior">Critical Illness</label></div>
                                 <div class="field">
                                     <label>
-                                        <input asp-for="Senior.Medical.ApplicantCoverage.Add_Other" type="checkbox" id="acAddOtherSenior" style="accent-color: var(--gold);" />
+                                        <input asp-for="Senior.Medical.ApplicantCoverage.Add_Other" type="checkbox" id="acAddOtherSenior" class="ff-check-input-gold" />
                                         Other
                                     </label>
                                     <input asp-for="Senior.Medical.ApplicantCoverage.AddOtherText" class="form-control" placeholder="Other benefits" />
@@ -644,7 +648,7 @@
                                 <div class="checkline"><input asp-for="Senior.Medical.SpouseCoverage.Add_CriticalIllness" type="checkbox" id="scCiSenior" /><label for="scCiSenior">Critical Illness</label></div>
                                 <div class="field">
                                     <label>
-                                        <input asp-for="Senior.Medical.SpouseCoverage.Add_Other" type="checkbox" id="scAddOtherSenior" style="accent-color: var(--gold);" />
+                                        <input asp-for="Senior.Medical.SpouseCoverage.Add_Other" type="checkbox" id="scAddOtherSenior" class="ff-check-input-gold" />
                                         Other
                                     </label>
                                     <input asp-for="Senior.Medical.SpouseCoverage.AddOtherText" class="form-control" placeholder="Other benefits" />
@@ -1308,27 +1312,27 @@
 
                             <div class="field">
                                 <label>28) How do you feel about the recent performance of your portfolio?</label>
-                                <textarea asp-for="Senior.Retirement.FeelAboutRecentPerformance" class="form-control" style="min-height:72px;"></textarea>
+                                <textarea asp-for="Senior.Retirement.FeelAboutRecentPerformance" class="form-control ff-textarea-sm"></textarea>
                             </div>
 
                             <div class="field">
                                 <label>How do you feel about the service you’ve received? Has it met your expectations?</label>
-                                <textarea asp-for="Senior.Retirement.FeelAboutServiceReceived" class="form-control" style="min-height:72px;"></textarea>
+                                <textarea asp-for="Senior.Retirement.FeelAboutServiceReceived" class="form-control ff-textarea-sm"></textarea>
                             </div>
 
                             <div class="field">
                                 <label>29) Has your current advisor or institution updated you on how the Secure Act could affect your legacy?</label>
-                                <textarea asp-for="Senior.Retirement.UpdatedOnSecureActImpact" class="form-control" style="min-height:72px;"></textarea>
+                                <textarea asp-for="Senior.Retirement.UpdatedOnSecureActImpact" class="form-control ff-textarea-sm"></textarea>
                             </div>
 
                             <div class="field">
                                 <label>30) Is there a story behind any of these assets such as family property or inheritance?</label>
-                                <textarea asp-for="Senior.Retirement.StoryBehindAssetsInheritance" class="form-control" style="min-height:72px;"></textarea>
+                                <textarea asp-for="Senior.Retirement.StoryBehindAssetsInheritance" class="form-control ff-textarea-sm"></textarea>
                             </div>
 
                             <div class="field">
                                 <label>Outcomes, Additional Information and Follow-up Notes</label>
-                                <textarea asp-for="Senior.Retirement.OutcomesAndFollowUpNotes" class="form-control" style="min-height:110px;"></textarea>
+                                <textarea asp-for="Senior.Retirement.OutcomesAndFollowUpNotes" class="form-control ff-textarea-xl"></textarea>
                             </div>
                         </div>
 
@@ -1451,17 +1455,17 @@
                     </div>
 
                     <!-- Disclaimer + Submit -->
-                    <div class="section-card" style="margin-top:14px; border-width:2px;">
-                        <div class="block" style="border:none; padding:0; background:transparent;">
-                            <div class="checkline" style="background:#fff; color: var(--navy-900); border:1.2px solid var(--gold);">
+                    <div class="section-card ff-disclaimer-card">
+                        <div class="block ff-disclaimer-block ff-no-collapse">
+                            <div class="checkline ff-checkline-light">
                                 <input asp-for="Senior.AcknowledgedDisclaimer" type="checkbox" class="form-check-input" id="disclaimerCheckboxSenior" required />
-                                <label for="disclaimerCheckboxSenior" class="form-check-label ack-text" style="font-weight:900; margin:0; color: var(--navy-900) !important;">
+                                <label for="disclaimerCheckboxSenior" class="form-check-label ack-text ff-checkline-label">
                                     I acknowledge that by submitting this form, I authorize the company/agent to contact me regarding this Fact Finder intake.<span class="req">*</span>
                                 </label>
                             </div>
                             <span asp-validation-for="Senior.AcknowledgedDisclaimer" class="text-danger"></span>
 
-                            <div class="wizard-actions" style="margin-top: 12px;">
+                            <div class="wizard-actions ff-actions-top">
                                 <button type="button" class="btn btn-ghost" data-prev>Back</button>
                                 <button type="submit" class="btn btn-gold">Submit & Download PDF</button>
                             </div>
@@ -1584,6 +1588,9 @@
                 function showStep(idx) {
                     steps.forEach((s, i) => s.classList.toggle('active', i === idx));
                     updateProgress(idx);
+                    if (window.LegendFactFinderSections) {
+                        window.LegendFactFinderSections.sync(root);
+                    }
                 }
 
                 function focusFirstInvalidInStep(stepEl) {
@@ -1652,5 +1659,6 @@
 </div>
 
 @section Scripts {
+    <script src="~/_content/Shared/js/legend-factfinder-shared.js" asp-append-version="true"></script>
     <partial name="_ValidationScriptsPartial" />
 }

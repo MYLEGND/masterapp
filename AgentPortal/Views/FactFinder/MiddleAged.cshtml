@@ -18,13 +18,17 @@
         <div class="success-message">@ViewBag.Success</div>
     }
 
-    <div class="ff-title">
-        <h1>Fact Finder - Middle-Aged (35-61)</h1>
-    </div>
+    <div class="ff-hero">
+        <div class="ff-hero-inner">
+            <div class="ff-title">
+                <h1>Fact Finder - Middle-Aged (35-61)</h1>
+            </div>
 
-    <p class="required-note">
-        <strong><span class="text-danger">*</span> Fields marked with a red asterisk are required.</strong>
-    </p>
+            <p class="required-note">
+                <strong><span class="text-danger">*</span> Fields marked with a red asterisk are required.</strong>
+            </p>
+        </div>
+    </div>
 
     <div class="ff-progress-wrap">
         <div class="ff-progress-top">
@@ -56,7 +60,7 @@
                     <div class="section-title">Part 1 — Values, Direction & Real Concerns</div>
                     <div class="subtle">Before money, we get truth. What matters, what’s heavy, and what “winning” looks like.</div>
 
-                    <div class="grid two">
+                    <div class="stack">
 
                         <!-- Identity (Required) -->
                         <div class="block">
@@ -106,17 +110,17 @@
 
                             <div class="field">
                                 <label>34) What does “winning” look like for your family in 10–15 years?</label>
-                                <textarea asp-for="Middle.Direction.WinningDefinition" class="form-control" style="min-height:84px;"></textarea>
+                                <textarea asp-for="Middle.Direction.WinningDefinition" class="form-control ff-textarea-md"></textarea>
                             </div>
 
                             <div class="field">
                                 <label>35) What are you most afraid of financially if nothing changes?</label>
-                                <textarea asp-for="Middle.Direction.BiggestFearIfNoChange" class="form-control" style="min-height:84px;"></textarea>
+                                <textarea asp-for="Middle.Direction.BiggestFearIfNoChange" class="form-control ff-textarea-md"></textarea>
                             </div>
 
                             <div class="field">
                                 <label>36) If you could change one thing starting today, what would it be?</label>
-                                <textarea asp-for="Middle.Direction.ChangeOneThing" class="form-control" style="min-height:84px;"></textarea>
+                                <textarea asp-for="Middle.Direction.ChangeOneThing" class="form-control ff-textarea-md"></textarea>
                             </div>
 
                             <div class="mini-title">Children / Dependents</div>
@@ -165,7 +169,7 @@
                             <div class="mini-title">Family Responsibilities</div>
                             <div class="field">
                                 <label>Are you financially supporting anyone outside your household?</label>
-                                <textarea asp-for="Middle.FamilySupportOutsideHousehold" class="form-control" style="min-height:82px;"></textarea>
+                                <textarea asp-for="Middle.FamilySupportOutsideHousehold" class="form-control ff-textarea-md"></textarea>
                             </div>
 
                             <div class="mini-title">Emergency Contact</div>
@@ -272,7 +276,7 @@
 
                             <div class="field">
                                 <label>What are the biggest threats to your income in the next 5 years?</label>
-                                <textarea asp-for="Middle.Applicant.IncomeThreats" class="form-control" style="min-height:92px;"></textarea>
+                                <textarea asp-for="Middle.Applicant.IncomeThreats" class="form-control ff-textarea-md"></textarea>
                             </div>
                         </div>
 
@@ -333,7 +337,7 @@
                             <div class="mini-title">Quick Pressure Check</div>
                             <div class="field">
                                 <label>20) Biggest frustration with finances right now?</label>
-                                <textarea asp-for="Middle.Cashflow.BiggestFrustration" class="form-control" style="min-height:84px;"></textarea>
+                                <textarea asp-for="Middle.Cashflow.BiggestFrustration" class="form-control ff-textarea-md"></textarea>
                             </div>
                         </div>
 
@@ -363,7 +367,7 @@
 
                             <div class="field">
                                 <label>1) What coverage do you currently have?</label>
-                                <textarea asp-for="Middle.Health.CurrentCoverageSummary" class="form-control" style="min-height:84px;"></textarea>
+                                <textarea asp-for="Middle.Health.CurrentCoverageSummary" class="form-control ff-textarea-md"></textarea>
                             </div>
 
                             <div class="row three">
@@ -394,12 +398,12 @@
 
                             <div class="field">
                                 <label>2) When was the last time you reviewed your plan?</label>
-                                <textarea asp-for="Middle.Health.LastReviewNotes" class="form-control" style="min-height:84px;"></textarea>
+                                <textarea asp-for="Middle.Health.LastReviewNotes" class="form-control ff-textarea-md"></textarea>
                             </div>
 
                             <div class="field">
                                 <label>3) Have medical bills ever surprised you?</label>
-                                <textarea asp-for="Middle.Health.MedicalBillsSurprises" class="form-control" style="min-height:84px;"></textarea>
+                                <textarea asp-for="Middle.Health.MedicalBillsSurprises" class="form-control ff-textarea-md"></textarea>
                             </div>
 
                             <div class="mini-title">Optional Coverage / Gap Fillers</div>
@@ -422,33 +426,33 @@
 
                             <div class="field">
                                 <label>4) How would you describe your health in the last three years?</label>
-                                <textarea asp-for="Middle.Health.HealthLastThreeYears" class="form-control" style="min-height:84px;"></textarea>
+                                <textarea asp-for="Middle.Health.HealthLastThreeYears" class="form-control ff-textarea-md"></textarea>
                             </div>
 
                             <div class="field">
                                 <label>5) Current medications (if any)</label>
-                                <textarea asp-for="Middle.Health.CurrentMeds" class="form-control" style="min-height:84px;"></textarea>
+                                <textarea asp-for="Middle.Health.CurrentMeds" class="form-control ff-textarea-md"></textarea>
                             </div>
 
                             <div class="row two">
                                 <div class="field">
                                     <label>6) Any major diagnoses in the last 10 years?</label>
-                                    <textarea asp-for="Middle.Health.MajorDiagnoses" class="form-control" style="min-height:84px;"></textarea>
+                                    <textarea asp-for="Middle.Health.MajorDiagnoses" class="form-control ff-textarea-md"></textarea>
                                 </div>
                                 <div class="field">
                                     <label>7) Any surgeries / hospitalizations in the last 10 years?</label>
-                                    <textarea asp-for="Middle.Health.SurgeriesHosp" class="form-control" style="min-height:84px;"></textarea>
+                                    <textarea asp-for="Middle.Health.SurgeriesHosp" class="form-control ff-textarea-md"></textarea>
                                 </div>
                             </div>
 
                             <div class="field">
                                 <label>8) Family history of major illness?</label>
-                                <textarea asp-for="Middle.Health.FamilyHistory" class="form-control" style="min-height:84px;"></textarea>
+                                <textarea asp-for="Middle.Health.FamilyHistory" class="form-control ff-textarea-md"></textarea>
                             </div>
 
                             <div class="field">
                                 <label>9) If a health event happened this year, how would it impact your income and responsibilities?</label>
-                                <textarea asp-for="Middle.Health.HealthEventImpact" class="form-control" style="min-height:84px;"></textarea>
+                                <textarea asp-for="Middle.Health.HealthEventImpact" class="form-control ff-textarea-md"></textarea>
                             </div>
                         </div>
 
@@ -478,7 +482,7 @@
 
                             <div class="field">
                                 <label>10) Purpose of your life insurance right now?</label>
-                                <textarea asp-for="Middle.Life.PrimaryPurpose" class="form-control" style="min-height:84px;"></textarea>
+                                <textarea asp-for="Middle.Life.PrimaryPurpose" class="form-control ff-textarea-md"></textarea>
                             </div>
 
                             <div class="mini-title">Applicant Policies</div>
@@ -497,7 +501,7 @@
 
                                     <div class="table-like repeater-item">
 
-                                        <div class="mini-title" style="margin-top:0;">Policy @(i + 1)</div>
+                                        <div class="mini-title ff-mini-title-tight">Policy @(i + 1)</div>
 
                                         <div class="row three">
                                             <div class="field"><label>Type</label><input name="Middle.Life.Applicant[@i].Type" value="@(p?.Type ?? "")" class="form-control" placeholder="Term / Whole / UL / IUL / Variable / Group" /></div>
@@ -541,7 +545,7 @@
 
                                     <div class="table-like repeater-item">
 
-                                        <div class="mini-title" style="margin-top:0;">Policy @(i + 1)</div>
+                                        <div class="mini-title ff-mini-title-tight">Policy @(i + 1)</div>
 
                                         <div class="row three">
                                             <div class="field"><label>Type</label><input name="Middle.Life.Spouse[@i].Type" value="@(p?.Type ?? "")" class="form-control" placeholder="Term / Whole / UL / IUL / Variable / Group" /></div>
@@ -577,7 +581,7 @@
 
                             <div class="field">
                                 <label>12) If you passed away this year, what would financially break first?</label>
-                                <textarea asp-for="Middle.Life.WhatBreaksFirst" class="form-control" style="min-height:84px;"></textarea>
+                                <textarea asp-for="Middle.Life.WhatBreaksFirst" class="form-control ff-textarea-md"></textarea>
                             </div>
                         </div>
 
@@ -587,7 +591,7 @@
 
                             <div class="field">
                                 <label>13) If you couldn’t work for 6–12 months, what happens financially?</label>
-                                <textarea asp-for="Middle.DI.IfCannotWorkImpact" class="form-control" style="min-height:84px;"></textarea>
+                                <textarea asp-for="Middle.DI.IfCannotWorkImpact" class="form-control ff-textarea-md"></textarea>
                             </div>
 
                             <div class="mini-title">Disability Coverage</div>
@@ -630,12 +634,12 @@
 
                             <div class="field">
                                 <label>16) Any major exposures?</label>
-                                <textarea asp-for="Middle.Liability.Exposures" class="form-control" style="min-height:84px;"></textarea>
+                                <textarea asp-for="Middle.Liability.Exposures" class="form-control ff-textarea-md"></textarea>
                             </div>
 
                             <div class="field">
                                 <label>17) Any claim, lawsuit, major accident, or insurance cancellation?</label>
-                                <textarea asp-for="Middle.Liability.ClaimsHistory" class="form-control" style="min-height:84px;"></textarea>
+                                <textarea asp-for="Middle.Liability.ClaimsHistory" class="form-control ff-textarea-md"></textarea>
                             </div>
                         </div>
 
@@ -680,7 +684,7 @@
 
                             <div class="field">
                                 <label>18) Where does money leak the most each month?</label>
-                                <textarea asp-for="Middle.Cashflow.Leaks" class="form-control" style="min-height:84px;"></textarea>
+                                <textarea asp-for="Middle.Cashflow.Leaks" class="form-control ff-textarea-md"></textarea>
                             </div>
 
                             <div class="field">
@@ -707,7 +711,7 @@
 
                             <div class="field">
                                 <label>21) If you had an unexpected $10,000 expense this month, how would you handle it?</label>
-                                <textarea asp-for="Middle.Cashflow.Unexpected10kPlan" class="form-control" style="min-height:84px;"></textarea>
+                                <textarea asp-for="Middle.Cashflow.Unexpected10kPlan" class="form-control ff-textarea-md"></textarea>
                             </div>
                         </div>
 
@@ -771,7 +775,7 @@
 
                             <div class="field">
                                 <label>23) If you could change one thing about your debt situation, what would it be?</label>
-                                <textarea asp-for="Middle.Debt.ChangeOneThing" class="form-control" style="min-height:84px;"></textarea>
+                                <textarea asp-for="Middle.Debt.ChangeOneThing" class="form-control ff-textarea-md"></textarea>
                             </div>
 
                         </div>
@@ -862,7 +866,7 @@
 
                             <div class="field">
                                 <label>24) Are your accounts organized and intentional, or scattered and reactive?</label>
-                                <textarea asp-for="Middle.Assets.OrganizationFeel" class="form-control" style="min-height:84px;"></textarea>
+                                <textarea asp-for="Middle.Assets.OrganizationFeel" class="form-control ff-textarea-md"></textarea>
                             </div>
 
                             <div class="field">
@@ -874,7 +878,7 @@
 
                             <div class="field">
                                 <label>29) Do you feel like you pay “too much” in taxes? If yes, why?</label>
-                                <textarea asp-for="Middle.Tax.FeelsTooHighWhy" class="form-control" style="min-height:84px;"></textarea>
+                                <textarea asp-for="Middle.Tax.FeelsTooHighWhy" class="form-control ff-textarea-md"></textarea>
                             </div>
 
                             <div class="row two">
@@ -895,7 +899,7 @@
 
                             <div class="field">
                                 <label>30) What do you want to optimize most right now?</label>
-                                <textarea asp-for="Middle.Tax.OptimizeMost" class="form-control" style="min-height:84px;"></textarea>
+                                <textarea asp-for="Middle.Tax.OptimizeMost" class="form-control ff-textarea-md"></textarea>
                             </div>
 
                             <div class="mini-title">College / Education Funding</div>
@@ -917,7 +921,7 @@
 
                             <div class="field">
                                 <label>31) What is your plan if tuition is higher than expected?</label>
-                                <textarea asp-for="Middle.College.PlanIfHigher" class="form-control" style="min-height:84px;"></textarea>
+                                <textarea asp-for="Middle.College.PlanIfHigher" class="form-control ff-textarea-md"></textarea>
                             </div>
                         </div>
 
@@ -974,12 +978,12 @@
 
                             <div class="field">
                                 <label>26) If you passed away or became disabled, would your business continue?</label>
-                                <textarea asp-for="Middle.Business.Continuity" class="form-control" style="min-height:84px;"></textarea>
+                                <textarea asp-for="Middle.Business.Continuity" class="form-control ff-textarea-md"></textarea>
                             </div>
 
                             <div class="field">
                                 <label>27) Any buy-sell agreement, key person coverage, or succession plan in place?</label>
-                                <textarea asp-for="Middle.Business.BuySellKeyPersonSuccession" class="form-control" style="min-height:84px;"></textarea>
+                                <textarea asp-for="Middle.Business.BuySellKeyPersonSuccession" class="form-control ff-textarea-md"></textarea>
                             </div>
 
                             <div class="mini-title">Equity Compensation (if applicable)</div>
@@ -996,7 +1000,7 @@
 
                             <div class="field">
                                 <label>28) Do you have a strategy for taxes and timing on equity compensation?</label>
-                                <textarea asp-for="Middle.EquityComp.Strategy" class="form-control" style="min-height:84px;"></textarea>
+                                <textarea asp-for="Middle.EquityComp.Strategy" class="form-control ff-textarea-md"></textarea>
                             </div>
 
                             <div class="mini-title">Legacy, Documents & Preparedness</div>
@@ -1046,28 +1050,28 @@
 
                             <div class="field">
                                 <label>33) If you died unexpectedly, would your family know where everything is?</label>
-                                <textarea asp-for="Middle.Legacy.FamilyWouldFindEverything" class="form-control" style="min-height:84px;"></textarea>
+                                <textarea asp-for="Middle.Legacy.FamilyWouldFindEverything" class="form-control ff-textarea-md"></textarea>
                             </div>
                         </div>
 
                     </div>
 
                     <!-- Disclaimer + Submit -->
-                    <div class="section-card" style="margin-top:14px; border-width:2px;">
-                        <div class="block" style="border:none; padding:0; background:transparent;">
-                            <div class="checkline" style="background:#fff; color: var(--navy-900); border:1.2px solid var(--gold);">
+                    <div class="section-card ff-disclaimer-card">
+                        <div class="block ff-disclaimer-block ff-no-collapse">
+                            <div class="checkline ff-checkline-light">
                                <input asp-for="Middle.AcknowledgedDisclaimer"
                                       type="checkbox"
                                       class="form-check-input"
                                       id="disclaimerCheckboxMiddle"
                                       required />
-                                <label for="disclaimerCheckboxMiddle" class="form-check-label ack-text" style="font-weight:900; margin:0; color: var(--navy-900) !important;">
+                                <label for="disclaimerCheckboxMiddle" class="form-check-label ack-text ff-checkline-label">
                                     I acknowledge that by submitting this form, I authorize the company/agent to contact me regarding this Fact Finder intake.<span class="req">*</span>
                                 </label>
                             </div>
                             <span asp-validation-for="Middle.AcknowledgedDisclaimer" class="text-danger"></span>
 
-                            <div class="wizard-actions" style="margin-top: 12px;">
+                            <div class="wizard-actions ff-actions-top">
                                 <button type="button" class="btn btn-ghost" data-prev>Back</button>
                                 <button type="submit" class="btn btn-gold">Submit & Download PDF</button>
                             </div>
@@ -1117,7 +1121,7 @@
 
 <template id="tplMiddleLifeApplicant">
     <div class="table-like repeater-item">
-        <div class="mini-title" style="margin-top:0;">Policy</div>
+        <div class="mini-title ff-mini-title-tight">Policy</div>
 
         <div class="row three">
             <div class="field"><label>Type</label><input name="Middle.Life.Applicant[__i__].Type" class="form-control" placeholder="Term / Whole / UL / IUL / Variable / Group" /></div>
@@ -1147,7 +1151,7 @@
 
 <template id="tplMiddleLifeSpouse">
     <div class="table-like repeater-item">
-        <div class="mini-title" style="margin-top:0;">Policy</div>
+        <div class="mini-title ff-mini-title-tight">Policy</div>
 
         <div class="row three">
             <div class="field"><label>Type</label><input name="Middle.Life.Spouse[__i__].Type" class="form-control" placeholder="Term / Whole / UL / IUL / Variable / Group" /></div>
@@ -1292,6 +1296,9 @@
         function showStep(idx) {
             steps.forEach((s, i) => s.classList.toggle('active', i === idx));
             updateProgress(idx);
+            if (window.LegendFactFinderSections) {
+                window.LegendFactFinderSections.sync(root);
+            }
         }
 
         // -----------------------------
@@ -1613,5 +1620,6 @@
 </div>
 
 @section Scripts {
+    <script src="~/_content/Shared/js/legend-factfinder-shared.js" asp-append-version="true"></script>
     <partial name="_ValidationScriptsPartial" />
 }
