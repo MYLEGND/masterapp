@@ -115,7 +115,8 @@ footer.footer {
 
 /* ------------------------------ Responsive adjustments ------------------------------ */
 @media (max-width: 992px) {
-    .container, .container-fluid { padding-left: 1rem; padding-right: 1rem; }
+    body:not(.finance-page) .container,
+    body:not(.finance-page) .container-fluid { padding-left: 1rem; padding-right: 1rem; }
     .navbar-left, .navbar-right { flex-wrap: wrap; justify-content: flex-start; }
 }
 @media (max-width: 576px) {
@@ -257,108 +258,108 @@ main {
     color: var(--client-ink);
 }
 
-main .home-container,
-main .resources-page,
-main .finance-shell,
-main .training-page,
-main .page-wrap {
+body:not(.finance-page) main .home-container,
+body:not(.finance-page) main .resources-page,
+body:not(.finance-page) main .finance-shell,
+body:not(.finance-page) main .training-page,
+body:not(.finance-page) main .page-wrap {
     background: transparent;
 }
 
-main .card,
-main .cardx,
-main .legend-card,
-main .legend-subcard,
-main .controls-card,
-main .preview-shell,
-main .empty-state,
-main .resources-hero,
-main .panel,
-main .bk-card,
-main .modalx-card,
-main .home-tools,
-main .ff-home-card,
-main .category-container,
-main .training-page,
-main #training-embed,
-main .subcard,
-main .page-wrap > .card {
+body:not(.finance-page) main .card,
+body:not(.finance-page) main .cardx,
+body:not(.finance-page) main .legend-card,
+body:not(.finance-page) main .legend-subcard,
+body:not(.finance-page) main .controls-card,
+body:not(.finance-page) main .preview-shell,
+body:not(.finance-page) main .empty-state,
+body:not(.finance-page) main .resources-hero,
+body:not(.finance-page) main .panel,
+body:not(.finance-page) main .bk-card,
+body:not(.finance-page) main .modalx-card,
+body:not(.finance-page) main .home-tools,
+body:not(.finance-page) main .ff-home-card,
+body:not(.finance-page) main .category-container,
+body:not(.finance-page) main .training-page,
+body:not(.finance-page) main #training-embed,
+body:not(.finance-page) main .subcard,
+body:not(.finance-page) main .page-wrap > .card {
     background: #ffffff !important;
     border-color: var(--client-line-strong) !important;
     box-shadow: var(--client-shadow) !important;
 }
 
-main .card,
-main .cardx,
-main .legend-card,
-main .legend-subcard,
-main .controls-card,
-main .preview-shell,
-main .empty-state,
-main .resources-hero,
-main .panel,
-main .bk-card,
-main .modalx-card,
-main .home-tools,
-main .ff-home-card,
-main .category-container,
-main .training-page,
-main #training-embed,
-main .subcard,
-main .page-wrap > .card,
-main .dashboard-tool,
-main .trusted-partners-tool {
+body:not(.finance-page) main .card,
+body:not(.finance-page) main .cardx,
+body:not(.finance-page) main .legend-card,
+body:not(.finance-page) main .legend-subcard,
+body:not(.finance-page) main .controls-card,
+body:not(.finance-page) main .preview-shell,
+body:not(.finance-page) main .empty-state,
+body:not(.finance-page) main .resources-hero,
+body:not(.finance-page) main .panel,
+body:not(.finance-page) main .bk-card,
+body:not(.finance-page) main .modalx-card,
+body:not(.finance-page) main .home-tools,
+body:not(.finance-page) main .ff-home-card,
+body:not(.finance-page) main .category-container,
+body:not(.finance-page) main .training-page,
+body:not(.finance-page) main #training-embed,
+body:not(.finance-page) main .subcard,
+body:not(.finance-page) main .page-wrap > .card,
+body:not(.finance-page) main .dashboard-tool,
+body:not(.finance-page) main .trusted-partners-tool {
     border-width: 1.5px !important;
     border-style: solid !important;
     border-radius: 18px;
 }
 
-main .dashboard-tool,
-main .trusted-partners-tool,
-main .legend-field,
-main .premium-field,
-main .legend-btn-outline,
-main .pill,
-main .legend-badge {
+body:not(.finance-page) main .dashboard-tool,
+body:not(.finance-page) main .trusted-partners-tool,
+body:not(.finance-page) main .legend-field,
+body:not(.finance-page) main .premium-field,
+body:not(.finance-page) main .legend-btn-outline,
+body:not(.finance-page) main .pill,
+body:not(.finance-page) main .legend-badge {
     background: #ffffff !important;
 }
 
-main .dashboard-tool:hover,
-main .trusted-partners-tool:hover,
-main .ff-home-tile:hover,
-main .panel:hover,
-main .legend-card:hover {
+body:not(.finance-page) main .dashboard-tool:hover,
+body:not(.finance-page) main .trusted-partners-tool:hover,
+body:not(.finance-page) main .ff-home-tile:hover,
+body:not(.finance-page) main .panel:hover,
+body:not(.finance-page) main .legend-card:hover {
     box-shadow: var(--client-shadow-strong) !important;
 }
 
-main .ff-home-tile,
-main .legend-field,
-main .premium-field,
-main .pill,
-main .legend-badge,
-main .result-tag,
-main .empty-chip,
-main .preview-open,
-main .explore-item small {
+body:not(.finance-page) main .ff-home-tile,
+body:not(.finance-page) main .legend-field,
+body:not(.finance-page) main .premium-field,
+body:not(.finance-page) main .pill,
+body:not(.finance-page) main .legend-badge,
+body:not(.finance-page) main .result-tag,
+body:not(.finance-page) main .empty-chip,
+body:not(.finance-page) main .preview-open,
+body:not(.finance-page) main .explore-item small {
     border-color: var(--client-line-strong) !important;
 }
 
-main .panel-h,
-main .legend-card-header,
-main .preview-head,
-main .card-header,
-main .explore-header {
+body:not(.finance-page) main .panel-h,
+body:not(.finance-page) main .legend-card-header,
+body:not(.finance-page) main .preview-head,
+body:not(.finance-page) main .card-header,
+body:not(.finance-page) main .explore-header {
     background: #ffffff !important;
     border-bottom-color: var(--client-line-soft) !important;
 }
 
-main .hero-kicker,
-main .legend-badge,
-main .pill,
-main .empty-chip,
-main .ff-home-pill,
-main .explore-pill,
-main .result-tag {
+body:not(.finance-page) main .hero-kicker,
+body:not(.finance-page) main .legend-badge,
+body:not(.finance-page) main .pill,
+body:not(.finance-page) main .empty-chip,
+body:not(.finance-page) main .ff-home-pill,
+body:not(.finance-page) main .explore-pill,
+body:not(.finance-page) main .result-tag {
     background: #ffffff !important;
     color: var(--client-gold-deep) !important;
 }
@@ -382,91 +383,91 @@ body:not(.finance-page) textarea:focus {
     box-shadow: var(--client-ring), var(--client-inset) !important;
 }
 
-body .dropdown-menu,
-body .list-group,
-body .autocomplete-list,
-body #autocompleteList,
-body #training-search-results,
-body .search-results {
+body:not(.finance-page) .dropdown-menu,
+body:not(.finance-page) .list-group,
+body:not(.finance-page) .autocomplete-list,
+body:not(.finance-page) #autocompleteList,
+body:not(.finance-page) #training-search-results,
+body:not(.finance-page) .search-results {
     background: #ffffff !important;
     border: 1.5px solid var(--client-line) !important;
     box-shadow: var(--client-shadow) !important;
 }
 
-body .table {
+body:not(.finance-page) .table {
     background: #ffffff;
     border: 1.5px solid var(--client-line);
     box-shadow: var(--client-shadow);
 }
 
-body .table thead th {
+body:not(.finance-page) .table thead th {
     background: #ffffff;
     color: var(--client-gold-deep);
     border-bottom: 1.5px solid var(--client-line);
 }
 
-body .table tbody tr:hover {
+body:not(.finance-page) .table tbody tr:hover {
     background: rgba(166,128,35,.05);
 }
 
-body .btn,
-body button,
-body input[type="submit"],
-body input[type="button"],
-body .page-link {
+body:not(.finance-page) .btn,
+body:not(.finance-page) button,
+body:not(.finance-page) input[type="submit"],
+body:not(.finance-page) input[type="button"],
+body:not(.finance-page) .page-link {
     border-radius: 14px;
     transition: transform .18s ease, box-shadow .18s ease, border-color .18s ease, background .18s ease, color .18s ease;
 }
 
-body .btn-primary,
-body .btn-gold,
-body .btn-solid,
-body .legend-btn-gold,
-body .btn-warning {
+body:not(.finance-page) .btn-primary,
+body:not(.finance-page) .btn-gold,
+body:not(.finance-page) .btn-solid,
+body:not(.finance-page) .legend-btn-gold,
+body:not(.finance-page) .btn-warning {
     background: linear-gradient(180deg, #f2d891 0%, #ddb457 100%) !important;
     border-color: #a68023 !important;
     color: #2a1b05 !important;
     box-shadow: 0 14px 30px rgba(166,128,35,.18) !important;
 }
 
-body .btn-primary:hover,
-body .btn-gold:hover,
-body .btn-solid:hover,
-body .legend-btn-gold:hover,
-body .btn-warning:hover {
+body:not(.finance-page) .btn-primary:hover,
+body:not(.finance-page) .btn-gold:hover,
+body:not(.finance-page) .btn-solid:hover,
+body:not(.finance-page) .legend-btn-gold:hover,
+body:not(.finance-page) .btn-warning:hover {
     background: linear-gradient(180deg, #f5df9f 0%, #e2bc61 100%) !important;
     border-color: #a68023 !important;
     color: #2a1b05 !important;
 }
 
-body .legend-btn-outline,
-body .btn-edit,
-body .preview-open,
-body .outline {
+body:not(.finance-page) .legend-btn-outline,
+body:not(.finance-page) .btn-edit,
+body:not(.finance-page) .preview-open,
+body:not(.finance-page) .outline {
     background: #ffffff !important;
     border-color: var(--client-line-strong) !important;
     color: var(--client-gold-deep) !important;
 }
 
-main .hero-title,
-main .finance-title,
-main .preview-title,
-main .legend-section-title,
-main .panel-title,
-main h1,
-main h2,
-main h3 {
+body:not(.finance-page) main .hero-title,
+body:not(.finance-page) main .finance-title,
+body:not(.finance-page) main .preview-title,
+body:not(.finance-page) main .legend-section-title,
+body:not(.finance-page) main .panel-title,
+body:not(.finance-page) main h1,
+body:not(.finance-page) main h2,
+body:not(.finance-page) main h3 {
     color: var(--client-gold-deep);
 }
 
-main .lead,
-main .hero-sub,
-main .control-help,
-main .preview-meta,
-main .empty-text,
-main .ff-home-footer,
-main .footer-link,
-main .small {
+body:not(.finance-page) main .lead,
+body:not(.finance-page) main .hero-sub,
+body:not(.finance-page) main .control-help,
+body:not(.finance-page) main .preview-meta,
+body:not(.finance-page) main .empty-text,
+body:not(.finance-page) main .ff-home-footer,
+body:not(.finance-page) main .footer-link,
+body:not(.finance-page) main .small {
     color: var(--client-muted);
 }
 

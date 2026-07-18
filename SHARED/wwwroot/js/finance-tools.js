@@ -7913,7 +7913,7 @@ if (t.id === "ExpenseLens" || t.id === "BusinessExpenseLens") {
         const expenseLensHasPartner = !isBusinessExpenseLens && (hasSpouse === true || (hasSpouse !== false && spouseFirstName.length > 0));
 
         hostElement.innerHTML = `
-        <div class="networth-tool p-4 el-shell">
+        <div class="networth-tool p-4 legend-finance-tool-card legend-finance-tool-card--wide el-shell">
 
             <div id="${elId('TipLayer')}" class="el-tip-layer"></div>
 
@@ -8253,6 +8253,7 @@ if (t.id === "ExpenseLens" || t.id === "BusinessExpenseLens") {
         let incomeGroupsState = {};
         let incomeGroupsHost = null;
         let incomeGroupRefs = new Map();
+        let incomeGroupUiState = {};
         const getEmptyOccurrenceHistory = () => ({
             incomes: {},
             expenses: {},
@@ -8340,6 +8341,19 @@ if (t.id === "ExpenseLens" || t.id === "BusinessExpenseLens") {
             });
 
             return nextState;
+        };
+
+        const ensureIncomeGroupUiState = () => {
+            if (isBusinessExpenseLens) return;
+
+            incomeGroupDefinitions.forEach((definition) => {
+                if (!incomeGroupUiState[definition.key]) {
+                    incomeGroupUiState[definition.key] = { collapsed: false };
+                    return;
+                }
+
+                incomeGroupUiState[definition.key].collapsed = !!incomeGroupUiState[definition.key].collapsed;
+            });
         };
 
         incomeGroupsState = buildPersonalIncomeGroupsState();
@@ -8473,6 +8487,7 @@ if (t.id === "ExpenseLens" || t.id === "BusinessExpenseLens") {
 
             incomeGroupsHost.innerHTML = '';
             incomeGroupRefs = new Map();
+            ensureIncomeGroupUiState();
             const useSplitPersonLayout = incomeGroupDefinitions.length > 1;
             incomeGroupsHost.classList.toggle('el-income-groups--paired', useSplitPersonLayout);
             incomeGroupsHost.classList.toggle('el-income-groups--solo', !useSplitPersonLayout);
@@ -8480,10 +8495,12 @@ if (t.id === "ExpenseLens" || t.id === "BusinessExpenseLens") {
             incomeGroupDefinitions.forEach((definition) => {
                 const groupStreams = sanitizeIncomeStreamList(definition.key, incomeGroupsState[definition.key]);
                 incomeGroupsState[definition.key] = groupStreams;
+                const isCollapsed = !!incomeGroupUiState[definition.key]?.collapsed;
 
                 const groupRow = document.createElement('div');
                 groupRow.className = 'el-income-group';
                 groupRow.classList.add(useSplitPersonLayout ? 'el-income-group--paired' : 'el-income-group--solo');
+                groupRow.classList.toggle('is-collapsed', isCollapsed);
 
                 const summaryCard = document.createElement('div');
                 summaryCard.className = 'el-income-summary';
@@ -8503,6 +8520,9 @@ if (t.id === "ExpenseLens" || t.id === "BusinessExpenseLens") {
                 shareEl.className = 'el-income-share';
                 shareEl.textContent = '0%';
 
+                const summaryActions = document.createElement('div');
+                summaryActions.className = 'el-income-summary-actions';
+
                 const addBtn = document.createElement('button');
                 addBtn.type = 'button';
                 addBtn.className = 'btn el-toolbar-btn';
@@ -8515,15 +8535,39 @@ if (t.id === "ExpenseLens" || t.id === "BusinessExpenseLens") {
                     refreshExpenseLensViews({ sortRows: false });
                 });
 
+                const toggleBtn = document.createElement('button');
+                toggleBtn.type = 'button';
+                toggleBtn.className = 'el-income-toggle';
+                toggleBtn.setAttribute('aria-expanded', String(!isCollapsed));
+                toggleBtn.setAttribute(
+                    'aria-label',
+                    `${isCollapsed ? 'Show' : 'Hide'} ${definition.label} streams`
+                );
+                toggleBtn.innerHTML = `
+                    <span class="el-income-toggle-text">${isCollapsed ? 'Show Streams' : 'Hide Streams'}</span>
+                    <span class="el-income-toggle-chevron">${isCollapsed ? '▸' : '▾'}</span>
+                `;
+                toggleBtn.addEventListener('click', () => {
+                    incomeGroupUiState[definition.key] = {
+                        collapsed: !incomeGroupUiState[definition.key]?.collapsed
+                    };
+                    renderPersonalIncomeGroups();
+                });
+
                 summaryTop.appendChild(labelEl);
-                summaryTop.appendChild(shareEl);
                 summaryCard.appendChild(summaryTop);
+                summaryCard.appendChild(shareEl);
                 summaryCard.appendChild(totalEl);
-                summaryCard.appendChild(addBtn);
+                summaryActions.appendChild(addBtn);
+                summaryActions.appendChild(toggleBtn);
+                summaryCard.appendChild(summaryActions);
 
                 const streamsWrap = document.createElement('div');
                 streamsWrap.className = 'el-stream-grid';
                 streamsWrap.classList.add('el-stream-grid--single');
+                streamsWrap.classList.toggle('is-collapsed', isCollapsed);
+                streamsWrap.hidden = isCollapsed;
+                streamsWrap.setAttribute('aria-hidden', String(isCollapsed));
 
                 groupStreams.forEach((stream, streamIndex) => {
                     const streamCard = document.createElement('div');

@@ -1745,6 +1745,7 @@ article[data-has-spouse="true"][data-active-person="spouse"] [data-llbs-person-f
     --border-soft: rgba(159, 176, 205, .22);
     --navy-panel: #111827;
     --navy-field: #121a2b;
+    --finance-shell-gutter: clamp(12px, 2vw, 28px);
     --finance-main-width: 1120px;
     --shadow-a: 0 18px 55px rgba(0, 0, 0, .45);
     --shadow-b: 0 22px 70px rgba(0, 0, 0, .52);
@@ -1763,11 +1764,12 @@ body {
 
 .finance-shell {
     min-height: calc(100vh - 110px);
+    box-sizing: border-box;
     width: 100%;
-    max-width: 1200px;
+    max-width: calc(var(--finance-main-width) + (var(--finance-shell-gutter) * 2));
     margin-top: 0;
-    padding-left: clamp(12px, 2vw, 28px);
-    padding-right: clamp(12px, 2vw, 28px);
+    padding-left: var(--finance-shell-gutter);
+    padding-right: var(--finance-shell-gutter);
     border-radius: 20px;
     background: #ffffff;
 }
@@ -7134,6 +7136,10 @@ body.finance-dual-tools-open .layout-content {
     min-width: 0;
 }
 
+.networth-tool.el-shell .el-income-group.is-collapsed {
+    gap: 0;
+}
+
 .networth-tool.el-shell .el-stream-card,
 .networth-tool.el-shell .el-category-row {
     border: var(--el-row-border);
@@ -7217,10 +7223,67 @@ body.finance-dual-tools-open .layout-content {
     box-shadow: inset 0 1px 0 rgba(255, 255, 255, .05);
 }
 
+.networth-tool.el-shell .el-income-summary-actions {
+    display: inline-flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 10px;
+    margin-left: auto;
+    min-width: 0;
+    flex: 1 1 auto;
+    flex-wrap: wrap;
+}
+
+.networth-tool.el-shell .el-income-toggle {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    min-height: 46px;
+    padding: 0 16px;
+    border: 1px solid rgba(56, 189, 248, .30);
+    border-radius: 14px;
+    background: linear-gradient(180deg, rgba(16, 31, 60, .97), rgba(10, 22, 42, .98));
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, .04), 0 18px 30px rgba(2, 8, 23, .18);
+    color: #d9ecff;
+    font-size: .84rem;
+    font-weight: 800;
+    line-height: 1;
+    white-space: nowrap;
+    transition: transform .16s ease, box-shadow .16s ease, border-color .16s ease;
+}
+
+.networth-tool.el-shell .el-income-toggle:hover,
+.networth-tool.el-shell .el-income-toggle:focus-visible {
+    transform: translateY(-1px);
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, .06), 0 22px 34px rgba(2, 8, 23, .24);
+    border-color: rgba(125, 211, 252, .44);
+    outline: none;
+}
+
+.networth-tool.el-shell .el-income-toggle-text {
+    display: inline-flex;
+    align-items: center;
+}
+
+.networth-tool.el-shell .el-income-toggle-chevron {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    color: #79f2d0;
+    font-size: .95rem;
+    font-weight: 900;
+    line-height: 1;
+}
+
 .networth-tool.el-shell .el-stream-grid {
     display: grid;
     gap: 12px;
     min-width: 0;
+}
+
+.networth-tool.el-shell .el-stream-grid.is-collapsed {
+    display: none;
 }
 
 .networth-tool.el-shell .el-stream-grid.el-stream-grid--single {
@@ -10846,6 +10909,17 @@ body.finance-dual-tools-open .layout-content {
 @media (max-width: 991.98px) {
     .networth-tool.el-shell .el-income-groups.el-income-groups--paired {
         grid-template-columns: 1fr;
+    }
+
+    .networth-tool.el-shell .el-income-summary-actions {
+        width: 100%;
+        margin-left: 0;
+        justify-content: stretch;
+    }
+
+    .networth-tool.el-shell .el-income-summary-actions .el-toolbar-btn,
+    .networth-tool.el-shell .el-income-summary-actions .el-income-toggle {
+        flex: 1 1 180px;
     }
 
     .finance-toolbar-shell {
