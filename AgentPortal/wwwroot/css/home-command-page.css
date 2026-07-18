@@ -1,53 +1,44 @@
 .home-command-page .home-hero-panel {
-    padding: 1rem 1.08rem 1.02rem;
+    padding: 0.86rem 1.08rem 0.88rem;
 }
 
 .home-command-page .home-hero-panel .dashboard-command-center-top {
-    grid-template-columns: minmax(0, 1fr) minmax(420px, 0.92fr);
-    gap: 0.95rem 1rem;
-    align-items: stretch;
+    grid-template-columns: minmax(0, 1fr) minmax(480px, 0.84fr);
+    gap: 0.72rem 0.9rem;
+    align-items: center;
 }
 
 .home-command-page .dashboard-hero-copy {
-    gap: 0.42rem;
+    gap: 0.18rem;
+    align-content: center;
 }
 
 .home-command-page .dashboard-hero-title {
-    font-size: clamp(2.35rem, 4.2vw, 4.25rem);
+    font-size: clamp(1.95rem, 2.9vw, 3.1rem);
     line-height: 0.92;
-}
-
-.home-command-page .dashboard-hero-lead {
-    max-width: 28ch;
-    font-size: 1.02rem;
-    line-height: 1.42;
+    max-width: none;
+    white-space: nowrap;
 }
 
 .home-hero-summary {
     display: grid;
     grid-template-columns: repeat(3, minmax(0, 1fr));
-    gap: 0.72rem;
+    gap: 0.52rem;
 }
 
 .home-hero-summary .dashboard-stat-card {
-    min-height: 120px;
-    gap: 0.28rem;
-    padding: 0.88rem 0.92rem;
+    min-height: 72px;
+    gap: 0.16rem;
+    padding: 0.66rem 0.76rem;
+    align-content: center;
 }
 
 .home-hero-stat-title {
     color: #ffffff;
-    font-size: 1.08rem;
+    font-size: 0.94rem;
     font-weight: 940;
-    line-height: 1.08;
+    line-height: 1;
     letter-spacing: -0.03em;
-}
-
-.home-hero-stat-copy {
-    color: rgba(226, 232, 240, 0.74);
-    font-size: 0.84rem;
-    font-weight: 640;
-    line-height: 1.4;
 }
 
 .home-flash-banner {
@@ -886,6 +877,10 @@
 @media (max-width: 1180px) {
     .home-command-page .home-hero-panel .dashboard-command-center-top {
         grid-template-columns: 1fr;
+    }
+
+    .home-command-page .dashboard-hero-title {
+        white-space: normal;
     }
 
     .home-hero-summary {
