@@ -3152,7 +3152,6 @@ function waitingOn(row, key){
 }
 
 const HIGH_PRIORITY_KEYS = new Set(["high", "urgent"]);
-const ACTIVE_MEETING_APPOINTMENT_STATUSES = new Set(["booked", "confirmed", "rescheduled"]);
 
 function parseUtcDate(value){
   if (!value) return null;
@@ -3166,70 +3165,8 @@ function parseUtcDate(value){
   return Number.isNaN(parsed.getTime()) ? null : parsed;
 }
 
-function rowLatestAppointment(row){
-  if (!row) return null;
-  if (row.__latestAppointment && typeof row.__latestAppointment === "object") return row.__latestAppointment;
 
-  const status = norm(row.dataset.sAppointmentStatus || row.dataset.crmAppointmentStatus);
-  const statusLabel = norm(row.dataset.sAppointmentStatusLabel || row.dataset.crmAppointmentStatusLabel);
-  const confirmationStateLabel = norm(row.dataset.sAppointmentConfirmationLabel || row.dataset.crmAppointmentConfirmationLabel);
-  const scheduledStartUtc = norm(row.dataset.sAppointmentStart || row.dataset.crmAppointmentStart);
-  const scheduledEndUtc = norm(row.dataset.sAppointmentEnd || row.dataset.crmAppointmentEnd);
 
-  if (!status && !statusLabel && !confirmationStateLabel && !scheduledStartUtc && !scheduledEndUtc) return null;
-
-  row.__latestAppointment = {
-    status,
-    statusLabel,
-    confirmationStateLabel,
-    scheduledStartUtc,
-    scheduledEndUtc
-  };
-
-  return row.__latestAppointment;
-}
-
-function storeRowLatestAppointment(row, snapshot){
-  if (!row) return;
-
-  const normalizeAppointmentValue = (value) => {
-    if (!value) return "";
-    if (value instanceof Date){
-      return Number.isNaN(value.getTime()) ? "" : value.toISOString();
-    }
-    return String(value).trim();
-  };
-
-  const normalized = snapshot && typeof snapshot === "object"
-    ? {
-        ...snapshot,
-        status: normalizeAppointmentValue(snapshot.status),
-        statusLabel: normalizeAppointmentValue(snapshot.statusLabel),
-        confirmationStateLabel: normalizeAppointmentValue(snapshot.confirmationStateLabel),
-        scheduledStartUtc: normalizeAppointmentValue(snapshot.scheduledStartUtc),
-        scheduledEndUtc: normalizeAppointmentValue(snapshot.scheduledEndUtc)
-      }
-    : null;
-
-  row.__latestAppointment = normalized;
-  row.dataset.sAppointmentStatus = normalized?.status || "";
-  row.dataset.sAppointmentStatusLabel = normalized?.statusLabel || "";
-  row.dataset.sAppointmentConfirmationLabel = normalized?.confirmationStateLabel || "";
-  row.dataset.sAppointmentStart = normalized?.scheduledStartUtc || "";
-  row.dataset.sAppointmentEnd = normalized?.scheduledEndUtc || "";
-  row.dataset.crmAppointmentStatus = row.dataset.sAppointmentStatus;
-  row.dataset.crmAppointmentStatusLabel = row.dataset.sAppointmentStatusLabel;
-  row.dataset.crmAppointmentConfirmationLabel = row.dataset.sAppointmentConfirmationLabel;
-  row.dataset.crmAppointmentStart = row.dataset.sAppointmentStart;
-  row.dataset.crmAppointmentEnd = row.dataset.sAppointmentEnd;
-}
-
-function hasBookedAppointment(row){
-  const snapshot = rowLatestAppointment(row);
-  if (!snapshot) return false;
-  const status = norm(snapshot.status).toLowerCase();
-  return ACTIVE_MEETING_APPOINTMENT_STATUSES.has(status) && !!parseUtcDate(snapshot.scheduledStartUtc);
-}
 
 function rowIdentity(row){
   return norm(row.dataset.clientId)
@@ -5375,6 +5312,7 @@ function renderLaneCards(rowsForStage){
           <a class="btn btn-ghost" href="sms:${safeHtml(phone)}">Text</a>
         `
       : "";
+    const appointmentFooter = renderPipelineAppointmentFooter(r, safeHtml, phoneActions);
 
     return `
       <article class="client-card ${pipelineBadgeClass(stage)}"
@@ -5388,9 +5326,7 @@ function renderLaneCards(rowsForStage){
           </div>
           ${prodBadge}
         </div>
-        ${phoneActions
-          ? `<div class="client-card-actions actions pipeline-card-actions-row">${phoneActions}</div>`
-          : ""}
+        ${appointmentFooter}
       </article>
     `;
   }).join("");
@@ -6061,7 +5997,7 @@ function runCommand(text){
   else if (t.includes("connect calendar")) { startCalendarConnect(); }
   else if (t.includes("save zoom")) { savePersonalZoomLink(); }
   else if (t.includes("clear zoom")) { clearPersonalZoomLink(); }
-  else if (t.includes("create event")) { createCalendarEventFromDrawer(); }
+  else if (t.includes("create event")) { window.createQuickViewCalendarEvent(); }
   else toast("Unknown command");
 
   closeModal();
@@ -6116,7 +6052,7 @@ document.addEventListener("keydown", (e) => {
 
   if (e.altKey && e.key.toLowerCase() === "e"){
     e.preventDefault();
-    createCalendarEventFromDrawer();
+    window.createQuickViewCalendarEvent();
   }
 
   if (e.altKey && e.key.toLowerCase() === "m"){
@@ -6599,77 +6535,109 @@ async function refreshCalendarBusyPanel(){
   }
 }
 
-async function createCalendarEventFromDrawer(){
-  if (!activeClientId){
-    toast("Open a client first.");
-    return false;
-  }
 
-  const st = await calendarStatus();
-  if (!st.connected){
-    toast("Connect calendar first.");
-    return false;
-  }
+window.quickViewCalendarAdapter = {
+  getContext(){
+    const recordId =
+      activeClientId ||
+      document.getElementById("prodLeadId")?.value ||
+      "";
 
-  const row = rows.find(r => r.dataset.clientId === activeClientId);
-  if (!row){
-    toast("Client not found.");
-    return false;
-  }
+    const row = rows.find(candidate =>
+      candidate.dataset.clientId === recordId ||
+      candidate.dataset.leadId === recordId ||
+      candidate.dataset.id === recordId ||
+      candidate.getAttribute("data-lead-id") === recordId
+    ) || null;
 
-  const nextDate = norm(dNextDate.value);
-  const nextText = norm(dNextText.value);
+    const nextDate = norm(dNextDate?.value);
+    const nextText = norm(dNextText?.value);
 
-  if (!nextDate){
-    toast("Set a Next Action Date first.");
-    return false;
-  }
-  if (!nextText){
-    toast("Add Next Action text first.");
-    return false;
-  }
+    const eventTimes = nextDate
+      ? defaultEventTimes(nextDate)
+      : { startISO: "", endISO: "" };
 
-  const { startISO, endISO } = defaultEventTimes(nextDate);
+    const name = row ? fullName(row) : "";
+    const phone = row ? norm(row.dataset.phone) : "";
 
-  const payload = {
-    clientUserId: activeClientId,
-    subject: `Client Follow-up: ${fullName(row)}`,
-    startISO,
-    endISO,
-    body: `Next Action: ${nextText}\n\nPipeline Stage: ${pipelineLabel(norm(dPipelineStage.value))}\nClient: ${fullName(row)}\nEmail: ${norm(row.dataset.email)}\nPhone: ${norm(row.dataset.phone)}`,
-    location: dMeetingType?.value === "Phone"
-      ? `Phone Call • ${norm(row.dataset.phone) || "No phone on file"}`
-      : norm(dMeetingLocation.value),
-    zoomJoinUrl: dMeetingType?.value === "Zoom"
-      ? (norm(dZoomJoinUrl.value) || (dUsePersonalZoomLink.checked ? loadSavedZoomLink() : ""))
-      : "",
-    activityNote: `Calendar event created: ${nextText}`
-  };
+    return {
+      recordId,
+      row,
+      nextDate,
+      nextText,
+      startISO: eventTimes.startISO,
+      endISO: eventTimes.endISO,
+      fullName: name,
+      pipelineStage: pipelineLabel(
+        norm(dPipelineStage?.value)
+      ),
+      email: row ? norm(row.dataset.email) : "",
+      phone,
+      location:
+        dMeetingType?.value === "Phone"
+          ? `Phone Call • ${phone || "No phone on file"}`
+          : norm(dMeetingLocation?.value),
+      zoomJoinUrl:
+        dMeetingType?.value === "Zoom"
+          ? (
+              norm(dZoomJoinUrl?.value) ||
+              (
+                dUsePersonalZoomLink?.checked
+                  ? loadSavedZoomLink()
+                  : ""
+              )
+            )
+          : ""
+    };
+  },
 
-  try{
-    const data = await postJson("/calendar/create-event", payload);
-    row.dataset.sLasttouch = data.crmLastTouch || todayISO();
-    storeRowLatestAppointment(row, data.latestAppointment || rowLatestAppointment(row));
+  request(url, payload){
+    return postJson(url, payload);
+  },
+
+  async applyResult(data, context){
+    const row = context.row;
+
+    row.dataset.sLasttouch =
+      data.crmLastTouch || todayISO();
+
+    storeRowLatestAppointment(
+      row,
+      data.latestAppointment ||
+      rowLatestAppointment(row)
+    );
+
     hydrateRow(row);
+
     activeClientDetail = {
       ...(activeClientDetail || {}),
       activities: data.activities || [],
       lastCalendarEventWebLink: data.webLink || "",
-      latestAppointment: data.latestAppointment || activeClientDetail?.latestAppointment || null
+      latestAppointment:
+        data.latestAppointment ||
+        activeClientDetail?.latestAppointment ||
+        null
     };
+
     renderTimeline(data.activities || []);
-    renderAppointmentSnapshot(activeClientDetail.latestAppointment || null);
-    dLastTouch.value = data.crmLastTouch || todayISO();
-    dSaved.textContent = "Calendar event synced ✔";
-    refreshCalendarBusyPanel();
-    toast("Calendar event created");
-    return true;
-  }catch(err){
-    console.error(err);
-    toast(err?.message || "Calendar create failed.");
-    return false;
+
+    if (dLastTouch) {
+      dLastTouch.value =
+        data.crmLastTouch || todayISO();
+    }
+
+    if (dSaved) {
+      dSaved.textContent =
+        "Calendar event synced ✔";
+    }
+
+    await refreshCalendarBusyPanel();
+  },
+
+  toast(message){
+    toast(message);
   }
-}
+};
 
 /* ========= Prefs Restore ========= */
 (function restorePrefs(){
