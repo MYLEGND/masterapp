@@ -121,20 +121,12 @@
                                 <textarea asp-for="Young.Direction.ThreeToFiveYears" class="form-control ff-textarea-lg"></textarea>
                             </div>
 
-                            <div class="field">
-                                <label>2) What do you want your life to look like in 10 years?</label>
-                                <textarea asp-for="Young.Direction.TenYears" class="form-control ff-textarea-lg"></textarea>
-                            </div>
 
                             <div class="field">
                                 <label>3) What are you most stressed about financially right now?</label>
                                 <textarea asp-for="Young.Direction.CurrentStress" class="form-control ff-textarea-lg"></textarea>
                             </div>
 
-                            <div class="field">
-                                <label>4) If nothing changes, what are you afraid could happen financially?</label>
-                                <textarea asp-for="Young.Direction.FearIfNoChange" class="form-control ff-textarea-lg"></textarea>
-                            </div>
 
                             <div class="field">
                                 <label>5) If we could fix one thing first that would make the biggest impact, what do you think it is?</label>
@@ -143,22 +135,14 @@
                         </div>
 
                         <div class="block">
-                            <div class="block-title">Ownership + Commitment (Before the numbers)</div>
+                            <div class="block-title">Financial Priorities</div>
 
                             <div class="field">
-                                <label>35) What does “financial stability” mean to you personally?</label>
+                                <label>What does financial stability mean to you?</label>
                                 <textarea asp-for="Young.Ownership.StabilityMeaning" class="form-control ff-textarea-lg"></textarea>
                             </div>
 
-                            <div class="field">
-                                <label>37) What has stopped you from getting organized sooner? (lack of knowledge, fear, shame, time, no guidance, procrastination)</label>
-                                <textarea asp-for="Young.Ownership.WhatsStoppedYou" class="form-control ff-textarea-lg"></textarea>
-                            </div>
 
-                            <div class="field">
-                                <label>39) What would make this experience feel “worth it” to you?</label>
-                                <textarea asp-for="Young.Ownership.WorthIt" class="form-control ff-textarea-lg"></textarea>
-                            </div>
 
                             <div class="wizard-actions">
                                 <div></div>
@@ -248,63 +232,21 @@
                                 <div class="checkline"><input asp-for="Young.Benefits.GroupDI" type="checkbox" id="youngBenDI" /><label for="youngBenDI" class="ff-label-reset">Group Disability</label></div>
                             </div>
 
-                            <div class="field">
-                                <label>9) Do you actually understand your benefits and how to use them strategically?</label>
-                                <select asp-for="Young.Benefits.UnderstandBenefits" class="form-select">
-                                    <option value="">Select</option>
-                                    <option>No</option>
-                                    <option>Somewhat</option>
-                                    <option>Yes</option>
-                                </select>
-                            </div>
                         </div>
 
                         <div class="block">
                             <div class="block-title">Cash Flow + Habits (System First)</div>
 
-                            <div class="field">
-                                <label>11) Do you have a system for money — or do you “hope it works out”?</label>
-                                <select asp-for="Young.Cashflow.SystemLevel" class="form-select">
-                                    <option value="">Select</option>
-                                    <option>Strong system</option>
-                                    <option>Loose system</option>
-                                    <option>No system</option>
-                                </select>
-                            </div>
 
                             <div class="field">
                                 <label>10) What’s the #1 thing that throws your money off each month?</label>
                                 <textarea asp-for="Young.Cashflow.OffTrack" class="form-control ff-textarea-lg"></textarea>
                             </div>
 
-                            <div class="field">
-                                <label>12) What would you want a “good system” to do for you? (less stress, pay off debt, build savings, invest, buy a house)</label>
-                                <textarea asp-for="Young.Cashflow.SystemDesiredOutcome" class="form-control ff-textarea-lg"></textarea>
-                            </div>
 
-                            <div class="field">
-                                <label>13) What’s your biggest spending weakness? (eating out, lifestyle, Amazon, travel, social pressure, subscriptions)</label>
-                                <textarea asp-for="Young.Cashflow.SpendingWeakness" class="form-control ff-textarea-lg"></textarea>
-                            </div>
 
                             <div class="mini-title">Banking Setup</div>
-                            <div class="row two">
-                                <div class="field">
-                                    <label>Do you know exactly where your money goes?</label>
-                                    <select asp-for="Young.Banking.KnowWhereMoneyGoes" class="form-select">
-                                        <option value="">Select</option>
-                                        <option>No</option>
-                                        <option>Somewhat</option>
-                                        <option>Yes</option>
-                                    </select>
-                                </div>
-                                <div class="field">
-                                    <label>How many bank accounts do you use?</label>
-                                    <input asp-for="Young.Banking.NumAccounts" type="number" class="form-control" />
-                                </div>
-                            </div>
-
-                            <div class="mini-title">Monthly Reality Check (Numbers)</div>
+<div class="mini-title">Monthly Reality Check (Numbers)</div>
                             <div class="row three">
                                 <div class="field">
                                     <label>Monthly Income (Net)</label>
@@ -355,10 +297,6 @@
                                 </div>
                             </div>
 
-                            <div class="field">
-                                <label>14) If you lost income tomorrow, what’s your plan?</label>
-                                <textarea asp-for="Young.Emergency.PlanIfIncomeStops" class="form-control ff-textarea-lg"></textarea>
-                            </div>
 
                             <div class="field">
                                 <label>15) Do you ever use credit cards to survive the month?</label>
@@ -375,10 +313,6 @@
                                 <textarea asp-for="Young.Emergency.Unexpected1k" class="form-control ff-textarea-lg"></textarea>
                             </div>
 
-                            <div class="field">
-                                <label>17) What’s the “financial habit” you know you need — but haven’t locked in yet?</label>
-                                <textarea asp-for="Young.Habits.NeedButNotLocked" class="form-control ff-textarea-lg"></textarea>
-                            </div>
                         </div>
 
                     </div>
@@ -440,10 +374,6 @@
                                 <textarea asp-for="Young.DebtNarrative.PayoffPlan" class="form-control ff-textarea-lg"></textarea>
                             </div>
 
-                            <div class="field">
-                                <label>19) What debt feels the most stressful and why?</label>
-                                <textarea asp-for="Young.DebtNarrative.MostStressful" class="form-control ff-textarea-lg"></textarea>
-                            </div>
 
                             <div class="mini-title">Credit</div>
                             <div class="row two">
@@ -499,15 +429,7 @@
                                 <textarea asp-for="Young.LifeTransitions" class="form-control ff-textarea-lg"></textarea>
                             </div>
 
-                            <div class="field">
-                                <label>23) What lifestyle habits do you want to protect from “money stress”?</label>
-                                <textarea asp-for="Young.Lifestyle.ProtectFromStress" class="form-control ff-textarea-lg"></textarea>
-                            </div>
 
-                            <div class="field">
-                                <label>24) Who influences your money decisions most right now? (family, friends, social media, spouse, fear, mentors)</label>
-                                <textarea asp-for="Young.Lifestyle.Influences" class="form-control ff-textarea-lg"></textarea>
-                            </div>
                         </div>
 
                     </div>
@@ -601,15 +523,7 @@
                                 </div>
                             </div>
 
-                            <div class="field">
-                                <label>29) Do you believe insurance is “a waste,” “necessary,” or “strategic” — and why?</label>
-                                <textarea asp-for="Young.Protection.BeliefAboutInsurance" class="form-control ff-textarea-lg"></textarea>
-                            </div>
 
-                            <div class="field">
-                                <label>30) What do you want protected first: your income, your future plans, your family, or your peace?</label>
-                                <textarea asp-for="Young.Protection.ProtectFirst" class="form-control ff-textarea-lg"></textarea>
-                            </div>
                         </div>
 
                     </div>
@@ -660,29 +574,13 @@
                                 <textarea asp-for="Young.Investing.CurrentInvesting" class="form-control ff-textarea-lg"></textarea>
                             </div>
 
-                            <div class="field">
-                                <label>33) Have you made any money mistakes you don’t want to repeat?</label>
-                                <textarea asp-for="Young.Investing.Mistakes" class="form-control ff-textarea-lg"></textarea>
-                            </div>
 
-                            <div class="field">
-                                <label>34) Do you feel behind, on track, or unsure — and why?</label>
-                                <textarea asp-for="Young.Investing.FeelBehindOrOnTrack" class="form-control ff-textarea-lg"></textarea>
-                            </div>
                         </div>
 
                         <div class="block">
                             <div class="block-title">Ownership + Commitment (Action)</div>
 
-                            <div class="field">
-                                <label>36) On a scale of 1–10, how committed are you to building a real financial plan?</label>
-                                <input asp-for="Young.Ownership.CommitmentScale" class="form-control" placeholder="1–10" />
-                            </div>
 
-                            <div class="field">
-                                <label>38) If you had a clear plan, what would you do first in the next 30 days?</label>
-                                <textarea asp-for="Young.Ownership.First30Days" class="form-control ff-textarea-lg"></textarea>
-                            </div>
                         </div>
 
                         <!-- Disclaimer + Submit -->

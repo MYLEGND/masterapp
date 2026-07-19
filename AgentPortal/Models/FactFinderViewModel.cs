@@ -79,7 +79,6 @@ public bool AcknowledgedDisclaimer { get; set; }
         public string? IncomeType { get; set; }
         public decimal? AnnualIncome { get; set; }
         public string? IncomeTrend { get; set; }
-        public string? IncomeThreats { get; set; }
     }
 
     public class MiddleSpouse
@@ -94,8 +93,6 @@ public bool AcknowledgedDisclaimer { get; set; }
     public class MiddleDirection
     {
         public string? WinningDefinition { get; set; }
-        public string? BiggestFearIfNoChange { get; set; }
-        public string? ChangeOneThing { get; set; }
     }
 
     public class MiddleDependent
@@ -137,9 +134,6 @@ public bool AcknowledgedDisclaimer { get; set; }
         public string? Deductible { get; set; }
         public string? OOPMax { get; set; }
         public string? HSABalance { get; set; }
-
-        public string? LastReviewNotes { get; set; }
-        public string? MedicalBillsSurprises { get; set; }
 
         public MiddleHealthAdditional Additional { get; set; } = new();
 
@@ -231,8 +225,6 @@ public bool AcknowledgedDisclaimer { get; set; }
 
         public List<MiddleOtherDebt> Other { get; set; } = new();
 
-        public string? FeelsLike { get; set; }
-        public string? ChangeOneThing { get; set; }
     }
 
     public class MiddleOtherDebt
@@ -249,7 +241,6 @@ public bool AcknowledgedDisclaimer { get; set; }
         public List<MiddleRetirementAccount> Retirement { get; set; } = new();
         public List<MiddleBrokerageAccount> Brokerage { get; set; } = new();
 
-        public string? OrganizationFeel { get; set; }
         public string? NetWorthEstimate { get; set; }
     }
 
@@ -295,7 +286,6 @@ public bool AcknowledgedDisclaimer { get; set; }
 
     public class MiddleTax
     {
-        public string? FeelsTooHighWhy { get; set; }
         public string? Preparer { get; set; }
         public string? ProactivePlanningLast12Mo { get; set; }
         public string? OptimizeMost { get; set; }
@@ -305,7 +295,6 @@ public bool AcknowledgedDisclaimer { get; set; }
     {
         public string? PlanToFund { get; set; }
         public string? CurrentAccounts { get; set; }
-        public string? PlanIfHigher { get; set; }
     }
 
     public class MiddleLegacy
@@ -378,20 +367,13 @@ public bool AcknowledgedDisclaimer { get; set; }
     public class YoungDirection
     {
         public string? ThreeToFiveYears { get; set; }
-        public string? TenYears { get; set; }
         public string? CurrentStress { get; set; }
-        public string? FearIfNoChange { get; set; }
         public string? OneThingFirst { get; set; }
     }
 
     public class YoungOwnership
     {
         public string? StabilityMeaning { get; set; }
-        public string? WhatsStoppedYou { get; set; }
-        public string? WorthIt { get; set; }
-
-        public string? CommitmentScale { get; set; }
-        public string? First30Days { get; set; }
     }
 
     public class YoungWork
@@ -418,16 +400,11 @@ public bool AcknowledgedDisclaimer { get; set; }
         public bool GroupLife { get; set; }
         public bool GroupDI { get; set; }
 
-        public string? UnderstandBenefits { get; set; }
     }
 
     public class YoungCashflow
     {
-        public string? SystemLevel { get; set; }
         public string? OffTrack { get; set; }
-        public string? SystemDesiredOutcome { get; set; }
-        public string? SpendingWeakness { get; set; }
-
         public decimal? NetIncome { get; set; }
         public decimal? FixedBills { get; set; }
         public decimal? VariableSpending { get; set; }
@@ -439,8 +416,6 @@ public bool AcknowledgedDisclaimer { get; set; }
 
     public class YoungBanking
     {
-        public string? KnowWhereMoneyGoes { get; set; }
-        public int? NumAccounts { get; set; }
     }
 
     public class YoungEmergency
@@ -448,14 +423,12 @@ public bool AcknowledgedDisclaimer { get; set; }
         public decimal? Amount { get; set; }
         public string? Months { get; set; }
 
-        public string? PlanIfIncomeStops { get; set; }
         public string? UsesCreditToSurvive { get; set; }
         public string? Unexpected1k { get; set; }
     }
 
     public class YoungHabits
     {
-        public string? NeedButNotLocked { get; set; }
     }
 
     public class YoungDebtItem
@@ -470,7 +443,6 @@ public bool AcknowledgedDisclaimer { get; set; }
     public class YoungDebtNarrative
     {
         public string? PayoffPlan { get; set; }
-        public string? MostStressful { get; set; }
     }
 
     public class YoungCredit
@@ -488,8 +460,6 @@ public bool AcknowledgedDisclaimer { get; set; }
 
     public class YoungLifestyle
     {
-        public string? ProtectFromStress { get; set; }
-        public string? Influences { get; set; }
     }
 
     public class YoungHealth
@@ -511,8 +481,6 @@ public bool AcknowledgedDisclaimer { get; set; }
         public string? HasDI { get; set; }
         public string? IfCannotWork3Mo { get; set; }
 
-        public string? BeliefAboutInsurance { get; set; }
-        public string? ProtectFirst { get; set; }
     }
 
     public class YoungSavings
@@ -525,8 +493,6 @@ public bool AcknowledgedDisclaimer { get; set; }
     public class YoungInvesting
     {
         public string? CurrentInvesting { get; set; }
-        public string? Mistakes { get; set; }
-        public string? FeelBehindOrOnTrack { get; set; }
     }
 
         // =====================================================================
@@ -623,8 +589,6 @@ public bool AcknowledgedDisclaimer { get; set; }
     public class SeniorMedical
     {
         // Q1
-        public string? ProtectYourselfPlan { get; set; }
-
         // Inventory tables
         public SeniorMedicalCoverage ApplicantCoverage { get; set; } = new SeniorMedicalCoverage();
         public SeniorMedicalCoverage SpouseCoverage { get; set; } = new SeniorMedicalCoverage();
@@ -633,11 +597,7 @@ public bool AcknowledgedDisclaimer { get; set; }
         public string? HealthLastThreeYears { get; set; }
         public string? CurrentMedications { get; set; }
         public bool FamilyHistoryCancerStrokeHeart { get; set; }
-        public string? FamilyHistoryImpact { get; set; }
-        public string? ChangeAboutPresentCoverage { get; set; }
         public string? StrategyCoverOutsidePlansCoverage { get; set; }
-        public bool WouldLikeLearnAvoidOutOfPocket { get; set; }
-
         // Parents blocks (rendered with @for i < Count)
         public List<SeniorParentInfo> ApplicantParents { get; set; } = new List<SeniorParentInfo>
         {
@@ -700,18 +660,7 @@ public bool AcknowledgedDisclaimer { get; set; }
         public SeniorExtendedCarePolicy CurrentPolicy { get; set; } = new SeniorExtendedCarePolicy();
 
         // Q8–Q13
-        public bool LookedIntoIt { get; set; }
-        public string? WhyNotImportant { get; set; }
-        public string? WhatPreventedMovingForward { get; set; }
-
-        public string? KnowSomeoneNeededCare { get; set; }
-        public string? FinanciallyImpactedStory { get; set; }
-
         public string? BiggestConcernChoice { get; set; }
-        public string? BiggestConcernWhy { get; set; }
-
-        public string? ChildrenInvolvementView { get; set; }
-        public string? FamilyConversationsAgingInPlace { get; set; }
     }
 
     public class SeniorExtendedCarePolicy
@@ -738,16 +687,9 @@ public bool AcknowledgedDisclaimer { get; set; }
         public List<SeniorLifePolicy> SpousePolicies { get; set; } = new List<SeniorLifePolicy>();
 
         // Q15–Q18
-        public string? WhyChoseType { get; set; }
-        public string? HowChoseBenefitAmount { get; set; }
-
         public string? WhenLastReviewed { get; set; }
         public bool HasWillOrTrust { get; set; }
 
-        public bool AwareHowSocialSecurityWorksWhenOneSpousePasses { get; set; }
-        public string? PlanningToCoverFutureSSReduction { get; set; }
-
-        public bool PlanningToLeaveIRAtoFamily { get; set; }
     }
 
     public class SeniorLifePolicy
@@ -772,10 +714,6 @@ public bool AcknowledgedDisclaimer { get; set; }
         public SeniorIncomeGroup SpouseIncome { get; set; } = new SeniorIncomeGroup();
 
         // Social Security / Pension details
-        public bool ReceiveSocialSecurity { get; set; }
-        public decimal? SocialSecurityMonthlyAmount { get; set; }
-
-        public decimal? CompanyPensionMonthlyAmount { get; set; }
         public bool PensionHasSurvivorBenefitsForSpouse { get; set; }
 
         // Priorities/questions (Step 4)
@@ -785,17 +723,9 @@ public bool AcknowledgedDisclaimer { get; set; }
         public string? PriorityIncreaseIncomeOrLowerTaxesOrBoth { get; set; }
 
         public string? MonthlyExpensesNotes { get; set; }
-        public string? WhatChangeInFinancialPlan { get; set; }
-
         public string? GoalsForThisMoney { get; set; }
         public string? RiskComfortLevel { get; set; }
         public string? BiggestConcern_GrowthIncomeSafety { get; set; }
-
-        public string? FeelAboutRecentPerformance { get; set; }
-        public string? FeelAboutServiceReceived { get; set; }
-
-        public string? UpdatedOnSecureActImpact { get; set; }
-        public string? StoryBehindAssetsInheritance { get; set; }
 
         public string? OutcomesAndFollowUpNotes { get; set; }
 

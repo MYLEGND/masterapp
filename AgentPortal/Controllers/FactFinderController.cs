@@ -258,29 +258,17 @@ private static void RenderSenior(ColumnDescriptor col, SeniorFactFinder s)
 
             // Medical Expenses — Priorities
             x.Item().Text("Medical Expenses — Priorities").SemiBold().FontColor(GoldDark);
-            x.Item().Element(k => KV(k, "1) Protect yourself plan", NV(m.ProtectYourselfPlan)));
             x.Item().Element(k => KV(k, "2) Health in last three years", NV(m.HealthLastThreeYears)));
             x.Item().Element(k => KV(k, "3) Current medications", NV(m.CurrentMedications)));
             x.Item().Element(k => KV(k, "4) Family history (Cancer/Stroke/Heart)", Bool(m.FamilyHistoryCancerStrokeHeart)));
-            x.Item().Element(k => KV(k, "Impact on family/finances", NV(m.FamilyHistoryImpact)));
-            x.Item().Element(k => KV(k, "5) Change anything about present coverage", NV(m.ChangeAboutPresentCoverage)));
             x.Item().Element(k => KV(k, "6) Strategy outside plan coverage", NV(m.StrategyCoverOutsidePlansCoverage)));
-            x.Item().Element(k => KV(k, "Learn ways to avoid out-of-pocket costs?", Bool(m.WouldLikeLearnAvoidOutOfPocket)));
 
             x.Item().PaddingTop(6).Element(Divider);
 
             // Extended Care — Priorities
             x.Item().Text("Extended Care — Priorities").SemiBold().FontColor(GoldDark);
             x.Item().Element(k => KV(k, "Do you have extended care coverage?", Bool(ec.HasExtendedCareCoverage)));
-            x.Item().Element(k => KV(k, "8a) Looked into it?", Bool(ec.LookedIntoIt)));
-            x.Item().Element(k => KV(k, "8b) Why/why not important?", NV(ec.WhyNotImportant)));
-            x.Item().Element(k => KV(k, "8c) What prevented moving forward?", NV(ec.WhatPreventedMovingForward)));
-            x.Item().Element(k => KV(k, "9) Who needed extended/recovery care?", NV(ec.KnowSomeoneNeededCare)));
-            x.Item().Element(k => KV(k, "10) Financial impact story", NV(ec.FinanciallyImpactedStory)));
             x.Item().Element(k => KV(k, "11) Biggest concern choice", NV(ec.BiggestConcernChoice)));
-            x.Item().Element(k => KV(k, "Why?", NV(ec.BiggestConcernWhy)));
-            x.Item().Element(k => KV(k, "12) Children involvement view", NV(ec.ChildrenInvolvementView)));
-            x.Item().Element(k => KV(k, "13) Family conversations (aging in place)", NV(ec.FamilyConversationsAgingInPlace)));
         });
     }));
 
@@ -527,13 +515,8 @@ private static void RenderSenior(ColumnDescriptor col, SeniorFactFinder s)
 
             x.Item().PaddingTop(6).Element(Divider);
 
-            x.Item().Element(k => KV(k, "15) Why did you choose the type?", NV(li.WhyChoseType)));
-            x.Item().Element(k => KV(k, "How did you choose that amount of benefit?", NV(li.HowChoseBenefitAmount)));
             x.Item().Element(k => KV(k, "16) When was it last reviewed?", NV(li.WhenLastReviewed)));
             x.Item().Element(k => KV(k, "Do you have a will/trust?", Bool(li.HasWillOrTrust)));
-            x.Item().Element(k => KV(k, "17) Aware how Social Security works when one spouse passes?", Bool(li.AwareHowSocialSecurityWorksWhenOneSpousePasses)));
-            x.Item().Element(k => KV(k, "Planning to cover future reduction in SS benefits", NV(li.PlanningToCoverFutureSSReduction)));
-            x.Item().Element(k => KV(k, "18) Planning to leave an IRA to family?", Bool(li.PlanningToLeaveIRAtoFamily)));
 
             static void policyTable(ColumnDescriptor x, List<SeniorLifePolicy> policies)
             {
@@ -598,14 +581,9 @@ private static void RenderSenior(ColumnDescriptor col, SeniorFactFinder s)
             x.Item().Element(k => KV(k, "22) Still paying income tax?", Bool(r.StillPayingIncomeTax)));
             x.Item().Element(k => KV(k, "Priority: increase income / lower taxes / both", NV(r.PriorityIncreaseIncomeOrLowerTaxesOrBoth)));
             x.Item().Element(k => KV(k, "23) Monthly expenses notes", NV(r.MonthlyExpensesNotes)));
-            x.Item().Element(k => KV(k, "24) Change in current financial plan", NV(r.WhatChangeInFinancialPlan)));
             x.Item().Element(k => KV(k, "25) Goals for this money", NV(r.GoalsForThisMoney)));
             x.Item().Element(k => KV(k, "26) Risk comfort level", NV(r.RiskComfortLevel)));
             x.Item().Element(k => KV(k, "27) Biggest concern (growth/income/safety)", NV(r.BiggestConcern_GrowthIncomeSafety)));
-            x.Item().Element(k => KV(k, "28) Feelings about recent performance", NV(r.FeelAboutRecentPerformance)));
-            x.Item().Element(k => KV(k, "Service received met expectations?", NV(r.FeelAboutServiceReceived)));
-            x.Item().Element(k => KV(k, "29) Updated on SECURE Act legacy impact", NV(r.UpdatedOnSecureActImpact)));
-            x.Item().Element(k => KV(k, "30) Story behind assets (property/inheritance)", NV(r.StoryBehindAssetsInheritance)));
             x.Item().Element(k => KV(k, "Outcomes / Additional Info / Follow-up Notes", NV(r.OutcomesAndFollowUpNotes)));
 
             x.Item().PaddingTop(6).Element(Divider);
@@ -621,9 +599,6 @@ private static void RenderSenior(ColumnDescriptor col, SeniorFactFinder s)
 
             // Social Security / Pension Details (Q20)
             x.Item().Text("20) Social Security / Pension Details").SemiBold().FontColor(GoldDark);
-            x.Item().Element(k => KV(k, "Receive Social Security?", Bool(r.ReceiveSocialSecurity)));
-            x.Item().Element(k => KV(k, "SS monthly amount", Money(r.SocialSecurityMonthlyAmount)));
-            x.Item().Element(k => KV(k, "Company pension monthly amount", Money(r.CompanyPensionMonthlyAmount)));
             x.Item().Element(k => KV(k, "Pension survivor benefits for spouse?", Bool(r.PensionHasSurvivorBenefitsForSpouse)));
 
             x.Item().PaddingTop(6).Element(Divider);
@@ -902,8 +877,6 @@ private static void RenderMiddle(ColumnDescriptor col, MiddleFactFinder m)
 
             x.Item().Text("What Matters + What’s Heavy").SemiBold().FontColor(GoldDark);
             x.Item().Element(k => KV(k, "34) Winning definition (10–15 yrs)", NV(dir.WinningDefinition)));
-            x.Item().Element(k => KV(k, "35) Biggest fear if no change", NV(dir.BiggestFearIfNoChange)));
-            x.Item().Element(k => KV(k, "36) Change one thing starting today", NV(dir.ChangeOneThing)));
 
             x.Item().PaddingTop(6).Element(Divider);
 
@@ -982,7 +955,6 @@ private static void RenderMiddle(ColumnDescriptor col, MiddleFactFinder m)
             x.Item().Element(k => KV(k, "Income Type", NV(app.IncomeType)));
             x.Item().Element(k => KV(k, "Annual Income (Approx.)", Money(app.AnnualIncome)));
             x.Item().Element(k => KV(k, "Income Trend (last 3 years)", NV(app.IncomeTrend)));
-            x.Item().Element(k => KV(k, "Biggest threats to income (next 5 yrs)", NV(app.IncomeThreats)));
 
             x.Item().PaddingTop(6).Element(Divider);
 
@@ -1022,8 +994,6 @@ private static void RenderMiddle(ColumnDescriptor col, MiddleFactFinder m)
             x.Item().Element(k => KV(k, "Deductible (Individual/Family)", NV(health.Deductible)));
             x.Item().Element(k => KV(k, "Out-of-Pocket Max (Ind/Fam)", NV(health.OOPMax)));
             x.Item().Element(k => KV(k, "HSA? Balance?", NV(health.HSABalance)));
-            x.Item().Element(k => KV(k, "2) Last review notes", NV(health.LastReviewNotes)));
-            x.Item().Element(k => KV(k, "3) Medical bills surprises", NV(health.MedicalBillsSurprises)));
 
             x.Item().PaddingTop(6).Element(Divider);
 
@@ -1163,8 +1133,6 @@ private static void RenderMiddle(ColumnDescriptor col, MiddleFactFinder m)
             x.Item().PaddingTop(6).Text("Other Debts").SemiBold().FontColor(GoldDark);
             otherDebtTable(x, debt.Other);
 
-            x.Item().Element(k => KV(k, "22) Debt feels like", NV(debt.FeelsLike)));
-            x.Item().Element(k => KV(k, "23) Change one thing about debt", NV(debt.ChangeOneThing)));
 
             static void otherDebtTable(ColumnDescriptor x, System.Collections.Generic.List<MiddleOtherDebt> items)
             {
@@ -1220,7 +1188,6 @@ private static void RenderMiddle(ColumnDescriptor col, MiddleFactFinder m)
 
             x.Item().Text("Retirement & Investment Accounts").SemiBold().FontColor(GoldDark);
 
-            x.Item().PaddingTop(2).Element(k => KV(k, "24) Accounts organization feel", NV(assets.OrganizationFeel)));
             x.Item().Element(k => KV(k, "25) Net worth estimate", NV(assets.NetWorthEstimate)));
 
             x.Item().PaddingTop(6).Text("Retirement Accounts").SemiBold().FontColor(GoldDark);
@@ -1250,7 +1217,6 @@ private static void RenderMiddle(ColumnDescriptor col, MiddleFactFinder m)
             x.Item().PaddingTop(8).Element(Divider);
 
             x.Item().Text("Tax & Education Planning").SemiBold().FontColor(GoldDark);
-            x.Item().Element(k => KV(k, "29) Taxes feel too high why", NV(tax.FeelsTooHighWhy)));
             x.Item().Element(k => KV(k, "Tax preparer", NV(tax.Preparer)));
             x.Item().Element(k => KV(k, "Proactive planning last 12 months", NV(tax.ProactivePlanningLast12Mo)));
             x.Item().Element(k => KV(k, "30) Optimize most", NV(tax.OptimizeMost)));
@@ -1260,7 +1226,6 @@ private static void RenderMiddle(ColumnDescriptor col, MiddleFactFinder m)
             x.Item().Text("College / Education Funding").SemiBold().FontColor(GoldDark);
             x.Item().Element(k => KV(k, "Plan to fund college", NV(college.PlanToFund)));
             x.Item().Element(k => KV(k, "Current accounts", NV(college.CurrentAccounts)));
-            x.Item().Element(k => KV(k, "31) Plan if tuition higher", NV(college.PlanIfHigher)));
 
             x.Item().PaddingTop(8).Element(Divider);
 
@@ -1421,17 +1386,13 @@ private static void RenderYoung(ColumnDescriptor col, YoungFactFinder y)
 
             x.Item().Text("Direction").SemiBold().FontColor(GoldDark);
             x.Item().Element(k => KV(k, "3–5 Year Vision", NV(y.Direction.ThreeToFiveYears)));
-            x.Item().Element(k => KV(k, "10 Year Vision", NV(y.Direction.TenYears)));
             x.Item().Element(k => KV(k, "Current Stress", NV(y.Direction.CurrentStress)));
-            x.Item().Element(k => KV(k, "Fear if no change", NV(y.Direction.FearIfNoChange)));
             x.Item().Element(k => KV(k, "One thing first", NV(y.Direction.OneThingFirst)));
 
             x.Item().PaddingTop(6).Element(Divider);
 
             x.Item().Text("Ownership (Before the numbers)").SemiBold().FontColor(GoldDark);
             x.Item().Element(k => KV(k, "Financial stability means", NV(y.Ownership.StabilityMeaning)));
-            x.Item().Element(k => KV(k, "What stopped you", NV(y.Ownership.WhatsStoppedYou)));
-            x.Item().Element(k => KV(k, "Worth it looks like", NV(y.Ownership.WorthIt)));
 
             x.Item().PaddingTop(6).Element(Divider);
 
@@ -1455,7 +1416,6 @@ private static void RenderYoung(ColumnDescriptor col, YoungFactFinder y)
             x.Item().Element(k => KV(k, "HSA", Bool(y.Benefits.HSA)));
             x.Item().Element(k => KV(k, "Group Life", Bool(y.Benefits.GroupLife)));
             x.Item().Element(k => KV(k, "Group DI", Bool(y.Benefits.GroupDI)));
-            x.Item().Element(k => KV(k, "Understand Benefits", NV(y.Benefits.UnderstandBenefits)));
         });
     }));
 
@@ -1468,10 +1428,7 @@ private static void RenderYoung(ColumnDescriptor col, YoungFactFinder y)
 
             var cf = y.Cashflow;
             x.Item().Text("Cashflow").SemiBold().FontColor(GoldDark);
-            x.Item().Element(k => KV(k, "System Level", NV(cf.SystemLevel)));
             x.Item().Element(k => KV(k, "Off track because", NV(cf.OffTrack)));
-            x.Item().Element(k => KV(k, "Desired outcome", NV(cf.SystemDesiredOutcome)));
-            x.Item().Element(k => KV(k, "Spending weakness", NV(cf.SpendingWeakness)));
 
             x.Item().PaddingTop(4).Element(k => KV(k, "Net Income (Monthly)", Money(cf.NetIncome)));
             x.Item().Element(k => KV(k, "Fixed Bills (Monthly)", Money(cf.FixedBills)));
@@ -1483,22 +1440,18 @@ private static void RenderYoung(ColumnDescriptor col, YoungFactFinder y)
             x.Item().PaddingTop(6).Element(Divider);
 
             x.Item().Text("Banking").SemiBold().FontColor(GoldDark);
-            x.Item().Element(k => KV(k, "Know where money goes?", NV(y.Banking.KnowWhereMoneyGoes)));
-            x.Item().Element(k => KV(k, "Number of accounts", y.Banking.NumAccounts?.ToString() ?? "-"));
 
             x.Item().PaddingTop(6).Element(Divider);
 
             x.Item().Text("Emergency").SemiBold().FontColor(GoldDark);
             x.Item().Element(k => KV(k, "Emergency Amount", Money(y.Emergency.Amount)));
             x.Item().Element(k => KV(k, "Months Covered", NV(y.Emergency.Months)));
-            x.Item().Element(k => KV(k, "Plan if income stops", NV(y.Emergency.PlanIfIncomeStops)));
             x.Item().Element(k => KV(k, "Use credit to survive?", NV(y.Emergency.UsesCreditToSurvive)));
             x.Item().Element(k => KV(k, "Unexpected $1k plan", NV(y.Emergency.Unexpected1k)));
 
             x.Item().PaddingTop(6).Element(Divider);
 
             x.Item().Text("Habits").SemiBold().FontColor(GoldDark);
-            x.Item().Element(k => KV(k, "Need but not locked", NV(y.Habits.NeedButNotLocked)));
         });
     }));
 
@@ -1516,7 +1469,6 @@ private static void RenderYoung(ColumnDescriptor col, YoungFactFinder y)
 
             x.Item().Text("Debt Narrative").SemiBold().FontColor(GoldDark);
             x.Item().Element(k => KV(k, "Payoff Plan", NV(y.DebtNarrative.PayoffPlan)));
-            x.Item().Element(k => KV(k, "Most Stressful", NV(y.DebtNarrative.MostStressful)));
 
             x.Item().PaddingTop(6).Element(Divider);
 
@@ -1534,8 +1486,6 @@ private static void RenderYoung(ColumnDescriptor col, YoungFactFinder y)
             x.Item().PaddingTop(6).Element(Divider);
 
             x.Item().Text("Lifestyle").SemiBold().FontColor(GoldDark);
-            x.Item().Element(k => KV(k, "Protect from stress", NV(y.Lifestyle.ProtectFromStress)));
-            x.Item().Element(k => KV(k, "Influences", NV(y.Lifestyle.Influences)));
 
             x.Item().PaddingTop(6).Element(Divider);
 
@@ -1559,8 +1509,6 @@ private static void RenderYoung(ColumnDescriptor col, YoungFactFinder y)
             x.Item().Element(k => KV(k, "Who impacted if die", NV(y.Protection.WhoImpactedIfDie)));
             x.Item().Element(k => KV(k, "Has DI?", NV(y.Protection.HasDI)));
             x.Item().Element(k => KV(k, "If cannot work 3 mo", NV(y.Protection.IfCannotWork3Mo)));
-            x.Item().Element(k => KV(k, "Belief about insurance", NV(y.Protection.BeliefAboutInsurance)));
-            x.Item().Element(k => KV(k, "Protect first", NV(y.Protection.ProtectFirst)));
 
             static void youngDebtTable(ColumnDescriptor x, List<YoungDebtItem> items)
             {
@@ -1625,14 +1573,10 @@ private static void RenderYoung(ColumnDescriptor col, YoungFactFinder y)
 
             x.Item().Text("Investing").SemiBold().FontColor(GoldDark);
             x.Item().Element(k => KV(k, "Current investing", NV(y.Investing.CurrentInvesting)));
-            x.Item().Element(k => KV(k, "Mistakes", NV(y.Investing.Mistakes)));
-            x.Item().Element(k => KV(k, "Behind / on track", NV(y.Investing.FeelBehindOrOnTrack)));
 
             x.Item().PaddingTop(6).Element(Divider);
 
             x.Item().Text("Ownership (Action)").SemiBold().FontColor(GoldDark);
-            x.Item().Element(k => KV(k, "Commitment scale", NV(y.Ownership.CommitmentScale)));
-            x.Item().Element(k => KV(k, "First 30 days", NV(y.Ownership.First30Days)));
             x.Item().Element(k => KV(k, "Disclaimer acknowledged", Bool(y.AcknowledgedDisclaimer)));
         });
     }));
