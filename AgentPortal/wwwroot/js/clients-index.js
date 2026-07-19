@@ -6620,6 +6620,8 @@ window.quickViewCalendarAdapter = {
     };
 
     renderTimeline(data.activities || []);
+    renderPortalActions(row, activeClientDetail);
+    renderAll();
 
     if (dLastTouch) {
       dLastTouch.value =

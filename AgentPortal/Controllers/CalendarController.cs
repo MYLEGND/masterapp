@@ -534,19 +534,65 @@ public class CalendarController : Controller
                 .GetStaffAvailability
                 .PostAsGetStaffAvailabilityPostResponseAsync(request, cancellationToken: HttpContext.RequestAborted);
 
-            DateTime ParseAvailabilityLocal(DateTimeTimeZone? value, TimeZoneInfo tz)
+            DateTime ParseAvailabilityWallClock(DateTimeTimeZone? value)
             {
                 if (value == null || string.IsNullOrWhiteSpace(value.DateTime))
                     return DateTime.MinValue;
 
-                var parsed = DateTime.Parse(
-                    value.DateTime,
-                    CultureInfo.InvariantCulture,
-                    DateTimeStyles.RoundtripKind);
+                if (!DateTime.TryParse(
+                        value.DateTime,
+                        CultureInfo.InvariantCulture,
+                        DateTimeStyles.AllowWhiteSpaces,
+                        out var parsed))
+                {
+                    return DateTime.MinValue;
+                }
 
-                // Microsoft Bookings availability can return wall-clock business hours with a UTC label.
-                // Treat the payload as local Bookings time here; otherwise Azure shifts the workday into evening/overnight.
+                // Bookings staff availability represents business wall-clock time.
                 return DateTime.SpecifyKind(parsed, DateTimeKind.Unspecified);
+            }
+
+            DateTime ParseAppointmentLocal(
+                DateTimeTimeZone? value,
+                TimeZoneInfo targetTimeZone)
+            {
+                if (value == null || string.IsNullOrWhiteSpace(value.DateTime))
+                    return DateTime.MinValue;
+
+                if (!DateTime.TryParse(
+                        value.DateTime,
+                        CultureInfo.InvariantCulture,
+                        DateTimeStyles.AllowWhiteSpaces,
+                        out var parsed))
+                {
+                    return DateTime.MinValue;
+                }
+
+                var sourceTimeZone =
+                    (value.TimeZone ?? string.Empty).Trim();
+
+                if (string.Equals(
+                        sourceTimeZone,
+                        "UTC",
+                        StringComparison.OrdinalIgnoreCase) ||
+                    string.Equals(
+                        sourceTimeZone,
+                        "Etc/UTC",
+                        StringComparison.OrdinalIgnoreCase))
+                {
+                    var utc =
+                        DateTime.SpecifyKind(parsed, DateTimeKind.Utc);
+
+                    return DateTime.SpecifyKind(
+                        TimeZoneInfo.ConvertTimeFromUtc(
+                            utc,
+                            targetTimeZone),
+                        DateTimeKind.Unspecified);
+                }
+
+                return DateTime.SpecifyKind(
+                    parsed,
+                    DateTimeKind.Unspecified);
             }
 
             var availabilityItems = (availability?.Value ?? new List<StaffAvailabilityItem>())
@@ -554,8 +600,8 @@ public class CalendarController : Controller
                 .Where(x => x.Status == BookingsAvailabilityStatus.Available)
                 .Select(x =>
                 {
-                    var start = ParseAvailabilityLocal(x.StartDateTime, agentTimeZone);
-                    var end = ParseAvailabilityLocal(x.EndDateTime, agentTimeZone);
+                    var start = ParseAvailabilityWallClock(x.StartDateTime);
+                    var end = ParseAvailabilityWallClock(x.EndDateTime);
                     return new { Start = start, End = end, ServiceId = x.ServiceId ?? "" };
                 })
                 .Where(x => x.Start != DateTime.MinValue && x.End != DateTime.MinValue && x.End > x.Start)
@@ -601,8 +647,8 @@ public class CalendarController : Controller
             var busyRanges = allExistingAppointments
                 .Select(x =>
                 {
-                    var start = ParseAvailabilityLocal(x.StartDateTime, agentTimeZone);
-                    var end = ParseAvailabilityLocal(x.EndDateTime, agentTimeZone);
+                    var start = ParseAppointmentLocal(x.StartDateTime, agentTimeZone);
+                    var end = ParseAppointmentLocal(x.EndDateTime, agentTimeZone);
 
                     var pre = TimeSpan.Zero;
                     var post = TimeSpan.Zero;
@@ -861,89 +907,176 @@ public class CalendarController : Controller
                     CreatedBy = User.FindFirstValue("preferred_username") ?? User.Identity?.Name
                 });
 
-                var clientLeadId = (profile.ClientUserId ?? string.Empty).Trim();
-                var linkedLeadProfile = string.IsNullOrWhiteSpace(clientLeadId)
-                    ? null
-                    : await _db.WorkstationLeadProfiles.FirstOrDefaultAsync(x =>
-                        (x.LeadId ?? "").Trim().ToLower() == clientLeadId.ToLower() &&
-                        (x.AgentUserId ?? "").Trim().ToLower() == agentOid);
+                var clientLeadId =
+                    (profile.ClientUserId ?? string.Empty).Trim();
 
-                LeadAppointment? clientPersistedAppointment = null;
+                var clientProfileId = profile.Id.ToString();
 
-                if (linkedLeadProfile != null)
-                {
-                    var createdEventId = created?.Id?.Trim();
+                if (string.IsNullOrWhiteSpace(clientLeadId))
+                    return StatusCode(
+                        500,
+                        "Client appointment identity is missing.");
 
-                    clientPersistedAppointment = !string.IsNullOrWhiteSpace(createdEventId)
-                        ? await _db.LeadAppointments
-                            .FirstOrDefaultAsync(x => x.CalendarEventId == createdEventId)
+                var linkedLeadProfile =
+                    await _db.WorkstationLeadProfiles
+                        .FirstOrDefaultAsync(x =>
+                            (x.LeadId ?? "")
+                                .Trim()
+                                .ToLower() ==
+                            clientLeadId.ToLower() &&
+                            (x.AgentUserId ?? "")
+                                .Trim()
+                                .ToLower() ==
+                            agentOid);
+
+                var appointmentLeadId =
+                    !string.IsNullOrWhiteSpace(
+                        linkedLeadProfile?.LeadId)
+                        ? linkedLeadProfile.LeadId
                         : null;
 
-                    clientPersistedAppointment ??= await _db.LeadAppointments
-                        .Where(x => x.WorkstationLeadId == linkedLeadProfile.LeadId &&
-                                    x.ClientProfileId == profile.Id.ToString())
+                var appointmentOwnerAgentUserId =
+                    !string.IsNullOrWhiteSpace(
+                        linkedLeadProfile?.AgentUserId)
+                        ? linkedLeadProfile.AgentUserId
+                        : agentOid;
+
+                var createdEventId = created?.Id?.Trim();
+
+                LeadAppointment? clientPersistedAppointment =
+                    !string.IsNullOrWhiteSpace(createdEventId)
+                        ? await _db.LeadAppointments
+                            .FirstOrDefaultAsync(x =>
+                                x.CalendarEventId ==
+                                createdEventId)
+                        : null;
+
+                clientPersistedAppointment ??=
+                    await _db.LeadAppointments
+                        .Where(x =>
+                            x.ClientProfileId ==
+                            clientProfileId)
                         .OrderByDescending(x => x.UpdatedUtc)
+                        .ThenByDescending(x => x.CreatedUtc)
                         .FirstOrDefaultAsync();
 
-                    if (clientPersistedAppointment == null)
-                    {
-                        Guid? clientLatestIntakeLinkId = null;
-                        try
-                        {
-                            clientLatestIntakeLinkId = await _db.WebsiteLeadIntakeLinks
-                                .AsNoTracking()
-                                .Where(x => x.WorkstationLeadId == linkedLeadProfile.LeadId)
-                                .OrderByDescending(x => x.SubmittedUtc)
-                                .ThenByDescending(x => x.CapturedUtc)
-                                .Select(x => (Guid?)x.Id)
-                                .FirstOrDefaultAsync();
-                        }
-                        catch (Exception ex) when (IsMissingWebsiteLeadIntakeLinksTable(ex))
-                        {
-                            _logger.LogWarning(ex, "WebsiteLeadIntakeLinks table is unavailable; client calendar event will persist without intake linkage.");
-                        }
+                if (clientPersistedAppointment == null)
+                {
+                    Guid? clientLatestIntakeLinkId = null;
 
-                        clientPersistedAppointment = new LeadAppointment
+                    try
+                    {
+                        if (!string.IsNullOrWhiteSpace(appointmentLeadId))
+                        {
+                            clientLatestIntakeLinkId =
+                                await _db.WebsiteLeadIntakeLinks
+                                    .AsNoTracking()
+                                    .Where(x =>
+                                        x.WorkstationLeadId ==
+                                        appointmentLeadId)
+                                    .OrderByDescending(x =>
+                                        x.SubmittedUtc)
+                                    .ThenByDescending(x =>
+                                        x.CapturedUtc)
+                                    .Select(x => (Guid?)x.Id)
+                                    .FirstOrDefaultAsync();
+                        }
+                    }
+                    catch (Exception ex)
+                        when (IsMissingWebsiteLeadIntakeLinksTable(ex))
+                    {
+                        _logger.LogWarning(
+                            ex,
+                            "WebsiteLeadIntakeLinks table is unavailable; client calendar event will persist without intake linkage.");
+                    }
+
+                    clientPersistedAppointment =
+                        new LeadAppointment
                         {
                             Id = Guid.NewGuid(),
-                            WorkstationLeadId = linkedLeadProfile.LeadId,
-                            OwnerAgentUserId = string.IsNullOrWhiteSpace(linkedLeadProfile.AgentUserId) ? agentOid : linkedLeadProfile.AgentUserId,
-                            WebsiteLeadIntakeLinkId = clientLatestIntakeLinkId,
-                            ClientProfileId = profile.Id.ToString(),
-                            BookingProvider = "microsoft_bookings",
-                            BookingSource = LeadAppointmentBookingSources.InternalCalendar,
-                            RequestedBookingSource = LeadAppointmentBookingSources.InternalCalendar,
-                            ConfirmationSource = LeadAppointmentBookingSources.InternalCalendar,
-                            BookingAgentUserId = string.IsNullOrWhiteSpace(linkedLeadProfile.AgentUserId) ? agentOid : linkedLeadProfile.AgentUserId,
+                            WorkstationLeadId =
+                                appointmentLeadId,
+                            OwnerAgentUserId =
+                                appointmentOwnerAgentUserId,
+                            WebsiteLeadIntakeLinkId =
+                                clientLatestIntakeLinkId,
+                            ClientProfileId =
+                                clientProfileId,
+                            BookingProvider =
+                                "microsoft_bookings",
+                            BookingSource =
+                                LeadAppointmentBookingSources
+                                    .InternalCalendar,
+                            RequestedBookingSource =
+                                LeadAppointmentBookingSources
+                                    .InternalCalendar,
+                            ConfirmationSource =
+                                LeadAppointmentBookingSources
+                                    .InternalCalendar,
+                            BookingAgentUserId =
+                                appointmentOwnerAgentUserId,
                             CreatedUtc = clientNowUtc,
                             RequestedUtc = clientNowUtc
                         };
 
-                        _db.LeadAppointments.Add(clientPersistedAppointment);
-                    }
+                    _db.LeadAppointments.Add(
+                        clientPersistedAppointment);
+                }
 
-                    clientPersistedAppointment.ClientProfileId = profile.Id.ToString();
-                    clientPersistedAppointment.BookingProvider = "microsoft_bookings";
-                    clientPersistedAppointment.CalendarEventId = created?.Id;
-                    clientPersistedAppointment.CalendarEventWebLink = created?.WebLink;
-                    clientPersistedAppointment.ScheduledStartUtc = utcStart;
-                    clientPersistedAppointment.ScheduledEndUtc = utcEnd;
-                    clientPersistedAppointment.MeetingUrl = zoomJoinUrl;
-                    clientPersistedAppointment.LastSyncedUtc = clientNowUtc;
-                    clientPersistedAppointment.LastSyncStatus = "bookings_appointment_created";
-                    clientPersistedAppointment.LastSyncError = null;
-                    clientPersistedAppointment.UpdatedUtc = clientNowUtc;
-                    clientPersistedAppointment.ApplyStatus(LeadAppointmentStatus.Booked, clientNowUtc);
-                }
-                else
-                {
-                    _logger.LogWarning(
-                        "Client calendar event {EventId} could not be attached to LeadAppointments because ClientProfile {ClientProfileId} / ClientUserId {ClientUserId} has no matching WorkstationLeadProfile for agent {AgentOid}.",
-                        created?.Id,
-                        profile.Id,
-                        profile.ClientUserId,
-                        agentOid);
-                }
+                clientPersistedAppointment.WorkstationLeadId =
+                    appointmentLeadId;
+
+                clientPersistedAppointment.OwnerAgentUserId =
+                    appointmentOwnerAgentUserId;
+
+                clientPersistedAppointment.ClientProfileId =
+                    clientProfileId;
+
+                clientPersistedAppointment.BookingProvider =
+                    "microsoft_bookings";
+
+                clientPersistedAppointment.BookingSource =
+                    LeadAppointmentBookingSources
+                        .InternalCalendar;
+
+                clientPersistedAppointment.RequestedBookingSource =
+                    LeadAppointmentBookingSources
+                        .InternalCalendar;
+
+                clientPersistedAppointment.ConfirmationSource =
+                    LeadAppointmentBookingSources
+                        .InternalCalendar;
+
+                clientPersistedAppointment.BookingAgentUserId =
+                    appointmentOwnerAgentUserId;
+
+                clientPersistedAppointment.CalendarEventId =
+                    created?.Id;
+
+                clientPersistedAppointment.CalendarEventWebLink =
+                    created?.WebLink;
+
+                clientPersistedAppointment.ScheduledStartUtc =
+                    utcStart;
+
+                clientPersistedAppointment.ScheduledEndUtc =
+                    utcEnd;
+
+                clientPersistedAppointment.MeetingUrl =
+                    zoomJoinUrl;
+
+                clientPersistedAppointment.LastSyncedUtc =
+                    clientNowUtc;
+
+                clientPersistedAppointment.LastSyncStatus =
+                    "bookings_appointment_created";
+
+                clientPersistedAppointment.LastSyncError = null;
+                clientPersistedAppointment.UpdatedUtc = clientNowUtc;
+
+                clientPersistedAppointment.ApplyStatus(
+                    LeadAppointmentStatus.Booked,
+                    clientNowUtc);
 
                 profile.CrmLastTouch = DateTime.Today;
                 profile.CrmNotes = ClientCrmMetaSerializer.Serialize(meta);

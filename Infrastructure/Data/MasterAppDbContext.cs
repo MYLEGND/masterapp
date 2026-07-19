@@ -866,7 +866,7 @@ public class MasterAppDbContext : DbContext
         {
             e.HasKey(x => x.Id);
             e.ToTable("LeadAppointments");
-            e.Property(x => x.WorkstationLeadId).HasMaxLength(64).IsRequired();
+            e.Property(x => x.WorkstationLeadId).HasMaxLength(64).IsRequired(false);
             e.Property(x => x.OwnerAgentUserId).HasMaxLength(450).IsRequired();
             e.Property(x => x.WebsiteLeadId).HasMaxLength(64);
             e.Property(x => x.ClientProfileId).HasMaxLength(450);

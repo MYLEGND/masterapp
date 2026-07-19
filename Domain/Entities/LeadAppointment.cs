@@ -7,7 +7,7 @@ public class LeadAppointment
 {
     public Guid Id { get; set; }
 
-    public string WorkstationLeadId { get; set; } = "";
+    public string? WorkstationLeadId { get; set; }
     public WorkstationLeadProfile? WorkstationLead { get; set; }
 
     public string OwnerAgentUserId { get; set; } = "";
