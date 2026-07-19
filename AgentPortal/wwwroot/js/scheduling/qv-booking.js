@@ -746,6 +746,146 @@
         }
     });
 
+
+    async function createQuickViewCalendarEvent() {
+        window.__lastBookingStopReason = "";
+
+        const adapter = window.quickViewCalendarAdapter;
+
+        if (
+            !adapter ||
+            typeof adapter.getContext !== "function" ||
+            typeof adapter.request !== "function" ||
+            typeof adapter.applyResult !== "function" ||
+            typeof adapter.toast !== "function"
+        ) {
+            window.__lastBookingStopReason =
+                "calendar page adapter unavailable";
+
+            console.error(
+                "Quick View calendar adapter is unavailable."
+            );
+
+            return false;
+        }
+
+        let context;
+
+        try {
+            context = adapter.getContext();
+        } catch (error) {
+            console.error(error);
+
+            window.__lastBookingStopReason =
+                error?.message || "calendar context failed";
+
+            adapter.toast(
+                error?.message ||
+                "Calendar booking context could not be prepared."
+            );
+
+            return false;
+        }
+
+        const recordId = context?.recordId || "";
+        const row = context?.row || null;
+        const nextDate = context?.nextDate || "";
+        const nextText = context?.nextText || "";
+
+        if (!recordId) {
+            adapter.toast("Open a lead or client first.");
+            window.__lastBookingStopReason = "missing recordId";
+            return false;
+        }
+
+        if (!row) {
+            adapter.toast("Lead or client record not found.");
+            window.__lastBookingStopReason =
+                `record row not found for ${recordId}`;
+            return false;
+        }
+
+        if (!nextDate) {
+            adapter.toast("Set a Next Action Date first.");
+            window.__lastBookingStopReason = "missing nextDate";
+            return false;
+        }
+
+        if (!nextText) {
+            adapter.toast("Add Next Action text first.");
+            window.__lastBookingStopReason = "missing nextText";
+            return false;
+        }
+
+        if (!context.startISO || !context.endISO) {
+            adapter.toast("Calendar event time could not be prepared.");
+            window.__lastBookingStopReason =
+                "missing calendar event times";
+            return false;
+        }
+
+        const payload = {
+            clientUserId: recordId,
+            subject: `Client Follow-up: ${context.fullName || ""}`,
+            startISO: context.startISO,
+            endISO: context.endISO,
+            body:
+                `Next Action: ${nextText}\n\n` +
+                `Pipeline Stage: ${context.pipelineStage || ""}\n` +
+                `Client: ${context.fullName || ""}\n` +
+                `Email: ${context.email || ""}\n` +
+                `Phone: ${context.phone || ""}`,
+            location: context.location || "",
+            zoomJoinUrl: context.zoomJoinUrl || "",
+            activityNote: `Calendar event created: ${nextText}`
+        };
+
+        try {
+            const data = await adapter.request(
+                "/calendar/create-event",
+                payload
+            );
+
+            await adapter.applyResult(data, context);
+
+            adapter.toast("Calendar event created");
+            return true;
+        } catch (error) {
+            console.error(error);
+
+            window.__lastBookingStopReason =
+                error?.message || "calendar create failed";
+
+            adapter.toast(
+                error?.message || "Calendar create failed."
+            );
+
+            return false;
+        }
+    }
+
+    window.createQuickViewCalendarEvent =
+        createQuickViewCalendarEvent;
+
+    document.addEventListener("click", async event => {
+        const trigger =
+            event.target?.closest?.("#btnCreateCalendarEvent");
+
+        if (!trigger) return;
+
+        event.preventDefault();
+
+        if (trigger.disabled) return;
+
+        trigger.disabled = true;
+
+        try {
+            await createQuickViewCalendarEvent();
+        } finally {
+            trigger.disabled = false;
+        }
+    });
+
     document.addEventListener("click", async (event) => {
         if (!event.target || event.target.id !== "btnBookAppointment") return;
 
@@ -775,16 +915,10 @@
             nextText.value = "Appointment booked from Quick View";
         }
 
-        if (typeof createCalendarEventFromDrawer !== "function") {
-            console.error("createCalendarEventFromDrawer is unavailable on this page.");
-            setStatus("Calendar flow unavailable", "error");
-            return;
-        }
-
         setStatus("Booking appointment…", "loading");
 
         try {
-            const booked = await createCalendarEventFromDrawer();
+            const booked = await createQuickViewCalendarEvent();
             if (!booked) {
                 setStatus(`Booking stopped: ${window.__lastBookingStopReason || "unknown frontend guard"}`, "error");
                 return;
