@@ -18,7 +18,7 @@
     --dcs-radius-md: 14px;
 }
 
-.dashboard-search-shell {
+.legend-modal.carrier-settings-modal .dashboard-search-shell {
     width: min(1040px, 100%);
     margin: 0 auto;
     display: flex;
@@ -28,18 +28,11 @@
     flex-wrap: wrap;
 }
 
-.search-input-wrap {
-    position: relative;
-    flex: 1 1 460px;
-    max-width: 620px;
-}
 
-.search-input-wrap .search-input {
-    width: 100%;
-    max-width: none;
-}
 
-.search-actions {
+
+
+.legend-modal.carrier-settings-modal .search-actions {
     display: flex;
     align-items: center;
     justify-content: center;
@@ -47,17 +40,10 @@
     flex-wrap: wrap;
 }
 
-.search-input-wrap .autocomplete-list {
-    top: calc(100% + 12px);
-    left: 0;
-    right: 0;
-    border-radius: 16px;
-    border-color: rgba(166, 128, 35, 0.52);
-    box-shadow: 0 18px 40px rgba(0, 0, 0, 0.34);
-}
 
-.dashboard-search-shell .btn-clear-search,
-.dashboard-search-shell .btn-carrier-settings {
+
+.legend-modal.carrier-settings-modal .dashboard-search-shell .btn-clear-search,
+.legend-modal.carrier-settings-modal .dashboard-search-shell .btn-carrier-settings {
     min-height: 48px;
     padding: 0.72rem 1.15rem;
     border-radius: 999px;
@@ -67,14 +53,14 @@
     transition: transform 0.16s ease, box-shadow 0.16s ease, border-color 0.16s ease, background 0.16s ease, color 0.16s ease;
 }
 
-.dashboard-search-shell .btn-clear-search {
+.legend-modal.carrier-settings-modal .dashboard-search-shell .btn-clear-search {
     border: 1.5px solid rgba(166, 128, 35, 0.52);
     background: linear-gradient(180deg, #ffffff 0%, #f7f1e3 100%);
     color: #24170a;
     box-shadow: 0 12px 26px rgba(0, 0, 0, 0.12);
 }
 
-.dashboard-search-shell .btn-clear-search:hover {
+.legend-modal.carrier-settings-modal .dashboard-search-shell .btn-clear-search:hover {
     transform: translateY(-1px);
     background: linear-gradient(180deg, #fffaf0 0%, #f3e5b8 100%);
     border-color: rgba(166, 128, 35, 0.72);
@@ -82,7 +68,7 @@
     box-shadow: 0 16px 30px rgba(0, 0, 0, 0.16);
 }
 
-.dashboard-search-shell .btn-carrier-settings {
+.legend-modal.carrier-settings-modal .dashboard-search-shell .btn-carrier-settings {
     border: 1.5px solid rgba(212, 167, 67, 0.64);
     background:
         linear-gradient(180deg, rgba(255, 255, 255, 0.06), transparent 42%),
@@ -93,7 +79,7 @@
         inset 0 1px 0 rgba(255, 255, 255, 0.06);
 }
 
-.dashboard-search-shell .btn-carrier-settings:hover {
+.legend-modal.carrier-settings-modal .dashboard-search-shell .btn-carrier-settings:hover {
     transform: translateY(-1px);
     border-color: rgba(244, 220, 147, 0.88);
     color: var(--dcs-gold-1);
@@ -102,8 +88,8 @@
         inset 0 1px 0 rgba(255, 255, 255, 0.08);
 }
 
-.dashboard-search-shell .btn-clear-search:focus-visible,
-.dashboard-search-shell .btn-carrier-settings:focus-visible {
+.legend-modal.carrier-settings-modal .dashboard-search-shell .btn-clear-search:focus-visible,
+.legend-modal.carrier-settings-modal .dashboard-search-shell .btn-carrier-settings:focus-visible {
     outline: 2px solid #ddb457;
     outline-offset: 3px;
 }
@@ -726,22 +712,22 @@
 }
 
 @media (max-width: 576px) {
-    .dashboard-search-shell,
-    .search-actions {
+    .legend-modal.carrier-settings-modal .dashboard-search-shell,
+    .legend-modal.carrier-settings-modal .search-actions {
         width: 100%;
     }
 
-    .search-input-wrap {
+    .legend-modal.carrier-settings-modal .search-input-wrap {
         flex-basis: 100%;
         max-width: none;
     }
 
-    .search-actions {
+    .legend-modal.carrier-settings-modal .search-actions {
         gap: 0.5rem;
     }
 
-    .dashboard-search-shell .btn-clear-search,
-    .dashboard-search-shell .btn-carrier-settings {
+    .legend-modal.carrier-settings-modal .dashboard-search-shell .btn-clear-search,
+    .legend-modal.carrier-settings-modal .dashboard-search-shell .btn-carrier-settings {
         width: 100%;
     }
 
