@@ -32,11 +32,27 @@
             notes: document.getElementById("apptNotes").value
         };
 
-        const res = await fetch("/calendar/create-event", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify(payload)
-        });
+        if (typeof window.qvCalendarCreateEvent !== "function") {
+            console.error(
+                "Shared calendar create-event dispatcher is unavailable."
+            );
+            alert("Appointment scheduling is unavailable.");
+            return;
+        }
+
+        const res = await window.qvCalendarCreateEvent(
+            payload,
+            async (url, requestPayload) => {
+                return await fetch(url, {
+                    method: "POST",
+                    credentials: "include",
+                    headers: {
+                        "Content-Type": "application/json"
+                    },
+                    body: JSON.stringify(requestPayload)
+                });
+            }
+        );
 
         if (!res.ok) {
             alert("Failed to create appointment");

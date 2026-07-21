@@ -2128,7 +2128,6 @@ let pipelineNavSelectedStage = "";
 let pipelineNavSearchTerm = "";
 let draggingClientId = null;
 let meetingSuggestAbort = null;
-let calendarBusyAbort = null;
 let meetingSuggestTimer = null;
 let quickViewScrollY = 0;
 let activeAdvancedMarketsClient = null;
@@ -4788,14 +4787,14 @@ btnMarkToday?.addEventListener("click", () => {
 btnSetNextToday?.addEventListener("click", () => {
   setDrawerNextActionDate(todayISO());
   flushQuickViewAutosave("Next action set — saving…");
-  refreshCalendarBusyPanel();
+  quickViewBusyCalendar.refresh();
 });
 
 dMeetingType?.addEventListener("change", () => {
   if (!hasMeetingTypeInput) return;
   const row = rows.find(r => r.dataset.clientId === activeClientId);
   applyMeetingType(dMeetingType.value, row);
-  refreshCalendarBusyPanel();
+  quickViewBusyCalendar.refresh();
   queueQuickViewAutosave();
 });
 
@@ -6064,14 +6063,6 @@ document.addEventListener("keydown", (e) => {
 });
 
 /* ========= Calendar Sync (Microsoft 365 / Outlook) ========= */
-async function calendarStatus(){
-  try{
-    const res = await fetch("/calendar/status", { credentials:"include" });
-    if (!res.ok) return { connected:false };
-    return await res.json();
-  }catch{ return { connected:false }; }
-}
-
 function loadSavedZoomLink(){
   const db = loadJSON(LS_ZOOM, {});
   return norm(db.personalRoomUrl);
@@ -6367,160 +6358,38 @@ document.addEventListener("click", (e) => {
     const startLabel = freeSlot.getAttribute("data-free-slot-start") || "";
     if (timeValue){
       dMeetingTime.value = timeValue;
-      refreshCalendarBusyPanel();
+      quickViewBusyCalendar.refresh();
       toast(`Meeting time set to ${startLabel}`);
     }
   }
 });
 
-function formatBusyRange(item){
-  if (item.isAllDay) return "All day";
-  return `${item.startLabel || ""} - ${item.endLabel || ""}`.trim();
-}
 
-function isBusyConflict(item, selectedStart, selectedEnd){
-  if (!selectedStart || !selectedEnd) return false;
-  if (item.isAllDay) return true;
-  const start = parseLocalCalendarIso(item.startIso);
-  const end = parseLocalCalendarIso(item.endIso);
-  if (!start || !end || Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) return false;
-  return start < selectedEnd && end > selectedStart;
-}
+const quickViewBusyCalendar =
+  window.createQuickViewBusyCalendar({
+    getSelectedDate(){
+      return norm(dNextDate?.value);
+    },
 
+    getElements(){
+      return {
+        busyDate: dCalendarBusyDate,
+        busyList: dCalendarBusyList,
+        busyNote: dCalendarBusyNote,
+        freeList: dCalendarFreeList,
+        workHours: dCalendarWorkHours
+      };
+    },
 
-function parseLocalCalendarIso(value){
-  if (!value) return null;
-  const match = String(value).match(/^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})(?::(\d{2}))?/);
-  if (!match) {
-    const fallback = new Date(value);
-    return Number.isNaN(fallback.getTime()) ? null : fallback;
-  }
-  const [, y, mo, d, h, mi, se] = match;
-  const dt = new Date(Number(y), Number(mo) - 1, Number(d), Number(h), Number(mi), Number(se || 0));
-  return Number.isNaN(dt.getTime()) ? null : dt;
-}
+    normalize: norm,
+    escapeHtml: safeHtml,
 
-function renderCalendarBusyState(message, tone = "neutral"){
-  if (!dCalendarBusyList || !dCalendarBusyNote || !dCalendarFreeList || !dCalendarWorkHours) return;
-  dCalendarBusyList.innerHTML = "";
-  dCalendarFreeList.innerHTML = "";
-  dCalendarWorkHours.textContent = "Uses Outlook work hours or your default 7:00 AM - 7:00 PM";
-  dCalendarBusyNote.textContent = message;
-  dCalendarBusyNote.style.color = tone === "error"
-    ? "#b91c1c"
-    : tone === "good"
-      ? "#166534"
-      : "#7f1d1d";
-}
+    wrapRequest(init){
+      return init;
+    },
 
-function renderCalendarBusy(items, freeSlots = [], workHours = null){
-  if (!dCalendarBusyList || !dCalendarBusyNote || !dCalendarFreeList || !dCalendarWorkHours) return;
-
-  const nextDate = norm(dNextDate?.value);
-  const selected = nextDate ? window.qvBookingBuildEventTimes(nextDate) : null;
-  const selectedStart = selected?.startISO ? new Date(selected.startISO) : null;
-  const selectedEnd = selected?.endISO ? new Date(selected.endISO) : null;
-  const conflicts = items.filter(item => isBusyConflict(item, selectedStart, selectedEnd));
-
-  if (workHours?.enabled){
-    dCalendarWorkHours.textContent = `Work hours: ${workHours.startLabel} - ${workHours.endLabel}${workHours.source === "outlook" ? "" : " (default)"}`;
-  } else {
-    dCalendarWorkHours.textContent = "This day is outside your Outlook work week";
-  }
-
-  if (freeSlots.length){
-    dCalendarFreeList.innerHTML = freeSlots.map(slot => `
-      <button type="button" class="calendar-free-slot" data-free-slot-time="${safeHtml(slot.startTimeValue || "")}" data-free-slot-start="${safeHtml(slot.startLabel || "")}">
-        ${safeHtml(`${slot.startLabel || ""} - ${slot.endLabel || ""}`.trim())}
-      </button>
-    `).join("");
-  } else {
-    dCalendarFreeList.innerHTML = `<div class="calendar-free-empty">${workHours?.enabled ? "No open booking windows inside your work hours for this day." : "No booking windows because this day is outside your work hours."}</div>`;
-  }
-
-  if (!items.length){
-    dCalendarBusyNote.textContent = "No busy blocks found on your Outlook calendar for this day.";
-    dCalendarBusyNote.style.color = "#166534";
-    dCalendarBusyList.innerHTML = `<div class="calendar-busy-empty">Open day. No busy blocks found.</div>`;
-    return;
-  }
-
-  dCalendarBusyNote.textContent = conflicts.length
-    ? `${conflicts.length} conflict${conflicts.length === 1 ? "" : "s"} with the currently selected meeting time.`
-    : "Busy blocks for the selected day. Your current time does not overlap any of them.";
-  dCalendarBusyNote.style.color = conflicts.length ? "#b91c1c" : "#166534";
-
-  dCalendarBusyList.innerHTML = items.map(item => {
-    const conflict = isBusyConflict(item, selectedStart, selectedEnd);
-    const showAs = norm(item.showAs) || "busy";
-    const label = showAs.charAt(0).toUpperCase() + showAs.slice(1);
-
-    return `
-      <div class="calendar-busy-item ${conflict ? "conflict" : ""}">
-        <div class="calendar-busy-main">
-          <div class="calendar-busy-subject">${safeHtml(item.subject || "Busy")}</div>
-          <div class="calendar-busy-meta">${safeHtml(label)}</div>
-          ${conflict ? '<div class="calendar-busy-flag">Conflicts with selected time</div>' : ""}
-        </div>
-        <div class="calendar-busy-time">${safeHtml(formatBusyRange(item))}</div>
-      </div>
-    `;
-  }).join("");
-}
-
-async function refreshCalendarBusyPanel(){
-  if (!dCalendarBusyDate) return;
-
-  const nextDate = norm(dNextDate?.value);
-  dCalendarBusyDate.textContent = nextDate || "Select a date";
-
-  if (!nextDate){
-    renderCalendarBusyState("Choose a Next Action Date to see your Outlook busy blocks for that day.");
-    return;
-  }
-
-  const st = await calendarStatus();
-  if (!st.connected){
-    renderCalendarBusyState("Connect your Outlook calendar to load busy times for this day.", "error");
-    return;
-  }
-
-  if (calendarBusyAbort){
-    calendarBusyAbort.abort();
-  }
-
-  calendarBusyAbort = new AbortController();
-  renderCalendarBusyState("Loading busy times from Outlook...");
-
-  try{
-    const res = await fetch(`/calendar/day-availability?date=${encodeURIComponent(nextDate)}`, {
-      credentials: "include",
-      signal: calendarBusyAbort.signal
-    });
-
-    if (!res.ok){
-      const text = await res.text().catch(() => "");
-      throw new Error(text || "Calendar availability failed.");
-    }
-
-    const data = await res.json();
-    if (!data.connected){
-      renderCalendarBusyState("Calendar availability is unavailable right now. You can still create the meeting manually.", "error");
-      return;
-    }
-
-    renderCalendarBusy(
-      Array.isArray(data.items) ? data.items : [],
-      Array.isArray(data.freeSlots) ? data.freeSlots : [],
-      data.workHours || null
-    );
-  }catch(err){
-    if (err?.name === "AbortError") return;
-    console.error(err);
-    renderCalendarBusyState("Could not load Outlook busy times for this day.", "error");
-  }
-}
-
+    statusCacheTtlMs: 0
+  });
 
 window.quickViewCalendarAdapter = {
   getContext(){
@@ -6619,7 +6488,7 @@ window.quickViewCalendarAdapter = {
         "Calendar event synced ✔";
     }
 
-    await refreshCalendarBusyPanel();
+    await quickViewBusyCalendar.refresh();
   },
 
   toast(message){

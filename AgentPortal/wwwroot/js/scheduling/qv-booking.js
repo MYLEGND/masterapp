@@ -781,6 +781,505 @@
      * Single authority for converting a selected Microsoft Bookings slot
      * and service duration into the controller's local ISO contract.
      */
+
+    /*
+     * Sole HTTP route authority for calendar appointment creation.
+     * Page adapters may provide their own transport so authentication and
+     * anti-forgery behavior remain page-specific.
+     */
+    window.qvCalendarCreateEvent = async function qvCalendarCreateEvent(
+        payload,
+        request
+    ) {
+        if (typeof request !== "function") {
+            throw new Error(
+                "Calendar create-event request transport is unavailable."
+            );
+        }
+
+        return await request(
+            "/calendar/create-event",
+            payload
+        );
+    };
+
+    /*
+     * Sole authority for Outlook status, availability loading, conflict
+     * detection, formatting and busy/free-slot rendering.
+     */
+    window.createQuickViewBusyCalendar =
+        function createQuickViewBusyCalendar(options) {
+            if (!options || typeof options !== "object") {
+                throw new Error(
+                    "Quick View busy-calendar options are required."
+                );
+            }
+
+            const getElements =
+                typeof options.getElements === "function"
+                    ? options.getElements
+                    : () => ({});
+
+            const getSelectedDate =
+                typeof options.getSelectedDate === "function"
+                    ? options.getSelectedDate
+                    : () => "";
+
+            const normalize =
+                typeof options.normalize === "function"
+                    ? options.normalize
+                    : value => String(value || "").trim();
+
+            const escapeHtml =
+                typeof options.escapeHtml === "function"
+                    ? options.escapeHtml
+                    : value => String(value || "");
+
+            const wrapRequest =
+                typeof options.wrapRequest === "function"
+                    ? options.wrapRequest
+                    : init => init;
+
+            const statusCacheTtlMs =
+                Number.isFinite(options.statusCacheTtlMs)
+                    ? Math.max(0, options.statusCacheTtlMs)
+                    : 0;
+
+            let statusCache = null;
+            let statusCacheAt = 0;
+            let activeAbortController = null;
+
+            function parseLocalIso(value) {
+                if (!value) return null;
+
+                const match = String(value).match(
+                    /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})(?::(\d{2}))?/
+                );
+
+                if (!match) {
+                    const fallback = new Date(value);
+
+                    return Number.isNaN(fallback.getTime())
+                        ? null
+                        : fallback;
+                }
+
+                const [, year, month, day, hour, minute, second] =
+                    match;
+
+                const parsed = new Date(
+                    Number(year),
+                    Number(month) - 1,
+                    Number(day),
+                    Number(hour),
+                    Number(minute),
+                    Number(second || 0)
+                );
+
+                return Number.isNaN(parsed.getTime())
+                    ? null
+                    : parsed;
+            }
+
+            function formatBusyRange(item) {
+                if (item?.isAllDay) {
+                    return "All day";
+                }
+
+                return `${
+                    item?.startLabel || ""
+                } - ${
+                    item?.endLabel || ""
+                }`.trim();
+            }
+
+            function isBusyConflict(
+                item,
+                selectedStart,
+                selectedEnd
+            ) {
+                if (!selectedStart || !selectedEnd) {
+                    return false;
+                }
+
+                if (item?.isAllDay) {
+                    return true;
+                }
+
+                const start = parseLocalIso(item?.startIso);
+                const end = parseLocalIso(item?.endIso);
+
+                if (
+                    !start ||
+                    !end ||
+                    Number.isNaN(start.getTime()) ||
+                    Number.isNaN(end.getTime())
+                ) {
+                    return false;
+                }
+
+                return (
+                    start < selectedEnd &&
+                    end > selectedStart
+                );
+            }
+
+            async function getCalendarStatus() {
+                const now = Date.now();
+
+                if (
+                    statusCacheTtlMs > 0 &&
+                    statusCache &&
+                    now - statusCacheAt < statusCacheTtlMs
+                ) {
+                    return statusCache;
+                }
+
+                try {
+                    const response = await fetch(
+                        "/calendar/status",
+                        wrapRequest({
+                            credentials: "include"
+                        })
+                    );
+
+                    statusCache = response.ok
+                        ? await response.json()
+                        : { connected: false };
+
+                    statusCacheAt = now;
+                    return statusCache;
+                } catch {
+                    statusCache = { connected: false };
+                    statusCacheAt = now;
+                    return statusCache;
+                }
+            }
+
+            function renderState(
+                message,
+                tone = "neutral"
+            ) {
+                const {
+                    busyList,
+                    busyNote,
+                    freeList,
+                    workHours
+                } = getElements();
+
+                if (
+                    !busyList ||
+                    !busyNote ||
+                    !freeList ||
+                    !workHours
+                ) {
+                    return;
+                }
+
+                busyList.innerHTML = "";
+                freeList.innerHTML = "";
+
+                workHours.textContent =
+                    "Uses Outlook work hours or your default " +
+                    "7:00 AM - 7:00 PM";
+
+                busyNote.textContent = message;
+
+                busyNote.style.color =
+                    tone === "error"
+                        ? "#b91c1c"
+                        : tone === "good"
+                            ? "#166534"
+                            : "#7f1d1d";
+            }
+
+            function render(
+                items,
+                freeSlots = [],
+                calendarWorkHours = null
+            ) {
+                const {
+                    busyList,
+                    busyNote,
+                    freeList,
+                    workHours
+                } = getElements();
+
+                if (
+                    !busyList ||
+                    !busyNote ||
+                    !freeList ||
+                    !workHours
+                ) {
+                    return;
+                }
+
+                const nextDate =
+                    normalize(getSelectedDate());
+
+                const selected = nextDate
+                    ? window.qvBookingBuildEventTimes(nextDate)
+                    : null;
+
+                const selectedStart =
+                    selected?.startISO
+                        ? new Date(selected.startISO)
+                        : null;
+
+                const selectedEnd =
+                    selected?.endISO
+                        ? new Date(selected.endISO)
+                        : null;
+
+                const normalizedItems =
+                    Array.isArray(items) ? items : [];
+
+                const conflicts = normalizedItems.filter(
+                    item => isBusyConflict(
+                        item,
+                        selectedStart,
+                        selectedEnd
+                    )
+                );
+
+                if (calendarWorkHours?.enabled) {
+                    workHours.textContent =
+                        `Work hours: ${
+                            calendarWorkHours.startLabel
+                        } - ${
+                            calendarWorkHours.endLabel
+                        }${
+                            calendarWorkHours.source === "outlook"
+                                ? ""
+                                : " (default)"
+                        }`;
+                } else {
+                    workHours.textContent =
+                        "This day is outside your Outlook work week";
+                }
+
+                if (freeSlots.length) {
+                    freeList.innerHTML = freeSlots.map(slot => `
+                        <button
+                            type="button"
+                            class="calendar-free-slot"
+                            data-free-slot-time="${
+                                escapeHtml(
+                                    slot.startTimeValue || ""
+                                )
+                            }"
+                            data-free-slot-start="${
+                                escapeHtml(
+                                    slot.startLabel || ""
+                                )
+                            }">
+                            ${
+                                escapeHtml(
+                                    `${
+                                        slot.startLabel || ""
+                                    } - ${
+                                        slot.endLabel || ""
+                                    }`.trim()
+                                )
+                            }
+                        </button>
+                    `).join("");
+                } else {
+                    freeList.innerHTML =
+                        `<div class="calendar-free-empty">${
+                            calendarWorkHours?.enabled
+                                ? "No open booking windows inside " +
+                                  "your work hours for this day."
+                                : "No booking windows because this " +
+                                  "day is outside your work hours."
+                        }</div>`;
+                }
+
+                if (!normalizedItems.length) {
+                    busyNote.textContent =
+                        "No busy blocks found on your Outlook " +
+                        "calendar for this day.";
+
+                    busyNote.style.color = "#166534";
+
+                    busyList.innerHTML =
+                        '<div class="calendar-busy-empty">' +
+                        "Open day. No busy blocks found." +
+                        "</div>";
+
+                    return;
+                }
+
+                busyNote.textContent = conflicts.length
+                    ? `${conflicts.length} conflict${
+                        conflicts.length === 1 ? "" : "s"
+                    } with the currently selected meeting time.`
+                    : "Busy blocks for the selected day. Your " +
+                      "current time does not overlap any of them.";
+
+                busyNote.style.color =
+                    conflicts.length
+                        ? "#b91c1c"
+                        : "#166534";
+
+                busyList.innerHTML =
+                    normalizedItems.map(item => {
+                        const conflict = isBusyConflict(
+                            item,
+                            selectedStart,
+                            selectedEnd
+                        );
+
+                        const showAs =
+                            normalize(item?.showAs) || "busy";
+
+                        const label =
+                            showAs.charAt(0).toUpperCase() +
+                            showAs.slice(1);
+
+                        return `
+                            <div class="calendar-busy-item ${
+                                conflict ? "conflict" : ""
+                            }">
+                                <div class="calendar-busy-main">
+                                    <div class="calendar-busy-subject">${
+                                        escapeHtml(
+                                            item?.subject || "Busy"
+                                        )
+                                    }</div>
+                                    <div class="calendar-busy-meta">${
+                                        escapeHtml(label)
+                                    }</div>
+                                    ${
+                                        conflict
+                                            ? '<div class="calendar-busy-flag">' +
+                                              "Conflicts with selected time" +
+                                              "</div>"
+                                            : ""
+                                    }
+                                </div>
+                                <div class="calendar-busy-time">${
+                                    escapeHtml(
+                                        formatBusyRange(item)
+                                    )
+                                }</div>
+                            </div>
+                        `;
+                    }).join("");
+            }
+
+            async function refresh() {
+                const {
+                    busyDate
+                } = getElements();
+
+                if (!busyDate) {
+                    return;
+                }
+
+                const nextDate =
+                    normalize(getSelectedDate());
+
+                busyDate.textContent =
+                    nextDate || "Select a date";
+
+                if (!nextDate) {
+                    renderState(
+                        "Choose a Next Action Date to see your " +
+                        "Outlook busy blocks for that day."
+                    );
+                    return;
+                }
+
+                const status =
+                    await getCalendarStatus();
+
+                if (!status.connected) {
+                    renderState(
+                        "Connect your Outlook calendar to load " +
+                        "busy times for this day.",
+                        "error"
+                    );
+                    return;
+                }
+
+                if (activeAbortController) {
+                    activeAbortController.abort();
+                }
+
+                activeAbortController =
+                    new AbortController();
+
+                renderState(
+                    "Loading busy times from Outlook..."
+                );
+
+                try {
+                    const response = await fetch(
+                        `/calendar/day-availability?date=${
+                            encodeURIComponent(nextDate)
+                        }`,
+                        wrapRequest({
+                            credentials: "include",
+                            signal:
+                                activeAbortController.signal
+                        })
+                    );
+
+                    if (!response.ok) {
+                        const text =
+                            await response
+                                .text()
+                                .catch(() => "");
+
+                        throw new Error(
+                            text ||
+                            "Calendar availability failed."
+                        );
+                    }
+
+                    const data =
+                        await response.json();
+
+                    if (!data.connected) {
+                        renderState(
+                            "Calendar availability is unavailable " +
+                            "right now. You can still create the " +
+                            "meeting manually.",
+                            "error"
+                        );
+                        return;
+                    }
+
+                    render(
+                        Array.isArray(data.items)
+                            ? data.items
+                            : [],
+                        Array.isArray(data.freeSlots)
+                            ? data.freeSlots
+                            : [],
+                        data.workHours || null
+                    );
+                } catch (error) {
+                    if (error?.name === "AbortError") {
+                        return;
+                    }
+
+                    console.error(error);
+
+                    renderState(
+                        "Could not load Outlook busy times for " +
+                        "this day.",
+                        "error"
+                    );
+                }
+            }
+
+            return Object.freeze({
+                refresh
+            });
+        };
+
     window.qvBookingBuildEventTimes = function qvBookingBuildEventTimes(dateISO) {
         const bookingTime =
             document.getElementById("qvBookTime")?.value?.trim() || "";
@@ -928,9 +1427,9 @@
         };
 
         try {
-            const data = await adapter.request(
-                "/calendar/create-event",
-                payload
+            const data = await window.qvCalendarCreateEvent(
+                payload,
+                adapter.request.bind(adapter)
             );
 
             await adapter.applyResult(data, context);
