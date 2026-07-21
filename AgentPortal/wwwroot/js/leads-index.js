@@ -1576,7 +1576,13 @@ function hasDuplicateWarning(row){
 const legendWrap = $("#legendWrap");
 const bar = $("#legendBar");
 
-const rows = $$(".client-row");
+const rows = new Proxy([], {
+  get(_target, prop){
+    const currentRows = $$(".client-row");
+    const value = currentRows[prop];
+    return typeof value === "function" ? value.bind(currentRows) : value;
+  }
+});
 const kpiGrid = $("#kpiGrid");
 const performanceModal = $("#performanceModal");
 const btnTogglePerformance = $("#btnTogglePerformance");
@@ -2051,7 +2057,22 @@ function bindQuickViewDisclosures(root = drawer){
   });
 }
 
-bindQuickViewDisclosures();
+function safeStartupInit(label, fn){
+  try{
+    const result = fn();
+    if (result && typeof result.then === "function"){
+      result.catch(error => {
+        console.error(`${label} failed.`, error);
+      });
+    }
+    return result;
+  }catch(error){
+    console.error(`${label} failed.`, error);
+    return null;
+  }
+}
+
+safeStartupInit("Leads quick view disclosure init", () => bindQuickViewDisclosures());
 
 function normalizeContactStatusValue(value){
   const raw = norm(value);
@@ -3061,10 +3082,10 @@ function updateCallMetrics(){
   if (cmYearBtn) cmYearBtn.textContent = year.toLocaleString();
   if (perfPreviewCalls) perfPreviewCalls.textContent = day.toLocaleString();
 }
-rows.forEach(hydrateRow);
-refreshStateFilterOptions();
-updateCallMetrics();
-ensureDialPeriodsFresh();
+safeStartupInit("Leads row hydration", () => rows.forEach(hydrateRow));
+safeStartupInit("Leads state filter options", refreshStateFilterOptions);
+safeStartupInit("Leads call metrics init", updateCallMetrics);
+safeStartupInit("Leads dial period refresh", ensureDialPeriodsFresh);
 __timers.dialFresh = setInterval(ensureDialPeriodsFresh, 5 * 60 * 1000);
 
 btnDialYear?.addEventListener("click", () => {
@@ -3726,6 +3747,19 @@ function debounce(fn, ms){
   };
 }
 const renderAllDebounced = debounce(renderAll, 40);
+
+let initialPipelineRenderPrimed = false;
+function primeInitialPipelineRender(){
+  if (initialPipelineRenderPrimed) return;
+  applyViewMode();
+  renderAll();
+  initialPipelineRenderPrimed = true;
+}
+
+safeStartupInit("Leads initial pipeline render", primeInitialPipelineRender);
+window.addEventListener("load", () => {
+  safeStartupInit("Leads window-load pipeline render", primeInitialPipelineRender);
+}, { once: true });
 
 btnPrev?.addEventListener("click", () => {
   currentPage = Math.max(1, currentPage - 1);
@@ -4869,8 +4903,8 @@ noteSaveBtn?.addEventListener("click", noteSave);
   ta.addEventListener("paste", () => setTimeout(() => enforceCaretAfterPrefix(ta), 0));
 });
 
-noteSyncAllTextareaTones();
-noteSyncPrefixVisual();
+safeStartupInit("Leads note textarea tone sync", noteSyncAllTextareaTones);
+safeStartupInit("Leads note prefix visual sync", noteSyncPrefixVisual);
 
 function safeHtml(s){
   return (s || "").toString()
@@ -7051,15 +7085,15 @@ async function saveLeadAppointmentStatus(){
 btnSaveAppointmentStatus?.addEventListener("click", saveLeadAppointmentStatus);
 
 /* ========= Prefs Restore ========= */
-(function restorePrefs(){
+safeStartupInit("Leads prefs restore", () => {
   const prefs = loadJSON(LS_PREFS, {});
   setPipelineOnlyViewMode();
   if (density && prefs.density) density.value = prefs.density;
   applyViewMode();
   applyDensityClass();
-})();
+});
 
-wireQuickViewAutosave();
+safeStartupInit("Leads quick view autosave wiring", wireQuickViewAutosave);
 
 function focusLeadFromUrl(){
   try{
@@ -7092,32 +7126,44 @@ function openQuickViewFromUrl(){
 
 /* ========= Boot ========= */
 async function boot(){
-  syncBarHeight();
-  applyColumnPrefs();
-  applyDensityClass();
-  initCollapsiblePanels();
-  renderSavedViews();
-  ensureModalInBody('quickCreateActionModal');
+  safeStartupInit("Leads sync bar height", syncBarHeight);
+  safeStartupInit("Leads column prefs", applyColumnPrefs);
+  safeStartupInit("Leads density class", applyDensityClass);
+  safeStartupInit("Leads collapsible panel init", initCollapsiblePanels);
+  safeStartupInit("Leads saved views render", renderSavedViews);
+  safeStartupInit("Leads quick create modal relocation", () => ensureModalInBody('quickCreateActionModal'));
 
-  renderAll();
+  safeStartupInit("Leads boot pipeline refresh", renderAll);
 
   loadMyDaySnapshot(true)
     .then(() => renderAll())
     .catch(error => {
-      console.error("My Day snapshot failed during boot.", error);
+      console.error("Leads My Day snapshot failed during boot.", error);
     });
-  focusLeadFromUrl();
-  openQuickViewFromUrl();
-  updateSelectionUI();
-  refreshRemindersUI();
 
-  checkReminders();
+  safeStartupInit("Leads focus from URL", focusLeadFromUrl);
+  safeStartupInit("Leads quick view deep-link", openQuickViewFromUrl);
+  safeStartupInit("Leads selection UI", updateSelectionUI);
+  safeStartupInit("Leads reminders UI", refreshRemindersUI);
+
+  safeStartupInit("Leads reminder scan", checkReminders);
   __timers.reminders = setInterval(checkReminders, 60 * 1000);
 
-  updateCalendarButton();
-  updateZoomControls();
+  safeStartupInit("Leads calendar button refresh", updateCalendarButton);
+  safeStartupInit("Leads zoom control refresh", updateZoomControls);
 }
-boot();
+
+function startLeadsBoot(){
+  void boot().catch(error => {
+    console.error("Leads CRM boot failed.", error);
+  });
+}
+
+if (document.readyState === "loading") {
+  document.addEventListener("DOMContentLoaded", startLeadsBoot, { once: true });
+} else {
+  startLeadsBoot();
+}
 
 window.addEventListener("beforeunload", () => {
   if (__timers.dialFresh) clearInterval(__timers.dialFresh);

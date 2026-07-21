@@ -1927,7 +1927,13 @@ function hasDuplicateWarning(row){
 const legendWrap = $("#legendWrap");
 const bar = $("#legendBar");
 
-const rows = $$(".client-row");
+const rows = new Proxy([], {
+  get(_target, prop){
+    const currentRows = $$(".client-row");
+    const value = currentRows[prop];
+    return typeof value === "function" ? value.bind(currentRows) : value;
+  }
+});
 const kpiGrid = $("#kpiGrid");
 const performanceModal = $("#performanceModal");
 const btnTogglePerformance = $("#btnTogglePerformance");
@@ -2165,7 +2171,22 @@ function bindQuickViewDisclosures(root = drawer){
   });
 }
 
-bindQuickViewDisclosures();
+function safeStartupInit(label, fn){
+  try{
+    const result = fn();
+    if (result && typeof result.then === "function"){
+      result.catch(error => {
+        console.error(`${label} failed.`, error);
+      });
+    }
+    return result;
+  }catch(error){
+    console.error(`${label} failed.`, error);
+    return null;
+  }
+}
+
+safeStartupInit("Clients quick view disclosure init", () => bindQuickViewDisclosures());
 
 const STAGE_PICKER_TONES = [
   "stage-newlead",
@@ -2925,8 +2946,8 @@ function updateCallMetrics(){
   cmMonth.textContent = month.toLocaleString();
   if (perfPreviewCalls) perfPreviewCalls.textContent = day.toLocaleString();
 }
-rows.forEach(hydrateRow);
-updateCallMetrics();
+safeStartupInit("Clients row hydration", () => rows.forEach(hydrateRow));
+safeStartupInit("Clients call metrics init", updateCallMetrics);
 
 btnCallReview?.addEventListener("click", () => {
   toast(`Calls — Today: ${cmToday?.textContent || 0} • Week: ${cmWeek?.textContent || 0} • Month: ${cmMonth?.textContent || 0}`, { persistent: true });
@@ -3328,6 +3349,19 @@ function debounce(fn, ms){
   };
 }
 const renderAllDebounced = debounce(renderAll, 40);
+
+let initialPipelineRenderPrimed = false;
+function primeInitialPipelineRender(){
+  if (initialPipelineRenderPrimed) return;
+  applyViewMode();
+  renderAll();
+  initialPipelineRenderPrimed = true;
+}
+
+safeStartupInit("Clients initial pipeline render", primeInitialPipelineRender);
+window.addEventListener("load", () => {
+  safeStartupInit("Clients window-load pipeline render", primeInitialPipelineRender);
+}, { once: true });
 
 btnPrev?.addEventListener("click", () => {
   currentPage = Math.max(1, currentPage - 1);
@@ -6497,15 +6531,15 @@ window.quickViewCalendarAdapter = {
 };
 
 /* ========= Prefs Restore ========= */
-(function restorePrefs(){
+safeStartupInit("Clients prefs restore", () => {
   const prefs = loadJSON(LS_PREFS, {});
   if (viewMode) viewMode.value = PIPELINE_ONLY_VIEW;
   if (density && prefs.density) density.value = prefs.density;
   applyViewMode();
   applyDensityClass();
-})();
+});
 
-wireQuickViewAutosave();
+safeStartupInit("Clients quick view autosave wiring", wireQuickViewAutosave);
 
 // ===== Production (Client) - inline, autosave =====
 const clientProdAmount = document.getElementById("clientProdAmount");
@@ -6753,27 +6787,44 @@ function openClientProductionModalEdit(id, clientId, amount, status, notes, name
 
 /* ========= Boot ========= */
 async function boot(){
-  syncBarHeight();
-  applyColumnPrefs();
-  applyDensityClass();
-  initCollapsiblePanels();
-  renderSavedViews();
-  ensureModalInBody('clientQuickCreateActionModal');
-  await loadMyDaySnapshot(true);
+  safeStartupInit("Clients sync bar height", syncBarHeight);
+  safeStartupInit("Clients column prefs", applyColumnPrefs);
+  safeStartupInit("Clients density class", applyDensityClass);
+  safeStartupInit("Clients collapsible panel init", initCollapsiblePanels);
+  safeStartupInit("Clients saved views render", renderSavedViews);
+  safeStartupInit("Clients quick create modal relocation", () => ensureModalInBody('clientQuickCreateActionModal'));
 
-  renderAll();
-  refreshClientProductionTiles();
-  openQuickViewFromUrl();
-  updateSelectionUI();
-  refreshRemindersUI();
+  safeStartupInit("Clients boot pipeline refresh", renderAll);
+  safeStartupInit("Clients production tile refresh", refreshClientProductionTiles);
 
-  checkReminders();
+  loadMyDaySnapshot(true)
+    .then(() => renderAll())
+    .catch(error => {
+      console.error("Clients My Day snapshot failed during boot.", error);
+    });
+
+  safeStartupInit("Clients quick view deep-link", openQuickViewFromUrl);
+  safeStartupInit("Clients selection UI", updateSelectionUI);
+  safeStartupInit("Clients reminders UI", refreshRemindersUI);
+
+  safeStartupInit("Clients reminder scan", checkReminders);
   setInterval(checkReminders, 60 * 1000);
 
-  updateCalendarButton();
-  updateZoomControls();
+  safeStartupInit("Clients calendar button refresh", updateCalendarButton);
+  safeStartupInit("Clients zoom control refresh", updateZoomControls);
 }
-boot();
+
+function startClientsBoot(){
+  void boot().catch(error => {
+    console.error("Clients CRM boot failed.", error);
+  });
+}
+
+if (document.readyState === "loading") {
+  document.addEventListener("DOMContentLoaded", startClientsBoot, { once: true });
+} else {
+  startClientsBoot();
+}
 
 /* ========= Copy Emails guard ========= */
 btnCopyEmails?.addEventListener("click", () => {
