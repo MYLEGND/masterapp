@@ -1081,7 +1081,28 @@ public class CalendarController : Controller
                 profile.CrmLastTouch = DateTime.Today;
                 profile.CrmNotes = ClientCrmMetaSerializer.Serialize(meta);
                 profile.UpdatedUtc = clientNowUtc;
-                await _db.SaveChangesAsync();
+
+                try
+                {
+                    await _db.SaveChangesAsync();
+                }
+                catch (DbUpdateException ex)
+                {
+                    _logger.LogError(
+                        ex,
+                        "Client CRM booking save failed. ClientProfileId: {ClientProfileId}, WorkstationLeadId: {WorkstationLeadId}, OwnerAgentUserId: {OwnerAgentUserId}, CalendarEventId: {CalendarEventId}, InnerException: {InnerException}",
+                        clientProfileId,
+                        clientPersistedAppointment.WorkstationLeadId,
+                        clientPersistedAppointment.OwnerAgentUserId,
+                        clientPersistedAppointment.CalendarEventId,
+                        ex.InnerException?.Message);
+
+                    return StatusCode(500, new
+                    {
+                        ok = false,
+                        message = ex.InnerException?.Message ?? ex.Message
+                    });
+                }
 
                 return Ok(new
                 {
