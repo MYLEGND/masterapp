@@ -2272,7 +2272,7 @@ const dNextText = $("#dNextText");
 const dPriority = $("#dPriority");
 const dMeetingNextDate = $("#dMeetingNextDate") || { value: "", addEventListener(){} };
 const dMeetingType = $("#dMeetingType") || { value: "Phone", addEventListener(){} };
-const dMeetingTime = $("#dMeetingTime") || { value: "09:00", addEventListener(){} };
+const dMeetingTime = $("#dMeetingTime") || { value: "", addEventListener(){} };
 const dMeetingDuration = $("#dMeetingDuration") || { value: "30", addEventListener(){} };
 const dMeetingLocation = $("#dMeetingLocation") || { value: "", dataset: {}, classList: { add(){}, remove(){} }, addEventListener(){}, readOnly: false, placeholder: "" };
 const dMeetingLocationSuggest = $("#dMeetingLocationSuggest") || { classList: { add(){}, remove(){} }, innerHTML: "" };
@@ -2386,7 +2386,7 @@ function buildClientQuickViewOverrides(){
   if (hasMeetingLocationInput) overrides.meetingLocation = norm(dMeetingLocation.value);
   if (hasZoomJoinUrlInput) overrides.zoomJoinUrl = norm(dZoomJoinUrl.value);
   if (hasUsePersonalZoomInput) overrides.usePersonalZoomLink = !!dUsePersonalZoomLink.checked;
-  if (hasMeetingTimeInput) overrides.meetingTime = norm(dMeetingTime.value) || "09:00";
+  if (hasMeetingTimeInput) overrides.meetingTime = norm(dMeetingTime.value) || "";
   if (hasMeetingDurationInput) overrides.meetingDurationMinutes = parseInt(dMeetingDuration.value || "30", 10) || 30;
   return overrides;
 }
@@ -3705,7 +3705,7 @@ async function openDrawerForRow(row){
   dUsePersonalZoomLink.checked = (row.dataset.sUsezoom || "false") === "true";
   if (!dZoomJoinUrl.value && dUsePersonalZoomLink.checked) dZoomJoinUrl.value = loadSavedZoomLink();
   applyMeetingType(inferMeetingType(null, row), row);
-  dMeetingTime.value = row.dataset.sMeetingTime || "09:00";
+  dMeetingTime.value = row.dataset.sMeetingTime || "";
   dMeetingDuration.value = row.dataset.sMeetingDuration || "30";
 
   renderPortalActions(row, null);
@@ -3757,7 +3757,7 @@ async function openDrawerForRow(row){
     dUsePersonalZoomLink.checked = !!detail.usePersonalZoomLink;
     if (!dZoomJoinUrl.value && dUsePersonalZoomLink.checked) dZoomJoinUrl.value = loadSavedZoomLink();
     applyMeetingType(inferMeetingType(detail, row), row);
-    dMeetingTime.value = detail.meetingTime || row.dataset.sMeetingTime || "09:00";
+    dMeetingTime.value = detail.meetingTime || row.dataset.sMeetingTime || "";
     dMeetingDuration.value = String(detail.meetingDurationMinutes || row.dataset.sMeetingDuration || 30);
     syncDrawerEmailDisplay(detail.email || email);
     dPhone.textContent = detail.phone || phone || "No phone";
@@ -5413,7 +5413,7 @@ async function saveQuickViewForRow(row, overrides, successMessage){
     meetingLocation: overrides?.meetingLocation ?? (hasMeetingLocationInput ? norm(dMeetingLocation.value) : norm(row.dataset.sMeetingLocation)),
     zoomJoinUrl: overrides?.zoomJoinUrl ?? (hasZoomJoinUrlInput ? norm(dZoomJoinUrl.value) : norm(row.dataset.sZoom)),
     usePersonalZoomLink: overrides?.usePersonalZoomLink ?? (hasUsePersonalZoomInput ? !!dUsePersonalZoomLink.checked : ((row.dataset.sUsezoom || "false") === "true")),
-    meetingTime: (overrides?.meetingTime ?? (hasMeetingTimeInput ? norm(dMeetingTime.value) : norm(row.dataset.sMeetingTime))) || "09:00",
+    meetingTime: (overrides?.meetingTime ?? (hasMeetingTimeInput ? norm(dMeetingTime.value) : norm(row.dataset.sMeetingTime))) || "",
     meetingDurationMinutes: (overrides?.meetingDurationMinutes ?? (hasMeetingDurationInput ? (parseInt(dMeetingDuration.value || "30", 10) || 30) : fallbackMeetingDuration)) || 30,
     waitingOn: overrides?.waitingOn ?? norm(row.dataset.crmWaitingOn),
     pinnedBrief: overrides?.pinnedBrief ?? norm(row.dataset.crmPinnedBrief),
@@ -5443,7 +5443,7 @@ async function saveQuickViewForRow(row, overrides, successMessage){
   row.dataset.sMeetingLocation = data.meetingLocation || "";
   row.dataset.sZoom = data.zoomJoinUrl || "";
   row.dataset.sUsezoom = data.usePersonalZoomLink ? "true" : "false";
-  row.dataset.sMeetingTime = data.meetingTime || "09:00";
+  row.dataset.sMeetingTime = data.meetingTime || "";
   row.dataset.sMeetingDuration = String(data.meetingDurationMinutes || 30);
   row.dataset.sWaiting = data.waitingOn || "WaitingOnAgent";
   row.dataset.sPinnedbrief = data.pinnedBrief || "";

@@ -240,7 +240,7 @@ else
                 var sMeetingLocation = (c.MeetingLocation ?? "").Trim();
                 var sZoomJoinUrl = (c.ZoomJoinUrl ?? "").Trim();
                 var sUsePersonalZoom = c.UsePersonalZoomLink ? "true" : "false";
-                var sMeetingTime = (c.MeetingTime ?? "09:00").Trim();
+                var sMeetingTime = (c.MeetingTime ?? "").Trim();
                 var sMeetingDuration = c.MeetingDurationMinutes <= 0 ? 30 : c.MeetingDurationMinutes;
                 var sAppointmentStatus = (c.LatestAppointmentStatus ?? "").Trim();
                 var sAppointmentStatusLabel = (c.LatestAppointmentStatusLabel ?? "").Trim();

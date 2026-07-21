@@ -677,7 +677,7 @@ async function loadQuickView(clientId){
       meetingLocation: row.dataset.sMeetingLocation || "",
       zoomJoinUrl: row.dataset.sZoom || "",
       usePersonalZoomLink: (row.dataset.sUsezoom || "false") === "true",
-      meetingTime: row.dataset.sMeetingTime || "09:00",
+      meetingTime: row.dataset.sMeetingTime || "",
       meetingDurationMinutes: parseInt(row.dataset.sMeetingDuration || "30", 10) || 30,
       waitingOn: row.dataset.crmWaitingOn || row.dataset.sWaiting || "WaitingOnAgent",
       pinnedBrief: row.dataset.crmPinnedBrief || row.dataset.sPinnedbrief || "",
@@ -733,7 +733,7 @@ async function loadQuickView(clientId){
       meetingLocation: lead.meetingLocation || lead.addressLine || "",
       zoomJoinUrl: lead.zoomJoinUrl || "",
       usePersonalZoomLink: !!lead.usePersonalZoomLink,
-      meetingTime: lead.meetingTime || "09:00",
+      meetingTime: lead.meetingTime || "",
       meetingDurationMinutes: lead.meetingDurationMinutes || 30,
       waitingOn: lead.waitingOn || "WaitingOnAgent",
       pinnedBrief: lead.pinnedBrief || "",
@@ -1942,7 +1942,7 @@ const dMeetingNextDate = $("#dMeetingNextDate") || { value: "", addEventListener
 const dNextText = $("#dNextText");
 const dPriority = $("#dPriority");
 const dMeetingType = $("#dMeetingType") || { value: "Phone", addEventListener(){} };
-const dMeetingTime = $("#dMeetingTime") || { value: "09:00", addEventListener(){} };
+const dMeetingTime = $("#dMeetingTime") || { value: "", addEventListener(){} };
 const dMeetingDuration = $("#dMeetingDuration") || { value: "30", addEventListener(){} };
 const dMeetingLocation = $("#dMeetingLocation") || { value: "", dataset: {}, classList: { add(){}, remove(){} }, addEventListener(){}, readOnly: false, placeholder: "" };
 const dMeetingLocationSuggest = $("#dMeetingLocationSuggest") || { classList: { add(){}, remove(){} }, innerHTML: "" };
@@ -2515,7 +2515,7 @@ function buildLeadQuickViewOverrides(){
     meetingLocation: norm(dMeetingLocation.value),
     zoomJoinUrl: norm(dZoomJoinUrl.value),
     usePersonalZoomLink: !!dUsePersonalZoomLink.checked,
-    meetingTime: norm(dMeetingTime.value) || "09:00",
+    meetingTime: norm(dMeetingTime.value) || "",
     meetingDurationMinutes: parseInt(dMeetingDuration.value || "30", 10) || 30,
     waitingOn: norm(dWaitingOn.value) || "WaitingOnAgent",
     pinnedBrief: norm(dPinnedBrief.value),
@@ -4088,7 +4088,7 @@ async function openDrawerById(clientId){
         sMeetingLocation: lead.addressLine || "",
         sZoom: "",
         sUsezoom: "false",
-        sMeetingTime: "09:00",
+        sMeetingTime: "",
         sMeetingDuration: "30",
         crmOwner: "",
         crmWatchers: "",
@@ -4152,7 +4152,7 @@ async function openDrawerForRow(row){
   dUsePersonalZoomLink.checked = (row.dataset.sUsezoom || "false") === "true";
   if (!dZoomJoinUrl.value && dUsePersonalZoomLink.checked) dZoomJoinUrl.value = loadSavedZoomLink();
   applyMeetingType(inferMeetingType(null, row), row);
-  dMeetingTime.value = row.dataset.sMeetingTime || "09:00";
+  dMeetingTime.value = row.dataset.sMeetingTime || "";
   dMeetingDuration.value = row.dataset.sMeetingDuration || "30";
   dWaitingOn.value = row.dataset.crmWaitingOn || "WaitingOnAgent";
   dPinnedBrief.value = row.dataset.crmPinnedBrief || "";
@@ -4237,7 +4237,7 @@ async function openDrawerForRow(row){
     dUsePersonalZoomLink.checked = !!detail.usePersonalZoomLink;
     if (!dZoomJoinUrl.value && dUsePersonalZoomLink.checked) dZoomJoinUrl.value = loadSavedZoomLink();
     applyMeetingType(inferMeetingType(detail, row), row);
-    dMeetingTime.value = detail.meetingTime || row.dataset.sMeetingTime || "09:00";
+    dMeetingTime.value = detail.meetingTime || row.dataset.sMeetingTime || "";
     dMeetingDuration.value = String(detail.meetingDurationMinutes || row.dataset.sMeetingDuration || 30);
     dWaitingOn.value = detail.waitingOn || row.dataset.crmWaitingOn || "WaitingOnAgent";
     dPinnedBrief.value = detail.pinnedBrief || row.dataset.crmPinnedBrief || "";
@@ -5063,13 +5063,13 @@ $$("[data-schedulepreset]").forEach(btn => {
       d.setDate(d.getDate() + 1);
       while ([0, 6].includes(d.getDay())) d.setDate(d.getDate() + 1);
       setDrawerNextActionDate(d.toISOString().slice(0, 10));
-      dMeetingTime.value = "09:00";
+      dMeetingTime.value = "";
       dNextText.value = dNextText.value || "Next business day touch";
     } else if (preset === "week"){
       const d = new Date(now);
       d.setDate(d.getDate() + 7);
       setDrawerNextActionDate(d.toISOString().slice(0, 10));
-      dMeetingTime.value = "09:00";
+      dMeetingTime.value = "";
       dNextText.value = dNextText.value || "1 week follow-up";
     }
     dSaved.textContent = "Next-step preset applied — saving…";
@@ -5754,7 +5754,7 @@ async function saveQuickViewForRow(row, overrides, successMessage){
     meetingLocation: overrides?.meetingLocation ?? norm(row.dataset.sMeetingLocation),
     zoomJoinUrl: overrides?.zoomJoinUrl ?? norm(row.dataset.sZoom),
     usePersonalZoomLink: overrides?.usePersonalZoomLink ?? ((row.dataset.sUsezoom || "false") === "true"),
-    meetingTime: (overrides?.meetingTime ?? norm(row.dataset.sMeetingTime)) || "09:00",
+    meetingTime: (overrides?.meetingTime ?? norm(row.dataset.sMeetingTime)) || "",
     meetingDurationMinutes: (overrides?.meetingDurationMinutes ?? parseInt(row.dataset.sMeetingDuration || "30", 10)) || 30,
     waitingOn: overrides?.waitingOn ?? norm(row.dataset.crmWaitingOn),
     pinnedBrief: overrides?.pinnedBrief ?? norm(row.dataset.crmPinnedBrief),
@@ -5791,7 +5791,7 @@ async function saveQuickViewForRow(row, overrides, successMessage){
   row.dataset.sMeetingLocation = data.meetingLocation || "";
   row.dataset.sZoom = data.zoomJoinUrl || "";
   row.dataset.sUsezoom = data.usePersonalZoomLink ? "true" : "false";
-  row.dataset.sMeetingTime = data.meetingTime || "09:00";
+  row.dataset.sMeetingTime = data.meetingTime || "";
   row.dataset.sMeetingDuration = String(data.meetingDurationMinutes || 30);
   row.dataset.sWaiting = data.waitingOn || "WaitingOnAgent";
   row.dataset.sPinnedbrief = data.pinnedBrief || "";
@@ -7022,7 +7022,7 @@ async function saveLeadAppointmentStatus(){
       row.dataset.sMeetingLocation = data.meetingLocation || row.dataset.sMeetingLocation || "";
       row.dataset.sZoom = data.zoomJoinUrl || row.dataset.sZoom || "";
       row.dataset.sUsezoom = data.usePersonalZoomLink ? "true" : (row.dataset.sUsezoom || "false");
-      row.dataset.sMeetingTime = data.meetingTime || row.dataset.sMeetingTime || "09:00";
+      row.dataset.sMeetingTime = data.meetingTime || row.dataset.sMeetingTime || "";
       row.dataset.sMeetingDuration = String(data.meetingDurationMinutes || row.dataset.sMeetingDuration || 30);
       row.dataset.sAttemptstoday = String(data.attemptsToday ?? row.dataset.sAttemptstoday ?? 0);
       row.dataset.sAttemptsweek = String(data.attemptsThisWeek ?? row.dataset.sAttemptsweek ?? 0);
@@ -7099,9 +7099,13 @@ async function boot(){
   renderSavedViews();
   ensureModalInBody('quickCreateActionModal');
 
-  await loadMyDaySnapshot(true);
-
   renderAll();
+
+  loadMyDaySnapshot(true)
+    .then(() => renderAll())
+    .catch(error => {
+      console.error("My Day snapshot failed during boot.", error);
+    });
   focusLeadFromUrl();
   openQuickViewFromUrl();
   updateSelectionUI();

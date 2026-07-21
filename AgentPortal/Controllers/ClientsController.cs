@@ -1293,7 +1293,6 @@ namespace AgentPortal.Controllers;
         meta.Collaboration.Watchers ??= new List<string>();
         meta.Collaboration.MentionNotes ??= new List<ClientCrmMentionNote>();
         meta.Activities ??= new List<ClientCrmActivity>();
-        if (string.IsNullOrWhiteSpace(meta.MeetingTime)) meta.MeetingTime = "09:00";
         if (meta.MeetingDurationMinutes <= 0) meta.MeetingDurationMinutes = 30;
         if (string.IsNullOrWhiteSpace(meta.PipelineStage)) meta.PipelineStage = ClientCrmMeta.DefaultPipelineStage;
         if (meta.StageEnteredUtc == default) meta.StageEnteredUtc = DateTime.UtcNow;
@@ -1492,7 +1491,7 @@ namespace AgentPortal.Controllers;
             meetingLocation = meta.MeetingLocation ?? "",
             zoomJoinUrl = meta.ZoomJoinUrl ?? "",
             usePersonalZoomLink = meta.UsePersonalZoomLink,
-            meetingTime = meta.MeetingTime ?? "09:00",
+            meetingTime = meta.MeetingTime ?? "",
             meetingDurationMinutes = meta.MeetingDurationMinutes,
             lastCalendarEventId = latestAppointment?.CalendarEventId ?? meta.LastCalendarEventId ?? "",
             lastCalendarEventWebLink = latestAppointment?.CalendarEventWebLink ?? meta.LastCalendarEventWebLink ?? "",
@@ -3784,7 +3783,9 @@ meta.Activities ??= new List<ClientCrmActivity>();
         meta.MeetingLocation = string.IsNullOrWhiteSpace(meetingLocation) ? null : meetingLocation;
         meta.ZoomJoinUrl = string.IsNullOrWhiteSpace(zoomJoinUrl) ? null : zoomJoinUrl;
         meta.UsePersonalZoomLink = request.UsePersonalZoomLink;
-        meta.MeetingTime = string.IsNullOrWhiteSpace(meetingTime) ? "09:00" : meetingTime;
+        meta.MeetingTime = string.IsNullOrWhiteSpace(meetingTime)
+            ? null
+            : meetingTime.Trim();
         meta.MeetingDurationMinutes = meetingDurationMinutes;
 
         if (!string.IsNullOrWhiteSpace(queueNote))
@@ -4917,7 +4918,9 @@ meta.Activities ??= new List<ClientCrmActivity>();
         if (request.UsePersonalZoomLink.HasValue)
             meta.UsePersonalZoomLink = request.UsePersonalZoomLink.Value;
         if (request.MeetingTime != null)
-            meta.MeetingTime = string.IsNullOrWhiteSpace(request.MeetingTime) ? "09:00" : request.MeetingTime.Trim();
+            meta.MeetingTime = string.IsNullOrWhiteSpace(request.MeetingTime)
+                ? null
+                : request.MeetingTime.Trim();
         if (request.MeetingDurationMinutes.HasValue)
             meta.MeetingDurationMinutes = request.MeetingDurationMinutes.Value <= 0 ? 30 : request.MeetingDurationMinutes.Value;
         meta.DocChecklist.IdReceived = request.DocIdReceived;
@@ -5265,7 +5268,7 @@ meta.Activities ??= new List<ClientCrmActivity>();
                 waitingOnLabel = WaitingOnLabel(plan.WaitingOn),
                 nextDate = ToIsoDate(plan.NextActionDate),
                 nextText = plan.NextActionText,
-                meetingTime = meta.MeetingTime ?? "09:00",
+                meetingTime = meta.MeetingTime ?? "",
                 meetingDurationMinutes = meta.MeetingDurationMinutes
             },
             payload = BuildQuickViewPayload(profile, meta, dialTimeZone, nowUtc, await LoadClientLatestAppointmentAsync(profile))

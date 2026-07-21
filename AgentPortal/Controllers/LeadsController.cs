@@ -211,9 +211,6 @@ public class LeadsController : Controller
             meta.CrmTags = lead.Bucket;
         if (meta.MeetingDurationMinutes <= 0)
             meta.MeetingDurationMinutes = 30;
-        if (string.IsNullOrWhiteSpace(meta.MeetingTime))
-            meta.MeetingTime = "09:00";
-
         return meta;
     }
 
@@ -365,6 +362,12 @@ public class LeadsController : Controller
                 .OrderByDescending(WorkstationLeadOrder.ResolveSortValue)
                 .Select(c => new { Lead = c, Paid = 0m, Personal = 0m })
                 .ToList();
+
+            _logger.LogInformation(
+                "Leads/Index loaded {RawCount} raw records and {CanonicalCount} canonical records for effective agent {AgentId}.",
+                leadsRaw.Count,
+                leads.Count,
+                agentId);
 
             var leadIds = leads.Select(l => l.Lead.LeadId).Where(id => !string.IsNullOrWhiteSpace(id)).ToList();
 
@@ -1868,7 +1871,7 @@ public class LeadsController : Controller
             meetingLocation = crmMeta.MeetingLocation ?? lead.AddressLine,
             zoomJoinUrl = crmMeta.ZoomJoinUrl ?? "",
             usePersonalZoomLink = crmMeta.UsePersonalZoomLink,
-            meetingTime = crmMeta.MeetingTime ?? "09:00",
+            meetingTime = crmMeta.MeetingTime ?? "",
             meetingDurationMinutes = crmMeta.MeetingDurationMinutes <= 0 ? 30 : crmMeta.MeetingDurationMinutes,
             pinnedBrief = crmMeta.PinnedBrief ?? "",
             docChecklist = new
@@ -2241,7 +2244,9 @@ public class LeadsController : Controller
         if (req.usePersonalZoomLink.HasValue)
             meta.UsePersonalZoomLink = req.usePersonalZoomLink.Value;
         if (req.meetingTime != null)
-            meta.MeetingTime = string.IsNullOrWhiteSpace(req.meetingTime) ? "09:00" : req.meetingTime.Trim();
+            meta.MeetingTime = string.IsNullOrWhiteSpace(req.meetingTime)
+                ? null
+                : req.meetingTime.Trim();
         if (req.meetingDurationMinutes.HasValue)
             meta.MeetingDurationMinutes = req.meetingDurationMinutes.Value <= 0 ? 30 : req.meetingDurationMinutes.Value;
 

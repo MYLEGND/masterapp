@@ -75,8 +75,6 @@ public class CalendarController : Controller
 
         if (meta.StageEnteredUtc == default)
             meta.StageEnteredUtc = lead.CreatedUtc;
-        if (string.IsNullOrWhiteSpace(meta.MeetingTime))
-            meta.MeetingTime = "09:00";
         if (meta.MeetingDurationMinutes <= 0)
             meta.MeetingDurationMinutes = 30;
         if (string.IsNullOrWhiteSpace(meta.CrmPriority))

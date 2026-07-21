@@ -221,7 +221,7 @@
                                 </div>
                                 <div class="f">
                                     <label>Meeting Time</label>
-                                    <input type="time" name="MeetingTime" class="queue-meeting-time" value="@(string.IsNullOrWhiteSpace(c.MeetingTime) ? "09:00" : c.MeetingTime)" />
+                                    <input type="time" name="MeetingTime" class="queue-meeting-time" value="@(string.IsNullOrWhiteSpace(c.MeetingTime) ? "" : c.MeetingTime)" />
                                 </div>
                                 <div class="f">
                                     <label>Duration</label>
@@ -361,11 +361,11 @@
             nextText.value = nextText.value || "Tomorrow morning follow-up";
         } else if (preset === "nextbiz") {
             nextDate.value = nextBusinessDayIso();
-            meetingTime.value = "09:00";
+            meetingTime.value = "";
             nextText.value = nextText.value || "Next business day touch";
         } else if (preset === "week") {
             nextDate.value = plusDaysIso(7);
-            meetingTime.value = "09:00";
+            meetingTime.value = "";
             nextText.value = nextText.value || "1 week follow-up";
         }
     }
@@ -378,7 +378,7 @@
 
         const nextDate = norm(form.querySelector(".queue-next-date")?.value);
         const nextText = norm(form.querySelector(".queue-next-text")?.value);
-        const meetingTime = norm(form.querySelector(".queue-meeting-time")?.value || "09:00");
+        const meetingTime = norm(form.querySelector(".queue-meeting-time")?.value || "");
         const duration = parseInt(form.querySelector(".queue-meeting-duration")?.value || "30", 10) || 30;
         const meetingType = form.querySelector(".queue-meeting-type")?.value || "Phone";
         const locationValue = norm(form.querySelector(".queue-meeting-location")?.value);

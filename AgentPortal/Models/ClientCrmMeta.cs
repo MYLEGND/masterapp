@@ -358,11 +358,11 @@ public static class ClientCrmMetaSerializer
     {
         var value = Clean(time);
         if (string.IsNullOrWhiteSpace(value))
-            return "09:00";
+            return "";
 
         return TimeOnly.TryParse(value, out var parsed)
             ? parsed.ToString("HH:mm")
-            : "09:00";
+            : "";
     }
 
     private static string? Clean(string? value) => string.IsNullOrWhiteSpace(value) ? null : value.Trim();
