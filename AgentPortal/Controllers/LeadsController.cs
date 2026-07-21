@@ -973,14 +973,15 @@ public class LeadsController : Controller
         {
             rows = await _db.LeadAppointments
                 .AsNoTracking()
-                .Where(x => ids.Contains(x.WorkstationLeadId))
+                .Where(x => x.WorkstationLeadId != null)
+                .Where(x => ids.Contains(x.WorkstationLeadId!))
                 .OrderByDescending(x => x.UpdatedUtc)
                 .ThenByDescending(x => x.ScheduledStartUtc)
                 .ThenByDescending(x => x.CreatedUtc)
                 .Select(x => new LeadAppointmentListRow
                 {
                     Id = x.Id,
-                    WorkstationLeadId = x.WorkstationLeadId,
+                    WorkstationLeadId = x.WorkstationLeadId!,
                     OwnerAgentUserId = x.OwnerAgentUserId,
                     WebsiteLeadIntakeLinkId = x.WebsiteLeadIntakeLinkId,
                     Status = x.Status,
@@ -1762,14 +1763,15 @@ public class LeadsController : Controller
         {
             return await _db.LeadAppointments
                 .AsNoTracking()
-                .Where(x => leadKeys.Contains(x.WorkstationLeadId))
+                .Where(x => x.WorkstationLeadId != null)
+                .Where(x => leadKeys.Contains(x.WorkstationLeadId!))
                 .OrderByDescending(x => x.UpdatedUtc)
                 .ThenByDescending(x => x.ScheduledStartUtc)
                 .ThenByDescending(x => x.CreatedUtc)
                 .Select(x => new LeadAppointmentListRow
                 {
                     Id = x.Id,
-                    WorkstationLeadId = x.WorkstationLeadId,
+                    WorkstationLeadId = x.WorkstationLeadId!,
                     OwnerAgentUserId = x.OwnerAgentUserId,
                     WebsiteLeadIntakeLinkId = x.WebsiteLeadIntakeLinkId,
                     Status = x.Status,
@@ -2017,7 +2019,7 @@ public class LeadsController : Controller
         return BuildLeadAppointmentPayload(new LeadAppointmentListRow
         {
             Id = appointment.Id,
-            WorkstationLeadId = appointment.WorkstationLeadId,
+            WorkstationLeadId = appointment.WorkstationLeadId ?? string.Empty,
             OwnerAgentUserId = appointment.OwnerAgentUserId,
             WebsiteLeadIntakeLinkId = appointment.WebsiteLeadIntakeLinkId,
             Status = appointment.Status,
