@@ -6373,20 +6373,6 @@ document.addEventListener("click", (e) => {
   }
 });
 
-function defaultEventTimes(dateISO){
-  const meetingTime = norm(dMeetingTime?.value) || "09:00";
-  const duration = parseInt(dMeetingDuration?.value || "30", 10) || 30;
-  const base = new Date(`${dateISO}T${meetingTime}:00`);
-  const end = new Date(base.getTime() + duration*60*1000);
-
-  const toLocalIsoNoZ = (d) => {
-    const tz = new Date(d.getTime() - d.getTimezoneOffset()*60000);
-    return tz.toISOString().slice(0,19);
-  };
-
-  return { startISO: toLocalIsoNoZ(base), endISO: toLocalIsoNoZ(end) };
-}
-
 function formatBusyRange(item){
   if (item.isAllDay) return "All day";
   return `${item.startLabel || ""} - ${item.endLabel || ""}`.trim();
@@ -6431,7 +6417,7 @@ function renderCalendarBusy(items, freeSlots = [], workHours = null){
   if (!dCalendarBusyList || !dCalendarBusyNote || !dCalendarFreeList || !dCalendarWorkHours) return;
 
   const nextDate = norm(dNextDate?.value);
-  const selected = nextDate ? defaultEventTimes(nextDate) : null;
+  const selected = nextDate ? window.qvBookingBuildEventTimes(nextDate) : null;
   const selectedStart = selected?.startISO ? new Date(selected.startISO) : null;
   const selectedEnd = selected?.endISO ? new Date(selected.endISO) : null;
   const conflicts = items.filter(item => isBusyConflict(item, selectedStart, selectedEnd));
@@ -6554,7 +6540,7 @@ window.quickViewCalendarAdapter = {
     const nextText = norm(dNextText?.value);
 
     const eventTimes = nextDate
-      ? defaultEventTimes(nextDate)
+      ? window.qvBookingBuildEventTimes(nextDate)
       : { startISO: "", endISO: "" };
 
     const name = row ? fullName(row) : "";

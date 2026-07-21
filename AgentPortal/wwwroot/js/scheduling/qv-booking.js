@@ -130,9 +130,10 @@
     function selectedBookingService() {
         const select = $("qvBookDuration");
         const option = select?.selectedOptions?.[0] || null;
-        const duration = parseInt(option?.value || select?.value || "30", 10) || 30;
+        const duration = Number.parseInt(option?.value || select?.value || "", 10);
+
         return {
-            duration,
+            duration: Number.isInteger(duration) && duration > 0 ? duration : null,
             serviceId: option?.dataset?.serviceId || "",
             serviceName: (option?.textContent || "").trim()
         };
@@ -140,12 +141,19 @@
 
     function formatDurationLabel(durationMinutes) {
         const selected = selectedBookingService();
-        if (selected.serviceName && !selected.serviceName.toLowerCase().includes("loading")) {
+
+        if (
+            selected.serviceName &&
+            !selected.serviceName.toLowerCase().includes("loading")
+        ) {
             return selected.serviceName;
         }
 
-        const duration = parseInt(durationMinutes || "30", 10) || 30;
-        return duration === 60 ? "60 min meeting" : `${duration} min meeting`;
+        const duration = Number.parseInt(durationMinutes || "", 10);
+
+        return Number.isInteger(duration) && duration > 0
+            ? `${duration} min meeting`
+            : "Select a meeting service";
     }
 
     function syncBookingServiceOptions(rawServices) {
@@ -154,11 +162,18 @@
 
         const services = (Array.isArray(rawServices) ? rawServices : [])
             .map(service => {
-                const duration = parseInt(service.durationMinutes || service.DurationMinutes || "0", 10);
+                const duration = Number.parseInt(
+                    service.durationMinutes || service.DurationMinutes || "",
+                    10
+                );
+
                 return {
                     serviceId: service.serviceId || service.id || "",
                     serviceName: service.serviceName || service.name || "",
-                    durationMinutes: duration > 0 ? duration : 30
+                    durationMinutes:
+                        Number.isInteger(duration) && duration > 0
+                            ? duration
+                            : null
                 };
             })
             .filter(service => service.serviceId && service.serviceName && service.durationMinutes > 0)
@@ -166,8 +181,10 @@
 
         if (!services.length) return false;
 
-        const previousServiceId = select.selectedOptions?.[0]?.dataset?.serviceId || "";
-        const previousDuration = select.value || $("dMeetingDuration")?.value || "30";
+        const previousServiceId =
+            select.selectedOptions?.[0]?.dataset?.serviceId || "";
+
+        const previousDuration = select.value || "";
 
         select.innerHTML = "";
 
@@ -369,9 +386,9 @@
         }
 
         const durationInput = $("qvBookDuration");
-        const meetingDuration = $("dMeetingDuration")?.value || "";
-        if (durationInput && meetingDuration) {
-            durationInput.value = meetingDuration;
+
+        if (durationInput && !durationInput.value) {
+            durationInput.selectedIndex = -1;
         }
     }
 
@@ -625,7 +642,19 @@
             duration = selectedBookingService().duration;
 
             const freeSlots = Array.isArray(data.freeSlots) ? data.freeSlots : [];
-            const slotInterval = parseInt(data.slotIntervalMinutes || "30", 10) || 30;
+            const slotInterval = Number.parseInt(
+                data.slotIntervalMinutes || "",
+                10
+            );
+
+            if (!Number.isInteger(slotInterval) || slotInterval <= 0) {
+                clearSlots(
+                    "Microsoft Bookings did not return a valid availability interval.",
+                    "error"
+                );
+                return;
+            }
+
             renderSlots(freeSlots, duration, slotInterval, {
                 preferredTime,
                 preserveStatus
@@ -746,6 +775,64 @@
         }
     });
 
+
+
+    /*
+     * Single authority for converting a selected Microsoft Bookings slot
+     * and service duration into the controller's local ISO contract.
+     */
+    window.qvBookingBuildEventTimes = function qvBookingBuildEventTimes(dateISO) {
+        const bookingTime =
+            document.getElementById("qvBookTime")?.value?.trim() || "";
+
+        const bookingDurationValue =
+            document.getElementById("qvBookDuration")?.value?.trim() || "";
+
+        const duration =
+            Number.parseInt(bookingDurationValue, 10);
+
+        if (
+            !dateISO ||
+            !bookingTime ||
+            !Number.isInteger(duration) ||
+            duration <= 0
+        ) {
+            return {
+                startISO: "",
+                endISO: ""
+            };
+        }
+
+        const base =
+            new Date(`${dateISO}T${bookingTime}:00`);
+
+        if (Number.isNaN(base.getTime())) {
+            return {
+                startISO: "",
+                endISO: ""
+            };
+        }
+
+        const end =
+            new Date(base.getTime() + duration * 60 * 1000);
+
+        const toLocalIsoNoZ = date => {
+            const localDate =
+                new Date(
+                    date.getTime() -
+                    date.getTimezoneOffset() * 60000
+                );
+
+            return localDate
+                .toISOString()
+                .slice(0, 19);
+        };
+
+        return {
+            startISO: toLocalIsoNoZ(base),
+            endISO: toLocalIsoNoZ(end)
+        };
+    };
 
     async function createQuickViewCalendarEvent() {
         window.__lastBookingStopReason = "";
@@ -891,7 +978,8 @@
 
         const date = $("qvBookDate")?.value || "";
         const time = $("qvBookTime")?.value || selectedSlotTime;
-        const duration = $("qvBookDuration")?.value || "30";
+        const durationValue = $("qvBookDuration")?.value || "";
+        const duration = Number.parseInt(durationValue, 10);
 
         if (!date) {
             setStatus("Choose a day from the calendar first.", "warning");
@@ -903,14 +991,18 @@
             return;
         }
 
+        if (!Number.isInteger(duration) || duration <= 0) {
+            setStatus(
+                "Select a valid service duration from your connected Microsoft Bookings services.",
+                "error"
+            );
+            return;
+        }
+
         const nextDate = $("dNextDate");
         const nextText = $("dNextText");
-        const meetingTime = $("dMeetingTime");
-        const meetingDuration = $("dMeetingDuration");
 
         if (nextDate) nextDate.value = date;
-        if (meetingTime) meetingTime.value = time;
-        if (meetingDuration) meetingDuration.value = duration;
         if (nextText && !nextText.value.trim()) {
             nextText.value = "Appointment booked from Quick View";
         }

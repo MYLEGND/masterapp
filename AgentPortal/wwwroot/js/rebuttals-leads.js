@@ -853,102 +853,143 @@
         if (editInputs.email) editInputs.email.value = lead.email || '';
         if (editInputs.phone) editInputs.phone.value = lead.phone || '';
 
-        window.createCalendarEventFromDrawer = createWorkstationCalendarEventFromDrawer;
+        window.quickViewCalendarAdapter = createWorkstationQuickViewCalendarAdapter();
       });
 
       return btn;
     }
 
-    function localIsoFromDateAndTime(date, time, minutesToAdd = 0){
-      const [year, month, day] = String(date || '').split('-').map(Number);
-      const [hour, minute] = String(time || '').split(':').map(Number);
-      const dt = new Date(year, (month || 1) - 1, day || 1, hour || 0, minute || 0, 0, 0);
-      dt.setMinutes(dt.getMinutes() + minutesToAdd);
+        async function createWorkstationQuickViewCalendarAdapter(){
+      return {
+        getContext(){
+          const currentLead = resolveCurrentLead();
+          const leadId = (currentLead?.leadId || '').trim();
 
-      const pad = value => String(value).padStart(2, '0');
-      return `${dt.getFullYear()}-${pad(dt.getMonth() + 1)}-${pad(dt.getDate())}T${pad(dt.getHours())}:${pad(dt.getMinutes())}:00`;
-    }
+          const date =
+            document.getElementById('qvBookDate')?.value ||
+            editInputs.crmNextDate?.value ||
+            '';
 
-    async function createWorkstationCalendarEventFromDrawer(){
-      const lead = resolveCurrentLead();
-      const leadId = (lead?.leadId || '').trim();
+          const nextText =
+            editInputs.crmNextText?.value?.trim() ||
+            'Appointment booked from Workstation';
 
-      if (!leadId){
-        window.__lastBookingStopReason = 'missing leadId';
-        setStatusMessage?.('No lead selected', 'bad');
-        return false;
-      }
+          const eventTimes =
+            window.qvBookingBuildEventTimes(date);
 
-      const date = document.getElementById('qvBookDate')?.value || editInputs.crmNextDate?.value || '';
-      const time = document.getElementById('qvBookTime')?.value || '';
-      const durationSelect = document.getElementById('qvBookDuration');
-      const selectedOption = durationSelect?.selectedOptions?.[0] || null;
-      const duration = parseInt(
-        selectedOption?.dataset?.durationMinutes ||
-        selectedOption?.dataset?.duration ||
-        durationSelect?.value ||
-        '30',
-        10
-      ) || 30;
+          const fullName =
+            `${currentLead?.firstName || ''} ${currentLead?.lastName || ''}`.trim() ||
+            'Lead';
 
-      if (!date || !time){
-        window.__lastBookingStopReason = 'missing date/time';
-        setStatusMessage?.('Pick an appointment time first', 'bad');
-        return false;
-      }
+          const phone =
+            currentLead?.phone ||
+            editInputs.phone?.value ||
+            '';
 
-      const full = `${lead.firstName || ''} ${lead.lastName || ''}`.trim() || 'Lead';
-      const phone = lead.phone || editInputs.phone?.value || '';
-      const email = lead.email || editInputs.email?.value || '';
-      const nextText = editInputs.crmNextText?.value || 'Appointment booked from Workstation';
+          const email =
+            currentLead?.email ||
+            editInputs.email?.value ||
+            '';
 
-      if (editInputs.crmNextDate) editInputs.crmNextDate.value = date;
-      if (editInputs.crmNextText && !editInputs.crmNextText.value.trim()) {
-        editInputs.crmNextText.value = nextText;
-      }
+          return {
+            recordId: leadId,
+            row: currentLead || null,
+            nextDate: date,
+            nextText,
+            startISO: eventTimes.startISO,
+            endISO: eventTimes.endISO,
+            fullName,
+            pipelineStage:
+              currentLead?.pipelineStage ||
+              currentLead?.stage ||
+              '',
+            email,
+            phone,
+            location:
+              `Phone Call • ${phone || 'No phone on file'}`,
+            zoomJoinUrl: ''
+          };
+        },
 
-      const payload = {
-        clientUserId: leadId,
-        subject: `Client Follow-up: ${full}`,
-        startISO: localIsoFromDateAndTime(date, time, 0),
-        endISO: localIsoFromDateAndTime(date, time, duration),
-        body: `Next Action: ${nextText}\n\nClient: ${full}\nEmail: ${email}\nPhone: ${phone}`,
-        location: `Phone Call • ${phone || 'No phone on file'}`,
-        zoomJoinUrl: '',
-        activityNote: `Calendar event created: ${nextText}`
-      };
+        async request(url, payload){
+          const response = await fetch(
+            url,
+            withDialHeaders({
+              method: 'POST',
+              credentials: 'include',
+              headers: {
+                'Content-Type': 'application/json',
+                'RequestVerificationToken': token,
+                'Accept': 'application/json'
+              },
+              body: JSON.stringify(payload)
+            })
+          );
 
-      try {
-        const res = await fetch('/calendar/create-event', withDialHeaders({
-          method: 'POST',
-          credentials: 'include',
-          headers: {
-            'Content-Type': 'application/json',
-            'RequestVerificationToken': token,
-            'Accept': 'application/json'
-          },
-          body: JSON.stringify(payload)
-        }));
+          if (!response.ok){
+            const text =
+              await response.text().catch(() => '');
 
-        if (!res.ok){
-          const text = await res.text().catch(() => '');
-          throw new Error(text || 'Calendar create failed.');
+            throw new Error(
+              text || 'Calendar create failed.'
+            );
+          }
+
+          return await response
+            .json()
+            .catch(() => ({}));
+        },
+
+        async applyResult(data, context){
+          const currentLead = resolveCurrentLead();
+
+          if (!currentLead) {
+            return;
+          }
+
+          currentLead.latestAppointment =
+            data?.latestAppointment ||
+            currentLead.latestAppointment ||
+            null;
+
+          currentLead.crmNextDate =
+            context.nextDate;
+
+          currentLead.crmNextText =
+            context.nextText;
+
+          if (editInputs.crmNextDate) {
+            editInputs.crmNextDate.value =
+              context.nextDate;
+          }
+
+          if (editInputs.crmNextText) {
+            editInputs.crmNextText.value =
+              context.nextText;
+          }
+
+          setStatusMessage?.(
+            'Calendar event synced ✔',
+            'good'
+          );
+        },
+
+        toast(message){
+          const text =
+            String(message || '');
+
+          const isError =
+            /failed|could not|missing|select|open a lead|not found|unavailable/i.test(
+              text
+            );
+
+          setStatusMessage?.(
+            text,
+            isError ? 'bad' : 'good'
+          );
         }
-
-        const data = await res.json().catch(() => ({}));
-        lead.latestAppointment = data.latestAppointment || lead.latestAppointment || null;
-        lead.crmNextDate = date;
-        lead.crmNextText = nextText;
-        setStatusMessage?.('Calendar event synced ✔', 'good');
-        return true;
-      } catch (err){
-        console.error(err);
-        window.__lastBookingStopReason = err?.message || 'calendar create failed';
-        setStatusMessage?.(err?.message || 'Calendar create failed', 'bad');
-        return false;
-      }
+      };
     }
-
 
     syncLeadBridgeHeaderPlacement();
     window.addEventListener('resize', syncLeadBridgeHeaderPlacement);
