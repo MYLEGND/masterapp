@@ -33,85 +33,8 @@ footer.footer {
 /* ------------------------------ Header/Nav ------------------------------ */
 /* Canonical navbar, hamburger, and explore styles are defined i n css/layout-inline.css. */
 
-/* ------------------------------ Dashboard / Tool Cards ------------------------------ */
-.dashboard-tool {
-    border: 2px solid #a68023;
-    border-radius: 14px;
-    padding: 1rem;
-    text-decoration: none;
-    color: #000;
-    transition: all .25s ease, box-shadow .25s ease;
-    font-weight: 600;
-    background-color: #fff;
-}
-.dashboard-tool:hover {
-    transform: translateY(-5px);
-    box-shadow: 0 12px 26px rgba(166,128,35,0.26); /* GOLD GLOW */
-    color: #a68023;
-}
-.centered-tools {
-    display: flex;
-    flex-wrap: wrap;
-    justify-content: center;   
-    align-content: center;     
-    gap: 1rem;
-}
-
 /* ------------------------------ Explore Drawer ------------------------------ */
 /* Canonical explore trigger/drawer styles are defined in css/layout-inline.css. */
-
-/* ------------------------------ Search Input with Clear Button ------------------------------ */
-.search-container {
-    display: flex;
-    justify-content: center; /* center search bar */
-    position: relative;
-    width: 100%;
-    margin-bottom: 2rem;
-}
-
-.search-input {
-    width: 400px;
-    max-width: 90%;
-    padding: 0.6rem 2.5rem 0.6rem 1rem; /* padding-right for clear button */
-    border-radius: 50px;
-    border: 2px solid #a68023;
-    font-size: 1rem;
-    box-shadow: 0 10px 22px rgba(166,128,35,0.14);
-    transition: all 0.3s ease;
-}
-
-.search-input:focus {
-    outline: none;
-    border-color: #b2882b;
-    box-shadow: 0 0 10px rgba(166,128,35,0.4);
-}
-
-/* ------------------------------ Tool Dropdowns / Display ------------------------------ */
-.tool-dropdown {
-    display: inline-block;
-    padding: 5px 12px;
-    border: 1px solid #ccc;
-    border-radius: 6px;
-    background-color: #fff;
-    color: #333;
-    font-weight: 600;
-    transition: all .25s ease;
-}
-.tool-dropdown:hover { border-color: #a68023; color: #a68023; }
-
-.tool-display {
-    margin-top: 30px;
-    min-height: 60vh;
-    border: 1px solid #a68023;
-    border-radius: 12px;
-    padding: 20px;
-    background-color: #fff;
-    box-shadow: 0 4px 15px rgba(0,0,0,0.05);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-}
-.tool-display img { max-width: 100%; max-height: 500px; object-fit: contain; }
 
 /* ------------------------------ Responsive adjustments ------------------------------ */
 @media (max-width: 992px) {
@@ -124,93 +47,6 @@ footer.footer {
     h3 { font-size: 1.15rem; }
     .nav-link { padding: 0.5rem; }
     img { max-width: 100%; height: auto; }
-    .search-input { width: 90%; }
-}
-
-
-/* ============================== DASHBOARD / TOOLS (ORIGINAL – FIXED) ============================== */
-
-.dashboard-tool {
-    border: 1px solid #a68023;
-    border-radius: 12px;
-    padding: 1rem;
-    text-decoration: none;
-    color: #000;
-    transition: all .25s ease, box-shadow .25s ease;
-    font-weight: 600;
-    background-color: #fff;
-    position: relative;
-}
-
-.dashboard-tool:hover {
-    transform: translateY(-5px);
-    box-shadow: 0 0 18px 4px rgba(166,128,35,0.45);
-    color: #a68023;
-}
-
-.dashboard-tool .tool-desc {
-    position: absolute;
-    inset: 0;
-    background: #fff;
-    color: #a68023;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    text-align: center;
-    font-size: 0.9rem;
-    padding: 0.5rem;
-    opacity: 0;
-    border-radius: 12px;
-    transition: opacity 0.25s ease-in-out;
-    font-weight: 700;
-}
-
-.dashboard-tool:hover .tool-desc { opacity: 1; }
-.dashboard-tool:hover img,
-.dashboard-tool:hover .tool-name { opacity: 0.2; }
-
-.centered-tools {
-    display: flex;
-    flex-wrap: wrap;
-    justify-content: center;
-    gap: 1rem;
-}
-
-/* ============================== SEARCH (ORIGINAL) ============================== */
-
-.search-container {
-    display: flex;
-    justify-content: center;
-    position: relative;
-    width: 100%;
-    margin-bottom: 2rem;
-}
-
-.search-input {
-    width: 400px;
-    max-width: 90%;
-    padding: 0.6rem 2.5rem 0.6rem 1rem;
-    border-radius: 50px;
-    border: 2px solid #a68023;
-    font-size: 1rem;
-    box-shadow: 0 4px 12px rgba(0,0,0,0.1);
-}
-
-.search-input:focus {
-    outline: none;
-    border-color: #b2882b;
-    box-shadow: 0 0 10px rgba(166,128,35,0.4);
-}
-/* ============================== RESPONSIVE ============================== */
-
-@media (max-width: 576px) {
-    .search-input { width: 90%; }
-}
-.hero-hr {
-    border-color: #555555; /* Home tab grey */
-    border-width: 2px;
-    max-width: 1500px;
-    margin: 1rem auto 1.5rem;
 }
 
 /* ============================== CLIENT PORTAL WHITE PREMIUM THEME ============================== */
@@ -258,7 +94,6 @@ main {
     color: var(--client-ink);
 }
 
-body:not(.finance-page) main .home-container,
 body:not(.finance-page) main .resources-page,
 body:not(.finance-page) main .finance-shell,
 body:not(.finance-page) main .training-page,
@@ -277,9 +112,7 @@ body:not(.finance-page) main .resources-hero,
 body:not(.finance-page) main .panel,
 body:not(.finance-page) main .bk-card,
 body:not(.finance-page) main .modalx-card,
-body:not(.finance-page) main .home-tools,
 body:not(.finance-page) main .ff-home-card,
-body:not(.finance-page) main .category-container,
 body:not(.finance-page) main .training-page,
 body:not(.finance-page) main #training-embed,
 body:not(.finance-page) main .subcard,
@@ -300,22 +133,16 @@ body:not(.finance-page) main .resources-hero,
 body:not(.finance-page) main .panel,
 body:not(.finance-page) main .bk-card,
 body:not(.finance-page) main .modalx-card,
-body:not(.finance-page) main .home-tools,
 body:not(.finance-page) main .ff-home-card,
-body:not(.finance-page) main .category-container,
 body:not(.finance-page) main .training-page,
 body:not(.finance-page) main #training-embed,
 body:not(.finance-page) main .subcard,
-body:not(.finance-page) main .page-wrap > .card,
-body:not(.finance-page) main .dashboard-tool,
-body:not(.finance-page) main .trusted-partners-tool {
+body:not(.finance-page) main .page-wrap > .card {
     border-width: 1.5px !important;
     border-style: solid !important;
     border-radius: 18px;
 }
 
-body:not(.finance-page) main .dashboard-tool,
-body:not(.finance-page) main .trusted-partners-tool,
 body:not(.finance-page) main .legend-field,
 body:not(.finance-page) main .premium-field,
 body:not(.finance-page) main .legend-btn-outline,
@@ -324,8 +151,6 @@ body:not(.finance-page) main .legend-badge {
     background: #ffffff !important;
 }
 
-body:not(.finance-page) main .dashboard-tool:hover,
-body:not(.finance-page) main .trusted-partners-tool:hover,
 body:not(.finance-page) main .ff-home-tile:hover,
 body:not(.finance-page) main .panel:hover,
 body:not(.finance-page) main .legend-card:hover {
@@ -366,8 +191,8 @@ body:not(.finance-page) main .result-tag {
 
 body:not(.finance-page) .form-control,
 body:not(.finance-page) .form-select,
-body:not(.finance-page) select,
-body:not(.finance-page) textarea {
+body:not(.finance-page) select:not(.client-create-input),
+body:not(.finance-page) textarea:not(.client-create-input) {
     background: #ffffff !important;
     color: var(--client-ink) !important;
     border: 1.5px solid var(--client-line) !important;
@@ -377,16 +202,14 @@ body:not(.finance-page) textarea {
 
 body:not(.finance-page) .form-control:focus,
 body:not(.finance-page) .form-select:focus,
-body:not(.finance-page) select:focus,
-body:not(.finance-page) textarea:focus {
+body:not(.finance-page) select:not(.client-create-input):focus,
+body:not(.finance-page) textarea:not(.client-create-input):focus {
     border-color: var(--client-line-strong) !important;
     box-shadow: var(--client-ring), var(--client-inset) !important;
 }
 
 body:not(.finance-page) .dropdown-menu,
 body:not(.finance-page) .list-group,
-body:not(.finance-page) .autocomplete-list,
-body:not(.finance-page) #autocompleteList,
 body:not(.finance-page) #training-search-results,
 body:not(.finance-page) .search-results {
     background: #ffffff !important;
@@ -469,183 +292,4 @@ body:not(.finance-page) main .ff-home-footer,
 body:not(.finance-page) main .footer-link,
 body:not(.finance-page) main .small {
     color: var(--client-muted);
-}
-
-main .legend-profile-page {
-    max-width: 1120px;
-    margin: 0 auto;
-    padding: 1.5rem 0 2.5rem;
-}
-
-main .legend-profile-shell {
-    overflow: hidden;
-}
-
-main .legend-profile-head {
-    display: grid;
-    grid-template-columns: minmax(0, 1fr) auto;
-    align-items: start;
-    gap: 1rem;
-    padding: 1.35rem 1.5rem 1.2rem;
-    border-bottom: 1px solid var(--client-line-soft) !important;
-}
-
-main .legend-profile-heading {
-    min-width: 0;
-}
-
-main .legend-profile-title {
-    margin: 0;
-    font-size: clamp(1.55rem, 1.35rem + .7vw, 2rem);
-    line-height: 1.08;
-    letter-spacing: .01em;
-    color: var(--client-gold-deep) !important;
-}
-
-main .legend-profile-meta {
-    display: flex;
-    justify-content: flex-end;
-    align-items: flex-start;
-}
-
-main .legend-profile-badge,
-main .legend-profile-mini-badge {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    white-space: nowrap;
-    box-shadow: none !important;
-}
-
-main .legend-profile-badge {
-    min-height: 42px;
-    padding: .5rem .9rem;
-}
-
-main .legend-profile-mini-badge {
-    font-size: .82rem;
-    padding: .38rem .7rem;
-}
-
-main .legend-profile-body {
-    padding: 1.4rem 1.5rem 1.5rem;
-    display: grid;
-    gap: 1.15rem;
-}
-
-main .legend-divider {
-    height: 1px;
-    margin: 0;
-    background: linear-gradient(90deg, rgba(166,128,35,.12), rgba(166,128,35,.42), rgba(166,128,35,.12));
-}
-
-main .legend-profile-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(215px, 1fr));
-    gap: 14px;
-    align-items: stretch;
-}
-
-main .legend-profile-field {
-    min-height: 104px;
-    display: flex;
-    flex-direction: column;
-    justify-content: flex-start;
-    gap: .35rem;
-    padding: 1rem 1.05rem;
-}
-
-main .legend-profile-page .legend-label {
-    margin: 0;
-    font-size: .76rem;
-    font-weight: 900;
-    letter-spacing: .08em;
-    text-transform: uppercase;
-    color: var(--client-muted);
-}
-
-main .legend-profile-page .legend-val {
-    color: var(--client-ink);
-    font-weight: 800;
-    line-height: 1.45;
-    word-break: break-word;
-}
-
-main .legend-profile-section-card {
-    display: grid;
-    gap: 1rem;
-    padding: 1rem 1.05rem;
-}
-
-main .legend-profile-section-head {
-    display: grid;
-    grid-template-columns: minmax(0, 1fr) auto;
-    gap: .9rem;
-    align-items: start;
-}
-
-main .legend-profile-section-card .legend-section-title {
-    margin: 0;
-}
-
-main .legend-profile-warn {
-    margin: 0;
-    border: 1px solid rgba(176,42,55,.24);
-    background: linear-gradient(180deg, rgba(176,42,55,.06), rgba(176,42,55,.03));
-    border-radius: 18px;
-    padding: 1rem 1.05rem;
-    font-weight: 800;
-    color: rgba(15,23,42,.82);
-}
-
-main .legend-profile-actions {
-    display: flex;
-    justify-content: flex-end;
-    gap: .75rem;
-    flex-wrap: wrap;
-    align-items: center;
-}
-
-main .legend-profile-actions .legend-btn {
-    min-width: 180px;
-    text-align: center;
-}
-
-@media (max-width: 991.98px) {
-    main .legend-profile-page {
-        max-width: 100%;
-        padding: 1.25rem 0 2.25rem;
-    }
-}
-
-@media (max-width: 767.98px) {
-    main .legend-profile-head {
-        grid-template-columns: 1fr;
-        padding: 1.15rem 1rem 1rem;
-    }
-
-    main .legend-profile-meta {
-        justify-content: flex-start;
-    }
-
-    main .legend-profile-body {
-        padding: 1rem;
-    }
-
-    main .legend-profile-grid {
-        grid-template-columns: 1fr;
-    }
-
-    main .legend-profile-section-head {
-        grid-template-columns: 1fr;
-    }
-
-    main .legend-profile-actions {
-        justify-content: stretch;
-    }
-
-    main .legend-profile-actions .legend-btn {
-        width: 100%;
-        min-width: 0;
-    }
 }

@@ -20,8 +20,6 @@
             !string.IsNullOrWhiteSpace(x.Phone))
         .ToList() ?? new List<HouseholdMember>();
 
-    // Fallback: if SO wasn’t loaded from HouseholdMembers,
-    // but ClientProfile has SignificantOther fields populated, build a display object
     HouseholdMember? soFallback = null;
 
     string T(string? v) => (v ?? "").Trim();
@@ -55,354 +53,161 @@
     string DashIfBlank(string? v) => string.IsNullOrWhiteSpace(v) ? "—" : v!;
 }
 
-<style>
-    :root{
-        --gold:#a68023;
-        --gold-strong:#c79931;
-        --navy:#0b1529;
-        --navy-2:#0f1d38;
-    }
-    body { background:#ffffff; color:#f8fafc; font-family:'Inter', sans-serif; }
+@section Styles {
+    <link rel="stylesheet" href="~/_content/Shared/css/dashboard-home-shared.css" asp-append-version="true" />
+}
 
-    .legend-profile-page{
-        max-width:1100px;
-        margin:0 auto;
-        padding:24px 16px 42px;
-    }
-    .legend-card.legend-profile-shell{
-        background: var(--navy);
-        border:1.6px solid var(--gold);
-        border-radius:16px;
-        box-shadow:0 20px 42px rgba(0,0,0,.28), inset 0 0 0 1px rgba(255,255,255,.08);
-        overflow:hidden;
-    }
-    .legend-head.legend-profile-head{
-        background: var(--navy-2);
-        border-bottom:1px solid rgba(166,128,35,.38);
-        padding:1.1rem 1.5rem;
-        display:flex;
-        justify-content:space-between;
-        align-items:center;
-        flex-wrap:wrap;
-        gap:1rem;
-    }
-    .legend-title.legend-profile-title{
-        margin:0;
-        font-weight:900;
-        letter-spacing:.4px;
-        color: var(--gold-strong);
-    }
-    .legend-badge.legend-profile-badge{
-        background: rgba(166,128,35,.16);
-        border:1px solid rgba(166,128,35,.52);
-        color:#0b1529;
-        font-weight:850;
-        padding:0.35rem 0.9rem;
-        border-radius:999px;
-    }
-    .legend-body.legend-profile-body{
-        padding:1.5rem;
-        display:grid;
-        gap:1.1rem;
-        color:#f8fafc;
-    }
-    .legend-profile-grid{
-        display:grid;
-        grid-template-columns: repeat(auto-fit, minmax(240px,1fr));
-        gap:14px;
-    }
-    .legend-profile-field{
-        background: var(--navy-2);
-        border:1px solid rgba(166,128,35,.42);
-        border-radius:12px;
-        padding:12px 14px;
-        box-shadow: inset 0 1px 0 rgba(255,255,255,.06);
-    }
-    .legend-label{
-        font-weight:800;
-        color:#cbd5e1;
-        margin-bottom:4px;
-        letter-spacing:.2px;
-    }
-    .legend-val{
-        font-weight:900;
-        color:#f8fafc;
-        letter-spacing:.15px;
-    }
-    .legend-divider{
-        height:1px;
-        background: rgba(166,128,35,.32);
-        border-radius:999px;
-    }
-    .legend-subcard.legend-profile-section-card{
-        background: var(--navy-2);
-        border:1px solid rgba(166,128,35,.38);
-        border-radius:14px;
-        padding:14px;
-        box-shadow: inset 0 1px 0 rgba(255,255,255,.06);
-    }
-    .legend-profile-section-head{
-        display:flex;
-        justify-content:space-between;
-        align-items:center;
-        flex-wrap:wrap;
-        gap:10px;
-    }
-    .legend-section-title{
-        color: var(--gold-strong);
-        font-weight:900;
-        margin:0;
-    }
-    .legend-badge.legend-profile-mini-badge{
-        background: rgba(166,128,35,.18);
-        border:1px solid rgba(166,128,35,.52);
-        color:#f6e6b4;
-        font-weight:850;
-        padding:0.28rem 0.7rem;
-        border-radius:999px;
-        font-size:.82rem;
-    }
-    .legend-warn.legend-profile-warn{
-        background: rgba(220,53,69,.14);
-        border:1px solid rgba(220,53,69,.45);
-        color:#ffecec;
-        border-radius:12px;
-        padding:0.85rem 1rem;
-        font-weight:750;
-    }
-    .legend-profile-member-list{
-        display:grid;
-        gap:8px;
-        margin-top:8px;
-    }
-    .legend-profile-member-card{
-        border:1px solid rgba(166,128,35,.34);
-        border-radius:10px;
-        padding:10px;
-        background:rgba(8,18,36,.62);
-    }
-    .legend-profile-member-name{
-        color:#f8fafc;
-        font-weight:950;
-        margin-bottom:8px;
-        font-size:.95rem;
-        line-height:1.25;
-    }
-    .legend-profile-member-card .legend-profile-grid{
-        gap:10px;
-        grid-template-columns:repeat(auto-fit, minmax(180px,1fr));
-    }
-    .legend-actions .legend-btn.legend-btn-outline{
-        border:1.6px solid var(--gold);
-        color:#f8fafc;
-        background: var(--navy-2);
-        border-radius:12px;
-        font-weight:900;
-        padding:0.85rem 1.3rem;
-        box-shadow:0 14px 28px rgba(0,0,0,.26), inset 0 1px 0 rgba(255,255,255,.08);
-        text-decoration:none;
-    }
-    .legend-actions .legend-btn.legend-btn-outline:hover{
-        background: rgba(166,128,35,.18);
-        color:#f8fafc;
-        border-color: var(--gold-strong);
-    }
-    .legend-profile-actions{
-        display:flex;
-        justify-content:flex-start;
-        gap:10px;
-        flex-wrap:wrap;
-    }
-
-    .legend-impersonation-banner{
-        display:flex;
-        align-items:center;
-        justify-content:space-between;
-        gap:12px;
-        flex-wrap:wrap;
-        padding:.85rem 1rem;
-        border-radius:12px;
-        border:1px solid rgba(166,128,35,.45);
-        background:#0f1d38;
-        box-shadow: inset 0 1px 0 rgba(255,255,255,.08);
-    }
-
-    .legend-impersonation-text{
-        font-weight:800;
-        color:#f8fafc;
-        letter-spacing:.02em;
-    }
-
-    .legend-impersonation-text .muted{
-        color:#cbd5e1;
-        font-weight:700;
-    }
-
-    .legend-impersonation-stop{
-        display:inline-flex;
-        align-items:center;
-        justify-content:center;
-        min-height:38px;
-        padding:0 .9rem;
-        border-radius:999px;
-        border:1px solid rgba(166,128,35,.66);
-        background:rgba(166,128,35,.14);
-        color:#f2d891;
-        font-weight:900;
-        text-decoration:none;
-    }
-
-    .legend-impersonation-stop:hover{
-        color:#f8fafc;
-        background:rgba(166,128,35,.24);
-        border-color:rgba(166,128,35,.88);
-    }
-</style>
-
-<div class="legend-wrap legend-profile-page">
-    <div class="legend-card legend-profile-shell">
-        <div class="legend-head legend-profile-head">
-            <div class="legend-profile-heading">
-                <h2 class="legend-title legend-profile-title">
-                @(viewMode == "agent"
-                    ? $"Viewing {Model.FirstName} {Model.LastName}"
-                    : "My Profile")
-                </h2>
-            </div>
-            <div class="legend-profile-meta">
-                <span class="legend-badge legend-profile-badge">@badge</span>
-            </div>
-        </div>
-
-        <div class="legend-body legend-profile-body">
-            @if (viewMode == "agent")
-            {
-                <div class="legend-impersonation-banner" role="status" aria-live="polite">
-                    <div class="legend-impersonation-text">
-                        Agent impersonation is active.
-                        <span class="muted">You are viewing the live client experience for @viewingClientName.</span>
-                    </div>
-                    <a class="legend-impersonation-stop" href="/support/stop-view-as-client">End impersonation</a>
+<main class="dashboard-page-shell client-create-page client-edit-page">
+    <div class="client-create-shell">
+        <div class="client-create-panel">
+            <div class="client-create-header">
+                <div>
+                    <div class="dashboard-eyebrow">Client Profile</div>
+                    <h2 class="client-create-title">@(viewMode == "agent" ? $"Viewing {Model.FirstName} {Model.LastName}".Trim() : "My Profile")</h2>
+                    <p class="client-create-subtitle">Review the household information currently shared across the client workspace and the agent portal.</p>
                 </div>
-            }
-
-            <div class="legend-row legend-profile-grid legend-summary-grid">
-                <div class="legend-field legend-profile-field">
-                    <div class="legend-label">Name</div>
-                    <div class="legend-val">@Model.FirstName @Model.LastName</div>
-                </div>
-
-                <div class="legend-field legend-profile-field">
-                    <div class="legend-label">Email</div>
-                    <div class="legend-val">@DashIfBlank(Model.Email)</div>
-                </div>
-
-                <div class="legend-field legend-profile-field">
-                    <div class="legend-label">Phone</div>
-                    <div class="legend-val">@DashIfBlank(Model.Phone)</div>
-                </div>
-
-                <div class="legend-field legend-profile-field">
-                    <div class="legend-label">Date of Birth</div>
-                    <div class="legend-val">@((Model.DOB.HasValue) ? Model.DOB.Value.ToString("MM/dd/yyyy") : "—")</div>
-                </div>
-
-                <div class="legend-field legend-profile-field">
-                    <div class="legend-label">Marital Status</div>
-                    <div class="legend-val">@DashIfBlank(Model.MaritalStatus)</div>
-                </div>
+                <span class="client-edit-pill">@badge</span>
             </div>
 
-            @if (soToShow != null)
-            {
-                <div class="legend-divider"></div>
-
-                <div class="legend-subcard legend-profile-section-card">
-                    <div class="legend-profile-section-head">
-                        <div class="legend-section-title mb-0">Significant Other</div>
-                        <span class="legend-badge legend-profile-mini-badge">
-                            @(!string.IsNullOrWhiteSpace(soToShow.RelationshipType) ? soToShow.RelationshipType : "Household")
-                        </span>
+            <div class="client-create-body">
+                @if (viewMode == "agent")
+                {
+                    <div class="client-edit-section client-edit-section-compact">
+                        <div class="client-edit-section-head">
+                            <div>
+                                <div class="client-create-section-title">Agent Impersonation</div>
+                                <p class="client-edit-note">You are viewing the live client experience for @viewingClientName.</p>
+                            </div>
+                            <a class="client-create-button client-create-button-secondary" href="/support/stop-view-as-client">End Impersonation</a>
+                        </div>
                     </div>
+                }
 
-                    <div class="legend-row legend-profile-grid legend-so-grid">
-                        <div class="legend-field legend-profile-field">
-                            <div class="legend-label">Name</div>
-                            <div class="legend-val">@soToShow.FirstName @soToShow.LastName</div>
+                <div class="client-create-section client-create-section-shell">
+                    <div class="client-create-section-head">
+                        <div class="client-create-section-title">Primary Profile</div>
+                        <p class="client-create-section-copy">Core contact and household details from the current client record.</p>
+                    </div>
+                    <div class="client-create-grid">
+                        <div>
+                            <label class="client-create-label">First Name</label>
+                            <input class="client-create-input" value="@DashIfBlank(Model.FirstName)" readonly />
                         </div>
-
-                        <div class="legend-field legend-profile-field">
-                            <div class="legend-label">Date of Birth</div>
-                            <div class="legend-val">@((soToShow.DOB.HasValue) ? soToShow.DOB.Value.ToString("MM/dd/yyyy") : "—")</div>
+                        <div>
+                            <label class="client-create-label">Last Name</label>
+                            <input class="client-create-input" value="@DashIfBlank(Model.LastName)" readonly />
                         </div>
-
-                        <div class="legend-field legend-profile-field">
-                            <div class="legend-label">Email</div>
-                            <div class="legend-val">@DashIfBlank(soToShow.Email)</div>
+                        <div>
+                            <label class="client-create-label">Email</label>
+                            <input class="client-create-input" value="@DashIfBlank(Model.Email)" readonly />
                         </div>
-
-                        <div class="legend-field legend-profile-field">
-                            <div class="legend-label">Phone</div>
-                            <div class="legend-val">@DashIfBlank(soToShow.Phone)</div>
+                        <div>
+                            <label class="client-create-label">Phone</label>
+                            <input class="client-create-input" value="@DashIfBlank(Model.Phone)" readonly />
+                        </div>
+                        <div>
+                            <label class="client-create-label">Date of Birth</label>
+                            <input class="client-create-input" value="@(Model.DOB.HasValue ? Model.DOB.Value.ToString("MM/dd/yyyy") : "—")" readonly />
+                        </div>
+                        <div>
+                            <label class="client-create-label">Marital Status</label>
+                            <input class="client-create-input" value="@DashIfBlank(Model.MaritalStatus)" readonly />
                         </div>
                     </div>
                 </div>
-            }
-            else if (needsSO)
-            {
-                <div class="legend-divider"></div>
-                <div class="legend-warn legend-profile-warn">
-                    Significant Other is required for this marital status, but no household member is on file for this client.
-                </div>
-            }
 
-            @if (children.Count > 0)
-            {
-                <div class="legend-divider"></div>
-
-                <div class="legend-subcard legend-profile-section-card">
-                    <div class="legend-profile-section-head">
-                        <div class="legend-section-title mb-0">Children</div>
-                        <span class="legend-badge legend-profile-mini-badge">@children.Count on file</span>
+                @if (soToShow != null)
+                {
+                    <div class="client-edit-section client-edit-section-spaced">
+                        <div class="client-edit-section-head">
+                            <div>
+                                <div class="client-create-section-title">Significant Other</div>
+                                <p class="client-edit-note">Household record connected to this client profile.</p>
+                            </div>
+                            <span class="client-edit-pill">@(!string.IsNullOrWhiteSpace(soToShow.RelationshipType) ? soToShow.RelationshipType : "Household")</span>
+                        </div>
+                        <div class="client-create-grid">
+                            <div>
+                                <label class="client-create-label">First Name</label>
+                                <input class="client-create-input" value="@DashIfBlank(soToShow.FirstName)" readonly />
+                            </div>
+                            <div>
+                                <label class="client-create-label">Last Name</label>
+                                <input class="client-create-input" value="@DashIfBlank(soToShow.LastName)" readonly />
+                            </div>
+                            <div>
+                                <label class="client-create-label">Date of Birth</label>
+                                <input class="client-create-input" value="@(soToShow.DOB.HasValue ? soToShow.DOB.Value.ToString("MM/dd/yyyy") : "—")" readonly />
+                            </div>
+                            <div>
+                                <label class="client-create-label">Phone</label>
+                                <input class="client-create-input" value="@DashIfBlank(soToShow.Phone)" readonly />
+                            </div>
+                            <div class="client-create-full">
+                                <label class="client-create-label">Email</label>
+                                <input class="client-create-input" value="@DashIfBlank(soToShow.Email)" readonly />
+                            </div>
+                        </div>
                     </div>
+                }
+                else if (needsSO)
+                {
+                    <div class="client-create-blocked client-edit-section-spaced">
+                        Significant Other is required for this marital status, but no household member is currently on file.
+                    </div>
+                }
 
-                    <div class="legend-profile-member-list">
-                        @foreach (var child in children)
-                        {
-                            <div class="legend-profile-member-card">
-                                <div class="legend-profile-member-name">@DashIfBlank($"{child.FirstName} {child.LastName}".Trim())</div>
-                                <div class="legend-row legend-profile-grid">
-                                    <div class="legend-field legend-profile-field">
-                                        <div class="legend-label">Date of Birth</div>
-                                        <div class="legend-val">@((child.DOB.HasValue) ? child.DOB.Value.ToString("MM/dd/yyyy") : "—")</div>
+                @if (children.Count > 0)
+                {
+                    <div class="client-edit-section client-edit-section-spaced">
+                        <div class="client-edit-section-head">
+                            <div>
+                                <div class="client-create-section-title">Children</div>
+                                <p class="client-edit-note">Household members currently attached to this client record.</p>
+                            </div>
+                            <span class="client-edit-pill">@children.Count on file</span>
+                        </div>
+
+                        <div class="client-edit-child-list">
+                            @foreach (var child in children)
+                            {
+                                <div class="client-edit-child-card">
+                                    <div class="client-edit-child-card-head">
+                                        <div class="client-edit-child-title">@DashIfBlank($"{child.FirstName} {child.LastName}".Trim())</div>
                                     </div>
-                                    <div class="legend-field legend-profile-field">
-                                        <div class="legend-label">Email</div>
-                                        <div class="legend-val">@DashIfBlank(child.Email)</div>
-                                    </div>
-                                    <div class="legend-field legend-profile-field">
-                                        <div class="legend-label">Phone</div>
-                                        <div class="legend-val">@DashIfBlank(child.Phone)</div>
+                                    <div class="client-create-grid">
+                                        <div>
+                                            <label class="client-create-label">Date of Birth</label>
+                                            <input class="client-create-input" value="@(child.DOB.HasValue ? child.DOB.Value.ToString("MM/dd/yyyy") : "—")" readonly />
+                                        </div>
+                                        <div>
+                                            <label class="client-create-label">Phone</label>
+                                            <input class="client-create-input" value="@DashIfBlank(child.Phone)" readonly />
+                                        </div>
+                                        <div class="client-create-full">
+                                            <label class="client-create-label">Email</label>
+                                            <input class="client-create-input" value="@DashIfBlank(child.Email)" readonly />
+                                        </div>
                                     </div>
                                 </div>
-                            </div>
-                        }
+                            }
+                        </div>
                     </div>
+                }
+
+                <div class="client-edit-divider"></div>
+
+                <div class="client-create-actions">
+                    @if (viewMode == "client")
+                    {
+                        <a class="client-create-button client-create-button-primary" href="/profile/edit">Edit My Profile</a>
+                    }
+                    else
+                    {
+                        <a class="client-create-button client-create-button-secondary" href="javascript:history.back()">Back</a>
+                    }
                 </div>
-            }
-
-            <div class="legend-divider"></div>
-
-            <div class="legend-actions legend-profile-actions">
-                @if (viewMode == "client")
-                {
-                    <a class="legend-btn legend-btn-outline" href="/profile/edit">Edit My Profile</a>
-                }
-                else
-                {
-                    <a class="legend-btn legend-btn-outline" href="javascript:history.back()">Back</a>
-                }
             </div>
         </div>
     </div>
-</div>
+</main>
