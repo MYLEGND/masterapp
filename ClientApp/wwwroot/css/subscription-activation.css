@@ -1,0 +1,317 @@
+:root {
+    --activation-navy: #0d2145;
+    --activation-navy-strong: #091832;
+    --activation-blue: #2e5fa9;
+    --activation-text: #14213a;
+    --activation-muted: #65738a;
+    --activation-line: #d7e0ee;
+    --activation-surface: #f6f8fc;
+    --activation-danger: #a6384a;
+}
+
+* {
+    box-sizing: border-box;
+}
+
+body.subscription-activation-standalone {
+    margin: 0;
+    min-height: 100vh;
+    background: #ffffff;
+    color: var(--activation-text);
+    font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+}
+
+.activation-page {
+    width: min(1040px, calc(100% - 32px));
+    min-height: 100vh;
+    margin: 0 auto;
+    padding: 20px 0;
+}
+
+.activation-card,
+.activation-notice-card {
+    overflow: hidden;
+    border: 1px solid var(--activation-line);
+    border-radius: 20px;
+    background: #ffffff;
+    box-shadow: 0 14px 34px rgba(13, 33, 69, 0.1);
+}
+
+.activation-header {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(440px, 1.12fr);
+    gap: 24px;
+    align-items: center;
+    padding: 22px 28px;
+    background: linear-gradient(135deg, var(--activation-navy), var(--activation-navy-strong));
+    color: #ffffff;
+}
+
+.activation-brand {
+    margin: 0 0 7px;
+    color: #cbdcff;
+    font-size: 0.72rem;
+    font-weight: 850;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+}
+
+.activation-header h1,
+.activation-notice-card h1 {
+    margin: 0;
+    font-size: clamp(1.65rem, 3vw, 2.25rem);
+    line-height: 1.05;
+    letter-spacing: -0.04em;
+}
+
+.activation-client {
+    margin: 9px 0 0;
+    color: #d8e4fa;
+    font-size: 0.9rem;
+    line-height: 1.35;
+}
+
+.activation-summary {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 9px;
+}
+
+.activation-summary-item {
+    min-width: 0;
+    padding: 11px 12px;
+    border: 1px solid rgba(201, 219, 250, 0.22);
+    border-radius: 12px;
+    background: rgba(255, 255, 255, 0.08);
+}
+
+.activation-summary-label {
+    display: block;
+    color: #bfd1f3;
+    font-size: 0.66rem;
+    font-weight: 800;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+}
+
+.activation-summary-value {
+    display: block;
+    margin-top: 4px;
+    overflow: hidden;
+    color: #ffffff;
+    font-size: 0.88rem;
+    font-weight: 760;
+    line-height: 1.2;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.activation-body {
+    padding: 20px 28px 22px;
+}
+
+.activation-form-title {
+    margin: 0 0 15px;
+    font-size: 1.08rem;
+    font-weight: 800;
+    letter-spacing: -0.015em;
+}
+
+.activation-fields {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 11px 14px;
+}
+
+.activation-field {
+    display: grid;
+    gap: 5px;
+}
+
+.activation-field.is-wide {
+    grid-column: 1 / -1;
+}
+
+.activation-field label {
+    color: var(--activation-text);
+    font-size: 0.76rem;
+    font-weight: 780;
+}
+
+.activation-field label span {
+    color: var(--activation-danger);
+}
+
+.activation-field input,
+.activation-field select,
+.activation-card-surface {
+    width: 100%;
+    min-height: 42px;
+    border: 1px solid #cbd7e8;
+    border-radius: 10px;
+    background: #fbfcfe;
+    color: var(--activation-text);
+    font: inherit;
+}
+
+.activation-field input,
+.activation-field select {
+    padding: 0 12px;
+}
+
+.activation-field input::placeholder {
+    color: #8290a7;
+}
+
+.activation-field input:focus,
+.activation-field select:focus,
+.activation-card-surface:focus-within {
+    outline: 3px solid rgba(46, 95, 169, 0.16);
+    border-color: var(--activation-blue);
+}
+
+.activation-card-surface {
+    display: flex;
+    align-items: center;
+    min-height: 62px;
+    padding: 8px 12px;
+}
+
+.activation-card-surface > * {
+    width: 100%;
+}
+
+.activation-alert,
+.activation-validation {
+    margin: 0 0 12px;
+    padding: 10px 12px;
+    border: 1px solid #e5b9c2;
+    border-radius: 10px;
+    background: #fff5f6;
+    color: #873244;
+    font-size: 0.84rem;
+    line-height: 1.35;
+}
+
+.activation-authorization {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr);
+    gap: 9px;
+    align-items: start;
+    margin-top: 15px;
+    padding: 11px 12px;
+    border: 1px solid #dbe5f4;
+    border-radius: 11px;
+    background: var(--activation-surface);
+    color: #33445f;
+    font-size: 0.78rem;
+    line-height: 1.42;
+}
+
+.activation-authorization input {
+    width: 16px;
+    height: 16px;
+    margin: 1px 0 0;
+    accent-color: var(--activation-blue);
+}
+
+.activation-actions {
+    display: flex;
+    justify-content: flex-end;
+    margin-top: 14px;
+}
+
+.activation-button {
+    min-height: 42px;
+    padding: 0 18px;
+    border: 1px solid var(--activation-navy);
+    border-radius: 10px;
+    background: var(--activation-navy);
+    color: #ffffff;
+    font: inherit;
+    font-size: 0.84rem;
+    font-weight: 800;
+    cursor: pointer;
+}
+
+.activation-button:hover,
+.activation-button:focus-visible {
+    background: #17376d;
+}
+
+.activation-button:disabled {
+    cursor: wait;
+    opacity: 0.65;
+}
+
+.activation-notice-card {
+    max-width: 620px;
+    margin: 12vh auto 0;
+}
+
+.activation-notice-card header {
+    padding: 24px 28px;
+    background: var(--activation-navy);
+    color: #ffffff;
+}
+
+.activation-notice-card p {
+    margin: 9px 0 0;
+    color: #d8e4fa;
+    line-height: 1.45;
+}
+
+.activation-notice-actions {
+    display: flex;
+    gap: 10px;
+    padding: 18px 28px;
+}
+
+.activation-link {
+    display: inline-flex;
+    align-items: center;
+    min-height: 40px;
+    padding: 0 15px;
+    border: 1px solid var(--activation-line);
+    border-radius: 10px;
+    color: var(--activation-navy);
+    font-size: 0.84rem;
+    font-weight: 760;
+    text-decoration: none;
+}
+
+.activation-link.is-primary {
+    border-color: var(--activation-navy);
+    background: var(--activation-navy);
+    color: #ffffff;
+}
+
+@media (max-width: 760px) {
+    .activation-page {
+        width: min(100% - 20px, 1040px);
+        padding: 10px 0;
+    }
+
+    .activation-header,
+    .activation-fields {
+        grid-template-columns: 1fr;
+    }
+
+    .activation-header,
+    .activation-body {
+        padding: 19px;
+    }
+
+    .activation-summary {
+        grid-template-columns: 1fr;
+    }
+
+    .activation-notice-card {
+        margin-top: 36px;
+    }
+
+    .activation-notice-card header,
+    .activation-notice-actions {
+        padding: 20px;
+    }
+}

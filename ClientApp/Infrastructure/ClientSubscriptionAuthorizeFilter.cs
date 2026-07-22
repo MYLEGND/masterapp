@@ -2,6 +2,7 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.Authorization;
 using Microsoft.AspNetCore.Mvc.Filters;
+using Microsoft.Extensions.Hosting;
 using ClientApp.Services;
 
 namespace ClientApp.Infrastructure;
@@ -10,24 +11,34 @@ public sealed class ClientSubscriptionAuthorizeFilter : IAsyncAuthorizationFilte
 {
     private readonly IAuthorizationService _authorizationService;
     private readonly ClientAppReturnUrlNormalizer _returnUrlNormalizer;
+    private readonly IHostEnvironment _environment;
 
     public ClientSubscriptionAuthorizeFilter(
         IAuthorizationService authorizationService,
-        ClientAppReturnUrlNormalizer returnUrlNormalizer)
+        ClientAppReturnUrlNormalizer returnUrlNormalizer,
+        IHostEnvironment environment)
     {
         _authorizationService = authorizationService;
         _returnUrlNormalizer = returnUrlNormalizer;
+        _environment = environment;
     }
 
     public async Task OnAuthorizationAsync(AuthorizationFilterContext context)
     {
-        if (context.Filters.OfType<IAllowAnonymousFilter>().Any())
+        var endpoint = context.HttpContext.GetEndpoint();
+        if (context.Filters.OfType<IAllowAnonymousFilter>().Any() ||
+            endpoint?.Metadata.GetMetadata<IAllowAnonymous>() is not null)
+            return;
+
+        // The local ClientApp profile uses ASPNETCORE_ENVIRONMENT=Development.
+        // Keep the UI testable there without subscription/activation gates; production
+        // and all non-development environments still use the policy below.
+        if (_environment.IsDevelopment())
             return;
 
         if (!(context.HttpContext.User.Identity?.IsAuthenticated ?? false))
             return;
 
-        var endpoint = context.HttpContext.GetEndpoint();
         if (endpoint?.Metadata.GetMetadata<BypassClientSubscriptionRequirementAttribute>() is not null)
             return;
 

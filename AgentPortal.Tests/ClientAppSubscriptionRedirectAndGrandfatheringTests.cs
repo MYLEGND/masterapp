@@ -18,6 +18,7 @@ using Microsoft.AspNetCore.Mvc.Abstractions;
 using Microsoft.AspNetCore.Mvc.Filters;
 using Microsoft.AspNetCore.Routing;
 using Microsoft.AspNetCore.Mvc.ViewFeatures;
+using Microsoft.Extensions.Hosting;
 using Moq;
 using Xunit;
 using ClientAccountController = ClientApp.Controllers.AccountController;
@@ -219,7 +220,7 @@ public sealed class ClientAppSubscriptionRedirectAndGrandfatheringTests
             new ActionContext(requestContext, new RouteData(), new ActionDescriptor()),
             new List<IFilterMetadata>());
 
-        var filter = new ClientSubscriptionAuthorizeFilter(authorization.Object, normalizer);
+        var filter = new ClientSubscriptionAuthorizeFilter(authorization.Object, normalizer, CreateEnvironment());
         await filter.OnAuthorizationAsync(filterContext);
 
         var subscriptionRedirect = Assert.IsType<RedirectToActionResult>(filterContext.Result);
@@ -240,6 +241,57 @@ public sealed class ClientAppSubscriptionRedirectAndGrandfatheringTests
         Assert.InRange(redirectCount, 0, 2);
         Assert.True(firstTarget.Length <= ClientAppReturnUrlNormalizer.MaximumReturnUrlLength);
         Assert.True(secondTarget.Length <= ClientAppReturnUrlNormalizer.MaximumReturnUrlLength);
+    }
+
+    [Fact]
+    public async Task AnonymousActivationEndpoint_IsNeverRedirectedBackToSubscription()
+    {
+        var authorization = new Mock<IAuthorizationService>();
+        var normalizer = new ClientAppReturnUrlNormalizer();
+        var requestContext = CreateAuthenticatedContext("unbound-client");
+        requestContext.Request.Path = "/Account/ActivationRequired";
+        requestContext.SetEndpoint(new Endpoint(
+            _ => Task.CompletedTask,
+            new EndpointMetadataCollection(new AllowAnonymousAttribute()),
+            "ActivationRequired"));
+
+        var filterContext = new AuthorizationFilterContext(
+            new ActionContext(requestContext, new RouteData(), new ActionDescriptor()),
+            new List<IFilterMetadata>());
+
+        var filter = new ClientSubscriptionAuthorizeFilter(authorization.Object, normalizer, CreateEnvironment());
+        await filter.OnAuthorizationAsync(filterContext);
+
+        Assert.Null(filterContext.Result);
+        authorization.Verify(
+            service => service.AuthorizeAsync(
+                It.IsAny<ClaimsPrincipal>(),
+                null!,
+                ClientAppAuthorizationPolicies.ClientSubscriptionActive),
+            Times.Never);
+    }
+
+    [Fact]
+    public async Task DevelopmentEnvironment_DoesNotGateLocalClientAppTestingOnSubscription()
+    {
+        var authorization = new Mock<IAuthorizationService>();
+        var normalizer = new ClientAppReturnUrlNormalizer();
+        var requestContext = CreateAuthenticatedContext("local-test-client");
+        requestContext.Request.Path = "/Home/Index";
+        var filterContext = new AuthorizationFilterContext(
+            new ActionContext(requestContext, new RouteData(), new ActionDescriptor()),
+            new List<IFilterMetadata>());
+
+        var filter = new ClientSubscriptionAuthorizeFilter(authorization.Object, normalizer, CreateEnvironment(Environments.Development));
+        await filter.OnAuthorizationAsync(filterContext);
+
+        Assert.Null(filterContext.Result);
+        authorization.Verify(
+            service => service.AuthorizeAsync(
+                It.IsAny<ClaimsPrincipal>(),
+                null!,
+                ClientAppAuthorizationPolicies.ClientSubscriptionActive),
+            Times.Never);
     }
 
     private static async Task<BillingEntitlementEvaluationResult> EvaluateAsync(MasterAppDbContext db, Guid profileId)
@@ -322,6 +374,13 @@ public sealed class ClientAppSubscriptionRedirectAndGrandfatheringTests
             continuation,
             normalizer);
         return new ClientAppSignInEntryPoint(identityAccess, normalizer);
+    }
+
+    private static IHostEnvironment CreateEnvironment(string environmentName = "Production")
+    {
+        var environment = new Mock<IHostEnvironment>();
+        environment.SetupGet(value => value.EnvironmentName).Returns(environmentName);
+        return environment.Object;
     }
 
     private static DefaultHttpContext CreateAuthenticatedContext(string oid)

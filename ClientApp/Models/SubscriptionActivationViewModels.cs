@@ -77,14 +77,8 @@ public sealed class SubscriptionActivationPaymentInput
 
     public string ReturnUrl { get; set; } = "/profile";
 
-    [Range(typeof(bool), "true", "true", ErrorMessage = "Recurring authorization is required.")]
-    public bool RecurringAuthorizationAccepted { get; set; }
-
-    [Range(typeof(bool), "true", "true", ErrorMessage = "Card-on-file consent is required.")]
-    public bool CardOnFileConsentAccepted { get; set; }
-
-    [Range(typeof(bool), "true", "true", ErrorMessage = "Cancellation terms must be accepted.")]
-    public bool CancellationTermsAccepted { get; set; }
+    [Range(typeof(bool), "true", "true", ErrorMessage = "Authorization is required.")]
+    public bool BillingAuthorizationAccepted { get; set; }
 }
 
 public sealed class SubscriptionActivationNoticeViewModel

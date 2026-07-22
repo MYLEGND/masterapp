@@ -1,56 +1,24 @@
-@model Domain.Entities.ClientProfile
-@using Domain.Entities
+@model ClientApp.Models.EditClientViewModel
 
 @{
-    ViewData["Title"] = "Profile";
+    ViewData["Title"] = "View / Edit Profile";
 
-    var viewMode = (string)(ViewBag.ViewMode ?? "client");
-    viewMode = (viewMode ?? "client").Trim().ToLowerInvariant();
-    var viewingClientName = ((string?)(ViewBag.ViewingClientName) ?? $"{Model.FirstName} {Model.LastName}").Trim();
-
-    var badge = viewMode == "agent" ? "Agent View" : "My Profile";
-
-    var so = ViewBag.SignificantOther as HouseholdMember;
-    var children = (ViewBag.Children as IEnumerable<HouseholdMember>)?
-        .Where(x =>
-            !string.IsNullOrWhiteSpace(x.FirstName) ||
-            !string.IsNullOrWhiteSpace(x.LastName) ||
-            x.DOB.HasValue ||
-            !string.IsNullOrWhiteSpace(x.Email) ||
-            !string.IsNullOrWhiteSpace(x.Phone))
-        .ToList() ?? new List<HouseholdMember>();
-
-    HouseholdMember? soFallback = null;
-
-    string T(string? v) => (v ?? "").Trim();
-
-    var hasSoOnProfile =
-        !string.IsNullOrWhiteSpace(T(Model.SignificantOtherFirstName)) ||
-        !string.IsNullOrWhiteSpace(T(Model.SignificantOtherLastName)) ||
+    var viewMode = ((string?)ViewBag.ViewMode ?? "client").Trim().ToLowerInvariant();
+    var isAgentView = viewMode == "agent";
+    var children = Model.Children ?? new List<ClientApp.Models.HouseholdChildViewModel>();
+    var childCount = children.Count;
+    var dobText = Model.DOB.HasValue ? Model.DOB.Value.ToString("MM/dd/yyyy") : "—";
+    var avatarInitial = !string.IsNullOrWhiteSpace(Model.FirstName)
+        ? Model.FirstName[..1].ToUpperInvariant()
+        : "C";
+    var hasSignificantOther =
+        !string.IsNullOrWhiteSpace(Model.SignificantOtherFirstName) ||
+        !string.IsNullOrWhiteSpace(Model.SignificantOtherLastName) ||
         Model.SignificantOtherDOB.HasValue ||
-        !string.IsNullOrWhiteSpace(T(Model.SignificantOtherEmail)) ||
-        !string.IsNullOrWhiteSpace(T(Model.SignificantOtherPhone));
+        !string.IsNullOrWhiteSpace(Model.SignificantOtherEmail) ||
+        !string.IsNullOrWhiteSpace(Model.SignificantOtherPhone);
 
-    if (so == null && hasSoOnProfile)
-    {
-        soFallback = new HouseholdMember
-        {
-            FirstName = T(Model.SignificantOtherFirstName),
-            LastName = T(Model.SignificantOtherLastName),
-            DOB = Model.SignificantOtherDOB,
-            Email = T(Model.SignificantOtherEmail),
-            Phone = T(Model.SignificantOtherPhone),
-            RelationshipType = "SignificantOther"
-        };
-    }
-
-    var soToShow = so ?? soFallback;
-
-    var needsSO =
-        string.Equals((Model.MaritalStatus ?? "").Trim(), "Married", StringComparison.OrdinalIgnoreCase) ||
-        string.Equals((Model.MaritalStatus ?? "").Trim(), "Domestic Partnership", StringComparison.OrdinalIgnoreCase);
-
-    string DashIfBlank(string? v) => string.IsNullOrWhiteSpace(v) ? "—" : v!;
+    string DashIfBlank(string? value) => string.IsNullOrWhiteSpace(value) ? "—" : value;
 }
 
 @section Styles {
@@ -63,151 +31,342 @@
             <div class="client-create-header">
                 <div>
                     <div class="dashboard-eyebrow">Client Profile</div>
-                    <h2 class="client-create-title">@(viewMode == "agent" ? $"Viewing {Model.FirstName} {Model.LastName}".Trim() : "My Profile")</h2>
-                    <p class="client-create-subtitle">Review the household information currently shared across the client workspace and the agent portal.</p>
+                    <h2 class="client-create-title">@(isAgentView ? $"Viewing {Model.FirstName} {Model.LastName}".Trim() : "View / Edit Profile")</h2>
+                    <p class="client-create-subtitle">@(isAgentView ? "Review the household information shared across the client workspace and the agent portal." : "Update your contact details, household information, and profile picture in one place.")</p>
                 </div>
-                <span class="client-edit-pill">@badge</span>
+                <span class="client-edit-pill">@(isAgentView ? "Agent View" : "My Profile")</span>
             </div>
 
             <div class="client-create-body">
-                @if (viewMode == "agent")
+                @if (isAgentView)
                 {
                     <div class="client-edit-section client-edit-section-compact">
                         <div class="client-edit-section-head">
                             <div>
                                 <div class="client-create-section-title">Agent Impersonation</div>
-                                <p class="client-edit-note">You are viewing the live client experience for @viewingClientName.</p>
+                                <p class="client-edit-note">You are viewing this client’s live profile. Client details remain read-only in agent view.</p>
                             </div>
                             <a class="client-create-button client-create-button-secondary" href="/support/stop-view-as-client">End Impersonation</a>
                         </div>
                     </div>
-                }
 
-                <div class="client-create-section client-create-section-shell">
-                    <div class="client-create-section-head">
-                        <div class="client-create-section-title">Primary Profile</div>
-                        <p class="client-create-section-copy">Core contact and household details from the current client record.</p>
-                    </div>
-                    <div class="client-create-grid">
-                        <div>
-                            <label class="client-create-label">First Name</label>
-                            <input class="client-create-input" value="@DashIfBlank(Model.FirstName)" readonly />
-                        </div>
-                        <div>
-                            <label class="client-create-label">Last Name</label>
-                            <input class="client-create-input" value="@DashIfBlank(Model.LastName)" readonly />
-                        </div>
-                        <div>
-                            <label class="client-create-label">Email</label>
-                            <input class="client-create-input" value="@DashIfBlank(Model.Email)" readonly />
-                        </div>
-                        <div>
-                            <label class="client-create-label">Phone</label>
-                            <input class="client-create-input" value="@DashIfBlank(Model.Phone)" readonly />
-                        </div>
-                        <div>
-                            <label class="client-create-label">Date of Birth</label>
-                            <input class="client-create-input" value="@(Model.DOB.HasValue ? Model.DOB.Value.ToString("MM/dd/yyyy") : "—")" readonly />
-                        </div>
-                        <div>
-                            <label class="client-create-label">Marital Status</label>
-                            <input class="client-create-input" value="@DashIfBlank(Model.MaritalStatus)" readonly />
-                        </div>
-                    </div>
-                </div>
-
-                @if (soToShow != null)
-                {
-                    <div class="client-edit-section client-edit-section-spaced">
-                        <div class="client-edit-section-head">
+                    <div class="client-create-section client-create-section-shell">
+                        <div class="client-create-section-head">
                             <div>
-                                <div class="client-create-section-title">Significant Other</div>
-                                <p class="client-edit-note">Household record connected to this client profile.</p>
+                                <div class="client-create-section-title">Primary Profile</div>
+                                <p class="client-create-section-copy">Core contact and household details from the client record.</p>
                             </div>
-                            <span class="client-edit-pill">@(!string.IsNullOrWhiteSpace(soToShow.RelationshipType) ? soToShow.RelationshipType : "Household")</span>
                         </div>
                         <div class="client-create-grid">
-                            <div>
-                                <label class="client-create-label">First Name</label>
-                                <input class="client-create-input" value="@DashIfBlank(soToShow.FirstName)" readonly />
-                            </div>
-                            <div>
-                                <label class="client-create-label">Last Name</label>
-                                <input class="client-create-input" value="@DashIfBlank(soToShow.LastName)" readonly />
-                            </div>
-                            <div>
-                                <label class="client-create-label">Date of Birth</label>
-                                <input class="client-create-input" value="@(soToShow.DOB.HasValue ? soToShow.DOB.Value.ToString("MM/dd/yyyy") : "—")" readonly />
-                            </div>
-                            <div>
-                                <label class="client-create-label">Phone</label>
-                                <input class="client-create-input" value="@DashIfBlank(soToShow.Phone)" readonly />
-                            </div>
-                            <div class="client-create-full">
-                                <label class="client-create-label">Email</label>
-                                <input class="client-create-input" value="@DashIfBlank(soToShow.Email)" readonly />
-                            </div>
+                            <div><label class="client-create-label">First Name</label><input class="client-create-input" value="@DashIfBlank(Model.FirstName)" readonly /></div>
+                            <div><label class="client-create-label">Last Name</label><input class="client-create-input" value="@DashIfBlank(Model.LastName)" readonly /></div>
+                            <div><label class="client-create-label">Email</label><input class="client-create-input" value="@DashIfBlank(Model.Email)" readonly /></div>
+                            <div><label class="client-create-label">Phone</label><input class="client-create-input" value="@DashIfBlank(Model.Phone)" readonly /></div>
+                            <div><label class="client-create-label">Date of Birth</label><input class="client-create-input" value="@dobText" readonly /></div>
+                            <div><label class="client-create-label">Marital Status</label><input class="client-create-input" value="@DashIfBlank(Model.MaritalStatus)" readonly /></div>
                         </div>
                     </div>
-                }
-                else if (needsSO)
-                {
-                    <div class="client-create-blocked client-edit-section-spaced">
-                        Significant Other is required for this marital status, but no household member is currently on file.
-                    </div>
-                }
 
-                @if (children.Count > 0)
+                    @if (hasSignificantOther)
+                    {
+                        <div class="client-create-section client-create-section-shell client-edit-section-spaced">
+                            <div class="client-edit-section-head">
+                                <div>
+                                    <div class="client-create-section-title">Significant Other</div>
+                                    <p class="client-edit-note">Household record connected to this client profile.</p>
+                                </div>
+                                <span class="client-edit-pill">Household</span>
+                            </div>
+                            <div class="client-create-grid">
+                                <div><label class="client-create-label">First Name</label><input class="client-create-input" value="@DashIfBlank(Model.SignificantOtherFirstName)" readonly /></div>
+                                <div><label class="client-create-label">Last Name</label><input class="client-create-input" value="@DashIfBlank(Model.SignificantOtherLastName)" readonly /></div>
+                                <div><label class="client-create-label">Date of Birth</label><input class="client-create-input" value="@(Model.SignificantOtherDOB.HasValue ? Model.SignificantOtherDOB.Value.ToString("MM/dd/yyyy") : "—")" readonly /></div>
+                                <div><label class="client-create-label">Phone</label><input class="client-create-input" value="@DashIfBlank(Model.SignificantOtherPhone)" readonly /></div>
+                                <div class="client-create-full"><label class="client-create-label">Email</label><input class="client-create-input" value="@DashIfBlank(Model.SignificantOtherEmail)" readonly /></div>
+                            </div>
+                        </div>
+                    }
+
+                    @if (children.Count > 0)
+                    {
+                        <div class="client-create-section client-create-section-shell client-edit-section-spaced">
+                            <div class="client-edit-section-head">
+                                <div>
+                                    <div class="client-create-section-title">Children</div>
+                                    <p class="client-edit-note">Household members currently attached to this client record.</p>
+                                </div>
+                                <span class="client-edit-pill">@children.Count on file</span>
+                            </div>
+                            <div class="client-edit-child-list">
+                                @foreach (var child in children)
+                                {
+                                    <div class="client-edit-child-card">
+                                        <div class="client-edit-child-card-head"><div class="client-edit-child-title">@DashIfBlank($"{child.FirstName} {child.LastName}".Trim())</div></div>
+                                        <div class="client-create-grid">
+                                            <div><label class="client-create-label">Date of Birth</label><input class="client-create-input" value="@(child.DOB.HasValue ? child.DOB.Value.ToString("MM/dd/yyyy") : "—")" readonly /></div>
+                                            <div><label class="client-create-label">Phone</label><input class="client-create-input" value="@DashIfBlank(child.Phone)" readonly /></div>
+                                            <div class="client-create-full"><label class="client-create-label">Email</label><input class="client-create-input" value="@DashIfBlank(child.Email)" readonly /></div>
+                                        </div>
+                                    </div>
+                                }
+                            </div>
+                        </div>
+                    }
+                }
+                else
                 {
-                    <div class="client-edit-section client-edit-section-spaced">
+                    @if (ViewBag.ProfileSaveNotice is string notice)
+                    {
+                        <div class="client-edit-section client-edit-section-compact"><p class="client-edit-note">@notice</p></div>
+                    }
+                    @if (ViewBag.ProfileSaveWarning is string warning)
+                    {
+                        <div class="client-create-blocked">@warning</div>
+                    }
+
+                    <div class="client-create-section client-create-section-shell client-edit-section-spaced">
                         <div class="client-edit-section-head">
                             <div>
-                                <div class="client-create-section-title">Children</div>
-                                <p class="client-edit-note">Household members currently attached to this client record.</p>
+                                <div class="client-create-section-title">Profile Picture</div>
+                                <p class="client-edit-note">Choose the image that appears throughout your client portal and to your agent.</p>
                             </div>
-                            <span class="client-edit-pill">@children.Count on file</span>
                         </div>
 
-                        <div class="client-edit-child-list">
-                            @foreach (var child in children)
-                            {
-                                <div class="client-edit-child-card">
-                                    <div class="client-edit-child-card-head">
-                                        <div class="client-edit-child-title">@DashIfBlank($"{child.FirstName} {child.LastName}".Trim())</div>
+                        <div class="client-profile-avatar-shell">
+                            <div class="client-profile-avatar-preview">
+                                <img id="profileAvatarPreview" src="@Url.Action("Current", "Avatar")" alt="Current profile picture" data-avatar-url="@Url.Action("Current", "Avatar")" onerror="this.hidden=true; this.nextElementSibling.hidden=false;" />
+                                <span class="client-profile-avatar-fallback" hidden>@avatarInitial</span>
+                            </div>
+
+                            <form id="avatarUploadForm" action="/avatar/upload" method="post" enctype="multipart/form-data" class="client-profile-upload-form">
+                                @Html.AntiForgeryToken()
+                                <div class="client-profile-upload-row">
+                                    <div class="client-profile-upload-field">
+                                        <label class="client-create-label is-required" for="photo">Profile Picture</label>
+                                        <input type="file" id="photo" name="photo" class="client-create-input" accept=".png,.jpg,.jpeg,.webp" required />
                                     </div>
-                                    <div class="client-create-grid">
-                                        <div>
-                                            <label class="client-create-label">Date of Birth</label>
-                                            <input class="client-create-input" value="@(child.DOB.HasValue ? child.DOB.Value.ToString("MM/dd/yyyy") : "—")" readonly />
-                                        </div>
-                                        <div>
-                                            <label class="client-create-label">Phone</label>
-                                            <input class="client-create-input" value="@DashIfBlank(child.Phone)" readonly />
-                                        </div>
-                                        <div class="client-create-full">
-                                            <label class="client-create-label">Email</label>
-                                            <input class="client-create-input" value="@DashIfBlank(child.Email)" readonly />
-                                        </div>
-                                    </div>
+                                    <button type="submit" class="client-create-button client-create-button-primary" id="avatarUploadButton">Save Picture</button>
                                 </div>
-                            }
+                                <p class="client-edit-note">PNG, JPG, or WEBP under 3 MB.</p>
+                                <p class="client-edit-note" id="avatarUploadStatus" role="status" aria-live="polite"></p>
+                            </form>
                         </div>
                     </div>
+
+                    <form id="profileForm" action="/profile" method="post" novalidate>
+                        @Html.AntiForgeryToken()
+                        @Html.HiddenFor(model => model.ClientUserId)
+
+                        <div asp-validation-summary="ModelOnly" class="client-create-summary text-danger"></div>
+
+                        <div class="client-create-section client-create-section-shell">
+                            <div class="client-create-section-head">
+                                <div>
+                                    <div class="client-create-section-title">Primary Profile</div>
+                                    <p class="client-create-section-copy">These are the main contact details your agent will use when working your account.</p>
+                                </div>
+                            </div>
+                            <div class="client-create-grid">
+                                <div><label asp-for="FirstName" class="client-create-label is-required"></label><input asp-for="FirstName" class="client-create-input" autocomplete="given-name" /><span asp-validation-for="FirstName" class="client-create-validation"></span></div>
+                                <div><label asp-for="LastName" class="client-create-label is-required"></label><input asp-for="LastName" class="client-create-input" autocomplete="family-name" /><span asp-validation-for="LastName" class="client-create-validation"></span></div>
+                                <div><label asp-for="Email" class="client-create-label is-required"></label><input asp-for="Email" class="client-create-input" autocomplete="email" inputmode="email" /><span asp-validation-for="Email" class="client-create-validation"></span></div>
+                                <div><label asp-for="Phone" class="client-create-label is-required"></label><input asp-for="Phone" class="client-create-input" autocomplete="tel" inputmode="tel" /><span asp-validation-for="Phone" class="client-create-validation"></span></div>
+                                <div>
+                                    <label asp-for="MaritalStatus" class="client-create-label is-required">Marital Status</label>
+                                    <select asp-for="MaritalStatus" class="client-create-input" id="MaritalStatus">
+                                        <option value="">-- Select --</option>
+                                        <option>Single</option>
+                                        <option>Married</option>
+                                        <option>Domestic Partnership</option>
+                                        <option>Divorced</option>
+                                        <option>Widowed</option>
+                                    </select>
+                                    <span asp-validation-for="MaritalStatus" class="client-create-validation"></span>
+                                </div>
+                                <div><label class="client-create-label">Date Of Birth</label><input class="client-create-input" value="@dobText" readonly /><p class="client-edit-note client-edit-note-tight">Contact support to correct your DOB.</p></div>
+                            </div>
+                        </div>
+
+                        <div id="significantOtherSection" class="client-create-section client-create-section-shell client-edit-section-spaced" hidden>
+                            <div class="client-edit-section-head">
+                                <div>
+                                    <div class="client-create-section-title">Spouse Or Significant Other</div>
+                                    <p class="client-edit-note">Required for Married and Domestic Partnership records.</p>
+                                </div>
+                                <span class="client-edit-pill">Household Required</span>
+                            </div>
+                            <div class="client-create-grid">
+                                <div><label asp-for="SignificantOtherFirstName" class="client-create-label" id="SignificantOtherFirstNameLabel">First Name</label><input asp-for="SignificantOtherFirstName" class="client-create-input" id="SignificantOtherFirstName" autocomplete="given-name" /><span asp-validation-for="SignificantOtherFirstName" class="client-create-validation"></span></div>
+                                <div><label asp-for="SignificantOtherLastName" class="client-create-label" id="SignificantOtherLastNameLabel">Last Name</label><input asp-for="SignificantOtherLastName" class="client-create-input" id="SignificantOtherLastName" autocomplete="family-name" /><span asp-validation-for="SignificantOtherLastName" class="client-create-validation"></span></div>
+                                <div><label asp-for="SignificantOtherDOB" class="client-create-label" id="SignificantOtherDOBLabel">Date Of Birth</label><input asp-for="SignificantOtherDOB" type="date" class="client-create-input" id="SignificantOtherDOB" /><span asp-validation-for="SignificantOtherDOB" class="client-create-validation"></span></div>
+                                <div><label asp-for="SignificantOtherPhone" class="client-create-label">Phone</label><input asp-for="SignificantOtherPhone" class="client-create-input" autocomplete="tel" inputmode="tel" /><span asp-validation-for="SignificantOtherPhone" class="client-create-validation"></span></div>
+                                <div class="client-create-full"><label asp-for="SignificantOtherEmail" class="client-create-label">Email</label><input asp-for="SignificantOtherEmail" class="client-create-input" autocomplete="email" inputmode="email" /><span asp-validation-for="SignificantOtherEmail" class="client-create-validation"></span></div>
+                            </div>
+                        </div>
+
+                        <div class="client-create-section client-create-section-shell client-edit-section-spaced">
+                            <div class="client-edit-section-head">
+                                <div>
+                                    <div class="client-create-section-title">Children</div>
+                                    <p class="client-edit-note">Household members shared with your agent.</p>
+                                </div>
+                                <button type="button" class="client-create-button client-create-button-secondary client-edit-button-small" id="addChildBtn">Add Child</button>
+                            </div>
+                            <div class="client-edit-child-list" id="childrenList" data-next-index="@childCount">
+                                @for (var index = 0; index < childCount; index++)
+                                {
+                                    <div class="client-edit-child-card" data-child-row>
+                                        <div class="client-edit-child-card-head"><div class="client-edit-child-title">Child</div><button type="button" class="client-create-button client-create-button-secondary client-edit-button-small" data-remove-child>Remove</button></div>
+                                        <input asp-for="Children[index].Id" type="hidden" data-field="Id" />
+                                        <div class="client-create-grid">
+                                            <div><label asp-for="Children[index].FirstName" class="client-create-label">First Name</label><input asp-for="Children[index].FirstName" class="client-create-input" autocomplete="off" data-field="FirstName" /><span asp-validation-for="Children[index].FirstName" class="client-create-validation" data-valmsg-field="FirstName"></span></div>
+                                            <div><label asp-for="Children[index].LastName" class="client-create-label">Last Name</label><input asp-for="Children[index].LastName" class="client-create-input" autocomplete="off" data-field="LastName" /><span asp-validation-for="Children[index].LastName" class="client-create-validation" data-valmsg-field="LastName"></span></div>
+                                            <div><label asp-for="Children[index].DOB" class="client-create-label">Date Of Birth</label><input asp-for="Children[index].DOB" type="date" class="client-create-input" data-field="DOB" /><span asp-validation-for="Children[index].DOB" class="client-create-validation" data-valmsg-field="DOB"></span></div>
+                                            <div><label asp-for="Children[index].Phone" class="client-create-label">Phone</label><input asp-for="Children[index].Phone" class="client-create-input" autocomplete="tel" inputmode="tel" data-field="Phone" /><span asp-validation-for="Children[index].Phone" class="client-create-validation" data-valmsg-field="Phone"></span></div>
+                                            <div class="client-create-full"><label asp-for="Children[index].Email" class="client-create-label">Email</label><input asp-for="Children[index].Email" class="client-create-input" autocomplete="email" inputmode="email" data-field="Email" /><span asp-validation-for="Children[index].Email" class="client-create-validation" data-valmsg-field="Email"></span></div>
+                                        </div>
+                                    </div>
+                                }
+                            </div>
+                        </div>
+
+                        <div class="client-edit-divider"></div>
+                        <div class="client-create-actions"><button type="submit" class="client-create-button client-create-button-primary">Save Profile</button></div>
+                    </form>
                 }
-
-                <div class="client-edit-divider"></div>
-
-                <div class="client-create-actions">
-                    @if (viewMode == "client")
-                    {
-                        <a class="client-create-button client-create-button-primary" href="/profile/edit">Edit My Profile</a>
-                    }
-                    else
-                    {
-                        <a class="client-create-button client-create-button-secondary" href="javascript:history.back()">Back</a>
-                    }
-                </div>
             </div>
         </div>
     </div>
 </main>
+
+@if (!isAgentView)
+{
+    @section Scripts {
+        @{ await Html.RenderPartialAsync("_ValidationScriptsPartial"); }
+        <script>
+            (() => {
+                const maritalStatus = document.getElementById('MaritalStatus');
+                const soSection = document.getElementById('significantOtherSection');
+                const soFirst = document.getElementById('SignificantOtherFirstName');
+                const soLast = document.getElementById('SignificantOtherLastName');
+                const soDob = document.getElementById('SignificantOtherDOB');
+                const soFirstLabel = document.getElementById('SignificantOtherFirstNameLabel');
+                const soLastLabel = document.getElementById('SignificantOtherLastNameLabel');
+                const soDobLabel = document.getElementById('SignificantOtherDOBLabel');
+                const childrenList = document.getElementById('childrenList');
+                const addChildBtn = document.getElementById('addChildBtn');
+                const profileForm = document.getElementById('profileForm');
+                const avatarForm = document.getElementById('avatarUploadForm');
+                const avatarPreview = document.getElementById('profileAvatarPreview');
+                const avatarButton = document.getElementById('avatarUploadButton');
+                const avatarStatus = document.getElementById('avatarUploadStatus');
+
+                function needsSignificantOther(value) {
+                    const normalized = (value || '').trim().toLowerCase();
+                    return normalized === 'married' || normalized === 'domestic partnership';
+                }
+
+                function setRequiredState(input, label, required) {
+                    if (input) input.required = required;
+                    if (label) label.classList.toggle('is-required', required);
+                }
+
+                function applySignificantOtherState() {
+                    const required = needsSignificantOther(maritalStatus?.value);
+                    if (soSection) soSection.hidden = !required;
+                    setRequiredState(soFirst, soFirstLabel, required);
+                    setRequiredState(soLast, soLastLabel, required);
+                    setRequiredState(soDob, soDobLabel, required);
+                }
+
+                function childTemplate(index) {
+                    return `
+                        <div class="client-edit-child-card" data-child-row>
+                            <div class="client-edit-child-card-head"><div class="client-edit-child-title">Child</div><button type="button" class="client-create-button client-create-button-secondary client-edit-button-small" data-remove-child>Remove</button></div>
+                            <input type="hidden" name="Children[${index}].Id" id="Children_${index}__Id" data-field="Id" />
+                            <div class="client-create-grid">
+                                <div><label class="client-create-label" for="Children_${index}__FirstName">First Name</label><input class="client-create-input" type="text" name="Children[${index}].FirstName" id="Children_${index}__FirstName" autocomplete="off" data-field="FirstName" /><span class="client-create-validation" data-valmsg-for="Children[${index}].FirstName" data-valmsg-replace="true" data-valmsg-field="FirstName"></span></div>
+                                <div><label class="client-create-label" for="Children_${index}__LastName">Last Name</label><input class="client-create-input" type="text" name="Children[${index}].LastName" id="Children_${index}__LastName" autocomplete="off" data-field="LastName" /><span class="client-create-validation" data-valmsg-for="Children[${index}].LastName" data-valmsg-replace="true" data-valmsg-field="LastName"></span></div>
+                                <div><label class="client-create-label" for="Children_${index}__DOB">Date Of Birth</label><input class="client-create-input" type="date" name="Children[${index}].DOB" id="Children_${index}__DOB" data-field="DOB" /><span class="client-create-validation" data-valmsg-for="Children[${index}].DOB" data-valmsg-replace="true" data-valmsg-field="DOB"></span></div>
+                                <div><label class="client-create-label" for="Children_${index}__Phone">Phone</label><input class="client-create-input" type="tel" name="Children[${index}].Phone" id="Children_${index}__Phone" autocomplete="tel" inputmode="tel" data-field="Phone" /><span class="client-create-validation" data-valmsg-for="Children[${index}].Phone" data-valmsg-replace="true" data-valmsg-field="Phone"></span></div>
+                                <div class="client-create-full"><label class="client-create-label" for="Children_${index}__Email">Email</label><input class="client-create-input" type="email" name="Children[${index}].Email" id="Children_${index}__Email" autocomplete="email" inputmode="email" data-field="Email" /><span class="client-create-validation" data-valmsg-for="Children[${index}].Email" data-valmsg-replace="true" data-valmsg-field="Email"></span></div>
+                            </div>
+                        </div>`;
+                }
+
+                function reindexChildren() {
+                    if (!childrenList) return;
+                    childrenList.querySelectorAll('[data-child-row]').forEach((row, index) => {
+                        row.querySelectorAll('[data-field]').forEach((input) => {
+                            const field = input.getAttribute('data-field');
+                            input.name = `Children[${index}].${field}`;
+                            input.id = `Children_${index}__${field}`;
+                        });
+                        row.querySelectorAll('[data-valmsg-field]').forEach((span) => {
+                            const field = span.getAttribute('data-valmsg-field');
+                            span.setAttribute('data-valmsg-for', `Children[${index}].${field}`);
+                        });
+                        row.querySelectorAll('label[for]').forEach((label) => {
+                            const field = label.getAttribute('for')?.split('__').pop() || '';
+                            const target = row.querySelector(`[data-field="${field}"]`);
+                            if (target) label.setAttribute('for', target.id);
+                        });
+                    });
+                    childrenList.dataset.nextIndex = String(childrenList.querySelectorAll('[data-child-row]').length);
+                }
+
+                addChildBtn?.addEventListener('click', () => {
+                    if (!childrenList) return;
+                    const index = Number.parseInt(childrenList.dataset.nextIndex || '0', 10);
+                    childrenList.insertAdjacentHTML('beforeend', childTemplate(Number.isFinite(index) ? index : 0));
+                    reindexChildren();
+                });
+
+                childrenList?.addEventListener('click', (event) => {
+                    const remove = event.target.closest('[data-remove-child]');
+                    if (!remove) return;
+                    remove.closest('[data-child-row]')?.remove();
+                    reindexChildren();
+                });
+
+                avatarForm?.addEventListener('submit', async (event) => {
+                    event.preventDefault();
+                    const originalLabel = avatarButton?.textContent;
+                    if (avatarButton) avatarButton.disabled = true;
+                    if (avatarStatus) avatarStatus.textContent = 'Saving profile picture…';
+
+                    try {
+                        const response = await fetch(avatarForm.action, {
+                            method: 'POST',
+                            body: new FormData(avatarForm),
+                            headers: { Accept: 'application/json' }
+                        });
+                        const payload = await response.json().catch(() => ({}));
+                        if (!response.ok) throw new Error(payload.message || 'We could not save your profile picture. Please try again.');
+
+                        if (avatarPreview?.dataset.avatarUrl) {
+                            avatarPreview.hidden = false;
+                            avatarPreview.src = `${avatarPreview.dataset.avatarUrl}?v=${Date.now()}`;
+                        }
+                        const fallback = avatarPreview?.nextElementSibling;
+                        if (fallback) fallback.hidden = true;
+                        avatarForm.reset();
+                        if (avatarStatus) avatarStatus.textContent = payload.message || 'Profile picture updated.';
+                    } catch (error) {
+                        if (avatarStatus) avatarStatus.textContent = error instanceof Error ? error.message : 'We could not save your profile picture. Please try again.';
+                    } finally {
+                        if (avatarButton) {
+                            avatarButton.disabled = false;
+                            avatarButton.textContent = originalLabel || 'Save Picture';
+                        }
+                    }
+                });
+
+                maritalStatus?.addEventListener('change', applySignificantOtherState);
+                profileForm?.addEventListener('submit', reindexChildren);
+                applySignificantOtherState();
+                reindexChildren();
+            })();
+        </script>
+    }
+}

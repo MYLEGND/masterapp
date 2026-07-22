@@ -61,20 +61,7 @@ namespace ClientApp.Controllers
                 ?? user.Identity?.Name;
         }
 
-        [HttpGet]
-        public IActionResult Edit()
-        {
-            var userId = GetUserId();
-            if (string.IsNullOrWhiteSpace(userId))
-            {
-                return Forbid();
-            }
-
-            ViewBag.AvatarUrl = Url.Action(nameof(Current));
-            return View();
-        }
-
-        [HttpPost]
+        [HttpPost("/avatar/upload")]
         [ValidateAntiForgeryToken]
         public async Task<IActionResult> Upload(IFormFile photo)
         {
@@ -86,21 +73,18 @@ namespace ClientApp.Controllers
 
             if (photo == null || photo.Length == 0)
             {
-                TempData["AvatarError"] = "Please choose an image file.";
-                return RedirectToAction(nameof(Edit));
+                return BadRequest(new { message = "Please choose an image file." });
             }
 
             if (photo.Length > 3 * 1024 * 1024)
             {
-                TempData["AvatarError"] = "Please upload an image under 3 MB.";
-                return RedirectToAction(nameof(Edit));
+                return BadRequest(new { message = "Please upload an image under 3 MB." });
             }
 
             var allowed = new[] { "image/png", "image/jpeg", "image/jpg", "image/webp" };
             if (!allowed.Contains(photo.ContentType))
             {
-                TempData["AvatarError"] = "Only PNG, JPG, or WEBP images are allowed.";
-                return RedirectToAction(nameof(Edit));
+                return BadRequest(new { message = "Only PNG, JPG, or WEBP images are allowed." });
             }
 
             var ext = Path.GetExtension(photo.FileName);
@@ -127,8 +111,7 @@ namespace ClientApp.Controllers
                 await photo.CopyToAsync(stream);
             }
 
-            TempData["AvatarSuccess"] = "Profile picture updated.";
-            return RedirectToAction(nameof(Edit));
+            return Ok(new { message = "Profile picture updated." });
         }
 
         [HttpGet("avatar/current")]

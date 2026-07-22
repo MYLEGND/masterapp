@@ -592,9 +592,7 @@ public class ClientAppSubscriptionActivationTests
             SourceId = "cnon:card-nonce-ok",
             CardholderName = "Test Client",
             ReturnUrl = "/profile",
-            RecurringAuthorizationAccepted = true,
-            CardOnFileConsentAccepted = true,
-            CancellationTermsAccepted = true
+            BillingAuthorizationAccepted = true
         };
     }
 
