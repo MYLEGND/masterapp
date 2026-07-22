@@ -1,6 +1,6 @@
 @model ClientApp.Models.SubscriptionActivationPageViewModel
 @{
-    ViewData["Title"] = "Activate Subscription";
+    ViewData["Title"] = "Activate Legend Client Portal";
     Layout = null;
     var squareScriptUrl = string.Equals(Model.SquareEnvironment, "Production", StringComparison.OrdinalIgnoreCase)
         ? "https://web.squarecdn.com/v1/square.js"
@@ -12,188 +12,126 @@
 <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Activate Legend Client Portal - Legend™</title>
-    <link rel="stylesheet" href="~/_content/Shared/css/dashboard-home-shared.css" asp-append-version="true" />
+    <title>@ViewData["Title"] - Legend™</title>
+    <link rel="stylesheet" href="~/css/subscription-activation.css" asp-append-version="true" />
 </head>
 <body class="subscription-activation-standalone">
-    <main class="dashboard-page-shell client-create-page subscription-activation-shell"
+    <main class="activation-page"
           data-subscription-activation
           data-prepare-url="@Url.Action("Prepare", "SubscriptionActivation", new { token = Model.Token })"
           data-square-app-id="@Model.SquareApplicationId"
           data-square-location-id="@Model.SquareLocationId">
-        <section class="dashboard-command-center-panel home-hero-panel">
-            <div class="dashboard-command-center-top home-hero-top">
-                <div class="dashboard-hero-copy">
-                    <div class="dashboard-eyebrow">Legend Client Portal</div>
-                    <h1 class="dashboard-hero-title">Finish setting up your Legend Client Portal access</h1>
-                    <p class="dashboard-analytics-copy">Confirm the first charge, store the recurring payment method, and then continue directly into secure client sign-in.</p>
+        <section class="activation-card">
+            <header class="activation-header">
+                <div>
+                    <p class="activation-brand">Legend Client Portal</p>
+                    <h1>Activate your access</h1>
+                    <p class="activation-client">@Model.ClientName · @Model.ClientEmail</p>
                 </div>
-                <div class="home-hero-summary" aria-label="Subscription activation summary">
-                    <div class="dashboard-stat-card is-primary">
-                        <div class="dashboard-stat-label">First Charge</div>
-                        <div class="home-hero-stat-title" data-first-charge>@Model.FirstChargeDateDisplay</div>
+                <div class="activation-summary" aria-label="Subscription summary">
+                    <div class="activation-summary-item">
+                        <span class="activation-summary-label">Monthly</span>
+                        <span class="activation-summary-value">@Model.MonthlyAmountDisplay</span>
                     </div>
-                    <div class="dashboard-stat-card">
-                        <div class="dashboard-stat-label">Recurring Day</div>
-                        <div class="home-hero-stat-title" data-anchor-label>@Model.BillingAnchorLabel</div>
+                    <div class="activation-summary-item">
+                        <span class="activation-summary-label">First charge</span>
+                        <span class="activation-summary-value" data-first-charge>@Model.FirstChargeDateDisplay</span>
                     </div>
-                    <div class="dashboard-stat-card">
-                        <div class="dashboard-stat-label">First Renewal</div>
-                        <div class="home-hero-stat-title" data-first-renewal>@Model.FirstRecurringRenewalDateDisplay</div>
-                    </div>
-                </div>
-            </div>
-        </section>
-
-        <div class="subscription-activation-grid">
-            <section class="client-create-panel">
-                <div class="client-create-header">
-                    <div>
-                        <div class="dashboard-eyebrow">Subscription Summary</div>
-                        <h2 class="client-create-title">@Model.ClientName</h2>
-                        <p class="client-create-subtitle">This activation is attached to <strong>@Model.ClientEmail</strong>. Your first payment runs today, and the monthly renewal follows the authoritative billing schedule below.</p>
+                    <div class="activation-summary-item">
+                        <span class="activation-summary-label">Renews</span>
+                        <span class="activation-summary-value" data-anchor-label>@Model.BillingAnchorLabel</span>
                     </div>
                 </div>
-                <div class="client-create-body">
-                    <dl class="subscription-activation-summary">
-                        <div class="subscription-activation-summary-row">
-                            <dt>Monthly Amount</dt>
-                            <dd>@Model.MonthlyAmountDisplay</dd>
-                        </div>
-                        <div class="subscription-activation-summary-row">
-                            <dt>First Charge</dt>
-                            <dd>@Model.FirstChargeDateDisplay</dd>
-                        </div>
-                        <div class="subscription-activation-summary-row">
-                            <dt>First Renewal</dt>
-                            <dd>@Model.FirstRecurringRenewalDateDisplay</dd>
-                        </div>
-                        <div class="subscription-activation-summary-row">
-                            <dt>Billing Anchor</dt>
-                            <dd>@Model.BillingAnchorLabel</dd>
-                        </div>
-                        <div class="subscription-activation-summary-row">
-                            <dt>Billing Timezone</dt>
-                            <dd>@Model.BillingTimeZoneLabel</dd>
-                        </div>
-                    </dl>
+            </header>
 
-                </div>
-            </section>
+            <div class="activation-body">
+                @if (!string.IsNullOrWhiteSpace(Model.ErrorMessage))
+                {
+                    <div class="activation-alert">@Model.ErrorMessage</div>
+                }
 
-            <section class="client-create-panel">
-                <div class="client-create-header">
-                    <div>
-                        <div class="dashboard-eyebrow">Payment And Consent</div>
-                        <h2 class="client-create-title">Add your billing method</h2>
-                        <p class="client-create-subtitle">Use the same address you want attached to the recurring payment profile. After the first charge succeeds, we’ll send you directly into sign-in.</p>
-                    </div>
-                </div>
-                <div class="client-create-body">
-                    @if (!string.IsNullOrWhiteSpace(Model.ErrorMessage))
-                    {
-                        <div class="client-create-blocked subscription-activation-alert">@Model.ErrorMessage</div>
-                    }
+                @if (!Model.BrowserPaymentReady)
+                {
+                    <div class="activation-alert">@Model.BrowserPaymentSetupMessage</div>
+                }
+                else
+                {
+                    <form asp-action="PaymentMethod" asp-route-token="@Model.Token" method="post" id="activationPaymentForm" novalidate>
+                        @Html.AntiForgeryToken()
+                        <input type="hidden" name="ReturnUrl" value="@Model.ReturnUrl" />
+                        <input type="hidden" name="SourceId" id="activationSourceId" />
 
-                    @if (!Model.BrowserPaymentReady)
-                    {
-                        <div class="client-create-blocked subscription-activation-alert">@Model.BrowserPaymentSetupMessage</div>
-                    }
-                    else
-                    {
-                        <form asp-action="PaymentMethod" asp-route-token="@Model.Token" method="post" id="activationPaymentForm" novalidate>
-                            @Html.AntiForgeryToken()
-                            <input type="hidden" name="ReturnUrl" value="@Model.ReturnUrl" />
-                            <input type="hidden" name="SourceId" id="activationSourceId" />
+                        <div asp-validation-summary="ModelOnly" class="activation-validation"></div>
+                        <h2 class="activation-form-title">Payment details</h2>
 
-                            <div asp-validation-summary="ModelOnly" class="client-create-summary"></div>
-
-                            <div class="client-create-grid">
-                                @if (Model.AllowClientAnchorSelection)
-                                {
-                                    <div class="client-create-full">
-                                        <label class="client-create-label is-required" for="billingAnchorDaySelect">Recurring Billing Day</label>
-                                        <select class="client-create-input" name="BillingAnchorDay" id="billingAnchorDaySelect" required>
-                                            @foreach (var option in Model.AnchorOptions)
-                                            {
-                                                <option value="@option.Day" selected="@(option.Selected ? "selected" : null)">@option.Label</option>
-                                            }
-                                        </select>
-                                    </div>
-                                }
-                                else if (Model.SelectedBillingAnchorDay.HasValue)
-                                {
-                                    <input type="hidden" name="BillingAnchorDay" value="@Model.SelectedBillingAnchorDay" />
-                                }
-
-                                <div class="client-create-full">
-                                    <label class="client-create-label is-required" for="cardholderName">Cardholder Name</label>
-                                    <input class="client-create-input" id="cardholderName" name="CardholderName" placeholder="Name on card" required />
-                                </div>
-
-                                <div class="client-create-full">
-                                    <label class="client-create-label is-required" for="billingAddressLine1">Billing Address</label>
-                                    <input class="client-create-input" id="billingAddressLine1" name="BillingAddressLine1" autocomplete="address-line1" placeholder="Street address" required />
-                                </div>
-
-                                <div class="client-create-full">
-                                    <label class="client-create-label" for="billingAddressLine2">Address Line 2</label>
-                                    <input class="client-create-input" id="billingAddressLine2" name="BillingAddressLine2" autocomplete="address-line2" placeholder="Apartment, suite, or unit" />
-                                </div>
-
-                                <div>
-                                    <label class="client-create-label is-required" for="billingCity">City</label>
-                                    <input class="client-create-input" id="billingCity" name="BillingCity" autocomplete="address-level2" placeholder="City" required />
-                                </div>
-
-                                <div>
-                                    <label class="client-create-label is-required" for="billingState">State</label>
-                                    <input class="client-create-input" id="billingState" name="BillingState" autocomplete="address-level1" placeholder="State" required />
-                                </div>
-
-                                <div>
-                                    <label class="client-create-label is-required" for="billingPostalCode">ZIP Code</label>
-                                    <input class="client-create-input" id="billingPostalCode" name="BillingPostalCode" autocomplete="postal-code" placeholder="ZIP code" required />
-                                </div>
-
-                                <div>
-                                    <label class="client-create-label is-required" for="billingCountryCode">Country</label>
-                                    <select class="client-create-input" id="billingCountryCode" name="BillingCountryCode" autocomplete="country-name" required>
-                                        <option value="US" selected>United States</option>
+                        <div class="activation-fields">
+                            @if (Model.AllowClientAnchorSelection)
+                            {
+                                <div class="activation-field is-wide">
+                                    <label for="billingAnchorDaySelect">Billing day <span>*</span></label>
+                                    <select name="BillingAnchorDay" id="billingAnchorDaySelect" required>
+                                        @foreach (var option in Model.AnchorOptions)
+                                        {
+                                            <option value="@option.Day" selected="@(option.Selected ? "selected" : null)">@option.Label</option>
+                                        }
                                     </select>
                                 </div>
+                            }
+                            else if (Model.SelectedBillingAnchorDay.HasValue)
+                            {
+                                <input type="hidden" name="BillingAnchorDay" value="@Model.SelectedBillingAnchorDay" />
+                            }
 
-                                <div class="client-create-full">
-                                    <label class="client-create-label is-required">Card Details</label>
-                                    <div id="square-card" class="client-create-input subscription-activation-card-surface"></div>
-                                </div>
+                            <div class="activation-field">
+                                <label for="cardholderName">Name on card <span>*</span></label>
+                                <input id="cardholderName" name="CardholderName" autocomplete="cc-name" required />
                             </div>
-
-                            <div id="activationMessage" class="client-create-summary subscription-activation-alert" role="alert"></div>
-
-                            <div class="subscription-activation-consents">
-                                <label class="subscription-activation-checkbox" for="recurringAuthorizationAccepted">
-                                    <input type="checkbox" id="recurringAuthorizationAccepted" name="RecurringAuthorizationAccepted" value="true" required />
-                                    <span>I authorize the first charge today and recurring monthly billing under the subscription terms above.</span>
-                                </label>
-                                <label class="subscription-activation-checkbox" for="cardOnFileConsentAccepted">
-                                    <input type="checkbox" id="cardOnFileConsentAccepted" name="CardOnFileConsentAccepted" value="true" required />
-                                    <span>I consent to storing this payment method on file for future subscription renewals.</span>
-                                </label>
-                                <label class="subscription-activation-checkbox" for="cancellationTermsAccepted">
-                                    <input type="checkbox" id="cancellationTermsAccepted" name="CancellationTermsAccepted" value="true" required />
-                                    <span>I understand that cancellation is managed after sign-in and may apply at the end of the current billing period.</span>
-                                </label>
+                            <div class="activation-field">
+                                <label for="billingPostalCode">ZIP code <span>*</span></label>
+                                <input id="billingPostalCode" name="BillingPostalCode" autocomplete="postal-code" required />
                             </div>
-
-                            <div class="subscription-activation-actions">
-                                <button type="submit" class="client-create-button client-create-button-primary" id="activationSubmitButton">Activate Subscription</button>
+                            <div class="activation-field is-wide">
+                                <label for="billingAddressLine1">Street address <span>*</span></label>
+                                <input id="billingAddressLine1" name="BillingAddressLine1" autocomplete="address-line1" required />
                             </div>
-                        </form>
-                    }
-                </div>
-            </section>
-        </div>
+                            <div class="activation-field">
+                                <label for="billingCity">City <span>*</span></label>
+                                <input id="billingCity" name="BillingCity" autocomplete="address-level2" required />
+                            </div>
+                            <div class="activation-field">
+                                <label for="billingState">State <span>*</span></label>
+                                <input id="billingState" name="BillingState" autocomplete="address-level1" required />
+                            </div>
+                            <div class="activation-field">
+                                <label for="billingAddressLine2">Apartment or suite</label>
+                                <input id="billingAddressLine2" name="BillingAddressLine2" autocomplete="address-line2" />
+                            </div>
+                            <div class="activation-field">
+                                <label for="billingCountryCode">Country <span>*</span></label>
+                                <select id="billingCountryCode" name="BillingCountryCode" autocomplete="country-name" required>
+                                    <option value="US" selected>United States</option>
+                                </select>
+                            </div>
+                            <div class="activation-field is-wide">
+                                <label>Card details <span>*</span></label>
+                                <div id="square-card" class="activation-card-surface"></div>
+                            </div>
+                        </div>
+
+                        <div id="activationMessage" class="activation-alert" role="alert" hidden></div>
+
+                        <label class="activation-authorization" for="billingAuthorizationAccepted">
+                            <input type="checkbox" id="billingAuthorizationAccepted" name="BillingAuthorizationAccepted" value="true" required />
+                            <span id="activationAuthorizationCopy" data-monthly-amount="@Model.MonthlyAmountDisplay">I authorize today’s @Model.MonthlyAmountDisplay charge and recurring monthly billing on @Model.BillingAnchorLabel, including saving this card for future payments; cancellations can be requested after sign-in.</span>
+                        </label>
+
+                        <div class="activation-actions">
+                            <button type="submit" class="activation-button" id="activationSubmitButton">Activate access</button>
+                        </div>
+                    </form>
+                }
+            </div>
+        </section>
     </main>
 
     @if (Model.BrowserPaymentReady)

@@ -10,23 +10,19 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>@ViewData["Title"] - Legend™</title>
-    <link rel="stylesheet" href="~/_content/Shared/css/dashboard-home-shared.css" asp-append-version="true" />
+    <link rel="stylesheet" href="~/css/subscription-activation.css" asp-append-version="true" />
 </head>
 <body class="subscription-activation-standalone">
-    <main class="dashboard-page-shell client-create-page subscription-activation-shell">
-        <section class="client-create-panel">
-            <div class="client-create-header">
-                <div>
-                    <div class="dashboard-eyebrow">Activation Notice</div>
-                    <h1 class="client-create-title">@Model.Title</h1>
-                    <p class="client-create-subtitle">@Model.Message</p>
-                </div>
-            </div>
-            <div class="client-create-body">
-                <div class="subscription-activation-actions">
-                    <a class="client-create-button client-create-button-primary" href="@Url.Action("Login", "Account", new { returnUrl = Model.ReturnUrl })">Open Client Sign-In</a>
-                    <a class="client-create-button client-create-button-secondary" href="@Model.ReturnUrl">Return</a>
-                </div>
+    <main class="activation-page">
+        <section class="activation-notice-card">
+            <header>
+                <p class="activation-brand">Legend Client Portal</p>
+                <h1>@Model.Title</h1>
+                <p>@Model.Message</p>
+            </header>
+            <div class="activation-notice-actions">
+                <a class="activation-link is-primary" href="@Url.Action("Login", "Account", new { returnUrl = Model.ReturnUrl })">Open client sign-in</a>
+                <a class="activation-link" href="@Model.ReturnUrl">Return</a>
             </div>
         </section>
     </main>
