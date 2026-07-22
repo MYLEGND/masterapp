@@ -24,15 +24,18 @@ public sealed class ClientIdentityAccessService
     private readonly MasterAppDbContext _db;
     private readonly IBillingEntitlementService _entitlementService;
     private readonly ClientIdentityContinuationService _continuationService;
+    private readonly ClientAppReturnUrlNormalizer _returnUrlNormalizer;
 
     public ClientIdentityAccessService(
         MasterAppDbContext db,
         IBillingEntitlementService entitlementService,
-        ClientIdentityContinuationService continuationService)
+        ClientIdentityContinuationService continuationService,
+        ClientAppReturnUrlNormalizer returnUrlNormalizer)
     {
         _db = db;
         _entitlementService = entitlementService;
         _continuationService = continuationService;
+        _returnUrlNormalizer = returnUrlNormalizer;
     }
 
     public static bool IsSupportReturnUrl(string? returnUrl)
@@ -63,7 +66,7 @@ public sealed class ClientIdentityAccessService
     public async Task<ClientSignInPreparationResult> PrepareClientSignInAsync(string email, string returnUrl, CancellationToken cancellationToken = default)
     {
         var normalizedEmail = NormalizeEmail(email);
-        var safeReturnUrl = NormalizeReturnUrl(returnUrl);
+        var safeReturnUrl = _returnUrlNormalizer.Normalize(returnUrl);
 
         if (string.IsNullOrWhiteSpace(normalizedEmail))
             return new ClientSignInPreparationResult(false, "EMAIL_REQUIRED", "Enter the email address on the client invitation to continue.", safeReturnUrl);
@@ -103,7 +106,7 @@ public sealed class ClientIdentityAccessService
 
     public async Task<ClientSignInCompletionResult> CompleteClientSignInAsync(HttpContext httpContext, ClaimsPrincipal principal, string? fallbackReturnUrl = null, CancellationToken cancellationToken = default)
     {
-        var safeFallbackReturnUrl = NormalizeReturnUrl(fallbackReturnUrl);
+        var safeFallbackReturnUrl = _returnUrlNormalizer.Normalize(fallbackReturnUrl);
         var continuationValidation = await _continuationService.ValidateCookieAsync(httpContext.Request, cancellationToken);
         if (!continuationValidation.Success)
         {
@@ -196,10 +199,4 @@ public sealed class ClientIdentityAccessService
     private static string NormalizeId(string? value) =>
         string.IsNullOrWhiteSpace(value) ? string.Empty : value.Trim().ToLowerInvariant();
 
-    private static string NormalizeReturnUrl(string? returnUrl) =>
-        !string.IsNullOrWhiteSpace(returnUrl) &&
-        returnUrl.StartsWith("/", StringComparison.Ordinal) &&
-        Uri.IsWellFormedUriString(returnUrl, UriKind.Relative)
-            ? returnUrl
-            : "/";
 }

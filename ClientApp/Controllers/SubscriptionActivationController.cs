@@ -12,13 +12,16 @@ public sealed class SubscriptionActivationController : Controller
 {
     private readonly SubscriptionActivationService _activationService;
     private readonly ClientIdentityContinuationService _continuationService;
+    private readonly ClientAppReturnUrlNormalizer _returnUrlNormalizer;
 
     public SubscriptionActivationController(
         SubscriptionActivationService activationService,
-        ClientIdentityContinuationService continuationService)
+        ClientIdentityContinuationService continuationService,
+        ClientAppReturnUrlNormalizer returnUrlNormalizer)
     {
         _activationService = activationService;
         _continuationService = continuationService;
+        _returnUrlNormalizer = returnUrlNormalizer;
     }
 
     [HttpGet("/activate/{token}")]
@@ -66,7 +69,7 @@ public sealed class SubscriptionActivationController : Controller
             activation.ProtectedContinuationState,
             activation.ContinuationExpiresUtc ?? DateTime.UtcNow.AddMinutes(20));
 
-        return RedirectToAction("AzureLogin", "Account", new { returnUrl = NormalizeReturnUrl(input.ReturnUrl) });
+        return RedirectToAction("AzureLogin", "Account", new { returnUrl = _returnUrlNormalizer.Normalize(input.ReturnUrl) });
     }
 
     [HttpGet("/activate/{token}/status")]
@@ -94,12 +97,12 @@ public sealed class SubscriptionActivationController : Controller
             {
                 Title = "Continuation Unavailable",
                 Message = validation.SanitizedMessage ?? "This activation continuation is no longer available. Use the client sign-in page instead.",
-                ReturnUrl = NormalizeReturnUrl(returnUrl)
+                ReturnUrl = _returnUrlNormalizer.Normalize(returnUrl)
             });
         }
 
         _continuationService.StoreCookie(Response, protectedContinuationState, validation.Continuation.ExpiresUtc);
-        return RedirectToAction("AzureLogin", "Account", new { returnUrl = NormalizeReturnUrl(returnUrl) });
+        return RedirectToAction("AzureLogin", "Account", new { returnUrl = _returnUrlNormalizer.Normalize(returnUrl) });
     }
 
     private IActionResult RenderContext(string token, string returnUrl, SubscriptionActivationContextResult context, string? messageOverride = null)
@@ -113,7 +116,7 @@ public sealed class SubscriptionActivationController : Controller
                 {
                     Title = "Activation Link Expired",
                     Message = messageOverride ?? context.Message ?? "This activation link expired. Contact your agent for a fresh invitation.",
-                    ReturnUrl = NormalizeReturnUrl(returnUrl)
+                    ReturnUrl = _returnUrlNormalizer.Normalize(returnUrl)
                 }),
             _ =>
                 View("Unavailable", new SubscriptionActivationNoticeViewModel
@@ -122,17 +125,9 @@ public sealed class SubscriptionActivationController : Controller
                         ? "Already Activated"
                         : "Activation Unavailable",
                     Message = messageOverride ?? context.Message ?? "This activation flow is not available.",
-                    ReturnUrl = NormalizeReturnUrl(returnUrl)
+                    ReturnUrl = _returnUrlNormalizer.Normalize(returnUrl)
                 })
         };
     }
 
-    private static string NormalizeReturnUrl(string? returnUrl)
-    {
-        return !string.IsNullOrWhiteSpace(returnUrl) &&
-               returnUrl.StartsWith("/", StringComparison.Ordinal) &&
-               Uri.IsWellFormedUriString(returnUrl, UriKind.Relative)
-            ? returnUrl
-            : "/profile";
-    }
 }

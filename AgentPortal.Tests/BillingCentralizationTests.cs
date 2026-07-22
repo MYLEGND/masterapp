@@ -1116,7 +1116,7 @@ public sealed class BillingCentralizationTests
         return new BillingEntitlementService(db, new ClientSubscriptionActivationPolicyOptions
         {
             BusinessTimeZoneId = "America/Phoenix",
-            SubscriptionRequiredForProfilesCreatedOnOrAfterLocalDate = new DateOnly(2026, 7, 22)
+            SubscriptionRequiredForProfilesCreatedOnOrAfterUtc = new DateTime(2026, 7, 22, 0, 0, 0, DateTimeKind.Utc)
         });
     }
 

@@ -36,10 +36,12 @@ builder.Services.AddControllersWithViews(options =>
 builder.Services.AddHttpContextAccessor();
 builder.Services.AddMasterAppBilling(builder.Configuration);
 builder.Services.AddScoped<EffectiveClientContextService>();
+builder.Services.AddSingleton<ClientAppReturnUrlNormalizer>();
 builder.Services.AddScoped<IAzureClientEmailSyncService, AzureClientEmailSyncService>();
 builder.Services.AddScoped<IAzureUserUpdater, AzureUserUpdaterAdapter>();
 builder.Services.AddScoped<ClientIdentityContinuationService>();
 builder.Services.AddScoped<ClientIdentityAccessService>();
+builder.Services.AddScoped<ClientAppSignInEntryPoint>();
 builder.Services.AddScoped<SubscriptionActivationService>();
 builder.Services.AddScoped<ClientSubscriptionAuthorizeFilter>();
 builder.Services.AddScoped<IAuthorizationHandler, ClientSubscriptionActiveHandler>();
@@ -238,15 +240,6 @@ if (string.IsNullOrWhiteSpace(clientSecret))
     );
 }
 
-static string NormalizeOidcReturnUrl(string? value)
-{
-    return !string.IsNullOrWhiteSpace(value) &&
-           value.StartsWith("/", StringComparison.Ordinal) &&
-           Uri.IsWellFormedUriString(value, UriKind.Relative)
-        ? value
-        : "/";
-}
-
 static bool IsExpiredOidcGrant(string? error, string? description)
 {
     if (string.Equals(error, "invalid_grant", StringComparison.OrdinalIgnoreCase))
@@ -362,7 +355,9 @@ builder.Services.AddAuthentication(options =>
             if (!IsExpiredOidcGrant(error, description) && !IsCorrelationFailure(description))
                 return;
 
-            var returnUrl = NormalizeOidcReturnUrl(ctx.Properties?.RedirectUri);
+            var returnUrl = ctx.HttpContext.RequestServices
+                .GetRequiredService<ClientAppReturnUrlNormalizer>()
+                .Normalize(ctx.Properties?.RedirectUri);
             var loginUrl = $"{ctx.Request.PathBase}/Account/AzureLogin?returnUrl={Uri.EscapeDataString(returnUrl)}";
 
             OidcTransientCookieCleanup.Clear(ctx.HttpContext, callbackPath);
@@ -375,15 +370,16 @@ builder.Services.AddAuthentication(options =>
 
 builder.Services.Configure<CookieAuthenticationOptions>(CookieAuthenticationDefaults.AuthenticationScheme, options =>
 {
-    options.Events.OnRedirectToLogin = ctx =>
+    options.Events.OnRedirectToLogin = async ctx =>
     {
         if (ctx.Request.Headers["X-Requested-With"] == "XMLHttpRequest")
         {
             ctx.Response.StatusCode = StatusCodes.Status401Unauthorized;
-            return Task.CompletedTask;
+            return;
         }
-        ctx.Response.Redirect(ctx.RedirectUri);
-        return Task.CompletedTask;
+
+        var signInEntryPoint = ctx.HttpContext.RequestServices.GetRequiredService<ClientAppSignInEntryPoint>();
+        ctx.Response.Redirect(await signInEntryPoint.ResolveAsync(ctx.HttpContext, ctx.HttpContext.RequestAborted));
     };
 
     options.Events.OnRedirectToAccessDenied = ctx =>
@@ -412,6 +408,7 @@ builder.Services.AddAuthorization(options =>
 async Task CompleteClientSignInAsync(TokenValidatedContext context)
 {
     var identityAccess = context.HttpContext.RequestServices.GetRequiredService<ClientIdentityAccessService>();
+    var returnUrlNormalizer = context.HttpContext.RequestServices.GetRequiredService<ClientAppReturnUrlNormalizer>();
     var completion = await identityAccess.CompleteClientSignInAsync(
         context.HttpContext,
         context.Principal!,
@@ -420,7 +417,7 @@ async Task CompleteClientSignInAsync(TokenValidatedContext context)
 
     if (completion.Success)
     {
-        context.Properties!.RedirectUri = completion.ReturnUrl;
+        context.Properties!.RedirectUri = returnUrlNormalizer.Normalize(completion.ReturnUrl);
         return;
     }
 
@@ -429,7 +426,7 @@ async Task CompleteClientSignInAsync(TokenValidatedContext context)
     await context.HttpContext.SignOutAsync(CookieAuthenticationDefaults.AuthenticationScheme);
     context.HandleResponse();
     context.Response.Redirect(
-        $"/Account/ActivationRequired?returnUrl={Uri.EscapeDataString(completion.ReturnUrl)}&message={Uri.EscapeDataString(completion.SanitizedMessage ?? "The client sign-in could not be completed.")}");
+        $"/Account/ActivationRequired?returnUrl={Uri.EscapeDataString(returnUrlNormalizer.Normalize(completion.ReturnUrl))}&message={Uri.EscapeDataString(completion.SanitizedMessage ?? "The client sign-in could not be completed.")}");
 }
 
 var app = builder.Build();

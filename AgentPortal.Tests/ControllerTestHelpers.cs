@@ -114,7 +114,7 @@ internal static class ControllerTestHelpers
         billingOrchestrator ??= Mock.Of<IBillingOrchestrator>();
         emailSender ??= Mock.Of<IEmailSender>();
         var clientBillingWorkspaceService = new ClientBillingWorkspaceService(db);
-        var subscriptionInvitationEmailService = new ClientSubscriptionInvitationEmailService(config, emailSender);
+        var subscriptionInvitationEmailService = new ClientSubscriptionInvitationEmailService(db, config, emailSender);
         var prod = new ProductionService(db, NullLogger<ProductionService>.Instance);
         var accessor = new HttpContextAccessor { HttpContext = new DefaultHttpContext { User = user } };
         var tracking = Mock.Of<IAgentTrackingService>();

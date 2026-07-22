@@ -2,16 +2,21 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.Authorization;
 using Microsoft.AspNetCore.Mvc.Filters;
+using ClientApp.Services;
 
 namespace ClientApp.Infrastructure;
 
 public sealed class ClientSubscriptionAuthorizeFilter : IAsyncAuthorizationFilter
 {
     private readonly IAuthorizationService _authorizationService;
+    private readonly ClientAppReturnUrlNormalizer _returnUrlNormalizer;
 
-    public ClientSubscriptionAuthorizeFilter(IAuthorizationService authorizationService)
+    public ClientSubscriptionAuthorizeFilter(
+        IAuthorizationService authorizationService,
+        ClientAppReturnUrlNormalizer returnUrlNormalizer)
     {
         _authorizationService = authorizationService;
+        _returnUrlNormalizer = returnUrlNormalizer;
     }
 
     public async Task OnAuthorizationAsync(AuthorizationFilterContext context)
@@ -40,7 +45,8 @@ public sealed class ClientSubscriptionAuthorizeFilter : IAsyncAuthorizationFilte
             return;
         }
 
-        var returnUrl = $"{context.HttpContext.Request.Path}{context.HttpContext.Request.QueryString}";
+        var returnUrl = _returnUrlNormalizer.Normalize(
+            $"{context.HttpContext.Request.Path}{context.HttpContext.Request.QueryString}");
         context.Result = new RedirectToActionResult("Index", "Subscription", new { returnUrl });
     }
 

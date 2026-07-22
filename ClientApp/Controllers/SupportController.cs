@@ -5,6 +5,7 @@ using Infrastructure.Data;
 using Shared.Auth;
 using System.Linq;
 using System.Security.Claims;
+using ClientApp.Services;
 
 namespace ClientApp.Controllers;
 
@@ -15,10 +16,12 @@ public class SupportController : Controller
     private const string SelfClientCookieName = "selfClientProfileId";
     private const string ImpersonationLaunchCookieName = "impClientLaunch";
     private readonly MasterAppDbContext _db;
+    private readonly ClientAppReturnUrlNormalizer _returnUrlNormalizer;
 
-    public SupportController(MasterAppDbContext db)
+    public SupportController(MasterAppDbContext db, ClientAppReturnUrlNormalizer returnUrlNormalizer)
     {
         _db = db;
+        _returnUrlNormalizer = returnUrlNormalizer;
     }
 
     private string GetUpn()
@@ -53,30 +56,28 @@ public class SupportController : Controller
         "/training"
     };
 
-    private static string NormalizeReturnUrl(string? raw)
+    private string NormalizeSupportReturnUrl(string? raw)
     {
-        if (string.IsNullOrWhiteSpace(raw)) return "/profile";
-
-        raw = raw.Trim();
-        if (!raw.StartsWith("/")) raw = "/" + raw;
-
-        var hashIndex = raw.IndexOf('#');
+        var target = _returnUrlNormalizer.Normalize(raw);
+        var hashIndex = target.IndexOf('#');
         if (hashIndex >= 0)
-            raw = raw[..hashIndex];
+            target = target[..hashIndex];
 
-        var pathOnly = raw;
+        var pathOnly = target;
         var queryIndex = pathOnly.IndexOf('?');
         if (queryIndex >= 0)
             pathOnly = pathOnly[..queryIndex];
 
-        return AllowedReturnUrls.Contains(pathOnly) ? raw : "/profile";
+        return AllowedReturnUrls.Contains(pathOnly)
+            ? target
+            : ClientAppReturnUrlNormalizer.SafeLandingPath;
     }
 
         [HttpGet("/support/view-as-client/{clientProfileId:guid}")]
         public async Task<IActionResult> ViewAsClient(Guid clientProfileId, string? returnUrl = null)
         {
         var upn = GetUpn();
-        var target = NormalizeReturnUrl(returnUrl);
+        var target = NormalizeSupportReturnUrl(returnUrl);
 
         var profile = await _db.ClientProfiles
             .AsNoTracking()
@@ -181,6 +182,6 @@ public class SupportController : Controller
         if (clearSelf)
             Response.Cookies.Delete(SelfClientCookieName);
 
-        return Redirect(NormalizeReturnUrl(returnUrl));
+        return Redirect(NormalizeSupportReturnUrl(returnUrl));
     }
 }

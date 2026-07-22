@@ -19,11 +19,16 @@ public sealed class ClientIdentityContinuationService
     public const string ContinuationCookieName = "clientapp_continuation";
     private readonly MasterAppDbContext _db;
     private readonly IDataProtector _protector;
+    private readonly ClientAppReturnUrlNormalizer _returnUrlNormalizer;
 
-    public ClientIdentityContinuationService(MasterAppDbContext db, IDataProtectionProvider dataProtectionProvider)
+    public ClientIdentityContinuationService(
+        MasterAppDbContext db,
+        IDataProtectionProvider dataProtectionProvider,
+        ClientAppReturnUrlNormalizer returnUrlNormalizer)
     {
         _db = db;
         _protector = dataProtectionProvider.CreateProtector("MasterApp.ClientApp.IdentityContinuation.v1");
+        _returnUrlNormalizer = returnUrlNormalizer;
     }
 
     public async Task<(string ProtectedState, DateTime ExpiresUtc)> CreateProtectedStateAsync(
@@ -49,7 +54,7 @@ public sealed class ClientIdentityContinuationService
             Purpose = purpose,
             TokenHash = Hash(token),
             IntendedNormalizedEmail = NormalizeEmail(intendedNormalizedEmail),
-            ReturnUrl = NormalizeReturnUrl(returnUrl),
+            ReturnUrl = _returnUrlNormalizer.Normalize(returnUrl),
             ExpiresUtc = expiresUtc,
             CreatedUtc = nowUtc
         };
@@ -141,13 +146,6 @@ public sealed class ClientIdentityContinuationService
 
     private static string NormalizeEmail(string? email) =>
         string.IsNullOrWhiteSpace(email) ? string.Empty : email.Trim().ToLowerInvariant();
-
-    private static string NormalizeReturnUrl(string? returnUrl) =>
-        !string.IsNullOrWhiteSpace(returnUrl) &&
-        returnUrl.StartsWith("/", StringComparison.Ordinal) &&
-        Uri.IsWellFormedUriString(returnUrl, UriKind.Relative)
-            ? returnUrl
-            : "/";
 
     private static string Hash(string value)
     {

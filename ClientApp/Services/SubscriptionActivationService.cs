@@ -40,19 +40,22 @@ public sealed class SubscriptionActivationService
     private readonly IClientSubscriptionActivationPolicyService _activationPolicyService;
     private readonly SquareBillingOptions _squareOptions;
     private readonly ClientIdentityContinuationService _continuationService;
+    private readonly ClientAppReturnUrlNormalizer _returnUrlNormalizer;
 
     public SubscriptionActivationService(
         MasterAppDbContext db,
         IBillingOrchestrator billingOrchestrator,
         IClientSubscriptionActivationPolicyService activationPolicyService,
         SquareBillingOptions squareOptions,
-        ClientIdentityContinuationService continuationService)
+        ClientIdentityContinuationService continuationService,
+        ClientAppReturnUrlNormalizer returnUrlNormalizer)
     {
         _db = db;
         _billingOrchestrator = billingOrchestrator;
         _activationPolicyService = activationPolicyService;
         _squareOptions = squareOptions;
         _continuationService = continuationService;
+        _returnUrlNormalizer = returnUrlNormalizer;
     }
 
     public bool BrowserPaymentReady => _squareOptions.HasBrowserCredentials();
@@ -173,7 +176,7 @@ public sealed class SubscriptionActivationService
         var continuation = await _continuationService.CreateProtectedStateAsync(
             context.Client.Id,
             context.Invitation.IntendedNormalizedEmail,
-            input.ReturnUrl,
+            _returnUrlNormalizer.Normalize(input.ReturnUrl),
             ClientIdentityContinuationPurpose.Activation,
             context.Invitation.Id,
             activationResult.Subscription.Id,
@@ -198,7 +201,7 @@ public sealed class SubscriptionActivationService
         return new SubscriptionActivationPageViewModel
         {
             Token = token,
-            ReturnUrl = NormalizeReturnUrl(returnUrl),
+            ReturnUrl = _returnUrlNormalizer.Normalize(returnUrl),
             ClientName = $"{context.Client.FirstName} {context.Client.LastName}".Trim(),
             ClientEmail = context.Client.Email,
             MonthlyAmountDisplay = (context.Schedule.MonthlyAmountCents / 100m).ToString("C", CultureInfo.GetCultureInfo("en-US")),
@@ -269,15 +272,6 @@ public sealed class SubscriptionActivationService
             new SubscriptionActivationAnchorOptionViewModel { Day = 1, Label = "1st of each month", Selected = selectedAnchorDay == 1 },
             new SubscriptionActivationAnchorOptionViewModel { Day = 15, Label = "15th of each month", Selected = selectedAnchorDay == 15 }
         ];
-    }
-
-    private static string NormalizeReturnUrl(string? returnUrl)
-    {
-        return !string.IsNullOrWhiteSpace(returnUrl) &&
-               returnUrl.StartsWith("/", StringComparison.Ordinal) &&
-               Uri.IsWellFormedUriString(returnUrl, UriKind.Relative)
-            ? returnUrl
-            : "/profile";
     }
 
     private static TimeZoneInfo ResolveTimeZone(string timeZoneId)

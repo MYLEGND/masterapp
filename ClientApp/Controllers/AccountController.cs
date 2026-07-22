@@ -15,22 +15,14 @@ namespace ClientApp.Controllers;
 public class AccountController : Controller
 {
     private readonly ClientIdentityAccessService _identityAccessService;
+    private readonly ClientAppReturnUrlNormalizer _returnUrlNormalizer;
 
-    public AccountController(ClientIdentityAccessService identityAccessService)
+    public AccountController(
+        ClientIdentityAccessService identityAccessService,
+        ClientAppReturnUrlNormalizer returnUrlNormalizer)
     {
         _identityAccessService = identityAccessService;
-    }
-
-    private string NormalizeReturnUrl(string? returnUrl)
-    {
-        var target = string.IsNullOrWhiteSpace(returnUrl) ? "/" : returnUrl;
-        if (!Url.IsLocalUrl(target))
-            return "/";
-
-        if (target.StartsWith("/Account/", StringComparison.OrdinalIgnoreCase))
-            return "/";
-
-        return target;
+        _returnUrlNormalizer = returnUrlNormalizer;
     }
 
     private async Task<IActionResult> StartChallengeAsync(string target)
@@ -51,7 +43,7 @@ public class AccountController : Controller
     [HttpGet("/Account/AzureLogin")]
     public async Task<IActionResult> AzureLogin(string returnUrl = "/")
     {
-        var target = NormalizeReturnUrl(returnUrl);
+        var target = _returnUrlNormalizer.Normalize(returnUrl);
         if (ClientIdentityAccessService.IsSupportReturnUrl(target) ||
             await _identityAccessService.HasValidChallengeContinuationAsync(HttpContext, HttpContext.RequestAborted))
         {
@@ -68,7 +60,7 @@ public class AccountController : Controller
     [HttpGet]
     public IActionResult Login(string returnUrl = "/")
     {
-        var target = NormalizeReturnUrl(returnUrl);
+        var target = _returnUrlNormalizer.Normalize(returnUrl);
 
         if (User.Identity?.IsAuthenticated == true)
             return LocalRedirect(target);
@@ -87,7 +79,7 @@ public class AccountController : Controller
     [ValidateAntiForgeryToken]
     public async Task<IActionResult> LoginSubmit(ClientLoginViewModel model)
     {
-        model.ReturnUrl = NormalizeReturnUrl(model.ReturnUrl);
+        model.ReturnUrl = _returnUrlNormalizer.Normalize(model.ReturnUrl);
 
         if (ClientIdentityAccessService.IsSupportReturnUrl(model.ReturnUrl))
             return await AzureLogin(model.ReturnUrl);
@@ -136,7 +128,7 @@ public class AccountController : Controller
     {
         return View(new ActivationRequiredViewModel
         {
-            ReturnUrl = NormalizeReturnUrl(returnUrl),
+            ReturnUrl = _returnUrlNormalizer.Normalize(returnUrl),
             Message = string.IsNullOrWhiteSpace(message)
                 ? "Use the activation link from your agent to finish access setup before signing in."
                 : message.Trim()

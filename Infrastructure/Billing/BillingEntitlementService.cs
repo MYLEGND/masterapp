@@ -9,7 +9,6 @@ internal sealed class BillingEntitlementService : IBillingEntitlementService
 {
     private readonly MasterAppDbContext _db;
     private readonly ClientSubscriptionActivationPolicyOptions _activationPolicyOptions;
-    private readonly TimeZoneInfo _businessTimeZone;
 
     public BillingEntitlementService(
         MasterAppDbContext db,
@@ -17,7 +16,6 @@ internal sealed class BillingEntitlementService : IBillingEntitlementService
     {
         _db = db;
         _activationPolicyOptions = activationPolicyOptions;
-        _businessTimeZone = ResolveTimeZone(activationPolicyOptions.BusinessTimeZoneId);
     }
 
     public async Task<BillingEntitlementEvaluationResult> EvaluateAsync(BillingEntitlementEvaluationRequest request, CancellationToken cancellationToken = default)
@@ -33,7 +31,7 @@ internal sealed class BillingEntitlementService : IBillingEntitlementService
             .ThenByDescending(x => x.CreatedUtc)
             .FirstOrDefaultAsync(cancellationToken);
 
-        return BuildEvaluation(profile, subscription, request.EntitlementKey, request.EvaluatedUtc, _activationPolicyOptions, _businessTimeZone);
+        return BuildEvaluation(profile, subscription, request.EntitlementKey, request.EvaluatedUtc, _activationPolicyOptions);
     }
 
     public async Task<ClientEntitlement> RefreshAsync(Guid clientProfileId, string entitlementKey, string? reasonCode = null, CancellationToken cancellationToken = default)
@@ -75,24 +73,23 @@ internal sealed class BillingEntitlementService : IBillingEntitlementService
         ClientSubscription? subscription,
         string entitlementKey,
         DateTime evaluatedUtc,
-        ClientSubscriptionActivationPolicyOptions activationPolicyOptions,
-        TimeZoneInfo businessTimeZone)
+        ClientSubscriptionActivationPolicyOptions activationPolicyOptions)
     {
+        if (IsLegacyGrandfatheredProfile(profile, activationPolicyOptions))
+        {
+            return new BillingEntitlementEvaluationResult(
+                ClientEntitlementStatus.Active,
+                profile!.CreatedUtc,
+                null,
+                null,
+                "LEGACY_PROFILE_PRE_SUBSCRIPTION_CUTOFF",
+                ClientEntitlementSourceType.Manual,
+                $"legacy-profile:{profile.Id:N}",
+                $"{entitlementKey}: legacy client profile remains active without a subscription.");
+        }
+
         if (subscription is null)
         {
-            if (IsLegacyGrandfatheredProfile(profile, activationPolicyOptions, businessTimeZone))
-            {
-                return new BillingEntitlementEvaluationResult(
-                    ClientEntitlementStatus.Active,
-                    profile!.CreatedUtc,
-                    null,
-                    null,
-                    "LEGACY_PROFILE_PRE_SUBSCRIPTION_CUTOFF",
-                    ClientEntitlementSourceType.Manual,
-                    $"legacy-profile:{profile.Id:N}",
-                    $"{entitlementKey}: legacy client profile remains active without a subscription.");
-            }
-
             return new BillingEntitlementEvaluationResult(
                 ClientEntitlementStatus.NotGranted,
                 null,
@@ -172,16 +169,12 @@ internal sealed class BillingEntitlementService : IBillingEntitlementService
 
     private static bool IsLegacyGrandfatheredProfile(
         ClientProfile? profile,
-        ClientSubscriptionActivationPolicyOptions activationPolicyOptions,
-        TimeZoneInfo businessTimeZone)
+        ClientSubscriptionActivationPolicyOptions activationPolicyOptions)
     {
         if (profile is null)
             return false;
 
-        var createdUtc = EnsureUtc(profile.CreatedUtc);
-        var createdLocal = TimeZoneInfo.ConvertTimeFromUtc(createdUtc, businessTimeZone);
-        var createdLocalDate = DateOnly.FromDateTime(createdLocal);
-        return createdLocalDate < activationPolicyOptions.SubscriptionRequiredForProfilesCreatedOnOrAfterLocalDate;
+        return EnsureUtc(profile.CreatedUtc) < activationPolicyOptions.SubscriptionRequiredForProfilesCreatedOnOrAfterUtc;
     }
 
     private static DateTime EnsureUtc(DateTime value)
@@ -191,19 +184,4 @@ internal sealed class BillingEntitlementService : IBillingEntitlementService
             : DateTime.SpecifyKind(value, DateTimeKind.Utc);
     }
 
-    private static TimeZoneInfo ResolveTimeZone(string configuredTimeZoneId)
-    {
-        try
-        {
-            return TimeZoneInfo.FindSystemTimeZoneById(configuredTimeZoneId);
-        }
-        catch (TimeZoneNotFoundException)
-        {
-            return TimeZoneInfo.Utc;
-        }
-        catch (InvalidTimeZoneException)
-        {
-            return TimeZoneInfo.Utc;
-        }
-    }
 }

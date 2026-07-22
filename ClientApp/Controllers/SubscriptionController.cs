@@ -19,36 +19,35 @@ public sealed class SubscriptionController : Controller
     private readonly EffectiveClientContextService _clientContextService;
     private readonly IBillingEntitlementService _entitlementService;
     private readonly IBillingOrchestrator _billingOrchestrator;
+    private readonly ClientAppReturnUrlNormalizer _returnUrlNormalizer;
 
     public SubscriptionController(
         MasterAppDbContext db,
         EffectiveClientContextService clientContextService,
         IBillingEntitlementService entitlementService,
-        IBillingOrchestrator billingOrchestrator)
+        IBillingOrchestrator billingOrchestrator,
+        ClientAppReturnUrlNormalizer returnUrlNormalizer)
     {
         _db = db;
         _clientContextService = clientContextService;
         _entitlementService = entitlementService;
         _billingOrchestrator = billingOrchestrator;
+        _returnUrlNormalizer = returnUrlNormalizer;
     }
 
     [HttpGet("/subscription")]
-    public async Task<IActionResult> Index(string returnUrl = "/profile")
+    public async Task<IActionResult> Index(string? returnUrl = null)
     {
+        var target = _returnUrlNormalizer.Normalize(returnUrl);
         var context = await _clientContextService.ResolveAsync(User, Request.Cookies, allowRelink: false);
         if (context is null)
         {
             return RedirectToAction("ActivationRequired", "Account", new
             {
-                returnUrl = NormalizeReturnUrl(returnUrl),
+                returnUrl = target,
                 message = "Use the client activation flow or client sign-in form before opening subscription management."
             });
         }
-
-        var latestSubscription = await _db.ClientSubscriptions
-            .Where(x => x.ClientProfileId == context.ClientProfileId)
-            .OrderByDescending(x => x.UpdatedUtc)
-            .FirstOrDefaultAsync();
 
         var entitlement = await _entitlementService.EvaluateAsync(
             new BillingEntitlementEvaluationRequest(
@@ -56,6 +55,21 @@ public sealed class SubscriptionController : Controller
                 BillingEntitlementKeys.ClientAppFullAccess,
                 DateTime.UtcNow),
             HttpContext.RequestAborted);
+
+        var hasClientAppAccess = entitlement.Status is ClientEntitlementStatus.Active or ClientEntitlementStatus.GracePeriod;
+        if (!context.IsAgentView && !hasClientAppAccess)
+        {
+            return RedirectToAction("ActivationRequired", "Account", new
+            {
+                returnUrl = target,
+                message = "Your client subscription is not active. Use the activation link from your agent to continue."
+            });
+        }
+
+        var latestSubscription = await _db.ClientSubscriptions
+            .Where(x => x.ClientProfileId == context.ClientProfileId)
+            .OrderByDescending(x => x.UpdatedUtc)
+            .FirstOrDefaultAsync();
 
         var isLegacyGrandfatheredAccess =
             latestSubscription is null &&
@@ -99,21 +113,38 @@ public sealed class SubscriptionController : Controller
             CanCancelAtPeriodEnd = latestSubscription is not null &&
                                    latestSubscription.Status is ClientSubscriptionStatus.Active or ClientSubscriptionStatus.GracePeriod &&
                                    !latestSubscription.CancelAtPeriodEnd,
-            ReturnUrl = NormalizeReturnUrl(returnUrl)
+            ReturnUrl = target
         });
     }
 
     [HttpPost("/subscription/cancel-at-period-end")]
     [ValidateAntiForgeryToken]
-    public async Task<IActionResult> CancelAtPeriodEnd(string returnUrl = "/profile")
+    public async Task<IActionResult> CancelAtPeriodEnd(string? returnUrl = null)
     {
+        var target = _returnUrlNormalizer.Normalize(returnUrl);
         var context = await _clientContextService.ResolveAsync(User, Request.Cookies, allowRelink: false);
         if (context is null)
         {
             return RedirectToAction("ActivationRequired", "Account", new
             {
-                returnUrl = NormalizeReturnUrl(returnUrl),
+                returnUrl = target,
                 message = "Client sign-in is required before subscription changes can be made."
+            });
+        }
+
+        var entitlement = await _entitlementService.EvaluateAsync(
+            new BillingEntitlementEvaluationRequest(
+                context.ClientProfileId,
+                BillingEntitlementKeys.ClientAppFullAccess,
+                DateTime.UtcNow),
+            HttpContext.RequestAborted);
+
+        if (!context.IsAgentView && entitlement.Status is not (ClientEntitlementStatus.Active or ClientEntitlementStatus.GracePeriod))
+        {
+            return RedirectToAction("ActivationRequired", "Account", new
+            {
+                returnUrl = target,
+                message = "Your client subscription is not active. Use the activation link from your agent to continue."
             });
         }
 
@@ -125,7 +156,7 @@ public sealed class SubscriptionController : Controller
         if (latestSubscription is null)
         {
             TempData["SubscriptionNotice"] = "No client subscription was found to cancel.";
-            return RedirectToAction(nameof(Index), new { returnUrl = NormalizeReturnUrl(returnUrl) });
+            return RedirectToAction(nameof(Index), new { returnUrl = target });
         }
 
         var cancellation = await _billingOrchestrator.CancelClientSubscriptionAsync(
@@ -141,16 +172,7 @@ public sealed class SubscriptionController : Controller
             ? "Cancellation at period end has been scheduled."
             : cancellation.SanitizedSummary ?? "The subscription could not be updated right now.";
 
-        return RedirectToAction(nameof(Index), new { returnUrl = NormalizeReturnUrl(returnUrl) });
-    }
-
-    private static string NormalizeReturnUrl(string? returnUrl)
-    {
-        return !string.IsNullOrWhiteSpace(returnUrl) &&
-               returnUrl.StartsWith("/", StringComparison.Ordinal) &&
-               Uri.IsWellFormedUriString(returnUrl, UriKind.Relative)
-            ? returnUrl
-            : "/profile";
+        return RedirectToAction(nameof(Index), new { returnUrl = target });
     }
 
     private static string FormatDate(DateTime? value)
