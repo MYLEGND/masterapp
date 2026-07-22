@@ -11,6 +11,7 @@ using Domain.Billing;
 using Domain.Entities;
 using Infrastructure.Billing.Square;
 using Infrastructure.Data;
+using Infrastructure.Identity;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.DataProtection;
 using Microsoft.AspNetCore.Http;
@@ -109,6 +110,29 @@ public class ClientAppSubscriptionActivationTests
     }
 
     [Fact]
+    public async Task AccountController_Login_AuthenticatedClientWithoutEntitlement_DoesNotRedirectIntoPortal()
+    {
+        using var db = BuildDb();
+        await AddProfileAsync(db, "client@example.com", "client-oid");
+
+        var continuationService = BuildContinuationService(db);
+        var entitlementService = BuildEntitlementService(ClientEntitlementStatus.NotGranted);
+        var identityAccessService = new ClientIdentityAccessService(db, entitlementService.Object, continuationService, new ClientAppReturnUrlNormalizer());
+        var httpContext = new DefaultHttpContext
+        {
+            User = BuildPrincipal("client-oid", "client@example.com")
+        };
+        var controller = BuildAccountController(identityAccessService, httpContext);
+
+        var result = await controller.Login("/Home/Index");
+
+        var view = Assert.IsType<ViewResult>(result);
+        var model = Assert.IsType<ClientLoginViewModel>(view.Model);
+        Assert.Equal("/Home/Index", model.ReturnUrl);
+        Assert.Contains("subscription", model.Message ?? string.Empty, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
     public async Task PrepareClientSignIn_InactiveEntitlement_BlocksChallenge()
     {
         using var db = BuildDb();
@@ -177,6 +201,23 @@ public class ClientAppSubscriptionActivationTests
     }
 
     [Fact]
+    public async Task CompleteClientSignIn_WithoutContinuation_AgentCannotBypassIntoClientRoute()
+    {
+        using var db = BuildDb();
+        var continuationService = BuildContinuationService(db);
+        var entitlementService = BuildEntitlementService(ClientEntitlementStatus.Active);
+        var service = new ClientIdentityAccessService(db, entitlementService.Object, continuationService, new ClientAppReturnUrlNormalizer());
+
+        var result = await service.CompleteClientSignInAsync(
+            new DefaultHttpContext(),
+            BuildPrincipal("agent-oid", "agent@mylegnd.com"),
+            "/Home/Index");
+
+        Assert.False(result.Success);
+        Assert.Equal("MISSING_CONTINUATION", result.SafeErrorCode);
+    }
+
+    [Fact]
     public async Task CompleteClientSignIn_ConflictingIdentity_IsRejected()
     {
         using var db = BuildDb();
@@ -238,6 +279,71 @@ public class ClientAppSubscriptionActivationTests
 
         var continuation = await db.ClientIdentityContinuations.SingleAsync();
         Assert.True(continuation.ConsumedUtc.HasValue);
+    }
+
+    [Fact]
+    public async Task CompleteClientSignIn_EmailChangedAfterPreparation_BlocksTheStaleContinuation()
+    {
+        using var db = BuildDb();
+        var profile = await AddProfileAsync(db, "client@example.com");
+        var continuationService = BuildContinuationService(db);
+        var entitlementService = BuildEntitlementService(ClientEntitlementStatus.Active);
+        var service = new ClientIdentityAccessService(db, entitlementService.Object, continuationService, new ClientAppReturnUrlNormalizer());
+
+        var (protectedState, expiresUtc) = await continuationService.CreateProtectedStateAsync(
+            profile.Id,
+            "client@example.com",
+            "/profile",
+            ClientIdentityContinuationPurpose.SignIn);
+
+        profile.Email = "new-email@example.com";
+        profile.NormalizedEmail = "new-email@example.com";
+        await db.SaveChangesAsync();
+
+        var httpContext = new DefaultHttpContext();
+        AttachContinuationCookie(httpContext, continuationService, protectedState, expiresUtc);
+
+        var result = await service.CompleteClientSignInAsync(
+            httpContext,
+            BuildPrincipal("client-oid", "client@example.com"));
+
+        Assert.False(result.Success);
+        Assert.Equal("EMAIL_CHANGED", result.SafeErrorCode);
+    }
+
+    [Fact]
+    public async Task SubscriptionIdentitySync_EmailChange_SupersedesOldInvitationAndContinuation()
+    {
+        using var db = BuildDb();
+        var profile = await AddProfileAsync(db, "client@example.com");
+        var offer = await AddOfferAsync(db, profile.Id);
+        var invitation = await AddInvitationAsync(
+            db,
+            profile,
+            offer,
+            "old-email-activation",
+            SubscriptionActivationInvitationStatus.Sent,
+            DateTime.UtcNow.AddDays(1));
+        var continuationService = BuildContinuationService(db);
+        await continuationService.CreateProtectedStateAsync(
+            profile.Id,
+            "client@example.com",
+            "/profile",
+            ClientIdentityContinuationPurpose.SignIn);
+
+        var sync = new ClientSubscriptionIdentitySyncService(db);
+        var result = await sync.SynchronizeAfterEmailChangeAsync(
+            profile.Id,
+            "client@example.com",
+            "new-email@example.com");
+        await db.SaveChangesAsync();
+
+        Assert.True(result.EmailChanged);
+        Assert.True(result.RequiresReplacementInvitation);
+        Assert.Equal(1, result.InvalidatedContinuationCount);
+        Assert.Equal(SubscriptionActivationInvitationStatus.Superseded, invitation.Status);
+        Assert.NotNull(invitation.SupersededUtc);
+        Assert.NotNull((await db.ClientIdentityContinuations.SingleAsync()).ConsumedUtc);
     }
 
     [Fact]

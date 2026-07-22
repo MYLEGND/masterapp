@@ -1,12 +1,12 @@
 using System;
 using System.IO;
 using System.Linq;
-using System.Security.Claims;
 using System.Threading.Tasks;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
+using ClientApp.Services;
 
 namespace ClientApp.Controllers
 {
@@ -14,10 +14,12 @@ namespace ClientApp.Controllers
     public class AvatarController : Controller
     {
         private readonly IWebHostEnvironment _env;
+        private readonly EffectiveClientContextService _clientContext;
 
-        public AvatarController(IWebHostEnvironment env)
+        public AvatarController(IWebHostEnvironment env, EffectiveClientContextService clientContext)
         {
             _env = env;
+            _clientContext = clientContext;
         }
 
         private string GetAvatarRoot()
@@ -53,20 +55,23 @@ namespace ClientApp.Controllers
             return fallback;
         }
 
-        private string? GetUserId()
+        private async Task<string?> GetClientAvatarKeyAsync()
         {
-            var user = User;
-            return user.FindFirst("oid")?.Value
-                ?? user.FindFirst(ClaimTypes.NameIdentifier)?.Value
-                ?? user.Identity?.Name;
+            var context = await _clientContext.ResolveAsync(User, Request.Cookies);
+            var clientUserId = context?.ClientUserId?.Trim();
+
+            // Avatar files are keyed to the client profile identity, never the viewing agent.
+            return Guid.TryParse(clientUserId, out var parsed)
+                ? parsed.ToString("D")
+                : null;
         }
 
         [HttpPost("/avatar/upload")]
         [ValidateAntiForgeryToken]
         public async Task<IActionResult> Upload(IFormFile photo)
         {
-            var userId = GetUserId();
-            if (string.IsNullOrWhiteSpace(userId))
+            var avatarKey = await GetClientAvatarKeyAsync();
+            if (string.IsNullOrWhiteSpace(avatarKey))
             {
                 return Forbid();
             }
@@ -99,9 +104,9 @@ namespace ClientApp.Controllers
             }
 
             var root = GetAvatarRoot();
-            var filePath = Path.Combine(root, $"{userId}{ext}");
+            var filePath = Path.Combine(root, $"{avatarKey}{ext}");
 
-            foreach (var existing in Directory.EnumerateFiles(root, $"{userId}.*"))
+            foreach (var existing in Directory.EnumerateFiles(root, $"{avatarKey}.*"))
             {
                 System.IO.File.Delete(existing);
             }
@@ -116,17 +121,17 @@ namespace ClientApp.Controllers
 
         [HttpGet("avatar/current")]
         [ResponseCache(Duration = 0, Location = ResponseCacheLocation.None, NoStore = true)]
-        public IActionResult Current()
+        public async Task<IActionResult> Current()
         {
-            var userId = GetUserId();
-            if (string.IsNullOrWhiteSpace(userId))
+            var avatarKey = await GetClientAvatarKeyAsync();
+            if (string.IsNullOrWhiteSpace(avatarKey))
                 return Unauthorized();
 
             var root = GetAvatarRoot();
             var candidates = new[] { ".png", ".jpg", ".jpeg", ".webp" };
             foreach (var ext in candidates)
             {
-                var path = Path.Combine(root, $"{userId}{ext}");
+                var path = Path.Combine(root, $"{avatarKey}{ext}");
                 if (System.IO.File.Exists(path))
                 {
                     var mime = ext.ToLowerInvariant() switch

@@ -6,7 +6,6 @@ using Infrastructure.Identity;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
-using Shared.Auth;
 
 namespace ClientApp.Controllers;
 
@@ -151,22 +150,16 @@ public class ProfileController : Controller
         };
     }
 
-    private ViewResult ClientProfileView(
+    private ViewResult ProfileView(
         EditClientViewModel model,
+        bool isAgentView,
         string? notice = null,
         string? warning = null)
     {
-        ViewBag.ViewMode = "client";
+        ViewBag.ViewMode = isAgentView ? "agent" : "client";
         ViewBag.ViewingClientName = $"{model.FirstName} {model.LastName}".Trim();
         ViewBag.ProfileSaveNotice = notice;
         ViewBag.ProfileSaveWarning = warning;
-        return View("Index", model);
-    }
-
-    private ViewResult AgentProfileView(EditClientViewModel model)
-    {
-        ViewBag.ViewMode = "agent";
-        ViewBag.ViewingClientName = $"{model.FirstName} {model.LastName}".Trim();
         return View("Index", model);
     }
 
@@ -178,9 +171,7 @@ public class ProfileController : Controller
             return NotFound("No client profile found for this user.");
 
         var model = await BuildProfileViewModelAsync(context.Profile);
-        return context.IsAgentView
-            ? AgentProfileView(model)
-            : ClientProfileView(model);
+        return ProfileView(model, context.IsAgentView);
     }
 
     [HttpPost("/profile")]
@@ -188,20 +179,20 @@ public class ProfileController : Controller
     public async Task<IActionResult> Save(EditClientViewModel model)
     {
         var context = await _clientContext.ResolveAsync(User, Request.Cookies);
-        if (context == null || context.IsAgentView)
+        if (context == null)
             return Forbid();
 
         if (!string.Equals(Norm(model.ClientUserId), context.ClientUserId, StringComparison.Ordinal))
             return Forbid();
 
         if (!ModelState.IsValid)
-            return ClientProfileView(model);
+            return ProfileView(model, context.IsAgentView);
 
         var email = NormalizeEmail(model.Email);
         if (string.IsNullOrWhiteSpace(email))
         {
             ModelState.AddModelError(nameof(EditClientViewModel.Email), "Email is required.");
-            return ClientProfileView(model);
+            return ProfileView(model, context.IsAgentView);
         }
 
         var emailInUse = await _db.ClientProfiles
@@ -211,7 +202,7 @@ public class ProfileController : Controller
         if (emailInUse)
         {
             ModelState.AddModelError(nameof(EditClientViewModel.Email), "That email is already used by another client.");
-            return ClientProfileView(model);
+            return ProfileView(model, context.IsAgentView);
         }
 
         await using var transaction = await _db.Database.BeginTransactionAsync();
@@ -302,7 +293,7 @@ public class ProfileController : Controller
                 string.IsNullOrWhiteSpace(updateResult.Message)
                     ? "We couldn't update your sign-in email in Azure. No changes were saved. Please try again."
                     : updateResult.Message);
-            return ClientProfileView(model);
+            return ProfileView(model, context.IsAgentView);
         }
 
         await _subscriptionIdentitySync.SynchronizeAfterEmailChangeAsync(
@@ -321,8 +312,9 @@ public class ProfileController : Controller
         model.Phone = profile.Phone;
         model.MaritalStatus = profile.MaritalStatus;
 
-        return ClientProfileView(
+        return ProfileView(
             model,
+            context.IsAgentView,
             "Profile saved.",
             updateResult.Skipped
                 ? updateResult.Message ?? "Profile saved locally; your sign-in email did not need to change."
@@ -332,44 +324,10 @@ public class ProfileController : Controller
     [HttpGet("/profile/{clientUserId}")]
     public async Task<IActionResult> ClientProfile(string clientUserId)
     {
-        var canonicalAgentId = Norm(User.GetStableUserId());
         var clientId = Norm(clientUserId);
 
-        if (string.IsNullOrWhiteSpace(canonicalAgentId) || string.IsNullOrWhiteSpace(clientId))
-            return Forbid();
-
-        if (string.Equals(canonicalAgentId, clientId, StringComparison.OrdinalIgnoreCase))
-            return RedirectToAction(nameof(MyProfile));
-
-        var clientExists = await _db.ClientProfiles
-            .AsNoTracking()
-            .AnyAsync(profile => profile.ClientUserId == clientId);
-
-        if (!clientExists)
+        if (string.IsNullOrWhiteSpace(clientId))
             return NotFound("Client profile not found.");
-
-        var link = await _db.AgentClients
-            .AsNoTracking()
-            .FirstOrDefaultAsync(agentClient =>
-                agentClient.AgentUserId == canonicalAgentId &&
-                agentClient.ClientUserId == clientId);
-
-        if (link == null)
-        {
-            var candidates = User.GetUserIdCandidates()
-                .Select(Norm)
-                .Distinct()
-                .ToArray();
-
-            link = await _db.AgentClients
-                .AsNoTracking()
-                .FirstOrDefaultAsync(agentClient =>
-                    agentClient.ClientUserId == clientId &&
-                    candidates.Contains(agentClient.AgentUserId));
-        }
-
-        if (link == null)
-            return Forbid();
 
         var profile = await _db.ClientProfiles
             .AsNoTracking()
@@ -378,6 +336,7 @@ public class ProfileController : Controller
         if (profile == null)
             return NotFound("Client profile not found.");
 
-        return AgentProfileView(await BuildProfileViewModelAsync(profile));
+        // All managed access goes through the same ownership-checked support context as AgentPortal.
+        return LocalRedirect($"/support/view-as-client/{profile.Id}?returnUrl={Uri.EscapeDataString("/profile")}");
     }
 }

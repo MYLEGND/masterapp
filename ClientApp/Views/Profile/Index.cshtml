@@ -11,14 +11,11 @@
     var avatarInitial = !string.IsNullOrWhiteSpace(Model.FirstName)
         ? Model.FirstName[..1].ToUpperInvariant()
         : "C";
-    var hasSignificantOther =
-        !string.IsNullOrWhiteSpace(Model.SignificantOtherFirstName) ||
-        !string.IsNullOrWhiteSpace(Model.SignificantOtherLastName) ||
-        Model.SignificantOtherDOB.HasValue ||
-        !string.IsNullOrWhiteSpace(Model.SignificantOtherEmail) ||
-        !string.IsNullOrWhiteSpace(Model.SignificantOtherPhone);
-
-    string DashIfBlank(string? value) => string.IsNullOrWhiteSpace(value) ? "—" : value;
+    var managedClientName = $"{Model.FirstName} {Model.LastName}".Trim();
+    if (string.IsNullOrWhiteSpace(managedClientName))
+    {
+        managedClientName = "Client";
+    }
 }
 
 @section Styles {
@@ -31,90 +28,13 @@
             <div class="client-create-header">
                 <div>
                     <div class="dashboard-eyebrow">Client Profile</div>
-                    <h2 class="client-create-title">@(isAgentView ? $"Viewing {Model.FirstName} {Model.LastName}".Trim() : "View / Edit Profile")</h2>
-                    <p class="client-create-subtitle">@(isAgentView ? "Review the household information shared across the client workspace and the agent portal." : "Update your contact details, household information, and profile picture in one place.")</p>
+                    <h2 class="client-create-title">View / Edit Profile</h2>
+                    <p class="client-create-subtitle">@(isAgentView ? $"Managing {managedClientName}'s contact details, household information, and profile picture." : "Update your contact details, household information, and profile picture in one place.")</p>
                 </div>
-                <span class="client-edit-pill">@(isAgentView ? "Agent View" : "My Profile")</span>
+                <span class="client-edit-pill">@(isAgentView ? $"Managing {managedClientName}" : "My Profile")</span>
             </div>
 
             <div class="client-create-body">
-                @if (isAgentView)
-                {
-                    <div class="client-edit-section client-edit-section-compact">
-                        <div class="client-edit-section-head">
-                            <div>
-                                <div class="client-create-section-title">Agent Impersonation</div>
-                                <p class="client-edit-note">You are viewing this client’s live profile. Client details remain read-only in agent view.</p>
-                            </div>
-                            <a class="client-create-button client-create-button-secondary" href="/support/stop-view-as-client">End Impersonation</a>
-                        </div>
-                    </div>
-
-                    <div class="client-create-section client-create-section-shell">
-                        <div class="client-create-section-head">
-                            <div>
-                                <div class="client-create-section-title">Primary Profile</div>
-                                <p class="client-create-section-copy">Core contact and household details from the client record.</p>
-                            </div>
-                        </div>
-                        <div class="client-create-grid">
-                            <div><label class="client-create-label">First Name</label><input class="client-create-input" value="@DashIfBlank(Model.FirstName)" readonly /></div>
-                            <div><label class="client-create-label">Last Name</label><input class="client-create-input" value="@DashIfBlank(Model.LastName)" readonly /></div>
-                            <div><label class="client-create-label">Email</label><input class="client-create-input" value="@DashIfBlank(Model.Email)" readonly /></div>
-                            <div><label class="client-create-label">Phone</label><input class="client-create-input" value="@DashIfBlank(Model.Phone)" readonly /></div>
-                            <div><label class="client-create-label">Date of Birth</label><input class="client-create-input" value="@dobText" readonly /></div>
-                            <div><label class="client-create-label">Marital Status</label><input class="client-create-input" value="@DashIfBlank(Model.MaritalStatus)" readonly /></div>
-                        </div>
-                    </div>
-
-                    @if (hasSignificantOther)
-                    {
-                        <div class="client-create-section client-create-section-shell client-edit-section-spaced">
-                            <div class="client-edit-section-head">
-                                <div>
-                                    <div class="client-create-section-title">Significant Other</div>
-                                    <p class="client-edit-note">Household record connected to this client profile.</p>
-                                </div>
-                                <span class="client-edit-pill">Household</span>
-                            </div>
-                            <div class="client-create-grid">
-                                <div><label class="client-create-label">First Name</label><input class="client-create-input" value="@DashIfBlank(Model.SignificantOtherFirstName)" readonly /></div>
-                                <div><label class="client-create-label">Last Name</label><input class="client-create-input" value="@DashIfBlank(Model.SignificantOtherLastName)" readonly /></div>
-                                <div><label class="client-create-label">Date of Birth</label><input class="client-create-input" value="@(Model.SignificantOtherDOB.HasValue ? Model.SignificantOtherDOB.Value.ToString("MM/dd/yyyy") : "—")" readonly /></div>
-                                <div><label class="client-create-label">Phone</label><input class="client-create-input" value="@DashIfBlank(Model.SignificantOtherPhone)" readonly /></div>
-                                <div class="client-create-full"><label class="client-create-label">Email</label><input class="client-create-input" value="@DashIfBlank(Model.SignificantOtherEmail)" readonly /></div>
-                            </div>
-                        </div>
-                    }
-
-                    @if (children.Count > 0)
-                    {
-                        <div class="client-create-section client-create-section-shell client-edit-section-spaced">
-                            <div class="client-edit-section-head">
-                                <div>
-                                    <div class="client-create-section-title">Children</div>
-                                    <p class="client-edit-note">Household members currently attached to this client record.</p>
-                                </div>
-                                <span class="client-edit-pill">@children.Count on file</span>
-                            </div>
-                            <div class="client-edit-child-list">
-                                @foreach (var child in children)
-                                {
-                                    <div class="client-edit-child-card">
-                                        <div class="client-edit-child-card-head"><div class="client-edit-child-title">@DashIfBlank($"{child.FirstName} {child.LastName}".Trim())</div></div>
-                                        <div class="client-create-grid">
-                                            <div><label class="client-create-label">Date of Birth</label><input class="client-create-input" value="@(child.DOB.HasValue ? child.DOB.Value.ToString("MM/dd/yyyy") : "—")" readonly /></div>
-                                            <div><label class="client-create-label">Phone</label><input class="client-create-input" value="@DashIfBlank(child.Phone)" readonly /></div>
-                                            <div class="client-create-full"><label class="client-create-label">Email</label><input class="client-create-input" value="@DashIfBlank(child.Email)" readonly /></div>
-                                        </div>
-                                    </div>
-                                }
-                            </div>
-                        </div>
-                    }
-                }
-                else
-                {
                     @if (ViewBag.ProfileSaveNotice is string notice)
                     {
                         <div class="client-edit-section client-edit-section-compact"><p class="client-edit-note">@notice</p></div>
@@ -233,15 +153,12 @@
                         <div class="client-edit-divider"></div>
                         <div class="client-create-actions"><button type="submit" class="client-create-button client-create-button-primary">Save Profile</button></div>
                     </form>
-                }
             </div>
         </div>
     </div>
 </main>
 
-@if (!isAgentView)
-{
-    @section Scripts {
+@section Scripts {
         @{ await Html.RenderPartialAsync("_ValidationScriptsPartial"); }
         <script>
             (() => {
@@ -368,5 +285,4 @@
                 reindexChildren();
             })();
         </script>
-    }
 }

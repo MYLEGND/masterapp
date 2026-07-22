@@ -96,17 +96,6 @@ namespace AgentPortal.Controllers;
         private static string Norm(string? v) => (v ?? "").Trim();
         private const string AgentTenantDomain = "@mylegnd.com";
 
-        private static bool HasChildData(HouseholdChildViewModel? child)
-        {
-            if (child == null) return false;
-
-            return !string.IsNullOrWhiteSpace(child.FirstName)
-                || !string.IsNullOrWhiteSpace(child.LastName)
-                || child.DOB.HasValue
-                || !string.IsNullOrWhiteSpace(child.Email)
-                || !string.IsNullOrWhiteSpace(child.Phone);
-        }
-
         private static ClientSubscriptionOfferPriceType ParseSubscriptionPriceType(string? rawValue)
         {
             if (Enum.TryParse<ClientSubscriptionOfferPriceType>(rawValue?.Trim(), true, out var parsed))
@@ -129,61 +118,6 @@ namespace AgentPortal.Controllers;
                 return null;
 
             return decimal.ToInt32(decimal.Round(amount.Value * 100m, 0, MidpointRounding.AwayFromZero));
-        }
-
-        private async Task<List<HouseholdChildViewModel>> LoadChildrenAsync(string? clientUserId)
-        {
-            var clientUserIdNorm = NormLower(clientUserId);
-            if (string.IsNullOrWhiteSpace(clientUserIdNorm))
-                return new List<HouseholdChildViewModel>();
-
-            return await _db.HouseholdMembers
-                .AsNoTracking()
-                .Where(x => x.ClientUserId == clientUserIdNorm && x.RelationshipType == "Child")
-                .OrderBy(x => x.CreatedUtc)
-                .ThenBy(x => x.FirstName)
-                .ThenBy(x => x.LastName)
-                .Select(x => new HouseholdChildViewModel
-                {
-                    Id = x.Id,
-                    FirstName = x.FirstName,
-                    LastName = x.LastName,
-                    DOB = x.DOB,
-                    Email = x.Email,
-                    Phone = x.Phone
-                })
-                .ToListAsync();
-        }
-
-        private async Task SaveChildrenAsync(string clientUserId, IEnumerable<HouseholdChildViewModel>? children)
-        {
-            var clientUserIdNorm = NormLower(clientUserId);
-            var existing = await _db.HouseholdMembers
-                .Where(x => x.ClientUserId == clientUserIdNorm && x.RelationshipType == "Child")
-                .ToListAsync();
-
-            if (existing.Count > 0)
-                _db.HouseholdMembers.RemoveRange(existing);
-
-            var now = DateTime.UtcNow;
-            var newChildren = (children ?? Enumerable.Empty<HouseholdChildViewModel>())
-                .Where(HasChildData)
-                .Select(child => new HouseholdMember
-                {
-                    ClientUserId = clientUserIdNorm,
-                    RelationshipType = "Child",
-                    FirstName = (child.FirstName ?? "").Trim(),
-                    LastName = (child.LastName ?? "").Trim(),
-                    DOB = child.DOB?.Date,
-                    Email = (child.Email ?? "").Trim(),
-                    Phone = (child.Phone ?? "").Trim(),
-                    CreatedUtc = now,
-                    UpdatedUtc = now
-                })
-                .ToList();
-
-            if (newChildren.Count > 0)
-                _db.HouseholdMembers.AddRange(newChildren);
         }
 
         private static bool IsAgentTenantEmail(string? email)
@@ -2325,19 +2259,6 @@ namespace AgentPortal.Controllers;
         return ordered;
     }
 
-    private void PrepareEditView(EditClientViewModel model, string? returnUrl)
-    {
-        model.RecordType = NormalizeRecordType(model.RecordType);
-
-        ViewData["Title"] = $"Edit {RecordTypeLabel(model.RecordType)}";
-        ViewBag.ClientUserId = model.ClientUserId;
-        ViewBag.ClientDisplayName = $"{model.FirstName} {model.LastName}".Trim();
-        ViewBag.ClientRecordType = model.RecordType;
-        ViewBag.ReturnUrl = string.IsNullOrWhiteSpace(returnUrl)
-            ? (Url.Action(nameof(Index), "Clients") ?? "/Clients")
-            : returnUrl;
-    }
-
     // =====================================================================
     // GET: /Clients
     // =====================================================================
@@ -3764,11 +3685,20 @@ namespace AgentPortal.Controllers;
         }
     }
 
-    // =====================================================================
-    // GET: /Clients/Edit/{clientUserId}
-    // =====================================================================
+    // AgentPortal intentionally has no second profile editor. Both agents and clients
+    // update the same ClientApp profile form, with the agent's ownership enforced before
+    // the managed-client context cookie is created.
     [HttpGet]
     public async Task<IActionResult> Edit(string clientUserId, string? returnUrl = null)
+        => await RedirectToManagedClientProfileAsync(clientUserId);
+
+    [HttpPost]
+    [ValidateAntiForgeryToken]
+    [ActionName(nameof(Edit))]
+    public async Task<IActionResult> EditLegacyPost(string clientUserId, string? returnUrl = null)
+        => await RedirectToManagedClientProfileAsync(clientUserId);
+
+    private async Task<IActionResult> RedirectToManagedClientProfileAsync(string? clientUserId)
     {
         string agentOid;
         try { agentOid = GetAgentOidOrThrow(); }
@@ -3778,450 +3708,21 @@ namespace AgentPortal.Controllers;
         if (string.IsNullOrWhiteSpace(clientUserIdNorm))
             return RedirectToAction(nameof(Index));
 
-        // Ownership check (ONLY creator/owner can edit)
-        var linked = await _db.AgentClients.AnyAsync(x =>
-            x.AgentUserId == agentOid &&
-            x.ClientUserId == clientUserIdNorm);
-
-        if (!linked)
+        if (!await AgentOwnsClientAsync(agentOid, clientUserIdNorm, HttpContext.RequestAborted))
             return Forbid();
 
-        var profile = await _db.ClientProfiles.AsNoTracking()
-            .FirstOrDefaultAsync(x => x.ClientUserId == clientUserIdNorm);
-
-        if (profile == null)
-            return NotFound();
-
-        var so = await _db.HouseholdMembers.AsNoTracking()
-            .Where(x =>
-                x.ClientUserId == clientUserIdNorm &&
-                (x.RelationshipType == "SignificantOther" || x.RelationshipType == "Spouse"))
-            .OrderByDescending(x => x.UpdatedUtc)
-            .ThenByDescending(x => x.CreatedUtc)
-            .FirstOrDefaultAsync();
-var meta = EnsureMeta(ClientCrmMetaSerializer.Deserialize(profile.CrmNotes));
-meta.DocChecklist ??= new ClientCrmDocChecklist();
-meta.OpportunityPlanning ??= new ClientCrmOpportunityPlanningChecklist();
-meta.Collaboration ??= new ClientCrmCollaboration();
-meta.Activities ??= new List<ClientCrmActivity>();
-        var recordType = ResolveRecordType(profile.ClientUserId, meta);
-
-        var vm = new EditClientViewModel
-        {
-            ClientUserId = profile.ClientUserId,
-            RecordType = recordType,
-            HasPortalAccess = HasPortalAccess(profile.ClientUserId),
-            FirstName = profile.FirstName,
-            LastName = profile.LastName,
-            Email = profile.Email,
-            Phone = profile.Phone,
-            MaritalStatus = profile.MaritalStatus,
-            DOB = profile.DOB,
-            IsDobLocked = profile.DOB.HasValue,
-
-            // ✅ CRM (DB-backed)
-            CrmStatus = string.IsNullOrWhiteSpace(profile.CrmStatus) ? "Lead" : profile.CrmStatus,
-            CrmPriority = string.IsNullOrWhiteSpace(profile.CrmPriority) ? "Normal" : profile.CrmPriority,
-            CrmLastTouch = profile.CrmLastTouch,
-            CrmNextDate = profile.CrmNextDate,
-            CrmNextText = profile.CrmNextText,
-            CrmTags = profile.CrmTags,
-            CrmNotes = profile.AgentNotes,
-
-            // Significant Other
-            SignificantOtherFirstName = so?.FirstName,
-            SignificantOtherLastName = so?.LastName,
-            SignificantOtherDOB = so?.DOB,
-            SignificantOtherEmail = so?.Email,
-            SignificantOtherPhone = so?.Phone,
-            Children = await LoadChildrenAsync(clientUserIdNorm)
-        };
-
-        var agentProfile = await _db.AgentProfiles
+        var clientProfileId = await _db.ClientProfiles
             .AsNoTracking()
-            .FirstOrDefaultAsync(x => x.AgentUserId == agentOid);
+            .Where(profile => (profile.ClientUserId ?? string.Empty).ToLower() == clientUserIdNorm)
+            .Select(profile => (Guid?)profile.Id)
+            .FirstOrDefaultAsync(HttpContext.RequestAborted);
 
-        if (agentProfile != null && !string.IsNullOrWhiteSpace(agentProfile.Npn))
-            vm.AgentNpn = agentProfile.Npn;
-        if (agentProfile != null && !string.IsNullOrWhiteSpace(agentProfile.Phone))
-            vm.AgentPhone = agentProfile.Phone;
-
-        PrepareEditView(vm, returnUrl);
-        return View(vm);
-    }
-
-    // =====================================================================
-    // POST: /Clients/Edit
-    // =====================================================================
-    [HttpPost]
-    [ValidateAntiForgeryToken]
-    public async Task<IActionResult> Edit(EditClientViewModel model, string? returnUrl = null)
-    {
-        string agentOid;
-        try { agentOid = GetAgentOidOrThrow(); }
-        catch { return Challenge(); }
-
-        var clientUserIdNorm = NormLower(model.ClientUserId);
-        if (string.IsNullOrWhiteSpace(clientUserIdNorm))
-            return RedirectToAction(nameof(Index));
-
-        // Ownership check (ONLY creator/owner can edit)
-        var linked = await _db.AgentClients.AnyAsync(x =>
-            x.AgentUserId == agentOid &&
-            x.ClientUserId == clientUserIdNorm);
-
-        if (!linked)
-            return Forbid();
-
-        var profile = await _db.ClientProfiles
-            .FirstOrDefaultAsync(x => x.ClientUserId == clientUserIdNorm);
-
-        if (profile == null)
+        if (clientProfileId is null)
             return NotFound();
 
-        var previousEmail = profile.NormalizedEmail ?? profile.Email;
-        var emailNorm = NormalizeEmail(model.Email);
-        var meta = EnsureMeta(ClientCrmMetaSerializer.Deserialize(profile.CrmNotes));
-        var existingRecordType = ResolveRecordType(profile.ClientUserId, meta);
-        var hasPortalAccess = HasPortalAccess(profile.ClientUserId);
-        var requestedRecordType = NormalizeRecordType(model.RecordType);
-        var wantsPortalRecord = IsPortalRecordType(requestedRecordType);
-        var requiresPortalEnable = !hasPortalAccess && wantsPortalRecord;
-        model.RecordType = requestedRecordType;
-        model.HasPortalAccess = hasPortalAccess;
-
-        if ((hasPortalAccess || wantsPortalRecord) && string.IsNullOrWhiteSpace((model.FirstName ?? string.Empty).Trim()))
-            ModelState.AddModelError(nameof(EditClientViewModel.FirstName), "First name is required for portal-enabled records.");
-
-        if ((hasPortalAccess || wantsPortalRecord) && string.IsNullOrWhiteSpace((model.LastName ?? string.Empty).Trim()))
-            ModelState.AddModelError(nameof(EditClientViewModel.LastName), "Last name is required for portal-enabled records.");
-
-        if ((hasPortalAccess || wantsPortalRecord) && string.IsNullOrWhiteSpace(emailNorm))
-            ModelState.AddModelError(nameof(EditClientViewModel.Email), "Email is required for portal-enabled records.");
-
-        if (!string.IsNullOrWhiteSpace(emailNorm))
-        {
-            var emailCollision = await _db.ClientProfiles.AsNoTracking()
-                .AnyAsync(x => x.NormalizedEmail == emailNorm && x.ClientUserId != clientUserIdNorm);
-
-            if (emailCollision)
-            {
-                ModelState.AddModelError(nameof(EditClientViewModel.Email),
-                    "BLOCKED (409): That email is already used by another client. Choose a different email.");
-                Response.StatusCode = StatusCodes.Status409Conflict;
-            }
-        }
-
-        var agentUpnForProfile = GetAgentUpnForAudit();
-        var agentUpnNorm = NormalizeEmail(agentUpnForProfile);
-        var agentProfile = _db.AgentProfiles.FirstOrDefault(x => x.AgentUserId == agentOid);
-        if (agentProfile == null && !string.IsNullOrWhiteSpace(agentUpnNorm))
-        {
-            agentProfile = _db.AgentProfiles.FirstOrDefault(x =>
-                x.NormalizedEmail == agentUpnNorm ||
-                (x.NormalizedEmail == null && x.AgentUpn != null && x.AgentUpn.ToLower() == agentUpnNorm));
-        }
-        if (agentProfile == null)
-        {
-            agentProfile = new Domain.Entities.AgentProfile
-            {
-                AgentUserId = agentOid,
-                AgentUpn = agentUpnForProfile,
-                NormalizedEmail = agentUpnNorm,
-                CreatedUtc = DateTime.UtcNow,
-                UpdatedUtc = DateTime.UtcNow
-            };
-            _db.AgentProfiles.Add(agentProfile);
-            await _db.SaveChangesAsync();
-        }
-        else
-        {
-            var profileChanged = false;
-            if (!string.IsNullOrWhiteSpace(agentUpnForProfile) && !string.Equals(agentProfile.AgentUpn, agentUpnForProfile, StringComparison.OrdinalIgnoreCase))
-            {
-                agentProfile.AgentUpn = agentUpnForProfile;
-                profileChanged = true;
-            }
-            if (agentUpnNorm != null && !string.Equals(agentProfile.NormalizedEmail, agentUpnNorm, StringComparison.Ordinal))
-            {
-                agentProfile.NormalizedEmail = agentUpnNorm;
-                profileChanged = true;
-            }
-            if (profileChanged)
-            {
-                agentProfile.UpdatedUtc = DateTime.UtcNow;
-                await _db.SaveChangesAsync();
-            }
-        }
-
-        var agentNpn = agentProfile.Npn?.Trim();
-        model.AgentNpn = agentNpn;
-
-        if (requiresPortalEnable && string.IsNullOrWhiteSpace(agentNpn))
-        {
-            ModelState.AddModelError(nameof(EditClientViewModel.AgentNpn),
-                "Add your NPN in Manage Profile before enabling portal access for this record.");
-        }
-
-        if (!ModelState.IsValid)
-        {
-            model.IsDobLocked = profile.DOB.HasValue;
-            PrepareEditView(model, returnUrl);
-            return View(model);
-        }
-
-        // =========================
-        // Core profile fields
-        // =========================
-        profile.FirstName = (model.FirstName ?? "").Trim();
-        profile.LastName = (model.LastName ?? "").Trim();
-        profile.Email = emailNorm ?? "";
-        profile.NormalizedEmail = emailNorm;
-        profile.Phone = (model.Phone ?? "").Trim();
-        profile.MaritalStatus = (model.MaritalStatus ?? "").Trim();
-        if (!profile.DOB.HasValue && model.DOB.HasValue)
-            profile.DOB = model.DOB.Value.Date;
-        model.IsDobLocked = profile.DOB.HasValue;
-
-        if (!requiresPortalEnable)
-            meta.RecordType = requestedRecordType;
-
-        // =========================
-        // CRM fields (DB-backed)
-        // =========================
-        var crmStatus = (model.CrmStatus ?? "").Trim();
-        if (string.IsNullOrWhiteSpace(crmStatus)) crmStatus = profile.CrmStatus ?? "Lead";
-
-        var crmPriority = (model.CrmPriority ?? "").Trim();
-        if (string.IsNullOrWhiteSpace(crmPriority)) crmPriority = profile.CrmPriority ?? "Normal";
-
-        var allowedStatus = new[] { "Lead", "Prospect", "Active", "Dormant" };
-        if (!allowedStatus.Contains(crmStatus, StringComparer.OrdinalIgnoreCase))
-            crmStatus = profile.CrmStatus ?? "Lead";
-
-        var allowedPriority = new[] { "Low", "Normal", "High", "Urgent" };
-        if (!allowedPriority.Contains(crmPriority, StringComparer.OrdinalIgnoreCase))
-            crmPriority = profile.CrmPriority ?? "Normal";
-
-        var crmTags = (model.CrmTags ?? "").Trim();
-        crmTags = string.Join(", ",
-            (crmTags ?? "")
-                .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
-                .Select(t => t.Trim())
-                .Where(t => !string.IsNullOrWhiteSpace(t))
-                .Distinct(StringComparer.OrdinalIgnoreCase)
-        );
-
-        profile.CrmStatus = requestedRecordType switch
-        {
-            "Client" or "BusinessClient" => "Active",
-            "Lead" => "Lead",
-            _ => crmStatus
-        };
-        profile.CrmPriority = crmPriority;
-        profile.CrmLastTouch = model.CrmLastTouch;
-        profile.CrmNextDate = model.CrmNextDate;
-        profile.CrmNextText = (model.CrmNextText ?? "").Trim();
-        profile.CrmTags = crmTags;
-
-        // Notes in DB (your UI label)
-        profile.AgentNotes = (model.CrmNotes ?? "").Trim();
-
-        // =========================
-        // Upsert Agent Profile (NPN, display name)
-        // =========================
-        var agentUpn = GetAgentUpnForAudit();
-        var agentDisplayName = GetAgentDisplayName();
-        var changed = false;
-
-        if (!string.IsNullOrWhiteSpace(agentUpn) &&
-            !string.Equals(agentProfile.AgentUpn, agentUpn, StringComparison.OrdinalIgnoreCase))
-        {
-            agentProfile.AgentUpn = agentUpn;
-            changed = true;
-        }
-
-        var normalizedName = string.IsNullOrWhiteSpace(agentDisplayName)
-            ? agentProfile.FullName
-            : agentDisplayName;
-
-        if (!string.IsNullOrWhiteSpace(normalizedName) &&
-            !string.Equals(agentProfile.FullName, normalizedName, StringComparison.Ordinal))
-        {
-            agentProfile.FullName = normalizedName;
-            changed = true;
-        }
-
-        if (changed)
-            agentProfile.UpdatedUtc = DateTime.UtcNow;
-
-        if (!requiresPortalEnable && !string.Equals(existingRecordType, meta.RecordType, StringComparison.OrdinalIgnoreCase))
-        {
-            meta.PipelineStage = DefaultPipelineStageForRecordType(meta.RecordType);
-            meta.StageEnteredUtc = DateTime.UtcNow;
-        }
-
-        if (wantsPortalRecord && hasPortalAccess && (string.IsNullOrWhiteSpace(profile.CrmStatus) ||
-            profile.CrmStatus.Equals("Lead", StringComparison.OrdinalIgnoreCase) ||
-            profile.CrmStatus.Equals("Prospect", StringComparison.OrdinalIgnoreCase)))
-        {
-            profile.CrmStatus = "Active";
-        }
-
-        profile.UpdatedUtc = DateTime.UtcNow;
-
-        // =========================
-        // Significant Other rules
-        // =========================
-        var maritalStatus = (model.MaritalStatus ?? "").Trim();
-        var needsSO =
-            maritalStatus.Equals("Married", StringComparison.OrdinalIgnoreCase) ||
-            maritalStatus.Equals("Domestic Partnership", StringComparison.OrdinalIgnoreCase);
-
-        if (needsSO)
-        {
-            if (string.IsNullOrWhiteSpace(model.SignificantOtherFirstName))
-                ModelState.AddModelError(nameof(EditClientViewModel.SignificantOtherFirstName), "Required for this status.");
-            if (string.IsNullOrWhiteSpace(model.SignificantOtherLastName))
-                ModelState.AddModelError(nameof(EditClientViewModel.SignificantOtherLastName), "Required for this status.");
-            if (model.SignificantOtherDOB == null)
-                ModelState.AddModelError(nameof(EditClientViewModel.SignificantOtherDOB), "Required for this status.");
-
-            if (!ModelState.IsValid)
-            {
-                PrepareEditView(model, returnUrl);
-                return View(model);
-            }
-
-            var spouseRows = await _db.HouseholdMembers
-                .Where(x =>
-                    x.ClientUserId == clientUserIdNorm &&
-                    (x.RelationshipType == "SignificantOther" || x.RelationshipType == "Spouse"))
-                .OrderByDescending(x => x.UpdatedUtc)
-                .ThenByDescending(x => x.CreatedUtc)
-                .ToListAsync();
-
-            var so = spouseRows.FirstOrDefault();
-
-            if (so == null)
-            {
-                so = new HouseholdMember
-                {
-                    ClientUserId = clientUserIdNorm,
-                    RelationshipType = "SignificantOther",
-                    CreatedUtc = DateTime.UtcNow
-                };
-                _db.HouseholdMembers.Add(so);
-            }
-            else if (spouseRows.Count > 1)
-            {
-                _db.HouseholdMembers.RemoveRange(spouseRows.Skip(1));
-            }
-
-            so.RelationshipType = "SignificantOther";
-            so.FirstName = (model.SignificantOtherFirstName ?? "").Trim();
-            so.LastName = (model.SignificantOtherLastName ?? "").Trim();
-            so.DOB = model.SignificantOtherDOB;
-            so.Email = (model.SignificantOtherEmail ?? "").Trim();
-            so.Phone = (model.SignificantOtherPhone ?? "").Trim();
-            so.UpdatedUtc = DateTime.UtcNow;
-
-            // Mirror (helps fallback display logic)
-            profile.SignificantOtherFirstName = so.FirstName;
-            profile.SignificantOtherLastName = so.LastName;
-            profile.SignificantOtherDOB = so.DOB;
-            profile.SignificantOtherEmail = so.Email;
-            profile.SignificantOtherPhone = so.Phone;
-        }
-        else
-        {
-            profile.SignificantOtherFirstName = null;
-            profile.SignificantOtherLastName = null;
-            profile.SignificantOtherDOB = null;
-            profile.SignificantOtherEmail = null;
-            profile.SignificantOtherPhone = null;
-
-            var spouseRows = await _db.HouseholdMembers
-                .Where(x =>
-                    x.ClientUserId == clientUserIdNorm &&
-                    (x.RelationshipType == "SignificantOther" || x.RelationshipType == "Spouse"))
-                .ToListAsync();
-
-            if (spouseRows.Count > 0)
-                _db.HouseholdMembers.RemoveRange(spouseRows);
-        }
-
-        await SaveChildrenAsync(clientUserIdNorm, model.Children);
-
-        profile.CrmNotes = ClientCrmMetaSerializer.Serialize(meta);
-
-        if (requiresPortalEnable)
-        {
-            await _db.SaveChangesAsync();
-
-            try
-            {
-                var conversion = await EnablePortalAccessInternalAsync(profile, requestedRecordType, emailNorm ?? string.Empty);
-                TempData["Created"] = conversion.EmailSent
-                    ? $"{RecordTypeLabel(conversion.RecordType)} profile updated. Login username: {conversion.LoginUpn}"
-                    : $"{RecordTypeLabel(conversion.RecordType)} profile updated. Login username: {conversion.LoginUpn}. ⚠ {conversion.Warning}";
-
-                if (!string.IsNullOrWhiteSpace(returnUrl) && Url.IsLocalUrl(returnUrl))
-                {
-                    var conversionReturnUrl = returnUrl
-                        .Replace(conversion.OldClientUserId, conversion.NewClientUserId, StringComparison.OrdinalIgnoreCase)
-                        .Replace(Uri.EscapeDataString(conversion.OldClientUserId), Uri.EscapeDataString(conversion.NewClientUserId), StringComparison.OrdinalIgnoreCase);
-                    return Redirect(conversionReturnUrl);
-                }
-
-                return RedirectToAction(nameof(Index));
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex,
-                    "Failed to enable portal access during edit. AgentOid={AgentOid} ClientUserId={ClientUserId} RequestedRecordType={RequestedRecordType}",
-                    agentOid,
-                    clientUserIdNorm,
-                    requestedRecordType);
-
-                ModelState.AddModelError(nameof(EditClientViewModel.RecordType),
-                    $"Failed to convert this lead into a portal {RecordTypeLabel(requestedRecordType).ToLowerInvariant()}: {ex.Message}");
-                PrepareEditView(model, returnUrl);
-                return View(model);
-            }
-        }
-
-        PortalEmailSyncResult emailSync;
-        await using (var tx = await _db.Database.BeginTransactionAsync())
-        {
-            await _db.SaveChangesAsync();
-
-            emailSync = await SyncPortalEmailAsync(profile, previousEmail, HttpContext.RequestAborted);
-            if (!emailSync.Success)
-            {
-                await tx.RollbackAsync();
-                ModelState.AddModelError(
-                    nameof(EditClientViewModel.Email),
-                    emailSync.Error ?? "We couldn't update the client's sign-in email.");
-                PrepareEditView(model, returnUrl);
-                return View(model);
-            }
-
-            await _db.SaveChangesAsync(HttpContext.RequestAborted);
-            await tx.CommitAsync();
-        }
-
-        var invitationWarning = emailSync.RequiresReplacementSubscriptionInvitation
-            ? await SendReplacementSubscriptionInvitationAsync(profile, agentOid, HttpContext.RequestAborted)
-            : null;
-
-        TempData["Created"] = string.IsNullOrWhiteSpace(invitationWarning)
-            ? $"{RecordTypeLabel(meta.RecordType)} profile updated."
-            : $"{RecordTypeLabel(meta.RecordType)} profile updated. {invitationWarning}";
-        if (!string.IsNullOrWhiteSpace(returnUrl) && Url.IsLocalUrl(returnUrl))
-            return Redirect(returnUrl);
-
-        return RedirectToAction(nameof(Index));
+        var clientPortalBaseUrl = GetClientPortalBaseUrl().TrimEnd('/');
+        var profileReturnUrl = Uri.EscapeDataString("/profile");
+        return Redirect($"{clientPortalBaseUrl}/support/view-as-client/{clientProfileId.Value}?returnUrl={profileReturnUrl}");
     }
 
     private bool ProfileHasDob(string clientUserIdNorm) => _db.ClientProfiles
@@ -5192,7 +4693,7 @@ meta.Activities ??= new List<ClientCrmActivity>();
 
         var latestOffer = await _db.ClientSubscriptionOffers
             .AsNoTracking()
-            .Where(x => x.ClientProfileId == profile.Id && x.OwnerAgentUserId == agentOid)
+            .Where(x => x.ClientProfileId == profile.Id)
             .OrderByDescending(x => x.CreatedUtc)
             .FirstOrDefaultAsync(HttpContext.RequestAborted);
 

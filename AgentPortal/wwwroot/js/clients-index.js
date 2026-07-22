@@ -3832,7 +3832,7 @@ async function openDrawerForRow(row){
     const ts = Date.now();
     if (btnOpenEdit){
       btnOpenEdit.href = row.dataset.clientId ? `/Clients/Edit?clientUserId=${encodeURIComponent(row.dataset.clientId)}&_=${ts}` : "#";
-      btnOpenEdit.textContent = "Edit Client";
+      btnOpenEdit.textContent = "View / Edit Profile";
     }
     if (btnOpenProfile){
       if (row.dataset.isguid === "true" && row.dataset.clientId){
@@ -3840,7 +3840,7 @@ async function openDrawerForRow(row){
       }else{
         btnOpenProfile.href = row.dataset.clientId ? `/Clients/Edit?clientUserId=${encodeURIComponent(row.dataset.clientId)}&_=${ts}` : "#";
       }
-      btnOpenProfile.textContent = "Open Client Profile";
+      btnOpenProfile.textContent = "View / Edit Profile";
     }
     dStatus.value = row.dataset.crmStatus || "Active";
     dPipelineStage.value = row.dataset.crmPipeline || "NewLead";
