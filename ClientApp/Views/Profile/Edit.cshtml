@@ -38,7 +38,7 @@
                     <div class="client-create-blocked">@err</div>
                 }
 
-                <div class="client-edit-section client-edit-section-spaced">
+                <div class="client-create-section client-create-section-shell client-edit-section-spaced">
                     <div class="client-edit-section-head">
                         <div>
                             <div class="client-create-section-title">Profile Picture</div>
@@ -54,11 +54,13 @@
 
                         <form asp-controller="Avatar" asp-action="Upload" method="post" enctype="multipart/form-data" class="client-profile-upload-form">
                             @Html.AntiForgeryToken()
-                            <div>
-                                <label class="client-create-label is-required" for="photo">Profile Picture</label>
-                                <input type="file" id="photo" name="photo" class="client-create-input" accept=".png,.jpg,.jpeg,.webp" required />
+                            <div class="client-profile-upload-row">
+                                <div class="client-profile-upload-field">
+                                    <label class="client-create-label is-required" for="photo">Profile Picture</label>
+                                    <input type="file" id="photo" name="photo" class="client-create-input" accept=".png,.jpg,.jpeg,.webp" required />
+                                </div>
+                                <button type="submit" class="client-create-button client-create-button-primary">Upload Photo</button>
                             </div>
-                            <button type="submit" class="client-create-button client-create-button-primary">Upload Photo</button>
                             <p class="client-edit-note">PNG, JPG, or WEBP under 3 MB.</p>
                         </form>
                     </div>
@@ -122,7 +124,7 @@
                         </div>
                     </div>
 
-                    <div id="significantOtherSection" class="client-edit-section client-edit-section-compact client-edit-section-spaced" hidden>
+                    <div id="significantOtherSection" class="client-create-section client-create-section-shell client-edit-section-spaced" hidden>
                         <div class="client-edit-section-head">
                             <div>
                                 <div class="client-create-section-title">Spouse Or Significant Other</div>
@@ -164,7 +166,7 @@
                         </div>
                     </div>
 
-                    <div class="client-edit-section client-edit-section-compact client-edit-section-spaced">
+                    <div class="client-create-section client-create-section-shell client-edit-section-spaced">
                         <div class="client-edit-section-head">
                             <div>
                                 <div class="client-create-section-title">Children</div>

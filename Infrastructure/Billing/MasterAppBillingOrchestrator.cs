@@ -417,7 +417,14 @@ internal sealed class MasterAppBillingOrchestrator : IBillingOrchestrator
         var customerResult = await _gateway.ResolveCustomerAsync(
             new BillingCustomerResolutionRequest(
                 command.ExistingProviderCustomerId,
-                new BillingCustomerProfileInput(client.FirstName, client.LastName, client.Email, client.Phone, client.Id.ToString(), $"Client subscription activation {subscription.Id}"),
+                new BillingCustomerProfileInput(
+                    client.FirstName,
+                    client.LastName,
+                    client.Email,
+                    client.Phone,
+                    client.Id.ToString(),
+                    $"Client subscription activation {subscription.Id}",
+                    command.BillingAddress),
                 BillingIdempotency.CreateDeterministic("billing-customer", client.Id.ToString(), client.Email),
                 correlationId),
             cancellationToken);
@@ -447,7 +454,8 @@ internal sealed class MasterAppBillingOrchestrator : IBillingOrchestrator
                 command.CardholderName ?? $"{client.FirstName} {client.LastName}".Trim(),
                 subscription.Id.ToString(),
                 null,
-                correlationId),
+                correlationId,
+                command.BillingAddress),
             cancellationToken);
 
         if (!attachmentResult.Success || string.IsNullOrWhiteSpace(attachmentResult.ProviderPaymentMethodId))

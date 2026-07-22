@@ -61,16 +61,12 @@ public sealed class SubscriptionActivationController : Controller
             return RenderContext(token, input.ReturnUrl, activation.Context, activation.SanitizedMessage);
         }
 
-        return View("Processing", new SubscriptionActivationProcessingViewModel
-        {
-            Title = "Subscription Activated",
-            Message = "Your first payment was approved and recurring billing is now scheduled. Finish sign-in to open the client portal.",
-            Token = token,
-            ReturnUrl = NormalizeReturnUrl(input.ReturnUrl),
-            ProtectedContinuationState = activation.ProtectedContinuationState,
-            CanContinue = true,
-            TechnicalStatus = activation.Context.Subscription?.Status.ToString()
-        });
+        _continuationService.StoreCookie(
+            Response,
+            activation.ProtectedContinuationState,
+            activation.ContinuationExpiresUtc ?? DateTime.UtcNow.AddMinutes(20));
+
+        return RedirectToAction("AzureLogin", "Account", new { returnUrl = NormalizeReturnUrl(input.ReturnUrl) });
     }
 
     [HttpGet("/activate/{token}/status")]

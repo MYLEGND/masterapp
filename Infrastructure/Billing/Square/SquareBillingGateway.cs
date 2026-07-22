@@ -124,6 +124,10 @@ internal sealed class SquareBillingGateway : IBillingGateway
             ["note"] = request.Customer.Note
         };
 
+        var customerAddress = BuildAddress(request.Customer.Address);
+        if (customerAddress is not null)
+            createBody["address"] = customerAddress;
+
         var created = await SendAsync(HttpMethod.Post, "/v2/customers", createBody, request.CorrelationId, cancellationToken);
         if (!created.Success)
             return new BillingCustomerResolutionResult(false, null, created.NormalizedStatus, created.SafeErrorCode, created.SanitizedSummary, created.ProviderRequestId, created.Retryable);
@@ -150,6 +154,13 @@ internal sealed class SquareBillingGateway : IBillingGateway
                 ["reference_id"] = request.ReferenceId
             }
         };
+
+        if (body["card"] is Dictionary<string, object?> cardBody)
+        {
+            var billingAddress = BuildAddress(request.BillingAddress);
+            if (billingAddress is not null)
+                cardBody["billing_address"] = billingAddress;
+        }
 
         if (!string.IsNullOrWhiteSpace(request.VerificationToken))
             body["verification_token"] = request.VerificationToken;
@@ -323,6 +334,34 @@ internal sealed class SquareBillingGateway : IBillingGateway
             IsRetryable(response.StatusCode),
             json);
     }
+
+    private static Dictionary<string, object?>? BuildAddress(BillingPostalAddress? address)
+    {
+        if (address is null)
+            return null;
+
+        var line1 = TrimToNull(address.AddressLine1);
+        var line2 = TrimToNull(address.AddressLine2);
+        var locality = TrimToNull(address.Locality);
+        var admin = TrimToNull(address.AdministrativeDistrictLevel1);
+        var postal = TrimToNull(address.PostalCode);
+        var country = TrimToNull(address.Country);
+
+        if (line1 is null && line2 is null && locality is null && admin is null && postal is null && country is null)
+            return null;
+
+        return new Dictionary<string, object?>
+        {
+            ["address_line_1"] = line1,
+            ["address_line_2"] = line2,
+            ["locality"] = locality,
+            ["administrative_district_level_1"] = admin,
+            ["postal_code"] = postal,
+            ["country"] = country
+        };
+    }
+
+    private static string? TrimToNull(string? value) => string.IsNullOrWhiteSpace(value) ? null : value.Trim();
 
     private BillingOneTimePaymentResult? ValidateConfigured(string operationName)
     {

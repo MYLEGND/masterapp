@@ -22,6 +22,7 @@ public sealed class SubscriptionActivationPageViewModel
     public string? ErrorMessage { get; set; }
     public string? StatusMessage { get; set; }
     public bool BrowserPaymentReady { get; set; }
+    public string BrowserPaymentSetupMessage { get; set; } = string.Empty;
     public string SquareApplicationId { get; set; } = string.Empty;
     public string SquareLocationId { get; set; } = string.Empty;
     public string SquareEnvironment { get; set; } = "Sandbox";
@@ -56,7 +57,26 @@ public sealed class SubscriptionActivationPaymentInput
     [Required]
     public string SourceId { get; set; } = string.Empty;
 
-    public string? CardholderName { get; set; }
+    [Required(ErrorMessage = "Cardholder name is required.")]
+    public string CardholderName { get; set; } = string.Empty;
+
+    [Required(ErrorMessage = "Billing address is required.")]
+    public string BillingAddressLine1 { get; set; } = string.Empty;
+
+    public string? BillingAddressLine2 { get; set; }
+
+    [Required(ErrorMessage = "Billing city is required.")]
+    public string BillingCity { get; set; } = string.Empty;
+
+    [Required(ErrorMessage = "Billing state is required.")]
+    public string BillingState { get; set; } = string.Empty;
+
+    [Required(ErrorMessage = "Billing ZIP code is required.")]
+    public string BillingPostalCode { get; set; } = string.Empty;
+
+    [Required(ErrorMessage = "Billing country is required.")]
+    public string BillingCountryCode { get; set; } = "US";
+
     public string ReturnUrl { get; set; } = "/profile";
 
     [Range(typeof(bool), "true", "true", ErrorMessage = "Recurring authorization is required.")]
@@ -67,17 +87,6 @@ public sealed class SubscriptionActivationPaymentInput
 
     [Range(typeof(bool), "true", "true", ErrorMessage = "Cancellation terms must be accepted.")]
     public bool CancellationTermsAccepted { get; set; }
-}
-
-public sealed class SubscriptionActivationProcessingViewModel
-{
-    public string Title { get; set; } = "Subscription Ready";
-    public string Message { get; set; } = string.Empty;
-    public string Token { get; set; } = string.Empty;
-    public string ReturnUrl { get; set; } = "/profile";
-    public string ProtectedContinuationState { get; set; } = string.Empty;
-    public bool CanContinue { get; set; }
-    public string? TechnicalStatus { get; set; }
 }
 
 public sealed class SubscriptionActivationNoticeViewModel

@@ -10,25 +10,25 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>@ViewData["Title"] - Legend™</title>
-    <link rel="stylesheet" href="~/lib/bootstrap/dist/css/bootstrap.min.css" />
-    <link rel="stylesheet" href="~/css/site.css" asp-append-version="true" />
+    <link rel="stylesheet" href="~/_content/Shared/css/dashboard-home-shared.css" asp-append-version="true" />
 </head>
-<body class="bg-light">
-    <main class="container py-5">
-        <div class="row justify-content-center">
-            <div class="col-12 col-md-8 col-lg-6">
-                <div class="card shadow-sm border-0">
-                    <div class="card-body p-4 p-lg-5">
-                        <h1 class="h3 mb-3">@Model.Title</h1>
-                        <p class="text-muted mb-4">@Model.Message</p>
-                        <div class="d-flex flex-column gap-2">
-                            <a class="btn btn-dark" href="@Url.Action("Login", "Account", new { returnUrl = Model.ReturnUrl })">Open Client Sign-In</a>
-                            <a class="btn btn-outline-secondary" href="@Model.ReturnUrl">Return</a>
-                        </div>
-                    </div>
+<body class="subscription-activation-standalone">
+    <main class="dashboard-page-shell client-create-page subscription-activation-shell">
+        <section class="client-create-panel">
+            <div class="client-create-header">
+                <div>
+                    <div class="dashboard-eyebrow">Activation Notice</div>
+                    <h1 class="client-create-title">@Model.Title</h1>
+                    <p class="client-create-subtitle">@Model.Message</p>
                 </div>
             </div>
-        </div>
+            <div class="client-create-body">
+                <div class="subscription-activation-actions">
+                    <a class="client-create-button client-create-button-primary" href="@Url.Action("Login", "Account", new { returnUrl = Model.ReturnUrl })">Open Client Sign-In</a>
+                    <a class="client-create-button client-create-button-secondary" href="@Model.ReturnUrl">Return</a>
+                </div>
+            </div>
+        </section>
     </main>
 </body>
 </html>

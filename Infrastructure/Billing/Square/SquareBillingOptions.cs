@@ -19,14 +19,29 @@ public sealed class SquareBillingOptions
         var configuredEnvironment = configuration["Square:Environment"];
         return new SquareBillingOptions
         {
-            ApplicationId = Normalize(configuration["Square:ApplicationId"]),
-            AccessToken = Normalize(configuration["Square:AccessToken"]),
-            LocationId = Normalize(configuration["Square:LocationId"]),
-            WebhookSignatureKey = Normalize(configuration["Square:WebhookSignatureKey"]),
-            WebhookNotificationUrl = Normalize(configuration["Square:WebhookNotificationUrl"]),
+            ApplicationId = FirstConfigured(configuration,
+                "Square:ApplicationId",
+                "Square:AppId",
+                "Square:PublicApplicationId",
+                "Square:WebPaymentsApplicationId"),
+            AccessToken = FirstConfigured(configuration,
+                "Square:AccessToken",
+                "Square:Token",
+                "Square:SecretAccessToken"),
+            LocationId = FirstConfigured(configuration,
+                "Square:LocationId",
+                "Square:PublicLocationId",
+                "Square:WebPaymentsLocationId"),
+            WebhookSignatureKey = FirstConfigured(configuration,
+                "Square:WebhookSignatureKey",
+                "Square:SignatureKey"),
+            WebhookNotificationUrl = FirstConfigured(configuration,
+                "Square:WebhookNotificationUrl",
+                "Square:WebhookUrl"),
             Environment = ParseEnvironment(configuredEnvironment),
-            SquareVersion = Normalize(configuration["Square:SquareVersion"])
-                ?? Normalize(configuration["Square:Version"])
+            SquareVersion = FirstConfigured(configuration,
+                "Square:SquareVersion",
+                "Square:Version")
                 ?? "2026-07-15",
             TimeoutSeconds = int.TryParse(configuration["Square:TimeoutSeconds"], out var timeoutSeconds) && timeoutSeconds > 0
                 ? timeoutSeconds
@@ -57,6 +72,18 @@ public sealed class SquareBillingOptions
         return string.Equals(value?.Trim(), "Production", StringComparison.OrdinalIgnoreCase)
             ? BillingProviderEnvironment.Production
             : BillingProviderEnvironment.Sandbox;
+    }
+
+    private static string? FirstConfigured(IConfiguration configuration, params string[] keys)
+    {
+        foreach (var key in keys)
+        {
+            var normalized = Normalize(configuration[key]);
+            if (!string.IsNullOrWhiteSpace(normalized))
+                return normalized;
+        }
+
+        return null;
     }
 
     private static string? Normalize(string? value) => string.IsNullOrWhiteSpace(value) ? null : value.Trim();

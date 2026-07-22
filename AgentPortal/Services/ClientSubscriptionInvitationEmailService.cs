@@ -83,64 +83,104 @@ public sealed class ClientSubscriptionInvitationEmailService
             ? "If you need help, contact your Legend agent before your invitation expires."
             : "If you need help, reply directly to this email and your agent will pick it up.";
 
-        var subject = "Finish setting up your Legend ClientApp access";
+        var subject = "Activate your Legend ClientApp access";
         var htmlBody = $"""
-<div style="margin:0;padding:32px 16px;background:#f4efe2;font-family:Inter,Arial,sans-serif;color:#132238;line-height:1.6;">
-  <div style="max-width:680px;margin:0 auto;">
-    <div style="background:linear-gradient(145deg,#0b1633 0%,#10224a 58%,#18376a 100%);border:1px solid #d4af37;border-radius:28px;overflow:hidden;box-shadow:0 22px 56px rgba(8,17,38,0.18);">
-      <div style="padding:30px 32px 24px;color:#f8f2e6;">
-        <div style="display:inline-block;padding:6px 12px;border:1px solid rgba(212,175,55,0.45);border-radius:999px;font-size:12px;font-weight:800;letter-spacing:0.14em;text-transform:uppercase;color:#dcb861;background:rgba(255,255,255,0.05);">
-          Legend ClientApp
-        </div>
-        <h1 style="margin:18px 0 12px;font-size:32px;line-height:1.15;font-weight:800;color:#ffffff;">
-          Your private client access is ready
-        </h1>
-        <p style="margin:0;font-size:16px;color:#dfe6f5;">
-          Hi {safeName}, use your secure activation link below to confirm billing and finish sign-in with <strong style="color:#ffffff;">{safeSignInEmail}</strong>.
-        </p>
-      </div>
+<table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="margin:0;padding:0;background:#f4efe2;font-family:Arial,sans-serif;color:#132238;">
+  <tr>
+    <td align="center" style="padding:28px 14px;">
+      <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="max-width:700px;background:#ffffff;border:1px solid #d4af37;border-radius:24px;overflow:hidden;">
+        <tr>
+          <td style="padding:0;background:#0f2347;">
+            <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%">
+              <tr>
+                <td style="padding:28px 30px 10px 30px;">
+                  <div style="display:inline-block;padding:7px 14px;border:1px solid #d4af37;border-radius:999px;color:#f0d991;font-size:12px;font-weight:800;letter-spacing:1.5px;text-transform:uppercase;">
+                    Legend ClientApp
+                  </div>
+                </td>
+              </tr>
+              <tr>
+                <td style="padding:0 30px 30px 30px;color:#ffffff;">
+                  <div style="font-size:34px;line-height:1.1;font-weight:800;">Your private client access is ready</div>
+                  <div style="margin-top:14px;font-size:18px;line-height:1.6;color:#dce6fb;">
+                    Hi {safeName}, your agent prepared your secure ClientApp activation. Use the button below to confirm billing and finish sign-in with <strong style="color:#ffffff;">{safeSignInEmail}</strong>.
+                  </div>
+                </td>
+              </tr>
+            </table>
+          </td>
+        </tr>
 
-      <div style="padding:30px 32px 34px;background:#fffdfa;">
-        <div style="padding:20px 22px;border:1px solid #e1c46c;border-radius:22px;background:linear-gradient(180deg,#fff8e8 0%,#fffdf7 100%);">
-          <div style="font-size:12px;font-weight:800;letter-spacing:0.12em;text-transform:uppercase;color:#8a6a13;">Subscription Summary</div>
-          <div style="margin:12px 0 4px;font-size:34px;line-height:1;font-weight:800;color:#10224a;">{safeAmount}<span style="font-size:16px;font-weight:700;color:#6c7484;"> / month</span></div>
-          <div style="margin:10px 0 0;color:#38455c;"><strong>Billing day:</strong> {safeAnchor}</div>
-          <div style="margin:6px 0 0;color:#38455c;"><strong>Secure link expires:</strong> {safeInvitationExpires}</div>
-        </div>
+        <tr>
+          <td style="padding:28px 30px 0 30px;background:#fffdfa;">
+            <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="border:1px solid #e1c46c;border-radius:20px;background:#fbf5e7;">
+              <tr>
+                <td style="padding:22px 24px;">
+                  <div style="font-size:12px;font-weight:800;letter-spacing:1.4px;text-transform:uppercase;color:#8a6a13;">Subscription Summary</div>
+                  <div style="margin-top:12px;font-size:40px;line-height:1;font-weight:800;color:#10224a;">{safeAmount}<span style="font-size:18px;font-weight:700;color:#5f6b7d;"> / month</span></div>
+                  <div style="margin-top:14px;font-size:16px;line-height:1.7;color:#273652;"><strong>Billing day:</strong> {safeAnchor}</div>
+                  <div style="font-size:16px;line-height:1.7;color:#273652;"><strong>Secure link expires:</strong> {safeInvitationExpires}</div>
+                </td>
+              </tr>
+            </table>
+          </td>
+        </tr>
 
-        <div style="margin:26px 0 22px;text-align:center;">
-          <a href="{safeActivationUrl}" target="_blank" style="display:inline-block;padding:15px 26px;border-radius:999px;background:#c89a1f;color:#0b1633;text-decoration:none;font-size:16px;font-weight:800;letter-spacing:0.01em;">
-            Activate Subscription
-          </a>
-        </div>
+        <tr>
+          <td align="center" style="padding:28px 30px 0 30px;background:#fffdfa;">
+            <a href="{safeActivationUrl}" target="_blank" style="display:inline-block;padding:16px 28px;background:#ddb457;border:1px solid #b68922;border-radius:999px;color:#10224a;text-decoration:none;font-size:17px;font-weight:800;">
+              Activate Subscription
+            </a>
+          </td>
+        </tr>
 
-        <div style="padding:18px 20px;border-radius:18px;background:#f6f1e4;border:1px solid #ead7a1;">
-          <div style="font-size:13px;font-weight:800;letter-spacing:0.08em;text-transform:uppercase;color:#7a5f12;">What Happens Next</div>
-          <div style="margin:10px 0 0;color:#243246;">1. Confirm your recurring billing details and consents.</div>
-          <div style="margin:6px 0 0;color:#243246;">2. Finish Microsoft sign-in using <strong>{safeSignInEmail}</strong>.</div>
-          <div style="margin:6px 0 0;color:#243246;">3. Open your private client portal and manage your account from there.</div>
-        </div>
+        <tr>
+          <td style="padding:26px 30px 0 30px;background:#fffdfa;">
+            <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="border:1px solid #ead7a1;border-radius:18px;background:#f7f1e2;">
+              <tr>
+                <td style="padding:20px 22px;">
+                  <div style="font-size:12px;font-weight:800;letter-spacing:1.2px;text-transform:uppercase;color:#8a6a13;">What To Expect</div>
+                  <div style="margin-top:12px;font-size:16px;line-height:1.75;color:#243246;">1. Confirm your recurring billing details and payment method.</div>
+                  <div style="font-size:16px;line-height:1.75;color:#243246;">2. Complete Microsoft sign-in using <strong>{safeSignInEmail}</strong>.</div>
+                  <div style="font-size:16px;line-height:1.75;color:#243246;">3. Open your private client portal and manage everything from there.</div>
+                </td>
+              </tr>
+            </table>
+          </td>
+        </tr>
 
-        <p style="margin:22px 0 0;color:#4d5768;">
-          After activation, future sign-ins use this secure client sign-in page:
-          <a href="{safeSignInUrl}" target="_blank" style="color:#0f274d;font-weight:700;text-decoration:none;">{safeSignInUrl}</a>
-        </p>
-        <p style="margin:10px 0 0;color:#4d5768;">{replyCopy}</p>
+        <tr>
+          <td style="padding:24px 30px 0 30px;background:#fffdfa;">
+            <div style="font-size:15px;line-height:1.7;color:#4d5768;">
+              After activation, your normal client sign-in page is:
+              <a href="{safeSignInUrl}" target="_blank" style="color:#0f274d;font-weight:700;text-decoration:none;">{safeSignInUrl}</a>
+            </div>
+            <div style="margin-top:10px;font-size:15px;line-height:1.7;color:#4d5768;">{replyCopy}</div>
+          </td>
+        </tr>
 
-        <div style="margin:28px 0 0;padding:22px 0 0;border-top:1px solid #eadfbe;">
-          <div style="font-size:12px;font-weight:800;letter-spacing:0.12em;text-transform:uppercase;color:#8a6a13;">Your Agent</div>
-          <div style="margin:10px 0 0;font-size:22px;font-weight:800;color:#10224a;">{safeAgentName}</div>
-          {agentTitleHtml}
-          {agentPhoneHtml}
-          {agentEmailHtml}
-          {agentNpnHtml}
-          <div style="margin:18px 0 0;color:#7a5f12;font-weight:800;">Legend™</div>
-          <div style="margin:4px 0 0;color:#5b6475;font-style:italic;">Where Your Faith Fuels Your Future &amp; Wellness Meets Wealth</div>
-        </div>
-      </div>
-    </div>
-  </div>
-</div>
+        <tr>
+          <td style="padding:28px 30px 32px 30px;background:#fffdfa;">
+            <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="border-top:1px solid #eadfbe;">
+              <tr>
+                <td style="padding-top:22px;">
+                  <div style="font-size:12px;font-weight:800;letter-spacing:1.4px;text-transform:uppercase;color:#8a6a13;">Your Agent</div>
+                  <div style="margin-top:10px;font-size:24px;font-weight:800;color:#10224a;">{safeAgentName}</div>
+                  {agentTitleHtml}
+                  {agentPhoneHtml}
+                  {agentEmailHtml}
+                  {agentNpnHtml}
+                  <div style="margin-top:18px;font-size:16px;font-weight:800;color:#7a5f12;">Legend™</div>
+                  <div style="margin-top:4px;font-size:14px;line-height:1.6;color:#5b6475;font-style:italic;">Where Your Faith Fuels Your Future &amp; Wellness Meets Wealth</div>
+                </td>
+              </tr>
+            </table>
+          </td>
+        </tr>
+      </table>
+    </td>
+  </tr>
+</table>
 """;
 
         var textLines = new List<string>

@@ -12,6 +12,10 @@
         (ViewContext.ActionDescriptor as Microsoft.AspNetCore.Mvc.Controllers.ControllerActionDescriptor)?.ControllerName
         ?? "";
     var loadSharedFinanceStyles = string.Equals(layoutController, "Finance", StringComparison.OrdinalIgnoreCase);
+    var usesSharedDashboardHost =
+        string.Equals(layoutController, "Home", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(layoutController, "Profile", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(layoutController, "Dashboard", StringComparison.OrdinalIgnoreCase);
 }
 <html lang="en">
 <head>
@@ -35,7 +39,7 @@
 
     <link rel="icon" type="image/png" href="~/images/favicon/favicon.png" asp-append-version="true" />
 </head>
-<body class="d-flex flex-column min-vh-100@(loadSharedFinanceStyles ? " finance-page" : "")">
+<body class="d-flex flex-column min-vh-100@(loadSharedFinanceStyles ? " finance-page" : "")@(usesSharedDashboardHost ? " dashboard-shared-host" : "")">
 
 <header>
     <nav class="navbar navbar-expand-sm navbar-dark">

@@ -155,9 +155,10 @@ public sealed class SubscriptionActivationService
                 context.Invitation.IntendedNormalizedEmail,
                 context.Invitation.Id,
                 context.Subscription?.ProviderCustomerId,
-                input.CardholderName,
+                input.CardholderName.Trim(),
                 BillingCorrelationId(context.Invitation.Id, context.Schedule.BillingAnchorDay),
-                BillingIdempotencyKey(context.Invitation.Id, context.Schedule.BillingAnchorDay)),
+                BillingIdempotencyKey(context.Invitation.Id, context.Schedule.BillingAnchorDay),
+                BuildBillingAddress(input)),
             cancellationToken);
 
         if (!activationResult.Success || activationResult.Subscription is null)
@@ -214,6 +215,7 @@ public sealed class SubscriptionActivationService
             ErrorMessage = errorMessage,
             StatusMessage = context.Message,
             BrowserPaymentReady = BrowserPaymentReady,
+            BrowserPaymentSetupMessage = BuildBrowserPaymentSetupMessage(),
             SquareApplicationId = SquareApplicationId,
             SquareLocationId = SquareLocationId,
             SquareEnvironment = SquareEnvironment
@@ -309,5 +311,40 @@ public sealed class SubscriptionActivationService
     private static string BillingIdempotencyKey(Guid invitationId, int? billingAnchorDay)
     {
         return $"client-activation-{invitationId:N}-{billingAnchorDay?.ToString(CultureInfo.InvariantCulture) ?? "default"}";
+    }
+
+    private static BillingPostalAddress BuildBillingAddress(SubscriptionActivationPaymentInput input)
+    {
+        return new BillingPostalAddress(
+            TrimToNull(input.BillingAddressLine1),
+            TrimToNull(input.BillingAddressLine2),
+            TrimToNull(input.BillingCity),
+            TrimToNull(input.BillingState),
+            TrimToNull(input.BillingPostalCode),
+            NormalizeCountry(input.BillingCountryCode));
+    }
+
+    private string BuildBrowserPaymentSetupMessage()
+    {
+        if (BrowserPaymentReady)
+            return string.Empty;
+
+        var missing = new List<string>();
+        if (string.IsNullOrWhiteSpace(_squareOptions.ApplicationId))
+            missing.Add("Square application ID");
+        if (string.IsNullOrWhiteSpace(_squareOptions.LocationId))
+            missing.Add("Square location ID");
+
+        return missing.Count == 0
+            ? "Secure card setup is not available yet."
+            : $"Secure card setup is missing: {string.Join(", ", missing)}.";
+    }
+
+    private static string? TrimToNull(string? value) => string.IsNullOrWhiteSpace(value) ? null : value.Trim();
+
+    private static string NormalizeCountry(string? value)
+    {
+        var normalized = TrimToNull(value);
+        return string.IsNullOrWhiteSpace(normalized) ? "US" : normalized.ToUpperInvariant();
     }
 }

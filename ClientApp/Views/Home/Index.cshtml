@@ -2,108 +2,218 @@
     ViewData["Title"] = "Home";
     Layout = "~/Views/Shared/_Layout.cshtml";
 
-    var firstRowTools = new[]
+    var focusAreas = new[]
     {
-        new { Name = "Spiritual Health", Icon = "faith.png", Description = "When your spirit is nourished, everything else has room to grow. Whether you connect through prayer, meditation, nature, or community, anchoring to something bigger than yourself can soften anxiety, sharpen purpose, and make room for hope on hard days." },
-        new { Name = "Mental Health", Icon = "mind.png", Description = "Your mind sets the tone for your day and how you show up for the people you love. Small, consistent practices such as sleep, movement, honest conversations, and asking for help create resilience. You are not meant to carry the heavy things alone." },
-        new { Name = "Physical Health", Icon = "health.png", Description = "Treat your body like a trusted teammate. Gentle routines like stretching, walking, and fueling up with real food build steady energy and prove you are worth investing in one habit at a time." },
-        new { Name = "Financial Health", Icon = "finance.png", Description = "Money touches nearly every decision, so confidence here brings real peace. A clear budget, a simple plan for saving, and protection against surprises all work together." }
+        new
+        {
+            Name = "Spiritual Health",
+            Icon = "faith.png",
+            Description = "When your spirit is nourished, everything else has room to grow. Whether you connect through prayer, meditation, nature, or community, anchoring to something bigger than yourself can soften anxiety, sharpen purpose, and make room for hope on hard days.",
+            Points = new[]
+            {
+                "Build a simple rhythm that brings peace back into the day.",
+                "Name the support, people, and practices that help you stay grounded.",
+                "Use this lane when you want to slow the noise and refocus."
+            }
+        },
+        new
+        {
+            Name = "Mental Health",
+            Icon = "mind.png",
+            Description = "Your mind sets the tone for your day and how you show up for the people you love. Small, consistent practices such as sleep, movement, honest conversations, and asking for help create resilience. You are not meant to carry the heavy things alone.",
+            Points = new[]
+            {
+                "Spot stress points before they turn into shutdown or burnout.",
+                "Choose one realistic habit that supports steadier emotional bandwidth.",
+                "Open this lane when you need language for what feels heavy or unclear."
+            }
+        },
+        new
+        {
+            Name = "Physical Health",
+            Icon = "health.png",
+            Description = "Treat your body like a trusted teammate. Gentle routines like stretching, walking, and fueling up with real food build steady energy and prove you are worth investing in one habit at a time.",
+            Points = new[]
+            {
+                "Focus on sustainable routines instead of extreme resets.",
+                "Create a simple game plan for energy, movement, and recovery.",
+                "Use this lane when you want to stabilize how your body feels day to day."
+            }
+        },
+        new
+        {
+            Name = "Financial Health",
+            Icon = "finance.png",
+            Description = "Money touches nearly every decision, so confidence here brings real peace. A clear budget, a simple plan for saving, and protection against surprises all work together.",
+            Points = new[]
+            {
+                "See where money pressure is stealing clarity from the rest of life.",
+                "Organize protection, savings, and next-step planning in one place.",
+                "Open this lane when you want structure and calmer decision-making."
+            }
+        },
+        new
+        {
+            Name = "Legal Risk",
+            Icon = "legal.png",
+            Description = "Put your wishes in writing before life gets noisy. Simple documents such as wills, powers of attorney, and beneficiary reviews keep decisions in your hands and reduce stress for the people you love.",
+            Points = new[]
+            {
+                "Review the decisions that should be clear before a crisis arrives.",
+                "Make sure the people you trust can act with less confusion later.",
+                "Use this lane when you want your household instructions to be cleaner."
+            }
+        },
+        new
+        {
+            Name = "Health Risk",
+            Icon = "health-risk.png",
+            Description = "Health can change quickly. Planning for care, costs, and who speaks for you when you cannot makes tough moments calmer and gives your family clearer guidance.",
+            Points = new[]
+            {
+                "Think through care costs, emergency decisions, and support gaps.",
+                "Protect your family from scrambling when timing is already stressful.",
+                "Open this lane when you want more readiness around health uncertainty."
+            }
+        },
+        new
+        {
+            Name = "Life Risk",
+            Icon = "life-event.jpg",
+            Description = "Life throws curveballs. Protecting your paycheck and your family's needs with the right coverage and cash buffers keeps a hard season from becoming a crisis.",
+            Points = new[]
+            {
+                "Identify where income loss or a major event would hit hardest.",
+                "Match protection planning to the people and responsibilities you carry.",
+                "Use this lane when you want a stronger safety net around real-life disruption."
+            }
+        },
+        new
+        {
+            Name = "Legacy Transfer",
+            Icon = "legacy.png",
+            Description = "Legacy is more than assets. With a plan, you decide how resources support people and causes you care about, and you leave clarity instead of confusion.",
+            Points = new[]
+            {
+                "Shape how your values and resources move forward together.",
+                "Reduce avoidable confusion for the people you love most.",
+                "Open this lane when you want your long-term intentions documented clearly."
+            }
+        }
     };
-
-    var secondRowTools = new[]
-    {
-        new { Name = "Legal Risk", Icon = "legal.png", Description = "Put your wishes in writing before life gets noisy. Simple documents such as wills, powers of attorney, and beneficiary reviews keep decisions in your hands and reduce stress for the people you love." },
-        new { Name = "Health Risk", Icon = "health-risk.png", Description = "Health can change quickly. Planning for care, costs, and who speaks for you when you cannot makes tough moments calmer and gives your family clearer guidance." },
-        new { Name = "Life Risk", Icon = "life-event.jpg", Description = "Life throws curveballs. Protecting your paycheck and your family’s needs with the right coverage and cash buffers keeps a hard season from becoming a crisis." },
-        new { Name = "Legacy Transfer", Icon = "legacy.png", Description = "Legacy is more than assets. With a plan, you decide how resources support people and causes you care about, and you leave clarity instead of confusion." }
-    };
-
-    var toolRows = new[] { firstRowTools, secondRowTools };
 }
 
 @section Styles {
     <link rel="stylesheet" href="~/_content/Shared/css/dashboard-home-shared.css" asp-append-version="true" />
 }
 
-<div class="dashboard-page-shell client-create-page">
-    <section class="dashboard-command-center-panel">
-        <div class="dashboard-command-center-top">
+<div class="dashboard-page-shell home-command-page client-create-page">
+    <section class="dashboard-command-center-panel home-hero-panel">
+        <div class="dashboard-command-center-top home-hero-top">
             <div class="dashboard-hero-copy">
                 <div class="dashboard-eyebrow">Client Home</div>
                 <h1 class="dashboard-hero-title">Legend™ Legacy Protection</h1>
                 <p class="dashboard-analytics-copy">Your personal access point for life, wellness, and financial clarity inside the same dashboard system used by AgentPortal.</p>
             </div>
-            <div class="d-grid gap-3" aria-label="Home page focus areas">
+            <div class="home-hero-summary" aria-label="Client home focus areas">
                 <div class="dashboard-stat-card is-primary">
                     <div class="dashboard-stat-label">Clarity</div>
-                    <div class="dashboard-stat-value">8</div>
-                    <div class="dashboard-stat-note">Core planning lanes</div>
+                    <div class="home-hero-stat-title">8 Focus Lanes</div>
+                </div>
+                <div class="dashboard-stat-card">
+                    <div class="dashboard-stat-label">Shared</div>
+                    <div class="home-hero-stat-title">Agent View</div>
                 </div>
                 <div class="dashboard-stat-card">
                     <div class="dashboard-stat-label">Action</div>
-                    <div class="dashboard-stat-value">1</div>
-                    <div class="dashboard-stat-note">Protection snapshot</div>
+                    <div class="home-hero-stat-title">Protection Snapshot</div>
                 </div>
             </div>
         </div>
     </section>
 
-    <section class="client-create-section-shell">
-        <div class="client-create-section-head">
-            <div class="client-create-section-title">Build And Protect Your Legacy</div>
-            <p class="client-create-section-copy">Select any planning lane to open a focused explanation without leaving the dashboard.</p>
+    <section class="category-container home-tools-panel">
+        <div class="category-head">
+            <div class="category-head-copy">
+                <div class="category-kicker">Build And Protect Your Legacy</div>
+                <h2 class="category-toggle">Open the same premium dashboard language used inside AgentPortal.</h2>
+                <p class="category-copy">Select any focus area to read a cleaner explanation without leaving the shared dashboard system.</p>
+            </div>
+            <div class="category-count-pill" aria-label="Focus area count">
+                <span class="category-count-number">@focusAreas.Length</span>
+                <span class="category-count-label">Focus Areas</span>
+            </div>
         </div>
 
-        @foreach (var toolRow in toolRows)
-        {
-            <div class="client-dashboard-grid">
-                @foreach (var tool in toolRow)
-                {
-                    <button type="button"
-                            class="client-dashboard-tile category-trigger"
-                            data-title="@tool.Name"
-                            data-description="@tool.Description">
-                        <span class="client-dashboard-tile-media">
-                            <img src="@Url.Content($"~/images/company-icons/{tool.Icon}")"
-                                 alt="@tool.Name"
-                                 class="client-dashboard-tile-icon" />
-                            <span class="legend-badge">Focus</span>
-                        </span>
-                        <span class="client-dashboard-tile-title">@tool.Name</span>
-                        <span class="client-dashboard-tile-copy">@tool.Description</span>
-                        <span class="client-dashboard-tile-foot">Open Insight</span>
-                    </button>
-                }
-            </div>
-        }
+        <div class="dashboard-command-center-divider" aria-hidden="true"></div>
+
+        <div class="centered-tools home-tools-grid">
+            @foreach (var area in focusAreas)
+            {
+                <button type="button"
+                        class="dashboard-tool home-focus-trigger"
+                        data-title="@area.Name"
+                        data-description="@area.Description"
+                        data-point-one="@area.Points[0]"
+                        data-point-two="@area.Points[1]"
+                        data-point-three="@area.Points[2]">
+                    <img src="@Url.Content($"~/images/company-icons/{area.Icon}")"
+                         alt="@area.Name" />
+                    <div class="tool-name">@area.Name</div>
+                    <div class="tool-desc">@area.Description</div>
+                </button>
+            }
+        </div>
     </section>
 
-    <section class="client-edit-section client-edit-section-spaced">
-        <div class="client-edit-section-head">
-            <div>
-                <div class="client-create-section-title">Shared Client And Agent View</div>
-                <p class="client-edit-note">Track readiness, legal and beneficiary reviews, life events, and follow-up focus in one premium workspace.</p>
+    <section class="category-container home-factfinder-panel">
+        <div class="category-head">
+            <div class="category-head-copy">
+                <div class="category-kicker">Shared Client And Agent View</div>
+                <h2 class="category-toggle">Move from reflection into a real planning workspace.</h2>
+                <p class="category-copy">Track readiness, legal and beneficiary reviews, life events, and follow-up focus in one premium workspace.</p>
             </div>
             <a class="client-create-button client-create-button-primary" asp-controller="ProtectionSnapshot" asp-action="Index">Launch Protection Snapshot</a>
         </div>
     </section>
 </div>
 
-<div class="modal fade" id="categoryModal" tabindex="-1" aria-labelledby="categoryModalTitle" aria-hidden="true">
-    <div class="modal-dialog modal-dialog-centered">
-        <div class="modal-content bg-transparent border-0">
-            <div class="client-create-panel">
-                <div class="client-create-header">
-                    <div>
-                        <div class="dashboard-eyebrow">Build And Protect Your Legacy</div>
-                        <h2 class="client-create-title" id="categoryModalTitle">Focus Area</h2>
-                    </div>
-                    <button type="button" class="client-create-button client-create-button-secondary" data-bs-dismiss="modal">Close</button>
+<div class="home-focus-hub" id="homeFocusHub" hidden>
+    <div class="home-focus-backdrop" id="homeFocusBackdrop"></div>
+    <div class="home-focus-dialog" role="dialog" aria-modal="true" aria-labelledby="homeFocusTitle">
+        <div class="home-focus-shell">
+            <div class="home-focus-head">
+                <div>
+                    <div class="home-focus-kicker">Legend™ Client Focus</div>
+                    <h3 class="home-focus-title" id="homeFocusTitle">Focus Area</h3>
+                    <p class="home-focus-sub">A clean summary that stays inside the shared dashboard language.</p>
                 </div>
-                <div class="client-create-body">
-                    <div class="client-edit-section client-edit-section-compact">
-                        <p class="client-edit-note" id="categoryModalBody"></p>
+                <button type="button" class="home-focus-close" id="homeFocusClose" aria-label="Close focus dialog">×</button>
+            </div>
+
+            <div class="home-focus-body">
+                <div class="home-focus-card">
+                    <p class="home-focus-copy" id="homeFocusDescription"></p>
+                </div>
+
+                <div class="home-focus-points">
+                    <div class="home-focus-point">
+                        <strong>Why it matters</strong>
+                        <span id="homeFocusPointOne"></span>
                     </div>
+                    <div class="home-focus-point">
+                        <strong>What to look for</strong>
+                        <span id="homeFocusPointTwo"></span>
+                    </div>
+                    <div class="home-focus-point">
+                        <strong>Best next move</strong>
+                        <span id="homeFocusPointThree"></span>
+                    </div>
+                </div>
+
+                <div class="subscription-activation-actions">
+                    <a class="client-create-button client-create-button-primary" asp-controller="ProtectionSnapshot" asp-action="Index">Open Protection Snapshot</a>
+                    <button type="button" class="client-create-button client-create-button-secondary" id="homeFocusDismiss">Back To Home</button>
                 </div>
             </div>
         </div>
@@ -113,21 +223,51 @@
 @section Scripts {
     <script>
         (() => {
-            const modalEl = document.getElementById('categoryModal');
-            const titleEl = document.getElementById('categoryModalTitle');
-            const bodyEl = document.getElementById('categoryModalBody');
-            const modalApi = window.bootstrap?.Modal;
-            const modal = modalEl && modalApi
-                ? (typeof modalApi.getOrCreateInstance === 'function' ? modalApi.getOrCreateInstance(modalEl) : new modalApi(modalEl))
-                : null;
+            const hub = document.getElementById('homeFocusHub');
+            const backdrop = document.getElementById('homeFocusBackdrop');
+            const closeBtn = document.getElementById('homeFocusClose');
+            const dismissBtn = document.getElementById('homeFocusDismiss');
+            const titleEl = document.getElementById('homeFocusTitle');
+            const descriptionEl = document.getElementById('homeFocusDescription');
+            const pointOneEl = document.getElementById('homeFocusPointOne');
+            const pointTwoEl = document.getElementById('homeFocusPointTwo');
+            const pointThreeEl = document.getElementById('homeFocusPointThree');
+            const triggers = document.querySelectorAll('.home-focus-trigger');
 
-            document.querySelectorAll('.category-trigger').forEach((trigger) => {
-                trigger.addEventListener('click', () => {
-                    if (!modal || !titleEl || !bodyEl) return;
-                    titleEl.textContent = trigger.getAttribute('data-title') || 'Focus Area';
-                    bodyEl.textContent = trigger.getAttribute('data-description') || '';
-                    modal.show();
-                });
+            if (!hub || !titleEl || !descriptionEl || !pointOneEl || !pointTwoEl || !pointThreeEl) return;
+
+            function closeHub() {
+                hub.classList.remove('open');
+                document.body.style.overflow = '';
+                window.setTimeout(() => {
+                    if (!hub.classList.contains('open')) {
+                        hub.hidden = true;
+                    }
+                }, 180);
+            }
+
+            function openHub(trigger) {
+                titleEl.textContent = trigger.getAttribute('data-title') || 'Focus Area';
+                descriptionEl.textContent = trigger.getAttribute('data-description') || '';
+                pointOneEl.textContent = trigger.getAttribute('data-point-one') || '';
+                pointTwoEl.textContent = trigger.getAttribute('data-point-two') || '';
+                pointThreeEl.textContent = trigger.getAttribute('data-point-three') || '';
+                hub.hidden = false;
+                requestAnimationFrame(() => hub.classList.add('open'));
+                document.body.style.overflow = 'hidden';
+            }
+
+            triggers.forEach((trigger) => {
+                trigger.addEventListener('click', () => openHub(trigger));
+            });
+
+            backdrop?.addEventListener('click', closeHub);
+            closeBtn?.addEventListener('click', closeHub);
+            dismissBtn?.addEventListener('click', closeHub);
+            document.addEventListener('keydown', (event) => {
+                if (event.key === 'Escape' && hub.classList.contains('open')) {
+                    closeHub();
+                }
             });
         })();
     </script>

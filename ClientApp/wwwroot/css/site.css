@@ -38,8 +38,8 @@ footer.footer {
 
 /* ------------------------------ Responsive adjustments ------------------------------ */
 @media (max-width: 992px) {
-    body:not(.finance-page) .container,
-    body:not(.finance-page) .container-fluid { padding-left: 1rem; padding-right: 1rem; }
+    body:not(.finance-page):not(.dashboard-shared-host) .container,
+    body:not(.finance-page):not(.dashboard-shared-host) .container-fluid { padding-left: 1rem; padding-right: 1rem; }
     .navbar-left, .navbar-right { flex-wrap: wrap; justify-content: flex-start; }
 }
 @media (max-width: 576px) {
@@ -94,105 +94,105 @@ main {
     color: var(--client-ink);
 }
 
-body:not(.finance-page) main .resources-page,
-body:not(.finance-page) main .finance-shell,
-body:not(.finance-page) main .training-page,
-body:not(.finance-page) main .page-wrap {
+body:not(.finance-page):not(.dashboard-shared-host) main .resources-page,
+body:not(.finance-page):not(.dashboard-shared-host) main .finance-shell,
+body:not(.finance-page):not(.dashboard-shared-host) main .training-page,
+body:not(.finance-page):not(.dashboard-shared-host) main .page-wrap {
     background: transparent;
 }
 
-body:not(.finance-page) main .card,
-body:not(.finance-page) main .cardx,
-body:not(.finance-page) main .legend-card,
-body:not(.finance-page) main .legend-subcard,
-body:not(.finance-page) main .controls-card,
-body:not(.finance-page) main .preview-shell,
-body:not(.finance-page) main .empty-state,
-body:not(.finance-page) main .resources-hero,
-body:not(.finance-page) main .panel,
-body:not(.finance-page) main .bk-card,
-body:not(.finance-page) main .modalx-card,
-body:not(.finance-page) main .ff-home-card,
-body:not(.finance-page) main .training-page,
-body:not(.finance-page) main #training-embed,
-body:not(.finance-page) main .subcard,
-body:not(.finance-page) main .page-wrap > .card {
+body:not(.finance-page):not(.dashboard-shared-host) main .card,
+body:not(.finance-page):not(.dashboard-shared-host) main .cardx,
+body:not(.finance-page):not(.dashboard-shared-host) main .legend-card,
+body:not(.finance-page):not(.dashboard-shared-host) main .legend-subcard,
+body:not(.finance-page):not(.dashboard-shared-host) main .controls-card,
+body:not(.finance-page):not(.dashboard-shared-host) main .preview-shell,
+body:not(.finance-page):not(.dashboard-shared-host) main .empty-state,
+body:not(.finance-page):not(.dashboard-shared-host) main .resources-hero,
+body:not(.finance-page):not(.dashboard-shared-host) main .panel,
+body:not(.finance-page):not(.dashboard-shared-host) main .bk-card,
+body:not(.finance-page):not(.dashboard-shared-host) main .modalx-card,
+body:not(.finance-page):not(.dashboard-shared-host) main .ff-home-card,
+body:not(.finance-page):not(.dashboard-shared-host) main .training-page,
+body:not(.finance-page):not(.dashboard-shared-host) main #training-embed,
+body:not(.finance-page):not(.dashboard-shared-host) main .subcard,
+body:not(.finance-page):not(.dashboard-shared-host) main .page-wrap > .card {
     background: #ffffff !important;
     border-color: var(--client-line-strong) !important;
     box-shadow: var(--client-shadow) !important;
 }
 
-body:not(.finance-page) main .card,
-body:not(.finance-page) main .cardx,
-body:not(.finance-page) main .legend-card,
-body:not(.finance-page) main .legend-subcard,
-body:not(.finance-page) main .controls-card,
-body:not(.finance-page) main .preview-shell,
-body:not(.finance-page) main .empty-state,
-body:not(.finance-page) main .resources-hero,
-body:not(.finance-page) main .panel,
-body:not(.finance-page) main .bk-card,
-body:not(.finance-page) main .modalx-card,
-body:not(.finance-page) main .ff-home-card,
-body:not(.finance-page) main .training-page,
-body:not(.finance-page) main #training-embed,
-body:not(.finance-page) main .subcard,
-body:not(.finance-page) main .page-wrap > .card {
+body:not(.finance-page):not(.dashboard-shared-host) main .card,
+body:not(.finance-page):not(.dashboard-shared-host) main .cardx,
+body:not(.finance-page):not(.dashboard-shared-host) main .legend-card,
+body:not(.finance-page):not(.dashboard-shared-host) main .legend-subcard,
+body:not(.finance-page):not(.dashboard-shared-host) main .controls-card,
+body:not(.finance-page):not(.dashboard-shared-host) main .preview-shell,
+body:not(.finance-page):not(.dashboard-shared-host) main .empty-state,
+body:not(.finance-page):not(.dashboard-shared-host) main .resources-hero,
+body:not(.finance-page):not(.dashboard-shared-host) main .panel,
+body:not(.finance-page):not(.dashboard-shared-host) main .bk-card,
+body:not(.finance-page):not(.dashboard-shared-host) main .modalx-card,
+body:not(.finance-page):not(.dashboard-shared-host) main .ff-home-card,
+body:not(.finance-page):not(.dashboard-shared-host) main .training-page,
+body:not(.finance-page):not(.dashboard-shared-host) main #training-embed,
+body:not(.finance-page):not(.dashboard-shared-host) main .subcard,
+body:not(.finance-page):not(.dashboard-shared-host) main .page-wrap > .card {
     border-width: 1.5px !important;
     border-style: solid !important;
     border-radius: 18px;
 }
 
-body:not(.finance-page) main .legend-field,
-body:not(.finance-page) main .premium-field,
-body:not(.finance-page) main .legend-btn-outline,
-body:not(.finance-page) main .pill,
-body:not(.finance-page) main .legend-badge {
+body:not(.finance-page):not(.dashboard-shared-host) main .legend-field,
+body:not(.finance-page):not(.dashboard-shared-host) main .premium-field,
+body:not(.finance-page):not(.dashboard-shared-host) main .legend-btn-outline,
+body:not(.finance-page):not(.dashboard-shared-host) main .pill,
+body:not(.finance-page):not(.dashboard-shared-host) main .legend-badge {
     background: #ffffff !important;
 }
 
-body:not(.finance-page) main .ff-home-tile:hover,
-body:not(.finance-page) main .panel:hover,
-body:not(.finance-page) main .legend-card:hover {
+body:not(.finance-page):not(.dashboard-shared-host) main .ff-home-tile:hover,
+body:not(.finance-page):not(.dashboard-shared-host) main .panel:hover,
+body:not(.finance-page):not(.dashboard-shared-host) main .legend-card:hover {
     box-shadow: var(--client-shadow-strong) !important;
 }
 
-body:not(.finance-page) main .ff-home-tile,
-body:not(.finance-page) main .legend-field,
-body:not(.finance-page) main .premium-field,
-body:not(.finance-page) main .pill,
-body:not(.finance-page) main .legend-badge,
-body:not(.finance-page) main .result-tag,
-body:not(.finance-page) main .empty-chip,
-body:not(.finance-page) main .preview-open,
-body:not(.finance-page) main .explore-item small {
+body:not(.finance-page):not(.dashboard-shared-host) main .ff-home-tile,
+body:not(.finance-page):not(.dashboard-shared-host) main .legend-field,
+body:not(.finance-page):not(.dashboard-shared-host) main .premium-field,
+body:not(.finance-page):not(.dashboard-shared-host) main .pill,
+body:not(.finance-page):not(.dashboard-shared-host) main .legend-badge,
+body:not(.finance-page):not(.dashboard-shared-host) main .result-tag,
+body:not(.finance-page):not(.dashboard-shared-host) main .empty-chip,
+body:not(.finance-page):not(.dashboard-shared-host) main .preview-open,
+body:not(.finance-page):not(.dashboard-shared-host) main .explore-item small {
     border-color: var(--client-line-strong) !important;
 }
 
-body:not(.finance-page) main .panel-h,
-body:not(.finance-page) main .legend-card-header,
-body:not(.finance-page) main .preview-head,
-body:not(.finance-page) main .card-header,
-body:not(.finance-page) main .explore-header {
+body:not(.finance-page):not(.dashboard-shared-host) main .panel-h,
+body:not(.finance-page):not(.dashboard-shared-host) main .legend-card-header,
+body:not(.finance-page):not(.dashboard-shared-host) main .preview-head,
+body:not(.finance-page):not(.dashboard-shared-host) main .card-header,
+body:not(.finance-page):not(.dashboard-shared-host) main .explore-header {
     background: #ffffff !important;
     border-bottom-color: var(--client-line-soft) !important;
 }
 
-body:not(.finance-page) main .hero-kicker,
-body:not(.finance-page) main .legend-badge,
-body:not(.finance-page) main .pill,
-body:not(.finance-page) main .empty-chip,
-body:not(.finance-page) main .ff-home-pill,
-body:not(.finance-page) main .explore-pill,
-body:not(.finance-page) main .result-tag {
+body:not(.finance-page):not(.dashboard-shared-host) main .hero-kicker,
+body:not(.finance-page):not(.dashboard-shared-host) main .legend-badge,
+body:not(.finance-page):not(.dashboard-shared-host) main .pill,
+body:not(.finance-page):not(.dashboard-shared-host) main .empty-chip,
+body:not(.finance-page):not(.dashboard-shared-host) main .ff-home-pill,
+body:not(.finance-page):not(.dashboard-shared-host) main .explore-pill,
+body:not(.finance-page):not(.dashboard-shared-host) main .result-tag {
     background: #ffffff !important;
     color: var(--client-gold-deep) !important;
 }
 
-body:not(.finance-page) .form-control,
-body:not(.finance-page) .form-select,
-body:not(.finance-page) select:not(.client-create-input),
-body:not(.finance-page) textarea:not(.client-create-input) {
+body:not(.finance-page):not(.dashboard-shared-host) .form-control,
+body:not(.finance-page):not(.dashboard-shared-host) .form-select,
+body:not(.finance-page):not(.dashboard-shared-host) select:not(.client-create-input),
+body:not(.finance-page):not(.dashboard-shared-host) textarea:not(.client-create-input) {
     background: #ffffff !important;
     color: var(--client-ink) !important;
     border: 1.5px solid var(--client-line) !important;
@@ -200,96 +200,96 @@ body:not(.finance-page) textarea:not(.client-create-input) {
     box-shadow: var(--client-inset);
 }
 
-body:not(.finance-page) .form-control:focus,
-body:not(.finance-page) .form-select:focus,
-body:not(.finance-page) select:not(.client-create-input):focus,
-body:not(.finance-page) textarea:not(.client-create-input):focus {
+body:not(.finance-page):not(.dashboard-shared-host) .form-control:focus,
+body:not(.finance-page):not(.dashboard-shared-host) .form-select:focus,
+body:not(.finance-page):not(.dashboard-shared-host) select:not(.client-create-input):focus,
+body:not(.finance-page):not(.dashboard-shared-host) textarea:not(.client-create-input):focus {
     border-color: var(--client-line-strong) !important;
     box-shadow: var(--client-ring), var(--client-inset) !important;
 }
 
-body:not(.finance-page) .dropdown-menu,
-body:not(.finance-page) .list-group,
-body:not(.finance-page) #training-search-results,
-body:not(.finance-page) .search-results {
+body:not(.finance-page):not(.dashboard-shared-host) .dropdown-menu,
+body:not(.finance-page):not(.dashboard-shared-host) .list-group,
+body:not(.finance-page):not(.dashboard-shared-host) #training-search-results,
+body:not(.finance-page):not(.dashboard-shared-host) .search-results {
     background: #ffffff !important;
     border: 1.5px solid var(--client-line) !important;
     box-shadow: var(--client-shadow) !important;
 }
 
-body:not(.finance-page) .table {
+body:not(.finance-page):not(.dashboard-shared-host) .table {
     background: #ffffff;
     border: 1.5px solid var(--client-line);
     box-shadow: var(--client-shadow);
 }
 
-body:not(.finance-page) .table thead th {
+body:not(.finance-page):not(.dashboard-shared-host) .table thead th {
     background: #ffffff;
     color: var(--client-gold-deep);
     border-bottom: 1.5px solid var(--client-line);
 }
 
-body:not(.finance-page) .table tbody tr:hover {
+body:not(.finance-page):not(.dashboard-shared-host) .table tbody tr:hover {
     background: rgba(166,128,35,.05);
 }
 
-body:not(.finance-page) .btn,
-body:not(.finance-page) button,
-body:not(.finance-page) input[type="submit"],
-body:not(.finance-page) input[type="button"],
-body:not(.finance-page) .page-link {
+body:not(.finance-page):not(.dashboard-shared-host) .btn,
+body:not(.finance-page):not(.dashboard-shared-host) button,
+body:not(.finance-page):not(.dashboard-shared-host) input[type="submit"],
+body:not(.finance-page):not(.dashboard-shared-host) input[type="button"],
+body:not(.finance-page):not(.dashboard-shared-host) .page-link {
     border-radius: 14px;
     transition: transform .18s ease, box-shadow .18s ease, border-color .18s ease, background .18s ease, color .18s ease;
 }
 
-body:not(.finance-page) .btn-primary,
-body:not(.finance-page) .btn-gold,
-body:not(.finance-page) .btn-solid,
-body:not(.finance-page) .legend-btn-gold,
-body:not(.finance-page) .btn-warning {
+body:not(.finance-page):not(.dashboard-shared-host) .btn-primary,
+body:not(.finance-page):not(.dashboard-shared-host) .btn-gold,
+body:not(.finance-page):not(.dashboard-shared-host) .btn-solid,
+body:not(.finance-page):not(.dashboard-shared-host) .legend-btn-gold,
+body:not(.finance-page):not(.dashboard-shared-host) .btn-warning {
     background: linear-gradient(180deg, #f2d891 0%, #ddb457 100%) !important;
     border-color: #a68023 !important;
     color: #2a1b05 !important;
     box-shadow: 0 14px 30px rgba(166,128,35,.18) !important;
 }
 
-body:not(.finance-page) .btn-primary:hover,
-body:not(.finance-page) .btn-gold:hover,
-body:not(.finance-page) .btn-solid:hover,
-body:not(.finance-page) .legend-btn-gold:hover,
-body:not(.finance-page) .btn-warning:hover {
+body:not(.finance-page):not(.dashboard-shared-host) .btn-primary:hover,
+body:not(.finance-page):not(.dashboard-shared-host) .btn-gold:hover,
+body:not(.finance-page):not(.dashboard-shared-host) .btn-solid:hover,
+body:not(.finance-page):not(.dashboard-shared-host) .legend-btn-gold:hover,
+body:not(.finance-page):not(.dashboard-shared-host) .btn-warning:hover {
     background: linear-gradient(180deg, #f5df9f 0%, #e2bc61 100%) !important;
     border-color: #a68023 !important;
     color: #2a1b05 !important;
 }
 
-body:not(.finance-page) .legend-btn-outline,
-body:not(.finance-page) .btn-edit,
-body:not(.finance-page) .preview-open,
-body:not(.finance-page) .outline {
+body:not(.finance-page):not(.dashboard-shared-host) .legend-btn-outline,
+body:not(.finance-page):not(.dashboard-shared-host) .btn-edit,
+body:not(.finance-page):not(.dashboard-shared-host) .preview-open,
+body:not(.finance-page):not(.dashboard-shared-host) .outline {
     background: #ffffff !important;
     border-color: var(--client-line-strong) !important;
     color: var(--client-gold-deep) !important;
 }
 
-body:not(.finance-page) main .hero-title,
-body:not(.finance-page) main .finance-title,
-body:not(.finance-page) main .preview-title,
-body:not(.finance-page) main .legend-section-title,
-body:not(.finance-page) main .panel-title,
-body:not(.finance-page) main h1,
-body:not(.finance-page) main h2,
-body:not(.finance-page) main h3 {
+body:not(.finance-page):not(.dashboard-shared-host) main .hero-title,
+body:not(.finance-page):not(.dashboard-shared-host) main .finance-title,
+body:not(.finance-page):not(.dashboard-shared-host) main .preview-title,
+body:not(.finance-page):not(.dashboard-shared-host) main .legend-section-title,
+body:not(.finance-page):not(.dashboard-shared-host) main .panel-title,
+body:not(.finance-page):not(.dashboard-shared-host) main h1,
+body:not(.finance-page):not(.dashboard-shared-host) main h2,
+body:not(.finance-page):not(.dashboard-shared-host) main h3 {
     color: var(--client-gold-deep);
 }
 
-body:not(.finance-page) main .lead,
-body:not(.finance-page) main .hero-sub,
-body:not(.finance-page) main .control-help,
-body:not(.finance-page) main .preview-meta,
-body:not(.finance-page) main .empty-text,
-body:not(.finance-page) main .ff-home-footer,
-body:not(.finance-page) main .footer-link,
-body:not(.finance-page) main .small {
+body:not(.finance-page):not(.dashboard-shared-host) main .lead,
+body:not(.finance-page):not(.dashboard-shared-host) main .hero-sub,
+body:not(.finance-page):not(.dashboard-shared-host) main .control-help,
+body:not(.finance-page):not(.dashboard-shared-host) main .preview-meta,
+body:not(.finance-page):not(.dashboard-shared-host) main .empty-text,
+body:not(.finance-page):not(.dashboard-shared-host) main .ff-home-footer,
+body:not(.finance-page):not(.dashboard-shared-host) main .footer-link,
+body:not(.finance-page):not(.dashboard-shared-host) main .small {
     color: var(--client-muted);
 }

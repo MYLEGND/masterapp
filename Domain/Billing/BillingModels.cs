@@ -4,6 +4,14 @@ namespace Domain.Billing;
 
 public sealed record BillingMoney(int AmountCents, string Currency);
 
+public sealed record BillingPostalAddress(
+    string? AddressLine1,
+    string? AddressLine2,
+    string? Locality,
+    string? AdministrativeDistrictLevel1,
+    string? PostalCode,
+    string? Country);
+
 public record BillingProviderResult(
     bool Success,
     string? ExternalId,
@@ -42,7 +50,8 @@ public sealed record BillingCustomerProfileInput(
     string? Email,
     string? Phone,
     string? ReferenceId,
-    string? Note);
+    string? Note,
+    BillingPostalAddress? Address = null);
 
 public sealed record BillingCustomerResolutionRequest(
     string? ExistingProviderCustomerId,
@@ -68,7 +77,8 @@ public sealed record BillingPaymentMethodAttachmentRequest(
     string? CardholderName = null,
     string? ReferenceId = null,
     string? VerificationToken = null,
-    string? CorrelationId = null);
+    string? CorrelationId = null,
+    BillingPostalAddress? BillingAddress = null);
 
 public sealed record BillingPaymentMethodAttachmentResult(
     bool Success,
@@ -242,7 +252,8 @@ public sealed record ActivateClientSubscriptionCommand(
     string? ExistingProviderCustomerId = null,
     string? CardholderName = null,
     string? CorrelationId = null,
-    string? IdempotencyKey = null);
+    string? IdempotencyKey = null,
+    BillingPostalAddress? BillingAddress = null);
 
 public sealed record ExecuteCommerceOneTimePaymentCommand(
     string SourceId,
