@@ -7090,6 +7090,9 @@ window.quickViewCalendarAdapter = {
 
     return {
       recordId,
+      clientUserId: recordId,
+      clientProfileId: norm(activeClientDetail?.clientProfileId) || norm(row?.dataset.clientProfileId),
+      workstationLeadId: recordId,
       row,
       nextDate,
       nextText,
@@ -7160,7 +7163,9 @@ window.quickViewCalendarAdapter = {
 
     if (dSaved) {
       dSaved.textContent =
-        "Calendar event synced ✔";
+        data.warning
+          ? "Calendar event created ⚠"
+          : "Calendar event synced ✔";
     }
 
     refreshLeadOverviewSummary();

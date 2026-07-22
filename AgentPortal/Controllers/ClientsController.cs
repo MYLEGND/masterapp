@@ -999,6 +999,23 @@ namespace AgentPortal.Controllers;
         return "Lead";
     }
 
+    private static string? ResolveSourceWorkstationLeadId(ClientProfile profile, ClientCrmMeta meta, LeadAppointment? latestAppointment = null)
+    {
+        var latestLeadId = Norm(latestAppointment?.WorkstationLeadId);
+        if (!string.IsNullOrWhiteSpace(latestLeadId))
+            return latestLeadId;
+
+        var preservedLeadId = Norm(meta.SourceWorkstationLeadId);
+        if (!string.IsNullOrWhiteSpace(preservedLeadId))
+            return preservedLeadId;
+
+        var clientUserId = Norm(profile.ClientUserId);
+        if (!HasPortalAccess(clientUserId) && !string.IsNullOrWhiteSpace(clientUserId))
+            return clientUserId;
+
+        return null;
+    }
+
     private static string StageLabel(string? stage)
         => NormalizePipelineStage(stage) switch
         {
@@ -1100,6 +1117,11 @@ namespace AgentPortal.Controllers;
             await using var tx = await _db.Database.BeginTransactionAsync();
 
             var meta = EnsureMeta(ClientCrmMetaSerializer.Deserialize(profile.CrmNotes));
+            if (string.IsNullOrWhiteSpace(meta.SourceWorkstationLeadId) &&
+                !string.IsNullOrWhiteSpace(oldClientUserId))
+            {
+                meta.SourceWorkstationLeadId = oldClientUserId;
+            }
             meta.RecordType = recordType;
             meta.PipelineStage = DefaultPipelineStageForRecordType(recordType);
             meta.StageEnteredUtc = DateTime.UtcNow;
@@ -1302,14 +1324,21 @@ namespace AgentPortal.Controllers;
     private async Task<LeadAppointment?> LoadClientLatestAppointmentAsync(ClientProfile profile)
     {
         var clientUserId = Norm(profile.ClientUserId);
+        var meta = EnsureMeta(ClientCrmMetaSerializer.Deserialize(profile.CrmNotes));
+        var sourceWorkstationLeadId = ResolveSourceWorkstationLeadId(profile, meta);
         var profileId = profile.Id.ToString();
 
-        if (string.IsNullOrWhiteSpace(clientUserId) && string.IsNullOrWhiteSpace(profileId))
+        if (string.IsNullOrWhiteSpace(clientUserId) &&
+            string.IsNullOrWhiteSpace(sourceWorkstationLeadId) &&
+            string.IsNullOrWhiteSpace(profileId))
             return null;
 
         return await _db.LeadAppointments
             .AsNoTracking()
-            .Where(x => x.ClientProfileId == profileId || x.WorkstationLeadId == clientUserId)
+            .Where(x =>
+                x.ClientProfileId == profileId ||
+                x.WorkstationLeadId == clientUserId ||
+                x.WorkstationLeadId == sourceWorkstationLeadId)
             .OrderByDescending(x => x.ScheduledStartUtc ?? x.UpdatedUtc)
             .ThenByDescending(x => x.UpdatedUtc)
             .FirstOrDefaultAsync();
@@ -1322,26 +1351,47 @@ namespace AgentPortal.Controllers;
         if (profiles.Count == 0)
             return new Dictionary<string, LeadAppointment>(StringComparer.OrdinalIgnoreCase);
 
-        var profileIds = profiles
-            .Select(x => x.Id.ToString())
+        var appointmentKeys = profiles
+            .Select(profile =>
+            {
+                var meta = EnsureMeta(ClientCrmMetaSerializer.Deserialize(profile.CrmNotes));
+                return new
+                {
+                    ProfileId = profile.Id.ToString(),
+                    ClientUserId = Norm(profile.ClientUserId),
+                    SourceWorkstationLeadId = ResolveSourceWorkstationLeadId(profile, meta)
+                };
+            })
+            .ToList();
+
+        var profileIds = appointmentKeys
+            .Select(x => x.ProfileId)
             .Where(x => !string.IsNullOrWhiteSpace(x))
             .Distinct(StringComparer.OrdinalIgnoreCase)
             .ToList();
 
-        var clientUserIds = profiles
-            .Select(x => Norm(x.ClientUserId))
+        var clientUserIds = appointmentKeys
+            .Select(x => x.ClientUserId)
             .Where(x => !string.IsNullOrWhiteSpace(x))
             .Distinct(StringComparer.OrdinalIgnoreCase)
             .ToList();
 
-        if (profileIds.Count == 0 && clientUserIds.Count == 0)
+        var sourceWorkstationLeadIds = appointmentKeys
+            .Select(x => x.SourceWorkstationLeadId)
+            .Where(x => !string.IsNullOrWhiteSpace(x))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
+        if (profileIds.Count == 0 && clientUserIds.Count == 0 && sourceWorkstationLeadIds.Count == 0)
             return new Dictionary<string, LeadAppointment>(StringComparer.OrdinalIgnoreCase);
 
         var appointments = await _db.LeadAppointments
             .AsNoTracking()
             .Where(x =>
                 (x.ClientProfileId != null && profileIds.Contains(x.ClientProfileId)) ||
-                (x.WorkstationLeadId != null && clientUserIds.Contains(x.WorkstationLeadId)))
+                (x.WorkstationLeadId != null &&
+                    (clientUserIds.Contains(x.WorkstationLeadId) ||
+                     sourceWorkstationLeadIds.Contains(x.WorkstationLeadId))))
             .OrderByDescending(x => x.ScheduledStartUtc ?? x.UpdatedUtc)
             .ThenByDescending(x => x.UpdatedUtc)
             .ToListAsync(ct);
@@ -1357,21 +1407,29 @@ namespace AgentPortal.Controllers;
             .ToDictionary(g => g.Key, g => g.First(), StringComparer.OrdinalIgnoreCase);
 
         var latestByOwnedClientUserId = new Dictionary<string, LeadAppointment>(StringComparer.OrdinalIgnoreCase);
-        foreach (var profile in profiles)
+        foreach (var profile in appointmentKeys)
         {
-            var clientUserId = Norm(profile.ClientUserId);
+            var clientUserId = profile.ClientUserId;
             if (string.IsNullOrWhiteSpace(clientUserId))
                 continue;
 
-            var profileId = profile.Id.ToString();
-            if (latestByProfileId.TryGetValue(profileId, out var byProfile))
+            if (latestByProfileId.TryGetValue(profile.ProfileId, out var byProfile))
             {
                 latestByOwnedClientUserId[clientUserId] = byProfile;
                 continue;
             }
 
             if (latestByClientUserId.TryGetValue(clientUserId, out var byClientUserId))
+            {
                 latestByOwnedClientUserId[clientUserId] = byClientUserId;
+                continue;
+            }
+
+            if (!string.IsNullOrWhiteSpace(profile.SourceWorkstationLeadId) &&
+                latestByClientUserId.TryGetValue(profile.SourceWorkstationLeadId, out var bySourceLeadId))
+            {
+                latestByOwnedClientUserId[clientUserId] = bySourceLeadId;
+            }
         }
 
         return latestByOwnedClientUserId;
@@ -1454,7 +1512,9 @@ namespace AgentPortal.Controllers;
 
         return new
         {
+            clientProfileId = profile.Id,
             clientUserId = profile.ClientUserId,
+            sourceWorkstationLeadId = ResolveSourceWorkstationLeadId(profile, meta, latestAppointment),
             portalAccessEnabled = HasPortalAccess(profile.ClientUserId),
             recordType,
             advancedMarketsEligible = IsBusinessClientRecordType(recordType),
@@ -1836,6 +1896,7 @@ namespace AgentPortal.Controllers;
                     DOB = meta.DOB,
                     MortgageLender = meta.MortgageLender,
                     LoanAmount = meta.LoanAmount,
+                    SourceWorkstationLeadId = ResolveSourceWorkstationLeadId(x, meta, latestAppointment),
                     PipelineStage = meta.PipelineStage,
                     PipelineOrder = meta.PipelineOrder,
                     MeetingLocation = meta.MeetingLocation,

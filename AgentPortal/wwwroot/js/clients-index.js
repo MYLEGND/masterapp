@@ -4637,10 +4637,14 @@ function renderPortalActions(row, detail){
       if (!window.confirm(`ARE YOU SURE YOU WANT TO CONVERT TO ${recordType === "BusinessClient" ? "BUSINESS CLIENT" : "CLIENT"}? This updates access immediately.`)) return;
       try{
         button.disabled = true;
+        const sourceWorkstationLeadId =
+          norm(row.dataset.sourceWorkstationLeadId) ||
+          norm(row.dataset.clientId);
         const response = await postJson("/Clients/EnablePortalAccess", { clientUserId: row.dataset.clientId, recordType });
         row.dataset.clientId = response.newClientUserId;
         row.dataset.isguid = "true";
         row.dataset.clienturl = response.clientPortalUrl || "";
+        row.dataset.sourceWorkstationLeadId = sourceWorkstationLeadId;
         row.dataset.sStatus = "Active";
         row.dataset.sRecordtype = response.recordType || recordType;
         row.dataset.advancedMarketsEligible = ((response.advancedMarketsEligible ?? (recordType === "BusinessClient")) ? "true" : "false");
@@ -4649,6 +4653,7 @@ function renderPortalActions(row, detail){
         activeClientDetail = {
           ...(activeClientDetail || {}),
           clientUserId: response.newClientUserId,
+          sourceWorkstationLeadId,
           recordType: response.recordType || recordType,
           advancedMarketsEligible: (response.advancedMarketsEligible ?? (recordType === "BusinessClient")),
           portalAccessEnabled: true,
@@ -5655,6 +5660,11 @@ async function saveQuickViewForRow(row, overrides, successMessage){
   row.dataset.btc = data.btc || "";
   row.dataset.mortgageLender = data.mortgageLender || "";
   row.dataset.loanAmount = data.loanAmount || "";
+  row.dataset.sourceWorkstationLeadId =
+    data.sourceWorkstationLeadId ||
+    data.latestAppointment?.workstationLeadId ||
+    row.dataset.sourceWorkstationLeadId ||
+    "";
   storeRowLatestAppointment(row, data.latestAppointment || rowLatestAppointment(row));
   hydrateRow(row);
 
@@ -6619,9 +6629,22 @@ window.quickViewCalendarAdapter = {
 
     const name = row ? fullName(row) : "";
     const phone = row ? norm(row.dataset.phone) : "";
+    const clientProfileId =
+      norm(activeClientDetail?.clientProfileId) ||
+      norm(row?.dataset.clientProfileId);
+    const workstationLeadId =
+      norm(activeClientDetail?.sourceWorkstationLeadId) ||
+      norm(activeClientDetail?.latestAppointment?.workstationLeadId) ||
+      norm(row?.dataset.sourceWorkstationLeadId) ||
+      (row?.dataset.isguid === "true"
+        ? ""
+        : norm(row?.dataset.clientId));
 
     return {
       recordId,
+      clientUserId: recordId,
+      clientProfileId,
+      workstationLeadId,
       row,
       nextDate,
       nextText,
@@ -6660,6 +6683,11 @@ window.quickViewCalendarAdapter = {
 
     row.dataset.sLasttouch =
       data.crmLastTouch || todayISO();
+    row.dataset.sourceWorkstationLeadId =
+      data.latestAppointment?.workstationLeadId ||
+      activeClientDetail?.sourceWorkstationLeadId ||
+      row.dataset.sourceWorkstationLeadId ||
+      "";
 
     storeRowLatestAppointment(
       row,
@@ -6673,6 +6701,11 @@ window.quickViewCalendarAdapter = {
       ...(activeClientDetail || {}),
       activities: data.activities || [],
       lastCalendarEventWebLink: data.webLink || "",
+      sourceWorkstationLeadId:
+        data.latestAppointment?.workstationLeadId ||
+        activeClientDetail?.sourceWorkstationLeadId ||
+        row.dataset.sourceWorkstationLeadId ||
+        "",
       latestAppointment:
         data.latestAppointment ||
         activeClientDetail?.latestAppointment ||
@@ -6690,7 +6723,9 @@ window.quickViewCalendarAdapter = {
 
     if (dSaved) {
       dSaved.textContent =
-        "Calendar event synced ✔";
+        data.warning
+          ? "Calendar event created ⚠"
+          : "Calendar event synced ✔";
     }
 
     await quickViewBusyCalendar.refresh();

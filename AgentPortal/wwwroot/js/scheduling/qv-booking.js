@@ -1412,6 +1412,8 @@
 
         const payload = {
             clientUserId: recordId,
+            clientProfileId: context.clientProfileId || null,
+            workstationLeadId: context.workstationLeadId || null,
             subject: `Client Follow-up: ${context.fullName || ""}`,
             startISO: context.startISO,
             endISO: context.endISO,
@@ -1434,7 +1436,12 @@
 
             await adapter.applyResult(data, context);
 
-            adapter.toast("Calendar event created");
+            if (data?.warning) {
+                console.warn(data.warning);
+                adapter.toast(data.warning);
+            } else {
+                adapter.toast("Calendar event created");
+            }
             return true;
         } catch (error) {
             console.error(error);

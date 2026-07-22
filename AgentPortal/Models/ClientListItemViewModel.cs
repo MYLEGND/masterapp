@@ -28,6 +28,7 @@ public sealed class ClientListItemViewModel
     public DateTime? DOB { get; set; }
     public string? MortgageLender { get; set; }
     public string? LoanAmount { get; set; }
+    public string? SourceWorkstationLeadId { get; set; }
     public string? OriginalLeadType { get; set; }
     public string? ContactStatus { get; set; }
     public string PipelineStage { get; set; } = ClientCrmMeta.DefaultPipelineStage;

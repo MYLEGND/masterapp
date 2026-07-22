@@ -21,6 +21,7 @@ public sealed class ClientCrmMeta
     public string? LoanAmount { get; set; }
     public string? Gender { get; set; }
     public DateTime? DOB { get; set; }
+    public string? SourceWorkstationLeadId { get; set; }
     public string? CrmPriority { get; set; }
     public string? ContactStatus { get; set; }
     public DateTime? CrmNextDate { get; set; }
@@ -222,6 +223,7 @@ public static class ClientCrmMetaSerializer
         meta.MortgageLender = Clean(meta.MortgageLender);
         meta.LoanAmount = Clean(meta.LoanAmount);
         meta.Gender = Clean(meta.Gender);
+        meta.SourceWorkstationLeadId = Clean(meta.SourceWorkstationLeadId);
         if (meta.DOB.HasValue)
             meta.DOB = meta.DOB.Value.Date;
         meta.CrmPriority = NormalizePriority(meta.CrmPriority);

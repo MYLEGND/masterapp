@@ -59,6 +59,14 @@ public class CalendarController : Controller
     }
 
     private static string Norm(string? v) => (v ?? "").Trim().ToLowerInvariant();
+    private static string? CleanOptional(string? value)
+    {
+        var trimmed = (value ?? string.Empty).Trim();
+        return trimmed.Length == 0 ? null : trimmed;
+    }
+
+    private static string DigitsOnly(string? value)
+        => new((value ?? string.Empty).Where(char.IsDigit).ToArray());
 
     private static bool LooksLikeLeadMetaJson(string? raw)
         => !string.IsNullOrWhiteSpace(raw) && raw.TrimStart().StartsWith("{", StringComparison.Ordinal);
@@ -81,6 +89,158 @@ public class CalendarController : Controller
             meta.CrmPriority = "Normal";
 
         return meta;
+    }
+
+    private async Task<string?> ResolveClientWorkstationLeadIdAsync(
+        string agentOid,
+        ClientProfile profile,
+        ClientCrmMeta meta,
+        string? requestedWorkstationLeadId,
+        CancellationToken cancellationToken)
+    {
+        var agentOidNorm = Norm(agentOid);
+
+        async Task<string?> ResolveOwnedLeadIdAsync(IEnumerable<string?> candidates)
+        {
+            var normalizedCandidates = candidates
+                .Select(CleanOptional)
+                .Where(x => !string.IsNullOrWhiteSpace(x))
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .Select(x => x!)
+                .ToList();
+
+            if (normalizedCandidates.Count == 0)
+                return null;
+
+            var candidateKeys = normalizedCandidates
+                .Select(x => x.Trim().ToLowerInvariant())
+                .ToList();
+
+            var ownedLeadId = await _db.WorkstationLeadProfiles
+                .AsNoTracking()
+                .Where(x =>
+                    (x.AgentUserId ?? string.Empty).Trim().ToLower() == agentOidNorm &&
+                    candidateKeys.Contains((x.LeadId ?? string.Empty).Trim().ToLower()))
+                .Select(x => x.LeadId)
+                .FirstOrDefaultAsync(cancellationToken);
+
+            return CleanOptional(ownedLeadId);
+        }
+
+        var directMatch = await ResolveOwnedLeadIdAsync(new[]
+        {
+            requestedWorkstationLeadId,
+            meta.SourceWorkstationLeadId,
+            Guid.TryParse(CleanOptional(profile.ClientUserId), out _) ? null : profile.ClientUserId
+        });
+
+        if (!string.IsNullOrWhiteSpace(directMatch))
+            return directMatch;
+
+        var clientProfileId = profile.Id.ToString();
+        if (!string.IsNullOrWhiteSpace(clientProfileId))
+        {
+            var latestPersistedLeadId = await _db.LeadAppointments
+                .AsNoTracking()
+                .Where(x =>
+                    x.ClientProfileId == clientProfileId &&
+                    x.WorkstationLeadId != null &&
+                    (x.OwnerAgentUserId ?? string.Empty).Trim().ToLower() == agentOidNorm)
+                .OrderByDescending(x => x.ScheduledStartUtc ?? x.UpdatedUtc)
+                .ThenByDescending(x => x.UpdatedUtc)
+                .Select(x => x.WorkstationLeadId)
+                .FirstOrDefaultAsync(cancellationToken);
+
+            if (!string.IsNullOrWhiteSpace(latestPersistedLeadId))
+                return CleanOptional(latestPersistedLeadId);
+        }
+
+        var profileEmail = CleanOptional(profile.Email);
+        var profilePhoneDigits = DigitsOnly(profile.Phone);
+        var profileFirstName = CleanOptional(profile.FirstName);
+        var profileLastName = CleanOptional(profile.LastName);
+
+        var ownedLeadProfiles = await _db.WorkstationLeadProfiles
+            .AsNoTracking()
+            .Where(x => (x.AgentUserId ?? string.Empty).Trim().ToLower() == agentOidNorm)
+            .Select(x => new
+            {
+                x.LeadId,
+                x.Email,
+                x.Phone,
+                x.FirstName,
+                x.LastName
+            })
+            .ToListAsync(cancellationToken);
+
+        if (ownedLeadProfiles.Count == 0)
+            return null;
+
+        var exactEmailAndPhoneMatches =
+            !string.IsNullOrWhiteSpace(profileEmail) &&
+            !string.IsNullOrWhiteSpace(profilePhoneDigits)
+                ? ownedLeadProfiles
+                    .Where(x =>
+                    string.Equals(CleanOptional(x.Email), profileEmail, StringComparison.OrdinalIgnoreCase) &&
+                    string.Equals(DigitsOnly(x.Phone), profilePhoneDigits, StringComparison.Ordinal))
+                    .Select(x => CleanOptional(x.LeadId))
+                    .Where(x => !string.IsNullOrWhiteSpace(x))
+                    .Select(x => x!)
+                    .Distinct(StringComparer.OrdinalIgnoreCase)
+                    .ToList()
+                : new List<string>();
+
+        if (exactEmailAndPhoneMatches.Count == 1)
+            return exactEmailAndPhoneMatches[0];
+
+        var exactEmailMatches =
+            !string.IsNullOrWhiteSpace(profileEmail)
+                ? ownedLeadProfiles
+                    .Where(x =>
+                        string.Equals(CleanOptional(x.Email), profileEmail, StringComparison.OrdinalIgnoreCase))
+                    .Select(x => CleanOptional(x.LeadId))
+                    .Where(x => !string.IsNullOrWhiteSpace(x))
+                    .Select(x => x!)
+                    .Distinct(StringComparer.OrdinalIgnoreCase)
+                    .ToList()
+                : new List<string>();
+
+        if (exactEmailMatches.Count == 1)
+            return exactEmailMatches[0];
+
+        var exactPhoneMatches =
+            !string.IsNullOrWhiteSpace(profilePhoneDigits)
+                ? ownedLeadProfiles
+                    .Where(x =>
+                        string.Equals(DigitsOnly(x.Phone), profilePhoneDigits, StringComparison.Ordinal))
+                    .Select(x => CleanOptional(x.LeadId))
+                    .Where(x => !string.IsNullOrWhiteSpace(x))
+                    .Select(x => x!)
+                    .Distinct(StringComparer.OrdinalIgnoreCase)
+                    .ToList()
+                : new List<string>();
+
+        if (exactPhoneMatches.Count == 1)
+            return exactPhoneMatches[0];
+
+        var exactNameMatches =
+            !string.IsNullOrWhiteSpace(profileFirstName) &&
+            !string.IsNullOrWhiteSpace(profileLastName)
+                ? ownedLeadProfiles
+                    .Where(x =>
+                        string.Equals(CleanOptional(x.FirstName), profileFirstName, StringComparison.OrdinalIgnoreCase) &&
+                        string.Equals(CleanOptional(x.LastName), profileLastName, StringComparison.OrdinalIgnoreCase))
+                    .Select(x => CleanOptional(x.LeadId))
+                    .Where(x => !string.IsNullOrWhiteSpace(x))
+                    .Select(x => x!)
+                    .Distinct(StringComparer.OrdinalIgnoreCase)
+                    .ToList()
+                : new List<string>();
+
+        if (exactNameMatches.Count == 1)
+            return exactNameMatches[0];
+
+        return null;
     }
 
     private static bool IsMissingTable(Exception ex, string tableName)
@@ -108,6 +268,64 @@ public class CalendarController : Controller
 
     private static bool IsMissingLeadAppointmentsTable(Exception ex) => IsMissingTable(ex, "LeadAppointments");
     private static bool IsMissingWebsiteLeadIntakeLinksTable(Exception ex) => IsMissingTable(ex, "WebsiteLeadIntakeLinks");
+    private static bool IsNullConstraintFailure(Exception ex, string columnName)
+    {
+        for (var current = ex; current is not null; current = current.InnerException)
+        {
+            if (current.Message.Contains(columnName, StringComparison.OrdinalIgnoreCase) &&
+                current.Message.Contains("null", StringComparison.OrdinalIgnoreCase) &&
+                (current.Message.Contains("does not allow null", StringComparison.OrdinalIgnoreCase) ||
+                 current.Message.Contains("cannot insert the value null", StringComparison.OrdinalIgnoreCase)))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private static bool IsLeadAppointmentPersistenceCompatibilityFailure(Exception ex)
+    {
+        if (IsMissingLeadAppointmentsTable(ex) || IsNullConstraintFailure(ex, "WorkstationLeadId"))
+            return true;
+
+        var leadAppointmentSchemaTokens = new[]
+        {
+            "LeadAppointments",
+            "WorkstationLeadId",
+            "BookingProvider",
+            "RequestedBookingSource",
+            "ConfirmationSource",
+            "BookingAgentUserId",
+            "LastSyncStatus",
+            "LastSyncError",
+            "LastSyncedUtc",
+            "ClientProfileId",
+            "WebsiteLeadId",
+            "RawProviderPayloadJson",
+            "MatchConfidence"
+        };
+
+        for (var current = ex; current is not null; current = current.InnerException)
+        {
+            var message = current.Message;
+
+            var looksLikeSchemaDrift =
+                message.Contains("invalid column name", StringComparison.OrdinalIgnoreCase) ||
+                message.Contains("unknown column", StringComparison.OrdinalIgnoreCase) ||
+                message.Contains("no such column", StringComparison.OrdinalIgnoreCase) ||
+                message.Contains("invalid object name", StringComparison.OrdinalIgnoreCase) ||
+                message.Contains("no such table", StringComparison.OrdinalIgnoreCase);
+
+            if (!looksLikeSchemaDrift)
+                continue;
+
+            if (leadAppointmentSchemaTokens.Any(token => message.Contains(token, StringComparison.OrdinalIgnoreCase)))
+                return true;
+        }
+
+        return false;
+    }
 
     private static string HumanizeAppointmentStatus(LeadAppointmentStatus status)
         => status switch
@@ -324,6 +542,8 @@ public class CalendarController : Controller
     public sealed class CreateEventRequest
     {
         public string? ClientUserId { get; set; }
+        public Guid? ClientProfileId { get; set; }
+        public string? WorkstationLeadId { get; set; }
         public string? Subject { get; set; }
         public string? StartISO { get; set; }  // "YYYY-MM-DDTHH:mm:ss"
         public string? EndISO { get; set; }
@@ -756,21 +976,40 @@ public class CalendarController : Controller
 
         try
         {
+            var cancellationToken = HttpContext.RequestAborted;
             var agentOid = GetAgentOidOrThrow();
-            var clientUserId = Norm(req.ClientUserId);
-            if (string.IsNullOrWhiteSpace(clientUserId))
+            var clientUserId = CleanOptional(req.ClientUserId);
+            var clientProfileId = req.ClientProfileId;
+
+            if (!clientProfileId.HasValue && string.IsNullOrWhiteSpace(clientUserId))
                 return BadRequest("Missing client.");
 
-            var profile = await _db.ClientProfiles
-                .FirstOrDefaultAsync(x => (x.ClientUserId ?? "").Trim().ToLower() == clientUserId);
+            ClientProfile? profile = null;
+            if (clientProfileId.HasValue)
+            {
+                profile = await _db.ClientProfiles
+                    .FirstOrDefaultAsync(x => x.Id == clientProfileId.Value, cancellationToken);
+            }
+
+            if (profile == null && !string.IsNullOrWhiteSpace(clientUserId))
+            {
+                var clientUserIdNorm = clientUserId.Trim().ToLowerInvariant();
+                profile = await _db.ClientProfiles
+                    .FirstOrDefaultAsync(x => (x.ClientUserId ?? "").Trim().ToLower() == clientUserIdNorm, cancellationToken);
+            }
 
             WorkstationLeadProfile? leadProfile = null;
 
             if (profile == null)
             {
+                if (string.IsNullOrWhiteSpace(clientUserId))
+                    return NotFound("Client/lead not found.");
+
+                var clientUserIdNorm = clientUserId.Trim().ToLowerInvariant();
                 leadProfile = await _db.WorkstationLeadProfiles
-                    .FirstOrDefaultAsync(x => (x.LeadId ?? "").Trim().ToLower() == clientUserId &&
-                                               (x.AgentUserId ?? "").Trim().ToLower() == agentOid);
+                    .FirstOrDefaultAsync(x => (x.LeadId ?? "").Trim().ToLower() == clientUserIdNorm &&
+                                               (x.AgentUserId ?? "").Trim().ToLower() == agentOid,
+                        cancellationToken);
 
                 if (leadProfile == null)
                     return NotFound("Client/lead not found.");
@@ -779,7 +1018,8 @@ public class CalendarController : Controller
             {
                 var ownsClient = await _db.AgentClients.AnyAsync(x =>
                     (x.AgentUserId ?? "").Trim().ToLower() == agentOid &&
-                    (x.ClientUserId ?? "").Trim().ToLower() == clientUserId);
+                    (x.ClientUserId ?? "").Trim().ToLower() == Norm(profile.ClientUserId),
+                    cancellationToken);
 
                 if (!ownsClient)
                     return Forbid();
@@ -874,7 +1114,7 @@ public class CalendarController : Controller
                 .Solutions
                 .BookingBusinesses[bookingBusinessId]
                 .Appointments
-                .PostAsync(bookingAppointment, cancellationToken: HttpContext.RequestAborted);
+                .PostAsync(bookingAppointment, cancellationToken: cancellationToken);
 
             var created = new CreatedCalendarLikeResponse
             {
@@ -905,32 +1145,34 @@ public class CalendarController : Controller
                     CreatedBy = User.FindFirstValue("preferred_username") ?? User.Identity?.Name
                 });
 
-                var clientLeadId =
-                    (profile.ClientUserId ?? string.Empty).Trim();
+                var clientProfileKey = profile.Id.ToString();
+                var appointmentLeadId = await ResolveClientWorkstationLeadIdAsync(
+                    agentOid,
+                    profile,
+                    meta,
+                    req.WorkstationLeadId,
+                    cancellationToken);
 
-                var clientProfileId = profile.Id.ToString();
-
-                if (string.IsNullOrWhiteSpace(clientLeadId))
-                    return StatusCode(
-                        500,
-                        "Client appointment identity is missing.");
+                if (!string.IsNullOrWhiteSpace(appointmentLeadId) &&
+                    !string.Equals(meta.SourceWorkstationLeadId, appointmentLeadId, StringComparison.OrdinalIgnoreCase))
+                {
+                    meta.SourceWorkstationLeadId = appointmentLeadId;
+                }
 
                 var linkedLeadProfile =
-                    await _db.WorkstationLeadProfiles
-                        .FirstOrDefaultAsync(x =>
-                            (x.LeadId ?? "")
-                                .Trim()
-                                .ToLower() ==
-                            clientLeadId.ToLower() &&
-                            (x.AgentUserId ?? "")
-                                .Trim()
-                                .ToLower() ==
-                            agentOid);
-
-                var appointmentLeadId =
-                    !string.IsNullOrWhiteSpace(
-                        linkedLeadProfile?.LeadId)
-                        ? linkedLeadProfile.LeadId
+                    !string.IsNullOrWhiteSpace(appointmentLeadId)
+                        ? await _db.WorkstationLeadProfiles
+                            .AsNoTracking()
+                            .FirstOrDefaultAsync(x =>
+                                    (x.LeadId ?? string.Empty)
+                                        .Trim()
+                                        .ToLower() ==
+                                    appointmentLeadId.ToLower() &&
+                                    (x.AgentUserId ?? string.Empty)
+                                        .Trim()
+                                        .ToLower() ==
+                                    agentOid,
+                                cancellationToken)
                         : null;
 
                 var appointmentOwnerAgentUserId =
@@ -944,7 +1186,7 @@ public class CalendarController : Controller
                 LeadAppointment? clientPersistedAppointment =
                     !string.IsNullOrWhiteSpace(createdEventId)
                         ? await _db.LeadAppointments
-                            .FirstOrDefaultAsync(x =>
+                        .FirstOrDefaultAsync(x =>
                                 x.CalendarEventId ==
                                 createdEventId)
                         : null;
@@ -953,7 +1195,7 @@ public class CalendarController : Controller
                     await _db.LeadAppointments
                         .Where(x =>
                             x.ClientProfileId ==
-                            clientProfileId)
+                            clientProfileKey)
                         .OrderByDescending(x => x.UpdatedUtc)
                         .ThenByDescending(x => x.CreatedUtc)
                         .FirstOrDefaultAsync();
@@ -977,7 +1219,7 @@ public class CalendarController : Controller
                                     .ThenByDescending(x =>
                                         x.CapturedUtc)
                                     .Select(x => (Guid?)x.Id)
-                                    .FirstOrDefaultAsync();
+                                    .FirstOrDefaultAsync(cancellationToken);
                         }
                     }
                     catch (Exception ex)
@@ -999,7 +1241,7 @@ public class CalendarController : Controller
                             WebsiteLeadIntakeLinkId =
                                 clientLatestIntakeLinkId,
                             ClientProfileId =
-                                clientProfileId,
+                                clientProfileKey,
                             BookingProvider =
                                 "microsoft_bookings",
                             BookingSource =
@@ -1019,16 +1261,27 @@ public class CalendarController : Controller
 
                     _db.LeadAppointments.Add(
                         clientPersistedAppointment);
+
+                    if (string.IsNullOrWhiteSpace(appointmentLeadId))
+                    {
+                        _logger.LogWarning(
+                            "Client CRM booking identity could not be resolved for ClientProfileId {ClientProfileId}. Booking event {CalendarEventId} will not be linked to a workstation lead until the client record is reconnected.",
+                            clientProfileKey,
+                            created?.Id);
+                    }
                 }
 
-                clientPersistedAppointment.WorkstationLeadId =
-                    appointmentLeadId;
+                if (!string.IsNullOrWhiteSpace(appointmentLeadId))
+                {
+                    clientPersistedAppointment.WorkstationLeadId =
+                        appointmentLeadId;
+                }
 
                 clientPersistedAppointment.OwnerAgentUserId =
                     appointmentOwnerAgentUserId;
 
                 clientPersistedAppointment.ClientProfileId =
-                    clientProfileId;
+                    clientProfileKey;
 
                 clientPersistedAppointment.BookingProvider =
                     "microsoft_bookings";
@@ -1084,15 +1337,48 @@ public class CalendarController : Controller
                 {
                     await _db.SaveChangesAsync();
                 }
+                catch (Exception ex) when (IsLeadAppointmentPersistenceCompatibilityFailure(ex))
+                {
+                    var warningMessage = string.IsNullOrWhiteSpace(clientPersistedAppointment?.WorkstationLeadId)
+                        ? "Calendar event created, but this environment still needs the latest appointment schema update before client appointment linkage can be stored."
+                        : "Calendar event created, but this environment still needs the latest appointment schema update before the appointment record can be stored.";
+
+                    _logger.LogWarning(
+                        ex,
+                        "Client CRM booking saved with compatibility fallback. ClientProfileId: {ClientProfileId}, WorkstationLeadId: {WorkstationLeadId}, CalendarEventId: {CalendarEventId}",
+                        clientProfileKey,
+                        clientPersistedAppointment?.WorkstationLeadId,
+                        clientPersistedAppointment?.CalendarEventId);
+
+                    if (clientPersistedAppointment != null)
+                        _db.Entry(clientPersistedAppointment).State = EntityState.Detached;
+
+                    await _db.SaveChangesAsync();
+
+                    return Ok(new
+                    {
+                        ok = true,
+                        eventId = created?.Id,
+                        webLink = created?.WebLink,
+                        crmLastTouch = profile.CrmLastTouch?.ToString("yyyy-MM-dd"),
+                        activities = meta.Activities
+                            .OrderByDescending(x => x.Date)
+                            .ThenByDescending(x => x.CreatedUtc)
+                            .ToList(),
+                        latestAppointment = (object?)null,
+                        warning = warningMessage
+                    });
+                }
                 catch (DbUpdateException ex)
                 {
+
                     _logger.LogError(
                         ex,
                         "Client CRM booking save failed. ClientProfileId: {ClientProfileId}, WorkstationLeadId: {WorkstationLeadId}, OwnerAgentUserId: {OwnerAgentUserId}, CalendarEventId: {CalendarEventId}, InnerException: {InnerException}",
-                        clientProfileId,
-                        clientPersistedAppointment.WorkstationLeadId,
-                        clientPersistedAppointment.OwnerAgentUserId,
-                        clientPersistedAppointment.CalendarEventId,
+                        clientProfileKey,
+                        clientPersistedAppointment?.WorkstationLeadId,
+                        clientPersistedAppointment?.OwnerAgentUserId,
+                        clientPersistedAppointment?.CalendarEventId,
                         ex.InnerException?.Message);
 
                     return StatusCode(500, new
@@ -1185,12 +1471,32 @@ public class CalendarController : Controller
             {
                 await _db.SaveChangesAsync();
             }
-            catch (Exception ex) when (IsMissingLeadAppointmentsTable(ex))
+            catch (Exception ex) when (IsLeadAppointmentPersistenceCompatibilityFailure(ex))
             {
-                _logger.LogWarning(ex, "LeadAppointments table is unavailable; calendar event will persist without appointment linkage.");
+                _logger.LogWarning(
+                    ex,
+                    "Lead CRM booking saved with compatibility fallback. LeadId: {LeadId}, OwnerAgentUserId: {OwnerAgentUserId}, CalendarEventId: {CalendarEventId}",
+                    leadAppointment.WorkstationLeadId,
+                    leadAppointment.OwnerAgentUserId,
+                    leadAppointment.CalendarEventId);
+
                 _db.Entry(leadAppointment).State = EntityState.Detached;
                 persistedAppointment = null;
                 await _db.SaveChangesAsync();
+
+                return Ok(new
+                {
+                    ok = true,
+                    eventId = created?.Id,
+                    webLink = created?.WebLink,
+                    crmLastTouch = DateTime.Today.ToString("yyyy-MM-dd"),
+                    activities = leadMeta.Activities
+                        .OrderByDescending(x => x.Date)
+                        .ThenByDescending(x => x.CreatedUtc)
+                        .ToList(),
+                    latestAppointment = (object?)null,
+                    warning = "Calendar event created, but this environment still needs the latest appointment schema update before the lead appointment record can be stored."
+                });
             }
 
             return Ok(new
