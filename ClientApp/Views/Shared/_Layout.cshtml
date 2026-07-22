@@ -119,12 +119,13 @@
             <div class="navbar-right">
             @{
                     var user = HttpContextAccessor.HttpContext?.User;
+                    var isAuthenticated = user?.Identity?.IsAuthenticated == true;
                     var clientContext = ctx; // from earlier resolution
                     var agentPillName = string.IsNullOrWhiteSpace(clientContext?.AgentDisplayName)
                         ? "Your Agent"
                         : clientContext.AgentDisplayName;
                     var agentPillNpn = clientContext?.AgentNpn;
-                    var showAgentPill = clientContext != null && (!string.IsNullOrWhiteSpace(agentPillName) || !string.IsNullOrWhiteSpace(agentPillNpn));
+                    var showAgentPill = isAuthenticated && clientContext != null && (!string.IsNullOrWhiteSpace(agentPillName) || !string.IsNullOrWhiteSpace(agentPillNpn));
                     string? CleanToken(string? s)
                     {
                         if (string.IsNullOrWhiteSpace(s)) return null;
@@ -147,7 +148,7 @@
                     string? avatarUrl = null;
                     string? userId = null;
 
-                    if (user?.Identity != null && user.Identity.IsAuthenticated)
+                    if (isAuthenticated && user is not null)
                     {
                         first =
                             CleanToken(user.FindFirst("given_name")?.Value)
@@ -228,35 +229,38 @@
                 }
 
                 <a class="nav-link" href="https://www.mylegnd.com/store" target="_blank">Store</a>
-                <div class="dropdown">
-                    <button class="profile-chip dropdown-toggle" type="button" data-bs-toggle="dropdown" aria-expanded="false" title="@displayName">
-                        <div class="profile-avatar">
-                            @if (!string.IsNullOrWhiteSpace(avatarUrl))
-                            {
-                                <img src="@avatarUrl" alt="Profile photo" loading="lazy" />
-                            }
-                            else
-                            {
-                                <span>@initials</span>
-                            }
-                        </div>
-                        <div class="profile-meta">
-                            <span class="profile-name">@displayName</span>
-                            <span class="visually-hidden">Profile menu</span>
-                        </div>
-                    </button>
-                    <ul class="dropdown-menu dropdown-menu-end profile-contact-menu">
-                        <li><a class="dropdown-item" href="/profile/edit">Edit Profile</a></li>
-                        <li><a class="dropdown-item" href="/profile">View Profile</a></li>
-                        <li><hr class="dropdown-divider" /></li>
-                        <li>
-                            <form asp-controller="Account" asp-action="Logout" method="post" class="d-inline">
-                                @Html.AntiForgeryToken()
-                                <button type="submit" class="dropdown-item">Logout</button>
-                            </form>
-                        </li>
-                    </ul>
-                </div>
+                @if (isAuthenticated)
+                {
+                    <div class="dropdown">
+                        <button class="profile-chip dropdown-toggle" type="button" data-bs-toggle="dropdown" aria-expanded="false" title="@displayName">
+                            <div class="profile-avatar">
+                                @if (!string.IsNullOrWhiteSpace(avatarUrl))
+                                {
+                                    <img src="@avatarUrl" alt="Profile photo" loading="lazy" />
+                                }
+                                else
+                                {
+                                    <span>@initials</span>
+                                }
+                            </div>
+                            <div class="profile-meta">
+                                <span class="profile-name">@displayName</span>
+                                <span class="visually-hidden">Profile menu</span>
+                            </div>
+                        </button>
+                        <ul class="dropdown-menu dropdown-menu-end profile-contact-menu">
+                            <li><a class="dropdown-item" href="/profile/edit">Edit Profile</a></li>
+                            <li><a class="dropdown-item" href="/profile">View Profile</a></li>
+                            <li><hr class="dropdown-divider" /></li>
+                            <li>
+                                <form asp-controller="Account" asp-action="Logout" method="post" class="d-inline">
+                                    @Html.AntiForgeryToken()
+                                    <button type="submit" class="dropdown-item">Logout</button>
+                                </form>
+                            </li>
+                        </ul>
+                    </div>
+                }
             </div>
 
         </div>

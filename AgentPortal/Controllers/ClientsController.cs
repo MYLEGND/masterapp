@@ -3189,14 +3189,20 @@ namespace AgentPortal.Controllers;
             // 3) Email should not rollback DB
             // ==========================================================
             var creationWarnings = new List<string>();
+            var shouldSendSubscriptionInvitation =
+                isPortalClient &&
+                createdClientProfile is not null &&
+                createdSubscriptionOffer is not null &&
+                createdSubscriptionInvitation?.Invitation is not null &&
+                !string.IsNullOrWhiteSpace(createdSubscriptionInvitation.PlainTextToken);
 
             try
             {
-                if (isPortalClient)
+                if (isPortalClient && !shouldSendSubscriptionInvitation)
                 {
                     var clientPortalUrl = GetClientPortalBaseUrl();
                     if (string.IsNullOrWhiteSpace(emailNorm))
-                        throw new InvalidOperationException("Client email is required before sending the welcome email.");
+                        throw new InvalidOperationException("Client email is required before sending the access email.");
 
                     await _provisioning.SendClientWelcomeEmailAsync(
                         emailNorm,
@@ -3215,23 +3221,25 @@ namespace AgentPortal.Controllers;
                 creationWarnings.Add($"Welcome email failed: {mailEx.Message}");
             }
 
-            if (isPortalClient &&
-                createdClientProfile is not null &&
-                createdSubscriptionOffer is not null &&
-                createdSubscriptionInvitation?.Invitation is not null &&
+            if (shouldSendSubscriptionInvitation &&
+                createdClientProfile is { } subscriptionClientProfile &&
+                createdSubscriptionOffer is { } subscriptionOffer &&
+                createdSubscriptionInvitation?.Invitation is { } subscriptionInvitation &&
                 !string.IsNullOrWhiteSpace(createdSubscriptionInvitation.PlainTextToken))
             {
+                var plainTextToken = createdSubscriptionInvitation.PlainTextToken;
+
                 try
                 {
                     await _subscriptionInvitationEmailService.SendAsync(
-                        createdClientProfile,
-                        createdSubscriptionOffer,
-                        createdSubscriptionInvitation.Invitation,
-                        createdSubscriptionInvitation.PlainTextToken);
+                        subscriptionClientProfile,
+                        subscriptionOffer,
+                        subscriptionInvitation,
+                        plainTextToken);
 
                     await _billingOrchestrator.MarkSubscriptionActivationInvitationSentAsync(
                         new MarkSubscriptionActivationInvitationSentCommand(
-                            createdSubscriptionInvitation.Invitation.Id,
+                            subscriptionInvitation.Id,
                             agentOid));
                 }
                 catch (Exception invitationEmailEx)
@@ -3239,12 +3247,12 @@ namespace AgentPortal.Controllers;
                     _logger.LogError(
                         invitationEmailEx,
                         "Subscription invitation email failed for ClientProfileId={ClientProfileId} InvitationId={InvitationId}",
-                        createdClientProfile.Id,
-                        createdSubscriptionInvitation.Invitation.Id);
+                        subscriptionClientProfile.Id,
+                        subscriptionInvitation.Id);
 
                     await _billingOrchestrator.MarkSubscriptionActivationInvitationSendFailureAsync(
                         new MarkSubscriptionActivationInvitationSendFailureCommand(
-                            createdSubscriptionInvitation.Invitation.Id,
+                            subscriptionInvitation.Id,
                             agentOid,
                             "INVITATION_EMAIL_FAILED",
                             invitationEmailEx.Message));
@@ -4754,6 +4762,18 @@ meta.Activities ??= new List<ClientCrmActivity>();
 
         if (profile == null)
             return NotFound("Client profile not found.");
+
+        var latestOffer = await _db.ClientSubscriptionOffers
+            .AsNoTracking()
+            .Where(x => x.ClientProfileId == profile.Id && x.OwnerAgentUserId == agentOid)
+            .OrderByDescending(x => x.CreatedUtc)
+            .FirstOrDefaultAsync(HttpContext.RequestAborted);
+
+        if (latestOffer is not null)
+        {
+            return BadRequest(
+                "This client uses the ClientApp subscription activation workflow. Use the ClientApp Subscription panel to resend or manage activation.");
+        }
 
         // Optionally update email if a new one was provided
         if (!string.IsNullOrWhiteSpace(request.NewEmail))

@@ -4742,8 +4742,10 @@ function renderPortalActions(row, detail){
     dPortalWrap.innerHTML += `${dPortalWrap.innerHTML ? " " : ""}<a class="btn btn-ghost" href="${appointmentLink}" target="_blank" rel="noopener">Calendar Event</a>`;
   }
 
-  // Show resend button beside primary email field
-  if (btnResendClientInvite) btnResendClientInvite.style.display = "";
+  const usesSubscriptionActivation = !!detail?.billing?.offer;
+  if (btnResendClientInvite) {
+    btnResendClientInvite.style.display = usesSubscriptionActivation ? "none" : "";
+  }
   if (dResendInviteStatus) dResendInviteStatus.textContent = "";
 }
 
