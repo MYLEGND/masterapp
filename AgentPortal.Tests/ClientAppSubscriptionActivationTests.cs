@@ -93,7 +93,7 @@ public class ClientAppSubscriptionActivationTests
     }
 
     [Fact]
-    public void AccountController_Login_NormalizesAccountLoopReturnUrl()
+    public async Task AccountController_Login_NormalizesAccountLoopReturnUrl()
     {
         using var db = BuildDb();
         var continuationService = BuildContinuationService(db);
@@ -101,7 +101,7 @@ public class ClientAppSubscriptionActivationTests
         var identityAccessService = new ClientIdentityAccessService(db, entitlementService.Object, continuationService, new ClientAppReturnUrlNormalizer());
         var controller = BuildAccountController(identityAccessService, new DefaultHttpContext());
 
-        var result = controller.Login("/Account/LoggedOut");
+        var result = await controller.Login("/Account/LoggedOut");
 
         var view = Assert.IsType<ViewResult>(result);
         var model = Assert.IsType<ClientLoginViewModel>(view.Model);

@@ -2,6 +2,7 @@ using ClientApp.Models;
 using ClientApp.Services;
 using Domain.Entities;
 using Infrastructure.Data;
+using Infrastructure.Identity;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
@@ -15,15 +16,18 @@ public class ProfileController : Controller
     private readonly MasterAppDbContext _db;
     private readonly EffectiveClientContextService _clientContext;
     private readonly IAzureUserUpdater _azureUserUpdater;
+    private readonly IClientSubscriptionIdentitySyncService _subscriptionIdentitySync;
 
     public ProfileController(
         MasterAppDbContext db,
         EffectiveClientContextService clientContext,
-        IAzureUserUpdater azureUserUpdater)
+        IAzureUserUpdater azureUserUpdater,
+        IClientSubscriptionIdentitySyncService subscriptionIdentitySync)
     {
         _db = db;
         _clientContext = clientContext;
         _azureUserUpdater = azureUserUpdater;
+        _subscriptionIdentitySync = subscriptionIdentitySync;
     }
 
     private static string Norm(string? value) => (value ?? string.Empty).Trim().ToLowerInvariant();
@@ -212,6 +216,7 @@ public class ProfileController : Controller
 
         await using var transaction = await _db.Database.BeginTransactionAsync();
         var profile = context.Profile;
+        var previousEmail = profile.NormalizedEmail ?? profile.Email;
 
         profile.FirstName = (model.FirstName ?? string.Empty).Trim();
         profile.LastName = (model.LastName ?? string.Empty).Trim();
@@ -299,6 +304,13 @@ public class ProfileController : Controller
                     : updateResult.Message);
             return ClientProfileView(model);
         }
+
+        await _subscriptionIdentitySync.SynchronizeAfterEmailChangeAsync(
+            profile.Id,
+            previousEmail,
+            profile.NormalizedEmail,
+            HttpContext.RequestAborted);
+        await _db.SaveChangesAsync(HttpContext.RequestAborted);
 
         await transaction.CommitAsync();
 

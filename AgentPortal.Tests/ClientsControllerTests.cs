@@ -393,6 +393,90 @@ public class ClientsControllerTests
     }
 
     [Fact]
+    public async Task Create_FromClientsCrmLead_PrefillsTheSharedClientAccountForm()
+    {
+        using var db = ControllerTestHelpers.BuildDb();
+        const string agentId = "agent-1";
+        const string leadId = "lead-convert-client-crm";
+        await SeedOwnedClientAsync(
+            db,
+            agentId,
+            leadId,
+            "prospect@example.com",
+            ClientCrmMetaSerializer.Serialize(new ClientCrmMeta { RecordType = "Lead", PipelineStage = "Qualified" }));
+
+        var controller = ControllerTestHelpers.BuildClientsController(
+            db,
+            Mock.Of<IExecutionEngine>(),
+            Mock.Of<ICommitmentService>(),
+            ControllerTestHelpers.BuildUser(agentId));
+        var url = new Mock<IUrlHelper>();
+        url.Setup(x => x.IsLocalUrl(It.IsAny<string>())).Returns(true);
+        controller.Url = url.Object;
+
+        var result = await controller.Create(
+            returnUrl: "/Clients",
+            sourceLeadClientUserId: leadId,
+            recordType: "BusinessClient");
+
+        var view = Assert.IsType<ViewResult>(result);
+        var model = Assert.IsType<CreateClientViewModel>(view.Model);
+        Assert.Equal(leadId, model.SourceLeadClientUserId);
+        Assert.Equal("BusinessClient", model.RecordType);
+        Assert.Equal("Client", model.FirstName);
+        Assert.Equal("prospect@example.com", model.Email);
+    }
+
+    [Fact]
+    public async Task Create_FromLeadsCrmLead_PrefillsTheSharedClientAccountForm()
+    {
+        using var db = ControllerTestHelpers.BuildDb();
+        const string agentId = "agent-1";
+        const string leadId = "workstation-convert-lead";
+        db.WorkstationLeadProfiles.Add(new WorkstationLeadProfile
+        {
+            LeadId = leadId,
+            AgentUserId = agentId,
+            Bucket = "LifeInsurance",
+            FirstName = "Taylor",
+            LastName = "Prospect",
+            Email = "taylor@example.com",
+            Phone = "555-444-5555",
+            DOB = new DateTime(1990, 1, 2),
+            CrmStatus = "Lead",
+            CrmStage = "Qualified",
+            CrmNotes = ClientCrmMetaSerializer.Serialize(new ClientCrmMeta
+            {
+                CrmPriority = "High",
+                CrmTags = "Life"
+            })
+        });
+        await db.SaveChangesAsync();
+
+        var controller = ControllerTestHelpers.BuildClientsController(
+            db,
+            Mock.Of<IExecutionEngine>(),
+            Mock.Of<ICommitmentService>(),
+            ControllerTestHelpers.BuildUser(agentId));
+        var url = new Mock<IUrlHelper>();
+        url.Setup(x => x.IsLocalUrl(It.IsAny<string>())).Returns(true);
+        controller.Url = url.Object;
+
+        var result = await controller.Create(
+            returnUrl: "/Leads",
+            sourceWorkstationLeadId: leadId,
+            recordType: "Client");
+
+        var view = Assert.IsType<ViewResult>(result);
+        var model = Assert.IsType<CreateClientViewModel>(view.Model);
+        Assert.Equal(leadId, model.SourceWorkstationLeadId);
+        Assert.Equal("Client", model.RecordType);
+        Assert.Equal("Taylor", model.FirstName);
+        Assert.Equal("High", model.CrmPriority);
+        Assert.Equal("Life", model.CrmTags);
+    }
+
+    [Fact]
     public async Task Delete_WhenLeadOnlyRecord_RemovesLocalProfileWithoutPortalDelete()
     {
         using var db = ControllerTestHelpers.BuildDb();

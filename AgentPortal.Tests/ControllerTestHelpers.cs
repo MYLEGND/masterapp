@@ -110,7 +110,18 @@ internal static class ControllerTestHelpers
             .Build();
         var provisioning = new ClientProvisioningService(config, NullLogger<ClientProvisioningService>.Instance, db);
         timeResolver ??= Mock.Of<IAgentTimeZoneResolver>();
-        var azureClientEmailSync = Mock.Of<IAzureClientEmailSyncService>();
+        var azureClientEmailSync = new Mock<IAzureClientEmailSyncService>();
+        azureClientEmailSync
+            .Setup(service => service.UpdateEmailAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new AzureClientEmailSyncResult(true, false));
+        var subscriptionIdentitySync = new Mock<IClientSubscriptionIdentitySyncService>();
+        subscriptionIdentitySync
+            .Setup(service => service.SynchronizeAfterEmailChangeAsync(
+                It.IsAny<Guid>(),
+                It.IsAny<string?>(),
+                It.IsAny<string?>(),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new ClientSubscriptionIdentitySyncResult(false, 0, 0));
         billingOrchestrator ??= Mock.Of<IBillingOrchestrator>();
         emailSender ??= Mock.Of<IEmailSender>();
         var clientBillingWorkspaceService = new ClientBillingWorkspaceService(db);
@@ -119,7 +130,7 @@ internal static class ControllerTestHelpers
         var accessor = new HttpContextAccessor { HttpContext = new DefaultHttpContext { User = user } };
         var tracking = Mock.Of<IAgentTrackingService>();
         var effCtx = new EffectiveAgentContext(accessor, tracking, NullLogger<EffectiveAgentContext>.Instance);
-        var controller = new ClientsController(db, provisioning, config, NullLogger<ClientsController>.Instance, timeResolver, azureClientEmailSync, prod, effCtx, execution, commitments, billingOrchestrator, clientBillingWorkspaceService, subscriptionInvitationEmailService)
+        var controller = new ClientsController(db, provisioning, config, NullLogger<ClientsController>.Instance, timeResolver, azureClientEmailSync.Object, subscriptionIdentitySync.Object, prod, effCtx, execution, commitments, billingOrchestrator, clientBillingWorkspaceService, subscriptionInvitationEmailService)
         {
             ControllerContext = new ControllerContext { HttpContext = accessor.HttpContext! }
         };

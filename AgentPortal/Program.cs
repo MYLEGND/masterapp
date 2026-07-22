@@ -80,6 +80,7 @@ builder.Services.AddScoped<ClientBillingWorkspaceService>();
 builder.Services.AddScoped<ClientProvisioningService>();
 builder.Services.AddScoped<ClientSubscriptionInvitationEmailService>();
 builder.Services.AddScoped<IAzureClientEmailSyncService, AzureClientEmailSyncService>();
+builder.Services.AddScoped<IClientSubscriptionIdentitySyncService, ClientSubscriptionIdentitySyncService>();
 builder.Services.AddScoped<AssistantContextService>();
 builder.Services.AddScoped<AgentRegistryService>();
 builder.Services.AddScoped<AgencyCommandService>();

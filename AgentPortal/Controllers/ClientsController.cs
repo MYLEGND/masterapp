@@ -46,6 +46,7 @@ namespace AgentPortal.Controllers;
         private readonly ILogger<ClientsController> _logger;
         private readonly IAgentTimeZoneResolver _agentTimeZoneResolver;
         private readonly IAzureClientEmailSyncService _azureClientEmailSync;
+        private readonly IClientSubscriptionIdentitySyncService _subscriptionIdentitySync;
         private readonly ProductionService _production;
         private readonly EffectiveAgentContext _agentContext;
         private readonly IExecutionEngine _execution;
@@ -66,6 +67,7 @@ namespace AgentPortal.Controllers;
             ILogger<ClientsController> logger,
             IAgentTimeZoneResolver agentTimeZoneResolver,
             IAzureClientEmailSyncService azureClientEmailSync,
+            IClientSubscriptionIdentitySyncService subscriptionIdentitySync,
             ProductionService production,
             EffectiveAgentContext agentContext,
             IExecutionEngine execution,
@@ -80,6 +82,7 @@ namespace AgentPortal.Controllers;
             _logger = logger;
             _agentTimeZoneResolver = agentTimeZoneResolver;
             _azureClientEmailSync = azureClientEmailSync;
+            _subscriptionIdentitySync = subscriptionIdentitySync;
             _production = production;
             _agentContext = agentContext;
             _execution = execution;
@@ -968,28 +971,115 @@ namespace AgentPortal.Controllers;
     private static bool HasPortalAccess(string? clientUserId)
         => Guid.TryParse(Norm(clientUserId), out _);
 
-    private async Task<string?> SyncPortalEmailAsync(ClientProfile profile, CancellationToken cancellationToken = default)
+    private sealed record PortalEmailSyncResult(
+        string? Error,
+        bool RequiresReplacementSubscriptionInvitation)
+    {
+        public bool Success => string.IsNullOrWhiteSpace(Error);
+    }
+
+    private async Task<PortalEmailSyncResult> SyncPortalEmailAsync(
+        ClientProfile profile,
+        string? previousEmail,
+        CancellationToken cancellationToken = default)
     {
         if (!HasPortalAccess(profile.ClientUserId))
-            return null;
+            return new PortalEmailSyncResult(null, false);
 
         var emailNorm = NormalizeEmail(profile.Email);
         if (string.IsNullOrWhiteSpace(emailNorm))
-            return "Portal-enabled clients must have a real email address.";
+            return new PortalEmailSyncResult("Portal-enabled clients must have a real email address.", false);
 
         var result = await _azureClientEmailSync.UpdateEmailAsync(profile.ClientUserId, emailNorm, cancellationToken);
-        if (result.Success)
+        if (!result.Success)
+        {
+            _logger.LogError(
+                "Azure client email sync failed. ClientUserId={ClientUserId} Email={Email} Message={Message}",
+                profile.ClientUserId,
+                emailNorm,
+                result.Message);
+
+            return new PortalEmailSyncResult(
+                string.IsNullOrWhiteSpace(result.Message)
+                    ? "We couldn't update the client's Microsoft sign-in email."
+                    : result.Message,
+                false);
+        }
+
+        var identitySync = await _subscriptionIdentitySync.SynchronizeAfterEmailChangeAsync(
+            profile.Id,
+            previousEmail,
+            emailNorm,
+            cancellationToken);
+
+        return new PortalEmailSyncResult(
+            null,
+            identitySync.RequiresReplacementInvitation);
+    }
+
+    private async Task<string?> SendReplacementSubscriptionInvitationAsync(
+        ClientProfile profile,
+        string actorAgentUserId,
+        CancellationToken cancellationToken = default)
+    {
+        var latestOffer = await _db.ClientSubscriptionOffers
+            .AsNoTracking()
+            .Where(x => x.ClientProfileId == profile.Id)
+            .OrderByDescending(x => x.CreatedUtc)
+            .FirstOrDefaultAsync(cancellationToken);
+
+        if (latestOffer is null || latestOffer.Status == ClientSubscriptionOfferStatus.Accepted)
             return null;
 
-        _logger.LogError(
-            "Azure client email sync failed. ClientUserId={ClientUserId} Email={Email} Message={Message}",
-            profile.ClientUserId,
-            emailNorm,
-            result.Message);
+        var invitationResult = await _billingOrchestrator.CreateSubscriptionActivationInvitationAsync(
+            new CreateSubscriptionActivationInvitationCommand(
+                profile.Id,
+                latestOffer.Id,
+                profile.NormalizedEmail ?? profile.Email,
+                actorAgentUserId,
+                DateTime.UtcNow.AddDays(7)),
+            cancellationToken);
 
-        return string.IsNullOrWhiteSpace(result.Message)
-            ? "We couldn't update the client's Microsoft sign-in email."
-            : result.Message;
+        if (!invitationResult.Success || invitationResult.Invitation is null ||
+            string.IsNullOrWhiteSpace(invitationResult.PlainTextToken))
+        {
+            return invitationResult.SanitizedSummary ??
+                   "The client email was updated, but a replacement activation invitation could not be created.";
+        }
+
+        try
+        {
+            await _subscriptionInvitationEmailService.SendAsync(
+                profile,
+                latestOffer,
+                invitationResult.Invitation,
+                invitationResult.PlainTextToken,
+                cancellationToken);
+
+            await _billingOrchestrator.MarkSubscriptionActivationInvitationSentAsync(
+                new MarkSubscriptionActivationInvitationSentCommand(invitationResult.Invitation.Id, actorAgentUserId),
+                cancellationToken);
+
+            return null;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(
+                ex,
+                "Replacement subscription invitation email failed after a client email update. ClientProfileId={ClientProfileId} InvitationId={InvitationId}",
+                profile.Id,
+                invitationResult.Invitation.Id);
+
+            await _billingOrchestrator.MarkSubscriptionActivationInvitationSendFailureAsync(
+                new MarkSubscriptionActivationInvitationSendFailureCommand(
+                    invitationResult.Invitation.Id,
+                    actorAgentUserId,
+                    "INVITATION_EMAIL_FAILED",
+                    ex.Message),
+                cancellationToken);
+
+            return "The client email was updated, but the replacement activation invitation could not be sent.";
+        }
     }
 
     private static bool IsPortalRecordType(string? recordType)
@@ -1011,8 +1101,6 @@ namespace AgentPortal.Controllers;
         ClientProfile profile,
         string recordType)
     {
-        var meta = EnsureMeta(ClientCrmMetaSerializer.Deserialize(profile.CrmNotes));
-
         model.RecordType = recordType;
         model.SourceLeadClientUserId = profile.ClientUserId;
         model.FirstName = profile.FirstName;
@@ -1026,8 +1114,8 @@ namespace AgentPortal.Controllers;
         model.SignificantOtherDOB = profile.SignificantOtherDOB;
         model.SignificantOtherEmail = profile.SignificantOtherEmail;
         model.SignificantOtherPhone = profile.SignificantOtherPhone;
-        model.CrmStatus = profile.CrmStatus;
-        model.CrmPriority = profile.CrmPriority;
+        model.CrmStatus = string.IsNullOrWhiteSpace(profile.CrmStatus) ? "Lead" : profile.CrmStatus;
+        model.CrmPriority = string.IsNullOrWhiteSpace(profile.CrmPriority) ? "Normal" : profile.CrmPriority;
         model.CrmTags = profile.CrmTags;
         model.CrmLastTouch = profile.CrmLastTouch;
         model.CrmNextDate = profile.CrmNextDate;
@@ -3254,7 +3342,8 @@ namespace AgentPortal.Controllers;
                     .AsNoTracking()
                     .FirstOrDefaultAsync(x => x.NormalizedEmail == emailNorm);
 
-                if (existingByEmail != null)
+                if (existingByEmail != null &&
+                    (conversionSourceLead is null || existingByEmail.Id != conversionSourceLead.Id))
                 {
                     ModelState.AddModelError(nameof(CreateClientViewModel.Email),
                         "BLOCKED (409): That email is already tied to an existing client profile. " +
@@ -3266,6 +3355,65 @@ namespace AgentPortal.Controllers;
                 }
             }
 
+            if (conversionSourceLead is not null)
+            {
+                var personalEmail = emailNorm
+                    ?? throw new InvalidOperationException("Portal client email is required.");
+
+                ApplyCreateFormDetailsToLeadProfile(
+                    conversionSourceLead,
+                    model,
+                    firstName,
+                    lastName,
+                    personalEmail,
+                    phone,
+                    maritalStatus,
+                    crmStatus,
+                    crmPriority,
+                    crmTags,
+                    crmNotes,
+                    recordType,
+                    pipelineStage,
+                    agentUpn);
+
+                var conversion = await EnablePortalAccessInternalAsync(
+                    conversionSourceLead,
+                    recordType,
+                    personalEmail,
+                    sendWelcomeEmail: false,
+                    beforeCommitAsync: async convertedProfile =>
+                    {
+                        createdClientProfile = convertedProfile;
+                        await ApplySignificantOtherFromCreateFormAsync(convertedProfile.ClientUserId, model, needsSO);
+                        await _db.SaveChangesAsync();
+
+                        createdSubscriptionOffer = await _billingOrchestrator.CreateClientSubscriptionOfferAsync(
+                            new CreateClientSubscriptionOfferCommand(
+                                convertedProfile.Id,
+                                agentOid,
+                                subscriptionPriceType,
+                                subscriptionCustomMonthlyAmountCents,
+                                subscriptionCurrency,
+                                subscriptionBillingAnchorMode,
+                                subscriptionBillingAnchorDay,
+                                DateTime.UtcNow,
+                                null,
+                                canSetFounderSubscriptionOptions));
+
+                        createdSubscriptionInvitation = await _billingOrchestrator.CreateSubscriptionActivationInvitationAsync(
+                            new CreateSubscriptionActivationInvitationCommand(
+                                convertedProfile.Id,
+                                createdSubscriptionOffer.Id,
+                                personalEmail,
+                                agentOid,
+                                DateTime.UtcNow.AddDays(7)));
+                    });
+
+                clientObjectId = conversion.NewClientUserId;
+                loginUpn = conversion.LoginUpn;
+            }
+            else
+            {
             if (isPortalClient)
             {
                 var personalEmail = emailNorm
@@ -3365,6 +3513,7 @@ namespace AgentPortal.Controllers;
                 {
                     RecordType = recordType,
                     PipelineStage = pipelineStage,
+                    SourceWorkstationLeadId = conversionSourceWorkstationLead?.LeadId,
                     Collaboration = new ClientCrmCollaboration
                     {
                         Owner = agentUpn
@@ -3432,11 +3581,30 @@ namespace AgentPortal.Controllers;
             }
 
             await tx.CommitAsync();
+            }
 
             // ==========================================================
             // 3) Email should not rollback DB
             // ==========================================================
             var creationWarnings = new List<string>();
+            if (conversionSourceWorkstationLead is not null)
+            {
+                try
+                {
+                    conversionSourceWorkstationLead.CrmStatus = "Active";
+                    conversionSourceWorkstationLead.CrmStage = "PolicyPlaced";
+                    conversionSourceWorkstationLead.UpdatedUtc = DateTime.UtcNow;
+                    await _db.SaveChangesAsync();
+                }
+                catch (Exception sourceLeadUpdateEx)
+                {
+                    _logger.LogError(
+                        sourceLeadUpdateEx,
+                        "Client was created but the source workstation lead could not be marked converted. LeadId={LeadId}",
+                        conversionSourceWorkstationLead.LeadId);
+                    creationWarnings.Add("Client account created, but the source lead could not be marked converted.");
+                }
+            }
             var shouldSendSubscriptionInvitation =
                 isPortalClient &&
                 createdClientProfile is not null &&
@@ -3711,6 +3879,7 @@ meta.Activities ??= new List<ClientCrmActivity>();
         if (profile == null)
             return NotFound();
 
+        var previousEmail = profile.NormalizedEmail ?? profile.Email;
         var emailNorm = NormalizeEmail(model.Email);
         var meta = EnsureMeta(ClientCrmMetaSerializer.Deserialize(profile.CrmNotes));
         var existingRecordType = ResolveRecordType(profile.ClientUserId, meta);
@@ -4022,23 +4191,33 @@ meta.Activities ??= new List<ClientCrmActivity>();
             }
         }
 
+        PortalEmailSyncResult emailSync;
         await using (var tx = await _db.Database.BeginTransactionAsync())
         {
             await _db.SaveChangesAsync();
 
-            var syncError = await SyncPortalEmailAsync(profile, HttpContext.RequestAborted);
-            if (!string.IsNullOrWhiteSpace(syncError))
+            emailSync = await SyncPortalEmailAsync(profile, previousEmail, HttpContext.RequestAborted);
+            if (!emailSync.Success)
             {
                 await tx.RollbackAsync();
-                ModelState.AddModelError(nameof(EditClientViewModel.Email), syncError);
+                ModelState.AddModelError(
+                    nameof(EditClientViewModel.Email),
+                    emailSync.Error ?? "We couldn't update the client's sign-in email.");
                 PrepareEditView(model, returnUrl);
                 return View(model);
             }
 
+            await _db.SaveChangesAsync(HttpContext.RequestAborted);
             await tx.CommitAsync();
         }
 
-        TempData["Created"] = $"{RecordTypeLabel(meta.RecordType)} profile updated.";
+        var invitationWarning = emailSync.RequiresReplacementSubscriptionInvitation
+            ? await SendReplacementSubscriptionInvitationAsync(profile, agentOid, HttpContext.RequestAborted)
+            : null;
+
+        TempData["Created"] = string.IsNullOrWhiteSpace(invitationWarning)
+            ? $"{RecordTypeLabel(meta.RecordType)} profile updated."
+            : $"{RecordTypeLabel(meta.RecordType)} profile updated. {invitationWarning}";
         if (!string.IsNullOrWhiteSpace(returnUrl) && Url.IsLocalUrl(returnUrl))
             return Redirect(returnUrl);
 
@@ -5038,6 +5217,7 @@ meta.Activities ??= new List<ClientCrmActivity>();
             if (collision)
                 return Conflict("That email is already tied to another client record.");
 
+            var previousEmail = profile.NormalizedEmail ?? profile.Email;
             await using var tx = await _db.Database.BeginTransactionAsync(HttpContext.RequestAborted);
             profile.Email = newEmailNorm;
             profile.NormalizedEmail = newEmailNorm;
@@ -5045,13 +5225,14 @@ meta.Activities ??= new List<ClientCrmActivity>();
 
             await _db.SaveChangesAsync(HttpContext.RequestAborted);
 
-            var syncError = await SyncPortalEmailAsync(profile, HttpContext.RequestAborted);
-            if (!string.IsNullOrWhiteSpace(syncError))
+            var emailSync = await SyncPortalEmailAsync(profile, previousEmail, HttpContext.RequestAborted);
+            if (!emailSync.Success)
             {
                 await tx.RollbackAsync(HttpContext.RequestAborted);
-                return StatusCode(StatusCodes.Status500InternalServerError, syncError);
+                return StatusCode(StatusCodes.Status500InternalServerError, emailSync.Error);
             }
 
+            await _db.SaveChangesAsync(HttpContext.RequestAborted);
             await tx.CommitAsync(HttpContext.RequestAborted);
         }
 
@@ -5553,6 +5734,7 @@ meta.Activities ??= new List<ClientCrmActivity>();
         var profile = await GetOwnedClientProfileAsync(agentOid, request.ClientUserId);
         if (profile == null) return Forbid();
 
+        var previousEmail = profile.NormalizedEmail ?? profile.Email;
         var emailNorm = NormalizeEmail(request.Email);
         if (!string.IsNullOrWhiteSpace(emailNorm))
         {
@@ -5717,19 +5899,25 @@ meta.Activities ??= new List<ClientCrmActivity>();
         profile.CrmNotes = ClientCrmMetaSerializer.Serialize(meta);
         profile.UpdatedUtc = DateTime.UtcNow;
 
+        PortalEmailSyncResult emailSync;
         await using (var tx = await _db.Database.BeginTransactionAsync())
         {
             await _db.SaveChangesAsync();
 
-            var syncError = await SyncPortalEmailAsync(profile, HttpContext.RequestAborted);
-            if (!string.IsNullOrWhiteSpace(syncError))
+            emailSync = await SyncPortalEmailAsync(profile, previousEmail, HttpContext.RequestAborted);
+            if (!emailSync.Success)
             {
                 await tx.RollbackAsync();
-                return StatusCode(StatusCodes.Status500InternalServerError, syncError);
+                return StatusCode(StatusCodes.Status500InternalServerError, emailSync.Error);
             }
 
+            await _db.SaveChangesAsync(HttpContext.RequestAborted);
             await tx.CommitAsync();
         }
+
+        var invitationWarning = emailSync.RequiresReplacementSubscriptionInvitation
+            ? await SendReplacementSubscriptionInvitationAsync(profile, agentOid, HttpContext.RequestAborted)
+            : null;
 
         var nowUtc = DateTime.UtcNow;
         var dialTimeZone = _agentTimeZoneResolver.Resolve(HttpContext);
@@ -5737,6 +5925,7 @@ meta.Activities ??= new List<ClientCrmActivity>();
         return Json(new
         {
             ok = true,
+            warning = invitationWarning,
                 payload = BuildQuickViewPayload(
                     profile,
                     meta,

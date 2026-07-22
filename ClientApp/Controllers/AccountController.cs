@@ -58,12 +58,28 @@ public class AccountController : Controller
     }
 
     [HttpGet]
-    public IActionResult Login(string returnUrl = "/")
+    public async Task<IActionResult> Login(string returnUrl = "/")
     {
         var target = _returnUrlNormalizer.Normalize(returnUrl);
 
         if (User.Identity?.IsAuthenticated == true)
-            return LocalRedirect(target);
+        {
+            var session = await _identityAccessService.ValidateAuthenticatedClientSessionAsync(
+                User,
+                target,
+                HttpContext.RequestAborted);
+            if (session.Success)
+                return LocalRedirect(session.ReturnUrl);
+
+            _identityAccessService.ClearChallengeContinuationCookie(Response);
+            await HttpContext.SignOutAsync(CookieAuthenticationDefaults.AuthenticationScheme);
+
+            return View(new ClientLoginViewModel
+            {
+                ReturnUrl = target,
+                Message = session.SanitizedMessage ?? "Sign in with the email connected to your active client subscription."
+            });
+        }
 
         if (ClientIdentityAccessService.IsSupportReturnUrl(target))
             return RedirectToAction(nameof(AzureLogin), new { returnUrl = target });

@@ -38,6 +38,7 @@ builder.Services.AddMasterAppBilling(builder.Configuration);
 builder.Services.AddScoped<EffectiveClientContextService>();
 builder.Services.AddSingleton<ClientAppReturnUrlNormalizer>();
 builder.Services.AddScoped<IAzureClientEmailSyncService, AzureClientEmailSyncService>();
+builder.Services.AddScoped<IClientSubscriptionIdentitySyncService, ClientSubscriptionIdentitySyncService>();
 builder.Services.AddScoped<IAzureUserUpdater, AzureUserUpdaterAdapter>();
 builder.Services.AddScoped<ClientIdentityContinuationService>();
 builder.Services.AddScoped<ClientIdentityAccessService>();

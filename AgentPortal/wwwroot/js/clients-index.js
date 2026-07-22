@@ -4655,69 +4655,30 @@ function renderTimeline(items){
 function renderPortalActions(row, detail){
   if (!dPortalWrap || !row) return;
   const isGuid = (row.dataset.isguid === "true");
+  const isLeadRecord = norm(row.dataset.sRecordtype || detail?.recordType).toLowerCase() === "lead";
   const portal = norm(row.dataset.clienturl);
 
-  if (!isGuid) {
+  if (!isGuid || isLeadRecord) {
     dPortalWrap.innerHTML = `
       <div class="lead-workstation-actions">
-        <button type="button" class="btn btn-gold" id="btnEnablePortalAccess" title="Convert to Client">Convert To Client</button>
-        <button type="button" class="btn btn-gold" id="btnEnableBizPortal" title="Convert to Business Client">Convert To Business Client</button>
+        <button type="button" class="btn btn-gold" id="btnStartClientAccount" title="Convert to Client">Convert To Client</button>
+        <button type="button" class="btn btn-gold" id="btnStartBusinessClientAccount" title="Convert to Business Client">Convert To Business Client</button>
       </div>
     `;
-    const btn = $("#btnEnablePortalAccess", dPortalWrap);
-    const btnBiz = $("#btnEnableBizPortal", dPortalWrap);
+    const btn = $("#btnStartClientAccount", dPortalWrap);
+    const btnBiz = $("#btnStartBusinessClientAccount", dPortalWrap);
 
-    const runConvert = async (recordType, button) => {
-      if (!window.confirm(`ARE YOU SURE YOU WANT TO CONVERT TO ${recordType === "BusinessClient" ? "BUSINESS CLIENT" : "CLIENT"}? This updates access immediately.`)) return;
-      try{
-        button.disabled = true;
-        const sourceWorkstationLeadId =
-          norm(row.dataset.sourceWorkstationLeadId) ||
-          norm(row.dataset.clientId);
-        const response = await postJson("/Clients/EnablePortalAccess", { clientUserId: row.dataset.clientId, recordType });
-        row.dataset.clientId = response.newClientUserId;
-        row.dataset.isguid = "true";
-        row.dataset.clienturl = response.clientPortalUrl || "";
-        row.dataset.sourceWorkstationLeadId = sourceWorkstationLeadId;
-        row.dataset.sStatus = "Active";
-        row.dataset.sRecordtype = response.recordType || recordType;
-        row.dataset.advancedMarketsEligible = ((response.advancedMarketsEligible ?? (recordType === "BusinessClient")) ? "true" : "false");
-        row.dataset.sPipeline = response.pipelineStage || (recordType === "BusinessClient" ? "BusinessClient" : "Client");
-        activeClientId = response.newClientUserId;
-        activeClientDetail = {
-          ...(activeClientDetail || {}),
-          clientUserId: response.newClientUserId,
-          sourceWorkstationLeadId,
-          recordType: response.recordType || recordType,
-          advancedMarketsEligible: (response.advancedMarketsEligible ?? (recordType === "BusinessClient")),
-          portalAccessEnabled: true,
-          pipelineStage: response.pipelineStage || (recordType === "BusinessClient" ? "BusinessClient" : "Client")
-        };
-        hydrateRow(row);
-        if (dPipelineStage) dPipelineStage.value = recordType === "BusinessClient" ? "BusinessClient" : "Client";
-        if (dStatus) dStatus.value = "Active";
-        setAdvancedMarketsActionState(row.dataset.sRecordtype || recordType, row.dataset.advancedMarketsEligible);
-        renderPortalActions(row, detail);
-        dSaved.textContent = response.emailSent === false ? "Portal access enabled ⚠" : "Portal access sent ✔";
-        toast(
-          response.emailSent === false
-            ? `Portal enabled. Login: ${response.loginUpn}. Email failed.`
-            : `Portal access sent. Login: ${response.loginUpn}`
-        );
-        if (response.warning){
-          console.warn(response.warning);
-        }
-        renderAll();
-      }catch(err){
-        console.error(err);
-        toast(err?.message || "Portal access failed.", { persistent: true, error: true });
-      }finally{
-        button.disabled = false;
-      }
+    const runConvert = (recordType) => {
+      const query = new URLSearchParams({
+        sourceLeadClientUserId: row.dataset.clientId || "",
+        recordType,
+        returnUrl: `${window.location.pathname}${window.location.search}`
+      });
+      window.location.assign(`/Clients/Create?${query.toString()}`);
     };
 
-    btn?.addEventListener("click", () => runConvert("Client", btn));
-    btnBiz?.addEventListener("click", () => runConvert("BusinessClient", btnBiz));
+    btn?.addEventListener("click", () => runConvert("Client"));
+    btnBiz?.addEventListener("click", () => runConvert("BusinessClient"));
     if (btnResendClientInvite) btnResendClientInvite.style.display = "none";
     if (dResendInviteStatus) dResendInviteStatus.textContent = "";
     return;

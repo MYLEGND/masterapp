@@ -104,13 +104,52 @@ public sealed class ClientIdentityAccessService
         return new ClientSignInPreparationResult(true, null, null, safeReturnUrl, protectedState.ProtectedState, protectedState.ExpiresUtc);
     }
 
+    public async Task<ClientSignInCompletionResult> ValidateAuthenticatedClientSessionAsync(
+        ClaimsPrincipal principal,
+        string? fallbackReturnUrl = null,
+        CancellationToken cancellationToken = default)
+    {
+        var safeReturnUrl = _returnUrlNormalizer.Normalize(fallbackReturnUrl);
+        if (IsAgentPrincipal(principal) && IsSupportReturnUrl(safeReturnUrl))
+            return new ClientSignInCompletionResult(true, safeReturnUrl);
+
+        var oid = NormalizeId(
+            principal.FindFirst("oid")?.Value
+            ?? principal.FindFirst("http://schemas.microsoft.com/identity/claims/objectidentifier")?.Value
+            ?? principal.FindFirst(ClaimTypes.NameIdentifier)?.Value);
+
+        if (string.IsNullOrWhiteSpace(oid))
+            return new ClientSignInCompletionResult(false, safeReturnUrl, "MISSING_OBJECT_ID", "A valid client sign-in is required.");
+
+        var profile = await _db.ClientProfiles
+            .AsNoTracking()
+            .FirstOrDefaultAsync(x =>
+                (x.ExternalIdentityObjectId ?? string.Empty).ToLower() == oid ||
+                (x.ClientUserId ?? string.Empty).ToLower() == oid,
+                cancellationToken);
+
+        if (profile is null)
+            return new ClientSignInCompletionResult(false, safeReturnUrl, "UNKNOWN_CLIENT", "A valid client subscription is required before opening the portal.");
+
+        var entitlement = await _entitlementService.EvaluateAsync(
+            new BillingEntitlementEvaluationRequest(
+                profile.Id,
+                BillingEntitlementKeys.ClientAppFullAccess,
+                DateTime.UtcNow),
+            cancellationToken);
+
+        return entitlement.Status is ClientEntitlementStatus.Active or ClientEntitlementStatus.GracePeriod
+            ? new ClientSignInCompletionResult(true, safeReturnUrl)
+            : new ClientSignInCompletionResult(false, safeReturnUrl, "INACTIVE_ENTITLEMENT", "This client subscription is not active for access.");
+    }
+
     public async Task<ClientSignInCompletionResult> CompleteClientSignInAsync(HttpContext httpContext, ClaimsPrincipal principal, string? fallbackReturnUrl = null, CancellationToken cancellationToken = default)
     {
         var safeFallbackReturnUrl = _returnUrlNormalizer.Normalize(fallbackReturnUrl);
         var continuationValidation = await _continuationService.ValidateCookieAsync(httpContext.Request, cancellationToken);
         if (!continuationValidation.Success)
         {
-            return IsAgentPrincipal(principal)
+            return IsAgentPrincipal(principal) && IsSupportReturnUrl(safeFallbackReturnUrl)
                 ? new ClientSignInCompletionResult(true, safeFallbackReturnUrl)
                 : new ClientSignInCompletionResult(false, safeFallbackReturnUrl, continuationValidation.SafeErrorCode, continuationValidation.SanitizedMessage);
         }
@@ -119,6 +158,37 @@ public sealed class ClientIdentityAccessService
         var profile = await _db.ClientProfiles.FirstOrDefaultAsync(x => x.Id == continuation.ClientProfileId, cancellationToken);
         if (profile is null)
             return new ClientSignInCompletionResult(false, "/", "UNKNOWN_CLIENT", "The linked client profile could not be found.");
+
+        // A continuation is only a proof that the user passed the initial email
+        // gate. Check the live entitlement again before binding or issuing a
+        // usable session, so an expired/cancelled subscription cannot race past
+        // the sign-in boundary.
+        var entitlement = await _entitlementService.EvaluateAsync(
+            new BillingEntitlementEvaluationRequest(
+                profile.Id,
+                BillingEntitlementKeys.ClientAppFullAccess,
+                DateTime.UtcNow),
+            cancellationToken);
+
+        if (entitlement.Status is not (ClientEntitlementStatus.Active or ClientEntitlementStatus.GracePeriod))
+        {
+            return new ClientSignInCompletionResult(
+                false,
+                continuation.ReturnUrl,
+                "INACTIVE_ENTITLEMENT",
+                "The client subscription is not active for access.");
+        }
+
+        var currentProfileEmail = NormalizeEmail(profile.NormalizedEmail ?? profile.Email);
+        if (string.IsNullOrWhiteSpace(currentProfileEmail) ||
+            !string.Equals(continuation.IntendedNormalizedEmail, currentProfileEmail, StringComparison.Ordinal))
+        {
+            return new ClientSignInCompletionResult(
+                false,
+                continuation.ReturnUrl,
+                "EMAIL_CHANGED",
+                "The email on this client profile changed. Start sign-in again with the current email.");
+        }
 
         var oid = NormalizeId(
             principal.FindFirst("oid")?.Value
@@ -133,8 +203,7 @@ public sealed class ClientIdentityAccessService
             ?? principal.FindFirstValue(ClaimTypes.Email)
             ?? principal.Identity?.Name);
 
-        if (!string.IsNullOrWhiteSpace(continuation.IntendedNormalizedEmail) &&
-            !string.IsNullOrWhiteSpace(principalEmail) &&
+        if (string.IsNullOrWhiteSpace(principalEmail) ||
             !string.Equals(continuation.IntendedNormalizedEmail, principalEmail, StringComparison.Ordinal))
         {
             return new ClientSignInCompletionResult(false, continuation.ReturnUrl, "EMAIL_MISMATCH", "The Microsoft account email does not match the invited client email.");
@@ -166,18 +235,6 @@ public sealed class ClientIdentityAccessService
         await _db.SaveChangesAsync(cancellationToken);
         await _continuationService.ConsumeAsync(continuation, cancellationToken);
         _continuationService.ClearCookie(httpContext.Response);
-
-        var entitlement = await _entitlementService.EvaluateAsync(
-            new BillingEntitlementEvaluationRequest(
-                profile.Id,
-                BillingEntitlementKeys.ClientAppFullAccess,
-                DateTime.UtcNow),
-            cancellationToken);
-
-        if (entitlement.Status is not (ClientEntitlementStatus.Active or ClientEntitlementStatus.GracePeriod))
-        {
-            return new ClientSignInCompletionResult(false, continuation.ReturnUrl, "INACTIVE_ENTITLEMENT", "The client subscription is not active for access.");
-        }
 
         return new ClientSignInCompletionResult(true, continuation.ReturnUrl);
     }

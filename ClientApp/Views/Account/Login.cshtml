@@ -10,42 +10,45 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>@ViewData["Title"] - Legend™</title>
-    <link rel="stylesheet" href="~/lib/bootstrap/dist/css/bootstrap.min.css" />
-    <link rel="stylesheet" href="~/css/site.css" asp-append-version="true" />
+    <link rel="stylesheet" href="~/css/client-auth.css" asp-append-version="true" />
 </head>
-<body class="bg-light">
-    <main class="container py-5">
-        <div class="row justify-content-center">
-            <div class="col-12 col-md-7 col-lg-5">
-                <div class="card shadow-sm border-0">
-                    <div class="card-body p-4 p-lg-5">
-                        <p class="text-uppercase small text-muted mb-2">Client Access</p>
-                        <h1 class="h3 mb-3">Secure client sign-in</h1>
-                        <p class="text-muted mb-4">Enter the invited client email first. We’ll verify activation status before sending you to Microsoft sign-in.</p>
-
-                        @if (!string.IsNullOrWhiteSpace(Model.Message))
-                        {
-                            <div class="alert alert-warning">@Model.Message</div>
-                        }
-
-                        <form asp-action="LoginSubmit" method="post" novalidate>
-                            @Html.AntiForgeryToken()
-                            <input asp-for="ReturnUrl" type="hidden" />
-
-                            <div class="mb-3">
-                                <label asp-for="Email" class="form-label">Client email</label>
-                                <input asp-for="Email" class="form-control form-control-lg" autocomplete="email" placeholder="you@example.com" />
-                                <span asp-validation-for="Email" class="text-danger small"></span>
-                            </div>
-
-                            <button type="submit" class="btn btn-dark w-100">Continue to Microsoft Sign-In</button>
-                        </form>
-
-                        <p class="small text-muted mt-4 mb-0">Agents opening a support route will be routed through the secure team sign-in path automatically.</p>
-                    </div>
+<body class="client-auth-page">
+    <main class="client-auth-shell">
+        <section class="client-auth-card" aria-labelledby="client-login-title">
+            <header class="client-auth-brand">
+                <img src="~/images/company-icons/legend-protect-transparent.png" asp-append-version="true" alt="Legend™" />
+                <div class="client-auth-brand-copy">
+                    <span class="client-auth-brand-name">LEGEND™</span>
+                    <span class="client-auth-brand-label">CLIENT PORTAL</span>
                 </div>
+            </header>
+
+            <div class="client-auth-content">
+                <p class="client-auth-eyebrow">CLIENT SIGN-IN</p>
+                <h1 id="client-login-title">Welcome back</h1>
+                <p class="client-auth-intro">Sign in with the email linked to your active Legend Client Portal subscription.</p>
+
+                @if (!string.IsNullOrWhiteSpace(Model.Message))
+                {
+                    <div class="client-auth-alert" role="alert">@Model.Message</div>
+                }
+
+                <form class="client-auth-form" asp-action="LoginSubmit" method="post" novalidate>
+                    @Html.AntiForgeryToken()
+                    <input asp-for="ReturnUrl" type="hidden" />
+
+                    <div class="client-auth-field">
+                        <label asp-for="Email">Email on your client subscription</label>
+                        <input asp-for="Email" autocomplete="email" placeholder="you@example.com" />
+                        <span asp-validation-for="Email" class="client-auth-validation"></span>
+                    </div>
+
+                    <button type="submit" class="client-auth-primary">Continue securely</button>
+                </form>
+
+                <p class="client-auth-help">New to the portal? Use the activation link sent by your Legend agent.</p>
             </div>
-        </div>
+        </section>
     </main>
 
     @await Html.PartialAsync("_ValidationScriptsPartial")
