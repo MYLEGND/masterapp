@@ -197,13 +197,13 @@
         const statusNode = getNode("dBillingStatus");
 
         if (section) section.hidden = !loaded || !snapshot;
+        setSubscriptionSetupVisible(false);
 
         if (!loaded || !snapshot) {
             [offerNode, invitationNode, subscriptionNode, entitlementNode, nextBillingNode, deliveryNode].forEach(node => {
                 if (node) node.textContent = "—";
             });
             if (statusNode) statusNode.textContent = loaded ? "No ClientApp billing workspace on this record yet." : "Ready";
-            setSubscriptionSetupVisible(false);
             updateButtonState(null, loaded);
             return;
         }

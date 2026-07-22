@@ -4661,8 +4661,8 @@ function renderPortalActions(row, detail){
   if (!isGuid || isLeadRecord) {
     dPortalWrap.innerHTML = `
       <div class="lead-workstation-actions">
-        <button type="button" class="btn btn-gold" id="btnStartClientAccount" title="Convert to Client">Convert To Client</button>
-        <button type="button" class="btn btn-gold" id="btnStartBusinessClientAccount" title="Convert to Business Client">Convert To Business Client</button>
+        <button type="button" class="btn btn-gold" id="btnStartClientAccount" title="Open account creation and subscription setup">Convert To Client</button>
+        <button type="button" class="btn btn-gold" id="btnStartBusinessClientAccount" title="Open account creation and subscription setup">Convert To Business Client</button>
       </div>
     `;
     const btn = $("#btnStartClientAccount", dPortalWrap);
