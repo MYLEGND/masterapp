@@ -485,6 +485,7 @@ public class CalendarController : Controller
         string? workstationLeadId,
         DateTime utcStart,
         DateTime utcEnd,
+        Guid? excludeAppointmentId,
         CancellationToken cancellationToken)
     {
         var normalizedOwnerAgentUserId = Norm(ownerAgentUserId);
@@ -500,6 +501,7 @@ public class CalendarController : Controller
             .AsNoTracking()
             .Where(x =>
                 DuplicateProtectedAppointmentStatuses.Contains(x.Status) &&
+                (!excludeAppointmentId.HasValue || x.Id != excludeAppointmentId.Value) &&
                 x.ScheduledStartUtc == utcStart &&
                 x.ScheduledEndUtc == utcEnd &&
                 (x.OwnerAgentUserId ?? string.Empty).Trim().ToLower() == normalizedOwnerAgentUserId &&
@@ -530,6 +532,449 @@ public class CalendarController : Controller
             latestAppointment = BuildLeadAppointmentPayload(appointment),
             warning = "This appointment was already booked for that client and time. Reusing the existing calendar event."
         };
+
+    private static List<ClientCrmActivity> OrderActivities(
+        IEnumerable<ClientCrmActivity>? activities)
+        => (activities ?? Enumerable.Empty<ClientCrmActivity>())
+            .OrderByDescending(x => x.Date)
+            .ThenByDescending(x => x.CreatedUtc)
+            .ToList();
+
+    private static string LocalDateIso(
+        DateTime utcNow,
+        TimeZoneInfo timeZone)
+    {
+        var localNow =
+            TimeZoneInfo.ConvertTimeFromUtc(
+                DateTime.SpecifyKind(
+                    utcNow,
+                    DateTimeKind.Utc),
+                timeZone);
+
+        return localNow.ToString(
+            "yyyy-MM-dd",
+            CultureInfo.InvariantCulture);
+    }
+
+    private static string HumanizeMutationAction(
+        string action)
+        => action switch
+        {
+            "cancelled" => "cancelled",
+            "rescheduled" => "rescheduled",
+            _ => "updated"
+        };
+
+    private static string BuildAppointmentMutationNote(
+        string action,
+        DateTime localStart,
+        DateTime localEnd,
+        string? fallback)
+    {
+        var cleanedFallback = CleanOptional(fallback);
+        if (!string.IsNullOrWhiteSpace(cleanedFallback))
+            return cleanedFallback!;
+
+        var range =
+            $"{localStart:MMM d, yyyy h:mm tt} - {localEnd:h:mm tt}";
+
+        return $"Appointment {HumanizeMutationAction(action)}: {range}.";
+    }
+
+    private static void AddAppointmentActivity(
+        ClientCrmMeta meta,
+        DateTime localDate,
+        string note,
+        string? location,
+        string? meetingLink,
+        string? calendarEventId,
+        string? calendarWebLink,
+        string? createdBy,
+        bool isSystem = false)
+    {
+        meta.Activities ??= new List<ClientCrmActivity>();
+        meta.Activities.Add(
+            new ClientCrmActivity
+            {
+                Type = "Meeting",
+                Date = localDate.ToString(
+                    "yyyy-MM-dd",
+                    CultureInfo.InvariantCulture),
+                Note = note,
+                Location = string.IsNullOrWhiteSpace(location)
+                    ? null
+                    : location.Trim(),
+                MeetingLink = string.IsNullOrWhiteSpace(meetingLink)
+                    ? null
+                    : meetingLink.Trim(),
+                CalendarEventId = string.IsNullOrWhiteSpace(calendarEventId)
+                    ? null
+                    : calendarEventId.Trim(),
+                CalendarWebLink = string.IsNullOrWhiteSpace(calendarWebLink)
+                    ? null
+                    : calendarWebLink.Trim(),
+                CreatedBy = string.IsNullOrWhiteSpace(createdBy)
+                    ? null
+                    : createdBy.Trim(),
+                IsSystem = isSystem
+            });
+    }
+
+    private static object BuildAppointmentMutationResult(
+        LeadAppointment appointment,
+        ClientCrmMeta meta,
+        string crmLastTouch,
+        string? warning = null)
+        => new
+        {
+            ok = true,
+            eventId = appointment.CalendarEventId,
+            webLink = appointment.CalendarEventWebLink,
+            crmLastTouch,
+            activities = OrderActivities(meta.Activities),
+            latestAppointment = BuildLeadAppointmentPayload(appointment),
+            meetingLocation = meta.MeetingLocation ?? string.Empty,
+            zoomJoinUrl = meta.ZoomJoinUrl ?? string.Empty,
+            usePersonalZoomLink = meta.UsePersonalZoomLink,
+            meetingTime = meta.MeetingTime ?? string.Empty,
+            meetingDurationMinutes = meta.MeetingDurationMinutes,
+            warning
+        };
+
+    private sealed record AppointmentMutationContext(
+        string CurrentAgentUserId,
+        TimeZoneInfo AgentTimeZone,
+        AgentProfile? BookingAgentProfile,
+        ClientProfile? ClientProfile,
+        WorkstationLeadProfile? LeadProfile,
+        ClientCrmMeta? ClientMeta,
+        ClientCrmMeta? LeadMeta,
+        LeadAppointment? Appointment,
+        string? ResolvedWorkstationLeadId,
+        string CustomerName,
+        string? CustomerEmail,
+        string? CustomerPhone);
+
+    private async Task<AgentProfile?> LoadAgentBookingProfileAsync(
+        string agentUserId,
+        CancellationToken cancellationToken)
+    {
+        var normalizedAgentUserId = Norm(agentUserId);
+
+        var profile =
+            await _db.AgentProfiles
+                .AsNoTracking()
+                .FirstOrDefaultAsync(
+                    x =>
+                        (x.AgentUserId ?? string.Empty)
+                            .Trim()
+                            .ToLower() ==
+                        normalizedAgentUserId,
+                    cancellationToken);
+
+        if (profile != null)
+            return profile;
+
+        var currentUpn =
+            User.FindFirstValue("preferred_username") ??
+            User.FindFirstValue(ClaimTypes.Upn) ??
+            User.Identity?.Name ??
+            string.Empty;
+
+        if (string.IsNullOrWhiteSpace(currentUpn))
+            return null;
+
+        return await _db.AgentProfiles
+            .AsNoTracking()
+            .FirstOrDefaultAsync(
+                x =>
+                    ((x.AgentUpn ?? string.Empty)
+                        .Trim()
+                        .ToLower() ==
+                     currentUpn.Trim().ToLower()) ||
+                    ((x.NormalizedEmail ?? string.Empty)
+                        .Trim()
+                        .ToLower() ==
+                     currentUpn.Trim().ToLower()),
+                cancellationToken);
+    }
+
+    private async Task<AppointmentMutationContext?> LoadAppointmentMutationContextAsync(
+        Guid? appointmentId,
+        string? clientUserId,
+        Guid? clientProfileId,
+        string? requestedWorkstationLeadId,
+        CancellationToken cancellationToken)
+    {
+        var currentAgentUserId = GetAgentOidOrThrow();
+        var agentTimeZone = _agentTimeZoneResolver.Resolve(HttpContext);
+
+        var cleanClientUserId = CleanOptional(clientUserId);
+        var cleanRequestedWorkstationLeadId =
+            CleanOptional(requestedWorkstationLeadId);
+
+        ClientProfile? clientProfile = null;
+        if (clientProfileId.HasValue)
+        {
+            clientProfile =
+                await _db.ClientProfiles
+                    .FirstOrDefaultAsync(
+                        x => x.Id == clientProfileId.Value,
+                        cancellationToken);
+        }
+
+        if (clientProfile == null &&
+            !string.IsNullOrWhiteSpace(cleanClientUserId))
+        {
+            var normalizedClientUserId =
+                cleanClientUserId.Trim().ToLowerInvariant();
+
+            clientProfile =
+                await _db.ClientProfiles
+                    .FirstOrDefaultAsync(
+                        x =>
+                            (x.ClientUserId ?? string.Empty)
+                                .Trim()
+                                .ToLower() ==
+                            normalizedClientUserId,
+                        cancellationToken);
+        }
+
+        WorkstationLeadProfile? leadProfile = null;
+        var leadLookupId =
+            cleanRequestedWorkstationLeadId;
+
+        if (string.IsNullOrWhiteSpace(leadLookupId) &&
+            clientProfile == null &&
+            !string.IsNullOrWhiteSpace(cleanClientUserId))
+        {
+            leadLookupId = cleanClientUserId;
+        }
+
+        if (!string.IsNullOrWhiteSpace(leadLookupId))
+        {
+            var normalizedLeadLookupId =
+                leadLookupId.Trim().ToLowerInvariant();
+
+            leadProfile =
+                await _db.WorkstationLeadProfiles
+                    .FirstOrDefaultAsync(
+                        x =>
+                            (x.LeadId ?? string.Empty)
+                                .Trim()
+                                .ToLower() ==
+                            normalizedLeadLookupId &&
+                            (x.AgentUserId ?? string.Empty)
+                                .Trim()
+                                .ToLower() ==
+                            currentAgentUserId,
+                        cancellationToken);
+        }
+
+        LeadAppointment? appointment;
+        if (appointmentId.HasValue)
+        {
+            appointment =
+                await _db.LeadAppointments
+                    .FirstOrDefaultAsync(
+                        x => x.Id == appointmentId.Value,
+                        cancellationToken);
+        }
+        else
+        {
+            var profileKey = clientProfile?.Id.ToString();
+            var leadKeys = new[]
+                {
+                    cleanRequestedWorkstationLeadId,
+                    leadProfile?.LeadId,
+                    clientProfile == null ? cleanClientUserId : null
+                }
+                .Select(CleanOptional)
+                .Where(x => !string.IsNullOrWhiteSpace(x))
+                .Select(x => x!.Trim().ToLowerInvariant())
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToList();
+
+            appointment =
+                await _db.LeadAppointments
+                    .Where(
+                        x =>
+                            (!string.IsNullOrWhiteSpace(profileKey) &&
+                             x.ClientProfileId == profileKey) ||
+                            (x.WorkstationLeadId != null &&
+                             leadKeys.Contains(
+                                 x.WorkstationLeadId
+                                     .Trim()
+                                     .ToLower())))
+                    .OrderByDescending(x => x.UpdatedUtc)
+                    .ThenByDescending(x => x.ScheduledStartUtc)
+                    .ThenByDescending(x => x.CreatedUtc)
+                    .FirstOrDefaultAsync(cancellationToken);
+        }
+
+        if (clientProfile == null &&
+            Guid.TryParse(
+                appointment?.ClientProfileId,
+                out var appointmentClientProfileId))
+        {
+            clientProfile =
+                await _db.ClientProfiles
+                    .FirstOrDefaultAsync(
+                        x => x.Id == appointmentClientProfileId,
+                        cancellationToken);
+        }
+
+        if (leadProfile == null &&
+            !string.IsNullOrWhiteSpace(appointment?.WorkstationLeadId))
+        {
+            var normalizedAppointmentLeadId =
+                appointment.WorkstationLeadId
+                    .Trim()
+                    .ToLowerInvariant();
+
+            leadProfile =
+                await _db.WorkstationLeadProfiles
+                    .FirstOrDefaultAsync(
+                        x =>
+                            (x.LeadId ?? string.Empty)
+                                .Trim()
+                                .ToLower() ==
+                            normalizedAppointmentLeadId &&
+                            (x.AgentUserId ?? string.Empty)
+                                .Trim()
+                                .ToLower() ==
+                            currentAgentUserId,
+                        cancellationToken);
+        }
+
+        var ownsClient = false;
+        if (clientProfile != null)
+        {
+            var normalizedOwnedClientUserId =
+                Norm(clientProfile.ClientUserId);
+
+            ownsClient =
+                !string.IsNullOrWhiteSpace(
+                    normalizedOwnedClientUserId) &&
+                await _db.AgentClients
+                    .AsNoTracking()
+                    .AnyAsync(
+                        x =>
+                            (x.AgentUserId ?? string.Empty)
+                                .Trim()
+                                .ToLower() ==
+                            currentAgentUserId &&
+                            (x.ClientUserId ?? string.Empty)
+                                .Trim()
+                                .ToLower() ==
+                            normalizedOwnedClientUserId,
+                        cancellationToken);
+        }
+
+        var ownsLead =
+            leadProfile != null &&
+            (leadProfile.AgentUserId ?? string.Empty)
+                .Trim()
+                .ToLower() ==
+            currentAgentUserId;
+
+        var ownsAppointment =
+            appointment != null &&
+            (appointment.OwnerAgentUserId ?? string.Empty)
+                .Trim()
+                .ToLower() ==
+            currentAgentUserId;
+
+        if (!ownsClient && !ownsLead && !ownsAppointment)
+            return null;
+
+        ClientCrmMeta? clientMeta = null;
+        if (clientProfile != null)
+        {
+            clientMeta =
+                ClientCrmMetaSerializer.Deserialize(
+                    clientProfile.CrmNotes);
+        }
+
+        var resolvedWorkstationLeadId =
+            CleanOptional(appointment?.WorkstationLeadId) ??
+            cleanRequestedWorkstationLeadId ??
+            CleanOptional(leadProfile?.LeadId);
+
+        if (clientProfile != null)
+        {
+            clientMeta ??=
+                ClientCrmMetaSerializer.Deserialize(
+                    clientProfile.CrmNotes);
+
+            resolvedWorkstationLeadId =
+                await ResolveClientWorkstationLeadIdAsync(
+                    currentAgentUserId,
+                    clientProfile,
+                    clientMeta,
+                    resolvedWorkstationLeadId,
+                    cancellationToken)
+                ?? resolvedWorkstationLeadId;
+        }
+
+        if (leadProfile == null &&
+            !string.IsNullOrWhiteSpace(resolvedWorkstationLeadId))
+        {
+            var normalizedResolvedLeadId =
+                resolvedWorkstationLeadId
+                    .Trim()
+                    .ToLowerInvariant();
+
+            leadProfile =
+                await _db.WorkstationLeadProfiles
+                    .FirstOrDefaultAsync(
+                        x =>
+                            (x.LeadId ?? string.Empty)
+                                .Trim()
+                                .ToLower() ==
+                            normalizedResolvedLeadId &&
+                            (x.AgentUserId ?? string.Empty)
+                                .Trim()
+                                .ToLower() ==
+                            currentAgentUserId,
+                        cancellationToken);
+        }
+
+        ClientCrmMeta? leadMeta = null;
+        if (leadProfile != null)
+        {
+            leadMeta = ReadLeadMeta(leadProfile);
+        }
+
+        var bookingAgentProfile =
+            await LoadAgentBookingProfileAsync(
+                currentAgentUserId,
+                cancellationToken);
+
+        var customerName =
+            clientProfile != null
+                ? $"{clientProfile.FirstName} {clientProfile.LastName}"
+                    .Trim()
+                : $"{leadProfile?.FirstName} {leadProfile?.LastName}"
+                    .Trim();
+
+        if (string.IsNullOrWhiteSpace(customerName))
+            customerName = "Client";
+
+        return new AppointmentMutationContext(
+            currentAgentUserId,
+            agentTimeZone,
+            bookingAgentProfile,
+            clientProfile,
+            leadProfile,
+            clientMeta,
+            leadMeta,
+            appointment,
+            resolvedWorkstationLeadId,
+            customerName,
+            clientProfile?.Email ?? leadProfile?.Email,
+            clientProfile?.Phone ?? leadProfile?.Phone);
+    }
 
     private static DateTime? UtcDate(DateTime? value)
         => value.HasValue
@@ -627,6 +1072,30 @@ public class CalendarController : Controller
         public string? ActivityNote { get; set; }
     }
 
+    public sealed class UpdateAppointmentRequest
+    {
+        public Guid? AppointmentId { get; set; }
+        public string? ClientUserId { get; set; }
+        public Guid? ClientProfileId { get; set; }
+        public string? WorkstationLeadId { get; set; }
+        public string? Subject { get; set; }
+        public string? StartISO { get; set; }
+        public string? EndISO { get; set; }
+        public string? Body { get; set; }
+        public string? Location { get; set; }
+        public string? ZoomJoinUrl { get; set; }
+        public string? ActivityNote { get; set; }
+    }
+
+    public sealed class CancelAppointmentRequest
+    {
+        public Guid? AppointmentId { get; set; }
+        public string? ClientUserId { get; set; }
+        public Guid? ClientProfileId { get; set; }
+        public string? WorkstationLeadId { get; set; }
+        public string? ActivityNote { get; set; }
+    }
+
     private sealed class GraphEventResponse
     {
         public string? Id { get; set; }
@@ -718,7 +1187,7 @@ public class CalendarController : Controller
     }
 
     [HttpGet("day-availability")]
-    public async Task<IActionResult> DayAvailability(string date)
+    public async Task<IActionResult> DayAvailability(string date, string? excludeEventId = null)
     {
         if (!TryParseDateOnlyIso(date, out var localDate))
             return BadRequest("Invalid date.");
@@ -923,6 +1392,17 @@ public class CalendarController : Controller
 
                 if (appointmentPage?.Value != null)
                     allExistingAppointments.AddRange(appointmentPage.Value);
+            }
+
+            var excludedEventId = CleanOptional(excludeEventId);
+            if (!string.IsNullOrWhiteSpace(excludedEventId))
+            {
+                allExistingAppointments = allExistingAppointments
+                    .Where(x => !string.Equals(
+                        CleanOptional(x.Id),
+                        excludedEventId,
+                        StringComparison.OrdinalIgnoreCase))
+                    .ToList();
             }
 
             var serviceBufferMap = visibleServices
@@ -1140,6 +1620,7 @@ public class CalendarController : Controller
                     profile == null ? leadProfile?.LeadId : null,
                     utcStart,
                     utcEnd,
+                    null,
                     cancellationToken);
 
                 if (existingAppointment != null)
@@ -1661,6 +2142,529 @@ public class CalendarController : Controller
         catch (Exception ex)
         {
             _logger.LogError(ex, "Create calendar event failed.");
+            return StatusCode(500, ex.Message);
+        }
+    }
+
+    [HttpPost("update-appointment")]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> UpdateAppointment(
+        [FromBody] UpdateAppointmentRequest req)
+    {
+        if (!req.AppointmentId.HasValue)
+            return BadRequest("Appointment id is required.");
+
+        if (string.IsNullOrWhiteSpace(req.StartISO) ||
+            string.IsNullOrWhiteSpace(req.EndISO))
+        {
+            return BadRequest("Start and end time are required.");
+        }
+
+        if (!TryParseLocalIso(req.StartISO, out var localStart) ||
+            !TryParseLocalIso(req.EndISO, out var localEnd))
+        {
+            return BadRequest("Invalid start or end date.");
+        }
+
+        if (localEnd <= localStart)
+            return BadRequest("End time must be after start time.");
+
+        try
+        {
+            var cancellationToken = HttpContext.RequestAborted;
+            var context =
+                await LoadAppointmentMutationContextAsync(
+                    req.AppointmentId,
+                    req.ClientUserId,
+                    req.ClientProfileId,
+                    req.WorkstationLeadId,
+                    cancellationToken);
+
+            if (context == null)
+                return NotFound("Appointment context not found.");
+
+            if (context.Appointment == null)
+                return NotFound("Appointment not found.");
+
+            if (string.IsNullOrWhiteSpace(
+                    context.Appointment.CalendarEventId))
+            {
+                return BadRequest(
+                    "Appointment is not linked to a live Microsoft Bookings event.");
+            }
+
+            var bookingBusinessId =
+                CleanOptional(
+                    context.BookingAgentProfile
+                        ?.BookingPageIdOrMailbox);
+
+            if (string.IsNullOrWhiteSpace(bookingBusinessId))
+                return BadRequest("Agent booking configuration missing.");
+
+            var agentTimeZone = context.AgentTimeZone;
+            var utcStart =
+                TimeZoneInfo.ConvertTimeToUtc(
+                    DateTime.SpecifyKind(
+                        localStart,
+                        DateTimeKind.Unspecified),
+                    agentTimeZone);
+            var utcEnd =
+                TimeZoneInfo.ConvertTimeToUtc(
+                    DateTime.SpecifyKind(
+                        localEnd,
+                        DateTimeKind.Unspecified),
+                    agentTimeZone);
+
+            var duplicateAppointment =
+                await FindExistingAppointmentForSameTimeAsync(
+                    context.CurrentAgentUserId,
+                    context.ClientProfile?.Id.ToString(),
+                    context.ResolvedWorkstationLeadId,
+                    utcStart,
+                    utcEnd,
+                    context.Appointment.Id,
+                    cancellationToken);
+
+            if (duplicateAppointment != null)
+            {
+                return StatusCode(
+                    StatusCodes.Status409Conflict,
+                    "This contact already has another appointment booked for that same time.");
+            }
+
+            var durationMinutes = MinutesBetween(localStart, localEnd);
+            var bookingService =
+                await ResolveBookingServiceByDurationAsync(
+                    bookingBusinessId,
+                    durationMinutes,
+                    cancellationToken);
+
+            if (bookingService == null ||
+                string.IsNullOrWhiteSpace(bookingService.Id))
+            {
+                return BadRequest(
+                    $"No Microsoft Bookings service matches {durationMinutes} minutes.");
+            }
+
+            var zoomJoinUrl =
+                string.IsNullOrWhiteSpace(req.ZoomJoinUrl)
+                    ? CleanOptional(
+                        context.Appointment.MeetingUrl ??
+                        context.ClientMeta?.ZoomJoinUrl ??
+                        context.LeadMeta?.ZoomJoinUrl)
+                    : req.ZoomJoinUrl.Trim();
+
+            var displayLocation =
+                string.IsNullOrWhiteSpace(req.Location)
+                    ? CleanOptional(
+                        context.ClientMeta?.MeetingLocation ??
+                        context.LeadMeta?.MeetingLocation) ?? string.Empty
+                    : req.Location.Trim();
+
+            var encodedBody =
+                System.Net.WebUtility
+                    .HtmlEncode(req.Body ?? string.Empty)
+                    .Replace("\n", "<br/>");
+            var htmlBody =
+                $"""
+                 <div>{encodedBody}</div>
+                 {(string.IsNullOrWhiteSpace(zoomJoinUrl) ? "" : $"<p><strong>Zoom:</strong> <a href=\"{System.Net.WebUtility.HtmlEncode(zoomJoinUrl)}\">Join Meeting</a></p>")}
+                 """;
+
+            var patchedAppointment =
+                await _appGraph
+                    .Solutions
+                    .BookingBusinesses[bookingBusinessId]
+                    .Appointments[context.Appointment.CalendarEventId]
+                    .PatchAsync(
+                        new BookingAppointment
+                        {
+                            ServiceId = bookingService.Id,
+                            ServiceName = bookingService.DisplayName,
+                            StaffMemberIds =
+                                bookingService.StaffMemberIds
+                                    ?.Where(x =>
+                                        !string.IsNullOrWhiteSpace(x))
+                                    .Take(1)
+                                    .ToList(),
+                            StartDateTime = new DateTimeTimeZone
+                            {
+                                DateTime = utcStart.ToString(
+                                    "yyyy-MM-dd'T'HH:mm:ss",
+                                    CultureInfo.InvariantCulture),
+                                TimeZone = "UTC"
+                            },
+                            EndDateTime = new DateTimeTimeZone
+                            {
+                                DateTime = utcEnd.ToString(
+                                    "yyyy-MM-dd'T'HH:mm:ss",
+                                    CultureInfo.InvariantCulture),
+                                TimeZone = "UTC"
+                            },
+                            CustomerName = context.CustomerName,
+                            CustomerEmailAddress = context.CustomerEmail,
+                            CustomerPhone = context.CustomerPhone,
+                            CustomerTimeZone = agentTimeZone.Id,
+                            Customers = new List<BookingCustomerInformationBase>
+                            {
+                                new BookingCustomerInformation
+                                {
+                                    Name = context.CustomerName,
+                                    EmailAddress = context.CustomerEmail,
+                                    Phone = context.CustomerPhone,
+                                    TimeZone = agentTimeZone.Id
+                                }
+                            },
+                            AdditionalInformation = htmlBody,
+                            IsCustomerAllowedToManageBooking = true,
+                            OptOutOfCustomerEmail = false
+                        },
+                        cancellationToken: cancellationToken);
+
+            var nowUtc = DateTime.UtcNow;
+            var localNow =
+                TimeZoneInfo.ConvertTimeFromUtc(
+                    nowUtc,
+                    agentTimeZone);
+            var createdBy =
+                User.FindFirstValue("preferred_username") ??
+                User.Identity?.Name;
+            var activityNote =
+                BuildAppointmentMutationNote(
+                    "rescheduled",
+                    localStart,
+                    localEnd,
+                    req.ActivityNote);
+
+            context.Appointment.OwnerAgentUserId =
+                context.CurrentAgentUserId;
+            context.Appointment.ClientProfileId =
+                context.ClientProfile?.Id.ToString() ??
+                context.Appointment.ClientProfileId;
+            context.Appointment.WorkstationLeadId =
+                CleanOptional(
+                    context.ResolvedWorkstationLeadId) ??
+                context.Appointment.WorkstationLeadId;
+            context.Appointment.BookingProvider =
+                "microsoft_bookings";
+            context.Appointment.BookingSource =
+                LeadAppointmentBookingSources
+                    .InternalCalendar;
+            context.Appointment.RequestedBookingSource =
+                string.IsNullOrWhiteSpace(
+                    context.Appointment
+                        .RequestedBookingSource)
+                    ? LeadAppointmentBookingSources
+                        .InternalCalendar
+                    : context.Appointment
+                        .RequestedBookingSource;
+            context.Appointment.ConfirmationSource =
+                LeadAppointmentBookingSources
+                    .InternalCalendar;
+            context.Appointment.BookingAgentUserId =
+                context.CurrentAgentUserId;
+            context.Appointment.BookingCalendarUserId =
+                CleanOptional(
+                    context.BookingAgentProfile
+                        ?.CalendarUserId);
+            context.Appointment.BookingCalendarEmail =
+                CleanOptional(
+                    context.BookingAgentProfile
+                        ?.CalendarEmail ??
+                    context.BookingAgentProfile
+                        ?.NormalizedEmail ??
+                    context.BookingAgentProfile
+                        ?.AgentUpn);
+            context.Appointment.BookingPageIdOrMailbox =
+                bookingBusinessId;
+            context.Appointment.CalendarEventWebLink =
+                CleanOptional(
+                    patchedAppointment
+                        ?.SelfServiceAppointmentId) ??
+                context.Appointment.CalendarEventWebLink;
+            context.Appointment.ScheduledStartUtc =
+                utcStart;
+            context.Appointment.ScheduledEndUtc =
+                utcEnd;
+            context.Appointment.MeetingUrl =
+                zoomJoinUrl;
+            context.Appointment.LastSyncedUtc =
+                nowUtc;
+            context.Appointment.LastSyncStatus =
+                "bookings_appointment_rescheduled";
+            context.Appointment.LastSyncError = null;
+            context.Appointment.UpdatedUtc = nowUtc;
+            context.Appointment.ApplyStatus(
+                LeadAppointmentStatus.Rescheduled,
+                nowUtc);
+
+            if (context.ClientProfile != null &&
+                context.ClientMeta != null)
+            {
+                context.ClientMeta.MeetingLocation =
+                    displayLocation;
+                context.ClientMeta.ZoomJoinUrl =
+                    zoomJoinUrl;
+                context.ClientMeta.MeetingTime =
+                    localStart.ToString(
+                        "HH:mm",
+                        CultureInfo.InvariantCulture);
+                context.ClientMeta.MeetingDurationMinutes =
+                    durationMinutes;
+                context.ClientMeta.LastCalendarEventId =
+                    context.Appointment.CalendarEventId;
+                context.ClientMeta.LastCalendarEventWebLink =
+                    context.Appointment.CalendarEventWebLink;
+
+                AddAppointmentActivity(
+                    context.ClientMeta,
+                    localStart,
+                    activityNote,
+                    displayLocation,
+                    zoomJoinUrl,
+                    context.Appointment.CalendarEventId,
+                    context.Appointment.CalendarEventWebLink,
+                    createdBy);
+
+                context.ClientProfile.CrmLastTouch =
+                    localNow.Date;
+                context.ClientProfile.CrmNotes =
+                    ClientCrmMetaSerializer.Serialize(
+                        context.ClientMeta);
+                context.ClientProfile.UpdatedUtc = nowUtc;
+            }
+
+            if (context.LeadProfile != null &&
+                context.LeadMeta != null)
+            {
+                context.LeadMeta.MeetingLocation =
+                    displayLocation;
+                context.LeadMeta.ZoomJoinUrl =
+                    zoomJoinUrl;
+                context.LeadMeta.MeetingTime =
+                    localStart.ToString(
+                        "HH:mm",
+                        CultureInfo.InvariantCulture);
+                context.LeadMeta.MeetingDurationMinutes =
+                    durationMinutes;
+                context.LeadMeta.LastCalendarEventId =
+                    context.Appointment.CalendarEventId;
+                context.LeadMeta.LastCalendarEventWebLink =
+                    context.Appointment.CalendarEventWebLink;
+
+                AddAppointmentActivity(
+                    context.LeadMeta,
+                    localStart,
+                    activityNote,
+                    displayLocation,
+                    zoomJoinUrl,
+                    context.Appointment.CalendarEventId,
+                    context.Appointment.CalendarEventWebLink,
+                    createdBy);
+
+                context.LeadProfile.CrmNotes =
+                    ClientCrmMetaSerializer.Serialize(
+                        context.LeadMeta);
+                context.LeadProfile.UpdatedUtc = nowUtc;
+            }
+
+            await _db.SaveChangesAsync(cancellationToken);
+
+            var responseMeta =
+                context.ClientMeta ??
+                context.LeadMeta ??
+                new ClientCrmMeta();
+            var crmLastTouch =
+                context.ClientProfile?.CrmLastTouch
+                    ?.ToString("yyyy-MM-dd") ??
+                LocalDateIso(nowUtc, agentTimeZone);
+
+            return Ok(
+                BuildAppointmentMutationResult(
+                    context.Appointment,
+                    responseMeta,
+                    crmLastTouch));
+        }
+        catch (Exception ex)
+            when (IsLeadAppointmentPersistenceCompatibilityFailure(ex))
+        {
+            _logger.LogWarning(
+                ex,
+                "Update appointment failed because the current environment is missing the latest appointment schema.");
+            return StatusCode(
+                StatusCodes.Status409Conflict,
+                "Appointment updates are unavailable until the latest appointment schema is applied.");
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Update appointment failed.");
+            return StatusCode(500, ex.Message);
+        }
+    }
+
+    [HttpPost("cancel-appointment")]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> CancelAppointment(
+        [FromBody] CancelAppointmentRequest req)
+    {
+        if (!req.AppointmentId.HasValue)
+            return BadRequest("Appointment id is required.");
+
+        try
+        {
+            var cancellationToken = HttpContext.RequestAborted;
+            var context =
+                await LoadAppointmentMutationContextAsync(
+                    req.AppointmentId,
+                    req.ClientUserId,
+                    req.ClientProfileId,
+                    req.WorkstationLeadId,
+                    cancellationToken);
+
+            if (context == null)
+                return NotFound("Appointment context not found.");
+
+            if (context.Appointment == null)
+                return NotFound("Appointment not found.");
+
+            if (string.IsNullOrWhiteSpace(
+                    context.Appointment.CalendarEventId))
+            {
+                return BadRequest(
+                    "Appointment is not linked to a live Microsoft Bookings event.");
+            }
+
+            var bookingBusinessId =
+                CleanOptional(
+                    context.BookingAgentProfile
+                        ?.BookingPageIdOrMailbox);
+
+            if (string.IsNullOrWhiteSpace(bookingBusinessId))
+                return BadRequest("Agent booking configuration missing.");
+
+            await _appGraph
+                .Solutions
+                .BookingBusinesses[bookingBusinessId]
+                .Appointments[context.Appointment.CalendarEventId]
+                .DeleteAsync(cancellationToken: cancellationToken);
+
+            var nowUtc = DateTime.UtcNow;
+            var agentTimeZone = context.AgentTimeZone;
+            var localNow =
+                TimeZoneInfo.ConvertTimeFromUtc(
+                    nowUtc,
+                    agentTimeZone);
+            var createdBy =
+                User.FindFirstValue("preferred_username") ??
+                User.Identity?.Name;
+            var activityNote =
+                BuildAppointmentMutationNote(
+                    "cancelled",
+                    localNow,
+                    localNow,
+                    req.ActivityNote);
+
+            context.Appointment.OwnerAgentUserId =
+                context.CurrentAgentUserId;
+            context.Appointment.WorkstationLeadId =
+                CleanOptional(
+                    context.ResolvedWorkstationLeadId) ??
+                context.Appointment.WorkstationLeadId;
+            context.Appointment.BookingProvider =
+                "microsoft_bookings";
+            context.Appointment.BookingSource =
+                LeadAppointmentBookingSources
+                    .InternalCalendar;
+            context.Appointment.ConfirmationSource =
+                LeadAppointmentBookingSources
+                    .InternalCalendar;
+            context.Appointment.LastSyncedUtc =
+                nowUtc;
+            context.Appointment.LastSyncStatus =
+                "bookings_appointment_cancelled";
+            context.Appointment.LastSyncError = null;
+            context.Appointment.CalendarEventWebLink = null;
+            context.Appointment.UpdatedUtc = nowUtc;
+            context.Appointment.ApplyStatus(
+                LeadAppointmentStatus.Cancelled,
+                nowUtc);
+
+            if (context.ClientProfile != null &&
+                context.ClientMeta != null)
+            {
+                context.ClientMeta.LastCalendarEventId = null;
+                context.ClientMeta.LastCalendarEventWebLink = null;
+
+                AddAppointmentActivity(
+                    context.ClientMeta,
+                    localNow,
+                    activityNote,
+                    context.ClientMeta.MeetingLocation,
+                    context.ClientMeta.ZoomJoinUrl,
+                    context.Appointment.CalendarEventId,
+                    null,
+                    createdBy);
+
+                context.ClientProfile.CrmLastTouch =
+                    localNow.Date;
+                context.ClientProfile.CrmNotes =
+                    ClientCrmMetaSerializer.Serialize(
+                        context.ClientMeta);
+                context.ClientProfile.UpdatedUtc = nowUtc;
+            }
+
+            if (context.LeadProfile != null &&
+                context.LeadMeta != null)
+            {
+                context.LeadMeta.LastCalendarEventId = null;
+                context.LeadMeta.LastCalendarEventWebLink = null;
+
+                AddAppointmentActivity(
+                    context.LeadMeta,
+                    localNow,
+                    activityNote,
+                    context.LeadMeta.MeetingLocation,
+                    context.LeadMeta.ZoomJoinUrl,
+                    context.Appointment.CalendarEventId,
+                    null,
+                    createdBy);
+
+                context.LeadProfile.CrmNotes =
+                    ClientCrmMetaSerializer.Serialize(
+                        context.LeadMeta);
+                context.LeadProfile.UpdatedUtc = nowUtc;
+            }
+
+            await _db.SaveChangesAsync(cancellationToken);
+
+            var responseMeta =
+                context.ClientMeta ??
+                context.LeadMeta ??
+                new ClientCrmMeta();
+            var crmLastTouch =
+                context.ClientProfile?.CrmLastTouch
+                    ?.ToString("yyyy-MM-dd") ??
+                LocalDateIso(nowUtc, agentTimeZone);
+
+            return Ok(
+                BuildAppointmentMutationResult(
+                    context.Appointment,
+                    responseMeta,
+                    crmLastTouch));
+        }
+        catch (Exception ex)
+            when (IsLeadAppointmentPersistenceCompatibilityFailure(ex))
+        {
+            _logger.LogWarning(
+                ex,
+                "Cancel appointment failed because the current environment is missing the latest appointment schema.");
+            return StatusCode(
+                StatusCodes.Status409Conflict,
+                "Appointment cancellations are unavailable until the latest appointment schema is applied.");
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Cancel appointment failed.");
             return StatusCode(500, ex.Message);
         }
     }

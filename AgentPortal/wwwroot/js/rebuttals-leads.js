@@ -893,6 +893,10 @@
 
           return {
             recordId: leadId,
+            clientUserId: leadId,
+            workstationLeadId: leadId,
+            appointmentId:
+              (currentLead?.latestAppointment?.id || '').trim(),
             row: currentLead || null,
             nextDate: date,
             nextText,
@@ -951,6 +955,26 @@
             data?.latestAppointment ||
             currentLead.latestAppointment ||
             null;
+          currentLead.meetingLocation =
+            data?.meetingLocation ??
+            currentLead.meetingLocation ??
+            '';
+          currentLead.zoomJoinUrl =
+            data?.zoomJoinUrl ??
+            currentLead.zoomJoinUrl ??
+            '';
+          currentLead.usePersonalZoomLink =
+            typeof data?.usePersonalZoomLink === 'boolean'
+              ? data.usePersonalZoomLink
+              : !!currentLead.usePersonalZoomLink;
+          currentLead.meetingTime =
+            data?.meetingTime ??
+            currentLead.meetingTime ??
+            '';
+          currentLead.meetingDurationMinutes =
+            data?.meetingDurationMinutes ??
+            currentLead.meetingDurationMinutes ??
+            30;
 
           currentLead.crmNextDate =
             context.nextDate;
@@ -969,9 +993,11 @@
           }
 
           setStatusMessage?.(
-            'Calendar event synced ✔',
+            'Appointment synced ✔',
             'good'
           );
+
+          renderEditAppointmentSnapshot(currentLead);
         },
 
         toast(message){
@@ -1964,99 +1990,6 @@
       return raw.replace(/([a-z])([A-Z])/g, '$1 $2');
     }
 
-    function humanizeAppointmentSource(value){
-      const raw = normalizeSummaryText(value);
-      if (!raw) return 'Not tracked yet';
-      switch (raw){
-        case 'internal_manual': return 'Internal manual';
-        case 'internal_calendar': return 'Internal calendar';
-        case 'website_embed': return 'Website embed';
-        case 'website_modal': return 'Website modal';
-        case 'external_redirect_fallback': return 'External redirect fallback';
-        case 'microsoft_graph_confirmation': return 'Microsoft Graph confirmation';
-        case 'manual_verified': return 'Manual verified';
-        default: break;
-      }
-      return raw
-        .replace(/[_-]+/g, ' ')
-        .replace(/\b\w/g, char => char.toUpperCase());
-    }
-
-    function summarizeRequestedAppointmentSource(appointment){
-      if (!appointment) return 'Not tracked yet';
-      return appointment.requestedBookingSourceLabel
-        || humanizeAppointmentSource(appointment.requestedBookingSource)
-        || 'Not tracked yet';
-    }
-
-    function summarizeAppointmentConfirmation(appointment){
-      if (!appointment) return 'No appointment recorded';
-      const state = normalizeSummaryText(appointment.confirmationStateLabel);
-      const source = normalizeSummaryText(appointment.confirmationSourceLabel) || humanizeAppointmentSource(appointment.confirmationSource);
-      const parts = [state, source].filter(Boolean);
-      return parts.join(' • ') || 'No confirmation recorded';
-    }
-
-    function summarizeAppointmentBookingConfig(appointment){
-      if (!appointment) return 'No public booking config used';
-      const label = normalizeSummaryText(appointment.bookingConfigurationLabel);
-      if (label) return label;
-      if (appointment.bookingSource === 'internal_calendar'){
-        return 'Internal calendar path';
-      }
-      return 'No public booking config used';
-    }
-
-    function formatAppointmentDateTime(value){
-      if (!value) return '—';
-      const parsed = new Date(value);
-      return Number.isNaN(parsed.getTime())
-        ? '—'
-        : parsed.toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' });
-    }
-
-    function formatAppointmentRange(snapshot){
-      const start = snapshot?.scheduledStartUtc ? new Date(snapshot.scheduledStartUtc) : null;
-      const end = snapshot?.scheduledEndUtc ? new Date(snapshot.scheduledEndUtc) : null;
-
-      if (!start || Number.isNaN(start.getTime())){
-        return 'No appointment scheduled';
-      }
-
-      if (!end || Number.isNaN(end.getTime())){
-        return start.toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' });
-      }
-
-      const sameDay =
-        start.getFullYear() === end.getFullYear() &&
-        start.getMonth() === end.getMonth() &&
-        start.getDate() === end.getDate();
-
-      if (sameDay){
-        return `${start.toLocaleDateString([], { dateStyle: 'medium' })} • ${start.toLocaleTimeString([], { timeStyle: 'short' })} - ${end.toLocaleTimeString([], { timeStyle: 'short' })}`;
-      }
-
-      return `${start.toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' })} - ${end.toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' })}`;
-    }
-
-    function appointmentStatusTimestampText(snapshot){
-      if (!snapshot) return 'No appointment status updates yet';
-      const label = snapshot.statusLabel || humanizeAppointmentStatus(snapshot.status);
-      const value = formatAppointmentDateTime(snapshot.statusTimestampUtc || snapshot.lastStatusChangedUtc || snapshot.updatedUtc || snapshot.createdUtc);
-      return value === '—' ? label : `${label} • ${value}`;
-    }
-
-    function renderAppointmentLink(node, url, label){
-      if (!node) return;
-      const cleanUrl = normalizeSummaryText(url);
-      if (!cleanUrl){
-        node.textContent = '—';
-        return;
-      }
-
-      node.innerHTML = `<a class="link" href="${escapeHtml(cleanUrl)}" target="_blank" rel="noopener">${escapeHtml(label)}</a>`;
-    }
-
     function formatLeadLocation(lead){
       return joinIntakeParts([lead?.city, lead?.state]);
     }
@@ -2214,55 +2147,11 @@
     }
 
     function renderEditAppointmentSnapshot(lead){
-      const appointment = lead?.latestAppointment || null;
-      const hasLead = !!lead;
-      const nodes = [
-        editAppointmentStatus,
-        editAppointmentTime,
-        editAppointmentSource,
-        editAppointmentRequestedSource,
-        editAppointmentConfirmation,
-        editAppointmentBookingConfig,
-        editAppointmentTimeline,
-        editAppointmentMeetingLink,
-        editAppointmentCalendarLink
-      ];
-
-      if (editAppointmentSection) editAppointmentSection.hidden = !hasLead;
-
-      if (!hasLead){
-        nodes.forEach(node => { if (node) node.textContent = '—'; });
-        if (editAppointmentStatusSelect) editAppointmentStatusSelect.value = 'Requested';
-        if (editSaveAppointmentStatusBtn) editSaveAppointmentStatusBtn.disabled = true;
-        return;
+      if (typeof window.renderQuickViewAppointmentSnapshot === 'function'){
+        window.renderQuickViewAppointmentSnapshot(lead?.latestAppointment || null, {
+          loaded: !!lead
+        });
       }
-
-      if (!appointment){
-        if (editAppointmentStatus) editAppointmentStatus.textContent = 'No appointment recorded';
-        if (editAppointmentTime) editAppointmentTime.textContent = 'No appointment scheduled';
-        if (editAppointmentSource) editAppointmentSource.textContent = 'Not tracked yet';
-        if (editAppointmentRequestedSource) editAppointmentRequestedSource.textContent = 'Not tracked yet';
-        if (editAppointmentConfirmation) editAppointmentConfirmation.textContent = 'No confirmation recorded';
-        if (editAppointmentBookingConfig) editAppointmentBookingConfig.textContent = 'No public booking config used';
-        if (editAppointmentTimeline) editAppointmentTimeline.textContent = 'No appointment status updates yet';
-        if (editAppointmentMeetingLink) editAppointmentMeetingLink.textContent = '—';
-        if (editAppointmentCalendarLink) editAppointmentCalendarLink.textContent = '—';
-        if (editAppointmentStatusSelect) editAppointmentStatusSelect.value = 'Requested';
-        if (editSaveAppointmentStatusBtn) editSaveAppointmentStatusBtn.disabled = false;
-        return;
-      }
-
-      if (editAppointmentStatus) editAppointmentStatus.textContent = appointment.statusLabel || humanizeAppointmentStatus(appointment.status);
-      if (editAppointmentTime) editAppointmentTime.textContent = formatAppointmentRange(appointment);
-      if (editAppointmentSource) editAppointmentSource.textContent = appointment.bookingSourceLabel || humanizeAppointmentSource(appointment.bookingSource);
-      if (editAppointmentRequestedSource) editAppointmentRequestedSource.textContent = summarizeRequestedAppointmentSource(appointment);
-      if (editAppointmentConfirmation) editAppointmentConfirmation.textContent = summarizeAppointmentConfirmation(appointment);
-      if (editAppointmentBookingConfig) editAppointmentBookingConfig.textContent = summarizeAppointmentBookingConfig(appointment);
-      if (editAppointmentTimeline) editAppointmentTimeline.textContent = appointmentStatusTimestampText(appointment);
-      renderAppointmentLink(editAppointmentMeetingLink, appointment.meetingUrl, 'Open meeting link');
-      renderAppointmentLink(editAppointmentCalendarLink, appointment.calendarEventWebLink, 'Open Outlook event');
-      if (editAppointmentStatusSelect) editAppointmentStatusSelect.value = appointment.status || 'Requested';
-      if (editSaveAppointmentStatusBtn) editSaveAppointmentStatusBtn.disabled = false;
     }
 
     function setOrigin(lead){
@@ -2501,6 +2390,9 @@
       }
       return leads[idx] || null;
     }
+
+    window.isQuickViewAppointmentLoaded = () => !!resolveCurrentLead();
+    window.getQuickViewAppointmentSnapshot = () => resolveCurrentLead()?.latestAppointment || null;
 
     function resolveRenderState(lead){
       if (hasActiveFilters()){

@@ -2392,15 +2392,6 @@ function formatAppointmentTimestamp(value){
 }
 
 
-function appointmentStatusTimestampText(snapshot){
-  if (!snapshot) return "—";
-  const label = snapshot.statusLabel || humanizeAppointmentStatus(snapshot.status);
-  const value = formatAppointmentTimestamp(snapshot.statusTimestampUtc || snapshot.lastStatusChangedUtc || snapshot.updatedUtc || snapshot.createdUtc);
-  return value === "—" ? label : `${label} • ${value}`;
-}
-
-
-
 function renderProductionSummaryHtml(counts){
   const summaryCounts = counts && typeof counts === "object" ? counts : {};
   const items = [
@@ -2420,102 +2411,13 @@ function renderProductionSummaryHtml(counts){
     : '<span class="ph-summary-chip empty">No production yet</span>';
 }
 
-function summarizeLeadAppointmentSource(snapshot){
-  return snapshot?.bookingSourceLabel || humanizeAppointmentSource(snapshot?.bookingSource);
-}
-
-function summarizeLeadAppointmentRequestedSource(snapshot){
-  if (!snapshot) return "Not tracked yet";
-  return snapshot.requestedBookingSourceLabel
-    || humanizeAppointmentSource(snapshot.requestedBookingSource)
-    || "Not tracked yet";
-}
-
-function summarizeLeadAppointmentConfirmation(snapshot){
-  if (!snapshot) return "No appointment recorded";
-  const state = norm(snapshot.confirmationStateLabel);
-  const source = norm(snapshot.confirmationSourceLabel) || humanizeAppointmentSource(snapshot.confirmationSource);
-  const parts = [state, source].filter(Boolean);
-  return parts.join(" • ") || "No confirmation recorded";
-}
-
-function summarizeLeadAppointmentConfig(snapshot){
-  if (!snapshot) return "No public booking config used";
-  const label = norm(snapshot.bookingConfigurationLabel);
-  if (label) return label;
-  if (snapshot.bookingSource === "internal_calendar"){
-    return "Internal calendar path";
-  }
-  return "No public booking config used";
-}
-
-function resolveAppointmentMeetingUrl(snapshot){
-  return norm(snapshot?.meetingUrl) || "";
-}
-
-function renderAppointmentLink(node, url, label){
-  if (!node) return;
-  const cleanUrl = norm(url);
-  if (!cleanUrl){
-    node.textContent = "—";
-    return;
-  }
-
-  node.innerHTML = `<a class="link" href="${escapeHtml(cleanUrl)}" target="_blank" rel="noopener">${escapeHtml(label)}</a>`;
-}
-
 function renderAppointmentSnapshot(snapshot){
-  const hasLeadLoaded = !!activeClientId;
-  const nodes = [
-    dAppointmentStatus,
-    dAppointmentTime,
-    dAppointmentSource,
-    dAppointmentRequestedSource,
-    dAppointmentConfirmation,
-    dAppointmentBookingConfig,
-    dAppointmentTimeline,
-    dAppointmentMeetingLink,
-    dAppointmentCalendarLink
-  ];
-
-  if (dAppointmentSection) dAppointmentSection.hidden = !hasLeadLoaded;
-
-  if (!hasLeadLoaded){
-    nodes.forEach(node => { if (node) node.textContent = "—"; });
-    if (dAppointmentStatusSelect) dAppointmentStatusSelect.value = "Requested";
-    if (btnSaveAppointmentStatus) btnSaveAppointmentStatus.disabled = true;
-    syncQuickViewDisclosures();
-    return;
+  if (typeof window.renderQuickViewAppointmentSnapshot === "function"){
+    window.renderQuickViewAppointmentSnapshot(snapshot, {
+      loaded: !!activeClientId,
+      sync: syncQuickViewDisclosures
+    });
   }
-
-  if (!snapshot){
-    if (dAppointmentStatus) dAppointmentStatus.textContent = "No appointment recorded";
-    if (dAppointmentTime) dAppointmentTime.textContent = "No appointment scheduled";
-    if (dAppointmentSource) dAppointmentSource.textContent = "Not tracked yet";
-    if (dAppointmentRequestedSource) dAppointmentRequestedSource.textContent = "Not tracked yet";
-    if (dAppointmentConfirmation) dAppointmentConfirmation.textContent = "No confirmation recorded";
-    if (dAppointmentBookingConfig) dAppointmentBookingConfig.textContent = "No public booking config used";
-    if (dAppointmentTimeline) dAppointmentTimeline.textContent = "No appointment status updates yet";
-    if (dAppointmentMeetingLink) dAppointmentMeetingLink.textContent = "—";
-    if (dAppointmentCalendarLink) dAppointmentCalendarLink.textContent = "—";
-    if (dAppointmentStatusSelect) dAppointmentStatusSelect.value = "Requested";
-    if (btnSaveAppointmentStatus) btnSaveAppointmentStatus.disabled = false;
-    syncQuickViewDisclosures();
-    return;
-  }
-
-  if (dAppointmentStatus) dAppointmentStatus.textContent = summarizeLeadAppointmentStatus(snapshot);
-  if (dAppointmentTime) dAppointmentTime.textContent = formatAppointmentDateTimeRange(snapshot);
-  if (dAppointmentSource) dAppointmentSource.textContent = summarizeLeadAppointmentSource(snapshot);
-  if (dAppointmentRequestedSource) dAppointmentRequestedSource.textContent = summarizeLeadAppointmentRequestedSource(snapshot);
-  if (dAppointmentConfirmation) dAppointmentConfirmation.textContent = summarizeLeadAppointmentConfirmation(snapshot);
-  if (dAppointmentBookingConfig) dAppointmentBookingConfig.textContent = summarizeLeadAppointmentConfig(snapshot);
-  if (dAppointmentTimeline) dAppointmentTimeline.textContent = appointmentStatusTimestampText(snapshot);
-  renderAppointmentLink(dAppointmentMeetingLink, resolveAppointmentMeetingUrl(snapshot), "Open meeting link");
-  renderAppointmentLink(dAppointmentCalendarLink, snapshot.calendarEventWebLink, "Open Outlook event");
-  if (dAppointmentStatusSelect) dAppointmentStatusSelect.value = snapshot.status || "Requested";
-  if (btnSaveAppointmentStatus) btnSaveAppointmentStatus.disabled = false;
-  syncQuickViewDisclosures();
 }
 
 function renderIntakeSnapshot(snapshot){
@@ -7096,6 +6998,9 @@ window.quickViewCalendarAdapter = {
       clientUserId: recordId,
       clientProfileId: norm(activeClientDetail?.clientProfileId) || norm(row?.dataset.clientProfileId),
       workstationLeadId: recordId,
+      appointmentId:
+        norm(activeClientDetail?.latestAppointment?.id) ||
+        "",
       row,
       nextDate,
       nextText,
@@ -7134,6 +7039,30 @@ window.quickViewCalendarAdapter = {
 
     row.dataset.sLasttouch =
       data.crmLastTouch || todayISO();
+    row.dataset.sMeetingLocation =
+      data.meetingLocation ??
+      row.dataset.sMeetingLocation ??
+      "";
+    row.dataset.sZoom =
+      data.zoomJoinUrl ??
+      row.dataset.sZoom ??
+      "";
+    row.dataset.sUsezoom =
+      data.usePersonalZoomLink === true
+        ? "true"
+        : data.usePersonalZoomLink === false
+          ? "false"
+          : (row.dataset.sUsezoom || "false");
+    row.dataset.sMeetingTime =
+      data.meetingTime ??
+      row.dataset.sMeetingTime ??
+      "";
+    row.dataset.sMeetingDuration =
+      String(
+        data.meetingDurationMinutes ??
+        row.dataset.sMeetingDuration ??
+        30
+      );
 
     storeRowLatestAppointment(
       row,
@@ -7147,6 +7076,26 @@ window.quickViewCalendarAdapter = {
       ...(activeClientDetail || {}),
       activities: data.activities || [],
       lastCalendarEventWebLink: data.webLink || "",
+      meetingLocation:
+        data.meetingLocation ??
+        activeClientDetail?.meetingLocation ??
+        "",
+      zoomJoinUrl:
+        data.zoomJoinUrl ??
+        activeClientDetail?.zoomJoinUrl ??
+        "",
+      usePersonalZoomLink:
+        typeof data.usePersonalZoomLink === "boolean"
+          ? data.usePersonalZoomLink
+          : !!activeClientDetail?.usePersonalZoomLink,
+      meetingTime:
+        data.meetingTime ??
+        activeClientDetail?.meetingTime ??
+        "",
+      meetingDurationMinutes:
+        data.meetingDurationMinutes ??
+        activeClientDetail?.meetingDurationMinutes ??
+        30,
       latestAppointment:
         data.latestAppointment ||
         activeClientDetail?.latestAppointment ||
@@ -7167,8 +7116,8 @@ window.quickViewCalendarAdapter = {
     if (dSaved) {
       dSaved.textContent =
         data.warning
-          ? "Calendar event created ⚠"
-          : "Calendar event synced ✔";
+          ? "Appointment synced ⚠"
+          : "Appointment synced ✔";
     }
 
     refreshLeadOverviewSummary();
@@ -7179,6 +7128,9 @@ window.quickViewCalendarAdapter = {
     toast(message);
   }
 };
+
+window.isQuickViewAppointmentLoaded = () => !!activeClientId;
+window.getQuickViewAppointmentSnapshot = () => activeClientDetail?.latestAppointment || null;
 
 async function saveLeadAppointmentStatus(){
   if (!activeClientId) return toast("Open a lead first.");

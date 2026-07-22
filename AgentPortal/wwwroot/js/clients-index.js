@@ -3763,6 +3763,15 @@ function applySavedView(index){
   renderAll();
 }
 
+function renderAppointmentSnapshot(snapshot){
+  if (typeof window.renderQuickViewAppointmentSnapshot === "function"){
+    window.renderQuickViewAppointmentSnapshot(snapshot, {
+      loaded: !!activeClientId,
+      sync: syncQuickViewDisclosures
+    });
+  }
+}
+
 /* ========= Drawer ========= */
 async function openDrawerForRow(row){
   const rowInfo = describeQuickViewRow(row);
@@ -3863,6 +3872,7 @@ async function openDrawerForRow(row){
     dMeetingDuration.value = row.dataset.sMeetingDuration || "30";
 
     renderPortalActions(row, null);
+    renderAppointmentSnapshot(null);
     renderProtectionSnapshotSummary(null, { loading: true });
 
     dActDate.value = todayISO();
@@ -3950,6 +3960,7 @@ async function openDrawerForRow(row){
     dWaitingOnPill.textContent = detail.waitingOnLabel || waitingLabel(detail.waitingOn || row.dataset.crmWaitingOn || "WaitingOnAgent");
     renderTimeline(detail.activities || []);
     renderMentionNotes(detail.collaboration?.mentionNotes || []);
+    renderAppointmentSnapshot(detail.latestAppointment || null);
     await loadSharedAgentAccess(activeClientId);
     setAdvancedMarketsActionState(
       detail.recordType || row.dataset.sRecordtype || "",
@@ -4266,6 +4277,8 @@ function closeDrawer(){
     inst?.hide();
   }
   window.closeQuickViewBookingModal?.();
+  activeClientDetail = null;
+  renderAppointmentSnapshot(null);
   drawer.classList.remove("open");
   drawerBackdrop.classList.remove("open");
   drawer.setAttribute("aria-hidden", "true");
@@ -6656,6 +6669,9 @@ window.quickViewCalendarAdapter = {
       clientUserId: recordId,
       clientProfileId,
       workstationLeadId,
+      appointmentId:
+        norm(activeClientDetail?.latestAppointment?.id) ||
+        "",
       row,
       nextDate,
       nextText,
@@ -6699,6 +6715,30 @@ window.quickViewCalendarAdapter = {
       activeClientDetail?.sourceWorkstationLeadId ||
       row.dataset.sourceWorkstationLeadId ||
       "";
+    row.dataset.sMeetingLocation =
+      data.meetingLocation ??
+      row.dataset.sMeetingLocation ??
+      "";
+    row.dataset.sZoom =
+      data.zoomJoinUrl ??
+      row.dataset.sZoom ??
+      "";
+    row.dataset.sUsezoom =
+      data.usePersonalZoomLink === true
+        ? "true"
+        : data.usePersonalZoomLink === false
+          ? "false"
+          : (row.dataset.sUsezoom || "false");
+    row.dataset.sMeetingTime =
+      data.meetingTime ??
+      row.dataset.sMeetingTime ??
+      "";
+    row.dataset.sMeetingDuration =
+      String(
+        data.meetingDurationMinutes ??
+        row.dataset.sMeetingDuration ??
+        30
+      );
 
     storeRowLatestAppointment(
       row,
@@ -6712,6 +6752,26 @@ window.quickViewCalendarAdapter = {
       ...(activeClientDetail || {}),
       activities: data.activities || [],
       lastCalendarEventWebLink: data.webLink || "",
+      meetingLocation:
+        data.meetingLocation ??
+        activeClientDetail?.meetingLocation ??
+        "",
+      zoomJoinUrl:
+        data.zoomJoinUrl ??
+        activeClientDetail?.zoomJoinUrl ??
+        "",
+      usePersonalZoomLink:
+        typeof data.usePersonalZoomLink === "boolean"
+          ? data.usePersonalZoomLink
+          : !!activeClientDetail?.usePersonalZoomLink,
+      meetingTime:
+        data.meetingTime ??
+        activeClientDetail?.meetingTime ??
+        "",
+      meetingDurationMinutes:
+        data.meetingDurationMinutes ??
+        activeClientDetail?.meetingDurationMinutes ??
+        30,
       sourceWorkstationLeadId:
         data.latestAppointment?.workstationLeadId ||
         activeClientDetail?.sourceWorkstationLeadId ||
@@ -6724,6 +6784,7 @@ window.quickViewCalendarAdapter = {
     };
 
     renderTimeline(data.activities || []);
+    renderAppointmentSnapshot(activeClientDetail.latestAppointment || null);
     renderPortalActions(row, activeClientDetail);
     renderAll();
 
@@ -6735,8 +6796,8 @@ window.quickViewCalendarAdapter = {
     if (dSaved) {
       dSaved.textContent =
         data.warning
-          ? "Calendar event created ⚠"
-          : "Calendar event synced ✔";
+          ? "Appointment synced ⚠"
+          : "Appointment synced ✔";
     }
 
     await quickViewBusyCalendar.refresh();
@@ -6746,6 +6807,9 @@ window.quickViewCalendarAdapter = {
     toast(message);
   }
 };
+
+window.isQuickViewAppointmentLoaded = () => !!activeClientId;
+window.getQuickViewAppointmentSnapshot = () => activeClientDetail?.latestAppointment || null;
 
 /* ========= Prefs Restore ========= */
 safeStartupInit("Clients prefs restore", () => {

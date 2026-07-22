@@ -14,6 +14,12 @@
     let availabilityRefreshIntervalId = 0;
     let scheduledAvailabilityRefreshIds = [];
     let createEventInFlight = false;
+    const bookingFlowState = {
+        mode: "create",
+        appointment: null,
+        prefillDurationMinutes: 0,
+        prefillDurationPending: false
+    };
 
     const $ = (id) => document.getElementById(id);
     const LegendModalApi = window.LegendModal || {};
@@ -44,6 +50,57 @@
     function bookingModalIsOpen() {
         const modalEl = bookingModalElement();
         return Boolean(modalEl && modalEl.classList.contains("show"));
+    }
+
+    function isRescheduleMode() {
+        return bookingFlowState.mode === "reschedule";
+    }
+
+    function currentManagedAppointment() {
+        return bookingFlowState.appointment || null;
+    }
+
+    function bookingDefaultSubText() {
+        return isRescheduleMode()
+            ? "Move the existing appointment without creating a second booking record."
+            : "Pick a date, choose a free slot, and create the appointment without leaving Quick View.";
+    }
+
+    function bookingDefaultSubmitText() {
+        return isRescheduleMode()
+            ? "Save Appointment Changes"
+            : "Book Appointment";
+    }
+
+    function applyBookingFlowPresentation() {
+        const title = document.querySelector(".qv-booking-title");
+        const sub = $("qvBookingClientSub");
+        const submitButton = $("btnBookAppointment");
+
+        if (title) {
+            title.textContent = isRescheduleMode()
+                ? "Reschedule Appointment"
+                : "Book Appointment";
+        }
+
+        if (sub) {
+            const current = (sub.textContent || "").trim();
+            if (!current || current === bookingDefaultSubText()) {
+                sub.textContent = bookingDefaultSubText();
+            }
+        }
+
+        if (submitButton) {
+            submitButton.textContent = bookingDefaultSubmitText();
+        }
+    }
+
+    function resetBookingFlowState() {
+        bookingFlowState.mode = "create";
+        bookingFlowState.appointment = null;
+        bookingFlowState.prefillDurationMinutes = 0;
+        bookingFlowState.prefillDurationPending = false;
+        applyBookingFlowPresentation();
     }
 
     function todayLocal() {
@@ -223,6 +280,10 @@
         return date.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
     }
 
+    function text(value) {
+        return value == null ? "" : String(value).trim();
+    }
+
     function parseLocalSlotDate(value) {
         if (!value) return null;
 
@@ -399,7 +460,7 @@
             const parts = [email, phone].filter(Boolean);
             recordSub.textContent = parts.length
                 ? parts.join(" • ")
-                : "Pick a date, choose a free slot, and create the appointment without leaving Quick View.";
+                : bookingDefaultSubText();
         }
 
         const durationInput = $("qvBookDuration");
@@ -407,6 +468,8 @@
         if (durationInput && !durationInput.value) {
             durationInput.selectedIndex = -1;
         }
+
+        applyBookingFlowPresentation();
     }
 
     function ensureDefaultBookingDate() {
@@ -420,6 +483,56 @@
 
         setSelectedDate(resolved);
         return resolved;
+    }
+
+    function seedBookingSelectionFromManagedAppointment() {
+        const appointment = currentManagedAppointment();
+        if (!isRescheduleMode() || !appointment) {
+            return false;
+        }
+
+        const start = parseLocalSlotDate(appointment.scheduledStartUtc);
+        const end = parseLocalSlotDate(appointment.scheduledEndUtc);
+        if (!start || !end || end <= start) {
+            return false;
+        }
+
+        setSelectedDate(start);
+
+        const timeValue = toTimeValue(start);
+        selectedSlotTime = timeValue;
+        const timeInput = $("qvBookTime");
+        if (timeInput) {
+            timeInput.value = timeValue;
+        }
+
+        bookingFlowState.prefillDurationMinutes = Math.max(
+            1,
+            Math.round((end.getTime() - start.getTime()) / 60000)
+        );
+        bookingFlowState.prefillDurationPending = true;
+
+        return true;
+    }
+
+    function applyPendingDurationSelection() {
+        const duration = bookingFlowState.prefillDurationMinutes;
+        const durationInput = $("qvBookDuration");
+
+        if (!bookingFlowState.prefillDurationPending || !durationInput) {
+            return;
+        }
+
+        const matchingOption = Array.from(durationInput.options || []).find((option) => {
+            const optionDuration = Number.parseInt(option.value || "", 10);
+            return Number.isInteger(optionDuration) && optionDuration === duration;
+        });
+
+        if (matchingOption) {
+            durationInput.value = matchingOption.value;
+        }
+
+        bookingFlowState.prefillDurationPending = false;
     }
 
     function clearSlots(message, tone = "") {
@@ -641,7 +754,17 @@
         }
 
         try {
-            const response = await fetch(`/calendar/day-availability?date=${encodeURIComponent(date)}&v=${Date.now()}`, {
+            const query = new URLSearchParams({
+                date,
+                v: String(Date.now())
+            });
+
+            const excludeEventId = text(currentManagedAppointment()?.calendarEventId);
+            if (isRescheduleMode() && excludeEventId) {
+                query.set("excludeEventId", excludeEventId);
+            }
+
+            const response = await fetch(`/calendar/day-availability?${query.toString()}`, {
                 credentials: "include"
             });
 
@@ -656,6 +779,7 @@
             }
 
             syncBookingServiceOptions(Array.isArray(data.buffers) ? data.buffers : data.services);
+            applyPendingDurationSelection();
             duration = selectedBookingService().duration;
 
             const freeSlots = Array.isArray(data.freeSlots) ? data.freeSlots : [];
@@ -691,7 +815,9 @@
 
     function initializeBookingModal() {
         syncBookingContext();
-        ensureDefaultBookingDate();
+        if (!seedBookingSelectionFromManagedAppointment()) {
+            ensureDefaultBookingDate();
+        }
         renderCalendar();
         loadSlots();
     }
@@ -705,6 +831,7 @@
         const timeInput = $("qvBookTime");
         if (timeInput) timeInput.value = "";
         setStatus("");
+        resetBookingFlowState();
     }
 
     function bindBookingModalLifecycle(modalEl) {
@@ -732,7 +859,19 @@
         return resolvedModal;
     }
 
-    function openBookingModal() {
+    function openBookingModal(options = {}) {
+        bookingFlowState.mode =
+            options.mode === "reschedule"
+                ? "reschedule"
+                : "create";
+        bookingFlowState.appointment =
+            options.appointment && typeof options.appointment === "object"
+                ? { ...options.appointment }
+                : null;
+        bookingFlowState.prefillDurationMinutes = 0;
+        bookingFlowState.prefillDurationPending = false;
+        applyBookingFlowPresentation();
+
         closeLegacyOverlayModals();
         reconcileBootstrapModalState();
         const modal = bookingModalInstance();
@@ -817,6 +956,22 @@
 
         return await request(
             "/calendar/create-event",
+            payload
+        );
+    };
+
+    window.qvCalendarUpdateAppointment = async function qvCalendarUpdateAppointment(
+        payload,
+        request
+    ) {
+        if (typeof request !== "function") {
+            throw new Error(
+                "Calendar update-appointment request transport is unavailable."
+            );
+        }
+
+        return await request(
+            "/calendar/update-appointment",
             payload
         );
     };
@@ -1353,6 +1508,8 @@
 
     async function createQuickViewCalendarEvent() {
         window.__lastBookingStopReason = "";
+        const rescheduleMode = isRescheduleMode();
+        const managedAppointment = currentManagedAppointment();
 
         if (createEventInFlight) {
             window.__lastBookingStopReason =
@@ -1401,6 +1558,9 @@
         const row = context?.row || null;
         const nextDate = context?.nextDate || "";
         const nextText = context?.nextText || "";
+        const appointmentId =
+            text(managedAppointment?.id) ||
+            text(context?.appointmentId);
 
         if (!recordId) {
             adapter.toast("Open a lead or client first.");
@@ -1434,7 +1594,14 @@
             return false;
         }
 
+        if (rescheduleMode && !appointmentId) {
+            adapter.toast("There is no live appointment to reschedule.");
+            window.__lastBookingStopReason = "missing appointmentId";
+            return false;
+        }
+
         const payload = {
+            appointmentId: rescheduleMode ? appointmentId : null,
             clientUserId: recordId,
             clientProfileId: context.clientProfileId || null,
             workstationLeadId: context.workstationLeadId || null,
@@ -1449,16 +1616,24 @@
                 `Phone: ${context.phone || ""}`,
             location: context.location || "",
             zoomJoinUrl: context.zoomJoinUrl || "",
-            activityNote: `Calendar event created: ${nextText}`
+            activityNote: rescheduleMode
+                ? `Appointment rescheduled: ${nextText}`
+                : `Calendar event created: ${nextText}`
         };
 
         try {
             setBookingSubmitBusy(true);
 
-            const data = await window.qvCalendarCreateEvent(
-                payload,
-                adapter.request.bind(adapter)
-            );
+            const requestFn = adapter.request.bind(adapter);
+            const data = rescheduleMode
+                ? await window.qvCalendarUpdateAppointment(
+                    payload,
+                    requestFn
+                )
+                : await window.qvCalendarCreateEvent(
+                    payload,
+                    requestFn
+                );
 
             await adapter.applyResult(data, context);
 
@@ -1466,17 +1641,27 @@
                 console.warn(data.warning);
                 adapter.toast(data.warning);
             } else {
-                adapter.toast("Calendar event created");
+                adapter.toast(
+                    rescheduleMode
+                        ? "Appointment updated"
+                        : "Calendar event created"
+                );
             }
             return true;
         } catch (error) {
             console.error(error);
 
             window.__lastBookingStopReason =
-                error?.message || "calendar create failed";
+                error?.message ||
+                (rescheduleMode
+                    ? "calendar update failed"
+                    : "calendar create failed");
 
             adapter.toast(
-                error?.message || "Calendar create failed."
+                error?.message ||
+                (rescheduleMode
+                    ? "Appointment update failed."
+                    : "Calendar create failed.")
             );
 
             return false;
@@ -1553,16 +1738,22 @@
         setStatus("Booking appointment…", "loading");
 
         try {
+            const rescheduleMode = isRescheduleMode();
             const booked = await createQuickViewCalendarEvent();
             if (!booked) {
-                setStatus(`Booking stopped: ${window.__lastBookingStopReason || "unknown frontend guard"}`, "error");
+                setStatus(`${rescheduleMode ? "Appointment update" : "Booking"} stopped: ${window.__lastBookingStopReason || "unknown frontend guard"}`, "error");
                 return;
             }
 
             const selectedDateValue = parseDateInputValue(date);
             const selectedDateLabel = selectedDateValue ? formatHumanDate(selectedDateValue) : date;
             const bookedLabel = removeBookedSlotFromUi(date, time);
-            setStatus(`Booked ${bookedLabel} on ${selectedDateLabel}. Refreshing live availability…`, "success");
+            setStatus(
+                rescheduleMode
+                    ? `Updated ${bookedLabel} on ${selectedDateLabel}. Refreshing live availability…`
+                    : `Booked ${bookedLabel} on ${selectedDateLabel}. Refreshing live availability…`,
+                "success"
+            );
 
             void loadSlots({
                 background: true,
@@ -1593,6 +1784,7 @@
         });
     });
 
+    window.openQuickViewBookingModal = openBookingModal;
     window.closeQuickViewBookingModal = () => hideBootstrapModalById(BOOKING_MODAL_ID);
     window.refreshQuickViewBookingSlots = loadSlots;
 })();
