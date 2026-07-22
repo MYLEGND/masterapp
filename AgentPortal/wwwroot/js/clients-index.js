@@ -3770,6 +3770,16 @@ function renderAppointmentSnapshot(snapshot){
       sync: syncQuickViewDisclosures
     });
   }
+  renderBillingSnapshot(activeClientDetail?.billing || null);
+}
+
+function renderBillingSnapshot(snapshot){
+  if (typeof window.renderQuickViewBillingSnapshot === "function"){
+    window.renderQuickViewBillingSnapshot(snapshot, {
+      loaded: !!activeClientId,
+      sync: syncQuickViewDisclosures
+    });
+  }
 }
 
 /* ========= Drawer ========= */
@@ -6810,6 +6820,22 @@ window.quickViewCalendarAdapter = {
 
 window.isQuickViewAppointmentLoaded = () => !!activeClientId;
 window.getQuickViewAppointmentSnapshot = () => activeClientDetail?.latestAppointment || null;
+window.getQuickViewBillingSnapshot = () => activeClientDetail?.billing || null;
+window.setQuickViewBillingSnapshot = snapshot => {
+  activeClientDetail = {
+    ...(activeClientDetail || {}),
+    billing: snapshot || null
+  };
+};
+window.getQuickViewBillingContext = () => ({
+  clientProfileId: activeClientDetail?.clientProfileId || null,
+  pageKey: "clients",
+  actionUrls: {
+    resendInvitation: "/Clients/ResendSubscriptionInvitation",
+    revokeInvitation: "/Clients/RevokeSubscriptionInvitation",
+    cancelSubscription: "/Clients/CancelClientSubscriptionAtPeriodEnd"
+  }
+});
 
 /* ========= Prefs Restore ========= */
 safeStartupInit("Clients prefs restore", () => {

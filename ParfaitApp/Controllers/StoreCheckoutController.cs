@@ -1,3 +1,4 @@
+using Domain.Billing;
 using Microsoft.AspNetCore.Mvc;
 using ParfaitApp.Models;
 using ParfaitApp.Services;
@@ -7,13 +8,14 @@ namespace ParfaitApp.Controllers;
 [Route("store")]
 public sealed class StoreCheckoutController : Controller
 {
+    private const string CommerceCurrency = "USD";
     private readonly IConfiguration _configuration;
     private readonly ParfaitProductService _products;
     private readonly ParfaitOrderService _orders;
     private readonly ParfaitCustomerAutomationService _automations;
-    private readonly SquarePaymentService _squarePayments;
+    private readonly IBillingOrchestrator _billingOrchestrator;
     private readonly IGraphMailService _mail;
-    private readonly ParfaitAnalyticsService _analytics;
+    private readonly IParfaitAnalyticsService _analytics;
     private readonly ParfaitMetaSignalBridgeService _metaSignalBridge;
 
     public StoreCheckoutController(
@@ -21,16 +23,16 @@ public sealed class StoreCheckoutController : Controller
         ParfaitProductService products,
         ParfaitOrderService orders,
         ParfaitCustomerAutomationService automations,
-        SquarePaymentService squarePayments,
+        IBillingOrchestrator billingOrchestrator,
         IGraphMailService mail,
-        ParfaitAnalyticsService analytics,
+        IParfaitAnalyticsService analytics,
         ParfaitMetaSignalBridgeService metaSignalBridge)
     {
         _configuration = configuration;
         _products = products;
         _orders = orders;
         _automations = automations;
-        _squarePayments = squarePayments;
+        _billingOrchestrator = billingOrchestrator;
         _mail = mail;
         _analytics = analytics;
         _metaSignalBridge = metaSignalBridge;
@@ -71,6 +73,10 @@ public sealed class StoreCheckoutController : Controller
     [ValidateAntiForgeryToken]
     public async Task<IActionResult> Pay([FromBody] ParfaitCheckoutPayRequest request, CancellationToken ct)
     {
+        request ??= new ParfaitCheckoutPayRequest();
+        request.Customer ??= new ParfaitCheckoutCustomerRequest();
+        request.Items ??= [];
+
         if (string.IsNullOrWhiteSpace(request.CheckoutAttemptId))
         {
             return BadRequest(new ParfaitCheckoutPayResponse { Success = false, Error = "Checkout session expired. Refresh and try again." });
@@ -84,10 +90,10 @@ public sealed class StoreCheckoutController : Controller
 
         if (string.IsNullOrWhiteSpace(request.SourceId))
         {
-            return BadRequest(new ParfaitCheckoutPayResponse { Success = false, Error = "Missing Square payment token." });
+            return BadRequest(new ParfaitCheckoutPayResponse { Success = false, Error = "Missing payment token." });
         }
 
-        var quote = _products.QuoteCart(request.Items ?? [], request.DiscountCode);
+        var quote = _products.QuoteCart(request.Items, request.DiscountCode);
         if (!quote.IsValid)
         {
             return BadRequest(new ParfaitCheckoutPayResponse
@@ -141,19 +147,23 @@ public sealed class StoreCheckoutController : Controller
         var note = $"{order.OrderNumber}: " + string.Join(", ",
             order.Items.Select(i => $"{i.Name} / {i.Size} x{i.Quantity}"));
 
-        (bool Success, string? PaymentId, string? Error) payment;
+        ExecuteCommerceOneTimePaymentResult paymentResult;
         try
         {
-            payment = await _squarePayments.CreatePaymentAsync(
-                request.SourceId,
-                order.TotalCents,
-                note,
-                order.OrderNumber,
+            paymentResult = await _billingOrchestrator.ExecuteCommerceOneTimePaymentAsync(
+                new ExecuteCommerceOneTimePaymentCommand(
+                    request.SourceId,
+                    order.TotalCents,
+                    CommerceCurrency,
+                    note,
+                    BuildPaymentIdempotencyKey(order),
+                    order.CommerceOrderId,
+                    BuildPaymentCorrelationId(order)),
                 ct);
         }
         catch (Exception)
         {
-            _orders.MarkPaymentFailed(order.OrderNumber, "Square payment request could not be completed.");
+            _orders.MarkPaymentFailed(order.OrderNumber, "Payment request could not be completed right now.");
 
             return StatusCode(StatusCodes.Status503ServiceUnavailable, new ParfaitCheckoutPayResponse
             {
@@ -163,25 +173,26 @@ public sealed class StoreCheckoutController : Controller
             });
         }
 
-        if (!payment.Success)
+        if (!paymentResult.Success)
         {
-            _orders.MarkPaymentFailed(order.OrderNumber, payment.Error ?? "Square payment failed.");
+            var failureSummary = paymentResult.SanitizedSummary ?? "Payment could not be completed right now. Please try again.";
+            var failureStatusCode = ResolvePaymentFailureStatusCode(paymentResult);
+            _orders.MarkPaymentFailed(order.OrderNumber, failureSummary);
 
-            return BadRequest(new ParfaitCheckoutPayResponse
+            return StatusCode(failureStatusCode, new ParfaitCheckoutPayResponse
             {
                 Success = false,
                 OrderNumber = order.OrderNumber,
-                Error = payment.Error
+                Error = failureStatusCode == StatusCodes.Status503ServiceUnavailable
+                    ? "Payment could not be completed right now. Please try again."
+                    : failureSummary
             });
         }
 
-        _orders.MarkPaid(order.OrderNumber, payment.PaymentId);
+        _orders.MarkPaymentCaptured(order.OrderNumber, paymentResult.ProviderResult.ExternalId);
         _products.CommitPaidInventory(validatedItems);
 
         var paidOrder = _orders.GetOrder(order.OrderNumber) ?? order;
-        paidOrder.SquarePaymentId = payment.PaymentId;
-        paidOrder.PaymentStatus = "Paid";
-        paidOrder.Status = "Paid";
         _automations.MarkOrderConverted(paidOrder);
 
         try
@@ -270,5 +281,33 @@ public sealed class StoreCheckoutController : Controller
             return "Enter a valid email address.";
 
         return null;
+    }
+
+    private static string BuildPaymentIdempotencyKey(ParfaitOrderRecord order) => order.OrderNumber;
+
+    private static string BuildPaymentCorrelationId(ParfaitOrderRecord order) => $"ParfaitCheckout:{order.OrderNumber}";
+
+    private static int ResolvePaymentFailureStatusCode(ExecuteCommerceOneTimePaymentResult result)
+    {
+        if (result.Retryable)
+            return StatusCodes.Status503ServiceUnavailable;
+
+        if (string.Equals(result.SafeErrorCode, "UNHANDLED_BILLING_ERROR", StringComparison.OrdinalIgnoreCase))
+            return StatusCodes.Status503ServiceUnavailable;
+
+        if (!string.IsNullOrWhiteSpace(result.SafeErrorCode) &&
+            result.SafeErrorCode.StartsWith("SQUARE_", StringComparison.OrdinalIgnoreCase) &&
+            result.SafeErrorCode.EndsWith("_MISSING", StringComparison.OrdinalIgnoreCase))
+        {
+            return StatusCodes.Status503ServiceUnavailable;
+        }
+
+        if (!string.IsNullOrWhiteSpace(result.SafeErrorCode) &&
+            result.SafeErrorCode.StartsWith("HTTP_5", StringComparison.OrdinalIgnoreCase))
+        {
+            return StatusCodes.Status503ServiceUnavailable;
+        }
+
+        return StatusCodes.Status400BadRequest;
     }
 }

@@ -51,7 +51,7 @@ public sealed class ParfaitMetaSignalBridgeService
             sourcePath = "/store/success",
             orderNumber = order.OrderNumber,
             paymentStatus = order.PaymentStatus,
-            squarePaymentId = order.SquarePaymentId,
+            paymentReferenceId = order.PaymentReferenceId,
             currency = "USD",
             valueCents = order.TotalCents,
             subtotalCents = order.SubtotalCents,

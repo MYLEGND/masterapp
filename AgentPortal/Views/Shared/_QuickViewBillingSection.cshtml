@@ -1,0 +1,45 @@
+<details class="qv-panel crm-qv-disclosure qv-panel-data qv-disclosure" id="dBillingSection" hidden>
+    <summary>
+        <div class="qv-section-header">
+            <div class="qv-section-title">ClientApp Subscription</div>
+            <div class="qv-section-copy">Offer, invitation, subscription, and entitlement status stay here so the agent can manage billing without leaving CRM.</div>
+        </div>
+    </summary>
+    <div class="qv-section-body">
+        <div class="qv-data-grid qv-data-grid-2">
+            <div class="qv-data-card">
+                <label>Offer</label>
+                <div id="dBillingOffer">—</div>
+            </div>
+            <div class="qv-data-card">
+                <label>Invitation</label>
+                <div id="dBillingInvitation">—</div>
+            </div>
+            <div class="qv-data-card">
+                <label>Subscription</label>
+                <div id="dBillingSubscription">—</div>
+            </div>
+            <div class="qv-data-card">
+                <label>Entitlement</label>
+                <div id="dBillingEntitlement">—</div>
+            </div>
+            <div class="qv-data-card">
+                <label>Next Billing Date</label>
+                <div id="dBillingNextBilling">—</div>
+            </div>
+            <div class="qv-data-card">
+                <label>Invitation Delivery</label>
+                <div id="dBillingDelivery">—</div>
+            </div>
+        </div>
+        <div class="qv-data-card qv-data-card-wide qv-stack-md">
+            <label>Billing Actions</label>
+            <div class="qv-inline-action-row">
+                <button type="button" class="btn btn-gold" id="btnBillingResendInvite">Resend Invitation</button>
+                <button type="button" class="btn btn-ghost" id="btnBillingRevokeInvite">Revoke Invitation</button>
+                <button type="button" class="btn btn-ghost" id="btnBillingCancelPeriodEnd">Cancel At Period End</button>
+            </div>
+            <div class="tiny" id="dBillingStatus">Ready</div>
+        </div>
+    </div>
+</details>

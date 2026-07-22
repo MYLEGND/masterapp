@@ -240,7 +240,7 @@ $@"
     <p style='margin:0 0 8px;'><strong>Phone:</strong> {enc.Encode(order.Phone)}</p>
     {(order.DiscountCents > 0 ? $"<p style='margin:0 0 8px;'><strong>Discount:</strong> -{Money(order.DiscountCents)}{(string.IsNullOrWhiteSpace(order.DiscountCode) ? "" : $" ({enc.Encode(order.DiscountCode)})")}</p>" : "")}
     <p style='margin:0 0 8px;'><strong>Total:</strong> {Money(order.TotalCents)}</p>
-    <p style='margin:0;'><strong>Square Payment:</strong> {enc.Encode(order.SquarePaymentId ?? "")}</p>
+    <p style='margin:0;'><strong>Payment Reference:</strong> {enc.Encode(order.PaymentReferenceId ?? "")}</p>
   </div>
 
   <h3 style='margin:18px 0 8px;'>Items</h3>

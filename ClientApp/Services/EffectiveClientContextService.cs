@@ -312,10 +312,10 @@ public sealed class EffectiveClientContextService
 
                 var matchesPinnedProfile =
                     (!string.IsNullOrWhiteSpace(canonicalUserId) &&
-                     string.Equals(pinnedClientUserId, canonicalUserId, StringComparison.Ordinal)) ||
+                     (string.Equals(Norm(pinnedProfile.ExternalIdentityObjectId), canonicalUserId, StringComparison.Ordinal) ||
+                      string.Equals(pinnedClientUserId, canonicalUserId, StringComparison.Ordinal))) ||
                     candidates.Contains(pinnedClientUserId) ||
-                    (!string.IsNullOrWhiteSpace(upn) &&
-                     string.Equals(Norm(pinnedProfile.Email), upn, StringComparison.Ordinal));
+                    candidates.Contains(Norm(pinnedProfile.ExternalIdentityObjectId));
 
                 if (matchesPinnedProfile)
                     return ToContext(pinnedProfile, isAgentView: false);
@@ -325,7 +325,9 @@ public sealed class EffectiveClientContextService
         if (!string.IsNullOrWhiteSpace(canonicalUserId))
         {
             profile = await _db.ClientProfiles
-                .FirstOrDefaultAsync(x => (x.ClientUserId ?? "").ToLower() == canonicalUserId);
+                .FirstOrDefaultAsync(x =>
+                    (x.ExternalIdentityObjectId ?? "").ToLower() == canonicalUserId ||
+                    (x.ClientUserId ?? "").ToLower() == canonicalUserId);
         }
 
         if (profile == null)
@@ -339,14 +341,10 @@ public sealed class EffectiveClientContextService
             if (candidates.Length > 0)
             {
                 profile = await _db.ClientProfiles
-                    .FirstOrDefaultAsync(x => candidates.Contains((x.ClientUserId ?? "").ToLower()));
+                    .FirstOrDefaultAsync(x =>
+                        candidates.Contains((x.ExternalIdentityObjectId ?? "").ToLower()) ||
+                        candidates.Contains((x.ClientUserId ?? "").ToLower()));
             }
-        }
-
-        if (profile == null && !string.IsNullOrWhiteSpace(upn))
-        {
-            profile = await _db.ClientProfiles
-                .FirstOrDefaultAsync(x => (x.Email ?? "").ToLower() == upn);
         }
 
         if (profile == null)

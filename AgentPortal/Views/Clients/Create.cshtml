@@ -9,345 +9,32 @@
     var blocked = emailErrors != null && emailErrors.Any(e => (e.ErrorMessage ?? "").Contains("BLOCKED", StringComparison.OrdinalIgnoreCase));
 }
 
-<style>
-    :root{
-        --navy-950:#050b16;
-        --navy-900:#081224;
-        --navy-850:#0b1529;
-        --navy-820:#0f1b30;
-        --gold:#a68023;
-        --gold-deep:#8f6b14;
-        --gold-bright:#ddb85d;
-        --ink:#f8fafc;
-        --muted:rgba(212,221,233,.82);
-        --line:rgba(166,128,35,.24);
-        --line-strong:rgba(166,128,35,.52);
-        --panel:rgba(11,21,41,.96);
-        --panel-soft:rgba(15,27,48,.94);
-        --soft-gold:rgba(166,128,35,.12);
-        --danger:#b42318;
-    }
+@section Styles {
+    <link rel="stylesheet" href="~/css/dashboard-home-shared.css" asp-append-version="true" />
+}
 
-    .page-wrap{
-        max-width: 1040px;
-        margin: 0 auto;
-        padding: 28px 18px 42px;
-        color: var(--ink);
-    }
-
-    .card{
-        background: #0b1529;
-        border: 1.5px solid rgba(166,128,35,.56);
-        border-radius: 28px;
-        box-shadow: 0 28px 62px rgba(0,0,0,.34);
-        overflow: hidden;
-        position: relative;
-    }
-
-    .card::before{
-        content:"";
-        position:absolute;
-        top:0;
-        left:0;
-        right:0;
-        height: 5px;
-        background: linear-gradient(90deg, var(--gold-deep), var(--gold) 34%, var(--gold-bright) 58%, var(--gold) 78%, var(--gold-deep));
-    }
-
-    .card-header,
-    .card-body{
-        padding: 24px;
-    }
-
-    .card-header{
-        display:flex;
-        align-items:flex-start;
-        justify-content:space-between;
-        gap: 18px;
-        border-bottom: 1px solid var(--line-strong);
-        background: #0f1b30;
-    }
-
-    .eyebrow{
-        display:inline-flex;
-        align-items:center;
-        gap:.45rem;
-        margin-bottom:.8rem;
-        padding:.38rem .72rem;
-        border-radius:999px;
-        border:1px solid rgba(166,128,35,.34);
-        background: rgba(166,128,35,.12);
-        color:#f2d891;
-        font-size:.76rem;
-        font-weight:900;
-        letter-spacing:.12em;
-        text-transform:uppercase;
-    }
-
-    .title{
-        margin:0;
-        font-size: 2rem;
-        font-weight: 900;
-        color: #f7e4ae;
-        letter-spacing: .02em;
-        line-height:1.08;
-    }
-
-    .subtitle{
-        margin:.65rem 0 0;
-        max-width: 720px;
-        color: #d6e0ef;
-        font-size: 1rem;
-        font-weight: 650;
-        line-height: 1.6;
-    }
-
-    .label{
-        display:block;
-        margin-bottom: 6px;
-        font-size: .92rem;
-        font-weight: 800;
-        color: #f8fafc;
-    }
-
-    .required-chip{
-        display:none;
-        margin-left: 8px;
-        padding: 2px 8px;
-        border-radius: 999px;
-        border: 1px solid rgba(166,128,35,.5);
-        background: rgba(166,128,35,.12);
-        color: #f2d891;
-        font-size: .72rem;
-        font-weight: 900;
-        letter-spacing: .04em;
-        text-transform: uppercase;
-        vertical-align: middle;
-    }
-
-    .required-chip.is-on{
-        display:inline-flex;
-        align-items:center;
-    }
-
-    .input{
-        width: 100%;
-        min-height: 48px;
-        border: 1.5px solid rgba(166,128,35,.38);
-        border-radius: 16px;
-        padding: .8rem .95rem;
-        background: #0f1b30;
-        color: #f8fafc;
-        outline: none;
-        box-shadow: inset 0 1px 4px rgba(0,0,0,.35);
-    }
-
-    .input:focus{
-        border-color: var(--gold-bright);
-        box-shadow: 0 0 0 3px rgba(166,128,35,.18);
-    }
-
-    .input option{
-        background: #0f1b30;
-        color: #f8fafc;
-    }
-
-    .input::placeholder{
-        color: #9eb0ca;
-    }
-    .grid{
-        display:grid;
-        grid-template-columns: repeat(2, minmax(0, 1fr));
-        gap: 14px;
-    }
-
-    .full{ grid-column: 1 / -1; }
-
-    .section{
-        padding-top: 18px;
-        margin-top: 18px;
-        border-top: 1px solid rgba(166,128,35,.18);
-    }
-
-    .section-shell{
-        padding: 1.35rem;
-        border-radius: 22px;
-        border: 1px solid rgba(166,128,35,.28);
-        background: linear-gradient(180deg, rgba(15,27,48,.95), rgba(11,21,41,.94));
-        box-shadow: inset 0 0 0 1px rgba(255,255,255,.03);
-    }
-
-    .section-head{
-        margin-bottom: 1rem;
-    }
-
-    .section-copy{
-        margin:.32rem 0 0;
-        color: var(--muted);
-        font-size: .95rem;
-        font-weight: 600;
-        line-height: 1.5;
-    }
-
-    .section-title{
-        margin: 0 0 12px;
-        font-size: 1rem;
-        font-weight: 900;
-        color: #f2d891;
-        letter-spacing: .03em;
-        text-transform: uppercase;
-    }
-
-    .record-types{
-        display:grid;
-        grid-template-columns: repeat(3, minmax(0, 1fr));
-        gap: 10px;
-        margin-bottom: 4px;
-    }
-
-    .record-option{
-        display:flex;
-        align-items:center;
-        gap: 10px;
-        min-height: 54px;
-        padding: 0 14px;
-        border: 1px solid rgba(166,128,35,.38);
-        border-radius: 16px;
-        background: linear-gradient(180deg, rgba(255,255,255,.05), rgba(255,255,255,.025));
-        color: #f8fafc;
-        font-weight: 800;
-        cursor: pointer;
-        transition: border-color .14s ease, box-shadow .14s ease, background .14s ease;
-    }
-
-    .record-option:has(input:checked){
-        border-color: var(--gold-bright);
-        box-shadow: 0 0 0 2px rgba(166,128,35,.14);
-        background: linear-gradient(180deg, rgba(221,180,87,.20), rgba(255,255,255,.05));
-    }
-
-    .record-option input{
-        accent-color: var(--gold);
-    }
-
-    .summary,
-    .blocked{
-        border-radius: 16px;
-        padding: 12px 14px;
-        margin-bottom: 14px;
-        font-weight: 600;
-    }
-
-    .summary{
-        border: 1px solid rgba(220,53,69,.24);
-        background: rgba(220,53,69,.08);
-        color: #ffd5d0;
-    }
-
-    .blocked{
-        border: 1px solid rgba(220,53,69,.3);
-        background: rgba(220,53,69,.1);
-        color: #ffd5d0;
-    }
-
-    .validation{
-        display:block;
-        margin-top: 4px;
-        font-size: .84rem;
-        font-weight: 600;
-        color: #ffb4ab;
-    }
-
-    .actions{
-        display:flex;
-        gap: 10px;
-        flex-wrap: wrap;
-        margin-top: 18px;
-    }
-
-    .btn{
-        display:inline-flex;
-        align-items:center;
-        justify-content:center;
-        min-height: 46px;
-        padding: 0 16px;
-        border-radius: 16px;
-        border: 1.5px solid rgba(166,128,35,.52);
-        background: rgba(255,255,255,.04);
-        color: #f6e6b4;
-        font-weight: 800;
-        text-decoration: none;
-        cursor: pointer;
-        transition: border-color .14s ease, box-shadow .14s ease, transform .14s ease;
-    }
-
-    .btn:hover{
-        transform: translateY(-1px);
-        border-color: rgba(221,180,87,.9);
-        box-shadow: 0 14px 28px rgba(0,0,0,.24);
-    }
-
-    .btn-outline{
-        background: rgba(255,255,255,.03);
-        color: #f6e6b4;
-    }
-
-    .btn-solid{
-        border-color: var(--gold-deep);
-        background: linear-gradient(180deg, #f2d891, #ddb457);
-        color: #081224;
-        text-shadow: 0 1px 0 rgba(92,67,10,.2);
-        box-shadow: 0 18px 34px rgba(143,107,20,.28);
-    }
-
-    .btn-solid:hover{
-        border-color: #efcf81;
-        box-shadow: 0 22px 38px rgba(143,107,20,.34);
-    }
-
-    textarea.input{
-        min-height: 120px;
-        resize: vertical;
-    }
-
-    @@media (max-width: 720px){
-        .grid,
-        .record-types{
-            grid-template-columns: 1fr;
-        }
-
-        .card-header{
-            align-items:flex-start;
-        }
-
-        .card-header,
-        .card-body{
-            padding: 20px;
-        }
-    }
-</style>
-
-<div class="page-wrap">
-    <div class="card">
-        <div class="card-header">
+<main class="dashboard-page-shell client-create-page">
+    <div class="client-create-shell">
+    <div class="client-create-panel">
+        <div class="client-create-header">
             <div>
-                <div class="eyebrow">Private client intake</div>
-                <h2 class="title">Create Lead, Client, or Business Client</h2>
-                <p class="subtitle">Open a new record from the home experience with the same client-ready look and a clean path back to the access hub.</p>
+                <div class="dashboard-eyebrow">Private client intake</div>
+                <h2 class="client-create-title">Create Lead, Client, or Business Client</h2>
+                <p class="client-create-subtitle">Open a new record from the home experience with the same client-ready look and a clean path back to the access hub.</p>
             </div>
-            <a href="@returnUrl" class="btn btn-outline">Back</a>
+            <a href="@returnUrl" class="client-create-button client-create-button-secondary">Back</a>
         </div>
 
-        <div class="card-body">
+        <div class="client-create-body">
             <form asp-action="Create" method="post" novalidate id="createClientForm">
                 @Html.AntiForgeryToken()
 
                 <input type="hidden" name="returnUrl" id="returnUrl" value="@returnUrl" />
 
-                <div asp-validation-summary="ModelOnly" class="summary text-danger"></div>
+                <div asp-validation-summary="ModelOnly" class="client-create-summary text-danger"></div>
                 @if (!ViewData.ModelState.IsValid && ViewData.ModelState.Values.Any(v => v.Errors.Count > 0))
                 {
-                    <div class="alert alert-danger" role="alert" style="margin-top:10px;">
+                    <div class="alert alert-danger client-create-validation-alert" role="alert">
                         @foreach (var entry in ViewData.ModelState)
                         {
                             foreach (var error in entry.Value.Errors)
@@ -360,75 +47,72 @@
 
                 @if (blocked)
                 {
-                    <div class="blocked text-danger" role="alert">
+                    <div class="client-create-blocked text-danger" role="alert">
                         Blocked for privacy: this email is already tied to an existing client profile.
                     </div>
                 }
 
-                <div class="section-shell">
-                    <div class="section-head">
-                        <div class="section-title">Record Type</div>
-                        <p class="section-copy">Choose the workspace type first so required fields and downstream portal behavior stay aligned.</p>
+                <div class="client-create-section-shell">
+                    <div class="client-create-section-head">
+                        <div class="client-create-section-title">Record Type</div>
+                        <p class="client-create-section-copy">Choose the workspace type first so required fields and downstream portal behavior stay aligned.</p>
                     </div>
-                    <div class="record-types">
-                        <label class="record-option">
+                    <div class="client-create-record-types">
+                        <label class="client-create-record-option">
                             <input asp-for="RecordType" type="radio" value="Lead" />
                             <span>Lead</span>
                         </label>
-                        <label class="record-option">
+                        <label class="client-create-record-option">
                             <input asp-for="RecordType" type="radio" value="Client" />
                             <span>Client</span>
                         </label>
-                        <label class="record-option">
+                        <label class="client-create-record-option">
                             <input asp-for="RecordType" type="radio" value="BusinessClient" />
                             <span>Business Client</span>
                         </label>
                     </div>
-                    <span asp-validation-for="RecordType" class="text-danger validation"></span>
+                    <span asp-validation-for="RecordType" class="text-danger client-create-validation"></span>
                 </div>
 
-                <div class="section section-shell">
-                    <div class="section-head">
-                        <div class="section-title">Client Details</div>
-                        <p class="section-copy">Capture the primary contact information and household status used across the CRM and client workspace.</p>
+                <div class="client-create-section client-create-section-shell">
+                    <div class="client-create-section-head">
+                        <div class="client-create-section-title">Client Details</div>
+                        <p class="client-create-section-copy">Capture the primary contact information and household status used across the CRM and client workspace.</p>
                     </div>
-                    <div class="grid">
+                    <div class="client-create-grid">
                     <div>
-                        <label asp-for="FirstName" class="label"></label>
-                        <span class="required-chip" data-client-chip>Required</span>
-                        <input asp-for="FirstName" class="input" autocomplete="given-name" data-client-required />
-                        <span asp-validation-for="FirstName" class="text-danger validation"></span>
-                    </div>
-
-                    <div>
-                        <label asp-for="LastName" class="label"></label>
-                        <span class="required-chip" data-client-chip>Required</span>
-                        <input asp-for="LastName" class="input" autocomplete="family-name" data-client-required />
-                        <span asp-validation-for="LastName" class="text-danger validation"></span>
+                        <label asp-for="FirstName" class="client-create-label"></label>
+                        <input asp-for="FirstName" class="client-create-input" autocomplete="given-name" data-client-required />
+                        <span asp-validation-for="FirstName" class="text-danger client-create-validation"></span>
                     </div>
 
                     <div>
-                        <label asp-for="Email" class="label"></label>
-                        <span class="required-chip" data-client-chip>Required</span>
-                        <input asp-for="Email" class="input" autocomplete="email" inputmode="email" id="Email" data-client-required />
-                        <span asp-validation-for="Email" class="text-danger validation"></span>
+                        <label asp-for="LastName" class="client-create-label"></label>
+                        <input asp-for="LastName" class="client-create-input" autocomplete="family-name" data-client-required />
+                        <span asp-validation-for="LastName" class="text-danger client-create-validation"></span>
                     </div>
 
                     <div>
-                        <label asp-for="Phone" class="label"></label>
-                        <input asp-for="Phone" class="input" autocomplete="tel" inputmode="tel" />
-                        <span asp-validation-for="Phone" class="text-danger validation"></span>
+                        <label asp-for="Email" class="client-create-label"></label>
+                        <input asp-for="Email" class="client-create-input" autocomplete="email" inputmode="email" id="Email" data-client-required />
+                        <span asp-validation-for="Email" class="text-danger client-create-validation"></span>
                     </div>
 
                     <div>
-                        <label asp-for="DOB" class="label">Date of Birth</label>
-                        <input asp-for="DOB" type="date" class="input" />
-                        <span asp-validation-for="DOB" class="text-danger validation"></span>
+                        <label asp-for="Phone" class="client-create-label"></label>
+                        <input asp-for="Phone" class="client-create-input" autocomplete="tel" inputmode="tel" />
+                        <span asp-validation-for="Phone" class="text-danger client-create-validation"></span>
                     </div>
 
                     <div>
-                        <label asp-for="MaritalStatus" class="label">Marital Status</label>
-                        <select asp-for="MaritalStatus" class="input" id="MaritalStatus">
+                        <label asp-for="DOB" class="client-create-label">Date of Birth</label>
+                        <input asp-for="DOB" type="date" class="client-create-input" />
+                        <span asp-validation-for="DOB" class="text-danger client-create-validation"></span>
+                    </div>
+
+                    <div>
+                        <label asp-for="MaritalStatus" class="client-create-label">Marital Status</label>
+                        <select asp-for="MaritalStatus" class="client-create-input" id="MaritalStatus">
                             <option value=""></option>
                             <option>Single</option>
                             <option>Married</option>
@@ -436,63 +120,117 @@
                             <option>Divorced</option>
                             <option>Widowed</option>
                         </select>
-                        <span asp-validation-for="MaritalStatus" class="text-danger validation"></span>
+                        <span asp-validation-for="MaritalStatus" class="text-danger client-create-validation"></span>
                     </div>
                 </div>
                 </div>
 
-                <div id="soCard" class="section section-shell" style="display:none;">
-                    <div class="section-head">
-                        <div class="section-title">Significant Other</div>
-                        <p class="section-copy">Required for married and domestic-partnership households so the client record opens with the right family context.</p>
+                <div id="soCard" class="client-create-section client-create-section-shell is-hidden">
+                    <div class="client-create-section-head">
+                        <div class="client-create-section-title">Significant Other</div>
+                        <p class="client-create-section-copy">Required for married and domestic-partnership households so the client record opens with the right family context.</p>
                     </div>
 
-                    <div class="grid">
+                    <div class="client-create-grid">
                         <div>
-                            <label asp-for="SignificantOtherFirstName" class="label">First Name</label>
-                            <span class="required-chip" data-so-chip>Required</span>
-                            <input asp-for="SignificantOtherFirstName" class="input" id="SignificantOtherFirstName" autocomplete="given-name" />
-                            <span asp-validation-for="SignificantOtherFirstName" class="text-danger validation"></span>
+                            <label asp-for="SignificantOtherFirstName" class="client-create-label">First Name</label>
+                            <input asp-for="SignificantOtherFirstName" class="client-create-input" id="SignificantOtherFirstName" autocomplete="given-name" />
+                            <span asp-validation-for="SignificantOtherFirstName" class="text-danger client-create-validation"></span>
                         </div>
 
                         <div>
-                            <label asp-for="SignificantOtherLastName" class="label">Last Name</label>
-                            <span class="required-chip" data-so-chip>Required</span>
-                            <input asp-for="SignificantOtherLastName" class="input" id="SignificantOtherLastName" autocomplete="family-name" />
-                            <span asp-validation-for="SignificantOtherLastName" class="text-danger validation"></span>
+                            <label asp-for="SignificantOtherLastName" class="client-create-label">Last Name</label>
+                            <input asp-for="SignificantOtherLastName" class="client-create-input" id="SignificantOtherLastName" autocomplete="family-name" />
+                            <span asp-validation-for="SignificantOtherLastName" class="text-danger client-create-validation"></span>
                         </div>
 
                         <div>
-                            <label asp-for="SignificantOtherDOB" class="label">Date of Birth</label>
-                            <span class="required-chip" data-so-chip>Required</span>
-                            <input asp-for="SignificantOtherDOB" type="date" class="input" id="SignificantOtherDOB" />
-                            <span asp-validation-for="SignificantOtherDOB" class="text-danger validation"></span>
+                            <label asp-for="SignificantOtherDOB" class="client-create-label">Date of Birth</label>
+                            <input asp-for="SignificantOtherDOB" type="date" class="client-create-input" id="SignificantOtherDOB" />
+                            <span asp-validation-for="SignificantOtherDOB" class="text-danger client-create-validation"></span>
                         </div>
 
                         <div>
-                            <label asp-for="SignificantOtherPhone" class="label">Phone</label>
-                            <input asp-for="SignificantOtherPhone" class="input" autocomplete="tel" inputmode="tel" />
-                            <span asp-validation-for="SignificantOtherPhone" class="text-danger validation"></span>
+                            <label asp-for="SignificantOtherPhone" class="client-create-label">Phone</label>
+                            <input asp-for="SignificantOtherPhone" class="client-create-input" autocomplete="tel" inputmode="tel" />
+                            <span asp-validation-for="SignificantOtherPhone" class="text-danger client-create-validation"></span>
                         </div>
 
-                        <div class="full">
-                            <label asp-for="SignificantOtherEmail" class="label">Email</label>
-                            <input asp-for="SignificantOtherEmail" class="input" autocomplete="email" inputmode="email" />
-                            <span asp-validation-for="SignificantOtherEmail" class="text-danger validation"></span>
+                        <div class="client-create-full">
+                            <label asp-for="SignificantOtherEmail" class="client-create-label">Email</label>
+                            <input asp-for="SignificantOtherEmail" class="client-create-input" autocomplete="email" inputmode="email" />
+                            <span asp-validation-for="SignificantOtherEmail" class="text-danger client-create-validation"></span>
                         </div>
                     </div>
                 </div>
 
-                <div class="section section-shell" id="crmSeed">
-                    <div class="section-head">
-                        <div class="section-title">CRM</div>
-                        <p class="section-copy">Seed relationship tracking details now if this record should land in a specific pipeline state the moment it is created.</p>
+                <div id="subscriptionCard" class="client-create-section client-create-section-shell is-hidden">
+                    <div class="client-create-section-head">
+                        <div class="client-create-section-title">Client Subscription</div>
+                        <p class="client-create-section-copy">Portal clients can leave intake with an agent-scoped ClientApp subscription offer and activation invitation already prepared.</p>
                     </div>
 
-                    <div class="grid">
+                    <input asp-for="SubscriptionCurrency" type="hidden" value="USD" />
+
+                    <div class="client-create-grid">
                         <div>
-                            <label class="label" for="CrmStatus">CRM Status</label>
-                            <select asp-for="CrmStatus" class="input" id="CrmStatus">
+                            <label class="client-create-label" asp-for="SubscriptionPriceType">Monthly Tier</label>
+                            <select asp-for="SubscriptionPriceType"
+                                    class="client-create-input"
+                                    id="SubscriptionPriceType"
+                                    data-client-required>
+                                <option value="">Select a subscription</option>
+                                <option value="Fixed50">$50 / month</option>
+                                <option value="Fixed75">$75 / month</option>
+                                <option value="Fixed100">$100 / month</option>
+                                <option value="Fixed150">$150 / month</option>
+                                <option value="Custom">Custom</option>
+                            </select>
+                            <span asp-validation-for="SubscriptionPriceType" class="text-danger client-create-validation"></span>
+                        </div>
+
+                        <div id="subscriptionCustomAmountWrap" class="is-hidden">
+                            <label class="client-create-label" asp-for="SubscriptionCustomMonthlyAmount">Custom Monthly Amount (USD)</label>
+                            <input asp-for="SubscriptionCustomMonthlyAmount" class="client-create-input" id="SubscriptionCustomMonthlyAmount" type="number" min="50" max="2500" step="0.01" placeholder="100.00" />
+                            <span asp-validation-for="SubscriptionCustomMonthlyAmount" class="text-danger client-create-validation"></span>
+                        </div>
+
+                        <div>
+                            <label class="client-create-label" asp-for="SubscriptionBillingAnchorMode">Billing Anchor</label>
+                            <select asp-for="SubscriptionBillingAnchorMode" class="client-create-input" id="SubscriptionBillingAnchorMode">
+                                <option value="FirstOfMonth">1st of month</option>
+                                <option value="FifteenthOfMonth">15th of month</option>
+                                <option value="SpecificDayOfMonth">Agent-selected day</option>
+                                <option value="ClientSelectedIfAllowed">Client-selected when policy allows</option>
+                                <option value="ProviderDefault">Provider default</option>
+                            </select>
+                            <span asp-validation-for="SubscriptionBillingAnchorMode" class="text-danger client-create-validation"></span>
+                        </div>
+
+                        <div id="subscriptionAnchorDayWrap" class="is-hidden">
+                            <label class="client-create-label" asp-for="SubscriptionBillingAnchorDay">Agent-Selected Day</label>
+                            <input asp-for="SubscriptionBillingAnchorDay" class="client-create-input" id="SubscriptionBillingAnchorDay" type="number" min="1" max="31" step="1" placeholder="15" />
+                            <span asp-validation-for="SubscriptionBillingAnchorDay" class="text-danger client-create-validation"></span>
+                        </div>
+
+                        <div class="client-create-full">
+                            <div class="client-create-section-copy">
+                                Fixed tiers are enforced on the server. Custom amounts stay in USD and must remain within the allowed range.
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="client-create-section client-create-section-shell" id="crmSeed">
+                    <div class="client-create-section-head">
+                        <div class="client-create-section-title">CRM</div>
+                        <p class="client-create-section-copy">Seed relationship tracking details now if this record should land in a specific pipeline state the moment it is created.</p>
+                    </div>
+
+                    <div class="client-create-grid">
+                        <div>
+                            <label class="client-create-label" for="CrmStatus">CRM Status</label>
+                            <select asp-for="CrmStatus" class="client-create-input" id="CrmStatus">
                                 <option value="Lead">Lead</option>
                                 <option value="Prospect">Prospect</option>
                                 <option value="Active">Active Client</option>
@@ -501,8 +239,8 @@
                         </div>
 
                         <div>
-                            <label class="label" for="PipelineStage">Pipeline Stage</label>
-                            <select asp-for="PipelineStage" class="input" id="PipelineStage">
+                            <label class="client-create-label" for="PipelineStage">Pipeline Stage</label>
+                            <select asp-for="PipelineStage" class="client-create-input" id="PipelineStage">
                                 <option value="NewLead">Lead</option>
                                 <option value="Opportunities">Opportunities</option>
                                 <option value="Contacted">Contacted</option>
@@ -519,8 +257,8 @@
                         </div>
 
                         <div>
-                            <label class="label" for="CrmPriority">Priority</label>
-                            <select asp-for="CrmPriority" class="input" id="CrmPriority">
+                            <label class="client-create-label" for="CrmPriority">Priority</label>
+                            <select asp-for="CrmPriority" class="client-create-input" id="CrmPriority">
                                 <option value="Low">Low</option>
                                 <option value="Normal">Normal</option>
                                 <option value="High">High</option>
@@ -529,51 +267,51 @@
                         </div>
 
                         <div>
-                            <label class="label" for="CrmLastTouch">Last Touch</label>
-                            <input asp-for="CrmLastTouch" type="date" class="input" id="CrmLastTouch" />
-                            <span asp-validation-for="CrmLastTouch" class="text-danger validation"></span>
+                            <label class="client-create-label" for="CrmLastTouch">Last Touch</label>
+                            <input asp-for="CrmLastTouch" type="date" class="client-create-input" id="CrmLastTouch" />
+                            <span asp-validation-for="CrmLastTouch" class="text-danger client-create-validation"></span>
                         </div>
 
                         <div>
-                            <label class="label" for="CrmNextDate">Next Action Date</label>
-                            <input asp-for="CrmNextDate" type="date" class="input" id="CrmNextDate" />
-                            <span asp-validation-for="CrmNextDate" class="text-danger validation"></span>
+                            <label class="client-create-label" for="CrmNextDate">Next Action Date</label>
+                            <input asp-for="CrmNextDate" type="date" class="client-create-input" id="CrmNextDate" />
+                            <span asp-validation-for="CrmNextDate" class="text-danger client-create-validation"></span>
                         </div>
 
-                        <div class="full">
-                            <label class="label" for="CrmNextText">Next Action (what will you do?)</label>
-                            <input asp-for="CrmNextText" type="text" class="input" id="CrmNextText" />
-                            <span asp-validation-for="CrmNextText" class="text-danger validation"></span>
+                        <div class="client-create-full">
+                            <label class="client-create-label" for="CrmNextText">Next Action (what will you do?)</label>
+                            <input asp-for="CrmNextText" type="text" class="client-create-input" id="CrmNextText" />
+                            <span asp-validation-for="CrmNextText" class="text-danger client-create-validation"></span>
                         </div>
 
-                        <div class="full">
-                            <label class="label" for="CrmTags">Tags (comma separated)</label>
-                            <input asp-for="CrmTags" type="text" class="input" id="CrmTags" />
-                            <span asp-validation-for="CrmTags" class="text-danger validation"></span>
+                        <div class="client-create-full">
+                            <label class="client-create-label" for="CrmTags">Tags (comma separated)</label>
+                            <input asp-for="CrmTags" type="text" class="client-create-input" id="CrmTags" />
+                            <span asp-validation-for="CrmTags" class="text-danger client-create-validation"></span>
                         </div>
 
-                        <div class="full">
-                            <label class="label" for="CrmNotes">Relationship Notes</label>
-                            <textarea asp-for="CrmNotes" class="input" id="CrmNotes" style="min-height:96px; resize:vertical;"></textarea>
-                            <span asp-validation-for="CrmNotes" class="text-danger validation"></span>
+                        <div class="client-create-full">
+                            <label class="client-create-label" for="CrmNotes">Relationship Notes</label>
+                            <textarea asp-for="CrmNotes" class="client-create-input client-create-notes" id="CrmNotes"></textarea>
+                            <span asp-validation-for="CrmNotes" class="text-danger client-create-validation"></span>
                         </div>
                     </div>
 
-                    <div class="actions">
-                        <button type="button" class="btn" id="btnCrmTouchToday">Today for Last Touch</button>
-                        <button type="button" class="btn" id="btnCrmNextToday">Today for Next Action</button>
-                        <button type="button" class="btn" id="btnCrmClear">Clear CRM</button>
+                    <div class="client-create-actions">
+                        <button type="button" class="client-create-button" id="btnCrmTouchToday">Today for Last Touch</button>
+                        <button type="button" class="client-create-button" id="btnCrmNextToday">Today for Next Action</button>
+                        <button type="button" class="client-create-button" id="btnCrmClear">Clear CRM</button>
                     </div>
                 </div>
 
-                <div class="actions">
-                    <button type="submit" class="btn btn-solid" id="submitCreateBtn">Create Lead</button>
-                    <a href="@returnUrl" class="btn btn-outline">Cancel</a>
+                <div class="client-create-actions">
+                    <button type="submit" class="client-create-button client-create-button-primary" id="submitCreateBtn">Create Lead</button>
+                    <a href="@returnUrl" class="client-create-button client-create-button-secondary">Cancel</a>
                 </div>
             </form>
         </div>
     </div>
-</div>
+</main>
 
 @section Scripts {
     <partial name="_ValidationScriptsPartial" />

@@ -227,10 +227,10 @@
                             </form>
 
                             <div class="pf-order-detail-list">
-                                <div><span>Square Payment</span><strong>@(string.IsNullOrWhiteSpace(order.SquarePaymentId) ? "Not captured" : order.SquarePaymentId)</strong></div>
-                                @if (!string.IsNullOrWhiteSpace(order.SquareError))
+                                <div><span>Payment Reference</span><strong>@(string.IsNullOrWhiteSpace(order.PaymentReferenceId) ? "Not captured" : order.PaymentReferenceId)</strong></div>
+                                @if (!string.IsNullOrWhiteSpace(order.PaymentFailureSummary))
                                 {
-                                    <div><span>Square Error</span><strong>@order.SquareError</strong></div>
+                                    <div><span>Payment Error</span><strong>@order.PaymentFailureSummary</strong></div>
                                 }
                             </div>
                         </article>

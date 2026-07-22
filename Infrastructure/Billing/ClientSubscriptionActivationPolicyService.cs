@@ -1,0 +1,142 @@
+using Domain.Billing;
+using Domain.Entities;
+
+namespace Infrastructure.Billing;
+
+internal sealed class ClientSubscriptionActivationPolicyService : IClientSubscriptionActivationPolicyService
+{
+    private static readonly int[] SupportedClientAnchorDays = [1, 15];
+    private readonly ClientSubscriptionActivationPolicyOptions _options;
+    private readonly TimeZoneInfo _businessTimeZone;
+
+    public ClientSubscriptionActivationPolicyService(ClientSubscriptionActivationPolicyOptions options)
+    {
+        _options = options;
+        _businessTimeZone = ResolveTimeZone(options.BusinessTimeZoneId);
+    }
+
+    public ClientSubscriptionActivationSchedule ResolveActivationSchedule(ClientSubscriptionOffer offer, int? requestedBillingAnchorDay, DateTime nowUtc)
+    {
+        var effectiveNowUtc = EnsureUtc(nowUtc);
+        var localNow = TimeZoneInfo.ConvertTimeFromUtc(effectiveNowUtc, _businessTimeZone);
+        var anchorDay = ResolveAnchorDay(offer, requestedBillingAnchorDay);
+        var firstChargeUtc = effectiveNowUtc;
+
+        DateOnly firstRecurringRenewalLocalDate;
+        if (anchorDay.HasValue)
+        {
+            firstRecurringRenewalLocalDate = ResolveAnchoredRenewalDate(localNow, anchorDay.Value, _options.SameDayAnchorCutoffHourLocal, _options.MinimumDaysBeforeAnchoredRenewal);
+        }
+        else
+        {
+            firstRecurringRenewalLocalDate = DateOnly.FromDateTime(localNow.Date.AddDays(_options.MinimumDaysBeforeAnchoredRenewal));
+        }
+
+        var firstRecurringRenewalUtc = TimeZoneInfo.ConvertTimeToUtc(
+            new DateTime(firstRecurringRenewalLocalDate.Year, firstRecurringRenewalLocalDate.Month, firstRecurringRenewalLocalDate.Day, 0, 0, 0, DateTimeKind.Unspecified),
+            _businessTimeZone);
+
+        return new ClientSubscriptionActivationSchedule(
+            offer.MonthlyAmountCents,
+            NormalizeCurrency(offer.Currency),
+            anchorDay,
+            _businessTimeZone.Id,
+            _options.MinimumDaysBeforeAnchoredRenewal,
+            _options.SameDayAnchorCutoffHourLocal,
+            firstChargeUtc,
+            firstRecurringRenewalUtc,
+            firstRecurringRenewalLocalDate);
+    }
+
+    public string? ResolveProviderPlanVariationId(ClientSubscriptionOffer offer)
+    {
+        if (_options.PlanVariationIds.TryGetValue(offer.PriceType.ToString(), out var mappedByType) &&
+            !string.IsNullOrWhiteSpace(mappedByType))
+        {
+            return mappedByType;
+        }
+
+        var amountKey = offer.MonthlyAmountCents.ToString(System.Globalization.CultureInfo.InvariantCulture);
+        if (_options.PlanVariationIds.TryGetValue(amountKey, out var mappedByAmount) &&
+            !string.IsNullOrWhiteSpace(mappedByAmount))
+        {
+            return mappedByAmount;
+        }
+
+        return _options.DefaultProviderPlanVariationId;
+    }
+
+    private static int? ResolveAnchorDay(ClientSubscriptionOffer offer, int? requestedBillingAnchorDay)
+    {
+        return offer.BillingAnchorSelectionMode switch
+        {
+            BillingAnchorSelectionMode.ProviderDefault => null,
+            BillingAnchorSelectionMode.FirstOfMonth => 1,
+            BillingAnchorSelectionMode.FifteenthOfMonth => 15,
+            BillingAnchorSelectionMode.SpecificDayOfMonth => ClampAnchorDay(offer.SelectedBillingAnchorDay),
+            BillingAnchorSelectionMode.ClientSelectedIfAllowed => ResolveClientSelectedAnchorDay(requestedBillingAnchorDay),
+            _ => ClampAnchorDay(offer.SelectedBillingAnchorDay)
+        };
+    }
+
+    private static int? ResolveClientSelectedAnchorDay(int? requestedBillingAnchorDay)
+    {
+        if (!requestedBillingAnchorDay.HasValue)
+            return 1;
+
+        return SupportedClientAnchorDays.Contains(requestedBillingAnchorDay.Value)
+            ? requestedBillingAnchorDay.Value
+            : throw new InvalidOperationException("Only the 1st or 15th can be selected for recurring billing.");
+    }
+
+    private static int? ClampAnchorDay(int? day)
+    {
+        return day is >= 1 and <= 31 ? day : null;
+    }
+
+    private static DateOnly ResolveAnchoredRenewalDate(DateTime localNow, int anchorDay, int cutoffHourLocal, int minimumIntervalDays)
+    {
+        var firstChargeDate = DateOnly.FromDateTime(localNow.Date);
+        var candidate = BuildAnchoredDate(firstChargeDate, anchorDay);
+
+        if (candidate < firstChargeDate || (candidate == firstChargeDate && localNow.Hour >= cutoffHourLocal))
+            candidate = BuildAnchoredDate(firstChargeDate.AddMonths(1), anchorDay);
+
+        while (candidate.DayNumber - firstChargeDate.DayNumber < minimumIntervalDays)
+            candidate = BuildAnchoredDate(candidate.AddMonths(1), anchorDay);
+
+        return candidate;
+    }
+
+    private static DateOnly BuildAnchoredDate(DateOnly referenceMonth, int anchorDay)
+    {
+        var daysInMonth = DateTime.DaysInMonth(referenceMonth.Year, referenceMonth.Month);
+        return new DateOnly(referenceMonth.Year, referenceMonth.Month, Math.Min(anchorDay, daysInMonth));
+    }
+
+    private static TimeZoneInfo ResolveTimeZone(string configuredTimeZoneId)
+    {
+        try
+        {
+            return TimeZoneInfo.FindSystemTimeZoneById(configuredTimeZoneId);
+        }
+        catch (TimeZoneNotFoundException)
+        {
+            return TimeZoneInfo.Utc;
+        }
+        catch (InvalidTimeZoneException)
+        {
+            return TimeZoneInfo.Utc;
+        }
+    }
+
+    private static DateTime EnsureUtc(DateTime value)
+    {
+        return value.Kind == DateTimeKind.Utc
+            ? value
+            : DateTime.SpecifyKind(value, DateTimeKind.Utc);
+    }
+
+    private static string NormalizeCurrency(string currency) =>
+        string.IsNullOrWhiteSpace(currency) ? "USD" : currency.Trim().ToUpperInvariant();
+}

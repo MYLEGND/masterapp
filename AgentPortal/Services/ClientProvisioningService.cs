@@ -15,8 +15,11 @@ public class ClientProvisioningService
     private static readonly ConcurrentDictionary<string, GraphServiceClient> GraphClients = new(StringComparer.Ordinal);
     private readonly IConfiguration _config;
     private readonly ILogger<ClientProvisioningService> _logger;
-    private readonly GraphServiceClient _graph;
     private readonly MasterAppDbContext _db;
+    private readonly string _tenantId;
+    private readonly string _clientId;
+    private readonly string _clientSecret;
+    private readonly string _graphCacheKey;
 
     public ClientProvisioningService(
         IConfiguration config,
@@ -27,19 +30,19 @@ public class ClientProvisioningService
         _logger = logger;
         _db = db;
 
-        var tenantId =
+        _tenantId =
             GetSetting(
                 "GraphProvisioning:TenantId", "GraphProvisioning__TenantId",
                 "AzureAd:TenantId", "AzureAd__TenantId"
             ) ?? "";
 
-        var clientId =
+        _clientId =
             GetSetting(
                 "GraphProvisioning:ClientId", "GraphProvisioning__ClientId",
                 "AzureAd:ClientId", "AzureAd__ClientId"
             ) ?? "";
 
-        var clientSecret =
+        _clientSecret =
             GetSetting(
                 "GraphProvisioning:ClientSecret", "GraphProvisioning__ClientSecret",
                 "AzureAd:ClientSecret", "AzureAd__ClientSecret"
@@ -47,34 +50,21 @@ public class ClientProvisioningService
 
         _logger.LogInformation(
             "GraphProvisioning config present? Tenant:{Tenant} Client:{Client} Secret:{Secret}",
-            !string.IsNullOrWhiteSpace(tenantId),
-            !string.IsNullOrWhiteSpace(clientId),
-            !string.IsNullOrWhiteSpace(clientSecret)
+            !string.IsNullOrWhiteSpace(_tenantId),
+            !string.IsNullOrWhiteSpace(_clientId),
+            !string.IsNullOrWhiteSpace(_clientSecret)
         );
 
-        if (string.IsNullOrWhiteSpace(tenantId))
+        if (string.IsNullOrWhiteSpace(_tenantId))
             throw new Exception("Missing TenantId. Expected GraphProvisioning:TenantId (or GraphProvisioning__TenantId) or AzureAd:TenantId (or AzureAd__TenantId).");
 
-        if (string.IsNullOrWhiteSpace(clientId))
+        if (string.IsNullOrWhiteSpace(_clientId))
             throw new Exception("Missing ClientId. Expected GraphProvisioning:ClientId (or GraphProvisioning__ClientId) or AzureAd:ClientId (or AzureAd__ClientId).");
 
-        if (string.IsNullOrWhiteSpace(clientSecret))
+        if (string.IsNullOrWhiteSpace(_clientSecret))
             throw new Exception("Missing ClientSecret. Expected GraphProvisioning:ClientSecret (or GraphProvisioning__ClientSecret) or AzureAd:ClientSecret (or AzureAd__ClientSecret).");
 
-        try
-        {
-            var cacheKey = $"{tenantId}|{clientId}|{clientSecret}";
-            _graph = GraphClients.GetOrAdd(cacheKey, _ =>
-            {
-                var credential = new ClientSecretCredential(tenantId, clientId, clientSecret);
-                return new GraphServiceClient(credential, new[] { "https://graph.microsoft.com/.default" });
-            });
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "ClientSecretCredential authentication failed while building Graph client.");
-            throw;
-        }
+        _graphCacheKey = $"{_tenantId}|{_clientId}|{_clientSecret}";
     }
 
     private string? GetSetting(params string[] keys)
@@ -89,6 +79,23 @@ public class ClientProvisioningService
     }
 
     private static string Norm(string? v) => (v ?? "").Trim().ToLowerInvariant();
+
+    private GraphServiceClient GetGraphClient()
+    {
+        try
+        {
+            return GraphClients.GetOrAdd(_graphCacheKey, _ =>
+            {
+                var credential = new ClientSecretCredential(_tenantId, _clientId, _clientSecret);
+                return new GraphServiceClient(credential, new[] { "https://graph.microsoft.com/.default" });
+            });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "ClientSecretCredential authentication failed while building Graph client.");
+            throw;
+        }
+    }
 
     // ==========================================================
     // ✅ CLIENT USERNAME STRATEGY (YOUR RULE)
@@ -126,7 +133,7 @@ public class ClientProvisioningService
         var e = (upn ?? "").Trim().Replace("'", "''");
         if (string.IsNullOrWhiteSpace(e)) return false;
 
-        var result = await _graph.Users.GetAsync(req =>
+        var result = await GetGraphClient().Users.GetAsync(req =>
         {
             req.QueryParameters.Filter = $"userPrincipalName eq '{e}'";
             req.QueryParameters.Select = new[] { "id" };
@@ -142,7 +149,7 @@ public class ClientProvisioningService
         var e = (nick ?? "").Trim().ToLowerInvariant().Replace("'", "''");
         if (string.IsNullOrWhiteSpace(e)) return false;
 
-        var result = await _graph.Users.GetAsync(req =>
+        var result = await GetGraphClient().Users.GetAsync(req =>
         {
             req.QueryParameters.Filter = $"mailNickname eq '{e}'";
             req.QueryParameters.Select = new[] { "id" };
@@ -197,7 +204,7 @@ public class ClientProvisioningService
             var esc = eMail.Replace("'", "''");
             var filter = $"mail eq '{esc}' or otherMails/any(m:m eq '{esc}')";
 
-            var result = await _graph.Users.GetAsync(req =>
+            var result = await GetGraphClient().Users.GetAsync(req =>
             {
                 req.QueryParameters.Filter = filter;
                 req.QueryParameters.Select = new[] { "id", "userPrincipalName", "mail", "otherMails" };
@@ -249,7 +256,7 @@ public class ClientProvisioningService
             SendInvitationMessage = sendMicrosoftInviteEmail
         };
 
-        var created = await _graph.Invitations.PostAsync(invitation);
+        var created = await GetGraphClient().Invitations.PostAsync(invitation);
         var objectId = created?.InvitedUser?.Id;
 
         if (string.IsNullOrWhiteSpace(objectId))
@@ -548,7 +555,7 @@ public class ClientProvisioningService
         if (string.IsNullOrWhiteSpace(sender))
             throw new Exception("Missing Provisioning:SenderMailbox (or Provisioning__SenderMailbox) in configuration.");
 
-        await _graph.Users[sender].SendMail.PostAsync(requestBody);
+        await GetGraphClient().Users[sender].SendMail.PostAsync(requestBody);
     }
 
     public async Task SendOnboardingInviteEmailAsync(string toEmail, string firstName, string onboardingLink)
@@ -601,7 +608,7 @@ public class ClientProvisioningService
         if (string.IsNullOrWhiteSpace(sender))
             throw new Exception("Missing Provisioning:SenderMailbox (or Provisioning__SenderMailbox) in configuration.");
 
-        await _graph.Users[sender].SendMail.PostAsync(requestBody);
+        await GetGraphClient().Users[sender].SendMail.PostAsync(requestBody);
     }
 
         // ==========================================================
@@ -693,7 +700,7 @@ public class ClientProvisioningService
                 if (string.IsNullOrWhiteSpace(sender))
                         throw new Exception("Missing Provisioning:SenderMailbox (or Provisioning__SenderMailbox) in configuration.");
 
-                await _graph.Users[sender].SendMail.PostAsync(requestBody);
+                await GetGraphClient().Users[sender].SendMail.PostAsync(requestBody);
 
             return assistantObjectId;
         }
@@ -709,7 +716,7 @@ public class ClientProvisioningService
 
         try
         {
-            await _graph.Users[objectId].DeleteAsync();
+            await GetGraphClient().Users[objectId].DeleteAsync();
         }
         catch (ODataError ex)
         {

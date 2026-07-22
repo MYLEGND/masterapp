@@ -990,6 +990,152 @@ namespace Infrastructure.Migrations
                     b.ToTable("AppointmentSyncLogs", (string)null);
                 });
 
+            modelBuilder.Entity("Domain.Entities.BillingAuditEntry", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("Action")
+                        .IsRequired()
+                        .HasMaxLength(80)
+                        .HasColumnType("nvarchar(80)");
+
+                    b.Property<string>("ActorId")
+                        .HasMaxLength(450)
+                        .HasColumnType("nvarchar(450)");
+
+                    b.Property<string>("ActorType")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("nvarchar(32)");
+
+                    b.Property<string>("CorrelationId")
+                        .HasMaxLength(128)
+                        .HasColumnType("nvarchar(128)");
+
+                    b.Property<string>("EntityId")
+                        .IsRequired()
+                        .HasMaxLength(128)
+                        .HasColumnType("nvarchar(128)");
+
+                    b.Property<string>("EntityType")
+                        .IsRequired()
+                        .HasMaxLength(120)
+                        .HasColumnType("nvarchar(120)");
+
+                    b.Property<string>("NewStatus")
+                        .HasMaxLength(40)
+                        .HasColumnType("nvarchar(40)");
+
+                    b.Property<DateTime>("OccurredUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("PreviousStatus")
+                        .HasMaxLength(40)
+                        .HasColumnType("nvarchar(40)");
+
+                    b.Property<string>("ReasonCode")
+                        .HasMaxLength(120)
+                        .HasColumnType("nvarchar(120)");
+
+                    b.Property<string>("SanitizedMetadataJson")
+                        .HasColumnType("text");
+
+                    b.Property<string>("Source")
+                        .IsRequired()
+                        .HasMaxLength(80)
+                        .HasColumnType("nvarchar(80)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ActorId", "OccurredUtc");
+
+                    b.HasIndex("EntityType", "EntityId", "OccurredUtc");
+
+                    b.ToTable("BillingAuditEntries", (string)null);
+                });
+
+            modelBuilder.Entity("Domain.Entities.BillingProviderEvent", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<int>("AttemptCount")
+                        .HasColumnType("int");
+
+                    b.Property<string>("EventType")
+                        .IsRequired()
+                        .HasMaxLength(120)
+                        .HasColumnType("nvarchar(120)");
+
+                    b.Property<string>("PayloadHash")
+                        .IsRequired()
+                        .HasMaxLength(128)
+                        .HasColumnType("nvarchar(128)");
+
+                    b.Property<DateTime?>("ProcessedUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("ProcessingStatus")
+                        .IsRequired()
+                        .HasMaxLength(40)
+                        .HasColumnType("nvarchar(40)");
+
+                    b.Property<string>("Provider")
+                        .IsRequired()
+                        .HasMaxLength(40)
+                        .HasColumnType("nvarchar(40)");
+
+                    b.Property<string>("ProviderEnvironment")
+                        .IsRequired()
+                        .HasMaxLength(40)
+                        .HasColumnType("nvarchar(40)");
+
+                    b.Property<string>("ProviderEventId")
+                        .IsRequired()
+                        .HasMaxLength(160)
+                        .HasColumnType("nvarchar(160)");
+
+                    b.Property<string>("ProviderObjectId")
+                        .HasMaxLength(160)
+                        .HasColumnType("nvarchar(160)");
+
+                    b.Property<DateTime>("ReceivedUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("RetainedPayloadJson")
+                        .HasColumnType("text");
+
+                    b.Property<DateTime?>("RetryUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<byte[]>("RowVersion")
+                        .IsConcurrencyToken()
+                        .IsRequired()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("rowversion");
+
+                    b.Property<string>("SafeErrorCode")
+                        .HasMaxLength(120)
+                        .HasColumnType("nvarchar(120)");
+
+                    b.Property<DateTime?>("SignatureValidatedUtc")
+                        .HasColumnType("datetime2");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ProviderObjectId");
+
+                    b.HasIndex("ProcessingStatus", "RetryUtc");
+
+                    b.HasIndex("Provider", "ProviderEnvironment", "ProviderEventId")
+                        .IsUnique();
+
+                    b.ToTable("BillingProviderEvents", (string)null);
+                });
+
             modelBuilder.Entity("Domain.Entities.Blocker", b =>
                 {
                     b.Property<Guid>("Id")
@@ -1110,6 +1256,70 @@ namespace Infrastructure.Migrations
                     b.ToTable("BookkeepingEntries");
                 });
 
+            modelBuilder.Entity("Domain.Entities.ClientEntitlement", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid>("ClientProfileId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime>("CreatedUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<DateTime?>("EffectiveUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("EntitlementKey")
+                        .IsRequired()
+                        .HasMaxLength(120)
+                        .HasColumnType("nvarchar(120)");
+
+                    b.Property<DateTime?>("ExpirationUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<DateTime?>("GraceOrSuspensionUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("ReasonCode")
+                        .HasMaxLength(120)
+                        .HasColumnType("nvarchar(120)");
+
+                    b.Property<byte[]>("RowVersion")
+                        .IsConcurrencyToken()
+                        .IsRequired()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("rowversion");
+
+                    b.Property<string>("SourceId")
+                        .IsRequired()
+                        .HasMaxLength(160)
+                        .HasColumnType("nvarchar(160)");
+
+                    b.Property<string>("SourceType")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("nvarchar(32)");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("nvarchar(32)");
+
+                    b.Property<DateTime>("UpdatedUtc")
+                        .HasColumnType("datetime2");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("Status");
+
+                    b.HasIndex("ClientProfileId", "EntitlementKey")
+                        .IsUnique();
+
+                    b.ToTable("ClientEntitlements", (string)null);
+                });
+
             modelBuilder.Entity("Domain.Entities.ClientFinancialPlan", b =>
                 {
                     b.Property<Guid>("Id")
@@ -1148,6 +1358,72 @@ namespace Infrastructure.Migrations
                         .HasFilter("[IsDeleted] = 0");
 
                     b.ToTable("ClientFinancialPlans");
+                });
+
+            modelBuilder.Entity("Domain.Entities.ClientIdentityContinuation", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid>("ClientProfileId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid?>("ClientSubscriptionId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime?>("ConsumedUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<DateTime>("CreatedUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<DateTime>("ExpiresUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("IntendedNormalizedEmail")
+                        .IsRequired()
+                        .HasMaxLength(320)
+                        .HasColumnType("nvarchar(320)");
+
+                    b.Property<string>("Purpose")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("nvarchar(32)");
+
+                    b.Property<string>("ReturnUrl")
+                        .IsRequired()
+                        .HasMaxLength(2048)
+                        .HasColumnType("nvarchar(2048)");
+
+                    b.Property<byte[]>("RowVersion")
+                        .IsConcurrencyToken()
+                        .IsRequired()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("rowversion");
+
+                    b.Property<Guid?>("SubscriptionActivationInvitationId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("TokenHash")
+                        .IsRequired()
+                        .HasMaxLength(128)
+                        .HasColumnType("nvarchar(128)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ClientSubscriptionId");
+
+                    b.HasIndex("SubscriptionActivationInvitationId");
+
+                    b.HasIndex("TokenHash")
+                        .IsUnique();
+
+                    b.HasIndex("ClientProfileId", "ConsumedUtc");
+
+                    b.HasIndex("ClientProfileId", "ExpiresUtc");
+
+                    b.ToTable("ClientIdentityContinuations", (string)null);
                 });
 
             modelBuilder.Entity("Domain.Entities.ClientProfile", b =>
@@ -1196,6 +1472,10 @@ namespace Infrastructure.Migrations
                         .HasMaxLength(320)
                         .HasColumnType("nvarchar(320)");
 
+                    b.Property<string>("ExternalIdentityObjectId")
+                        .HasMaxLength(450)
+                        .HasColumnType("nvarchar(450)");
+
                     b.Property<string>("FirstName")
                         .IsRequired()
                         .HasColumnType("nvarchar(max)");
@@ -1242,11 +1522,211 @@ namespace Infrastructure.Migrations
 
                     b.HasKey("Id");
 
+                    b.HasIndex("ExternalIdentityObjectId")
+                        .IsUnique()
+                        .HasFilter("[ExternalIdentityObjectId] IS NOT NULL");
+
                     b.HasIndex("NormalizedEmail")
                         .IsUnique()
                         .HasFilter("[NormalizedEmail] IS NOT NULL");
 
                     b.ToTable("ClientProfiles");
+                });
+
+            modelBuilder.Entity("Domain.Entities.ClientSubscription", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid>("AcceptedOfferId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime?>("ActivatedUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int?>("BillingAnchorDay")
+                        .HasColumnType("int");
+
+                    b.Property<string>("BillingTimeZoneId")
+                        .IsRequired()
+                        .HasMaxLength(120)
+                        .HasColumnType("nvarchar(120)");
+
+                    b.Property<bool>("CancelAtPeriodEnd")
+                        .HasColumnType("bit");
+
+                    b.Property<DateTime?>("CancelledUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<Guid>("ClientProfileId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime>("CreatedUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("Currency")
+                        .IsRequired()
+                        .HasMaxLength(8)
+                        .HasColumnType("nvarchar(8)");
+
+                    b.Property<DateTime?>("CurrentPeriodEndUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<DateTime?>("CurrentPeriodStartUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<DateTime?>("FirstChargeUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<DateTime?>("FirstRecurringRenewalUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<DateTime?>("GracePeriodEndsUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int>("MonthlyAmountCents")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime?>("NextBillingDateUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("OwnerAgentUserId")
+                        .IsRequired()
+                        .HasMaxLength(450)
+                        .HasColumnType("nvarchar(450)");
+
+                    b.Property<string>("PaymentStanding")
+                        .IsRequired()
+                        .HasMaxLength(40)
+                        .HasColumnType("nvarchar(40)");
+
+                    b.Property<string>("Provider")
+                        .IsRequired()
+                        .HasMaxLength(40)
+                        .HasColumnType("nvarchar(40)");
+
+                    b.Property<string>("ProviderCustomerId")
+                        .HasMaxLength(160)
+                        .HasColumnType("nvarchar(160)");
+
+                    b.Property<string>("ProviderEnvironment")
+                        .IsRequired()
+                        .HasMaxLength(40)
+                        .HasColumnType("nvarchar(40)");
+
+                    b.Property<string>("ProviderPaymentMethodId")
+                        .HasMaxLength(160)
+                        .HasColumnType("nvarchar(160)");
+
+                    b.Property<string>("ProviderPlanVariationId")
+                        .HasMaxLength(160)
+                        .HasColumnType("nvarchar(160)");
+
+                    b.Property<string>("ProviderSubscriptionId")
+                        .HasMaxLength(160)
+                        .HasColumnType("nvarchar(160)");
+
+                    b.Property<byte[]>("RowVersion")
+                        .IsConcurrencyToken()
+                        .IsRequired()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("rowversion");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(40)
+                        .HasColumnType("nvarchar(40)");
+
+                    b.Property<DateTime>("UpdatedUtc")
+                        .HasColumnType("datetime2");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("AcceptedOfferId");
+
+                    b.HasIndex("ClientProfileId")
+                        .IsUnique()
+                        .HasFilter("[Status] <> 'Canceled' AND [Status] <> 'ActivationFailed'");
+
+                    b.HasIndex("ClientProfileId", "UpdatedUtc");
+
+                    b.HasIndex("Provider", "ProviderEnvironment", "ProviderCustomerId");
+
+                    b.HasIndex("Provider", "ProviderEnvironment", "ProviderSubscriptionId")
+                        .IsUnique()
+                        .HasFilter("[ProviderSubscriptionId] IS NOT NULL");
+
+                    b.ToTable("ClientSubscriptions", (string)null);
+                });
+
+            modelBuilder.Entity("Domain.Entities.ClientSubscriptionOffer", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("BillingAnchorSelectionMode")
+                        .IsRequired()
+                        .HasMaxLength(40)
+                        .HasColumnType("nvarchar(40)");
+
+                    b.Property<Guid>("ClientProfileId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime>("CreatedUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("Currency")
+                        .IsRequired()
+                        .HasMaxLength(8)
+                        .HasColumnType("nvarchar(8)");
+
+                    b.Property<DateTime?>("EffectiveUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<DateTime?>("ExpiresUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int>("MonthlyAmountCents")
+                        .HasColumnType("int");
+
+                    b.Property<string>("OwnerAgentUserId")
+                        .IsRequired()
+                        .HasMaxLength(450)
+                        .HasColumnType("nvarchar(450)");
+
+                    b.Property<string>("PriceType")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("nvarchar(32)");
+
+                    b.Property<byte[]>("RowVersion")
+                        .IsConcurrencyToken()
+                        .IsRequired()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("rowversion");
+
+                    b.Property<int?>("SelectedBillingAnchorDay")
+                        .HasColumnType("int");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("nvarchar(32)");
+
+                    b.Property<DateTime>("UpdatedUtc")
+                        .HasColumnType("datetime2");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ClientProfileId");
+
+                    b.HasIndex("OwnerAgentUserId");
+
+                    b.HasIndex("ClientProfileId", "Status");
+
+                    b.ToTable("ClientSubscriptionOffers", (string)null);
                 });
 
             modelBuilder.Entity("Domain.Entities.CommerceBusiness", b =>
@@ -3236,6 +3716,172 @@ namespace Infrastructure.Migrations
                     b.ToTable("RecurringExpenses");
                 });
 
+            modelBuilder.Entity("Domain.Entities.SubscriptionActivationInvitation", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid>("ClientProfileId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid>("ClientSubscriptionOfferId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("CreatedByAgentUserId")
+                        .IsRequired()
+                        .HasMaxLength(450)
+                        .HasColumnType("nvarchar(450)");
+
+                    b.Property<DateTime>("CreatedUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<DateTime>("ExpiresUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("IntendedNormalizedEmail")
+                        .IsRequired()
+                        .HasMaxLength(320)
+                        .HasColumnType("nvarchar(320)");
+
+                    b.Property<DateTime?>("LastSentUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<DateTime?>("PaymentStartedUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<DateTime?>("RedeemedUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<DateTime?>("RevokedUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<byte[]>("RowVersion")
+                        .IsConcurrencyToken()
+                        .IsRequired()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("rowversion");
+
+                    b.Property<int>("SendCount")
+                        .HasColumnType("int");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("nvarchar(32)");
+
+                    b.Property<DateTime?>("SupersededUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("TokenHash")
+                        .IsRequired()
+                        .HasMaxLength(128)
+                        .HasColumnType("nvarchar(128)");
+
+                    b.Property<DateTime?>("ViewedUtc")
+                        .HasColumnType("datetime2");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ClientSubscriptionOfferId");
+
+                    b.HasIndex("TokenHash")
+                        .IsUnique();
+
+                    b.HasIndex("ClientProfileId", "Status");
+
+                    b.ToTable("SubscriptionActivationInvitations", (string)null);
+                });
+
+            modelBuilder.Entity("Domain.Entities.SubscriptionPayment", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<int>("AmountCents")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime?>("BillingPeriodEndUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<DateTime?>("BillingPeriodStartUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<Guid?>("ClientSubscriptionId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid?>("CommerceOrderId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime>("CreatedUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("Currency")
+                        .IsRequired()
+                        .HasMaxLength(8)
+                        .HasColumnType("nvarchar(8)");
+
+                    b.Property<string>("Provider")
+                        .IsRequired()
+                        .HasMaxLength(40)
+                        .HasColumnType("nvarchar(40)");
+
+                    b.Property<string>("ProviderEnvironment")
+                        .IsRequired()
+                        .HasMaxLength(40)
+                        .HasColumnType("nvarchar(40)");
+
+                    b.Property<string>("ProviderInvoiceId")
+                        .HasMaxLength(160)
+                        .HasColumnType("nvarchar(160)");
+
+                    b.Property<DateTime?>("ProviderOccurredUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("ProviderPaymentId")
+                        .HasMaxLength(160)
+                        .HasColumnType("nvarchar(160)");
+
+                    b.Property<string>("ProviderRefundId")
+                        .HasMaxLength(160)
+                        .HasColumnType("nvarchar(160)");
+
+                    b.Property<byte[]>("RowVersion")
+                        .IsConcurrencyToken()
+                        .IsRequired()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("rowversion");
+
+                    b.Property<string>("SafeFailureCode")
+                        .HasMaxLength(120)
+                        .HasColumnType("nvarchar(120)");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(40)
+                        .HasColumnType("nvarchar(40)");
+
+                    b.Property<DateTime>("UpdatedUtc")
+                        .HasColumnType("datetime2");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ClientSubscriptionId");
+
+                    b.HasIndex("CommerceOrderId");
+
+                    b.HasIndex("Provider", "ProviderEnvironment", "ProviderPaymentId")
+                        .IsUnique()
+                        .HasFilter("[ProviderPaymentId] IS NOT NULL");
+
+                    b.HasIndex("Provider", "ProviderEnvironment", "ProviderRefundId")
+                        .IsUnique()
+                        .HasFilter("[ProviderRefundId] IS NOT NULL");
+
+                    b.ToTable("SubscriptionPayments", (string)null);
+                });
+
             modelBuilder.Entity("Domain.Entities.UnderwritingRecord", b =>
                 {
                     b.Property<Guid>("Id")
@@ -3853,6 +4499,17 @@ namespace Infrastructure.Migrations
                     b.Navigation("RecurringExpense");
                 });
 
+            modelBuilder.Entity("Domain.Entities.ClientEntitlement", b =>
+                {
+                    b.HasOne("Domain.Entities.ClientProfile", "ClientProfile")
+                        .WithMany()
+                        .HasForeignKey("ClientProfileId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("ClientProfile");
+                });
+
             modelBuilder.Entity("Domain.Entities.ClientFinancialPlan", b =>
                 {
                     b.HasOne("Domain.Entities.ClientProfile", null)
@@ -3860,6 +4517,61 @@ namespace Infrastructure.Migrations
                         .HasForeignKey("ClientId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
+                });
+
+            modelBuilder.Entity("Domain.Entities.ClientIdentityContinuation", b =>
+                {
+                    b.HasOne("Domain.Entities.ClientProfile", "ClientProfile")
+                        .WithMany()
+                        .HasForeignKey("ClientProfileId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("Domain.Entities.ClientSubscription", "ClientSubscription")
+                        .WithMany()
+                        .HasForeignKey("ClientSubscriptionId")
+                        .OnDelete(DeleteBehavior.SetNull);
+
+                    b.HasOne("Domain.Entities.SubscriptionActivationInvitation", "SubscriptionActivationInvitation")
+                        .WithMany()
+                        .HasForeignKey("SubscriptionActivationInvitationId")
+                        .OnDelete(DeleteBehavior.SetNull);
+
+                    b.Navigation("ClientProfile");
+
+                    b.Navigation("ClientSubscription");
+
+                    b.Navigation("SubscriptionActivationInvitation");
+                });
+
+            modelBuilder.Entity("Domain.Entities.ClientSubscription", b =>
+                {
+                    b.HasOne("Domain.Entities.ClientSubscriptionOffer", "AcceptedOffer")
+                        .WithMany()
+                        .HasForeignKey("AcceptedOfferId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("Domain.Entities.ClientProfile", "ClientProfile")
+                        .WithMany()
+                        .HasForeignKey("ClientProfileId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("AcceptedOffer");
+
+                    b.Navigation("ClientProfile");
+                });
+
+            modelBuilder.Entity("Domain.Entities.ClientSubscriptionOffer", b =>
+                {
+                    b.HasOne("Domain.Entities.ClientProfile", "ClientProfile")
+                        .WithMany()
+                        .HasForeignKey("ClientProfileId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("ClientProfile");
                 });
 
             modelBuilder.Entity("Domain.Entities.CommerceBusinessMember", b =>
@@ -4008,6 +4720,42 @@ namespace Infrastructure.Migrations
                         .IsRequired();
 
                     b.Navigation("Invite");
+                });
+
+            modelBuilder.Entity("Domain.Entities.SubscriptionActivationInvitation", b =>
+                {
+                    b.HasOne("Domain.Entities.ClientProfile", "ClientProfile")
+                        .WithMany()
+                        .HasForeignKey("ClientProfileId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("Domain.Entities.ClientSubscriptionOffer", "ClientSubscriptionOffer")
+                        .WithMany()
+                        .HasForeignKey("ClientSubscriptionOfferId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("ClientProfile");
+
+                    b.Navigation("ClientSubscriptionOffer");
+                });
+
+            modelBuilder.Entity("Domain.Entities.SubscriptionPayment", b =>
+                {
+                    b.HasOne("Domain.Entities.ClientSubscription", "ClientSubscription")
+                        .WithMany()
+                        .HasForeignKey("ClientSubscriptionId")
+                        .OnDelete(DeleteBehavior.SetNull);
+
+                    b.HasOne("Domain.Entities.CommerceOrder", "CommerceOrder")
+                        .WithMany()
+                        .HasForeignKey("CommerceOrderId")
+                        .OnDelete(DeleteBehavior.SetNull);
+
+                    b.Navigation("ClientSubscription");
+
+                    b.Navigation("CommerceOrder");
                 });
 
             modelBuilder.Entity("Domain.Entities.WebsiteLeadIntakeLink", b =>

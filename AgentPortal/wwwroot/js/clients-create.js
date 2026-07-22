@@ -1,54 +1,22 @@
 (function () {
+  const recordTypeRadios = Array.from(document.querySelectorAll('input[name="RecordType"]'));
+  const submitBtn = document.getElementById("submitCreateBtn");
+  const pipelineStage = document.getElementById("PipelineStage");
+  const crmStatus = document.getElementById("CrmStatus");
   const status = document.getElementById("MaritalStatus");
   const soCard = document.getElementById("soCard");
   const soFirst = document.getElementById("SignificantOtherFirstName");
   const soLast = document.getElementById("SignificantOtherLastName");
   const soDob = document.getElementById("SignificantOtherDOB");
-  const recordTypeRadios = Array.from(document.querySelectorAll('input[name="RecordType"]'));
-  const soChips = Array.from(document.querySelectorAll("[data-so-chip]"));
-
-  function isPortalRecordType(value) {
-    return value === "Client" || value === "BusinessClient";
-  }
-
-  function needsSO(value) {
-    if (!value) return false;
-    value = value.toLowerCase();
-    return value === "married" || value === "domestic partnership";
-  }
-
-  function applySO() {
-    const selected = recordTypeRadios.find((x) => x.checked)?.value || "Lead";
-    const required = isPortalRecordType(selected) && needsSO(status ? status.value : "");
-
-    if (soCard) soCard.style.display = required ? "" : "none";
-    if (soFirst) soFirst.required = required;
-    if (soLast) soLast.required = required;
-    if (soDob) soDob.required = required;
-    soChips.forEach((chip) => chip.classList.toggle("is-on", required));
-
-    if (!required) {
-      if (soFirst) soFirst.value = "";
-      if (soLast) soLast.value = "";
-      if (soDob) soDob.value = "";
-    }
-  }
-
-  if (status) {
-    status.addEventListener("change", applySO);
-  }
-
-  recordTypeRadios.forEach((radio) => radio.addEventListener("change", applySO));
-  applySO();
-})();
-
-(function () {
-  const recordTypeRadios = Array.from(document.querySelectorAll('input[name="RecordType"]'));
-  const submitBtn = document.getElementById("submitCreateBtn");
-  const pipelineStage = document.getElementById("PipelineStage");
-  const crmStatus = document.getElementById("CrmStatus");
   const requiredForClient = Array.from(document.querySelectorAll("[data-client-required]"));
-  const clientChips = Array.from(document.querySelectorAll("[data-client-chip]"));
+  const subscriptionCard = document.getElementById("subscriptionCard");
+  const subscriptionPriceType = document.getElementById("SubscriptionPriceType");
+  const subscriptionCustomAmount = document.getElementById("SubscriptionCustomMonthlyAmount");
+  const subscriptionCustomAmountWrap = document.getElementById("subscriptionCustomAmountWrap");
+  const subscriptionAnchorMode = document.getElementById("SubscriptionBillingAnchorMode");
+  const subscriptionAnchorDay = document.getElementById("SubscriptionBillingAnchorDay");
+  const subscriptionAnchorDayWrap = document.getElementById("subscriptionAnchorDayWrap");
+  const subscriptionCurrency = document.getElementById("SubscriptionCurrency");
 
   // Ensure a default selection (Lead) so required radios don't block submit silently
   if (!recordTypeRadios.some(r => r.checked)) {
@@ -58,6 +26,48 @@
 
   function isPortalRecordType(value) {
     return value === "Client" || value === "BusinessClient";
+  }
+
+  function needsSO(value) {
+    if (!value) return false;
+
+    const normalized = value.toLowerCase();
+    return normalized === "married" || normalized === "domestic partnership";
+  }
+
+  function getFieldLabel(field) {
+    if (!field?.id) {
+      return null;
+    }
+
+    return field.labels?.[0] || document.querySelector(`label[for="${field.id}"]`);
+  }
+
+  function setRequiredState(field, required) {
+    if (!field) {
+      return;
+    }
+
+    field.required = required;
+    field.toggleAttribute("aria-required", required);
+    getFieldLabel(field)?.classList.toggle("is-required", required);
+  }
+
+  function setFieldState(field, options) {
+    if (!field) {
+      return;
+    }
+
+    const required = Boolean(options?.required);
+    const enabled = options?.enabled !== false;
+    const clearWhenDisabled = Boolean(options?.clearWhenDisabled);
+
+    setRequiredState(field, required);
+    field.disabled = !enabled;
+
+    if (!enabled && clearWhenDisabled) {
+      field.value = "";
+    }
   }
 
   function submitLabel(value) {
@@ -75,14 +85,15 @@
   function applyRecordType() {
     const selected = recordTypeRadios.find((x) => x.checked)?.value || "Lead";
     const isClient = isPortalRecordType(selected);
+    const requiresSignificantOther = isClient && needsSO(status ? status.value : "");
+    const useCustomAmount = isClient && subscriptionPriceType?.value === "Custom";
+    const useAnchorDay = isClient && subscriptionAnchorMode?.value === "SpecificDayOfMonth";
 
     if (submitBtn) submitBtn.textContent = submitLabel(selected);
 
     requiredForClient.forEach((element) => {
-      element.required = isClient;
-      element.toggleAttribute("aria-required", isClient);
+      setRequiredState(element, isClient);
     });
-    clientChips.forEach((chip) => chip.classList.toggle("is-on", isClient));
 
     if (pipelineStage) {
       if (isClient) {
@@ -99,9 +110,63 @@
     if (crmStatus && isClient && (crmStatus.value === "Lead" || crmStatus.value === "Prospect")) {
       crmStatus.value = "Active";
     }
+
+    if (subscriptionCard) {
+      subscriptionCard.classList.toggle("is-hidden", !isClient);
+    }
+
+    if (subscriptionCurrency && !subscriptionCurrency.value) {
+      subscriptionCurrency.value = "USD";
+    }
+
+    if (subscriptionCustomAmountWrap) {
+      subscriptionCustomAmountWrap.classList.toggle("is-hidden", !useCustomAmount);
+    }
+    setFieldState(subscriptionCustomAmount, {
+      required: useCustomAmount,
+      enabled: useCustomAmount,
+      clearWhenDisabled: true
+    });
+
+    if (soCard) {
+      soCard.classList.toggle("is-hidden", !requiresSignificantOther);
+    }
+    setFieldState(soFirst, {
+      required: requiresSignificantOther,
+      enabled: requiresSignificantOther,
+      clearWhenDisabled: true
+    });
+    setFieldState(soLast, {
+      required: requiresSignificantOther,
+      enabled: requiresSignificantOther,
+      clearWhenDisabled: true
+    });
+    setFieldState(soDob, {
+      required: requiresSignificantOther,
+      enabled: requiresSignificantOther,
+      clearWhenDisabled: true
+    });
+
+    if (subscriptionAnchorDayWrap) {
+      subscriptionAnchorDayWrap.classList.toggle("is-hidden", !useAnchorDay);
+    }
+    setFieldState(subscriptionAnchorDay, {
+      required: useAnchorDay,
+      enabled: useAnchorDay,
+      clearWhenDisabled: true
+    });
   }
 
   recordTypeRadios.forEach((radio) => radio.addEventListener("change", applyRecordType));
+  if (status) {
+    status.addEventListener("change", applyRecordType);
+  }
+  if (subscriptionPriceType) {
+    subscriptionPriceType.addEventListener("change", applyRecordType);
+  }
+  if (subscriptionAnchorMode) {
+    subscriptionAnchorMode.addEventListener("change", applyRecordType);
+  }
   applyRecordType();
 })();
 

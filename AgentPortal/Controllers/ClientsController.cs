@@ -6,6 +6,7 @@ using System.Threading.Tasks;
 using AgentPortal.Models;
 using AgentPortal.Helpers;
 using AgentPortal.Services;
+using Domain.Billing;
 using Domain.Entities;
 using Domain.Enums;
 using Infrastructure.Data;
@@ -48,6 +49,9 @@ namespace AgentPortal.Controllers;
         private readonly EffectiveAgentContext _agentContext;
         private readonly IExecutionEngine _execution;
         private readonly ICommitmentService _commitments;
+        private readonly IBillingOrchestrator _billingOrchestrator;
+        private readonly ClientBillingWorkspaceService _clientBillingWorkspaceService;
+        private readonly ClientSubscriptionInvitationEmailService _subscriptionInvitationEmailService;
         private const string AdvancedMarketsToolId = "AdvancedMarketsInputs";
         private static readonly JsonSerializerOptions AdvancedMarketsStateJsonOptions = new(JsonSerializerDefaults.Web)
         {
@@ -64,7 +68,10 @@ namespace AgentPortal.Controllers;
             ProductionService production,
             EffectiveAgentContext agentContext,
             IExecutionEngine execution,
-            ICommitmentService commitments)
+            ICommitmentService commitments,
+            IBillingOrchestrator billingOrchestrator,
+            ClientBillingWorkspaceService clientBillingWorkspaceService,
+            ClientSubscriptionInvitationEmailService subscriptionInvitationEmailService)
         {
             _db = db;
             _provisioning = provisioning;
@@ -76,6 +83,9 @@ namespace AgentPortal.Controllers;
             _agentContext = agentContext;
             _execution = execution;
             _commitments = commitments;
+            _billingOrchestrator = billingOrchestrator;
+            _clientBillingWorkspaceService = clientBillingWorkspaceService;
+            _subscriptionInvitationEmailService = subscriptionInvitationEmailService;
         }
 
         private static string NormLower(string? v) => (v ?? "").Trim().ToLowerInvariant();
@@ -91,6 +101,30 @@ namespace AgentPortal.Controllers;
                 || child.DOB.HasValue
                 || !string.IsNullOrWhiteSpace(child.Email)
                 || !string.IsNullOrWhiteSpace(child.Phone);
+        }
+
+        private static ClientSubscriptionOfferPriceType ParseSubscriptionPriceType(string? rawValue)
+        {
+            if (Enum.TryParse<ClientSubscriptionOfferPriceType>(rawValue?.Trim(), true, out var parsed))
+                return parsed;
+
+            throw new InvalidOperationException("A valid subscription tier is required.");
+        }
+
+        private static BillingAnchorSelectionMode ParseBillingAnchorSelectionMode(string? rawValue)
+        {
+            if (Enum.TryParse<BillingAnchorSelectionMode>(rawValue?.Trim(), true, out var parsed))
+                return parsed;
+
+            throw new InvalidOperationException("A valid billing anchor mode is required.");
+        }
+
+        private static int? ConvertMonthlyAmountToCents(decimal? amount)
+        {
+            if (!amount.HasValue)
+                return null;
+
+            return decimal.ToInt32(decimal.Round(amount.Value * 100m, 0, MidpointRounding.AwayFromZero));
         }
 
         private async Task<List<HouseholdChildViewModel>> LoadChildrenAsync(string? clientUserId)
@@ -1589,7 +1623,7 @@ namespace AgentPortal.Controllers;
             || string.Equals(status, LeadAppointmentStatus.Rescheduled.ToString(), StringComparison.OrdinalIgnoreCase);
     }
 
-    private static object BuildQuickViewPayload(ClientProfile profile, ClientCrmMeta meta, TimeZoneInfo dialTimeZone, DateTime nowUtc, LeadAppointment? latestAppointment = null)
+    private static object BuildQuickViewPayload(ClientProfile profile, ClientCrmMeta meta, TimeZoneInfo dialTimeZone, DateTime nowUtc, LeadAppointment? latestAppointment = null, object? billing = null)
     {
         var safeActivities = (meta.Activities ?? new List<ClientCrmActivity>()).Where(a => a != null).ToList();
         meta.Activities = safeActivities;
@@ -1689,6 +1723,7 @@ namespace AgentPortal.Controllers;
                 watchers = meta.Collaboration.Watchers,
                 mentionNotes = meta.Collaboration.MentionNotes
             },
+            billing,
             activities = safeActivities
                 .OrderByDescending(x => x.Date)
                 .ThenByDescending(x => x.CreatedUtc)
@@ -2828,6 +2863,35 @@ namespace AgentPortal.Controllers;
         var agentNpn = !string.IsNullOrWhiteSpace(agentProfile.Npn)
             ? agentProfile.Npn.Trim()
             : (model.AgentNpn ?? "").Trim();
+        var subscriptionCurrency = "USD";
+        var subscriptionPriceType = ClientSubscriptionOfferPriceType.Fixed100;
+        int? subscriptionCustomMonthlyAmountCents = null;
+        var subscriptionBillingAnchorMode = BillingAnchorSelectionMode.FirstOfMonth;
+        int? subscriptionBillingAnchorDay = null;
+
+        if (isPortalClient)
+        {
+            try
+            {
+                subscriptionPriceType = ParseSubscriptionPriceType(model.SubscriptionPriceType);
+                subscriptionCustomMonthlyAmountCents = ConvertMonthlyAmountToCents(model.SubscriptionCustomMonthlyAmount);
+                subscriptionBillingAnchorMode = ParseBillingAnchorSelectionMode(model.SubscriptionBillingAnchorMode);
+                subscriptionBillingAnchorDay = subscriptionBillingAnchorMode == BillingAnchorSelectionMode.SpecificDayOfMonth
+                    ? model.SubscriptionBillingAnchorDay
+                    : null;
+                _ = ClientSubscriptionOfferPricing.ResolveAuthoritativeMonthlyAmountCents(
+                    subscriptionPriceType,
+                    subscriptionCustomMonthlyAmountCents);
+                _ = ClientSubscriptionOfferPricing.ResolveBillingAnchorDay(
+                    subscriptionBillingAnchorMode,
+                    subscriptionBillingAnchorDay);
+            }
+            catch (Exception ex)
+            {
+                ModelState.AddModelError(nameof(CreateClientViewModel.SubscriptionPriceType), ex.Message);
+                return View(model);
+            }
+        }
 
         if (isPortalClient && string.IsNullOrWhiteSpace(firstName))
         {
@@ -2928,6 +2992,9 @@ namespace AgentPortal.Controllers;
         string? clientObjectId = null;
         string? loginUpn = null;
         var createdGraphUser = false;
+        ClientProfile? createdClientProfile = null;
+        ClientSubscriptionOffer? createdSubscriptionOffer = null;
+        CreateSubscriptionActivationInvitationResult? createdSubscriptionInvitation = null;
 
         try
         {
@@ -3029,7 +3096,7 @@ namespace AgentPortal.Controllers;
             // ==========================================================
             await using var tx = await _db.Database.BeginTransactionAsync();
 
-            _db.ClientProfiles.Add(new ClientProfile
+            createdClientProfile = new ClientProfile
             {
                 ClientUserId = clientObjectId,
                 FirstName = firstName,
@@ -3062,7 +3129,9 @@ namespace AgentPortal.Controllers;
 
                 CreatedUtc = DateTime.UtcNow,
                 UpdatedUtc = DateTime.UtcNow
-            });
+            };
+
+            _db.ClientProfiles.Add(createdClientProfile);
 
             // ✅ HARD PRIVACY: A client can only be linked to ONE agent
             _db.AgentClients.Add(new AgentClient
@@ -3090,26 +3159,52 @@ namespace AgentPortal.Controllers;
             }
 
             await _db.SaveChangesAsync();
+
+            if (isPortalClient)
+            {
+                createdSubscriptionOffer = await _billingOrchestrator.CreateClientSubscriptionOfferAsync(
+                    new CreateClientSubscriptionOfferCommand(
+                        createdClientProfile.Id,
+                        agentOid,
+                        subscriptionPriceType,
+                        subscriptionCustomMonthlyAmountCents,
+                        subscriptionCurrency,
+                        subscriptionBillingAnchorMode,
+                        subscriptionBillingAnchorDay,
+                        DateTime.UtcNow,
+                        null));
+
+                createdSubscriptionInvitation = await _billingOrchestrator.CreateSubscriptionActivationInvitationAsync(
+                    new CreateSubscriptionActivationInvitationCommand(
+                        createdClientProfile.Id,
+                        createdSubscriptionOffer.Id,
+                        emailNorm ?? string.Empty,
+                        agentOid,
+                        DateTime.UtcNow.AddDays(7)));
+            }
+
             await tx.CommitAsync();
 
             // ==========================================================
             // 3) Email should not rollback DB
             // ==========================================================
+            var creationWarnings = new List<string>();
+
             try
             {
                 if (isPortalClient)
                 {
                     var clientPortalUrl = GetClientPortalBaseUrl();
-if (string.IsNullOrWhiteSpace(emailNorm))
-    throw new InvalidOperationException("Client email is required before sending the welcome email.");
+                    if (string.IsNullOrWhiteSpace(emailNorm))
+                        throw new InvalidOperationException("Client email is required before sending the welcome email.");
 
-await _provisioning.SendClientWelcomeEmailAsync(
-    emailNorm,
-    firstName,
-    loginUpn ?? "",
-    oneTimePassword,
-    clientPortalUrl
-);
+                    await _provisioning.SendClientWelcomeEmailAsync(
+                        emailNorm,
+                        firstName,
+                        loginUpn ?? "",
+                        oneTimePassword,
+                        clientPortalUrl
+                    );
                 }
             }
             catch (Exception mailEx)
@@ -3117,15 +3212,54 @@ await _provisioning.SendClientWelcomeEmailAsync(
                 _logger.LogError(mailEx,
                     "Welcome email failed for Email={Email} ClientUserId={ClientUserId}",
                     emailNorm, clientObjectId);
-
-                TempData["Created"] =
-                    $"{RecordTypeLabel(recordType)} created. Login username: {loginUpn}. ⚠ Email failed to send: {mailEx.Message}";
-                return RedirectToReturnUrlOrIndex(returnUrl);
+                creationWarnings.Add($"Welcome email failed: {mailEx.Message}");
             }
 
-            TempData["Created"] = isPortalClient
+            if (isPortalClient &&
+                createdClientProfile is not null &&
+                createdSubscriptionOffer is not null &&
+                createdSubscriptionInvitation?.Invitation is not null &&
+                !string.IsNullOrWhiteSpace(createdSubscriptionInvitation.PlainTextToken))
+            {
+                try
+                {
+                    await _subscriptionInvitationEmailService.SendAsync(
+                        createdClientProfile,
+                        createdSubscriptionOffer,
+                        createdSubscriptionInvitation.Invitation,
+                        createdSubscriptionInvitation.PlainTextToken);
+
+                    await _billingOrchestrator.MarkSubscriptionActivationInvitationSentAsync(
+                        new MarkSubscriptionActivationInvitationSentCommand(
+                            createdSubscriptionInvitation.Invitation.Id,
+                            agentOid));
+                }
+                catch (Exception invitationEmailEx)
+                {
+                    _logger.LogError(
+                        invitationEmailEx,
+                        "Subscription invitation email failed for ClientProfileId={ClientProfileId} InvitationId={InvitationId}",
+                        createdClientProfile.Id,
+                        createdSubscriptionInvitation.Invitation.Id);
+
+                    await _billingOrchestrator.MarkSubscriptionActivationInvitationSendFailureAsync(
+                        new MarkSubscriptionActivationInvitationSendFailureCommand(
+                            createdSubscriptionInvitation.Invitation.Id,
+                            agentOid,
+                            "INVITATION_EMAIL_FAILED",
+                            invitationEmailEx.Message));
+
+                    creationWarnings.Add($"Subscription invitation email failed: {invitationEmailEx.Message}");
+                }
+            }
+
+            var createdMessage = isPortalClient
                 ? $"{RecordTypeLabel(recordType)} created. Login username: {loginUpn}"
                 : $"Lead added to pipeline in {StageLabel(pipelineStage)}.";
+
+            TempData["Created"] = creationWarnings.Count == 0
+                ? createdMessage
+                : $"{createdMessage}. ⚠ {string.Join(" | ", creationWarnings)}";
             return RedirectToReturnUrlOrIndex(returnUrl);
         }
         catch (ODataError ex)
@@ -3730,6 +3864,11 @@ meta.Activities ??= new List<ClientCrmActivity>();
         public string? MentionNote { get; set; }
     }
 
+    public sealed class BillingQuickViewActionRequest
+    {
+        public Guid ClientProfileId { get; set; }
+    }
+
     public sealed class ReorderRequest
     {
         public string? Bucket { get; set; }
@@ -3986,13 +4125,161 @@ meta.Activities ??= new List<ClientCrmActivity>();
 
             var nowUtc = DateTime.UtcNow;
             var dialTimeZone = _agentTimeZoneResolver.Resolve(HttpContext);
-            return Json(BuildQuickViewPayload(profile, meta, dialTimeZone, nowUtc, await LoadClientLatestAppointmentAsync(profile)));
+            var latestAppointment = await LoadClientLatestAppointmentAsync(profile);
+            var billing = await _clientBillingWorkspaceService.BuildSnapshotAsync(profile.Id, agentOid);
+            return Json(BuildQuickViewPayload(profile, meta, dialTimeZone, nowUtc, latestAppointment, billing));
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "QuickView ERROR agent={Agent} clientUserId={ClientUserId}", agentOid, clientUserIdNorm);
             return StatusCode(500, $"QuickView failed: {ex.Message}");
         }
+    }
+
+    [HttpPost]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> ResendSubscriptionInvitation([FromBody] BillingQuickViewActionRequest request)
+    {
+        string agentOid;
+        try { agentOid = GetAgentOidOrThrow(); }
+        catch { return Challenge(); }
+
+        var profile = await (
+            from link in _db.AgentClients
+            join ownedProfile in _db.ClientProfiles on link.ClientUserId equals ownedProfile.ClientUserId
+            where link.AgentUserId == agentOid && ownedProfile.Id == request.ClientProfileId
+            select ownedProfile
+        ).FirstOrDefaultAsync();
+
+        if (profile is null)
+            return Forbid();
+
+        var latestOffer = await _db.ClientSubscriptionOffers
+            .AsNoTracking()
+            .Where(x => x.ClientProfileId == profile.Id && x.OwnerAgentUserId == agentOid)
+            .OrderByDescending(x => x.CreatedUtc)
+            .FirstOrDefaultAsync();
+
+        if (latestOffer is null)
+            return BadRequest("No subscription offer exists for this client yet.");
+
+        if (latestOffer.Status == ClientSubscriptionOfferStatus.Accepted)
+            return BadRequest("This client already accepted the current subscription offer.");
+
+        if (string.IsNullOrWhiteSpace(profile.Email))
+            return BadRequest("An email address is required before resending the subscription invitation.");
+
+        var invitationResult = await _billingOrchestrator.CreateSubscriptionActivationInvitationAsync(
+            new CreateSubscriptionActivationInvitationCommand(
+                profile.Id,
+                latestOffer.Id,
+                profile.Email,
+                agentOid,
+                DateTime.UtcNow.AddDays(7)));
+
+        if (invitationResult.Invitation is null || string.IsNullOrWhiteSpace(invitationResult.PlainTextToken))
+            return StatusCode(StatusCodes.Status500InternalServerError, "A new invitation could not be created.");
+
+        string? warning = null;
+        try
+        {
+            await _subscriptionInvitationEmailService.SendAsync(
+                profile,
+                latestOffer,
+                invitationResult.Invitation,
+                invitationResult.PlainTextToken);
+
+            await _billingOrchestrator.MarkSubscriptionActivationInvitationSentAsync(
+                new MarkSubscriptionActivationInvitationSentCommand(invitationResult.Invitation.Id, agentOid));
+        }
+        catch (Exception ex)
+        {
+            warning = ex.Message;
+            await _billingOrchestrator.MarkSubscriptionActivationInvitationSendFailureAsync(
+                new MarkSubscriptionActivationInvitationSendFailureCommand(
+                    invitationResult.Invitation.Id,
+                    agentOid,
+                    "INVITATION_EMAIL_FAILED",
+                    ex.Message));
+        }
+
+        return Json(new
+        {
+            ok = true,
+            warning,
+            billing = await _clientBillingWorkspaceService.BuildSnapshotAsync(profile.Id, agentOid)
+        });
+    }
+
+    [HttpPost]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> RevokeSubscriptionInvitation([FromBody] BillingQuickViewActionRequest request)
+    {
+        string agentOid;
+        try { agentOid = GetAgentOidOrThrow(); }
+        catch { return Challenge(); }
+
+        var latestInvitation = await (
+            from link in _db.AgentClients
+            join profile in _db.ClientProfiles on link.ClientUserId equals profile.ClientUserId
+            join invitation in _db.SubscriptionActivationInvitations on profile.Id equals invitation.ClientProfileId
+            where link.AgentUserId == agentOid && profile.Id == request.ClientProfileId
+            orderby invitation.CreatedUtc descending
+            select new { profile.Id, Invitation = invitation }
+        ).FirstOrDefaultAsync();
+
+        if (latestInvitation is null)
+            return Forbid();
+
+        if (latestInvitation.Invitation.Status == SubscriptionActivationInvitationStatus.Redeemed)
+            return BadRequest("A redeemed subscription invitation cannot be revoked.");
+
+        await _billingOrchestrator.RevokeSubscriptionActivationInvitationAsync(
+            new RevokeSubscriptionActivationInvitationCommand(
+                latestInvitation.Invitation.Id,
+                agentOid));
+
+        return Json(new
+        {
+            ok = true,
+            billing = await _clientBillingWorkspaceService.BuildSnapshotAsync(latestInvitation.Id, agentOid)
+        });
+    }
+
+    [HttpPost]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> CancelClientSubscriptionAtPeriodEnd([FromBody] BillingQuickViewActionRequest request)
+    {
+        string agentOid;
+        try { agentOid = GetAgentOidOrThrow(); }
+        catch { return Challenge(); }
+
+        var latestSubscription = await (
+            from link in _db.AgentClients
+            join profile in _db.ClientProfiles on link.ClientUserId equals profile.ClientUserId
+            join subscription in _db.ClientSubscriptions on profile.Id equals subscription.ClientProfileId
+            where link.AgentUserId == agentOid &&
+                  profile.Id == request.ClientProfileId &&
+                  subscription.OwnerAgentUserId == agentOid
+            orderby subscription.CreatedUtc descending
+            select new { profile.Id, Subscription = subscription }
+        ).FirstOrDefaultAsync();
+
+        if (latestSubscription is null)
+            return Forbid();
+
+        await _billingOrchestrator.CancelClientSubscriptionAsync(
+            new CancelClientSubscriptionCommand(
+                latestSubscription.Subscription.Id,
+                true,
+                BillingActorType.Agent,
+                agentOid));
+
+        return Json(new
+        {
+            ok = true,
+            billing = await _clientBillingWorkspaceService.BuildSnapshotAsync(latestSubscription.Id, agentOid)
+        });
     }
 
     [HttpGet]
@@ -5182,7 +5469,13 @@ meta.Activities ??= new List<ClientCrmActivity>();
         return Json(new
         {
             ok = true,
-            payload = BuildQuickViewPayload(profile, meta, dialTimeZone, nowUtc, await LoadClientLatestAppointmentAsync(profile))
+                payload = BuildQuickViewPayload(
+                    profile,
+                    meta,
+                    dialTimeZone,
+                    nowUtc,
+                    await LoadClientLatestAppointmentAsync(profile),
+                    await _clientBillingWorkspaceService.BuildSnapshotAsync(profile.Id, agentOid))
         });
     }
 
@@ -5418,7 +5711,13 @@ meta.Activities ??= new List<ClientCrmActivity>();
                 meetingTime = meta.MeetingTime ?? "",
                 meetingDurationMinutes = meta.MeetingDurationMinutes
             },
-            payload = BuildQuickViewPayload(profile, meta, dialTimeZone, nowUtc, await LoadClientLatestAppointmentAsync(profile))
+            payload = BuildQuickViewPayload(
+                profile,
+                meta,
+                dialTimeZone,
+                nowUtc,
+                await LoadClientLatestAppointmentAsync(profile),
+                await _clientBillingWorkspaceService.BuildSnapshotAsync(profile.Id, agentOid))
         });
     }
 

@@ -99,6 +99,7 @@ public sealed class ParfaitCartQuoteResponse
 
 public sealed class ParfaitOrderRecord
 {
+    public Guid CommerceOrderId { get; set; }
     public required string OrderNumber { get; set; }
     public DateTime CreatedUtc { get; set; }
     public DateTime? UpdatedUtc { get; set; }
@@ -147,6 +148,8 @@ public sealed class ParfaitOrderRecord
     public int TotalCents { get; set; }
 
     public string CustomerName => $"{FirstName} {LastName}".Trim();
+    public string? PaymentReferenceId => SquarePaymentId;
+    public string? PaymentFailureSummary => SquareError;
     public bool IsPaid => string.Equals(PaymentStatus, "Paid", StringComparison.OrdinalIgnoreCase);
     public bool IsPendingPayment => string.Equals(PaymentStatus, "Pending", StringComparison.OrdinalIgnoreCase);
     public bool IsFailedPayment => string.Equals(PaymentStatus, "Failed", StringComparison.OrdinalIgnoreCase);

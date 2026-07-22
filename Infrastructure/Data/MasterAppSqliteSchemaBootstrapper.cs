@@ -10,6 +10,8 @@ public static class MasterAppSqliteSchemaBootstrapper
     private const string LegacyBootstrapBaselineMigrationId = "20260618104500_AddAnalyticsDriftAlerts";
     private const string CommerceBusinessScopeMigrationId = "20260702160000_AddCommerceBusinessScope";
     private const string CommerceCoreSchemaMigrationId = "20260702164641_AddCommerceCoreSchema";
+    private const string SharedBillingFoundationMigrationId = "20260722031717_AddSharedBillingFoundation";
+    private const string ClientAppActivationAuthorityMigrationId = "20260722090000_AddClientAppActivationAuthority";
 
     private static readonly ColumnPatch[] AdditiveColumnPatches =
     {
@@ -35,7 +37,11 @@ public static class MasterAppSqliteSchemaBootstrapper
         new("MetaSignalEvents", "HumanInteractionCount", "INTEGER"),
         new("MetaSignalEvents", "VisibilityChangeCount", "INTEGER"),
         new("MetaSignalEvents", "Language", "TEXT"),
-        new("MetaSignalEvents", "TimeZone", "TEXT")
+        new("MetaSignalEvents", "TimeZone", "TEXT"),
+        new("ClientProfiles", "ExternalIdentityObjectId", "TEXT"),
+        new("ClientSubscriptions", "BillingTimeZoneId", "TEXT NOT NULL DEFAULT 'UTC'"),
+        new("ClientSubscriptions", "FirstChargeUtc", "TEXT"),
+        new("ClientSubscriptions", "FirstRecurringRenewalUtc", "TEXT")
     };
 
     private static readonly IndexPatch[] AnalyticsDriftAlertIndexes =
@@ -71,6 +77,36 @@ public static class MasterAppSqliteSchemaBootstrapper
         new("IX_CommerceProducts_CommerceBusinessId_ExternalProductKey", "CREATE UNIQUE INDEX \"IX_CommerceProducts_CommerceBusinessId_ExternalProductKey\" ON \"CommerceProducts\" (\"CommerceBusinessId\", \"ExternalProductKey\")"),
         new("IX_CommerceProducts_CommerceBusinessId_IsActive_DisplayOrder", "CREATE INDEX \"IX_CommerceProducts_CommerceBusinessId_IsActive_DisplayOrder\" ON \"CommerceProducts\" (\"CommerceBusinessId\", \"IsActive\", \"DisplayOrder\")"),
         new("IX_CommerceProducts_CommerceBusinessId_Slug", "CREATE UNIQUE INDEX \"IX_CommerceProducts_CommerceBusinessId_Slug\" ON \"CommerceProducts\" (\"CommerceBusinessId\", \"Slug\")")
+    };
+
+    private static readonly IndexPatch[] SharedBillingIndexes =
+    {
+        new("IX_ClientSubscriptionOffers_ClientProfileId", "CREATE INDEX \"IX_ClientSubscriptionOffers_ClientProfileId\" ON \"ClientSubscriptionOffers\" (\"ClientProfileId\")"),
+        new("IX_ClientSubscriptionOffers_ClientProfileId_Status", "CREATE INDEX \"IX_ClientSubscriptionOffers_ClientProfileId_Status\" ON \"ClientSubscriptionOffers\" (\"ClientProfileId\", \"Status\")"),
+        new("IX_ClientSubscriptionOffers_OwnerAgentUserId", "CREATE INDEX \"IX_ClientSubscriptionOffers_OwnerAgentUserId\" ON \"ClientSubscriptionOffers\" (\"OwnerAgentUserId\")"),
+        new("IX_ClientSubscriptions_ClientProfileId_Status", "CREATE INDEX \"IX_ClientSubscriptions_ClientProfileId_Status\" ON \"ClientSubscriptions\" (\"ClientProfileId\", \"Status\")"),
+        new("IX_ClientSubscriptions_AcceptedOfferId", "CREATE INDEX \"IX_ClientSubscriptions_AcceptedOfferId\" ON \"ClientSubscriptions\" (\"AcceptedOfferId\")"),
+        new("IX_ClientSubscriptions_Provider_ProviderEnvironment_ProviderSubscriptionId", "CREATE UNIQUE INDEX \"IX_ClientSubscriptions_Provider_ProviderEnvironment_ProviderSubscriptionId\" ON \"ClientSubscriptions\" (\"Provider\", \"ProviderEnvironment\", \"ProviderSubscriptionId\")"),
+        new("IX_ClientSubscriptions_Provider_ProviderEnvironment_ProviderCustomerId", "CREATE INDEX \"IX_ClientSubscriptions_Provider_ProviderEnvironment_ProviderCustomerId\" ON \"ClientSubscriptions\" (\"Provider\", \"ProviderEnvironment\", \"ProviderCustomerId\")"),
+        new("IX_ClientSubscriptions_ClientProfileId_UpdatedUtc", "CREATE INDEX \"IX_ClientSubscriptions_ClientProfileId_UpdatedUtc\" ON \"ClientSubscriptions\" (\"ClientProfileId\", \"UpdatedUtc\")"),
+        new("IX_SubscriptionActivationInvitations_TokenHash", "CREATE UNIQUE INDEX \"IX_SubscriptionActivationInvitations_TokenHash\" ON \"SubscriptionActivationInvitations\" (\"TokenHash\")"),
+        new("IX_SubscriptionActivationInvitations_ClientProfileId_Status", "CREATE INDEX \"IX_SubscriptionActivationInvitations_ClientProfileId_Status\" ON \"SubscriptionActivationInvitations\" (\"ClientProfileId\", \"Status\")"),
+        new("IX_SubscriptionActivationInvitations_ClientSubscriptionOfferId", "CREATE INDEX \"IX_SubscriptionActivationInvitations_ClientSubscriptionOfferId\" ON \"SubscriptionActivationInvitations\" (\"ClientSubscriptionOfferId\")"),
+        new("IX_ClientIdentityContinuations_TokenHash", "CREATE UNIQUE INDEX \"IX_ClientIdentityContinuations_TokenHash\" ON \"ClientIdentityContinuations\" (\"TokenHash\")"),
+        new("IX_ClientIdentityContinuations_ClientProfileId_ExpiresUtc", "CREATE INDEX \"IX_ClientIdentityContinuations_ClientProfileId_ExpiresUtc\" ON \"ClientIdentityContinuations\" (\"ClientProfileId\", \"ExpiresUtc\")"),
+        new("IX_ClientIdentityContinuations_ClientProfileId_ConsumedUtc", "CREATE INDEX \"IX_ClientIdentityContinuations_ClientProfileId_ConsumedUtc\" ON \"ClientIdentityContinuations\" (\"ClientProfileId\", \"ConsumedUtc\")"),
+        new("IX_SubscriptionPayments_ClientSubscriptionId", "CREATE INDEX \"IX_SubscriptionPayments_ClientSubscriptionId\" ON \"SubscriptionPayments\" (\"ClientSubscriptionId\")"),
+        new("IX_SubscriptionPayments_CommerceOrderId", "CREATE INDEX \"IX_SubscriptionPayments_CommerceOrderId\" ON \"SubscriptionPayments\" (\"CommerceOrderId\")"),
+        new("IX_SubscriptionPayments_Provider_ProviderEnvironment_ProviderPaymentId", "CREATE UNIQUE INDEX \"IX_SubscriptionPayments_Provider_ProviderEnvironment_ProviderPaymentId\" ON \"SubscriptionPayments\" (\"Provider\", \"ProviderEnvironment\", \"ProviderPaymentId\")"),
+        new("IX_SubscriptionPayments_Provider_ProviderEnvironment_ProviderRefundId", "CREATE UNIQUE INDEX \"IX_SubscriptionPayments_Provider_ProviderEnvironment_ProviderRefundId\" ON \"SubscriptionPayments\" (\"Provider\", \"ProviderEnvironment\", \"ProviderRefundId\")"),
+        new("IX_BillingProviderEvents_Provider_ProviderEnvironment_ProviderEventId", "CREATE UNIQUE INDEX \"IX_BillingProviderEvents_Provider_ProviderEnvironment_ProviderEventId\" ON \"BillingProviderEvents\" (\"Provider\", \"ProviderEnvironment\", \"ProviderEventId\")"),
+        new("IX_BillingProviderEvents_ProcessingStatus_RetryUtc", "CREATE INDEX \"IX_BillingProviderEvents_ProcessingStatus_RetryUtc\" ON \"BillingProviderEvents\" (\"ProcessingStatus\", \"RetryUtc\")"),
+        new("IX_BillingProviderEvents_ProviderObjectId", "CREATE INDEX \"IX_BillingProviderEvents_ProviderObjectId\" ON \"BillingProviderEvents\" (\"ProviderObjectId\")"),
+        new("IX_ClientEntitlements_ClientProfileId_EntitlementKey", "CREATE UNIQUE INDEX \"IX_ClientEntitlements_ClientProfileId_EntitlementKey\" ON \"ClientEntitlements\" (\"ClientProfileId\", \"EntitlementKey\")"),
+        new("IX_ClientEntitlements_Status", "CREATE INDEX \"IX_ClientEntitlements_Status\" ON \"ClientEntitlements\" (\"Status\")"),
+        new("IX_BillingAuditEntries_EntityType_EntityId_OccurredUtc", "CREATE INDEX \"IX_BillingAuditEntries_EntityType_EntityId_OccurredUtc\" ON \"BillingAuditEntries\" (\"EntityType\", \"EntityId\", \"OccurredUtc\")"),
+        new("IX_BillingAuditEntries_ActorId_OccurredUtc", "CREATE INDEX \"IX_BillingAuditEntries_ActorId_OccurredUtc\" ON \"BillingAuditEntries\" (\"ActorId\", \"OccurredUtc\")"),
+        new("IX_ClientProfiles_ExternalIdentityObjectId", "CREATE UNIQUE INDEX \"IX_ClientProfiles_ExternalIdentityObjectId\" ON \"ClientProfiles\" (\"ExternalIdentityObjectId\")")
     };
 
     public static async Task InitializeAsync(
@@ -153,9 +189,24 @@ public static class MasterAppSqliteSchemaBootstrapper
                 }
             }
 
+            foreach (var table in await CreateSharedBillingTablesIfMissingAsync(connection, cancellationToken))
+            {
+                repairs.Add(table);
+            }
+
+            foreach (var index in SharedBillingIndexes)
+            {
+                if (await CreateIndexIfMissingAsync(connection, index, cancellationToken))
+                {
+                    repairs.Add(index.Name);
+                }
+            }
+
             await StampMigrationHistoryAsync(db, connection, createdFromModel, logger, cancellationToken);
             await StampMigrationIfMissingAsync(db, connection, CommerceBusinessScopeMigrationId, cancellationToken);
             await StampMigrationIfMissingAsync(db, connection, CommerceCoreSchemaMigrationId, cancellationToken);
+            await StampMigrationIfMissingAsync(db, connection, SharedBillingFoundationMigrationId, cancellationToken);
+            await StampMigrationIfMissingAsync(db, connection, ClientAppActivationAuthorityMigrationId, cancellationToken);
 
             if (createdFromModel)
             {
@@ -429,6 +480,217 @@ public static class MasterAppSqliteSchemaBootstrapper
                 "DisplayOrder" INTEGER NOT NULL,
                 CONSTRAINT "FK_CommerceProductInventoryItems_CommerceProducts_CommerceProductId"
                     FOREIGN KEY ("CommerceProductId") REFERENCES "CommerceProducts" ("Id") ON DELETE CASCADE
+            )
+            """);
+
+        return created;
+    }
+
+    private static async Task<IReadOnlyList<string>> CreateSharedBillingTablesIfMissingAsync(
+        DbConnection connection,
+        CancellationToken cancellationToken)
+    {
+        var created = new List<string>();
+
+        async Task CreateAsync(string tableName, string sql)
+        {
+            if (await TableExistsAsync(connection, tableName, cancellationToken))
+                return;
+
+            await ExecuteNonQueryAsync(connection, sql, cancellationToken);
+            created.Add(tableName);
+        }
+
+        await CreateAsync("ClientSubscriptionOffers", """
+            CREATE TABLE "ClientSubscriptionOffers" (
+                "Id" TEXT NOT NULL CONSTRAINT "PK_ClientSubscriptionOffers" PRIMARY KEY,
+                "ClientProfileId" TEXT NOT NULL,
+                "OwnerAgentUserId" TEXT NOT NULL,
+                "PriceType" TEXT NOT NULL,
+                "MonthlyAmountCents" INTEGER NOT NULL,
+                "Currency" TEXT NOT NULL,
+                "BillingAnchorSelectionMode" TEXT NOT NULL,
+                "SelectedBillingAnchorDay" INTEGER NULL,
+                "Status" TEXT NOT NULL,
+                "EffectiveUtc" TEXT NULL,
+                "ExpiresUtc" TEXT NULL,
+                "CreatedUtc" TEXT NOT NULL,
+                "UpdatedUtc" TEXT NOT NULL,
+                "RowVersion" BLOB NOT NULL DEFAULT X'',
+                CONSTRAINT "FK_ClientSubscriptionOffers_ClientProfiles_ClientProfileId"
+                    FOREIGN KEY ("ClientProfileId") REFERENCES "ClientProfiles" ("Id") ON DELETE CASCADE
+            )
+            """);
+
+        await CreateAsync("ClientSubscriptions", """
+            CREATE TABLE "ClientSubscriptions" (
+                "Id" TEXT NOT NULL CONSTRAINT "PK_ClientSubscriptions" PRIMARY KEY,
+                "ClientProfileId" TEXT NOT NULL,
+                "AcceptedOfferId" TEXT NOT NULL,
+                "OwnerAgentUserId" TEXT NOT NULL,
+                "Provider" TEXT NOT NULL,
+                "ProviderEnvironment" TEXT NOT NULL,
+                "ProviderCustomerId" TEXT NULL,
+                "ProviderPaymentMethodId" TEXT NULL,
+                "ProviderSubscriptionId" TEXT NULL,
+                "ProviderPlanVariationId" TEXT NULL,
+                "MonthlyAmountCents" INTEGER NOT NULL,
+                "Currency" TEXT NOT NULL,
+                "BillingTimeZoneId" TEXT NOT NULL,
+                "BillingAnchorDay" INTEGER NULL,
+                "Status" TEXT NOT NULL,
+                "PaymentStanding" TEXT NOT NULL,
+                "FirstChargeUtc" TEXT NULL,
+                "FirstRecurringRenewalUtc" TEXT NULL,
+                "CurrentPeriodStartUtc" TEXT NULL,
+                "CurrentPeriodEndUtc" TEXT NULL,
+                "NextBillingDateUtc" TEXT NULL,
+                "ActivatedUtc" TEXT NULL,
+                "CancelledUtc" TEXT NULL,
+                "CancelAtPeriodEnd" INTEGER NOT NULL,
+                "GracePeriodEndsUtc" TEXT NULL,
+                "CreatedUtc" TEXT NOT NULL,
+                "UpdatedUtc" TEXT NOT NULL,
+                "RowVersion" BLOB NOT NULL DEFAULT X'',
+                CONSTRAINT "FK_ClientSubscriptions_ClientProfiles_ClientProfileId"
+                    FOREIGN KEY ("ClientProfileId") REFERENCES "ClientProfiles" ("Id") ON DELETE CASCADE,
+                CONSTRAINT "FK_ClientSubscriptions_ClientSubscriptionOffers_AcceptedOfferId"
+                    FOREIGN KEY ("AcceptedOfferId") REFERENCES "ClientSubscriptionOffers" ("Id") ON DELETE RESTRICT
+            )
+            """);
+
+        await CreateAsync("SubscriptionActivationInvitations", """
+            CREATE TABLE "SubscriptionActivationInvitations" (
+                "Id" TEXT NOT NULL CONSTRAINT "PK_SubscriptionActivationInvitations" PRIMARY KEY,
+                "ClientProfileId" TEXT NOT NULL,
+                "ClientSubscriptionOfferId" TEXT NOT NULL,
+                "TokenHash" TEXT NOT NULL,
+                "IntendedNormalizedEmail" TEXT NOT NULL,
+                "Status" TEXT NOT NULL,
+                "ExpiresUtc" TEXT NOT NULL,
+                "ViewedUtc" TEXT NULL,
+                "PaymentStartedUtc" TEXT NULL,
+                "RedeemedUtc" TEXT NULL,
+                "RevokedUtc" TEXT NULL,
+                "SupersededUtc" TEXT NULL,
+                "CreatedByAgentUserId" TEXT NOT NULL,
+                "CreatedUtc" TEXT NOT NULL,
+                "LastSentUtc" TEXT NULL,
+                "SendCount" INTEGER NOT NULL,
+                "RowVersion" BLOB NOT NULL DEFAULT X'',
+                CONSTRAINT "FK_SubscriptionActivationInvitations_ClientProfiles_ClientProfileId"
+                    FOREIGN KEY ("ClientProfileId") REFERENCES "ClientProfiles" ("Id") ON DELETE CASCADE,
+                CONSTRAINT "FK_SubscriptionActivationInvitations_ClientSubscriptionOffers_ClientSubscriptionOfferId"
+                    FOREIGN KEY ("ClientSubscriptionOfferId") REFERENCES "ClientSubscriptionOffers" ("Id") ON DELETE CASCADE
+            )
+            """);
+
+        await CreateAsync("ClientIdentityContinuations", """
+            CREATE TABLE "ClientIdentityContinuations" (
+                "Id" TEXT NOT NULL CONSTRAINT "PK_ClientIdentityContinuations" PRIMARY KEY,
+                "ClientProfileId" TEXT NOT NULL,
+                "SubscriptionActivationInvitationId" TEXT NULL,
+                "ClientSubscriptionId" TEXT NULL,
+                "Purpose" TEXT NOT NULL,
+                "TokenHash" TEXT NOT NULL,
+                "IntendedNormalizedEmail" TEXT NOT NULL,
+                "ReturnUrl" TEXT NOT NULL,
+                "ExpiresUtc" TEXT NOT NULL,
+                "CreatedUtc" TEXT NOT NULL,
+                "ConsumedUtc" TEXT NULL,
+                "RowVersion" BLOB NOT NULL DEFAULT X'',
+                CONSTRAINT "FK_ClientIdentityContinuations_ClientProfiles_ClientProfileId"
+                    FOREIGN KEY ("ClientProfileId") REFERENCES "ClientProfiles" ("Id") ON DELETE CASCADE,
+                CONSTRAINT "FK_ClientIdentityContinuations_SubscriptionActivationInvitations_SubscriptionActivationInvitationId"
+                    FOREIGN KEY ("SubscriptionActivationInvitationId") REFERENCES "SubscriptionActivationInvitations" ("Id") ON DELETE SET NULL,
+                CONSTRAINT "FK_ClientIdentityContinuations_ClientSubscriptions_ClientSubscriptionId"
+                    FOREIGN KEY ("ClientSubscriptionId") REFERENCES "ClientSubscriptions" ("Id") ON DELETE SET NULL
+            )
+            """);
+
+        await CreateAsync("SubscriptionPayments", """
+            CREATE TABLE "SubscriptionPayments" (
+                "Id" TEXT NOT NULL CONSTRAINT "PK_SubscriptionPayments" PRIMARY KEY,
+                "ClientSubscriptionId" TEXT NULL,
+                "CommerceOrderId" TEXT NULL,
+                "Provider" TEXT NOT NULL,
+                "ProviderEnvironment" TEXT NOT NULL,
+                "ProviderPaymentId" TEXT NULL,
+                "ProviderInvoiceId" TEXT NULL,
+                "ProviderRefundId" TEXT NULL,
+                "AmountCents" INTEGER NOT NULL,
+                "Currency" TEXT NOT NULL,
+                "Status" TEXT NOT NULL,
+                "SafeFailureCode" TEXT NULL,
+                "BillingPeriodStartUtc" TEXT NULL,
+                "BillingPeriodEndUtc" TEXT NULL,
+                "ProviderOccurredUtc" TEXT NULL,
+                "CreatedUtc" TEXT NOT NULL,
+                "UpdatedUtc" TEXT NOT NULL,
+                "RowVersion" BLOB NOT NULL DEFAULT X'',
+                CONSTRAINT "FK_SubscriptionPayments_ClientSubscriptions_ClientSubscriptionId"
+                    FOREIGN KEY ("ClientSubscriptionId") REFERENCES "ClientSubscriptions" ("Id") ON DELETE SET NULL,
+                CONSTRAINT "FK_SubscriptionPayments_CommerceOrders_CommerceOrderId"
+                    FOREIGN KEY ("CommerceOrderId") REFERENCES "CommerceOrders" ("Id") ON DELETE SET NULL
+            )
+            """);
+
+        await CreateAsync("BillingProviderEvents", """
+            CREATE TABLE "BillingProviderEvents" (
+                "Id" TEXT NOT NULL CONSTRAINT "PK_BillingProviderEvents" PRIMARY KEY,
+                "Provider" TEXT NOT NULL,
+                "ProviderEnvironment" TEXT NOT NULL,
+                "ProviderEventId" TEXT NOT NULL,
+                "EventType" TEXT NOT NULL,
+                "ProviderObjectId" TEXT NULL,
+                "ReceivedUtc" TEXT NOT NULL,
+                "SignatureValidatedUtc" TEXT NULL,
+                "ProcessingStatus" TEXT NOT NULL,
+                "AttemptCount" INTEGER NOT NULL,
+                "ProcessedUtc" TEXT NULL,
+                "RetryUtc" TEXT NULL,
+                "SafeErrorCode" TEXT NULL,
+                "PayloadHash" TEXT NOT NULL,
+                "RetainedPayloadJson" TEXT NULL,
+                "RowVersion" BLOB NOT NULL DEFAULT X''
+            )
+            """);
+
+        await CreateAsync("ClientEntitlements", """
+            CREATE TABLE "ClientEntitlements" (
+                "Id" TEXT NOT NULL CONSTRAINT "PK_ClientEntitlements" PRIMARY KEY,
+                "ClientProfileId" TEXT NOT NULL,
+                "EntitlementKey" TEXT NOT NULL,
+                "Status" TEXT NOT NULL,
+                "SourceType" TEXT NOT NULL,
+                "SourceId" TEXT NOT NULL,
+                "EffectiveUtc" TEXT NULL,
+                "ExpirationUtc" TEXT NULL,
+                "GraceOrSuspensionUtc" TEXT NULL,
+                "ReasonCode" TEXT NULL,
+                "CreatedUtc" TEXT NOT NULL,
+                "UpdatedUtc" TEXT NOT NULL,
+                "RowVersion" BLOB NOT NULL DEFAULT X'',
+                CONSTRAINT "FK_ClientEntitlements_ClientProfiles_ClientProfileId"
+                    FOREIGN KEY ("ClientProfileId") REFERENCES "ClientProfiles" ("Id") ON DELETE CASCADE
+            )
+            """);
+
+        await CreateAsync("BillingAuditEntries", """
+            CREATE TABLE "BillingAuditEntries" (
+                "Id" TEXT NOT NULL CONSTRAINT "PK_BillingAuditEntries" PRIMARY KEY,
+                "EntityType" TEXT NOT NULL,
+                "EntityId" TEXT NOT NULL,
+                "Action" TEXT NOT NULL,
+                "PreviousStatus" TEXT NULL,
+                "NewStatus" TEXT NULL,
+                "ActorType" TEXT NOT NULL,
+                "ActorId" TEXT NULL,
+                "Source" TEXT NOT NULL,
+                "ReasonCode" TEXT NULL,
+                "CorrelationId" TEXT NULL,
+                "OccurredUtc" TEXT NOT NULL,
+                "SanitizedMetadataJson" TEXT NULL
             )
             """);
 

@@ -1,0 +1,280 @@
+(() => {
+    "use strict";
+
+    function text(value) {
+        return value == null ? "" : String(value).trim();
+    }
+
+    function parseUtc(value) {
+        if (typeof window.crmParseUtcDate === "function") {
+            return window.crmParseUtcDate(value);
+        }
+
+        const raw = text(value);
+        if (!raw) return null;
+
+        const parsed = new Date(raw);
+        return Number.isNaN(parsed.getTime()) ? null : parsed;
+    }
+
+    function formatLocalDateTime(value) {
+        const parsed = parseUtc(value);
+        if (!parsed) return "—";
+
+        return parsed.toLocaleString([], {
+            dateStyle: "medium",
+            timeStyle: "short"
+        });
+    }
+
+    function formatMoney(amountCents, currency) {
+        if (!Number.isFinite(amountCents)) return "—";
+
+        try {
+            return new Intl.NumberFormat(undefined, {
+                style: "currency",
+                currency: text(currency) || "USD"
+            }).format(amountCents / 100);
+        } catch {
+            return `$${(amountCents / 100).toFixed(2)}`;
+        }
+    }
+
+    function describeBillingAnchor(offer) {
+        const mode = text(offer?.billingAnchorSelectionMode);
+        const day = offer?.selectedBillingAnchorDay;
+
+        switch (mode) {
+            case "FirstOfMonth":
+                return "1st of month";
+            case "FifteenthOfMonth":
+                return "15th of month";
+            case "SpecificDayOfMonth":
+                return Number.isFinite(day) ? `Day ${day} of month` : "Agent-selected day";
+            case "ClientSelectedIfAllowed":
+                return "Client-selected during activation";
+            case "ProviderDefault":
+                return "Provider default";
+            default:
+                return "—";
+        }
+    }
+
+    function getNode(id) {
+        return document.getElementById(id);
+    }
+
+    function notify(message) {
+        const adapter = window.quickViewCalendarAdapter;
+        if (adapter && typeof adapter.toast === "function") {
+            adapter.toast(message);
+            return;
+        }
+
+        window.alert(message);
+    }
+
+    function getAntiForgeryToken() {
+        return document.querySelector("#__af input[name='__RequestVerificationToken']")?.value || "";
+    }
+
+    async function postJson(url, payload) {
+        const response = await fetch(url, {
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json",
+                "RequestVerificationToken": getAntiForgeryToken()
+            },
+            body: JSON.stringify(payload || {})
+        });
+
+        let data = null;
+        try {
+            data = await response.json();
+        } catch {
+            data = null;
+        }
+
+        if (!response.ok) {
+            const message = text(data?.message) || text(data) || `Request failed with HTTP ${response.status}.`;
+            throw new Error(message);
+        }
+
+        return data || {};
+    }
+
+    function getLoadedState() {
+        if (typeof window.isQuickViewAppointmentLoaded === "function") {
+            try {
+                return !!window.isQuickViewAppointmentLoaded();
+            } catch {
+                return false;
+            }
+        }
+
+        return false;
+    }
+
+    function getBillingContext() {
+        if (typeof window.getQuickViewBillingContext === "function") {
+            try {
+                return window.getQuickViewBillingContext();
+            } catch {
+                return null;
+            }
+        }
+
+        return null;
+    }
+
+    function updateButtonState(snapshot, loaded) {
+        const resendButton = getNode("btnBillingResendInvite");
+        const revokeButton = getNode("btnBillingRevokeInvite");
+        const cancelButton = getNode("btnBillingCancelPeriodEnd");
+
+        const actions = snapshot?.actions || {};
+        if (resendButton) resendButton.disabled = !loaded || !actions.canResendInvitation;
+        if (revokeButton) revokeButton.disabled = !loaded || !actions.canRevokeInvitation;
+        if (cancelButton) cancelButton.disabled = !loaded || !actions.canCancelSubscription;
+    }
+
+    function renderQuickViewBillingSnapshot(snapshot, options = {}) {
+        const loaded = Object.prototype.hasOwnProperty.call(options, "loaded")
+            ? !!options.loaded
+            : getLoadedState();
+
+        const section = getNode("dBillingSection");
+        const offerNode = getNode("dBillingOffer");
+        const invitationNode = getNode("dBillingInvitation");
+        const subscriptionNode = getNode("dBillingSubscription");
+        const entitlementNode = getNode("dBillingEntitlement");
+        const nextBillingNode = getNode("dBillingNextBilling");
+        const deliveryNode = getNode("dBillingDelivery");
+        const statusNode = getNode("dBillingStatus");
+
+        if (section) {
+            section.hidden = !loaded || !snapshot;
+        }
+
+        if (!loaded || !snapshot) {
+            [offerNode, invitationNode, subscriptionNode, entitlementNode, nextBillingNode, deliveryNode].forEach(node => {
+                if (node) node.textContent = "—";
+            });
+            if (statusNode) statusNode.textContent = loaded ? "No ClientApp billing workspace on this record yet." : "Ready";
+            updateButtonState(null, loaded);
+            return;
+        }
+
+        if (offerNode) {
+            const offer = snapshot.offer || {};
+            offerNode.textContent =
+                `${text(offer.status) || "Unknown"} • ${formatMoney(offer.monthlyAmountCents, offer.currency)} • ${describeBillingAnchor(offer)}`;
+        }
+
+        if (invitationNode) {
+            const invitation = snapshot.invitation;
+            invitationNode.textContent = invitation
+                ? `${text(invitation.status) || "Unknown"} • ${text(invitation.intendedEmail) || "No email"}`
+                : "No invitation prepared";
+        }
+
+        if (subscriptionNode) {
+            const subscription = snapshot.subscription;
+            subscriptionNode.textContent = subscription
+                ? `${text(subscription.status) || "Unknown"} • ${text(subscription.paymentStanding) || "Unknown payment standing"}`
+                : "No active subscription";
+        }
+
+        if (entitlementNode) {
+            const entitlement = snapshot.entitlement;
+            entitlementNode.textContent = entitlement
+                ? `${text(entitlement.status) || "Unknown"}${text(entitlement.reasonCode) ? ` • ${text(entitlement.reasonCode)}` : ""}`
+                : "Not granted";
+        }
+
+        if (nextBillingNode) {
+            nextBillingNode.textContent =
+                formatLocalDateTime(snapshot.subscription?.nextBillingDateUtc);
+        }
+
+        if (deliveryNode) {
+            const invitation = snapshot.invitation;
+            if (!invitation) {
+                deliveryNode.textContent = "No invitation delivery recorded";
+            } else {
+                const action = text(invitation.lastDeliveryAction);
+                const summary = text(invitation.lastDeliverySummary);
+                const sentAt = formatLocalDateTime(invitation.lastSentUtc || invitation.lastDeliveryUtc);
+                if (action === "send_failed") {
+                    deliveryNode.textContent = summary
+                        ? `Send failed • ${summary}`
+                        : "Latest send attempt failed";
+                } else if (action === "sent" || invitation.sendCount > 0) {
+                    deliveryNode.textContent = `${invitation.sendCount || 0} sent • ${sentAt}`;
+                } else {
+                    deliveryNode.textContent = "Invitation created but not sent yet";
+                }
+            }
+        }
+
+        if (statusNode) {
+            statusNode.textContent = "Billing workspace ready.";
+        }
+
+        updateButtonState(snapshot, loaded);
+    }
+
+    async function runAction(actionKey, successMessage) {
+        const context = getBillingContext();
+        if (!context?.clientProfileId) {
+            notify("Open a linked client record first.");
+            return;
+        }
+
+        const url = text(context?.actionUrls?.[actionKey]);
+        if (!url) {
+            notify("Billing actions are not available for this record.");
+            return;
+        }
+
+        try {
+            const data = await postJson(url, {
+                clientProfileId: context.clientProfileId
+            });
+
+            if (typeof window.setQuickViewBillingSnapshot === "function") {
+                window.setQuickViewBillingSnapshot(data.billing || null);
+            }
+
+            renderQuickViewBillingSnapshot(data.billing || null, {
+                loaded: getLoadedState()
+            });
+
+            notify(data.warning ? `${successMessage} ⚠ ${data.warning}` : successMessage);
+        } catch (error) {
+            console.error(error);
+            notify(error?.message || "Billing action failed.");
+        }
+    }
+
+    document.addEventListener("click", event => {
+        if (event.target?.closest?.("#btnBillingResendInvite")) {
+            event.preventDefault();
+            void runAction("resendInvitation", "Subscription invitation resent");
+            return;
+        }
+
+        if (event.target?.closest?.("#btnBillingRevokeInvite")) {
+            event.preventDefault();
+            void runAction("revokeInvitation", "Subscription invitation revoked");
+            return;
+        }
+
+        if (event.target?.closest?.("#btnBillingCancelPeriodEnd")) {
+            event.preventDefault();
+            void runAction("cancelSubscription", "Subscription will cancel at period end");
+        }
+    });
+
+    window.renderQuickViewBillingSnapshot = renderQuickViewBillingSnapshot;
+})();

@@ -11,6 +11,7 @@ public class ClientProfile
 
     // Stable key across AgentPortal + ClientApp (Entra ObjectId or normalized UPN)
     public string ClientUserId { get; set; } = "";
+    public string? ExternalIdentityObjectId { get; set; }
 
     // ============================
     // Core Client Identity

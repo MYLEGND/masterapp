@@ -1,4 +1,5 @@
 using System;
+using Domain.Billing;
 using Domain.Entities;
 using Domain.Enums;
 using Microsoft.EntityFrameworkCore;
@@ -53,6 +54,14 @@ public class MasterAppDbContext : DbContext
     public DbSet<CommerceProductDiscount> CommerceProductDiscounts => Set<CommerceProductDiscount>();
     public DbSet<CommerceOrder> CommerceOrders => Set<CommerceOrder>();
     public DbSet<CommerceOrderLine> CommerceOrderLines => Set<CommerceOrderLine>();
+    public DbSet<ClientSubscriptionOffer> ClientSubscriptionOffers => Set<ClientSubscriptionOffer>();
+    public DbSet<ClientSubscription> ClientSubscriptions => Set<ClientSubscription>();
+    public DbSet<SubscriptionActivationInvitation> SubscriptionActivationInvitations => Set<SubscriptionActivationInvitation>();
+    public DbSet<ClientIdentityContinuation> ClientIdentityContinuations => Set<ClientIdentityContinuation>();
+    public DbSet<SubscriptionPayment> SubscriptionPayments => Set<SubscriptionPayment>();
+    public DbSet<BillingProviderEvent> BillingProviderEvents => Set<BillingProviderEvent>();
+    public DbSet<ClientEntitlement> ClientEntitlements => Set<ClientEntitlement>();
+    public DbSet<BillingAuditEntry> BillingAuditEntries => Set<BillingAuditEntry>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -250,6 +259,277 @@ public class MasterAppDbContext : DbContext
                 .OnDelete(DeleteBehavior.Cascade);
         });
 
+        modelBuilder.Entity<ClientSubscriptionOffer>(e =>
+        {
+            e.HasKey(x => x.Id);
+            e.ToTable("ClientSubscriptionOffers");
+            e.Property(x => x.OwnerAgentUserId).HasMaxLength(450).IsRequired();
+            e.Property(x => x.PriceType).HasConversion<string>().HasMaxLength(32).IsRequired();
+            e.Property(x => x.Currency).HasMaxLength(8).IsRequired();
+            e.Property(x => x.BillingAnchorSelectionMode).HasConversion<string>().HasMaxLength(40).IsRequired();
+            e.Property(x => x.Status).HasConversion<string>().HasMaxLength(32).IsRequired();
+
+            e.HasIndex(x => x.ClientProfileId);
+            e.HasIndex(x => new { x.ClientProfileId, x.Status });
+            e.HasIndex(x => x.OwnerAgentUserId);
+
+            e.HasOne(x => x.ClientProfile)
+                .WithMany()
+                .HasForeignKey(x => x.ClientProfileId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            if (isSqlServer)
+                e.Property(x => x.RowVersion).IsRowVersion();
+            else
+                e.Property(x => x.RowVersion)
+                    .IsRequired()
+                    .IsConcurrencyToken()
+                    .HasDefaultValueSql("X''")
+                    .ValueGeneratedNever();
+        });
+
+        modelBuilder.Entity<ClientSubscription>(e =>
+        {
+            e.HasKey(x => x.Id);
+            e.ToTable("ClientSubscriptions");
+            e.Property(x => x.OwnerAgentUserId).HasMaxLength(450).IsRequired();
+            e.Property(x => x.Provider).HasConversion<string>().HasMaxLength(40).IsRequired();
+            e.Property(x => x.ProviderEnvironment).HasConversion<string>().HasMaxLength(40).IsRequired();
+            e.Property(x => x.ProviderCustomerId).HasMaxLength(160);
+            e.Property(x => x.ProviderPaymentMethodId).HasMaxLength(160);
+            e.Property(x => x.ProviderSubscriptionId).HasMaxLength(160);
+            e.Property(x => x.ProviderPlanVariationId).HasMaxLength(160);
+            e.Property(x => x.Currency).HasMaxLength(8).IsRequired();
+            e.Property(x => x.BillingTimeZoneId).HasMaxLength(120).IsRequired();
+            e.Property(x => x.Status).HasConversion<string>().HasMaxLength(40).IsRequired();
+            e.Property(x => x.PaymentStanding).HasConversion<string>().HasMaxLength(40).IsRequired();
+
+            if (isSqlServer)
+                e.HasIndex(x => x.ClientProfileId).IsUnique().HasFilter("[Status] <> 'Canceled' AND [Status] <> 'ActivationFailed'");
+            else
+                e.HasIndex(x => new { x.ClientProfileId, x.Status });
+
+            if (isSqlServer)
+                e.HasIndex(x => new { x.Provider, x.ProviderEnvironment, x.ProviderSubscriptionId }).IsUnique().HasFilter("[ProviderSubscriptionId] IS NOT NULL");
+            else
+                e.HasIndex(x => new { x.Provider, x.ProviderEnvironment, x.ProviderSubscriptionId }).IsUnique();
+
+            e.HasIndex(x => new { x.Provider, x.ProviderEnvironment, x.ProviderCustomerId });
+            e.HasIndex(x => new { x.ClientProfileId, x.UpdatedUtc });
+
+            e.HasOne(x => x.ClientProfile)
+                .WithMany()
+                .HasForeignKey(x => x.ClientProfileId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            e.HasOne(x => x.AcceptedOffer)
+                .WithMany()
+                .HasForeignKey(x => x.AcceptedOfferId)
+                .OnDelete(DeleteBehavior.Restrict);
+
+            if (isSqlServer)
+                e.Property(x => x.RowVersion).IsRowVersion();
+            else
+                e.Property(x => x.RowVersion)
+                    .IsRequired()
+                    .IsConcurrencyToken()
+                    .HasDefaultValueSql("X''")
+                    .ValueGeneratedNever();
+        });
+
+        modelBuilder.Entity<SubscriptionActivationInvitation>(e =>
+        {
+            e.HasKey(x => x.Id);
+            e.ToTable("SubscriptionActivationInvitations");
+            e.Property(x => x.TokenHash).HasMaxLength(128).IsRequired();
+            e.Property(x => x.IntendedNormalizedEmail).HasMaxLength(320).IsRequired();
+            e.Property(x => x.Status).HasConversion<string>().HasMaxLength(32).IsRequired();
+            e.Property(x => x.CreatedByAgentUserId).HasMaxLength(450).IsRequired();
+
+            e.HasIndex(x => x.TokenHash).IsUnique();
+            e.HasIndex(x => new { x.ClientProfileId, x.Status });
+            e.HasIndex(x => x.ClientSubscriptionOfferId);
+
+            e.HasOne(x => x.ClientProfile)
+                .WithMany()
+                .HasForeignKey(x => x.ClientProfileId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            e.HasOne(x => x.ClientSubscriptionOffer)
+                .WithMany()
+                .HasForeignKey(x => x.ClientSubscriptionOfferId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            if (isSqlServer)
+                e.Property(x => x.RowVersion).IsRowVersion();
+            else
+                e.Property(x => x.RowVersion)
+                    .IsRequired()
+                    .IsConcurrencyToken()
+                    .HasDefaultValueSql("X''")
+                    .ValueGeneratedNever();
+        });
+
+        modelBuilder.Entity<ClientIdentityContinuation>(e =>
+        {
+            e.HasKey(x => x.Id);
+            e.ToTable("ClientIdentityContinuations");
+            e.Property(x => x.Purpose).HasConversion<string>().HasMaxLength(32).IsRequired();
+            e.Property(x => x.TokenHash).HasMaxLength(128).IsRequired();
+            e.Property(x => x.IntendedNormalizedEmail).HasMaxLength(320).IsRequired();
+            e.Property(x => x.ReturnUrl).HasMaxLength(2048).IsRequired();
+
+            e.HasIndex(x => x.TokenHash).IsUnique();
+            e.HasIndex(x => new { x.ClientProfileId, x.ExpiresUtc });
+            e.HasIndex(x => new { x.ClientProfileId, x.ConsumedUtc });
+
+            e.HasOne(x => x.ClientProfile)
+                .WithMany()
+                .HasForeignKey(x => x.ClientProfileId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            e.HasOne(x => x.SubscriptionActivationInvitation)
+                .WithMany()
+                .HasForeignKey(x => x.SubscriptionActivationInvitationId)
+                .OnDelete(DeleteBehavior.SetNull);
+
+            e.HasOne(x => x.ClientSubscription)
+                .WithMany()
+                .HasForeignKey(x => x.ClientSubscriptionId)
+                .OnDelete(DeleteBehavior.SetNull);
+
+            if (isSqlServer)
+                e.Property(x => x.RowVersion).IsRowVersion();
+            else
+                e.Property(x => x.RowVersion)
+                    .IsRequired()
+                    .IsConcurrencyToken()
+                    .HasDefaultValueSql("X''")
+                    .ValueGeneratedNever();
+        });
+
+        modelBuilder.Entity<SubscriptionPayment>(e =>
+        {
+            e.HasKey(x => x.Id);
+            e.ToTable("SubscriptionPayments");
+            e.Property(x => x.Provider).HasConversion<string>().HasMaxLength(40).IsRequired();
+            e.Property(x => x.ProviderEnvironment).HasConversion<string>().HasMaxLength(40).IsRequired();
+            e.Property(x => x.ProviderPaymentId).HasMaxLength(160);
+            e.Property(x => x.ProviderInvoiceId).HasMaxLength(160);
+            e.Property(x => x.ProviderRefundId).HasMaxLength(160);
+            e.Property(x => x.Currency).HasMaxLength(8).IsRequired();
+            e.Property(x => x.Status).HasConversion<string>().HasMaxLength(40).IsRequired();
+            e.Property(x => x.SafeFailureCode).HasMaxLength(120);
+
+            e.HasIndex(x => x.ClientSubscriptionId);
+            e.HasIndex(x => x.CommerceOrderId);
+
+            if (isSqlServer)
+                e.HasIndex(x => new { x.Provider, x.ProviderEnvironment, x.ProviderPaymentId }).IsUnique().HasFilter("[ProviderPaymentId] IS NOT NULL");
+            else
+                e.HasIndex(x => new { x.Provider, x.ProviderEnvironment, x.ProviderPaymentId }).IsUnique();
+
+            if (isSqlServer)
+                e.HasIndex(x => new { x.Provider, x.ProviderEnvironment, x.ProviderRefundId }).IsUnique().HasFilter("[ProviderRefundId] IS NOT NULL");
+            else
+                e.HasIndex(x => new { x.Provider, x.ProviderEnvironment, x.ProviderRefundId }).IsUnique();
+
+            e.HasOne(x => x.ClientSubscription)
+                .WithMany()
+                .HasForeignKey(x => x.ClientSubscriptionId)
+                .OnDelete(DeleteBehavior.SetNull);
+
+            e.HasOne(x => x.CommerceOrder)
+                .WithMany()
+                .HasForeignKey(x => x.CommerceOrderId)
+                .OnDelete(DeleteBehavior.SetNull);
+
+            if (isSqlServer)
+                e.Property(x => x.RowVersion).IsRowVersion();
+            else
+                e.Property(x => x.RowVersion)
+                    .IsRequired()
+                    .IsConcurrencyToken()
+                    .HasDefaultValueSql("X''")
+                    .ValueGeneratedNever();
+        });
+
+        modelBuilder.Entity<BillingProviderEvent>(e =>
+        {
+            e.HasKey(x => x.Id);
+            e.ToTable("BillingProviderEvents");
+            e.Property(x => x.Provider).HasConversion<string>().HasMaxLength(40).IsRequired();
+            e.Property(x => x.ProviderEnvironment).HasConversion<string>().HasMaxLength(40).IsRequired();
+            e.Property(x => x.ProviderEventId).HasMaxLength(160).IsRequired();
+            e.Property(x => x.EventType).HasMaxLength(120).IsRequired();
+            e.Property(x => x.ProviderObjectId).HasMaxLength(160);
+            e.Property(x => x.ProcessingStatus).HasConversion<string>().HasMaxLength(40).IsRequired();
+            e.Property(x => x.SafeErrorCode).HasMaxLength(120);
+            e.Property(x => x.PayloadHash).HasMaxLength(128).IsRequired();
+            e.Property(x => x.RetainedPayloadJson).HasColumnType("text");
+
+            e.HasIndex(x => new { x.Provider, x.ProviderEnvironment, x.ProviderEventId }).IsUnique();
+            e.HasIndex(x => new { x.ProcessingStatus, x.RetryUtc });
+            e.HasIndex(x => x.ProviderObjectId);
+
+            if (isSqlServer)
+                e.Property(x => x.RowVersion).IsRowVersion();
+            else
+                e.Property(x => x.RowVersion)
+                    .IsRequired()
+                    .IsConcurrencyToken()
+                    .HasDefaultValueSql("X''")
+                    .ValueGeneratedNever();
+        });
+
+        modelBuilder.Entity<ClientEntitlement>(e =>
+        {
+            e.HasKey(x => x.Id);
+            e.ToTable("ClientEntitlements");
+            e.Property(x => x.EntitlementKey).HasMaxLength(120).IsRequired();
+            e.Property(x => x.Status).HasConversion<string>().HasMaxLength(32).IsRequired();
+            e.Property(x => x.SourceType).HasConversion<string>().HasMaxLength(32).IsRequired();
+            e.Property(x => x.SourceId).HasMaxLength(160).IsRequired();
+            e.Property(x => x.ReasonCode).HasMaxLength(120);
+
+            e.HasIndex(x => new { x.ClientProfileId, x.EntitlementKey }).IsUnique();
+            e.HasIndex(x => x.Status);
+
+            e.HasOne(x => x.ClientProfile)
+                .WithMany()
+                .HasForeignKey(x => x.ClientProfileId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            if (isSqlServer)
+                e.Property(x => x.RowVersion).IsRowVersion();
+            else
+                e.Property(x => x.RowVersion)
+                    .IsRequired()
+                    .IsConcurrencyToken()
+                    .HasDefaultValueSql("X''")
+                    .ValueGeneratedNever();
+        });
+
+        modelBuilder.Entity<BillingAuditEntry>(e =>
+        {
+            e.HasKey(x => x.Id);
+            e.ToTable("BillingAuditEntries");
+            e.Property(x => x.EntityType).HasMaxLength(120).IsRequired();
+            e.Property(x => x.EntityId).HasMaxLength(128).IsRequired();
+            e.Property(x => x.Action).HasMaxLength(80).IsRequired();
+            e.Property(x => x.PreviousStatus).HasMaxLength(40);
+            e.Property(x => x.NewStatus).HasMaxLength(40);
+            e.Property(x => x.ActorType).HasConversion<string>().HasMaxLength(32).IsRequired();
+            e.Property(x => x.ActorId).HasMaxLength(450);
+            e.Property(x => x.Source).HasMaxLength(80).IsRequired();
+            e.Property(x => x.ReasonCode).HasMaxLength(120);
+            e.Property(x => x.CorrelationId).HasMaxLength(128);
+            e.Property(x => x.SanitizedMetadataJson).HasColumnType("text");
+
+            e.HasIndex(x => new { x.EntityType, x.EntityId, x.OccurredUtc });
+            e.HasIndex(x => new { x.ActorId, x.OccurredUtc });
+        });
+
         modelBuilder.Entity<OnboardingInvite>(e =>
         {
             e.HasKey(x => x.Id);
@@ -312,11 +592,17 @@ public class MasterAppDbContext : DbContext
         {
             e.Property(x => x.Email).HasMaxLength(320);
             e.Property(x => x.NormalizedEmail).HasMaxLength(320);
+            e.Property(x => x.ExternalIdentityObjectId).HasMaxLength(450);
 
             if (isSqlServer)
                 e.HasIndex(x => x.NormalizedEmail).IsUnique().HasFilter("[NormalizedEmail] IS NOT NULL");
             else
                 e.HasIndex(x => x.NormalizedEmail).IsUnique();
+
+            if (isSqlServer)
+                e.HasIndex(x => x.ExternalIdentityObjectId).IsUnique().HasFilter("[ExternalIdentityObjectId] IS NOT NULL");
+            else
+                e.HasIndex(x => x.ExternalIdentityObjectId).IsUnique();
 
             if (isSqlServer)
                 e.Property(x => x.RowVersion).IsRowVersion();

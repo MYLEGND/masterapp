@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.ComponentModel.DataAnnotations;
 using System.Linq;
+using Domain.Billing;
 
 namespace AgentPortal.Models
 {
@@ -67,6 +68,11 @@ namespace AgentPortal.Models
         public string? AgentPhone { get; set; }
 
         public string? OneTimePassword { get; set; }
+        public string SubscriptionPriceType { get; set; } = "";
+        public decimal? SubscriptionCustomMonthlyAmount { get; set; }
+        public string SubscriptionCurrency { get; set; } = "USD";
+        public string SubscriptionBillingAnchorMode { get; set; } = nameof(BillingAnchorSelectionMode.FirstOfMonth);
+        public int? SubscriptionBillingAnchorDay { get; set; }
 
         public IEnumerable<ValidationResult> Validate(ValidationContext validationContext)
         {
@@ -169,6 +175,67 @@ namespace AgentPortal.Models
                 yield return new ValidationResult(
                     "Password must be at least 8 characters.",
                     new[] { nameof(OneTimePassword) });
+
+            if (isPortalClient)
+            {
+                if (!Enum.TryParse<ClientSubscriptionOfferPriceType>(SubscriptionPriceType?.Trim(), ignoreCase: true, out var priceType))
+                {
+                    yield return new ValidationResult(
+                        "Choose a valid subscription tier.",
+                        new[] { nameof(SubscriptionPriceType) });
+                }
+                else if (priceType == ClientSubscriptionOfferPriceType.Custom)
+                {
+                    if (!SubscriptionCustomMonthlyAmount.HasValue)
+                    {
+                        yield return new ValidationResult(
+                            "Custom monthly amount is required when Custom is selected.",
+                            new[] { nameof(SubscriptionCustomMonthlyAmount) });
+                    }
+                    else
+                    {
+                        var customAmount = SubscriptionCustomMonthlyAmount.Value;
+                        if (decimal.Round(customAmount, 2) != customAmount)
+                        {
+                            yield return new ValidationResult(
+                                "Custom monthly amount must use no more than 2 decimal places.",
+                                new[] { nameof(SubscriptionCustomMonthlyAmount) });
+                        }
+
+                        var customCents = decimal.ToInt32(decimal.Round(customAmount * 100m, 0, MidpointRounding.AwayFromZero));
+                        if (customCents < ClientSubscriptionOfferPricing.CustomMinimumCents ||
+                            customCents > ClientSubscriptionOfferPricing.CustomMaximumCents)
+                        {
+                            yield return new ValidationResult(
+                                $"Custom monthly amount must be between {(ClientSubscriptionOfferPricing.CustomMinimumCents / 100m):0.00} and {(ClientSubscriptionOfferPricing.CustomMaximumCents / 100m):0.00}.",
+                                new[] { nameof(SubscriptionCustomMonthlyAmount) });
+                        }
+                    }
+                }
+
+                if (!string.Equals((SubscriptionCurrency ?? string.Empty).Trim(), "USD", StringComparison.OrdinalIgnoreCase))
+                {
+                    yield return new ValidationResult(
+                        "Subscriptions must use USD.",
+                        new[] { nameof(SubscriptionCurrency) });
+                }
+
+                if (!Enum.TryParse<BillingAnchorSelectionMode>(SubscriptionBillingAnchorMode?.Trim(), ignoreCase: true, out var anchorMode))
+                {
+                    yield return new ValidationResult(
+                        "Choose a valid billing anchor mode.",
+                        new[] { nameof(SubscriptionBillingAnchorMode) });
+                }
+                else if (anchorMode == BillingAnchorSelectionMode.SpecificDayOfMonth)
+                {
+                    if (!SubscriptionBillingAnchorDay.HasValue || SubscriptionBillingAnchorDay.Value < 1 || SubscriptionBillingAnchorDay.Value > 31)
+                    {
+                        yield return new ValidationResult(
+                            "Agent-selected billing anchors must use a day between 1 and 31.",
+                            new[] { nameof(SubscriptionBillingAnchorDay) });
+                    }
+                }
+            }
         }
     }
 }

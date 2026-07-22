@@ -183,7 +183,7 @@ public sealed class ParfaitOrderService
         }
     }
 
-    public void MarkPaid(string orderNumber, string? squarePaymentId)
+    public void MarkPaymentCaptured(string orderNumber, string? paymentReferenceId)
     {
         lock (Lock)
         {
@@ -199,7 +199,7 @@ public sealed class ParfaitOrderService
 
             order.PaymentStatus = "Paid";
             order.PaidUtc = DateTime.UtcNow;
-            order.SquarePaymentId = squarePaymentId;
+            order.SquarePaymentId = NullIfEmpty(paymentReferenceId);
             order.IsPaymentProcessing = false;
             order.PaymentProcessingStartedUtc = null;
             order.SquareError = null;
@@ -210,7 +210,7 @@ public sealed class ParfaitOrderService
         }
     }
 
-    public void MarkPaymentFailed(string orderNumber, string error)
+    public void MarkPaymentFailed(string orderNumber, string safeFailureSummary)
     {
         lock (Lock)
         {
@@ -227,7 +227,7 @@ public sealed class ParfaitOrderService
             order.PaymentStatus = "Failed";
             order.IsPaymentProcessing = false;
             order.PaymentProcessingStartedUtc = null;
-            order.SquareError = error;
+            order.SquareError = NullIfEmpty(safeFailureSummary);
             order.UpdatedUtc = DateTime.UtcNow;
             order.Status = BuildStatus(MapOrder(order));
 
@@ -330,6 +330,7 @@ public sealed class ParfaitOrderService
     {
         return new ParfaitOrderRecord
         {
+            CommerceOrderId = order.Id,
             OrderNumber = Clean(order.OrderNumber),
             CreatedUtc = order.CreatedUtc,
             UpdatedUtc = order.UpdatedUtc,
@@ -387,6 +388,9 @@ public sealed class ParfaitOrderService
 
     private static void ApplyRecordToEntity(CommerceOrder entity, ParfaitOrderRecord record)
     {
+        if (record.CommerceOrderId != Guid.Empty)
+            entity.Id = record.CommerceOrderId;
+
         entity.OrderNumber = record.OrderNumber;
         entity.CreatedUtc = record.CreatedUtc;
         entity.UpdatedUtc = record.UpdatedUtc;
@@ -545,6 +549,7 @@ public sealed class ParfaitOrderService
 
         var normalized = new ParfaitOrderRecord
         {
+            CommerceOrderId = order.CommerceOrderId,
             OrderNumber = Clean(order.OrderNumber),
             CreatedUtc = createdUtc,
             UpdatedUtc = order.UpdatedUtc == default ? createdUtc : order.UpdatedUtc,

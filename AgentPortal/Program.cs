@@ -2,6 +2,7 @@ using AgentPortal.Hubs;
 using AgentPortal.Middleware;
 using AgentPortal.Services;
 using Azure.Identity;
+using Infrastructure.Billing;
 using Infrastructure.Data;
 using Infrastructure.Identity;
 using AgentPortal.Security;
@@ -73,7 +74,10 @@ builder.Services.AddAuthorization(options =>
 });
 
 builder.Services.AddHttpContextAccessor();
+builder.Services.AddMasterAppBilling(builder.Configuration);
+builder.Services.AddScoped<ClientBillingWorkspaceService>();
 builder.Services.AddScoped<ClientProvisioningService>();
+builder.Services.AddScoped<ClientSubscriptionInvitationEmailService>();
 builder.Services.AddScoped<IAzureClientEmailSyncService, AzureClientEmailSyncService>();
 builder.Services.AddScoped<AssistantContextService>();
 builder.Services.AddScoped<AgentRegistryService>();
@@ -135,6 +139,7 @@ builder.Services.AddHostedService<AnalyticsIncidentResponseHostedService>();
 builder.Services.AddHostedService<GraphCalendarSubscriptionHostedService>();
 builder.Services.AddHostedService<LeadAppointmentAutoCompletionHostedService>();
 builder.Services.AddHostedService<AzureAgentDirectorySyncHostedService>();
+builder.Services.AddHostedService<BillingReconciliationHostedService>();
 builder.Services.AddSingleton<MetaCapiCredentialProtector>();
 builder.Services.AddSingleton<PiiProtector>();
 builder.Services.AddSingleton<IngestSignatureValidator>();

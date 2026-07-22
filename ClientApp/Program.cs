@@ -1,4 +1,5 @@
 using Infrastructure.Data;
+using Infrastructure.Billing;
 using Infrastructure.Identity;
 using ClientApp.Infrastructure;
 using ClientApp.Services;
@@ -13,6 +14,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Diagnostics;
 using Microsoft.IdentityModel.Tokens;
 using System.Security.Claims;
+using System.Threading.RateLimiting;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -27,13 +29,50 @@ builder.Services.AddControllersWithViews(options =>
         .Build();
 
     options.Filters.Add(new AuthorizeFilter(policy));
+    options.Filters.AddService<ClientSubscriptionAuthorizeFilter>();
 });
 
 builder.Services.AddHttpContextAccessor();
+builder.Services.AddMasterAppBilling(builder.Configuration);
 builder.Services.AddScoped<EffectiveClientContextService>();
 builder.Services.AddScoped<IAzureClientEmailSyncService, AzureClientEmailSyncService>();
 builder.Services.AddScoped<IAzureUserUpdater, AzureUserUpdaterAdapter>();
+builder.Services.AddScoped<ClientIdentityContinuationService>();
+builder.Services.AddScoped<ClientIdentityAccessService>();
+builder.Services.AddScoped<SubscriptionActivationService>();
+builder.Services.AddScoped<ClientSubscriptionAuthorizeFilter>();
+builder.Services.AddScoped<IAuthorizationHandler, ClientSubscriptionActiveHandler>();
 builder.Services.AddDataProtection().SetApplicationName("MasterApp.ClientApp");
+builder.Services.AddRateLimiter(options =>
+{
+    options.AddPolicy("clientapp-public", context =>
+        RateLimitPartition.GetFixedWindowLimiter(
+            partitionKey: context.Connection.RemoteIpAddress?.ToString() ?? "anon",
+            factory: _ => new FixedWindowRateLimiterOptions
+            {
+                PermitLimit = 20,
+                Window = TimeSpan.FromMinutes(1),
+                QueueProcessingOrder = QueueProcessingOrder.OldestFirst,
+                QueueLimit = 0
+            }));
+
+    options.AddPolicy("clientapp-login", context =>
+        RateLimitPartition.GetFixedWindowLimiter(
+            partitionKey: context.Connection.RemoteIpAddress?.ToString() ?? "anon",
+            factory: _ => new FixedWindowRateLimiterOptions
+            {
+                PermitLimit = 8,
+                Window = TimeSpan.FromMinutes(1),
+                QueueProcessingOrder = QueueProcessingOrder.OldestFirst,
+                QueueLimit = 0
+            }));
+
+    options.OnRejected = (context, _) =>
+    {
+        context.HttpContext.Response.StatusCode = StatusCodes.Status429TooManyRequests;
+        return ValueTask.CompletedTask;
+    };
+});
 builder.Services.Configure<CookiePolicyOptions>(options =>
 {
     options.MinimumSameSitePolicy = SameSiteMode.Unspecified;
@@ -289,7 +328,7 @@ builder.Services.AddAuthentication(options =>
                     identity.AddClaim(new Claim("oid", oid.Trim()));
             }
 
-            return Task.CompletedTask;
+            return CompleteClientSignInAsync(context);
         },
 
         // Return 401 for AJAX requests instead of redirecting to Azure AD
@@ -358,7 +397,39 @@ builder.Services.Configure<CookieAuthenticationOptions>(CookieAuthenticationDefa
     };
 });
 
-builder.Services.AddAuthorization();
+builder.Services.AddAuthorization(options =>
+{
+    options.AddPolicy(
+        ClientAppAuthorizationPolicies.ClientSubscriptionActive,
+        policy =>
+        {
+            policy.RequireAuthenticatedUser();
+            policy.AddRequirements(new ClientSubscriptionActiveRequirement());
+        });
+});
+
+async Task CompleteClientSignInAsync(TokenValidatedContext context)
+{
+    var identityAccess = context.HttpContext.RequestServices.GetRequiredService<ClientIdentityAccessService>();
+    var completion = await identityAccess.CompleteClientSignInAsync(
+        context.HttpContext,
+        context.Principal!,
+        context.Properties?.RedirectUri,
+        context.HttpContext.RequestAborted);
+
+    if (completion.Success)
+    {
+        context.Properties!.RedirectUri = completion.ReturnUrl;
+        return;
+    }
+
+    OidcTransientCookieCleanup.Clear(context.HttpContext, callbackPath);
+    identityAccess.ClearChallengeContinuationCookie(context.HttpContext.Response);
+    await context.HttpContext.SignOutAsync(CookieAuthenticationDefaults.AuthenticationScheme);
+    context.HandleResponse();
+    context.Response.Redirect(
+        $"/Account/ActivationRequired?returnUrl={Uri.EscapeDataString(completion.ReturnUrl)}&message={Uri.EscapeDataString(completion.SanitizedMessage ?? "The client sign-in could not be completed.")}");
+}
 
 var app = builder.Build();
 
@@ -429,6 +500,7 @@ app.UseHttpsRedirection();
 app.UseStaticFiles();
 
 app.UseRouting();
+app.UseRateLimiter();
 
 app.UseCookiePolicy();
 app.UseAuthentication();

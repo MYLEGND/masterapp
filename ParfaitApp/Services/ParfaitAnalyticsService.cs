@@ -8,7 +8,20 @@ using ParfaitApp.Models;
 
 namespace ParfaitApp.Services;
 
-public sealed class ParfaitAnalyticsService
+public interface IParfaitAnalyticsService
+{
+    Task TrackAsync(
+        ParfaitAnalyticsEventRequest request,
+        HttpContext httpContext,
+        CancellationToken ct = default);
+
+    Task TrackPurchaseAsync(
+        ParfaitOrderRecord order,
+        HttpContext httpContext,
+        CancellationToken ct = default);
+}
+
+public sealed class ParfaitAnalyticsService : IParfaitAnalyticsService
 {
     private const string SiteKey = "ParfaitApp";
     private const string BusinessType = "Ecommerce";
@@ -141,7 +154,7 @@ public sealed class ParfaitAnalyticsService
             Metadata = new Dictionary<string, string?>
             {
                 ["paymentStatus"] = order.PaymentStatus,
-                ["squarePaymentId"] = order.SquarePaymentId,
+                ["paymentReferenceId"] = order.PaymentReferenceId,
                 ["items"] = JsonSerializer.Serialize(order.Items.Select(i => new
                 {
                     i.Id,

@@ -4,6 +4,7 @@ using System.Security.Claims;
 using System.Net.Http;
 using AgentPortal.Controllers;
 using AgentPortal.Services;
+using Domain.Billing;
 using AgentPortal.Services.Tracking;
 using AgentPortal.Hubs;
 using Infrastructure.Data;
@@ -50,7 +51,8 @@ internal static class ControllerTestHelpers
         var featureFlags = Options.Create(new AgentPortal.Models.AppFeatureFlags());
         var importValidator = new AgentPortal.Services.ImportValidation.LeadImportValidator();
         var metaSignalOutcomes = new MetaSignalCrmOutcomeService(db, NullLogger<MetaSignalCrmOutcomeService>.Instance);
-        var controller = new LeadsController(db, timeResolver, prod, effCtx, execution, commitments, NullLogger<LeadsController>.Instance, featureFlags, importValidator, metaSignalOutcomes)
+        var clientBillingWorkspaceService = new ClientBillingWorkspaceService(db);
+        var controller = new LeadsController(db, timeResolver, prod, effCtx, execution, commitments, NullLogger<LeadsController>.Instance, featureFlags, importValidator, metaSignalOutcomes, clientBillingWorkspaceService)
         {
             ControllerContext = new ControllerContext { HttpContext = accessor.HttpContext! }
         };
@@ -92,9 +94,13 @@ internal static class ControllerTestHelpers
         MasterAppDbContext db,
         IExecutionEngine execution,
         ICommitmentService commitments,
-        ClaimsPrincipal user)
+        ClaimsPrincipal user,
+        IBillingOrchestrator? billingOrchestrator = null,
+        IEmailSender? emailSender = null,
+        IConfiguration? configuration = null,
+        IAgentTimeZoneResolver? timeResolver = null)
     {
-        var config = new ConfigurationBuilder()
+        var config = configuration ?? new ConfigurationBuilder()
             .AddInMemoryCollection(new[]
             {
                 new KeyValuePair<string,string?>("GraphProvisioning:TenantId","test-tenant"),
@@ -103,13 +109,17 @@ internal static class ControllerTestHelpers
             })
             .Build();
         var provisioning = new ClientProvisioningService(config, NullLogger<ClientProvisioningService>.Instance, db);
-        var timeResolver = Mock.Of<IAgentTimeZoneResolver>();
+        timeResolver ??= Mock.Of<IAgentTimeZoneResolver>();
         var azureClientEmailSync = Mock.Of<IAzureClientEmailSyncService>();
+        billingOrchestrator ??= Mock.Of<IBillingOrchestrator>();
+        emailSender ??= Mock.Of<IEmailSender>();
+        var clientBillingWorkspaceService = new ClientBillingWorkspaceService(db);
+        var subscriptionInvitationEmailService = new ClientSubscriptionInvitationEmailService(config, emailSender);
         var prod = new ProductionService(db, NullLogger<ProductionService>.Instance);
         var accessor = new HttpContextAccessor { HttpContext = new DefaultHttpContext { User = user } };
         var tracking = Mock.Of<IAgentTrackingService>();
         var effCtx = new EffectiveAgentContext(accessor, tracking, NullLogger<EffectiveAgentContext>.Instance);
-        var controller = new ClientsController(db, provisioning, config, NullLogger<ClientsController>.Instance, timeResolver, azureClientEmailSync, prod, effCtx, execution, commitments)
+        var controller = new ClientsController(db, provisioning, config, NullLogger<ClientsController>.Instance, timeResolver, azureClientEmailSync, prod, effCtx, execution, commitments, billingOrchestrator, clientBillingWorkspaceService, subscriptionInvitationEmailService)
         {
             ControllerContext = new ControllerContext { HttpContext = accessor.HttpContext! }
         };

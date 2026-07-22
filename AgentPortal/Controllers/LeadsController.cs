@@ -32,6 +32,7 @@ public class LeadsController : Controller
     private readonly AgentPortal.Models.AppFeatureFlags _featureFlags;
     private readonly AgentPortal.Services.ImportValidation.LeadImportValidator _leadImportValidator;
     private readonly MetaSignalCrmOutcomeService _metaSignalOutcomes;
+    private readonly ClientBillingWorkspaceService _clientBillingWorkspaceService;
     private const string CommitmentsUnavailableMessage = "Commitments are not live yet in this environment. Apply the latest migrations to enable them.";
     private static readonly string[] ProductBuckets = WorkstationLeadBuckets.ProductBuckets;
 
@@ -237,7 +238,7 @@ public class LeadsController : Controller
         public List<string>? Ids { get; set; }
     }
 
-    public LeadsController(MasterAppDbContext db, IAgentTimeZoneResolver agentTimeZoneResolver, ProductionService production, EffectiveAgentContext agentContext, IExecutionEngine execution, ICommitmentService commitments, ILogger<LeadsController> logger, Microsoft.Extensions.Options.IOptions<AgentPortal.Models.AppFeatureFlags> featureFlags, AgentPortal.Services.ImportValidation.LeadImportValidator leadImportValidator, MetaSignalCrmOutcomeService metaSignalOutcomes)
+    public LeadsController(MasterAppDbContext db, IAgentTimeZoneResolver agentTimeZoneResolver, ProductionService production, EffectiveAgentContext agentContext, IExecutionEngine execution, ICommitmentService commitments, ILogger<LeadsController> logger, Microsoft.Extensions.Options.IOptions<AgentPortal.Models.AppFeatureFlags> featureFlags, AgentPortal.Services.ImportValidation.LeadImportValidator leadImportValidator, MetaSignalCrmOutcomeService metaSignalOutcomes, ClientBillingWorkspaceService clientBillingWorkspaceService)
     {
         _db = db;
         _agentTimeZoneResolver = agentTimeZoneResolver;
@@ -249,6 +250,7 @@ public class LeadsController : Controller
         _featureFlags = featureFlags.Value;
         _leadImportValidator = leadImportValidator;
         _metaSignalOutcomes = metaSignalOutcomes;
+        _clientBillingWorkspaceService = clientBillingWorkspaceService;
     }
 
     // Centralized canonical selector to avoid drift across endpoints.
@@ -1729,7 +1731,21 @@ public class LeadsController : Controller
     {
         var intakeContext = await LoadLeadIntakeSnapshotContextAsync(lead.LeadId);
         var appointmentContext = await LoadLeadAppointmentSnapshotContextAsync(lead.LeadId);
-        return LeadPayload(lead, intakeContext.Latest, intakeContext.HistoryCount, appointmentContext, utcNow, dialsTodayAgentWide, dialsWeekAgentWide, dialTimeZone);
+        var billingWorkspace = await _clientBillingWorkspaceService.BuildSnapshotForLeadAsync(
+            lead.LeadId,
+            lead.AgentUserId,
+            HttpContext?.RequestAborted ?? CancellationToken.None);
+        return LeadPayload(
+            lead,
+            intakeContext.Latest,
+            intakeContext.HistoryCount,
+            appointmentContext,
+            utcNow,
+            dialsTodayAgentWide,
+            dialsWeekAgentWide,
+            dialTimeZone,
+            billingWorkspace?.ClientProfileId,
+            billingWorkspace?.Snapshot);
     }
 
     private async Task<(WebsiteLeadIntakeLink? Latest, int HistoryCount)> LoadLeadIntakeSnapshotContextAsync(string leadId)
@@ -1821,7 +1837,9 @@ public class LeadsController : Controller
         DateTime? utcNow = null,
         int? dialsTodayAgentWide = null,
         int? dialsWeekAgentWide = null,
-        TimeZoneInfo? dialTimeZone = null)
+        TimeZoneInfo? dialTimeZone = null,
+        Guid? clientProfileId = null,
+        object? billing = null)
     {
         var effectiveUtcNow = utcNow ?? DateTime.UtcNow;
         var attempts = CrmAttemptTracking.GetLeadAttemptCounts(lead, effectiveUtcNow, dialTimeZone);
@@ -1837,6 +1855,7 @@ public class LeadsController : Controller
         return new
         {
             lead.LeadId,
+            clientProfileId,
             agentUserId = lead.AgentUserId,
             firstName = lead.FirstName,
             lastName = lead.LastName,
@@ -1906,7 +1925,8 @@ public class LeadsController : Controller
             lastContactChannel = string.IsNullOrWhiteSpace(crmMeta.LastContactChannel) ? "Call" : crmMeta.LastContactChannel,
             originalLeadType = ResolveOriginalLeadType(lead.OriginalLeadType, lead.Bucket),
             intakeSnapshot = BuildIntakeSnapshotPayload(latestIntake, intakeHistoryCount),
-            latestAppointment = BuildLeadAppointmentPayload(latestAppointment)
+            latestAppointment = BuildLeadAppointmentPayload(latestAppointment),
+            billing
         };
     }
 

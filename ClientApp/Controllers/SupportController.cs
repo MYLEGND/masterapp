@@ -84,6 +84,7 @@ public class SupportController : Controller
             .Select(p => new
             {
                 ClientUserId = (p.ClientUserId ?? "").Trim().ToLower(),
+                ExternalIdentityObjectId = (p.ExternalIdentityObjectId ?? "").Trim().ToLower(),
                 Email = (p.Email ?? "").Trim().ToLower()
             })
             .FirstOrDefaultAsync();
@@ -145,10 +146,10 @@ public class SupportController : Controller
             .ToArray();
 
         var matchesClient =
+            (!string.IsNullOrWhiteSpace(profile.ExternalIdentityObjectId) &&
+             userIdCandidates.Contains(profile.ExternalIdentityObjectId)) ||
             (!string.IsNullOrWhiteSpace(profile.ClientUserId) &&
-             userIdCandidates.Contains(profile.ClientUserId)) ||
-            (!string.IsNullOrWhiteSpace(profile.Email) &&
-             string.Equals(profile.Email, upn, StringComparison.OrdinalIgnoreCase));
+             userIdCandidates.Contains(profile.ClientUserId));
 
         if (!matchesClient)
             return Forbid();

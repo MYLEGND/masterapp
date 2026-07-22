@@ -1,0 +1,137 @@
+@model ClientApp.Models.SubscriptionActivationPageViewModel
+@{
+    ViewData["Title"] = "Activate Subscription";
+    Layout = null;
+    var squareScriptUrl = string.Equals(Model.SquareEnvironment, "Production", StringComparison.OrdinalIgnoreCase)
+        ? "https://web.squarecdn.com/v1/square.js"
+        : "https://sandbox.web.squarecdn.com/v1/square.js";
+}
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>@ViewData["Title"] - Legend™</title>
+    <link rel="stylesheet" href="~/lib/bootstrap/dist/css/bootstrap.min.css" />
+    <link rel="stylesheet" href="~/css/site.css" asp-append-version="true" />
+</head>
+<body class="bg-light">
+    <main class="container py-4 py-lg-5" data-subscription-activation
+          data-prepare-url="@Url.Action("Prepare", "SubscriptionActivation", new { token = Model.Token })"
+          data-square-app-id="@Model.SquareApplicationId"
+          data-square-location-id="@Model.SquareLocationId">
+        <div class="row justify-content-center">
+            <div class="col-12 col-xl-10">
+                <div class="row g-4">
+                    <div class="col-lg-6">
+                        <div class="card shadow-sm border-0 h-100">
+                            <div class="card-body p-4">
+                                <p class="text-uppercase small text-muted mb-2">Subscription Activation</p>
+                                <h1 class="h3 mb-2">@Model.ClientName</h1>
+                                <p class="text-muted mb-4">@Model.ClientEmail</p>
+
+                                <dl class="row mb-0">
+                                    <dt class="col-sm-5 text-muted">Monthly amount</dt>
+                                    <dd class="col-sm-7 fw-semibold">@Model.MonthlyAmountDisplay</dd>
+                                    <dt class="col-sm-5 text-muted">First charge</dt>
+                                    <dd class="col-sm-7" data-first-charge>@Model.FirstChargeDateDisplay</dd>
+                                    <dt class="col-sm-5 text-muted">First renewal</dt>
+                                    <dd class="col-sm-7" data-first-renewal>@Model.FirstRecurringRenewalDateDisplay</dd>
+                                    <dt class="col-sm-5 text-muted">Billing anchor</dt>
+                                    <dd class="col-sm-7" data-anchor-label>@Model.BillingAnchorLabel</dd>
+                                    <dt class="col-sm-5 text-muted">Billing timezone</dt>
+                                    <dd class="col-sm-7">@Model.BillingTimeZoneLabel</dd>
+                                </dl>
+
+                                <hr class="my-4" />
+
+                                <p class="fw-semibold mb-2">Recurring terms</p>
+                                <p class="text-muted mb-3">@Model.RecurringTerms</p>
+                                <p class="fw-semibold mb-2">Cancellation terms</p>
+                                <p class="text-muted mb-0">@Model.CancellationTerms</p>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="col-lg-6">
+                        <div class="card shadow-sm border-0">
+                            <div class="card-body p-4">
+                                <h2 class="h4 mb-3">Payment and consent</h2>
+
+                                @if (!string.IsNullOrWhiteSpace(Model.ErrorMessage))
+                                {
+                                    <div class="alert alert-danger">@Model.ErrorMessage</div>
+                                }
+
+                                @if (!Model.BrowserPaymentReady)
+                                {
+                                    <div class="alert alert-warning mb-0">Secure payment is not configured for this activation page yet. Please contact support.</div>
+                                }
+                                else
+                                {
+                                    <form asp-action="PaymentMethod" asp-route-token="@Model.Token" method="post" id="activationPaymentForm" novalidate>
+                                        @Html.AntiForgeryToken()
+                                        <input type="hidden" name="ReturnUrl" value="@Model.ReturnUrl" />
+                                        <input type="hidden" name="SourceId" id="activationSourceId" />
+
+                                        @if (Model.AllowClientAnchorSelection)
+                                        {
+                                            <div class="mb-3">
+                                                <label class="form-label">Choose recurring billing day</label>
+                                                <select class="form-select" name="BillingAnchorDay" id="billingAnchorDaySelect">
+                                                    @foreach (var option in Model.AnchorOptions)
+                                                    {
+                                                        <option value="@option.Day" selected="@(option.Selected ? "selected" : null)">@option.Label</option>
+                                                    }
+                                                </select>
+                                            </div>
+                                        }
+                                        else if (Model.SelectedBillingAnchorDay.HasValue)
+                                        {
+                                            <input type="hidden" name="BillingAnchorDay" value="@Model.SelectedBillingAnchorDay" />
+                                        }
+
+                                        <div class="mb-3">
+                                            <label class="form-label" for="cardholderName">Cardholder name</label>
+                                            <input class="form-control" id="cardholderName" name="CardholderName" placeholder="Name on card" />
+                                        </div>
+
+                                        <div class="mb-3">
+                                            <label class="form-label">Card details</label>
+                                            <div id="square-card" class="form-control p-3" style="min-height:56px;"></div>
+                                        </div>
+
+                                        <div id="activationMessage" class="small text-danger mb-3" role="alert"></div>
+
+                                        <div class="form-check mb-2">
+                                            <input class="form-check-input" type="checkbox" id="recurringAuthorizationAccepted" name="RecurringAuthorizationAccepted" value="true" required />
+                                            <label class="form-check-label" for="recurringAuthorizationAccepted">I authorize recurring monthly billing under these terms.</label>
+                                        </div>
+                                        <div class="form-check mb-2">
+                                            <input class="form-check-input" type="checkbox" id="cardOnFileConsentAccepted" name="CardOnFileConsentAccepted" value="true" required />
+                                            <label class="form-check-label" for="cardOnFileConsentAccepted">I consent to keeping this card on file for future renewals.</label>
+                                        </div>
+                                        <div class="form-check mb-4">
+                                            <input class="form-check-input" type="checkbox" id="cancellationTermsAccepted" name="CancellationTermsAccepted" value="true" required />
+                                            <label class="form-check-label" for="cancellationTermsAccepted">I understand cancellation is managed inside the client portal and may apply at period end.</label>
+                                        </div>
+
+                                        <button type="submit" class="btn btn-dark w-100" id="activationSubmitButton">Activate Subscription</button>
+                                    </form>
+                                }
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </main>
+
+    @if (Model.BrowserPaymentReady)
+    {
+        <script src="@squareScriptUrl"></script>
+    }
+    <script src="~/js/subscription-activation.js" asp-append-version="true"></script>
+</body>
+</html>

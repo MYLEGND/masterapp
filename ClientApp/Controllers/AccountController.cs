@@ -3,25 +3,37 @@ using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.Authentication.OpenIdConnect;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.RateLimiting;
 using ClientApp.Infrastructure;
+using ClientApp.Models;
+using ClientApp.Services;
 
 namespace ClientApp.Controllers;
 
 [AllowAnonymous]
 public class AccountController : Controller
 {
+    private readonly ClientIdentityAccessService _identityAccessService;
+
+    public AccountController(ClientIdentityAccessService identityAccessService)
+    {
+        _identityAccessService = identityAccessService;
+    }
+
     private string NormalizeReturnUrl(string? returnUrl)
     {
         var target = string.IsNullOrWhiteSpace(returnUrl) ? "/" : returnUrl;
-        return Url.IsLocalUrl(target) ? target : "/";
+        if (!Url.IsLocalUrl(target))
+            return "/";
+
+        if (target.StartsWith("/Account/", StringComparison.OrdinalIgnoreCase))
+            return "/";
+
+        return target;
     }
 
-    [HttpGet("/Account/AzureLogin")]
-    public async Task<IActionResult> AzureLogin(string returnUrl = "/")
+    private async Task<IActionResult> StartChallengeAsync(string target)
     {
-        var target = NormalizeReturnUrl(returnUrl);
-
-        // Start from a clean local session before sending the browser to Microsoft login.
         OidcTransientCookieCleanup.Clear(HttpContext);
         Response.Cookies.Delete("impClientProfileId");
         Response.Cookies.Delete("selfClientProfileId");
@@ -31,42 +43,69 @@ public class AccountController : Controller
         {
             RedirectUri = target
         };
-
-        // Force the Microsoft account picker instead of silently reusing a stale app session.
         props.Items["prompt"] = "select_account";
-
         return Challenge(props, OpenIdConnectDefaults.AuthenticationScheme);
     }
 
-    // Optional landing page (you can keep this view if you want)
+    [HttpGet("/Account/AzureLogin")]
+    public async Task<IActionResult> AzureLogin(string returnUrl = "/")
+    {
+        var target = NormalizeReturnUrl(returnUrl);
+        if (ClientIdentityAccessService.IsSupportReturnUrl(target) ||
+            await _identityAccessService.HasValidChallengeContinuationAsync(HttpContext, HttpContext.RequestAborted))
+        {
+            return await StartChallengeAsync(target);
+        }
+
+        return RedirectToAction(nameof(ActivationRequired), new
+        {
+            returnUrl = target,
+            message = "Use your activation link or the client sign-in form before continuing to Microsoft sign-in."
+        });
+    }
+
     [HttpGet]
     public IActionResult Login(string returnUrl = "/")
     {
         var target = NormalizeReturnUrl(returnUrl);
 
         if (User.Identity?.IsAuthenticated == true)
-        {
             return LocalRedirect(target);
-        }
 
-        OidcTransientCookieCleanup.Clear(HttpContext);
-        return Challenge(
-            new AuthenticationProperties { RedirectUri = target },
-            OpenIdConnectDefaults.AuthenticationScheme
-        );
+        if (ClientIdentityAccessService.IsSupportReturnUrl(target))
+            return RedirectToAction(nameof(AzureLogin), new { returnUrl = target });
+
+        return View(new ClientLoginViewModel
+        {
+            ReturnUrl = target
+        });
     }
 
     [HttpPost]
+    [EnableRateLimiting("clientapp-login")]
     [ValidateAntiForgeryToken]
-    public IActionResult LoginSubmit(string returnUrl = "/")
+    public async Task<IActionResult> LoginSubmit(ClientLoginViewModel model)
     {
-        var target = NormalizeReturnUrl(returnUrl);
+        model.ReturnUrl = NormalizeReturnUrl(model.ReturnUrl);
 
-        OidcTransientCookieCleanup.Clear(HttpContext);
-        return Challenge(
-            new AuthenticationProperties { RedirectUri = target },
-            OpenIdConnectDefaults.AuthenticationScheme
-        );
+        if (ClientIdentityAccessService.IsSupportReturnUrl(model.ReturnUrl))
+            return await AzureLogin(model.ReturnUrl);
+
+        if (!ModelState.IsValid)
+            return View(nameof(Login), model);
+
+        var signInPreparation = await _identityAccessService.PrepareClientSignInAsync(model.Email, model.ReturnUrl, HttpContext.RequestAborted);
+        if (!signInPreparation.Success || string.IsNullOrWhiteSpace(signInPreparation.ProtectedState) || !signInPreparation.ExpiresUtc.HasValue)
+        {
+            return View(nameof(ActivationRequired), new ActivationRequiredViewModel
+            {
+                ReturnUrl = model.ReturnUrl,
+                Message = signInPreparation.SanitizedMessage ?? "This client account is not ready for sign-in yet."
+            });
+        }
+
+        _identityAccessService.StoreChallengeContinuationCookie(Response, signInPreparation.ProtectedState, signInPreparation.ExpiresUtc.Value);
+        return await StartChallengeAsync(signInPreparation.ReturnUrl);
     }
 
     // ✅ This is what your middleware redirects to on Forbid()
@@ -77,22 +116,33 @@ public class AccountController : Controller
         return View();
     }
 
-        [HttpPost]
-        [ValidateAntiForgeryToken]
-        public IActionResult Logout()
+    [HttpGet]
+    public IActionResult ActivationRequired(string? returnUrl = null, string? message = null)
+    {
+        return View(new ActivationRequiredViewModel
         {
-            // Clear any impersonation / pinned client context
-            Response.Cookies.Delete("impClientProfileId");
-            Response.Cookies.Delete("selfClientProfileId");
+            ReturnUrl = NormalizeReturnUrl(returnUrl),
+            Message = string.IsNullOrWhiteSpace(message)
+                ? "Use the activation link from your agent to finish access setup before signing in."
+                : message.Trim()
+        });
+    }
 
-            return SignOut(
-                new AuthenticationProperties
-                {
-                    RedirectUri = Url.Action(nameof(LoggedOut), "Account")
-                },
+    [HttpPost]
+    [ValidateAntiForgeryToken]
+    public IActionResult Logout()
+    {
+        Response.Cookies.Delete("impClientProfileId");
+        Response.Cookies.Delete("selfClientProfileId");
+        _identityAccessService.ClearChallengeContinuationCookie(Response);
+
+        return SignOut(
+            new AuthenticationProperties
+            {
+                RedirectUri = Url.Action(nameof(LoggedOut), "Account")
+            },
             CookieAuthenticationDefaults.AuthenticationScheme,
-            OpenIdConnectDefaults.AuthenticationScheme
-        );
+            OpenIdConnectDefaults.AuthenticationScheme);
     }
 
     [HttpGet]
