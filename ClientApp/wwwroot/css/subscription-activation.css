@@ -219,6 +219,27 @@ body.subscription-activation-standalone {
     accent-color: var(--activation-blue);
 }
 
+.activation-membership-confirmation {
+    padding: 14px;
+    border: 1px solid #dbe5f4;
+    border-radius: 11px;
+    background: var(--activation-surface);
+}
+
+.activation-membership-confirmation h2 {
+    margin: 0;
+    color: var(--activation-text);
+    font-size: 1rem;
+    font-weight: 800;
+}
+
+.activation-membership-confirmation p {
+    margin: 6px 0 0;
+    color: #40536f;
+    font-size: 0.86rem;
+    line-height: 1.45;
+}
+
 .activation-actions {
     display: flex;
     justify-content: flex-end;
@@ -271,6 +292,16 @@ body.subscription-activation-standalone {
     padding: 18px 28px;
 }
 
+.activation-confirmation-body {
+    display: grid;
+    gap: 16px;
+    padding: 22px 28px 26px;
+}
+
+.activation-confirmation-body .activation-button {
+    width: 100%;
+}
+
 .activation-link {
     display: inline-flex;
     align-items: center;
@@ -302,7 +333,8 @@ body.subscription-activation-standalone {
     }
 
     .activation-header,
-    .activation-body {
+    .activation-body,
+    .activation-confirmation-body {
         padding: 19px;
     }
 

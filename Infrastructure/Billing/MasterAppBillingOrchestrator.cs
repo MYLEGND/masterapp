@@ -416,6 +416,18 @@ internal sealed class MasterAppBillingOrchestrator : IBillingOrchestrator
             await _db.SaveChangesAsync(cancellationToken);
         }
 
+        if (offer.MonthlyAmountCents == 0)
+        {
+            return await ActivateZeroDollarSubscriptionAsync(
+                subscription,
+                offer,
+                invitation,
+                command,
+                authoritativeCurrency,
+                nowUtc,
+                cancellationToken);
+        }
+
         var correlationId = command.CorrelationId ?? BillingIdempotency.CreateDeterministic("client-subscription-activation", command.ClientProfileId.ToString(), offer.Id.ToString(), subscription.Id.ToString());
         var customerResult = await _gateway.ResolveCustomerAsync(
             new BillingCustomerResolutionRequest(
@@ -612,6 +624,52 @@ internal sealed class MasterAppBillingOrchestrator : IBillingOrchestrator
 
         if (string.IsNullOrWhiteSpace(subscription.ProviderSubscriptionId))
         {
+            if (subscription.MonthlyAmountCents == 0)
+            {
+                var localCancelledUtc = DateTime.UtcNow;
+                subscription.CancelAtPeriodEnd = command.CancelAtPeriodEnd;
+                subscription.UpdatedUtc = localCancelledUtc;
+
+                if (!command.CancelAtPeriodEnd)
+                {
+                    subscription.Status = ClientSubscriptionStatus.Canceled;
+                    subscription.PaymentStanding = ClientSubscriptionPaymentStanding.Failed;
+                    subscription.CancelAtPeriodEnd = false;
+                    subscription.CancelledUtc = localCancelledUtc;
+                    subscription.GracePeriodEndsUtc = null;
+                    subscription.NextBillingDateUtc = null;
+                }
+
+                AddAuditEntry(
+                    "ClientSubscription",
+                    subscription.Id,
+                    "cancelled",
+                    null,
+                    subscription.Status.ToString(),
+                    command.ActorType,
+                    command.ActorId,
+                    "billing_orchestrator",
+                    null,
+                    command.CorrelationId,
+                    "Complimentary client subscription cancellation recorded locally.");
+                await _db.SaveChangesAsync(cancellationToken);
+
+                var localEntitlement = await _entitlements.RefreshAsync(
+                    subscription.ClientProfileId,
+                    BillingEntitlementKeys.ClientAppFullAccess,
+                    "SUBSCRIPTION_CANCELLED",
+                    cancellationToken);
+                var localResult = new BillingSubscriptionResult(
+                    true,
+                    null,
+                    subscription.Status.ToString(),
+                    null,
+                    "Client subscription cancellation recorded.",
+                    null,
+                    false);
+                return new CancelClientSubscriptionResult(true, null, localResult.SanitizedSummary, null, false, subscription, localEntitlement, localResult);
+            }
+
             var localFailure = new BillingSubscriptionResult(false, null, subscription.Status.ToString(), "MISSING_PROVIDER_SUBSCRIPTION_ID", "The subscription cannot be cancelled because it does not have a provider subscription ID.", null, false);
             return new CancelClientSubscriptionResult(false, localFailure.SafeErrorCode, localFailure.SanitizedSummary, null, false, subscription, null, localFailure);
         }
@@ -665,6 +723,82 @@ internal sealed class MasterAppBillingOrchestrator : IBillingOrchestrator
 
         var entitlement = await _entitlements.RefreshAsync(subscription.ClientProfileId, BillingEntitlementKeys.ClientAppFullAccess, "SUBSCRIPTION_CANCELLED", cancellationToken);
         return new CancelClientSubscriptionResult(true, null, "Client subscription cancellation recorded.", providerResult.ProviderRequestId, false, subscription, entitlement, providerResult);
+    }
+
+    private async Task<ActivateClientSubscriptionResult> ActivateZeroDollarSubscriptionAsync(
+        ClientSubscription subscription,
+        ClientSubscriptionOffer offer,
+        SubscriptionActivationInvitation? invitation,
+        ActivateClientSubscriptionCommand command,
+        string currency,
+        DateTime nowUtc,
+        CancellationToken cancellationToken)
+    {
+        var previousStatus = subscription.Status;
+        var correlationId = command.CorrelationId ?? BillingIdempotency.CreateDeterministic(
+            "client-zero-dollar-subscription-activation",
+            command.ClientProfileId.ToString(),
+            offer.Id.ToString(),
+            subscription.Id.ToString());
+
+        subscription.MonthlyAmountCents = 0;
+        subscription.Currency = currency;
+        subscription.BillingTimeZoneId = string.IsNullOrWhiteSpace(command.BillingTimeZoneId)
+            ? subscription.BillingTimeZoneId
+            : command.BillingTimeZoneId.Trim();
+        subscription.BillingAnchorDay = command.BillingAnchorDay ?? offer.SelectedBillingAnchorDay;
+        subscription.Status = ClientSubscriptionStatus.Active;
+        subscription.PaymentStanding = ClientSubscriptionPaymentStanding.Current;
+        subscription.FirstChargeUtc = command.FirstChargeUtc;
+        subscription.FirstRecurringRenewalUtc = command.FirstRecurringRenewalUtc;
+        subscription.CurrentPeriodStartUtc = command.FirstChargeUtc;
+        subscription.CurrentPeriodEndUtc = command.FirstRecurringRenewalUtc;
+        subscription.NextBillingDateUtc = command.FirstRecurringRenewalUtc;
+        subscription.ProviderCustomerId = null;
+        subscription.ProviderPaymentMethodId = null;
+        subscription.ProviderSubscriptionId = null;
+        subscription.ProviderPlanVariationId = null;
+        subscription.ActivatedUtc ??= nowUtc;
+        subscription.UpdatedUtc = nowUtc;
+
+        offer.Status = ClientSubscriptionOfferStatus.Accepted;
+        offer.UpdatedUtc = nowUtc;
+
+        if (invitation is not null)
+        {
+            invitation.Status = SubscriptionActivationInvitationStatus.Redeemed;
+            invitation.RedeemedUtc = nowUtc;
+        }
+
+        AddAuditEntry(
+            "ClientSubscription",
+            subscription.Id,
+            "zero_dollar_activated",
+            previousStatus.ToString(),
+            subscription.Status.ToString(),
+            BillingActorType.System,
+            null,
+            "billing_orchestrator",
+            null,
+            correlationId,
+            "Complimentary client subscription activated without a payment method.",
+            BuildConsentMetadataJson(command, currency, 0));
+        await _db.SaveChangesAsync(cancellationToken);
+
+        var entitlement = await _entitlements.RefreshAsync(
+            command.ClientProfileId,
+            BillingEntitlementKeys.ClientAppFullAccess,
+            "ZERO_DOLLAR_SUBSCRIPTION_ACTIVATED",
+            cancellationToken);
+        var result = new BillingSubscriptionResult(
+            true,
+            null,
+            ClientSubscriptionStatus.Active.ToString(),
+            null,
+            "Complimentary client subscription activated.",
+            null,
+            false);
+        return new ActivateClientSubscriptionResult(true, null, result.SanitizedSummary, null, false, subscription, entitlement, result);
     }
 
     private async Task<ClientProfile> EnsureClientExistsAsync(Guid clientProfileId, CancellationToken cancellationToken)

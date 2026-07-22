@@ -38,7 +38,7 @@ public sealed class SubscriptionActivationController : Controller
         if (!ModelState.IsValid)
         {
             var invalidContext = await _activationService.GetContextAsync(token, HttpContext.RequestAborted);
-            return View("Index", _activationService.BuildPageViewModel(invalidContext, token, input.ReturnUrl, "Complete the required consent and payment fields before continuing."));
+            return View("Index", _activationService.BuildPageViewModel(invalidContext, token, input.ReturnUrl, "Complete the required activation fields before continuing."));
         }
 
         var activation = await _activationService.ActivateAsync(token, input, HttpContext.RequestAborted);
@@ -54,6 +54,19 @@ public sealed class SubscriptionActivationController : Controller
             }
 
             return RenderContext(token, input.ReturnUrl, activation.Context, activation.SanitizedMessage);
+        }
+
+        if (activation.Context.Offer?.MonthlyAmountCents == 0)
+        {
+            return View("Confirmed", new SubscriptionActivationConfirmationViewModel
+            {
+                Token = token,
+                ClientName = $"{activation.Context.Client?.FirstName} {activation.Context.Client?.LastName}".Trim(),
+                ClientEmail = activation.Context.Invitation?.IntendedNormalizedEmail ?? activation.Context.Client?.Email ?? string.Empty,
+                MonthlyAmountDisplay = "$0.00",
+                ReturnUrl = _returnUrlNormalizer.Normalize(input.ReturnUrl),
+                ProtectedContinuationState = activation.ProtectedContinuationState
+            });
         }
 
         _continuationService.StoreCookie(

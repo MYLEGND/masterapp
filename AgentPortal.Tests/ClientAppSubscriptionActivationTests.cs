@@ -527,6 +527,75 @@ public class ClientAppSubscriptionActivationTests
         orchestrator.VerifyAll();
     }
 
+    [Fact]
+    public async Task ActivateAsync_ZeroDollarOffer_RequiresOnlyAcknowledgement_AndSkipsProviderPlanResolution()
+    {
+        using var db = BuildDb();
+        var profile = await AddProfileAsync(db, "client@example.com");
+        var offer = await AddOfferAsync(db, profile.Id, monthlyAmountCents: 0);
+        const string token = "zero-dollar-activation-token";
+        var invitation = await AddInvitationAsync(
+            db,
+            profile,
+            offer,
+            token,
+            SubscriptionActivationInvitationStatus.Pending,
+            DateTime.UtcNow.AddDays(2));
+
+        var expectedSchedule = BuildSchedule(1, monthlyAmountCents: 0);
+        var policyService = BuildActivationPolicyService(expectedSchedule, "unused-plan-variation");
+        var orchestrator = new Mock<IBillingOrchestrator>();
+        orchestrator
+            .Setup(x => x.ActivateClientSubscriptionAsync(
+                It.Is<ActivateClientSubscriptionCommand>(command =>
+                    command.ClientProfileId == profile.Id &&
+                    command.ClientSubscriptionOfferId == offer.Id &&
+                    command.SourceId == string.Empty &&
+                    command.ProviderPlanVariationId == string.Empty &&
+                    command.RecurringAuthorizationAccepted &&
+                    command.CardOnFileConsentAccepted &&
+                    command.CancellationTermsAccepted &&
+                    command.IntendedNormalizedEmail == invitation.IntendedNormalizedEmail),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new ActivateClientSubscriptionResult(
+                true,
+                null,
+                "Activated.",
+                null,
+                false,
+                new ClientSubscription
+                {
+                    Id = Guid.NewGuid(),
+                    ClientProfileId = profile.Id,
+                    AcceptedOfferId = offer.Id,
+                    OwnerAgentUserId = offer.OwnerAgentUserId,
+                    MonthlyAmountCents = 0,
+                    Currency = offer.Currency,
+                    Status = ClientSubscriptionStatus.Active,
+                    PaymentStanding = ClientSubscriptionPaymentStanding.Current
+                },
+                new ClientEntitlement
+                {
+                    ClientProfileId = profile.Id,
+                    EntitlementKey = BillingEntitlementKeys.ClientAppFullAccess,
+                    Status = ClientEntitlementStatus.Active,
+                    SourceId = "zero-dollar-subscription"
+                },
+                new BillingSubscriptionResult(true, null, "ACTIVE", null, "Activated.", null, false)));
+
+        var service = BuildActivationService(db, orchestrator, policyService);
+        var result = await service.ActivateAsync(token, new SubscriptionActivationPaymentInput
+        {
+            ReturnUrl = "/profile",
+            BillingAuthorizationAccepted = true
+        });
+
+        Assert.True(result.Success);
+        Assert.False(string.IsNullOrWhiteSpace(result.ProtectedContinuationState));
+        policyService.Verify(x => x.ResolveProviderPlanVariationId(It.IsAny<ClientSubscriptionOffer>()), Times.Never);
+        orchestrator.VerifyAll();
+    }
+
     private static MasterAppDbContext BuildDb() => ControllerTestHelpers.BuildDb();
 
     private static ClientIdentityContinuationService BuildContinuationService(MasterAppDbContext db)
@@ -666,15 +735,16 @@ public class ClientAppSubscriptionActivationTests
         MasterAppDbContext db,
         Guid clientProfileId,
         BillingAnchorSelectionMode selectionMode = BillingAnchorSelectionMode.FirstOfMonth,
-        int? selectedBillingAnchorDay = 1)
+        int? selectedBillingAnchorDay = 1,
+        int monthlyAmountCents = 10000)
     {
         var offer = new ClientSubscriptionOffer
         {
             Id = Guid.NewGuid(),
             ClientProfileId = clientProfileId,
             OwnerAgentUserId = "agent-1",
-            PriceType = ClientSubscriptionOfferPriceType.Fixed100,
-            MonthlyAmountCents = 10000,
+            PriceType = monthlyAmountCents == 0 ? ClientSubscriptionOfferPriceType.Custom : ClientSubscriptionOfferPriceType.Fixed100,
+            MonthlyAmountCents = monthlyAmountCents,
             Currency = "USD",
             BillingAnchorSelectionMode = selectionMode,
             SelectedBillingAnchorDay = selectedBillingAnchorDay,
@@ -722,15 +792,20 @@ public class ClientAppSubscriptionActivationTests
         {
             SourceId = "cnon:card-nonce-ok",
             CardholderName = "Test Client",
+            BillingAddressLine1 = "100 Legend Way",
+            BillingCity = "Phoenix",
+            BillingState = "AZ",
+            BillingPostalCode = "85001",
+            BillingCountryCode = "US",
             ReturnUrl = "/profile",
             BillingAuthorizationAccepted = true
         };
     }
 
-    private static ClientSubscriptionActivationSchedule BuildSchedule(int? billingAnchorDay)
+    private static ClientSubscriptionActivationSchedule BuildSchedule(int? billingAnchorDay, int monthlyAmountCents = 10000)
     {
         return new ClientSubscriptionActivationSchedule(
-            10000,
+            monthlyAmountCents,
             "USD",
             billingAnchorDay,
             "America/Phoenix",

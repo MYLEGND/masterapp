@@ -132,11 +132,17 @@ public sealed class SubscriptionActivationService
             return new SubscriptionActivationExecutionResult(false, "ACTIVATION_UNAVAILABLE", context.Message ?? "This activation flow is not available.", context);
         }
 
-        if (string.IsNullOrWhiteSpace(input.SourceId))
-            return new SubscriptionActivationExecutionResult(false, "SOURCE_REQUIRED", "A secure payment source is required.", context);
+        var isZeroDollarSubscription = context.Offer.MonthlyAmountCents == 0;
+        if (!input.BillingAuthorizationAccepted)
+            return new SubscriptionActivationExecutionResult(false, "ACKNOWLEDGEMENT_REQUIRED", "Please acknowledge the membership activation before continuing.", context);
 
-        var providerPlanVariationId = _activationPolicyService.ResolveProviderPlanVariationId(context.Offer);
-        if (string.IsNullOrWhiteSpace(providerPlanVariationId))
+        if (!isZeroDollarSubscription && !HasCompletePaymentInput(input))
+            return new SubscriptionActivationExecutionResult(false, "PAYMENT_DETAILS_REQUIRED", "Complete the required payment details before continuing.", context);
+
+        var providerPlanVariationId = isZeroDollarSubscription
+            ? string.Empty
+            : _activationPolicyService.ResolveProviderPlanVariationId(context.Offer);
+        if (!isZeroDollarSubscription && string.IsNullOrWhiteSpace(providerPlanVariationId))
             return new SubscriptionActivationExecutionResult(false, "PLAN_UNAVAILABLE", "The billing plan is not configured yet. Please contact support.", context);
 
         var activationResult = await _billingOrchestrator.ActivateClientSubscriptionAsync(
@@ -144,7 +150,7 @@ public sealed class SubscriptionActivationService
                 context.Client.Id,
                 context.Offer.Id,
                 context.Offer.OwnerAgentUserId,
-                input.SourceId.Trim(),
+                input.SourceId?.Trim() ?? string.Empty,
                 context.Offer.Currency,
                 providerPlanVariationId,
                 context.Schedule.BillingAnchorDay,
@@ -158,7 +164,7 @@ public sealed class SubscriptionActivationService
                 context.Invitation.IntendedNormalizedEmail,
                 context.Invitation.Id,
                 context.Subscription?.ProviderCustomerId,
-                input.CardholderName.Trim(),
+                input.CardholderName?.Trim() ?? string.Empty,
                 BillingCorrelationId(context.Invitation.Id, context.Schedule.BillingAnchorDay),
                 BillingIdempotencyKey(context.Invitation.Id, context.Schedule.BillingAnchorDay),
                 BuildBillingAddress(input)),
@@ -203,6 +209,7 @@ public sealed class SubscriptionActivationService
             ReturnUrl = _returnUrlNormalizer.Normalize(returnUrl),
             ClientName = $"{context.Client.FirstName} {context.Client.LastName}".Trim(),
             ClientEmail = context.Client.Email,
+            MonthlyAmountCents = context.Schedule.MonthlyAmountCents,
             MonthlyAmountDisplay = (context.Schedule.MonthlyAmountCents / 100m).ToString("C", CultureInfo.GetCultureInfo("en-US")),
             Currency = context.Schedule.Currency,
             BillingAnchorLabel = BuildAnchorLabel(context.Schedule.BillingAnchorDay),
@@ -288,6 +295,17 @@ public sealed class SubscriptionActivationService
             TrimToNull(input.BillingState),
             TrimToNull(input.BillingPostalCode),
             NormalizeCountry(input.BillingCountryCode));
+    }
+
+    private static bool HasCompletePaymentInput(SubscriptionActivationPaymentInput input)
+    {
+        return !string.IsNullOrWhiteSpace(input.SourceId) &&
+               !string.IsNullOrWhiteSpace(input.CardholderName) &&
+               !string.IsNullOrWhiteSpace(input.BillingAddressLine1) &&
+               !string.IsNullOrWhiteSpace(input.BillingCity) &&
+               !string.IsNullOrWhiteSpace(input.BillingState) &&
+               !string.IsNullOrWhiteSpace(input.BillingPostalCode) &&
+               !string.IsNullOrWhiteSpace(input.BillingCountryCode);
     }
 
     private string BuildBrowserPaymentSetupMessage()

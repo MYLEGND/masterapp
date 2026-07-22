@@ -1,0 +1,38 @@
+@model ClientApp.Models.SubscriptionActivationConfirmationViewModel
+@{
+    ViewData["Title"] = "Membership Confirmed";
+    Layout = null;
+}
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>@ViewData["Title"] - Legend™</title>
+    <link rel="stylesheet" href="~/css/subscription-activation.css" asp-append-version="true" />
+</head>
+<body class="subscription-activation-standalone">
+    <main class="activation-page">
+        <section class="activation-notice-card activation-confirmation-card">
+            <header>
+                <p class="activation-brand">Legend Client Portal</p>
+                <h1>Membership confirmed</h1>
+                <p>@Model.ClientName · @Model.ClientEmail</p>
+            </header>
+            <div class="activation-confirmation-body">
+                <div class="activation-membership-confirmation">
+                    <h2>You are subscribed</h2>
+                    <p>Your $0.00/month Legend Client Portal membership is active. Sign in with @Model.ClientEmail to open your portal.</p>
+                </div>
+                <form asp-action="Continue" asp-route-token="@Model.Token" method="post">
+                    @Html.AntiForgeryToken()
+                    <input type="hidden" name="protectedContinuationState" value="@Model.ProtectedContinuationState" />
+                    <input type="hidden" name="returnUrl" value="@Model.ReturnUrl" />
+                    <button type="submit" class="activation-button">Continue to secure sign-in</button>
+                </form>
+            </div>
+        </section>
+    </main>
+</body>
+</html>

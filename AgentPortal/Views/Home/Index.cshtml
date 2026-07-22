@@ -105,10 +105,16 @@
                 <a href="@tool.Url"
                    target="_blank"
                    rel="noopener"
-                   class="dashboard-tool">
-                    <img src="@Url.Content($"~/images/{tool.Folder}/{tool.Icon}")"
-                         alt="@tool.Name" />
-                    <div class="tool-name">@tool.Name</div>
+                   class="dashboard-tool agent-dashboard-tool">
+                    <span class="tool-card-face">
+                        <img src="@Url.Content($"~/images/{tool.Folder}/{tool.Icon}")"
+                             alt="@tool.Name" />
+                        <span class="tool-name">@tool.Name</span>
+                    </span>
+                    <span class="tool-card-back">
+                        <span class="tool-card-back-label">@tool.Name</span>
+                        <span class="tool-card-back-copy">@tool.Desc</span>
+                    </span>
                 </a>
             }
         </div>

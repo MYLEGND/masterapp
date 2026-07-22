@@ -63,10 +63,10 @@
                         <div id="autocompleteList" class="autocomplete-list"></div>
                     </div>
                     <div class="search-actions">
-                        <button id="clearSearch" class="btn-clear-search" type="button">Clear Search</button>
+                        <button id="clearSearch" class="btn-clear-search dashboard-command-action" type="button">Clear Search</button>
                         <button
                             id="openCarrierSettings"
-                            class="btn-carrier-settings"
+                            class="btn-carrier-settings dashboard-command-action"
                             type="button"
                             data-bs-toggle="modal"
                             data-bs-target="#carrierSettingsModal">
@@ -355,24 +355,23 @@
         };
     }
     <div class="category-head">
-        <div class="category-head-copy">
-            <div class="category-kicker">Carrier Stack</div>
-            <h3 class="fw-bold category-toggle">Life &amp; Health</h3>
-            <p class="category-copy">Core life, health, disability, and underwriting access for the everyday quote workflow.</p>
-        </div>
-        <div class="category-count-pill">
-            <span class="category-count-number">@lifeHealthTools.Length</span>
-            <span class="category-count-label">Tools</span>
-        </div>
-        
+        <h2 class="category-summary-pill">
+            <span class="category-summary-count">@lifeHealthTools.Length</span>
+            <span>Carriers · Life &amp; Health</span>
+        </h2>
     </div>
     <div class="centered-tools">
         @foreach (var tool in lifeHealthTools)
         {
-            <a href="@tool.Url" target="_blank" rel="noopener noreferrer" class="dashboard-tool" data-name="@tool.Name">
-                <img src="@Url.Content($"~/images/company-icons/{tool.Icon}")" alt="@tool.Name" />
-                <div class="fw-bold text-center mt-1 tool-name">@tool.Name</div>
-                <div class="tool-desc">@tool.Desc</div>
+            <a href="@tool.Url" target="_blank" rel="noopener noreferrer" class="dashboard-tool agent-dashboard-tool" data-name="@tool.Name">
+                <span class="tool-card-face">
+                    <img src="@Url.Content($"~/images/company-icons/{tool.Icon}")" alt="@tool.Name" />
+                    <span class="fw-bold text-center mt-1 tool-name">@tool.Name</span>
+                </span>
+                <span class="tool-card-back">
+                    <span class="tool-card-back-label">@tool.Name</span>
+                    <span class="tool-card-back-copy">@tool.Desc</span>
+                </span>
             </a>
         }
     </div>
@@ -397,23 +396,23 @@
         };
     }
     <div class="category-head">
-        <div class="category-head-copy">
-            <div class="category-kicker">Partner Stack</div>
-            <h3 class="fw-bold category-toggle">The Pinnacle Life Group</h3>
-            <p class="category-copy">Dedicated life and health carrier access tailored to the Pinnacle workflow and partner stack.</p>
-        </div>
-        <div class="category-count-pill">
-            <span class="category-count-number">@pinnacleLifeHealthTools.Length</span>
-            <span class="category-count-label">Tools</span>
-        </div>
+        <h2 class="category-summary-pill">
+            <span class="category-summary-count">@pinnacleLifeHealthTools.Length</span>
+            <span>Carriers · Pinnacle Life Group</span>
+        </h2>
     </div>
     <div class="centered-tools">
         @foreach (var tool in pinnacleLifeHealthTools)
         {
-            <a href="@tool.Url" target="_blank" rel="noopener noreferrer" class="dashboard-tool" data-name="@tool.Name">
-                <img src="@Url.Content($"~/images/company-icons/{tool.Icon}")" alt="@tool.Name" />
-                <div class="fw-bold text-center mt-1 tool-name">@tool.Name</div>
-                <div class="tool-desc">@tool.Desc</div>
+            <a href="@tool.Url" target="_blank" rel="noopener noreferrer" class="dashboard-tool agent-dashboard-tool" data-name="@tool.Name">
+                <span class="tool-card-face">
+                    <img src="@Url.Content($"~/images/company-icons/{tool.Icon}")" alt="@tool.Name" />
+                    <span class="fw-bold text-center mt-1 tool-name">@tool.Name</span>
+                </span>
+                <span class="tool-card-back">
+                    <span class="tool-card-back-label">@tool.Name</span>
+                    <span class="tool-card-back-copy">@tool.Desc</span>
+                </span>
             </a>
         }
     </div>
@@ -431,23 +430,23 @@
         };
     }
     <div class="category-head">
-        <div class="category-head-copy">
-            <div class="category-kicker">Focused Access</div>
-            <h3 class="fw-bold category-toggle">Disability Insurance</h3>
-            <p class="category-copy">A tighter set of DI carriers for faster movement when disability coverage is the primary need.</p>
-        </div>
-        <div class="category-count-pill">
-            <span class="category-count-number">@disabilityTools.Length</span>
-            <span class="category-count-label">Tools</span>
-        </div>
+        <h2 class="category-summary-pill">
+            <span class="category-summary-count">@disabilityTools.Length</span>
+            <span>Carriers · Disability Insurance</span>
+        </h2>
     </div>
     <div class="centered-tools">
         @foreach (var tool in disabilityTools)
         {
-            <a href="@tool.Url" target="_blank" rel="noopener noreferrer" class="dashboard-tool" data-name="@tool.Name">
-                <img src="@Url.Content($"~/images/company-icons/{tool.Icon}")" alt="@tool.Name" />
-                <div class="fw-bold text-center mt-1 tool-name">@tool.Name</div>
-                <div class="tool-desc">@tool.Desc</div>
+            <a href="@tool.Url" target="_blank" rel="noopener noreferrer" class="dashboard-tool agent-dashboard-tool" data-name="@tool.Name">
+                <span class="tool-card-face">
+                    <img src="@Url.Content($"~/images/company-icons/{tool.Icon}")" alt="@tool.Name" />
+                    <span class="fw-bold text-center mt-1 tool-name">@tool.Name</span>
+                </span>
+                <span class="tool-card-back">
+                    <span class="tool-card-back-label">@tool.Name</span>
+                    <span class="tool-card-back-copy">@tool.Desc</span>
+                </span>
             </a>
         }
     </div>
@@ -476,23 +475,23 @@
         };
     }
     <div class="category-head">
-        <div class="category-head-copy">
-            <div class="category-kicker">Coverage Access</div>
-            <h3 class="fw-bold category-toggle">Personal Lines</h3>
-            <p class="category-copy">Auto, home, renters, landlord, and specialty tools grouped into one cleaner launch surface.</p>
-        </div>
-        <div class="category-count-pill">
-            <span class="category-count-number">@personalLinesTools.Length</span>
-            <span class="category-count-label">Tools</span>
-        </div>
+        <h2 class="category-summary-pill">
+            <span class="category-summary-count">@personalLinesTools.Length</span>
+            <span>Carriers · Personal Lines</span>
+        </h2>
     </div>
     <div class="centered-tools">
         @foreach (var tool in personalLinesTools)
         {
-            <a href="@tool.Url" target="_blank" rel="noopener noreferrer" class="dashboard-tool" data-name="@tool.Name">
-                <img src="@Url.Content($"~/images/company-icons/{tool.Icon}")" alt="@tool.Name" />
-                <div class="fw-bold text-center mt-1 tool-name">@tool.Name</div>
-                <div class="tool-desc">@tool.Desc</div>
+            <a href="@tool.Url" target="_blank" rel="noopener noreferrer" class="dashboard-tool agent-dashboard-tool" data-name="@tool.Name">
+                <span class="tool-card-face">
+                    <img src="@Url.Content($"~/images/company-icons/{tool.Icon}")" alt="@tool.Name" />
+                    <span class="fw-bold text-center mt-1 tool-name">@tool.Name</span>
+                </span>
+                <span class="tool-card-back">
+                    <span class="tool-card-back-label">@tool.Name</span>
+                    <span class="tool-card-back-copy">@tool.Desc</span>
+                </span>
             </a>
         }
     </div>
@@ -518,23 +517,23 @@
         };
     }
     <div class="category-head">
-        <div class="category-head-copy">
-            <div class="category-kicker">Business Coverage</div>
-            <h3 class="fw-bold category-toggle">Commercial Lines</h3>
-            <p class="category-copy">Business, property, E&amp;S, and specialty commercial portals organized for cleaner quoting access.</p>
-        </div>
-        <div class="category-count-pill">
-            <span class="category-count-number">@commercialTools.Length</span>
-            <span class="category-count-label">Tools</span>
-        </div>
+        <h2 class="category-summary-pill">
+            <span class="category-summary-count">@commercialTools.Length</span>
+            <span>Carriers · Commercial Lines</span>
+        </h2>
     </div>
     <div class="centered-tools">
         @foreach (var tool in commercialTools)
         {
-            <a href="@tool.Url" target="_blank" rel="noopener noreferrer" class="dashboard-tool" data-name="@tool.Name">
-                <img src="@Url.Content($"~/images/company-icons/{tool.Icon}")" alt="@tool.Name" />
-                <div class="fw-bold text-center mt-1 tool-name">@tool.Name</div>
-                <div class="tool-desc">@tool.Desc</div>
+            <a href="@tool.Url" target="_blank" rel="noopener noreferrer" class="dashboard-tool agent-dashboard-tool" data-name="@tool.Name">
+                <span class="tool-card-face">
+                    <img src="@Url.Content($"~/images/company-icons/{tool.Icon}")" alt="@tool.Name" />
+                    <span class="fw-bold text-center mt-1 tool-name">@tool.Name</span>
+                </span>
+                <span class="tool-card-back">
+                    <span class="tool-card-back-label">@tool.Name</span>
+                    <span class="tool-card-back-copy">@tool.Desc</span>
+                </span>
             </a>
         }
     </div>
@@ -572,7 +571,7 @@ document.addEventListener('DOMContentLoaded', function () {
 
     const tools = Array.from(document.querySelectorAll('.dashboard-tool')).map(tool => ({
         name: tool.dataset.name || tool.querySelector('.tool-name').textContent.trim(),
-        description: tool.querySelector('.tool-desc')?.textContent.toLowerCase() || '',
+        description: tool.querySelector('.tool-card-back-copy')?.textContent.toLowerCase() || '',
         href: tool.href,
         imgSrc: tool.querySelector('img').src
     }));
@@ -654,7 +653,7 @@ document.addEventListener('DOMContentLoaded', function () {
             const categories = Array.from(document.querySelectorAll('.category-container'));
             categories.forEach((cat, idx) => {
                 const tools = cat.querySelector('.centered-tools');
-                const heading = cat.querySelector('.category-toggle') || cat.querySelector('h3');
+                const heading = cat.querySelector('.category-summary-pill');
                 if (!tools || !heading) return;
 
                 const setState = (open) => {

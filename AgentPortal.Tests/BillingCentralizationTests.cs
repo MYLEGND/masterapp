@@ -164,6 +164,80 @@ public sealed class BillingCentralizationTests
     }
 
     [Fact]
+    public async Task ActivateClientSubscription_ZeroDollarOffer_ActivatesWithoutAnySquareCalls()
+    {
+        await using var db = ControllerTestHelpers.BuildDb();
+        var profile = await AddClientProfileAsync(db);
+        var offer = await AddOfferAsync(
+            db,
+            profile.Id,
+            priceType: ClientSubscriptionOfferPriceType.Custom,
+            monthlyAmountCents: 0,
+            selectedBillingAnchorDay: 1);
+        var invitation = new SubscriptionActivationInvitation
+        {
+            ClientProfileId = profile.Id,
+            ClientSubscriptionOfferId = offer.Id,
+            TokenHash = BillingIdempotency.Hash("zero-dollar-token"),
+            IntendedNormalizedEmail = profile.NormalizedEmail!,
+            Status = SubscriptionActivationInvitationStatus.Pending,
+            ExpiresUtc = DateTime.UtcNow.AddDays(2),
+            CreatedByAgentUserId = "founder-oid",
+            CreatedUtc = DateTime.UtcNow
+        };
+        db.SubscriptionActivationInvitations.Add(invitation);
+        await db.SaveChangesAsync();
+
+        var gateway = BuildGateway();
+        var orchestrator = new MasterAppBillingOrchestrator(db, gateway.Object, BuildEntitlementService(db));
+        var firstChargeUtc = DateTime.UtcNow;
+        var renewalUtc = firstChargeUtc.AddMonths(1);
+
+        var result = await orchestrator.ActivateClientSubscriptionAsync(
+            new ActivateClientSubscriptionCommand(
+                profile.Id,
+                offer.Id,
+                "founder-oid",
+                string.Empty,
+                "USD",
+                string.Empty,
+                1,
+                "America/Phoenix",
+                firstChargeUtc,
+                renewalUtc,
+                DateOnly.FromDateTime(renewalUtc),
+                true,
+                true,
+                true,
+                profile.NormalizedEmail!,
+                invitation.Id,
+                null,
+                string.Empty,
+                "zero-dollar-correlation",
+                "zero-dollar-idempotency",
+                new BillingPostalAddress(null, null, null, null, null, "US")));
+
+        var subscription = await db.ClientSubscriptions.SingleAsync();
+        var entitlement = await db.ClientEntitlements.SingleAsync(x => x.ClientProfileId == profile.Id);
+        var persistedInvitation = await db.SubscriptionActivationInvitations.SingleAsync(x => x.Id == invitation.Id);
+
+        Assert.True(result.Success);
+        Assert.Equal(ClientSubscriptionStatus.Active, subscription.Status);
+        Assert.Equal(ClientSubscriptionPaymentStanding.Current, subscription.PaymentStanding);
+        Assert.Null(subscription.ProviderCustomerId);
+        Assert.Null(subscription.ProviderPaymentMethodId);
+        Assert.Null(subscription.ProviderSubscriptionId);
+        Assert.Equal(ClientSubscriptionOfferStatus.Accepted, offer.Status);
+        Assert.Equal(SubscriptionActivationInvitationStatus.Redeemed, persistedInvitation.Status);
+        Assert.Equal(ClientEntitlementStatus.Active, entitlement.Status);
+        Assert.Empty(await db.SubscriptionPayments.ToListAsync());
+        gateway.Verify(x => x.ResolveCustomerAsync(It.IsAny<BillingCustomerResolutionRequest>(), It.IsAny<CancellationToken>()), Times.Never);
+        gateway.Verify(x => x.AttachPaymentMethodAsync(It.IsAny<BillingPaymentMethodAttachmentRequest>(), It.IsAny<CancellationToken>()), Times.Never);
+        gateway.Verify(x => x.CreateOneTimePaymentAsync(It.IsAny<BillingOneTimePaymentRequest>(), It.IsAny<CancellationToken>()), Times.Never);
+        gateway.Verify(x => x.CreateSubscriptionAsync(It.IsAny<BillingSubscriptionCreateRequest>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Fact]
     public async Task ProviderEventProcessor_IsIdempotentPerEnvironment_AndSeparatesSandboxFromProduction()
     {
         await using var db = ControllerTestHelpers.BuildDb();

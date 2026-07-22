@@ -444,7 +444,7 @@ footer.footer {
         gap: 0.5rem;
     }
     .search-container:not(.dashboard-search-panel) .search-input{ width: 100% !important; max-width: none !important; }
-    .btn-clear-search{ width: 100%; }
+    .btn-clear-search:not(.dashboard-command-action){ width: 100%; }
 
     /* Category collapsible cards */
     .home-container:not(.dashboard-page-shell) .category-container{
@@ -659,7 +659,7 @@ body:not(.finance-page) .ff-home-btn-primary:hover {
 body:not(.finance-page) .btn-outline-primary,
 body:not(.finance-page) .btn-outline-secondary,
 body:not(.finance-page) .btn-light,
-body:not(.finance-page) .btn-clear-search,
+body:not(.finance-page) .btn-clear-search:not(.dashboard-command-action),
 body:not(.finance-page) .preview-open,
 body:not(.finance-page) .preview-open:visited {
     background: #ffffff;
@@ -670,7 +670,7 @@ body:not(.finance-page) .preview-open:visited {
 body:not(.finance-page) .btn-outline-primary:hover,
 body:not(.finance-page) .btn-outline-secondary:hover,
 body:not(.finance-page) .btn-light:hover,
-body:not(.finance-page) .btn-clear-search:hover,
+body:not(.finance-page) .btn-clear-search:not(.dashboard-command-action):hover,
 body:not(.finance-page) .preview-open:hover {
     background: #fffdf8 !important;
     color: var(--legend-gold-deep) !important;

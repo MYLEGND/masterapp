@@ -49,7 +49,29 @@
                     <div class="activation-alert">@Model.ErrorMessage</div>
                 }
 
-                @if (!Model.BrowserPaymentReady)
+                @if (Model.IsZeroDollarSubscription)
+                {
+                    <form asp-action="PaymentMethod" asp-route-token="@Model.Token" method="post" id="activationZeroDollarForm">
+                        @Html.AntiForgeryToken()
+                        <input type="hidden" name="ReturnUrl" value="@Model.ReturnUrl" />
+
+                        <div asp-validation-summary="ModelOnly" class="activation-validation"></div>
+                        <section class="activation-membership-confirmation" aria-labelledby="complimentaryMembershipTitle">
+                            <h2 id="complimentaryMembershipTitle" class="activation-form-title">Your complimentary membership</h2>
+                            <p>This Legend Client Portal membership is active at $0.00 per month. No payment method is needed.</p>
+                        </section>
+
+                        <label class="activation-authorization" for="billingAuthorizationAccepted">
+                            <input type="checkbox" id="billingAuthorizationAccepted" name="BillingAuthorizationAccepted" value="true" required />
+                            <span>I acknowledge this $0.00/month Legend Client Portal membership and confirm activation for @Model.ClientEmail.</span>
+                        </label>
+
+                        <div class="activation-actions">
+                            <button type="submit" class="activation-button">Confirm membership</button>
+                        </div>
+                    </form>
+                }
+                else if (!Model.BrowserPaymentReady)
                 {
                     <div class="activation-alert">@Model.BrowserPaymentSetupMessage</div>
                 }
@@ -116,7 +138,7 @@
         </section>
     </main>
 
-    @if (Model.BrowserPaymentReady)
+    @if (Model.BrowserPaymentReady && !Model.IsZeroDollarSubscription)
     {
         <script src="@squareScriptUrl"></script>
     }
