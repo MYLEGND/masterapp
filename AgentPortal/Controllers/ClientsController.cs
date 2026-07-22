@@ -1447,20 +1447,50 @@ namespace AgentPortal.Controllers;
             clientProfileId = appointment.ClientProfileId,
             status = appointment.Status.ToString(),
             statusLabel = HumanizeClientAppointmentStatus(appointment.Status),
+            bookingSourceLabel = HumanizeClientAppointmentSource(appointment.BookingSource),
+            requestedBookingSource = appointment.RequestedBookingSource,
+            requestedBookingSourceLabel = HumanizeClientAppointmentSource(appointment.RequestedBookingSource),
+            confirmationSourceLabel = HumanizeClientAppointmentSource(appointment.ConfirmationSource),
+            confirmationVerified = IsTrustedClientAppointment(appointment),
             confirmationStateLabel = BuildClientAppointmentConfirmationStateLabel(appointment),
             bookingProvider = appointment.BookingProvider,
             bookingSource = appointment.BookingSource,
             confirmationSource = appointment.ConfirmationSource,
+            bookingConfigurationSource = appointment.BookingConfigurationSource,
+            bookingConfigurationSourceLabel = HumanizeClientBookingConfigurationSource(appointment.BookingConfigurationSource),
+            bookingConfigurationLabel = BuildClientBookingConfigurationLabel(appointment),
+            bookingTrackingProfileId = appointment.BookingTrackingProfileId,
+            bookingAgentSlug = appointment.BookingAgentSlug,
+            bookingAgentUserId = appointment.BookingAgentUserId,
+            bookingCalendarUserId = appointment.BookingCalendarUserId,
+            bookingCalendarEmail = appointment.BookingCalendarEmail,
+            bookingPageIdOrMailbox = appointment.BookingPageIdOrMailbox,
             calendarEventId = appointment.CalendarEventId,
             calendarEventWebLink = appointment.CalendarEventWebLink,
-            scheduledStartUtc = appointment.ScheduledStartUtc,
-            scheduledEndUtc = appointment.ScheduledEndUtc,
+            scheduledStartUtc = UtcDate(appointment.ScheduledStartUtc),
+            scheduledEndUtc = UtcDate(appointment.ScheduledEndUtc),
             meetingUrl = appointment.MeetingUrl,
-            lastSyncedUtc = appointment.LastSyncedUtc,
+            createdUtc = UtcDate(appointment.CreatedUtc),
+            updatedUtc = UtcDate(appointment.UpdatedUtc),
+            lastStatusChangedUtc = UtcDate(appointment.LastStatusChangedUtc),
+            statusTimestampUtc = UtcDate(ResolveClientAppointmentStatusTimestamp(appointment)),
+            requestedUtc = UtcDate(appointment.RequestedUtc),
+            bookedUtc = UtcDate(appointment.BookedUtc),
+            confirmedUtc = UtcDate(appointment.ConfirmedUtc),
+            completedUtc = UtcDate(appointment.CompletedUtc),
+            noShowUtc = UtcDate(appointment.NoShowUtc),
+            cancelledUtc = UtcDate(appointment.CancelledUtc),
+            rescheduledUtc = UtcDate(appointment.RescheduledUtc),
+            lastSyncedUtc = UtcDate(appointment.LastSyncedUtc),
             lastSyncStatus = appointment.LastSyncStatus,
             lastSyncError = appointment.LastSyncError
         };
     }
+
+    private static DateTime? UtcDate(DateTime? value)
+        => value.HasValue
+            ? DateTime.SpecifyKind(value.Value, DateTimeKind.Utc)
+            : null;
 
     private static string HumanizeClientAppointmentStatus(LeadAppointmentStatus status)
         => status switch
@@ -1469,6 +1499,30 @@ namespace AgentPortal.Controllers;
             LeadAppointmentStatus.SchedulingOffered => "Scheduling Offered",
             LeadAppointmentStatus.FailedConfirmation => "Failed Confirmation",
             _ => status.ToString()
+        };
+
+    private static string HumanizeClientAppointmentSource(string? source)
+        => source switch
+        {
+            LeadAppointmentBookingSources.InternalManual => "Internal manual",
+            LeadAppointmentBookingSources.InternalCalendar => "Internal calendar",
+            LeadAppointmentBookingSources.WebsiteEmbed => "Website embed",
+            LeadAppointmentBookingSources.WebsiteModal => "Website modal",
+            LeadAppointmentBookingSources.ExternalRedirectFallback => "External redirect fallback",
+            LeadAppointmentBookingSources.MicrosoftGraphConfirmation => "Microsoft Graph confirmation",
+            LeadAppointmentBookingSources.MicrosoftGraphWebhook => "Microsoft Graph webhook",
+            LeadAppointmentBookingSources.MicrosoftGraphFallbackMatch => "Microsoft Graph fallback match",
+            LeadAppointmentBookingSources.ManualVerified => "Manual verified",
+            _ => string.IsNullOrWhiteSpace(source) ? "Internal manual" : source.Trim()
+        };
+
+    private static string HumanizeClientBookingConfigurationSource(string? source)
+        => source switch
+        {
+            "agent_profile" => "Agent profile",
+            "slug_override" => "Slug override",
+            "global_fallback" => "Global fallback",
+            _ => string.IsNullOrWhiteSpace(source) ? "Not recorded" : source.Trim()
         };
 
     private static bool IsTrustedClientAppointment(LeadAppointment appointment)
@@ -1492,6 +1546,38 @@ namespace AgentPortal.Controllers;
             return $"{HumanizeClientAppointmentStatus(appointment.Status)} / source not verified";
         return HumanizeClientAppointmentStatus(appointment.Status);
     }
+
+    private static string BuildClientBookingConfigurationLabel(LeadAppointment appointment)
+    {
+        var parts = new List<string>();
+        var sourceLabel = HumanizeClientBookingConfigurationSource(appointment.BookingConfigurationSource);
+        if (!string.Equals(sourceLabel, "Not recorded", StringComparison.OrdinalIgnoreCase))
+            parts.Add(sourceLabel);
+        if (!string.IsNullOrWhiteSpace(appointment.BookingAgentSlug))
+            parts.Add($"slug {appointment.BookingAgentSlug.Trim()}");
+        if (!string.IsNullOrWhiteSpace(appointment.BookingCalendarEmail))
+            parts.Add(appointment.BookingCalendarEmail.Trim());
+        else if (!string.IsNullOrWhiteSpace(appointment.BookingPageIdOrMailbox))
+            parts.Add(appointment.BookingPageIdOrMailbox.Trim());
+        return parts.Count == 0
+            ? (string.Equals(appointment.BookingSource, LeadAppointmentBookingSources.InternalCalendar, StringComparison.OrdinalIgnoreCase)
+                ? "Internal calendar path"
+                : "Not recorded")
+            : string.Join(" • ", parts);
+    }
+
+    private static DateTime? ResolveClientAppointmentStatusTimestamp(LeadAppointment appointment)
+        => appointment.Status switch
+        {
+            LeadAppointmentStatus.Requested => appointment.RequestedUtc,
+            LeadAppointmentStatus.Booked => appointment.BookedUtc,
+            LeadAppointmentStatus.Confirmed => appointment.ConfirmedUtc,
+            LeadAppointmentStatus.Completed => appointment.CompletedUtc,
+            LeadAppointmentStatus.NoShow => appointment.NoShowUtc,
+            LeadAppointmentStatus.Cancelled => appointment.CancelledUtc,
+            LeadAppointmentStatus.Rescheduled => appointment.RescheduledUtc,
+            _ => appointment.LastStatusChangedUtc
+        };
 
     private static bool HasBookedMeetingAppointment(string? status, DateTime? scheduledStartUtc)
     {

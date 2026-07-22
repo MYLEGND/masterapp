@@ -128,6 +128,15 @@
             </div>
         </section>
 
+        @await Html.PartialAsync(
+            "~/Views/Shared/_QuickViewAppointmentSection.cshtml",
+            viewData: new ViewDataDictionary(ViewData)
+            {
+                ["AppointmentSectionTitle"] = "Latest Appointment",
+                ["AppointmentSectionCopy"] = "Manage the live appointment linked to this client without leaving CRM.",
+                ["ShowAppointmentStatusEditor"] = false
+            })
+
         <details class="qv-panel crm-qv-disclosure qv-panel-data qv-disclosure">
             <summary>
                 <div class="qv-section-header">

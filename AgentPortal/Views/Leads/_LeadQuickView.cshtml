@@ -237,71 +237,14 @@
             </div>
         </details>
 
-        <details class="qv-panel crm-qv-disclosure qv-panel-data qv-disclosure" id="dAppointmentSection" hidden>
-            <summary>
-                <div class="qv-section-header">
-                    <div class="qv-section-title">Latest Appointment</div>
-                    <div class="qv-section-copy">Latest structured appointment record linked to this lead.</div>
-                </div>
-            </summary>
-            <div class="qv-section-body">
-                <div class="qv-data-grid qv-data-grid-2">
-                    <div class="qv-data-card">
-                        <label>Status</label>
-                        <div id="dAppointmentStatus">—</div>
-                    </div>
-                    <div class="qv-data-card">
-                        <label>Appointment Time</label>
-                        <div id="dAppointmentTime">—</div>
-                    </div>
-                    <div class="qv-data-card">
-                        <label>Source</label>
-                        <div id="dAppointmentSource">—</div>
-                    </div>
-                    <div class="qv-data-card">
-                        <label>Requested Source</label>
-                        <div id="dAppointmentRequestedSource">—</div>
-                    </div>
-                    <div class="qv-data-card">
-                        <label>Confirmation</label>
-                        <div id="dAppointmentConfirmation">—</div>
-                    </div>
-                    <div class="qv-data-card">
-                        <label>Booking Config</label>
-                        <div id="dAppointmentBookingConfig">—</div>
-                    </div>
-                    <div class="qv-data-card">
-                        <label>Status Timestamp</label>
-                        <div id="dAppointmentTimeline">—</div>
-                    </div>
-                </div>
-                <div class="qv-data-grid qv-data-grid-2 qv-stack-md">
-                    <div class="qv-data-card qv-data-card-wide">
-                        <label>Meeting Link</label>
-                        <div id="dAppointmentMeetingLink">—</div>
-                    </div>
-                    <div class="qv-data-card qv-data-card-wide">
-                        <label>Calendar Event</label>
-                        <div id="dAppointmentCalendarLink">—</div>
-                    </div>
-                </div>
-                <div class="qv-data-card qv-data-card-wide qv-stack-md">
-                    <label>Update Appointment Status</label>
-                    <div class="qv-inline-action-row">
-                        <select id="dAppointmentStatusSelect">
-                            <option value="Requested">Requested</option>
-                            <option value="Booked">Booked</option>
-                            <option value="Confirmed">Confirmed</option>
-                            <option value="Completed">Completed</option>
-                            <option value="NoShow">No Show</option>
-                            <option value="Cancelled">Cancelled</option>
-                            <option value="Rescheduled">Rescheduled</option>
-                        </select>
-                        <button type="button" class="btn btn-ghost" id="btnSaveAppointmentStatus">Save Appointment Status</button>
-                    </div>
-                </div>
-            </div>
-        </details>
+        @await Html.PartialAsync(
+            "~/Views/Shared/_QuickViewAppointmentSection.cshtml",
+            viewData: new ViewDataDictionary(ViewData)
+            {
+                ["AppointmentSectionTitle"] = "Latest Appointment",
+                ["AppointmentSectionCopy"] = "Latest structured appointment record linked to this lead.",
+                ["ShowAppointmentStatusEditor"] = true
+            })
 
         <details class="qv-panel crm-qv-disclosure qv-panel-data qv-panel-production qv-disclosure">
             <summary>
