@@ -632,207 +632,26 @@ function norm(v){ return (v || "").toString().trim(); }
 function fullName(row){ return (norm(row.dataset.first) + " " + norm(row.dataset.last)).trim(); }
 
 const QUICK_VIEW_DIAG_PAGE = "clients";
-const quickViewDiagnostics = (() => {
-  const STORAGE_KEY = `legend_qv_diag_${QUICK_VIEW_DIAG_PAGE}_v1`;
-  const MAX_ENTRIES = 40;
-  const entries = [];
-  let panel = null;
-  let summaryEl = null;
-  let listEl = null;
-  let globalHandlersBound = false;
-
-  function esc(value){
-    return String(value ?? "")
-      .replace(/&/g, "&amp;")
-      .replace(/</g, "&lt;")
-      .replace(/>/g, "&gt;")
-      .replace(/"/g, "&quot;")
-      .replace(/'/g, "&#39;");
+const quickViewDiagnostics = window.LegendCrmDiagnostics?.createPageDiagnostics({
+  pageKey: QUICK_VIEW_DIAG_PAGE,
+  pageTitle: "Clients CRM"
+}) || Object.freeze({
+  log(){
+    return null;
+  },
+  warn(){
+    return null;
+  },
+  error(message, detail, scope = "quickview"){
+    console.error(`[${QUICK_VIEW_DIAG_PAGE}] ${scope}: ${message}`, detail);
+    return null;
+  },
+  attachGlobalFetch(){
+    return null;
   }
+});
 
-  function slim(value, depth = 0){
-    if (value == null) return value;
-    if (value instanceof Error){
-      return {
-        name: value.name,
-        message: value.message,
-        stack: value.stack
-      };
-    }
-    if (typeof value === "string" || typeof value === "number" || typeof value === "boolean"){
-      return value;
-    }
-    if (Array.isArray(value)){
-      return value.slice(0, 8).map(item => slim(item, depth + 1));
-    }
-    if (typeof value === "object"){
-      if (depth >= 2) return String(value);
-      const output = {};
-      Object.keys(value).slice(0, 12).forEach(key => {
-        output[key] = slim(value[key], depth + 1);
-      });
-      return output;
-    }
-    return String(value);
-  }
-
-  function stringify(detail){
-    if (detail == null) return "";
-    try{
-      return JSON.stringify(slim(detail), null, 2);
-    }catch{
-      return String(detail);
-    }
-  }
-
-  function persist(){
-    try{
-      sessionStorage.setItem(STORAGE_KEY, JSON.stringify(entries));
-    }catch{}
-  }
-
-  function restore(){
-    try{
-      const restored = JSON.parse(sessionStorage.getItem(STORAGE_KEY) || "[]");
-      if (Array.isArray(restored)){
-        restored.slice(-MAX_ENTRIES).forEach(entry => entries.push(entry));
-      }
-    }catch{}
-  }
-
-  function ensurePanel(){
-    if (panel || !document.body) return;
-
-    panel = document.createElement("details");
-    panel.id = `${QUICK_VIEW_DIAG_PAGE}-qv-diagnostics`;
-    panel.open = true;
-    panel.style.cssText = [
-      "position:fixed",
-      "right:12px",
-      "bottom:12px",
-      "width:min(420px, calc(100vw - 24px))",
-      "max-height:40vh",
-      "overflow:hidden",
-      "z-index:99999",
-      "background:#081225",
-      "color:#f8fafc",
-      "border:1px solid rgba(245, 158, 11, 0.65)",
-      "border-radius:12px",
-      "box-shadow:0 16px 40px rgba(0,0,0,0.45)",
-      "font:12px/1.4 ui-monospace, SFMono-Regular, Menlo, monospace"
-    ].join(";");
-
-    panel.innerHTML = `
-      <summary style="cursor:pointer; padding:8px 10px; font-weight:700;">Quick View Diagnostics</summary>
-      <div style="padding:8px 10px 10px; border-top:1px solid rgba(245, 158, 11, 0.25);">
-        <div style="display:flex; align-items:center; justify-content:space-between; gap:8px;">
-          <div data-qvdiag-summary style="color:#cbd5e1;"></div>
-          <button type="button" data-qvdiag-clear style="border:1px solid rgba(248,250,252,0.2); background:#12213f; color:#f8fafc; border-radius:999px; padding:4px 10px; cursor:pointer;">Clear</button>
-        </div>
-        <div data-qvdiag-list style="margin-top:8px; display:grid; gap:8px; max-height:28vh; overflow:auto;"></div>
-      </div>
-    `;
-
-    document.body.appendChild(panel);
-    summaryEl = panel.querySelector("[data-qvdiag-summary]");
-    listEl = panel.querySelector("[data-qvdiag-list]");
-
-    panel.querySelector("[data-qvdiag-clear]")?.addEventListener("click", (event) => {
-      event.preventDefault();
-      event.stopPropagation();
-      entries.length = 0;
-      persist();
-      render();
-    });
-  }
-
-  function render(){
-    ensurePanel();
-    if (!panel || !summaryEl || !listEl) return;
-
-    summaryEl.textContent = `${QUICK_VIEW_DIAG_PAGE} • ${entries.length} event(s)`;
-    listEl.innerHTML = entries.length
-      ? entries.slice().reverse().map(entry => `
-          <div style="border:1px solid ${entry.level === "error" ? "rgba(248,113,113,0.55)" : "rgba(148,163,184,0.3)"}; border-radius:10px; padding:8px; background:${entry.level === "error" ? "rgba(127,29,29,0.35)" : "rgba(15,23,42,0.85)"};">
-            <div style="display:flex; justify-content:space-between; gap:8px; align-items:center;">
-              <strong style="color:${entry.level === "error" ? "#fca5a5" : "#fde68a"};">${esc(entry.scope || "quickview")}</strong>
-              <span style="color:#94a3b8;">${esc(entry.ts || "")}</span>
-            </div>
-            <div style="margin-top:4px; white-space:pre-wrap;">${esc(entry.message || "")}</div>
-            ${entry.detail ? `<pre style="margin:6px 0 0; white-space:pre-wrap; color:#cbd5e1;">${esc(stringify(entry.detail))}</pre>` : ""}
-          </div>
-        `).join("")
-      : `<div style="color:#94a3b8;">No Quick View diagnostics yet.</div>`;
-  }
-
-  function push(level, scope, message, detail){
-    const entry = {
-      ts: new Date().toLocaleTimeString(),
-      level,
-      scope,
-      message,
-      detail: slim(detail)
-    };
-
-    entries.push(entry);
-    if (entries.length > MAX_ENTRIES) entries.shift();
-    persist();
-    render();
-
-    if (level === "error"){
-      panel && (panel.open = true);
-      console.error(`[${QUICK_VIEW_DIAG_PAGE}] ${scope}: ${message}`, detail);
-    }else{
-      console.log(`[${QUICK_VIEW_DIAG_PAGE}] ${scope}: ${message}`, detail);
-    }
-
-    return entry;
-  }
-
-  function bindGlobalHandlers(){
-    if (globalHandlersBound) return;
-    globalHandlersBound = true;
-
-    window.addEventListener("error", (event) => {
-      push("error", "global", "window.error", {
-        message: event.message,
-        filename: event.filename,
-        lineno: event.lineno,
-        colno: event.colno,
-        error: event.error
-      });
-    });
-
-    window.addEventListener("unhandledrejection", (event) => {
-      push("error", "global", "unhandledrejection", {
-        reason: event.reason
-      });
-    });
-  }
-
-  restore();
-  bindGlobalHandlers();
-
-  if (document.readyState === "loading"){
-    document.addEventListener("DOMContentLoaded", render, { once: true });
-  }else{
-    render();
-  }
-
-  const api = {
-    log(message, detail, scope = "quickview"){
-      return push("log", scope, message, detail);
-    },
-    error(message, detail, scope = "quickview"){
-      return push("error", scope, message, detail);
-    },
-    entries
-  };
-
-  window.__legendQuickViewDiagnostics = window.__legendQuickViewDiagnostics || {};
-  window.__legendQuickViewDiagnostics[QUICK_VIEW_DIAG_PAGE] = api;
-  return api;
-})();
+quickViewDiagnostics.attachGlobalFetch?.();
 
 function describeQuickViewRow(row){
   return {
@@ -7152,6 +6971,7 @@ async function boot(){
   loadMyDaySnapshot(true)
     .then(() => renderAll())
     .catch(error => {
+      quickViewDiagnostics.error("Clients My Day snapshot failed during boot", error, "myday");
       console.error("Clients My Day snapshot failed during boot.", error);
     });
 
@@ -7168,6 +6988,7 @@ async function boot(){
 
 function startClientsBoot(){
   void boot().catch(error => {
+    quickViewDiagnostics.error("Clients CRM boot failed", error, "boot");
     console.error("Clients CRM boot failed.", error);
   });
 }
