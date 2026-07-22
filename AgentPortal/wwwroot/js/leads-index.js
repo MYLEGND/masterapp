@@ -200,6 +200,268 @@ function bindQuickViewBootstrapModals(){
 function norm(v){ return (v || "").toString().trim(); }
 function fullName(row){ return (norm(row.dataset.first) + " " + norm(row.dataset.last)).trim(); }
 
+const QUICK_VIEW_DIAG_PAGE = "leads";
+const quickViewDiagnostics = (() => {
+  const STORAGE_KEY = `legend_qv_diag_${QUICK_VIEW_DIAG_PAGE}_v1`;
+  const MAX_ENTRIES = 40;
+  const entries = [];
+  let panel = null;
+  let summaryEl = null;
+  let listEl = null;
+  let globalHandlersBound = false;
+
+  function esc(value){
+    return String(value ?? "")
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;")
+      .replace(/'/g, "&#39;");
+  }
+
+  function slim(value, depth = 0){
+    if (value == null) return value;
+    if (value instanceof Error){
+      return {
+        name: value.name,
+        message: value.message,
+        stack: value.stack
+      };
+    }
+    if (typeof value === "string" || typeof value === "number" || typeof value === "boolean"){
+      return value;
+    }
+    if (Array.isArray(value)){
+      return value.slice(0, 8).map(item => slim(item, depth + 1));
+    }
+    if (typeof value === "object"){
+      if (depth >= 2) return String(value);
+      const output = {};
+      Object.keys(value).slice(0, 12).forEach(key => {
+        output[key] = slim(value[key], depth + 1);
+      });
+      return output;
+    }
+    return String(value);
+  }
+
+  function stringify(detail){
+    if (detail == null) return "";
+    try{
+      return JSON.stringify(slim(detail), null, 2);
+    }catch{
+      return String(detail);
+    }
+  }
+
+  function persist(){
+    try{
+      sessionStorage.setItem(STORAGE_KEY, JSON.stringify(entries));
+    }catch{}
+  }
+
+  function restore(){
+    try{
+      const restored = JSON.parse(sessionStorage.getItem(STORAGE_KEY) || "[]");
+      if (Array.isArray(restored)){
+        restored.slice(-MAX_ENTRIES).forEach(entry => entries.push(entry));
+      }
+    }catch{}
+  }
+
+  function ensurePanel(){
+    if (panel || !document.body) return;
+
+    panel = document.createElement("details");
+    panel.id = `${QUICK_VIEW_DIAG_PAGE}-qv-diagnostics`;
+    panel.open = true;
+    panel.style.cssText = [
+      "position:fixed",
+      "right:12px",
+      "bottom:12px",
+      "width:min(420px, calc(100vw - 24px))",
+      "max-height:40vh",
+      "overflow:hidden",
+      "z-index:99999",
+      "background:#081225",
+      "color:#f8fafc",
+      "border:1px solid rgba(245, 158, 11, 0.65)",
+      "border-radius:12px",
+      "box-shadow:0 16px 40px rgba(0,0,0,0.45)",
+      "font:12px/1.4 ui-monospace, SFMono-Regular, Menlo, monospace"
+    ].join(";");
+
+    panel.innerHTML = `
+      <summary style="cursor:pointer; padding:8px 10px; font-weight:700;">Quick View Diagnostics</summary>
+      <div style="padding:8px 10px 10px; border-top:1px solid rgba(245, 158, 11, 0.25);">
+        <div style="display:flex; align-items:center; justify-content:space-between; gap:8px;">
+          <div data-qvdiag-summary style="color:#cbd5e1;"></div>
+          <button type="button" data-qvdiag-clear style="border:1px solid rgba(248,250,252,0.2); background:#12213f; color:#f8fafc; border-radius:999px; padding:4px 10px; cursor:pointer;">Clear</button>
+        </div>
+        <div data-qvdiag-list style="margin-top:8px; display:grid; gap:8px; max-height:28vh; overflow:auto;"></div>
+      </div>
+    `;
+
+    document.body.appendChild(panel);
+    summaryEl = panel.querySelector("[data-qvdiag-summary]");
+    listEl = panel.querySelector("[data-qvdiag-list]");
+
+    panel.querySelector("[data-qvdiag-clear]")?.addEventListener("click", (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      entries.length = 0;
+      persist();
+      render();
+    });
+  }
+
+  function render(){
+    ensurePanel();
+    if (!panel || !summaryEl || !listEl) return;
+
+    summaryEl.textContent = `${QUICK_VIEW_DIAG_PAGE} • ${entries.length} event(s)`;
+    listEl.innerHTML = entries.length
+      ? entries.slice().reverse().map(entry => `
+          <div style="border:1px solid ${entry.level === "error" ? "rgba(248,113,113,0.55)" : "rgba(148,163,184,0.3)"}; border-radius:10px; padding:8px; background:${entry.level === "error" ? "rgba(127,29,29,0.35)" : "rgba(15,23,42,0.85)"};">
+            <div style="display:flex; justify-content:space-between; gap:8px; align-items:center;">
+              <strong style="color:${entry.level === "error" ? "#fca5a5" : "#fde68a"};">${esc(entry.scope || "quickview")}</strong>
+              <span style="color:#94a3b8;">${esc(entry.ts || "")}</span>
+            </div>
+            <div style="margin-top:4px; white-space:pre-wrap;">${esc(entry.message || "")}</div>
+            ${entry.detail ? `<pre style="margin:6px 0 0; white-space:pre-wrap; color:#cbd5e1;">${esc(stringify(entry.detail))}</pre>` : ""}
+          </div>
+        `).join("")
+      : `<div style="color:#94a3b8;">No Quick View diagnostics yet.</div>`;
+  }
+
+  function push(level, scope, message, detail){
+    const entry = {
+      ts: new Date().toLocaleTimeString(),
+      level,
+      scope,
+      message,
+      detail: slim(detail)
+    };
+
+    entries.push(entry);
+    if (entries.length > MAX_ENTRIES) entries.shift();
+    persist();
+    render();
+
+    if (level === "error"){
+      panel && (panel.open = true);
+      console.error(`[${QUICK_VIEW_DIAG_PAGE}] ${scope}: ${message}`, detail);
+    }else{
+      console.log(`[${QUICK_VIEW_DIAG_PAGE}] ${scope}: ${message}`, detail);
+    }
+
+    return entry;
+  }
+
+  function bindGlobalHandlers(){
+    if (globalHandlersBound) return;
+    globalHandlersBound = true;
+
+    window.addEventListener("error", (event) => {
+      push("error", "global", "window.error", {
+        message: event.message,
+        filename: event.filename,
+        lineno: event.lineno,
+        colno: event.colno,
+        error: event.error
+      });
+    });
+
+    window.addEventListener("unhandledrejection", (event) => {
+      push("error", "global", "unhandledrejection", {
+        reason: event.reason
+      });
+    });
+  }
+
+  restore();
+  bindGlobalHandlers();
+
+  if (document.readyState === "loading"){
+    document.addEventListener("DOMContentLoaded", render, { once: true });
+  }else{
+    render();
+  }
+
+  const api = {
+    log(message, detail, scope = "quickview"){
+      return push("log", scope, message, detail);
+    },
+    error(message, detail, scope = "quickview"){
+      return push("error", scope, message, detail);
+    },
+    entries
+  };
+
+  window.__legendQuickViewDiagnostics = window.__legendQuickViewDiagnostics || {};
+  window.__legendQuickViewDiagnostics[QUICK_VIEW_DIAG_PAGE] = api;
+  return api;
+})();
+
+function describeQuickViewRow(row){
+  return {
+    hasRow: !!row,
+    clientId: norm(row?.dataset?.clientId),
+    first: norm(row?.dataset?.first),
+    last: norm(row?.dataset?.last),
+    email: norm(row?.dataset?.email),
+    phone: norm(row?.dataset?.phone),
+    pipeline: norm(row?.dataset?.crmPipeline || row?.dataset?.sPipeline)
+  };
+}
+
+function isQuickViewInteractiveTarget(target){
+  return !!target?.closest("a, button, input, select, textarea, label, [data-kebab], .menu");
+}
+
+function openQuickViewByClientId(clientId){
+  const normalizedId = norm(clientId);
+  quickViewDiagnostics.log("openQuickViewByClientId called", { clientId: normalizedId }, "route");
+  if (!normalizedId){
+    quickViewDiagnostics.error("Quick View requested without a client id", { clientId }, "route");
+    return null;
+  }
+
+  const row = rows.find(r => r.dataset.clientId === normalizedId);
+  if (row){
+    return Promise.resolve(openDrawerForRow(row)).catch(error => {
+      quickViewDiagnostics.error("openDrawerForRow rejected", {
+        clientId: normalizedId,
+        error
+      }, "route");
+      return null;
+    });
+  }
+
+  quickViewDiagnostics.log("No local row found, falling back to openDrawerById", {
+    clientId: normalizedId,
+    rowCount: rows.length
+  }, "route");
+
+  return Promise.resolve(openDrawerById(normalizedId)).catch(error => {
+    quickViewDiagnostics.error("openDrawerById rejected", {
+      clientId: normalizedId,
+      error
+    }, "route");
+    return null;
+  });
+}
+
+function openQuickViewForRow(row){
+  const detail = describeQuickViewRow(row);
+  quickViewDiagnostics.log("openQuickViewForRow called", detail, "route");
+  if (!detail.clientId){
+    quickViewDiagnostics.error("Quick View row is missing client id", detail, "route");
+    return null;
+  }
+  return openQuickViewByClientId(detail.clientId);
+}
+
 function wireActionForm(){
   const form = document.getElementById('quickCreateActionForm');
   if (!form || form.dataset.bound === "1") return;
@@ -1487,20 +1749,8 @@ function laneOrderFromDom(stageKey){
   return ensureStageOrder(stageKey, ids);
 }
 
-/* ========= Open handlers ========= */
-function wireOpenHandlers(){
-  // Table + list
-
-  $$(".open-drawer").forEach(el => {
-    if (el.dataset.boundOpen) return;
-    el.dataset.boundOpen = "1";
-    el.addEventListener("click", (e) => {
-      e.preventDefault();
-      const row = el.closest(".client-row");
-      if (row) openDrawerForRow(row);
-    });
-  });
-
+/* ========= Card action handlers ========= */
+function wireProductionButtons(){
   // View Production button handler
   $$(".view-production-btn").forEach(el => {
     if (el.dataset.boundOpen) return;
@@ -1523,17 +1773,6 @@ function wireOpenHandlers(){
     });
   });
 
-  $$("[data-open-row]").forEach(el => {
-    if (el.dataset.boundOpen) return;
-    el.dataset.boundOpen = "1";
-    el.addEventListener("click", (e) => {
-      if (e.target.closest("a, button, input, select, textarea, label")) return;
-      const row = el.closest(".client-row");
-      if (row) openDrawerForRow(row);
-    });
-  });
-
-  // Pipeline cards
 }
 
 function pipelineLabel(stage){
@@ -1980,6 +2219,28 @@ const dDocReviewBooked = $("#dDocReviewBooked");
 const dAssignedOwner = $("#dAssignedOwner");
 const dWatchers = $("#dWatchers");
 const dMentionNote = $("#dMentionNote");
+
+function quickViewBindingSnapshot(){
+  return {
+    drawer: !!drawer,
+    drawerBackdrop: !!drawerBackdrop,
+    dName: !!dName,
+    dEmail: !!dEmail,
+    dPhone: !!dPhone,
+    dEmailInput: !!dEmailInput,
+    dPhoneInput: !!dPhoneInput,
+    dStatus: !!dStatus,
+    dPipelineStage: !!dPipelineStage,
+    dLastTouch: !!dLastTouch,
+    dNextDate: !!dNextDate,
+    dNextText: !!dNextText,
+    dPriority: !!dPriority,
+    dWaitingOn: !!dWaitingOn,
+    dSaved: !!dSaved
+  };
+}
+
+quickViewDiagnostics.log("Quick View bindings snapshot", quickViewBindingSnapshot(), "boot");
 const mentionList = $("#mentionList");
 const dIntakeSection = $("#dIntakeSection");
 const dIntakeSubmitted = $("#dIntakeSubmitted");
@@ -2063,11 +2324,13 @@ function safeStartupInit(label, fn){
     if (result && typeof result.then === "function"){
       result.catch(error => {
         console.error(`${label} failed.`, error);
+        quickViewDiagnostics.error(`${label} failed`, error, "boot");
       });
     }
     return result;
   }catch(error){
     console.error(`${label} failed.`, error);
+    quickViewDiagnostics.error(`${label} failed`, error, "boot");
     return null;
   }
 }
@@ -2681,7 +2944,7 @@ function focusClientByQuery(query){
       live.scrollIntoView({ behavior: "smooth", block: "center" });
       live.classList.add("row-flash");
       setTimeout(() => live.classList.remove("row-flash"), 1600);
-      openDrawerForRow(live);
+      openQuickViewForRow(live);
     }
   }, 40);
 
@@ -3370,26 +3633,21 @@ document.addEventListener("click", (e) => {
   const openDrawerEl = e.target.closest(".open-drawer");
   if (openDrawerEl){
     const row = openDrawerEl.closest(".client-row");
-    if (row) openDrawerForRow(row);
-    else {
-      const id = openDrawerEl.closest("[data-cardid]")?.getAttribute("data-cardid");
-      if (id) openDrawerById(id);
-    }
+    if (row) openQuickViewForRow(row);
+    else openQuickViewByClientId(openDrawerEl.closest("[data-cardid]")?.getAttribute("data-cardid") || "");
     return;
   }
 
   const openRowEl = e.target.closest("[data-open-row]");
   if (openRowEl && !e.target.closest("a, button, input, select, textarea, label")){
     const row = openRowEl.closest(".client-row");
-    if (row) openDrawerForRow(row);
+    openQuickViewForRow(row);
     return;
   }
 
   const openCardId = e.target.closest("[data-open-card]")?.getAttribute("data-open-card");
-  if (openCardId){
-    const row = rows.find(r => r.dataset.clientId === openCardId);
-    if (row) openDrawerForRow(row);
-    else openDrawerById(openCardId);
+  if (openCardId && !isQuickViewInteractiveTarget(e.target)){
+    openQuickViewByClientId(openCardId);
     return;
   }
 
@@ -3441,16 +3699,18 @@ document.addEventListener("click", (e) => {
       return copyText(`${name}\n${email}\n${phone}`.trim());
     }
     if (action === "log-call"){
-      openDrawerForRow(row);
-      dActType.value = "Call";
-      dActDate.value = todayISO();
-      dActNote.focus();
+      Promise.resolve(openQuickViewForRow(row)).then(() => {
+        dActType.value = "Call";
+        dActDate.value = todayISO();
+        dActNote.focus();
+      });
       return;
     }
     if (action === "set-next"){
-      openDrawerForRow(row);
-      setDrawerNextActionDate(todayISO());
-      dNextText.focus();
+      Promise.resolve(openQuickViewForRow(row)).then(() => {
+        setDrawerNextActionDate(todayISO());
+        dNextText.focus();
+      });
       return;
     }
   }
@@ -3478,27 +3738,6 @@ document.addEventListener("click", (e) => {
     f.submit();
     return;
   }
-});
-
-// Hard-bind basic open-drawer clicks so delegation issues can't block Quick View
-$$(".open-drawer").forEach(btn => {
-  if (btn.dataset.boundDirect) return;
-  btn.dataset.boundDirect = "1";
-  btn.addEventListener("click", (e) => {
-    e.preventDefault();
-    const row = btn.closest(".client-row");
-    if (row) openDrawerForRow(row);
-  });
-});
-
-$$("[data-open-row]").forEach(el => {
-  if (el.dataset.boundDirect) return;
-  el.dataset.boundDirect = "1";
-  el.addEventListener("click", (e) => {
-    if (e.target.closest("a, button, input, select, textarea, label")) return;
-    const row = el.closest(".client-row");
-    if (row) openDrawerForRow(row);
-  });
 });
 
 /* ========= Export CSV ========= */
@@ -3732,7 +3971,7 @@ function renderAll(){
   renderList(filtered);
   renderCards(filtered);
   syncStagePickerUi();
-  wireOpenHandlers();
+  wireProductionButtons();
   refreshKPIs();
   refreshMyDay();
   refreshRemindersUI();
@@ -4078,6 +4317,7 @@ function applySavedView(index){
 
 /* ========= Drawer ========= */
 async function openDrawerById(clientId){
+  quickViewDiagnostics.log("openDrawerById called", { clientId: norm(clientId) }, "drawer");
   const row = rows.find(r => r.dataset.clientId === clientId);
   if (row) return openDrawerForRow(row);
 
@@ -4128,107 +4368,145 @@ async function openDrawerById(clientId){
         crmWatchers: "",
       }
     };
+    quickViewDiagnostics.log("openDrawerById created stub row", describeQuickViewRow(stub), "drawer");
     return openDrawerForRow(stub);
   }catch(err){
     console.error(err);
+    quickViewDiagnostics.error("openDrawerById failed", {
+      clientId: norm(clientId),
+      error: err
+    }, "drawer");
     toast("Quick View failed to load lead.");
   }
 }
 
 async function openDrawerForRow(row){
-  drawerEditing = true;
-  activeClientId = row.dataset.clientId;
-  if (drawer) drawer.dataset.clientId = activeClientId || "";
-  activeClientDetail = null;
-  noteSyncLeadField();
-  // Load Actions tab (Execution MVP)
-  void loadLeadActionsPanel();
+  const rowInfo = describeQuickViewRow(row);
+  quickViewDiagnostics.log("openDrawerForRow start", {
+    row: rowInfo,
+    bindings: quickViewBindingSnapshot()
+  }, "drawer");
 
-  void loadLeadCommitmentsPanel();
+  if (!row?.dataset){
+    quickViewDiagnostics.error("openDrawerForRow received an invalid row", rowInfo, "drawer");
+    return null;
+  }
 
   const name = fullName(row);
   const email = norm(row.dataset.email);
   const phone = norm(row.dataset.phone);
-  dName.textContent = name || "Lead";
-  if (dFirst) dFirst.value = row.dataset.first || "";
-  if (dLast) dLast.value = row.dataset.last || "";
-  syncDrawerEmailDisplay(email);
-  dPhone.textContent = phone || "No phone";
-  if (dEmailInput) dEmailInput.value = email;
-  if (dPhoneInput) dPhoneInput.value = phone;
-  if (dPhone2Input) dPhone2Input.value = row.dataset.phone2 || "";
-  if (dDob) dDob.value = row.dataset.dob || "";
-  if (dAge) dAge.value = row.dataset.age || "";
-  if (dGender) dGender.value = row.dataset.gender || "";
-  if (dAddress) dAddress.value = row.dataset.addressLine || "";
-  if (dCity) dCity.value = row.dataset.city || "";
-  if (dState) dState.value = row.dataset.state || "";
-  if (dCounty) dCounty.value = row.dataset.county || "";
-  if (dZip) dZip.value = row.dataset.zipCode || "";
-  if (dBtc) dBtc.value = row.dataset.btc || "";
-  if (dLender) dLender.value = row.dataset.mortgageLender || "";
-  if (dLoanAmount) dLoanAmount.value = row.dataset.loanAmount || "";
+  const phone2 = norm(row.dataset.phone2);
 
-  btnMail.href = email ? ("mailto:" + email) : "#";
-  btnCall.href = phone ? ("tel:" + phone) : "#";
-  dStatus.value = row.dataset.crmStatus || "Active";
-  dPipelineStage.value = currentPipelineStage(row, "MortgageProtection");
-  applyQuickViewContactProfileLabels(row, null);
-  if (dContactStatus) dContactStatus.value = normalizeContactStatusValue(row.dataset.crmContactStatus || row.dataset.sContactstatus || "NotSet");
-  dLastTouch.value = row.dataset.crmLastTouch || "";
-  dTags.value = row.dataset.crmTags || "";
-  dNotes.value = row.dataset.crmNotes || "";
-  setDrawerNextActionDate(row.dataset.crmNextDate || "");
-  dNextText.value = row.dataset.crmNextText || "";
-  dPriority.value = row.dataset.crmPriority || "Normal";
-  dMeetingLocation.value = row.dataset.sMeetingLocation || "";
-  dZoomJoinUrl.value = row.dataset.sZoom || "";
-  dUsePersonalZoomLink.checked = (row.dataset.sUsezoom || "false") === "true";
-  if (!dZoomJoinUrl.value && dUsePersonalZoomLink.checked) dZoomJoinUrl.value = loadSavedZoomLink();
-  applyMeetingType(inferMeetingType(null, row), row);
-  dMeetingTime.value = row.dataset.sMeetingTime || "";
-  dMeetingDuration.value = row.dataset.sMeetingDuration || "30";
-  dWaitingOn.value = row.dataset.crmWaitingOn || "WaitingOnAgent";
-  dPinnedBrief.value = row.dataset.crmPinnedBrief || "";
-  dDocIdReceived.checked = false;
-  dDocAppSent.checked = false;
-  dDocAppSigned.checked = false;
+  try{
+    drawerEditing = true;
+    activeClientId = row.dataset.clientId;
+    if (drawer) drawer.dataset.clientId = activeClientId || "";
+    activeClientDetail = null;
+    noteSyncLeadField();
+    // Load Actions tab (Execution MVP)
+    void loadLeadActionsPanel();
 
-  loadProductionHistory(row.dataset.clientId);
-  dDocPolicyDelivered.checked = false;
-  dDocReviewBooked.checked = false;
-  dAssignedOwner.value = row.dataset.crmOwner || "";
-  dWatchers.value = row.dataset.crmWatchers || "";
-  dMentionNote.value = "";
-  dStageAge.textContent = `Stage Age: ${stageAgeDays(row)}d`;
-  dAttempts.textContent = `Attempts: ${row.dataset.crmAttemptsToday || 0} today • ${row.dataset.crmAttemptsWeek || 0} week • ${row.dataset.crmAttemptsLife || 0} total`;
-  dWaitingOnPill.textContent = waitingLabel(row.dataset.crmWaitingOn || "WaitingOnAgent");
-  dOutcomeSuggestion.textContent = "Use one-click outcomes to move leads into the last 8 non-lead buckets.";
-  quickViewBusyCalendar.refresh();
+    void loadLeadCommitmentsPanel();
+    dName.textContent = name || "Lead";
+    if (dFirst) dFirst.value = row.dataset.first || "";
+    if (dLast) dLast.value = row.dataset.last || "";
+    syncDrawerEmailDisplay(email);
+    dPhone.textContent = phone || "No phone";
+    if (dEmailInput) dEmailInput.value = email;
+    if (dPhoneInput) dPhoneInput.value = phone;
+    if (dPhone2Input) dPhone2Input.value = phone2 || "";
+    if (dDob) dDob.value = row.dataset.dob || "";
+    if (dAge) dAge.value = row.dataset.age || "";
+    if (dGender) dGender.value = row.dataset.gender || "";
+    if (dAddress) dAddress.value = row.dataset.addressLine || "";
+    if (dCity) dCity.value = row.dataset.city || "";
+    if (dState) dState.value = row.dataset.state || "";
+    if (dCounty) dCounty.value = row.dataset.county || "";
+    if (dZip) dZip.value = row.dataset.zipCode || "";
+    if (dBtc) dBtc.value = row.dataset.btc || "";
+    if (dLender) dLender.value = row.dataset.mortgageLender || "";
+    if (dLoanAmount) dLoanAmount.value = row.dataset.loanAmount || "";
 
-  renderPortalActions(row, null);
+    btnMail.href = email ? ("mailto:" + email) : "#";
+    btnCall.href = phone ? ("tel:" + phone) : "#";
+    dStatus.value = row.dataset.crmStatus || "Active";
+    dPipelineStage.value = currentPipelineStage(row, "MortgageProtection");
+    applyQuickViewContactProfileLabels(row, null);
+    if (dContactStatus) dContactStatus.value = normalizeContactStatusValue(row.dataset.crmContactStatus || row.dataset.sContactstatus || "NotSet");
+    dLastTouch.value = row.dataset.crmLastTouch || "";
+    dTags.value = row.dataset.crmTags || "";
+    dNotes.value = row.dataset.crmNotes || "";
+    setDrawerNextActionDate(row.dataset.crmNextDate || "");
+    dNextText.value = row.dataset.crmNextText || "";
+    dPriority.value = row.dataset.crmPriority || "Normal";
+    dMeetingLocation.value = row.dataset.sMeetingLocation || "";
+    dZoomJoinUrl.value = row.dataset.sZoom || "";
+    dUsePersonalZoomLink.checked = (row.dataset.sUsezoom || "false") === "true";
+    if (!dZoomJoinUrl.value && dUsePersonalZoomLink.checked) dZoomJoinUrl.value = loadSavedZoomLink();
+    applyMeetingType(inferMeetingType(null, row), row);
+    dMeetingTime.value = row.dataset.sMeetingTime || "";
+    dMeetingDuration.value = row.dataset.sMeetingDuration || "30";
+    dWaitingOn.value = row.dataset.crmWaitingOn || "WaitingOnAgent";
+    dPinnedBrief.value = row.dataset.crmPinnedBrief || "";
+    dDocIdReceived.checked = false;
+    dDocAppSent.checked = false;
+    dDocAppSigned.checked = false;
 
-  dActDate.value = todayISO();
-  dActNote.value = "";
-  renderTimeline([]);
-  renderMentionNotes([]);
-  renderIntakeSnapshot(null);
-  renderAppointmentSnapshot(null);
-  refreshLeadOverviewSummary();
-  dSaved.textContent = "Loading…";
+    loadProductionHistory(row.dataset.clientId);
+    dDocPolicyDelivered.checked = false;
+    dDocReviewBooked.checked = false;
+    dAssignedOwner.value = row.dataset.crmOwner || "";
+    dWatchers.value = row.dataset.crmWatchers || "";
+    dMentionNote.value = "";
+    dStageAge.textContent = `Stage Age: ${stageAgeDays(row)}d`;
+    dAttempts.textContent = `Attempts: ${row.dataset.crmAttemptsToday || 0} today • ${row.dataset.crmAttemptsWeek || 0} week • ${row.dataset.crmAttemptsLife || 0} total`;
+    dWaitingOnPill.textContent = waitingLabel(row.dataset.crmWaitingOn || "WaitingOnAgent");
+    dOutcomeSuggestion.textContent = "Use one-click outcomes to move leads into the last 8 non-lead buckets.";
+    quickViewBusyCalendar.refresh();
 
-  drawer.classList.add("open");
-  drawerBackdrop.classList.add("open");
-  drawer.setAttribute("aria-hidden", "false");
-  lockPageScrollForQuickView();
-  updateZoomControls();
-  syncQuickViewDisclosures();
+    renderPortalActions(row, null);
 
-  closeAllMenus(null);
+    dActDate.value = todayISO();
+    dActNote.value = "";
+    renderTimeline([]);
+    renderMentionNotes([]);
+    renderIntakeSnapshot(null);
+    renderAppointmentSnapshot(null);
+    refreshLeadOverviewSummary();
+    dSaved.textContent = "Loading…";
+
+    drawer.classList.add("open");
+    drawerBackdrop.classList.add("open");
+    drawer.setAttribute("aria-hidden", "false");
+    lockPageScrollForQuickView();
+    updateZoomControls();
+    syncQuickViewDisclosures();
+
+    closeAllMenus(null);
+    quickViewDiagnostics.log("Drawer shell opened", {
+      clientId: activeClientId,
+      bindings: quickViewBindingSnapshot()
+    }, "drawer");
+  }catch(error){
+    quickViewDiagnostics.error("Quick View failed before remote load", {
+      row: rowInfo,
+      bindings: quickViewBindingSnapshot(),
+      error
+    }, "drawer");
+    if (dSaved) dSaved.textContent = "Quick View pre-open failed";
+    toast("Quick View failed before opening. See diagnostics.", { persistent: true, error: true });
+    return null;
+  }
 
   try{
     const detail = await loadQuickView(activeClientId);
     if (activeClientId !== row.dataset.clientId) return;
+    quickViewDiagnostics.log("Quick View detail loaded", {
+      clientId: activeClientId,
+      hasDetail: !!detail,
+      hasActivities: Array.isArray(detail?.activities),
+      hasLatestAppointment: !!detail?.latestAppointment
+    }, "drawer");
 
     activeClientDetail = detail;
     noteSyncLeadField();
@@ -4251,7 +4529,7 @@ async function openDrawerForRow(row){
     if (dLast) dLast.value = detail.lastName || row.dataset.last || "";
     if (dEmailInput) dEmailInput.value = detail.email || email || "";
     if (dPhoneInput) dPhoneInput.value = detail.phone || phone || "";
-    if (dPhone2Input) dPhone2Input.value = detail.phone2 || row.dataset.phone2 || "";
+    if (dPhone2Input) dPhone2Input.value = detail.phone2 || phone2 || "";
     if (dDob) dDob.value = detail.dob || "";
     if (dAge) dAge.value = detail.age || row.dataset.age || "";
     if (dGender) dGender.value = detail.gender || "";
@@ -4296,8 +4574,15 @@ async function openDrawerForRow(row){
     renderPortalActions(row, detail);
 
     dSaved.textContent = "Loaded";
+    quickViewDiagnostics.log("Quick View loaded successfully", {
+      clientId: activeClientId
+    }, "drawer");
   }catch(err){
     console.error(err);
+    quickViewDiagnostics.error("Quick View load failed", {
+      row: rowInfo,
+      error: err
+    }, "drawer");
     renderIntakeSnapshot(null);
     renderAppointmentSnapshot(null);
     dSaved.textContent = "Load failed";
@@ -5028,7 +5313,7 @@ function renderPortalActions(row, detail){
 btnOpenFirst?.addEventListener("click", () => {
   const first = getCheckedRows()[0];
   if (!first) return;
-  openDrawerForRow(first);
+  openQuickViewForRow(first);
 });
 
 btnMarkToday?.addEventListener("click", () => {
@@ -5050,6 +5335,15 @@ btnMeetingNextToday?.addEventListener("click", () => {
   flushQuickViewAutosave("Meeting date set — saving…");
   quickViewBusyCalendar.refresh();
 });
+
+function refreshCalendarBusyPanel(){
+  try{
+    return quickViewBusyCalendar.refresh();
+  }catch(error){
+    quickViewDiagnostics.error("refreshCalendarBusyPanel failed", error, "calendar");
+    return null;
+  }
+}
 
 dMeetingType?.addEventListener("change", () => {
   const row = rows.find(r => r.dataset.clientId === activeClientId);
@@ -5270,14 +5564,14 @@ btnResetLocal?.addEventListener("click", () => {
   if (!activeClientId) return;
   if (!confirm("Reload the saved client CRM data from the server?")) return;
   const row = rows.find(r => r.dataset.clientId === activeClientId);
-  if (row) openDrawerForRow(row);
+  openQuickViewForRow(row);
 });
 
 /* ========= Row Hotkeys ========= */
 rows.forEach(r => {
   r.tabIndex = 0;
   r.addEventListener("keydown", (e) => {
-    if (e.key === "Enter") openDrawerForRow(r);
+    if (e.key === "Enter") openQuickViewForRow(r);
   });
 });
 
@@ -5287,7 +5581,7 @@ if (tableView){
     if (e.target.closest("[data-open-row]")) return; // keep existing delegated handler, avoid double-fetch
     if (e.target.closest("a, button, input, select, textarea, label, .menu, .kebab")) return;
     const row = e.target.closest(".client-row");
-    if (row) openDrawerForRow(row);
+    openQuickViewForRow(row);
   });
 
   tableView.addEventListener("keydown", (e) => {
@@ -5295,7 +5589,7 @@ if (tableView){
     if (e.target.classList?.contains("client-row")) return; // row has its own key handler
     if (e.target.closest("input, select, textarea, button, a, label")) return;
     const row = e.target.closest(".client-row");
-    if (row) openDrawerForRow(row);
+    openQuickViewForRow(row);
   });
 }
 
@@ -5678,7 +5972,11 @@ function renderLaneCards(rowsForStage){
     return `
       <article class="client-card ${pipelineBadgeClass(stage)}"
                draggable="true"
-               data-cardid="${safeHtml(r.dataset.clientId)}">
+               data-cardid="${safeHtml(r.dataset.clientId)}"
+               data-open-card="${safeHtml(r.dataset.clientId)}"
+               role="button"
+               tabindex="0"
+               aria-label="Open Quick View for ${safeHtml(displayName)}">
         <div class="client-card-head">
           <div class="client-card-main">
             <h3 class="cc-name" data-open-card="${safeHtml(r.dataset.clientId)}">${safeHtml(displayName)}</h3>
@@ -5751,7 +6049,7 @@ function renderCards(filteredRows){
   // ensure production badges in cards reflect latest row data
   filteredRows.forEach(r => updatePipelineCardProduction(r.dataset.clientId));
 
-  wireOpenHandlers();
+  wireProductionButtons();
 }
 
 async function saveQuickViewForRow(row, overrides, successMessage){
@@ -6006,22 +6304,6 @@ pipelineBoard?.addEventListener("click", (e) => {
     return;
   }
 
-  const openId = e.target.closest("[data-open-card]")?.getAttribute("data-open-card");
-  if (openId){
-    e.stopPropagation();
-    const row = rows.find(r => r.dataset.clientId === openId);
-    if (row) openDrawerForRow(row);
-    return;
-  }
-
-  const pipelineCard = e.target.closest(".client-card");
-  if (pipelineCard && !e.target.closest("[data-kebab], .menu, a, button, input, select, textarea, label")){
-    const cardId = pipelineCard.getAttribute("data-cardid");
-    const row = rows.find(r => r.dataset.clientId === cardId);
-    if (row) openDrawerForRow(row);
-    return;
-  }
-
   const copyId = e.target.closest("[data-copy-card]")?.getAttribute("data-copy-card");
   if (copyId){
     const row = rows.find(r => r.dataset.clientId === copyId);
@@ -6043,14 +6325,19 @@ pipelineBoard?.addEventListener("click", (e) => {
   const taskOutcome = e.target.closest("[data-taskoutcome]")?.getAttribute("data-taskoutcome");
   if (taskOutcome){
     const [clientId, outcome] = taskOutcome.split(":");
-    const row = rows.find(r => r.dataset.clientId === clientId);
-    if (row){
-      openDrawerForRow(row).then(() => {
-        const btn = $$(`.outcome-btn`).find(x => x.getAttribute("data-outcome") === outcome);
-        btn?.click();
-      });
-    }
+    Promise.resolve(openQuickViewByClientId(clientId)).then(() => {
+      const btn = $$(`.outcome-btn`).find(x => x.getAttribute("data-outcome") === outcome);
+      btn?.click();
+    });
   }
+});
+
+pipelineBoard?.addEventListener("keydown", (e) => {
+  if (e.key !== "Enter" && e.key !== " ") return;
+  const openId = e.target.closest("[data-open-card]")?.getAttribute("data-open-card");
+  if (!openId || isQuickViewInteractiveTarget(e.target)) return;
+  e.preventDefault();
+  openQuickViewByClientId(openId);
 });
 
 pipelineBoard?.addEventListener("dragstart", (e) => {
@@ -6419,11 +6706,8 @@ btnReminders?.addEventListener("click", openRemindersModal);
 document.addEventListener("click", (e) => {
   const openId = e.target.closest("[data-remopen]")?.getAttribute("data-remopen");
   if (openId){
-    const row = rows.find(r => r.dataset.clientId === openId);
-    if (row){
-      closeModal();
-      openDrawerForRow(row);
-    }
+    closeModal();
+    openQuickViewByClientId(openId);
   }
 
   const delBtn = e.target.closest(".delCard");
@@ -6627,6 +6911,17 @@ function startCalendarConnect(){
   window.location.href = "/calendar/connect";
 }
 
+async function calendarStatus(){
+  try{
+    const res = await fetch("/calendar/status", withDialHeaders({ credentials: "include" }));
+    if (!res.ok) throw new Error(`Calendar status failed: ${res.status}`);
+    return await res.json();
+  }catch(error){
+    quickViewDiagnostics.error("Calendar status check failed", error, "calendar");
+    return { connected: false };
+  }
+}
+
 btnCalendarAuth?.addEventListener("click", startCalendarConnect);
 btnResourceCalendar?.addEventListener("click", startCalendarConnect);
 btnZoomSavePersonal?.addEventListener("click", savePersonalZoomLink);
@@ -6674,6 +6969,7 @@ $$("[data-stagejump]").forEach(btn => {
 });
 
 async function updateCalendarButton(){
+  if (!btnCalendarAuth) return;
   const st = await calendarStatus();
   if (st.connected){
     btnCalendarAuth.textContent = `Calendar: Connected`;
@@ -6895,9 +7191,33 @@ document.addEventListener("click", (e) => {
   }
 });
 
+function buildQuickViewBusyCalendar(options){
+  if (typeof window.createQuickViewBusyCalendar !== "function"){
+    quickViewDiagnostics.error("Busy calendar factory is missing", {
+      createQuickViewBusyCalendar: typeof window.createQuickViewBusyCalendar,
+      qvBookingBuildEventTimes: typeof window.qvBookingBuildEventTimes
+    }, "calendar");
+    return {
+      async refresh(){ return null; }
+    };
+  }
+
+  try{
+    const calendar = window.createQuickViewBusyCalendar(options);
+    quickViewDiagnostics.log("Busy calendar initialized", {
+      hasRefresh: typeof calendar?.refresh === "function"
+    }, "calendar");
+    return calendar || { async refresh(){ return null; } };
+  }catch(error){
+    quickViewDiagnostics.error("Busy calendar initialization failed", error, "calendar");
+    return {
+      async refresh(){ return null; }
+    };
+  }
+}
 
 const quickViewBusyCalendar =
-  window.createQuickViewBusyCalendar({
+  buildQuickViewBusyCalendar({
     getSelectedDate(){
       return norm(dNextDate?.value);
     },
@@ -7116,9 +7436,7 @@ function openQuickViewFromUrl(){
     if (!targetId) return;
 
     quickViewOpenedFromUrl = true;
-    const row = rows.find(r => norm(r.dataset.clientId) === targetId);
-    if (row) return openDrawerForRow(row);
-    return openDrawerById(targetId);
+    return openQuickViewByClientId(targetId);
   }catch(err){
     console.error("Auto-open Quick View failed", err);
   }
