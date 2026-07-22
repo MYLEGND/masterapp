@@ -6,11 +6,11 @@ namespace AgentPortal.Tests;
 public class TrafficAttributionTests
 {
     [Fact]
-    public void Classify_NoSignals_DoesNotSilentlyBecomeDirect()
+    public void Classify_NoSignals_UsesDirectForCleanHumanTraffic()
     {
         var classified = TrafficAttribution.Classify(null, null, null, null);
 
-        Assert.Equal(TrafficType.Unknown, classified);
+        Assert.Equal(TrafficType.Direct, classified);
     }
 
     [Fact]

@@ -172,6 +172,11 @@ public static class MetaSignalSingleTruthPolicy
                 return value;
         }
 
+        // Unified analytics keeps caller metadata under a payload object. Resolve the lead
+        // identifier there as well so server-side events retain a stable de-duplication key.
+        if (root.TryGetPropertyValue("payload", out var payload) && payload is JsonObject payloadObject)
+            return TryReadLeadId(payloadObject);
+
         return null;
     }
 

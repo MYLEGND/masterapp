@@ -6,14 +6,6 @@ using Shared.Meta;
 
 namespace ProtectWebsite.Services.Meta;
 
-public sealed class ThankYouMetaBrowserPixelAckRequest
-{
-    public Guid LeadId { get; set; }
-    public string? EventId { get; set; }
-    public string? Status { get; set; }
-    public string? Note { get; set; }
-}
-
 public static class MetaLeadTrackingWorkflow
 {
     public static async Task TryPersistAsync(
@@ -95,27 +87,4 @@ public static class MetaLeadTrackingWorkflow
         return cookieValue;
     }
 
-    public static string NormalizeBrowserPixelStatus(string? status)
-    {
-        var normalized = status?.Trim().ToLowerInvariant();
-        return normalized switch
-        {
-            "sent" => "sent",
-            "unavailable" => "unavailable",
-            "error" => "error",
-            _ => "unknown"
-        };
-    }
-
-    public static string? NormalizeBrowserPixelNote(string? note)
-    {
-        var normalized = note?.Trim().ToLowerInvariant();
-        return normalized switch
-        {
-            "fbq_unavailable" => "fbq_unavailable",
-            "fbq_exception" => "fbq_exception",
-            "session_storage_dedup" => "session_storage_dedup",
-            _ => string.IsNullOrWhiteSpace(normalized) ? null : "custom"
-        };
-    }
 }

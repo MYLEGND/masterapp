@@ -26,6 +26,16 @@ public class LeadsControllerTests
     public async Task CreateAction_Redirects_AndPassesActionSurface()
     {
         var db = ControllerTestHelpers.BuildDb();
+        db.WorkstationLeadProfiles.Add(new WorkstationLeadProfile
+        {
+            LeadId = "L-1",
+            AgentUserId = "agent-1",
+            Bucket = "LifeInsurance",
+            CreatedUtc = DateTime.UtcNow,
+            UpdatedUtc = DateTime.UtcNow
+        });
+        await db.SaveChangesAsync();
+
         var execMock = new Mock<IExecutionEngine>();
         ActionItem? captured = null;
         execMock.Setup(x => x.CreateActionAsync(It.IsAny<ActionItem>(), default))

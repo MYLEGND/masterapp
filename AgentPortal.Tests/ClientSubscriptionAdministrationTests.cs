@@ -83,6 +83,8 @@ public sealed class ClientSubscriptionAdministrationTests
         var snapshot = await new ClientBillingWorkspaceService(db).BuildSnapshotAsync(profile.Id, "agent-1");
 
         Assert.NotNull(snapshot);
+        var snapshotJson = JsonSerializer.Serialize(snapshot);
+        Assert.Contains("\"canConfigureSubscription\":true", snapshotJson, StringComparison.Ordinal);
     }
 
     [Fact]

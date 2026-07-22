@@ -1,46 +1,8 @@
 @model Protect_Website.Models.QuoteThankYouViewModel
-@using System.Text.Json
 @{
     ViewData["Title"] = "Thank You";
 
     var quoteKey = Model?.QuoteKey?.Trim() ?? "";
-    var metaLeadEventId = TempData.Peek("MetaLeadEventId")?.ToString()?.Trim() ?? "";
-    var metaLeadLeadId = TempData.Peek("MetaLeadLeadId")?.ToString()?.Trim() ?? "";
-    var metaLeadContentName = quoteKey switch
-    {
-        "Auto" => "quote_auto",
-        "Home" => "quote_home",
-        "Dental, Vision & Hearing" => "quote_dvh",
-        "Disability" => "quote_disability",
-        "Commercial" => "quote_commercial",
-        "Life" or "Life Insurance" => "quote_life",
-        "Term Life" => "quote_term_life",
-        "Whole Life" => "quote_whole_life",
-        "Final Expense" => "quote_final_expense",
-        "Mortgage Protection" => "quote_mortgage_protection",
-        "Indexed Universal Life" => "quote_iul",
-        _ => string.Empty
-    };
-    var metaLeadContentCategory = quoteKey.ToLowerInvariant() switch
-    {
-        "auto" => "auto",
-        "home" => "home",
-        "dvh" => "dvh",
-        "disability" => "disability",
-        "commercial" => "commercial",
-        "life" or "life insurance" => "life",
-        "term life" => "term",
-        "whole life" => "wholelife",
-        "final expense" => "finalexpense",
-        "mortgage protection" => "mortgage",
-        "indexed universal life" => "iul",
-        _ => string.Empty
-    };
-    var shouldTrackMetaLead =
-        !string.IsNullOrWhiteSpace(metaLeadEventId) &&
-        !string.IsNullOrWhiteSpace(metaLeadLeadId) &&
-        !string.IsNullOrWhiteSpace(metaLeadContentName) &&
-        !string.IsNullOrWhiteSpace(metaLeadContentCategory);
 
     var quoteDisplayName = quoteKey switch
     {
@@ -552,4 +514,3 @@ main.layout-content,
 
     </div>
 </div>
-

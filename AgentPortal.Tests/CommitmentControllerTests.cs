@@ -17,6 +17,16 @@ public class CommitmentControllerTests
     public async Task CreateCommitment_Lead_Succeeds()
     {
         using var db = ControllerTestHelpers.BuildDb();
+        db.WorkstationLeadProfiles.Add(new WorkstationLeadProfile
+        {
+            LeadId = "L-1",
+            AgentUserId = "agent-1",
+            Bucket = "LifeInsurance",
+            CreatedUtc = DateTime.UtcNow,
+            UpdatedUtc = DateTime.UtcNow
+        });
+        await db.SaveChangesAsync();
+
         var exec = Mock.Of<IExecutionEngine>();
         var commitmentSvc = new Mock<ICommitmentService>();
         commitmentSvc.Setup(c => c.CreateCommitmentAsync(It.IsAny<CommitmentCreateRequest>(), default))
@@ -38,6 +48,24 @@ public class CommitmentControllerTests
     public async Task CreateCommitment_Client_Succeeds()
     {
         using var db = ControllerTestHelpers.BuildDb();
+        db.ClientProfiles.Add(new ClientProfile
+        {
+            ClientUserId = "C-1",
+            FirstName = "Client",
+            LastName = "One",
+            Email = "client@example.com",
+            NormalizedEmail = "client@example.com",
+            CreatedUtc = DateTime.UtcNow,
+            UpdatedUtc = DateTime.UtcNow
+        });
+        db.AgentClients.Add(new AgentClient
+        {
+            AgentUserId = "agent-1",
+            ClientUserId = "C-1",
+            CreatedUtc = DateTime.UtcNow
+        });
+        await db.SaveChangesAsync();
+
         var exec = Mock.Of<IExecutionEngine>();
         var commitmentSvc = new Mock<ICommitmentService>();
         commitmentSvc.Setup(c => c.CreateCommitmentAsync(It.IsAny<CommitmentCreateRequest>(), default))

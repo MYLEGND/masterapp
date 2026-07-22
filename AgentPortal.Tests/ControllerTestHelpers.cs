@@ -12,8 +12,10 @@ using Infrastructure.Data;
 using Infrastructure.Identity;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.Mvc.ViewFeatures;
 using Microsoft.AspNetCore.SignalR;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Diagnostics;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
@@ -24,9 +26,13 @@ namespace AgentPortal.Tests;
 
 internal static class ControllerTestHelpers
 {
-    public static ClaimsPrincipal BuildUser(string oid = "agent-1")
+    public static ClaimsPrincipal BuildUser(string oid = "agent-1", string? upn = null)
     {
-        var identity = new ClaimsIdentity(new[] { new Claim("oid", oid) }, "TestAuth");
+        var claims = new List<Claim> { new("oid", oid) };
+        if (!string.IsNullOrWhiteSpace(upn))
+            claims.Add(new Claim("preferred_username", upn));
+
+        var identity = new ClaimsIdentity(claims, "TestAuth");
         return new ClaimsPrincipal(identity);
     }
 
@@ -34,6 +40,7 @@ internal static class ControllerTestHelpers
     {
         var options = new DbContextOptionsBuilder<MasterAppDbContext>()
             .UseInMemoryDatabase(Guid.NewGuid().ToString())
+            .ConfigureWarnings(warnings => warnings.Ignore(InMemoryEventId.TransactionIgnoredWarning))
             .Options;
         return new MasterAppDbContext(options);
     }
@@ -46,7 +53,8 @@ internal static class ControllerTestHelpers
     {
         var timeResolver = Mock.Of<IAgentTimeZoneResolver>();
         var prod = new ProductionService(db, NullLogger<ProductionService>.Instance);
-        var accessor = new HttpContextAccessor { HttpContext = new DefaultHttpContext { User = user } };
+        var http = new DefaultHttpContext { User = user };
+        var accessor = new HttpContextAccessor { HttpContext = http };
         var tracking = Mock.Of<IAgentTrackingService>();
         var effCtx = new EffectiveAgentContext(accessor, tracking, NullLogger<EffectiveAgentContext>.Instance);
         var featureFlags = Options.Create(new AgentPortal.Models.AppFeatureFlags());
@@ -128,12 +136,14 @@ internal static class ControllerTestHelpers
         var clientBillingWorkspaceService = new ClientBillingWorkspaceService(db);
         var subscriptionInvitationEmailService = new ClientSubscriptionInvitationEmailService(db, config, emailSender);
         var prod = new ProductionService(db, NullLogger<ProductionService>.Instance);
-        var accessor = new HttpContextAccessor { HttpContext = new DefaultHttpContext { User = user } };
+        var http = new DefaultHttpContext { User = user };
+        var accessor = new HttpContextAccessor { HttpContext = http };
         var tracking = Mock.Of<IAgentTrackingService>();
         var effCtx = new EffectiveAgentContext(accessor, tracking, NullLogger<EffectiveAgentContext>.Instance);
         var controller = new ClientsController(db, provisioning, config, NullLogger<ClientsController>.Instance, timeResolver, azureClientEmailSync.Object, subscriptionIdentitySync.Object, prod, effCtx, execution, commitments, billingOrchestrator, clientBillingWorkspaceService, subscriptionInvitationEmailService)
         {
-            ControllerContext = new ControllerContext { HttpContext = accessor.HttpContext! }
+            ControllerContext = new ControllerContext { HttpContext = http },
+            TempData = new TempDataDictionary(http, Mock.Of<ITempDataProvider>())
         };
         return controller;
     }

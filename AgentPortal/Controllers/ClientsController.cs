@@ -3038,9 +3038,9 @@ namespace AgentPortal.Controllers;
         if (agentProfile != null && !string.IsNullOrWhiteSpace(agentProfile.Phone))
             model.AgentPhone = agentProfile.Phone;
 
-        ViewBag.ReturnUrl = !string.IsNullOrWhiteSpace(returnUrl) && Url.IsLocalUrl(returnUrl)
+        ViewBag.ReturnUrl = !string.IsNullOrWhiteSpace(returnUrl) && (Url?.IsLocalUrl(returnUrl) ?? false)
             ? returnUrl
-            : (Url.Action(nameof(Index), "Clients") ?? "/Clients");
+            : (Url?.Action(nameof(Index), "Clients") ?? "/Clients");
         ViewData["CanSetFounderSubscriptionOptions"] = FounderGuard.IsFounder(User);
 
         return View(model);
@@ -3053,13 +3053,12 @@ namespace AgentPortal.Controllers;
     [ValidateAntiForgeryToken]
     public async Task<IActionResult> Create(CreateClientViewModel model, string? returnUrl = null)
     {
-        returnUrl = string.IsNullOrWhiteSpace(returnUrl)
-            ? Request.Form["returnUrl"].ToString()
-            : returnUrl;
+        if (string.IsNullOrWhiteSpace(returnUrl) && Request.HasFormContentType)
+            returnUrl = Request.Form["returnUrl"].ToString();
 
-        ViewBag.ReturnUrl = !string.IsNullOrWhiteSpace(returnUrl) && Url.IsLocalUrl(returnUrl)
+        ViewBag.ReturnUrl = !string.IsNullOrWhiteSpace(returnUrl) && (Url?.IsLocalUrl(returnUrl) ?? false)
             ? returnUrl
-            : (Url.Action(nameof(Index), "Clients") ?? "/Clients");
+            : (Url?.Action(nameof(Index), "Clients") ?? "/Clients");
         var canSetFounderSubscriptionOptions = FounderGuard.IsFounder(User);
         ViewData["CanSetFounderSubscriptionOptions"] = canSetFounderSubscriptionOptions;
 
@@ -4319,7 +4318,7 @@ namespace AgentPortal.Controllers;
             join invitation in _db.SubscriptionActivationInvitations on profile.Id equals invitation.ClientProfileId
             where link.AgentUserId == agentOid && profile.Id == request.ClientProfileId
             orderby invitation.CreatedUtc descending
-            select new { profile.Id, Invitation = invitation }
+            select new { ClientProfileId = profile.Id, Invitation = invitation }
         ).FirstOrDefaultAsync();
 
         if (latestInvitation is null)
@@ -4336,7 +4335,7 @@ namespace AgentPortal.Controllers;
         return Json(new
         {
             ok = true,
-            billing = await _clientBillingWorkspaceService.BuildSnapshotAsync(latestInvitation.Id, agentOid)
+            billing = await _clientBillingWorkspaceService.BuildSnapshotAsync(latestInvitation.ClientProfileId, agentOid)
         });
     }
 
@@ -4356,7 +4355,7 @@ namespace AgentPortal.Controllers;
                   profile.Id == request.ClientProfileId &&
                   subscription.OwnerAgentUserId == agentOid
             orderby subscription.CreatedUtc descending
-            select new { profile.Id, Subscription = subscription }
+            select new { ClientProfileId = profile.Id, Subscription = subscription }
         ).FirstOrDefaultAsync();
 
         if (latestSubscription is null)
@@ -4372,7 +4371,7 @@ namespace AgentPortal.Controllers;
         return Json(new
         {
             ok = true,
-            billing = await _clientBillingWorkspaceService.BuildSnapshotAsync(latestSubscription.Id, agentOid)
+            billing = await _clientBillingWorkspaceService.BuildSnapshotAsync(latestSubscription.ClientProfileId, agentOid)
         });
     }
 

@@ -7,7 +7,6 @@ using ProtectWebsite.Services;
 using ProtectWebsite.Services.Booking;
 using ProtectWebsite.Services.Meta;
 using ProtectWebsite.Services.Tracking;
-using Shared.Meta;
 using System.Globalization;
 using System.Text.Json;
 
@@ -22,21 +21,18 @@ namespace Protect_Website.Controllers
         private readonly IPublicBookingResolver _publicBookingResolver;
         private readonly string _defaultBookingLink;
         private readonly string _trackingApiBase;
-        private readonly ILogger<ThankYouController> _logger;
 
         public ThankYouController(
             MasterAppDbContext db,
             IConfiguration configuration,
             AgentTrackingResolver resolver,
-            IPublicBookingResolver publicBookingResolver,
-            ILogger<ThankYouController> logger)
+            IPublicBookingResolver publicBookingResolver)
         {
             _db = db;
             _resolver = resolver;
             _publicBookingResolver = publicBookingResolver;
             _defaultBookingLink = (configuration["Contact:BookingLink"] ?? FallbackBookingLink).Trim();
             _trackingApiBase = (configuration["Tracking:ApiBase"] ?? "https://portal.mylegnd.com").TrimEnd('/');
-            _logger = logger;
         }
 
         // GET: /ThankYou
@@ -52,14 +48,6 @@ namespace Protect_Website.Controllers
                     x => x.LeadId == leadId,
                     ct);
 
-                var metaTracking = MetaLeadTrackingJson.Read(lead?.MetadataJson);
-                if (metaTracking != null)
-                {
-                    ViewData["ResolvedMetaPixelId"] = metaTracking.ResolvedMetaPixelId;
-                    ViewData["MetaPixelOwnerType"] = string.IsNullOrWhiteSpace(metaTracking.PixelOwnerType)
-                        ? MetaPixelOwnerTypes.None
-                        : metaTracking.PixelOwnerType;
-                }
             }
 
             var model = new QuoteThankYouViewModel
@@ -77,8 +65,6 @@ namespace Protect_Website.Controllers
             ViewData["QuoteTypeForTracking"] = trackingContext.QuoteTypeForTracking;
             ViewData["IsLandingPage"] = string.Equals(trackingContext.PageMode, "paid_landing", StringComparison.OrdinalIgnoreCase);
             ViewData["LeadId"] = lead?.LeadId.ToString("D") ?? string.Empty;
-            ViewData["MetaLeadEventId"] = TempData.Peek("MetaLeadEventId")?.ToString()?.Trim() ?? string.Empty;
-            ViewData["MetaLeadLeadId"] = leadIdRaw ?? string.Empty;
             ViewData["Source"] = lead?.UtmSource ?? string.Empty;
             ViewData["Campaign"] = lead?.UtmCampaign ?? lead?.MetaCampaignId ?? string.Empty;
             ViewData["Fbclid"] = lead?.Fbclid ?? string.Empty;
@@ -86,83 +72,6 @@ namespace Protect_Website.Controllers
 
             // Loads Views/Quote/ThankYou.cshtml
             return View("~/Views/Quote/ThankYou.cshtml", model);
-        }
-
-        [HttpPost("/ThankYou/meta-browser-ack")]
-        [IgnoreAntiforgeryToken]
-        public async Task<IActionResult> AckBrowserPixel([FromBody] ThankYouMetaBrowserPixelAckRequest? request)
-        {
-            if (request == null ||
-                request.LeadId == Guid.Empty ||
-                string.IsNullOrWhiteSpace(request.EventId))
-            {
-                return BadRequest(new { error = "Invalid browser pixel acknowledgment." });
-            }
-
-            var lead = await _db.WebsiteLeads.FirstOrDefaultAsync(
-                x => x.LeadId == request.LeadId,
-                HttpContext?.RequestAborted ?? CancellationToken.None);
-
-            if (lead == null)
-                return NotFound();
-
-            var currentState = MetaLeadTrackingJson.Read(lead.MetadataJson);
-            if (!string.IsNullOrWhiteSpace(currentState?.EventId) &&
-                !string.Equals(currentState.EventId, request.EventId.Trim(), StringComparison.OrdinalIgnoreCase))
-            {
-                return Conflict();
-            }
-
-            var normalizedStatus = MetaLeadTrackingWorkflow.NormalizeBrowserPixelStatus(request.Status);
-            var normalizedNote = MetaLeadTrackingWorkflow.NormalizeBrowserPixelNote(request.Note);
-
-            lead.MetadataJson = MetaLeadTrackingJson.Upsert(
-                lead.MetadataJson,
-                state =>
-                {
-                    state.EventId ??= request.EventId.Trim();
-                    state.BrowserPixelStatus = normalizedStatus;
-                    state.BrowserPixelUpdatedUtc = DateTime.UtcNow;
-                    state.BrowserPixelNote = normalizedNote;
-                });
-
-try
-{
-    var analyticsMetadata = new
-    {
-        LeadId = lead.LeadId,
-        EventId = request.EventId.Trim(),
-        Status = normalizedStatus,
-        Note = normalizedNote,
-        Route = "/ThankYou/meta-browser-ack"
-    };
-
-    var trackingContext = BuildTrackingContext(lead);
-    var ctx = BuildTrackingContext(trackingContext, lead, "meta_browser_event_attempt", analyticsMetadata);
-    var analyticsEvent = UnifiedEventMapper.ToAnalytics(ctx);
-    UnifiedAnalyticsWriter.Write(_db, analyticsEvent);
-
-    if (string.Equals(normalizedStatus, "sent", StringComparison.OrdinalIgnoreCase))
-    {
-        var ctxSuccess = BuildTrackingContext(trackingContext, lead, "meta_browser_event_success", analyticsMetadata);
-        var analyticsEventSuccess = UnifiedEventMapper.ToAnalytics(ctxSuccess);
-        UnifiedAnalyticsWriter.Write(_db, analyticsEventSuccess);
-    }
-
-    await _db.SaveChangesAsync(HttpContext?.RequestAborted ?? CancellationToken.None);
-    _logger.LogInformation(
-        "ThankYou browser pixel ack lead={LeadId} status={Status} eventId={EventId}",
-        request.LeadId, normalizedStatus, request.EventId);
-}
-            catch (Exception ackEx)
-            {
-                _logger.LogError(
-                    ackEx,
-                    "ThankYou browser pixel ack save failed lead={LeadId} status={Status} eventId={EventId}",
-                    request.LeadId, normalizedStatus, request.EventId);
-            }
-
-            return NoContent();
         }
 
         private async Task<LifeWizardAgentTrustProfile?> BuildAgentTrustProfileAsync(WebsiteLead? lead, CancellationToken ct)
@@ -353,71 +262,6 @@ try
                 PageVariant: pageVariant,
                 PageMode: pageMode,
                 QuoteTypeForTracking: ResolveQuoteTypeForTracking(quoteKey));
-        }
-
-        private static ThankYouTrackingContext BuildTrackingContext(WebsiteLead? lead)
-        {
-            var quoteKey = (lead?.SourcePageKey ?? string.Empty).Trim().ToLowerInvariant() switch
-            {
-                "quote_auto" => "auto",
-                "quote_home" => "home",
-                "quote_dvh" => "dvh",
-                "quote_disability" => "disability",
-                "quote_commercial" => "commercial",
-                "quote_term_life" => "term life",
-                "quote_whole_life" => "whole life",
-                "quote_final_expense" => "final expense",
-                "quote_mortgage_protection" => "mortgage protection",
-                "quote_iul" => "indexed universal life",
-                _ => string.IsNullOrWhiteSpace(lead?.InterestType)
-                    ? "life insurance"
-                    : lead!.InterestType!.Trim().ToLowerInvariant() switch
-                    {
-                        "auto_insurance" => "auto",
-                        "home_insurance" => "home",
-                        "dental_vision_hearing" => "dvh",
-                        "disability_insurance" => "disability",
-                        "commercial_insurance" => "commercial",
-                        "life" => "life insurance",
-                        _ => "life insurance"
-                    }
-            };
-
-            return BuildTrackingContext(quoteKey, lead);
-        }
-
-        private UnifiedEventContext BuildTrackingContext(
-            ThankYouTrackingContext trackingContext,
-            WebsiteLead lead,
-            string eventType,
-            object metadata,
-            DateTime? eventUtc = null)
-        {
-            return UnifiedEventContextBuilder.Build(
-                httpContext: HttpContext,
-                eventName: eventType,
-                eventUtc: eventUtc,
-                sessionId: lead.SessionId,
-                visitorId: lead.VisitorId,
-                pageKey: trackingContext.PageKey,
-                effectivePageKey: trackingContext.PageKey,
-                pageVariant: trackingContext.PageVariant,
-                pageMode: trackingContext.PageMode,
-                utmSource: lead.UtmSource,
-                utmMedium: lead.UtmMedium,
-                utmCampaign: lead.UtmCampaign,
-                utmId: lead.UtmId,
-                metaCampaignId: lead.MetaCampaignId,
-                metaAdSetId: lead.MetaAdSetId,
-                metaAdId: lead.MetaAdId,
-                fbclid: lead.Fbclid,
-                agentSlug: lead.AgentSlug,
-                agentTrackingProfileId: lead.AgentTrackingProfileId,
-                isInternal: lead.IsInternal,
-                environment: lead.Environment,
-                host: lead.Host,
-                quoteType: trackingContext.QuoteTypeForTracking,
-                metadata: metadata);
         }
 
         private static string ResolveQuoteTypeForTracking(string quoteKey)

@@ -20,11 +20,11 @@ public class TrackingFailLoudContractTests
         Assert.Contains("const response = await nativeFetch(INGEST_URL", content, StringComparison.Ordinal);
         Assert.Contains("queueCriticalEvent(body, lastFailure, attempt, 'send_failed');", content, StringComparison.Ordinal);
         Assert.Contains("void flushQueuedEvents('page_load');", content, StringComparison.Ordinal);
-        Assert.Contains("void flushQueuedEvents('visibility_hidden');", content, StringComparison.Ordinal);
+        Assert.Contains("void flushQueuedEvents('visibility_hidden', { useBeacon: true, maxItems: 10 });", content, StringComparison.Ordinal);
         Assert.Contains("void flushQueuedEvents('visibility_visible');", content, StringComparison.Ordinal);
-        Assert.Contains("void flushQueuedEvents('pagehide', { useBeacon: true, maxItems: 5 });", content, StringComparison.Ordinal);
+        Assert.Contains("void flushQueuedEvents('pagehide', { useBeacon: true, maxItems: 15 });", content, StringComparison.Ordinal);
         Assert.Contains("void flushQueuedEvents('thank_you_load');", content, StringComparison.Ordinal);
-        Assert.Contains("sendEvent({ EventType: 'lead_form_start', FormKey: formKey });", content, StringComparison.Ordinal);
+        Assert.Contains("EventType: 'lead_form_start', FormKey: formKey", content, StringComparison.Ordinal);
     }
 
     private static string GetRepoRoot([CallerFilePath] string currentFile = "")

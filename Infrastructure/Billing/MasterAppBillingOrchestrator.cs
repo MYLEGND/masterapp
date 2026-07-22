@@ -812,7 +812,8 @@ internal sealed class MasterAppBillingOrchestrator : IBillingOrchestrator
         return await _db.ClientSubscriptions
             .Where(x => x.ClientProfileId == clientProfileId &&
                         x.AcceptedOfferId == offerId &&
-                        !BillingStateMapper.IsTerminal(x.Status))
+                        x.Status != ClientSubscriptionStatus.Canceled &&
+                        x.Status != ClientSubscriptionStatus.ActivationFailed)
             .OrderByDescending(x => x.UpdatedUtc)
             .FirstOrDefaultAsync(cancellationToken);
     }
@@ -822,7 +823,8 @@ internal sealed class MasterAppBillingOrchestrator : IBillingOrchestrator
         return await _db.ClientSubscriptions
             .Where(x => x.ClientProfileId == clientProfileId &&
                         x.AcceptedOfferId != offerId &&
-                        !BillingStateMapper.IsTerminal(x.Status))
+                        x.Status != ClientSubscriptionStatus.Canceled &&
+                        x.Status != ClientSubscriptionStatus.ActivationFailed)
             .OrderByDescending(x => x.UpdatedUtc)
             .FirstOrDefaultAsync(cancellationToken);
     }

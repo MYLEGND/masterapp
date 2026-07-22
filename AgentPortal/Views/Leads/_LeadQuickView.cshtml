@@ -170,6 +170,8 @@
             </div>
         </section>
 
+        @await Html.PartialAsync("~/Views/Shared/_QuickViewBillingSection.cshtml")
+
         <details class="qv-panel crm-qv-disclosure qv-panel-data qv-disclosure" id="dIntakeSection" hidden>
             <summary>
                 <div class="qv-section-header">
@@ -245,9 +247,6 @@
                 ["AppointmentSectionCopy"] = "Latest structured appointment record linked to this lead.",
                 ["ShowAppointmentStatusEditor"] = true
             })
-
-        @await Html.PartialAsync("~/Views/Shared/_QuickViewBillingSection.cshtml")
-
         <details class="qv-panel crm-qv-disclosure qv-panel-data qv-panel-production qv-disclosure">
             <summary>
                 <div class="qv-section-header">

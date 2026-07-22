@@ -203,6 +203,39 @@ public class ProductionService
         return totals;
     }
 
+    private static ProductionRecord SelectLatestRecord(IEnumerable<ProductionRecord> records)
+        => records
+            .OrderByDescending(x => x.UpdatedUtc)
+            .ThenByDescending(x => x.CreatedUtc)
+            .ThenByDescending(x => x.Id)
+            .First();
+
+    private static IEnumerable<ProductionRecord> SelectCurrentContactRecords(
+        IEnumerable<ProductionRecord> records,
+        Func<ProductionRecord, string?> contactSelector)
+    {
+        var normalizedRecords = records
+            .Select(record => new
+            {
+                Record = record,
+                ContactId = (contactSelector(record) ?? string.Empty).Trim()
+            })
+            .ToList();
+
+        // Production records created through this service always have a contact ID. Preserve
+        // any legacy rows without one so an old data issue cannot make totals disappear.
+        var legacyUnlinkedRows = normalizedRecords
+            .Where(x => string.IsNullOrWhiteSpace(x.ContactId))
+            .Select(x => x.Record);
+
+        var currentContactRows = normalizedRecords
+            .Where(x => !string.IsNullOrWhiteSpace(x.ContactId))
+            .GroupBy(x => x.ContactId, StringComparer.OrdinalIgnoreCase)
+            .Select(group => SelectLatestRecord(group.Select(x => x.Record)));
+
+        return currentContactRows.Concat(legacyUnlinkedRows);
+    }
+
     private static Dictionary<string, ProductionContactSnapshot> BuildCurrentContactSnapshots(
         IEnumerable<ProductionRecord> records,
         Func<ProductionRecord, string?> contactSelector)
@@ -220,12 +253,7 @@ public class ProductionService
                 g =>
                 {
                     var contactRecords = g.Select(x => x.Record).ToList();
-
-                    var latest = contactRecords
-                        .OrderByDescending(x => x.UpdatedUtc)
-                        .ThenByDescending(x => x.CreatedUtc)
-                        .ThenByDescending(x => x.Id)
-                        .First();
+                    var latest = SelectLatestRecord(contactRecords);
 
                     var submitted = contactRecords
                         .Where(x => x.Status == ProductionStatus.Submitted)
@@ -335,7 +363,9 @@ public class ProductionService
             .Where(p => p.AgentUserId == normAgent && p.Side == side)
             .ToListAsync(ct);
 
-        return CalculateTotals(rows);
+        return CalculateTotals(SelectCurrentContactRecords(rows, side == ProductionSide.Lead
+            ? static p => p.LeadId
+            : static p => p.ClientUserId));
     }
 
     public async Task<ProductionTotals> GetContactTotalsAsync(string agentUserId, ProductionSide side, string contactId, CancellationToken ct = default)

@@ -72,7 +72,7 @@ public class OwnershipTests
         db.WorkstationLeadProfiles.Add(new WorkstationLeadProfile
         {
             LeadId = leadId,
-            AgentUserId = "agent-A",
+            AgentUserId = "agent-a",
             Bucket = "MortgageProtection",
             CrmStage = "New",
             CreatedUtc = DateTime.UtcNow
@@ -109,7 +109,7 @@ public class OwnershipTests
         db.WorkstationLeadProfiles.Add(new WorkstationLeadProfile
         {
             LeadId = leadId,
-            AgentUserId = "agent-A",
+            AgentUserId = "agent-a",
             Bucket = "MortgageProtection",
             CrmStage = "New",
             CreatedUtc = DateTime.UtcNow
@@ -120,8 +120,8 @@ public class OwnershipTests
             db,
             Mock.Of<IExecutionEngine>(),
             Mock.Of<ICommitmentService>(),
-            User("agent-A"));
-        controller.ControllerContext.HttpContext.Items["EffectiveAgentOid"] = "agent-A";
+            User("agent-a"));
+        controller.ControllerContext.HttpContext.Items["EffectiveAgentOid"] = "agent-a";
 
         var result = await controller.Delete(leadId);
 

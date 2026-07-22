@@ -146,6 +146,24 @@ public class ClientsControllerTests
     public async Task CreateAction_Redirects_ForClient()
     {
         using var db = ControllerTestHelpers.BuildDb();
+        db.ClientProfiles.Add(new ClientProfile
+        {
+            ClientUserId = "C-1",
+            FirstName = "Client",
+            LastName = "One",
+            Email = "client@example.com",
+            NormalizedEmail = "client@example.com",
+            CreatedUtc = DateTime.UtcNow,
+            UpdatedUtc = DateTime.UtcNow
+        });
+        db.AgentClients.Add(new AgentClient
+        {
+            AgentUserId = "agent-1",
+            ClientUserId = "C-1",
+            CreatedUtc = DateTime.UtcNow
+        });
+        await db.SaveChangesAsync();
+
         var execMock = new Mock<IExecutionEngine>();
         ActionItem? captured = null;
         execMock.Setup(x => x.CreateActionAsync(It.IsAny<ActionItem>(), default))
@@ -189,7 +207,7 @@ public class ClientsControllerTests
             db,
             Mock.Of<IExecutionEngine>(),
             Mock.Of<ICommitmentService>(),
-            ControllerTestHelpers.BuildUser(agentId));
+            ControllerTestHelpers.BuildUser(agentId, "agent-1@example.com"));
 
         var result = await controller.SaveQuickView(new ClientsController.QuickViewRequest
         {
@@ -270,7 +288,7 @@ public class ClientsControllerTests
             db,
             Mock.Of<IExecutionEngine>(),
             Mock.Of<ICommitmentService>(),
-            ControllerTestHelpers.BuildUser(agentId));
+            ControllerTestHelpers.BuildUser(agentId, "agent-1@example.com"));
 
         var result = await controller.Create(new CreateClientViewModel
         {

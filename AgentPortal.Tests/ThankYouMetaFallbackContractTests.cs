@@ -8,7 +8,7 @@ namespace AgentPortal.Tests;
 public class ThankYouMetaFallbackContractTests
 {
     [Fact]
-    public void ThankYouAndLifeControllers_PreserveQuoteContextAndMetaFallbackState()
+    public void ThankYouAndLifeControllers_PreserveQuoteContextWithoutTheUnusedBrowserAckRoute()
     {
         var repoRoot = GetRepoRoot();
         var thankYouController = File.ReadAllText(Path.Combine(repoRoot, "Protect-Website", "Controllers", "ThankYouController.cs"));
@@ -25,21 +25,18 @@ public class ThankYouMetaFallbackContractTests
         Assert.Contains("ViewData[\"PageCategory\"] = \"quote\";", thankYouController, StringComparison.Ordinal);
         Assert.Contains("ViewData[\"QuoteTypeForTracking\"]", thankYouController, StringComparison.Ordinal);
         Assert.Contains("ViewData[\"LeadId\"]", thankYouController, StringComparison.Ordinal);
-        Assert.Contains("ViewData[\"MetaLeadEventId\"]", thankYouController, StringComparison.Ordinal);
-        Assert.Contains("ViewData[\"MetaLeadLeadId\"]", thankYouController, StringComparison.Ordinal);
         Assert.Contains("ViewData[\"Source\"]", thankYouController, StringComparison.Ordinal);
         Assert.Contains("ViewData[\"Campaign\"]", thankYouController, StringComparison.Ordinal);
         Assert.Contains("ViewData[\"Fbclid\"]", thankYouController, StringComparison.Ordinal);
         Assert.Contains("ViewData[\"SessionId\"]", thankYouController, StringComparison.Ordinal);
-        Assert.Contains("\"meta_browser_event_attempt\"", thankYouController, StringComparison.Ordinal);
-        Assert.Contains("\"meta_browser_event_success\"", thankYouController, StringComparison.Ordinal);
         Assert.Contains("\"meta_browser_event_attempt\"", lifeQuoteController, StringComparison.Ordinal);
         Assert.Contains("\"meta_browser_event_success\"", lifeQuoteController, StringComparison.Ordinal);
 
-        Assert.Contains("const browserAckUrl = '/ThankYou/meta-browser-ack';", thankYouView, StringComparison.Ordinal);
+        Assert.DoesNotContain("meta-browser-ack", thankYouController, StringComparison.Ordinal);
+        Assert.DoesNotContain("metaLeadEventId", thankYouView, StringComparison.Ordinal);
         Assert.Contains("const metaBrowserAckUrl = '/Quote/Life/meta-browser-ack';", lifeView, StringComparison.Ordinal);
-        Assert.Contains("window.fbq('track', 'Lead'", lifeView, StringComparison.Ordinal);
-        Assert.Contains("eventID: metaLeadEventId", lifeView, StringComparison.Ordinal);
+        Assert.Contains("metaSignalApi?.markSubmitted", lifeView, StringComparison.Ordinal);
+        Assert.Contains("direct_fbq_disabled_use_meta_signal", lifeView, StringComparison.Ordinal);
     }
 
     private static string GetRepoRoot([CallerFilePath] string currentFile = "")

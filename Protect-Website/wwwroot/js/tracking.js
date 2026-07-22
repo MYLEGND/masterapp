@@ -1233,7 +1233,7 @@ function trackCustomFieldError(formKey, fieldName, errorType, offerKey) {
 
   function shouldSkipFetchDiagnostics(url) {
     if (!url) return true;
-    if (url.includes(INGEST_URL) || url.includes('/ThankYou/meta-browser-ack')) return true;
+    if (url.includes(INGEST_URL)) return true;
 
     try {
       const parsed = new URL(url, window.location.origin);

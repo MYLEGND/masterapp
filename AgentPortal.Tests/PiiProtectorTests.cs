@@ -1,7 +1,6 @@
 using System;
 using AgentPortal.Services;
 using Microsoft.AspNetCore.DataProtection;
-using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging.Abstractions;
 using Xunit;
 
@@ -14,12 +13,7 @@ public class PiiProtectorTests
 {
     private static PiiProtector BuildProtector()
     {
-        var provider = new ServiceCollection()
-            .AddDataProtection()
-            .Services
-            .BuildServiceProvider()
-            .GetRequiredService<IDataProtectionProvider>();
-        return new PiiProtector(provider);
+        return new PiiProtector(new EphemeralDataProtectionProvider());
     }
 
     [Fact]

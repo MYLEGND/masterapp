@@ -124,7 +124,7 @@
     }
 
     function isPortalRecord(context) {
-        const recordType = text(context?.recordType).toLowerCase();
+        const recordType = text(context?.recordType).replace(/[\s-]/g, "").toLowerCase();
         return recordType === "client" || recordType === "businessclient";
     }
 
@@ -196,7 +196,8 @@
         const deliveryNode = getNode("dBillingDelivery");
         const statusNode = getNode("dBillingStatus");
 
-        if (section) section.hidden = !loaded || !snapshot;
+        const context = getBillingContext();
+        if (section) section.hidden = !loaded || (!snapshot && !isPortalRecord(context));
         setSubscriptionSetupVisible(false);
 
         if (!loaded || !snapshot) {
@@ -204,7 +205,7 @@
                 if (node) node.textContent = "—";
             });
             if (statusNode) statusNode.textContent = loaded ? "No ClientApp billing workspace on this record yet." : "Ready";
-            updateButtonState(null, loaded);
+            updateButtonState({ actions: { canConfigureSubscription: isPortalRecord(context) } }, loaded);
             return;
         }
 
