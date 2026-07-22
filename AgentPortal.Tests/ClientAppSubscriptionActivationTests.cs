@@ -53,6 +53,21 @@ public class ClientAppSubscriptionActivationTests
     }
 
     [Fact]
+    public void ContinuationService_UsesPortalWideCookiePath()
+    {
+        using var db = BuildDb();
+        var service = BuildContinuationService(db);
+        var httpContext = new DefaultHttpContext();
+
+        service.StoreCookie(httpContext.Response, "protected-state", DateTime.UtcNow.AddMinutes(15));
+        service.ClearCookie(httpContext.Response);
+
+        Assert.All(
+            httpContext.Response.Headers.SetCookie,
+            header => Assert.Contains("path=/", header, StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Fact]
     public async Task AccountController_AzureLogin_WithValidContinuation_ReturnsChallenge()
     {
         using var db = BuildDb();
@@ -75,6 +90,29 @@ public class ClientAppSubscriptionActivationTests
 
         var challenge = Assert.IsType<ChallengeResult>(result);
         Assert.Contains("OpenIdConnect", challenge.AuthenticationSchemes);
+        Assert.Equal("client@example.com", challenge.Properties?.Parameters["login_hint"]);
+    }
+
+    [Fact]
+    public async Task AccountController_LoginSubmit_ActiveSubscription_UsesVerifiedEmailAsAzureLoginHint()
+    {
+        using var db = BuildDb();
+        await AddProfileAsync(db, "client@example.com");
+        var continuationService = BuildContinuationService(db);
+        var entitlementService = BuildEntitlementService(ClientEntitlementStatus.Active);
+        var identityAccessService = new ClientIdentityAccessService(db, entitlementService.Object, continuationService, new ClientAppReturnUrlNormalizer());
+        var controller = BuildAccountController(identityAccessService, new DefaultHttpContext());
+
+        var result = await controller.LoginSubmit(new ClientLoginViewModel
+        {
+            Email = "CLIENT@EXAMPLE.COM",
+            ReturnUrl = "/profile"
+        });
+
+        var challenge = Assert.IsType<ChallengeResult>(result);
+        Assert.Contains("OpenIdConnect", challenge.AuthenticationSchemes);
+        Assert.Equal("client@example.com", challenge.Properties?.Parameters["login_hint"]);
+        Assert.Equal("select_account", challenge.Properties?.Parameters["prompt"]);
     }
 
     [Fact]
@@ -190,6 +228,7 @@ public class ClientAppSubscriptionActivationTests
         Assert.True(result.Success);
         Assert.False(string.IsNullOrWhiteSpace(result.ProtectedState));
         Assert.True(result.ExpiresUtc.HasValue);
+        Assert.Equal("client@example.com", result.LoginHint);
         Assert.Equal(1, await db.ClientIdentityContinuations.CountAsync());
     }
 

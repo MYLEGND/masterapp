@@ -25,7 +25,7 @@ public class AccountController : Controller
         _returnUrlNormalizer = returnUrlNormalizer;
     }
 
-    private async Task<IActionResult> StartChallengeAsync(string target)
+    private async Task<IActionResult> StartChallengeAsync(string target, string? loginHint = null)
     {
         OidcTransientCookieCleanup.Clear(HttpContext);
         Response.Cookies.Delete("impClientProfileId");
@@ -36,7 +36,9 @@ public class AccountController : Controller
         {
             RedirectUri = target
         };
-        props.Items["prompt"] = "select_account";
+        props.Parameters["prompt"] = "select_account";
+        if (!string.IsNullOrWhiteSpace(loginHint))
+            props.Parameters["login_hint"] = loginHint.Trim();
         return Challenge(props, OpenIdConnectDefaults.AuthenticationScheme);
     }
 
@@ -54,7 +56,7 @@ public class AccountController : Controller
             target,
             HttpContext.RequestAborted);
         if (challenge.Success)
-            return await StartChallengeAsync(challenge.ReturnUrl);
+            return await StartChallengeAsync(challenge.ReturnUrl, challenge.LoginHint);
 
         _identityAccessService.ClearChallengeContinuationCookie(Response);
 
@@ -124,7 +126,7 @@ public class AccountController : Controller
         }
 
         _identityAccessService.StoreChallengeContinuationCookie(Response, signInPreparation.ProtectedState, signInPreparation.ExpiresUtc.Value);
-        return await StartChallengeAsync(signInPreparation.ReturnUrl);
+        return await StartChallengeAsync(signInPreparation.ReturnUrl, signInPreparation.LoginHint);
     }
 
     // ✅ This is what your middleware redirects to on Forbid()

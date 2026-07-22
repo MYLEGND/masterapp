@@ -11,6 +11,7 @@ using Domain.Billing;
 using Domain.Entities;
 using Infrastructure.Billing;
 using Infrastructure.Data;
+using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using Moq;
@@ -171,7 +172,7 @@ public sealed class ClientSubscriptionAdministrationTests
     }
 
     [Fact]
-    public async Task ResendSubscriptionInvitation_EmailFailure_ReturnsWarning_AndPreservesClientProfile()
+    public async Task ResendSubscriptionInvitation_EmailFailure_ReturnsDeliveryError_AndPreservesClientProfile()
     {
         await using var db = ControllerTestHelpers.BuildDb();
         var profile = await AddOwnedProfileAsync(db, "agent-1", "client-1", "client1@example.com");
@@ -195,8 +196,7 @@ public sealed class ClientSubscriptionAdministrationTests
         var result = await controller.ResendSubscriptionInvitation(
             new ClientsController.BillingQuickViewActionRequest { ClientProfileId = profile.Id });
 
-        var json = Assert.IsType<JsonResult>(result);
-        var payloadJson = JsonSerializer.Serialize(json.Value);
+        var failure = Assert.IsType<ObjectResult>(result);
         var latestInvitation = await db.SubscriptionActivationInvitations
             .OrderByDescending(x => x.CreatedUtc)
             .FirstAsync();
@@ -204,8 +204,7 @@ public sealed class ClientSubscriptionAdministrationTests
             .OrderByDescending(x => x.OccurredUtc)
             .FirstAsync(x => x.Action == "send_failed");
 
-        Assert.Contains("\"ok\":true", payloadJson, StringComparison.Ordinal);
-        Assert.Contains("warning", payloadJson, StringComparison.Ordinal);
+        Assert.Equal(StatusCodes.Status502BadGateway, failure.StatusCode);
         Assert.NotNull(await db.ClientProfiles.SingleOrDefaultAsync(x => x.Id == profile.Id));
         Assert.Equal(SubscriptionActivationInvitationStatus.Pending, latestInvitation.Status);
         Assert.Equal("INVITATION_EMAIL_FAILED", sendFailureAudit.ReasonCode);

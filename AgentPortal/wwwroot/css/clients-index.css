@@ -6323,7 +6323,7 @@ button.note-self-cta[data-note-self-open]:focus-visible{
 
 .drawer.crm-qv-shell .dhead{
     display:grid;
-    grid-template-columns:minmax(0, 1fr) minmax(380px, 520px);
+    grid-template-columns:minmax(0, 1fr) minmax(460px, 600px);
     gap:14px 22px;
     align-items:start;
     padding:22px 24px 18px;
@@ -6423,17 +6423,13 @@ button.note-self-cta[data-note-self-open]:focus-visible{
 }
 
 .drawer.crm-qv-shell .drawer-top-actions{
-    display:flex;
-    flex-wrap:wrap;
+    display:grid;
+    grid-template-columns:repeat(5, max-content);
     justify-content:flex-end;
     align-items:flex-start;
     gap:8px;
     width:100%;
     min-width:0;
-}
-
-.drawer.crm-qv-shell .drawer-top-actions > *{
-    flex:0 0 auto;
 }
 
 .drawer.crm-qv-shell .btn,
@@ -6983,11 +6979,11 @@ button.note-self-cta[data-note-self-open]:focus-visible{
     color:#fff3cc;
 }
 
-.drawer.crm-qv-shell .qv-panel[open] > *:not(summary){
+.drawer.crm-qv-shell .qv-panel:is([open], .qv-panel-expanded) > *:not(summary){
     display:block;
 }
 
-.drawer.crm-qv-shell .qv-panel[open] > .qv-section-body{
+.drawer.crm-qv-shell .qv-panel:is([open], .qv-panel-expanded) > .qv-section-body{
     display:grid;
 }
 
@@ -7023,6 +7019,36 @@ button.note-self-cta[data-note-self-open]:focus-visible{
     min-width:0;
     width:100%;
     flex:1 1 auto;
+}
+
+.drawer.crm-qv-shell .qv-billing-header{
+    display:flex;
+    align-items:center;
+    justify-content:space-between;
+    gap:12px;
+    padding:16px 18px 0;
+    min-width:0;
+}
+
+.drawer.crm-qv-shell .qv-billing-header > div:first-child{
+    min-width:0;
+}
+
+.drawer.crm-qv-shell .qv-billing-header .qv-section-title{
+    color:#f7fbff;
+    font-size:1rem;
+    font-weight:950;
+    line-height:1.15;
+}
+
+.drawer.crm-qv-shell .qv-billing-header .qv-section-copy{
+    color:var(--crm-qv-muted);
+    font-size:.82rem;
+    line-height:1.45;
+}
+
+.drawer.crm-qv-shell .qv-billing-header .qv-inline-action-row{
+    flex:0 0 auto;
 }
 
 .drawer.crm-qv-shell .qv-section-title,
@@ -7536,9 +7562,8 @@ button.note-self-cta[data-note-self-open]:focus-visible{
         justify-content:flex-start;
     }
 
-    .drawer.crm-qv-shell .drawer-top-actions > *{
-        flex:1 1 calc(50% - 8px);
-        min-width:0;
+    .drawer.crm-qv-shell .drawer-top-actions{
+        grid-template-columns:repeat(2, minmax(0, 1fr));
     }
 
     .drawer.crm-qv-shell .ph-item{
@@ -7562,8 +7587,13 @@ button.note-self-cta[data-note-self-open]:focus-visible{
         grid-template-columns:1fr;
     }
 
-    .drawer.crm-qv-shell .drawer-top-actions > *{
-        flex:1 1 100%;
+    .drawer.crm-qv-shell .drawer-top-actions{
+        grid-template-columns:1fr;
+    }
+
+    .drawer.crm-qv-shell .qv-billing-header{
+        align-items:stretch;
+        flex-direction:column;
     }
 
     .drawer.crm-qv-shell{

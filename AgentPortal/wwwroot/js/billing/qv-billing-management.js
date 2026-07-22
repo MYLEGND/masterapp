@@ -295,7 +295,8 @@
                 loaded: getLoadedState()
             });
 
-            notify(data.warning ? `${successMessage} ⚠ ${data.warning}` : successMessage);
+            const recipient = text(data.recipient);
+            notify(recipient ? `${successMessage} to ${recipient}` : successMessage);
         } catch (error) {
             console.error(error);
             notify(error?.message || "Billing action failed.");
@@ -348,9 +349,10 @@
             renderQuickViewBillingSnapshot(data.billing || null, {
                 loaded: getLoadedState()
             });
-            notify(data.warning
-                ? `Subscription invitation created ⚠ ${data.warning}`
-                : "Subscription invitation created and sent.");
+            const recipient = text(data.recipient);
+            notify(recipient
+                ? `Subscription invitation sent to ${recipient}`
+                : "Subscription invitation sent.");
         } catch (error) {
             console.error(error);
             notify(error?.message || "Subscription setup failed.");

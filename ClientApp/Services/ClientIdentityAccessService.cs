@@ -11,13 +11,15 @@ public sealed record ClientSignInPreparationResult(
     string? SanitizedMessage,
     string ReturnUrl,
     string? ProtectedState = null,
-    DateTime? ExpiresUtc = null);
+    DateTime? ExpiresUtc = null,
+    string? LoginHint = null);
 
 public sealed record ClientSignInCompletionResult(
     bool Success,
     string ReturnUrl,
     string? SafeErrorCode = null,
-    string? SanitizedMessage = null);
+    string? SanitizedMessage = null,
+    string? LoginHint = null);
 
 public sealed class ClientIdentityAccessService
 {
@@ -84,7 +86,7 @@ public sealed class ClientIdentityAccessService
             cancellationToken);
 
         return entitlement.Status is ClientEntitlementStatus.Active or ClientEntitlementStatus.GracePeriod
-            ? new ClientSignInCompletionResult(true, continuation.ReturnUrl)
+            ? new ClientSignInCompletionResult(true, continuation.ReturnUrl, LoginHint: continuation.IntendedNormalizedEmail)
             : new ClientSignInCompletionResult(
                 false,
                 continuation.ReturnUrl,
@@ -140,7 +142,14 @@ public sealed class ClientIdentityAccessService
             ClientIdentityContinuationPurpose.SignIn,
             cancellationToken: cancellationToken);
 
-        return new ClientSignInPreparationResult(true, null, null, safeReturnUrl, protectedState.ProtectedState, protectedState.ExpiresUtc);
+        return new ClientSignInPreparationResult(
+            true,
+            null,
+            null,
+            safeReturnUrl,
+            protectedState.ProtectedState,
+            protectedState.ExpiresUtc,
+            normalizedEmail);
     }
 
     public async Task<ClientSignInCompletionResult> ValidateAuthenticatedClientSessionAsync(

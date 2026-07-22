@@ -2643,7 +2643,6 @@ const btnSetNextToday = $("#btnSetNextToday");
 const btnCopyContact = $("#btnCopyContact");
 const btnMail = $("#btnMail");
 const btnCall = $("#btnCall");
-const btnOpenEdit = $("#btnOpenEdit");
 const btnOpenProfile = $("#btnOpenProfile");
 const btnEditProfile = $("#btnEditProfile");
 const btnDeleteClient = $("#btnDeleteClient");
@@ -3830,10 +3829,6 @@ async function openDrawerForRow(row){
     btnMail.href = email ? ("mailto:" + email) : "#";
     btnCall.href = phone ? ("tel:" + phone) : "#";
     const ts = Date.now();
-    if (btnOpenEdit){
-      btnOpenEdit.href = row.dataset.clientId ? `/Clients/Edit?clientUserId=${encodeURIComponent(row.dataset.clientId)}&_=${ts}` : "#";
-      btnOpenEdit.textContent = "View / Edit Profile";
-    }
     if (btnOpenProfile){
       if (row.dataset.isguid === "true" && row.dataset.clientId){
         btnOpenProfile.href = `/ClientWorkspace/Profile?clientUserId=${encodeURIComponent(row.dataset.clientId)}&_=${ts}`;

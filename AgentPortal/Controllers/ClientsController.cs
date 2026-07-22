@@ -4146,7 +4146,8 @@ namespace AgentPortal.Controllers;
             });
         }
 
-        if (string.IsNullOrWhiteSpace(profile.Email))
+        var subscriptionEmail = profile.NormalizedEmail ?? profile.Email;
+        if (string.IsNullOrWhiteSpace(subscriptionEmail))
             return BadRequest(new { message = "An email address is required before setting a subscription." });
 
         var hasLiveSubscription = await _db.ClientSubscriptions
@@ -4191,14 +4192,13 @@ namespace AgentPortal.Controllers;
             new CreateSubscriptionActivationInvitationCommand(
                 profile.Id,
                 offer.Id,
-                profile.NormalizedEmail ?? profile.Email,
+                subscriptionEmail,
                 agentOid,
                 DateTime.UtcNow.AddDays(7)));
 
         if (invitationResult.Invitation is null || string.IsNullOrWhiteSpace(invitationResult.PlainTextToken))
             return StatusCode(StatusCodes.Status500InternalServerError, new { message = "A subscription activation invitation could not be created." });
 
-        string? warning = null;
         try
         {
             await _subscriptionInvitationEmailService.SendAsync(
@@ -4212,19 +4212,23 @@ namespace AgentPortal.Controllers;
         }
         catch (Exception ex)
         {
-            warning = ex.Message;
             await _billingOrchestrator.MarkSubscriptionActivationInvitationSendFailureAsync(
                 new MarkSubscriptionActivationInvitationSendFailureCommand(
                     invitationResult.Invitation.Id,
                     agentOid,
                     "INVITATION_EMAIL_FAILED",
                     ex.Message));
+
+            return StatusCode(StatusCodes.Status502BadGateway, new
+            {
+                message = "The activation invitation was created, but email delivery failed. Check the invitation delivery status and resend after the delivery issue is resolved."
+            });
         }
 
         return Json(new
         {
             ok = true,
-            warning,
+            recipient = invitationResult.Invitation.IntendedNormalizedEmail,
             billing = await _clientBillingWorkspaceService.BuildSnapshotAsync(profile.Id, agentOid)
         });
     }
@@ -4259,21 +4263,21 @@ namespace AgentPortal.Controllers;
         if (latestOffer.Status == ClientSubscriptionOfferStatus.Accepted)
             return BadRequest("This client already accepted the current subscription offer.");
 
-        if (string.IsNullOrWhiteSpace(profile.Email))
+        var subscriptionEmail = profile.NormalizedEmail ?? profile.Email;
+        if (string.IsNullOrWhiteSpace(subscriptionEmail))
             return BadRequest("An email address is required before resending the subscription invitation.");
 
         var invitationResult = await _billingOrchestrator.CreateSubscriptionActivationInvitationAsync(
             new CreateSubscriptionActivationInvitationCommand(
                 profile.Id,
                 latestOffer.Id,
-                profile.Email,
+                subscriptionEmail,
                 agentOid,
                 DateTime.UtcNow.AddDays(7)));
 
         if (invitationResult.Invitation is null || string.IsNullOrWhiteSpace(invitationResult.PlainTextToken))
             return StatusCode(StatusCodes.Status500InternalServerError, "A new invitation could not be created.");
 
-        string? warning = null;
         try
         {
             await _subscriptionInvitationEmailService.SendAsync(
@@ -4287,19 +4291,23 @@ namespace AgentPortal.Controllers;
         }
         catch (Exception ex)
         {
-            warning = ex.Message;
             await _billingOrchestrator.MarkSubscriptionActivationInvitationSendFailureAsync(
                 new MarkSubscriptionActivationInvitationSendFailureCommand(
                     invitationResult.Invitation.Id,
                     agentOid,
                     "INVITATION_EMAIL_FAILED",
                     ex.Message));
+
+            return StatusCode(StatusCodes.Status502BadGateway, new
+            {
+                message = "The replacement invitation was created, but email delivery failed. Check the invitation delivery status and resend after the delivery issue is resolved."
+            });
         }
 
         return Json(new
         {
             ok = true,
-            warning,
+            recipient = invitationResult.Invitation.IntendedNormalizedEmail,
             billing = await _clientBillingWorkspaceService.BuildSnapshotAsync(profile.Id, agentOid)
         });
     }

@@ -280,7 +280,7 @@ body.subscription-activation-standalone {
     color: #ffffff;
 }
 
-.activation-notice-card p {
+.activation-notice-card > header > p {
     margin: 9px 0 0;
     color: #d8e4fa;
     line-height: 1.45;

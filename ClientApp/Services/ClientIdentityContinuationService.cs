@@ -92,6 +92,7 @@ public sealed class ClientIdentityContinuationService
             protectedState,
             new CookieOptions
             {
+                Path = "/",
                 HttpOnly = true,
                 Secure = true,
                 SameSite = SameSiteMode.Lax,
@@ -102,7 +103,16 @@ public sealed class ClientIdentityContinuationService
 
     public void ClearCookie(HttpResponse response)
     {
-        response.Cookies.Delete(ContinuationCookieName);
+        response.Cookies.Delete(
+            ContinuationCookieName,
+            new CookieOptions
+            {
+                Path = "/",
+                HttpOnly = true,
+                Secure = true,
+                SameSite = SameSiteMode.Lax,
+                IsEssential = true
+            });
     }
 
     public async Task ConsumeAsync(ClientIdentityContinuation continuation, CancellationToken cancellationToken = default)

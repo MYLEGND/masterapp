@@ -329,6 +329,23 @@ builder.Services.AddAuthentication(options =>
         // Return 401 for AJAX requests instead of redirecting to Azure AD
         OnRedirectToIdentityProvider = ctx =>
         {
+            // The client sign-in form has already verified this address belongs to an
+            // active subscription. Forward that verified value to Entra so the account
+            // picker starts with the same email instead of making the client re-enter it.
+            if (ctx.Properties?.Parameters.TryGetValue("login_hint", out var loginHint) == true &&
+                loginHint is string verifiedEmail &&
+                !string.IsNullOrWhiteSpace(verifiedEmail))
+            {
+                ctx.ProtocolMessage.LoginHint = verifiedEmail;
+            }
+
+            if (ctx.Properties?.Parameters.TryGetValue("prompt", out var prompt) == true &&
+                prompt is string promptValue &&
+                !string.IsNullOrWhiteSpace(promptValue))
+            {
+                ctx.ProtocolMessage.Prompt = promptValue;
+            }
+
             if (ctx.Request.Headers["X-Requested-With"] == "XMLHttpRequest")
             {
                 ctx.Response.StatusCode = StatusCodes.Status401Unauthorized;
