@@ -123,12 +123,60 @@
         return null;
     }
 
+    function isPortalRecord(context) {
+        const recordType = text(context?.recordType).toLowerCase();
+        return recordType === "client" || recordType === "businessclient";
+    }
+
+    function canSetFounderSubscriptionOptions() {
+        return !!window.quickViewBillingOptions?.canSetFounderSubscriptionOptions;
+    }
+
+    function setSubscriptionSetupVisible(visible) {
+        const setup = getNode("dBillingSubscriptionSetup");
+        if (setup) setup.hidden = !visible;
+    }
+
+    function syncSubscriptionSetupControls() {
+        const priceType = getNode("dBillingSubscriptionPriceType");
+        const customAmountWrap = getNode("dBillingSubscriptionCustomAmountWrap");
+        const customAmount = getNode("dBillingSubscriptionCustomAmount");
+        const anchor = getNode("dBillingSubscriptionAnchor");
+        const founderAnchorOption = anchor?.querySelector("[data-founder-only]");
+        const anchorDayWrap = getNode("dBillingSubscriptionAnchorDayWrap");
+
+        const founderOptions = canSetFounderSubscriptionOptions();
+        if (founderAnchorOption) founderAnchorOption.hidden = !founderOptions;
+        if (!founderOptions && anchor?.value === "SpecificDayOfMonth") {
+            anchor.value = "FirstOfMonth";
+        }
+
+        const isCustom = priceType?.value === "Custom";
+        if (customAmountWrap) customAmountWrap.hidden = !isCustom;
+        if (customAmount) {
+            customAmount.min = founderOptions ? "0" : "50";
+            customAmount.placeholder = founderOptions ? "0.00" : "50.00";
+        }
+
+        if (anchorDayWrap) {
+            anchorDayWrap.hidden = anchor?.value !== "SpecificDayOfMonth";
+        }
+    }
+
     function updateButtonState(snapshot, loaded) {
+        const configureButton = getNode("btnBillingConfigureSubscription");
         const resendButton = getNode("btnBillingResendInvite");
         const revokeButton = getNode("btnBillingRevokeInvite");
         const cancelButton = getNode("btnBillingCancelPeriodEnd");
 
         const actions = snapshot?.actions || {};
+        const context = getBillingContext();
+        if (configureButton) {
+            configureButton.disabled = !loaded ||
+                !context?.clientProfileId ||
+                !isPortalRecord(context) ||
+                !actions.canConfigureSubscription;
+        }
         if (resendButton) resendButton.disabled = !loaded || !actions.canResendInvitation;
         if (revokeButton) revokeButton.disabled = !loaded || !actions.canRevokeInvitation;
         if (cancelButton) cancelButton.disabled = !loaded || !actions.canCancelSubscription;
@@ -148,23 +196,23 @@
         const deliveryNode = getNode("dBillingDelivery");
         const statusNode = getNode("dBillingStatus");
 
-        if (section) {
-            section.hidden = !loaded || !snapshot;
-        }
+        if (section) section.hidden = !loaded || !snapshot;
 
         if (!loaded || !snapshot) {
             [offerNode, invitationNode, subscriptionNode, entitlementNode, nextBillingNode, deliveryNode].forEach(node => {
                 if (node) node.textContent = "—";
             });
             if (statusNode) statusNode.textContent = loaded ? "No ClientApp billing workspace on this record yet." : "Ready";
+            setSubscriptionSetupVisible(false);
             updateButtonState(null, loaded);
             return;
         }
 
         if (offerNode) {
-            const offer = snapshot.offer || {};
-            offerNode.textContent =
-                `${text(offer.status) || "Unknown"} • ${formatMoney(offer.monthlyAmountCents, offer.currency)} • ${describeBillingAnchor(offer)}`;
+            const offer = snapshot.offer;
+            offerNode.textContent = offer
+                ? `${text(offer.status) || "Unknown"} • ${formatMoney(offer.monthlyAmountCents, offer.currency)} • ${describeBillingAnchor(offer)}`
+                : "No subscription configured";
         }
 
         if (invitationNode) {
@@ -253,7 +301,83 @@
         }
     }
 
+    async function configureSubscription() {
+        const context = getBillingContext();
+        const url = text(context?.actionUrls?.configureSubscription);
+        if (!context?.clientProfileId || !url || !isPortalRecord(context)) {
+            notify("Convert this lead through the shared client account form before setting a subscription.");
+            return;
+        }
+
+        const priceType = text(getNode("dBillingSubscriptionPriceType")?.value);
+        const customAmountRaw = text(getNode("dBillingSubscriptionCustomAmount")?.value);
+        const anchorMode = text(getNode("dBillingSubscriptionAnchor")?.value);
+        const anchorDayRaw = text(getNode("dBillingSubscriptionAnchorDay")?.value);
+        const customAmount = priceType === "Custom" && customAmountRaw !== ""
+            ? Number(customAmountRaw)
+            : null;
+        const anchorDay = anchorMode === "SpecificDayOfMonth" && anchorDayRaw !== ""
+            ? Number(anchorDayRaw)
+            : null;
+
+        if (!priceType || !anchorMode ||
+            (priceType === "Custom" && !Number.isFinite(customAmount)) ||
+            (anchorMode === "SpecificDayOfMonth" && !Number.isInteger(anchorDay))) {
+            notify("Complete the subscription amount and billing anchor.");
+            return;
+        }
+
+        const saveButton = getNode("btnBillingSaveSubscription");
+        if (saveButton) saveButton.disabled = true;
+
+        try {
+            const data = await postJson(url, {
+                clientProfileId: context.clientProfileId,
+                subscriptionPriceType: priceType,
+                subscriptionCustomMonthlyAmount: customAmount,
+                subscriptionBillingAnchorMode: anchorMode,
+                subscriptionBillingAnchorDay: anchorDay
+            });
+
+            if (typeof window.setQuickViewBillingSnapshot === "function") {
+                window.setQuickViewBillingSnapshot(data.billing || null);
+            }
+
+            setSubscriptionSetupVisible(false);
+            renderQuickViewBillingSnapshot(data.billing || null, {
+                loaded: getLoadedState()
+            });
+            notify(data.warning
+                ? `Subscription invitation created ⚠ ${data.warning}`
+                : "Subscription invitation created and sent.");
+        } catch (error) {
+            console.error(error);
+            notify(error?.message || "Subscription setup failed.");
+        } finally {
+            if (saveButton) saveButton.disabled = false;
+        }
+    }
+
     document.addEventListener("click", event => {
+        if (event.target?.closest?.("#btnBillingConfigureSubscription")) {
+            event.preventDefault();
+            syncSubscriptionSetupControls();
+            setSubscriptionSetupVisible(true);
+            return;
+        }
+
+        if (event.target?.closest?.("#btnBillingCancelSubscriptionSetup")) {
+            event.preventDefault();
+            setSubscriptionSetupVisible(false);
+            return;
+        }
+
+        if (event.target?.closest?.("#btnBillingSaveSubscription")) {
+            event.preventDefault();
+            void configureSubscription();
+            return;
+        }
+
         if (event.target?.closest?.("#btnBillingResendInvite")) {
             event.preventDefault();
             void runAction("resendInvitation", "Subscription invitation resent");
@@ -269,6 +393,12 @@
         if (event.target?.closest?.("#btnBillingCancelPeriodEnd")) {
             event.preventDefault();
             void runAction("cancelSubscription", "Subscription will cancel at period end");
+        }
+    });
+
+    document.addEventListener("change", event => {
+        if (event.target?.matches?.("#dBillingSubscriptionPriceType, #dBillingSubscriptionAnchor")) {
+            syncSubscriptionSetupControls();
         }
     });
 

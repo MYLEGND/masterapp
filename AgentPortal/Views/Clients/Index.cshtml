@@ -2,6 +2,7 @@
 @using System.Globalization
 @model List<AgentPortal.Models.ClientListItemViewModel>
 @using AgentPortal.Services
+@using AgentPortal.Security
 
 @{
     ViewData["Title"] = "Clients";
@@ -555,6 +556,11 @@ else
 <script src="~/js/scheduling/qv-booking.js" asp-append-version="true"></script>
 <script src="~/js/scheduling/qv-appointment-state.js" asp-append-version="true"></script>
 <script src="~/js/scheduling/qv-appointment-management.js" asp-append-version="true"></script>
+<script>
+    window.quickViewBillingOptions = {
+        canSetFounderSubscriptionOptions: @(FounderGuard.IsFounder(User) ? "true" : "false")
+    };
+</script>
 <script src="~/js/billing/qv-billing-management.js" asp-append-version="true"></script>
 <script src="~/js/crm-diagnostics.js" asp-append-version="true"></script>
 <script src="~/js/clients-index.js" asp-append-version="true"></script>

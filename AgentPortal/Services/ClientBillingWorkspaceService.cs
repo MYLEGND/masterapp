@@ -26,14 +26,15 @@ public sealed class ClientBillingWorkspaceService
             .OrderByDescending(x => x.CreatedUtc)
             .FirstOrDefaultAsync(cancellationToken);
 
-        if (latestOffer is null)
-            return null;
-
-        var latestInvitation = await _db.SubscriptionActivationInvitations
-            .AsNoTracking()
-            .Where(x => x.ClientProfileId == clientProfileId && x.ClientSubscriptionOfferId == latestOffer.Id)
-            .OrderByDescending(x => x.CreatedUtc)
-            .FirstOrDefaultAsync(cancellationToken);
+        SubscriptionActivationInvitation? latestInvitation = null;
+        if (latestOffer is not null)
+        {
+            latestInvitation = await _db.SubscriptionActivationInvitations
+                .AsNoTracking()
+                .Where(x => x.ClientProfileId == clientProfileId && x.ClientSubscriptionOfferId == latestOffer.Id)
+                .OrderByDescending(x => x.CreatedUtc)
+                .FirstOrDefaultAsync(cancellationToken);
+        }
 
         var latestSubscription = await _db.ClientSubscriptions
             .AsNoTracking()
@@ -65,16 +66,20 @@ public sealed class ClientBillingWorkspaceService
             latestInvitation.Status is not SubscriptionActivationInvitationStatus.Revoked &&
             latestInvitation.Status is not SubscriptionActivationInvitationStatus.Superseded;
 
-        var canResendInvitation = latestInvitation is null ||
-            latestInvitation.Status is not SubscriptionActivationInvitationStatus.Redeemed;
+        var canResendInvitation = latestOffer is not null &&
+            (latestInvitation is null ||
+             latestInvitation.Status is not SubscriptionActivationInvitationStatus.Redeemed);
 
         var canCancelSubscription = latestSubscription is not null &&
             latestSubscription.Status is not ClientSubscriptionStatus.Canceled &&
             latestSubscription.CancelAtPeriodEnd == false;
 
+        var canConfigureSubscription = latestSubscription is null ||
+            latestSubscription.Status == ClientSubscriptionStatus.Canceled;
+
         return new
         {
-            offer = new
+            offer = latestOffer is null ? null : new
             {
                 id = latestOffer.Id,
                 status = latestOffer.Status.ToString(),
@@ -125,6 +130,7 @@ public sealed class ClientBillingWorkspaceService
             },
             actions = new
             {
+                canConfigureSubscription,
                 canResendInvitation,
                 canRevokeInvitation,
                 canCancelSubscription

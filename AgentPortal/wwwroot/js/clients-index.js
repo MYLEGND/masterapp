@@ -6792,8 +6792,10 @@ window.setQuickViewBillingSnapshot = snapshot => {
 };
 window.getQuickViewBillingContext = () => ({
   clientProfileId: activeClientDetail?.clientProfileId || null,
+  recordType: activeClientDetail?.recordType || "",
   pageKey: "clients",
   actionUrls: {
+    configureSubscription: "/Clients/ConfigureSubscriptionOffer",
     resendInvitation: "/Clients/ResendSubscriptionInvitation",
     revokeInvitation: "/Clients/RevokeSubscriptionInvitation",
     cancelSubscription: "/Clients/CancelClientSubscriptionAtPeriodEnd"

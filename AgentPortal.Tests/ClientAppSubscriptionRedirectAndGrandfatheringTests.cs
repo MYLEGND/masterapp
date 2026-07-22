@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using System.Security.Claims;
 using System.Threading;
 using System.Threading.Tasks;
@@ -22,6 +23,7 @@ using Moq;
 using Xunit;
 using ClientAccountController = ClientApp.Controllers.AccountController;
 using ClientSubscriptionController = ClientApp.Controllers.SubscriptionController;
+using ClientSupportController = ClientApp.Controllers.SupportController;
 
 namespace AgentPortal.Tests;
 
@@ -239,6 +241,40 @@ public sealed class ClientAppSubscriptionRedirectTests
             _ => Task.CompletedTask,
             new EndpointMetadataCollection(new AllowAnonymousAttribute()),
             "ActivationRequired"));
+
+        var filterContext = new AuthorizationFilterContext(
+            new ActionContext(requestContext, new RouteData(), new ActionDescriptor()),
+            new List<IFilterMetadata>());
+
+        var filter = new ClientSubscriptionAuthorizeFilter(authorization.Object, normalizer);
+        await filter.OnAuthorizationAsync(filterContext);
+
+        Assert.Null(filterContext.Result);
+        authorization.Verify(
+            service => service.AuthorizeAsync(
+                It.IsAny<ClaimsPrincipal>(),
+                null!,
+                ClientAppAuthorizationPolicies.ClientSubscriptionActive),
+            Times.Never);
+    }
+
+    [Fact]
+    public async Task OwnedAgentViewEntry_BypassesOnlyTheGlobalSubscriptionFilter()
+    {
+        var viewAsClient = typeof(ClientSupportController).GetMethod(
+            nameof(ClientSupportController.ViewAsClient));
+        Assert.NotNull(viewAsClient);
+        Assert.NotNull(viewAsClient!.GetCustomAttributes(typeof(BypassClientSubscriptionRequirementAttribute), inherit: true)
+            .SingleOrDefault());
+
+        var authorization = new Mock<IAuthorizationService>();
+        var normalizer = new ClientAppReturnUrlNormalizer();
+        var requestContext = CreateAuthenticatedContext("agent-1");
+        requestContext.Request.Path = "/support/view-as-client/00000000-0000-0000-0000-000000000001";
+        requestContext.SetEndpoint(new Endpoint(
+            _ => Task.CompletedTask,
+            new EndpointMetadataCollection(new BypassClientSubscriptionRequirementAttribute()),
+            "Support.ViewAsClient"));
 
         var filterContext = new AuthorizationFilterContext(
             new ActionContext(requestContext, new RouteData(), new ActionDescriptor()),

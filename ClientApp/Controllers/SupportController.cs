@@ -6,6 +6,7 @@ using Shared.Auth;
 using System.Linq;
 using System.Security.Claims;
 using ClientApp.Services;
+using ClientApp.Infrastructure;
 
 namespace ClientApp.Controllers;
 
@@ -73,9 +74,13 @@ public class SupportController : Controller
             : ClientAppReturnUrlNormalizer.SafeLandingPath;
     }
 
-        [HttpGet("/support/view-as-client/{clientProfileId:guid}")]
-        public async Task<IActionResult> ViewAsClient(Guid clientProfileId, string? returnUrl = null)
-        {
+    // This entry point performs its own owner check before it issues the
+    // short-lived impersonation cookie. It must stay reachable for an agent
+    // even when the selected client has not activated a subscription yet.
+    [BypassClientSubscriptionRequirement]
+    [HttpGet("/support/view-as-client/{clientProfileId:guid}")]
+    public async Task<IActionResult> ViewAsClient(Guid clientProfileId, string? returnUrl = null)
+    {
         var upn = GetUpn();
         var target = NormalizeSupportReturnUrl(returnUrl);
 
@@ -173,6 +178,9 @@ public class SupportController : Controller
         return Redirect(target);
     }
 
+    // Allow an agent to leave a managed view even if the client's
+    // subscription changes while the view is open.
+    [BypassClientSubscriptionRequirement]
     [HttpGet("/support/stop-view-as-client")]
     public IActionResult StopViewAsClient(string? returnUrl = null, bool clearSelf = false)
     {

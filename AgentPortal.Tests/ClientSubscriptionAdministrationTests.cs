@@ -5,6 +5,7 @@ using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
 using AgentPortal.Controllers;
+using AgentPortal.Models;
 using AgentPortal.Services;
 using Domain.Billing;
 using Domain.Entities;
@@ -19,6 +20,71 @@ namespace AgentPortal.Tests;
 
 public sealed class ClientSubscriptionAdministrationTests
 {
+    [Fact]
+    public async Task ConfigureSubscriptionOffer_ForOwnedExistingClient_CreatesInvitationWithoutChangingClientData()
+    {
+        await using var db = ControllerTestHelpers.BuildDb();
+        var clientUserId = Guid.NewGuid().ToString();
+        var profile = await AddOwnedProfileAsync(db, "agent-1", clientUserId, "client1@example.com");
+        profile.CrmNotes = ClientCrmMetaSerializer.Serialize(new ClientCrmMeta
+        {
+            RecordType = "Client",
+            PipelineStage = "Client"
+        });
+        await db.SaveChangesAsync();
+
+        var emailSender = BuildEmailSender(sendResult: true);
+        var controller = ControllerTestHelpers.BuildClientsController(
+            db,
+            Mock.Of<IExecutionEngine>(),
+            Mock.Of<ICommitmentService>(),
+            BuildUser("agent-1"),
+            billingOrchestrator: BuildInvitationOnlyOrchestrator(db),
+            emailSender: emailSender.Object);
+
+        var result = await controller.ConfigureSubscriptionOffer(
+            new ClientsController.ConfigureSubscriptionOfferQuickViewRequest
+            {
+                ClientProfileId = profile.Id,
+                SubscriptionPriceType = nameof(ClientSubscriptionOfferPriceType.Fixed50),
+                SubscriptionBillingAnchorMode = nameof(BillingAnchorSelectionMode.FirstOfMonth)
+            });
+
+        var json = Assert.IsType<JsonResult>(result);
+        var payloadJson = JsonSerializer.Serialize(json.Value);
+        var persistedProfile = await db.ClientProfiles.SingleAsync(x => x.Id == profile.Id);
+        var offer = await db.ClientSubscriptionOffers.SingleAsync(x => x.ClientProfileId == profile.Id);
+        var invitation = await db.SubscriptionActivationInvitations.SingleAsync(x => x.ClientProfileId == profile.Id);
+
+        Assert.Contains("\"ok\":true", payloadJson, StringComparison.Ordinal);
+        Assert.Equal(clientUserId, persistedProfile.ClientUserId);
+        Assert.Equal("client1@example.com", persistedProfile.Email);
+        Assert.Equal(ClientSubscriptionOfferPricing.Fixed50Cents, offer.MonthlyAmountCents);
+        Assert.Equal(ClientSubscriptionOfferStatus.Offered, offer.Status);
+        Assert.Equal(SubscriptionActivationInvitationStatus.Sent, invitation.Status);
+        emailSender.Verify(
+            x => x.TrySendAsync(
+                "client1@example.com",
+                It.IsAny<string>(),
+                It.IsAny<string?>(),
+                It.IsAny<string?>(),
+                It.IsAny<string?>(),
+                It.IsAny<string?>(),
+                It.IsAny<string?>()),
+            Times.Once);
+    }
+
+    [Fact]
+    public async Task BillingWorkspace_ForExistingClientWithoutOffer_RemainsAvailableForSubscriptionSetup()
+    {
+        await using var db = ControllerTestHelpers.BuildDb();
+        var profile = await AddOwnedProfileAsync(db, "agent-1", Guid.NewGuid().ToString(), "client1@example.com");
+
+        var snapshot = await new ClientBillingWorkspaceService(db).BuildSnapshotAsync(profile.Id, "agent-1");
+
+        Assert.NotNull(snapshot);
+    }
+
     [Fact]
     public async Task ResendSubscriptionInvitation_UnownedClientProfile_ReturnsForbid()
     {

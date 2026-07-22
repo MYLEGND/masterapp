@@ -120,6 +120,62 @@ namespace AgentPortal.Controllers;
             return decimal.ToInt32(decimal.Round(amount.Value * 100m, 0, MidpointRounding.AwayFromZero));
         }
 
+        private readonly record struct SubscriptionOfferSelection(
+            ClientSubscriptionOfferPriceType PriceType,
+            int? CustomMonthlyAmountCents,
+            BillingAnchorSelectionMode BillingAnchorMode,
+            int? BillingAnchorDay);
+
+        // Both account creation and CRM quick view use this one validation path.
+        // The billing orchestrator remains the authority that persists the offer.
+        private static bool TryResolveSubscriptionOfferSelection(
+            string? priceTypeValue,
+            decimal? customMonthlyAmount,
+            string? billingAnchorModeValue,
+            int? billingAnchorDay,
+            bool canSetFounderSubscriptionOptions,
+            out SubscriptionOfferSelection selection,
+            out string? error)
+        {
+            try
+            {
+                var priceType = ParseSubscriptionPriceType(priceTypeValue);
+                var customMonthlyAmountCents = ConvertMonthlyAmountToCents(customMonthlyAmount);
+                var billingAnchorMode = ParseBillingAnchorSelectionMode(billingAnchorModeValue);
+
+                if (!canSetFounderSubscriptionOptions &&
+                    billingAnchorMode == BillingAnchorSelectionMode.SpecificDayOfMonth)
+                {
+                    throw new InvalidOperationException("Only the founder can set an agent-selected billing day.");
+                }
+
+                _ = ClientSubscriptionOfferPricing.ResolveAuthoritativeMonthlyAmountCents(
+                    priceType,
+                    customMonthlyAmountCents,
+                    canSetFounderSubscriptionOptions
+                        ? ClientSubscriptionOfferPricing.FounderCustomMinimumCents
+                        : ClientSubscriptionOfferPricing.CustomMinimumCents);
+
+                var resolvedAnchorDay = ClientSubscriptionOfferPricing.ResolveBillingAnchorDay(
+                    billingAnchorMode,
+                    billingAnchorDay);
+
+                selection = new SubscriptionOfferSelection(
+                    priceType,
+                    customMonthlyAmountCents,
+                    billingAnchorMode,
+                    resolvedAnchorDay);
+                error = null;
+                return true;
+            }
+            catch (Exception ex)
+            {
+                selection = default;
+                error = ex.Message;
+                return false;
+            }
+        }
+
         private static bool IsAgentTenantEmail(string? email)
             => !string.IsNullOrWhiteSpace(email)
                && email.Trim().EndsWith(AgentTenantDomain, StringComparison.OrdinalIgnoreCase);
@@ -3116,37 +3172,25 @@ namespace AgentPortal.Controllers;
 
         if (isPortalClient)
         {
-            try
+            if (!TryResolveSubscriptionOfferSelection(
+                    model.SubscriptionPriceType,
+                    model.SubscriptionCustomMonthlyAmount,
+                    model.SubscriptionBillingAnchorMode,
+                    model.SubscriptionBillingAnchorDay,
+                    canSetFounderSubscriptionOptions,
+                    out var selection,
+                    out var subscriptionValidationError))
             {
-                subscriptionPriceType = ParseSubscriptionPriceType(model.SubscriptionPriceType);
-                subscriptionCustomMonthlyAmountCents = ConvertMonthlyAmountToCents(model.SubscriptionCustomMonthlyAmount);
-                subscriptionBillingAnchorMode = ParseBillingAnchorSelectionMode(model.SubscriptionBillingAnchorMode);
-                subscriptionBillingAnchorDay = subscriptionBillingAnchorMode == BillingAnchorSelectionMode.SpecificDayOfMonth
-                    ? model.SubscriptionBillingAnchorDay
-                    : null;
-                if (!canSetFounderSubscriptionOptions &&
-                    subscriptionBillingAnchorMode == BillingAnchorSelectionMode.SpecificDayOfMonth)
-                {
-                    ModelState.AddModelError(
-                        nameof(CreateClientViewModel.SubscriptionBillingAnchorMode),
-                        "Only the founder can set an agent-selected billing day.");
-                    return View(model);
-                }
-                _ = ClientSubscriptionOfferPricing.ResolveAuthoritativeMonthlyAmountCents(
-                    subscriptionPriceType,
-                    subscriptionCustomMonthlyAmountCents,
-                    canSetFounderSubscriptionOptions
-                        ? ClientSubscriptionOfferPricing.FounderCustomMinimumCents
-                        : ClientSubscriptionOfferPricing.CustomMinimumCents);
-                _ = ClientSubscriptionOfferPricing.ResolveBillingAnchorDay(
-                    subscriptionBillingAnchorMode,
-                    subscriptionBillingAnchorDay);
-            }
-            catch (Exception ex)
-            {
-                ModelState.AddModelError(nameof(CreateClientViewModel.SubscriptionPriceType), ex.Message);
+                ModelState.AddModelError(
+                    nameof(CreateClientViewModel.SubscriptionPriceType),
+                    subscriptionValidationError ?? "A valid subscription configuration is required.");
                 return View(model);
             }
+
+            subscriptionPriceType = selection.PriceType;
+            subscriptionCustomMonthlyAmountCents = selection.CustomMonthlyAmountCents;
+            subscriptionBillingAnchorMode = selection.BillingAnchorMode;
+            subscriptionBillingAnchorDay = selection.BillingAnchorDay;
         }
 
         if (isPortalClient && string.IsNullOrWhiteSpace(firstName))
@@ -3805,6 +3849,15 @@ namespace AgentPortal.Controllers;
         public Guid ClientProfileId { get; set; }
     }
 
+    public sealed class ConfigureSubscriptionOfferQuickViewRequest
+    {
+        public Guid ClientProfileId { get; set; }
+        public string? SubscriptionPriceType { get; set; }
+        public decimal? SubscriptionCustomMonthlyAmount { get; set; }
+        public string? SubscriptionBillingAnchorMode { get; set; }
+        public int? SubscriptionBillingAnchorDay { get; set; }
+    }
+
     public sealed class ReorderRequest
     {
         public string? Bucket { get; set; }
@@ -4070,6 +4123,111 @@ namespace AgentPortal.Controllers;
             _logger.LogError(ex, "QuickView ERROR agent={Agent} clientUserId={ClientUserId}", agentOid, clientUserIdNorm);
             return StatusCode(500, $"QuickView failed: {ex.Message}");
         }
+    }
+
+    [HttpPost]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> ConfigureSubscriptionOffer([FromBody] ConfigureSubscriptionOfferQuickViewRequest request)
+    {
+        string agentOid;
+        try { agentOid = GetAgentOidOrThrow(); }
+        catch { return Challenge(); }
+
+        var profile = await GetOwnedClientProfileAsync(agentOid, request.ClientProfileId);
+        if (profile is null)
+            return Forbid();
+
+        var metadata = EnsureMeta(ClientCrmMetaSerializer.Deserialize(profile.CrmNotes));
+        var recordType = ResolveRecordType(profile.ClientUserId, metadata);
+        if (!IsPortalRecordType(recordType))
+        {
+            return BadRequest(new
+            {
+                message = "Convert this lead to a Client or Business Client through the shared account-creation form before setting a subscription."
+            });
+        }
+
+        if (string.IsNullOrWhiteSpace(profile.Email))
+            return BadRequest(new { message = "An email address is required before setting a subscription." });
+
+        var hasLiveSubscription = await _db.ClientSubscriptions
+            .AsNoTracking()
+            .AnyAsync(x =>
+                x.ClientProfileId == profile.Id &&
+                x.OwnerAgentUserId == agentOid &&
+                x.Status != ClientSubscriptionStatus.Canceled);
+        if (hasLiveSubscription)
+            return BadRequest(new { message = "This client already has a live subscription." });
+
+        var canSetFounderSubscriptionOptions = FounderGuard.IsFounder(User);
+        if (!TryResolveSubscriptionOfferSelection(
+                request.SubscriptionPriceType,
+                request.SubscriptionCustomMonthlyAmount,
+                request.SubscriptionBillingAnchorMode,
+                request.SubscriptionBillingAnchorDay,
+                canSetFounderSubscriptionOptions,
+                out var selection,
+                out var subscriptionValidationError))
+        {
+            return BadRequest(new
+            {
+                message = subscriptionValidationError ?? "A valid subscription configuration is required."
+            });
+        }
+
+        var offer = await _billingOrchestrator.CreateClientSubscriptionOfferAsync(
+            new CreateClientSubscriptionOfferCommand(
+                profile.Id,
+                agentOid,
+                selection.PriceType,
+                selection.CustomMonthlyAmountCents,
+                "USD",
+                selection.BillingAnchorMode,
+                selection.BillingAnchorDay,
+                DateTime.UtcNow,
+                null,
+                canSetFounderSubscriptionOptions));
+
+        var invitationResult = await _billingOrchestrator.CreateSubscriptionActivationInvitationAsync(
+            new CreateSubscriptionActivationInvitationCommand(
+                profile.Id,
+                offer.Id,
+                profile.NormalizedEmail ?? profile.Email,
+                agentOid,
+                DateTime.UtcNow.AddDays(7)));
+
+        if (invitationResult.Invitation is null || string.IsNullOrWhiteSpace(invitationResult.PlainTextToken))
+            return StatusCode(StatusCodes.Status500InternalServerError, new { message = "A subscription activation invitation could not be created." });
+
+        string? warning = null;
+        try
+        {
+            await _subscriptionInvitationEmailService.SendAsync(
+                profile,
+                offer,
+                invitationResult.Invitation,
+                invitationResult.PlainTextToken);
+
+            await _billingOrchestrator.MarkSubscriptionActivationInvitationSentAsync(
+                new MarkSubscriptionActivationInvitationSentCommand(invitationResult.Invitation.Id, agentOid));
+        }
+        catch (Exception ex)
+        {
+            warning = ex.Message;
+            await _billingOrchestrator.MarkSubscriptionActivationInvitationSendFailureAsync(
+                new MarkSubscriptionActivationInvitationSendFailureCommand(
+                    invitationResult.Invitation.Id,
+                    agentOid,
+                    "INVITATION_EMAIL_FAILED",
+                    ex.Message));
+        }
+
+        return Json(new
+        {
+            ok = true,
+            warning,
+            billing = await _clientBillingWorkspaceService.BuildSnapshotAsync(profile.Id, agentOid)
+        });
     }
 
     [HttpPost]
