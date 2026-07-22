@@ -83,7 +83,7 @@ public sealed class ClientSubscriptionInvitationEmailService
             ? "If you need help, contact your Legend agent before your invitation expires."
             : "If you need help, reply directly to this email and your agent will pick it up.";
 
-        var subject = "Activate your Legend ClientApp access";
+        var subject = "Activate your Legend Client Portal access";
         var htmlBody = $"""
 <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="margin:0;padding:0;background:#f4efe2;font-family:Arial,sans-serif;color:#132238;">
   <tr>
@@ -95,7 +95,7 @@ public sealed class ClientSubscriptionInvitationEmailService
               <tr>
                 <td style="padding:28px 30px 10px 30px;">
                   <div style="display:inline-block;padding:7px 14px;border:1px solid #d4af37;border-radius:999px;color:#f0d991;font-size:12px;font-weight:800;letter-spacing:1.5px;text-transform:uppercase;">
-                    Legend ClientApp
+                    Legend Client Portal
                   </div>
                 </td>
               </tr>
@@ -103,7 +103,7 @@ public sealed class ClientSubscriptionInvitationEmailService
                 <td style="padding:0 30px 30px 30px;color:#ffffff;">
                   <div style="font-size:34px;line-height:1.1;font-weight:800;">Your private client access is ready</div>
                   <div style="margin-top:14px;font-size:18px;line-height:1.6;color:#dce6fb;">
-                    Hi {safeName}, your agent prepared your secure ClientApp activation. Use the button below to confirm billing and finish sign-in with <strong style="color:#ffffff;">{safeSignInEmail}</strong>.
+                    Hi {safeName}, your agent prepared your secure Legend Client Portal activation. Use the button below to confirm billing and finish sign-in with <strong style="color:#ffffff;">{safeSignInEmail}</strong>.
                   </div>
                 </td>
               </tr>
@@ -187,7 +187,7 @@ public sealed class ClientSubscriptionInvitationEmailService
         {
             $"Hi {displayName},",
             string.Empty,
-            "Your private Legend ClientApp access is ready.",
+            "Your private Legend Client Portal access is ready.",
             $"Monthly amount: {monthlyAmount}",
             $"Billing day: {DescribeBillingAnchor(offer)}",
             $"Invitation expires: {invitationExpires}",

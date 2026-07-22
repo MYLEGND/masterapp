@@ -213,8 +213,6 @@ public sealed class SubscriptionActivationService
             FirstChargeDateDisplay = FormatDate(context.Schedule.FirstChargeUtc, context.Schedule.BillingTimeZoneId),
             FirstRecurringRenewalDateDisplay = FormatDate(context.Schedule.FirstRecurringRenewalUtc, context.Schedule.BillingTimeZoneId),
             BillingTimeZoneLabel = context.Schedule.BillingTimeZoneId,
-            RecurringTerms = $"Your subscription renews monthly on the server-authoritative billing anchor. The first renewal will not start sooner than {context.Schedule.MinimumAnchorIntervalDays} days after today's charge.",
-            CancellationTerms = "You can request cancellation at period end from inside the client portal after sign-in.",
             ErrorMessage = errorMessage,
             StatusMessage = context.Message,
             BrowserPaymentReady = BrowserPaymentReady,

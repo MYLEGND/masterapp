@@ -1,4 +1,5 @@
 using Domain.Billing;
+using Infrastructure.Billing.Square;
 using Microsoft.AspNetCore.Mvc;
 using ParfaitApp.Models;
 using ParfaitApp.Services;
@@ -9,7 +10,7 @@ namespace ParfaitApp.Controllers;
 public sealed class StoreCheckoutController : Controller
 {
     private const string CommerceCurrency = "USD";
-    private readonly IConfiguration _configuration;
+    private readonly SquareBillingOptions _squareOptions;
     private readonly ParfaitProductService _products;
     private readonly ParfaitOrderService _orders;
     private readonly ParfaitCustomerAutomationService _automations;
@@ -19,7 +20,7 @@ public sealed class StoreCheckoutController : Controller
     private readonly ParfaitMetaSignalBridgeService _metaSignalBridge;
 
     public StoreCheckoutController(
-        IConfiguration configuration,
+        SquareBillingOptions squareOptions,
         ParfaitProductService products,
         ParfaitOrderService orders,
         ParfaitCustomerAutomationService automations,
@@ -28,7 +29,7 @@ public sealed class StoreCheckoutController : Controller
         IParfaitAnalyticsService analytics,
         ParfaitMetaSignalBridgeService metaSignalBridge)
     {
-        _configuration = configuration;
+        _squareOptions = squareOptions;
         _products = products;
         _orders = orders;
         _automations = automations;
@@ -41,9 +42,9 @@ public sealed class StoreCheckoutController : Controller
     [HttpGet("checkout")]
     public IActionResult Checkout()
     {
-        ViewBag.SquareApplicationId = _configuration["Square:ApplicationId"];
-        ViewBag.SquareLocationId = _configuration["Square:LocationId"];
-        ViewBag.SquareEnvironment = _configuration["Square:Environment"] ?? "Sandbox";
+        ViewBag.SquareApplicationId = _squareOptions.ApplicationId;
+        ViewBag.SquareLocationId = _squareOptions.LocationId;
+        ViewBag.SquareEnvironment = _squareOptions.Environment.ToString();
         return View("~/Views/Store/Checkout.cshtml");
     }
 

@@ -7,6 +7,7 @@ using System.Threading.Tasks;
 using Domain.Billing;
 using Domain.Entities;
 using Infrastructure.Billing;
+using Infrastructure.Billing.Square;
 using Infrastructure.Data;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Http;
@@ -24,6 +25,22 @@ namespace AgentPortal.Tests;
 
 public sealed class ParfaitCheckoutBillingCutoverTests
 {
+    [Fact]
+    public void Checkout_UsesSharedSquareBillingOptionsForBrowserCredentials()
+    {
+        using var harness = new CheckoutHarness(
+            configureGateway: _ => { },
+            shippingFeeCents: 0,
+            stockQuantity: 1);
+
+        var result = harness.Controller.Checkout();
+
+        var view = Assert.IsType<ViewResult>(result);
+        Assert.Equal("sq0idp-test", view.ViewData["SquareApplicationId"]);
+        Assert.Equal("L12345", view.ViewData["SquareLocationId"]);
+        Assert.Equal("Sandbox", view.ViewData["SquareEnvironment"]);
+    }
+
     [Fact]
     public async Task Pay_UsesAuthoritativeQuote_StoresSharedPayment_AndKeepsCommerceOrderCompatible()
     {
@@ -353,7 +370,7 @@ public sealed class ParfaitCheckoutBillingCutoverTests
             BillingOrchestrator = _scope.ServiceProvider.GetRequiredService<IBillingOrchestrator>();
 
             Controller = new StoreCheckoutController(
-                Configuration,
+                _scope.ServiceProvider.GetRequiredService<SquareBillingOptions>(),
                 Products,
                 Orders,
                 Automations,

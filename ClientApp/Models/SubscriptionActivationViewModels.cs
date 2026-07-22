@@ -17,8 +17,6 @@ public sealed class SubscriptionActivationPageViewModel
     public string FirstChargeDateDisplay { get; set; } = string.Empty;
     public string FirstRecurringRenewalDateDisplay { get; set; } = string.Empty;
     public string BillingTimeZoneLabel { get; set; } = "UTC";
-    public string RecurringTerms { get; set; } = string.Empty;
-    public string CancellationTerms { get; set; } = string.Empty;
     public string? ErrorMessage { get; set; }
     public string? StatusMessage { get; set; }
     public bool BrowserPaymentReady { get; set; }

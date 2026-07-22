@@ -4772,7 +4772,7 @@ meta.Activities ??= new List<ClientCrmActivity>();
         if (latestOffer is not null)
         {
             return BadRequest(
-                "This client uses the ClientApp subscription activation workflow. Use the ClientApp Subscription panel to resend or manage activation.");
+                "This client uses the Client Portal subscription activation workflow. Use the Client Portal Subscription panel to resend or manage activation.");
         }
 
         // Optionally update email if a new one was provided
