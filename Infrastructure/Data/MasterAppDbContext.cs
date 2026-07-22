@@ -358,7 +358,7 @@ public class MasterAppDbContext : DbContext
             e.HasOne(x => x.ClientSubscriptionOffer)
                 .WithMany()
                 .HasForeignKey(x => x.ClientSubscriptionOfferId)
-                .OnDelete(DeleteBehavior.Cascade);
+                .OnDelete(isSqlServer ? DeleteBehavior.NoAction : DeleteBehavior.Cascade);
 
             if (isSqlServer)
                 e.Property(x => x.RowVersion).IsRowVersion();
@@ -391,12 +391,12 @@ public class MasterAppDbContext : DbContext
             e.HasOne(x => x.SubscriptionActivationInvitation)
                 .WithMany()
                 .HasForeignKey(x => x.SubscriptionActivationInvitationId)
-                .OnDelete(DeleteBehavior.SetNull);
+                .OnDelete(isSqlServer ? DeleteBehavior.NoAction : DeleteBehavior.SetNull);
 
             e.HasOne(x => x.ClientSubscription)
                 .WithMany()
                 .HasForeignKey(x => x.ClientSubscriptionId)
-                .OnDelete(DeleteBehavior.SetNull);
+                .OnDelete(isSqlServer ? DeleteBehavior.NoAction : DeleteBehavior.SetNull);
 
             if (isSqlServer)
                 e.Property(x => x.RowVersion).IsRowVersion();

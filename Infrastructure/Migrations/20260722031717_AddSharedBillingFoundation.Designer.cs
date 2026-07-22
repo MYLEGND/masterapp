@@ -4626,7 +4626,7 @@ namespace Infrastructure.Migrations
                     b.HasOne("Domain.Entities.ClientSubscriptionOffer", "ClientSubscriptionOffer")
                         .WithMany()
                         .HasForeignKey("ClientSubscriptionOfferId")
-                        .OnDelete(DeleteBehavior.Cascade)
+                        .OnDelete(DeleteBehavior.NoAction)
                         .IsRequired();
 
                     b.Navigation("ClientProfile");

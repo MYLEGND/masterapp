@@ -202,7 +202,7 @@ namespace Infrastructure.Migrations
                         column: x => x.ClientSubscriptionOfferId,
                         principalTable: "ClientSubscriptionOffers",
                         principalColumn: "Id",
-                        onDelete: ReferentialAction.Cascade);
+                        onDelete: ReferentialAction.NoAction);
                 });
 
             migrationBuilder.CreateTable(

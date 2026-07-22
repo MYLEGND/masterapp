@@ -4530,12 +4530,12 @@ namespace Infrastructure.Migrations
                     b.HasOne("Domain.Entities.ClientSubscription", "ClientSubscription")
                         .WithMany()
                         .HasForeignKey("ClientSubscriptionId")
-                        .OnDelete(DeleteBehavior.SetNull);
+                        .OnDelete(DeleteBehavior.NoAction);
 
                     b.HasOne("Domain.Entities.SubscriptionActivationInvitation", "SubscriptionActivationInvitation")
                         .WithMany()
                         .HasForeignKey("SubscriptionActivationInvitationId")
-                        .OnDelete(DeleteBehavior.SetNull);
+                        .OnDelete(DeleteBehavior.NoAction);
 
                     b.Navigation("ClientProfile");
 
@@ -4733,7 +4733,7 @@ namespace Infrastructure.Migrations
                     b.HasOne("Domain.Entities.ClientSubscriptionOffer", "ClientSubscriptionOffer")
                         .WithMany()
                         .HasForeignKey("ClientSubscriptionOfferId")
-                        .OnDelete(DeleteBehavior.Cascade)
+                        .OnDelete(DeleteBehavior.NoAction)
                         .IsRequired();
 
                     b.Navigation("ClientProfile");
