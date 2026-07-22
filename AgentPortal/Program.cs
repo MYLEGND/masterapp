@@ -30,6 +30,7 @@ using QuestPDF.Infrastructure;
 using System.Threading.RateLimiting;
 using System.IO;
 using System.Linq;
+using Shared.Diagnostics;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -739,38 +740,20 @@ if (strictMigrations && !builder.Environment.IsDevelopment())
 }
 
 // ------------------------------------------------------------
-// PRODUCTION EXCEPTION HANDLER (kept)
+// PRODUCTION EXCEPTION HANDLER
 // ------------------------------------------------------------
 if (!app.Environment.IsDevelopment())
 {
-    app.UseExceptionHandler(errorApp =>
-    {
-        errorApp.Run(async context =>
-        {
-            var feature = context.Features.Get<IExceptionHandlerFeature>();
-            var ex = feature?.Error;
-
-            var requestId = context.TraceIdentifier;
-            var path = context.Request.Path.ToString();
-
-            var logger = context.RequestServices.GetRequiredService<ILoggerFactory>().CreateLogger("ProdException");
-            if (ex != null)
-                logger.LogError(ex, "UNHANDLED EXCEPTION. requestId={RequestId} path={Path}", requestId, path);
-
-            context.Response.StatusCode = 500;
-            context.Response.ContentType = "text/plain";
-            await context.Response.WriteAsync(
-                $"Server error. requestId={requestId}\n" +
-                $"Check Azure Log Stream / Application Logs for the full exception.\n");
-        });
-    });
-
+    app.UseExceptionHandler("/Home/Error");
     app.UseHsts();
 }
 else
 {
     app.UseDeveloperExceptionPage();
 }
+
+app.UseLegendFailureDiagnostics("AgentPortal");
+app.UseStatusCodePagesWithReExecute("/Home/ErrorStatus", "?statusCode={0}");
 
 app.Use(async (context, next) =>
 {

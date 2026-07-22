@@ -7,6 +7,7 @@ using Microsoft.AspNetCore.RateLimiting;
 using ClientApp.Infrastructure;
 using ClientApp.Models;
 using ClientApp.Services;
+using Shared.Diagnostics;
 
 namespace ClientApp.Controllers;
 
@@ -110,10 +111,24 @@ public class AccountController : Controller
 
     // ✅ This is what your middleware redirects to on Forbid()
     [HttpGet]
+    [ResponseCache(Duration = 0, Location = ResponseCacheLocation.None, NoStore = true)]
     public IActionResult AccessDenied(string? returnUrl = null)
     {
-        ViewBag.ReturnUrl = string.IsNullOrWhiteSpace(returnUrl) ? "/" : returnUrl;
-        return View();
+        var diagnostics = AppFailureDiagnosticsBuilder.BuildForAccessDenied(
+            HttpContext,
+            "ClientApp",
+            returnUrl,
+            summary: "The current client session does not have permission to open this route.");
+
+        var model = new AgentPortal.Models.ErrorViewModel
+        {
+            RequestId = diagnostics.RequestId,
+            Diagnostics = diagnostics
+        };
+
+        Response.StatusCode = StatusCodes.Status403Forbidden;
+        Response.Headers["X-Legend-Failure-Kind"] = diagnostics.FailureKind;
+        return View("~/Views/Shared/Error.cshtml", model);
     }
 
     [HttpGet]

@@ -69,13 +69,13 @@ namespace Infrastructure.Migrations
                         column: x => x.ClientSubscriptionId,
                         principalTable: "ClientSubscriptions",
                         principalColumn: "Id",
-                        onDelete: ReferentialAction.SetNull);
+                        onDelete: ReferentialAction.NoAction);
                     table.ForeignKey(
                         name: "FK_ClientIdentityContinuations_SubscriptionActivationInvitations_SubscriptionActivationInvitationId",
                         column: x => x.SubscriptionActivationInvitationId,
                         principalTable: "SubscriptionActivationInvitations",
                         principalColumn: "Id",
-                        onDelete: ReferentialAction.SetNull);
+                        onDelete: ReferentialAction.NoAction);
                 });
 
             migrationBuilder.CreateIndex(

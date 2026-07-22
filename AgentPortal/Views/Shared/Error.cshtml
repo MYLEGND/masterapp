@@ -1,25 +1,117 @@
-﻿@model ErrorViewModel
+@model ErrorViewModel
 @{
-    ViewData["Title"] = "Error";
+    ViewData["Title"] = "Failure Diagnostics";
+    var diagnostics = Model.Diagnostics;
 }
 
-<h1 class="text-danger">Error.</h1>
-<h2 class="text-danger">An error occurred while processing your request.</h2>
+<div class="container py-5">
+    <div class="row justify-content-center">
+        <div class="col-12 col-xl-10">
+            <div class="card shadow-sm border-0">
+                <div class="card-body p-4 p-lg-5">
+                    <div class="d-flex flex-wrap justify-content-between align-items-start gap-3 mb-4">
+                        <div>
+                            <div class="text-uppercase text-muted small fw-bold">Legend Runtime Diagnostics</div>
+                            <h1 class="h3 mb-2">Exact Failure Report</h1>
+                            <p class="text-muted mb-0">
+                                This page captures the current production failure context so the exact reason is visible without switching environments.
+                            </p>
+                        </div>
+                        @if (diagnostics is not null)
+                        {
+                            <span class="badge text-bg-danger fs-6">HTTP @diagnostics.StatusCode</span>
+                        }
+                    </div>
 
-@if (Model.ShowRequestId)
-{
-    <p>
-        <strong>Request ID:</strong> <code>@Model.RequestId</code>
-    </p>
-}
+                    @if (diagnostics is null)
+                    {
+                        <div class="alert alert-danger mb-0">
+                            No failure diagnostics were available for this request.
+                        </div>
+                    }
+                    else
+                    {
+                        <div class="alert alert-danger">
+                            <div class="fw-bold mb-1">@diagnostics.Summary</div>
+                            <div class="small mb-0">@diagnostics.DiagnosticHint</div>
+                        </div>
 
-<h3>Development Mode</h3>
-<p>
-    Swapping to <strong>Development</strong> environment will display more detailed information about the error that occurred.
-</p>
-<p>
-    <strong>The Development environment shouldn't be enabled for deployed applications.</strong>
-    It can result in displaying sensitive information from exceptions to end users.
-    For local debugging, enable the <strong>Development</strong> environment by setting the <strong>ASPNETCORE_ENVIRONMENT</strong> environment variable to <strong>Development</strong>
-    and restarting the app.
-</p>
+                        <div class="row g-3 mb-4">
+                            <div class="col-md-6">
+                                <div class="border rounded p-3 h-100">
+                                    <div class="text-muted small text-uppercase fw-bold mb-2">Request</div>
+                                    <div><strong>App:</strong> @diagnostics.AppName</div>
+                                    <div><strong>Request ID:</strong> <code>@diagnostics.RequestId</code></div>
+                                    <div><strong>Occurred UTC:</strong> @diagnostics.OccurredUtc.ToString("yyyy-MM-dd HH:mm:ss 'UTC'")</div>
+                                    <div><strong>Failure Kind:</strong> @diagnostics.FailureKind</div>
+                                    <div><strong>Method:</strong> @diagnostics.RequestMethod</div>
+                                    <div><strong>Failing URL:</strong> <code>@diagnostics.FailingRequestTarget</code></div>
+                                    <div><strong>Current Handler Path:</strong> <code>@diagnostics.CurrentRequestTarget</code></div>
+                                </div>
+                            </div>
+                            <div class="col-md-6">
+                                <div class="border rounded p-3 h-100">
+                                    <div class="text-muted small text-uppercase fw-bold mb-2">Context</div>
+                                    <div><strong>Authenticated:</strong> @(diagnostics.IsAuthenticated ? "Yes" : "No")</div>
+                                    <div><strong>User:</strong> @(string.IsNullOrWhiteSpace(diagnostics.UserDisplay) ? "Unknown" : diagnostics.UserDisplay)</div>
+                                    <div><strong>Endpoint:</strong> @(string.IsNullOrWhiteSpace(diagnostics.EndpointDisplayName) ? "Not resolved" : diagnostics.EndpointDisplayName)</div>
+                                    <div><strong>Route Values:</strong> @(string.IsNullOrWhiteSpace(diagnostics.RouteValuesSummary) ? "None" : diagnostics.RouteValuesSummary)</div>
+                                    <div><strong>returnUrl Depth:</strong> @diagnostics.ReturnUrlDepth</div>
+                                    <div><strong>Response Location:</strong> @(string.IsNullOrWhiteSpace(diagnostics.ResponseLocation) ? "None" : diagnostics.ResponseLocation)</div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="border rounded p-3 mb-4">
+                            <div class="text-muted small text-uppercase fw-bold mb-2">Exact Reason</div>
+                            <div><strong>Exception Type:</strong> @(string.IsNullOrWhiteSpace(diagnostics.ExceptionType) ? "None" : diagnostics.ExceptionType)</div>
+                            <div><strong>Exception Message:</strong> @(string.IsNullOrWhiteSpace(diagnostics.ExceptionMessage) ? "None" : diagnostics.ExceptionMessage)</div>
+                            <div><strong>Inner Exception:</strong> @(string.IsNullOrWhiteSpace(diagnostics.InnerExceptionMessage) ? "None" : $"{diagnostics.InnerExceptionType}: {diagnostics.InnerExceptionMessage}")</div>
+                            <div><strong>Failing Point:</strong> @(string.IsNullOrWhiteSpace(diagnostics.FailingPoint) ? "Not available" : diagnostics.FailingPoint)</div>
+                        </div>
+
+                        <div class="d-flex flex-wrap gap-2 mb-3">
+                            <button type="button" class="btn btn-outline-dark btn-sm" data-copy-report="legendFailureReport">Copy Report</button>
+                        </div>
+
+                        <details class="mb-3" open>
+                            <summary class="fw-bold">Full Failure Report</summary>
+                            <pre id="legendFailureReport" class="bg-light border rounded p-3 mt-3 mb-0" style="white-space:pre-wrap;">@diagnostics.ReportText</pre>
+                        </details>
+
+                        @if (!string.IsNullOrWhiteSpace(diagnostics.StackTrace))
+                        {
+                            <details>
+                                <summary class="fw-bold">App Stack Trace</summary>
+                                <pre class="bg-light border rounded p-3 mt-3 mb-0" style="white-space:pre-wrap;">@diagnostics.StackTrace</pre>
+                            </details>
+                        }
+                    }
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+    (() => {
+        const btn = document.querySelector('[data-copy-report]');
+        if (!btn) return;
+
+        btn.addEventListener('click', async () => {
+            const targetId = btn.getAttribute('data-copy-report');
+            const source = targetId ? document.getElementById(targetId) : null;
+            const report = source?.textContent ?? '';
+            if (!report) return;
+
+            try {
+                await navigator.clipboard.writeText(report);
+                btn.textContent = 'Copied';
+                window.setTimeout(() => { btn.textContent = 'Copy Report'; }, 1600);
+            } catch {
+                btn.textContent = 'Copy Failed';
+                window.setTimeout(() => { btn.textContent = 'Copy Report'; }, 1600);
+            }
+        });
+    })();
+</script>

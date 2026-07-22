@@ -15,6 +15,7 @@ using Microsoft.EntityFrameworkCore.Diagnostics;
 using Microsoft.IdentityModel.Tokens;
 using System.Security.Claims;
 using System.Threading.RateLimiting;
+using Shared.Diagnostics;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -456,45 +457,16 @@ var app = builder.Build();
 // ------------------------------------------------------------
 if (!app.Environment.IsDevelopment())
 {
-    app.UseExceptionHandler(errorApp =>
-    {
-        errorApp.Run(async context =>
-        {
-            var feature = context.Features.Get<IExceptionHandlerFeature>();
-            var ex = feature?.Error;
-
-            var requestId = context.TraceIdentifier;
-            var path = context.Request.Path.ToString();
-
-            var logger = context.RequestServices.GetRequiredService<ILoggerFactory>().CreateLogger("ProdException");
-            if (ex != null)
-                logger.LogError(ex, "UNHANDLED EXCEPTION. requestId={RequestId} path={Path}", requestId, path);
-
-            context.Response.StatusCode = 500;
-            context.Response.ContentType = "text/plain";
-
-            await context.Response.WriteAsync(
-                $"Server error. requestId={requestId}\n" +
-                $"Check Azure Log Stream / Application Logs for the full exception.\n");
-        });
-    });
-
+    app.UseExceptionHandler("/Home/Error");
     app.UseHsts();
 }
-
-// ------------------------------------------------------------
-// ALWAYS LOG UNHANDLED (DEV + PROD) WITHOUT SWALLOWING
-// ------------------------------------------------------------
-app.Use(async (context, next) =>
+else
 {
-    try { await next(); }
-    catch (Exception ex)
-    {
-        var logger = context.RequestServices.GetRequiredService<ILoggerFactory>().CreateLogger("GlobalException");
-        logger.LogError(ex, "Unhandled exception on {Path}", context.Request.Path);
-        throw;
-    }
-});
+    app.UseDeveloperExceptionPage();
+}
+
+app.UseLegendFailureDiagnostics("ClientApp");
+app.UseStatusCodePagesWithReExecute("/Home/ErrorStatus", "?statusCode={0}");
 
 app.UseHttpsRedirection();
 app.UseStaticFiles();
