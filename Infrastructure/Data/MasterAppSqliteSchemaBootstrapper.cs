@@ -11,7 +11,7 @@ public static class MasterAppSqliteSchemaBootstrapper
     private const string CommerceBusinessScopeMigrationId = "20260702160000_AddCommerceBusinessScope";
     private const string CommerceCoreSchemaMigrationId = "20260702164641_AddCommerceCoreSchema";
     private const string SharedBillingFoundationMigrationId = "20260722031717_AddSharedBillingFoundation";
-    private const string ClientAppActivationAuthorityMigrationId = "20260722090000_AddClientAppActivationAuthority";
+    private const string ClientAppActivationAuthorityMigrationId = "20260722045033_AddClientAppActivationAuthority";
 
     private static readonly ColumnPatch[] AdditiveColumnPatches =
     {
