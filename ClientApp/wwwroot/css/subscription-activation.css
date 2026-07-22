@@ -193,6 +193,10 @@ body.subscription-activation-standalone {
     line-height: 1.35;
 }
 
+.activation-validation.validation-summary-valid {
+    display: none;
+}
+
 .activation-authorization {
     display: grid;
     grid-template-columns: auto minmax(0, 1fr);

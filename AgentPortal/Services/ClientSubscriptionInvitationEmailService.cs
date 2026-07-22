@@ -69,41 +69,41 @@ public sealed class ClientSubscriptionInvitationEmailService
 
         var agentTitleHtml = string.IsNullOrWhiteSpace(agent.Title)
             ? string.Empty
-            : $"""<div style="margin:4px 0 0;color:#5b6475;font-size:14px;">{safeAgentTitle}</div>""";
+            : $"""<div style="margin:4px 0 0;color:#66758c;font-size:14px;">{safeAgentTitle}</div>""";
         var agentPhoneHtml = string.IsNullOrWhiteSpace(agent.Phone)
             ? string.Empty
-            : $"""<div style="margin:10px 0 0;"><span style="display:inline-block;min-width:56px;color:#7a5f12;font-weight:700;">Phone</span><a href="tel:{safeAgentPhone}" style="color:#0f274d;text-decoration:none;font-weight:700;">{safeAgentPhone}</a></div>""";
+            : $"""<div style="margin:10px 0 0;"><span style="display:inline-block;min-width:56px;color:#2e5fa9;font-weight:700;">Phone</span><a href="tel:{safeAgentPhone}" style="color:#0d2145;text-decoration:none;font-weight:700;">{safeAgentPhone}</a></div>""";
         var agentEmailHtml = string.IsNullOrWhiteSpace(agent.Email)
             ? string.Empty
-            : $"""<div style="margin:8px 0 0;"><span style="display:inline-block;min-width:56px;color:#7a5f12;font-weight:700;">Email</span><a href="mailto:{safeAgentEmail}" style="color:#0f274d;text-decoration:none;font-weight:700;">{safeAgentEmail}</a></div>""";
+            : $"""<div style="margin:8px 0 0;"><span style="display:inline-block;min-width:56px;color:#2e5fa9;font-weight:700;">Email</span><a href="mailto:{safeAgentEmail}" style="color:#0d2145;text-decoration:none;font-weight:700;">{safeAgentEmail}</a></div>""";
         var agentNpnHtml = string.IsNullOrWhiteSpace(agent.Npn)
             ? string.Empty
-            : $"""<div style="margin:8px 0 0;"><span style="display:inline-block;min-width:56px;color:#7a5f12;font-weight:700;">NPN</span><span style="color:#0f274d;font-weight:700;">{safeAgentNpn}</span></div>""";
+            : $"""<div style="margin:8px 0 0;"><span style="display:inline-block;min-width:56px;color:#2e5fa9;font-weight:700;">NPN</span><span style="color:#0d2145;font-weight:700;">{safeAgentNpn}</span></div>""";
         var replyCopy = string.IsNullOrWhiteSpace(agent.Email)
             ? "If you need help, contact your Legend agent before your invitation expires."
             : "If you need help, reply directly to this email and your agent will pick it up.";
 
         var subject = "Activate your Legend Client Portal access";
         var htmlBody = $"""
-<table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="margin:0;padding:0;background:#f4efe2;font-family:Arial,sans-serif;color:#132238;">
+<table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="margin:0;padding:0;background:#ffffff;font-family:Arial,sans-serif;color:#14213a;">
   <tr>
-    <td align="center" style="padding:28px 14px;">
-      <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="max-width:700px;background:#ffffff;border:1px solid #d4af37;border-radius:24px;overflow:hidden;">
+    <td align="center" style="padding:28px 14px;background:#ffffff;">
+      <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="max-width:660px;background:#ffffff;border:1px solid #d7e0ee;border-radius:18px;overflow:hidden;">
         <tr>
-          <td style="padding:0;background:#0f2347;">
+          <td style="padding:0;background:#0d2145;">
             <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%">
               <tr>
-                <td style="padding:28px 30px 10px 30px;">
-                  <div style="display:inline-block;padding:7px 14px;border:1px solid #d4af37;border-radius:999px;color:#f0d991;font-size:12px;font-weight:800;letter-spacing:1.5px;text-transform:uppercase;">
+                <td style="padding:24px 28px 8px 28px;">
+                  <div style="color:#cbdcff;font-size:12px;font-weight:800;letter-spacing:1.4px;text-transform:uppercase;">
                     Legend Client Portal
                   </div>
                 </td>
               </tr>
               <tr>
-                <td style="padding:0 30px 30px 30px;color:#ffffff;">
-                  <div style="font-size:34px;line-height:1.1;font-weight:800;">Your private client access is ready</div>
-                  <div style="margin-top:14px;font-size:18px;line-height:1.6;color:#dce6fb;">
-                    Hi {safeName}, your agent prepared your secure Legend Client Portal activation. Use the button below to confirm billing and finish sign-in with <strong style="color:#ffffff;">{safeSignInEmail}</strong>.
+                <td style="padding:0 28px 24px 28px;color:#ffffff;">
+                  <div style="font-size:30px;line-height:1.12;font-weight:800;">Your client access is ready</div>
+                  <div style="margin-top:10px;font-size:16px;line-height:1.55;color:#d8e4fa;">
+                    Hi {safeName}, activate your subscription using <strong style="color:#ffffff;">{safeSignInEmail}</strong>.
                   </div>
                 </td>
               </tr>
@@ -112,14 +112,14 @@ public sealed class ClientSubscriptionInvitationEmailService
         </tr>
 
         <tr>
-          <td style="padding:28px 30px 0 30px;background:#fffdfa;">
-            <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="border:1px solid #e1c46c;border-radius:20px;background:#fbf5e7;">
+          <td style="padding:22px 28px 0 28px;background:#ffffff;">
+            <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="border:1px solid #dbe5f4;border-radius:12px;background:#f6f8fc;">
               <tr>
-                <td style="padding:22px 24px;">
-                  <div style="font-size:12px;font-weight:800;letter-spacing:1.4px;text-transform:uppercase;color:#8a6a13;">Subscription Summary</div>
-                  <div style="margin-top:12px;font-size:40px;line-height:1;font-weight:800;color:#10224a;">{safeAmount}<span style="font-size:18px;font-weight:700;color:#5f6b7d;"> / month</span></div>
-                  <div style="margin-top:14px;font-size:16px;line-height:1.7;color:#273652;"><strong>Billing day:</strong> {safeAnchor}</div>
-                  <div style="font-size:16px;line-height:1.7;color:#273652;"><strong>Secure link expires:</strong> {safeInvitationExpires}</div>
+                <td style="padding:18px 20px;">
+                  <div style="font-size:12px;font-weight:800;letter-spacing:1.2px;text-transform:uppercase;color:#2e5fa9;">Subscription</div>
+                  <div style="margin-top:8px;font-size:32px;line-height:1;font-weight:800;color:#0d2145;">{safeAmount}<span style="font-size:16px;font-weight:700;color:#66758c;"> / month</span></div>
+                  <div style="margin-top:12px;font-size:15px;line-height:1.55;color:#33445f;"><strong>Billing day:</strong> {safeAnchor}</div>
+                  <div style="font-size:15px;line-height:1.55;color:#33445f;"><strong>Activation link expires:</strong> {safeInvitationExpires}</div>
                 </td>
               </tr>
             </table>
@@ -127,51 +127,34 @@ public sealed class ClientSubscriptionInvitationEmailService
         </tr>
 
         <tr>
-          <td align="center" style="padding:28px 30px 0 30px;background:#fffdfa;">
-            <a href="{safeActivationUrl}" target="_blank" style="display:inline-block;padding:16px 28px;background:#ddb457;border:1px solid #b68922;border-radius:999px;color:#10224a;text-decoration:none;font-size:17px;font-weight:800;">
-              Activate Subscription
+          <td align="center" style="padding:22px 28px 0 28px;background:#ffffff;">
+            <a href="{safeActivationUrl}" target="_blank" style="display:inline-block;padding:14px 24px;background:#0d2145;border:1px solid #0d2145;border-radius:10px;color:#ffffff;text-decoration:none;font-size:16px;font-weight:800;">
+              Activate access
             </a>
           </td>
         </tr>
 
         <tr>
-          <td style="padding:26px 30px 0 30px;background:#fffdfa;">
-            <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="border:1px solid #ead7a1;border-radius:18px;background:#f7f1e2;">
-              <tr>
-                <td style="padding:20px 22px;">
-                  <div style="font-size:12px;font-weight:800;letter-spacing:1.2px;text-transform:uppercase;color:#8a6a13;">What To Expect</div>
-                  <div style="margin-top:12px;font-size:16px;line-height:1.75;color:#243246;">1. Confirm your recurring billing details and payment method.</div>
-                  <div style="font-size:16px;line-height:1.75;color:#243246;">2. Complete Microsoft sign-in using <strong>{safeSignInEmail}</strong>.</div>
-                  <div style="font-size:16px;line-height:1.75;color:#243246;">3. Open your private client portal and manage everything from there.</div>
-                </td>
-              </tr>
-            </table>
-          </td>
-        </tr>
-
-        <tr>
-          <td style="padding:24px 30px 0 30px;background:#fffdfa;">
-            <div style="font-size:15px;line-height:1.7;color:#4d5768;">
-              After activation, your normal client sign-in page is:
-              <a href="{safeSignInUrl}" target="_blank" style="color:#0f274d;font-weight:700;text-decoration:none;">{safeSignInUrl}</a>
+          <td style="padding:20px 28px 0 28px;background:#ffffff;">
+            <div style="font-size:15px;line-height:1.55;color:#506078;">
+              After activation, sign in at <a href="{safeSignInUrl}" target="_blank" style="color:#0d2145;font-weight:700;text-decoration:none;">Legend Client Portal</a>.
             </div>
-            <div style="margin-top:10px;font-size:15px;line-height:1.7;color:#4d5768;">{replyCopy}</div>
+            <div style="margin-top:8px;font-size:15px;line-height:1.55;color:#506078;">{replyCopy}</div>
           </td>
         </tr>
 
         <tr>
-          <td style="padding:28px 30px 32px 30px;background:#fffdfa;">
-            <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="border-top:1px solid #eadfbe;">
+          <td style="padding:22px 28px 26px 28px;background:#ffffff;">
+            <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="border-top:1px solid #dbe5f4;">
               <tr>
-                <td style="padding-top:22px;">
-                  <div style="font-size:12px;font-weight:800;letter-spacing:1.4px;text-transform:uppercase;color:#8a6a13;">Your Agent</div>
-                  <div style="margin-top:10px;font-size:24px;font-weight:800;color:#10224a;">{safeAgentName}</div>
+                <td style="padding-top:18px;">
+                  <div style="font-size:12px;font-weight:800;letter-spacing:1.2px;text-transform:uppercase;color:#2e5fa9;">Your Agent</div>
+                  <div style="margin-top:8px;font-size:21px;font-weight:800;color:#0d2145;">{safeAgentName}</div>
                   {agentTitleHtml}
                   {agentPhoneHtml}
                   {agentEmailHtml}
                   {agentNpnHtml}
-                  <div style="margin-top:18px;font-size:16px;font-weight:800;color:#7a5f12;">Legend™</div>
-                  <div style="margin-top:4px;font-size:14px;line-height:1.6;color:#5b6475;font-style:italic;">Where Your Faith Fuels Your Future &amp; Wellness Meets Wealth</div>
+                  <div style="margin-top:16px;font-size:14px;font-weight:800;color:#0d2145;">Legend™</div>
                 </td>
               </tr>
             </table>
@@ -187,18 +170,12 @@ public sealed class ClientSubscriptionInvitationEmailService
         {
             $"Hi {displayName},",
             string.Empty,
-            "Your private Legend Client Portal access is ready.",
+            "Your Legend Client Portal access is ready.",
             $"Monthly amount: {monthlyAmount}",
             $"Billing day: {DescribeBillingAnchor(offer)}",
             $"Invitation expires: {invitationExpires}",
             $"Activate subscription: {activationUrl}",
             $"After activation, sign in here: {signInUrl}",
-            $"Sign-in email: {signInEmail}",
-            string.Empty,
-            "What happens next:",
-            "1. Confirm your recurring billing details and consents.",
-            $"2. Finish Microsoft sign-in using {signInEmail}.",
-            "3. Open your private client portal.",
             string.Empty,
             string.IsNullOrWhiteSpace(agent.FullName) ? "Your agent:" : $"Your agent: {agent.FullName}"
         };

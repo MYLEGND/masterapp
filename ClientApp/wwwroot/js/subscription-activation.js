@@ -8,6 +8,7 @@
   const firstChargeEl = root.querySelector("[data-first-charge]");
   const firstRenewalEl = root.querySelector("[data-first-renewal]");
   const anchorLabelEl = root.querySelector("[data-anchor-label]");
+  const authorizationCopyEl = document.getElementById("activationAuthorizationCopy");
   const anchorSelect = document.getElementById("billingAnchorDaySelect");
   const prepareUrl = root.getAttribute("data-prepare-url");
   const squareAppId = root.getAttribute("data-square-app-id");
@@ -23,6 +24,7 @@
   function setMessage(message) {
     if (messageEl) {
       messageEl.textContent = message || "";
+      messageEl.hidden = !message;
     }
   }
 
@@ -59,6 +61,10 @@
     if (firstChargeEl) firstChargeEl.textContent = payload.firstChargeDateDisplay || "";
     if (firstRenewalEl) firstRenewalEl.textContent = payload.firstRecurringRenewalDateDisplay || "";
     if (anchorLabelEl) anchorLabelEl.textContent = payload.billingAnchorLabel || "";
+    if (authorizationCopyEl && payload.billingAnchorLabel) {
+      const amount = authorizationCopyEl.dataset.monthlyAmount || "the first";
+      authorizationCopyEl.textContent = `I authorize today’s ${amount} charge and recurring monthly billing on ${payload.billingAnchorLabel}, including saving this card for future payments; cancellations can be requested after sign-in.`;
+    }
     return true;
   }
 
